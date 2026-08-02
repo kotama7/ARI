@@ -1,4 +1,4 @@
-"""Safe SLURM scheduler adapter for typed ARI HPC job contracts."""
+"""Safe SLURM scheduler adapter for public ARI HPC job contracts."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, Sequence
 
-from src.contracts import (
+from ari_skill_hpc.contracts import (
     ArtifactPinV1,
     JobErrorV1,
     JobHandleV1,
@@ -1088,7 +1088,7 @@ class SlurmScheduler:
             bind.source == request.work_dir and bind.target == request.work_dir
             for bind in binds
         ):
-            from src.contracts import BindMountV1
+            from ari_skill_hpc.contracts import BindMountV1
 
             binds.append(
                 BindMountV1(

@@ -4,7 +4,7 @@ sources:
     role: doc
   - path: ari-core/ari/mcp/client.py
     role: implementation
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
   - path: docs/reference/execution_profile.md
     role: doc

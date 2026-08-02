@@ -1,14 +1,14 @@
 ---
 sources:
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
-  - path: ari-skill-hpc/src/contracts.py
-    role: contract
-  - path: ari-skill-hpc/src/scheduler.py
+  - path: ari-skill-hpc/ari_skill_hpc/contracts.py
+    role: schema
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
     role: implementation
-  - path: ari-skill-hpc/src/slurm.py
+  - path: ari-skill-hpc/ari_skill_hpc/slurm.py
     role: implementation
-  - path: ari-skill-hpc/src/singularity.py
+  - path: ari-skill-hpc/ari_skill_hpc/singularity.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config

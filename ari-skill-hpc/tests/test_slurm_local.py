@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.contracts import (
+from ari_skill_hpc.contracts import (
     ArtifactPinV1,
     EnvironmentPolicyV1,
     JobRequestV1,
@@ -16,7 +16,7 @@ from src.contracts import (
     file_digest,
     sha256_digest,
 )
-from src.scheduler import (
+from ari_skill_hpc.scheduler import (
     CommandResult,
     LocalCommandRunner,
     SchedulerProtocolError,

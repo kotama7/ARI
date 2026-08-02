@@ -2,9 +2,9 @@
 sources:
   - path: docs/plans/skills/02_tool_registry.md
     role: doc
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
-  - path: ari-skill-hpc/src/slurm.py
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
     role: implementation
   - path: docs/reference/execution_profile.md
     role: doc

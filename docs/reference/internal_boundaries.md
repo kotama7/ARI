@@ -87,7 +87,7 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 | `ari/mcp/connection.py` | owns one Skill's MCP SDK `stdio_client` lifecycle and immutable child-environment snapshot. |
 | `ari/mcp/child_environment.py` | constructs the manifest allowlist, isolated runtime directories, credential authority identities, and redacted stderr pipe. |
 | `ari/mcp/secure_stdio_proxy.py` | restores exact-env/redaction guarantees when a direct MCP client merges its own parent environment. |
-| `ari-skill-hpc/src/{contracts,scheduler}.py` | versioned HPC job contracts plus shell-free local SLURM, strict known-host SSH, durable idempotency, `--export=NIL` clean environments, and digest-bound result collection. |
+| `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | versioned HPC job contracts plus shell-free local SLURM, strict known-host SSH, durable idempotency, `--export=NIL` clean environments, and digest-bound result collection. |
 
 Known duplication to consolidate toward these owners (not incorrect behaviour,
 but drift risk): `viz/api_memory.py` re-derives container-runtime dispatch;

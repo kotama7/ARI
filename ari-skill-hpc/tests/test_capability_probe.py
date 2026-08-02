@@ -13,7 +13,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-from src.slurm import _parse_capability_output, probe_platform_capabilities  # noqa: E402
+from ari_skill_hpc.slurm import (  # noqa: E402
+    _parse_capability_output,
+    probe_platform_capabilities,
+)
 
 
 def test_parse_capability_output():

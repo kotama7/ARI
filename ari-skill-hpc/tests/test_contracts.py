@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from src.contracts import (
+from ari_skill_hpc.contracts import (
     ArtifactPinV1,
     EnvironmentPolicyV1,
     JobRequestV1,

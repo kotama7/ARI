@@ -4,10 +4,9 @@
 #
 # Runs each skill's tests in its own ``pytest`` process. This avoids the
 # cross-skill ``sys.modules['src.server']`` ambiguity that breaks single-shot
-# ``pytest`` runs across multiple ari-skill-* packages (each ships its server
-# as ``src/server.py``; sharing one Python process means the first import
-# poisons every subsequent ``from src.server import …`` and any
-# ``unittest.mock.patch('src.server.X')`` in sibling skills).
+# ``pytest`` runs across legacy ari-skill-* packages. Canonical installable
+# package names (for example ``ari_skill_hpc``) remove this ambiguity one skill
+# at a time; isolated processes preserve compatibility during that migration.
 #
 # Usage:   bash scripts/run_all_tests.sh [extra-pytest-args]
 # Exit code: 0 if every path passes, 1 if any path fails.

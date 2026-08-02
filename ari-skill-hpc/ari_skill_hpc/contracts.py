@@ -1,4 +1,4 @@
-"""Versioned, provider-neutral contracts for scheduler-backed research jobs."""
+"""Public versioned contracts for scheduler-backed research jobs."""
 
 from __future__ import annotations
 

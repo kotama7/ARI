@@ -1,4 +1,4 @@
-"""Deprecated Singularity aliases backed by the canonical scheduler contract."""
+"""Deprecated Singularity aliases backed by the public scheduler contract."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from src.contracts import (
+from ari_skill_hpc.contracts import (
     ArtifactPinV1,
     BindMountV1,
     ContainerRequestV1,
@@ -20,8 +20,8 @@ from src.contracts import (
     ResourceRequestV1,
     file_digest,
 )
-from src.scheduler import SchedulerError, SchedulerValidationError
-from src.slurm import SlurmClient
+from ari_skill_hpc.scheduler import SchedulerError, SchedulerValidationError
+from ari_skill_hpc.slurm import SlurmClient
 
 
 def _handle_response(handle: Any, **extra: Any) -> dict[str, Any]:

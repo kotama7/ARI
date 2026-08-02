@@ -1,6 +1,6 @@
 {
   "description": "Typed SLURM lifecycle, strict SSH transport, capability probes, and digest-pinned containers.",
-  "entrypoint": "src/server.py",
+  "entrypoint": "ari_skill_hpc/server.py",
   "generated_from": "skill.yaml",
   "name": "hpc-skill",
   "package": "ari-skill-hpc",

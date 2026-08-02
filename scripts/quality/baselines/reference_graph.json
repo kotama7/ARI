@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T09:07:54.372142+00:00",
-  "commit": "11ee6abfeb3d1f41beea1ced6d0e60225fabdd98",
+  "generated_at": "2026-08-02T10:46:18.024310+00:00",
+  "commit": "0950c52f70cd5817df187236a74582983bd3ed12",
   "roots": [
     {
       "id": "R1",
@@ -1270,9 +1270,63 @@
       ]
     },
     {
+      "id": "mcp.tool:hpc:container_submit",
+      "kind": "mcp.tool",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
       "id": "mcp.tool:hpc:job_cancel",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:hpc:job_logs",
+      "kind": "mcp.tool",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:hpc:job_result",
+      "kind": "mcp.tool",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1290,7 +1344,25 @@
     {
       "id": "mcp.tool:hpc:job_status",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 1,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.mcp"
+      ]
+    },
+    {
+      "id": "mcp.tool:hpc:job_submit",
+      "kind": "mcp.tool",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1308,7 +1380,7 @@
     {
       "id": "mcp.tool:hpc:probe_platform_capabilities",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1326,7 +1398,7 @@
     {
       "id": "mcp.tool:hpc:singularity_build",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1344,7 +1416,7 @@
     {
       "id": "mcp.tool:hpc:singularity_build_fakeroot",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1362,7 +1434,7 @@
     {
       "id": "mcp.tool:hpc:singularity_pull",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1380,7 +1452,7 @@
     {
       "id": "mcp.tool:hpc:singularity_run",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1398,7 +1470,7 @@
     {
       "id": "mcp.tool:hpc:singularity_run_gpu",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -1416,7 +1488,7 @@
     {
       "id": "mcp.tool:hpc:slurm_submit",
       "kind": "mcp.tool",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [
         "R1",
@@ -5819,36 +5891,18 @@
       ]
     },
     {
-      "id": "py.module:ari-skill-hpc/src/__init__.py",
+      "id": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
       "kind": "py.module",
-      "file": "ari-skill-hpc/src/__init__.py",
-      "loc": 1,
+      "file": "ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "loc": 18,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.module:ari-skill-hpc/src/server.py",
+      "id": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
       "kind": "py.module",
-      "file": "ari-skill-hpc/src/server.py",
-      "loc": 305,
-      "reachable_from": [
-        "R4"
-      ],
-      "edges_in": []
-    },
-    {
-      "id": "py.module:ari-skill-hpc/src/singularity.py",
-      "kind": "py.module",
-      "file": "ari-skill-hpc/src/singularity.py",
-      "loc": 174,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.module:ari-skill-hpc/src/slurm.py",
-      "kind": "py.module",
-      "file": "ari-skill-hpc/src/slurm.py",
-      "loc": 528,
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 334,
       "reachable_from": [
         "R1",
         "R2",
@@ -5859,7 +5913,67 @@
         "R7"
       ],
       "edges_in": [
-        "dynamic.string_key"
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "kind": "py.module",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 1309,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.string_key",
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "kind": "py.module",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 392,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "kind": "py.module",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 284,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "py.module",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 402,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "dynamic.string_key",
+        "static.import"
       ]
     },
     {
@@ -6328,7 +6442,7 @@
       "id": "py.module:ari-skill-tool-registry/src/broker.py",
       "kind": "py.module",
       "file": "ari-skill-tool-registry/src/broker.py",
-      "loc": 1061,
+      "loc": 1270,
       "reachable_from": [],
       "edges_in": []
     },
@@ -6349,10 +6463,18 @@
       "edges_in": []
     },
     {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_adapter.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1847,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.module:ari-skill-tool-registry/src/providers.py",
       "kind": "py.module",
       "file": "ari-skill-tool-registry/src/providers.py",
-      "loc": 713,
+      "loc": 719,
       "reachable_from": [],
       "edges_in": []
     },
@@ -6378,7 +6500,7 @@
       "id": "py.module:ari-skill-tool-registry/src/sources.py",
       "kind": "py.module",
       "file": "ari-skill-tool-registry/src/sources.py",
-      "loc": 856,
+      "loc": 1168,
       "reachable_from": [],
       "edges_in": []
     },
@@ -7066,18 +7188,8 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/agent/run_env.py",
       "loc": 50,
-      "reachable_from": [
-        "R1",
-        "R2",
-        "R3",
-        "R4",
-        "R5",
-        "R6",
-        "R7"
-      ],
-      "edges_in": [
-        "static.call"
-      ]
+      "reachable_from": [],
+      "edges_in": []
     },
     {
       "id": "py.symbol:ari-core/ari/agent/tool_manager.py:active_tools",
@@ -18347,130 +18459,1008 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/server.py:_get_slurm_client",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/__init__.py:__all__",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ArtifactPinV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 11,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:BindMountV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 10,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ContainerRequestV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 14,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ContractModel",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:Digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:EnvironmentPolicyV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 44,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobErrorV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 11,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobHandleV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 20,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobId",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobLogV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 7,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobRequestV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 50,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobResultV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 20,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobStatusV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 10,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobSubmitArgumentsV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 4,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:NormalizedJobState",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:OutputDeclarationV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 11,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ResourceRequestV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 15,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SCHEMA_JOB_HANDLE_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SCHEMA_JOB_REQUEST_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SCHEMA_JOB_RESULT_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SCHEMA_JOB_STATUS_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SafeIdentifier",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:_ENV_NAME_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:_MODULE_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:_SECRET_NAME_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:_absolute_path",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:canonical_json",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:file_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 6,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:sha256_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:utc_now",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:CommandResult",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:CommandRunner",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "loc": 13,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/server.py:_hpc_log",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:LocalCommandRunner",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 52,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:RemoteCommandRunner",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 113,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:RemoteConfig",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 27,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerError",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerProtocolError",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 2,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerTransportError",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 2,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerValidationError",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SlurmScheduler",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 732,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SubmissionLedger",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 128,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SubmissionUncertainError",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 2,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_JOB_ID_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/server.py:call_tool",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_OUTPUT_LIMIT",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/server.py",
-      "loc": 41,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/server.py:list_tools",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_STATE_SUFFIX_RE",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/server.py",
-      "loc": 207,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/server.py:main",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_TERMINAL_STATES",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/server.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_base_state",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_bounded_decode",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "loc": 8,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/server.py:server",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_digest_check_lines",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/server.py",
-      "loc": 1,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 10,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/singularity.py:build",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_handle_id",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/singularity.py",
-      "loc": 31,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 3,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/singularity.py:build_fakeroot",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_is_below",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/singularity.py",
-      "loc": 35,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 6,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/singularity.py:pull",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_known_hosts_digest",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/singularity.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_normalize_state",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 20,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_parse_job_id",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_parse_sacct",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "loc": 28,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/singularity.py:run",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_safe_error",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/singularity.py",
-      "loc": 26,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 3,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/singularity.py:run_gpu",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_validated_work_dir",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/singularity.py",
-      "loc": 38,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 14,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/slurm.py:RemoteConfig",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:_verify_file_pin",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/slurm.py",
-      "loc": 8,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 13,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/slurm.py:SlurmClient",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:default_ledger_path",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/slurm.py",
-      "loc": 413,
+      "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "loc": 15,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/slurm.py:_DEFAULT_PROBE_TOOLS",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:_bool_env",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/slurm.py",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:_get_slurm_client",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 18,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:_handle_selector_schema",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:_legacy_container_run_schema",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 23,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:_legacy_submit_schema",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 20,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:_public_error_message",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:_selector",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:call_tool",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 98,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:cli",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:list_tools",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 121,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:main",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/server.py:server",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/server.py",
       "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/slurm.py:_parse_capability_output",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_absolute",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/slurm.py",
-      "loc": 12,
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 10,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-hpc/src/slurm.py:probe_platform_capabilities",
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_binds",
       "kind": "py.symbol",
-      "file": "ari-skill-hpc/src/slurm.py",
-      "loc": 61,
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_definition_pin",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 35,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_error",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_handle_response",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_image_pin",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_request_id",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_resource",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 18,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:_run_container",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 34,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:build",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 26,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:build_fakeroot",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 28,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:pull",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 33,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:run",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/singularity.py:run_gpu",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:SlurmClient",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 195,
+      "reachable_from": [
+        "R4"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_ARCH_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_DEFAULT_PROBE_TOOLS",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_JOB_ID_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_PARTITION_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_TOOL_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_gres_from_environment",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_optional_int",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_parse_capability_output",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:_valid_capability_record",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:probe_platform_capabilities",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "loc": 113,
       "reachable_from": [],
       "edges_in": []
     },
@@ -22774,7 +23764,7 @@
       "id": "py.symbol:ari-skill-tool-registry/src/broker.py:CatalogBroker",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/broker.py",
-      "loc": 948,
+      "loc": 1145,
       "reachable_from": [],
       "edges_in": []
     },
@@ -23363,6 +24353,358 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OPENROAD_ADAPTER_ID",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OPENROAD_ADAPTER_VERSION",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OPENROAD_EXPERIMENT_V1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadArtifactPinV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 33,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadCommandV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 27,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadExperimentAdapter",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 724,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadExperimentV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 169,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadMetricV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 52,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadOutputArtifactV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 36,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadProviderPinV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 51,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadStage",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadTechnologyV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 39,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadToolchainV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 49,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadVerb",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 54,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadWorkspaceV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 41,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_FILE_SUFFIXES",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_OpenRoadJob",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_PROVIDER_ARGUMENTS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_PROVIDER_ENV",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_REQUEST_ID_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SAFE_ID_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SAFE_TCL_ATOM_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SAFE_TCL_LIST_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SHA256_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_STAGE_ORDER",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SUPPORT_MATRIX",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_UPSTREAM_TOOLS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 23,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_decode_wrapped",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 32,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_file_sha256",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_json_pointer",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_load_evidence_fixture",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 19,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_now",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_safe_relative",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_support_document",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_verify_openroad_evidence_fixtures",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 117,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_adapter_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_effective_launcher",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_provider_release_pin",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_toolchain_line",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_workspace_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:verify_openroad_experiment_files",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 48,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:verify_openroad_provider_package",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 39,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:verify_openroad_provider_pin",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-tool-registry/src/providers.py:ProviderAdapter",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/providers.py",
@@ -23454,7 +24796,7 @@
       "id": "py.symbol:ari-skill-tool-registry/src/providers.py:StdioMCPAdapter",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/providers.py",
-      "loc": 228,
+      "loc": 234,
       "reachable_from": [],
       "edges_in": []
     },
@@ -23627,6 +24969,22 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:OpenRoadCatalogSource",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 33,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:OpenRoadSourceSpecV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 125,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-tool-registry/src/sources.py:SOURCES_V1",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/sources.py",
@@ -23718,7 +25076,7 @@
       "id": "py.symbol:ari-skill-tool-registry/src/sources.py:__all__",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/sources.py",
-      "loc": 18,
+      "loc": 20,
       "reachable_from": [],
       "edges_in": []
     },
@@ -23735,6 +25093,14 @@
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/sources.py",
       "loc": 93,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/sources.py:_openroad_candidate",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/sources.py",
+      "loc": 132,
       "reachable_from": [],
       "edges_in": []
     },
@@ -23766,7 +25132,7 @@
       "id": "py.symbol:ari-skill-tool-registry/src/sources.py:catalog_source_from_spec",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/sources.py",
-      "loc": 8,
+      "loc": 10,
       "reachable_from": [],
       "edges_in": []
     },
@@ -25990,15 +27356,33 @@
     },
     {
       "from": "py.module:ari-core/ari/agent/loop.py",
-      "to": "py.module:ari-skill-hpc/src/slurm.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "dynamic.string_key",
-      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/agent/loop.py:512 -> reader=ari-skill-hpc/src/slurm.py"
+      "evidence": "env:ARI_CHECKPOINT_DIR writer=ari-core/ari/agent/loop.py:521 -> reader=ari-skill-hpc/ari_skill_hpc/scheduler.py"
     },
     {
       "from": "py.module:ari-core/ari/agent/loop.py",
-      "to": "py.module:ari-skill-hpc/src/slurm.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "dynamic.string_key",
-      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/agent/loop.py:740 -> reader=ari-skill-hpc/src/slurm.py"
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/agent/loop.py:512 -> reader=ari-skill-hpc/ari_skill_hpc/scheduler.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/agent/loop.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/agent/loop.py:740 -> reader=ari-skill-hpc/ari_skill_hpc/scheduler.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/agent/loop.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/agent/loop.py:512 -> reader=ari-skill-hpc/ari_skill_hpc/slurm.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/agent/loop.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/agent/loop.py:740 -> reader=ari-skill-hpc/ari_skill_hpc/slurm.py"
     },
     {
       "from": "py.module:ari-core/ari/agent/loop.py",
@@ -27622,9 +29006,9 @@
     },
     {
       "from": "py.module:ari-core/ari/config/__init__.py",
-      "to": "py.module:ari-skill-hpc/src/slurm.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
       "kind": "dynamic.string_key",
-      "evidence": "env:ARI_SLURM_PARTITION writer=ari-core/ari/config/__init__.py:631 -> reader=ari-skill-hpc/src/slurm.py"
+      "evidence": "env:ARI_SLURM_PARTITION writer=ari-core/ari/config/__init__.py:631 -> reader=ari-skill-hpc/ari_skill_hpc/slurm.py"
     },
     {
       "from": "py.module:ari-core/ari/config/__init__.py",
@@ -28324,57 +29708,81 @@
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:hpc:container_submit",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('container_submit') <- ari-skill-hpc/ari_skill_hpc/server.py:113"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:job_cancel",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('job_cancel') <- ari-skill-hpc/src/server.py:86"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('job_cancel') <- ari-skill-hpc/ari_skill_hpc/server.py:138"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:hpc:job_logs",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('job_logs') <- ari-skill-hpc/ari_skill_hpc/server.py:133"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:hpc:job_result",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('job_result') <- ari-skill-hpc/ari_skill_hpc/server.py:126"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:job_status",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('job_status') <- ari-skill-hpc/src/server.py:72"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('job_status') <- ari-skill-hpc/ari_skill_hpc/server.py:121"
+    },
+    {
+      "from": "py.module:ari-core/ari/mcp/client.py",
+      "to": "mcp.tool:hpc:job_submit",
+      "kind": "dynamic.mcp",
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('job_submit') <- ari-skill-hpc/ari_skill_hpc/server.py:105"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:probe_platform_capabilities",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('probe_platform_capabilities') <- ari-skill-hpc/src/server.py:158"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('probe_platform_capabilities') <- ari-skill-hpc/ari_skill_hpc/server.py:151"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:singularity_build",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_build') <- ari-skill-hpc/src/server.py:100"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_build') <- ari-skill-hpc/ari_skill_hpc/server.py:167"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:singularity_build_fakeroot",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_build_fakeroot') <- ari-skill-hpc/src/server.py:197"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_build_fakeroot') <- ari-skill-hpc/ari_skill_hpc/server.py:181"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:singularity_pull",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_pull') <- ari-skill-hpc/src/server.py:178"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_pull') <- ari-skill-hpc/ari_skill_hpc/server.py:196"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:singularity_run",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_run') <- ari-skill-hpc/src/server.py:122"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_run') <- ari-skill-hpc/ari_skill_hpc/server.py:210"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:singularity_run_gpu",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_run_gpu') <- ari-skill-hpc/src/server.py:217"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('singularity_run_gpu') <- ari-skill-hpc/ari_skill_hpc/server.py:217"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:hpc:slurm_submit",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('slurm_submit') <- ari-skill-hpc/src/server.py:36"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('slurm_submit') <- ari-skill-hpc/ari_skill_hpc/server.py:143"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -29854,6 +31262,12 @@
     },
     {
       "from": "py.module:ari-core/ari/paths.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_CHECKPOINT_DIR writer=ari-core/ari/paths.py:292 -> reader=ari-skill-hpc/ari_skill_hpc/scheduler.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/paths.py",
       "to": "py.module:ari-skill-idea/src/server.py",
       "kind": "dynamic.string_key",
       "evidence": "env:ARI_CHECKPOINT_DIR writer=ari-core/ari/paths.py:292 -> reader=ari-skill-idea/src/server.py"
@@ -30274,15 +31688,27 @@
     },
     {
       "from": "py.module:ari-core/ari/pipeline/stage_runner.py",
-      "to": "py.module:ari-skill-hpc/src/slurm.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "dynamic.string_key",
-      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/pipeline/stage_runner.py:155 -> reader=ari-skill-hpc/src/slurm.py"
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/pipeline/stage_runner.py:155 -> reader=ari-skill-hpc/ari_skill_hpc/scheduler.py"
     },
     {
       "from": "py.module:ari-core/ari/pipeline/stage_runner.py",
-      "to": "py.module:ari-skill-hpc/src/slurm.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "dynamic.string_key",
-      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/pipeline/stage_runner.py:275 -> reader=ari-skill-hpc/src/slurm.py"
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/pipeline/stage_runner.py:275 -> reader=ari-skill-hpc/ari_skill_hpc/scheduler.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/pipeline/stage_runner.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/pipeline/stage_runner.py:155 -> reader=ari-skill-hpc/ari_skill_hpc/slurm.py"
+    },
+    {
+      "from": "py.module:ari-core/ari/pipeline/stage_runner.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "dynamic.string_key",
+      "evidence": "env:ARI_WORK_DIR writer=ari-core/ari/pipeline/stage_runner.py:275 -> reader=ari-skill-hpc/ari_skill_hpc/slurm.py"
     },
     {
       "from": "py.module:ari-core/ari/pipeline/stage_runner.py",
@@ -32823,22 +34249,316 @@
       "evidence": "ari-skill-evaluator/src/server.py:16 import ari.public.cost_tracker"
     },
     {
-      "from": "py.module:ari-skill-hpc/src/slurm.py",
-      "to": "py.module:ari-core/ari/agent/run_env.py",
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
       "kind": "static.import",
-      "evidence": "ari-skill-hpc/src/slurm.py:211 import ari.agent.run_env"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/__init__.py:3 import ari_skill_hpc.contracts"
     },
     {
-      "from": "py.module:ari-skill-hpc/src/slurm.py",
-      "to": "py.module:ari-core/ari/public/run_env.py",
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "static.import",
-      "evidence": "ari-skill-hpc/src/slurm.py:209 import ari.public.run_env"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/__init__.py:9 import ari_skill_hpc.scheduler"
     },
     {
-      "from": "py.module:ari-skill-hpc/src/slurm.py",
-      "to": "py.symbol:ari-core/ari/agent/run_env.py:shell_capture_snippet",
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1091 import ari_skill_hpc.contracts"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 import ari_skill_hpc.contracts"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ArtifactPinV1",
       "kind": "static.call",
-      "evidence": "ari-skill-hpc/src/slurm.py:211 use shell_capture_snippet"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use ArtifactPinV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:BindMountV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1091 use BindMountV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobErrorV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use JobErrorV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobHandleV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use JobHandleV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobLogV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use JobLogV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobRequestV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use JobRequestV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobResultV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use JobResultV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobStatusV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use JobStatusV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ResourceRequestV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use ResourceRequestV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:file_digest",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use file_digest"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:sha256_digest",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use sha256_digest"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:utc_now",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:18 use utc_now"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:14 import ari_skill_hpc.contracts"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:15 import ari_skill_hpc.scheduler"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:13 import ari_skill_hpc.singularity"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:13 import ari_skill_hpc.slurm"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:23 import ari_skill_hpc.slurm"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobSubmitArgumentsV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:14 use JobSubmitArgumentsV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:RemoteConfig",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:15 use RemoteConfig"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:15 use SchedulerError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerProtocolError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:15 use SchedulerProtocolError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerTransportError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:15 use SchedulerTransportError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerValidationError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:15 use SchedulerValidationError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SubmissionUncertainError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:15 use SubmissionUncertainError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/server.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:SlurmClient",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/server.py:23 use SlurmClient"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 import ari_skill_hpc.contracts"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:23 import ari_skill_hpc.scheduler"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:24 import ari_skill_hpc.slurm"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ArtifactPinV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use ArtifactPinV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:BindMountV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use BindMountV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ContainerRequestV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use ContainerRequestV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:EnvironmentPolicyV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use EnvironmentPolicyV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:JobRequestV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use JobRequestV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:OutputDeclarationV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use OutputDeclarationV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ResourceRequestV1",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use ResourceRequestV1"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:file_digest",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:13 use file_digest"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:23 use SchedulerError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerValidationError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:23 use SchedulerValidationError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/singularity.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/slurm.py:SlurmClient",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/singularity.py:24 use SlurmClient"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:21 import ari_skill_hpc.scheduler"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:68 import ari_skill_hpc.scheduler"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:LocalCommandRunner",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:21 use LocalCommandRunner"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:RemoteCommandRunner",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:21 use RemoteCommandRunner"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:RemoteConfig",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:21 use RemoteConfig"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:21 use SchedulerError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SchedulerValidationError",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:21 use SchedulerValidationError"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SlurmScheduler",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:21 use SlurmScheduler"
+    },
+    {
+      "from": "py.module:ari-skill-hpc/ari_skill_hpc/slurm.py",
+      "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SubmissionLedger",
+      "kind": "static.call",
+      "evidence": "ari-skill-hpc/ari_skill_hpc/slurm.py:68 use SubmissionLedger"
     },
     {
       "from": "py.module:ari-skill-idea/src/server.py",
@@ -32958,7 +34678,13 @@
       "from": "py.module:ari-skill-tool-registry/src/broker.py",
       "to": "py.module:ari-core/ari/public/result.py",
       "kind": "static.import",
-      "evidence": "ari-skill-tool-registry/src/broker.py:14 import ari.public.result"
+      "evidence": "ari-skill-tool-registry/src/broker.py:16 import ari.public.result"
+    },
+    {
+      "from": "py.module:ari-skill-tool-registry/src/openroad_adapter.py",
+      "to": "py.module:ari-core/ari/public/result.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-tool-registry/src/openroad_adapter.py:34 import ari.public.result"
     },
     {
       "from": "py.module:ari-skill-transform/src/server.py",

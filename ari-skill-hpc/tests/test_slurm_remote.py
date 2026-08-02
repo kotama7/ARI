@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import paramiko
 import pytest
 
-from src.scheduler import (
+from ari_skill_hpc.scheduler import (
     RemoteCommandRunner,
     RemoteConfig,
     SchedulerTransportError,

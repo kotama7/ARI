@@ -77,7 +77,7 @@ export SLURM_SSH_USER=researcher
 export SLURM_SSH_KNOWN_HOSTS=/etc/ari/cluster_known_hosts
 export SLURM_SSH_KEY=/run/secrets/ari_cluster_key
 export SLURM_SHARED_FILESYSTEM=true
-python src/server.py
+ari-skill-hpc
 ```
 
 Typed output collection currently requires a shared filesystem visible at the

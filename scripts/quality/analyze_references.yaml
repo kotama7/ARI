@@ -12,8 +12,9 @@
 scan_roots:
   - ari-core/ari
 
-# Glob (relative to base_dir) matching each skill's `src` directory. Its
-# `server.py` files are scanned for MCP tool handlers (§7.4 item 4).
+# Compatibility glob for skills that predate canonical entrypoint discovery.
+# The analyzer also resolves each `skill.yaml` entrypoint package, so runtime
+# packages outside `src/` remain covered (§7.4 item 4).
 include_skills_glob: "ari-skill-*/src"
 
 # Directories that hold `<key>.md` prompt templates reached by string via

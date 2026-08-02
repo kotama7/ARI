@@ -8,10 +8,15 @@ from unittest.mock import patch
 
 import pytest
 
-from src.contracts import JobRequestV1, ResourceRequestV1
-from src.scheduler import CommandResult, SlurmScheduler, SubmissionLedger
-from src.server import _get_slurm_client, _public_error_message, call_tool, list_tools
-from src.slurm import SlurmClient
+from ari_skill_hpc.contracts import JobRequestV1, ResourceRequestV1
+from ari_skill_hpc.scheduler import CommandResult, SlurmScheduler, SubmissionLedger
+from ari_skill_hpc.server import (
+    _get_slurm_client,
+    _public_error_message,
+    call_tool,
+    list_tools,
+)
+from ari_skill_hpc.slurm import SlurmClient
 
 
 class FakeRunner:
@@ -57,7 +62,7 @@ async def test_canonical_submit_round_trip(tmp_path: Path) -> None:
         runner=runner,
         ledger=SubmissionLedger(tmp_path / "state" / "jobs.json"),
     )
-    with patch("src.server._get_slurm_client", return_value=client):
+    with patch("ari_skill_hpc.server._get_slurm_client", return_value=client):
         content = await call_tool(
             "job_submit", {"request": request.model_dump(mode="json")}
         )

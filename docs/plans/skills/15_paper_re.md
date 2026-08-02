@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/REQUIREMENTS.md
     role: doc
-  - path: ari-skill-hpc/src/slurm.py
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
     role: implementation
 last_verified: 2026-08-01
 ---
