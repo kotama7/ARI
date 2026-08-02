@@ -21,7 +21,7 @@ last_verified: 2026-08-02
 
 | 項目 | 値 |
 |---|---|
-| 状態 | In progress — C01/C02/C17 complete; C18 local profile complete, C06/C18 scheduler integration next |
+| 状態 | In progress — C01/C02/C17 complete; C06 scheduler core and C18 local profile complete, consumer integration next |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -64,6 +64,11 @@ last_verified: 2026-08-02
   exact golden/replay evidence、async session cleanup、artifact再検証、offline replayを
   実装。公式provider contract smokeとparallel/cancel/negative fixtureを通過した。
   C18-07のscheduler/container実行はC06 consumer migrationとして継続中。
+- C06 scheduler coreを`JobRequestV1/JobHandleV1/JobStatusV1/JobResultV1`へ移行し、
+  durable idempotency claim、shell-free local argv+stdin、strict known-host SSH、
+  `--export=NIL` clean environment、module/container/input/output/log provenanceを実装。
+  非実装`run_bash`宣言、親env/`.env`再注入、AutoAddPolicy、Singularity内部重複を削除し、
+  no-SLURM/A64FX/GPU/remote/shared-FS/timeout fixturesを通過。C06-07のみ継続中。
 
 ## 1. 決定
 

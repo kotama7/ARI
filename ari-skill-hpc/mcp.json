@@ -1,5 +1,5 @@
 {
-  "description": "SLURM lifecycle, platform probes, and Singularity execution for research workloads.",
+  "description": "Typed SLURM lifecycle, strict SSH transport, capability probes, and digest-pinned containers.",
   "entrypoint": "src/server.py",
   "generated_from": "skill.yaml",
   "name": "hpc-skill",
@@ -7,15 +7,19 @@
   "runtime": "python",
   "schema_version": 1,
   "tools": [
-    "job_cancel",
+    "job_submit",
+    "container_submit",
     "job_status",
+    "job_result",
+    "job_logs",
+    "job_cancel",
     "probe_platform_capabilities",
+    "slurm_submit",
     "singularity_build",
     "singularity_build_fakeroot",
     "singularity_pull",
     "singularity_run",
-    "singularity_run_gpu",
-    "slurm_submit"
+    "singularity_run_gpu"
   ],
-  "version": "0.1.0"
+  "version": "0.2.0"
 }

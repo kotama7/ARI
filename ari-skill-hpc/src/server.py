@@ -1,301 +1,382 @@
-"""MCP Server for HPC operations (SLURM + Singularity)."""
+"""MCP server for typed scheduler and container job lifecycles."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
+from typing import Any
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from src.slurm import SlurmClient, RemoteConfig
-from src import singularity
-from src import slurm
+from src import singularity, slurm
+from src.contracts import JobSubmitArgumentsV1
+from src.scheduler import (
+    RemoteConfig,
+    SchedulerError,
+    SchedulerProtocolError,
+    SchedulerTransportError,
+    SchedulerValidationError,
+    SubmissionUncertainError,
+)
+from src.slurm import SlurmClient
+
 
 server = Server("hpc-skill")
 
 
+def _bool_env(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean")
+
+
 def _get_slurm_client() -> SlurmClient:
-    """Create a SlurmClient based on environment configuration."""
-    mode = os.environ.get("SLURM_MODE", "local")
-    if mode == "remote":
+    mode = os.environ.get("SLURM_MODE", "local").strip().lower()
+    if mode in {"remote", "ssh"}:
         remote_config = RemoteConfig(
-            hostname=os.environ.get("SLURM_SSH_HOST", "localhost"),
+            hostname=os.environ.get("SLURM_SSH_HOST", ""),
             username=os.environ.get("SLURM_SSH_USER", ""),
             port=int(os.environ.get("SLURM_SSH_PORT", "22")),
-            key_filename=os.environ.get("SLURM_SSH_KEY", None),
-            password=os.environ.get("SLURM_SSH_PASSWORD", None),
+            known_hosts=os.environ.get("SLURM_SSH_KNOWN_HOSTS", ""),
+            key_filename=os.environ.get("SLURM_SSH_KEY") or None,
+            password=os.environ.get("SLURM_SSH_PASSWORD") or None,
+            connect_timeout=float(os.environ.get("SLURM_SSH_CONNECT_TIMEOUT", "15")),
+            command_timeout=float(os.environ.get("SLURM_COMMAND_TIMEOUT", "30")),
+            shared_filesystem=_bool_env("SLURM_SHARED_FILESYSTEM", True),
         )
         return SlurmClient(mode="remote", remote_config=remote_config)
+    if mode != "local":
+        raise ValueError("SLURM_MODE must be local or remote")
     return SlurmClient(mode="local")
+
+
+def _handle_selector_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "handle_id": {
+                "type": "string",
+                "description": "ARI JobHandleV1 handle ID (preferred)",
+            },
+            "job_id": {
+                "type": "string",
+                "description": "Raw SLURM job ID (legacy compatibility)",
+            },
+        },
+        "oneOf": [{"required": ["handle_id"]}, {"required": ["job_id"]}],
+        "additionalProperties": False,
+    }
+
+
+def _legacy_submit_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "script": {
+                "type": "string",
+                "description": "Opaque batch body executed only on the allocated compute node",
+            },
+            "job_name": {"type": "string"},
+            "partition": {"type": "string"},
+            "nodes": {"type": "integer", "minimum": 1, "default": 1},
+            "walltime": {"type": "string", "default": "01:00:00"},
+            "work_dir": {
+                "type": "string",
+                "description": "Existing absolute shared-filesystem directory",
+            },
+        },
+        "required": ["script", "job_name", "partition"],
+        "additionalProperties": False,
+    }
 
 
 @server.list_tools()
 async def list_tools() -> list[Tool]:
+    canonical_submit = JobSubmitArgumentsV1.model_json_schema()
     return [
         Tool(
-            name="slurm_submit",
-            description="Submit a SLURM batch job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "script": {
-                        "type": "string",
-                        "description": "sbatch script content",
-                    },
-                    "job_name": {
-                        "type": "string",
-                        "description": "Job name",
-                    },
-                    "partition": {
-                        "type": "string",
-                        "description": "Partition name",
-                    },
-                    "nodes": {
-                        "type": "integer",
-                        "description": "Number of nodes",
-                        "default": 1,
-                    },
-                    "walltime": {
-                        "type": "string",
-                        "description": "Maximum wall time",
-                        "default": "01:00:00",
-                    },
-                    "work_dir": {
-                        "type": "string",
-                        "description": "Working directory for the job (sets SBATCH --chdir). Use absolute path.",
-                    },
-                },
-                "required": ["script", "job_name", "partition"],
-            },
+            name="job_submit",
+            description=(
+                "Submit an immutable JobRequestV1 and immediately return an idempotent "
+                "JobHandleV1. Commands are argv arrays; the login-node shell is never used."
+            ),
+            inputSchema=canonical_submit,
+        ),
+        Tool(
+            name="container_submit",
+            description=(
+                "Submit a digest-pinned Apptainer/Singularity JobRequestV1. The request "
+                "must include its container declaration."
+            ),
+            inputSchema=canonical_submit,
         ),
         Tool(
             name="job_status",
-            description="Get the status of a SLURM job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "job_id": {
-                        "type": "string",
-                        "description": "SLURM job ID",
-                    },
-                },
-                "required": ["job_id"],
-            },
+            description="Return a provider-neutral JobStatusV1 for an ARI handle or SLURM ID",
+            inputSchema=_handle_selector_schema(),
+        ),
+        Tool(
+            name="job_result",
+            description=(
+                "Collect a terminal JobResultV1, rehashing declared inputs, outputs, and logs"
+            ),
+            inputSchema=_handle_selector_schema(),
+        ),
+        Tool(
+            name="job_logs",
+            description="Read bounded, digest-bound stdout/stderr for an ARI job handle",
+            inputSchema=_handle_selector_schema(),
         ),
         Tool(
             name="job_cancel",
-            description="Cancel a SLURM job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "job_id": {
-                        "type": "string",
-                        "description": "SLURM job ID",
-                    },
-                },
-                "required": ["job_id"],
-            },
+            description="Request cancellation of an ARI or SLURM job",
+            inputSchema=_handle_selector_schema(),
         ),
         Tool(
-            name="singularity_build",
-            description="Build a Singularity image file by submitting a SLURM job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "definition_file": {
-                        "type": "string",
-                        "description": "Singularity definition file content",
-                    },
-                    "output_path": {
-                        "type": "string",
-                        "description": "Output SIF file path",
-                    },
-                    "partition": {
-                        "type": "string",
-                        "description": "Partition name",
-                    },
-                },
-                "required": ["definition_file", "output_path", "partition"],
-            },
-        ),
-        Tool(
-            name="singularity_run",
-            description="Run a command inside a Singularity container via SLURM",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "image_path": {
-                        "type": "string",
-                        "description": "SIF file path",
-                    },
-                    "command": {
-                        "type": "string",
-                        "description": "Command to execute",
-                    },
-                    "work_dir": {
-                        "type": "string",
-                        "description": "Working directory",
-                    },
-                    "partition": {
-                        "type": "string",
-                        "description": "Partition name",
-                    },
-                    "nodes": {
-                        "type": "integer",
-                        "description": "Number of nodes",
-                        "default": 1,
-                    },
-                    "walltime": {
-                        "type": "string",
-                        "description": "Maximum wall time",
-                        "default": "01:00:00",
-                    },
-                },
-                "required": ["image_path", "command", "work_dir", "partition"],
-            },
+            name="slurm_submit",
+            description=(
+                "Deprecated compatibility alias. Submit an opaque batch body through the "
+                "clean, shell-free scheduler transport; prefer job_submit."
+            ),
+            inputSchema=_legacy_submit_schema(),
         ),
         Tool(
             name="probe_platform_capabilities",
             description=(
-                "Probe tool availability (command -v) ON the compute partition and "
-                "cache the result to {checkpoint_dir}/platform_capabilities.json. "
-                "Best-effort: any failure (no partition, queue wait, srun missing) "
-                "is reported as skipped and writes nothing. The claims extractor "
-                "uses the cached note to avoid declaring evidence that depends on "
-                "tools the platform verifiably lacks."
+                "Best-effort compute-partition capability probe with an atomic checkpoint cache"
             ),
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "checkpoint_dir": {"type": "string", "description": "Run checkpoint dir (cache location)"},
-                    "partition": {"type": "string", "description": "SLURM partition (default: ARI_SLURM_PARTITION)"},
-                    "tools": {"type": "string", "description": "Comma-separated tool names (default: ARI_PROBE_TOOLS)"},
+                    "checkpoint_dir": {"type": "string"},
+                    "partition": {"type": "string"},
+                    "tools": {"type": "string"},
                 },
                 "required": ["checkpoint_dir"],
+                "additionalProperties": False,
             },
         ),
         Tool(
-            name="singularity_pull",
-            description="Pull a Singularity/Apptainer image from Docker Hub or Sylabs Cloud via SLURM",
+            name="singularity_build",
+            description="Deprecated alias for a typed SIF build job; prefer job_submit",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "source": {
-                        "type": "string",
-                        "description": "Image source URI (e.g. 'docker://nvidia/cuda:12.0-base' or 'library://user/repo/image')",
-                    },
-                    "output_path": {
-                        "type": "string",
-                        "description": "Local SIF output path (e.g. '~/containers/cuda12.sif')",
-                    },
-                    "partition": {"type": "string", "description": "SLURM partition"},
+                    "definition_file": {"type": "string"},
+                    "output_path": {"type": "string"},
+                    "partition": {"type": "string"},
                 },
-                "required": ["source", "output_path", "partition"],
+                "required": ["definition_file", "output_path", "partition"],
+                "additionalProperties": False,
             },
         ),
         Tool(
             name="singularity_build_fakeroot",
-            description="Build a Singularity image using --fakeroot (no root required). HPC-compatible.",
+            description="Deprecated alias for a typed fakeroot SIF build job",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "definition_content": {
-                        "type": "string",
-                        "description": "Full content of the Singularity definition file",
-                    },
-                    "output_path": {
-                        "type": "string",
-                        "description": "Output SIF file path",
-                    },
-                    "partition": {"type": "string", "description": "SLURM partition"},
-                    "walltime": {"type": "string", "description": "Max walltime (default 02:00:00)"},
+                    "definition_content": {"type": "string"},
+                    "output_path": {"type": "string"},
+                    "partition": {"type": "string"},
+                    "walltime": {"type": "string"},
                 },
                 "required": ["definition_content", "output_path", "partition"],
+                "additionalProperties": False,
             },
         ),
         Tool(
-            name="singularity_run_gpu",
-            description="Run a command inside a Singularity container with GPU access (--nv flag) via SLURM",
+            name="singularity_pull",
+            description="Deprecated alias for a typed SIF pull job",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "image_path": {"type": "string", "description": "SIF file path"},
-                    "command": {"type": "string", "description": "Command to execute inside container"},
-                    "work_dir": {"type": "string", "description": "Working directory", "default": "."},
-                    "partition": {"type": "string", "description": "SLURM GPU partition"},
-                    "gres": {"type": "string", "description": "GRES spec (e.g. 'gpu:1')", "default": "gpu:1"},
-                    "cpus_per_task": {"type": "integer", "description": "CPUs per task", "default": 8},
-                    "walltime": {"type": "string", "description": "Max walltime", "default": "01:00:00"},
-                    "bind_paths": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Bind mount paths as 'host:container' strings",
-                        "default": [],
-                    },
+                    "source": {"type": "string"},
+                    "output_path": {"type": "string"},
+                    "partition": {"type": "string"},
                 },
-                "required": ["image_path", "command", "partition"],
+                "required": ["source", "output_path", "partition"],
+                "additionalProperties": False,
             },
+        ),
+        Tool(
+            name="singularity_run",
+            description=(
+                "Deprecated argv-parsing container alias; shell operators are not interpreted"
+            ),
+            inputSchema=_legacy_container_run_schema(gpu=False),
+        ),
+        Tool(
+            name="singularity_run_gpu",
+            description="Deprecated digest-pinned GPU container alias",
+            inputSchema=_legacy_container_run_schema(gpu=True),
         ),
     ]
 
 
-import logging as _logging
-_hpc_log = _logging.getLogger("ari.skill.hpc")
+def _legacy_container_run_schema(*, gpu: bool) -> dict[str, Any]:
+    properties: dict[str, Any] = {
+        "image_path": {"type": "string"},
+        "command": {"type": "string"},
+        "work_dir": {"type": "string"},
+        "partition": {"type": "string"},
+        "nodes": {"type": "integer", "minimum": 1, "default": 1},
+        "walltime": {"type": "string", "default": "01:00:00"},
+        "bind_paths": {"type": "array", "items": {"type": "string"}},
+    }
+    if gpu:
+        properties.update(
+            {
+                "gres": {"type": "string", "default": "gpu:1"},
+                "cpus_per_task": {"type": "integer", "minimum": 1, "default": 8},
+            }
+        )
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": ["image_path", "command", "partition"],
+        "additionalProperties": False,
+    }
+
+
+def _selector(arguments: dict[str, Any]) -> str:
+    return str(arguments.get("handle_id") or arguments.get("job_id") or "")
+
+
+def _public_error_message(exc: Exception) -> str:
+    value = str(exc).replace("\x00", " ")[:4000]
+    value = re.sub(
+        r"(?i)\b(password|token|secret|api[_-]?key)\s*([=:])\s*\S+",
+        r"\1\2<redacted>",
+        value,
+    )
+    value = re.sub(
+        r"-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----",
+        "<redacted-private-key>",
+        value,
+        flags=re.DOTALL,
+    )
+    return " ".join(value.split())[:2000]
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    client = _get_slurm_client()
+async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+    client: SlurmClient | None = None
     try:
-        if name == "slurm_submit":
-            result = await client.submit(
-                script=arguments["script"],
-                job_name=arguments.get("job_name", "mcp_job"),
-                partition=arguments.get("partition", "default"),
-                nodes=arguments.get("nodes", 1),
-                walltime=arguments.get("walltime", "01:00:00"),
-                account=arguments.get("account"),
-                work_dir=arguments.get("work_dir", __import__("os").environ.get("SLURM_DEFAULT_WORK_DIR", "")),
-            )
-        elif name == "job_status":
-            result = await client.status(job_id=arguments["job_id"])
-        elif name == "job_cancel":
-            result = await client.cancel(job_id=arguments["job_id"])
-        elif name == "probe_platform_capabilities":
+        if name == "probe_platform_capabilities":
             result = await slurm.probe_platform_capabilities(
                 checkpoint_dir=arguments["checkpoint_dir"],
                 partition=arguments.get("partition", ""),
                 tools=arguments.get("tools", ""),
             )
-        elif name == "singularity_build":
-            result = await singularity.build(client, arguments)
-        elif name == "singularity_run":
-            result = await singularity.run(client, arguments)
-        elif name == "singularity_pull":
-            result = await singularity.pull(client, arguments)
-        elif name == "singularity_build_fakeroot":
-            result = await singularity.build_fakeroot(client, arguments)
-        elif name == "singularity_run_gpu":
-            result = await singularity.run_gpu(client, arguments)
         else:
-            result = {"error": f"Unknown tool: {name}"}
+            client = _get_slurm_client()
+            if name in {"job_submit", "container_submit"}:
+                request = JobSubmitArgumentsV1.model_validate(arguments).request
+                if name == "container_submit" and request.container is None:
+                    raise ValueError("container_submit requires request.container")
+                result = (await client.scheduler.submit(request)).model_dump(
+                    mode="json"
+                )
+            elif name == "job_status":
+                result = (
+                    await client.scheduler.status(_selector(arguments))
+                ).model_dump(mode="json")
+            elif name == "job_result":
+                result = (
+                    await client.scheduler.result(_selector(arguments))
+                ).model_dump(mode="json")
+            elif name == "job_logs":
+                logs = await client.scheduler.logs(_selector(arguments))
+                result = {
+                    "schema_version": "ari.hpc.job-logs/v1",
+                    "logs": [item.model_dump(mode="json") for item in logs],
+                }
+            elif name == "job_cancel":
+                result = await client.scheduler.cancel(_selector(arguments))
+            elif name == "slurm_submit":
+                result = await client.submit(
+                    script=arguments["script"],
+                    job_name=arguments.get("job_name", "mcp_job"),
+                    partition=arguments.get("partition", ""),
+                    nodes=arguments.get("nodes", 1),
+                    walltime=arguments.get("walltime", "01:00:00"),
+                    work_dir=arguments.get("work_dir", ""),
+                )
+            elif name == "singularity_build":
+                result = await singularity.build(client, arguments)
+            elif name == "singularity_run":
+                result = await singularity.run(client, arguments)
+            elif name == "singularity_pull":
+                result = await singularity.pull(client, arguments)
+            elif name == "singularity_build_fakeroot":
+                result = await singularity.build_fakeroot(client, arguments)
+            elif name == "singularity_run_gpu":
+                result = await singularity.run_gpu(client, arguments)
+            else:
+                result = {
+                    "error": {"kind": "validation", "message": f"unknown tool: {name}"}
+                }
+    except (SchedulerError, ValueError, KeyError) as exc:
+        if isinstance(exc, SchedulerValidationError) or not isinstance(
+            exc, SchedulerError
+        ):
+            kind = "validation"
+            retryable = False
+        elif isinstance(exc, SubmissionUncertainError):
+            kind = "transport"
+            retryable = False
+        elif isinstance(exc, SchedulerTransportError):
+            kind = "transport"
+            retryable = True
+        elif isinstance(exc, SchedulerProtocolError):
+            kind = "scheduler"
+            retryable = False
+        else:
+            kind = "scheduler"
+            retryable = False
+        result = {
+            "error": {
+                "kind": kind,
+                "message": _public_error_message(exc),
+                "retryable": retryable,
+            }
+        }
     except Exception as exc:
-        result = {"error": f"{name} failed: {type(exc).__name__}: {exc}"}
+        result = {
+            "error": {
+                "kind": "unknown",
+                "message": f"{name} failed: {type(exc).__name__}",
+                "retryable": False,
+            }
+        }
     finally:
-        client.close()
-
-    return [TextContent(type="text", text=json.dumps(result, ensure_ascii=False))]
+        if client is not None:
+            client.close()
+    return [
+        TextContent(
+            type="text", text=json.dumps(result, ensure_ascii=False, sort_keys=True)
+        )
+    ]
 
 
 async def main() -> None:
     from mcp.server.stdio import stdio_server
-    from mcp.server import InitializationOptions
-    import mcp.types as types
 
     async with stdio_server() as (read_stream, write_stream):
-        init_options = server.create_initialization_options()
-        await server.run(read_stream, write_stream, init_options)
+        await server.run(
+            read_stream,
+            write_stream,
+            server.create_initialization_options(),
+        )
 
 
 if __name__ == "__main__":

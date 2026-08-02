@@ -1,9 +1,9 @@
 schema_version: 1
 name: hpc-skill
 package: ari-skill-hpc
-version: 0.1.0
-display_name: Run HPC workloads
-description: SLURM lifecycle, platform probes, and Singularity execution for research workloads.
+version: 0.2.0
+display_name: Run reproducible HPC workloads
+description: Typed SLURM lifecycle, strict SSH transport, capability probes, and digest-pinned containers.
 environment_policy: complete
 entrypoint:
   transport: stdio
@@ -12,26 +12,28 @@ entrypoint:
 required_env: []
 optional_env:
   - ARI_CHECKPOINT_DIR
+  - ARI_HPC_LEDGER_PATH
   - ARI_PROBE_TOOLS
-  - ARI_SBATCH_EXPORT_MODE
+  - ARI_SCHEDULER_PATH
   - ARI_SLURM_CPUS
   - ARI_SLURM_GPUS
   - ARI_SLURM_MEM_GB
   - ARI_SLURM_PARTITION
   - ARI_WORK_DIR
+  - SLURM_COMMAND_TIMEOUT
   - SLURM_DEFAULT_PARTITION
   - SLURM_DEFAULT_WORK_DIR
   - SLURM_LOG_DIR
   - SLURM_MODE
+  - SLURM_SHARED_FILESYSTEM
+  - SLURM_SSH_CONNECT_TIMEOUT
   - SLURM_SSH_HOST
+  - SLURM_SSH_KNOWN_HOSTS
   - SLURM_SSH_PORT
   - SLURM_SSH_USER
-  - SLURM_VALID_PARTITIONS
 credential_scopes:
   - id: scheduler.ssh
     optional_env: [SLURM_SSH_KEY, SLURM_SSH_PASSWORD]
-  - id: scheduler.exported-environment
-    optional_env: [ARI_ENV_FILE, ARI_ROOT]
 tool_defaults:
   phases: [bfts, reproduce]
   side_effects: stateful
@@ -40,48 +42,97 @@ tool_defaults:
   permissions: [workspace-read, workspace-write, process, scheduler]
   result_schema: ari.result-envelope/v1
 tools:
-  - name: job_cancel
-    capability_ref: ari.hpc.job.cancel
-    side_effects: destructive
+  - name: job_submit
+    capability_ref: ari.hpc.job.submit
+    description: Submit a typed, idempotent JobRequestV1.
+    timeout_class: async
+    async_lifecycle: &canonical_job_lifecycle
+      handle_field: handle_id
+      state_field: state
+      status:
+        capability_ref: ari.hpc.job.status
+        handle_argument: handle_id
+      result:
+        capability_ref: ari.hpc.job.result
+        handle_argument: handle_id
+      cancel:
+        capability_ref: ari.hpc.job.cancel
+        handle_argument: handle_id
+      states:
+        submitted_states: [submitted]
+        running_states: [running]
+        succeeded_states: [succeeded]
+        failed_states: [failed]
+        cancelled_states: [cancelled]
+      poll_interval_seconds: 30
+      max_wait_seconds: 172800
+  - name: container_submit
+    capability_ref: ari.hpc.container.submit
+    description: Submit a digest-pinned container JobRequestV1.
+    timeout_class: async
+    async_lifecycle: *canonical_job_lifecycle
   - name: job_status
     capability_ref: ari.hpc.job.status
+    description: Read provider-neutral scheduler state.
     side_effects: read-only
+    timeout_class: bounded
+    permissions: [scheduler]
+  - name: job_result
+    capability_ref: ari.hpc.job.result
+    description: Rehash and publish a terminal JobResultV1.
+    side_effects: workspace-write
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write, scheduler]
+  - name: job_logs
+    capability_ref: ari.hpc.job.logs
+    description: Read bounded digest-bound job logs.
+    side_effects: read-only
+    timeout_class: bounded
+    permissions: [workspace-read, scheduler]
+  - name: job_cancel
+    capability_ref: ari.hpc.job.cancel
+    description: Request scheduler cancellation.
+    side_effects: destructive
     timeout_class: bounded
     permissions: [scheduler]
   - name: probe_platform_capabilities
     capability_ref: ari.hpc.platform.probe
-    side_effects: read-only
+    description: Probe a compute partition and atomically cache its capability record.
+    side_effects: workspace-write
     timeout_class: bounded
-  - name: singularity_build
-    capability_ref: ari.container.singularity.build
-  - name: singularity_build_fakeroot
-    capability_ref: ari.container.singularity.build
-  - name: singularity_pull
-    capability_ref: ari.container.singularity.pull
-  - name: singularity_run
-    capability_ref: ari.container.singularity.run
-  - name: singularity_run_gpu
-    capability_ref: ari.container.singularity.run-gpu
+    permissions: [workspace-read, workspace-write, process, scheduler]
   - name: slurm_submit
-    capability_ref: ari.hpc.job.submit
+    capability_ref: ari.hpc.legacy.slurm-submit
+    description: Deprecated opaque-script adapter; prefer job_submit.
     timeout_class: async
     async_lifecycle:
-      handle_field: job_id
-      state_field: status
-      status:
-        capability_ref: ari.hpc.job.status
-        handle_argument: job_id
+      <<: *canonical_job_lifecycle
       result:
         capability_ref: ari.hpc.job.status
-        handle_argument: job_id
-      cancel:
-        capability_ref: ari.hpc.job.cancel
-        handle_argument: job_id
-      states:
-        submitted_states: [submitted, PENDING, CONFIGURING, UNKNOWN]
-        running_states: [RUNNING, COMPLETING]
-        succeeded_states: [COMPLETED]
-        failed_states: [FAILED, TIMEOUT, NODE_FAIL, OUT_OF_MEMORY, PREEMPTED, BOOT_FAIL]
-        cancelled_states: [CANCELLED, CANCELED]
-      poll_interval_seconds: 30
-      max_wait_seconds: 172800
+        handle_argument: handle_id
+  - name: singularity_build
+    capability_ref: ari.hpc.legacy.singularity-build
+    description: Deprecated typed SIF build adapter.
+    timeout_class: async
+    async_lifecycle: *canonical_job_lifecycle
+  - name: singularity_build_fakeroot
+    capability_ref: ari.hpc.legacy.singularity-build-fakeroot
+    description: Deprecated typed fakeroot SIF build adapter.
+    timeout_class: async
+    async_lifecycle: *canonical_job_lifecycle
+  - name: singularity_pull
+    capability_ref: ari.hpc.legacy.singularity-pull
+    description: Deprecated typed SIF pull adapter.
+    timeout_class: async
+    permissions: [workspace-read, workspace-write, process, scheduler, network]
+    async_lifecycle: *canonical_job_lifecycle
+  - name: singularity_run
+    capability_ref: ari.hpc.legacy.singularity-run
+    description: Deprecated digest-pinned container run adapter.
+    timeout_class: async
+    async_lifecycle: *canonical_job_lifecycle
+  - name: singularity_run_gpu
+    capability_ref: ari.hpc.legacy.singularity-run-gpu
+    description: Deprecated digest-pinned GPU container run adapter.
+    timeout_class: async
+    async_lifecycle: *canonical_job_lifecycle

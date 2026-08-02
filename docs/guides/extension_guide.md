@@ -34,9 +34,9 @@ Minimize energy score of protein folding simulation using different force field 
 
 ## Required Workflow
 1. Call `survey` to find related literature
-2. Submit a SLURM job with `slurm_submit`
+2. Submit a typed scheduler job with `job_submit`
 3. Poll until completion with `job_status`
-4. Read results with `run_bash`
+4. Rehash and read declared outputs with `job_result`
 
 <!-- min_expected_metric: -500 -->
 <!-- metric_keyword: energy_score -->

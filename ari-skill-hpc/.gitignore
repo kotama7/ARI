@@ -16,6 +16,7 @@ venv/
 .envrc
 
 # Logs & runtime output
+.ari-hpc/
 logs/*.log
 logs/*.out
 logs/*.err
@@ -30,4 +31,3 @@ htmlcov/
 .idea/
 .vscode/
 *.swp
-

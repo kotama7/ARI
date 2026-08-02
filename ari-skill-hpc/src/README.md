@@ -1,16 +1,20 @@
 # ari-skill-hpc/src
 
-MCP server package for the HPC skill — deterministic (P2) SLURM and
-Singularity operations, in local (direct) or SSH remote-cluster mode.
+MCP server package for typed SLURM and digest-pinned container jobs, in local
+or strict SSH remote-cluster mode.
 `__init__.py` is empty; the package is imported as `src`.
 
 ## Contents
 
 - `README.md` — this file.
 - `__init__.py` — empty package marker.
-- `server.py` — MCP entry point (`slurm_submit`, `job_status`, `job_cancel`, `run_bash`, `singularity_build`, `singularity_run`).
-- `singularity.py` — Singularity image build + run (dispatched through SLURM).
-- `slurm.py` — SLURM submit/status/cancel via local subprocess or remote SSH.
+- `contracts.py` — immutable v1 job, handle, status, result, artifact, resource,
+  environment, and container models.
+- `scheduler.py` — shell-free local transport, strict SSH transport, durable
+  idempotency ledger, SLURM backend, result and provenance collection.
+- `server.py` — canonical MCP lifecycle plus deprecated compatibility aliases.
+- `singularity.py` — compatibility aliases compiled into typed scheduler jobs.
+- `slurm.py` — legacy client facade and bounded platform capability probe.
 
 ## See also
 

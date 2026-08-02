@@ -2,18 +2,22 @@
 sources:
   - path: ari-skill-hpc/src/server.py
     role: implementation
+  - path: ari-skill-hpc/src/contracts.py
+    role: contract
+  - path: ari-skill-hpc/src/scheduler.py
+    role: implementation
   - path: ari-skill-hpc/src/slurm.py
     role: implementation
   - path: ari-skill-hpc/src/singularity.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # C06: `ari-skill-hpc` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Active — C06-01〜06/08とD1/D2/D3/D5完了、C06-07 consumer移行中。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -35,25 +39,25 @@ SLURMを初期backendとするscheduler job、remote SSH transport、container b
 
 | ID | 作業 | 成果物 |
 |---|---|---|
-| C06-01 | manifest / runtime / docs同期 | canonical tool list、async/permission metadata |
-| C06-02 | scheduler protocol抽出 | local mock、SLURM local、SLURM SSH adapter |
-| C06-03 | job request/handle/result schema | idempotency key、state machine、artifact refs |
-| C06-04 | clean environment/export policy | explicit vars、module snapshot、secret redaction |
-| C06-05 | SSH security | host-key verification、key scope、timeout、known-host policy |
-| C06-06 | container job統合 | OCI/SIF digest、bind list、GPU/resource declaration |
-| C06-07 | paper-re / OpenROAD consumer migration | duplicated executionをHPC APIへ移行 |
-| C06-08 | heterogeneous platform fixtures | no-SLURM、A64FX、GPU、remote failure、shared FS |
+| C06-01 | 完了: manifest / runtime / docs同期 | canonical tool list、async/permission metadata |
+| C06-02 | 完了: scheduler protocol抽出 | argv+stdin local mock、SLURM local、strict SLURM SSH adapter |
+| C06-03 | 完了: job request/handle/status/result schema | durable idempotency claim、state machine、artifact/provenance refs、checked-in JSON Schema |
+| C06-04 | 完了: clean environment/export policy | `--export=NIL`、explicit non-secret vars、module snapshot、親env/source禁止 |
+| C06-05 | 完了: SSH security | RejectPolicy、explicit known-host/key scope、timeout、agent/user-key禁止 |
+| C06-06 | 完了: container job統合 | SIF digest/size、typed bind、cleanenv/containall、GPU/resource declaration |
+| C06-07 | 実装中: paper-re / OpenROAD consumer migration | duplicated executionをHPC APIへ移行 |
+| C06-08 | 完了: heterogeneous platform fixtures | no-SLURM、A64FX profile、GPU、remote failure、shared FS、timeout/reap |
 
 ## 5. 受け入れ基準
 
-- [ ] submitが外側MCP timeout内にhandleを返し、poll/cancelがstate machineに従う。
-- [ ] retryした同一requestが意図せずjobを二重submitしない。
-- [ ] job script、module、env allowlist、container、input/output digestがEARに残る。
-- [ ] SSH host key mismatchをfail closedし、secret key内容をlogしない。
-- [ ] local/remote adapterで同じnormalized stateとerror taxonomyを返す。
-- [ ] cancel/timeout後のscheduler jobとlocal processをreapする。
+- [x] submitが外側MCP timeout内にhandleを返し、poll/cancelがstate machineに従う。
+- [x] retryした同一requestがprocess restart後も意図せずjobを二重submitしない。transport結果不明時はclaimを残してfail closedする。
+- [x] job request/script digest、module snapshot、env allowlist、container、input/output/log/provenance digestがsubmission/result recordに残る。
+- [x] SSH host key mismatchをfail closedし、secret key内容をidentity/logへ含めない。
+- [x] local/remote adapterで同じnormalized stateとerror taxonomyを返す。
+- [x] cancelとcontrol-command timeoutをboundedにし、timeout時local processをkill/waitする。scheduler jobはSLURM walltime/cancelがreapする。
 - [ ] paper-reが直接`sbatch`を呼ばずに同じgolden resultを得る。
-- [ ] `pytest ari-skill-hpc/tests -q` とmock scheduler conformance suiteがgreenである。
+- [x] `pytest ari-skill-hpc/tests -q` とmock scheduler conformance suiteがgreenである（47 tests、consumer移行前時点）。
 
 ## 6. 削除要件
 
@@ -61,11 +65,11 @@ SLURMを初期backendとするscheduler job、remote SSH transport、container b
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C06-D1 | docs/manifestの非実装`run_bash` declaration | canonical runtime manifestまたは実在tool | P1 | tools/list conformance、consumer 0 |
-| C06-D2 |各Singularity tool内の重複submit/status構築 | scheduler protocol + container request | P3 |local/remote/GPU parity fixture |
-| C06-D3 | `--export ALL` または親env継承のfallback | explicit export policy | P2 |clean-env integration test |
+| C06-D1 (deleted) | docs/manifestの非実装`run_bash` declaration | `ari-skill-coding.run_bash`またはcanonical HPC lifecycle | P1 | runtime `tools/list`に不在、HPC docs/manifest caller 0、manifest conformance green |
+| C06-D2 (deleted) |各Singularity tool内の重複submit/status構築 | scheduler protocol + typed container request | P3 |local/remote/GPU parity fixture green、aliasはthin compilerのみ |
+| C06-D3 (deleted) | `--export ALL/NONE` override、親env/`.env`再注入fallback | fixed `--export=NIL` + explicit literals/modules | P2 |clean-env/injection integration test、setup env key削除 |
 | C06-D4 | paper-re内の独自SLURM execution | C06 API | P3 |paper-re golden parity、direct sbatch caller 0 |
-| C06-D5 | host-key verificationを迂回するSSH mode | strict known-host policy | P2 |negative SSH suite、migration guide |
+| C06-D5 (deleted) | `AutoAddPolicy`等host-key verificationを迂回するSSH mode | strict known-host + RejectPolicy | P2 |negative SSH suite、migration guide、implicit agent/key禁止 |
 | C06-D6 | deprecated container-specific public aliases | generic container job capability | P6 |deprecation release、workflow/tool caller 0 |
 
 ### 6.2 削除の検証と復旧
