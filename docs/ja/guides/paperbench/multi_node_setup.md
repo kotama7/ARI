@@ -34,12 +34,9 @@ which srun mpirun          # srun が好ましい (PMI/PMIx 統合)
 module avail openmpi 2>&1 | head
 ```
 
-ARI の安全プローブ:
-- `_is_shared_fs()` — checkpoint dir が `/tmp`, `/var/tmp`, あるいは
-  他の非共有 root にある場合に警告
-- `_slurm_has_gres()` — `sinfo` が GRES 未設定を報告する場合、
-  `--gres=gpu:<type>:N` を silent に落とし、 `--gpus-per-task` は維持。
-  これにより submission が拒絶されない
+ARIはpathとresource syntaxを検証するが、mountの共有性やpartitionの能力は
+証明できない。compute nodeから見えるfilesystemを使い、事前に`sinfo`を確認する。
+resource要求はそのままsubmitされ、黙って削除されない。
 
 ## パーティション選択
 

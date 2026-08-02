@@ -211,7 +211,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_SLURM_GPUS` | Default `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | Default memory request |
 | `ARI_SLURM_WALLTIME` | Default `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ when the cluster has no GRES configured for GPUs, silently drop `--gres` / `--gpus-*` flags (legacy v0.7.2 behaviour). Default (unset) ⇒ raise `RuntimeError` with an actionable message so a GPU request never silently runs on CPU. |
+| `ARI_SCHEDULER_PATH` | Fixed executable search path for shell-free scheduler control commands. Parent `PATH` is not inherited. |
 
 ### PaperBench reproduction phase (Stage 2)
 

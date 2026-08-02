@@ -170,12 +170,11 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 フェイルラウド前提条件: docker デーモン / apptainer バイナリ /
 sbatch / パーティションが欠落している場合、ローカル CPU への黙った
 フォールバックではなく `RuntimeError` を発生させます。レガシーフォールバックに
-戻すには `ARI_PHASE1_ALLOW_FALLBACK=1`、GRES フラグの黙った削除に戻すには
-`ARI_SLURM_ALLOW_NO_GRES=1` を設定してください。
+戻すには `ARI_PHASE1_ALLOW_FALLBACK=1` を設定してください。型付きGPU要求は
+黙って削除されず、矛盾・非対応resourceは実行前に失敗します。
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2) を参照。
-型付き（`gpu_type` / `--gres=gpu:TYPE:N`）と型なし
-（`--gpus-per-task`）の GPU リクエストの混在は自動的に型付き形式に
-正規化されます — SLURM 24.05 は混在形式を拒否します。
+SLURM経路は共通`JobRequestV1` submit/status/log/cancel lifecycleと
+`--export=NIL` clean environmentを使います。
 
 ### v0.8.0 新フィールド（Stage 3）
 

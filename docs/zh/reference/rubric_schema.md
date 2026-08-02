@@ -16,7 +16,7 @@ last_verified: 2026-05-25
 
 评分单 envelope 用 provenance 元数据 (paper sha256, generator model,
 optional audit signature) 与 `reproduce_contract` (同时驱动复现代理
-prompt 和 Phase 2 sbatch 调度器) 包装 PaperBench `TaskNode` 树。
+prompt 和 typed HPC job compiler) 包装 PaperBench `TaskNode` 树。
 
 ## Envelope
 

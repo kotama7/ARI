@@ -33,7 +33,8 @@
         },
         "execution_profile": {
           "type": "object",
-          "description": "Optional HPC/parallel-execution hints. Consumed by ari-skill-paper-re Phase 2 sbatch and BasicAgent prompt. Omit for legacy single-node papers (backward-compat).",
+          "description": "Optional HPC/parallel-execution hints. Compiled into ari.hpc.job-request/v1 and consumed by the BasicAgent prompt. Omit for single-node papers.",
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "type": "string",
@@ -58,8 +59,8 @@
             },
             "requested_nodes":        { "type": "integer", "minimum": 1 },
             "ntasks_per_node":        { "type": "integer", "minimum": 0, "default": 0 },
-            "requested_nodelist":     { "type": ["string", "null"] },
-            "exclude_nodes":          { "type": "string", "default": "" },
+            "requested_nodelist":     { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$" },
+            "exclude_nodes":          { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$", "default": "" },
             "exclusive":              { "type": "boolean", "default": false },
             "requested_gpus_per_task":{ "type": "integer", "minimum": 0, "default": 0 },
             "requested_gpus_per_node":{ "type": "integer", "minimum": 0, "default": 0 },
@@ -69,7 +70,10 @@
             "constraint":             { "type": "string", "default": "" },
             "cpu_bind":               { "type": "string", "default": "" },
             "mem_bind":               { "type": "string", "default": "" },
-            "hint":                   { "type": "string", "default": "" },
+            "hint":                   { "enum": ["", "compute_bound", "memory_bound", "multithread", "nomultithread"], "default": "" },
+            "account":                { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$", "default": "" },
+            "qos":                    { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$", "default": "" },
+            "reservation":            { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$", "default": "" },
             "module_loads": {
               "type": "array",
               "items": { "type": "string" },
@@ -77,10 +81,34 @@
             },
             "extra_sbatch_args": {
               "type": "array",
-              "items": { "type": "string" },
+              "description": "Deprecated reader compatibility; new producers must use typed fields.",
+              "items": {
+                "type": "string",
+                "pattern": "^--(account|qos|reservation|hint)=[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$"
+              },
               "default": []
             }
-          }
+          },
+          "allOf": [
+            {
+              "not": {
+                "required": ["memory_gb_per_node", "memory_gb_per_cpu"],
+                "properties": {
+                  "memory_gb_per_node": { "minimum": 1 },
+                  "memory_gb_per_cpu": { "minimum": 1 }
+                }
+              }
+            },
+            {
+              "not": {
+                "required": ["requested_gpus_per_task", "requested_gpus_per_node"],
+                "properties": {
+                  "requested_gpus_per_task": { "minimum": 1 },
+                  "requested_gpus_per_node": { "minimum": 1 }
+                }
+              }
+            }
+          ]
         }
       }
     },

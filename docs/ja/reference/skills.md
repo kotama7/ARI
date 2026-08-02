@@ -393,7 +393,7 @@ PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採�
 
 **Phase 1**。`repo_dir/reproduce.sh` をサンドボックスで実行し、`reproduce.log` と成果物リストを取得。ルーブリック envelope の `expected_artifacts` と突き合わせ、未生成の成果物を `missing` として返します。
 
-サンドボックス優先順位（`auto` の場合）: `slurm`（sbatch + `ARI_SLURM_PARTITION` あり、BFTS と同じパーティション）→ `docker`（デーモン利用可かつ HPC 上ではない時）→ `apptainer` → `singularity` → `local`。**SLURM dispatch** は v0.5.0 から復元され、`sbatch --wait` で同期実行。spool relocation 対策 wrapper を生成して `$0` 相対 cd を保護します。
+サンドボックス優先順位（`auto` の場合）: `slurm`（sbatch + `ARI_SLURM_PARTITION` あり、BFTS と同じパーティション）→ `docker`（デーモン利用可かつ HPC 上ではない時）→ `apptainer` → `singularity` → `local`。SLURM経路はdigest付き`JobRequestV1`を共通HPC adapterへ渡し、handleのstatus/log/cancelを使用します。paper-re自身は`sbatch` argvを組み立てず、親environmentもexportしません。
 
 #### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 

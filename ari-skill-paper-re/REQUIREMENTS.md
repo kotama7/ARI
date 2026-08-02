@@ -90,22 +90,23 @@ Honors `ARI_PHASE1_SANDBOX` (`auto`/`docker`/`apptainer`/`singularity`/
 
 (Replaces the pre-v0.7.2 status "Pending Phase 4 wrapping".)
 
-Under `sandbox_kind="slurm"` (v0.7.2+), full SLURM control: `--nodes`,
-`--ntasks`, `--ntasks-per-node`, `--nodelist`, `--exclude`, `--exclusive`,
-`--gpus-per-task`, `--gpus-per-node`, `--gres=gpu:<type>:N`, `--mem`,
-`--mem-per-cpu`, `--constraint`, `--cpu-bind`, `--mem-bind`, `--hint`, and
-an `extra_sbatch_args` pass-through for any remaining flag. All args
-default to 0 / "" / False / None so legacy single-node call sites stay
-byte-identical. When `rubric_path` carries
+Under `sandbox_kind="slurm"`, placement, GPU, memory, constraint, hint,
+account, QoS, reservation, and module requests compile into the shared typed
+`JobRequestV1`. Arbitrary scheduler flags are rejected; the deprecated
+`extra_sbatch_args` input translates only account/QoS/reservation/hint during
+one compatibility cycle. `cpu_bind` and `mem_bind` remain `srun` job-step
+settings generated inside `reproduce.sh`, not non-portable `sbatch` flags.
+When `rubric_path` carries
 `reproduce_contract.execution_profile`, every caller arg left at its
 default is auto-resolved from the matching profile field (explicit caller
 args always win — **supports MPI / multi-node reproduction via rubric.
 execution_profile**). See `docs/reference/execution_profile.md` for the
 full 21-field schema and example rubrics.
 
-Runtime safety probes (`_is_shared_fs`, `_slurm_has_gres`): repo_dir is
-warned about when node-local; `--gres=gpu:<type>:N` is silently dropped
-when `sinfo` reports no GRES so the submission is not rejected.
+Submission returns an idempotent handle and is observed via status/log/cancel;
+inputs, generated script, module snapshot, scheduler logs, and output digests
+are retained by `ari-skill-hpc`. Requested resources are never silently
+dropped, so an unsupported cluster shape fails before scientific interpretation.
 
 ### `grade_with_simplejudge(...)`
 Run `SimpleJudge` against the reproduced submission. `n_runs=1` matches

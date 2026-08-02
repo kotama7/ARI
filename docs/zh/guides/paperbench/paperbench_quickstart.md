@@ -151,10 +151,9 @@ python scripts/sc_paper_dogfood.py \
 > 降级到 host CPU:
 > - `ARI_PHASE1_ALLOW_FALLBACK=1` — 当 docker / apptainer / sbatch
 >   缺失时, opt-in 回到 legacy 静默降级
-> - `ARI_SLURM_ALLOW_NO_GRES=1` — 集群无 GRES 配置时, opt-in 静默
->   丢弃 `--gres` / `--gpus-*` 标志
 >
-> 两者默认 OFF (报错并给出可操作的提示)。
+> GPU/resource 请求没有静默丢弃 override；应修复集群配置或选择兼容分区。
+> fallback 默认 OFF。
 
 ## HPC 集群 sbatch 包装脚本(示例)
 

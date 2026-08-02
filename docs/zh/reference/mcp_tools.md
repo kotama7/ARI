@@ -155,7 +155,7 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 |---|---|
 | `run_reproduce` | `container_image`（被 docker / apptainer / singularity 沙箱使用；别名 `pb-env` / `pb-reproducer` 解析为 `scripts/build_pb_images.sh` 构建的 vendor `image:latest` 标签） |
 
-高声失败的前置条件：缺失 docker daemon / apptainer 二进制文件 / sbatch / 分区时抛出 `RuntimeError`，而不是静默回退到本地 CPU。可通过 `ARI_PHASE1_ALLOW_FALLBACK=1` 恢复旧版回退行为；通过 `ARI_SLURM_ALLOW_NO_GRES=1` 恢复静默丢弃 GRES 标志的行为。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。混合使用有类型（`gpu_type` / `--gres=gpu:TYPE:N`）和无类型（`--gpus-per-task`）GPU 请求时自动规范化为有类型形式 — SLURM 24.05 拒绝混合形式。
+高声失败的前置条件：缺失 docker daemon / apptainer 二进制文件 / sbatch / 分区时抛出 `RuntimeError`，而不是静默回退到本地 CPU。仅可通过 `ARI_PHASE1_ALLOW_FALLBACK=1` 恢复旧版回退。带类型 GPU 请求绝不静默删除，矛盾或不支持的资源会在执行前失败。SLURM 路径使用共享 `JobRequestV1` submit/status/log/cancel 生命周期与 `--export=NIL` 干净环境。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。
 
 ### v0.8.0 新增字段（Stage 3）
 

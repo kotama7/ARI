@@ -58,7 +58,8 @@ From the registry page, tick one or more papers and click
    `pb-env` / `pb-reproducer` when you ran
    `scripts/build_pb_images.sh`). Expand *Execution profile override*
    to override SLURM allocation flags (`--nodes`, `--gpus-per-task`,
-   `gpu_type`, `memory_gb_per_node`, `--exclusive`, `extra_sbatch_args`,
+   `gpu_type`, `memory_gb_per_node`, `--exclusive`, `account`, `qos`,
+   `reservation`,
    …). When the rubric already carries an `execution_profile`, these
    fields pre-fill from it. Caller args always win over rubric hints.
 4. **Judge** — set the SimpleJudge model + `n_runs` (default 1 — see
@@ -75,10 +76,9 @@ From the registry page, tick one or more papers and click
 > to the host CPU. To opt back into the legacy silent fallback, set:
 > - `ARI_PHASE1_ALLOW_FALLBACK=1` — when docker daemon / apptainer
 >   binary / sbatch / partition is missing, fall back to local exec.
-> - `ARI_SLURM_ALLOW_NO_GRES=1` — when the cluster has no GRES
->   configured for GPUs, drop `--gres` / `--gpus-*` flags.
->
-> Both default OFF (refuses the request, surfaces an actionable error).
+> GPU/resource requests have no silent-drop override: correct the cluster
+> configuration or select a compatible partition. The fallback flag defaults
+> OFF and surfaces an actionable error.
 
 ## 3. Wait
 

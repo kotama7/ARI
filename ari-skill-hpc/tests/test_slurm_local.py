@@ -134,6 +134,57 @@ async def test_submit_is_prompt_clean_and_idempotent(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_submit_renders_extended_resources_without_escape_hatch(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(CommandResult("12346\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    base = _request(tmp_path)
+    request = JobRequestV1.model_validate(
+        {
+            **base.model_dump(mode="json"),
+            "resources": {
+                "partition": "compute",
+                "nodes": 4,
+                "tasks": 32,
+                "tasks_per_node": 8,
+                "cpus_per_task": 2,
+                "memory_mb_per_cpu": 4096,
+                "gpus_per_task": 1,
+                "gpu_type": "v100",
+                "walltime": "02:00:00",
+                "nodelist": "node[01-04]",
+                "exclude_nodes": "node03",
+                "exclusive": True,
+                "constraint": "skylake|haswell",
+                "hint": "nomultithread",
+                "account": "projX",
+                "qos": "normal",
+                "reservation": "paperbench",
+            },
+        }
+    )
+
+    await scheduler.submit(request)
+
+    script = runner.calls[0][1].decode()
+    for directive in (
+        "#SBATCH --ntasks-per-node=8",
+        "#SBATCH --nodelist=node[01-04]",
+        "#SBATCH --exclude=node03",
+        "#SBATCH --mem-per-cpu=4096M",
+        "#SBATCH --gpus-per-task=v100:1",
+        "#SBATCH --constraint=skylake|haswell",
+        "#SBATCH --hint=nomultithread",
+        "#SBATCH --account=projX",
+        "#SBATCH --qos=normal",
+        "#SBATCH --reservation=paperbench",
+    ):
+        assert directive in script
+    assert "extra_sbatch_args" not in script
+
+
+@pytest.mark.asyncio
 async def test_definite_rejection_releases_claim_for_retry(tmp_path: Path) -> None:
     runner = FakeRunner(
         CommandResult("", "invalid partition", 1),

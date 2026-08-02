@@ -22,6 +22,14 @@ SafeIdentifier = Annotated[
     str,
     StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$"),
 ]
+SlurmNodeExpression = Annotated[
+    str,
+    StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9,._+\[\]-]{0,1023}$"),
+]
+SlurmConstraintExpression = Annotated[
+    str,
+    StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.@+&|*?\[\]-]{0,1023}$"),
+]
 JobId = Annotated[str, StringConstraints(pattern=r"^[0-9]+(?:_[0-9]+)?$")]
 
 _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,127}$")
@@ -133,17 +141,44 @@ class ResourceRequestV1(ContractModel):
     partition: SafeIdentifier
     nodes: int = Field(default=1, ge=1, le=4096)
     tasks: int = Field(default=1, ge=1, le=1_048_576)
+    tasks_per_node: int | None = Field(default=None, ge=1, le=1_048_576)
     cpus_per_task: int = Field(default=1, ge=1, le=65_536)
     memory_mb_per_node: int | None = Field(default=None, ge=1, le=16_777_216)
+    memory_mb_per_cpu: int | None = Field(default=None, ge=1, le=16_777_216)
     gpus_per_node: int = Field(default=0, ge=0, le=1024)
+    gpus_per_task: int = Field(default=0, ge=0, le=1024)
     gpu_type: SafeIdentifier | None = None
     walltime: Annotated[
         str, StringConstraints(pattern=r"^(?:[0-9]{1,3}-)?[0-9]{2}:[0-9]{2}:[0-9]{2}$")
     ] = "01:00:00"
+    nodelist: SlurmNodeExpression | None = None
+    exclude_nodes: SlurmNodeExpression | None = None
     exclusive: bool = False
-    constraint: SafeIdentifier | None = None
+    constraint: SlurmConstraintExpression | None = None
+    hint: (
+        Literal["compute_bound", "memory_bound", "multithread", "nomultithread"] | None
+    ) = None
     account: SafeIdentifier | None = None
     qos: SafeIdentifier | None = None
+    reservation: SafeIdentifier | None = None
+
+    @model_validator(mode="after")
+    def validate_resource_shape(self) -> ResourceRequestV1:
+        if self.tasks_per_node is not None and self.tasks_per_node > self.tasks:
+            raise ValueError("tasks_per_node cannot exceed total tasks")
+        if self.memory_mb_per_node and self.memory_mb_per_cpu:
+            raise ValueError(
+                "memory per node and memory per CPU are mutually exclusive"
+            )
+        if self.gpus_per_node and self.gpus_per_task:
+            raise ValueError(
+                "GPU per-node and per-task requests are mutually exclusive"
+            )
+        if self.gpu_type and not (self.gpus_per_node or self.gpus_per_task):
+            raise ValueError("gpu_type requires an explicit GPU count")
+        if self.nodelist and self.exclude_nodes and self.nodelist == self.exclude_nodes:
+            raise ValueError("the same node expression cannot be included and excluded")
+        return self
 
 
 class EnvironmentPolicyV1(ContractModel):

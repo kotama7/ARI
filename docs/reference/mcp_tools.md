@@ -188,12 +188,11 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 Fail-loud preconditions: missing docker daemon / apptainer binary /
 sbatch / partition raise `RuntimeError` rather than silently falling
 back to local CPU. Opt back into legacy fallback via
-`ARI_PHASE1_ALLOW_FALLBACK=1`; opt back into silent GRES-flag drop via
-`ARI_SLURM_ALLOW_NO_GRES=1`. See
+`ARI_PHASE1_ALLOW_FALLBACK=1`. Typed GPU requests are never silently dropped;
+unsupported or contradictory resource requests fail before execution. See
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2).
-Mixing typed (`gpu_type` / `--gres=gpu:TYPE:N`) with untyped
-(`--gpus-per-task`) GPU requests is automatically canonicalised to
-the typed form — SLURM 24.05 rejects the mixed form.
+The SLURM path uses the shared `JobRequestV1` submit/status/log/cancel lifecycle
+and a clean `--export=NIL` job environment.
 
 ### v0.8.0 new fields (Stage 3)
 

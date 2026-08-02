@@ -17,7 +17,7 @@ last_verified: 2026-05-25
 ルーブリック envelope は PaperBench `TaskNode` ツリーを provenance
 メタデータ (paper sha256, generator model, optional audit signature)
 と `reproduce_contract` (レプリケータエージェントプロンプトと
-Phase 2 sbatch ディスパッチャ双方を駆動) でラップする。
+typed HPC job compiler 双方を駆動) でラップする。
 
 ## Envelope
 

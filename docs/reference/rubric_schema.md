@@ -17,7 +17,7 @@ Canonical source: `ari-skill-replicate/schemas/replication_rubric.schema.json`
 The rubric envelope wraps a PaperBench `TaskNode` tree with provenance
 metadata (paper sha256, generator model, optional audit signature) +
 the `reproduce_contract` that drives both the replicator agent prompt
-and the Phase 2 sbatch dispatcher.
+and the typed HPC job compiler.
 
 ## Envelope
 

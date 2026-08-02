@@ -34,12 +34,10 @@ which srun mpirun          # srun is preferred (PMI/PMIx integration)
 module avail openmpi 2>&1 | head
 ```
 
-ARI's safety probes:
-- `_is_shared_fs()` warns if the checkpoint directory is under
-  `/tmp`, `/var/tmp`, or any other non-shared root.
-- `_slurm_has_gres()` silently drops `--gres=gpu:<type>:N` when `sinfo`
-  reports no GRES, keeping `--gpus-per-task` so the submission is not
-  rejected outright.
+ARI validates paths and typed resource syntax but cannot prove that a mount is
+shared or that a partition can satisfy a request. Keep the workspace on a
+compute-node-visible filesystem and inspect `sinfo` before launch. Resources
+are submitted exactly and never silently dropped.
 
 ## Picking the right partition
 
@@ -54,15 +52,16 @@ export ARI_SLURM_PARTITION=large
 
 ## Example: sx40 (single-node, 4×V100)
 
-`sx40` is a CRA partition exposing `4× V100-SXM2-16GB` per node without
-GRES configured. Use:
+If a site exposes physical GPUs without configuring scheduler GRES, SLURM
+cannot reserve them reliably. Select a GRES-enabled partition or ask the site
+administrator to configure it; do not convert the request to CPU implicitly.
 
 ```jsonc
 "execution_profile": {
   "kind": "gpu_single",
   "paper_max_ranks": 1,
-  "requested_gpus_per_task": 1
-  // gpu_type omitted — GRES-less; sinfo probe is enforced
+  "requested_gpus_per_task": 1,
+  "gpu_type": "v100"
 }
 ```
 

@@ -2174,9 +2174,8 @@ async def reproduce_submission(
 
     Infrastructure preconditions are enforced loudly: a missing docker
     daemon / apptainer binary / sbatch / partition raises
-    ``RuntimeError`` unless ``ARI_PHASE1_ALLOW_FALLBACK=1`` is set, and a
-    GRES-less cluster with GPU request raises unless
-    ``ARI_SLURM_ALLOW_NO_GRES=1``. The returned dict adds
+    ``RuntimeError`` unless ``ARI_PHASE1_ALLOW_FALLBACK=1`` is set. Typed GPU
+    requests are submitted exactly and never silently downgraded. The returned dict adds
     ``executed_submission_dir`` and ``reproduce_log_path`` keys so
     downstream :func:`judge_submission` can wire its ``submission_dir`` /
     ``reproduce_log`` arguments directly.

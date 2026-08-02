@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T10:46:18.024310+00:00",
-  "commit": "0950c52f70cd5817df187236a74582983bd3ed12",
+  "generated_at": "2026-08-02T11:09:15.118706+00:00",
+  "commit": "b1b5ff260f1baa6c86f0d0555049a11f904a7a11",
   "roots": [
     {
       "id": "R1",
@@ -1043,7 +1043,7 @@
       "id": "data.file:ari-skill-replicate/src/prompts/adversarial_reviewer.md",
       "kind": "data.file",
       "file": "ari-skill-replicate/src/prompts/adversarial_reviewer.md",
-      "loc": 209,
+      "loc": 210,
       "reachable_from": [],
       "edges_in": []
     },
@@ -1059,7 +1059,7 @@
       "id": "data.file:ari-skill-replicate/src/prompts/skeleton.md",
       "kind": "data.file",
       "file": "ari-skill-replicate/src/prompts/skeleton.md",
-      "loc": 144,
+      "loc": 145,
       "reachable_from": [],
       "edges_in": []
     },
@@ -5894,15 +5894,25 @@
       "id": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
       "kind": "py.module",
       "file": "ari-skill-hpc/ari_skill_hpc/__init__.py",
-      "loc": 18,
-      "reachable_from": [],
-      "edges_in": []
+      "loc": 36,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
     },
     {
       "id": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
       "kind": "py.module",
       "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
-      "loc": 334,
+      "loc": 369,
       "reachable_from": [
         "R1",
         "R2",
@@ -5920,7 +5930,7 @@
       "id": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "py.module",
       "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
-      "loc": 1309,
+      "loc": 1327,
       "reachable_from": [
         "R1",
         "R2",
@@ -6220,7 +6230,7 @@
       "id": "py.module:ari-skill-paper-re/src/_paperbench_bridge.py",
       "kind": "py.module",
       "file": "ari-skill-paper-re/src/_paperbench_bridge.py",
-      "loc": 2377,
+      "loc": 2376,
       "reachable_from": [],
       "edges_in": []
     },
@@ -6252,7 +6262,7 @@
       "id": "py.module:ari-skill-paper-re/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-paper-re/src/server.py",
-      "loc": 1396,
+      "loc": 1300,
       "reachable_from": [
         "R1",
         "R2",
@@ -18462,7 +18472,7 @@
       "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/__init__.py:__all__",
       "kind": "py.symbol",
       "file": "ari-skill-hpc/ari_skill_hpc/__init__.py",
-      "loc": 7,
+      "loc": 15,
       "reachable_from": [],
       "edges_in": []
     },
@@ -18694,7 +18704,7 @@
       "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ResourceRequestV1",
       "kind": "py.symbol",
       "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
-      "loc": 15,
+      "loc": 42,
       "reachable_from": [
         "R1",
         "R2",
@@ -18742,6 +18752,22 @@
     },
     {
       "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SafeIdentifier",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SlurmConstraintExpression",
+      "kind": "py.symbol",
+      "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:SlurmNodeExpression",
       "kind": "py.symbol",
       "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
       "loc": 4,
@@ -18976,7 +19002,7 @@
       "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SlurmScheduler",
       "kind": "py.symbol",
       "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
-      "loc": 732,
+      "loc": 750,
       "reachable_from": [
         "R1",
         "R2",
@@ -21588,7 +21614,7 @@
       "id": "py.symbol:ari-skill-paper-re/src/_paperbench_bridge.py:reproduce_submission",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/_paperbench_bridge.py",
-      "loc": 135,
+      "loc": 134,
       "reachable_from": [],
       "edges_in": []
     },
@@ -21777,15 +21803,15 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-paper-re/src/server.py:_SBATCH_HELP_CACHE",
+      "id": "py.symbol:ari-skill-paper-re/src/server.py:_DEPRECATED_SBATCH_FIELDS",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
-      "loc": 1,
+      "loc": 6,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-paper-re/src/server.py:_SHARED_FS_PREFIXES",
+      "id": "py.symbol:ari-skill-paper-re/src/server.py:_TERMINAL_JOB_STATES",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
       "loc": 1,
@@ -21817,14 +21843,6 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-paper-re/src/server.py:_is_shared_fs",
-      "kind": "py.symbol",
-      "file": "ari-skill-paper-re/src/server.py",
-      "loc": 21,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-paper-re/src/server.py:_judge_model",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
@@ -21841,6 +21859,14 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-paper-re/src/server.py:_materialize_scheduler_log",
+      "kind": "py.symbol",
+      "file": "ari-skill-paper-re/src/server.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-paper-re/src/server.py:_negative_control_check",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
@@ -21853,6 +21879,22 @@
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
       "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-paper-re/src/server.py:_paper_re_scheduler",
+      "kind": "py.symbol",
+      "file": "ari-skill-paper-re/src/server.py",
+      "loc": 12,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-paper-re/src/server.py:_parse_deprecated_sbatch_args",
+      "kind": "py.symbol",
+      "file": "ari-skill-paper-re/src/server.py",
+      "loc": 19,
       "reachable_from": [],
       "edges_in": []
     },
@@ -21916,15 +21958,7 @@
       "id": "py.symbol:ari-skill-paper-re/src/server.py:_run_reproduce_slurm",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
-      "loc": 291,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-paper-re/src/server.py:_sbatch_supports",
-      "kind": "py.symbol",
-      "file": "ari-skill-paper-re/src/server.py",
-      "loc": 26,
+      "loc": 203,
       "reachable_from": [],
       "edges_in": []
     },
@@ -21933,14 +21967,6 @@
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
       "loc": 8,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-paper-re/src/server.py:_slurm_has_gres",
-      "kind": "py.symbol",
-      "file": "ari-skill-paper-re/src/server.py",
-      "loc": 28,
       "reachable_from": [],
       "edges_in": []
     },
@@ -22012,7 +22038,7 @@
       "id": "py.symbol:ari-skill-paper-re/src/server.py:run_reproduce",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
-      "loc": 208,
+      "loc": 218,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29950,25 +29976,25 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper-re:build_reproduce_sh",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('build_reproduce_sh') <- ari-skill-paper-re/src/server.py:178"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('build_reproduce_sh') <- ari-skill-paper-re/src/server.py:192"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper-re:fetch_code_bundle",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('fetch_code_bundle') <- ari-skill-paper-re/src/server.py:80"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('fetch_code_bundle') <- ari-skill-paper-re/src/server.py:94"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper-re:grade_with_simplejudge",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('grade_with_simplejudge') <- ari-skill-paper-re/src/server.py:1262"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('grade_with_simplejudge') <- ari-skill-paper-re/src/server.py:1166"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper-re:run_reproduce",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('run_reproduce') <- ari-skill-paper-re/src/server.py:993"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('run_reproduce') <- ari-skill-paper-re/src/server.py:887"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -34258,13 +34284,13 @@
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
       "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "static.import",
-      "evidence": "ari-skill-hpc/ari_skill_hpc/__init__.py:9 import ari_skill_hpc.scheduler"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/__init__.py:14 import ari_skill_hpc.scheduler"
     },
     {
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "to": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
       "kind": "static.import",
-      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1091 import ari_skill_hpc.contracts"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1109 import ari_skill_hpc.contracts"
     },
     {
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
@@ -34282,7 +34308,7 @@
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:BindMountV1",
       "kind": "static.call",
-      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1091 use BindMountV1"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1109 use BindMountV1"
     },
     {
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
@@ -34606,31 +34632,37 @@
       "from": "py.module:ari-skill-paper-re/src/server.py",
       "to": "py.module:ari-core/ari/clone/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper-re/src/server.py:146 import ari.clone"
+      "evidence": "ari-skill-paper-re/src/server.py:160 import ari.clone"
     },
     {
       "from": "py.module:ari-skill-paper-re/src/server.py",
       "to": "py.module:ari-core/ari/cost_tracker.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper-re/src/server.py:42 import ari.cost_tracker"
+      "evidence": "ari-skill-paper-re/src/server.py:56 import ari.cost_tracker"
     },
     {
       "from": "py.module:ari-skill-paper-re/src/server.py",
       "to": "py.module:ari-core/ari/public/cost_tracker.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper-re/src/server.py:40 import ari.public.cost_tracker"
+      "evidence": "ari-skill-paper-re/src/server.py:54 import ari.public.cost_tracker"
+    },
+    {
+      "from": "py.module:ari-skill-paper-re/src/server.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-paper-re/src/server.py:35 import ari_skill_hpc"
     },
     {
       "from": "py.module:ari-skill-paper-re/src/server.py",
       "to": "py.symbol:ari-core/ari/clone/__init__.py:CloneError",
       "kind": "static.call",
-      "evidence": "ari-skill-paper-re/src/server.py:146 use CloneError"
+      "evidence": "ari-skill-paper-re/src/server.py:160 use CloneError"
     },
     {
       "from": "py.module:ari-skill-paper-re/src/server.py",
       "to": "py.symbol:ari-core/ari/clone/__init__.py:clone",
       "kind": "static.call",
-      "evidence": "ari-skill-paper-re/src/server.py:146 use clone"
+      "evidence": "ari-skill-paper-re/src/server.py:160 use clone"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",

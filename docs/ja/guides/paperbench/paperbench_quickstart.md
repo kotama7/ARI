@@ -153,10 +153,9 @@ vendor image を使う場合は先に `scripts/build_pb_images.sh` で
 > 止まり host CPU に黙ってフォールバックしない:
 > - `ARI_PHASE1_ALLOW_FALLBACK=1` — docker / apptainer / sbatch が
 >   missing 時の legacy fallback を opt-in
-> - `ARI_SLURM_ALLOW_NO_GRES=1` — GRES 未設定クラスタで `--gres` /
->   `--gpus-*` フラグを silent drop する legacy 挙動を opt-in
 >
-> 両方デフォルト OFF(actionable エラー発生)。
+> GPU/resource要求にsilent drop overrideはない。cluster設定を修正するか
+> 対応partitionを選ぶ。fallbackはデフォルトOFF。
 
 ## HPC クラスタの sbatch ラッパー(例示)
 

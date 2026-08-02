@@ -364,8 +364,8 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
       slurm (sbatch + ARI_SLURM_PARTITION 存在 = BFTS 同 partition)
       → docker (守护可用且非 HPC) → apptainer → singularity → local。
       可用 ARI_PHASE1_SANDBOX 覆盖。
-    SLURM 路径使用 sbatch --wait 与 spool relocation 包装器
-    (.slurm_wrap.sh，通过绝对路径 exec reproduce.sh 以保护 $0 相对 cd)。
+    SLURM 路径使用带digest的JobRequestV1、共享submit/status/log/cancel handle
+    生命周期与干净环境。
     捕获 reproduce.log，并对照 rubric 中的 expected_artifacts。
     输出：ors_phase1.json { executed, exit_code, log_path,
                              artifacts, missing, sandbox_kind,
