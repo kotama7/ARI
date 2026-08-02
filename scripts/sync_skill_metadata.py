@@ -36,6 +36,7 @@ from ari.memory_contract import (  # noqa: E402
     MemoryRecordV1,
     MemoryRetrievalV1,
 )
+from ari.paper_contract import PaperBuildV1, PaperModelCallBatchV1  # noqa: E402
 from ari.call_context import ToolCallContextV1  # noqa: E402
 from ari.claim_gate_contract import (  # noqa: E402
     GateReportV1,
@@ -135,6 +136,10 @@ SCIENCE_DATA_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "science_data_v1.schem
 FIGURE_BATCH_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "figure_batch_v1.schema.json"
 VISUAL_REVIEW_BATCH_SCHEMA_PATH = (
     ARI_CORE / "ari" / "schemas" / "visual_review_batch_v1.schema.json"
+)
+PAPER_BUILD_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "paper_build_v1.schema.json"
+PAPER_MODEL_CALL_BATCH_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "paper_model_call_batch_v1.schema.json"
 )
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
@@ -295,6 +300,18 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
             VisualReviewBatchV1,
             "visual-review-batch-v1",
             "ARI Visual Review Batch v1",
+        ),
+        (
+            PAPER_BUILD_SCHEMA_PATH,
+            PaperBuildV1,
+            "paper-build-v1",
+            "ARI Paper Build v1",
+        ),
+        (
+            PAPER_MODEL_CALL_BATCH_SCHEMA_PATH,
+            PaperModelCallBatchV1,
+            "paper-model-call-batch-v1",
+            "ARI Paper Model Call Batch v1",
         ),
         (
             MEMORY_BACKUP_SCHEMA_PATH,

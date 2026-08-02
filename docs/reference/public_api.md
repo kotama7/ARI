@@ -35,6 +35,12 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
 | `ari.public.execution` | `WorkspaceRefV1`, bounded execution/result records, complete-log artifacts, and `MeasurementSetV1` | execution-producing and measurement-consuming Skills |
 | `ari.public.evaluation` | Immutable metric admission, `GateReportV1`, semantic review, and conservative migration readers | idea, transform, evaluator, paper, offline readers |
+| `ari.public.figures` | Digest-bound figure specification, render manifest, batch, and feedback lineage | plot, VLM, paper |
+| `ari.public.latex_claims` | Canonical lexical LaTeX claim-anchor, number, citation, and figure-reference parser | evaluator and paper |
+| `ari.public.memory` | Content-addressed memory records, retrievals, events, and backup contracts | memory and verified-context consumers |
+| `ari.public.paper` | `PaperBuildV1`, revision/model-call/compile/review records, parsers, and canonical digest | paper and publication consumers |
+| `ari.public.science_data` | Native raw/derived/interpreted science-data contract and explicit migration reader | transform, evaluator, plot, paper |
+| `ari.public.visual_review` | Criteria profiles and artifact-bound, failure-preserving visual review batches | VLM, plot, paper |
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
@@ -105,6 +111,16 @@ policies, immutable source and environment digests, effect sizes, confidence
 intervals, assumption diagnostics, and library versions. See the
 [deterministic analysis contract](analysis_contract.md) for the normative
 behavior and schema list.
+
+## Scientific publication contracts
+
+`ari.public.science_data`, `ari.public.figures`, `ari.public.visual_review`,
+`ari.public.latex_claims`, and `ari.public.paper` form the stable transform →
+figure → review → publication boundary. Producers and consumers exchange
+strict, digest-bound models rather than schema-less dictionaries. The
+[ScienceData contract](science_data_contract.md),
+[figure and visual-review contract](figure_visual_contract.md), and
+[PaperBuild contract](paper_build_contract.md) are normative.
 
 ## `ari.public.skill_manifest`
 

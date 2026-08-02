@@ -59,10 +59,7 @@ def _recorded_result(tmp_path: Path) -> tuple[dict, Path]:
         records=(record,),
         artifacts=(artifact,),
     )
-    ref = (
-        "retrieval_snapshots/"
-        f"{snapshot.snapshot_digest.removeprefix('sha256:')}.json"
-    )
+    ref = f"retrieval_snapshots/{snapshot.snapshot_digest.removeprefix('sha256:')}.json"
     snapshot_path = tmp_path / ref
     snapshot_path.parent.mkdir()
     snapshot_path.write_text(json.dumps(snapshot.model_dump(mode="json")))

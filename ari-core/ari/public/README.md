@@ -22,6 +22,10 @@ core can refactor freely while the contract stays put.
   transform, evaluator, paper, and offline published-run readers.
 - `figures.py` — declarative `FigureSpecV1`, digest-bound render/batch
   manifests, explicit feedback lineage, and the isolated legacy reader.
+- `latex_claims.py` — canonical lexical LaTeX claim/number/citation/figure parser.
+- `memory.py` — content-addressed memory records, retrievals, events, and backups.
+- `paper.py` — immutable paper build, revision, model-call, compile, review, and
+  finalization contracts.
 - `visual_review.py` — criteria profiles, artifact-bound review findings,
   raw/model/cost provenance, and failure-preserving review batches.
 - `cost_tracker.py` — re-export of `ari.cost_tracker`.

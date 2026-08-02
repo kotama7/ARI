@@ -1,10 +1,13 @@
 """Tests for the ari-skill-paper MCP server."""
 
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from ari.public.paper import parse_paper_model_call_batch
 
 from src.server import (
     TEMPLATES_DIR,
@@ -12,7 +15,6 @@ from src.server import (
     _count_pdf_pages,
     check_format,
     compile_paper,
-    generate_section,
     get_template,
     list_venues,
     merge_reviews,
@@ -29,50 +31,86 @@ def _mock_resp(content: str):
 
 # --- paper_refine: S2P refiner = global role, DIFF (find/replace) output ---
 
+
 @pytest.mark.asyncio
 async def test_paper_refine_applies_targeted_diff_edits(tmp_path):
-    tex = ("\\section{Results}\n% CLAIM:C1:NC1\n"
-           "We achieve a speedup of 2x here.\n\\end{document}\n")
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    tex = (
+        "\\section{Results}\n% CLAIM:C1:NC1\n"
+        "We achieve a speedup of 2x here.\n\\end{document}\n"
+    )
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
     import json as _j
+
     edits = '```json\n[{"find": "We achieve a speedup of 2x here.", "replace": "We achieve a speedup of 2.5x here."}]\n```'
     revs = _j.dumps([{"section": "results", "instruction": "correct the speedup"}])
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp(edits),
+    ):
         out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
     assert out["refined"] is True
     assert out["applied_revisions"] == 1
     assert "2.5x" in out["latex"]
-    assert "% CLAIM:C1:NC1" in out["latex"]          # untouched anchor preserved
+    assert "% CLAIM:C1:NC1" in out["latex"]  # untouched anchor preserved
+    batch = parse_paper_model_call_batch(
+        json.loads((tmp_path / out["refinement_call_path"]).read_text())
+    )
+    assert [call.call_id for call in batch.calls] == [
+        "refinement-001",
+        "refinement-002",
+    ]
+    assert all(
+        (tmp_path / call.prompt_artifact.relative_path).is_file()
+        and (tmp_path / call.raw_response_artifact.relative_path).is_file()
+        for call in batch.calls
+    )
 
 
 @pytest.mark.asyncio
 async def test_paper_refine_skips_nonunique_find(tmp_path):
     tex = "\\section{R}\n% CLAIM:C1:NC1\nThe value is X. The value is X.\n"
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
     edits = '[{"find":"The value is X.","replace":"The value is Y."}]'  # occurs twice
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
-        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
-    assert out["refined"] is False            # ambiguous find -> never guessed
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp(edits),
+    ):
+        out = await paper_refine(
+            tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]'
+        )
+    assert out["refined"] is False  # ambiguous find -> never guessed
     assert out["applied_revisions"] == 0
-    assert out["latex"] == tex                # unchanged
+    assert out["latex"] == tex  # unchanged
 
 
 @pytest.mark.asyncio
 async def test_paper_refine_rejects_anchor_dropping_edit(tmp_path):
     tex = "\\section{R}\nFoo % CLAIM:C1:NC1 bar baz.\n"
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
     edits = '[{"find":"Foo % CLAIM:C1:NC1 bar baz.","replace":"Foo bar baz revised."}]'  # drops anchor
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp(edits)):
-        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp(edits),
+    ):
+        out = await paper_refine(
+            tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]'
+        )
     assert out["refined"] is False
-    assert "% CLAIM:C1:NC1" in out["latex"]   # anchor never dropped
+    assert "% CLAIM:C1:NC1" in out["latex"]  # anchor never dropped
 
 
 @pytest.mark.asyncio
 async def test_paper_refine_uses_diff_not_full_rewrite(tmp_path):
     """Guard the S2P-faithful design: bounded diff output, not whole-document regen."""
     tex = "\\section{R}\n% CLAIM:C1:NC1\nText here.\n"
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
     captured: dict = {}
 
     async def _cap(**kw):
@@ -80,11 +118,13 @@ async def test_paper_refine_uses_diff_not_full_rewrite(tmp_path):
         return _mock_resp("[]")
 
     with patch("src.server.litellm.acompletion", side_effect=_cap):
-        await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+        await paper_refine(
+            tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]'
+        )
     sysmsg = next(m for m in captured["messages"] if m["role"] == "system")["content"]
     assert "JSON array" in sysmsg
     assert "Do NOT rewrite the whole document" in sysmsg
-    assert captured["max_tokens"] <= 8192     # bounded => no full-document regeneration
+    assert captured["max_tokens"] <= 8192  # bounded => no full-document regeneration
 
 
 @pytest.mark.asyncio
@@ -93,19 +133,33 @@ async def test_paper_refine_applies_deterministic_substitution(tmp_path):
     # DETERMINISTICALLY even when the LLM returns NO edits — the prior single pass
     # left such concrete overclaim fixes (e.g. the title) in place.
     import json as _j
-    tex = ('\\title{Roofline/Loopline Validation}\n% CLAIM:C1:NC1\n'
-           'We report results.\n\\end{document}\n')
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
-    revs = _j.dumps([{"section": "title",
-        "instruction": 'Soften it, e.g. replace "Roofline/Loopline Validation" with "Roofline/Loopline Context".'}])
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+
+    tex = (
+        "\\title{Roofline/Loopline Validation}\n% CLAIM:C1:NC1\n"
+        "We report results.\n\\end{document}\n"
+    )
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
+    revs = _j.dumps(
+        [
+            {
+                "section": "title",
+                "instruction": 'Soften it, e.g. replace "Roofline/Loopline Validation" with "Roofline/Loopline Context".',
+            }
+        ]
+    )
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp("[]"),
+    ):
         out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
     assert out["refined"] is True
     assert "Roofline/Loopline Context" in out["latex"]
     assert "Roofline/Loopline Validation" not in out["latex"]
     assert out["deterministic_substitutions"] == 1
     assert out["unaddressed_substitutions"] == []
-    assert "% CLAIM:C1:NC1" in out["latex"]          # anchor preserved
+    assert "% CLAIM:C1:NC1" in out["latex"]  # anchor preserved
 
 
 @pytest.mark.asyncio
@@ -113,13 +167,27 @@ async def test_paper_refine_reports_unaddressed_nonunique_substitution(tmp_path)
     # an explicit replacement whose OLD (a phrase) is NON-UNIQUE is never guessed; it
     # is REPORTED under unaddressed_substitutions rather than silently dropped.
     import json as _j
-    tex = ("\\section{R}\n% CLAIM:C1:NC1\n"
-           "The method is robust here. The method is robust there.\n\\end{document}\n")
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
-    revs = _j.dumps([{"instruction": 'replace "method is robust" with "method shows limited sensitivity"'}])
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+
+    tex = (
+        "\\section{R}\n% CLAIM:C1:NC1\n"
+        "The method is robust here. The method is robust there.\n\\end{document}\n"
+    )
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
+    revs = _j.dumps(
+        [
+            {
+                "instruction": 'replace "method is robust" with "method shows limited sensitivity"'
+            }
+        ]
+    )
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp("[]"),
+    ):
         out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
-    assert out["refined"] is False                    # non-unique phrase never guessed
+    assert out["refined"] is False  # non-unique phrase never guessed
     assert any(u["old"] == "method is robust" for u in out["unaddressed_substitutions"])
 
 
@@ -129,15 +197,27 @@ async def test_paper_refine_expand_substitution_not_falsely_unaddressed(tmp_path
     # "Roofline Validation" -> "Roofline Validation Context") lands but must NOT be
     # reported unaddressed -- verify keys on the apply outcome, not `old in refined`.
     import json as _j
-    tex = ("\\title{Roofline Validation}\n% CLAIM:C1:NC1\nText.\n\\end{document}\n")
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
-    revs = _j.dumps([{"instruction": 'replace "Roofline Validation" with "Roofline Validation Context"'}])
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+
+    tex = "\\title{Roofline Validation}\n% CLAIM:C1:NC1\nText.\n\\end{document}\n"
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
+    revs = _j.dumps(
+        [
+            {
+                "instruction": 'replace "Roofline Validation" with "Roofline Validation Context"'
+            }
+        ]
+    )
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp("[]"),
+    ):
         out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
     assert out["refined"] is True
     assert "Roofline Validation Context" in out["latex"]
     assert out["deterministic_substitutions"] == 1
-    assert out["unaddressed_substitutions"] == []     # applied, not falsely flagged
+    assert out["unaddressed_substitutions"] == []  # applied, not falsely flagged
 
 
 @pytest.mark.asyncio
@@ -145,25 +225,38 @@ async def test_paper_refine_bare_word_substitution_routed_to_llm(tmp_path):
     # review finding: a single-word OLD (no whitespace) could be globally unique by
     # accident and rewritten in the wrong span -> it is NOT a deterministic sub.
     import json as _j
-    tex = ("\\title{Validation}\n% CLAIM:C2:NC2\nT.\n\\end{document}\n")
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
+
+    tex = "\\title{Validation}\n% CLAIM:C2:NC2\nT.\n\\end{document}\n"
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
     revs = _j.dumps([{"instruction": 'replace "Validation" with "Context"'}])
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=_mock_resp("[]")):
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp("[]"),
+    ):
         out = await paper_refine(tex_path=str(p), suggested_revisions_json=revs)
-    assert out["deterministic_substitutions"] == 0    # bare word not auto-applied
+    assert out["deterministic_substitutions"] == 0  # bare word not auto-applied
 
 
 @pytest.mark.asyncio
 async def test_paper_refine_multipass_applies_across_passes(tmp_path):
     # (b) the bounded loop gives the LLM multiple passes: an edit the 2nd pass produces
     # (after the 1st changed the doc) is still applied — the old single pass missed it.
-    tex = ("\\section{R}\n% CLAIM:C1:NC1\nAlpha. Beta.\n\\end{document}\n")
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
-    resp = [_mock_resp('[{"find":"Alpha.","replace":"Alpha-edited."}]'),
-            _mock_resp('[{"find":"Beta.","replace":"Beta-edited."}]'),
-            _mock_resp("[]")]
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, side_effect=resp):
-        out = await paper_refine(tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]')
+    tex = "\\section{R}\n% CLAIM:C1:NC1\nAlpha. Beta.\n\\end{document}\n"
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
+    resp = [
+        _mock_resp('[{"find":"Alpha.","replace":"Alpha-edited."}]'),
+        _mock_resp('[{"find":"Beta.","replace":"Beta-edited."}]'),
+        _mock_resp("[]"),
+    ]
+    with patch(
+        "src.server.litellm.acompletion", new_callable=AsyncMock, side_effect=resp
+    ):
+        out = await paper_refine(
+            tex_path=str(p), suggested_revisions_json='[{"instruction":"x"}]'
+        )
     assert out["refined"] is True
     assert "Alpha-edited." in out["latex"] and "Beta-edited." in out["latex"]
     assert out["applied_revisions"] == 2
@@ -171,6 +264,7 @@ async def test_paper_refine_multipass_applies_across_passes(tmp_path):
 
 
 # --- list_venues ---
+
 
 @pytest.mark.asyncio
 async def test_list_venues_returns_all():
@@ -197,6 +291,7 @@ async def test_list_venues_contains_neurips():
 
 # --- get_template ---
 
+
 @pytest.mark.asyncio
 async def test_get_template_neurips():
     result = await get_template("neurips")
@@ -220,82 +315,8 @@ async def test_get_template_invalid_venue():
         await get_template("nonexistent")
 
 
-# --- generate_section ---
-
-@pytest.mark.asyncio
-async def test_generate_section_invalid_section():
-    with pytest.raises(ValueError, match="Unknown section"):
-        await generate_section("garbage_section", "some context", "neurips")
-
-
-@pytest.mark.asyncio
-async def test_generate_section_invalid_venue():
-    with pytest.raises(ValueError, match="Unknown venue"):
-        await generate_section("introduction", "some context", "nonexistent")
-
-
-@pytest.mark.asyncio
-async def test_generate_section_calls_litellm():
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "\\section{Introduction}\nTest content."
-
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock, return_value=mock_response):
-        result = await generate_section("introduction", "We tested X and got Y.", "neurips")
-        assert "latex" in result
-        assert "Introduction" in result["latex"]
-
-
-@pytest.mark.asyncio
-async def test_generate_section_injects_sc_author_hint():
-    """SC's reviewer_rubrics yaml ships an author_hint; generate_section
-    must inject it into the system prompt so paper drafting is
-    venue-conditioned at the same strength as peer review."""
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "\\section{X}\nbody"
-    captured: dict = {}
-
-    async def _capture(**kwargs):
-        captured.update(kwargs)
-        return mock_response
-
-    with patch("src.server.litellm.acompletion", side_effect=_capture):
-        await generate_section("introduction", "ctx", "sc")
-
-    system_msg = next(m for m in captured["messages"] if m["role"] == "system")["content"]
-    # The block header MUST appear so the LLM sees a clearly-delimited
-    # venue-conditioning section.
-    assert "VENUE-SPECIFIC AUTHOR GUIDANCE" in system_msg
-    # SC-specific signals from sc.yaml's author_hint must be threaded in.
-    assert "scaling" in system_msg.lower()
-    # The drafter should also see the reviewer's score dimensions.
-    assert "reproducibility" in system_msg.lower()
-
-
-@pytest.mark.asyncio
-async def test_generate_section_no_hint_for_venue_without_rubric():
-    """Venues without a reviewer_rubrics yaml (arxiv, icpp, isc, acm)
-    must still work — author_hint injection silently no-ops."""
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "\\section{X}\nbody"
-    captured: dict = {}
-
-    async def _capture(**kwargs):
-        captured.update(kwargs)
-        return mock_response
-
-    with patch("src.server.litellm.acompletion", side_effect=_capture):
-        await generate_section("introduction", "ctx", "arxiv")
-
-    system_msg = next(m for m in captured["messages"] if m["role"] == "system")["content"]
-    assert "VENUE-SPECIFIC AUTHOR GUIDANCE" not in system_msg
-    # The legacy "Target venue: arXiv" weak hint must still be present.
-    assert "arXiv" in system_msg
-
-
 # --- compile_paper ---
+
 
 @pytest.mark.asyncio
 async def test_compile_paper_missing_dir():
@@ -313,6 +334,7 @@ async def test_compile_paper_missing_file():
 
 
 # --- check_format ---
+
 
 @pytest.mark.asyncio
 async def test_check_format_missing_pdf():
@@ -339,12 +361,14 @@ async def test_check_format_small_pdf():
 
 # --- _count_pdf_pages ---
 
+
 def test_count_pdf_pages_none_on_missing():
     result = _count_pdf_pages(Path("/nonexistent/file.pdf"))
     assert result is None
 
 
 # --- template directory structure ---
+
 
 def test_templates_dir_exists():
     assert TEMPLATES_DIR.is_dir()
@@ -369,12 +393,19 @@ import json as _jsn  # noqa: E402
 
 
 def _canned_review_json() -> str:
-    return _jsn.dumps({
-        "soundness": 3, "presentation": 3, "contribution": 3,
-        "overall": 6, "confidence": 3,
-        "strengths": "S", "weaknesses": "W", "questions": "Q",
-        "decision": "accept",
-    })
+    return _jsn.dumps(
+        {
+            "soundness": 3,
+            "presentation": 3,
+            "contribution": 3,
+            "overall": 6,
+            "confidence": 3,
+            "strengths": "S",
+            "weaknesses": "W",
+            "questions": "Q",
+            "decision": "accept",
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -382,7 +413,6 @@ async def test_review_compiled_paper_env_drives_n(tmp_path, monkeypatch):
     """ARI_NUM_REVIEWS_ENSEMBLE=3 must route through run_ensemble with N=3
     and trigger run_meta_review (N>1), without the caller passing N."""
     from src import server as _srv
-    from src.review_engine import FewshotExample
 
     tex = tmp_path / "full_paper.tex"
     tex.write_text(
@@ -475,15 +505,19 @@ async def test_review_compiled_paper_arg_beats_env(tmp_path, monkeypatch):
     monkeypatch.setattr(_srv, "load_dynamic_fewshot", lambda r, t, a: [])
 
     out = await _srv.review_compiled_paper(
-        tex_path=str(tex), rubric_id="neurips", num_reviews_ensemble=2,
+        tex_path=str(tex),
+        rubric_id="neurips",
+        num_reviews_ensemble=2,
     )
     assert out.get("n") == 2, f"arg=2 must win over env=5, got n={out.get('n')}"
 
 
 # --- merge_reviews: semantic warnings must reach the refiner ---
 
+
 def _write_merge_inputs(tmp_path, semantic: dict):
     import json as _j
+
     rr = tmp_path / "review_report.json"
     rr.write_text(_j.dumps({"scores": {}}))
     sem = tmp_path / "semantic_review.json"
@@ -493,19 +527,30 @@ def _write_merge_inputs(tmp_path, semantic: dict):
 
 @pytest.mark.asyncio
 async def test_merge_reviews_forwards_warnings_as_advisory_revisions(tmp_path):
-    rr, sem = _write_merge_inputs(tmp_path, {
-        "status": "ok",
-        "warnings": [
-            {"type": "overclaim", "section": "abstract",
-             "message": "The robustness wording reads broader than the tested scope."},
-            {"type": "interpretation", "section": "results",
-             "message": "The mechanism is asserted but not directly measured."},
-        ],
-        "suggested_revisions": [
-            {"section": "abstract",
-             "instruction": 'replace "robust" with "stable under the tested ablation"'},
-        ],
-    })
+    rr, sem = _write_merge_inputs(
+        tmp_path,
+        {
+            "status": "ok",
+            "warnings": [
+                {
+                    "type": "overclaim",
+                    "section": "abstract",
+                    "message": "The robustness wording reads broader than the tested scope.",
+                },
+                {
+                    "type": "interpretation",
+                    "section": "results",
+                    "message": "The mechanism is asserted but not directly measured.",
+                },
+            ],
+            "suggested_revisions": [
+                {
+                    "section": "abstract",
+                    "instruction": 'replace "robust" with "stable under the tested ablation"',
+                },
+            ],
+        },
+    )
     out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
     revs = out["suggested_revisions"]
     from_warnings = [r for r in revs if r.get("source") == "semantic_warning"]
@@ -521,37 +566,63 @@ async def test_merge_reviews_forwards_warnings_as_advisory_revisions(tmp_path):
 @pytest.mark.asyncio
 async def test_merge_reviews_warning_identical_to_revision_not_duplicated(tmp_path):
     instr = "Scope the conclusion to the tested configurations."
-    rr, sem = _write_merge_inputs(tmp_path, {
-        "status": "ok",
-        "warnings": [{"type": "overgeneralization", "section": "conclusion",
-                      "message": instr}],
-        "suggested_revisions": [{"section": "conclusion", "instruction": instr}],
-    })
+    rr, sem = _write_merge_inputs(
+        tmp_path,
+        {
+            "status": "ok",
+            "warnings": [
+                {
+                    "type": "overgeneralization",
+                    "section": "conclusion",
+                    "message": instr,
+                }
+            ],
+            "suggested_revisions": [{"section": "conclusion", "instruction": instr}],
+        },
+    )
     out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
-    matching = [r for r in out["suggested_revisions"]
-                if (r.get("instruction") or "").strip() == instr]
+    matching = [
+        r
+        for r in out["suggested_revisions"]
+        if (r.get("instruction") or "").strip() == instr
+    ]
     assert len(matching) == 1, "exact-duplicate warning text must not be re-added"
 
 
 @pytest.mark.asyncio
 async def test_merge_reviews_warning_entries_collected_by_paper_refine(tmp_path):
-    rr, sem = _write_merge_inputs(tmp_path, {
-        "status": "ok",
-        "warnings": [{"type": "overclaim", "section": "abstract",
-                      "message": "Qualify the headline claim to the tested setup."}],
-        "suggested_revisions": [],
-    })
+    rr, sem = _write_merge_inputs(
+        tmp_path,
+        {
+            "status": "ok",
+            "warnings": [
+                {
+                    "type": "overclaim",
+                    "section": "abstract",
+                    "message": "Qualify the headline claim to the tested setup.",
+                }
+            ],
+            "suggested_revisions": [],
+        },
+    )
     out = await merge_reviews(review_report_path=str(rr), semantic_review_path=str(sem))
     merged = tmp_path / "review_merge_log.json"
     import json as _j
+
     merged.write_text(_j.dumps(out))
 
     tex = "\\section{Abstract}\n% CLAIM:C1:NC1\nOur kernel is fast.\n\\end{document}\n"
-    p = tmp_path / "full_paper.tex"; p.write_text(tex)
-    edits = ('```json\n[{"find": "Our kernel is fast.", '
-             '"replace": "Our kernel is fast in the tested setup."}]\n```')
-    with patch("src.server.litellm.acompletion", new_callable=AsyncMock,
-               return_value=_mock_resp(edits)) as mocked:
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
+    edits = (
+        '```json\n[{"find": "Our kernel is fast.", '
+        '"replace": "Our kernel is fast in the tested setup."}]\n```'
+    )
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp(edits),
+    ) as mocked:
         ref = await paper_refine(tex_path=str(p), merged_review_path=str(merged))
     assert ref["refined"] is True, (
         "a warning-only review must still drive a refine pass (was: no-op)"
@@ -564,8 +635,10 @@ async def test_merge_reviews_warning_entries_collected_by_paper_refine(tmp_path)
 
 # --- _escape_text_underscores: \(...\) / \[...\] math must survive ---
 
+
 def test_escape_underscores_skips_inline_paren_math():
     from src.server import _escape_text_underscores as esc
+
     # the run-replay corruption case: subscript in plain prose math
     assert esc(r"blocking factor \(k_p\) here") == r"blocking factor \(k_p\) here"
     # text-mode underscores around the math span are still escaped
@@ -574,16 +647,19 @@ def test_escape_underscores_skips_inline_paren_math():
 
 def test_escape_underscores_skips_display_bracket_math():
     from src.server import _escape_text_underscores as esc
+
     assert esc(r"\[x_i = y_j\]") == r"\[x_i = y_j\]"
 
 
 def test_escape_underscores_dollar_math_unchanged():
     from src.server import _escape_text_underscores as esc
+
     assert esc(r"$k_p$ and a_b") == r"$k_p$ and a\_b"
 
 
 def test_escape_underscores_unclosed_paren_math_falls_back():
     from src.server import _escape_text_underscores as esc
+
     # unclosed \( is broken LaTeX anyway; must not crash or eat text
     out = esc(r"oops \(k_p never closes")
     assert "k\\_p" in out and out.startswith("oops \\(")
@@ -591,6 +667,7 @@ def test_escape_underscores_unclosed_paren_math_falls_back():
 
 def test_escape_underscores_skips_math_environment_bodies():
     from src.server import _escape_text_underscores as esc
+
     s = "\\begin{equation}\nx_i = y_j\n\\end{equation}"
     assert esc(s) == s
     # starred variants too
@@ -602,11 +679,13 @@ def test_escape_underscores_skips_math_environment_bodies():
 
 def test_escape_underscores_non_math_environment_still_escaped():
     from src.server import _escape_text_underscores as esc
+
     out = esc("\\begin{itemize}\n\\item a_b\n\\end{itemize}")
-    assert "a\\_b" in out                      # prose env bodies keep escaping
+    assert "a\\_b" in out  # prose env bodies keep escaping
 
 
 def test_escape_underscores_unclosed_math_environment_falls_back():
     from src.server import _escape_text_underscores as esc
+
     out = esc("\\begin{equation}\nx_i never closes")
     assert "x\\_i" in out and out.startswith("\\begin{equation}")

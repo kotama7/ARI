@@ -134,9 +134,11 @@ LLM follows `ARI_MODEL_IDEA`.
 
 | Variable | Purpose |
 |---|---|
-| `ARI_RUBRIC` | Selects which `reviewer_rubrics/<id>.yaml` is active |
-| `ARI_RUBRIC_DIR` | Override rubric directory |
-| `ARI_STRICT_DYNAMIC` | Force dynamic-axis generation for `ari-skill-paper` |
+| `ARI_RUBRIC` | Selects BFTS dynamic evaluation axes and is read only by the offline paper-rubric migration helper; paper runtime selection requires explicit `rubric_id` |
+| `ARI_RUBRIC_DIR` | Override the directory containing explicitly selected paper rubrics |
+| `ARI_MODEL_PAPER_PROVIDER` | Provenance provider identity recorded for paper model calls |
+| `ARI_MODEL_PAPER_REVISION` | Optional immutable model revision recorded for paper model calls |
+| `ARI_STRICT_DYNAMIC` | Force BFTS dynamic-axis generation |
 | `ARI_NUM_REFLECTIONS` | Reflection rounds in `review_compiled_paper` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | Ensemble size for rubric review |
 | `ARI_JUDGE_N_RUNS` | SimpleJudge re-run count for `grade_with_simplejudge` |

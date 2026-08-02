@@ -120,10 +120,10 @@ def test_mcp_tool_counts_and_names():
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
-    assert len(fastmcp) == 61, f"expected 61 FastMCP tools, got {len(fastmcp)}"
+    assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
     assert len(lowlevel) == 38, f"expected 38 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 97, f"expected 97 unique tool names, got {len(unique)}"
+    assert len(unique) == 95, f"expected 95 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 

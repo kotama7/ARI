@@ -13,7 +13,7 @@ last_verified: 2026-08-02
 
 # C12: `ari-skill-vlm` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Completed (2026-08-02)。恒久仕様は [figure/visual contract](../../reference/figure_visual_contract.md) へ移管済み。本書はP6最終cleanupで削除する。
 
 ## 1. 責務
 
@@ -35,25 +35,25 @@ figure/table artifactとpaper contextをmultimodal modelで審査し、evidence-
 
 | ID | 作業 | 成果物 |
 |---|---|---|
-| C12-01 | manifest/README/runtime同期 | 3 toolのcanonical declaration |
-| C12-02 | artifact resolver統合 | digest-based PNG/PDF/page/LaTeX input |
-| C12-03 | strict structured output | JSON schema、repairは別status、raw artifact |
-| C12-04 | criterion profiles | figure/table/domain別versioned rubric |
-| C12-05 | batching/limits | image size/token/cost/concurrency budget |
-| C12-06 | review reproducibility metadata | model revision、sampling、prompt digest |
-| C12-07 | paper/plot feedback contract | stable figure ID、iteration lineage |
-| C12-08 | test corpus | good/bad/corrupt/oversize/missing-unit/mismatch fixtures |
+| C12-01 | 完了: manifest/README/runtime同期 | 3 toolのcanonical declaration |
+| C12-02 | 完了: artifact resolver統合 | digest-based PNG/PDF/table input |
+| C12-03 | 完了: strict structured output | JSON schema、typed failure、raw artifact |
+| C12-04 | 完了: criterion profiles | figure/table/domain別versioned rubric |
+| C12-05 | 完了: batching/limits | image size/token/cost/concurrency budget |
+| C12-06 | 完了: review reproducibility metadata | model revision、sampling、prompt digest |
+| C12-07 | 完了: paper/plot feedback contract | stable figure ID、iteration lineage |
+| C12-08 | 完了: test corpus | good/bad/corrupt/oversize/missing-unit/mismatch fixtures |
 
 ## 5. 受け入れ基準
 
-- [ ] manifestとlive `tools/list`、READMEが一致する。
-- [ ] corrupt/unsupported/oversize artifactをtyped errorとして扱う。
-- [ ] review対象artifactとcontextのdigestを必ず記録する。
-- [ ] schema-invalid model responseをempty successへ変換しない。
-- [ ] batch resultで個別failureを保持し、全体scoreから欠落させない。
-- [ ]同一figureのrevision lineageを追跡し、feedbackが別figureに混ざらない。
-- [ ] model call costとprovider/model revisionがtraceに残る。
-- [ ] `pytest ari-skill-vlm/tests -q` と新しいcontract corpusがgreenである。
+- [x] manifestとlive `tools/list`、READMEが一致する。
+- [x] corrupt/unsupported/oversize artifactをtyped errorとして扱う。
+- [x] review対象artifactとcontextのdigestを必ず記録する。
+- [x] schema-invalid model responseをempty successへ変換しない。
+- [x] batch resultで個別failureを保持し、全体scoreから欠落させない。
+- [x]同一figureのrevision lineageを追跡し、feedbackが別figureに混ざらない。
+- [x] model call costとprovider/model revisionがtraceに残る。
+- [x] `pytest ari-skill-vlm/tests -q` とcontract corpusがgreenである。
 
 ## 6. 削除要件
 
@@ -61,11 +61,11 @@ figure/table artifactとpaper contextをmultimodal modelで審査し、evidence-
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C12-D1 |空/stale `mcp.json` とREADMEの旧function名 | canonical manifest/docs | P1 |live list conformance |
-| C12-D2 |filesystem namingでraster siblingを推測する主要path | artifact resolver | P3 |PNG/PDF variant fixtures、caller migration |
-| C12-D3 |schema-invalid raw textをbest-effort successにするfallback | typed parse error / explicit repair result | P3 |invalid response corpus |
-| C12-D4 |inline base64/raw responseをtraceに残すpath | content-addressed artifact | P2 |secret/size audit、replay fixture |
-| C12-D5 |paper側のVLM result ad-hoc normalization | `VisualReviewV1` consumer | P3 |paper integration parity |
+| C12-D1 (deleted) |空/stale `mcp.json` とREADMEの旧function名 | canonical manifest/docs | P1 |live list conformance |
+| C12-D2 (deleted) |filesystem namingでraster siblingを推測する主要path | artifact resolver | P3 |PNG/PDF variant fixtures、caller migration |
+| C12-D3 (deleted) |schema-invalid raw textをbest-effort successにするfallback | typed parse error | P3 |invalid response corpus |
+| C12-D4 (deleted) |inline base64/raw responseをtraceに残すpath | content-addressed artifact | P2 |secret/size audit、replay fixture |
+| C12-D5 (deleted) |paper側のVLM result ad-hoc normalization | `VisualReviewV1` consumer | P3 |paper integration parity |
 
 ### 6.2 削除の検証と復旧
 

@@ -1,0 +1,253 @@
+{
+  "$defs": {
+    "PaperArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "science-data",
+            "figure-batch",
+            "retrieval-records",
+            "ear-manifest",
+            "template",
+            "rubric",
+            "prompt",
+            "raw-model-response",
+            "draft-tex",
+            "final-tex",
+            "bibtex",
+            "pdf",
+            "compile-stdout",
+            "compile-stderr",
+            "claim-links",
+            "hard-gate",
+            "semantic-review",
+            "text-review",
+            "visual-review",
+            "code-bundle-lock",
+            "authoring-record"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.paper-artifact/v1",
+          "default": "ari.paper-artifact/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "role",
+        "relative_path",
+        "digest",
+        "media_type",
+        "size_bytes"
+      ],
+      "title": "PaperArtifactV1",
+      "type": "object"
+    },
+    "PaperModelCallV1": {
+      "additionalProperties": false,
+      "properties": {
+        "call_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Call Digest",
+          "type": "string"
+        },
+        "call_id": {
+          "title": "Call Id",
+          "type": "string"
+        },
+        "model": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Model",
+          "type": "string"
+        },
+        "model_revision": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Revision"
+        },
+        "prompt_artifact": {
+          "$ref": "#/$defs/PaperArtifactV1"
+        },
+        "prompt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Prompt Digest",
+          "type": "string"
+        },
+        "provider": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Provider",
+          "type": "string"
+        },
+        "purpose": {
+          "enum": [
+            "initial-authoring",
+            "figure-insertion",
+            "reflection",
+            "refinement",
+            "text-review"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "raw_response_artifact": {
+          "$ref": "#/$defs/PaperArtifactV1"
+        },
+        "sampling": {
+          "additionalProperties": true,
+          "maxProperties": 64,
+          "title": "Sampling",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": "ari.paper-model-call/v1",
+          "default": "ari.paper-model-call/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "usage": {
+          "$ref": "#/$defs/PaperModelUsageV1"
+        }
+      },
+      "required": [
+        "call_id",
+        "purpose",
+        "model",
+        "provider",
+        "prompt_digest",
+        "prompt_artifact",
+        "raw_response_artifact",
+        "call_digest"
+      ],
+      "title": "PaperModelCallV1",
+      "type": "object"
+    },
+    "PaperModelUsageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cost_status": {
+          "default": "unavailable",
+          "enum": [
+            "reported",
+            "unavailable"
+          ],
+          "title": "Cost Status",
+          "type": "string"
+        },
+        "cost_usd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost Usd"
+        },
+        "input_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Input Tokens"
+        },
+        "output_tokens": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Tokens"
+        }
+      },
+      "title": "PaperModelUsageV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/paper-model-call-batch-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Ordered call provenance for one bounded paper operation.",
+  "properties": {
+    "batch_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Batch Digest",
+      "type": "string"
+    },
+    "calls": {
+      "items": {
+        "$ref": "#/$defs/PaperModelCallV1"
+      },
+      "maxItems": 100,
+      "title": "Calls",
+      "type": "array"
+    },
+    "operation": {
+      "enum": [
+        "authoring",
+        "refinement",
+        "text-review"
+      ],
+      "title": "Operation",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.paper-model-call-batch/v1",
+      "default": "ari.paper-model-call-batch/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation",
+    "batch_digest"
+  ],
+  "title": "ARI Paper Model Call Batch v1",
+  "type": "object"
+}

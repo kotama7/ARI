@@ -13,6 +13,8 @@ resources:
   timeout_minutes: 60
   executor: slurm
 author_name: Autonomous Research Infrastructure
+paper_venue: arxiv
+paper_rubric: generic_conference
 plan_promote: index_only
 lineage_decision:
   mode: stagnation_rule
@@ -193,21 +195,15 @@ pipeline:
   enabled: true
   phase: paper
   inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    science_data_path: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    references_path: '{{checkpoint_dir}}/related_refs.json'
+    ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+    rubric_id: '{{paper_rubric}}'
+    venue: '{{paper_venue}}'
     experiment_summary: '{{experiment_summary}}'
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
-    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
-    refs_json: '{{checkpoint_dir}}/related_refs.json'
-    science_data_json: '{{checkpoint_dir}}/science_data.json'
-    # Verified context is passed as a PATH and read inside write_paper_iterative.
-    # Deliberately NOT in load_inputs: keeping it out of the stage's loaded-content
-    # set means the write_paper stage-config / dependency resolution is unchanged,
-    # so the (separately-wired) claim stages' topology is not perturbed. Absent
-    # file (ARI_MEMORY_CONSOLIDATE off) => write_paper injects nothing.
-    verified_context_json: '{{checkpoint_dir}}/verified_context.json'
-  load_inputs:
-  - figures_manifest_json
-  - refs_json
-  - science_data_json
+    verified_context_path: '{{checkpoint_dir}}/verified_context.json'
   outputs:
     file: '{{checkpoint_dir}}/full_paper.tex'
     bib_file: '{{checkpoint_dir}}/refs.bib'
@@ -274,14 +270,14 @@ pipeline:
     reviewer. Reviewer independence contract: this stage evaluates paper text only
     (no VLM findings, no experiment brief, no figures manifest) to match AI Scientist
     v2''s perform_review. VLM review runs independently (vlm_review_figures) and is
-    combined post-hoc by merge_reviews. rubric_id, fewshot_mode, num_reflections,
-    num_reviews_ensemble are read from environment variables: ARI_RUBRIC, ARI_FEWSHOT_MODE,
-    ARI_NUM_REFLECTIONS, ARI_NUM_REVIEWS_ENSEMBLE.'
+    combined post-hoc by merge_reviews. The versioned rubric is an explicit workflow
+    input; optional reflection and ensemble counts may still be overridden per call.'
   depends_on:
   - write_paper
   enabled: true
   phase: paper
   inputs:
+    rubric_id: '{{paper_rubric}}'
     tex_path: '{{checkpoint_dir}}/full_paper.tex'
     pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
   outputs:
@@ -356,6 +352,7 @@ pipeline:
   inputs:
     tex_dir: '{{checkpoint_dir}}'
     main_file: full_paper.tex
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
   outputs:
     file: '{{checkpoint_dir}}/full_paper.pdf'
 - stage: link_paper_claims_final
@@ -453,6 +450,107 @@ pipeline:
     checkpoint_dir: '{{checkpoint_dir}}'
   outputs:
     file: '{{checkpoint_dir}}/finalize_paper.json'
+- stage: link_paper_claims_locked
+  skill: paper-skill
+  tool: link_paper_claims
+  description: Reconcile claims again after deterministic Code Availability injection.
+  depends_on:
+  - finalize_paper
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+- stage: claim_evidence_hard_gate_locked
+  skill: evaluator-skill
+  tool: claim_evidence_hard_gate
+  description: Final deterministic gate over the exact TeX that will be compiled and locked.
+  depends_on:
+  - link_paper_claims_locked
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+    policy: '{{claim_gate_policy}}'
+    phase: final
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_locked.json'
+- stage: evidence_grounded_semantic_review_locked
+  skill: evaluator-skill
+  tool: evidence_grounded_semantic_review
+  description: Independent advisory semantic review bound to the exact post-injection evidence set.
+  depends_on:
+  - claim_evidence_hard_gate_locked
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    hard_gate_path: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_locked.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+    phase: locked
+  load_inputs:
+  - science_data_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_locked.json'
+- stage: render_final_paper
+  skill: paper-skill
+  tool: compile_paper
+  description: Compile the exact post-injection TeX through the bounded common execution contract.
+  depends_on:
+  - evidence_grounded_semantic_review_locked
+  enabled: true
+  phase: paper
+  inputs:
+    tex_dir: '{{checkpoint_dir}}'
+    main_file: full_paper.tex
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+  outputs:
+    file: '{{checkpoint_dir}}/full_paper.pdf'
+- stage: lock_paper_build
+  skill: paper-skill
+  tool: finalize_paper_build
+  description: Fail-closed PaperBuildV1 lock over exact inputs, calls, reviews, gate, compile logs, TeX, BibTeX, and PDF.
+  depends_on:
+  - render_final_paper
+  - claim_evidence_hard_gate_locked
+  - evidence_grounded_semantic_review_locked
+  - review_paper
+  - vlm_review_figures
+  enabled: true
+  phase: paper
+  inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    draft_build_path: '{{checkpoint_dir}}/.ari-paper/paper_build.draft.json'
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    bib_path: '{{checkpoint_dir}}/refs.bib'
+    pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
+    compile_record_path: '{{checkpoint_dir}}/.ari-paper/compile/final.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    claim_links_path: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+    hard_gate_path: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_locked.json'
+    text_review_path: '{{checkpoint_dir}}/review_report.json'
+    visual_review_path: '{{checkpoint_dir}}/vlm_review.json'
+    semantic_review_path: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_locked.json'
+    refinement_call_path: '{{checkpoint_dir}}/.ari-paper/refinement/model_calls.json'
+    visual_passing_score: 0.7
+    output_path: '{{checkpoint_dir}}/paper_build.json'
+  outputs:
+    file: '{{checkpoint_dir}}/paper_build.json'
 - stage: ors_generate_rubric
   skill: replicate-skill
   tool: generate_rubric
@@ -460,7 +558,7 @@ pipeline:
     tool writes the full rubric envelope to `output_path` (ors_rubric.json); `outputs.file`
     records the metadata return dict separately so the envelope is not overwritten.
   depends_on:
-  - write_paper
+  - lock_paper_build
   enabled: true
   phase: paper
   inputs:
@@ -497,7 +595,7 @@ pipeline:
   depends_on:
   - ors_generate_rubric
   - ors_seed_sandbox
-  - finalize_paper
+  - lock_paper_build
   enabled: true
   phase: paper
   inputs:

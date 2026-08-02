@@ -246,31 +246,21 @@ LaTeX 論文生成、コンパイル、査読（post-BFTS のみ）。**LLM: Yes
 
 投稿先の LaTeX テンプレートを返します。
 
-#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
+#### `compile_paper(tex_dir, main_file="main.tex", figures_manifest_path="")`
 
-LLM を使用して LaTeX セクションを生成します。セクションの種類: `introduction`, `related_work`, `method`, `experiment`, `conclusion`。
-
-#### `compile_paper(tex_dir, main_file="main.tex")`
-
-pdflatex コンパイルを実行します。成功ステータスとエラーメッセージを返します。
+共通の境界付き実行契約でコンパイルし、完全ログ、環境、PDF digest を
+`PaperCompileV1` に記録します。shell escape と未申告 file/process access は拒否します。
 
 #### `check_format(venue, pdf_path)`
 
 投稿先の要件に対して論文フォーマットを検証します（ページ数など）。
 
-#### `review_section(latex, context, venue="arxiv")`
+#### `write_paper_iterative(workspace_root, science_data_path, figures_manifest_path, references_path, ear_manifest_path, rubric_id, experiment_summary="", context="", verified_context_path="", venue="arxiv", max_revision_rounds=2, author_name="")`
 
-LaTeX セクションを査読します。強み、弱み、提案を返します。
+閉じた workspace の native contract から全文を生成し、入力、rubric/template、
+prompt/raw response、revision lineage を draft `PaperBuildV1` に固定します。
 
-#### `revise_section(section, latex, feedback, context, venue="arxiv")`
-
-査読フィードバックに基づいて LaTeX セクションを修正します。
-
-#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
-
-反復的な下書き → 査読 → 修正ループによる完全な論文生成。主要なパイプラインツール。
-
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
+#### `review_compiled_paper(rubric_id, tex_path="", pdf_path="", figures_manifest_json="", experiment_summary="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 **AI Scientist v1/v2 互換** のルーブリック駆動論文査読 (Nature / arXiv:2408.06292
 Appendix A.4 準拠)。`ari-core/config/reviewer_rubrics/<rubric_id>.yaml` を
@@ -293,9 +283,8 @@ Appendix A.4 準拠)。`ari-core/config/reviewer_rubrics/<rubric_id>.yaml` を
 (コード変更不要)。各ルーブリックは `score_dimensions` / `text_sections` /
 `decision` ルール、実行パラメータ、P2 決定論用の SHA256 ハッシュを宣言します。
 
-ルーブリック解決順序: 明示的な `rubric_id` 引数 → `ARI_RUBRIC` 環境変数 →
-`neurips` → 内蔵 `legacy` フォールバック (v0.5 スキーマ、`rubric_id` も
-合致 YAML も解決できないときに使用)。
+`rubric_id` は必須です。runtime の環境変数/default/legacy fallback は削除済みで、
+旧設定は `src.rubric_migration.migrate_legacy_rubric_selection` で offline 移行します。
 
 Nature Ablation 由来の既定値:
 
@@ -334,6 +323,11 @@ Scientist v1 best-config 方式）を実行します。N>1 のときは Area Cha
 #### `paper_refine(tex_path="", suggested_revisions_json="", merged_review_path="", semantic_review_path="", venue="arxiv")` — v0.9.0
 
 `suggested_revisions`（`evidence_grounded_semantic_review` / マージ済み査読由来）を適用する、アンカー保持の修正パス。**LLM: Yes**。明示的な `replace "X" with "Y"` 置換をまず決定論的に適用し、残りは境界付きのマルチパス LLM の検索/置換で処理します。draft 内に存在するすべての `% CLAIM` アンカーは生き残らなければなりません（アンカーを落とす編集は拒否され、ネットでアンカーが減った場合は元の論文を保持します）。math-safe なアンダースコアのエスケープは `\( … \)` / `\[ … \]` および数式環境をスキップします。修正後の LaTeX は `latex` の下に返されます（draft は `full_paper.draft.tex` として保存されます）。
+
+#### `finalize_paper_build(...)` — v0.3.0
+
+全入力、model call、compile log、claim/gate、独立査読、最終 TeX/Bib/PDF を
+再検証して `PaperBuildV1` を fail-closed で固定します。blocked record は監査用に保存されます。
 
 ##### Few-shot コーパス管理
 

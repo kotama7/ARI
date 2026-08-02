@@ -144,16 +144,25 @@ BFTS 探索完了後の自動後処理を追加します。
 ```yaml
 pipeline:
   - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+    skill: paper-skill
+    tool: write_paper_iterative
     enabled: true
-    args:
+    inputs:
+      workspace_root: '{{checkpoint_dir}}'
+      science_data_path: '{{checkpoint_dir}}/science_data.json'
+      figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+      references_path: '{{checkpoint_dir}}/related_refs.json'
+      ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+      rubric_id: generic_conference
       venue: arxiv
 
   - stage: review
-    skill: ari-skill-paper
-    tool: review_section
+    skill: paper-skill
+    tool: review_compiled_paper
     enabled: true
+    inputs:
+      rubric_id: generic_conference
+      tex_path: '{{checkpoint_dir}}/full_paper.tex'
 
   - stage: my_new_stage            # ← ここに追加
     skill: ari-skill-yourskill
@@ -168,11 +177,9 @@ pipeline:
     enabled: true
 ```
 
-各ステージは以下を受け取ります:
-- `best_node`: BFTS で最高スコアを獲得したノード
-- `all_nodes`: 探索された全ノード
-- `nodes_json_path`: `nodes_tree.json` へのパス
-- YAML で指定された `args`
+各ステージが受け取るのは workflow の明示的な `inputs` だけです。論文
+stage は暗黙の node-tree dict ではなく、digest で固定された native artifact
+を入力にします。
 
 ---
 
@@ -238,9 +245,15 @@ VENUES = [
 
 ```yaml
 - stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    science_data_path: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    references_path: '{{checkpoint_dir}}/related_refs.json'
+    ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+    rubric_id: your_venue
     venue: your_venue   # ← ここで指定
 ```
 

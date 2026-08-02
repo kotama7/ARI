@@ -118,6 +118,16 @@ last_verified: 2026-08-02
   だけをnative入力とし、旧trace/source scanをoffline migrationへ隔離した。EAR v2へ
   run/tool/catalog/result/cassette/admission lockを収録し、atomic curate/publish、共有formula
   registry、deterministic bundle、minimal dependencyを固定してC10-01〜08/D1〜D6を完了した。
+- C11 Plotを固定rendererとdigest-bound `FigureSpecV1/ManifestV1/BatchV1`へ移行し、
+  source/spec/environment/font/artifactを固定した。C12 VLMはcriteria profile、exact
+  image artifact、model/prompt/raw response/cost、minimum fail-closed aggregationと
+  bounded feedback lineageを実装し、旧inline/base64/aggregate-only経路を削除した。
+  C11-01〜08/D1〜D5、C12-01〜08/D1〜D5を完了した。
+- C13 Paperをnative ScienceData/FigureBatch/retrieval/EAR入力、明示rubric、artifact-backed
+  model call/revision、共通bounded LaTeX compiler、canonical claim parser、独立text/VLM/
+  semantic/hard-gate review、fail-closed `PaperBuildV1`最終ロックへ移行した。旧section API、
+  generic metric fallback、raw subprocess、legacy rubric runtime fallback、inline-only responseを
+  削除し、C13-01〜09/D1〜D6を完了した。
 
 ## 1. 決定
 
