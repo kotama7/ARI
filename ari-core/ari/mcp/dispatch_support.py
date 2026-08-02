@@ -8,6 +8,7 @@ import logging
 import os
 from pathlib import Path
 
+from ari.async_tools import TimeoutBudgetV1
 from ari.config import SkillConfig
 from ari.result import ToolCallContextV1
 
@@ -106,24 +107,6 @@ DEFAULT_TOOL_TIMEOUT = 300
 SLOW_TOOL_TIMEOUT = 3_600
 VERY_SLOW_TOOL_TIMEOUT = 13 * 3_600
 
-_VERY_SLOW_TOOLS = frozenset(
-    {
-        "build_reproduce_sh",
-        "run_reproduce",
-        "grade_with_simplejudge",
-    }
-)
-_SLOW_TOOLS = frozenset(
-    {
-        "generate_ideas",
-        "write_paper_iterative",
-        "review_compiled_paper",
-        "collect_references_iterative",
-        "reproduce_from_paper",
-        "paper_refine",
-        "compile_paper",
-    }
-)
 _TIMEOUT_CLASS_SECONDS = {
     "default": DEFAULT_TOOL_TIMEOUT,
     "bounded": DEFAULT_TOOL_TIMEOUT,
@@ -134,24 +117,23 @@ _TIMEOUT_CLASS_SECONDS = {
 
 
 def resolve_tool_timeout(
-    tool_name: str,
     args: dict,
+    *,
     timeout_class: str | None = None,
+    timeout_budget: TimeoutBudgetV1 | dict | None = None,
 ) -> int:
-    """Resolve explicit budget, manifest class, then migration fallback tier."""
+    """Resolve a manifest class and an explicitly declared per-call budget."""
 
-    for key in ("time_limit_sec", "timeout_global_sec", "wall_time_sec"):
-        value = args.get(key)
-        if isinstance(value, (int, float)) and value > 0:
-            return int(value) + 600
-    if timeout_class in _TIMEOUT_CLASS_SECONDS:
-        return _TIMEOUT_CLASS_SECONDS[timeout_class]
-    # Migration fallback; delete after manifest timeout coverage reaches 100%.
-    if tool_name in _VERY_SLOW_TOOLS:
-        return VERY_SLOW_TOOL_TIMEOUT
-    if tool_name in _SLOW_TOOLS:
-        return SLOW_TOOL_TIMEOUT
-    return DEFAULT_TOOL_TIMEOUT
+    if timeout_budget is not None:
+        budget = (
+            timeout_budget
+            if isinstance(timeout_budget, TimeoutBudgetV1)
+            else TimeoutBudgetV1.model_validate(timeout_budget)
+        )
+        requested = budget.requested_seconds(args)
+        if requested is not None:
+            return requested
+    return _TIMEOUT_CLASS_SECONDS.get(timeout_class or "default", DEFAULT_TOOL_TIMEOUT)
 
 
 def log_tool_call(log: logging.Logger, tool_name: str, args: dict) -> None:

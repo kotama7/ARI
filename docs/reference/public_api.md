@@ -98,6 +98,10 @@ identity = manifest_digest(manifest)
 entrypoint, exhaustive ordinary environment declarations, disjoint named
 `CredentialScopeV1` declarations, unique tool names, capability references,
 phases, side effects, determinism, timeout class, permissions, and result schema.
+`TimeoutBudgetV1` makes any caller-controlled timeout argument explicit and
+bounded. `AsyncLifecycleV1` names the semantic status/result/cancel capabilities
+required by a tool whose `timeout_class` is `async`; unresolved or ambiguous
+lifecycle capabilities make the manifest invalid.
 `environment_policy=complete` is required for built-in production Skills.
 Each resolved tool also declares `context_requirement` as `none`, `run`, or
 `node`; dispatch fails closed when the caller does not supply that structured
@@ -149,6 +153,13 @@ passes through the same normalization path and then returns the former
 
 The normative result contract is
 `ari-core/ari/schemas/result_envelope_v1.schema.json`.
+
+Async submissions add an `AsyncToolHandleV1` whose lifecycle endpoints are
+immutable `tool_ref` values resolved from the reviewed manifest capabilities.
+The handle can be serialized and passed to `MCPClient.get_async_status()`,
+`get_async_result()`, `cancel_async()`, or `wait_for_async()` without a bare-name
+lookup. Its normative schema is
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json`.
 
 ## `ari.public.skill_lock`
 

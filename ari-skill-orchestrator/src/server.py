@@ -108,11 +108,24 @@ def _write_meta(
         "recursion_depth": int(recursion_depth),
         "max_recursion_depth": int(max_recursion_depth),
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": "submitted",
     }
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     meta_path = ckpt_dir / "meta.json"
     meta_path.write_text(json.dumps(meta, indent=2))
     return meta_path
+
+
+def _update_meta(ckpt_dir: Path, **updates: object) -> dict:
+    """Atomically merge durable process state into a run's metadata."""
+
+    meta = _read_meta(ckpt_dir) or {}
+    meta.update(updates)
+    meta_path = ckpt_dir / "meta.json"
+    temporary = ckpt_dir / ".meta.json.tmp"
+    temporary.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    temporary.replace(meta_path)
+    return meta
 
 
 def _read_meta(ckpt_dir: Path) -> dict | None:
@@ -151,6 +164,14 @@ def _runs(logs_dir: Path | None = None) -> list[dict]:
             1 for v in nodes.values()
             if isinstance(v, dict) and v.get("status") == "success"
         )
+        status = str(meta.get("status") or "")
+        if status not in {"failed", "cancelled", "completed", "succeeded"}:
+            if (ckpt / "results.json").exists():
+                status = "completed"
+            elif meta.get("pid"):
+                status = "running"
+            else:
+                status = status or "submitted"
         runs.append({
             "run_id": meta.get("run_id") or results.get("run_id") or ckpt.name,
             "checkpoint_dir": str(ckpt),
@@ -164,6 +185,9 @@ def _runs(logs_dir: Path | None = None) -> list[dict]:
                 "max_recursion_depth", DEFAULT_MAX_RECURSION_DEPTH
             ),
             "created_at": meta.get("created_at"),
+            "status": status,
+            "pid": meta.get("pid"),
+            "exit_code": meta.get("exit_code"),
         })
     return runs
 
@@ -329,7 +353,31 @@ def tool_run_experiment(
             env=proc_env,
         )
         pid = proc.pid
+        (ckpt_dir / "pid").write_text(str(pid), encoding="utf-8")
+        _update_meta(ckpt_dir, status="running", pid=pid)
+
+        def _reap() -> None:
+            return_code = proc.wait()
+            log_fh.close()
+            (ckpt_dir / "pid").unlink(missing_ok=True)
+            current = _read_meta(ckpt_dir) or {}
+            final_status = (
+                "cancelled"
+                if current.get("status") == "cancelled"
+                else ("completed" if return_code == 0 else "failed")
+            )
+            _update_meta(
+                ckpt_dir,
+                status=final_status,
+                exit_code=return_code,
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+        threading.Thread(target=_reap, daemon=True).start()
     except FileNotFoundError as e:
+        if "log_fh" in locals():
+            log_fh.close()
+        _update_meta(ckpt_dir, status="failed", error=str(e))
         return {
             "status": "error",
             "error": f"ari CLI not found: {e}",
@@ -337,6 +385,9 @@ def tool_run_experiment(
             "checkpoint_dir": str(ckpt_dir),
         }
     except Exception as e:
+        if "log_fh" in locals():
+            log_fh.close()
+        _update_meta(ckpt_dir, status="failed", error=str(e))
         return {
             "status": "error",
             "error": str(e),
@@ -413,6 +464,7 @@ def tool_get_status(run_id: str, logs_dir: Path | None = None) -> dict:
 
     result: dict = {
         "run_id": run["run_id"],
+        "status": run["status"],
         "total_nodes": run["total_nodes"],
         "success_nodes": run["success_nodes"],
         "has_paper": run["has_paper"],
@@ -533,15 +585,38 @@ def tool_stop_experiment(run_id: str, logs_dir: Path | None = None) -> dict:
     if run is None:
         return {"error": f"run_id '{run_id}' not found"}
     ckpt = Path(run["checkpoint_dir"])
+    if run.get("status") in {"completed", "succeeded", "failed", "cancelled"}:
+        return {
+            "ok": True,
+            "status": run["status"],
+            "run_id": run["run_id"],
+            "note": "Experiment is already terminal",
+        }
     pid_file = ckpt / "pid"
     if not pid_file.exists():
         return {"error": "No PID file found — experiment may not be running"}
     try:
         pid = int(pid_file.read_text().strip())
         os.kill(pid, signal.SIGTERM)
-        return {"ok": True, "run_id": run["run_id"], "pid": pid, "signal": "SIGTERM"}
+        _update_meta(
+            ckpt,
+            status="cancelled",
+            cancelled_at=datetime.now(timezone.utc).isoformat(),
+        )
+        return {
+            "ok": True,
+            "status": "cancelled",
+            "run_id": run["run_id"],
+            "pid": pid,
+            "signal": "SIGTERM",
+        }
     except ProcessLookupError:
-        return {"ok": True, "run_id": run["run_id"], "note": "Process already exited"}
+        return {
+            "ok": True,
+            "status": run.get("status", "completed"),
+            "run_id": run["run_id"],
+            "note": "Process already exited",
+        }
     except Exception as e:
         return {"error": str(e)}
 

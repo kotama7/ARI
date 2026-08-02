@@ -1,5 +1,131 @@
 {
   "$defs": {
+    "AsyncLifecycleV1": {
+      "additionalProperties": false,
+      "description": "Manifest-declared submit/status/result/cancel protocol.",
+      "properties": {
+        "cancel": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AsyncOperationV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "handle_field": {
+          "default": "handle_id",
+          "title": "Handle Field",
+          "type": "string"
+        },
+        "max_wait_seconds": {
+          "default": 86400,
+          "maximum": 2678400,
+          "minimum": 1,
+          "title": "Max Wait Seconds",
+          "type": "integer"
+        },
+        "poll_interval_seconds": {
+          "default": 5.0,
+          "maximum": 3600,
+          "minimum": 0.01,
+          "title": "Poll Interval Seconds",
+          "type": "number"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AsyncOperationV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "state_field": {
+          "default": "status",
+          "title": "State Field",
+          "type": "string"
+        },
+        "states": {
+          "$ref": "#/$defs/AsyncStateMapV1"
+        },
+        "status": {
+          "$ref": "#/$defs/AsyncOperationV1"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "AsyncLifecycleV1",
+      "type": "object"
+    },
+    "AsyncOperationV1": {
+      "additionalProperties": false,
+      "description": "Manifest reference to one operation in an async lifecycle.",
+      "properties": {
+        "capability_ref": {
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "handle_argument": {
+          "default": "handle_id",
+          "title": "Handle Argument",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability_ref"
+      ],
+      "title": "AsyncOperationV1",
+      "type": "object"
+    },
+    "AsyncStateMapV1": {
+      "additionalProperties": false,
+      "description": "Case-insensitive provider state mapping used while polling a handle.",
+      "properties": {
+        "cancelled_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cancelled States",
+          "type": "array"
+        },
+        "failed_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Failed States",
+          "type": "array"
+        },
+        "running_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Running States",
+          "type": "array"
+        },
+        "submitted_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Submitted States",
+          "type": "array"
+        },
+        "succeeded_states": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Succeeded States",
+          "type": "array"
+        }
+      },
+      "title": "AsyncStateMapV1",
+      "type": "object"
+    },
     "CredentialScopeV1": {
       "additionalProperties": false,
       "description": "Named credential authority whose values are never serialized to locks.",
@@ -54,10 +180,60 @@
       "title": "SkillEntrypointV1",
       "type": "object"
     },
+    "TimeoutBudgetV1": {
+      "additionalProperties": false,
+      "description": "A caller-controlled timeout argument explicitly admitted by a manifest.",
+      "properties": {
+        "argument": {
+          "title": "Argument",
+          "type": "string"
+        },
+        "maximum_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 2678400,
+          "title": "Maximum Seconds",
+          "type": "integer"
+        },
+        "overhead_seconds": {
+          "default": 0,
+          "maximum": 2678400,
+          "minimum": 0,
+          "title": "Overhead Seconds",
+          "type": "integer"
+        },
+        "unit": {
+          "default": "seconds",
+          "enum": [
+            "seconds",
+            "minutes",
+            "hours"
+          ],
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "argument",
+        "maximum_seconds"
+      ],
+      "title": "TimeoutBudgetV1",
+      "type": "object"
+    },
     "ToolManifestV1": {
       "additionalProperties": false,
       "description": "One tool declaration; omitted policy fields inherit ``tool_defaults``.",
       "properties": {
+        "async_lifecycle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AsyncLifecycleV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "capability_ref": {
           "title": "Capability Ref",
           "type": "string"
@@ -166,6 +342,17 @@
           "default": null,
           "title": "Side Effects"
         },
+        "timeout_budget": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeoutBudgetV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "timeout_class": {
           "anyOf": [
             {
@@ -197,6 +384,17 @@
       "additionalProperties": false,
       "description": "Policy inherited by tools that do not declare an override.",
       "properties": {
+        "async_lifecycle": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AsyncLifecycleV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "context_requirement": {
           "default": "none",
           "enum": [
@@ -247,6 +445,17 @@
           ],
           "title": "Side Effects",
           "type": "string"
+        },
+        "timeout_budget": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TimeoutBudgetV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "timeout_class": {
           "default": "default",

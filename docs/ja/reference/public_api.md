@@ -145,7 +145,13 @@ identity = manifest_digest(manifest)
 `SkillManifestV1` は package identity、package-relative Python stdio entrypoint、
 網羅的な通常環境宣言、重複しない credential scope、一意な tool 名、
 capability reference、phase、side effect、determinism、timeout class、permission、
-result schema を検証します。組み込み production Skill では
+result schema を検証します。
+`TimeoutBudgetV1` は caller が制御する timeout 引数を明示し、上限を固定します。
+`timeout_class=async` の tool は `AsyncLifecycleV1` で status/result/cancel の
+semantic capability を宣言しなければならず、未解決または曖昧な参照は manifest
+validation で拒否されます。
+
+組み込み production Skill では
 `environment_policy=complete` が必須です。解決済みの各 tool は
 `context_requirement` を `none` / `run` / `node` で宣言し、構造化コンテキストが
 なければ dispatch は fail closed します。legacy manifest は migration 呼び出しが
@@ -185,6 +191,12 @@ self、parent、root から parent までの順序付き chain を `lineage_dige
 記録します。credential は値ではなく scope ID だけを記録します。
 4,000 文字を超える raw content は content address の artifact に退避され、
 `materialize_content(store)` が digest と byte size を検証して復元します。
+
+非同期 submit は、review 済み manifest capability から解決した immutable
+`tool_ref` endpoint を持つ `AsyncToolHandleV1` を追加します。bare name を再検索せず
+`MCPClient.get_async_status()`、`get_async_result()`、`cancel_async()`、
+`wait_for_async()` に serialize 済み handle を渡せます。規範 schema は
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json` です。
 
 ## `ari.public.skill_lock`
 

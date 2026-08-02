@@ -5,8 +5,14 @@ from __future__ import annotations
 import atexit
 import logging
 import os
+import time
 from pathlib import Path
 
+from ari.async_tools import (
+    AsyncLifecycleV1,
+    AsyncToolEndpointV1,
+    AsyncToolHandleV1,
+)
 from ari.call_context import ToolCallContextV1, new_context_authority_key
 from ari.config import SkillConfig
 from ari.mcp.connection import SkillConnection
@@ -32,6 +38,7 @@ from ari.result import (
     DEFAULT_INLINE_RESULT_LIMIT,
     ResultEnvelopeNormalizer,
     ResultEnvelopeV1,
+    ResultErrorV1,
     utc_now_iso,
 )
 from ari.skill_lock import SkillLockError, SkillsLockV1
@@ -280,6 +287,120 @@ class MCPClient:
             started_at=started_at,
         )
 
+    def get_async_status(
+        self,
+        handle: AsyncToolHandleV1 | dict,
+        *,
+        context: ToolCallContextV1 | None = None,
+    ) -> ResultEnvelopeV1:
+        """Poll an async handle through its immutable status endpoint."""
+
+        parsed = self._parse_async_handle(handle, context=context)
+        if isinstance(parsed, ResultEnvelopeV1):
+            return parsed
+        envelope = self.call_tool_envelope(
+            parsed.status.tool_ref,
+            {parsed.status.handle_argument: parsed.handle_id},
+            context=context,
+        )
+        return self._normalize_async_status(envelope, parsed)
+
+    def get_async_result(
+        self,
+        handle: AsyncToolHandleV1 | dict,
+        *,
+        context: ToolCallContextV1 | None = None,
+    ) -> ResultEnvelopeV1:
+        """Fetch an async result, or use the terminal status payload as its result."""
+
+        parsed = self._parse_async_handle(handle, context=context)
+        if isinstance(parsed, ResultEnvelopeV1):
+            return parsed
+        if parsed.result is None or parsed.result == parsed.status:
+            return self.get_async_status(parsed, context=context)
+        envelope = self.call_tool_envelope(
+            parsed.result.tool_ref,
+            {parsed.result.handle_argument: parsed.handle_id},
+            context=context,
+        )
+        return envelope.model_copy(update={"async_handle": parsed})
+
+    def cancel_async(
+        self,
+        handle: AsyncToolHandleV1 | dict,
+        *,
+        context: ToolCallContextV1 | None = None,
+    ) -> ResultEnvelopeV1:
+        """Cancel an async operation through its declared immutable endpoint."""
+
+        parsed = self._parse_async_handle(handle, context=context)
+        if isinstance(parsed, ResultEnvelopeV1):
+            return parsed
+        if parsed.cancel is None:
+            return self._result_normalizer().error(
+                tool_ref=parsed.submission_tool_ref,
+                kind="admission",
+                message="Async operation does not declare a cancel capability",
+                retryable=False,
+                context=context,
+                details={"handle_id": parsed.handle_id},
+            )
+        envelope = self.call_tool_envelope(
+            parsed.cancel.tool_ref,
+            {parsed.cancel.handle_argument: parsed.handle_id},
+            context=context,
+        )
+        if envelope.status == "error":
+            return envelope.model_copy(update={"async_handle": parsed})
+        return envelope.model_copy(
+            update={"status": "cancelled", "async_handle": parsed}
+        )
+
+    def wait_for_async(
+        self,
+        handle: AsyncToolHandleV1 | dict,
+        *,
+        context: ToolCallContextV1 | None = None,
+        timeout_seconds: float | None = None,
+        cancel_on_timeout: bool = False,
+    ) -> ResultEnvelopeV1:
+        """Poll until terminal state, then retrieve the declared result."""
+
+        parsed = self._parse_async_handle(handle, context=context)
+        if isinstance(parsed, ResultEnvelopeV1):
+            return parsed
+        wait_budget = (
+            float(parsed.max_wait_seconds)
+            if timeout_seconds is None
+            else max(0.0, float(timeout_seconds))
+        )
+        started = time.monotonic()
+        while True:
+            status = self.get_async_status(parsed, context=context)
+            if status.status not in {"submitted", "running"}:
+                if status.status == "ok" and parsed.result not in {
+                    None,
+                    parsed.status,
+                }:
+                    return self.get_async_result(parsed, context=context)
+                return status
+            elapsed = time.monotonic() - started
+            if elapsed >= wait_budget:
+                if cancel_on_timeout and parsed.cancel is not None:
+                    self.cancel_async(parsed, context=context)
+                return self._result_normalizer().error(
+                    tool_ref=parsed.status.tool_ref,
+                    kind="timeout",
+                    message=(
+                        f"Async operation {parsed.handle_id!r} did not reach a "
+                        f"terminal state within {wait_budget:g} seconds"
+                    ),
+                    retryable=True,
+                    context=context,
+                    details={"handle_id": parsed.handle_id},
+                )
+            time.sleep(min(parsed.poll_interval_seconds, wait_budget - elapsed))
+
     def _registration_admission_error(
         self,
         *,
@@ -349,9 +470,17 @@ class MCPClient:
 
         skill = next((s for s in self.skills if s.name == skill_name), None)
         timeout_class = None
+        timeout_budget = None
         if skill is not None:
             timeout_class = skill.tool_timeout_classes.get(tool_name)
-        timeout = _resolve_tool_timeout(tool_name, args, timeout_class)
+            policy = skill.tool_policies.get(tool_name, {})
+            if isinstance(policy, dict):
+                timeout_budget = policy.get("timeout_budget")
+        timeout = _resolve_tool_timeout(
+            args,
+            timeout_class=timeout_class,
+            timeout_budget=timeout_budget,
+        )
         requirement = self._tool_context_requirement(tool_ref)
         call_args = (
             conn.authorize_args(tool_name, args, context)
@@ -366,7 +495,7 @@ class MCPClient:
                 next(item for item in self.skills if item.name == skill_name)
             )
 
-        return invoke_with_retries(
+        envelope = invoke_with_retries(
             connection=conn,
             reconnect=_reconnect,
             tool_name=tool_name,
@@ -378,6 +507,172 @@ class MCPClient:
             started_at=started_at,
             logger=logger,
         )
+        policy = self._tool_policy(tool_ref)
+        lifecycle_raw = policy.get("async_lifecycle")
+        if policy.get("timeout_class") != "async" or lifecycle_raw is None:
+            return envelope
+        return self._attach_async_handle(
+            envelope,
+            lifecycle=AsyncLifecycleV1.model_validate(lifecycle_raw),
+            skill_name=skill_name,
+            context=context,
+        )
+
+    def _attach_async_handle(
+        self,
+        envelope: ResultEnvelopeV1,
+        *,
+        lifecycle: AsyncLifecycleV1,
+        skill_name: str,
+        context: ToolCallContextV1,
+    ) -> ResultEnvelopeV1:
+        """Bind a successful provider submission to immutable lifecycle refs."""
+
+        if envelope.status == "error":
+            return envelope
+        raw_handle = envelope.structured_content.get(lifecycle.handle_field)
+        if raw_handle is None or not str(raw_handle).strip():
+            return self._result_normalizer().error(
+                tool_ref=envelope.provenance.tool_ref,
+                kind="protocol",
+                message=(
+                    "Async submission omitted declared handle field "
+                    f"{lifecycle.handle_field!r}"
+                ),
+                retryable=False,
+                context=context,
+                details={"handle_field": lifecycle.handle_field},
+            )
+        try:
+            status = self._resolve_async_endpoint(skill_name, lifecycle.status)
+            result = (
+                self._resolve_async_endpoint(skill_name, lifecycle.result)
+                if lifecycle.result is not None
+                else None
+            )
+            cancel = (
+                self._resolve_async_endpoint(skill_name, lifecycle.cancel)
+                if lifecycle.cancel is not None
+                else None
+            )
+        except ValueError as exc:
+            return self._result_normalizer().error(
+                tool_ref=envelope.provenance.tool_ref,
+                kind="protocol",
+                message=str(exc),
+                retryable=False,
+                context=context,
+            )
+        handle = AsyncToolHandleV1(
+            handle_id=str(raw_handle),
+            submission_tool_ref=envelope.provenance.tool_ref,
+            status=status,
+            result=result,
+            cancel=cancel,
+            state_field=lifecycle.state_field,
+            states=lifecycle.states,
+            poll_interval_seconds=lifecycle.poll_interval_seconds,
+            max_wait_seconds=lifecycle.max_wait_seconds,
+            submitted_at=envelope.provenance.completed_at or utc_now_iso(),
+        )
+        return envelope.model_copy(
+            update={"status": "submitted", "async_handle": handle}
+        )
+
+    def _resolve_async_endpoint(
+        self,
+        skill_name: str,
+        operation,
+    ) -> AsyncToolEndpointV1:
+        matches = [
+            tool_ref
+            for tool_ref, metadata in self._tool_metadata_by_ref.items()
+            if self._tool_ref_registry.get(tool_ref) == skill_name
+            and metadata.get("capability_ref") == operation.capability_ref
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"Async capability {operation.capability_ref!r} resolved to "
+                f"{len(matches)} runtime tools for Skill {skill_name!r}"
+            )
+        return AsyncToolEndpointV1(
+            tool_ref=matches[0],
+            handle_argument=operation.handle_argument,
+        )
+
+    def _parse_async_handle(
+        self,
+        handle: AsyncToolHandleV1 | dict,
+        *,
+        context: ToolCallContextV1 | None,
+    ) -> AsyncToolHandleV1 | ResultEnvelopeV1:
+        try:
+            return AsyncToolHandleV1.model_validate(handle)
+        except (TypeError, ValueError) as exc:
+            return self._result_normalizer().error(
+                tool_ref=_unresolved_tool_ref("async-handle"),
+                kind="protocol",
+                message=f"Invalid async handle: {exc}",
+                retryable=False,
+                context=context,
+            )
+
+    def _normalize_async_status(
+        self,
+        envelope: ResultEnvelopeV1,
+        handle: AsyncToolHandleV1,
+    ) -> ResultEnvelopeV1:
+        if envelope.status == "error":
+            return envelope.model_copy(update={"async_handle": handle})
+        raw_state = envelope.structured_content.get(handle.state_field)
+        state = handle.states.classify(raw_state)
+        if state == "unknown":
+            return envelope.model_copy(
+                update={
+                    "status": "error",
+                    "async_handle": handle,
+                    "error": ResultErrorV1(
+                        kind="protocol",
+                        message=(
+                            "Async status response contains an undeclared state "
+                            f"{raw_state!r} in field {handle.state_field!r}"
+                        ),
+                        retryable=True,
+                        details={"provider_state": raw_state},
+                    ),
+                }
+            )
+        if state == "failed":
+            structured = envelope.structured_content
+            message = next(
+                (
+                    str(structured[key])
+                    for key in ("message", "error", "stderr")
+                    if structured.get(key)
+                ),
+                f"Async operation {handle.handle_id!r} failed",
+            )
+            return envelope.model_copy(
+                update={
+                    "status": "error",
+                    "async_handle": handle,
+                    "error": ResultErrorV1(
+                        kind="tool", message=message, retryable=False
+                    ),
+                }
+            )
+        status = {
+            "submitted": "submitted",
+            "running": "running",
+            "succeeded": "ok",
+            "cancelled": "cancelled",
+        }[state]
+        return envelope.model_copy(update={"status": status, "async_handle": handle})
+
+    def _tool_policy(self, tool_ref: str) -> dict:
+        metadata = self._tool_metadata_by_ref.get(tool_ref, {})
+        policy = metadata.get("policy")
+        return policy if isinstance(policy, dict) else {}
 
     def _tool_admits_phase(self, tool_ref: str, phase: str) -> bool:
         skill_name = self._tool_ref_registry.get(tool_ref)
@@ -392,10 +687,7 @@ class MCPClient:
         return _phase_matches(tool_phases, phase)
 
     def _tool_context_requirement(self, tool_ref: str) -> str:
-        metadata = self._tool_metadata_by_ref.get(tool_ref, {})
-        policy = metadata.get("policy")
-        if not isinstance(policy, dict):
-            return "none"
+        policy = self._tool_policy(tool_ref)
         requirement = str(policy.get("context_requirement") or "none")
         return requirement if requirement in {"none", "run", "node"} else "none"
 

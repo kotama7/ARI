@@ -1,6 +1,7 @@
 """Stable public contract for normalized Skill results and artifacts."""
 
 from ari.result import (  # noqa: F401
+    ASYNC_TOOL_HANDLE_V1,
     ARTIFACT_REF_V1,
     DEFAULT_INLINE_RESULT_LIMIT,
     RAW_RESULT_ROLE,
@@ -13,6 +14,9 @@ from ari.result import (  # noqa: F401
     ResultErrorKind,
     ResultErrorV1,
     ResultProvenanceV1,
+    AsyncStateMapV1,
+    AsyncToolEndpointV1,
+    AsyncToolHandleV1,
     NodeContextV1,
     RunContextV1,
     ToolCallContextV1,
@@ -20,6 +24,7 @@ from ari.result import (  # noqa: F401
 )
 
 __all__ = [
+    "ASYNC_TOOL_HANDLE_V1",
     "ARTIFACT_REF_V1",
     "DEFAULT_INLINE_RESULT_LIMIT",
     "RAW_RESULT_ROLE",
@@ -32,6 +37,9 @@ __all__ = [
     "ResultErrorKind",
     "ResultErrorV1",
     "ResultProvenanceV1",
+    "AsyncStateMapV1",
+    "AsyncToolEndpointV1",
+    "AsyncToolHandleV1",
     "NodeContextV1",
     "RunContextV1",
     "ToolCallContextV1",

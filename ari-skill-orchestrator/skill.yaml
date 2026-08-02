@@ -88,6 +88,26 @@ tools:
     side_effects: stateful
     timeout_class: async
     permissions: [workspace-read, workspace-write, process]
+    async_lifecycle:
+      handle_field: run_id
+      state_field: status
+      status:
+        capability_ref: ari.control.run.status
+        handle_argument: run_id
+      result:
+        capability_ref: ari.control.ear.read
+        handle_argument: run_id
+      cancel:
+        capability_ref: ari.control.run.stop
+        handle_argument: run_id
+      states:
+        submitted_states: [submitted, started]
+        running_states: [running]
+        succeeded_states: [completed, succeeded]
+        failed_states: [failed, error]
+        cancelled_states: [cancelled, canceled]
+      poll_interval_seconds: 5
+      max_wait_seconds: 86400
   - name: stop_experiment
     capability_ref: ari.control.run.stop
     side_effects: destructive

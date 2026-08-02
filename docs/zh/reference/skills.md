@@ -1,5 +1,11 @@
 ---
 sources:
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
   - path: ari-skill-hpc/src/server.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
@@ -18,6 +24,26 @@ last_verified: 2026-08-02
 # MCP 技能参考
 
 技能是为 ARI 智能体提供工具的 MCP 服务器。工具尽可能保持确定性；使用 LLM 的工具会明确标注。**共 14 个技能**（13 个默认，1 个附加）。v0.7.0 新增 `ari-skill-replicate`，用于 PaperBench 形式的可复现性流程。
+
+## canonical `skill.yaml` contract
+
+每个内置技能都以版本化 `skill.yaml` 作为 package identity、entrypoint、环境与
+credential scope、capability、phase、side effect、determinism、timeout、permission
+和 result schema 的唯一来源。规范 schema 为
+`ari-core/ari/schemas/skill_manifest_v1.schema.json`；`mcp.json` 只是生成的兼容视图。
+
+timeout 不依赖 tool 名列表。每个 tool 使用 manifest `timeout_class`；只有
+`timeout_budget` 明确声明参数名、单位、buffer 与上限时，调用方 wall-time 参数才会
+改变外层 transport timeout。未声明参数不能扩大预算。
+
+异步 submitter 通过 `async_lifecycle` 声明 handle field 与 status/result/cancel
+semantic capability。admission 将其解析为不可变 runtime `tool_ref`，并在
+`ResultEnvelopeV1.async_handle` 中返回 portable `AsyncToolHandleV1`。
+`MCPClient.get_async_status()`、`get_async_result()`、`cancel_async()` 与
+`wait_for_async()` 只使用这些绑定引用。handle 缺失或 provider state 未在 manifest
+中声明时，会以类型化 protocol error fail closed。规范 schema 为
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json`。SLURM submit 和外部 ARI
+orchestrator 已使用同一 lifecycle contract。
 
 ## ari-skill-hpc
 

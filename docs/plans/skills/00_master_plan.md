@@ -43,8 +43,11 @@ last_verified: 2026-08-02
   direct-MCP proxy injectionを追加し、memoryのself-write / ancestor-readをcall単位で認可。
 - process-global current-node環境変数、private set-node tool、CoW tool名listを削除し、
   4 parallel nodeの実process testでcross-branch isolationを固定。
-- C01-D1/D2/D4とC08-D1/D2/D3を完了。削除gate未達のtimeout fallback、
-  source scraping、暗黙directory discovery、legacy runtime readerは保持。
+- tool名別timeout tableを削除し、manifest-declared bounded budgetと
+  capability-based async submit/status/result/cancel handleを追加。SLURMと外部ARI runを
+  同じportable handleへ移行。
+- C01-D1/D2/D3/D4とC08-D1/D2/D3を完了。削除gate未達のsource scraping、
+  暗黙directory discovery、legacy runtime readerは保持。
 
 ## 1. 決定
 

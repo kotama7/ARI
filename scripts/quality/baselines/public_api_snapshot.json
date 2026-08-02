@@ -150,6 +150,10 @@
       ],
       "exports": [
         "ARTIFACT_REF_V1",
+        "ASYNC_TOOL_HANDLE_V1",
+        "AsyncStateMapV1",
+        "AsyncToolEndpointV1",
+        "AsyncToolHandleV1",
         "DEFAULT_INLINE_RESULT_LIMIT",
         "NodeContextV1",
         "RAW_RESULT_ROLE",
@@ -224,6 +228,7 @@
         "ari.skill_manifest"
       ],
       "exports": [
+        "AsyncLifecycleV1",
         "CredentialScopeV1",
         "LEGACY_MCP_RESULT_V1",
         "MANIFEST_FILENAME",
@@ -232,6 +237,7 @@
         "SkillEntrypointV1",
         "SkillManifestError",
         "SkillManifestV1",
+        "TimeoutBudgetV1",
         "ToolManifestV1",
         "ToolPolicyV1",
         "legacy_mcp_document",

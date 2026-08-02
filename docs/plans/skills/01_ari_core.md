@@ -29,7 +29,7 @@ last_verified: 2026-08-02
 
 # C01: `ari-core` Skill control plane 実装計画
 
-> 状態: In progress（C01-01〜08完了、C01-09/10未完了）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress（C01-01〜09完了、C01-10未完了）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務と範囲
 
@@ -55,8 +55,8 @@ last_verified: 2026-08-02
   digest に束縛し、接続ごとの tool-bound HMAC capability で provider へ渡す。
 - memory の可変な current-node 環境変数と private set-node tool は削除済みで、
   4 parallel node の実 MCP process test が sibling isolation を固定する。
-- 未移行なのは tool 名別 timeout fallback、async handle、viz source scraping、
-  directory 暗黙登録、runtime の legacy config reader である。
+- 未移行なのは viz source scraping、directory 暗黙登録、runtime の legacy config
+  reader である。
 
 ## 3. 目標契約
 
@@ -80,7 +80,7 @@ last_verified: 2026-08-02
 | C01-06 | **完了**: child environment policyを実装 | allowlist、secret redaction、credential scope identity、direct-MCP secure proxy | C01-03 |
 | C01-07 | **完了**: run snapshotを固定 | `SKILLS.lock`、schema/provider digest、phase別active set、atomic create/verify、provider fail-closed | C01-04 |
 | C01-08 | **完了**: explicit `RunContext` / `NodeContext` をcallへ渡す | parallel-safe context、memory連携、direct-MCP proxy署名 | C01-05 |
-| C01-09 | capability-based timeout / async handle | hard-coded tool名に依存しないbudgetとpolling | C01-05 |
+| C01-09 | **完了**: capability-based timeout / async handle | manifest timeout budget、immutable lifecycle refs、typed poll/result/cancel/wait | C01-05 |
 | C01-10 | conformance CIとmigration reader | manifest/tools/workflow/version check、旧config fixture | C01-02〜09 |
 
 ## 5. Compatibility と rollout
@@ -101,6 +101,7 @@ last_verified: 2026-08-02
 - [x] 4 parallel nodeのmemory writeでnode contextが交差しない。
 - [x] 4,000文字を超える結果がartifact化され、digestから復元できる。
 - [x] stdio server error、timeout、cancel、malformed stdoutがtyped errorになる。
+- [x] async submitがportable handleを返し、manifest capabilityだけからstatus/result/cancelを解決し、未知stateをfail closedする。
 - [ ] 現行golden checkpointを新readerで開き、paper/replay contractが維持される。
 - [x] `pytest ari-core/tests -q` と全manifest contract testがgreenである。
 
@@ -112,7 +113,7 @@ last_verified: 2026-08-02
 |---|---|---|---|---|
 | C01-D1 | **完了**: bare-nameのlast-writer-wins `_tool_registry` | namespaced immutable registry | P2 | collision test、全call siteが`tool_ref`または一意aliasを使用 |
 | C01-D2 | **完了**: `_server_params()` の `{**os.environ, ...}` を削除 | child environment policy | P2 | secret non-propagation実process test、全Skillのcomplete env宣言、Claude parent-env merge proxy test |
-| C01-D3 | `_SLOW_TOOLS` / `_VERY_SLOW_TOOLS` のtool名list | manifest timeout class / per-call budget | P2 | timeout fixture parity、manifest coverage 100% |
+| C01-D3 | **完了**: `_SLOW_TOOLS` / `_VERY_SLOW_TOOLS` のtool名list | manifest timeout class / declared bounded per-call budget | P2 | timeout fixture parity、manifest coverage 100%、旧symbol reference 0 |
 | C01-D4 | **完了**: `_COW_TOOLS` と `_set_current_node` 依存 | explicit `NodeContext` | P3 | parallel memory conformance test、旧call site 0 |
 | C01-D5 | vizによる`server.py` source scraping | canonical manifest index | P3 | dashboard contract test、全package manifest移行 |
 | C01-D6 | directory存在だけでproduction Skillを暗黙登録する経路 | approved manifest / lock | P4 | clean install、explicit local-dev opt-in、run lock test |

@@ -115,6 +115,36 @@ def test_manifest_rejects_entrypoint_traversal(tmp_path: Path):
         load_skill_manifest(path)
 
 
+def test_async_timeout_requires_resolvable_lifecycle(tmp_path: Path):
+    document = _manifest()
+    document["tools"][0]["timeout_class"] = "async"
+    with pytest.raises(SkillManifestError, match="requires async_lifecycle"):
+        load_skill_manifest(_write_package(tmp_path / "missing", document))
+
+    document["tools"][0]["async_lifecycle"] = {
+        "handle_field": "job_id",
+        "status": {
+            "capability_ref": "ari.fixture.missing-status",
+            "handle_argument": "job_id",
+        },
+    }
+    with pytest.raises(SkillManifestError, match="must resolve to exactly one"):
+        load_skill_manifest(_write_package(tmp_path / "unresolved", document))
+
+
+def test_manifest_resolves_declared_timeout_budget(tmp_path: Path):
+    document = _manifest()
+    document["tools"][0]["timeout_budget"] = {
+        "argument": "wall_seconds",
+        "overhead_seconds": 30,
+        "maximum_seconds": 600,
+    }
+    manifest = load_skill_manifest(_write_package(tmp_path, document))
+    inspect = manifest.tool("inspect")
+    assert inspect is not None and inspect.timeout_budget is not None
+    assert inspect.timeout_budget.requested_seconds({"wall_seconds": 10}) == 40
+
+
 def test_legacy_manifest_requires_explicit_opt_in(tmp_path: Path):
     package = tmp_path / "ari-skill-legacy"
     package.mkdir()
@@ -170,13 +200,8 @@ def test_explicit_config_is_hydrated_from_manifest(tmp_path: Path):
     assert skill.tool_timeout_classes["mutate"] == "slow"
 
 
-def test_manifest_timeout_class_precedes_legacy_name_table():
-    # generate_ideas is legacy slow-tiered, but a canonical bounded declaration
-    # must be authoritative during the transition.
-    assert (
-        _resolve_tool_timeout("generate_ideas", {}, timeout_class="bounded")
-        == DEFAULT_TOOL_TIMEOUT
-    )
+def test_manifest_timeout_class_is_authoritative():
+    assert _resolve_tool_timeout({}, timeout_class="bounded") == DEFAULT_TOOL_TIMEOUT
 
 
 class _FakeConnection:

@@ -222,6 +222,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — schemas index.
   - `__init__.py` — `load(name)` loader.
   - `call_context_v1.schema.json` — explicit run/node tool-call context contract.
+  - `async_tool_handle_v1.schema.json` — immutable async lifecycle handle contract.
   - `node_report.schema.json` — per-node report schema.
   - `publish.schema.json` — publish record / manifest schema.
   - `result_envelope_v1.schema.json` — typed MCP dispatch result contract.

@@ -98,6 +98,16 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
 結合を避ける」という戒めの典型例です —— そのライフサイクルには意図を持って
 のみ手を触れてください。
 
+## MCP admission と result 境界
+
+`ari.mcp.client.MCPClient` は registry、dispatch、retry、run lock reconciliation
+を所有します。`ari.mcp.dispatch_support` の timeout 解決は manifest の
+`timeout_class` と明示的な `timeout_budget` だけを使い、tool 名別リストを持ちません。
+非同期 submitter では `ari.async_tools` の lifecycle 宣言を、admitted provider 内の
+immutable status/result/cancel `tool_ref` へ解決します。portable handle の状態写像、
+bounded polling、result 取得、cancel は `MCPClient` が所有し、未知の状態は protocol
+error として fail closed します。
+
 ## 2 つのオーケストレーションエンジン
 
 ランタイムは 1 本の線形パイプラインではなく、**2 つの異なるエンジン**です ——
