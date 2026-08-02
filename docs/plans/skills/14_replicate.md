@@ -6,6 +6,12 @@ sources:
     role: implementation
   - path: ari-skill-replicate/schemas/replication_rubric.schema.json
     role: schema
+  - path: ari-skill-replicate/schemas/replication_rubric_audit.schema.json
+    role: schema
+  - path: ari-skill-replicate/src/migration.py
+    role: migration
+  - path: ari-skill-paper-re/src/rubric_contract.py
+    role: consumer
   - path: ari-skill-replicate/skill.yaml
     role: config
 last_verified: 2026-08-02
@@ -13,7 +19,7 @@ last_verified: 2026-08-02
 
 # C14: `ari-skill-replicate` 実装計画
 
-> 状態: Active — typed execution resource schemaとarbitrary scheduler flag拒否を実装。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Implemented — C14-01〜08と受け入れ基準を完了。P6の低coverage/V1 support window削除gateを追跡するため本書を保持する。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -35,25 +41,25 @@ paperからPaperBench-compatible reproducibility rubricを生成し、rubricの�
 
 | ID | 作業 | 成果物 |
 |---|---|---|
-| C14-01 | manifest/schema/version同期 | 3 toolとcanonical package version |
-| C14-02 | Rubric V2 schema | evidence span、verification target、typed execution |
-| C14-03 | generation provenance | prompt/model/seed/strategy/parallel subtree digests |
-| C14-04 | independent audit contract | deterministic checks + separate LLM reviewer identity |
-| C14-05 | repair transparency | original/raw、repair actions、dropped leaves artifact |
+| C14-01 | 完了: manifest/schema/version同期 | 3 toolとcanonical package version |
+| C14-02 | 完了: Rubric V2 schema | evidence span、verification target、typed execution |
+| C14-03 | 完了: generation provenance | prompt/model/seed/strategy/parallel subtree digests |
+| C14-04 | 完了: independent audit contract | deterministic checks + separate LLM reviewer identity |
+| C14-05 | 完了: repair transparency | original/raw、repair actions、dropped leaves artifact |
 | C14-06 | 完了: resource request validation | typed bounds、矛盾resource/任意flag negative tests |
-| C14-07 | quality calibration | known papers、negative rubrics、coverage/precision metrics |
-| C14-08 | paper-re handoff/version negotiation | supported rubric versions、migration fixture |
+| C14-07 | 完了: quality calibration | deterministic positive/negative corpus、coverage flags |
+| C14-08 | 完了: paper-re handoff/version negotiation | V2 + digest-verified V1 reader、lossless migration fixture |
 
 ## 5. 受け入れ基準
 
-- [ ] 全leafがpaper evidence spanまたは明示external prerequisiteを持つ。
-- [ ] unverifiable、duplicate、vague leafをdeterministic auditが検出する。
-- [ ] generator/auditorが同一backend/modelの場合、independent evidenceと表示しない。
-- [ ] schema repair前後とdrop理由をartifactから監査できる。
+- [x] 全leafがpaper evidence spanまたは明示external prerequisiteを持つ。
+- [x] unverifiable、duplicate、vague leafをdeterministic auditが検出する。
+- [x] generator/auditorが同一backend/modelの場合、independent evidenceと表示しない。
+- [x] schema repair前後とdrop理由をartifactから監査できる。
 - [x] arbitrary scheduler flag、path、shell fragmentをrubricから注入できない。
-- [ ] two-stage concurrencyがbudgetを守り、partial failureを欠落として記録する。
-- [ ] paper-reがV1/V2 negotiationに失敗した場合fail closedする。
-- [ ] `pytest ari-skill-replicate/tests -q` とcalibration corpusがgreenである。
+- [x] two-stage concurrencyがbudgetを守り、partial failureを欠落として記録する。
+- [x] paper-reがV1/V2 negotiationに失敗した場合fail closedする。
+- [x] `pytest ari-skill-replicate/tests -q` とcalibration corpusがgreenである（118 passed）。consumer suiteもgreen（161 passed, 3 skipped）。
 
 ## 6. 削除要件
 

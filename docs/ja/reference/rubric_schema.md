@@ -4,6 +4,10 @@ sources:
     role: schema
   - path: ari-skill-replicate/src/generator.py
     role: implementation
+  - path: ari-skill-replicate/src/auditor.py
+    role: implementation
+  - path: ari-skill-replicate/src/migration.py
+    role: migration
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
 last_verified: 2026-08-02
@@ -12,33 +16,38 @@ last_verified: 2026-08-02
 # ルーブリック Schema リファレンス
 
 正本: `ari-skill-replicate/schemas/replication_rubric.schema.json`
-(JSON Schema Draft 2020-12, version `3`)。
+(JSON Schema Draft 2020-12, `ari.replication-rubric/v2`。PaperBench bridge
+version は `3` のまま)。
 
 ルーブリック envelope は PaperBench `TaskNode` ツリーを provenance
-メタデータ (paper sha256, generator model, optional audit signature)
-と `reproduce_contract` (レプリケータエージェントプロンプトと
-typed HPC job compiler 双方を駆動) でラップする。
+メタデータ、artifact-backed model call、repair ledger と
+`reproduce_contract` でラップする。監査結果は frozen rubric を変更せず、
+別の `ari.replication-rubric-audit/v2` artifact に保存する。
 
 ## Envelope
 
 ```jsonc
 {
+  "schema_version": "ari.replication-rubric/v2",
   "version":       "3",
   "paper_sha256":  "<64 hex>",                     // sha256(paper text utf-8)
   "rubric_sha256": "<64 hex>",                     // 自己除外、 canonical-JSON の sha256
   "generator": {
     "model":         "gemini/gemini-2.5-pro",
+    "provider":      "gemini",
+    "model_revision": "<immutable revision>",
     "prompt_sha256": "<64 hex>",
     "generated_at":  "2026-05-13T...",
     "temperature":   0.0,
     "seed":          0,
-    "snapshot":      { ... }                       // 任意
+    "strategy":      "hierarchical-v2",
+    "quality_profile": "calibrated",
+    "max_model_calls": 64,
+    "subtree_concurrency": 4,
+    "calls": [ ... ],                              // exact prompt/response artifacts
+    "partial_failures": []
   },
-  "audit": {                                       // 任意; ari-skill-replicate.audit_rubric が書き込む
-    "auditor_model": "anthropic/claude-opus-4-7",
-    "audited_at":    "2026-05-13T...",
-    "flags_count":   3
-  },
+  "repair_ledger": {"actions": [], "dropped_artifacts": []},
   "reproduce_contract": { ... },                   // 下記参照
   "rubric": { ... }                                // root TaskNode
 }
@@ -72,7 +81,8 @@ typed HPC job compiler 双方を駆動) でラップする。
     "section": "§3.1",
     "quote":   "<paper 本文からの逐字引用、 最小 10 文字>"
   },
-  "flags": ["unverifiable"]                        // 任意
+  "evidence_span": {"kind": "paper-span", "start_char": 10, "end_char": 40, ...},
+  "verification": {"kind": "artifact", "relative_path": "results.json"}
 }
 ```
 
@@ -108,9 +118,9 @@ Leaf は `score ∈ {0, 1}` (SimpleJudge 二値判定)。 内部ノードは直�
 されない — `_collapse_single_child_chains` が縮退する単一子ラッパー
 ノードを子に折りたたみ、 ウェイトのみの degenerate node を回避する。
 
-### Flags
+### 監査 findings
 
-`ari-skill-replicate.audit_rubric` 由来の監査アノテーション:
+別artifactに書かれる `audit_rubric` の findings:
 
 - `vague_qualifier` — "appropriate", "well-organized" 等
 - `no_paper_evidence` — quote が paper に存在しない
@@ -140,8 +150,9 @@ from ari_skill_replicate.manifest import verify
 verify(rubric)   # rubric_sha256 が再計算と一致なら True
 ```
 
-`rubric_sha256` は自分自身と post-freeze の `audit` フィールドを除外する
-ため、 監査アノテーション追加で provenance が無効化されない。
+`rubric_sha256` が除外するのは自分自身だけである。post-freeze の変更は
+必ずdigest不一致となる。V1はlossless offline migrationでのみV2へ変換し、
+`paper-re` は未知version、改ざん、paper digest不一致をfail closedにする。
 
 ## venue 別テンプレート (Venue-conditioned templates)
 

@@ -62,6 +62,12 @@ See `docs/concepts/publication-lifecycle.md#publication-lifecycle-v070` for the
 publication / verification lifecycle and
 `ari-skill-replicate/README.md` for the upstream rubric generator.
 
+Rubric ingestion is version negotiated at every non-empty `rubric_path` entry
+point. V2 (`ari.replication-rubric/v2`) is preferred; the unversioned V1 reader
+is retained only for the documented migration window and returns
+`rubric_migration_required=true`. Unknown versions, digest tampering, and a
+paper/rubric digest mismatch fail before agent rollout, execution, or grading.
+
 ## Vendored dependencies
 
 The skill bundles PaperBench under `vendor/paperbench/` (git

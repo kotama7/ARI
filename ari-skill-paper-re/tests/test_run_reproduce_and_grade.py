@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -16,6 +17,8 @@ for p in (str(ROOT), str(SRC)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
+from rubric_contract import bind_rubric_digest  # noqa: E402
+
 # Load this skill's server.py explicitly under a unique name to avoid
 # clashing with other ari-skill-*/src/server.py modules pytest may have
 # already imported.
@@ -25,11 +28,12 @@ sys.modules["paper_re_server"] = S
 _spec.loader.exec_module(S)
 
 
-def _envelope(leaves: list[dict]) -> dict:
-    return {
+def _envelope(leaves: list[dict], paper_text: str = "paper") -> dict:
+    import hashlib
+
+    document = {
         "version": "3",
-        "paper_sha256": "a" * 64,
-        "rubric_sha256": "b" * 64,
+        "paper_sha256": hashlib.sha256(paper_text.encode()).hexdigest(),
         "generator": {
             "model": "test/m",
             "prompt_sha256": "c" * 64,
@@ -48,6 +52,7 @@ def _envelope(leaves: list[dict]) -> dict:
             "sub_tasks": leaves,
         },
     }
+    return bind_rubric_digest(document, legacy=True)
 
 
 def _leaf(text: str) -> dict:
@@ -61,9 +66,11 @@ def _leaf(text: str) -> dict:
     }
 
 
-def _write_rubric(tmp_path: Path, leaves: list[dict]) -> Path:
+def _write_rubric(
+    tmp_path: Path, leaves: list[dict], paper_text: str = "paper"
+) -> Path:
     path = tmp_path / "rubric.json"
-    path.write_text(json.dumps(_envelope(leaves)))
+    path.write_text(json.dumps(_envelope(leaves, paper_text)))
     return path
 
 
@@ -155,8 +162,6 @@ async def test_run_reproduce_reports_missing_artifacts(tmp_path):
 # supported models, so we use ``gpt-4o-2024-08-06`` as the default test
 # model (PaperBench's known-good).
 
-import os
-
 _LIVE_LLM = (
     os.environ.get("ARI_RUN_LIVE_LLM_TESTS", "0") == "1"
     and bool(os.environ.get("OPENAI_API_KEY"))
@@ -172,7 +177,7 @@ async def test_grade_empty_repo_negative_control(tmp_path):
     rubric_path = _write_rubric(tmp_path, [
         _leaf("Implement the MaskNetwork architecture for selfish-mining environment."),
         _leaf("Run Experiment II producing pre-refinement and post-refinement metrics."),
-    ])
+    ], paper_text="paper text")
     res = await S.grade_with_simplejudge(
         rubric_path=str(rubric_path),
         repo_dir=str(repo),
@@ -366,7 +371,7 @@ async def test_grade_keeps_code_only_false_when_reproduce_log_present(tmp_path, 
 async def test_grade_n_runs_averages(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
-    rubric_path = _write_rubric(tmp_path, [_leaf("trivial leaf")])
+    rubric_path = _write_rubric(tmp_path, [_leaf("trivial leaf")], paper_text="p")
     res = await S.grade_with_simplejudge(
         rubric_path=str(rubric_path), repo_dir=str(repo),
         paper_text="p", judge_model=_JUDGE_MODEL, n_runs=3,

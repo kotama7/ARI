@@ -46,6 +46,11 @@ from ari_skill_hpc import (
     file_digest,
     sha256_digest,
 )
+from rubric_contract import (
+    RubricContractError,
+    load_rubric,
+    to_paperbench_format,
+)
 
 log = logging.getLogger(__name__)
 
@@ -239,6 +244,29 @@ async def build_reproduce_sh(
         return {"populated": False, "error": "output_dir is required"}
 
     out = Path(output_dir)
+    text = _load_paper_text(paper_path, paper_text)
+    if not text:
+        return {"populated": False, "error": "No paper text provided"}
+
+    expected_artifacts: list[str] = []
+    execution_profile: dict = {}
+    rubric_schema_version = ""
+    rubric_migration_required = False
+    if rubric_path:
+        try:
+            loaded_rubric = load_rubric(rubric_path, paper_text=text)
+            rubric = loaded_rubric.document
+            rc = rubric.get("reproduce_contract") or {}
+            expected_artifacts = list(rc.get("expected_artifacts") or [])
+            execution_profile = dict(rc.get("execution_profile") or {})
+            rubric_schema_version = loaded_rubric.schema_version
+            rubric_migration_required = loaded_rubric.migration_required
+        except RubricContractError as exc:
+            return {
+                "populated": False,
+                "error": f"rubric contract rejected: {exc}",
+            }
+
     if (out / "reproduce.sh").is_file() and not overwrite:
         return {
             "populated": False,
@@ -247,22 +275,9 @@ async def build_reproduce_sh(
                 f"pass overwrite=True to regenerate"
             ),
             "output_dir": str(out),
+            "rubric_schema_version": rubric_schema_version or None,
+            "rubric_migration_required": rubric_migration_required,
         }
-
-    text = _load_paper_text(paper_path, paper_text)
-    if not text:
-        return {"populated": False, "error": "No paper text provided"}
-
-    expected_artifacts: list[str] = []
-    execution_profile: dict = {}
-    if rubric_path:
-        try:
-            rubric = json.loads(Path(rubric_path).read_text())
-            rc = rubric.get("reproduce_contract") or {}
-            expected_artifacts = list(rc.get("expected_artifacts") or [])
-            execution_profile = dict(rc.get("execution_profile") or {})
-        except Exception as e:
-            log.warning("build_reproduce_sh: cannot read rubric %s: %s", rubric_path, e)
 
     out.mkdir(parents=True, exist_ok=True)
     paper_md = out / "_input_paper.md"
@@ -324,7 +339,7 @@ async def build_reproduce_sh(
     # apptainer_image alias.
     resolved_image = container_image or apptainer_image or ""
 
-    return await run_replicator_agent(
+    result = await run_replicator_agent(
         paper_md_path=str(paper_md),
         output_dir=str(out),
         expected_artifacts=expected_artifacts,
@@ -336,6 +351,9 @@ async def build_reproduce_sh(
         sandbox_kind=sandbox_kind,
         apptainer_image=resolved_image or None,
     )
+    result["rubric_schema_version"] = rubric_schema_version or None
+    result["rubric_migration_required"] = rubric_migration_required
+    return result
 
 
 # ─── Phase 1 / Phase 2 (PaperBench-format) ─────────────────────────────
@@ -962,6 +980,26 @@ async def run_reproduce(
     missing expected artifacts, elapsed time, and (when SLURM-dispatched)
     a snapshot of the chosen partition / nodes / ntasks / gpu spec.
     """
+    # rubric_path is the canonical source for ``max_runtime_sec`` /
+    # ``expected_artifacts`` / ``execution_profile``, but the public
+    # :func:`_paperbench_bridge.reproduce_submission` wrapper drives this
+    # tool without a rubric — explicit caller args supply the same info.
+    # Treat empty / missing rubric_path as "no hint dict; use caller args".
+    rubric: dict = {}
+    rubric_schema_version = ""
+    rubric_migration_required = False
+    if rubric_path:
+        try:
+            loaded_rubric = load_rubric(rubric_path)
+            rubric = loaded_rubric.document
+            rubric_schema_version = loaded_rubric.schema_version
+            rubric_migration_required = loaded_rubric.migration_required
+        except RubricContractError as exc:
+            return {
+                "executed": False,
+                "error": f"rubric contract rejected: {exc}",
+            }
+
     repo = Path(repo_dir)
     if not repo.is_dir():
         return {
@@ -973,18 +1011,9 @@ async def run_reproduce(
             "missing": [],
             "elapsed_sec": 0.0,
             "sandbox_kind": "",
+            "rubric_schema_version": rubric_schema_version or None,
+            "rubric_migration_required": rubric_migration_required,
         }
-    # rubric_path is the canonical source for ``max_runtime_sec`` /
-    # ``expected_artifacts`` / ``execution_profile``, but the public
-    # :func:`_paperbench_bridge.reproduce_submission` wrapper drives this
-    # tool without a rubric — explicit caller args supply the same info.
-    # Treat empty / missing rubric_path as "no hint dict; use caller args".
-    rubric: dict = {}
-    if rubric_path:
-        try:
-            rubric = json.loads(Path(rubric_path).read_text())
-        except Exception as e:
-            return {"executed": False, "error": f"cannot read rubric: {e}"}
 
     rc = rubric.get("reproduce_contract") or {}
     max_runtime = int(timeout_global_sec or rc.get("max_runtime_sec") or 21600)
@@ -1081,6 +1110,8 @@ async def run_reproduce(
         "missing": missing,
         "elapsed_sec": exec_res.get("elapsed_sec", 0.0),
         "sandbox_kind": kind,
+        "rubric_schema_version": rubric_schema_version or None,
+        "rubric_migration_required": rubric_migration_required,
     }
     # SLURM-only metadata: partition / cpus / walltime / nodes / ntasks /
     # exclusive / gpu spec actually used. Everything is optional — keys
@@ -1193,15 +1224,14 @@ async def grade_with_simplejudge(
         task_node_from_dict,
     )
 
+    paper_md = _load_paper_text(paper_path, paper_text)
     try:
-        rubric = json.loads(Path(rubric_path).read_text())
-    except Exception as e:
-        return {"error": f"cannot read rubric: {e}"}
-
+        loaded_rubric = load_rubric(rubric_path, paper_text=paper_md)
+    except RubricContractError as exc:
+        return {"error": f"rubric contract rejected: {exc}"}
+    rubric = loaded_rubric.document
     pb_dict = _strip_to_paperbench_format(rubric)
     pb_taskroot = task_node_from_dict(pb_dict)
-
-    paper_md = _load_paper_text(paper_path, paper_text)
 
     # If repo_dir is missing, degrade to scoring against an effectively empty
     # submission per workflow.yaml §"ORS auto-rubric reproducibility".
@@ -1242,6 +1272,8 @@ async def grade_with_simplejudge(
 
         out = {
             "rubric_sha256": rubric.get("rubric_sha256"),
+            "rubric_schema_version": loaded_rubric.schema_version,
+            "rubric_migration_required": loaded_rubric.migration_required,
             "ors_score": agg["ors_score"],
             "raw_score": agg["raw_score"],
             "leaf_grades": agg["leaf_grades"],
@@ -1265,24 +1297,9 @@ async def grade_with_simplejudge(
 
 
 def _strip_to_paperbench_format(rubric: dict) -> dict:
-    """Local copy of ari-skill-replicate.manifest.to_paperbench_format.
+    """Compatibility wrapper around the shared consumer-side conversion."""
 
-    Avoids a hard import from ari-skill-paper-re into ari-skill-replicate
-    (each skill ships independently). The two implementations MUST stay in sync.
-    """
-    KEEP = {"id", "requirements", "weight", "sub_tasks",
-            "task_category", "finegrained_task_category"}
-
-    def strip(node: dict) -> dict:
-        out: dict = {k: v for k, v in node.items() if k in KEEP}
-        out["weight"] = int(node.get("weight", 1))
-        out["sub_tasks"] = [strip(c) for c in (node.get("sub_tasks") or [])]
-        return out
-
-    root = rubric.get("rubric")
-    if not isinstance(root, dict):
-        raise ValueError("Rubric envelope missing 'rubric' root TaskNode")
-    return strip(root)
+    return to_paperbench_format(rubric)
 
 
 def main() -> None:

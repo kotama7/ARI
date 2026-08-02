@@ -4,8 +4,8 @@ ORS Auto-Rubric generator and auditor (PaperBench TaskNode-compatible).
 
 ## Tools
 
-- `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)` — produces a PaperBench-compatible rubric (`replication_rubric.schema.json`) from a paper's LaTeX/text. Auto-computes target leaf count from paper length when `target_leaf_count=0`. With `two_stage=True` (default) generates a skeleton then populates each subtree in parallel; produces ~4× more leaves and 1–2 levels more depth than a single LLM call.
-- `audit_rubric(rubric_path, paper_path, paper_text, auditor_model)` — flags `vague_qualifier`, `no_paper_evidence`, `duplicate`, and `unverifiable` leaves; recommends regeneration when >20% of leaves are flagged.
+- `generate_rubric(..., two_stage=True, quality_profile="", max_model_calls=64, subtree_concurrency=4, provider="", model_revision="")` — produces a strict `ari.replication-rubric/v2` envelope. Every model prompt/response, repair, dropped node, exact paper span, model identity, and call budget is recorded beside the output under `.ari-rubric/`.
+- `audit_rubric(..., output_path="", max_model_calls=400)` — verifies the frozen rubric and its referenced artifacts, then writes a separate digest-bound `ari.replication-rubric-audit/v2` report. It never mutates the rubric. The report flags `vague_qualifier`, `no_paper_evidence`, `duplicate`, and `unverifiable` leaves and reports whether the reviewer model is actually independent.
 - `suggest_target_leaf_count(paper_path, paper_text)` — returns the auto-computed target leaf count (~1 leaf / 75 words, bounded to [50, 400]) and word count for the paper.
 
 ## Two-stage generation
@@ -14,25 +14,28 @@ The default rubric path is hierarchical (`prompts/skeleton.md` + `prompts/subtre
 
 1. **Pass 1 — skeleton**: a single LLM call defines the root + direct children (one node per major contribution / experiment / section), and assigns each a `target_subtree_leaves` budget summing to the overall target.
 2. **Pass 2 — subtrees (parallel)**: one call per direct child populates its subtree with 4–6 additional levels, scoped to the parent's `requirements`. Concurrency is bounded by an internal semaphore (default 4).
-3. **Merge + prune**: subtree roots replace skeleton stubs; leaves whose `quote` or `requirements` violate the schema's `minLength=10` are dropped (a small handful per run is normal).
+3. **Merge + evidence binding**: subtree roots replace skeleton stubs. Each retained leaf is bound to exact character offsets in the input paper or an explicit external prerequisite and receives a structured artifact/log/metric verification target. Every normalization or dropped node is retained in the repair ledger.
 
-Single-call mode (`two_stage=False`) preserves the original `prompts/adversarial_reviewer.md` template for cost-sensitive runs (~5× lower API tokens). On a 16K-word reference paper, two-stage produces ~149 leaves at depth 5 vs ~37 leaves at depth 4 for single-call (gpt-5.2, same paper).
+Single-call mode (`two_stage=False`) is retained only as an explicit low-coverage compatibility profile: callers must also set `quality_profile="low-coverage"`. Hierarchical generation fails closed when its call budget is exhausted and records subtree failures instead of silently treating missing coverage as success.
 
 ## Environment
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `ARI_MODEL_RUBRIC_GEN` | `gemini/gemini-2.5-pro` | Generator LLM |
+| `ARI_MODEL_RUBRIC_GEN_PROVIDER` / `ARI_MODEL_RUBRIC_GEN_REVISION` | inferred / unset | Immutable generator identity |
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | Auditor LLM (independent from generator) |
+| `ARI_MODEL_RUBRIC_AUDIT_PROVIDER` / `ARI_MODEL_RUBRIC_AUDIT_REVISION` | inferred / unset | Auditor identity used for the independence decision |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (unset) | Override the per-paper target leaf count. `0` / unset → auto from paper length. Set by the GUI Wizard's "Target leaves" field. |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (unset) | Override generator temperature. Set by the GUI Wizard's "Temperature" field. |
 | `ARI_RUBRIC_GEN_TWO_STAGE` | (unset) | `1`/`true`/`on` → force two-stage; `0`/`false`/`off` → force single-call. Unset → use the kwarg default (currently `True`). Set by the GUI Wizard's "Two-stage generation" toggle. |
+| `ARI_RUBRIC_GEN_QUALITY_PROFILE` | (unset) | Required as `low-coverage` when single-call generation is selected. |
 
 Resolution order (server.py): explicit kwarg → env var → default. The MCP tool is invoked by `ari-core/config/workflow.yaml::ors_generate_rubric`; the workflow does not pass these three knobs explicitly, so env vars set by the GUI Wizard always win over the kwarg defaults at runtime.
 
 ## Output schema
 
-See `schemas/replication_rubric.schema.json`. The root rubric is a PaperBench `TaskNode` tree wrapped with frozen provenance metadata (paper sha256, generator model, prompt sha256, optional audit metadata). The downstream consumer is `ari-skill-paper-re.grade_with_simplejudge`, which wraps PaperBench's `SimpleJudge`.
+See `schemas/replication_rubric.schema.json` and `schemas/replication_rubric_audit.schema.json`. The frozen rubric and audit are distinct immutable documents. `ari-skill-paper-re` accepts V2 and a digest-verified legacy V1 reader during the migration window; unknown versions, tampered envelopes, and paper-digest mismatches fail before execution or grading. `src/migration.py::migrate_v1_to_v2` performs an offline, lossless migration and preserves the complete V1 source artifact.
 
 ## `execution_profile` (HPC / parallel-execution hints)
 
