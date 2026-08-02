@@ -35,7 +35,10 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_LLM_MODEL` | 默认 LiteLLM 模型 id | （无） |
 | `ARI_LLM_API_BASE` | LiteLLM API base 覆盖 | LiteLLM 默认值 |
 | `ARI_MODEL` | 跨技能回退模型 id | （回退至 `ARI_LLM_MODEL`） |
-| `ARI_MODEL_EVAL` | LLM 评估器使用的模型 | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_EVAL` | core BFTS评估器模型（旧共享alias；`ari-skill-evaluator`不读取） | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_METRIC_PROPOSAL` | 显式metric proposal模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_MODEL_SEMANTIC_REVIEW` | semantic advisory模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_SEMANTIC_REVIEW_MODEL_REVISION` | 记录的semantic model revision | （无） |
 | `ARI_MODEL_JUDGE` | BFTS judge 使用的模型 | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_LINEAGE` | 停滞/沿袭决策使用的模型（v0.7.0） | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | 选取种子 idea 使用的模型 | 回退至 `ARI_MODEL` |
@@ -117,7 +120,7 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_CLAIM_GATE_MODE` | 论断–证据 / 指标正确性门的评估开关。`off` 从不阻断；`warn` 报告错误 / 警告但从不阻断 finalize；`strict` 在存在阻断性错误时阻断最终门 | `warn`（`off` / `warn` / `strict`） |
+| `ARI_CLAIM_GATE_MODE` | claim/evidence gate开关。`off`从不阻断；`warn`仅阻断final客观integrity finding；`strict`还阻断配置的final finding | `warn`（`off` / `warn` / `strict`） |
 | `ARI_COMPARISON_SCOPE` | 控制跨环境比较被视为透明性警告（`any`）还是阻断性错误（`same_environment`，用于单一架构优化研究） | `any`（`any` / `same_environment`） |
 
 ### 规范自动生成（v0.7.0）

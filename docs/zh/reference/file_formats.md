@@ -223,22 +223,28 @@ contract。详见[研究契约](research_contracts.md)。
 
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
+  "source_run_id": "run-id",
   "phase": "final",
-  "policy": "strict" | "warn",
+  "policy_mode": "strict" | "warn" | "off",
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
   "status": "...",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "formula_provenance": {"registry_digest": "sha256:...", "formulas_used": ["identity"]},
+  "blocking_findings": [...],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
-MCP 包装器将 `should_block`（仅在 strict 策略下的 `phase: final`，或在客观虚假发现时设置）转换为流水线硬失败，从而跳过 finalize。来源：`ari-core/ari/pipeline/claim_gate/gate.py`。
+MCP 包装器将 `should_block`（仅可在`phase: final`设置；`off`始终不阻塞）转换为流水线硬失败，从而跳过 finalize。来源：`ari-core/ari/pipeline/claim_gate/gate.py`。
 
 ## `evaluation/evidence_grounded_semantic_review.json`
 
-由 `ari-skill-evaluator.evidence_grounded_semantic_review` 写入的非阻塞、由证据支撑的语义评审。它基于硬门证据检测过度声称 / 解释问题，并为 `paper_refine` 输出 `suggested_revisions`。绝不阻塞流水线；出错时返回空的（`status: "ok"`）评审。refine 后的过程会在其旁写入 `evidence_grounded_semantic_review_post_refine.json` 变体。
+由 `ari-skill-evaluator.evidence_grounded_semantic_review` 写入的非阻塞、由证据支撑的语义评审。它基于硬门证据检测过度声称 / 解释问题，并为 `paper_refine` 输出 `suggested_revisions`。绝不阻塞流水线；模型、超时或解析错误时返回类型化的`status: "unavailable"`评审。refine 后的过程会在其旁写入 `evidence_grounded_semantic_review_post_refine.json` 变体。
 
 ## `lineage_decisions.jsonl`（v0.7.0）
 

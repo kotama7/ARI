@@ -14,6 +14,8 @@ from ari.public.research_contract import (
     IdeaGenerationProvenanceV1,
     IdeaSetV1,
     MetricContractV1,
+    MetricFormulaProvenanceV1,
+    MetricToleranceV1,
     ResearchArtifactRefV1,
     ResearchContractError,
     RetrievalRecordV1,
@@ -61,15 +63,26 @@ def _handoff():
         experiment_context_digest=canonical_digest(""),
         model_revision="model-2026-08",
     )
-    metric = MetricContractV1(
+    metric = MetricContractV1.create(
         name="error_rate",
         unit="fraction",
         direction="lower",
         comparison_scope="same-environment",
         rationale="Directly tests the proposed reduction in errors.",
         required_evidence=("error_rate", "baseline_error_rate"),
-        correctness_required=True,
+        correctness_required=False,
         normalization_ceiling="not-applicable",
+        formula="value",
+        operands={"value": "error_rate"},
+        tolerance=MetricToleranceV1(absolute=0.0, relative=0.01),
+        formula_provenance=MetricFormulaProvenanceV1(
+            source="idea-generation-lock",
+            source_digest=lock.generation_lock_digest,
+            model=lock.model,
+            prompt_digests=lock.prompt_digests,
+        ),
+        confidence=0.95,
+        admission_status="admitted",
     )
     candidate = IdeaCandidateV1.create(
         title="Reduce errors with method X",
@@ -116,7 +129,7 @@ def test_digest_bound_handoff_round_trip_and_gate_projection():
     assert parsed == contract
     projection = metric_gate_projection(contract)
     assert projection["research_contract_digest"] == contract.contract_digest
-    assert projection["unit"] == "fraction"
+    assert projection["metric_contract"]["unit"] == "fraction"
     assert projection["claims"][0]["required_evidence"] == [
         "error_rate",
         "baseline_error_rate",

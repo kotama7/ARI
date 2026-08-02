@@ -280,19 +280,25 @@ claim/evidence ハードゲートのレポート（`phase` ごとに 1 つ: `dra
 
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
+  "source_run_id": "run-id",
   "phase": "final",
-  "policy": "strict" | "warn",
+  "policy_mode": "strict" | "warn" | "off",
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
   "status": "...",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "formula_provenance": {"registry_digest": "sha256:...", "formulas_used": ["identity"]},
+  "blocking_findings": [...],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
-MCP ラッパーは `should_block`（strict ポリシー下の `phase: final` 時、または
-客観的虚偽の検出時にのみ設定される）をパイプラインのハード失敗に変換し、
+MCP ラッパーは `should_block`（`phase: final` のみ。`off` は常に非ブロッキング）を
+パイプラインのハード失敗に変換し、
 finalize がスキップされます。ソース:
 `ari-core/ari/pipeline/claim_gate/gate.py`。
 
@@ -302,7 +308,7 @@ finalize がスキップされます。ソース:
 非ブロッキングのエビデンス裏付けセマンティックレビュー。ハードゲートの
 エビデンスに基づいて過剰主張 / 解釈の問題を検出し、`paper_refine` 向けの
 `suggested_revisions` を出力します。パイプラインをブロックすることはなく、
-エラー時には空の（`status: "ok"`）レビューを返します。refine 後のパスは
+model・timeout・parseエラー時には型付き`status: "unavailable"`を返します。refine 後のパスは
 これと並んで `evidence_grounded_semantic_review_post_refine.json` のバリアント
 を書き込みます。
 

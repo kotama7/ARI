@@ -288,20 +288,31 @@ recorded results, **not** the truthfulness of the results themselves.
 
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
+  "source_run_id": "run-id",
   "phase": "final",
-  "policy": "strict" | "warn",
+  "policy_mode": "strict" | "warn" | "off",
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
   "status": "...",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "formula_provenance": {
+    "registry_digest": "sha256:...",
+    "formulas_used": ["identity"],
+    "unit_conversions": ["s->ms@sha256:..."]
+  },
+  "blocking_findings": [...],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
-The MCP wrapper turns `should_block` (set only at `phase: final` under
-strict policy, or on objective-falsehood findings) into a hard pipeline
-failure so finalize is skipped. Source:
+The MCP wrapper turns `should_block` (set only at `phase: final`; `off` never
+blocks) into a hard pipeline failure so finalize is skipped. V1 readers verify
+the report digest. The explicit pre-v1 reader preserves old findings while
+marking policy/evidence/formula provenance as unrecorded. Source:
 `ari-core/ari/pipeline/claim_gate/gate.py`.
 
 ## `evaluation/evidence_grounded_semantic_review.json`
@@ -310,7 +321,8 @@ Non-blocking, evidence-grounded semantic review written by
 `ari-skill-evaluator.evidence_grounded_semantic_review`. It detects
 over-claiming / interpretation issues grounded in the hard-gate evidence
 and emits `suggested_revisions` for `paper_refine`. Never blocks the
-pipeline; on any error it returns an empty (`status: "ok"`) review. The
+pipeline; on model, timeout, or parse error it returns a typed
+`status: "unavailable"` review. The
 post-refine pass writes the
 `evidence_grounded_semantic_review_post_refine.json` variant alongside it.
 

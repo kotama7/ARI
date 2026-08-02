@@ -347,8 +347,9 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
         → claim_evidence_hard_gate_final   (FINAL gate; blocks finalize in strict mode)
         → finalize_paper            (Stage 8 below)
     Governed by the top-level claim_gate_policy block in workflow.yaml
-      (mode: warn by default — the FINAL gate is non-blocking; mode: strict
-      blocks finalize_paper on the FINAL gate). Resolution precedence ends at
+      (mode: warn by default — only objective-integrity findings block the
+      FINAL gate; mode: strict adds configured findings; off never blocks).
+      Resolution precedence ends at
       env ARI_CLAIM_GATE_MODE (off | warn | strict) and ARI_COMPARISON_SCOPE.
     The heavy gate logic lives in the new ari/pipeline/claim_gate/ package
       (contract / gate / policy / numeric / latex / invariants / resolve);

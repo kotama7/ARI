@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 配置参考
@@ -42,7 +42,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    # 评估由ari-core的BFTS evaluator路径负责，不是MCP tool。
+    tool: ''
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -490,8 +491,8 @@ claim_gate_policy:
 | Mode | 行为 |
 |---|---|
 | `off` | 从不阻断。 |
-| `warn`（默认） | 报告错误/警告，但不阻断 `finalize_paper`。 |
-| `strict` | 存在 `block_on` 错误时**最终** gate 阻断（跳过 `finalize_paper`），strict 节中未覆盖的结果数值也会变为阻断项。draft gate 从不阻断。 |
+| `warn`（默认） | **最终**gate仅阻断`always_block_on`中的客观integrity finding，其余仅报告。 |
+| `strict` | **最终**gate还阻断配置的`block_on` finding，strict节中未覆盖的结果数值也会变为阻断项。draft gate从不阻断。 |
 
 `comparison_scope` 是注入的研究意图（环境变量 `ARI_COMPARISON_SCOPE`
 可覆盖）：

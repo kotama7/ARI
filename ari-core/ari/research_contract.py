@@ -222,10 +222,57 @@ ComparisonScope = Literal[
 NormalizationCeiling = Literal["measured", "not-applicable"]
 
 
-class MetricContractV1(_StrictModel):
+class MetricToleranceV1(_StrictModel):
+    absolute: float = Field(ge=0)
+    relative: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _finite_tolerance(self):
+        import math
+
+        if not math.isfinite(self.absolute) or not math.isfinite(self.relative):
+            raise ValueError("metric tolerance must be finite")
+        return self
+
+
+class MetricFormulaProvenanceV1(_StrictModel):
+    source: Literal[
+        "idea-generation-lock", "human-admission", "legacy-migration"
+    ]
+    source_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
+    model: str | None = Field(default=None, max_length=512)
+    prompt_digests: tuple[str, ...] = Field(default_factory=tuple, max_length=128)
+
+    @field_validator("prompt_digests")
+    @classmethod
+    def _prompt_digests(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if len(values) != len(set(values)) or any(
+            not re.fullmatch(SHA256_DIGEST_PATTERN, value) for value in values
+        ):
+            raise ValueError("formula prompt digests must be unique SHA-256 values")
+        return values
+
+
+class MetricCorrectnessV1(_StrictModel):
+    expr: str = Field(min_length=1, max_length=4096)
+    requires: tuple[str, ...] = Field(min_length=1, max_length=128)
+
+    @field_validator("requires")
+    @classmethod
+    def _unique_requires(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in values if item.strip())
+        if not normalized or len(normalized) != len(set(normalized)):
+            raise ValueError("correctness operands must be non-empty and unique")
+        return normalized
+
+
+class MetricContractV1(_DigestBoundModel):
     """Idea-owned metric vocabulary; evaluator enforcement is read-only."""
 
+    _digest_field = "contract_digest"
+
     schema_version: Literal["ari.metric-contract/v1"] = METRIC_CONTRACT_V1
+    contract_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     name: str = Field(min_length=1, max_length=256)
     unit: str = Field(min_length=1, max_length=128)
     direction: MetricDirection
@@ -235,6 +282,15 @@ class MetricContractV1(_StrictModel):
     correctness_required: bool
     normalization_ceiling: NormalizationCeiling
     target_value: float | None = None
+    formula: str = Field(min_length=1, max_length=128)
+    operands: dict[str, str] = Field(min_length=1, max_length=16)
+    tolerance: MetricToleranceV1
+    formula_provenance: MetricFormulaProvenanceV1
+    required_measured: tuple[str, ...] = Field(default_factory=tuple, max_length=128)
+    invariants: tuple[str, ...] = Field(default_factory=tuple, max_length=128)
+    correctness: MetricCorrectnessV1 | None = None
+    confidence: float = Field(ge=0, le=1)
+    admission_status: Literal["admitted", "human-review-required"]
 
     @field_validator("unit")
     @classmethod
@@ -254,12 +310,67 @@ class MetricContractV1(_StrictModel):
             raise ValueError("required_evidence must be unique")
         return normalized
 
+    @field_validator("operands")
+    @classmethod
+    def _operand_names(cls, values: dict[str, str]) -> dict[str, str]:
+        normalized = {
+            str(role).strip(): str(metric).strip()
+            for role, metric in values.items()
+            if str(role).strip() and str(metric).strip()
+        }
+        if normalized != values:
+            raise ValueError("formula operands must use non-empty canonical strings")
+        return normalized
+
+    @field_validator("required_measured", "invariants")
+    @classmethod
+    def _unique_optional_lists(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(item.strip() for item in values if item.strip())
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("metric contract lists must contain unique values")
+        return normalized
+
     @model_validator(mode="after")
-    def _target_is_consistent(self):
+    def _contract_is_consistent(self):
+        import ast
+
+        from ari.pipeline.claim_gate.formula_eval import safe_eval
+
         if self.direction == "target" and self.target_value is None:
             raise ValueError("target direction requires target_value")
         if self.direction != "target" and self.target_value is not None:
             raise ValueError("target_value requires target direction")
+        try:
+            formula_tree = ast.parse(self.formula, mode="eval")
+        except SyntaxError as exc:
+            raise ValueError("metric formula is not a valid expression") from exc
+        function_names = {
+            node.func.id
+            for node in ast.walk(formula_tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        formula_names = {
+            node.id for node in ast.walk(formula_tree) if isinstance(node, ast.Name)
+        } - function_names
+        if formula_names != set(self.operands):
+            raise ValueError("metric formula variables differ from declared operands")
+        if safe_eval(self.formula, {role: 1.0 for role in self.operands}) is None:
+            raise ValueError("metric formula is outside the safe evaluator grammar")
+        evidence = set(self.required_evidence)
+        if set(self.operands.values()) - evidence:
+            raise ValueError("formula operands must be named in required_evidence")
+        if set(self.required_measured) - evidence:
+            raise ValueError("required_measured must be named in required_evidence")
+        if self.correctness is not None and set(self.correctness.requires) - evidence:
+            raise ValueError("correctness operands must be named in required_evidence")
+        if self.correctness_required and self.correctness is None:
+            raise ValueError("correctness_required needs a declared correctness check")
+        if (
+            self.confidence < 0.8
+            and self.admission_status == "admitted"
+            and self.formula_provenance.source != "human-admission"
+        ):
+            raise ValueError("low-confidence metric contracts require human review")
         return self
 
 
@@ -418,6 +529,8 @@ def mint_research_contract(
     )
     if candidate is None:
         raise ResearchContractError("selected candidate is not admitted")
+    if candidate.metric_contract.admission_status != "admitted":
+        raise ResearchContractError("selected metric contract requires human review")
     return ResearchContractV1.create(
         idea_set_digest=idea_set.idea_set_digest,
         selected_candidate_id=candidate.candidate_id,
@@ -553,28 +666,24 @@ def parse_research_contract_document(document: dict[str, Any]) -> ResearchContra
 
 
 def metric_gate_projection(contract: ResearchContractV1) -> dict[str, Any]:
-    """Project a research contract into the existing deterministic claim gate."""
+    """Project one research contract through the canonical evaluator model."""
 
-    metric = contract.metric_contract
-    claims = [
-        {
-            "claim": condition,
-            "required_evidence": list(metric.required_evidence),
-        }
-        for condition in contract.falsification_conditions
-    ]
-    return {
-        "schema_version": RESEARCH_CONTRACT_V1,
-        "research_contract_digest": contract.contract_digest,
-        "key": metric.name,
-        "unit": metric.unit,
-        "direction": metric.direction,
-        "comparison_scope": metric.comparison_scope,
-        "claims": claims,
-        "correctness_required": metric.correctness_required,
-        "ceiling_must_be_measured": metric.normalization_ceiling == "measured",
-        "required_measured": list(metric.required_evidence),
-    }
+    from ari.claim_gate_contract import MetricClaimV1, MetricGateContractV1
+
+    projection = MetricGateContractV1.create(
+        source="research-contract",
+        source_idea_digest=contract.selected_candidate_id,
+        research_contract_digest=contract.contract_digest,
+        metric_contract=contract.metric_contract,
+        claims=tuple(
+            MetricClaimV1(
+                claim=condition,
+                required_evidence=contract.metric_contract.required_evidence,
+            )
+            for condition in contract.falsification_conditions
+        ),
+    )
+    return projection.model_dump(mode="json")
 
 
 __all__ = [
@@ -596,6 +705,9 @@ __all__ = [
     "IdeaRejectionV1",
     "IdeaSetV1",
     "MetricContractV1",
+    "MetricCorrectnessV1",
+    "MetricFormulaProvenanceV1",
+    "MetricToleranceV1",
     "ResearchArtifactRefV1",
     "ResearchContractError",
     "ResearchContractV1",

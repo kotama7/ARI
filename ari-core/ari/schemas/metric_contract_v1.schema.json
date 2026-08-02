@@ -1,8 +1,111 @@
 {
+  "$defs": {
+    "MetricCorrectnessV1": {
+      "additionalProperties": false,
+      "properties": {
+        "expr": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Expr",
+          "type": "string"
+        },
+        "requires": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Requires",
+          "type": "array"
+        }
+      },
+      "required": [
+        "expr",
+        "requires"
+      ],
+      "title": "MetricCorrectnessV1",
+      "type": "object"
+    },
+    "MetricFormulaProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "prompt_digests": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Prompt Digests",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "idea-generation-lock",
+            "human-admission",
+            "legacy-migration"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "source_digest"
+      ],
+      "title": "MetricFormulaProvenanceV1",
+      "type": "object"
+    },
+    "MetricToleranceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "absolute": {
+          "minimum": 0,
+          "title": "Absolute",
+          "type": "number"
+        },
+        "relative": {
+          "minimum": 0,
+          "title": "Relative",
+          "type": "number"
+        }
+      },
+      "required": [
+        "absolute",
+        "relative"
+      ],
+      "title": "MetricToleranceV1",
+      "type": "object"
+    }
+  },
   "$id": "https://ari.dev/schemas/metric-contract-v1.schema.json",
   "additionalProperties": false,
   "description": "Idea-owned metric vocabulary; evaluator enforcement is read-only.",
   "properties": {
+    "admission_status": {
+      "enum": [
+        "admitted",
+        "human-review-required"
+      ],
+      "title": "Admission Status",
+      "type": "string"
+    },
     "comparison_scope": {
       "enum": [
         "same-environment",
@@ -12,6 +115,28 @@
       ],
       "title": "Comparison Scope",
       "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Contract Digest",
+      "type": "string"
+    },
+    "correctness": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MetricCorrectnessV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "correctness_required": {
       "title": "Correctness Required",
@@ -27,6 +152,23 @@
       "title": "Direction",
       "type": "string"
     },
+    "formula": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Formula",
+      "type": "string"
+    },
+    "formula_provenance": {
+      "$ref": "#/$defs/MetricFormulaProvenanceV1"
+    },
+    "invariants": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Invariants",
+      "type": "array"
+    },
     "name": {
       "maxLength": 256,
       "minLength": 1,
@@ -41,6 +183,15 @@
       "title": "Normalization Ceiling",
       "type": "string"
     },
+    "operands": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "maxProperties": 16,
+      "minProperties": 1,
+      "title": "Operands",
+      "type": "object"
+    },
     "rationale": {
       "maxLength": 4096,
       "minLength": 1,
@@ -54,6 +205,14 @@
       "maxItems": 128,
       "minItems": 1,
       "title": "Required Evidence",
+      "type": "array"
+    },
+    "required_measured": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Required Measured",
       "type": "array"
     },
     "schema_version": {
@@ -74,6 +233,9 @@
       "default": null,
       "title": "Target Value"
     },
+    "tolerance": {
+      "$ref": "#/$defs/MetricToleranceV1"
+    },
     "unit": {
       "maxLength": 128,
       "minLength": 1,
@@ -82,6 +244,7 @@
     }
   },
   "required": [
+    "contract_digest",
     "name",
     "unit",
     "direction",
@@ -89,7 +252,13 @@
     "rationale",
     "required_evidence",
     "correctness_required",
-    "normalization_ceiling"
+    "normalization_ceiling",
+    "formula",
+    "operands",
+    "tolerance",
+    "formula_provenance",
+    "confidence",
+    "admission_status"
   ],
   "title": "ARI Metric Contract v1",
   "type": "object"

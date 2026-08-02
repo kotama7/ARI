@@ -2249,21 +2249,29 @@ async def review_compiled_paper(
 def _hard_gate_revisions(hard_gate: dict) -> list[dict]:
     """Turn blocking hard-gate errors into concrete refine instructions."""
     out: list[dict] = []
-    for e in (hard_gate.get("errors") or []):
+    findings = hard_gate.get("blocking_findings")
+    if findings is None:  # supported published pre-v1 report reader
+        findings = hard_gate.get("errors") or []
+    for e in findings:
         t = e.get("type")
-        sec = e.get("section", "")
+        details = e.get("details") if isinstance(e.get("details"), dict) else e
+        sec = details.get("section", "")
         if t == "numeric_mismatch":
             out.append({"section": sec or "results", "source": "hard_gate",
                         "instruction": (
-                            f"Correct the reported number {e.get('reported')} so it matches the "
-                            f"value re-computed from the executed results ({e.get('recomputed')}), "
+                            f"Correct the reported number {details.get('reported')} so it matches the "
+                            f"value re-computed from the executed results ({details.get('recomputed')}), "
                             f"or remove the unsupported claim.")})
         elif t == "uncovered_numeric":
             out.append({"section": sec, "source": "hard_gate",
                         "instruction": (
-                            f"The number {e.get('value')} in {sec} is an unregistered result claim. "
+                            f"The number {details.get('value')} in {sec} is an unregistered result claim. "
                             f"Either support it with executed evidence or remove/soften it.")})
-        elif t in ("missing_evidence", "operand_unresolved"):
+        elif t in (
+            "missing_evidence", "operand_unresolved", "result_unresolved",
+            "cross_run_evidence", "cross_run_artifact", "artifact_digest_mismatch",
+            "artifact_missing", "unit_mismatch", "unit_unresolved",
+        ):
             out.append({"section": sec, "source": "hard_gate",
                         "instruction": f"Resolve unsupported claim: {e.get('message', '')}"})
     return out
@@ -2348,7 +2356,7 @@ async def merge_reviews(
         suggested_revisions.extend(
             r for r in (semantic.get("suggested_revisions") or []) if isinstance(r, dict)
         )
-        # `detected_overclaim_count` counts the review's `warnings`, but the
+        # `detected_overclaim_count` counts the review's typed findings, but the
         # refiner only consumes revision entries — a warning without a parallel
         # suggested_revision would never reach paper_refine and the count could
         # never decrease. Forward every warning as an advisory revision entry.
@@ -2357,7 +2365,10 @@ async def merge_reviews(
             for r in suggested_revisions
             if isinstance(r, dict)
         }
-        for w in semantic.get("warnings") or []:
+        findings = semantic.get("findings")
+        if findings is None:  # supported published pre-v1 review reader
+            findings = semantic.get("warnings") or []
+        for w in findings:
             if not isinstance(w, dict):
                 continue
             msg = str(w.get("message") or "").strip()

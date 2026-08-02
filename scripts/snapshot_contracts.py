@@ -117,6 +117,7 @@ _PUBLIC_SUBMODULES = (
     "config_schema",
     "container",
     "cost_tracker",
+    "evaluation",
     "execution",
     "llm",
     "lineage",

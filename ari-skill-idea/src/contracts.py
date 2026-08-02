@@ -24,6 +24,9 @@ from ari.public.research_contract import (
     IdeaRejectionV1,
     IdeaSetV1,
     MetricContractV1,
+    MetricCorrectnessV1,
+    MetricFormulaProvenanceV1,
+    MetricToleranceV1,
     ResearchArtifactRefV1,
     RetrievalRecordV1,
     SurveySnapshotV1,
@@ -374,6 +377,13 @@ def _contract_for_title(metric_data: dict[str, Any], title: str) -> dict[str, An
                 "correctness_required",
                 "normalization_ceiling",
                 "target_value",
+                "formula",
+                "operands",
+                "tolerance",
+                "required_measured",
+                "invariants",
+                "correctness",
+                "confidence",
             )
             if key in metric_data
         }
@@ -423,12 +433,25 @@ def _resolve_citations(
     return tuple(resolved), tuple(unknown)
 
 
-def _metric_contract(raw: dict[str, Any]) -> MetricContractV1:
+def _metric_contract(
+    raw: dict[str, Any], generation_lock: IdeaGenerationLockV1
+) -> MetricContractV1:
     name = str(raw.get("name") or raw.get("primary_metric") or "").strip()
     direction = raw.get("direction")
     if direction is None and isinstance(raw.get("higher_is_better"), bool):
         direction = "higher" if raw["higher_is_better"] else "lower"
-    return MetricContractV1(
+    confidence = float(raw.get("confidence", 0.0))
+    correctness_raw = raw.get("correctness")
+    correctness = None
+    if isinstance(correctness_raw, dict) and correctness_raw:
+        correctness = MetricCorrectnessV1(
+            expr=str(correctness_raw.get("expr") or "").strip(),
+            requires=_string_list(correctness_raw.get("requires")),
+        )
+    tolerance_raw = raw.get("tolerance")
+    if not isinstance(tolerance_raw, dict):
+        tolerance_raw = {}
+    return MetricContractV1.create(
         name=name,
         unit=str(raw.get("unit") or "").strip(),
         direction=direction,
@@ -438,6 +461,28 @@ def _metric_contract(raw: dict[str, Any]) -> MetricContractV1:
         correctness_required=raw.get("correctness_required"),
         normalization_ceiling=raw.get("normalization_ceiling"),
         target_value=raw.get("target_value"),
+        formula=str(raw.get("formula") or "").strip(),
+        operands={
+            str(role): str(metric)
+            for role, metric in (raw.get("operands") or {}).items()
+        },
+        tolerance=MetricToleranceV1(
+            absolute=tolerance_raw.get("absolute"),
+            relative=tolerance_raw.get("relative"),
+        ),
+        formula_provenance=MetricFormulaProvenanceV1(
+            source="idea-generation-lock",
+            source_digest=generation_lock.generation_lock_digest,
+            model=generation_lock.model,
+            prompt_digests=generation_lock.prompt_digests,
+        ),
+        required_measured=_string_list(raw.get("required_measured")),
+        invariants=_string_list(raw.get("invariants")),
+        correctness=correctness,
+        confidence=confidence,
+        admission_status=(
+            "admitted" if confidence >= 0.8 else "human-review-required"
+        ),
     )
 
 
@@ -501,7 +546,11 @@ def preflight_candidates(
             reasons.append("missing_limitation")
         metric: MetricContractV1 | None = None
         try:
-            metric = _metric_contract(contract_data.get("metric_contract") or {})
+            metric = _metric_contract(
+                contract_data.get("metric_contract") or {}, generation_lock
+            )
+            if metric.admission_status != "admitted":
+                reasons.append("metric_contract_human_review_required")
         except Exception as exc:
             message = str(exc).lower()
             if "unit" in message:

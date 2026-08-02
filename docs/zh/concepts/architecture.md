@@ -295,8 +295,8 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
         → claim_evidence_hard_gate_final   (FINAL gate；strict 模式下阻塞 finalize)
         → finalize_paper            (下方阶段 8)
     由 workflow.yaml 顶层 claim_gate_policy 块控制
-      (默认 mode: warn —— FINAL gate 非阻塞；mode: strict 在 FINAL gate
-      处阻塞 finalize_paper)。解析优先级最终落到
+      (默认warn仅阻断FINAL客观integrity finding；strict增加配置项；off不阻断)。
+      解析优先级最终落到
       env ARI_CLAIM_GATE_MODE (off | warn | strict) 与 ARI_COMPARISON_SCOPE。
     繁重的 gate 逻辑位于新的 ari/pipeline/claim_gate/ 包
       (contract / gate / policy / numeric / latex / invariants / resolve)，

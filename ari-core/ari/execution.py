@@ -1087,82 +1087,70 @@ def measurement_document_format(document: dict[str, Any]) -> MeasurementDocument
     return "legacy-v1"
 
 
-def parse_measurement_document(
-    document: dict[str, Any], *, allow_legacy: bool = True
+def _parse_canonical_measurement_document(
+    document: dict[str, Any], typed_version: Any
 ) -> MeasurementSetV1:
-    """Validate a canonical measurement set or migrate one supported v1 file.
-
-    Typed documents are cross-checked against every retained flat projection so
-    consumers cannot be shown different values by old and new readers.
-    Unversioned and ``schema_version: 1.x`` files remain read-only inputs during
-    the P6 support window; their absent units and execution provenance stay
-    explicitly absent.
-    """
-
-    if not isinstance(document, dict):
-        raise MeasurementDocumentError("measurement document must be an object")
-    typed_version = document.get("typed_schema_version")
-    if typed_version is not None:
-        if typed_version != MEASUREMENT_SET_V1:
-            raise MeasurementDocumentError(
-                f"unsupported typed measurement schema: {typed_version!r}"
-            )
-        projection_version = document.get("schema_version")
-        if projection_version is not None and (
-            not isinstance(projection_version, str)
-            or projection_version.split(".", 1)[0] != "1"
-        ):
-            raise MeasurementDocumentError(
-                "typed measurement compatibility projection is not v1"
-            )
-        canonical = document.get("measurement_set")
-        if not isinstance(canonical, dict):
-            raise MeasurementDocumentError("typed measurement_set is missing")
-        try:
-            value = MeasurementSetV1.model_validate(canonical)
-        except Exception as exc:
-            raise MeasurementDocumentError("typed measurement_set is invalid") from exc
-        projections: tuple[tuple[str, Any], ...] = (
-            ("params", value.parameters),
-            (
-                "measurements",
-                {record.metric_id: record.value for record in value.measurements},
-            ),
-            ("predictions", value.predictions),
-            ("scores", value.scores),
-            (
-                "measurement_records",
-                [record.model_dump(mode="json") for record in value.measurements],
-            ),
+    if typed_version != MEASUREMENT_SET_V1:
+        raise MeasurementDocumentError(
+            f"unsupported typed measurement schema: {typed_version!r}"
         )
-        for key, expected in projections:
-            if key in document and document[key] != expected:
-                raise MeasurementDocumentError(
-                    f"typed measurement projection differs at {key}"
-                )
-        projected_provenance = {
-            record.metric_id: record.provenance
-            for record in value.measurements
-            if record.provenance is not None
-        }
-        if (
-            "_provenance" in document
-            and document["_provenance"] != projected_provenance
-        ):
+    projection_version = document.get("schema_version")
+    if projection_version is not None and (
+        not isinstance(projection_version, str)
+        or projection_version.split(".", 1)[0] != "1"
+    ):
+        raise MeasurementDocumentError(
+            "typed measurement compatibility projection is not v1"
+        )
+    canonical = document.get("measurement_set")
+    if not isinstance(canonical, dict):
+        raise MeasurementDocumentError("typed measurement_set is missing")
+    try:
+        value = MeasurementSetV1.model_validate(canonical)
+    except Exception as exc:
+        raise MeasurementDocumentError("typed measurement_set is invalid") from exc
+    projections: tuple[tuple[str, Any], ...] = (
+        ("params", value.parameters),
+        (
+            "measurements",
+            {record.metric_id: record.value for record in value.measurements},
+        ),
+        ("predictions", value.predictions),
+        ("scores", value.scores),
+        (
+            "measurement_records",
+            [record.model_dump(mode="json") for record in value.measurements],
+        ),
+    )
+    for key, expected in projections:
+        if key in document and document[key] != expected:
             raise MeasurementDocumentError(
-                "typed measurement provenance projection differs"
+                f"typed measurement projection differs at {key}"
             )
-        return value
+    projected_provenance = {
+        record.metric_id: record.provenance
+        for record in value.measurements
+        if record.provenance is not None
+    }
+    if (
+        "_provenance" in document
+        and document["_provenance"] != projected_provenance
+    ):
+        raise MeasurementDocumentError(
+            "typed measurement provenance projection differs"
+        )
+    return value
 
-    if not allow_legacy:
-        raise MeasurementDocumentError("legacy measurement document is not admitted")
+
+def _parse_legacy_measurement_document(document: dict[str, Any]) -> MeasurementSetV1:
     if "measurement_set" in document or "measurement_records" in document:
         raise MeasurementDocumentError(
             "canonical measurement fields require typed_schema_version"
         )
     legacy_version = document.get("schema_version")
     if legacy_version is not None and (
-        not isinstance(legacy_version, str) or legacy_version.split(".", 1)[0] != "1"
+        not isinstance(legacy_version, str)
+        or legacy_version.split(".", 1)[0] != "1"
     ):
         raise MeasurementDocumentError(
             f"unsupported legacy measurement schema: {legacy_version!r}"
@@ -1201,6 +1189,29 @@ def parse_measurement_document(
         raise MeasurementDocumentError(
             "legacy measurement document is invalid"
         ) from exc
+
+
+def parse_measurement_document(
+    document: dict[str, Any], *, allow_legacy: bool = True
+) -> MeasurementSetV1:
+    """Validate a canonical measurement set or migrate one supported v1 file.
+
+    Typed documents are cross-checked against every retained flat projection so
+    consumers cannot be shown different values by old and new readers.
+    Unversioned and ``schema_version: 1.x`` files remain read-only inputs during
+    the P6 support window; their absent units and execution provenance stay
+    explicitly absent.
+    """
+
+    if not isinstance(document, dict):
+        raise MeasurementDocumentError("measurement document must be an object")
+    typed_version = document.get("typed_schema_version")
+    if typed_version is not None:
+        return _parse_canonical_measurement_document(document, typed_version)
+
+    if not allow_legacy:
+        raise MeasurementDocumentError("legacy measurement document is not admitted")
+    return _parse_legacy_measurement_document(document)
 
 
 __all__ = [

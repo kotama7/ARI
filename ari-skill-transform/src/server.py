@@ -520,20 +520,32 @@ def _load_run_metric_contract(nodes_json_path: str) -> "dict | None":
     falsifiable claims). ``None`` when absent (legacy run) or unreadable, so the
     gate's declared-contract checks are a clean no-op.
     """
-    try:
-        from pathlib import Path as _P_mc
+    from pathlib import Path as _P_mc
 
-        _mc_path = (
-            _P_mc(nodes_json_path).expanduser().resolve().parent
-            / "metric_contract.json"
-        )
-        if _mc_path.is_file():
-            _mc_obj = json.loads(_mc_path.read_text())
-            if isinstance(_mc_obj, dict) and _mc_obj:
-                return _mc_obj
+    from ari.public.claim_gate import (
+        migrate_legacy_metric_gate_contract,
+        parse_metric_gate_contract,
+    )
+
+    _mc_path = (
+        _P_mc(nodes_json_path).expanduser().resolve().parent
+        / "metric_contract.json"
+    )
+    if not _mc_path.is_file():
+        return None
+    try:
+        _mc_obj = json.loads(_mc_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(_mc_obj, dict) or not _mc_obj:
+        return None
+    if _mc_obj.get("schema_version") == "ari.metric-gate-contract/v1":
+        return parse_metric_gate_contract(_mc_obj).model_dump(mode="json")
+    try:
+        migrated = migrate_legacy_metric_gate_contract(_mc_obj)
     except Exception:
-        pass
-    return None
+        return None
+    return migrated.model_dump(mode="json")
 
 
 @mcp.tool()
@@ -1217,10 +1229,27 @@ async def nodes_to_science_data(
             _contract = _build_claims(
                 good_nodes,
                 typed_results,
-                primary_metric,
-                _hib,
+                (
+                    ((_mc or {}).get("metric_contract") or {}).get("name")
+                    or primary_metric
+                ),
+                (
+                    ((_mc or {}).get("metric_contract") or {}).get("direction")
+                    != "lower"
+                    if _mc
+                    else _hib
+                ),
                 node_env=_node_env,
                 comparison_scope=_cmp_scope,
+                run_id=_run_id,
+                metric_unit=str(
+                    ((_mc or {}).get("metric_contract") or {}).get("unit") or ""
+                ),
+                tolerance=(
+                    ((_mc or {}).get("metric_contract") or {}).get("tolerance")
+                    if _mc
+                    else None
+                ),
             )
             out["claims"] = _contract.get("claims", [])
             out["numeric_assertions"] = _contract.get("numeric_assertions", [])

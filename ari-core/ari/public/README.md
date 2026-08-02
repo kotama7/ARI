@@ -10,12 +10,16 @@ core can refactor freely while the contract stays put.
 - `analysis.py` — versioned deterministic analysis requests and result contracts.
 - `call_context.py` — explicit run/node/lineage models plus signed transport capability helpers.
 - `__init__.py` — exported sub-modules + rationale.
-- `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).
+- `claim_gate.py` — canonical deterministic gate plus versioned metric
+  admission, gate-report, semantic-review, and conservative migration-reader
+  contracts; also exports the shared concept/invariant checks.
 - `config_schema.py` — re-export of `ari.config` models.
 - `clone.py` — digest-verified EAR bundle retrieval and safe extraction.
 - `container.py` — re-export of `ari.container`.
 - `execution.py` — versioned workspace, bounded execution, complete-log
   artifact, and measurement contracts plus the read-only legacy parser.
+- `evaluation.py` — stable evaluator-contract surface shared by idea,
+  transform, evaluator, paper, and offline published-run readers.
 - `cost_tracker.py` — re-export of `ari.cost_tracker`.
 - `llm.py` — re-export of `ari.llm.client.LLMClient`.
 - `paths.py` — re-export of `ari.paths.PathManager`.

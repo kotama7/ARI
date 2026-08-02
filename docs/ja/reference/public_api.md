@@ -32,6 +32,7 @@ last_verified: 2026-08-02
 | `ari.public.config_schema` | Pydantic 設定モデル（`ARIConfig`、`LLMConfig` など） | 型付き設定が必要な呼び出し元 |
 | `ari.public.container` | コンテナランタイムヘルパー（`ContainerConfig`、`run_in_container` など） | `ari-skill-coding`（テスト） |
 | `ari.public.execution` | 閉じた workspace、bounded execution/result、完全 log artifact、`MeasurementSetV1` | 実行 producer と測定 consumer Skill |
+| `ari.public.evaluation` | immutable metric admission、`GateReportV1`、semantic review、保守的migration reader | idea、transform、evaluator、paper、offline reader |
 | `ari.public.cost_tracker` | LLM コスト記録（`bootstrap_skill`、`record` など） | `ari-skill-plot`（LLM 呼び出しコスト） |
 | `ari.public.llm` | `LLMClient`（コスト統合付き LiteLLM ラッパー） | ARI のラッパーを使いたい呼び出し元 |
 | `ari.public.paths` | `PathManager`（チェックポイントパスリゾルバ） | スコープ付きパスが必要な呼び出し元 |
@@ -42,7 +43,7 @@ last_verified: 2026-08-02
 | `ari.public.result` | `ResultEnvelopeV1`、content-addressed artifact reference、型付き error、呼び出し provenance | Skill adapter と federated dispatch 呼び出し元 |
 | `ari.public.skill_lock` | `SkillsLockV1`、ロック済み provider/tool record、atomic create-or-verify | run launcher、federation adapter、replay tool |
 | `ari.public.skill_manifest` | versioned Skill manifest model、loader、digest、safe entrypoint resolver | 組み込み / federated MCP Skill |
-| `ari.public.claim_gate` | 決定論的な主張-証拠ハードゲート（`run_hard_gate`）＋ 概念→不変条件レジストリ（`classify_concept`、`scan_science_data`、`CONCEPT_INVARIANTS`） | `ari-skill-evaluator`、`ari-skill-transform` |
+| `ari.public.claim_gate` | 決定論的gate entry point、evaluation contract、概念→不変条件registry | `ari-skill-evaluator`、`ari-skill-transform` |
 | `ari.public.verified_context` | 検証済みコンテキストヘルパー（`render_grounded_block`、`write_verified_context`、`build_verified_context`） | `ari-skill-paper` |
 
 ## `ari.public.config_schema`

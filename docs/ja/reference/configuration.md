@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 設定リファレンス
@@ -42,7 +42,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    # 評価はMCP toolではなくari-coreのBFTS evaluator pathが担当します。
+    tool: ''
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -499,8 +500,8 @@ claim_gate_policy:
 | Mode | 動作 |
 |---|---|
 | `off` | 決してブロックしない。 |
-| `warn`（既定） | エラー/警告を報告するが `finalize_paper` をブロックしない。 |
-| `strict` | `block_on` エラーが存在すると**最終** gate がブロックし（`finalize_paper` を skip）、strict セクション内の未カバーの結果数値もブロッキングになる。draft gate は決してブロックしない。 |
+| `warn`（既定） | **最終**gateでは`always_block_on`の客観的integrity findingだけをブロックし、他はreport-only。 |
+| `strict` | **最終**gateはさらに`block_on` findingをブロックし、strictセクションの未カバー数値もblockingになる。draft gateは決してブロックしない。 |
 
 `comparison_scope` は注入される研究意図です（環境変数
 `ARI_COMPARISON_SCOPE` で上書き）:

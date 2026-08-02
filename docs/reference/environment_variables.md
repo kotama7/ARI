@@ -59,7 +59,10 @@ operator settings.
 | `ARI_LLM_MODEL` | Default LiteLLM model id | (none) |
 | `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
 | `ARI_MODEL` | Cross-skill fallback model id | (falls through to `ARI_LLM_MODEL`) |
-| `ARI_MODEL_EVAL` | Model for the LLM evaluator | falls through to `ARI_MODEL` |
+| `ARI_MODEL_EVAL` | Model for the core BFTS evaluator (legacy shared alias; not read by `ari-skill-evaluator`) | falls through to `ARI_MODEL` |
+| `ARI_MODEL_METRIC_PROPOSAL` | Model for the explicit evaluator-skill metric proposal | falls through to `ARI_LLM_MODEL` |
+| `ARI_MODEL_SEMANTIC_REVIEW` | Model for the evaluator-skill semantic advisory | falls through to `ARI_LLM_MODEL` |
+| `ARI_SEMANTIC_REVIEW_MODEL_REVISION` | Recorded semantic-review model revision | (none) |
 | `ARI_MODEL_JUDGE` | Model for the BFTS judge | falls through to `ARI_MODEL` |
 | `ARI_MODEL_LINEAGE` | Model for stagnation / lineage decisions (v0.7.0) | falls through to `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | Model that picks the seed idea | falls through to `ARI_MODEL` |
@@ -142,7 +145,7 @@ LLM follows `ARI_MODEL_IDEA`.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_CLAIM_GATE_MODE` | Claim-evidence / metric-correctness gate evaluation switch. `off` never blocks; `warn` reports errors/warnings but never blocks finalize; `strict` blocks the final gate when blocking errors exist | `warn` (`off` / `warn` / `strict`) |
+| `ARI_CLAIM_GATE_MODE` | Claim/evidence gate switch. `off` never blocks; `warn` blocks only final objective-integrity findings; `strict` also blocks configured final findings | `warn` (`off` / `warn` / `strict`) |
 | `ARI_COMPARISON_SCOPE` | Governs whether a cross-environment comparison is treated as a transparency warning (`any`) or a blocking error (`same_environment`, for single-architecture optimization studies) | `any` (`any` / `same_environment`) |
 
 ### Rubric auto-generation (v0.7.0)

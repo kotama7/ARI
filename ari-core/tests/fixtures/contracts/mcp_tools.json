@@ -120,6 +120,8 @@
         "args": [
           "checkpoint_dir",
           "hard_gate_path",
+          "model",
+          "model_revision",
           "paper_claim_links_path",
           "paper_path",
           "phase",
@@ -132,10 +134,21 @@
         "args": [
           "checkpoint_dir",
           "experiment_text",
-          "primary_metric"
+          "proposal_json",
+          "reviewer"
         ],
         "idiom": "lowlevel",
         "name": "make_metric_spec"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "idea_json",
+          "model",
+          "model_revision"
+        ],
+        "idiom": "lowlevel",
+        "name": "propose_metric_contract"
       }
     ],
     "ari-skill-hpc": [

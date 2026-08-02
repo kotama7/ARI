@@ -4,9 +4,8 @@
 Covers (subtask 026 §8 item 8):
   (a) B1 fires on a skill's private-core edge and not on its ari.public edge;
   (b) B2 allows ari_skill_memory from core and flags any other ari_skill_*;
-  (c) a repo-level smoke test asserts the checker reports EXACTLY the 6 seed
-      edges (8 line occurrences) with an empty allowlist, and ZERO net-new
-      findings with the seeded allowlist.
+  (c) a repo-level smoke test asserts the migrated repository has no private
+      skill-to-core edge even with an empty allowlist.
 
 The checker is exercised as a subprocess (matching the §12 manual acceptance
 runs), so REPO_ROOT resolves from the script's own location.
@@ -26,27 +25,8 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SCRIPTS_DIR.parent
 CHECKER = SCRIPTS_DIR / "check_import_boundaries.py"
 
-# The remaining frozen seed set, as <file>::<module> ids. HPC's private
-# run_env fallback was deleted by the canonical scheduler migration.
-SEED_IDS = {
-    "ari-skill-idea/src/server.py::ari.lineage",
-    "ari-skill-paper-re/src/server.py::ari.clone",
-    "ari-skill-transform/src/server.py::ari.orchestrator",
-    "ari-skill-transform/src/server.py::ari.publish",
-    "ari-skill-coding/src/server.py::ari.container",
-    "ari-skill-coding/src/server.py::ari.agent.run_env",
-}
-# The remaining line-level occurrences.
-SEED_OCCURRENCES = {
-    ("ari-skill-idea/src/server.py", 615),
-    ("ari-skill-paper-re/src/server.py", 146),
-    ("ari-skill-transform/src/server.py", 681),
-    ("ari-skill-transform/src/server.py", 2083),
-    ("ari-skill-transform/src/server.py", 2433),
-    ("ari-skill-transform/src/server.py", 2451),
-    ("ari-skill-coding/src/server.py", 569),
-    ("ari-skill-coding/src/server.py", 583),
-}
+SEED_IDS: set[str] = set()
+SEED_OCCURRENCES: set[tuple[str, int]] = set()
 
 
 def run_checker(*args: str) -> tuple[int, dict]:
@@ -177,7 +157,7 @@ def test_repo_smoke_empty_allowlist_reports_exactly_seed(tmp_path: Path) -> None
     assert ids == SEED_IDS, sorted(ids ^ SEED_IDS)
     assert occ == SEED_OCCURRENCES, sorted(occ ^ SEED_OCCURRENCES)
     assert report["summary"]["b2"] == 0  # ari_skill_memory is sanctioned
-    assert report["summary"]["new"] == len(SEED_OCCURRENCES)
+    assert report["summary"]["new"] == 0
     assert code == 0
 
 

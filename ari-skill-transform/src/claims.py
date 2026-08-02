@@ -215,6 +215,9 @@ def build_science_claims(
     higher_is_better: bool = True,
     node_env: "dict[str, dict] | None" = None,
     comparison_scope: str = "any",
+    run_id: str = "",
+    metric_unit: str = "",
+    tolerance: "dict | None" = None,
 ) -> dict:
     """Deterministically build candidate claims[] + flattened numeric_assertions[].
 
@@ -237,6 +240,25 @@ def build_science_claims(
     """
     node_env = node_env or {}
     scope = (comparison_scope or "any").strip().lower() or "any"
+    assertion_tolerance = dict(
+        tolerance or {"absolute": 0.0, "relative": 0.02}
+    )
+
+    def _operand(node_id: str, metric_path: str, environment: dict) -> dict:
+        value = {
+            "node_id": node_id,
+            "metric_path": metric_path,
+            "environment": environment,
+        }
+        if run_id:
+            value["run_id"] = run_id
+        return value
+
+    def _result_ref(node_id: str, metric_path: str) -> dict:
+        value = {"node_id": node_id, "metric_path": metric_path}
+        if run_id:
+            value["run_id"] = run_id
+        return value
 
     def _env_of(nid: str) -> dict:
         e = node_env.get(nid) or {}
@@ -309,10 +331,11 @@ def build_science_claims(
         text_span=f"{_fmt(best_val)} {pm}",
         metric=pm,
         value=best_val,
-        unit="",
+        unit=metric_unit,
         formula="identity",
-        operands={"value": {"node_id": best_nid, "metric_path": best_path, "environment": best_env}},
+        operands={"value": _operand(best_nid, best_path, best_env)},
         cross_environment=False,
+        tolerance=assertion_tolerance,
     )
     claim = Claim(
         id=cid,
@@ -321,7 +344,7 @@ def build_science_claims(
         status="draft",
         supported_by={
             "nodes": [best_nid],
-            "results": [{"node_id": best_nid, "metric_path": best_path}],
+            "results": [_result_ref(best_nid, best_path)],
             "figures": [],
             "artifacts": [],
         },
@@ -348,10 +371,11 @@ def build_science_claims(
             unit="%",
             formula=formula,
             operands={
-                "baseline": {"node_id": worst_nid, "metric_path": worst_path, "environment": worst_env},
-                "proposed": {"node_id": best_nid, "metric_path": best_path, "environment": best_env},
+                "baseline": _operand(worst_nid, worst_path, worst_env),
+                "proposed": _operand(best_nid, best_path, best_env),
             },
             cross_environment=cross,
+            tolerance=assertion_tolerance,
         )
         _suffix = " across different execution environments" if cross else ""
         claim2 = Claim(
@@ -365,8 +389,8 @@ def build_science_claims(
             supported_by={
                 "nodes": [best_nid, worst_nid],
                 "results": [
-                    {"node_id": best_nid, "metric_path": best_path},
-                    {"node_id": worst_nid, "metric_path": worst_path},
+                    _result_ref(best_nid, best_path),
+                    _result_ref(worst_nid, worst_path),
                 ],
                 "figures": [],
                 "artifacts": [],

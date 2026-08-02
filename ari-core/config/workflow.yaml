@@ -24,8 +24,9 @@ root_idea_selection:
   enabled: true
 # Story2Proposal Phase B3: claim_evidence_hard_gate policy. Consumed by the claim
 # stages below (enabled by default in warn mode). mode controls blocking (off never
-# blocks; warn = default report-only; strict = blocks the FINAL gate on blocking
-# errors). env ARI_CLAIM_GATE_MODE overrides mode at runtime.
+# blocks; warn = objective-integrity findings only; strict = all configured
+# blocking findings). Only the FINAL phase can block. env ARI_CLAIM_GATE_MODE
+# overrides mode at runtime.
 claim_gate_policy:
   mode: warn
   # Injected research intent (env ARI_COMPARISON_SCOPE overrides): any (default;
