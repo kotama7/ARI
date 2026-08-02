@@ -1,9 +1,9 @@
 schema_version: 1
 name: vlm-skill
 package: ari-skill-vlm
-version: 0.1.0
+version: 0.2.0
 display_name: Review figures and tables
-description: Vision-language-model review of scientific figures and tables.
+description: Artifact-bound criteria-versioned visual review of scientific figures and tables.
 environment_policy: complete
 entrypoint:
   transport: stdio
@@ -16,11 +16,14 @@ optional_env:
   - ARI_LLM_API_BASE
   - ARI_LLM_MODEL
   - ARI_VLM_MODEL
+  - ARI_MODEL_VLM_PROVIDER
+  - ARI_MODEL_VLM_REVISION
   - AWS_DEFAULT_REGION
   - AWS_REGION
   - AZURE_API_BASE
   - AZURE_API_VERSION
   - OLLAMA_HOST
+  - LLM_API_BASE
   - VERTEXAI_LOCATION
   - VERTEXAI_PROJECT
   - VLM_MODEL
@@ -54,7 +57,7 @@ tool_defaults:
   side_effects: read-only
   determinism: stochastic
   timeout_class: slow
-  permissions: [workspace-read, model]
+  permissions: [workspace-read, workspace-write, model, network]
   result_schema: ari.result-envelope/v1
 tools:
   - name: review_figure

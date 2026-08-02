@@ -148,18 +148,19 @@ pipeline:
 - stage: generate_figures
   skill: plot-skill
   tool: generate_figures_llm
-  description: LLM generates matplotlib code -> PDF figures
+  description: LLM selects declarative specs; fixed renderer writes source-bound PDF/PNG figures
   depends_on:
   - transform_data
   enabled: true
   phase: paper
   inputs:
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
     science_data_path: '{{checkpoint_dir}}/science_data.json'
     n_figures: 3
     output_dir: '{{checkpoint_dir}}'
     experiment_summary: '{{experiment_summary}}'
     vlm_feedback: '{{vlm_feedback}}'
+    revision: '{{plot_revision}}'
+    previous_batch_path: '{{previous_figure_batch}}'
   outputs:
     file: '{{checkpoint_dir}}/figures_manifest.json'
 - stage: vlm_review_figures

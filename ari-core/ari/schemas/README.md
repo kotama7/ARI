@@ -25,6 +25,10 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `semantic_review_v1.schema.json` — independent provenance-bound semantic advisory.
 - `science_data_v1.schema.json` — separately digest-bound raw measurement,
   deterministic derivation, non-authoritative interpretation, and provenance hand-off.
+- `figure_batch_v1.schema.json` — declarative specs, render environment,
+  revision feedback, and content-addressed figure artifacts.
+- `visual_review_batch_v1.schema.json` — criteria profiles, artifact identity,
+  typed VLM findings/failures, model/cost provenance, and batch aggregation.
 - `idea_candidate_v1.schema.json` — admitted falsifiable hypothesis candidate.
 - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
 - `research_contract_v1.schema.json` — selected mint-once scientific hand-off consumed by evaluators.

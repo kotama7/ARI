@@ -496,6 +496,8 @@ class TestTemplateResolution:
             "ari_root": str(Path(__file__).parents[2]),
             # Pipeline initialises this to "" before the first stage runs
             "vlm_feedback": "",
+            "plot_revision": "0",
+            "previous_figure_batch": "",
             # Surfaced from evaluation_criteria.json by run_pipeline; tests
             # use empty strings (legacy path — transform_data falls back to
             # omitting the scalar best when primary_metric is empty).

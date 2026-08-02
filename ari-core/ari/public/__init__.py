@@ -18,6 +18,10 @@ Currently exported sub-modules:
   retrieval provenance.
 - :mod:`ari.public.science_data` — digest-bound raw, derived, and model
   interpretation sections plus the canonical numeric formula registry.
+- :mod:`ari.public.figures` — declarative figure specifications, immutable
+  render manifests, feedback lineage, and legacy offline reader.
+- :mod:`ari.public.visual_review` — criteria-versioned multimodal findings,
+  typed failures, cost/model provenance, and fail-closed review batches.
 - :mod:`ari.public.cost_tracker` — LLM cost reporting used by
   ari-skill-plot to log VLM/LLM call costs.
 - :mod:`ari.public.paths`        — :class:`PathManager` for callers

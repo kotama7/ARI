@@ -1,87 +1,59 @@
 # ari-skill-plot
 
-Scientific figure generation MCP skill — produces PNG / PDF figures
-either deterministically from a fixed schema or by letting an LLM
-write matplotlib code from data shape and a natural-language intent.
+Source-bound scientific figure planning and deterministic rendering. Every
+native result is an `ari.figure-manifest/v1` or `ari.figure-batch/v1` document
+that binds the exact ScienceData slice, units, declarative specification,
+renderer environment, revision lineage, and PNG/PDF bytes.
 
 ## MCP tools
 
-### `generate_figures` (deterministic, P2-safe)
+- `render_figure(request)` validates a canonical `FigureSpecV1` and renders it
+  through the fixed matplotlib implementation.
+- `generate_figures(science_data_path, output_dir, n_figures=3)` chooses stable
+  default specs from claim-eligible typed measurements. It has no model call.
+- `generate_figures_llm(...)` lets a model choose only an admitted metric ID,
+  fixed chart type, and x-axis mode. The model cannot emit values, units,
+  captions, paths, Python, SVG, or image bytes.
 
-Take a list of BFTS nodes, render canonical comparison figures
-(metric-vs-config, metric-vs-time, learning curves, etc.), and write
-them into a target directory together with a manifest.
+All input and output paths must remain below `output_dir`, which is treated as a
+closed `WorkspaceRefV1`. Native generation rejects pre-v1 ScienceData. The
+unversioned figure map is available only through the offline
+`read_legacy_figure_batch` reader and is never admitted as native evidence.
 
-Arguments (key fields):
+## Scientific and security properties
 
-| Field | Meaning |
+- Numeric vectors and units come only from claim-eligible `ScienceDataV1`
+  measurement records.
+- Axis units are mandatory and bound by `spec_digest`.
+- The renderer executes no caller or model code and launches no subprocess.
+- The old directory-scan fallback, implicit VLM caption call, generated Python,
+  SVG rasterizer, and private `_run_plot_code` sandbox were removed in v0.2.
+- Each revision is written under `figures/revisions/NN/`; a review must bind the
+  exact parent manifest and the configured two-iteration cap is enforced.
+- Replay identity includes Python, matplotlib, backend, font bytes, platform,
+  and optional container digest. Byte identity is claimed only inside the same
+  environment digest.
+
+The planner prompt is stored in `src/prompts/figure_planner.md`. Raw planner
+response and exact prompt bytes are content-addressed artifacts. Visual quality
+and captions belong to the explicit `ari-skill-vlm` review stage.
+
+## Environment
+
+| Variable | Purpose |
 |---|---|
-| `nodes_json_path` | Path to `nodes_tree.json` (or compatible list) |
-| `output_dir` | Where PNG / PDF files are written |
-| `figure_spec` | What to plot (axes, group-by, fill/aggregation) |
+| `ARI_MODEL_PLOT` | Preferred declarative planner model |
+| `ARI_MODEL_PLOT_REVISION` | Provider/model revision recorded in the manifest |
+| `ARI_LLM_MODEL` / `LLM_MODEL` | Cross-skill model fallback |
+| `ARI_LLM_API_BASE` / `LLM_API_BASE` | Optional LiteLLM endpoint |
+| `ARI_CONTAINER_DIGEST` | Optional immutable rendering environment identity |
 
-Returns a JSON manifest enumerating every emitted figure with its
-caption and source node ids.
-
-### `generate_figures_llm` (P2 exception)
-
-LLM examines the data shape and intent, writes matplotlib code, and
-the skill executes it under the same `_run_plot_code` sandbox used by
-the deterministic path.  Optional VLM caption pass after rendering.
-
-Arguments (key fields):
-
-| Field | Meaning |
-|---|---|
-| `nodes_json_path` | Source data |
-| `intent` | Natural-language description of what to visualise |
-| `output_dir` | Output directory |
-
-Returns the same manifest format plus the generated matplotlib code
-for audit.
-
-## Determinism
-
-`generate_figures` is byte-deterministic for a given matplotlib
-version — same nodes in, same PNG out.  `generate_figures_llm` is a
-P2 exception: the matplotlib code is LLM-generated and may differ
-from run to run.  Always prefer the deterministic tool when the
-figure shape is known up front.
-
-## Environment variables
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `ARI_VLM_MODEL` | Preferred vision LLM for the optional caption pass | falls through to `VLM_MODEL` |
-| `VLM_MODEL` | Compatibility fallback for caption generation | `openai/gpt-4o` |
-| `ARI_LLM_MODEL` | LLM that writes the matplotlib code in `_llm` mode | (none — required for `_llm`) |
-| `LLM_MODEL` | Cross-skill fallback when `ARI_LLM_MODEL` is unset | (none) |
-| `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
-| `OPENAI_API_KEY` | Needed when the VLM or LLM is OpenAI-hosted | (none) |
-
-## ari-core boundary
-
-`src/server.py` imports `from ari import cost_tracker` to send LLM
-spend back to the central tracker.  Phase 4 of the master refactor
-moves this to `ari.public.cost_tracker`; see
-`ari-skill-plot/REFACTORING.md`.
-
-## Test gap
-
-No tests are checked in yet.  A smoke test that mocks the LLM and
-calls `generate_figures` against a fixture `nodes_tree.json` is the
-recommended starting point.
-
-## Development
+## Verification
 
 ```bash
-python -m ari_skill_plot.server
+PYTHONPATH=../ari-core pytest -q tests
 ```
 
-There are no automated tests yet — see "Test gap" above.
-
-## See also
-
-- `docs/reference/skills.md` — high-level summary in the master skill index.
-- `ari-skill-vlm/README.md` — VLM-side figure review (different concern).
-- `ari-core/ari/cost_tracker.py` — cost accounting hook.
+The corpus covers six chart types, deterministic replay, content digests,
+invalid values/units, closed paths, malicious planner fields, revision lineage,
+and the explicit legacy reader.

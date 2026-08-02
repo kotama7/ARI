@@ -233,6 +233,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `execution_request_v1.schema.json` / `execution_result_v1.schema.json` — bounded local/container execution request and evidence.
   - `measurement_set_v1.schema.json` — unit- and execution-bound scientific measurement records.
   - `science_data_v1.schema.json` — canonical raw/derived/interpretation scientific hand-off.
+  - `figure_batch_v1.schema.json` — source/spec/environment/artifact-bound scientific figures.
+  - `visual_review_batch_v1.schema.json` — failure-preserving multimodal review evidence.
   - `workspace_ref_v1.schema.json` — closed workspace reference.
   - `skill_manifest_v1.schema.json` — canonical Skill package manifest contract.
   - `skills_lock_v1.schema.json` — immutable run provider/schema/phase snapshot contract.

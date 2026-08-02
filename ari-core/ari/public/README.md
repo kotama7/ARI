@@ -20,6 +20,10 @@ core can refactor freely while the contract stays put.
   artifact, and measurement contracts plus the read-only legacy parser.
 - `evaluation.py` — stable evaluator-contract surface shared by idea,
   transform, evaluator, paper, and offline published-run readers.
+- `figures.py` — declarative `FigureSpecV1`, digest-bound render/batch
+  manifests, explicit feedback lineage, and the isolated legacy reader.
+- `visual_review.py` — criteria profiles, artifact-bound review findings,
+  raw/model/cost provenance, and failure-preserving review batches.
 - `cost_tracker.py` — re-export of `ari.cost_tracker`.
 - `llm.py` — re-export of `ari.llm.client.LLMClient`.
 - `paths.py` — re-export of `ari.paths.PathManager`.
