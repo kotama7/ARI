@@ -50,6 +50,32 @@ def unresolved_tool_ref(tool_name: str) -> str:
     return f"unresolved/{tool_name}@sha256:{digest}"
 
 
+def resolve_registration(
+    requested: str,
+    *,
+    tool_ref_registry: dict[str, str],
+    tool_name_by_ref: dict[str, str],
+    tool_registry: dict[str, str],
+    tool_ref_by_name: dict[str, str],
+) -> tuple[str, str, str | None, str]:
+    """Resolve an immutable reference or the migration-only unique bare alias."""
+
+    if requested in tool_ref_registry:
+        return (
+            tool_name_by_ref[requested],
+            requested,
+            tool_ref_registry[requested],
+            "immutable-tool-ref",
+        )
+    skill_name = tool_registry.get(requested)
+    return (
+        requested,
+        tool_ref_by_name.get(requested, unresolved_tool_ref(requested)),
+        skill_name,
+        "unique-bare-alias" if skill_name else "unresolved",
+    )
+
+
 def normalize_phases(phase: str | list[str] | None) -> list[str]:
     """Coerce SkillConfig.phase into a flat list of phase strings."""
 
@@ -181,6 +207,7 @@ __all__ = [
     "normalize_phases",
     "phase_is_disabled",
     "phase_matches",
+    "resolve_registration",
     "resolve_tool_timeout",
     "runtime_tool_ref",
     "unresolved_tool_ref",

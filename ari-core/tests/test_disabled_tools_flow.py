@@ -128,6 +128,7 @@ def test_pipeline_subprocess_script_passes_disabled_tools():
         sources.append(sr.read_text())
     src = "\n".join(sources)
     assert (
-        "MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [])"
+        "MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [], "
         in src
     ), "paper subprocess MCPClient must be constructed with disabled_tools"
+    assert "skill_lock_scope='subset'" in src

@@ -115,6 +115,7 @@ _PUBLIC_SUBMODULES = (
     "paths",
     "result",
     "run_env",
+    "skill_lock",
     "skill_manifest",
     "verified_context",
 )

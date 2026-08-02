@@ -17,6 +17,8 @@ core can refactor freely while the contract stays put.
 - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
 - `result.py` — versioned `ResultEnvelopeV1`, artifact references, typed errors,
   call context, provenance, and the legacy response normalizer.
+- `skill_lock.py` — immutable run-level provider/schema/phase snapshot contract
+  and atomic exact/subset verification helpers.
 - `skill_manifest.py` — canonical Skill package, entrypoint, and tool-policy
   contract plus validation helpers.
 - `verified_context.py` — re-export of `ari.pipeline.verified_context` (`render_grounded_block` / `write_verified_context`; used by ari-skill-paper).

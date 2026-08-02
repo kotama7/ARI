@@ -103,6 +103,7 @@ targets the like-named module under `ari/`.
 - `test_prompt_registry.py` — TODO
 - `test_prompt_snapshots.py` — TODO
 - `test_public_api_boundary.py` — public-API boundary.
+- `test_result_envelope.py` — typed MCP results, artifacts, errors, and dispatch compatibility.
 - `test_publish_and_registry.py` — publish + registry.
 - `test_publish_yaml_api.py` — publish YAML API.
 - `test_publish_zenodo_gh.py` — publish to Zenodo/GitHub.
@@ -120,6 +121,8 @@ targets the like-named module under `ari/`.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
 - `test_skill_public_contract.py` — skills import core via the public contract.
+- `test_skill_lock.py` — immutable run-level provider/schema/phase snapshot contract.
+- `test_skill_manifest.py` — canonical Skill manifest validation and runtime admission metadata.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).

@@ -6,6 +6,8 @@ sources:
     role: test
   - path: ari-core/ari/result.py
     role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
   - path: ari-skill-hpc/src/server.py
@@ -68,7 +70,8 @@ python scripts/check_skill_manifests.py
 The conformance gate rejects an unversioned/invalid manifest, package-version
 drift, statically declared runtime tool-name drift, workflow reference or phase
 drift, stale `mcp.json`, and name collisions among default-enabled Skills. A live
-`tools/list` input-schema comparison remains a P1 follow-up. Runtime loading
+`tools/list` comparison is enforced for every locked run; moving the same check
+into package-only CI remains a P1 follow-up. Runtime loading
 accepts an unversioned legacy manifest only through the explicit transition flag
 `allow_legacy=True`; CI and admission do not use it.
 
@@ -87,8 +90,23 @@ implementations. Runtime name is not evidence that two tools are equivalent.
 `tools/list` entries now carry a runtime `tool_ref` bound to the normalized
 manifest and live input/output schemas. Typed dispatch accepts that immutable
 reference; a unique bare name remains migration-only. A duplicate bare tool name is an
-admission error rather than last-writer-wins. Run-level `SKILLS.lock` pinning is
-the next safety milestone. The external orchestrator is therefore default-off
+admission error rather than last-writer-wins.
+
+On first live discovery for a run, ari-core atomically writes
+`{checkpoint}/SKILLS.lock`. The lock includes every configured provider's
+manifest/provider digest, the exact input and output schemas returned by
+`tools/list`, resolved tool policy, disabled tools, and the admitted immutable
+`tool_ref` set for each runtime phase. A second process or resumed run must
+produce the exact same registry digest before dispatch is allowed. Manifest,
+schema, provider, phase, or disabled-tool drift fails closed; an enabled provider
+that cannot start is also an admission error rather than a silently smaller
+catalog. A stage subprocess may start only its owning provider, but must verify
+that exact provider/tool subset against the already-created full lock and cannot
+create or replace the authoritative snapshot. The lock contains environment variable names but never credential
+values. Its normative schema is
+`ari-core/ari/schemas/skills_lock_v1.schema.json`.
+
+The external orchestrator is therefore default-off
 and is not injected into the experiment agent's tool set.
 
 To add a built-in Skill, add one package-level manifest and server, then regenerate

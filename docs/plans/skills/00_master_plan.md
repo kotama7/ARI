@@ -31,7 +31,8 @@ last_verified: 2026-08-02
 - `ari-core` のdiscovery、entrypoint、timeout classをmanifestへ接続し、bare-name後勝ちをregistration errorへ変更。
 - runtime input/output schemaまで束縛したimmutable `tool_ref` dispatchと、一意bare aliasの互換経路を追加。
 - `ResultEnvelopeV1`、typed error/provenance、4,000文字超raw responseのcontent-addressed artifact化を追加。
-- P2の最小child environmentとrun-level `SKILLS.lock`は未着手。
+- run-level `SKILLS.lock`、provider/schema digest、phase別active set、atomic create/verify、provider fail-closedを追加。
+- P2の最小child environmentは未着手。
 - 削除ledgerはC01-D1/D3/D6/D7が移行中で、削除gate未達のcompatibility pathは保持。
 
 ## 1. 決定
@@ -248,7 +249,7 @@ P0 と P1 は全 component に横断する。P2 以降は dependency を満た�
 - [ ] 全 component に canonical manifest と owner が一つだけある。
 - [ ] manifest、runtime `tools/list`、workflow、docs、package version の conformance CI が通る。
 - [ ] 同名 tool は黙って上書きされず、完全重複以外は別 identity として保持される。
-- [ ] run 開始後に active tool set、schema、provider digest が変わらない。
+- [x] run 開始後に active tool set、schema、provider digest が変わらない。
 - [ ] ResultEnvelope、artifact digest、tool selection reason、admission evidence が EAR に残る。
 - [ ] record した fixture が network、credential、MCP server なしの replay で成功する。
 - [ ] parallel BFTS で node context と memory write が交差しない。

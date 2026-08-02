@@ -10,6 +10,8 @@ sources:
     role: doc
   - path: ari-core/ari/result.py
     role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
   - path: ari-core/ari/schemas/result_envelope_v1.schema.json
     role: config
 last_verified: 2026-08-02
@@ -17,7 +19,7 @@ last_verified: 2026-08-02
 
 # C01: `ari-core` Skill control plane 実装計画
 
-> 状態: In progress（C01-01/02/05完了、C01-03/04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: In progress（C01-01/02/05/07完了、C01-03/04/09/10は互換移行中）。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務と範囲
 
@@ -62,7 +64,7 @@ last_verified: 2026-08-02
 | C01-04 | namespaced registryとcollision policyを追加 | immutable `tool_ref`、duplicate/equivalence判定hook | C01-02 |
 | C01-05 | `ResultEnvelopeV1` とartifact externalization | public model、bounded rendering、raw response保存 | C01-02 |
 | C01-06 | child environment policyを実装 | allowlist、secret redaction、credential scope identity | C01-03 |
-| C01-07 | run snapshotを固定 | `SKILLS.lock`、schema/provider digest、phase別active set | C01-04 |
+| C01-07 | **完了**: run snapshotを固定 | `SKILLS.lock`、schema/provider digest、phase別active set、atomic create/verify、provider fail-closed | C01-04 |
 | C01-08 | explicit `RunContext` / `NodeContext` をcallへ渡す | parallel-safe context、memory連携 | C01-05 |
 | C01-09 | capability-based timeout / async handle | hard-coded tool名に依存しないbudgetとpolling | C01-05 |
 | C01-10 | conformance CIとmigration reader | manifest/tools/workflow/version check、旧config fixture | C01-02〜09 |
@@ -80,7 +82,7 @@ last_verified: 2026-08-02
 - [x] 全既存 Skill の manifest がschema validationを通る。
 - [ ] manifest tools と live `tools/list` の追加・欠落・schema drift がCIでfailする。
 - [x] 同名の異なる2 toolを登録すると起動時にcollision errorになり、黙って上書きされない。
-- [ ] run開始後にmanifest fileを変更してもactive snapshotは変わらない。
+- [x] run開始後にmanifest fileを変更してもactive snapshotは変わらず、新process/resumeはdriftを拒否する。
 - [ ] secret markerを親envへ置いたtestで、未許可Skillから参照できない。
 - [x] 4 parallel nodeのmemory writeでnode contextが交差しない。
 - [x] 4,000文字を超える結果がartifact化され、digestから復元できる。

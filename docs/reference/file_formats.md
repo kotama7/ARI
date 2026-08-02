@@ -362,6 +362,23 @@ stages:
 
 Bundled defaults live in `ari-core/config/workflow.yaml` (the package config root returned by `package_config_root()`).
 
+## `SKILLS.lock`
+
+Immutable, deterministic MCP registry snapshot written once at
+`{checkpoint}/SKILLS.lock` after the first successful live `tools/list`
+handshake. It records:
+
+- canonical manifest and provider digests for each configured Skill;
+- exact live input/output JSON Schemas and schema digests for every tool;
+- immutable `tool_ref`, capability, policy, and disabled-tool configuration;
+- the admitted `tool_ref` set for every runtime phase;
+- one registry digest covering the complete document.
+
+Subsequent processes and resumed runs create their live candidate registry and
+must match the existing lock exactly before dispatch. The file stores declared
+environment variable names, never secret values. Schema:
+`ari-core/ari/schemas/skills_lock_v1.schema.json`.
+
 ## `memory_store.jsonl` / `memory_backup.jsonl.gz`
 
 Memory backend artefacts written under `ARI_CHECKPOINT_DIR`:
@@ -405,7 +422,7 @@ into the published paper.
 
 - `docs/concepts/architecture.md` (Checkpoint Directory Layout) — narrative
   view of the same files.
-- `ari-core/ari/schemas/` — formal JSON Schemas for `node_report` and
-  the publish manifest.
+- `ari-core/ari/schemas/` — formal JSON Schemas for run locks, result
+  envelopes, `node_report`, and the publish manifest.
 - `ari-core/ari/pipeline/yaml_loader.py` — workflow.yaml parser.
 - `docs/guides/experiment_file.md` — long-form `experiment.md` guide.

@@ -459,6 +459,7 @@ single source of truth for directory construction.
 
 ```
 checkpoints/{run_id}/
+├── SKILLS.lock                # Immutable live MCP provider/schema/phase snapshot
 ├── experiment.md               # Input: research goal (copied on launch)
 ├── launch_config.json          # Wizard/CLI launch parameters
 ├── meta.json                   # Sub-experiment metadata (parent/depth)
