@@ -255,6 +255,9 @@ _env_append_if_absent "# SEMANTIC_SCHOLAR_API_KEY="
 # rollout_submission(agent_env_path=...) and by paperbench Stage 2
 # reproduce.sh scripts that pip-install gated weights.
 _prompt_secret "HF_TOKEN"                "Hugging Face Hub token (optional; needed for gated papers)"
+# Optional IBM Quantum credential. It is documented but not prompted so a
+# default local/Aer installation remains non-interactive and credential-free.
+_env_append_if_absent "# QISKIT_IBM_TOKEN="
 # Default path the bridge auto-loads when rollout_submission's
 # ``agent_env_path=None``. Leave blank to use the bundled default
 # (``$HOME/.ari/agent.env``); set explicitly to override.

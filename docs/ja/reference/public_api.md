@@ -28,6 +28,7 @@ last_verified: 2026-08-02
 
 | サブモジュール | 再エクスポートする内容 | 使用しているスキル |
 |---|---|---|
+| `ari.public.clone` | digest 検証付き EAR bundle の取得と安全な展開（`clone`、`CloneResult`、`CloneError`） | reproduction / bundle consumer Skill |
 | `ari.public.config_schema` | Pydantic 設定モデル（`ARIConfig`、`LLMConfig` など） | 型付き設定が必要な呼び出し元 |
 | `ari.public.container` | コンテナランタイムヘルパー（`ContainerConfig`、`run_in_container` など） | `ari-skill-coding`（テスト） |
 | `ari.public.execution` | 閉じた workspace、bounded execution/result、完全 log artifact、`MeasurementSetV1` | 実行 producer と測定 consumer Skill |

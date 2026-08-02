@@ -23,6 +23,7 @@ last_verified: 2026-08-02
 
 | 子模块 | 重导出内容 | 使用它的技能 |
 |---|---|---|
+| `ari.public.clone` | 经 digest 验证的 EAR bundle 获取与安全解包（`clone`、`CloneResult`、`CloneError`） | reproduction / bundle consumer 技能 |
 | `ari.public.config_schema` | Pydantic 配置模型（`ARIConfig`、`LLMConfig` 等） | 需要类型化设置的调用方 |
 | `ari.public.container` | 容器运行时辅助函数（`ContainerConfig`、`run_in_container` 等） | `ari-skill-coding`（测试） |
 | `ari.public.execution` | 封闭 workspace、有界 execution/result、完整日志 artifact、`MeasurementSetV1` | 执行 producer 与测量 consumer 技能 |

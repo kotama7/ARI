@@ -29,6 +29,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 
 | Sub-module | What it re-exports | Skills that use it |
 |---|---|---|
+| `ari.public.clone` | Digest-verified EAR bundle retrieval and safe extraction (`clone`, `CloneResult`, `CloneError`) | reproduction and bundle-consuming Skills |
 | `ari.public.config_schema` | Pydantic config models (`ARIConfig`, `LLMConfig`, ...) | callers needing typed settings |
 | `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
 | `ari.public.execution` | `WorkspaceRefV1`, bounded execution/result records, complete-log artifacts, and `MeasurementSetV1` | execution-producing and measurement-consuming Skills |

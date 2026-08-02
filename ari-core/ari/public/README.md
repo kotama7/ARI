@@ -11,6 +11,7 @@ core can refactor freely while the contract stays put.
 - `__init__.py` — exported sub-modules + rationale.
 - `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).
 - `config_schema.py` — re-export of `ari.config` models.
+- `clone.py` — digest-verified EAR bundle retrieval and safe extraction.
 - `container.py` — re-export of `ari.container`.
 - `execution.py` — versioned workspace, bounded execution, complete-log
   artifact, and measurement contracts plus the read-only legacy parser.

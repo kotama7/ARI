@@ -8,6 +8,8 @@ Currently exported sub-modules:
 
 - :mod:`ari.public.container`    — container runtime helpers used by
   ari-skill-coding's regression tests.
+- :mod:`ari.public.clone`        — digest-verified EAR bundle retrieval and
+  extraction.
 - :mod:`ari.public.execution`    — closed-workspace, bounded-process,
   artifact-log, and typed measurement contracts.
 - :mod:`ari.public.cost_tracker` — LLM cost reporting used by

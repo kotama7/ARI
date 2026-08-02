@@ -32,6 +32,8 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from ari.public import cost_tracker as _ari_cost_tracker
+from ari.public.clone import CloneError, clone
 from ari_skill_hpc import (
     ArtifactPinV1,
     EnvironmentPolicyV1,
@@ -50,10 +52,6 @@ log = logging.getLogger(__name__)
 mcp = FastMCP("paper-reproducibility-skill")
 
 try:
-    try:
-        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
-    except ImportError:
-        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
     _ari_cost_tracker.bootstrap_skill("paper-re")
 except Exception:
     pass
@@ -156,10 +154,6 @@ async def fetch_code_bundle(
                 "dest": str(dest_path),
             }
 
-    try:
-        from ari.clone import clone, CloneError
-    except Exception as e:
-        return {"populated": False, "error": f"ari.clone not importable: {e}"}
     try:
         result = clone(ref, dest=dest_path, expect_sha256=sha256 or None)
     except CloneError as e:
