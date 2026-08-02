@@ -118,6 +118,59 @@ python scripts/verify_openroad.py \
   --experiment /absolute/profile.yaml --smoke
 ```
 
+## Qiskit experiment profiles
+
+The Qiskit integration imports the official Qiskit MCP servers as two pinned
+providers but exposes only immutable sampling profiles. It deliberately does
+not expose account management, arbitrary QASM/Python, arbitrary backend
+selection, or the upstream tool sets as leaf tools. Four different capability
+references keep local ideal Aer, local noisy Aer, remote simulator, and IBM
+hardware results from becoming interchangeable semantic matches.
+
+Each `QiskitExperimentV1` fixes a QPY circuit and producer version, parameter
+bindings with explicit units, transpiler level/seed/layout, basis gates,
+coupling map and target digest, shots, simulation method/precision/threads,
+simulator seed and noise model, or Runtime backend/access-tier/mitigation
+identity. The caller supplies only an idempotent `request_id`. The adapter uses
+the official core MCP for transpilation; a digest-pinned, distribution-checked
+worker runs local Aer because the reviewed core provider does not execute
+circuits. Remote profiles use only the reviewed Runtime setup, snapshot,
+sampler, status, result, and cancellation operations.
+
+Remote submission returns the common asynchronous handle immediately. The raw
+backend property, coupling, calibration, submission, status, and result records
+are stored as role-distinct content-addressed artifacts. A stable scientific
+snapshot digest excludes queue/operational timestamps while the original live
+snapshot remains preserved. Backend or target mismatch fails before submission,
+timeout requests cancellation, and an ambiguous submit/cancel race is reconciled
+without silently orphaning the provider job.
+
+`QISKIT_IBM_TOKEN` is the only admitted Runtime credential. It enters the Skill
+through the `quantum.ibm-runtime` credential scope and is forwarded only to the
+isolated Runtime MCP process. Exact-value redaction covers provider text,
+structured output, diagnostics, and exceptions; locks, source records,
+cassettes, artifacts, and identity digests contain neither the token nor a raw
+instance CRN. The profile stores only an `instance_digest` and an access-tier ID.
+
+The reviewed stack is Qiskit MCP server 0.3.1, IBM Runtime MCP server 0.6.1,
+Qiskit 2.5.1, Qiskit Aer 0.17.2, and Qiskit IBM Runtime 0.48.0. Aer 0.17.2 is in
+reduced maintenance, so any version change needs a new support record and
+scientific fixture review. Start from `providers/qiskit-source.example.yaml` and
+verify isolated installations, provider contracts, profiles, and optionally a
+local run with:
+
+```bash
+python scripts/verify_qiskit.py \
+  --core-python /absolute/qiskit-env/bin/python \
+  --core-package-root /absolute/qiskit-env/lib/python3.13/site-packages/qiskit_mcp_server \
+  --runtime-python /absolute/runtime-env/bin/python \
+  --runtime-package-root /absolute/runtime-env/lib/python3.13/site-packages/qiskit_ibm_runtime_mcp_server \
+  --experiment /absolute/profile.yaml --smoke
+```
+
+See [the Qiskit profile guide](../docs/reference/qiskit_profiles.md) for the
+scientific contract, credential procedure, provider update gate, and rollback.
+
 ## Admission and scientific meaning
 
 Admission is explicit and monotonic:

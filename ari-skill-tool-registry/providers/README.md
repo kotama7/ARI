@@ -91,3 +91,66 @@ and writes JSON design metrics through the documented
 Rollback selects the prior provider/toolchain record, experiment profile,
 catalog lock, and cassette. PDK and library license terms are profile-specific;
 the OpenROAD/ORFS license does not grant rights to third-party technology data.
+
+## Qiskit and IBM Quantum
+
+`qiskit-support-v1.json` admits the official
+[Qiskit MCP server 0.3.1](https://pypi.org/project/qiskit-mcp-server/0.3.1/)
+and
+[IBM Runtime MCP server 0.6.1](https://pypi.org/project/qiskit-ibm-runtime-mcp-server/0.6.1/)
+from the shared [Qiskit MCP repository](https://github.com/Qiskit/mcp-servers),
+at one full commit. It also fixes Qiskit 2.5.1, Qiskit Aer 0.17.2, and Qiskit
+IBM Runtime 0.48.0. The record binds each provider source archive, wheel,
+Apache-2.0 license, dependency lock, direct dependencies, complete installed
+package tree, and exact MCP tool contract. Scientific distribution source
+archives and Python constraints are recorded separately from provider bytes.
+
+The core provider's reviewed contract has seven circuit-analysis/conversion/
+transpilation tools and does not execute a circuit. The Runtime provider has
+twenty tools, including account-management operations that ARI must not publish.
+ARI therefore exposes neither upstream set directly: each catalog leaf is one
+immutable `QiskitExperimentV1`, and the adapter internally calls only the
+transpilation or setup/snapshot/sampler/status/result/cancel subset needed by
+that profile. Local Aer execution happens in a separate distribution-verified
+worker. The four backend kinds have distinct capabilities and admission meaning.
+
+QPY is the canonical circuit artifact. The verifier checks its bytes, `QISKIT`
+header, QPY format byte, producing Qiskit major/minor/patch, circuit dimensions,
+profile digest, and exact golden/replay files. Remote profiles additionally bind
+backend version, target basis/coupling digest, an opaque instance digest, access
+tier, mitigation policy, and captured calibration identity. Raw live snapshots
+remain artifacts even though volatile queue/operational fields are excluded
+from the stable scientific snapshot digest.
+
+### Adding or updating a provider/software release
+
+1. Review the official repository tags and resolve both provider releases to
+   full commits. Download the PyPI wheel/sdist and verify published hashes.
+2. Review the license, dependency lock, direct dependencies, entry points, and
+   exact tool definitions. Record a complete canonical package tree and contract
+   digest; do not edit an existing historical release to describe new bytes.
+3. Review Qiskit, Aer, and Runtime source releases separately. Aer's reduced
+   maintenance status is a risk requiring explicit acceptance for each support
+   line.
+4. Build isolated exact environments. Runtime environments must include the
+   reviewed core MCP distribution because the official Runtime package depends
+   on it. Do not resolve ranges at registry startup.
+5. Start from `qiskit-source.example.yaml`. Create QPY with the pinned Qiskit,
+   calculate target/software identities, and produce exact
+   `ari.qiskit-golden/v1` and `ari.qiskit-replay-fixture/v1` files.
+6. Run `scripts/verify_qiskit.py --smoke`; for local scientific validation also
+   use `--run-profile ... --artifact-root ...`. Review provider tool names,
+   transpiled QPY, counts, statistical bounds, and artifact manifests.
+7. For remote profiles, review backend/configuration/calibration identities and
+   access tier without recording the raw instance CRN. Supply
+   `QISKIT_IBM_TOKEN` only through the `quantum.ibm-runtime` credential scope.
+8. Sync without approval, review catalog/schema/lineage/permission changes, then
+   explicitly approve. Run token redaction, backend mismatch, async cancellation,
+   record/replay, manifest/schema, and package tests.
+
+Rollback restores the prior support record, exact provider environments,
+experiment profile, QPY/evidence files, active catalog lock, and cassettes.
+Remote jobs already submitted under the newer record must first reach a terminal
+state or be reconciled by their recorded provider handle; rollback must not hide
+or abandon them. IBM service terms, account entitlements, and backend access are
+external to the Apache-2.0 software licenses and remain operator responsibilities.

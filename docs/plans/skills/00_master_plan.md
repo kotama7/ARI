@@ -21,7 +21,7 @@ last_verified: 2026-08-02
 
 | 項目 | 値 |
 |---|---|
-| 状態 | In progress — C01/C02/C17/C18 complete; C06 consumers complete; C19 pilot next |
+| 状態 | In progress — P5 provider pilots complete; component cleanup and P6 remain |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -75,6 +75,13 @@ last_verified: 2026-08-02
   spool wrapperを削除し、digest付きrequest→handle→status/log/cancelへ移行した。
   rubric schemaもtyped account/QoS/reservationと矛盾resource拒否へ更新し、157件の
   paper-re suiteと54件のHPC suiteを通過。C06-07はOpenROAD consumerを含め完了。
+- 公式Qiskit MCP server 0.3.1、IBM Runtime MCP server 0.6.1、Qiskit 2.5.1、
+  Aer 0.17.2、IBM Runtime 0.48.0をpinし、完全package tree/distribution/tool contractを
+  検証した。QPY、parameter unit、transpiler/target/shots/seed/noise/mitigation、backend
+  snapshot/calibrationをclosed profileへ固定し、local ideal/noisy、remote simulator、
+  IBM hardwareを別capabilityにした。typed async、token scope/redaction、raw artifact、
+  Bell/GHZ scientific fixture、official transpile/Aer run、offline replayを実装し、
+  C19-01〜08/D1〜D6を完了。P5 provider gateを閉じた。
 
 ## 1. 決定
 
@@ -296,7 +303,7 @@ P0 と P1 は全 component に横断する。P2 以降は dependency を満た�
 - [x] parallel BFTS で node context と memory write が交差しない。
 - [x] 最小 child environment に含めない secret が Skill processへ渡らない。
 - [x] 1,000 tool mock collection を一つの source 定義で追加できる。
-- [ ] ToolUniverse、direct MCP、OpenROAD、Qiskit の能力が同じ discovery contract から選択できる。
+- [x] ToolUniverse、direct MCP、OpenROAD、Qiskit の能力が同じ discovery contract から選択できる。
 - [x] deterministic / stochastic / live-data の再現性主張が区別される。
 - [ ] 各サブ計画の component-specific test と deletion gate が通る。
 - [ ] `pytest`、docs link、manifest/schema、security、replay の全CIが green である。

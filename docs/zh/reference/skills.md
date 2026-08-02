@@ -560,6 +560,11 @@ OpenROAD profile 可通过有作用域的本地 MCP session，或 digest-pinned 
 container 内的 typed C06 SLURM job 执行。两者都保持为同一虚拟 catalog 叶子；
 scheduler 资源、handle、日志和 provenance 由 profile 固定，不会成为调用者任意 flag。
 
+Qiskit 同样不会直接公开上游工具集合，而是把不可变异步 sampling profile 作为 leaf。
+local ideal/noisy Aer、remote simulator 与 IBM hardware 使用不同 capability，并固定 QPY、
+target、transpilation、shots、seed/noise/mitigation、backend snapshot、evidence 和 credential
+scope。详见 [Qiskit profile reference](qiskit_profiles.md)。
+
 ## ari-skill-transform
 
 将 BFTS 内部表示转换为面向出版的科学数据格式。剥离所有内部字段（`node_id`、`label`、`depth`、`parent_id`），仅暴露科学内容（`configurations`、`experiment_context`）。**LLM：是**。

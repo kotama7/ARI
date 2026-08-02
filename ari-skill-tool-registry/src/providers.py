@@ -170,18 +170,28 @@ class PythonStdioLauncherV1(BaseModel):
             if parts[0] == root.name:
                 parts = parts[1:]
             module_path = root.joinpath(*parts)
-            file_candidate = module_path.with_suffix(".py")
-            package_candidate = module_path / "__main__.py"
+            if not parts:
+                file_candidate = root / "__init__.py"
+                package_candidate = root / "__main__.py"
+            else:
+                file_candidate = module_path.with_suffix(".py")
+                package_candidate = module_path / "__main__.py"
             matches = [
                 candidate
                 for candidate in (file_candidate, package_candidate)
                 if candidate.is_file()
             ]
             if len(matches) > 1:
-                raise ProviderLaunchError(
-                    "python_module resolves to both a module and a package"
-                )
-            entrypoint = (matches[0] if matches else file_candidate).resolve()
+                if not parts and self.python_callable is not None:
+                    entrypoint = file_candidate.resolve()
+                elif not parts and self.python_callable is None:
+                    entrypoint = package_candidate.resolve()
+                else:
+                    raise ProviderLaunchError(
+                        "python_module resolves to both a module and a package"
+                    )
+            else:
+                entrypoint = (matches[0] if matches else file_candidate).resolve()
         try:
             entrypoint.relative_to(root)
         except ValueError as exc:
@@ -368,6 +378,7 @@ class StdioMCPAdapter:
         launcher: PythonStdioLauncherV1,
         *,
         expected_provider_digest: str,
+        credential_env_values: dict[str, str] | None = None,
         timeout_seconds: float = 30.0,
         max_pages: int = 1_000,
         max_tools: int = 100_000,
@@ -376,6 +387,19 @@ class StdioMCPAdapter:
             raise ValueError("timeout_seconds must be positive")
         self.launcher = launcher
         self.expected_provider_digest = expected_provider_digest
+        normalized_credentials = dict(sorted((credential_env_values or {}).items()))
+        if any(
+            not _ENV_NAME_RE.fullmatch(name)
+            or not _CREDENTIAL_RE.search(name)
+            or not isinstance(value, str)
+            or len(value) < 8
+            for name, value in normalized_credentials.items()
+        ):
+            raise ValueError(
+                "credential_env_values must contain credential-shaped names and "
+                "values of at least eight characters"
+            )
+        self.credential_env_values = normalized_credentials
         self.timeout_seconds = timeout_seconds
         self.max_pages = max_pages
         self.max_tools = max_tools
@@ -404,8 +428,39 @@ class StdioMCPAdapter:
             value = os.environ.get(name)
             if value:
                 environment[name] = value
+        environment.update(self.credential_env_values)
         environment.update(self.launcher.literal_env)
         return environment
+
+    def _credential_values(self) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    value for value in self.credential_env_values.values()
+                },
+                key=len,
+                reverse=True,
+            )
+        )
+
+    def _redact_text(self, value: str) -> str:
+        for secret in self._credential_values():
+            value = value.replace(secret, "[REDACTED]")
+        return value
+
+    def _redact_value(self, value: Any) -> Any:
+        if isinstance(value, str):
+            return self._redact_text(value)
+        if isinstance(value, dict):
+            return {
+                self._redact_text(str(key)): self._redact_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._redact_value(item) for item in value]
+        if isinstance(value, tuple):
+            return [self._redact_value(item) for item in value]
+        return value
 
     @asynccontextmanager
     async def _session(self) -> AsyncIterator[ClientSession]:
@@ -445,8 +500,12 @@ class StdioMCPAdapter:
                     raise
                 except Exception as exc:
                     errlog.seek(0)
-                    diagnostic = sanitize_text(errlog.read(), limit=2_000)
-                    message = f"stdio MCP provider failed: {type(exc).__name__}: {exc}"
+                    diagnostic = self._redact_text(
+                        sanitize_text(errlog.read(), limit=2_000)
+                    )
+                    message = self._redact_text(
+                        f"stdio MCP provider failed: {type(exc).__name__}: {exc}"
+                    )
                     if diagnostic:
                         message += f"; stderr={diagnostic}"
                     if isinstance(exc, (OSError, FileNotFoundError)):
@@ -525,10 +584,12 @@ class StdioMCPAdapter:
         except TimeoutError as exc:
             raise ProviderProtocolError(f"provider call timed out: {name}") from exc
         text_parts = [part.text for part in result.content if hasattr(part, "text")]
-        text = "\n".join(text_parts)
+        text = self._redact_text("\n".join(text_parts))
         structured = getattr(result, "structuredContent", None)
         if not isinstance(structured, dict):
             structured = None
+        else:
+            structured = self._redact_value(structured)
         if not text and structured is not None:
             text = json.dumps(structured, ensure_ascii=False, sort_keys=True)
         if not text:

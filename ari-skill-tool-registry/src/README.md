@@ -4,6 +4,14 @@
 - `providers.py` — provider adapter protocol plus isolated generic stdio MCP adapter.
 - `sources.py` — production source declarations and test-only static source seam.
 - `tooluniverse_adapter.py` — pinned compact-collection expansion and locked-leaf execution.
+- `openroad_*.py` — immutable local/HPC OpenROAD profiles, execution, artifacts, and verification.
+- `qiskit_contracts.py` — immutable circuit, target, simulator, Runtime, and evidence profiles.
+- `qiskit_identity.py` — official MCP/scientific distribution support pins and tree verification.
+- `qiskit_adapter.py` — virtual sampling leaves and bounded asynchronous lifecycle.
+- `qiskit_core.py` — exact official core-MCP transpilation contract.
+- `qiskit_local.py` / `qiskit_worker.py` — isolated, distribution-checked Aer execution.
+- `qiskit_remote.py` — scoped Runtime setup, backend snapshot, submit/poll/cancel handling.
+- `qiskit_results.py` / `qiskit_verification.py` — normalized artifacts, counts, QPY, golden, and replay checks.
 - `admission.py` — four-level admission and semantic-overlap decisions.
 - `catalog.py` — deterministic lock/index builder, verification, and pending review diff.
 - `storage.py` — content-addressed result artifacts and offline replay cassettes.
@@ -12,3 +20,5 @@
 - `sync_catalog.py` — operator-only source synchronization command.
 - `../scripts/sync_contracts.py` — deterministic JSON Schema generation and drift check.
 - `../scripts/verify_tooluniverse.py` — package-tree/pin verification and optional compact smoke test.
+- `../scripts/verify_openroad.py` — OpenROAD provider/profile verification and optional run.
+- `../scripts/verify_qiskit.py` — Qiskit provider/profile verification and optional scientific run.

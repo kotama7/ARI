@@ -47,6 +47,21 @@ from providers import (
     provider_digest,
     stdio_adapter_digest,
 )
+from qiskit_adapter import (
+    QISKIT_ADAPTER_ID,
+    QISKIT_ADAPTER_VERSION,
+    QiskitExperimentAdapter,
+    QiskitExperimentV1,
+    QiskitLocalBackendV1,
+    QiskitProviderPinV1,
+    QiskitRemoteBackendV1,
+    qiskit_adapter_digest,
+    qiskit_effective_launcher,
+    qiskit_provider_release_pin,
+    verify_qiskit_experiment_files,
+    verify_qiskit_provider_package,
+)
+from qiskit_identity import verify_qiskit_python_distributions
 from tooluniverse_adapter import (
     TOOLUNIVERSE_ADAPTER_ID,
     TOOLUNIVERSE_ADAPTER_VERSION,
@@ -569,8 +584,234 @@ class OpenRoadSourceSpecV1(BaseModel):
         )
 
 
+class QiskitSourceSpecV1(BaseModel):
+    """Official Qiskit MCP providers exposed as reviewed sampling profiles."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_id: str
+    kind: Literal["qiskit"] = "qiskit"
+    provider_id: Literal["qiskit-mcp-servers"] = "qiskit-mcp-servers"
+    core_provider_digest: str
+    core_launcher: PythonStdioLauncherV1
+    core_support_release: Literal["0.3.1"] = "0.3.1"
+    runtime_provider_digest: str | None = None
+    runtime_launcher: PythonStdioLauncherV1 | None = None
+    runtime_support_release: Literal["0.6.1"] = "0.6.1"
+    experiments: list[QiskitExperimentV1] = Field(min_length=1, max_length=64)
+    timeout_seconds: float = Field(default=60.0, gt=0, le=3_600)
+    max_concurrent_jobs: int = Field(default=4, ge=1, le=32)
+    max_retained_jobs: int = Field(default=1_024, ge=32, le=100_000)
+
+    @field_validator("source_id")
+    @classmethod
+    def _valid_ref(cls, value: str) -> str:
+        if not value or _REF_SAFE_RE.search(value):
+            raise ValueError("Qiskit source_id is invalid")
+        return value
+
+    @field_validator("core_provider_digest", "runtime_provider_digest")
+    @classmethod
+    def _valid_digest(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise ValueError("Qiskit provider digests must be SHA-256 values")
+        return value
+
+    @staticmethod
+    def _validate_launcher(
+        launcher: PythonStdioLauncherV1,
+        *,
+        package_name: str,
+        module_name: str,
+    ) -> None:
+        if (
+            launcher.entrypoint is not None
+            or launcher.python_module != module_name
+            or launcher.python_callable != "main"
+            or Path(launcher.package_root).name != package_name
+        ):
+            raise ValueError(
+                f"Qiskit must launch the reviewed {module_name}:main entry point"
+            )
+        if launcher.arguments:
+            raise ValueError("Qiskit base launcher arguments must be empty")
+        if launcher.literal_env:
+            raise ValueError(
+                "Qiskit base launcher environment must be empty; ARI fixes policy"
+            )
+        if not launcher.expected_architecture:
+            raise ValueError("Qiskit launcher requires an architecture identity")
+        if "**/*" not in launcher.identity_globs:
+            raise ValueError(
+                "Qiskit identity_globs must include **/* to cover the package tree"
+            )
+
+    @model_validator(mode="after")
+    def _closed_provider_boundary(self) -> "QiskitSourceSpecV1":
+        self.core_pin.verify()
+        self._validate_launcher(
+            self.core_launcher,
+            package_name="qiskit_mcp_server",
+            module_name="qiskit_mcp_server",
+        )
+        profile_ids = [profile.profile_id for profile in self.experiments]
+        if len(profile_ids) != len(set(profile_ids)):
+            raise ValueError("Qiskit experiment profile_id values must be unique")
+        remote_required = any(
+            isinstance(profile.backend, QiskitRemoteBackendV1)
+            for profile in self.experiments
+        )
+        runtime_fields = (
+            self.runtime_launcher is not None,
+            self.runtime_provider_digest is not None,
+        )
+        if len(set(runtime_fields)) != 1:
+            raise ValueError(
+                "Qiskit Runtime launcher and provider digest must be set together"
+            )
+        if remote_required and not all(runtime_fields):
+            raise ValueError("remote Qiskit profiles require the Runtime MCP provider")
+        if self.runtime_launcher is not None:
+            self.runtime_pin.verify()
+            self._validate_launcher(
+                self.runtime_launcher,
+                package_name="qiskit_ibm_runtime_mcp_server",
+                module_name="qiskit_ibm_runtime_mcp_server",
+            )
+        return self
+
+    @property
+    def core_pin(self) -> QiskitProviderPinV1:
+        return QiskitProviderPinV1.model_validate(
+            qiskit_provider_release_pin("circuit", self.core_support_release)
+        )
+
+    @property
+    def runtime_pin(self) -> QiskitProviderPinV1:
+        return QiskitProviderPinV1.model_validate(
+            qiskit_provider_release_pin("runtime", self.runtime_support_release)
+        )
+
+    @property
+    def core_effective_launcher(self) -> PythonStdioLauncherV1:
+        return qiskit_effective_launcher(self.core_launcher, "circuit")
+
+    @property
+    def runtime_effective_launcher(self) -> PythonStdioLauncherV1 | None:
+        if self.runtime_launcher is None:
+            return None
+        return qiskit_effective_launcher(self.runtime_launcher, "runtime")
+
+    @property
+    def provider_version(self) -> str:
+        value = f"core-{self.core_pin.version}"
+        if self.runtime_launcher is not None:
+            value += f"+runtime-{self.runtime_pin.version}"
+        return value
+
+    @property
+    def provider_digest(self) -> str:
+        return sha256_digest(
+            {
+                "core_provider_digest": self.core_provider_digest,
+                "runtime_provider_digest": self.runtime_provider_digest,
+            }
+        )
+
+    def verify(self) -> None:
+        verify_qiskit_provider_package(self.core_launcher, self.core_pin)
+        actual_core = provider_digest(self.core_effective_launcher)
+        if actual_core != self.core_provider_digest:
+            raise CatalogSourceError(
+                f"source {self.source_id} core provider digest drift: "
+                f"expected {self.core_provider_digest}, got {actual_core}"
+            )
+        core_distributions = {
+            "qiskit-mcp-server": self.core_pin.version,
+            "qiskit": "2.5.1",
+        }
+        if any(
+            isinstance(profile.backend, QiskitLocalBackendV1)
+            for profile in self.experiments
+        ):
+            core_distributions["qiskit-aer"] = "0.17.2"
+        verify_qiskit_python_distributions(self.core_launcher, core_distributions)
+        if self.runtime_launcher is not None:
+            assert self.runtime_provider_digest is not None
+            verify_qiskit_provider_package(self.runtime_launcher, self.runtime_pin)
+            effective = self.runtime_effective_launcher
+            assert effective is not None
+            actual_runtime = provider_digest(effective)
+            if actual_runtime != self.runtime_provider_digest:
+                raise CatalogSourceError(
+                    f"source {self.source_id} runtime provider digest drift: "
+                    f"expected {self.runtime_provider_digest}, got {actual_runtime}"
+                )
+            verify_qiskit_python_distributions(
+                self.runtime_launcher,
+                {
+                    "qiskit-ibm-runtime-mcp-server": self.runtime_pin.version,
+                    "qiskit-mcp-server": self.core_pin.version,
+                    "qiskit": "2.5.1",
+                    "qiskit-ibm-runtime": "0.48.0",
+                },
+            )
+        for experiment in self.experiments:
+            verify_qiskit_experiment_files(experiment)
+
+    @property
+    def adapter_digest(self) -> str:
+        return qiskit_adapter_digest()
+
+    @property
+    def source_digest(self) -> str:
+        return sha256_digest(self.model_dump(mode="json"))
+
+    def to_locked_source(self, *, verify: bool = True) -> LockedSourceV1:
+        if verify:
+            self.verify()
+        runtime_launcher = self.runtime_effective_launcher
+        return LockedSourceV1(
+            source_id=self.source_id,
+            kind="qiskit",
+            source_digest=self.source_digest,
+            provider_id=self.provider_id,
+            provider_version=self.provider_version,
+            provider_digest=self.provider_digest,
+            adapter_id=QISKIT_ADAPTER_ID,
+            adapter_version=QISKIT_ADAPTER_VERSION,
+            adapter_digest=self.adapter_digest,
+            runtime={
+                "core_launcher": self.core_effective_launcher.model_dump(mode="json"),
+                "core_provider_digest": self.core_provider_digest,
+                "core_pin": self.core_pin.model_dump(mode="json"),
+                "runtime_launcher": (
+                    runtime_launcher.model_dump(mode="json")
+                    if runtime_launcher is not None
+                    else None
+                ),
+                "runtime_provider_digest": self.runtime_provider_digest,
+                "runtime_pin": (
+                    self.runtime_pin.model_dump(mode="json")
+                    if runtime_launcher is not None
+                    else None
+                ),
+                "experiments": [
+                    experiment.model_dump(mode="json")
+                    for experiment in self.experiments
+                ],
+                "timeout_seconds": self.timeout_seconds,
+                "max_concurrent_jobs": self.max_concurrent_jobs,
+                "max_retained_jobs": self.max_retained_jobs,
+            },
+        )
+
+
 SourceSpecV1: TypeAlias = Annotated[
-    StdioSourceSpecV1 | ToolUniverseSourceSpecV1 | OpenRoadSourceSpecV1,
+    StdioSourceSpecV1
+    | ToolUniverseSourceSpecV1
+    | OpenRoadSourceSpecV1
+    | QiskitSourceSpecV1,
     Field(discriminator="kind"),
 ]
 
@@ -1100,6 +1341,289 @@ class OpenRoadCatalogSource:
         return [_openroad_candidate(self.spec, tool) for tool in tools]
 
 
+def _qiskit_candidate(
+    spec: QiskitSourceSpecV1,
+    tool: ProviderToolV1,
+) -> CatalogCandidateV1:
+    metadata = tool.annotations.get("ari_qiskit")
+    if not isinstance(metadata, dict):
+        raise CatalogSourceError(
+            f"Qiskit leaf {tool.name!r} omitted immutable experiment metadata"
+        )
+    profile_id = metadata.get("profile_id")
+    matches = [
+        profile for profile in spec.experiments if profile.profile_id == profile_id
+    ]
+    if len(matches) != 1:
+        raise CatalogSourceError(
+            f"Qiskit leaf {tool.name!r} does not map to one reviewed profile"
+        )
+    profile = matches[0]
+    backend = profile.backend
+    expected_metadata = {
+        "experiment_digest": profile.experiment_digest,
+        "method_digest": profile.method_digest,
+        "capability_ref": profile.capability_ref,
+        "backend_kind": backend.kind,
+        "target_digest": backend.target.target_digest,
+        "circuit_digest": profile.circuit.qpy_digest,
+        "shots": profile.shots,
+        "seed_simulator": profile.seed_simulator,
+    }
+    if tool.name != QiskitExperimentAdapter.leaf_name(profile.profile_id) or any(
+        metadata.get(key) != value for key, value in expected_metadata.items()
+    ):
+        raise CatalogSourceError(
+            f"Qiskit leaf {tool.name!r} drifted from its experiment profile"
+        )
+
+    lifecycle = ProviderAsyncLifecycleV1(
+        handle_field="handle_id",
+        state_field="status",
+        status_tool="ari_qiskit_status",
+        result_tool="ari_qiskit_result",
+        cancel_tool="ari_qiskit_cancel",
+        handle_argument="handle_id",
+        submitted_states=["submitted"],
+        running_states=["running"],
+        succeeded_states=["completed"],
+        failed_states=["failed"],
+        cancelled_states=["cancelled"],
+    )
+    core_collection = f"qiskit-mcp-server@{spec.core_pin.version}"
+    leaf_identity = (
+        f"qiskit-profile:{profile.profile_id}:{profile.experiment_digest}"
+    )
+    origin_chains = [
+        [
+            OriginHopV1(kind="source", id=spec.source_id, digest=spec.source_digest),
+            OriginHopV1(
+                kind="collection",
+                id=core_collection,
+                digest=spec.core_pin.source_archive_digest,
+            ),
+            OriginHopV1(
+                kind="provider",
+                id=f"qiskit@{profile.software.qiskit_version}",
+                digest=profile.software.stack_digest,
+            ),
+            OriginHopV1(
+                kind="tool", id=leaf_identity, digest=profile.experiment_digest
+            ),
+        ]
+    ]
+    if isinstance(backend, QiskitRemoteBackendV1):
+        origin_chains.append(
+            [
+                OriginHopV1(
+                    kind="source", id=spec.source_id, digest=spec.source_digest
+                ),
+                OriginHopV1(
+                    kind="collection",
+                    id=f"qiskit-ibm-runtime-mcp-server@{spec.runtime_pin.version}",
+                    digest=spec.runtime_pin.source_archive_digest,
+                ),
+                OriginHopV1(
+                    kind="provider",
+                    id=f"ibm-quantum:{backend.backend_name}",
+                    digest=backend.target.target_digest,
+                ),
+                OriginHopV1(
+                    kind="tool", id=leaf_identity, digest=profile.experiment_digest
+                ),
+            ]
+        )
+
+    semantics = {
+        "semantic_family": "ari.quantum.sample",
+        "experiment_digest": profile.experiment_digest,
+        "method_digest": profile.method_digest,
+        "idempotency_key": "request_id",
+        "session_recovery": "fail-closed",
+        "result_schema": "ari.qiskit-result/v1",
+        "result_type": "measurement-counts",
+        "bitstring_order": "qiskit-classical-display-msb-left",
+        "circuit": profile.circuit.model_dump(mode="json"),
+        "transpilation": profile.transpilation.model_dump(mode="json"),
+        "backend": backend.model_dump(mode="json"),
+        "software": profile.software.model_dump(mode="json"),
+        "shots": profile.shots,
+        "seed_simulator": profile.seed_simulator,
+        "mitigation": profile.mitigation.model_dump(mode="json"),
+        "expected_outcomes": [
+            item.model_dump(mode="json") for item in profile.expected_outcomes
+        ],
+        "max_unlisted_probability": profile.max_unlisted_probability,
+    }
+    units = {"counts": "shot", "probabilities": "1"}
+    units.update(
+        {
+            f"parameter.{name}": unit
+            for name, unit in profile.circuit.parameter_units.items()
+        }
+    )
+    if isinstance(backend, QiskitLocalBackendV1) and backend.noise_model is not None:
+        units.update(
+            {
+                "noise.one_qubit_error": "1",
+                "noise.two_qubit_error": "1",
+                "noise.readout_p0_given_1": "1",
+                "noise.readout_p1_given_0": "1",
+            }
+        )
+    if isinstance(backend, QiskitRemoteBackendV1):
+        units.update(
+            {
+                "calibration.frequency": "GHz",
+                "calibration.gate_error": "1",
+                "calibration.readout_error": "1",
+                "calibration.t1": "us",
+                "calibration.t2": "us",
+                "execution_time": "s",
+            }
+        )
+
+    limitations = [
+        *profile.limitations,
+        "Shot-based sampling is statistical and does not expose an exact statevector.",
+        "ARI exposes no arbitrary Python, QASM, backend, path, or provider account operation.",
+        (
+            "The official core MCP performs transpilation; local execution uses the "
+            "separately pinned Qiskit Aer worker."
+        ),
+    ]
+    if isinstance(backend, QiskitLocalBackendV1):
+        limitations.append(
+            "Qiskit Aer 0.17.2 is in reduced maintenance and requires a new "
+            "support review before any version change."
+        )
+    else:
+        limitations.extend(
+            [
+                "IBM backend availability, queue state, and calibration are live data.",
+                "The credential is injected only into an isolated Runtime MCP process; "
+                "account-management leaves are not exposed.",
+                "Remote Runtime profiles do not accept parameter bindings in the "
+                "reviewed MCP release.",
+            ]
+        )
+
+    backend_lineage = [
+        core_collection,
+        f"qiskit:{profile.software.qiskit_version}",
+        f"software-stack:{profile.software.stack_digest}",
+        f"backend-kind:{backend.kind}",
+        f"backend:{backend.backend_name}",
+        f"target:{backend.target.target_digest}",
+    ]
+    if isinstance(backend, QiskitLocalBackendV1):
+        backend_lineage.extend(
+            [
+                f"qiskit-aer:{profile.software.qiskit_aer_version}",
+                f"simulator-method:{backend.simulator_method}",
+                f"noise-model:{sha256_digest(backend.noise_model)}"
+                if backend.noise_model is not None
+                else "noise-model:none",
+            ]
+        )
+        side_effects = "workspace-write"
+        permissions = ["process", "workspace-read", "workspace-write"]
+    else:
+        backend_lineage.extend(
+            [
+                f"qiskit-ibm-runtime-mcp-server:{spec.runtime_pin.version}",
+                f"qiskit-ibm-runtime:{profile.software.qiskit_ibm_runtime_version}",
+                f"instance:{backend.instance_digest}",
+                f"access-tier:{backend.access_tier_id}",
+            ]
+        )
+        side_effects = "stateful"
+        permissions = ["network", "process", "workspace-read", "workspace-write"]
+    data_lineage = [
+        f"qpy:{profile.circuit.qpy_digest}",
+        f"target:{backend.target.target_digest}",
+    ]
+    if profile.golden_fixture_digest is not None:
+        data_lineage.append(f"golden:{profile.golden_fixture_digest}")
+    if profile.replay_fixture_digest is not None:
+        data_lineage.append(f"replay:{profile.replay_fixture_digest}")
+
+    descriptor = CanonicalToolDescriptorV1.create(
+        source_ids=[spec.source_id],
+        provider_id=spec.provider_id,
+        provider_version=spec.provider_version,
+        provider_digest=spec.provider_digest,
+        adapter_id=QISKIT_ADAPTER_ID,
+        adapter_version=QISKIT_ADAPTER_VERSION,
+        adapter_digest=spec.adapter_digest,
+        name=tool.name,
+        provider_tool_name=tool.name,
+        capability_ref=profile.capability_ref,
+        description=tool.description,
+        input_schema=tool.input_schema,
+        output_schema=tool.output_schema,
+        defaults=_schema_defaults(tool.input_schema),
+        annotations=tool.annotations,
+        side_effects=side_effects,
+        determinism=profile.determinism,
+        permissions=permissions,
+        semantics=semantics,
+        units=units,
+        limitations=sorted(set(limitations)),
+        backend_lineage=sorted(set(backend_lineage)),
+        data_lineage=sorted(set(data_lineage)),
+        leaf_identity=leaf_identity,
+        origin_chains=origin_chains,
+        equivalence_key=None,
+        independence_group=(
+            f"qiskit:{backend.kind}:{backend.backend_name}:"
+            f"{profile.software.stack_digest}:{backend.target.target_digest}"
+        ),
+        async_lifecycle=lifecycle,
+    )
+    return CatalogCandidateV1(descriptor=descriptor, evidence=profile.evidence)
+
+
+class QiskitCatalogSource:
+    def __init__(
+        self,
+        spec: QiskitSourceSpecV1,
+        adapter: ProviderAdapter | None = None,
+        *,
+        verify_source: bool = True,
+    ) -> None:
+        self.spec = spec
+        self._locked_source = spec.to_locked_source(verify=verify_source)
+        locked_names = {
+            QiskitExperimentAdapter.leaf_name(profile.profile_id)
+            for profile in spec.experiments
+        }
+        self.adapter = adapter or QiskitExperimentAdapter(
+            spec.core_effective_launcher,
+            core_provider_digest=spec.core_provider_digest,
+            core_pin=spec.core_pin,
+            runtime_launcher=spec.runtime_effective_launcher,
+            runtime_provider_digest=spec.runtime_provider_digest,
+            runtime_pin=(
+                spec.runtime_pin if spec.runtime_launcher is not None else None
+            ),
+            experiments=spec.experiments,
+            allowed_leaf_names=locked_names,
+            timeout_seconds=spec.timeout_seconds,
+            max_concurrent_jobs=spec.max_concurrent_jobs,
+            max_retained_jobs=spec.max_retained_jobs,
+            verify_packages=verify_source,
+        )
+
+    @property
+    def locked_source(self) -> LockedSourceV1:
+        return self._locked_source
+
+    async def sync(self) -> list[CatalogCandidateV1]:
+        tools = await self.adapter.list_tools()
+        return [_qiskit_candidate(self.spec, tool) for tool in tools]
+
+
 class StaticCatalogSource:
     """Directly injected fixture source; absent from config deserialization."""
 
@@ -1145,6 +1669,8 @@ def catalog_source_from_spec(spec: SourceSpecV1) -> CatalogSource:
         return ToolUniverseCatalogSource(spec)
     if isinstance(spec, OpenRoadSourceSpecV1):
         return OpenRoadCatalogSource(spec)
+    if isinstance(spec, QiskitSourceSpecV1):
+        return QiskitCatalogSource(spec)
     raise CatalogSourceError(
         f"unsupported production source spec: {type(spec).__name__}"
     )
@@ -1162,6 +1688,8 @@ __all__ = [
     "SOURCES_V1",
     "OpenRoadCatalogSource",
     "OpenRoadSourceSpecV1",
+    "QiskitCatalogSource",
+    "QiskitSourceSpecV1",
     "SourcesDocumentV1",
     "SourceSpecV1",
     "StaticCatalogSource",

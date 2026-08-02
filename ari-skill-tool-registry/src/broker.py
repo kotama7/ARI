@@ -54,6 +54,14 @@ from providers import (
     StdioMCPAdapter,
     stdio_adapter_digest,
 )
+from qiskit_adapter import (
+    QISKIT_ADAPTER_ID,
+    QISKIT_ADAPTER_VERSION,
+    QiskitExperimentAdapter,
+    QiskitExperimentV1,
+    QiskitProviderPinV1,
+    qiskit_adapter_digest,
+)
 from storage import (
     CassetteStore,
     RegistryArtifactStore,
@@ -310,6 +318,96 @@ class CatalogBroker:
             except (KeyError, TypeError, ValueError, ProviderAdapterError) as exc:
                 raise BrokerProtocolError(
                     f"invalid locked OpenROAD runtime for {source_id}: {exc}"
+                ) from exc
+            self._adapters[source_id] = adapter
+            return adapter
+        if source.kind == "qiskit":
+            if (
+                source.adapter_id != QISKIT_ADAPTER_ID
+                or source.adapter_version != QISKIT_ADAPTER_VERSION
+                or source.adapter_digest != qiskit_adapter_digest()
+            ):
+                raise BrokerProtocolError(
+                    "Qiskit adapter identity drifted from CATALOG.lock"
+                )
+            leaf_names = {
+                descriptor.provider_tool_name
+                for descriptor in self.lock.tools
+                if source_id in descriptor.source_ids
+            }
+            try:
+                core_launcher = PythonStdioLauncherV1.model_validate(
+                    source.runtime["core_launcher"]
+                )
+                core_pin = QiskitProviderPinV1.model_validate(
+                    source.runtime["core_pin"]
+                )
+                core_provider_digest = str(
+                    source.runtime["core_provider_digest"]
+                )
+                raw_runtime_launcher = source.runtime.get("runtime_launcher")
+                runtime_launcher = (
+                    PythonStdioLauncherV1.model_validate(raw_runtime_launcher)
+                    if raw_runtime_launcher is not None
+                    else None
+                )
+                raw_runtime_pin = source.runtime.get("runtime_pin")
+                runtime_pin = (
+                    QiskitProviderPinV1.model_validate(raw_runtime_pin)
+                    if raw_runtime_pin is not None
+                    else None
+                )
+                raw_runtime_digest = source.runtime.get("runtime_provider_digest")
+                runtime_provider_digest = (
+                    str(raw_runtime_digest)
+                    if raw_runtime_digest is not None
+                    else None
+                )
+                if source.provider_digest != sha256_digest(
+                    {
+                        "core_provider_digest": core_provider_digest,
+                        "runtime_provider_digest": runtime_provider_digest,
+                    }
+                ):
+                    raise ValueError("aggregate provider digest differs from lock")
+                raw_experiments = source.runtime["experiments"]
+                if not isinstance(raw_experiments, list):
+                    raise TypeError("experiments must be an array")
+                experiments = [
+                    QiskitExperimentV1.model_validate(item)
+                    for item in raw_experiments
+                ]
+                expected_names = {
+                    QiskitExperimentAdapter.leaf_name(profile.profile_id)
+                    for profile in experiments
+                }
+                if leaf_names != expected_names:
+                    raise ValueError(
+                        "locked Qiskit leaves do not exactly match runtime profiles"
+                    )
+                adapter = QiskitExperimentAdapter(
+                    core_launcher,
+                    core_provider_digest=core_provider_digest,
+                    core_pin=core_pin,
+                    runtime_launcher=runtime_launcher,
+                    runtime_provider_digest=runtime_provider_digest,
+                    runtime_pin=runtime_pin,
+                    experiments=experiments,
+                    artifact_store=self.artifact_store,
+                    allowed_leaf_names=leaf_names,
+                    timeout_seconds=float(
+                        source.runtime.get("timeout_seconds", 60.0)
+                    ),
+                    max_concurrent_jobs=int(
+                        source.runtime.get("max_concurrent_jobs", 4)
+                    ),
+                    max_retained_jobs=int(
+                        source.runtime.get("max_retained_jobs", 1_024)
+                    ),
+                )
+            except (KeyError, TypeError, ValueError, ProviderAdapterError) as exc:
+                raise BrokerProtocolError(
+                    f"invalid locked Qiskit runtime for {source_id}: {exc}"
                 ) from exc
             self._adapters[source_id] = adapter
             return adapter

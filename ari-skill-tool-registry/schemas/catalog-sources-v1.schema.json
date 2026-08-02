@@ -1084,6 +1084,727 @@
       "title": "PythonStdioLauncherV1",
       "type": "object"
     },
+    "QiskitCircuitV1": {
+      "additionalProperties": false,
+      "description": "One canonical, immutable QPY circuit plus closed parameter bindings.",
+      "properties": {
+        "num_clbits": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Num Clbits",
+          "type": "integer"
+        },
+        "num_qubits": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Num Qubits",
+          "type": "integer"
+        },
+        "parameter_bindings": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "maxProperties": 256,
+          "title": "Parameter Bindings",
+          "type": "object"
+        },
+        "parameter_units": {
+          "additionalProperties": {
+            "enum": [
+              "rad",
+              "1"
+            ],
+            "type": "string"
+          },
+          "maxProperties": 256,
+          "title": "Parameter Units",
+          "type": "object"
+        },
+        "qpy_digest": {
+          "title": "Qpy Digest",
+          "type": "string"
+        },
+        "qpy_path": {
+          "title": "Qpy Path",
+          "type": "string"
+        },
+        "qpy_version": {
+          "maximum": 255,
+          "minimum": 1,
+          "title": "Qpy Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "qpy_path",
+        "qpy_digest",
+        "qpy_version",
+        "num_qubits",
+        "num_clbits"
+      ],
+      "title": "QiskitCircuitV1",
+      "type": "object"
+    },
+    "QiskitExperimentV1": {
+      "additionalProperties": false,
+      "description": "One immutable simulator or IBM Runtime sampling experiment.",
+      "properties": {
+        "backend": {
+          "discriminator": {
+            "mapping": {
+              "ibm-hardware": "#/$defs/QiskitRemoteBackendV1",
+              "local-ideal": "#/$defs/QiskitLocalBackendV1",
+              "local-noisy": "#/$defs/QiskitLocalBackendV1",
+              "remote-simulator": "#/$defs/QiskitRemoteBackendV1"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/QiskitLocalBackendV1"
+            },
+            {
+              "$ref": "#/$defs/QiskitRemoteBackendV1"
+            }
+          ],
+          "title": "Backend"
+        },
+        "circuit": {
+          "$ref": "#/$defs/QiskitCircuitV1"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/AdmissionEvidenceV1"
+        },
+        "expected_outcomes": {
+          "items": {
+            "$ref": "#/$defs/QiskitOutcomeExpectationV1"
+          },
+          "maxItems": 1024,
+          "minItems": 1,
+          "title": "Expected Outcomes",
+          "type": "array"
+        },
+        "golden_fixture_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Golden Fixture Digest"
+        },
+        "golden_fixture_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Golden Fixture Path"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "max_unlisted_probability": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Max Unlisted Probability",
+          "type": "number"
+        },
+        "mitigation": {
+          "$ref": "#/$defs/QiskitMitigationV1"
+        },
+        "poll_interval_seconds": {
+          "default": 2,
+          "maximum": 60,
+          "minimum": 0.1,
+          "title": "Poll Interval Seconds",
+          "type": "number"
+        },
+        "profile_id": {
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "replay_fixture_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Digest"
+        },
+        "replay_fixture_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Path"
+        },
+        "schema_version": {
+          "const": "ari.qiskit-experiment/v1",
+          "default": "ari.qiskit-experiment/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "seed_simulator": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed Simulator"
+        },
+        "shots": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Shots",
+          "type": "integer"
+        },
+        "software": {
+          "$ref": "#/$defs/QiskitSoftwareV1"
+        },
+        "timeout_seconds": {
+          "default": 3600,
+          "exclusiveMinimum": 0,
+          "maximum": 172800,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "transpilation": {
+          "$ref": "#/$defs/QiskitTranspilationV1"
+        }
+      },
+      "required": [
+        "profile_id",
+        "description",
+        "software",
+        "circuit",
+        "transpilation",
+        "backend",
+        "shots",
+        "expected_outcomes",
+        "limitations"
+      ],
+      "title": "QiskitExperimentV1",
+      "type": "object"
+    },
+    "QiskitLocalBackendV1": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_name": {
+          "const": "aer_simulator",
+          "default": "aer_simulator",
+          "title": "Backend Name",
+          "type": "string"
+        },
+        "device": {
+          "const": "CPU",
+          "default": "CPU",
+          "title": "Device",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "local-ideal",
+            "local-noisy"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "max_parallel_threads": {
+          "default": 1,
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Max Parallel Threads",
+          "type": "integer"
+        },
+        "noise_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QiskitNoiseModelV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "precision": {
+          "default": "double",
+          "enum": [
+            "single",
+            "double"
+          ],
+          "title": "Precision",
+          "type": "string"
+        },
+        "simulator_method": {
+          "enum": [
+            "statevector",
+            "density_matrix",
+            "matrix_product_state",
+            "stabilizer"
+          ],
+          "title": "Simulator Method",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/QiskitTargetV1"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "simulator_method"
+      ],
+      "title": "QiskitLocalBackendV1",
+      "type": "object"
+    },
+    "QiskitMitigationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "dd_sequence": {
+          "default": "XY4",
+          "enum": [
+            "XX",
+            "XpXm",
+            "XY4"
+          ],
+          "title": "Dd Sequence",
+          "type": "string"
+        },
+        "dynamical_decoupling": {
+          "default": false,
+          "title": "Dynamical Decoupling",
+          "type": "boolean"
+        },
+        "gate_twirling": {
+          "default": false,
+          "title": "Gate Twirling",
+          "type": "boolean"
+        },
+        "measure_twirling": {
+          "default": false,
+          "title": "Measure Twirling",
+          "type": "boolean"
+        }
+      },
+      "title": "QiskitMitigationV1",
+      "type": "object"
+    },
+    "QiskitNoiseModelV1": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "depolarizing-readout",
+          "default": "depolarizing-readout",
+          "title": "Kind",
+          "type": "string"
+        },
+        "one_qubit_error": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "One Qubit Error",
+          "type": "number"
+        },
+        "one_qubit_gates": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "One Qubit Gates",
+          "type": "array"
+        },
+        "readout_p0_given_1": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Readout P0 Given 1",
+          "type": "number"
+        },
+        "readout_p1_given_0": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Readout P1 Given 0",
+          "type": "number"
+        },
+        "two_qubit_error": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Two Qubit Error",
+          "type": "number"
+        },
+        "two_qubit_gates": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Two Qubit Gates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "one_qubit_error",
+        "two_qubit_error",
+        "readout_p0_given_1",
+        "readout_p1_given_0",
+        "one_qubit_gates",
+        "two_qubit_gates"
+      ],
+      "title": "QiskitNoiseModelV1",
+      "type": "object"
+    },
+    "QiskitOutcomeExpectationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bitstring": {
+          "title": "Bitstring",
+          "type": "string"
+        },
+        "probability_max": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Probability Max",
+          "type": "number"
+        },
+        "probability_min": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Probability Min",
+          "type": "number"
+        }
+      },
+      "required": [
+        "bitstring",
+        "probability_min",
+        "probability_max"
+      ],
+      "title": "QiskitOutcomeExpectationV1",
+      "type": "object"
+    },
+    "QiskitRemoteBackendV1": {
+      "additionalProperties": false,
+      "properties": {
+        "access_tier_id": {
+          "title": "Access Tier Id",
+          "type": "string"
+        },
+        "backend_name": {
+          "title": "Backend Name",
+          "type": "string"
+        },
+        "backend_version": {
+          "title": "Backend Version",
+          "type": "string"
+        },
+        "calibration_required": {
+          "default": true,
+          "title": "Calibration Required",
+          "type": "boolean"
+        },
+        "channel": {
+          "const": "ibm_quantum_platform",
+          "default": "ibm_quantum_platform",
+          "title": "Channel",
+          "type": "string"
+        },
+        "instance_digest": {
+          "title": "Instance Digest",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "remote-simulator",
+            "ibm-hardware"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/QiskitTargetV1"
+        }
+      },
+      "required": [
+        "kind",
+        "backend_name",
+        "backend_version",
+        "target",
+        "instance_digest",
+        "access_tier_id"
+      ],
+      "title": "QiskitRemoteBackendV1",
+      "type": "object"
+    },
+    "QiskitSoftwareV1": {
+      "additionalProperties": false,
+      "description": "Scientific packages whose algorithms affect the result.",
+      "properties": {
+        "qiskit_aer_version": {
+          "anyOf": [
+            {
+              "const": "0.17.2",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qiskit Aer Version"
+        },
+        "qiskit_ibm_runtime_version": {
+          "anyOf": [
+            {
+              "const": "0.48.0",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qiskit Ibm Runtime Version"
+        },
+        "qiskit_version": {
+          "const": "2.5.1",
+          "default": "2.5.1",
+          "title": "Qiskit Version",
+          "type": "string"
+        },
+        "stack_digest": {
+          "title": "Stack Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stack_digest"
+      ],
+      "title": "QiskitSoftwareV1",
+      "type": "object"
+    },
+    "QiskitSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "Official Qiskit MCP providers exposed as reviewed sampling profiles.",
+      "properties": {
+        "core_launcher": {
+          "$ref": "#/$defs/PythonStdioLauncherV1"
+        },
+        "core_provider_digest": {
+          "title": "Core Provider Digest",
+          "type": "string"
+        },
+        "core_support_release": {
+          "const": "0.3.1",
+          "default": "0.3.1",
+          "title": "Core Support Release",
+          "type": "string"
+        },
+        "experiments": {
+          "items": {
+            "$ref": "#/$defs/QiskitExperimentV1"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Experiments",
+          "type": "array"
+        },
+        "kind": {
+          "const": "qiskit",
+          "default": "qiskit",
+          "title": "Kind",
+          "type": "string"
+        },
+        "max_concurrent_jobs": {
+          "default": 4,
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Max Concurrent Jobs",
+          "type": "integer"
+        },
+        "max_retained_jobs": {
+          "default": 1024,
+          "maximum": 100000,
+          "minimum": 32,
+          "title": "Max Retained Jobs",
+          "type": "integer"
+        },
+        "provider_id": {
+          "const": "qiskit-mcp-servers",
+          "default": "qiskit-mcp-servers",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "runtime_launcher": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PythonStdioLauncherV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "runtime_provider_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Provider Digest"
+        },
+        "runtime_support_release": {
+          "const": "0.6.1",
+          "default": "0.6.1",
+          "title": "Runtime Support Release",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_id",
+        "core_provider_digest",
+        "core_launcher",
+        "experiments"
+      ],
+      "title": "QiskitSourceSpecV1",
+      "type": "object"
+    },
+    "QiskitTargetV1": {
+      "additionalProperties": false,
+      "description": "Immutable compilation target; calibration remains per-run provenance.",
+      "properties": {
+        "basis_gates": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Basis Gates",
+          "type": "array"
+        },
+        "coupling_map": {
+          "items": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "maxItems": 100000,
+          "title": "Coupling Map",
+          "type": "array"
+        },
+        "num_qubits": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Num Qubits",
+          "type": "integer"
+        },
+        "target_digest": {
+          "title": "Target Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "num_qubits",
+        "basis_gates",
+        "target_digest"
+      ],
+      "title": "QiskitTargetV1",
+      "type": "object"
+    },
+    "QiskitTranspilationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "initial_layout": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 100,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initial Layout"
+        },
+        "optimization_level": {
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Optimization Level",
+          "type": "integer"
+        },
+        "pass_manager": {
+          "const": "preset",
+          "default": "preset",
+          "title": "Pass Manager",
+          "type": "string"
+        },
+        "seed_transpiler": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "Seed Transpiler",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "optimization_level",
+        "seed_transpiler"
+      ],
+      "title": "QiskitTranspilationV1",
+      "type": "object"
+    },
     "ResourceRequestV1": {
       "additionalProperties": false,
       "properties": {
@@ -1597,6 +2318,7 @@
         "discriminator": {
           "mapping": {
             "openroad": "#/$defs/OpenRoadSourceSpecV1",
+            "qiskit": "#/$defs/QiskitSourceSpecV1",
             "stdio-mcp": "#/$defs/StdioSourceSpecV1",
             "tooluniverse": "#/$defs/ToolUniverseSourceSpecV1"
           },
@@ -1611,6 +2333,9 @@
           },
           {
             "$ref": "#/$defs/OpenRoadSourceSpecV1"
+          },
+          {
+            "$ref": "#/$defs/QiskitSourceSpecV1"
           }
         ]
       },

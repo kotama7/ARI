@@ -38,6 +38,14 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/openroad-support-v1.json
     role: config
+  - path: ari-skill-tool-registry/src/qiskit_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/qiskit_contracts.py
+    role: schema
+  - path: ari-skill-tool-registry/src/qiskit_remote.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/qiskit-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -138,6 +146,25 @@ scheduler handle/status/cancel、environment/module/container digest、logとpro
 result/EARに保存し、terminal状態を確認した場合だけworkspaceを削除します。
 transport結果が不明な場合はledger照合のためfail closedで保持します。
 
+## Qiskit profile adapter
+
+公式Qiskit core MCPとIBM Runtime MCPはsupply-chain inputであり、public leafでは
+ありません。review済み`QiskitExperimentV1`一つをvirtual async leafにします。
+QPY/version、parameter unit、transpilation target/seed、shots、simulator/noiseまたは
+Runtime backend、mitigation、evidence、limitationsを固定し、callerは`request_id`
+だけを渡します。
+
+local ideal、local noisy、remote simulator、IBM hardwareは別capabilityです。core MCPは
+transpileだけに使い、local Aerはexact distributionを検証するworkerで実行します。
+remoteではreview済みsetup、backend snapshot、sampler、status、result、cancelだけを
+内部利用し、account管理leafを公開しません。backend/target mismatchはsubmit前に拒否し、
+live snapshotとjob/result raw recordを検証済みartifactとして残します。
+
+`QISKIT_IBM_TOKEN`はnamed credential scopeから隔離Runtime processだけに渡し、provider
+境界でexact-value redactします。lock、cassette、artifact、identityにはtokenもraw
+instance CRNも残しません。科学契約、運用、update/rollback、削除gateは
+[Qiskit / IBM Quantum 実験 profile](qiskit_profiles.md)を参照してください。
+
 ## record/replayとEAR
 
 recordはexact arguments、catalog/policy digest、選択理由、却下候補、raw応答
@@ -151,6 +178,8 @@ python src/sync_catalog.py
 python src/sync_catalog.py --approve   # diffをreviewした後だけ
 python src/sync_catalog.py --approve --approve-schema-changes
 python scripts/verify_tooluniverse.py --help
+python scripts/verify_openroad.py --help
+python scripts/verify_qiskit.py --help
 python scripts/sync_contracts.py
 pytest -q
 ```

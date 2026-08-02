@@ -957,6 +957,12 @@ typed C06 SLURM job in a digest-pinned clean container. Both remain a single
 virtual catalog leaf; scheduler resources, handles, logs, and provenance are
 profile-locked and never become caller-supplied flags.
 
+Qiskit profiles likewise expose one immutable async sampling experiment rather
+than the upstream tool sets. Local ideal/noisy Aer, remote simulator, and IBM
+hardware use distinct capabilities; QPY, target, transpilation, shots,
+seeds/noise/mitigation, backend snapshot, evidence, and credential scope are
+fixed. See [the Qiskit profile reference](qiskit_profiles.md).
+
 ## ari-skill-transform
 
 Converts BFTS internal representation to publication-ready scientific data format. Strips all internal fields (`node_id`, `label`, `depth`, `parent_id`) and exposes only scientific content (`configurations`, `experiment_context`). **LLM: Yes**.

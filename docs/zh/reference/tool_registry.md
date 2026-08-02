@@ -38,6 +38,14 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/openroad-support-v1.json
     role: config
+  - path: ari-skill-tool-registry/src/qiskit_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/qiskit_contracts.py
+    role: schema
+  - path: ari-skill-tool-registry/src/qiskit_remote.py
+    role: implementation
+  - path: ari-skill-tool-registry/providers/qiskit-support-v1.json
+    role: config
 last_verified: 2026-08-02
 ---
 
@@ -130,6 +138,24 @@ scheduler handle/status/cancel、environment/module/container digest、日志与
 result/EAR。只有确认 scheduler 终态后才删除 workspace；transport 结果不明时
 fail closed 并保留现场以供 ledger 对账。
 
+## Qiskit profile adapter
+
+官方 Qiskit core MCP 与 IBM Runtime MCP 是供应链输入，而不是公共 catalog leaf。
+一个审核后的 `QiskitExperimentV1` 对应一个虚拟异步 leaf；QPY/version、parameter
+unit、transpilation target/seed、shots、simulator/noise 或 Runtime backend、mitigation、
+evidence 和 limitations 都不可变，调用者只能传 `request_id`。
+
+local ideal、local noisy、remote simulator 和 IBM hardware 使用不同 capability。core
+MCP 只负责 transpile，本地 Aer 由验证精确 distribution 的 worker 执行。remote 仅内部
+使用审核后的 setup、backend snapshot、sampler、status、result 和 cancel leaf，不发布
+账户管理操作。backend/target mismatch 在提交前失败，live snapshot 与 job/result 原始
+记录保存为验证过的 artifact。
+
+`QISKIT_IBM_TOKEN` 通过 named credential scope 只交给隔离 Runtime 进程，并在 provider
+边界按精确值脱敏。lock、cassette、artifact 和 identity 不包含 token 或原始 instance
+CRN。科学契约、运维、更新/回滚和删除 gate 见
+[Qiskit 与 IBM Quantum 实验配置](qiskit_profiles.md)。
+
 ## record/replay 与 EAR
 
 record 保存精确参数、catalog/policy digest、选择原因、被拒候选、原始响应
@@ -142,6 +168,8 @@ python src/sync_catalog.py
 python src/sync_catalog.py --approve   # 仅在审查 diff 后
 python src/sync_catalog.py --approve --approve-schema-changes
 python scripts/verify_tooluniverse.py --help
+python scripts/verify_openroad.py --help
+python scripts/verify_qiskit.py --help
 python scripts/sync_contracts.py
 pytest -q
 ```
