@@ -17,7 +17,7 @@ tool_defaults:
   determinism: live-data
   timeout_class: bounded
   permissions: [workspace-read]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: get_ear
     capability_ref: ari.control.ear.read

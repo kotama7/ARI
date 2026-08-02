@@ -16,7 +16,7 @@ tool_defaults:
   determinism: conditional
   timeout_class: slow
   permissions: [workspace-read, workspace-write, process]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: generate_figures
     capability_ref: ari.visualization.figures.generate

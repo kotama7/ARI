@@ -113,6 +113,7 @@ _PUBLIC_SUBMODULES = (
     "cost_tracker",
     "llm",
     "paths",
+    "result",
     "run_env",
     "skill_manifest",
     "verified_context",

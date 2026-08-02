@@ -4,6 +4,8 @@ sources:
     role: implementation
   - path: scripts/check_skill_manifests.py
     role: test
+  - path: ari-core/ari/result.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
   - path: ari-skill-hpc/src/server.py
@@ -18,7 +20,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-08-01
+last_verified: 2026-08-02
 ---
 
 # MCP Skills Reference
@@ -48,7 +50,7 @@ tool_defaults:
   determinism: conditional
   timeout_class: bounded
   permissions: [workspace-read, workspace-write, process]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: run_code
     capability_ref: ari.execution.code
@@ -73,15 +75,21 @@ accepts an unversioned legacy manifest only through the explicit transition flag
 All current manifests default `environment_policy: audit-pending`: the listed
 environment names are inventory, not yet an exhaustive child-process allowlist.
 P2 changes this to `complete` package by package after secret/non-propagation
-tests. Likewise, current tools truthfully declare
-`ari.legacy-mcp-result/v1`; they move to `ari.result-envelope/v1` only when the
-normalizing adapter and artifact tests land.
+tests. All built-in tools now declare `ari.result-envelope/v1`. The typed
+`MCPClient.call_tool_envelope()` path normalizes MCP text/structured results,
+classifies tool/transport/protocol/timeout/cancellation errors, and stores raw
+responses over 4,000 characters content-addressably when a run artifact store is
+available. `MCPClient.call_tool()` remains a lossless compatibility projection to
+the historical `{"result": text}` / `{"error": message}` dictionary.
 
 `capability_ref` expresses semantic capability and may be shared by alternative
 implementations. Runtime name is not evidence that two tools are equivalent.
-Until immutable federation `tool_ref` dispatch lands, a duplicate bare tool name
-is an admission error rather than last-writer-wins. The external orchestrator is
-therefore default-off and is not injected into the experiment agent's tool set.
+`tools/list` entries now carry a runtime `tool_ref` bound to the normalized
+manifest and live input/output schemas. Typed dispatch accepts that immutable
+reference; a unique bare name remains migration-only. A duplicate bare tool name is an
+admission error rather than last-writer-wins. Run-level `SKILLS.lock` pinning is
+the next safety milestone. The external orchestrator is therefore default-off
+and is not injected into the experiment agent's tool set.
 
 To add a built-in Skill, add one package-level manifest and server, then regenerate
 compatibility metadata. To add a large external collection, implement one

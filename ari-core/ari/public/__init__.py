@@ -18,6 +18,8 @@ Currently exported sub-modules:
   callers that need typed settings access.
 - :mod:`ari.public.skill_manifest` — canonical Skill package and tool-policy
   contract used by built-in and federated MCP providers.
+- :mod:`ari.public.result`        — versioned result, artifact, error, context,
+  and provenance contracts for typed Skill dispatch.
 - :mod:`ari.public.run_env`       — run-environment capture helpers
   (``capture_env`` / ``shell_capture_snippet``) used by
   ari-skill-coding and ari-skill-hpc.

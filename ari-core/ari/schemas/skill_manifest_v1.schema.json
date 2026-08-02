@@ -177,7 +177,7 @@
           "type": "array"
         },
         "result_schema": {
-          "default": "ari.legacy-mcp-result/v1",
+          "default": "ari.result-envelope/v1",
           "title": "Result Schema",
           "type": "string"
         },

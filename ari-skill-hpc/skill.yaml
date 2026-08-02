@@ -16,7 +16,7 @@ tool_defaults:
   determinism: live-data
   timeout_class: slow
   permissions: [workspace-read, workspace-write, process, scheduler]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: job_cancel
     capability_ref: ari.hpc.job.cancel

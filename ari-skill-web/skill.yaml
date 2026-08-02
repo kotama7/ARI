@@ -16,7 +16,7 @@ tool_defaults:
   determinism: live-data
   timeout_class: bounded
   permissions: [network]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: collect_references_iterative
     capability_ref: ari.literature.references.collect

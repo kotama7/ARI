@@ -23,20 +23,35 @@ from ari.skill_manifest import (  # noqa: E402
     legacy_mcp_document,
     load_skill_manifest,
 )
+from ari.result import ResultEnvelopeV1  # noqa: E402
 
 
-SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skill_manifest_v1.schema.json"
+SKILL_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skill_manifest_v1.schema.json"
+RESULT_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "result_envelope_v1.schema.json"
+# Compatibility alias for scripts that imported the original constant.
+SCHEMA_PATH = SKILL_SCHEMA_PATH
 
 
 def _json_text(document: dict) -> str:
     return json.dumps(document, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
 
 
-def schema_document() -> dict:
+def skill_schema_document() -> dict:
     schema = SkillManifestV1.model_json_schema()
     schema["$id"] = "https://ari.dev/schemas/skill-manifest-v1.schema.json"
     schema["title"] = "ARI Skill Manifest v1"
     return schema
+
+
+def result_schema_document() -> dict:
+    schema = ResultEnvelopeV1.model_json_schema()
+    schema["$id"] = "https://ari.dev/schemas/result-envelope-v1.schema.json"
+    schema["title"] = "ARI Result Envelope v1"
+    return schema
+
+
+# Compatibility alias for callers that generated only the original schema.
+schema_document = skill_schema_document
 
 
 def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
@@ -46,8 +61,9 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
         outputs[manifest_path.parent / "mcp.json"] = _json_text(
             legacy_mcp_document(manifest)
         )
-    schema_path = repo_root / "ari-core" / "ari" / "schemas" / SCHEMA_PATH.name
-    outputs[schema_path] = _json_text(schema_document())
+    schema_dir = repo_root / "ari-core" / "ari" / "schemas"
+    outputs[schema_dir / SKILL_SCHEMA_PATH.name] = _json_text(skill_schema_document())
+    outputs[schema_dir / RESULT_SCHEMA_PATH.name] = _json_text(result_schema_document())
     return outputs
 
 
@@ -69,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--write",
         action="store_true",
-        help="rewrite generated mcp.json files and the JSON Schema",
+        help="rewrite generated mcp.json files and JSON Schemas",
     )
     args = parser.parse_args(argv)
     drift = sync(write=args.write)

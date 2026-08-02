@@ -4,7 +4,9 @@ sources:
     role: implementation
   - path: ari-core/tests/test_public_api_boundary.py
     role: test
-last_verified: 2026-08-01
+  - path: ari-core/ari/result.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # `ari.public` — Stable API for skills
@@ -26,6 +28,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
+| `ari.public.result` | `ResultEnvelopeV1`, content-addressed artifact references, typed errors, call context, provenance | Skill adapters and federated dispatch callers |
 | `ari.public.skill_manifest` | Versioned Skill manifest models, loader, digest, and safe entrypoint resolver | built-in and federated MCP Skill packages |
 | `ari.public.claim_gate` | Deterministic claim-evidence hard gate (`run_hard_gate`) + concept→invariant registry (`classify_concept`, `scan_science_data`, `CONCEPT_INVARIANTS`) | `ari-skill-evaluator`, `ari-skill-transform` |
 | `ari.public.verified_context` | Verified-context helpers (`render_grounded_block`, `write_verified_context`, `build_verified_context`) | `ari-skill-paper` |
@@ -89,6 +92,34 @@ phases, side effects, determinism, timeout class, permissions, and result schema
 child-process allowlist.
 Legacy unversioned manifests are rejected unless a migration caller explicitly
 passes `allow_legacy=True`; admission and CI never enable that option.
+
+## `ari.public.result`
+
+New dispatch code uses the typed result contract; the historical dictionary API
+remains a lossless compatibility projection:
+
+```python
+from ari.public.result import ToolCallContextV1
+
+tool = client.list_tools()[0]
+envelope = client.call_tool_envelope(
+    tool["tool_ref"],
+    {"query": "example"},
+    context=ToolCallContextV1(run_id="run-1", node_id="node-1"),
+)
+```
+
+`ResultEnvelopeV1` records status, structured content, typed error information,
+immutable `tool_ref`, run/node/phase context, selection reason, timing, and a
+SHA-256 response digest. With a checkpoint-backed `ArtifactStore`, raw content
+over 4,000 characters is stored under a deterministic content address and the
+inline field becomes a bounded preview. `materialize_content(store)` verifies
+both digest and byte size before returning the full response. `MCPClient.call_tool`
+passes through the same normalization path and then returns the former
+`{"result": text}` / `{"error": message}` shape for existing callers.
+
+The normative machine-readable contract is
+`ari-core/ari/schemas/result_envelope_v1.schema.json`.
 
 ## `ari.public.cost_tracker`
 

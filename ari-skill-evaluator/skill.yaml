@@ -16,7 +16,7 @@ tool_defaults:
   determinism: conditional
   timeout_class: slow
   permissions: [workspace-read, model]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: claim_evidence_hard_gate
     capability_ref: ari.evaluation.claim-gate

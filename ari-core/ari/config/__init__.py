@@ -11,6 +11,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from ari.config.skill_runtime import manifest_runtime_metadata
 from ari.skill_manifest import (
     MANIFEST_FILENAME,
     SkillManifestV1,
@@ -107,6 +108,21 @@ class SkillConfig(BaseModel):
     tool_timeout_classes: dict[str, str] = Field(
         default_factory=dict,
         description="Resolved manifest timeout class keyed by runtime tool name.",
+    )
+    manifest_digest: str = Field(
+        "", description="SHA-256 digest of the normalized canonical manifest."
+    )
+    tool_refs: dict[str, str] = Field(
+        default_factory=dict,
+        description="Declared immutable tool references keyed by runtime name.",
+    )
+    tool_capabilities: dict[str, str] = Field(
+        default_factory=dict,
+        description="Semantic capability references keyed by runtime tool name.",
+    )
+    tool_policies: dict[str, dict] = Field(
+        default_factory=dict,
+        description="Resolved side-effect, determinism, phase, and permission policy.",
     )
 
 
@@ -486,24 +502,34 @@ def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
     """
     _n = os.environ.get("ARI_MAX_NODES")
     if _n:
-        try: cfg.bfts.max_total_nodes = int(_n)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_total_nodes = int(_n)
+        except ValueError:
+            pass
     _d = os.environ.get("ARI_MAX_DEPTH")
     if _d:
-        try: cfg.bfts.max_depth = int(_d)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_depth = int(_d)
+        except ValueError:
+            pass
     _r = os.environ.get("ARI_MAX_REACT")
     if _r:
-        try: cfg.bfts.max_react_steps = int(_r)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_react_steps = int(_r)
+        except ValueError:
+            pass
     _p = os.environ.get("ARI_PARALLEL")
     if _p:
-        try: cfg.bfts.max_parallel_nodes = int(_p)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_parallel_nodes = int(_p)
+        except ValueError:
+            pass
     _t = os.environ.get("ARI_TIMEOUT_NODE")
     if _t:
-        try: cfg.bfts.timeout_per_node = int(_t)
-        except ValueError: pass
+        try:
+            cfg.bfts.timeout_per_node = int(_t)
+        except ValueError:
+            pass
     # GUI wizard's frontier-selection strategy choice. Pydantic does not
     # validate on assignment, so guard against unknown values from env.
     _fs = os.environ.get("ARI_FRONTIER_SCORE")
@@ -654,7 +680,6 @@ def _skill_config_from_manifest(
     *,
     phase: str | list[str] = "all",
 ) -> SkillConfig:
-    resolved_tools = manifest.resolved_tools()
     return SkillConfig(
         name=manifest.name,
         path=str(skill_dir),
@@ -668,7 +693,7 @@ def _skill_config_from_manifest(
         environment_policy=manifest.environment_policy,
         required_env=list(manifest.required_env),
         optional_env=list(manifest.optional_env),
-        tool_timeout_classes={tool.name: tool.timeout_class for tool in resolved_tools},
+        **manifest_runtime_metadata(manifest),
     )
 
 
@@ -701,9 +726,8 @@ def _hydrate_skill_manifests(skills: list[SkillConfig]) -> None:
         skill.environment_policy = manifest.environment_policy
         skill.required_env = list(manifest.required_env)
         skill.optional_env = list(manifest.optional_env)
-        skill.tool_timeout_classes = {
-            tool.name: tool.timeout_class for tool in manifest.resolved_tools()
-        }
+        for field_name, value in manifest_runtime_metadata(manifest).items():
+            setattr(skill, field_name, value)
         if not skill.description:
             skill.description = manifest.description
 

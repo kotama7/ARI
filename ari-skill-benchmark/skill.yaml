@@ -16,7 +16,7 @@ tool_defaults:
   determinism: deterministic
   timeout_class: bounded
   permissions: [workspace-read]
-  result_schema: ari.legacy-mcp-result/v1
+  result_schema: ari.result-envelope/v1
 tools:
   - name: analyze_results
     capability_ref: ari.analysis.results

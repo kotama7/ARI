@@ -10,13 +10,17 @@ sources:
     role: implementation
   - path: ari-core/ari/mcp/client.py
     role: implementation
+  - path: ari-core/ari/mcp/dispatch_support.py
+    role: implementation
+  - path: ari-core/ari/result.py
+    role: implementation
   - path: ari-core/ari/cli/bfts_loop.py
     role: implementation
   - path: ari-core/ari/pipeline/orchestrator.py
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Internal boundaries
@@ -91,6 +95,26 @@ written by the two launch paths), and `_gpu_monitor_proc` (its logic lives in
 `api_process.py`; the server reaps a stale monitor across restarts). This is the
 canonical example of the "avoid hidden coupling through global mutable state"
 caution — touch its lifecycle only deliberately.
+
+## MCP admission and result boundary
+
+`ari.mcp.client.MCPClient` owns process/connection lifecycle. Pure dispatch
+policy lives in `ari.mcp.dispatch_support`: runtime `tool_ref` hashing binds the
+canonical manifest identity plus live input/output schemas; phase matching,
+timeout classes, CoW-tool classification, and bounded trace rendering are kept
+separate from transport state.
+
+`MCPClient.list_tools()` publishes `tool_ref`, `capability_ref`, and resolved
+policy. `call_tool_envelope(tool_ref, args, context=...)` is the canonical call
+boundary and re-checks disabled/phase admission before I/O. It returns
+`ResultEnvelopeV1` from `ari.result`, including typed errors, response digest,
+selection reason, timing, and run/node/phase provenance. A checkpoint-backed
+artifact store externalizes raw text over 4,000 characters under a deterministic
+SHA-256 address; reads verify digest and byte size. `call_tool(name, args)` runs
+through the same normalization and then materializes the historical
+`{"result": text}` / `{"error": message}` shape. Bare names remain only as
+unique migration aliases; federation and future run locks must dispatch by
+`tool_ref`.
 
 ## The two orchestration engines
 

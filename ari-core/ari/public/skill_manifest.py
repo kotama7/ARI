@@ -13,6 +13,7 @@ from ari.skill_manifest import (  # noqa: F401
     legacy_mcp_document,
     load_skill_manifest,
     manifest_digest,
+    manifest_tool_ref,
     resolve_skill_entrypoint,
 )
 
@@ -29,5 +30,6 @@ __all__ = [
     "legacy_mcp_document",
     "load_skill_manifest",
     "manifest_digest",
+    "manifest_tool_ref",
     "resolve_skill_entrypoint",
 ]
