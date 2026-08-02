@@ -17,6 +17,7 @@ file formats, and terminology.
 - `glossary.md` — Glossary: short definitions of terms recurring across the docs.
 - `internal_boundaries.md` — Internal boundaries: the LLM, OS/scheduler/container, and two-engine orchestration boundaries + their concurrency hazards.
 - `mcp_tools.md` — MCP Tools Reference: the MCP servers ARI ships (one per skill package).
+- `orchestrator.md` — authenticated durable ARI run control, lifecycle, quotas, and artifact access.
 - `public_api.md` — `ari.public`: the only stable module surface for `ari-skill-*` packages.
 - `qiskit_profiles.md` — immutable Qiskit/Aer/IBM Runtime scientific profiles, credentials, evidence, and operations.
 - `registry.md` — ari-registry (v0.7.0+): the minimal HTTP registry for curated EAR bundles.

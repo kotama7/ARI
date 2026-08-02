@@ -1,7 +1,7 @@
 schema_version: 1
 name: ari-orchestrator
 package: ari-skill-orchestrator
-version: 1.0.0
+version: 2.0.0
 display_name: Control ARI runs
 description: External asynchronous control and inspection of ARI experiment runs.
 enabled_by_default: false
@@ -16,11 +16,22 @@ optional_env:
   - ARI_EXECUTOR
   - ARI_MAX_RECURSION_DEPTH
   - ARI_MODEL
+  - ARI_ORCHESTRATOR_CANCEL_GRACE_SECONDS
   - ARI_ORCHESTRATOR_DRY_RUN
+  - ARI_ORCHESTRATOR_HTTP_HOST
+  - ARI_ORCHESTRATOR_HTTP_PORT
+  - ARI_ORCHESTRATOR_MAX_ACTIVE_RUNS
+  - ARI_ORCHESTRATOR_MAX_COST_USD
+  - ARI_ORCHESTRATOR_MAX_CPUS
+  - ARI_ORCHESTRATOR_MAX_DESCENDANT_RUNS
+  - ARI_ORCHESTRATOR_MAX_NODES_PER_RUN
+  - ARI_ORCHESTRATOR_MAX_TIMEOUT_MINUTES
+  - ARI_ORCHESTRATOR_MAX_TOTAL_NODES
   - ARI_ORCHESTRATOR_LOGS
-  - ARI_ORCHESTRATOR_PORT
-  - ARI_ORCHESTRATOR_SSE_ONESHOT
-  - ARI_ORCHESTRATOR_SSE_TIMEOUT
+  - ARI_ORCHESTRATOR_OAUTH_ISSUER_URL
+  - ARI_ORCHESTRATOR_OAUTH_RESOURCE_URL
+  - ARI_ORCHESTRATOR_PRINCIPAL_ID
+  - ARI_ORCHESTRATOR_PRINCIPAL_ROLES
   - ARI_PARENT_RUN_ID
   - ARI_RETRIEVAL_BACKEND
   - ARI_WORKSPACE
@@ -33,6 +44,9 @@ optional_env:
   - VERTEXAI_LOCATION
   - VERTEXAI_PROJECT
 credential_scopes:
+  - id: orchestrator.http-auth
+    optional_env:
+      - ARI_ORCHESTRATOR_HTTP_TOKENS_FILE
   - id: model.provider
     optional_env:
       - ANTHROPIC_API_KEY
@@ -69,20 +83,22 @@ tools:
     capability_ref: ari.control.ear.read
   - name: get_paper
     capability_ref: ari.control.paper.read
+  - name: get_result
+    capability_ref: ari.control.run.result
   - name: get_status
     capability_ref: ari.control.run.status
   - name: get_workflow
     capability_ref: ari.control.workflow.read
   - name: list_children
     capability_ref: ari.control.run.children
-  - name: list_files
-    capability_ref: ari.control.files.list
+  - name: list_artifacts
+    capability_ref: ari.control.artifacts.list
   - name: list_runs
     capability_ref: ari.control.runs.list
   - name: list_skills
     capability_ref: ari.control.skills.list
-  - name: read_file
-    capability_ref: ari.control.file.read
+  - name: read_artifact
+    capability_ref: ari.control.artifact.read
   - name: run_experiment
     capability_ref: ari.control.run.start
     side_effects: stateful
@@ -90,25 +106,25 @@ tools:
     permissions: [workspace-read, workspace-write, process]
     async_lifecycle:
       handle_field: run_id
-      state_field: status
+      state_field: state
       status:
         capability_ref: ari.control.run.status
         handle_argument: run_id
       result:
-        capability_ref: ari.control.ear.read
+        capability_ref: ari.control.run.result
         handle_argument: run_id
       cancel:
         capability_ref: ari.control.run.stop
         handle_argument: run_id
       states:
-        submitted_states: [submitted, started]
+        submitted_states: [submitted]
         running_states: [running]
-        succeeded_states: [completed, succeeded]
-        failed_states: [failed, error]
-        cancelled_states: [cancelled, canceled]
+        succeeded_states: [succeeded]
+        failed_states: [failed]
+        cancelled_states: [cancelled]
       poll_interval_seconds: 5
       max_wait_seconds: 86400
   - name: stop_experiment
     capability_ref: ari.control.run.stop
     side_effects: destructive
-    permissions: [workspace-read, process]
+    permissions: [workspace-read, workspace-write, process]

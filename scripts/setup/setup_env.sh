@@ -274,6 +274,34 @@ _env_append_if_absent "# LLM_API_BASE="
 _env_append_if_absent "# OLLAMA_HOST=http://localhost:11434"
 _env_append_if_absent "# OLLAMA_BASE_URL=http://localhost:11434"
 
+# Optional credentials for model providers supported by LiteLLM. They remain
+# commented and are forwarded only to a manifest-declared credential scope.
+_env_append_if_absent "# AZURE_API_BASE="
+_env_append_if_absent "# AZURE_API_KEY="
+_env_append_if_absent "# AZURE_API_VERSION="
+_env_append_if_absent "# AZURE_OPENAI_API_KEY="
+_env_append_if_absent "# AWS_ACCESS_KEY_ID="
+_env_append_if_absent "# AWS_SECRET_ACCESS_KEY="
+_env_append_if_absent "# AWS_SESSION_TOKEN="
+_env_append_if_absent "# AWS_DEFAULT_REGION="
+_env_append_if_absent "# AWS_REGION="
+_env_append_if_absent "# COHERE_API_KEY="
+_env_append_if_absent "# DATABRICKS_API_TOKEN="
+_env_append_if_absent "# DEEPINFRA_API_KEY="
+_env_append_if_absent "# DEEPSEEK_API_KEY="
+_env_append_if_absent "# GEMINI_API_KEY="
+_env_append_if_absent "# GOOGLE_APPLICATION_CREDENTIALS="
+_env_append_if_absent "# GROQ_API_KEY="
+_env_append_if_absent "# MISTRAL_API_KEY="
+_env_append_if_absent "# OPENROUTER_API_KEY="
+_env_append_if_absent "# REPLICATE_API_TOKEN="
+_env_append_if_absent "# TOGETHERAI_API_KEY="
+_env_append_if_absent "# VERTEXAI_CREDENTIALS="
+_env_append_if_absent "# VERTEXAI_LOCATION="
+_env_append_if_absent "# VERTEXAI_PROJECT="
+_env_append_if_absent "# WATSONX_APIKEY="
+_env_append_if_absent "# XAI_API_KEY="
+
 # --- 2b) Per-phase LLM model overrides --------------------------------------
 # These win over ARI_MODEL/ARI_LLM_MODEL within their phase. Leave blank to
 # use the global model. The GUI Settings page writes these automatically.
@@ -289,11 +317,19 @@ _env_append_if_absent "# ARI_MODEL_METRIC_PROPOSAL="
 _env_append_if_absent "# ARI_MODEL_SEMANTIC_REVIEW="
 _env_append_if_absent "# ARI_SEMANTIC_REVIEW_MODEL_REVISION="
 _env_append_if_absent "# ARI_MODEL_PAPER="
+_env_append_if_absent "# ARI_MODEL_PAPER_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_PAPER_REVISION="
+_env_append_if_absent "# ARI_MODEL_VLM_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_VLM_REVISION="
 _env_append_if_absent "# ARI_MODEL_BFTS="
 # v0.6.0 §4.1 split the legacy ARI_MODEL_PAPER into rubric / replicator / judge
 # so the reproducibility pipeline can target a different model per stage.
 _env_append_if_absent "# ARI_MODEL_RUBRIC_GEN="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_GEN_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_GEN_REVISION="
 _env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT_PROVIDER="
+_env_append_if_absent "# ARI_MODEL_RUBRIC_AUDIT_REVISION="
 _env_append_if_absent "# ARI_MODEL_REPLICATE="
 _env_append_if_absent "# ARI_MODEL_REPLICATOR="
 _env_append_if_absent "# ARI_MODEL_JUDGE="
@@ -310,6 +346,7 @@ _env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_REVISION=3447645e1def911799720
 _env_append_if_absent "# ARI_RUBRIC_GEN_TARGET_LEAVES="
 _env_append_if_absent "# ARI_RUBRIC_GEN_TEMPERATURE="
 _env_append_if_absent "# ARI_RUBRIC_GEN_TWO_STAGE="
+_env_append_if_absent "# ARI_RUBRIC_GEN_QUALITY_PROFILE="
 # v0.7.2 paper-audit knobs. _DIR overrides the search root for
 # venue-conditioned PaperBench rubric templates (default: ari-core/config/
 # paperbench_rubrics/). _PAPER toggles the multimodal markdown image
@@ -446,6 +483,7 @@ _env_append_if_absent "# ARI_MAX_CHILD_PROCS="
 # --- 6) Container -----------------------------------------------------------
 _env_section "Container"
 _env_append_if_absent "# ARI_CONTAINER_IMAGE="
+_env_append_if_absent "# ARI_CONTAINER_DIGEST="
 _env_append_if_absent "# ARI_CONTAINER_MODE=auto"
 _env_append_if_absent "# ARI_CONTAINERS_DIR="
 _env_append_if_absent "# APPTAINER_CACHEDIR="
@@ -500,11 +538,16 @@ _env_append_if_absent "# ARI_PROBE_TOOLS="
 _env_append_if_absent "# ARI_SLURM_ALLOW_NO_GRES="
 # --- 8) Orchestrator / viz --------------------------------------------------
 _env_section "Orchestrator"
-_env_append_if_absent "# ARI_ORCHESTRATOR_PORT="
+_env_append_if_absent "# ARI_ORCHESTRATOR_HTTP_HOST=127.0.0.1"
+_env_append_if_absent "# ARI_ORCHESTRATOR_HTTP_PORT=8765"
+_env_append_if_absent "# ARI_ORCHESTRATOR_HTTP_TOKENS_FILE="
+_env_append_if_absent "# ARI_ORCHESTRATOR_OAUTH_ISSUER_URL="
+_env_append_if_absent "# ARI_ORCHESTRATOR_OAUTH_RESOURCE_URL="
+_env_append_if_absent "# ARI_ORCHESTRATOR_PRINCIPAL_ID=local"
+_env_append_if_absent "# ARI_ORCHESTRATOR_PRINCIPAL_ROLES=operator"
+_env_append_if_absent "# ARI_ORCHESTRATOR_CANCEL_GRACE_SECONDS=5"
 _env_append_if_absent "# ARI_ORCHESTRATOR_LOGS="
 _env_append_if_absent "# ARI_ORCHESTRATOR_DRY_RUN="
-_env_append_if_absent "# ARI_ORCHESTRATOR_SSE_ONESHOT="
-_env_append_if_absent "# ARI_ORCHESTRATOR_SSE_TIMEOUT="
 # ARI_FORCE_PAPER=1 bypasses the post-BFTS sanity gate that aborts the
 # paper / review stages when no node produced real experimental data.
 # Useful for resuming partial runs intentionally; otherwise leave unset.

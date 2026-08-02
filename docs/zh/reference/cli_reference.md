@@ -418,7 +418,7 @@ ari skills-list [--config <config.yaml>]
 |------|------|--------|
 | `ARI_RETRIEVAL_BACKEND` | 固定provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | orchestrator 的 MCP Streamable HTTP 端口 | `9890` |
 
 ### 记忆 (Letta)
 

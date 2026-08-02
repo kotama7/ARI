@@ -451,7 +451,7 @@ ari skills-list [--config <config.yaml>]
 |----------|-------------|---------|
 | `ARI_RETRIEVAL_BACKEND` | Default pinned provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | MCP Streamable HTTP port for orchestrator skill | `9890` |
 
 ### Memory (Letta)
 

@@ -151,11 +151,13 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP サーバポート | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | ログディレクトリ | `$ARI_WORKSPACE/orchestrator_logs` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` / `ARI_ORCHESTRATOR_HTTP_PORT` | MCP Streamable HTTP のbind先 | `127.0.0.1` / `9890` |
+| `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` | network transportで必須のmode-0600 token digest file | – |
+| `ARI_ORCHESTRATOR_LOGS` | checkpointとdurable registryのroot | `$ARI_WORKSPACE/logs` |
 | `ARI_ORCHESTRATOR_DRY_RUN` | 実際の `ari run` をスキップ（スモークテスト用） | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | ワンショット SSE レスポンスモード | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE タイムアウト（秒） | – |
+| `ARI_ORCHESTRATOR_MAX_ACTIVE_RUNS` | deployment全体のactive run上限 | `16` |
+| `ARI_ORCHESTRATOR_MAX_TOTAL_NODES` | lineage当たりのnode上限 | `10000` |
+| `ARI_ORCHESTRATOR_MAX_COST_USD` | lineage当たりのcost上限 | `10000` |
 
 ### Transform スキル
 

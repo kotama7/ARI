@@ -140,6 +140,13 @@ last_verified: 2026-08-02
   persistent vendor path injectionを削除し、exact PaperBench pin/patch inventory、raw judge evidence、
   negative control/independenceを固定した。C15-01〜09/D1/D2/D3/D5/D6を完了し、upstream patchと
   V1 readerのP6 gateだけを保持する（paper-re + HPC 259 passed, 3 skipped）。
+- C16 Orchestratorをdigest-bound request/handle/status/result/artifact契約、SQLite durable
+  registry、atomic idempotency/lineage quota、PID start-time付きrunner receipt、process-group
+  cancel、owner authorizationへ移行した。任意file API、substring ID、scan-derived state、
+  request-level credential、raw workflow/Skill config、独自REST/SSEを削除し、stdioとBearer
+  認証付き標準MCP Streamable HTTPを同じserviceへ接続した。明示legacy repair、verified
+  EAR/SKILLS.lock view、実process/stdio/HTTPを含む44件のpackage suiteを追加し、C16-01〜09と
+  D1〜D6を完了した。
 
 ## 1. 決定
 

@@ -145,11 +145,13 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP 服务器端口 | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | 日志目录 | `$ARI_WORKSPACE/orchestrator_logs` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` / `ARI_ORCHESTRATOR_HTTP_PORT` | MCP Streamable HTTP 绑定地址 | `127.0.0.1` / `9890` |
+| `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` | 网络传输所需的 mode-0600 token digest 文件 | – |
+| `ARI_ORCHESTRATOR_LOGS` | checkpoint 与 durable registry 根目录 | `$ARI_WORKSPACE/logs` |
 | `ARI_ORCHESTRATOR_DRY_RUN` | 跳过真实的 `ari run`（冒烟测试） | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | 单次 SSE 响应模式 | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE 超时（秒） | – |
+| `ARI_ORCHESTRATOR_MAX_ACTIVE_RUNS` | deployment 级 active run 上限 | `16` |
+| `ARI_ORCHESTRATOR_MAX_TOTAL_NODES` | 每个 lineage 的 node 上限 | `10000` |
+| `ARI_ORCHESTRATOR_MAX_COST_USD` | 每个 lineage 的 cost 上限 | `10000` |
 
 ### Transform 技能
 

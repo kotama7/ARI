@@ -130,21 +130,22 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 has no per-record or per-node delete operation. See the
 [research memory contract](memory_contract.md).
 
-## ari-skill-orchestrator — recursive ARI runner
+## ari-skill-orchestrator — durable ARI control plane
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `run_experiment` | Launch a child ARI run | ✗ |
-| `get_status` | Status of a child run | ✗ |
-| `list_runs` | All known runs | ✗ |
-| `get_paper` | Generated LaTeX / PDF for a run | ✗ |
-| `list_children` | Child runs for a parent run | ✗ |
-| `list_files` | Files available in a run checkpoint | ✗ |
-| `read_file` | Read a text file in a run checkpoint | ✗ |
-| `get_ear` | Retrieve the run's Experiment Analysis Report | ✗ |
-| `stop_experiment` | Stop a running experiment | ✗ |
-| `list_skills` | Sanitized view of available skills and tools | ✗ |
-| `get_workflow` | Current workflow configuration | ✗ |
+| `run_experiment` | Idempotently submit a quota-bound ARI run | ✗ |
+| `get_status` | Authorized durable status and bounded progress | ✗ |
+| `get_result` | State plus content-addressed result references | ✗ |
+| `stop_experiment` | Propagate cancellation and settle terminal state | ✗ |
+| `list_runs` | Principal-scoped durable run handles | ✗ |
+| `list_children` | Authorized direct child handles | ✗ |
+| `list_artifacts` | Allowlisted digest-verified artifact references | ✗ |
+| `read_artifact` | Bounded content read by exact SHA-256 | ✗ |
+| `get_paper` | Paper artifact references | ✗ |
+| `get_ear` | Verified EAR/evidence artifact references | ✗ |
+| `list_skills` | Sanitized run-bound `SKILLS.lock` view | ✗ |
+| `get_workflow` | Locked phase/tool membership | ✗ |
 
 ## ari-skill-paper — LaTeX paper writing
 

@@ -105,7 +105,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 61 FastMCP + 38 low-level defs (97 unique names) + collision guard ──
+# ── MCP: 71 FastMCP + 27 low-level defs (96 unique names) + collision guard ──
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -120,10 +120,10 @@ def test_mcp_tool_counts_and_names():
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
-    assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 38, f"expected 38 low-level tool defs, got {len(lowlevel)}"
+    assert len(fastmcp) == 71, f"expected 71 FastMCP tools, got {len(fastmcp)}"
+    assert len(lowlevel) == 27, f"expected 27 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 95, f"expected 95 unique tool names, got {len(unique)}"
+    assert len(unique) == 96, f"expected 96 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 
@@ -144,7 +144,7 @@ def test_mcp_no_unrecorded_cross_skill_collision():
     )
     # These names are shared only with default-off components. MCPClient rejects
     # either collision if both providers are explicitly admitted together.
-    assert recorded == {"get_status", "read_file"}
+    assert recorded == {"get_result", "get_status"}
 
 
 # ── viz: route-literal drift (exact) + additive/subset response keys ─────────

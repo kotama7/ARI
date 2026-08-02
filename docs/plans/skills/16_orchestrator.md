@@ -2,18 +2,32 @@
 sources:
   - path: ari-skill-orchestrator/src/server.py
     role: implementation
+  - path: ari-skill-orchestrator/src/ari_skill_orchestrator/service.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/ari_skill_orchestrator/registry.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/ari_skill_orchestrator/execution.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/ari_skill_orchestrator/migration.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/ari_skill_orchestrator/runtime.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/ari_skill_orchestrator/contracts.py
+    role: schema
   - path: ari-skill-orchestrator/skill.yaml
     role: config
   - path: ari-skill-orchestrator/mcp.json
     role: config
-  - path: ari-core/ari/viz/api_orchestrator.py
-    role: implementation
+  - path: ari-skill-orchestrator/tests
+    role: test
+  - path: docs/reference/orchestrator.md
+    role: doc
 last_verified: 2026-08-02
 ---
 
 # C16: `ari-skill-orchestrator` 実装計画
 
-> 状態: Proposed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Completed。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、P6の計画書削除PRで削除する。
 
 ## 1. 責務
 
@@ -21,11 +35,10 @@ ARI runを外部clientから非同期に開始、参照、停止し、paper/EAR/
 
 ## 2. 現状と課題
 
-- runtimeはrun/status/list/children/paper/files/EAR/stop/skills/workflow等11 toolを公開するが、manifestは4 toolだけである。
-- custom stdio MCPとcustom HTTP serverの二surfaceを持つ。
-- package testが0で、process、recursion、path、stop、concurrency、authの回帰検出がない。
-- `read_file`等がrun artifact scopeを厳密に型付けせず、path traversal/secret exposure riskがある。
-- run metadataをcheckpoint directory scanで再構築し、durable task stateとidempotencyが弱い。
+- v2 runtime/manifestは12 toolで一致し、stdioと標準MCP Streamable HTTPは同じserviceを呼ぶ。
+- package suiteはcontract、process、restart、parallel idempotency、path、auth、cancel、recursion、実HTTP clientを含む。
+- file APIはpathを受けず、allowlist/index/manifestで検証したSHA-256 artifactだけを返す。
+- SQLite registryとrunner receiptが正本であり、directory scanは明示repair commandに隔離した。
 
 ## 3. 目標契約
 
@@ -35,26 +48,26 @@ ARI runを外部clientから非同期に開始、参照、停止し、paper/EAR/
 
 | ID | 作業 | 成果物 |
 |---|---|---|
-| C16-01 | runtime/manifest/docs inventory | 11 toolのsupport分類とcanonical manifest |
-| C16-02 | durable run registry | atomic metadata、state transitions、restart recovery |
-| C16-03 | idempotent async API | create/status/stop/result、parent/child lineage |
-| C16-04 | artifact/resource API | paper/EAR/logをdigestとroleで取得 |
-| C16-05 | auth/authorization | local token/OAuth-ready principal、workspace/run scope |
-| C16-06 | recursion/budget policy | depthだけでなくrun/node/cost/resource quota |
-| C16-07 | transport adapter | stdio contractをcanonicalにしHTTPをadapter化 |
-| C16-08 | federation visibility | lock済みSkill/toolだけをsanitized metadataで表示 |
-| C16-09 | test suite | lifecycle、restart、parallel、path、auth、cancel、recursion |
+| C16-01 | **完了**: runtime/manifest/docs inventory | 12 toolのcanonical manifestとsnapshot |
+| C16-02 | **完了**: durable run registry | SQLite atomic state/event、PID start-time + receipt recovery |
+| C16-03 | **完了**: idempotent async API | create/status/stop/result、exact ID、parent/child lineage |
+| C16-04 | **完了**: artifact/resource API | allowlisted paper/EAR/logをdigestとroleで取得 |
+| C16-05 | **完了**: auth/authorization | stdio principal、hashed bearer token/OAuth-ready verifier、owner scope |
+| C16-06 | **完了**: recursion/budget policy | depth/run/node/cost/CPU/timeout quotaをatomic preflight |
+| C16-07 | **完了**: transport adapter | stdio + authenticated MCP Streamable HTTPをshared serviceへ接続 |
+| C16-08 | **完了**: federation visibility | verified `SKILLS.lock`のsanitized metadataだけを表示 |
+| C16-09 | **完了**: test suite | lifecycle、restart、parallel、path、auth、cancel、recursion、HTTP |
 
 ## 5. 受け入れ基準
 
-- [ ]同一idempotency keyのretryでrunを二重起動しない。
-- [ ] process restart後もrunning/failed/completed stateを正しく復元する。
-- [ ] stopがchild process/jobへ伝播し、terminal stateを一度だけ確定する。
-- [ ] run外path、symlink、secret fileをartifact APIから読めない。
-- [ ] unauthorized principalが他runのstatus/artifactを取得できない。
-- [ ] recursion depth、cost/resource budget超過を起動前に拒否する。
-- [ ] stdioとHTTP adapterで同じschema/state semanticsを返す。
-- [ ]新設する`ari-skill-orchestrator/tests` とMCP lifecycle suiteがgreenである。
+- [x]同一idempotency keyのretryでrunを二重起動しない。
+- [x] process restart後もrunning/failed/succeeded stateをreceipt/PID identityから復元する。
+- [x] stopがchild process groupへ伝播し、terminal stateを一度だけ確定する。
+- [x] run外path、symlink、secret fileをartifact APIから読めない。
+- [x] unauthorized principalが他runのstatus/artifactを取得できない。
+- [x] recursion depth、run/node/cost/resource budget超過を起動前に拒否する。
+- [x] stdioとMCP Streamable HTTP adapterで同じschema/state semanticsを返す。
+- [x]新設した`ari-skill-orchestrator/tests` とMCP lifecycle suiteがgreenである。
 
 ## 6. 削除要件
 
@@ -62,12 +75,12 @@ ARI runを外部clientから非同期に開始、参照、停止し、paper/EAR/
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C16-D1 |任意filenameを受ける`read_file` / directory listing path | scoped `ArtifactRefV1` / MCP resource | P2 |path security tests、paper/EAR consumer migration |
-| C16-D2 |checkpoint scanだけでrun stateを推測する主要path | durable run registry | P3 |restart/migration fixture、fallbackはrepair commandへ隔離 |
-| C16-D3 |manifestの4-tool限定stale declaration | canonical runtime manifest | P1 |tools/list完全一致 |
-| C16-D4 |stdioと別実装のcustom HTTP business logic | shared service + transport adapter | P3 |transport contract parity |
-| C16-D5 |非標準HTTP transport | MCP Streamable HTTPまたはdocumented local-only adapter | P6 |client migration、auth parity、deprecation release |
-| C16-D6 |workflow/Skillのsecret-bearing raw config返却 | sanitized locked view | P2 |secret scan、authorized debug path分離 |
+| C16-D1 (deleted) |任意filenameを受ける`read_file` / directory listing path | scoped `ArtifactRefV1` | P2 |path/symlink/secret/size testsとmanifest/runtime negative checkを通過 |
+| C16-D2 (deleted) |checkpoint scanだけでrun stateを推測する主要path | durable SQLite registry | P3 |restart fixtureを通過し、scanはexplicit fail-closed repairだけに隔離 |
+| C16-D3 (deleted) |manifestのstale declaration | canonical 12-tool manifest | P1 |runtime/manifest/mcp.json/snapshot完全一致 |
+| C16-D4 (deleted) |stdioと別実装のcustom HTTP business logic | shared `OrchestratorService` | P3 |実MCP clientのtransport parityを通過 |
+| C16-D5 (deleted) |非標準HTTP transport | authenticated MCP Streamable HTTP | P6 |旧REST/SSE symbol/env/docs reference 0、unauthenticated start拒否 |
+| C16-D6 (deleted) |workflow/Skillのsecret-bearing raw config返却 | verified lockのsanitized view | P2 |secret/schema/path negative testを通過 |
 
 ### 6.2 削除の検証と復旧
 
@@ -75,4 +88,16 @@ ARI runを外部clientから非同期に開始、参照、停止し、paper/EAR/
 
 ### 6.3 計画書自身の削除
 
-C16-01〜09、全受け入れ基準、C16-D1〜D6を閉じ、orchestrator API、auth、operationsを恒久referenceへ移した後に削除する。
+C16-01〜09、全受け入れ基準、C16-D1〜D6は完了し、恒久仕様を
+[`docs/reference/orchestrator.md`](../../reference/orchestrator.md)へ移した。legacy repair
+support windowを含む全体P6 cleanupで本書を削除する。
+
+## 7. 実装記録
+
+- checked-in schema: request/handle/status/result/artifact/principalの6契約。
+- verification: package suite 44件（実process、実stdio/認証付きStreamable HTTPを含む）と
+  core orchestrator/snapshot 19件がgreen。
+- quality: orchestrator sourceのcomplexity/LOC regression、import boundary、prompt、
+  manifest、schema、MCP snapshot findingは0。
+- rollback基点: v1実装の最終commitは本変更直前の`5929694`。旧state readerをruntimeへ
+  戻さず、必要なcheckpointは`--repair-registry`でterminal importする。
