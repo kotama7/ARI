@@ -2,9 +2,13 @@
 sources:
   - path: ari-core/ari/migrations/v05_to_v07
     role: implementation
+  - path: ari-core/ari/migrations/checkpoint.py
+    role: implementation
+  - path: ari-core/ari/migrations/skill_manifest.py
+    role: implementation
   - path: ari-core/ari/memory_cli.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 迁移指南
@@ -109,6 +113,22 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
 - `lineage_decisions.jsonl` 在 stagnation rule 首次触发时创建。
 - `manifest.lock` 和 `publish_record.json` 在 `ari ear publish`
   执行后出现。
+
+## Canonical Skill admission 与旧格式只读检查
+
+Production discovery 只注册能通过 `SkillManifestV1` 验证的
+`ari-skill-*/skill.yaml`。目录、`server.py`、`mcp.json` 或未版本化 manifest
+都不是注册依据。启用自定义 package 前，必须将其转换为 canonical schema。
+
+`ari.migrations` 保留两个有意限定为只读的兼容 reader：
+
+- `load_legacy_skill_manifest(path)` 在内存中转换未版本化 manifest，将其设为
+  默认禁用且 environment audit-pending，并且不会 admission 到 run。
+- `load_legacy_checkpoint(path)` 规范化旧 tree、paper 与 replay input，为读取的
+  每个文件返回 SHA-256 digest，且不会写入 checkpoint。
+
+转换后运行 `python scripts/check_skill_manifests.py` 验证 Skill package；在 paper
+与 replay input 和 migration view 一致之前，请保留原 checkpoint。
 
 ## v0.7 → v0.8（未来）
 

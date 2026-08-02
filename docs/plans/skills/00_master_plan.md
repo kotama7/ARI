@@ -21,7 +21,7 @@ last_verified: 2026-08-02
 
 | 項目 | 値 |
 |---|---|
-| 状態 | In progress — P0/P1 foundation |
+| 状態 | In progress — C01 control plane complete; C02 federation next |
 | 基準ブランチ | `skills` |
 | 基準コミット | `4cd56f9` |
 | 作成日 | 2026-08-01 |
@@ -46,8 +46,9 @@ last_verified: 2026-08-02
 - tool名別timeout tableを削除し、manifest-declared bounded budgetと
   capability-based async submit/status/result/cancel handleを追加。SLURMと外部ARI runを
   同じportable handleへ移行。
-- C01-D1/D2/D3/D4とC08-D1/D2/D3を完了。削除gate未達のsource scraping、
-  暗黙directory discovery、legacy runtime readerは保持。
+- viz source scraping、暗黙directory discovery、legacy runtime admissionを削除し、
+  read-only migration readerとgolden checkpoint contractへ置換。C01-01〜10と
+  C01-D1〜D7を完了。C08-D1/D2/D3も完了済み。
 
 ## 1. 決定
 

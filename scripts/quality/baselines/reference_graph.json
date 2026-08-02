@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T07:05:42.409752+00:00",
-  "commit": "fd9d4df97bd16919d71ee220d60995fdaa6066ea",
+  "generated_at": "2026-08-02T07:22:36.979904+00:00",
+  "commit": "b2510de2a6dbc66a760c7896a3b35ba9d42b84aa",
   "roots": [
     {
       "id": "R1",
@@ -3194,7 +3194,7 @@
       "id": "py.module:ari-core/ari/config/__init__.py",
       "kind": "py.module",
       "file": "ari-core/ari/config/__init__.py",
-      "loc": 801,
+      "loc": 789,
       "reachable_from": [
         "R1",
         "R2",
@@ -3809,7 +3809,23 @@
       "id": "py.module:ari-core/ari/migrations/__init__.py",
       "kind": "py.module",
       "file": "ari-core/ari/migrations/__init__.py",
-      "loc": 9,
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-core/ari/migrations/checkpoint.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 182,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-core/ari/migrations/skill_manifest.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/migrations/skill_manifest.py",
+      "loc": 91,
       "reachable_from": [],
       "edges_in": []
     },
@@ -5050,7 +5066,7 @@
       "id": "py.module:ari-core/ari/skill_manifest.py",
       "kind": "py.module",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 522,
+      "loc": 471,
       "reachable_from": [
         "R1",
         "R2",
@@ -5246,7 +5262,7 @@
       "id": "py.module:ari-core/ari/viz/api_settings.py",
       "kind": "py.module",
       "file": "ari-core/ari/viz/api_settings.py",
-      "loc": 555,
+      "loc": 511,
       "reachable_from": [
         "R1",
         "R2",
@@ -8339,7 +8355,7 @@
       "id": "py.symbol:ari-core/ari/config/__init__.py:_discover_skills",
       "kind": "py.symbol",
       "file": "ari-core/ari/config/__init__.py",
-      "loc": 36,
+      "loc": 24,
       "reachable_from": [
         "R1",
         "R2",
@@ -11041,6 +11057,110 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/memory_cli.py",
       "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:LEGACY_CHECKPOINT_VIEW_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:LegacyCheckpointError",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:LegacyCheckpointViewV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:_MAX_MIGRATION_FILE_BYTES",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:_read_bytes",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 20,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:_read_json",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:_read_text",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:_tree_source",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/checkpoint.py:load_legacy_checkpoint",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/checkpoint.py",
+      "loc": 69,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/skill_manifest.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/skill_manifest.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/skill_manifest.py:_legacy_document",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/skill_manifest.py",
+      "loc": 44,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/migrations/skill_manifest.py:load_legacy_skill_manifest",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/migrations/skill_manifest.py",
+      "loc": 18,
       "reachable_from": [],
       "edges_in": []
     },
@@ -14608,7 +14728,9 @@
       "file": "ari-core/ari/skill_manifest.py",
       "loc": 1,
       "reachable_from": [],
-      "edges_in": []
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/skill_manifest.py:MANIFEST_FILENAME",
@@ -14658,7 +14780,9 @@
       "file": "ari-core/ari/skill_manifest.py",
       "loc": 2,
       "reachable_from": [],
-      "edges_in": []
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/skill_manifest.py:SkillManifestV1",
@@ -14735,14 +14859,6 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-core/ari/skill_manifest.py:_legacy_to_v1",
-      "kind": "py.symbol",
-      "file": "ari-core/ari/skill_manifest.py",
-      "loc": 45,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-core/ari/skill_manifest.py:_validated_tokens",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
@@ -14762,7 +14878,7 @@
       "id": "py.symbol:ari-core/ari/skill_manifest.py:load_skill_manifest",
       "kind": "py.symbol",
       "file": "ari-core/ari/skill_manifest.py",
-      "loc": 27,
+      "loc": 23,
       "reachable_from": [
         "R1",
         "R2",
@@ -16074,7 +16190,7 @@
       "id": "py.symbol:ari-core/ari/viz/api_settings.py:_api_get_env_keys",
       "kind": "py.symbol",
       "file": "ari-core/ari/viz/api_settings.py",
-      "loc": 34,
+      "loc": 35,
       "reachable_from": [
         "R1",
         "R2",
@@ -16110,7 +16226,7 @@
       "id": "py.symbol:ari-core/ari/viz/api_settings.py:_api_get_workflow",
       "kind": "py.symbol",
       "file": "ari-core/ari/viz/api_settings.py",
-      "loc": 161,
+      "loc": 143,
       "reachable_from": [
         "R1",
         "R2",
@@ -16218,7 +16334,7 @@
       "id": "py.symbol:ari-core/ari/viz/api_settings.py:_api_skill_detail",
       "kind": "py.symbol",
       "file": "ari-core/ari/viz/api_settings.py",
-      "loc": 36,
+      "loc": 35,
       "reachable_from": [
         "R1",
         "R2",
@@ -16249,14 +16365,6 @@
       "edges_in": [
         "static.call"
       ]
-    },
-    {
-      "id": "py.symbol:ari-core/ari/viz/api_settings.py:_extract_tools_from_server",
-      "kind": "py.symbol",
-      "file": "ari-core/ari/viz/api_settings.py",
-      "loc": 23,
-      "reachable_from": [],
-      "edges_in": []
     },
     {
       "id": "py.symbol:ari-core/ari/viz/api_settings.py:_upsert_env_key",
@@ -25944,7 +26052,7 @@
       "from": "py.module:ari-core/ari/config/__init__.py",
       "to": "py.module:ari-core/ari/paths.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/config/__init__.py:759 import ari.paths"
+      "evidence": "ari-core/ari/config/__init__.py:747 import ari.paths"
     },
     {
       "from": "py.module:ari-core/ari/config/__init__.py",
@@ -26112,13 +26220,13 @@
       "from": "py.module:ari-core/ari/config/__init__.py",
       "to": "py.symbol:ari-core/ari/paths.py:PathManager",
       "kind": "static.call",
-      "evidence": "ari-core/ari/config/__init__.py:759 use PathManager"
+      "evidence": "ari-core/ari/config/__init__.py:747 use PathManager"
     },
     {
       "from": "py.module:ari-core/ari/config/__init__.py",
       "to": "py.symbol:ari-core/ari/paths.py:RuntimePathResolver",
       "kind": "static.call",
-      "evidence": "ari-core/ari/config/__init__.py:759 use RuntimePathResolver"
+      "evidence": "ari-core/ari/config/__init__.py:747 use RuntimePathResolver"
     },
     {
       "from": "py.module:ari-core/ari/config/__init__.py",
@@ -27835,6 +27943,36 @@
       "to": "py.symbol:ari-core/ari/paths.py:PathManager",
       "kind": "static.call",
       "evidence": "ari-core/ari/memory_cli.py:47 use PathManager"
+    },
+    {
+      "from": "py.module:ari-core/ari/migrations/skill_manifest.py",
+      "to": "py.module:ari-core/ari/skill_manifest.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/migrations/skill_manifest.py:16 import ari.skill_manifest"
+    },
+    {
+      "from": "py.module:ari-core/ari/migrations/skill_manifest.py",
+      "to": "py.symbol:ari-core/ari/skill_manifest.py:LEGACY_MCP_RESULT_V1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/migrations/skill_manifest.py:16 use LEGACY_MCP_RESULT_V1"
+    },
+    {
+      "from": "py.module:ari-core/ari/migrations/skill_manifest.py",
+      "to": "py.symbol:ari-core/ari/skill_manifest.py:SkillManifestError",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/migrations/skill_manifest.py:16 use SkillManifestError"
+    },
+    {
+      "from": "py.module:ari-core/ari/migrations/skill_manifest.py",
+      "to": "py.symbol:ari-core/ari/skill_manifest.py:SkillManifestV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/migrations/skill_manifest.py:16 use SkillManifestV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/migrations/skill_manifest.py",
+      "to": "py.symbol:ari-core/ari/skill_manifest.py:load_skill_manifest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/migrations/skill_manifest.py:16 use load_skill_manifest"
     },
     {
       "from": "py.module:ari-core/ari/migrations/v05_to_v07/memory.py",
@@ -29556,19 +29694,25 @@
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:125 import ari.config.finder"
+      "evidence": "ari-core/ari/viz/api_settings.py:101 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:238 import ari.config.finder"
+      "evidence": "ari-core/ari/viz/api_settings.py:214 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/env_detect.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:519 import ari.env_detect"
+      "evidence": "ari-core/ari/viz/api_settings.py:476 import ari.env_detect"
+    },
+    {
+      "from": "py.module:ari-core/ari/viz/api_settings.py",
+      "to": "py.module:ari-core/ari/skill_manifest.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/viz/api_settings.py:227 import ari.skill_manifest"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
@@ -29580,19 +29724,31 @@
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:125 use package_config_root"
+      "evidence": "ari-core/ari/viz/api_settings.py:101 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:238 use package_config_root"
+      "evidence": "ari-core/ari/viz/api_settings.py:214 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/env_detect.py:get_environment_summary",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:519 use get_environment_summary"
+      "evidence": "ari-core/ari/viz/api_settings.py:476 use get_environment_summary"
+    },
+    {
+      "from": "py.module:ari-core/ari/viz/api_settings.py",
+      "to": "py.symbol:ari-core/ari/skill_manifest.py:load_skill_manifest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/viz/api_settings.py:227 use load_skill_manifest"
+    },
+    {
+      "from": "py.module:ari-core/ari/viz/api_settings.py",
+      "to": "py.symbol:ari-core/ari/skill_manifest.py:manifest_digest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/viz/api_settings.py:227 use manifest_digest"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_state.py",

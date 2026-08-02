@@ -1,0 +1,7 @@
+schema_version: 1
+bfts_pipeline:
+  - stage: experiment
+    enabled: true
+pipeline:
+  - stage: write_paper
+    enabled: true

@@ -1,0 +1,5 @@
+{
+  "model": "fixture/model-v1",
+  "max_nodes": 4,
+  "executor": "local"
+}

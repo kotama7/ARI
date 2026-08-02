@@ -2,9 +2,13 @@
 sources:
   - path: ari-core/ari/migrations/v05_to_v07
     role: implementation
+  - path: ari-core/ari/migrations/checkpoint.py
+    role: implementation
+  - path: ari-core/ari/migrations/skill_manifest.py
+    role: implementation
   - path: ari-core/ari/memory_cli.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Migration Guide
@@ -122,6 +126,27 @@ guide walks the upgrade paths.
   stagnation rule fires.
 - `manifest.lock` and `publish_record.json` appear after `ari ear
   publish`.
+
+## Canonical Skill admission and legacy inspection
+
+Production discovery now registers only `ari-skill-*/skill.yaml` files that
+validate as `SkillManifestV1`; a directory, `server.py`, `mcp.json`, or an
+unversioned manifest is not registration authority. Convert custom package
+metadata to the canonical schema before enabling it.
+
+Two compatibility readers remain under `ari.migrations` and are intentionally
+read-only:
+
+- `load_legacy_skill_manifest(path)` converts an unversioned manifest in memory,
+  marks it default-off with an audit-pending environment policy, and never
+  admits it to a run.
+- `load_legacy_checkpoint(path)` normalizes historical tree, paper, and replay
+  inputs and returns SHA-256 digests for every file it consumed. It never writes
+  to the checkpoint.
+
+After conversion, validate a Skill package with
+`python scripts/check_skill_manifests.py`. Preserve the original checkpoint
+until paper and replay inputs match the migration view.
 
 ## v0.7 → v0.8 (future)
 

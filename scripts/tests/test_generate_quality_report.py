@@ -305,7 +305,7 @@ def test_run_checkers_mode_ok_missing_and_crash(tmp_path):
 def test_compute_areas_matches_001_baseline():
     rows = mod.compute_areas(REPO_ROOT, None, [])
     by = {r["area"]: r for r in rows}
-    assert by["ari-core/ari/viz"]["loc"] == 8533
+    assert by["ari-core/ari/viz"]["loc"] == 8489
     assert by["ari-core/ari/public"]["loc"] == 324
     # every discovered area carries a finding_count key (0 with no results).
     assert all(r["finding_count"] == 0 for r in rows)

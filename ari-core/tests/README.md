@@ -19,6 +19,7 @@ targets the like-named module under `ari/`.
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_architecture_boundary_index.py` — TODO
 - `test_artifact_store.py` — TODO
+- `test_async_tool_lifecycle.py` — capability-resolved submit/status/result/cancel/wait lifecycle contracts.
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
@@ -28,6 +29,7 @@ targets the like-named module under `ari/`.
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
 - `test_call_context.py` — explicit run/node lineage and signed MCP capability contract.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
+- `test_checkpoint_migration_reader.py` — read-only golden legacy checkpoint paper/replay compatibility and path safety.
 - `test_checkpoint_store.py` — TODO
 - `test_child_environment.py` — minimal Skill child environments, credential isolation, redaction, and reconnect drift.
 - `test_child_node_workflow.py` — child-node workflow.

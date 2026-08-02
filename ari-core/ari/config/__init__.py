@@ -647,38 +647,26 @@ def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:
 def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
     """Auto-detect canonical, default-enabled ``ari-skill-*`` packages.
 
-    A package with ``skill.yaml`` is admitted from the validated manifest.  The
-    directory-only path remains as a transition adapter for third-party and old
-    local Skills that have not migrated yet; it is intentionally noisy so it can
-    be removed after the P1 compatibility window.
+    Directory presence is not registration. Only a canonical, default-enabled
+    manifest enters production discovery; an unmanifested local Skill must be
+    named explicitly in development configuration.
     """
     if base_dir is None:
         # Phase 2 — file moved into a package; ``parents[3]`` reaches
         # the repo root (alongside the ``ari-skill-*`` directories).
         base_dir = Path(__file__).resolve().parents[3]
     skills = []
-    for skill_dir in sorted(base_dir.glob("ari-skill-*")):
-        manifest_path = skill_dir / MANIFEST_FILENAME
-        if manifest_path.is_file():
-            manifest = load_skill_manifest(manifest_path, allow_legacy=True)
-            resolve_skill_entrypoint(skill_dir, manifest)
-            if not manifest.enabled_by_default:
-                logger.info(
-                    "Skipping default-off Skill '%s' during auto-discovery",
-                    manifest.name,
-                )
-                continue
-            skills.append(_skill_config_from_manifest(skill_dir, manifest_path, manifest))
-            continue
-
-        server = skill_dir / "src" / "server.py"
-        if server.is_file():
-            logger.warning(
-                "Auto-discovered legacy Skill '%s' without %s; this fallback is deprecated",
-                skill_dir.name,
-                MANIFEST_FILENAME,
+    for manifest_path in sorted(base_dir.glob(f"ari-skill-*/{MANIFEST_FILENAME}")):
+        skill_dir = manifest_path.parent
+        manifest = load_skill_manifest(manifest_path)
+        resolve_skill_entrypoint(skill_dir, manifest)
+        if not manifest.enabled_by_default:
+            logger.info(
+                "Skipping default-off Skill '%s' during auto-discovery",
+                manifest.name,
             )
-            skills.append(SkillConfig(name=skill_dir.name, path=str(skill_dir)))
+            continue
+        skills.append(_skill_config_from_manifest(skill_dir, manifest_path, manifest))
     return skills
 
 
@@ -719,7 +707,7 @@ def _hydrate_skill_manifests(skills: list[SkillConfig]) -> None:
         manifest_path = skill_dir / MANIFEST_FILENAME
         if not manifest_path.is_file():
             continue
-        manifest = load_skill_manifest(manifest_path, allow_legacy=True)
+        manifest = load_skill_manifest(manifest_path)
         resolve_skill_entrypoint(skill_dir, manifest)
         if skill.name != manifest.name:
             logger.warning(

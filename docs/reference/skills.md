@@ -83,9 +83,11 @@ drift, stale `mcp.json`, undeclared static environment reads, a dynamic
 environment read whose names cannot be proven, an incomplete environment
 policy, and name collisions among default-enabled Skills. A live
 `tools/list` comparison is enforced for every locked run; moving the same check
-into package-only CI remains a P1 follow-up. Runtime loading
-accepts an unversioned legacy manifest only through the explicit transition flag
-`allow_legacy=True`; CI and admission do not use it.
+into package-only CI remains a P1 follow-up. Runtime loading and discovery
+reject unversioned manifests. The read-only
+`ari.migrations.skill_manifest.load_legacy_skill_manifest()` utility can inspect
+or convert old metadata in memory, but marks it default-off and is not an
+admission path.
 
 All built-in manifests use `environment_policy: complete`. `required_env` and
 `optional_env` are the exhaustive ordinary-variable allowlist. Secret-like names

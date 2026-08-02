@@ -1,40 +1,15 @@
-from __future__ import annotations
 """ARI viz: api_settings — env keys, settings, workflow, skills, profiles."""
+
+from __future__ import annotations
 
 import json
 import logging
 import os
-import re
 from pathlib import Path
 
 from . import state as _st
 
 log = logging.getLogger(__name__)
-
-
-def _extract_tools_from_server(skill_dir: Path) -> list[str]:
-    """Extract MCP tool names from server.py when mcp.json has no tools.
-
-    Looks for two patterns:
-    - ``@mcp.tool()`` decorator followed by ``async def <name>(`` or ``def <name>(``
-    - ``Tool(name="<name>"`` in ``list_tools()`` style registration
-    """
-    server_py = skill_dir / "src" / "server.py"
-    if not server_py.exists():
-        return []
-    try:
-        src = server_py.read_text()
-    except Exception:
-        return []
-    tools: list[str] = []
-    # Pattern 1: @mcp.tool() decorator
-    for m in re.finditer(r"@mcp\.tool\(\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(", src):
-        tools.append(m.group(1))
-    # Pattern 2: Tool(name="...")
-    for m in re.finditer(r'Tool\(\s*name\s*=\s*"(\w+)"', src):
-        if m.group(1) not in tools:
-            tools.append(m.group(1))
-    return tools
 
 
 def _api_get_env_keys() -> dict:
@@ -60,7 +35,8 @@ def _api_get_env_keys() -> dict:
                 continue
             if "=" in line:
                 k, _, v = line.partition("=")
-                k = k.strip(); v = v.strip().strip('"').strip("'")
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
                 if any(x in k.upper() for x in ["API_KEY", "SECRET", "TOKEN"]):
                     if k not in keys:
                         keys[k] = v
@@ -245,41 +221,33 @@ def _api_get_workflow() -> dict:
         if wf.exists():
             try:
                 data = yaml.safe_load(wf.read_text())
-                # Load MCP tool metadata from each skill directory
+                # Load dashboard metadata from the same canonical manifests as
+                # runtime admission. Generated mcp.json and source scraping are
+                # deliberately not dashboard authorities.
+                from ari.skill_manifest import load_skill_manifest, manifest_digest
+
                 ari_root = wf.parent.parent.parent
                 skill_mcp: dict = {}
-                # Build dir-name → mcp data mapping first
                 dir_mcp: dict[str, dict] = {}
-                for skill_dir in sorted(ari_root.glob("ari-skill-*")):
-                    mcp_file = skill_dir / "mcp.json"
-                    tools: list = []
-                    mcp_name = skill_dir.name
-                    mcp_desc = ""
-                    mcp_ver = ""
-                    if mcp_file.exists():
-                        try:
-                            mcp_data = json.loads(mcp_file.read_text())
-                            mcp_name = mcp_data.get("name") or skill_dir.name
-                            mcp_desc = mcp_data.get("description", "")
-                            tools = mcp_data.get("tools", [])
-                            mcp_ver = mcp_data.get("version", "")
-                        except Exception:
-                            log.debug("skill metadata read error", exc_info=True)
-                    # Fallback: extract tool names from server.py if
-                    # mcp.json has no tools listed
-                    if not tools:
-                        tools = _extract_tools_from_server(skill_dir)
+                for manifest_path in sorted(ari_root.glob("ari-skill-*/skill.yaml")):
+                    skill_dir = manifest_path.parent
+                    manifest = load_skill_manifest(manifest_path)
+                    resolved_tools = manifest.resolved_tools()
                     entry = {
-                        "name": mcp_name,
-                        "description": mcp_desc,
-                        "tools": tools,
-                        "version": mcp_ver,
+                        "name": manifest.name,
+                        "description": manifest.description,
+                        "tools": [tool.name for tool in resolved_tools],
+                        "version": manifest.version,
                         "dir": skill_dir.name,
+                        "manifest_digest": manifest_digest(manifest),
+                        "capabilities": {
+                            tool.name: tool.capability_ref for tool in resolved_tools
+                        },
                     }
                     dir_mcp[skill_dir.name] = entry
                     skill_mcp[entry["name"]] = entry
-                # Resolve workflow.yaml skills section: map workflow skill
-                # names to their mcp.json tools via the path field
+                # Resolve workflow aliases to canonical manifest entries via
+                # the configured package path.
                 for sk in data.get("skills", []):
                     sk_name = sk.get("name", "")
                     sk_path = sk.get("path", "")
@@ -287,7 +255,7 @@ def _api_get_workflow() -> dict:
                     resolved = sk_path.replace("{{ari_root}}", str(ari_root))
                     dir_name = Path(resolved).name if resolved else ""
                     if dir_name and dir_name in dir_mcp:
-                        # Merge mcp.json data under the workflow skill name
+                        # Merge canonical data under the workflow skill name.
                         src = dir_mcp[dir_name]
                         entry = {
                             "name": sk_name,
@@ -295,12 +263,14 @@ def _api_get_workflow() -> dict:
                             "tools": src["tools"],
                             "version": src["version"],
                             "dir": src["dir"],
+                            "manifest_digest": src["manifest_digest"],
+                            "capabilities": src["capabilities"],
                         }
                         # Read phase directly from workflow.yaml skills entry
                         if sk.get("phase"):
                             entry["phase"] = sk["phase"]
                         skill_mcp[sk_name] = entry
-                        # Remove the mcp.json alias if it differs from
+                        # Remove the canonical alias if it differs from
                         # the workflow name (e.g. vlm-review-skill vs
                         # vlm-skill) to avoid duplicate entries
                         mcp_alias = src["name"]
@@ -348,31 +318,19 @@ def _api_get_workflow() -> dict:
                         elif sk_name in paper_skills:
                             entry["phase"] = "pipeline"
 
-                # Determine usage: stage / active / registered
-                # Scan core source for tool name references
-                core_dir = ari_root / "ari-core" / "ari"
-                _core_src = ""
-                if core_dir.is_dir():
-                    for py in core_dir.rglob("*.py"):
-                        if "viz/" in str(py) or "__pycache__" in str(py):
-                            continue
-                        try:
-                            _core_src += py.read_text(errors="ignore")
-                        except Exception:
-                            pass
+                # Usage is declarative: pipeline-owned, configured/active, or
+                # manifest-only/registered. Source-text references are not an
+                # execution contract.
+                configured_skills = {
+                    str(skill.get("name") or "") for skill in data.get("skills", [])
+                }
                 for sk_name, entry in skill_mcp.items():
                     if sk_name in bfts_skills or sk_name in paper_skills:
                         entry["usage"] = "stage"
+                    elif sk_name in configured_skills:
+                        entry["usage"] = "active"
                     else:
-                        tool_names = [
-                            t if isinstance(t, str) else t.get("name", "")
-                            for t in entry.get("tools", [])
-                        ]
-                        called = any(
-                            f'"{tn}"' in _core_src or f"'{tn}'" in _core_src
-                            for tn in tool_names if tn
-                        )
-                        entry["usage"] = "active" if called else "registered"
+                        entry["usage"] = "registered"
 
                 # Read BFTS and paper pipelines from YAML (no hardcoded stages)
                 bfts_pipeline = data.get("bfts_pipeline") or []
@@ -427,7 +385,6 @@ def _api_save_workflow(body: bytes) -> dict:
 
 def _api_skill_detail(name: str) -> dict:
     """Return skill source files and README."""
-    import yaml as _yaml
     ari_root = Path(__file__).parent.parent.parent.parent
     skill_dir = ari_root / ("ari-skill-" + name.replace("ari-skill-", "").replace("-skill", "") + "-skill" if not name.startswith("ari-") else name)
     # Try multiple candidate names
@@ -551,4 +508,3 @@ def _api_rubrics() -> list:
         except Exception:
             continue
     return out
-

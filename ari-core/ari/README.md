@@ -10,6 +10,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `_deprecation.py` — `DeprecationWarning` helpers for v0.5→v1.0 legacy paths/aliases.
 - `_factory.py` — TODO
 - `artifact_store.py` — TODO
+- `async_tools.py` — portable asynchronous handle, timeout budget, and lifecycle contracts.
 - `call_context.py` — explicit run/node lineage models and tool-bound signed MCP capabilities.
 - `checkpoint.py` — checkpoint JSON I/O (`tree.json` / `nodes_tree.json` / `results.json`).
 - `cli_ear.py` — `ari ear …` curation / publish / promote / status CLI surface.
@@ -107,6 +108,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `migrations/` — migration shims for older checkpoint formats.
   - `README.md` — migrations index.
   - `__init__.py` — rationale + layout.
+  - `checkpoint.py` — digest-bound read-only legacy checkpoint view.
+  - `skill_manifest.py` — offline conversion of unversioned Skill metadata.
   - `v05_to_v07/` — v0.5 → v0.7 migration helpers.
     - `README.md` — v05_to_v07 index.
     - `__init__.py` — subsystem map + deprecation plan.
