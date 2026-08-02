@@ -97,7 +97,7 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | 变量 | 用途 |
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta`（默认）或 `in_memory`（无需 Letta；仅用于本地冒烟测试的短暂内存后端） |
-| `ARI_MEMORY_AUTO_RESTORE` | 恢复时自动从 `memory_backup.jsonl.gz` 还原 |
+| `ARI_MEMORY_AUTO_RESTORE` | 恢复时验证并从 `memory_backup.v1.json.gz` 还原 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` 路径 |
 | `ARI_MEMORY_CONSOLIDATE` | 类型化记忆整合 + 为论文论断提供基于工件支撑的 `verified_context.json`。**默认开启**；设为 `0`/`false`/`no`/`off` 以禁用 |
 | `ARI_LETTA_VENV` | 捆绑 Letta 服务器的虚拟环境路径 |

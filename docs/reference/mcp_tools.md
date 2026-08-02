@@ -114,7 +114,6 @@ This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`.
 | `add_memory` | Append an entry to the current node's memory | ✗ |
 | `search_memory` | Embedding-ranked search across the current node + ancestors | ✗ (server-side embedding) |
 | `get_node_memory` | All entries for the current node | ✗ |
-| `clear_node_memory` | Drop the current node's entries (CoW; ancestors untouched) | ✗ |
 | `get_experiment_context` | Stable, experiment-level facts from Letta core memory | ✗ |
 | `add_experiment_result` | Record a typed experiment_result (CoW: self node only) | ✗ |
 | `add_failure_case` | Record a typed failure_case (CoW: self node only) | ✗ |
@@ -127,7 +126,9 @@ This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`.
 | `consolidate_node_memory` | Derive + write typed memory from a node_report at node end (CoW: self) | ✗ |
 
 The skill explicitly declares "no LLM calls" in its design doc — see
-`ari-skill-memory/README.md`.
+`ari-skill-memory/README.md`. Records are append-only and the public surface
+has no per-record or per-node delete operation. See the
+[research memory contract](memory_contract.md).
 
 ## ari-skill-orchestrator — recursive ARI runner
 

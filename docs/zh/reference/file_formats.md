@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 文件格式参考
@@ -288,28 +288,32 @@ stages:
 
 捆绑的默认值位于 `ari-core/ari/configs/workflow.default.yaml`。
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+## 记忆记录与可移植备份
 
 写入 `ARI_CHECKPOINT_DIR` 下的记忆后端产物：
 
 | 文件 | 后端 | 备注 |
 |---|---|---|
-| `memory_store.jsonl` | `file` | 旧版 v0.5 格式，行分隔 JSON 条目 |
-| `memory_backup.jsonl.gz` | `letta` | 可移植快照（在阶段边界 + 退出时自动写入） |
+| `memory_store.jsonl` | `file` | 仅由显式 offline migration 读取的旧版 v0.5 输入 |
+| `memory_events.jsonl` | 任意 | 按内容寻址记录的仅追加事件账本 |
+| `memory_backup.v1.json.gz` | `letta` | 含根/条目 digest 的规范 gzip JSON |
 | `memory_access.jsonl` | 任意 | 写入/读取操作的仅追加遥测数据 |
 
-快照记录结构：
+备份文档结构（记录符合 `MemoryRecordV1`）：
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
-  "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "schema_version": "ari.memory-backup/v1",
+  "records": [{"schema_version": "ari.memory-record/v1", "record_digest": "sha256:..."}],
+  "react_entries": [{"content": "...", "entry_digest": "sha256:..."}],
+  "core_context": {},
+  "record_digests": ["sha256:..."],
+  "record_order": ["sha256:..."],
+  "backup_digest": "sha256:..."
 }
 ```
+
+恢复会在写入前验证完整文档。详见[研究记忆契约](memory_contract.md)。
 
 ## EAR bundle（v0.7.0）
 

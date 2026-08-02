@@ -12,9 +12,26 @@ from __future__ import annotations
 
 from typing import Any
 
+from ari.public.memory import (
+    MemoryRecordV1,
+    MemoryRetrievalV1,
+    canonical_memory_digest,
+)
 
-def _kind_of(metadata: dict) -> str | None:
-    return metadata.get("mem_kind") or metadata.get("type")
+
+def _record_of(entry: dict) -> MemoryRecordV1 | None:
+    metadata = entry.get("metadata", {}) or {}
+    raw = metadata.get("memory_record")
+    if not isinstance(raw, dict):
+        return None
+    record = MemoryRecordV1.model_validate(raw)
+    if record.text != entry.get("text", ""):
+        raise ValueError("memory record text disagrees with indexed passage")
+    if entry.get("node_id") and record.source_node_id != entry.get("node_id"):
+        raise ValueError("memory record source node disagrees with backend metadata")
+    if metadata.get("record_digest") != record.record_digest:
+        raise ValueError("memory record digest projection is inconsistent")
+    return record
 
 
 def search_research_memory(
@@ -41,16 +58,44 @@ def search_research_memory(
     )
     kinds_set = set(kinds) if kinds else None
     out: list[dict] = []
+    legacy_excluded = 0
     for r in raw.get("results", []) or []:
-        md = r.get("metadata", {}) or {}
-        if kinds_set is not None and _kind_of(md) not in kinds_set:
+        record = _record_of(r)
+        if record is None:
+            legacy_excluded += 1
             continue
-        if require_artifacts and not md.get("artifact_refs"):
+        if kinds_set is not None and record.kind not in kinds_set:
             continue
-        out.append(r)
+        if require_artifacts and not record.artifact_refs:
+            continue
+        out.append({**r, "record": record.model_dump(mode="json")})
         if len(out) >= limit:
             break
-    return {"results": out}
+    if "provenance" not in raw:
+        raise RuntimeError("memory backend omitted retrieval provenance")
+    provenance = dict(raw["provenance"])
+    filter_evidence = dict(provenance.get("filter_evidence") or {})
+    filter_evidence["typed_filter"] = {
+        "kinds": sorted(kinds_set) if kinds_set is not None else None,
+        "require_artifacts": require_artifacts,
+        "input_candidate_count": len(raw.get("results") or []),
+        "legacy_records_excluded": legacy_excluded,
+    }
+    provenance["filter_evidence"] = filter_evidence
+    provenance["returned_count"] = len(out)
+    provenance["limit"] = limit
+    provenance["query_digest"] = canonical_memory_digest(
+        {
+            "backend_query_digest": provenance["query_digest"],
+            "kinds": sorted(kinds_set) if kinds_set is not None else None,
+            "require_artifacts": require_artifacts,
+            "limit": limit,
+        }
+    )
+    return MemoryRetrievalV1(
+        results=out,
+        provenance=provenance,
+    ).model_dump(mode="json")
 
 
 def ancestor_typed_memory(
@@ -75,13 +120,19 @@ def ancestor_typed_memory(
     for aid in ancestor_ids:
         for e in by_node.get(aid, []) or []:
             md = e.get("metadata", {}) or {}
-            if kinds_set is not None and _kind_of(md) not in kinds_set:
+            record = _record_of({**e, "node_id": aid})
+            if record is None:
+                continue
+            if kinds_set is not None and record.kind not in kinds_set:
                 continue
             out.append({
                 "entry_id": e.get("entry_id"),
+                "record_id": record.record_id,
                 "node_id": aid,
                 "text": e.get("text", ""),
+                "ts": e.get("ts"),
                 "metadata": md,
+                "record": record.model_dump(mode="json"),
             })
     return out
 
@@ -103,12 +154,14 @@ def fold_reproducibility(
     )
     latest: dict[str, dict] = {}
     for i, e in enumerate(events):
-        md = e["metadata"]
-        target = md.get("repro_target_id")
+        record = e["record"]
+        target = record.get("repro_target_id")
         if not target:
             continue
-        ts = md.get("ts", i)
+        ts = e.get("ts")
+        if not isinstance(ts, (int, float)):
+            ts = i
         cur = latest.get(target)
         if cur is None or ts >= cur.get("_ts", -1):
-            latest[target] = {"status": md.get("repro_status"), "_ts": ts}
+            latest[target] = {"status": record.get("repro_status"), "_ts": ts}
     return {k: {"status": v["status"]} for k, v in latest.items()}

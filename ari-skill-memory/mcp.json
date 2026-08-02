@@ -14,7 +14,6 @@
     "add_reflection",
     "add_reproducibility_event",
     "audit_memory",
-    "clear_node_memory",
     "consolidate_node_memory",
     "get_experiment_context",
     "get_node_memory",
@@ -22,5 +21,5 @@
     "search_memory",
     "search_research_memory"
   ],
-  "version": "0.6.0"
+  "version": "0.7.0"
 }

@@ -28,29 +28,21 @@
     "ari-skill-benchmark": [
       {
         "args": [
-          "metrics",
-          "result_path"
+          "request"
         ],
         "idiom": "fastmcp",
         "name": "analyze_results"
       },
       {
         "args": [
-          "data",
-          "output_path",
-          "plot_type",
-          "title",
-          "xlabel",
-          "ylabel"
+          "request"
         ],
         "idiom": "fastmcp",
-        "name": "plot"
+        "name": "compare_runs"
       },
       {
         "args": [
-          "data_a",
-          "data_b",
-          "test"
+          "request"
         ],
         "idiom": "fastmcp",
         "name": "statistical_test"
@@ -335,14 +327,6 @@
         ],
         "idiom": "fastmcp",
         "name": "audit_memory"
-      },
-      {
-        "args": [
-          "ari_context",
-          "node_id"
-        ],
-        "idiom": "fastmcp",
-        "name": "clear_node_memory"
       },
       {
         "args": [
@@ -732,6 +716,13 @@
         ],
         "idiom": "fastmcp",
         "name": "generate_figures_llm"
+      },
+      {
+        "args": [
+          "request"
+        ],
+        "idiom": "fastmcp",
+        "name": "render_figure"
       }
     ],
     "ari-skill-replicate": [

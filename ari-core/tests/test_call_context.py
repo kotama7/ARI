@@ -60,7 +60,7 @@ def test_capability_is_bound_to_tool_context_and_authority():
     with pytest.raises(CallContextAuthorizationError, match="another tool"):
         verify_tool_context(
             capability,
-            tool_name="clear_node_memory",
+            tool_name="search_memory",
             authority_key=key,
         )
     with pytest.raises(CallContextAuthorizationError, match="authority"):

@@ -476,7 +476,7 @@ ARI 不再维护全局配置目录。所有设置文件和代理记忆都存储�
 ```
 checkpoints/{run_id}/
 ├── settings.json        # GUI 设置 (LLM 模型、提供者、HPC 默认值)
-├── memory_backup.jsonl.gz   # Letta 快照（流水线阶段结束和退出时自动）
+├── memory_backup.v1.json.gz # 经 digest 验证的可移植 Letta 快照
 ├── memory_access.jsonl       # 写/读遥测
 └── ...                  # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -512,7 +512,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
 | `ari-skill-hpc` | `slurm_submit`、`job_status`、`job_cancel`、`singularity_build`、`singularity_run`、`singularity_pull`、`singularity_build_fakeroot`、`singularity_run_gpu` | HPC 作业管理 + Singularity 容器 | ✗ |
-| `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory`、`get_experiment_context` | 祖先作用域的节点记忆（Letta 后端） | △ |
+| `ari-skill-memory` | append-only 类型化写入、lineage 读取、审计与归并 | versioned 祖先作用域记忆（Letta 后端） | △ |
 | `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/publish 生命周期 (v0.7.0) | ✓ |

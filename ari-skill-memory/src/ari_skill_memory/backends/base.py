@@ -2,15 +2,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
 
 
 class MemoryBackend(ABC):
     """Abstract backend for node-scope + react-trace memory.
 
-    Public MCP tool surface (–,):
-        add_memory, search_memory, get_node_memory, clear_node_memory,
-        get_experiment_context
+    Public MCP tool surface:
+        add_memory, search_memory, get_node_memory, get_experiment_context
 
     Library-only helpers:
         list_all_nodes, bulk_get_node_memory, purge_checkpoint,
@@ -21,7 +19,12 @@ class MemoryBackend(ABC):
     # ─ MCP tool surface ────────────────────────────────────────────────
     @abstractmethod
     def add_memory(
-        self, node_id: str, text: str, metadata: dict | None = None
+        self,
+        node_id: str,
+        text: str,
+        metadata: dict | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> dict: ...
 
     @abstractmethod
@@ -36,9 +39,6 @@ class MemoryBackend(ABC):
 
     @abstractmethod
     def get_node_memory(self, node_id: str, *, reader_node_id: str = "") -> dict: ...
-
-    @abstractmethod
-    def clear_node_memory(self, node_id: str) -> dict: ...
 
     @abstractmethod
     def get_experiment_context(self) -> dict: ...

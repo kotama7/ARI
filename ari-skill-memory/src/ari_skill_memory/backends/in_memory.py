@@ -11,7 +11,12 @@ from __future__ import annotations
 import threading
 import time
 import uuid
-from typing import Any
+
+from ari.public.memory import (
+    MemoryRetrievalProvenanceV1,
+    MemoryRetrievalV1,
+    canonical_memory_digest,
+)
 
 from ari_skill_memory.access_log import (
     AccessLog,
@@ -52,19 +57,40 @@ class InMemoryBackend(MemoryBackend):
 
     # ─ MCP tool surface ────────────────────────────────────────────────
     def add_memory(
-        self, node_id: str, text: str, metadata: dict | None = None
+        self,
+        node_id: str,
+        text: str,
+        metadata: dict | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> dict:
-        entry_id = str(uuid.uuid4())
-        entry = {
-            "id": entry_id,
-            "node_id": node_id,
-            "text": text,
-            "metadata": metadata or {},
-            "ari_checkpoint": self.cfg.ckpt_hash,
-            "kind": "node_scope",
-            "ts": time.time(),
-        }
         with self._lock:
+            if idempotency_key is not None:
+                existing = next(
+                    (
+                        entry
+                        for entry in self._node_entries.values()
+                        if (entry.get("metadata") or {}).get("record_digest")
+                        == idempotency_key
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    return {"ok": True, "id": existing["id"], "deduplicated": True}
+            entry_id = (
+                "mem_" + idempotency_key.removeprefix("sha256:")
+                if idempotency_key is not None
+                else str(uuid.uuid4())
+            )
+            entry = {
+                "id": entry_id,
+                "node_id": node_id,
+                "text": text,
+                "metadata": metadata or {},
+                "ari_checkpoint": self.cfg.ckpt_hash,
+                "kind": "node_scope",
+                "ts": time.time(),
+            }
             self._node_entries[entry_id] = entry
         self._access.write(
             build_write_event(
@@ -76,7 +102,7 @@ class InMemoryBackend(MemoryBackend):
                 preview_chars=self.cfg.access_log_preview_chars,
             )
         )
-        return {"ok": True, "id": entry_id}
+        return {"ok": True, "id": entry_id, "deduplicated": False}
 
     def search_memory(
         self,
@@ -86,8 +112,8 @@ class InMemoryBackend(MemoryBackend):
         *,
         reader_node_id: str = "",
     ) -> dict:
-        if not ancestor_ids:
-            return {"results": []}
+        if not 1 <= limit <= 1_000:
+            raise ValueError("memory search limit must be in [1, 1000]")
         allowed = set(ancestor_ids)
         with self._lock:
             cand = [e for e in self._node_entries.values()
@@ -121,7 +147,35 @@ class InMemoryBackend(MemoryBackend):
                 ],
             )
         )
-        return {"results": results}
+        provenance = MemoryRetrievalProvenanceV1(
+            backend="in-memory-test",
+            backend_version="ari.in-memory/v1",
+            server_version="in-process",
+            model="deterministic-keyword-overlap",
+            model_version="1",
+            ranking="keyword-hit-ratio; stable insertion tie-break",
+            deterministic=True,
+            query_digest=canonical_memory_digest(
+                {
+                    "query": query,
+                    "ancestor_node_ids": list(ancestor_ids),
+                    "limit": limit,
+                }
+            ),
+            candidate_count=len(cand),
+            returned_count=len(results),
+            limit=limit,
+            filter_evidence={
+                "ancestor_node_ids": list(ancestor_ids),
+                "checkpoint_namespace": self.cfg.ckpt_hash,
+                "strategy": "in-process prefilter",
+                "test_only": True,
+            },
+        )
+        return MemoryRetrievalV1(
+            results=results,
+            provenance=provenance,
+        ).model_dump(mode="json")
 
     def get_node_memory(self, node_id: str, *, reader_node_id: str = "") -> dict:
         with self._lock:
@@ -155,14 +209,6 @@ class InMemoryBackend(MemoryBackend):
             {"text": e["text"], "metadata": e["metadata"], "ts": e["ts"]}
             for e in entries
         ]}
-
-    def clear_node_memory(self, node_id: str) -> dict:
-        with self._lock:
-            to_del = [k for k, e in self._node_entries.items()
-                      if e["node_id"] == node_id]
-            for k in to_del:
-                del self._node_entries[k]
-        return {"removed": len(to_del)}
 
     def get_experiment_context(self) -> dict:
         with self._lock:
@@ -229,6 +275,7 @@ class InMemoryBackend(MemoryBackend):
             self._react_entries.clear()
             self._core_persona = ""
             self._core_human = ""
+            self._core_context = {}
             self._core_seeded_at = 0.0
         return {"removed_node": nn, "removed_react": nr}
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 
 import nest_asyncio
 
@@ -86,6 +87,27 @@ def _require_readable(
         )
 
 
+def _record_context(context: ToolCallContextV1, tool_name: str) -> dict:
+    node = context.node_context
+    if node is None:
+        raise PermissionError("node context is required for memory writes")
+    return {
+        "run_id": context.run_id,
+        "ancestor_ids": list(node.ancestor_node_ids),
+        "created_by_tool_ref": f"memory-skill:{tool_name}",
+    }
+
+
+def _checkpoint_root() -> Path:
+    value = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not value:
+        raise RuntimeError("ARI_CHECKPOINT_DIR is required for memory provenance")
+    root = Path(value).resolve(strict=True)
+    if not root.is_dir() or root.is_symlink():
+        raise RuntimeError("ARI_CHECKPOINT_DIR must be a real directory")
+    return root
+
+
 # ─ Node-scope MCP tools ───────────────────────────────────────────────
 
 @mcp.tool()
@@ -101,7 +123,13 @@ def add_memory(
     """
     context = _authorized_context(ari_context, tool_name="add_memory")
     _require_self(context, node_id)
-    return _backend().add_memory(node_id, text, metadata)
+    return writer.add_observation(
+        _backend(),
+        node_id,
+        text,
+        attributes=metadata,
+        **_record_context(context, "add_memory"),
+    )
 
 
 @mcp.tool()
@@ -139,14 +167,6 @@ def get_node_memory(node_id: str, ari_context: dict | None = None) -> dict:
     )
 
 
-@mcp.tool()
-def clear_node_memory(node_id: str, ari_context: dict | None = None) -> dict:
-    """Clear a node's entries (CoW-protected — self only)."""
-    context = _authorized_context(ari_context, tool_name="clear_node_memory")
-    _require_self(context, node_id)
-    return _backend().clear_node_memory(node_id)
-
-
 # ─ Core-memory introspection ───────────────────────────────────
 
 @mcp.tool()
@@ -179,6 +199,8 @@ def add_experiment_result(
     return writer.add_experiment_result(
         _backend(), node_id, text, metric_ptr=metric_ptr,
         artifact_refs=artifact_refs, node_report_ref=node_report_ref,
+        artifact_root=_checkpoint_root(),
+        **_record_context(context, "add_experiment_result"),
     )
 
 
@@ -196,6 +218,8 @@ def add_failure_case(
     return writer.add_failure_case(
         _backend(), node_id, text,
         artifact_refs=artifact_refs, node_report_ref=node_report_ref,
+        artifact_root=_checkpoint_root(),
+        **_record_context(context, "add_failure_case"),
     )
 
 
@@ -211,6 +235,7 @@ def add_procedure_memory(
     _require_self(context, node_id)
     return writer.add_procedure_memory(
         _backend(), node_id, text, node_report_ref=node_report_ref,
+        **_record_context(context, "add_procedure_memory"),
     )
 
 
@@ -228,6 +253,7 @@ def add_reflection(
     return writer.add_reflection(
         _backend(), node_id, text, confidence=confidence,
         node_report_ref=node_report_ref,
+        **_record_context(context, "add_reflection"),
     )
 
 
@@ -249,6 +275,8 @@ def add_reproducibility_event(
     return writer.add_reproducibility_event(
         _backend(), node_id, target_memory_id, status,
         artifact_refs=artifact_refs, text=text,
+        artifact_root=_checkpoint_root(),
+        **_record_context(context, "add_reproducibility_event"),
     )
 
 
@@ -331,10 +359,27 @@ def consolidate_node_memory(
     specs = consolidation.consolidate_from_node_report(
         node_report, work_dir, run_id=authorized_run_id
     )
-    results = consolidation.write_consolidated(_backend(), node_id, specs)
+    results = consolidation.write_consolidated(
+        _backend(),
+        node_id,
+        specs,
+        run_id=authorized_run_id,
+        ancestor_ids=list(context.node_context.ancestor_node_ids)
+        if context.node_context
+        else [],
+        artifact_root=Path(work_dir),
+        created_by_tool_ref="memory-skill:consolidate_node_memory",
+    )
     return {
         "written": [
-            {"kind": s["kind"], "ok": r.get("ok", False), "id": r.get("id")}
+            {
+                "kind": s["kind"],
+                "ok": r.get("ok", False),
+                "id": r.get("id"),
+                "record_id": r.get("record_id"),
+                "record_digest": r.get("record_digest"),
+                "deduplicated": bool(r.get("deduplicated", False)),
+            }
             for s, r in zip(specs, results)
         ]
     }

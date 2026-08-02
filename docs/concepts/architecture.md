@@ -547,7 +547,7 @@ and `docs/guides/migration.md`):
 ```
 checkpoints/{run_id}/
 ├── settings.json             # GUI settings (LLM model, provider, HPC defaults)
-├── memory_backup.jsonl.gz    # Letta snapshot (portable; auto on stage boundary + exit)
+├── memory_backup.v1.json.gz  # digest-verified portable Letta snapshot
 ├── memory_access.jsonl       # Append-only memory write/read telemetry
 └── ...                       # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -577,7 +577,6 @@ environment variables injected at launch.
 | `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`); selected via `ari.protocols.Evaluator` injection. Composite formula (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) and axis set (`legacy` / `dynamic` / `custom`) are **configurable** via `EvaluatorConfig` — see [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) |
 | `ari/memory/letta_client.py` | `LettaMemoryClient` — ReAct-trace persistence backed by the `ari_react_*` Letta collection |
 | `ari/memory/file_client.py` | Deprecated v0.5.x file-backed client; kept only for `ari memory migrate --react` |
-| `ari/memory/auto_migrate.py` | First-launch v0.5.x JSONL → Letta importer (legacy shim wraps `migrations/v05_to_v07/memory.py`) |
 | `ari/memory_cli.py` | `ari memory …` subcommand (migrate / backup / restore / start-local / …) |
 | `ari/mcp/client.py` | Async MCP client — thread-safe, fresh event loops for parallel execution |
 | `ari/llm/client.py` | LLM routing via litellm (Ollama, OpenAI, Anthropic, any OpenAI-compatible) |
@@ -601,7 +600,7 @@ environment variables injected at launch.
 | Skill | Tools | Role | LLM? |
 |-------|-------|------|------|
 | `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC job management + Singularity containers | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context` | Ancestor-scoped node memory backed by Letta (Postgres / SQLite / Cloud) | △ |
+| `ari-skill-memory` | append-only typed writes, lineage reads, audit, consolidation | Versioned ancestor-scoped memory backed by Letta (Postgres / SQLite / Cloud) | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | Metric spec extraction from experiment file | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/publish lifecycle (v0.7.0) | ✓ |

@@ -44,6 +44,7 @@ def _payload(result: dict) -> dict:
 
 
 def test_parallel_node_contexts_never_cross(tmp_path, monkeypatch):
+    (tmp_path / ".ari-test-memory-backend").write_text("test-only\n")
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
     # The removed compatibility variable cannot grant or redirect authority.
@@ -86,6 +87,7 @@ def test_parallel_node_contexts_never_cross(tmp_path, monkeypatch):
 
 
 def test_context_policy_fails_closed_and_rejects_sibling(tmp_path, monkeypatch):
+    (tmp_path / ".ari-test-memory-backend").write_text("test-only\n")
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
     client = MCPClient([_memory_skill()], strict_provider_loading=True)
@@ -112,6 +114,7 @@ def test_context_policy_fails_closed_and_rejects_sibling(tmp_path, monkeypatch):
 def test_claude_proxy_config_carries_context_but_not_authority_key(
     tmp_path, monkeypatch
 ):
+    (tmp_path / ".ari-test-memory-backend").write_text("test-only\n")
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
     client = MCPClient([_memory_skill()], strict_provider_loading=True)

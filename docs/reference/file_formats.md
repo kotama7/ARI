@@ -386,28 +386,33 @@ environment variable names and scope presence, never secret values. Secret
 rotation does not enter the digest; gaining or losing a scope/name does. Schema:
 `ari-core/ari/schemas/skills_lock_v1.schema.json`.
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+## Memory records and portable backup
 
 Memory backend artefacts written under `ARI_CHECKPOINT_DIR`:
 
 | File | Backend | Notes |
 |---|---|---|
-| `memory_store.jsonl` | `file` | Legacy v0.5 format, line-delimited JSON entries |
-| `memory_backup.jsonl.gz` | `letta` | Portable snapshot (auto on stage boundary + exit) |
+| `memory_store.jsonl` | `file` | Legacy v0.5 input; read only by explicit offline migration |
+| `memory_events.jsonl` | any | Append-only content-addressed record event ledger |
+| `memory_backup.v1.json.gz` | `letta` | Canonical gzip JSON with root and entry digests |
 | `memory_access.jsonl` | any | Append-only telemetry of writes / reads |
 
-Snapshot record shape:
+Backup document shape (records conform to `MemoryRecordV1`):
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
-  "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "schema_version": "ari.memory-backup/v1",
+  "records": [{"schema_version": "ari.memory-record/v1", "record_digest": "sha256:..."}],
+  "react_entries": [{"content": "...", "entry_digest": "sha256:..."}],
+  "core_context": {},
+  "record_digests": ["sha256:..."],
+  "record_order": ["sha256:..."],
+  "backup_digest": "sha256:..."
 }
 ```
+
+Restore validates the complete document before writes. See
+[Research memory contract](memory_contract.md).
 
 ## EAR bundle (v0.7.0)
 

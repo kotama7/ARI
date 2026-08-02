@@ -50,11 +50,14 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
    ```bash
    ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory migrate
    ```
-   迁移工具读取 `memory_store.jsonl`（以及旧版全局 JSONL，如有），
-   写入 Letta 智能体，并将结果快照至 `memory_backup.jsonl.gz`。
-4. **删除旧版 JSONL 文件。** 验证迁移成功后执行：
+   显式 offline migrator 验证 `memory_store.jsonl`，将每行转换为按内容寻址的
+   `MemoryRecordV1`，写出 `memory_backup.v1.json.gz`，成功后才归档源文件。
+   跨实验 global memory 只报告、不导入；`ari run` / `ari resume` 不会自动迁移。
+4. **检查已归档源文件，并手工处理 global memory。** 验证 backup 后，checkpoint
+   源文件名为 `memory_store.jsonl.migrated-*`。若 global store 存在，请先决定是否
+   外部保留，再删除：
    ```bash
-   rm /path/to/ckpt/memory_store.jsonl
+   rm /path/to/ckpt/memory_store.jsonl.migrated-*
    rm $HOME/.ari/global_memory.jsonl   # if it ever existed
    ```
 5. **选择 rubric。** 从

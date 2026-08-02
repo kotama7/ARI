@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import time
 
 
 def _drain(backend):
@@ -15,13 +14,17 @@ def test_write_event_shape(backend, ckpt_env):
     _drain(backend)
     log_path = ckpt_env / "memory_access.jsonl"
     assert log_path.exists()
-    lines = [json.loads(l) for l in log_path.read_text().splitlines() if l.strip()]
+    lines = [
+        json.loads(line)
+        for line in log_path.read_text().splitlines()
+        if line.strip()
+    ]
     writes = [e for e in lines if e["op"] == "write"]
     assert any(e["entry_id"] == r["id"] and e["node_id"] == "n1" for e in writes)
 
 
 def test_read_event_shape(backend, ckpt_env):
-    r = backend.add_memory("n1", "alpha beta", {})
+    backend.add_memory("n1", "alpha beta", {})
     backend.search_memory(
         "alpha",
         ancestor_ids=["n1"],
@@ -30,7 +33,11 @@ def test_read_event_shape(backend, ckpt_env):
     )
     _drain(backend)
     log_path = ckpt_env / "memory_access.jsonl"
-    events = [json.loads(l) for l in log_path.read_text().splitlines() if l.strip()]
+    events = [
+        json.loads(line)
+        for line in log_path.read_text().splitlines()
+        if line.strip()
+    ]
     reads = [e for e in events if e["op"] == "read"]
     assert reads, "read event missing"
     ev = reads[-1]
@@ -49,7 +56,11 @@ def test_inheritance_reads_are_logged(backend, ckpt_env):
     backend.get_node_memory("root", reader_node_id="child")
     backend.bulk_get_node_memory(["root"], reader_node_id="child")
     _drain(backend)
-    events = [json.loads(l) for l in (ckpt_env / "memory_access.jsonl").read_text().splitlines() if l.strip()]
+    events = [
+        json.loads(line)
+        for line in (ckpt_env / "memory_access.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
     reads = [e for e in events if e["op"] == "read"]
     queries = {e.get("query") for e in reads}
     assert "inherit:get_node_memory" in queries
@@ -67,6 +78,7 @@ def test_access_log_off(tmp_path, monkeypatch):
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
     monkeypatch.setenv("ARI_MEMORY_ACCESS_LOG", "off")
+    (tmp_path / ".ari-test-memory-backend").write_text("test-only\n")
     b = get_backend(checkpoint_dir=tmp_path)
     b.add_memory("n1", "x", {})
     # No file should be created.

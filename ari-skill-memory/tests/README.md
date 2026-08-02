@@ -22,7 +22,7 @@ copy-on-write, backup/restore, and Letta backend behaviour.
 - `test_llm_config_removed.py` — removed LLM-config guard.
 - `test_memory.py` — core memory behaviour.
 - `test_react.py` — ReAct behaviour.
-- `test_research_memory_phase1.py` — Letta-free verifiability core: `ResearchMemory` schema validation, sha256 provenance, and artifact audit against disk.
+- `test_research_memory_phase1.py` — Letta-free verifiability core: `MemoryRecordV1` validation, sha256 provenance, and artifact audit against disk.
 - `test_research_memory_typed.py` — typed `writer`/`retriever` over the backend: kind stamping, ancestor scope, require_artifacts, reproducibility-event fold.
 - `test_search_fallback.py` — search fallback behaviour.
 - `test_server_typed_tools.py` — MCP server wiring for typed research-memory tools (registered, callable, round-trip through the backend).

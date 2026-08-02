@@ -4,7 +4,6 @@ to a tmp_path via the ``ckpt_env`` fixture.
 """
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -25,6 +24,7 @@ def ckpt_env(tmp_path, monkeypatch):
     """Create a fresh checkpoint dir + env and yield its Path."""
     ckpt = tmp_path / "ckpt"
     ckpt.mkdir()
+    (ckpt / ".ari-test-memory-backend").write_text("test-only\n")
     monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(ckpt))
     monkeypatch.setenv("ARI_MEMORY_BACKEND", "in_memory")
     monkeypatch.setenv("ARI_CONTEXT_AUTHORITY_KEY", "a" * 64)

@@ -52,12 +52,17 @@ guide walks the upgrade paths.
    ```bash
    ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory migrate
    ```
-   The migrator reads `memory_store.jsonl` (and the legacy global
-   JSONL if any), writes to the Letta agent, and snapshots the
-   result into `memory_backup.jsonl.gz`.
-4. **Delete the legacy JSONLs.**  After verifying the migration:
+   The explicit offline migrator validates `memory_store.jsonl`, converts each
+   row into a content-addressed `MemoryRecordV1`, writes
+   `memory_backup.v1.json.gz`, and only then archives the source. It reports but
+   intentionally does not import cross-experiment global memory. `ari run` and
+   `ari resume` never run this migration automatically.
+4. **Review the archived source and remove global memory manually.** After
+   verifying the backup, the checkpoint source is named
+   `memory_store.jsonl.migrated-*`. If the removed global store exists, decide
+   whether to preserve it externally before deleting it:
    ```bash
-   rm /path/to/ckpt/memory_store.jsonl
+   rm /path/to/ckpt/memory_store.jsonl.migrated-*
    rm $HOME/.ari/global_memory.jsonl   # if it ever existed
    ```
 5. **Pick a rubric.**  Choose a YAML from

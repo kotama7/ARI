@@ -31,6 +31,11 @@ from ari.analysis import (  # noqa: E402
     RunComparisonRequestV1,
     StatisticalTestRequestV1,
 )
+from ari.memory_contract import (  # noqa: E402
+    MemoryBackupV1,
+    MemoryRecordV1,
+    MemoryRetrievalV1,
+)
 from ari.call_context import ToolCallContextV1  # noqa: E402
 from ari.execution import (  # noqa: E402
     ExecutionRequestV1,
@@ -93,6 +98,15 @@ RUN_COMPARISON_REQUEST_SCHEMA_PATH = (
 )
 ANALYSIS_RESULT_SCHEMA_PATH = (
     ARI_CORE / "ari" / "schemas" / "analysis_result_v1.schema.json"
+)
+MEMORY_RECORD_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "memory_record_v1.schema.json"
+)
+MEMORY_RETRIEVAL_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "memory_retrieval_v1.schema.json"
+)
+MEMORY_BACKUP_SCHEMA_PATH = (
+    ARI_CORE / "ari" / "schemas" / "memory_backup_v1.schema.json"
 )
 # Compatibility alias for scripts that imported the original constant.
 SCHEMA_PATH = SKILL_SCHEMA_PATH
@@ -204,6 +218,24 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
         measurement_set_schema_document()
     )
     for path, model, slug, title in (
+        (
+            MEMORY_BACKUP_SCHEMA_PATH,
+            MemoryBackupV1,
+            "memory-backup-v1",
+            "ARI Memory Backup v1",
+        ),
+        (
+            MEMORY_RECORD_SCHEMA_PATH,
+            MemoryRecordV1,
+            "memory-record-v1",
+            "ARI Memory Record v1",
+        ),
+        (
+            MEMORY_RETRIEVAL_SCHEMA_PATH,
+            MemoryRetrievalV1,
+            "memory-retrieval-v1",
+            "ARI Memory Retrieval v1",
+        ),
         (
             ANALYSIS_REQUEST_SCHEMA_PATH,
             AnalysisRequestV1,

@@ -122,7 +122,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | Variable | Purpose |
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta` (default) or `in_memory` (no Letta required; ephemeral RAM-only backend for local smoke tests) |
-| `ARI_MEMORY_AUTO_RESTORE` | Auto-restore from `memory_backup.jsonl.gz` on resume |
+| `ARI_MEMORY_AUTO_RESTORE` | Validate and restore from `memory_backup.v1.json.gz` on resume |
 | `ARI_MEMORY_ACCESS_LOG` | Path to `memory_access.jsonl` |
 | `ARI_MEMORY_CONSOLIDATE` | Typed-memory consolidation + artifact-grounded `verified_context.json` for paper claims. **Default ON**; set `0`/`false`/`no`/`off` to disable |
 | `ARI_LETTA_VENV` | Virtualenv path for the bundled Letta server |

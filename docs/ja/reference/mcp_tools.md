@@ -102,7 +102,6 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 | `add_memory` | 現在のノードのメモリにエントリを追加 | ✗ |
 | `search_memory` | 現在のノード + 祖先をまたいだ埋め込みランク検索 | ✗（サーバサイド埋め込み） |
 | `get_node_memory` | 現在のノードのすべてのエントリ | ✗ |
-| `clear_node_memory` | 現在のノードのエントリを削除（CoW；祖先は変更なし） | ✗ |
 | `get_experiment_context` | Letta コアメモリから安定した実験レベルの事実を取得 | ✗ |
 | `add_experiment_result` | 型付き experiment_result を記録（CoW：自ノードのみ） | ✗ |
 | `add_failure_case` | 型付き failure_case を記録（CoW：自ノードのみ） | ✗ |
@@ -115,7 +114,9 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 | `consolidate_node_memory` | ノード終了時に node_report から型付きメモリを導出 + 書き込み（CoW：自ノード） | ✗ |
 
 このスキルは設計ドキュメントで「LLM 呼び出しなし」と明示しています —
-`ari-skill-memory/README.md` を参照してください。
+`ari-skill-memory/README.md` を参照してください。record は append-only で、公開
+surface に node/record 単位の削除操作はありません。詳細は
+[研究メモリ契約](memory_contract.md) を参照してください。
 
 ## ari-skill-orchestrator — 再帰的 ARI ランナー
 

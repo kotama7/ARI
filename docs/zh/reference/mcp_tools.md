@@ -92,7 +92,6 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `add_memory` | 向当前节点的记忆追加条目 | ✗ |
 | `search_memory` | 跨当前节点 + 祖先的嵌入排序搜索 | ✗（服务端嵌入） |
 | `get_node_memory` | 当前节点的所有条目 | ✗ |
-| `clear_node_memory` | 删除当前节点的条目（CoW；祖先不受影响） | ✗ |
 | `get_experiment_context` | 从 Letta 核心记忆获取稳定的实验级事实 | ✗ |
 | `add_experiment_result` | 记录类型化的 experiment_result（CoW：仅自身节点） | ✗ |
 | `add_failure_case` | 记录类型化的 failure_case（CoW：仅自身节点） | ✗ |
@@ -105,6 +104,8 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `consolidate_node_memory` | 在节点结束时从 node_report 导出 + 写入类型化记忆（CoW：自身节点） | ✗ |
 
 该技能在其设计文档中明确声明"无 LLM 调用" — 见 `ari-skill-memory/README.md`。
+记录仅追加，公共 surface 不提供按 node/record 删除。详见
+[研究记忆契约](memory_contract.md)。
 
 ## ari-skill-orchestrator — 递归 ARI 运行器
 
