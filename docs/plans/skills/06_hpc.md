@@ -12,12 +12,18 @@ sources:
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
+  - path: ari-skill-tool-registry/src/openroad_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc_workspace.py
+    role: implementation
 last_verified: 2026-08-02
 ---
 
 # C06: `ari-skill-hpc` 実装計画
 
-> 状態: Active — coreとpaper-re consumer移行完了、C18 OpenROAD consumer移行中。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Active — core、paper-re、OpenROAD consumer移行完了。deprecated aliasのP6 cleanupを残す。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -45,7 +51,7 @@ SLURMを初期backendとするscheduler job、remote SSH transport、container b
 | C06-04 | 完了: clean environment/export policy | `--export=NIL`、explicit non-secret vars、module snapshot、親env/source禁止 |
 | C06-05 | 完了: SSH security | RejectPolicy、explicit known-host/key scope、timeout、agent/user-key禁止 |
 | C06-06 | 完了: container job統合 | SIF digest/size、typed bind、cleanenv/containall、GPU/resource declaration |
-| C06-07 | 実装中: paper-re完了、OpenROAD移行中 | duplicated executionをHPC APIへ移行 |
+| C06-07 | 完了: paper-re/OpenROAD移行 | duplicated executionをHPC APIへ移行 |
 | C06-08 | 完了: heterogeneous platform fixtures | no-SLURM、A64FX profile、GPU、remote failure、shared FS、timeout/reap |
 
 ## 5. 受け入れ基準
@@ -57,6 +63,7 @@ SLURMを初期backendとするscheduler job、remote SSH transport、container b
 - [x] local/remote adapterで同じnormalized stateとerror taxonomyを返す。
 - [x] cancelとcontrol-command timeoutをboundedにし、timeout時local processをkill/waitする。scheduler jobはSLURM walltime/cancelがreapする。
 - [x] paper-reが直接`sbatch`を呼ばず、typed request/handle/logのgolden resultを得る。
+- [x] OpenROADがdigest-pinned container jobをtyped requestでsubmitし、cancel/log/provenanceを共通handleで得る。
 - [x] `pytest ari-skill-hpc/tests -q` とmock scheduler conformance suiteがgreenである（54 tests）。
 
 ## 6. 削除要件

@@ -1,9 +1,10 @@
 [project]
 name = "ari-skill-tool-registry"
-version = "0.1.0"
+version = "0.2.0"
 description = "Provider-neutral scientific MCP catalog federation for ARI"
 requires-python = ">=3.13"
 dependencies = [
+    "ari-skill-hpc>=0.3.0",
     "jsonschema>=4.23",
     "mcp>=1.0",
     "pydantic>=2.0",

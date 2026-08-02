@@ -952,6 +952,11 @@ generated into a reviewed immutable catalog. Execution requires an exact opaque
 record/replay evidence is retained in the EAR. See
 [the dedicated registry reference](tool_registry.md).
 
+OpenROAD profiles may execute either through a scoped local MCP session or as a
+typed C06 SLURM job in a digest-pinned clean container. Both remain a single
+virtual catalog leaf; scheduler resources, handles, logs, and provenance are
+profile-locked and never become caller-supplied flags.
+
 ## ari-skill-transform
 
 Converts BFTS internal representation to publication-ready scientific data format. Strips all internal fields (`node_id`, `label`, `depth`, `parent_id`) and exposes only scientific content (`configurations`, `experiment_context`). **LLM: Yes**.

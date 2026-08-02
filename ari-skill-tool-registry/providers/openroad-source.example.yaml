@@ -75,6 +75,37 @@ sources:
               digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
               role: liberty
               media_type: text/plain
+        execution:
+          backend: slurm
+          work_root: /absolute/shared/openroad-jobs
+          worker_python: /usr/bin/python3
+          resources:
+            partition: eda
+            nodes: 1
+            tasks: 1
+            cpus_per_task: 1
+            memory_mb_per_node: 8192
+            walltime: "02:00:00"
+            exclusive: false
+            account: research
+          environment:
+            export_mode: NIL
+            path: /usr/local/bin:/usr/bin:/bin
+            variables: {}
+            modules: []
+          container:
+            runtime: apptainer
+            image:
+              logical_name: openroad-orfs-image
+              path: /absolute/images/openroad-orfs-26q3.sif
+              digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+              size_bytes: 0
+              media_type: application/vnd.sylabs.sif
+            binds: []
+            gpu: false
+            network: none
+            contain_all: true
+            clean_environment: true
         commands:
           - {stage: setup, verb: set_thread_count, arguments: ["1"]}
           - {stage: setup, verb: read_lef, arguments: [platform/NangateOpenCellLibrary.tech.lef]}

@@ -556,6 +556,10 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 执行需要精确不透明 `tool_ref` 与 admission。详见
 [tool_registry.md](tool_registry.md)。
 
+OpenROAD profile 可通过有作用域的本地 MCP session，或 digest-pinned clean
+container 内的 typed C06 SLURM job 执行。两者都保持为同一虚拟 catalog 叶子；
+scheduler 资源、handle、日志和 provenance 由 profile 固定，不会成为调用者任意 flag。
+
 ## ari-skill-transform
 
 将 BFTS 内部表示转换为面向出版的科学数据格式。剥离所有内部字段（`node_id`、`label`、`depth`、`parent_id`），仅暴露科学内容（`configurations`、`experiment_context`）。**LLM：是**。

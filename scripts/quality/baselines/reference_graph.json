@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-02T11:09:15.118706+00:00",
-  "commit": "b1b5ff260f1baa6c86f0d0555049a11f904a7a11",
+  "generated_at": "2026-08-02T11:58:07.446526+00:00",
+  "commit": "d0ff1a818b60d42498407bcffa2e41ebc6e576f0",
   "roots": [
     {
       "id": "R1",
@@ -5894,7 +5894,7 @@
       "id": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
       "kind": "py.module",
       "file": "ari-skill-hpc/ari_skill_hpc/__init__.py",
-      "loc": 36,
+      "loc": 44,
       "reachable_from": [
         "R1",
         "R2",
@@ -5912,7 +5912,7 @@
       "id": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
       "kind": "py.module",
       "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
-      "loc": 369,
+      "loc": 370,
       "reachable_from": [
         "R1",
         "R2",
@@ -5930,7 +5930,7 @@
       "id": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "py.module",
       "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
-      "loc": 1327,
+      "loc": 1329,
       "reachable_from": [
         "R1",
         "R2",
@@ -6476,7 +6476,71 @@
       "id": "py.module:ari-skill-tool-registry/src/openroad_adapter.py",
       "kind": "py.module",
       "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 1847,
+      "loc": 450,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_contracts.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 478,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_hpc.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 481,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "loc": 346,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_identity.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 328,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_local.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_local.py",
+      "loc": 310,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_results.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_results.py",
+      "loc": 285,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_verification.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 285,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-skill-tool-registry/src/openroad_worker.py",
+      "kind": "py.module",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 207,
       "reachable_from": [],
       "edges_in": []
     },
@@ -6510,7 +6574,7 @@
       "id": "py.module:ari-skill-tool-registry/src/sources.py",
       "kind": "py.module",
       "file": "ari-skill-tool-registry/src/sources.py",
-      "loc": 1168,
+      "loc": 1178,
       "reachable_from": [],
       "edges_in": []
     },
@@ -18472,7 +18536,7 @@
       "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/__init__.py:__all__",
       "kind": "py.symbol",
       "file": "ari-skill-hpc/ari_skill_hpc/__init__.py",
-      "loc": 15,
+      "loc": 19,
       "reachable_from": [],
       "edges_in": []
     },
@@ -18516,7 +18580,7 @@
       "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:ContainerRequestV1",
       "kind": "py.symbol",
       "file": "ari-skill-hpc/ari_skill_hpc/contracts.py",
-      "loc": 14,
+      "loc": 15,
       "reachable_from": [
         "R4"
       ],
@@ -19002,7 +19066,7 @@
       "id": "py.symbol:ari-skill-hpc/ari_skill_hpc/scheduler.py:SlurmScheduler",
       "kind": "py.symbol",
       "file": "ari-skill-hpc/ari_skill_hpc/scheduler.py",
-      "loc": 750,
+      "loc": 752,
       "reachable_from": [
         "R1",
         "R2",
@@ -24395,114 +24459,10 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OPENROAD_EXPERIMENT_V1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 1,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadArtifactPinV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 33,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadCommandV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 27,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadExperimentAdapter",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 724,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadExperimentV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 169,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadMetricV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 52,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadOutputArtifactV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 36,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadProviderPinV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 51,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadStage",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 9,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadTechnologyV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 39,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadToolchainV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 49,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadVerb",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 54,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:OpenRoadWorkspaceV1",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 41,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_FILE_SUFFIXES",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 17,
+      "loc": 280,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24510,7 +24470,7 @@
       "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_OpenRoadJob",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 14,
+      "loc": 19,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24539,54 +24499,6 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SAFE_ID_RE",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 1,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SAFE_TCL_ATOM_RE",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 1,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SAFE_TCL_LIST_RE",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 1,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SHA256_RE",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 1,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_STAGE_ORDER",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 9,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_SUPPORT_MATRIX",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 3,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_UPSTREAM_TOOLS",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/openroad_adapter.py",
@@ -24598,39 +24510,7 @@
       "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:__all__",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 23,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_decode_wrapped",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 32,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_file_sha256",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 11,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_json_pointer",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 13,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_load_evidence_fixture",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 19,
+      "loc": 24,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24643,34 +24523,10 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_safe_relative",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 10,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_support_document",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 16,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:_verify_openroad_evidence_fixtures",
-      "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 117,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
       "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_adapter_digest",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 8,
+      "loc": 11,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24683,50 +24539,578 @@
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_provider_release_pin",
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:OPENROAD_EXPERIMENT_V1",
       "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 11,
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_toolchain_line",
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:OpenRoadCommandV1",
       "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 11,
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 27,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:openroad_workspace_digest",
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:OpenRoadExperimentV1",
       "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 203,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:OpenRoadMetricV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 52,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:OpenRoadOutputArtifactV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 36,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:OpenRoadStage",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:OpenRoadVerb",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 54,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:_FILE_SUFFIXES",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:_SAFE_TCL_ATOM_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:_SAFE_TCL_LIST_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:_STAGE_ORDER",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
+      "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_contracts.py:_walltime_seconds",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_contracts.py",
       "loc": 7,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:verify_openroad_experiment_files",
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc.py:OpenRoadExecutionV1",
       "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
-      "loc": 48,
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 79,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:verify_openroad_provider_package",
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc.py:OpenRoadHpcRuntime",
       "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 326,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc.py:OpenRoadSchedulerProtocol",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc.py:_TERMINAL_STATES",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc.py:_now",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc.py:hpc_runtime_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc_workspace.py:OpenRoadHpcWorkspace",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "loc": 269,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc_workspace.py:_BATCH_WORKER",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc_workspace.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc_workspace.py:_digest_file",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "loc": 9,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc_workspace.py:verify_openroad_hpc_files",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_hpc_workspace.py:workspace_runtime_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:OPENROAD_SUPPORT_MATRIX",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:OpenRoadArtifactPinV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 33,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:OpenRoadProviderPinV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 51,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:OpenRoadTechnologyV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
       "loc": 39,
       "reachable_from": [],
       "edges_in": []
     },
     {
-      "id": "py.symbol:ari-skill-tool-registry/src/openroad_adapter.py:verify_openroad_provider_pin",
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:OpenRoadToolchainV1",
       "kind": "py.symbol",
-      "file": "ari-skill-tool-registry/src/openroad_adapter.py",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 49,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:OpenRoadWorkspaceV1",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 41,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:_SAFE_ID_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:_SHA256_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:_file_sha256",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:_safe_relative",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:_support_document",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:openroad_provider_release_pin",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:openroad_toolchain_line",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:openroad_workspace_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_identity.py:verify_openroad_provider_pin",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_identity.py",
       "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_local.py:OpenRoadLocalRuntime",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_local.py",
+      "loc": 238,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_local.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_local.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_local.py:_decode_wrapped",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_local.py",
+      "loc": 32,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_local.py:_now",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_local.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_local.py:openroad_local_runtime_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_local.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_results.py:OpenRoadResultStore",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_results.py",
+      "loc": 240,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_results.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_results.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_results.py:_json_pointer",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_results.py",
+      "loc": 13,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_results.py:openroad_results_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_results.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:_REQUEST_ID_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:_load_evidence_fixture",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 19,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:_validated_replay_metrics",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 48,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:_verify_golden_fixture",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 26,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:_verify_openroad_evidence_fixtures",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 7,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:_verify_replay_metric_contracts",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 37,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:openroad_contracts_digest",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:verify_openroad_experiment_files",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 53,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_verification.py:verify_openroad_provider_package",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_verification.py",
+      "loc": 39,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:BatchSpecError",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:RESULT_VERSION",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:SCHEMA_VERSION",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:_DIGEST_RE",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:_EXPECTED_KEYS",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 12,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:_absolute_below",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 11,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:_digest_file",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:_load_spec",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:_now",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:_regular_file",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:main",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-tool-registry/src/openroad_worker.py:run",
+      "kind": "py.symbol",
+      "file": "ari-skill-tool-registry/src/openroad_worker.py",
+      "loc": 97,
       "reachable_from": [],
       "edges_in": []
     },
@@ -25126,7 +25510,7 @@
       "id": "py.symbol:ari-skill-tool-registry/src/sources.py:_openroad_candidate",
       "kind": "py.symbol",
       "file": "ari-skill-tool-registry/src/sources.py",
-      "loc": 132,
+      "loc": 142,
       "reachable_from": [],
       "edges_in": []
     },
@@ -34284,13 +34668,13 @@
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
       "to": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "kind": "static.import",
-      "evidence": "ari-skill-hpc/ari_skill_hpc/__init__.py:14 import ari_skill_hpc.scheduler"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/__init__.py:18 import ari_skill_hpc.scheduler"
     },
     {
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "to": "py.module:ari-skill-hpc/ari_skill_hpc/contracts.py",
       "kind": "static.import",
-      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1109 import ari_skill_hpc.contracts"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1111 import ari_skill_hpc.contracts"
     },
     {
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
@@ -34308,7 +34692,7 @@
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
       "to": "py.symbol:ari-skill-hpc/ari_skill_hpc/contracts.py:BindMountV1",
       "kind": "static.call",
-      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1109 use BindMountV1"
+      "evidence": "ari-skill-hpc/ari_skill_hpc/scheduler.py:1111 use BindMountV1"
     },
     {
       "from": "py.module:ari-skill-hpc/ari_skill_hpc/scheduler.py",
@@ -34714,9 +35098,39 @@
     },
     {
       "from": "py.module:ari-skill-tool-registry/src/openroad_adapter.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-tool-registry/src/openroad_adapter.py:20 import ari_skill_hpc"
+    },
+    {
+      "from": "py.module:ari-skill-tool-registry/src/openroad_hpc.py",
       "to": "py.module:ari-core/ari/public/result.py",
       "kind": "static.import",
-      "evidence": "ari-skill-tool-registry/src/openroad_adapter.py:34 import ari.public.result"
+      "evidence": "ari-skill-tool-registry/src/openroad_hpc.py:14 import ari.public.result"
+    },
+    {
+      "from": "py.module:ari-skill-tool-registry/src/openroad_hpc.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-tool-registry/src/openroad_hpc.py:15 import ari_skill_hpc"
+    },
+    {
+      "from": "py.module:ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "to": "py.module:ari-core/ari/public/result.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-tool-registry/src/openroad_hpc_workspace.py:11 import ari.public.result"
+    },
+    {
+      "from": "py.module:ari-skill-tool-registry/src/openroad_hpc_workspace.py",
+      "to": "py.module:ari-skill-hpc/ari_skill_hpc/__init__.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-tool-registry/src/openroad_hpc_workspace.py:12 import ari_skill_hpc"
+    },
+    {
+      "from": "py.module:ari-skill-tool-registry/src/openroad_results.py",
+      "to": "py.module:ari-core/ari/public/result.py",
+      "kind": "static.import",
+      "evidence": "ari-skill-tool-registry/src/openroad_results.py:13 import ari.public.result"
     },
     {
       "from": "py.module:ari-skill-transform/src/server.py",

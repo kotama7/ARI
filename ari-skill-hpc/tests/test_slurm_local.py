@@ -9,6 +9,7 @@ import pytest
 
 from ari_skill_hpc.contracts import (
     ArtifactPinV1,
+    ContainerRequestV1,
     EnvironmentPolicyV1,
     JobRequestV1,
     OutputDeclarationV1,
@@ -131,6 +132,33 @@ async def test_submit_is_prompt_clean_and_idempotent(tmp_path: Path) -> None:
     submission = Path(first.artifact_scope) / "submission-v1.json"
     assert submission.is_file()
     assert oct(submission.stat().st_mode & 0o777) == "0o600"
+
+
+@pytest.mark.asyncio
+async def test_container_can_enforce_network_none_without_shell(tmp_path: Path) -> None:
+    image = tmp_path / "openroad.sif"
+    image.write_bytes(b"pinned image\n")
+    runner = FakeRunner(CommandResult("12347\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    base = _request(tmp_path)
+    request = base.model_copy(
+        update={
+            "container": ContainerRequestV1(
+                image=ArtifactPinV1(
+                    logical_name="openroad-image",
+                    path=str(image),
+                    digest=file_digest(image),
+                    size_bytes=image.stat().st_size,
+                ),
+                network="none",
+            )
+        }
+    )
+
+    await scheduler.submit(request)
+
+    script = runner.calls[0][1].decode()
+    assert "apptainer exec --containall --cleanenv --net --network none" in script
 
 
 @pytest.mark.asyncio

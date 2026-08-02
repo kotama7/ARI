@@ -1099,6 +1099,8 @@ class SlurmScheduler:
             command.append("--containall")
         if container.clean_environment:
             command.append("--cleanenv")
+        if container.network == "none":
+            command.extend(["--net", "--network", "none"])
         if container.gpu:
             command.append("--nv")
         binds = list(container.binds)

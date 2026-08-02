@@ -1,5 +1,23 @@
 ---
 sources:
+  - path: ari-skill-tool-registry/src/openroad_adapter.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_contracts.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_identity.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_verification.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_local.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_results.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc_workspace.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_worker.py
+    role: implementation
   - path: docs/plans/skills/02_tool_registry.md
     role: doc
   - path: ari-skill-hpc/ari_skill_hpc/server.py
@@ -13,7 +31,7 @@ last_verified: 2026-08-02
 
 # C18: OpenROAD domain profile 実装計画
 
-> 状態: In progress — C18-01〜06/08とlocal cleanupを実装済み、C18-07 scheduler/container統合は未完。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Completed (2026-08-02) — C18-01〜08とD1〜D6を完了。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、P6の計画書一括cleanupで削除する。
 
 ## 1. 責務
 
@@ -63,7 +81,14 @@ stateは暗黙global processに置かず、`SessionHandle`とworkspace digestに
   restart時fail-closedを実装した。
 - brokerがadapter artifact参照のpath/size/SHA-256/result digestを再検証し、record
   cassetteからOpenROAD/PDK無しでoffline replayする。parallel workspace、cancel、
-  same-backend overlap、negative artifact/rangeを46件のregistry suiteで検証した。
+  same-backend overlap、negative artifact/rangeを50件のregistry suiteで検証した。
+- `local-mcp` と `slurm` をexperiment/method identityに含むclosed execution
+  policyを追加した。SLURM経路は固定commandをdigest-pinned Tclへcompileし、
+  standard-library workerと全inputをC06 `JobRequestV1`へpinする。一node/task、
+  threads/CPU一致、clean/contained SIF digest、shared work rootをfail closedで検証する。
+- C06 handle/status/result/cancel/log/environment/module/container provenanceをOpenROAD
+  result/EARへ取り込んだ。cancelはscheduler terminal確認後だけworkspaceを削除し、
+  delivery不明なtransport failureはledger照合用workspaceを保持する。
 
 ## 4. 受け入れ基準
 
@@ -71,7 +96,7 @@ stateは暗黙global processに置かず、`SessionHandle`とworkspace digestに
 - [x] session handleなしにstateful commandを実行できない。
 - [x] workspace外path、arbitrary Tcl/shell escape、undeclared networkを拒否する。
 - [x] QoR metricにunit、corner、mode、stage、source report pointerがある。
-- [ ] timeout/cancelでscheduler/container/sessionをcleanupする。
+- [x] timeout/cancelでscheduler/container/sessionをcleanupする。
 - [x] golden designのexpected report rangeとartifact digest policyを検証する。
 - [x] disagreementするflow/version結果を同一methodの独立証拠として数えない。
 - [x] record bundleをOpenROAD/PDKなしでinspection/replayできる。
@@ -82,12 +107,12 @@ stateは暗黙global processに置かず、`SessionHandle`とworkspace digestに
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C18-D1 | unrestricted command/Tcl execution prototype | restricted command profile | P5 |escape corpus、required flow coverage |
-| C18-D2 | process-global/shared session state | scoped `SessionHandle` | P5 |parallel design isolation、restart behavior test |
-| C18-D3 | mutable image tag、latest tool、implicit host PDK fallback | pinned experiment manifest | P5 |clean environment/golden design test |
-| C18-D4 | filesystem scanだけでoutputを発見するpath | declared artifact manifest | P5 |expected/missing/unexpected artifact tests |
-| C18-D5 | corner/mode/unitを欠くgeneric QoR result | domain result schema | P5 |normalizer fixtures、consumer migration |
-| C18-D6 | pilot専用hard-coded design/PDK paths | source/profile configuration | P6 |second design/PDK fixture、hard-coded reference 0 |
+| C18-D1 (deleted) | unrestricted command/Tcl execution prototype | restricted command profile | P5 |escape corpus、required flow coverage |
+| C18-D2 (deleted) | process-global/shared session state | scoped `SessionHandle` | P5 |parallel design isolation、restart behavior test |
+| C18-D3 (deleted) | mutable image tag、latest tool、implicit host PDK fallback | pinned experiment manifest | P5 |clean environment/golden design test |
+| C18-D4 (deleted) | filesystem scanだけでoutputを発見するpath | declared artifact manifest | P5 |expected/missing/unexpected artifact tests |
+| C18-D5 (deleted) | corner/mode/unitを欠くgeneric QoR result | domain result schema | P5 |normalizer fixtures、consumer migration |
+| C18-D6 (deleted) | pilot専用hard-coded design/PDK paths | source/profile configuration | P6 |second design/PDK fixture、hard-coded reference 0 |
 
 ### 5.2 削除の検証と復旧
 
@@ -95,4 +120,6 @@ stateは暗黙global processに置かず、`SessionHandle`とworkspace digestに
 
 ### 5.3 計画書自身の削除
 
-C18-01〜08、全受け入れ基準、C18-D1〜D6を閉じ、OpenROAD support/admission/security手順を恒久domain guideへ移した後に削除する。
+C18-01〜08、全受け入れ基準、C18-D1〜D6は閉じ、OpenROAD
+support/admission/security/scheduler手順は `docs/reference/tool_registry.md` へ移管済み。
+masterの追跡linkと他planの削除と合わせ、P6で本書を削除する。

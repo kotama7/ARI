@@ -20,6 +20,22 @@ sources:
     role: config
   - path: ari-skill-tool-registry/src/openroad_adapter.py
     role: implementation
+  - path: ari-skill-tool-registry/src/openroad_contracts.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_identity.py
+    role: schema
+  - path: ari-skill-tool-registry/src/openroad_verification.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_local.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_results.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_hpc_workspace.py
+    role: implementation
+  - path: ari-skill-tool-registry/src/openroad_worker.py
+    role: implementation
   - path: ari-skill-tool-registry/providers/openroad-support-v1.json
     role: config
 last_verified: 2026-08-02
@@ -147,14 +163,26 @@ used only to reject undeclared or symlinked files. Metrics carry a numeric value
 unit, corner, mode, stage, source-report digest, and JSON pointer. Exact golden
 and replay fixture files are validated before a source is admitted.
 
-The upstream process remains connected for the whole interactive session. A
-sentinel command queued after each fixed flow command prevents the upstream
-short output-lull heuristic from being treated as completion. All terminal paths
-terminate the session; interruption cannot resume an ephemeral local MCP session
-and therefore fails closed. Each run has a deterministic idempotent handle and a
-fresh workspace, while parallel profiles may use independent sessions.
+Profiles choose `local-mcp` or `slurm`; this choice and its resources/container
+are part of both experiment and method identity. In local mode the upstream
+process remains connected for the whole interactive session. A sentinel command
+queued after each fixed flow command prevents the upstream short output-lull
+heuristic from being treated as completion. All terminal paths terminate the
+session; interruption cannot resume an ephemeral local MCP session and therefore
+fails closed.
 
-Completed outputs and success/failure/cancel transcripts are stored
+SLURM mode compiles the same reviewed closed commands to a digest-pinned Tcl
+program and runs a copied, digest-pinned standard-library worker through C06
+`JobRequestV1`. It requires one node/task, exact `cpus_per_task == threads`, a
+canonical shared work root, and a clean/contained SIF whose digest equals the
+toolchain image digest. The compute-node worker rechecks executable, Tcl, and
+architecture identity before invoking OpenROAD without a shell. Scheduler handle,
+normalized status, environment/module/container digests, logs, and provenance are
+included in the result and EAR. Cancel waits for terminal scheduler state before
+workspace deletion; an ambiguous control/transport result preserves the workspace
+for ledger reconciliation.
+
+Completed outputs, scheduler logs/provenance, and success/failure/cancel transcripts are stored
 content-addressably. Provider-returned artifact references are an internal
 adapter protocol: the broker removes the reserved field and independently checks
 safe digest-prefixed names, symlink absence, size, and SHA-256 before adding them
