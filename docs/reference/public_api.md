@@ -6,6 +6,8 @@ sources:
     role: test
   - path: ari-core/ari/result.py
     role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
 last_verified: 2026-08-02
 ---
 
@@ -29,6 +31,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
 | `ari.public.result` | `ResultEnvelopeV1`, content-addressed artifact references, typed errors, call context, provenance | Skill adapters and federated dispatch callers |
+| `ari.public.skill_lock` | `SkillsLockV1`, locked provider/tool records, atomic create-or-verify helpers, typed lock failures | run launchers, federation adapters, replay tooling |
 | `ari.public.skill_manifest` | Versioned Skill manifest models, loader, digest, and safe entrypoint resolver | built-in and federated MCP Skill packages |
 | `ari.public.claim_gate` | Deterministic claim-evidence hard gate (`run_hard_gate`) + concept→invariant registry (`classify_concept`, `scan_science_data`, `CONCEPT_INVARIANTS`) | `ari-skill-evaluator`, `ari-skill-transform` |
 | `ari.public.verified_context` | Verified-context helpers (`render_grounded_block`, `write_verified_context`, `build_verified_context`) | `ari-skill-paper` |
@@ -120,6 +123,20 @@ passes through the same normalization path and then returns the former
 
 The normative machine-readable contract is
 `ari-core/ari/schemas/result_envelope_v1.schema.json`.
+
+## `ari.public.skill_lock`
+
+`SKILLS.lock` is the deterministic checkpoint-level snapshot created after the
+live MCP handshake. `SkillsLockV1` binds canonical manifests to exact live
+input/output schemas and phase-specific admitted `tool_ref` sets. Callers may use
+`load_skills_lock()` to verify the document and its self-authenticating registry
+digest; `write_or_verify_skills_lock()` atomically creates the first snapshot and
+requires byte-equivalent semantics thereafter. Drift and corruption are distinct
+typed failures (`SkillLockMismatchError` and `SkillLockCorruptError`).
+
+The normative machine-readable contract is
+`ari-core/ari/schemas/skills_lock_v1.schema.json`. Credential values are never
+members of this contract.
 
 ## `ari.public.cost_tracker`
 

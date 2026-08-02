@@ -27,6 +27,7 @@ from ari.skill_manifest import (  # noqa: E402
     resolve_skill_entrypoint,
 )
 from ari.result import ResultEnvelopeV1  # noqa: E402
+from ari.skill_lock import SkillsLockV1  # noqa: E402
 from snapshot_contracts import _scan_skill_tools  # noqa: E402
 
 
@@ -302,6 +303,33 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
             Finding(
                 "result-json-schema-invalid",
                 _relative(result_schema_path, repo_root),
+                str(exc),
+            )
+        )
+
+    lock_schema_path = (
+        repo_root / "ari-core" / "ari" / "schemas" / "skills_lock_v1.schema.json"
+    )
+    try:
+        lock_schema = json.loads(lock_schema_path.read_text(encoding="utf-8"))
+        schema_version = (
+            lock_schema.get("properties", {}).get("schema_version", {}).get("const")
+        )
+        if schema_version != "ari.skills-lock/v1":
+            raise ValueError("lock schema_version const is not ari.skills-lock/v1")
+        schema_fields = set(lock_schema.get("properties", {}))
+        model_fields = set(SkillsLockV1.model_fields)
+        if schema_fields != model_fields:
+            raise ValueError(
+                "lock top-level schema drift: "
+                f"missing={sorted(model_fields - schema_fields)}, "
+                f"extra={sorted(schema_fields - model_fields)}"
+            )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        findings.append(
+            Finding(
+                "lock-json-schema-invalid",
+                _relative(lock_schema_path, repo_root),
                 str(exc),
             )
         )

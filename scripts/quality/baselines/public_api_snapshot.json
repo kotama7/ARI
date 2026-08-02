@@ -164,6 +164,32 @@
       "has_all": true,
       "thin": true
     },
+    "ari.public.skill_lock": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.skill_lock"
+      ],
+      "exports": [
+        "DEFAULT_RUNTIME_PHASES",
+        "LockedSkillV1",
+        "LockedToolV1",
+        "SKILLS_LOCK_FILENAME",
+        "SKILLS_LOCK_SCHEMA_VERSION",
+        "SkillLockCorruptError",
+        "SkillLockError",
+        "SkillLockMismatchError",
+        "SkillLockMissingError",
+        "SkillProviderAdmissionError",
+        "SkillsLockV1",
+        "build_skills_lock",
+        "load_skills_lock",
+        "skills_lock_digest",
+        "verify_skills_lock_subset",
+        "write_or_verify_skills_lock"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.skill_manifest": {
       "all_is_dynamic": false,
       "backing": [

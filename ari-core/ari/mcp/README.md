@@ -8,6 +8,9 @@ lifecycle of each `ari-skill-*` subprocess and routes tool calls + results.
 - `README.md` — this file.
 - `__init__.py` — public `MCPClient` + contract.
 - `client.py` — stdio connection pooling, retry, per-thread asyncio loop.
+- `claude_bridge.py` — Claude CLI MCP config and allowed-tool rendering.
+- `dispatch_support.py` — pure identity, phase, timeout, and tracing policy.
+- `lock_runtime.py` — per-client exact/subset `SKILLS.lock` reconciliation state.
 
 ## See also
 

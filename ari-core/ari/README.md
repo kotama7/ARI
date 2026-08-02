@@ -20,6 +20,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
 - `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
+- `result.py` — typed MCP result envelope, artifact, error, context, and provenance contract.
+- `skill_lock.py` — deterministic run-level MCP provider/schema/phase snapshot.
+- `skill_manifest.py` — canonical versioned Skill package and tool-policy contract.
 - `trace_store.py` — TODO
 - `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
   - `README.md` — agent index.
@@ -60,6 +63,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `README.md` — config index.
   - `__init__.py` — Pydantic config models + env-var overrides.
   - `finder.py` — workflow / profile YAML discovery.
+  - `skill_runtime.py` — canonical manifest to runtime registration metadata adapter.
 - `configs/` — external config tables (Phase PC).
   - `README.md` — configs index.
   - `__init__.py` — config-table exports + loader plumbing.
@@ -80,7 +84,10 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
   - `__init__.py` — public `MCPClient` + contract.
+  - `claude_bridge.py` — Claude CLI MCP server config and allowed-tool rendering.
   - `client.py` — stdio connection pooling, retry, per-thread asyncio loop.
+  - `dispatch_support.py` — pure identity, phase, timeout, and tracing policy.
+  - `lock_runtime.py` — per-client exact/subset run-lock reconciliation state.
 - `memory/` — backend abstraction for ancestor-scoped node memory.
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
@@ -181,7 +188,10 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `cost_tracker.py` — re-export of `ari.cost_tracker`.
   - `llm.py` — re-export of `ari.llm.client.LLMClient`.
   - `paths.py` — re-export of `ari.paths.PathManager`.
+  - `result.py` — stable typed result/artifact/provenance contract.
   - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
+  - `skill_lock.py` — stable run-level immutable Skill snapshot contract.
+  - `skill_manifest.py` — stable canonical Skill manifest contract.
   - `verified_context.py` — re-export of `ari.pipeline.verified_context` (`render_grounded_block` / `write_verified_context`; used by ari-skill-paper).
 - `publish/` — `ari ear publish`: package + ship a curated EAR.
   - `README.md` — publish index.
@@ -205,6 +215,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — `load(name)` loader.
   - `node_report.schema.json` — per-node report schema.
   - `publish.schema.json` — publish record / manifest schema.
+  - `result_envelope_v1.schema.json` — typed MCP dispatch result contract.
+  - `skill_manifest_v1.schema.json` — canonical Skill package manifest contract.
+  - `skills_lock_v1.schema.json` — immutable run provider/schema/phase snapshot contract.
   - `viz_checkpoint.schema.json` — TODO
   - `viz_checkpoint_summary.schema.json` — TODO
   - `viz_settings.schema.json` — TODO

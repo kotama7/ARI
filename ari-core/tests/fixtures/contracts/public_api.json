@@ -96,6 +96,24 @@
       "subprocess",
       "timezone"
     ],
+    "ari.public.skill_lock": [
+      "DEFAULT_RUNTIME_PHASES",
+      "LockedSkillV1",
+      "LockedToolV1",
+      "SKILLS_LOCK_FILENAME",
+      "SKILLS_LOCK_SCHEMA_VERSION",
+      "SkillLockCorruptError",
+      "SkillLockError",
+      "SkillLockMismatchError",
+      "SkillLockMissingError",
+      "SkillProviderAdmissionError",
+      "SkillsLockV1",
+      "build_skills_lock",
+      "load_skills_lock",
+      "skills_lock_digest",
+      "verify_skills_lock_subset",
+      "write_or_verify_skills_lock"
+    ],
     "ari.public.skill_manifest": [
       "LEGACY_MCP_RESULT_V1",
       "MANIFEST_FILENAME",

@@ -30,10 +30,12 @@ from ari.mcp.dispatch_support import (
     log_tool_call,
     phase_is_disabled as _phase_is_disabled,
     phase_matches as _phase_matches,
+    resolve_registration as _resolve_registration,
     resolve_tool_timeout as _resolve_tool_timeout,
     runtime_tool_ref as _runtime_tool_ref,
     unresolved_tool_ref as _unresolved_tool_ref,
 )
+from ari.mcp.lock_runtime import SkillLockController
 from ari.protocols.stores import ArtifactStore
 from ari.result import (
     DEFAULT_INLINE_RESULT_LIMIT,
@@ -43,6 +45,11 @@ from ari.result import (
     ResultErrorKind,
     ToolCallContextV1,
     utc_now_iso,
+)
+from ari.skill_lock import (
+    SkillLockError,
+    SkillProviderAdmissionError,
+    SkillsLockV1,
 )
 
 logger = logging.getLogger(__name__)
@@ -253,6 +260,9 @@ class MCPClient:
         *,
         artifact_store: ArtifactStore | None = None,
         result_inline_limit: int = DEFAULT_INLINE_RESULT_LIMIT,
+        skill_lock_path: str | Path | None = None,
+        skill_lock_scope: str = "exact",
+        strict_provider_loading: bool | None = None,
     ) -> None:
         import threading as _t
 
@@ -273,6 +283,11 @@ class MCPClient:
         self._artifact_store = artifact_store
         self._derived_artifact_store: tuple[str, ArtifactStore] | None = None
         self._result_inline_limit = result_inline_limit
+        self._skill_lock = SkillLockController(
+            skill_lock_path,
+            scope=skill_lock_scope,
+            strict_provider_loading=strict_provider_loading,
+        )
         atexit.register(self.close_all)
 
     def _get_conn(self, skill_name: str) -> _SkillConnection | None:
@@ -354,6 +369,12 @@ class MCPClient:
             except ToolNameCollisionError:
                 raise
             except Exception as e:
+                if self._skill_lock.strict_provider_loading:
+                    self.close_all()
+                    raise SkillProviderAdmissionError(
+                        f"required MCP Skill '{skill.name}' failed live discovery: "
+                        f"{type(e).__name__}: {e}"
+                    ) from e
                 logger.warning("Failed to load skill '%s': %s", skill.name, e)
 
         if collisions:
@@ -388,6 +409,33 @@ class MCPClient:
             )
             for t in tools
         }
+        self._reconcile_skills_lock()
+
+    def _reconcile_skills_lock(self) -> None:
+        """Create or verify the run's immutable live-provider snapshot."""
+
+        try:
+            self._skill_lock.reconcile(
+                skills=self.skills,
+                tools=self._tools_cache or [],
+                disabled_tools=self.disabled_tools,
+            )
+        except SkillLockError:
+            self.close_all()
+            self._tool_registry = {}
+            self._tool_ref_registry = {}
+            self._tool_name_by_ref = {}
+            self._tool_ref_by_name = {}
+            self._tool_metadata_by_ref = {}
+            self._tools_cache = None
+            self._skill_lock.clear()
+            raise
+
+    @property
+    def skills_lock(self) -> SkillsLockV1 | None:
+        """Return the reconciled snapshot after discovery, if locking is enabled."""
+
+        return self._skill_lock.snapshot
 
     def call_tool(
         self,
@@ -435,7 +483,7 @@ class MCPClient:
             started_at = utc_now_iso()
             try:
                 self._build_tools_cache()
-            except ToolNameCollisionError as exc:
+            except (ToolNameCollisionError, SkillLockError) as exc:
                 return self._result_normalizer().error(
                     tool_ref=_unresolved_tool_ref(tool_name_or_ref),
                     kind="admission",
@@ -491,7 +539,7 @@ class MCPClient:
         if self._tools_cache is None:
             try:
                 self._build_tools_cache()
-            except ToolNameCollisionError as exc:
+            except (ToolNameCollisionError, SkillLockError) as exc:
                 return normalizer.error(
                     tool_ref=_unresolved_tool_ref(tool_name_or_ref),
                     kind="admission",
@@ -502,8 +550,12 @@ class MCPClient:
                     completed_at=utc_now_iso(),
                 )
 
-        tool_name, tool_ref, skill_name, selection_reason = self._resolve_registration(
-            tool_name_or_ref
+        tool_name, tool_ref, skill_name, selection_reason = _resolve_registration(
+            tool_name_or_ref,
+            tool_ref_registry=self._tool_ref_registry,
+            tool_name_by_ref=self._tool_name_by_ref,
+            tool_registry=self._tool_registry,
+            tool_ref_by_name=self._tool_ref_by_name,
         )
         effective_context = context or self._default_call_context()
         if not effective_context.selection_reason:
@@ -676,26 +728,6 @@ class MCPClient:
             completed_at=utc_now_iso(),
         )
 
-    def _resolve_registration(
-        self, tool_name_or_ref: str
-    ) -> tuple[str, str, str | None, str]:
-        if tool_name_or_ref in self._tool_ref_registry:
-            return (
-                self._tool_name_by_ref[tool_name_or_ref],
-                tool_name_or_ref,
-                self._tool_ref_registry[tool_name_or_ref],
-                "immutable-tool-ref",
-            )
-        skill_name = self._tool_registry.get(tool_name_or_ref)
-        return (
-            tool_name_or_ref,
-            self._tool_ref_by_name.get(
-                tool_name_or_ref, _unresolved_tool_ref(tool_name_or_ref)
-            ),
-            skill_name,
-            "unique-bare-alias" if skill_name else "unresolved",
-        )
-
     def _tool_admits_phase(self, tool_ref: str, phase: str) -> bool:
         skill_name = self._tool_ref_registry.get(tool_ref)
         skill = next((item for item in self.skills if item.name == skill_name), None)
@@ -749,48 +781,15 @@ class MCPClient:
         self,
         phase: str | None = None,
     ) -> tuple[dict, list[str]]:
-        """Build the ``--mcp-config`` payload + ``--allowedTools`` list for
-        spawning a Claude CLI subprocess against the same ari-skill servers
-        this client manages.
+        """Render this registry for Claude CLI's native MCP interface."""
 
-        Returns ``(mcp_config, allowed_tools)``:
-          - ``mcp_config``: ``{"mcpServers": {<skill>: {command, args, env}}}``
-            — claude reads this via ``--mcp-config <file-or-string>``.
-          - ``allowed_tools``: list of fully-qualified MCP tool names
-            (``mcp__<skill>__<tool>``) to pass to ``--allowedTools`` so claude
-            can ONLY call ari skills (no native Bash/Write/Edit).
-
-        ``phase`` filters skills exactly as ``list_tools(phase=...)`` does.
-        Skills are spawned with the same python interpreter + PYTHONPATH the
-        in-process MCPClient uses, so they see ari-core (for cost_tracker).
-        """
-        # Ensure connections + registry are populated (lazy).
         if self._tools_cache is None:
             self._build_tools_cache()
-        servers: dict[str, dict] = {}
-        allowed: list[str] = []
-        for skill in self.skills:
-            if _phase_is_disabled(getattr(skill, "phase", "all")):
-                continue
-            if phase is not None and not _phase_matches(
-                getattr(skill, "phase", "all"),
-                phase,
-            ):
-                continue
-            conn = self._connections.get(skill.name)
-            if conn is None:
-                # _build_tools_cache may have skipped a failing skill; skip too.
-                continue
-            params = conn._server_params()
-            servers[skill.name] = {
-                "command": params.command,
-                "args": list(params.args),
-                "env": dict(params.env or {}),
-            }
-            for tool in self._tools_cache or []:
-                if self._tool_registry.get(tool["name"]) != skill.name:
-                    continue
-                if tool["name"] in self.disabled_tools:
-                    continue
-                allowed.append(f"mcp__{skill.name}__{tool['name']}")
-        return {"mcpServers": servers}, allowed
+        from ari.mcp.claude_bridge import build_claude_mcp_config
+
+        return build_claude_mcp_config(
+            skills=self.skills,
+            connections=self._connections,
+            visible_tools=self.list_tools(phase=phase),
+            phase=phase,
+        )
