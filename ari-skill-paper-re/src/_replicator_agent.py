@@ -43,7 +43,6 @@ Key differences from a vanilla ``BasicAgentSolver`` invocation:
 
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 import logging
@@ -63,6 +62,7 @@ import paperbench.solvers.utils as _pb_solver_utils
 from paperbench.nano.structs import AgentOutput
 from paperbench.nano.task import PBTask
 from paperbench.solvers.basicagent.solver import BasicAgentSolver
+from paperbench.solvers.basicagent.tools.base import Tool as _Tool
 from paperbench.solvers.basicagent.completer import (
     BasicAgentTurnCompleterConfig,
     OpenAIResponsesTurnCompleterConfig,
@@ -76,7 +76,7 @@ from paperbench.solvers.basicagent.prompts.templates import (
 )
 from paperbench.solvers.utils import check_for_existing_run
 
-from _compute import LocalComputer, ApptainerComputer, make_computer
+from _compute import make_computer
 from _compute.local_pbtask import LocalPBTask, make_local_pbtask
 
 log = logging.getLogger(__name__)
@@ -424,10 +424,6 @@ def _truncate_tool_output(text: str, max_bytes: int = _MAX_TOOL_OUTPUT_BYTES) ->
     )
 
 
-from typing import Any as _Any
-from paperbench.solvers.basicagent.tools.base import Tool as _Tool
-
-
 class _BoundedOutputTool(_Tool):
     """:class:`Tool` wrapper capping ``execute()`` output bytes.
 
@@ -435,7 +431,7 @@ class _BoundedOutputTool(_Tool):
     (its ``execute()`` is never called), so wrapping every non-submit tool
     is safe and keeps the dispatch contract intact.
     """
-    inner: _Any
+    inner: Any
     max_bytes: int = _MAX_TOOL_OUTPUT_BYTES
 
     model_config = {"arbitrary_types_allowed": True}
@@ -443,7 +439,7 @@ class _BoundedOutputTool(_Tool):
     def name(self) -> str:
         return self.inner.name()
 
-    async def execute(self, *args: _Any, **kwargs: _Any) -> str:
+    async def execute(self, *args: Any, **kwargs: Any) -> str:
         out = await self.inner.execute(*args, **kwargs)
         if isinstance(out, str):
             return _truncate_tool_output(out, self.max_bytes)
@@ -568,7 +564,7 @@ async def run_replicator_agent(
     max_steps: int | None = None,
     completer_config: BasicAgentTurnCompleterConfig | None = None,
     sandbox_kind: str = "auto",
-    apptainer_image: str | None = None,
+    container_image: str | None = None,
     env: dict[str, str] | None = None,
     paper_id: str = "ari-local",
     run_id: str | None = None,
@@ -617,7 +613,7 @@ async def run_replicator_agent(
     computer = make_computer(
         work_dir=work,
         kind=sandbox_kind,
-        image=apptainer_image,
+        image=container_image,
         env=env,
         timeout_sec=min(time_limit_sec, 30 * 60),
     )

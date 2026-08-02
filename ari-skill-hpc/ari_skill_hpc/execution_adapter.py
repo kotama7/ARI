@@ -64,6 +64,8 @@ def handoff_execution_to_slurm(
     resources: ResourceRequestV1,
     container: ContainerRequestV1 | None = None,
     outputs: tuple[OutputDeclarationV1, ...] = (),
+    modules: tuple[str, ...] = (),
+    network_isolation_attested: bool = False,
 ) -> ExecutionHandoffV1:
     """Map reproducible fields and enumerate policies SLURM does not preserve."""
 
@@ -71,7 +73,10 @@ def handoff_execution_to_slurm(
         raise ValueError("SLURM handoff requires structured argv, not a shell command")
     if request.timeout_seconds > _walltime_seconds(resources.walltime):
         raise ValueError("SLURM walltime is shorter than the execution timeout")
-    if request.network == "deny" and (container is None or container.network != "none"):
+    if request.network == "deny" and not (
+        (container is not None and container.network == "none")
+        or network_isolation_attested
+    ):
         raise ValueError("network denial requires an HPC container network namespace")
     if (request.container is None) != (container is None):
         raise ValueError("execution and HPC container selections differ")
@@ -125,6 +130,7 @@ def handoff_execution_to_slurm(
         "execution_identity": request.execution_identity,
         "execution_schema": request.schema_version,
         "execution_network": request.network,
+        "network_isolation_attested": network_isolation_attested,
         "execution_timeout_seconds": request.timeout_seconds,
         "execution_limits_digest": sha256_digest(
             request.limits.model_dump(mode="json")
@@ -142,7 +148,10 @@ def handoff_execution_to_slurm(
         work_dir=request.workspace.root,
         argv=tuple(job_argv),
         resources=resources,
-        environment=EnvironmentPolicyV1(variables=request.environment),
+        environment=EnvironmentPolicyV1(
+            variables=request.environment,
+            modules=modules,
+        ),
         container=container,
         inputs=tuple(pins),
         outputs=outputs,
@@ -164,6 +173,7 @@ def handoff_execution_to_slurm(
             "environment",
             "input_artifact_pins",
             "network_policy",
+            "module_environment",
             "timeout_upper_bound",
         ),
         unmapped_policies=tuple(unmapped),

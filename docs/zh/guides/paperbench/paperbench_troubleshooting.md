@@ -166,8 +166,8 @@ ja/zh 镜像需要 XeLaTeX + Noto CJK 字体。运行
 ### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
 
 docker daemon 未启动或不可达。bridge / `run_reproduce` 拒绝静默降级。
-解决方法: 启动 docker、切换到其他 `sandbox_kind`、或 opt-in legacy
-fallback: `export ARI_PHASE1_ALLOW_FALLBACK=1`。同样适用于
+解决方法: 启动 docker 或切换到另一个经过审查的 `sandbox_kind`。
+不存在 legacy host-local 回退。同样适用于
 `sandbox_kind=apptainer` 二进制缺失、`sandbox_kind=slurm` sbatch
 缺失 / partition 无法解析。
 

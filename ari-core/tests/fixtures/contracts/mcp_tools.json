@@ -621,7 +621,6 @@
     "ari-skill-paper-re": [
       {
         "args": [
-          "apptainer_image",
           "container_image",
           "iterative_agent",
           "max_steps",
@@ -680,6 +679,8 @@
           "memory_gb_per_cpu",
           "memory_gb_per_node",
           "module_loads",
+          "network_isolation_attested",
+          "network_policy",
           "nodelist",
           "nodes",
           "ntasks",
@@ -733,6 +734,8 @@
       {
         "args": [
           "auditor_model",
+          "max_model_calls",
+          "output_path",
           "paper_path",
           "paper_text",
           "rubric_path"
@@ -742,12 +745,17 @@
       },
       {
         "args": [
+          "max_model_calls",
           "model",
+          "model_revision",
           "output_path",
           "paper_path",
           "paper_text",
           "paperbench_rubric_id",
+          "provider",
+          "quality_profile",
           "seed",
+          "subtree_concurrency",
           "target_leaf_count",
           "temperature",
           "two_stage"

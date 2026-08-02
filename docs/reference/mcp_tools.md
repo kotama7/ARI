@@ -166,7 +166,7 @@ has no per-record or per-node delete operation. See the
 The v0.2 per-section tools were removed. See the
 [Paper build contract](paper_build_contract.md) for migration and provenance.
 
-## ari-skill-paper-re — PaperBench reproducibility (v0.7.0)
+## ari-skill-paper-re — PaperBench reproducibility (v1.0.0)
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
@@ -179,28 +179,29 @@ The v0.2 per-section tools were removed. See the
 
 | Tool | New args |
 |---|---|
-| `build_reproduce_sh` | `container_image` (replaces / supersedes legacy `apptainer_image`; both accepted for back-compat) |
+| `build_reproduce_sh` | `container_image` (single immutable-image field; the deprecated `apptainer_image` alias was removed in v1.0) |
 
 ### v0.8.0 new fields (Stage 2)
 
 | Tool | New args |
 |---|---|
-| `run_reproduce` | `container_image` (honoured by docker / apptainer / singularity sandboxes; alias `pb-env` / `pb-reproducer` resolves to vendor `image:latest` tags built by `scripts/build_pb_images.sh`) |
+| `run_reproduce` | `container_image` (local immutable SIF, full Docker `sha256:<image-id>`, or digest-pinned remote reference; mutable tags and aliases are rejected) |
 
 Fail-loud preconditions: missing docker daemon / apptainer binary /
-sbatch / partition raise `RuntimeError` rather than silently falling
-back to local CPU. Opt back into legacy fallback via
-`ARI_PHASE1_ALLOW_FALLBACK=1`. Typed GPU requests are never silently dropped;
+sbatch / partition fail rather than running on the host. No local fallback is
+available. Typed GPU requests are never silently dropped;
 unsupported or contradictory resource requests fail before execution. See
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2).
 The SLURM path uses the shared `JobRequestV1` submit/status/log/cancel lifecycle
 and a clean `--export=NIL` job environment.
+See the normative [reproduction and grading contract](reproduction_contract.md)
+for digest identity, retry lineage, sandbox admission, and score validity.
 
 ### v0.8.0 new fields (Stage 3)
 
 | Tool | New args |
 |---|---|
-| `grade_with_simplejudge` | `code_only` (prune rubric to Code Development leaves only, mirrors vendor `paperbench/grade.py:109-112`; auto-enables when no `reproduce.log` is present so Stage 1-only runs aren't systematically zeroed) |
+| `grade_with_simplejudge` | `code_only` (explicitly prune the verified reproduction rubric to Code Development leaves; missing reproduction records fail without a score) |
 
 For an in-process Python surface that chains all three stages with a
 single calling vocabulary, see

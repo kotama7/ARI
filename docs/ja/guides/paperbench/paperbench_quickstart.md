@@ -143,19 +143,19 @@ python scripts/sc_paper_dogfood.py \
 とは**排他** — paper_audit は論文自体を採点、`--with-reproduction` は
 実行された submission を採点。両立しない。
 
-vendor image を使う場合は先に `scripts/build_pb_images.sh` で
-`pb-env` / `pb-reproducer` をビルドしてから
-`--rollout-container-image pb-env --reproduce-container-image pb-reproducer`
-を渡す。
+vendor image は `scripts/build_pb_images.sh` でビルドする。同スクリプトが
+表示する完全な Docker image ID を Stage 2 に渡す。Stage 1 の Apptainer
+rollout では `apptainer pull pb-env.sif docker-daemon://pb-env:latest` で
+SIF 化し、その絶対パスを渡す。mutable tag 自体は渡さない。
 
 > **fail-loud 前提条件 (v0.8.0)**。
 > 要求した sandbox / GPU リソースがホストで提供できない場合、エラーで
-> 止まり host CPU に黙ってフォールバックしない:
-> - `ARI_PHASE1_ALLOW_FALLBACK=1` — docker / apptainer / sbatch が
->   missing 時の legacy fallback を opt-in
+> 止まり host CPU に黙ってフォールバックしない。legacy fallback は削除済み。
 >
 > GPU/resource要求にsilent drop overrideはない。cluster設定を修正するか
-> 対応partitionを選ぶ。fallbackはデフォルトOFF。
+> 対応partitionを選ぶ。network deny はデフォルト ON であり、非隔離
+> local/SLURM は管理者 attestation または明示的 `network_policy=inherit`
+> を必要とする。
 
 ## HPC クラスタの sbatch ラッパー(例示)
 

@@ -147,7 +147,7 @@ surface に node/record 単位の削除操作はありません。詳細は
 旧 per-section tool は削除済みです。移行仕様は英語版の
 [Paper build contract](../../reference/paper_build_contract.md) を参照してください。
 
-## ari-skill-paper-re — PaperBench 再現性 (v0.7.0)
+## ari-skill-paper-re — PaperBench 再現性 (v1.0.0)
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
@@ -160,18 +160,18 @@ surface に node/record 単位の削除操作はありません。詳細は
 
 | ツール | 新しい引数 |
 |---|---|
-| `build_reproduce_sh` | `container_image`（レガシーの `apptainer_image` を置き換え / 上位互換；後方互換のため両方受け付け） |
+| `build_reproduce_sh` | `container_image`（immutable image の単一フィールド。deprecated `apptainer_image` alias は v1.0 で削除） |
 
 ### v0.8.0 新フィールド（Stage 2）
 
 | ツール | 新しい引数 |
 |---|---|
-| `run_reproduce` | `container_image`（docker / apptainer / singularity サンドボックスで有効；エイリアス `pb-env` / `pb-reproducer` は `scripts/build_pb_images.sh` でビルドされた vendor の `image:latest` タグに解決） |
+| `run_reproduce` | `container_image`（immutable なローカル SIF、完全な Docker `sha256:<image-id>`、または digest 固定 remote reference。mutable tag と alias は拒否） |
 
 フェイルラウド前提条件: docker デーモン / apptainer バイナリ /
 sbatch / パーティションが欠落している場合、ローカル CPU への黙った
 フォールバックではなく `RuntimeError` を発生させます。レガシーフォールバックに
-戻すには `ARI_PHASE1_ALLOW_FALLBACK=1` を設定してください。型付きGPU要求は
+host-local fallback は存在しません。型付きGPU要求は
 黙って削除されず、矛盾・非対応resourceは実行前に失敗します。
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2) を参照。
 SLURM経路は共通`JobRequestV1` submit/status/log/cancel lifecycleと
@@ -181,7 +181,7 @@ SLURM経路は共通`JobRequestV1` submit/status/log/cancel lifecycleと
 
 | ツール | 新しい引数 |
 |---|---|
-| `grade_with_simplejudge` | `code_only`（ルーブリックを Code Development 葉のみに限定。vendor の `paperbench/grade.py:109-112` を踏襲。`reproduce.log` が存在しない場合に自動有効化され、Stage 1 のみの実行が系統的にゼロにならないようにする） |
+| `grade_with_simplejudge` | `code_only`（verified reproduction のルーブリックを Code Development 葉のみに限定する明示的 scope。reproduction record がなければ score なしで失敗） |
 
 3 つのステージすべてを単一の呼び出し語彙でチェーンするインプロセス Python
 サーフェスについては、

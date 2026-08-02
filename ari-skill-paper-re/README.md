@@ -41,7 +41,7 @@ reproducibility check with a PaperBench-aligned pipeline.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | Override the bundled `vendor/paperbench/` path | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` + `ARI_PAPERBENCH_COMMIT` | Exact-commit-only override of the reviewed vendor source | vendored commit |
 | `ARI_MODEL_REPLICATOR` | LLM that drives `build_reproduce_sh` | falls back to `ARI_LLM_MODEL` |
 | `ARI_LLM_MODEL` | Grader LLM | (none) |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Wall-time cap for `run_reproduce` | `43200` (12 h) |
@@ -72,8 +72,8 @@ paper/rubric digest mismatch fail before agent rollout, execution, or grading.
 
 The skill bundles PaperBench under `vendor/paperbench/` (git
 submodule).  Licensing follows the upstream PaperBench repository.
-Update the submodule independently of ARI core releases — only the
-skill's compatibility shim guarantees go through `ari.public.*`.
+Its commit must match `paperbench_patches.json`; an update requires the patch
+inventory and clean-interpreter conformance suite to pass together.
 
 ## Tests
 
@@ -90,6 +90,8 @@ LLM-heavy and sandbox-bound; runs are not byte-deterministic.
 ## See also
 
 - `docs/reference/skills.md#ari-skill-paper-re` — high-level summary.
+- `docs/reference/reproduction_contract.md` — normative run, sandbox, grade,
+  and PaperBench patch-removal contract.
 - `docs/concepts/publication-lifecycle.md#publication-lifecycle-v070` — publication /
   verification lifecycle.
 - `ari-skill-replicate/README.md` — rubric generator.

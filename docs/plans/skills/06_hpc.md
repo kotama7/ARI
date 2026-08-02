@@ -63,6 +63,8 @@ SLURMを初期backendとするscheduler job、remote SSH transport、container b
 - [x] local/remote adapterで同じnormalized stateとerror taxonomyを返す。
 - [x] cancelとcontrol-command timeoutをboundedにし、timeout時local processをkill/waitする。scheduler jobはSLURM walltime/cancelがreapする。
 - [x] paper-reが直接`sbatch`を呼ばず、typed request/handle/logのgolden resultを得る。
+- [x] paper-re handoffがmodule list、network isolation attestation、execution identity、
+  policy equivalence/unmapped policy、scheduler result provenanceを保持する。
 - [x] OpenROADがdigest-pinned container jobをtyped requestでsubmitし、cancel/log/provenanceを共通handleで得る。
 - [x] `pytest ari-skill-hpc/tests -q` とmock scheduler conformance suiteがgreenである（54 tests）。
 

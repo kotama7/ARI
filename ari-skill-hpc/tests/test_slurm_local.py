@@ -123,6 +123,12 @@ async def test_submit_is_prompt_clean_and_idempotent(tmp_path: Path) -> None:
     assert "#SBATCH --nodes=2" in script
     assert "export SLURM_EXPORT_ENV=ALL" in script
     assert "module load gcc/13.2" in script
+    assert "cpu_model=" in script
+    assert "cpu_logical_count=" in script
+    assert "gcc=" in script
+    assert "mpicc=" in script
+    assert "nvcc=" in script
+    assert "gpu=" in script
     assert "source " not in script
     assert ".env" not in script
     assert "ARI_ENV_FILE" not in script

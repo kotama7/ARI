@@ -104,7 +104,6 @@ Enqueue PaperBench runs.
     "time_limit_sec": 43200,
     "iterative_agent": false,
     "sandbox_kind": "slurm",
-    "container_image": "pb-reproducer",
     "partition": "large",
     "nodes": 4,
     "ntasks": 32,
@@ -210,10 +209,10 @@ Vendor-fidelity behaviour built into the bridge:
   `apply_patch <<'PATCH' … PATCH`; without this they fail `command not
   found` and waste tool-call budget. Apptainer SIFs already carry the
   command, so the shim is host-sandbox-only.
-- **container_image alias resolution** — `pb-env` → `pb-env:latest`,
-  `pb-reproducer` → `pb-reproducer:latest` (built by
-  `scripts/build_pb_images.sh`). URIs / paths / arbitrary tags pass
-  through verbatim.
+- **immutable container identity** — local non-symlink SIF files are hashed;
+  Docker accepts a full `sha256:<image-id>` or `name@sha256:<digest>`;
+  remote Apptainer references require `@sha256:<digest>`. Mutable tags and
+  the former `pb-env` / `pb-reproducer` aliases fail closed.
 - **agent.env auto-load** — when `agent_env_path` unset, auto-discovers
   `$ARI_AGENT_ENV_PATH` then `~/.ari/agent.env`. `HF_TOKEN` from the
   calling process env is automatically forwarded to the agent.
@@ -230,21 +229,20 @@ Vendor-fidelity behaviour built into the bridge:
 - **capture_tarball** — writes per-attempt
   `submission_executed_<UTC>.tar.gz` next to the submission so a run
   is re-gradable.
-- **code_only** — when True, prunes the rubric to Code Development
-  leaves only (vendor `paperbench/grade.py:109-112`). Auto-enabled
-  when no `reproduce.log` is present so Stage 1-only runs aren't
-  systematically zeroed on Code Execution / Result Analysis leaves.
+- **code_only** — when True, explicitly prunes a verified successful
+  reproduction to Code Development leaves (vendor
+  `paperbench/grade.py:109-112`). Missing reproduction records fail without a
+  scientific score.
 - **paper_audit_mode** — patches vendor `TASK_CATEGORY_QUESTIONS` to
   paper-audit phrasing. Mutually exclusive with `code_only`.
 
-Fail-loud preconditions (RuntimeError unless the matching opt-in env
-is set):
+Fail-loud preconditions (there is no host-local downgrade):
 
 | Condition | Env override |
 |---|---|
-| `sandbox_kind=docker` but daemon unreachable | `ARI_PHASE1_ALLOW_FALLBACK=1` |
-| `sandbox_kind=apptainer/singularity` but binary missing | `ARI_PHASE1_ALLOW_FALLBACK=1` |
-| `sandbox_kind=slurm` but `sbatch` missing or no partition | `ARI_PHASE1_ALLOW_FALLBACK=1` |
+| `sandbox_kind=docker` but daemon unreachable | start Docker or select an available reviewed sandbox |
+| `sandbox_kind=apptainer/singularity` but binary missing | install the runtime or select another reviewed sandbox |
+| `sandbox_kind=slurm` but `sbatch` missing or no partition | configure the scheduler/partition |
 | GPU request unsupported by the selected partition | fix GRES/select a compatible partition; no silent downgrade |
 
 ## See also

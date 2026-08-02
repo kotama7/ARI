@@ -375,7 +375,7 @@ PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperben
 
 确定性地填充沙箱（无 LLM）。**v0.7.0+**: 传入 `checkpoint_dir` 可从 `{checkpoint_dir}/publish_record.json` 自动读取 ref + sha256（即 `ari ear publish` 写入的文件）。当 `dest/reproduce.sh` 已存在时返回 `populated=False, skipped_reason=...` 并跳过。
 
-#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
 **v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。通过 LiteLLM 路由，任意供应商可用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
 

@@ -142,7 +142,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | バンドル済み `vendor/paperbench/` パスの上書き | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` + `ARI_PAPERBENCH_COMMIT` | review済みPaperBench sourceのexact-commit-only override | vendored commit |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | `run_reproduce` のウォールタイム上限 | `43200`（12 時間） |
 | `ARI_REPLICATOR_ITERATIVE` | 反復型レプリケータエージェントを使用 | – |
 | `ARI_REPLICATOR_MAX_STEPS` | 反復型が有効なときの反復上限 | – |
@@ -202,11 +202,10 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | 変数 | 用途 |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。`server.run_reproduce` および `bridge.reproduce_submission` が使用するサンドボックスランナーを強制。 |
-| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` で明示的な `container_image` が指定されていない場合のデフォルト docker イメージ。デフォルトは `ubuntu:24.04`。 |
-| `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` で明示的な `container_image` が指定されていない場合のデフォルト SIF / docker URI。 |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | `ARI_PHASE1_APPTAINER_IMAGE` のレガシーエイリアス。 |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ 要求されたサンドボックスツール（docker デーモン / apptainer / sbatch / パーティション）が欠落している場合、警告のみでホストローカル実行にフォールバック（レガシー v0.7.2 の動作）。デフォルト（未設定）⇒ ユーザの隔離意図が黙って迂回されないよう `RuntimeError` を発生。 |
-| `ARI_PAPERBENCH_PATH` | vendor 化された PaperBench ソースツリーのパス上書き（デフォルト: `ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
+| `ARI_PHASE1_DOCKER_IMAGE` | 明示的な `container_image` がない場合の Docker image。完全な `sha256:<image-id>` または `name@sha256:<digest>` が必須で、mutable default は使用しない。 |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity 用の非 symlink ローカル SIF または digest 固定 remote URI。 |
+| `ARI_PAPERBENCH_PATH` | PaperBench project の任意 override。review済みGit identityと`ARI_PAPERBENCH_COMMIT`が完全一致しないsourceは拒否する。 |
+| `ARI_PAPERBENCH_COMMIT` | override時に必須のcommit claim。現在は`51052cede8cc608f95bb00346635e03759013e5a`。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 呼び出し元が `0` を渡したときのデフォルト Stage 1 エージェントロールアウト時間予算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 ロールアウトのデフォルトを IterativeAgent バリアントに変更。 |
 | `ARI_REPLICATOR_MAX_STEPS` | デフォルト Stage 1 ステップ上限。 |

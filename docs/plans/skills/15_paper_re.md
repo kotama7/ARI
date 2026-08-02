@@ -13,7 +13,7 @@ last_verified: 2026-08-02
 
 # C15: `ari-skill-paper-re` 実装計画
 
-> 状態: Active — SLURM consumerを共通HPC lifecycleへ移行済み。残るsandbox/grade契約を継続。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
+> 状態: Implemented — C15-01〜09完了。P6で残るupstream patchとV1 readerの削除gateのみ追跡する。マスター計画は [00_master_plan.md](00_master_plan.md)。本書は一時計画であり、末尾の削除要件を満たしたら削除する。
 
 ## 1. 責務
 
@@ -22,39 +22,39 @@ paper/code bundle/rubricから、隔離された再現環境を構築し、Phase
 ## 2. 現状と課題
 
 - `fetch_code_bundle`、`build_reproduce_sh`、`run_reproduce`、`grade_with_simplejudge`を提供する。
-- local、Docker、Apptainer runnerは独自実装が残る。SLURMは`JobRequestV1`とsubmit/status/log/cancelへ移行済み。
-- vendored PaperBenchへのpath injection、runtime monkey patch、instruction rewrite、salvage wrapperが多く、upstream versionとの対応表が必要である。
--長時間tool timeout、partial output、retry/idempotent skipが複雑である。
-- generated `reproduce.sh`、network、credential、host path、resource requestをより強くpolicy制御する必要がある。
+- local/containerは共通`ExecutionRequestV1`とprivate attempt executor、SLURMは共通HPC handoff/lifecycleを使う。
+- vendored PaperBenchはexact commitと3件のpatch inventoryに固定し、恒久的なpath injectionとsource-mutating salvage wrapperを削除済みである。
+- timeout/cancel、partial output、retry/idempotent replayはdigest-bound attempt state machineで記録する。
+- generated `reproduce.sh`、network、credential、host path、resource requestはfail-closed policyで制御する。
 
 ## 3. 目標契約
 
-`ReproductionPlanV1`、`ReproductionRunV1`、`GradeReportV1`を定義する。Phase 1はinput bundle/rubric/environment/command/resource/artifact digestを記録し、Phase 2はrubric leafごとのevidence、judge provenance、negative control、varianceを保持する。submit型実行は短時間でhandleを返す。
+`ReproductionPlanV1`、`ReproductionAttemptV1`、`ReproductionRunV1`、`GradeReportV1`を定義する。Phase 1はinput bundle/rubric/environment/command/resource/artifact digestを記録し、Phase 2はrubric leafごとのevidence、judge provenance、negative control、varianceを保持する。SLURM submitはC06 handle lifecycleを使い、外部run lifecycleはC16が所有する。
 
 ## 4. 実装作業
 
 | ID | 作業 | 成果物 |
 |---|---|---|
-| C15-01 | manifest/schema/version同期 | 4 tool、async、permission、timeout metadata |
-| C15-02 | 一部完了: SLURMをHPC adapterへ分離、他sandbox継続 | fetch、sandbox、schedulerの共通interface |
-| C15-03 | reproduction plan schema | commands、dependencies、network、resources、expected artifacts |
-| C15-04 | sandbox policy | read-only input、bounded writable output、secret-free env、network default deny |
-| C15-05 | async state/idempotency | submit/poll/cancel、attempt ID、partial artifact |
-| C15-06 | PaperBench adapter isolation | pinned upstream、patch inventory、conformance tests |
-| C15-07 | grading evidence | leaf result、judge/raw response、negative control、independence |
-| C15-08 | EAR/cassette handoff | executed bundle、logs、environment、grade report |
-| C15-09 | failure corpus | timeout、OOM、missing dependency、GPU/FS mismatch、malicious script |
+| C15-01 | 完了: manifest/schema/version同期 | 4 tool、permission、timeout metadata、v1.0.0 |
+| C15-02 | 完了: execution owner統合 | `ari.clone`、共通execution request、C06 scheduler handoff |
+| C15-03 | 完了: reproduction schema | plan/attempt/run/artifact JSON Schemaとdigest検証 |
+| C15-04 | 完了: sandbox policy | read-only input、private bounded output、secret-free env、network default deny |
+| C15-05 | 完了: state/idempotency | attempt lineage、verified replay、partial artifact、timeout/cancel reap |
+| C15-06 | 完了: PaperBench adapter isolation | exact upstream pin、patch inventory、一時bootstrap、clean interpreter test |
+| C15-07 | 完了: grading evidence | leaf result、judge/raw response、negative control、independence |
+| C15-08 | 完了: artifact handoff | executed tree/log/environment/grade/tar digest |
+| C15-09 | 完了: failure corpus | timeout、cancel、OOM、dependency、GPU/FS、malicious script |
 
 ## 5. 受け入れ基準
 
-- [ ] network/credentialなしを既定とし、必要能力はrubric/policyで明示する。
-- [ ] timeout/cancel後にlocal process、container、scheduler jobを残さない（scheduler cancelは実装済み）。
-- [ ] retryでpartial attemptを成功として誤認せず、attempt lineageを保持する。
-- [ ] input bundleをread-onlyにし、出力差分を別artifactとして保存する。
-- [ ] host/container/module/compiler/hardware/resource identityがrun recordに残る（SLURM module/resource/log digestは実装済み）。
-- [ ] PaperBench patchごとにupstream symbol/versionとconformance testがある。
-- [ ] judge failure、negative control failure、schema mismatchをscoreから欠落させない。
-- [x] `pytest ari-skill-paper-re/tests -q` とtyped HPC consumer fixtureがgreenである（157 passed, 3 skipped）。
+- [x] network/credentialなしを既定とし、必要能力はrubric/policyで明示する。
+- [x] timeout/cancel後にlocal process、container、scheduler jobを残さない。
+- [x] retryでpartial attemptを成功として誤認せず、attempt lineageを保持する。
+- [x] input bundleをread-onlyにし、出力差分を別artifactとして保存する。
+- [x] host/container/module/compiler/hardware/resource identityがrun recordに残る。
+- [x] PaperBench patchごとにupstream symbol/versionとconformance testがある。
+- [x] judge failure、negative control failure、schema mismatchをscoreから欠落させない。
+- [x] paper-re + typed HPC consumer suiteがgreenである（259 passed, 3 skipped）。
 
 ## 6. 削除要件
 
@@ -62,13 +62,13 @@ paper/code bundle/rubricから、隔離された再現環境を構築し、Phase
 
 | ID | 削除対象 | 置換先 | 最早phase | 削除gate |
 |---|---|---|---|---|
-| C15-D1 (SLURM deleted) | `_run_reproduce_local/_docker/_apptainer/_slurm`の重複runner | common execution + C06 scheduler adapter | P3 |SLURM direct sbatch caller 0達成、他substrate parity継続 |
-| C15-D2 |独自code bundle fetch/resolution | `ari.clone` resolver contract | P3 |GitHub/file/https fixture parity、digest一致 |
-| C15-D3 | global `sys.path` vendor injection | isolated package/adapter loader | P3 |clean interpreter test、upstream import conformance |
-| C15-D4 | upstream対応済みmonkey patch / instruction rewrite | pinned upstream APIまたはnarrow adapter | P6 |patch inventoryでobsolete、target version suite green |
-| C15-D5 | `reproduce.sh`のhost unrestricted execution fallback | sandbox policy | P2 |malicious script corpus、explicit unsafe opt-inも禁止/承認化 |
-| C15-D6 | implicit successを返すpartial/idempotent-skip path | attempt state machine | P3 |retry/partial failure tests |
-| C15-D7 | legacy rubric runtime generation responsibility | C14 rubric input | P6 |workflow caller 0、V1 readerはsupport期間保持 |
+| C15-D1 (deleted) | `_run_reproduce_local/_docker/_apptainer/_slurm`の重複runner | common execution + C06 scheduler adapter | P3 |direct symbol/sbatch caller 0、全substrate fixture green |
+| C15-D2 (deleted) |独自code bundle fetch/resolutionと危険なbroad overwrite | `ari.clone` + safe destination policy | P3 |file/registry fixture、digest/symlink/root拒否 |
+| C15-D3 (deleted) | global `sys.path` vendor injection | exact-pin temporary package bootstrap | P3 |clean interpreterでbootstrap rootが`sys.path`に残らない |
+| C15-D4 (retained) | upstream未対応の3 runtime adaptation | pinned narrow adapter | P6 |`paperbench_patches.json`でobsolete、target version suite green。owner=ARI maintainers、pin更新ごとに再評価 |
+| C15-D5 (deleted) | unrestricted host fallback、mutable image/alias、source-mutating salvage | sandbox/immutable image/attempt policy | P2 |malicious/cancel corpus、unsafe opt-inなし |
+| C15-D6 (deleted) | implicit successを返すpartial/idempotent-skip path | attempt state machine | P3 |retry/partial/tamper failure tests |
+| C15-D7 (retained) | legacy rubric V1 reader | C14 V2 input + offline migration | P6 |workflow caller 0、v1.1でsupport usage再評価 |
 
 ### 6.2 削除の検証と復旧
 
@@ -76,4 +76,6 @@ paper/code bundle/rubricから、隔離された再現環境を構築し、Phase
 
 ### 6.3 計画書自身の削除
 
-C15-01〜09、全受け入れ基準、C15-D1〜D7を閉じ、reproduction/sandbox/PaperBench patch inventoryを恒久文書へ移した後に削除する。
+C15-01〜09と受け入れ基準は完了し、恒久仕様は
+[`reproduction_contract.md`](../../reference/reproduction_contract.md)へ移した。
+C15-D4/D7を客観gateで閉じるまで本計画はP6 ledgerとして保持する。

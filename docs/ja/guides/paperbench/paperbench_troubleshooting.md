@@ -174,9 +174,8 @@ ja/zh ミラーは XeLaTeX + Noto CJK font 必須。 `report/setup_fonts.sh`
 ### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
 
 docker daemon が起動していないか到達不能。bridge / `run_reproduce` は
-silent fallback を拒否する。docker を起動するか、`sandbox_kind` を
-別の値 (`local` / `apptainer` / `slurm`) に変えるか、または legacy
-fallback を opt-in する: `export ARI_PHASE1_ALLOW_FALLBACK=1`。
+silent fallback を拒否する。docker を起動するか、review済みの別の
+`sandbox_kind` に変える。legacy host-local fallback は存在しない。
 `sandbox_kind=apptainer` の binary 不在、`sandbox_kind=slurm` の sbatch
 不在 / partition 解決失敗 にも同じ対処。
 

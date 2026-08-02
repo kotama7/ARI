@@ -420,7 +420,7 @@ const zh: Record<string, string> = {
   pb_target_leaves: '目标叶数 (0 = 自动)',
   pb_time_limit: '时间上限 (秒)',
   pb_sandbox: '沙箱',
-  pb_container_image: '容器镜像 (docker://… | path.sif | image:tag — sandbox=docker/apptainer 时必填)',
+  pb_container_image: '不可变镜像 (sha256:image-id | name@sha256:digest | 本地 path.sif)',
   pb_partition: 'SLURM 分区',
   pb_execution_profile_override: '执行配置覆盖 (SLURM 分配)',
   pb_space_sep: '空格分隔',

@@ -182,13 +182,8 @@ The ja/zh mirrors require XeLaTeX + Noto CJK fonts. Run
 The bridge / `run_reproduce` refuses to silently fall back to
 host-local execution when the user explicitly picks a sandbox kind.
 Either start the docker daemon, switch to `sandbox_kind=local` /
-`apptainer` / `slurm`, or opt back into the legacy silent-fallback:
-
-```bash
-export ARI_PHASE1_ALLOW_FALLBACK=1
-```
-
-Same fix applies to `sandbox_kind=apptainer` (binary missing) and
+`apptainer` / `slurm`. A host-local fallback is intentionally unavailable.
+The same fail-closed rule applies to `sandbox_kind=apptainer` (binary missing) and
 `sandbox_kind=slurm` (sbatch missing OR partition not resolved).
 
 ### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
@@ -295,9 +290,9 @@ Two distinct causes (v0.8.0 addresses both):
 1. **No `reproduce.log` in submission** — Stage 2 was skipped, so the
    vendor SimpleJudge safeguard "`reproduce.sh` failed to modify or
    create any files. All result analysis tasks will be graded as 0"
-   fires. v0.8.0 auto-enables `code_only=True` on the judge call in
-   this case (rubric is pruned to Code Development leaves only via
-   vendor `paperbench/rubric/tasks.py:338`).
+   would fire in upstream. ARI instead rejects the missing reproduction
+   record without publishing a score. Run Stage 2, or explicitly choose a
+   code-only study and still create a verified Stage 2 record.
 2. **`paper_audit_mode` accidentally on** — paper-audit mode flips
    the judge's prompt to grade the paper itself rather than a
    submission. Mutually exclusive with `code_only`; the bridge

@@ -640,7 +640,7 @@ result = fetch_code_bundle(
 # Returns: {"populated": True, "dest": ..., "bundle_sha256": ..., "files": ...}
 ```
 
-#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
 **LLM-driven replicator** (v0.7.0+). Sibling of `fetch_code_bundle`:
 both target `repro_sandbox/`. Reads the paper (and the rubric's
@@ -680,9 +680,11 @@ Sandbox priority (`auto`, the default): `slurm` (when sbatch is on
 PATH AND `ARI_SLURM_PARTITION` is set — the same partition BFTS used)
 → `docker` (when daemon usable and not on HPC) → `apptainer` →
 `singularity` → `local`. Override with the `sandbox_kind` argument
-or `ARI_PHASE1_SANDBOX`. The container image is `docker://ubuntu:24.04`
-by default (`ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE` /
-`ARI_PHASE1_SINGULARITY_IMAGE` to customise).
+or `ARI_PHASE1_SANDBOX`. Container sandboxes have no mutable default image.
+Provide a full Docker `sha256:<image-id>` / `name@sha256:<digest>`, a local
+non-symlink SIF, or a digest-pinned remote Apptainer reference through the
+argument or `ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE` (the
+latter also applies to the Singularity runtime).
 
 **SLURM dispatch**: constructs a digest-bound `JobRequestV1`, receives an
 idempotent handle, then observes status/logs and cancels on timeout. The shared
