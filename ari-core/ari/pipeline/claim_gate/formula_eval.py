@@ -21,6 +21,8 @@ name, or undefined op — callers treat None as "could not evaluate").
 from __future__ import annotations
 
 import ast
+import hashlib
+import inspect
 import math
 from typing import Any
 
@@ -226,12 +228,25 @@ def _unsupported_construct(tree: ast.AST) -> "str | None":
     """The first node type the safe evaluator does not implement, or None."""
     supported = (
         ast.Expression, ast.BoolOp, ast.UnaryOp, ast.BinOp, ast.Compare,
-        ast.IfExp, ast.Name, ast.Constant, ast.Tuple, ast.List, ast.Load,
-        ast.And, ast.Or, ast.Not, ast.USub, ast.UAdd,
-        ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod,
+        ast.IfExp, ast.Call, ast.Name, ast.Constant, ast.List, ast.Load,
+        ast.And, ast.Or, ast.Not, ast.USub,
+        ast.Add, ast.Sub, ast.Mult, ast.Div,
         ast.Lt, ast.LtE, ast.Gt, ast.GtE, ast.Eq, ast.NotEq,
     )
     for node in ast.walk(tree):
         if not isinstance(node, supported):
             return type(node).__name__
     return None
+
+
+def evaluator_digest() -> str:
+    """Fingerprint the complete restricted evaluator implementation.
+
+    Metric-contract expressions can influence a blocking decision just as the
+    named numeric formulas can.  Hashing only the public grammar would let a
+    code change silently alter the meaning of an old gate report, so the
+    provenance binds the implementation source as well.
+    """
+
+    source = inspect.getsource(inspect.getmodule(safe_eval)).encode("utf-8")
+    return "sha256:" + hashlib.sha256(source).hexdigest()

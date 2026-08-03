@@ -4,7 +4,7 @@ sources:
     role: schema
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # `execution_profile` reference
@@ -12,13 +12,13 @@ last_verified: 2026-05-25
 The `execution_profile` object sits under `reproduce_contract` in every
 PaperBench rubric (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
 v3). It captures the parallel-execution properties the paper requires:
-SLURM allocation shape, GPU type, memory, NUMA bindings, etc. The
-`ari-skill-paper-re` Phase 2 sbatch dispatcher reads it, fills in any
-caller args left at the default, and emits the matching SLURM flags.
+SLURM allocation shape, GPU type, memory, job-step bindings, etc. The
+`ari-skill-paper-re` runner validates it and compiles allocation fields into
+`ari.hpc.job-request/v1`; the replicator consumes job-step fields while
+writing `reproduce.sh`.
 
-Omit `execution_profile` entirely for legacy single-CPU papers — every
-caller arg defaults to 0/""/False/None and the sbatch invocation reduces
-to the pre-v0.7.2 4-flag form.
+Omit `execution_profile` entirely for single-CPU papers. The scheduler always
+uses the same typed request, clean environment, digest, and handle lifecycle.
 
 ## Full field list
 
@@ -39,15 +39,18 @@ to the pre-v0.7.2 4-flag form.
 | `exclusive` | bool | `--exclusive` | `false` | Essential for faithful performance reproduction |
 | `requested_gpus_per_task` | int | `--gpus-per-task=N` | 0 | |
 | `requested_gpus_per_node` | int | `--gpus-per-node=N` | 0 | |
-| `gpu_type` | str | `--gres=gpu:<type>:N` | `""` | Combined with `requested_gpus_per_task` (or `_per_node`). Auto-dropped when cluster reports no GRES via `sinfo`. |
+| `gpu_type` | str | typed GPU selector | `""` | Combined with exactly one GPU-count field; requests are never silently dropped. |
 | `memory_gb_per_node` | int | `--mem=NG` | 0 | |
 | `memory_gb_per_cpu` | int | `--mem-per-cpu=NG` | 0 | |
 | `constraint` | str | `--constraint=...` | `""` | E.g. `"skylake"`, `"haswell|broadwell"` |
-| `cpu_bind` | str | `--cpu-bind=...` | `""` | E.g. `"cores"`, `"sockets"`, `"rank"` |
-| `mem_bind` | str | `--mem-bind=...` | `""` | E.g. `"local"`, `"nearest"` |
+| `cpu_bind` | str | `srun --cpu-bind=...` in `reproduce.sh` | `""` | Job-step setting, not an `sbatch` directive. |
+| `mem_bind` | str | `srun --mem-bind=...` in `reproduce.sh` | `""` | Job-step setting, not an `sbatch` directive. |
 | `hint` | str | `--hint=...` | `""` | E.g. `"nomultithread"`, `"compute_bound"` |
-| `module_loads` | list[str] | (reproduce.sh prelude) | `[]` | Cluster modules the agent should `module load` before running |
-| `extra_sbatch_args` | list[str] | (concat) | `[]` | Pass-through escape hatch (e.g. `["--account=projX"]`) |
+| `module_loads` | list[str] | generated clean job prelude | `[]` | Loaded explicitly and included in provenance. |
+| `account` | str | `--account=...` | `""` | Typed project/account selector. |
+| `qos` | str | `--qos=...` | `""` | Typed QoS selector. |
+| `reservation` | str | `--reservation=...` | `""` | Typed reservation selector. |
+| `extra_sbatch_args` | list[str] | deprecated reader only | `[]` | New producers must not emit it; the reader only translates account/QoS/reservation/hint. |
 
 ## Auto-resolve precedence
 
@@ -94,24 +97,27 @@ per task, exclusive, Skylake-only):
     "hint": "nomultithread",
 
     "module_loads": ["cuda/12.4", "openmpi/4.1"],
-    "extra_sbatch_args": ["--account=projX"]
+    "account": "projX"
   }
 }
 ```
 
-The resulting `sbatch` invocation:
+The scheduler invokes only `sbatch --parsable --export=NIL` and sends a
+generated script on stdin. Its relevant directives are:
 
 ```
-sbatch --wait \
-  --partition large \
-  --nodes 4 --ntasks 32 --ntasks-per-node 8 \
-  --exclusive \
-  --gpus-per-task 1 --gres=gpu:v100:1 \
-  --mem=256G --cpus-per-task 8 \
-  --constraint=skylake --cpu-bind=cores --hint=nomultithread \
-  --account=projX \
-  --time 02:00:00 \
-  reproduce.sh
+#SBATCH --partition=large
+#SBATCH --nodes=4
+#SBATCH --ntasks=32
+#SBATCH --ntasks-per-node=8
+#SBATCH --exclusive
+#SBATCH --gpus-per-task=v100:1
+#SBATCH --mem=262144M
+#SBATCH --cpus-per-task=8
+#SBATCH --constraint=skylake
+#SBATCH --hint=nomultithread
+#SBATCH --account=projX
+#SBATCH --export=NIL
 ```
 
 ## Single-GPU example

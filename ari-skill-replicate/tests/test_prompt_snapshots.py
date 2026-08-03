@@ -12,6 +12,7 @@ Re-bless intentional edits with::
 
     ARI_UPDATE_PROMPT_SNAPSHOTS=1 pytest ari-skill-replicate/tests/test_prompt_snapshots.py
 """
+
 from __future__ import annotations
 
 import os
@@ -31,8 +32,7 @@ def _assert_snapshot(path: Path, value: bytes) -> None:
         path.write_bytes(value)
         return
     assert path.exists(), (
-        f"missing snapshot golden: {path}\n"
-        f"run with {_UPDATE_ENV}=1 to create it."
+        f"missing snapshot golden: {path}\nrun with {_UPDATE_ENV}=1 to create it."
     )
     assert value == path.read_bytes(), (
         f"snapshot drift for {path}.\n"
@@ -43,9 +43,7 @@ def _assert_snapshot(path: Path, value: bytes) -> None:
 def _discover() -> list[str]:
     """``.md`` prompt basenames, excluding ``README.md`` and non-``.md`` files
     such as ``mpi_aggregate_skel.py`` (a code skeleton, not a prompt)."""
-    return sorted(
-        p.name for p in _PROMPTS_DIR.glob("*.md") if p.name != "README.md"
-    )
+    return sorted(p.name for p in _PROMPTS_DIR.glob("*.md") if p.name != "README.md")
 
 
 _PROMPTS = _discover()

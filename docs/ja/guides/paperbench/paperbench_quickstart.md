@@ -48,7 +48,7 @@ curl -X POST http://localhost:8765/api/paperbench/papers/import \
 レジストリ画面で論文をチェックし、**🚀 PaperBench を実行**。5 step:
 
 1. **論文選択**。
-2. **ルーブリック** — 生成モデル (既定 `gemini-2.5-pro`、two_stage on)。
+2. **ルーブリック** — 生成モデル (既定 `gemini-2.5-pro`、calibrated hierarchical strategy)。
    [ルーブリック仕様](../../reference/rubric_schema.md) 参照。
 3. **再現** — 再現モデルと時間上限。「実行プロファイル上書き」を展開すると
    SLURM 配置 (`--nodes`, `--gpus-per-task`, `--exclusive`, …) を上書き
@@ -143,20 +143,19 @@ python scripts/sc_paper_dogfood.py \
 とは**排他** — paper_audit は論文自体を採点、`--with-reproduction` は
 実行された submission を採点。両立しない。
 
-vendor image を使う場合は先に `scripts/build_pb_images.sh` で
-`pb-env` / `pb-reproducer` をビルドしてから
-`--rollout-container-image pb-env --reproduce-container-image pb-reproducer`
-を渡す。
+vendor image は `scripts/build_pb_images.sh` でビルドする。同スクリプトが
+表示する完全な Docker image ID を Stage 2 に渡す。Stage 1 の Apptainer
+rollout では `apptainer pull pb-env.sif docker-daemon://pb-env:latest` で
+SIF 化し、その絶対パスを渡す。mutable tag 自体は渡さない。
 
 > **fail-loud 前提条件 (v0.8.0)**。
 > 要求した sandbox / GPU リソースがホストで提供できない場合、エラーで
-> 止まり host CPU に黙ってフォールバックしない:
-> - `ARI_PHASE1_ALLOW_FALLBACK=1` — docker / apptainer / sbatch が
->   missing 時の legacy fallback を opt-in
-> - `ARI_SLURM_ALLOW_NO_GRES=1` — GRES 未設定クラスタで `--gres` /
->   `--gpus-*` フラグを silent drop する legacy 挙動を opt-in
+> 止まり host CPU に黙ってフォールバックしない。legacy fallback は削除済み。
 >
-> 両方デフォルト OFF(actionable エラー発生)。
+> GPU/resource要求にsilent drop overrideはない。cluster設定を修正するか
+> 対応partitionを選ぶ。network deny はデフォルト ON であり、非隔離
+> local/SLURM は管理者 attestation または明示的 `network_policy=inherit`
+> を必要とする。
 
 ## HPC クラスタの sbatch ラッパー(例示)
 

@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import subprocess
-import sys
 from pathlib import Path
 from unittest import mock
 
@@ -288,7 +287,7 @@ class TestPipelineStageChain:
             return {"result": "ok"}
 
         with mock.patch("ari.pipeline._run_stage_subprocess", side_effect=fake_subprocess):
-            result = run_pipeline(
+            run_pipeline(
                 self._make_stages(), fake_nodes,
                 {"goal": "test", "topic": "test", "file": ""},
                 tmp_path, "",
@@ -524,6 +523,8 @@ class TestTemplateResolution:
             "ari_root": str(Path(__file__).parents[2]),
             # Pipeline initialises this to "" before the first stage runs
             "vlm_feedback": "",
+            "plot_revision": "0",
+            "previous_figure_batch": "",
             # Surfaced from evaluation_criteria.json by run_pipeline; tests
             # use empty strings (legacy path — transform_data falls back to
             # omitting the scalar best when primary_metric is empty).
@@ -590,8 +591,8 @@ class TestFullPaperPipeline:
         def fake_subprocess(tool, args, config_path, skill_name=""):
             tool_calls.append(tool)
             # Return valid mock results for each stage
-            if tool in ("search_semantic_scholar", "collect_references_iterative"):
-                return {"papers": [{"title": "Test Paper", "id": "123"}]}
+            if tool == "search_papers":
+                return {"records": [{"title": "Test Paper", "source_id": "123"}]}
             elif tool == "nodes_to_science_data":
                 return {"configurations": [], "metric_name": "score"}
             elif tool == "generate_figure":
@@ -647,9 +648,6 @@ class TestFullPaperPipeline:
                         "n_runs": 1, "elapsed_sec": 0.1}
             return {"result": "ok"}
 
-        # Also capture the subprocess env to verify model propagation
-        original_run = subprocess.run
-
         def capture_run(cmd, **kw):
             env = kw.get("env", {})
             subprocess_envs[len(subprocess_envs)] = {
@@ -704,7 +702,7 @@ class TestFullPaperPipeline:
         # gate is warn (never blocks finalize); set ARI_CLAIM_GATE_MODE=strict to
         # make the final gate blocking.
         expected_tools = [
-            "collect_references_iterative",      # search_related_work
+            "search_papers",                     # recorded related work
             "audit_memory",                      # audit_node_provenance (re-hash node artifacts)
             "nodes_to_science_data",             # transform_data
             "generate_ear",
@@ -724,6 +722,11 @@ class TestFullPaperPipeline:
             "claim_evidence_hard_gate",          # S2P B final (warn; strict→blocks)
             "publish_ear",                       # v0.7.0 reordered ahead of inject_code_availability
             "inject_code_availability",          # finalize (depends on final hard gate)
+            "link_paper_claims",                 # exact post-injection TeX
+            "claim_evidence_hard_gate",          # locked deterministic gate
+            "evidence_grounded_semantic_review", # locked advisory review
+            "compile_paper",                     # exact post-injection render
+            "finalize_paper_build",              # immutable PaperBuildV1 lock
             "generate_rubric",                   # ORS Phase: auto-rubric
             "audit_rubric",                      # ORS Phase: rubric quality audit (flags leaves in place)
             "fetch_code_bundle",                 # ORS X: seed sandbox from EAR (no-op if none)
@@ -756,8 +759,6 @@ class TestFullPaperPipeline:
         stages = load_pipeline(cfg_file)
 
         captured_envs = []
-
-        original_subprocess = subprocess.run
 
         def capture_subprocess(cmd, **kw):
             env = kw.get("env", {})
@@ -800,8 +801,6 @@ class TestStderrLogging:
     def test_stderr_logged_at_warning(self, tmp_path, clean_env):
         """Subprocess stderr must be logged at WARNING level."""
         from ari.pipeline import _run_stage_subprocess
-        import logging
-
         def fake_run(cmd, **kw):
             r = mock.MagicMock()
             r.returncode = 0

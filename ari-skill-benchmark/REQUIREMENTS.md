@@ -1,21 +1,30 @@
-# ari-skill-benchmark Requirements
+# ari-skill-benchmark Requirements (v0.2)
 
 ## Overview
 
-MCP Server for experiment result analysis, visualization, and statistical testing.
+MCP server for deterministic experiment summaries, statistical inference, and
+provenance-aware run comparison. Figure rendering belongs exclusively to
+`ari-skill-plot`.
 
 ## MCP Tools
 
-### analyze_results(file_path: str, format: str = "json") -> dict
-Analyzes result files (CSV / JSON / npy) and returns a summary with statistics.
+### analyze_results(request: AnalysisRequestV1) -> AnalysisResultV1
+Analyzes unit-bearing inline samples or digest-bound CSV / JSON / npy sources.
+Missing-value policy, confidence level, pre-registration digest, and artifact
+target are explicit.
 
-### compare_runs(run_ids: list, metric: str) -> dict
-Compares multiple runs on a specified metric. Returns rankings and deltas.
+### statistical_test(request: StatisticalTestRequestV1) -> AnalysisResultV1
+Runs paired/unpaired parametric or rank tests. Returns sample counts, effect
+size, confidence interval, assumptions, p-value, and corrected p-value.
 
-### statistical_test(group_a: list, group_b: list, test: str = "ttest") -> dict
-Runs a statistical significance test between two result groups.
+### compare_runs(request: RunComparisonRequestV1) -> AnalysisResultV1
+Ranks scalar runs while retaining environment compatibility, shared-substrate
+caveats, replicate identity, and provenance differences.
 
 ## Design
 
-- All tools are deterministic (no LLM)
-- Supports CSV, JSON, NumPy array inputs
+- All tools are deterministic and make no LLM calls.
+- Public requests and results use `ari.public.analysis` v1 contracts.
+- Source files are closed-workspace paths bound to expected SHA-256 digests.
+- JSON and CSV artifacts are content addressed by the resolved input digest.
+- `plot` and the matplotlib/pandas dependencies were removed in v0.2.

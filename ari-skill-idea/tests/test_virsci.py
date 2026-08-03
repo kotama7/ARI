@@ -3,7 +3,7 @@ Tests for VirSci MCP adapter (ARI integration).
 """
 import asyncio, json, sys
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -48,29 +48,19 @@ class TestSurvey:
             result = server.survey("topic", max_papers=5)
         assert len(result["papers"]) <= 5
 
-    def test_survey_fallback_on_s2_failure(self):
-        mock_p = MagicMock()
-        mock_p.title = "Fallback Paper"
-        mock_p.abstract = "Abstract."
-        mock_p.year = 2021
-        mock_p.citationCount = 3
-        mock_p.paperId = "fb001"
-        mock_p.url = ""
+    def test_survey_keeps_pinned_provider_on_empty_result(self):
         with patch("server._s2_search", return_value=[]), \
-             patch("server.SemanticScholar") as MockSch:
-            MockSch.return_value.search_paper.return_value = [mock_p]
+             patch("server._s2_citations", return_value=[]):
             import server
             result = server.survey("topic", max_papers=5)
-        assert "papers" in result
-        assert any(p["title"] == "Fallback Paper" for p in result["papers"])
+        assert result["papers"] == []
+        assert result["survey_snapshot"]["provider"] == "semantic-scholar"
 
-    def test_survey_handles_both_sources_unavailable(self):
-        with patch("server._s2_search", return_value=[]), \
-             patch("server.SemanticScholar") as MockSch:
-            MockSch.return_value.search_paper.side_effect = Exception("network error")
+    def test_survey_surfaces_provider_failure(self):
+        with patch("server._s2_search", side_effect=RuntimeError("network error")):
             import server
-            result = server.survey("topic", max_papers=5)
-        assert isinstance(result["papers"], list)
+            with pytest.raises(RuntimeError, match="network error"):
+                server.survey("topic", max_papers=5)
 
     def test_survey_deduplicates_titles(self):
         dupe = MOCK_S2_RAW + [{"title": "Fast Matrix Multiply", "abstract": "dup", "year": 2023, "citationCount": 1, "paperId": "dup1"}]
@@ -215,4 +205,3 @@ class TestGenerateIdeas:
             )
         assert "virsci_integration_status" in result
         assert "VirSci" in result["virsci_integration_status"]
-

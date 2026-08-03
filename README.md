@@ -130,12 +130,12 @@ See [CHANGELOG.md](CHANGELOG.md#v081--structural-refactor-frontend-decomposition
   surface. Drives the dogfood CLI via
   `scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`.
 - **`container_image` end-to-end** — one field flows wizard → API worker →
-  MCP tool → sandbox runner, with `pb-env` / `pb-reproducer` aliases
-  resolved by `scripts/build_pb_images.sh`.
-- **Fail-loud preconditions** — sandbox / GPU mismatches now raise
-  actionable `RuntimeError`s by default (four silent-downgrade sites
-  fixed); legacy fallbacks behind `ARI_PHASE1_ALLOW_FALLBACK=1` and
-  `ARI_SLURM_ALLOW_NO_GRES=1`.
+  MCP tool → sandbox runner. v1.0 admits only a local immutable SIF, a full
+  Docker `sha256:<image-id>`, or a registry URI pinned by digest; mutable
+  `pb-env` / `pb-reproducer` aliases were removed.
+- **Fail-loud preconditions** — sandbox / GPU mismatches raise actionable
+  errors. The former host-local reproduction fallback was removed in v1.0;
+  GPU requests likewise cannot be silently downgraded.
 - **PaperBench env-truth** — Stage 1 prompts now probe-before-scaffold,
   counter-prime the language choice, and inject a host-truthful
   `ADDITIONAL NOTES` block (binaries / GPU / network / Phase-2 isolation).
@@ -396,7 +396,9 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 
 ### Skills (MCP plugin servers)
 
-13 skills total. 12 are registered by default in `workflow.yaml`; 1 additional skill (orchestrator) can be enabled by adding it to the config.
+15 skills total. 13 are registered by default in `workflow.yaml`; 2 additional
+skills (orchestrator and the federated tool registry) are default-off and can be
+enabled explicitly.
 
 In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ari-skill-plot` (a single skill now owns both matplotlib plots and SVG architecture diagrams, both feeding the same VLM review loop), and `ari-skill-review` (rebuttal generation) was deleted — the rubric-driven review score is the final quality signal.
 
@@ -414,7 +416,9 @@ In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ar
 | `ari-skill-benchmark` | CSV/JSON analysis, plotting, statistical tests | ✗ | ✓ |
 | `ari-skill-vlm` | Vision-Language model figure/table review | ✓ | ✓ |
 | `ari-skill-coding` | Code generation + execution + file read + bash | ✗ | ✓ |
+| `ari-skill-replicate` | PaperBench-compatible rubric generation and audit | ✓ | ✓ |
 | `ari-skill-orchestrator` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ | — |
+| `ari-skill-tool-registry` | Immutable federation, scientific admission, and replay for large MCP collections | ✗ | — |
 
 ✗ = no LLM, △ = LLM used in some tools only, ✓ = primary tools use LLM.
 

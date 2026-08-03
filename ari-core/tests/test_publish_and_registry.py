@@ -27,7 +27,7 @@ if str(_TRANSFORM_SRC) not in sys.path:
 
 import curate as curate_mod  # type: ignore  # noqa: E402
 
-from ari.publish import publish, promote, PublishError, PublishRecord  # noqa: E402
+from ari.publish import publish, promote, PublishError  # noqa: E402
 from ari.registry.app import build_app  # noqa: E402
 from ari.registry.auth import TokenStore  # noqa: E402
 from ari.registry.storage import FilesystemStorage  # noqa: E402
@@ -239,7 +239,7 @@ def test_ari_publish_dryrun_env_forces_dry_run(curated_checkpoint, monkeypatch):
 
 
 def test_promote_uses_recorded_backend(curated_checkpoint, tmp_path):
-    rec = publish(
+    publish(
         curated_checkpoint,
         backend="local-tarball",
         metadata={"local_tarball_out": str(tmp_path / "out")},
@@ -280,7 +280,7 @@ def test_ari_clone_ari_scheme_e2e(tmp_path, monkeypatch, curated_checkpoint):
         # Tarball + manifest from the curated checkpoint.
         from ari.publish import _build_tarball  # type: ignore
         tar = tmp_path / "bundle.tar.gz"
-        tar_sha = _build_tarball(curated_checkpoint / "ear_published", tar)
+        _build_tarball(curated_checkpoint / "ear_published", tar)
         manifest = (curated_checkpoint / "ear_published" / "manifest.lock").read_bytes()
 
         # Upload via TestClient-style direct POST.
@@ -345,3 +345,20 @@ def test_storage_owner_protection_on_reupload(tmp_path: Path):
     s.put(b"x", b"{}", visibility="staged", owner="alice")
     with pytest.raises(Exception):
         s.put(b"x", b"{}", visibility="staged", owner="bob")
+
+
+def test_publish_backend_failure_preserves_curated_bundle(curated_checkpoint):
+    curated = curated_checkpoint / "ear_published"
+    before = {
+        path.relative_to(curated).as_posix(): path.read_bytes()
+        for path in curated.rglob("*")
+        if path.is_file()
+    }
+    with pytest.raises(PublishError):
+        publish(curated_checkpoint, backend="missing-backend")
+    after = {
+        path.relative_to(curated).as_posix(): path.read_bytes()
+        for path in curated.rglob("*")
+        if path.is_file()
+    }
+    assert after == before

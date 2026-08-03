@@ -5,10 +5,9 @@ The class keeps thin delegating methods so subclasses + monkeypatches
 don't need to change.
 
 - :func:`available_tools_openai` — convert MCP tool list to the OpenAI
-  function-calling shape, filtering ``_set_current_node`` and any
-  user-supplied suppress set.
+  function-calling shape, filtering any user-supplied suppress set.
 - :func:`execute_tool_calls`     — dispatch a batch of tool calls,
-  routing CoW-guarded memory tools through ``cow_node_id``.
+  attaching the explicit run/node context to every dispatch.
 - :func:`active_tools`           — phase-aware filter over the
   available tool list (post-survey vs post-job-submit vs final
   output, etc.).
@@ -19,27 +18,33 @@ from __future__ import annotations
 import json as _json
 from typing import Any
 
+from ari.call_context import ToolCallContextV1
 from ari.agent.message_utils import _tool_was_called
 from ari.agent.workflow import WorkflowHints
-
-
-# MCP tools that the parent (ari-core) drives itself and must never be
-# exposed to the LLM — otherwise the model could set an arbitrary node
-# id and bypass the memory skill's CoW check.
-_INTERNAL_MCP_TOOLS = frozenset({"_set_current_node"})
 
 
 def available_tools_openai(
     mcp: Any,
     suppress: set | None = None,
     phase: str | None = None,
+    context: ToolCallContextV1 | None = None,
 ) -> list[dict]:
     """Return the MCP tool list in OpenAI function-calling format.
 
     ``suppress`` excludes tools by name (e.g. already-called once-only
     tools); ``phase`` filters to tools whose declared phase matches.
     """
-    suppress = (suppress or set()) | _INTERNAL_MCP_TOOLS
+    suppress = suppress or set()
+    try:
+        listed_tools = mcp.list_tools(phase=phase, context=context)
+    except TypeError as context_error:
+        # Compatibility for pre-context clients and lightweight test doubles.
+        # Only retry a callable that explicitly rejects the new keyword; do
+        # not hide TypeError raised by the implementation itself.
+        message = str(context_error)
+        if "context" not in message or "unexpected keyword" not in message:
+            raise
+        listed_tools = mcp.list_tools(phase=phase)
     return [
         {
             "type": "function",
@@ -49,7 +54,7 @@ def available_tools_openai(
                 "parameters": t.get("inputSchema") or t.get("parameters") or {"type": "object", "properties": {}},
             },
         }
-        for t in mcp.list_tools(phase=phase)
+        for t in listed_tools
         if t.get("name", "") not in suppress
     ]
 
@@ -57,14 +62,12 @@ def available_tools_openai(
 def execute_tool_calls(
     mcp: Any,
     tool_calls: list[dict],
-    node_id: str | None = None,
+    context: ToolCallContextV1 | None = None,
 ) -> list[dict]:
     """Execute a batch of tool calls and return results.
 
-    When *node_id* is provided and the call targets a CoW-guarded
-    memory tool, ``cow_node_id`` is forwarded to ``mcp.call_tool`` so
-    the ``(_set_current_node, write)`` pair is locked atomically —
-    prevents the env-var race when ``max_parallel_nodes > 1``.
+    ``context`` is forwarded unchanged. The MCP control plane uses manifest
+    policy to require and sign it only for tools that need run/node authority.
     """
     results = []
     for tc in tool_calls:
@@ -74,10 +77,7 @@ def execute_tool_calls(
             args = _json.loads(func.get("arguments", "{}"))
         except _json.JSONDecodeError:
             args = {}
-        if node_id and name in mcp._COW_TOOLS:
-            result = mcp.call_tool(name, args, cow_node_id=node_id)
-        else:
-            result = mcp.call_tool(name, args)
+        result = mcp.call_tool(name, args, context=context)
         results.append({"tool_call_id": tc.get("id", ""), "name": name, "result": result})
     return results
 

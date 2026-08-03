@@ -425,22 +425,9 @@ def run(
             "[cli.run] RQGM mode active (ari_rqgm, source=%s): recorded "
             "rqgm_state.json", _rqgm_mode_source,
         )
-    # auto-migrate v0.5.x sources on first launch.
-    try:
-        from ari.memory.auto_migrate import maybe_auto_migrate
-        _am = maybe_auto_migrate(checkpoint_dir)
-        if _am.get("ran") and _am.get("imported"):
-            logging.getLogger(__name__).info(
-                "v0.5.x auto-migration: %s", _am["imported"]
-            )
-    except Exception as _amerr:
-        logging.getLogger(__name__).warning(
-            "auto-migrate skipped: %s", _amerr
-        )
     # — on-exit backup.
     try:
         import atexit as _atexit_bk
-        from ari.memory_cli import _do_backup as _do_bk
         _atexit_bk.register(lambda _p=checkpoint_dir: _safe_backup(_p))
     except Exception:
         pass
@@ -632,13 +619,7 @@ def resume(
         console.print("[yellow]No pending nodes.[/yellow]")
         raise typer.Exit(0)
 
-    #+ — auto-migrate v0.5.x sources
-    # and auto-restore from memory_backup.jsonl.gz when Letta is empty.
-    try:
-        from ari.memory.auto_migrate import maybe_auto_migrate
-        maybe_auto_migrate(checkpoint_dir)
-    except Exception as _amerr:
-        logging.getLogger(__name__).warning("auto-migrate skipped: %s", _amerr)
+    # Restore only the verified v1 portable backup when Letta is empty.
     if os.environ.get("ARI_MEMORY_AUTO_RESTORE", "true").lower() != "false":
         try:
             from ari.memory_cli import _do_restore, _backup_path

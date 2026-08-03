@@ -65,11 +65,9 @@ refine 後の論文で再度実行)、hard gate と semantic review の双方を
 レビューにスレッドし、claim anchor を保持したまま suggested revision を適用し
 (`paper_refine`)、refine 後の `.tex` を再コンパイルします (`render_paper`)。
 動作は `ari-core/config/workflow.yaml` の `claim_gate_policy` ブロックで制御され、
-**既定で `warn` (report-only) モードが ON** です — gate は検出結果を記録するだけで
-ビルドをブロックしません。`claim_gate_policy.mode: strict` (または
-`ARI_CLAIM_GATE_MODE=strict`) を設定すると、**FINAL** gate がブロッキングエラー
-(数値不一致、未解決オペランド、エビデンス欠落) のときに `finalize_paper` を
-ブロックします。
+既定は`warn`です。**FINAL** warn gateは客観的integrity findingだけをblockし、
+他はreport-onlyです。`strict`では数値不一致、未解決operand、evidence欠落などの
+設定済みfindingもblockします。draftと`off`はblockしません。
 
 ループの誠実さは 4 つの堅牢化が end-to-end で支えます:
 

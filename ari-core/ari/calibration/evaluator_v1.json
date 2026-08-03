@@ -1,0 +1,168 @@
+{
+  "schema_version": "ari.evaluator-calibration/v1",
+  "provenance": {
+    "curation": "human-authored boundary cases derived from the evaluator contract",
+    "last_reviewed": "2026-08-02",
+    "semantic_labels_are_advisory": true
+  },
+  "hard_gate_cases": [
+    {
+      "id": "numeric-exact-negative-control",
+      "category": "numeric",
+      "mutation": "none",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "passed",
+      "expected_should_block": false,
+      "expected_finding_types": [],
+      "negative_control": true
+    },
+    {
+      "id": "allowed-unit-conversion-negative-control",
+      "category": "unit",
+      "mutation": "none",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "passed",
+      "expected_should_block": false,
+      "expected_finding_types": [],
+      "negative_control": true
+    },
+    {
+      "id": "numeric-mismatch",
+      "category": "numeric",
+      "mutation": "reported-value-mismatch",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["numeric_mismatch"],
+      "negative_control": false
+    },
+    {
+      "id": "unknown-formula",
+      "category": "formula",
+      "mutation": "unknown-formula",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["unknown_formula"],
+      "negative_control": false
+    },
+    {
+      "id": "unknown-unit",
+      "category": "unit",
+      "mutation": "unknown-unit",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["unit_mismatch"],
+      "negative_control": false
+    },
+    {
+      "id": "cross-run-operand",
+      "category": "evidence",
+      "mutation": "cross-run-operand",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["cross_run_evidence"],
+      "negative_control": false
+    },
+    {
+      "id": "unknown-node",
+      "category": "evidence",
+      "mutation": "unknown-node",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["cross_run_or_unknown_node"],
+      "negative_control": false
+    },
+    {
+      "id": "missing-evidence",
+      "category": "evidence",
+      "mutation": "missing-evidence",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["missing_evidence"],
+      "negative_control": false
+    },
+    {
+      "id": "untyped-artifact-reference",
+      "category": "evidence",
+      "mutation": "untyped-artifact",
+      "artifact_fixture": false,
+      "policy_mode": "strict",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["artifact_reference_untyped"],
+      "negative_control": false
+    },
+    {
+      "id": "tampered-artifact",
+      "category": "evidence",
+      "mutation": "tamper-artifact",
+      "artifact_fixture": true,
+      "policy_mode": "warn",
+      "expected_status": "failed",
+      "expected_should_block": true,
+      "expected_finding_types": ["artifact_digest_mismatch"],
+      "negative_control": false
+    },
+    {
+      "id": "off-policy-does-not-block",
+      "category": "policy",
+      "mutation": "tamper-artifact",
+      "artifact_fixture": true,
+      "policy_mode": "off",
+      "expected_status": "failed",
+      "expected_should_block": false,
+      "expected_finding_types": ["artifact_digest_mismatch"],
+      "negative_control": true
+    }
+  ],
+  "semantic_cases": [
+    {
+      "id": "bounded-observation-negative-control",
+      "evidence_summary": "On the recorded fixture, latency was 100 ms.",
+      "paper_text": "On the recorded fixture, latency was 100 ms.",
+      "expected_finding_types": [],
+      "negative_control": true
+    },
+    {
+      "id": "explicit-limitation-negative-control",
+      "evidence_summary": "Only one simulator configuration was measured.",
+      "paper_text": "The result is limited to the measured simulator configuration.",
+      "expected_finding_types": [],
+      "negative_control": true
+    },
+    {
+      "id": "universal-generalization",
+      "evidence_summary": "One simulator configuration improved in one run.",
+      "paper_text": "The method improves every simulator and physical device.",
+      "expected_finding_types": ["overgeneralization"],
+      "negative_control": false
+    },
+    {
+      "id": "unsupported-causal-claim",
+      "evidence_summary": "The experiment recorded an association only.",
+      "paper_text": "The intervention proves that the mechanism causes the effect.",
+      "expected_finding_types": ["unsupported_claim"],
+      "negative_control": false
+    },
+    {
+      "id": "magnitude-overclaim",
+      "evidence_summary": "The measured improvement was 2 percent.",
+      "paper_text": "The method delivers a dramatic order-of-magnitude improvement.",
+      "expected_finding_types": ["overclaim"],
+      "negative_control": false
+    }
+  ]
+}

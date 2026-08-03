@@ -5,7 +5,6 @@ import { ErrorState } from '../common';
 
 interface RubricConfig {
   model: string;
-  two_stage: boolean;
   target_leaf_count: number;
   temperature: number;
 }
@@ -63,7 +62,6 @@ export function PaperBenchWizard() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [rubric, setRubric] = useState<RubricConfig>({
     model: 'gemini/gemini-2.5-pro',
-    two_stage: true,
     target_leaf_count: 0,
     temperature: 0.0,
   });
@@ -181,14 +179,6 @@ export function PaperBenchWizard() {
           <label>
             {t('pb_model')}
             <input value={rubric.model} onChange={(e) => setRubric({ ...rubric, model: e.target.value })} />
-          </label>{' '}
-          <label>
-            <input
-              type="checkbox"
-              checked={rubric.two_stage}
-              onChange={(e) => setRubric({ ...rubric, two_stage: e.target.checked })}
-            />{' '}
-            {t('pb_two_stage')}
           </label>{' '}
           <label>
             {t('pb_target_leaves')}
@@ -363,7 +353,7 @@ export function PaperBenchWizard() {
               {t('pb_summary_papers')}: {selectedIds.size}
             </li>
             <li>
-              {t('pb_summary_rubric')}: {rubric.model} two_stage={String(rubric.two_stage)}
+              {t('pb_summary_rubric')}: {rubric.model}, hierarchical-v2
             </li>
             <li>
               {t('pb_summary_reproduce')}: {reproduce.model}, sandbox={reproduce.sandbox_kind}

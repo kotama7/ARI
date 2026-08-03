@@ -730,7 +730,9 @@ def test_pi1_draft_overclaim_flagged_by_the_existing_gate(tmp_path):
                if s["injection_id"] == "eval_pi1_draft_overclaim")
     _inj.apply_injection(pi1, tmp_path)
     report = _inj.gate_detection_report(tmp_path, phase="final")
-    types = {e.get("type") for e in (report.get("errors") or [])}
+    types = {
+        e.get("type") for e in (report.get("blocking_findings") or [])
+    }
     assert "uncovered_numeric" in types and "missing_evidence" in types
     assert report.get("should_block") is True
 

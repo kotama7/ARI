@@ -6,10 +6,10 @@ Covers (subtask 043 §8 item 9 / §13 acceptance):
       an allowlisted one is suppressed (`known`);
   (b) ``ari-core/ari/agent/loop.py`` yields ZERO candidates (negative control --
       its system prompt is externalized to ``agent/system.md``);
-  (c) a repo-level smoke asserts the checker reproduces the Subtask 036 census
-      high-value targets (evaluator/paper/plot/vlm/transform/web), every finding
-      id is unique (no name-collision), and the seeded allowlist yields zero
-      net-new debt under ``--fail-on-regression``;
+  (c) a repo-level smoke asserts the checker reproduces the one remaining
+      reviewed inline prompt, every finding id is unique (no name-collision),
+      and the seeded allowlist yields zero net-new debt under
+      ``--fail-on-regression``;
   (d) ``--with-snapshots`` folds Gate 10's pass/fail into the report and a
       missing Gate 10 script is an environment error (exit 2).
 
@@ -30,20 +30,16 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = SCRIPTS_DIR.parent
 CHECKER = SCRIPTS_DIR / "check_prompts.py"
 
-# High-value 036 targets the inventory slice must reproduce (file, line).
-# NOTE: the evaluator ``_METRIC_EXTRACT_SYS`` / ``_SEMANTIC_SYSTEM_PROMPT`` rows
-# were EXTRACTED to ``ari-skill-evaluator/src/prompts/*.md`` by subtask 040, and
-# the three paper rows (``academic_reviewer`` :542, ``fill_in_writer`` :1487,
-# ``global_coherence`` :2544) were EXTRACTED to ``ari-skill-paper/src/prompts/*.md``
-# by subtask 041 — all now loaded via a skill-local loader, no longer inline, so
-# they are intentionally absent here (the census slice shrinks as 039/040/041
-# externalize prompts). The remaining rows are inline prompts owned by sibling
-# subtasks (plot/vlm/transform/web).
-CENSUS_TARGETS = {
-    ("ari-skill-plot/src/server.py", 566),        # viz_expert
-    ("ari-skill-vlm/src/server.py", 97),          # figure_reviewer
-    ("ari-skill-transform/src/server.py", 843),   # node_report_analyst
-    ("ari-skill-web/src/server.py", 505),         # query_librarian (_QUERY_SYSTEM)
+# The historical evaluator/paper/plot/vlm/transform/web census has been
+# externalized. This reviewed duplicate is the sole remaining inline baseline.
+INLINE_BASELINE_TARGETS = {
+    ("ari-skill-paper/src/review_engine.py", "system"),
+}
+EXTERNALIZED_TARGETS = {
+    ("ari-skill-plot/src/server.py", "system_prompt"),
+    ("ari-skill-vlm/src/server.py", None),
+    ("ari-skill-transform/src/server.py", "analysis_prompt"),
+    ("ari-skill-web/src/server.py", "_QUERY_SYSTEM"),
 }
 
 _SYNTH_PROMPT = (
@@ -135,17 +131,52 @@ def test_agent_loop_yields_no_candidate() -> None:
 # -- (c) repo smoke ---------------------------------------------------------
 
 
-def test_repo_smoke_reproduces_census_and_unique_ids() -> None:
+def test_repo_smoke_matches_remaining_baseline_and_unique_ids() -> None:
     code, report = run_checker()  # default allowlist, default scope
-    found = {(f["file"], f["line"]) for f in report["findings"]}
-    missing = CENSUS_TARGETS - found
-    assert not missing, f"census targets not detected: {sorted(missing)}"
+    found = {(f["file"], f["name"]) for f in report["findings"]}
+    assert found == INLINE_BASELINE_TARGETS
+    assert found.isdisjoint(EXTERNALIZED_TARGETS)
     ids = [f["id"] for f in report["findings"]]
     assert len(ids) == len(set(ids)), "duplicate finding ids"
     # ari-core/ari contributes nothing (prompts externalized).
     assert not any(f["file"].startswith("ari-core/ari/") for f in report["findings"])
     assert report["summary"]["new"] == 0  # seeded allowlist covers the tree
     assert code == 0
+
+
+def test_baseline_update_preserves_review_when_anonymous_prompt_line_moves():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("cp_line_drift", CHECKER)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    candidate = mod.Candidate(
+        file="ari-skill-fixture/src/server.py",
+        line=90,
+        name="system_prompt",
+        lines=8,
+        chars=400,
+        markers=["role", "json"],
+        key="ari-skill-fixture/src/server.py#L90",
+    )
+    previous = {
+        "ari-skill-fixture/src/server.py#L20": {
+            "file": candidate.file,
+            "line": 20,
+            "name": candidate.name,
+            "lines": candidate.lines,
+            "chars": candidate.chars,
+            "markers": candidate.markers,
+            "verdict": "EXTRACT_TEMPLATE",
+            "prompt_id": "skill.fixture.reviewer",
+        }
+    }
+
+    assert mod._prior_verdict_for(candidate, previous) == (
+        "EXTRACT_TEMPLATE",
+        "skill.fixture.reviewer",
+    )
 
 
 def test_repo_smoke_seeded_allowlist_has_zero_new() -> None:

@@ -1,0 +1,68 @@
+schema_version: 1
+name: vlm-skill
+package: ari-skill-vlm
+version: 0.2.0
+display_name: Review figures and tables
+description: Artifact-bound criteria-versioned visual review of scientific figures and tables.
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env:
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_VLM_MODEL
+  - ARI_MODEL_VLM_PROVIDER
+  - ARI_MODEL_VLM_REVISION
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - OLLAMA_HOST
+  - LLM_API_BASE
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+  - VLM_MODEL
+credential_scopes:
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
+tool_defaults:
+  phases: [paper, reproduce]
+  side_effects: read-only
+  determinism: stochastic
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, model, network]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: review_figure
+    capability_ref: ari.multimodal.figure.review
+  - name: review_figures_all
+    capability_ref: ari.multimodal.figures.review
+  - name: review_table
+    capability_ref: ari.multimodal.table.review

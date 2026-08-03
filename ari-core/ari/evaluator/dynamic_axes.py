@@ -471,12 +471,22 @@ def build_axes_for_run(
 
     plan_text = ""
     if idea_data and isinstance(idea_data, dict):
-        ideas = idea_data.get("ideas") or []
-        if ideas and isinstance(ideas[0], dict):
+        if idea_data.get("research_contract") is not None:
+            from ari.research_contract import parse_research_contract_document
+
+            contract = parse_research_contract_document(idea_data)
+            _plan = contract.experiment_plan if contract is not None else ""
+            plan_text = _plan
+        else:
+            ideas = idea_data.get("ideas") or []
+            _plan = (
+                ideas[0].get("experiment_plan")
+                if ideas and isinstance(ideas[0], dict)
+                else ""
+            ) or ""
             # Newer generate_ideas variants emit a structured plan
             # ({"Design Steps": [...], "Ideal Outcomes": ...}); flatten to
             # text so the regex-based plan_to_axes still finds keywords.
-            _plan = ideas[0].get("experiment_plan") or ""
             plan_text = _plan if isinstance(_plan, str) else json.dumps(
                 _plan, ensure_ascii=False, default=str
             )

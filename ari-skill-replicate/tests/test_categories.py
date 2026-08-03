@@ -14,6 +14,7 @@ import categories as C
 
 # ── normalize_task_category ─────────────────────────────────────
 
+
 def test_task_category_passthrough():
     for ok in C.VALID_TASK_CATEGORIES:
         v, why = C.normalize_task_category(ok)
@@ -40,6 +41,7 @@ def test_task_category_unknown_falls_back():
 
 # ── normalize_finegrained ───────────────────────────────────────
 
+
 def test_finegrained_passthrough():
     for ok in C.VALID_FINEGRAINED_TASK_CATEGORIES:
         v, why = C.normalize_finegrained(ok, "Code Development")
@@ -64,7 +66,9 @@ def test_finegrained_known_synonyms():
     assert v == "Logging, Analysis & Presentation"
     assert why and "synonym" in why
 
-    v, why = C.normalize_finegrained("Result Analysis Implementation", "Result Analysis")
+    v, why = C.normalize_finegrained(
+        "Result Analysis Implementation", "Result Analysis"
+    )
     assert v == "Method Implementation"
     assert why and "synonym" in why
 
@@ -96,6 +100,7 @@ def test_finegrained_unknown_no_task_category():
 
 # ── normalize_rubric_node (envelope walk) ───────────────────────
 
+
 def _node(tc, fg, sub=None):
     return {
         "id": "n",
@@ -108,10 +113,14 @@ def _node(tc, fg, sub=None):
 
 
 def test_walk_replaces_known_invalid_in_tree():
-    bad = _node("Result Analysis", "Result Visualization", sub=[
-        _node("Code Development", "Result Analysis Implementation"),
-        _node("Code Development", "Method Implementation"),  # already valid
-    ])
+    bad = _node(
+        "Result Analysis",
+        "Result Visualization",
+        sub=[
+            _node("Code Development", "Result Analysis Implementation"),
+            _node("Code Development", "Method Implementation"),  # already valid
+        ],
+    )
     warns = C.normalize_rubric_node(bad)
     # Top-level got clamped
     assert bad["finegrained_task_category"] == "Logging, Analysis & Presentation"
@@ -124,9 +133,13 @@ def test_walk_replaces_known_invalid_in_tree():
 
 
 def test_walk_passthrough_when_all_valid():
-    good = _node("Code Development", "Method Implementation", sub=[
-        _node("Code Execution", "Experimental Setup"),
-    ])
+    good = _node(
+        "Code Development",
+        "Method Implementation",
+        sub=[
+            _node("Code Execution", "Experimental Setup"),
+        ],
+    )
     warns = C.normalize_rubric_node(good)
     assert warns == []
     assert good["finegrained_task_category"] == "Method Implementation"
@@ -148,9 +161,11 @@ def test_walk_handles_missing_categories():
 
 # ── parity with PaperBench upstream ─────────────────────────────
 
+
 def test_allow_list_matches_paperbench_upstream():
     """Guard against drift if the vendored PaperBench bumps its vocab."""
     from pathlib import Path
+
     # PaperBench is vendored under the sibling skill (ari-skill-paper-re).
     repo_root = Path(__file__).resolve().parents[2]
     pb = (
@@ -166,9 +181,14 @@ def test_allow_list_matches_paperbench_upstream():
     )
     if not pb.exists():
         import pytest
+
         pytest.skip(f"vendored PaperBench not present at {pb}")
     src = pb.read_text()
     for cat in C.VALID_FINEGRAINED_TASK_CATEGORIES:
-        assert f'"{cat}"' in src, f"finegrained category {cat!r} drifted from PaperBench upstream"
+        assert f'"{cat}"' in src, (
+            f"finegrained category {cat!r} drifted from PaperBench upstream"
+        )
     for cat in C.VALID_TASK_CATEGORIES:
-        assert f'"{cat}"' in src, f"task_category {cat!r} drifted from PaperBench upstream"
+        assert f'"{cat}"' in src, (
+            f"task_category {cat!r} drifted from PaperBench upstream"
+        )

@@ -1,0 +1,190 @@
+{
+  "$defs": {
+    "ReproductionPolicyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "credential_policy": {
+          "const": "none",
+          "default": "none",
+          "title": "Credential Policy",
+          "type": "string"
+        },
+        "input_policy": {
+          "const": "content-addressed-read-only",
+          "default": "content-addressed-read-only",
+          "title": "Input Policy",
+          "type": "string"
+        },
+        "network": {
+          "default": "deny",
+          "enum": [
+            "deny",
+            "inherit"
+          ],
+          "title": "Network",
+          "type": "string"
+        },
+        "network_enforcement": {
+          "enum": [
+            "container-namespace",
+            "administrator-attested",
+            "unverified"
+          ],
+          "title": "Network Enforcement",
+          "type": "string"
+        },
+        "output_policy": {
+          "const": "private-attempt-diff",
+          "default": "private-attempt-diff",
+          "title": "Output Policy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "network_enforcement"
+      ],
+      "title": "ReproductionPolicyV1",
+      "type": "object"
+    },
+    "SandboxImageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "reference": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "docker",
+            "apptainer",
+            "singularity"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "reference",
+        "digest"
+      ],
+      "title": "SandboxImageV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "argv": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Argv",
+      "type": "array"
+    },
+    "expected_artifacts": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Expected Artifacts",
+      "type": "array"
+    },
+    "image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SandboxImageV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "input_tree_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Input Tree Digest",
+      "type": "string"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Plan Digest",
+      "type": "string"
+    },
+    "policy": {
+      "$ref": "#/$defs/ReproductionPolicyV1"
+    },
+    "resources": {
+      "additionalProperties": true,
+      "title": "Resources",
+      "type": "object"
+    },
+    "rubric_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Rubric Digest",
+      "type": "string"
+    },
+    "rubric_schema_version": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Rubric Schema Version",
+      "type": "string"
+    },
+    "sandbox": {
+      "enum": [
+        "local",
+        "docker",
+        "apptainer",
+        "singularity",
+        "slurm"
+      ],
+      "title": "Sandbox",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.reproduction-plan/v1",
+      "default": "ari.reproduction-plan/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "script_digest": {
+      "pattern": "^sha256:[a-f0-9]{64}$",
+      "title": "Script Digest",
+      "type": "string"
+    },
+    "source_workspace": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Source Workspace",
+      "type": "string"
+    },
+    "timeout_seconds": {
+      "maximum": 43200,
+      "minimum": 1,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "rubric_schema_version",
+    "rubric_digest",
+    "source_workspace",
+    "input_tree_digest",
+    "script_digest",
+    "argv",
+    "sandbox",
+    "timeout_seconds",
+    "policy",
+    "plan_digest"
+  ],
+  "title": "ReproductionPlanV1",
+  "type": "object"
+}

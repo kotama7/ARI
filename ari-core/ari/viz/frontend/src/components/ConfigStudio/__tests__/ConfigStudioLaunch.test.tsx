@@ -256,6 +256,12 @@ async function openReview() {
   fireEvent.click(screen.getByRole('button', { name: 'Resolve & validate' }));
   await waitFor(() => expect(resolveMock).toHaveBeenCalledWith(DRAFT_ID, undefined));
   expect(validateMock).toHaveBeenCalledWith(DRAFT_ID, undefined);
+  // The calls being issued does not mean React Query has committed their
+  // resolved state. Wait for the shared review surface so assertions below
+  // are independent of scheduler timing across Vitest/React versions.
+  await waitFor(() =>
+    expect(screen.getByText('Immutable launch summary')).toBeInTheDocument(),
+  );
 }
 
 // crypto.randomUUID is stubbed for deterministic key assertions (one key

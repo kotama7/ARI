@@ -49,7 +49,6 @@ export interface OrsSettings {
   judge_model: string;
   rubric_gen_temperature: number;
   rubric_gen_target_leaves: number;     // 0 = auto
-  rubric_gen_two_stage: boolean;        // skeleton + parallel subtrees
   judge_n_runs: number;                 // PaperBench paper §4.1: single-pass; ari default >1 is independent variance reduction
   phase1_max_runtime_sec: number;       // ARI's reproduce.sh wall cap (ors_run_reproduce)
   phase1_sandbox_kind: 'auto' | 'docker' | 'apptainer' | 'singularity' | 'local';
@@ -67,7 +66,6 @@ export const ORS_DEFAULTS: OrsSettings = {
   judge_model: 'gpt-4o-2024-11-20',
   rubric_gen_temperature: 0.0,
   rubric_gen_target_leaves: 0,
-  rubric_gen_two_stage: true,
   judge_n_runs: 1,                      // PaperBench parity (paper §4.1 single-pass)
   phase1_max_runtime_sec: 43200,        // 12 h, matches paper §2.2 reproduce.sh cap
   phase1_sandbox_kind: 'auto',
@@ -908,23 +906,6 @@ export function StepResources({
                     }
                   />
                 </div>
-              </div>
-              <div style={{ marginTop: 8, display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                <input
-                  id="ors-rubric-two-stage"
-                  type="checkbox"
-                  checked={ors.rubric_gen_two_stage}
-                  onChange={(e) =>
-                    setOrs({ ...ors, rubric_gen_two_stage: e.target.checked })
-                  }
-                  style={{ marginTop: 3 }}
-                />
-                <label htmlFor="ors-rubric-two-stage" style={{ fontSize: '.75rem', lineHeight: 1.4 }}>
-                  <div style={{ fontWeight: 500 }}>{t('ors_rubric_two_stage')}</div>
-                  <div style={{ color: 'var(--muted)', fontSize: '.7rem', marginTop: 2 }}>
-                    {t('ors_rubric_two_stage_help')}
-                  </div>
-                </label>
               </div>
             </div>
 

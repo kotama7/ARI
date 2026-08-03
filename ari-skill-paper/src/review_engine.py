@@ -59,9 +59,7 @@ def build_system_prompt(rubric: Rubric) -> str:
     """Build the reviewer system prompt from the rubric schema."""
     dim_lines = []
     for d in rubric.score_dimensions:
-        dim_lines.append(
-            f"  {d.name}: int {d.scale[0]}-{d.scale[1]} — {d.description}"
-        )
+        dim_lines.append(f"  {d.name}: int {d.scale[0]}-{d.scale[1]} — {d.description}")
     text_lines = []
     for s in rubric.text_sections:
         req = " (required)" if s.required else " (optional)"
@@ -95,11 +93,7 @@ def _truncate_paper(text: str, max_chars: int = 50000) -> str:
         return text
     keep_head = int(max_chars * 0.8)
     keep_tail = max_chars - keep_head
-    return (
-        text[:keep_head]
-        + "\n\n[... middle truncated ...]\n\n"
-        + text[-keep_tail:]
-    )
+    return text[:keep_head] + "\n\n[... middle truncated ...]\n\n" + text[-keep_tail:]
 
 
 def build_user_prompt(
@@ -256,9 +250,7 @@ def fewshot_block(examples: list[FewshotExample], rubric: Rubric | None = None) 
     for i, ex in enumerate(examples, start=1):
         parts.append(f"=== EXAMPLE REVIEW #{i} (paper: {ex.paper_id}) ===")
         if ex.paper_text:
-            parts.append(
-                "Paper excerpt:\n" + ex.paper_text[:4000]
-            )
+            parts.append("Paper excerpt:\n" + ex.paper_text[:4000])
         parts.append(
             "Completed review JSON:\n"
             + json.dumps(ex.review_json, ensure_ascii=False, indent=2)
@@ -279,9 +271,7 @@ def decide(rubric: Rubric, scores: dict) -> str:
     # categorical: map by quantile into options
     opts = rubric.decision.options
     # Scale value into [0, 1] relative to threshold_dimension scale
-    dim_obj = next(
-        (d for d in rubric.score_dimensions if d.name == dim), None
-    )
+    dim_obj = next((d for d in rubric.score_dimensions if d.name == dim), None)
     if not dim_obj:
         return opts[len(opts) // 2]
     lo, hi = dim_obj.scale
@@ -370,6 +360,7 @@ async def run_single_review(
     raw = await llm(messages, temp, model)
     draft = _extract_json(raw)
     reflection_trace = [draft]
+    raw_responses = [raw]
 
     for i in range(max(0, reflections)):
         critique = (
@@ -383,6 +374,7 @@ async def run_single_review(
         ]
         try:
             raw2 = await llm(messages2, temp, model)
+            raw_responses.append(raw2)
             improved = _extract_json(raw2)
             if improved:
                 draft = improved
@@ -393,6 +385,7 @@ async def run_single_review(
 
     norm = normalize_review(rubric, draft)
     norm["reflection_trace"] = reflection_trace
+    norm["_raw_responses"] = raw_responses
     return norm
 
 
@@ -447,10 +440,7 @@ async def run_meta_review(
         f"(same score dimensions, decision field, strengths/weaknesses summary)."
     )
     reviews_blob = json.dumps(
-        [
-            {k: v for k, v in r.items() if k != "reflection_trace"}
-            for r in reviews
-        ],
+        [{k: v for k, v in r.items() if k != "reflection_trace"} for r in reviews],
         ensure_ascii=False,
         indent=2,
     )
@@ -466,44 +456,18 @@ async def run_meta_review(
         return {"error": f"meta_review failed: {e}", "reviews": reviews}
     raw_json = _extract_json(raw)
     meta = normalize_review(rubric, raw_json) if raw_json else {}
-    meta["meta_review_note"] = (
-        f"aggregated from {len(reviews)} reviews by Area Chair"
-    )
+    meta["meta_review_note"] = f"aggregated from {len(reviews)} reviews by Area Chair"
+    meta["_raw_response"] = raw
     return meta
 
 
 def resolve_rubric(rubric_id: str | None = None) -> Rubric:
-    """Resolve the rubric to use: explicit arg > ARI_RUBRIC env > 'neurips'.
+    """Load an explicitly versioned rubric without environment fallback."""
 
-    On failure (unknown rubric id), falls back to 'neurips' — the default
-    rubric that is guaranteed to ship with the repo. The legacy rubric was
-    removed in v0.6.0.
-
-    ``ARI_FEWSHOT_MODE`` is applied here too, for the same reason ``ARI_RUBRIC``
-    is: this is the one place every reviewer entry point converges on. Without
-    it the mode was readable only from the rubric YAML, so ``ari paper
-    --fewshot-mode dynamic`` (and the GUI field behind it) set an environment
-    variable no one read. Note what the mode does and does not buy today:
-    dynamic OpenReview retrieval is still a placeholder that returns the static
-    examples, so the reviews are unchanged — but ``ARI_STRICT_DYNAMIC=1`` only
-    becomes reachable in dynamic mode, and that combination does change
-    behaviour (missing ``openreview-py`` raises instead of falling back).
-    """
-    rid = rubric_id or os.environ.get("ARI_RUBRIC") or "neurips"
-    try:
-        rubric = load_rubric(rid)
-    except RubricError:
-        if rid == "neurips":
-            raise
-        log.warning("rubric %s not found; falling back to neurips", rid)
-        rubric = load_rubric("neurips")
-    env_mode = os.environ.get("ARI_FEWSHOT_MODE", "").strip().lower()
-    if env_mode in ("static", "dynamic"):
-        rubric.params.fewshot_mode = env_mode
-    elif env_mode:
-        log.warning(
-            "ignoring ARI_FEWSHOT_MODE=%r (expected 'static' or 'dynamic'); "
-            "keeping rubric default %r",
-            env_mode, rubric.params.fewshot_mode,
+    rid = str(rubric_id or "").strip()
+    if not rid:
+        raise RubricError(
+            "rubric_id is required; migrate legacy ARI_RUBRIC/default config "
+            "to an explicit workflow input"
         )
-    return rubric
+    return load_rubric(rid)

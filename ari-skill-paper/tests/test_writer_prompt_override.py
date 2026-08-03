@@ -20,6 +20,7 @@ import pytest
 from unittest.mock import patch
 
 from src import server
+from test_verified_context_wiring import _native_inputs
 
 _GOVERNED = "GOVERNED-XYZ: reject overclaims; anchor every numeric result."
 
@@ -52,7 +53,9 @@ async def _run_writer(tmp_path, override: str) -> list[str]:
         return _mock_resp(_latex_doc())
 
     with patch("src.server.litellm.acompletion", new=_spy):
+        native_inputs = _native_inputs(tmp_path)
         await server.write_paper_iterative(
+            **native_inputs,
             experiment_summary="a small experiment",
             venue="arxiv", max_revision_rounds=1,
             writer_prompt_override=override,

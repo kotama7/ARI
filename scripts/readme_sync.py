@@ -13,19 +13,25 @@ a file shows up as a README diff. This tool keeps that listing in sync:
             with no known description gets ``TODO``.
 
 This tool NEVER calls an LLM or any network API. New-file descriptions
-(``TODO`` placeholders) are written by hand afterwards. Both modes are pure
-Python stdlib.
+(``TODO`` placeholders) are written by hand afterwards. Both modes use only
+Python's standard library plus the local Git index. The index boundary keeps
+ignored experiment/build artifacts from making generated READMEs depend on a
+developer's working tree while still admitting new, non-ignored files.
 
 Only READMEs that already contain a ``## Contents`` heading are managed;
 curated roots without one (e.g. ari-core/README.md) are left untouched.
 
 Convention: ari-core/ari/orchestrator/README.md is the reference format.
 """
+
 from __future__ import annotations
 
 import argparse
+import os
 import re
+import subprocess
 import sys
+from functools import lru_cache
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,16 +39,35 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # Directories omitted entirely (generated / vendored / ephemeral / out of
 # scope): never listed and never given a README. Matched by exact name…
 SKIP_NAMES = {
-    "__pycache__", ".pytest_cache", ".venv", "venv", "node_modules",
-    "site-packages", "dist", "build", ".git", ".github", ".vscode",
-    ".claude", ".mypy_cache", ".ruff_cache", ".idea",
+    "__pycache__",
+    ".pytest_cache",
+    ".venv",
+    "venv",
+    "node_modules",
+    "site-packages",
+    "dist",
+    "build",
+    ".git",
+    ".github",
+    ".vscode",
+    ".claude",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".idea",
 }
 # …or by suffix (covers gitignored runtime artifacts like Apptainer images)…
 SKIP_SUFFIXES = (".egg-info", ".sif")
 # …or by path relative to the repo root (language mirrors / assets / runtime).
 SKIP_RELPATHS = {
-    "workspace", "docs/assets", "docs/i18n", "docs/ja", "docs/zh",
-    "report/en", "report/ja", "report/zh", "ari-core/ari/viz/static",
+    "workspace",
+    "docs/assets",
+    "docs/i18n",
+    "docs/ja",
+    "docs/zh",
+    "report/en",
+    "report/ja",
+    "report/zh",
+    "ari-core/ari/viz/static",
     "report/shared/references.log.yaml",
     "report/shared/figures/preview",
 }
@@ -63,17 +88,74 @@ NOT_ENUMERATED_RELPATHS = {
 
 CONTENTS_HEADING = "## Contents"
 # `- name` or `- name — description`, 2-space indent per nesting level.
-BULLET_RE = re.compile(r"^(?P<indent> *)- `(?P<name>[^`]+)`(?: +[—-] +(?P<desc>.*))?\s*$")
+BULLET_RE = re.compile(
+    r"^(?P<indent> *)- `(?P<name>[^`]+)`(?: +[—-] +(?P<desc>.*))?\s*$"
+)
 
 
 def rel(path: Path) -> str:
     return path.relative_to(REPO_ROOT).as_posix()
 
 
+@lru_cache(maxsize=None)
+def git_inventory(root: Path) -> tuple[frozenset[str], frozenset[str]]:
+    """Return Git-visible files and their ancestor directories.
+
+    ``--cached`` retains every tracked path, including tracked files below an
+    otherwise ignored pattern. ``--others --exclude-standard`` adds new files
+    that a contributor can actually commit while excluding local-only
+    artifacts. NUL framing preserves arbitrary valid Git path names.
+    """
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise RuntimeError(f"cannot build README inventory: {exc}") from exc
+    if completed.returncode != 0:
+        detail = os.fsdecode(completed.stderr).strip() or "git ls-files failed"
+        raise RuntimeError(f"cannot build README inventory: {detail}")
+
+    files = {
+        Path(os.fsdecode(raw)).as_posix()
+        for raw in completed.stdout.split(b"\0")
+        if raw
+    }
+    directories: set[str] = set()
+    for filename in files:
+        for parent in Path(filename).parents:
+            if parent == Path("."):
+                break
+            directories.add(parent.as_posix())
+    return frozenset(files), frozenset(directories)
+
+
+def is_git_visible(path: Path) -> bool:
+    files, directories = git_inventory(REPO_ROOT.resolve())
+    repo_path = rel(path)
+    if path.is_dir() and not path.is_symlink():
+        return repo_path in directories
+    return repo_path in files
+
+
 def is_skipped(path: Path) -> bool:
     if path.name in SKIP_NAMES or path.name.endswith(SKIP_SUFFIXES):
         return True
-    return rel(path) in SKIP_RELPATHS
+    if rel(path) in SKIP_RELPATHS:
+        return True
+    return not is_git_visible(path)
 
 
 def ordered_children(d: Path) -> list[Path]:
@@ -124,7 +206,9 @@ def walk(d: Path, base: Path, depth: int = 0) -> list[Entry]:
         relpath = child.relative_to(base).as_posix()
         if child.is_dir():
             note = leaf_note(child)
-            out.append(Entry(depth, relpath + "/", child.name + "/", True, note is not None))
+            out.append(
+                Entry(depth, relpath + "/", child.name + "/", True, note is not None)
+            )
             if note is None:
                 out.extend(walk(child, base, depth + 1))
         else:
@@ -134,6 +218,7 @@ def walk(d: Path, base: Path, depth: int = 0) -> list[Entry]:
 
 # ── README parse / render ────────────────────────────────────────────────
 
+
 def split_readme(text: str) -> tuple[str, list[str], str] | None:
     """Return (head, contents_lines, tail) or None if no ``## Contents``.
 
@@ -142,7 +227,7 @@ def split_readme(text: str) -> tuple[str, list[str], str] | None:
     """
     lines = text.splitlines()
     try:
-        ci = next(i for i, l in enumerate(lines) if l.strip() == CONTENTS_HEADING)
+        ci = next(i for i, line in enumerate(lines) if line.strip() == CONTENTS_HEADING)
     except StopIteration:
         return None
     ti = len(lines)
@@ -169,9 +254,7 @@ def parse_contents(lines: list[str]) -> tuple[list[str], dict[str, str]]:
         name = m.group("name")
         stack = stack[:depth]
         stack.append(name)
-        relpath = "".join(
-            s if s.endswith("/") else s + "/" for s in stack[:-1]
-        ) + name
+        relpath = "".join(s if s.endswith("/") else s + "/" for s in stack[:-1]) + name
         paths.append(relpath)
         if m.group("desc"):
             desc[relpath] = m.group("desc").strip()
@@ -189,6 +272,7 @@ def render(entries: list[Entry], descriptions: dict[str, str]) -> str:
 
 
 # ── descriptions ───────────────────────────────────────────────────────────
+
 
 def role_line(readme: Path) -> str | None:
     """First non-empty line of a README's body (its role sentence)."""
@@ -222,14 +306,19 @@ def make_description(entry: Entry, base: Path, fallback: str = "TODO") -> str:
 
 # ── README discovery ─────────────────────────────────────────────────────
 
+
 def managed_readmes() -> list[Path]:
     out = []
     for readme in REPO_ROOT.rglob("README.md"):
-        if any(part in SKIP_NAMES or part.endswith(SKIP_SUFFIXES) for part in readme.parts):
+        if any(
+            part in SKIP_NAMES or part.endswith(SKIP_SUFFIXES) for part in readme.parts
+        ):
             continue
         if rel(readme.parent) in SKIP_RELPATHS or any(
             rel(readme.parent).startswith(p + "/") for p in SKIP_RELPATHS
         ):
+            continue
+        if not is_git_visible(readme):
             continue
         if CONTENTS_HEADING in readme.read_text(encoding="utf-8"):
             out.append(readme)
@@ -263,6 +352,7 @@ def build_desc_index() -> dict[str, str]:
 
 # ── modes ──────────────────────────────────────────────────────────────────
 
+
 def check() -> int:
     drift = 0
     for readme in managed_readmes():
@@ -271,9 +361,13 @@ def check() -> int:
             continue
         listed, _ = parse_contents(split[1])
         listed_set = {p for p in listed if p != "README.md"}
-        actual = {e.relpath for e in walk(readme.parent, readme.parent) if e.relpath != "README.md"}
-        missing = sorted(actual - listed_set)   # on disk, not in README
-        extra = sorted(listed_set - actual)     # in README, gone from disk
+        actual = {
+            e.relpath
+            for e in walk(readme.parent, readme.parent)
+            if e.relpath != "README.md"
+        }
+        missing = sorted(actual - listed_set)  # on disk, not in README
+        extra = sorted(listed_set - actual)  # in README, gone from disk
         if missing or extra:
             drift += 1
             print(f"DRIFT {rel(readme)}")
@@ -282,7 +376,9 @@ def check() -> int:
             for p in extra:
                 print(f"  - {p}  (listed, not on disk)")
     if drift:
-        print(f"\n{drift} README(s) out of sync. Run: python scripts/readme_sync.py --write")
+        print(
+            f"\n{drift} README(s) out of sync. Run: python scripts/readme_sync.py --write"
+        )
         return 1
     print("All managed READMEs are in sync.")
     return 0
@@ -306,9 +402,13 @@ def write() -> int:
                 continue
             key = (f"{base}/{e.relpath}" if base != "." else e.relpath).rstrip("/")
             if e.is_dir and e.leaf:
-                descriptions[e.relpath] = leaf_note(readme.parent / e.relpath.rstrip("/")) or "not enumerated"
+                descriptions[e.relpath] = (
+                    leaf_note(readme.parent / e.relpath.rstrip("/")) or "not enumerated"
+                )
             else:
-                descriptions[e.relpath] = index.get(key) or make_description(e, readme.parent)
+                descriptions[e.relpath] = index.get(key) or make_description(
+                    e, readme.parent
+                )
         # nested README.md entries -> "<dir> index."
         new_lines = _render_with_indexes(entries, descriptions, readme.parent)
 
@@ -337,13 +437,22 @@ def _render_with_indexes(entries, descriptions, base) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--check", action="store_true", help="fail on path drift (CI gate)")
-    g.add_argument("--write", action="store_true",
-                   help="regenerate Contents blocks; new files get TODO (fill by hand)")
+    g.add_argument(
+        "--write",
+        action="store_true",
+        help="regenerate Contents blocks; new files get TODO (fill by hand)",
+    )
     args = ap.parse_args()
-    return check() if args.check else write()
+    try:
+        return check() if args.check else write()
+    except RuntimeError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

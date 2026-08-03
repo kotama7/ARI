@@ -11,6 +11,7 @@ targets the like-named module under `ari/`.
 - `README.md` — this file.
 - `_arch_boundaries.py` — shared AST/text scanners behind the architecture-boundary guards (`imports`/`ari_imports`, `top_package`, `matches_prefix`, `in_except_importerror`); underscore-prefixed to stay out of pytest collection, stdlib-only, and it never imports a skill `src/server.py`.
 - `test_agent_smoke.py` — agent smoke test.
+- `test_analysis_contract.py` — analysis request/result digests, finite statistics, lineage, and artifact bindings.
 - `test_api_lineage_decisions.py` — lineage-decisions API.
 - `test_api_lineage_e2e.py` — lineage API end-to-end.
 - `test_api_paperbench.py` — PaperBench API (incl. durable job records: atomic `{registry}/jobs/{id}.json` mirror of every `_JOBS` mutation, restart-simulation disk fallback with the additive `interrupted` status, traversal-safe job-id grammar).
@@ -19,6 +20,7 @@ targets the like-named module under `ari/`.
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_architecture_boundary_index.py` — boundary coverage map (report `003` §16): every boundary B1-B11 must name a live guard file under `ari-core/tests/` or an explicit `waived:` reason, so a new or renamed boundary can never ship silently unguarded.
 - `test_artifact_store.py` — `CheckpointArtifactStore` by-logical-name artefact access over the flat checkpoint layout: `ArtifactStore` ABC non-instantiability + structural conformance, text/bytes/source-path `put` with subdir creation, `exists`/`get` on misses, prefix listing.
+- `test_async_tool_lifecycle.py` — asynchronous handle state transitions, polling budgets, cancellation, and expiry.
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
 - `test_bfts_diversity.py` — BFTS diversity/fanout.
@@ -26,13 +28,17 @@ targets the like-named module under `ari/`.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
 - `test_bfts_prompt_builder.py` — byte-exact goldens for the pure `bfts_prompt_builder` context builders (`build_select_candidate_descriptions`, `build_expand_select_candidate_descriptions`, `build_expand_context`, `_BUDGET` re-export) pinning the extraction out of `BFTS` as behaviour-identical (P2 determinism).
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
+- `test_call_context.py` — signed call capabilities, phase/tool authorization, lineage ordering, and tamper rejection.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
+- `test_checkpoint_migration_reader.py` — immutable checkpoint-version detection and explicit legacy reader/migration behavior.
 - `test_checkpoint_store.py` — `JsonCheckpointStore` + module back-compat shims: byte-identical JSON writes, 3-tier `load_nodes_tree` precedence (incl. legacy `node_*` glob), the 1.0 s incremental throttle with per-instance isolation and loud forced-flush failures, and the `_INCR_LAST_SAVE_MONO` monkeypatch surface `test_gui_errors.py` relies on.
+- `test_child_environment.py` — value-free credential scoping and least-authority child-process environment construction.
 - `test_child_node_workflow.py` — child-node workflow.
 - `test_child_workdir_inherit.py` — child workdir inheritance.
 - `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.
 - `test_claim_gate_contract.py` — declared-contract enforcement: `safe_eval` formula evaluator, `contract.check_contract`/`check_emission` (recompute mismatch, claim-evidence coverage, provenance/ceiling/correctness requirement flags, lexical near-miss hints) + gate blocking at final.
 - `test_claim_gate_invariants.py` — concept→invariant registry (`classify_concept`, `CONCEPT_INVARIANTS`, `scan_science_data`): universal-math bounds (normalized≤1, probability in [0,1]) fire domain-neutrally, leave unbounded metrics alone, and block at final via `run_hard_gate`.
+- `test_claim_gate_v1.py` — canonical typed gate reports, digest-bound evidence, unit conversion, and calibration cases.
 - `test_cli.py` — CLI.
 - `test_cli_extended.py` — extended CLI cases.
 - `test_cli_shim_toolcalls.py` — CLI shim (`ari.llm.cli_server`) function-calling: `extract_tool_calls`/`render_prompt`/`complete` turn text-only `claude -p`/`codex exec` into OpenAI `tool_calls`, plus cost passthrough and MCP-direct mode vs. text-catalog fallback.
@@ -58,7 +64,9 @@ targets the like-named module under `ari/`.
 - `test_evaluator_independence.py` — B5 guard: `ari/evaluator/**` must not import `ari.cli`/`ari.viz`/`ari.paths`/`ari.checkpoint` (except-`ImportError` compat shims ignored), with the direct `litellm` import/`acompletion` call in `llm_evaluator.py` that bypasses `LLMClient` held as `xfail(strict=False)`.
 - `test_evaluator_protocol.py` — conformance for the extended `ari.protocols.Evaluator`: `LLMEvaluator` satisfies it structurally without subclassing, the Protocol stays `runtime_checkable`, an evaluator lacking `evaluate_sync`/`metric_spec` is rejected (the extension is not vacuous), and the `AgentLoop` injection seam still defaults to `None`.
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
+- `test_execution_contract.py` — closed-workspace execution, resource/network enforcement, logs, and request/result digests.
 - `test_factory_registry.py` — unified factory layer: `ari._factory.BaseRegistry` eager/lazy registration with a uniform unknown-key error, composite-registry keys vs the `EvaluatorConfig.composite` `Literal`, publish backends vs the `publish.schema.json` enum (the schema-only `s3` gap must raise, not resolve), and the `_COMPOSITES`/`_load_backend` back-compat shims.
+- `test_figure_contract.py` — declarative figure, render, batch, and review-hand-off contract validation.
 - `test_file_explorer.py` — file explorer.
 - `test_gui_baseline_run_fixtures.py` — gui_refresh Wave 0 / G0 deterministic reference run fixtures: `fixtures/gui_refresh/run_fixture_factory.py` output loadable via `ari.checkpoint.load_nodes_tree` (small/medium), same-seed byte-identity, corrupt modes (`truncated_jsonl`/`invalid_json`/`partial_write`) pinned to current loader behaviour, large(10k) generation.
 - `test_gui_baseline_settings_contract.py` — gui_refresh Wave 0 / G0 frozen legacy Settings contract: GET 27-key default shape (+10-key `ors`), shallow `{**defaults, **saved}` merge, POST whole-file replace, api-key pop/.env upsert/silent drops, `letta_api_key` plaintext-persist defect, no-checkpoint 400 refusal, and the 24-key frontend Save body (pinned against `SettingsContract.test.tsx`).
@@ -109,6 +117,7 @@ targets the like-named module under `ari/`.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
 - `test_metric_contract_obligation.py` — `ari.agent.metric_contract` producer obligation: domain-neutral `build_contract_obligation`/`build_emission_nudge`, run-level claim coverage (`build_coverage_status`, `collect_run_measurement_names`), and lineage chaining (`collect_node_measurement_names`, `build_expand_coverage_hint`, `build_inherited_data_note`).
+- `test_migrate_science_data_cli.py` — explicit offline legacy science-data migration and loss-report CLI behavior.
 - `test_model_backend_independence.py` — B6 layering guard (report `003` §8): the model-backend layer `ari/llm/**` imports none of `ari.viz` / `ari.evaluator` / `ari.cli` (litellm stays allowed — that is where the provider dependency belongs).
 - `test_model_backend_protocol.py` — subtask 008 `BaseModelBackend` Protocol conformance: `LLMClient` structurally satisfies the `runtime_checkable` Protocol without subclassing, and the `LiteLLMBackend` alias plus `ari.public.llm.LLMClient` still resolve to it.
 - `test_model_passthrough.py` — model passthrough.
@@ -123,6 +132,7 @@ targets the like-named module under `ari/`.
 - `test_paper_agent_as_judge.py` — paper-archive Task 03 §5.8 agent-as-judge `reviewer_score_fn`: reads the venue rubric axes (novelty/significance) so it discriminates two drafts the LLM-free rubric ties at the ceiling, threads the ACTIVE reviewer prompt as emphasis, and fails open to `deterministic_rubric_score_fn` on any LLM error or unparseable score (scripted LLM double).
 - `test_paper_anchor.py` — paper-archive Task 04 `ari.rqgm.paper_anchor`: accept/reject binarization + agreement metric, run-fixed held-out split, machine-enforced bootstrap-label cap and self-label bar, `PaperAnchorPool` board interop, the `paper_utility_policy` freeze, and the writer's claim-gate faithfulness anchor made OPERATIVE through `adjudicate_motion`'s `board_score`.
 - `test_paper_archive_search.py` — paper-archive Task 02 draft-archive search substrate: best-first draft TREE with `bfts.py` cutoff reuse, the real `select_best_to_expand` + framing-keyed `diversity_bonus`, per-epoch `max_expansions` cap, `PaperDraftExecutor` (one generative call per node), lazy compile, `paper_draft_archive.jsonl` schema/registration, Protocol conformance and determinism, plus the `rqgm_archive` startup smoke and resume over `PaperArchiveRuntime.run_archive`.
+- `test_paper_contract.py` — immutable paper build, revision, model-call, compile, and review contract validation.
 - `test_paper_mode.py` — paper-archive Task 01 paper execution-mode switch: `paper.mode` / `rqgm.paper.enabled` config parsing, the four-cell `resolve_paper_mode` table with both warning paths, `apply_paper_env_overrides`, `paper_archive_state.json` round-trip + META_FILES registration, the linear identity regression (no `ari.rqgm` imports/objects/files on a default run), independence from `ari.mode`, and the persisted-mode-wins re-invocation rule.
 - `test_paper_self_preference.py` — paper-archive Task 05 `paper_self_preference` adversary: deterministic pre-signal, AI-vs-human margin statistic + audit artifact, record vocabulary and Task-15 target binding to `paper_reviewer_v1`, paper-mode-gated founding rows, exploration/linear byte-identity, and the anti-inertness proof — organic impeachment of an always-accept reviewer through the real adversary→Defender→ArtifactJudge round, with anchor-removed / no-governance negative controls.
 - `test_paths.py` — path resolution.
@@ -141,7 +151,9 @@ targets the like-named module under `ari/`.
 - `test_publish_yaml_api.py` — publish YAML API.
 - `test_publish_zenodo_gh.py` — publish to Zenodo/GitHub.
 - `test_react_driver.py` — ReAct driver.
+- `test_research_contract.py` — hypothesis/metric admission, survey snapshot, citation graph, and research-contract digests.
 - `test_resolve_node_work_dir.py` — resolve node work dir.
+- `test_result_envelope.py` — typed MCP results, bounded inline payloads, artifacts, errors, and provenance normalization.
 - `test_retrieval_backend.py` — retrieval backend.
 - `test_root_idea_selector.py` — root-idea selector.
 - `test_rqgm_adversarial.py` — RQGM Task 06 adversarial evolution loop: schema round-trip/validation for all six record types, `UtilityPenaltyPolicy.compute` arithmetic + `apply_utility_penalty` guards, the AdversarialReplayPool (admission/dedup/eviction, contamination-safe `abstract_view`, capability-checked `replay_view`), the §5.5 trigger predicate, the raw-attacks-never-score regression, resume idempotency, the `simple_bfts` zero-file regression, plus Task 15's `target_component_id` accountability binding (self-binding refusal, frozen-not-live resolution, fail-open matrix).
@@ -182,11 +194,14 @@ targets the like-named module under `ari/`.
 - `test_run_loop.py` — run loop.
 - `test_runtime_path_reconciliation_005.py` — workspace-root reconciliation: `auto_config()`, the Pydantic field defaults and shipped `config/default.yaml` all spell the same canonical workspace root, while legacy relative `./checkpoints/{run_id}/` stays resolvable.
 - `test_sandbox_shim.py` — sandbox shim.
+- `test_science_data_contract.py` — raw/derived separation, units, lineage, digests, interpretation, and migration validation.
 - `test_selection_contract.py` — selection contract.
 - `test_server.py` — viz/API server.
 - `test_settings_propagation.py` — settings propagation.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
+- `test_skill_lock.py` — deterministic provider/schema/phase/authority locks and drift rejection.
+- `test_skill_manifest.py` — canonical manifest, environment, tool policy, schema, and compatibility validation.
 - `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
@@ -198,6 +213,7 @@ targets the like-named module under `ari/`.
 - `test_variable_passthrough.py` — variable passthrough.
 - `test_verified_context_wiring.py` — orchestrator gating of verified_context.json on `ARI_MEMORY_CONSOLIDATE` (off→skip / on→build / build-failure→pipeline survives).
 - `test_virsci_off.py` — VirSci-off path.
+- `test_visual_review_contract.py` — criteria profiles, artifact-bound findings, batch digests, and provenance checks.
 - `test_viz_dto_schema.py` — viz dashboard wire contract: real handler payloads validated against the committed `viz_*.schema.json` files (dependency-free required-key checks) with each schema's required keys cross-checked against the frontend `types/index.ts`.
 - `test_viz_fewshot_api.py` — viz few-shot API.
 - `test_viz_file_service.py` — viz `FileService` primitives: the single path-traversal validator, the named byte-size limits, the file-classification sets, the canonical content-type table, and the read/write/delete helpers.

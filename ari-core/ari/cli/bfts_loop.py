@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING
 
 from rich.console import Console
 
+from ari.call_context import ToolCallContextV1
 from ari.cli.lineage import (
     _LINEAGE_LOG,
     _build_idea_ctx_for_expand,
@@ -487,8 +488,14 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                     isinstance(_idea_data_pre, dict)
                                     and "_root_choice" in _idea_data_pre
                                 )
+                                _contract_already_minted = (
+                                    isinstance(_idea_data_pre, dict)
+                                    and _idea_data_pre.get("research_contract")
+                                    is not None
+                                )
                                 if (not _already_inherited
                                     and not _already_chosen
+                                    and not _contract_already_minted
                                     and len(_idea_data_pre.get("ideas") or []) > 1):
                                     import asyncio as _asyncio_root
                                     from ari.orchestrator.root_idea_selector import (
@@ -754,6 +761,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
             def _node_exp(n):
                 d = dict(experiment_data)
                 d["work_dir"] = n.work_dir
+                # Custom checkpoint templates need not end in run_id. Carry
+                # the scheduler's canonical identity into each node context.
+                d["run_id"] = str(run_id)
                 # Inject HPC settings so the agent knows without reading the .md again
                 if _partition:
                     d["slurm_partition"] = _partition
@@ -1014,7 +1024,8 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 # typed store feeds the verifiable / paper-context layer
                 # (search_research_memory, get_verified_context), NOT Phase 0
                 # working-context injection, which keeps using result_summary.
-                # Best-effort: never breaks the loop. CoW via cow_node_id=result.id.
+                # Best-effort: never breaks the loop. The signed NodeContext
+                # authorizes this completed node and its ordered lineage.
                 from ari.config import consolidation_enabled as _cons_on
                 if _cons_on():
                     try:
@@ -1025,6 +1036,15 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                         _nr_path = _cwd / "node_report.json"
                         _nr = json.loads(_nr_path.read_text()) if _nr_path.exists() else None
                         if _nr and getattr(agent, "mcp", None) is not None:
+                            _memory_context = ToolCallContextV1.for_node(
+                                run_id=run_id,
+                                node_id=result.id,
+                                parent_node_id=getattr(result, "parent_id", None),
+                                ancestor_node_ids=list(
+                                    getattr(result, "ancestor_ids", []) or []
+                                ),
+                                phase="bfts",
+                            )
                             agent.mcp.call_tool(
                                 "consolidate_node_memory",
                                 {
@@ -1033,7 +1053,7 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                     "work_dir": str(_cwd),
                                     "run_id": run_id,
                                 },
-                                cow_node_id=result.id,
+                                context=_memory_context,
                             )
                     except Exception as _ce:
                         logging.getLogger(__name__).warning(
@@ -1295,4 +1315,3 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
         _save_pv(checkpoint_dir, _build_pv(checkpoint_dir))
     except Exception:
         log.debug("prompt_versions rollup write failed", exc_info=True)
-

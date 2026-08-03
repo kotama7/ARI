@@ -19,6 +19,9 @@ def test_success_with_metrics_yields_experiment_result(tmp_path):
         "node_id": "n7",
         "status": "success",
         "metrics": {"rows": 400000, "GFlops_per_s_T48": 6.04, "speedup_48T": 23.5},
+        "measurement_records": [
+            {"metric_id": "GFlops_per_s_T48", "unit": "GFLOP/s"}
+        ],
         "self_assessment": {"headline": "banded SpMM hit 6.04 GFlops/s at 48 threads"},
         "files_changed": {"added": [{"path": "kernel.c", "sha256": "deadbeef"}]},
         "artifacts": [],
@@ -29,7 +32,9 @@ def test_success_with_metrics_yields_experiment_result(tmp_path):
     assert "experiment_result" in kinds and "reflection" in kinds
     er = next(s for s in specs if s["kind"] == "experiment_result")
     assert er["metric_ptr"]["name"] == "GFlops_per_s_T48"   # throughput hint wins over rows
-    assert er["node_report_ref"] == {"run_id": "run1", "node_id": "n7"}
+    assert er["node_report_ref"]["run_id"] == "run1"
+    assert er["node_report_ref"]["node_id"] == "n7"
+    assert er["node_report_ref"]["digest"].startswith("sha256:")
     assert er["artifact_refs"][0].path == "kernel.c"
     refl = next(s for s in specs if s["kind"] == "reflection")
     assert "try wider K" in refl["text"] and refl["_confidence"] == 0.4
@@ -52,15 +57,23 @@ def test_success_without_metrics_emits_nothing_substantive(tmp_path):
 
 
 def test_write_consolidated_roundtrips(backend, monkeypatch, tmp_path):
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", "nX")
     report = {
         "node_id": "nX", "status": "success",
         "metrics": {"GB_per_s": 842.1},
+        "measurement_records": [{"metric_id": "GB_per_s", "unit": "GB/s"}],
         "self_assessment": {"headline": "tile=32 best throughput"},
         "files_changed": {}, "artifacts": [], "next_steps_hints": [],
     }
     specs = consolidation.consolidate_from_node_report(report, tmp_path, run_id="r")
-    res = consolidation.write_consolidated(backend, "nX", specs)
+    res = consolidation.write_consolidated(
+        backend,
+        "nX",
+        specs,
+        run_id="r",
+        ancestor_ids=[],
+        artifact_root=tmp_path,
+        created_by_tool_ref="memory-test:consolidation",
+    )
     assert all(r["ok"] for r in res)
     got = retriever.ancestor_typed_memory(backend, ["nX"], kinds=["experiment_result"])
     assert any("tile=32" in g["text"] for g in got)
@@ -83,5 +96,8 @@ def test_consolidate_real_node_report():
     assert specs, "expected specs from a real success node"
     er = next((s for s in specs if s["kind"] == "experiment_result"), None)
     assert er is not None
-    assert er["metric_ptr"] is not None         # picked a numeric metric
+    # Unitless legacy metrics are deliberately not promoted to a scientific
+    # metric pointer. New reports with measurement records are promoted.
+    if er["metric_ptr"] is not None:
+        assert er["metric_ptr"]["unit"]
     assert er["node_report_ref"]["node_id"] == "node_b4affdab"

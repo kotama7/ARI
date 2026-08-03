@@ -4,7 +4,7 @@ sources:
     role: schema
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # `execution_profile` 参考
@@ -12,11 +12,11 @@ last_verified: 2026-05-25
 PaperBench 评分单 (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
 v3) 中 `reproduce_contract` 下的 `execution_profile` 对象描述论文要求的
 并行执行属性 (SLURM 分配形态、GPU 类型、内存、NUMA 绑定等)。
-`ari-skill-paper-re` 的 Phase 2 sbatch 调度器会读取它,用以补全调用方
-未提供的参数并生成相应的 SLURM 标志。
+`ari-skill-paper-re` 对其进行验证，将 allocation 字段编译为
+`ari.hpc.job-request/v1`；job-step 字段由代理在生成 `reproduce.sh` 时使用。
 
-对于传统单 CPU 论文,可完全省略 `execution_profile` —— 所有调用方参数
-默认为 0/""/False/None,sbatch 命令会回退到 v0.7.2 之前的 4 标志形式。
+单 CPU 论文可省略 `execution_profile`。调度器始终使用带类型的 request、
+干净环境、digest 与 handle 生命周期。
 
 ## 完整字段表
 
@@ -37,15 +37,16 @@ v3) 中 `reproduce_contract` 下的 `execution_profile` 对象描述论文要求
 | `exclusive` | bool | `--exclusive` | `false` | 忠实性能复现必备 |
 | `requested_gpus_per_task` | int | `--gpus-per-task=N` | 0 | |
 | `requested_gpus_per_node` | int | `--gpus-per-node=N` | 0 | |
-| `gpu_type` | str | `--gres=gpu:<type>:N` | `""` | 与 gpus_per_task 组合;`sinfo` 报告无 GRES 时自动剥离 |
+| `gpu_type` | str | 带类型 GPU selector | `""` | 与一个 GPU 数量字段组合；绝不静默删除请求 |
 | `memory_gb_per_node` | int | `--mem=NG` | 0 | |
 | `memory_gb_per_cpu` | int | `--mem-per-cpu=NG` | 0 | |
 | `constraint` | str | `--constraint=...` | `""` | 例: `"skylake"`, `"haswell|broadwell"` |
-| `cpu_bind` | str | `--cpu-bind=...` | `""` | 例: `"cores"`, `"sockets"`, `"rank"` |
-| `mem_bind` | str | `--mem-bind=...` | `""` | 例: `"local"`, `"nearest"` |
+| `cpu_bind` | str | `reproduce.sh` 中的 `srun --cpu-bind` | `""` | job-step 设置，不是 sbatch directive |
+| `mem_bind` | str | `reproduce.sh` 中的 `srun --mem-bind` | `""` | job-step 设置，不是 sbatch directive |
 | `hint` | str | `--hint=...` | `""` | 例: `"nomultithread"` |
-| `module_loads` | list[str] | (reproduce.sh 开头) | `[]` | 代理执行的 `module load` 列表 |
-| `extra_sbatch_args` | list[str] | (拼接) | `[]` | 上述无法表达的标志的逃生口 (如 `["--account=projX"]`) |
+| `module_loads` | list[str] | 干净 job prelude | `[]` | 显式加载并记录 provenance |
+| `account` / `qos` / `reservation` | str | 各带类型 selector | `""` | 替代任意标志 |
+| `extra_sbatch_args` | list[str] | 仅 deprecated reader | `[]` | 新生产者禁止；仅兼容转换四个限定字段 |
 
 ## 自动解析优先级
 
@@ -90,24 +91,25 @@ TS-SpGEMM 扩展性 (4 节点 × 8 ranks × V100×1/task, 独占, 仅 Skylake)
     "hint": "nomultithread",
 
     "module_loads": ["cuda/12.4", "openmpi/4.1"],
-    "extra_sbatch_args": ["--account=projX"]
+    "account": "projX"
   }
 }
 ```
 
-实际 sbatch 命令:
+通过stdin交给 `sbatch --parsable --export=NIL` 的生成脚本主要directive:
 
 ```
-sbatch --wait \
-  --partition large \
-  --nodes 4 --ntasks 32 --ntasks-per-node 8 \
-  --exclusive \
-  --gpus-per-task 1 --gres=gpu:v100:1 \
-  --mem=256G --cpus-per-task 8 \
-  --constraint=skylake --cpu-bind=cores --hint=nomultithread \
-  --account=projX \
-  --time 02:00:00 \
-  reproduce.sh
+#SBATCH --partition=large
+#SBATCH --nodes=4
+#SBATCH --ntasks=32
+#SBATCH --ntasks-per-node=8
+#SBATCH --exclusive
+#SBATCH --gpus-per-task=v100:1
+#SBATCH --mem=262144M
+#SBATCH --constraint=skylake
+#SBATCH --hint=nomultithread
+#SBATCH --account=projX
+#SBATCH --export=NIL
 ```
 
 ## 单 GPU 示例

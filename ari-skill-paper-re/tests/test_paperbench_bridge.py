@@ -282,49 +282,15 @@ def test_load_dotenv_file_handles_comments_quotes_and_empty():
         path.unlink()
 
 
-def test_reproduce_submission_signature_includes_tarball_and_salvage():
-    """Regression for the (b) tarball capture and (a) salvage retries
-    Stage 2 fixes: both flags must be on the bridge surface so a
-    caller (wizard / CLI / external orchestrator) can opt in/out.
-    """
+def test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage():
+    """Tar capture remains, while source-mutating salvage is absent."""
     import inspect
     sig = inspect.signature(B.reproduce_submission)
     params = set(sig.parameters)
-    for required in (
-        "capture_tarball", "tarball_dir",
-        "salvage_retries", "retry_threshold_sec",
-    ):
+    for required in ("capture_tarball", "tarball_dir"):
         assert required in params, f"reproduce_submission missing {required!r}"
-    # Defaults: tarball ON, salvage OFF (preserves existing dogfood
-    # behaviour and only adds work when caller asks).
     assert sig.parameters["capture_tarball"].default is True
-    assert sig.parameters["salvage_retries"].default == 0
-
-
-def test_install_and_restore_salvage_wrapper_roundtrip(tmp_path):
-    """The salvage wrapper must wrap reproduce.sh with a venv prelude
-    AND restore the original byte-for-byte on cleanup."""
-    sub = tmp_path / "sub"
-    sub.mkdir()
-    repro = sub / "reproduce.sh"
-    original_body = "#!/usr/bin/env bash\necho original\n"
-    repro.write_text(original_body)
-    repro.chmod(0o755)
-
-    B._install_salvage_wrapper(sub)
-    wrapped = repro.read_text()
-    assert "ari-skill-paper-re salvage retry" in wrapped
-    assert ".salvage_venv" in wrapped
-    assert "original reproduce.sh body" in wrapped
-    assert wrapped.endswith(original_body)
-    # Backup preserved exactly
-    backup = repro.with_suffix(repro.suffix + B._SALVAGE_WRAPPER_SUFFIX)
-    assert backup.is_file()
-    assert backup.read_text() == original_body
-
-    B._restore_salvage_wrapper(sub)
-    assert repro.read_text() == original_body
-    assert not backup.is_file()
+    assert "salvage_retries" not in params
 
 
 def test_write_executed_tarball_round_trip(tmp_path):
@@ -1026,24 +992,6 @@ def test_env_patch_is_installed_on_vendor_get_instructions():
         "vendor get_instructions not patched; agent will see Docker-style "
         "root-access claim even on SLURM HPC clusters"
     )
-
-
-def test_resolve_container_image_alias():
-    """``pb-env`` / ``pb-reproducer`` short aliases must resolve to the
-    canonical ``image:latest`` tags that ``scripts/build_pb_images.sh``
-    produces. Anything else (URIs, paths, arbitrary tags, empty) must
-    pass through verbatim — operators rely on supplying their own
-    images for non-vendor workflows.
-    """
-    assert B._resolve_container_image_alias("pb-env") == "pb-env:latest"
-    assert B._resolve_container_image_alias("pb-reproducer") == "pb-reproducer:latest"
-    assert B._resolve_container_image_alias("") == ""
-    assert B._resolve_container_image_alias("ubuntu:24.04") == "ubuntu:24.04"
-    assert B._resolve_container_image_alias("docker://nvcr.io/nvidia/pytorch:24.05-py3") == \
-        "docker://nvcr.io/nvidia/pytorch:24.05-py3"
-    assert B._resolve_container_image_alias("/scratch/img.sif") == "/scratch/img.sif"
-    # Whitespace tolerance (operators pasting wizard input):
-    assert B._resolve_container_image_alias("  pb-env  ") == "pb-env:latest"
 
 
 def test_rollout_submission_signature_includes_blacklist_urls():

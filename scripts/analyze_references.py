@@ -29,6 +29,7 @@ House style mirrors ``scripts/docs/check_doc_sources.py`` and
 ``scripts/readme_sync.py``: ``argparse``, ``REPO_ROOT = parents[1]``, PyYAML
 guarded to ``SystemExit(2)``, exit ``2`` on usage/environment error.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,16 +45,16 @@ from pathlib import Path
 try:
     import yaml
 except ImportError:  # pragma: no cover - environment guard
-    sys.stderr.write(
-        "analyze_references: PyYAML is required (pip install pyyaml).\n"
-    )
+    sys.stderr.write("analyze_references: PyYAML is required (pip install pyyaml).\n")
     raise SystemExit(2)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_VERSION = 1
 
 DEFAULT_CONFIG_PATH = REPO_ROOT / "scripts" / "quality" / "analyze_references.yaml"
-DEFAULT_OUTPUT = REPO_ROOT / "scripts" / "quality" / "baselines" / "reference_graph.json"
+DEFAULT_OUTPUT = (
+    REPO_ROOT / "scripts" / "quality" / "baselines" / "reference_graph.json"
+)
 # Subtask 053's machine-readable roots manifest (read-only input).
 ROOTS_CANDIDATES = (
     REPO_ROOT / "scripts" / "quality" / "baselines" / "053_reference_roots.json",
@@ -117,7 +118,59 @@ BUILTIN_CONFIG = {
 }
 
 
+def skill_runtime_roots(base: Path, cfg: dict) -> list[Path]:
+    """Return runtime roots from the legacy glob plus manifested entrypoints.
+
+    ``include_skills_glob: null`` still disables skill scanning for fixtures.
+    Otherwise manifests extend (and eventually replace) the old ``src``
+    convention, allowing installable packages without losing graph coverage.
+    """
+    skills_glob = cfg.get("include_skills_glob")
+    if not skills_glob:
+        return []
+    roots = {path for path in base.glob(skills_glob) if path.is_dir()}
+    for skill_dir in sorted(base.glob("ari-skill-*")):
+        manifest_path = skill_dir / "skill.yaml"
+        if not manifest_path.is_file():
+            continue
+        try:
+            manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        entrypoint = manifest.get("entrypoint") or {}
+        if entrypoint.get("command_kind") != "python":
+            continue
+        module = entrypoint.get("module")
+        if not isinstance(module, str):
+            continue
+        parts = Path(module).parts
+        if not parts or parts[0] in {".", ".."}:
+            continue
+        root = skill_dir / parts[0]
+        if root.is_dir():
+            roots.add(root)
+    return sorted(roots)
+
+
+def skill_entrypoint_rel(base: Path, skill: str) -> str:
+    """Resolve an R4 skill name to its manifested entrypoint path."""
+    skill_dir = base / f"ari-skill-{skill}"
+    manifest_path = skill_dir / "skill.yaml"
+    if manifest_path.is_file():
+        try:
+            manifest = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+            module = (manifest.get("entrypoint") or {}).get("module")
+            if isinstance(module, str):
+                path = skill_dir / module
+                if path.is_file() and path.is_relative_to(skill_dir):
+                    return posix_rel(path, base)
+        except (OSError, yaml.YAMLError):
+            pass
+    return f"ari-skill-{skill}/src/server.py"
+
+
 # ── graph accumulator ──────────────────────────────────────────────────────
+
 
 class Graph:
     """Deterministic node/edge accumulator (dedup by id / edge tuple)."""
@@ -206,6 +259,7 @@ _EVIDENCE_REQUIRED = frozenset(
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
+
 
 def load_config(path: Path) -> dict:
     cfg = dict(BUILTIN_CONFIG)
@@ -303,6 +357,7 @@ def node_len(node: ast.AST) -> int:
 
 # ── python static layer ────────────────────────────────────────────────────
 
+
 class PyFile:
     __slots__ = ("rel", "path", "dotted", "is_pkg", "tree", "symbols")
 
@@ -322,11 +377,11 @@ def collect_py_files(base: Path, cfg: dict) -> list[PyFile]:
     roots: list[tuple[Path, Path | None]] = [
         (base / r, (base / r).parent) for r in cfg["scan_roots"]
     ]
-    skills_glob = cfg.get("include_skills_glob")
-    if skills_glob:
-        for src_dir in sorted(base.glob(skills_glob)):
-            if src_dir.is_dir():
-                roots.append((src_dir, None))
+    for runtime_root in skill_runtime_roots(base, cfg):
+        # Legacy ``src`` directories deliberately have no dotted package name;
+        # proper installable packages do, so their cross-module edges survive.
+        pkg_root = None if runtime_root.name == "src" else runtime_root.parent
+        roots.append((runtime_root, pkg_root))
     seen: set[Path] = set()
     out: list[PyFile] = []
     for root, pkg_root in roots:
@@ -395,7 +450,9 @@ def _resolve_relative(pf: PyFile, module: str | None, level: int) -> str | None:
     return ".".join(base_parts) if base_parts else None
 
 
-def add_static_edges(graph: Graph, files: list[PyFile], dotted_index: dict[str, str]) -> None:
+def add_static_edges(
+    graph: Graph, files: list[PyFile], dotted_index: dict[str, str]
+) -> None:
     symbols_by_dotted: dict[str, set] = {
         pf.dotted: pf.symbols for pf in files if pf.dotted
     }
@@ -405,7 +462,9 @@ def add_static_edges(graph: Graph, files: list[PyFile], dotted_index: dict[str, 
         for node in ast.walk(pf.tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
-                    _emit_import(graph, mid, alias.name, dotted_index, pf.rel, node.lineno)
+                    _emit_import(
+                        graph, mid, alias.name, dotted_index, pf.rel, node.lineno
+                    )
             elif isinstance(node, ast.ImportFrom):
                 target = (
                     _resolve_relative(pf, node.module, node.level)
@@ -419,7 +478,9 @@ def add_static_edges(graph: Graph, files: list[PyFile], dotted_index: dict[str, 
                     if sub in dotted_index:
                         _emit_import(graph, mid, sub, dotted_index, pf.rel, node.lineno)
                     elif target in dotted_index:
-                        _emit_import(graph, mid, target, dotted_index, pf.rel, node.lineno)
+                        _emit_import(
+                            graph, mid, target, dotted_index, pf.rel, node.lineno
+                        )
                         # best-effort symbol-level static.call
                         if (
                             alias.name in symbols_by_dotted.get(target, ())
@@ -427,7 +488,9 @@ def add_static_edges(graph: Graph, files: list[PyFile], dotted_index: dict[str, 
                         ):
                             graph.add_edge(
                                 mid,
-                                symbol_id(dotted_index[target].split(":", 1)[1], alias.name),
+                                symbol_id(
+                                    dotted_index[target].split(":", 1)[1], alias.name
+                                ),
                                 "static.call",
                                 f"{pf.rel}:{node.lineno} use {alias.name}",
                             )
@@ -461,7 +524,10 @@ def _load_names(tree: ast.AST) -> set[str]:
 
 # ── dynamic overlay ────────────────────────────────────────────────────────
 
-def overlay_string_dispatch(graph: Graph, files: list[PyFile], dotted_index: dict[str, str]) -> None:
+
+def overlay_string_dispatch(
+    graph: Graph, files: list[PyFile], dotted_index: dict[str, str]
+) -> None:
     """(§7.4-1) ``if var == "key": import impl`` chains + dict registries."""
     for pf in files:
         for node in ast.walk(pf.tree):
@@ -471,7 +537,9 @@ def overlay_string_dispatch(graph: Graph, files: list[PyFile], dotted_index: dic
                 _scan_dict_registry(graph, pf, node)
 
 
-def _scan_if_chain(graph: Graph, pf: PyFile, func: ast.AST, dotted_index: dict[str, str]) -> None:
+def _scan_if_chain(
+    graph: Graph, pf: PyFile, func: ast.AST, dotted_index: dict[str, str]
+) -> None:
     src_sym = symbol_id(pf.rel, func.name)
     if not graph.has_node(src_sym):
         return
@@ -495,7 +563,9 @@ def _scan_if_chain(graph: Graph, pf: PyFile, func: ast.AST, dotted_index: dict[s
                     dst = dotted_index.get(dotted)
                     if dst:
                         graph.add_edge(
-                            src_sym, dst, "dynamic.string_key",
+                            src_sym,
+                            dst,
+                            "dynamic.string_key",
                             f"{pf.rel}:{inner.lineno} key='{key}'",
                         )
 
@@ -531,12 +601,16 @@ def _scan_dict_registry(graph: Graph, pf: PyFile, node: ast.Assign) -> None:
     for k, v in zip(value.keys, value.values):
         if v.id in pf.symbols:
             graph.add_edge(
-                src_sym, symbol_id(pf.rel, v.id), "dynamic.string_key",
+                src_sym,
+                symbol_id(pf.rel, v.id),
+                "dynamic.string_key",
                 f"{pf.rel}:{node.lineno} {var}['{k.value}']",
             )
 
 
-def overlay_lazy_registry(graph: Graph, files: list[PyFile], dotted_index: dict[str, str]) -> None:
+def overlay_lazy_registry(
+    graph: Graph, files: list[PyFile], dotted_index: dict[str, str]
+) -> None:
     """(§7.4-1) ``BaseRegistry.register_lazy("key", loader)`` where the ``loader``
     function body does ``from .backends import mod`` (subtask 014 unified the former
     ``if name == "key": import impl`` chains behind this form). Without this, a
@@ -554,7 +628,9 @@ def overlay_lazy_registry(graph: Graph, files: list[PyFile], dotted_index: dict[
                 and isinstance(node.args[0].value, str)
                 and isinstance(node.args[1], ast.Name)
             ):
-                keys_by_loader.setdefault(node.args[1].id, []).append(node.args[0].value)
+                keys_by_loader.setdefault(node.args[1].id, []).append(
+                    node.args[0].value
+                )
         if not keys_by_loader:
             continue
         for node in ast.walk(pf.tree):
@@ -580,12 +656,16 @@ def overlay_lazy_registry(graph: Graph, files: list[PyFile], dotted_index: dict[
                     if dst:
                         key = keys_by_loader[node.name][0]
                         graph.add_edge(
-                            src_sym, dst, "dynamic.string_key",
+                            src_sym,
+                            dst,
+                            "dynamic.string_key",
                             f"{pf.rel}:{inner.lineno} register_lazy('{key}')",
                         )
 
 
-def overlay_prompt_loads(graph: Graph, files: list[PyFile], base: Path, cfg: dict) -> None:
+def overlay_prompt_loads(
+    graph: Graph, files: list[PyFile], base: Path, cfg: dict
+) -> None:
     """(§7.4-2) ``.load("key")`` / ``.load_versioned("key")`` -> ``key.md``."""
     prompt_bases = [base / p for p in cfg.get("prompt_bases", [])]
     # enumerate every prompt .md so uncalled templates still appear as nodes
@@ -603,7 +683,9 @@ def overlay_prompt_loads(graph: Graph, files: list[PyFile], base: Path, cfg: dic
             if not isinstance(node, ast.Call):
                 continue
             fn = node.func
-            if not (isinstance(fn, ast.Attribute) and fn.attr in ("load", "load_versioned")):
+            if not (
+                isinstance(fn, ast.Attribute) and fn.attr in ("load", "load_versioned")
+            ):
                 continue
             if not node.args:
                 continue
@@ -617,7 +699,9 @@ def overlay_prompt_loads(graph: Graph, files: list[PyFile], base: Path, cfg: dic
                     rel = posix_rel(md, base)
                     graph.add_node(f"data.file:{rel}", "data.file", rel, line_count(md))
                     graph.add_edge(
-                        mid, f"data.file:{rel}", "dynamic.path",
+                        mid,
+                        f"data.file:{rel}",
+                        "dynamic.path",
                         f"{pf.rel}:{node.lineno} .{fn.attr}('{key}')",
                     )
                     break
@@ -645,7 +729,9 @@ def overlay_prompt_manifest(graph: Graph, base: Path, manifest: dict | None) -> 
         rel = posix_rel(md, base)
         graph.add_node(f"data.file:{rel}", "data.file", rel, line_count(md))
         graph.add_edge(
-            src, f"data.file:{rel}", "dynamic.path",
+            src,
+            f"data.file:{rel}",
+            "dynamic.path",
             f"{callsite} .load('{key}')",
         )
 
@@ -663,7 +749,9 @@ def overlay_data_selectors(graph: Graph, base: Path, cfg: dict) -> None:
             rel = posix_rel(path, base)
             graph.add_node(f"data.file:{rel}", "data.file", rel, line_count(path))
             graph.add_edge(
-                src, f"data.file:{rel}", "dynamic.path",
+                src,
+                f"data.file:{rel}",
+                "dynamic.path",
                 f"{sel['evidence']} -> {Path(rel).name}",
             )
 
@@ -676,12 +764,10 @@ def overlay_mcp_tools(graph: Graph, base: Path, cfg: dict) -> None:
     client_rel = "ari-core/ari/mcp/client.py"
     client_node = module_id(client_rel)
     by_name: dict[str, set] = {}
-    for src_dir in sorted(base.glob(skills_glob)):
-        if not src_dir.is_dir():
-            continue
+    for src_dir in skill_runtime_roots(base, cfg):
         skill = src_dir.parent.name
         if skill.startswith("ari-skill-"):
-            skill = skill[len("ari-skill-"):]
+            skill = skill[len("ari-skill-") :]
         for path in sorted(src_dir.rglob("*.py")):
             rel = posix_rel(path, base)
             if is_ignored(rel, cfg["ignore_globs"]):
@@ -695,14 +781,16 @@ def overlay_mcp_tools(graph: Graph, base: Path, cfg: dict) -> None:
                 graph.add_node(tid, "mcp.tool", rel, 1)
                 graph.add_edge(
                     client_node if graph.has_node(client_node) else tid,
-                    tid, "dynamic.mcp",
+                    tid,
+                    "dynamic.mcp",
                     f"{client_rel}:336 call_tool('{tool}') <- {rel}:{lineno}",
                 )
                 by_name.setdefault(tool, set()).add(skill)
     for tool, skills in by_name.items():
         if len(skills) > 1:
             graph.add_collision(
-                tool, list(skills),
+                tool,
+                list(skills),
                 "flat MCP namespace clobber (client.py:283 last-skill-wins)",
             )
 
@@ -756,23 +844,32 @@ def overlay_cross_language(graph: Graph, base: Path, cfg: dict) -> None:
         return
     route_paths = _extract_route_paths(viz_dir, base, cfg)
     for api_path in sorted(api_paths):
-        api_rel = posix_rel(api_path, base)
-        if is_ignored(api_rel, cfg["ignore_globs"]):
-            continue
-        ts_node = f"ts.module:{api_rel}"
-        graph.add_node(ts_node, "ts.module", api_rel, line_count(api_path))
-        ts_paths = _extract_ts_paths(
-            api_path.read_text(encoding="utf-8", errors="replace")
-        )
-        for tp in sorted(ts_paths):
-            for rp in route_paths:
-                if _paths_match(tp, rp):
-                    rnode = f"route:{rp}"
-                    graph.add_node(rnode, "route", viz_dir_rel, 0)
-                    graph.add_edge(
-                        ts_node, rnode, "cross_lang.http",
-                        f"{api_rel} '{tp}' ~ {viz_dir_rel} '{rp}'",
-                    )
+        source_paths = [api_path]
+        split_dir = api_path.with_suffix("")
+        if split_dir.is_dir():
+            source_paths.extend(sorted(split_dir.rglob("*.ts")))
+        for source_path in dict.fromkeys(source_paths):
+            source_rel = posix_rel(source_path, base)
+            if is_ignored(source_rel, cfg["ignore_globs"]):
+                continue
+            ts_node = f"ts.module:{source_rel}"
+            graph.add_node(
+                ts_node, "ts.module", source_rel, line_count(source_path)
+            )
+            ts_paths = _extract_ts_paths(
+                source_path.read_text(encoding="utf-8", errors="replace")
+            )
+            for tp in sorted(ts_paths):
+                for rp in route_paths:
+                    if _paths_match(tp, rp):
+                        rnode = f"route:{rp}"
+                        graph.add_node(rnode, "route", viz_dir_rel, 0)
+                        graph.add_edge(
+                            ts_node,
+                            rnode,
+                            "cross_lang.http",
+                            f"{source_rel} '{tp}' ~ {viz_dir_rel} '{rp}'",
+                        )
 
 
 def _extract_ts_paths(text: str) -> set[str]:
@@ -799,7 +896,11 @@ def _extract_route_paths(viz_dir: Path, base: Path, cfg: dict) -> set[str]:
         for node in ast.walk(tree):
             if isinstance(node, ast.Constant) and isinstance(node.value, str):
                 v = node.value
-                if v.startswith("/") and len(v) > 1 and re.fullmatch(r"/[A-Za-z0-9_\-/]+", v):
+                if (
+                    v.startswith("/")
+                    and len(v) > 1
+                    and re.fullmatch(r"/[A-Za-z0-9_\-/]+", v)
+                ):
                     out.add(v.rstrip("/"))
     return out
 
@@ -834,7 +935,9 @@ def overlay_env_pairs(graph: Graph, files: list[PyFile]) -> None:
                 if w_node == r_node or not graph.has_node(r_node):
                     continue
                 graph.add_edge(
-                    w_node, r_node, "dynamic.string_key",
+                    w_node,
+                    r_node,
+                    "dynamic.string_key",
                     f"env:{var} writer={w_rel}:{w_line} -> reader={r_rel}",
                 )
 
@@ -846,18 +949,34 @@ def _env_var(node: ast.AST) -> tuple[str | None, bool]:
         attr = getattr(fn, "attr", None) or getattr(fn, "id", None)
         if attr in ("getenv", "get") and node.args:
             a = node.args[0]
-            if isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.startswith("ARI_"):
+            if (
+                isinstance(a, ast.Constant)
+                and isinstance(a.value, str)
+                and a.value.startswith("ARI_")
+            ):
                 if attr == "get" and not _is_environ(getattr(fn, "value", None)):
                     return None, False
                 return a.value, False
-        if attr == "setdefault" and _is_environ(getattr(fn, "value", None)) and node.args:
+        if (
+            attr == "setdefault"
+            and _is_environ(getattr(fn, "value", None))
+            and node.args
+        ):
             a = node.args[0]
-            if isinstance(a, ast.Constant) and isinstance(a.value, str) and a.value.startswith("ARI_"):
+            if (
+                isinstance(a, ast.Constant)
+                and isinstance(a.value, str)
+                and a.value.startswith("ARI_")
+            ):
                 return a.value, True
     # subscript: os.environ["ARI_*"] (Load=reader, Store=writer)
     if isinstance(node, ast.Subscript) and _is_environ(node.value):
         sl = node.slice
-        if isinstance(sl, ast.Constant) and isinstance(sl.value, str) and sl.value.startswith("ARI_"):
+        if (
+            isinstance(sl, ast.Constant)
+            and isinstance(sl.value, str)
+            and sl.value.startswith("ARI_")
+        ):
             return sl.value, isinstance(node.ctx, ast.Store)
     return None, False
 
@@ -868,8 +987,9 @@ def _is_environ(value: ast.AST | None) -> bool:
 
 # ── root seeding + reachability ────────────────────────────────────────────
 
+
 def build_roots_and_seeds(
-    manifest: dict | None, graph: Graph
+    manifest: dict | None, graph: Graph, base: Path = REPO_ROOT
 ) -> tuple[list[dict], dict[str, set]]:
     roots: list[dict] = []
     seeds: dict[str, set] = {}
@@ -881,12 +1001,14 @@ def build_roots_and_seeds(
 
     if manifest and isinstance(manifest.get("static_roots"), list):
         for r in manifest["static_roots"]:
-            roots.append({
-                "id": r.get("id", "?"),
-                "kind": r.get("class", "root"),
-                "anchor": r.get("anchor", ""),
-            })
-        _seed_from_manifest(manifest, seed)
+            roots.append(
+                {
+                    "id": r.get("id", "?"),
+                    "kind": r.get("class", "root"),
+                    "anchor": r.get("anchor", ""),
+                }
+            )
+        _seed_from_manifest(manifest, seed, base)
     else:
         _auto_seed(graph, seed)
         roots = [
@@ -895,7 +1017,7 @@ def build_roots_and_seeds(
     return sorted(roots, key=lambda r: r["id"]), seeds
 
 
-def _seed_from_manifest(manifest: dict, seed) -> None:
+def _seed_from_manifest(manifest: dict, seed, base: Path = REPO_ROOT) -> None:
     index = {r.get("id"): r for r in manifest.get("static_roots", [])}
     seed("R1", "ari-core/ari/cli/__init__.py")
     for m in ("cli/__init__", "cli/commands", "cli/run", "cli/projects"):
@@ -904,7 +1026,7 @@ def _seed_from_manifest(manifest: dict, seed) -> None:
         seed("R3", f"ari-core/ari/{rel}")
     r4 = index.get("R4", {})
     for skill in list(r4.get("fastmcp", [])) + list(r4.get("lowlevel_server", [])):
-        seed("R4", f"ari-skill-{skill}/src/server.py")
+        seed("R4", skill_entrypoint_rel(base, skill))
     seed("R5", "ari-core/ari/mcp/client.py")
     r6 = index.get("R6", {})
     for mod in r6.get("api_modules", []):
@@ -923,13 +1045,20 @@ def _auto_seed(graph: Graph, seed) -> None:
     for rel in ("cli/__init__", "cli/commands", "cli/run", "cli/projects"):
         seed("R2", f"ari-core/ari/{rel}.py")
     for sub in (
-        "claim_gate", "config_schema", "container", "cost_tracker",
-        "llm", "paths", "run_env", "verified_context",
+        "claim_gate",
+        "config_schema",
+        "container",
+        "cost_tracker",
+        "llm",
+        "paths",
+        "run_env",
+        "verified_context",
     ):
         seed("R7", f"ari-core/ari/public/{sub}.py")
 
 
 # ── output ─────────────────────────────────────────────────────────────────
+
 
 def build_graph(base: Path, cfg: dict, manifest: dict | None) -> dict:
     graph = Graph()
@@ -944,7 +1073,7 @@ def build_graph(base: Path, cfg: dict, manifest: dict | None) -> dict:
     overlay_mcp_tools(graph, base, cfg)
     overlay_cross_language(graph, base, cfg)
     overlay_env_pairs(graph, files)
-    roots, seeds = build_roots_and_seeds(manifest, graph)
+    roots, seeds = build_roots_and_seeds(manifest, graph, base)
     graph.compute_reachability(seeds)
     nodes, edges, collisions = graph.finalize()
     return {
@@ -970,24 +1099,31 @@ def render_markdown(graph: dict) -> str:
     def _inbound_dynamic(pred) -> tuple[int, int]:
         ids = {n["id"] for n in nodes if pred(n)}
         covered = {
-            e["to"] for e in edges
+            e["to"]
+            for e in edges
             if e["to"] in ids and e["kind"].startswith(("dynamic.", "cross_lang."))
         }
         return len(covered), len(ids)
 
     backends = _inbound_dynamic(
-        lambda n: n["file"].startswith("ari-core/ari/publish/backends/")
-        and n["file"].endswith(".py") and n["kind"] == "py.module"
-        and not n["file"].endswith("__init__.py")
+        lambda n: (
+            n["file"].startswith("ari-core/ari/publish/backends/")
+            and n["file"].endswith(".py")
+            and n["kind"] == "py.module"
+            and not n["file"].endswith("__init__.py")
+        )
     )
     prompts = _inbound_dynamic(
-        lambda n: n["kind"] == "data.file"
-        and n["file"].startswith("ari-core/ari/prompts/")
+        lambda n: (
+            n["kind"] == "data.file" and n["file"].startswith("ari-core/ari/prompts/")
+        )
     )
     rubrics = _inbound_dynamic(
-        lambda n: n["kind"] == "data.file"
-        and n["file"].startswith("ari-core/config/reviewer_rubrics/")
-        and n["file"].endswith(".yaml")
+        lambda n: (
+            n["kind"] == "data.file"
+            and n["file"].startswith("ari-core/config/reviewer_rubrics/")
+            and n["file"].endswith(".yaml")
+        )
     )
     has_sonfigs = any("sonfigs" in n["file"] for n in nodes)
 
@@ -1033,7 +1169,12 @@ def render_markdown(graph: dict) -> str:
         "",
     ]
     if graph["collisions"]:
-        lines += ["## MCP tool-name collisions", "", "| tool | skills |", "|------|--------|"]
+        lines += [
+            "## MCP tool-name collisions",
+            "",
+            "| tool | skills |",
+            "|------|--------|",
+        ]
         for c in graph["collisions"]:
             lines.append(f"| `{c['tool_name']}` | {', '.join(c['skills'])} |")
         lines.append("")
@@ -1046,28 +1187,55 @@ def _strip_volatile(graph: dict) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--roots", type=Path, default=None,
-                        help="053 reference-roots manifest (default: auto-detect)")
-    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH,
-                        help="analyzer config YAML")
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT,
-                        help="reference_graph.json path")
-    parser.add_argument("--base", type=Path, default=None,
-                        help="scan base dir (default: config base_dir or repo root)")
-    parser.add_argument("--include-skills", dest="include_skills",
-                        action="store_true", default=True,
-                        help="scan ari-skill-*/src (default: on)")
-    parser.add_argument("--no-include-skills", dest="include_skills",
-                        action="store_false")
-    parser.add_argument("--include-frontend", dest="include_frontend",
-                        action="store_true", default=True,
-                        help="scan viz frontend for cross_lang.http (default: on)")
-    parser.add_argument("--no-include-frontend", dest="include_frontend",
-                        action="store_false")
-    parser.add_argument("--format", choices=["json"], default="json",
-                        help="primary artifact format (json only)")
-    parser.add_argument("--check", action="store_true",
-                        help="exit 1 if the derived graph differs from --output")
+    parser.add_argument(
+        "--roots",
+        type=Path,
+        default=None,
+        help="053 reference-roots manifest (default: auto-detect)",
+    )
+    parser.add_argument(
+        "--config", type=Path, default=DEFAULT_CONFIG_PATH, help="analyzer config YAML"
+    )
+    parser.add_argument(
+        "--output", type=Path, default=DEFAULT_OUTPUT, help="reference_graph.json path"
+    )
+    parser.add_argument(
+        "--base",
+        type=Path,
+        default=None,
+        help="scan base dir (default: config base_dir or repo root)",
+    )
+    parser.add_argument(
+        "--include-skills",
+        dest="include_skills",
+        action="store_true",
+        default=True,
+        help="scan ari-skill-*/src (default: on)",
+    )
+    parser.add_argument(
+        "--no-include-skills", dest="include_skills", action="store_false"
+    )
+    parser.add_argument(
+        "--include-frontend",
+        dest="include_frontend",
+        action="store_true",
+        default=True,
+        help="scan viz frontend for cross_lang.http (default: on)",
+    )
+    parser.add_argument(
+        "--no-include-frontend", dest="include_frontend", action="store_false"
+    )
+    parser.add_argument(
+        "--format",
+        choices=["json"],
+        default="json",
+        help="primary artifact format (json only)",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="exit 1 if the derived graph differs from --output",
+    )
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -1075,9 +1243,7 @@ def main(argv: list[str] | None = None) -> int:
         cfg["include_skills_glob"] = None
     if not args.include_frontend:
         cfg["frontend_api_client"] = None
-    base = args.base or (
-        Path(cfg["base_dir"]) if cfg.get("base_dir") else REPO_ROOT
-    )
+    base = args.base or (Path(cfg["base_dir"]) if cfg.get("base_dir") else REPO_ROOT)
     base = base.resolve()
     manifest = load_roots_manifest(args.roots)
 

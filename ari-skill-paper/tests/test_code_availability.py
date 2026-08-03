@@ -6,11 +6,11 @@ Covers:
   any prior injected block is stripped on re-run)
 - LaTeX safety: macros and section header land before \end{document}
 """
+
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from src.server import (  # type: ignore
     inject_code_availability,
@@ -19,14 +19,12 @@ from src.server import (  # type: ignore
 )
 
 
-_BASIC_TEX = (
-    r"""\documentclass{article}
+_BASIC_TEX = r"""\documentclass{article}
 \begin{document}
 \section{Hello}
 World.
 \end{document}
 """
-)
 
 
 def _write_tex(tmp_path: Path, body: str = _BASIC_TEX) -> Path:
@@ -122,7 +120,9 @@ def test_inject_doi_and_license(tmp_path: Path):
 
 
 def test_inject_missing_tex_returns_error(tmp_path: Path):
-    res = inject_code_availability(str(tmp_path / "nope.tex"), ref="ari://x", sha256="0" * 64)
+    res = inject_code_availability(
+        str(tmp_path / "nope.tex"), ref="ari://x", sha256="0" * 64
+    )
     assert res["injected"] is False
     assert "not found" in res.get("error", "")
 

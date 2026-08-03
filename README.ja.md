@@ -127,12 +127,12 @@ MCP ツール・描画出力のいずれも変更なし。
   でドッグフードに使用可能。
 - **`container_image` のエンドツーエンド配線** — ウィザード → API ワーカー →
   MCP ツール → サンドボックスランナーまで同じ 1 フィールドが流れる。
-  `pb-env` / `pb-reproducer` の短縮エイリアスは
-  `scripts/build_pb_images.sh` でビルドされる `image:latest` タグに解決。
+  v1.0 は immutable なローカル SIF、完全な Docker
+  `sha256:<image-id>`、または digest 固定 URI のみを許可し、mutable な
+  `pb-env` / `pb-reproducer` エイリアスは削除した。
 - **fail-loud な事前条件チェック** — サンドボックス / GPU の不整合は
-  既定で `RuntimeError` を送出（従来サイレントに CPU 実行へ降格していた
-  4 箇所を修正）。互換挙動は `ARI_PHASE1_ALLOW_FALLBACK=1` と
-  `ARI_SLURM_ALLOW_NO_GRES=1` でオプトイン可能。
+  エラーで停止する。旧 host-local 再現 fallback は v1.0 で削除され、GPU
+  要求も黙って降格できない。
 - **PaperBench env-truth ガードレール** — Stage 1 のプロンプトに
   「scaffold 前にホストを probe する」「言語選択を Python 偏重から
   打ち消す」「ホスト実機を反映した `ADDITIONAL NOTES`（バイナリ / GPU /

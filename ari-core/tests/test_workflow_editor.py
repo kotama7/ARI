@@ -1,5 +1,6 @@
-from __future__ import annotations
 """Tests for ari/viz/api_workflow.py — React Flow workflow editor."""
+
+from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -46,7 +47,7 @@ SAMPLE_YAML = {
         {
             "stage": "search_related_work",
             "skill": "web-skill",
-            "tool": "collect_references_iterative",
+            "tool": "search_papers",
             "description": "Citation collection",
             "depends_on": [],
             "enabled": True,
@@ -500,19 +501,28 @@ def test_skill_mcp_usage_registered_for_unused():
         )
 
 
-def test_skill_mcp_tools_resolved_from_server_py():
-    """Skills with empty mcp.json tools should get tools from server.py."""
+def test_skill_mcp_tools_resolved_from_canonical_manifest():
+    """Dashboard tool inventory comes from canonical manifests only."""
     from ari.viz.api_settings import _api_get_workflow
     r = _api_get_workflow()
     if not r.get("ok"):
         pytest.skip("workflow API unavailable")
     mcp = r.get("skill_mcp", {})
-    # hpc-skill has empty tools in mcp.json but server.py has Tool() defs
     if "hpc-skill" in mcp:
         tools = mcp["hpc-skill"].get("tools", [])
-        assert len(tools) > 0, "hpc-skill should have tools extracted from server.py"
+        assert len(tools) > 0, "hpc-skill should have manifest-declared tools"
         tool_names = [t if isinstance(t, str) else t.get("name") for t in tools]
-        assert "slurm_submit" in tool_names
+        assert "job_submit" in tool_names
+        assert len(mcp["hpc-skill"].get("manifest_digest", "")) == 64
+        assert (
+            mcp["hpc-skill"]["capabilities"]["job_submit"]
+            == "ari.hpc.job.submit"
+        )
+        if "slurm_submit" in tool_names:
+            assert (
+                mcp["hpc-skill"]["capabilities"]["slurm_submit"]
+                == "ari.hpc.legacy.slurm-submit"
+            )
 
 
 # ── Agent runtime tools visibility tests ──────────────
@@ -597,7 +607,6 @@ def test_active_skills_not_in_bfts_stages():
         pytest.skip("workflow API unavailable")
     mcp = r.get("skill_mcp", {})
     bfts_stage_skills = {s.get("skill") for s in r.get("bfts_pipeline", [])}
-    paper_stage_skills = {s.get("skill") for s in r.get("paper_pipeline", [])}
     for name, entry in mcp.items():
         if entry.get("usage") == "active":
             assert name not in bfts_stage_skills, (

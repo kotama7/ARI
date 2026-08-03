@@ -10,7 +10,6 @@ from __future__ import annotations
 import atexit
 import json
 import logging
-import os
 import queue
 import threading
 import time
@@ -168,13 +167,8 @@ def build_read_event(
     }
 
 
-def current_node_id() -> str:
-    return os.environ.get("ARI_CURRENT_NODE_ID", "") or ""
-
-
 __all__ = [
     "AccessLog",
     "build_write_event",
     "build_read_event",
-    "current_node_id",
 ]

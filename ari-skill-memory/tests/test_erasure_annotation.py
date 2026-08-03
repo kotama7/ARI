@@ -12,6 +12,7 @@ nothing is stale, so every assertion here is inert on a non-RQGM checkpoint.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -44,6 +45,31 @@ def _seed(backend, monkeypatch, node_id, text, metadata=None):
         node_id, text, metadata or {"type": "result_summary"})
     assert res.get("ok"), res
     return res
+
+
+def _read_capability(authorized_context, tool_name, node_ids):
+    """Issue the transport capability for a reader below ``node_ids``."""
+
+    lineage = list(node_ids)
+    return authorized_context(
+        tool_name,
+        node_id="reader",
+        parent_node_id=lineage[-1] if lineage else None,
+        ancestor_node_ids=lineage,
+    )
+
+
+def _artifact_ref(ckpt, relative_path, payload):
+    """Materialize one immutable fixture artifact and return its typed ref."""
+
+    target = ckpt / relative_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(payload)
+    return {
+        "path": relative_path,
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "role": "data_output",
+    }
 
 
 # ── the rollup reader ───────────────────────────────────────────────────────
@@ -99,11 +125,16 @@ def test_caller_cannot_poison_the_process_cache(ckpt_env):
 
 # ── PULL: annotate, never hide ─────────────────────────────────────────────
 
-def test_get_node_memory_labels_an_erased_node(ckpt_env, backend, monkeypatch):
+def test_get_node_memory_labels_an_erased_node(
+    ckpt_env, backend, monkeypatch, authorized_context
+):
     _seed(backend, monkeypatch, "p1", "P1: tiling -> 140 GB/s")
     _write_rollup(ckpt_env, {"p1": "erase_000001"})
 
-    out = server.get_node_memory("p1")
+    out = server.get_node_memory(
+        "p1",
+        ari_context=_read_capability(authorized_context, "get_node_memory", ["p1"]),
+    )
 
     assert len(out["entries"]) == 1                 # returned, not emptied
     entry = out["entries"][0]
@@ -114,12 +145,20 @@ def test_get_node_memory_labels_an_erased_node(ckpt_env, backend, monkeypatch):
 
 
 def test_search_memory_labels_only_the_erased_nodes(ckpt_env, backend,
-                                                    monkeypatch):
+                                                    monkeypatch,
+                                                    authorized_context):
     _seed(backend, monkeypatch, "p1", "erased finding about tiling")
     _seed(backend, monkeypatch, "p2", "valid finding about tiling")
     _write_rollup(ckpt_env, {"p1": "erase_000001"})
 
-    results = server.search_memory("tiling", ["p1", "p2"], 5)["results"]
+    results = server.search_memory(
+        "tiling",
+        ["p1", "p2"],
+        5,
+        ari_context=_read_capability(
+            authorized_context, "search_memory", ["p1", "p2"]
+        ),
+    )["results"]
 
     by_node = {r["node_id"]: r for r in results}
     assert set(by_node) == {"p1", "p2"}
@@ -127,64 +166,114 @@ def test_search_memory_labels_only_the_erased_nodes(ckpt_env, backend,
     assert erasure.ERASED_KEY not in by_node["p2"]
 
 
-def test_typed_search_labels_erased_entries(ckpt_env, backend, monkeypatch):
-    _seed(backend, monkeypatch, "p1", "throughput 140 GB/s at tile=32", {
-        "type": "experiment_result", "kind": "experiment_result",
-        "artifact_refs": [{"path": "out/bench.csv"}],
-    })
+def test_typed_search_labels_erased_entries(
+    ckpt_env, backend, monkeypatch, authorized_context
+):
+    result = server.add_experiment_result(
+        "p1",
+        "throughput 140 GB/s at tile=32",
+        artifact_refs=[
+            _artifact_ref(ckpt_env, "out/bench.csv", b"tile,throughput\n32,140\n")
+        ],
+        ari_context=authorized_context("add_experiment_result", node_id="p1"),
+    )
+    assert result["ok"]
     _write_rollup(ckpt_env, {"p1": "erase_000001"})
 
-    results = server.search_research_memory("throughput", ["p1"])["results"]
+    results = server.search_research_memory(
+        "throughput",
+        ["p1"],
+        ari_context=_read_capability(
+            authorized_context, "search_research_memory", ["p1"]
+        ),
+    )["results"]
 
     assert results and results[0][erasure.ERASED_KEY] is True
 
 
 def test_no_rollup_leaves_payloads_byte_identical(ckpt_env, backend,
-                                                  monkeypatch):
+                                                  monkeypatch,
+                                                  authorized_context):
     # Identity default: a non-RQGM checkpoint never carries the rollup, so no
     # response gains a key.
     _seed(backend, monkeypatch, "p1", "a finding")
     assert all(
         erasure.ERASED_KEY not in e
-        for e in server.get_node_memory("p1")["entries"]
+        for e in server.get_node_memory(
+            "p1",
+            ari_context=_read_capability(
+                authorized_context, "get_node_memory", ["p1"]
+            ),
+        )["entries"]
     )
     assert all(
         erasure.ERASED_KEY not in r
-        for r in server.search_memory("finding", ["p1"], 5)["results"]
+        for r in server.search_memory(
+            "finding",
+            ["p1"],
+            5,
+            ari_context=_read_capability(
+                authorized_context, "search_memory", ["p1"]
+            ),
+        )["results"]
     )
 
 
 # ── PUSH: grounded claims hard-exclude ─────────────────────────────────────
 
 def test_limitations_keep_the_erased_node_labelled(ckpt_env, backend,
-                                                   monkeypatch):
+                                                   monkeypatch,
+                                                   authorized_context):
     # The honest record of a direction that was later invalidated is exactly
     # what a limitations section is for — so limitations are built from the
     # FULL ancestor set while the claim lists are not.
-    _seed(backend, monkeypatch, "p1", "tiling stalled at 40 GB/s", {
-        "type": "failure_case", "kind": "failure_case",
-    })
+    result = server.add_failure_case(
+        "p1",
+        "tiling stalled at 40 GB/s",
+        ari_context=authorized_context("add_failure_case", node_id="p1"),
+    )
+    assert result["ok"]
     _write_rollup(ckpt_env, {"p1": "erase_000001"})
 
-    ctx = server.get_verified_context(["p1"])
+    ctx = server.get_verified_context(
+        ["p1"],
+        ari_context=_read_capability(
+            authorized_context, "get_verified_context", ["p1"]
+        ),
+    )
 
     assert [lim["node_id"] for lim in ctx["limitations"]] == ["p1"]
     assert ctx["claims"] == [] and ctx["usable_for_claims"] == []
 
 
 def test_verified_context_excludes_erased_ancestors(ckpt_env, backend,
-                                                    monkeypatch):
-    _seed(backend, monkeypatch, "p1", "erased claim: 999 GB/s", {
-        "type": "experiment_result", "kind": "experiment_result",
-        "artifact_refs": [{"path": "out/a.csv"}],
-    })
-    _seed(backend, monkeypatch, "p2", "valid claim: 140 GB/s", {
-        "type": "experiment_result", "kind": "experiment_result",
-        "artifact_refs": [{"path": "out/b.csv"}],
-    })
+                                                    monkeypatch,
+                                                    authorized_context):
+    erased = server.add_experiment_result(
+        "p1",
+        "erased claim: 999 GB/s",
+        artifact_refs=[
+            _artifact_ref(ckpt_env, "out/a.csv", b"throughput\n999\n")
+        ],
+        ari_context=authorized_context("add_experiment_result", node_id="p1"),
+    )
+    valid = server.add_experiment_result(
+        "p2",
+        "valid claim: 140 GB/s",
+        artifact_refs=[
+            _artifact_ref(ckpt_env, "out/b.csv", b"throughput\n140\n")
+        ],
+        ari_context=authorized_context("add_experiment_result", node_id="p2"),
+    )
+    assert erased["ok"] and valid["ok"]
     _write_rollup(ckpt_env, {"p1": "erase_000001"})
 
-    ctx = server.get_verified_context(["p1", "p2"])
+    ctx = server.get_verified_context(
+        ["p1", "p2"],
+        ari_context=_read_capability(
+            authorized_context, "get_verified_context", ["p1", "p2"]
+        ),
+    )
 
     blob = json.dumps(ctx)
     assert "999 GB/s" not in blob      # a withdrawn judgment grounds nothing

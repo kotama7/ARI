@@ -13,8 +13,11 @@ Pytest suite for the paper-re skill (PaperBench-format reproducibility).
 - `test_mpi_aggregate_skel.py` — MPI aggregation skeleton injection.
 - `test_paperbench_bridge.py` — `SimpleJudge` bridge.
 - `test_paperbench_bridge_upstream.py` — `SimpleJudge` bridge against the vendored upstream.
+- `test_paperbench_inventory.py` — deterministic task/patch inventory identities, filtering, and drift checks.
 - `test_prompt_snapshots.py` — raw byte snapshot of `src/prompts/replicator.md` (its only drift guard); `mpi_aggregate_skel.py` is a code skeleton and excluded by the `*.md` glob.
 - `test_replicator_agent.py` — replicator agent driver.
+- `test_reproduction_contracts.py` — typed plan/attempt/run/artifact/grade lineage and digest validation.
+- `test_rubric_contract.py` — explicit versioned rubric loading, hashing, migration, and mismatch rejection.
 - `test_run_reproduce_and_grade.py` — Phase 1 sandbox run + Phase 2 grading.
 - `test_run_reproduce_slurm.py` — Phase 1 Slurm run + Phase 2 grading.
 - `snapshots/` — golden files for `test_prompt_snapshots.py` (only `prompts/`).

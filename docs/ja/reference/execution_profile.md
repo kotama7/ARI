@@ -4,7 +4,7 @@ sources:
     role: schema
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # `execution_profile` 仕様
@@ -12,12 +12,12 @@ last_verified: 2026-05-25
 PaperBench ルーブリック (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
 v3) の `reproduce_contract` 配下にある `execution_profile` オブジェクトは、
 論文が要求する並列実行属性 (SLURM 配置、GPU 種、メモリ、NUMA バインド等)
-を表現する。`ari-skill-paper-re` の Phase 2 sbatch 発行器が読み取り、
-呼出側引数で未指定のフィールドを補完して該当 SLURM フラグを発行する。
+を表現する。`ari-skill-paper-re` が検証し、allocationフィールドを
+`ari.hpc.job-request/v1`へ変換する。job-stepフィールドはエージェントが
+`reproduce.sh`を生成するときに利用する。
 
-シングル CPU 論文では `execution_profile` を省略してよい — 全フィールドが
-0/""/False/None を既定値とするため、sbatch 呼出は v0.7.2 以前の 4 フラグ
-形式に縮退する。
+シングルCPU論文では `execution_profile` を省略してよい。schedulerは常に
+型付きrequest、clean environment、digest、handle lifecycleを使用する。
 
 ## フィールド一覧
 
@@ -38,15 +38,16 @@ v3) の `reproduce_contract` 配下にある `execution_profile` オブジェク
 | `exclusive` | bool | `--exclusive` | `false` | 性能再現の忠実度に必須 |
 | `requested_gpus_per_task` | int | `--gpus-per-task=N` | 0 | |
 | `requested_gpus_per_node` | int | `--gpus-per-node=N` | 0 | |
-| `gpu_type` | str | `--gres=gpu:<type>:N` | `""` | gpus_per_task と組合せ。`sinfo` で GRES 未設定の場合は自動で省略 |
+| `gpu_type` | str | 型付きGPU selector | `""` | GPU countの一方と組合せ、要求を黙って削除しない |
 | `memory_gb_per_node` | int | `--mem=NG` | 0 | |
 | `memory_gb_per_cpu` | int | `--mem-per-cpu=NG` | 0 | |
 | `constraint` | str | `--constraint=...` | `""` | 例: `"skylake"`, `"haswell|broadwell"` |
-| `cpu_bind` | str | `--cpu-bind=...` | `""` | 例: `"cores"`, `"sockets"`, `"rank"` |
-| `mem_bind` | str | `--mem-bind=...` | `""` | 例: `"local"`, `"nearest"` |
+| `cpu_bind` | str | `reproduce.sh`内の`srun --cpu-bind` | `""` | job-step設定。sbatch directiveではない |
+| `mem_bind` | str | `reproduce.sh`内の`srun --mem-bind` | `""` | job-step設定。sbatch directiveではない |
 | `hint` | str | `--hint=...` | `""` | 例: `"nomultithread"` |
-| `module_loads` | list[str] | (reproduce.sh 冒頭) | `[]` | エージェントが `module load` する一覧 |
-| `extra_sbatch_args` | list[str] | (連結) | `[]` | 上記で表せないフラグの escape hatch (例: `["--account=projX"]`) |
+| `module_loads` | list[str] | clean job prelude | `[]` | 明示loadしprovenanceに記録 |
+| `account` / `qos` / `reservation` | str | 各型付きselector | `""` | 任意フラグの代替 |
+| `extra_sbatch_args` | list[str] | deprecated readerのみ | `[]` | 新規生成禁止。限定4フィールドだけ互換変換 |
 
 ## 自動解決の優先順位
 
@@ -92,24 +93,25 @@ Skylake 限定) の忠実再現:
     "hint": "nomultithread",
 
     "module_loads": ["cuda/12.4", "openmpi/4.1"],
-    "extra_sbatch_args": ["--account=projX"]
+    "account": "projX"
   }
 }
 ```
 
-発行される sbatch:
+`sbatch --parsable --export=NIL`へstdinで渡す生成scriptの主要directive:
 
 ```
-sbatch --wait \
-  --partition large \
-  --nodes 4 --ntasks 32 --ntasks-per-node 8 \
-  --exclusive \
-  --gpus-per-task 1 --gres=gpu:v100:1 \
-  --mem=256G --cpus-per-task 8 \
-  --constraint=skylake --cpu-bind=cores --hint=nomultithread \
-  --account=projX \
-  --time 02:00:00 \
-  reproduce.sh
+#SBATCH --partition=large
+#SBATCH --nodes=4
+#SBATCH --ntasks=32
+#SBATCH --ntasks-per-node=8
+#SBATCH --exclusive
+#SBATCH --gpus-per-task=v100:1
+#SBATCH --mem=262144M
+#SBATCH --constraint=skylake
+#SBATCH --hint=nomultithread
+#SBATCH --account=projX
+#SBATCH --export=NIL
 ```
 
 ## シングル GPU 例
