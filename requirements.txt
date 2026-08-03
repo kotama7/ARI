@@ -24,7 +24,7 @@ letta-client>=0.1
 websockets>=16.0
 
 # --- PDF handling -----------------------------------------------------------
-pymupdf>=1.24
+pymupdf>=1.28.0
 pdfminer.six
 
 # --- Visualization / plotting ----------------------------------------------
