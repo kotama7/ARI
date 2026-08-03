@@ -532,8 +532,6 @@ def _api_launch(body: bytes) -> dict:
                 proc_env["ARI_RUBRIC_GEN_TARGET_LEAVES"] = str(int(wiz_ors["rubric_gen_target_leaves"]))
             if wiz_ors.get("rubric_gen_temperature") is not None:
                 proc_env["ARI_RUBRIC_GEN_TEMPERATURE"] = str(float(wiz_ors["rubric_gen_temperature"]))
-            if wiz_ors.get("rubric_gen_two_stage") is not None:
-                proc_env["ARI_RUBRIC_GEN_TWO_STAGE"] = "1" if wiz_ors["rubric_gen_two_stage"] else "0"
             if wiz_ors.get("judge_n_runs") is not None:
                 proc_env["ARI_JUDGE_N_RUNS"] = str(int(wiz_ors["judge_n_runs"]))
             # Replicator agent (v0.7+) — wall-clock budget and BasicAgent vs

@@ -48,7 +48,16 @@ async def test_v2_generation_records_calls_repairs_and_exact_leaf_contract(
     tmp_path: Path,
 ):
     async def model_call(prompt: str) -> str:
-        return "```json\n" + json.dumps(_single_envelope()) + "\n```"
+        if "SKELETON" in prompt:
+            response = _single_envelope()
+        else:
+            response = {
+                "id": "invalid-subtree",
+                "requirements": "Replicate the deterministic solver experiment.",
+                "weight": "2",
+                "sub_tasks": [_leaf("The solver execution writes results.json.")],
+            }
+        return "```json\n" + json.dumps(response) + "\n```"
 
     output = tmp_path / "rubric.json"
     result = await G.generate_rubric_async(
@@ -58,14 +67,12 @@ async def test_v2_generation_records_calls_repairs_and_exact_leaf_contract(
         model_revision="immutable-r1",
         provider="fixture",
         llm_call=model_call,
-        two_stage=False,
-        quality_profile="low-coverage",
     )
     assert "error" not in result, result
     document = json.loads(output.read_text())
     assert document["schema_version"] == "ari.replication-rubric/v2"
-    assert document["generator"]["quality_profile"] == "low-coverage"
-    assert len(document["generator"]["calls"]) == 1
+    assert document["generator"]["quality_profile"] == "calibrated"
+    assert len(document["generator"]["calls"]) == 2
     call = document["generator"]["calls"][0]
     for artifact_name in ("prompt", "raw_response"):
         artifact = call[artifact_name]
@@ -146,7 +153,6 @@ async def test_hierarchical_partial_failure_is_not_silently_omitted(tmp_path: Pa
         model="fixture/generator",
         provider="fixture",
         llm_call=model_call,
-        two_stage=True,
         target_leaf_count=16,
         max_model_calls=8,
         subtree_concurrency=2,
@@ -174,7 +180,6 @@ async def test_generation_model_call_budget_fails_closed(tmp_path: Path):
         model="fixture/generator",
         provider="fixture",
         llm_call=model_call,
-        two_stage=True,
         max_model_calls=1,
     )
     assert "error" in result
@@ -195,8 +200,6 @@ async def test_audit_reports_same_model_as_not_independent_and_verifies_artifact
         model="fixture/shared",
         provider="fixture",
         llm_call=generator_call,
-        two_stage=False,
-        quality_profile="low-coverage",
     )
     assert "error" not in generated
     before = rubric_path.read_bytes()

@@ -44,11 +44,13 @@ LANGS = ("ja", "zh")
 # Docs that legitimately carry no front-matter / last_verified (kept in sync
 # with check_doc_sources.py's exemptions).
 EXEMPT_FILES = {"docs/README.md"}
-EXEMPT_DIR_SEGMENTS = ("_archive",)
+EXEMPT_DIR_SEGMENTS = ("_archive", "node_modules", ".vitepress")
 
 
 def is_exempt(rel: str) -> bool:
     if rel in EXEMPT_FILES:
+        return True
+    if Path(rel).name == "README.md":
         return True
     return any(seg in rel.split("/") for seg in EXEMPT_DIR_SEGMENTS)
 

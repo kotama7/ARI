@@ -1,3 +1,20 @@
+---
+sources:
+  - path: ari-core/ari/public/figures.py
+    role: schema
+  - path: ari-core/ari/public/visual_review.py
+    role: schema
+  - path: ari-skill-plot/src/server.py
+    role: implementation
+  - path: ari-skill-vlm/src/server.py
+    role: implementation
+  - path: ari-core/ari/schemas/figure_batch_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/visual_review_batch_v1.schema.json
+    role: schema
+last_verified: 2026-08-02
+---
+
 # Scientific figure and visual-review contract
 
 ARI separates figure construction from visual judgement. `ari-skill-plot` is

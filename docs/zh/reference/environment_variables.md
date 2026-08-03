@@ -129,7 +129,6 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` 的目标叶节点数 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature 覆盖 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 使用两阶段骨架 + 子树合成 |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | 覆盖 venue 条件化 PaperBench 规范模板的搜索根（未发布 — 见 `docs/reference/rubric_schema.md#venue-conditioned-templates`） |
 
 ### PaperBench 可重现性（v0.7.0）

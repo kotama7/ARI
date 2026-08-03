@@ -1,4 +1,4 @@
-"""MCP surface conformance for canonical and deprecated HPC tools."""
+"""MCP surface conformance for canonical HPC tools."""
 
 from __future__ import annotations
 
@@ -41,7 +41,15 @@ async def test_tool_surface_has_canonical_lifecycle_and_no_run_bash() -> None:
     names = {tool.name for tool in tools}
     assert {"job_submit", "job_status", "job_result", "job_logs", "job_cancel"} <= names
     assert "container_submit" in names
+    assert "slurm_submit" in names
     assert "run_bash" not in names
+    assert not names & {
+        "singularity_build",
+        "singularity_build_fakeroot",
+        "singularity_pull",
+        "singularity_run",
+        "singularity_run_gpu",
+    }
     submit = next(tool for tool in tools if tool.name == "job_submit")
     assert "$defs" in submit.inputSchema
     assert submit.inputSchema["properties"]["request"]["$ref"].startswith("#/$defs/")

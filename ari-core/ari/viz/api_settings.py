@@ -151,7 +151,6 @@ def _api_get_settings() -> dict:
             "judge_model":        os.environ.get("ARI_MODEL_JUDGE",       "gpt-4o-2024-11-20"),
             "rubric_gen_temperature":   0.0,
             "rubric_gen_target_leaves": 0,
-            "rubric_gen_two_stage":     True,
             "judge_n_runs":             3,
             "phase1_max_runtime_sec":   21600,
             "phase1_sandbox_kind":      os.environ.get("ARI_PHASE1_SANDBOX", "auto"),

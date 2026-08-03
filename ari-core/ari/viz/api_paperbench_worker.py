@@ -94,9 +94,14 @@ def _generate_rubric_args(paper_pdf: Path, rubric_path: Path, cfg: dict) -> dict
         "paper_path": str(paper_pdf),
         "output_path": str(rubric_path),
         "model": cfg.get("model") or "",
-        "two_stage": bool(cfg.get("two_stage", True)),
         "target_leaf_count": int(cfg.get("target_leaf_count") or 0),
         "temperature": float(cfg.get("temperature") or 0.0),
+        "seed": int(cfg.get("seed") or 0),
+        "paperbench_rubric_id": str(cfg.get("paperbench_rubric_id") or ""),
+        "max_model_calls": int(cfg.get("max_model_calls") or 64),
+        "subtree_concurrency": int(cfg.get("subtree_concurrency") or 4),
+        "provider": str(cfg.get("provider") or ""),
+        "model_revision": str(cfg.get("model_revision") or ""),
     }
 
 

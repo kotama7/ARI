@@ -61,11 +61,6 @@ tool_defaults:
   permissions: [workspace-write, network]
   result_schema: ari.result-envelope/v1
 tools:
-  - name: collect_references_iterative
-    capability_ref: ari.literature.references.collect
-    determinism: stochastic
-    timeout_class: slow
-    permissions: [workspace-read, workspace-write, network, model]
   - name: fetch_url
     capability_ref: ari.web.url.fetch
   - name: list_uploaded_files
@@ -78,15 +73,8 @@ tools:
     determinism: deterministic
     side_effects: read-only
     permissions: [workspace-read]
-  - name: search_arxiv
-    capability_ref: ari.literature.arxiv.search
   - name: search_papers
     capability_ref: ari.literature.search
-  - name: search_semantic_scholar
-    capability_ref: ari.literature.semantic-scholar.search
-  - name: set_retrieval_backend
-    capability_ref: ari.literature.backend.select
-    side_effects: stateful
   - name: rerank_retrieval_records
     capability_ref: ari.literature.rerank
     determinism: stochastic

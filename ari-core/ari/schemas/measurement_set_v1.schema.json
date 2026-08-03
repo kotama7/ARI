@@ -122,7 +122,7 @@
   },
   "$id": "https://ari.dev/schemas/measurement-set-v1.schema.json",
   "additionalProperties": false,
-  "description": "Canonical typed view plus an explicit compatibility projection.",
+  "description": "Canonical typed scientific-measurement document.",
   "properties": {
     "artifact_digests": {
       "items": {

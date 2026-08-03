@@ -6,10 +6,8 @@ implementation: YAML-driven pipelines, correct TypeScript types,
 no phantom fields, and dynamic skill colours.
 """
 import json
-import os
 import re
 import shutil
-import tempfile
 from pathlib import Path
 from unittest import mock
 
@@ -186,11 +184,9 @@ class TestApiWorkflowDynamic:
 
     def _call_api(self, yaml_data: dict) -> dict:
         yaml_path = self._write_yaml(yaml_data)
-        from ari.viz import api_settings, state as _st
+        from ari.viz import state as _st
         # Patch the candidate paths so our tmp yaml is found
         with mock.patch.object(_st, "_checkpoint_dir", None):
-            orig = api_settings._api_get_workflow
-
             def patched():
                 import yaml as _yaml
                 data = _yaml.safe_load(yaml_path.read_text())
@@ -582,8 +578,8 @@ class TestPipelineFieldConsistency:
     def test_run_if_not_implemented(self):
         """pipeline.py must NOT reference run_if (phantom field)."""
         # Allow comments mentioning it but not actual key access
-        lines = [l for l in self.pipeline_src.split("\n")
-                 if not l.strip().startswith("#")]
+        lines = [line for line in self.pipeline_src.split("\n")
+                 if not line.strip().startswith("#")]
         code = "\n".join(lines)
         # Check for actual dict key access patterns
         assert '.get("run_if")' not in code, "pipeline.py should not access run_if"
@@ -591,8 +587,8 @@ class TestPipelineFieldConsistency:
 
     def test_skip_if_score_not_implemented(self):
         """pipeline.py must NOT reference skip_if_score (phantom field)."""
-        lines = [l for l in self.pipeline_src.split("\n")
-                 if not l.strip().startswith("#")]
+        lines = [line for line in self.pipeline_src.split("\n")
+                 if not line.strip().startswith("#")]
         code = "\n".join(lines)
         assert '.get("skip_if_score")' not in code
         assert "['skip_if_score']" not in code
@@ -686,9 +682,8 @@ class TestPaperPipelineFileContract:
         inputs = stage.get("inputs")
         assert isinstance(inputs, dict) and inputs, (
             "write_paper.inputs must be a non-empty dict — otherwise "
-            "write_paper_iterative() runs with defaults (figures_manifest_json='', "
-            "nodes_json_path='') and the compiled PDF is never copied to the "
-            "checkpoint directory (ari-skill-paper/src/server.py:1504)."
+            "write_paper_iterative() cannot validate the native evidence bundle "
+            "or materialise the paper in the checkpoint directory."
         )
 
     def test_write_paper_required_input_keys(self):
@@ -696,10 +691,13 @@ class TestPaperPipelineFileContract:
         inputs = stage.get("inputs", {})
         required = {
             "experiment_summary",
-            "nodes_json_path",
-            "figures_manifest_json",
-            "refs_json",
-            "science_data_json",
+            "workspace_root",
+            "science_data_path",
+            "figures_manifest_path",
+            "references_path",
+            "ear_manifest_path",
+            "verified_context_path",
+            "rubric_id",
         }
         missing = required - set(inputs.keys())
         assert not missing, (
@@ -708,22 +706,20 @@ class TestPaperPipelineFileContract:
             f"without them the paper has no context."
         )
 
-    def test_write_paper_nodes_json_is_path_not_loaded(self):
-        """nodes_json_path must be passed as a PATH string, not loaded content.
-
-        ari-skill-paper/src/server.py:1506 derives the checkpoint directory
-        from nodes_json_path to know where to copy the compiled PDF:
-            _ckpt_dir = str(Path(nodes_json_path).parent)
-        If the file content is loaded instead (via load_inputs), Path(...) is
-        applied to a JSON blob and the derived dir is garbage, so the PDF
-        never lands in the checkpoint.
-        """
+    def test_write_paper_evidence_inputs_remain_paths(self):
+        """Native evidence inputs stay as paths for workspace containment checks."""
         stage = self._get_stage("write_paper")
         load_inputs = set(stage.get("load_inputs") or [])
-        assert "nodes_json_path" not in load_inputs, (
-            "write_paper must NOT include nodes_json_path in load_inputs — "
-            "paper-skill needs it as a real filesystem path to locate the "
-            "checkpoint directory for writing full_paper.pdf."
+        evidence_paths = {
+            "science_data_path",
+            "figures_manifest_path",
+            "references_path",
+            "ear_manifest_path",
+            "verified_context_path",
+        }
+        assert not (evidence_paths & load_inputs), (
+            "write_paper evidence must remain filesystem paths so the paper skill "
+            "can enforce workspace containment and verify artifact digests"
         )
 
     def test_write_paper_outputs_full_paper_tex(self):
@@ -830,7 +826,7 @@ class TestPaperPipelineFileContract:
             f"review lineage, and fixed-renderer artifacts."
         )
         assert isinstance(inputs.get("n_figures"), int) and inputs["n_figures"] >= 1, (
-            f"generate_figures.inputs.n_figures must be a positive int"
+            "generate_figures.inputs.n_figures must be a positive int"
         )
 
     def test_generate_figures_output_is_manifest(self):
@@ -1159,7 +1155,7 @@ class TestWritePaperExecutionContract:
         # figures_manifest.json.
         fake_latex = r"\documentclass{article}\begin{document}ok\end{document}"
         tool_returns = {
-            "collect_references_iterative": {"references": [{"title": "t"}]},
+            "search_papers": {"records": [{"title": "t"}]},
             "nodes_to_science_data": {"experiment_context": {}, "configurations": []},
             "generate_figures_llm": {
                 "figures": {
@@ -1263,7 +1259,7 @@ class TestWritePaperExecutionContract:
 
         fake_latex = r"\documentclass{article}\begin{document}ok\end{document}"
         tool_returns = {
-            "collect_references_iterative": {"references": []},
+            "search_papers": {"records": []},
             "nodes_to_science_data": {"experiment_context": {}},
             "generate_figures_llm": {
                 "figures": {"fig_1": str(ckpt / "fig_1.pdf")},
@@ -1335,7 +1331,7 @@ class TestWritePaperExecutionContract:
 
         fake_latex = r"\documentclass{article}\begin{document}ok\end{document}"
         static_returns = {
-            "collect_references_iterative": {"references": []},
+            "search_papers": {"records": []},
             "nodes_to_science_data": {"experiment_context": {}, "configurations": []},
             "generate_ear": {"ear_dir": str(ckpt / "ear"), "file_count": 0},
             "write_paper_iterative": {"latex": fake_latex, "bib": "@article{x,}"},
@@ -1430,7 +1426,7 @@ class TestWritePaperExecutionContract:
 
         fake_latex = r"\documentclass{article}\begin{document}ok\end{document}"
         static_returns = {
-            "collect_references_iterative": {"references": []},
+            "search_papers": {"records": []},
             "nodes_to_science_data": {"experiment_context": {}, "configurations": []},
             "generate_ear": {"ear_dir": str(ckpt / "ear"), "file_count": 0},
             "write_paper_iterative": {"latex": fake_latex, "bib": "@article{x,}"},

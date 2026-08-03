@@ -115,7 +115,7 @@ body 含 `license` 时重新分类。
 ```json
 {
   "paper_ids": ["2404.14193"],
-  "rubric_config":    {"model": "gemini/gemini-2.5-pro", "two_stage": true},
+  "rubric_config":    {"model": "gemini/gemini-2.5-pro"},
   "reproduce_config": {
     "model": "gpt-5-mini",
     "time_limit_sec": 43200,

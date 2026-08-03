@@ -349,9 +349,6 @@ const zh: Record<string, string> = {
   ors_replicator_help: '阅读论文并编写 reproduce.sh 的 LLM',
   ors_rubric_gen_model: 'Rubric 生成模型',
   ors_rubric_gen_help: '自动生成 PaperBench 格式 rubric 的 LLM',
-  ors_rubric_two_stage: '两阶段生成',
-  ors_rubric_two_stage_help:
-    '骨架生成 + 各子树并行填充。相比单次调用：叶数约 4 倍，深度增加 1–2 层。API 成本约 5 倍。禁用以使用单次调用（低成本）模式。',
   ors_rubric_audit_model: 'Rubric 审计模型',
   ors_rubric_audit_help: '审计 rubric 质量的 LLM(独立于生成器)',
   ors_judge_model: 'Judge 模型 (SimpleJudge)',
@@ -416,7 +413,6 @@ const zh: Record<string, string> = {
   pb_step4_title: '判分配置',
   pb_step5_title: '启动摘要',
   pb_model: '模型',
-  pb_two_stage: '两阶段评分单生成',
   pb_target_leaves: '目标叶数 (0 = 自动)',
   pb_time_limit: '时间上限 (秒)',
   pb_sandbox: '沙箱',

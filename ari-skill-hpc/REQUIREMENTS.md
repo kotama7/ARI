@@ -29,17 +29,14 @@
 10. Local, remote, A64FX-like, GPU, no-SLURM, cancellation, timeout, input drift,
     and shared-filesystem behavior must be covered by deterministic fixtures.
 
-## Compatibility and deletion
+## Removed compatibility paths
 
-- `slurm_submit` is an opaque compute-node batch-body adapter. Generated
-  directives occur before its body, so caller `#SBATCH` lines cannot override
-  the reviewed scheduler policy.
-- `singularity_build`, `singularity_build_fakeroot`, `singularity_pull`,
-  `singularity_run`, and `singularity_run_gpu` compile into canonical typed job
-  requests.
-- These aliases remain only through the documented deprecation release. Remove
-  them when workflow/tool caller count is zero and container parity fixtures
-  pass. Restore from the pre-deletion commit if rollback is required.
+- The container-specific aliases were removed after workflow/tool callers
+  reached zero and container parity fixtures passed. Archived callers must use
+  `container_submit`.
+- `slurm_submit` is retained only for the core agent's batch-script workflow.
+  Generated policy precedes the compute-node body, and programmatic consumers
+  use `job_submit`; the support policy records its owner and re-evaluation gate.
 - `run_bash`, parent-environment export, `.env` sourcing, automatic SSH host-key
   acceptance, shell-based scheduler commands, and predictable remote temporary
   scripts are prohibited and have no compatibility path.

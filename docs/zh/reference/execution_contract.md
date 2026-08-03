@@ -54,9 +54,10 @@ deny 静默升级成已经验证的网络隔离。
 `unit_status: missing`、provenance、parameters、execution identity/status/exit code
 、execution attempt 以及证据 artifact digest。系统不推断单位或来源。
 
-`coding-skill.emit_results` 在 `measurement_set` 中写 canonical object，并只在 P6
-兼容窗口保留 v1 flat projection。公共 parser 会交叉核对两种表示并拒绝 split-brain
-文档。旧 v1 或无版本文件仅作为只读迁移输入；缺失的单位和执行证据仍标记为缺失。
+`coding-skill.emit_results` 只在 `measurement_set` 中写 canonical object。非有限值或
+无法表示为 JSON 的值会被拒绝，而不会被强制转换为字符串。公共 parser 仍把旧 v1 或
+无版本文件作为只读迁移输入；历史混合文档若同时携带两种表示，则会交叉核对并拒绝
+split-brain 值。
 
 只有至少存在一条测量，且所有测量都有单位、成功的 zero-exit execution identity 和
 证据 artifact 时，coding-skill 才返回 `scientifically_admissible: true`。这只是完整性
@@ -69,5 +70,5 @@ workspace、execution attempt、status、exit code 和 artifact 列表逐项核�
 
 规范生成 schema 为 `workspace_ref_v1.schema.json`、`execution_request_v1.schema.json`、
 `execution_result_v1.schema.json` 和 `measurement_set_v1.schema.json`。运行
-`python scripts/sync_skill_metadata.py` 检查 drift；P6 只有在兼容 reader 使用量归零后
-才删除 flat writer/coercion 与无版本 reader。
+`python scripts/sync_skill_metadata.py` 检查 drift。flat writer/coercion 已删除；legacy
+reader 保持严格只读，并按 compatibility support policy 的复审节点管理。

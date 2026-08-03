@@ -232,22 +232,6 @@ def alias_groups(records: Iterable[RetrievalRecordV1]) -> list[list[str]]:
     return sorted((group for group in result if len(group) > 1), key=lambda x: x[0])
 
 
-def legacy_papers(snapshot: SurveySnapshotV1) -> list[dict[str, Any]]:
-    return [
-        {
-            "title": record.title,
-            "authors": list(record.authors),
-            "year": str(record.year or ""),
-            "abstract": record.abstract,
-            "url": record.source_url or "",
-            "paperId": record.provider_record_id or "",
-            "canonical_id": record.canonical_id,
-            "payload_digest": record.payload_digest,
-        }
-        for record in snapshot.records
-    ]
-
-
 def _write_artifact(
     workspace: WorkspaceRefV1,
     name: str,
@@ -449,7 +433,6 @@ def result_document(
         "query": snapshot.query,
         "count": len(records),
         "records": records,
-        "papers": legacy_papers(snapshot),
         "alias_groups": alias_groups(snapshot.records),
         "survey_snapshot": snapshot.model_dump(mode="json"),
         "survey_snapshot_digest": snapshot.snapshot_digest,

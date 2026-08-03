@@ -79,17 +79,6 @@ def compute_target_leaf_count(paper_text: str) -> int:
     return max(50, min(400, target))
 
 
-def _load_prompt_template() -> str:
-    return (PROMPTS_DIR / "adversarial_reviewer.md").read_text()
-
-
-def _render_prompt(paper_text: str, target_leaves: int) -> str:
-    tmpl = _load_prompt_template()
-    return tmpl.replace("{TARGET_LEAVES}", str(target_leaves)).replace(
-        "{PAPER_TEXT}", paper_text
-    )
-
-
 def _render_skeleton_prompt(
     paper_text: str,
     target_leaves: int,
@@ -454,19 +443,19 @@ async def _call_with_retry(
     return None, errors
 
 
-def _extract_subtree_budgets(skeleton_root: dict, default_total: int) -> dict[str, int]:
-    """Pop ``target_subtree_leaves`` from each direct child and return a map.
+def _extract_subtree_budgets(skeleton_root: dict, default_total: int) -> list[int]:
+    """Read per-child generation budgets without mutating model output.
 
-    Mutates the skeleton in place to remove the non-schema field. Children
-    missing the hint get an even share of ``default_total``.
+    The hints disappear when populated subtrees replace skeleton stubs. Failed
+    stubs are pruned during preparation, so every persisted mutation remains
+    visible in the repair ledger.
     """
     children = skeleton_root.get("sub_tasks") or []
     n = max(1, len(children))
     even = max(8, default_total // n)
-    budgets: dict[str, int] = {}
+    budgets: list[int] = []
     for c in children:
-        nid = c.get("id") or ""
-        budgets[nid] = int(c.pop("target_subtree_leaves", even) or even)
+        budgets.append(int(c.get("target_subtree_leaves", even) or even))
     return budgets
 
 
@@ -803,7 +792,7 @@ def _prepare_generated_envelope(
     return parsed, warnings
 
 
-async def _generate_two_stage(
+async def _generate_hierarchical(
     *,
     paper_text: str,
     target_total_leaves: int,
@@ -838,7 +827,6 @@ async def _generate_two_stage(
         errors.append("skeleton missing 'rubric' root")
         return None, errors
     root = skeleton["rubric"]
-    _ensure_uuid(root)
     children = root.get("sub_tasks") or []
     if not children:
         errors.append("skeleton produced 0 direct children")
@@ -849,11 +837,9 @@ async def _generate_two_stage(
     # ── Pass 2: subtrees in parallel ──
     sem = asyncio.Semaphore(subtree_concurrency)
 
-    async def _one(child: dict) -> tuple[dict, dict | None, list[str]]:
+    async def _one(index: int, child: dict) -> tuple[dict, dict | None, list[str]]:
         async with sem:
-            budget = budgets.get(
-                child.get("id") or "", max(8, target_total_leaves // len(children))
-            )
+            budget = budgets[index]
             sub, errs = await _generate_subtree(
                 call,
                 paper_text,
@@ -864,7 +850,7 @@ async def _generate_two_stage(
             )
             return child, sub, errs
 
-    results = await asyncio.gather(*[_one(c) for c in children])
+    results = await asyncio.gather(*[_one(i, c) for i, c in enumerate(children)])
 
     # ── Merge ──
     merged_children: list[dict] = []
@@ -878,8 +864,9 @@ async def _generate_two_stage(
             merged_children.append(child)
             continue
         # Subtree's root REPLACES the skeleton child (preserving id/weight from skeleton).
-        sub["id"] = child.get("id") or sub.get("id") or str(uuid.uuid4())
-        sub["weight"] = int(child.get("weight", sub.get("weight", 1)))
+        if child.get("id"):
+            sub["id"] = child["id"]
+        sub["weight"] = child.get("weight", sub.get("weight", 1))
         sub["requirements"] = child.get("requirements", sub.get("requirements", ""))
         merged_children.append(sub)
 
@@ -897,9 +884,7 @@ async def generate_rubric_async(
     seed: int | None = None,
     timeout_sec: int = 600,
     llm_call=None,  # injection point for tests
-    two_stage: bool = False,
     paperbench_rubric_id: str | None = None,
-    quality_profile: str = "low-coverage",
     max_model_calls: int = DEFAULT_MAX_MODEL_CALLS,
     subtree_concurrency: int = DEFAULT_SUBTREE_CONCURRENCY,
     provider: str = "",
@@ -923,35 +908,16 @@ async def generate_rubric_async(
         return {"error": "max_model_calls must be in [1, 256]", "warnings": []}
     if not 1 <= int(subtree_concurrency) <= 16:
         return {"error": "subtree_concurrency must be in [1, 16]", "warnings": []}
-    if not two_stage and quality_profile != "low-coverage":
-        return {
-            "error": (
-                "single-call generation requires the explicit "
-                "quality_profile='low-coverage' opt-in"
-            ),
-            "warnings": [],
-        }
-
     target = target_leaf_count or compute_target_leaf_count(paper_text)
     chosen_model = model or _model()
     chosen_provider = provider.strip() or _provider(chosen_model)
     chosen_revision = model_revision or _model_revision()
-    strategy = "hierarchical-v2" if two_stage else "single-call-low-coverage-v1"
-    resolved_quality = "calibrated" if two_stage else "low-coverage"
-    prompt = _render_prompt(paper_text, target)
+    strategy = "hierarchical-v2"
+    resolved_quality = "calibrated"
 
     template: PaperBenchRubricTemplate | None = None
     if paperbench_rubric_id:
         template = load_paperbench_rubric(paperbench_rubric_id)
-        if template.mode == "paper_audit" and not two_stage:
-            return {
-                "error": (
-                    f"paper_audit template '{paperbench_rubric_id}' requires "
-                    "two_stage=True (single-pass skeleton+leaves cannot "
-                    "honour the fixed-axis constraint)"
-                ),
-                "warnings": [],
-            }
 
     base_call = llm_call or (
         lambda p: _llm_call(p, chosen_model, temperature, timeout_sec)
@@ -976,94 +942,40 @@ async def generate_rubric_async(
     env: dict | None = None
     parse_repairs: list[tuple[str, str, str, dict]] = []
 
-    if two_stage:
-        # ── Two-pass: skeleton → parallel subtrees → merge ──
-        parsed, errs = await _generate_two_stage(
+    # ── Calibrated path: skeleton → parallel subtrees → merge ──
+    parsed, errs = await _generate_hierarchical(
+        paper_text=paper_text,
+        target_total_leaves=target,
+        call=call,
+        subtree_concurrency=int(subtree_concurrency),
+        parse_repairs=parse_repairs,
+        template=template,
+    )
+    last_errors.extend(errs)
+    budget_exhausted = any(
+        "budget exhausted" in error.casefold() for error in last_errors
+    )
+    if parsed is not None and not budget_exhausted:
+        prepared, preparation_warnings = _prepare_generated_envelope(
+            parsed,
             paper_text=paper_text,
-            target_total_leaves=target,
-            call=call,
-            subtree_concurrency=int(subtree_concurrency),
-            parse_repairs=parse_repairs,
-            template=template,
+            ledger=ledger,
+            warning_prefix="hierarchical",
         )
-        last_errors.extend(errs)
-        budget_exhausted = any(
-            "budget exhausted" in error.casefold() for error in last_errors
-        )
-        if parsed is not None and not budget_exhausted:
-            prepared, preparation_warnings = _prepare_generated_envelope(
-                parsed,
-                paper_text=paper_text,
-                ledger=ledger,
-                warning_prefix="two_stage",
-            )
-            last_errors.extend(preparation_warnings)
-            skel_prompt = _render_skeleton_prompt(paper_text, target, template=template)
-            prompt = skel_prompt
-            if prepared is not None:
-                partial_failures = sorted(
-                    error
-                    for error in last_errors
-                    if "subtree" in error
-                    and (
-                        "failed" in error
-                        or "empty" in error
-                        or "fell back" in error
-                        or "budget" in error
-                    )
+        last_errors.extend(preparation_warnings)
+        prompt = _render_skeleton_prompt(paper_text, target, template=template)
+        if prepared is not None:
+            partial_failures = sorted(
+                error
+                for error in last_errors
+                if "subtree" in error
+                and (
+                    "failed" in error
+                    or "empty" in error
+                    or "fell back" in error
+                    or "budget" in error
                 )
-                for label, note, raw, parsed_value in sorted(parse_repairs):
-                    ledger.record(
-                        action="json-sanitize",
-                        target=label,
-                        before=raw,
-                        after=parsed_value,
-                        reason=note,
-                    )
-                frozen = freeze(
-                    prepared,
-                    generator_model=chosen_model,
-                    prompt=prompt,
-                    paper_text=paper_text,
-                    temperature=temperature,
-                    seed=seed,
-                    provider=chosen_provider,
-                    model_revision=chosen_revision,
-                    strategy=strategy,
-                    quality_profile=resolved_quality,
-                    max_model_calls=int(max_model_calls),
-                    subtree_concurrency=int(subtree_concurrency),
-                    calls=recorder.calls(),
-                    partial_failures=partial_failures,
-                    repair_ledger=ledger.document(),
-                )
-                schema_errs = _validate_envelope(frozen)
-                if schema_errs:
-                    last_errors.append(f"two_stage schema errors: {schema_errs}")
-                else:
-                    env = frozen
-    else:
-        for attempt in range(1, JSON_RETRY_LIMIT + 1):
-            parsed, parse_error = await _call_and_parse(
-                call,
-                prompt,
-                f"single.attempt-{attempt}",
-                parse_repairs,
             )
-            if parsed is None:
-                last_errors.append(f"attempt {attempt}: {parse_error}")
-                if "budget exhausted" in parse_error:
-                    break
-                continue
-            prepared, preparation_warnings = _prepare_generated_envelope(
-                parsed,
-                paper_text=paper_text,
-                ledger=ledger,
-                warning_prefix=f"attempt {attempt}",
-            )
-            last_errors.extend(preparation_warnings)
-            if prepared is None:
-                continue
             for label, note, raw, parsed_value in sorted(parse_repairs):
                 ledger.record(
                     action="json-sanitize",
@@ -1086,15 +998,14 @@ async def generate_rubric_async(
                 max_model_calls=int(max_model_calls),
                 subtree_concurrency=int(subtree_concurrency),
                 calls=recorder.calls(),
-                partial_failures=[],
+                partial_failures=partial_failures,
                 repair_ledger=ledger.document(),
             )
-            errs = _validate_envelope(frozen)
-            if errs:
-                last_errors.append(f"attempt {attempt}: schema errors: {errs}")
-                continue
-            env = frozen
-            break
+            schema_errs = _validate_envelope(frozen)
+            if schema_errs:
+                last_errors.append(f"hierarchical schema errors: {schema_errs}")
+            else:
+                env = frozen
 
     warnings: list[str] = []
     if env is None:

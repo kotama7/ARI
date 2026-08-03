@@ -7,7 +7,7 @@ sources:
   - path: ari-skill-replicate/src/auditor.py
     role: implementation
   - path: ari-skill-replicate/src/migration.py
-    role: migration
+    role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
 last_verified: 2026-08-02
@@ -201,8 +201,7 @@ prompt_overrides:
      叶子 YES/NO 句式>
 ```
 
-`paper_audit` 模式要求 `two_stage=True` (单次 pass 无法保证固定轴约束;
-组合请求将返回错误)。
+所有模式都使用强制的 calibrated hierarchical strategy，以维持 `paper_audit` 的固定轴约束。
 
 ### 已自带的模板
 

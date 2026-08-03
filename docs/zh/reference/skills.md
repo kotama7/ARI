@@ -51,67 +51,20 @@ orchestrator 已使用同一 lifecycle contract。
 
 ## ari-skill-hpc
 
-通过 SLURM 和 Singularity 进行 HPC 作业管理。**LLM：否**（完全确定性）。
+类型化异步 SLURM 与 digest-pinned container 作业管理。**LLM：否**。
 
 ### 工具
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+- `job_submit(request)` 验证并提交不可变 `JobRequestV1`，立即返回幂等 `JobHandleV1`。
+- `container_submit(request)` 使用同一生命周期，并要求类型化、digest-pinned container 声明。
+- `job_status(handle_id | job_id)`、`job_logs(...)`、`job_result(...)` 与
+  `job_cancel(...)` 提供 provider-neutral 生命周期。
+- `probe_platform_capabilities(checkpoint_dir, partition="", tools="")` 记录有界的
+  platform capability probe。
+- `slurm_submit(...)` 仅作为 core agent batch-script workflow 的受限桥接保留；
+  新 programmatic 调用方使用 `job_submit`。
 
-提交 SLURM 批处理作业。
-
-```python
-result = slurm_submit(
-    script="""
-#!/bin/bash
-#SBATCH --cpus-per-task=32
-gcc -O3 -fopenmp -o ./bench ./bench.c
-OMP_NUM_THREADS=32 ./bench
-""",
-    job_name="bench_test",
-    partition="your_partition",
-    work_dir="/abs/path/to/workdir"
-)
-# Returns: {"job_id": "12345", "status": "submitted"}
-```
-
-**注意事项：**
-- `--account` 和 `-A` 头信息会被静默移除（在此集群上无效）
-- 空的 `job_id` 会立即返回错误
-- 脚本中不要使用 `~`（在 SBATCH 中不会展开）
-
-#### `job_status(job_id)`
-
-轮询 SLURM 作业状态。
-
-```python
-result = job_status("12345")
-# Returns: {"status": "COMPLETED", "exit_code": 0, "stdout": "MFLOPS: 284172"}
-# 状态值：PENDING、RUNNING、COMPLETED、FAILED、ERROR
-```
-
-#### `job_cancel(job_id)`
-
-取消正在运行或等待的 SLURM 作业。
-
-#### `singularity_build(definition_file, output_path, partition)`
-
-从定义文件构建 Singularity 容器。
-
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
-
-作为 SLURM 作业运行 Singularity 容器。
-
-#### `singularity_pull(source, output_path, partition)`
-
-从远程仓库拉取 Singularity 镜像。
-
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
-
-使用 fakeroot 模式构建 Singularity 容器。
-
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
-
-使用 GPU 访问运行 Singularity 容器（`--nv` 标志）。
+旧 container 专用 public alias 已在 P6 删除。
 
 ---
 
@@ -403,11 +356,11 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 ### 工具
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)`
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, max_model_calls=64, subtree_concurrency=4)`
 
 生成 PaperBench 兼容的 rubric。当 `target_leaf_count=0` 时按论文长度自动估算叶节点数（约 1 叶 / 75 词，限制在 [50, 400]）。
 
-`two_stage=True`（默认）使用 **两阶段生成**: ①骨架阶段定义根 + 直接子节点（每项贡献/实验一个）并分配各子树叶数预算 → ②子树阶段对每个直接子节点并行运行，递归展开 4–6 层。合并后，违反 schema `minLength=10` 的叶（`quote` / `requirements` 过短）会被自动剪除。在 PaperBench 参考论文上的实测：相比单次调用 **叶数约 4 倍、深度增加 1–2 层**，API token 消耗约 5 倍。`two_stage=False` 可回退到单次调用（`prompts/adversarial_reviewer.md`）。
+唯一公开策略 `hierarchical-v2` 先生成骨架与各子树预算，再以有界并发生成子树。所有模型调用、修复与删除都写入 provenance；调用预算耗尽时 fail closed。低覆盖率的单次生成路径已在 P6 删除。
 
 #### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
 
@@ -425,9 +378,8 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | 审计 LLM（与生成器独立） |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (未设置) | 覆盖目标叶数。`0` / 未设置时按论文长度自动。GUI Wizard "Target leaves" 字段。 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (未设置) | 覆盖生成器 temperature。GUI Wizard "Temperature" 字段。 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (未设置) | 强制开/关两阶段生成（`1`/`true`/`on` vs `0`/`false`/`off`）。未设置时使用 kwarg 默认（当前 `True`）。GUI Wizard "两阶段生成" 切换。 |
 
-`server.py` 按 "显式 kwarg → 环境变量 → 默认值" 的顺序解析。`workflow.yaml` 的 `ors_generate_rubric` 阶段未显式传递这三个参数，因此 GUI Wizard 的值始终生效。
+目标叶数与 temperature 按“显式 kwarg → 环境变量 → 默认值”解析；生成策略不可配置。
 
 ---
 
@@ -649,7 +601,7 @@ correctness / `required_measured` / 声明的 invariant）——若没有此 gra
 
 ## ari-skill-web
 
-保留provenance的网络与学术检索。标准检索路径 **不使用LLM**；独立reranker与legacy iterative collector为随机路径。
+保留provenance的网络与学术检索。标准检索路径 **不使用LLM**；只有显式独立reranker为随机路径。
 
 ### 工具
 
@@ -673,9 +625,7 @@ correctness / `required_measured` / 声明的 invariant）——若没有此 gra
 
 显式optional LLM reranker，返回model/API identity/temperature及prompt/input/output digest。
 
-#### 兼容工具
-
-`search_arxiv`、`search_semantic_scholar`、`set_retrieval_backend`及`collect_references_iterative`仅在P6弃用窗口内保留。默认paper pipeline已改用`search_papers`。
+旧 provider 别名、可变 backend selector 与组合式 LLM collector 已在 P6 删除。请使用 `search_papers(provider=...)`，并在 workflow 或 broker 中显式组合多查询与重排。
 
 #### `list_uploaded_files()`
 

@@ -25,7 +25,7 @@
     "leaves_count":          { "en": "Total leaves",    "ja": "リーフ総数",     "zh": "叶节点总数" },
     "tree_depth":            { "en": "Tree depth",      "ja": "木の深さ",       "zh": "树深度" },
     "generator":             { "en": "Generator",       "ja": "生成器",         "zh": "生成器" },
-    "two_stage":             { "en": "Two-stage",       "ja": "二段階",         "zh": "两阶段" },
+    "rubric_strategy":       { "en": "Rubric strategy", "ja": "ルーブリック戦略", "zh": "评分单策略" },
     "auditor_flags":         { "en": "Auditor flags",   "ja": "監査フラグ",     "zh": "审计标记" },
     "category_breakdown":    { "en": "Category Breakdown", "ja": "カテゴリ内訳", "zh": "类别分布" },
     "execution_profile":     { "en": "Execution Profile", "ja": "実行プロファイル", "zh": "执行配置" },

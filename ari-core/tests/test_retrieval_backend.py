@@ -76,17 +76,12 @@ def test_provider_dispatch_is_strict(web_skill_src):
     assert _has_function(web_skill_src, "_provider_search")
 
 
-def test_set_retrieval_backend_tool_exists(web_skill_src):
-    assert _has_function(web_skill_src, "set_retrieval_backend")
-
-
 def test_search_papers_tool_exists(web_skill_src):
     assert _has_function(web_skill_src, "search_papers")
 
 
-def test_set_retrieval_backend_accepts_backend_arg(web_skill_src):
-    args = _func_args(web_skill_src, "set_retrieval_backend")
-    assert "backend" in args
+def test_mutable_retrieval_backend_tool_is_removed(web_skill_src):
+    assert not _has_function(web_skill_src, "set_retrieval_backend")
 
 
 def test_provider_dispatch_handles_each_pinned_backend(web_skill_src):

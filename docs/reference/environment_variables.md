@@ -156,7 +156,6 @@ LLM follows `ARI_MODEL_IDEA`.
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | Target leaf count for `generate_rubric` |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature override |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | Use the two-stage skeleton + subtree synthesis |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | Override search root for venue-conditioned PaperBench rubric templates (unreleased — see `docs/reference/rubric_schema.md#venue-conditioned-templates`) |
 
 ### PaperBench reproducibility (v0.7.0)

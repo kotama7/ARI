@@ -19,7 +19,7 @@ ARI 将来源获取与科学采纳判断分离。`ari-skill-web` 负责检索、
 
 ## 公共记录
 
-标准结果 `ari.retrieval-result/v1` 包含 `RetrievalRecordV1` 的 `records`、受摘要约束的 `SurveySnapshotV1`、`survey_snapshot_digest`、可选的检查点相对 `snapshot_ref`，以及跨提供方的 `alias_groups`。`papers` / `results` 只是保留到 P6 的兼容投影。
+标准结果 `ari.retrieval-result/v1` 包含 `RetrievalRecordV1` 的 `records`、受摘要约束的 `SurveySnapshotV1`、`survey_snapshot_digest`、可选的检查点相对 `snapshot_ref`，以及跨提供方的 `alias_groups`。公共 writer 只返回 canonical `records`。
 
 每条记录保存 provider、provider record/version、query、检索时间、书目信息、source URL、raw payload digest、DOI/arXiv/S2 alias、license/use restriction。canonical ID 按提供方划分；即使 AlphaXiv 与 arXiv 描述同一论文，两条来源仍保持独立，只通过共同的 `arxiv:` alias 关联。
 

@@ -19,7 +19,7 @@ ARI は情報取得と科学的採用判断を分離します。`ari-skill-web` 
 
 ## 公開レコード
 
-標準結果 `ari.retrieval-result/v1` は、`RetrievalRecordV1` の `records`、digest 拘束された `SurveySnapshotV1`、`survey_snapshot_digest`、任意の checkpoint 相対 `snapshot_ref`、および provider 間の `alias_groups` を返します。`papers` / `results` は P6 までの互換 projection です。
+標準結果 `ari.retrieval-result/v1` は、`RetrievalRecordV1` の `records`、digest 拘束された `SurveySnapshotV1`、`survey_snapshot_digest`、任意の checkpoint 相対 `snapshot_ref`、および provider 間の `alias_groups` を返します。public writerはcanonical `records`だけを返します。
 
 各 record は provider、provider record/version、query、取得時刻、書誌情報、source URL、raw payload digest、DOI/arXiv/S2 alias、license/use restriction を保持します。canonical ID は provider scoped です。同じ arXiv 論文を表す AlphaXiv record と arXiv record も別 origin のまま、共通 `arxiv:` alias で結ばれます。
 

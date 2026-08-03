@@ -47,7 +47,7 @@ SAMPLE_YAML = {
         {
             "stage": "search_related_work",
             "skill": "web-skill",
-            "tool": "collect_references_iterative",
+            "tool": "search_papers",
             "description": "Citation collection",
             "depends_on": [],
             "enabled": True,

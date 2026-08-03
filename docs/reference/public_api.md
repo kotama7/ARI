@@ -98,7 +98,8 @@ Source: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`.
 This module owns closed-workspace path handling, exact execution identity,
 process-group timeout/cancellation, minimal environments, kernel-limit reports,
 complete content-addressed logs, and typed measurement records. Its migration
-parser validates the canonical object against retained legacy projections.
+parser validates canonical documents and treats old flat files as read-only
+migration input.
 See [Execution and measurement contracts](execution_contract.md) for the
 normative behavior and schema list.
 

@@ -8,7 +8,7 @@
 - `finalize.py` — fail-closed recomputation and `PaperBuildV1` final lock.
 - `rubric.py` — versioned rubric loader.
 - `rubric_migration.py` — offline conversion of old env/default rubric selection.
-- `prompts/` — the three supported whole-document prompt templates.
+- `prompts/` — supported whole-document and claim-declaration prompt templates.
 
 Per-section author/reviewer APIs and the model-based figure inserter are not
 runtime components.

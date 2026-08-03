@@ -209,7 +209,7 @@ def test_pinned_provider_outage_is_explicit_and_never_falls_back():
     with (
         patch("server._search_s2_raw_sync", side_effect=TimeoutError("offline")),
         patch(
-            "server._search_arxiv_rows",
+            "server._arxiv_provider_rows",
             side_effect=AssertionError("fallback must not run"),
         ),
     ):

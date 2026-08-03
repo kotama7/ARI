@@ -10,6 +10,7 @@ file formats, and terminology.
 - `analysis_contract.md` — typed deterministic summary, inference, run-comparison, and plot hand-off contracts.
 - `cli_reference.md` — ARI CLI Reference: complete reference for command-line operations.
 - `configuration.md` — Configuration Reference: `workflow.yaml`, the single source of truth for the pipeline.
+- `compatibility_support.md` — retained read-only/limited compatibility paths, owners, and objective removal gates.
 - `environment_variables.md` — Environment Variable Reference: the ~90 environment variables ARI honours.
 - `execution_profile.md` — `execution_profile` reference: the object under `reproduce_contract`.
 - `execution_contract.md` — closed workspace, bounded execution, complete-log artifact, and typed measurement contracts.

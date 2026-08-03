@@ -12,9 +12,9 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
   it('renders the permissive license badge for CC BY 4.0', () => {
     render(<PaperImportDialog />);
     const licenseInput = screen.getByDisplayValue(/CC BY 4\.0/i);
-    expect(licenseInput).toBeInTheDocument();
+    expect(licenseInput).toBeTruthy();
     // The optimistic local classifier shows "Permissive license — usable"
-    expect(screen.getByText(/Permissive license/i)).toBeInTheDocument();
+    expect(screen.getByText(/Permissive license/i)).toBeTruthy();
   });
 
   it('switches the badge to warning when an unusable license is typed', () => {
@@ -22,9 +22,9 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
     const licenseInput = screen.getByDisplayValue(/CC BY 4\.0/i) as HTMLInputElement;
     fireEvent.change(licenseInput, { target: { value: 'Proprietary Corp License' } });
     // The warning copy must appear
-    expect(screen.getByText(/License may require review/i)).toBeInTheDocument();
+    expect(screen.getByText(/License may require review/i)).toBeTruthy();
     // The "permissive" copy must no longer be visible
-    expect(screen.queryByText(/^✅ Permissive license/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^✅ Permissive license/i)).toBeNull();
   });
 
   it('uploads the selected PDF to /api/upload and forwards pdf_path on import', async () => {
@@ -69,10 +69,10 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
     const fileInput = screen.getByLabelText(/PDF file/i) as HTMLInputElement;
     fireEvent.change(fileInput, { target: { files: [file] } });
     // Filename appears in the dialog and source defaults to the stem
-    expect(screen.getByText(/SC41406\.2024\.00019\.pdf/)).toBeInTheDocument();
+    expect(screen.getByText(/SC41406\.2024\.00019\.pdf/)).toBeTruthy();
     expect(
       screen.getByDisplayValue('SC41406.2024.00019'),
-    ).toBeInTheDocument();
+    ).toBeTruthy();
 
     // Title is required by the form; fill it.
     fireEvent.change(screen.getByLabelText(/^Title$/i), {
@@ -115,7 +115,9 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
 
     render(<PaperImportDialog />);
     // Source type defaults to 'arxiv'
-    const sourceInput = screen.getByDisplayValue('') as HTMLInputElement;
+    const sourceInput = screen.getByLabelText(
+      /Source identifier/i,
+    ) as HTMLInputElement;
     fireEvent.change(sourceInput, { target: { value: '2404.14193' } });
 
     const fetchBtn = screen.getByRole('button', { name: /Fetch metadata/i });
@@ -124,15 +126,16 @@ describe('PaperImportDialog (PLAN_GUI §8 acceptance: license warning)', () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/paperbench/arxiv/2404.14193',
+        { method: 'GET' },
       );
     });
     // Title was populated from the response
     await waitFor(() => {
       expect(
         screen.getByDisplayValue('LLAMP: assessing latency tolerance'),
-      ).toBeInTheDocument();
+      ).toBeTruthy();
     });
     // Authors were joined as comma-separated string
-    expect(screen.getByDisplayValue('Alice, Bob')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Alice, Bob')).toBeTruthy();
   });
 });

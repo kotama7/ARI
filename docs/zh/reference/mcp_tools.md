@@ -53,21 +53,18 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `claim_evidence_hard_gate` | 确定性的声明/证据硬门（执行数据保真度）；strict 模式下在 final 阶段阻止 finalize | ✗ |
 | `evidence_grounded_semantic_review` | 非阻塞的、以证据为基础的语义评审；为 `paper_refine` 输出 `suggested_revisions` | ✓ |
 
-## ari-skill-hpc — SLURM + Singularity
-
-`mcp.json` 为空列表；工具来自 `src/server.py` 中的 `@server.list_tools()`。
+## ari-skill-hpc — 类型化 scheduler 生命周期
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `slurm_submit` | 带有显式分区 / 时间 / CPU / 节点 / GPU 的 sbatch | ✗ |
-| `job_status` | squeue + sacct 查询 | ✗ |
-| `job_cancel` | 取消运行中的作业（scancel） | ✗ |
-| `run_bash` | 直接 bash 命令（本地或通过 SSH） | ✗ |
-| `singularity_build` | 从定义文件构建 SIF | ✗ |
-| `singularity_run` | 在 SIF 内运行命令 | ✗ |
-| `singularity_pull` | 从远程 URI 拉取 SIF | ✗ |
-| `singularity_build_fakeroot` | Fakeroot 构建（无需特权守护进程） | ✗ |
-| `singularity_run_gpu` | `singularity_run` 的 GPU 变体 | ✗ |
+| `job_submit` | 提交不可变类型化 request 并返回幂等 handle | ✗ |
+| `container_submit` | 提交 digest-pinned container request | ✗ |
+| `job_status` | handle 或 scheduler ID 的 provider-neutral 状态 | ✗ |
+| `job_result` | 重新 hash input/output/log/provenance 的终态结果 | ✗ |
+| `job_logs` | 有界且 digest-bound 的 stdout/stderr | ✗ |
+| `job_cancel` | 请求 scheduler 取消 | ✗ |
+| `probe_platform_capabilities` | 带 checkpoint cache 的 platform capability probe | ✗ |
+| `slurm_submit` | 受限 core-agent batch-script 桥接；新调用方使用 `job_submit` | ✗ |
 
 ## ari-skill-idea — 文献调研 + 创意生成
 
@@ -207,7 +204,7 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `neurips` | `paper_audit` | 按 NeurIPS 可重现性检查表的六个轴（声明 / 设置 / 代码+数据 / 统计 / 伦理 / 图表）。 |
 | `nature` | `paper_audit` | 湿实验室论文的五个轴（材料 / 方案 / 统计 / 数据 / 伦理）。 |
 
-`paper_audit` 模式需要 `two_stage=True`；若使用 `paper_audit` 模板请求单次路径，生成器会返回错误（单次提示无法满足固定轴约束）。YAML schema 和撰写指南请参见 [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
+所有模板模式均使用强制的 calibrated hierarchical strategy，从而保留固定审核轴。YAML schema 与编写指南见 [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
 
 ## ari-skill-transform — 树遍历 + EAR 流水线
 
@@ -252,10 +249,6 @@ ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `fetch_url` | 受SSRF控制的URL → 不可信文本 | ✗ |
 | `walk_citations` | 带partial provenance的有界引用图 | ✗ |
 | `rerank_retrieval_records` | 显式typed-record reranker | ✓ |
-| `search_arxiv` | 已弃用arXiv别名 | ✗ |
-| `search_semantic_scholar` | 已弃用Semantic Scholar别名 | ✗ |
-| `collect_references_iterative` | 已弃用随机检索/选择循环 | ✓ |
-| `set_retrieval_backend` | 已弃用固定provider选择器 | ✗ |
 | `list_uploaded_files` | 列出checkpoint upload | ✗ |
 | `read_uploaded_file` | 带traversal/output限制的upload读取 | ✗ |
 

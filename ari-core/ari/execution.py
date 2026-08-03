@@ -1019,7 +1019,7 @@ class MeasurementRecordV1(BaseModel):
 
 
 class MeasurementSetV1(BaseModel):
-    """Canonical typed view plus an explicit compatibility projection."""
+    """Canonical typed scientific-measurement document."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -1100,7 +1100,7 @@ def _parse_canonical_measurement_document(
         or projection_version.split(".", 1)[0] != "1"
     ):
         raise MeasurementDocumentError(
-            "typed measurement compatibility projection is not v1"
+            "typed measurement document projection is not v1"
         )
     canonical = document.get("measurement_set")
     if not isinstance(canonical, dict):
@@ -1196,11 +1196,10 @@ def parse_measurement_document(
 ) -> MeasurementSetV1:
     """Validate a canonical measurement set or migrate one supported v1 file.
 
-    Typed documents are cross-checked against every retained flat projection so
-    consumers cannot be shown different values by old and new readers.
-    Unversioned and ``schema_version: 1.x`` files remain read-only inputs during
-    the P6 support window; their absent units and execution provenance stay
-    explicitly absent.
+    Historical typed documents are cross-checked against any flat fields they
+    contain so old and new readers cannot observe different values. Unversioned
+    and ``schema_version: 1.x`` files are read-only migration inputs; their
+    absent units and execution provenance stay explicitly absent.
     """
 
     if not isinstance(document, dict):

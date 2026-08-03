@@ -54,67 +54,21 @@ ARI orchestrator は既に同じ lifecycle 契約を使用します。
 
 ## ari-skill-hpc
 
-SLURM と Singularity による HPC ジョブ管理。**LLM: No**（完全に決定論的）。
+型付き非同期SLURMとdigest-pinned container job管理。**LLM: No**。
 
 ### ツール
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+- `job_submit(request)` はimmutable `JobRequestV1`を検証・投入し、idempotentな
+  `JobHandleV1`を直ちに返します。
+- `container_submit(request)` は同じlifecycleで、型付きdigest-pinned container宣言を必須にします。
+- `job_status(handle_id | job_id)`、`job_logs(...)`、`job_result(...)`、
+  `job_cancel(...)` がprovider-neutral lifecycleを提供します。
+- `probe_platform_capabilities(checkpoint_dir, partition="", tools="")` はboundedな
+  platform capability probeを記録します。
+- `slurm_submit(...)` はcore agentのbatch-script workflowだけに残すbridgeです。
+  新規programmatic callerは`job_submit`を使います。
 
-SLURM バッチジョブを投入します。
-
-```python
-result = slurm_submit(
-    script="""
-#!/bin/bash
-#SBATCH --cpus-per-task=32
-compiler -o ./bench ./bench.c
-NTHREADS=32 ./bench
-""",
-    job_name="bench_test",
-    partition="your_partition",
-    work_dir="/abs/path/to/workdir"
-)
-# 戻り値: {"job_id": "12345", "status": "submitted"}
-```
-
-**注意事項:**
-- `--account` と `-A` ヘッダーは暗黙的に除去されます（このクラスターでは無効）
-- 空の `job_id` は即座に ERROR を返します
-- スクリプト内のパスに `~` を使用しないでください（SBATCH では展開されません）
-
-#### `job_status(job_id)`
-
-SLURM ジョブのステータスをポーリングします。
-
-```python
-result = job_status("12345")
-# 戻り値: {"status": "COMPLETED", "exit_code": 0, "stdout": "score: 284172"}
-# ステータス値: PENDING, RUNNING, COMPLETED, FAILED, ERROR
-```
-
-#### `job_cancel(job_id)`
-
-実行中または待機中の SLURM ジョブをキャンセルします。
-
-#### `singularity_build(definition_file, output_path, partition)`
-
-定義ファイルから Singularity コンテナをビルドします。
-
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
-
-Singularity コンテナを SLURM ジョブとして実行します。
-
-#### `singularity_pull(source, output_path, partition)`
-
-リモートレジストリから Singularity イメージを取得します。
-
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
-
-fakeroot モードで Singularity コンテナをビルドします。
-
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
-
-GPU アクセス付き（`--nv` フラグ）で Singularity コンテナを実行します。
+旧container別public aliasはP6で削除済みです。
 
 ---
 
@@ -405,11 +359,11 @@ v0.7.0 で追加された PaperBench 形式の **オートルーブリック生�
 
 ### ツール
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)`
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, max_model_calls=64, subtree_concurrency=4)`
 
 PaperBench 互換のルーブリックを生成。`target_leaf_count=0` の場合は論文長から自動算定（~1葉 / 75語、[50, 400] にクランプ）。
 
-`two_stage=True`（デフォルト）では **二段階生成** を行います: ①スケルトンパスでルート + 直接子（contribution/experiment ごとに1ノード）と各子の葉数バジェットを決定 → ②サブツリーパスを各直接子について並列に走らせ、4–6階層深く再帰的に展開。マージ後、スキーマの `minLength=10` を満たさない葉（quote / requirements が短すぎる葉）は自動で除去されます。PaperBench 参照論文での測定では、単一コール比 **葉数約 4 倍・深さ +1〜2 層**、API トークン消費は約 5 倍。`two_stage=False` で従来の単一コール（`prompts/adversarial_reviewer.md`）に戻せます。
+唯一の公開戦略 `hierarchical-v2` は、①スケルトンパスでルート + 直接子と各子の葉数バジェットを決め、②各サブツリーをbounded concurrencyで生成します。全model call、repair、dropを記録し、call budget枯渇時はfail closedします。低coverageの単一コール生成経路はP6で削除済みです。
 
 #### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
 
@@ -427,9 +381,8 @@ PaperBench 互換のルーブリックを生成。`target_leaf_count=0` の場�
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | 監査 LLM（生成器とは独立） |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (未設定) | 目標葉数の上書き。`0` / 未設定で論文長から自動。GUI Wizard の "Target leaves" 欄。 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (未設定) | 生成器 temperature の上書き。GUI Wizard の "Temperature" 欄。 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (未設定) | 二段階生成の強制 ON/OFF（`1`/`true`/`on` vs `0`/`false`/`off`）。未設定時は kwarg のデフォルト（現状 `True`）。GUI Wizard の "二段階生成" トグル。 |
 
-`server.py` で「明示 kwarg → 環境変数 → デフォルト」の順で解決されます。`workflow.yaml` の `ors_generate_rubric` ステージはこの3項目を明示しないため、GUI Wizard の値が常に効きます。
+target leaf数とtemperatureは`server.py`で「明示kwarg → 環境変数 → デフォルト」の順に解決します。生成戦略は変更できません。
 
 ---
 
@@ -648,7 +601,7 @@ ARI の監査ログ 2 つは `<checkpoint>/` 直下（`ear/` の外）に置か�
 
 ## ari-skill-web
 
-provenanceを保持するWeb・学術文献取得。標準取得pathは **LLM: No**。独立rerankerとlegacy iterative collectorのみstochasticです。
+provenanceを保持するWeb・学術文献取得。標準取得pathは **LLM: No**。明示的な独立rerankerだけがstochasticです。
 
 ### ツール
 
@@ -672,9 +625,7 @@ cycle detectionとdepth/node/request budgetを持つbounded citation traversal�
 
 明示的なoptional LLM rerankerです。model/API identity/temperatureとprompt/input/output digestを返します。
 
-#### 互換tool
-
-`search_arxiv`、`search_semantic_scholar`、`set_retrieval_backend`、`collect_references_iterative`はP6のdeprecation window中のみ保持します。標準paper pipelineは`search_papers`を使用します。
+旧provider別alias、mutable backend selector、combined LLM collectorはP6で削除済みです。`search_papers(provider=...)`を使い、複数queryやrerankはworkflowまたはbrokerで明示的に合成します。
 
 #### `list_uploaded_files()`
 

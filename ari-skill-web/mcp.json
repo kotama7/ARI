@@ -7,14 +7,10 @@
   "runtime": "python",
   "schema_version": 1,
   "tools": [
-    "collect_references_iterative",
     "fetch_url",
     "list_uploaded_files",
     "read_uploaded_file",
-    "search_arxiv",
     "search_papers",
-    "search_semantic_scholar",
-    "set_retrieval_backend",
     "rerank_retrieval_records",
     "walk_citations",
     "web_search"

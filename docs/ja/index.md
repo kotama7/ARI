@@ -1,5 +1,6 @@
 ---
 title: ARI ドキュメント
+last_verified: 2026-08-02
 ---
 
 # ARI ドキュメント

@@ -376,12 +376,12 @@ async def test_result_detects_input_drift(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_legacy_body_cannot_override_generated_directives(tmp_path: Path) -> None:
+async def test_script_bridge_cannot_override_generated_directives(tmp_path: Path) -> None:
     runner = FakeRunner(CommandResult("9001", "", 0))
     scheduler = _scheduler(tmp_path, runner)
-    handle = await scheduler.submit_legacy_script(
+    handle = await scheduler.submit_script_bridge(
         script="#SBATCH --partition=wrong\necho explicit-compute-body",
-        job_name="legacy-job",
+        job_name="bridge-job",
         partition="right",
         work_dir=str(tmp_path),
     )

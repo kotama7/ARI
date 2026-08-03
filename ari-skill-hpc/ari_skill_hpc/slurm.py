@@ -1,9 +1,9 @@
-"""SLURM compatibility facade and compute-platform capability probe.
+"""SLURM scheduler factory and compute-platform capability probe.
 
 New consumers should use :mod:`ari_skill_hpc.contracts` and
 :class:`ari_skill_hpc.scheduler.SlurmScheduler`.
-The ``SlurmClient`` facade preserves the existing MCP aliases while routing every
-scheduler operation through the same shell-free backend.
+``SlurmClient`` owns the configured shell-free scheduler backend used by the
+canonical MCP lifecycle.
 """
 
 from __future__ import annotations
@@ -12,7 +12,6 @@ import asyncio
 import json
 import os
 import re
-import stat
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -23,7 +22,6 @@ from ari_skill_hpc.scheduler import (
     RemoteCommandRunner,
     RemoteConfig,
     SchedulerError,
-    SchedulerValidationError,
     SlurmScheduler,
 )
 
@@ -33,12 +31,9 @@ __all__ = [
     "probe_platform_capabilities",
 ]
 
-_JOB_ID_RE = re.compile(r"^[0-9]+(?:_[0-9]+)?$")
-
-
 @dataclass
 class SlurmClient:
-    """Backward-compatible adapter around the canonical SLURM scheduler."""
+    """Own one environment-configured canonical SLURM scheduler."""
 
     mode: str = "local"
     remote_config: RemoteConfig | None = None
@@ -78,6 +73,7 @@ class SlurmClient:
         return self._scheduler
 
     async def submit(self, script: str, **kwargs: object) -> dict[str, Any]:
+        """Compile the core agent's batch-script bridge into a scheduler claim."""
         work_dir = str(
             kwargs.get("work_dir")
             or os.environ.get("SLURM_DEFAULT_WORK_DIR")
@@ -91,7 +87,7 @@ class SlurmClient:
             or ""
         )
         try:
-            handle = await self._scheduler.submit_legacy_script(
+            handle = await self._scheduler.submit_script_bridge(
                 script=script,
                 job_name=str(kwargs.get("job_name") or "mcp_job"),
                 partition=partition,
@@ -124,111 +120,6 @@ class SlurmClient:
             "request_digest": handle.request_digest,
             "submission_digest": handle.submission_digest,
         }
-
-    async def status(self, job_id: str) -> dict[str, Any]:
-        if not job_id:
-            return {
-                "job_id": "",
-                "status": "ERROR",
-                "normalized_state": "unknown",
-                "exit_code": None,
-                "start_time": None,
-                "end_time": None,
-                "stdout": None,
-                "stderr": None,
-                "message": "job_id is empty; submission did not return a handle",
-            }
-        try:
-            status = await self._scheduler.status(job_id)
-            logs = ()
-            if status.state in {"succeeded", "failed", "cancelled"}:
-                try:
-                    logs = await self._scheduler.logs(job_id)
-                except SchedulerError:
-                    logs = ()
-        except SchedulerError as exc:
-            return {
-                "job_id": job_id,
-                "status": "ERROR",
-                "normalized_state": "unknown",
-                "exit_code": None,
-                "start_time": None,
-                "end_time": None,
-                "stdout": None,
-                "stderr": None,
-                "message": str(exc),
-            }
-        by_stream = {item.stream: item.text for item in logs}
-        return {
-            "schema_version": status.schema_version,
-            "handle_id": status.handle_id,
-            "job_id": status.job_id,
-            "status": status.scheduler_state,
-            "normalized_state": status.state,
-            "exit_code": status.exit_code,
-            "start_time": status.start_time,
-            "end_time": status.end_time,
-            "reason": status.reason,
-            "stdout": by_stream.get("stdout"),
-            "stderr": by_stream.get("stderr"),
-        }
-
-    async def cancel(self, job_id: str) -> dict[str, Any]:
-        try:
-            result = await self._scheduler.cancel(job_id)
-        except SchedulerError as exc:
-            return {"success": False, "message": str(exc), "job_id": job_id}
-        return {
-            **result,
-            "success": True,
-            "message": f"Job {result['job_id']} cancellation requested",
-        }
-
-    async def get_stdout(self, job_id: str) -> str | None:
-        return await self._get_log(job_id, "stdout")
-
-    async def get_stderr(self, job_id: str) -> str | None:
-        return await self._get_log(job_id, "stderr")
-
-    async def _get_log(self, job_id: str, stream: str) -> str | None:
-        if not _JOB_ID_RE.fullmatch(job_id):
-            raise SchedulerValidationError("invalid SLURM job id")
-        try:
-            logs = await self._scheduler.logs(job_id)
-            for item in logs:
-                if item.stream == stream:
-                    return item.text
-        except SchedulerError:
-            pass
-        suffix = "out" if stream == "stdout" else "err"
-        candidates: list[Path] = []
-        for root in (
-            os.environ.get("SLURM_LOG_DIR", ""),
-            os.environ.get("ARI_WORK_DIR", ""),
-            os.getcwd(),
-        ):
-            if root:
-                candidates.extend(
-                    [
-                        Path(root) / f"slurm_job_{job_id}.{suffix}",
-                        Path(root) / f"slurm-{job_id}.{suffix}",
-                    ]
-                )
-        for path in candidates:
-            if self.mode == "local":
-                if path.exists():
-                    info = path.lstat()
-                    if stat.S_ISREG(info.st_mode) and not path.is_symlink():
-                        return (
-                            path.read_bytes()[:1_048_576]
-                            .decode("utf-8", errors="replace")
-                            .strip()
-                        )
-            else:
-                response = await self._scheduler.runner.run(["cat", "--", str(path)])
-                if response.returncode == 0 and response.stdout:
-                    return response.stdout
-        return None
 
     def close(self) -> None:
         self._scheduler.close()

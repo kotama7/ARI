@@ -135,7 +135,6 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` の目標葉数 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature 上書き |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 二段階スケルトン + サブツリー合成を使用 |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | venue 条件付き PaperBench ルーブリックテンプレートの検索ルート上書き（未リリース — `docs/reference/rubric_schema.md#venue-conditioned-templates` 参照） |
 
 ### PaperBench 再現性 (v0.7.0)
