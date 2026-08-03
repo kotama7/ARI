@@ -17,3 +17,4 @@ Unit and smoke tests for the top-level `scripts/` quality checkers.
 - `test_check_translation_freshness.py` — TODO
 - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).
 - `test_generate_quality_report.py` — TODO
+- `test_readme_sync.py` — Git-visible inventory regression: ignored local artifacts cannot perturb generated README indexes.

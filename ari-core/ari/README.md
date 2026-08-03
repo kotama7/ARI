@@ -249,11 +249,6 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `auth.py` — sqlite-backed bearer-token auth.
   - `cli.py` — `ari registry` serve / token / gc CLI.
   - `storage.py` — filesystem storage backend.
-- `rqgm/` — TODO
-  - `adversarial/` — TODO
-  - `evaluation/` — TODO
-  - `governance/` — TODO
-  - `proposals/` — TODO
 - `schemas/` — JSON Schemas shipped with ari-core.
   - `README.md` — schemas index.
   - `__init__.py` — `load(name)` loader.
@@ -333,7 +328,6 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `file_service.py` — TODO
     - `launch_service.py` — TODO
     - `state_service.py` — TODO
-  - `v1/` — TODO
 
 ## See also
 
