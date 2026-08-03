@@ -90,10 +90,6 @@ Operational and utility scripts for building images, running services, and dev t
   - `docker-compose.yml` — production stack (nginx + uvicorn + sqlite file volume).
   - `start_local.sh` — uvicorn + sqlite single-process, for laptop/dev.
   - `start_singularity.sh` — HPC fallback running the registry inside an Apptainer SIF.
-- `rqgm_eval/` — TODO
-  - `experiments/` — TODO
-    - `spmm_roofline.md` — TODO
-    - `stencil_blocking.md` — TODO
 - `setup/` — installer step scripts and shared shell helpers.
   - `README.md` — setup index.
   - `banner.sh` — ASCII banner printer.
@@ -125,3 +121,4 @@ Operational and utility scripts for building images, running services, and dev t
   - `test_check_translation_freshness.py` — TODO
   - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).
   - `test_generate_quality_report.py` — TODO
+  - `test_readme_sync.py` — Git-visible inventory regression: ignored local artifacts cannot perturb generated README indexes.
