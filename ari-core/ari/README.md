@@ -9,24 +9,38 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `__init__.py` — package marker.
 - `_deprecation.py` — `DeprecationWarning` helpers for v0.5→v1.0 legacy paths/aliases.
 - `_factory.py` — TODO
+- `analysis.py` — TODO
 - `artifact_store.py` — TODO
 - `async_tools.py` — portable asynchronous handle, timeout budget, and lifecycle contracts.
 - `call_context.py` — explicit run/node lineage models and tool-bound signed MCP capabilities.
 - `checkpoint.py` — checkpoint JSON I/O (`tree.json` / `nodes_tree.json` / `results.json`).
+- `claim_gate_contract.py` — TODO
 - `cli_ear.py` — `ari ear …` curation / publish / promote / status CLI surface.
 - `container.py` — unified container runtime abstraction (Docker / Singularity / bare subprocess).
 - `core.py` — generic ARI runtime builder (zero domain-specific code; `cli` calls into it).
 - `cost_tracker.py` — per-call logs + per-experiment cost summaries.
 - `credential_scope.py` — value-free credential-scope contract and environment-name classification.
 - `env_detect.py` — detect schedulers, container runtimes, and HPC resources.
+- `execution.py` — TODO
+- `figure_contract.py` — TODO
+- `latex_claims.py` — TODO
 - `lineage.py` — recursion lineage helpers; walk `parent_run_id` chains for ancestor artifacts.
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
+- `memory_contract.py` — TODO
+- `paper_contract.py` — TODO
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
 - `pidfile.py` — `.ari_pid` write/read/cleanup for run-liveness detection.
+- `research_contract.py` — TODO
 - `result.py` — typed MCP result envelope, artifact, error, context, and provenance contract.
+- `science_data_base.py` — TODO
+- `science_data_contract.py` — TODO
+- `science_data_derived.py` — TODO
+- `science_data_migration.py` — TODO
+- `science_data_validation.py` — TODO
 - `skill_lock.py` — deterministic run-level MCP provider/schema/phase snapshot.
 - `skill_manifest.py` — canonical versioned Skill package and tool-policy contract.
 - `trace_store.py` — TODO
+- `visual_review_contract.py` — TODO
 - `agent/` — ReAct loop, environment capture, per-stage workflow guidance.
   - `README.md` — agent index.
   - `__init__.py` — package module-map docstring.
@@ -41,6 +55,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `shims/` — executable `PATH` shims for the reproducibility sandbox.
     - `README.md` — shims index.
     - `git.sh` — intercepts only `git clone` of the paper's ref; other git passes through.
+- `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
 - `cli/` — CLI entry point (thin Typer wrapper; delegates to `ari.core`).
   - `README.md` — cli index.
   - `__init__.py` — Typer app entry point.
@@ -87,20 +102,18 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
   - `__init__.py` — public `MCPClient` + contract.
-  - `client.py` — public MCP client facade, typed dispatch, and run-lock coordination.
-  - `connection.py` — isolated provider lifecycle and event-loop thread.
-  - `child_environment.py` — environment allowlist, credential scopes, redaction.
-  - `claude_bridge.py` — value-free Claude CLI config and allowed-tool rendering.
-  - `registry_runtime.py` — live discovery, enrichment, and collision admission.
-  - `invoke_runtime.py` — retries, cancellation, and typed transport normalization.
-  - `secure_stdio_proxy.py` — exact-env/redacting direct-MCP proxy.
+  - `child_environment.py` — exact child allowlist, credential scopes, and redaction.
+  - `claude_bridge.py` — value-free Claude CLI MCP config and allowed-tool rendering.
+  - `client.py` — registry, typed dispatch, retry, and connection pooling.
+  - `connection.py` — one provider's stdio lifecycle and event-loop thread.
   - `dispatch_support.py` — pure identity, phase, timeout, and tracing policy.
-  - `lock_runtime.py` — per-client exact/subset run-lock reconciliation state.
+  - `invoke_runtime.py` — retries, cancellation, and typed transport normalization.
+  - `lock_runtime.py` — per-client exact/subset `SKILLS.lock` reconciliation state.
+  - `registry_runtime.py` — live discovery, enrichment, and collision admission.
+  - `secure_stdio_proxy.py` — exact-env/redacting boundary for direct MCP clients.
 - `memory/` — backend abstraction for ancestor-scoped node memory.
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
-  - Legacy memory conversion is exposed only through the offline
-    `ari memory migrate` command.
   - `backend.py` — sanctioned core→skill funnel: lazy forwards (`get_backend` / `clear_backend_cache` / `build_verified_context`) to the rich `MemoryBackend`.
   - `client.py` — abstract `MemoryClient` ABC.
   - `file_client.py` — `FileMemoryClient` (legacy JSONL).
@@ -109,8 +122,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `migrations/` — migration shims for older checkpoint formats.
   - `README.md` — migrations index.
   - `__init__.py` — rationale + layout.
-  - `checkpoint.py` — digest-bound read-only legacy checkpoint view.
-  - `skill_manifest.py` — offline conversion of unversioned Skill metadata.
+  - `checkpoint.py` — digest-bound, read-only view of legacy paper/replay inputs.
+  - `skill_manifest.py` — in-memory conversion of unversioned Skill metadata;
   - `v05_to_v07/` — v0.5 → v0.7 migration helpers.
     - `README.md` — v05_to_v07 index.
     - `__init__.py` — subsystem map + deprecation plan.
@@ -193,18 +206,32 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
-  - `call_context.py` — stable explicit run/node context and signed-capability verification contract.
-  - `claim_gate.py` — re-exports five symbols from `ari.pipeline.claim_gate`: `run_hard_gate` (→ ari-skill-evaluator), `check_emission` (→ ari-skill-coding), `scan_science_data` (→ ari-skill-transform), plus `classify_concept` / `CONCEPT_INVARIANTS` (shared concept→invariant registry).
+  - `analysis.py` — versioned deterministic analysis requests and result contracts.
+  - `call_context.py` — explicit run/node/lineage models plus signed transport capability helpers.
+  - `claim_gate.py` — canonical deterministic gate plus versioned metric
+  - `clone.py` — digest-verified EAR bundle retrieval and safe extraction.
   - `config_schema.py` — re-export of `ari.config` models.
   - `container.py` — re-export of `ari.container`.
   - `cost_tracker.py` — re-export of `ari.cost_tracker`.
+  - `evaluation.py` — stable evaluator-contract surface shared by idea,
+  - `execution.py` — versioned workspace, bounded execution, complete-log
+  - `figures.py` — declarative `FigureSpecV1`, digest-bound render/batch
+  - `latex_claims.py` — canonical lexical LaTeX claim/number/citation/figure parser.
+  - `lineage.py` — TODO
   - `llm.py` — re-export of `ari.llm.client.LLMClient`.
+  - `memory.py` — content-addressed memory records, retrievals, events, and backups.
+  - `node_selection.py` — deterministic downstream node/source selection.
+  - `paper.py` — immutable paper build, revision, model-call, compile, review, and
   - `paths.py` — re-export of `ari.paths.PathManager`.
-  - `result.py` — stable typed result/artifact/provenance contract.
+  - `publish.py` — staged EAR publication and promotion.
+  - `research_contract.py` — TODO
+  - `result.py` — versioned `ResultEnvelopeV1`, artifact references, typed errors,
   - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.
-  - `skill_lock.py` — stable run-level immutable Skill snapshot contract.
-  - `skill_manifest.py` — stable canonical Skill manifest contract.
+  - `science_data.py` — canonical `ScienceDataV1` raw/derived/interpretation
+  - `skill_lock.py` — immutable run-level provider/schema/phase snapshot contract
+  - `skill_manifest.py` — canonical Skill package, entrypoint, and tool-policy
   - `verified_context.py` — re-export of `ari.pipeline.verified_context` (`render_grounded_block` / `write_verified_context`; used by ari-skill-paper).
+  - `visual_review.py` — criteria profiles, artifact-bound review findings,
 - `publish/` — `ari ear publish`: package + ship a curated EAR.
   - `README.md` — publish index.
   - `__init__.py` — publish flow + artifacts.
@@ -222,27 +249,53 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `auth.py` — sqlite-backed bearer-token auth.
   - `cli.py` — `ari registry` serve / token / gc CLI.
   - `storage.py` — filesystem storage backend.
+- `rqgm/` — TODO
+  - `adversarial/` — TODO
+  - `evaluation/` — TODO
+  - `governance/` — TODO
+  - `proposals/` — TODO
 - `schemas/` — JSON Schemas shipped with ari-core.
   - `README.md` — schemas index.
   - `__init__.py` — `load(name)` loader.
-  - `call_context_v1.schema.json` — explicit run/node tool-call context contract.
-  - `async_tool_handle_v1.schema.json` — immutable async lifecycle handle contract.
+  - `analysis_request_v1.schema.json` — TODO
+  - `analysis_result_v1.schema.json` — TODO
+  - `async_tool_handle_v1.schema.json` — immutable submit/status/result/cancel handle contract.
+  - `call_context_v1.schema.json` — explicit run, node, ordered-lineage, and call provenance context.
+  - `execution_request_v1.schema.json` — exact command, workspace, input digest, environment, resource, network, and container request.
+  - `execution_result_v1.schema.json` — attempt identity, enforcement report, bounded previews, and complete-log artifacts.
+  - `figure_batch_v1.schema.json` — declarative specs, render environment,
+  - `gate_report_v1.schema.json` — deterministic policy/evidence/formula-bound hard-gate report.
+  - `idea_candidate_v1.schema.json` — admitted falsifiable hypothesis candidate.
+  - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
+  - `measurement_set_v1.schema.json` — typed parameter/measurement/unit/execution/artifact separation.
+  - `memory_backup_v1.schema.json` — TODO
+  - `memory_record_v1.schema.json` — TODO
+  - `memory_retrieval_v1.schema.json` — TODO
+  - `metric_admission_decision_v1.schema.json` — explicit human admission/rejection record.
+  - `metric_contract_proposal_v1.schema.json` — provenance-bound, untrusted LLM metric proposal.
+  - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
+  - `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
   - `node_report.schema.json` — per-node report schema.
+  - `paper_build_v1.schema.json` — TODO
+  - `paper_model_call_batch_v1.schema.json` — TODO
   - `publish.schema.json` — publish record / manifest schema.
-  - `result_envelope_v1.schema.json` — typed MCP dispatch result contract.
-  - `execution_request_v1.schema.json` / `execution_result_v1.schema.json` — bounded local/container execution request and evidence.
-  - `measurement_set_v1.schema.json` — unit- and execution-bound scientific measurement records.
-  - `science_data_v1.schema.json` — canonical raw/derived/interpretation scientific hand-off.
-  - `figure_batch_v1.schema.json` — source/spec/environment/artifact-bound scientific figures.
-  - `visual_review_batch_v1.schema.json` — failure-preserving multimodal review evidence.
-  - `workspace_ref_v1.schema.json` — closed workspace reference.
-  - `skill_manifest_v1.schema.json` — canonical Skill package manifest contract.
-  - `skills_lock_v1.schema.json` — immutable run provider/schema/phase snapshot contract.
+  - `research_contract_v1.schema.json` — selected mint-once scientific hand-off consumed by evaluators.
+  - `result_envelope_v1.schema.json` — typed MCP result plus value-free credential-scope provenance.
+  - `retrieval_record_v1.schema.json` — provider-neutral literature/web record identity and payload digest.
+  - `run_comparison_request_v1.schema.json` — TODO
+  - `science_data_v1.schema.json` — separately digest-bound raw measurement,
+  - `semantic_review_v1.schema.json` — independent provenance-bound semantic advisory.
+  - `skill_manifest_v1.schema.json` — canonical Skill package, environment, and credential-scope contract.
+  - `skills_lock_v1.schema.json` — immutable provider/schema/phase/credential-authority snapshot.
+  - `statistical_test_request_v1.schema.json` — TODO
+  - `survey_snapshot_v1.schema.json` — digest-bound record/replay retrieval input and citation graph.
+  - `visual_review_batch_v1.schema.json` — criteria profiles, artifact identity,
   - `viz_checkpoint.schema.json` — TODO
   - `viz_checkpoint_summary.schema.json` — TODO
   - `viz_settings.schema.json` — TODO
   - `viz_state.schema.json` — TODO
   - `viz_tree_node.schema.json` — TODO
+  - `workspace_ref_v1.schema.json` — canonical closed workspace root.
 - `viz/` — HTTP + WebSocket dashboard server + React frontend.
   - `README.md` — viz index.
   - `__init__.py` — package docstring + module map / public symbols.
@@ -280,6 +333,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `file_service.py` — TODO
     - `launch_service.py` — TODO
     - `state_service.py` — TODO
+  - `v1/` — TODO
 
 ## See also
 

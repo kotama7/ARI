@@ -11,6 +11,7 @@ targets the like-named module under `ari/`.
 - `README.md` — this file.
 - `_arch_boundaries.py` — TODO
 - `test_agent_smoke.py` — agent smoke test.
+- `test_analysis_contract.py` — TODO
 - `test_api_lineage_decisions.py` — lineage-decisions API.
 - `test_api_lineage_e2e.py` — lineage API end-to-end.
 - `test_api_paperbench.py` — PaperBench API.
@@ -37,6 +38,7 @@ targets the like-named module under `ari/`.
 - `test_claim_evidence_hard_gate.py` — Story2Proposal Phase B deterministic gate: recompute, mismatch, operand resolution, coverage, blocking semantics.
 - `test_claim_gate_contract.py` — declared-contract enforcement: `safe_eval` formula evaluator, `contract.check_contract`/`check_emission` (recompute mismatch, claim-evidence coverage, provenance/ceiling/correctness requirement flags, lexical near-miss hints) + gate blocking at final.
 - `test_claim_gate_invariants.py` — concept→invariant registry (`classify_concept`, `CONCEPT_INVARIANTS`, `scan_science_data`): universal-math bounds (normalized≤1, probability in [0,1]) fire domain-neutrally, leave unbounded metrics alone, and block at final via `run_hard_gate`.
+- `test_claim_gate_v1.py` — TODO
 - `test_cli.py` — CLI.
 - `test_cli_extended.py` — extended CLI cases.
 - `test_cli_shim_toolcalls.py` — CLI shim (`ari.llm.cli_server`) function-calling: `extract_tool_calls`/`render_prompt`/`complete` turn text-only `claude -p`/`codex exec` into OpenAI `tool_calls`, plus cost passthrough and MCP-direct mode vs. text-catalog fallback.
@@ -61,7 +63,9 @@ targets the like-named module under `ari/`.
 - `test_evaluator_independence.py` — TODO
 - `test_evaluator_protocol.py` — TODO
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
+- `test_execution_contract.py` — TODO
 - `test_factory_registry.py` — TODO
+- `test_figure_contract.py` — TODO
 - `test_file_explorer.py` — file explorer.
 - `test_gui_env_propagation.py` — GUI env propagation.
 - `test_gui_errors.py` — GUI error handling.
@@ -84,6 +88,7 @@ targets the like-named module under `ari/`.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
 - `test_metric_contract_obligation.py` — `ari.agent.metric_contract` producer obligation: domain-neutral `build_contract_obligation`/`build_emission_nudge`, run-level claim coverage (`build_coverage_status`, `collect_run_measurement_names`), and lineage chaining (`collect_node_measurement_names`, `build_expand_coverage_hint`, `build_inherited_data_note`).
+- `test_migrate_science_data_cli.py` — TODO
 - `test_model_backend_independence.py` — TODO
 - `test_model_backend_protocol.py` — TODO
 - `test_model_passthrough.py` — model passthrough.
@@ -95,6 +100,7 @@ targets the like-named module under `ari/`.
 - `test_ollama_gpu.py` — Ollama GPU.
 - `test_orchestrator.py` — orchestrator.
 - `test_page_requirements.py` — page requirements.
+- `test_paper_contract.py` — TODO
 - `test_paths.py` — path resolution.
 - `test_pidfile.py` — pidfile handling.
 - `test_pipeline_e2e.py` — pipeline end-to-end.
@@ -107,26 +113,28 @@ targets the like-named module under `ari/`.
 - `test_prompt_registry.py` — TODO
 - `test_prompt_snapshots.py` — TODO
 - `test_public_api_boundary.py` — public-API boundary.
-- `test_result_envelope.py` — typed MCP results, artifacts, errors, and dispatch compatibility.
 - `test_publish_and_registry.py` — publish + registry.
 - `test_publish_yaml_api.py` — publish YAML API.
 - `test_publish_zenodo_gh.py` — publish to Zenodo/GitHub.
 - `test_react_driver.py` — ReAct driver.
+- `test_research_contract.py` — TODO
 - `test_resolve_node_work_dir.py` — resolve node work dir.
+- `test_result_envelope.py` — typed MCP results, artifacts, errors, and dispatch compatibility.
 - `test_retrieval_backend.py` — retrieval backend.
 - `test_root_idea_selector.py` — root-idea selector.
 - `test_run_env.py` — run environment.
 - `test_run_loop.py` — run loop.
 - `test_runtime_path_reconciliation_005.py` — TODO
 - `test_sandbox_shim.py` — sandbox shim.
+- `test_science_data_contract.py` — TODO
 - `test_selection_contract.py` — selection contract.
 - `test_server.py` — viz/API server.
 - `test_settings_propagation.py` — settings propagation.
 - `test_settings_roundtrip.py` — settings roundtrip.
 - `test_setup_env.py` — setup_env.sh behaviour.
-- `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_skill_lock.py` — immutable run-level provider/schema/phase snapshot contract.
 - `test_skill_manifest.py` — canonical Skill manifest validation and runtime admission metadata.
+- `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_tool_timeout_tier.py` — manifest timeout classes, explicitly declared bounded caller budgets, and 100% canonical tool-policy coverage.
@@ -137,6 +145,7 @@ targets the like-named module under `ari/`.
 - `test_variable_passthrough.py` — variable passthrough.
 - `test_verified_context_wiring.py` — orchestrator gating of verified_context.json on `ARI_MEMORY_CONSOLIDATE` (off→skip / on→build / build-failure→pipeline survives).
 - `test_virsci_off.py` — VirSci-off path.
+- `test_visual_review_contract.py` — TODO
 - `test_viz_dto_schema.py` — TODO
 - `test_viz_fewshot_api.py` — viz few-shot API.
 - `test_viz_file_service.py` — TODO

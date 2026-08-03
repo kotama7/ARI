@@ -8,8 +8,6 @@ plus explicit offline v0.5→v1 migration.
 
 - `README.md` — this file.
 - `__init__.py` — `MemoryClient` protocol, backends, migration map.
-- Legacy memory migration lives only in `ari memory migrate`; runtime launch
-  never inspects or renames old files.
 - `backend.py` — sanctioned core→skill funnel: lazy forwards (`get_backend` / `clear_backend_cache` / `build_verified_context`) to the rich `MemoryBackend`.
 - `client.py` — abstract `MemoryClient` ABC.
 - `file_client.py` — `FileMemoryClient` (legacy JSONL).

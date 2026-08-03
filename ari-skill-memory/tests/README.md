@@ -21,6 +21,7 @@ copy-on-write, backup/restore, and Letta backend behaviour.
 - `test_letta_live_integration.py` — Letta backend live-integration coverage.
 - `test_llm_config_removed.py` — removed LLM-config guard.
 - `test_memory.py` — core memory behaviour.
+- `test_memory_record_v1.py` — TODO
 - `test_react.py` — ReAct behaviour.
 - `test_research_memory_phase1.py` — Letta-free verifiability core: `MemoryRecordV1` validation, sha256 provenance, and artifact audit against disk.
 - `test_research_memory_typed.py` — typed `writer`/`retriever` over the backend: kind stamping, ancestor scope, require_artifacts, reproducibility-event fold.

@@ -10,8 +10,6 @@ imported as `src`.
 - `README.md` — this file.
 - `__init__.py` — empty package marker.
 - `server.py` — MCP entry point exposing atomic `write_code`, digest-bound
-  `run_code`, explicit-shell `run_bash`, typed `emit_results`, and paginated
-  `read_file`.
 
 ## See also
 

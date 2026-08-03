@@ -16,13 +16,11 @@ Operational and utility scripts for building images, running services, and dev t
 - `check_import_boundaries.py` — AST import-boundary gate: skills may import core only via `ari.public.*`/`ari.protocols.*` (B1) and core may not import skills except `ari_skill_memory` (B2); warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API).
 - `check_prompts.py` — inline-prompt externalization inventory: AST-scans the runtime tree for role-marked multi-line LLM prompts still hardcoded in `ari-skill-*/src` (against a frozen allowlist seeded from the Subtask 036 census); defers snapshot byte-verification to Gate 10 via `--with-snapshots` (never re-implemented); warning-mode-first (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API). `ari-core/ari/agent/loop.py` is the clean negative control.
 - `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes all 13 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
-- `migrate_science_data.py` — explicit offline conversion of pre-v1 flat
-  `science_data.json`; legacy metrics remain non-claimable and old claims are
-  not silently admitted.
 - `check_skill_manifests.py` — canonical manifest/package/runtime/workflow/schema conformance gate.
 - `check_viz_api_schema.py` — reconcile the dashboard routes (`viz/routes.py`) with their sole consumer `frontend/src/services/api.ts`; reports client-only (broken calls) + server-only (candidate unused) endpoints via static dispatch simulation; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API/node).
 - `generate_quality_report.py` — TODO
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
+- `migrate_science_data.py` — explicit offline conversion of pre-v1 flat
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
 - `run_ollama_gpu.sh` — start Ollama on a SLURM GPU node and tunnel it to the login node.
@@ -92,6 +90,10 @@ Operational and utility scripts for building images, running services, and dev t
   - `docker-compose.yml` — production stack (nginx + uvicorn + sqlite file volume).
   - `start_local.sh` — uvicorn + sqlite single-process, for laptop/dev.
   - `start_singularity.sh` — HPC fallback running the registry inside an Apptainer SIF.
+- `rqgm_eval/` — TODO
+  - `experiments/` — TODO
+    - `spmm_roofline.md` — TODO
+    - `stencil_blocking.md` — TODO
 - `setup/` — installer step scripts and shared shell helpers.
   - `README.md` — setup index.
   - `banner.sh` — ASCII banner printer.
@@ -115,9 +117,11 @@ Operational and utility scripts for building images, running services, and dev t
   - `test_check_dashboard_ux.py` — TODO
   - `test_check_dead_code.py` — unit + smoke + determinism tests for `check_dead_code.py` (precedence, hard-downgrade, ruff-gated `SAFE_DELETE` + `--check` ratchet, repo firewall smoke).
   - `test_check_directory_policy.py` — TODO
+  - `test_check_doc_links.py` — TODO
   - `test_check_docs_source_sync.py` — TODO
   - `test_check_import_boundaries.py` — unit + smoke tests for `check_import_boundaries.py` (B1/B2 fixtures + repo-level seed-edge smoke).
   - `test_check_prompts.py` — unit + smoke tests for `check_prompts.py` (synthetic new/allowlisted, user-message negative filter, `agent/loop.py` negative control, census-reproduction + unique-id repo smoke, Gate 10 delegation).
   - `test_check_skill_manifests.py` — fail-closed environment-read analysis across aliases, loops, helper calls, membership, writes, and parse errors.
+  - `test_check_translation_freshness.py` — TODO
   - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).
   - `test_generate_quality_report.py` — TODO
