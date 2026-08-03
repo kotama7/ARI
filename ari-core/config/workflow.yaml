@@ -108,6 +108,10 @@ pipeline:
     mode: record
   outputs:
     file: '{{checkpoint_dir}}/related_refs.json'
+  # A recorded retrieval is an immutable experiment input. Resume from the
+  # checkpoint instead of issuing another provider request, which could change
+  # the evidence set or fail when the provider is offline/rate-limited.
+  skip_if_exists: '{{checkpoint_dir}}/related_refs.json'
 - stage: audit_node_provenance
   skill: memory-skill
   tool: audit_memory
@@ -231,6 +235,7 @@ pipeline:
     file: '{{checkpoint_dir}}/full_paper.tex'
     bib_file: '{{checkpoint_dir}}/refs.bib'
   skip_if_exists: '{{checkpoint_dir}}/full_paper.tex'
+  skip_if_inputs_unchanged: '{{checkpoint_dir}}/.ari-paper/paper_build.draft.json'
 # ─────────────────────────────────────────────────────────────────────────────
 # Story2Proposal contract-governed generation loop (Phases A2/B/D/E).
 # The topology below is back-ported from the validated checkpoint run: the stages

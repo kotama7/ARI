@@ -25,6 +25,7 @@ import pytest
 
 from ari.agent.loop import (
     AgentLoop,
+    _DELEGATED_EVIDENCE_NUDGE,
     _DELEGATED_RESULT_SOURCE,
     _DELEGATED_TERMINAL_NUDGE,
     collect_delegated_completion_evidence,
@@ -53,6 +54,7 @@ class _FakeDelegatedLLM:
         self.replies = list(replies)
         self.calls = 0
         self.seen_messages: list[list[dict]] = []
+        self.seen_kwargs: list[dict] = []
         self._delegated = delegated
         # LLMClient contract: mcp_client set + _is_cli_shim_target() is True
         # is the precondition for delegation; last_request_delegated is set
@@ -66,6 +68,7 @@ class _FakeDelegatedLLM:
 
     def complete(self, messages, tools=None, require_tool=True, **kw) -> LLMResponse:
         self.seen_messages.append([dict(m) for m in messages])
+        self.seen_kwargs.append(dict(kw))
         idx = min(self.calls, len(self.replies) - 1)
         self.calls += 1
         # "truthy" mode: the flag the loop reads right after this call is
@@ -111,9 +114,11 @@ _TERMINAL = json.dumps({
 })
 
 
-def _make_loop(llm, max_react_steps: int = 6) -> AgentLoop:
+def _make_loop(
+    llm, max_react_steps: int = 6, tool_names=("run_bash",)
+) -> AgentLoop:
     return AgentLoop(
-        llm=llm, memory=_FakeMemory(), mcp=_FakeMCP(),
+        llm=llm, memory=_FakeMemory(), mcp=_FakeMCP(tool_names),
         evaluator=None, max_react_steps=max_react_steps,
     )
 
@@ -149,6 +154,99 @@ def test_delegated_prose_then_terminal_json_succeeds_after_one_nudge(tmp_path):
               if m.get("role") == "user"
               and m.get("content") == _DELEGATED_TERMINAL_NUDGE]
     assert len(nudged) == 1
+    # The shim must run in the durable node directory so its MCP audit trail is
+    # not deleted with a temporary cwd after the delegated turn.
+    assert llm.seen_kwargs[0]["work_dir"] == str(tmp_path)
+
+
+def test_delegated_empty_terminal_is_rejected_without_evidence(tmp_path):
+    empty_terminal = json.dumps({
+        "status": "success", "artifacts": [], "summary": "done",
+    })
+    llm = _FakeDelegatedLLM([empty_terminal])
+    node = _run(_make_loop(llm, max_react_steps=8), tmp_path)
+
+    assert node.status == NodeStatus.FAILED
+    assert node.error_log == (
+        "Delegated CLI returned success without scientifically admissible evidence"
+    )
+    # Initial attempt + the bounded two evidence nudges.
+    assert llm.calls == 3
+    assert any(
+        m.get("content") == _DELEGATED_EVIDENCE_NUDGE
+        for messages in llm.seen_messages[1:]
+        for m in messages
+    )
+
+
+def test_delegated_empty_terminal_prefers_typed_results_evidence(tmp_path):
+    (tmp_path / "results.json").write_text(json.dumps({
+        "params": {"block": 64},
+        "measurements": {"bw_gbps": 42.0},
+    }))
+    empty_terminal = json.dumps({
+        "status": "success", "artifacts": [], "summary": "sweep done",
+    })
+    llm = _FakeDelegatedLLM([empty_terminal])
+    node = _run(_make_loop(llm), tmp_path)
+
+    assert node.status == NodeStatus.SUCCESS
+    assert llm.calls == 1
+    assert node.artifacts[0]["result_source"] == _DELEGATED_RESULT_SOURCE
+
+
+def test_emit_results_requires_signed_evidence_not_declared_artifact(tmp_path):
+    """Model-authored artifact JSON cannot replace emit_results' receipt."""
+
+    llm = _FakeDelegatedLLM([_TERMINAL])
+    node = _run(
+        _make_loop(
+            llm,
+            max_react_steps=8,
+            tool_names=("run_bash", "emit_results"),
+        ),
+        tmp_path,
+    )
+
+    assert node.status == NodeStatus.FAILED
+    assert node.error_log == (
+        "Delegated CLI returned success without scientifically admissible evidence"
+    )
+    assert llm.calls == 3
+    assert any(
+        m.get("content") == _DELEGATED_EVIDENCE_NUDGE
+        for messages in llm.seen_messages[1:]
+        for m in messages
+    )
+
+
+def test_suppressed_idea_tool_is_absent_from_root_opening_contract(tmp_path):
+    llm = _FakeDelegatedLLM([_TERMINAL])
+    hints = SimpleNamespace(
+        tool_sequence=["generate_ideas", "make_metric_spec", "survey", "run_bash"],
+        job_submitter_tool=None, job_poller_tool=None, job_reader_tool=None,
+        job_id_key="job_id", post_survey_hint=None, output_file_pattern=None,
+        expected_metrics=[], min_expected_metric=0.0, metric_extractor=None,
+        extra_system_prompt="", provided_files=[], slurm_partition="",
+        slurm_max_cpus=0,
+    )
+    loop = AgentLoop(
+        llm=llm,
+        memory=_FakeMemory(),
+        mcp=_FakeMCP((
+            "generate_ideas", "make_metric_spec", "survey", "run_bash",
+        )),
+        evaluator=None,
+        workflow_hints=hints,
+        max_react_steps=6,
+    )
+    loop._suppress_tools = {"generate_ideas"}
+    node = _run(loop, tmp_path)
+
+    assert node.status == NodeStatus.SUCCESS
+    opening = llm.seen_messages[0][1]["content"]
+    assert "START NOW: call make_metric_spec()" in opening
+    assert "generate_ideas()" not in opening
 
 
 # ---------------------------------------------------------------------------
@@ -258,6 +356,79 @@ class TestCompletionEvidence:
             json.dumps({"measurements": {}}))
         assert collect_delegated_completion_evidence(
             str(tmp_path), baseline={}) is None
+
+    def test_typed_measurement_set_is_evidence(self, tmp_path):
+        digest = "sha256:" + "a" * 64
+        identity = "sha256:" + "b" * 64
+        (tmp_path / "results.json").write_text(json.dumps({
+            "typed_schema_version": "ari.measurement-set/v1",
+            "measurement_set": {
+                "schema_version": "ari.measurement-set/v1",
+                "parameters": {"block": 64},
+                "measurements": [
+                    {
+                        "metric_id": metric,
+                        "value": value,
+                        "unit": unit,
+                        "unit_status": "declared",
+                        "parameters": {"block": 64},
+                        "artifact_digests": [digest],
+                        "execution_identity": identity,
+                        "execution_attempt_id": "attempt-1",
+                        "execution_status": "completed",
+                        "exit_code": 0,
+                    }
+                    for metric, value, unit in (
+                        ("bw_gbps", 42.0, "GB/s"),
+                        ("seconds", 0.1, "s"),
+                    )
+                ],
+                "artifact_digests": [digest],
+            },
+        }))
+
+        evidence = collect_delegated_completion_evidence(
+            str(tmp_path), baseline={})
+
+        assert evidence is not None
+        assert evidence["files"] == ["results.json"]
+        assert evidence["measurement_names"] == ["bw_gbps", "seconds"]
+
+    @pytest.mark.parametrize(
+        "status, identity, artifacts",
+        [
+            ("unreported", None, []),
+            ("completed", "sha256:" + "b" * 64, []),
+        ],
+    )
+    def test_typed_measurement_without_execution_evidence_is_rejected(
+        self, tmp_path, status, identity, artifacts
+    ):
+        record = {
+            "metric_id": "bw_gbps",
+            "value": 42.0,
+            "unit": "GB/s",
+            "unit_status": "declared",
+            "parameters": {},
+            "artifact_digests": artifacts,
+            "execution_identity": identity,
+            "execution_attempt_id": "attempt-1" if identity else None,
+            "execution_status": status,
+            "exit_code": 0 if status == "completed" else None,
+        }
+        (tmp_path / "results.json").write_text(json.dumps({
+            "typed_schema_version": "ari.measurement-set/v1",
+            "measurement_set": {
+                "schema_version": "ari.measurement-set/v1",
+                "parameters": {},
+                "measurements": [record],
+                "artifact_digests": artifacts,
+            },
+        }))
+
+        assert collect_delegated_completion_evidence(
+            str(tmp_path), baseline={}
+        ) is None
 
     def test_custom_name_needs_baseline_delta(self, tmp_path):
         p = tmp_path / "results_seed42.json"

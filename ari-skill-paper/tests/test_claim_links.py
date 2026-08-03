@@ -105,6 +105,15 @@ def test_numeric_classification_citation_year_and_setting():
     assert by_val[2024.0]["requires_assertion"] is False
 
 
+def test_matrix_shape_times_is_not_a_speedup_result():
+    tex = r"\section{Introduction} We use a \(2048 \times 2048\) grid."
+    mentions = extract_numeric_mentions(tex, build_section_map(tex))
+    shapes = [item for item in mentions if item["value"] == 2048.0]
+    assert len(shapes) == 2
+    assert all(item["type"] != "result_claim" for item in shapes)
+    assert all(item["requires_assertion"] is False for item in shapes)
+
+
 def test_cite_and_ref_digits_are_not_scanned():
     tex = "\\section{Results}\nAs shown~\\cite{smith2024} in Figure~\\ref{fig:1}.\n"
     smap = build_section_map(tex)
@@ -166,6 +175,23 @@ def test_figure_late_bind_records_manifest_id():
     ][0]
     assert "fig_1" in link["figures"]
     assert "fig_1" in out["figure_refs"]
+
+
+def test_manifest_bound_caption_number_is_figure_evidence_not_uncovered_prose():
+    tex = (
+        "\\section{Results}\n"
+        "\\begin{figure}\n"
+        "\\includegraphics{fig_1.pdf}\n"
+        "\\caption{Measured throughput is 150 GFlop/s.}\n"
+        "\\label{fig:1}\n"
+        "\\end{figure}\n"
+        "Figure~\\ref{fig:1} summarizes the measurement.\n"
+    )
+    out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
+    mention = next(item for item in out["numeric_mentions"] if item["value"] == 150.0)
+    assert mention["type"] == "figure_evidence"
+    assert mention["requires_assertion"] is False
+    assert out["uncovered_numeric_candidates"] == []
 
 
 def test_span_hash_stable_under_whitespace_and_anchor():
@@ -393,6 +419,19 @@ def test_mentions_bare_power_of_ten_not_the_base():
     assert 1e-23 in vals, vals
     assert 10.0 not in vals, f"base 10 leaked: {vals}"
     assert [m for m in ms if m["value"] == 1e-23][0]["type"] == "result_claim"
+
+
+def test_positive_bare_power_conversion_is_not_a_result_claim():
+    from src.claim_links import extract_numeric_mentions, build_section_map
+
+    tex = r"\section{Methodology} BW=24T(N-2)^2/(10^9t)\quad\text{GB/s}."
+    mention = next(
+        item
+        for item in extract_numeric_mentions(tex, build_section_map(tex))
+        if item["value"] == 1e9
+    )
+    assert mention["type"] == "ambiguous"
+    assert mention["requires_assertion"] is False
 
 
 def test_mentions_huge_exponent_no_crash_no_nonfinite():

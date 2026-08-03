@@ -683,6 +683,126 @@ def _unrequested_process_claims(inserted: list[str], revisions: list) -> list[st
     return out
 
 
+_CLAIM_COMMENT_RE = re.compile(r"%\s*CLAIM:C\w+:NC\w+[^\r\n]*")
+_FIGURE_BLOCK_RE = re.compile(
+    r"\\begin\{figure\*?\}.*?\\end\{figure\*?\}",
+    re.DOTALL,
+)
+_FIGURE_GRAPHIC_RE = re.compile(
+    r"\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}"
+)
+
+
+def _claim_comment_contract(text: str):
+    """Return the multiset of exact scientific claim comments in *text*.
+
+    An anchor identity alone is insufficient: a forward declaration also owns
+    its ``metric=``, ``formula=``, and operand tokens.  Keeping only
+    ``% CLAIM:Cx:NCx`` silently turns a reproducible assertion into an unresolved
+    one.  Counts matter because the same assertion may be anchored in both the
+    abstract and results.
+    """
+    from collections import Counter
+
+    return Counter(match.group(0).rstrip() for match in _CLAIM_COMMENT_RE.finditer(text))
+
+
+def _preserves_claim_comment_contract(before: str, after: str) -> bool:
+    """Whether *after* retains every exact claim comment from *before*."""
+
+    required = _claim_comment_contract(before)
+    actual = _claim_comment_contract(after)
+    return all(actual[comment] >= count for comment, count in required.items())
+
+
+def _figure_block_contract(text: str):
+    """Return the exact multiset of renderer-owned figure environments."""
+    from collections import Counter
+
+    return Counter(match.group(0) for match in _FIGURE_BLOCK_RE.finditer(text))
+
+
+def _preserves_figure_block_contract(before: str, after: str) -> bool:
+    """Figures are immutable: no block may be changed, added, or removed."""
+
+    return _figure_block_contract(before) == _figure_block_contract(after)
+
+
+def _restore_authoritative_figure_snippets(text: str, snippets) -> str:
+    """Replace model-written figure blocks with exact FigureBatch snippets.
+
+    Matching is by the recorded ``includegraphics`` path, with basename as a
+    compatibility fallback. Duplicate occurrences are removed and missing
+    figures are inserted before Conclusion (or the bibliography). Paths,
+    captions, values, and labels therefore stay owned by the fixed renderer.
+    """
+
+    records: list[tuple[str, str, str]] = []
+    for raw in snippets or ():
+        snippet = str(raw or "").strip()
+        graphic = _FIGURE_GRAPHIC_RE.search(snippet)
+        if not snippet or graphic is None:
+            continue
+        path = graphic.group(1)
+        records.append((path, os.path.basename(path), snippet))
+    if not records:
+        return text
+
+    by_path = {record[0]: record for record in records}
+    by_basename = {record[1]: record for record in records}
+    seen: set[str] = set()
+
+    def _replace_block(match):
+        block = match.group(0)
+        graphic = _FIGURE_GRAPHIC_RE.search(block)
+        if graphic is None:
+            return block
+        candidate = graphic.group(1)
+        record = by_path.get(candidate) or by_basename.get(os.path.basename(candidate))
+        if record is None:
+            return block
+        path, _basename, snippet = record
+        if path in seen:
+            return ""
+        seen.add(path)
+        return snippet
+
+    restored = _FIGURE_BLOCK_RE.sub(_replace_block, text)
+    missing = [record for record in records if record[0] not in seen]
+    for path, basename, _snippet in missing:
+        # Remove a bare model-written include of the same asset before adding
+        # its complete, authoritative environment.
+        restored = _FIGURE_GRAPHIC_RE.sub(
+            lambda match: (
+                ""
+                if match.group(1) == path
+                or os.path.basename(match.group(1)) == basename
+                else match.group(0)
+            ),
+            restored,
+        )
+    if missing:
+        insertion = "\n\n".join(record[2] for record in missing)
+        marker = next(
+            (
+                candidate
+                for candidate in (
+                    "\\section{Conclusion}",
+                    "\\bibliographystyle",
+                    "\\bibliography",
+                    "\\end{document}",
+                )
+                if candidate in restored
+            ),
+            "",
+        )
+        if marker:
+            restored = restored.replace(marker, insertion + "\n\n" + marker, 1)
+        else:
+            restored = restored.rstrip() + "\n\n" + insertion + "\n"
+    return restored
+
+
 def _escape_text_underscores(text: str) -> str:
     """Escape bare underscores in LaTeX text mode. Skips command args and math."""
     import re as _re_esc
@@ -896,6 +1016,15 @@ def _build_latex_template(
                 f"\\end{{figure}}\n\n"
             )
 
+    first_figure_label = "fig:1"
+    if figures:
+        label_match = re.search(
+            r"\\label\{([^}]*)\}",
+            figures[0].get("latex", ""),
+        )
+        if label_match:
+            first_figure_label = label_match.group(1)
+
     # Title hint from experiment summary
     _title_hint = (
         experiment_summary.split("\n")[0][:100].strip()
@@ -954,7 +1083,7 @@ FILL_EXPERIMENT_SETUP_END
 
 \\subsection{{Results}}
 FILL_RESULTS_START
-Present quantitative results. Reference Figure~\\ref{{fig:1}} below.
+Present quantitative results. Reference Figure~\\ref{{{first_figure_label}}} below.
 FILL_RESULTS_END
 
 {fig_environments}
@@ -1285,12 +1414,16 @@ async def write_paper_iterative(
                             if cap_m
                             else f"Figure {i + 1}: Experimental results for {k}. See text for analysis."
                         )
+                        label_m = re.search(r"\\label\{([^}]*)\}", _snip)
                         fig_lines.append(
                             {
                                 "path": str(v),
                                 "basename": fname_base,
                                 "caption": cap,
                                 "latex": _snip,
+                                "label": (
+                                    label_m.group(1) if label_m else f"fig:{i + 1}"
+                                ),
                             }
                         )
                 else:
@@ -1310,6 +1443,7 @@ async def write_paper_iterative(
                                     "basename": _os_fig2.path.basename(fname),
                                     "caption": cap,
                                     "latex": "",
+                                    "label": f"fig:{len(fig_lines) + 1}",
                                 }
                             )
                 if fig_lines:
@@ -1329,7 +1463,7 @@ async def write_paper_iterative(
                                 f"Use \\begin{{figure}}[htbp]\\centering\\includegraphics[width=0.9\\linewidth]{{{f['basename']}}}\\caption{{{f['caption']}}}\\label{{fig:{j}}}\\end{{figure}}"
                             )
                         ctx_lines.append(
-                            f"  Reference inline as: Figure~\\ref{{fig:{j}}}"
+                            f"  Reference inline as: Figure~\\ref{{{f['label']}}}"
                         )
                     experiment_summary += "\n".join(ctx_lines)
             except Exception as _ef:
@@ -1389,11 +1523,15 @@ async def write_paper_iterative(
                             if _cap_m
                             else f"Experimental results for {_ki}. See text for analysis."
                         )
+                        _label_m = re.search(r"\\label\{([^}]*)\}", _snip)
                         _figs_for_tpl.append(
                             {
                                 "basename": _bn,
                                 "caption": _cap,
-                                "latex": _sanitize_bfts_terms(_snip),
+                                "latex": _snip,
+                                "label": (
+                                    _label_m.group(1) if _label_m else ""
+                                ),
                             }
                         )
             except Exception as _et:
@@ -1512,40 +1650,6 @@ async def write_paper_iterative(
             full_latex = latex_template  # fallback to template with placeholders
         full_latex = _escape_text_underscores(full_latex)
 
-        # Post-process: restore refined captions that LLM may have overwritten.
-        # For each figure in _figs_for_tpl, find the corresponding \begin{figure}
-        # block in full_latex and replace its \caption{} with the refined one.
-        for _fig_info in _figs_for_tpl:
-            _ref_cap = _fig_info.get("caption", "")
-            _ref_bn = _fig_info.get("basename", "")
-            if not _ref_cap or not _ref_bn:
-                continue
-            # Skip if the caption is itself generic (refinement failed)
-            if re.search(
-                r"^\s*(experimental results|results for|see text)",
-                _ref_cap,
-                re.IGNORECASE,
-            ):
-                continue
-            # Find the figure block containing this file and replace its caption
-            _fig_pattern = re.compile(
-                r"(\\begin\{figure\}.*?\\includegraphics[^}]*\{"
-                + re.escape(_ref_bn)
-                + r"\}.*?)"
-                r"\\caption\{(?:[^{}]|\{[^{}]*\})*\}"
-                r"(.*?\\end\{figure\})",
-                re.DOTALL,
-            )
-            _replacement = rf"\1\\caption{{{_ref_cap}}}\2"
-            _new_latex = _fig_pattern.sub(
-                lambda m: m.group(1) + f"\\caption{{{_ref_cap}}}" + m.group(2),
-                full_latex,
-                count=1,
-            )
-            if _new_latex != full_latex:
-                full_latex = _new_latex
-                log.info("Restored refined caption for %s", _ref_bn)
-
         # Populate dummy sections/reviews dicts for compat with downstream code
         sections = {}
         reviews = {}
@@ -1558,32 +1662,16 @@ async def write_paper_iterative(
         if bib_content:
             full_latex = _strip_invalid_cite_keys(full_latex, bib_content)
 
-        # Deterministically restore exact FigureBatch snippets if the model
-        # omitted figures.  Figure paths, values, captions, and labels remain
-        # owned by the fixed renderer; no second model call may alter them.
-        _has_bare_graphics = (
-            "\\includegraphics" in full_latex and "\\begin{figure}" not in full_latex
+        # FigureBatch owns figure paths, captions, values, and labels. Restore
+        # the entire environment even when the model kept the file but rewrote
+        # its caption/label; omission-only repair was insufficient.
+        _authoritative_figure_snippets = tuple(
+            _authoring_inputs.figures.latex_snippets.values()
         )
-        if (
-            "\\includegraphics" not in full_latex or _has_bare_graphics
-        ) and figures_manifest_json:
-            snippets = tuple(_authoring_inputs.figures.latex_snippets.values())
-            if _has_bare_graphics:
-                full_latex = re.sub(
-                    r"\\includegraphics(?:\[[^\]]*\])?\{[^}]+\}",
-                    "",
-                    full_latex,
-                )
-            insertion = "\n\n".join(snippets)
-            marker = "\\section{Conclusion}"
-            if marker in full_latex:
-                full_latex = full_latex.replace(
-                    marker,
-                    insertion + "\n\n" + marker,
-                    1,
-                )
-            else:
-                full_latex += "\n\n" + insertion
+        full_latex = _restore_authoritative_figure_snippets(
+            full_latex,
+            _authoritative_figure_snippets,
+        )
 
         # ─── AI Scientist v2: compile + reflection loop
         # _msg_history starts with the assembled full paper so reflection LLM has context
@@ -1685,6 +1773,13 @@ async def write_paper_iterative(
                 f"\nNote: if there are undefined \\ref{{}} warnings, fix the \\label{{}} names to match.\n"
                 f"IMPORTANT: NEVER replace \\bibliographystyle{{...}} or \\bibliography{{refs}} with "
                 f"\\begin{{thebibliography}}...\\end{{thebibliography}}. Keep BibTeX commands as-is.\n"
+                f"SCIENTIFIC CONTRACT: preserve every existing `% CLAIM:Cx:NCx ...` "
+                f"comment VERBATIM, including metric=, formula=, and operand tokens, "
+                f"and preserve every occurrence. A revision that changes or drops one "
+                f"will be rejected.\n"
+                f"FIGURE CONTRACT: preserve every existing figure environment "
+                f"VERBATIM; renderer-owned paths, captions, values, and labels may "
+                f"not be edited. A changed/added/removed figure block will be rejected.\n"
                 f"If everything is correct, say: I am done\n"
                 f"Otherwise, provide a revised complete LaTeX document in ```latex ... ``` fences.\n"
                 f"Do NOT hallucinate results, hardware specs, or citations not in the provided data.\n"
@@ -1765,6 +1860,24 @@ async def write_paper_iterative(
                             "v2 reflection %d: reverted thebibliography to \\bibliography{refs}",
                             _ri + 1,
                         )
+                    if not _preserves_claim_comment_contract(full_latex, _new_latex):
+                        missing = _claim_comment_contract(full_latex) - _claim_comment_contract(
+                            _new_latex
+                        )
+                        log.warning(
+                            "v2 reflection %d: rejected revision that changed or dropped "
+                            "%d scientific claim declaration(s)",
+                            _ri + 1,
+                            sum(missing.values()),
+                        )
+                        continue
+                    if not _preserves_figure_block_contract(full_latex, _new_latex):
+                        log.warning(
+                            "v2 reflection %d: rejected revision that changed, added, "
+                            "or dropped a renderer-owned figure block",
+                            _ri + 1,
+                        )
+                        continue
                     full_latex = _new_latex
                     log.info(
                         "v2 reflection %d: updated latex (%d chars)",
@@ -2470,14 +2583,14 @@ async def link_paper_claims(
 
     sd, sd_err = _load_jsonish(science_data_json)
     fm, _fm_err = _load_jsonish(figures_manifest_json)
-    if isinstance(sd, dict) and sd.get("schema_version") == "ari.science-data/v1":
-        from ari.public.science_data import (
-            science_data_projection as _science_projection,
-        )
-
-        sd = _science_projection(sd)
     fm = fm or None
     try:
+        # ``claim_links.link_paper_claims`` owns the native-v1 -> flat gate
+        # projection.  Pre-projecting here leaves schema_version unchanged and
+        # makes that function try to parse the already-flat projection as a
+        # native ScienceDataV1 a second time.  The resulting empty error
+        # document can pass through the warn-mode gate but is correctly rejected
+        # by the final PaperBuild lock because it differs from recomputation.
         result = _cl.link_paper_claims(tex, sd if isinstance(sd, dict) else {}, fm)
     except Exception as _e:  # pragma: no cover - defensive
         return _empty(f"link_paper_claims failed: {_e}")
@@ -2671,8 +2784,6 @@ async def paper_refine(
         + _load_prompt("global_coherence")
         + _paper_language_directive()
     )
-    _ANCHOR_RE = _re.compile(r"%\s*CLAIM:C\w+:NC\w+")
-
     # (b) The semantic review usually specifies an EXPLICIT replacement (e.g. replace
     # "Roofline/Loopline Validation" with "... Context"). Extract those quoted OLD->NEW
     # pairs so they can be applied DETERMINISTICALLY first -- the concrete review edits
@@ -2733,11 +2844,18 @@ async def paper_refine(
             if n != 1:  # not found, or ambiguous -> never guess
                 skipped.append(f"find not unique (n={n}): {find[:50]!r}")
                 continue
-            # anchor safety: every % CLAIM anchor inside the replaced span must survive
-            if not set(_ANCHOR_RE.findall(find)).issubset(
-                set(_ANCHOR_RE.findall(repl))
-            ):
-                skipped.append(f"edit would drop a % CLAIM anchor: {find[:50]!r}")
+            # Claim safety covers the full declaration, not only Cx/NCx.  A
+            # replacement that retains the marker but removes ``formula=`` is
+            # scientifically destructive and must not land.
+            if not _preserves_claim_comment_contract(find, repl):
+                skipped.append(
+                    f"edit would change/drop a % CLAIM declaration: {find[:50]!r}"
+                )
+                continue
+            if not _preserves_figure_block_contract(find, repl):
+                skipped.append(
+                    f"edit would change/add/drop a figure block: {find[:50]!r}"
+                )
                 continue
             doc = doc.replace(find, repl, 1)
             applied += 1
@@ -2828,8 +2946,10 @@ async def paper_refine(
     det_subs = _extract_substitutions()
     applied_subs: set = set()
     for _old, _new in det_subs:
-        if doc.count(_old) == 1 and set(_ANCHOR_RE.findall(_old)).issubset(
-            set(_ANCHOR_RE.findall(_new))
+        if (
+            doc.count(_old) == 1
+            and _preserves_claim_comment_contract(_old, _new)
+            and _preserves_figure_block_contract(_old, _new)
         ):
             doc = doc.replace(_old, _new, 1)
             applied_total += 1
@@ -2854,9 +2974,14 @@ async def paper_refine(
             )
         if applied == 0:
             break
-        if not orig_anchors.issubset({a["anchor"] for a in _find_anchors(new_doc)}):
+        if (
+            not orig_anchors.issubset({a["anchor"] for a in _find_anchors(new_doc)})
+            or not _preserves_claim_comment_contract(original, new_doc)
+            or not _preserves_figure_block_contract(original, new_doc)
+        ):
             warnings.append(
-                f"pass {_pass + 1}: edits would drop a % CLAIM anchor; kept prior text"
+                f"pass {_pass + 1}: edits would change/drop a % CLAIM declaration; "
+                "kept prior text"
             )
             break
         doc = new_doc
@@ -2880,11 +3005,13 @@ async def paper_refine(
 
     final_anchors = {a["anchor"] for a in _find_anchors(refined)}
     anchors_ok = orig_anchors.issubset(final_anchors)
+    claim_comments_ok = _preserves_claim_comment_contract(original, refined)
+    figures_ok = _preserves_figure_block_contract(original, refined)
 
-    if applied_total == 0 or not anchors_ok:
-        if not anchors_ok:
+    if applied_total == 0 or not anchors_ok or not claim_comments_ok or not figures_ok:
+        if not anchors_ok or not claim_comments_ok or not figures_ok:
             warnings.append(
-                f"anchors lost {sorted(orig_anchors - final_anchors)}; reverting to draft"
+                "claim declarations or figure blocks changed/lost; reverting to draft"
             )
         try:
             (_Path(tex_path).parent / "full_paper.draft.tex").write_text(original)
@@ -3019,6 +3146,28 @@ _CODE_AVAIL_BEGIN = "% ari-code-availability:begin"
 _CODE_AVAIL_END = "% ari-code-availability:end"
 
 
+def _tex_literal(value: str) -> str:
+    """Escape an external identifier for safe use in LaTeX text/arguments."""
+
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "{": r"\{",
+        "}": r"\}",
+        "#": r"\#",
+        "$": r"\$",
+        "%": r"\%",
+        "&": r"\&",
+        "_": r"\_",
+        "^": r"\^{}",
+        "~": r"\~{}",
+    }
+    return "".join(replacements.get(char, char) for char in str(value))
+
+
+def _tex_monospace(value: str) -> str:
+    return r"\texttt{" + _tex_literal(value) + "}"
+
+
 def _render_code_availability_block(
     ref: str, sha256: str, doi: str = "", license_id: str = ""
 ) -> str:
@@ -3036,19 +3185,21 @@ def _render_code_availability_block(
         r"\section*{Code Availability}",
     ]
     if ref:
-        parts.append(r"\coderef{" + ref + "}%")
+        parts.append(r"\coderef{" + _tex_literal(ref) + "}%")
     if sha256:
         parts.append(r"\codedigest{" + sha256 + "}%")
     if doi:
-        parts.append(r"\codeavailability{" + doi + "}%")
+        parts.append(r"\codeavailability{" + _tex_literal(doi) + "}%")
     body_lines = []
     if ref:
         body_lines.append(
             r"The curated Experimental Artifact Repository for this paper is "
-            r"available at \texttt{" + ref + "}."
+            "available at " + _tex_monospace(ref) + "."
         )
         body_lines.append(
-            r"It can be retrieved with one command: \texttt{ari clone " + ref + "}."
+            "It can be retrieved with one command: "
+            + _tex_monospace("ari clone " + ref)
+            + "."
         )
     if sha256:
         body_lines.append(
@@ -3058,7 +3209,7 @@ def _render_code_availability_block(
             r"(full digest: \texttt{" + sha256 + "})."
         )
     if doi:
-        body_lines.append(r"Persistent identifier: \texttt{" + doi + "}.")
+        body_lines.append("Persistent identifier: " + _tex_monospace(doi) + ".")
     if license_id:
         body_lines.append(r"License: " + license_id + ".")
     if body_lines:

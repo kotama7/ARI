@@ -49,7 +49,8 @@ def build_integrity_report(checkpoint_dir: str | Path) -> dict:
     ev = ckpt / "evaluation"
     out: dict[str, Any] = {"stage": "run_integrity", "checkpoint_dir": str(ckpt)}
 
-    gate = _read(ev / "claim_evidence_hard_gate_final.json") or _read(
+    gate = _read(ev / "claim_evidence_hard_gate_locked.json") or _read(
+        ev / "claim_evidence_hard_gate_final.json") or _read(
         ev / "claim_evidence_hard_gate_draft.json")
     if gate is None:
         out["claim_gate"] = None       # the gate did not run — NOT "clean"
@@ -76,12 +77,13 @@ def build_integrity_report(checkpoint_dir: str | Path) -> dict:
                 metrics.get("numeric_claim_reproducible_rate"),
         }
 
-    # Evidence-grounded SEMANTIC review (post-refine preferred): the numeric hard
+    # Evidence-grounded SEMANTIC review (exact locked paper preferred): the numeric hard
     # gate is semantically blind — it re-checks anchored NUMBERS but not whether a
     # sentence overclaims. Without aggregating this, a finalized paper carrying a
     # KNOWN unresolved overclaim (status="revise", detected_overclaim_count>0)
     # read as clean at the run level. Absent (LLM unavailable) stays null, not 0.
-    sem = _read(ev / "evidence_grounded_semantic_review_post_refine.json") or _read(
+    sem = _read(ev / "evidence_grounded_semantic_review_locked.json") or _read(
+        ev / "evidence_grounded_semantic_review_post_refine.json") or _read(
         ev / "evidence_grounded_semantic_review.json")
     if sem is None:
         out["semantic_review"] = None
@@ -97,7 +99,8 @@ def build_integrity_report(checkpoint_dir: str | Path) -> dict:
     out["artifact_provenance"] = (
         None if prov is None else (prov.get("summary") or {}))
 
-    links = _read(ckpt / "paper_claim_links_final.json") or _read(
+    links = _read(ckpt / "paper_claim_links_locked.json") or _read(
+        ckpt / "paper_claim_links_final.json") or _read(
         ckpt / "paper_claim_links.json")
     if links is None:
         out["claim_links"] = None
@@ -178,6 +181,11 @@ def _concerns(rep: dict) -> list[str]:
     # per-stage artifact.
     sem = rep.get("semantic_review")
     if isinstance(sem, dict):
+        if sem.get("status") == "unavailable":
+            c.append(
+                "evidence-grounded semantic review was unavailable for the "
+                f"{sem.get('phase') or 'final'} paper"
+            )
         unresolved = sem.get("unresolved_overclaims") or 0
         if unresolved:
             c.append(f"{unresolved} unresolved overclaim(s) remain in the "

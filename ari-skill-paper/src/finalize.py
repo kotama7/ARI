@@ -511,7 +511,17 @@ def finalize_build(
         blocking_reasons=tuple(reasons),
         limitations=draft.limitations,
     )
-    workspace.atomic_write_bytes(output_path, json_bytes(build.model_dump(mode="json")))
+    # Workflow interpolation commonly supplies ``{{checkpoint_dir}}/paper_build.json``
+    # as an absolute path.  Reads intentionally accept absolute paths that resolve
+    # inside the closed workspace, while atomic writes require a workspace-relative
+    # name.  Resolve first (which rejects escapes and symlinks), then hand the
+    # validated relative name to the atomic writer.
+    resolved_output = workspace.resolve(output_path, must_exist=False)
+    relative_output = resolved_output.relative_to(workspace.root).as_posix()
+    workspace.atomic_write_bytes(
+        relative_output,
+        json_bytes(build.model_dump(mode="json")),
+    )
     return build
 
 

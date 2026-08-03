@@ -96,6 +96,46 @@ def test_prior_art_generator_counts_as_grounded_even_with_zero_papers_analyzed(t
     assert not any("NO prior art" in c for c in rep["concerns"])
 
 
+def test_locked_paper_evidence_takes_precedence_over_stale_prelock_reports(tmp_path):
+    ck = _ck(
+        tmp_path,
+        evaluation__claim_evidence_hard_gate_final={
+            "status": "failed", "should_block": True,
+            "errors": [{"type": "numeric_mismatch"}], "warnings": [],
+            "metrics": {"numeric_claim_reproducible_rate": 0.0},
+        },
+        evaluation__claim_evidence_hard_gate_locked={
+            "status": "warn", "should_block": False,
+            "blocking_findings": [], "advisory_findings": [],
+            "metrics": {"numeric_claim_reproducible_rate": 1.0},
+        },
+        evaluation__evidence_grounded_semantic_review_post_refine={
+            "status": "revise", "detected_overclaim_count": 4,
+            "resolved_overclaim_count": 0, "phase": "post_refine",
+        },
+        evaluation__evidence_grounded_semantic_review_locked={
+            "status": "unavailable", "detected_overclaim_count": 0,
+            "resolved_overclaim_count": 0, "phase": "locked",
+        },
+        paper_claim_links_final={
+            "counts": {"anchors": 3, "resolved_anchors": 2,
+                       "dropped_declarations": 1},
+        },
+        paper_claim_links_locked={
+            "counts": {"anchors": 4, "resolved_anchors": 4,
+                       "dropped_declarations": 0},
+        },
+    )
+
+    rep = build_integrity_report(ck)
+
+    assert rep["claim_gate"]["numeric_claim_reproducible_rate"] == 1.0
+    assert rep["semantic_review"]["phase"] == "locked"
+    assert rep["claim_links"]["resolved_anchors"] == 4
+    assert not any("unresolved overclaim" in item for item in rep["concerns"])
+    assert any("semantic review was unavailable" in item for item in rep["concerns"])
+
+
 def test_a_clean_run_says_so_and_the_report_is_written(tmp_path, capsys):
     ck = _ck(
         tmp_path,

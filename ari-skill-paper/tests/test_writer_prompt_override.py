@@ -91,6 +91,46 @@ async def test_write_paper_iterative_override_drives_the_governed_bytes(tmp_path
     assert all(writer_md not in s for s in governed_calls)
 
 
+@pytest.mark.asyncio
+async def test_write_paper_reflection_cannot_drop_forward_declaration(tmp_path):
+    declaration = (
+        "% CLAIM:C7:NC7 metric=throughput formula=identity value=cfg-1"
+    )
+    initial = (
+        "```latex\n"
+        "\\documentclass{article}\n\\begin{document}\n"
+        "\\section{Results}\n"
+        f"{declaration}\n"
+        "The measured throughput is 150 GFLOP/s.\n"
+        "\\section{Conclusion}\nThe measurement is reported conservatively.\n"
+        "\\end{document}\n```"
+    )
+    unsafe_reflection = (
+        "```latex\n"
+        "\\documentclass{article}\n\\begin{document}\n"
+        "\\section{Results}\n"
+        "The measured throughput is 150 GFLOP/s.\n"
+        "\\section{Conclusion}\nThe measurement is reported conservatively and "
+        "the presentation has been polished without changing the result.\n"
+        "\\end{document}\n```"
+    )
+    responses = iter((_mock_resp(initial), _mock_resp(unsafe_reflection)))
+
+    async def _sequential(**_kwargs):
+        return next(responses)
+
+    with patch("src.server.litellm.acompletion", new=_sequential):
+        result = await server.write_paper_iterative(
+            **_native_inputs(tmp_path),
+            experiment_summary="a measured throughput experiment",
+            venue="arxiv",
+            max_revision_rounds=1,
+        )
+
+    assert declaration in result["latex"]
+    assert "polished without changing" not in result["latex"]
+
+
 async def _refine_systems(tmp_path, override: str) -> list[str]:
     p = tmp_path / "full_paper.tex"
     p.write_text("\\section{R}\n% CLAIM:C1:NC1\nThe value is X.\n")

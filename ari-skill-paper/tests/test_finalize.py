@@ -502,6 +502,15 @@ def test_finalizer_locks_exact_artifacts_and_independent_reviews(tmp_path: Path)
     )
 
 
+def test_finalizer_accepts_absolute_output_inside_workspace(tmp_path: Path):
+    arguments = _fixture(tmp_path)
+    output = tmp_path / "nested" / "paper_build.json"
+    arguments["output_path"] = str(output)
+    build = finalize_build(**arguments)
+    assert build.status == "finalized"
+    assert parse_paper_build(json.loads(output.read_text())) == build
+
+
 def test_finalizer_persists_blocked_build_without_claiming_success(tmp_path: Path):
     build = finalize_build(**_fixture(tmp_path, blocked=True))
     assert build.status == "blocked"

@@ -166,9 +166,11 @@ class TestSubprocessEnvPropagation:
         }))
 
         captured_env = {}
+        captured_script = []
 
         def fake_run(cmd, **kw):
             captured_env.update(kw.get("env", {}))
+            captured_script.append(cmd[2])
             r = mock.MagicMock()
             r.returncode = 0
             r.stdout = '{"result": "ok"}'
@@ -182,6 +184,8 @@ class TestSubprocessEnvPropagation:
             f"Expected gpt-5.2 but got {captured_env.get('ARI_LLM_MODEL')} — config model not propagated"
         assert captured_env.get("ARI_LLM_API_BASE") == "", \
             "ARI_LLM_API_BASE must be empty string for OpenAI (prevents ollama fallback)"
+        assert "ToolCallContextV1.for_run(_run_id)" in captured_script[0]
+        assert "context=_call_context" in captured_script[0]
 
     def test_env_var_takes_precedence_over_config(self, tmp_path, clean_env, monkeypatch):
         """If ARI_LLM_MODEL is already set in env, config must NOT override it."""
@@ -228,6 +232,37 @@ class TestSubprocessEnvPropagation:
 
         # Should not have ARI_LLM_MODEL since no config and no env
         assert "ARI_LLM_MODEL" not in captured_env
+
+    @pytest.mark.parametrize(
+        "payload, expected",
+        [
+            (
+                {"result": "Error executing tool generate_figures: no evidence"},
+                "Error executing tool generate_figures",
+            ),
+            (
+                {"error": "invalid evidence", "diagnostics": ["missing units"]},
+                "invalid evidence",
+            ),
+        ],
+    )
+    def test_mcp_error_envelopes_fail_the_stage(
+        self, clean_env, payload, expected
+    ):
+        """Provider/skill errors must never be persisted as stage outputs."""
+        from ari.pipeline import _run_stage_subprocess
+
+        def fake_run(cmd, **kw):
+            r = mock.MagicMock()
+            r.returncode = 0
+            r.stdout = json.dumps(payload)
+            r.stderr = ""
+            return r
+
+        with mock.patch("subprocess.run", side_effect=fake_run), pytest.raises(
+            RuntimeError, match=expected
+        ):
+            _run_stage_subprocess("fake_tool", {}, "", skill_name="fake-skill")
 
 
 # ══════════════════════════════════════════════
@@ -858,6 +893,65 @@ class TestSkipIfExists:
 
         assert "test_tool" in call_log, \
             "Stage with error JSON output must NOT be skipped"
+
+    @pytest.mark.parametrize(("mutate_input", "expected_calls"), [
+        (False, []),
+        (True, ["test_tool"]),
+    ])
+    def test_skip_contract_reuses_only_byte_identical_inputs(
+        self, tmp_path, mutate_input, expected_calls
+    ):
+        """A derived output is stale when a PaperBuild-style recorded input
+        changes, even though the output file itself still exists."""
+        import hashlib
+
+        from ari.orchestrator.node import Node, NodeStatus
+        from ari.pipeline import run_pipeline
+
+        source = tmp_path / "science_data.json"
+        source.write_bytes(b'{"value":1}\n')
+        payload = source.read_bytes()
+        contract = tmp_path / "paper_build.draft.json"
+        contract.write_text(json.dumps({
+            "input_artifacts": [{
+                "relative_path": source.name,
+                "digest": "sha256:" + hashlib.sha256(payload).hexdigest(),
+                "size_bytes": len(payload),
+            }],
+        }))
+        output = tmp_path / "output.json"
+        output.write_text(json.dumps({"result": "recorded"}))
+        if mutate_input:
+            source.write_bytes(b'{"value":2}\n')
+
+        stages = [{
+            "stage": "test_stage",
+            "skill": "test-skill",
+            "tool": "test_tool",
+            "depends_on": [],
+            "inputs": {},
+            "outputs": {"file": str(output)},
+            "skip_if_exists": str(output),
+            "skip_if_inputs_unchanged": str(contract),
+        }]
+        call_log = []
+
+        def fake_sub(tool, args, config_path, skill_name=""):
+            call_log.append(tool)
+            return {"result": "fresh"}
+
+        node = Node(id="n", parent_id=None, depth=0)
+        node.status = NodeStatus.SUCCESS
+        with mock.patch("ari.pipeline._run_stage_subprocess", side_effect=fake_sub):
+            run_pipeline(
+                stages,
+                [node],
+                {"goal": "", "topic": "", "file": ""},
+                tmp_path,
+                "",
+            )
+
+        assert call_log == expected_calls
 
 
 # ══════════════════════════════════════════════

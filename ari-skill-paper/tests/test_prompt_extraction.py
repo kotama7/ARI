@@ -39,22 +39,22 @@ from src.server import (  # noqa: E402
 # key -> sha256 of the loaded template/static (what ``_load_prompt`` returns).
 # These equal the SHA-256 of the pre-extraction inline bytes, byte-for-byte.
 _RENDERED_SHA = {
-    "fill_in_writer": "7da830d8ef88ef732795f2a889bb1d8a01d9f88349e0966db71efcf04e3a5978",
+    "fill_in_writer": "eb063292ab41929c082c2d5687af43984ea0d425e8455e414874a9c1f61778ef",
     "paper_writer": "719b77809032972683e04a4ac3964aa5ce319ee0af6a242217a4f9e5c3f6f31c",
     "global_coherence": "a5ef7c47ed6c184614bfb52c944fd59a1c326e94300733d67e984b3eba92594b",
-    "forward_declaration": "e9335d5a123b83067d5ad6a380f1feff50575860e6833b2e3940281a90b34f31",
+    "forward_declaration": "8d840989176964c4eb69b55ac9f15787b0b0a8c38c0f95f5841cdf7d2fba83cf",
 }
 
 # key -> sha256[:12] of the RAW on-disk template body (what ``load_versioned`` pins).
 _VERSIONED_HASH = {
-    "fill_in_writer": "feeaf046eda2",
+    "fill_in_writer": "ab06201be65e",
     "paper_writer": "f38a15f0f140",
     "global_coherence": "f0cb1a9a5ce4",
-    "forward_declaration": "629514a45c66",
+    "forward_declaration": "273f614ba5df",
 }
 
 _FORWARD_DECLARATION_COMPOSED_SHA = (
-    "550a08ed6c217cf350652d60ce2be2a9f3ecb495b9a45957d5495ce9fccc3dab"
+    "7c27b6c76b759e1d0b7e80efbad46b3071bae41d90a0157a50abd4707fc5ba81"
 )
 
 

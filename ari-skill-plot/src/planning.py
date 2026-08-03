@@ -30,6 +30,41 @@ _ALLOWED_CHARTS = {"bar", "line", "scatter", "hist"}
 _ALLOWED_X_MODES = {"configuration", "rank"}
 
 
+def _block_size(metric_id: str) -> str | None:
+    match = re.search(r"_bs(\d+)$", metric_id)
+    return match.group(1) if match else None
+
+
+def _metric_labels(metric_id: str, unit: str) -> tuple[str, str]:
+    """Return publication-facing axis and title labels for encoded metrics."""
+    block_size = _block_size(metric_id)
+    suffix = f" at block size {block_size}" if block_size else ""
+    stem = re.sub(r"_bs\d+$", "", metric_id)
+    known = {
+        "baseline_GB_s": "Baseline effective memory bandwidth",
+        "tiled_GB_s": "Tiled effective memory bandwidth",
+        "baseline_seconds": "Baseline elapsed time",
+        "tiled_seconds": "Tiled elapsed time",
+        "max_rel_checksum_error": "Maximum relative checksum error",
+    }
+    label = known.get(stem)
+    if label is None:
+        label = re.sub(r"_+", " ", stem).strip().capitalize()
+    if unit == "1" and "relative" in label.lower():
+        axis_label = f"{label} (dimensionless)"
+    else:
+        axis_label = label
+    return axis_label, label + suffix
+
+
+def _configuration_label(config, metric_id: str) -> str:
+    label = str(config.label or "").strip()
+    block_size = _block_size(metric_id)
+    if block_size and label.lower() in {"", "draft", "candidate", "root"}:
+        return f"{config.config_id} (block size {block_size})"
+    return label or config.config_id
+
+
 def _bytes_digest(payload: bytes) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
@@ -82,7 +117,7 @@ def _metric_values(
     for config in sorted(science.raw.configurations, key=lambda item: item.rank):
         if not config.claim_eligible or metric_id not in config.measurements:
             continue
-        labels.append(config.label or config.config_id)
+        labels.append(_configuration_label(config, metric_id))
         ranks.append(config.rank)
         values.append(float(config.measurements[metric_id]))
         records.append(f"{config.config_id}:{metric_id}")
@@ -109,10 +144,11 @@ def build_spec(
     revision: int,
 ) -> FigureSpecV1:
     labels, ranks, values, record_ids, node_ids = _metric_values(science, metric_id)
+    axis_label, title = _metric_labels(metric_id, unit)
     if chart_type == "hist":
         data: dict[str, Any] = {metric_id: values}
         x_field = None
-        x_axis = FigureAxisV1(label=metric_id, unit=unit)
+        x_axis = FigureAxisV1(label=axis_label, unit=unit)
         y_axis = FigureAxisV1(label="Count", unit="1")
     else:
         x_field = "configuration" if x_mode == "configuration" else "rank"
@@ -121,7 +157,7 @@ def build_spec(
             label="Configuration" if x_mode == "configuration" else "Execution rank",
             unit="1",
         )
-        y_axis = FigureAxisV1(label=metric_id, unit=unit)
+        y_axis = FigureAxisV1(label=axis_label, unit=unit)
     source = FigureSourceV1(
         artifact_digest=science_artifact_digest,
         data_digest=canonical_figure_digest(data),
@@ -130,8 +166,12 @@ def build_spec(
     )
     caption = (
         f"{metric_id} ({unit}) across {len(values)} claim-eligible configurations; "
-        f"observed range {min(values):.6g} to {max(values):.6g}."
+        f"observed range {min(values):.6g} to {max(values):.6g}. "
+        "Values are configuration-level aggregates; no dispersion estimate "
+        "is available in the admitted measurement record."
     )
+    if all(value == 0 for value in values):
+        caption += " Every admitted value is exactly 0."
     return FigureSpecV1.create(
         figure_id=_figure_id(metric_id, index),
         revision=revision,
@@ -145,7 +185,7 @@ def build_spec(
         value_unit=unit,
         aggregation="none",
         uncertainty=FigureUncertaintyV1(kind="none"),
-        title=f"{metric_id} by configuration",
+        title=title,
         caption=caption,
     )
 
@@ -205,6 +245,24 @@ def _parse_plan(raw: str, units: dict[str, str], limit: int) -> list[dict[str, s
             {"metric_id": metric_id, "chart_type": chart_type, "x_mode": x_mode}
         )
     return result
+
+
+def _preserve_required_plan(
+    plan: list[dict[str, str]],
+    required_metric_ids: tuple[str, ...],
+) -> list[dict[str, str]]:
+    """Order a revision by its parent metrics and fill planner omissions."""
+    by_metric = {item["metric_id"]: item for item in plan}
+    for metric in required_metric_ids:
+        by_metric.setdefault(
+            metric,
+            {
+                "metric_id": metric,
+                "chart_type": "bar",
+                "x_mode": "configuration",
+            },
+        )
+    return [by_metric[metric] for metric in required_metric_ids]
 
 
 def _render_prompt(
@@ -293,10 +351,11 @@ async def plan_specs(
     raw = str(response.choices[0].message.content or "")
     plan = _parse_plan(raw, units, n_figures)
     if required_metric_ids is not None:
-        if {item["metric_id"] for item in plan} != set(required_metric_ids):
-            raise ValueError("a feedback revision must preserve the prior metric set")
-        by_metric = {item["metric_id"]: item for item in plan}
-        plan = [by_metric[metric] for metric in required_metric_ids]
+        # The metric set is an evidence-lineage invariant, not a creative LLM
+        # choice.  A planner may omit an item while responding to feedback; fill
+        # that closed-schema rendering choice deterministically rather than
+        # dropping a scientific figure or failing the entire bounded loop.
+        plan = _preserve_required_plan(plan, required_metric_ids)
     specs = [
         build_spec(
             science=science,

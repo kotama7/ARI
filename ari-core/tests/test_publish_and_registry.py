@@ -229,6 +229,16 @@ def test_publish_local_tarball_real(curated_checkpoint, tmp_path):
     assert rec.ref == f"file://{bundle.resolve()}"
 
 
+def test_publish_local_tarball_defaults_to_checkpoint(curated_checkpoint, monkeypatch):
+    monkeypatch.delenv("ARI_LOCAL_TARBALL_OUT", raising=False)
+
+    rec = publish(curated_checkpoint, backend="local-tarball")
+
+    bundle = curated_checkpoint / "bundle.tar.gz"
+    assert bundle.exists()
+    assert rec.ref == f"file://{bundle.resolve()}"
+
+
 def test_ari_publish_dryrun_env_forces_dry_run(curated_checkpoint, monkeypatch):
     monkeypatch.setenv("ARI_PUBLISH_DRYRUN", "true")
     rec = publish(curated_checkpoint, backend="ari-registry")

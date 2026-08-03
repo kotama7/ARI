@@ -119,6 +119,18 @@ def test_inject_doi_and_license(tmp_path: Path):
     assert "MIT" in content
 
 
+def test_inject_escapes_file_ref_for_latex(tmp_path: Path):
+    tex = _write_tex(tmp_path)
+    ref = "file:///tmp/run_with_under/bundle.tar.gz?x=one&y=50%"
+
+    inject_code_availability(tex_path=str(tex), ref=ref, sha256="e" * 64)
+
+    content = tex.read_text(encoding="utf-8")
+    assert r"run\_with\_under" in content
+    assert r"x=one\&y=50\%" in content
+    assert "%\n" not in content.split(r"\coderef{", 1)[1].split("}", 1)[0]
+
+
 def test_inject_missing_tex_returns_error(tmp_path: Path):
     res = inject_code_availability(
         str(tmp_path / "nope.tex"), ref="ari://x", sha256="0" * 64

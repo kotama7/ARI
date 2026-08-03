@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import platform
 import re
 import shutil
@@ -31,6 +32,9 @@ _FORBIDDEN_TEX = (
     re.compile(r"\\(?:input|include)\s*\{", re.IGNORECASE),
 )
 _GRAPHIC = re.compile(r"\\includegraphics(?:\[[^\]]*\])?\{([^}]+)\}")
+_CITATION_COMMAND = re.compile(
+    r"\\(?:cite[a-zA-Z]*\*?|nocite)\s*(?:\[[^\]]*\]\s*)*\{"
+)
 _SAFE_MAIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.tex$")
 
 
@@ -67,12 +71,17 @@ def _binary(name: str) -> Path | None:
     resolved = shutil.which(name)
     if not resolved:
         return None
-    path = Path(resolved).resolve(strict=True)
+    # Keep the discovered invocation path instead of replacing it with the
+    # symlink target.  TeX selects its preloaded format from argv[0]: invoking
+    # a ``pdflatex -> pdftex`` link through the resolved ``pdftex`` target
+    # starts plain pdfTeX and makes even ``\\documentclass`` undefined.
+    path = Path(os.path.abspath(resolved))
+    target = path.resolve(strict=True)
     # The public command name is fixed by this module; callers never supply an
     # executable path.  TeX distributions commonly install ``pdflatex`` as a
     # symlink to ``pdftex``, so checking the resolved basename would reject a
     # legitimate, allowlisted compiler.
-    if not path.is_file():
+    if not target.is_file():
         return None
     return path
 
@@ -184,8 +193,9 @@ def compile_project(
         if artifact.role in {"pdf", "png"}
     }
     _validate_tex(tex_source, declared_graphics)
+    run_bibtex = bool(bib_file and _CITATION_COMMAND.search(tex_source))
     pdflatex = _binary("pdflatex")
-    bibtex = _binary("bibtex") if bib_file else None
+    bibtex = _binary("bibtex") if run_bibtex else None
     planned = [
         (
             "pdflatex",
@@ -195,7 +205,7 @@ def compile_project(
             main_file,
         ),
     ]
-    if bib_file:
+    if run_bibtex:
         planned.append(("bibtex", main_stem))
     planned.extend(
         [
@@ -215,7 +225,7 @@ def compile_project(
             ),
         ]
     )
-    if pdflatex is None or (bib_file and bibtex is None):
+    if pdflatex is None or (run_bibtex and bibtex is None):
         missing = "pdflatex" if pdflatex is None else "bibtex"
         log_base = f".ari-paper/compile/unavailable-{missing}"
         workspace.atomic_write_text(f"{log_base}.stdout.log", "")
@@ -305,14 +315,20 @@ def compile_project(
                     )
                 )
                 if suffix == "stdout":
-                    diagnostics.extend(
+                    pass_diagnostics = [
                         line
                         for line in payload.decode(
                             "utf-8", errors="replace"
                         ).splitlines()
                         if line.startswith("!")
                         or ("LaTeX Warning:" in line and "undefined" in line)
-                    )
+                    ]
+                    # Cross-reference warnings on pass 1 are expected and are
+                    # normally resolved by passes 2/3.  Returning the union of
+                    # every pass made a successful build look broken to the
+                    # reflection loop.  The last pdflatex pass is authoritative.
+                    if planned_command[0] == "pdflatex":
+                        diagnostics = pass_diagnostics
             if result.status != "completed":
                 terminal_status = (
                     "timed-out" if result.status == "timed_out" else "failed"
