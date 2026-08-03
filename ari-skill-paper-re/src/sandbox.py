@@ -388,13 +388,20 @@ def begin_attempt(
         raise ReproductionContractError("attempt workspace already exists")
     root.mkdir(parents=True, mode=0o700)
     _make_writable_copy(prepared.input_dir, work)
+    started_at = now_utc()
+    started_epoch = int(
+        datetime.fromisoformat(started_at.removesuffix("Z") + "+00:00").timestamp()
+    )
+    WorkspaceRefV1(root=str(work)).atomic_write_bytes(
+        "reproduce.log.creation_time", str(started_epoch).encode("ascii")
+    )
     return AttemptWorkspace(
         ordinal=ordinal,
         attempt_id=attempt_id,
         parent_attempt_id=parent,
         root=root,
         work_dir=work,
-        started_at=now_utc(),
+        started_at=started_at,
     )
 
 
@@ -403,6 +410,18 @@ def execution_request(
     attempt: AttemptWorkspace,
 ) -> ExecutionRequestV1:
     workspace = WorkspaceRefV1(root=str(attempt.work_dir))
+    started_epoch = int(
+        datetime.fromisoformat(
+            attempt.started_at.removesuffix("Z") + "+00:00"
+        ).timestamp()
+    )
+    # PaperBench uses this explicit pre-execution timestamp to distinguish
+    # freshly reproduced tables from files already present in the input tree.
+    # Reassert it immediately before launch so the copied input tree cannot
+    # carry a forged boundary into the execution.
+    workspace.atomic_write_bytes(
+        "reproduce.log.creation_time", str(started_epoch).encode("ascii")
+    )
     image = prepared.plan.image
     container = None
     if image is not None:
@@ -433,6 +452,26 @@ async def execute_local_attempt(
     attempt: AttemptWorkspace,
 ) -> dict[str, Any]:
     request = execution_request(prepared, attempt)
+    # The generic local executor replaces exact argv file operands with a
+    # private content-addressed snapshot.  That is appropriate for standalone
+    # inputs, but moving reproduce.sh changes normal script semantics: both
+    # ``dirname "$0"`` and sibling source-file lookups would resolve outside
+    # the content-bound attempt tree.  Keep the script in its verified attempt
+    # location and let the executor attest the digest immediately before
+    # launch.  The attempt is already a private copy of the immutable input
+    # snapshot, so this preserves the complete source tree while recording the
+    # weaker (and truthful) ``verified-at-launch`` input binding.
+    request = request.model_copy(
+        update={
+            "argv": [
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                _RUNTIME_IDENTITY_COMMAND,
+            ]
+        }
+    )
     cancel_event = threading.Event()
     task = asyncio.create_task(
         asyncio.to_thread(
@@ -752,6 +791,25 @@ def finalize_attempt(
     log_path = attempt.work_dir / "reproduce.log"
     workspace = WorkspaceRefV1(root=str(attempt.work_dir))
     policy_incidents: list[str] = []
+    started_epoch = int(
+        datetime.fromisoformat(
+            attempt.started_at.removesuffix("Z") + "+00:00"
+        ).timestamp()
+    )
+    # The executed submission is untrusted and may overwrite the marker.
+    # Restore the recorded start boundary before publishing judge evidence.
+    marker_path = attempt.work_dir / "reproduce.log.creation_time"
+    if marker_path.is_symlink() or (
+        marker_path.exists() and not marker_path.is_file()
+    ):
+        policy_incidents.append("removed unsafe reproduce.log.creation_time output")
+        if marker_path.is_dir() and not marker_path.is_symlink():
+            shutil.rmtree(marker_path)
+        else:
+            marker_path.unlink()
+    workspace.atomic_write_bytes(
+        "reproduce.log.creation_time", str(started_epoch).encode("ascii")
+    )
     if log_path.is_symlink() or (log_path.exists() and not log_path.is_file()):
         policy_incidents.append("removed unsafe reproduce.log output")
         if log_path.is_dir() and not log_path.is_symlink():
@@ -763,7 +821,10 @@ def finalize_attempt(
         stdout + (b"\n" if stdout and stderr else b"") + stderr,
     )
     policy_incidents.extend(
-        _sanitize_output_tree(attempt.work_dir, preserve={"reproduce.log"})
+        _sanitize_output_tree(
+            attempt.work_dir,
+            preserve={"reproduce.log", "reproduce.log.creation_time"},
+        )
     )
     manifest_before = {
         item["relative_path"]: item for item in tree_manifest(prepared.input_dir)

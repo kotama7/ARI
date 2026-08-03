@@ -68,6 +68,87 @@ _DEFAULT_N_CTX_BY_PREFIX: tuple[tuple[str, int], ...] = (
 )
 _DEFAULT_N_CTX_FALLBACK = 128_000
 
+_TREE_ENTRY_RE = re.compile(
+    r"^(?P<prefix>(?:(?:\u2502   )|(?:    ))*)(?:\u251c\u2500\u2500 |\u2514\u2500\u2500 )(?P<name>.+?)\s*$"
+)
+
+
+def _paperbench_file_tree_paths(conversation: list[Any]) -> set[str] | None:
+    """Return paths shown by PaperBench's file-ranking prompt.
+
+    ``None`` means this is not the distinctive file-ranking turn; an empty
+    set means it is a ranking turn for an empty submission.  Keeping those
+    states distinct lets negative-control grading avoid asking a provider to
+    invent a filename when PaperBench has explicitly shown no files.
+    """
+
+    if not conversation:
+        return None
+    last = conversation[-1]
+    prompt = last.get("content") if isinstance(last, dict) else None
+    if not isinstance(prompt, str) or not (
+        "Directory structure:\n" in prompt
+        and "most relevant files in order of relevance" in prompt
+    ):
+        return None
+    tree_text = prompt.split("Directory structure:\n", 1)[1].split(
+        "\n\nNow return", 1
+    )[0]
+    components: list[str] = []
+    tree_paths: set[str] = set()
+    for line in tree_text.splitlines():
+        match = _TREE_ENTRY_RE.match(line)
+        if match is None:
+            continue
+        depth = len(match.group("prefix")) // 4
+        components[depth:] = [match.group("name")]
+        tree_paths.add("/".join(components))
+    return tree_paths
+
+
+def _normalize_paperbench_file_selection(
+    conversation: list[Any], content: str | None
+) -> str | None:
+    """Map PaperBench file-ranking replies back to paths in its shown tree.
+
+    CLI-backed models know their private shim cwd and can prepend it even
+    though the prompt's directory tree is submission-relative.  Upstream then
+    treats every returned line as relative and joins it to ``submission_dir``,
+    making a correct absolute selection unreadable.  Only the distinctive
+    file-ranking prompt is adapted.  The raw provider reply remains unchanged
+    in the model-call trace; the returned chat message uses the longest suffix
+    that actually occurs in the tree (so ``submission/x.c`` wins over ``x.c``
+    when that is what the model selected).
+    """
+
+    if not isinstance(content, str) or not content.strip():
+        return content
+    tree_paths = _paperbench_file_tree_paths(conversation)
+    if not tree_paths:
+        return content
+
+    candidates = sorted(
+        tree_paths,
+        key=lambda value: (value.count("/"), len(value)),
+        reverse=True,
+    )
+    normalized: list[str] = []
+    for line in content.splitlines():
+        value = line.strip().strip("`\"'").replace("\\", "/").rstrip("/")
+        if not value:
+            continue
+        match = next(
+            (
+                candidate
+                for candidate in candidates
+                if value == candidate or value.endswith("/" + candidate)
+            ),
+            None,
+        )
+        if match is not None and match not in normalized:
+            normalized.append(match)
+    return "\n".join(normalized) if normalized else content
+
 
 def _jsonable(value: Any) -> Any:
     """Convert SDK/Pydantic values into finite, lossless-enough trace JSON."""
@@ -416,6 +497,35 @@ class LiteLLMTurnCompleter(TurnCompleter):
                 if key in kwargs
             },
         }
+        if _paperbench_file_tree_paths(expanded_messages) == set():
+            # PaperBench deliberately grades an empty repository as a negative
+            # control.  There is no scientifically valid filename to rank, and
+            # CLI models may represent that answer as no assistant item at all.
+            # Return the empty selection deterministically and record that no
+            # provider inference was used.
+            self._last_retry_time = 0.0
+            self._write_trace(
+                call_id,
+                started_at=started_at,
+                request=trace_request,
+                response={
+                    "provider_model": None,
+                    "content": "",
+                    "refusal": None,
+                    "tool_calls": [],
+                    "finish_reason": "deterministic-empty-file-tree",
+                    "usage": None,
+                    "synthetic_reason": "paperbench-empty-submission-tree",
+                },
+                error=None,
+            )
+            return LiteLLMTurnCompleter.Completion(
+                input_conversation=conversation,
+                output_messages=[
+                    ChatCompletionMessage(role="assistant", content="")
+                ],
+                usage=None,
+            )
         t0 = time.monotonic()
         try:
             resp = await litellm.acompletion(**kwargs)
@@ -439,13 +549,14 @@ class LiteLLMTurnCompleter(TurnCompleter):
 
         choice = resp.choices[0]
         msg = choice.message
+        raw_content = getattr(msg, "content", None)
         self._write_trace(
             call_id,
             started_at=started_at,
             request=trace_request,
             response={
                 "provider_model": getattr(resp, "model", None),
-                "content": _jsonable(getattr(msg, "content", None)),
+                "content": _jsonable(raw_content),
                 "refusal": _jsonable(getattr(msg, "refusal", None)),
                 "tool_calls": _jsonable(getattr(msg, "tool_calls", None) or []),
                 "finish_reason": getattr(choice, "finish_reason", None),
@@ -485,7 +596,9 @@ class LiteLLMTurnCompleter(TurnCompleter):
             )
         chat_msg = ChatCompletionMessage(
             role="assistant",
-            content=getattr(msg, "content", None),
+            content=_normalize_paperbench_file_selection(
+                expanded_messages, raw_content
+            ),
             refusal=getattr(msg, "refusal", None),
             tool_calls=tool_calls_typed or None,
         )

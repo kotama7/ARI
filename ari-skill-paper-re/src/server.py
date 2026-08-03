@@ -378,6 +378,22 @@ async def build_reproduce_sh(
         from _litellm_completer import get_litellm_basicagent_completer_config
         completer_config = get_litellm_basicagent_completer_config()(
             model=chosen_model,
+            api_base=os.environ.get("ARI_LLM_API_BASE") or None,
+            # LiteLLM's static provider table does not know shim-local model
+            # aliases such as ``openai/codex-cli:gpt-*`` and otherwise drops
+            # ``tool_choice`` as unsupported.  Explicitly allow the standard
+            # OpenAI parameter for OpenAI-routed aliases so required really
+            # reaches the CLI shim.
+            extra_kwargs=(
+                {"allowed_openai_params": ["tool_choice"]}
+                if chosen_model.startswith("openai/")
+                else None
+            ),
+            # BasicAgent completes by calling ``submit``; every preceding turn
+            # must likewise select one of its caller-owned bash/python/file
+            # tools.  Required tool choice prevents a prose-only response from
+            # consuming a ReAct step without changing the reproduction bundle.
+            tool_choice="required",
         )
 
     resolved_image = container_image or os.environ.get(

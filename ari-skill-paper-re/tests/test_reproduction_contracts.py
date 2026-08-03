@@ -88,6 +88,8 @@ async def test_private_attempt_is_content_bound_secret_free_and_resolvable(
     monkeypatch.setenv("TOP_SECRET_TOKEN", "must-not-leak")
     workspace = _workspace(
         tmp_path,
+        'cd "$(dirname "$0")"\n'
+        "printf 1 > reproduce.log.creation_time\n"
         "env > environment.txt\ncp input.txt result.txt\n",
     )
     prepared = _prepare(workspace)
@@ -98,6 +100,9 @@ async def test_private_attempt_is_content_bound_secret_free_and_resolvable(
     assert run.status == "succeeded"
     assert run.selected_attempt_id == attempt.attempt_id
     assert run.attempts[0].execution_identity
+    assert run.attempts[0].environment["input_bindings"] == {
+        "reproduce.sh": "verified-at-launch"
+    }
     identity = run.attempts[0].environment["identity"]
     assert identity["machine"]
     assert identity["kernel"]
@@ -107,6 +112,9 @@ async def test_private_attempt_is_content_bound_secret_free_and_resolvable(
     assert pointer.is_file()
     assert not (workspace / "result.txt").exists()
     assert (attempt.work_dir / "result.txt").read_text() == "immutable input\n"
+    marker = attempt.work_dir / "reproduce.log.creation_time"
+    assert marker.is_file()
+    assert int(marker.read_text()) > 1_000_000_000
     environment = (attempt.work_dir / "environment.txt").read_text()
     assert "TOP_SECRET_TOKEN" not in environment
     assert "must-not-leak" not in environment

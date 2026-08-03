@@ -42,10 +42,12 @@ this module fails to import — there is **no local fallback**.
 
 from __future__ import annotations
 
+import filecmp
 import hashlib
 import logging
 import os
 import re
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
@@ -1737,12 +1739,10 @@ async def judge_submission(
             "itself for describability. Pick one."
         )
 
-    # Main per-leaf grading completer routes through LiteLLM so any provider
-    # works (OpenAI snapshots not in PaperBench's CONTEXT_WINDOW_LENGTHS,
-    # Anthropic, Gemini, Ollama, …). The int/float structured completers
-    # SimpleJudge constructs internally still default to gpt-4o-2024-08-06
-    # via OpenAI direct — that is fine because that model IS in the registry
-    # and the parse step is small.
+    # Route the main leaf grader and both structured int/float parsers through
+    # the same LiteLLM model and optional ARI shim endpoint.  This keeps judge
+    # identity independent of PaperBench's pinned OpenAI context registry and
+    # prevents hidden gpt-4o parse calls when a different provider was chosen.
     from _litellm_completer import LiteLLMTurnCompleter
 
     # Inspect the real repo root: if the agent nested its self-contained
@@ -1780,15 +1780,18 @@ async def judge_submission(
             paperbench_logs = None
         cfg = LiteLLMTurnCompleter.Config(
             model=judge_model,
+            api_base=os.environ.get("ARI_LLM_API_BASE") or None,
             trace_dir=trace_value,
         )
         int_cfg = LiteLLMTurnCompleter.Config(
             model=judge_model,
+            api_base=os.environ.get("ARI_LLM_API_BASE") or None,
             response_format=ParsedJudgeResponseInt,
             trace_dir=trace_value,
         )
         float_cfg = LiteLLMTurnCompleter.Config(
             model=judge_model,
+            api_base=os.environ.get("ARI_LLM_API_BASE") or None,
             response_format=ParsedJudgeResponseFloat,
             trace_dir=trace_value,
         )
@@ -2061,7 +2064,16 @@ async def rollout_submission(
         )
     else:
         from _litellm_completer import get_litellm_basicagent_completer_config
-        completer_config = get_litellm_basicagent_completer_config()(model=agent_model)
+        completer_config = get_litellm_basicagent_completer_config()(
+            model=agent_model,
+            api_base=os.environ.get("ARI_LLM_API_BASE") or None,
+            extra_kwargs=(
+                {"allowed_openai_params": ["tool_choice"]}
+                if agent_model.startswith("openai/")
+                else None
+            ),
+            tool_choice="required",
+        )
 
     from _replicator_agent import run_replicator_agent
 
@@ -2121,16 +2133,119 @@ def _resolve_submission_repo_root(submission_dir: Path | str) -> Path:
     built and verified a correct, self-contained repo one level down. (This
     is the v3-A11 0%-execution root cause.)
 
-    Resolution: if a nested ``submission/reproduce.sh`` exists AND that
-    nested dir looks like the committed repo (has ``.git`` or any content
-    besides ``reproduce.sh``), reproduction/grading must run THERE — that is
-    the only directory where reproduce.sh's relative paths resolve. Falls
-    back to ``submission_dir`` unchanged when there is no such nesting (the
-    agent put everything at the root, or a dry-run dir).
+    Resolution: prefer the root when the full git-visible submission tree has
+    been promoted there.  Every tracked or non-ignored file must exist and
+    byte-match; a single matching sibling is not enough because that would
+    mistake a partial promotion for a reproducible repository.  Without git
+    metadata, retain the older sibling heuristic for compatibility.  If git
+    inspection fails, choose the nested repository rather than guessing.
     """
     p = Path(submission_dir).resolve()
     nested = p / "submission"
-    if (nested / "reproduce.sh").is_file():
+    if not nested.is_symlink() and (nested / "reproduce.sh").is_file():
+        # New rollouts promote the complete git-visible submission tree.  The
+        # nested directory remains as rollout evidence, but it may contain
+        # stale pre-Phase-1 measurements.  For a git repository, require every
+        # promotable file to be mirrored byte-for-byte at the root before fresh
+        # outputs and reproduce.log are coupled to that root for grading.
+        try:
+            root_script = p / "reproduce.sh"
+            scripts_match = (
+                root_script.is_file()
+                and not root_script.is_symlink()
+                and not (nested / "reproduce.sh").is_symlink()
+                and filecmp.cmp(root_script, nested / "reproduce.sh", shallow=False)
+            )
+            git_entry = nested / ".git"
+            has_git_metadata = git_entry.exists() or git_entry.is_symlink()
+            fully_promoted = False
+            if scripts_match and has_git_metadata:
+                if git_entry.is_symlink():
+                    raise OSError("nested .git metadata is a symlink")
+                proc = subprocess.run(
+                    [
+                        "git", "-C", str(nested), "ls-files", "-z",
+                        "--cached", "--others", "--exclude-standard",
+                    ],
+                    capture_output=True,
+                    timeout=30,
+                    check=True,
+                )
+                visible_paths = [
+                    Path(raw.decode("utf-8"))
+                    for raw in proc.stdout.split(b"\0")
+                    if raw
+                ]
+                fully_promoted = True
+                for rel in visible_paths:
+                    if rel == Path("reproduce.sh"):
+                        continue
+                    if rel.is_absolute() or ".." in rel.parts or ".git" in rel.parts:
+                        fully_promoted = False
+                        break
+                    source = nested / rel
+                    mirror = p / rel
+                    source_cursor = nested
+                    mirror_cursor = p
+                    has_symlink = False
+                    for part in rel.parts:
+                        source_cursor /= part
+                        mirror_cursor /= part
+                        if source_cursor.is_symlink() or mirror_cursor.is_symlink():
+                            has_symlink = True
+                            break
+                    if (
+                        has_symlink
+                        or not source.is_file()
+                        or not mirror.is_file()
+                        or not filecmp.cmp(source, mirror, shallow=False)
+                    ):
+                        fully_promoted = False
+                        break
+            elif scripts_match:
+                # Compatibility with pre-git rollouts: promotion copied the
+                # complete filesystem tree, so one non-script mirror remains
+                # the strongest evidence available without a manifest.
+                fully_promoted = any(
+                    candidate.is_file()
+                    and not candidate.is_symlink()
+                    and candidate.name != "reproduce.sh"
+                    and (p / candidate.relative_to(nested)).is_file()
+                    and not (p / candidate.relative_to(nested)).is_symlink()
+                    and filecmp.cmp(
+                        candidate,
+                        p / candidate.relative_to(nested),
+                        shallow=False,
+                    )
+                    for candidate in nested.rglob("*")
+                    if ".git" not in candidate.relative_to(nested).parts
+                )
+        except OSError:
+            log.warning(
+                "reproduce/judge: git-aware promotion inspection failed for %s; "
+                "using nested repository",
+                nested,
+                exc_info=True,
+            )
+            fully_promoted = False
+        except (
+            subprocess.SubprocessError,
+            UnicodeDecodeError,
+        ):
+            log.warning(
+                "reproduce/judge: git-aware promotion inspection failed for %s; "
+                "using nested repository",
+                nested,
+                exc_info=True,
+            )
+            fully_promoted = False
+        if fully_promoted:
+            log.info(
+                "reproduce/judge: using fully promoted workspace root %s; "
+                "nested submission is retained as rollout evidence",
+                p,
+            )
+            return p
         try:
             has_repo_content = (nested / ".git").exists() or any(
                 c.name != "reproduce.sh" for c in nested.iterdir()
