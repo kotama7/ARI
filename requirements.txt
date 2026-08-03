@@ -35,7 +35,7 @@ matplotlib>=3.7
 # --- Skill-specific ---------------------------------------------------------
 duckduckgo-search>=8.1.1
 httpx>=0.25
-beautifulsoup4>=4.12
+beautifulsoup4>=4.15.0
 arxiv>=2.0
 nest-asyncio
 
