@@ -267,18 +267,21 @@ def test_emit_results_writes_typed_payload(work_dir):
 
     payload = _json.loads(Path(r["path"]).read_text())
     assert payload["schema_version"] == _RESULTS_SCHEMA_VERSION
-    assert payload["params"]["M"] == 120000
-    assert payload["measurements"]["GFlops_per_s"] == 26.864
-    assert payload["predictions"]["peak_gflops_model"] == 686.45
-    assert payload["scores"]["_scientific_score"] == 0.37
     assert payload["typed_schema_version"] == "ari.measurement-set/v1"
-    assert payload["measurement_set"]["schema_version"] == "ari.measurement-set/v1"
-    assert {item["unit"] for item in payload["measurement_records"]} == {
+    measurement_set = payload["measurement_set"]
+    assert measurement_set["schema_version"] == "ari.measurement-set/v1"
+    assert measurement_set["parameters"]["M"] == 120000
+    assert measurement_set["predictions"]["peak_gflops_model"] == 686.45
+    assert measurement_set["scores"]["_scientific_score"] == 0.37
+    assert {
+        item["metric_id"]: item["value"] for item in measurement_set["measurements"]
+    }["GFlops_per_s"] == 26.864
+    assert {item["unit"] for item in measurement_set["measurements"]} == {
         "GFLOP/s",
         "GB/s",
     }
     assert {
-        item["execution_attempt_id"] for item in payload["measurement_records"]
+        item["execution_attempt_id"] for item in measurement_set["measurements"]
     } == {execution["attempt_id"]}
     assert r["scientifically_admissible"] is True
 
@@ -349,7 +352,12 @@ def test_emit_results_writes_provenance(work_dir):
         work_dir=work_dir,
     )
     payload = _json.loads(Path(r["path"]).read_text())
-    assert payload["_provenance"] == {
+    provenance = {
+        item["metric_id"]: item["provenance"]
+        for item in payload["measurement_set"]["measurements"]
+        if item["provenance"] is not None
+    }
+    assert provenance == {
         "peak_bw": "microbench",
         "max_abs_err": "correctness",
     }
@@ -367,7 +375,11 @@ def test_emit_results_omits_empty_provenance(work_dir):
         file="r.json",
         work_dir=work_dir,
     )
-    assert "_provenance" not in _json.loads(Path(r["path"]).read_text())
+    payload = _json.loads(Path(r["path"]).read_text())
+    assert all(
+        item["provenance"] is None
+        for item in payload["measurement_set"]["measurements"]
+    )
 
 
 def test_emit_results_provenance_roundtrip_to_gate(work_dir):
@@ -384,10 +396,23 @@ def test_emit_results_provenance_roundtrip_to_gate(work_dir):
     }
 
     def _cfg_from(path):
+        from ari.public.execution import parse_measurement_document
+
         rj = _json.loads(Path(path).read_text())
-        cfg = {"config_id": "n", "measurements": rj.get("measurements", {})}
-        if isinstance(rj.get("_provenance"), dict):  # exactly transform server.py ~586
-            cfg["_provenance"] = dict(rj["_provenance"])
+        measurement_set = parse_measurement_document(rj, allow_legacy=False)
+        cfg = {
+            "config_id": "n",
+            "measurements": {
+                item.metric_id: item.value for item in measurement_set.measurements
+            },
+        }
+        provenance = {
+            item.metric_id: item.provenance
+            for item in measurement_set.measurements
+            if item.provenance is not None
+        }
+        if provenance:
+            cfg["_provenance"] = provenance
         return cfg
 
     # honest: emit measurements + provenance tags via the sanctioned tool -> PASS
@@ -520,14 +545,10 @@ def test_emit_results_overwrites_existing(work_dir):
         work_dir=work_dir,
     )
     payload = _json.loads((Path(work_dir) / "r.json").read_text())
-    assert payload["params"]["x"] == 2  # second call wins
+    assert payload["measurement_set"]["parameters"]["x"] == 2  # second call wins
 
 
-def test_emit_results_coerces_non_jsonable(work_dir):
-    # pathlib.Path is not directly JSON-serialisable; the helper must
-    # str-coerce rather than crash so emit_results never fails the run.
-    import json as _json
-
+def test_emit_results_rejects_non_jsonable_values(work_dir):
     r = _emit_results(
         params={"src": Path("/tmp/foo")},
         measurements={"latency": 0.001},
@@ -536,9 +557,8 @@ def test_emit_results_coerces_non_jsonable(work_dir):
         file="r.json",
         work_dir=work_dir,
     )
-    assert r["status"] == "written"
-    payload = _json.loads(Path(r["path"]).read_text())
-    assert payload["params"]["src"] == "/tmp/foo"
+    assert "finite JSON values" in r["error"]
+    assert not (Path(work_dir) / "r.json").exists()
 
 
 def test_emit_results_refuses_path_traversal(work_dir):
@@ -569,8 +589,8 @@ def test_emit_results_empty_dicts_are_fine(work_dir):
     )
     assert r["status"] == "written"
     payload = _json.loads(Path(r["path"]).read_text())
-    assert payload["params"] == {}
-    assert payload["measurements"] == {}
+    assert payload["measurement_set"]["parameters"] == {}
+    assert payload["measurement_set"]["measurements"] == []
 
 
 def test_emit_results_rejects_ambiguous_or_invalid_measurement_metadata(work_dir):

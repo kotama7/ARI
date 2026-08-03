@@ -95,12 +95,12 @@ disjoint namespaces. Each `MeasurementRecordV1` records:
 - execution identity, attempt identity, terminal status, and exit code;
 - the SHA-256 artifacts supporting the value.
 
-`coding-skill.emit_results` writes the canonical object under
-`measurement_set`, while retaining the v1 flat projection during the P6
-compatibility window. The common parser cross-checks both views and rejects a
-split-brain document. Legacy v1 and unversioned files are read-only migration
-inputs; absent units and execution evidence remain explicitly missing rather
-than being inferred.
+`coding-skill.emit_results` writes only the canonical object under
+`measurement_set`. It rejects non-finite values and values that are not valid
+JSON instead of string-coercing them. The common parser still accepts old flat
+v1 and unversioned files as read-only migration inputs and cross-checks any
+historical mixed document to reject split-brain values. Missing units and
+execution evidence remain explicitly missing rather than being inferred.
 
 For coding-skill output, `scientifically_admissible` is true only when at least
 one measurement exists and every measurement has a declared unit, a successful
@@ -124,7 +124,8 @@ The generated normative schemas are:
 - `execution_result_v1.schema.json`
 - `measurement_set_v1.schema.json`
 
-Run `python scripts/sync_skill_metadata.py` to check schema drift. During P6,
-producers must emit the canonical measurement set, consumers must use
-`parse_measurement_document`, and compatibility-reader telemetry must reach
-zero before the flat writer/coercion and unversioned reader are deleted.
+Run `python scripts/sync_skill_metadata.py` to check schema drift. Producers
+must emit the canonical measurement set and consumers must use
+`parse_measurement_document`. The flat writer and coercion path have been
+removed; the legacy reader is deliberately read-only and is tracked in the
+compatibility-support policy.

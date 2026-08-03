@@ -192,44 +192,6 @@
         "name": "probe_platform_capabilities"
       },
       {
-        "args": [
-          "definition_file",
-          "output_path",
-          "partition"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_build"
-      },
-      {
-        "args": [
-          "definition_content",
-          "output_path",
-          "partition",
-          "walltime"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_build_fakeroot"
-      },
-      {
-        "args": [
-          "output_path",
-          "partition",
-          "source"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_pull"
-      },
-      {
-        "args": [],
-        "idiom": "lowlevel",
-        "name": "singularity_run"
-      },
-      {
-        "args": [],
-        "idiom": "lowlevel",
-        "name": "singularity_run_gpu"
-      },
-      {
         "args": [],
         "idiom": "lowlevel",
         "name": "slurm_submit"
@@ -767,12 +729,10 @@
           "paper_text",
           "paperbench_rubric_id",
           "provider",
-          "quality_profile",
           "seed",
           "subtree_concurrency",
           "target_leaf_count",
-          "temperature",
-          "two_stage"
+          "temperature"
         ],
         "idiom": "fastmcp",
         "name": "generate_rubric"
@@ -910,16 +870,6 @@
     "ari-skill-web": [
       {
         "args": [
-          "experiment_summary",
-          "keywords",
-          "max_rounds",
-          "min_papers"
-        ],
-        "idiom": "fastmcp",
-        "name": "collect_references_iterative"
-      },
-      {
-        "args": [
           "max_bytes",
           "max_chars",
           "mode",
@@ -955,40 +905,12 @@
         "args": [
           "max_results",
           "mode",
-          "query",
-          "snapshot_ref"
-        ],
-        "idiom": "fastmcp",
-        "name": "search_arxiv"
-      },
-      {
-        "args": [
-          "max_results",
-          "mode",
           "provider",
           "query",
           "snapshot_ref"
         ],
         "idiom": "fastmcp",
         "name": "search_papers"
-      },
-      {
-        "args": [
-          "extra_queries",
-          "limit",
-          "mode",
-          "query",
-          "snapshot_ref"
-        ],
-        "idiom": "fastmcp",
-        "name": "search_semantic_scholar"
-      },
-      {
-        "args": [
-          "backend"
-        ],
-        "idiom": "fastmcp",
-        "name": "set_retrieval_backend"
       },
       {
         "args": [

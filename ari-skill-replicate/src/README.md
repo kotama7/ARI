@@ -15,11 +15,11 @@ PaperBench-format auto-rubrics (TaskNode-compatible) from a paper's text.
 - `server.py` — MCP entry point (`generate_rubric`, `audit_rubric`, `suggest_target_leaf_count`).
 - `prompts/` — LLM prompt templates.
   - `README.md` — prompts index.
-  - `adversarial_reviewer.md` — adversarial review pass.
+  - `skeleton.md` / `subtree.md` — calibrated hierarchical rubric generation.
   - `rubric_audit.md` — flag leaf-quality issues.
   - `skeleton.md` — Pass 1: define the rubric root + direct children.
   - `subtree.md` — Pass 2: populate each direct child's subtree with leaves.
 
 ## See also
 
-- The skill root `README.md` and the `server.py` module docstring for the tools & two-stage generation flow.
+- The skill root `README.md` and the `server.py` module docstring for the tools and hierarchical generation flow.

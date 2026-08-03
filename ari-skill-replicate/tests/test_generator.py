@@ -370,7 +370,10 @@ async def test_generate_rubric_round_trip(tmp_path):
 @pytest.mark.asyncio
 async def test_generate_rubric_retries_on_bad_json(tmp_path):
     paper_text = "tiny paper text " * 50
-    env = _envelope_partial(leaves=50, quote="tiny paper text")
+    parent = "Reproduce the tiny-paper experiment and its reported outputs."
+    skeleton = _skeleton_envelope([parent])
+    subtree = _envelope_partial(leaves=50, quote="tiny paper text")["rubric"]
+    subtree["requirements"] = parent
     out_path = tmp_path / "rubric.json"
 
     calls = {"n": 0}
@@ -381,7 +384,9 @@ async def test_generate_rubric_retries_on_bad_json(tmp_path):
             return "not JSON at all"
         if calls["n"] == 2:
             return "{ broken json"
-        return json.dumps(env)
+        if "SKELETON" in prompt:
+            return json.dumps(skeleton)
+        return json.dumps(subtree)
 
     res = await G.generate_rubric_async(
         paper_text=paper_text,
@@ -391,7 +396,7 @@ async def test_generate_rubric_retries_on_bad_json(tmp_path):
         llm_call=fake_llm,
     )
     assert "error" not in res, res
-    assert calls["n"] == 3
+    assert calls["n"] == 4
     assert res["leaves_count"] == 50
 
 
@@ -473,11 +478,14 @@ async def test_generate_rubric_clamps_invalid_finegrained(tmp_path):
 @pytest.mark.asyncio
 async def test_generate_rubric_auto_target(tmp_path):
     paper_text = " ".join(["word"] * 5400)
-    env = _envelope_partial(leaves=72, quote="word word word")
+    parent = "Reproduce the automatically sized experiment coverage."
+    skeleton = _skeleton_envelope([parent])
+    subtree = _envelope_partial(leaves=72, quote="word word word")["rubric"]
+    subtree["requirements"] = parent
     out_path = tmp_path / "rubric.json"
 
     async def fake_llm(prompt: str) -> str:
-        return json.dumps(env)
+        return json.dumps(skeleton if "SKELETON" in prompt else subtree)
 
     res = await G.generate_rubric_async(
         paper_text=paper_text,
@@ -558,7 +566,7 @@ def _subtree_node(parent_req: str, n_leaves: int = 4) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_two_stage_generates_skeleton_then_subtrees(tmp_path):
+async def test_hierarchical_generation_builds_skeleton_then_subtrees(tmp_path):
     """Two-stage generation issues 1+N calls, merges subtrees, and the
     resulting rubric is deeper than what one call produced."""
     paper_text = (FIXTURES / "paper_simple.tex").read_text()
@@ -587,7 +595,6 @@ async def test_two_stage_generates_skeleton_then_subtrees(tmp_path):
         target_leaf_count=20,
         model="test/mock",
         llm_call=fake_llm,
-        two_stage=True,
     )
     assert "error" not in res, res
     # 1 skeleton + 2 subtree calls
@@ -610,7 +617,7 @@ async def test_two_stage_generates_skeleton_then_subtrees(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_two_stage_drops_invalid_leaves_instead_of_failing(tmp_path):
+async def test_hierarchical_generation_drops_invalid_leaves(tmp_path):
     """If a subtree call returns a leaf with too-short quote (<10 chars),
     the prune pass should drop it and the rubric should still validate."""
     paper_text = (FIXTURES / "paper_simple.tex").read_text()
@@ -633,7 +640,6 @@ async def test_two_stage_drops_invalid_leaves_instead_of_failing(tmp_path):
         target_leaf_count=20,
         model="test/mock",
         llm_call=fake_llm,
-        two_stage=True,
     )
     assert "error" not in res, res
     # 4 leaves emitted, 2 were invalid → 2 should remain
@@ -735,33 +741,14 @@ def test_skeleton_prompt_includes_execution_profile_guidance():
     assert "module_loads" in rendered
 
 
-def test_single_call_prompt_also_includes_execution_profile_guidance():
-    """The single-call ``adversarial_reviewer.md`` template (used when
-    `two_stage=False`) must carry the same execution_profile guidance.
-    Without it, users who opt into single-call mode silently lose the
-    HPC pathway — discovered during the v0.7.2 real-LLM smoke against
-    sc24-00052, which returned ``execution_profile: null`` when
-    `two_stage=False` despite the paper being MPI."""
-    rendered = G._render_prompt(paper_text="X" * 100, target_leaves=50)
-    assert "execution_profile" in rendered
-    assert "kind" in rendered
-    assert "mpi" in rendered
-    assert "gpu_single" in rendered
-    assert "module_loads" in rendered
-    assert "OMIT" in rendered  # explicit instruction for non-HPC papers
-
-
 def test_prompt_includes_expected_artifacts_discipline():
     """A2: rubric prompt must explicitly tell the LLM how to populate
     expected_artifacts — over-specifying it (especially with figure paths
     the experiment program doesn't emit) tanks reproducibility scoring."""
-    rendered = G._render_prompt(paper_text="X" * 100, target_leaves=50)
-    # The dedicated section must appear.
-    assert "EXPECTED_ARTIFACTS DISCIPLINE" in rendered
+    rendered = G._render_skeleton_prompt(paper_text="X" * 100, target_leaves=50)
+    assert "expected_artifacts" in rendered
     # Concrete rules the LLM must follow.
-    assert "post-hoc plotting" in rendered
-    assert "results.csv" in rendered
-    assert "fig_1.pdf" in rendered
-    # The final schema block should reference the new "RULES above" hint
-    # rather than the old "<relative paths produced by reproduce.sh>".
-    assert "see RULES above" in rendered
+    assert "List ONLY files the experiment program actually emits" in rendered
+    assert "CSVs, JSONs" in rendered
+    assert "paper figures" in rendered
+    assert "Keep short (1–4 entries)" in rendered

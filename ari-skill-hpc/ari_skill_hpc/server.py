@@ -10,7 +10,7 @@ from typing import Any
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from ari_skill_hpc import singularity, slurm
+from ari_skill_hpc import slurm
 from ari_skill_hpc.contracts import JobSubmitArgumentsV1
 from ari_skill_hpc.scheduler import (
     RemoteConfig,
@@ -143,8 +143,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="slurm_submit",
             description=(
-                "Deprecated compatibility alias. Submit an opaque batch body through the "
-                "clean, shell-free scheduler transport; prefer job_submit."
+                "Compatibility bridge for the core agent's batch-script workflow. "
+                "New programmatic callers should prefer job_submit."
             ),
             inputSchema=_legacy_submit_schema(),
         ),
@@ -164,87 +164,7 @@ async def list_tools() -> list[Tool]:
                 "additionalProperties": False,
             },
         ),
-        Tool(
-            name="singularity_build",
-            description="Deprecated alias for a typed SIF build job; prefer job_submit",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "definition_file": {"type": "string"},
-                    "output_path": {"type": "string"},
-                    "partition": {"type": "string"},
-                },
-                "required": ["definition_file", "output_path", "partition"],
-                "additionalProperties": False,
-            },
-        ),
-        Tool(
-            name="singularity_build_fakeroot",
-            description="Deprecated alias for a typed fakeroot SIF build job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "definition_content": {"type": "string"},
-                    "output_path": {"type": "string"},
-                    "partition": {"type": "string"},
-                    "walltime": {"type": "string"},
-                },
-                "required": ["definition_content", "output_path", "partition"],
-                "additionalProperties": False,
-            },
-        ),
-        Tool(
-            name="singularity_pull",
-            description="Deprecated alias for a typed SIF pull job",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "source": {"type": "string"},
-                    "output_path": {"type": "string"},
-                    "partition": {"type": "string"},
-                },
-                "required": ["source", "output_path", "partition"],
-                "additionalProperties": False,
-            },
-        ),
-        Tool(
-            name="singularity_run",
-            description=(
-                "Deprecated argv-parsing container alias; shell operators are not interpreted"
-            ),
-            inputSchema=_legacy_container_run_schema(gpu=False),
-        ),
-        Tool(
-            name="singularity_run_gpu",
-            description="Deprecated digest-pinned GPU container alias",
-            inputSchema=_legacy_container_run_schema(gpu=True),
-        ),
     ]
-
-
-def _legacy_container_run_schema(*, gpu: bool) -> dict[str, Any]:
-    properties: dict[str, Any] = {
-        "image_path": {"type": "string"},
-        "command": {"type": "string"},
-        "work_dir": {"type": "string"},
-        "partition": {"type": "string"},
-        "nodes": {"type": "integer", "minimum": 1, "default": 1},
-        "walltime": {"type": "string", "default": "01:00:00"},
-        "bind_paths": {"type": "array", "items": {"type": "string"}},
-    }
-    if gpu:
-        properties.update(
-            {
-                "gres": {"type": "string", "default": "gpu:1"},
-                "cpus_per_task": {"type": "integer", "minimum": 1, "default": 8},
-            }
-        )
-    return {
-        "type": "object",
-        "properties": properties,
-        "required": ["image_path", "command", "partition"],
-        "additionalProperties": False,
-    }
 
 
 def _selector(arguments: dict[str, Any]) -> str:
@@ -311,16 +231,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     walltime=arguments.get("walltime", "01:00:00"),
                     work_dir=arguments.get("work_dir", ""),
                 )
-            elif name == "singularity_build":
-                result = await singularity.build(client, arguments)
-            elif name == "singularity_run":
-                result = await singularity.run(client, arguments)
-            elif name == "singularity_pull":
-                result = await singularity.pull(client, arguments)
-            elif name == "singularity_build_fakeroot":
-                result = await singularity.build_fakeroot(client, arguments)
-            elif name == "singularity_run_gpu":
-                result = await singularity.run_gpu(client, arguments)
             else:
                 result = {
                     "error": {"kind": "validation", "message": f"unknown tool: {name}"}

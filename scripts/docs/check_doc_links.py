@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -24,6 +23,7 @@ MD_LINK = re.compile(r"\]\(\s*(<[^>]+>|[^)\s]+)")
 HTML_REF = re.compile(r'(?:href|src)\s*=\s*"([^"]+)"')
 
 EXTERNAL = ("http://", "https://", "mailto:", "tel:", "//", "data:")
+DEPLOYMENT_ROOTS = {"/ARI/"}
 
 
 def _clean_target(raw: str) -> str | None:
@@ -31,7 +31,7 @@ def _clean_target(raw: str) -> str | None:
     t = raw.strip()
     if t.startswith("<") and t.endswith(">"):
         t = t[1:-1].strip()
-    if t.startswith(EXTERNAL) or "://" in t:
+    if t.startswith(EXTERNAL) or "://" in t or t in DEPLOYMENT_ROOTS:
         return None
     if t.startswith("#") or t == "":
         return None
@@ -62,6 +62,15 @@ def _exists_cleanurl(p: Path) -> bool:
     source / built page does."""
     if p.exists():
         return True
+    # VitePress copies ``docs/public/**`` to the deployment root. A source link
+    # such as ``report/en.pdf`` therefore resolves even though the authored
+    # file lives at ``docs/public/report/en.pdf``.
+    try:
+        public_target = DOCS / "public" / p.relative_to(DOCS)
+    except ValueError:
+        public_target = None
+    if public_target is not None and public_target.exists():
+        return True
     if p.suffix == "":
         if p.with_suffix(".md").exists():
             return True
@@ -72,15 +81,28 @@ def _exists_cleanurl(p: Path) -> bool:
     return False
 
 
-def check_markdown(findings: list) -> None:
+MARKDOWN_EXCLUDE_DIRS = ("node_modules", ".vitepress")
+
+
+def _markdown_files() -> list[Path]:
+    out = []
     for md in sorted(DOCS.rglob("*.md")):
+        rel_parts = md.relative_to(DOCS).parts[:-1]
+        if any(seg in rel_parts for seg in MARKDOWN_EXCLUDE_DIRS):
+            continue
+        out.append(md)
+    return out
+
+
+def check_markdown(findings: list) -> None:
+    for md in _markdown_files():
         text = md.read_text(encoding="utf-8")
         for m in MD_LINK.finditer(text):
             target = _clean_target(m.group(1))
             if target is None:
                 continue
             resolved = _resolve(target, md)
-            if not resolved.exists():
+            if not _exists_cleanurl(resolved):
                 findings.append({
                     "file": md.relative_to(REPO_ROOT).as_posix(),
                     "target": target,

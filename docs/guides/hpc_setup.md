@@ -155,8 +155,8 @@ apptainer exec --bind /scratch:/scratch ari.sif \
 `ARI_CONTAINER_MODE=singularity` for short interactive commands.
 `ari-skill-hpc` uses `container_submit`: its `JobRequestV1` carries the exact
 SIF SHA-256/size pin, typed read-only/read-write binds, clean-environment flag,
-GPU declaration, resources, and declared outputs. The older `singularity_*`
-names are migration adapters and should not be used in new workflows.
+GPU declaration, resources, and declared outputs. Container-specific public
+aliases were removed; all callers use this typed lifecycle.
 
 ### docker-compose (single host)
 

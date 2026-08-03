@@ -243,7 +243,7 @@ def test_launch_dry_run_returns_cost_estimate():
     })
     res = P._api_launch_run({
         "paper_ids": ["p4"],
-        "rubric_config": {"two_stage": True},
+        "rubric_config": {},
         "reproduce_config": {"time_limit_sec": 3600},
         "judge_config": {"n_runs": 1},
         "dry_run": True,
@@ -285,6 +285,17 @@ def test_launch_rejects_empty_paper_ids():
     assert "error" in res
 
 
+def test_launch_rejects_removed_rubric_strategy_switch():
+    res = P._api_launch_run(
+        {
+            "paper_ids": ["not-reached"],
+            "rubric_config": {"two_stage": False},
+            "dry_run": True,
+        }
+    )
+    assert res == {"error": "unknown rubric_config fields: two_stage"}
+
+
 def test_run_results_unavailable_until_completed():
     P._api_import_paper({
         "source_type": "arxiv", "source": "p5", "title": "P5",
@@ -307,12 +318,12 @@ def test_run_results_unavailable_until_completed():
 
 def test_cost_estimate_scales_with_n_runs():
     base = P._api_cost_estimate({
-        "rubric_config": {"two_stage": True},
+        "rubric_config": {},
         "reproduce_config": {"time_limit_sec": 3600},
         "judge_config": {"n_runs": 1},
     })
     n5 = P._api_cost_estimate({
-        "rubric_config": {"two_stage": True},
+        "rubric_config": {},
         "reproduce_config": {"time_limit_sec": 3600},
         "judge_config": {"n_runs": 5},
     })

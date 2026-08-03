@@ -61,10 +61,10 @@ namespace に分離します。各 `MeasurementRecordV1` は有限な数値、un
 `unit_status: missing`、provenance、parameter、execution identity/status/exit code、
 execution attempt、根拠 artifact digest を保持します。unit や provenance は推測しません。
 
-`coding-skill.emit_results` は canonical object を `measurement_set` に書き、P6
-互換期間中だけ v1 flat projection も残します。共通 parser は両者を照合し、値が
-異なる split-brain document を拒否します。旧 v1 / unversioned file は read-only
-migration input として読み、欠落情報を欠落のまま表現します。
+`coding-skill.emit_results` は canonical object だけを `measurement_set` に書きます。
+非有限値や JSON で表せない値を文字列へ coercion せず拒否します。共通 parser は旧
+v1 / unversioned file を read-only migration input として引き続き読み、過去の混在
+document に両方の表現がある場合は照合して split-brain を拒否します。
 
 coding-skill の `scientifically_admissible` は、測定が一件以上あり、すべてに unit、
 成功した zero-exit execution identity、根拠 artifact がある場合だけ true です。
@@ -77,5 +77,6 @@ fail closedとなり、receipt自体は科学recordへ保存しません。
 
 生成 schema は `workspace_ref_v1.schema.json`、`execution_request_v1.schema.json`、
 `execution_result_v1.schema.json`、`measurement_set_v1.schema.json` です。
-`python scripts/sync_skill_metadata.py` が drift を検査します。P6 では compatibility
-reader の利用がゼロになってから flat writer/coercion と unversioned reader を削除します。
+`python scripts/sync_skill_metadata.py` が drift を検査します。flat writer/coercion は
+削除済みです。legacy reader は意図的に read-only とし、compatibility support policyで
+再評価時点を管理します。

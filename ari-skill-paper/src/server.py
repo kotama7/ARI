@@ -141,7 +141,7 @@ VENUES = [
 
 
 # ── skill-local prompt loader (subtask 041) ──────────────────────────────────
-# The paper-generation system prompts are stored as byte-identical ``.md``
+# Static paper-generation instructions are stored as byte-identical ``.md``
 # templates under ``src/prompts/`` and loaded here through a tiny mirror of
 # ari-core's ``FilesystemPromptLoader`` ``load_versioned`` contract. The helper
 # is COPIED (not imported from ari-core) to preserve the one-way
@@ -1125,37 +1125,9 @@ async def write_paper_iterative(
                             f"  {_cfgid} [env {_envs}]: {_fmt_mets(_cn.get('metrics'))}"
                         )
                     experiment_summary += (
-                        "\n\nFORWARD-DECLARATION — CONFIG HANDLES (metric_key=recorded_value). For "
-                        "EVERY numeric RESULT you state in the paper, DECLARE its derivation on the "
-                        "LaTeX comment line immediately before the sentence:\n"
-                        "  % CLAIM:Cx:NCx metric=<metric_key> formula=<formula> <operands>\n"
-                        "COMPLETE example (an absolute value reported as-is): "
-                        "`% CLAIM:C3:NC3 metric=GB_per_s formula=identity value=cfg1`. "
-                        "formula MUST be one of the allowed names below, exactly as spelled "
-                        "(never invent e.g. formula=value); operands are bare k=v tokens with "
-                        "NO label prefix.\n"
-                        "operands: `value=cfgN` (formula=identity, an absolute value); or "
-                        "`baseline=cfgN proposed=cfgM` (a comparison of the SAME metric across "
-                        "configs); or `baseline=cfgN:metricA proposed=cfgN:metricB` (a ratio of "
-                        "TWO metrics of one config). "
-                        "Allowed formulas (EXACT meaning — pick the one whose result equals your "
-                        "number): identity=value; relative_gain=proposed/baseline (a higher-is-better "
-                        "value reported as N times a smaller baseline: baseline=cfg:<baseline> "
-                        "proposed=cfg:<better>); relative_speedup=baseline/proposed (a lower-is-better "
-                        "value, the baseline being N times the proposed); relative_increase_percent="
-                        "(proposed-baseline)/baseline*100; relative_reduction_percent="
-                        "(baseline-proposed)/baseline*100; relative_improvement_percent="
-                        "(baseline-proposed)/baseline*100; absolute_difference=proposed-baseline; "
-                        "ratio_percent=proposed/baseline*100. Use EXACT metric_key + cfg id from the table. "
-                        "CRITICAL: the gate RE-COMPUTES your declaration from the recorded values "
-                        "below, so the metric_key(s) you pick MUST be the one(s) whose recorded value "
-                        "equals the number you write. If no metric_key matches a number, do NOT state "
-                        "that number. Declare EVERY result number you write — not only the headline, but "
-                        "also baseline/reference values you cite for comparison and secondary metrics — "
-                        "leaving none ungrounded (a number repeated in the abstract/conclusion that you "
-                        "already declared in the body needs no second anchor). Do not compare across "
-                        "different execution environments unless the study is explicitly cross-architecture. "
-                        "Configs (each lists metric_key=value):\n"
+                        "\n\n"
+                        + _load_prompt("forward_declaration")
+                        + "\n"
                         + "\n".join(_cfg_lines)
                     )
             except Exception as _e_sd:

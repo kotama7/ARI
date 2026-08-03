@@ -154,7 +154,7 @@ version~3). For this audit:
   \item Total leaves:  \textbf{ {{ rubric_leaves_count }} }
   \item Tree depth:    \textbf{ {{ rubric_depth }} }
   \item Generator:     \texttt{ {{ rubric_generator_model }} }
-  \item Two-stage:     {{ rubric_two_stage }}
+  \item Strategy:      \texttt{ {{ rubric_strategy }} }
   \item Auditor flags: {{ rubric_audit_flags_count }}
 \end{itemize}
 
@@ -477,7 +477,7 @@ class CheckpointHarvest:
     rubric_leaves_count: int = 0
     rubric_depth: int = 0
     rubric_generator_model: str = ""
-    rubric_two_stage: bool = False
+    rubric_strategy: str = ""
     rubric_audit_flags_count: int = 0
     rubric_category_breakdown: dict[str, int] = field(default_factory=dict)
     execution_profile: dict = field(default_factory=dict)
@@ -520,11 +520,11 @@ def _walk_rubric(node: dict, depth: int = 0) -> tuple[int, int, dict[str, int]]:
         cat = node.get("task_category") or "Uncategorized"
         cats[cat] += 1
         return leaves, depth, dict(cats)
-    for c in children:
-        l, d, cc = _walk_rubric(c, depth + 1)
-        leaves += l
-        deepest = max(deepest, d)
-        for k, v in cc.items():
+    for child in children:
+        child_leaves, child_depth, child_categories = _walk_rubric(child, depth + 1)
+        leaves += child_leaves
+        deepest = max(deepest, child_depth)
+        for k, v in child_categories.items():
             cats[k] = cats.get(k, 0) + v
     return leaves, deepest, dict(cats)
 
@@ -580,6 +580,7 @@ def harvest_checkpoint(checkpoint_dir: Path, paper_id: str) -> CheckpointHarvest
             h.rubric_envelope = env
             gen = env.get("generator") or {}
             h.rubric_generator_model = gen.get("model", "")
+            h.rubric_strategy = gen.get("strategy", "")
             audit = env.get("audit") or {}
             h.rubric_audit_flags_count = int(audit.get("flags_count") or 0)
             rc = env.get("reproduce_contract") or {}
@@ -632,20 +633,20 @@ def harvest_checkpoint(checkpoint_dir: Path, paper_id: str) -> CheckpointHarvest
             h.ors_score = float(g.get("ors_score") or 0.0)
             leaves = g.get("leaves") or []
             h.leaves_total = len(leaves)
-            h.leaves_passed = sum(1 for l in leaves if l.get("passed"))
+            h.leaves_passed = sum(1 for leaf in leaves if leaf.get("passed"))
             # Raw per-leaf list survives for the heatmap figure (TR5).
             h.grade_leaves = list(leaves)
             cat: dict[str, list[int]] = {}
-            for l in leaves:
-                key = l.get("task_category") or "Uncategorized"
+            for leaf in leaves:
+                key = leaf.get("task_category") or "Uncategorized"
                 slot = cat.setdefault(key, [0, 0])
                 slot[1] += 1
-                if l.get("passed"):
+                if leaf.get("passed"):
                     slot[0] += 1
             h.category_pass = {k: (v[0], v[1]) for k, v in cat.items()}
             # top failed leaves by weight desc
-            failed = [l for l in leaves if not l.get("passed")]
-            failed.sort(key=lambda l: -int(l.get("weight") or 1))
+            failed = [leaf for leaf in leaves if not leaf.get("passed")]
+            failed.sort(key=lambda leaf: -int(leaf.get("weight") or 1))
             h.top_failed_leaves = failed[:10]
             h.negative_control = g.get("negative_control") or {}
         except json.JSONDecodeError as e:
@@ -709,9 +710,9 @@ def _render_failed_leaves(failed: list[dict]) -> str:
     if not failed:
         return "  \\item (no failures recorded)"
     out: list[str] = []
-    for l in failed[:10]:
-        req = tex_escape(l.get("requirements", "")[:200])
-        wt = l.get("weight") or 1
+    for leaf in failed[:10]:
+        req = tex_escape(leaf.get("requirements", "")[:200])
+        wt = leaf.get("weight") or 1
         out.append(f"  \\item [weight={wt}] {req}")
     return "\n".join(out)
 
@@ -1052,7 +1053,7 @@ def generate_paper_report(
             "rubric_leaves_count": h.rubric_leaves_count,
             "rubric_depth": h.rubric_depth,
             "rubric_generator_model": tex_escape(h.rubric_generator_model or "—"),
-            "rubric_two_stage": "yes" if h.rubric_two_stage else "no",
+            "rubric_strategy": tex_escape(h.rubric_strategy or "—"),
             "rubric_audit_flags_count": h.rubric_audit_flags_count,
             "rubric_category_rows": _render_category_rows(h.rubric_category_breakdown),
             "execution_profile_block": _render_execution_profile(h.execution_profile),

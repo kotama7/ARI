@@ -169,67 +169,26 @@ do not add a core registration record per leaf tool. See
 
 ## ari-skill-hpc
 
-HPC job management via SLURM and Singularity. **LLM: No** (fully deterministic).
+Typed, asynchronous SLURM and digest-pinned container job management. **LLM:
+No** (fully deterministic).
 
 ### Tools
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+- `job_submit(request)` validates and submits one immutable `JobRequestV1` and
+  immediately returns an idempotent `JobHandleV1`.
+- `container_submit(request)` uses the same lifecycle and requires a typed,
+  digest-pinned container declaration.
+- `job_status(handle_id | job_id)`, `job_logs(...)`, `job_result(...)`, and
+  `job_cancel(...)` provide the provider-neutral lifecycle. Typed results are
+  available only for ARI-issued handles.
+- `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+  records a bounded, validated compute-partition capability probe.
+- `slurm_submit(...)` is a scoped compatibility bridge for the core agent's
+  batch-script workflow; new programmatic callers use `job_submit`.
 
-Submit a SLURM batch job.
-
-```python
-result = slurm_submit(
-    script="""
-#!/bin/bash
-#SBATCH --cpus-per-task=32
-gcc -O3 -fopenmp -o ./bench ./bench.c
-OMP_NUM_THREADS=32 ./bench
-""",
-    job_name="bench_test",
-    partition="your_partition",
-    work_dir="/abs/path/to/workdir"
-)
-# Returns: {"job_id": "12345", "status": "submitted"}
-```
-
-**Notes:**
-- `--account` and `-A` headers are silently stripped
-- Empty `job_id` returns ERROR immediately
-- Never use `~` in paths inside scripts (not expanded in SBATCH)
-
-#### `job_status(job_id)`
-
-Poll SLURM job status.
-
-```python
-result = job_status("12345")
-# Returns: {"status": "COMPLETED", "exit_code": 0, "stdout": "MFLOPS: 284172"}
-# Status values: PENDING, RUNNING, COMPLETED, FAILED, ERROR
-```
-
-#### `job_cancel(job_id)`
-
-Cancel a running or pending SLURM job.
-
-#### `singularity_build(definition_file, output_path, partition)`
-
-Build a Singularity container from a definition file.
-
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
-
-Run a Singularity container as a SLURM job.
-
-#### `singularity_pull(source, output_path, partition)`
-
-Pull a Singularity image from a remote registry.
-
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
-
-Build a Singularity container using fakeroot mode.
-
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
-
-Run a Singularity container with GPU access (`--nv` flag).
+Requests contain structured argv, reviewed environment literals, modules,
+resources, input pins, output declarations, and optional container binds. The
+former container-specific public aliases were removed after P6.
 
 ---
 
@@ -751,24 +710,22 @@ v0.6.0 `react_driver`-based check.
 
 ### Tools
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, paperbench_rubric_id="", max_model_calls=64, subtree_concurrency=4)`
 
 Produces a PaperBench-compatible rubric. When `target_leaf_count=0`,
 the leaf count is auto-computed from paper length (~1 leaf / 75 words,
 clamped to [50, 400]).
 
-`two_stage=True` (default) generates the rubric in two passes — a
+The mandatory `hierarchical-v2` strategy generates the rubric in two passes — a
 **skeleton pass** that defines the root + direct children (one node per
 major contribution / experiment) with a per-child leaf budget, then
 **parallel subtree passes** that recursively populate each direct
 child's subtree with 4–6 additional levels. A merge step joins the
 populated subtrees back into the skeleton; leaves whose `quote` or
 `requirements` violate the schema's `minLength=10` are dropped (a
-handful per run is normal). Compared to a single LLM call this produces
-roughly 4× more leaves and 1–2 levels more depth on a representative
-PaperBench reference paper, at the cost of ~5× more API tokens. Set
-`two_stage=False` to use the legacy single-call path
-(`prompts/adversarial_reviewer.md`).
+handful per run is normal). Every call, repair, and dropped node is recorded;
+budget exhaustion fails closed. The former low-coverage single-call generator
+was removed after the P6 migration window.
 
 `paperbench_rubric_id` (unreleased) selects a venue-conditioned template
 from `ari-core/config/paperbench_rubrics/<id>.yaml`. Empty string =
@@ -778,9 +735,9 @@ into the skeleton + subtree prompts via `{VENUE_HINT}` placeholders.
 This mirrors the `reviewer_rubrics/` venue pattern already used by
 `ari-skill-paper` for peer review, so the same `venue → YAML → prompt`
 flow is now available for the rubric generator. Shipped templates:
-`generic` (back-compat), `sc` (HPC paper-audit, 6 axes), `neurips`
-(ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). `paper_audit`
-mode requires `two_stage=True`. See
+`generic`, `sc` (HPC paper-audit, 6 axes), `neurips`
+(ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). All templates use the
+same calibrated hierarchical strategy. See
 [`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
 for the YAML schema.
 
@@ -817,12 +774,10 @@ it absent.
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | Auditor LLM (independent of generator) |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (unset) | Override target leaf count (`0`/unset = auto). GUI Wizard "Target leaves" field. |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (unset) | Override generator temperature. GUI Wizard "Temperature" field. |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (unset) | Force two-stage on/off (`1`/`true`/`on` vs `0`/`false`/`off`). GUI Wizard "Two-stage generation" toggle. |
 
-Env vars are resolved in `server.py` before the generator runs and win
-over the kwarg defaults when the workflow stage doesn't pass an
-explicit value (the bundled `ors_generate_rubric` stage does not, so
-the GUI Wizard always controls these three knobs at runtime).
+Target-leaf and temperature env vars are resolved in `server.py` before the
+generator runs and win when the workflow stage does not pass an explicit value.
+Generation strategy is not configurable.
 
 ---
 
@@ -1117,7 +1072,7 @@ exist, `generate_ear` emits one of: **MIT**, **Apache-2.0**,
 ## ari-skill-web
 
 Provenance-preserving web and academic retrieval. **LLM: No** for canonical
-retrieval; the separate reranker and legacy iterative collector are stochastic.
+retrieval; only the explicit separate reranker is stochastic.
 
 ### Tools
 
@@ -1147,12 +1102,9 @@ partial results.
 Explicit optional LLM reranking. Returns the selected typed records plus model,
 API identity, temperature, and prompt/input/output digests.
 
-#### Compatibility tools
-
-`search_arxiv`, `search_semantic_scholar`, `set_retrieval_backend`, and
-`collect_references_iterative` remain during the P6 deprecation window. New
-workflows use `search_papers`; the default paper pipeline no longer calls the
-combined LLM collector.
+The former narrow provider aliases, mutable backend selector, and combined LLM
+collector were removed after P6. Use `search_papers(provider=...)`; compose
+multi-query search and reranking explicitly in the workflow or broker.
 
 #### `list_uploaded_files()`
 
@@ -1222,13 +1174,17 @@ The canonical `ari.measurement-set/v1` object records finite numeric values,
 explicit unit state, parameters, provenance, execution attempt/exit status, and
 evidence artifact digests. The server-issued execution receipt and every log
 digest are verified before writing. Parameter, measurement, prediction, and
-score names must be disjoint. Path traversal is rejected. The flat `1.0` view
-remains only as a P6 compatibility projection and is cross-checked by consumers.
+score names must be disjoint. Path traversal is rejected. New files contain no
+flat projection; old files are accepted only by the read-only migration parser.
 
-The optional `provenance` arg is an `{operand: source}` map written verbatim into `results.json` as the `_provenance` key and consumed by the claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"` when its value is an empirically **MEASURED** ceiling/peak (so a normalized metric is not flagged as resting on a placeholder), and `"correctness"` or `"reference"` when it is a residual computed against an **independent** reference (so the output is not flagged as unverified). Best-effort; omitted entirely when empty.
+The optional `provenance` arg is an `{operand: source}` map stored on the
+corresponding canonical measurement records and consumed by the
+claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"`
+when its value is an empirically **MEASURED** ceiling/peak, and `"correctness"`
+or `"reference"` when it is a residual computed against an independent
+reference. It is omitted when empty.
 
-`transform-skill` and the evaluator validate the common schema before use and
-reject disagreement between canonical and compatibility views. See
+`transform-skill` and the evaluator validate the common schema before use. See
 [Execution and measurement contracts](execution_contract.md).
 
 ---

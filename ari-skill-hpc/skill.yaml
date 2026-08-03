@@ -103,36 +103,10 @@ tools:
     permissions: [workspace-read, workspace-write, process, scheduler]
   - name: slurm_submit
     capability_ref: ari.hpc.legacy.slurm-submit
-    description: Deprecated opaque-script adapter; prefer job_submit.
+    description: Compatibility bridge for the core agent batch-script workflow.
     timeout_class: async
     async_lifecycle:
       <<: *canonical_job_lifecycle
       result:
         capability_ref: ari.hpc.job.status
         handle_argument: handle_id
-  - name: singularity_build
-    capability_ref: ari.hpc.legacy.singularity-build
-    description: Deprecated typed SIF build adapter.
-    timeout_class: async
-    async_lifecycle: *canonical_job_lifecycle
-  - name: singularity_build_fakeroot
-    capability_ref: ari.hpc.legacy.singularity-build-fakeroot
-    description: Deprecated typed fakeroot SIF build adapter.
-    timeout_class: async
-    async_lifecycle: *canonical_job_lifecycle
-  - name: singularity_pull
-    capability_ref: ari.hpc.legacy.singularity-pull
-    description: Deprecated typed SIF pull adapter.
-    timeout_class: async
-    permissions: [workspace-read, workspace-write, process, scheduler, network]
-    async_lifecycle: *canonical_job_lifecycle
-  - name: singularity_run
-    capability_ref: ari.hpc.legacy.singularity-run
-    description: Deprecated digest-pinned container run adapter.
-    timeout_class: async
-    async_lifecycle: *canonical_job_lifecycle
-  - name: singularity_run_gpu
-    capability_ref: ari.hpc.legacy.singularity-run-gpu
-    description: Deprecated digest-pinned GPU container run adapter.
-    timeout_class: async
-    async_lifecycle: *canonical_job_lifecycle

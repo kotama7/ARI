@@ -7,7 +7,7 @@ sources:
   - path: ari-skill-replicate/src/auditor.py
     role: implementation
   - path: ari-skill-replicate/src/migration.py
-    role: migration
+    role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
 last_verified: 2026-08-02
@@ -204,8 +204,7 @@ prompt_overrides:
      使う YES/NO 文体を pin する>
 ```
 
-`paper_audit` モードは `two_stage=True` を要求する (single-pass では
-固定軸制約を遵守できないため、組み合わせ要求はエラー)。
+全modeは必須のcalibrated hierarchical strategyを使い、`paper_audit`の固定軸制約を維持します。
 
 ### 同梱テンプレート
 

@@ -55,7 +55,7 @@ bfts_pipeline:
 pipeline:
   - stage: search_related_work
     skill: web-skill
-    tool: collect_references_iterative
+    tool: search_papers
     skip_if_exists: '{{ckpt}}/related_refs.json'
     # ...
   - stage: transform_data
@@ -300,7 +300,6 @@ skills:
 | `ARI_MODEL_RUBRIC_AUDIT` | `audit_rubric` の監査 LLM (生成器とは独立) | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` の目標葉数の上書き。`0` / 未設定で論文長から自動 (~1葉/75語、[50,400] にクランプ)。GUI Wizard の "Target leaves" 欄。 | (未設定) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | 生成器 temperature の上書き。GUI Wizard の "Temperature" 欄。 | (未設定) |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 二段階生成（スケルトン + 並列サブツリー）の強制 ON/OFF (`1`/`true`/`on` vs `0`/`false`/`off`)。単一コール比で葉数約 4 倍・深さ +1〜2 層、API トークン消費約 5 倍。未設定時は kwarg デフォルト（現状 ON）。GUI Wizard の "二段階生成" トグル。 | (未設定、既定 ON) |
 | `ARI_MODEL_REPLICATE` | `build_reproduce_sh` (論文 → reproduce.sh, v0.7.0) のリプリケータ LLM | `claude-opus-4-7` |
 | `ARI_MODEL_JUDGE` | `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; LiteLLM 経由でプロバイダ自由) の判定 LLM | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | `decide_lineage_action` の判定 LLM (lineage decision, v0.7.0)。未指定時は `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` の順にフォールバック | (auto) |

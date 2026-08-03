@@ -48,7 +48,7 @@ curl -X POST http://localhost:8765/api/paperbench/papers/import \
 在注册表页面勾选论文,点击 **🚀 运行 PaperBench**。共 5 步:
 
 1. **论文** — 确认选择。
-2. **评分单** — 生成器模型 (默认 `gemini-2.5-pro`, two_stage 开)。
+2. **评分单** — 生成器模型 (默认 `gemini-2.5-pro`，calibrated hierarchical strategy)。
    参见[评分单 schema](../../reference/rubric_schema.md)。
 3. **再现** — 再现模型与时间预算。展开「执行配置覆盖」即可手动覆盖
    SLURM 分配标志 (`--nodes`, `--gpus-per-task`, `--exclusive`, ...)。

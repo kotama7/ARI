@@ -61,7 +61,7 @@
       "benchmark": ["analyze_results", "compare_runs", "statistical_test"],
       "coding": ["emit_results", "read_file", "run_bash", "run_code", "write_code"],
       "evaluator": ["claim_evidence_hard_gate", "evidence_grounded_semantic_review", "make_metric_spec"],
-      "hpc": ["job_cancel", "job_status", "probe_platform_capabilities", "singularity_build", "singularity_build_fakeroot", "singularity_pull", "singularity_run", "singularity_run_gpu", "slurm_submit"],
+      "hpc": ["container_submit", "job_cancel", "job_logs", "job_result", "job_status", "job_submit", "probe_platform_capabilities", "slurm_submit"],
       "idea": ["_load_virsci_snapshot_papers"],
       "memory": ["add_experiment_result", "add_failure_case", "add_memory", "add_procedure_memory", "add_reflection", "add_reproducibility_event", "audit_memory", "consolidate_node_memory", "get_experiment_context", "get_node_memory", "get_verified_context", "search_memory", "search_research_memory"],
       "orchestrator": ["get_ear", "get_paper", "get_status", "get_workflow", "list_children", "list_files", "list_runs", "list_skills", "read_file", "run_experiment", "stop_experiment"],
@@ -71,7 +71,7 @@
       "replicate": ["audit_rubric", "generate_rubric", "suggest_target_leaf_count"],
       "transform": ["curate_ear", "generate_ear", "nodes_to_science_data", "promote_ear", "publish_ear"],
       "vlm": ["review_figure", "review_figures_all", "review_table"],
-      "web": ["collect_references_iterative", "fetch_url", "list_uploaded_files", "read_uploaded_file", "search_arxiv", "search_papers", "search_semantic_scholar", "set_retrieval_backend", "web_search"]
+      "web": ["fetch_url", "list_uploaded_files", "read_uploaded_file", "rerank_retrieval_records", "search_papers", "walk_citations", "web_search"]
     },
     "collisions": {"read_file": ["coding", "orchestrator"]}
   },

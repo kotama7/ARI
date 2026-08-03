@@ -6,10 +6,8 @@ MetricSpec generation is delegated to evaluator-skill and not returned to cli.py
 
 from __future__ import annotations
 
-import importlib.util
 import logging
 import os
-import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -105,7 +103,6 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     # source (`ari memory migrate --react`).
     from ari.memory.letta_client import LettaMemoryClient
     from ari.orchestrator.bfts import BFTS
-    from ari.paths import PathManager
     from ari.skill_lock import SKILLS_LOCK_FILENAME, SkillLockError
 
     if checkpoint_dir is None:
@@ -138,7 +135,7 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     _skills = list(cfg.skills)
     if not cfg.resources.get("hpc_enabled", True):
         # Laptop profile: drop the hpc-skill entirely. Its SLURM/Singularity
-        # tools (slurm_submit, singularity_build/pull/run/run_gpu) would
+        # scheduler tools (job_submit, container_submit, slurm_submit) would
         # otherwise submit sbatch jobs from inside the skill even when the
         # agent is not supposed to use HPC at all. run_bash lives in
         # coding-skill, so removing hpc-skill does not remove shell access.
@@ -254,7 +251,7 @@ def generate_paper_section(
 
     log.info("Starting paper pipeline (config_path=%s, checkpoint=%s)", config_path, checkpoint_dir)
     print(f"\n{'='*60}")
-    print(f"  Paper Pipeline Starting")
+    print("  Paper Pipeline Starting")
     print(f"  Checkpoint: {checkpoint_dir}")
     print(f"{'='*60}", flush=True)
 

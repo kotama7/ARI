@@ -59,22 +59,18 @@ ARI には 15 の MCP サーバが付属しています（`ari-skill-*` パッ�
 | `claim_evidence_hard_gate` | 決定論的な主張/証拠ハードゲート（実行データの忠実性）；strict モードでは final フェーズで finalize をブロック | ✗ |
 | `evidence_grounded_semantic_review` | 非ブロッキングの証拠に基づくセマンティック査読；`paper_refine` 向けに `suggested_revisions` を出力 | ✓ |
 
-## ari-skill-hpc — SLURM + Singularity
-
-`mcp.json` は空のリストです。ツールは `src/server.py` の `@server.list_tools()`
-から提供されます。
+## ari-skill-hpc — 型付きscheduler lifecycle
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `slurm_submit` | パーティション / 時間 / CPU 数 / ノード数 / GPU 数を明示して sbatch | ✗ |
-| `job_status` | squeue + sacct 検索 | ✗ |
-| `job_cancel` | 実行中のジョブを scancel | ✗ |
-| `run_bash` | ダイレクトな bash コマンド（ローカルまたは SSH 経由） | ✗ |
-| `singularity_build` | 定義ファイルから SIF をビルド | ✗ |
-| `singularity_run` | SIF 内でコマンドを実行 | ✗ |
-| `singularity_pull` | リモート URI から SIF を取得 | ✗ |
-| `singularity_build_fakeroot` | Fakeroot ビルド（特権デーモン不要） | ✗ |
-| `singularity_run_gpu` | `singularity_run` の GPU バリアント | ✗ |
+| `job_submit` | immutableな型付きrequestを投入しidempotent handleを返す | ✗ |
+| `container_submit` | digest-pinned container requestを投入 | ✗ |
+| `job_status` | handleまたはscheduler IDのprovider-neutral status | ✗ |
+| `job_result` | input/output/log/provenanceを再hashしたterminal result | ✗ |
+| `job_logs` | bounded/digest-bound stdout・stderr | ✗ |
+| `job_cancel` | scheduler cancelを要求 | ✗ |
+| `probe_platform_capabilities` | checkpoint cache付きplatform capability probe | ✗ |
+| `slurm_submit` | core agent限定batch-script bridge。新規callerは`job_submit` | ✗ |
 
 ## ari-skill-idea — 文献調査 + アイデア生成
 
@@ -231,11 +227,9 @@ SLURM経路は共通`JobRequestV1` submit/status/log/cancel lifecycleと
 | `neurips` | `paper_audit` | NeurIPS 再現性チェックリストに基づく 6 軸（主張 / セットアップ / コード+データ / 統計 / 倫理 / 図）。 |
 | `nature` | `paper_audit` | 実験系論文用の 5 軸（材料 / プロトコル / 統計 / データ / 倫理）。 |
 
-`paper_audit` モードは `two_stage=True` が必要です。単一パスパスで
-`paper_audit` テンプレートがリクエストされた場合、ジェネレータはエラーを返します
-（単一パスプロンプトは固定軸制約を満たせないため）。YAML スキーマと
-オーサリングガイドは [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
-を参照してください。
+全template modeは、固定監査軸を維持できる必須のcalibrated hierarchical strategyを
+使います。YAML schemaとauthoring guideは
+[`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)を参照してください。
 
 ## ari-skill-transform — ツリー走査 + EAR パイプライン
 
@@ -282,10 +276,6 @@ source syncと科学的制約は [tool_registry.md](tool_registry.md) を参照�
 | `fetch_url` | SSRF制御URL → untrusted text | ✗ |
 | `walk_citations` | partial provenance付きbounded citation graph | ✗ |
 | `rerank_retrieval_records` | 明示的typed-record reranker | ✓ |
-| `search_arxiv` | deprecated arXiv alias | ✗ |
-| `search_semantic_scholar` | deprecated Semantic Scholar alias | ✗ |
-| `collect_references_iterative` | deprecated stochastic検索・選択loop | ✓ |
-| `set_retrieval_backend` | deprecated pinned-provider selector | ✗ |
 | `list_uploaded_files` | checkpoint upload一覧 | ✗ |
 | `read_uploaded_file` | traversal/output制限付きupload読込 | ✗ |
 

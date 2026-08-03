@@ -467,10 +467,6 @@ complexity:
   line: 363
   complexity: 16
 - path: ari-skill-web/src/server.py
-  function: collect_references_iterative
-  line: 1032
-  complexity: 16
-- path: ari-skill-web/src/server.py
   function: walk_citations
   line: 740
   complexity: 16

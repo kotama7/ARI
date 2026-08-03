@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import subprocess
-import sys
 from pathlib import Path
 from unittest import mock
 
@@ -288,7 +287,7 @@ class TestPipelineStageChain:
             return {"result": "ok"}
 
         with mock.patch("ari.pipeline._run_stage_subprocess", side_effect=fake_subprocess):
-            result = run_pipeline(
+            run_pipeline(
                 self._make_stages(), fake_nodes,
                 {"goal": "test", "topic": "test", "file": ""},
                 tmp_path, "",
@@ -481,8 +480,6 @@ class TestTemplateResolution:
     def test_all_stage_inputs_resolve(self, workflow_yaml, tmp_path):
         """Every {{...}} in stage inputs must resolve to a concrete value."""
         from ari.pipeline import _resolve_templates
-        import os
-
         tpl_vars = {
             "ckpt": str(tmp_path),
             "checkpoint_dir": str(tmp_path),
@@ -564,12 +561,8 @@ class TestFullPaperPipeline:
         def fake_subprocess(tool, args, config_path, skill_name=""):
             tool_calls.append(tool)
             # Return valid mock results for each stage
-            if tool in (
-                "search_semantic_scholar",
-                "collect_references_iterative",
-                "search_papers",
-            ):
-                return {"papers": [{"title": "Test Paper", "id": "123"}]}
+            if tool == "search_papers":
+                return {"records": [{"title": "Test Paper", "source_id": "123"}]}
             elif tool == "nodes_to_science_data":
                 return {"configurations": [], "metric_name": "score"}
             elif tool == "generate_figure":
@@ -624,9 +617,6 @@ class TestFullPaperPipeline:
                         "raw_score": 0.0, "leaf_grades": [], "judge_model": "test/mock",
                         "n_runs": 1, "elapsed_sec": 0.1}
             return {"result": "ok"}
-
-        # Also capture the subprocess env to verify model propagation
-        original_run = subprocess.run
 
         def capture_run(cmd, **kw):
             env = kw.get("env", {})
@@ -701,6 +691,11 @@ class TestFullPaperPipeline:
             "claim_evidence_hard_gate",          # S2P B final (warn; strict→blocks)
             "publish_ear",                       # v0.7.0 reordered ahead of inject_code_availability
             "inject_code_availability",          # finalize (depends on final hard gate)
+            "link_paper_claims",                 # exact post-injection TeX
+            "claim_evidence_hard_gate",          # locked deterministic gate
+            "evidence_grounded_semantic_review", # locked advisory review
+            "compile_paper",                     # exact post-injection render
+            "finalize_paper_build",              # immutable PaperBuildV1 lock
             "generate_rubric",                   # ORS Phase: auto-rubric
             "fetch_code_bundle",                 # ORS X: seed sandbox from EAR (no-op if none)
             "build_reproduce_sh",                # ORS Phase: replicator (paper → reproduce.sh)
@@ -732,8 +727,6 @@ class TestFullPaperPipeline:
         stages = load_pipeline(cfg_file)
 
         captured_envs = []
-
-        original_subprocess = subprocess.run
 
         def capture_subprocess(cmd, **kw):
             env = kw.get("env", {})
@@ -776,8 +769,6 @@ class TestStderrLogging:
     def test_stderr_logged_at_warning(self, tmp_path, clean_env):
         """Subprocess stderr must be logged at WARNING level."""
         from ari.pipeline import _run_stage_subprocess
-        import logging
-
         def fake_run(cmd, **kw):
             r = mock.MagicMock()
             r.returncode = 0

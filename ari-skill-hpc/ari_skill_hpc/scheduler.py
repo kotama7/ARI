@@ -523,7 +523,7 @@ class SlurmScheduler:
         )
         return handle
 
-    async def submit_legacy_script(
+    async def submit_script_bridge(
         self,
         *,
         script: str,
@@ -537,16 +537,17 @@ class SlurmScheduler:
         gres: str | None = None,
         account: str | None = None,
     ) -> JobHandleV1:
+        """Compile the retained core-agent script bridge into a durable claim."""
         if len(script.encode("utf-8")) > 4 * 1024 * 1024 or "\x00" in script:
             raise SchedulerValidationError(
-                "legacy batch script is invalid or too large"
+                "batch script bridge input is invalid or too large"
             )
         gpus = 0
         gpu_type = None
         if gres:
             match = re.fullmatch(r"gpu(?::([A-Za-z0-9_.+-]+))?:(\d+)", gres)
             if not match:
-                raise SchedulerValidationError("legacy gres must use gpu[:type]:count")
+                raise SchedulerValidationError("gres must use gpu[:type]:count")
             gpu_type = match.group(1)
             gpus = int(match.group(2))
         resources = ResourceRequestV1(
@@ -561,7 +562,7 @@ class SlurmScheduler:
         )
         work = _validated_work_dir(work_dir)
         payload = {
-            "schema_version": "ari.hpc.legacy-script/v1",
+            "schema_version": "ari.hpc.script-bridge/v1",
             "script_digest": "sha256:"
             + __import__("hashlib").sha256(script.encode("utf-8")).hexdigest(),
             "job_name": job_name,
@@ -574,7 +575,7 @@ class SlurmScheduler:
             return JobHandleV1.model_validate(prior["handle"])
         try:
             artifact_scope = self._ensure_artifact_scope(str(work), request_digest)
-            rendered = self._render_legacy_script(
+            rendered = self._render_script_bridge(
                 script=script,
                 job_name=job_name,
                 resources=resources,
@@ -618,7 +619,7 @@ class SlurmScheduler:
         job_id = _parse_job_id(response.stdout)
         handle = JobHandleV1(
             handle_id=_handle_id(self.cluster_identity, request_digest, job_id),
-            request_id="legacy-" + request_digest.removeprefix("sha256:")[:24],
+            request_id="script-" + request_digest.removeprefix("sha256:")[:24],
             request_digest=request_digest,
             cluster_identity=self.cluster_identity,
             job_id=job_id,
@@ -1006,7 +1007,7 @@ class SlurmScheduler:
             )
         return lines
 
-    def _render_legacy_script(
+    def _render_script_bridge(
         self,
         *,
         script: str,
@@ -1022,10 +1023,9 @@ class SlurmScheduler:
             artifact_scope=artifact_scope,
         )
         lines.extend(self._clean_environment("/usr/local/bin:/usr/bin:/bin"))
-        # Generated executable content appears before the caller-provided body.
-        # Slurm therefore ignores any #SBATCH lines in that opaque compatibility
-        # body, while the body still executes on the allocated compute node.
-        lines.extend(["# ARI legacy compatibility body", script])
+        # Generated executable content appears first, so #SBATCH text in the
+        # compute-node body cannot override scheduler policy.
+        lines.extend(["# ARI core-agent script bridge", script])
         return "\n".join(lines) + "\n"
 
     def _header(

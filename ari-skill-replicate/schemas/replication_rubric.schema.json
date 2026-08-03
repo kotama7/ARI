@@ -21,8 +21,8 @@
         "temperature":    { "type": "number" },
         "seed":           { "type": "integer" },
         "snapshot":       { "type": "object" },
-        "strategy":       { "enum": ["hierarchical-v2", "single-call-low-coverage-v1", "legacy-v1-offline-migration"] },
-        "quality_profile": { "enum": ["calibrated", "low-coverage", "requires-independent-audit"] },
+        "strategy":       { "enum": ["hierarchical-v2", "legacy-v1-offline-migration"] },
+        "quality_profile": { "enum": ["calibrated", "requires-independent-audit"] },
         "max_model_calls": { "type": "integer", "minimum": 0, "maximum": 256 },
         "subtree_concurrency": { "type": "integer", "minimum": 1, "maximum": 16 },
         "calls": {

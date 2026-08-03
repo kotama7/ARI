@@ -7,7 +7,7 @@ sources:
   - path: ari-skill-replicate/src/auditor.py
     role: implementation
   - path: ari-skill-replicate/src/migration.py
-    role: migration
+    role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
 last_verified: 2026-08-02
@@ -228,9 +228,8 @@ prompt_overrides:
     the YES/NO phrasing the downstream pass should use for leaves>
 ```
 
-`paper_audit` mode requires `two_stage=True`; the single-pass path
-cannot honour the fixed-axis constraint and `generate_rubric_async`
-returns an error if the combination is requested.
+Every mode uses the mandatory calibrated hierarchical strategy. This preserves
+the fixed-axis constraint for `paper_audit` templates.
 
 ### Shipped templates
 

@@ -16,7 +16,8 @@ def test_web_search_returns_dict():
     with patch("server._search_duckduckgo_rows", return_value=rows):
         result = web_search("OpenMP HPC benchmark", n=2, mode="live")
     assert isinstance(result, dict)
-    assert "results" in result
+    assert result["records"][0]["title"] == "OpenMP"
+    assert "results" not in result
 
 
 def test_fetch_url_returns_dict():
@@ -37,27 +38,6 @@ def test_fetch_url_returns_dict():
     assert "safe text" in result["text"]
 
 
-def test_search_arxiv_returns_dict():
-    from server import search_arxiv
-
-    rows = [
-        {
-            "title": "OpenMP performance",
-            "arxiv_id": "2401.00001",
-            "authors": ["A"],
-            "year": 2024,
-            "abstract": "Study",
-            "url": "https://arxiv.org/abs/2401.00001",
-        }
-    ]
-    with patch("server._search_arxiv_rows", return_value=rows):
-        result = search_arxiv(
-            "OpenMP performance optimization", max_results=2, mode="live"
-        )
-    assert isinstance(result, dict)
-    assert "papers" in result
-
-
 def test_web_search_structure():
     from server import web_search
 
@@ -66,11 +46,11 @@ def test_web_search_structure():
     ]
     with patch("server._search_duckduckgo_rows", return_value=rows):
         result = web_search("python performance", n=3, mode="live")
-    if "results" in result and result["results"]:
-        for r in result["results"]:
+    if result["records"]:
+        for r in result["records"]:
             assert "title" in r
-            assert "url" in r
-            assert "snippet" in r
+            assert "source_url" in r
+            assert "abstract" in r
 
 
 def test_fetch_url_error_handling():
@@ -79,29 +59,6 @@ def test_fetch_url_error_handling():
 
     with pytest.raises(NetworkPolicyError, match="non-public"):
         fetch_url("http://127.0.0.1", mode="live")
-
-
-def test_search_arxiv_structure():
-    from server import search_arxiv
-
-    rows = [
-        {
-            "title": "Compiler optimization",
-            "arxiv_id": "2402.00002v3",
-            "authors": ["A"],
-            "year": 2024,
-            "abstract": "Study",
-            "url": "https://arxiv.org/abs/2402.00002v3",
-        }
-    ]
-    with patch("server._search_arxiv_rows", return_value=rows):
-        result = search_arxiv(
-            "compiler optimization benchmark", max_results=2, mode="live"
-        )
-    if "papers" in result and result["papers"]:
-        for p in result["papers"]:
-            assert "title" in p
-            assert "url" in p
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -345,8 +345,6 @@ _env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_REVISION=3447645e1def911799720
 # write these per-run.
 _env_append_if_absent "# ARI_RUBRIC_GEN_TARGET_LEAVES="
 _env_append_if_absent "# ARI_RUBRIC_GEN_TEMPERATURE="
-_env_append_if_absent "# ARI_RUBRIC_GEN_TWO_STAGE="
-_env_append_if_absent "# ARI_RUBRIC_GEN_QUALITY_PROFILE="
 # v0.7.2 paper-audit knobs. _DIR overrides the search root for
 # venue-conditioned PaperBench rubric templates (default: ari-core/config/
 # paperbench_rubrics/). _PAPER toggles the multimodal markdown image

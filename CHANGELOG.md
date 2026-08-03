@@ -2,6 +2,35 @@
 
 All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PATCH`.
 
+## Unreleased — Skill-platform P6 removal
+
+- Removed the deprecated web provider aliases, mutable backend selector,
+  iterative LLM collector, and `papers`/`results` retrieval projections. Use
+  `search_papers(provider=...)`, canonical `records`, and explicit broker/workflow
+  composition.
+- Removed coding-skill's flat measurement writer and permissive JSON coercion.
+  `emit_results` now writes only the typed `measurement_set`; the old reader is
+  read-only migration support.
+- Removed replicate-skill's low-coverage single-call generator, prompt, API/env
+  switches, GUI controls, and report field. Rubric generation is always
+  `hierarchical-v2`/`calibrated`, with model-call budgets and repair provenance.
+- Removed the five container-specific HPC public aliases and their compilers.
+  Container work uses `container_submit`. The core-agent `slurm_submit` bridge
+  remains narrowly supported until that agent emits `JobRequestV1` directly.
+- Added the permanent
+  [compatibility support policy](docs/reference/compatibility_support.md) with
+  owners and objective re-evaluation gates for retained readers, deployment
+  paths, PaperBench adaptations, and registry repair.
+- Externalized the remaining paper claim-declaration guidance without changing
+  the bytes sent to the model; prompt and composition digests are regression
+  tested.
+- Removed the completed temporary skill-platform plan set after its
+  architecture, contracts, migration rules, and retained-support decisions were
+  transferred to permanent documentation.
+
+Pre-removal rollback boundary: `c487ea9` (`feat(orchestrator): add durable
+authenticated run control`).
+
 ## v0.9.1 — Contract-preserving refactoring program (73 subtasks) + DONE-verification audit (2026-07-05)
 
 - **73-subtask refactoring program, every contract preserved.** ari-core, the 14

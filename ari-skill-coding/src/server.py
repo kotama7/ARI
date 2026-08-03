@@ -228,8 +228,8 @@ async def list_tools() -> list[Tool]:
                         "type": "object",
                         "description": (
                             "Optional {operand_name: source} tags recording HOW a "
-                            "value was obtained, written verbatim as the '_provenance' "
-                            'key for the verification gate. Use "microbench" or '
+                            "value was obtained, stored on the corresponding canonical "
+                            'measurement record for the verification gate. Use "microbench" or '
                             '"benchmark" for an empirically MEASURED ceiling/peak '
                             "(so a normalized metric is not flagged as resting on a "
                             'placeholder), and "correctness" (or "reference") for a '
@@ -406,29 +406,18 @@ _RESULTS_SCHEMA_VERSION = "1.0"
 _TYPED_RESULTS_SCHEMA_VERSION = "ari.measurement-set/v1"
 
 
-def _coerce_jsonable_dict(d: dict) -> dict:
-    """Best-effort: drop values that can't survive a JSON round-trip.
+def _strict_json_dict(value: dict, *, field: str) -> dict:
+    """Return a finite JSON object without changing keys or values."""
 
-    The contract is "structured numeric/string data, no objects". Anything
-    that isn't directly JSON-serialisable (e.g. numpy scalars, pathlib
-    paths) is coerced via str() so the file is always readable downstream.
-    Failures are silent — emit_results is a write-only tool and crashing
-    on a stray non-serialisable value would defeat its purpose as a
-    last-step reporter.
-    """
-    out: dict = {}
-    if not isinstance(d, dict):
-        return out
-    for k, v in d.items():
-        try:
-            json.dumps(v)
-            out[str(k)] = v
-        except (TypeError, ValueError):
-            try:
-                out[str(k)] = str(v)
-            except Exception:
-                continue
-    return out
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    if any(not isinstance(key, str) or not key for key in value):
+        raise ValueError(f"{field} keys must be non-empty strings")
+    try:
+        json.dumps(value, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field} must contain finite JSON values") from exc
+    return dict(value)
 
 
 def _emit_results(
@@ -448,12 +437,17 @@ def _emit_results(
     overwritten if it exists; callers that want to preserve prior runs
     must pass a distinct ``file`` name (e.g. ``results_seed42.json``).
     """
-    parameters = _coerce_jsonable_dict(params)
-    measured = _coerce_jsonable_dict(measurements)
-    predicted = _coerce_jsonable_dict(predictions)
-    scored = _coerce_jsonable_dict(scores)
-    declared_units = _coerce_jsonable_dict(units or {})
-    declared_provenance = _coerce_jsonable_dict(provenance or {})
+    try:
+        parameters = _strict_json_dict(params, field="params")
+        measured = _strict_json_dict(measurements, field="measurements")
+        predicted = _strict_json_dict(predictions, field="predictions")
+        scored = _strict_json_dict(scores, field="scores")
+        declared_units = _strict_json_dict(units or {}, field="units")
+        declared_provenance = _strict_json_dict(
+            provenance or {}, field="provenance"
+        )
+    except ValueError as exc:
+        return {"error": f"emit_results schema validation failed: {exc}"}
     execution_identity = None
     execution_attempt_id = None
     execution_status = "unreported"
@@ -565,18 +559,7 @@ def _emit_results(
         "schema_version": _RESULTS_SCHEMA_VERSION,
         "typed_schema_version": _TYPED_RESULTS_SCHEMA_VERSION,
         "measurement_set": typed.model_dump(mode="json"),
-        "params": parameters,
-        "measurements": measured,
-        "measurement_records": [item.model_dump(mode="json") for item in records],
-        "predictions": predicted,
-        "scores": scored,
     }
-    # _provenance carries {operand: source} tags (microbench/benchmark for a measured
-    # ceiling, correctness/reference for a verification residual). Written verbatim
-    # so transform -> science_data -> the hard gate can confirm a measured ceiling /
-    # a correctness check was actually run. Best-effort; omitted when empty.
-    if declared_provenance:
-        payload["_provenance"] = declared_provenance
     serialized = json.dumps(payload, ensure_ascii=False, indent=2)
     try:
         out_path = workspace.atomic_write_text(file, serialized)
@@ -590,10 +573,10 @@ def _emit_results(
         "schema_version": _RESULTS_SCHEMA_VERSION,
         "typed_schema_version": _TYPED_RESULTS_SCHEMA_VERSION,
         "digest": "sha256:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest(),
-        "params_keys": list(payload["params"].keys()),
-        "measurements_keys": list(payload["measurements"].keys()),
-        "predictions_keys": list(payload["predictions"].keys()),
-        "scores_keys": list(payload["scores"].keys()),
+        "params_keys": list(typed.parameters),
+        "measurements_keys": [item.metric_id for item in typed.measurements],
+        "predictions_keys": list(typed.predictions),
+        "scores_keys": list(typed.scores),
         "missing_unit_measurements": [
             item.metric_id
             for item in typed.measurements
@@ -627,8 +610,16 @@ def _emit_results(
             if isinstance(_mc, dict) and _mc:
                 from ari.public.claim_gate import check_emission as _check_emission
 
+                _measurement_values = {
+                    item.metric_id: item.value for item in typed.measurements
+                }
+                _measurement_provenance = {
+                    item.metric_id: item.provenance
+                    for item in typed.measurements
+                    if item.provenance is not None
+                }
                 _warns = _check_emission(
-                    _mc, payload["measurements"], payload.get("_provenance") or {}
+                    _mc, _measurement_values, _measurement_provenance
                 )
                 if _warns:
                     result["contract_warnings"] = _warns

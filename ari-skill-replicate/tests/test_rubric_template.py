@@ -148,21 +148,3 @@ def test_skeleton_prompt_injects_sc_hint():
     assert "VENUE OVERRIDE: ACM/IEEE Supercomputing" in prompt
     assert "env_reconstructable" in prompt
     assert "scaling_consistent" in prompt
-
-
-# ── generate_rubric_async preconditions ────────────────────────────────────
-
-
-def test_paper_audit_template_requires_two_stage():
-    import asyncio
-
-    out = asyncio.run(
-        G.generate_rubric_async(
-            paper_text="dummy paper text long enough to count",
-            output_path="/tmp/should_not_be_written.json",
-            paperbench_rubric_id="sc",
-            two_stage=False,
-        )
-    )
-    assert "error" in out
-    assert "two_stage" in out["error"]

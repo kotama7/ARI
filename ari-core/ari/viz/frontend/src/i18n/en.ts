@@ -351,9 +351,6 @@ const en: Record<string, string> = {
   ors_rubric_gen_model: 'Rubric Generator Model',
   ors_rubric_gen_help:
     'LLM that auto-generates the PaperBench-format rubric',
-  ors_rubric_two_stage: 'Two-stage generation',
-  ors_rubric_two_stage_help:
-    'Skeleton + parallel subtree calls. Produces ~4× more leaves and 1–2 levels more depth than a single call. Costs ~5× more API tokens. Disable for cheap single-call mode.',
   ors_rubric_audit_model: 'Rubric Auditor Model',
   ors_rubric_audit_help:
     'LLM that audits rubric quality (independent from generator)',
@@ -420,7 +417,6 @@ const en: Record<string, string> = {
   pb_step4_title: 'Judge configuration',
   pb_step5_title: 'Launch summary',
   pb_model: 'Model',
-  pb_two_stage: 'Two-stage rubric generation',
   pb_target_leaves: 'Target leaf count (0 = auto)',
   pb_time_limit: 'Time limit (sec)',
   pb_sandbox: 'Sandbox',

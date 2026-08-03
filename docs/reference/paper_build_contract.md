@@ -1,3 +1,20 @@
+---
+sources:
+  - path: ari-core/ari/public/paper.py
+    role: schema
+  - path: ari-skill-paper/src/server.py
+    role: implementation
+  - path: ari-skill-paper/src/finalize.py
+    role: implementation
+  - path: ari-skill-paper/src/claim_links.py
+    role: implementation
+  - path: ari-core/ari/schemas/paper_build_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/paper_model_call_batch_v1.schema.json
+    role: schema
+last_verified: 2026-08-02
+---
+
 # Paper build contract
 
 `PaperBuildV1` is the immutable record for an ARI-authored scientific paper.

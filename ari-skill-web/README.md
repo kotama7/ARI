@@ -14,10 +14,10 @@ decide whether a source is scientifically relevant.
 | `walk_citations` | Traverse a bounded Semantic Scholar citation graph |
 | `rerank_retrieval_records` | Explicit optional LLM reranker with model provenance |
 
-`search_arxiv`, `search_semantic_scholar`, and `set_retrieval_backend` are
-compatibility aliases retained until the P6 removal gate. New callers should
-pass `provider` to `search_papers`. `collect_references_iterative` is a legacy
-stochastic composition and is no longer used by the default paper pipeline.
+Provider selection is explicit: pass `provider` to `search_papers`. The former
+narrow search aliases, mutable backend selector, and stochastic iterative
+collector were removed after their P6 migration window; composition belongs in
+the workflow or broker rather than this retrieval skill.
 
 ## Live, record, and replay
 
@@ -49,7 +49,7 @@ wire format, artifact layout, and consumer rules.
 | Variable | Purpose |
 |---|---|
 | `ARI_CHECKPOINT_DIR` | Required root for `record` and `replay` |
-| `ARI_RETRIEVAL_BACKEND` | Legacy default pinned provider |
+| `ARI_RETRIEVAL_BACKEND` | Default provider used when `provider` is omitted |
 | `ARI_ALPHAXIV_ENDPOINT` | AlphaXiv MCP endpoint |
 | `SEMANTIC_SCHOLAR_API_KEY` / `S2_API_KEY` | Optional Semantic Scholar credential |
 | `ARI_LLM_MODEL`, `ARI_LLM_API_BASE` | Used only by explicit stochastic tools |

@@ -4,11 +4,11 @@ ORS Auto-Rubric generator and auditor (PaperBench TaskNode-compatible).
 
 ## Tools
 
-- `generate_rubric(..., two_stage=True, quality_profile="", max_model_calls=64, subtree_concurrency=4, provider="", model_revision="")` — produces a strict `ari.replication-rubric/v2` envelope. Every model prompt/response, repair, dropped node, exact paper span, model identity, and call budget is recorded beside the output under `.ari-rubric/`.
+- `generate_rubric(..., max_model_calls=64, subtree_concurrency=4, provider="", model_revision="")` — produces a strict `ari.replication-rubric/v2` envelope using the calibrated hierarchical strategy. Every model prompt/response, repair, dropped node, exact paper span, model identity, and call budget is recorded beside the output under `.ari-rubric/`.
 - `audit_rubric(..., output_path="", max_model_calls=400)` — verifies the frozen rubric and its referenced artifacts, then writes a separate digest-bound `ari.replication-rubric-audit/v2` report. It never mutates the rubric. The report flags `vague_qualifier`, `no_paper_evidence`, `duplicate`, and `unverifiable` leaves and reports whether the reviewer model is actually independent.
 - `suggest_target_leaf_count(paper_path, paper_text)` — returns the auto-computed target leaf count (~1 leaf / 75 words, bounded to [50, 400]) and word count for the paper.
 
-## Two-stage generation
+## Hierarchical generation
 
 The default rubric path is hierarchical (`prompts/skeleton.md` + `prompts/subtree.md`):
 
@@ -16,7 +16,10 @@ The default rubric path is hierarchical (`prompts/skeleton.md` + `prompts/subtre
 2. **Pass 2 — subtrees (parallel)**: one call per direct child populates its subtree with 4–6 additional levels, scoped to the parent's `requirements`. Concurrency is bounded by an internal semaphore (default 4).
 3. **Merge + evidence binding**: subtree roots replace skeleton stubs. Each retained leaf is bound to exact character offsets in the input paper or an explicit external prerequisite and receives a structured artifact/log/metric verification target. Every normalization or dropped node is retained in the repair ledger.
 
-Single-call mode (`two_stage=False`) is retained only as an explicit low-coverage compatibility profile: callers must also set `quality_profile="low-coverage"`. Hierarchical generation fails closed when its call budget is exhausted and records subtree failures instead of silently treating missing coverage as success.
+Hierarchical generation is the only public generation strategy. It fails closed
+when its call budget is exhausted and records subtree failures instead of
+silently treating missing coverage as success. Historical V1 rubrics remain
+read-only migration inputs; there is no low-coverage runtime generator.
 
 ## Environment
 
@@ -28,10 +31,10 @@ Single-call mode (`two_stage=False`) is retained only as an explicit low-coverag
 | `ARI_MODEL_RUBRIC_AUDIT_PROVIDER` / `ARI_MODEL_RUBRIC_AUDIT_REVISION` | inferred / unset | Auditor identity used for the independence decision |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (unset) | Override the per-paper target leaf count. `0` / unset → auto from paper length. Set by the GUI Wizard's "Target leaves" field. |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (unset) | Override generator temperature. Set by the GUI Wizard's "Temperature" field. |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (unset) | `1`/`true`/`on` → force two-stage; `0`/`false`/`off` → force single-call. Unset → use the kwarg default (currently `True`). Set by the GUI Wizard's "Two-stage generation" toggle. |
-| `ARI_RUBRIC_GEN_QUALITY_PROFILE` | (unset) | Required as `low-coverage` when single-call generation is selected. |
 
-Resolution order (server.py): explicit kwarg → env var → default. The MCP tool is invoked by `ari-core/config/workflow.yaml::ors_generate_rubric`; the workflow does not pass these three knobs explicitly, so env vars set by the GUI Wizard always win over the kwarg defaults at runtime.
+Resolution order (`server.py`) is explicit kwarg → env var → default for target
+leaf count and temperature. The strategy is fixed to `hierarchical-v2` with the
+`calibrated` quality profile.
 
 ## Output schema
 

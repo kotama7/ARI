@@ -17,7 +17,7 @@ Pytest suite for the replicate skill (auto-rubric generation + auditing).
 - `fixtures/` — test fixtures (not enumerated)
 - `snapshots/` — TODO
   - `prompts/` — TODO
-    - `adversarial_reviewer.md` — TODO
+    - hierarchical skeleton/subtree prompt coverage
     - `rubric_audit.md` — TODO
     - `skeleton.md` — TODO
     - `subtree.md` — TODO

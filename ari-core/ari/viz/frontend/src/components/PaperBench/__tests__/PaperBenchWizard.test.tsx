@@ -61,7 +61,7 @@ describe('PaperBenchWizard (PLAN_GUI §8 acceptance: Step 3 execution_profile ov
     await advance(1); // Step 2 → Step 3 (Reproduce)
 
     // Step 3 — fill the execution_profile override fields
-    const nodesInput = screen.getByDisplayValue('0') as HTMLInputElement; // first 0 = nodes
+    const nodesInput = screen.getByLabelText(/^nodes$/i) as HTMLInputElement;
     fireEvent.change(nodesInput, { target: { value: '4' } });
 
     // Toggle exclusive
@@ -69,16 +69,8 @@ describe('PaperBenchWizard (PLAN_GUI §8 acceptance: Step 3 execution_profile ov
     fireEvent.click(exclusiveCheckbox);
 
     // gpu_type field
-    const gpuTypeInput = screen.getByPlaceholderText(/v100/i) ?? null;
-    if (gpuTypeInput) {
-      fireEvent.change(gpuTypeInput, { target: { value: 'v100' } });
-    }
-    // Otherwise fall back to label-based lookup
-    if (!gpuTypeInput) {
-      const lbl = screen.getByText(/gpu_type/i);
-      const input = lbl.querySelector('input') as HTMLInputElement;
-      fireEvent.change(input, { target: { value: 'v100' } });
-    }
+    const gpuTypeInput = screen.getByLabelText(/gpu_type/i);
+    fireEvent.change(gpuTypeInput, { target: { value: 'v100' } });
 
     // extra_sbatch_args
     const extraInput = screen.getByPlaceholderText(/account=projX/i) as HTMLInputElement;
@@ -93,15 +85,14 @@ describe('PaperBenchWizard (PLAN_GUI §8 acceptance: Step 3 execution_profile ov
     });
 
     await waitFor(() => {
-      const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+      const calls = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls;
       const launchCall = calls.find(([url]) => url === '/api/paperbench/run');
       expect(launchCall).toBeTruthy();
       const body = JSON.parse(launchCall![1].body);
       expect(body.paper_ids).toEqual(['sc24-llamp']);
       expect(body.reproduce_config.nodes).toBe(4);
       expect(body.reproduce_config.exclusive).toBe(true);
-      // gpu_type may or may not have caught (placeholder-based selector
-      // is brittle); but extra_sbatch_args should split on whitespace
+      expect(body.reproduce_config.gpu_type).toBe('v100');
       expect(body.reproduce_config.extra_sbatch_args).toEqual(['--account=projX']);
     });
   });
@@ -110,9 +101,9 @@ describe('PaperBenchWizard (PLAN_GUI §8 acceptance: Step 3 execution_profile ov
     render(<PaperBenchWizard />);
     await screen.findByText(/LLAMP/);
     const next = screen.getByRole('button', { name: /Next/i });
-    expect(next).toBeDisabled();
+    expect((next as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('checkbox'));
-    expect(next).not.toBeDisabled();
+    expect((next as HTMLButtonElement).disabled).toBe(false);
   });
 });

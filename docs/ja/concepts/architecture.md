@@ -526,7 +526,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
-| `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC ジョブ管理 + Singularity コンテナ | ✗ |
+| `ari-skill-hpc` | `job_submit`, `container_submit`, `job_status`, `job_result`, `job_logs`, `job_cancel`, `probe_platform_capabilities`, `slurm_submit`（core-agent bridge） | 型付きHPC scheduler/container lifecycle | ✗ |
 | `ari-skill-memory` | append-only 型付き write、lineage read、audit、consolidation | versioned 祖先スコープメモリ（Letta バックエンド） | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 実験ファイルからのメトリクス仕様抽出 | △ |

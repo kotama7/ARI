@@ -10,7 +10,7 @@ capture, and typed scientific result emission for ARI agents.
 | `write_code` | Atomic text write below the configured workspace root; rejects traversal and symlinks |
 | `run_code` | Structured interpreter argv, source SHA-256 verification, immutable source snapshot, timeout/process limits, and complete log artifacts |
 | `run_bash` | Explicit shell permission for builds or compound commands; local or configured clean container execution |
-| `emit_results` | Canonical `ari.measurement-set/v1` plus a temporary v1 compatibility projection |
+| `emit_results` | Canonical `ari.measurement-set/v1`; rejects non-finite or non-JSON values instead of coercing them |
 | `read_file` | Symlink-safe, bounded and paginated workspace read |
 
 `run_code` and `run_bash` return a stable `execution_identity`, a per-attempt
@@ -53,9 +53,10 @@ least one measurement and, for every record, a unit, a successful zero-exit
 execution identity, and an evidence artifact. Domain-specific validity remains
 the evaluator's responsibility.
 
-Legacy flat `results.json` fields remain a read-only/write projection during
-the P6 support window. The shared parser cross-checks them against the canonical
-object and rejects disagreements.
+New files contain only the canonical `measurement_set` object. The shared
+parser retains a read-only migration path for old flat `results.json` files and
+cross-checks mixed historical documents, but the writer never recreates those
+fields or coerces unsupported values.
 
 ## Configuration
 

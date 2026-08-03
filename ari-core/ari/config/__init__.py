@@ -218,7 +218,7 @@ class BFTSConfig(BaseModel):
     allow_web: bool = Field(
         False,
         description="Opt-in: expose web-skill (web_search / fetch_url / "
-                    "search_arxiv / search_semantic_scholar) to the BFTS node "
+                    "search_papers / walk_citations) to the BFTS node "
                     "agent during exploration. Default False keeps the search "
                     "loop reproducible (P5) — live web results are "
                     "time-varying. When True, ARI records a "

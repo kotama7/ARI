@@ -4,7 +4,7 @@ sources:
     role: prompt
   - path: ari-skill-paper-re/src/_replicator_agent.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # Compute-node safety conventions (L1–L7)

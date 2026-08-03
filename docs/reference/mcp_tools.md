@@ -76,19 +76,18 @@ an LLM and therefore are not byte-deterministic.
 | `claim_evidence_hard_gate` | Deterministic claim/evidence hard gate (execution data fidelity); strict mode blocks finalize on the final phase | ✗ |
 | `evidence_grounded_semantic_review` | Non-blocking, evidence-grounded semantic review; emits `suggested_revisions` for `paper_refine` | ✓ |
 
-## ari-skill-hpc — SLURM + Singularity
+## ari-skill-hpc — typed scheduler lifecycle
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `slurm_submit` | sbatch with explicit partition / time / cpus / nodes / GPUs | ✗ |
-| `job_status` | squeue + sacct lookup | ✗ |
-| `job_cancel` | scancel a running job | ✗ |
+| `job_submit` | Submit immutable typed `JobRequestV1` and return an idempotent handle | ✗ |
+| `container_submit` | Submit a typed digest-pinned container request | ✗ |
+| `job_status` | Provider-neutral status for a handle or scheduler ID | ✗ |
+| `job_result` | Terminal typed result with re-hashed inputs, outputs, logs, and provenance | ✗ |
+| `job_logs` | Bounded digest-bound stdout/stderr | ✗ |
+| `job_cancel` | Request scheduler cancellation | ✗ |
 | `probe_platform_capabilities` | Probe compute-partition architecture and command availability, with checkpoint caching | ✗ |
-| `singularity_build` | Build a SIF from a definition file | ✗ |
-| `singularity_run` | Run a command inside a SIF | ✗ |
-| `singularity_pull` | Pull a SIF from a remote URI | ✗ |
-| `singularity_build_fakeroot` | Fakeroot build (no privileged daemon) | ✗ |
-| `singularity_run_gpu` | GPU variant of `singularity_run` | ✗ |
+| `slurm_submit` | Scoped core-agent batch-script bridge; programmatic callers use `job_submit` | ✗ |
 
 ## ari-skill-idea — literature survey + idea generation
 
@@ -245,11 +244,10 @@ Shipped templates:
 | `neurips` | `paper_audit` | Six axes per NeurIPS Reproducibility Checklist (claims / setup / code+data / statistics / ethics / figures). |
 | `nature` | `paper_audit` | Five axes for wet-lab papers (materials / protocol / statistics / data / ethics). |
 
-`paper_audit` mode requires `two_stage=True`; the generator returns an
-error if the single-pass path is requested with a `paper_audit`
-template (the single-pass prompt cannot honour the fixed-axis
-constraint). See [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
-for the YAML schema and authoring guide.
+All template modes use the mandatory calibrated hierarchical strategy, which
+can preserve fixed audit axes. See
+[`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates) for the YAML
+schema and authoring guide.
 
 ## ari-skill-transform — tree walk + EAR pipeline
 
@@ -294,10 +292,6 @@ record/replay, and adapter requirements.
 | `fetch_url` | SSRF-controlled URL → untrusted readable text | ✗ |
 | `walk_citations` | Bounded citation graph with partial-result provenance | ✗ |
 | `rerank_retrieval_records` | Explicit typed-record reranker | ✓ |
-| `search_arxiv` | Deprecated narrow arXiv alias | ✗ |
-| `search_semantic_scholar` | Deprecated narrow Semantic Scholar alias | ✗ |
-| `collect_references_iterative` | Deprecated stochastic query/selection loop | ✓ |
-| `set_retrieval_backend` | Deprecated pinned-provider default selector | ✗ |
 | `list_uploaded_files` | List files in the checkpoint upload area | ✗ |
 | `read_uploaded_file` | Read one upload with traversal protection and output bounds | ✗ |
 

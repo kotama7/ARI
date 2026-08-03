@@ -28,8 +28,7 @@ contains:
 - `survey_snapshot`: the digest-bound `ari.survey-snapshot/v1` object;
 - `survey_snapshot_digest` and an optional checkpoint-relative `snapshot_ref`;
 - `alias_groups`, which link distinct provider records without collapsing their
-  source lineage;
-- `papers`/`results`, temporary legacy projections scheduled for P6 removal.
+  source lineage.
 
 `RetrievalRecordV1` binds provider, provider record/version, query, retrieval
 time, bibliographic fields, source URL, raw-payload digest, DOI/arXiv/S2 aliases,
@@ -88,16 +87,15 @@ and only edges whose endpoints are retained.
 `search_papers`, `web_search`, `fetch_url`, and `walk_citations` never call an
 LLM. `rerank_retrieval_records` is a separate stochastic tool and records model,
 API-base identity, temperature, prompt digest, input digest, and raw-output
-digest. The legacy iterative collector is also declared stochastic and is not
-used by the default paper workflow.
+digest. Multi-query collection is composed explicitly above this boundary.
 
 ## Consumer rule
 
 Idea generation accepts `survey_snapshot_ref`; paper generation resolves the
 `snapshot_ref` in a recorded retrieval result. Both use the common verified
 snapshot loader. A typed retrieval result without a recorded reference cannot
-silently downgrade to caller-supplied inline papers. Inline projections remain
-only for the documented compatibility window.
+silently downgrade to caller-supplied inline papers. Public retrieval writers
+emit only canonical `records`.
 
 See also [Research contracts](research_contracts.md) and
 [Execution contract](execution_contract.md).

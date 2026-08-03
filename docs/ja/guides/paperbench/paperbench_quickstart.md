@@ -48,7 +48,7 @@ curl -X POST http://localhost:8765/api/paperbench/papers/import \
 レジストリ画面で論文をチェックし、**🚀 PaperBench を実行**。5 step:
 
 1. **論文選択**。
-2. **ルーブリック** — 生成モデル (既定 `gemini-2.5-pro`、two_stage on)。
+2. **ルーブリック** — 生成モデル (既定 `gemini-2.5-pro`、calibrated hierarchical strategy)。
    [ルーブリック仕様](../../reference/rubric_schema.md) 参照。
 3. **再現** — 再現モデルと時間上限。「実行プロファイル上書き」を展開すると
    SLURM 配置 (`--nodes`, `--gpus-per-task`, `--exclusive`, …) を上書き
