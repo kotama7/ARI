@@ -44,4 +44,4 @@ nest-asyncio
 #     not required for `ari ear publish` / `ari clone`.
 fastapi>=0.139.0
 uvicorn[standard]>=0.27
-python-multipart>=0.0.9
+python-multipart>=0.0.32
