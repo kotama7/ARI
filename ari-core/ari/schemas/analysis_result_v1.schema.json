@@ -1,0 +1,467 @@
+{
+  "$defs": {
+    "AnalysisArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_role": {
+          "enum": [
+            "analysis-json",
+            "analysis-table"
+          ],
+          "title": "Logical Role",
+          "type": "string"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relative_path",
+        "digest",
+        "size_bytes",
+        "media_type",
+        "logical_role"
+      ],
+      "title": "AnalysisArtifactV1",
+      "type": "object"
+    },
+    "AnalysisSummaryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "constant_data": {
+          "title": "Constant Data",
+          "type": "boolean"
+        },
+        "count": {
+          "minimum": 1,
+          "title": "Count",
+          "type": "integer"
+        },
+        "independence_status": {
+          "enum": [
+            "verified",
+            "declared",
+            "not-established"
+          ],
+          "title": "Independence Status",
+          "type": "string"
+        },
+        "maximum": {
+          "title": "Maximum",
+          "type": "number"
+        },
+        "mean": {
+          "title": "Mean",
+          "type": "number"
+        },
+        "mean_confidence_interval": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mean Confidence Interval"
+        },
+        "median": {
+          "title": "Median",
+          "type": "number"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "minimum": {
+          "title": "Minimum",
+          "type": "number"
+        },
+        "missing_count": {
+          "minimum": 0,
+          "title": "Missing Count",
+          "type": "integer"
+        },
+        "q25": {
+          "title": "Q25",
+          "type": "number"
+        },
+        "q75": {
+          "title": "Q75",
+          "type": "number"
+        },
+        "source_digest": {
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "std": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Std"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        },
+        "variance": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Variance"
+        }
+      },
+      "required": [
+        "metric_id",
+        "unit",
+        "count",
+        "missing_count",
+        "mean",
+        "std",
+        "variance",
+        "minimum",
+        "q25",
+        "median",
+        "q75",
+        "maximum",
+        "mean_confidence_interval",
+        "constant_data",
+        "independence_status",
+        "source_digest"
+      ],
+      "title": "AnalysisSummaryV1",
+      "type": "object"
+    },
+    "RunComparisonResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_run_id": {
+          "title": "Baseline Run Id",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "higher",
+            "lower"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "environment_compatible": {
+          "title": "Environment Compatible",
+          "type": "boolean"
+        },
+        "environment_groups": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Environment Groups",
+          "type": "array"
+        },
+        "independence_status": {
+          "enum": [
+            "declared",
+            "not-established"
+          ],
+          "title": "Independence Status",
+          "type": "string"
+        },
+        "independent_replicate_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Independent Replicate Count"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "provenance_differences": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Provenance Differences",
+          "type": "array"
+        },
+        "ranking": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Ranking",
+          "type": "array"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_id",
+        "unit",
+        "direction",
+        "ranking",
+        "baseline_run_id",
+        "environment_compatible",
+        "environment_groups",
+        "independence_status",
+        "independent_replicate_count",
+        "provenance_differences"
+      ],
+      "title": "RunComparisonResultV1",
+      "type": "object"
+    },
+    "StatisticalComparisonResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "adjusted_p_value": {
+          "title": "Adjusted P Value",
+          "type": "number"
+        },
+        "alpha": {
+          "title": "Alpha",
+          "type": "number"
+        },
+        "alternative": {
+          "title": "Alternative",
+          "type": "string"
+        },
+        "assumptions": {
+          "additionalProperties": true,
+          "title": "Assumptions",
+          "type": "object"
+        },
+        "comparison_id": {
+          "title": "Comparison Id",
+          "type": "string"
+        },
+        "confidence_interval": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Confidence Interval",
+          "type": "array"
+        },
+        "confidence_interval_name": {
+          "title": "Confidence Interval Name",
+          "type": "string"
+        },
+        "effect_size": {
+          "title": "Effect Size",
+          "type": "number"
+        },
+        "effect_size_name": {
+          "title": "Effect Size Name",
+          "type": "string"
+        },
+        "input_digest": {
+          "title": "Input Digest",
+          "type": "string"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "missing_count_a": {
+          "minimum": 0,
+          "title": "Missing Count A",
+          "type": "integer"
+        },
+        "missing_count_b": {
+          "minimum": 0,
+          "title": "Missing Count B",
+          "type": "integer"
+        },
+        "p_value": {
+          "title": "P Value",
+          "type": "number"
+        },
+        "pairing": {
+          "title": "Pairing",
+          "type": "string"
+        },
+        "sample_count_a": {
+          "minimum": 1,
+          "title": "Sample Count A",
+          "type": "integer"
+        },
+        "sample_count_b": {
+          "minimum": 1,
+          "title": "Sample Count B",
+          "type": "integer"
+        },
+        "significant": {
+          "title": "Significant",
+          "type": "boolean"
+        },
+        "statistic": {
+          "title": "Statistic",
+          "type": "number"
+        },
+        "test_family": {
+          "title": "Test Family",
+          "type": "string"
+        },
+        "unit": {
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "comparison_id",
+        "metric_id",
+        "unit",
+        "test_family",
+        "alternative",
+        "pairing",
+        "sample_count_a",
+        "sample_count_b",
+        "missing_count_a",
+        "missing_count_b",
+        "statistic",
+        "p_value",
+        "adjusted_p_value",
+        "alpha",
+        "significant",
+        "effect_size_name",
+        "effect_size",
+        "confidence_interval_name",
+        "confidence_interval",
+        "assumptions",
+        "input_digest"
+      ],
+      "title": "StatisticalComparisonResultV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/analysis-result-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Machine-readable deterministic output shared by analysis providers.",
+  "properties": {
+    "analysis_plan_digest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Analysis Plan Digest"
+    },
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/AnalysisArtifactV1"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "comparisons": {
+      "items": {
+        "$ref": "#/$defs/StatisticalComparisonResultV1"
+      },
+      "title": "Comparisons",
+      "type": "array"
+    },
+    "input_digest": {
+      "title": "Input Digest",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "summary",
+        "statistical-test",
+        "run-comparison"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "library_versions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Library Versions",
+      "type": "object"
+    },
+    "run_comparison": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RunComparisonResultV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "schema_version": {
+      "const": "ari.analysis-result/v1",
+      "default": "ari.analysis-result/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "summaries": {
+      "items": {
+        "$ref": "#/$defs/AnalysisSummaryV1"
+      },
+      "title": "Summaries",
+      "type": "array"
+    }
+  },
+  "required": [
+    "kind",
+    "input_digest",
+    "library_versions"
+  ],
+  "title": "ARI Analysis Result v1",
+  "type": "object"
+}

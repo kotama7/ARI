@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Configuration Reference
@@ -91,7 +91,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    # Evaluation is an ari-core BFTS path, not an MCP tool.
+    tool: ''
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -103,7 +104,7 @@ bfts_pipeline:
 pipeline:
   - stage: search_related_work
     skill: web-skill
-    tool: collect_references_iterative
+    tool: search_papers
     skip_if_exists: '{{ckpt}}/related_refs.json'
     # ...
   - stage: transform_data
@@ -223,25 +224,22 @@ pipeline:
       judge_model: gpt-5-mini  # any LiteLLM-recognised model id
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── Paper review (rubric-driven, AI Scientist v1/v2-compatible) ────────
-# Override via CLI (--rubric, --fewshot-mode, --num-reviews-ensemble,
-# --num-reflections) or environment variables (ARI_RUBRIC,
-# ARI_FEWSHOT_MODE, ARI_NUM_REVIEWS_ENSEMBLE, ARI_NUM_REFLECTIONS).
+# Override non-selection review parameters via CLI or environment variables
+# (ARI_FEWSHOT_MODE, ARI_NUM_REVIEWS_ENSEMBLE, ARI_NUM_REFLECTIONS).
 # Bundled rubrics (16 YAMLs in ari-core/config/reviewer_rubrics/):
 #   neurips (default, v2-compatible) | iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
 #   | journal_generic | workshop | generic_conference
-# Plus the built-in `legacy` fallback (v0.5 schema). Add new venues by
-# dropping <id>.yaml into reviewer_rubrics/ — no code changes required.
+# Paper authoring/review requires an explicit `paper_rubric`/`rubric_id`.
+# Add new venues by dropping <id>.yaml into reviewer_rubrics/.
 #
-# `prompt_overrides.author_hint` (unreleased) is the inverse of
-# system_hint: it's injected into paper-drafting prompts by
-# `generate_section` so writing is venue-conditioned at the same
-# strength as peer review. SC and NeurIPS ship calibrated hints;
-# other venues default to empty (legacy weak append).
+# `prompt_overrides.author_hint` is injected into the whole-document
+# authoring prompt so writing is venue-conditioned at the same strength as
+# peer review. SC and NeurIPS ship calibrated hints; other venues are empty.
 #
 # PaperBench rubric templates (separate venue YAMLs for the rubric
 # generator) live under ari-core/config/paperbench_rubrics/. See
@@ -341,9 +339,9 @@ skills:
 | `OLLAMA_HOST` | Ollama server address | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API key | (none) |
 | `ANTHROPIC_API_KEY` | Anthropic API key | (none) |
-| `ARI_RETRIEVAL_BACKEND` | Paper search backend: `semantic_scholar`, `alphaxiv`, `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | Default pinned paper provider: `semantic_scholar`, `arxiv`, `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | Authenticated MCP Streamable HTTP port | `9890` |
 | `LETTA_BASE_URL` | Letta server endpoint | `http://localhost:8283` |
 | `LETTA_API_KEY` | Required for Letta Cloud; optional for self-hosted | (none) |
 | `LETTA_EMBEDDING_CONFIG` | Embedding handle Letta uses for archival memory (the agent's chat LLM is hardcoded to `letta/letta-free` since ARI never invokes it) | `letta-default` |
@@ -352,22 +350,20 @@ skills:
 | `ARI_MEMORY_LETTA_OVERFETCH` | Over-fetch size for the post-filter ancestor-scope fallback | `200` |
 | `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Keep Letta self-edit off so CoW holds | `true` |
 | `ARI_MEMORY_ACCESS_LOG` | `on` / `off` — enable `{checkpoint}/memory_access.jsonl` | `on` |
-| `ARI_MEMORY_AUTO_RESTORE` | Auto-restore `memory_backup.jsonl.gz` on `ari resume` | `true` |
-| `ARI_CURRENT_NODE_ID` | Runtime-only; set by ari-core per-node to enforce write-side CoW | (runtime) |
+| `ARI_MEMORY_AUTO_RESTORE` | Validate and restore `memory_backup.v1.json.gz` on `ari resume` | `true` |
 | `ARI_MODEL_RUBRIC_GEN` | Generator LLM for `ari-skill-replicate.generate_rubric` (v0.7.0) | `gemini/gemini-2.5-pro` |
 | `ARI_MODEL_RUBRIC_AUDIT` | Auditor LLM for `audit_rubric` (independent of generator) | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | Override per-paper target leaf count consumed by `generate_rubric`. `0`/unset → auto from paper length (~1 leaf / 75 words, clamped to [50, 400]). Set by the GUI Wizard's "Target leaves" field. | (unset) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | Override generator temperature. Set by the GUI Wizard's "Temperature" field. | (unset) |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | Force the rubric generator's two-stage path on/off (`1`/`true`/`on` vs `0`/`false`/`off`). Two-stage = skeleton + parallel subtree calls; produces ~4× more leaves and 1–2 levels more depth than a single call at ~5× more API tokens. Unset → kwarg default (currently on). Set by the GUI Wizard's "Two-stage generation" toggle. | (unset, default on) |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | Override the search root for venue-conditioned PaperBench rubric templates. The loader checks this dir first, then `<cwd>/ari-core/config/paperbench_rubrics/`, `<cwd>/config/paperbench_rubrics/`, and the repo-relative fallback. Unset → built-in defaults. | (unset) |
 | `ARI_MODEL_REPLICATE` | Replicator LLM for `build_reproduce_sh` (paper → reproduce.sh, v0.7.0) | `claude-opus-4-7` |
 | `ARI_MODEL_JUDGE` | Judge LLM for `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; routed via LiteLLM, any provider OK) | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | LLM judge for `decide_lineage_action` (lineage decision, v0.7.0). Falls through `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` | (auto) |
 | `ARI_MODEL_ROOT_SELECT` | LLM that picks `ideas[0]` from the VirSci pool (lineage decision, v0.7.0). Same fallback chain as `ARI_MODEL_LINEAGE` | (auto) |
-| `ARI_RUBRIC` | Rubric id used by both review and the BFTS dynamic axis evaluator (Phase 3, v0.7.0). Reads `ari-core/config/reviewer_rubrics/<id>.yaml` | `neurips` |
+| `ARI_RUBRIC` | Rubric id for the BFTS dynamic axis evaluator and offline legacy migration. Paper authoring/review requires the explicit workflow `paper_rubric`/tool `rubric_id`. | `neurips` |
 | `ARI_PHASE1_SANDBOX` | Phase 1 sandbox: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
-| `ARI_PHASE1_DOCKER_IMAGE` | Container image for the docker sandbox runner | `ubuntu:24.04` |
-| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Image for the Apptainer/Singularity sandbox runner | `docker://ubuntu:24.04` |
+| `ARI_PHASE1_DOCKER_IMAGE` | Immutable digest-pinned image for Docker reproduction | no default |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Reviewed local SIF or digest-pinned image for Apptainer/Singularity | no default |
 | `ARI_SLURM_WALLTIME` | `--time` HH:MM:SS for the SLURM Phase 1 sandbox (v0.7.0, restored). Falls back to a value derived from the rubric's `max_runtime_sec`. | (auto) |
 | `ARI_PUBLISH_DRYRUN` | Force `ari ear publish --dry-run` (CI safety, v0.7.0) | (off) |
 | `ARI_REGISTRY_DATA` | sqlite + artifact storage root for `ari registry serve` | (none — must be set explicitly; the pre-v0.5 `$HOME/.ari/registry-data` fallback emits a `DeprecationWarning` and is removed in v1.0) |
@@ -564,8 +560,8 @@ claim_gate_policy:
 | Mode | Behaviour |
 |---|---|
 | `off` | Never blocks. |
-| `warn` (default) | Reports errors/warnings but never blocks `finalize_paper`. |
-| `strict` | The **final** gate blocks (`finalize_paper` is skipped) when a `block_on` error exists, and uncovered result numbers in the strict sections become blocking. The draft gate never blocks. |
+| `warn` (default) | The **final** gate blocks only objective-integrity findings from `always_block_on`; other findings remain report-only. |
+| `strict` | The **final** gate also blocks configured `block_on` findings, and uncovered result numbers in strict sections become blocking. The draft gate never blocks. |
 
 `comparison_scope` is the injected research intent (env
 `ARI_COMPARISON_SCOPE` overrides it):

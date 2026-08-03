@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ファイルフォーマットリファレンス
@@ -47,24 +47,25 @@ JSON Schema として正式に仕様が定められているスキーマにつ�
 `ari-skill-idea.generate_ideas` の出力。`{checkpoint}/idea.json` に配置され、
 BFTS 実行のプランのシードとなります。
 
-トップレベルの形式:
+新規runはdigest拘束された形式を使います（旧scalar fieldはcheckpoint
+support window中のみread-only projectionとして残ります）。
 
 ```json
 {
-  "ideas": [
-    {
-      "title": "...",
-      "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
-      "_pinned": false
-    }
-  ]
+  "typed_schema_version": "ari.research-contract/v1",
+  "survey_snapshot_digest": "sha256:...",
+  "idea_set_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",
+  "contract_status": "admitted",
+  "survey_snapshot": {"schema_version": "ari.survey-snapshot/v1"},
+  "idea_set": {"schema_version": "ari.idea-set/v1"},
+  "research_contract": {"schema_version": "ari.research-contract/v1"}
 }
 ```
 
-子は継承したエントリの `"_pinned": true` を設定して親の選択アイデアを固定します。
-後続の `generate_ideas` 実行は上書きせずに新しいアイデアをその後に追加します。
+3つのrecordはcanonical SHA-256 digestを自己検証します。不正、重複、引用なし、
+反証不能、unit不明、存在しないartifact参照のcandidateは`idea_set.rejections`に入り、
+research contractをmintできません。詳細は[研究契約](research_contracts.md)を参照してください。
 
 ## `evaluation_criteria.json`
 
@@ -279,19 +280,25 @@ claim/evidence ハードゲートのレポート（`phase` ごとに 1 つ: `dra
 
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
+  "source_run_id": "run-id",
   "phase": "final",
-  "policy": "strict" | "warn",
+  "policy_mode": "strict" | "warn" | "off",
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
   "status": "...",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "formula_provenance": {"registry_digest": "sha256:...", "formulas_used": ["identity"]},
+  "blocking_findings": [...],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
-MCP ラッパーは `should_block`（strict ポリシー下の `phase: final` 時、または
-客観的虚偽の検出時にのみ設定される）をパイプラインのハード失敗に変換し、
+MCP ラッパーは `should_block`（`phase: final` のみ。`off` は常に非ブロッキング）を
+パイプラインのハード失敗に変換し、
 finalize がスキップされます。ソース:
 `ari-core/ari/pipeline/claim_gate/gate.py`。
 
@@ -301,7 +308,7 @@ finalize がスキップされます。ソース:
 非ブロッキングのエビデンス裏付けセマンティックレビュー。ハードゲートの
 エビデンスに基づいて過剰主張 / 解釈の問題を検出し、`paper_refine` 向けの
 `suggested_revisions` を出力します。パイプラインをブロックすることはなく、
-エラー時には空の（`status: "ok"`）レビューを返します。refine 後のパスは
+model・timeout・parseエラー時には型付き`status: "unavailable"`を返します。refine 後のパスは
 これと並んで `evidence_grounded_semantic_review_post_refine.json` のバリアント
 を書き込みます。
 
@@ -357,42 +364,53 @@ stages:
 バンドル済みデフォルトは `ari-core/ari/configs/workflow.default.yaml` に
 あります。
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+## メモリ record と portable backup
 
 `ARI_CHECKPOINT_DIR` 配下に書き込まれるメモリバックエンドの成果物:
 
 | ファイル | バックエンド | 備考 |
 |---|---|---|
-| `memory_store.jsonl` | `file` | レガシー v0.5 形式、行区切り JSON エントリ |
-| `memory_backup.jsonl.gz` | `letta` | ポータブルなスナップショット（ステージ境界 + 終了時に自動生成） |
+| `memory_store.jsonl` | `file` | 明示的 offline migration だけが読む legacy v0.5 input |
+| `memory_events.jsonl` | any | content-addressed record の append-only event ledger |
+| `memory_backup.v1.json.gz` | `letta` | root/entry digest 付き canonical gzip JSON |
 | `memory_access.jsonl` | any | 書き込み / 読み込みの追記専用テレメトリ |
 
-スナップショットレコードの形式:
+backup 文書の形式（record は `MemoryRecordV1`）:
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
-  "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "schema_version": "ari.memory-backup/v1",
+  "records": [{"schema_version": "ari.memory-record/v1", "record_digest": "sha256:..."}],
+  "react_entries": [{"content": "...", "entry_digest": "sha256:..."}],
+  "core_context": {},
+  "record_digests": ["sha256:..."],
+  "record_order": ["sha256:..."],
+  "backup_digest": "sha256:..."
 }
 ```
 
-## EAR バンドル (v0.7.0)
+restore は書込み前に文書全体を検証します。詳細は
+[研究メモリ契約](memory_contract.md) を参照してください。
+
+## ScienceDataV1 と EAR manifest v2
+
+新しいrunはraw measurement、deterministic derivation、model interpretationを
+`ari.science-data/v1`で分離します。詳細は
+[Science data と EAR の完全性](science_data_contract.md) を参照してください。
 
 `{checkpoint}/ear/` が候補セット、`{checkpoint}/ear_published/` がバックエンドに
 公開するキュレート済みサブセットです。信頼のアンカーは以下の構造です:
 
 ```
 ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
+├── manifest.lock         # v2: content、role、policy、lock、evidence digest
 ├── publish_record.json   # backend, ref, sha256, visibility
 └── ...                   # curated artefacts
 ```
 
-`manifest.lock` スキーマ: `ari-core/ari/schemas/publish.schema.json`。
+manifest v2はSkill/catalog lock、cassette、ResultEnvelope artifact、admission
+recordも束縛します。v1はread-only互換です。publication policy schemaは
+`ari-core/ari/schemas/publish.schema.json`です。
 `bundle_sha256` は公開された論文に焼き込まれた `\codedigest{...}` マクロと
 一致しなければなりません。
 

@@ -16,7 +16,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 内部边界
@@ -43,12 +43,12 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 
 | 模块 | 负责 |
 |--------|------|
-| `ari/container.py` | 容器执行：`detect_runtime`、`build_run_cmd`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` 新建进程组 ＋ 经由 `ARI_MAX_CHILD_PROCS` 的可选 `RLIMIT_NPROC`）、`_run_with_timeout`（对进程组 SIGTERM→SIGKILL）、`pull_image`、`exec_in_container`。由 `ari.public.container` 重导出。 |
+| `ari/execution.py` ＋ `ari/container.py` | `ari.execution` 负责封闭 workspace、最小环境、POSIX 限制、进程组 timeout/cancel 与完整日志 artifact。`ari.container` 构建 clean、fail-closed 的 runtime argv，其 blocking 兼容路径委托给公共 executor。由 `ari.public.execution` / `ari.public.container` 重导出。 |
 | `ari/env_detect.py` | 调度器 / 运行时探测（`sinfo`、`qstat`、`docker info`、`lscpu`）—— 只读、尽力而为、不含硬编码的集群知识。 |
 | `ari/mcp/client.py` | 经由 MCP SDK 的 `stdio_client`（一个封装，而非裸 spawn）派生技能的 stdio 服务器。 |
-| `ari-skill-hpc/src/slurm.py` | 规范的 SLURM submit/status/cancel（`SlurmClient`：`_run_local` 为 asyncio 子进程，`_run_remote` 为 paramiko），含 `ARI_SBATCH_EXPORT_MODE` 的净环境逻辑。 |
+| `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | 带版本的 HPC job 契约、无 shell 的本地 SLURM、严格 known-host SSH、持久幂等、`--export=NIL` 干净环境及 digest 绑定的结果收集。 |
 
-应向这些归属者整合的已知重复（并非错误行为，但有漂移风险）：`viz/api_memory.py` 重新推导了容器运行时分派；`ari-skill-paper-re/src/server.py` 重新实现了 `sbatch`/`apptainer exec`，且已经偏离了 `slurm.py`（它硬编码了 `--export ALL`）；其本地回退缺少 `setsid`/`killpg`，因此一次挂起的复现可能产生孤儿进程。
+仍需整合的重复包括 `viz/api_memory.py` 的容器runtime dispatch，以及 paper-re 的 local/Docker/Apptainer fallback。paper-re 的 SLURM 路径现已使用 `JobRequestV1` 与共享 submit/status/log/cancel 生命周期，不再直接调用 `sbatch`，也不导出父环境。
 
 **`ari.viz.state` 的进程句柄耦合。** `ari/viz/state.py` 将活动的操作系统句柄作为模块全局变量（以 `_st` 导入）持有：`_last_proc`（最近一次实验的 Popen；由 `api_process._api_stop` 通过 `os.killpg(os.getpgid(pid))` 拆除）、`_running_procs`（checkpoint-path→Popen 映射，由两条启动路径写入），以及 `_gpu_monitor_proc`（其逻辑位于 `api_process.py`；服务器会跨重启回收一个陈旧的监视器）。这是"避免通过全局可变状态产生隐藏耦合"这一告诫的典范例子 —— 只在有意为之时才触碰它的生命周期。
 
@@ -66,5 +66,5 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 ### 并发隐患（此处的任何改动都需保持）
 
 1. **fork 时刻的环境变量时序。** MCP 服务器在 spawn 时对 `os.environ` 拍快照。`ARI_WORK_DIR` 和沙箱变量（`ARI_REAL_GIT`、`ARI_REPRO_*`、`PATH`）必须在 `MCPClient` spawn **之前**设置；推迟 MCP 构建或重排环境设置顺序会悄无声息地破坏沙箱化 / work-dir 钉定。
-2. **并行工作者下共享进程的全局环境竞态。** 至多 4 个 `AgentLoop` 线程共享同一个进程和同一个 `MCPClient`。内存的写时复制以进程全局的 `ARI_CURRENT_NODE_ID` 为键；唯一安全的写入路径是 `mcp.call_tool(name, args, cow_node_id=node_id)`（它在 `MCPClient._cow_lock` 下将 set-node＋write 这对操作串行化）。每次运行单一的 `_set_current_node` 在 `max_parallel_nodes > 1` 时是不安全的。
+2. **并行工作者下的上下文隔离。** 至多 4 个 `AgentLoop` 线程共享同一个进程和同一个 `MCPClient`。每次调用都必须携带为该 worker 构建的不可变 `ToolCallContextV1.for_node(...)`；不得在 client 或 provider 中缓存可变的“当前节点”。`MCPClient` 与 direct MCP proxy 会用绑定工具的签名 capability 覆盖仅供传输的 `ari_context` 参数。记忆 provider 会针对每次调用独立验证有序 lineage digest、self-write 规则与 ancestor-read 集合，因此不需要跨线程锁或全局节点环境变量。
 3. **对共享检查点树的写入。** **不存在 git worktree**：并发的提交者都经由同一个共享的 `agent._progress_cb` → `_save_tree_incremental` 写入同一份 `tree.json` / `nodes_tree.json` / `results.json`；线程安全 ＋ 限流位于 `ari.checkpoint.save_tree_incremental`（锁 ＋ mtime 限流）。每个节点的 work-dir 由 `PathManager.node_work_dir(run_id, node_id)` 隔离。

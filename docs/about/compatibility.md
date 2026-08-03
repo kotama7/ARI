@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/ari/memory/letta_client.py
     role: implementation
-last_verified: 2026-05-26
+last_verified: 2026-08-02
 ---
 
 # Compatibility & Support
@@ -41,7 +41,7 @@ Docker → Singularity/Apptainer → pip (skip with `SKIP_LETTA_SETUP=1`).
 The live behaviour is verified against **Letta 0.16.7** (see the implementation
 note in [Memory architecture](../concepts/memory.md)). Check a running backend
 with `ari memory health`. Each checkpoint also carries a
-`memory_backup.jsonl.gz` snapshot, so a run stays portable even across Letta
+`memory_backup.v1.json.gz` snapshot, so a run stays portable even across Letta
 versions.
 
 ## LLM backends

@@ -1,0 +1,42 @@
+{
+  "schema_version": "ari.paperbench-patch-inventory/v1",
+  "upstream": {
+    "repository": "https://github.com/openai/preparedness.git",
+    "commit": "51052cede8cc608f95bb00346635e03759013e5a"
+  },
+  "override_policy": "exact-commit-only",
+  "patches": [
+    {
+      "id": "PB-P01",
+      "kind": "runtime-symbol-wrapper",
+      "targets": [
+        "preparedness_turn_completer.oai_responses_turn_completer.converters.convert_conversation_to_response_input",
+        "preparedness_turn_completer.oai_responses_turn_completer.completer.convert_conversation_to_response_input"
+      ],
+      "adapter": "_paperbench_bridge._install_orphan_filter_patch",
+      "reason": "Filter incomplete tool-call turns after a tool execution failure.",
+      "deletion_gate": "Pinned upstream converter rejects or repairs orphan tool calls and its conformance fixture passes without the wrapper."
+    },
+    {
+      "id": "PB-P02",
+      "kind": "runtime-symbol-wrapper",
+      "targets": [
+        "paperbench.solvers.basicagent.utils.get_instructions"
+      ],
+      "adapter": "_paperbench_bridge._install_instruction_rewrites",
+      "reason": "Replace Docker/root assumptions with observed substrate facts and apply ARI's declared code-access policy.",
+      "deletion_gate": "Upstream exposes environment and code-access policy inputs without prompt string rewriting."
+    },
+    {
+      "id": "PB-P03",
+      "kind": "scoped-symbol-substitution",
+      "targets": [
+        "paperbench.judge.simple.TASK_CATEGORY_QUESTIONS",
+        "paperbench.rubric.tasks.TASK_CATEGORY_QUESTIONS"
+      ],
+      "adapter": "_paperbench_bridge._patch_task_category_questions",
+      "reason": "Paper-audit mode evaluates paper self-description rather than a submission while retaining upstream aggregation.",
+      "deletion_gate": "Upstream SimpleJudge accepts task-category questions as an explicit constructor argument."
+    }
+  ]
+}

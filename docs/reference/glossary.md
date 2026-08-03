@@ -24,7 +24,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Glossary
@@ -114,9 +114,10 @@ compare against, what ablations to run. Sourced from
 
 **venue**
 The *judgement criteria* of a run — which dimensions are scored and how. A venue
-is a `ari-core/config/reviewer_rubrics/<id>.yaml` file selected by `ARI_RUBRIC`.
-Switching the venue changes the BFTS scoring axes and the published review's
-criteria together. See
+is a `ari-core/config/reviewer_rubrics/<id>.yaml` file. The BFTS evaluator may
+select its dynamic axes through `ARI_RUBRIC`; paper authoring/review receives an
+explicit, checkpointed `paper_rubric`/`rubric_id` and never falls back to that
+environment variable. See
 [Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
 
 **rubric**
@@ -137,9 +138,9 @@ unused alternative remains. See
 **claim-evidence gate**
 A deterministic, no-LLM gate (`claim_evidence_hard_gate`) that re-derives each
 reported paper number from recorded results within tolerance and checks numeric
-coverage / operand resolution / figure existence. Default-on in `warn`
-(report-only) mode; set `claim_gate_policy.mode: strict` (or
-`ARI_CLAIM_GATE_MODE=strict`) to block finalize on blocking errors. A
+coverage / operand resolution / figure existence. Default-on in `warn` mode,
+which blocks only final objective-integrity findings; `strict` also blocks
+configured final findings, while `off` never blocks. A
 `comparison_scope` of `any` (default) treats a cross-environment comparison as a
 transparency warning, while `same_environment` makes it a blocking error. See
 [Configuration](configuration.md).
@@ -162,8 +163,9 @@ never from siblings. Enforced by a metadata filter on `search_memory`. See
 
 **CoW (Copy-on-Write)**
 The write guard that keeps ancestor memory byte-stable across siblings:
-write-side tools reject any `node_id` that is not the active
-`$ARI_CURRENT_NODE_ID`. See [Memory architecture](../concepts/memory.md).
+write-side tools require a signed `NodeContextV1` whose self node equals the
+target. The same context binds the ordered ancestor list to a lineage digest.
+See [Memory architecture](../concepts/memory.md).
 
 **Letta**
 The memory backend (formerly MemGPT) used since v0.6.0. Each checkpoint gets a
@@ -222,9 +224,8 @@ they come from `.env` or the environment. Holds `experiment.md`, `meta.json`,
 `launch_config.json`, `tree.json` / `nodes_tree.json` (the serialized node
 tree), `results.json`, `idea.json`, `cost_trace.jsonl` / `cost_summary.json`,
 `settings.json`, `memory.json`, `ari.log`, `.ari_pid`, and `uploads/`. See
-[Architecture → File Structure](../concepts/architecture.md#file-structure) and
-[`refactoring/notes/07_checkpoint_model.md`](../../refactoring/notes/07_checkpoint_model.md)
-for the full layout + the read-path resolvers.
+[Architecture → File Structure](../concepts/architecture.md#file-structure)
+for the full layout and read-path resolvers.
 
 **node work_dir**
 Where a node's files physically live: `{workspace}/experiments/{run_id}/{node_id}/`

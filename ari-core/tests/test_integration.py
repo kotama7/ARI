@@ -3,13 +3,9 @@ Integration tests v2 — comprehensive interface and variable-expansion coverage
 Covers the full pipeline data flow without spawning real LLM calls.
 """
 import ast
-import json
-import os
+import builtins
 import re
-import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -68,20 +64,35 @@ def _has_toplevel_name(src: str, name: str) -> bool:
 def _calls_undefined(src: str, func_name: str) -> list[str]:
     """Find names called inside func_name that are not defined anywhere in the module."""
     tree = _parse(src)
-    # collect all defined names at module level
-    defined = set()
-    for node in ast.iter_child_nodes(tree):
+
+    def _bind(target: ast.expr, names: set[str]) -> None:
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+        elif isinstance(target, (ast.Tuple, ast.List)):
+            for item in target.elts:
+                _bind(item, names)
+
+    def _collect_module_names(node: ast.AST, names: set[str]) -> None:
+        """Collect bindings in module-level control flow without entering callables."""
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+            return
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            for a in node.names:
-                defined.add(a.asname or a.name.split(".")[0])
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            defined.add(node.name)
-        elif isinstance(node, ast.Assign):
-            for t in node.targets:
-                if isinstance(t, ast.Name):
-                    defined.add(t.id)
-        elif isinstance(node, ast.ClassDef):
-            defined.add(node.name)
+            for alias in node.names:
+                names.add(alias.asname or alias.name.split(".")[0])
+            return
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                _bind(target, names)
+        elif isinstance(node, ast.AnnAssign):
+            _bind(node.target, names)
+        for child in ast.iter_child_nodes(node):
+            _collect_module_names(child, names)
+
+    # collect all defined names at module level
+    defined: set[str] = set()
+    for statement in tree.body:
+        _collect_module_names(statement, defined)
     # find calls inside the specific function
     undefined = []
     for node in ast.walk(tree):
@@ -94,8 +105,9 @@ def _calls_undefined(src: str, func_name: str) -> list[str]:
                         local_defs.add(a.asname or a.name.split(".")[0])
                 elif isinstance(child, ast.Assign):
                     for t in child.targets:
-                        if isinstance(t, ast.Name):
-                            local_defs.add(t.id)
+                        _bind(t, local_defs)
+                elif isinstance(child, ast.AnnAssign):
+                    _bind(child.target, local_defs)
                 elif isinstance(child, ast.arg):
                     local_defs.add(child.arg)
                 elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -106,7 +118,7 @@ def _calls_undefined(src: str, func_name: str) -> list[str]:
                 if isinstance(child, ast.Call):
                     if isinstance(child.func, ast.Name):
                         n = child.func.id
-                        if n not in defined and n not in local_defs and n not in dir(__builtins__):
+                        if n not in defined and n not in local_defs and n not in dir(builtins):
                             undefined.append(n)
     return list(set(undefined))
 
@@ -213,6 +225,10 @@ def test_template_variables_all_resolve():
         # vlm_feedback is empty on the first pass; pipeline.py sets it to
         # "" via setdefault so {{vlm_feedback}} resolves to an empty string.
         "vlm_feedback": "",
+        "plot_revision": "0",
+        "previous_figure_batch": "",
+        "paper_rubric": wf.get("paper_rubric", "generic_conference"),
+        "paper_venue": wf.get("paper_venue", "arxiv"),
         # Surfaced from evaluation_criteria.json by run_pipeline. Empty
         # primary_metric is the legacy path: transform_data falls back to
         # omitting the scalar best rather than fabricating one.
@@ -273,8 +289,10 @@ def test_pipeline_has_paper_context_tpl_var():
 
 
 def test_mcp_client_resolves_ari_root():
-    src = (ARI_ROOT / "ari-core/ari/mcp/client.py").read_text()
-    assert "ARI_ROOT" in src, "mcp/client.py must resolve {{ari_root}} in skill paths"
+    src = (ARI_ROOT / "ari-core/ari/mcp/connection.py").read_text()
+    assert "ARI_ROOT" in src, (
+        "mcp/connection.py must resolve {{ari_root}} in skill paths"
+    )
     assert "ari_root" in src.lower() or "ARI_ROOT" in src, \
         "mcp/client.py must handle {{ari_root}} template in skill path"
 
@@ -313,10 +331,14 @@ def test_paper_write_paper_calls_only_defined_functions():
     assert not real_undef, f"write_paper_iterative calls undefined: {real_undef}"
 
 
-def test_paper_forbidden_notice_reproducibility_principle():
+def test_paper_authoring_uses_reproducible_evidence_record():
     src = _load("paper")
-    assert "reproducible" in src.lower() or "reproduction" in src.lower(), \
-        "_FORBIDDEN_NOTICE should mention reproducibility principle"
+    assert "load_authoring_inputs" in src, (
+        "paper authoring must load and validate the native evidence bundle"
+    )
+    assert "AuthoringRecorder" in src, (
+        "paper authoring must record prompt, response, and artifact provenance"
+    )
 
 
 # ─── paper-re skill ──────────────────────────────────────────────────────────
@@ -330,16 +352,16 @@ def test_paperre_no_hardcoded_cluster():
                 arg_name = node.args.args[arg_idx].arg
                 if isinstance(default, ast.Constant) and arg_name == "slurm_partition":
                     assert default.value is not None, \
-                        f"slurm_partition default must not be None"
+                        "slurm_partition default must not be None"
 
 
 # ─── plot-skill ──────────────────────────────────────────────────────────────
 
-def test_plot_strips_output_dir_override():
+def test_plot_llm_uses_fixed_declarative_renderer():
     src = _load("plot")
-    assert "startswith(\"output_dir\")" in src or "removed by preamble" in src or \
-           "_SAFE_OUTPUT_DIR" in src or "output_dir" in src and "removed" in src, \
-        "plot-skill must strip output_dir reassignment from LLM code"
-
-
-
+    assert "plan_specs(" in src and "render_spec(" in src, (
+        "plot-skill must restrict the model to a declarative plan and fixed renderer"
+    )
+    assert "exec(" not in src and "eval(" not in src, (
+        "plot-skill must never execute model-generated Python"
+    )

@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+last_verified: 2026-08-02
 ---
 
 # 環境変数リファレンス
@@ -40,7 +40,10 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_LLM_MODEL` | デフォルト LiteLLM モデル ID | (なし) |
 | `ARI_LLM_API_BASE` | LiteLLM API ベース上書き | LiteLLM デフォルト |
 | `ARI_MODEL` | スキル横断フォールバックモデル ID | (`ARI_LLM_MODEL` にフォールスルー) |
-| `ARI_MODEL_EVAL` | LLM 評価器のモデル | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_EVAL` | core BFTS評価器のモデル（旧共有alias。`ari-skill-evaluator`は不使用） | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_METRIC_PROPOSAL` | 明示的metric proposalのモデル | `ARI_LLM_MODEL`にフォールスルー |
+| `ARI_MODEL_SEMANTIC_REVIEW` | semantic advisoryのモデル | `ARI_LLM_MODEL`にフォールスルー |
+| `ARI_SEMANTIC_REVIEW_MODEL_REVISION` | 記録するsemantic model revision | (なし) |
 | `ARI_MODEL_JUDGE` | BFTS ジャッジのモデル | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_LINEAGE` | 停滞 / lineage 決定のモデル (v0.7.0) | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_ROOT_SELECT` | シードアイデアを選ぶモデル | `ARI_MODEL` にフォールスルー |
@@ -103,10 +106,9 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | 変数 | 用途 |
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta`（デフォルト）または `in_memory`（Letta 不要；ローカルスモークテスト用の一時 RAM バックエンド） |
-| `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.jsonl.gz` から自動復元 |
+| `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.v1.json.gz` を検証して復元 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` へのパス |
 | `ARI_MEMORY_CONSOLIDATE` | 型付きメモリの統合 + 論文クレーム向けのアーティファクト裏付け済み `verified_context.json`。**デフォルト有効**；`0`/`false`/`no`/`off` で無効化 |
-| `ARI_CURRENT_NODE_ID` | エージェントループが設定；スキルは読み取るのみで設定しない |
 | `ARI_LETTA_VENV` | バンドル済み Letta サーバの仮想環境パス |
 
 ### 査読ルーブリック + 論文査読
@@ -124,7 +126,7 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_CLAIM_GATE_MODE` | クレーム–エビデンス / 指標正当性ゲートの評価スイッチ。`off` は決してブロックしない；`warn` はエラー / 警告を報告するが finalize をブロックしない；`strict` はブロッキングエラーがある場合に最終ゲートをブロック | `warn`（`off` / `warn` / `strict`） |
+| `ARI_CLAIM_GATE_MODE` | claim/evidence gate。`off`は非ブロッキング、`warn`はfinalの客観的integrity findingのみ、`strict`は設定済みfinal findingもブロック | `warn`（`off` / `warn` / `strict`） |
 | `ARI_COMPARISON_SCOPE` | クロス環境比較を透明性警告として扱うか（`any`）、ブロッキングエラーとして扱うか（`same_environment`、単一アーキテクチャ最適化研究向け）を制御 | `any`（`any` / `same_environment`） |
 
 ### ルーブリック自動生成 (v0.7.0)
@@ -133,14 +135,13 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` の目標葉数 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature 上書き |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 二段階スケルトン + サブツリー合成を使用 |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | venue 条件付き PaperBench ルーブリックテンプレートの検索ルート上書き（未リリース — `docs/reference/rubric_schema.md#venue-conditioned-templates` 参照） |
 
 ### PaperBench 再現性 (v0.7.0)
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | バンドル済み `vendor/paperbench/` パスの上書き | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` + `ARI_PAPERBENCH_COMMIT` | review済みPaperBench sourceのexact-commit-only override | vendored commit |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | `run_reproduce` のウォールタイム上限 | `43200`（12 時間） |
 | `ARI_REPLICATOR_ITERATIVE` | 反復型レプリケータエージェントを使用 | – |
 | `ARI_REPLICATOR_MAX_STEPS` | 反復型が有効なときの反復上限 | – |
@@ -149,11 +150,13 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP サーバポート | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | ログディレクトリ | `$ARI_WORKSPACE/orchestrator_logs` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` / `ARI_ORCHESTRATOR_HTTP_PORT` | MCP Streamable HTTP のbind先 | `127.0.0.1` / `9890` |
+| `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` | network transportで必須のmode-0600 token digest file | – |
+| `ARI_ORCHESTRATOR_LOGS` | checkpointとdurable registryのroot | `$ARI_WORKSPACE/logs` |
 | `ARI_ORCHESTRATOR_DRY_RUN` | 実際の `ari run` をスキップ（スモークテスト用） | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | ワンショット SSE レスポンスモード | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE タイムアウト（秒） | – |
+| `ARI_ORCHESTRATOR_MAX_ACTIVE_RUNS` | deployment全体のactive run上限 | `16` |
+| `ARI_ORCHESTRATOR_MAX_TOTAL_NODES` | lineage当たりのnode上限 | `10000` |
+| `ARI_ORCHESTRATOR_MAX_COST_USD` | lineage当たりのcost上限 | `10000` |
 
 ### Transform スキル
 
@@ -193,18 +196,17 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_SLURM_GPUS` | デフォルト `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | デフォルトメモリリクエスト |
 | `ARI_SLURM_WALLTIME` | デフォルト `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ クラスタに GPU 用 GRES が設定されていない場合、`--gres` / `--gpus-*` フラグを黙って削除（レガシー v0.7.2 の動作）。デフォルト（未設定）⇒ GPU リクエストが黙って CPU で実行されないよう、対処可能なメッセージ付きで `RuntimeError` を発生。 |
+| `ARI_SCHEDULER_PATH` | shellを介さないscheduler control command用の固定検索path。親`PATH`は継承しない。 |
 
 ### PaperBench 再現フェーズ（Stage 2）
 
 | 変数 | 用途 |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。`server.run_reproduce` および `bridge.reproduce_submission` が使用するサンドボックスランナーを強制。 |
-| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` で明示的な `container_image` が指定されていない場合のデフォルト docker イメージ。デフォルトは `ubuntu:24.04`。 |
-| `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` で明示的な `container_image` が指定されていない場合のデフォルト SIF / docker URI。 |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | `ARI_PHASE1_APPTAINER_IMAGE` のレガシーエイリアス。 |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ 要求されたサンドボックスツール（docker デーモン / apptainer / sbatch / パーティション）が欠落している場合、警告のみでホストローカル実行にフォールバック（レガシー v0.7.2 の動作）。デフォルト（未設定）⇒ ユーザの隔離意図が黙って迂回されないよう `RuntimeError` を発生。 |
-| `ARI_PAPERBENCH_PATH` | vendor 化された PaperBench ソースツリーのパス上書き（デフォルト: `ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
+| `ARI_PHASE1_DOCKER_IMAGE` | 明示的な `container_image` がない場合の Docker image。完全な `sha256:<image-id>` または `name@sha256:<digest>` が必須で、mutable default は使用しない。 |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity 用の非 symlink ローカル SIF または digest 固定 remote URI。 |
+| `ARI_PAPERBENCH_PATH` | PaperBench project の任意 override。review済みGit identityと`ARI_PAPERBENCH_COMMIT`が完全一致しないsourceは拒否する。 |
+| `ARI_PAPERBENCH_COMMIT` | override時に必須のcommit claim。現在は`51052cede8cc608f95bb00346635e03759013e5a`。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 呼び出し元が `0` を渡したときのデフォルト Stage 1 エージェントロールアウト時間予算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 ロールアウトのデフォルトを IterativeAgent バリアントに変更。 |
 | `ARI_REPLICATOR_MAX_STEPS` | デフォルト Stage 1 ステップ上限。 |

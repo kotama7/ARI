@@ -313,7 +313,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ### 检索后端
 
-- 选择论文搜索后端：Semantic Scholar（默认）、AlphaXiv 或 both（并行）
+- 选择一个固定论文provider：Semantic Scholar（默认）、arXiv 或 AlphaXiv
 
 ### 按阶段模型覆盖
 

@@ -1,354 +1,374 @@
-"""ari-skill-vlm: MCP Server for VLM-based figure and table review."""
+"""Artifact-bound, criteria-versioned visual review MCP server."""
 
 from __future__ import annotations
 
-import base64
-import os
-from pathlib import Path
+import asyncio
+import hashlib
+import io
+from typing import Any
 
-import litellm
 from mcp.server.fastmcp import FastMCP
+from PIL import Image, UnidentifiedImageError
+from pydantic import BaseModel, ConfigDict, Field
+
+from ari.public.execution import WorkspaceRefV1
+from ari.public.visual_review import (
+    VisualArtifactRefV1,
+    VisualReviewBatchV1,
+    VisualReviewV1,
+)
+from artifacts import (
+    MAX_IMAGE_BYTES,
+    MAX_IMAGE_DIMENSION,
+    MAX_IMAGE_PIXELS,
+    VisualTargetError,
+    load_figure_batch,
+    manifest_visual_artifact,
+    resolve_figure_target,
+)
+from criteria import get_profile
+from review import failure_review, review_target
+
 
 mcp = FastMCP("vlm-review-skill")
 
 try:
-    try:
-        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
-    except ImportError:
-        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    from ari.public import cost_tracker as _ari_cost_tracker
+
     _ari_cost_tracker.bootstrap_skill("vlm")
 except Exception:
     pass
 
-DEFAULT_MODEL = os.environ.get("VLM_MODEL", "openai/gpt-4o")
 
+class ReviewBudgetV1(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
-def _encode_image(image_path: str) -> str:
-    """Read an image file and return a base64-encoded data URI."""
-    path = Path(image_path)
-    suffix = path.suffix.lower()
-    mime_map = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".bmp": "image/bmp",
-    }
-    mime = mime_map.get(suffix, "image/png")
-    data = base64.b64encode(path.read_bytes()).decode()
-    return f"data:{mime};base64,{data}"
-
-
-def _prefer_raster_sibling(path: Path) -> Path | None:
-    """Return a readable raster sibling of ``path`` (VLMs cannot read PDF)."""
-    for ext in (".png", ".jpg", ".jpeg", ".webp"):
-        candidate = path.with_suffix(ext)
-        if candidate.exists():
-            return candidate
-    if path.exists() and path.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp"):
-        return path
-    return None
-
-
-def _resolve_figure_path(image_path: str) -> Path:
-    """Resolve a figure path with a manifest fallback.
-
-    The pipeline hard-codes ``image_path`` as ``{ckpt}/fig_1.png`` but the
-    LLM that generates figures is free to pick any name (e.g. ``fig_3``).
-    When the literal path is missing, look for ``figures_manifest.json``
-    in the same directory and substitute the first figure listed there,
-    preferring a ``.png`` sibling when the manifest only points at a PDF.
-    """
-    p = Path(image_path)
-    if p.exists():
-        return p
-
-    manifest = p.parent / "figures_manifest.json"
-    if not manifest.exists():
-        raise FileNotFoundError(image_path)
-
-    import json as _json
-    try:
-        figs = (_json.loads(manifest.read_text()) or {}).get("figures") or {}
-    except Exception as e:
-        raise FileNotFoundError(
-            f"{image_path} (and figures_manifest.json unparseable: {e})"
-        ) from None
-    if not figs:
-        raise FileNotFoundError(
-            f"{image_path} (figures_manifest.json has no figures)"
-        )
-
-    first_path = Path(next(iter(figs.values())))
-    raster = _prefer_raster_sibling(first_path)
-    if raster is not None:
-        return raster
-    if first_path.exists():
-        return first_path
-    raise FileNotFoundError(
-        f"{image_path} (manifest pointed at {first_path}, no readable image found)"
+    max_figures: int = Field(default=20, ge=1, le=100)
+    max_total_bytes: int = Field(
+        default=100 * 1024 * 1024,
+        ge=1,
+        le=512 * 1024 * 1024,
     )
+    max_concurrency: int = Field(default=2, ge=1, le=4)
+    max_model_calls: int = Field(default=20, ge=1, le=100)
+    max_output_tokens: int = Field(default=2_048, ge=128, le=8_192)
 
 
-def _build_figure_prompt(context: str, criteria: list[str]) -> str:
-    criteria_text = ", ".join(criteria) if criteria else "clarity, accuracy, completeness"
+def _target_description(manifest) -> str:
+    spec = manifest.spec
     return (
-        "You are an expert scientific figure reviewer.\n"
-        f"Context: {context}\n\n"
-        f"Evaluate this figure on the following criteria: {criteria_text}.\n"
-        "Respond in JSON with exactly these keys:\n"
-        '- "score": a float between 0.0 and 1.0\n'
-        '- "issues": a list of strings describing problems found\n'
-        '- "suggestions": a list of strings with improvement suggestions\n'
-        '- "review_text": a concise overall review paragraph\n'
-        "Return ONLY valid JSON, no markdown fences."
+        f"chart_type={spec.chart_type}; title={spec.title}; caption={spec.caption}; "
+        f"x={spec.x_axis.label}[{spec.x_axis.unit}]; "
+        f"y={spec.y_axis.label}[{spec.y_axis.unit}]; "
+        f"source_data_digest={spec.source.data_digest}"
     )
 
 
-def _build_table_prompt(context: str, is_latex: bool) -> str:
-    source_type = "LaTeX source code" if is_latex else "image"
-    return (
-        f"You are an expert scientific table reviewer. The table is provided as {source_type}.\n"
-        f"Context: {context}\n\n"
-        "Evaluate the table for correctness, formatting, readability, and completeness.\n"
-        "Respond in JSON with exactly these keys:\n"
-        '- "score": a float between 0.0 and 1.0\n'
-        '- "issues": a list of strings describing problems found\n'
-        '- "suggestions": a list of strings with improvement suggestions\n'
-        "Return ONLY valid JSON, no markdown fences."
-    )
-
-
-def _is_file_path(value: str) -> bool:
-    """Heuristic: treat as file path if it looks like one and exists."""
-    return Path(value).is_file()
-
-
-def _is_latex(value: str) -> bool:
-    """Heuristic: treat as LaTeX if it contains common LaTeX table commands."""
-    latex_markers = ["\\begin{", "\\tabular", "\\hline", "\\toprule", "\\midrule"]
-    return any(m in value for m in latex_markers)
-
-
-async def _call_vlm(messages: list[dict], model: str | None = None) -> str:
-    """Call a VLM via litellm and return the text response."""
-    model = model or DEFAULT_MODEL
-    response = await litellm.acompletion(model=model, messages=messages)
-    return response.choices[0].message.content
-
-
-def _parse_json_response(text: str) -> dict:
-    """Parse a JSON response from the VLM, stripping markdown fences if present."""
-    import json
-
-    cleaned = text.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.split("\n")
-        lines = lines[1:]
-        if lines and lines[-1].strip() == "```":
-            lines = lines[:-1]
-        cleaned = "\n".join(lines)
-    return json.loads(cleaned)
-
-
-async def _review_one_figure(
-    resolved_path: Path,
+def _artifact_failure(
+    *,
+    manifest,
+    artifact: VisualArtifactRefV1,
     context: str,
-    criteria: list[str],
-) -> dict:
-    """Run the VLM review on a single resolved image path."""
-    data_uri = _encode_image(str(resolved_path))
-    prompt = _build_figure_prompt(context, criteria)
-
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": data_uri}},
-            ],
-        }
-    ]
-
-    raw = await _call_vlm(messages)
-    result = _parse_json_response(raw)
-
-    return {
-        "score": float(result.get("score", 0.0)),
-        "issues": list(result.get("issues", [])),
-        "suggestions": list(result.get("suggestions", [])),
-        "review_text": str(result.get("review_text", "")),
-    }
+    profile,
+    status: str,
+    kind: str,
+    message: str,
+) -> VisualReviewV1:
+    return failure_review(
+        target_kind="figure",
+        target_id=manifest.spec.figure_id,
+        figure_id=manifest.spec.figure_id,
+        source_manifest_digest=manifest.manifest_digest,
+        artifact=artifact,
+        context=context,
+        profile=profile,
+        iteration=manifest.spec.revision,
+        status=status,
+        error_kind=kind,
+        error_message=message,
+    )
 
 
-@mcp.tool(
-    name="review_figure",
-    description="Review a scientific figure using a Vision Language Model.",
-)
+async def _review_manifest(
+    *,
+    workspace,
+    batch,
+    manifest,
+    context: str,
+    profile,
+    max_output_tokens: int,
+) -> VisualReviewV1:
+    artifact = manifest_visual_artifact(manifest)
+    try:
+        target = resolve_figure_target(
+            workspace,
+            batch,
+            manifest.spec.figure_id,
+        )
+    except VisualTargetError as exc:
+        return _artifact_failure(
+            manifest=manifest,
+            artifact=exc.artifact,
+            context=context,
+            profile=profile,
+            status=("limit-error" if exc.kind.startswith("image-") else "artifact-error"),
+            kind=exc.kind,
+            message=str(exc),
+        )
+    return await review_target(
+        workspace=workspace,
+        target_kind="figure",
+        target_id=manifest.spec.figure_id,
+        figure_id=manifest.spec.figure_id,
+        source_manifest_digest=manifest.manifest_digest,
+        artifact=artifact,
+        payload=target.payload,
+        media_type=target.media_type,
+        context=context,
+        target_description=_target_description(manifest),
+        profile=profile,
+        iteration=manifest.spec.revision,
+        max_output_tokens=max_output_tokens,
+    )
+
+
+@mcp.tool()
 async def review_figure(
-    image_path: str,
+    figures_manifest_path: str,
+    figure_id: str,
     context: str = "",
-    criteria: list[str] | None = None,
-) -> dict:
-    """Review a figure image with VLM.
+    criteria_profile_id: str = "figure-publication/v1",
+    max_output_tokens: int = 2_048,
+) -> dict[str, Any]:
+    """Review one figure selected by ID from a verified FigureBatchV1."""
 
-    Args:
-        image_path: Path to the figure image file.
-        context: Description or paper context for the figure.
-        criteria: Evaluation criteria (default: clarity, accuracy, completeness).
-    """
-    if criteria is None:
-        criteria = ["clarity", "accuracy", "completeness"]
+    budget = ReviewBudgetV1(max_output_tokens=max_output_tokens)
+    workspace, batch = load_figure_batch(figures_manifest_path)
+    manifest = next(
+        (item for item in batch.manifests if item.spec.figure_id == figure_id),
+        None,
+    )
+    if manifest is None:
+        raise ValueError(f"figure batch has no figure_id {figure_id!r}")
+    profile = get_profile(criteria_profile_id, target_kind="figure")
+    result = await _review_manifest(
+        workspace=workspace,
+        batch=batch,
+        manifest=manifest,
+        context=context,
+        profile=profile,
+        max_output_tokens=budget.max_output_tokens,
+    )
+    return result.model_dump(mode="json")
 
-    resolved_path = _resolve_figure_path(image_path)
-    return await _review_one_figure(resolved_path, context, criteria)
 
-
-@mcp.tool(
-    name="review_figures_all",
-    description=(
-        "Review every figure listed in a figures_manifest.json with the VLM. "
-        "Returns an aggregate dict (score=min across figures, issues/suggestions "
-        "prefixed with [fig_id]) plus a per_figure breakdown. The aggregate "
-        "shape matches review_figure so the pipeline's loop_back machinery "
-        "can consume it unchanged."
-    ),
-)
+@mcp.tool()
 async def review_figures_all(
     figures_manifest_path: str,
     context: str = "",
-    criteria: list[str] | None = None,
-) -> dict:
-    """Review all figures in a manifest.
+    criteria_profile_id: str = "figure-publication/v1",
+    budget: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Review every figure, preserving individual failures and raw evidence."""
 
-    Args:
-        figures_manifest_path: Path to figures_manifest.json (the file written
-            by plot-skill.generate_figures_llm). Its ``figures`` mapping is
-            ``{fig_id: path}``; each path is resolved to a raster sibling
-            (PNG/JPG) before sending to the VLM.
-        context: Shared paper / experiment context for all figures.
-        criteria: Evaluation criteria (default: clarity, accuracy, completeness).
-    """
-    import json as _json
+    limits = ReviewBudgetV1.model_validate(budget or {})
+    workspace, batch = load_figure_batch(figures_manifest_path)
+    profile = get_profile(criteria_profile_id, target_kind="figure")
+    semaphore = asyncio.Semaphore(limits.max_concurrency)
+    cumulative_bytes = 0
+    model_calls = 0
+    tasks = []
 
-    if criteria is None:
-        criteria = ["clarity", "accuracy", "completeness"]
+    async def _bounded(manifest):
+        async with semaphore:
+            return await _review_manifest(
+                workspace=workspace,
+                batch=batch,
+                manifest=manifest,
+                context=context,
+                profile=profile,
+                max_output_tokens=limits.max_output_tokens,
+            )
 
-    manifest_path = Path(figures_manifest_path)
-    if not manifest_path.exists():
-        raise FileNotFoundError(figures_manifest_path)
-
-    try:
-        figs = (_json.loads(manifest_path.read_text()) or {}).get("figures") or {}
-    except Exception as e:
-        raise ValueError(
-            f"figures_manifest.json unparseable: {figures_manifest_path}: {e}"
-        ) from None
-    if not figs:
-        raise ValueError(
-            f"figures_manifest.json has no figures: {figures_manifest_path}"
-        )
-
-    per_figure: dict[str, dict] = {}
-    agg_issues: list[str] = []
-    agg_suggestions: list[str] = []
-    agg_review_chunks: list[str] = []
-
-    for fig_id, raw_path in figs.items():
-        target = Path(raw_path)
-        raster = _prefer_raster_sibling(target)
-        if raster is None and target.exists() and target.suffix.lower() in (
-            ".png", ".jpg", ".jpeg", ".webp",
-        ):
-            raster = target
-
-        if raster is None:
-            note = f"manifest path missing or not rasterizable: {raw_path}"
-            per_figure[fig_id] = {
-                "score": 0.0,
-                "issues": [note],
-                "suggestions": ["Re-render the figure as PNG before review."],
-                "review_text": "",
-            }
-            agg_issues.append(f"[{fig_id}] {note}")
-            agg_suggestions.append(
-                f"[{fig_id}] Re-render the figure as PNG before review."
+    precomputed: dict[str, VisualReviewV1] = {}
+    for index, manifest in enumerate(batch.manifests):
+        artifact = manifest_visual_artifact(manifest)
+        if index >= limits.max_figures:
+            precomputed[manifest.spec.figure_id] = _artifact_failure(
+                manifest=manifest,
+                artifact=artifact,
+                context=context,
+                profile=profile,
+                status="limit-error",
+                kind="max-figures",
+                message="figure exceeds the declared batch limit",
             )
             continue
+        if cumulative_bytes + artifact.size_bytes > limits.max_total_bytes:
+            precomputed[manifest.spec.figure_id] = _artifact_failure(
+                manifest=manifest,
+                artifact=artifact,
+                context=context,
+                profile=profile,
+                status="limit-error",
+                kind="max-total-bytes",
+                message="figure exceeds the declared batch byte budget",
+            )
+            continue
+        if model_calls >= limits.max_model_calls:
+            precomputed[manifest.spec.figure_id] = _artifact_failure(
+                manifest=manifest,
+                artifact=artifact,
+                context=context,
+                profile=profile,
+                status="limit-error",
+                kind="max-model-calls",
+                message="figure exceeds the declared model-call budget",
+            )
+            continue
+        cumulative_bytes += artifact.size_bytes
+        model_calls += 1
+        tasks.append((manifest.spec.figure_id, asyncio.create_task(_bounded(manifest))))
 
-        review = await _review_one_figure(raster, context, criteria)
-        per_figure[fig_id] = review
-        for item in review["issues"]:
-            agg_issues.append(f"[{fig_id}] {item}")
-        for item in review["suggestions"]:
-            agg_suggestions.append(f"[{fig_id}] {item}")
-        if review["review_text"]:
-            agg_review_chunks.append(f"[{fig_id}] {review['review_text']}")
-
-    scores = [r["score"] for r in per_figure.values()]
-    aggregate_score = min(scores) if scores else 0.0
-
-    return {
-        "score": aggregate_score,
-        "issues": agg_issues,
-        "suggestions": agg_suggestions,
-        "review_text": "\n\n".join(agg_review_chunks),
-        "per_figure": per_figure,
+    completed = {
+        figure_id: await task
+        for figure_id, task in tasks
     }
+    reviews = tuple(
+        precomputed.get(manifest.spec.figure_id)
+        or completed[manifest.spec.figure_id]
+        for manifest in batch.manifests
+    )
+    failures = sum(item.status != "completed" for item in reviews)
+    score = (
+        0.0
+        if failures
+        else min(float(item.score) for item in reviews if item.score is not None)
+    )
+    issues: list[str] = []
+    suggestions: list[str] = []
+    summaries: list[str] = []
+    for review in reviews:
+        if review.status != "completed":
+            issues.append(
+                f"[{review.target_id}] {review.status}: "
+                f"{review.error_kind}: {review.error_message}"
+            )
+        for issue in review.issues:
+            issues.append(f"[{review.target_id}] {issue.message}")
+            if issue.suggestion:
+                suggestions.append(f"[{review.target_id}] {issue.suggestion}")
+        if review.summary:
+            summaries.append(f"[{review.target_id}] {review.summary}")
+    result = VisualReviewBatchV1.create(
+        source_batch_digest=batch.batch_digest,
+        iteration=batch.revision,
+        reviews=reviews,
+        aggregation="minimum-fail-closed",
+        score=score,
+        failure_count=failures,
+        issues=tuple(issues),
+        suggestions=tuple(suggestions),
+        review_text="\n\n".join(summaries),
+    )
+    return result.model_dump(mode="json")
 
 
-@mcp.tool(
-    name="review_table",
-    description="Review a scientific table (LaTeX source or image) using a Vision Language Model.",
-)
-async def review_table(
-    latex_or_path: str,
-    context: str = "",
-) -> dict:
-    """Review a table given as LaTeX source or an image path.
+def _table_payload(
+    workspace: WorkspaceRefV1,
+    artifact: VisualArtifactRefV1,
+) -> tuple[bytes, str]:
+    if artifact.role != "table-source":
+        raise ValueError("table artifact must use role=table-source")
+    if artifact.size_bytes > MAX_IMAGE_BYTES:
+        raise ValueError("table artifact exceeds 20 MiB")
+    payload = workspace.read_bytes(artifact.relative_path, max_bytes=MAX_IMAGE_BYTES)
+    digest = "sha256:" + hashlib.sha256(payload).hexdigest()
+    if len(payload) != artifact.size_bytes or digest != artifact.digest:
+        raise ValueError("table artifact bytes differ from the request")
+    if artifact.media_type.startswith("image/"):
+        try:
+            with Image.open(io.BytesIO(payload)) as image:
+                image.verify()
+            with Image.open(io.BytesIO(payload)) as image:
+                width, height = image.size
+                image_format = str(image.format or "").upper()
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise ValueError("table image is corrupt") from exc
+        if image_format not in {"PNG", "JPEG", "WEBP"}:
+            raise ValueError("table image format is unsupported")
+        if (
+            width > MAX_IMAGE_DIMENSION
+            or height > MAX_IMAGE_DIMENSION
+            or width * height > MAX_IMAGE_PIXELS
+        ):
+            raise ValueError("table image dimensions exceed policy")
+    elif artifact.media_type not in {
+        "text/x-tex; charset=utf-8",
+        "text/markdown; charset=utf-8",
+        "text/plain; charset=utf-8",
+    }:
+        raise ValueError("table artifact media type is unsupported")
+    return payload, artifact.media_type
 
-    Args:
-        latex_or_path: LaTeX source code of the table, or path to a table image.
-        context: Description or paper context for the table.
-    """
-    if _is_file_path(latex_or_path):
-        data_uri = _encode_image(latex_or_path)
-        prompt = _build_table_prompt(context, is_latex=False)
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": data_uri}},
-                ],
-            }
-        ]
-    elif _is_latex(latex_or_path):
-        prompt = _build_table_prompt(context, is_latex=True)
-        messages = [
-            {
-                "role": "user",
-                "content": f"{prompt}\n\nLaTeX source:\n```\n{latex_or_path}\n```",
-            }
-        ]
+
+@mcp.tool()
+async def review_table(request: dict[str, Any]) -> dict[str, Any]:
+    """Review one content-addressed table artifact under a closed workspace."""
+
+    if not isinstance(request, dict) or set(request) != {
+        "workspace",
+        "target_id",
+        "artifact",
+        "context",
+        "criteria_profile_id",
+        "iteration",
+        "max_output_tokens",
+    }:
+        raise ValueError("review_table request does not match the closed schema")
+    workspace = WorkspaceRefV1.model_validate(request["workspace"])
+    artifact = VisualArtifactRefV1.model_validate(request["artifact"])
+    context = str(request["context"])
+    profile = get_profile(str(request["criteria_profile_id"]), target_kind="table")
+    iteration = int(request["iteration"])
+    if not 0 <= iteration <= 2:
+        raise ValueError("table review iteration must be in [0, 2]")
+    max_tokens = ReviewBudgetV1(
+        max_output_tokens=int(request["max_output_tokens"])
+    ).max_output_tokens
+    try:
+        payload, media_type = _table_payload(workspace, artifact)
+    except ValueError as exc:
+        result = failure_review(
+            target_kind="table",
+            target_id=str(request["target_id"]),
+            figure_id=None,
+            source_manifest_digest=None,
+            artifact=artifact,
+            context=context,
+            profile=profile,
+            iteration=iteration,
+            status="artifact-error",
+            error_kind="table-artifact-invalid",
+            error_message=str(exc),
+        )
     else:
-        prompt = _build_table_prompt(context, is_latex=False)
-        messages = [
-            {
-                "role": "user",
-                "content": f"{prompt}\n\nTable content:\n{latex_or_path}",
-            }
-        ]
-
-    raw = await _call_vlm(messages)
-    result = _parse_json_response(raw)
-
-    return {
-        "score": float(result.get("score", 0.0)),
-        "issues": list(result.get("issues", [])),
-        "suggestions": list(result.get("suggestions", [])),
-    }
+        result = await review_target(
+            workspace=workspace,
+            target_kind="table",
+            target_id=str(request["target_id"]),
+            figure_id=None,
+            source_manifest_digest=None,
+            artifact=artifact,
+            payload=payload,
+            media_type=media_type,
+            context=context,
+            target_description="content-addressed scientific table",
+            profile=profile,
+            iteration=iteration,
+            max_output_tokens=max_tokens,
+        )
+    return result.model_dump(mode="json")
 
 
 if __name__ == "__main__":

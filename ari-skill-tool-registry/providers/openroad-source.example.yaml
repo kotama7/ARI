@@ -1,0 +1,184 @@
+# Template only. Replace every absolute path and SHA-256 placeholder, generate
+# golden/replay fixtures, then run scripts/verify_openroad.py before catalog sync.
+schema_version: ari.catalog-sources/v1
+sources:
+  - source_id: openroad.gcd-nangate45
+    kind: openroad
+    provider_id: openroad-mcp
+    support_release: 0.6.1
+    provider_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    launcher:
+      command_kind: python
+      python_executable: /absolute/openroad-mcp-env/bin/python
+      package_root: /absolute/openroad-mcp-env/lib/python3.13/site-packages/openroad_mcp
+      python_module: openroad_mcp.main
+      python_callable: main
+      expected_architecture: x86_64
+      arguments: []
+      literal_env: {}
+      identity_globs:
+        - "**/*"
+        - "**/*.py"
+        - "*.lock"
+        - pyproject.toml
+        - requirements*.txt
+    capability_ref: ari.eda.openroad.place-route
+    timeout_seconds: 60
+    max_concurrent_jobs: 4
+    max_retained_jobs: 1024
+    experiments:
+      - schema_version: ari.openroad-experiment/v1
+        profile_id: gcd-nangate45-26q3
+        description: GCD RTL-to-routed-DEF profile on the public ORFS Nangate45 platform.
+        toolchain:
+          support_line: orfs-26q3
+          orfs_commit: adeb389e7fbf06ef6a939a895c014f69e6f7aa00
+          openroad_commit: 7304ba78ade7cb9f78466c6d0231432d72dadd3b
+          openroad_version: 26Q3
+          executable_path: /absolute/pinned/bin/openroad
+          executable_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          execution_image_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          architecture: x86_64
+          threads: 1
+          seed: 17
+        technology:
+          pdk_id: nangate45
+          pdk_version: orfs-26q3
+          pdk_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          pdk_license_scope: redistributable
+          standard_cell_library_id: nangate45
+          standard_cell_library_version: orfs-26q3
+          standard_cell_library_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          corner: typical
+          mode: functional
+        workspace:
+          source_root: /absolute/closed/gcd-nangate45-inputs
+          input_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          input_artifacts:
+            - relative_path: rtl/gcd.v
+              digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+              role: rtl
+              media_type: text/x-verilog
+            - relative_path: constraints/gcd.sdc
+              digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+              role: constraint
+              media_type: text/plain
+            - relative_path: platform/NangateOpenCellLibrary.tech.lef
+              digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+              role: technology-lef
+              media_type: text/plain
+            - relative_path: platform/NangateOpenCellLibrary.macro.lef
+              digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+              role: library-lef
+              media_type: text/plain
+            - relative_path: platform/NangateOpenCellLibrary_typical.lib
+              digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+              role: liberty
+              media_type: text/plain
+        execution:
+          backend: slurm
+          work_root: /absolute/shared/openroad-jobs
+          worker_python: /usr/bin/python3
+          resources:
+            partition: eda
+            nodes: 1
+            tasks: 1
+            cpus_per_task: 1
+            memory_mb_per_node: 8192
+            walltime: "02:00:00"
+            exclusive: false
+            account: research
+          environment:
+            export_mode: NIL
+            path: /usr/local/bin:/usr/bin:/bin
+            variables: {}
+            modules: []
+          container:
+            runtime: apptainer
+            image:
+              logical_name: openroad-orfs-image
+              path: /absolute/images/openroad-orfs-26q3.sif
+              digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+              size_bytes: 0
+              media_type: application/vnd.sylabs.sif
+            binds: []
+            gpu: false
+            network: none
+            contain_all: true
+            clean_environment: true
+        commands:
+          - {stage: setup, verb: set_thread_count, arguments: ["1"]}
+          - {stage: setup, verb: read_lef, arguments: [platform/NangateOpenCellLibrary.tech.lef]}
+          - {stage: setup, verb: read_lef, arguments: [platform/NangateOpenCellLibrary.macro.lef]}
+          - {stage: setup, verb: read_liberty, arguments: [platform/NangateOpenCellLibrary_typical.lib]}
+          - {stage: setup, verb: read_verilog, arguments: [rtl/gcd.v]}
+          - {stage: setup, verb: link_design, arguments: [gcd]}
+          - {stage: setup, verb: read_sdc, arguments: [constraints/gcd.sdc]}
+          - {stage: floorplan, verb: initialize_floorplan, arguments: [-utilization, "40", -aspect_ratio, "1.0", -core_space, "2"]}
+          - {stage: placement, verb: global_placement, arguments: []}
+          - {stage: placement, verb: detailed_placement, arguments: []}
+          - {stage: cts, verb: clock_tree_synthesis, arguments: []}
+          - {stage: routing, verb: global_route, arguments: []}
+          - {stage: routing, verb: detailed_route, arguments: []}
+          - {stage: finishing, verb: write_def, arguments: [results/gcd.def]}
+          - {stage: finishing, verb: write_verilog, arguments: [results/gcd.v]}
+          - {stage: report, verb: report_worst_slack, arguments: []}
+          - {stage: report, verb: report_design_area, arguments: []}
+        output_artifacts:
+          - relative_path: reports/metrics.json
+            logical_role: openroad-metrics
+            media_type: application/json
+            required: true
+            capture: true
+          - relative_path: results/gcd.def
+            logical_role: openroad-def
+            media_type: text/plain
+            required: true
+            capture: true
+          - relative_path: results/gcd.v
+            logical_role: openroad-netlist
+            media_type: text/x-verilog
+            required: true
+            capture: true
+        metrics:
+          - metric_id: worst-slack
+            source_artifact: reports/metrics.json
+            json_pointer: /timing/setup/wns
+            unit: ns
+            corner: typical
+            mode: functional
+            stage: report
+            expected_min: -0.20
+            expected_max: 0.10
+          - metric_id: design-area
+            source_artifact: reports/metrics.json
+            json_pointer: /design/instance/area
+            unit: um^2
+            corner: typical
+            mode: functional
+            stage: report
+            expected_min: 500.0
+            expected_max: 5000.0
+        golden_fixture_path: /absolute/evidence/gcd-nangate45-golden.json
+        golden_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+        replay_fixture_path: /absolute/evidence/gcd-nangate45-replay.json
+        replay_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+        evidence:
+          protocol_conformance: true
+          provider_pinned: true
+          launcher_verified: true
+          dependencies_pinned: true
+          replay_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          scientific_validation_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          limitations_documented: true
+          semantics_documented: true
+          units_documented: true
+          method_identity_documented: true
+          architecture: OpenROAD-MCP 0.6.1 over OpenROAD/ORFS 26Q3 in a digest-pinned image
+          notes:
+            - Replace template values only after reproducing the golden fixture.
+        limitations:
+          - QoR ranges apply only to the pinned GCD inputs, Nangate45 data, toolchain, seed, thread count, architecture, corner, and mode.
+          - The Python MCP distribution is deprecated-final; npm migration requires a new reviewed adapter pin.
+        command_timeout_seconds: 7200
+        poll_interval_seconds: 0.5

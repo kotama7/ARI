@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 文件格式参考
@@ -37,23 +37,24 @@ last_verified: 2026-06-10
 
 `ari-skill-idea.generate_ideas` 的输出。位于 `{checkpoint}/idea.json`，为 BFTS 运行的计划提供种子。
 
-顶层结构：
+新run使用digest绑定结构（旧scalar字段只在checkpoint支持窗口内作为只读投影保留）：
 
 ```json
 {
-  "ideas": [
-    {
-      "title": "...",
-      "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
-      "_pinned": false
-    }
-  ]
+  "typed_schema_version": "ari.research-contract/v1",
+  "survey_snapshot_digest": "sha256:...",
+  "idea_set_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",
+  "contract_status": "admitted",
+  "survey_snapshot": {"schema_version": "ari.survey-snapshot/v1"},
+  "idea_set": {"schema_version": "ari.idea-set/v1"},
+  "research_contract": {"schema_version": "ari.research-contract/v1"}
 }
 ```
 
-子节点通过将继承条目中的 `"_pinned"` 设置为 `true` 来锁定父节点的选定 idea；后续 `generate_ideas` 运行会在其后追加新 idea 而不覆盖原有内容。
+三个record都会验证自己的canonical SHA-256 digest。无效、重复、无引用、不可证伪、
+unit未知或引用不存在artifact的candidate会进入`idea_set.rejections`，不能生成research
+contract。详见[研究契约](research_contracts.md)。
 
 ## `evaluation_criteria.json`
 
@@ -222,22 +223,28 @@ last_verified: 2026-06-10
 
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
+  "source_run_id": "run-id",
   "phase": "final",
-  "policy": "strict" | "warn",
+  "policy_mode": "strict" | "warn" | "off",
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
   "status": "...",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "formula_provenance": {"registry_digest": "sha256:...", "formulas_used": ["identity"]},
+  "blocking_findings": [...],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
-MCP 包装器将 `should_block`（仅在 strict 策略下的 `phase: final`，或在客观虚假发现时设置）转换为流水线硬失败，从而跳过 finalize。来源：`ari-core/ari/pipeline/claim_gate/gate.py`。
+MCP 包装器将 `should_block`（仅可在`phase: final`设置；`off`始终不阻塞）转换为流水线硬失败，从而跳过 finalize。来源：`ari-core/ari/pipeline/claim_gate/gate.py`。
 
 ## `evaluation/evidence_grounded_semantic_review.json`
 
-由 `ari-skill-evaluator.evidence_grounded_semantic_review` 写入的非阻塞、由证据支撑的语义评审。它基于硬门证据检测过度声称 / 解释问题，并为 `paper_refine` 输出 `suggested_revisions`。绝不阻塞流水线；出错时返回空的（`status: "ok"`）评审。refine 后的过程会在其旁写入 `evidence_grounded_semantic_review_post_refine.json` 变体。
+由 `ari-skill-evaluator.evidence_grounded_semantic_review` 写入的非阻塞、由证据支撑的语义评审。它基于硬门证据检测过度声称 / 解释问题，并为 `paper_refine` 输出 `suggested_revisions`。绝不阻塞流水线；模型、超时或解析错误时返回类型化的`status: "unavailable"`评审。refine 后的过程会在其旁写入 `evidence_grounded_semantic_review_post_refine.json` 变体。
 
 ## `lineage_decisions.jsonl`（v0.7.0）
 
@@ -287,41 +294,51 @@ stages:
 
 捆绑的默认值位于 `ari-core/ari/configs/workflow.default.yaml`。
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+## 记忆记录与可移植备份
 
 写入 `ARI_CHECKPOINT_DIR` 下的记忆后端产物：
 
 | 文件 | 后端 | 备注 |
 |---|---|---|
-| `memory_store.jsonl` | `file` | 旧版 v0.5 格式，行分隔 JSON 条目 |
-| `memory_backup.jsonl.gz` | `letta` | 可移植快照（在阶段边界 + 退出时自动写入） |
+| `memory_store.jsonl` | `file` | 仅由显式 offline migration 读取的旧版 v0.5 输入 |
+| `memory_events.jsonl` | 任意 | 按内容寻址记录的仅追加事件账本 |
+| `memory_backup.v1.json.gz` | `letta` | 含根/条目 digest 的规范 gzip JSON |
 | `memory_access.jsonl` | 任意 | 写入/读取操作的仅追加遥测数据 |
 
-快照记录结构：
+备份文档结构（记录符合 `MemoryRecordV1`）：
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
-  "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "schema_version": "ari.memory-backup/v1",
+  "records": [{"schema_version": "ari.memory-record/v1", "record_digest": "sha256:..."}],
+  "react_entries": [{"content": "...", "entry_digest": "sha256:..."}],
+  "core_context": {},
+  "record_digests": ["sha256:..."],
+  "record_order": ["sha256:..."],
+  "backup_digest": "sha256:..."
 }
 ```
 
-## EAR bundle（v0.7.0）
+恢复会在写入前验证完整文档。详见[研究记忆契约](memory_contract.md)。
+
+## ScienceDataV1 与 EAR manifest v2
+
+新的run在`ari.science-data/v1`中分离raw measurement、deterministic derivation和
+model interpretation。详见[Science data 与 EAR 完整性](science_data_contract.md)。
 
 `{checkpoint}/ear/` 是候选集；`{checkpoint}/ear_published/` 是已策展并发布到后端的子集。信任锚点为：
 
 ```
 ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
+├── manifest.lock         # v2：content、role、policy、lock与evidence digest
 ├── publish_record.json   # backend, ref, sha256, visibility
 └── ...                   # curated artefacts
 ```
 
-`manifest.lock` schema：`ari-core/ari/schemas/publish.schema.json`。`bundle_sha256` 必须等于烧入已发布论文的 `\codedigest{...}` 宏。
+manifest v2还绑定Skill/catalog lock、cassette、ResultEnvelope artifact和admission
+record；v1仅作只读兼容。publication policy schema仍为
+`ari-core/ari/schemas/publish.schema.json`。`bundle_sha256`必须等于烧入已发布论文的
+`\codedigest{...}`宏。
 
 ## 另请参阅
 

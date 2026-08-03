@@ -34,9 +34,9 @@ Minimize energy score of protein folding simulation using different force field 
 
 ## Required Workflow
 1. Call `survey` to find related literature
-2. Submit a SLURM job with `slurm_submit`
+2. Submit a typed scheduler job with `job_submit`
 3. Poll until completion with `job_status`
-4. Read results with `run_bash`
+4. Rehash and read declared outputs with `job_result`
 
 <!-- min_expected_metric: -500 -->
 <!-- metric_keyword: energy_score -->
@@ -144,16 +144,25 @@ skills:
 ```yaml
 pipeline:
   - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+    skill: paper-skill
+    tool: write_paper_iterative
     enabled: true
-    args:
+    inputs:
+      workspace_root: '{{checkpoint_dir}}'
+      science_data_path: '{{checkpoint_dir}}/science_data.json'
+      figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+      references_path: '{{checkpoint_dir}}/related_refs.json'
+      ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+      rubric_id: generic_conference
       venue: arxiv
 
   - stage: review
-    skill: ari-skill-paper
-    tool: review_section
+    skill: paper-skill
+    tool: review_compiled_paper
     enabled: true
+    inputs:
+      rubric_id: generic_conference
+      tex_path: '{{checkpoint_dir}}/full_paper.tex'
 
   - stage: my_new_stage            # ← 在此添加
     skill: ari-skill-yourskill
@@ -168,11 +177,8 @@ pipeline:
     enabled: true
 ```
 
-每个阶段接收：
-- `best_node`：BFTS 中得分最高的节点
-- `all_nodes`：所有已探索的节点
-- `nodes_json_path`：`nodes_tree.json` 的路径
-- YAML 中指定的任何 `args`
+每个阶段只接收 workflow 中显式声明的 `inputs`。论文阶段使用 digest
+锁定的原生 artifact，而不是隐式 node-tree 字典。
 
 ---
 
@@ -239,9 +245,15 @@ VENUES = [
 
 ```yaml
 - stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    science_data_path: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    references_path: '{{checkpoint_dir}}/related_refs.json'
+    ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+    rubric_id: your_venue
     venue: your_venue   # ← 在此指定
 ```
 
@@ -301,14 +313,15 @@ from mcp import ClientSession
 async with ClientSession(...) as session:
     result = await session.call_tool("run_experiment", {
         "experiment_md": open("experiment.md").read(),
+        "idempotency_key": "benchmark-request-001",
         "max_nodes": 10
     })
     run_id = result["run_id"]
 ```
 
-### 作为 REST API（通过 orchestrator）
+### 作为 MCP Streamable HTTP
 
-orchestrator MCP 服务器可以通过 HTTP 网关代理，用于 CI/CD 集成。
+网络 transport 使用 `/mcp` 的标准 MCP Streamable HTTP，而非独立 REST API。若没有 mode-0600 的 `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` 与 Bearer 认证，服务器拒绝启动。
 
 ---
 

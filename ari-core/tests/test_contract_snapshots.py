@@ -67,8 +67,12 @@ def test_public_api_submodules_present():
     assert set(golden) == expected, "public_api.json submodule set drifted"
     # Spot-check load-bearing exports from 010 §2 are recorded.
     assert "CONCEPT_INVARIANTS" in golden["ari.public.claim_gate"]
+    assert "clone" in golden["ari.public.clone"]
     assert "PathManager" in golden["ari.public.paths"]
     assert "LLMClient" in golden["ari.public.llm"]
+    assert "ExecutionRequestV1" in golden["ari.public.execution"]
+    assert "filter_nodes" in golden["ari.public.node_selection"]
+    assert "publish" in golden["ari.public.publish"]
     for sym in ("ARIConfig", "LLMConfig", "EvaluatorConfig"):
         assert sym in golden["ari.public.config_schema"]
     for sym in ("build_verified_context", "render_grounded_block",
@@ -101,7 +105,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 59 FastMCP + 28 low-level defs (86 unique names) + collision guard ──
+# ── MCP: 71 FastMCP + 27 low-level defs (96 unique names) + collision guard ──
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -110,21 +114,22 @@ def test_mcp_tool_counts_and_names():
         "ari-skill-benchmark", "ari-skill-coding", "ari-skill-evaluator",
         "ari-skill-hpc", "ari-skill-idea", "ari-skill-memory",
         "ari-skill-orchestrator", "ari-skill-paper", "ari-skill-paper-re",
-        "ari-skill-plot", "ari-skill-replicate", "ari-skill-transform",
+        "ari-skill-plot", "ari-skill-replicate", "ari-skill-tool-registry",
+        "ari-skill-transform",
         "ari-skill-vlm", "ari-skill-web",
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
-    assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 28, f"expected 28 low-level tool defs, got {len(lowlevel)}"
+    assert len(fastmcp) == 67, f"expected 67 FastMCP tools, got {len(fastmcp)}"
+    assert len(lowlevel) == 22, f"expected 22 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 86, f"expected 86 unique tool names, got {len(unique)}"
+    assert len(unique) == 87, f"expected 87 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 
 
 def test_mcp_no_unrecorded_cross_skill_collision():
-    """The flat-namespace clobber: only recorded collisions are allowed."""
+    """Inventory cross-package names so admission policy sees every collision."""
     fresh = sc.build_mcp_static()
     seen: dict[str, set[str]] = {}
     for skill, tools in fresh["skills"].items():
@@ -137,8 +142,9 @@ def test_mcp_no_unrecorded_cross_skill_collision():
         f"(fresh={sorted(duplicates)} recorded={sorted(recorded)}); "
         "run `python scripts/snapshot_contracts.py --surface mcp --update`"
     )
-    # The one known collision is read_file (coding + orchestrator, both low-level).
-    assert recorded == {"read_file"}
+    # These names are shared only with default-off components. MCPClient rejects
+    # either collision if both providers are explicitly admitted together.
+    assert recorded == {"get_result", "get_status"}
 
 
 # ── viz: route-literal drift (exact) + additive/subset response keys ─────────

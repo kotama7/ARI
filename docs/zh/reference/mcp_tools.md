@@ -2,7 +2,7 @@
 sources:
   - path: ari-skill-hpc/mcp.json
     role: config
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
   - path: ari-skill-coding/mcp.json
     role: config
@@ -12,36 +12,38 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # MCP 工具参考
 
-ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页是智能体可调用的所有工具的平铺目录。每个技能的深入介绍位于其各自的 `README.md`；[skills.md](skills.md) 按职责对它们进行分组。
+ARI 附带 15 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页是智能体可调用的所有工具的平铺目录。每个技能的深入介绍位于其各自的 `README.md`；[skills.md](skills.md) 按职责对它们进行分组。
 
 `mcp.json`（位于各技能的 `pyproject.toml` 旁边）是工具*名称*的权威来源；被 `@mcp.tool()` 装饰的函数（或旧版技能的 `@server.list_tools()` 中的条目）定义了参数和返回结构。
 
 "LLM" 列标记了**P2 例外**工具 — 它们会调用 LLM，因此不是字节确定性的。
 
-## ari-skill-benchmark — 统计 + 绘图（确定性）
+## ari-skill-benchmark — 类型化统计（确定性）
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `analyze_results` | 从 CSV / JSON / npy 计算摘要统计 | ✗ |
-| `plot` | 从固定 schema 生成确定性 matplotlib 图表 | ✗ |
-| `statistical_test` | 假设检验（t 检验、Mann-Whitney 等） | ✗ |
+| `analyze_results` | 对 inline 或摘要绑定 CSV / JSON / npy 样本进行带单位汇总 | ✗ |
+| `statistical_test` | 返回效应量、CI、假设诊断和多重比较校正 | ✗ |
+| `compare_runs` | 保留环境和 provenance 的标量 run 排名 | ✗ |
 
 ## ari-skill-coding — 编写 + 运行代码
 
-`mcp.json` 未列出工具；实际工具列表来自 `src/server.py` 中的 `@server.list_tools()`。
+`skill.yaml` 是 canonical tool contract，`mcp.json` 由其生成。
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `write_code` | 向节点 work_dir 写入文件 | ✗ |
-| `run_code` | 执行脚本（含超时 + 捕获） | ✗ |
-| `run_bash` | 临时 bash 命令 | ✗ |
-| `emit_results` | 向评估器提交 `metrics` + `has_real_data`（可选 `provenance` 参数 → 原样写入 `_provenance` 键，标记每个值是如何测量的，供 claim-evidence 门使用） | ✗ |
-| `read_file` | 读取智能体之前写入的文件 | ✗ |
+| `write_code` | 原子、traversal/symlink-safe 的 workspace 写入与 source digest | ✗ |
+| `run_code` | digest-bound 不可变脚本快照、有界执行与完整日志 artifact | ✗ |
+| `run_bash` | 带 local/container identity 的显式 shell 执行与完整日志 artifact | ✗ |
+| `emit_results` | 输出含有限数值、unit、provenance、已验证execution attempt/receipt及重新hash的artifact digest之canonical `ari.measurement-set/v1` | ✗ |
+| `read_file` | symlink-safe 的有界/分页 workspace 读取 | ✗ |
 
 ## ari-skill-evaluator — LLM 指标提取
 
@@ -51,21 +53,18 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `claim_evidence_hard_gate` | 确定性的声明/证据硬门（执行数据保真度）；strict 模式下在 final 阶段阻止 finalize | ✗ |
 | `evidence_grounded_semantic_review` | 非阻塞的、以证据为基础的语义评审；为 `paper_refine` 输出 `suggested_revisions` | ✓ |
 
-## ari-skill-hpc — SLURM + Singularity
-
-`mcp.json` 为空列表；工具来自 `src/server.py` 中的 `@server.list_tools()`。
+## ari-skill-hpc — 类型化 scheduler 生命周期
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `slurm_submit` | 带有显式分区 / 时间 / CPU / 节点 / GPU 的 sbatch | ✗ |
-| `job_status` | squeue + sacct 查询 | ✗ |
-| `job_cancel` | 取消运行中的作业（scancel） | ✗ |
-| `run_bash` | 直接 bash 命令（本地或通过 SSH） | ✗ |
-| `singularity_build` | 从定义文件构建 SIF | ✗ |
-| `singularity_run` | 在 SIF 内运行命令 | ✗ |
-| `singularity_pull` | 从远程 URI 拉取 SIF | ✗ |
-| `singularity_build_fakeroot` | Fakeroot 构建（无需特权守护进程） | ✗ |
-| `singularity_run_gpu` | `singularity_run` 的 GPU 变体 | ✗ |
+| `job_submit` | 提交不可变类型化 request 并返回幂等 handle | ✗ |
+| `container_submit` | 提交 digest-pinned container request | ✗ |
+| `job_status` | handle 或 scheduler ID 的 provider-neutral 状态 | ✗ |
+| `job_result` | 重新 hash input/output/log/provenance 的终态结果 | ✗ |
+| `job_logs` | 有界且 digest-bound 的 stdout/stderr | ✗ |
+| `job_cancel` | 请求 scheduler 取消 | ✗ |
+| `probe_platform_capabilities` | 带 checkpoint cache 的 platform capability probe | ✗ |
+| `slurm_submit` | 受限 core-agent batch-script 桥接；新调用方使用 `job_submit` | ✗ |
 
 ## ari-skill-idea — 文献调研 + 创意生成
 
@@ -90,7 +89,6 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `add_memory` | 向当前节点的记忆追加条目 | ✗ |
 | `search_memory` | 跨当前节点 + 祖先的嵌入排序搜索 | ✗（服务端嵌入） |
 | `get_node_memory` | 当前节点的所有条目 | ✗ |
-| `clear_node_memory` | 删除当前节点的条目（CoW；祖先不受影响） | ✗ |
 | `get_experiment_context` | 从 Letta 核心记忆获取稳定的实验级事实 | ✗ |
 | `add_experiment_result` | 记录类型化的 experiment_result（CoW：仅自身节点） | ✗ |
 | `add_failure_case` | 记录类型化的 failure_case（CoW：仅自身节点） | ✗ |
@@ -103,15 +101,25 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `consolidate_node_memory` | 在节点结束时从 node_report 导出 + 写入类型化记忆（CoW：自身节点） | ✗ |
 
 该技能在其设计文档中明确声明"无 LLM 调用" — 见 `ari-skill-memory/README.md`。
+记录仅追加，公共 surface 不提供按 node/record 删除。详见
+[研究记忆契约](memory_contract.md)。
 
-## ari-skill-orchestrator — 递归 ARI 运行器
+## ari-skill-orchestrator — durable ARI control plane
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `run_experiment` | 启动子 ARI 运行 | ✗ |
-| `get_status` | 子运行状态 | ✗ |
-| `list_runs` | 所有已知运行 | ✗ |
-| `get_paper` | 某次运行生成的 LaTeX / PDF | ✗ |
+| `run_experiment` | 幂等提交受 quota 限制的 ARI run | ✗ |
+| `get_status` | 经授权的 durable status 与进度 | ✗ |
+| `get_result` | state 与 content-addressed result refs | ✗ |
+| `stop_experiment` | 传播 cancellation 并确定 terminal state | ✗ |
+| `list_runs` | principal-scoped run handle | ✗ |
+| `list_children` | 经授权的 direct child handle | ✗ |
+| `list_artifacts` | allowlist 且 digest 验证的 artifact refs | ✗ |
+| `read_artifact` | 按 exact SHA-256 有界读取 | ✗ |
+| `get_paper` | paper artifact refs | ✗ |
+| `get_ear` | 已验证 EAR/evidence refs | ✗ |
+| `list_skills` | run-bound `SKILLS.lock` sanitized view | ✗ |
+| `get_workflow` | 已锁定 phase/tool membership | ✗ |
 
 ## ari-skill-paper — LaTeX 论文撰写
 
@@ -119,20 +127,21 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 |---|---|:---:|
 | `list_venues` | 可用 LaTeX 模板（ACM / NeurIPS / SC / ICPP / arXiv） | ✗ |
 | `get_template` | 获取某 venue 的模板 | ✗ |
-| `generate_section` | LLM 撰写一个章节（引言、方法等） | ✓ |
-| `compile_paper` | pdflatex 编译 | ✗ |
+| `compile_paper` | 固定命令、资源受限且保留完整日志的 LaTeX 编译 | ✗ |
 | `check_format` | LaTeX 格式验证 | ✗ |
-| `review_section` | LLM 对某章节进行规范评审 | ✓ |
-| `revise_section` | LLM 根据评审反馈重写 | ✓ |
-| `write_paper_iterative` | 端到端驱动生成 / 评审 / 修改循环 | ✓ |
-| `review_compiled_paper` | 对已编译 PDF 进行最终评审（图表委托 VLM） | ✓ |
+| `write_paper_iterative` | 从原生证据生成全文并记录 `PaperBuildV1` 溯源 | ✓ |
+| `review_compiled_paper` | 使用显式 rubric 独立文本评审并保存原始响应 | ✓ |
 | `link_paper_claims` | 将 `% CLAIM:Cx:NCx` 锚点与 science_data 声明核对，构建 `paper_claim_links`（确定性） | ✗ |
 | `paper_refine` | 在保留 `% CLAIM:Cx:NCx` 锚点的前提下应用建议的修订（确定性替换 + 有界 LLM 查找/替换） | ✓ |
 | `list_rubrics` | 可用的评审规范 | ✗ |
 | `inject_code_availability` | v0.7.0 — 向论文追加 `\codedigest{...}` 块 | ✗ |
-| `merge_reviews` | v0.7.0 — 合并规范评审 + VLM 评审 JSON | ✗ |
+| `merge_reviews` | 不修改来源，结构化组合独立与证据评审 | ✗ |
+| `finalize_paper_build` | 重算证据绑定并以 fail-closed 方式锁定 TeX/BibTeX/PDF | ✗ |
 
-## ari-skill-paper-re — PaperBench 可重现性（v0.7.0）
+旧的逐章节工具已删除；迁移规则见英文
+[Paper build contract](../../reference/paper_build_contract.md)。
+
+## ari-skill-paper-re — PaperBench 可重现性（v1.0.0）
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
@@ -145,21 +154,21 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 新增参数 |
 |---|---|
-| `build_reproduce_sh` | `container_image`（替代/取代旧版 `apptainer_image`；两者均向后兼容） |
+| `build_reproduce_sh` | `container_image`（唯一的不可变镜像字段；deprecated `apptainer_image` 别名已于 v1.0 删除） |
 
 ### v0.8.0 新增字段（Stage 2）
 
 | 工具 | 新增参数 |
 |---|---|
-| `run_reproduce` | `container_image`（被 docker / apptainer / singularity 沙箱使用；别名 `pb-env` / `pb-reproducer` 解析为 `scripts/build_pb_images.sh` 构建的 vendor `image:latest` 标签） |
+| `run_reproduce` | `container_image`（不可变本地 SIF、完整 Docker `sha256:<image-id>` 或按摘要固定的远程引用；拒绝可变标签和别名） |
 
-高声失败的前置条件：缺失 docker daemon / apptainer 二进制文件 / sbatch / 分区时抛出 `RuntimeError`，而不是静默回退到本地 CPU。可通过 `ARI_PHASE1_ALLOW_FALLBACK=1` 恢复旧版回退行为；通过 `ARI_SLURM_ALLOW_NO_GRES=1` 恢复静默丢弃 GRES 标志的行为。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。混合使用有类型（`gpu_type` / `--gres=gpu:TYPE:N`）和无类型（`--gpus-per-task`）GPU 请求时自动规范化为有类型形式 — SLURM 24.05 拒绝混合形式。
+高声失败的前置条件：缺失 docker daemon / apptainer 二进制文件 / sbatch / 分区时直接失败，不会回退到本地 CPU。带类型 GPU 请求绝不静默删除，矛盾或不支持的资源会在执行前失败。SLURM 路径使用共享执行 handoff 与 submit/status/log/cancel 生命周期及 `--export=NIL` 干净环境。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。
 
 ### v0.8.0 新增字段（Stage 3）
 
 | 工具 | 新增参数 |
 |---|---|
-| `grade_with_simplejudge` | `code_only`（将 rubric 裁剪为仅 Code Development 叶节点，镜像 vendor `paperbench/grade.py:109-112`；当不存在 `reproduce.log` 时自动启用，防止仅 Stage 1 运行被系统性评零） |
+| `grade_with_simplejudge` | `code_only`（显式将已验证 reproduction 的 rubric 限定为 Code Development 叶节点；缺少 reproduction record 时不产生分数并失败） |
 
 关于以单一调用词汇将全部三个阶段串联起来的进程内 Python 接口，请参阅 [`api_paperbench.md` § Bridge 合约](api_paperbench.md#bridge-contract-in-process-python-surface)。
 
@@ -167,6 +176,7 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
+| `render_figure` | 带来源/spec/环境/artifact 摘要的闭合确定性渲染 | ✗ |
 | `generate_figures` | 从 `nodes_tree.json` 生成确定性 matplotlib 图表 | ✗ |
 | `generate_figures_llm` | LLM 编写 matplotlib 代码后运行 | ✓ |
 
@@ -194,7 +204,7 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `neurips` | `paper_audit` | 按 NeurIPS 可重现性检查表的六个轴（声明 / 设置 / 代码+数据 / 统计 / 伦理 / 图表）。 |
 | `nature` | `paper_audit` | 湿实验室论文的五个轴（材料 / 方案 / 统计 / 数据 / 伦理）。 |
 
-`paper_audit` 模式需要 `two_stage=True`；若使用 `paper_audit` 模板请求单次路径，生成器会返回错误（单次提示无法满足固定轴约束）。YAML schema 和撰写指南请参见 [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
+所有模板模式均使用强制的 calibrated hierarchical strategy，从而保留固定审核轴。YAML schema 与编写指南见 [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
 
 ## ari-skill-transform — 树遍历 + EAR 流水线
 
@@ -207,6 +217,18 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `curate_ear` | 将 `ear/` 提升为 `ear_published/` + manifest.lock | ✗ |
 | `publish_ear` | 推送到 `local-tarball` / `ari-registry` / `zenodo` / `gh` | ✗ |
 | `promote_ear` | `staged` → `unlisted` / `public` | ✗ |
+
+## ari-skill-tool-registry — 联邦科学工具（默认关闭）
+
+| 工具 | 用途 | LLM |
+|---|---|:---:|
+| `discover` | 对不可变 catalog 进行有界分页搜索 | ✗ |
+| `describe` | 分页读取 schema、provenance、admission 与限制 | ✗ |
+| `invoke` | 用精确 admitted `tool_ref` 进行 live/record/replay | ✗ |
+| `get_status` | 轮询与 descriptor 绑定的异步 handle | ✗ |
+| `get_result` | 获取并规范化最终异步结果 | ✗ |
+
+来源同步与科学约束见 [tool_registry.md](tool_registry.md)。
 
 ## ari-skill-vlm — 图表 / 表格评审（VLM）
 
@@ -222,11 +244,15 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo（无需 API 密钥） | ✗ |
-| `fetch_url` | URL → 可读文本 | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | 从种子论文遍历引用图 | ✗ |
+| `search_papers` | 单一固定provider，类型化record/live/replay结果 | ✗ |
+| `web_search` | snapshot契约下的DuckDuckGo检索 | ✗ |
+| `fetch_url` | 受SSRF控制的URL → 不可信文本 | ✗ |
+| `walk_citations` | 带partial provenance的有界引用图 | ✗ |
+| `rerank_retrieval_records` | 显式typed-record reranker | ✓ |
+| `list_uploaded_files` | 列出checkpoint upload | ✗ |
+| `read_uploaded_file` | 带traversal/output限制的upload读取 | ✗ |
+
+参见[检索契约与network policy](retrieval_contract.md)。
 
 ## 另请参阅
 

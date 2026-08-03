@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI QuickStart Guide
@@ -313,7 +313,7 @@ Change the dashboard language (English, Japanese, Chinese) from the language dro
 
 ### Retrieval Backend
 
-- Choose paper search backend: Semantic Scholar (default), AlphaXiv, or both (parallel)
+- Choose one pinned paper provider: Semantic Scholar (default), arXiv, or AlphaXiv
 
 ### Per-Phase Model Overrides
 

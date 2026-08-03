@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI 架构
@@ -242,7 +242,7 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     输出：science_data.json  { configurations, experiment_context, per_key_summary }
 
   阶段 2：search_related_work  (ari-skill-web)  [与阶段 1 并行]
-    LLM 生成的关键词 → 可插拔检索后端 (Semantic Scholar / AlphaXiv / both)
+    关键词 → 一个固定provider (Semantic Scholar / arXiv / AlphaXiv)
     输出：related_refs.json
 
   阶段 3：generate_figures  (ari-skill-plot)  [在阶段 1 之后]
@@ -295,8 +295,8 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
         → claim_evidence_hard_gate_final   (FINAL gate；strict 模式下阻塞 finalize)
         → finalize_paper            (下方阶段 8)
     由 workflow.yaml 顶层 claim_gate_policy 块控制
-      (默认 mode: warn —— FINAL gate 非阻塞；mode: strict 在 FINAL gate
-      处阻塞 finalize_paper)。解析优先级最终落到
+      (默认warn仅阻断FINAL客观integrity finding；strict增加配置项；off不阻断)。
+      解析优先级最终落到
       env ARI_CLAIM_GATE_MODE (off | warn | strict) 与 ARI_COMPARISON_SCOPE。
     繁重的 gate 逻辑位于新的 ari/pipeline/claim_gate/ 包
       (contract / gate / policy / numeric / latex / invariants / resolve)，
@@ -364,8 +364,8 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
       slurm (sbatch + ARI_SLURM_PARTITION 存在 = BFTS 同 partition)
       → docker (守护可用且非 HPC) → apptainer → singularity → local。
       可用 ARI_PHASE1_SANDBOX 覆盖。
-    SLURM 路径使用 sbatch --wait 与 spool relocation 包装器
-    (.slurm_wrap.sh，通过绝对路径 exec reproduce.sh 以保护 $0 相对 cd)。
+    SLURM 路径使用带digest的JobRequestV1、共享submit/status/log/cancel handle
+    生命周期与干净环境。
     捕获 reproduce.log，并对照 rubric 中的 expected_artifacts。
     输出：ors_phase1.json { executed, exit_code, log_path,
                              artifacts, missing, sandbox_kind,
@@ -476,7 +476,7 @@ ARI 不再维护全局配置目录。所有设置文件和代理记忆都存储�
 ```
 checkpoints/{run_id}/
 ├── settings.json        # GUI 设置 (LLM 模型、提供者、HPC 默认值)
-├── memory_backup.jsonl.gz   # Letta 快照（流水线阶段结束和退出时自动）
+├── memory_backup.v1.json.gz # 经 digest 验证的可移植 Letta 快照
 ├── memory_access.jsonl       # 写/读遥测
 └── ...                  # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -511,14 +511,14 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
-| `ari-skill-hpc` | `slurm_submit`、`job_status`、`job_cancel`、`singularity_build`、`singularity_run`、`singularity_pull`、`singularity_build_fakeroot`、`singularity_run_gpu` | HPC 作业管理 + Singularity 容器 | ✗ |
-| `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory`、`get_experiment_context` | 祖先作用域的节点记忆（Letta 后端） | △ |
+| `ari-skill-hpc` | `job_submit`、`container_submit`、`job_status`、`job_result`、`job_logs`、`job_cancel`、`probe_platform_capabilities`、`slurm_submit`（core-agent bridge） | 类型化 HPC scheduler/container 生命周期 | ✗ |
+| `ari-skill-memory` | append-only 类型化写入、lineage 读取、审计与归并 | versioned 祖先作用域记忆（Letta 后端） | △ |
 | `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/publish 生命周期 (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`、`fetch_url`、`search_arxiv`、`search_semantic_scholar`、`collect_references_iterative` | 网络搜索、arXiv、Semantic Scholar、迭代式引用收集 | △ |
+| `ari-skill-web` | `search_papers`、`web_search`、`fetch_url`、`walk_citations`、`rerank_retrieval_records`及兼容alias | 类型化record/replay、URL安全、source provenance、有界引用图 | △ |
 | `ari-skill-plot` | `generate_figures`、`generate_figures_llm` | 确定性 + LLM 图表生成（按图通过 `kind` 字段选择 matplotlib 绘图或 SVG 图） | ✓ |
-| `ari-skill-paper` | `list_venues`、`get_template`、`generate_section`、`compile_paper`、`check_format`、`review_section`、`revise_section`、`write_paper_iterative`、`review_compiled_paper`、`list_rubrics`、`inject_code_availability`、`merge_reviews` | LaTeX 论文撰写、编译、基于评审规范的同行评审 (兼容 AI Scientist v1/v2)。v0.7.0：`inject_code_availability` 注入 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏；`merge_reviews` 事后合并文本评审与 VLM 评审 JSON。 | ✓ |
+| `ari-skill-paper` | `list_venues`、`get_template`、`compile_paper`、`check_format`、`write_paper_iterative`、`review_compiled_paper`、`list_rubrics`、`inject_code_availability`、`merge_reviews`、`link_paper_claims`、`paper_refine`、`finalize_paper_build` | 基于原生证据的全文生成和 fail-closed `PaperBuildV1` 发布；显式选择 rubric，并以 digest 锁定 compile/claim/review/model call/final artifact。 | ✓ |
 | `ari-skill-paper-re` | `fetch_code_bundle`、`run_reproduce`、`grade_with_simplejudge` | PaperBench 形式可复现性 (v0.7.0)：通过 `ari.clone` 预填沙箱、Phase 1 沙箱 runner、Phase 2 PaperBench SimpleJudge 评分。PaperBench 同捆于 `vendor/paperbench`。 | ✓ |
 | `ari-skill-replicate` | `generate_rubric`、`audit_rubric` | PaperBench 形式自动 rubric 生成与审计 (v0.7.0)。驱动 ORS 可复现性流。 | ✓ |
 | `ari-skill-benchmark` | `analyze_results`、`plot`、`statistical_test` | CSV/JSON/NPY 分析、绘图、scipy 统计（BFTS analyze 阶段使用） | ✗ |
@@ -802,15 +802,27 @@ Workflow:
 
 注意 `get_experiment_context()` 载荷（`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec`）**已不再** 在此列表中 —— 它现在作为上述工作上下文注入的 Tier 1a 对每个节点自动注入。
 
-### CoW 桥接 — 与记忆技能保持同步
+### 显式调用上下文 — 安全授权记忆
 
-在 LLM 往返开始之前，`loop.py:378-381` 发出：
+节点开始时，loop 构造一个不可变上下文：
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+context = ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids,
+    phase="bfts",
+)
+self.mcp.call_tool("add_memory", args, context=context)
 ```
 
-这是 `ari-skill-memory` 暴露的内部工具；它更新池化技能子进程内的 `$ARI_CURRENT_NODE_ID`，使任何后续 `add_memory(node_id=...)` 调用可以针对活跃节点进行 CoW 验证。代理永远看不到此工具 ── 它被 `_INTERNAL_MCP_TOOLS` 从 `tool_desc` 中过滤。
+`MCPClient` 检查清单的 `context_requirement`，使用按连接的 authority
+对上下文签名，并注入仅供传输的 `ari_context` 参数。该参数会从
+模型可见的工具 schema 中删除。对于 Claude 的 direct MCP 路径，
+`secure_stdio_proxy` 会生成自己的 authority 并完成相同注入，因此密钥不会
+进入 shim 配置。记忆技能在 I/O 前验证签名、工具绑定、run identity 与
+lineage digest，再强制 self-write 和 ancestor-read 规则。
 
 ### Soft 强制 vs Hard 强制
 
@@ -818,8 +830,8 @@ self.mcp.call_tool("_set_current_node", {"node_id": node.id})
 
 | 规则 | 强制方式 |
 |-----|---------|
-| 不能为其他节点写记忆 | **Hard** — 后端拒绝 `node_id` ≠ `$ARI_CURRENT_NODE_ID` |
-| 不能读取兄弟记忆 | **Hard** — `search_memory` 按 `ancestor_ids` 过滤 |
+| 不能为其他节点写记忆 | **Hard** — 签名的 `NodeContext` 必须将写入目标标识为 self |
+| 不能读取兄弟记忆 | **Hard** — 请求 ID 必须位于签名 lineage 内，然后 storage 按这些 ID 过滤 |
 | `generate_ideas` 最多调用一次 | **Hard** — 首次后 `_suppress_tools` 排除 |
 | 子节点不应调用 `survey` | **Soft** — 仅文字（"parent already completed the survey"）；工具仍在 `tool_desc` 中 |
 | 子节点应实现而非计划 | **Soft** — 仅文字；依赖系统提示的 `RULES` 块 |

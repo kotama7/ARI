@@ -16,7 +16,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 内部境界
@@ -76,17 +76,15 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 
 | モジュール | 担当 |
 |--------|------|
-| `ari/container.py` | コンテナ実行: `detect_runtime`、`build_run_cmd`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` による新しいプロセスグループ ＋ `ARI_MAX_CHILD_PROCS` 経由の任意の `RLIMIT_NPROC`）、`_run_with_timeout`（グループ SIGTERM→SIGKILL）、`pull_image`、`exec_in_container`。`ari.public.container` で再エクスポートされます。 |
+| `ari/execution.py` ＋ `ari/container.py` | `ari.execution` が閉じた workspace、最小 environment、POSIX limit、process-group timeout/cancel、完全 log artifact を所有します。`ari.container` は clean かつ fail-closed な runtime argv を構築し、blocking compatibility path は共通 executor へ委譲します。`ari.public.execution` / `ari.public.container` で再エクスポートされます。 |
 | `ari/env_detect.py` | スケジューラ / ランタイムのプローブ（`sinfo`、`qstat`、`docker info`、`lscpu`）—— 読み取り専用、ベストエフォート、ハードコードされたクラスタ知識を持ちません。 |
 | `ari/mcp/client.py` | MCP SDK の `stdio_client`（生のスポーンではなくラッパー）経由でスキルの stdio サーバをスポーンします。 |
-| `ari-skill-hpc/src/slurm.py` | 標準的な SLURM の submit/status/cancel（`SlurmClient`: `_run_local` は asyncio サブプロセス、`_run_remote` は paramiko）、`ARI_SBATCH_EXPORT_MODE` のクリーン環境ロジックを含みます。 |
+| `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | version付きHPC job契約、shellを介さないlocal SLURM、known-hostを厳格検証するSSH、永続idempotency、`--export=NIL` clean environment、digest付きresult収集を所有します。 |
 
-これらのオーナーへ統合していくべき既知の重複（誤った挙動ではないが、ドリフトの
-リスク）: `viz/api_memory.py` はコンテナランタイムのディスパッチを再導出して
-います。`ari-skill-paper-re/src/server.py` は `sbatch`/`apptainer exec` を
-再実装しており、すでに `slurm.py` から乖離しています（`--export ALL` を
-ハードコードしている）。そのローカルフォールバックには `setsid`/`killpg` が
-ないため、ハングした再現実験が孤児プロセスを生む可能性があります。
+残る統合対象として、`viz/api_memory.py` はコンテナruntime dispatchを再導出し、
+paper-reはlocal/Docker/Apptainer fallbackを所有しています。paper-reのSLURM経路は
+現在 `JobRequestV1` と共通submit/status/log/cancel lifecycleを使い、直接`sbatch`
+も親environment exportも行いません。
 
 **`ari.viz.state` のプロセスハンドル結合。** `ari/viz/state.py` は、ライブの
 OS ハンドルをモジュールグローバル（`_st` としてインポートされる）として
@@ -97,6 +95,16 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
 またいで残留モニタを回収する）。これは「グローバルな可変状態を通じた隠れた
 結合を避ける」という戒めの典型例です —— そのライフサイクルには意図を持って
 のみ手を触れてください。
+
+## MCP admission と result 境界
+
+`ari.mcp.client.MCPClient` は registry、dispatch、retry、run lock reconciliation
+を所有します。`ari.mcp.dispatch_support` の timeout 解決は manifest の
+`timeout_class` と明示的な `timeout_budget` だけを使い、tool 名別リストを持ちません。
+非同期 submitter では `ari.async_tools` の lifecycle 宣言を、admitted provider 内の
+immutable status/result/cancel `tool_ref` へ解決します。portable handle の状態写像、
+bounded polling、result 取得、cancel は `MCPClient` が所有し、未知の状態は protocol
+error として fail closed します。
 
 ## 2 つのオーケストレーションエンジン
 
@@ -124,13 +132,15 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
    `ARI_REPRO_*`、`PATH`）は `MCPClient` のスポーン**より前に**設定されている
    必要があります。MCP 構築を遅延させたり環境セットアップの順序を入れ替えたり
    すると、サンドボックス化 / work-dir のピン留めが静かに壊れます。
-2. **並列ワーカー下での共有プロセスのグローバル環境レース。** 最大 4 つの
+2. **並列ワーカー下のコンテキスト分離。** 最大 4 つの
    `AgentLoop` スレッドが 1 つのプロセスと 1 つの `MCPClient` を共有します。
-   メモリの copy-on-write はプロセスグローバルな `ARI_CURRENT_NODE_ID` をキーに
-   します。唯一安全な書き込みパスは
-   `mcp.call_tool(name, args, cow_node_id=node_id)` です（set-node＋write の対を
-   `MCPClient._cow_lock` 下で直列化します）。実行ごとの単一の
-   `_set_current_node` は `max_parallel_nodes > 1` では安全ではありません。
+   各呼び出しは、その worker 用に作成された不変の
+   `ToolCallContextV1.for_node(...)` を必ず携行します。client や provider に
+   可変の「現在ノード」を cache してはいけません。`MCPClient` と direct MCP
+   proxy は、転送専用の `ari_context` 引数をツール束縛された署名付き
+   capability で上書きします。memory provider は、順序付き lineage digest、
+   self-write ルール、ancestor-read 集合を呼び出しごとに独立検証します。
+   そのため、スレッド間 lock やグローバルなノード環境変数は不要です。
 3. **共有チェックポイントツリーへの書き込み。** **git worktree は存在しません**:
    並行するコミッタはすべて、1 つの共有された `agent._progress_cb` →
    `_save_tree_incremental` を介して同一の `tree.json` / `nodes_tree.json` /

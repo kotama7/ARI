@@ -8,17 +8,20 @@ any test that compares retrieval ordering.
 """
 from __future__ import annotations
 
-import os
 import threading
 import time
 import uuid
-from typing import Any
+
+from ari.public.memory import (
+    MemoryRetrievalProvenanceV1,
+    MemoryRetrievalV1,
+    canonical_memory_digest,
+)
 
 from ari_skill_memory.access_log import (
     AccessLog,
     build_read_event,
     build_write_event,
-    current_node_id,
 )
 from ari_skill_memory.backends.base import MemoryBackend
 from ari_skill_memory.config import MemoryConfig
@@ -52,40 +55,46 @@ class InMemoryBackend(MemoryBackend):
             max_mb=cfg.access_log_max_mb,
         )
 
-    # ─ CoW helpers ─────────────────────────────────────────────────────
-    def _check_cow(self, node_id: str) -> dict | None:
-        env_node = os.environ.get("ARI_CURRENT_NODE_ID")
-        if env_node is None or env_node == "":
-            return {"ok": False, "error": "ARI_CURRENT_NODE_ID not set"}
-        if node_id != env_node:
-            return {
-                "ok": False,
-                "error": "node_id does not match current node (CoW violation)",
-            }
-        return None
-
     # ─ MCP tool surface ────────────────────────────────────────────────
     def add_memory(
-        self, node_id: str, text: str, metadata: dict | None = None
+        self,
+        node_id: str,
+        text: str,
+        metadata: dict | None = None,
+        *,
+        idempotency_key: str | None = None,
     ) -> dict:
-        cow = self._check_cow(node_id)
-        if cow is not None:
-            return cow
-        entry_id = str(uuid.uuid4())
-        entry = {
-            "id": entry_id,
-            "node_id": node_id,
-            "text": text,
-            "metadata": metadata or {},
-            "ari_checkpoint": self.cfg.ckpt_hash,
-            "kind": "node_scope",
-            "ts": time.time(),
-        }
         with self._lock:
+            if idempotency_key is not None:
+                existing = next(
+                    (
+                        entry
+                        for entry in self._node_entries.values()
+                        if (entry.get("metadata") or {}).get("record_digest")
+                        == idempotency_key
+                    ),
+                    None,
+                )
+                if existing is not None:
+                    return {"ok": True, "id": existing["id"], "deduplicated": True}
+            entry_id = (
+                "mem_" + idempotency_key.removeprefix("sha256:")
+                if idempotency_key is not None
+                else str(uuid.uuid4())
+            )
+            entry = {
+                "id": entry_id,
+                "node_id": node_id,
+                "text": text,
+                "metadata": metadata or {},
+                "ari_checkpoint": self.cfg.ckpt_hash,
+                "kind": "node_scope",
+                "ts": time.time(),
+            }
             self._node_entries[entry_id] = entry
         self._access.write(
             build_write_event(
-                node_id=current_node_id(),
+                node_id=node_id,
                 collection="node_scope",
                 entry_id=entry_id,
                 text=text,
@@ -93,13 +102,18 @@ class InMemoryBackend(MemoryBackend):
                 preview_chars=self.cfg.access_log_preview_chars,
             )
         )
-        return {"ok": True, "id": entry_id}
+        return {"ok": True, "id": entry_id, "deduplicated": False}
 
     def search_memory(
-        self, query: str, ancestor_ids: list[str], limit: int = 5
+        self,
+        query: str,
+        ancestor_ids: list[str],
+        limit: int = 5,
+        *,
+        reader_node_id: str = "",
     ) -> dict:
-        if not ancestor_ids:
-            return {"results": []}
+        if not 1 <= limit <= 1_000:
+            raise ValueError("memory search limit must be in [1, 1000]")
         allowed = set(ancestor_ids)
         with self._lock:
             cand = [e for e in self._node_entries.values()
@@ -119,7 +133,7 @@ class InMemoryBackend(MemoryBackend):
         results = scored[:limit]
         self._access.write(
             build_read_event(
-                node_id=current_node_id(),
+                node_id=reader_node_id,
                 collection="node_scope",
                 query=query,
                 ancestor_ids=list(ancestor_ids),
@@ -133,9 +147,37 @@ class InMemoryBackend(MemoryBackend):
                 ],
             )
         )
-        return {"results": results}
+        provenance = MemoryRetrievalProvenanceV1(
+            backend="in-memory-test",
+            backend_version="ari.in-memory/v1",
+            server_version="in-process",
+            model="deterministic-keyword-overlap",
+            model_version="1",
+            ranking="keyword-hit-ratio; stable insertion tie-break",
+            deterministic=True,
+            query_digest=canonical_memory_digest(
+                {
+                    "query": query,
+                    "ancestor_node_ids": list(ancestor_ids),
+                    "limit": limit,
+                }
+            ),
+            candidate_count=len(cand),
+            returned_count=len(results),
+            limit=limit,
+            filter_evidence={
+                "ancestor_node_ids": list(ancestor_ids),
+                "checkpoint_namespace": self.cfg.ckpt_hash,
+                "strategy": "in-process prefilter",
+                "test_only": True,
+            },
+        )
+        return MemoryRetrievalV1(
+            results=results,
+            provenance=provenance,
+        ).model_dump(mode="json")
 
-    def get_node_memory(self, node_id: str) -> dict:
+    def get_node_memory(self, node_id: str, *, reader_node_id: str = "") -> dict:
         with self._lock:
             entries = sorted(
                 (e for e in self._node_entries.values()
@@ -149,7 +191,7 @@ class InMemoryBackend(MemoryBackend):
         try:
             self._access.write(
                 build_read_event(
-                    node_id=current_node_id(),
+                    node_id=reader_node_id,
                     collection="node_scope",
                     query="inherit:get_node_memory",
                     ancestor_ids=[node_id],
@@ -167,17 +209,6 @@ class InMemoryBackend(MemoryBackend):
             {"text": e["text"], "metadata": e["metadata"], "ts": e["ts"]}
             for e in entries
         ]}
-
-    def clear_node_memory(self, node_id: str) -> dict:
-        cow = self._check_cow(node_id)
-        if cow is not None:
-            return {"removed": 0, "error": cow["error"]}
-        with self._lock:
-            to_del = [k for k, e in self._node_entries.items()
-                      if e["node_id"] == node_id]
-            for k in to_del:
-                del self._node_entries[k]
-        return {"removed": len(to_del)}
 
     def get_experiment_context(self) -> dict:
         with self._lock:
@@ -201,7 +232,9 @@ class InMemoryBackend(MemoryBackend):
             lst.sort(key=lambda x: x["ts"])
         return {"by_node": by_node}
 
-    def bulk_get_node_memory(self, node_ids: list[str]) -> dict:
+    def bulk_get_node_memory(
+        self, node_ids: list[str], *, reader_node_id: str = ""
+    ) -> dict:
         want = set(node_ids)
         with self._lock:
             entries = [e for e in self._node_entries.values()
@@ -219,7 +252,7 @@ class InMemoryBackend(MemoryBackend):
         try:
             self._access.write(
                 build_read_event(
-                    node_id=current_node_id(),
+                    node_id=reader_node_id,
                     collection="node_scope",
                     query="inherit:bulk_get_node_memory",
                     ancestor_ids=list(node_ids),
@@ -242,6 +275,7 @@ class InMemoryBackend(MemoryBackend):
             self._react_entries.clear()
             self._core_persona = ""
             self._core_human = ""
+            self._core_context = {}
             self._core_seeded_at = 0.0
         return {"removed_node": nn, "removed_react": nr}
 
@@ -319,7 +353,7 @@ class InMemoryBackend(MemoryBackend):
             })
         self._access.write(
             build_write_event(
-                node_id=current_node_id(),
+                node_id=str((metadata or {}).get("node_id") or ""),
                 collection="react_step",
                 entry_id=entry_id,
                 text=content,
@@ -340,7 +374,7 @@ class InMemoryBackend(MemoryBackend):
         picked = [e for _, e in scored[:limit]]
         self._access.write(
             build_read_event(
-                node_id=current_node_id(),
+                node_id="",
                 collection="react_step",
                 query=query,
                 ancestor_ids=None,

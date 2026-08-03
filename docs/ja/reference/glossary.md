@@ -20,7 +20,7 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 用語集
@@ -150,7 +150,9 @@ finalize を止めるには `claim_gate_policy.mode: strict`（または
 
 **CoW (Copy-on-Write)**
 兄弟間で祖先メモリをバイト単位で安定に保つための書き込みガード:
-書き込み側のツールは、アクティブな `$ARI_CURRENT_NODE_ID` 以外の `node_id` をすべて拒否します。
+書き込み側のツールは、self node が書き込み先と一致する署名付き
+`NodeContextV1` を要求します。同じコンテキストが順序付き祖先リストを
+lineage digest に束縛します。
 [メモリアーキテクチャ](../concepts/memory.md)を参照。
 
 **Letta**

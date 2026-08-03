@@ -4,7 +4,7 @@
 ``ari.public`` is the single stable contract between the 14 ``ari-skill-*``
 servers and ``ari-core`` internals — its own ``ari/public/__init__.py`` docstring
 states "Skills must only import from ``ari.public.*``". This checker freezes the
-exact public surface (the 8 re-export submodules plus the docstring-only package)
+exact public surface (the 11 re-export submodules plus the docstring-only package)
 into a committed JSON snapshot so that a later refactor cannot silently remove,
 rename, or hollow out a symbol a skill depends on.
 
@@ -13,8 +13,7 @@ Policy: docs/refactoring/010_contract_preservation_policy.md §2 (Public Python 
 Sequencing: docs/refactoring/subtasks/029_add_public_api_contract_checker_script.md.
 
 What it records (deterministic, sorted JSON — byte-stable for ``git diff``):
-  * the 8 public submodules ``ari.public.{claim_gate, config_schema, container,
-    cost_tracker, llm, paths, run_env, verified_context}`` and the docstring-only
+  * the 11 public submodules under ``ari.public`` and the docstring-only
     ``ari.public`` package itself;
   * each module's exported name set (its ``__all__``);
   * ``backing`` — the ``ari.*`` internals each submodule re-exports from;

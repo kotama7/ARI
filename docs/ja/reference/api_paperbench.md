@@ -116,7 +116,7 @@ PaperBench run を投入。
 ```json
 {
   "paper_ids": ["2404.14193"],
-  "rubric_config":    {"model": "gemini/gemini-2.5-pro", "two_stage": true},
+  "rubric_config":    {"model": "gemini/gemini-2.5-pro"},
   "reproduce_config": {
     "model": "gpt-5-mini",
     "time_limit_sec": 43200,
@@ -131,7 +131,7 @@ PaperBench run を投入。
     "memory_gb_per_node": 256,
     "constraint": "skylake",
     "cpu_bind": "cores",
-    "extra_sbatch_args": ["--account=projX"]
+    "account": "projX"
   },
   "judge_config":     {"model": "gpt-5-mini", "n_runs": 1},
   "dry_run": false

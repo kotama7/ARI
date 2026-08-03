@@ -1,11 +1,14 @@
 {
-  "name": "idea-generation-skill",
-  "version": "0.1.0",
-  "description": "Research idea generation, literature survey and gap analysis",
+  "description": "Literature-grounded survey and multi-agent hypothesis generation using VirSci workflows.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "idea-skill",
+  "package": "ari-skill-idea",
+  "runtime": "python",
+  "schema_version": 1,
   "tools": [
     "survey",
     "generate_ideas"
   ],
-  "runtime": "python",
-  "entrypoint": "src/server.py"
+  "version": "0.2.0"
 }

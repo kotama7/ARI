@@ -4,10 +4,9 @@
 #
 # Runs each skill's tests in its own ``pytest`` process. This avoids the
 # cross-skill ``sys.modules['src.server']`` ambiguity that breaks single-shot
-# ``pytest`` runs across multiple ari-skill-* packages (each ships its server
-# as ``src/server.py``; sharing one Python process means the first import
-# poisons every subsequent ``from src.server import …`` and any
-# ``unittest.mock.patch('src.server.X')`` in sibling skills).
+# ``pytest`` runs across legacy ari-skill-* packages. Canonical installable
+# package names (for example ``ari_skill_hpc``) remove this ambiguity one skill
+# at a time; isolated processes preserve compatibility during that migration.
 #
 # Usage:   bash scripts/run_all_tests.sh [extra-pytest-args]
 # Exit code: 0 if every path passes, 1 if any path fails.
@@ -26,11 +25,14 @@ PATHS=(
   "ari-skill-idea/tests"
   "ari-skill-evaluator/tests"
   "ari-skill-memory/tests"
+  "ari-skill-orchestrator/tests"
   "ari-skill-coding/tests"
   "ari-skill-replicate/tests"
   "ari-skill-vlm/tests"
   "ari-skill-transform/tests"
   "ari-skill-benchmark/tests"
+  "ari-skill-plot/tests"
+  "ari-skill-tool-registry/tests"
 )
 
 failed=()
@@ -47,11 +49,8 @@ for p in "${PATHS[@]}"; do
   # Tee the per-path output so the user sees progress in real time, and
   # capture the bottom line for aggregation.
   log=$(mktemp)
-  if pytest "$p" --tb=short -q --no-header -p no:cacheprovider "$@" 2>&1 | tee "$log"; then
-    rc=0
-  else
-    rc=${PIPESTATUS[0]}
-  fi
+  pytest "$p" --tb=short -q --no-header -p no:cacheprovider "$@" 2>&1 | tee "$log"
+  rc=${PIPESTATUS[0]}
   # Last non-empty line carries the summary, e.g. "30 passed in 0.27s"
   summary=$(grep -Eo '[0-9]+ passed|[0-9]+ failed|[0-9]+ skipped' "$log" | sort -u | paste -sd', ')
   rm -f "$log"

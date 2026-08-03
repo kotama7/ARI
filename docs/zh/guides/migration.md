@@ -2,9 +2,13 @@
 sources:
   - path: ari-core/ari/migrations/v05_to_v07
     role: implementation
+  - path: ari-core/ari/migrations/checkpoint.py
+    role: implementation
+  - path: ari-core/ari/migrations/skill_manifest.py
+    role: implementation
   - path: ari-core/ari/memory_cli.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 迁移指南
@@ -46,11 +50,14 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
    ```bash
    ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory migrate
    ```
-   迁移工具读取 `memory_store.jsonl`（以及旧版全局 JSONL，如有），
-   写入 Letta 智能体，并将结果快照至 `memory_backup.jsonl.gz`。
-4. **删除旧版 JSONL 文件。** 验证迁移成功后执行：
+   显式 offline migrator 验证 `memory_store.jsonl`，将每行转换为按内容寻址的
+   `MemoryRecordV1`，写出 `memory_backup.v1.json.gz`，成功后才归档源文件。
+   跨实验 global memory 只报告、不导入；`ari run` / `ari resume` 不会自动迁移。
+4. **检查已归档源文件，并手工处理 global memory。** 验证 backup 后，checkpoint
+   源文件名为 `memory_store.jsonl.migrated-*`。若 global store 存在，请先决定是否
+   外部保留，再删除：
    ```bash
-   rm /path/to/ckpt/memory_store.jsonl
+   rm /path/to/ckpt/memory_store.jsonl.migrated-*
    rm $HOME/.ari/global_memory.jsonl   # if it ever existed
    ```
 5. **选择 rubric。** 从
@@ -109,6 +116,22 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
 - `lineage_decisions.jsonl` 在 stagnation rule 首次触发时创建。
 - `manifest.lock` 和 `publish_record.json` 在 `ari ear publish`
   执行后出现。
+
+## Canonical Skill admission 与旧格式只读检查
+
+Production discovery 只注册能通过 `SkillManifestV1` 验证的
+`ari-skill-*/skill.yaml`。目录、`server.py`、`mcp.json` 或未版本化 manifest
+都不是注册依据。启用自定义 package 前，必须将其转换为 canonical schema。
+
+`ari.migrations` 保留两个有意限定为只读的兼容 reader：
+
+- `load_legacy_skill_manifest(path)` 在内存中转换未版本化 manifest，将其设为
+  默认禁用且 environment audit-pending，并且不会 admission 到 run。
+- `load_legacy_checkpoint(path)` 规范化旧 tree、paper 与 replay input，为读取的
+  每个文件返回 SHA-256 digest，且不会写入 checkpoint。
+
+转换后运行 `python scripts/check_skill_manifests.py` 验证 Skill package；在 paper
+与 replay input 和 migration view 一致之前，请保留原 checkpoint。
 
 ## v0.7 → v0.8（未来）
 

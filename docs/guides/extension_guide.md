@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Extension Guide
@@ -34,9 +34,9 @@ Minimize energy score of protein folding simulation using different force field 
 
 ## Required Workflow
 1. Call `survey` to find related literature
-2. Submit a SLURM job with `slurm_submit`
+2. Submit a typed scheduler job with `job_submit`
 3. Poll until completion with `job_status`
-4. Read results with `run_bash`
+4. Rehash and read declared outputs with `job_result`
 
 <!-- min_expected_metric: -500 -->
 <!-- metric_keyword: energy_score -->
@@ -144,16 +144,25 @@ Only edit `config/pipeline.yaml`. No core code changes needed.
 ```yaml
 pipeline:
   - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+    skill: paper-skill
+    tool: write_paper_iterative
     enabled: true
-    args:
+    inputs:
+      workspace_root: '{{checkpoint_dir}}'
+      science_data_path: '{{checkpoint_dir}}/science_data.json'
+      figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+      references_path: '{{checkpoint_dir}}/related_refs.json'
+      ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+      rubric_id: generic_conference
       venue: arxiv
 
   - stage: review
-    skill: ari-skill-paper
-    tool: review_section
+    skill: paper-skill
+    tool: review_compiled_paper
     enabled: true
+    inputs:
+      rubric_id: generic_conference
+      tex_path: '{{checkpoint_dir}}/full_paper.tex'
 
   - stage: my_new_stage            # ← Add here
     skill: ari-skill-yourskill
@@ -168,11 +177,9 @@ pipeline:
     enabled: true
 ```
 
-Each stage receives:
-- `best_node`: The highest-scoring node from BFTS
-- `all_nodes`: All explored nodes
-- `nodes_json_path`: Path to `nodes_tree.json`
-- Any `args` specified in the YAML
+Each stage receives only the explicit `inputs` declared in the workflow. Paper
+stages consume native, digest-bound artifacts rather than an implicit node-tree
+dictionary.
 
 ---
 
@@ -239,9 +246,15 @@ VENUES = [
 
 ```yaml
 - stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    science_data_path: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    references_path: '{{checkpoint_dir}}/related_refs.json'
+    ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+    rubric_id: your_venue
     venue: your_venue   # ← Specify here
 ```
 
@@ -276,7 +289,8 @@ bfts:
 
 ## 7. Exposing ARI to External Systems
 
-Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts. The orchestrator supports dual transport: **stdio** (MCP for Claude Desktop) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
+Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts.
+Stdio and authenticated MCP Streamable HTTP share the same durable service contract.
 
 ### From Claude Desktop
 
@@ -301,6 +315,7 @@ from mcp import ClientSession
 async with ClientSession(...) as session:
     result = await session.call_tool("run_experiment", {
         "experiment_md": open("experiment.md").read(),
+        "idempotency_key": "benchmark-request-001",
         "max_nodes": 10
     })
     run_id = result["run_id"]
@@ -313,6 +328,7 @@ The orchestrator supports parent-child experiment tracking. Child experiments ca
 ```python
 result = await session.call_tool("run_experiment", {
     "experiment_md": "...",
+    "idempotency_key": "child-request-001",
     "parent_run_id": "parent_20260414",
     "max_recursion_depth": 2
 })
@@ -320,17 +336,19 @@ result = await session.call_tool("run_experiment", {
 
 Use `list_children(run_id)` to retrieve child runs. The GUI Sub-Experiments page visualizes the hierarchy.
 
-### As a REST API (via HTTP transport)
+### Via MCP Streamable HTTP
 
-When launched with HTTP transport enabled (`ARI_ORCHESTRATOR_PORT`), the orchestrator exposes REST endpoints and SSE for CI/CD integration:
+Network control uses the standard MCP Streamable HTTP transport at `/mcp`. It refuses
+to start without a mode-0600 `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE`; use an MCP client
+with a bearer token rather than REST-specific routes:
 
 ```bash
-# Launch an experiment
-curl -X POST http://localhost:9890/run -d '{"experiment_md": "...", "max_nodes": 10}'
-
-# Check status
-curl http://localhost:9890/status/{run_id}
+ARI_ORCHESTRATOR_HTTP_TOKENS_FILE=/secure/token-digests.json \
+  python ari-skill-orchestrator/src/server.py --transport streamable-http
 ```
+
+The token digest format, quotas, state machine, and artifact policy are documented in
+[Orchestrator control plane](../reference/orchestrator.md).
 
 ---
 

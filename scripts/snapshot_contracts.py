@@ -10,7 +10,7 @@ verifies the live tree still matches them:
 
   * ``public``  -> ``public_api.json``    (``ari.public.*`` exported symbol tables)
   * ``cli``     -> ``cli_tree.json``      (the ``ari = ari.cli:app`` Typer surface)
-  * ``mcp``     -> ``mcp_tools.json``      (14 ``ari-skill-*/src/server.py`` tool catalog)
+  * ``mcp``     -> ``mcp_tools.json``      (manifested skill entrypoint tool catalog)
   * ``viz``     -> ``viz_endpoints.json``  (dashboard REST inventory + response keys)
 
 Design principle P2 (determinism): stdlib only (``ast``/``json``/``importlib``);
@@ -30,12 +30,14 @@ helpers here so ``pytest`` and ``--check`` can never disagree (single source of
 truth).  This script adds no third-party dependency and wires no CI gate (that is
 subtasks 029/030/032/046).
 """
+
 from __future__ import annotations
 
 import argparse
 import ast
 import importlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -94,12 +96,15 @@ def _meta(surface: str) -> dict:
 
 
 def _fixture_path(surface: str) -> Path:
-    return FIXTURES_DIR / {
-        "public": "public_api.json",
-        "cli": "cli_tree.json",
-        "mcp": "mcp_tools.json",
-        "viz": "viz_endpoints.json",
-    }[surface]
+    return (
+        FIXTURES_DIR
+        / {
+            "public": "public_api.json",
+            "cli": "cli_tree.json",
+            "mcp": "mcp_tools.json",
+            "viz": "viz_endpoints.json",
+        }[surface]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -107,14 +112,32 @@ def _fixture_path(surface: str) -> Path:
 # ---------------------------------------------------------------------------
 
 _PUBLIC_SUBMODULES = (
+    "analysis",
+    "call_context",
     "claim_gate",
+    "clone",
     "config_schema",
     "container",
     "cost_tracker",
+    "evaluation",
+    "execution",
+    "figures",
+    "latex_claims",
     "llm",
+    "memory",
+    "lineage",
+    "node_selection",
     "paths",
+    "paper",
+    "publish",
+    "research_contract",
+    "result",
     "run_env",
+    "science_data",
+    "skill_lock",
+    "skill_manifest",
     "verified_context",
+    "visual_review",
 )
 
 
@@ -212,8 +235,7 @@ def _describe_click(cmd) -> dict:
     }
     if is_group:
         node["commands"] = {
-            name: _describe_click(sub)
-            for name, sub in sorted(subcommands.items())
+            name: _describe_click(sub) for name, sub in sorted(subcommands.items())
         }
     return node
 
@@ -305,7 +327,11 @@ def _scan_skill_tools(server_py: Path) -> list[dict]:
                 if _is_mcp_tool_decorator(dec):
                     name = _decorator_name_override(dec) or node.name
                     tools.append(
-                        {"name": name, "args": _func_arg_names(node), "idiom": "fastmcp"}
+                        {
+                            "name": name,
+                            "args": _func_arg_names(node),
+                            "idiom": "fastmcp",
+                        }
                     )
         elif isinstance(node, ast.Call) and _is_tool_ctor(node):
             name, props = _tool_ctor_fields(node)
@@ -315,11 +341,35 @@ def _scan_skill_tools(server_py: Path) -> list[dict]:
     return tools
 
 
+def _manifest_entrypoint(skill_dir: Path) -> Path | None:
+    """Read the simple, canonical ``entrypoint.module`` YAML scalar.
+
+    This snapshot generator intentionally remains stdlib-only.  Skill manifest
+    conformance is enforced separately, so a small indentation-aware reader is
+    sufficient here and avoids restoring the obsolete ``src/server.py`` rule.
+    """
+    manifest = skill_dir / "skill.yaml"
+    if manifest.is_file():
+        in_entrypoint = False
+        for raw in manifest.read_text(encoding="utf-8").splitlines():
+            if raw and not raw.startswith((" ", "\t")):
+                in_entrypoint = raw.strip() == "entrypoint:"
+                continue
+            if in_entrypoint:
+                match = re.fullmatch(r"\s+module:\s*['\"]?([^'\"#]+?)['\"]?\s*", raw)
+                if match:
+                    candidate = skill_dir / match.group(1).strip()
+                    if candidate.is_file() and candidate.is_relative_to(skill_dir):
+                        return candidate
+    fallback = skill_dir / "src" / "server.py"
+    return fallback if fallback.is_file() else None
+
+
 def _skill_server_files() -> list[tuple[str, Path]]:
     out: list[tuple[str, Path]] = []
     for child in sorted(REPO_ROOT.glob("ari-skill-*")):
-        server = child / "src" / "server.py"
-        if server.is_file():
+        server = _manifest_entrypoint(child)
+        if server is not None:
             out.append((child.name, server))
     return out
 
@@ -329,8 +379,8 @@ def build_mcp_static() -> dict:
     for skill_name, server in _skill_server_files():
         skills[skill_name] = _scan_skill_tools(server)
 
-    # Cross-skill duplicate tool names (the flat-namespace clobber: the
-    # MCPClient._tool_registry resolves last-skill-wins). Recorded, NOT fixed.
+    # Cross-skill duplicate tool names. MCPClient rejects these when the owners
+    # are admitted together; the catalog keeps them visible for policy review.
     seen: dict[str, list[str]] = {}
     for skill_name, tools in skills.items():
         for tool in tools:
@@ -373,16 +423,32 @@ _VIZ_ENDPOINTS = [
     {"method": "GET", "path": "/api/checkpoints", "owner": "checkpoint_api"},
     {"method": "GET", "path": "/api/rubrics", "owner": "api_settings"},
     {"method": "GET", "path": "/api/fewshot/<rubric>", "owner": "api_fewshot"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/summary", "owner": "checkpoint_api"},
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/summary",
+        "owner": "checkpoint_api",
+    },
     {"method": "GET", "path": "/api/checkpoint/<id>/memory", "owner": "node_work_api"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/memory_access", "owner": "api_memory"},
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/memory_access",
+        "owner": "api_memory",
+    },
     {"method": "GET", "path": "/api/memory/health", "owner": "api_memory"},
     {"method": "GET", "path": "/api/memory/detect", "owner": "api_memory"},
     {"method": "GET", "path": "/api/checkpoint/<id>/files", "owner": "file_api"},
     {"method": "GET", "path": "/api/checkpoint/<id>/file", "owner": "file_api"},
     {"method": "GET", "path": "/api/checkpoint/<id>/file/raw", "owner": "file_api"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/filetree", "owner": "node_work_api"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/filecontent", "owner": "node_work_api"},
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/filetree",
+        "owner": "node_work_api",
+    },
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/filecontent",
+        "owner": "node_work_api",
+    },
     {"method": "GET", "path": "/api/ear/<rid>/publish-yaml", "owner": "ear"},
     {"method": "GET", "path": "/api/ear/<rid>", "owner": "ear"},
     {"method": "GET", "path": "/api/nodes/<rid>/<nid>/report", "owner": "ear"},
@@ -406,14 +472,38 @@ _VIZ_ENDPOINTS = [
     {"method": "GET", "path": "/api/slurm/partitions", "owner": "api_settings"},
     {"method": "GET", "path": "/api/logs", "owner": "api_experiment"},
     {"method": "GET", "path": "/api/sub-experiments", "owner": "api_orchestrator"},
-    {"method": "GET", "path": "/api/sub-experiments/<rid>", "owner": "api_orchestrator"},
-    {"method": "GET", "path": "/api/lineage-decisions/<ckpt>", "owner": "checkpoint_api"},
+    {
+        "method": "GET",
+        "path": "/api/sub-experiments/<rid>",
+        "owner": "api_orchestrator",
+    },
+    {
+        "method": "GET",
+        "path": "/api/lineage-decisions/<ckpt>",
+        "owner": "checkpoint_api",
+    },
     {"method": "GET", "path": "/api/paperbench/papers", "owner": "api_paperbench"},
     {"method": "GET", "path": "/api/paperbench/arxiv/<id>", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/papers/<id>/license", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/run/<jid>/logs", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/run/<jid>/results", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/run/<jid>/report", "owner": "api_paperbench"},
+    {
+        "method": "GET",
+        "path": "/api/paperbench/papers/<id>/license",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "GET",
+        "path": "/api/paperbench/run/<jid>/logs",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "GET",
+        "path": "/api/paperbench/run/<jid>/results",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "GET",
+        "path": "/api/paperbench/run/<jid>/report",
+        "owner": "api_paperbench",
+    },
     {"method": "GET", "path": "/api/paperbench/run/<jid>", "owner": "api_paperbench"},
     # --- POST (do_POST) ---
     {"method": "POST", "path": "/api/settings", "owner": "api_settings"},
@@ -421,7 +511,11 @@ _VIZ_ENDPOINTS = [
     {"method": "POST", "path": "/api/memory/stop-local", "owner": "api_memory"},
     {"method": "POST", "path": "/api/memory/restart", "owner": "api_memory"},
     {"method": "POST", "path": "/api/launch", "owner": "api_experiment"},
-    {"method": "POST", "path": "/api/sub-experiments/launch", "owner": "api_orchestrator"},
+    {
+        "method": "POST",
+        "path": "/api/sub-experiments/launch",
+        "owner": "api_orchestrator",
+    },
     {"method": "POST", "path": "/api/run-stage", "owner": "api_experiment"},
     {"method": "POST", "path": "/api/config/generate", "owner": "api_tools"},
     {"method": "POST", "path": "/api/chat-goal", "owner": "api_tools"},
@@ -429,7 +523,11 @@ _VIZ_ENDPOINTS = [
     {"method": "POST", "path": "/api/upload/delete", "owner": "api_tools"},
     {"method": "POST", "path": "/api/env-keys", "owner": "api_settings"},
     {"method": "POST", "path": "/api/ssh/test", "owner": "api_tools"},
-    {"method": "POST", "path": "/api/switch-checkpoint", "owner": "checkpoint_lifecycle"},
+    {
+        "method": "POST",
+        "path": "/api/switch-checkpoint",
+        "owner": "checkpoint_lifecycle",
+    },
     {"method": "POST", "path": "/api/ear/<rid>/curate", "owner": "ear"},
     {"method": "POST", "path": "/api/ear/<rid>/publish-yaml", "owner": "ear"},
     {"method": "POST", "path": "/api/ear/clone-verify", "owner": "ear"},
@@ -438,12 +536,32 @@ _VIZ_ENDPOINTS = [
     {"method": "POST", "path": "/api/publish/<rid>", "owner": "api_publish"},
     {"method": "POST", "path": "/api/fewshot/<rid>/sync", "owner": "api_fewshot"},
     {"method": "POST", "path": "/api/fewshot/<rid>/upload", "owner": "api_fewshot"},
-    {"method": "POST", "path": "/api/fewshot/<rid>/<ex>/delete", "owner": "api_fewshot"},
-    {"method": "POST", "path": "/api/paperbench/papers/import", "owner": "api_paperbench"},
-    {"method": "POST", "path": "/api/paperbench/papers/<id>/delete", "owner": "api_paperbench"},
-    {"method": "POST", "path": "/api/paperbench/papers/<id>/metadata", "owner": "api_paperbench"},
+    {
+        "method": "POST",
+        "path": "/api/fewshot/<rid>/<ex>/delete",
+        "owner": "api_fewshot",
+    },
+    {
+        "method": "POST",
+        "path": "/api/paperbench/papers/import",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "POST",
+        "path": "/api/paperbench/papers/<id>/delete",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "POST",
+        "path": "/api/paperbench/papers/<id>/metadata",
+        "owner": "api_paperbench",
+    },
     {"method": "POST", "path": "/api/paperbench/run", "owner": "api_paperbench"},
-    {"method": "POST", "path": "/api/paperbench/cost-estimate", "owner": "api_paperbench"},
+    {
+        "method": "POST",
+        "path": "/api/paperbench/cost-estimate",
+        "owner": "api_paperbench",
+    },
     {"method": "POST", "path": "/api/ollama/<path>", "owner": "api_ollama"},
     {"method": "POST", "path": "/api/gpu-monitor", "owner": "api_process"},
     {"method": "POST", "path": "/api/stop", "owner": "api_process"},
@@ -451,7 +569,11 @@ _VIZ_ENDPOINTS = [
     {"method": "POST", "path": "/api/checkpoint/file/delete", "owner": "file_api"},
     {"method": "POST", "path": "/api/checkpoint/compile", "owner": "file_api"},
     {"method": "POST", "path": "/api/checkpoint/<id>/file/upload", "owner": "file_api"},
-    {"method": "POST", "path": "/api/delete-checkpoint", "owner": "checkpoint_lifecycle"},
+    {
+        "method": "POST",
+        "path": "/api/delete-checkpoint",
+        "owner": "checkpoint_lifecycle",
+    },
     {"method": "POST", "path": "/api/workflow", "owner": "api_settings"},
     {"method": "POST", "path": "/api/workflow/flow", "owner": "api_workflow"},
     {"method": "POST", "path": "/api/workflow/skills", "owner": "api_workflow"},
@@ -643,7 +765,9 @@ def compare(surface: str, golden: dict, fresh: dict) -> list[str]:
             msgs.append("[viz] mirrored response_keys changed")
     else:  # cli — structural equality of the introspected tree + env effects
         # Ignore import-guarded optional subcommands absent in a lean env (CI).
-        g_root, f_root = _cli_drop_absent_optional(golden.get("root"), fresh.get("root"))
+        g_root, f_root = _cli_drop_absent_optional(
+            golden.get("root"), fresh.get("root")
+        )
         if g_root != f_root:
             msgs.append("[cli] command/option tree drifted from golden")
         if golden.get("env_side_effects") != fresh.get("env_side_effects"):
@@ -679,7 +803,9 @@ def _check(surface: str) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--surface", choices=(*SURFACES, "all"), default="all",
+        "--surface",
+        choices=(*SURFACES, "all"),
+        default="all",
         help="contract surface to snapshot/verify",
     )
     mode = parser.add_mutually_exclusive_group()

@@ -1,15 +1,10 @@
-# ari-skill-vlm/src
+# ari-skill-vlm runtime
 
-MCP server package for the VLM skill — vision-LLM review of figures and tables
-in generated papers. It reads rendered output and returns critique; it does not
-generate figures. `__init__.py` is empty; the package is imported as `src`.
+- `server.py` — three MCP adapters and failure-preserving batch aggregation.
+- `artifacts.py` — FigureBatch resolution, digest/size/image verification.
+- `criteria.py` — immutable figure/table/domain criterion profiles.
+- `review.py` — bounded model call, strict schema parse, raw artifact and usage provenance.
+- `prompts/` — externalized figure and table review instructions.
 
-## Contents
-
-- `README.md` — this file.
-- `__init__.py` — empty package marker.
-- `server.py` — MCP entry point for figure / table / batch review.
-
-## See also
-
-- The skill root `README.md` and the `server.py` module docstring for the tools & outward interface.
+The runtime has no raster-sibling guessing, manifest fallback, markdown-fence
+repair, or empty-success conversion.

@@ -2,9 +2,13 @@
 sources:
   - path: ari-core/ari/migrations/v05_to_v07
     role: implementation
+  - path: ari-core/ari/migrations/checkpoint.py
+    role: implementation
+  - path: ari-core/ari/migrations/skill_manifest.py
+    role: implementation
   - path: ari-core/ari/memory_cli.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # マイグレーションガイド
@@ -46,12 +50,16 @@ ARI のチェックポイントフォーマットは 3 回のリリースを経�
    ```bash
    ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory migrate
    ```
-   マイグレーターは `memory_store.jsonl` (およびレガシーグローバル JSONL が
-   存在すれば) を読み込み、Letta エージェントに書き込み、結果を
-   `memory_backup.jsonl.gz` にスナップショット保存します。
-4. **レガシー JSONL を削除する。** マイグレーションを確認したあとに:
+   明示的な offline migrator は `memory_store.jsonl` を検証し、各行を
+   content-addressed `MemoryRecordV1` に変換して
+   `memory_backup.v1.json.gz` を書き、その成功後だけ元ファイルを archive します。
+   実験横断 global memory は報告しますが import しません。`ari run` / `ari resume`
+   が migration を自動実行することはありません。
+4. **archive 済み source を確認し、global memory は手動で処理する。** backup を
+   検証したら checkpoint source は `memory_store.jsonl.migrated-*` になっています。
+   global store があれば外部保存の要否を判断してから削除します:
    ```bash
-   rm /path/to/ckpt/memory_store.jsonl
+   rm /path/to/ckpt/memory_store.jsonl.migrated-*
    rm $HOME/.ari/global_memory.jsonl   # if it ever existed
    ```
 5. **ルーブリックを選択する。** `ari-core/config/reviewer_rubrics/` から
@@ -112,6 +120,23 @@ ARI のチェックポイントフォーマットは 3 回のリリースを経�
 
 - stagnation rule が初めて発火したときに `lineage_decisions.jsonl` が作成される。
 - `ari ear publish` 後に `manifest.lock` と `publish_record.json` が現れる。
+
+## Canonical Skill admission とレガシー読取
+
+production discovery が登録するのは、`SkillManifestV1` として検証できる
+`ari-skill-*/skill.yaml` だけです。directory、`server.py`、`mcp.json`、
+未versioned manifestは登録根拠になりません。custom packageは有効化前に
+canonical schemaへ変換してください。
+
+`ari.migrations`には意図的にread-onlyな互換readerを2つ残します。
+
+- `load_legacy_skill_manifest(path)` は未versioned manifestをメモリ内で変換し、
+  default-offかつenvironment audit-pendingにします。runへはadmissionしません。
+- `load_legacy_checkpoint(path)` は旧tree、paper、replay inputを正規化し、読み取った
+  全fileのSHA-256 digestを返します。checkpointへ書き込みません。
+
+変換後は `python scripts/check_skill_manifests.py` でSkill packageを検証し、paperと
+replay inputがmigration viewと一致するまで元checkpointを保存してください。
 
 ## v0.7 → v0.8 (予定)
 

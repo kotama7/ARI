@@ -1,0 +1,59 @@
+schema_version: ari.catalog-sources/v1
+sources:
+  - source_id: tooluniverse.uniprot
+    kind: tooluniverse
+    provider_id: tooluniverse
+    support_release: 1.3.1
+    # Replace with provider_digest printed by scripts/verify_tooluniverse.py.
+    provider_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    launcher:
+      command_kind: python
+      python_executable: /absolute/provider-env/bin/python
+      package_root: /absolute/provider-env/lib/python3.13/site-packages/tooluniverse
+      python_module: tooluniverse.smcp_server
+      python_callable: run_stdio_server
+      expected_architecture: x86_64
+      arguments: []
+      literal_env: {}
+      identity_globs:
+        - "**/*"
+        - "**/*.py"
+        - "*.lock"
+        - pyproject.toml
+        - requirements*.txt
+    include_categories: [uniprot]
+    exclude_categories: []
+    profiles:
+      - profile_id: read-only-data
+        categories: [uniprot]
+        tool_types: []
+        side_effects: read-only
+        determinism: live-data
+        permissions: [network]
+        semantics:
+          acquisition: live-api
+        units: {}
+        limitations:
+          - Results reflect the live UniProt service and its current data release.
+        backend_lineage: [uniprot]
+        data_lineage: [uniprot-live-api]
+        independence_group: uniprot
+    evidence:
+      protocol_conformance: true
+      provider_pinned: true
+      launcher_verified: true
+      dependencies_pinned: true
+      replay_fixture_digest: null
+      scientific_validation_digest: null
+      limitations_documented: true
+      semantics_documented: true
+      units_documented: false
+      method_identity_documented: false
+      architecture: ToolUniverse compact MCP in an isolated frozen environment
+      notes:
+        - Collection conformance is not leaf scientific validation.
+    timeout_seconds: 180
+    page_size: 250
+    info_batch_size: 20
+    max_pages: 1000
+    max_tools: 100000

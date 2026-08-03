@@ -133,7 +133,7 @@ DEFAULT_CONFIG_VALUES: dict = {
     "docs_only_paths": [],
     "under_traced_seam_paths": [
         "ari-skill-benchmark/src/", "ari-skill-coding/src/",
-        "ari-skill-evaluator/src/", "ari-skill-hpc/src/", "ari-skill-idea/src/",
+        "ari-skill-evaluator/src/", "ari-skill-hpc/ari_skill_hpc/", "ari-skill-idea/src/",
         "ari-skill-memory/src/", "ari-skill-orchestrator/src/",
         "ari-skill-paper/src/", "ari-skill-paper-re/src/", "ari-skill-plot/src/",
         "ari-skill-replicate/src/", "ari-skill-transform/src/",

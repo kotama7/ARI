@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+last_verified: 2026-08-02
 ---
 
 # 环境变量参考
@@ -35,7 +35,10 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_LLM_MODEL` | 默认 LiteLLM 模型 id | （无） |
 | `ARI_LLM_API_BASE` | LiteLLM API base 覆盖 | LiteLLM 默认值 |
 | `ARI_MODEL` | 跨技能回退模型 id | （回退至 `ARI_LLM_MODEL`） |
-| `ARI_MODEL_EVAL` | LLM 评估器使用的模型 | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_EVAL` | core BFTS评估器模型（旧共享alias；`ari-skill-evaluator`不读取） | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_METRIC_PROPOSAL` | 显式metric proposal模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_MODEL_SEMANTIC_REVIEW` | semantic advisory模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_SEMANTIC_REVIEW_MODEL_REVISION` | 记录的semantic model revision | （无） |
 | `ARI_MODEL_JUDGE` | BFTS judge 使用的模型 | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_LINEAGE` | 停滞/沿袭决策使用的模型（v0.7.0） | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | 选取种子 idea 使用的模型 | 回退至 `ARI_MODEL` |
@@ -97,10 +100,9 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | 变量 | 用途 |
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta`（默认）或 `in_memory`（无需 Letta；仅用于本地冒烟测试的短暂内存后端） |
-| `ARI_MEMORY_AUTO_RESTORE` | 恢复时自动从 `memory_backup.jsonl.gz` 还原 |
+| `ARI_MEMORY_AUTO_RESTORE` | 恢复时验证并从 `memory_backup.v1.json.gz` 还原 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` 路径 |
 | `ARI_MEMORY_CONSOLIDATE` | 类型化记忆整合 + 为论文论断提供基于工件支撑的 `verified_context.json`。**默认开启**；设为 `0`/`false`/`no`/`off` 以禁用 |
-| `ARI_CURRENT_NODE_ID` | 由智能体循环设置；技能读取但不设置 |
 | `ARI_LETTA_VENV` | 捆绑 Letta 服务器的虚拟环境路径 |
 
 ### 评审规范 + 论文评审
@@ -118,7 +120,7 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_CLAIM_GATE_MODE` | 论断–证据 / 指标正确性门的评估开关。`off` 从不阻断；`warn` 报告错误 / 警告但从不阻断 finalize；`strict` 在存在阻断性错误时阻断最终门 | `warn`（`off` / `warn` / `strict`） |
+| `ARI_CLAIM_GATE_MODE` | claim/evidence gate开关。`off`从不阻断；`warn`仅阻断final客观integrity finding；`strict`还阻断配置的final finding | `warn`（`off` / `warn` / `strict`） |
 | `ARI_COMPARISON_SCOPE` | 控制跨环境比较被视为透明性警告（`any`）还是阻断性错误（`same_environment`，用于单一架构优化研究） | `any`（`any` / `same_environment`） |
 
 ### 规范自动生成（v0.7.0）
@@ -127,14 +129,13 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` 的目标叶节点数 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature 覆盖 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 使用两阶段骨架 + 子树合成 |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | 覆盖 venue 条件化 PaperBench 规范模板的搜索根（未发布 — 见 `docs/reference/rubric_schema.md#venue-conditioned-templates`） |
 
 ### PaperBench 可重现性（v0.7.0）
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | 覆盖捆绑的 `vendor/paperbench/` 路径 | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` + `ARI_PAPERBENCH_COMMIT` | 经审查 PaperBench source 的 exact-commit-only 覆盖 | vendored commit |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | `run_reproduce` 的挂墙时间上限 | `43200`（12 小时） |
 | `ARI_REPLICATOR_ITERATIVE` | 使用迭代式复现器智能体 | – |
 | `ARI_REPLICATOR_MAX_STEPS` | 迭代开启时的迭代上限 | – |
@@ -143,11 +144,13 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP 服务器端口 | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | 日志目录 | `$ARI_WORKSPACE/orchestrator_logs` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` / `ARI_ORCHESTRATOR_HTTP_PORT` | MCP Streamable HTTP 绑定地址 | `127.0.0.1` / `9890` |
+| `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` | 网络传输所需的 mode-0600 token digest 文件 | – |
+| `ARI_ORCHESTRATOR_LOGS` | checkpoint 与 durable registry 根目录 | `$ARI_WORKSPACE/logs` |
 | `ARI_ORCHESTRATOR_DRY_RUN` | 跳过真实的 `ari run`（冒烟测试） | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | 单次 SSE 响应模式 | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE 超时（秒） | – |
+| `ARI_ORCHESTRATOR_MAX_ACTIVE_RUNS` | deployment 级 active run 上限 | `16` |
+| `ARI_ORCHESTRATOR_MAX_TOTAL_NODES` | 每个 lineage 的 node 上限 | `10000` |
+| `ARI_ORCHESTRATOR_MAX_COST_USD` | 每个 lineage 的 cost 上限 | `10000` |
 
 ### Transform 技能
 
@@ -187,18 +190,17 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_SLURM_GPUS` | 默认 `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | 默认内存请求 |
 | `ARI_SLURM_WALLTIME` | 默认 `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ 当集群未为 GPU 配置 GRES 时，静默丢弃 `--gres` / `--gpus-*` 标志（旧版 v0.7.2 行为）。默认（未设置）⇒ 抛出带有可操作信息的 `RuntimeError`，防止 GPU 请求悄无声息地在 CPU 上运行。 |
+| `ARI_SCHEDULER_PATH` | 无 shell 的scheduler control command固定搜索路径；不继承父`PATH`。 |
 
 ### PaperBench 复现阶段（Stage 2）
 
 | 变量 | 用途 |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。强制指定 `server.run_reproduce` 和 `bridge.reproduce_submission` 使用的沙箱运行器。 |
-| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` 且未显式提供 `container_image` 时的默认 docker 镜像。默认为 `ubuntu:24.04`。 |
-| `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` 且未显式提供 `container_image` 时的默认 SIF / docker URI。 |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | `ARI_PHASE1_APPTAINER_IMAGE` 的旧版别名。 |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ 当请求的沙箱工具缺失（docker daemon / apptainer / sbatch / partition）时，仅发出警告并回退到本地执行（旧版 v0.7.2 行为）。默认（未设置）⇒ 抛出 `RuntimeError`，防止用户的隔离意图被悄无声息地绕过。 |
-| `ARI_PAPERBENCH_PATH` | 覆盖 vendored PaperBench 源代码树路径（默认：`ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
+| `ARI_PHASE1_DOCKER_IMAGE` | 未显式提供 `container_image` 时使用的 Docker 镜像；必须为完整 `sha256:<image-id>` 或 `name@sha256:<digest>`，不设可变默认值。 |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity 使用的非 symlink 本地 SIF 或按摘要固定的远程 URI。 |
+| `ARI_PAPERBENCH_PATH` | 可选 PaperBench project 覆盖；Git identity 与 `ARI_PAPERBENCH_COMMIT` 不完全匹配时拒绝。 |
+| `ARI_PAPERBENCH_COMMIT` | 使用覆盖时必填的 commit 声明；当前为 `51052cede8cc608f95bb00346635e03759013e5a`。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 调用者传入 `0` 时默认的 Stage 1 智能体展开时间预算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 展开默认使用 IterativeAgent 变体。 |
 | `ARI_REPLICATOR_MAX_STEPS` | 默认 Stage 1 步数上限。 |

@@ -1,55 +1,72 @@
 ---
 sources:
-  - path: ari-skill-hpc/mcp.json
-    role: config
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-benchmark
     role: implementation
-  - path: ari-skill-coding/mcp.json
-    role: config
-  - path: ari-skill-coding/src/server.py
+  - path: ari-skill-coding
     role: implementation
-  - path: ari-skill-paper-re/mcp.json
-    role: config
-  - path: ari-skill-paper-re/src/server.py
+  - path: ari-skill-evaluator
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-hpc
+    role: implementation
+  - path: ari-skill-idea
+    role: implementation
+  - path: ari-skill-memory
+    role: implementation
+  - path: ari-skill-orchestrator
+    role: implementation
+  - path: ari-skill-paper
+    role: implementation
+  - path: ari-skill-paper-re
+    role: implementation
+  - path: ari-skill-plot
+    role: implementation
+  - path: ari-skill-replicate
+    role: implementation
+  - path: ari-skill-transform
+    role: implementation
+  - path: ari-skill-tool-registry
+    role: implementation
+  - path: ari-skill-vlm
+    role: implementation
+  - path: ari-skill-web
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # MCP Tools Reference
 
-ARI ships 14 MCP servers (one per `ari-skill-*` package).  This page
+ARI ships 15 MCP servers (one per `ari-skill-*` package).  This page
 is a flat catalogue of every tool the agent can call.  The deep dive
 for each skill lives in its own `README.md`; the section
 [skills.md](skills.md) groups them by responsibility.
 
-`mcp.json` (next to each skill's `pyproject.toml`) is the source of
-truth for tool *names*; the function decorated with `@mcp.tool()` (or
-the entry in `@server.list_tools()` for the older skills) defines the
-arguments and return shape.
+`skill.yaml` is the canonical source of truth for admitted tool names and
+runtime policy. `mcp.json` is a generated compatibility projection. The
+function decorated with `@mcp.tool()` (or the entry in
+`@server.list_tools()` for older skills) defines the arguments and return
+shape; repository conformance checks require that live and manifest names
+match.
 
 The "LLM" column marks tools that are **P2 exceptions** — they call
 an LLM and therefore are not byte-deterministic.
 
-## ari-skill-benchmark — statistics + plots (deterministic)
+## ari-skill-benchmark — typed statistics (deterministic)
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `analyze_results` | Summary stats from CSV / JSON / npy | ✗ |
-| `plot` | Deterministic matplotlib figure from a fixed schema | ✗ |
-| `statistical_test` | Hypothesis tests (t-test, Mann-Whitney, ...) | ✗ |
+| `analyze_results` | Unit-bearing summaries from inline or digest-bound CSV / JSON / npy samples | ✗ |
+| `statistical_test` | Effect size, CI, assumptions, and multiplicity-corrected inference | ✗ |
+| `compare_runs` | Environment- and provenance-aware scalar run ranking | ✗ |
 
 ## ari-skill-coding — write + run code
 
-`mcp.json` lists no tools; the actual tool list comes from
-`@server.list_tools()` in `src/server.py`.
-
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `write_code` | Write a file into the node work_dir | ✗ |
-| `run_code` | Execute a script with timeout + capture | ✗ |
-| `run_bash` | Ad-hoc bash command | ✗ |
-| `emit_results` | Emit `metrics` + `has_real_data` for the evaluator (optional `provenance` arg → written verbatim as the `_provenance` key tagging how each value was measured, for the claim-evidence gate). The response's `contract_warnings` may include suggestion-only "POSSIBLE name matches" hints when an emitted key lexically resembles a required evidence name — advisory only: nothing is auto-bound and the gate never consumes them | ✗ |
-| `read_file` | Read a file the agent wrote earlier | ✗ |
+| `write_code` | Atomic, traversal/symlink-safe workspace write with source digest | ✗ |
+| `run_code` | Digest-bound immutable script snapshot, bounded execution, complete log artifacts | ✗ |
+| `run_bash` | Explicit shell execution with local/container identity and complete log artifacts | ✗ |
+| `emit_results` | Emit canonical `ari.measurement-set/v1`: finite values, units, provenance, verified execution attempt/receipt, and re-hashed artifact digests; returns advisory claim-contract warnings | ✗ |
+| `read_file` | Symlink-safe bounded/paginated workspace read | ✗ |
 
 ## ari-skill-evaluator — LLM metric extraction
 
@@ -59,22 +76,18 @@ an LLM and therefore are not byte-deterministic.
 | `claim_evidence_hard_gate` | Deterministic claim/evidence hard gate (execution data fidelity); strict mode blocks finalize on the final phase | ✗ |
 | `evidence_grounded_semantic_review` | Non-blocking, evidence-grounded semantic review; emits `suggested_revisions` for `paper_refine` | ✓ |
 
-## ari-skill-hpc — SLURM + Singularity
-
-`mcp.json` has an empty list; tools come from `@server.list_tools()`
-in `src/server.py`.
+## ari-skill-hpc — typed scheduler lifecycle
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `slurm_submit` | sbatch with explicit partition / time / cpus / nodes / GPUs | ✗ |
-| `job_status` | squeue + sacct lookup | ✗ |
-| `job_cancel` | scancel a running job | ✗ |
-| `run_bash` | Direct bash command (local or via SSH) | ✗ |
-| `singularity_build` | Build a SIF from a definition file | ✗ |
-| `singularity_run` | Run a command inside a SIF | ✗ |
-| `singularity_pull` | Pull a SIF from a remote URI | ✗ |
-| `singularity_build_fakeroot` | Fakeroot build (no privileged daemon) | ✗ |
-| `singularity_run_gpu` | GPU variant of `singularity_run` | ✗ |
+| `job_submit` | Submit immutable typed `JobRequestV1` and return an idempotent handle | ✗ |
+| `container_submit` | Submit a typed digest-pinned container request | ✗ |
+| `job_status` | Provider-neutral status for a handle or scheduler ID | ✗ |
+| `job_result` | Terminal typed result with re-hashed inputs, outputs, logs, and provenance | ✗ |
+| `job_logs` | Bounded digest-bound stdout/stderr | ✗ |
+| `job_cancel` | Request scheduler cancellation | ✗ |
+| `probe_platform_capabilities` | Probe compute-partition architecture and command availability, with checkpoint caching | ✗ |
+| `slurm_submit` | Scoped core-agent batch-script bridge; programmatic callers use `job_submit` | ✗ |
 
 ## ari-skill-idea — literature survey + idea generation
 
@@ -93,16 +106,13 @@ is reported in `virsci_integration_status` (`real_wrap` vs `reimpl: ...`).
 
 ## ari-skill-memory — ancestor-scoped node memory
 
-This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`; its
-static `mcp.json` is stale (it lists only the four node-scope tools) but
-every decorated function below **is** exposed at runtime.
+This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `add_memory` | Append an entry to the current node's memory | ✗ |
 | `search_memory` | Embedding-ranked search across the current node + ancestors | ✗ (server-side embedding) |
 | `get_node_memory` | All entries for the current node | ✗ |
-| `clear_node_memory` | Drop the current node's entries (CoW; ancestors untouched) | ✗ |
 | `get_experiment_context` | Stable, experiment-level facts from Letta core memory | ✗ |
 | `add_experiment_result` | Record a typed experiment_result (CoW: self node only) | ✗ |
 | `add_failure_case` | Record a typed failure_case (CoW: self node only) | ✗ |
@@ -115,16 +125,26 @@ every decorated function below **is** exposed at runtime.
 | `consolidate_node_memory` | Derive + write typed memory from a node_report at node end (CoW: self) | ✗ |
 
 The skill explicitly declares "no LLM calls" in its design doc — see
-`ari-skill-memory/README.md`.
+`ari-skill-memory/README.md`. Records are append-only and the public surface
+has no per-record or per-node delete operation. See the
+[research memory contract](memory_contract.md).
 
-## ari-skill-orchestrator — recursive ARI runner
+## ari-skill-orchestrator — durable ARI control plane
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `run_experiment` | Launch a child ARI run | ✗ |
-| `get_status` | Status of a child run | ✗ |
-| `list_runs` | All known runs | ✗ |
-| `get_paper` | Generated LaTeX / PDF for a run | ✗ |
+| `run_experiment` | Idempotently submit a quota-bound ARI run | ✗ |
+| `get_status` | Authorized durable status and bounded progress | ✗ |
+| `get_result` | State plus content-addressed result references | ✗ |
+| `stop_experiment` | Propagate cancellation and settle terminal state | ✗ |
+| `list_runs` | Principal-scoped durable run handles | ✗ |
+| `list_children` | Authorized direct child handles | ✗ |
+| `list_artifacts` | Allowlisted digest-verified artifact references | ✗ |
+| `read_artifact` | Bounded content read by exact SHA-256 | ✗ |
+| `get_paper` | Paper artifact references | ✗ |
+| `get_ear` | Verified EAR/evidence artifact references | ✗ |
+| `list_skills` | Sanitized run-bound `SKILLS.lock` view | ✗ |
+| `get_workflow` | Locked phase/tool membership | ✗ |
 
 ## ari-skill-paper — LaTeX paper writing
 
@@ -132,20 +152,21 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 |---|---|:---:|
 | `list_venues` | Available LaTeX templates (ACM / NeurIPS / SC / ICPP / arXiv) | ✗ |
 | `get_template` | Fetch a venue's template | ✗ |
-| `generate_section` | LLM writes a section (intro, methods, ...) | ✓ |
-| `compile_paper` | pdflatex compile | ✗ |
+| `compile_paper` | Fixed-command, resource-bounded LaTeX compile with complete logs | ✗ |
 | `check_format` | LaTeX format validation | ✗ |
-| `review_section` | LLM rubric review of one section | ✓ |
-| `revise_section` | LLM rewrite using review feedback | ✓ |
-| `write_paper_iterative` | Drive the generate / review / revise loop end-to-end | ✓ |
-| `review_compiled_paper` | Final-pass review on compiled PDF (delegates to VLM for figures) | ✓ |
+| `write_paper_iterative` | Native-evidence whole-document authoring with `PaperBuildV1` draft provenance | ✓ |
+| `review_compiled_paper` | Explicit-rubric independent text review with raw-response artifact | ✓ |
 | `link_paper_claims` | Reconcile `% CLAIM:Cx:NCx` anchors against science_data claims, build `paper_claim_links` (deterministic) | ✗ |
 | `paper_refine` | Apply suggested revisions while preserving `% CLAIM:Cx:NCx` anchors (deterministic subs + bounded LLM find/replace) | ✓ |
 | `list_rubrics` | Available reviewer rubrics |  ✗ |
 | `inject_code_availability` | v0.7.0 — append a `\codedigest{...}` block to the paper | ✗ |
-| `merge_reviews` | v0.7.0 — combine rubric review + VLM review JSON | ✗ |
+| `merge_reviews` | Structurally route immutable independent/evidence-grounded reviews | ✗ |
+| `finalize_paper_build` | Recompute evidence bindings and fail-closed lock exact TeX/BibTeX/PDF | ✗ |
 
-## ari-skill-paper-re — PaperBench reproducibility (v0.7.0)
+The v0.2 per-section tools were removed. See the
+[Paper build contract](paper_build_contract.md) for migration and provenance.
+
+## ari-skill-paper-re — PaperBench reproducibility (v1.0.0)
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
@@ -158,29 +179,29 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 
 | Tool | New args |
 |---|---|
-| `build_reproduce_sh` | `container_image` (replaces / supersedes legacy `apptainer_image`; both accepted for back-compat) |
+| `build_reproduce_sh` | `container_image` (single immutable-image field; the deprecated `apptainer_image` alias was removed in v1.0) |
 
 ### v0.8.0 new fields (Stage 2)
 
 | Tool | New args |
 |---|---|
-| `run_reproduce` | `container_image` (honoured by docker / apptainer / singularity sandboxes; alias `pb-env` / `pb-reproducer` resolves to vendor `image:latest` tags built by `scripts/build_pb_images.sh`) |
+| `run_reproduce` | `container_image` (local immutable SIF, full Docker `sha256:<image-id>`, or digest-pinned remote reference; mutable tags and aliases are rejected) |
 
 Fail-loud preconditions: missing docker daemon / apptainer binary /
-sbatch / partition raise `RuntimeError` rather than silently falling
-back to local CPU. Opt back into legacy fallback via
-`ARI_PHASE1_ALLOW_FALLBACK=1`; opt back into silent GRES-flag drop via
-`ARI_SLURM_ALLOW_NO_GRES=1`. See
+sbatch / partition fail rather than running on the host. No local fallback is
+available. Typed GPU requests are never silently dropped;
+unsupported or contradictory resource requests fail before execution. See
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2).
-Mixing typed (`gpu_type` / `--gres=gpu:TYPE:N`) with untyped
-(`--gpus-per-task`) GPU requests is automatically canonicalised to
-the typed form — SLURM 24.05 rejects the mixed form.
+The SLURM path uses the shared `JobRequestV1` submit/status/log/cancel lifecycle
+and a clean `--export=NIL` job environment.
+See the normative [reproduction and grading contract](reproduction_contract.md)
+for digest identity, retry lineage, sandbox admission, and score validity.
 
 ### v0.8.0 new fields (Stage 3)
 
 | Tool | New args |
 |---|---|
-| `grade_with_simplejudge` | `code_only` (prune rubric to Code Development leaves only, mirrors vendor `paperbench/grade.py:109-112`; auto-enables when no `reproduce.log` is present so Stage 1-only runs aren't systematically zeroed) |
+| `grade_with_simplejudge` | `code_only` (explicitly prune the verified reproduction rubric to Code Development leaves; missing reproduction records fail without a score) |
 
 For an in-process Python surface that chains all three stages with a
 single calling vocabulary, see
@@ -190,6 +211,7 @@ single calling vocabulary, see
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
+| `render_figure` | Closed-workspace deterministic rendering with source/spec/environment/artifact digests | ✗ |
 | `generate_figures` | Deterministic matplotlib figures from `nodes_tree.json` | ✗ |
 | `generate_figures_llm` | LLM writes matplotlib code, then runs it | ✓ |
 
@@ -199,6 +221,7 @@ single calling vocabulary, see
 |---|---|:---:|
 | `generate_rubric` | Two-stage (skeleton + subtree) PaperBench rubric synthesis | ✓ |
 | `audit_rubric` | LLM audits leaves for vague / unverifiable / duplicate criteria | ✓ |
+| `suggest_target_leaf_count` | Compute a target rubric leaf count from paper length | ✗ |
 
 ### `generate_rubric` — venue-conditioned templates (unreleased)
 
@@ -221,16 +244,12 @@ Shipped templates:
 | `neurips` | `paper_audit` | Six axes per NeurIPS Reproducibility Checklist (claims / setup / code+data / statistics / ethics / figures). |
 | `nature` | `paper_audit` | Five axes for wet-lab papers (materials / protocol / statistics / data / ethics). |
 
-`paper_audit` mode requires `two_stage=True`; the generator returns an
-error if the single-pass path is requested with a `paper_audit`
-template (the single-pass prompt cannot honour the fixed-axis
-constraint). See [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
-for the YAML schema and authoring guide.
+All template modes use the mandatory calibrated hierarchical strategy, which
+can preserve fixed audit axes. See
+[`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates) for the YAML
+schema and authoring guide.
 
 ## ari-skill-transform — tree walk + EAR pipeline
-
-`mcp.json` has no tools listed (the file is internal-only); the
-`@mcp.tool()` decorators in `src/server.py` are authoritative.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
@@ -240,31 +259,49 @@ for the YAML schema and authoring guide.
 | `publish_ear` | Push to `local-tarball` / `ari-registry` / `zenodo` / `gh` | ✗ |
 | `promote_ear` | `staged` → `unlisted` / `public` | ✗ |
 
-## ari-skill-vlm — figure / table review (VLM)
+## ari-skill-tool-registry — federated scientific tools (default-off)
 
-`mcp.json` has no tools listed; the skill exposes internal review
-helpers only.
+The server exposes only broker operations; imported leaf schemas remain in the
+reviewed catalog and are disclosed progressively.
+
+| Tool | Purpose | LLM |
+|---|---|:---:|
+| `discover` | Search the immutable catalog with bounded pagination | ✗ |
+| `describe` | Read paginated schema, provenance, admission, and limitations | ✗ |
+| `invoke` | Invoke one exact admitted `tool_ref` in live/record/replay mode | ✗ |
+| `get_status` | Poll a descriptor-bound asynchronous provider handle | ✗ |
+| `get_result` | Fetch and normalize the final asynchronous result | ✗ |
+
+See [tool_registry.md](tool_registry.md) for source sync, admission, overlap,
+record/replay, and adapter requirements.
+
+## ari-skill-vlm — figure / table review (VLM)
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `review_figure` | VLM reads an image + caption, returns critique | ✓ (vision) |
 | `review_table` | VLM reviews a table | ✓ (vision) |
-| `review_paper_figures` | Batch review of every figure in a paper dir | ✓ (vision) |
+| `review_figures_all` | Batch review of every figure in a figure manifest | ✓ (vision) |
 
 ## ari-skill-web — search + fetch
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo (no API key) | ✗ |
-| `fetch_url` | URL → readable text | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | Walk the citation graph from a seed paper | ✗ |
+| `search_papers` | One pinned provider; typed record/live/replay result | ✗ |
+| `web_search` | DuckDuckGo under the retrieval snapshot contract | ✗ |
+| `fetch_url` | SSRF-controlled URL → untrusted readable text | ✗ |
+| `walk_citations` | Bounded citation graph with partial-result provenance | ✗ |
+| `rerank_retrieval_records` | Explicit typed-record reranker | ✓ |
+| `list_uploaded_files` | List files in the checkpoint upload area | ✗ |
+| `read_uploaded_file` | Read one upload with traversal protection and output bounds | ✗ |
+
+See [Retrieval contract and network policy](retrieval_contract.md).
 
 ## See also
 
 - `docs/reference/skills.md` — narrative description of each skill (responsibility, env vars, examples).
 - `docs/reference/environment_variables.md` — env-var-by-env-var reference.
-- The `mcp.json` in each skill for the canonical tool name list.
+- The `skill.yaml` in each skill for the canonical admitted tool name list and policy.
+- The generated `mcp.json` in each skill for legacy discovery compatibility.
 - `@mcp.tool()` / `@server.list_tools()` in each skill's `src/server.py`
   for the canonical argument signatures.

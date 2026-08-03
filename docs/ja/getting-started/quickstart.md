@@ -313,7 +313,7 @@ LLM プロバイダーとモデルを選択します：
 
 ### 検索バックエンド
 
-- 論文検索バックエンドを選択：Semantic Scholar（デフォルト）、AlphaXiv、または both（並列）
+- 固定論文providerを選択：Semantic Scholar（デフォルト）、arXiv、または AlphaXiv
 
 ### フェーズごとのモデルオーバーライド
 

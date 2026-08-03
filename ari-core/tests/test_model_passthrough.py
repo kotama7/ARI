@@ -114,6 +114,23 @@ class TestSettingsToEnv:
             launch_body={"experiment_md": "test"})
         assert env.get("ARI_BACKEND") == "openai"
 
+    def test_gui_evaluator_model_routes_to_independent_skill_policies(
+        self, setup_state, monkeypatch
+    ):
+        env = _capture_launch_env(
+            setup_state,
+            monkeypatch,
+            settings_dict={
+                "llm_model": "gpt-5.4",
+                "llm_provider": "openai",
+                "model_eval": "review-model/revision",
+            },
+            launch_body={"experiment_md": "test"},
+        )
+        assert env["ARI_MODEL_EVAL"] == "review-model/revision"
+        assert env["ARI_MODEL_METRIC_PROPOSAL"] == "review-model/revision"
+        assert env["ARI_MODEL_SEMANTIC_REVIEW"] == "review-model/revision"
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 2. Wizard → ARI_MODEL / ARI_BACKEND (overrides settings)
@@ -165,11 +182,13 @@ class TestWizardOverride:
 class TestApiKeyInjection:
     def test_key_present_after_launch(self, setup_state, monkeypatch):
         """OPENAI_API_KEY must be set after launch (from settings or .env)."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        fake_key = "sk-openai-" + "x" * 40
         env = _capture_launch_env(setup_state, monkeypatch,
             settings_dict={"llm_model": "gpt-4o", "llm_provider": "openai",
-                           "api_key": "sk-settings-key"},
+                           "api_key": fake_key},
             launch_body={"experiment_md": "test"})
-        assert env.get("OPENAI_API_KEY"), "OPENAI_API_KEY not set at all"
+        assert env.get("OPENAI_API_KEY") == fake_key
 
     def test_anthropic_key_injected_when_env_empty(self, setup_state, monkeypatch):
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)

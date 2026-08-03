@@ -11,6 +11,7 @@ These tests inject a fake ``litellm`` so they never touch the network.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 import types
 from pathlib import Path
@@ -181,6 +182,55 @@ async def test_async_completion_handles_missing_usage(monkeypatch):
     assert result.output_messages[0].content == "answer"
 
 
+@pytest.mark.asyncio
+async def test_async_completion_persists_digest_bound_raw_trace(
+    tmp_path, monkeypatch
+):
+    captured: dict = {}
+    _install_fake_litellm(monkeypatch, captured, content="raw judge response")
+    trace_dir = tmp_path / "calls"
+    completer = LC.LiteLLMTurnCompleter.Config(
+        model="gpt-5-mini", trace_dir=str(trace_dir)
+    ).build()
+
+    await completer.async_completion(
+        conversation=[{"role": "user", "content": "raw judge prompt"}]
+    )
+
+    traces = list(trace_dir.glob("*.json"))
+    assert len(traces) == 1
+    trace = json.loads(traces[0].read_text())
+    assert trace["schema_version"] == "ari.model-call-trace/v1"
+    assert trace["request"]["messages"][0]["content"] == "raw judge prompt"
+    assert trace["response"]["content"] == "raw judge response"
+    assert trace["request_digest"] == LC._canonical_digest(trace["request"])
+    assert trace["response_digest"] == LC._canonical_digest(trace["response"])
+
+
+@pytest.mark.asyncio
+async def test_async_completion_persists_provider_failure(tmp_path, monkeypatch):
+    fake = types.ModuleType("litellm")
+
+    async def acompletion(**kwargs):
+        raise RuntimeError("provider unavailable")
+
+    fake.acompletion = acompletion
+    monkeypatch.setitem(sys.modules, "litellm", fake)
+    trace_dir = tmp_path / "calls"
+    completer = LC.LiteLLMTurnCompleter.Config(
+        model="gpt-5-mini", trace_dir=str(trace_dir)
+    ).build()
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        await completer.async_completion(
+            conversation=[{"role": "user", "content": "prompt"}]
+        )
+
+    trace = json.loads(next(trace_dir.glob("*.json")).read_text())
+    assert trace["response"] is None
+    assert "provider unavailable" in trace["error"]
+
+
 # ── integration: bridge wires the new completer ────────────────────────────
 
 
@@ -193,4 +243,6 @@ def test_bridge_uses_litellm_completer():
     """
     bridge_src = (SRC / "_paperbench_bridge.py").read_text()
     assert "LiteLLMTurnCompleter" in bridge_src
-    assert "LiteLLMTurnCompleter.Config(model=judge_model)" in bridge_src
+    assert "int_completer_config=int_cfg" in bridge_src
+    assert "float_completer_config=float_cfg" in bridge_src
+    assert "trace_dir=trace_value" in bridge_src

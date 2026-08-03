@@ -1,6 +1,22 @@
 ---
 sources:
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-core/ari/skill_manifest.py
+    role: implementation
+  - path: scripts/check_skill_manifests.py
+    role: test
+  - path: ari-core/ari/result.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
+  - path: ari-core/ari/mcp/child_environment.py
+    role: implementation
+  - path: ari-core/ari/mcp/secure_stdio_proxy.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
@@ -12,76 +28,167 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+  - path: ari-skill-tool-registry/skill.yaml
+    role: config
+last_verified: 2026-08-02
 ---
 
 # MCP Skills Reference
 
-Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. **14 skills total** (13 default, 1 additional) — `ari-skill-replicate` was added in v0.7.0 for the PaperBench-format reproducibility flow.
+Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using and live-data tools are explicitly annotated. **15 skills total** (13 default, 2 default-off: the external orchestrator and federated tool registry).
+
+## Canonical `skill.yaml` contract
+
+Every built-in Skill package has exactly one versioned `skill.yaml`. It is the
+source of truth for package identity, safe entrypoint, environment declarations,
+tool capability, phases, side effects, determinism, timeout class, permissions,
+and result schema. The normative JSON Schema is
+`ari-core/ari/schemas/skill_manifest_v1.schema.json`.
+
+```yaml
+schema_version: 1
+name: coding-skill
+package: ari-skill-coding
+version: 0.2.0
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [ARI_CHECKPOINT_DIR, ARI_WORK_DIR]
+credential_scopes: []
+tool_defaults:
+  phases: [bfts, reproduce]
+  side_effects: stateful
+  determinism: conditional
+  timeout_class: bounded
+  permissions: [workspace-read, workspace-write, process]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: run_code
+    capability_ref: ari.execution.code
+```
+
+Package defaults avoid duplicating identical policy for every tool; a tool may
+override any policy field. `mcp.json` is no longer hand-maintained source. It is
+a generated compatibility view for existing dashboard and external consumers:
+
+```bash
+python scripts/sync_skill_metadata.py --write
+python scripts/check_skill_manifests.py
+```
+
+The conformance gate rejects an unversioned/invalid manifest, package-version
+drift, statically declared runtime tool-name drift, workflow reference or phase
+drift, stale `mcp.json`, undeclared static environment reads, a dynamic
+environment read whose names cannot be proven, an incomplete environment
+policy, and name collisions among default-enabled Skills. A live
+`tools/list` comparison is enforced for every locked run; moving the same check
+into package-only CI remains a P1 follow-up. Runtime loading and discovery
+reject unversioned manifests. The read-only
+`ari.migrations.skill_manifest.load_legacy_skill_manifest()` utility can inspect
+or convert old metadata in memory, but marks it default-off and is not an
+admission path.
+
+All built-in manifests use `environment_policy: complete`. `required_env` and
+`optional_env` are the exhaustive ordinary-variable allowlist. Secret-like names
+are rejected there and must instead belong to exactly one named
+`credential_scopes` entry. Scope values are supplied only to the admitted Skill;
+the manifest, HTTP bridge request, `SKILLS.lock`, result provenance, and traces
+contain scope IDs and variable-name presence, never credential values.
+
+At spawn, ari-core constructs a new environment rather than copying
+`os.environ`: only a small platform/TLS baseline, manifest-declared names, and
+core-owned isolated `HOME`/XDG/Python settings are present. The MCP SDK's
+implicit `HOME`/`USER` baseline is explicitly overridden. Missing required
+variables, credential classification errors, and credential-scope changes on
+reconnect fail closed. Provider stdout, structured MCP results, exceptions, and
+stderr are value-redacted. For Claude CLI direct MCP, a secure stdio proxy
+applies the same exact environment and redaction after the CLI's own parent-env
+merge; credential references are materialized only inside the local shim, in a
+mode-0600 temporary config that is removed immediately. Claude debug logging is
+disabled when credentials are active, while redacted stream events remain in
+`tool_calls.jsonl`.
+
+All built-in tools now declare `ari.result-envelope/v1`. The typed
+`MCPClient.call_tool_envelope()` path normalizes MCP text/structured results,
+classifies tool/transport/protocol/timeout/cancellation errors, and stores raw
+responses over 4,000 characters content-addressably when a run artifact store is
+available. `MCPClient.call_tool()` remains a lossless compatibility projection to
+the historical `{"result": text}` / `{"error": message}` dictionary.
+
+Timeout selection has no tool-name table. Each resolved tool receives a
+manifest `timeout_class`; a caller-controlled wall-time field affects the outer
+transport timeout only when `timeout_budget` explicitly names that argument,
+buffer, unit, and maximum. Undeclared arguments cannot enlarge the budget.
+
+An async submitter declares `async_lifecycle` with its handle field and semantic
+status/result/cancel capabilities. Admission resolves those capabilities to
+immutable runtime `tool_ref` values and returns an `AsyncToolHandleV1` in the
+result envelope. `MCPClient.get_async_status()`, `get_async_result()`,
+`cancel_async()`, and `wait_for_async()` use only those bound references. Provider
+states are mapped by the reviewed manifest; missing handles and unknown states
+fail as typed protocol errors. The normative portable-handle schema is
+`ari-core/ari/schemas/async_tool_handle_v1.schema.json`. SLURM submit and the
+external ARI orchestrator already use this same lifecycle contract.
+
+`capability_ref` expresses semantic capability and may be shared by alternative
+implementations. Runtime name is not evidence that two tools are equivalent.
+`tools/list` entries now carry a runtime `tool_ref` bound to the normalized
+manifest and live input/output schemas. Typed dispatch accepts that immutable
+reference; a unique bare name remains migration-only. A duplicate bare tool name is an
+admission error rather than last-writer-wins.
+
+On first live discovery for a run, ari-core atomically writes
+`{checkpoint}/SKILLS.lock`. The lock includes every configured provider's
+manifest/provider digest, the exact input and output schemas returned by
+`tools/list`, resolved tool policy, disabled tools, and the admitted immutable
+`tool_ref` set for each runtime phase. A second process or resumed run must
+produce the exact same registry digest before dispatch is allowed. Manifest,
+schema, provider, phase, or disabled-tool drift fails closed; an enabled provider
+that cannot start is also an admission error rather than a silently smaller
+catalog. A stage subprocess may start only its owning provider, but must verify
+that exact provider/tool subset against the already-created full lock and cannot
+create or replace the authoritative snapshot. The lock contains ordinary
+environment names plus value-free credential scope records (`scope_id`,
+declared/present names, identity digest), but never credential values. The same
+active scope IDs are copied into result provenance. Its normative schema is
+`ari-core/ari/schemas/skills_lock_v1.schema.json`.
+
+The external orchestrator is therefore default-off
+and is not injected into the experiment agent's tool set.
+
+To add a built-in Skill, add one package-level manifest and server, then regenerate
+compatibility metadata. To add a large external collection, implement one
+`CatalogSource`/provider adapter through the default-off federated tool registry;
+do not add a core registration record per leaf tool. See
+[Federated Scientific Tool Registry](tool_registry.md).
 
 ## ari-skill-hpc
 
-HPC job management via SLURM and Singularity. **LLM: No** (fully deterministic).
+Typed, asynchronous SLURM and digest-pinned container job management. **LLM:
+No** (fully deterministic).
 
 ### Tools
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+- `job_submit(request)` validates and submits one immutable `JobRequestV1` and
+  immediately returns an idempotent `JobHandleV1`.
+- `container_submit(request)` uses the same lifecycle and requires a typed,
+  digest-pinned container declaration.
+- `job_status(handle_id | job_id)`, `job_logs(...)`, `job_result(...)`, and
+  `job_cancel(...)` provide the provider-neutral lifecycle. Typed results are
+  available only for ARI-issued handles.
+- `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+  records a bounded, validated compute-partition capability probe.
+- `slurm_submit(...)` is a scoped compatibility bridge for the core agent's
+  batch-script workflow; new programmatic callers use `job_submit`.
 
-Submit a SLURM batch job.
-
-```python
-result = slurm_submit(
-    script="""
-#!/bin/bash
-#SBATCH --cpus-per-task=32
-gcc -O3 -fopenmp -o ./bench ./bench.c
-OMP_NUM_THREADS=32 ./bench
-""",
-    job_name="bench_test",
-    partition="your_partition",
-    work_dir="/abs/path/to/workdir"
-)
-# Returns: {"job_id": "12345", "status": "submitted"}
-```
-
-**Notes:**
-- `--account` and `-A` headers are silently stripped
-- Empty `job_id` returns ERROR immediately
-- Never use `~` in paths inside scripts (not expanded in SBATCH)
-
-#### `job_status(job_id)`
-
-Poll SLURM job status.
-
-```python
-result = job_status("12345")
-# Returns: {"status": "COMPLETED", "exit_code": 0, "stdout": "MFLOPS: 284172"}
-# Status values: PENDING, RUNNING, COMPLETED, FAILED, ERROR
-```
-
-#### `job_cancel(job_id)`
-
-Cancel a running or pending SLURM job.
-
-#### `singularity_build(definition_file, output_path, partition)`
-
-Build a Singularity container from a definition file.
-
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
-
-Run a Singularity container as a SLURM job.
-
-#### `singularity_pull(source, output_path, partition)`
-
-Pull a Singularity image from a remote registry.
-
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
-
-Build a Singularity container using fakeroot mode.
-
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
-
-Run a Singularity container with GPU access (`--nv` flag).
+Requests contain structured argv, reviewed environment literals, modules,
+resources, input pins, output declarations, and optional container binds. The
+former container-specific public aliases were removed after P6.
 
 ---
 
@@ -91,18 +198,19 @@ Literature survey and idea generation. **LLM: Yes** (generate_ideas uses VirSci 
 
 ### Tools
 
-#### `survey(topic, max_papers=8)`
+#### `survey(topic, max_papers=8, mode="record", snapshot_path="survey_snapshot_v1.json", provider="semantic-scholar")`
 
-Search Semantic Scholar for related papers. Deterministic (no LLM).
+Search Semantic Scholar for related papers. No LLM, but classified as
+`live-data` because upstream results can change over time.
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
-# Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
+# Returns papers plus a digest-verified SurveySnapshotV1.
 ```
 
 Requires `S2_API_KEY` environment variable for higher Semantic Scholar rate limits.
 
-#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
+#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=null, seed=null, generation_mode="auto")`
 
 Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple AI personas (researcher, critic, expert, synthesizer) debate the research question. Called **once** before BFTS starts (pre-BFTS only).
 
@@ -111,20 +219,21 @@ Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 #### VirSci-live (vendor-wrap) — opt-in real engine
 
 `generate_ideas` has two interchangeable engines behind the same idea contract.
-The default (**reimpl**, behaviour unchanged) runs the lightweight re-implemented
+The default (**reimpl**) runs the lightweight re-implemented
 discussion loop. The opt-in (**real_wrap**) instead runs VirSci's *actual*
 mechanism — `Platform.select_coauthors` (freshness team formation) +
 `Team.generate_idea` (multi-agent deliberation) from the vendored, **unedited**
 `vendor/virsci` — grounded on a **live** Semantic Scholar snapshot (corpus +
 SPECTER2 cosine retrieval index + author profiles + co-author graph).
 
-- **Default OFF** = behaviour byte-identical to before. Enable with env
+- **Default OFF.** Enable with env
   `ARI_IDEA_VIRSCI_REAL=1`, the CLI flag `--virsci-live`, or the GUI experiment
   wizard "VirSci live" toggle (Scope/Resources step; persisted to
   `launch_config.json`).
-- **Degrades safely.** On missing deps (`virsci` pip extra absent) or any runtime
-  error, the skill falls back to the reimpl loop. The `idea.json` contract is
-  identical either way. Beyond that, the live-snapshot build now **fails loud on an
+- **Explicit fallback.** `generation_mode="auto"` may fall back to the default
+  adapter, but records requested/actual adapters and the error in provenance.
+  `generation_mode="virsci"` fails closed. Both engines pass through the same
+  `IdeaSetV1` preflight. Beyond that, the live-snapshot build now **fails loud on an
   empty / 0-paper S2 fetch** (a 429 rate-limit, network failure, or no search hits):
   rather than silently writing a "successful" 0-paper manifest with placeholder
   authors — which would run VirSci fully ungrounded yet record it as a `real_wrap`
@@ -167,38 +276,52 @@ CLI flags on `ari run`: `--virsci-live` / `--no-virsci-live`, `--virsci-k`,
 
 ## ari-skill-evaluator
 
-Metric spec extraction from experiment files. **LLM: Conditional** (fallback only when metric_keyword not found in text).
+Immutable metric admission and evidence-grounded evaluation. Deterministic
+parsing never invokes an LLM or silently becomes a scientific contract.
 
 ### Tools
 
 #### `make_metric_spec(experiment_text)`
 
-Parse experiment Markdown to extract evaluation criteria. Deterministic when `metric_keyword` and `min_expected_metric` are present in the text; falls back to LLM if not found.
+Parse experiment Markdown and consume an admitted `ResearchContractV1` or an
+explicitly human-admitted proposal. The persisted `MetricGateContractV1` is
+digest-bound and mint-once.
 
 ```python
 result = make_metric_spec(open("experiment.md").read())
 # Returns: {
 #   "metric_keyword": "GFLOP_per_s",
 #   "expected_metrics": ["GFLOP_per_s", "GB_per_s"],   # MEASURED outputs
-#   "expected_params":  ["M", "K", "nnz", "threads"],  # INPUT knobs
+#   "metric_unit": "GFLOP/s",
+#   "metric_direction": "higher",
 #   "min_expected_metric": 50000.0,
 #   "scoring_guide": "..."
 # }
 ```
 
-`expected_metrics` and `expected_params` are strictly disjoint by contract — a name appears in one or the other, never both. The LLM-fallback path is the only one that fills `expected_params` (the regex path covers the experiment.md-format quick path, which has no consistent "## Parameters" header to mine). `loop.py` threads `expected_params` into `MetricSpec` so the LLM evaluator emits a typed `params` / `measurements` split on each node, which `transform-skill::nodes_to_science_data` then propagates to `configurations[*].parameters` (C contract — see also the D contract via `coding-skill::emit_results`).
+If no admitted contract exists, parser fields remain evidence only and the
+result says `human-review-required`.
 
-`make_metric_spec` also builds an **idea-owned run-level `metric_contract`** from the idea's `primary_metric`, its structured `falsifiable_claims`, and the `correctness_required` / `ceiling_must_be_measured` requirement flags. It persists this to `{checkpoint}/metric_contract.json` (next to `idea.json` / `tree.json`). The contract is idea-owned so an agent cannot drop a claim or requirement to dodge the check; it is read back by `transform-skill::nodes_to_science_data` (grafted onto `science_data.metric_contract`) and enforced by the deterministic hard gate.
+#### `propose_metric_contract(idea_json, checkpoint_dir="", model="", model_revision="")`
 
-Model (fallback): `ARI_MODEL` env > `gpt-4o-mini`.
+Explicit LLM proposal for legacy ideas. It records complete provenance and
+always returns `MetricContractProposalV1`; it never admits its own output. Pass
+that proposal plus a named `reviewer` to `make_metric_spec` for explicit human
+admission.
 
 #### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
 
-Deterministic claim/evidence hard gate (execution data fidelity). **No LLM**. Verifies that science_data claims reference executed nodes, re-computes `numeric_assertions` from `results.json` and checks the paper-reported numbers within tolerance, detects uncovered result numbers per section policy, and checks figure existence. Thin MCP wrapper over ari-core's `run_hard_gate` (`ari.public.claim_gate`). In strict mode the `final` phase returns `{"error": ...}` when blocking errors exist so the stage runner raises and `finalize_paper` is skipped; the `draft` phase and warn/off mode never block. Writes `evaluation/claim_evidence_hard_gate_{phase}.json`.
+Deterministic `GateReportV1` claim/evidence gate. **No LLM**. It recomputes
+numbers from typed exact-run measurements, verifies artifact digests, applies a
+closed unit registry, and rejects missing, changed, cross-run, or untyped
+evidence. A blocking final result returns `{"error": ...}` so finalization is
+skipped; `off` never blocks.
 
 #### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
 
-Non-blocking, evidence-grounded semantic review. **LLM: Yes**. The LLM detects over-claiming / interpretation issues / unregistered strong claims grounded in the hard-gate evidence, WITHOUT touching the independent text reviewer; it does not re-check numbers. Emits `suggested_revisions` consumed by `paper_refine` plus scores. Writes `evaluation/evidence_grounded_semantic_review.json`. Never blocks.
+Non-blocking `SemanticReviewV1`. **LLM: Yes**. It records a dedicated model,
+revision, prompt digest, evidence digest, and hard-gate digest. It cannot modify
+the hard gate; failures are `status: unavailable` and never fabricate success.
 
 ---
 
@@ -218,31 +341,29 @@ Supported venues: `neurips` (9 pages), `icpp` (10 pages), `sc` (12 pages), `isc`
 
 Returns the LaTeX template for a venue.
 
-#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
+#### `compile_paper(tex_dir, main_file="main.tex", figures_manifest_path="")`
 
-Generate a LaTeX section using LLM. Section types: `introduction`, `related_work`, `method`, `experiment`, `conclusion`.
-
-#### `compile_paper(tex_dir, main_file="main.tex")`
-
-Run pdflatex compilation. Returns success status and error messages.
+Compile through the common bounded execution contract. The compiler uses fixed
+`pdflatex` / `bibtex` command profiles, disables shell escape, rejects undeclared
+file/process access, imports only artifacts admitted by `FigureBatchV1`, kills the
+whole process group on timeout, and records complete stdout/stderr plus environment
+and PDF digests in `PaperCompileV1`.
 
 #### `check_format(venue, pdf_path)`
 
 Validate paper format against venue requirements (page count, etc.).
 
-#### `review_section(latex, context, venue="arxiv")`
+#### `write_paper_iterative(workspace_root, science_data_path, figures_manifest_path, references_path, ear_manifest_path, rubric_id, experiment_summary="", context="", verified_context_path="", venue="arxiv", max_revision_rounds=2, author_name="")`
 
-Review a LaTeX section. Returns strengths, weaknesses, and suggestions.
+Whole-document authoring from a closed workspace and native contracts only:
+`ScienceDataV1`, `FigureBatchV1`, recorded retrieval result plus
+`SurveySnapshotV1`, and the EAR evidence index. The explicit rubric and venue
+template are hashed inputs. Every prompt, raw model response, model/revision,
+sampling/usage record, immutable TeX/Bib revision, claim anchor, citation key,
+figure ID, and math digest is retained in a draft `PaperBuildV1`. Generic node
+JSON, inline references, and schema-less numeric fallbacks are not runtime inputs.
 
-#### `revise_section(section, latex, feedback, context, venue="arxiv")`
-
-Revise a LaTeX section based on review feedback.
-
-#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
-
-Full paper generation with iterative draft → review → revise loop. Primary pipeline tool.
-
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
+#### `review_compiled_paper(rubric_id, tex_path="", pdf_path="", figures_manifest_json="", experiment_summary="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 Rubric-driven paper review compatible with the **AI Scientist v1/v2** pipeline
 (Nature / arXiv:2408.06292 Appendix A.4). Loads a YAML rubric from
@@ -266,23 +387,23 @@ Add a new venue by dropping `<id>.yaml` into `reviewer_rubrics/` — no code
 changes required. Each rubric declares `score_dimensions`, `text_sections`,
 `decision` rules, execution parameters, and a SHA256 hash for P2 determinism.
 
-Rubric resolution order: explicit `rubric_id` arg → `ARI_RUBRIC` env →
-`neurips` → built-in `legacy` fallback (v0.5 schema, used when neither
-`rubric_id` nor any matching YAML resolves).
+`rubric_id` is required. Runtime environment/default/legacy fallback resolution
+was removed; old config can be converted offline with
+`src.rubric_migration.migrate_legacy_rubric_selection` and then committed as an
+explicit workflow field.
 
-#### Symmetric author / reviewer venue conditioning (unreleased)
+#### Symmetric author / reviewer venue conditioning
 
 `prompt_overrides` carries two parallel fields:
 
 - `system_hint` — injected into peer-review prompts by `review_engine`
   (existing behaviour).
-- `author_hint` — injected into paper-drafting prompts by
-  `generate_section` as a dedicated `══ VENUE-SPECIFIC AUTHOR
+- `author_hint` — injected into the whole-document authoring prompt as a
+  dedicated `══ VENUE-SPECIFIC AUTHOR
   GUIDANCE ══` block. Tells the drafter what reviewers will look for,
   so the paper is written to make those signals easy to surface.
 
-Empty `author_hint` preserves the legacy weak append (just `Target
-venue: X. Page limit: N pages.`). SC and NeurIPS ship calibrated
+Empty `author_hint` contributes no venue-specific block. SC and NeurIPS ship calibrated
 `author_hint` blocks; remaining venues are empty and can be filled in
 incrementally without touching code.
 
@@ -329,6 +450,11 @@ GUI / CLI can show both outputs with clear source attribution. The
 upstream stages stay independent (matching AI Scientist v2's
 `perform_review` contract) and are reconciled here.
 
+The current signature also accepts `hard_gate_path` and
+`semantic_review_path`. The merge output preserves text, visual, semantic, and
+hard-gate inputs as independent records and emits a separate deterministic list
+of proposed refinements; no source review file is mutated.
+
 #### `link_paper_claims(tex_path="", science_data_json="", figures_manifest_json="", output_path="")` — v0.9.0
 
 Reconciles `% CLAIM:Cx:NCx` anchors against science_data claims and builds
@@ -350,6 +476,17 @@ anchor present in the draft must survive (anchor-dropping edits are rejected and
 on net anchor loss the original paper is kept). Math-safe underscore escaping
 skips `\( … \)` / `\[ … \]` and math environments. The refined LaTeX is returned
 under `latex` (the draft is preserved as `full_paper.draft.tex`).
+
+#### `finalize_paper_build(...)` — v0.3.0
+
+Fail-closed final lock over the exact draft build, final TeX/Bib/PDF, compile
+record and logs, figure batch, claim links, hard gate, independent text/VLM/
+semantic reviews, and refinement model-call batch. It rereads every declared
+artifact and rejects digest/size drift, cross-run evidence, dropped claim/
+citation/figure identities, changed math, incomplete numeric coverage, disabled
+or blocking hard gates, failed or below-threshold visual review, and mismatched
+PDF output. A blocked record is still persisted for audit but the MCP call does
+not claim success. See [PaperBuildV1](paper_build_contract.md).
 
 ##### Few-shot corpus management
 
@@ -406,7 +543,7 @@ EAR-on runs flow through `ors_seed_sandbox` (deterministic seed); the
 LLM `ors_build_reproduce` skips when reproduce.sh is already present,
 so it only fires on EAR-off runs (paper-only reproduction).
 
-**v0.7.2 HPC additions.** Both `build_reproduce_sh` and `run_reproduce`
+**Typed HPC execution.** Both `build_reproduce_sh` and `run_reproduce`
 consume the optional `reproduce_contract.execution_profile` block
 ([reference](execution_profile.md)):
 
@@ -419,16 +556,11 @@ consume the optional `reproduce_contract.execution_profile` block
 - For `kind ∈ {mpi, mpi_gpu}` an MPI aggregation skeleton
   (`prompts/mpi_aggregate_skel.py`) is auto-copied into
   `submission/mpi_aggregate.py`.
-- `run_reproduce` exposes 15 new SLURM flags (`--nodes`, `--ntasks`,
-  `--ntasks-per-node`, `--nodelist`, `--exclude`, `--exclusive`,
-  `--gpus-per-task`, `--gpus-per-node`, `--gres=gpu:<type>:N`, `--mem`,
-  `--mem-per-cpu`, `--constraint`, `--cpu-bind`, `--mem-bind`,
-  `--hint`) plus an `extra_sbatch_args` escape hatch. Each caller arg
-  auto-resolves from `execution_profile` when left at its default.
-- Runtime probes: `_is_shared_fs(repo_dir)` warns on node-local paths,
-  `_slurm_has_gres()` silently drops `--gres` when the cluster has no
-  GRES configured (keeping `--gpus-per-task`) so the submission is not
-  rejected.
+- `run_reproduce` compiles typed placement, GPU, memory, constraint, hint,
+  account, QoS, reservation, and module fields into `JobRequestV1`. Arbitrary
+  scheduler flags and contradictory resource shapes fail closed.
+- CPU/memory binding remains an explicit `srun` job-step responsibility in
+  `reproduce.sh`; requested GPU resources are never silently removed.
 
 PaperBench is vendored as a git submodule under
 `ari-skill-paper-re/vendor/paperbench`; the bridge module
@@ -467,7 +599,7 @@ result = fetch_code_bundle(
 # Returns: {"populated": True, "dest": ..., "bundle_sha256": ..., "files": ...}
 ```
 
-#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
 **LLM-driven replicator** (v0.7.0+). Sibling of `fetch_code_bundle`:
 both target `repro_sandbox/`. Reads the paper (and the rubric's
@@ -507,19 +639,21 @@ Sandbox priority (`auto`, the default): `slurm` (when sbatch is on
 PATH AND `ARI_SLURM_PARTITION` is set — the same partition BFTS used)
 → `docker` (when daemon usable and not on HPC) → `apptainer` →
 `singularity` → `local`. Override with the `sandbox_kind` argument
-or `ARI_PHASE1_SANDBOX`. The container image is `docker://ubuntu:24.04`
-by default (`ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE` /
-`ARI_PHASE1_SINGULARITY_IMAGE` to customise).
+or `ARI_PHASE1_SANDBOX`. Container sandboxes have no mutable default image.
+Provide a full Docker `sha256:<image-id>` / `name@sha256:<digest>`, a local
+non-symlink SIF, or a digest-pinned remote Apptainer reference through the
+argument or `ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE` (the
+latter also applies to the Singularity runtime).
 
-**SLURM dispatch** (v0.7.0, restored from v0.5.0): submits via
-`sbatch --wait` so the call blocks until the job finishes and
-inherits the job's exit code. partition / cpus / walltime resolve
+**SLURM dispatch**: constructs a digest-bound `JobRequestV1`, receives an
+idempotent handle, then observes status/logs and cancels on timeout. The shared
+HPC adapter alone invokes `sbatch --parsable --export=NIL`; paper-re does not
+construct scheduler argv or inherit the parent environment. Partition / CPU /
+walltime resolve
 arg > env (`ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` /
-`ARI_SLURM_WALLTIME`) > `{checkpoint_dir}/launch_config.json`. A tiny
-wrapper script (`{repo_dir}/.slurm_wrap.sh`) is generated to bypass
-sbatch's spool-relocation: it `exec bash`'s the user reproduce.sh by
-absolute path so `$0`-relative `cd "$(dirname "$0")/code"` still works
-inside the spooled job.
+`ARI_SLURM_WALLTIME`) > `{checkpoint_dir}/launch_config.json`. The absolute
+`reproduce.sh` path is a pinned input; scheduler logs are digest-checked before
+being materialized as `reproduce.log`.
 
 ```python
 result = run_reproduce(
@@ -576,24 +710,22 @@ v0.6.0 `react_driver`-based check.
 
 ### Tools
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, paperbench_rubric_id="", max_model_calls=64, subtree_concurrency=4)`
 
 Produces a PaperBench-compatible rubric. When `target_leaf_count=0`,
 the leaf count is auto-computed from paper length (~1 leaf / 75 words,
 clamped to [50, 400]).
 
-`two_stage=True` (default) generates the rubric in two passes — a
+The mandatory `hierarchical-v2` strategy generates the rubric in two passes — a
 **skeleton pass** that defines the root + direct children (one node per
 major contribution / experiment) with a per-child leaf budget, then
 **parallel subtree passes** that recursively populate each direct
 child's subtree with 4–6 additional levels. A merge step joins the
 populated subtrees back into the skeleton; leaves whose `quote` or
 `requirements` violate the schema's `minLength=10` are dropped (a
-handful per run is normal). Compared to a single LLM call this produces
-roughly 4× more leaves and 1–2 levels more depth on a representative
-PaperBench reference paper, at the cost of ~5× more API tokens. Set
-`two_stage=False` to use the legacy single-call path
-(`prompts/adversarial_reviewer.md`).
+handful per run is normal). Every call, repair, and dropped node is recorded;
+budget exhaustion fails closed. The former low-coverage single-call generator
+was removed after the P6 migration window.
 
 `paperbench_rubric_id` (unreleased) selects a venue-conditioned template
 from `ari-core/config/paperbench_rubrics/<id>.yaml`. Empty string =
@@ -603,9 +735,9 @@ into the skeleton + subtree prompts via `{VENUE_HINT}` placeholders.
 This mirrors the `reviewer_rubrics/` venue pattern already used by
 `ari-skill-paper` for peer review, so the same `venue → YAML → prompt`
 flow is now available for the rubric generator. Shipped templates:
-`generic` (back-compat), `sc` (HPC paper-audit, 6 axes), `neurips`
-(ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). `paper_audit`
-mode requires `two_stage=True`. See
+`generic`, `sc` (HPC paper-audit, 6 axes), `neurips`
+(ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). All templates use the
+same calibrated hierarchical strategy. See
 [`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
 for the YAML schema.
 
@@ -642,12 +774,10 @@ it absent.
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | Auditor LLM (independent of generator) |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (unset) | Override target leaf count (`0`/unset = auto). GUI Wizard "Target leaves" field. |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (unset) | Override generator temperature. GUI Wizard "Temperature" field. |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (unset) | Force two-stage on/off (`1`/`true`/`on` vs `0`/`false`/`off`). GUI Wizard "Two-stage generation" toggle. |
 
-Env vars are resolved in `server.py` before the generator runs and win
-over the kwarg defaults when the workflow stage doesn't pass an
-explicit value (the bundled `ors_generate_rubric` stage does not, so
-the GUI Wizard always controls these three knobs at runtime).
+Target-leaf and temperature env vars are resolved in `server.py` before the
+generator runs and win when the workflow stage does not pass an explicit value.
+Generation strategy is not configurable.
 
 ---
 
@@ -662,9 +792,9 @@ retrieval; see PHILOSOPHY.md for the P2/P5 relaxation note).
 
 #### `add_memory(node_id, text, metadata=None)`
 
-Store an entry tagged with `node_id`. **Copy-on-Write**: rejects writes
-whose `node_id` ≠ `$ARI_CURRENT_NODE_ID` so a child cannot mutate an
-ancestor's entries.
+Store an entry tagged with `node_id`. **Copy-on-Write**: the manifest requires
+an explicit node context, and the skill rejects a write unless the signed
+`NodeContextV1.node_id` equals the target. A child cannot mutate an ancestor.
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
@@ -693,10 +823,6 @@ rank order itself — children see entries most relevant to their
 
 All entries for a specific node (chronological, no scoring).
 
-#### `clear_node_memory(node_id)`
-
-Debug-only per-node clear. Same CoW rule as `add_memory`.
-
 #### `get_experiment_context()`
 
 Stable experiment facts read from Letta core memory — `experiment_goal`,
@@ -709,10 +835,11 @@ determined); safe to call repeatedly (60 s in-process cache). Returns
 
 Typed entries (Phase 1) carry structured provenance so the paper / figure
 stages can ground claims on reproducible artifacts. Callers are loop/pipeline
-hooks, not LLM pulls. Every write tool is **Copy-on-Write guarded**: `node_id`
-must equal `$ARI_CURRENT_NODE_ID` (the ari-core MCPClient routes the write
-through the `_set_current_node` bridge), so a child cannot mutate an ancestor's
-entries.
+hooks, not LLM pulls. Every write tool is **Copy-on-Write guarded** by a
+tool-bound, signed `NodeContextV1`; reads additionally validate their requested
+node set against its ordered lineage digest. ari-core injects this transport
+context after model argument generation, so callers cannot promote themselves
+to a sibling or ancestor.
 
 #### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
 
@@ -757,34 +884,45 @@ node only). Caller is the ari-core node-end hook.
 
 Storage: per-checkpoint Letta agent with two archival collections
 (`ari_node_*`, `ari_react_*`). A snapshot at
-`{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` keeps checkpoints
+`{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz` keeps checkpoints
 portable. The v0.5.x JSONL stores were removed in v0.5.0
 (checkpoint-scoped `memory_store.jsonl` and the legacy global JSONL that
 once lived under `$HOME/.ari/`); use `ari memory migrate` to import
 legacy data. Cross-experiment "global memory" is no longer a feature —
 stable lessons belong in `experiment.md`, code, or prior papers.
 
+Research records are content-addressed and append-only; no public or backend
+per-node clear operation exists. Search includes explicit model/ranking/filter
+provenance. See [Research memory contract](memory_contract.md).
+
 ---
 
 ## ari-skill-orchestrator
 
-Expose ARI as an MCP server for external agents and IDEs. Supports recursive sub-experiments. **LLM: No** (delegates to ARI CLI).
-
-Dual transport: **stdio** (MCP for Claude Desktop / other MCP clients) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
+Expose ARI as an authenticated, durable MCP control plane for external agents and
+IDEs. **LLM: No** (delegates to ARI CLI). Stdio is canonical; the optional network
+transport is bearer-authenticated MCP Streamable HTTP. Both use one service and state
+machine; there is no parallel REST/SSE API.
 
 ### Tools
 
-#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
+#### `run_experiment(experiment_md, idempotency_key, ...)`
 
-Launch an ARI experiment asynchronously. Returns `run_id`. When `parent_run_id` is set, the experiment is tracked as a child of the parent (for recursive sub-experiment workflows).
+Idempotently launch a digest-bound experiment under declared depth, run, node, cost,
+CPU, and timeout budgets. Returns `RunHandleV1`; no credential argument exists.
 
 #### `get_status(run_id)`
 
-Return progress, current best metrics, and recursion metadata for a run.
+Return authorized durable state and bounded scientific progress for an exact run ID.
+
+#### `get_result(run_id)` / `stop_experiment(run_id)`
+
+Return `RunResultV1` artifact references or propagate cancellation to the run's process
+group.
 
 #### `list_runs()`
 
-List all past experiment runs.
+List only runs visible to the authenticated principal.
 
 #### `list_children(run_id)`
 
@@ -792,11 +930,33 @@ Return child runs of a parent experiment (for recursive sub-experiment tracking)
 
 #### `get_paper(run_id)`
 
-Return the generated paper (LaTeX).
+Return generated paper artifact references. `get_ear`, `list_artifacts`, and
+`read_artifact` expose only verified SHA-256 identities, never checkpoint paths.
 
-Workspace: `ARI_WORKSPACE` env (default: `~/ARI`). Parent-child relationships persisted in `meta.json` per checkpoint.
+`list_skills(run_id)` and `get_workflow(run_id)` return only sanitized data from the
+verified run-level `SKILLS.lock`. See [Orchestrator control plane](orchestrator.md).
 
 ---
+
+## ari-skill-tool-registry
+
+Default-off federation for large scientific MCP collections. It exposes only
+`discover`, `describe`, `invoke`, `get_status`, and `get_result`; leaf tools are
+generated into a reviewed immutable catalog. Execution requires an exact opaque
+`tool_ref` and an admission decision. Provider output is normalized, and
+record/replay evidence is retained in the EAR. See
+[the dedicated registry reference](tool_registry.md).
+
+OpenROAD profiles may execute either through a scoped local MCP session or as a
+typed C06 SLURM job in a digest-pinned clean container. Both remain a single
+virtual catalog leaf; scheduler resources, handles, logs, and provenance are
+profile-locked and never become caller-supplied flags.
+
+Qiskit profiles likewise expose one immutable async sampling experiment rather
+than the upstream tool sets. Local ideal/noisy Aer, remote simulator, and IBM
+hardware use distinct capabilities; QPY, target, transpilation, shots,
+seeds/noise/mitigation, backend snapshot, evidence, and credential scope are
+fixed. See [the Qiskit profile reference](qiskit_profiles.md).
 
 ## ari-skill-transform
 
@@ -911,42 +1071,40 @@ exist, `generate_ear` emits one of: **MIT**, **Apache-2.0**,
 
 ## ari-skill-web
 
-Web search and academic literature retrieval with pluggable backends. **LLM: Partial** (only `collect_references_iterative` uses LLM).
+Provenance-preserving web and academic retrieval. **LLM: No** for canonical
+retrieval; only the explicit separate reranker is stochastic.
 
 ### Tools
 
-#### `web_search(query, n=5)`
+#### `search_papers(query, max_results=10, provider=null, mode="record", snapshot_ref="")`
 
-DuckDuckGo web search. No API key required. Deterministic.
+Searches exactly one pinned `semantic-scholar`, `arxiv`, or `alphaxiv`
+provider. It returns `RetrievalRecordV1`, a digest-bound survey snapshot, and a
+content-addressed `snapshot_ref` in record mode. Provider failure is explicit;
+there is no fallback or partially successful `both` mode.
 
-#### `fetch_url(url, max_chars=8000)`
+#### `web_search(query, n=5, mode="record", snapshot_ref="")`
 
-Fetch and extract text from a URL via BeautifulSoup. Deterministic.
+DuckDuckGo retrieval under the same live/record/replay contract.
 
-#### `search_arxiv(query, max_results=5)`
+#### `fetch_url(url, max_chars=8000, mode="record", snapshot_ref="", max_bytes=2097152)`
 
-arXiv paper search. Deterministic.
+Fetches untrusted text through pinned-IP SSRF protection, redirect
+revalidation, HTTPS-downgrade rejection, and byte/content-type limits.
 
-#### `search_semantic_scholar(query, limit=8, extra_queries=None)`
+#### `walk_citations(seed_ids, direction="references", max_depth=2, max_nodes=50, request_budget=20, mode="record", snapshot_ref="")`
 
-Semantic Scholar API with fallback to arXiv. Deterministic.
+Bounded Semantic Scholar graph traversal with cycle detection and explicit
+partial results.
 
-#### `search_papers(query, max_results=10)`
+#### `rerank_retrieval_records(research_question, records, max_results=10)`
 
-Dispatches to the configured retrieval backend (`ARI_RETRIEVAL_BACKEND`):
-- `"semantic_scholar"` (default) — Semantic Scholar API
-- `"alphaxiv"` — AlphaXiv via MCP JSON-RPC over HTTP
-- `"both"` — parallel execution with deduplication
+Explicit optional LLM reranking. Returns the selected typed records plus model,
+API identity, temperature, and prompt/input/output digests.
 
-#### `set_retrieval_backend(backend)`
-
-Dynamically switch the retrieval backend at runtime. Valid values: `"semantic_scholar"`, `"alphaxiv"`, `"both"`.
-
-#### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
-
-AI Scientist v2-style iterative citation collection. LLM generates search queries and selects relevant papers across multiple rounds.
-
-Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
+The former narrow provider aliases, mutable backend selector, and combined LLM
+collector were removed after P6. Use `search_papers(provider=...)`; compose
+multi-query search and reranking explicitly in the workflow or broker.
 
 #### `list_uploaded_files()`
 
@@ -956,38 +1114,48 @@ Lists user-uploaded files in the checkpoint directory. Deterministic.
 
 Reads text file content from uploaded files with binary detection. Deterministic.
 
+Full wire and security semantics: [Retrieval contract](retrieval_contract.md).
+
 ---
 
 ## ari-skill-coding
 
-Code generation, execution, and file reading. **LLM: No** (deterministic).
+Closed-workspace authoring, bounded execution, complete log evidence, and typed
+measurement emission. **LLM: No** (user-code determinism is conditional).
 
 ### Tools
 
 #### `write_code(filename, code, work_dir="/tmp/ari_work")`
 
-Write a source file to the work directory.
+Atomically write below the core-owned workspace. Traversal, absolute escape,
+and symlink components are rejected.
 
 #### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
 
-Execute a source file (auto-detects language from extension). Output is truncated with an informative marker showing omitted character count and a hint to redirect to a file.
+Execute an interpreted source file using structured argv. The source SHA-256 is
+verified and bound to an immutable launch snapshot. Inline logs are bounded;
+complete stdout/stderr are content-addressed artifacts.
 
 #### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
 
-Run a bash command in the work directory. Output truncation with `truncated` boolean flag in result.
+Run an explicitly shell-enabled command locally or through the configured clean
+container adapter. Results include stable execution identity, unique attempt ID,
+actual limit enforcement, network/container identity, and complete logs.
 
 #### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
 
-Read a text file with paginated access for large files. Returns content, `next_offset` for continuation, and total line count.
+Read a symlink-safe text file with bounded pagination. Returns content,
+`next_offset`, and total character count.
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# Returns: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# Returns: {"content": "...", "next_offset": 100, "total_chars": 5000}
 ```
 
-Work directory: `work_dir` arg > `ARI_WORK_DIR` env > `/tmp/ari_work`.
+`ARI_WORK_DIR` owns the root; `work_dir` may only select a contained
+subdirectory.
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=null, file="results.json", work_dir="/tmp/ari_work")`
 
 Write a typed `results.json` separating input parameters from measured outputs. Call this once at the **end** of an experiment run so downstream stages (`transform → science_data`, paper writing, summary stats) can tell apart "what we measured" from "what we ran on" — a best-of reduction never accidentally picks an input size (e.g. `nnz`, `M`, `K`, `threads`) over a real metric (e.g. `GFlops_per_s`).
 
@@ -997,34 +1165,52 @@ emit_results(
     measurements={"GFlops_per_s": 26.864, "GB_per_s": 63.802},
     predictions={"peak_gflops_model": 686.45},
     scores={"parallel_efficiency": 0.81},
+    units={"GFlops_per_s": "GFLOP/s", "GB_per_s": "GB/s"},
+    execution=run_result["measurement_execution"],
 )
 ```
 
-The file uses schema `1.0` and is overwritten on repeat calls; pass a different `file` name to keep multiple result variants. `params` and `measurements` must be disjoint — do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`. Non-JSON-serializable values (e.g. `pathlib.Path`) are str-coerced rather than raising. `file` is normalised to `Path(file).name` so a malicious agent cannot escape `work_dir` via `../../...`.
+The canonical `ari.measurement-set/v1` object records finite numeric values,
+explicit unit state, parameters, provenance, execution attempt/exit status, and
+evidence artifact digests. The server-issued execution receipt and every log
+digest are verified before writing. Parameter, measurement, prediction, and
+score names must be disjoint. Path traversal is rejected. New files contain no
+flat projection; old files are accepted only by the read-only migration parser.
 
-The optional `provenance` arg is an `{operand: source}` map written verbatim into `results.json` as the `_provenance` key and consumed by the claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"` when its value is an empirically **MEASURED** ceiling/peak (so a normalized metric is not flagged as resting on a placeholder), and `"correctness"` or `"reference"` when it is a residual computed against an **independent** reference (so the output is not flagged as unverified). Best-effort; omitted entirely when empty.
+The optional `provenance` arg is an `{operand: source}` map stored on the
+corresponding canonical measurement records and consumed by the
+claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"`
+when its value is an empirically **MEASURED** ceiling/peak, and `"correctness"`
+or `"reference"` when it is a residual computed against an independent
+reference. It is omitted when empty.
 
-The downstream `transform-skill::nodes_to_science_data` populates `configurations[*].parameters` from this file when present (D contract). When `emit_results` is not called, the LLM evaluator's typed split (C contract — see `ari-skill-evaluator::make_metric_spec` below) supplies the same information from artifact analysis.
+`transform-skill` and the evaluator validate the common schema before use. See
+[Execution and measurement contracts](execution_contract.md).
 
 ---
 
 ## ari-skill-benchmark
 
-Performance analysis, plotting, and statistical testing. **LLM: No** (deterministic).
+Typed summaries, statistical inference, and provenance-aware run comparison.
+**LLM: No** (deterministic). Figure rendering is owned by `ari-skill-plot`.
 
 ### Tools
 
-#### `analyze_results(result_path, metrics)`
+#### `analyze_results(request)`
 
-Load and analyze CSV, JSON, or NPY result files. Returns summary statistics.
+Validate `AnalysisRequestV1` and return unit-bearing summaries, mean confidence
+intervals, missing counts, source/input digests, and library versions.
 
-#### `plot(data, plot_type, output_path, title="", xlabel="", ylabel="")`
+#### `statistical_test(request)`
 
-Generate matplotlib figures. Plot types: `bar`, `line`, `scatter`, `heatmap`.
+Validate `StatisticalTestRequestV1`; run paired/unpaired t or rank tests and
+return effect size, confidence interval, assumptions, and corrected p-values.
 
-#### `statistical_test(data_a, data_b, test)`
+#### `compare_runs(request)`
 
-Run scipy statistical tests: `ttest`, `mannwhitney`, `wilcoxon`.
+Rank compatible runs while retaining backend/environment groups, replicate
+identity caveats, and provenance differences. See the
+[deterministic analysis contract](analysis_contract.md).
 
 ---
 

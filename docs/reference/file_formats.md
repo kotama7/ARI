@@ -10,7 +10,9 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/skill_lock.py
+    role: implementation
+last_verified: 2026-08-02
 ---
 
 # File Formats Reference
@@ -47,25 +49,27 @@ Edit only the prose **above** the marker.
 Output of `ari-skill-idea.generate_ideas`.  Lives at
 `{checkpoint}/idea.json` and seeds the BFTS run's plan.
 
-Top-level shape:
+New runs use the digest-bound contract shape (legacy scalar fields remain a
+read-only projection during the checkpoint support window):
 
 ```json
 {
-  "ideas": [
-    {
-      "title": "...",
-      "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
-      "_pinned": false
-    }
-  ]
+  "typed_schema_version": "ari.research-contract/v1",
+  "survey_snapshot_digest": "sha256:...",
+  "idea_set_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",
+  "contract_status": "admitted",
+  "survey_snapshot": {"schema_version": "ari.survey-snapshot/v1"},
+  "idea_set": {"schema_version": "ari.idea-set/v1"},
+  "research_contract": {"schema_version": "ari.research-contract/v1"},
+  "ideas": [{"title": "...", "contract_status": "admitted"}]
 }
 ```
 
-Children pin a parent's chosen idea by setting `"_pinned": true` on
-the inherited entry; subsequent `generate_ideas` runs append new
-ideas after it without overwriting.
+The three embedded records verify their own canonical SHA-256 digest. Invalid,
+duplicate, uncited, non-falsifiable, unknown-unit, or unknown-artifact candidates
+appear in `idea_set.rejections`; they cannot mint a research contract. See
+[Research contracts](research_contracts.md).
 
 ## `evaluation_criteria.json`
 
@@ -284,20 +288,31 @@ recorded results, **not** the truthfulness of the results themselves.
 
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
+  "source_run_id": "run-id",
   "phase": "final",
-  "policy": "strict" | "warn",
+  "policy_mode": "strict" | "warn" | "off",
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
   "status": "...",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "formula_provenance": {
+    "registry_digest": "sha256:...",
+    "formulas_used": ["identity"],
+    "unit_conversions": ["s->ms@sha256:..."]
+  },
+  "blocking_findings": [...],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
-The MCP wrapper turns `should_block` (set only at `phase: final` under
-strict policy, or on objective-falsehood findings) into a hard pipeline
-failure so finalize is skipped. Source:
+The MCP wrapper turns `should_block` (set only at `phase: final`; `off` never
+blocks) into a hard pipeline failure so finalize is skipped. V1 readers verify
+the report digest. The explicit pre-v1 reader preserves old findings while
+marking policy/evidence/formula provenance as unrecorded. Source:
 `ari-core/ari/pipeline/claim_gate/gate.py`.
 
 ## `evaluation/evidence_grounded_semantic_review.json`
@@ -306,7 +321,8 @@ Non-blocking, evidence-grounded semantic review written by
 `ari-skill-evaluator.evidence_grounded_semantic_review`. It detects
 over-claiming / interpretation issues grounded in the hard-gate evidence
 and emits `suggested_revisions` for `paper_refine`. Never blocks the
-pipeline; on any error it returns an empty (`status: "ok"`) review. The
+pipeline; on model, timeout, or parse error it returns a typed
+`status: "unavailable"` review. The
 post-refine pass writes the
 `evidence_grounded_semantic_review_post_refine.json` variant alongside it.
 
@@ -362,42 +378,73 @@ stages:
 
 Bundled defaults live in `ari-core/config/workflow.yaml` (the package config root returned by `package_config_root()`).
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+## `SKILLS.lock`
+
+Immutable, deterministic MCP registry snapshot written once at
+`{checkpoint}/SKILLS.lock` after the first successful live `tools/list`
+handshake. It records:
+
+- canonical manifest and provider digests for each configured Skill;
+- exact live input/output JSON Schemas and schema digests for every tool;
+- immutable `tool_ref`, capability, policy, and disabled-tool configuration;
+- declared ordinary environment names and value-free credential scope identity
+  (`scope_id`, declared/present variable names, identity digest) per provider;
+- the admitted `tool_ref` set for every runtime phase;
+- one registry digest covering the complete document.
+
+Subsequent processes and resumed runs create their live candidate registry and
+must match the existing lock exactly before dispatch. The file stores declared
+environment variable names and scope presence, never secret values. Secret
+rotation does not enter the digest; gaining or losing a scope/name does. Schema:
+`ari-core/ari/schemas/skills_lock_v1.schema.json`.
+
+## Memory records and portable backup
 
 Memory backend artefacts written under `ARI_CHECKPOINT_DIR`:
 
 | File | Backend | Notes |
 |---|---|---|
-| `memory_store.jsonl` | `file` | Legacy v0.5 format, line-delimited JSON entries |
-| `memory_backup.jsonl.gz` | `letta` | Portable snapshot (auto on stage boundary + exit) |
+| `memory_store.jsonl` | `file` | Legacy v0.5 input; read only by explicit offline migration |
+| `memory_events.jsonl` | any | Append-only content-addressed record event ledger |
+| `memory_backup.v1.json.gz` | `letta` | Canonical gzip JSON with root and entry digests |
 | `memory_access.jsonl` | any | Append-only telemetry of writes / reads |
 
-Snapshot record shape:
+Backup document shape (records conform to `MemoryRecordV1`):
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
-  "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "schema_version": "ari.memory-backup/v1",
+  "records": [{"schema_version": "ari.memory-record/v1", "record_digest": "sha256:..."}],
+  "react_entries": [{"content": "...", "entry_digest": "sha256:..."}],
+  "core_context": {},
+  "record_digests": ["sha256:..."],
+  "record_order": ["sha256:..."],
+  "backup_digest": "sha256:..."
 }
 ```
 
-## EAR bundle (v0.7.0)
+Restore validates the complete document before writes. See
+[Research memory contract](memory_contract.md).
+
+## ScienceDataV1 and EAR manifest v2
+
+New runs separate raw measurements, deterministic derivations, and model
+interpretation in `ari.science-data/v1`. See
+[Science data and EAR integrity](science_data_contract.md).
 
 `{checkpoint}/ear/` is the candidate set; `{checkpoint}/ear_published/`
 is the curated subset published to a backend.  The trust anchor is:
 
 ```
 ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
+├── manifest.lock         # v2: content, role, policy, locks, evidence digests
 ├── publish_record.json   # backend, ref, sha256, visibility
 └── ...                   # curated artefacts
 ```
 
-`manifest.lock` schema: `ari-core/ari/schemas/publish.schema.json`.
+Manifest v2 also binds Skill/catalog locks, cassettes, ResultEnvelope artifacts,
+and admission records; v1 is read-only compatibility. The publication policy
+schema remains `ari-core/ari/schemas/publish.schema.json`.
 The `bundle_sha256` must equal the `\codedigest{...}` macro baked
 into the published paper.
 
@@ -405,7 +452,7 @@ into the published paper.
 
 - `docs/concepts/architecture.md` (Checkpoint Directory Layout) — narrative
   view of the same files.
-- `ari-core/ari/schemas/` — formal JSON Schemas for `node_report` and
-  the publish manifest.
+- `ari-core/ari/schemas/` — formal JSON Schemas for run locks, result
+  envelopes, `node_report`, and the publish manifest.
 - `ari-core/ari/pipeline/yaml_loader.py` — workflow.yaml parser.
 - `docs/guides/experiment_file.md` — long-form `experiment.md` guide.

@@ -51,7 +51,6 @@ import os
 import re
 import shutil
 import threading
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -572,9 +571,8 @@ def _estimate_cost(rubric_config: dict, reproduce_config: dict, judge_config: di
     tokens out per rubric pass; ~$1/M input + $5/M output). Tune as
     needed — these are advisory.
     """
-    rubric_two_stage = bool(rubric_config.get("two_stage", True))
-    rubric_walltime = 300 if rubric_two_stage else 180  # sec
-    rubric_cost_usd = 0.45 if rubric_two_stage else 0.20
+    rubric_walltime = 300  # calibrated hierarchical skeleton + subtree generation
+    rubric_cost_usd = 0.45
 
     reproduce_walltime = int(reproduce_config.get("time_limit_sec") or 12 * 3600)
     reproduce_cost_usd = 2.0  # ballpark for a 12 h BasicAgent rollout
@@ -592,6 +590,28 @@ def _estimate_cost(rubric_config: dict, reproduce_config: dict, judge_config: di
             "judge": {"wall_time_sec": judge_walltime, "cost_usd": judge_cost_usd},
         },
     }
+
+
+_RUBRIC_CONFIG_KEYS = frozenset(
+    {
+        "model",
+        "target_leaf_count",
+        "temperature",
+        "seed",
+        "paperbench_rubric_id",
+        "max_model_calls",
+        "subtree_concurrency",
+        "provider",
+        "model_revision",
+    }
+)
+
+
+def _rubric_config_error(config: dict) -> str | None:
+    unknown = sorted(set(config) - _RUBRIC_CONFIG_KEYS)
+    if unknown:
+        return "unknown rubric_config fields: " + ", ".join(unknown)
+    return None
 
 
 def _api_launch_run(body: dict) -> dict:
@@ -621,6 +641,8 @@ def _api_launch_run(body: dict) -> dict:
     rubric_config = dict(body.get("rubric_config") or {})
     reproduce_config = dict(body.get("reproduce_config") or {})
     judge_config = dict(body.get("judge_config") or {})
+    if error := _rubric_config_error(rubric_config):
+        return {"error": error}
     dry_run = bool(body.get("dry_run"))
 
     est = _estimate_cost(rubric_config, reproduce_config, judge_config)
@@ -694,8 +716,11 @@ def _api_run_results(job_id: str) -> dict:
 def _api_cost_estimate(query: dict) -> dict:
     """Same shape as ``_api_launch_run`` with ``dry_run=True``, but exposed
     as GET for the wizard's live-update path."""
+    rubric_config = dict(query.get("rubric_config") or {})
+    if error := _rubric_config_error(rubric_config):
+        return {"error": error}
     return _estimate_cost(
-        rubric_config=query.get("rubric_config") or {},
+        rubric_config=rubric_config,
         reproduce_config=query.get("reproduce_config") or {},
         judge_config=query.get("judge_config") or {},
     )

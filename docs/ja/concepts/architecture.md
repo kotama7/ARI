@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI アーキテクチャ
@@ -247,7 +247,7 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     出力: science_data.json  { configurations, experiment_context, per_key_summary }
 
   ステージ 2: search_related_work  (ari-skill-web)  [ステージ 1 と並列]
-    LLM 生成キーワード → 切替可能な検索バックエンド (Semantic Scholar / AlphaXiv / both)
+    キーワード → 一つの固定provider (Semantic Scholar / arXiv / AlphaXiv)
     出力: related_refs.json
 
   ステージ 3: generate_figures  (ari-skill-plot)  [ステージ 1 の後]
@@ -301,8 +301,8 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
         → claim_evidence_hard_gate_final   (FINAL gate; strict モードで finalize をブロック)
         → finalize_paper            (下記ステージ 8)
     workflow.yaml のトップレベル claim_gate_policy ブロックで制御される
-      (デフォルト mode: warn — FINAL gate は非ブロッキング; mode: strict は
-      FINAL gate で finalize_paper をブロック)。解決の優先順位は最終的に
+      (既定warnはFINALの客観的integrity findingのみ、strictは設定済みfindingもblock、
+      offは非ブロッキング)。解決の優先順位は最終的に
       env ARI_CLAIM_GATE_MODE (off | warn | strict) と ARI_COMPARISON_SCOPE。
     重い gate ロジックは新しい ari/pipeline/claim_gate/ パッケージ
       (contract / gate / policy / numeric / latex / invariants / resolve) に
@@ -378,7 +378,8 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
       slurm (sbatch + ARI_SLURM_PARTITION = BFTS と同じ partition)
       → docker (デーモン利用可かつ HPC 外) → apptainer → singularity →
       local。ARI_PHASE1_SANDBOX で上書き可。
-    SLURM 経路は sbatch --wait + spool relocation 対策 wrapper。
+    SLURM経路はdigest付きJobRequestV1と共通submit/status/log/cancel handle、
+    clean environmentを使用。
     出力: ors_phase1.json { executed, exit_code, log_path,
                               artifacts, missing, sandbox_kind,
                               [partition, cpus, walltime] }
@@ -490,7 +491,7 @@ v0.5.0 でグローバルな `$HOME/.ari/` ディレクトリは廃止された�
 ```
 checkpoints/{run_id}/
 ├── settings.json        # GUI 設定 (LLM モデル、プロバイダ、HPC デフォルト)
-├── memory_backup.jsonl.gz   # Letta スナップショット (ステージ境界＋終了時に自動)
+├── memory_backup.v1.json.gz # digest 検証付き portable Letta スナップショット
 ├── memory_access.jsonl       # write/read テレメトリ
 └── ...                  # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -525,14 +526,14 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
-| `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC ジョブ管理 + Singularity コンテナ | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context` | 祖先スコープのノードメモリ（Letta バックエンド） | △ |
+| `ari-skill-hpc` | `job_submit`, `container_submit`, `job_status`, `job_result`, `job_logs`, `job_cancel`, `probe_platform_capabilities`, `slurm_submit`（core-agent bridge） | 型付きHPC scheduler/container lifecycle | ✗ |
+| `ari-skill-memory` | append-only 型付き write、lineage read、audit、consolidation | versioned 祖先スコープメモリ（Letta バックエンド） | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | 実験ファイルからのメトリクス仕様抽出 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS ツリー → 科学データ + EAR + curate/publish ライフサイクル (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `collect_references_iterative` | Web 検索、arXiv、Semantic Scholar、反復的引用収集 | △ |
+| `ari-skill-web` | `search_papers`, `web_search`, `fetch_url`, `walk_citations`, `rerank_retrieval_records`、互換alias | 型付きrecord/replay、URL安全性、source provenance、bounded citation graph | △ |
 | `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | 決定論的 + LLM 図表生成（図ごとに matplotlib プロットまたは SVG 図を `kind` フィールドで選択） | ✓ |
-| `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews` | LaTeX 論文執筆、コンパイル、ルーブリック駆動査読 (AI Scientist v1/v2 互換)。v0.7.0: `inject_code_availability` で `\codeavailability{}` / `\codedigest{}` / `\coderef{}` マクロ注入、`merge_reviews` で text-review + VLM-review JSON を後付け合成。 | ✓ |
+| `ari-skill-paper` | `list_venues`, `get_template`, `compile_paper`, `check_format`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews`, `link_paper_claims`, `paper_refine`, `finalize_paper_build` | native evidence に基づく全文生成と fail-closed `PaperBuildV1` 公開。rubric は明示選択し、compile/claim/review/model call/final artifact を digest で固定。 | ✓ |
 | `ari-skill-paper-re` | `fetch_code_bundle`, `run_reproduce`, `grade_with_simplejudge` | PaperBench 形式の再現性 (v0.7.0)。`ari.clone` でサンドボックス事前展開、Phase 1 サンドボックス runner、Phase 2 PaperBench SimpleJudge 採点。PaperBench は `vendor/paperbench` に同梱。 | ✓ |
 | `ari-skill-replicate` | `generate_rubric`, `audit_rubric` | PaperBench 形式のオートルーブリック生成器・監査器 (v0.7.0)。ORS 再現性フローを駆動。 | ✓ |
 | `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY 分析、プロット、scipy 統計（BFTS analyze ステージで使用） | ✗ |
@@ -802,15 +803,29 @@ Workflow:
 
 なお `get_experiment_context()` のペイロード（`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec`）は **もはやこのリストには含まれません** — 上記ワーキングコンテキスト注入の Tier 1a として全ノードに自動注入されるようになりました。
 
-### CoW ブリッジ — メモリスキルとの同期維持
+### 明示的な呼び出しコンテキスト — 安全なメモリ認可
 
-LLM へのラウンドトリップが始まる直前、`loop.py:378-381` で:
+ノード開始時に、loop は 1 つの不変コンテキストを構築します:
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+context = ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids,
+    phase="bfts",
+)
+self.mcp.call_tool("add_memory", args, context=context)
 ```
 
-を発行します。これは `ari-skill-memory` が公開する内部ツールで、プールされたスキルサブプロセス内の `$ARI_CURRENT_NODE_ID` を更新し、後続の `add_memory(node_id=...)` 呼び出しがアクティブノードに対して CoW 検証されるようにします。エージェントはこのツールを見ません ── `_INTERNAL_MCP_TOOLS` で `tool_desc` から除外されています。
+`MCPClient` は manifest の `context_requirement` を検査し、接続ごとの
+authority でこのコンテキストに署名し、転送専用の
+`ari_context` 引数を注入します。この引数はモデルに見せる
+ツール schema から除去されます。Claude の direct MCP 経路では
+`secure_stdio_proxy` が独自の authority を生成して同様に注入するため、
+鍵が shim 設定に入ることはありません。メモリ Skill は I/O 前に
+署名、ツール束縛、run identity、lineage digest を検証し、
+self-write と ancestor-read のルールを強制します。
 
 ### Soft 強制 vs Hard 強制
 
@@ -818,8 +833,8 @@ self.mcp.call_tool("_set_current_node", {"node_id": node.id})
 
 | ルール | 強制方法 |
 |-------|---------|
-| 他ノードのメモリに書けない | **Hard** — バックエンドが `node_id` ≠ `$ARI_CURRENT_NODE_ID` を reject |
-| 兄弟メモリを読めない | **Hard** — `search_memory` が `ancestor_ids` でフィルタ |
+| 他ノードのメモリに書けない | **Hard** — 署名付き `NodeContext` が書き込み先を self として特定しなければならない |
+| 兄弟メモリを読めない | **Hard** — 要求 ID は署名済み lineage 内に限られ、その後 storage がその ID でフィルタする |
 | `generate_ideas` は最大 1 回 | **Hard** — 初回後 `_suppress_tools` で除外 |
 | 子は `survey` を呼ぶべきでない | **Soft** — 文章のみ（"parent already completed the survey"）。ツールは `tool_desc` に残る |
 | 子は計画ではなく実装すべき | **Soft** — 文章のみ。システムプロンプトの `RULES` ブロックに依存 |

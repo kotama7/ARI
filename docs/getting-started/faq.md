@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/default.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # FAQ
@@ -97,7 +97,7 @@ Install LaTeX (`conda install -c conda-forge texlive-core`) and the PDF text
 tools (`pip install pymupdf pdfminer.six`).
 
 **Can I move a finished run to another machine?**
-Yes. Each checkpoint carries a `memory_backup.jsonl.gz`, so
+Yes. Each checkpoint carries a digest-verified `memory_backup.v1.json.gz`, so
 `cp -r workspace/checkpoints/<run> /elsewhere/` followed by `ari resume`
 restores the memory into an empty Letta automatically.
 

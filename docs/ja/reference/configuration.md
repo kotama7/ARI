@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 設定リファレンス
@@ -42,7 +42,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    # 評価はMCP toolではなくari-coreのBFTS evaluator pathが担当します。
+    tool: ''
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -54,7 +55,7 @@ bfts_pipeline:
 pipeline:
   - stage: search_related_work
     skill: web-skill
-    tool: collect_references_iterative
+    tool: search_papers
     skip_if_exists: '{{ckpt}}/related_refs.json'
     # ...
   - stage: transform_data
@@ -174,7 +175,7 @@ pipeline:
       judge_model: gpt-5-mini  # LiteLLM 認識可能な任意のモデル ID
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── 論文査読 (ルーブリック駆動、AI Scientist v1/v2 互換) ─────────────
@@ -279,9 +280,9 @@ skills:
 | `OLLAMA_HOST` | Ollama サーバーアドレス | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API キー | (なし) |
 | `ANTHROPIC_API_KEY` | Anthropic API キー | (なし) |
-| `ARI_RETRIEVAL_BACKEND` | 論文検索バックエンド: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 固定論文provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | 認証付き MCP Streamable HTTP ポート | `9890` |
 | `LETTA_BASE_URL` | Letta サーバエンドポイント | `http://localhost:8283` |
 | `LETTA_API_KEY` | Letta Cloud で必須 | (なし) |
 | `LETTA_EMBEDDING_CONFIG` | アーカイバルメモリ用の埋め込みハンドル（エージェントのチャット LLM は ARI から呼び出さないため `letta/letta-free` に固定） | `letta-default` |
@@ -299,15 +300,14 @@ skills:
 | `ARI_MODEL_RUBRIC_AUDIT` | `audit_rubric` の監査 LLM (生成器とは独立) | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` の目標葉数の上書き。`0` / 未設定で論文長から自動 (~1葉/75語、[50,400] にクランプ)。GUI Wizard の "Target leaves" 欄。 | (未設定) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | 生成器 temperature の上書き。GUI Wizard の "Temperature" 欄。 | (未設定) |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 二段階生成（スケルトン + 並列サブツリー）の強制 ON/OFF (`1`/`true`/`on` vs `0`/`false`/`off`)。単一コール比で葉数約 4 倍・深さ +1〜2 層、API トークン消費約 5 倍。未設定時は kwarg デフォルト（現状 ON）。GUI Wizard の "二段階生成" トグル。 | (未設定、既定 ON) |
 | `ARI_MODEL_REPLICATE` | `build_reproduce_sh` (論文 → reproduce.sh, v0.7.0) のリプリケータ LLM | `claude-opus-4-7` |
 | `ARI_MODEL_JUDGE` | `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; LiteLLM 経由でプロバイダ自由) の判定 LLM | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | `decide_lineage_action` の判定 LLM (lineage decision, v0.7.0)。未指定時は `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` の順にフォールバック | (auto) |
 | `ARI_MODEL_ROOT_SELECT` | VirSci プールから `ideas[0]` を選び直す LLM (lineage decision, v0.7.0)。フォールバック順は `ARI_MODEL_LINEAGE` と同じ | (auto) |
 | `ARI_PHASE1_SANDBOX` | Phase 1 サンドボックス: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
 | `ARI_SLURM_WALLTIME` | SLURM Phase 1 の `--time` HH:MM:SS (v0.7.0, 復元)。空ならルーブリックの `max_runtime_sec` から算出。 | (auto) |
-| `ARI_PHASE1_DOCKER_IMAGE` | docker サンドボックスのコンテナイメージ | `ubuntu:24.04` |
-| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Apptainer/Singularity サンドボックスのイメージ | `docker://ubuntu:24.04` |
+| `ARI_PHASE1_DOCKER_IMAGE` | Docker再現用のimmutable digest-pinned image | defaultなし |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity 用の review 済み local SIF または digest-pinned image | defaultなし |
 | `ARI_PUBLISH_DRYRUN` | `ari ear publish --dry-run` を強制 (CI 安全, v0.7.0) | (off) |
 | `ARI_REGISTRY_DATA` | `ari registry serve` の sqlite + artifact 保管 root | (なし — 明示設定が必須。v0.5.0 以前の `$HOME/.ari/registry-data` フォールバックは DeprecationWarning を出し、v1.0 で削除) |
 | `ARI_REGISTRY_TOKEN` | `ari clone ari://...` / `ari ear publish --backend ari-registry` 用 bearer token | (なし) |
@@ -499,8 +499,8 @@ claim_gate_policy:
 | Mode | 動作 |
 |---|---|
 | `off` | 決してブロックしない。 |
-| `warn`（既定） | エラー/警告を報告するが `finalize_paper` をブロックしない。 |
-| `strict` | `block_on` エラーが存在すると**最終** gate がブロックし（`finalize_paper` を skip）、strict セクション内の未カバーの結果数値もブロッキングになる。draft gate は決してブロックしない。 |
+| `warn`（既定） | **最終**gateでは`always_block_on`の客観的integrity findingだけをブロックし、他はreport-only。 |
+| `strict` | **最終**gateはさらに`block_on` findingをブロックし、strictセクションの未カバー数値もblockingになる。draft gateは決してブロックしない。 |
 
 `comparison_scope` は注入される研究意図です（環境変数
 `ARI_COMPARISON_SCOPE` で上書き）:

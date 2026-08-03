@@ -16,6 +16,25 @@ contract (Phase 1-4):
 """
 
 from ari.pipeline.claim_gate import run_hard_gate  # noqa: F401
+from ari.claim_gate_contract import (  # noqa: F401
+    ClaimGateContractError,
+    GateFindingV1,
+    GateFormulaProvenanceV1,
+    GateReportV1,
+    MetricAdmissionDecisionV1,
+    MetricClaimV1,
+    MetricContractProposalV1,
+    MetricGateContractV1,
+    SemanticFindingV1,
+    SemanticReviewV1,
+    SemanticRevisionV1,
+    admit_metric_contract_proposal,
+    migrate_legacy_gate_report,
+    migrate_legacy_metric_gate_contract,
+    parse_gate_report,
+    parse_metric_gate_contract,
+    parse_semantic_review,
+)
 from ari.pipeline.claim_gate.contract import check_emission  # noqa: F401
 from ari.pipeline.claim_gate.invariants import (  # noqa: F401
     CONCEPT_INVARIANTS,
@@ -25,5 +44,11 @@ from ari.pipeline.claim_gate.invariants import (  # noqa: F401
 
 __all__ = [
     "run_hard_gate", "check_emission", "classify_concept", "scan_science_data",
-    "CONCEPT_INVARIANTS",
+    "CONCEPT_INVARIANTS", "ClaimGateContractError", "GateFindingV1",
+    "GateFormulaProvenanceV1", "GateReportV1", "MetricAdmissionDecisionV1",
+    "MetricClaimV1", "MetricContractProposalV1", "MetricGateContractV1",
+    "SemanticFindingV1", "SemanticReviewV1", "SemanticRevisionV1",
+    "admit_metric_contract_proposal", "migrate_legacy_metric_gate_contract",
+    "migrate_legacy_gate_report",
+    "parse_gate_report", "parse_metric_gate_contract", "parse_semantic_review",
 ]

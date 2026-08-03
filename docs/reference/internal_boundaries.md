@@ -10,13 +10,23 @@ sources:
     role: implementation
   - path: ari-core/ari/mcp/client.py
     role: implementation
+  - path: ari-core/ari/mcp/connection.py
+    role: implementation
+  - path: ari-core/ari/mcp/child_environment.py
+    role: implementation
+  - path: ari-core/ari/mcp/secure_stdio_proxy.py
+    role: implementation
+  - path: ari-core/ari/mcp/dispatch_support.py
+    role: implementation
+  - path: ari-core/ari/result.py
+    role: implementation
   - path: ari-core/ari/cli/bfts_loop.py
     role: implementation
   - path: ari-core/ari/pipeline/orchestrator.py
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # Internal boundaries
@@ -72,16 +82,18 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 
 | Module | Owns |
 |--------|------|
-| `ari/container.py` | container exec: `detect_runtime`, `build_run_cmd`, `run_in_container` (Popen + `_sandbox_preexec` = `os.setsid` new process group + optional `RLIMIT_NPROC` via `ARI_MAX_CHILD_PROCS`), `_run_with_timeout` (group SIGTERM→SIGKILL), `pull_image`, `exec_in_container`. Re-exported by `ari.public.container`. |
+| `ari/execution.py` + `ari/container.py` | `ari.execution` owns closed workspaces, minimal environments, POSIX limits, process-group timeout/cancellation, and complete log artifacts. `ari.container` builds clean, fail-closed runtime argv and its blocking compatibility path delegates to that executor. Re-exported by `ari.public.execution` / `ari.public.container`. |
 | `ari/env_detect.py` | scheduler/runtime probes (`sinfo`, `qstat`, `docker info`, `lscpu`) — read-only, best-effort, no hardcoded cluster knowledge. |
-| `ari/mcp/client.py` | spawns skill stdio servers via the MCP SDK `stdio_client` (a wrapper, not a raw spawn). |
-| `ari-skill-hpc/src/slurm.py` | the canonical SLURM submit/status/cancel (`SlurmClient`: `_run_local` asyncio subprocess, `_run_remote` paramiko), incl. `ARI_SBATCH_EXPORT_MODE` clean-env logic. |
+| `ari/mcp/connection.py` | owns one Skill's MCP SDK `stdio_client` lifecycle and immutable child-environment snapshot. |
+| `ari/mcp/child_environment.py` | constructs the manifest allowlist, isolated runtime directories, credential authority identities, and redacted stderr pipe. |
+| `ari/mcp/secure_stdio_proxy.py` | restores exact-env/redaction guarantees when a direct MCP client merges its own parent environment. |
+| `ari-skill-hpc/ari_skill_hpc/{contracts,scheduler}.py` | versioned HPC job contracts plus shell-free local SLURM, strict known-host SSH, durable idempotency, `--export=NIL` clean environments, and digest-bound result collection. |
 
-Known duplication to consolidate toward these owners (not incorrect behaviour,
-but drift risk): `viz/api_memory.py` re-derives container-runtime dispatch;
-`ari-skill-paper-re/src/server.py` re-implements `sbatch`/`apptainer exec` and
-already diverges from `slurm.py` (it hardcodes `--export ALL`); its local
-fallback lacks `setsid`/`killpg`, so a hung reproduce can orphan.
+Known duplication still to consolidate toward these owners: `viz/api_memory.py`
+re-derives container-runtime dispatch, and paper-re still owns local/Docker/
+Apptainer fallbacks. Its SLURM path now compiles `JobRequestV1` and uses the
+canonical submit/status/log/cancel lifecycle; no direct `sbatch` or exported
+parent environment remains.
 
 **`ari.viz.state` process-handle coupling.** `ari/viz/state.py` holds live OS
 handles as module globals (imported as `_st`): `_last_proc` (most-recent
@@ -91,6 +103,43 @@ written by the two launch paths), and `_gpu_monitor_proc` (its logic lives in
 `api_process.py`; the server reaps a stale monitor across restarts). This is the
 canonical example of the "avoid hidden coupling through global mutable state"
 caution — touch its lifecycle only deliberately.
+
+## MCP admission and result boundary
+
+`ari.mcp.client.MCPClient` owns registry, dispatch, retry, and lock
+reconciliation. `ari.mcp.connection.SkillConnection` owns process/connection
+lifecycle. Pure dispatch
+policy lives in `ari.mcp.dispatch_support`: runtime `tool_ref` hashing binds the
+canonical manifest identity plus live input/output schemas; phase matching,
+manifest timeout/budget resolution, and bounded trace rendering are kept
+separate from transport state. There is no tool-name timeout table.
+
+`MCPClient.list_tools()` publishes `tool_ref`, `capability_ref`, and resolved
+policy. `call_tool_envelope(tool_ref, args, context=...)` is the canonical call
+boundary and re-checks disabled/phase admission before I/O. It returns
+`ResultEnvelopeV1` from `ari.result`, including typed errors, response digest,
+selection reason, timing, and run/node/phase provenance. A checkpoint-backed
+artifact store externalizes raw text over 4,000 characters under a deterministic
+SHA-256 address; reads verify digest and byte size. `call_tool(name, args)` runs
+through the same normalization and then materializes the historical
+`{"result": text}` / `{"error": message}` shape. Bare names remain only as
+unique migration aliases; federation and future run locks must dispatch by
+`tool_ref`.
+
+Async submitters are also name-independent. `ari.async_tools` defines the
+manifest lifecycle and portable handle models. `MCPClient` resolves lifecycle
+capabilities within the admitted provider to immutable status/result/cancel
+refs, validates provider states against the manifest map, and owns bounded
+polling/cancellation.
+
+The environment boundary is deny-by-default. A complete manifest separately
+declares ordinary names and credential scopes; the child receives neither
+undeclared parent variables nor the parent's home/config directories. Credential
+values may exist only in the connection/proxy environment and its in-memory
+redactor. Locks and result provenance record value-free scope identities. The
+Claude bridge sends only credential variable references to the local shim and
+launches providers behind `secure_stdio_proxy`, because a direct MCP client may
+otherwise merge its full parent environment and bypass core admission.
 
 ## The two orchestration engines
 
@@ -115,12 +164,14 @@ fork that constructs its own `MCPClient` in the child.
    `ARI_WORK_DIR` and the sandbox vars (`ARI_REAL_GIT`, `ARI_REPRO_*`, `PATH`)
    must be set **before** `MCPClient` spawns; deferring MCP construction or
    reordering env setup silently breaks sandboxing / work-dir pinning.
-2. **Shared-process global-env race under parallel workers.** Up to 4
-   `AgentLoop` threads share one process and one `MCPClient`. Memory
-   copy-on-write keys off the process-global `ARI_CURRENT_NODE_ID`; the only safe
-   write path is `mcp.call_tool(name, args, cow_node_id=node_id)` (it serializes
-   the set-node+write pair under `MCPClient._cow_lock`). A per-run single
-   `_set_current_node` is unsafe at `max_parallel_nodes > 1`.
+2. **Context isolation under parallel workers.** Up to 4 `AgentLoop` threads
+   share one process and one `MCPClient`. Each call must carry the immutable
+   `ToolCallContextV1.for_node(...)` created for that worker; never cache a
+   mutable "current node" on the client or provider. `MCPClient` and the direct
+   MCP proxy overwrite the transport-only `ari_context` argument with a
+   tool-bound signed capability. The memory provider verifies the ordered
+   lineage digest, self-write rule, and ancestor-read set independently for
+   every call, so no cross-thread lock or global node environment is required.
 3. **Shared checkpoint-tree writes.** There is **no git worktree**: concurrent
    committers all write the same `tree.json` / `nodes_tree.json` / `results.json`
    via one shared `agent._progress_cb` → `_save_tree_incremental`; thread-safety

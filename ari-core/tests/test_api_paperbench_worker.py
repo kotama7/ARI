@@ -83,7 +83,7 @@ def test_worker_drives_four_stages_and_marks_completed(tmp_path):
 
     r = P._api_launch_run({
         "paper_ids": ["wp1"],
-        "rubric_config": {"model": "gemini/gemini-2.5-pro", "two_stage": True,
+        "rubric_config": {"model": "gemini/gemini-2.5-pro",
                           "target_leaf_count": 200, "temperature": 0.1},
         "reproduce_config": {"model": "gpt-5-mini", "time_limit_sec": 7200,
                              "iterative_agent": True, "sandbox_kind": "slurm",

@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI Architecture
@@ -292,7 +292,7 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
       report_driven    (true when node_report.json drove LLM input)
 
   Stage 2: search_related_work  (ari-skill-web)  [parallel with stage 1]
-    LLM-generated keywords → pluggable retrieval (Semantic Scholar / AlphaXiv / both)
+    keywords → one pinned retrieval provider (Semantic Scholar / arXiv / AlphaXiv)
     Output: related_refs.json
 
   Stage 3: generate_figures  (ari-skill-plot)  [after stage 1]
@@ -347,8 +347,9 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
         → claim_evidence_hard_gate_final   (FINAL gate; blocks finalize in strict mode)
         → finalize_paper            (Stage 8 below)
     Governed by the top-level claim_gate_policy block in workflow.yaml
-      (mode: warn by default — the FINAL gate is non-blocking; mode: strict
-      blocks finalize_paper on the FINAL gate). Resolution precedence ends at
+      (mode: warn by default — only objective-integrity findings block the
+      FINAL gate; mode: strict adds configured findings; off never blocks).
+      Resolution precedence ends at
       env ARI_CLAIM_GATE_MODE (off | warn | strict) and ARI_COMPARISON_SCOPE.
     The heavy gate logic lives in the new ari/pipeline/claim_gate/ package
       (contract / gate / policy / numeric / latex / invariants / resolve);
@@ -427,8 +428,8 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
       slurm (when sbatch + ARI_SLURM_PARTITION are present — same partition
       BFTS used) → docker (when daemon usable & not on HPC) → apptainer →
       singularity → local. Override via ARI_PHASE1_SANDBOX.
-    SLURM dispatch uses sbatch --wait + a wrapper that exec's reproduce.sh
-    by absolute path so $(dirname "$0") survives spool relocation.
+    SLURM dispatch compiles a digest-bound JobRequestV1 and uses the shared
+    submit/status/log/cancel handle lifecycle with a clean environment.
     Captures reproduce.log; checks expected_artifacts from the rubric.
     Output: ors_phase1.json { executed, exit_code, log_path,
                               artifacts, missing, sandbox_kind,
@@ -459,6 +460,7 @@ single source of truth for directory construction.
 
 ```
 checkpoints/{run_id}/
+├── SKILLS.lock                # Immutable live MCP provider/schema/phase snapshot
 ├── experiment.md               # Input: research goal (copied on launch)
 ├── launch_config.json          # Wizard/CLI launch parameters
 ├── meta.json                   # Sub-experiment metadata (parent/depth)
@@ -546,7 +548,7 @@ and `docs/guides/migration.md`):
 ```
 checkpoints/{run_id}/
 ├── settings.json             # GUI settings (LLM model, provider, HPC defaults)
-├── memory_backup.jsonl.gz    # Letta snapshot (portable; auto on stage boundary + exit)
+├── memory_backup.v1.json.gz  # digest-verified portable Letta snapshot
 ├── memory_access.jsonl       # Append-only memory write/read telemetry
 └── ...                       # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -576,7 +578,6 @@ environment variables injected at launch.
 | `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`); selected via `ari.protocols.Evaluator` injection. Composite formula (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) and axis set (`legacy` / `dynamic` / `custom`) are **configurable** via `EvaluatorConfig` — see [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) |
 | `ari/memory/letta_client.py` | `LettaMemoryClient` — ReAct-trace persistence backed by the `ari_react_*` Letta collection |
 | `ari/memory/file_client.py` | Deprecated v0.5.x file-backed client; kept only for `ari memory migrate --react` |
-| `ari/memory/auto_migrate.py` | First-launch v0.5.x JSONL → Letta importer (legacy shim wraps `migrations/v05_to_v07/memory.py`) |
 | `ari/memory_cli.py` | `ari memory …` subcommand (migrate / backup / restore / start-local / …) |
 | `ari/mcp/client.py` | Async MCP client — thread-safe, fresh event loops for parallel execution |
 | `ari/llm/client.py` | LLM routing via litellm (Ollama, OpenAI, Anthropic, any OpenAI-compatible) |
@@ -599,14 +600,14 @@ environment variables injected at launch.
 
 | Skill | Tools | Role | LLM? |
 |-------|-------|------|------|
-| `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC job management + Singularity containers | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context` | Ancestor-scoped node memory backed by Letta (Postgres / SQLite / Cloud) | △ |
+| `ari-skill-hpc` | `job_submit`, `container_submit`, `job_status`, `job_result`, `job_logs`, `job_cancel`, `probe_platform_capabilities`, `slurm_submit` (core-agent bridge) | Typed HPC scheduler and container lifecycle | ✗ |
+| `ari-skill-memory` | append-only typed writes, lineage reads, audit, consolidation | Versioned ancestor-scoped memory backed by Letta (Postgres / SQLite / Cloud) | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec` | Metric spec extraction from experiment file | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/publish lifecycle (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `search_papers`, `set_retrieval_backend`, `collect_references_iterative`, `list_uploaded_files`, `read_uploaded_file` | Web search, arXiv, pluggable retrieval (Semantic Scholar / AlphaXiv), uploaded file access | △ |
+| `ari-skill-web` | `search_papers`, `web_search`, `fetch_url`, `walk_citations`, `rerank_retrieval_records`, compatibility aliases, upload readers | Typed record/replay retrieval, URL safety, source provenance, bounded citation graph | △ |
 | `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | Deterministic + LLM figure generation (matplotlib plots or SVG diagrams per-figure via `kind` field) | ✓ |
-| `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews` | LaTeX paper writing, compilation, rubric-driven peer review (AI Scientist v1/v2-compatible). v0.7.0: `inject_code_availability` injects `\codeavailability{}`/`\codedigest{}`/`\coderef{}` macros after `ear_curate`; `merge_reviews` post-hoc merges text-review + VLM-review JSON. | ✓ |
+| `ari-skill-paper` | `list_venues`, `get_template`, `compile_paper`, `check_format`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews`, `link_paper_claims`, `paper_refine`, `finalize_paper_build` | Native-evidence whole-document authoring and fail-closed `PaperBuildV1` publication. Rubric selection is explicit; compile, claims, independent reviews, model calls, and final artifacts are digest-bound. | ✓ |
 | `ari-skill-paper-re` | `fetch_code_bundle`, `run_reproduce`, `grade_with_simplejudge` | PaperBench-format reproducibility (v0.7.0): pre-populate sandbox via `ari.clone`, Phase 1 sandbox runner (`reproduce.sh`), Phase 2 PaperBench SimpleJudge grader. PaperBench is vendored under `vendor/paperbench`. | ✓ |
 | `ari-skill-replicate` | `generate_rubric`, `audit_rubric` | PaperBench-format auto-rubric generator + auditor (v0.7.0). Drives the ORS reproducibility flow. | ✓ |
 | `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY analysis, plotting, scipy stats (used in BFTS analyze stage) | ✗ |
@@ -667,9 +668,10 @@ generate_ideas (idea-skill)
             after the pinned one without overwriting.
 ```
 
-`ARI_RUBRIC` selects which venue file is read. Switching it changes the
-BFTS scoring axes (Phase 3) and the published review's criteria
-together — the same rubric drives both.
+The BFTS evaluator may still select dynamic axes through `ARI_RUBRIC`.
+Paper authoring and review instead receive the explicit, checkpointed
+`paper_rubric`/`rubric_id`; environment fallback is not part of the paper
+runtime contract.
 
 ### Inheritance for sub-experiments
 
@@ -677,7 +679,7 @@ Each child run inherits from its parent along these channels:
 
 | Channel | Direction | Mechanism |
 |---|---|---|
-| `venue.md` (rubric) | inherit | `ARI_RUBRIC` env propagates |
+| paper rubric | inherit explicitly | parent `paper_rubric` is copied into the child run request |
 | `memory` | inherit | ancestor-scoped read (existing `ari-skill-memory`) |
 | `idea.json` (catalog) | inherit (read-only) | `ari/lineage.py` walks `meta.json:parent_run_id`; VirSci injects ancestor titles into agent prompts |
 | `plan.md` (directive) | NOT inherited by default | child writes its own |
@@ -988,19 +990,28 @@ Note that the `get_experiment_context()` payload (`primary_metric`,
 this list — it is now auto-injected for every node as Tier 1a of the
 working-context injection above.
 
-### CoW bridge — keeping the memory skill in sync
+### Explicit call context — authorizing memory safely
 
-Right before the LLM round-trip starts, `loop.py:378-381` issues:
+At the start of a node, the loop constructs one immutable context:
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+context = ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids,
+    phase="bfts",
+)
+self.mcp.call_tool("add_memory", args, context=context)
 ```
 
-This is an internal tool exposed by `ari-skill-memory`; it updates
-`$ARI_CURRENT_NODE_ID` inside the pooled skill subprocess so any
-subsequent `add_memory(node_id=...)` call can be CoW-validated against
-the active node. The agent never sees this tool; it is filtered out of
-`tool_desc` by `_INTERNAL_MCP_TOOLS`.
+`MCPClient` checks the manifest's `context_requirement`, signs this context
+with a per-connection authority, and injects the transport-only `ari_context`
+argument. It is removed from model-facing tool schemas. For Claude's direct MCP
+path, `secure_stdio_proxy` generates its own authority and performs the same
+injection, so the key never enters the shim configuration. The memory skill
+verifies the signature, tool binding, run identity, and lineage digest before
+enforcing self-write and ancestor-read rules.
 
 ### Soft vs hard enforcement
 
@@ -1010,8 +1021,8 @@ debugging unexpected agent behaviour:
 
 | Rule | Enforcement |
 |------|-------------|
-| Cannot write memory for another node | **Hard** — backend rejects on `node_id` ≠ `$ARI_CURRENT_NODE_ID` |
-| Cannot read sibling memories | **Hard** — `search_memory` filters by `ancestor_ids` |
+| Cannot write memory for another node | **Hard** — signed `NodeContext` must identify the write target as self |
+| Cannot read sibling memories | **Hard** — requested IDs must be within the signed lineage, then storage filters by those IDs |
 | `generate_ideas` runs at most once | **Hard** — `_suppress_tools` after first call |
 | Children should not call `survey` | **Soft** — prose only ("parent already completed the survey"); the tool stays in `tool_desc` |
 | Children must implement, not plan | **Soft** — prose; relies on system-prompt `RULES` block |

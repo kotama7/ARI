@@ -11,6 +11,10 @@ PaperBench `SimpleJudge`. No top-level `__init__.py`; `server.py` is the entry p
 - `_paperbench_bridge.py` — `SimpleJudge` bridge.
 - `_replicator_agent.py` — drives PaperBench's BasicAgent/IterativeAgent solver.
 - `_vendor_path.py` — injects vendored PaperBench onto `sys.path`.
+- `contracts.py` — TODO
+- `paperbench_inventory.py` — TODO
+- `rubric_contract.py` — TODO
+- `sandbox.py` — TODO
 - `server.py` — exposes `run_reproduce`, `grade_with_simplejudge`, `fetch_code_bundle`, `build_reproduce_sh`.
 - `_compute/` — `ComputerInterface` implementations (local / Apptainer).
   - `README.md` — _compute index.

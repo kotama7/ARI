@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/configs
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # 配置参考
@@ -42,7 +42,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    # 评估由ari-core的BFTS evaluator路径负责，不是MCP tool。
+    tool: ''
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -54,7 +55,7 @@ bfts_pipeline:
 pipeline:
   - stage: search_related_work
     skill: web-skill
-    tool: collect_references_iterative
+    tool: search_papers
     skip_if_exists: '{{ckpt}}/related_refs.json'
     # ...
   - stage: transform_data
@@ -174,7 +175,7 @@ pipeline:
       judge_model: gpt-5-mini  # 任意 LiteLLM 可识别的模型 ID
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── 论文审阅 (基于评审规范，AI Scientist v1/v2 兼容) ─────────────────
@@ -277,9 +278,9 @@ skills:
 | `OLLAMA_HOST` | Ollama 服务器地址 | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | （无） |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | （无） |
-| `ARI_RETRIEVAL_BACKEND` | 论文搜索后端: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 固定论文provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | 认证 MCP Streamable HTTP 端口 | `9890` |
 | `LETTA_BASE_URL` | Letta 服务器端点 | `http://localhost:8283` |
 | `LETTA_API_KEY` | Letta Cloud 必需 | （无） |
 | `LETTA_EMBEDDING_CONFIG` | 归档内存使用的嵌入句柄（智能体的聊天 LLM 不被 ARI 调用，已固定为 `letta/letta-free`） | `letta-default` |
@@ -297,15 +298,14 @@ skills:
 | `ARI_MODEL_RUBRIC_AUDIT` | `audit_rubric` 的审计 LLM（与生成器独立） | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | 覆盖 `generate_rubric` 的目标叶数。`0` / 未设置时按论文长度自动（约 1 叶 / 75 词，限制在 [50, 400]）。GUI Wizard "Target leaves" 字段。 | (未设置) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | 覆盖生成器 temperature。GUI Wizard "Temperature" 字段。 | (未设置) |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 强制开/关两阶段生成（骨架 + 并行子树），`1`/`true`/`on` vs `0`/`false`/`off`。相比单次调用：叶数约 4 倍、深度增加 1–2 层，API token 消耗约 5 倍。未设置时使用 kwarg 默认（当前 ON）。GUI Wizard "两阶段生成" 切换。 | (未设置，默认 ON) |
 | `ARI_MODEL_REPLICATE` | `build_reproduce_sh`（论文 → reproduce.sh，v0.7.0）的复现器 LLM | `claude-opus-4-7` |
 | `ARI_MODEL_JUDGE` | `grade_with_simplejudge`（PaperBench Phase 2, v0.7.0；LiteLLM 路由，任意提供方均可）的裁判 LLM | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | `decide_lineage_action` 的判定 LLM（lineage decision, v0.7.0）。未设置时按 `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` 顺序回退 | (auto) |
 | `ARI_MODEL_ROOT_SELECT` | 从 VirSci 池中重选 `ideas[0]` 的 LLM（lineage decision, v0.7.0）。回退顺序与 `ARI_MODEL_LINEAGE` 相同 | (auto) |
 | `ARI_PHASE1_SANDBOX` | Phase 1 沙箱：`auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
 | `ARI_SLURM_WALLTIME` | SLURM Phase 1 沙箱的 `--time` HH:MM:SS（v0.7.0, 已恢复）。留空则从 rubric 的 `max_runtime_sec` 推导。 | (auto) |
-| `ARI_PHASE1_DOCKER_IMAGE` | docker 沙箱镜像 | `ubuntu:24.04` |
-| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Apptainer/Singularity 沙箱镜像 | `docker://ubuntu:24.04` |
+| `ARI_PHASE1_DOCKER_IMAGE` | Docker 再现用不可变 digest-pinned 镜像 | 无默认值 |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity 使用的经审查本地 SIF 或 digest-pinned 镜像 | 无默认值 |
 | `ARI_PUBLISH_DRYRUN` | 强制 `ari ear publish --dry-run`（CI 安全开关, v0.7.0） | (off) |
 | `ARI_REGISTRY_DATA` | `ari registry serve` 的 sqlite + artifact 存储根目录 | (无 — 必须显式设置。v0.5.0 以前的 `$HOME/.ari/registry-data` 回退会发出 DeprecationWarning，v1.0 中移除) |
 | `ARI_REGISTRY_TOKEN` | 用于 `ari clone ari://...` / `ari ear publish --backend ari-registry` 的 bearer token | (无) |
@@ -490,8 +490,8 @@ claim_gate_policy:
 | Mode | 行为 |
 |---|---|
 | `off` | 从不阻断。 |
-| `warn`（默认） | 报告错误/警告，但不阻断 `finalize_paper`。 |
-| `strict` | 存在 `block_on` 错误时**最终** gate 阻断（跳过 `finalize_paper`），strict 节中未覆盖的结果数值也会变为阻断项。draft gate 从不阻断。 |
+| `warn`（默认） | **最终**gate仅阻断`always_block_on`中的客观integrity finding，其余仅报告。 |
+| `strict` | **最终**gate还阻断配置的`block_on` finding，strict节中未覆盖的结果数值也会变为阻断项。draft gate从不阻断。 |
 
 `comparison_scope` 是注入的研究意图（环境变量 `ARI_COMPARISON_SCOPE`
 可覆盖）：

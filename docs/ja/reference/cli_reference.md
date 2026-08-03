@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-08-02
 ---
 
 # ARI CLI リファレンス
@@ -371,7 +371,7 @@ ari memory <subcommand> [options]
 |------------|------|
 | `health` | バックエンドへ ping、レイテンシ、namespace ハッシュ、サーバーバージョンを表示 |
 | `migrate` | v0.5.x の `memory_store.jsonl` (および `--react` 付与時は `memory.json`) を Letta コレクションへ一括取り込み。元ファイルは `*.migrated-<ts>` にリネーム |
-| `backup` | Letta 上のメモリを `{ckpt}/memory_backup.jsonl.gz` (gzipped JSONL) にスナップショット保存。パイプライン段の境界とシャットダウン時に自動実行 |
+| `backup` | digest 検証付き `{ckpt}/memory_backup.v1.json.gz` (canonical gzip JSON) を作成。パイプライン段の境界とシャットダウン時に自動実行 |
 | `restore` | `backup` の逆。`--on-conflict=skip\|overwrite\|merge` (既定 `skip`)。`ari resume` 時に Letta が空なら自動実行 |
 | `start-local` | ローカル Letta サーバを起動: `--path=auto\|docker\|singularity\|pip` |
 | `stop-local` | docker/singularity/pip Letta を停止 (best-effort) |
@@ -443,9 +443,9 @@ ari skills-list [--config <config.yaml>]
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_RETRIEVAL_BACKEND` | 論文検索: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 固定provider: `semantic_scholar` / `arxiv` / `alphaxiv` | `semantic_scholar` |
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | orchestrator の MCP Streamable HTTP ポート | `9890` |
 
 ### メモリ (Letta)
 

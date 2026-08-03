@@ -87,13 +87,14 @@ REPRODUCE_CONTRACT — populate from the paper:
         ML, query_p50_ms for DB).
       - accepts_reduced_scale (default true): allow smaller-scale runs
         for partial credit.
-      - SLURM allocation hints (consumed by paper-re Phase 2 sbatch
-        when present, ignored otherwise — useful for any cluster-style
+      - SLURM allocation hints (compiled by paper-re into the typed HPC
+        job contract when present, ignored otherwise — useful for any cluster-style
         evaluation, not just HPC): requested_nodes, ntasks_per_node,
         requested_nodelist, exclude_nodes, exclusive,
         requested_gpus_per_task, requested_gpus_per_node, gpu_type,
         memory_gb_per_node, memory_gb_per_cpu, constraint, cpu_bind,
-        mem_bind, hint, module_loads, extra_sbatch_args.
+        mem_bind, hint, module_loads, account, qos, reservation. Never emit
+        arbitrary scheduler flags.
       Concrete examples (DO NOT copy verbatim; extract from the paper):
         * HPC: "Our experiment ran on 8 exclusive nodes × 4 V100 GPUs
           with OpenMPI 4.1 on a Skylake cluster".
