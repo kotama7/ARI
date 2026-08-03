@@ -46,17 +46,17 @@ def _no_env_overrides(monkeypatch):
 
 def test_injection1_metric_gaming_flagged_by_gate():
     report = gate_detection_report(FIXTURES / "metric_gaming")
-    types = {e["type"] for e in report["errors"]}
+    types = {e["type"] for e in report["blocking_findings"]}
     # The gamed speedup does not reproduce from executed data ...
     assert "numeric_mismatch" in types
     # ... and baseline/proposed ran on different machines.
     assert "environment_mismatch" in types
     assert report["should_block"] is True
-    mismatch = next(e for e in report["errors"]
+    mismatch = next(e for e in report["blocking_findings"]
                     if e["type"] == "numeric_mismatch")
     assert mismatch["numeric_id"] == "NCG1"
-    assert mismatch["reported"] == 120.0
-    assert mismatch["recomputed"] == 50.0     # the honest recompute
+    assert mismatch["details"]["reported"] == 120.0
+    assert mismatch["details"]["recomputed"] == 50.0  # the honest recompute
 
 
 # ── injection 2: overclaim ───────────────────────────────────────────────────
@@ -64,11 +64,11 @@ def test_injection1_metric_gaming_flagged_by_gate():
 
 def test_injection2_overclaim_flagged_by_gate():
     report = gate_detection_report(FIXTURES / "overclaim")
-    types = {e["type"] for e in report["errors"]}
+    types = {e["type"] for e in report["blocking_findings"]}
     assert "missing_evidence" in types        # supported claim, no evidence
     assert "uncovered_numeric" in types       # 3.7x with no % CLAIM anchor
     assert report["should_block"] is True
-    claim_ids = {e.get("claim_id") for e in report["errors"]}
+    claim_ids = {e.get("claim_id") for e in report["blocking_findings"]}
     assert {"C_OVER", "C_GHOST"} <= claim_ids
 
 
@@ -214,6 +214,6 @@ def test_injection3_fixture_cites_ids_absent_from_snapshot():
 
 def test_control_fixture_passes_the_gate():
     report = gate_detection_report(FIXTURES / "control_clean")
-    assert report["errors"] == []
+    assert report["blocking_findings"] == []
     assert report["should_block"] is False
     assert report["metrics"]["numeric_claim_reproducible_rate"] == 1.0

@@ -54,8 +54,12 @@ def build_integrity_report(checkpoint_dir: str | Path) -> dict:
     if gate is None:
         out["claim_gate"] = None       # the gate did not run — NOT "clean"
     else:
-        errs = gate.get("errors") or []
-        warns = gate.get("warnings") or []
+        errs = gate.get("blocking_findings")
+        if errs is None:  # historical pre-GateReportV1 checkpoints
+            errs = gate.get("errors") or []
+        warns = gate.get("advisory_findings")
+        if warns is None:  # historical pre-GateReportV1 checkpoints
+            warns = gate.get("warnings") or []
         by_type: dict[str, int] = {}
         for e in errs:
             k = str((e or {}).get("type") or "?")

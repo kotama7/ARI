@@ -79,7 +79,7 @@ def test_passing_gate(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "strict"}, phase="final")
-    assert rep["errors"] == []
+    assert rep["blocking_findings"] == []
     assert rep["status"] in ("passed", "warn")
     assert rep["should_block"] is False
     assert rep["metrics"]["numeric_claim_reproducible_rate"] == 1.0
@@ -91,7 +91,7 @@ def test_numeric_mismatch_blocks_in_strict_final(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 99.0),  # NC2 paper says 99, recompute 50
                         policy={"mode": "strict"}, phase="final")
-    types = [e["type"] for e in rep["errors"]]
+    types = [e["type"] for e in rep["blocking_findings"]]
     assert "numeric_mismatch" in types
     assert rep["should_block"] is True
     assert rep["metrics"]["numeric_claim_mismatch_count"] == 1
@@ -102,7 +102,7 @@ def test_numeric_mismatch_warn_does_not_block(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 99.0),
                         policy={"mode": "warn"}, phase="final")
-    assert any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
     assert rep["should_block"] is False  # warn mode never blocks
 
 
@@ -111,7 +111,7 @@ def test_draft_phase_never_blocks(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE,
                         paper_claim_links=_links(150.0, 99.0),
                         policy={"mode": "strict"}, phase="draft")
-    assert any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
     assert rep["should_block"] is False  # draft is informational
 
 
@@ -122,7 +122,7 @@ def test_operand_unresolved(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd,
                         paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "operand_unresolved" for e in rep["errors"])
+    assert any(e["type"] == "operand_unresolved" for e in rep["blocking_findings"])
     assert rep["should_block"] is True
 
 
@@ -133,7 +133,7 @@ def test_missing_evidence_unknown_node(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd,
                         paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "missing_evidence" for e in rep["errors"])
+    assert any(e["type"] == "missing_evidence" for e in rep["blocking_findings"])
 
 
 def test_uncovered_numeric_strict_blocks_warn_warns(tmp_path):
@@ -144,12 +144,12 @@ def test_uncovered_numeric_strict_blocks_warn_warns(tmp_path):
                    "unresolved_anchors": [], "uncovered_numeric_candidates": []}
     strict = run_hard_gate(ckpt, paper_tex=tex, science_data={"claims": [], "numeric_assertions": []},
                            paper_claim_links=empty_links, policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "uncovered_numeric" for e in strict["errors"])
+    assert any(e["type"] == "uncovered_numeric" for e in strict["blocking_findings"])
     assert strict["should_block"] is True
 
     warn = run_hard_gate(ckpt, paper_tex=tex, science_data={"claims": [], "numeric_assertions": []},
                          paper_claim_links=empty_links, policy={"mode": "warn"}, phase="final")
-    assert any(w["type"] == "uncovered_numeric" for w in warn["warnings"])
+    assert any(w["type"] == "uncovered_numeric" for w in warn["advisory_findings"])
     assert warn["should_block"] is False
 
 
@@ -168,7 +168,7 @@ def test_env_mismatch_warning(tmp_path):
         (d / "node_report.json").write_text(json.dumps({"executor": "slurm", "cpu_info": {"model": model}}))
     rep = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE, paper_claim_links=_links(150.0, 50.0),
                         policy={"mode": "warn"}, phase="final")
-    assert any(w["type"] == "environment_mismatch" for w in rep["warnings"])
+    assert any(w["type"] == "environment_mismatch" for w in rep["advisory_findings"])
 
 
 def test_env_mismatch_severity_is_intent_driven(tmp_path, monkeypatch):
@@ -185,14 +185,14 @@ def test_env_mismatch_severity_is_intent_driven(tmp_path, monkeypatch):
     strict = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE, paper_claim_links=_links(150.0, 50.0),
                            policy={"mode": "strict", "comparison_scope": "same_environment"}, phase="final")
     assert strict["comparison_scope"] == "same_environment"
-    assert any(e["type"] == "environment_mismatch" for e in strict["errors"])
+    assert any(e["type"] == "environment_mismatch" for e in strict["blocking_findings"])
     assert strict["should_block"] is True
 
     # any intent (default) => warning, never blocks on env mismatch
     anyscope = run_hard_gate(ckpt, paper_tex="", science_data=SCIENCE, paper_claim_links=_links(150.0, 50.0),
                              policy={"mode": "strict", "comparison_scope": "any"}, phase="final")
-    assert any(w["type"] == "environment_mismatch" for w in anyscope["warnings"])
-    assert not any(e["type"] == "environment_mismatch" for e in anyscope["errors"])
+    assert any(w["type"] == "environment_mismatch" for w in anyscope["advisory_findings"])
+    assert not any(e["type"] == "environment_mismatch" for e in anyscope["blocking_findings"])
     assert anyscope["should_block"] is False
 
 
@@ -233,7 +233,7 @@ def test_writer_declared_assertion_verified_forward(tmp_path):
                         policy={"mode": "strict"}, phase="final")
     assert rep["metrics"]["writer_declared_assertions"] == 1
     assert rep["metrics"]["numeric_reproducible"] == 1
-    assert not any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert not any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
 
 
 def test_writer_declared_assertion_wrong_is_mismatch(tmp_path):
@@ -242,7 +242,7 @@ def test_writer_declared_assertion_wrong_is_mismatch(tmp_path):
     rep = run_hard_gate(ckpt, paper_tex="", science_data={"claims": [], "numeric_assertions": []},
                         paper_claim_links=_links_with_writer_assertion(99.0),  # recompute=50, reported=99
                         policy={"mode": "strict"}, phase="final")
-    assert any(e["type"] == "numeric_mismatch" for e in rep["errors"])
+    assert any(e["type"] == "numeric_mismatch" for e in rep["blocking_findings"])
     assert rep["should_block"] is True
 
 
@@ -268,7 +268,7 @@ def test_coverage_by_value_restatement(tmp_path):
     }
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, paper_claim_links=pcl,
                         policy={"mode": "strict"}, phase="final", write=False)
-    err_lines = {e.get("line") for e in rep["errors"] if e["type"] == "uncovered_numeric"}
+    err_lines = {e["details"].get("line") for e in rep["blocking_findings"] if e["type"] == "uncovered_numeric"}
     assert 1 not in err_lines   # restatement of a verified value -> covered (no laundering: exact value+unit)
     assert 2 in err_lines       # genuinely ungrounded number -> still flagged
     assert 3 in err_lines       # value matches but unit differs (% vs absolute) -> not covered
@@ -295,7 +295,7 @@ def test_coverage_credits_resolved_operand_value(tmp_path):
     }
     rep = run_hard_gate(ckpt, paper_tex="", science_data=sd, paper_claim_links=pcl,
                         policy={"mode": "strict"}, phase="final", write=False)
-    err_lines = {e.get("line") for e in rep["errors"] if e["type"] == "uncovered_numeric"}
+    err_lines = {e["details"].get("line") for e in rep["blocking_findings"] if e["type"] == "uncovered_numeric"}
     assert 6 not in err_lines   # baseline (100) = resolved operand of a verified claim -> covered
 
 
@@ -420,8 +420,8 @@ def test_a_colliding_claim_id_is_not_reported_as_a_wrong_paper_number(tmp_path):
     rep = run_hard_gate(checkpoint_dir=tmp_path, science_data=science,
                         paper_claim_links=links,
                         paper_tex="x\nThe baseline sustains 11.2286.\n", phase="final")
-    types = [e.get("type") for e in (rep.get("errors") or [])]
-    assert "claim_id_collision" in types, rep.get("errors")
+    types = [e.get("type") for e in (rep.get("blocking_findings") or [])]
+    assert "claim_id_collision" in types, rep.get("blocking_findings")
     assert "numeric_mismatch" not in types, "a correct paper must not be accused"
 
 

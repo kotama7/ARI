@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from pathlib import Path
@@ -9,6 +10,17 @@ from typing import Literal
 
 import yaml
 from pydantic import BaseModel, Field
+
+from ari.config.skill_runtime import manifest_runtime_metadata
+from ari.skill_manifest import (
+    MANIFEST_FILENAME,
+    SkillManifestV1,
+    load_skill_manifest,
+    resolve_skill_entrypoint,
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 class LLMConfig(BaseModel):
@@ -43,7 +55,7 @@ class LLMConfig(BaseModel):
 class SkillConfig(BaseModel):
     name: str = Field(
         ...,
-        description="Skill package directory name (e.g. `ari-skill-coding`).",
+        description="Runtime Skill alias (e.g. `coding-skill`).",
     )
     path: str = Field(
         ...,
@@ -60,6 +72,66 @@ class SkillConfig(BaseModel):
                     "the AgentLoop ReAct. Single string (`bfts` / `paper` "
                     "/ `reproduce` / `all` / `none`) or a list. `all` "
                     "matches any phase; `none` disables the skill.",
+    )
+    package: str = Field(
+        "",
+        description="Canonical package identity from skill.yaml.",
+    )
+    version: str = Field(
+        "",
+        description="Canonical package version from skill.yaml.",
+    )
+    manifest_path: str | None = Field(
+        None,
+        description="Resolved path to the canonical skill.yaml, when present.",
+    )
+    entrypoint: str = Field(
+        "src/server.py",
+        description="Package-relative Python MCP server entrypoint.",
+    )
+    enabled_by_default: bool = Field(
+        True,
+        description="Whether auto-discovery admits this Skill by default.",
+    )
+    environment_policy: Literal["audit-pending", "complete"] = Field(
+        "audit-pending",
+        description="Whether manifest environment declarations are exhaustive.",
+    )
+    required_env: list[str] = Field(
+        default_factory=list,
+        description="Environment names required by the Skill contract.",
+    )
+    optional_env: list[str] = Field(
+        default_factory=list,
+        description="Optional environment names declared by the Skill contract.",
+    )
+    credential_scopes: dict[str, dict[str, list[str]]] = Field(
+        default_factory=dict,
+        description="Named credential scopes and their required/optional env names.",
+    )
+    credential_scope_identities: list[dict] = Field(
+        default_factory=list,
+        description="Runtime-only value-free credential authority identities.",
+        exclude=True,
+    )
+    tool_timeout_classes: dict[str, str] = Field(
+        default_factory=dict,
+        description="Resolved manifest timeout class keyed by runtime tool name.",
+    )
+    manifest_digest: str = Field(
+        "", description="SHA-256 digest of the normalized canonical manifest."
+    )
+    tool_refs: dict[str, str] = Field(
+        default_factory=dict,
+        description="Declared immutable tool references keyed by runtime name.",
+    )
+    tool_capabilities: dict[str, str] = Field(
+        default_factory=dict,
+        description="Semantic capability references keyed by runtime tool name.",
+    )
+    tool_policies: dict[str, dict] = Field(
+        default_factory=dict,
+        description="Resolved side-effect, determinism, phase, and permission policy.",
     )
 
 
@@ -155,7 +227,7 @@ class BFTSConfig(BaseModel):
     allow_web: bool = Field(
         False,
         description="Opt-in: expose web-skill (web_search / fetch_url / "
-                    "search_arxiv / search_semantic_scholar) to the BFTS node "
+                    "search_papers / walk_citations) to the BFTS node "
                     "agent during exploration. Default False keeps the search "
                     "loop reproducible (P5) — live web results are "
                     "time-varying. When True, ARI records a "
@@ -1577,7 +1649,14 @@ def _apply_memory_section(raw: dict) -> None:
         )
         return
     backend = (mem.get("backend") or "letta").strip().lower()
-    os.environ.setdefault("ARI_MEMORY_BACKEND", backend)
+    # ``local`` and ``cloud`` select a Letta deployment topology; neither is
+    # an alternate storage implementation. Only the test-only in-memory
+    # implementation is forbidden in workflow configuration.
+    if backend not in {"letta", "local", "cloud"}:
+        raise ValueError(
+            "workflow memory.backend must select Letta (letta/local/cloud); "
+            "the in-memory backend is available only inside the test namespace"
+        )
     letta = mem.get("letta") or {}
     if letta.get("base_url"):
         os.environ.setdefault("LETTA_BASE_URL", str(letta["base_url"]))
@@ -1620,6 +1699,7 @@ def load_config(path: str) -> ARIConfig:
         _apply_web_phase_for_bfts(cfg)
         return cfg
     cfg = ARIConfig(**{k: v for k, v in raw.items() if k in ARIConfig.model_fields})
+    _hydrate_skill_manifests(cfg.skills)
     _merge_bfts_disabled_tools(cfg, raw)
     _apply_llm_env_overrides(cfg)
     _apply_checkpoint_env_overrides(cfg)
@@ -1699,24 +1779,34 @@ def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
     """
     _n = os.environ.get("ARI_MAX_NODES")
     if _n:
-        try: cfg.bfts.max_total_nodes = int(_n)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_total_nodes = int(_n)
+        except ValueError:
+            pass
     _d = os.environ.get("ARI_MAX_DEPTH")
     if _d:
-        try: cfg.bfts.max_depth = int(_d)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_depth = int(_d)
+        except ValueError:
+            pass
     _r = os.environ.get("ARI_MAX_REACT")
     if _r:
-        try: cfg.bfts.max_react_steps = int(_r)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_react_steps = int(_r)
+        except ValueError:
+            pass
     _p = os.environ.get("ARI_PARALLEL")
     if _p:
-        try: cfg.bfts.max_parallel_nodes = int(_p)
-        except ValueError: pass
+        try:
+            cfg.bfts.max_parallel_nodes = int(_p)
+        except ValueError:
+            pass
     _t = os.environ.get("ARI_TIMEOUT_NODE")
     if _t:
-        try: cfg.bfts.timeout_per_node = int(_t)
-        except ValueError: pass
+        try:
+            cfg.bfts.timeout_per_node = int(_t)
+        except ValueError:
+            pass
     # GUI wizard's frontier-selection strategy choice. Pydantic does not
     # validate on assignment, so guard against unknown values from env.
     _fs = os.environ.get("ARI_FRONTIER_SCORE")
@@ -1945,17 +2035,88 @@ def _merge_bfts_disabled_tools(cfg: "ARIConfig", raw: dict) -> None:
 
 
 def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
-    """Auto-detect ari-skill-* directories and return a list of SkillConfig."""
+    """Auto-detect canonical, default-enabled ``ari-skill-*`` packages.
+
+    Directory presence is not registration. Only a canonical, default-enabled
+    manifest enters production discovery; an unmanifested local Skill must be
+    named explicitly in development configuration.
+    """
     if base_dir is None:
         # Phase 2 — file moved into a package; ``parents[3]`` reaches
         # the repo root (alongside the ``ari-skill-*`` directories).
         base_dir = Path(__file__).resolve().parents[3]
     skills = []
-    for skill_dir in sorted(base_dir.glob("ari-skill-*")):
-        server = skill_dir / "src" / "server.py"
-        if server.exists():
-            skills.append(SkillConfig(name=skill_dir.name, path=str(skill_dir)))
+    for manifest_path in sorted(base_dir.glob(f"ari-skill-*/{MANIFEST_FILENAME}")):
+        skill_dir = manifest_path.parent
+        manifest = load_skill_manifest(manifest_path)
+        resolve_skill_entrypoint(skill_dir, manifest)
+        if not manifest.enabled_by_default:
+            logger.info(
+                "Skipping default-off Skill '%s' during auto-discovery",
+                manifest.name,
+            )
+            continue
+        skills.append(_skill_config_from_manifest(skill_dir, manifest_path, manifest))
     return skills
+
+
+def _skill_config_from_manifest(
+    skill_dir: Path,
+    manifest_path: Path,
+    manifest: SkillManifestV1,
+    *,
+    phase: str | list[str] = "all",
+) -> SkillConfig:
+    return SkillConfig(
+        name=manifest.name,
+        path=str(skill_dir),
+        description=manifest.description,
+        phase=phase,
+        package=manifest.package,
+        version=manifest.version,
+        manifest_path=str(manifest_path),
+        entrypoint=manifest.entrypoint.module,
+        enabled_by_default=manifest.enabled_by_default,
+        environment_policy=manifest.environment_policy,
+        required_env=list(manifest.required_env),
+        optional_env=list(manifest.optional_env),
+        **manifest_runtime_metadata(manifest),
+    )
+
+
+def _hydrate_skill_manifests(skills: list[SkillConfig]) -> None:
+    """Attach canonical metadata to explicitly configured Skills in place.
+
+    ``workflow.yaml`` remains the authority for aliases and phase exposure during
+    the compatibility window.  Package identity, entrypoint, version, environment
+    declarations, and execution class come from the manifest.
+    """
+
+    for skill in skills:
+        skill_dir = Path(skill.path)
+        manifest_path = skill_dir / MANIFEST_FILENAME
+        if not manifest_path.is_file():
+            continue
+        manifest = load_skill_manifest(manifest_path)
+        resolve_skill_entrypoint(skill_dir, manifest)
+        if skill.name != manifest.name:
+            logger.warning(
+                "Configured Skill alias '%s' differs from canonical name '%s'",
+                skill.name,
+                manifest.name,
+            )
+        skill.package = manifest.package
+        skill.version = manifest.version
+        skill.manifest_path = str(manifest_path)
+        skill.entrypoint = manifest.entrypoint.module
+        skill.enabled_by_default = manifest.enabled_by_default
+        skill.environment_policy = manifest.environment_policy
+        skill.required_env = list(manifest.required_env)
+        skill.optional_env = list(manifest.optional_env)
+        for field_name, value in manifest_runtime_metadata(manifest).items():
+            setattr(skill, field_name, value)
+        if not skill.description:
+            skill.description = manifest.description
 
 
 def auto_config() -> ARIConfig:

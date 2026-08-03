@@ -4,41 +4,56 @@ sources:
     role: schema
   - path: ari-skill-replicate/src/generator.py
     role: implementation
+  - path: ari-skill-replicate/src/auditor.py
+    role: implementation
+  - path: ari-skill-replicate/src/migration.py
+    role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # Rubric schema reference
 
 Canonical source: `ari-skill-replicate/schemas/replication_rubric.schema.json`
-(JSON Schema Draft 2020-12, version `3`).
+(JSON Schema Draft 2020-12, `ari.replication-rubric/v2`; the nested
+PaperBench bridge version remains `3`).
 
 The rubric envelope wraps a PaperBench `TaskNode` tree with provenance
-metadata (paper sha256, generator model, optional audit signature) +
-the `reproduce_contract` that drives both the replicator agent prompt
-and the Phase 2 sbatch dispatcher.
+metadata, exact artifact-backed model calls, a repair ledger, and the
+`reproduce_contract` that drives both the replicator agent prompt and the typed
+HPC job compiler. Audit is a separate immutable document.
 
 ## Envelope
 
 ```jsonc
 {
+  "schema_version": "ari.replication-rubric/v2",
   "version":       "3",
   "paper_sha256":  "<64 hex>",                     // sha256(paper text utf-8)
   "rubric_sha256": "<64 hex>",                     // sha256 of canonical-JSON rubric (self-excluded)
   "generator": {
     "model":         "gemini/gemini-2.5-pro",
+    "model_revision": "immutable-provider-revision",
+    "provider":      "gemini",
     "prompt_sha256": "<64 hex>",
     "generated_at":  "2026-05-13T...",
     "temperature":   0.0,
     "seed":          0,
-    "snapshot":      { ... }                       // optional
+    "strategy":      "hierarchical-v2",
+    "quality_profile": "calibrated",
+    "max_model_calls": 64,
+    "subtree_concurrency": 4,
+    "calls": [{                                     // exact bytes live under .ari-rubric/
+      "label": "skeleton.attempt-1",
+      "status": "completed",
+      "prompt": {"relative_path": "...", "sha256": "...", "size_bytes": 1, "media_type": "text/plain"},
+      "raw_response": {"relative_path": "...", "sha256": "...", "size_bytes": 1, "media_type": "text/plain"},
+      "call_sha256": "<64 hex>"
+    }],
+    "partial_failures": []
   },
-  "audit": {                                       // optional, written by ari-skill-replicate.audit_rubric
-    "auditor_model": "anthropic/claude-opus-4-7",
-    "audited_at":    "2026-05-13T...",
-    "flags_count":   3
-  },
+  "repair_ledger": {"actions": [], "dropped_artifacts": []},
   "reproduce_contract": { ... },                   // see below
   "rubric": { ... }                                // root TaskNode
 }
@@ -72,7 +87,13 @@ parallel-execution fields.
     "section": "§3.1",
     "quote":   "<verbatim paper text, min 10 chars>"
   },
-  "flags": ["unverifiable"]                        // optional
+  "evidence_span": {                               // LEAF ONLY; exact and digest-bound
+    "kind": "paper-span", "section": "§3.1", "quote": "...",
+    "start_char": 120, "end_char": 182, "paper_sha256": "<64 hex>"
+  },
+  "verification": {                               // LEAF ONLY
+    "kind": "artifact", "relative_path": "results.json"
+  }
 }
 ```
 
@@ -109,16 +130,19 @@ nodes are never directly graded — `_collapse_single_child_chains` folds
 single-child wrappers into their child to avoid degenerate
 weighting-only nodes.
 
-### Flags
+### Audit findings
 
-Audit annotations from `ari-skill-replicate.audit_rubric`:
+`audit_rubric` writes `ari.replication-rubric-audit/v2` beside the rubric. It
+does not add fields to TaskNodes. Its deterministic and LLM findings use:
 
 - `vague_qualifier` — "appropriate", "well-organized" etc.
 - `no_paper_evidence` — quote does not appear in paper.
 - `duplicate` — semantically equivalent to another leaf.
 - `unverifiable` — graderless claim (subjective, future work).
 
-`>20%` flagged leaves trigger the auditor's regeneration recommendation.
+`>20%` flagged leaves trigger the report's regeneration recommendation. The
+report also records all auditor prompts/responses and reports
+`not-independent` when generator and auditor identities match.
 
 ## Validation
 
@@ -141,8 +165,18 @@ from ari_skill_replicate.manifest import verify
 verify(rubric)   # True iff rubric_sha256 matches the recomputed canonical hash
 ```
 
-`rubric_sha256` excludes itself and the post-freeze `audit` field so
-audit annotations do not invalidate provenance.
+`rubric_sha256` excludes only itself. Any post-freeze mutation invalidates the
+rubric. Audit reports bind the rubric and paper digests independently.
+
+## Version negotiation and migration
+
+`ari-skill-paper-re` accepts `ari.replication-rubric/v2` and, during the
+declared support window, an unversioned version-`3` legacy envelope through an
+explicit digest-verifying V1 reader. Unknown versions, digest mismatch, and
+paper mismatch fail closed. `migrate_v1_to_v2` retains the complete legacy
+source under `.ari-rubric/`, records every normalization, and refuses a
+migration that would drop a node. Migrated rubrics use quality profile
+`requires-independent-audit`.
 
 ## Venue-conditioned templates
 
@@ -194,9 +228,8 @@ prompt_overrides:
     the YES/NO phrasing the downstream pass should use for leaves>
 ```
 
-`paper_audit` mode requires `two_stage=True`; the single-pass path
-cannot honour the fixed-axis constraint and `generate_rubric_async`
-returns an error if the combination is requested.
+Every mode uses the mandatory calibrated hierarchical strategy. This preserves
+the fixed-axis constraint for `paper_audit` templates.
 
 ### Shipped templates
 

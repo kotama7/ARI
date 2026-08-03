@@ -1,44 +1,44 @@
-# ari-skill-web Requirements
+# ari-skill-web requirements
 
-## Overview
+## Responsibility
 
-MCP skill server for web search and page fetching.
+The Skill owns retrieval, provider normalization, provenance, record/replay,
+URL safety, and bounded citation traversal. Scientific source selection and
+idea generation are separate responsibilities.
 
-**Design Principle P2 compliant: No LLM calls. Fully deterministic.**
+## Required behavior
 
-## Tools
-
-### web_search(query, n=5)
-- Provider: DuckDuckGo (via `ddgs` library)
-- No API key required
-- Returns: `results: list[{title, url, snippet}]`
-
-### fetch_url(url, max_chars=8000)
-- Fetches an HTTP(S) URL and extracts readable text
-- Uses BeautifulSoup for HTML cleaning
-- Returns: `{text, title, url}`
-
-### search_arxiv(query, max_results=5)
-- Direct arXiv search (faster than survey() in ari-skill-idea)
-- Supports arXiv query syntax: `ti:`, `au:`, `abs:`
-- Returns: `papers: list[{title, authors, abstract, url, published}]`
-
-## Integration with Pipeline
-
-The `search_related_work` pipeline stage calls `search_arxiv` directly.
-The query is pre-built by `_extract_keywords_from_nodes()` in `pipeline.py`
-(which reads `nodes_tree.json`). The web skill itself has no knowledge of BFTS
-node structures — keyword extraction is the pipeline's responsibility.
+1. Every canonical result uses `RetrievalRecordV1` and `SurveySnapshotV1`.
+2. A call selects exactly one provider. Outage must be an explicit error; no
+   provider fallback or partial composite success is permitted.
+3. `record` requires a checkpoint and writes content-addressed raw and
+   normalized artifacts. `replay` is offline and verifies snapshot, artifact,
+   provider, query, operation, and parameter identity.
+4. DOI, arXiv, and Semantic Scholar identities are aliases. Provider records
+   remain distinct so merging does not erase lineage.
+5. URL fetching must reject SSRF destinations and DNS rebinding, revalidate
+   redirects, cap redirects/body size, allow only textual media, and label
+   external text as untrusted.
+6. Citation traversal must enforce depth, node, and request budgets, detect
+   cycles, and return an explicit bounded partial result when a budget ends.
+7. Deterministic retrieval must never call an LLM. The separate reranker must
+   record model, API identity, prompt, input, and output digests.
+8. Idea and paper consumers must accept verified snapshot references. A typed
+   result without a recorded reference cannot downgrade to inline paper data.
 
 ## Dependencies
 
-- `ddgs` — DuckDuckGo search (no API key)
-- `httpx` — HTTP client
-- `beautifulsoup4` — HTML text extraction
-- `arxiv` — arXiv API client
+- `ari-core` — public research and workspace contracts
+- `ddgs` — DuckDuckGo adapter
+- `arxiv` — arXiv adapter
+- `httpx` — AlphaXiv MCP transport
+- `beautifulsoup4` — HTML-to-text extraction
+- `litellm` — explicit stochastic compatibility/reranking tools only
 
-## Tests
+## Gates
 
 ```bash
-pytest tests/ -q  # 6 passed
+pytest -q ari-skill-web/tests
+python scripts/check_skill_manifests.py
+python scripts/snapshot_contracts.py --surface mcp --check
 ```

@@ -11,9 +11,9 @@ Shared assets included by every language build (en/ja/zh) of the report.
 - `preamble.tex` — common LaTeX preamble.
 - `references.bib` — bibliography (BibTeX).
 - `appendix/` — verbatim appendix material (prompt snapshots).
-  - `README.md` — this file.
+  - `README.md` — appendix index.
   - `prompts/` — runtime LLM prompt snapshots, grouped by subsystem.
-    - `README.md` — this file.
+    - `README.md` — prompts index.
     - `agent/` — agent prompt snapshots (auto-generated): `system.md`.
       - `system.md` — agent system prompt.
     - `evaluator/` — evaluator prompt snapshots (auto-generated): `extract_metrics.md`, `peer_review.md`.
@@ -43,7 +43,7 @@ Shared assets included by every language build (en/ja/zh) of the report.
       - `adversary_prompt_injection.md` — prompt-injection adversary prompt confirming flagged spans that try to instruct a downstream evaluator.
       - `adversary_reproducibility.md` — reproducibility adversary prompt attacking results a third party could not reproduce from the recorded commands.
       - `clean_room_generator.md` — clean-room generator prompt writing a retired role's successor template from the abstract bundle alone.
-      - `defender.md` — governance Defender prompt for rebutting an impeachment motion from the record.
+      - `defender.md` — artifact Defender prompt that rebuts, concedes, or proposes a fix for one adversary attack.
       - `failure_summary_compressor.md` — failure-summary compressor prompt turning validated failure evidence into abstract, clean-room-safe summaries.
       - `judge_adjudication.md` — ArtifactJudge prompt adjudicating one attack/defense pair on the cited evidence alone.
       - `paper_reviewer.md` — governed paper-review prompt returning strengths, weaknesses, and an accept recommendation, flagging non-reproducible environment details.
@@ -61,7 +61,7 @@ Shared assets included by every language build (en/ja/zh) of the report.
 - `assets/` — binary assets embedded into the report build.
   - `sample_paper.pdf` — the autonomously generated sample paper, bound in full into the appendix (`\includepdf`, "The Generated Sample Paper").
 - `figures/` — shared figure sources, previews, and generation scripts.
-  - `README.md` — this file.
+  - `README.md` — figures index.
   - `CLAUDE.md` — figure-authoring contract.
   - `style.tikzstyles` — shared TikZ styles.
   - `data/` — figure data files (not enumerated)

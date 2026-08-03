@@ -14,9 +14,13 @@
     ]
   },
   "known_collisions": {
-    "read_file": [
-      "ari-skill-coding",
-      "ari-skill-orchestrator"
+    "get_result": [
+      "ari-skill-orchestrator",
+      "ari-skill-tool-registry"
+    ],
+    "get_status": [
+      "ari-skill-orchestrator",
+      "ari-skill-tool-registry"
     ]
   },
   "schema_version": 1,
@@ -24,29 +28,21 @@
     "ari-skill-benchmark": [
       {
         "args": [
-          "metrics",
-          "result_path"
+          "request"
         ],
         "idiom": "fastmcp",
         "name": "analyze_results"
       },
       {
         "args": [
-          "data",
-          "output_path",
-          "plot_type",
-          "title",
-          "xlabel",
-          "ylabel"
+          "request"
         ],
         "idiom": "fastmcp",
-        "name": "plot"
+        "name": "compare_runs"
       },
       {
         "args": [
-          "data_a",
-          "data_b",
-          "test"
+          "request"
         ],
         "idiom": "fastmcp",
         "name": "statistical_test"
@@ -55,12 +51,14 @@
     "ari-skill-coding": [
       {
         "args": [
+          "execution",
           "file",
           "measurements",
           "params",
           "predictions",
           "provenance",
           "scores",
+          "units",
           "work_dir"
         ],
         "idiom": "lowlevel",
@@ -122,6 +120,8 @@
         "args": [
           "checkpoint_dir",
           "hard_gate_path",
+          "model",
+          "model_revision",
           "paper_claim_links_path",
           "paper_path",
           "phase",
@@ -134,26 +134,53 @@
         "args": [
           "checkpoint_dir",
           "experiment_text",
-          "primary_metric"
+          "proposal_json",
+          "reviewer"
         ],
         "idiom": "lowlevel",
         "name": "make_metric_spec"
+      },
+      {
+        "args": [
+          "checkpoint_dir",
+          "idea_json",
+          "model",
+          "model_revision"
+        ],
+        "idiom": "lowlevel",
+        "name": "propose_metric_contract"
       }
     ],
     "ari-skill-hpc": [
       {
-        "args": [
-          "job_id"
-        ],
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "container_submit"
+      },
+      {
+        "args": [],
         "idiom": "lowlevel",
         "name": "job_cancel"
       },
       {
-        "args": [
-          "job_id"
-        ],
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "job_logs"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "job_result"
+      },
+      {
+        "args": [],
         "idiom": "lowlevel",
         "name": "job_status"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "job_submit"
       },
       {
         "args": [
@@ -165,68 +192,7 @@
         "name": "probe_platform_capabilities"
       },
       {
-        "args": [
-          "definition_file",
-          "output_path",
-          "partition"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_build"
-      },
-      {
-        "args": [
-          "definition_content",
-          "output_path",
-          "partition",
-          "walltime"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_build_fakeroot"
-      },
-      {
-        "args": [
-          "output_path",
-          "partition",
-          "source"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_pull"
-      },
-      {
-        "args": [
-          "command",
-          "image_path",
-          "nodes",
-          "partition",
-          "walltime",
-          "work_dir"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_run"
-      },
-      {
-        "args": [
-          "bind_paths",
-          "command",
-          "cpus_per_task",
-          "gres",
-          "image_path",
-          "partition",
-          "walltime",
-          "work_dir"
-        ],
-        "idiom": "lowlevel",
-        "name": "singularity_run_gpu"
-      },
-      {
-        "args": [
-          "job_name",
-          "nodes",
-          "partition",
-          "script",
-          "walltime",
-          "work_dir"
-        ],
+        "args": [],
         "idiom": "lowlevel",
         "name": "slurm_submit"
       }
@@ -235,11 +201,15 @@
       {
         "args": [
           "experiment_context",
+          "generation_mode",
           "max_discussion_rounds",
           "max_recursion_depth",
           "n_agents",
           "n_ideas",
           "papers",
+          "seed",
+          "survey_snapshot",
+          "survey_snapshot_ref",
           "topic"
         ],
         "idiom": "fastmcp",
@@ -248,6 +218,9 @@
       {
         "args": [
           "max_papers",
+          "mode",
+          "provider",
+          "snapshot_path",
           "topic"
         ],
         "idiom": "fastmcp",
@@ -257,13 +230,7 @@
     "ari-skill-memory": [
       {
         "args": [
-          "node_id"
-        ],
-        "idiom": "fastmcp",
-        "name": "_set_current_node"
-      },
-      {
-        "args": [
+          "ari_context",
           "artifact_refs",
           "metric_ptr",
           "node_id",
@@ -275,6 +242,7 @@
       },
       {
         "args": [
+          "ari_context",
           "artifact_refs",
           "node_id",
           "node_report_ref",
@@ -285,6 +253,7 @@
       },
       {
         "args": [
+          "ari_context",
           "metadata",
           "node_id",
           "text"
@@ -294,6 +263,7 @@
       },
       {
         "args": [
+          "ari_context",
           "node_id",
           "node_report_ref",
           "text"
@@ -303,6 +273,7 @@
       },
       {
         "args": [
+          "ari_context",
           "confidence",
           "node_id",
           "node_report_ref",
@@ -313,6 +284,7 @@
       },
       {
         "args": [
+          "ari_context",
           "artifact_refs",
           "node_id",
           "status",
@@ -324,6 +296,7 @@
       },
       {
         "args": [
+          "ari_context",
           "experiments_root",
           "run_id"
         ],
@@ -332,13 +305,7 @@
       },
       {
         "args": [
-          "node_id"
-        ],
-        "idiom": "fastmcp",
-        "name": "clear_node_memory"
-      },
-      {
-        "args": [
+          "ari_context",
           "node_id",
           "node_report",
           "run_id",
@@ -348,12 +315,15 @@
         "name": "consolidate_node_memory"
       },
       {
-        "args": [],
+        "args": [
+          "ari_context"
+        ],
         "idiom": "fastmcp",
         "name": "get_experiment_context"
       },
       {
         "args": [
+          "ari_context",
           "node_id"
         ],
         "idiom": "fastmcp",
@@ -362,6 +332,7 @@
       {
         "args": [
           "ancestor_ids",
+          "ari_context",
           "limit",
           "purpose"
         ],
@@ -371,6 +342,7 @@
       {
         "args": [
           "ancestor_ids",
+          "ari_context",
           "limit",
           "query"
         ],
@@ -380,6 +352,7 @@
       {
         "args": [
           "ancestor_ids",
+          "ari_context",
           "kinds",
           "limit",
           "query",
@@ -394,83 +367,97 @@
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "get_ear"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "get_paper"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
+        "name": "get_result"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "fastmcp",
         "name": "get_status"
       },
       {
-        "args": [],
-        "idiom": "lowlevel",
+        "args": [
+          "run_id"
+        ],
+        "idiom": "fastmcp",
         "name": "get_workflow"
+      },
+      {
+        "args": [
+          "run_id"
+        ],
+        "idiom": "fastmcp",
+        "name": "list_artifacts"
       },
       {
         "args": [
           "parent_run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "list_children"
+      },
+      {
+        "args": [],
+        "idiom": "fastmcp",
+        "name": "list_runs"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
-        "name": "list_files"
-      },
-      {
-        "args": [],
-        "idiom": "lowlevel",
-        "name": "list_runs"
-      },
-      {
-        "args": [],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "list_skills"
       },
       {
         "args": [
-          "filename",
+          "artifact_id",
           "run_id"
         ],
-        "idiom": "lowlevel",
-        "name": "read_file"
+        "idiom": "fastmcp",
+        "name": "read_artifact"
       },
       {
         "args": [
           "cpus",
+          "estimated_cost_usd",
           "executor",
           "experiment_md",
-          "llm_api_key",
+          "idempotency_key",
           "llm_backend",
-          "llm_base_url",
+          "max_cost_usd",
+          "max_descendant_runs",
           "max_nodes",
           "max_recursion_depth",
+          "max_total_nodes",
           "model",
           "parent_run_id",
           "retrieval_backend",
           "timeout_minutes"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "run_experiment"
       },
       {
         "args": [
           "run_id"
         ],
-        "idiom": "lowlevel",
+        "idiom": "fastmcp",
         "name": "stop_experiment"
       }
     ],
@@ -485,6 +472,7 @@
       },
       {
         "args": [
+          "figures_manifest_path",
           "main_file",
           "tex_dir"
         ],
@@ -493,14 +481,24 @@
       },
       {
         "args": [
-          "context",
-          "nodes_json_path",
-          "refs_json",
-          "section",
-          "venue"
+          "bib_path",
+          "claim_links_path",
+          "compile_record_path",
+          "draft_build_path",
+          "figures_manifest_path",
+          "hard_gate_path",
+          "output_path",
+          "pdf_path",
+          "refinement_call_path",
+          "semantic_review_path",
+          "tex_path",
+          "text_review_path",
+          "visual_passing_score",
+          "visual_review_path",
+          "workspace_root"
         ],
         "idiom": "fastmcp",
-        "name": "generate_section"
+        "name": "finalize_paper_build"
       },
       {
         "args": [
@@ -581,37 +579,19 @@
       },
       {
         "args": [
-          "context",
-          "latex",
-          "venue"
-        ],
-        "idiom": "fastmcp",
-        "name": "review_section"
-      },
-      {
-        "args": [
-          "context",
-          "feedback",
-          "latex",
-          "section",
-          "venue"
-        ],
-        "idiom": "fastmcp",
-        "name": "revise_section"
-      },
-      {
-        "args": [
           "author_name",
           "context",
           "decode_seed",
+          "ear_manifest_path",
           "experiment_summary",
-          "figures_manifest_json",
+          "figures_manifest_path",
           "max_revision_rounds",
-          "nodes_json_path",
-          "refs_json",
-          "science_data_json",
+          "references_path",
+          "rubric_id",
+          "science_data_path",
           "venue",
-          "verified_context_json",
+          "verified_context_path",
+          "workspace_root",
           "writer_prompt_override"
         ],
         "idiom": "fastmcp",
@@ -621,7 +601,6 @@
     "ari-skill-paper-re": [
       {
         "args": [
-          "apptainer_image",
           "container_image",
           "iterative_agent",
           "max_steps",
@@ -664,6 +643,7 @@
       },
       {
         "args": [
+          "account",
           "constraint",
           "container_image",
           "cpu_bind",
@@ -678,12 +658,17 @@
           "mem_bind",
           "memory_gb_per_cpu",
           "memory_gb_per_node",
+          "module_loads",
+          "network_isolation_attested",
+          "network_policy",
           "nodelist",
           "nodes",
           "ntasks",
           "ntasks_per_node",
           "partition",
+          "qos",
           "repo_dir",
+          "reservation",
           "rubric_path",
           "sandbox_kind",
           "timeout_global_sec",
@@ -696,34 +681,41 @@
     "ari-skill-plot": [
       {
         "args": [
-          "experiment_context",
-          "figures",
-          "nodes_json_path",
+          "n_figures",
           "output_dir",
-          "science_data_path",
-          "vlm_captions"
+          "revision",
+          "science_data_path"
         ],
         "idiom": "fastmcp",
         "name": "generate_figures"
       },
       {
         "args": [
-          "context",
           "experiment_summary",
           "n_figures",
-          "nodes_json_path",
           "output_dir",
+          "previous_batch_path",
+          "revision",
           "science_data_path",
           "vlm_feedback"
         ],
         "idiom": "fastmcp",
         "name": "generate_figures_llm"
+      },
+      {
+        "args": [
+          "request"
+        ],
+        "idiom": "fastmcp",
+        "name": "render_figure"
       }
     ],
     "ari-skill-replicate": [
       {
         "args": [
           "auditor_model",
+          "max_model_calls",
+          "output_path",
           "paper_path",
           "paper_text",
           "rubric_path"
@@ -733,15 +725,18 @@
       },
       {
         "args": [
+          "max_model_calls",
           "model",
+          "model_revision",
           "output_path",
           "paper_path",
           "paper_text",
           "paperbench_rubric_id",
+          "provider",
           "seed",
+          "subtree_concurrency",
           "target_leaf_count",
-          "temperature",
-          "two_stage"
+          "temperature"
         ],
         "idiom": "fastmcp",
         "name": "generate_rubric"
@@ -753,6 +748,50 @@
         ],
         "idiom": "fastmcp",
         "name": "suggest_target_leaf_count"
+      }
+    ],
+    "ari-skill-tool-registry": [
+      {
+        "args": [
+          "cursor",
+          "section",
+          "tool_ref"
+        ],
+        "idiom": "lowlevel",
+        "name": "describe"
+      },
+      {
+        "args": [
+          "constraints",
+          "query",
+          "strategy",
+          "top_k"
+        ],
+        "idiom": "lowlevel",
+        "name": "discover"
+      },
+      {
+        "args": [
+          "handle"
+        ],
+        "idiom": "lowlevel",
+        "name": "get_result"
+      },
+      {
+        "args": [
+          "handle"
+        ],
+        "idiom": "lowlevel",
+        "name": "get_status"
+      },
+      {
+        "args": [
+          "args",
+          "mode",
+          "tool_ref"
+        ],
+        "idiom": "lowlevel",
+        "name": "invoke"
       }
     ],
     "ari-skill-transform": [
@@ -806,16 +845,19 @@
       {
         "args": [
           "context",
-          "criteria",
-          "image_path"
+          "criteria_profile_id",
+          "figure_id",
+          "figures_manifest_path",
+          "max_output_tokens"
         ],
         "idiom": "fastmcp",
         "name": "review_figure"
       },
       {
         "args": [
+          "budget",
           "context",
-          "criteria",
+          "criteria_profile_id",
           "figures_manifest_path"
         ],
         "idiom": "fastmcp",
@@ -823,8 +865,7 @@
       },
       {
         "args": [
-          "context",
-          "latex_or_path"
+          "request"
         ],
         "idiom": "fastmcp",
         "name": "review_table"
@@ -833,17 +874,10 @@
     "ari-skill-web": [
       {
         "args": [
-          "experiment_summary",
-          "keywords",
-          "max_rounds",
-          "min_papers"
-        ],
-        "idiom": "fastmcp",
-        "name": "collect_references_iterative"
-      },
-      {
-        "args": [
+          "max_bytes",
           "max_chars",
+          "mode",
+          "snapshot_ref",
           "url"
         ],
         "idiom": "fastmcp",
@@ -865,39 +899,42 @@
       {
         "args": [
           "max_results",
-          "query"
+          "records",
+          "research_question"
         ],
         "idiom": "fastmcp",
-        "name": "search_arxiv"
+        "name": "rerank_retrieval_records"
       },
       {
         "args": [
           "max_results",
-          "query"
+          "mode",
+          "provider",
+          "query",
+          "snapshot_ref"
         ],
         "idiom": "fastmcp",
         "name": "search_papers"
       },
       {
         "args": [
-          "extra_queries",
-          "limit",
-          "query"
+          "direction",
+          "max_depth",
+          "max_nodes",
+          "mode",
+          "request_budget",
+          "seed_ids",
+          "snapshot_ref"
         ],
         "idiom": "fastmcp",
-        "name": "search_semantic_scholar"
+        "name": "walk_citations"
       },
       {
         "args": [
-          "backend"
-        ],
-        "idiom": "fastmcp",
-        "name": "set_retrieval_backend"
-      },
-      {
-        "args": [
+          "mode",
           "n",
-          "query"
+          "query",
+          "snapshot_ref"
         ],
         "idiom": "fastmcp",
         "name": "web_search"

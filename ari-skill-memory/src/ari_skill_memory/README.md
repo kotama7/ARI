@@ -15,7 +15,7 @@ both the FastMCP server (`src/server.py`) and ari-core's viz layer.
 - `erasure.py` — reader for ARI's published `rqgm_erasure_state.json` rollup: labels entries from logically erased nodes on deliberate queries (annotate, never hide) and hard-excludes them from the grounded-claims path. No `ari` import, no LLM call, absence == nothing stale.
 - `provenance.py` — derives `ArtifactRef`s + sha256 from node_report (`refs_from_node_report`, `sha256_of`, `node_work_dir`, `load_node_report`); points at on-disk evidence without re-storing node_report fields.
 - `retriever.py` — typed reads over the backend: `search_research_memory` (kind/artifact-filtered semantic search), `ancestor_typed_memory` (deterministic ancestor handoff), `fold_reproducibility` (latest repro status per target).
-- `schemas.py` — thin typed-index dataclasses `ResearchMemory` / `ArtifactRef` with `MemoryKind`/`ReproStatus` vocab, validation, and `to_metadata()` (promotes `mem_kind`); points at node_report rather than copying it.
+- `schemas.py` — internal unverified `ArtifactRef` input helper; persisted records use public `MemoryRecordV1`.
 - `writer.py` — typed write helpers over `backend.add_memory`: `add_typed_memory` stamps `type`+`mem_kind`+provenance refs, with per-kind shims (`add_experiment_result`/`add_failure_case`/…) and append-only `add_reproducibility_event`.
 - `backends/` — backend implementations behind the `get_backend()` factory.
   - `README.md` — backends index.

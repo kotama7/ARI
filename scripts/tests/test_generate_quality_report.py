@@ -425,11 +425,20 @@ def test_compute_areas_matches_001_baseline():
     # best-VALID-score filters on the run cards (checkpoint_api, v1 queries
     # — erased nodes' retained stale scores no longer display as the run's
     # best, +7). No endpoint added or removed.
-    assert by["ari-core/ari/viz"]["loc"] == 18097
+    # 18097 -> 18135: skills integration adds typed retrieval/credential
+    # settings and paper-build launch plumbing across api_experiment,
+    # api_paperbench, its worker, api_settings, and state_service. The net +38
+    # is the exact union after removing the superseded legacy settings paths.
+    assert by["ari-core/ari/viz"]["loc"] == 18135
     # 148 -> 159: RQGM-branch public re-exports (claim_gate FORMULAS /
     # required_roles; cost_tracker PRICING_TABLE_UNAVAILABLE + logging) —
     # both intentional, public_api.json snapshot regenerated accordingly.
-    assert by["ari-core/ari/public"]["loc"] == 159
+    # 159 -> 846: skills integration adds the typed, versioned public facades
+    # for analysis, execution, figures, memory, paper, science data, skill
+    # manifests/locks, call context, lineage, evaluation, and visual review.
+    # Private implementations remain behind this boundary; the strict public
+    # API snapshot below independently pins every exported symbol.
+    assert by["ari-core/ari/public"]["loc"] == 846
     # every discovered area carries a finding_count key (0 with no results).
     assert all(r["finding_count"] == 0 for r in rows)
 

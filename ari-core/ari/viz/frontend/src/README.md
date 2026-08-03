@@ -29,18 +29,18 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `Button.tsx` — styled button with variant/size props.
     - `Card.tsx` — bordered content container.
     - `DegradedState.tsx` — canonical PARTIAL-data affordance (warning tokens, `role="status"`, surrounding content stays visible); deliberately distinct from `ErrorState`, which means total failure.
-    - `EmptyState.tsx` — canonical "no data yet" affordance over the `.empty-state` CSS: an already-translated `message` plus optional emoji `icon` and `hint`; presentation-only.
-    - `ErrorState.tsx` — canonical error affordance (`var(--red)` message + optional Retry) that renders a plain string from EITHER api error regime — a thrown `get`/`post` message or a `pbGet`/`pbPost` `{error}` body — without unifying them.
+    - `EmptyState.tsx` — canonical "no data yet" block on the `.empty-state`/`.empty-icon` CSS; caller passes an already-translated `message` plus optional emoji `icon` and `hint`.
+    - `ErrorState.tsx` — canonical total-failure affordance: `var(--red)` message plus optional Retry button, rendering a plain string from either api error regime (thrown message or `{error}` body).
     - `index.ts` — barrel re-exports.
-    - `LoadingState.tsx` — canonical spinner + translated label, block or `inline`, replacing the ad-hoc `<span className="spinner" /> {t('loading')}` patterns scattered across pages.
+    - `LoadingState.tsx` — canonical spinner + translated label replacing the ad-hoc `<span className="spinner" /> {t('loading')}` patterns; `inline` renders a row instead of a centered block.
     - `NavRail.tsx` — vertical slice navigation: a real list with `aria-current` on the selected item, selected/unselected states from the `.nav-rail` tokens; navigation, so deliberately not `Button`.
     - `StaleDataBanner.tsx` — freshness notice for live surfaces: keeps the last known snapshot visible and says how fresh it is (`aria-live="polite"`); a dropped stream is never presented as "run stopped".
     - `StatBox.tsx` — single value + label stat tile.
     - `StatusBadge.tsx` — maps run status to a colored `Badge`.
     - `TabStrip.tsx` — the ONE v2 tablist look (`role=tablist/tab`, `aria-selected`/`aria-controls`); the owning page renders the matching `role="tabpanel"` using the `${idPrefix}-tab-<id>` / `${idPrefix}-panel-<id>` id convention.
-    - `__tests__/` — unit tests for the shared common/ primitives (async/degraded states and the loading/empty/error kit).
+    - `__tests__/` — unit tests for the primitives in this directory.
       - `asyncStates.test.tsx` — `DegradedState`/`StaleDataBanner` contract: status roles, default translated titles, and the retry/refresh callbacks.
-      - `StateComponents.test.tsx` — the 072 state-kit contract: spinner + default `t('loading')` and label override, `EmptyState` message/icon/hint, `ErrorState` retry wiring and its absence, and a message from either api error regime.
+      - `StateComponents.test.tsx` — `LoadingState`/`EmptyState`/`ErrorState` kit contract: default vs overridden labels, icon/hint rendering, and the retry button existing only when `onRetry` is passed.
   - `ConfigBrowser/` — read-only effective-config browser (`#/config?run=`).
     - `README.md` — ConfigBrowser index.
     - `ConfigBrowserPage.tsx` — schema/effective-config browser (category groups, search, provenance/mutability badges, secret-reference redaction, resolver warnings).
@@ -128,7 +128,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.
     - `index.ts` — barrel re-export.
     - `PaperWorkspace.tsx` — Overleaf-like paper editor (file tree + PDF/editor views + compile log); extracted from ResultsPage renderPaper in req 15.
-    - `PdfPreview.tsx` — application-owned PDF.js viewer (page/zoom controls, canvas render, resize-aware width) so managed and Chromium browsers with no embedded plug-in show the paper instead of an empty iframe.
+    - `PdfPreview.tsx` — app-owned PDF.js canvas preview (page nav, zoom, loading/error states) so managed or Chromium browsers without an embedded viewer still show the compiled paper.
     - `PublishYamlEditor.tsx` — per-checkpoint publish.yaml (EAR allowlist) editor; extracted from ResultsPage in req 03.
     - `resultHelpers.ts` — pure helpers + string formatters (tryParseJson, buildGradeMap, aggregateScore, format*Stage, etc.); extracted from resultSections in req 15.
     - `resultSections.tsx` — presentational subcomponents and pure helpers for the results page; extracted from ResultsPage in req 03.
@@ -136,14 +136,14 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
     - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
     - `useEAR.ts` — hook owning EarSection's curate/publish/publish.yaml-editor action state; extracted from ResultsPage in req 15.
-    - `__tests__/` — component tests for this directory.
-      - `ResultsPageRoute.test.ts` — pins `runFromResultsHash`: an explicit `#/results?run=` id is URL-decoded, and an absent run query yields an empty selection.
-    - `sections/` — the six presentational render-fns split verbatim out of the ~1590-line `resultSections.tsx` god-file in subtask 064 (ORS chain, repro, context, figures, review scores); `resultSections.tsx` is now a thin re-export barrel, so callers and rendered DOM are unchanged.
-      - `ContextSection.tsx` — `renderContext` — pure card over `summary.science_data.experiment_context` (key → value, objects pretty-printed); returns null when absent.
-      - `FiguresSection.tsx` — `renderFigures` — figures grid over `figures_manifest`, normalizing plot-skill's `{name: path}` dict and the legacy list shape and extracting captions from the stored LaTeX snippets.
-      - `OrsChainSection.tsx` — `renderOrsChain` — PaperBench-aware per-stage ORS status (`ors_rubric_meta`/`ors_replicator`/`ors_seed`/`ors_phase1`/`ors_grade`) plus the synthesized `reproducibility_report` verdict, score bar and rubric tree.
-      - `ReproSection.tsx` — `renderRepro` (ORS chain or legacy panel plus the repro-log toolbar, with log state threaded in from the container) and `renderLegacyRepro` for the pre-§4.1 `reproducibility_report` shape incl. the skill-unavailable notice.
-      - `ReviewScoresSection.tsx` — `renderReviewScores` — `summary.review_report` card for both the rubric-driven and legacy schemas, with the decision→badge-variant map and per-dimension score rows; returns null when no report.
+    - `__tests__/` — unit tests for this directory.
+      - `ResultsPageRoute.test.ts` — `runFromResultsHash` route parsing: `#/results?run=<id>` yields the URL-decoded run id, a bare `#/results` yields an empty selection.
+    - `sections/` — the pure `render*` section functions split out of the ResultsPage container: context, figures, ORS chain, reproducibility, review scores.
+      - `ContextSection.tsx` — `renderContext` — experiment-context card over `summary.science_data.experiment_context`, values over 500 chars collapsed into `<details>`; null when absent.
+      - `FiguresSection.tsx` — `renderFigures` — figures grid normalizing `figures_manifest`'s dict and legacy-list shapes, with captions extracted from the stored LaTeX snippets.
+      - `OrsChainSection.tsx` — `renderOrsChain` — PaperBench-aware ORS chain: headline verdict plus per-stage status for `ors_rubric_meta` / `ors_replicator` / `ors_seed` / `ors_phase1` / `ors_grade` and the rubric tree.
+      - `ReproSection.tsx` — `renderRepro` — reproducibility section dispatching to the ORS chain or the legacy panel plus the repro-log toolbar; `renderLegacyRepro` handles the pre-§4.1 `reproducibility_report` shape.
+      - `ReviewScoresSection.tsx` — `renderReviewScores` — `summary.review_report` card mapping decision to badge variant and rendering rubric-driven or legacy dimensional scores.
   - `ResultsV2/` — v2 Results/EAR workspace (`#/results2?run=`): read-only run-explicit result summary; every EAR mutation stays on the legacy Results page.
     - `ResultsV2Page.tsx` — review/ORS summary plus the curate→preview→publish→promote EAR lineage as a read-only badge chain, with the exported `deriveEarLineage`/`shortDigest` helpers.
     - `__tests__/` — component tests for this directory.
@@ -152,24 +152,24 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `README.md` — Settings index.
     - `index.ts` — barrel re-export.
     - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
-    - `SettingsGroup.tsx` — progressive-disclosure wrapper grouping cards under a 069 sensitivity tier (Essentials / Project / Infrastructure / Danger Zone); CONTRACT-CRITICAL: collapsing toggles CSS `display` only and never unmounts, so the frozen ten-card contract holds open or closed.
+    - `SettingsGroup.tsx` — progressive-disclosure wrapper grouping cards under a sensitivity tier; collapsing toggles CSS `display` only and never unmounts children, so all ten `.card-title`s stay in the DOM.
     - `SettingsPage.tsx` — settings view.
-    - `settingsStyles.ts` — the shared `inputStyle`/`labelStyle` field styles moved verbatim out of `SettingsPage`, so every extracted `sections/*` component renders byte-identically to the pre-split panel.
-    - `settingsTypes.ts` — shared section prop/data types: the threaded `TFn` translator (one language state for the whole panel), the `SkillInfo` row served by `GET /api/skills`, and the `LettaDeployment` path union.
-    - `__tests__/` — component tests for this directory.
-      - `SettingsContract.test.tsx` — Tier-1 frozen settings contract: all TEN `<Card>` sections render, and Save POSTs a flat object with EXACTLY the 24 keys to `/api/settings`.
-      - `SettingsDisclosure.test.tsx` — proves the 070 tier grouping is contract-safe: four `.settings-group-header` tiers render and collapsing one keeps all ten `.card-title` nodes in the DOM (CSS hide, never an unmount).
-    - `sections/` — the ten settings `<Card>` sections decomposed out of `SettingsPage` in refactor 070 (language, LLM backend, paper retrieval, VLM review, memory, SLURM, container, skills, SSH, project management); all state stays in the orchestrator and is threaded in as props.
-      - `ContainerSection.tsx` — container mode / pull-policy / image fields plus the Detect Runtime probe and its detected runtime+version badge.
-      - `LanguageSection.tsx` — UI language select (en / 日本語 / 中文) delegating to the orchestrator's `onLangChange`.
-      - `LlmBackendSection.tsx` — main LLM backend card: provider select, model picker (provider table or a custom handle), temperature, API key and base URL.
-      - `MemorySection.tsx` — Letta memory backend: base URL / API key, the two-stage embedding provider→model picker (or a custom handle), and the confirm-gated `restartLetta` action for the selected deployment path.
-      - `PaperRetrievalSection.tsx` — paper retrieval backend radio (Semantic Scholar / AlphaXiv / both in parallel) plus the Semantic Scholar API key field.
-      - `ProjectManagementSection.tsx` — checkpoint roster with active/running markers and the per-checkpoint delete trigger (the MN-6 challenge two-step stays in the orchestrator).
-      - `SkillsSection.tsx` — read-only table of the skills served by `GET /api/skills` (name, display name, description, required env vars).
-      - `SlurmSection.tsx` — SLURM partition multi-select fed by the detect probe, plus the CPUs / memory-GB / walltime request fields.
-      - `SshSection.tsx` — remote HPC host / port / user / path / key fields plus the Test SSH probe button and its status line.
-      - `VlmReviewSection.tsx` — VLM figure-review model select, drawn from the current provider's `PROVIDER_MODELS` table.
+    - `settingsStyles.ts` — shared `inputStyle` / `labelStyle` field styles moved verbatim out of SettingsPage so every `sections/*` component consumes one definition.
+    - `settingsTypes.ts` — shared prop/data types for the decomposed sections: the threaded `TFn` translator, the `SkillInfo` row, and the `LettaDeployment` union.
+    - `__tests__/` — the frozen Settings contract tests (ten cards, 24-key save payload) plus the progressive-disclosure safety test.
+      - `SettingsContract.test.tsx` — Tier-1 frozen contract: all ten section `<Card>` titles render, and Save POSTs exactly the 24-key flat object to `/api/settings`.
+      - `SettingsDisclosure.test.tsx` — pins the 069 tiers: four `settings-group-header`s render and collapsing one keeps all ten cards mounted (CSS-only, no unmount).
+    - `sections/` — the ten presentational `<Card>` sections SettingsPage composes into its four sensitivity tiers; each takes state + setters as props.
+      - `ContainerSection.tsx` — container card — mode (auto/docker/singularity/apptainer/none), pull policy, image, and the Detect Runtime probe badge.
+      - `LanguageSection.tsx` — UI language card — en/ja/zh select wired to the orchestrator's `onLangChange`.
+      - `LlmBackendSection.tsx` — LLM backend card — provider select (openai/anthropic/gemini/ollama/cli-shim), model dropdown plus custom entry, temperature, API key, and the ollama/cli-shim base URL.
+      - `MemorySection.tsx` — Letta memory card — base URL, API key, embedding provider/handle picker, and the deployment-path Restart button calling `restartLetta` behind a confirm with status feedback.
+      - `PaperRetrievalSection.tsx` — paper retrieval card — backend radio (Semantic Scholar / AlphaXiv / both) and the optional Semantic Scholar API key.
+      - `ProjectManagementSection.tsx` — checkpoint roster card with running/active badges and the per-project Delete button that drives the challenge-gated `deleteCheckpoint` flow.
+      - `SkillsSection.tsx` — read-only table of the `GET /api/skills` rows — name, display name, description, and required env (or an `any` badge).
+      - `SlurmSection.tsx` — SLURM/HPC defaults card — partition multi-select with a Detect probe, CPUs, memory (GB), and walltime.
+      - `SshSection.tsx` — remote-host card — host/port/user/remote ARI path/key path plus the Test SSH probe and its ✓/✗ status badge.
+      - `VlmReviewSection.tsx` — VLM figure-review card — model picker drawn from `PROVIDER_MODELS` for the currently selected provider.
   - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
     - `README.md` — Tree index.
     - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
@@ -200,9 +200,9 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Workflow/` — workflow stages/pipeline page.
     - `README.md` — Workflow index.
     - `index.ts` — barrel re-export.
-    - `workflowModals.tsx` — the workflow editor's condition / skill-add / node-edit / skill-detail modals plus the shared `inputStyle` and `SkillMcpEntry` type, split verbatim out of `workflowNodes.tsx` in subtask 064 and re-exported from there.
+    - `workflowModals.tsx` — edge-`ConditionModal`, skill-selector `SkillDrawer`, `NodeEditModal`, skill-detail `SkillModal` + the shared `inputStyle`/`SkillMcpEntry`; split verbatim out of `workflowNodes.tsx` in subtask-064 and re-exported from it.
     - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
-    - `workflowNodeTypes.tsx` — the React Flow custom node renderers (phase/condition/parallel), the `nodeTypes` map and the deterministic hash-palette `skillColor` helper, split verbatim out of `workflowNodes.tsx` in subtask 064.
+    - `workflowNodeTypes.tsx` — React Flow custom node renderers and the `phase`/`condition`/`parallel` `nodeTypes` map + deterministic `skillColor` hash; split verbatim out of `workflowNodes.tsx` in subtask-064 and re-exported from it.
     - `WorkflowPage.tsx` — workflow view.
     - `__tests__/` — component tests for this directory.
       - `WorkflowPage.revision.test.tsx` — revision-aware saving: every save sends the loaded `base_revision` and adopts the returned `revision`, the 2s debounce is unchanged, and a 409 pauses saving behind an explicit Reload instead of blindly overwriting.
@@ -231,31 +231,31 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `README.md` — services index.
   - `api.ts` — typed REST client (state, checkpoints, settings, GPU monitor, etc.).
   - `websocket.ts` — websocket helper stub (connections now handled by `useWebSocket`).
-  - `__tests__/` — contract tests pinning the api client's wire shape and response schemas.
-    - `api.test.tsx` — pins the frozen wire contract of `services/api.ts`: same-origin `API_BASE`, the throw (`get`/`post`) vs swallow (`pbGet`/`pbPost`) error regimes, the POST request-init shape, and each representative wrapper's endpoint path.
-    - `schema.test.tsx` — frontend mirror of the Python additive-subset suite: every fixture is annotated with its `types/index.ts` type and round-trips through a mocked fetch, so the always-present keys must survive (extra keys allowed) and a field rename fails `tsc --noEmit` first.
-  - `api/` — the domain-partitioned modules behind the `api.ts` barrel: one shared transport (`client.ts`) plus per-family wrappers (state, checkpoints, files, memory, EAR, publish, settings, catalog, workflow, PaperBench, …), the challenge/capability guards and the typed `/api/v1` client.
+  - `__tests__/` — service-layer contract tests: the frozen API wire contract and the FE schema round-trip mirror.
+    - `api.test.tsx` — pins the frozen wire contract — same-origin `API_BASE`, each wrapper's endpoint path, the throwing `get`/`post` vs swallowing `pbGet`/`pbPost` regimes, and the POST request-init shape.
+    - `schema.test.tsx` — FE mirror of `tests/test_api_schema_contract.py`: typed `AppState`/`Checkpoint`/`Settings`/`WorkflowData` fixtures round-trip through a mocked fetch, asserting the always-present keys survive (additive-subset doctrine, `types/index.ts` is the source of truth).
+  - `api/` — the domain-partitioned endpoint wrappers and DTOs split out of the old 863-line `api.ts` god-module, all riding one shared transport core (`client.ts`).
     - `capabilities.ts` — `GET /api/capabilities` server feature flags (the `ARI_GUI_V2` shell kill-switch); callers must default `gui_v2` to ON when the fetch fails, so an API hiccup never bricks the dashboard into the fallback shell.
-    - `catalog.ts` — profiles / rubrics / few-shot catalog family: `fetchProfiles`, `fetchRubrics`, and the few-shot list/sync/upload/delete wrappers with their DTOs.
+    - `catalog.ts` — profiles / rubrics / few-shot catalog family — `fetchProfiles`, `fetchRubrics`, and the few-shot list/sync/upload/delete wrappers.
     - `challenges.ts` — requests the server-issued confirmation challenge every dangerous operation (delete-checkpoint / stop-all / gpu-monitor stop) must carry: single-use, server-TTL-bounded, and bound to one action+target.
-    - `checkpoints.ts` — checkpoint list / summary / switch wrappers plus `deleteCheckpoint`, which must carry a `challenge_id` from `./challenges` or the server refuses with HTTP 428 (MN-6).
-    - `client.ts` — the shared same-origin transport: one `request` primitive behind the frozen throwing (`get`/`post`) and no-throw (`pbGet`/`pbPost`) regimes, the envelope-preserving `v1Get`/`v1Send` (If-Match) helpers, and the MN-8 bearer-token / `token=` query wiring.
-    - `ear.ts` — Experiment Artifact Repository family: bundle listing, `curateEAR`, the publish.yaml read/save pair and `cloneVerifyBundle`, with their DTOs.
-    - `experiment.ts` — experiment lifecycle family: `runStage`, `launchExperiment`, and `stopExperiment`, which must carry a `stop-all` challenge id (MN-6) or the server refuses with HTTP 428.
-    - `files.ts` — checkpoint file management for the Overleaf-like workspace: list / read / tree / save / delete, the bespoke octet-stream `uploadCheckpointFile` (X-Filename), and `compileCheckpointPaper`.
-    - `memory.ts` — Letta memory family: per-checkpoint entries, the memory access log, backend health, and `restartLetta` for a deployment path.
-    - `nodeReport.ts` — `fetchNodeReport` plus the v0.7.0 `NodeReport` DTOs (files-changed, self-assessment) rendered by the DetailPanel report tab.
-    - `paperbench.ts` — PaperBench family on the no-throw `pbGet`/`pbPost` regime (papers list/delete/import, arXiv metadata, cost estimate, run launch/status/results, report request); URLs match the original call sites verbatim because callers read the body unconditionally.
-    - `publish.ts` — publish family: settings read/save, `previewPublish`, `runPublish`, `promotePublish` and `fetchPublishRecord`, with the preview/result/record DTOs.
-    - `resources.ts` — infra probes: scheduler/SLURM partitions, Ollama models+GPUs, GPU monitor read and `gpuMonitorAction` (stop requires a `gpu-monitor-stop` challenge id, MN-6), plus container info/images/pull.
-    - `settings.ts` — settings read/save plus `fetchSecretsStatus`, the ADR-11 readiness endpoint that reports WHETHER each allowlisted secret is configured — never its value.
+    - `checkpoints.ts` — checkpoint list / summary / lifecycle family; `deleteCheckpoint` is two-step and must carry a `delete-checkpoint` challenge id or the server refuses with HTTP 428.
+    - `client.ts` — the shared same-origin transport (`API_BASE = ''`) behind one `request` primitive: throwing `get`/`post`, never-throwing `pbGet`/`pbPost`, envelope-preserving `v1Get`/`v1Send` (If-Match), plus the MN-8 bearer-token helpers.
+    - `ear.ts` — Experiment Artifact Repository family — browse a run's EAR, `curateEAR` bundling, the `publish.yaml` read/save editor, and `cloneVerifyBundle` sha256 verification.
+    - `experiment.ts` — experiment lifecycle family — `runStage`, `launchExperiment`, and `stopExperiment`, which needs a `stop-all` challenge id or the server refuses with HTTP 428.
+    - `files.ts` — Overleaf-like checkpoint file management — file list/filetree/content reads, save/delete, the bespoke octet-stream `uploadCheckpointFile` (`X-Filename`), and `compileCheckpointPaper`.
+    - `memory.ts` — Letta memory family — per-checkpoint entries grouped `by_node`, the read/write access log, `/api/memory/health`, and `restartLetta`.
+    - `nodeReport.ts` — `fetchNodeReport` plus the v0.7.0 `NodeReport` DTO (files_changed, metrics, self_assessment, artifacts) served by `/api/nodes/{run}/{node}/report`.
+    - `paperbench.ts` — PaperBench family on the no-throw `pbGet`/`pbPost` regime (the backend answers 200 + `{error}`): paper registry list/import/delete, arXiv metadata, cost estimate, run launch, results, report export.
+    - `publish.ts` — publish family — registry settings, `previewPublish`, `runPublish` (dry-run/consent/visibility), `promotePublish`, and the stored `PublishRecord`.
+    - `resources.ts` — infra probes — scheduler detect, SLURM partitions, Ollama/GPU resources, container info/images/pull, and `gpuMonitorAction` whose `stop` requires a `gpu-monitor-stop` challenge.
+    - `settings.ts` — settings / env family — `/api/settings` read+write plus `fetchSecretsStatus`, which reports only WHETHER each allowlisted secret is configured, never its value.
     - `ssh.ts` — SSH / HPC probe family — the single `testSSH` wrapper over `POST /api/ssh/test`.
-    - `state.ts` — state / tree / models family: the polled `/state` app snapshot, experiment detail text, active checkpoint, resource metrics and the model catalog.
-    - `subExperiments.ts` — recursive-orchestration family: list / detail / launch wrappers for sub-experiments plus the `SubExperiment` DTO.
+    - `state.ts` — state / tree / models family — the `/state` `AppState` poll, experiment-detail config, active checkpoint, resource metrics, and model list.
+    - `subExperiments.ts` — recursive-orchestration family — list/fetch/launch sub-experiments, with the `SubExperiment` DTO carrying lineage provenance (`inherit_idea_index`, parent-termination fields).
     - `v1.ts` — typed read-only client for the versioned `/api/v1` API; every failure (typed `ErrorEnvelopeV1`, network error, malformed body) is normalized into a thrown `ApiErrorV1` `{code, message, details, request_id, retryable}`.
     - `v1types.gen.ts` — DTO/path types generated from `ari/viz/v1/openapi.json` by `npm run gen:v1types`; committed to the tree and byte-compared by `src/__tests__/v1TypesDrift.test.ts` — never hand-edited.
-    - `wizard.ts` — wizard / chat family: `chatGoal`, `generateConfig`, and the bespoke octet-stream `uploadFile` / `deleteUploadedFile` pair (X-Filename / X-File-Type headers, throwing on non-2xx).
-    - `workflow.ts` — skills / workflow family: skill list+detail, workflow and React Flow read/save, skill-phase and disabled-tool writes — all revision-aware (`base_revision` echo; a stale one 409s, recognized by `isWorkflowRevisionConflict`).
+    - `wizard.ts` — wizard / chat / upload family — `chatGoal`, `generateConfig`, and the bespoke octet-stream `uploadFile` (`X-Filename` / `X-File-Type`) with its delete.
+    - `workflow.ts` — skills + `workflow.yaml` family; writes are revision-aware (`base_revision`), and `isWorkflowRevisionConflict` recognizes the HTTP 409 stale-revision refusal surfaced by the throwing `post`.
 - `shared/` — cross-feature platform code owned by no single page.
   - `realtime/` — shared realtime (SSE) client; feature code never touches `EventSource` directly.
     - `README.md` — realtime index.

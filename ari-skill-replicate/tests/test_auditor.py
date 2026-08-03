@@ -9,13 +9,15 @@ from pathlib import Path
 import pytest
 
 import auditor as A
-import generator as G
 import manifest as M
+from provenance import canonical_sha256
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
-def _leaf(text: str, quote: str = "the mask network outputs 0 for critical steps") -> dict:
+def _leaf(
+    text: str, quote: str = "the mask network outputs 0 for critical steps"
+) -> dict:
     return {
         "id": str(uuid.uuid4()),
         "requirements": text,
@@ -27,7 +29,41 @@ def _leaf(text: str, quote: str = "the mask network outputs 0 for critical steps
     }
 
 
-def _frozen_envelope_with_leaves(leaves: list[dict], paper_text: str) -> dict:
+def _artifact(base: Path, relative_path: str, payload: bytes, media_type: str) -> dict:
+    path = base / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+    import hashlib
+
+    return {
+        "relative_path": relative_path,
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "size_bytes": len(payload),
+        "media_type": media_type,
+    }
+
+
+def _frozen_envelope_with_leaves(
+    leaves: list[dict], paper_text: str, base: Path
+) -> dict:
+    paper_sha = M.compute_paper_sha256(paper_text)
+    for leaf in leaves:
+        quote = leaf["rationale_from_paper"]["quote"]
+        start = paper_text.find(quote)
+        if start < 0:
+            start = 0
+        leaf["evidence_span"] = {
+            "kind": "paper-span",
+            "section": leaf["rationale_from_paper"]["section"],
+            "quote": quote,
+            "start_char": start,
+            "end_char": start + len(quote),
+            "paper_sha256": paper_sha,
+        }
+        leaf["verification"] = {
+            "kind": "artifact",
+            "relative_path": "reproduce.sh",
+        }
     env = {
         "reproduce_contract": {"script_path": "reproduce.sh", "max_runtime_sec": 7200},
         "rubric": {
@@ -37,16 +73,46 @@ def _frozen_envelope_with_leaves(leaves: list[dict], paper_text: str) -> dict:
             "sub_tasks": leaves,
         },
     }
-    return M.freeze(env, generator_model="m", prompt="p", paper_text=paper_text)
+    call = {
+        "label": "fixture-generation",
+        "status": "completed",
+        "model": "m",
+        "model_revision": None,
+        "provider": "unknown",
+        "prompt": _artifact(
+            base,
+            ".ari-rubric/rubric/calls/fixture.prompt.txt",
+            b"p",
+            "text/plain; charset=utf-8",
+        ),
+        "raw_response": _artifact(
+            base,
+            ".ari-rubric/rubric/calls/fixture.response.txt",
+            b"{}",
+            "text/plain; charset=utf-8",
+        ),
+        "error": None,
+    }
+    call["call_sha256"] = canonical_sha256(call)
+    return M.freeze(
+        env,
+        generator_model="m",
+        prompt="p",
+        paper_text=paper_text,
+        calls=[call],
+    )
 
 
 # ── deterministic checks ──
+
 
 def test_detect_vague_qualifier():
     assert A.detect_vague_qualifier("The output is appropriate for the task.")
     assert A.detect_vague_qualifier("The code is well-organized.")
     assert A.detect_vague_qualifier("The implementation is good and clear.")
-    assert not A.detect_vague_qualifier("The MaskNetwork outputs 0 for critical states.")
+    assert not A.detect_vague_qualifier(
+        "The MaskNetwork outputs 0 for critical states."
+    )
 
 
 def test_detect_no_paper_evidence():
@@ -69,22 +135,33 @@ def test_detect_duplicates():
 
 # ── orchestrator ──
 
+
 @pytest.mark.asyncio
 async def test_audit_writes_flags_and_metadata(tmp_path):
     paper = (FIXTURES / "paper_simple.tex").read_text()
     leaves = [
-        _leaf("The MaskNetwork class outputs 0 for inputs identified as critical states.",
-              quote="The MaskNetwork class outputs 0 for inputs identified as critical states"),
-        _leaf("The implementation is appropriate and well-organized.",
-              quote="The MaskNetwork class outputs 0 for inputs identified as critical states"),
-        _leaf("Same definite requirement about Experiment II.",
-              quote="Experiment II runs the selfish mining environment"),
-        _leaf("Same definite requirement about Experiment II.",
-              quote="Experiment II runs the selfish mining environment"),
-        _leaf("Some claim that does not appear anywhere in the paper.",
-              quote="this exact text does not exist in the fixture paper xyzzy"),
+        _leaf(
+            "The MaskNetwork class outputs 0 for inputs identified as critical states.",
+            quote="The MaskNetwork class outputs 0 for inputs identified as critical states",
+        ),
+        _leaf(
+            "The implementation is appropriate and well-organized.",
+            quote="The MaskNetwork class outputs 0 for inputs identified as critical states",
+        ),
+        _leaf(
+            "Same definite requirement about Experiment II.",
+            quote="Experiment II runs the selfish mining environment",
+        ),
+        _leaf(
+            "Same definite requirement about Experiment II.",
+            quote="Experiment II runs the selfish mining environment",
+        ),
+        _leaf(
+            "Some claim that does not appear anywhere in the paper.",
+            quote="this exact text does not exist in the fixture paper xyzzy",
+        ),
     ]
-    frozen = _frozen_envelope_with_leaves(leaves, paper)
+    frozen = _frozen_envelope_with_leaves(leaves, paper, tmp_path)
     p = tmp_path / "rubric.json"
     p.write_text(json.dumps(frozen))
 
@@ -103,13 +180,13 @@ async def test_audit_writes_flags_and_metadata(tmp_path):
     assert res["by_flag"]["duplicate"] == 2
     assert res["by_flag"]["no_paper_evidence"] >= 1
 
-    # rubric file mutated with flags + audit metadata
+    # The frozen rubric remains byte-for-byte immutable; findings live in a
+    # separate digest-bound audit artifact.
     after = json.loads(p.read_text())
-    assert "audit" in after
-    assert after["audit"]["auditor_model"] == "test/mock"
-    found_vague = any("vague_qualifier" in (n.get("flags") or [])
-                      for n in after["rubric"]["sub_tasks"])
-    assert found_vague
+    assert after == frozen
+    report = json.loads(Path(res["audit_path"]).read_text())
+    assert report["schema_version"] == "ari.replication-rubric-audit/v2"
+    assert report["report_sha256"] == res["report_sha256"]
 
 
 @pytest.mark.asyncio
@@ -117,10 +194,13 @@ async def test_audit_regen_recommended_threshold(tmp_path):
     paper = "the quote text appears verbatim here."
     # 6 of 6 leaves vague → 100% > 20% → regen_recommended = True
     leaves = [
-        _leaf(f"This is appropriate for case {i}.", quote="the quote text appears verbatim")
+        _leaf(
+            f"This is appropriate for case {i}.",
+            quote="the quote text appears verbatim",
+        )
         for i in range(6)
     ]
-    frozen = _frozen_envelope_with_leaves(leaves, paper)
+    frozen = _frozen_envelope_with_leaves(leaves, paper, tmp_path)
     p = tmp_path / "rubric.json"
     p.write_text(json.dumps(frozen))
 
@@ -128,7 +208,10 @@ async def test_audit_regen_recommended_threshold(tmp_path):
         return {}
 
     res = await A.audit_rubric_async(
-        rubric_path=str(p), paper_text=paper, auditor_model="m", llm_call=no_llm,
+        rubric_path=str(p),
+        paper_text=paper,
+        auditor_model="m",
+        llm_call=no_llm,
     )
     assert res["regen_recommended"] is True
 
@@ -137,11 +220,13 @@ async def test_audit_regen_recommended_threshold(tmp_path):
 async def test_audit_no_regen_when_clean(tmp_path):
     paper = "the quote text appears verbatim here, repeatedly."
     leaves = [
-        _leaf(f"Definite verifiable claim about implementation step {i}.",
-              quote="the quote text appears verbatim")
+        _leaf(
+            f"Definite verifiable claim about implementation step {i}.",
+            quote="the quote text appears verbatim",
+        )
         for i in range(8)
     ]
-    frozen = _frozen_envelope_with_leaves(leaves, paper)
+    frozen = _frozen_envelope_with_leaves(leaves, paper, tmp_path)
     p = tmp_path / "rubric.json"
     p.write_text(json.dumps(frozen))
 
@@ -149,7 +234,10 @@ async def test_audit_no_regen_when_clean(tmp_path):
         return {}
 
     res = await A.audit_rubric_async(
-        rubric_path=str(p), paper_text=paper, auditor_model="m", llm_call=no_llm,
+        rubric_path=str(p),
+        paper_text=paper,
+        auditor_model="m",
+        llm_call=no_llm,
     )
     assert res["regen_recommended"] is False
     assert res["leaves_flagged"] == 0
@@ -159,10 +247,16 @@ async def test_audit_no_regen_when_clean(tmp_path):
 async def test_audit_invokes_llm_for_unverifiable(tmp_path):
     paper = "the quote text appears verbatim here."
     leaves = [
-        _leaf("Step A: a definite verifiable claim.", quote="the quote text appears verbatim"),
-        _leaf("Step B: a definite verifiable claim.", quote="the quote text appears verbatim"),
+        _leaf(
+            "Step A: a definite verifiable claim.",
+            quote="the quote text appears verbatim",
+        ),
+        _leaf(
+            "Step B: a definite verifiable claim.",
+            quote="the quote text appears verbatim",
+        ),
     ]
-    frozen = _frozen_envelope_with_leaves(leaves, paper)
+    frozen = _frozen_envelope_with_leaves(leaves, paper, tmp_path)
     p = tmp_path / "rubric.json"
     p.write_text(json.dumps(frozen))
 
@@ -172,11 +266,18 @@ async def test_audit_invokes_llm_for_unverifiable(tmp_path):
         calls["n"] += 1
         # First leaf: flagged unverifiable; second: clean.
         if calls["n"] == 1:
-            return {"vague_qualifier": False, "unverifiable": True, "concerns": "needs network"}
+            return {
+                "vague_qualifier": False,
+                "unverifiable": True,
+                "concerns": "needs network",
+            }
         return {"vague_qualifier": False, "unverifiable": False, "concerns": ""}
 
     res = await A.audit_rubric_async(
-        rubric_path=str(p), paper_text=paper, auditor_model="test/mock", llm_call=llm,
+        rubric_path=str(p),
+        paper_text=paper,
+        auditor_model="test/mock",
+        llm_call=llm,
     )
     assert calls["n"] == 2
     assert res["by_flag"]["unverifiable"] == 1

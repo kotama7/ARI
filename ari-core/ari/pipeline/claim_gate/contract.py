@@ -287,6 +287,11 @@ def check_contract(science_data: dict) -> list[dict]:
 
     key = mc.get("key")
     formula = mc.get("formula")
+    formula_operands = (
+        mc.get("formula_operands")
+        if isinstance(mc.get("formula_operands"), dict)
+        else {}
+    )
     ceiling_select = mc.get("ceiling_select")
     invs = [e for e in (mc.get("invariants") or []) if isinstance(e, str)]
     correctness = mc.get("correctness") if isinstance(mc.get("correctness"), dict) else None
@@ -296,6 +301,10 @@ def check_contract(science_data: dict) -> list[dict]:
     for cid, cfg in _iter_configs(science_data):
         vars_: dict[str, Any] = _flatten_metrics(cfg)
         prov = _provenance(cfg)
+        for role, metric_name in formula_operands.items():
+            if isinstance(role, str) and isinstance(metric_name, str):
+                if metric_name in vars_:
+                    vars_[role] = vars_[metric_name]
 
         # C: declared regime — evaluate the conditional to bind the selected
         # ceiling. The harness only EVALUATES the declared conditional; it never

@@ -385,7 +385,9 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
         "    _cfg_path = str(_pkg_cfg) if _pkg_cfg.exists() else _cfg_path\n"
         "cfg = load_config(_cfg_path)\n"
         + _skill_filter +
-        "mcp = MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [])\n"
+        "_skill_lock = os.path.join(_ckpt_dir, 'SKILLS.lock') if _ckpt_dir else None\n"
+        "mcp = MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [], "
+        "skill_lock_path=_skill_lock, skill_lock_scope='subset')\n"
         "mcp.list_tools()\n"
         "with open(" + _apath + ") as _af:\n"
         "    _call_args = json.load(_af)\n"

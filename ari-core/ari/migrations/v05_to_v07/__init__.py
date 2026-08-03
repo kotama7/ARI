@@ -6,7 +6,7 @@ Three subsystems live here:
   reconstruction of ``node_report.json`` from the legacy tree.json
   dump (used by ``ari migrate node-reports``).
 - :mod:`ari.migrations.v05_to_v07.memory` — re-export of the v0.5
-  global-memory JSONL → checkpoint-scoped Letta auto-migration.
+  constants used by the explicit offline JSONL → versioned-memory migration.
 - :mod:`ari.migrations.v05_to_v07.legacy_axes` — legacy 5-axis fallback
   for evaluator scores written by older runs.
 

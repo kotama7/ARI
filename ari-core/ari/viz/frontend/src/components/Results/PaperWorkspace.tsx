@@ -113,7 +113,7 @@ export function renderPaper({
   setCollapsedDirs: (updater: (prev: Set<string>) => Set<string>) => void;
   activeAbsPath: string;
   setActiveAbsPath: (v: string) => void;
-  uploadRef: React.RefObject<HTMLInputElement>;
+  uploadRef: React.RefObject<HTMLInputElement | null>;
   openFile: (filename: string) => void;
   handleSave: () => void;
   handleUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;

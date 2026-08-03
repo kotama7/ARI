@@ -5,8 +5,7 @@ as the parent (e.g. slurm_submit when a scheduler is configured),
 preventing accidental execution on the wrong host.
 """
 import re
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -66,7 +65,6 @@ _MOCK_MCP_TOOLS = [
     {"name": "web_search", "description": "Search the web", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
     {"name": "search_papers", "description": "Search academic papers", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
     {"name": "fetch_url", "description": "Fetch web page", "inputSchema": {"properties": {"url": {}}}, "skill_name": "web-skill"},
-    {"name": "search_arxiv", "description": "Search arXiv", "inputSchema": {"properties": {"query": {}}}, "skill_name": "web-skill"},
     {"name": "add_memory", "description": "Save memory", "inputSchema": {"properties": {"node_id": {}, "text": {}}}, "skill_name": "memory-skill"},
     {"name": "search_memory", "description": "Search memories", "inputSchema": {"properties": {"query": {}}}, "skill_name": "memory-skill"},
 ]
@@ -89,10 +87,6 @@ class TestWebResearchToolHints:
     def test_default_hint_includes_search_papers(self):
         hints = _enriched_hints("Run a benchmark locally")
         assert "search_papers" in hints.post_survey_hint
-
-    def test_default_hint_includes_search_arxiv(self):
-        hints = _enriched_hints("Run a benchmark locally")
-        assert "search_arxiv" in hints.post_survey_hint
 
     def test_default_hint_includes_fetch_url(self):
         hints = _enriched_hints("Run a benchmark locally")

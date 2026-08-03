@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 import litellm
 
+from ari.call_context import ToolCallContextV1
 from ari.config import LLMConfig
 
 # gpt-5* models reject temperature!=1 (and other params) with
@@ -78,6 +79,7 @@ class LLMClient:
         self._phase: str = ""
         self._skill: str = ""
         self._work_dir: str = ""
+        self._call_context: ToolCallContextV1 | None = None
         # Optional MCPClient injected post-construction (see core.py). When
         # set AND the backend is the cli-shim, complete() forwards a
         # --mcp-config payload to the shim so Claude can call the same
@@ -100,6 +102,7 @@ class LLMClient:
         phase: str | None = None,
         skill: str | None = None,
         work_dir: str | None = None,
+        call_context: ToolCallContextV1 | None = None,
     ) -> None:
         """Attach context that will be sent as litellm metadata on every
         subsequent ``complete()`` call. Pass ``None`` to leave a field
@@ -117,6 +120,8 @@ class LLMClient:
             self._skill = str(skill)
         if work_dir is not None:
             self._work_dir = str(work_dir)
+        if call_context is not None:
+            self._call_context = call_context
 
     def _model_name(self) -> str:
         from ari.llm.routing import resolve_litellm_model
@@ -150,6 +155,7 @@ class LLMClient:
         skill: str | None = None,
         work_dir: str | None = None,
         max_tokens: int | None = None,
+        call_context: ToolCallContextV1 | None = None,
     ) -> LLMResponse:
         """Send messages to the LLM and return a response.
 
@@ -171,6 +177,11 @@ class LLMClient:
         _phase = phase if phase is not None else getattr(self, "_phase", "")
         _skill = skill if skill is not None else getattr(self, "_skill", "")
         _work_dir = work_dir if work_dir is not None else getattr(self, "_work_dir", "")
+        _call_context = (
+            call_context
+            if call_context is not None
+            else getattr(self, "_call_context", None)
+        )
         kwargs: dict = {
             "model": _model,
             "messages": msgs,
@@ -246,7 +257,27 @@ class LLMClient:
                 # already advertised in `tools`. The delegated set is then
                 # BY CONSTRUCTION the set ARI told the model about, so the two
                 # vocabularies can never disagree again.
-                mcp_cfg, allowed = self.mcp_client.to_claude_mcp_config(phase=None)
+                _routing_phase = (
+                    _call_context.phase
+                    if _call_context is not None and _call_context.phase
+                    else None
+                )
+                try:
+                    mcp_cfg, allowed = self.mcp_client.to_claude_mcp_config(
+                        phase=_routing_phase,
+                        context=_call_context,
+                    )
+                except TypeError as _context_error:
+                    # Compatibility for pre-v1 MCP clients and test doubles.
+                    # Retry only when the callable explicitly rejects the new
+                    # keyword; an arbitrary TypeError raised inside the client
+                    # must still reach the outer fail-safe and be reported.
+                    _message = str(_context_error)
+                    if "context" not in _message or "unexpected keyword" not in _message:
+                        raise
+                    mcp_cfg, allowed = self.mcp_client.to_claude_mcp_config(
+                        phase=_routing_phase,
+                    )
                 allowed = _filter_allowed_to_offered(allowed, tools)
             except Exception as _e:  # noqa: BLE001 — never block the LLM call
                 import logging as _l

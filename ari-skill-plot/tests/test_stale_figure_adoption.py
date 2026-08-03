@@ -1,71 +1,59 @@
-"""The figure rescue path must not publish a previous run's figures.
+"""A figure operation must never adopt files that predate the invocation."""
 
-`out_dir` IS the checkpoint dir (workflow.yaml: `output_dir: {{checkpoint_dir}}`),
-so `fig_*.pdf` from an earlier run — or from the very `loop_back_to` iteration a
-VLM review just REJECTED — is already sitting there. The rescue glob adopted
-those files under a caption fabricated on the spot, and because `figures` was
-then non-empty the "No figures produced" error never fired, so the paper shipped
-figures that were never generated from its data.
-"""
 from __future__ import annotations
 
 import asyncio
-import json
-from types import SimpleNamespace
+
+import pytest
+
+from ari.public.figures import parse_figure_batch
+
+import planning
+import server
+from test_planning import _Response, _science_file
 
 
-def _plot_server():
-    """Load THIS skill's server by path.
+def test_preexisting_figure_is_not_adopted_by_fixed_renderer(tmp_path):
+    science = _science_file(tmp_path)
+    stale = tmp_path / "fig_1.pdf"
+    stale_payload = b"%PDF-1.4 stale from an earlier run"
+    stale.write_bytes(stale_payload)
 
-    Every skill ships its server as ``src/server.py``, so a plain
-    ``import src.server`` in a shared pytest process resolves to whichever
-    skill imported first (observed: ari-skill-coding). That collision is the
-    reason scripts/run_all_tests.sh forks per skill; loading by explicit path
-    makes this file correct under either invocation.
-    """
-    import importlib.util
-    from pathlib import Path as _P
+    batch = parse_figure_batch(
+        asyncio.run(
+            server.generate_figures(
+                science_data_path=str(science),
+                output_dir=str(tmp_path),
+                n_figures=1,
+            )
+        )
+    )
 
-    path = _P(__file__).resolve().parent.parent / "src" / "server.py"
-    spec = importlib.util.spec_from_file_location("plot_skill_server", path)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-def _run(tmp_path, reply: str):
-    server = _plot_server()
-
-    (tmp_path / "nodes.json").write_text(json.dumps(
-        {"nodes": [{"id": "n1", "metrics": {"gbps": 1.0}, "status": "success"}]}))
-
-    async def _fake(**kw):
-        msg = SimpleNamespace(content=reply)
-        return SimpleNamespace(choices=[SimpleNamespace(message=msg)])
-
-    orig = server.litellm.acompletion
-    server.litellm.acompletion = _fake
-    try:
-        return asyncio.run(server.generate_figures_llm(
-            nodes_json_path=str(tmp_path / "nodes.json"),
-            output_dir=str(tmp_path), experiment_summary="s"))
-    finally:
-        server.litellm.acompletion = orig
+    assert stale.read_bytes() == stale_payload
+    assert "fig_1.pdf" not in set(batch.figures.values())
+    assert all(item.spec.source.record_ids for item in batch.manifests)
 
 
-def test_a_preexisting_figure_is_declined_and_reported(tmp_path):
-    (tmp_path / "fig_1.pdf").write_bytes(b"%PDF-1.4 stale from an earlier run")
-    out = _run(tmp_path, "I could not produce figures.")
+def test_failed_planner_does_not_promote_preexisting_figures(
+    tmp_path, monkeypatch
+):
+    science = _science_file(tmp_path)
+    stale = tmp_path / "fig_1.pdf"
+    stale_payload = b"%PDF-1.4 rejected by an earlier review"
+    stale.write_bytes(stale_payload)
 
-    assert not (out.get("figures") or {}), out.get("figures")
-    assert "No figures produced" in str(out.get("error"))
-    assert "stale" in str(out.get("error"))
-    assert any("predate this invocation" in w for w in (out.get("warnings") or []))
+    async def invalid(**_kwargs):
+        return _Response("I could not produce figures.")
 
+    monkeypatch.setattr(planning.litellm, "acompletion", invalid)
+    with pytest.raises(ValueError, match="planner|JSON|response"):
+        asyncio.run(
+            server.generate_figures_llm(
+                science_data_path=str(science),
+                output_dir=str(tmp_path),
+                n_figures=1,
+            )
+        )
 
-def test_no_preexisting_figures_means_no_stale_warning(tmp_path):
-    """The guard must not fire when the directory starts clean."""
-    out = _run(tmp_path, "I could not produce figures.")
-    assert not (out.get("figures") or {})
-    assert "stale" not in str(out.get("error"))
-    assert not [w for w in (out.get("warnings") or []) if "predate" in w]
+    assert stale.read_bytes() == stale_payload
+    assert not list((tmp_path / "figures").glob("*.pdf"))

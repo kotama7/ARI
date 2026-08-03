@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # PaperBench quickstart
@@ -54,31 +54,28 @@ From the registry page, tick one or more papers and click
    two-stage on). See [Rubric schema](../../reference/execution_profile.md).
 3. **Reproduce** — choose the replicator model + time budget +
    sandbox kind (`auto` / `local` / `apptainer` / `docker` / `slurm`) +
-   `container_image` (SIF path, `docker://` URI, or short alias
-   `pb-env` / `pb-reproducer` when you ran
-   `scripts/build_pb_images.sh`). Expand *Execution profile override*
+   `container_image` (a local non-symlink SIF, full Docker
+   `sha256:<image-id>`, or registry URI pinned with `@sha256:<digest>`).
+   Expand *Execution profile override*
    to override SLURM allocation flags (`--nodes`, `--gpus-per-task`,
-   `gpu_type`, `memory_gb_per_node`, `--exclusive`, `extra_sbatch_args`,
+   `gpu_type`, `memory_gb_per_node`, `--exclusive`, `account`, `qos`,
+   `reservation`,
    …). When the rubric already carries an `execution_profile`, these
    fields pre-fill from it. Caller args always win over rubric hints.
 4. **Judge** — set the SimpleJudge model + `n_runs` (default 1 — see
-   PaperBench paper §4.1). When Stage 2 (reproduce) is skipped, the
-   judge auto-enables `code_only` mode so the rubric is pruned to
-   Code Development leaves (mirrors vendor `paperbench/grade.py:109-112`
-   and prevents systematic 0s on Result Analysis leaves the agent
-   was never asked to execute).
+   PaperBench paper §4.1). A digest-verified successful Stage 2 record is
+   mandatory. `code_only` is an explicit scope choice, never an implicit
+   substitute for a missing reproduction.
 5. **Launch** — review the cost estimate, then click *Dry run* to verify
    or *Launch all* to enqueue the jobs.
 
 > **Fail-loud preconditions.** Wizard requests sandbox/GPU resources
-> the host cannot satisfy raise loudly rather than silently downgrading
-> to the host CPU. To opt back into the legacy silent fallback, set:
-> - `ARI_PHASE1_ALLOW_FALLBACK=1` — when docker daemon / apptainer
->   binary / sbatch / partition is missing, fall back to local exec.
-> - `ARI_SLURM_ALLOW_NO_GRES=1` — when the cluster has no GRES
->   configured for GPUs, drop `--gres` / `--gpus-*` flags.
->
-> Both default OFF (refuses the request, surfaces an actionable error).
+> the host cannot satisfy fail rather than silently downgrading to host CPU.
+> The legacy local fallback has been removed.
+> GPU/resource requests have no silent-drop override: correct the cluster
+> configuration or select a compatible partition. Network denial defaults
+> ON; unisolated local/SLURM execution requires an administrator attestation
+> or an explicit `network_policy=inherit` choice.
 
 ## 3. Wait
 
@@ -168,10 +165,10 @@ python scripts/sc_paper_dogfood.py \
 
 Mutually exclusive with `--paper-audit-mode` (and with `paper_audit`
 rubric templates such as `sc.yaml` — these grade the paper itself,
-not an executed submission). To run the full protocol with vendor
-images, first build `pb-env` / `pb-reproducer` via
-`scripts/build_pb_images.sh` then pass
-`--rollout-container-image pb-env --reproduce-container-image pb-reproducer`.
+not an executed submission). `scripts/build_pb_images.sh` prints the immutable
+Docker image IDs. For an Apptainer rollout, first convert the local tag to a
+SIF (`apptainer pull pb-env.sif docker-daemon://pb-env:latest`) and pass its
+absolute path. Never pass the mutable `pb-env` / `pb-reproducer` tag itself.
 
 ## HPC cluster sbatch wrapper (illustrative)
 

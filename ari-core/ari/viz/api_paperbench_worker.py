@@ -95,16 +95,19 @@ def _generate_rubric_args(paper_pdf: Path, rubric_path: Path, cfg: dict) -> dict
         "paper_path": str(paper_pdf),
         "output_path": str(rubric_path),
         "model": cfg.get("model") or "",
-        "two_stage": bool(cfg.get("two_stage", True)),
         "target_leaf_count": int(cfg.get("target_leaf_count") or 0),
         "temperature": float(cfg.get("temperature") or 0.0),
+        "seed": int(cfg.get("seed") or 0),
+        "paperbench_rubric_id": str(cfg.get("paperbench_rubric_id") or ""),
+        "max_model_calls": int(cfg.get("max_model_calls") or 64),
+        "subtree_concurrency": int(cfg.get("subtree_concurrency") or 4),
+        "provider": str(cfg.get("provider") or ""),
+        "model_revision": str(cfg.get("model_revision") or ""),
     }
 
 
 def _build_reproduce_args(paper_pdf: Path, rubric_path: Path, repro_dir: Path, cfg: dict) -> dict:
-    # ``container_image`` is the wizard's unified field; ``apptainer_image`` is
-    # the legacy Stage 1-only alias still accepted for back-compat.
-    img = str(cfg.get("container_image") or cfg.get("apptainer_image") or "")
+    img = str(cfg.get("container_image") or "")
     return {
         "paper_path": str(paper_pdf),
         "rubric_path": str(rubric_path),
@@ -114,7 +117,6 @@ def _build_reproduce_args(paper_pdf: Path, rubric_path: Path, repro_dir: Path, c
         "iterative_agent": bool(cfg.get("iterative_agent", False)),
         "sandbox_kind": str(cfg.get("sandbox_kind") or "auto"),
         "container_image": img,
-        "apptainer_image": img,  # back-compat for callers still reading this key
         "max_steps": int(cfg.get("max_steps") or 0),
     }
 

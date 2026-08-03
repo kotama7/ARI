@@ -13,6 +13,7 @@ drives ARI's ReAct loop exactly like a real OpenAI / Anthropic API key:
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -322,6 +323,8 @@ def test_run_claude_mcp_direct_builds_correct_cmd(monkeypatch, tmp_path):
     def _fake_run(cmd, input, capture_output, text, timeout, cwd):
         captured["cmd"] = cmd
         captured["cwd"] = cwd
+        mcp_file = cmd[cmd.index("--mcp-config") + 1]
+        captured["mcp_config_on_disk"] = json.load(open(mcp_file))
         # Emit a minimal stream-json with a result event so the parser is exercised.
         stdout = "\n".join([
             json.dumps({"type": "system", "subtype": "init"}),
@@ -334,7 +337,8 @@ def test_run_claude_mcp_direct_builds_correct_cmd(monkeypatch, tmp_path):
         class _P:
             returncode = 0
             stderr = ""
-        p = _P(); p.stdout = stdout
+        p = _P()
+        p.stdout = stdout
         return p
 
     monkeypatch.setattr(cs.subprocess, "run", _fake_run)
@@ -348,12 +352,13 @@ def test_run_claude_mcp_direct_builds_correct_cmd(monkeypatch, tmp_path):
     # stream-json output; no JSON-format single-shot
     assert "--output-format" in cmd
     assert cmd[cmd.index("--output-format") + 1] == "stream-json"
-    # MCP config is materialised to a real file the shim wrote
+    # MCP config exists for the child invocation, then is removed so it cannot
+    # become a persistent credential artifact.
     assert "--mcp-config" in cmd
     mcp_file = cmd[cmd.index("--mcp-config") + 1]
     import os as _os
-    assert _os.path.isfile(mcp_file)
-    assert json.load(open(mcp_file)) == mcp_cfg
+    assert not _os.path.exists(mcp_file)
+    assert captured["mcp_config_on_disk"] == mcp_cfg
     # Strict mode + allowlist
     assert "--strict-mcp-config" in cmd
     assert "--allowedTools" in cmd
@@ -376,10 +381,10 @@ def test_run_claude_mcp_direct_builds_correct_cmd(monkeypatch, tmp_path):
     # The stream-json events are persisted alongside artifacts for audit.
     audit = _os.path.join(str(tmp_path), "tool_calls.jsonl")
     assert _os.path.isfile(audit)
-    lines = [l for l in open(audit) if l.strip()]
+    lines = [line for line in open(audit) if line.strip()]
     assert len(lines) == 3
     # First two events make it into the audit verbatim (system + assistant).
-    types = [json.loads(l).get("type") for l in lines]
+    types = [json.loads(line).get("type") for line in lines]
     assert types == ["system", "assistant", "result"]
 
 
@@ -463,6 +468,90 @@ def test_env_contamination_warning_silent_on_clean_env(caplog):
     with caplog.at_level("WARNING", logger="ari.llm.cli_server"):
         cs._warn_claude_env_contamination({"HOME": "/h", "PATH": "/bin"})
     assert caplog.records == []
+
+
+def test_mcp_credential_refs_materialize_only_in_local_copy(monkeypatch):
+    source = {
+        "mcpServers": {
+            "paper": {
+                "command": "python",
+                "args": ["server.py"],
+                "env": {"PATH": "/usr/bin"},
+                "_ariCredentialEnv": ["OPENAI_API_KEY"],
+            }
+        }
+    }
+    monkeypatch.setenv("OPENAI_API_KEY", "credential-marker")
+
+    materialized = cs._materialize_mcp_credential_env(source)
+
+    server = materialized["mcpServers"]["paper"]
+    assert server["env"]["OPENAI_API_KEY"] == "credential-marker"
+    assert "_ariCredentialEnv" not in server
+    # The HTTP-safe request object is not mutated and contains no value.
+    assert source["mcpServers"]["paper"]["_ariCredentialEnv"] == [
+        "OPENAI_API_KEY"
+    ]
+    assert "credential-marker" not in json.dumps(source)
+
+    with pytest.raises(ValueError, match="is unavailable"):
+        cs._materialize_mcp_credential_env(source, source_env={})
+
+
+def test_run_claude_redacts_local_credentials_from_outputs_and_audit(
+    monkeypatch, tmp_path
+):
+    secret = "claude-local-secret-92814"
+    captured: dict = {}
+
+    def _fake_run(cmd, input, capture_output, text, timeout, cwd):
+        mcp_file = cmd[cmd.index("--mcp-config") + 1]
+        on_disk = json.load(open(mcp_file))
+        assert on_disk["mcpServers"]["paper"]["env"]["OPENAI_API_KEY"] == secret
+        captured["debug_file"] = cmd[cmd.index("--debug-file") + 1]
+
+        class _P:
+            returncode = 0
+            stderr = f"debug credential={secret}"
+
+        result = {
+            "type": "result",
+            "result": f"provider returned {secret}",
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+        }
+        process = _P()
+        process.stdout = json.dumps(result)
+        return process
+
+    monkeypatch.setattr(cs.subprocess, "run", _fake_run)
+    monkeypatch.setenv("OPENAI_API_KEY", secret)
+    config = {
+        "mcpServers": {
+            "paper": {
+                "command": "python",
+                "args": ["server.py"],
+                "env": {},
+                "_ariCredentialEnv": ["OPENAI_API_KEY"],
+            }
+        }
+    }
+
+    response, _usage = cs.run_claude(
+        "system",
+        "prompt",
+        agent=False,
+        real_model=None,
+        cwd=str(tmp_path),
+        mcp_config=config,
+        allowed_mcp_tools=["mcp__paper__review"],
+    )
+
+    assert captured["debug_file"] == os.devnull
+    assert secret not in response
+    assert "<redacted:credential>" in response
+    audit = (tmp_path / "tool_calls.jsonl").read_text(encoding="utf-8")
+    assert secret not in audit
+    assert "<redacted:credential>" in audit
 
 
 def test_do_post_reads_extra_body_fields(monkeypatch):

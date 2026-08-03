@@ -936,7 +936,11 @@ def _collect_detections(
                     "record_id": str(payload.get("record_id") or ""),
                     "target_ref": str(rid),
                 })
-    for err in (gate_report or {}).get("errors") or ():
+    report = gate_report or {}
+    gate_errors = report.get("blocking_findings")
+    if gate_errors is None:  # historical pre-GateReportV1 checkpoints
+        gate_errors = report.get("errors")
+    for err in gate_errors or ():
         if not isinstance(err, dict):
             continue
         target = str(

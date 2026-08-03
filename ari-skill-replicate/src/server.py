@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import logging
 import os
-import subprocess
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -22,10 +21,7 @@ log = logging.getLogger(__name__)
 mcp = FastMCP("replicate-skill")
 
 try:  # cost-tracker bootstrap, harmless if absent
-    try:
-        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
-    except ImportError:
-        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
+    from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
 
     _ari_cost_tracker.bootstrap_skill("replicate")
 except Exception:
@@ -41,12 +37,10 @@ def _load_paper_text(paper_path: str, paper_text: str) -> str:
     p = Path(paper_path)
     if p.suffix == ".pdf":
         try:
-            r = subprocess.run(
-                ["pdftotext", str(p), "-"],
-                capture_output=True, text=True, timeout=30,
-            )
-            if r.stdout:
-                return r.stdout
+            import fitz
+
+            with fitz.open(p) as document:
+                return "\n".join(page.get_text() for page in document)
         except Exception:
             pass
     try:
@@ -56,19 +50,15 @@ def _load_paper_text(paper_path: str, paper_text: str) -> str:
         return ""
 
 
-_TRUE_STRINGS = {"1", "true", "yes", "on", "True", "TRUE", "Yes"}
-_FALSE_STRINGS = {"0", "false", "no", "off", "False", "FALSE", "No"}
-
-
 def _resolve_env_overrides(
-    target_leaf_count: int, temperature: float, two_stage: bool
-) -> tuple[int, float, bool]:
+    target_leaf_count: int, temperature: float
+) -> tuple[int, float]:
     """Apply ``ARI_RUBRIC_GEN_*`` env-var overrides set by the GUI/wizard.
 
     The web GUI persists wizard ORS settings as env vars (see
     ari-core/ari/viz/api_experiment.py), but historically only the model
-    var was consumed. This makes target_leaves / temperature / two_stage
-    actually take effect when the workflow stage doesn't pass them
+    var was consumed. This makes target leaves and temperature take effect
+    when the workflow stage doesn't pass them
     explicitly. Env var wins when set; kwarg default applies otherwise.
     """
     env_l = os.environ.get("ARI_RUBRIC_GEN_TARGET_LEAVES", "").strip()
@@ -83,12 +73,7 @@ def _resolve_env_overrides(
             temperature = float(env_t)
         except ValueError:
             pass
-    env_ts = os.environ.get("ARI_RUBRIC_GEN_TWO_STAGE", "").strip()
-    if env_ts in _TRUE_STRINGS:
-        two_stage = True
-    elif env_ts in _FALSE_STRINGS:
-        two_stage = False
-    return target_leaf_count, temperature, two_stage
+    return target_leaf_count, temperature
 
 
 @mcp.tool()
@@ -100,8 +85,11 @@ async def generate_rubric(
     model: str = "",
     temperature: float = 0.0,
     seed: int = 0,
-    two_stage: bool = True,
     paperbench_rubric_id: str = "",
+    max_model_calls: int = 64,
+    subtree_concurrency: int = 4,
+    provider: str = "",
+    model_revision: str = "",
 ) -> dict:
     """Generate a PaperBench-compatible auto rubric from paper text.
 
@@ -114,10 +102,6 @@ async def generate_rubric(
         model: override for ``ARI_MODEL_RUBRIC_GEN``.
         temperature: generator temperature (recorded in manifest).
         seed: optional generator seed (>0 to record).
-        two_stage: when True (default), generate the rubric in two passes
-            (skeleton + parallel subtrees) which produces 3-5× more leaves
-            and 1-2 levels more depth than a single LLM call. Set False to
-            use the legacy single-call path.
         paperbench_rubric_id: empty string → bundled prompt verbatim
             (back-compat). Otherwise the ID of a YAML template under
             ``ari-core/config/paperbench_rubrics/`` (e.g. "sc" for the
@@ -135,8 +119,8 @@ async def generate_rubric(
     if not output_path:
         return {"error": "output_path is required"}
     seed_arg = int(seed) if seed else None
-    target_leaf_count, temperature, two_stage = _resolve_env_overrides(
-        int(target_leaf_count), float(temperature), bool(two_stage)
+    target_leaf_count, temperature = _resolve_env_overrides(
+        int(target_leaf_count), float(temperature)
     )
     rubric_id_arg = paperbench_rubric_id.strip() or None
     return await generate_rubric_async(
@@ -146,8 +130,11 @@ async def generate_rubric(
         model=model,
         temperature=temperature,
         seed=seed_arg,
-        two_stage=two_stage,
         paperbench_rubric_id=rubric_id_arg,
+        max_model_calls=int(max_model_calls),
+        subtree_concurrency=int(subtree_concurrency),
+        provider=provider,
+        model_revision=model_revision or None,
     )
 
 
@@ -157,8 +144,10 @@ async def audit_rubric(
     paper_path: str = "",
     paper_text: str = "",
     auditor_model: str = "",
+    output_path: str = "",
+    max_model_calls: int = 400,
 ) -> dict:
-    """Audit a generated rubric for quality issues (mutates the rubric file).
+    """Write an independent audit without mutating the frozen rubric.
 
     Flags applied per leaf:
         - vague_qualifier   : non-operational language ("appropriate", "good", ...)
@@ -174,6 +163,8 @@ async def audit_rubric(
         rubric_path=rubric_path,
         paper_text=text,
         auditor_model=auditor_model,
+        output_path=output_path,
+        max_model_calls=max_model_calls,
     )
 
 

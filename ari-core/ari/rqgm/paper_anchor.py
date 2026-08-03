@@ -153,7 +153,9 @@ def draft_is_unfaithful(
     the writer-culpability signal is the writer's OWN drafts' claim-gate
     faithfulness, never the reviewer's leniency."""
     report = gate_report or {}
-    if report.get("errors"):
+    # GateReportV1 separates typed blocking/advisory findings. Keep the legacy
+    # key as a read-only migration fallback for historical checkpoints.
+    if report.get("blocking_findings") or report.get("errors"):
         return True
     return writer_faithfulness_score(report) < float(threshold)
 

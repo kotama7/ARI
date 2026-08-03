@@ -7,10 +7,10 @@ Resolution order (later overrides earlier):
   3. ``{checkpoint_dir}/claim_gate_policy.json`` when present
   4. env ``ARI_CLAIM_GATE_MODE`` (strict | warn | off) — the evaluation switch
 
-``mode`` governs blocking: ``off`` never blocks; ``warn`` (MVP) reports
-errors/warnings but never blocks finalize; ``strict`` (evaluation) blocks the
-*final* gate when block_on errors exist, and makes uncovered result numbers in
-strict sections blocking.
+``mode`` governs blocking: ``off`` never blocks; ``warn`` blocks only the
+objective-integrity ``always_block_on`` tier at the final phase; ``strict``
+additionally blocks configured ``block_on`` findings and uncovered result
+numbers in strict sections. Draft-phase reports never block.
 """
 
 from __future__ import annotations
@@ -48,8 +48,27 @@ DEFAULT_POLICY: dict = {
         # ``claim_id_collision`` blocks like the numeric_mismatch it replaces:
         # an id claimed by two independent minters leaves the assertion
         # unverified, which is exactly what block_on is for.
-        "block_on": ["numeric_mismatch", "operand_unresolved", "missing_evidence",
-                     "unknown_formula", "claim_id_collision"],
+        "block_on": [
+            "numeric_mismatch",
+            "operand_unresolved",
+            "missing_evidence",
+            "unknown_formula",
+            "claim_id_collision",
+            "environment_unverified",
+            "node_not_executed",
+            "result_unresolved",
+            "unit_unresolved",
+            "unit_mismatch",
+            "cross_run_evidence",
+            "cross_run_or_unknown_node",
+            "cross_run_artifact",
+            "artifact_missing",
+            "artifact_reference_untyped",
+            "invalid_artifact_reference",
+            "artifact_digest_mismatch",
+            "artifact_not_bound",
+            "invalid_measurement_contract",
+        ],
         # Objective-falsehood findings: physically/logically impossible or
         # unverifiable results. Unlike block_on (which only blocks under strict),
         # these block the FINAL paper regardless of warn/strict — they are
@@ -72,6 +91,9 @@ DEFAULT_POLICY: dict = {
             "invariant_violation", "correctness_failed", "correctness_uncovered",
             "placeholder_denominator", "recompute_mismatch", "claim_evidence_missing",
             "ceiling_unmeasured", "contract_expr_unevaluable",
+            "cross_run_evidence", "cross_run_or_unknown_node", "cross_run_artifact",
+            "artifact_digest_mismatch", "artifact_not_bound",
+            "invalid_measurement_contract",
         ],
     },
 }

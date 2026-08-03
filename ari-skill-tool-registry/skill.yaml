@@ -1,0 +1,52 @@
+schema_version: 1
+name: tool-registry-skill
+package: ari-skill-tool-registry
+version: 0.3.0
+display_name: Federate scientific tools
+description: Provider-neutral discovery, admission, immutable invocation, and replay for large MCP collections.
+enabled_by_default: false
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env:
+  - ARI_CHECKPOINT_DIR
+  - ARI_HPC_LEDGER_PATH
+  - ARI_SCHEDULER_PATH
+  - ARI_TOOL_REGISTRY_CASSETTES
+  - ARI_TOOL_REGISTRY_INDEX
+  - ARI_TOOL_REGISTRY_LOCK
+  - LANG
+  - LC_ALL
+  - PATH
+  - SSL_CERT_DIR
+  - SSL_CERT_FILE
+credential_scopes:
+  - id: quantum.ibm-runtime
+    optional_env: [QISKIT_IBM_TOKEN]
+tool_defaults:
+  phases: [bfts, evaluation, reproduce]
+  side_effects: read-only
+  determinism: conditional
+  timeout_class: bounded
+  permissions: [workspace-read]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: discover
+    capability_ref: ari.registry.catalog.discover
+  - name: describe
+    capability_ref: ari.registry.catalog.describe
+  - name: invoke
+    capability_ref: ari.registry.tool.invoke
+    side_effects: stateful
+    permissions: [workspace-read, workspace-write, process, network]
+    context_requirement: run
+    timeout_class: slow
+  - name: get_status
+    capability_ref: ari.registry.tool.status
+    context_requirement: run
+  - name: get_result
+    capability_ref: ari.registry.tool.result
+    context_requirement: run

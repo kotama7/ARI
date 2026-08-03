@@ -1,0 +1,340 @@
+{
+  "$defs": {
+    "MemoryArtifactRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "title": "Digest",
+          "type": "string"
+        },
+        "integrity_status": {
+          "enum": [
+            "verified",
+            "unverified"
+          ],
+          "title": "Integrity Status",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relative_path",
+        "digest",
+        "size_bytes",
+        "role",
+        "integrity_status"
+      ],
+      "title": "MemoryArtifactRefV1",
+      "type": "object"
+    },
+    "MemoryMetricPointerV1": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "unit"
+      ],
+      "title": "MemoryMetricPointerV1",
+      "type": "object"
+    },
+    "MemoryNodeReportRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "title": "Digest",
+          "type": "string"
+        },
+        "node_id": {
+          "title": "Node Id",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "node_id",
+        "digest"
+      ],
+      "title": "MemoryNodeReportRefV1",
+      "type": "object"
+    },
+    "MemoryReactEntryV1": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "maxLength": 1000000,
+          "title": "Content",
+          "type": "string"
+        },
+        "entry_digest": {
+          "title": "Entry Digest",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "maxProperties": 256,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "ts": {
+          "title": "Ts",
+          "type": "number"
+        }
+      },
+      "required": [
+        "content",
+        "ts",
+        "entry_digest"
+      ],
+      "title": "MemoryReactEntryV1",
+      "type": "object"
+    },
+    "MemoryRecordV1": {
+      "additionalProperties": false,
+      "description": "Immutable index record; artifacts, not text, remain evidence.",
+      "properties": {
+        "ancestor_node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Ancestor Node Ids",
+          "type": "array"
+        },
+        "artifact_refs": {
+          "items": {
+            "$ref": "#/$defs/MemoryArtifactRefV1"
+          },
+          "maxItems": 1024,
+          "title": "Artifact Refs",
+          "type": "array"
+        },
+        "attributes": {
+          "additionalProperties": true,
+          "maxProperties": 256,
+          "title": "Attributes",
+          "type": "object"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Confidence"
+        },
+        "created_by_tool_ref": {
+          "title": "Created By Tool Ref",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "observation",
+            "experiment_result",
+            "failure_case",
+            "procedure",
+            "reflection",
+            "artifact_summary",
+            "paper_claim",
+            "reproducibility_event"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "metric_ptr": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryMetricPointerV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "node_report_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MemoryNodeReportRefV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "record_digest": {
+          "title": "Record Digest",
+          "type": "string"
+        },
+        "record_id": {
+          "title": "Record Id",
+          "type": "string"
+        },
+        "repro_status": {
+          "anyOf": [
+            {
+              "enum": [
+                "unverified",
+                "rerun_passed",
+                "rerun_failed",
+                "paper_only_reproduced"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repro Status"
+        },
+        "repro_target_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repro Target Id"
+        },
+        "schema_version": {
+          "const": "ari.memory-record/v1",
+          "default": "ari.memory-record/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_node_id": {
+          "title": "Source Node Id",
+          "type": "string"
+        },
+        "source_run_id": {
+          "title": "Source Run Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 100000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "text",
+        "source_run_id",
+        "source_node_id",
+        "created_by_tool_ref",
+        "record_id",
+        "record_digest"
+      ],
+      "title": "MemoryRecordV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/memory-backup-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "backup_digest": {
+      "title": "Backup Digest",
+      "type": "string"
+    },
+    "core_context": {
+      "additionalProperties": true,
+      "maxProperties": 256,
+      "title": "Core Context",
+      "type": "object"
+    },
+    "react_entries": {
+      "items": {
+        "$ref": "#/$defs/MemoryReactEntryV1"
+      },
+      "maxItems": 1000000,
+      "title": "React Entries",
+      "type": "array"
+    },
+    "record_digests": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000000,
+      "title": "Record Digests",
+      "type": "array"
+    },
+    "record_order": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000000,
+      "title": "Record Order",
+      "type": "array"
+    },
+    "records": {
+      "items": {
+        "$ref": "#/$defs/MemoryRecordV1"
+      },
+      "maxItems": 1000000,
+      "title": "Records",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.memory-backup/v1",
+      "default": "ari.memory-backup/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "records",
+    "react_entries",
+    "record_digests",
+    "record_order",
+    "backup_digest"
+  ],
+  "title": "ARI Memory Backup v1",
+  "type": "object"
+}

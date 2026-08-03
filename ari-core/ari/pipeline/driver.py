@@ -98,9 +98,41 @@ class WorkflowDriver:
         # Written to checkpoint as evaluation_criteria.json for downstream use
         _eval_criteria_path = checkpoint_dir / "evaluation_criteria.json"
         if not _eval_criteria_path.exists():
-            _ec = {"primary_metric": "", "higher_is_better": True, "metric_rationale": ""}
+            _ec = {
+                "primary_metric": "",
+                "higher_is_better": True,
+                "metric_rationale": "",
+                "metric_unit": "",
+                "research_contract_digest": "",
+            }
+            # Typed idea contracts are authoritative and already contain the
+            # frozen metric vocabulary. Verify the self-digest before consulting
+            # legacy memory/prose projections.
+            try:
+                from ari.public.research_contract import (
+                    ResearchContractError,
+                    parse_research_contract_document,
+                )
+
+                _typed_idea_path = Path(checkpoint_dir) / "idea.json"
+                if _typed_idea_path.is_file():
+                    _typed_idea = json.loads(_typed_idea_path.read_text())
+                    _typed_contract = parse_research_contract_document(_typed_idea)
+                    if _typed_contract is not None:
+                        _typed_metric = _typed_contract.metric_contract
+                        _ec["primary_metric"] = _typed_metric.name
+                        _ec["higher_is_better"] = _typed_metric.direction != "lower"
+                        _ec["metric_rationale"] = _typed_metric.rationale
+                        _ec["metric_unit"] = _typed_metric.unit
+                        _ec["research_contract_digest"] = (
+                            _typed_contract.contract_digest
+                        )
+            except ResearchContractError:
+                raise
+            except Exception as _typed_exc:
+                log.warning("Typed research contract rejected: %s", _typed_exc)
             # Strategy 1: check node memory_snapshot (populated if memory.add() succeeded)
-            for _n in all_nodes:
+            for _n in (all_nodes if not _ec["primary_metric"] else []):
                 for _snap in (_n.memory_snapshot if hasattr(_n, "memory_snapshot") else []):
                     if isinstance(_snap, str) and "EVALUATION_CRITERIA:" in _snap:
                         import re as _re_ec
@@ -262,7 +294,15 @@ class WorkflowDriver:
             _sd_path = Path(checkpoint_dir) / "science_data.json"
             if _sd_path.exists():
                 _sd = _json.loads(_sd_path.read_text())
-                _exp_ctx = _sd.get("experiment_context", {})
+                if _sd.get("schema_version") == "ari.science-data/v1":
+                    _annotation = _sd.get("interpretation") or {}
+                    _exp_ctx = (
+                        _annotation.get("experiment_context", {})
+                        if _annotation.get("status") == "ok"
+                        else {}
+                    )
+                else:
+                    _exp_ctx = _sd.get("experiment_context", {})
                 if _exp_ctx and not _exp_ctx.get("error"):
                     # Prioritize key_results and implementation_details at the front
                     # so they survive truncation in downstream prompts.
@@ -291,6 +331,38 @@ class WorkflowDriver:
                 _idea_data = json.loads(_idea_path.read_text())
                 _gap = _idea_data.get("gap_analysis", "")
                 _ideas = _idea_data.get("ideas", [])
+                _directive_idea_data = _idea_data
+                if _idea_data.get("research_contract") is not None:
+                    from ari.public.research_contract import (
+                        parse_research_contract_document,
+                    )
+
+                    _selected_contract = parse_research_contract_document(
+                        _idea_data
+                    )
+                    if _selected_contract is not None:
+                        _selected_idea = {
+                            "title": _selected_contract.title,
+                            "description": _selected_contract.hypothesis,
+                            "hypothesis": _selected_contract.hypothesis,
+                            "experiment_plan": _selected_contract.experiment_plan,
+                            "candidate_id": _selected_contract.selected_candidate_id,
+                            "falsification_conditions": list(
+                                _selected_contract.falsification_conditions
+                            ),
+                            "citations": list(_selected_contract.citations),
+                            "limitations": list(_selected_contract.limitations),
+                            "contract_status": "admitted",
+                        }
+                        _alternatives = [
+                            item
+                            for item in _ideas
+                            if not isinstance(item, dict)
+                            or item.get("candidate_id")
+                            != _selected_contract.selected_candidate_id
+                        ]
+                        _ideas = [_selected_idea, *_alternatives]
+                        _directive_idea_data = {**_idea_data, "ideas": _ideas}
                 if _ideas:
                     # Phase 1: auto-append plan/alternatives to checkpoint experiment.md.
                     # Mode is read from workflow.yaml (default index_only). Idempotent —
@@ -299,7 +371,9 @@ class WorkflowDriver:
                         _plan_promote_mode = str(_wf_cfg.get("plan_promote", "index_only")).lower()
                         if _plan_promote_mode in ("full", "index_only"):
                             _did_promote = _promote_plan_to_experiment_md(
-                                checkpoint_dir, _idea_data, mode=_plan_promote_mode
+                                checkpoint_dir,
+                                _directive_idea_data,
+                                mode=_plan_promote_mode,
                             )
                             if _did_promote:
                                 log.info(
@@ -498,6 +572,8 @@ class WorkflowDriver:
         # Initialise the feedback slot so {{vlm_feedback}} resolves to "" on
         # the first pass (before any loop has injected real feedback).
         ctx.tpl_vars.setdefault("vlm_feedback", "")
+        ctx.tpl_vars.setdefault("plot_revision", 0)
+        ctx.tpl_vars.setdefault("previous_figure_batch", "")
 
         _stage_idx = 0
         while _stage_idx < len(stages):
@@ -579,8 +655,30 @@ class WorkflowDriver:
                             )
                         else:
                             _loop_iterations[stage_name] = _count + 1
-                            # Surface review feedback to downstream template vars
-                            ctx.tpl_vars["vlm_feedback"] = _format_vlm_feedback(result)
+                            # Preserve the exact reviewed batch and revision. Native
+                            # visual reviews stay structured so plot feedback binds
+                            # manifest/review digests instead of an ad-hoc prose fold.
+                            _target_state = ctx.tpl_vars["stages"].get(
+                                _loop_target, {}
+                            )
+                            ctx.tpl_vars["previous_figure_batch"] = str(
+                                _target_state.get("output") or ""
+                            )
+                            ctx.tpl_vars["plot_revision"] = _count + 1
+                            if (
+                                isinstance(result, dict)
+                                and result.get("schema_version")
+                                == "ari.visual-review-batch/v1"
+                            ):
+                                ctx.tpl_vars["vlm_feedback"] = json.dumps(
+                                    result,
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                )
+                            else:
+                                ctx.tpl_vars["vlm_feedback"] = _format_vlm_feedback(
+                                    result
+                                )
                             # Reset state for stages [target_idx .. _stage_idx]
                             # so they actually re-run (don't hit skip_if_exists
                             # on their own outputs).

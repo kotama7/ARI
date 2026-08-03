@@ -1,5 +1,84 @@
+schema_version: 1
 name: transform-skill
-display_name: "Extract scientific context"
-description: "Traverses the full experiment tree and uses LLM to extract methodology setup and key findings"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-transform
+version: 0.2.0
+display_name: Materialize scientific evidence
+description: Convert experiment trees into science data and curated Experiment Analysis Reports.
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env:
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_COMPARISON_SCOPE
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_MODEL_TRANSFORM
+  - ARI_MODEL_TRANSFORM_REVISION
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - LLM_API_BASE
+  - LLM_MODEL
+  - OLLAMA_HOST
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+credential_scopes:
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
+tool_defaults:
+  phases: [paper]
+  side_effects: workspace-write
+  determinism: conditional
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, model]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: curate_ear
+    capability_ref: ari.ear.curate
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: generate_ear
+    capability_ref: ari.ear.generate
+  - name: nodes_to_science_data
+    capability_ref: ari.science-data.materialize
+    permissions: [workspace-read, workspace-write, network, model]
+  - name: promote_ear
+    capability_ref: ari.ear.promote
+    side_effects: stateful
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write, network]
+  - name: publish_ear
+    capability_ref: ari.ear.publish
+    side_effects: stateful
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write, network]

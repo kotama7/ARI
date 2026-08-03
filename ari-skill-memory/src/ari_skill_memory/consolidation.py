@@ -14,6 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ari.public.memory import canonical_memory_digest
+
 from .provenance import refs_from_node_report
 from .writer import add_typed_memory
 
@@ -23,7 +25,7 @@ _PRIMARY_METRIC_HINTS = ("gflop", "gb_per_s", "gb/s", "throughput", "speedup", "
 _SUCCESS = {"success", "succeeded", "ok"}
 
 
-def _primary_metric(metrics: dict) -> dict | None:
+def _primary_metric(metrics: dict, node_report: dict) -> dict | None:
     numeric = {
         k: v for k, v in metrics.items()
         if isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -37,9 +39,29 @@ def _primary_metric(metrics: dict) -> dict | None:
         matches = {k: v for k, v in numeric.items() if hint in k.lower()}
         if matches:
             k = max(matches, key=lambda key: matches[key])
-            return {"name": k, "value": float(matches[k])}
+            return _metric_pointer(k, matches[k], node_report)
     k, v = next(iter(numeric.items()))
-    return {"name": k, "value": float(v)}
+    return _metric_pointer(k, v, node_report)
+
+
+def _metric_pointer(name: str, value: float, node_report: dict) -> dict | None:
+    records = list(node_report.get("measurement_records") or [])
+    measurement_set = node_report.get("measurement_set") or {}
+    records.extend(measurement_set.get("measurements") or [])
+    unit = next(
+        (
+            str(record.get("unit"))
+            for record in records
+            if isinstance(record, dict)
+            and (record.get("metric_id") or record.get("name")) == name
+            and record.get("unit")
+        ),
+        None,
+    )
+    if unit is None:
+        # Do not infer units from a metric name; omit the denormalized pointer.
+        return None
+    return {"name": name, "value": float(value), "unit": unit}
 
 
 def _summary_text(node_report: dict) -> str:
@@ -64,7 +86,15 @@ def consolidate_from_node_report(
     ready to pass to ``writer.add_typed_memory`` / the typed MCP tools.
     """
     node_id = node_report.get("node_id", "")
-    nrr = {"run_id": run_id, "node_id": node_id} if run_id else {"node_id": node_id}
+    nrr = (
+        {
+            "run_id": run_id,
+            "node_id": node_id,
+            "digest": canonical_memory_digest(node_report),
+        }
+        if run_id
+        else None
+    )
     refs = refs_from_node_report(node_report, Path(work_dir))  # compute_missing baselines
     status = str(node_report.get("status", "")).lower()
     metrics = node_report.get("metrics") or {}
@@ -76,7 +106,7 @@ def consolidate_from_node_report(
         specs.append({
             "kind": "experiment_result",
             "text": headline[:600],
-            "metric_ptr": _primary_metric(metrics),
+            "metric_ptr": _primary_metric(metrics, node_report),
             "artifact_refs": refs,
             "node_report_ref": nrr,
         })
@@ -104,11 +134,20 @@ def consolidate_from_node_report(
     return specs
 
 
-def write_consolidated(backend: Any, node_id: str, specs: list[dict]) -> list[dict]:
+def write_consolidated(
+    backend: Any,
+    node_id: str,
+    specs: list[dict],
+    *,
+    run_id: str,
+    ancestor_ids: list[str],
+    artifact_root: Path,
+    created_by_tool_ref: str,
+) -> list[dict]:
     """Write consolidation specs via the typed writer (CoW: node_id is current).
 
     Returns the per-spec write results. Caller (ari-core hook) must have set
-    ``$ARI_CURRENT_NODE_ID == node_id``.
+    The MCP boundary has already verified a signed self-node context.
     """
     out: list[dict] = []
     for spec in specs:
@@ -121,8 +160,12 @@ def write_consolidated(backend: Any, node_id: str, specs: list[dict]) -> list[di
                 node_id,
                 spec["kind"],
                 spec["text"],
+                run_id=run_id,
+                ancestor_ids=ancestor_ids,
+                created_by_tool_ref=created_by_tool_ref,
                 metric_ptr=spec.get("metric_ptr"),
                 artifact_refs=spec.get("artifact_refs"),
+                artifact_root=artifact_root,
                 node_report_ref=spec.get("node_report_ref"),
                 extra=extra or None,
             )

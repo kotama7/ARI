@@ -152,6 +152,40 @@ def test_frontend_api_client_glob_covers_barrel_split_modules(
     }
 
 
+def test_cross_language_overlay_follows_split_api_barrel(tmp_path: Path) -> None:
+    _write(
+        tmp_path,
+        "frontend/services/api.ts",
+        "export * from './api/widgets';\n",
+    )
+    _write(
+        tmp_path,
+        "frontend/services/api/widgets.ts",
+        "export const widgets = () => get('/api/widgets');\n",
+    )
+    _write(
+        tmp_path,
+        "viz/routes.py",
+        "def route(path):\n    return path == '/api/widgets'\n",
+    )
+    graph = ar.build_graph(
+        tmp_path,
+        _fixture_config(
+            scan_roots=["viz"],
+            frontend_api_client="frontend/services/api.ts",
+            viz_route_dir="viz",
+        ),
+        manifest=None,
+    )
+    edge = next(
+        item
+        for item in graph["edges"]
+        if item["kind"] == "cross_lang.http"
+        and item["to"] == "route:/api/widgets"
+    )
+    assert edge["from"] == "ts.module:frontend/services/api/widgets.ts"
+
+
 # ── (c) repo smoke ──────────────────────────────────────────────────────────
 
 def _repo_graph() -> dict:
@@ -212,11 +246,14 @@ def test_repo_dynamic_overlay_no_orphans() -> None:
 def test_repo_mcp_tools_and_collision() -> None:
     graph = _repo_graph()
     tools = [n for n in graph["nodes"] if n["kind"] == "mcp.tool"]
-    # RQGM Task 03 Stage 0: idea skill re-registers survey/generate_ideas and
-    # demotes _load_virsci_snapshot_papers to a helper (net +1).
-    assert len(tools) == 88
+    # 89 provider-qualified nodes, representing 87 unique bare names because
+    # ``get_result`` and ``get_status`` each have two explicit providers.
+    assert len(tools) == 89
     collisions = {c["tool_name"]: set(c["skills"]) for c in graph["collisions"]}
-    assert collisions.get("read_file") == {"coding", "orchestrator"}
+    assert collisions == {
+        "get_result": {"orchestrator", "tool-registry"},
+        "get_status": {"orchestrator", "tool-registry"},
+    }
 
 
 def test_repo_evidence_and_no_sonfigs() -> None:

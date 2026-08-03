@@ -75,6 +75,9 @@ and **Reference**. Plus `about/` for project meta.
 - [CLI reference](reference/cli_reference.md)
 - [Configuration](reference/configuration.md)
 - [MCP skills](reference/skills.md)
+- [Orchestrator control plane](reference/orchestrator.md)
+- [Federated tool registry](reference/tool_registry.md)
+- [Qiskit and IBM Quantum profiles](reference/qiskit_profiles.md)
 - [Registry](reference/registry.md)
 - [MCP tools](reference/mcp_tools.md)
 - [Environment variables](reference/environment_variables.md)
@@ -85,6 +88,9 @@ and **Reference**. Plus `about/` for project meta.
 - [RQGM GUI read models](reference/rqgm_gui_read_models.md)
 - [RQGM schemas](reference/rqgm_schemas.md)
 - [Execution profile](reference/execution_profile.md)
+- [Execution and measurement contracts](reference/execution_contract.md)
+- [Paper build contract](reference/paper_build_contract.md)
+- [Scientific figure and visual-review contract](reference/figure_visual_contract.md)
 - [Rubric schema](reference/rubric_schema.md)
 - [PaperBench API](reference/api_paperbench.md)
 - [Glossary](reference/glossary.md)
@@ -141,6 +147,9 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/cli_reference | [✓](reference/cli_reference.md) | [✓](ja/reference/cli_reference.md) | [✓](zh/reference/cli_reference.md) |
 | reference/configuration | [✓](reference/configuration.md) | [✓](ja/reference/configuration.md) | [✓](zh/reference/configuration.md) |
 | reference/skills | [✓](reference/skills.md) | [✓](ja/reference/skills.md) | [✓](zh/reference/skills.md) |
+| reference/orchestrator | [✓](reference/orchestrator.md) | — | — |
+| reference/tool_registry | [✓](reference/tool_registry.md) | [✓](ja/reference/tool_registry.md) | [✓](zh/reference/tool_registry.md) |
+| reference/qiskit_profiles | [✓](reference/qiskit_profiles.md) | [✓](ja/reference/qiskit_profiles.md) | [✓](zh/reference/qiskit_profiles.md) |
 | reference/registry | [✓](reference/registry.md) | [✓](ja/reference/registry.md) | [✓](zh/reference/registry.md) |
 | reference/mcp_tools | [✓](reference/mcp_tools.md) | [✓](ja/reference/mcp_tools.md) | [✓](zh/reference/mcp_tools.md) |
 | reference/environment_variables | [✓](reference/environment_variables.md) | [✓](ja/reference/environment_variables.md) | [✓](zh/reference/environment_variables.md) |
@@ -151,6 +160,7 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/rqgm_gui_read_models | [✓](reference/rqgm_gui_read_models.md) | [✓](ja/reference/rqgm_gui_read_models.md) | [✓](zh/reference/rqgm_gui_read_models.md) |
 | reference/rqgm_schemas | [✓](reference/rqgm_schemas.md) | [✓](ja/reference/rqgm_schemas.md) | [✓](zh/reference/rqgm_schemas.md) |
 | reference/execution_profile | [✓](reference/execution_profile.md) | [✓](ja/reference/execution_profile.md) | [✓](zh/reference/execution_profile.md) |
+| reference/execution_contract | [✓](reference/execution_contract.md) | [✓](ja/reference/execution_contract.md) | [✓](zh/reference/execution_contract.md) |
 | reference/rubric_schema | [✓](reference/rubric_schema.md) | [✓](ja/reference/rubric_schema.md) | [✓](zh/reference/rubric_schema.md) |
 | reference/api_paperbench | [✓](reference/api_paperbench.md) | [✓](ja/reference/api_paperbench.md) | [✓](zh/reference/api_paperbench.md) |
 | reference/glossary | [✓](reference/glossary.md) | [✓](ja/reference/glossary.md) | [✓](zh/reference/glossary.md) |

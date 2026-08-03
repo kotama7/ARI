@@ -36,6 +36,8 @@ Each leaf is a TaskNode with these fields:
     Code Execution+Experimental Setup, Result Analysis+Evaluation, Metrics & Benchmarking.
     Figures/plots/visualizations belong to "Logging, Analysis & Presentation".
   - rationale_from_paper (leaves: required): {section, quote (verbatim from paper)}
+  - verification (leaves: required): a structured artifact, reproduce.log
+    pattern, or metric target. Never emit a shell command or unsafe path.
 
 Internal (non-leaf) nodes inside YOUR subtree need only ``id``,
 ``requirements``, ``weight``, ``sub_tasks``. Omit ``task_category``,
@@ -96,6 +98,9 @@ WORDING RULES (match PaperBench style):
     Replace ``\\(...\\)`` with parentheses, drop ``\\texttt{X}`` and emit
     just ``X``, replace ``\\$`` with ``$``, use plain ASCII for math
     symbols (write ``m+1`` not ``\\(m+1\\)``).
+  - For a genuine external prerequisite only, rationale_from_paper may instead
+    be {"external_prerequisite":{"description":"...","source":"..."}}.
+    Never use this for a paper claim whose quote failed to match.
 
 OUTPUT FORMAT:
 You MUST output a single JSON object — no prose, no markdown fences. The

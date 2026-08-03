@@ -9,9 +9,64 @@
       "has_all": false,
       "thin": true
     },
+    "ari.public.analysis": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.analysis"
+      ],
+      "exports": [
+        "ANALYSIS_REQUEST_V1",
+        "ANALYSIS_RESULT_V1",
+        "AnalysisArtifactTargetV1",
+        "AnalysisArtifactV1",
+        "AnalysisDataSourceV1",
+        "AnalysisObservationV1",
+        "AnalysisRequestV1",
+        "AnalysisResultV1",
+        "AnalysisSummaryV1",
+        "MetricSampleSetV1",
+        "RUN_COMPARISON_REQUEST_V1",
+        "RunComparisonRequestV1",
+        "RunComparisonResultV1",
+        "RunRecordV1",
+        "STATISTICAL_TEST_REQUEST_V1",
+        "StatisticalComparisonResultV1",
+        "StatisticalComparisonV1",
+        "StatisticalTestRequestV1",
+        "canonical_analysis_digest"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.call_context": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.call_context"
+      ],
+      "exports": [
+        "AUTHORIZED_TOOL_CONTEXT_V1",
+        "AuthorizedToolContextV1",
+        "CALL_CONTEXT_ARGUMENT",
+        "CONTEXT_AUTHORITY_ENV",
+        "CallContextAuthorizationError",
+        "NODE_CONTEXT_V1",
+        "NodeContextV1",
+        "RUN_CONTEXT_V1",
+        "RunContextV1",
+        "ToolCallContextV1",
+        "authorize_tool_context",
+        "lineage_digest",
+        "new_context_authority_key",
+        "run_scope_digest",
+        "verify_tool_context"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.claim_gate": {
       "all_is_dynamic": false,
       "backing": [
+        "ari.claim_gate_contract",
         "ari.pipeline.claim_gate",
         "ari.pipeline.claim_gate.contract",
         "ari.pipeline.claim_gate.invariants",
@@ -19,12 +74,42 @@
       ],
       "exports": [
         "CONCEPT_INVARIANTS",
+        "ClaimGateContractError",
         "FORMULAS",
+        "GateFindingV1",
+        "GateFormulaProvenanceV1",
+        "GateReportV1",
+        "MetricAdmissionDecisionV1",
+        "MetricClaimV1",
+        "MetricContractProposalV1",
+        "MetricGateContractV1",
+        "SemanticFindingV1",
+        "SemanticReviewV1",
+        "SemanticRevisionV1",
+        "admit_metric_contract_proposal",
         "check_emission",
         "classify_concept",
+        "migrate_legacy_gate_report",
+        "migrate_legacy_metric_gate_contract",
+        "parse_gate_report",
+        "parse_metric_gate_contract",
+        "parse_semantic_review",
         "required_roles",
         "run_hard_gate",
         "scan_science_data"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.clone": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.clone"
+      ],
+      "exports": [
+        "CloneError",
+        "CloneResult",
+        "clone"
       ],
       "has_all": true,
       "thin": true
@@ -56,6 +141,7 @@
         "Optional",
         "annotations",
         "config_from_env",
+        "container_shell_argv",
         "dataclass",
         "detect_runtime",
         "field",
@@ -66,7 +152,6 @@
         "run_in_container",
         "run_shell_in_container",
         "shutil",
-        "signal",
         "subprocess"
       ],
       "has_all": true,
@@ -101,6 +186,134 @@
       "has_all": true,
       "thin": true
     },
+    "ari.public.evaluation": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.claim_gate_contract"
+      ],
+      "exports": [
+        "ClaimGateContractError",
+        "GATE_FINDING_V1",
+        "GATE_REPORT_V1",
+        "GateFindingV1",
+        "GateFormulaProvenanceV1",
+        "GateReportV1",
+        "METRIC_ADMISSION_DECISION_V1",
+        "METRIC_CONTRACT_PROPOSAL_V1",
+        "METRIC_GATE_CONTRACT_V1",
+        "MetricAdmissionDecisionV1",
+        "MetricClaimV1",
+        "MetricContractProposalV1",
+        "MetricGateContractV1",
+        "SEMANTIC_REVIEW_V1",
+        "SemanticFindingV1",
+        "SemanticReviewV1",
+        "SemanticRevisionV1",
+        "admit_metric_contract_proposal",
+        "migrate_legacy_gate_report",
+        "migrate_legacy_metric_gate_contract",
+        "parse_gate_report",
+        "parse_metric_gate_contract",
+        "parse_semantic_review"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.execution": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.execution"
+      ],
+      "exports": [
+        "ContainerIdentityV1",
+        "EXECUTION_REQUEST_V1",
+        "EXECUTION_RESULT_V1",
+        "ExecutionArtifactV1",
+        "ExecutionLimitsV1",
+        "ExecutionPolicyError",
+        "ExecutionRequestV1",
+        "ExecutionResultV1",
+        "MEASUREMENT_SET_V1",
+        "MeasurementDocumentError",
+        "MeasurementDocumentFormat",
+        "MeasurementRecordV1",
+        "MeasurementSetV1",
+        "ResourceLimitReportV1",
+        "WORKSPACE_REF_V1",
+        "WorkspaceRefV1",
+        "build_minimal_environment",
+        "execute_local",
+        "measurement_document_format",
+        "parse_measurement_document",
+        "record_completed_execution"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.figures": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.figure_contract"
+      ],
+      "exports": [
+        "FIGURE_ARTIFACT_V1",
+        "FIGURE_BATCH_V1",
+        "FIGURE_ENVIRONMENT_V1",
+        "FIGURE_FEEDBACK_V1",
+        "FIGURE_MANIFEST_V1",
+        "FIGURE_SPEC_V1",
+        "FigureArtifactV1",
+        "FigureAxisV1",
+        "FigureBatchV1",
+        "FigureContractError",
+        "FigureEnvironmentV1",
+        "FigureFeedbackV1",
+        "FigureManifestV1",
+        "FigureSourceV1",
+        "FigureSpecV1",
+        "FigureUncertaintyV1",
+        "LEGACY_FIGURE_BATCH_V0",
+        "LegacyFigureBatchV0",
+        "canonical_figure_digest",
+        "parse_figure_batch",
+        "parse_figure_manifest",
+        "read_legacy_figure_batch"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.latex_claims": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.latex_claims"
+      ],
+      "exports": [
+        "ANCHOR_RE",
+        "build_section_map",
+        "claim_span_hash",
+        "extract_numeric_mentions",
+        "figure_references",
+        "find_claim_anchors",
+        "normalize_claim_sentence",
+        "section_at",
+        "sentence_for_anchor"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.lineage": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.lineage"
+      ],
+      "exports": [
+        "format_ancestor_pool_for_virsci",
+        "get_idea_pool_for_ckpt",
+        "walk_ancestor_ckpts"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.llm": {
       "all_is_dynamic": false,
       "backing": [
@@ -112,6 +325,80 @@
       "has_all": true,
       "thin": true
     },
+    "ari.public.memory": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.memory_contract"
+      ],
+      "exports": [
+        "MEMORY_BACKUP_V1",
+        "MEMORY_RECORD_V1",
+        "MEMORY_RETRIEVAL_V1",
+        "MemoryArtifactRefV1",
+        "MemoryBackupV1",
+        "MemoryMetricPointerV1",
+        "MemoryNodeReportRefV1",
+        "MemoryReactEntryV1",
+        "MemoryRecordV1",
+        "MemoryRetrievalProvenanceV1",
+        "MemoryRetrievalV1",
+        "build_memory_backup",
+        "build_memory_react_entry",
+        "build_memory_record",
+        "canonical_memory_digest"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.node_selection": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.orchestrator.node_selection"
+      ],
+      "exports": [
+        "build_parent_chain",
+        "collect_excluded",
+        "contributes_code",
+        "filter_nodes",
+        "is_narrative_step",
+        "is_relevant_for_synthesis",
+        "load_selected_sources",
+        "select_source_files_for_publication"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.paper": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.paper_contract"
+      ],
+      "exports": [
+        "PAPER_ARTIFACT_V1",
+        "PAPER_BUILD_V1",
+        "PAPER_COMPILE_V1",
+        "PAPER_MODEL_CALL_BATCH_V1",
+        "PAPER_MODEL_CALL_V1",
+        "PAPER_REVIEW_SET_V1",
+        "PAPER_REVISION_V1",
+        "PaperArtifactV1",
+        "PaperBuildV1",
+        "PaperCompileV1",
+        "PaperContractError",
+        "PaperGateSummaryV1",
+        "PaperModelCallBatchV1",
+        "PaperModelCallV1",
+        "PaperModelUsageV1",
+        "PaperNumericCoverageV1",
+        "PaperReviewSetV1",
+        "PaperRevisionV1",
+        "canonical_paper_digest",
+        "parse_paper_build",
+        "parse_paper_model_call_batch"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.paths": {
       "all_is_dynamic": false,
       "backing": [
@@ -119,6 +406,59 @@
       ],
       "exports": [
         "PathManager"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.publish": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.publish"
+      ],
+      "exports": [
+        "PublishError",
+        "PublishRecord",
+        "promote",
+        "publish"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.research_contract": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.research_contract"
+      ],
+      "exports": [],
+      "has_all": false,
+      "thin": true
+    },
+    "ari.public.result": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.result"
+      ],
+      "exports": [
+        "ARTIFACT_REF_V1",
+        "ASYNC_TOOL_HANDLE_V1",
+        "AsyncStateMapV1",
+        "AsyncToolEndpointV1",
+        "AsyncToolHandleV1",
+        "DEFAULT_INLINE_RESULT_LIMIT",
+        "NodeContextV1",
+        "RAW_RESULT_ROLE",
+        "RESULT_ENVELOPE_V1",
+        "ResultArtifactIntegrityError",
+        "ResultArtifactV1",
+        "ResultEnvelopeNormalizer",
+        "ResultEnvelopeV1",
+        "ResultErrorKind",
+        "ResultErrorV1",
+        "ResultProvenanceV1",
+        "RunContextV1",
+        "SHA256_DIGEST_PATTERN",
+        "ToolCallContextV1",
+        "utc_now_iso"
       ],
       "has_all": true,
       "thin": true
@@ -145,6 +485,100 @@
       "has_all": true,
       "thin": true
     },
+    "ari.public.science_data": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.science_data_contract"
+      ],
+      "exports": [
+        "FORMULAS",
+        "SCIENCE_ARTIFACT_REF_V1",
+        "SCIENCE_DATA_V1",
+        "SCIENCE_DERIVED_V1",
+        "SCIENCE_INTERPRETATION_V1",
+        "SCIENCE_PROVENANCE_V1",
+        "SCIENCE_RAW_V1",
+        "ScienceArtifactRefV1",
+        "ScienceClaimEvidenceV1",
+        "ScienceClaimV1",
+        "ScienceConfigurationV1",
+        "ScienceDataError",
+        "ScienceDataV1",
+        "ScienceDerivedV1",
+        "ScienceEnvironmentV1",
+        "ScienceEvidenceResultV1",
+        "ScienceInterpretationV1",
+        "ScienceMetricSummaryV1",
+        "ScienceNumericAssertionV1",
+        "ScienceOperandV1",
+        "ScienceProvenanceV1",
+        "ScienceRawV1",
+        "canonical_science_digest",
+        "formula_registry_digest",
+        "migrate_legacy_science_data",
+        "parse_science_data",
+        "recompute",
+        "required_roles",
+        "science_data_projection"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.skill_lock": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.skill_lock"
+      ],
+      "exports": [
+        "DEFAULT_RUNTIME_PHASES",
+        "LockedCredentialScopeV1",
+        "LockedSkillV1",
+        "LockedToolV1",
+        "SKILLS_LOCK_FILENAME",
+        "SKILLS_LOCK_SCHEMA_VERSION",
+        "SkillLockCorruptError",
+        "SkillLockError",
+        "SkillLockMismatchError",
+        "SkillLockMissingError",
+        "SkillProviderAdmissionError",
+        "SkillsLockV1",
+        "build_skills_lock",
+        "load_skills_lock",
+        "skills_lock_digest",
+        "verify_skills_lock_subset",
+        "write_or_verify_skills_lock"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.skill_manifest": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.skill_manifest"
+      ],
+      "exports": [
+        "AsyncLifecycleV1",
+        "CredentialScopeV1",
+        "LEGACY_MCP_RESULT_V1",
+        "MANIFEST_FILENAME",
+        "RESULT_ENVELOPE_V1",
+        "ResolvedToolManifestV1",
+        "SkillEntrypointV1",
+        "SkillManifestError",
+        "SkillManifestV1",
+        "TimeoutBudgetV1",
+        "ToolManifestV1",
+        "ToolPolicyV1",
+        "legacy_mcp_document",
+        "load_skill_manifest",
+        "looks_like_credential_environment_name",
+        "manifest_digest",
+        "manifest_tool_ref",
+        "resolve_skill_entrypoint"
+      ],
+      "has_all": true,
+      "thin": true
+    },
     "ari.public.verified_context": {
       "all_is_dynamic": false,
       "backing": [
@@ -154,6 +588,32 @@
         "build_verified_context",
         "render_grounded_block",
         "write_verified_context"
+      ],
+      "has_all": true,
+      "thin": true
+    },
+    "ari.public.visual_review": {
+      "all_is_dynamic": false,
+      "backing": [
+        "ari.visual_review_contract"
+      ],
+      "exports": [
+        "VISUAL_ARTIFACT_REF_V1",
+        "VISUAL_CRITERIA_PROFILE_V1",
+        "VISUAL_REVIEW_BATCH_V1",
+        "VISUAL_REVIEW_V1",
+        "VisualArtifactRefV1",
+        "VisualCriteriaProfileV1",
+        "VisualCriterionV1",
+        "VisualIssueV1",
+        "VisualModelUsageV1",
+        "VisualRegionV1",
+        "VisualReviewBatchV1",
+        "VisualReviewContractError",
+        "VisualReviewV1",
+        "canonical_visual_review_digest",
+        "parse_visual_review",
+        "parse_visual_review_batch"
       ],
       "has_all": true,
       "thin": true

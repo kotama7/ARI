@@ -117,12 +117,11 @@ ARI 围绕一个原则设计：**用 Markdown 描述目标 — 其余的交给 A
   `scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`
   在自测中驱动。
 - **`container_image` 端到端贯通** — 同一个字段从向导 → API worker →
-  MCP 工具 → 沙盒运行器一路传递；`pb-env` / `pb-reproducer` 短别名
-  通过 `scripts/build_pb_images.sh` 解析为对应的 `image:latest` 标签。
-- **失败时立即报错的前置检查** — 沙盒 / GPU 不匹配的四处原本静默
-  降级到主机 CPU 的位置，现在默认抛出可操作的 `RuntimeError`；
-  兼容回退路径通过 `ARI_PHASE1_ALLOW_FALLBACK=1` 与
-  `ARI_SLURM_ALLOW_NO_GRES=1` 显式启用。
+  MCP 工具 → 沙盒运行器一路传递。v1.0 仅接受不可变的本地 SIF、完整
+  Docker `sha256:<image-id>` 或按摘要固定的 registry URI；可变的
+  `pb-env` / `pb-reproducer` 别名已删除。
+- **失败时立即报错的前置检查** — 沙盒 / GPU 不匹配会直接报错。旧的
+  host-local 再现回退已在 v1.0 删除，GPU 请求也不能静默降级。
 - **PaperBench env-truth 护栏** — Stage 1 提示加入
   「先 probe 再 scaffold」「对抗语言选择的 Python 偏置」
   「按主机实测注入 `ADDITIONAL NOTES`（二进制 / GPU / 网络 / 第二阶段隔离）」

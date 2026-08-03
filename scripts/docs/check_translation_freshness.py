@@ -57,12 +57,7 @@ EXEMPT_DIR_SEGMENTS = (
 def is_exempt(rel: str) -> bool:
     if rel in EXEMPT_FILES:
         return True
-    # Per-directory README.md files are English-only repo-navigation indexes
-    # managed by scripts/readme_sync.py, which deliberately never creates
-    # counterparts under docs/ja/ or docs/zh/ (SKIP_RELPATHS).  The section
-    # page that IS translated is index.md, which stays fully tracked here —
-    # so READMEs are exempt from translation-freshness tracking.
-    if rel.endswith("/README.md"):
+    if Path(rel).name == "README.md":
         return True
     return any(seg in rel.split("/") for seg in EXEMPT_DIR_SEGMENTS)
 

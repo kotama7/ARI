@@ -1,4 +1,3 @@
-from __future__ import annotations
 """OpenAI-compatible HTTP shim that serves agentic CLIs (`claude -p`,
 `codex exec`) as chat-completion backends.
 
@@ -86,6 +85,8 @@ bare mode reads auth strictly from ``ANTHROPIC_API_KEY`` (OAuth/keychain are
 never read), so it MUST NOT be used with subscription (login) auth; keep it
 for API-key setups only.
 """
+
+from __future__ import annotations
 
 import argparse
 import json
@@ -458,6 +459,140 @@ def mcp_name_resolution_note(allowed_mcp_tools: list[str] | None) -> str:
     return "\n\n" + template.format(rows=rows).rstrip("\n")
 
 
+def _materialize_mcp_credential_env(
+    mcp_config: dict,
+    source_env: dict[str, str] | None = None,
+) -> dict:
+    """Resolve value-free credential references in a local MCP config copy."""
+
+    source = source_env if source_env is not None else os.environ
+    materialized = json.loads(json.dumps(mcp_config))
+    servers = materialized.get("mcpServers")
+    if not isinstance(servers, dict):
+        raise ValueError("mcp_config.mcpServers must be an object")
+    for name, server in servers.items():
+        if not isinstance(server, dict):
+            raise ValueError(f"MCP server {name!r} must be an object")
+        refs = server.pop("_ariCredentialEnv", [])
+        if not isinstance(refs, list) or any(
+            not isinstance(ref, str) or not re.fullmatch(r"[A-Z_][A-Z0-9_]*", ref)
+            for ref in refs
+        ):
+            raise ValueError(f"MCP server {name!r} has invalid credential env refs")
+        environment = server.setdefault("env", {})
+        if not isinstance(environment, dict):
+            raise ValueError(f"MCP server {name!r} env must be an object")
+        for ref in refs:
+            value = source.get(ref)
+            if not value:
+                raise ValueError(
+                    f"MCP server {name!r} credential env ref {ref!r} is unavailable"
+                )
+            environment[ref] = value
+    return materialized
+
+
+def _mcp_credential_values(
+    mcp_config: dict,
+    source_env: dict[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Return present local values referenced by an already validated config."""
+
+    source = source_env if source_env is not None else os.environ
+    values: set[str] = set()
+    for server in (mcp_config.get("mcpServers") or {}).values():
+        if not isinstance(server, dict):
+            continue
+        for name in server.get("_ariCredentialEnv") or []:
+            value = source.get(name)
+            if value:
+                values.add(value)
+    return tuple(sorted(values, key=len, reverse=True))
+
+
+def _redact_mcp_credential_values(text: str | None, values: tuple[str, ...]) -> str:
+    rendered = text or ""
+    for value in values:
+        rendered = rendered.replace(value, "<redacted:credential>")
+        escaped = json.dumps(value, ensure_ascii=False)[1:-1]
+        rendered = rendered.replace(escaped, "<redacted:credential>")
+    return rendered
+
+
+def _write_claude_mcp_config(mcp_config: dict, cwd: str) -> str:
+    """Write a mode-0600 local config and remove partial files on failure."""
+
+    materialized = _materialize_mcp_credential_env(mcp_config)
+    path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w", suffix=".mcp.json", dir=cwd, delete=False, encoding="utf-8"
+        ) as fh:
+            path = fh.name
+            json.dump(materialized, fh)
+        os.chmod(path, 0o600)
+        return path
+    except BaseException:
+        if path:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        raise
+
+
+def _build_claude_command(
+    *,
+    system: str,
+    agent: bool,
+    real_model: str | None,
+    use_mcp: bool,
+    mcp_json_file: str | None,
+    allowed_mcp_tools: list[str] | None,
+    debug_log: str | None,
+) -> list[str]:
+    """Build the Claude CLI argv after any secret-bearing file is materialized."""
+
+    output_format = "stream-json" if use_mcp else "json"
+    cmd = [
+        CLAUDE_BIN,
+        "-p",
+        "--output-format",
+        output_format,
+        "--strict-mcp-config",
+    ]
+    if use_mcp:
+        cmd.append("--verbose")
+    if CLAUDE_BARE:
+        cmd.append("--bare")
+    if real_model:
+        cmd += ["--model", real_model]
+    if system:
+        cmd += ["--system-prompt", system]
+    if use_mcp:
+        if not mcp_json_file or not debug_log:
+            raise ValueError("MCP Claude invocation requires config and debug paths")
+        cmd += [
+            "--mcp-config",
+            mcp_json_file,
+            "--allowedTools",
+            " ".join(allowed_mcp_tools or []),
+            "--permission-mode",
+            CLAUDE_AGENT_PERMISSION,
+            "--debug-file",
+            debug_log,
+        ]
+    elif agent:
+        cmd += ["--permission-mode", CLAUDE_AGENT_PERMISSION]
+    else:
+        cmd += ["--allowedTools", ""]
+    if MAX_BUDGET_USD:
+        cmd += ["--max-budget-usd", MAX_BUDGET_USD]
+    if CLAUDE_MAX_TURNS > 0:
+        cmd += ["--max-turns", str(CLAUDE_MAX_TURNS)]
+    return cmd
+
+
 def run_claude(
     system: str,
     prompt: str,
@@ -489,57 +624,49 @@ def run_claude(
     """
     mcp_json_file: str | None = None
     use_mcp = bool(mcp_config and allowed_mcp_tools)
-    debug_log = os.path.join(cwd, "claude_debug.log") if use_mcp else None
-
+    credential_values: tuple[str, ...] = ()
     if use_mcp:
-        cmd = [CLAUDE_BIN, "-p", "--output-format", "stream-json", "--verbose"]
-    else:
-        cmd = [CLAUDE_BIN, "-p", "--output-format", "json"]
-    # Unconditional: without it a nested claude that inherits the parent
-    # session's project boots every ambient MCP server (observed: 15 ari-skill
-    # servers forked per plain-text judge/select call). Strict mode still
-    # honors the explicit --mcp-config passed in the use_mcp branch below.
-    cmd.append("--strict-mcp-config")
-    if CLAUDE_BARE:
-        cmd.append("--bare")
-    if real_model:
-        cmd += ["--model", real_model]
-    # Under delegation the caller's bare tool names are not callable; publish
-    # the mapping alongside the caller's own system prompt (see
-    # `mcp_name_resolution_note`). Empty string when not delegating, so the
-    # non-MCP prompt stays byte-identical.
-    _system = (system or "") + (
+        credential_values = _mcp_credential_values(mcp_config)
+    debug_log = (
+        os.devnull
+        if credential_values
+        else os.path.join(cwd, "claude_debug.log") if use_mcp else None
+    )
+    # Delegated CLIs expose MCP tools under qualified names while ARI prompts
+    # use their manifest names. Publish the mechanically derived mapping only
+    # for delegated calls; plain prompts remain byte-identical.
+    effective_system = (system or "") + (
         mcp_name_resolution_note(allowed_mcp_tools) if use_mcp else ""
     )
-    if _system:
-        cmd += ["--system-prompt", _system]
     if use_mcp:
-        # Materialise the MCP server config as a tmp JSON file in cwd so it
-        # survives for post-mortem inspection alongside tool_calls.jsonl.
-        fh = tempfile.NamedTemporaryFile(
-            "w", suffix=".mcp.json", dir=cwd, delete=False, encoding="utf-8",
-        )
+        # Credential values are materialized only inside the local shim and the
+        # temporary file exists only while Claude is running.
+        assert mcp_config is not None
+        mcp_json_file = _write_claude_mcp_config(mcp_config, cwd)
+    cmd = _build_claude_command(
+        system=effective_system,
+        agent=agent,
+        real_model=real_model,
+        use_mcp=use_mcp,
+        mcp_json_file=mcp_json_file,
+        allowed_mcp_tools=allowed_mcp_tools,
+        debug_log=debug_log,
+    )
+    try:
         try:
-            json.dump(mcp_config, fh)
-        finally:
-            fh.close()
-        mcp_json_file = fh.name
-        cmd += [
-            "--mcp-config", mcp_json_file,
-            "--allowedTools", " ".join(allowed_mcp_tools or []),
-            "--permission-mode", CLAUDE_AGENT_PERMISSION,
-            "--debug-file", debug_log,
-        ]
-    elif agent:
-        cmd += ["--permission-mode", CLAUDE_AGENT_PERMISSION]
-    else:
-        # No tools => pure text/JSON generation.
-        cmd += ["--allowedTools", ""]
-    if MAX_BUDGET_USD:
-        cmd += ["--max-budget-usd", MAX_BUDGET_USD]
-    if CLAUDE_MAX_TURNS > 0:
-        cmd += ["--max-turns", str(CLAUDE_MAX_TURNS)]
-    proc = _run(cmd, prompt, cwd)
+            proc = _run(cmd, prompt, cwd)
+        except subprocess.TimeoutExpired as exc:
+            exc.stdout = _redact_mcp_credential_values(exc.stdout, credential_values)
+            exc.stderr = _redact_mcp_credential_values(exc.stderr, credential_values)
+            raise
+    finally:
+        if mcp_json_file:
+            try:
+                os.unlink(mcp_json_file)
+            except OSError:
+                pass
+    proc.stdout = _redact_mcp_credential_values(proc.stdout, credential_values)
+    proc.stderr = _redact_mcp_credential_values(proc.stderr, credential_values)
     if proc.returncode != 0:
         raise RuntimeError(
             f"claude exited {proc.returncode}: {(proc.stderr or proc.stdout)[:500]}"
