@@ -9,7 +9,6 @@ and provenance-aware run comparison — no LLM calls.
 - `README.md` — this file.
 - `__init__.py` — empty package marker.
 - `server.py` — MCP entry point exposing `analyze_results`, `statistical_test`,
-  and `compare_runs`; plotting belongs to `ari-skill-plot`.
 
 ## See also
 

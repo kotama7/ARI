@@ -7,4 +7,3 @@ Pytest suite for the VLM skill (figure / table review).
 - `README.md` — this file.
 - `conftest.py` — shared fixtures.
 - `test_server.py` — artifact limits, strict output, figure/table/batch review,
-  typed failures, model provenance, and iteration lineage.

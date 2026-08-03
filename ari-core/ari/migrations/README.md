@@ -10,7 +10,6 @@ imports these readers; they only produce read-only migration views.
 - `__init__.py` — rationale + layout.
 - `checkpoint.py` — digest-bound, read-only view of legacy paper/replay inputs.
 - `skill_manifest.py` — in-memory conversion of unversioned Skill metadata;
-  converted Skills remain default-off and cannot enter runtime discovery.
 - `v05_to_v07/` — v0.5 → v0.7 migration helpers.
   - `README.md` — v05_to_v07 index.
   - `__init__.py` — subsystem map + deprecation plan.
