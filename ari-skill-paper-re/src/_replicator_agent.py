@@ -35,10 +35,9 @@ Key differences from a vanilla ``BasicAgentSolver`` invocation:
    ``/home/submission`` so the agent operates in ari's
    ``repro_sandbox/`` layout without needing a fake chroot.
 
-4. After the agent finishes (submit / time-limit), the workspace is
-   inspected: if ``reproduce.sh`` ended up under ``submission/``, it is
-   promoted to the workspace root so ari's downstream
-   ``ors_run_reproduce`` finds it where it expects.
+4. After the agent finishes (submit / time-limit), its complete submission
+   tree is promoted to the workspace root so ``reproduce.sh`` and all of its
+   source dependencies stay together for downstream ``ors_run_reproduce``.
 """
 
 from __future__ import annotations
@@ -550,6 +549,92 @@ class AriPBSolver(BasicAgentSolver):
         )
 
 
+def _promote_submission_tree(submission: Path, workspace: Path) -> list[str]:
+    """Copy the agent's reproducible source tree to the Phase-1 root.
+
+    PaperBench intentionally makes the agent work in ``submission/`` while
+    ARI's workflow invokes ``repro_sandbox/reproduce.sh``.  Copying only that
+    script severs relative source/config dependencies.  Prefer git's tracked
+    plus non-ignored file set (so generated binaries/results remain excluded),
+    with a filesystem fallback for agents that did not initialize git.
+
+    Every source and destination is containment-checked and symlinks are
+    rejected; an agent cannot use promotion to read or overwrite outside the
+    declared workspace.
+    """
+    submission_path = Path(submission)
+    workspace_path = Path(workspace)
+    if submission_path.is_symlink():
+        raise ValueError("submission promotion rejects a symlinked source root")
+    submission = submission_path.resolve()
+    workspace = workspace_path.resolve()
+    if not submission.is_dir() or submission == workspace:
+        return []
+    if workspace not in submission.parents:
+        raise ValueError("submission promotion source must be inside workspace")
+
+    def reject_symlink_components(root: Path, rel: Path, *, label: str) -> None:
+        cursor = root
+        for part in rel.parts:
+            cursor /= part
+            # is_symlink() also detects a dangling link, unlike exists().
+            if cursor.is_symlink():
+                raise ValueError(
+                    f"submission promotion rejects {label} symlink: {rel}"
+                )
+
+    relative_files: list[Path] = []
+    git_inventory_available = False
+    git_entry = submission / ".git"
+    if git_entry.exists() and not git_entry.is_symlink():
+        try:
+            proc = subprocess.run(
+                [
+                    "git", "-C", str(submission), "ls-files", "-z",
+                    "--cached", "--others", "--exclude-standard",
+                ],
+                capture_output=True,
+                timeout=30,
+                check=True,
+            )
+            relative_files = [
+                Path(raw.decode("utf-8"))
+                for raw in proc.stdout.split(b"\0")
+                if raw
+            ]
+            git_inventory_available = True
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError) as exc:
+            log.warning("git-aware submission promotion failed; falling back: %s", exc)
+
+    if not git_inventory_available:
+        relative_files = [
+            path.relative_to(submission)
+            for path in submission.rglob("*")
+            if path.is_file() and ".git" not in path.relative_to(submission).parts
+        ]
+
+    promoted: list[str] = []
+    for rel in sorted(set(relative_files), key=lambda path: path.as_posix()):
+        if rel.is_absolute() or ".." in rel.parts or ".git" in rel.parts:
+            raise ValueError(f"unsafe submission path: {rel}")
+        reject_symlink_components(submission, rel, label="source")
+        source = submission / rel
+        if not source.is_file():
+            raise ValueError(f"submission promotion rejects non-file: {rel}")
+        source_resolved = source.resolve()
+        if source_resolved != submission and submission not in source_resolved.parents:
+            raise ValueError(f"submission path escapes source tree: {rel}")
+        destination = workspace / rel
+        reject_symlink_components(workspace, rel, label="destination")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination_resolved = destination.resolve(strict=False)
+        if destination_resolved != workspace and workspace not in destination_resolved.parents:
+            raise ValueError(f"submission path escapes workspace: {rel}")
+        shutil.copy2(source, destination)
+        promoted.append(rel.as_posix())
+    return promoted
+
+
 # ─── high-level entry ─────────────────────────────────────────────────────
 
 
@@ -678,16 +763,19 @@ async def run_replicator_agent(
     finally:
         await computer.stop()
 
-    # Promote submission/reproduce.sh → workspace root if the agent put it there.
-    sub = work / "submission" / "reproduce.sh"
+    # PaperBench makes the agent build a self-contained repository under
+    # submission/.  Phase 1 executes from the workspace root, so promote the
+    # complete non-ignored tree, not just reproduce.sh (which would sever its
+    # relative source/config dependencies).
+    submission = work / "submission"
+    promoted_files = _promote_submission_tree(submission, work)
     root = work / "reproduce.sh"
-    if sub.is_file() and not root.is_file():
-        root.write_bytes(sub.read_bytes())
-        try:
-            root.chmod(0o755)
-        except OSError:
-            pass
-        log.info("promoted submission/reproduce.sh → reproduce.sh")
+    if promoted_files:
+        log.info(
+            "promoted %d submission files to Phase-1 root: %s",
+            len(promoted_files),
+            ", ".join(promoted_files),
+        )
 
     populated = root.is_file()
     files = sorted(p.name for p in work.iterdir() if p.is_file())
@@ -703,7 +791,7 @@ async def run_replicator_agent(
         "agent_runtime_sec": int(agent_output.runtime_in_seconds),
         "notes": (
             "Agent-driven replicator (BasicAgent/IterativeAgent). "
-            "reproduce.sh promoted from submission/ if needed."
+            "The complete non-ignored submission tree is promoted for Phase 1."
         ),
         "warnings": [] if populated else ["agent finished without writing reproduce.sh"],
     }

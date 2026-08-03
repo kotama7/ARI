@@ -69,6 +69,143 @@ def test_extract_arguments_already_string():
     assert json.loads(calls[0]["function"]["arguments"]) == {"k": "v"}
 
 
+def test_extract_removes_strict_schema_nulls_and_unknown_arguments():
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "bash",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cmd": {"type": "string"},
+                    "timeout": {"type": "integer"},
+                },
+                "required": ["cmd"],
+            },
+        },
+    }]
+    text = json.dumps({"tool_calls": [{
+        "name": "bash",
+        "arguments": {"cmd": "pwd", "timeout": None, "schema_only": None},
+    }]})
+    calls, _ = cs.extract_tool_calls(text, tools=tools)
+    assert json.loads(calls[0]["function"]["arguments"]) == {"cmd": "pwd"}
+
+
+def test_extract_preserves_required_and_explicitly_nullable_nulls():
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "configure",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "required_value": {"type": ["string", "null"]},
+                    "optional_nullable": {
+                        "anyOf": [{"type": "integer"}, {"type": "null"}],
+                    },
+                    "strict_only_optional": {"type": "integer"},
+                },
+                "required": ["required_value"],
+            },
+        },
+    }]
+    text = json.dumps({"tool_calls": [{
+        "name": "configure",
+        "arguments": {
+            "required_value": None,
+            "optional_nullable": None,
+            "strict_only_optional": None,
+        },
+    }]})
+
+    calls, _ = cs.extract_tool_calls(text, tools=tools)
+
+    assert json.loads(calls[0]["function"]["arguments"]) == {
+        "required_value": None,
+        "optional_nullable": None,
+    }
+
+
+def test_extract_sanitizes_nested_optional_fields():
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "configure",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "config": {
+                        "type": "object",
+                        "properties": {
+                            "required_nested": {"type": "string"},
+                            "optional_nested": {"type": "integer"},
+                        },
+                        "required": ["required_nested"],
+                    },
+                },
+                "required": ["config"],
+            },
+        },
+    }]
+    text = json.dumps({"tool_calls": [{
+        "name": "configure",
+        "arguments": {"config": {
+            "required_nested": None,
+            "optional_nested": None,
+            "unknown": 1,
+        }},
+    }]})
+
+    calls, _ = cs.extract_tool_calls(text, tools=tools)
+
+    assert json.loads(calls[0]["function"]["arguments"]) == {
+        "config": {"required_nested": None},
+    }
+
+
+def test_extract_preserves_arguments_for_open_object_schema():
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "opaque",
+            "parameters": {"type": "object"},
+        },
+    }]
+    text = json.dumps({"tool_calls": [{
+        "name": "opaque",
+        "arguments": {"provider_field": None, "count": 2},
+    }]})
+
+    calls, _ = cs.extract_tool_calls(text, tools=tools)
+
+    assert json.loads(calls[0]["function"]["arguments"]) == {
+        "provider_field": None,
+        "count": 2,
+    }
+
+
+def test_codex_strict_schema_preserves_nullable_object_and_array_shapes():
+    nullable_object = cs._codex_strict_schema_node({
+        "type": ["object", "null"],
+        "properties": {"value": {"type": "string"}},
+    })
+    nullable_array = cs._codex_strict_schema_node({
+        "type": "array",
+        "nullable": True,
+        "items": {
+            "type": "object",
+            "properties": {"optional": {"type": "integer"}},
+        },
+    })
+
+    assert nullable_object["type"] == ["object", "null"]
+    assert nullable_object["required"] == ["value"]
+    assert nullable_array["type"] == ["array", "null"]
+    assert "nullable" not in nullable_array
+    assert nullable_array["items"]["required"] == ["optional"]
+
+
 def test_extract_plain_text_is_not_a_tool_call():
     calls, residual = cs.extract_tool_calls("The result is 42 GB/s.")
     assert calls is None
@@ -146,7 +283,10 @@ def test_tool_catalog_lists_names_and_schema():
 
 
 def test_protocol_required_vs_auto():
-    assert "MUST call at least one tool" in cs._tool_protocol_instructions("required")
+    required = cs._tool_protocol_instructions("required")
+    assert "MUST call at least one tool" in required
+    assert "Do NOT use any CLI-native shell" in required
+    assert "ONLY valid way" in required
     assert "plain text" in cs._tool_protocol_instructions("auto")
     forced = cs._tool_protocol_instructions(
         {"type": "function", "function": {"name": "emit_results"}})
@@ -789,8 +929,10 @@ def test_codex_text_from_stdout_recovers_assistant_message():
         json.dumps({"msg": {"type": "agent_message",
                             "last_agent_message": "first"}}),
         json.dumps({"type": "token_count", "usage": {"input_tokens": 3}}),
-        json.dumps({"msg": {"type": "agent_message",
-                            "last_agent_message": "final answer"}}),
+        # Current codex JSONL shape (rust-v0.146.0+).
+        json.dumps({"type": "item.completed", "item": {
+            "id": "item_0", "type": "agent_message", "text": "final answer"
+        }}),
     ])
     assert cs._codex_text_from_stdout(stream) == "final answer"
     assert cs._codex_text_from_stdout("") == ""
@@ -824,6 +966,23 @@ def test_run_codex_recovers_from_stdout_when_output_file_lost(monkeypatch, tmp_p
     text, _usage = cs.run_codex("sys", "prompt", agent=False,
                                 real_model=None, cwd=str(tmp_path))
     assert text == "recovered reply"
+
+
+def test_run_codex_recovers_from_stdout_when_output_file_is_empty(
+    monkeypatch, tmp_path
+):
+    """A present-but-empty ``-o`` file is the failure shape observed under
+    concurrent PaperBench judging; current item.completed JSONL must recover it.
+    """
+    stream = json.dumps({
+        "type": "item.completed",
+        "item": {"id": "item_0", "type": "agent_message", "text": "files.txt"},
+    })
+    monkeypatch.setattr(cs.subprocess, "run", lambda *args, **kwargs: _FakeProc(stream))
+    text, _usage = cs.run_codex(
+        "sys", "prompt", agent=False, real_model=None, cwd=str(tmp_path)
+    )
+    assert text == "files.txt"
 
 
 def test_run_codex_raises_when_output_lost_and_stdout_empty(monkeypatch, tmp_path):
@@ -938,6 +1097,9 @@ def _capture_codex_cmd(monkeypatch, tmp_path, **run_codex_kw):
 
     def _fake_run(cmd, input, capture_output, text, timeout, cwd):
         captured["cmd"] = cmd
+        if "--output-schema" in cmd:
+            schema_path = cmd[cmd.index("--output-schema") + 1]
+            captured["output_schema"] = json.loads(Path(schema_path).read_text())
         # write the -o last_msg_file so run_codex reads a normal reply
         if "-o" in cmd:
             import os as _os
@@ -984,6 +1146,149 @@ def test_run_codex_plain_still_isolates_but_attaches_nothing(monkeypatch, tmp_pa
     assert not any("mcp_servers" in a for a in cmd)  # but nothing attached
     assert "--sandbox" in cmd and cmd[cmd.index("--sandbox") + 1] == "read-only"
     assert not (tmp_path / "tool_calls.jsonl").exists()
+
+
+def test_run_codex_sends_large_prompt_over_documented_stdin(monkeypatch, tmp_path):
+    captured: dict = {}
+
+    def _fake_run(cmd, input, capture_output, text, timeout, cwd):
+        captured["cmd"] = cmd
+        captured["input"] = input
+        with open(cmd[cmd.index("-o") + 1], "w") as fh:
+            fh.write("done")
+        return _FakeProc("")
+
+    monkeypatch.setattr(cs.subprocess, "run", _fake_run)
+    prompt = "科学" * (cs._CODEX_ARG_PROMPT_MAX_BYTES // 3 + 1)
+    text, _usage = cs.run_codex(
+        "", prompt, agent=False, real_model=None, cwd=str(tmp_path)
+    )
+    assert text == "done"
+    assert captured["cmd"][-1] == "-"
+    assert captured["input"] == prompt
+
+
+def test_run_codex_text_catalog_disables_native_shell(monkeypatch, tmp_path):
+    """Caller-owned catalog tools must not compete with codex's native shell."""
+    catalog = tmp_path / "models.json"
+    catalog.write_text('{"models": [{"slug": "fixture"}]}')
+    monkeypatch.setattr(
+        cs, "_codex_text_catalog_model_catalog", lambda: str(catalog)
+    )
+    cmd, _ = _capture_codex_cmd(monkeypatch, tmp_path, text_catalog=True)
+    assert "features.shell_tool=false" in cmd
+    assert "features.unified_exec=false" in cmd
+    assert any("model_catalog_json=" in value for value in cmd)
+    assert "--output-schema" not in cmd
+    assert "--sandbox" in cmd and cmd[cmd.index("--sandbox") + 1] == "read-only"
+
+
+def test_run_codex_required_catalog_disables_patch_and_constrains_output(
+    monkeypatch, tmp_path
+):
+    catalog = tmp_path / "models.json"
+    catalog.write_text('{"models": [{"slug": "fixture"}]}')
+    monkeypatch.setattr(
+        cs, "_codex_text_catalog_model_catalog", lambda: str(catalog)
+    )
+    captured: dict = {}
+
+    def _fake_run(cmd, input, capture_output, text, timeout, cwd):
+        captured["cmd"] = cmd
+        schema_path = cmd[cmd.index("--output-schema") + 1]
+        captured["schema"] = json.loads(Path(schema_path).read_text())
+        with open(cmd[cmd.index("-o") + 1], "w") as fh:
+            fh.write('{"tool_calls":[{"name":"bash","arguments":"{}"}]}')
+        return _FakeProc("")
+
+    monkeypatch.setattr(cs.subprocess, "run", _fake_run)
+    tool_defs = [
+        {
+            "type": "function",
+            "function": {
+                "name": "bash",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"cmd": {"type": "string"}},
+                    "required": ["cmd"],
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file_chunk",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file": {"type": "string"},
+                        "start_line": {"type": "integer", "default": 1},
+                    },
+                    "required": ["file"],
+                },
+            },
+        },
+    ]
+    output_schema = cs._codex_required_tool_schema(
+        tool_defs, ["bash", "read_file_chunk", "bash"]
+    )
+    text, _usage = cs.run_codex(
+        "sys",
+        "p",
+        agent=False,
+        real_model="fixture",
+        cwd=str(tmp_path),
+        text_catalog=True,
+        text_catalog_output_schema=output_schema,
+    )
+
+    assert text.startswith('{"tool_calls"')
+    assert any("model_catalog_json=" in value for value in captured["cmd"])
+    assert captured["schema"]["properties"]["tool_calls"]["minItems"] == 1
+    item = captured["schema"]["properties"]["tool_calls"]["items"]
+    variants = item["anyOf"]
+    assert [v["properties"]["name"]["enum"][0] for v in variants] == [
+        "bash", "read_file_chunk"
+    ]
+    read_args = variants[1]["properties"]["arguments"]
+    assert read_args["required"] == ["file", "start_line"]
+    assert read_args["properties"]["start_line"]["type"] == ["integer", "null"]
+    assert "default" not in read_args["properties"]["start_line"]
+    assert not list(tmp_path.glob("*.schema.json"))
+
+
+def test_complete_marks_codex_text_catalog_and_extracts_call(monkeypatch, tmp_path):
+    seen: dict = {}
+
+    def _fake_run_codex(system, prompt, agent, real_model, cwd, **kwargs):
+        seen["system"] = system
+        seen["text_catalog"] = kwargs.get("text_catalog")
+        seen["text_catalog_output_schema"] = kwargs.get(
+            "text_catalog_output_schema"
+        )
+        return (
+            '{"tool_calls":[{"name":"bash","arguments":{"cmd":"pwd"}}]}',
+            {"prompt_tokens": 1, "completion_tokens": 1},
+        )
+
+    monkeypatch.setattr(cs, "run_codex", _fake_run_codex)
+    text, tool_calls, _usage = cs.complete(
+        "codex-cli:gpt-5.6-sol",
+        [{"role": "user", "content": "Inspect the workspace."}],
+        tools=[{
+            "type": "function",
+            "function": {"name": "bash", "parameters": {"type": "object"}},
+        }],
+        tool_choice="required",
+        work_dir=str(tmp_path),
+    )
+
+    assert seen["text_catalog"] is True
+    assert seen.get("text_catalog_output_schema")
+    assert "Do NOT use any CLI-native shell" in seen["system"]
+    assert "`arguments` is a JSON object" in seen["system"]
+    assert text == ""
+    assert tool_calls and tool_calls[0]["function"]["name"] == "bash"
 
 
 def test_run_codex_forwards_each_attached_image(monkeypatch, tmp_path):

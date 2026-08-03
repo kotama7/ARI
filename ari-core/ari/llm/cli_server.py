@@ -89,6 +89,7 @@ for API-key setups only.
 from __future__ import annotations
 
 import argparse
+import atexit
 import base64
 import binascii
 import json
@@ -121,6 +122,10 @@ CODEX_BIN = os.environ.get("ARI_CLI_SHIM_CODEX_BIN", "codex")
 # don't override (codex default). Set e.g. ARI_CLI_SHIM_CODEX_REASONING=low to
 # make the whole pipeline tractable.
 CODEX_REASONING = os.environ.get("ARI_CLI_SHIM_CODEX_REASONING", "").strip()
+# Linux limits each individual argv string to MAX_ARG_STRLEN (normally 128
+# KiB), independently of ARG_MAX.  Keep substantial headroom for UTF-8 and use
+# codex's documented ``-`` stdin transport above this size.
+_CODEX_ARG_PROMPT_MAX_BYTES = 64 * 1024
 # Pass `claude --bare`: minimal mode (no CLAUDE.md/hooks/auto-memory). Strongly
 # cuts the per-call input-token overhead but forces ANTHROPIC_API_KEY auth —
 # bare mode never reads OAuth/keychain credentials (see `claude --help`), so
@@ -152,6 +157,27 @@ SHIM_CWD = os.environ.get("ARI_CLI_SHIM_CWD", "").strip()
 # Cap simultaneous CLI subprocesses so a burst of requests can't fork-bomb the
 # host. Acquired for the duration of each completion.
 _slots = threading.BoundedSemaphore(max(1, MAX_CONCURRENCY))
+
+# ``codex exec`` normally exposes its own apply_patch tool according to model
+# catalog metadata.  Text-catalog requests must not expose that tool: it
+# competes with caller-owned functions and operates in codex's private cwd.
+# Build one process-scoped catalog lazily, preserving every bundled model field
+# while disabling native shell/patch capabilities.  The required-tool response
+# schema below then makes the caller-owned JSON protocol unambiguous.
+_CODEX_TEXT_CATALOG_LOCK = threading.Lock()
+_CODEX_TEXT_CATALOG_PATH: str | None = None
+
+
+def _cleanup_codex_text_catalog() -> None:
+    path = _CODEX_TEXT_CATALOG_PATH
+    if path:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+atexit.register(_cleanup_codex_text_catalog)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -385,6 +411,12 @@ def _tool_protocol_instructions(tool_choice) -> str:
     must = tool_choice == "required" or forced_name is not None
     out = [
         "TOOL-CALL PROTOCOL:",
+        "You are a function-call adapter, not an interactive coding agent.",
+        "Do NOT use any CLI-native shell, filesystem, patch, app, MCP, or "
+        "network tool. Those tools run inside the CLI's isolated sandbox and "
+        "cannot invoke the caller-owned functions listed above.",
+        "The ONLY valid way to invoke an available tool is to emit the JSON "
+        "object specified below.",
         "To call tools, respond with ONLY a single JSON object and NOTHING "
         "else — no prose, no explanation, no markdown code fences — in exactly "
         "this shape:",
@@ -481,7 +513,114 @@ def _coerce_tool_calls(obj) -> list[dict] | None:
     return calls or None
 
 
-def extract_tool_calls(text: str) -> tuple[list[dict] | None, str]:
+def _schema_accepts_null(schema: dict) -> bool:
+    """Return whether an input JSON Schema explicitly admits ``null``."""
+    if not isinstance(schema, dict):
+        return False
+    schema_type = schema.get("type")
+    if schema_type == "null" or (
+        isinstance(schema_type, list) and "null" in schema_type
+    ):
+        return True
+    if schema.get("nullable") is True or schema.get("const", object()) is None:
+        return True
+    if isinstance(schema.get("enum"), list) and None in schema["enum"]:
+        return True
+    return any(
+        isinstance(branches, list)
+        and any(
+            isinstance(branch, dict) and _schema_accepts_null(branch)
+            for branch in branches
+        )
+        for branches in (schema.get("anyOf"), schema.get("oneOf"))
+    )
+
+
+def _sanitize_schema_value(value, schema: dict):
+    """Undo only artifacts introduced by the Codex strict-output schema.
+
+    Codex requires every declared object property, so optional properties are
+    made nullable in :func:`_codex_strict_schema_node`.  A returned null for
+    one of those synthetic fields must be removed before the caller validates
+    its original input schema.  Required or originally-nullable values remain
+    untouched, including nested objects.  Undeclared keys are rejected for a
+    closed, property-bearing tool schema while genuinely open object schemas
+    retain their JSON Schema ``additionalProperties`` behaviour.
+    """
+    if not isinstance(schema, dict):
+        return value
+    if isinstance(value, dict):
+        declared = schema.get("properties")
+        properties = declared if isinstance(declared, dict) else None
+        required = set(schema.get("required") or [])
+        additional = schema.get("additionalProperties", None)
+        sanitized: dict = {}
+        for key, item in value.items():
+            if properties is not None and key in properties:
+                property_schema = properties[key]
+                if not isinstance(property_schema, dict):
+                    property_schema = {}
+                if (
+                    item is None
+                    and key not in required
+                    and not _schema_accepts_null(property_schema)
+                ):
+                    continue
+                sanitized[key] = _sanitize_schema_value(item, property_schema)
+                continue
+
+            # A schema that declares properties is treated as the closed tool
+            # argument vocabulary unless it explicitly opts back into extra
+            # keys.  A bare {"type": "object"}, however, is genuinely open.
+            if properties is not None:
+                if additional is True:
+                    sanitized[key] = item
+                elif isinstance(additional, dict):
+                    sanitized[key] = _sanitize_schema_value(item, additional)
+                continue
+            if additional is False:
+                continue
+            if isinstance(additional, dict):
+                sanitized[key] = _sanitize_schema_value(item, additional)
+            else:
+                sanitized[key] = item
+        return sanitized
+    if isinstance(value, list) and isinstance(schema.get("items"), dict):
+        return [_sanitize_schema_value(item, schema["items"]) for item in value]
+    return value
+
+
+def _sanitize_tool_call_arguments(
+    calls: list[dict], tools: list[dict] | None
+) -> list[dict]:
+    """Remove schema-only nullable fields before caller tool validation."""
+    schemas_by_name: dict[str, dict] = {}
+    for tool in tools or []:
+        fn = tool.get("function", tool) if isinstance(tool, dict) else {}
+        if not isinstance(fn, dict) or not fn.get("name"):
+            continue
+        params = fn.get("parameters") or {}
+        if isinstance(params, dict):
+            schemas_by_name[str(fn["name"])] = params
+    for call in calls:
+        fn = call.get("function") or {}
+        name = str(fn.get("name") or "")
+        try:
+            arguments = json.loads(fn.get("arguments") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if not isinstance(arguments, dict):
+            continue
+        schema = schemas_by_name.get(name)
+        if schema is not None:
+            arguments = _sanitize_schema_value(arguments, schema)
+        fn["arguments"] = json.dumps(arguments, ensure_ascii=False)
+    return calls
+
+
+def extract_tool_calls(
+    text: str, *, tools: list[dict] | None = None
+) -> tuple[list[dict] | None, str]:
     """Parse a CLI text response into ``(tool_calls, residual_text)``.
 
     Returns ``(None, text)`` when the response carries no tool-call JSON.
@@ -493,7 +632,7 @@ def extract_tool_calls(text: str) -> tuple[list[dict] | None, str]:
             continue
         calls = _coerce_tool_calls(obj)
         if calls:
-            return calls, ""
+            return _sanitize_tool_call_arguments(calls, tools), ""
     return None, text
 
 
@@ -510,6 +649,161 @@ def _run(cmd: list[str], stdin_text: str, cwd: str) -> subprocess.CompletedProce
         timeout=TIMEOUT,
         cwd=cwd,
     )
+
+
+def _codex_text_catalog_model_catalog() -> str:
+    """Return a cached bundled codex catalog with native edit tools disabled.
+
+    Codex decides whether to expose ``apply_patch`` from per-model catalog
+    metadata, not from a normal feature flag.  Its authoritative
+    ``debug models --bundled`` command gives us a version-matched catalog;
+    changing only ``apply_patch_tool_type`` and ``shell_type`` avoids a stale
+    hand-maintained list as new codex models are released.
+
+    Failure is deliberate and loud.  Silently falling back would let an ARI
+    caller believe its tools were used while codex actually edited an isolated
+    temporary workspace.
+    """
+    global _CODEX_TEXT_CATALOG_PATH
+    with _CODEX_TEXT_CATALOG_LOCK:
+        cached = _CODEX_TEXT_CATALOG_PATH
+        if cached and os.path.isfile(cached):
+            return cached
+
+        proc = subprocess.run(
+            [CODEX_BIN, "debug", "models", "--bundled"],
+            input="",
+            capture_output=True,
+            text=True,
+            timeout=min(TIMEOUT, 60),
+        )
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "unknown error")[:500]
+            raise RuntimeError(
+                "codex cannot create an isolated text-tool catalog: " + detail
+            )
+        try:
+            payload = json.loads(proc.stdout)
+            models = payload["models"]
+            if not isinstance(models, list) or not models:
+                raise ValueError("models must be a non-empty list")
+            for model in models:
+                if not isinstance(model, dict):
+                    raise ValueError("each model entry must be an object")
+                model["apply_patch_tool_type"] = None
+                model["shell_type"] = "disabled"
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise RuntimeError(
+                f"codex returned an invalid bundled model catalog: {exc}"
+            ) from exc
+
+        with tempfile.NamedTemporaryFile(
+            "w", prefix="ari-codex-text-tools-", suffix=".json", delete=False,
+            encoding="utf-8",
+        ) as fh:
+            json.dump(payload, fh, ensure_ascii=False, sort_keys=True)
+            fh.write("\n")
+            path = fh.name
+        _CODEX_TEXT_CATALOG_PATH = path
+        return path
+
+
+def _codex_strict_schema_node(node: dict, *, nullable: bool = False) -> dict:
+    """Convert an input-tool JSON Schema into codex strict-output form.
+
+    Strict structured output requires every declared object property to appear.
+    Input tools commonly have optional parameters, so those properties become
+    required-but-nullable here; ``extract_tool_calls`` removes their nulls
+    before handing the call back to the real tool executor.
+    """
+    originally_nullable = _schema_accepts_null(node or {})
+    out = {
+        key: json.loads(json.dumps(value))
+        for key, value in (node or {}).items()
+        if key not in {"default", "nullable"}
+    }
+    node_type = out.get("type")
+    is_object = node_type == "object" or (
+        isinstance(node_type, list) and "object" in node_type
+    )
+    is_array = node_type == "array" or (
+        isinstance(node_type, list) and "array" in node_type
+    )
+    if is_object or "properties" in out:
+        properties = out.get("properties") or {}
+        originally_required = set(out.get("required") or [])
+        out["type"] = ["object", "null"] if originally_nullable else "object"
+        out["properties"] = {
+            name: _codex_strict_schema_node(
+                schema if isinstance(schema, dict) else {},
+                nullable=name not in originally_required,
+            )
+            for name, schema in properties.items()
+        }
+        out["required"] = list(properties)
+        out["additionalProperties"] = False
+    elif is_array and isinstance(out.get("items"), dict):
+        out["type"] = ["array", "null"] if originally_nullable else "array"
+        out["items"] = _codex_strict_schema_node(out["items"])
+    for keyword in ("anyOf", "oneOf", "allOf"):
+        if isinstance(out.get(keyword), list):
+            out[keyword] = [
+                _codex_strict_schema_node(item)
+                if isinstance(item, dict)
+                else item
+                for item in out[keyword]
+            ]
+    if nullable:
+        schema_type = out.get("type")
+        if isinstance(schema_type, str):
+            out["type"] = [schema_type, "null"]
+            if isinstance(out.get("enum"), list) and None not in out["enum"]:
+                out["enum"].append(None)
+        elif isinstance(schema_type, list):
+            if "null" not in schema_type:
+                out["type"] = [*schema_type, "null"]
+        else:
+            out = {"anyOf": [out, {"type": "null"}]}
+    return out
+
+
+def _codex_required_tool_schema(
+    tools: list[dict], tool_names: list[str]
+) -> dict:
+    """Build a strict final-output schema for caller-owned tool calls."""
+    names = list(dict.fromkeys(str(name) for name in tool_names if name))
+    allowed = set(names)
+    variants: list[dict] = []
+    for tool in tools or []:
+        fn = tool.get("function", tool) if isinstance(tool, dict) else {}
+        name = fn.get("name") if isinstance(fn, dict) else None
+        if not name or str(name) not in allowed:
+            continue
+        params = fn.get("parameters") or {"type": "object", "properties": {}}
+        variants.append({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "enum": [str(name)]},
+                "arguments": _codex_strict_schema_node(params),
+            },
+            "required": ["name", "arguments"],
+            "additionalProperties": False,
+        })
+    if not variants:
+        raise ShimError("required tool choice has no named tools")
+    item_schema = variants[0] if len(variants) == 1 else {"anyOf": variants}
+    return {
+        "type": "object",
+        "properties": {
+            "tool_calls": {
+                "type": "array",
+                "minItems": 1,
+                "items": item_schema,
+            },
+        },
+        "required": ["tool_calls"],
+        "additionalProperties": False,
+    }
 
 
 #: Template key for the bare→qualified tool-name table appended to the
@@ -882,16 +1176,28 @@ def _codex_text_from_stdout(stdout: str) -> str:
             continue
         if not isinstance(ev, dict):
             continue
-        msg = ev.get("msg") if isinstance(ev.get("msg"), dict) else ev
-        # codex emits agent_message / assistant events carrying the text.
-        for key in ("last_agent_message", "message", "text"):
-            val = msg.get(key)
-            if isinstance(val, str) and val.strip():
-                text = val.strip()
-            elif isinstance(val, dict):
-                for block in (val.get("content") or []):
-                    if isinstance(block, dict) and isinstance(block.get("text"), str):
-                        text = block["text"].strip() or text
+        # Older codex builds nested assistant output below ``msg``; current
+        # JSONL uses ``item.completed`` with an ``item`` object.  Inspect both
+        # envelopes (and the event itself) so an otherwise successful turn
+        # cannot degrade to HTTP 200 + content:null when ``-o`` is empty.
+        carriers = [ev]
+        carriers.extend(
+            value
+            for key in ("msg", "item")
+            if isinstance((value := ev.get(key)), dict)
+        )
+        for carrier in carriers:
+            for key in ("last_agent_message", "message", "text"):
+                val = carrier.get(key)
+                if isinstance(val, str) and val.strip():
+                    text = val.strip()
+                elif isinstance(val, dict):
+                    for block in (val.get("content") or []):
+                        if (
+                            isinstance(block, dict)
+                            and isinstance(block.get("text"), str)
+                        ):
+                            text = block["text"].strip() or text
     return text
 
 
@@ -1034,6 +1340,8 @@ def run_codex(
     mcp_config: dict | None = None,
     allowed_mcp_tools: list[str] | None = None,
     image_paths: list[str] | None = None,
+    text_catalog: bool = False,
+    text_catalog_output_schema: dict | None = None,
 ) -> tuple[str, dict]:
     """Invoke ``codex exec`` and return ``(final_text, usage)``.
 
@@ -1051,6 +1359,11 @@ def run_codex(
 
     2) **Plain** — no ``mcp_config``: read-only sandbox for non-agent phases,
        full bypass for agent delegation, and NO ``-c mcp_servers`` overrides.
+       When ``text_catalog`` is true, a version-matched model catalog disables
+       codex's native shell and patch tools.  For required calls,
+       ``text_catalog_output_schema`` additionally constrains final output to
+       ARI's JSON adapter schema, so the caller executes its own functions in
+       the intended workspace.
        ``--ignore-user-config`` is still passed (see below), so a plain codex
        call also boots zero ambient MCP servers — full MCP detach, matching
        claude's unconditional ``--strict-mcp-config``.
@@ -1060,6 +1373,23 @@ def run_codex(
     """
     use_mcp = bool(mcp_config and allowed_mcp_tools)
     full_prompt = f"{system}\n\n{prompt}".strip() if system else prompt
+    output_schema_file = None
+    text_catalog_model_catalog = None
+    if text_catalog:
+        text_catalog_model_catalog = _codex_text_catalog_model_catalog()
+    if text_catalog_output_schema:
+        with tempfile.NamedTemporaryFile(
+            "w+", suffix=".schema.json", dir=cwd, delete=False,
+            encoding="utf-8",
+        ) as schema_fh:
+            json.dump(
+                text_catalog_output_schema,
+                schema_fh,
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            schema_fh.write("\n")
+            output_schema_file = schema_fh.name
     with tempfile.NamedTemporaryFile(
         "w+", suffix=".txt", dir=cwd, delete=False
     ) as fh:
@@ -1088,6 +1418,22 @@ def run_codex(
     # contamination claude's mcp__* allowlist forbids. It also cuts per-call
     # input tokens ~5x (their schemas are otherwise injected every turn).
     cmd += ["-c", "features.apps=false"]
+    if text_catalog:
+        # This request carries caller-owned OpenAI-style tools rendered as a
+        # text catalog.  Codex's native shell has the same familiar names as
+        # some catalogs (notably PaperBench's ``bash``), but runs in codex's
+        # own read-only sandbox and bypasses the caller's tool loop.  Disable
+        # both native shell implementations so the model can only emit our
+        # JSON protocol, which ``complete`` converts back into tool_calls.
+        cmd += ["-c", "features.shell_tool=false"]
+        cmd += ["-c", "features.unified_exec=false"]
+    if text_catalog_model_catalog:
+        cmd += [
+            "-c",
+            "model_catalog_json=" + _toml_basic_string(text_catalog_model_catalog),
+        ]
+    if output_schema_file:
+        cmd += ["--output-schema", output_schema_file]
     # Reasoning effort: --ignore-user-config drops the operator's default, and a
     # reasoning model at its compiled default is slow across ARI's many calls.
     if CODEX_REASONING:
@@ -1106,14 +1452,19 @@ def run_codex(
         cmd.append("--dangerously-bypass-approvals-and-sandbox")
     else:
         cmd += ["--sandbox", "read-only"]
-    # Pass the prompt as a positional argument, NOT on stdin: `codex exec`
-    # reading from stdin hangs after the turn starts (it keeps the stream open
-    # waiting for more input and never finalises the turn), whereas an argv
-    # prompt runs to completion. Very large prompts (>~ARG_MAX) are the only
-    # caveat; codex task prompts are well under that.
-    cmd.append(full_prompt)
+    # Short prompts remain positional for compatibility with older codex
+    # builds.  Large PaperBench judge prompts routinely cross Linux's
+    # per-string MAX_ARG_STRLEN even when total ARG_MAX is much larger.  Modern
+    # codex documents ``-`` as an explicit stdin prompt; subprocess.run closes
+    # the pipe after writing, so the turn finalises normally.
+    if len(full_prompt.encode("utf-8")) > _CODEX_ARG_PROMPT_MAX_BYTES:
+        cmd.append("-")
+        stdin_prompt = full_prompt
+    else:
+        cmd.append(full_prompt)
+        stdin_prompt = ""
     try:
-        proc = _run(cmd, "", cwd)
+        proc = _run(cmd, stdin_prompt, cwd)
         if proc.returncode != 0:
             detail = _codex_error_from_stdout(proc.stdout)
             if not detail:
@@ -1123,30 +1474,42 @@ def run_codex(
             )
         if use_mcp:
             _append_codex_audit(proc.stdout, cwd)
+        read_error = None
         try:
             with open(last_msg_file, encoding="utf-8") as f:
                 text = f.read().strip()
         except OSError as exc:
-            # last_msg_file is the ONLY carrier of the turn's output, created in
-            # the agent's own work dir. `text = ""` made a lost file
-            # byte-identical to a genuinely empty reply: HTTP 200, content:null,
-            # finish_reason:stop, real usage — and agent/loop.py then told the
-            # model "Your response was empty", burning a react step. Recover from
-            # the --json stdout (the sibling claude path already does this);
-            # raise if nothing is recoverable so do_POST returns 502.
+            read_error = exc
+            text = ""
+        # ``codex exec -o`` can also leave the pre-created file empty while its
+        # JSONL stream contains a completed agent_message.  Treat missing and
+        # empty output identically; an empty successful envelope is never a
+        # useful chat-completions response.
+        if not text:
             text = _codex_text_from_stdout(proc.stdout)
             if not text:
+                detail = (
+                    f"unreadable ({read_error})" if read_error else "empty"
+                )
                 raise RuntimeError(
-                    f"codex output unreadable ({exc}) and no assistant text in "
-                    f"the --json stream; the turn produced no recoverable reply"
-                ) from exc
-            log.warning("codex last_msg_file unreadable (%s); recovered %d chars "
-                        "from the --json stream", exc, len(text))
+                    f"codex output {detail} and no assistant text in the --json "
+                    "stream; the turn produced no recoverable reply"
+                ) from read_error
+            log.warning(
+                "codex last_msg_file %s; recovered %d chars from the --json stream",
+                "unreadable" if read_error else "empty",
+                len(text),
+            )
     finally:
         try:
             os.unlink(last_msg_file)
         except OSError:
             pass
+        if output_schema_file:
+            try:
+                os.unlink(output_schema_file)
+            except OSError:
+                pass
     # Best-effort usage from the JSONL event stream (token_count events).
     usage = _parse_codex_usage(proc.stdout)
     return text, usage
@@ -1241,7 +1604,29 @@ def complete(
     use_text_catalog = (
         bool(tools) and not agent and not use_mcp and tool_choice != "none"
     )
+    codex_required_tool_names: list[str] = []
+    codex_output_schema: dict | None = None
     if use_text_catalog:
+        forced_name = None
+        if isinstance(tool_choice, dict):
+            forced_name = (tool_choice.get("function") or {}).get("name")
+        codex_requires_schema = engine == "codex" and (
+            tool_choice == "required" or forced_name is not None
+        )
+        if codex_requires_schema:
+            if forced_name:
+                codex_required_tool_names = [str(forced_name)]
+            else:
+                for tool in tools or []:
+                    fn = tool.get("function", tool) if isinstance(tool, dict) else {}
+                    name = fn.get("name") if isinstance(fn, dict) else None
+                    if name:
+                        codex_required_tool_names.append(str(name))
+            if not codex_required_tool_names:
+                raise ShimError("required tool choice has no named tools")
+            codex_output_schema = _codex_required_tool_schema(
+                tools or [], codex_required_tool_names
+            )
         catalog = _render_tool_catalog(tools)
         instr = _tool_protocol_instructions(tool_choice)
         tool_block = f"{catalog}\n\n{instr}"
@@ -1281,6 +1666,12 @@ def complete(
                 }
                 if image_paths:
                     codex_kwargs["image_paths"] = image_paths
+                if use_text_catalog:
+                    codex_kwargs["text_catalog"] = True
+                if codex_output_schema:
+                    codex_kwargs["text_catalog_output_schema"] = (
+                        codex_output_schema
+                    )
                 text, usage = run_codex(
                     system, prompt, agent, real_model, cwd,
                     **codex_kwargs,
@@ -1298,7 +1689,7 @@ def complete(
 
     tool_calls = None
     if use_text_catalog:
-        tool_calls, residual = extract_tool_calls(text)
+        tool_calls, residual = extract_tool_calls(text, tools=tools)
         if tool_calls is not None:
             text = residual  # OpenAI sends content=null alongside tool_calls
     # MCP-direct: claude's internal loop handles tool calls itself; the
