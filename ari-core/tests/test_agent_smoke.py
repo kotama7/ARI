@@ -286,11 +286,12 @@ class TestStepZeroForcingMatchesTheWorkflowOrder:
 
     def test_step_zero_fallback_mirrors_the_system_prompt_derivation(self):
         src = self._forcing_fallback_source()
-        # the system prompt's derivation, used in BOTH places
-        assert src.count('(self.hints.tool_sequence or ["generate_ideas"])[0]') >= 2, (
-            "the step-0 forcing must reuse the system prompt's first-tool "
-            "derivation so the two can never disagree"
-        )
+        assert "else _opening_tool" in src
+        assert src.count("_opening_tool") >= 4
+        assert (
+            "name for name in self.hints.tool_sequence if name in tool_names"
+            in src
+        ), "the opening tool must be filtered against the tools actually offered"
 
     def test_preferred_order_does_not_open_with_survey(self):
         """The ordering this fix defers to."""

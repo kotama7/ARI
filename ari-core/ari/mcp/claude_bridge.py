@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from typing import Any
 
@@ -33,6 +34,19 @@ def build_claude_mcp_config(
             continue
         params = connection._server_params()
         child_environment = connection.child_environment
+        # ``SkillConnection`` deliberately caches its stdio launch parameters,
+        # but run-scoped ordinary variables (most importantly ARI_WORK_DIR and
+        # ARI_CHECKPOINT_DIR) can change after that connection was discovered.
+        # A delegated CLI starts a *new* provider process, so serialize the
+        # current value for manifest-declared ordinary variables instead of the
+        # stale value captured by the cached connection.  Credential variables
+        # remain value-free and continue through ``_ariCredentialEnv`` below.
+        transport_values = child_environment.transport_values()
+        declared_ordinary = set(skill.required_env) | set(skill.optional_env)
+        for env_name in declared_ordinary:
+            transport_values.pop(env_name, None)
+            if env_name in os.environ:
+                transport_values[env_name] = os.environ[env_name]
         skill_tools = []
         for tool in visible_tools:
             if tool.get("skill_name") != skill.name:
@@ -64,7 +78,7 @@ def build_claude_mcp_config(
             "command": params.command,
             "args": list(params.args),
             "env_names": sorted(
-                set(child_environment.transport_values())
+                set(transport_values)
                 | set(child_environment.credential_env_names)
             ),
             "credential_markers": markers,
@@ -86,7 +100,7 @@ def build_claude_mcp_config(
                     separators=(",", ":"),
                 ),
             ],
-            "env": child_environment.transport_values(),
+            "env": transport_values,
         }
         if child_environment.credential_env_names:
             servers[skill.name]["_ariCredentialEnv"] = list(

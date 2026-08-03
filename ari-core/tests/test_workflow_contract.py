@@ -675,6 +675,14 @@ class TestPaperPipelineFileContract:
         )
         return self.paper[name]
 
+    def test_recorded_related_work_is_reused_on_resume(self):
+        stage = self._get_stage("search_related_work")
+        assert stage.get("params", {}).get("mode") == "record"
+        assert stage.get("skip_if_exists", "").endswith("/related_refs.json"), (
+            "a checkpoint resume must reuse its recorded retrieval snapshot "
+            "instead of changing the evidence set or requiring live network access"
+        )
+
     # ── write_paper (the critical stage for GUI paper visibility) ──
 
     def test_write_paper_has_inputs_block(self):
@@ -758,6 +766,15 @@ class TestPaperPipelineFileContract:
         assert skip.endswith("/full_paper.tex"), (
             f"write_paper.skip_if_exists should guard full_paper.tex so reruns "
             f"don't overwrite a good paper, got: {skip!r}"
+        )
+
+    def test_write_paper_skip_is_bound_to_recorded_inputs(self):
+        stage = self._get_stage("write_paper")
+        contract = stage.get("skip_if_inputs_unchanged", "")
+        assert contract.endswith("/.ari-paper/paper_build.draft.json"), (
+            "an existing paper may be reused only while the science data, "
+            "figures, retrieval snapshot, and EAR manifest recorded by its "
+            "PaperBuildV1 draft remain byte-identical"
         )
 
     # ── write_paper upstream dependencies ──

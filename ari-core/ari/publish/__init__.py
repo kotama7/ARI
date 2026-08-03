@@ -205,6 +205,16 @@ def publish(
     metadata = dict(metadata or {})
     metadata.setdefault("checkpoint_id", ckpt.name)
     metadata.setdefault("license", (manifest.get("publish") or {}).get("license"))
+    # The local backend is documented as placing the bundle next to the
+    # checkpoint.  Falling back to ``.`` made the destination depend on the
+    # caller's cwd (and left stray bundle.tar.gz files in the repository).
+    # Preserve the explicit metadata > environment > checkpoint precedence.
+    if (
+        backend == "local-tarball"
+        and not metadata.get("local_tarball_out")
+        and not os.environ.get("ARI_LOCAL_TARBALL_OUT")
+    ):
+        metadata["local_tarball_out"] = str(ckpt)
 
     backend_impl = _load_backend(backend)
     with tempfile.TemporaryDirectory(prefix="ari-publish-") as tmp:

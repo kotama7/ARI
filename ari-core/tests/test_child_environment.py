@@ -198,6 +198,31 @@ def test_real_mcp_child_redacts_secret_and_records_value_free_authority(
     assert "<redacted:fixture.secret>" in captured.err
 
 
+def test_delegated_config_refreshes_run_scoped_declared_environment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A cached MCP connection must not pin the previous node work directory."""
+
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    monkeypatch.delenv("ARI_WORK_DIR", raising=False)
+    client = MCPClient(
+        [_skill(optional_env=["FIXTURE_ALLOWED", "ARI_WORK_DIR"])],
+        skill_lock_path=tmp_path / "SKILLS.lock",
+    )
+    client.list_tools(phase="bfts")  # materialize and cache connection env
+
+    node_work_dir = tmp_path / "experiments" / "run" / "node"
+    monkeypatch.setenv("ARI_WORK_DIR", str(node_work_dir))
+    mcp_config, _ = client.to_claude_mcp_config(phase="bfts")
+    client.close_all()
+
+    server = mcp_config["mcpServers"]["environment-fixture"]
+    proxy_spec = json.loads(server["args"][3])
+    assert server["env"]["ARI_WORK_DIR"] == str(node_work_dir)
+    assert "ARI_WORK_DIR" in proxy_spec["env_names"]
+
+
 def test_secure_stdio_proxy_filters_merged_parent_env_and_both_outputs():
     secret = "proxy-secret-573912"
     spec = json.dumps(

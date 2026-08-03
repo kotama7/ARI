@@ -388,10 +388,26 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
         "_skill_lock = os.path.join(_ckpt_dir, 'SKILLS.lock') if _ckpt_dir else None\n"
         "mcp = MCPClient(skills, disabled_tools=getattr(cfg, 'disabled_tools', []) or [], "
         "skill_lock_path=_skill_lock, skill_lock_scope='subset')\n"
-        "mcp.list_tools()\n"
+        "# Pipeline tools execute with run authority, never anonymous or node authority.\n"
+        "_run_id = ''\n"
+        "if _ckpt_dir:\n"
+        "    try:\n"
+        "        _tree = os.path.join(_ckpt_dir, 'tree.json')\n"
+        "        if os.path.isfile(_tree):\n"
+        "            with open(_tree, encoding='utf-8') as _tf:\n"
+        "                _run_id = str((json.load(_tf) or {}).get('run_id') or '')\n"
+        "    except Exception:\n"
+        "        _run_id = ''\n"
+        "    if not _run_id:\n"
+        "        _run_id = os.path.basename(_ckpt_dir.rstrip(os.sep))\n"
+        "from ari.call_context import ToolCallContextV1\n"
+        "_call_context = (ToolCallContextV1.for_run(_run_id) "
+        "if _run_id else None)\n"
+        "mcp.list_tools(context=_call_context)\n"
         "with open(" + _apath + ") as _af:\n"
         "    _call_args = json.load(_af)\n"
-        "result_raw = mcp.call_tool(" + _tool + ", _call_args)\n"
+        "result_raw = mcp.call_tool(" + _tool + ", _call_args, "
+        "context=_call_context)\n"
         "if isinstance(result_raw, dict) and 'result' in result_raw:\n"
         "    try:\n"
         "        inner = result_raw['result']\n"
@@ -465,9 +481,17 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
     if not raw:
         raise RuntimeError(f"Empty stdout. stderr: {proc.stderr[:1000]}")
     parsed = json.loads(raw)
-    # Detect MCP-level errors returned as data (e.g. "Tool '...' not found. Available: []")
-    if isinstance(parsed, dict) and "error" in parsed and not any(
-        k for k in parsed if k != "error"
-    ):
-        raise RuntimeError(f"MCP tool error: {parsed['error']}")
+    # Detect MCP-level errors returned as data.  FastMCP wraps exceptions as
+    # ``{"result": "Error executing tool ..."}``, while ARI skills normally
+    # return ``{"error": ..., <diagnostics>}``.  Neither is a successful stage
+    # output: persisting either envelope can make downstream stages consume an
+    # error document as if it were canonical scientific evidence.
+    if isinstance(parsed, dict):
+        if parsed.get("error"):
+            raise RuntimeError(f"MCP tool error: {parsed['error']}")
+        result_text = parsed.get("result")
+        if isinstance(result_text, str) and result_text.lstrip().startswith(
+            "Error executing tool "
+        ):
+            raise RuntimeError(f"MCP tool error: {result_text}")
     return parsed

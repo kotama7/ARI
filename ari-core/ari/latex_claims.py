@@ -181,11 +181,15 @@ def _classify(
     except ValueError:
         return "ambiguous", False
     is_integer = "." not in numeric_text
+    # A 2048-by-2048 product written with LaTeX times is a matrix shape,
+    # whereas 4.18-times followed by prose is a speedup. The old unit regex
+    # treated both as a result because it recognized any trailing x.
+    dimension_product = bool(re.match(r"^\s*(?:x|×)\s*\d", after))
     if (
         is_integer
         and 1900 <= value <= 2099
         and not has_percent
-        and not _PERF_UNIT_RE.match(after)
+        and not (_PERF_UNIT_RE.match(after) and not dimension_product)
         and not _SETTING_UNIT_RE.match(after)
     ):
         return "citation_year", False
@@ -193,7 +197,7 @@ def _classify(
         return "figure_table_ref", False
     if _SETTING_UNIT_RE.match(after):
         return "experimental_setting", False
-    if has_percent or _PERF_UNIT_RE.match(after):
+    if has_percent or (_PERF_UNIT_RE.match(after) and not dimension_product):
         return "result_claim", True
     return "ambiguous", False
 
@@ -232,7 +236,14 @@ def extract_numeric_mentions(
                 continue
             if not math.isfinite(value):
                 continue
-            if match.group(4) or (bare_power and numeric_text == "10"):
+            # A multiplier times 10^exp is a numeric value.  A *bare negative*
+            # power of ten is likewise commonly a reported p-value/error bound.
+            # Positive bare powers in equations (for example the 10^9 unit
+            # conversion in a GB/s definition) are constants, not measured
+            # results, and must not create an uncovered-result obligation.
+            if match.group(4) or (
+                bare_power and numeric_text == "10" and int(bare_power) < 0
+            ):
                 mention_type, requires_assertion = "result_claim", True
             mentions.append(
                 {

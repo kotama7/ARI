@@ -324,6 +324,18 @@ def test_latex_mentions_e_notation_and_speedup_x():
     assert sorted(m["value"] for m in ms2) == [4.18, 10.0]
 
 
+def test_latex_matrix_shape_times_is_not_a_speedup_result():
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+
+    mentions = extract_numeric_mentions(
+        r"\section{Introduction} We use a \(2048 \times 2048\) grid."
+    )
+    shapes = [item for item in mentions if item["value"] == 2048.0]
+    assert len(shapes) == 2
+    assert all(item["type"] != "result_claim" for item in shapes)
+    assert all(item["requires_assertion"] is False for item in shapes)
+
+
 def test_latex_mentions_bare_power_of_ten_p_value_bound():
     """A p-value BOUND ``p<10^{-23}`` written as a bare power of ten (no
     ×-multiplier) must parse to 1e-23, not the base 10.0. The bare-mantissa
@@ -347,6 +359,17 @@ def test_latex_mentions_bare_power_of_ten_p_value_bound():
     # Overflow (10^{4932}) is still dropped by the non-finite guard, not shipped.
     ms3 = extract_numeric_mentions(r"a constant near $10^{4932}$ appears")
     assert all(m["value"] not in (float("inf"), float("-inf")) for m in ms3)
+
+
+def test_positive_bare_power_in_method_equation_is_not_a_result_claim():
+    from ari.pipeline.claim_gate.latex import extract_numeric_mentions
+
+    mentions = extract_numeric_mentions(
+        r"\section{Methodology} BW=24T(N-2)^2/(10^9t)\quad\text{GB/s}."
+    )
+    conversion = next(item for item in mentions if item["value"] == 1e9)
+    assert conversion["type"] == "ambiguous"
+    assert conversion["requires_assertion"] is False
 
 
 def test_an_unknown_formula_is_named_not_disguised_as_a_missing_operand():

@@ -89,6 +89,8 @@ for API-key setups only.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import logging
 import os
@@ -188,12 +190,108 @@ def parse_model(model: str) -> tuple[str, bool, str | None]:
 
 
 def _content_text(content) -> str:
-    """Collapse an OpenAI message ``content`` (str or content-parts) to text."""
+    """Collapse OpenAI content parts to text while retaining image positions."""
     if isinstance(content, list):
-        return "".join(
-            p.get("text", "") for p in content if isinstance(p, dict)
-        )
+        parts: list[str] = []
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if isinstance(part.get("text"), str):
+                parts.append(part["text"])
+            elif part.get("type") in {"image_url", "input_image"}:
+                parts.append("\n[attached image]\n")
+        return "".join(parts)
     return str(content or "")
+
+
+_IMAGE_SUFFIXES = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+_MAX_ATTACHED_IMAGES = 20
+_MAX_ATTACHED_IMAGE_BYTES = 32 * 1024 * 1024
+_MAX_ATTACHED_TOTAL_BYTES = 100 * 1024 * 1024
+
+
+def _message_image_payloads(messages: list[dict]) -> list[tuple[str, bytes]]:
+    """Decode bounded embedded OpenAI image parts for a CLI invocation.
+
+    Codex accepts filesystem paths via ``codex exec --image`` whereas the
+    OpenAI-compatible request carries data URLs.  Only embedded, base64 image
+    URLs are admitted: fetching remote URLs inside the local shim would add an
+    unrecorded network side effect and an SSRF surface.
+    """
+    payloads: list[tuple[str, bytes]] = []
+    total_bytes = 0
+    for message in messages or []:
+        content = message.get("content")
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if (
+                not isinstance(part, dict)
+                or part.get("type") not in {"image_url", "input_image"}
+            ):
+                continue
+            image_value = part.get("image_url")
+            if isinstance(image_value, dict):
+                image_value = image_value.get("url")
+            if not isinstance(image_value, str) or not image_value:
+                raise ShimError("image content part lacks image_url.url")
+            if not image_value.startswith("data:"):
+                raise ShimError(
+                    "cli-shim image inputs must be embedded data URLs; "
+                    "remote image fetching is disabled"
+                )
+            try:
+                header, encoded = image_value.split(",", 1)
+            except ValueError as exc:
+                raise ShimError("malformed image data URL") from exc
+            media_type = header[5:].split(";", 1)[0].lower()
+            if media_type not in _IMAGE_SUFFIXES or ";base64" not in header.lower():
+                raise ShimError(
+                    "image data URL must be base64 PNG, JPEG, WEBP, or GIF"
+                )
+            try:
+                payload = base64.b64decode(encoded, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ShimError("image data URL contains invalid base64") from exc
+            if not payload or len(payload) > _MAX_ATTACHED_IMAGE_BYTES:
+                raise ShimError("attached image is empty or exceeds 32 MiB")
+            total_bytes += len(payload)
+            if total_bytes > _MAX_ATTACHED_TOTAL_BYTES:
+                raise ShimError("attached images exceed the 100 MiB request limit")
+            payloads.append((media_type, payload))
+            if len(payloads) > _MAX_ATTACHED_IMAGES:
+                raise ShimError("request contains more than 20 attached images")
+    return payloads
+
+
+def _materialize_codex_images(
+    payloads: list[tuple[str, bytes]], cwd: str
+) -> list[str]:
+    """Write request-scoped image files for ``codex exec --image``."""
+    paths: list[str] = []
+    try:
+        for media_type, payload in payloads:
+            fd, path = tempfile.mkstemp(
+                prefix=".ari-cli-image-",
+                suffix=_IMAGE_SUFFIXES[media_type],
+                dir=cwd,
+            )
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(payload)
+            paths.append(path)
+        return paths
+    except Exception:
+        for path in paths:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+        raise
 
 
 def _render_assistant_tool_calls(tool_calls: list[dict]) -> str:
@@ -797,6 +895,36 @@ def _codex_text_from_stdout(stdout: str) -> str:
     return text
 
 
+def _codex_error_from_stdout(stdout: str) -> str:
+    """Extract the actionable failure from a Codex JSONL event stream.
+
+    Recent Codex versions write the generic progress line ``Reading additional
+    input from stdin...`` to stderr even when the real failure (for example an
+    exhausted account quota) is present in the JSONL stdout.  Preferring stderr
+    therefore hid the only diagnostic that could distinguish an ARI bug from
+    an external service limit.
+    """
+
+    errors: list[str] = []
+    for line in (stdout or "").splitlines():
+        try:
+            event = json.loads(line)
+        except Exception:
+            continue
+        if not isinstance(event, dict):
+            continue
+        value = None
+        if event.get("type") == "error":
+            value = event.get("message") or event.get("error")
+        elif event.get("type") == "turn.failed":
+            value = event.get("error")
+        if isinstance(value, dict):
+            value = value.get("message") or value.get("error")
+        if isinstance(value, str) and value.strip() and value.strip() not in errors:
+            errors.append(value.strip())
+    return errors[-1][:2_000] if errors else ""
+
+
 #: A TOML bare key (unquoted): letters, digits, ``-``, ``_``. codex's ``-c``
 #: dotted-path parser splits the KEY on every ``.`` even inside quotes and does
 #: not register a quoted server segment as a live server, so a server name must
@@ -905,6 +1033,7 @@ def run_codex(
     *,
     mcp_config: dict | None = None,
     allowed_mcp_tools: list[str] | None = None,
+    image_paths: list[str] | None = None,
 ) -> tuple[str, dict]:
     """Invoke ``codex exec`` and return ``(final_text, usage)``.
 
@@ -967,6 +1096,8 @@ def run_codex(
         cmd += _codex_mcp_overrides(mcp_config, allowed_mcp_tools)
     if real_model:
         cmd += ["-m", real_model]
+    for image_path in image_paths or []:
+        cmd += ["--image", image_path]
     if use_mcp or agent:
         # Tool-using delegation: let the agent's tool loop run without approval
         # prompts (codex exec is non-interactive anyway). MCP tool subprocesses
@@ -984,8 +1115,11 @@ def run_codex(
     try:
         proc = _run(cmd, "", cwd)
         if proc.returncode != 0:
+            detail = _codex_error_from_stdout(proc.stdout)
+            if not detail:
+                detail = (proc.stderr or proc.stdout)[:500]
             raise RuntimeError(
-                f"codex exited {proc.returncode}: {(proc.stderr or proc.stdout)[:500]}"
+                f"codex exited {proc.returncode}: {detail}"
             )
         if use_mcp:
             _append_codex_audit(proc.stdout, cwd)
@@ -1092,6 +1226,12 @@ def complete(
     """
     engine, agent, real_model = parse_model(model)
     system, prompt = render_prompt(messages)
+    image_payloads = _message_image_payloads(messages)
+    if image_payloads and engine != "codex":
+        raise ShimError(
+            "multimodal requests require codex-cli; claude-cli image "
+            "attachment forwarding is not implemented"
+        )
 
     use_mcp = bool(mcp_config and allowed_mcp_tools and engine in ("claude", "codex"))
     # text-catalog still applies for: (a) either engine WITHOUT mcp_config,
@@ -1125,6 +1265,7 @@ def complete(
                 "shim MCP-direct engine=%s cwd=%s tools=%d (audit=%s/tool_calls.jsonl)",
                 engine, cwd, len(allowed_mcp_tools or []), cwd,
             )
+    image_paths = _materialize_codex_images(image_payloads, cwd)
     with _slots:
         try:
             if engine == "claude":
@@ -1134,12 +1275,22 @@ def complete(
                     allowed_mcp_tools=allowed_mcp_tools if use_mcp else None,
                 )
             else:
+                codex_kwargs = {
+                    "mcp_config": mcp_config if use_mcp else None,
+                    "allowed_mcp_tools": allowed_mcp_tools if use_mcp else None,
+                }
+                if image_paths:
+                    codex_kwargs["image_paths"] = image_paths
                 text, usage = run_codex(
                     system, prompt, agent, real_model, cwd,
-                    mcp_config=mcp_config if use_mcp else None,
-                    allowed_mcp_tools=allowed_mcp_tools if use_mcp else None,
+                    **codex_kwargs,
                 )
         finally:
+            for image_path in image_paths:
+                try:
+                    os.unlink(image_path)
+                except OSError:
+                    pass
             if tmp_cwd:
                 # Throwaway dir only — caller didn't pin work_dir.
                 import shutil

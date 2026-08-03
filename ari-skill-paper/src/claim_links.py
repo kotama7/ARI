@@ -56,6 +56,55 @@ def _figure_refs_in(text: str, label_to_id: dict[str, str]) -> list[str]:
     return identities
 
 
+def _figure_evidence_lines(
+    tex: str,
+    label_to_id: dict[str, str],
+    manifest: Any,
+) -> set[int]:
+    """Return lines inside figure blocks bound to FigureBatch evidence.
+
+    Numeric caption text is owned by FigureBatchV1 and verified through its
+    source/artifact digests. It must not become an unanchored prose-result
+    obligation, while remaining visible in numeric_mentions for auditing.
+    """
+
+    figures = manifest.get("figures") if isinstance(manifest, dict) else None
+    known_paths = (
+        {str(path) for path in figures.values()}
+        if isinstance(figures, dict)
+        else set()
+    )
+    known_basenames = {path.rsplit("/", 1)[-1] for path in known_paths}
+    output: set[int] = set()
+    start: int | None = None
+    buffer: list[str] = []
+    for index, line in enumerate(tex.split("\n"), start=1):
+        if start is None and re.search(r"\\begin\{figure\*?\}", line):
+            start = index
+            buffer = [line]
+        elif start is not None:
+            buffer.append(line)
+        if start is None or not re.search(r"\\end\{figure\*?\}", line):
+            continue
+        block = "\n".join(buffer)
+        labels = set(re.findall(r"\\label\{([^}]*)\}", block))
+        paths = set(
+            re.findall(
+                r"\\includegraphics(?:\[[^\]]*\])?\{([^}]*)\}",
+                block,
+            )
+        )
+        bound = bool(labels & set(label_to_id)) or any(
+            path in known_paths or path.rsplit("/", 1)[-1] in known_basenames
+            for path in paths
+        )
+        if bound:
+            output.update(range(start, index + 1))
+        start = None
+        buffer = []
+    return output
+
+
 def _index_claims(science_data: dict) -> tuple[dict[str, dict], dict[str, dict]]:
     """Return claim and numeric assertion indexes from a science projection."""
 
@@ -281,6 +330,23 @@ def link_paper_claims(
             )
 
     numeric_mentions = extract_numeric_mentions(tex, section_map)
+    figure_evidence_lines = _figure_evidence_lines(
+        tex,
+        label_to_id,
+        figures_manifest,
+    )
+    numeric_mentions = [
+        (
+            {
+                **mention,
+                "type": "figure_evidence",
+                "requires_assertion": False,
+            }
+            if mention["line"] in figure_evidence_lines
+            else mention
+        )
+        for mention in numeric_mentions
+    ]
     figure_refs = _figure_refs_in(tex, label_to_id)
     anchored_lines = {anchor["line"] for anchor in anchors}
     for anchor in anchors:

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -116,6 +117,21 @@ def test_render_prompt_round_trips_tool_calls_and_results():
     # the tool result is labelled with the tool name (mapped via tool_call_id)
     assert "Tool result (run_bash):" in prompt
     assert '"stdout": "x.py"' in prompt
+
+
+def test_render_prompt_retains_image_position_marker():
+    _, prompt = cs.render_prompt([{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "Review this chart."},
+            {
+                "type": "image_url",
+                "image_url": {"url": "data:image/png;base64,AA=="},
+            },
+        ],
+    }])
+    assert "Review this chart." in prompt
+    assert "[attached image]" in prompt
 
 
 # ── _render_tool_catalog / instructions ──────────────────────────────────────
@@ -820,6 +836,36 @@ def test_run_codex_raises_when_output_lost_and_stdout_empty(monkeypatch, tmp_pat
                      real_model=None, cwd=str(tmp_path))
 
 
+def test_run_codex_surfaces_jsonl_error_over_generic_stderr(monkeypatch, tmp_path):
+    class FailedProc:
+        returncode = 1
+        stderr = "Reading additional input from stdin...\n"
+        stdout = "\n".join(
+            [
+                json.dumps({"type": "turn.started"}),
+                json.dumps(
+                    {
+                        "type": "error",
+                        "message": "You've hit your usage limit; try again later.",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "turn.failed",
+                        "error": {"message": "You've hit your usage limit; try again later."},
+                    }
+                ),
+            ]
+        )
+
+    monkeypatch.setattr(cs.subprocess, "run", lambda *args, **kwargs: FailedProc())
+
+    with pytest.raises(RuntimeError, match="usage limit"):
+        cs.run_codex(
+            "sys", "prompt", agent=False, real_model=None, cwd=str(tmp_path)
+        )
+
+
 # ── codex MCP-direct: parity with the claude --mcp-config path ──────────────
 def test_codex_mcp_overrides_encode_servers_and_tool_allowlist():
     """The engine-neutral {mcpServers} + mcp__s__t allowlist becomes codex
@@ -938,6 +984,78 @@ def test_run_codex_plain_still_isolates_but_attaches_nothing(monkeypatch, tmp_pa
     assert not any("mcp_servers" in a for a in cmd)  # but nothing attached
     assert "--sandbox" in cmd and cmd[cmd.index("--sandbox") + 1] == "read-only"
     assert not (tmp_path / "tool_calls.jsonl").exists()
+
+
+def test_run_codex_forwards_each_attached_image(monkeypatch, tmp_path):
+    first = str(tmp_path / "one.png")
+    second = str(tmp_path / "two.jpg")
+    cmd, _ = _capture_codex_cmd(
+        monkeypatch,
+        tmp_path,
+        image_paths=[first, second],
+    )
+    attached = [cmd[index + 1] for index, value in enumerate(cmd) if value == "--image"]
+    assert attached == [first, second]
+    assert cmd[-1] == "sys\n\np"
+
+
+def test_complete_materializes_embedded_image_for_codex_and_cleans_it(
+    monkeypatch, tmp_path
+):
+    import base64
+
+    expected = b"\x89PNG\r\nfixture"
+    seen = {}
+
+    def _fake_run_codex(
+        system,
+        prompt,
+        agent,
+        real_model,
+        cwd,
+        *,
+        mcp_config=None,
+        allowed_mcp_tools=None,
+        image_paths=None,
+    ):
+        seen["paths"] = list(image_paths or [])
+        seen["payloads"] = [open(path, "rb").read() for path in seen["paths"]]
+        seen["prompt"] = prompt
+        return "reviewed", {"prompt_tokens": 1, "completion_tokens": 1}
+
+    monkeypatch.setattr(cs, "run_codex", _fake_run_codex)
+    data_url = "data:image/png;base64," + base64.b64encode(expected).decode()
+    text, tool_calls, _usage = cs.complete(
+        "codex-cli:gpt-5.6-sol",
+        [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Inspect it"},
+                {"type": "image_url", "image_url": {"url": data_url}},
+            ],
+        }],
+        work_dir=str(tmp_path),
+    )
+
+    assert text == "reviewed" and tool_calls is None
+    assert seen["payloads"] == [expected]
+    assert "[attached image]" in seen["prompt"]
+    assert all(not Path(path).exists() for path in seen["paths"])
+
+
+def test_complete_rejects_remote_image_fetching(tmp_path):
+    with pytest.raises(cs.ShimError, match="remote image fetching is disabled"):
+        cs.complete(
+            "codex-cli",
+            [{
+                "role": "user",
+                "content": [{
+                    "type": "image_url",
+                    "image_url": {"url": "https://example.test/chart.png"},
+                }],
+            }],
+            work_dir=str(tmp_path),
+        )
 
 
 def test_complete_routes_codex_through_mcp_when_configured(monkeypatch, tmp_path):

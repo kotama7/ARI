@@ -13,6 +13,9 @@ from src.server import (
     TEMPLATES_DIR,
     VENUES,
     _count_pdf_pages,
+    _preserves_figure_block_contract,
+    _preserves_claim_comment_contract,
+    _restore_authoritative_figure_snippets,
     check_format,
     compile_paper,
     get_template,
@@ -38,6 +41,41 @@ def test_paper_and_rubric_models_have_independent_phase_overrides(monkeypatch):
     monkeypatch.setenv("ARI_MODEL_RUBRIC", "openai/codex-cli:gpt-5-codex")
     assert _srv._get_model() == "openai/claude-cli:sonnet"
     assert _srv._get_model("rubric") == "openai/codex-cli:gpt-5-codex"
+
+
+def test_claim_comment_contract_preserves_full_declarations_and_multiplicity():
+    declaration = (
+        "% CLAIM:C7:NC7 metric=throughput formula=identity value=cfg1"
+    )
+    before = declaration + "\nA.\n" + declaration + "\nB.\n"
+    assert _preserves_claim_comment_contract(before, before + "C.\n")
+    assert not _preserves_claim_comment_contract(before, declaration + "\nA.\n")
+    assert not _preserves_claim_comment_contract(
+        before,
+        "% CLAIM:C7:NC7\nA.\n% CLAIM:C7:NC7\nB.\n",
+    )
+
+
+def test_authoritative_figure_snippet_replaces_caption_label_and_duplicates():
+    authoritative = (
+        "\\begin{figure}[H]\n"
+        "\\includegraphics{figures/result.pdf}\n"
+        "\\caption{Source-bound caption.}\\label{fig:result}\n"
+        "\\end{figure}"
+    )
+    altered = (
+        "\\begin{figure}[H]\n"
+        "\\includegraphics{result.pdf}\n"
+        "\\caption{Model caption.}\\label{fig:1}\n"
+        "\\end{figure}"
+    )
+    document = "\\section{Results}\n" + altered + "\n" + altered + "\n\\section{Conclusion}\n"
+    restored = _restore_authoritative_figure_snippets(document, (authoritative,))
+    assert restored.count(authoritative) == 1
+    assert "Model caption" not in restored
+    assert "fig:1" not in restored
+    assert _preserves_figure_block_contract(restored, restored)
+    assert not _preserves_figure_block_contract(restored, document)
 
 
 @pytest.mark.asyncio
@@ -134,6 +172,63 @@ async def test_paper_refine_rejects_anchor_dropping_edit(tmp_path):
         )
     assert out["refined"] is False
     assert "% CLAIM:C1:NC1" in out["latex"]  # anchor never dropped
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_rejects_formula_dropping_edit(tmp_path):
+    declaration = "% CLAIM:C7:NC7 metric=gbs formula=identity value=cfg1"
+    tex = f"\\section{{R}}\n{declaration}\nThe value is 17 GB/s.\n"
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
+    edits = json.dumps(
+        [
+            {
+                "find": declaration,
+                "replace": "% CLAIM:C7:NC7",
+            }
+        ]
+    )
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp(edits),
+    ):
+        out = await paper_refine(
+            tex_path=str(p),
+            suggested_revisions_json='[{"instruction":"tighten the result"}]',
+        )
+    assert out["refined"] is False
+    assert declaration in out["latex"]
+
+
+@pytest.mark.asyncio
+async def test_paper_refine_rejects_figure_caption_rewrite(tmp_path):
+    figure = (
+        "\\begin{figure}\\includegraphics{result.pdf}"
+        "\\caption{Recorded caption.}\\label{fig:result}\\end{figure}"
+    )
+    tex = "\\section{Results}\n" + figure + "\n"
+    p = tmp_path / "full_paper.tex"
+    p.write_text(tex)
+    edits = json.dumps(
+        [
+            {
+                "find": figure,
+                "replace": figure.replace("Recorded caption.", "Invented caption."),
+            }
+        ]
+    )
+    with patch(
+        "src.server.litellm.acompletion",
+        new_callable=AsyncMock,
+        return_value=_mock_resp(edits),
+    ):
+        out = await paper_refine(
+            tex_path=str(p),
+            suggested_revisions_json='[{"instruction":"polish the figure"}]',
+        )
+    assert out["refined"] is False
+    assert figure in out["latex"]
 
 
 @pytest.mark.asyncio
@@ -839,3 +934,33 @@ async def test_link_paper_claims_no_science_data_has_no_load_error(tmp_path):
                    encoding="utf-8")
     out = await link_paper_claims(tex_path=str(tex), science_data_json="")
     assert "science_data_load_error" not in out
+
+
+@pytest.mark.asyncio
+async def test_link_paper_claims_projects_native_science_data_exactly_once(tmp_path):
+    """Native v1 input must match the recomputation used by PaperBuild lock."""
+
+    from test_finalize import _science
+
+    tex = tmp_path / "paper.tex"
+    tex.write_text(
+        "\\documentclass{article}\n"
+        "\\begin{document}\n"
+        "\\section{Results}\nFixture.\n"
+        "\\end{document}\n",
+        encoding="utf-8",
+    )
+    science = tmp_path / "science_data.json"
+    science.write_text(
+        json.dumps(_science().model_dump(mode="json")),
+        encoding="utf-8",
+    )
+
+    out = await link_paper_claims(
+        tex_path=str(tex), science_data_json=str(science)
+    )
+
+    assert out["schema_version"] == "ari.paper-claim-links/v1"
+    assert out["paper_digest"]
+    assert out["claim_links_digest"]
+    assert "note" not in out

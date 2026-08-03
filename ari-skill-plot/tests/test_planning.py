@@ -334,6 +334,28 @@ def test_feedback_revision_is_bounded_and_preserves_artifacts(
         )
 
 
+def test_feedback_revision_deterministically_fills_omitted_prior_metric():
+    """Planner omissions cannot drop a metric from an evidence-bound batch."""
+    completed = planning._preserve_required_plan(
+        [{"metric_id": "latency", "chart_type": "line", "x_mode": "rank"}],
+        ("latency", "throughput"),
+    )
+    assert completed == [
+        {"metric_id": "latency", "chart_type": "line", "x_mode": "rank"},
+        {
+            "metric_id": "throughput",
+            "chart_type": "bar",
+            "x_mode": "configuration",
+        },
+    ]
+
+
+def test_encoded_metric_labels_are_publication_facing():
+    axis, title = planning._metric_labels("max_rel_checksum_error_bs1024", "1")
+    assert axis == "Maximum relative checksum error (dimensionless)"
+    assert title == "Maximum relative checksum error at block size 1024"
+
+
 def test_legacy_or_outside_workspace_science_data_fails_closed(tmp_path: Path):
     legacy = tmp_path / "legacy.json"
     legacy.write_text('{"configurations": []}', encoding="utf-8")

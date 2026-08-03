@@ -20,7 +20,7 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
     # ``SYSTEM_PROMPT`` constant immediately before extraction.
     (
         "agent/system",
-        "a50abe13d568c07c6cd25b930d27b48c42179fbe629cdf64ab2d3ed48585cdbf",
+        "6eff1fb33e6393f520e060ce8918b487be369597a8687b63d437fc3be522ef66",
     ),
     # PC4 — orchestrator lineage decision prompt.
     (

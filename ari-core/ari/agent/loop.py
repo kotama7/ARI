@@ -187,6 +187,16 @@ _DELEGATED_TERMINAL_NUDGE = (
     "If it is NOT complete, continue working and reply with that terminal "
     "JSON when done."
 )
+_DELEGATED_EVIDENCE_NUDGE = (
+    "Your terminal JSON claimed success, but ARI found no scientifically "
+    "admissible results.json. A typed file with execution_status=unreported "
+    "does NOT count. Run the final measurement again with run_bash() or "
+    "run_code(), then pass the returned measurement_execution object UNCHANGED "
+    "as emit_results(execution=...). Use the node work directory directly; do "
+    "not manually write or copy results.json. Confirm that emit_results returns "
+    "scientifically_admissible=true, then reply with terminal JSON whose "
+    "artifacts contain the measured numeric outputs."
+)
 
 
 def snapshot_results_files(work_dir: str) -> dict:
@@ -225,9 +235,14 @@ def collect_delegated_completion_evidence(
     - other ``results*.json`` names DO inherit from the parent work_dir
       (lineage chaining), so they count only when new/changed vs *baseline*.
 
-    A file is evidence only if it parses to a dict with a non-empty
-    ``measurements`` dict — the same field the metric-contract coverage scan
-    trusts. Returns ``{"files", "measurement_names", "payloads"}`` or ``None``.
+    A legacy file is evidence when it carries a non-empty ``measurements``
+    dict.  A canonical ``ari.measurement-set/v1`` file is held to the current
+    coding-skill admission contract: every record must have a declared unit and
+    a completed, successful, content-addressed execution identity.  Merely
+    calling ``emit_results`` without forwarding ``measurement_execution``
+    produces ``execution_status=unreported`` and is deliberately not evidence.
+    Returns
+    ``{"files", "measurement_names", "payloads"}`` or ``None``.
     """
     try:
         wd = Path(work_dir or "")
@@ -250,10 +265,41 @@ def collect_delegated_completion_evidence(
                 d = json.loads(p.read_text())
             except Exception:
                 continue
-            m = d.get("measurements") if isinstance(d, dict) else None
-            if isinstance(m, dict) and m:
+            measurement_names: set[str] = set()
+            measurement_set = (
+                d.get("measurement_set") if isinstance(d, dict) else None
+            )
+            if isinstance(measurement_set, dict):
+                # Parse the full contract first (including digest formats,
+                # parameter equality, and execution-field consistency), then
+                # apply the same scientific-admission predicate emit_results
+                # reports to its caller.
+                try:
+                    from ari.execution import parse_measurement_document
+
+                    typed = parse_measurement_document(d, allow_legacy=False)
+                except Exception:
+                    typed = None
+                records = list(typed.measurements) if typed is not None else []
+                if records and all(
+                    record.unit_status == "declared"
+                    and record.execution_status == "completed"
+                    and record.exit_code == 0
+                    and bool(record.execution_identity)
+                    and bool(record.execution_attempt_id)
+                    and bool(record.artifact_digests)
+                    for record in records
+                ):
+                    measurement_names.update(record.metric_id for record in records)
+            else:
+                m = d.get("measurements") if isinstance(d, dict) else None
+                if isinstance(m, dict) and m:
+                    measurement_names.update(
+                        key for key in m.keys() if isinstance(key, str)
+                    )
+            if measurement_names:
                 files.append(p.name)
-                names.update(k for k in m.keys() if isinstance(k, str))
+                names.update(measurement_names)
                 payloads[p.name] = d
         if not files:
             return None
@@ -911,6 +957,18 @@ class AgentLoop:
             goal_text = goal_text[:1500] + "\n...[truncated]"
         # Root node vs child node prompt
         _is_child = node.depth > 0
+        # Derive the opening move once from the post-suppression tool set.  The
+        # same value is reused by the initial prompt and the step-zero recovery
+        # so RQGM suppression can never make them name different tools.
+        _available_sequence = [
+            name for name in self.hints.tool_sequence if name in tool_names
+        ]
+        if _available_sequence:
+            _opening_tool = _available_sequence[0]
+        elif tool_names:
+            _opening_tool = tool_names[0]
+        else:
+            _opening_tool = "available_tool"
         if _is_child:
             # Child node: provide specific task context from BFTS label
             _label_desc = {
@@ -949,17 +1007,31 @@ class AgentLoop:
                 f"{_workflow_hint}"
             )
         else:
-            first_tool = (self.hints.tool_sequence or ["generate_ideas"])[0]
+            # RQGM root ideation runs before AgentLoop and suppresses
+            # generate_ideas for the executing node.  The workflow hints were
+            # enriched before that suppression, so selecting their first entry
+            # verbatim told delegated CLIs to call a tool that was not actually
+            # offered.  Derive both the opening move and the displayed setup
+            # order from the post-suppression tool set.
+            _setup_descriptions = {
+                "generate_ideas": "generate_ideas() sets the research direction and primary_metric",
+                "make_metric_spec": "make_metric_spec() derives success metrics from the established primary_metric",
+                "survey": "survey() gathers related literature for grounded citations",
+            }
+            _setup_order = [
+                name for name in ("generate_ideas", "make_metric_spec", "survey")
+                if name in tool_names
+            ]
+            _workflow_order = "WORKFLOW ORDER: " + "; ".join(
+                f"({idx}) {_setup_descriptions[name]}"
+                for idx, name in enumerate(_setup_order, start=1)
+            ) if _setup_order else "WORKFLOW ORDER: use only the available tools shown above."
             user_content = (
                 f"Experiment goal:\n{goal_text}\n"
                 f"Node: {node.id} depth={node.depth}\n\n"
-                f"START NOW: call {first_tool}() immediately. "
-                f"Do NOT output any text or plan — your first response must be a {first_tool}() tool call.\n\n"
-                "WORKFLOW ORDER: (1) generate_ideas() sets the research direction and "
-                "primary_metric; (2) make_metric_spec() derives the success metrics from "
-                "that primary_metric (NOT from a guessed list); (3) survey() gathers related "
-                "literature. The survey results are used to generate citations — without "
-                "survey, the paper will have no references."
+                f"START NOW: call {_opening_tool}() immediately. "
+                f"Do NOT output any text or plan — your first response must be a {_opening_tool}() tool call.\n\n"
+                f"{_workflow_order}."
             )
 
         # NOTE: Planner plan text injection has been removed
@@ -1204,6 +1276,7 @@ class AgentLoop:
             response = self.llm.complete(
                 llm_msgs, tools=effective_tools, require_tool=(active is not None),
                 node_id=node.id, phase="react", skill="agent_loop",
+                work_dir=work_dir,
                 call_context=tool_context,
             )
             # Set by LLMClient.complete when it attached mcp_config: the whole
@@ -1757,9 +1830,9 @@ class AgentLoop:
                 logger.warning("Node %s: step 1 no tool call, forcing: %r",
                                node.id, (response.content or "")[:80])
                 messages.append({"role": "assistant", "content": response.content or ""})
-                # Same derivation as the system prompt's "START NOW: call X()"
-                # (see `first_tool` above): the head of the configured
-                # `tool_sequence`, else `generate_ideas`. The fallback used to be
+                # Same derivation as the initial "START NOW: call X()" prompt:
+                # `_opening_tool` was resolved from the post-suppression tool
+                # set before the loop. The fallback used to be
                 # a hardcoded "survey" — a leftover from when the survey was the
                 # mandatory opening move. It is not: `workflow._PREFERRED_ORDER`
                 # puts survey THIRD ("survey stays last among setup tools — it is
@@ -1770,7 +1843,7 @@ class AgentLoop:
                 # opening call.
                 first_tool = (
                     active[0]["function"]["name"] if active
-                    else (self.hints.tool_sequence or ["generate_ideas"])[0]
+                    else _opening_tool
                 )
                 messages.append({"role": "user", "content": (
                     f"STOP. Do not write plans. Call {first_tool}() NOW."
@@ -1805,6 +1878,57 @@ class AgentLoop:
                             "Execute the experiment first."
                         )})
                         continue
+
+                    # A delegated CLI runs its entire tool loop internally, so
+                    # the outer loop cannot infer execution from tool_calls.
+                    # It still must not accept a summary-only success: require
+                    # the scientifically admissible results.json written by
+                    # emit_results whenever that tool is available; only old
+                    # delegated toolsets without an emitter may fall back to a
+                    # non-empty artifact carrying measured output.
+                    # This closes the live failure where Codex wrote a CSV but
+                    # returned artifacts=[]; evaluation then saw no data and the
+                    # paper pipeline aborted despite a successful benchmark.
+                    if _delegated and has_exec:
+                        _evidence = collect_delegated_completion_evidence(
+                            work_dir, _delegated_baseline)
+                        if _evidence is not None:
+                            return self._accept_delegated_completion(
+                                node, experiment, _evidence,
+                                str(result.get("summary") or content),
+                            )
+                        _declared_artifacts = result.get("artifacts")
+                        # When emit_results is available, a model-authored
+                        # artifact list is not a substitute for its signed
+                        # execution receipt.  Keep the historical artifact
+                        # fallback only for delegated toolsets that genuinely
+                        # have no typed result emitter.
+                        _needs_typed_evidence = "emit_results" in tool_names
+                        if (
+                            _needs_typed_evidence
+                            or not isinstance(_declared_artifacts, list)
+                            or not _declared_artifacts
+                        ):
+                            if delegated_nudges < _DELEGATED_NUDGE_CAP:
+                                delegated_nudges += 1
+                                logger.warning(
+                                    "Node %s: rejected delegated success without "
+                                    "scientifically admissible evidence — nudge %d/%d",
+                                    node.id, delegated_nudges, _DELEGATED_NUDGE_CAP,
+                                )
+                                messages.append({"role": "assistant", "content": content})
+                                messages.append({
+                                    "role": "user",
+                                    "content": _DELEGATED_EVIDENCE_NUDGE,
+                                })
+                                continue
+                            node.mark_failed(
+                                error_log=(
+                                    "Delegated CLI returned success without "
+                                    "scientifically admissible evidence"
+                                )
+                            )
+                            return node
 
                     result_str = json.dumps(result).lower()
                     is_fake = any(p in result_str for p in _FAKE_PATTERNS)

@@ -148,7 +148,20 @@ def _render_bytes(spec: FigureSpecV1) -> tuple[bytes, bytes, FigureEnvironmentV1
             assert spec.x_field is not None
             x = _x_vector(spec.data[spec.x_field], len(y))
             if spec.chart_type == "bar":
-                ax.bar(x, y)
+                bars = ax.bar(x, y, color="#4472C4", edgecolor="#1F1F1F")
+                for bar, value in zip(bars, y):
+                    ax.annotate(
+                        f"{value:.4g}",
+                        xy=(bar.get_x() + bar.get_width() / 2, value),
+                        xytext=(0, 4),
+                        textcoords="offset points",
+                        ha="center",
+                        va="bottom",
+                        fontsize=9,
+                    )
+                if min(y) >= 0:
+                    upper = max(y)
+                    ax.set_ylim(0, upper * 1.18 if upper > 0 else 1.0)
             elif spec.chart_type == "line":
                 ax.plot(x, y, marker="o")
             elif spec.chart_type == "scatter":

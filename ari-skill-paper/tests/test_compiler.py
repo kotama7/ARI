@@ -60,6 +60,20 @@ def test_missing_tool_is_typed_and_keeps_full_logs(monkeypatch, tmp_path: Path):
     }
 
 
+def test_binary_preserves_tex_symlink_invocation_name(monkeypatch, tmp_path: Path):
+    target = tmp_path / "pdftex"
+    target.write_bytes(b"fake executable")
+    link = tmp_path / "pdflatex"
+    link.symlink_to(target)
+    monkeypatch.setattr(compiler.shutil, "which", lambda _name: str(link))
+
+    discovered = compiler._binary("pdflatex")
+
+    assert discovered == link
+    assert discovered.name == "pdflatex"
+    assert discovered.resolve() == target
+
+
 def test_compile_uses_fixed_argv_and_execution_contract(monkeypatch, tmp_path: Path):
     workspace = _workspace(
         tmp_path,
@@ -93,3 +107,81 @@ def test_compile_uses_fixed_argv_and_execution_contract(monkeypatch, tmp_path: P
     assert all(request.shell_command is None for request in requests)
     assert all(request.limits.max_processes == 64 for request in requests)
     assert len(outcome.record.log_artifacts) == 6
+
+
+def test_compile_skips_bibtex_when_bibliography_has_no_citations(
+    monkeypatch, tmp_path: Path
+):
+    workspace = _workspace(
+        tmp_path,
+        r"\documentclass{article}\begin{document}ok\bibliography{refs}\end{document}",
+    )
+    workspace.atomic_write_text("refs.bib", "")
+    discovered = []
+    requests = []
+
+    def fake_binary(name):
+        discovered.append(name)
+        return Path("/usr/bin/true")
+
+    def fake_execute(request):
+        requests.append(request)
+        request.workspace.atomic_write_bytes("main.pdf", b"%PDF" + b"x" * 2048)
+        return record_completed_execution(
+            request,
+            stdout="complete log\n",
+            stderr="",
+            returncode=0,
+            inputs_verified=True,
+        )
+
+    monkeypatch.setattr(compiler, "_binary", fake_binary)
+    monkeypatch.setattr(compiler, "execute_local", fake_execute)
+
+    outcome = compiler.compile_project(
+        workspace=workspace,
+        main_file="main.tex",
+        bib_file="refs.bib",
+    )
+
+    assert outcome.record.status == "completed"
+    assert discovered == ["pdflatex"]
+    assert len(requests) == 3
+    assert all(request.argv[0] == "/usr/bin/true" for request in requests)
+
+
+def test_compile_reports_only_final_pdflatex_diagnostics(monkeypatch, tmp_path: Path):
+    workspace = _workspace(
+        tmp_path,
+        r"\documentclass{article}\begin{document}ok\end{document}",
+    )
+    monkeypatch.setattr(compiler, "_binary", lambda _name: Path("/usr/bin/true"))
+    calls = 0
+
+    def fake_execute(request):
+        nonlocal calls
+        calls += 1
+        request.workspace.atomic_write_bytes("main.pdf", b"%PDF" + b"x" * 2048)
+        stdout = (
+            "LaTeX Warning: Reference `fig:x' undefined.\n"
+            if calls == 1
+            else "references resolved\n"
+        )
+        return record_completed_execution(
+            request,
+            stdout=stdout,
+            stderr="",
+            returncode=0,
+            inputs_verified=True,
+        )
+
+    monkeypatch.setattr(compiler, "execute_local", fake_execute)
+
+    outcome = compiler.compile_project(
+        workspace=workspace,
+        main_file="main.tex",
+        bib_file=None,
+    )
+
+    assert outcome.record.status == "completed"
+    assert outcome.diagnostics == ()
