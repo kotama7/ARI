@@ -24,7 +24,11 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/ari/config/kca_runtime.py
+    role: implementation
+  - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
+    role: test
+last_verified: 2026-08-03
 ---
 
 # Execution Modes: `simple_bfts` and `ari_rqgm`
@@ -363,6 +367,42 @@ On a blocked transition the previous epoch's active set carries over
 unchanged and the run continues (governance-suspended carry-over — never a
 run abort). `rqgm.kernel.enforcement: audit_only` downgrades every context to
 warn-and-log for staged rollout and ablations.
+
+## Knowledge, Capability Binding, and Assurance modes
+
+These three switches are subordinate to the execution mode and are
+legacy-inert by default:
+
+```yaml
+knowledge:
+  mode: off                 # off | audit | enforce
+capability_binding:
+  mode: legacy              # legacy | audit | enforce
+assurance:
+  mode: off                 # off | audit | enforce
+```
+
+`knowledge.audit` composes and records admitted procedural knowledge without
+blocking on an unsatisfied selection; `knowledge.enforce` requires verified,
+digest-locked Knowledge and provenance. Binding `audit` computes the exact
+requirement-to-tool mapping while preserving the legacy surface; `enforce`
+exposes and executes bound tools only. Assurance `audit` runs and records the
+fixed suite without gating; `enforce` requires screen pass for the scientific
+frontier and certify pass for publication.
+
+`resolve_kca_modes` is the single interlock. An explicit Knowledge requirement
+with `knowledge.off`, a required Capability with legacy binding, or a required
+Verification requirement with `assurance.off` is a run-admission error. In an
+active RQGM run, Knowledge or Assurance `enforce` also requires Capability
+Binding `enforce`. There is no implicit mode upgrade.
+
+With the three defaults above, `simple_bfts` performs no K/C/A imports at the
+runtime gate, writes no catalog snapshot/lock/record, changes no prompt bytes,
+metrics, reserved fields, or visible tools, and resumes old checkpoints as
+before. Enabled RQGM runs persist the admitted snapshots and locks under
+`rqgm/kca/admission-v1/`; resume uses those bytes and never re-resolves against
+new catalog contents. See the
+[K/C/A reference](../reference/knowledge_capability_assurance.md).
 
 ## Compatibility guarantees
 

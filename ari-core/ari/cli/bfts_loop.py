@@ -288,6 +288,36 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 "existing idea.json path", exc_info=True,
             )
 
+        # Tasks 16–19: the explicit K/C/A opt-in is admitted after root idea
+        # selection and before any research node, Provider invocation by an
+        # agent, or execution epoch freeze. This path is deliberately NOT
+        # wrapped in the historical best-effort epoch hook: partial scientific
+        # authority must fail closed.
+        if bool(getattr(_rqgm, "kca_feature_enabled", False)):
+            _admit = getattr(_rqgm, "admit_from_checkpoint", None)
+            _open_execution = getattr(_rqgm, "open_execution_epoch", None)
+            if not callable(_admit) or not callable(_open_execution):
+                raise RuntimeError("RQGM KCA runtime lacks the admission boundary")
+            _task_tags = tuple(
+                sorted(
+                    {
+                        str(tag).strip()
+                        for tag in (experiment_data.get("task_tags") or ())
+                        if str(tag).strip()
+                    }
+                )
+            )
+            _admit(
+                checkpoint_dir=checkpoint_dir,
+                run_id=run_id,
+                task_tags=_task_tags,
+            )
+            _open_execution(
+                node_count=len(all_nodes),
+                checkpoint_dir=checkpoint_dir,
+                run_id=run_id,
+            )
+
     # Stage-1 record-only dual-write (docs/plans/ari_rqgm Task 03 §8): with
     # proposal_router.record_only=true in simple_bfts, idea.json output is
     # additionally imported into proposals/proposal_records.jsonl as
@@ -796,11 +826,22 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 metrics_str = f" metrics={dict(list(result.metrics.items())[:2])}" if result.metrics else ""
                 console.print(f"  [{color}]{result.id}[/{color}] -> {result.status.value} has_real={result.has_real_data}{metrics_str}")
 
-                if result.status == NodeStatus.SUCCESS:
-                    # Add to frontier — BFTS selects best to expand at top of loop
-                    frontier.append(result)
-                    console.print(f"    Added to frontier (will expand when selected by BFTS)")
-                elif result.status == NodeStatus.FAILED:
+                _kca_active = _rqgm is not None and bool(
+                    getattr(_rqgm, "kca_feature_enabled", False)
+                )
+                if _kca_active:
+                    _assure = getattr(_rqgm, "assure_node", None)
+                    if not callable(_assure):
+                        raise RuntimeError("RQGM KCA runtime lacks assurance bridge")
+                    _assure(result)
+
+                if not _kca_active and result.status == NodeStatus.SUCCESS:
+                    if getattr(result, "frontier_class", "") != "uncertified_frontier":
+                        frontier.append(result)
+                        console.print(f"    Added to frontier (will expand when selected by BFTS)")
+                    else:
+                        console.print("    Held in uncertified frontier (not scientifically eligible)")
+                elif not _kca_active and result.status == NodeStatus.FAILED:
                     console.print(f"    [red]Error:[/red] {result.error_log}")
                     # Failed nodes go to frontier: BFTS will expand with "debug" children
                     # (retrying the same node is not BFTS — it would repeat the same failure)
@@ -811,7 +852,11 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 # score, retire the parent — there is nothing more to gain
                 # from re-expanding a node a child already surpassed.
                 _parent_id_for_retire = getattr(result, "parent_id", None)
-                if _parent_id_for_retire and isinstance(result.metrics, dict):
+                if (
+                    not _kca_active
+                    and _parent_id_for_retire
+                    and isinstance(result.metrics, dict)
+                ):
                     _child_score = float(result.metrics.get("_scientific_score") or 0.0)
                     for _fn in list(frontier):
                         if _fn.id != _parent_id_for_retire:
@@ -832,7 +877,7 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 # search rather than mining the same parent indefinitely.
                 _max_exp = int(getattr(cfg.bfts, "max_expansions_per_node", 4) or 4)
                 _ec_fn = getattr(bfts, "expansion_count", None)
-                if callable(_ec_fn):
+                if not _kca_active and callable(_ec_fn):
                     for _fn in list(frontier):
                         try:
                             _cnt = int(_ec_fn(_fn.id))
@@ -1018,6 +1063,65 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                     logging.getLogger(__name__).warning(
                         "node_report: failed to write for %s: %s", result.id, _nre
                     )
+
+                # Tasks 18/19: only the KCA path delays frontier mutation until
+                # fixed assurance, sterile detection, adversarial processing,
+                # and the typed node report have all completed.  The legacy
+                # path above intentionally retains its historical ordering.
+                if _kca_active:
+                    if result.status == NodeStatus.SUCCESS:
+                        if getattr(result, "frontier_class", "") != "uncertified_frontier":
+                            frontier.append(result)
+                            console.print(
+                                "    Added to governed frontier "
+                                f"({getattr(result, 'frontier_class', '')})"
+                            )
+                        else:
+                            console.print(
+                                "    Held in uncertified frontier "
+                                "(not scientifically eligible)"
+                            )
+                    elif result.status == NodeStatus.FAILED:
+                        console.print(f"    [red]Error:[/red] {result.error_log}")
+                        frontier.append(result)
+                        console.print(
+                            "    Added failed node to governed debug frontier"
+                        )
+
+                    if _parent_id_for_retire and isinstance(result.metrics, dict):
+                        _child_score = float(
+                            result.metrics.get("_scientific_score") or 0.0
+                        )
+                        _child_eligible = (
+                            getattr(result, "frontier_class", "")
+                            == "scientific_frontier"
+                        )
+                        for _fn in list(frontier):
+                            if _fn.id != _parent_id_for_retire:
+                                continue
+                            _parent_score = float(
+                                (_fn.metrics or {}).get("_scientific_score") or 0.0
+                            )
+                            if _child_eligible and _child_score > _parent_score:
+                                frontier.remove(_fn)
+                                console.print(
+                                    f"    Retired parent {_fn.id[-8:]} from frontier "
+                                    f"(certified child {result.id[-8:]} beat it)"
+                                )
+                            break
+
+                    if callable(_ec_fn):
+                        for _fn in list(frontier):
+                            try:
+                                _cnt = int(_ec_fn(_fn.id))
+                            except (TypeError, ValueError):
+                                continue
+                            if _cnt >= _max_exp:
+                                frontier.remove(_fn)
+                                console.print(
+                                    f"    Retired {_fn.id[-8:]} from frontier "
+                                    f"(reached max_expansions_per_node={_max_exp})"
+                                )
 
                 # Phase 3: populate typed research-memory from the node_report
                 # just written. Default ON (config.consolidation_enabled); the
@@ -1214,6 +1318,34 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
 
         if _lineage_stop_requested:
             break
+
+    # Certification is a final-candidate gate, not a BFTS objective.  Freeze the
+    # scientific winner first, then run the already-resolved certify suite once;
+    # a failed winner is not silently replaced by a lower-scoring candidate.
+    if _rqgm is not None and bool(getattr(_rqgm, "kca_feature_enabled", False)):
+        _certify = getattr(_rqgm, "certify_node", None)
+        _cert_candidates = [
+            _node
+            for _node in all_nodes
+            if _node.status == NodeStatus.SUCCESS
+            and getattr(_node, "frontier_class", "") == "scientific_frontier"
+            and (_node.metrics or {}).get("_valid_for_frontier", True) is not False
+        ]
+        _cert_candidates.sort(
+            key=lambda _node: (
+                -float((_node.metrics or {}).get("_scientific_score") or 0.0),
+                str(_node.id),
+            )
+        )
+        if callable(_certify) and _cert_candidates:
+            _certify(_cert_candidates[0])
+            _save_tree_incremental(
+                checkpoint_dir,
+                run_id,
+                experiment_data["file"],
+                all_nodes,
+                force=True,
+            )
 
     # RQGM end-of-run boundary flush: the outer-loop head tick can never
     # observe nodes created in the final iteration (the while guard exits

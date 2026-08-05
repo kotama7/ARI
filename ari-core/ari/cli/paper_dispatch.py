@@ -38,12 +38,80 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable
 
 log = logging.getLogger(__name__)
 
 PAPER_ARCHIVE_STATE_FILENAME = "paper_archive_state.json"
+
+_MANUSCRIPT_RUNTIME_ENV = (
+    "ARI_MANUSCRIPT_RUNTIME_MODE",
+    "ARI_MANUSCRIPT_PROFILE",
+    "ARI_MANUSCRIPT_REPAIR_POLICY_EFFECTIVE",
+    "ARI_MANUSCRIPT_BRIEF_CHARACTER_BUDGET",
+    "ARI_MANUSCRIPT_MAX_ROUNDS",
+    "ARI_MANUSCRIPT_MAX_NEW_NODES",
+    "ARI_MANUSCRIPT_MAX_EXPERIMENT_RUNS",
+    "ARI_MANUSCRIPT_MAX_LLM_CALLS",
+    "ARI_MANUSCRIPT_ASSURANCE_MODE",
+    "ARI_MANUSCRIPT_KNOWLEDGE_MODE",
+    "ARI_MANUSCRIPT_CAPABILITY_MODE",
+    "ARI_MANUSCRIPT_EXPLORATION_MODE",
+    "ARI_MANUSCRIPT_PAPER_MODE",
+    "ARI_MANUSCRIPT_CONTEXT_PATH",
+    "ARI_MANUSCRIPT_PROFILE_PATH",
+    "ARI_MANUSCRIPT_READINESS_PATH",
+    "ARI_MANUSCRIPT_BRIEFS_PATH",
+    "ARI_MANUSCRIPT_BINDING_PATH",
+)
+
+
+@contextmanager
+def _manuscript_runtime_environment(cfg, *, paper_mode: str):
+    """Expose the resolved opt-in posture to the fixed pipeline boundary.
+
+    The default/off branch yields without touching the process environment or
+    importing ``ari.manuscript``.
+    """
+
+    from ari.config import _effective_manuscript_mode_str
+
+    mode = _effective_manuscript_mode_str(cfg)
+    repair_policy = getattr(getattr(cfg.manuscript, "repair", None), "policy", "disabled")
+    if repair_policy == "auto" and mode != "enforce":
+        raise ValueError("manuscript repair.policy=auto requires manuscript.mode=enforce")
+    if mode == "off":
+        yield
+        return
+    old = {key: os.environ.get(key) for key in _MANUSCRIPT_RUNTIME_ENV}
+    manuscript = cfg.manuscript
+    repair = manuscript.repair
+    values = {
+        "ARI_MANUSCRIPT_RUNTIME_MODE": mode,
+        "ARI_MANUSCRIPT_PROFILE": manuscript.profile,
+        "ARI_MANUSCRIPT_REPAIR_POLICY_EFFECTIVE": repair.policy,
+        "ARI_MANUSCRIPT_BRIEF_CHARACTER_BUDGET": str(manuscript.brief_character_budget),
+        "ARI_MANUSCRIPT_MAX_ROUNDS": str(repair.max_rounds),
+        "ARI_MANUSCRIPT_MAX_NEW_NODES": str(repair.max_new_nodes),
+        "ARI_MANUSCRIPT_MAX_EXPERIMENT_RUNS": str(repair.max_experiment_runs),
+        "ARI_MANUSCRIPT_MAX_LLM_CALLS": str(repair.max_llm_calls),
+        "ARI_MANUSCRIPT_ASSURANCE_MODE": getattr(cfg.assurance, "mode", "off"),
+        "ARI_MANUSCRIPT_KNOWLEDGE_MODE": getattr(cfg.knowledge, "mode", "off"),
+        "ARI_MANUSCRIPT_CAPABILITY_MODE": getattr(cfg.capability_binding, "mode", "legacy"),
+        "ARI_MANUSCRIPT_EXPLORATION_MODE": getattr(cfg.ari, "mode", "simple_bfts"),
+        "ARI_MANUSCRIPT_PAPER_MODE": paper_mode,
+    }
+    os.environ.update(values)
+    try:
+        yield
+    finally:
+        for key, value in old.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def build_agent_as_judge(cfg, paper_llm, experiment_data, checkpoint_dir):
@@ -247,6 +315,7 @@ def run_paper_phase(
     linear_paper_fn: Callable,
     paper_llm=None,
     rqgm=None,
+    repair_executors: dict[str, Callable] | None = None,
 ) -> str:
     """Resolve the paper axis and run the paper phase. Returns the effective
     mode actually run (``"linear"`` or ``"rqgm_archive"``).
@@ -264,11 +333,16 @@ def run_paper_phase(
     the paper evidence does not exist yet, once more AFTER the pipeline
     produced it (see :func:`run_paper_candidate_preflight`).
     """
-    from ari.config import _effective_paper_mode_str, apply_paper_env_overrides
+    from ari.config import (
+        _effective_paper_mode_str,
+        apply_manuscript_env_overrides,
+        apply_paper_env_overrides,
+    )
 
     escalated = run_paper_candidate_preflight(
         rqgm, all_nodes, experiment_data, checkpoint_dir)
     apply_paper_env_overrides(cfg)
+    apply_manuscript_env_overrides(cfg)
     state_path = Path(checkpoint_dir) / PAPER_ARCHIVE_STATE_FILENAME
     state_existed = state_path.exists()
     if state_existed:
@@ -279,7 +353,77 @@ def run_paper_phase(
         reconcile_paper_resume_mode(cfg, checkpoint_dir)
 
     if _effective_paper_mode_str(cfg) != "rqgm_archive":
-        linear_paper_fn(all_nodes, experiment_data, checkpoint_dir, mcp, cfg_str)
+        with _manuscript_runtime_environment(cfg, paper_mode="linear"):
+            manuscript_mode = os.environ.get(
+                "ARI_MANUSCRIPT_RUNTIME_MODE", "off"
+            ).strip().lower()
+            if manuscript_mode == "off":
+                linear_paper_fn(
+                    all_nodes, experiment_data, checkpoint_dir, mcp, cfg_str
+                )
+            else:
+                linear_paper_fn(
+                    all_nodes,
+                    experiment_data,
+                    checkpoint_dir,
+                    mcp,
+                    cfg_str,
+                    include_segments=frozenset({"evidence"}),
+                )
+                from ari.manuscript.runtime import prepare_runtime_manuscript
+
+                outcome = prepare_runtime_manuscript(
+                    checkpoint_dir,
+                    all_nodes,
+                    experiment_data=experiment_data,
+                    block_on_unready=False,
+                )
+                assert outcome is not None
+                if (
+                    manuscript_mode == "enforce"
+                    and not outcome.authoring_ready
+                    and os.environ.get(
+                        "ARI_MANUSCRIPT_REPAIR_POLICY_EFFECTIVE", "disabled"
+                    ) == "auto"
+                    and repair_executors is not None
+                ):
+                    from ari.manuscript.runtime import run_runtime_auto_repair
+
+                    repaired = run_runtime_auto_repair(
+                        checkpoint_dir,
+                        all_nodes,
+                        experiment_data=experiment_data,
+                        evidence_rebuilder=lambda: linear_paper_fn(
+                            all_nodes,
+                            experiment_data,
+                            checkpoint_dir,
+                            mcp,
+                            cfg_str,
+                            include_segments=frozenset({"evidence"}),
+                        ),
+                        executors=repair_executors,
+                    )
+                    outcome = repaired.outcome
+                if manuscript_mode == "enforce" and not outcome.authoring_ready:
+                    from ari.manuscript.coordinator import ManuscriptAuthoringBlocked
+
+                    raise ManuscriptAuthoringBlocked(outcome)
+                linear_paper_fn(
+                    all_nodes,
+                    experiment_data,
+                    checkpoint_dir,
+                    mcp,
+                    cfg_str,
+                    include_segments=frozenset({"authoring"}),
+                )
+                linear_paper_fn(
+                    all_nodes,
+                    experiment_data,
+                    checkpoint_dir,
+                    mcp,
+                    cfg_str,
+                    include_segments=frozenset({"verification"}),
+                )
         if not escalated:
             run_paper_candidate_preflight(
                 rqgm, all_nodes, experiment_data, checkpoint_dir,
@@ -324,10 +468,122 @@ def run_paper_phase(
     # Tasks 02-07 own the archive loop, best-belief selection, and the compile +
     # claim-gate handoff. The archive builds the winning full_paper.tex, then
     # delegates to the SAME linear pipeline for the claim-gate tail.
-    rt.run_archive(
-        all_nodes, experiment_data, checkpoint_dir, mcp, cfg_str,
-        linear_fallback=linear_paper_fn,
-    )
+    with _manuscript_runtime_environment(cfg, paper_mode="rqgm_archive"):
+        fallback = linear_paper_fn
+        manuscript_mode = os.environ.get(
+            "ARI_MANUSCRIPT_RUNTIME_MODE", "off"
+        ).strip().lower()
+        if manuscript_mode != "off":
+            # Archive authoring used to run before transform/EAR/figure stages.
+            # Run the additive evidence segment first, compile the common ready
+            # bundle, and only then allow the archive's first model call.
+            linear_paper_fn(
+                all_nodes,
+                experiment_data,
+                checkpoint_dir,
+                mcp,
+                cfg_str,
+                include_segments=frozenset({"evidence"}),
+            )
+            from ari.manuscript.runtime import prepare_runtime_manuscript
+
+            outcome = prepare_runtime_manuscript(
+                checkpoint_dir,
+                all_nodes,
+                experiment_data=experiment_data,
+                block_on_unready=False,
+            )
+            assert outcome is not None
+            if (
+                manuscript_mode == "enforce"
+                and not outcome.authoring_ready
+                and os.environ.get(
+                    "ARI_MANUSCRIPT_REPAIR_POLICY_EFFECTIVE", "disabled"
+                ) == "auto"
+                and repair_executors is not None
+            ):
+                from ari.manuscript.runtime import run_runtime_auto_repair
+
+                repaired = run_runtime_auto_repair(
+                    checkpoint_dir,
+                    all_nodes,
+                    experiment_data=experiment_data,
+                    evidence_rebuilder=lambda: linear_paper_fn(
+                        all_nodes,
+                        experiment_data,
+                        checkpoint_dir,
+                        mcp,
+                        cfg_str,
+                        include_segments=frozenset({"evidence"}),
+                    ),
+                    executors=repair_executors,
+                )
+                outcome = repaired.outcome
+            if manuscript_mode == "enforce" and not outcome.authoring_ready:
+                from ari.manuscript.coordinator import ManuscriptAuthoringBlocked
+
+                raise ManuscriptAuthoringBlocked(outcome)
+            from ari.manuscript.runtime import transition_runtime_manuscript
+
+            transition_runtime_manuscript(
+                checkpoint_dir,
+                "authoring",
+                reason_code=(
+                    "archive_authoring_started"
+                    if manuscript_mode == "enforce"
+                    else "audit_archive_authoring_started"
+                ),
+            )
+
+            def _segmented_fallback(
+                nodes,
+                data,
+                ckpt,
+                fallback_mcp,
+                fallback_cfg,
+                *,
+                disable_stages=frozenset(),
+            ):
+                # A materialised archive winner needs only the common fixed
+                # verification tail.  If archive generation failed, the bound
+                # linear authoring backend consumes the same ready bundle first.
+                if disable_stages:
+                    transition_runtime_manuscript(
+                        ckpt,
+                        "authored",
+                        reason_code="archive_winner_authored",
+                    )
+                    return linear_paper_fn(
+                        nodes,
+                        data,
+                        ckpt,
+                        fallback_mcp,
+                        fallback_cfg,
+                        disable_stages=disable_stages,
+                        include_segments=frozenset({"verification"}),
+                    )
+                linear_paper_fn(
+                    nodes,
+                    data,
+                    ckpt,
+                    fallback_mcp,
+                    fallback_cfg,
+                    include_segments=frozenset({"authoring"}),
+                )
+                return linear_paper_fn(
+                    nodes,
+                    data,
+                    ckpt,
+                    fallback_mcp,
+                    fallback_cfg,
+                    include_segments=frozenset({"verification"}),
+                )
+
+            fallback = _segmented_fallback
+        rt.run_archive(
+            all_nodes, experiment_data, checkpoint_dir, mcp, cfg_str,
+            linear_fallback=fallback,
+        )
     log_agent_as_judge_provenance(reviewer_score_fn)
     if not escalated:
         run_paper_candidate_preflight(

@@ -240,8 +240,7 @@ class QiskitExperimentAdapter:
 
     @staticmethod
     def leaf_name(profile_id: str) -> str:
-        safe = profile_id.replace("-", "_").replace(".", "_")
-        return f"ari_qiskit_sample__{safe}"
+        return qiskit_leaf_name(profile_id)
 
     def _virtual_tools(self) -> list[ProviderToolV1]:
         tools: list[ProviderToolV1] = []
@@ -253,45 +252,7 @@ class QiskitExperimentAdapter:
                 and self.leaf_name(profile.profile_id) not in self.allowed_leaf_names
             ):
                 continue
-            metadata = {
-                "profile_id": profile.profile_id,
-                "experiment_digest": profile.experiment_digest,
-                "method_digest": profile.method_digest,
-                "capability_ref": profile.capability_ref,
-                "backend_kind": profile.backend.kind,
-                "target_digest": profile.backend.target.target_digest,
-                "circuit_digest": profile.circuit.qpy_digest,
-                "shots": profile.shots,
-                "seed_simulator": profile.seed_simulator,
-            }
-            tools.append(
-                ProviderToolV1(
-                    name=self.leaf_name(profile.profile_id),
-                    description=profile.description,
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "request_id": {
-                                "type": "string",
-                                "pattern": _REQUEST_ID_RE.pattern,
-                            }
-                        },
-                        "required": ["request_id"],
-                        "additionalProperties": False,
-                    },
-                    output_schema={
-                        "type": "object",
-                        "properties": {
-                            "handle_id": {"type": "string"},
-                            "status": {"type": "string"},
-                            "experiment_digest": {"type": "string"},
-                        },
-                        "required": ["handle_id", "status", "experiment_digest"],
-                        "additionalProperties": True,
-                    },
-                    annotations={"ari_qiskit": metadata},
-                )
-            )
+            tools.append(qiskit_virtual_tool(profile))
         return tools
 
     async def list_tools(self) -> list[ProviderToolV1]:
@@ -525,8 +486,55 @@ __all__ = [
     "QiskitTranspilationV1",
     "qiskit_adapter_digest",
     "qiskit_effective_launcher",
+    "qiskit_leaf_name",
     "qiskit_provider_release_pin",
     "qiskit_software_stack_digest",
+    "qiskit_virtual_tool",
     "verify_qiskit_experiment_files",
     "verify_qiskit_provider_package",
 ]
+def qiskit_leaf_name(profile_id: str) -> str:
+    safe = profile_id.replace("-", "_").replace(".", "_")
+    return f"ari_qiskit_sample__{safe}"
+
+
+def qiskit_virtual_tool(profile: QiskitExperimentV1) -> ProviderToolV1:
+    """Build the sole public operation for one immutable Qiskit profile."""
+
+    metadata = {
+        "profile_id": profile.profile_id,
+        "experiment_digest": profile.experiment_digest,
+        "method_digest": profile.method_digest,
+        "capability_ref": profile.capability_ref,
+        "backend_kind": profile.backend.kind,
+        "target_digest": profile.backend.target.target_digest,
+        "circuit_digest": profile.circuit.qpy_digest,
+        "shots": profile.shots,
+        "seed_simulator": profile.seed_simulator,
+    }
+    return ProviderToolV1(
+        name=qiskit_leaf_name(profile.profile_id),
+        description=profile.description,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string",
+                    "pattern": _REQUEST_ID_RE.pattern,
+                }
+            },
+            "required": ["request_id"],
+            "additionalProperties": False,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "handle_id": {"type": "string"},
+                "status": {"type": "string"},
+                "experiment_digest": {"type": "string"},
+            },
+            "required": ["handle_id", "status", "experiment_digest"],
+            "additionalProperties": True,
+        },
+        annotations={"ari_qiskit": metadata},
+    )

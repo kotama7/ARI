@@ -84,6 +84,7 @@ def build_reliability_entries(records: list, component_registry=None) -> list:
         count = len(own)
         attacks = attacks_by_target.get(cid, [])
         role = roles.get(cid, "")
+        tier = ""
         prompt_hash = hashes.get(cid)
         getter = getattr(component_registry, "get", None)
         if callable(getter):
@@ -93,6 +94,7 @@ def build_reliability_entries(records: list, component_registry=None) -> list:
                 entry = None
             if entry is not None:
                 role = str(getattr(entry, "role", "") or role)
+                tier = str(getattr(entry, "tier", "") or "")
         agreements = [
             float(r["agreement"]) for r in own
             if isinstance(r.get("agreement"), (int, float))
@@ -121,6 +123,7 @@ def build_reliability_entries(records: list, component_registry=None) -> list:
             {
                 "component_id": cid,
                 "role": role,
+                "tier": tier,
                 "prompt_hash": prompt_hash,
                 "observation_count": count,
                 "validated_attack_involvement": len(attacks),

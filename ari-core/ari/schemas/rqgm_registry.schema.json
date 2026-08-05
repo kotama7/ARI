@@ -187,6 +187,9 @@
         "evidence_clerk",
         "governance_judge",
         "constitutional_kernel",
+        "knowledge_binder",
+        "capability_binder",
+        "harness_resolver",
         "fixed_verifier",
         "audit_log"
       ]

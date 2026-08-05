@@ -1,10 +1,12 @@
 """Public Python package for ARI's provider-neutral HPC runtime."""
 
 from ari_skill_hpc.contracts import (
+    AcceleratorDeviceIdentityV1,
     ArtifactPinV1,
     BindMountV1,
     ContainerRequestV1,
     EnvironmentPolicyV1,
+    ExclusiveNodeAcceleratorV1,
     JobHandleV1,
     JobLogV1,
     JobRequestV1,
@@ -27,10 +29,12 @@ from ari_skill_hpc.execution_adapter import (
 )
 
 __all__ = [
+    "AcceleratorDeviceIdentityV1",
     "ArtifactPinV1",
     "BindMountV1",
     "ContainerRequestV1",
     "EnvironmentPolicyV1",
+    "ExclusiveNodeAcceleratorV1",
     "ExecutionHandoffV1",
     "JobHandleV1",
     "JobLogV1",

@@ -165,7 +165,12 @@ def test_utility_policy_is_evolvable_not_fixed():
     limbo and is rejected explicitly (plan 14 §5.2)."""
     assert "utility_policy" not in events.FIXED_ROLES
     assert set(events.FIXED_ROLES) == {
-        "constitutional_kernel", "fixed_verifier", "audit_log"
+        "constitutional_kernel",
+        "knowledge_binder",
+        "capability_binder",
+        "harness_resolver",
+        "fixed_verifier",
+        "audit_log",
     }
 
 

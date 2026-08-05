@@ -11,6 +11,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
+import tomllib
+import zipfile
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -31,6 +34,23 @@ from providers import (
 
 TOOLUNIVERSE_ADAPTER_ID = "ari.tooluniverse-compact"
 TOOLUNIVERSE_ADAPTER_VERSION = "1.0.0"
+TOOLUNIVERSE_PROVIDER_REGISTRATION_GATES = (
+    "manifest_schema",
+    "source_package_digest_pin",
+    "live_tools_list_parity",
+    "schema_digest_pin",
+    "capability_contract_conformance",
+    "side_effect_declaration",
+    "credential_scope",
+    "environment_allowlist",
+    "timeout_cancellation_process_group",
+    "result_schema",
+    "malicious_description_boundary",
+    "workspace_isolation",
+    "revocation_behavior",
+    "schema_drift_detection",
+    "unbound_invocation_rejection",
+)
 TOOLUNIVERSE_COMPACT_TOOLS = frozenset(
     {"list_tools", "grep_tools", "get_tool_info", "execute_tool"}
 )
@@ -99,6 +119,192 @@ def verify_tooluniverse_pin(pin: dict[str, Any]) -> None:
         raise ProviderProtocolError(
             f"ToolUniverse {version} is not an exact reviewed support-matrix pin"
         )
+    if pin.get("artifact_kind") == "ari-patched-wheel":
+        _verify_patched_support_artifacts(pin)
+
+
+def _support_artifact(path_text: Any, expected_digest: Any) -> Path:
+    relative = Path(str(path_text or ""))
+    if (
+        not relative.parts
+        or relative.is_absolute()
+        or ".." in relative.parts
+    ):
+        raise ProviderProtocolError("ToolUniverse support artifact path is unsafe")
+    path = (_SUPPORT_MATRIX.parent / relative).resolve()
+    try:
+        path.relative_to(_SUPPORT_MATRIX.parent.resolve())
+    except ValueError as exc:
+        raise ProviderProtocolError(
+            "ToolUniverse support artifact escapes the providers directory"
+        ) from exc
+    if path.is_symlink() or not path.is_file():
+        raise ProviderProtocolError(
+            f"ToolUniverse support artifact is not a regular file: {relative}"
+        )
+    actual = _file_sha256(path)
+    if actual != expected_digest:
+        raise ProviderProtocolError(
+            f"ToolUniverse support artifact drift for {relative}: "
+            f"expected {expected_digest}, got {actual}"
+        )
+    return path
+
+
+def _verify_patched_support_artifacts(pin: dict[str, Any]) -> None:
+    """Verify the checked-in patch, recipe, and single runtime lock as one unit."""
+
+    patch = _support_artifact(pin.get("patch_path"), pin.get("patch_digest"))
+    recipe_path = _support_artifact(
+        pin.get("build_recipe_path"), pin.get("build_recipe_digest")
+    )
+    manifest_path = _support_json_artifact(
+        pin.get("provider_manifest_path"), pin.get("provider_manifest_digest")
+    )
+    runtime_lock_path = _support_artifact(
+        pin.get("checked_dependency_lock_path"), pin.get("dependency_lock_digest")
+    )
+    try:
+        recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        runtime_lock = tomllib.loads(runtime_lock_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, tomllib.TOMLDecodeError) as exc:
+        raise ProviderProtocolError(
+            f"ToolUniverse patched support metadata is invalid: {exc}"
+        ) from exc
+    if not isinstance(recipe, dict) or recipe.get("schema_version") != (
+        "ari.tooluniverse-build-recipe/v1"
+    ):
+        raise ProviderProtocolError("ToolUniverse patched build recipe version is invalid")
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != (
+        "ari.tooluniverse-capability-provider-manifest/v1"
+    ):
+        raise ProviderProtocolError("ToolUniverse Provider manifest version is invalid")
+    if (
+        recipe.get("provider_version") != pin.get("version")
+        or recipe.get("expected_wheel_sha256") != pin.get("wheel_digest")
+        or recipe.get("expected_package_tree_sha256")
+        != pin.get("package_tree_digest")
+        or recipe.get("patch", {}).get("sha256") != pin.get("patch_digest")
+        or recipe.get("runtime_lock", {}).get("sha256")
+        != pin.get("dependency_lock_digest")
+        or recipe.get("upstream", {}).get("version") != pin.get("upstream_version")
+        or recipe.get("upstream", {}).get("wheel_sha256")
+        != pin.get("upstream_wheel_digest")
+        or recipe.get("patch", {}).get("path") != patch.name
+        or recipe.get("runtime_lock", {}).get("path") != runtime_lock_path.name
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse patched build recipe conflicts with its support pin"
+        )
+    expected_artifact = _verified_artifact(pin)
+    capabilities = manifest.get("capabilities")
+    if (
+        manifest.get("provider_id") != "tooluniverse-pubmed"
+        or manifest.get("provider_version") != pin.get("version")
+        or manifest.get("artifact") != expected_artifact
+        or not isinstance(capabilities, list)
+        or len(capabilities) != 1
+        or capabilities[0].get("tool_name") != "PubMed_search_articles"
+        or capabilities[0].get("capability_ref") != "ari.literature.search/v1"
+        or capabilities[0].get("credential_scope_ids") != []
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse Provider manifest expands or changes the reviewed identity"
+        )
+    packages = runtime_lock.get("package")
+    if not isinstance(packages, list):
+        raise ProviderProtocolError("ToolUniverse runtime lock omits its package graph")
+    by_name = {
+        str(item.get("name", "")).casefold(): item
+        for item in packages
+        if isinstance(item, dict)
+    }
+    forbidden = sorted({"fitz", "pathlib", "pyxnat"} & set(by_name))
+    if forbidden:
+        raise ProviderProtocolError(
+            f"ToolUniverse runtime lock retains rejected dependencies: {forbidden}"
+        )
+    root = by_name.get("tooluniverse")
+    if (
+        not isinstance(root, dict)
+        or root.get("version") != pin.get("version")
+        or "pymupdf" not in by_name
+        or by_name["pymupdf"].get("version") != "1.26.4"
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse runtime lock does not close the patched provider dependency graph"
+        )
+
+
+def _support_json_artifact(path_text: Any, expected_digest: Any) -> Path:
+    """Verify a canonical JSON support artifact without depending on whitespace."""
+
+    relative = Path(str(path_text or ""))
+    if not relative.parts or relative.is_absolute() or ".." in relative.parts:
+        raise ProviderProtocolError("ToolUniverse JSON support artifact path is unsafe")
+    path = (_SUPPORT_MATRIX.parent / relative).resolve()
+    try:
+        path.relative_to(_SUPPORT_MATRIX.parent.resolve())
+    except ValueError as exc:
+        raise ProviderProtocolError(
+            "ToolUniverse JSON support artifact escapes the providers directory"
+        ) from exc
+    if path.is_symlink() or not path.is_file():
+        raise ProviderProtocolError(
+            f"ToolUniverse JSON support artifact is not a regular file: {relative}"
+        )
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProviderProtocolError(
+            f"ToolUniverse JSON support artifact is invalid: {exc}"
+        ) from exc
+    actual = sha256_digest(document)
+    if actual != expected_digest:
+        raise ProviderProtocolError(
+            f"ToolUniverse JSON support artifact drift for {relative}: "
+            f"expected {expected_digest}, got {actual}"
+        )
+    return path
+
+
+def _verified_artifact(pin: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "artifact_kind": pin.get("artifact_kind"),
+        "build_recipe_digest": pin.get("build_recipe_digest"),
+        "dependency_lock_digest": pin.get("dependency_lock_digest"),
+        "package_tree_digest": pin.get("package_tree_digest"),
+        "patch_digest": pin.get("patch_digest"),
+        "upstream_version": pin.get("upstream_version"),
+        "upstream_wheel_digest": pin.get("upstream_wheel_digest"),
+        "wheel_digest": pin.get("wheel_digest"),
+    }
+
+
+def _verified_scope(manifest: dict[str, Any]) -> dict[str, Any]:
+    capabilities = manifest["capabilities"]
+    capability = capabilities[0]
+    return {
+        "categories": [capability["category"]],
+        "tool_names": [capability["tool_name"]],
+        "capability_ref": capability["capability_ref"],
+        "capability_contract_digest": capability["capability_contract_digest"],
+        "leaf_spec_digest": capability["leaf_spec_digest"],
+        "input_schema_digest": capability["input_schema_digest"],
+        "output_schema_digest": capability["output_schema_digest"],
+        "projected_output_schema_digest": capability[
+            "projected_output_schema_digest"
+        ],
+        "result_normalizer": capability["result_normalizer"],
+        "side_effects": capability["side_effects"],
+        "determinism": capability["determinism"],
+        "context_requirement": capability["context_requirement"],
+        "permissions": capability["permissions"],
+        "credential_scope_ids": capability["credential_scope_ids"],
+        "environment_requirements": ["network-read"],
+        "resource_type": "network",
+    }
 
 
 def tooluniverse_release_pin(version: str) -> dict[str, Any]:
@@ -156,11 +362,364 @@ def verify_tooluniverse_package(
         )
 
 
+def verify_tooluniverse_dependency_lock(
+    path: str | Path,
+    pin: dict[str, Any],
+) -> str:
+    """Verify the exact upstream lock artifact reviewed for this release."""
+
+    lock = Path(path)
+    if lock.is_symlink() or not lock.is_file():
+        raise ProviderProtocolError(
+            "ToolUniverse dependency lock must be a regular file"
+        )
+    actual = _file_sha256(lock)
+    expected = str(pin.get("dependency_lock_digest") or "")
+    if actual != expected:
+        raise ProviderProtocolError(
+            "ToolUniverse dependency lock drift: "
+            f"expected {expected}, got {actual}"
+        )
+    return actual
+
+
+def verify_tooluniverse_wheel(path: str | Path, pin: dict[str, Any]) -> str:
+    """Verify the retained immutable wheel and its primary metadata identity."""
+
+    wheel = Path(path)
+    if wheel.is_symlink() or not wheel.is_file():
+        raise ProviderProtocolError("ToolUniverse wheel must be a regular file")
+    actual = _file_sha256(wheel)
+    expected = str(pin.get("wheel_digest") or "")
+    if actual != expected:
+        raise ProviderProtocolError(
+            f"ToolUniverse wheel drift: expected {expected}, got {actual}"
+        )
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            metadata_names = [
+                name for name in archive.namelist() if name.endswith(".dist-info/METADATA")
+            ]
+            if len(metadata_names) != 1:
+                raise ProviderProtocolError(
+                    "ToolUniverse wheel must contain exactly one METADATA file"
+                )
+            metadata = archive.read(metadata_names[0]).decode("utf-8")
+    except (OSError, UnicodeDecodeError, zipfile.BadZipFile, KeyError) as exc:
+        raise ProviderProtocolError(f"ToolUniverse wheel is invalid: {exc}") from exc
+    headers: dict[str, list[str]] = {}
+    for line in metadata.splitlines():
+        if ":" not in line:
+            if not line:
+                break
+            continue
+        name, value = line.split(":", 1)
+        headers.setdefault(name.casefold(), []).append(value.strip())
+    if headers.get("name") != ["tooluniverse"] or headers.get("version") != [
+        str(pin.get("version"))
+    ]:
+        raise ProviderProtocolError("ToolUniverse wheel metadata identity is invalid")
+    requirements = headers.get("requires-dist", [])
+    if pin.get("artifact_kind") == "ari-patched-wheel" and (
+        not any(item.casefold() == "pymupdf==1.26.4" for item in requirements)
+        or any(item.casefold().startswith("fitz") for item in requirements)
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse patched wheel does not carry the reviewed PyMuPDF dependency"
+        )
+    return actual
+
+
+def _sibling_artifact(root: Path, path_text: Any) -> Path:
+    relative = Path(str(path_text or ""))
+    if not relative.parts or relative.is_absolute() or ".." in relative.parts:
+        raise ProviderProtocolError("ToolUniverse verified-lock artifact path is unsafe")
+    path = (root / relative).resolve()
+    try:
+        path.relative_to(root.resolve())
+    except ValueError as exc:
+        raise ProviderProtocolError(
+            "ToolUniverse verified-lock artifact escapes its bundle"
+        ) from exc
+    if path.is_symlink() or not path.is_file():
+        raise ProviderProtocolError(
+            f"ToolUniverse verified-lock artifact is missing: {relative}"
+        )
+    return path
+
+
+def _self_digest(document: dict[str, Any], field: str) -> str:
+    return sha256_digest({key: value for key, value in document.items() if key != field})
+
+
+def verify_tooluniverse_verified_lock(
+    path: str | Path,
+    pin: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate a closed, evidence-bound, exact-scope Provider promotion lock."""
+
+    verify_tooluniverse_pin(pin)
+    lock_path = Path(path)
+    if lock_path.is_symlink() or not lock_path.is_file():
+        raise ProviderProtocolError(
+            "ToolUniverse verified lock must be a regular file"
+        )
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProviderProtocolError(f"ToolUniverse verified lock is invalid: {exc}") from exc
+    if not isinstance(lock, dict) or lock.get("schema_version") != (
+        "ari.tooluniverse-verified-lock/v1"
+    ):
+        raise ProviderProtocolError("ToolUniverse verified lock version is invalid")
+    expected_lock_digest = lock.get("lock_digest")
+    if expected_lock_digest != _self_digest(lock, "lock_digest"):
+        raise ProviderProtocolError("ToolUniverse verified lock digest mismatch")
+    artifact = lock.get("artifact")
+    scope = lock.get("capability_scope")
+    registration = lock.get("registration")
+    promotion = lock.get("promotion")
+    manifest_path = _support_json_artifact(
+        pin.get("provider_manifest_path"), pin.get("provider_manifest_digest")
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    expected_scope = _verified_scope(manifest)
+    if (
+        lock.get("status") != "verified"
+        or lock.get("provider_id") != "tooluniverse-pubmed"
+        or lock.get("provider_version") != pin.get("version")
+        or not isinstance(artifact, dict)
+        or not isinstance(scope, dict)
+        or not isinstance(registration, dict)
+        or not isinstance(promotion, dict)
+    ):
+        raise ProviderProtocolError("ToolUniverse verified lock identity is invalid")
+    expected_artifact = _verified_artifact(pin)
+    if artifact != expected_artifact:
+        raise ProviderProtocolError(
+            "ToolUniverse verified lock artifact differs from its support pin"
+        )
+    if scope != expected_scope:
+        raise ProviderProtocolError(
+            "ToolUniverse verified lock expands or changes the reviewed PubMed scope"
+        )
+    expected_runtime = {
+        "architecture": "x86_64",
+        "operating_system": "linux",
+        "python_implementation": "CPython",
+        "python_minor": "3.13",
+    }
+    adapter = lock.get("adapter")
+    if (
+        lock.get("runtime_target") != expected_runtime
+        or not isinstance(adapter, dict)
+        or adapter.get("adapter_id") != TOOLUNIVERSE_ADAPTER_ID
+        or adapter.get("adapter_version") != TOOLUNIVERSE_ADAPTER_VERSION
+        or adapter.get("adapter_digest") != tooluniverse_adapter_digest()
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse verified lock runtime or adapter identity drifted"
+        )
+    root = lock_path.parent
+    evidence_path = _sibling_artifact(root, registration.get("evidence_path"))
+    report_path = _sibling_artifact(root, registration.get("report_path"))
+    approval_path = _sibling_artifact(root, promotion.get("approval_path"))
+    try:
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        approval = json.loads(approval_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ProviderProtocolError(
+            f"ToolUniverse promotion evidence is invalid: {exc}"
+        ) from exc
+    if (
+        not isinstance(evidence, dict)
+        or evidence.get("schema_version")
+        != "ari.tooluniverse-registration-evidence/v1"
+        or evidence.get("bundle_digest") != _self_digest(evidence, "bundle_digest")
+        or evidence.get("bundle_digest") != registration.get("evidence_bundle_digest")
+        or evidence.get("provider_id") != lock.get("provider_id")
+        or evidence.get("provider_version") != lock.get("provider_version")
+        or evidence.get("artifact") != expected_artifact
+        or evidence.get("capability_scope") != expected_scope
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse registration evidence bundle digest mismatch"
+        )
+    if (
+        not isinstance(report, dict)
+        or report.get("schema_version")
+        != "ari.capability-provider-registration-report/v1"
+        or report.get("report_digest") != _self_digest(report, "report_digest")
+        or report.get("report_digest") != registration.get("report_digest")
+        or report.get("provider_id") != lock.get("provider_id")
+        or report.get("manifest_sha256") != pin.get("provider_manifest_digest")
+        or report.get("decision") != "eligible-for-verified"
+        or registration.get("provider_manifest_path")
+        != Path(str(pin.get("provider_manifest_path"))).name
+        or registration.get("provider_manifest_digest")
+        != pin.get("provider_manifest_digest")
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse registration report is not eligible for verified"
+        )
+    gates = report.get("gates")
+    gate_evidence = evidence.get("gate_evidence")
+    if not isinstance(gates, list) or not isinstance(gate_evidence, dict):
+        raise ProviderProtocolError("ToolUniverse registration gates are missing")
+    observed_gate_ids = tuple(item.get("gate_id") for item in gates if isinstance(item, dict))
+    if observed_gate_ids != TOOLUNIVERSE_PROVIDER_REGISTRATION_GATES:
+        raise ProviderProtocolError("ToolUniverse registration gates are incomplete")
+    if (
+        len(gate_evidence) != len(TOOLUNIVERSE_PROVIDER_REGISTRATION_GATES)
+        or set(gate_evidence) != set(TOOLUNIVERSE_PROVIDER_REGISTRATION_GATES)
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse registration evidence gates are incomplete or out of order"
+        )
+    for gate in gates:
+        gate_id = gate["gate_id"]
+        item = gate_evidence.get(gate_id)
+        if (
+            gate.get("passed") is not True
+            or not isinstance(item, dict)
+            or not item
+            or not str(gate.get("detail") or "").strip()
+            or gate.get("evidence_digest") != sha256_digest(item)
+        ):
+            raise ProviderProtocolError(
+                f"ToolUniverse registration gate evidence mismatch: {gate_id}"
+            )
+    if (
+        not isinstance(approval, dict)
+        or approval.get("schema_version")
+        != "ari.capability-provider-promotion-approval/v1"
+        or approval.get("approval_digest")
+        != _self_digest(approval, "approval_digest")
+        or approval.get("approval_digest") != promotion.get("approval_digest")
+        or approval.get("provider_id") != lock.get("provider_id")
+        or approval.get("provider_version") != lock.get("provider_version")
+        or approval.get("from_status") != "candidate"
+        or approval.get("to_status") != "verified"
+        or approval.get("actor_kind") != "human-maintainer"
+        or not str(approval.get("actor_id") or "").strip()
+        or approval.get("authorization_basis") != "explicit-maintainer-approval"
+        or approval.get("provider_manifest_digest")
+        != registration.get("provider_manifest_digest")
+        or approval.get("registration_report_digest")
+        != registration.get("report_digest")
+        or approval.get("evidence_bundle_digest")
+        != registration.get("evidence_bundle_digest")
+        or approval.get("capability_scope_digest") != sha256_digest(expected_scope)
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse formal promotion approval is missing or invalid"
+        )
+    return lock
+
+
+def verify_tooluniverse_environment(
+    launcher: PythonStdioLauncherV1,
+    pin: dict[str, Any],
+) -> dict[str, Any]:
+    """Require the installed environment's declared dependencies to close."""
+
+    _root, executable, _entrypoint = launcher.resolve()
+    completed = subprocess.run(
+        [str(executable), "-m", "pip", "check"],
+        check=False,
+        capture_output=True,
+        text=False,
+        timeout=120,
+        env={
+            "HOME": "/nonexistent",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+        },
+    )
+    output = (completed.stdout + completed.stderr)[: 256 * 1024]
+    report: dict[str, Any] = {
+        "status": "passed" if completed.returncode == 0 else "failed",
+        "exit_code": completed.returncode,
+        "output_digest": "sha256:" + hashlib.sha256(output).hexdigest(),
+    }
+    if completed.returncode != 0:
+        diagnostic = sanitize_text(
+            output.decode("utf-8", errors="replace"), limit=2_000
+        )
+        raise ProviderProtocolError(
+            f"ToolUniverse dependency environment is incomplete: {diagnostic}"
+        )
+    probe = subprocess.run(
+        [
+            str(executable),
+            "-c",
+            (
+                "import importlib.metadata as m,json,platform,sys;"
+                "names=('tooluniverse','pymupdf','fitz','pathlib','pyxnat');"
+                "versions={};"
+                "[(versions.__setitem__(n,m.version(n)) if True else None) "
+                "for n in names if any(d.metadata.get('Name','').casefold()==n "
+                "for d in m.distributions())];"
+                "print(json.dumps({'implementation':platform.python_implementation(),"
+                "'python':list(sys.version_info[:3]),'system':platform.system().casefold(),"
+                "'machine':platform.machine(),'versions':versions},sort_keys=True))"
+            ),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={
+            "HOME": "/nonexistent",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/local/bin:/usr/bin:/bin",
+        },
+    )
+    try:
+        inventory = json.loads(probe.stdout)
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ProviderProtocolError(
+            "ToolUniverse environment identity probe returned invalid JSON"
+        ) from exc
+    versions = inventory.get("versions") if isinstance(inventory, dict) else None
+    if (
+        probe.returncode != 0
+        or not isinstance(versions, dict)
+        or versions.get("tooluniverse") != pin.get("version")
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse installed distribution identity does not match the support pin"
+        )
+    if pin.get("artifact_kind") == "ari-patched-wheel" and (
+        versions.get("pymupdf") != "1.26.4"
+        or {"fitz", "pathlib", "pyxnat"} & set(versions)
+        or inventory.get("implementation") != "CPython"
+        or inventory.get("python", [])[:2] != [3, 13]
+        or inventory.get("system") != "linux"
+        or inventory.get("machine") != "x86_64"
+    ):
+        raise ProviderProtocolError(
+            "ToolUniverse patched runtime differs from its closed verified target"
+        )
+    report["environment_identity"] = inventory
+    report["environment_identity_digest"] = sha256_digest(inventory)
+    return report
+
+
 def tooluniverse_adapter_digest() -> str:
     return sha256_digest(
         {
             "adapter_source": _file_sha256(Path(__file__).resolve()),
             "generic_stdio_adapter": stdio_adapter_digest(),
+            "source_projection": _file_sha256(
+                Path(__file__).resolve().with_name("sources.py")
+            ),
+            "result_projection": _file_sha256(
+                Path(__file__).resolve().with_name("semantic_projection.py")
+            ),
             "support_matrix": _file_sha256(_SUPPORT_MATRIX),
         }
     )
@@ -362,6 +921,7 @@ class ToolUniverseCompactAdapter:
         pin: dict[str, Any],
         include_categories: Iterable[str] = (),
         exclude_categories: Iterable[str] = (),
+        include_leaf_names: Iterable[str] = (),
         allowed_leaf_names: Iterable[str] | None = None,
         leaf_spec_digests: dict[str, str] | None = None,
         timeout_seconds: float = 30.0,
@@ -386,6 +946,7 @@ class ToolUniverseCompactAdapter:
         self.pin = dict(pin)
         self.include_categories = frozenset(include_categories)
         self.exclude_categories = frozenset(exclude_categories)
+        self.include_leaf_names = frozenset(include_leaf_names)
         overlap = self.include_categories & self.exclude_categories
         if overlap:
             raise ValueError(
@@ -466,6 +1027,9 @@ class ToolUniverseCompactAdapter:
                 selected = (
                     not self.include_categories or category in self.include_categories
                 ) and category not in self.exclude_categories
+                selected = selected and (
+                    not self.include_leaf_names or name in self.include_leaf_names
+                )
                 if name not in _NON_LEAF_TOOLS and selected:
                     summaries.append(raw)
                     if len(summaries) > self.max_tools:
@@ -680,10 +1244,16 @@ __all__ = [
     "TOOLUNIVERSE_ADAPTER_ID",
     "TOOLUNIVERSE_ADAPTER_VERSION",
     "TOOLUNIVERSE_COMPACT_TOOLS",
+    "TOOLUNIVERSE_PROVIDER_REGISTRATION_GATES",
     "ToolUniverseCompactAdapter",
     "dangerous_leaf",
     "tooluniverse_adapter_digest",
     "tooluniverse_release_pin",
+    "verify_tooluniverse_dependency_lock",
+    "verify_tooluniverse_environment",
+    "verify_tooluniverse_environment",
     "verify_tooluniverse_package",
     "verify_tooluniverse_pin",
+    "verify_tooluniverse_verified_lock",
+    "verify_tooluniverse_wheel",
 ]

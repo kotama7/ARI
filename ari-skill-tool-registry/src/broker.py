@@ -44,6 +44,7 @@ from openroad_adapter import (
     OpenRoadProviderPinV1,
     openroad_adapter_digest,
 )
+from openroad_promotion import verify_openroad_verified_lock
 from providers import (
     ProviderAdapter,
     ProviderAdapterError,
@@ -62,6 +63,8 @@ from qiskit_adapter import (
     QiskitProviderPinV1,
     qiskit_adapter_digest,
 )
+from qiskit_promotion import verify_qiskit_verified_lock
+from semantic_projection import SemanticProjectionError, normalize_provider_response
 from storage import (
     CassetteStore,
     RegistryArtifactStore,
@@ -73,6 +76,7 @@ from tooluniverse_adapter import (
     TOOLUNIVERSE_ADAPTER_VERSION,
     ToolUniverseCompactAdapter,
     tooluniverse_adapter_digest,
+    verify_tooluniverse_verified_lock,
 )
 
 
@@ -292,6 +296,17 @@ class CatalogBroker:
                     OpenRoadExperimentV1.model_validate(item)
                     for item in raw_experiments
                 ]
+                if source.runtime.get("provider_status") == "verified":
+                    verified = verify_openroad_verified_lock(
+                        source.runtime["verified_lock_path"],
+                        expected_lock_digest=source.runtime["verified_lock_digest"],
+                        pin=OpenRoadProviderPinV1.model_validate(pin),
+                        experiments=experiments,
+                    )
+                    if verified["lock_digest"] != source.runtime.get(
+                        "verified_lock_digest"
+                    ):
+                        raise TypeError("OpenROAD verified lock digest changed")
                 expected_names = {
                     OpenRoadExperimentAdapter.leaf_name(profile.profile_id)
                     for profile in experiments
@@ -342,9 +357,7 @@ class CatalogBroker:
                 core_pin = QiskitProviderPinV1.model_validate(
                     source.runtime["core_pin"]
                 )
-                core_provider_digest = str(
-                    source.runtime["core_provider_digest"]
-                )
+                core_provider_digest = str(source.runtime["core_provider_digest"])
                 raw_runtime_launcher = source.runtime.get("runtime_launcher")
                 runtime_launcher = (
                     PythonStdioLauncherV1.model_validate(raw_runtime_launcher)
@@ -359,9 +372,7 @@ class CatalogBroker:
                 )
                 raw_runtime_digest = source.runtime.get("runtime_provider_digest")
                 runtime_provider_digest = (
-                    str(raw_runtime_digest)
-                    if raw_runtime_digest is not None
-                    else None
+                    str(raw_runtime_digest) if raw_runtime_digest is not None else None
                 )
                 if source.provider_digest != sha256_digest(
                     {
@@ -374,9 +385,19 @@ class CatalogBroker:
                 if not isinstance(raw_experiments, list):
                     raise TypeError("experiments must be an array")
                 experiments = [
-                    QiskitExperimentV1.model_validate(item)
-                    for item in raw_experiments
+                    QiskitExperimentV1.model_validate(item) for item in raw_experiments
                 ]
+                if source.runtime.get("provider_status") == "verified":
+                    verified = verify_qiskit_verified_lock(
+                        source.runtime["verified_lock_path"],
+                        expected_lock_digest=source.runtime["verified_lock_digest"],
+                        core_pin=core_pin,
+                        experiments=experiments,
+                    )
+                    if verified["lock_digest"] != source.runtime.get(
+                        "verified_lock_digest"
+                    ):
+                        raise TypeError("Qiskit verified lock digest changed")
                 expected_names = {
                     QiskitExperimentAdapter.leaf_name(profile.profile_id)
                     for profile in experiments
@@ -395,9 +416,7 @@ class CatalogBroker:
                     experiments=experiments,
                     artifact_store=self.artifact_store,
                     allowed_leaf_names=leaf_names,
-                    timeout_seconds=float(
-                        source.runtime.get("timeout_seconds", 60.0)
-                    ),
+                    timeout_seconds=float(source.runtime.get("timeout_seconds", 60.0)),
                     max_concurrent_jobs=int(
                         source.runtime.get("max_concurrent_jobs", 4)
                     ),
@@ -443,10 +462,19 @@ class CatalogBroker:
                 pin = source.runtime["pin"]
                 if not isinstance(pin, dict):
                     raise TypeError("pin must be an object")
+                if source.runtime.get("provider_status") == "verified":
+                    verified = verify_tooluniverse_verified_lock(
+                        source.runtime["verified_lock_path"], pin
+                    )
+                    if verified["lock_digest"] != source.runtime.get(
+                        "verified_lock_digest"
+                    ):
+                        raise TypeError("verified lock digest changed")
                 adapter = ToolUniverseCompactAdapter(
                     launcher,
                     expected_provider_digest=source.provider_digest,
                     pin=pin,
+                    include_leaf_names=leaf_names,
                     allowed_leaf_names=leaf_names,
                     leaf_spec_digests=leaf_spec_digests,
                     timeout_seconds=float(source.runtime.get("timeout_seconds", 60.0)),
@@ -1020,6 +1048,17 @@ class CatalogBroker:
         try:
             response = await self._adapter(source_id).invoke(
                 descriptor.provider_tool_name, validated
+            )
+            response = normalize_provider_response(
+                descriptor=descriptor,
+                arguments=validated,
+                response=response,
+            )
+        except SemanticProjectionError as exc:
+            return self._error(
+                tool_ref=tool_ref,
+                kind="protocol",
+                message=str(exc),
             )
         except ProviderAdapterError as exc:
             return self._error(

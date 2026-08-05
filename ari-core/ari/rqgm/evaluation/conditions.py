@@ -396,3 +396,21 @@ def virsci_absence_violations(checkpoint_dir: "str | Path") -> list:
                 f"{line.get('record_id') or '?'}"
             )
     return out
+
+
+# Backward-compatible import surface: Task-20 conditions live in a separate
+# evaluation module so the original B-axis implementation stays compact and
+# semantically unchanged.
+from ari.rqgm.evaluation.kca_conditions import (  # noqa: E402,F401
+    ASSURANCE_CONDITION_IDS,
+    FULL_KCA_CONDITION_ALIAS,
+    KNOWLEDGE_CAPABILITY_CONDITION_IDS,
+    assurance_condition_overlay,
+    evaluation_condition_overlay,
+    expand_assurance_condition,
+    expand_knowledge_capability_condition,
+    factorial_condition_id,
+    factorial_condition_overlay,
+    knowledge_capability_condition_overlay,
+    parse_factorial_condition_id,
+)

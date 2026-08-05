@@ -58,6 +58,7 @@ class GovernanceOrchestrator:
         kernel,
         llm=None,
         audit_writer=None,
+        artifact_root=None,
         prompt_loader=None,
         governance_cache=None,
     ) -> None:
@@ -70,6 +71,11 @@ class GovernanceOrchestrator:
         self.kernel = kernel
         self.llm = llm
         self.audit_writer = audit_writer
+        self.artifact_root = (
+            artifact_root
+            if artifact_root is not None
+            else getattr(audit_writer, "_ckpt", None)
+        )
         self._prompt_loader = prompt_loader
         self.governance_cache = governance_cache
         #: In-memory sink when no audit_writer is injected (tests).
@@ -117,6 +123,7 @@ class GovernanceOrchestrator:
             loader=self._prompt_loader,
             budget_manager=budget_manager,
             governance_cache=self.governance_cache,
+            artifact_root=self.artifact_root,
         )
         for record_type, payload in produced:
             self._write(record_type, payload)

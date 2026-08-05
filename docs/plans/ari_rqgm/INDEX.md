@@ -40,13 +40,30 @@ all four combinations are valid, and `paper.mode` never reads `ari.mode`.
 | 13 | 13_evaluation_and_ablation | implemented | 00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12 | not deletable |
 | 14 | 14_governed_utility_evolution | implemented | 00, 02, 04, 07, 09, 10 | not deletable |
 | 15 | 15_validated_attack_target_binding | implemented | 05, 06 | not deletable |
+| 16 | 16_knowledge_skill_registry_and_separation_foundation | in progress | 00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15 | not deletable |
+| 17 | 17_capability_provider_semantics_and_binding | in progress | 01, 04, 12, 16 | not deletable |
+| 18 | 18_scientific_assurance_and_harness_registry | in progress | 01, 04, 12, 16, 17, ari_rqgm_paper/07 | not deletable |
+| 19 | 19_rqgm_governance_integration | in progress | 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 12, 14, 15, 16, 17, 18, ari_rqgm_paper/07 | not deletable |
+| 20 | 20_meta_evaluation | in progress | 13, 16, 17, 18, 19 | not deletable |
 
-Status legend: `implemented` = code + tests landed on the working branch with the local suite
-green; `planned` = design written and cross-checked, no code or tests landed yet. Plans stay
+Status legend: `implemented` = every completion criterion, including required external parity,
+has executable evidence on the working branch and the local suite is green; `in progress` =
+implementation and tests have landed but at least one completion gate remains; `planned` = design
+written and cross-checked, no code or tests landed yet. Plans stay
 `not deletable` until their deletion criteria are met (merge to main, CI green, key decisions
 migrated to permanent docs). 14 and 15 are auxiliary plans added under the Purpose rule above:
 their dependencies are recorded in the table, and their deletion requirements are the standard
 ones — each plan's own completion + deletion criteria plus the Plan deletion procedure below.
+
+Tasks 16–20 are the in-progress, consecutively numbered **ARI
+Knowledge–Capability–Assurance Separation** initiative. The flat sequence is
+intentional: this directory has no parent-task mechanism. Task 16 fixes the
+terminology, architecture, shared contracts, and Knowledge Skill Registry;
+Task 17 owns Capability Provider semantics and deterministic binding; Task 18
+owns the Harness Registry and Scientific Assurance; Task 19 connects the three
+layers to fixed RQGM authority, execution, evidence, frontier, and publication;
+Task 20 extends Task 13's meta-evaluation without changing B0–B8. The five
+plans are part of this canonical index and are not an auxiliary master plan.
 
 ## Deleted task plans
 
@@ -94,6 +111,51 @@ decisions have not yet been moved to permanent docs; INDEX.md has not been updat
 the plan would lose specification.
 
 ## Current focus
+
+Tasks 16–20 are `in progress`. The 2026-08-05 implementation checkpoint has
+landed the RQGM-independent contracts/catalogs/resolvers, immutable admission
+and resume artifacts, deterministic prompt composition and bound tool view,
+fixed constitutional roles/checks, node/frontier/evidence/governance wiring,
+native GEMM/SpMM/Stencil verifier core, H/K meta-evaluation probes, separate
+CLI/MCP/dashboard surfaces, schemas, permanent documentation, pinned external
+Knowledge import, three independently pinned candidate Intel performance
+Knowledge entries, observed GPU/SLURM admission, exact ToolUniverse semantic
+projection/substitution diagnostics, typed external Harness parity reports,
+and fixed-verifier resource accounting. A real anonymous-node CPU job passed all three
+native reference/negative-control families; the compute node exposed four V100
+devices, but they remain non-schedulable for KCA admission because the cluster
+advertises no GPU GRES.
+
+The tasks are deliberately not marked `implemented`: verified promotion of
+remote Provider routes and Inspect, Harbor, PaperBench,
+KernelBench, ComputeEval, and scBench Harness entries still requires authentic
+upstream full commits, dataset/container/license pins, official-runner parity,
+negative controls, and permitted GPU scheduling/model credentials. The exact
+ToolUniverse 1.3.1 upstream lock remains a failed `candidate`, but the separately
+identified metadata-only `1.3.1+ari.1` artifact now has a reproducible wheel,
+closed runtime lock, full registration evidence, explicit human promotion
+approval, and a verified lock restricted
+to anonymous `PubMed_search_articles -> ari.literature.search/v1`; all other
+ToolUniverse leaves remain unadmitted. PaperBench upstream API/aggregation parity
+passes, but official rollout→reproduction→judge parity remains unavailable. The
+checked-in external driver facades fail closed and the production Harness
+catalog remains empty until those artifacts are supplied; no mutable source,
+fabricated pin, skipped parity result, or always-pass placeholder is admitted.
+
+Two additional Provider scopes now have independent, evidence-bound verified
+locks: Qiskit MCP 0.3.1 with Qiskit Aer 0.17.2 for anonymous local ideal
+simulation only, and OpenROAD MCP 0.6.1 with OpenROAD-flow-scripts 2026-Q3 for
+the GCD/Nangate45 local x86_64 CPU flow only. IBM Quantum Runtime, remote
+simulators, and hardware remain candidate because no credential-bound backend,
+configuration, calibration, QPY, golden, or replay evidence is present.
+OpenROAD anonymous exclusive-node SLURM CPU execution is now a separately
+promoted GCD/Nangate45 Provider identity; its lock requests zero GPUs and stores
+only a salted site digest. OpenROAD GPU execution, other designs/PDKs, and full
+default-flow parity remain outside both exact Provider identities and require a
+separately named candidate, evidence bundle, human approval, and verified lock. Promotion
+does not activate either Provider in the empty checked-in `CATALOG.lock`;
+activation remains a separately admitted, run-frozen catalog/Provider/Binding
+lock decision.
 
 Tasks 00–13 are implemented on the working branch: the `ari-core/ari/rqgm/` package (mode
 resolution, epoch state + registries + hash-chained audit log, proposals/router

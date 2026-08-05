@@ -36,6 +36,9 @@ kernel:
 never_evolving:
   # Global invariant 17 + INDEX invariants: these are not evolution targets.
   - constitutional_kernel
+  - knowledge_binder
+  - capability_binder
+  - harness_resolver
   - schema_checker
   - hash_checker
   - access_control

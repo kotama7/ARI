@@ -1,0 +1,563 @@
+{
+  "$defs": {
+    "ContainerIdentityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "reference": {
+          "title": "Reference",
+          "type": "string"
+        },
+        "resolution_status": {
+          "enum": [
+            "resolved",
+            "unresolved"
+          ],
+          "title": "Resolution Status",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "docker",
+            "singularity",
+            "apptainer",
+            "unknown"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime",
+        "reference",
+        "resolution_status"
+      ],
+      "title": "ContainerIdentityV1",
+      "type": "object"
+    },
+    "ExecutionLimitsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_seconds": {
+          "anyOf": [
+            {
+              "maximum": 86400,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cpu Seconds"
+        },
+        "max_output_bytes": {
+          "default": 67108864,
+          "maximum": 1073741824,
+          "minimum": 1024,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "max_processes": {
+          "anyOf": [
+            {
+              "maximum": 65536,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Processes"
+        },
+        "memory_bytes": {
+          "anyOf": [
+            {
+              "minimum": 16777216,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Bytes"
+        }
+      },
+      "title": "ExecutionLimitsV1",
+      "type": "object"
+    },
+    "ExecutionRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 256,
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Argv"
+        },
+        "container": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContainerIdentityV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 128,
+          "title": "Environment",
+          "type": "object"
+        },
+        "input_digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 1024,
+          "title": "Input Digests",
+          "type": "object"
+        },
+        "limits": {
+          "$ref": "#/$defs/ExecutionLimitsV1"
+        },
+        "network": {
+          "default": "inherit",
+          "enum": [
+            "inherit",
+            "deny"
+          ],
+          "title": "Network",
+          "type": "string"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Request Id"
+        },
+        "schema_version": {
+          "const": "ari.execution-request/v1",
+          "default": "ari.execution-request/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "shell_command": {
+          "anyOf": [
+            {
+              "maxLength": 100000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Shell Command"
+        },
+        "timeout_seconds": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "maximum": 86400,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "workspace": {
+          "$ref": "#/$defs/WorkspaceRefV1"
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "title": "ExecutionRequestV1",
+      "type": "object"
+    },
+    "HarnessRequirementV1": {
+      "additionalProperties": false,
+      "properties": {
+        "atom_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Atom Digest",
+          "type": "string"
+        },
+        "determinism_requirement": {
+          "title": "Determinism Requirement",
+          "type": "string"
+        },
+        "independence_requirement": {
+          "title": "Independence Requirement",
+          "type": "string"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "property_id": {
+          "title": "Property Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.harness-requirement/v1",
+          "default": "ari.harness-requirement/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/VerificationScopeV1"
+        },
+        "source_requirement_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Requirement Refs",
+          "type": "array"
+        },
+        "target_kind": {
+          "title": "Target Kind",
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "screen",
+            "validate",
+            "certify"
+          ],
+          "title": "Tier",
+          "type": "string"
+        },
+        "tolerance_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Tolerance Policy Digest",
+          "type": "string"
+        },
+        "verification_requirement_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Verification Requirement Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_requirement_digest",
+        "property_id",
+        "method",
+        "tier",
+        "target_kind",
+        "scope",
+        "tolerance_policy_digest",
+        "independence_requirement",
+        "determinism_requirement",
+        "source_requirement_refs",
+        "atom_digest"
+      ],
+      "title": "HarnessRequirementV1",
+      "type": "object"
+    },
+    "LockedHarnessV1": {
+      "additionalProperties": false,
+      "properties": {
+        "container_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Container Digest",
+          "type": "string"
+        },
+        "covered_atom_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Covered Atom Digests",
+          "type": "array"
+        },
+        "dataset_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Dataset Digest",
+          "type": "string"
+        },
+        "driver_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Driver Digest",
+          "type": "string"
+        },
+        "harness_id": {
+          "title": "Harness Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "benchmark",
+            "artifact_verifier",
+            "reproduction",
+            "claim_verifier"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        },
+        "oracle_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Oracle Digest",
+          "type": "string"
+        },
+        "result_schema_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Result Schema Digest",
+          "type": "string"
+        },
+        "tolerance_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Tolerance Policy Digest",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "harness_id",
+        "version",
+        "kind",
+        "manifest_digest",
+        "dataset_digest",
+        "oracle_digest",
+        "driver_digest",
+        "container_digest",
+        "result_schema_digest",
+        "tolerance_policy_digest",
+        "covered_atom_digests"
+      ],
+      "title": "LockedHarnessV1",
+      "type": "object"
+    },
+    "ResearchArtifactRefV1": {
+      "additionalProperties": false,
+      "description": "Content-addressed research artifact under a checkpoint/workspace root.",
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.research-artifact-ref/v1",
+          "default": "ari.research-artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Run Id"
+        }
+      },
+      "required": [
+        "logical_name",
+        "digest",
+        "media_type",
+        "role"
+      ],
+      "title": "ResearchArtifactRefV1",
+      "type": "object"
+    },
+    "VerificationScopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "title": "VerificationScopeV1",
+      "type": "object"
+    },
+    "WorkspaceRefV1": {
+      "additionalProperties": false,
+      "description": "One canonical writable root with no caller-controlled escape path.",
+      "properties": {
+        "root": {
+          "title": "Root",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.workspace-ref/v1",
+          "default": "ari.workspace-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "root"
+      ],
+      "title": "WorkspaceRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/harness-run-request-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "active_harness_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Active Harness Lock Digest",
+      "type": "string"
+    },
+    "attempt_id": {
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "epoch_id": {
+      "title": "Epoch Id",
+      "type": "string"
+    },
+    "execution_request": {
+      "$ref": "#/$defs/ExecutionRequestV1"
+    },
+    "expected_result_schema": {
+      "title": "Expected Result Schema",
+      "type": "string"
+    },
+    "harness": {
+      "$ref": "#/$defs/LockedHarnessV1"
+    },
+    "node_id": {
+      "title": "Node Id",
+      "type": "string"
+    },
+    "property_atoms": {
+      "items": {
+        "$ref": "#/$defs/HarnessRequirementV1"
+      },
+      "title": "Property Atoms",
+      "type": "array"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "retry_index": {
+      "minimum": 0,
+      "title": "Retry Index",
+      "type": "integer"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.harness-run-request/v1",
+      "default": "ari.harness-run-request/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_artifact": {
+      "$ref": "#/$defs/ResearchArtifactRefV1"
+    },
+    "target_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Digest",
+      "type": "string"
+    },
+    "target_kind": {
+      "title": "Target Kind",
+      "type": "string"
+    },
+    "target_logical_name": {
+      "title": "Target Logical Name",
+      "type": "string"
+    },
+    "target_workspace": {
+      "$ref": "#/$defs/WorkspaceRefV1"
+    }
+  },
+  "required": [
+    "run_id",
+    "node_id",
+    "epoch_id",
+    "active_harness_lock_digest",
+    "harness",
+    "target_workspace",
+    "target_artifact",
+    "target_logical_name",
+    "target_kind",
+    "target_digest",
+    "property_atoms",
+    "execution_request",
+    "attempt_id",
+    "retry_index",
+    "expected_result_schema",
+    "request_digest"
+  ],
+  "title": "ARI Harness Run Request v1",
+  "type": "object"
+}

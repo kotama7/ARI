@@ -1,0 +1,24 @@
+schema_version: ari.harness-generated-dataset/v1
+id: native-hpc-generated-cases/v1
+seed_source: full HarnessRunRequest identity
+generation: deterministic local PRNG; no network and no mutable corpus
+families:
+  gemm:
+    - non-square, prime, odd, zero, and unit dimensions
+    - transpose and padded leading dimensions
+    - alignment offsets, alpha/beta, thread counts, NaN/Inf policy
+  spmm:
+    - zero nnz and empty rows
+    - duplicate and unsorted column indexes
+    - irregular rows and multiple RHS widths
+    - structurally invalid CSR rejection
+  stencil:
+    - non-cubic and small domains
+    - fixed and periodic boundaries
+    - multiple iterations and constant-field metamorphic cases
+    - in-place and out-of-place requests
+tiers:
+  screen: bounded fast family
+  validate: expanded family and repeats
+  certify: full registered family and stress shapes
+authority: case-generation-description

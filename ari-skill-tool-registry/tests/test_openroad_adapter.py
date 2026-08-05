@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import platform
+import shutil
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,6 +14,8 @@ from typing import Any
 
 import pytest
 from pydantic import ValidationError
+
+import openroad_worker
 
 from broker import CatalogBroker
 from catalog import build_catalog
@@ -36,6 +39,7 @@ from openroad_adapter import (
     OpenRoadExperimentV1,
     OpenRoadMetricV1,
     OpenRoadOutputArtifactV1,
+    OpenRoadPortableRuntimeV1,
     OpenRoadProviderPinV1,
     OpenRoadTechnologyV1,
     OpenRoadToolchainV1,
@@ -46,6 +50,7 @@ from openroad_adapter import (
     verify_openroad_provider_package,
 )
 from openroad_worker import run as run_openroad_worker
+from openroad_hpc_workspace import openroad_batch_tcl
 from providers import (
     ProviderProtocolError,
     ProviderResponseV1,
@@ -164,6 +169,8 @@ def _profile(
             execution_image_digest=(
                 execution.container.image.digest
                 if execution is not None and execution.container is not None
+                else execution.portable_runtime.image.digest
+                if execution is not None and execution.portable_runtime is not None
                 else "sha256:" + "1" * 64
             ),
             architecture=platform.machine(),
@@ -344,6 +351,7 @@ def _slurm_execution(root: Path) -> OpenRoadExecutionV1:
     image.write_bytes(b"pinned OpenROAD container fixture\n")
     return OpenRoadExecutionV1(
         backend="slurm",
+        site_identity_digest="sha256:" + "9" * 64,
         work_root=str(work_root.resolve()),
         resources=ResourceRequestV1(
             partition="eda",
@@ -367,11 +375,57 @@ def _slurm_execution(root: Path) -> OpenRoadExecutionV1:
     )
 
 
+def _portable_slurm_execution(root: Path) -> OpenRoadExecutionV1:
+    work_root = root / "shared-work"
+    work_root.mkdir(parents=True, exist_ok=True)
+    artifacts: dict[str, HpcArtifactPinV1] = {}
+    for filename, logical_name in (
+        ("proot", "openroad-proot-runtime"),
+        ("openroad.sif", "openroad-sif-image"),
+        ("unsquashfs", "openroad-unsquashfs-runtime"),
+        ("python3", "openroad-worker-python"),
+    ):
+        path = root / filename
+        path.write_bytes((logical_name + "\n").encode())
+        path.chmod(0o700)
+        artifacts[logical_name] = HpcArtifactPinV1(
+            logical_name=logical_name,
+            path=str(path.resolve()),
+            digest=_digest_file(path),
+            size_bytes=path.stat().st_size,
+        )
+    worker_python = artifacts["openroad-worker-python"]
+    return OpenRoadExecutionV1(
+        backend="slurm",
+        site_identity_digest="sha256:" + "8" * 64,
+        work_root=str(work_root.resolve()),
+        resources=ResourceRequestV1(
+            partition="eda-private",
+            nodes=1,
+            tasks=1,
+            cpus_per_task=1,
+            walltime="00:01:00",
+            nodelist="compute-node-a",
+            exclusive=True,
+        ),
+        portable_runtime=OpenRoadPortableRuntimeV1(
+            proot=artifacts["openroad-proot-runtime"],
+            image=artifacts["openroad-sif-image"],
+            unsquashfs=artifacts["openroad-unsquashfs-runtime"],
+            squashfs_offset=40960,
+        ),
+        worker_python=worker_python.path,
+        worker_python_pin=worker_python,
+        terminal_evidence_policy="fixed-wrapper-marker",
+    )
+
+
 class FakeOpenRoadScheduler:
     def __init__(self, *, block: bool = False) -> None:
         self.block = block
         self.cancelled = False
         self.requests: list[JobRequestV1] = []
+        self.batch_specs: list[dict[str, Any]] = []
         self.handle: JobHandleV1 | None = None
         self._log_path: Path | None = None
         self._provenance_path: Path | None = None
@@ -397,6 +451,7 @@ class FakeOpenRoadScheduler:
                         if item.logical_name == "openroad-batch-spec"
                     )
                     spec = json.loads(spec_path.read_text(encoding="utf-8"))
+                    self.batch_specs.append(spec)
                     _write_json(
                         path,
                         {
@@ -409,6 +464,7 @@ class FakeOpenRoadScheduler:
                             "tcl_digest": spec["tcl_digest"],
                             "return_code": 0,
                             "error": None,
+                            "metrics_materialization": "direct-workspace",
                         },
                     )
                 elif path.suffix == ".json":
@@ -578,14 +634,31 @@ class OpenRoadTransportFixture:
                 "session_id": arguments["session_id"],
                 "is_alive": True,
             }
+            self.command_entered.set()
+        elif name == "inspect_interactive_session":
+            payload = {
+                "session_id": arguments["session_id"],
+                "metrics": {
+                    "state": "running" if self.block_commands else "terminated",
+                    "is_alive": self.block_commands,
+                },
+            }
         elif name == "interactive_openroad_exec":
             self.command_entered.set()
             if self.block_commands:
                 await asyncio.Event().wait()
             payload = {"output": f"ran {arguments['command']}", "error": None}
         elif name == "interactive_openroad_query":
+            command = arguments["command"]
+            prefix = "puts [join {ARI DONE "
+            suffix = "} _]"
+            if command.startswith(prefix) and command.endswith(suffix):
+                token = command[len(prefix) : -len(suffix)]
+                output = f"ARI_DONE_{token}"
+            else:
+                output = command.removeprefix("puts ")
             payload = {
-                "output": arguments["command"].removeprefix("puts "),
+                "output": output,
                 "error": None,
             }
         elif name == "terminate_interactive_session":
@@ -970,9 +1043,7 @@ async def test_slurm_profile_uses_typed_container_job_and_captures_provenance(
         "worst-slack",
         "design-area",
     }
-    roles = {
-        item["logical_role"] for item in completed["_ari_result_artifacts"]
-    }
+    roles = {item["logical_role"] for item in completed["_ari_result_artifacts"]}
     assert {
         "openroad-def",
         "openroad-metrics",
@@ -991,6 +1062,49 @@ async def test_slurm_profile_uses_typed_container_job_and_captures_provenance(
         "openroad-batch-tcl",
         "openroad-batch-spec",
     }
+    assert not list(Path(execution.work_root or "").glob("ari-openroad-*"))
+
+
+@pytest.mark.asyncio
+async def test_slurm_portable_runtime_is_digest_pinned_without_native_container(
+    tmp_path: Path,
+):
+    execution = _portable_slurm_execution(tmp_path / "execution")
+    profile = _profile(tmp_path / "profile", execution=execution)
+    spec = _source_spec(tmp_path / "provider", [profile])
+    scheduler = FakeOpenRoadScheduler()
+    adapter = _adapter(
+        spec,
+        OpenRoadTransportFixture(),
+        artifact_store=RegistryArtifactStore(tmp_path / "artifacts"),
+        scheduler=scheduler,
+    )
+    leaf = OpenRoadExperimentAdapter.leaf_name(profile.profile_id)
+    submitted = await adapter.invoke(leaf, {"request_id": "portable-run"})
+    handle_id = str((submitted.structured or {})["handle_id"])
+    for _ in range(200):
+        response = await adapter.get_result(None, handle_id)
+        if (response.structured or {}).get("status") == "completed":
+            break
+        await asyncio.sleep(0.01)
+    else:
+        raise AssertionError("portable scheduler-backed run did not complete")
+
+    request = scheduler.requests[0]
+    assert request.container is None
+    assert request.resources.exclusive is True
+    assert request.resources.nodelist == "compute-node-a"
+    assert {item.logical_name for item in request.inputs} >= {
+        "openroad-proot-runtime",
+        "openroad-sif-image",
+        "openroad-unsquashfs-runtime",
+        "openroad-worker-python",
+    }
+    batch_spec = scheduler.batch_specs[0]
+    assert batch_spec["portable_runtime"]["kind"] == "proot-sif"
+    assert batch_spec["portable_runtime"]["network_policy"] == (
+        "host-uncredentialed"
+    )
     assert not list(Path(execution.work_root or "").glob("ari-openroad-*"))
 
 
@@ -1024,9 +1138,7 @@ async def test_slurm_cancel_reaps_scheduler_and_workspace(tmp_path: Path):
     assert structured["cleanup_deferred"] is False
     assert scheduler.cancelled is True
     assert not list(Path(execution.work_root or "").glob("ari-openroad-*"))
-    roles = {
-        item["logical_role"] for item in structured["_ari_result_artifacts"]
-    }
+    roles = {item["logical_role"] for item in structured["_ari_result_artifacts"]}
     assert "openroad-scheduler-stdout" in roles
     assert "openroad-session-transcript" in roles
 
@@ -1041,7 +1153,7 @@ def test_batch_worker_verifies_runtime_identity_and_writes_closed_result(
         f"#!{sys.executable}\n"
         "import json, sys\n"
         "from pathlib import Path\n"
-        "metrics = Path(sys.argv[sys.argv.index('-metrics') + 1])\n"
+        "metrics = Path('reports/metrics.json')\n"
         "metrics.parent.mkdir(parents=True, exist_ok=True)\n"
         "metrics.write_text(json.dumps({'timing': {'wns': -0.25}}))\n"
         "out = Path('results/design.def')\n"
@@ -1073,12 +1185,97 @@ def test_batch_worker_verifies_runtime_identity_and_writes_closed_result(
     assert result["return_code"] == 0
     assert result["error"] is None
     assert result["executable_digest"] == spec["executable_digest"]
+    assert result["metrics_materialization"] == "direct-workspace"
 
     executable.write_text("drifted\n", encoding="utf-8")
     executable.chmod(0o700)
     assert run_openroad_worker(spec_path) == 70
     failed = json.loads(result_path.read_text(encoding="utf-8"))
     assert "executable digest drifted" in failed["error"]
+
+
+def test_scheduler_batch_tcl_has_runtime_owned_metrics_lifecycle(tmp_path: Path):
+    profile = _profile(tmp_path)
+
+    compiled = openroad_batch_tcl(profile)
+
+    assert compiled.splitlines()[0] == (
+        "utl::open_metrics {reports/metrics.json}"
+    )
+    assert compiled.splitlines()[-1] == (
+        "utl::close_metrics {reports/metrics.json}"
+    )
+    assert compiled.count("utl::open_metrics") == 1
+    assert compiled.count("utl::close_metrics") == 1
+
+
+def test_portable_worker_passes_workspace_relative_paths_to_guest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    work = (tmp_path / "work").resolve()
+    work.mkdir()
+    tcl = work / "ari-openroad-flow.tcl"
+    tcl.write_text("report_design_area\n", encoding="utf-8")
+    metrics = work / "reports/metrics.json"
+    metrics.parent.mkdir()
+    executable_bytes = b"digest-pinned guest executable\n"
+    pins: dict[str, HpcArtifactPinV1] = {}
+    for filename, logical_name in (
+        ("proot", "openroad-proot-runtime"),
+        ("image.sif", "openroad-sif-image"),
+        ("unsquashfs", "openroad-unsquashfs-runtime"),
+    ):
+        path = tmp_path / filename
+        path.write_bytes((logical_name + "\n").encode())
+        pins[logical_name] = HpcArtifactPinV1(
+            logical_name=logical_name,
+            path=str(path.resolve()),
+            digest=_digest_file(path),
+            size_bytes=path.stat().st_size,
+        )
+
+    def fake_extract(argv, **_kwargs):
+        rootfs = Path(argv[argv.index("-dest") + 1])
+        executable = rootfs / "opt/openroad"
+        executable.parent.mkdir(parents=True)
+        executable.write_bytes(executable_bytes)
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr(openroad_worker.subprocess, "run", fake_extract)
+    command, rootfs = openroad_worker._portable_openroad_command(
+        {
+            "schema_version": "ari.openroad-portable-runtime/v1",
+            "kind": "proot-sif",
+            "network_policy": "host-uncredentialed",
+            "proot": pins["openroad-proot-runtime"].model_dump(mode="json"),
+            "image": pins["openroad-sif-image"].model_dump(mode="json"),
+            "unsquashfs": pins["openroad-unsquashfs-runtime"].model_dump(
+                mode="json"
+            ),
+            "squashfs_offset": 40960,
+        },
+        work_dir=work,
+        executable_path="/opt/openroad",
+        executable_digest=_digest_bytes(executable_bytes),
+        tcl_path=tcl,
+    )
+    try:
+        assert command[-2:] == ["-no_init", "ari-openroad-flow.tcl"]
+        assert str(work) not in command[-1:]
+        guest_metrics = rootfs / metrics.relative_to("/")
+        guest_metrics.parent.mkdir(parents=True, exist_ok=True)
+        guest_metrics.write_text('{"route__drc_errors": 0}\n', encoding="utf-8")
+        assert (
+            openroad_worker._materialize_metrics(
+                metrics, work_dir=work, portable_rootfs=rootfs
+            )
+            == "portable-rootfs-export"
+        )
+        assert json.loads(metrics.read_text(encoding="utf-8")) == {
+            "route__drc_errors": 0
+        }
+    finally:
+        shutil.rmtree(rootfs)
 
 
 def test_slurm_profile_rejects_unpinned_or_inconsistent_resources(tmp_path: Path):

@@ -14,7 +14,9 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/qiskit-support-v1.json
     role: config
-last_verified: 2026-08-02
+  - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
+    role: config
+last_verified: 2026-08-05
 ---
 
 # Qiskit and IBM Quantum experiment profiles
@@ -44,6 +46,20 @@ domain review. Relevant upstream primary sources are the
 [Qiskit QPY API](https://quantum.cloud.ibm.com/docs/en/api/qiskit/qpy), and the
 official PyPI release pages linked from the support record.
 
+The only formally promoted identity is
+`qiskit/core-0.3.1+aer-0.17.2-local-ideal`, with verified lock digest
+`sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`.
+Its scope is exactly credential-free seeded Bell-state Aer execution under
+`ari.quantum.sample.local-ideal/v1`, with QPY, target, software, seed, count
+bounds, live MCP schema, golden/replay evidence, all fifteen Provider gates,
+and human approval fixed by digest. IBM Runtime, remote simulator, and IBM
+hardware remain candidates because no admitted credential, exact live
+backend/configuration/calibration identity, or backend-bound golden/replay
+evidence is available. The local promotion cannot confer remote authority.
+Promotion does not activate the Provider: the committed default `CATALOG.lock`
+remains empty, and each run must freeze an explicitly reviewed Provider and
+Capability Binding Lock.
+
 The official core MCP contract performs circuit analysis/conversion and
 transpilation, but not simulation. The official Runtime MCP contract includes
 account-management operations. ARI exposes neither contract directly. It uses
@@ -54,10 +70,10 @@ in a separate fixed worker.
 
 | Backend kind | Capability | Required identity | Reproducibility meaning |
 |---|---|---|---|
-| `local-ideal` | `ari.quantum.sample.local-ideal` | Aer method, precision, threads, target, seeds | Seeded software simulation without a noise model |
-| `local-noisy` | `ari.quantum.sample.local-noisy` | All ideal fields plus exact noise model | Seeded simulation of the declared model, not hardware prediction |
-| `remote-simulator` | `ari.quantum.sample.remote-simulator` | Runtime backend/target/access tier and live snapshot | Stochastic remote service result |
-| `ibm-hardware` | `ari.quantum.sample.ibm-hardware` | Hardware target and calibration snapshot plus mitigation | Stochastic measurement of one live calibrated backend |
+| `local-ideal` | `ari.quantum.sample.local-ideal/v1` | Aer method, precision, threads, target, seeds | Seeded software simulation without a noise model |
+| `local-noisy` | `ari.quantum.sample.local-noisy/v1` | All ideal fields plus exact noise model | Seeded simulation of the declared model, not hardware prediction |
+| `remote-simulator` | `ari.quantum.sample.remote-simulator/v1` | Runtime backend/target/access tier and live snapshot | Stochastic remote service result |
+| `ibm-hardware` | `ari.quantum.sample.ibm-hardware/v1` | Hardware target and calibration snapshot plus mitigation | Stochastic measurement of one live calibrated backend |
 
 The broker never substitutes one row for another during invocation or replay.
 Profiles with the same backend kind/name, target, and software stack share an

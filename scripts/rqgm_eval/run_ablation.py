@@ -42,6 +42,7 @@ Modes
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import subprocess
@@ -103,7 +104,12 @@ def _select_specs(specs_path, selected_ids):
     if specs_path is None:
         return []
     data = _injection.load_injection_specs(specs_path)
-    specs = list(data["injections"]) + list(data["controls"])
+    specs = (
+        list(data["injections"])
+        + list(data["controls"])
+        + list(data.get("kca_injections") or ())
+        + list(data.get("kca_controls") or ())
+    )
     problems = []
     for spec in specs:
         problems += [
@@ -224,6 +230,14 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--conditions", default="B0,B3",
         help="comma-separated condition ids (default: the smoke pair)",
+    )
+    parser.add_argument(
+        "--assurance-conditions", default="",
+        help="comma-separated Task-20 H-axis ids; forms a B×H×K panel",
+    )
+    parser.add_argument(
+        "--knowledge-capability-conditions", default="",
+        help="comma-separated Task-20 K-axis ids; forms a B×H×K panel",
     )
     parser.add_argument(
         "--paper-conditions", default="",
@@ -348,7 +362,27 @@ def main(argv=None) -> int:
             f"{eval_root / _smoke.ABLATION_REPORT_JSON}"
         )
         return 0
-    condition_ids = [c for c in args.conditions.split(",") if c]
+    b_condition_ids = [c for c in args.conditions.split(",") if c]
+    h_condition_ids = [
+        c for c in args.assurance_conditions.split(",") if c
+    ]
+    k_condition_ids = [
+        c for c in args.knowledge_capability_conditions.split(",") if c
+    ]
+    if bool(h_condition_ids) != bool(k_condition_ids):
+        raise SystemExit(
+            "Task-20 factorial campaigns require both "
+            "--assurance-conditions and --knowledge-capability-conditions"
+        )
+    if h_condition_ids:
+        condition_ids = [
+            _conditions.factorial_condition_id(b, h, k)
+            for b, h, k in itertools.product(
+                b_condition_ids, h_condition_ids, k_condition_ids
+            )
+        ]
+    else:
+        condition_ids = b_condition_ids
     specs = _select_specs(*_parse_inject(args.inject))
     scripted_ids = _injection.smoke_only_spec_ids(specs)
     if scripted_ids and not args.smoke:
@@ -376,7 +410,7 @@ def main(argv=None) -> int:
     overlays = {}
     for cid in condition_ids:
         overlay = _conditions.deep_merge(
-            parity, _conditions.condition_overlay(matrix, cid)
+            parity, _conditions.evaluation_condition_overlay(matrix, cid)
         )
         overlay = _conditions.deep_merge(overlay, _scripted_overlay(specs))
         overlays[cid] = overlay

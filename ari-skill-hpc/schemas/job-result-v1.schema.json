@@ -333,6 +333,32 @@
   },
   "additionalProperties": false,
   "properties": {
+    "accelerator_allocation_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Accelerator Allocation Digest"
+    },
+    "accelerator_inventory_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Accelerator Inventory Digest"
+    },
     "container_digest": {
       "anyOf": [
         {

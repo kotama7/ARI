@@ -1,0 +1,111 @@
+{
+  "core_provider_digest": "sha256:2c56f56c15fdb0da2413c770c28edf40587030ac7b9014d2a7ad1b54125483bf",
+  "profile": {
+    "backend": {
+      "backend_name": "aer_simulator",
+      "device": "CPU",
+      "kind": "local-ideal",
+      "max_parallel_threads": 1,
+      "noise_model": null,
+      "precision": "double",
+      "simulator_method": "statevector",
+      "target": {
+        "basis_gates": [
+          "cx",
+          "id",
+          "rz",
+          "sx",
+          "x"
+        ],
+        "coupling_map": [
+          [
+            0,
+            1
+          ],
+          [
+            1,
+            0
+          ]
+        ],
+        "num_qubits": 2,
+        "target_digest": "sha256:937b43bd4e3d4e47436c27784e67c9766f3b3fe991c7ba3828e52f12dc27c80d"
+      }
+    },
+    "circuit": {
+      "num_clbits": 2,
+      "num_qubits": 2,
+      "parameter_bindings": {},
+      "parameter_units": {},
+      "qpy_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
+      "qpy_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/bell-phi-plus.qpy",
+      "qpy_version": 17
+    },
+    "description": "Seeded Bell-state sampling on the digest-pinned local Qiskit Aer 2.5.1/0.17.2 CPU profile.",
+    "evidence": {
+      "architecture": "x86_64 CPython 3.13 / Qiskit 2.5.1 / Aer 0.17.2 CPU",
+      "dependencies_pinned": true,
+      "launcher_verified": true,
+      "limitations_documented": true,
+      "method_identity_documented": true,
+      "notes": [
+        "IBM Runtime and IBM hardware are outside this verified identity."
+      ],
+      "protocol_conformance": true,
+      "provider_pinned": true,
+      "replay_fixture_digest": "sha256:9c64c5e7f8f099f3fad090e0ad4451cdf65af1b301f59b6a7a5af33629186b37",
+      "scientific_validation_digest": "sha256:2de6449f907bccd547a72ce05b577b633978ffe91d7f0fbb02fc8a8d0b01c93e",
+      "semantics_documented": true,
+      "units_documented": true
+    },
+    "expected_outcomes": [
+      {
+        "bitstring": "00",
+        "probability_max": 0.55,
+        "probability_min": 0.45
+      },
+      {
+        "bitstring": "11",
+        "probability_max": 0.55,
+        "probability_min": 0.45
+      }
+    ],
+    "golden_fixture_digest": "sha256:2de6449f907bccd547a72ce05b577b633978ffe91d7f0fbb02fc8a8d0b01c93e",
+    "golden_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/local-ideal.golden.json",
+    "limitations": [
+      "A seeded Aer pass is not evidence about an IBM Quantum hardware backend.",
+      "The promotion applies only to this QPY, target, software stack, seeds, method, and shot count."
+    ],
+    "max_unlisted_probability": 0.0,
+    "mitigation": {
+      "dd_sequence": "XY4",
+      "dynamical_decoupling": false,
+      "gate_twirling": false,
+      "measure_twirling": false
+    },
+    "poll_interval_seconds": 0.1,
+    "profile_id": "local-ideal",
+    "replay_fixture_digest": "sha256:9c64c5e7f8f099f3fad090e0ad4451cdf65af1b301f59b6a7a5af33629186b37",
+    "replay_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/local-ideal.replay.json",
+    "schema_version": "ari.qiskit-experiment/v1",
+    "seed_simulator": 20260802,
+    "shots": 4096,
+    "software": {
+      "qiskit_aer_version": "0.17.2",
+      "qiskit_ibm_runtime_version": null,
+      "qiskit_version": "2.5.1",
+      "stack_digest": "sha256:cd14a34b9292176de862f9d98c472e41b5a8143f8e34c6114ab389a1922710f5"
+    },
+    "timeout_seconds": 3600.0,
+    "transpilation": {
+      "initial_layout": [
+        0,
+        1
+      ],
+      "optimization_level": 1,
+      "pass_manager": "preset",
+      "seed_transpiler": 731
+    }
+  },
+  "schema_version": "ari.qiskit-materialized-profile/v1",
+  "verified_lock_digest": "sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684"
+}

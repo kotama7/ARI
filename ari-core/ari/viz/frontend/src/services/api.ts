@@ -32,3 +32,4 @@ export * from './api/ssh';
 export * from './api/resources';
 export * from './api/paperbench';
 export * from './api/challenges';
+export * from './api/kca';

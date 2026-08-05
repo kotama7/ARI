@@ -171,6 +171,22 @@ class RQGMRuntime:
         self._store = None
         self._epoch_state = None
         self._last_node_count = 0
+        # Tasks 16–19: K/C/A admission is feature-gated.  Raw field reads keep
+        # the historical all-off path free of imports from the new product
+        # layers; typed interlock validation happens when admission is used.
+        self._kca_feature_enabled = not (
+            str(getattr(getattr(cfg, "knowledge", None), "mode", "off")) == "off"
+            and str(getattr(
+                getattr(cfg, "capability_binding", None), "mode", "legacy"
+            )) == "legacy"
+            and str(getattr(getattr(cfg, "assurance", None), "mode", "off")) == "off"
+        )
+        self._run_admission = None
+        self._run_admission_error: str | None = None
+        self._admission_artifacts = None
+        self._knowledge_bridge = None
+        self._capability_authorization_view = None
+        self._assurance_bridge = None
         # The live LLMEvaluator, bound by build_runtime AFTER construction (the
         # evaluator does not exist yet when the runtime is built). Used to make
         # the epoch's FROZEN utility_policy actually drive scoring — otherwise
@@ -357,6 +373,265 @@ class RQGMRuntime:
         actually co-evolves — the paper's central guarantee)."""
         self._evaluator = evaluator
 
+    @property
+    def kca_feature_enabled(self) -> bool:
+        return self._kca_feature_enabled
+
+    @property
+    def run_admitted(self) -> bool:
+        return (not self._kca_feature_enabled) or self._run_admission is not None
+
+    def bootstrap_foundation(
+        self,
+        *,
+        checkpoint_dir: "str | Path | None" = None,
+    ):
+        """Replay/register founding actors without opening an execution epoch.
+
+        This is the Task-19 ordering seam.  The legacy path still calls the
+        same primitives from :meth:`ensure_epoch`; the split is observable only
+        when a KCA mode is enabled.
+        """
+
+        ckpt = Path(checkpoint_dir) if checkpoint_dir is not None else self.checkpoint_dir
+        if ckpt is None:
+            raise ValueError("foundation bootstrap requires a checkpoint directory")
+        from ari.rqgm.store import RqgmStateStore
+
+        if self._store is None:
+            self._store = RqgmStateStore()
+        state = self._store.load_state(ckpt)
+        if state is not None and state.epoch is not None and self._kca_feature_enabled:
+            # A pre-Task-19 epoch has already executed.  It cannot acquire new
+            # authority/snapshots retroactively on resume.
+            try:
+                from ari.rqgm.admission import load_admission_artifacts
+
+                artifacts = load_admission_artifacts(ckpt)
+                self._run_admission = artifacts.admission
+                self._activate_kca_artifacts(artifacts, ckpt)
+            except Exception as exc:
+                raise ValueError(
+                    "an existing execution epoch cannot be upgraded to KCA modes"
+                ) from exc
+            self._epoch_state = state
+            return state
+        state = self._register_founding(ckpt, state)
+        if self._kca_feature_enabled:
+            state = self._register_kca_fixed(ckpt, state)
+        self._epoch_state = state
+        return state
+
+    #: transaction id of the feature-gated fixed-procedure registration.
+    KCA_FIXED_TRANSITION_ID = "transition_kca_fixed_admission"
+
+    def _register_kca_fixed(self, ckpt, prior):
+        from ari.rqgm.events import TransitionEvent
+        from ari.rqgm.prompt_spec import kca_fixed_component_payloads
+
+        payloads = kca_fixed_component_payloads()
+        entries = prior.components.entries() if prior is not None else {}
+        present = {str(component_id) for component_id in entries}
+        expected = {str(item["component_id"]) for item in payloads}
+        if expected.issubset(present):
+            for payload in payloads:
+                entry = entries[payload["component_id"]]
+                if (
+                    str(getattr(entry, "role", "")) != payload["role"]
+                    or str(getattr(entry, "tier", "")) != "fixed"
+                    or getattr(entry, "prompt_id", None) is not None
+                ):
+                    raise ValueError("fixed KCA component registration drift")
+            return prior
+        if present & expected:
+            raise ValueError("partial KCA fixed-component registration")
+        events = [
+            TransitionEvent(event_type="component_registered", payload=payload)
+            for payload in payloads
+        ]
+        state = self._store.apply_transition(
+            ckpt, self.KCA_FIXED_TRANSITION_ID, events
+        )
+        if state is None:
+            raise ValueError("KCA fixed-component registration did not commit")
+        return state
+
+    def admit_run(self, artifacts, *, checkpoint_dir: "str | Path | None" = None):
+        """Atomically persist a fully resolved KCA baseline admission bundle."""
+
+        if not self._kca_feature_enabled:
+            raise ValueError("KCA run admission is disabled by compatibility modes")
+        from ari.config.kca_runtime import resolve_kca_modes
+        from ari.rqgm.admission import persist_run_admission
+
+        modes = resolve_kca_modes(self.cfg)
+        expected = (
+            modes.knowledge, modes.capability_binding, modes.assurance
+        )
+        observed = (
+            artifacts.admission.modes.knowledge,
+            artifacts.admission.modes.capability_binding,
+            artifacts.admission.modes.assurance,
+        )
+        if observed != expected:
+            raise ValueError("run admission mode snapshot differs from resolved config")
+        ckpt = Path(checkpoint_dir) if checkpoint_dir is not None else self.checkpoint_dir
+        if ckpt is None:
+            raise ValueError("KCA run admission requires a checkpoint directory")
+        self.bootstrap_foundation(checkpoint_dir=ckpt)
+        persist_run_admission(ckpt, artifacts)
+        self._run_admission = artifacts.admission
+        self._activate_kca_artifacts(artifacts, ckpt)
+        self._run_admission_error = None
+        return artifacts.admission
+
+    def admit_from_checkpoint(
+        self,
+        *,
+        checkpoint_dir: "str | Path | None" = None,
+        run_id: str,
+        task_tags: tuple[str, ...] = (),
+    ):
+        """Build or replay the baseline bundle after root idea selection.
+
+        Unlike the historical epoch hook, admission is intentionally
+        fail-closed: an enabled K/C/A layer cannot execute a research node
+        under a partial or inferred contract.
+        """
+
+        if not self._kca_feature_enabled:
+            return None
+        ckpt = Path(checkpoint_dir) if checkpoint_dir is not None else self.checkpoint_dir
+        if ckpt is None:
+            raise ValueError("KCA admission requires a checkpoint directory")
+        from ari.rqgm.admission import load_admission_artifacts
+
+        try:
+            existing = load_admission_artifacts(ckpt)
+        except FileNotFoundError:
+            existing = None
+        if existing is not None:
+            if existing.admission.run_id != run_id:
+                raise ValueError("persisted KCA admission belongs to another run")
+            self._run_admission = existing.admission
+            self._activate_kca_artifacts(existing, ckpt)
+            return existing.admission
+        foundation = self.bootstrap_foundation(checkpoint_dir=ckpt)
+        from ari.rqgm.admission_builder import build_kca_admission
+
+        artifacts = build_kca_admission(
+            cfg=self.cfg,
+            checkpoint_dir=ckpt,
+            run_id=run_id,
+            mcp=self.mcp,
+            foundation_state=foundation,
+            task_tags=task_tags,
+        )
+        return self.admit_run(artifacts, checkpoint_dir=ckpt)
+
+    def _activate_kca_artifacts(self, artifacts, ckpt) -> None:
+        """Install immutable read views after admission/resume validation."""
+
+        self._admission_artifacts = artifacts
+        documents = artifacts.documents
+        if "knowledge_skill_lock.json" in documents:
+            from ari.rqgm.knowledge_bridge import RQGMKnowledgeBridge
+
+            self._knowledge_bridge = RQGMKnowledgeBridge.from_admission(
+                artifacts, checkpoint_dir=ckpt
+            )
+        if "capability_binding_lock.json" in documents:
+            from ari.capability_binding.models import CapabilityBindingLockV1
+            from ari.capability_binding.validation import BoundToolAuthorizationView
+
+            lock = CapabilityBindingLockV1.model_validate(
+                documents["capability_binding_lock.json"]
+            )
+            view = BoundToolAuthorizationView(
+                lock, mode=artifacts.admission.modes.capability_binding
+            )
+            install = getattr(self.mcp, "install_tool_authorization_view", None)
+            if not callable(install):
+                raise ValueError("MCP client cannot install a Capability Binding view")
+            install(view)
+            self._capability_authorization_view = view
+        if "baseline_harness_lock.json" in documents:
+            from ari.rqgm.assurance_bridge import RQGMAssuranceBridge
+
+            self._assurance_bridge = RQGMAssuranceBridge(
+                artifacts=artifacts,
+                checkpoint_dir=ckpt,
+            )
+
+    def assure_node(self, node) -> str:
+        """Run/interpret the active screen gate before frontier admission."""
+
+        if self._assurance_bridge is None:
+            return "legacy"
+        try:
+            return self._assurance_bridge.assure(node)
+        except Exception:
+            log.warning("fixed assurance bridge failed", exc_info=True)
+            node.assurance_status = "infrastructure_error"
+            node.assurance_tier = "screen"
+            node.frontier_class = (
+                "scientific_frontier"
+                if self._run_admission is not None
+                and self._run_admission.modes.assurance == "audit"
+                else "uncertified_frontier"
+            )
+            return node.frontier_class
+
+    def certify_node(self, node) -> str:
+        """Run a frozen certify tier for one final scientific candidate."""
+
+        if self._assurance_bridge is None:
+            return "legacy"
+        try:
+            return self._assurance_bridge.certify(node)
+        except Exception:
+            log.warning("fixed certify bridge failed", exc_info=True)
+            node.assurance_status = "infrastructure_error"
+            node.assurance_tier = "certify"
+            node.frontier_class = "uncertified_frontier"
+            return node.frontier_class
+
+    def open_execution_epoch(
+        self,
+        *,
+        node_count: int = 0,
+        checkpoint_dir: "str | Path | None" = None,
+        run_id: str = "",
+    ):
+        """Open epoch_000 only after a complete persisted KCA admission."""
+
+        ckpt = Path(checkpoint_dir) if checkpoint_dir is not None else self.checkpoint_dir
+        if ckpt is None:
+            raise ValueError("execution epoch requires a checkpoint directory")
+        state = self.bootstrap_foundation(checkpoint_dir=ckpt)
+        if state is not None and state.epoch is not None:
+            return state.epoch
+        if self._run_admission is None:
+            from ari.rqgm.admission import load_admission_artifacts
+
+            artifacts = load_admission_artifacts(ckpt)
+            self._run_admission = artifacts.admission
+            self._activate_kca_artifacts(artifacts, ckpt)
+        state = self._store.open_epoch(
+            ckpt,
+            self.cfg,
+            node_count=node_count,
+            run_id=run_id,
+            prior=state,
+            scientific_identity=self._run_admission.scientific_identity(),
+        )
+        if state is None or state.epoch is None:
+            raise ValueError("execution epoch did not commit")
+        self._epoch_state = state
+        self._stamp_cost_epoch()
+        self._apply_epoch_policy_to_scoring(state)
+        return state.epoch
+
     def _apply_epoch_policy_to_scoring(self, st) -> None:
         """Apply the epoch's FROZEN utility_policy to the live scoring targets
         so the objective evolves per-epoch (plan 14 §5.6 / RQGM paper claim A).
@@ -452,6 +727,22 @@ class RQGMRuntime:
             if self._store is None:
                 self._store = RqgmStateStore()
             if self._epoch_state is None or self._epoch_state.epoch is None:
+                if self._kca_feature_enabled:
+                    self.bootstrap_foundation(checkpoint_dir=ckpt)
+                    if self._run_admission is None:
+                        try:
+                            from ari.rqgm.admission import load_admission_artifacts
+
+                            artifacts = load_admission_artifacts(ckpt)
+                            self._run_admission = artifacts.admission
+                            self._activate_kca_artifacts(artifacts, ckpt)
+                        except FileNotFoundError:
+                            # Expected before root proposal / Research Contract:
+                            # foundation is ready but execution is not admitted.
+                            return None
+                    return self.open_execution_epoch(
+                        node_count=node_count, checkpoint_dir=ckpt, run_id=run_id
+                    )
                 st = self._store.load_state(ckpt)
                 if st is not None:
                     # Restored state == resume: §5.6.6 integrity pass
@@ -493,6 +784,8 @@ class RQGMRuntime:
                     self._stamp_cost_epoch()
                     self._apply_epoch_policy_to_scoring(self._epoch_state)
         except Exception:
+            if self._kca_feature_enabled:
+                self._run_admission_error = "KCA epoch admission or resume integrity failed"
             log.warning(
                 "RQGM epoch hook failed; epoch state unchanged", exc_info=True
             )
@@ -1401,6 +1694,10 @@ class RQGMRuntime:
         return self._store.run_boundary(
             ckpt, st, self.cfg, node_count=node_count, run_id=run_id,
             registry_events=intake,
+            scientific_identity=(
+                self._run_admission.scientific_identity()
+                if self._run_admission is not None else None
+            ),
         )
 
     def _intake_registration_events(self, ckpt, st) -> list:
@@ -2487,13 +2784,124 @@ class RQGMRuntime:
                 log.warning("AdversarialReplayPool load failed", exc_info=True)
         return self._adversarial_pool
 
+    def _kca_document(self, name: str) -> dict:
+        artifacts = getattr(self, "_admission_artifacts", None)
+        value = artifacts.documents.get(name) if artifacts is not None else None
+        if hasattr(value, "model_dump"):
+            return value.model_dump(mode="json")
+        return dict(value or {})
+
+    @staticmethod
+    def _read_kca_json(path: Path) -> dict:
+        import json
+
+        if path.is_symlink() or not path.is_file():
+            return {}
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            return value if isinstance(value, dict) else {}
+        except Exception:
+            return {}
+
+    def _kca_knowledge_reports(self, kernel, admission, node_root: Path):
+        if not admission.knowledge_skill_lock_digest:
+            return []
+        node_use = self._read_kca_json(node_root / "knowledge_skill_use.json")
+        instruction = self._read_kca_json(node_root / "instruction_identity.json")
+        return [kernel.validate_knowledge_integrity(
+            node_use=node_use,
+            epoch_lock=self._kca_document("knowledge_skill_lock.json"),
+            catalog_snapshot=self._kca_document("knowledge_catalog_snapshot.json"),
+            body_by_sha256=self._kca_document("knowledge_bodies.json"),
+            composition_digest=instruction.get("knowledge_composition_digest"),
+            expected_epoch_lock_digest=admission.knowledge_skill_lock_digest,
+        )]
+
+    def _kca_capability_reports(self, kernel, admission, node_id: str):
+        if not admission.capability_binding_lock_digest:
+            return []
+        common = {
+            "binding_lock": self._kca_document("capability_binding_lock.json"),
+            "provider_lock": self._kca_document("provider_lock.json"),
+            "expected_lock_digest": admission.capability_binding_lock_digest,
+            "expected_environment_digest": admission.verification_environment_digest,
+        }
+        records = (
+            self._capability_authorization_view.invocation_records(node_id)
+            if self._capability_authorization_view is not None
+            else ()
+        )
+        if not records:
+            return [kernel.validate_capability_binding_integrity(**common)]
+        return [
+            kernel.validate_capability_binding_integrity(
+                **common,
+                invocation={
+                    "tool_ref": tool_ref,
+                    "authorization_reason": reason_code,
+                    "binding_digest": binding_digest,
+                },
+            )
+            for tool_ref, reason_code, binding_digest in records
+        ]
+
+    def _harness_request_for(self, node_root: Path, manifest_digest: str) -> dict:
+        for path in sorted((node_root / "harness_requests").glob("*.json")):
+            candidate = self._read_kca_json(path)
+            if str((candidate.get("harness") or {}).get("manifest_digest", "")) == (
+                manifest_digest
+            ):
+                return candidate
+        return {}
+
+    def _kca_harness_reports(self, kernel, admission, node, node_root: Path):
+        if not admission.baseline_harness_lock_digest:
+            return []
+        common = {
+            "verification_contract": self._kca_document("verification_contract.json"),
+            "baseline_lock": self._kca_document("baseline_harness_lock.json"),
+            "catalog_snapshot": self._kca_document("harness_catalog_snapshot.json"),
+            "current_target_digest": str(
+                getattr(node, "verified_target_digest", "") or ""
+            ) or None,
+            "active_harness_lock_digest": admission.active_harness_lock_digest,
+        }
+        paths = sorted(set(
+            str(item) for item in getattr(node, "attestation_refs", ()) or ()
+        ))
+        if not paths:
+            return [kernel.validate_harness_integrity(**common)]
+        reports = []
+        for relative in paths:
+            attestation = self._read_kca_json(Path(self.checkpoint_dir) / relative)
+            request = self._harness_request_for(
+                node_root,
+                str(attestation.get("harness_manifest_digest", "")),
+            )
+            reports.append(kernel.validate_harness_integrity(
+                **common,
+                attestation=attestation,
+                request=request or None,
+            ))
+        return reports
+
+    def _kca_reports_for_node(self, kernel, admission, node, node_id: str):
+        node_root = Path(self.checkpoint_dir) / "rqgm" / "kca" / "nodes" / node_id
+        return [
+            *self._kca_knowledge_reports(kernel, admission, node_root),
+            *self._kca_capability_reports(kernel, admission, node_id),
+            *self._kca_harness_reports(kernel, admission, node, node_root),
+        ]
+
     def run_per_node_kernel_check(self, node) -> int:
-        """The §5.6.5 per-node kernel warn hook. Returns the report count.
+        """Run legacy record checks and K/C/A procedural integrity checks.
 
         ``per_node_warn_check`` — schema + hash provenance over the records a
         node produced, warn-only, audit-logged — had NO production caller, so
         CK-HSH-001/002/003/010 were never evaluated at the one point a node's
-        records exist. Fail-open like every run-loop hook.
+        records exist.  K/C/A checks deliberately inspect authority and
+        integrity only: an ordinary failed scientific test is not a
+        constitutional violation.  Returns the number of emitted reports.
         """
         kernel = self.kernel
         st = self._epoch_state
@@ -2507,7 +2915,7 @@ class RQGMRuntime:
                 ROUND_MARKER_RECORD_TYPE,
                 AdversarialCaseLog,
             )
-            from ari.rqgm.kernel import per_node_warn_check
+            from ari.rqgm.kernel import per_node_warn_check, should_block
             from ari.rqgm.store import ImmutableAuditLog
 
             audit = ImmutableAuditLog(self.checkpoint_dir)
@@ -2527,13 +2935,57 @@ class RQGMRuntime:
                 and str(r.get("node_id", "")) == node_id
                 and str(r.get("record_type", "")) != ROUND_MARKER_RECORD_TYPE
             ]
-            if not records:
-                return 0
-            reports = per_node_warn_check(
-                kernel, records, registry=getattr(st, "prompts", None),
-                audit_log=audit,
+            reports = []
+            if records:
+                reports.extend(per_node_warn_check(
+                    kernel, records, registry=getattr(st, "prompts", None),
+                    audit_log=audit,
+                ) or ())
+
+            artifacts = getattr(self, "_admission_artifacts", None)
+            admission = getattr(self, "_run_admission", None)
+            if (
+                not getattr(self, "_kca_feature_enabled", False)
+                or artifacts is None
+                or admission is None
+            ):
+                return len(reports)
+
+            kca_reports = self._kca_reports_for_node(
+                kernel, admission, node, node_id
             )
-            return len(reports or ())
+
+            reports.extend(kca_reports)
+            blocking_codes = []
+            for report in kca_reports:
+                violations = list(getattr(report, "violations", ()) or ())
+                if not violations:
+                    continue
+                codes = sorted({item.code for item in violations})
+                self._append_audit_event(
+                    "kernel_report",
+                    {
+                        "epoch_id": str(getattr(st.epoch, "epoch_id", "")),
+                        "node_id": node_id,
+                        "check": str(
+                            getattr(report, "context", "kca_integrity")
+                        ),
+                        "codes": codes,
+                    },
+                )
+                if should_block(report, self.kernel_enforcement):
+                    blocking_codes.extend(codes)
+            if blocking_codes:
+                node.assurance_status = "tampered"
+                node.frontier_class = "uncertified_frontier"
+                if isinstance(getattr(node, "metrics", None), dict):
+                    node.metrics["_valid_for_frontier"] = False
+                log.warning(
+                    "node %s excluded by KCA integrity findings: %s",
+                    node_id,
+                    sorted(set(blocking_codes)),
+                )
+            return len(reports)
         except Exception:
             log.warning("per-node kernel check failed (fail-open)",
                         exc_info=True)
@@ -2820,6 +3272,7 @@ class RQGMRuntime:
         disjunction plus the per-role budget gates inside the round.
         """
         self.stamp_node_producer(node)
+        self._record_kca_node_provenance(node)
         try:
             manager = self.budget_manager
             if manager is not None:
@@ -2849,6 +3302,219 @@ class RQGMRuntime:
         except Exception:
             log.warning("adversarial round failed (fail-open)", exc_info=True)
             return None
+
+    def _record_kca_node_provenance(self, node) -> None:
+        """Append typed instruction/authority evidence once per completed node."""
+
+        if not self._kca_feature_enabled or self._run_admission is None:
+            return
+        try:
+            import json
+
+            from ari.protocols.integrity import canonical_digest
+            from ari.rqgm.events import hash12
+            from ari.rqgm.governance._records import created_at_now
+            from ari.rqgm.store import ImmutableAuditLog
+
+            epoch_id = str(getattr(self.current_epoch, "epoch_id", "") or "epoch_000")
+            component_id = str(getattr(node, "producer_component_id", "") or "generator_v1")
+            prompt_hash = str(getattr(node, "producer_prompt_hash", "") or "") or None
+            source_root = Path(self.checkpoint_dir) / "rqgm" / "kca" / "nodes" / str(node.id)
+            audit = ImmutableAuditLog(self.checkpoint_dir)
+            existing_record_ids = {
+                str((line.get("payload") or {}).get("record_id", ""))
+                for line in ImmutableAuditLog.read(self.checkpoint_dir)
+                if isinstance(line, dict)
+            }
+            knowledge_path = source_root / "knowledge_skill_use_record.json"
+            if knowledge_path.is_file():
+                from ari.knowledge.models import (
+                    KnowledgeSkillUseRecordV1,
+                    NodeKnowledgeSkillUseV1,
+                )
+
+                knowledge_document = json.loads(
+                    knowledge_path.read_text(encoding="utf-8")
+                )
+                knowledge = KnowledgeSkillUseRecordV1.model_validate(
+                    knowledge_document
+                )
+                node_use_path = source_root / "knowledge_skill_use.json"
+                node_use_document = json.loads(
+                    node_use_path.read_text(encoding="utf-8")
+                )
+                node_use = NodeKnowledgeSkillUseV1.model_validate(
+                    node_use_document
+                )
+                knowledge_relative = knowledge_path.relative_to(
+                    self.checkpoint_dir
+                ).as_posix()
+                node_use_relative = node_use_path.relative_to(
+                    self.checkpoint_dir
+                ).as_posix()
+                payload = {
+                    "record_type": "knowledge_skill_use",
+                    "schema_version": 1,
+                    "record_id": "knw_" + hash12(knowledge.record_digest),
+                    "epoch_id": epoch_id,
+                    "component_id": "knowledge_binder_v1",
+                    "prompt_hash": None,
+                    "role": "knowledge_binder",
+                    "target_component_id": component_id,
+                    "target_role": "generator",
+                    "created_at": created_at_now(),
+                    # ``source_refs`` names other governed RECORD ids.  Files
+                    # are separately digest-bound artifact refs so the Evidence
+                    # Clerk never mistakes a path for a record identity.
+                    "source_refs": [],
+                    "artifact_refs": [
+                        {
+                            "path": knowledge_relative,
+                            "content_digest": canonical_digest(
+                                knowledge_document
+                            ),
+                        },
+                        {
+                            "path": node_use_relative,
+                            "content_digest": canonical_digest(
+                                node_use_document
+                            ),
+                        },
+                    ],
+                    "status": "recorded",
+                    "node_id": str(node.id),
+                    "knowledge_use_record_digest": knowledge.record_digest,
+                    "node_use_digest": knowledge.node_use_digest,
+                    "prompt_node_use_digest": str(
+                        getattr(node, "knowledge_skill_use_digest", "") or ""
+                    ),
+                    "instruction_identity_digest": (
+                        knowledge.instruction_identity.instruction_digest
+                    ),
+                    "node_instruction_identity_digest": str(
+                        getattr(node, "instruction_identity_digest", "") or ""
+                    ),
+                    "knowledge_skill_lock_digest": str(
+                        self._run_admission.knowledge_skill_lock_digest or ""
+                    ),
+                    "knowledge_skill_status_at_use": dict(
+                        knowledge.knowledge_skill_status_at_use
+                    ),
+                    "knowledge_use_record": knowledge.model_dump(mode="json"),
+                    "node_use": node_use.model_dump(mode="json"),
+                }
+                if payload["record_id"] not in existing_record_ids:
+                    audit.append("knowledge_skill_use", payload)
+                    existing_record_ids.add(payload["record_id"])
+
+            binding_digest = self._run_admission.capability_binding_lock_digest
+            if binding_digest:
+                view = getattr(self, "_capability_authorization_view", None)
+                records = (
+                    view.invocation_records(str(node.id))
+                    if view is not None and hasattr(view, "invocation_records")
+                    else ()
+                )
+                invoked = tuple(sorted({str(item[0]) for item in records}))
+                bound = set(getattr(node, "bound_tool_refs", ()) or ())
+                unbound = tuple(sorted(set(invoked) - bound))
+                provider_lock_digest = str(
+                    self._run_admission.provider_lock_digest or ""
+                )
+                invocation_digest = canonical_digest(invoked)
+                decisions = [
+                    {
+                        "tool_ref": str(item[0]),
+                        "reason_code": str(item[1]),
+                        "binding_digest": item[2],
+                    }
+                    for item in records
+                ]
+                binding_document = self._admission_artifacts.documents.get(
+                    "capability_binding_lock.json"
+                )
+                if hasattr(binding_document, "model_dump"):
+                    binding_document = binding_document.model_dump(mode="json")
+                binding_document = dict(binding_document or {})
+                payload = {
+                    "record_type": "capability_binding",
+                    "schema_version": 1,
+                    "record_id": "cap_" + hash12(str(node.id) + binding_digest),
+                    "epoch_id": epoch_id,
+                    "component_id": "capability_binder_v1",
+                    "prompt_hash": None,
+                    "role": "capability_binder",
+                    "target_component_id": component_id,
+                    "target_role": "generator",
+                    "created_at": created_at_now(),
+                    "source_refs": [],
+                    "artifact_refs": [
+                        {
+                            "path": "rqgm/kca/admission-v1/capability_binding_lock.json",
+                            "content_digest": canonical_digest(binding_document),
+                        }
+                    ],
+                    "status": "valid" if not unbound else "finding",
+                    "node_id": str(node.id),
+                    "capability_binding_lock_digest": binding_digest,
+                    "provider_lock_digest": provider_lock_digest,
+                    "invocation_set_digest": invocation_digest,
+                    "invoked_tool_refs": list(invoked),
+                    "unbound_tool_refs": list(unbound),
+                    "invocation_decisions": decisions,
+                }
+                if payload["record_id"] not in existing_record_ids:
+                    audit.append("capability_binding", payload)
+                    existing_record_ids.add(payload["record_id"])
+
+            for relative in sorted(set(getattr(node, "attestation_refs", ()) or ())):
+                path = Path(self.checkpoint_dir) / str(relative)
+                if path.is_symlink() or not path.is_file():
+                    continue
+                from ari.assurance.models import HarnessAttestationV1
+
+                attestation = HarnessAttestationV1.model_validate_json(
+                    path.read_text(encoding="utf-8")
+                )
+                attestation_document = attestation.model_dump(mode="json")
+                record_id = "har_" + hash12(attestation.attestation_digest)
+                payload = {
+                    **{
+                        key: value
+                        for key, value in attestation_document.items()
+                        if key != "schema_version"
+                    },
+                    "record_type": "harness_attestation",
+                    "schema_version": 1,
+                    "record_id": record_id,
+                    "epoch_id": epoch_id,
+                    "component_id": "fixed_verifier_v1",
+                    "prompt_hash": None,
+                    "role": "fixed_verifier",
+                    "created_at": created_at_now(),
+                    "source_refs": [],
+                    "artifact_refs": [
+                        {
+                            "path": str(relative),
+                            "content_digest": canonical_digest(
+                                attestation_document
+                            ),
+                        }
+                    ],
+                    "status": attestation.verdict,
+                    "target_component_id": component_id,
+                    "target_role": "generator",
+                    "node_id": str(node.id),
+                    "attestation": attestation_document,
+                    "current_node_target_digest": str(
+                        getattr(node, "verified_target_digest", "") or ""
+                    ),
+                }
+                if record_id not in existing_record_ids:
+                    audit.append("harness_attestation", payload)
+                    existing_record_ids.add(record_id)
+        except Exception:
+            log.warning("KCA node provenance audit append failed", exc_info=True)
 
     def replay_utility_penalties(self, all_nodes) -> int:
         """Deterministically re-apply persisted utility penalties to freshly
@@ -3274,7 +3940,67 @@ class RQGMRuntime:
                 )
         except Exception:
             log.warning("metric-spec weight cap attach failed", exc_info=True)
+        agent = self._wrap_kca_node_preparation(agent)
         return self._wrap_utility_policy_stamp(agent)
+
+    def _wrap_kca_node_preparation(self, agent: "NodeExecutor"):
+        """Freeze Knowledge use and bound tool provenance before AgentLoop."""
+
+        if not self._kca_feature_enabled:
+            return agent
+        inner = agent.run
+
+        def run(node, experiment):
+            if self._run_admission is None:
+                raise RuntimeError(
+                    "KCA run admission is incomplete; refusing first research node"
+                )
+            admission = self._run_admission
+            binding_digest = admission.capability_binding_lock_digest
+            verification_digest = admission.verification_contract_digest
+            harness_digest = admission.active_harness_lock_digest
+            from ari.protocols.integrity import ZERO_SHA256
+
+            if binding_digest:
+                node.capability_binding_lock_digest = binding_digest
+                try:
+                    from ari.capability_binding.models import CapabilityBindingLockV1
+
+                    document = self._admission_artifacts.documents[
+                        "capability_binding_lock.json"
+                    ]
+                    lock = CapabilityBindingLockV1.model_validate(document)
+                    node.bound_tool_refs = sorted(item.tool_ref for item in lock.bindings)
+                except Exception:
+                    node.bound_tool_refs = []
+            if admission.baseline_harness_lock_digest:
+                node.baseline_harness_lock_digest = admission.baseline_harness_lock_digest
+                node.active_harness_lock_digest = harness_digest or ""
+            if self._knowledge_bridge is not None:
+                from ari.agent.loop import _system_prompt_versioned
+
+                base_prompt, base_hash = _system_prompt_versioned()
+                epoch = self.current_epoch
+                active = tuple(sorted(
+                    str(item) for item in (
+                        getattr(epoch, "active_prompt_hash_set", None) or ()
+                    )
+                ))
+                self._knowledge_bridge.prepare_node(
+                    node=node,
+                    experiment=experiment,
+                    base_prompt=base_prompt,
+                    base_prompt_hash=base_hash,
+                    active_rqgm_prompt_hashes=active,
+                    capability_binding_lock_digest=binding_digest or ZERO_SHA256,
+                    verification_contract_digest=verification_digest or ZERO_SHA256,
+                    active_harness_lock_digest=harness_digest or ZERO_SHA256,
+                )
+            return inner(node, experiment)
+
+        agent.run = run
+        agent.rqgm_kca_preparation = True
+        return agent
 
     def _wrap_utility_policy_stamp(self, agent: "NodeExecutor"):
         """Stamp every scored node with the epoch's utility-policy hash

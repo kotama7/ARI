@@ -134,6 +134,23 @@ def paper(
             producer_component_id=nd.get("producer_component_id", ""),
             producer_prompt_hash=nd.get("producer_prompt_hash", ""),
             producer_epoch_id=nd.get("producer_epoch_id", ""),
+            knowledge_skill_refs=nd.get("knowledge_skill_refs") or [],
+            knowledge_skill_use_digest=nd.get("knowledge_skill_use_digest", ""),
+            instruction_identity_digest=nd.get("instruction_identity_digest", ""),
+            capability_binding_lock_digest=nd.get("capability_binding_lock_digest", ""),
+            bound_tool_refs=nd.get("bound_tool_refs") or [],
+            assurance_status=nd.get("assurance_status", ""),
+            assurance_tier=nd.get("assurance_tier", ""),
+            baseline_harness_lock_digest=nd.get("baseline_harness_lock_digest", ""),
+            active_harness_lock_digest=nd.get("active_harness_lock_digest", ""),
+            attestation_refs=nd.get("attestation_refs") or [],
+            verified_target_digest=nd.get("verified_target_digest", ""),
+            property_verdicts=nd.get("property_verdicts") or {},
+            frontier_class=nd.get("frontier_class", ""),
+            repair_request_id=nd.get("repair_request_id", ""),
+            repair_requirement_ids=nd.get("repair_requirement_ids") or [],
+            repair_context_digest=nd.get("repair_context_digest", ""),
+            repair_allowed_changes=nd.get("repair_allowed_changes") or [],
         )
         node.status = NodeStatus(nd["status"])
         _lbl = nd.get("label", "draft")

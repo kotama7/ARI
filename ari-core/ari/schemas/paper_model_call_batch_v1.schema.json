@@ -40,7 +40,13 @@
             "text-review",
             "visual-review",
             "code-bundle-lock",
-            "authoring-record"
+            "authoring-record",
+            "manuscript-profile",
+            "manuscript-context",
+            "manuscript-readiness",
+            "section-briefs",
+            "manuscript-authoring-binding",
+            "publication-decision"
           ],
           "title": "Role",
           "type": "string"

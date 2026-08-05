@@ -142,6 +142,15 @@ class ArtifactBundle:
     gate_findings: tuple = ()  # claim-gate finding dicts
     validate_metrics_flags: tuple = ()  # deterministic pre-check strings
     related_refs: tuple = ()  # prior-art refs (absent → no prior-art attacks)
+    # Fixed K/C/A premises.  These are supplied to adversaries as immutable
+    # evidence; the LLM may identify a contradictory claim/decision but may
+    # not recompute a Binding or re-judge a Harness verdict.
+    knowledge_skill_use_records: tuple = ()
+    capability_binding_records: tuple = ()
+    harness_attestations: tuple = ()
+    verification_findings: tuple = ()
+    active_harness_lock_digest: str = ""
+    verification_contract_digest: str = ""
     score: float | None = None
     parent_score: float | None = None
     plan_step_count: int = 0
@@ -253,6 +262,164 @@ def _collect_related_refs(ckpt) -> tuple:
     return tuple(refs) if isinstance(refs, (list, tuple)) else ()
 
 
+_CORRECTNESS_CLAIM_RE = re.compile(
+    r"\b(correct|verified|validated|certified|all\s+tests?\s+pass(?:ed)?|"
+    r"numerically\s+equivalent|no\s+regressions?)\b",
+    re.I,
+)
+
+
+def _kca_audit_records(ckpt, node_id: str):
+    knowledge: list[dict] = []
+    bindings: list[dict] = []
+    attestations: list[dict] = []
+    try:
+        from ari.rqgm.store import ImmutableAuditLog
+
+        buckets = {
+            "knowledge_skill_use": knowledge,
+            "capability_binding": bindings,
+            "harness_attestation": attestations,
+        }
+        for line in ImmutableAuditLog.read(ckpt):
+            payload = line.get("payload") if isinstance(line, dict) else None
+            if not isinstance(payload, dict) or str(payload.get("node_id", "")) != node_id:
+                continue
+            bucket = buckets.get(str(payload.get("record_type", "")))
+            if bucket is not None:
+                bucket.append(payload)
+    except Exception:
+        log.debug("artifact bundle: KCA audit scan failed", exc_info=True)
+    return knowledge, bindings, attestations
+
+
+def _binding_integrity_findings(bindings: list[dict]) -> list[dict]:
+    findings: list[dict] = []
+    for record in bindings:
+        pointer = str(record.get("record_id", ""))
+        decisions = record.get("invocation_decisions") or ()
+        if record.get("unbound_tool_refs") or any(
+            str(item.get("reason_code", "")) != "bound"
+            for item in decisions
+            if isinstance(item, dict)
+        ):
+            findings.append({
+                "kind": "unbound_tool_invocation",
+                "path": "rqgm_audit.jsonl",
+                "pointer": pointer,
+            })
+        if record.get("provider_schema_drift"):
+            findings.append({
+                "kind": "provider_schema_drift",
+                "path": "rqgm_audit.jsonl",
+                "pointer": pointer,
+            })
+    return findings
+
+
+def _assurance_contradiction_findings(node, report, attestations, node_id):
+    status = str(getattr(node, "assurance_status", "") or "")
+    if status == "infrastructure_error":
+        return []
+    findings: list[dict] = []
+    claim_text = "\n".join((
+        str(getattr(node, "eval_summary", "") or ""),
+        str(getattr(node, "plan", "") or ""),
+        json.dumps(report, ensure_ascii=False, sort_keys=True),
+    ))
+    failed = [item for item in attestations if item.get("verdict") == "fail"]
+    if failed and _CORRECTNESS_CLAIM_RE.search(claim_text):
+        findings.append({
+            "kind": "fixed_verifier_claim_contradiction",
+            "path": "rqgm_audit.jsonl",
+            "pointer": str(failed[0].get("record_id", "")),
+        })
+    if status == "inconclusive" and not attestations:
+        findings.append({
+            "kind": "required_attestation_missing",
+            "path": f"rqgm/kca/nodes/{node_id}/assurance_summary.json",
+            "pointer": "/assurance_status",
+        })
+    if status == "tampered":
+        findings.append({
+            "kind": "assurance_integrity_failure",
+            "path": f"rqgm/kca/nodes/{node_id}/assurance_summary.json",
+            "pointer": "/assurance_status",
+        })
+    if status not in {"", "pass"} and str(
+        getattr(node, "frontier_class", "") or ""
+    ) == "scientific_frontier":
+        findings.append({
+            "kind": "verifier_result_ignored",
+            "path": f"rqgm/kca/nodes/{node_id}/assurance_summary.json",
+            "pointer": "/frontier_class",
+        })
+    return findings
+
+
+def _knowledge_authority_findings(ckpt, knowledge: list[dict]) -> list[dict]:
+    findings: list[dict] = []
+    try:
+        admission = ckpt / "rqgm" / "kca" / "admission-v1"
+        bodies = _read_json_artifact(admission / "knowledge_bodies.json") or {}
+        used_hashes = {
+            str(ref.get("body_sha256", ""))
+            for record in knowledge
+            for ref in ((record.get("node_use") or {}).get("ordered_skills") or ())
+            if isinstance(ref, dict)
+        }
+        forbidden = (
+            "bypass verification",
+            "skip the harness",
+            "read the secret",
+            "rewrite the registry",
+            "increase authority",
+        )
+        for body_hash in sorted(used_hashes):
+            body = str(bodies.get(body_hash, ""))
+            if injection_pre_filter(body) or any(
+                phrase in body.lower() for phrase in forbidden
+            ):
+                findings.append({
+                    "kind": "knowledge_authority_instruction",
+                    "path": "rqgm/kca/admission-v1/knowledge_bodies.json",
+                    "pointer": body_hash,
+                })
+    except Exception:
+        log.debug("artifact bundle: locked Knowledge scan failed", exc_info=True)
+    return findings
+
+
+def _collect_kca_evidence(ckpt, node, report: dict) -> tuple:
+    """Return typed K/C/A records and deterministic contradiction signals.
+
+    A plain candidate ``fail`` is intentionally not a governance signal.  It
+    becomes one only when a claim, score, frontier decision, or provenance
+    record contradicts the fixed result.  Infrastructure failure is always
+    excluded from attack pre-signals.
+    """
+
+    node_id = str(getattr(node, "id", "") or "")
+    knowledge, bindings, attestations = _kca_audit_records(ckpt, node_id)
+    findings = _binding_integrity_findings(bindings)
+    findings.extend(
+        _assurance_contradiction_findings(node, report, attestations, node_id)
+    )
+    findings.extend(_knowledge_authority_findings(ckpt, knowledge))
+
+    key = lambda item: str(item.get("record_id", ""))
+    finding_key = lambda item: (
+        str(item.get("kind", "")), str(item.get("path", "")),
+        str(item.get("pointer", "")),
+    )
+    return (
+        tuple(sorted(knowledge, key=key)),
+        tuple(sorted(bindings, key=key)),
+        tuple(sorted(attestations, key=key)),
+        tuple(sorted(findings, key=finding_key)),
+    )
+
+
 def _validate_metrics_flags_from_gate(gate_findings) -> tuple:
     """Deterministic metric-gaming flags derived from the gate findings
     (plan 06 §5.2 MetricGaming source: ``validate_metrics`` flags + env
@@ -337,6 +504,14 @@ def build_artifact_bundle(
     gate_findings: tuple = ()
     related_refs: tuple = ()
     validate_metrics_flags: tuple = ()
+    knowledge_records: tuple = ()
+    capability_records: tuple = ()
+    harness_attestations: tuple = ()
+    verification_findings: tuple = ()
+    active_harness_lock_digest = str(
+        getattr(node, "active_harness_lock_digest", "") or ""
+    )
+    verification_contract_digest = ""
     if checkpoint_dir is not None:
         try:
             ckpt = Path(checkpoint_dir)
@@ -345,6 +520,19 @@ def build_artifact_bundle(
             validate_metrics_flags = _validate_metrics_flags_from_gate(
                 gate_findings
             )
+            (
+                knowledge_records,
+                capability_records,
+                harness_attestations,
+                verification_findings,
+            ) = _collect_kca_evidence(ckpt, node, report)
+            admission = _read_json_artifact(
+                ckpt / "rqgm" / "kca" / "admission-v1" / "run_admission.json"
+            )
+            if isinstance(admission, dict):
+                verification_contract_digest = str(
+                    admission.get("verification_contract_digest", "") or ""
+                )
         except Exception:
             log.debug("artifact bundle: pre-signal artifact read failed",
                       exc_info=True)
@@ -368,6 +556,12 @@ def build_artifact_bundle(
         gate_findings=gate_findings,
         validate_metrics_flags=validate_metrics_flags,
         related_refs=related_refs,
+        knowledge_skill_use_records=knowledge_records,
+        capability_binding_records=capability_records,
+        harness_attestations=harness_attestations,
+        verification_findings=verification_findings,
+        active_harness_lock_digest=active_harness_lock_digest,
+        verification_contract_digest=verification_contract_digest,
         score=float(score) if isinstance(score, (int, float)) else None,
         plan_step_count=plan_text.count("###"),
         remaining_node_budget=int(remaining_node_budget),
@@ -453,6 +647,26 @@ def _gate_evidence(bundle: ArtifactBundle, kinds: tuple) -> list[EvidenceRef]:
     return out
 
 
+def _verification_evidence(
+    bundle: ArtifactBundle, kinds: tuple[str, ...]
+) -> list[EvidenceRef]:
+    """Evidence refs for deterministic K/C/A findings, without re-judgment."""
+
+    out: list[EvidenceRef] = []
+    # Duck-typed test/legacy bundles predate Task 19. Absence means there is
+    # no fixed K/C/A pre-signal; it must not fail the ordinary adversarial
+    # round open or manufacture evidence.
+    for finding in getattr(bundle, "verification_findings", ()) or ():
+        item = finding if isinstance(finding, dict) else {}
+        if str(item.get("kind", "")) not in kinds:
+            continue
+        out.append(EvidenceRef(
+            path=str(item.get("path", "") or "rqgm_audit.jsonl"),
+            pointer=str(item.get("pointer", "") or ""),
+        ))
+    return out
+
+
 def _report_ref(bundle: ArtifactBundle, pointer: str) -> EvidenceRef:
     return EvidenceRef(
         path=bundle.node_report_path or "node_report.json", pointer=pointer
@@ -465,10 +679,18 @@ def _pre_overclaim(bundle: ArtifactBundle) -> list[EvidenceRef]:
     )
     if not refs and novelty_signal(bundle.eval_summary + bundle.proposal_text):
         refs = [_report_ref(bundle, "/self_assessment")]
+    refs.extend(_verification_evidence(
+        bundle, ("fixed_verifier_claim_contradiction", "verifier_result_ignored")
+    ))
     return refs
 
 
 def _pre_metric_gaming(bundle: ArtifactBundle) -> list[EvidenceRef]:
+    fixed = _verification_evidence(
+        bundle, ("fixed_verifier_claim_contradiction", "verifier_result_ignored")
+    )
+    if fixed:
+        return fixed
     if bundle.validate_metrics_flags:
         return [_report_ref(bundle, "/eval_result")]
     env = bundle.node_report.get("compute_env")
@@ -488,6 +710,11 @@ def _pre_prior_art(bundle: ArtifactBundle) -> list[EvidenceRef]:
 
 
 def _pre_reproducibility(bundle: ArtifactBundle) -> list[EvidenceRef]:
+    fixed = _verification_evidence(
+        bundle, ("provider_schema_drift", "assurance_integrity_failure")
+    )
+    if fixed:
+        return fixed
     commands = bundle.node_report.get("build_commands") or []
     commands = list(commands) + list(bundle.node_report.get("run_commands") or [])
     for cmd in commands:
@@ -497,7 +724,16 @@ def _pre_reproducibility(bundle: ArtifactBundle) -> list[EvidenceRef]:
 
 
 def _pre_evidence_gap(bundle: ArtifactBundle) -> list[EvidenceRef]:
-    return _gate_evidence(bundle, ("missing_evidence", "uncovered_numeric"))
+    return _gate_evidence(
+        bundle, ("missing_evidence", "uncovered_numeric")
+    ) + _verification_evidence(
+        bundle,
+        (
+            "required_attestation_missing",
+            "unbound_tool_invocation",
+            "verifier_result_ignored",
+        ),
+    )
 
 
 def _pre_cost_explosion(bundle: ArtifactBundle) -> list[EvidenceRef]:
@@ -515,9 +751,11 @@ def _pre_prompt_injection(bundle: ArtifactBundle) -> list[EvidenceRef]:
     text = bundle.proposal_text + "\n" + json.dumps(
         bundle.node_report, ensure_ascii=False, sort_keys=True
     )
-    if injection_pre_filter(text):
-        return [_report_ref(bundle, "/text")]
-    return []
+    refs = [_report_ref(bundle, "/text")] if injection_pre_filter(text) else []
+    refs.extend(_verification_evidence(
+        bundle, ("knowledge_authority_instruction",)
+    ))
+    return refs
 
 
 #: The audit artifact the self-preference pre-signal's POPULATION signal cites:
@@ -1242,6 +1480,12 @@ def _target_block(bundle: ArtifactBundle) -> str:
             "eval_summary": bundle.eval_summary[:2000],
             "node_report": bundle.node_report,
             "score": bundle.score,
+            "knowledge_skill_use_records": bundle.knowledge_skill_use_records,
+            "capability_binding_records": bundle.capability_binding_records,
+            "harness_attestations": bundle.harness_attestations,
+            "verification_findings": bundle.verification_findings,
+            "active_harness_lock_digest": bundle.active_harness_lock_digest,
+            "verification_contract_digest": bundle.verification_contract_digest,
         }
     )
 

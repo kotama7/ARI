@@ -1,12 +1,8 @@
 """Offline Tier-2 smoke runner + ablation-report aggregation (Task 13 §5.5).
 
-``run_smoke`` drives a synthetic, stub-component "run" per (condition, seed)
-pair into ``<eval_root>/runs/<condition>_s<seed>/`` — no LLM, no network, no
-subprocess, seconds of wall clock — then computes each run's
-``rqgm_eval_metrics.json`` and aggregates the campaign-level
-``ablation_report.{json,md}`` into *eval_root* (the
-``workspace/rqgm_eval/<eval_id>/`` destination when invoked through
-``scripts/rqgm_eval/run_ablation.py --smoke``).
+``run_smoke`` drives a deterministic no-LLM/no-network synthetic run per
+(condition, seed), computes ``rqgm_eval_metrics.json``, and aggregates
+``ablation_report.{json,md}`` under ``workspace/rqgm_eval/<eval_id>/``.
 
 The synthetic trajectory is deterministic (P2): fixed node scores, fixed
 epoch ids, fixed timestamps (metadata only, never hashed). RQGM records are
@@ -18,12 +14,10 @@ of plan 13 §10. Scripted-component injections engage the
 :mod:`ari.rqgm.evaluation.doubles` registry through the same
 ``rqgm.eval.scripted_components`` config surface the harness uses.
 
-Feature flags are read from the EFFECTIVE config
-(``ARIConfig.model_validate(overlay)`` — pydantic defaults fill absent
-keys), so Tier-2 interprets an overlay exactly as the Tier-3 ``ari run
---config`` would, never absent-as-off.
+Feature flags come from the effective ``ARIConfig.model_validate(overlay)``
+config, so Tier-2 and Tier-3 interpret defaults identically and never treat
+an absent key as off.
 """
-
 from __future__ import annotations
 
 import json
@@ -299,7 +293,7 @@ def run_condition_smoke(
     ``rqgm_injection_provenance.json`` marker.
     """
     matrix = matrix if matrix is not None else _conditions.load_matrix()
-    overlay = _conditions.condition_overlay(matrix, condition_id)
+    overlay = _conditions.evaluation_condition_overlay(matrix, condition_id)
     specs = [dict(s) for s in injections or ()]
     scripted = _scripted_specs(specs)
     if scripted:
@@ -333,8 +327,12 @@ def run_condition_smoke(
                 _run_mutator_stub(ckpt, scripted["prompt_mutator"])
             )
     for spec in specs:
-        if str(spec.get("mechanism")) == "fixture":
+        if str(spec.get("mechanism")) in {"fixture", "kca_mutation"}:
             _injection.apply_injection(spec, ckpt)
+    if any(str(spec.get("mechanism")) == "kca_mutation" for spec in specs):
+        from ari.rqgm.evaluation.kca_probe import run_and_persist_kca_probes
+
+        summary.update(run_and_persist_kca_probes(ckpt, specs))
     if specs:
         _injection.write_injection_provenance(ckpt, specs)
 
@@ -366,6 +364,14 @@ def _metric_values(report: dict) -> dict:
     values.update({
         key: (entry or {}).get("value")
         for key, entry in (report.get("paper") or {}).items()
+    })
+    values.update({
+        "knowledge_capability." + key: (entry or {}).get("value")
+        for key, entry in (report.get("knowledge_capability") or {}).items()
+    })
+    values.update({
+        "assurance." + key: (entry or {}).get("value")
+        for key, entry in (report.get("assurance") or {}).items()
     })
     return values
 

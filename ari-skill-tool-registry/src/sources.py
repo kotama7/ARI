@@ -37,6 +37,7 @@ from openroad_adapter import (
     verify_openroad_experiment_files,
     verify_openroad_provider_package,
 )
+from openroad_promotion import verify_openroad_verified_lock
 from providers import (
     STDIO_ADAPTER_ID,
     STDIO_ADAPTER_VERSION,
@@ -62,6 +63,8 @@ from qiskit_adapter import (
     verify_qiskit_provider_package,
 )
 from qiskit_identity import verify_qiskit_python_distributions
+from qiskit_promotion import verify_qiskit_verified_lock
+from semantic_projection import projection_output_schema
 from tooluniverse_adapter import (
     TOOLUNIVERSE_ADAPTER_ID,
     TOOLUNIVERSE_ADAPTER_VERSION,
@@ -69,13 +72,21 @@ from tooluniverse_adapter import (
     dangerous_leaf,
     tooluniverse_adapter_digest,
     tooluniverse_release_pin,
+    verify_tooluniverse_dependency_lock,
+    verify_tooluniverse_environment,
     verify_tooluniverse_package,
     verify_tooluniverse_pin,
+    verify_tooluniverse_verified_lock,
+    verify_tooluniverse_wheel,
 )
 
 
 SOURCES_V1 = "ari.catalog-sources/v1"
 _REF_SAFE_RE = re.compile(r"[^a-z0-9._-]+")
+_CANONICAL_CAPABILITY_RE = re.compile(
+    r"^ari\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$"
+)
+_TOOL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:/-]*$")
 
 
 class CatalogSourceError(RuntimeError):
@@ -179,14 +190,15 @@ class StdioSourceSpecV1(BaseModel):
 
 
 class ToolUniversePinV1(BaseModel):
-    """One exact upstream release reviewed in the support matrix."""
+    """One exact upstream or ARI-patched artifact in the support matrix."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     distribution_name: Literal["tooluniverse"] = "tooluniverse"
     version: str
+    artifact_kind: Literal["upstream-wheel", "ari-patched-wheel"]
     wheel_digest: str
-    sdist_digest: str
+    sdist_digest: str | None
     repository_url: Literal["https://github.com/mims-harvard/ToolUniverse"]
     repository_commit: str
     repository_tag: str
@@ -197,20 +209,59 @@ class ToolUniversePinV1(BaseModel):
     direct_dependencies: list[str] = Field(min_length=1)
     compact_contract_digest: str
     python_requires: str
+    upstream_version: str | None
+    upstream_wheel_digest: str | None
+    patch_path: str | None
+    patch_digest: str | None
+    build_recipe_path: str | None
+    build_recipe_digest: str | None
+    provider_manifest_path: str | None
+    provider_manifest_digest: str | None
+    checked_dependency_lock_path: str | None
+    runtime_python: str | None
+    runtime_platform: str | None
+    wheel_reproducible: bool | None
 
     @field_validator(
         "wheel_digest",
-        "sdist_digest",
         "license_digest",
         "package_tree_digest",
         "dependency_lock_digest",
         "compact_contract_digest",
+        "upstream_wheel_digest",
+        "patch_digest",
+        "build_recipe_digest",
+        "provider_manifest_digest",
     )
     @classmethod
-    def _digest(cls, value: str) -> str:
+    def _digest(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
             raise ValueError("ToolUniverse pin digests must be SHA-256 values")
         return value
+
+    @field_validator("sdist_digest")
+    @classmethod
+    def _optional_sdist_digest(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise ValueError("ToolUniverse sdist digest must be SHA-256")
+        return value
+
+    @field_validator(
+        "patch_path",
+        "build_recipe_path",
+        "provider_manifest_path",
+        "checked_dependency_lock_path",
+    )
+    @classmethod
+    def _safe_support_path(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        path = Path(value)
+        if path.is_absolute() or ".." in path.parts or not path.parts:
+            raise ValueError("ToolUniverse support artifact paths must be relative")
+        return path.as_posix()
 
     @field_validator("repository_commit")
     @classmethod
@@ -226,6 +277,38 @@ class ToolUniversePinV1(BaseModel):
         if len(normalized) != len(values) or any(not value for value in normalized):
             raise ValueError("ToolUniverse direct dependency inventory is invalid")
         return normalized
+
+    @model_validator(mode="after")
+    def _artifact_provenance_complete(self) -> "ToolUniversePinV1":
+        downstream = (
+            self.upstream_version,
+            self.upstream_wheel_digest,
+            self.patch_path,
+            self.patch_digest,
+            self.build_recipe_path,
+            self.build_recipe_digest,
+            self.provider_manifest_path,
+            self.provider_manifest_digest,
+            self.checked_dependency_lock_path,
+            self.runtime_python,
+            self.runtime_platform,
+            self.wheel_reproducible,
+        )
+        if self.artifact_kind == "upstream-wheel":
+            if self.sdist_digest is None or any(item is not None for item in downstream):
+                raise ValueError(
+                    "upstream ToolUniverse artifacts require an sdist and no downstream provenance"
+                )
+        elif (
+            self.sdist_digest is not None
+            or any(item is None for item in downstream)
+            or self.upstream_version == self.version
+            or self.wheel_reproducible is not True
+        ):
+            raise ValueError(
+                "ARI-patched ToolUniverse artifacts require complete distinct wheel-only provenance"
+            )
+        return self
 
     def verify(self) -> None:
         verify_tooluniverse_pin(self.model_dump(mode="json"))
@@ -252,6 +335,11 @@ class ToolUniverseCategoryProfileV1(BaseModel):
     backend_lineage: list[str] = Field(default_factory=list)
     data_lineage: list[str] = Field(default_factory=list)
     independence_group: str = ""
+    capability_projections: dict[str, str] = Field(default_factory=dict)
+    equivalence_keys: dict[str, str] = Field(default_factory=dict)
+    result_normalizers: dict[
+        str, Literal["tooluniverse-pubmed-retrieval/v1"]
+    ] = Field(default_factory=dict)
 
     @field_validator("profile_id")
     @classmethod
@@ -275,6 +363,45 @@ class ToolUniverseCategoryProfileV1(BaseModel):
             raise ValueError("profile list values cannot be empty")
         return normalized
 
+    @field_validator("capability_projections")
+    @classmethod
+    def _capability_projections(cls, values: dict[str, str]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for tool_name, capability_ref in sorted(values.items()):
+            name = str(tool_name).strip()
+            ref = str(capability_ref).strip()
+            if not _TOOL_NAME_RE.fullmatch(name):
+                raise ValueError("capability projection uses an invalid exact tool name")
+            if not _CANONICAL_CAPABILITY_RE.fullmatch(ref):
+                raise ValueError(
+                    "ToolUniverse capability projections require canonical ari.* /vN refs"
+                )
+            normalized[name] = ref
+        return normalized
+
+    @field_validator("equivalence_keys")
+    @classmethod
+    def _equivalence_keys(cls, values: dict[str, str]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for tool_name, equivalence_key in sorted(values.items()):
+            name = str(tool_name).strip()
+            key = str(equivalence_key).strip()
+            if not _TOOL_NAME_RE.fullmatch(name) or not key or len(key) > 256:
+                raise ValueError("ToolUniverse equivalence key mapping is invalid")
+            normalized[name] = key
+        return normalized
+
+    @field_validator("result_normalizers")
+    @classmethod
+    def _result_normalizers(cls, values: dict[str, str]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for tool_name, normalizer_id in sorted(values.items()):
+            name = str(tool_name).strip()
+            if not _TOOL_NAME_RE.fullmatch(name):
+                raise ValueError("ToolUniverse result normalizer tool name is invalid")
+            normalized[name] = str(normalizer_id)
+        return normalized
+
     @model_validator(mode="after")
     def _selector(self) -> "ToolUniverseCategoryProfileV1":
         if not self.categories and not self.tool_types:
@@ -285,9 +412,20 @@ class ToolUniverseCategoryProfileV1(BaseModel):
             or self.units
             or self.backend_lineage
             or self.data_lineage
+            or self.capability_projections
+            or self.equivalence_keys
+            or self.result_normalizers
         ):
             raise ValueError(
                 "discovered-only profiles cannot assert scientific metadata"
+            )
+        if set(self.equivalence_keys) - set(self.capability_projections):
+            raise ValueError(
+                "equivalence keys require an exact reviewed capability projection"
+            )
+        if set(self.result_normalizers) - set(self.capability_projections):
+            raise ValueError(
+                "result normalizers require an exact reviewed capability projection"
             )
         return self
 
@@ -310,10 +448,14 @@ class ToolUniverseSourceSpecV1(BaseModel):
     provider_id: str = "tooluniverse"
     provider_digest: str
     launcher: PythonStdioLauncherV1
+    dependency_lock_path: str | None = None
+    wheel_path: str | None = None
+    verified_lock_path: str | None = None
     support_release: str = "1.3.1"
     profiles: list[ToolUniverseCategoryProfileV1] = Field(min_length=1)
     include_categories: list[str] = Field(default_factory=list)
     exclude_categories: list[str] = Field(default_factory=list)
+    include_tool_names: list[str] = Field(default_factory=list)
     capability_prefix: str = "ari.tooluniverse"
     evidence: AdmissionEvidenceV1 = Field(default_factory=AdmissionEvidenceV1)
     timeout_seconds: float = Field(default=60.0, gt=0, le=3_600)
@@ -336,6 +478,13 @@ class ToolUniverseSourceSpecV1(BaseModel):
             raise ValueError("provider_digest must be a SHA-256 digest")
         return value
 
+    @field_validator("dependency_lock_path", "wheel_path", "verified_lock_path")
+    @classmethod
+    def _dependency_lock_path(cls, value: str | None) -> str | None:
+        if value is not None and not Path(value).is_absolute():
+            raise ValueError("ToolUniverse artifact paths must be absolute")
+        return value
+
     @field_validator("include_categories", "exclude_categories")
     @classmethod
     def _categories(cls, values: list[str]) -> list[str]:
@@ -344,12 +493,31 @@ class ToolUniverseSourceSpecV1(BaseModel):
             raise ValueError("ToolUniverse category names are invalid")
         return normalized
 
+    @field_validator("include_tool_names")
+    @classmethod
+    def _tool_names(cls, values: list[str]) -> list[str]:
+        normalized = sorted({str(value).strip() for value in values})
+        if len(normalized) != len(values) or any(
+            _TOOL_NAME_RE.fullmatch(value) is None for value in normalized
+        ):
+            raise ValueError("ToolUniverse include_tool_names must be unique exact names")
+        return normalized
+
     @model_validator(mode="after")
     def _safe_collection_boundary(self) -> "ToolUniverseSourceSpecV1":
         self.pin.verify()
         profile_ids = [profile.profile_id for profile in self.profiles]
         if len(profile_ids) != len(set(profile_ids)):
             raise ValueError("ToolUniverse profile_id values must be unique")
+        projected_tools = [
+            tool_name
+            for profile in self.profiles
+            for tool_name in profile.capability_projections
+        ]
+        if len(projected_tools) != len(set(projected_tools)):
+            raise ValueError(
+                "an exact ToolUniverse tool may be projected by only one profile"
+            )
         overlap = sorted(set(self.include_categories) & set(self.exclude_categories))
         if overlap:
             raise ValueError(
@@ -407,7 +575,61 @@ class ToolUniverseSourceSpecV1(BaseModel):
 
     def verify(self) -> None:
         self.pin.verify()
+        if self.dependency_lock_path is None:
+            raise CatalogSourceError(
+                "ToolUniverse production sources require the pinned dependency lock"
+            )
+        verify_tooluniverse_dependency_lock(
+            self.dependency_lock_path,
+            self.pin.model_dump(mode="json"),
+        )
+        if self.pin.artifact_kind == "ari-patched-wheel":
+            if self.wheel_path is None or self.verified_lock_path is None:
+                raise CatalogSourceError(
+                    "ARI-patched ToolUniverse sources require the retained exact wheel "
+                    "and verified lock"
+                )
+            verify_tooluniverse_wheel(
+                self.wheel_path, self.pin.model_dump(mode="json")
+            )
+            verified = verify_tooluniverse_verified_lock(
+                self.verified_lock_path, self.pin.model_dump(mode="json")
+            )
+            scope = verified["capability_scope"]
+            expected_projection = {
+                "PubMed_search_articles": "ari.literature.search/v1"
+            }
+            expected_normalizer = {
+                "PubMed_search_articles": "tooluniverse-pubmed-retrieval/v1"
+            }
+            if (
+                self.provider_id != verified["provider_id"]
+                or self.include_categories != scope["categories"]
+                or self.exclude_categories
+                or self.include_tool_names != scope["tool_names"]
+                or len(self.profiles) != 1
+            ):
+                raise CatalogSourceError(
+                    "ToolUniverse source expands or changes its verified lock scope"
+                )
+            profile = self.profiles[0]
+            if (
+                profile.categories != scope["categories"]
+                or profile.tool_types != ["PubMedRESTTool"]
+                or profile.side_effects != scope["side_effects"]
+                or profile.determinism != scope["determinism"]
+                or profile.permissions != scope["permissions"]
+                or profile.capability_projections != expected_projection
+                or profile.result_normalizers != expected_normalizer
+                or set(profile.equivalence_keys) != set(expected_projection)
+            ):
+                raise CatalogSourceError(
+                    "ToolUniverse semantic profile differs from its verified lock"
+                )
         verify_tooluniverse_package(self.launcher, self.pin.model_dump(mode="json"))
+        verify_tooluniverse_environment(
+            self.launcher, self.pin.model_dump(mode="json")
+        )
         actual = provider_digest(self.effective_launcher)
         if actual != self.provider_digest:
             raise CatalogSourceError(
@@ -435,6 +657,13 @@ class ToolUniverseSourceSpecV1(BaseModel):
     def to_locked_source(self, *, verify: bool = True) -> LockedSourceV1:
         if verify:
             self.verify()
+        verified_lock = (
+            verify_tooluniverse_verified_lock(
+                self.verified_lock_path, self.pin.model_dump(mode="json")
+            )
+            if self.verified_lock_path is not None
+            else None
+        )
         return LockedSourceV1(
             source_id=self.source_id,
             kind="tooluniverse",
@@ -448,11 +677,20 @@ class ToolUniverseSourceSpecV1(BaseModel):
             runtime={
                 "launcher": self.effective_launcher.model_dump(mode="json"),
                 "pin": self.pin.model_dump(mode="json"),
+                "dependency_lock_digest": self.pin.dependency_lock_digest,
                 "timeout_seconds": self.timeout_seconds,
                 "page_size": self.page_size,
                 "info_batch_size": self.info_batch_size,
                 "max_pages": self.max_pages,
                 "max_tools": self.max_tools,
+                "include_tool_names": self.include_tool_names,
+                "provider_status": (
+                    verified_lock["status"] if verified_lock is not None else "candidate"
+                ),
+                "verified_lock_path": self.verified_lock_path,
+                "verified_lock_digest": (
+                    verified_lock["lock_digest"] if verified_lock is not None else None
+                ),
             },
         )
 
@@ -468,8 +706,10 @@ class OpenRoadSourceSpecV1(BaseModel):
     provider_digest: str
     launcher: PythonStdioLauncherV1
     support_release: Literal["0.6.1"] = "0.6.1"
+    verified_lock_path: str | None = None
+    verified_lock_digest: str | None = None
     experiments: list[OpenRoadExperimentV1] = Field(min_length=1, max_length=100)
-    capability_ref: str = "ari.eda.openroad.place-route"
+    capability_ref: str = "ari.eda.openroad.place-route/v1"
     timeout_seconds: float = Field(default=60.0, gt=0, le=3_600)
     max_concurrent_jobs: int = Field(default=4, ge=1, le=32)
     max_retained_jobs: int = Field(default=1_024, ge=32, le=100_000)
@@ -488,12 +728,30 @@ class OpenRoadSourceSpecV1(BaseModel):
             raise ValueError("OpenROAD provider_digest must be a SHA-256 digest")
         return value
 
+    @field_validator("verified_lock_path")
+    @classmethod
+    def _verified_lock_path(cls, value: str | None) -> str | None:
+        if value is not None and not Path(value).is_absolute():
+            raise ValueError("OpenROAD verified_lock_path must be absolute")
+        return value
+
+    @field_validator("verified_lock_digest")
+    @classmethod
+    def _verified_lock_digest(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise ValueError("OpenROAD verified_lock_digest must use SHA-256")
+        return value
+
     @model_validator(mode="after")
     def _closed_provider_boundary(self) -> "OpenRoadSourceSpecV1":
         self.pin.verify()
         profile_ids = [profile.profile_id for profile in self.experiments]
         if len(profile_ids) != len(set(profile_ids)):
             raise ValueError("OpenROAD experiment profile_id values must be unique")
+        if (self.verified_lock_path is None) != (self.verified_lock_digest is None):
+            raise ValueError(
+                "OpenROAD verified lock path and digest must be set together"
+            )
         if (
             self.launcher.entrypoint is not None
             or self.launcher.python_module != "openroad_mcp.main"
@@ -548,6 +806,14 @@ class OpenRoadSourceSpecV1(BaseModel):
             )
         for experiment in self.experiments:
             verify_openroad_experiment_files(experiment)
+        if self.verified_lock_path is not None:
+            assert self.verified_lock_digest is not None
+            verify_openroad_verified_lock(
+                self.verified_lock_path,
+                expected_lock_digest=self.verified_lock_digest,
+                pin=self.pin,
+                experiments=self.experiments,
+            )
 
     @property
     def adapter_digest(self) -> str:
@@ -560,6 +826,17 @@ class OpenRoadSourceSpecV1(BaseModel):
     def to_locked_source(self, *, verify: bool = True) -> LockedSourceV1:
         if verify:
             self.verify()
+        verified_lock = (
+            verify_openroad_verified_lock(
+                self.verified_lock_path,
+                expected_lock_digest=self.verified_lock_digest,
+                pin=self.pin,
+                experiments=self.experiments,
+            )
+            if self.verified_lock_path is not None
+            and self.verified_lock_digest is not None
+            else None
+        )
         return LockedSourceV1(
             source_id=self.source_id,
             kind="openroad",
@@ -580,6 +857,11 @@ class OpenRoadSourceSpecV1(BaseModel):
                 "timeout_seconds": self.timeout_seconds,
                 "max_concurrent_jobs": self.max_concurrent_jobs,
                 "max_retained_jobs": self.max_retained_jobs,
+                "provider_status": (
+                    verified_lock["status"] if verified_lock is not None else "candidate"
+                ),
+                "verified_lock_path": self.verified_lock_path,
+                "verified_lock_digest": self.verified_lock_digest,
             },
         )
 
@@ -598,6 +880,8 @@ class QiskitSourceSpecV1(BaseModel):
     runtime_provider_digest: str | None = None
     runtime_launcher: PythonStdioLauncherV1 | None = None
     runtime_support_release: Literal["0.6.1"] = "0.6.1"
+    verified_lock_path: str | None = None
+    verified_lock_digest: str | None = None
     experiments: list[QiskitExperimentV1] = Field(min_length=1, max_length=64)
     timeout_seconds: float = Field(default=60.0, gt=0, le=3_600)
     max_concurrent_jobs: int = Field(default=4, ge=1, le=32)
@@ -615,6 +899,20 @@ class QiskitSourceSpecV1(BaseModel):
     def _valid_digest(cls, value: str | None) -> str | None:
         if value is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
             raise ValueError("Qiskit provider digests must be SHA-256 values")
+        return value
+
+    @field_validator("verified_lock_path")
+    @classmethod
+    def _verified_lock_path(cls, value: str | None) -> str | None:
+        if value is not None and not Path(value).is_absolute():
+            raise ValueError("Qiskit verified_lock_path must be absolute")
+        return value
+
+    @field_validator("verified_lock_digest")
+    @classmethod
+    def _verified_lock_digest(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"sha256:[0-9a-f]{64}", value):
+            raise ValueError("Qiskit verified_lock_digest must use SHA-256")
         return value
 
     @staticmethod
@@ -668,6 +966,14 @@ class QiskitSourceSpecV1(BaseModel):
         if len(set(runtime_fields)) != 1:
             raise ValueError(
                 "Qiskit Runtime launcher and provider digest must be set together"
+            )
+        lock_fields = (
+            self.verified_lock_path is not None,
+            self.verified_lock_digest is not None,
+        )
+        if len(set(lock_fields)) != 1:
+            raise ValueError(
+                "Qiskit verified lock path and digest must be set together"
             )
         if remote_required and not all(runtime_fields):
             raise ValueError("remote Qiskit profiles require the Runtime MCP provider")
@@ -758,6 +1064,14 @@ class QiskitSourceSpecV1(BaseModel):
             )
         for experiment in self.experiments:
             verify_qiskit_experiment_files(experiment)
+        if self.verified_lock_path is not None:
+            assert self.verified_lock_digest is not None
+            verify_qiskit_verified_lock(
+                self.verified_lock_path,
+                expected_lock_digest=self.verified_lock_digest,
+                core_pin=self.core_pin,
+                experiments=self.experiments,
+            )
 
     @property
     def adapter_digest(self) -> str:
@@ -771,6 +1085,17 @@ class QiskitSourceSpecV1(BaseModel):
         if verify:
             self.verify()
         runtime_launcher = self.runtime_effective_launcher
+        verified_lock = (
+            verify_qiskit_verified_lock(
+                self.verified_lock_path,
+                expected_lock_digest=self.verified_lock_digest,
+                core_pin=self.core_pin,
+                experiments=self.experiments,
+            )
+            if self.verified_lock_path is not None
+            and self.verified_lock_digest is not None
+            else None
+        )
         return LockedSourceV1(
             source_id=self.source_id,
             kind="qiskit",
@@ -803,6 +1128,11 @@ class QiskitSourceSpecV1(BaseModel):
                 "timeout_seconds": self.timeout_seconds,
                 "max_concurrent_jobs": self.max_concurrent_jobs,
                 "max_retained_jobs": self.max_retained_jobs,
+                "provider_status": (
+                    verified_lock["status"] if verified_lock is not None else "candidate"
+                ),
+                "verified_lock_path": self.verified_lock_path,
+                "verified_lock_digest": self.verified_lock_digest,
             },
         )
 
@@ -1036,6 +1366,18 @@ def _tooluniverse_candidate(
             "tooluniverse_type": tool_type,
         }
     )
+    result_normalizer = (
+        profile.result_normalizers.get(tool.name)
+        if profile is not None
+        else None
+    )
+    if result_normalizer is not None:
+        semantics.update(
+            {
+                "result_normalizer": result_normalizer,
+                "upstream_output_schema_digest": sha256_digest(tool.output_schema),
+            }
+        )
     units = dict(profile.units) if profile is not None else {}
     limitations = list(profile.limitations) if profile is not None else []
     limitations.extend(
@@ -1064,11 +1406,15 @@ def _tooluniverse_candidate(
         ),
         OriginHopV1(kind="tool", id=leaf_identity, digest=spec_digest),
     ]
-    capability = ".".join(
-        (
-            spec.capability_prefix,
-            _safe_capability_segment(category),
-            _safe_capability_segment(tool.name),
+    capability = (
+        profile.capability_projections[tool.name]
+        if profile is not None and tool.name in profile.capability_projections
+        else ".".join(
+            (
+                spec.capability_prefix,
+                _safe_capability_segment(category),
+                _safe_capability_segment(tool.name),
+            )
         )
     )
     backend_lineage = list(profile.backend_lineage) if profile is not None else []
@@ -1081,6 +1427,11 @@ def _tooluniverse_candidate(
             data_lineage.append(f"{key}:{sanitize_text(value, limit=500)}")
     annotations = dict(tool.annotations)
     annotations["ari_tooluniverse_profile"] = profile_id
+    annotations["ari_reviewed_capability_projection"] = (
+        capability
+        if profile is not None and tool.name in profile.capability_projections
+        else None
+    )
 
     descriptor = CanonicalToolDescriptorV1.create(
         source_ids=[spec.source_id],
@@ -1095,7 +1446,11 @@ def _tooluniverse_candidate(
         capability_ref=capability,
         description=tool.description,
         input_schema=tool.input_schema,
-        output_schema=tool.output_schema,
+        output_schema=(
+            projection_output_schema(result_normalizer)
+            if result_normalizer is not None
+            else tool.output_schema
+        ),
         defaults=_schema_defaults(tool.input_schema),
         annotations=annotations,
         side_effects=side_effects,
@@ -1108,7 +1463,11 @@ def _tooluniverse_candidate(
         data_lineage=sorted(set(data_lineage)),
         leaf_identity=leaf_identity,
         origin_chains=[origin_chain],
-        equivalence_key=None,
+        equivalence_key=(
+            profile.equivalence_keys.get(tool.name)
+            if profile is not None
+            else None
+        ),
         independence_group=(
             profile.independence_group
             if profile is not None and profile.independence_group
@@ -1145,6 +1504,7 @@ class ToolUniverseCatalogSource:
             pin=spec.pin.model_dump(mode="json"),
             include_categories=spec.include_categories,
             exclude_categories=spec.exclude_categories,
+            include_leaf_names=spec.include_tool_names,
             timeout_seconds=spec.timeout_seconds,
             page_size=spec.page_size,
             info_batch_size=spec.info_batch_size,
@@ -1159,6 +1519,24 @@ class ToolUniverseCatalogSource:
 
     async def sync(self) -> list[CatalogCandidateV1]:
         tools = await self.adapter.list_tools()
+        by_name = {tool.name: tool for tool in tools}
+        if len(by_name) != len(tools):
+            raise CatalogSourceError("ToolUniverse returned duplicate exact tool names")
+        for profile in self.spec.profiles:
+            for tool_name in profile.capability_projections:
+                tool = by_name.get(tool_name)
+                if tool is None:
+                    raise CatalogSourceError(
+                        f"reviewed ToolUniverse projection is absent upstream: {tool_name}"
+                    )
+                metadata = tool.annotations.get("ari_tooluniverse")
+                if not isinstance(metadata, dict) or not profile.matches(
+                    category=str(metadata.get("category") or "unknown"),
+                    tool_type=str(metadata.get("type") or "Unknown"),
+                ):
+                    raise CatalogSourceError(
+                        f"reviewed ToolUniverse projection changed profile: {tool_name}"
+                    )
         return [_tooluniverse_candidate(self.spec, tool) for tool in tools]
 
 

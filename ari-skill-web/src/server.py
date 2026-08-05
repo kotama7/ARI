@@ -132,8 +132,13 @@ def _arxiv_provider_rows(query: str, limit: int = 8) -> list[dict]:
         max_results=min(max(1, limit), 20),
         sort_by=_arxiv.SortCriterion.Relevance,
     )
+    # arxiv-py 2.x and later moved iteration from ``Search.results`` to the
+    # explicit Client.  Using the Client is the supported API across the
+    # declared ``arxiv>=2.0`` dependency range and keeps retry/paging policy
+    # inside the pinned Provider library instead of reimplementing it here.
+    client = _arxiv.Client()
     rows: list[dict] = []
-    for result in search.results():
+    for result in client.results(search):
         arxiv_id = re.sub(r"v\d+$", "", result.get_short_id())
         rows.append(
             {

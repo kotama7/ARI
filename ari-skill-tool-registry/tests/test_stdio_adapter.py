@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -113,6 +115,38 @@ async def test_stdio_adapter_passes_only_named_credentials_and_redacts_response(
     assert response.structured["scoped_credential_echo"] == "[REDACTED]"
     assert secret not in response.text
     assert secret not in repr(response.structured)
+
+
+@pytest.mark.asyncio
+async def test_stdio_timeout_reaps_the_provider_process_group(tmp_path: Path):
+    launcher = _launcher(entrypoint="stdio_hanging_server.py")
+    adapter = StdioMCPAdapter(
+        launcher,
+        expected_provider_digest=provider_digest(launcher),
+        timeout_seconds=2,
+    )
+    pid_file = tmp_path / "descendant.pid"
+
+    with pytest.raises(ProviderProtocolError, match="timed out"):
+        await adapter.invoke("spawn_and_hang", {"pid_file": str(pid_file)})
+
+    assert pid_file.is_file()
+    pid = int(pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            break
+        stat = Path(f"/proc/{pid}/stat")
+        if stat.is_file() and stat.read_text(encoding="utf-8").split()[2] == "Z":
+            break
+        time.sleep(0.05)
+    else:
+        try:
+            os.kill(pid, 9)
+        finally:
+            pytest.fail("provider descendant survived transport timeout")
 
 
 def test_stdio_adapter_rejects_noncredential_passthrough_names():

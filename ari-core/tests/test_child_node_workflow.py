@@ -39,7 +39,7 @@ class TestWorkflowHintsFromExperiment:
         """ARI_SLURM_PARTITION set by the wizard (profile=hpc) must force the
         SLURM workflow even when experiment.md contains no SLURM keywords —
         otherwise HPC runs fall back to run_bash on the login node."""
-        monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+        monkeypatch.setenv("ARI_SLURM_PARTITION", "gpu-private")
         text = "We propose an implementation of CSR-format SpMM for CPUs."
         hints = from_experiment_text(text)
         assert hints.job_submitter_tool == "slurm_submit"
@@ -48,7 +48,7 @@ class TestWorkflowHintsFromExperiment:
 
     def test_env_partition_ignored_when_hpc_disabled(self, monkeypatch):
         """Laptop profile must still suppress SLURM even if the env var leaks in."""
-        monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+        monkeypatch.setenv("ARI_SLURM_PARTITION", "gpu-private")
         hints = from_experiment_text("Run a benchmark", hpc_enabled=False)
         assert hints.job_submitter_tool is None
 

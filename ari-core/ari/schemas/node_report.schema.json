@@ -165,6 +165,81 @@
     "metrics": {
       "type": "object"
     },
+    "knowledge_skill_refs": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "knowledge_skill_use_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "instruction_identity_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "capability_binding_lock_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "bound_tool_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "assurance_status": {
+      "type": "string",
+      "enum": ["pass", "fail", "inconclusive", "infrastructure_error", "tampered"]
+    },
+    "assurance_tier": {
+      "type": "string",
+      "enum": ["screen", "validate", "certify"]
+    },
+    "baseline_harness_lock_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "active_harness_lock_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "attestation_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "verified_target_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "property_verdicts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["pass", "fail", "inconclusive", "infrastructure_error", "tampered"]
+      }
+    },
+    "frontier_class": {
+      "type": "string",
+      "enum": ["scientific_frontier", "debug_frontier", "uncertified_frontier", "invalid"]
+    },
+    "repair_request_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,511}$"
+    },
+    "repair_requirement_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "repair_context_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "repair_allowed_changes": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
     "self_assessment": {
       "type": "object",
       "properties": {

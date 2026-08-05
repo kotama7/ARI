@@ -16,6 +16,9 @@ SCHEMA_JOB_REQUEST_V1 = "ari.hpc.job-request/v1"
 SCHEMA_JOB_HANDLE_V1 = "ari.hpc.job-handle/v1"
 SCHEMA_JOB_STATUS_V1 = "ari.hpc.job-status/v1"
 SCHEMA_JOB_RESULT_V1 = "ari.hpc.job-result/v1"
+SCHEMA_EXCLUSIVE_NODE_ACCELERATOR_V1 = (
+    "ari.hpc.exclusive-node-accelerator/v1"
+)
 
 Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 SafeIdentifier = Annotated[
@@ -31,6 +34,10 @@ SlurmConstraintExpression = Annotated[
     StringConstraints(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.@+&|*?\[\]-]{0,1023}$"),
 ]
 JobId = Annotated[str, StringConstraints(pattern=r"^[0-9]+(?:_[0-9]+)?$")]
+AcceleratorUuid = Annotated[
+    str,
+    StringConstraints(pattern=r"^GPU-[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"),
+]
 
 _ENV_NAME_RE = re.compile(r"^[A-Z_][A-Z0-9_]{0,127}$")
 _SECRET_NAME_RE = re.compile(
@@ -138,6 +145,55 @@ class ContainerRequestV1(ContractModel):
         return self
 
 
+class AcceleratorDeviceIdentityV1(ContractModel):
+    """One exact accelerator observed behind a no-GRES exclusive allocation."""
+
+    uuid: AcceleratorUuid
+    name: str = Field(min_length=1, max_length=255)
+    driver_version: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+){1,3}$")
+    memory_mb: int = Field(ge=1, le=16_777_216)
+    compute_capability: str = Field(pattern=r"^[0-9]+\.[0-9]+$")
+
+    @model_validator(mode="after")
+    def validate_text(self) -> AcceleratorDeviceIdentityV1:
+        if any(character in self.name for character in "\x00\n\r,"):
+            raise ValueError("accelerator name must be a bounded CSV-safe literal")
+        return self
+
+
+class ExclusiveNodeAcceleratorV1(ContractModel):
+    """Explicit operator policy for a GPU node whose SLURM has no GRES.
+
+    This contract never turns a GPU count into ``--gres``.  It requires the
+    named node to be reserved with ``--exclusive`` and compares the complete
+    live NVIDIA inventory with the frozen device identities before executing
+    the caller's argv.
+    """
+
+    schema_version: Literal["ari.hpc.exclusive-node-accelerator/v1"] = (
+        SCHEMA_EXCLUSIVE_NODE_ACCELERATOR_V1
+    )
+    allocation_mode: Literal["exclusive-node-inventory"] = (
+        "exclusive-node-inventory"
+    )
+    partition: SafeIdentifier
+    node_name: SafeIdentifier
+    vendor: Literal["nvidia"] = "nvidia"
+    inventory_probe: ArtifactPinV1
+    devices: tuple[AcceleratorDeviceIdentityV1, ...] = Field(
+        min_length=1, max_length=64
+    )
+
+    @model_validator(mode="after")
+    def validate_identity(self) -> ExclusiveNodeAcceleratorV1:
+        if self.inventory_probe.logical_name != "nvidia-smi-inventory-probe":
+            raise ValueError("exclusive accelerator inventory probe has the wrong identity")
+        identities = [item.uuid for item in self.devices]
+        if identities != sorted(identities) or len(identities) != len(set(identities)):
+            raise ValueError("accelerator devices must be uniquely sorted by UUID")
+        return self
+
+
 class ResourceRequestV1(ContractModel):
     partition: SafeIdentifier
     nodes: int = Field(default=1, ge=1, le=4096)
@@ -238,6 +294,7 @@ class JobRequestV1(ContractModel):
     resources: ResourceRequestV1
     environment: EnvironmentPolicyV1 = Field(default_factory=EnvironmentPolicyV1)
     container: ContainerRequestV1 | None = None
+    accelerator_allocation: ExclusiveNodeAcceleratorV1 | None = None
     inputs: tuple[ArtifactPinV1, ...] = ()
     outputs: tuple[OutputDeclarationV1, ...] = ()
     metadata: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
@@ -273,6 +330,30 @@ class JobRequestV1(ContractModel):
                 or any(character in value for character in "\x00\n\r")
             ):
                 raise ValueError("job metadata string values must be bounded literals")
+        allocation = self.accelerator_allocation
+        if allocation is not None:
+            if (
+                self.resources.partition != allocation.partition
+                or self.resources.nodelist != allocation.node_name
+                or self.resources.nodes != 1
+                or not self.resources.exclusive
+            ):
+                raise ValueError(
+                    "exclusive accelerator allocation requires its exact partition, "
+                    "single node, nodelist, and --exclusive"
+                )
+            if (
+                self.resources.gpus_per_node
+                or self.resources.gpus_per_task
+                or self.resources.gpu_type is not None
+            ):
+                raise ValueError(
+                    "exclusive-node accelerator allocation must not claim SLURM GPU GRES"
+                )
+            if self.container is not None and not self.container.gpu:
+                raise ValueError(
+                    "an accelerator allocation with a container requires GPU passthrough"
+                )
         return self
 
     @property
@@ -356,6 +437,8 @@ class JobResultV1(ContractModel):
     module_digest: Digest
     module_snapshot_digest: Digest | None = None
     container_digest: Digest | None = None
+    accelerator_allocation_digest: Digest | None = None
+    accelerator_inventory_digest: Digest | None = None
     inputs: tuple[ArtifactPinV1, ...] = ()
     outputs: tuple[ArtifactPinV1, ...] = ()
     provenance: tuple[ArtifactPinV1, ...] = ()

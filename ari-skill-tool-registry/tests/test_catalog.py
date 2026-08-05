@@ -87,6 +87,15 @@ def test_policy_reassessment_does_not_change_execution_identity():
     assert first.invokable and second.invokable
 
 
+def test_default_policy_admits_canonical_network_read_permission():
+    descriptor = fixture_descriptor(permissions=["network-read"])
+    decision = AdmissionEngine().evaluate(descriptor, callable_evidence())
+
+    assert decision.level == "callable"
+    assert decision.invokable
+    assert not any("permissions are not admitted" in reason for reason in decision.reasons)
+
+
 @pytest.mark.asyncio
 async def test_direct_credential_arguments_are_never_callable():
     descriptor = fixture_descriptor(

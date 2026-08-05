@@ -355,6 +355,72 @@ class PaperConfig(BaseModel):
     )
 
 
+class ManuscriptRepairConfig(BaseModel):
+    """Bounded research-repair posture for Manuscript Complete."""
+
+    policy: Literal["disabled", "explicit", "auto"] = Field(
+        "disabled",
+        description="disabled only reports gaps; explicit requires a named repair "
+                    "operation; auto runs the bounded outer coordinator and is "
+                    "valid only with manuscript.mode=enforce.",
+    )
+    max_rounds: int = Field(2, ge=0, le=100)
+    max_new_nodes: int = Field(8, ge=0, le=100_000)
+    max_experiment_runs: int = Field(12, ge=0, le=100_000)
+    max_llm_calls: int = Field(8, ge=0, le=100_000)
+    max_resource_units: float | None = Field(default=None, ge=0)
+    on_exhaustion: Literal["block"] = "block"
+
+
+class ManuscriptConfig(BaseModel):
+    """Exploration-to-authoring completeness posture.
+
+    The switch is independent of both ``ari.mode`` and ``paper.mode``.  The
+    default ``off`` path performs no manuscript imports or artifact writes.
+    """
+
+    mode: Literal["off", "audit", "enforce"] = Field(
+        "off",
+        description="off preserves the current paper path; audit records a "
+                    "shadow completeness assessment; enforce blocks authoring "
+                    "until authoring requirements are resolved.",
+    )
+    profile: str = Field("generic_empirical_v1", min_length=1, max_length=256)
+    brief_character_budget: int = Field(24_000, ge=1_000, le=2_000_000)
+    repair: ManuscriptRepairConfig = Field(default_factory=ManuscriptRepairConfig)
+
+
+class KnowledgeRuntimeConfig(BaseModel):
+    """Non-executable Knowledge Skill activation posture (Task 16)."""
+
+    mode: Literal["off", "audit", "enforce"] = Field(
+        "off",
+        description="off preserves the legacy prompt path; audit injects and records "
+                    "verified content without coverage blocking; enforce requires an "
+                    "immutable admitted Knowledge lock.",
+    )
+
+
+class CapabilityBindingRuntimeConfig(BaseModel):
+    """Semantic Provider-tool binding posture (Task 17)."""
+
+    mode: Literal["legacy", "audit", "enforce"] = Field(
+        "legacy",
+        description="legacy preserves current MCP discovery/visibility; audit records "
+                    "semantic decisions; enforce exposes and invokes only bound tools.",
+    )
+
+
+class AssuranceRuntimeConfig(BaseModel):
+    """Independent Harness execution and frontier/publication gate posture."""
+
+    mode: Literal["off", "audit", "enforce"] = Field(
+        "off",
+        description="off emits no assurance artifacts; audit verifies without gating; "
+                    "enforce gates scientific frontier and publication certification.",
+    )
+
+
 class RQGMEpochConfig(BaseModel):
     """``rqgm.epoch:`` block (RQGM Task 02, docs/plans/ari_rqgm/02 §6).
 
@@ -1190,6 +1256,26 @@ class RQGMPaperAblationConfig(BaseModel):
     )
 
 
+class RQGMEvalKCAConditionsConfig(BaseModel):
+    """Task-20 K/C/A comparison identity; never a production authority.
+
+    The fields record which already-typed production switches the evaluation
+    harness selected.  They are intentionally inert outside ``rqgm.eval`` and
+    cannot add a Skill, bind a Provider, select a Harness, or weaken a
+    Verification Contract.
+    """
+
+    b: str = ""
+    h: str = ""
+    k: str = ""
+    reporting_alias: str | None = None
+    verification_tiers: list[Literal["screen", "validate", "certify"]] = Field(
+        default_factory=list
+    )
+    legacy_comparison_only: bool = False
+    publishable: bool = True
+
+
 class RQGMEvalConfig(BaseModel):
     """``rqgm.eval:`` block (RQGM Task 13 §7, docs/plans/ari_rqgm/13).
 
@@ -1226,6 +1312,11 @@ class RQGMEvalConfig(BaseModel):
         default_factory=RQGMPaperAblationConfig,
         description="Evaluation-only RQGM-paper comparison selector. It "
                     "does not add a production paper.mode.",
+    )
+    kca_conditions: RQGMEvalKCAConditionsConfig = Field(
+        default_factory=RQGMEvalKCAConditionsConfig,
+        description="Task-20 B/H/K comparison identity and reporting-only "
+                    "verification-tier metadata.",
     )
 
 
@@ -1594,6 +1685,18 @@ class ARIConfig(BaseModel):
         description="Execution-mode switch (`simple_bfts` | `ari_rqgm`). "
                     "Omitting the block is equivalent to the default.",
     )
+    knowledge: KnowledgeRuntimeConfig = Field(
+        default_factory=KnowledgeRuntimeConfig,
+        description="Knowledge Skill selection, composition, and provenance posture.",
+    )
+    capability_binding: CapabilityBindingRuntimeConfig = Field(
+        default_factory=CapabilityBindingRuntimeConfig,
+        description="Capability-to-Provider binding and tool-surface posture.",
+    )
+    assurance: AssuranceRuntimeConfig = Field(
+        default_factory=AssuranceRuntimeConfig,
+        description="Harness resolution, execution, and scientific gate posture.",
+    )
     rqgm: RQGMConfig = Field(
         default_factory=RQGMConfig,
         description="RQGM governance configuration; inert unless "
@@ -1613,6 +1716,11 @@ class ARIConfig(BaseModel):
                     "`ari.mode`; omitting the block is equivalent to the "
                     "`linear` default. Typed so the block survives "
                     "load_config's model_fields filter.",
+    )
+    manuscript: ManuscriptConfig = Field(
+        default_factory=ManuscriptConfig,
+        description="Independent manuscript completeness/readiness and bounded "
+                    "repair posture. Off by default.",
     )
     model_config = {"extra": "allow"}  # Accept unknown top-level keys
 
@@ -1962,6 +2070,45 @@ def _effective_paper_mode_str(cfg: "ARIConfig") -> str:
                 "enabled", False)
     )
     return "rqgm_archive" if (_mode == "rqgm_archive" and _enabled) else "linear"
+
+
+def apply_manuscript_env_overrides(cfg: "ARIConfig") -> None:
+    """Apply explicit new-attempt Manuscript Complete overrides.
+
+    A resumed in-progress attempt still reconciles against its persisted
+    binding in the coordinator; these values cannot rewrite old artifacts.
+    """
+
+    import logging
+    _log = logging.getLogger(__name__)
+    _mode = os.environ.get("ARI_MANUSCRIPT_MODE")
+    if _mode:
+        value = _mode.strip().lower()
+        if value in ("off", "audit", "enforce"):
+            cfg.manuscript.mode = value
+        else:
+            _log.warning(
+                "ARI_MANUSCRIPT_MODE=%r is not valid (off | audit | enforce); ignored",
+                _mode,
+            )
+    _policy = os.environ.get("ARI_MANUSCRIPT_REPAIR_POLICY")
+    if _policy:
+        value = _policy.strip().lower()
+        if value in ("disabled", "explicit", "auto"):
+            cfg.manuscript.repair.policy = value
+        else:
+            _log.warning(
+                "ARI_MANUSCRIPT_REPAIR_POLICY=%r is not valid "
+                "(disabled | explicit | auto); ignored",
+                _policy,
+            )
+
+
+def _effective_manuscript_mode_str(cfg: "ARIConfig") -> str:
+    """Return the validated manuscript mode without importing its package."""
+
+    mode = getattr(getattr(cfg, "manuscript", None), "mode", "off")
+    return mode if mode in ("off", "audit", "enforce") else "off"
 
 
 def _apply_llm_env_overrides(cfg: "ARIConfig") -> None:

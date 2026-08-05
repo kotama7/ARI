@@ -402,7 +402,7 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
 
 def generate_paper_section(
     all_nodes, experiment_data: dict, checkpoint_dir: Path, mcp, config_path: str,
-    *, disable_stages=frozenset(),
+    *, disable_stages=frozenset(), include_segments: frozenset[str] | None = None,
 ) -> None:
     """Run the post-BFTS pipeline according to pipeline.yaml. No hardcoding.
 
@@ -414,7 +414,13 @@ def generate_paper_section(
     generation stages and needs the tail to run on ITS winner rather than refine
     over it.
 
-    Deliberately a plain, mode-agnostic parameter and NOT a config read: this
+    ``include_segments`` is the additive Manuscript Complete runner seam.  It
+    selects ``evidence | authoring | verification`` metadata from the same
+    resolved workflow; the default ``None`` still runs every enabled stage.
+    Excluded segments are represented as disabled stages in a derived workflow
+    so cross-segment ``depends_on`` edges remain satisfied by durable outputs.
+
+    Deliberately plain, mode-agnostic parameters and NOT config reads: this
     function never learns what `paper.mode` is, so §5.1's "no stage conditionals,
     no dual code paths, no `paper.mode` reads in the pipeline" holds. It defaults
     to empty, so the linear path is byte-identical by construction — the derived
@@ -462,14 +468,68 @@ def generate_paper_section(
     # `ctx.disabled_stages` instead of cascade-skipping the tail. Fail-open: a
     # derivation error leaves the original workflow in force.
     _driver_cfg = config_path
-    if disable_stages:
+    _segment_execution = None
+    resolved_disables = {str(name) for name in disable_stages}
+    if include_segments is not None:
+        selected = {str(value) for value in include_segments}
+        allowed = {"evidence", "authoring", "verification"}
+        if not selected or not selected.issubset(allowed):
+            raise ValueError(
+                "paper pipeline segments must be a non-empty subset of "
+                "evidence/authoring/verification"
+            )
+        all_enabled = load_pipeline(pipeline_yaml)
+        unsegmented = [
+            str(stage.get("stage") or "?")
+            for stage in all_enabled
+            if stage.get("segment") not in allowed
+        ]
+        if unsegmented:
+            raise ValueError(
+                "segmented paper execution found stages without valid segment: "
+                + ", ".join(unsegmented)
+            )
+        if os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") != "off":
+            from ari.manuscript.segments import prepare_segment_execution
+
+            _segment_execution = prepare_segment_execution(
+                checkpoint_dir,
+                pipeline_yaml,
+                all_enabled,
+                selected,
+            )
+            if _segment_execution.reusable:
+                record = _segment_execution.reusable_record
+                log.info(
+                    "Paper pipeline segment %s reused immutable record %s",
+                    sorted(selected),
+                    getattr(record, "record_digest", ""),
+                )
+                print(
+                    "[Paper Pipeline] Segment reuse: "
+                    + ", ".join(sorted(selected)),
+                    flush=True,
+                )
+                return
+        resolved_disables.update(
+            str(stage.get("stage"))
+            for stage in all_enabled
+            if stage.get("segment") not in selected
+        )
+    if resolved_disables:
+        suffix = (
+            "-".join(sorted(include_segments))
+            if include_segments is not None
+            else "caller"
+        )
         _handoff = derive_workflow_with_disabled(
-            pipeline_yaml, Path(checkpoint_dir) / "workflow.rqgm_archive.yaml",
-            disable_stages,
+            pipeline_yaml,
+            Path(checkpoint_dir) / f"workflow.segment-{suffix}.yaml",
+            resolved_disables,
         )
         if _handoff is not None:
             log.info("Paper pipeline: %s disabled by the caller; using %s",
-                     sorted(disable_stages), _handoff)
+                     sorted(resolved_disables), _handoff)
             pipeline_yaml = _handoff
             _driver_cfg = str(_handoff)
 
@@ -482,7 +542,35 @@ def generate_paper_section(
     stage_names = [s.get("stage", "?") for s in stages]
     log.info("Paper pipeline: %d stages to execute", len(stages))
     print(f"[Paper Pipeline] {len(stages)} stages: {', '.join(stage_names)}", flush=True)
-    result = run_pipeline(stages, all_nodes, experiment_data, checkpoint_dir, _driver_cfg)
+    try:
+        result = run_pipeline(
+            stages, all_nodes, experiment_data, checkpoint_dir, _driver_cfg
+        )
+    except Exception as exc:
+        if _segment_execution is not None:
+            _segment_execution.finish(
+                status="failed",
+                blocking_reason=f"pipeline_exception:{type(exc).__name__}",
+            )
+        raise
+    if _segment_execution is not None:
+        if isinstance(result, dict) and result.get("_aborted"):
+            reason = str((result.get("_aborted") or {}).get("reason") or "pipeline_aborted")
+            _segment_execution.finish(status="blocked", blocking_reason=reason)
+        else:
+            failed_stages = sorted(
+                str(name)
+                for name, value in (result or {}).items()
+                if isinstance(value, dict) and value.get("error")
+            )
+            _segment_execution.finish(
+                status=("failed" if failed_stages else "completed"),
+                blocking_reason=(
+                    "failed_stages:" + ",".join(failed_stages)
+                    if failed_stages
+                    else ""
+                ),
+            )
     log.info("Paper pipeline completed: %s", list(result.keys()) if result else "no result")
     print(f"[Paper Pipeline] Complete: {list(result.keys()) if result else 'no result'}", flush=True)
 

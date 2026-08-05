@@ -1,8 +1,8 @@
 {
   "admissions": [],
-  "catalog_digest": "sha256:f3b9ae614a54b451b303b6d55dca1df8f01bf7f5cd309c6627fd1e8a1d0448d2",
+  "catalog_digest": "sha256:844d650b973e1d050237fdb3a57587c3fcf8e423281b2965823f5229ba3676eb",
   "overlaps": [],
-  "policy_digest": "sha256:3af8cb64899a0c3081a31baab86b3f7552334de0162647d37b07f3893df73948",
+  "policy_digest": "sha256:90ca06066cd96524b9a165af9791eaaedd0e307fd77977dbd84c02452591b11b",
   "quarantined": [],
   "schema_version": "ari.catalog-lock/v1",
   "sources": [],

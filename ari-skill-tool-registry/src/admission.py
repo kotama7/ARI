@@ -29,6 +29,7 @@ class AdmissionPolicyV1(BaseModel):
     allowed_permissions: list[str] = Field(
         default_factory=lambda: [
             "network",
+            "network-read",
             "process",
             "scheduler",
             "workspace-read",

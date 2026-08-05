@@ -276,6 +276,71 @@ FIELD_META: dict[str, dict] = {
         "applies_when": _PAPER_PAIR_NOTE,
         "notes": _PAPER_INTERLOCK,
     },
+    # ── Manuscript Complete (independent of research and paper modes) ──
+    "manuscript.mode": {
+        "category": "Manuscript completeness",
+        "level": "advanced",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "notes": "off | audit | enforce; enforce gates authoring before the writer.",
+    },
+    "manuscript.profile": {
+        "category": "Manuscript completeness",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "manuscript.mode!=off",
+    },
+    "manuscript.brief_character_budget": {
+        "category": "Manuscript completeness",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "manuscript.mode!=off",
+    },
+    "manuscript.repair.": {
+        "category": "Manuscript completeness",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "manuscript.mode=enforce",
+        "notes": "Bounded repair policy and budgets; never expands run authority.",
+    },
+    # ── Knowledge / Provider Binding / Scientific Assurance ──
+    # These are run-admission postures, frozen before the first execution
+    # epoch. They are intentionally not preference/project settings and have
+    # no env override that could alter a resumed run.
+    "knowledge.mode": {
+        "category": "Scientific assurance",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "ari.mode=ari_rqgm",
+        "notes": "off | audit | enforce; Knowledge text grants no executable authority.",
+    },
+    "capability_binding.mode": {
+        "category": "Scientific assurance",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "ari.mode=ari_rqgm",
+        "notes": "legacy | audit | enforce; enforce exposes only deterministically bound tools.",
+    },
+    "assurance.mode": {
+        "category": "Scientific assurance",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "ari.mode=ari_rqgm",
+        "notes": "off | audit | enforce; enforce gates the scientific frontier and publication.",
+    },
     # ── Governance (RQGM): expert, new-run-only, mode-gated ──
     "rqgm.": {
         "category": "Governance",

@@ -91,6 +91,260 @@
         "options": [],
         "type": "group"
       },
+      "harness": {
+        "arguments": [],
+        "commands": {
+          "attestation": {
+            "arguments": [],
+            "commands": {
+              "show": {
+                "arguments": [
+                  "path"
+                ],
+                "options": [],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          },
+          "lock": {
+            "arguments": [],
+            "commands": {
+              "show": {
+                "arguments": [
+                  "checkpoint"
+                ],
+                "options": [],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          },
+          "resolve": {
+            "arguments": [
+              "contract",
+              "environment"
+            ],
+            "options": [
+              "--audit",
+              "--catalog"
+            ],
+            "type": "command"
+          },
+          "search": {
+            "arguments": [
+              "query"
+            ],
+            "options": [
+              "--catalog"
+            ],
+            "type": "command"
+          },
+          "show": {
+            "arguments": [
+              "harness_id"
+            ],
+            "options": [
+              "--catalog"
+            ],
+            "type": "command"
+          },
+          "suite": {
+            "arguments": [],
+            "commands": {
+              "run": {
+                "arguments": [],
+                "options": [],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          },
+          "validate-manifest": {
+            "arguments": [
+              "manifest"
+            ],
+            "options": [],
+            "type": "command"
+          },
+          "validate-registration": {
+            "arguments": [
+              "report"
+            ],
+            "options": [],
+            "type": "command"
+          },
+          "verify": {
+            "arguments": [
+              "attestation",
+              "request",
+              "baseline_lock"
+            ],
+            "options": [],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
+      "knowledge": {
+        "arguments": [],
+        "commands": {
+          "import": {
+            "arguments": [
+              "package"
+            ],
+            "options": [
+              "--commit",
+              "--output",
+              "--profile",
+              "--repository",
+              "--source-kind",
+              "--subpath"
+            ],
+            "type": "command"
+          },
+          "lock": {
+            "arguments": [],
+            "commands": {
+              "show": {
+                "arguments": [
+                  "checkpoint"
+                ],
+                "options": [],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          },
+          "search": {
+            "arguments": [
+              "query"
+            ],
+            "options": [
+              "--catalog"
+            ],
+            "type": "command"
+          },
+          "show": {
+            "arguments": [
+              "skill_id"
+            ],
+            "options": [
+              "--catalog"
+            ],
+            "type": "command"
+          },
+          "use": {
+            "arguments": [],
+            "commands": {
+              "show": {
+                "arguments": [
+                  "checkpoint"
+                ],
+                "options": [
+                  "--node"
+                ],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          },
+          "validate-manifest": {
+            "arguments": [
+              "package"
+            ],
+            "options": [],
+            "type": "command"
+          },
+          "validate-registration": {
+            "arguments": [
+              "report"
+            ],
+            "options": [],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
+      "manuscript": {
+        "arguments": [],
+        "commands": {
+          "compile": {
+            "arguments": [
+              "checkpoint_dir"
+            ],
+            "options": [
+              "--config",
+              "--mode",
+              "--profile",
+              "--repair-policy"
+            ],
+            "type": "command"
+          },
+          "explain-publication": {
+            "arguments": [
+              "checkpoint_dir"
+            ],
+            "options": [],
+            "type": "command"
+          },
+          "inspect": {
+            "arguments": [
+              "checkpoint_dir"
+            ],
+            "options": [
+              "--lane",
+              "--node",
+              "--requirement"
+            ],
+            "type": "command"
+          },
+          "lock-publication": {
+            "arguments": [
+              "checkpoint_dir"
+            ],
+            "options": [],
+            "type": "command"
+          },
+          "plan-repair": {
+            "arguments": [
+              "checkpoint_dir"
+            ],
+            "options": [
+              "--config"
+            ],
+            "type": "command"
+          },
+          "repair": {
+            "arguments": [
+              "checkpoint_dir"
+            ],
+            "options": [
+              "--config",
+              "--request"
+            ],
+            "type": "command"
+          },
+          "status": {
+            "arguments": [
+              "checkpoint_dir"
+            ],
+            "options": [
+              "--fail-if-blocked"
+            ],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
       "memory": {
         "arguments": [],
         "commands": {
@@ -192,6 +446,74 @@
           "--checkpoints"
         ],
         "type": "command"
+      },
+      "provider": {
+        "arguments": [],
+        "commands": {
+          "bindings": {
+            "arguments": [],
+            "commands": {
+              "show": {
+                "arguments": [
+                  "checkpoint"
+                ],
+                "options": [],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          },
+          "lock": {
+            "arguments": [],
+            "commands": {
+              "show": {
+                "arguments": [
+                  "path"
+                ],
+                "options": [],
+                "type": "command"
+              }
+            },
+            "options": [],
+            "type": "group"
+          },
+          "probe": {
+            "arguments": [
+              "config",
+              "provider_name"
+            ],
+            "options": [],
+            "type": "command"
+          },
+          "search": {
+            "arguments": [
+              "query"
+            ],
+            "options": [
+              "--catalog"
+            ],
+            "type": "command"
+          },
+          "show": {
+            "arguments": [
+              "provider_id"
+            ],
+            "options": [
+              "--catalog"
+            ],
+            "type": "command"
+          },
+          "validate-manifest": {
+            "arguments": [
+              "manifest"
+            ],
+            "options": [],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
       },
       "registry": {
         "arguments": [],

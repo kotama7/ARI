@@ -1,0 +1,360 @@
+{
+  "$defs": {
+    "HarnessPropertyResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "covered_atom_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Covered Atom Digests",
+          "type": "array"
+        },
+        "evidence_artifact_refs": {
+          "items": {
+            "$ref": "#/$defs/ResearchArtifactRefV1"
+          },
+          "title": "Evidence Artifact Refs",
+          "type": "array"
+        },
+        "measurements": {
+          "additionalProperties": true,
+          "title": "Measurements",
+          "type": "object"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "oracle_comparison": {
+          "additionalProperties": true,
+          "title": "Oracle Comparison",
+          "type": "object"
+        },
+        "property_id": {
+          "title": "Property Id",
+          "type": "string"
+        },
+        "tested_scope": {
+          "$ref": "#/$defs/VerificationScopeV1"
+        },
+        "tier": {
+          "enum": [
+            "screen",
+            "validate",
+            "certify"
+          ],
+          "title": "Tier",
+          "type": "string"
+        },
+        "tolerance_evidence": {
+          "additionalProperties": true,
+          "title": "Tolerance Evidence",
+          "type": "object"
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail",
+            "inconclusive",
+            "infrastructure_error",
+            "tampered"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "property_id",
+        "method",
+        "tier",
+        "tested_scope",
+        "verdict",
+        "covered_atom_digests",
+        "evidence_artifact_refs"
+      ],
+      "title": "HarnessPropertyResultV1",
+      "type": "object"
+    },
+    "ResearchArtifactRefV1": {
+      "additionalProperties": false,
+      "description": "Content-addressed research artifact under a checkpoint/workspace root.",
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_name": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "media_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.research-artifact-ref/v1",
+          "default": "ari.research-artifact-ref/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_run_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Run Id"
+        }
+      },
+      "required": [
+        "logical_name",
+        "digest",
+        "media_type",
+        "role"
+      ],
+      "title": "ResearchArtifactRefV1",
+      "type": "object"
+    },
+    "VerificationScopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "title": "VerificationScopeV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/harness-attestation-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "active_harness_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Active Harness Lock Digest",
+      "type": "string"
+    },
+    "attempt_id": {
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "attestation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Attestation Digest",
+      "type": "string"
+    },
+    "baseline_harness_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Baseline Harness Lock Digest",
+      "type": "string"
+    },
+    "capability_binding_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Capability Binding Lock Digest",
+      "type": "string"
+    },
+    "container_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Container Digest",
+      "type": "string"
+    },
+    "dataset_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Dataset Digest",
+      "type": "string"
+    },
+    "driver_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Driver Digest",
+      "type": "string"
+    },
+    "epoch_id": {
+      "title": "Epoch Id",
+      "type": "string"
+    },
+    "evidence_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ResearchArtifactRefV1"
+      },
+      "title": "Evidence Artifact Refs",
+      "type": "array"
+    },
+    "execution_identity": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Execution Identity",
+      "type": "string"
+    },
+    "execution_result_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Execution Result Digest",
+      "type": "string"
+    },
+    "harness_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Harness Manifest Digest",
+      "type": "string"
+    },
+    "infrastructure_status": {
+      "enum": [
+        "ready",
+        "failed",
+        "degraded"
+      ],
+      "title": "Infrastructure Status",
+      "type": "string"
+    },
+    "knowledge_skill_use_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Knowledge Skill Use Digest",
+      "type": "string"
+    },
+    "node_id": {
+      "title": "Node Id",
+      "type": "string"
+    },
+    "nondeterminism_declaration": {
+      "title": "Nondeterminism Declaration",
+      "type": "string"
+    },
+    "nondeterminism_observations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Nondeterminism Observations",
+      "type": "array"
+    },
+    "oracle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Oracle Digest",
+      "type": "string"
+    },
+    "producer_component_id": {
+      "const": "fixed_verifier_v1",
+      "default": "fixed_verifier_v1",
+      "title": "Producer Component Id",
+      "type": "string"
+    },
+    "producer_epoch_id": {
+      "title": "Producer Epoch Id",
+      "type": "string"
+    },
+    "producer_prompt_hash": {
+      "default": null,
+      "title": "Producer Prompt Hash",
+      "type": "null"
+    },
+    "property_results": {
+      "items": {
+        "$ref": "#/$defs/HarnessPropertyResultV1"
+      },
+      "title": "Property Results",
+      "type": "array"
+    },
+    "research_contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Research Contract Digest",
+      "type": "string"
+    },
+    "retry_index": {
+      "minimum": 0,
+      "title": "Retry Index",
+      "type": "integer"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.harness-attestation/v1",
+      "default": "ari.harness-attestation/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "target_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Digest",
+      "type": "string"
+    },
+    "target_kind": {
+      "title": "Target Kind",
+      "type": "string"
+    },
+    "target_logical_name": {
+      "title": "Target Logical Name",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive",
+        "infrastructure_error",
+        "tampered"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "verification_contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Verification Contract Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "node_id",
+    "epoch_id",
+    "producer_epoch_id",
+    "research_contract_digest",
+    "verification_contract_digest",
+    "knowledge_skill_use_digest",
+    "capability_binding_lock_digest",
+    "baseline_harness_lock_digest",
+    "active_harness_lock_digest",
+    "harness_manifest_digest",
+    "driver_digest",
+    "oracle_digest",
+    "dataset_digest",
+    "container_digest",
+    "target_logical_name",
+    "target_digest",
+    "target_kind",
+    "execution_identity",
+    "execution_result_digest",
+    "verdict",
+    "property_results",
+    "evidence_artifact_refs",
+    "infrastructure_status",
+    "nondeterminism_declaration",
+    "nondeterminism_observations",
+    "attempt_id",
+    "retry_index",
+    "attestation_digest"
+  ],
+  "title": "ARI Harness Attestation v1",
+  "type": "object"
+}

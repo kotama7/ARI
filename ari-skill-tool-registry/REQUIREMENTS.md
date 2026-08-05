@@ -4,13 +4,17 @@
 
 - Python 3.13 or newer
 - `mcp`, `pydantic`, `jsonschema`, `pyyaml`, and `ari-skill-hpc>=0.3.0`
-- optional `tooluniverse==1.3.1` only in a separate provider environment; it is
-  not imported by the registry process
+- optional ToolUniverse only in a separate Provider environment; production
+  uses the exact `1.3.1+ari.1` wheel and checked-in runtime lock, never a package
+  registry extra, and the registry process never imports it
 - optional local Qiskit environment containing exactly Qiskit `2.5.1`, Aer
   `0.17.2`, and Qiskit MCP server `0.3.1`
 - optional IBM Runtime environment containing exactly Qiskit `2.5.1`, Qiskit
   IBM Runtime `0.48.0`, Qiskit MCP server `0.3.1`, and IBM Runtime MCP server
   `0.6.1`
+- optional OpenROAD local environment materializing the exact x86_64 SIF and
+  inner OpenROAD binary fixed by the selected verified profile; the retained
+  SIF is external to Git and must pass full-digest verification before launch
 - an immutable reviewed `CATALOG.lock`; the committed default is empty
 - an optional ARI checkpoint for artifacts and record/replay evidence
 
@@ -41,9 +45,19 @@ only sources present in the reviewed lock can execute.
   distinct; scientific equivalence requires reviewed units, semantics, backend
   and data lineage, and method identity evidence.
 - An OpenROAD `slurm` profile requires a canonical shared `work_root`, one-node
-  typed resource request, exact thread/CPU agreement, a digest-pinned clean
-  container matching the toolchain image digest, and a worker Python path inside
-  that image. Caller arguments cannot override any of these fields.
+  typed resource request, exact thread/CPU agreement, and either a digest-pinned
+  clean container or the reviewed PRoot/SIF/unsquashfs/worker-Python portable
+  runtime. Caller arguments cannot override any of these fields.
+- Physical cluster, partition, and node selectors are accepted only from a
+  regular, Git-ignored site configuration containing a 256-bit random nonce.
+  Tracked manifests, evidence, snapshots, locks, filenames, tests, and docs may
+  contain only the resulting salted `site_identity_digest`; promotion scans all
+  tracked and non-ignored candidate files before and after execution and fails
+  closed on a clear selector or nonce. The independent repository gate also
+  scans staged blob bytes and symlink targets, and `.githooks/pre-commit` invokes
+  it whenever the private site configuration is materialized. A configured
+  promotion checkout sets the local `ari.sitePrivacy.required` guard and fails
+  rather than skipping if that configuration disappears.
 - Scheduler submission, status, cancellation, result, logs, module/environment
   snapshots, and container identity use the C06 contracts. A workspace is removed
   only after terminal scheduler state; ambiguous delivery fails closed and keeps
@@ -58,6 +72,9 @@ only sources present in the reviewed lock can execute.
 - `QISKIT_IBM_TOKEN` is admitted only through `quantum.ibm-runtime`, forwarded
   only to the isolated Runtime provider, and value-redacted from every result,
   exception, diagnostic, lock, cassette, and artifact boundary.
+- Formal Provider promotion is evidence- and human-approval-bound eligibility,
+  not activation. The committed default `CATALOG.lock` remains empty; a run
+  must explicitly freeze the materialized Provider and Capability Binding Lock.
 
 ## Source admission
 
@@ -95,6 +112,12 @@ run.
 
 ## Qiskit source admission
 
+- The checked-in verified scope is exactly Qiskit MCP `0.3.1` plus Aer
+  `0.17.2` local-ideal Bell-state execution under
+  `ari.quantum.sample.local-ideal/v1`. IBM Runtime, remote simulator, and IBM
+  hardware remain candidate until credential scope, exact live backend,
+  configuration/calibration snapshot, and backend-bound golden/replay evidence
+  are independently approved.
 - Both provider releases and the Qiskit/Aer/Runtime scientific distributions
   must exactly match `providers/qiskit-support-v1.json`; ranges, runtime install,
   modified package trees, alternate entry points, and added provider arguments
@@ -115,6 +138,23 @@ run.
   statistical bounds all validate. A digest string without the file is rejected.
 - Same backend, target, and software-stack profiles share an independence group.
   Multiple wrappers or runs on that lineage are not independent-method evidence.
+
+## OpenROAD source admission
+
+- The checked-in verified scopes are two independent OpenROAD MCP `0.6.1` /
+  ORFS 26Q3 identities for the exact GCD placed database and Nangate45
+  PDK/library under `ari.eda.openroad.place-route/v1`: x86_64 one-thread
+  local-MCP CPU and anonymous exclusive-node SLURM CPU.
+- The lock fixes the OCI manifest, external retained SIF, inner OpenROAD,
+  profile, workspace, golden/replay, and registration evidence by full digest.
+  Absence or drift of the local SIF fails closed.
+- Its independent ORFS reference sets `SKIP_CTS_REPAIR_TIMING=1` because the
+  pinned binary raises SIGILL in default CTS timing repair. It is not evidence
+  of full default-flow parity.
+- The SLURM lock requests zero GPUs and discloses only a salted site digest.
+  GPU use, another design/PDK/corner, another site/runtime identity, or another
+  image is outside both verified scopes and requires an independently approved
+  Provider identity.
 
 ## Environment
 

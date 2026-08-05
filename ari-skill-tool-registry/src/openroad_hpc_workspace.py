@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,7 @@ from providers import ProviderProtocolError
 
 
 _BATCH_WORKER = Path(__file__).resolve().with_name("openroad_worker.py")
+_SAFE_METRICS_PATH = re.compile(r"[A-Za-z0-9_./:+%=,@-]+")
 
 
 def _digest_file(path: Path) -> str:
@@ -43,20 +45,55 @@ def workspace_runtime_digest() -> str:
     )
 
 
+def openroad_batch_tcl(profile: Any) -> str:
+    """Compile commands plus a trusted, explicit metrics sink lifecycle."""
+
+    metric_sources = sorted({metric.source_artifact for metric in profile.metrics})
+    if len(metric_sources) != 1 or not _SAFE_METRICS_PATH.fullmatch(
+        metric_sources[0]
+    ):
+        raise ProviderProtocolError(
+            "OpenROAD batch execution requires one inert metrics artifact path"
+        )
+    metrics_path = metric_sources[0]
+    lines = [
+        f"utl::open_metrics {{{metrics_path}}}",
+        *(command.text for command in profile.commands),
+        f"utl::close_metrics {{{metrics_path}}}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
 def verify_openroad_hpc_files(execution: Any) -> None:
     """Verify host-visible container and shared-work identities before admission."""
 
     if execution.backend != "slurm":
         return
-    if execution.container is None or execution.work_root is None:
+    if execution.work_root is None:
         raise ProviderProtocolError("OpenROAD scheduler execution is incomplete")
-    image = Path(execution.container.image.path)
-    if image.is_symlink() or not image.is_file():
-        raise ProviderProtocolError(
-            "OpenROAD execution image must be a regular non-symlink"
+    if execution.container is not None:
+        pins = (execution.container.image,)
+    elif execution.portable_runtime is not None:
+        if execution.worker_python_pin is None:
+            raise ProviderProtocolError("OpenROAD portable worker pin is missing")
+        pins = (
+            execution.portable_runtime.proot,
+            execution.portable_runtime.image,
+            execution.portable_runtime.unsquashfs,
+            execution.worker_python_pin,
         )
-    if _digest_file(image) != execution.container.image.digest:
-        raise ProviderProtocolError("OpenROAD execution image digest drifted")
+    else:
+        raise ProviderProtocolError("OpenROAD scheduler substrate is missing")
+    for pin in pins:
+        path = Path(pin.path)
+        if path.is_symlink() or not path.is_file():
+            raise ProviderProtocolError(
+                f"OpenROAD runtime artifact {pin.logical_name} must be a regular non-symlink"
+            )
+        if path.stat().st_size != pin.size_bytes or _digest_file(path) != pin.digest:
+            raise ProviderProtocolError(
+                f"OpenROAD runtime artifact {pin.logical_name} digest drifted"
+            )
     work_root = Path(execution.work_root)
     if work_root.is_symlink() or not work_root.is_dir():
         raise ProviderProtocolError(
@@ -89,7 +126,7 @@ class OpenRoadHpcWorkspace:
             execution.backend != "slurm"
             or execution.work_root is None
             or execution.resources is None
-            or execution.container is None
+            or (execution.container is None and execution.portable_runtime is None)
         ):
             raise ProviderProtocolError("OpenROAD batch execution is incomplete")
         root = Path(execution.work_root)
@@ -120,7 +157,7 @@ class OpenRoadHpcWorkspace:
         worker_path.chmod(0o600)
         tcl_path = workspace / "ari-openroad-flow.tcl"
         tcl_path.write_text(
-            "\n".join(command.text for command in profile.commands) + "\n",
+            openroad_batch_tcl(profile),
             encoding="utf-8",
         )
         tcl_path.chmod(0o600)
@@ -141,6 +178,11 @@ class OpenRoadHpcWorkspace:
                 "tcl_path": str(tcl_path),
                 "tcl_digest": _digest_file(tcl_path),
                 "metrics_path": str(metrics_path),
+                "portable_runtime": (
+                    execution.portable_runtime.model_dump(mode="json")
+                    if execution.portable_runtime is not None
+                    else None
+                ),
                 "result_path": str(result_path),
             },
         )
@@ -171,6 +213,16 @@ class OpenRoadHpcWorkspace:
                     media_type=media_type,
                 )
             )
+        if execution.portable_runtime is not None:
+            inputs.extend(
+                (
+                    execution.portable_runtime.proot,
+                    execution.portable_runtime.image,
+                    execution.portable_runtime.unsquashfs,
+                )
+            )
+            assert execution.worker_python_pin is not None
+            inputs.append(execution.worker_python_pin)
         outputs = [
             OutputDeclarationV1(
                 logical_name=f"openroad-output-{index:04d}",
@@ -239,13 +291,12 @@ class OpenRoadHpcWorkspace:
             "tcl_digest",
             "return_code",
             "error",
+            "metrics_materialization",
         }
         if not isinstance(result, dict) or set(result) != expected_keys:
             raise ProviderProtocolError("OpenROAD batch result shape drifted")
         expected_tcl_digest = "sha256:" + hashlib.sha256(
-            ("\n".join(command.text for command in profile.commands) + "\n").encode(
-                "utf-8"
-            )
+            openroad_batch_tcl(profile).encode("utf-8")
         ).hexdigest()
         identity_matches = (
             result["schema_version"] == "ari.openroad-batch-result/v1"
@@ -253,6 +304,8 @@ class OpenRoadHpcWorkspace:
             and result["architecture"] == profile.toolchain.architecture
             and result["executable_digest"] == profile.toolchain.executable_digest
             and result["tcl_digest"] == expected_tcl_digest
+            and result["metrics_materialization"]
+            in {"direct-workspace", "portable-rootfs-export"}
         )
         if not identity_matches or result["return_code"] != 0 or result["error"] is not None:
             raise ProviderProtocolError(
@@ -340,6 +393,7 @@ class OpenRoadHpcWorkspace:
 __all__ = [
     "OpenRoadHpcWorkspace",
     "_digest_file",
+    "openroad_batch_tcl",
     "verify_openroad_hpc_files",
     "workspace_runtime_digest",
 ]

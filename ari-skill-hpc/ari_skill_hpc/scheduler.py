@@ -5,15 +5,18 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import fcntl
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import shlex
 import stat
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, Sequence
+from typing import Any, Literal, Protocol, Sequence
 
 from ari_skill_hpc.contracts import (
     ArtifactPinV1,
@@ -383,6 +386,8 @@ class SubmissionLedger:
         handle: JobHandleV1,
         request: dict[str, Any],
         script_digest: str,
+        terminal_evidence_policy: str = "scheduler-accounting",
+        completion_nonce_sha256: str | None = None,
     ) -> None:
         with self._locked() as lock:
             value = self._load_unlocked()
@@ -391,7 +396,7 @@ class SubmissionLedger:
                 raise SchedulerProtocolError(
                     "submission claim disappeared before commit"
                 )
-            value["records"][digest] = {
+            committed = {
                 "state": "submitted",
                 "claimed_at": record["claimed_at"],
                 "committed_at": utc_now(),
@@ -399,6 +404,14 @@ class SubmissionLedger:
                 "request": request,
                 "script_digest": script_digest,
             }
+            if terminal_evidence_policy != "scheduler-accounting":
+                committed.update(
+                    {
+                        "terminal_evidence_policy": terminal_evidence_policy,
+                        "completion_nonce_sha256": completion_nonce_sha256,
+                    }
+                )
+            value["records"][digest] = committed
             self._write_unlocked(value)
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
@@ -450,10 +463,29 @@ class SlurmScheduler:
         default_factory=lambda: SubmissionLedger(default_ledger_path())
     )
     shared_filesystem: bool = True
+    terminal_evidence_policy: Literal[
+        "scheduler-accounting", "fixed-wrapper-marker"
+    ] = "scheduler-accounting"
+
+    def __post_init__(self) -> None:
+        if (
+            self.terminal_evidence_policy == "fixed-wrapper-marker"
+            and not self.shared_filesystem
+        ):
+            raise ValueError(
+                "fixed-wrapper terminal evidence requires a shared filesystem"
+            )
 
     @property
     def cluster_identity(self) -> str:
-        return sha256_digest(self.runner.identity)
+        if self.terminal_evidence_policy == "scheduler-accounting":
+            return sha256_digest(self.runner.identity)
+        return sha256_digest(
+            {
+                "runner": self.runner.identity,
+                "terminal_evidence_policy": self.terminal_evidence_policy,
+            }
+        )
 
     async def submit(self, request: JobRequestV1) -> JobHandleV1:
         self._verify_request_artifacts(request)
@@ -467,7 +499,16 @@ class SlurmScheduler:
             artifact_scope = self._ensure_artifact_scope(
                 request.work_dir, request_digest
             )
-            script = self._render_script(request, artifact_scope)
+            completion_nonce = (
+                secrets.token_hex(32)
+                if self.terminal_evidence_policy == "fixed-wrapper-marker"
+                else None
+            )
+            script = self._render_script(
+                request,
+                artifact_scope,
+                completion_nonce=completion_nonce,
+            )
         except Exception:
             self.ledger.release(request_digest)
             raise
@@ -486,6 +527,12 @@ class SlurmScheduler:
             request=request_payload,
             script_digest=script_digest,
             submission_digest=submission_digest,
+            terminal_evidence_policy=self.terminal_evidence_policy,
+            completion_nonce_sha256=(
+                hashlib.sha256(completion_nonce.encode("ascii")).hexdigest()
+                if completion_nonce is not None
+                else None
+            ),
         )
         try:
             response = await self.runner.run(
@@ -520,6 +567,12 @@ class SlurmScheduler:
             handle=handle,
             request=request_payload,
             script_digest=script_digest,
+            terminal_evidence_policy=self.terminal_evidence_policy,
+            completion_nonce_sha256=(
+                hashlib.sha256(completion_nonce.encode("ascii")).hexdigest()
+                if completion_nonce is not None
+                else None
+            ),
         )
         return handle
 
@@ -669,6 +722,9 @@ class SlurmScheduler:
                 scheduler_state=_base_state(raw_state),
                 reason=reason[:2000] or None,
             )
+        marker_status = self._fixed_wrapper_marker_status(record, handle, job_id)
+        if marker_status is not None:
+            return marker_status
         return JobStatusV1(
             handle_id=handle.handle_id if handle else None,
             job_id=job_id,
@@ -677,6 +733,65 @@ class SlurmScheduler:
             reason=_safe_error(
                 "scheduler returned no job record", response.stderr or queue.stderr
             ),
+        )
+
+    def _fixed_wrapper_marker_status(
+        self,
+        record: dict[str, Any] | None,
+        handle: JobHandleV1 | None,
+        job_id: str,
+    ) -> JobStatusV1 | None:
+        if (
+            self.terminal_evidence_policy != "fixed-wrapper-marker"
+            or record is None
+            or handle is None
+            or record.get("terminal_evidence_policy") != "fixed-wrapper-marker"
+            or not self.shared_filesystem
+        ):
+            return None
+        path = Path(handle.artifact_scope) / "wrapper-completion-v1.json"
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 4096:
+            return None
+        try:
+            marker = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        expected_keys = {
+            "schema_version",
+            "request_digest",
+            "cluster_identity",
+            "job_id",
+            "exit_code",
+            "completion_nonce",
+        }
+        nonce = marker.get("completion_nonce") if isinstance(marker, dict) else None
+        exit_code = marker.get("exit_code") if isinstance(marker, dict) else None
+        if (
+            not isinstance(marker, dict)
+            or set(marker) != expected_keys
+            or marker.get("schema_version") != "ari.hpc.wrapper-completion/v1"
+            or marker.get("request_digest") != handle.request_digest
+            or marker.get("cluster_identity") != handle.cluster_identity
+            or marker.get("job_id") != job_id
+            or not isinstance(exit_code, int)
+            or isinstance(exit_code, bool)
+            or not 0 <= exit_code <= 255
+            or not isinstance(nonce, str)
+            or not re.fullmatch(r"[0-9a-f]{64}", nonce)
+        ):
+            return None
+        observed_nonce_digest = hashlib.sha256(nonce.encode("ascii")).hexdigest()
+        expected_nonce_digest = str(record.get("completion_nonce_sha256") or "")
+        if not hmac.compare_digest(observed_nonce_digest, expected_nonce_digest):
+            return None
+        succeeded = exit_code == 0
+        return JobStatusV1(
+            handle_id=handle.handle_id,
+            job_id=job_id,
+            state="succeeded" if succeeded else "failed",
+            scheduler_state="COMPLETED" if succeeded else "FAILED",
+            exit_code=exit_code,
+            reason="fixed-wrapper-completion-v1",
         )
 
     async def cancel(self, handle_or_job_id: str) -> dict[str, Any]:
@@ -763,6 +878,21 @@ class SlurmScheduler:
             container_digest=request.container.image.digest
             if request.container
             else None,
+            accelerator_allocation_digest=(
+                sha256_digest(
+                    request.accelerator_allocation.model_dump(mode="json")
+                )
+                if request.accelerator_allocation is not None
+                else None
+            ),
+            accelerator_inventory_digest=next(
+                (
+                    item.digest
+                    for item in provenance
+                    if item.logical_name == "observed-accelerator-inventory"
+                ),
+                None,
+            ),
             inputs=request.inputs,
             outputs=tuple(outputs),
             provenance=provenance,
@@ -850,6 +980,8 @@ class SlurmScheduler:
                     raise SchedulerValidationError(
                         f"container input {artifact.logical_name} is outside declared binds"
                     )
+        if request.accelerator_allocation is not None:
+            _verify_file_pin(request.accelerator_allocation.inventory_probe)
 
     def _collect_outputs(self, request: JobRequestV1) -> list[ArtifactPinV1]:
         if not self.shared_filesystem:
@@ -899,9 +1031,24 @@ class SlurmScheduler:
         scope = Path(handle.artifact_scope)
         for logical_name, filename, media_type in (
             ("submission-record", "submission-v1.json", "application/json"),
+            (
+                "wrapper-completion",
+                "wrapper-completion-v1.json",
+                "application/json",
+            ),
             ("execution-environment", "execution-environment.txt", "text/plain"),
             ("module-snapshot", "module-list.txt", "text/plain"),
             ("container-runtime", "container-runtime.txt", "text/plain"),
+            (
+                "expected-accelerator-inventory",
+                "accelerator-inventory.expected.csv",
+                "text/csv",
+            ),
+            (
+                "observed-accelerator-inventory",
+                "accelerator-inventory.observed.csv",
+                "text/csv",
+            ),
             ("exit-code", "exit-code.txt", "text/plain"),
         ):
             path = scope / filename
@@ -925,7 +1072,13 @@ class SlurmScheduler:
             )
         return values
 
-    def _render_script(self, request: JobRequestV1, scope: Path) -> str:
+    def _render_script(
+        self,
+        request: JobRequestV1,
+        scope: Path,
+        *,
+        completion_nonce: str | None = None,
+    ) -> str:
         lines = self._header(
             job_name=request.job_name,
             resources=request.resources,
@@ -949,6 +1102,8 @@ class SlurmScheduler:
                 lines.append(f"module load {shlex.quote(module)}")
             module_path = scope / "module-list.txt"
             lines.append(f"module -t list 2> {shlex.quote(str(module_path))} || true")
+        if request.accelerator_allocation is not None:
+            lines.extend(self._accelerator_inventory_check(request, scope))
         lines.extend(self._runtime_snapshot(request, scope))
         for artifact in request.inputs:
             lines.extend(_digest_check_lines(artifact.path, artifact.digest))
@@ -968,10 +1123,78 @@ class SlurmScheduler:
                 "ari_job_rc=$?",
                 "set -e",
                 f"printf '%s\\n' \"$ari_job_rc\" > {shlex.quote(str(exit_path))}",
-                'exit "$ari_job_rc"',
             ]
         )
+        if completion_nonce is not None:
+            completion_path = scope / "wrapper-completion-v1.json"
+            completion_temporary = scope / ".wrapper-completion-v1.tmp"
+            record = (
+                "{\"schema_version\":\"ari.hpc.wrapper-completion/v1\","
+                f"\"request_digest\":\"{request.request_digest}\","
+                f"\"cluster_identity\":\"{self.cluster_identity}\","
+                "\"job_id\":\"%s\",\"exit_code\":%s,"
+                f"\"completion_nonce\":\"{completion_nonce}\"}}"
+            )
+            lines.extend(
+                [
+                    (
+                        f"printf '{record}\\n' \"${{SLURM_JOB_ID:?}}\" "
+                        f'"$ari_job_rc" > {shlex.quote(str(completion_temporary))}'
+                    ),
+                    f"chmod 600 {shlex.quote(str(completion_temporary))}",
+                    (
+                        f"mv -f -- {shlex.quote(str(completion_temporary))} "
+                        f"{shlex.quote(str(completion_path))}"
+                    ),
+                ]
+            )
+        lines.append('exit "$ari_job_rc"')
         return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _accelerator_inventory_check(
+        request: JobRequestV1, scope: Path
+    ) -> list[str]:
+        allocation = request.accelerator_allocation
+        assert allocation is not None
+        expected_path = scope / "accelerator-inventory.expected.csv"
+        observed_path = scope / "accelerator-inventory.observed.csv"
+        expected_lines = [
+            (
+                f"{item.uuid}, {item.name}, {item.driver_version}, "
+                f"{item.memory_mb}, {item.compute_capability}"
+            )
+            for item in allocation.devices
+        ]
+        probe = allocation.inventory_probe
+        lines = _digest_check_lines(probe.path, probe.digest)
+        lines.append(
+            "printf '%s\\n' "
+            + " ".join(shlex.quote(item) for item in expected_lines)
+            + f" > {shlex.quote(str(expected_path))}"
+        )
+        lines.extend(
+            [
+                (
+                    f"{shlex.quote(probe.path)} "
+                    "--query-gpu=uuid,name,driver_version,memory.total,compute_cap "
+                    "--format=csv,noheader,nounits | LC_ALL=C sort > "
+                    f"{shlex.quote(str(observed_path))}"
+                ),
+                (
+                    f"if ! cmp -s -- {shlex.quote(str(expected_path))} "
+                    f"{shlex.quote(str(observed_path))}; then"
+                ),
+                "  echo 'ARI: exclusive-node accelerator inventory mismatch' >&2",
+                (
+                    f"  diff -u -- {shlex.quote(str(expected_path))} "
+                    f"{shlex.quote(str(observed_path))} >&2 || true"
+                ),
+                "  exit 87",
+                "fi",
+            ]
+        )
+        return lines
 
     @staticmethod
     def _runtime_snapshot(request: JobRequestV1, scope: Path) -> list[str]:
@@ -1175,16 +1398,25 @@ class SlurmScheduler:
         request: dict[str, Any],
         script_digest: str,
         submission_digest: str,
+        terminal_evidence_policy: str = "scheduler-accounting",
+        completion_nonce_sha256: str | None = None,
     ) -> None:
+        value = {
+            "schema_version": "ari.hpc.submission/v1",
+            "request": request,
+            "script_digest": script_digest,
+            "submission_digest": submission_digest,
+            "recorded_at": utc_now(),
+        }
+        if terminal_evidence_policy != "scheduler-accounting":
+            value.update(
+                {
+                    "terminal_evidence_policy": terminal_evidence_policy,
+                    "completion_nonce_sha256": completion_nonce_sha256,
+                }
+            )
         SlurmScheduler._write_json_atomic(
-            artifact_scope / "submission-v1.json",
-            {
-                "schema_version": "ari.hpc.submission/v1",
-                "request": request,
-                "script_digest": script_digest,
-                "submission_digest": submission_digest,
-                "recorded_at": utc_now(),
-            },
+            artifact_scope / "submission-v1.json", value
         )
 
     @staticmethod

@@ -14,6 +14,14 @@ Currently exported sub-modules:
   artifact-log, and typed measurement contracts.
 - :mod:`ari.public.analysis`     — deterministic statistical request, run
   comparison, and result contracts.
+- :mod:`ari.public.knowledge` — non-executable Knowledge Skill import,
+  catalog, admission, composition, and provenance contracts.
+- :mod:`ari.public.providers` — Capability Provider terminology and immutable
+  catalog/identity facade over the compatible MCP Provider implementation.
+- :mod:`ari.public.capability_binding` — deterministic semantic Capability
+  binding, lock, validation, and substitution-diagnostic contracts.
+- :mod:`ari.public.assurance` — Verification Contracts, Harness catalog/lock,
+  fixed verification, Attestation, and external parity contracts.
 - :mod:`ari.public.memory`       — immutable research-memory records and
   retrieval provenance.
 - :mod:`ari.public.science_data` — digest-bound raw, derived, and model
@@ -54,4 +62,7 @@ Currently exported sub-modules:
 - :mod:`ari.public.verified_context` — ``render_grounded_block`` /
   ``write_verified_context`` (artifact-grounded paper claims) used by
   ari-skill-paper.
+- :mod:`ari.public.manuscript` — digest-bound exploration inventory,
+  manuscript context/readiness, section briefs, repair plans, and independent
+  publication decisions.
 """

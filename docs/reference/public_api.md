@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/ari/skill_manifest.py
     role: implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-04
 ---
 
 # `ari.public` — Stable API for skills
@@ -30,6 +30,8 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | Sub-module | What it re-exports | Skills that use it |
 |---|---|---|
 | `ari.public.analysis` | Versioned summary, statistical-test, run-comparison, and analysis-result contracts | analysis providers and scientific consumers |
+| `ari.public.assurance` | Verification Contracts, Harness catalogs/locks, fixed verification, Attestations, and digest-bound external parity reports | read-only Harness/Assurance surfaces |
+| `ari.public.capability_binding` | Capability ontology, deterministic binding/locks, validation, and Provider-substitution diagnostics | governed Provider dispatch and diagnostics |
 | `ari.public.clone` | Digest-verified EAR bundle retrieval and safe extraction (`clone`, `CloneResult`, `CloneError`) | reproduction and bundle-consuming Skills |
 | `ari.public.config_schema` | Pydantic config models (`ARIConfig`, `LLMConfig`, ...) | callers needing typed settings |
 | `ari.public.container` | Container runtime helpers (`ContainerConfig`, `run_in_container`, ...) | `ari-skill-coding` (tests) |
@@ -37,6 +39,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.evaluation` | Immutable metric admission, `GateReportV1`, semantic review, and conservative migration readers | idea, transform, evaluator, paper, offline readers |
 | `ari.public.figures` | Digest-bound figure specification, render manifest, batch, and feedback lineage | plot, VLM, paper |
 | `ari.public.latex_claims` | Canonical lexical LaTeX claim-anchor, number, citation, and figure-reference parser | evaluator and paper |
+| `ari.public.knowledge` | Non-executable Knowledge Skill import, catalog, admission, composition, and provenance | Knowledge read/request surfaces |
 | `ari.public.memory` | Content-addressed memory records, retrievals, events, and backup contracts | memory and verified-context consumers |
 | `ari.public.paper` | `PaperBuildV1`, revision/model-call/compile/review records, parsers, and canonical digest | paper and publication consumers |
 | `ari.public.science_data` | Native raw/derived/interpreted science-data contract and explicit migration reader | transform, evaluator, plot, paper |
@@ -46,6 +49,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
 | `ari.public.node_selection` | deterministic downstream node and source selection | `ari-skill-transform` |
 | `ari.public.publish` | staged EAR publish/promote contract | `ari-skill-transform` |
+| `ari.public.providers` | Capability Provider terminology, immutable identity, catalog, and existing Provider-lock facade | Provider read/diagnostic surfaces |
 | `ari.public.run_env` | run-environment capture and shell-export helpers | sandbox and executor Skills |
 | `ari.public.call_context` | `RunContextV1`, `NodeContextV1`, signed tool-context verification helpers | control plane and context-aware Skills |
 | `ari.public.result` | `ResultEnvelopeV1`, content-addressed artifact references, typed errors, call context, provenance | Skill adapters and federated dispatch callers |

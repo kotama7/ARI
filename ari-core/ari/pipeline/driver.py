@@ -43,6 +43,71 @@ from ari.pipeline.yaml_loader import _resolve_templates
 log = logging.getLogger(__name__)
 
 
+def _prepare_manuscript_authoring(
+    ctx: StageContext,
+    *,
+    all_nodes,
+    experiment_data: dict[str, Any],
+) -> None:
+    """Compile and enforce the fixed exploration-to-authoring boundary.
+
+    This hook is deliberately called immediately before ``write_paper`` and
+    outside the stage's fail-open exception boundary.  Evidence-producing
+    stages have therefore completed, while no authoring model call has begun.
+    The function is a no-op (including imports and filesystem writes) unless
+    paper dispatch explicitly installed an audit/enforce runtime posture.
+    """
+
+    mode = os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off").strip().lower()
+    if mode == "off":
+        return
+    if ctx.stage_outputs.get("_manuscript_boundary", {}).get("prepared"):
+        return
+
+    from ari.manuscript.briefs import render_brief_bundle
+    from ari.manuscript.runtime import prepare_runtime_manuscript
+
+    outcome = prepare_runtime_manuscript(
+        ctx.checkpoint_dir,
+        all_nodes,
+        experiment_data=experiment_data,
+    )
+    if outcome is None:  # defensive: mode was checked above
+        return
+    paths = outcome.artifact_paths or {}
+
+    readiness = outcome.readiness
+    ctx.stage_outputs["_manuscript_boundary"] = {
+        "prepared": True,
+        "mode": mode,
+        "attempt_id": outcome.attempt_id,
+        "state": outcome.state,
+        "authoring_verdict": (
+            readiness.authoring_verdict if readiness is not None else "blocked"
+        ),
+        "publication_verdict": (
+            readiness.publication_verdict if readiness is not None else "blocked"
+        ),
+        "artifact_paths": paths,
+    }
+    if mode == "enforce":
+        # The writer sees the bounded, evidence-lane-aware briefs instead of
+        # the legacy concatenation.  Audit mode intentionally leaves bytes and
+        # template inputs untouched.
+        brief_text = render_brief_bundle(outcome.briefs)
+        ctx.tpl_vars["experiment_summary"] = brief_text
+        ctx.tpl_vars["paper_context"] = brief_text
+    from ari.manuscript.runtime import transition_runtime_manuscript
+
+    transition_runtime_manuscript(
+        ctx.checkpoint_dir,
+        "authoring",
+        reason_code=(
+            "authoring_started" if mode == "enforce" else "audit_authoring_started"
+        ),
+    )
+
+
 class WorkflowDriver:
     """Drive one post-BFTS pipeline run to completion.
 
@@ -582,11 +647,30 @@ class WorkflowDriver:
             stage_name = stage.stage_name
             desc = stage.desc
 
+            if stage_name == "write_paper":
+                _prepare_manuscript_authoring(
+                    ctx,
+                    all_nodes=all_nodes,
+                    experiment_data=experiment_data,
+                )
+
             log.info("=== Stage [%s]: %s ===", stage_name, desc)
             print(f"[Paper Pipeline] Stage [{stage_name}]: {desc} ...", flush=True)
 
             # ── skip checks (disabled_tools + depends_on + skip_if_exists) ──
             if stage.should_skip(ctx):
+                if (
+                    stage_name == "write_paper"
+                    and os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") != "off"
+                    and (ctx.checkpoint_dir / "full_paper.tex").is_file()
+                ):
+                    from ari.manuscript.runtime import transition_runtime_manuscript
+
+                    transition_runtime_manuscript(
+                        ctx.checkpoint_dir,
+                        "authored",
+                        reason_code="existing_bound_draft_reused",
+                    )
                 _stage_idx += 1
                 continue
 
@@ -599,6 +683,18 @@ class WorkflowDriver:
                 ctx.stage_outputs[stage_name] = result
                 # ── save outputs (type-sniff writer + figures manifest) ────
                 stage.persist_outputs(ctx, result)
+
+                if (
+                    stage_name == "write_paper"
+                    and os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") != "off"
+                ):
+                    from ari.manuscript.runtime import transition_runtime_manuscript
+
+                    transition_runtime_manuscript(
+                        ctx.checkpoint_dir,
+                        "authored",
+                        reason_code="bound_draft_authored",
+                    )
 
                 # Stage completed successfully
                 print(f"[Paper Pipeline] Stage [{stage_name}]: DONE", flush=True)
@@ -721,5 +817,20 @@ class WorkflowDriver:
                 ctx.tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
 
             _stage_idx += 1
+
+        if (
+            os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") != "off"
+            and any(
+                stage.get("stage") in {"lock_paper_build", "ors_run_reproduce"}
+                for stage in stages
+            )
+        ):
+            from ari.manuscript.runtime import finalize_runtime_publication
+
+            decision = finalize_runtime_publication(ctx.checkpoint_dir)
+            if decision is not None:
+                ctx.stage_outputs["_manuscript_publication"] = (
+                    decision.model_dump(mode="json")
+                )
 
         return ctx.stage_outputs

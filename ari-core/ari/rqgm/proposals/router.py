@@ -135,6 +135,20 @@ class ProposalRouter:
         gens = getattr(self._router_cfg(), "generators", None)
         return getattr(gens, name, None)
 
+    def _typed_contract_required(self) -> bool:
+        return not (
+            str(getattr(getattr(self.cfg, "knowledge", None), "mode", "off")) == "off"
+            and str(
+                getattr(
+                    getattr(self.cfg, "capability_binding", None),
+                    "mode",
+                    "legacy",
+                )
+            ) == "legacy"
+            and str(getattr(getattr(self.cfg, "assurance", None), "mode", "off"))
+            == "off"
+        )
+
     def _build_generators(self) -> dict:
         ckpt = self.store.checkpoint_dir
         registry: dict = {
@@ -146,7 +160,9 @@ class ProposalRouter:
             ),
         }
         vcfg = self._generator_cfg("virsci")
-        if bool(getattr(vcfg, "enabled", False)) and self.mcp is not None:
+        if (
+            bool(getattr(vcfg, "enabled", False)) or self._typed_contract_required()
+        ) and self.mcp is not None:
             # Conditional construction is the virsci.enabled=false guarantee:
             # with the default config this import/constructor never runs.
             from ari.rqgm.proposals.virsci_adapter import VirSciAdapter
@@ -162,6 +178,8 @@ class ProposalRouter:
 
     def _enabled(self, name: str) -> bool:
         gcfg = self._generator_cfg(name)
+        if name == "virsci" and self._typed_contract_required():
+            return True
         default = name in ("cheap", "mutation", "prior_art")
         return bool(getattr(gcfg, "enabled", default))
 
@@ -416,6 +434,16 @@ class ProposalRouter:
                             "n_agents",
                             "discussion_rounds",
                             "virsci_integration_status",
+                            "typed_schema_version",
+                            "contract_status",
+                            "survey_snapshot",
+                            "survey_snapshot_digest",
+                            "survey_snapshot_ref",
+                            "idea_set",
+                            "idea_set_digest",
+                            "research_contract",
+                            "research_contract_digest",
+                            "rejected_candidates",
                         )
                         if k in payload
                     }

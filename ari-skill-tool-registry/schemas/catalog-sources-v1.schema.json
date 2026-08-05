@@ -405,6 +405,17 @@
         "environment": {
           "$ref": "#/$defs/EnvironmentPolicyV1"
         },
+        "portable_runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenRoadPortableRuntimeV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "resources": {
           "anyOf": [
             {
@@ -415,6 +426,28 @@
             }
           ],
           "default": null
+        },
+        "site_identity_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Site Identity Digest"
+        },
+        "terminal_evidence_policy": {
+          "default": "scheduler-accounting",
+          "enum": [
+            "scheduler-accounting",
+            "fixed-wrapper-marker"
+          ],
+          "title": "Terminal Evidence Policy",
+          "type": "string"
         },
         "work_root": {
           "anyOf": [
@@ -432,6 +465,17 @@
           "default": "/usr/bin/python3",
           "title": "Worker Python",
           "type": "string"
+        },
+        "worker_python_pin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactPinV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "title": "OpenRoadExecutionV1",
@@ -647,6 +691,7 @@
           "enum": [
             "ns",
             "ps",
+            "um",
             "um^2",
             "mm^2",
             "mW",
@@ -724,12 +769,59 @@
       "title": "OpenRoadOutputArtifactV1",
       "type": "object"
     },
+    "OpenRoadPortableRuntimeV1": {
+      "additionalProperties": false,
+      "description": "Digest-pinned SIF extraction and PRoot execution on a containerless node.\n\nThis is not represented as a native container allocation.  The scheduler\nverifies the SIF, extractor, and PRoot bytes before launch; the fixed batch\nworker extracts that exact SIF into its private workspace and exposes only\nthat workspace to the guest root.  Network namespaces are unavailable on\nthe observed no-GRES node, so the policy records the residual host-network\nvisibility instead of claiming `network: none`.",
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        },
+        "kind": {
+          "const": "proot-sif",
+          "default": "proot-sif",
+          "title": "Kind",
+          "type": "string"
+        },
+        "network_policy": {
+          "const": "host-uncredentialed",
+          "default": "host-uncredentialed",
+          "title": "Network Policy",
+          "type": "string"
+        },
+        "proot": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        },
+        "schema_version": {
+          "const": "ari.openroad-portable-runtime/v1",
+          "default": "ari.openroad-portable-runtime/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "squashfs_offset": {
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "Squashfs Offset",
+          "type": "integer"
+        },
+        "unsquashfs": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        }
+      },
+      "required": [
+        "proot",
+        "image",
+        "unsquashfs",
+        "squashfs_offset"
+      ],
+      "title": "OpenRoadPortableRuntimeV1",
+      "type": "object"
+    },
     "OpenRoadSourceSpecV1": {
       "additionalProperties": false,
       "description": "Pinned OpenROAD MCP exposed only as immutable experiment leaves.",
       "properties": {
         "capability_ref": {
-          "default": "ari.eda.openroad.place-route",
+          "default": "ari.eda.openroad.place-route/v1",
           "title": "Capability Ref",
           "type": "string"
         },
@@ -791,6 +883,30 @@
           "maximum": 3600,
           "title": "Timeout Seconds",
           "type": "number"
+        },
+        "verified_lock_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Digest"
+        },
+        "verified_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Path"
         }
       },
       "required": [
@@ -1706,6 +1822,30 @@
           "maximum": 3600,
           "title": "Timeout Seconds",
           "type": "number"
+        },
+        "verified_lock_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Digest"
+        },
+        "verified_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Path"
         }
       },
       "required": [
@@ -2111,6 +2251,13 @@
           "title": "Backend Lineage",
           "type": "array"
         },
+        "capability_projections": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Capability Projections",
+          "type": "object"
+        },
         "categories": {
           "items": {
             "type": "string"
@@ -2137,6 +2284,13 @@
           "title": "Determinism",
           "type": "string"
         },
+        "equivalence_keys": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Equivalence Keys",
+          "type": "object"
+        },
         "independence_group": {
           "default": "",
           "title": "Independence Group",
@@ -2159,6 +2313,14 @@
         "profile_id": {
           "title": "Profile Id",
           "type": "string"
+        },
+        "result_normalizers": {
+          "additionalProperties": {
+            "const": "tooluniverse-pubmed-retrieval/v1",
+            "type": "string"
+          },
+          "title": "Result Normalizers",
+          "type": "object"
         },
         "semantics": {
           "additionalProperties": true,
@@ -2206,6 +2368,18 @@
           "title": "Capability Prefix",
           "type": "string"
         },
+        "dependency_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dependency Lock Path"
+        },
         "evidence": {
           "$ref": "#/$defs/AdmissionEvidenceV1"
         },
@@ -2221,6 +2395,13 @@
             "type": "string"
           },
           "title": "Include Categories",
+          "type": "array"
+        },
+        "include_tool_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Include Tool Names",
           "type": "array"
         },
         "info_batch_size": {
@@ -2292,6 +2473,30 @@
           "maximum": 3600,
           "title": "Timeout Seconds",
           "type": "number"
+        },
+        "verified_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Path"
+        },
+        "wheel_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wheel Path"
         }
       },
       "required": [

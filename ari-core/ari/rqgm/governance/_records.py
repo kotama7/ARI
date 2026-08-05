@@ -81,6 +81,9 @@ OBSERVATION_RECORD_TYPES: tuple[str, ...] = (
     "utility_record",
     "comparison_observation",
     "node_report",
+    "harness_attestation",
+    "knowledge_skill_use",
+    "capability_binding",
 )
 
 #: The documented step-5 total fallback text (plan 05 §5.3).

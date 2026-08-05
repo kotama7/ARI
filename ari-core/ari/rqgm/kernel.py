@@ -240,6 +240,18 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _full_digest_matches(value: dict, field: str) -> bool:
+    """Validate a new full-SHA digest-bound mapping without constructing it."""
+
+    from ari.protocols.integrity import canonical_digest
+
+    if field not in value:
+        return False
+    payload = dict(value)
+    recorded = str(payload.pop(field, ""))
+    return recorded == canonical_digest(payload)
+
+
 def _shingles(text: str, k: int) -> frozenset:
     """Deterministic lowercase word *k*-shingles (CK-CLN-002 screen)."""
     words = re.findall(r"[a-z0-9]+", str(text).lower())
@@ -1612,6 +1624,120 @@ class ConstitutionalKernel:
                     )
                 )
         return make_report("context_scope", violations)
+
+    # ── Tasks 16–19: Knowledge / Capability / Harness integrity ──────
+
+    def validate_knowledge_integrity(
+        self,
+        *,
+        node_use,
+        epoch_lock,
+        catalog_snapshot,
+        body_by_sha256=None,
+        composition_digest: str | None = None,
+        expected_epoch_lock_digest: str | None = None,
+        previous_catalog_snapshot=None,
+        previous_node_use=None,
+        actor=None,
+        attempted_catalog_write: bool = False,
+        attachment_launch: bool = False,
+        effective_directives=(),
+    ) -> KernelReport:
+        """Validate Knowledge identity and authority, never body quality."""
+
+        from ari.rqgm.kernel_knowledge_integrity import (
+            validate_knowledge_integrity,
+        )
+
+        return validate_knowledge_integrity(
+            severity=self.rules.SEVERITY,
+            node_use=node_use,
+            epoch_lock=epoch_lock,
+            catalog_snapshot=catalog_snapshot,
+            body_by_sha256=body_by_sha256,
+            composition_digest=composition_digest,
+            expected_epoch_lock_digest=expected_epoch_lock_digest,
+            previous_catalog_snapshot=previous_catalog_snapshot,
+            previous_node_use=previous_node_use,
+            actor=actor,
+            attempted_catalog_write=attempted_catalog_write,
+            attachment_launch=attachment_launch,
+            effective_directives=effective_directives,
+        )
+
+    def validate_capability_binding_integrity(
+        self,
+        *,
+        binding_lock,
+        invocation=None,
+        provider_lock=None,
+        live_tools=None,
+        expected_lock_digest: str | None = None,
+        expected_environment_digest: str | None = None,
+        granted_credential_scopes=None,
+        actor_selected: bool = False,
+        used_name_inference: bool = False,
+        provider_description_effective: bool = False,
+        revision_rebind: bool = False,
+    ) -> KernelReport:
+        """Validate exact Provider/Binding authority; no fuzzy fallback exists."""
+
+        from ari.rqgm.kernel_capability_integrity import (
+            validate_capability_binding_integrity,
+        )
+
+        return validate_capability_binding_integrity(
+            severity=self.rules.SEVERITY,
+            binding_lock=binding_lock,
+            invocation=invocation,
+            provider_lock=provider_lock,
+            live_tools=live_tools,
+            expected_lock_digest=expected_lock_digest,
+            expected_environment_digest=expected_environment_digest,
+            granted_credential_scopes=granted_credential_scopes,
+            actor_selected=actor_selected,
+            used_name_inference=used_name_inference,
+            provider_description_effective=provider_description_effective,
+            revision_rebind=revision_rebind,
+        )
+
+    def validate_harness_integrity(
+        self,
+        *,
+        verification_contract,
+        baseline_lock,
+        catalog_snapshot,
+        attestation=None,
+        request=None,
+        current_target_digest: str | None = None,
+        active_harness_lock_digest: str | None = None,
+        revision=None,
+        previous_verification_contract=None,
+        selector_component_id: str = "harness_resolver_v1",
+        publication: bool = False,
+        result_overridden: bool = False,
+        hidden_oracle_access: bool = False,
+    ) -> KernelReport:
+        """Validate Harness procedure/pins; never recompute a scientific verdict."""
+
+        from ari.rqgm.kernel_harness_integrity import validate_harness_integrity
+
+        return validate_harness_integrity(
+            severity=self.rules.SEVERITY,
+            verification_contract=verification_contract,
+            baseline_lock=baseline_lock,
+            catalog_snapshot=catalog_snapshot,
+            attestation=attestation,
+            request=request,
+            current_target_digest=current_target_digest,
+            active_harness_lock_digest=active_harness_lock_digest,
+            revision=revision,
+            previous_verification_contract=previous_verification_contract,
+            selector_component_id=selector_component_id,
+            publication=publication,
+            result_overridden=result_overridden,
+            hidden_oracle_access=hidden_oracle_access,
+        )
 
 
 # ── enforcement helpers / adapters (plan 04 §5.5-§5.6) ─────────────────────

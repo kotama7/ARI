@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-07-28
+last_verified: 2026-08-03
 ---
 
 # RQGM 运行时演练
@@ -451,13 +451,15 @@ paper 阶段是一个**独立、正交的**模式：`paper.mode: rqgm_archive` +
 ```
 
 `meta.json` 还额外记录 `constitution_hash`（当前为
-`2edf93776904`）—— 覆盖全部内核规则表的钉子。宪法修订是深思熟虑
+`5e455c17da51`）—— 覆盖全部内核规则表的钉子。宪法修订是深思熟虑
 的手工重钉：规则表的修改会让 `tests/test_rqgm_kernel.py` 失败，
 直到以带日期的注释重钉预期哈希。最近的链走过多次修订：
 `… → 951a294dc3c4`（T20，`utility_policy` supersession 边与
 `CK-UTL-*` 规则）`→ 564a204dc694`（paper 创始角色）`→ 6643c12a510e`
 （T21，paper 角色的 shadow-standby 边）`→ 2edf93776904`（#78b，将
-`governance_judge` 加入角色词汇，使弹劾裁决者本身成为受治理、可制裁的行动者）。
+`governance_judge` 加入角色词汇，使弹劾裁决者本身成为受治理、可制裁的行动者）
+`→ 5e455c17da51`（Tasks 16–19，加入固定的 Knowledge/Capability/Harness
+主体、资源矩阵和 `CK-KNW-*` / `CK-CAP-*` / `CK-HAR-*` 完整性规则）。
 
 ## 如何观察一次运行
 

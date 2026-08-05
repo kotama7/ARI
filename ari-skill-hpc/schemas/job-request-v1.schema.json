@@ -1,5 +1,47 @@
 {
   "$defs": {
+    "AcceleratorDeviceIdentityV1": {
+      "additionalProperties": false,
+      "description": "One exact accelerator observed behind a no-GRES exclusive allocation.",
+      "properties": {
+        "compute_capability": {
+          "pattern": "^[0-9]+\\.[0-9]+$",
+          "title": "Compute Capability",
+          "type": "string"
+        },
+        "driver_version": {
+          "pattern": "^[0-9]+(?:\\.[0-9]+){1,3}$",
+          "title": "Driver Version",
+          "type": "string"
+        },
+        "memory_mb": {
+          "maximum": 16777216,
+          "minimum": 1,
+          "title": "Memory Mb",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "uuid": {
+          "pattern": "^GPU-[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$",
+          "title": "Uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uuid",
+        "name",
+        "driver_version",
+        "memory_mb",
+        "compute_capability"
+      ],
+      "title": "AcceleratorDeviceIdentityV1",
+      "type": "object"
+    },
     "ArtifactPinV1": {
       "additionalProperties": false,
       "properties": {
@@ -155,6 +197,60 @@
         }
       },
       "title": "EnvironmentPolicyV1",
+      "type": "object"
+    },
+    "ExclusiveNodeAcceleratorV1": {
+      "additionalProperties": false,
+      "description": "Explicit operator policy for a GPU node whose SLURM has no GRES.\n\nThis contract never turns a GPU count into ``--gres``.  It requires the\nnamed node to be reserved with ``--exclusive`` and compares the complete\nlive NVIDIA inventory with the frozen device identities before executing\nthe caller's argv.",
+      "properties": {
+        "allocation_mode": {
+          "const": "exclusive-node-inventory",
+          "default": "exclusive-node-inventory",
+          "title": "Allocation Mode",
+          "type": "string"
+        },
+        "devices": {
+          "items": {
+            "$ref": "#/$defs/AcceleratorDeviceIdentityV1"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Devices",
+          "type": "array"
+        },
+        "inventory_probe": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        },
+        "node_name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "title": "Node Name",
+          "type": "string"
+        },
+        "partition": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "title": "Partition",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.hpc.exclusive-node-accelerator/v1",
+          "default": "ari.hpc.exclusive-node-accelerator/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "vendor": {
+          "const": "nvidia",
+          "default": "nvidia",
+          "title": "Vendor",
+          "type": "string"
+        }
+      },
+      "required": [
+        "partition",
+        "node_name",
+        "inventory_probe",
+        "devices"
+      ],
+      "title": "ExclusiveNodeAcceleratorV1",
       "type": "object"
     },
     "OutputDeclarationV1": {
@@ -412,6 +508,17 @@
   },
   "additionalProperties": false,
   "properties": {
+    "accelerator_allocation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExclusiveNodeAcceleratorV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "argv": {
       "items": {
         "type": "string"

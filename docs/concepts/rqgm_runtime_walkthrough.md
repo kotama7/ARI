@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-07-28
+last_verified: 2026-08-03
 ---
 
 # RQGM Runtime Walkthrough
@@ -496,7 +496,7 @@ formats in the [File Formats Reference](../reference/file_formats.md)):
 ```
 
 `meta.json` additionally records the `constitution_hash` (currently
-`2edf93776904`) — the pin over all kernel rule tables. Constitutional
+`5e455c17da51`) — the pin over all kernel rule tables. Constitutional
 amendments are deliberate, hand-made re-pins: a rule-table edit fails
 `tests/test_rqgm_kernel.py` until the expected hash is re-pinned with a
 dated comment. The recent chain walks the amendments:
@@ -504,7 +504,9 @@ dated comment. The recent chain walks the amendments:
 `CK-UTL-*` rules) `→ 564a204dc694` (the paper founding roles) `→
 6643c12a510e` (T21, the paper-role shadow-standby edge) `→ 2edf93776904`
 (#78b, adding `governance_judge` to the role vocabulary so the impeachment
-judge is itself a governed, sanctionable actor).
+judge is itself a governed, sanctionable actor) `→ 5e455c17da51` (Tasks
+16–19, adding the fixed Knowledge/Capability/Harness roles, resource matrix,
+and `CK-KNW-*` / `CK-CAP-*` / `CK-HAR-*` integrity rules).
 
 ## How to observe a run
 

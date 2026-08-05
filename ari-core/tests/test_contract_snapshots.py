@@ -73,6 +73,13 @@ def test_public_api_submodules_present():
     assert "ExecutionRequestV1" in golden["ari.public.execution"]
     assert "filter_nodes" in golden["ari.public.node_selection"]
     assert "publish" in golden["ari.public.publish"]
+    assert "KnowledgeSkillManifestV1" in golden["ari.public.knowledge"]
+    assert "CapabilityProviderManifest" in golden["ari.public.providers"]
+    assert (
+        "CapabilityProviderSubstitutionReportV1"
+        in golden["ari.public.capability_binding"]
+    )
+    assert "ExternalHarnessParityReportV1" in golden["ari.public.assurance"]
     for sym in ("ARIConfig", "LLMConfig", "EvaluatorConfig"):
         assert sym in golden["ari.public.config_schema"]
     for sym in ("build_verified_context", "render_grounded_block",
@@ -90,7 +97,10 @@ def test_cli_command_tree():
         "clone", "run", "resume", "paper", "status", "skills-list",
         "viz", "projects", "show", "delete", "settings",
     }
-    assert groups == {"memory", "ear", "registry", "migrate"}
+    assert groups == {
+        "memory", "ear", "registry", "migrate",
+        "knowledge", "provider", "harness", "manuscript",
+    }
     # Nested typer must survive the broad try/except import guards (010 §1).
     assert "token" in root["registry"]["commands"]
     assert set(root["registry"]["commands"]["token"]["commands"]) == {
@@ -115,15 +125,15 @@ def test_mcp_tool_counts_and_names():
         "ari-skill-hpc", "ari-skill-idea", "ari-skill-memory",
         "ari-skill-orchestrator", "ari-skill-paper", "ari-skill-paper-re",
         "ari-skill-plot", "ari-skill-replicate", "ari-skill-tool-registry",
-        "ari-skill-transform",
+        "ari-skill-transform", "ari-skill-knowledge", "ari-skill-harness",
         "ari-skill-vlm", "ari-skill-web",
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
     assert len(fastmcp) == 67, f"expected 67 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 22, f"expected 22 low-level tool defs, got {len(lowlevel)}"
+    assert len(lowlevel) == 31, f"expected 31 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 87, f"expected 87 unique tool names, got {len(unique)}"
+    assert len(unique) == 96, f"expected 96 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 

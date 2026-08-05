@@ -63,6 +63,29 @@ from ari.research_contract import (  # noqa: E402
 )
 from ari.science_data_contract import ScienceDataV1  # noqa: E402
 from ari.visual_review_contract import VisualReviewBatchV1  # noqa: E402
+from ari.knowledge.models import (  # noqa: E402
+    EpochKnowledgeSkillLockV1,
+    KnowledgeSkillCatalogSnapshotV1,
+    KnowledgeSkillManifestV1,
+    NodeKnowledgeSkillUseV1,
+)
+from ari.capability_binding.models import (  # noqa: E402
+    CapabilityBindingLockV1,
+    CapabilityContractV1,
+)
+from ari.assurance.models import (  # noqa: E402
+    BaselineHarnessLockV1,
+    HarnessAttestationV1,
+    HarnessCatalogSnapshotV1,
+    HarnessLockRevisionV1,
+    HarnessManifestV1,
+    HarnessPromotionApprovalV1,
+    HarnessRegistrationEvidenceV1,
+    HarnessRegistrationReportV1,
+    HarnessRunRequestV1,
+    VerificationContractV1,
+)
+from ari.assurance.native_hpc import NativeHPCVerificationReportV1  # noqa: E402
 
 
 SKILL_SCHEMA_PATH = ARI_CORE / "ari" / "schemas" / "skill_manifest_v1.schema.json"
@@ -385,6 +408,108 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
             ResearchContractV1,
             "research-contract-v1",
             "ARI Research Contract v1",
+        ),
+        (
+            schema_dir / "knowledge_skill_manifest_v1.schema.json",
+            KnowledgeSkillManifestV1,
+            "knowledge-skill-manifest-v1",
+            "ARI Knowledge Skill Manifest v1",
+        ),
+        (
+            schema_dir / "knowledge_skill_catalog_snapshot_v1.schema.json",
+            KnowledgeSkillCatalogSnapshotV1,
+            "knowledge-skill-catalog-snapshot-v1",
+            "ARI Knowledge Skill Catalog Snapshot v1",
+        ),
+        (
+            schema_dir / "epoch_knowledge_skill_lock_v1.schema.json",
+            EpochKnowledgeSkillLockV1,
+            "epoch-knowledge-skill-lock-v1",
+            "ARI Epoch Knowledge Skill Lock v1",
+        ),
+        (
+            schema_dir / "node_knowledge_skill_use_v1.schema.json",
+            NodeKnowledgeSkillUseV1,
+            "node-knowledge-skill-use-v1",
+            "ARI Node Knowledge Skill Use v1",
+        ),
+        (
+            schema_dir / "capability_contract_v1.schema.json",
+            CapabilityContractV1,
+            "capability-contract-v1",
+            "ARI Capability Contract v1",
+        ),
+        (
+            schema_dir / "capability_binding_lock_v1.schema.json",
+            CapabilityBindingLockV1,
+            "capability-binding-lock-v1",
+            "ARI Capability Binding Lock v1",
+        ),
+        (
+            schema_dir / "verification_contract_v1.schema.json",
+            VerificationContractV1,
+            "verification-contract-v1",
+            "ARI Verification Contract v1",
+        ),
+        (
+            schema_dir / "harness_manifest_v1.schema.json",
+            HarnessManifestV1,
+            "harness-manifest-v1",
+            "ARI Harness Manifest v1",
+        ),
+        (
+            schema_dir / "harness_registration_report_v1.schema.json",
+            HarnessRegistrationReportV1,
+            "harness-registration-report-v1",
+            "ARI Harness Registration Report v1",
+        ),
+        (
+            schema_dir / "harness_registration_evidence_v1.schema.json",
+            HarnessRegistrationEvidenceV1,
+            "harness-registration-evidence-v1",
+            "ARI Harness Registration Evidence v1",
+        ),
+        (
+            schema_dir / "harness_promotion_approval_v1.schema.json",
+            HarnessPromotionApprovalV1,
+            "harness-promotion-approval-v1",
+            "ARI Harness Promotion Approval v1",
+        ),
+        (
+            schema_dir / "harness_catalog_snapshot_v1.schema.json",
+            HarnessCatalogSnapshotV1,
+            "harness-catalog-snapshot-v1",
+            "ARI Harness Catalog Snapshot v1",
+        ),
+        (
+            schema_dir / "harness_lock_v1.schema.json",
+            BaselineHarnessLockV1,
+            "harness-lock-v1",
+            "ARI Baseline Harness Lock v1",
+        ),
+        (
+            schema_dir / "harness_lock_revision_v1.schema.json",
+            HarnessLockRevisionV1,
+            "harness-lock-revision-v1",
+            "ARI Harness Lock Revision v1",
+        ),
+        (
+            schema_dir / "harness_run_request_v1.schema.json",
+            HarnessRunRequestV1,
+            "harness-run-request-v1",
+            "ARI Harness Run Request v1",
+        ),
+        (
+            schema_dir / "harness_attestation_v1.schema.json",
+            HarnessAttestationV1,
+            "harness-attestation-v1",
+            "ARI Harness Attestation v1",
+        ),
+        (
+            schema_dir / "native_hpc_verification_report_v1.schema.json",
+            NativeHPCVerificationReportV1,
+            "native-hpc-verification-report-v1",
+            "ARI Native HPC Verification Report v1",
         ),
     ):
         outputs[schema_dir / path.name] = _json_text(

@@ -446,6 +446,19 @@ FOUNDING_COMPONENT_TABLE: tuple[tuple[str, str, str, str, dict], ...] = (
      UTILITY_POLICY_PROMPT_ID, {}),
 )
 
+# Task 19: fixed Knowledge/Capability/Assurance procedures.  This table is
+# deliberately separate from ``FOUNDING_COMPONENT_TABLE``.  It is committed by
+# the feature-admission transaction only when at least one KCA layer is enabled,
+# preserving the historical founding event sequence for off/legacy/off runs.
+KCA_FIXED_COMPONENT_TABLE: tuple[tuple[str, str, str, None, dict], ...] = (
+    ("audit_log_v1", "audit_log", "fixed", None, {}),
+    ("capability_binder_v1", "capability_binder", "fixed", None, {}),
+    ("constitutional_kernel_v1", "constitutional_kernel", "fixed", None, {}),
+    ("fixed_verifier_v1", "fixed_verifier", "fixed", None, {}),
+    ("harness_resolver_v1", "harness_resolver", "fixed", None, {}),
+    ("knowledge_binder_v1", "knowledge_binder", "fixed", None, {}),
+)
+
 #: Paper-archive founding tables (plan ari_rqgm_paper/03 §5.5), kept SEPARATE
 #: from the exploration tables so they are PAPER-MODE-GATED: they enter the
 #: registry only when ``include_paper=True`` is threaded through
@@ -781,6 +794,29 @@ def founding_component_payloads(*, include_paper: bool = False) -> list[dict]:
             }
         )
     return payloads
+
+
+def kca_fixed_component_payloads() -> list[dict]:
+    """Feature-gated fixed-procedure component payloads.
+
+    Individual Knowledge Skills, Providers, and Harnesses never enter this
+    table: those are governed artifacts/snapshots, not institutional actors.
+    """
+
+    return [
+        {
+            "component_id": component_id,
+            "role": role,
+            "tier": tier,
+            "status": "active",
+            "prompt_id": prompt_id,
+            "epoch_id": "epoch_000",
+            "source_refs": [],
+            "capabilities": dict(capabilities),
+        }
+        for component_id, role, tier, prompt_id, capabilities
+        in KCA_FIXED_COMPONENT_TABLE
+    ]
 
 
 def founding_registration_events(

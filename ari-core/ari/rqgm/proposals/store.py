@@ -66,6 +66,19 @@ IDEA_JSON_KEYS: tuple[str, ...] = (
 # One-shot markers preserved verbatim across projection rewrites.
 _PRESERVED_TOP_LEVEL_MARKERS = ("_pinned", "_inherited_from", "_root_choice")
 
+_TYPED_HANDOFF_KEYS = (
+    "typed_schema_version",
+    "contract_status",
+    "survey_snapshot",
+    "survey_snapshot_digest",
+    "survey_snapshot_ref",
+    "idea_set",
+    "idea_set_digest",
+    "research_contract",
+    "research_contract_digest",
+    "rejected_candidates",
+)
+
 # Serialises appends/projections (single-writer main thread + best-effort
 # callers), mirroring ari.rqgm.store._LOCK.
 _LOCK = threading.Lock()
@@ -315,6 +328,16 @@ class ProposalStore:
         for marker in _PRESERVED_TOP_LEVEL_MARKERS:
             if marker in existing:
                 doc[marker] = existing[marker]
+        typed_source = meta if meta.get("research_contract") else existing
+        research_contract = typed_source.get("research_contract")
+        directive_title = str((doc.get("ideas") or [{}])[0].get("title", ""))
+        if (
+            isinstance(research_contract, dict)
+            and str(research_contract.get("title", "")) == directive_title
+        ):
+            for key in _TYPED_HANDOFF_KEYS:
+                if key in typed_source:
+                    doc[key] = typed_source[key]
         return doc
 
     def _directive_record(

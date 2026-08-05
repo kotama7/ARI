@@ -632,6 +632,10 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/summary"):
             ckpt_id = self.path[len("/api/checkpoint/"):-len("/summary")]
             self._json(_api_checkpoint_summary(urllib.parse.unquote(ckpt_id)))
+        elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/kca"):
+            from .api_kca import _api_checkpoint_kca
+            ckpt_id = self.path[len("/api/checkpoint/"):-len("/kca")]
+            self._json(_api_checkpoint_kca(urllib.parse.unquote(ckpt_id)))
         elif self.path.startswith("/api/checkpoint/") and self.path.endswith("/memory"):
             ckpt_id = self.path[len("/api/checkpoint/"):-len("/memory")]
             self._json(_api_checkpoint_memory(urllib.parse.unquote(ckpt_id)))

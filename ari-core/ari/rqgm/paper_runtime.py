@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import shutil
 from datetime import datetime, timezone
@@ -1350,9 +1351,35 @@ class PaperArchiveRuntime:
         pe_enabled = bool(
             getattr(getattr(pe, "prompt_evolution", None), "enabled", True)
         )
+        experiment_summary = experiment_data.get("goal", "")
+        if os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") == "enforce":
+            brief_path = os.environ.get("ARI_MANUSCRIPT_BRIEFS_PATH", "")
+            binding_path = os.environ.get("ARI_MANUSCRIPT_BINDING_PATH", "")
+            if not brief_path or not binding_path:
+                raise ValueError(
+                    "manuscript-enforced archive lacks a ready authoring bundle"
+                )
+            from ari.public.manuscript import (
+                ManuscriptAuthoringBindingV1,
+                SectionBriefBundleV1,
+                render_brief_bundle,
+            )
+
+            briefs = SectionBriefBundleV1.model_validate_json(
+                Path(brief_path).read_text(encoding="utf-8")
+            )
+            binding = ManuscriptAuthoringBindingV1.model_validate_json(
+                Path(binding_path).read_text(encoding="utf-8")
+            )
+            if (
+                binding.paper_mode != "rqgm_archive"
+                or binding.brief_bundle_digest != briefs.bundle_digest
+            ):
+                raise ValueError("archive manuscript binding is stale or for another backend")
+            experiment_summary = render_brief_bundle(briefs)
         return {
             "goal": experiment_data.get("goal", ""),
-            "experiment_summary": experiment_data.get("goal", ""),
+            "experiment_summary": experiment_summary,
             "verified_context_json": _p("verified_context.json"),
             "science_data_json": _p("science_data.json"),
             "figures_manifest_json": _p("figures_manifest.json"),

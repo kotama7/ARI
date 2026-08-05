@@ -38,11 +38,13 @@ source or auto-admits a new leaf during a run.
 ## ToolUniverse collection
 
 ToolUniverse is one optional collection source, not a dependency of the generic
-registry and not a public tool namespace. The reviewed support matrix currently
-contains ToolUniverse `1.3.1` and pins its PyPI wheel/sdist, upstream commit,
-license, upstream dependency lock, compact contract, and the canonical tree of
-all 3,542 files in the installed `tooluniverse` package. Sync and runtime both
-verify that tree before starting the exact
+registry and not a public tool namespace. The support matrix retains upstream
+ToolUniverse `1.3.1` as a candidate and admits the separately identified
+`1.3.1+ari.1` patched wheel for one verified PubMed capability. Both records pin
+the upstream commit, license, compact contract, and canonical installed package
+tree. The patched record additionally pins the metadata-only patch, reproducible
+wheel recipe, complete runtime lock, Provider manifest, and exact wheel digest.
+Sync and runtime verify that closure before starting the exact
 `tooluniverse.smcp_server:run_stdio_server` entry point.
 
 The adapter uses only `list_tools`, `get_tool_info`, and `execute_tool` from the
@@ -63,17 +65,63 @@ source declaration (start from
 python scripts/verify_tooluniverse.py \
   --python /absolute/provider-env/bin/python \
   --package-root /absolute/provider-env/lib/python3.13/site-packages/tooluniverse \
-  --category uniprot --smoke
+  --version 1.3.1+ari.1 \
+  --wheel /absolute/artifact-store/tooluniverse-1.3.1+ari.1-py3-none-any.whl \
+  --dependency-lock providers/tooluniverse/1.3.1+ari.1/runtime.uv.lock \
+  --verified-lock providers/tooluniverse/1.3.1+ari.1/verified-lock-v1.json \
+  --category pubmed --tool PubMed_search_articles --smoke
 ```
 
 Category profiles assign effects, determinism, permissions, limitations, and
 lineage to groups of leaves. They do not confer scientific validity. Collection
 evidence is capped below per-leaf replay/scientific validation, provider caches
 and update checks are disabled, and ARI cassette/EAR remains the replay
-authority. The optional dependency is installed only with
-`ari-skill-tool-registry[tooluniverse]`; production environments should be built
-from the reviewed upstream lock rather than resolving current transitive
-versions.
+authority. ToolUniverse is not installed through a registry package extra: the
+upstream `fitz` dependency resolves
+to an unrelated legacy distribution and breaks supported Python runtimes. The
+ARI artifact changes only package metadata (`fitz` to `PyMuPDF==1.26.4`) and its
+local version; two controlled builds produced the same wheel bytes. Production
+must install that retained wheel from `runtime.uv.lock`, never resolve mutable
+transitive versions. Verification checks wheel, raw lock, package tree,
+`pip check`, runtime target, compact MCP startup, and the evidence-bound lock.
+
+A profile may additionally project an exact reviewed leaf name to one canonical
+versioned `capability_ref`, equivalence key, and result normalizer. This is an
+explicit per-name map: descriptions, substrings, and nearby names never grant
+semantic authority, and a mapped leaf disappearing or changing category/type
+fails sync. The initial
+`tooluniverse-pubmed-retrieval/v1` normalizer converts only
+`PubMed_search_articles` success envelopes to
+`ari.retrieval-result/v1`, preserving the compact collection and leaf-spec
+digests in provenance. Only this exact leaf is `verified`; every other
+ToolUniverse leaf remains unadmitted. Formal promotion additionally requires
+the checked-in `promotion-approval-v1.json`, which binds an explicit human
+maintainer authorization to the exact registration report, evidence bundle,
+Provider manifest, and approved capability scope. Removing or mutating that
+approval invalidates the verified lock. The verified identity has no credential
+scope: although upstream declares optional `NCBI_API_KEY`, the environment does
+not pass it and the anonymous live probe is part of promotion evidence. A keyed
+variant requires a separate Provider identity and promotion.
+
+The default admission policy accepts the ontology's exact `network-read`
+permission without granting network write. A source synchronized from this
+verified identity therefore becomes one `callable` PubMed leaf; the committed
+default catalog remains empty. Promotion changes the governed Provider status;
+it does not auto-activate a Provider. Activation remains an explicit,
+environment-specific catalog sync followed by a run-frozen Provider/Binding
+lock, so existing and resumed runs cannot acquire the Provider implicitly.
+
+`scripts/promote_tooluniverse_pubmed.py` is the explicit admin operation and
+requires `--authorized-by` for the human maintainer identity. It
+rechecks the artifact and environment, live four-tool MCP surface, exact leaf
+and schema digests, Capability contract, normalized live result, isolation,
+timeout/process-group cleanup, schema drift, prompt-description boundaries, and
+unbound invocation rejection. It stages the immutable evidence bundle and
+fifteen-gate registration report, then publishes `verified-lock-v1.json` last;
+an interrupted or mixed set fails closed. Merely editing `status` cannot pass
+lock verification. Provider execution runs behind a value-free stdio supervisor
+that reaps the complete child process group on normal exit, timeout, and
+cancellation.
 
 ## OpenROAD experiment profiles
 
@@ -84,8 +132,11 @@ cwd, environment, executable, input/output paths, seed, threads, PDK, libraries,
 toolchain commits, and image digest all come from the reviewed catalog profile.
 
 Each profile selects one closed execution backend. `local-mcp` copies a closed
-digest-verified input workspace to a new private directory and starts
-`openroad -no_init -metrics <declared-json>` through one stateful MCP connection.
+digest-verified input workspace to a new private directory, compiles the typed
+command list to a runtime-owned fixed Tcl file, and starts
+`openroad -no_init -metrics <declared-json> <fixed-tcl>` through MCP. It polls
+read-only session state and collects artifacts only after normal process exit;
+it does not use PTY input echo as a completion signal.
 `slurm` compiles the same closed commands into a digest-pinned Tcl program,
 copies a standard-library-only reviewed worker, and submits both through C06's
 typed `JobRequestV1` in a digest-pinned clean Apptainer/Singularity container.
@@ -117,6 +168,47 @@ python scripts/verify_openroad.py \
   --package-root /absolute/openroad-mcp-env/lib/python3.13/site-packages/openroad_mcp \
   --experiment /absolute/profile.yaml --smoke
 ```
+
+The checked-in promotion bundle
+`providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/` formally verifies exactly
+one credential-free local-MCP CPU profile. Lock
+`sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28`
+binds OpenROAD-MCP 0.6.1, the retained ORFS image and inner OpenROAD binary,
+GCD placed database, Nangate45 PDK/library/license, typed command sequence,
+golden/replay fixtures, live MCP schemas, DRC-zero result, output contracts,
+all fifteen Provider gates, and explicit human promotion approval. The 1.54 GB
+SIF is a digest-pinned external retained artifact ignored by Git and must be
+materialized at the bundle's `runtime/openroad-orfs-26q3.sif` path.
+The independent
+`providers/openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/` bundle formally
+verifies the same closed scientific profile on an anonymous exclusive-node
+SLURM CPU allocation. Its lock
+`sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd`
+binds the salted site identity, controller-client snapshot, PRoot 5.3.1,
+unsquashfs 4.6.1, retained SIF, worker Python, fixed-wrapper terminal evidence,
+live route result, and human approval. It requests zero GPUs and grants no GPU
+capability. GPU execution, other designs/PDKs/corners, and another image remain
+separate candidate identities.
+Promotion does not add this leaf to the checked-in empty `CATALOG.lock`.
+`scripts/promote_openroad_gcd_cpu.py` and
+`scripts/promote_openroad_gcd_slurm_cpu.py` are the human-admin promotion
+commands; they rebuild their separate evidence/report/approval/lock closures
+and cannot broaden either fixed profile through command-line arguments.
+
+SLURM promotion keeps its physical cluster, partition, and node selectors in an
+ignored runtime site file, never in a tracked profile or evidence document. The
+site file must carry a 256-bit nonce; public artifacts bind only its salted full
+SHA-256 identity. `site_privacy.py` checks both current Git-tracked files and all
+non-ignored untracked candidates before submission and after bundle generation,
+and separately scans staged blob bytes, including staged content that differs
+from the worktree. Symlink targets and filenames are also covered. Removing the
+ignore rule or leaking a selector therefore aborts promotion. Run the same gate
+directly with `python scripts/check_site_privacy.py`; this checkout installs it
+as the repository pre-commit gate through `.githooks/pre-commit`. The private
+configuration remains ignored (or outside the repository), and an alternate
+location is supplied only through `ARI_PRIVATE_SLURM_SITE_CONFIG` or local Git
+configuration. A promotion checkout sets `ari.sitePrivacy.required=true`, so
+removing the private configuration cannot silently disable the hook.
 
 ## Qiskit experiment profiles
 
@@ -167,6 +259,20 @@ python scripts/verify_qiskit.py \
   --runtime-package-root /absolute/runtime-env/lib/python3.13/site-packages/qiskit_ibm_runtime_mcp_server \
   --experiment /absolute/profile.yaml --smoke
 ```
+
+The checked-in promotion bundle
+`providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/` formally verifies exactly
+one credential-free, seeded Bell-state local-Aer profile. Lock
+`sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`
+binds Qiskit MCP 0.3.1, Qiskit 2.5.1, Aer 0.17.2, QPY bytes/version, target,
+seeds, counts bounds, golden/replay evidence, live schemas, fifteen Provider
+gates, and explicit human approval. It does not promote the IBM Runtime MCP,
+remote simulator, or IBM hardware: those require a separate credential-scoped
+identity with a pinned backend/configuration/calibration snapshot and live
+golden/replay evidence. Promotion does not activate the default catalog.
+`scripts/promote_qiskit_local_aer.py` is the human-admin promotion command; it
+recreates the QPY/golden/replay and complete evidence/report/approval/lock
+closure for this exact local profile only.
 
 See [the Qiskit profile guide](../docs/reference/qiskit_profiles.md) for the
 scientific contract, credential procedure, provider update gate, and rollback.

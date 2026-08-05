@@ -8,7 +8,11 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_paper_eval.py
     role: test
-last_verified: 2026-07-29
+  - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
+    role: test
+  - path: ari-core/tests/test_rqgm_eval_kca_injection.py
+    role: test
+last_verified: 2026-08-03
 ---
 
 # RQGM Evaluation and Ablation
@@ -40,6 +44,35 @@ expansions are pinned by `ari-core/tests/test_rqgm_eval_conditions.py`.
 The marginal value of each layer is the paired difference: adversarial =
 B4−B3, governance = B5−B4, retirement/erasure = B6−B5, evolution = B7−B6,
 meta = B8−B7; VirSci = B2−B3.
+
+## Orthogonal Knowledge/Capability and Assurance axes
+
+Task 20 adds two namespaces without changing any B0–B8 expansion or meaning.
+Every comparison keeps the B condition, experiment, node budget, model, seed,
+catalog snapshots, Research Contract, and Verification Contract fixed.
+
+| K condition | Effective production posture |
+|---|---|
+| `K0_legacy_no_knowledge` | `knowledge.off` + legacy tool discovery |
+| `K1_knowledge_injection_only` | Knowledge audit/injection; legacy binding; non-publishable comparison |
+| `K2_capability_binding_audit` | Knowledge and deterministic binding recorded; unbound calls observed |
+| `K3_capability_binding_enforced` | verified Knowledge and bound Provider tools enforced |
+| `K4_full_knowledge_capability_assurance` | Reporting alias for `K3 × H3`, never a second config source |
+
+| H condition | Effective production posture |
+|---|---|
+| `H0_assurance_off` | no Harness artifacts or frontier effect |
+| `H1_assurance_audit` | screen/validate/certify run and record without blocking |
+| `H2_assurance_screen_enforced` | screen gates the scientific frontier |
+| `H3_assurance_full_certification` | screen gates the frontier and certify gates publication |
+
+The preset dictionaries live in separate `assurance_conditions` and
+`knowledge_capability_conditions` sections of `ablation_matrix.yaml`.
+`expand_kca_condition` composes them with one unchanged B overlay and writes
+the chosen B/H/K ids as evaluation metadata. Production Knowledge selection,
+binding, and verification remain in `ari.knowledge`,
+`ari.capability_binding`, and `ari.assurance`; `ari.rqgm.evaluation` only
+measures and injects failures into those paths.
 
 Because the per-layer flags (`rqgm.{adversarial,governance,frontier_repair,
 prompt_evolution,meta_evolution}.enabled`) default **true** in the typed
@@ -99,6 +132,17 @@ Two mechanisms, no LLM in either:
 Injection ids use the held-out `eval_*` namespace (disjoint from `adv_*` /
 `anchor_*`); every injected run carries `rqgm_injection_provenance.json`.
 
+Task 20 adds 38 `kca_mutation` cases and 38 same-shape clean controls:
+11 Knowledge attacks (body/source/authority/composition), 12 Provider and
+binding attacks (semantic mismatch, schema/identity drift, credentials and
+side effects), and 15 Harness attacks (wrong result, lock/asset/target
+tampering, infrastructure separation, evidence suppression, uncertified
+publication). The offline smoke probe submits each mutation and its clean
+control to the production admission or Kernel integrity path; it records the
+observed `CK-KNW-*`, `CK-CAP-*`, `CK-HAR-*`, admission, or attestation channel.
+The marker under `rqgm/kca/evaluation/injections/` is provenance only and is
+never read by production runtime code.
+
 ## Metrics
 
 Thirteen metrics computed post-hoc by
@@ -117,6 +161,35 @@ retirement precision); 9–10 erasure health (frontier contamination,
 recovery after erasure — ordinal, never wall-clock); 11–12 cost (per
 detected failure, token totals per phase); 13 wall clock (metadata only,
 never hashed).
+
+The additive `knowledge_capability` and `assurance` blocks measure capability
+coverage, binding determinism, unbound/hallucinated calls, portability and
+Provider substitution, prompt/description injection, provenance, revocation,
+property coverage, Harness false accept/reject, attestation integrity,
+scientific-frontier contamination, uncertified publication, ordinary-failure
+false impeachment, recovery, per-tier cost, infrastructure errors, lock
+determinism, and upstream parity. Direct per-run quantities are derived from
+persisted locks, records, nodes, and cost traces. Cross-run quantities require
+a digest-bound matched-panel artifact; absence is `applicable: false`, never a
+fabricated zero or one. The original thirteen `metrics` entries are unchanged.
+
+Verifier cost uses actual executor start/completion timestamps and the locked
+Harness allocation. Each Assurance row records wall seconds, CPU-core seconds,
+accelerator seconds, and memory-byte seconds, with a screen/validate/certify
+breakdown. These are allocation-time quantities rather than sampled
+utilization. Scheduler/cloud dollars remain `unpriced` until an authoritative
+charge is attached; the metric stays applicable for resource reporting but its
+USD value is `null` rather than a fabricated zero. A standalone verifier-core
+timing without a valid Attestation may be retained as a Tier-3 diagnostic, but
+it must set `authoritative_cost_trace_eligible: false` and cannot enter the
+production per-valid-node denominator.
+
+External official-runner parity likewise distinguishes `passed`, `failed`, and
+`not_available`. Compatibility imports and deterministic scorer-unit controls
+are useful diagnostics but do not enter `upstream_parity_rate`. A passed cell
+requires exact official invocation/result and ARI-normalized result digests,
+reference and negative controls, result-schema parity, and all source,
+dataset, container, and driver pins.
 
 ## Paper-archive evaluation (`paper.mode`)
 
@@ -310,6 +383,12 @@ P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm \
 # Offline smoke (stub components, seconds, no LLM) — the deletion-criteria
 # smoke campaign:
 python scripts/rqgm_eval/run_ablation.py --smoke --conditions B0,B3 --seeds 11
+
+# Orthogonal K/C/A smoke. K4 is written only as the K3×H3 reporting alias:
+python scripts/rqgm_eval/run_ablation.py --smoke --conditions B8 \
+    --knowledge-capability-conditions K0_legacy_no_knowledge,K3_capability_binding_enforced \
+    --assurance-conditions H0_assurance_off,H3_assurance_full_certification \
+    --seeds 11
 
 # Tier-3 real campaign (LLM cost; never in CI). Runs every benchmark in
 # scripts/rqgm_eval/experiments/*.md per condition × seed; narrow the set

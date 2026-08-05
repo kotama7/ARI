@@ -27,6 +27,9 @@ KERNEL_CONTEXTS: tuple[str, ...] = (
     "audit_log",
     "clean_room",
     "context_scope",
+    "knowledge_integrity",
+    "capability_integrity",
+    "harness_integrity",
 )
 
 SEVERITY_BLOCK = "block"

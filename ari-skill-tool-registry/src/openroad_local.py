@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from models import sanitize_text, sha256_digest
-from openroad_contracts import OpenRoadCommandV1, OpenRoadExperimentV1
+from models import sanitize_text
+from openroad_contracts import OpenRoadExperimentV1
 from openroad_identity import _file_sha256
 from openroad_results import OpenRoadResultStore
 from openroad_verification import verify_openroad_experiment_files
@@ -60,7 +60,6 @@ def _decode_wrapped(response: ProviderResponseV1, operation: str) -> dict[str, A
     return value
 
 
-
 class OpenRoadLocalRuntime:
     """Run one immutable profile through a stateful local MCP session."""
 
@@ -88,69 +87,55 @@ class OpenRoadLocalRuntime:
         response = await transport.invoke(operation, arguments)
         return _decode_wrapped(response, operation)
 
-    async def _run_command(
+    @staticmethod
+    def _write_program(
+        profile: OpenRoadExperimentV1, workspace: Path
+    ) -> tuple[Path, str]:
+        path = workspace / "ari-openroad-flow.tcl"
+        path.write_text(
+            "\n".join(command.text for command in profile.commands)
+            + "\n# Runtime-owned normal shutdown; not profile authority.\nexit\n",
+            encoding="utf-8",
+        )
+        path.chmod(0o600)
+        return path, _file_sha256(path)
+
+    async def _wait_for_session(
         self,
         transport: ProviderAdapter,
         *,
         session_id: str,
-        command: OpenRoadCommandV1,
         profile: OpenRoadExperimentV1,
-        transcript: list[dict[str, Any]],
-        handle_id: str,
-    ) -> None:
+        initially_alive: bool,
+    ) -> dict[str, Any]:
         started = asyncio.get_running_loop().time()
-        initial = await self._call(
-            transport,
-            "interactive_openroad_exec",
-            {"command": command.text, "session_id": session_id, "timeout_ms": 250},
-        )
-        chunks = [str(initial.get("output") or "")]
-        if initial.get("error"):
-            raise ProviderProtocolError(
-                f"OpenROAD command {command.verb} failed: {initial['error']}"
-            )
-        sentinel = (
-            "ARI_DONE_"
-            + sha256_digest(
-                {"handle_id": handle_id, "command": command.model_dump(mode="json")}
-            ).removeprefix("sha256:")[:24]
-        )
-        while sentinel not in "\n".join(chunks):
+        final = {"state": "terminated", "is_alive": False}
+        while initially_alive:
             elapsed = asyncio.get_running_loop().time() - started
-            command_timeout = profile.command_timeout_seconds
-            if elapsed >= command_timeout:
+            if elapsed >= profile.command_timeout_seconds:
                 raise ProviderProtocolError(
-                    f"OpenROAD command {command.verb} exceeded {command_timeout}s"
+                    "OpenROAD fixed Tcl program exceeded "
+                    f"{profile.command_timeout_seconds}s"
                 )
-            poll_ms = max(100, min(1_000, int((command_timeout - elapsed) * 1_000)))
-            polled = await self._call(
+            inspected = await self._call(
                 transport,
-                "interactive_openroad_query",
-                {
-                    "command": f"puts {sentinel}",
-                    "session_id": session_id,
-                    "timeout_ms": poll_ms,
-                },
+                "inspect_interactive_session",
+                {"session_id": session_id},
             )
-            chunks.append(str(polled.get("output") or ""))
-            if polled.get("error"):
+            metrics = inspected.get("metrics")
+            if not isinstance(metrics, dict):
                 raise ProviderProtocolError(
-                    f"OpenROAD command {command.verb} failed: {polled['error']}"
+                    "OpenROAD MCP returned no typed session state"
                 )
-            if sentinel not in chunks[-1]:
-                await asyncio.sleep(profile.poll_interval_seconds)
-        output = "\n".join(chunks).replace(sentinel, "").strip()
-        transcript.append(
-            {
-                "stage": command.stage,
-                "verb": command.verb,
-                "arguments": command.arguments,
-                "output": sanitize_text(output, limit=100_000),
-                "duration_seconds": round(
-                    asyncio.get_running_loop().time() - started, 6
-                ),
+            final = {
+                "state": str(metrics.get("state") or "unknown"),
+                "is_alive": bool(metrics.get("is_alive")),
             }
-        )
+            if not final["is_alive"] or final["state"] in {"terminated", "error"}:
+                return final
+            await asyncio.sleep(profile.poll_interval_seconds)
+        return final
+
     async def run_job(self, job: Any) -> None:
         profile = job.experiment
         job.status = "running"
@@ -167,6 +152,15 @@ class OpenRoadLocalRuntime:
                     (workspace / output.relative_path).parent.mkdir(
                         parents=True, exist_ok=True
                     )
+                tcl_path, tcl_digest = self._write_program(profile, workspace)
+                transcript.append(
+                    {
+                        "stage": "execution",
+                        "operation": "runtime-generated-fixed-tcl",
+                        "tcl_digest": tcl_digest,
+                        "command_count": len(profile.commands),
+                    }
+                )
                 async with self._connection() as transport:
                     created = False
                     try:
@@ -189,31 +183,46 @@ class OpenRoadLocalRuntime:
                                     "-no_init",
                                     "-metrics",
                                     metrics_path,
+                                    tcl_path.name,
                                 ],
                                 "env": {},
                                 "cwd": str(workspace),
                             },
                         )
-                        if not created_payload.get("is_alive") or (
-                            created_payload.get("session_id") != session_id
-                        ):
+                        if created_payload.get("session_id") != session_id:
                             raise ProviderProtocolError(
                                 "OpenROAD MCP did not create the bound session"
                             )
                         created = True
-                        for command in profile.commands:
-                            job.stage = command.stage
-                            await self._run_command(
-                                transport,
-                                session_id=session_id,
-                                command=command,
-                                profile=profile,
-                                transcript=transcript,
-                                handle_id=job.handle_id,
-                            )
+                        job.stage = "executing"
+                        final_state = await self._wait_for_session(
+                            transport,
+                            session_id=session_id,
+                            profile=profile,
+                            initially_alive=bool(created_payload.get("is_alive")),
+                        )
+                        transcript.append(
+                            {
+                                "stage": "finalizing",
+                                "operation": "fixed-tcl-process-exit",
+                                "session_state": final_state,
+                            }
+                        )
+                        metrics_file = workspace / metrics_path
+                        flush_deadline = asyncio.get_running_loop().time() + 10.0
+                        while not metrics_file.is_file():
+                            if asyncio.get_running_loop().time() >= flush_deadline:
+                                raise ProviderProtocolError(
+                                    "OpenROAD normal exit did not flush the metrics artifact"
+                                )
+                            await asyncio.sleep(0.05)
                         job.stage = "collecting"
                         artifact_manifest, artifact_refs, artifact_digests = (
-                            self.results.capture_artifacts(profile, workspace)
+                            self.results.capture_artifacts(
+                                profile,
+                                workspace,
+                                internal_paths=frozenset({tcl_path.name}),
+                            )
                         )
                         metrics = self.results.normalize_metrics(
                             profile, workspace, artifact_digests
@@ -267,8 +276,8 @@ class OpenRoadLocalRuntime:
             job.status = "cancelled"
             job.stage = "cancelled"
             job.completed_at = _now()
-            transcript_meta, transcript_ref = self.results.store_transcript_after_failure(
-                job, transcript
+            transcript_meta, transcript_ref = (
+                self.results.store_transcript_after_failure(job, transcript)
             )
             structured: dict[str, Any] = {
                 "handle_id": job.handle_id,
@@ -285,8 +294,8 @@ class OpenRoadLocalRuntime:
             job.stage = "failed"
             job.completed_at = _now()
             job.error = sanitize_text(f"{type(exc).__name__}: {exc}", limit=2_000)
-            transcript_meta, transcript_ref = self.results.store_transcript_after_failure(
-                job, transcript
+            transcript_meta, transcript_ref = (
+                self.results.store_transcript_after_failure(job, transcript)
             )
             structured: dict[str, Any] = {
                 "handle_id": job.handle_id,
@@ -299,7 +308,6 @@ class OpenRoadLocalRuntime:
                     transcript_ref.model_dump(mode="json")
                 ]
             job.response = self.results.terminal_response(structured)
-
 
 
 def openroad_local_runtime_digest() -> str:

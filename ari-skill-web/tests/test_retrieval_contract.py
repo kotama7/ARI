@@ -7,6 +7,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -221,6 +222,58 @@ def test_pinned_provider_outage_is_explicit_and_never_falls_back():
                     mode="live",
                 )
             )
+
+
+def test_arxiv_provider_uses_supported_client_api(monkeypatch):
+    from server import _arxiv_provider_rows
+
+    observed = {}
+
+    class Search:
+        def __init__(self, **kwargs):
+            observed["search"] = kwargs
+
+    class Client:
+        def results(self, search):
+            observed["client_search"] = search
+            return iter(
+                [
+                    SimpleNamespace(
+                        get_short_id=lambda: "2401.00001v3",
+                        title="A current arxiv-py result",
+                        authors=[SimpleNamespace(name="Ada Example")],
+                        published=datetime(2024, 1, 2, tzinfo=timezone.utc),
+                        summary="Measured evidence.",
+                        entry_id="https://arxiv.org/abs/2401.00001v3",
+                        license=None,
+                    )
+                ]
+            )
+
+    fake = SimpleNamespace(
+        Search=Search,
+        Client=Client,
+        SortCriterion=SimpleNamespace(Relevance="relevance"),
+    )
+    monkeypatch.setitem(sys.modules, "arxiv", fake)
+
+    rows = _arxiv_provider_rows("reproducibility", limit=2)
+
+    assert observed["search"]["max_results"] == 2
+    assert observed["client_search"] is not None
+    assert rows == [
+        {
+            "id": "2401.00001",
+            "arxiv_id": "2401.00001",
+            "title": "A current arxiv-py result",
+            "authors": ["Ada Example"],
+            "year": 2024,
+            "published": "2024-01-02T00:00:00+00:00",
+            "abstract": "Measured evidence.",
+            "url": "https://arxiv.org/abs/2401.00001v3",
+            "license": None,
+        }
+    ]
 
 
 def test_fetch_record_preserves_raw_body_and_replays_offline(tmp_path, monkeypatch):

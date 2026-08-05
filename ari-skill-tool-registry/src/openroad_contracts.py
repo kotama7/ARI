@@ -205,7 +205,7 @@ class OpenRoadMetricV1(BaseModel):
     metric_id: str
     source_artifact: str
     json_pointer: str
-    unit: Literal["ns", "ps", "um^2", "mm^2", "mW", "W", "count", "%", "ratio"]
+    unit: Literal["ns", "ps", "um", "um^2", "mm^2", "mW", "W", "count", "%", "ratio"]
     corner: str
     mode: str
     stage: OpenRoadStage
@@ -328,17 +328,26 @@ class OpenRoadExperimentV1(BaseModel):
     def _validate_execution(self) -> None:
         if self.execution.backend == "slurm":
             assert self.execution.resources is not None
-            assert self.execution.container is not None
             if self.execution.resources.cpus_per_task != self.toolchain.threads:
                 raise ValueError(
                     "OpenROAD SLURM CPUs per task must equal the pinned thread count"
                 )
-            if self.execution.container.image.digest != (
-                self.toolchain.execution_image_digest
-            ):
-                raise ValueError(
-                    "OpenROAD container digest must equal the toolchain image digest"
-                )
+            if self.execution.container is not None:
+                if self.execution.container.image.digest != (
+                    self.toolchain.execution_image_digest
+                ):
+                    raise ValueError(
+                        "OpenROAD container digest must equal the toolchain image digest"
+                    )
+            else:
+                assert self.execution.portable_runtime is not None
+                if self.execution.portable_runtime.image.digest != (
+                    self.toolchain.execution_image_digest
+                ):
+                    raise ValueError(
+                        "OpenROAD portable runtime image digest must equal the "
+                        "toolchain image digest"
+                    )
             if _walltime_seconds(self.execution.resources.walltime) < int(
                 math.ceil(self.command_timeout_seconds)
             ):
@@ -439,6 +448,25 @@ class OpenRoadExperimentV1(BaseModel):
             "limitations",
         ):
             payload.pop(key, None)
+        # Host materialization locations are recorded by the source/run lock;
+        # portable experiment identity is carried by the corresponding digests.
+        payload["toolchain"].pop("executable_path", None)
+        payload["workspace"].pop("source_root", None)
+        execution = payload["execution"]
+        execution.pop("work_root", None)
+        execution.pop("worker_python", None)
+        container = execution.get("container")
+        if isinstance(container, dict) and isinstance(container.get("image"), dict):
+            container["image"].pop("path", None)
+        portable = execution.get("portable_runtime")
+        if isinstance(portable, dict):
+            for pin_name in ("proot", "image", "unsquashfs"):
+                pin = portable.get(pin_name)
+                if isinstance(pin, dict):
+                    pin.pop("path", None)
+        worker_python_pin = execution.get("worker_python_pin")
+        if isinstance(worker_python_pin, dict):
+            worker_python_pin.pop("path", None)
         return payload
 
     @property
@@ -447,13 +475,17 @@ class OpenRoadExperimentV1(BaseModel):
 
     @property
     def method_digest(self) -> str:
+        payload = self.execution_payload()
         return sha256_digest(
             {
-                "toolchain": self.toolchain,
-                "technology": self.technology,
-                "execution": self.execution,
-                "commands": self.commands,
-                "metrics": self.metrics,
+                key: payload[key]
+                for key in (
+                    "toolchain",
+                    "technology",
+                    "execution",
+                    "commands",
+                    "metrics",
+                )
             }
         )
 

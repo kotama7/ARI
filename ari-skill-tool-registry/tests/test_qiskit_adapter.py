@@ -78,33 +78,33 @@ async def test_catalog_keeps_four_quantum_capabilities_and_backend_independence(
         "scientifically_admitted"
     }
     assert {item.capability_ref for item in result.lock.tools} == {
-        "ari.quantum.sample.local-ideal",
-        "ari.quantum.sample.local-noisy",
-        "ari.quantum.sample.remote-simulator",
-        "ari.quantum.sample.ibm-hardware",
+        "ari.quantum.sample.local-ideal/v1",
+        "ari.quantum.sample.local-noisy/v1",
+        "ari.quantum.sample.remote-simulator/v1",
+        "ari.quantum.sample.ibm-hardware/v1",
     }
     ideal = [
         item
         for item in result.lock.tools
-        if item.capability_ref == "ari.quantum.sample.local-ideal"
+        if item.capability_ref == "ari.quantum.sample.local-ideal/v1"
     ]
     assert len({item.independence_group for item in ideal}) == 1
     assert any(
         item.relationship == "same-backend"
-        and item.capability_ref == "ari.quantum.sample.local-ideal"
+        and item.capability_ref == "ari.quantum.sample.local-ideal/v1"
         for item in result.lock.overlaps
     )
     noisy = next(
         item
         for item in result.lock.tools
-        if item.capability_ref == "ari.quantum.sample.local-noisy"
+        if item.capability_ref == "ari.quantum.sample.local-noisy/v1"
     )
     assert noisy.semantics["backend"]["noise_model"]["kind"] == ("depolarizing-readout")
     assert noisy.units["noise.two_qubit_error"] == "1"
     hardware = next(
         item
         for item in result.lock.tools
-        if item.capability_ref == "ari.quantum.sample.ibm-hardware"
+        if item.capability_ref == "ari.quantum.sample.ibm-hardware/v1"
     )
     assert hardware.side_effects == "stateful"
     assert hardware.permissions == [

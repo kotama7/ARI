@@ -49,10 +49,10 @@ checkpoint `launch_config.json`。どれを設定してもウィザードの既�
 export ARI_SLURM_PARTITION=large
 ```
 
-## 例: sx40 (シングルノード, 4×V100)
+## 例: 匿名の GRES 未設定 GPU partition
 
-`sx40` は CRA の partition で `4× V100-SXM2-16GB` を 1 ノードに提供
-(GRES 未設定)。 設定例:
+この例では `4× V100-SXM2-16GB` を 1 ノードに提供するが GRES は未設定。
+設定例:
 
 ```jsonc
 "execution_profile": {

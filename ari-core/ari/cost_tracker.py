@@ -1,8 +1,14 @@
 """Cost tracker for ARI — writes per-call logs and per-experiment summaries."""
 
 from __future__ import annotations
-import json, logging, os, threading, time
-from dataclasses import dataclass, asdict
+
+import json
+import logging
+import os
+import threading
+import time
+from dataclasses import asdict, dataclass
+from datetime import datetime as _datetime
 from pathlib import Path
 from typing import Optional
 
@@ -105,6 +111,19 @@ class CallRecord:
     # set_default_metadata(epoch=...) at epoch open; stays None on every
     # simple_bfts run (readers must treat absence as "no epoch recorded").
     epoch: str | None = None
+    # Scientific Assurance execution accounting.  These fields are omitted
+    # from ordinary LLM records, preserving the legacy JSONL bytes.
+    execution_identity: str | None = None
+    execution_attempt_id: str | None = None
+    attestation_digest: str | None = None
+    harness_id: str | None = None
+    execution_status: str | None = None
+    wall_time_ms: float | None = None
+    cpu_core_seconds: float | None = None
+    accelerator_seconds: float | None = None
+    memory_byte_seconds: float | None = None
+    resource_measurement_basis: str | None = None
+    cost_status: str | None = None
 
 class CostTracker:
     """Thread-safe per-experiment cost tracker."""
@@ -146,9 +165,27 @@ class CostTracker:
                             completion_tokens=d.get("completion_tokens", 0),
                             total_tokens=d.get("total_tokens", 0),
                             estimated_cost_usd=d.get("estimated_cost_usd", 0.0),
+                            component=d.get("component"),
+                            op=d.get("op"),
+                            backend=d.get("backend"),
+                            embedding_tokens=d.get("embedding_tokens", 0),
+                            latency_ms=d.get("latency_ms"),
                             # Absent on pre-RQGM lines: absence == no data
                             # recorded, never an error (RQGM Task 12 §6.4).
                             epoch=d.get("epoch"),
+                            execution_identity=d.get("execution_identity"),
+                            execution_attempt_id=d.get("execution_attempt_id"),
+                            attestation_digest=d.get("attestation_digest"),
+                            harness_id=d.get("harness_id"),
+                            execution_status=d.get("execution_status"),
+                            wall_time_ms=d.get("wall_time_ms"),
+                            cpu_core_seconds=d.get("cpu_core_seconds"),
+                            accelerator_seconds=d.get("accelerator_seconds"),
+                            memory_byte_seconds=d.get("memory_byte_seconds"),
+                            resource_measurement_basis=d.get(
+                                "resource_measurement_basis"
+                            ),
+                            cost_status=d.get("cost_status"),
                         ))
                     except (json.JSONDecodeError, KeyError):
                         continue
@@ -161,7 +198,18 @@ class CostTracker:
                backend: str | None = None, embedding_tokens: int = 0,
                latency_ms: float | None = None,
                cost_usd: float | None = None,
-               epoch: str | None = None) -> None:
+               epoch: str | None = None,
+               execution_identity: str | None = None,
+               execution_attempt_id: str | None = None,
+               attestation_digest: str | None = None,
+               harness_id: str | None = None,
+               execution_status: str | None = None,
+               wall_time_ms: float | None = None,
+               cpu_core_seconds: float | None = None,
+               accelerator_seconds: float | None = None,
+               memory_byte_seconds: float | None = None,
+               resource_measurement_basis: str | None = None,
+               cost_status: str | None = None) -> None:
         # Trust an authoritative upstream cost when provided (e.g. the CLI shim
         # forwards claude -p's ``total_cost_usd``). litellm's pricing table has
         # no entry for synthetic shim models like "claude-cli", so without this
@@ -180,6 +228,17 @@ class CostTracker:
             component=component, op=op, backend=backend,
             embedding_tokens=embedding_tokens, latency_ms=latency_ms,
             epoch=epoch,
+            execution_identity=execution_identity,
+            execution_attempt_id=execution_attempt_id,
+            attestation_digest=attestation_digest,
+            harness_id=harness_id,
+            execution_status=execution_status,
+            wall_time_ms=wall_time_ms,
+            cpu_core_seconds=cpu_core_seconds,
+            accelerator_seconds=accelerator_seconds,
+            memory_byte_seconds=memory_byte_seconds,
+            resource_measurement_basis=resource_measurement_basis,
+            cost_status=cost_status,
         )
         with self._lock:
             self._records.append(rec)
@@ -189,9 +248,86 @@ class CostTracker:
             # simple_bfts lines stay byte-identical to pre-RQGM output.
             if line.get("epoch") is None:
                 line.pop("epoch", None)
+            for key in (
+                "execution_identity",
+                "execution_attempt_id",
+                "attestation_digest",
+                "harness_id",
+                "execution_status",
+                "wall_time_ms",
+                "cpu_core_seconds",
+                "accelerator_seconds",
+                "memory_byte_seconds",
+                "resource_measurement_basis",
+                "cost_status",
+            ):
+                if line.get(key) is None:
+                    line.pop(key, None)
             with open(self._trace_path, "a") as f:
                 f.write(json.dumps(line) + "\n")
         self._write_summary()
+
+    def record_verification(
+        self,
+        *,
+        node_id: str,
+        epoch: str,
+        tier: str,
+        harness_id: str,
+        execution_identity: str,
+        execution_attempt_id: str,
+        attestation_digest: str,
+        execution_status: str,
+        started_at: str,
+        completed_at: str,
+        cpu_cores: int,
+        accelerators: int,
+        memory_bytes: int,
+        backend: str,
+        cost_usd: float | None = None,
+    ) -> None:
+        """Append one verifier execution to the canonical cost trace.
+
+        CPU/GPU/memory quantities are declared allocation multiplied by the
+        executor-measured wall interval.  They are not represented as actual
+        utilization.  An absent authoritative dollar charge remains explicitly
+        ``unpriced`` instead of being reported as a free execution.
+        """
+
+        if tier not in {"screen", "validate", "certify"}:
+            raise ValueError("verification cost tier is invalid")
+        if min(cpu_cores, accelerators, memory_bytes) < 0:
+            raise ValueError("verification resources must be non-negative")
+        started = _datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        completed = _datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+        duration = (completed - started).total_seconds()
+        if duration < 0:
+            raise ValueError("verification completion predates its start")
+        self.record(
+            model=f"harness:{harness_id}",
+            prompt_tokens=0,
+            completion_tokens=0,
+            node_id=node_id,
+            phase=tier,
+            skill="ari.assurance",
+            component="assurance",
+            op="verify",
+            backend=backend,
+            latency_ms=duration * 1_000,
+            cost_usd=0.0 if cost_usd is None else cost_usd,
+            epoch=epoch,
+            execution_identity=execution_identity,
+            execution_attempt_id=execution_attempt_id,
+            attestation_digest=attestation_digest,
+            harness_id=harness_id,
+            execution_status=execution_status,
+            wall_time_ms=duration * 1_000,
+            cpu_core_seconds=duration * cpu_cores,
+            accelerator_seconds=duration * accelerators,
+            memory_byte_seconds=duration * memory_bytes,
+            resource_measurement_basis="declared-allocation-x-executor-wall-time",
+            cost_status="unpriced" if cost_usd is None else "measured",
+        )
 
     def _write_summary(self) -> None:
         with self._lock:
@@ -223,6 +359,24 @@ class CostTracker:
             "by_model": {k: {"cost_usd": round(v["cost_usd"], 6), "tokens": v["tokens"]}
                          for k, v in by_model.items()},
         }
+        verification = [r for r in records if r.component == "assurance"]
+        if verification:
+            summary["verification_resources"] = {
+                "wall_time_seconds": round(
+                    sum((r.wall_time_ms or 0.0) / 1_000 for r in verification), 9
+                ),
+                "cpu_core_seconds": round(
+                    sum(r.cpu_core_seconds or 0.0 for r in verification), 9
+                ),
+                "accelerator_seconds": round(
+                    sum(r.accelerator_seconds or 0.0 for r in verification), 9
+                ),
+                "memory_byte_seconds": round(
+                    sum(r.memory_byte_seconds or 0.0 for r in verification), 3
+                ),
+                "priced_records": sum(r.cost_status == "measured" for r in verification),
+                "unpriced_records": sum(r.cost_status == "unpriced" for r in verification),
+            }
         with open(self._summary_path, "w") as f:
             json.dump(summary, f, indent=2)
 

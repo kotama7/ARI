@@ -95,6 +95,12 @@ PaperArtifactRole = Literal[
     "visual-review",
     "code-bundle-lock",
     "authoring-record",
+    "manuscript-profile",
+    "manuscript-context",
+    "manuscript-readiness",
+    "section-briefs",
+    "manuscript-authoring-binding",
+    "publication-decision",
 ]
 
 

@@ -86,6 +86,11 @@ class BondLedger:
 
 def classify_target(entry: dict) -> str | None:
     """Deterministic threshold classification of one reliability entry."""
+    # Fixed procedures are constitutional mechanisms, not institutional
+    # incumbents.  Their integrity findings suspend/repair the affected
+    # artifact or run; they never enter incumbent impeachment competition.
+    if str(entry.get("tier", "")) == "fixed":
+        return None
     attacks = int(entry.get("validated_attack_involvement", 0) or 0)
     score = entry.get("reliability_score")
     if attacks >= ATTACK_THRESHOLD:

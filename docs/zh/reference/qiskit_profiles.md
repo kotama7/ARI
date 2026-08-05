@@ -8,7 +8,9 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/qiskit-support-v1.json
     role: config
-last_verified: 2026-08-02
+  - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
+    role: config
+last_verified: 2026-08-05
 ---
 
 # Qiskit 与 IBM Quantum 实验配置
@@ -30,14 +32,25 @@ profile，而模型仍只看到注册表的五个稳定操作。
 这些检查只证明软件身份和协议一致性。科学 admission 还要求封闭实验、局限说明、统计边界、
 真实的 golden/replay 文件和领域审核。
 
+唯一正式 promote 的 identity 是
+`qiskit/core-0.3.1+aer-0.17.2-local-ideal`，verified lock digest 为
+`sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`。
+其 scope 仅为无需 credential 的 seeded Bell-state Aer 执行和
+`ari.quantum.sample.local-ideal/v1`，并以 digest 固定 QPY、target、software、seed、count
+范围、live MCP schema、golden/replay、十五项 Provider gate 与 human approval。IBM Runtime、
+remote simulator 和 IBM hardware 仍为 candidate，因为尚无 admitted credential、精确 live
+backend/configuration/calibration identity 及 backend-bound golden/replay evidence；local
+promotion 不能授予 remote authority。promotion 不等于 Provider activation；committed 的默认
+`CATALOG.lock` 保持为空，每个 run 必须显式冻结已审核的 Provider Lock 和 Capability Binding Lock。
+
 ## 能力分离
 
 | backend | capability | 含义 |
 |---|---|---|
-| `local-ideal` | `ari.quantum.sample.local-ideal` | 无噪声、带 seed 的 Aer 模拟 |
-| `local-noisy` | `ari.quantum.sample.local-noisy` | 仅模拟声明的固定噪声模型 |
-| `remote-simulator` | `ari.quantum.sample.remote-simulator` | 远程服务上的随机模拟 |
-| `ibm-hardware` | `ari.quantum.sample.ibm-hardware` | 具有实时校准快照的硬件测量 |
+| `local-ideal` | `ari.quantum.sample.local-ideal/v1` | 无噪声、带 seed 的 Aer 模拟 |
+| `local-noisy` | `ari.quantum.sample.local-noisy/v1` | 仅模拟声明的固定噪声模型 |
+| `remote-simulator` | `ari.quantum.sample.remote-simulator/v1` | 远程服务上的随机模拟 |
+| `ibm-hardware` | `ari.quantum.sample.ibm-hardware/v1` | 具有实时校准快照的硬件测量 |
 
 broker 在调用或 replay 时不会互换这些能力。共享 backend kind/name、target 和软件栈的
 profile 属于同一 independence group，多个包装器或重复作业不能算作独立方法的一致证据。

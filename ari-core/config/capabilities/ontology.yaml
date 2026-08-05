@@ -1,0 +1,161 @@
+schema_version: 1
+source_revision: ari-capability-ontology/2
+property_vocabulary_version: ari.assurance-properties/v1
+contracts:
+  - capability_ref: ari.eda.openroad.place-route/v1
+    contract_version: v1
+    title: Place and route a fixed OpenROAD design profile
+    description: Execute one digest-closed OpenROAD/ORFS design, technology, command, and output profile.
+    side_effect_class: workspace-write
+    determinism_class: conditional
+    nondeterminism_fields: [cpu-architecture, openroad-build, thread-scheduling]
+    context_requirement: node
+    required_permissions: [workspace-read, workspace-write, process-execute]
+    credential_scope_class: none
+    resource_type: eda-cpu
+    environment_requirements: [cpu, apptainer]
+    compatibility_rules: [json-schema-structural-conformance, openroad-profile-result-v1]
+  - capability_ref: ari.code.inspect/v1
+    contract_version: v1
+    title: Inspect source code
+    description: Read source structure and metadata without modifying the workspace.
+    side_effect_class: read-only
+    determinism_class: deterministic
+    context_requirement: node
+    required_permissions: [workspace-read]
+    credential_scope_class: none
+    resource_type: process
+    compatibility_rules: [json-schema-structural-conformance]
+  - capability_ref: ari.code.edit/v1
+    contract_version: v1
+    title: Edit source code
+    description: Create or modify files inside the admitted workspace.
+    side_effect_class: workspace-write
+    determinism_class: conditional
+    context_requirement: node
+    required_permissions: [workspace-write]
+    credential_scope_class: none
+    resource_type: process
+    compatibility_rules: [json-schema-structural-conformance]
+  - capability_ref: ari.data.read/v1
+    contract_version: v1
+    title: Read scientific data
+    description: Read a content-addressed dataset or workspace artifact without mutation.
+    side_effect_class: read-only
+    determinism_class: deterministic
+    context_requirement: run
+    required_permissions: [workspace-read]
+    credential_scope_class: none
+    resource_type: process
+    compatibility_rules: [json-schema-structural-conformance]
+  - capability_ref: ari.execution.benchmark/v1
+    contract_version: v1
+    title: Benchmark an artifact
+    description: Execute repeated performance measurements under a declared environment.
+    side_effect_class: workspace-write
+    determinism_class: conditional
+    nondeterminism_fields: [hardware, load, seed]
+    context_requirement: node
+    required_permissions: [workspace-read, workspace-write, process-execute]
+    credential_scope_class: none
+    resource_type: process
+    compatibility_rules: [json-schema-structural-conformance, measurement-envelope-v1]
+  - capability_ref: ari.execution.compile/v1
+    contract_version: v1
+    title: Compile source code
+    description: Compile source into a workspace-local executable, library, or object.
+    side_effect_class: workspace-write
+    determinism_class: conditional
+    nondeterminism_fields: [compiler, toolchain, environment]
+    context_requirement: node
+    required_permissions: [workspace-read, workspace-write, process-execute]
+    credential_scope_class: none
+    resource_type: process
+    compatibility_rules: [json-schema-structural-conformance, artifact-result-v1]
+  - capability_ref: ari.execution.run/v1
+    contract_version: v1
+    title: Run a process
+    description: Execute a bounded process inside the admitted workspace.
+    side_effect_class: workspace-write
+    determinism_class: conditional
+    nondeterminism_fields: [program, environment, seed]
+    context_requirement: node
+    required_permissions: [workspace-read, workspace-write, process-execute]
+    credential_scope_class: none
+    resource_type: process
+    compatibility_rules: [json-schema-structural-conformance, result-envelope-v1]
+  - capability_ref: ari.execution.slurm-submit/v1
+    contract_version: v1
+    title: Submit a SLURM job
+    description: Submit a bounded batch job through a declared scheduler adapter.
+    side_effect_class: scheduler-submit
+    determinism_class: conditional
+    nondeterminism_fields: [scheduler, allocation, hardware]
+    context_requirement: node
+    required_permissions: [scheduler-submit]
+    credential_scope_class: hpc-scheduler
+    resource_type: slurm
+    compatibility_rules: [json-schema-structural-conformance, async-handle-v1]
+  - capability_ref: ari.environment.cuda.validate/v1
+    contract_version: v1
+    title: Validate an exact CUDA execution environment
+    description: Execute the fixed all-device CUDA self-test and negative control on one digest-bound exclusive-node inventory.
+    side_effect_class: scheduler-submit
+    determinism_class: conditional
+    nondeterminism_fields: [scheduler, driver, hardware]
+    context_requirement: run
+    required_permissions: [scheduler-submit, workspace-read, workspace-write]
+    credential_scope_class: none
+    resource_type: gpu-slurm
+    environment_requirements: [cuda-12.9, exclusive-node, nvidia-sm70, slurm]
+    compatibility_rules: [json-schema-structural-conformance, cuda-self-test-v1]
+  - capability_ref: ari.literature.search/v1
+    contract_version: v1
+    title: Search scientific literature
+    description: Query an admitted literature index and return source-provenanced records.
+    side_effect_class: read-only
+    determinism_class: live-data
+    nondeterminism_fields: [provider-index, retrieval-time]
+    context_requirement: run
+    required_permissions: [network-read]
+    credential_scope_class: literature-provider
+    resource_type: network
+    environment_requirements: [network-read]
+    compatibility_rules: [json-schema-structural-conformance, retrieval-record-v1]
+  - capability_ref: ari.profiling.hardware-counters/v1
+    contract_version: v1
+    title: Read hardware counters
+    description: Profile an admitted process using bounded hardware performance counters.
+    side_effect_class: read-only
+    determinism_class: conditional
+    nondeterminism_fields: [hardware, sampling]
+    context_requirement: node
+    required_permissions: [process-profile]
+    credential_scope_class: none
+    resource_type: hardware-counters
+    environment_requirements: [hardware-counters]
+    compatibility_rules: [json-schema-structural-conformance, measurement-envelope-v1]
+  - capability_ref: ari.quantum.sample.local-ideal/v1
+    contract_version: v1
+    title: Sample a fixed ideal local quantum circuit
+    description: Transpile and sample one digest-closed QPY circuit on a pinned, seeded local Qiskit Aer target.
+    side_effect_class: workspace-write
+    determinism_class: conditional
+    nondeterminism_fields: [qiskit-build, aer-build, cpu-architecture]
+    context_requirement: node
+    required_permissions: [workspace-read, workspace-write, process-execute]
+    credential_scope_class: none
+    resource_type: quantum-simulator
+    environment_requirements: [cpu]
+    compatibility_rules: [json-schema-structural-conformance, qiskit-sampling-result-v1]
+  - capability_ref: ari.result.emit/v1
+    contract_version: v1
+    title: Emit a typed result
+    description: Store a typed result and content-addressed artifacts in the current run.
+    side_effect_class: workspace-write
+    determinism_class: deterministic
+    context_requirement: node
+    required_permissions: [result-write]
+    credential_scope_class: none
+    resource_type: process
+    compatibility_rules: [json-schema-structural-conformance, result-envelope-v1]

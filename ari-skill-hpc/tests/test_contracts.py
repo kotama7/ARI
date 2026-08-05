@@ -8,8 +8,10 @@ import pytest
 from pydantic import ValidationError
 
 from ari_skill_hpc.contracts import (
+    AcceleratorDeviceIdentityV1,
     ArtifactPinV1,
     EnvironmentPolicyV1,
+    ExclusiveNodeAcceleratorV1,
     JobRequestV1,
     JobSubmitArgumentsV1,
     OutputDeclarationV1,
@@ -147,3 +149,59 @@ def test_resource_contract_accepts_typed_placement_shape() -> None:
         reservation="paperbench",
     )
     assert resources.tasks_per_node == 8
+
+
+def _exclusive_accelerator(tmp_path: Path) -> ExclusiveNodeAcceleratorV1:
+    probe = tmp_path / "nvidia-smi"
+    probe.write_bytes(b"pinned nvidia-smi fixture\n")
+    return ExclusiveNodeAcceleratorV1(
+        partition="gpu-private",
+        node_name="gpu-node-a",
+        inventory_probe=ArtifactPinV1(
+            logical_name="nvidia-smi-inventory-probe",
+            path=str(probe),
+            digest=file_digest(probe),
+            size_bytes=probe.stat().st_size,
+        ),
+        devices=(
+            AcceleratorDeviceIdentityV1(
+                uuid="GPU-27714578-959a-9314-ad8a-21773f5e5649",
+                name="Tesla V100-SXM2-16GB",
+                driver_version="575.64.03",
+                memory_mb=16384,
+                compute_capability="7.0",
+            ),
+        ),
+    )
+
+
+def test_no_gres_accelerator_requires_exact_exclusive_node(tmp_path: Path) -> None:
+    request = _valid_request(tmp_path)
+    allocation = _exclusive_accelerator(tmp_path)
+    payload = request.model_dump(mode="json")
+    payload.update(
+        {
+            "resources": {
+                "partition": "gpu-private",
+                "nodes": 1,
+                "tasks": 1,
+                "cpus_per_task": 1,
+                "walltime": "00:05:00",
+                "nodelist": "gpu-node-a",
+                "exclusive": True,
+            },
+            "accelerator_allocation": allocation.model_dump(mode="json"),
+        }
+    )
+    accepted = JobRequestV1.model_validate(payload)
+    assert accepted.resources.gpus_per_node == 0
+    assert accepted.accelerator_allocation == allocation
+
+    for resources, message in (
+        ({**payload["resources"], "exclusive": False}, "--exclusive"),
+        ({**payload["resources"], "nodelist": "other"}, "nodelist"),
+        ({**payload["resources"], "gpus_per_node": 1}, "must not claim"),
+    ):
+        invalid = {**payload, "resources": resources}
+        with pytest.raises(ValidationError, match=message):
+            JobRequestV1.model_validate(invalid)
