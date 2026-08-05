@@ -1,0 +1,132 @@
+{
+  "coverage_proof_digest": "sha256:13bdfa83b634e2672008a0060dbbd0787ba66c2f42de07d50e32c179ab08b9eb",
+  "harness_catalog_snapshot_digest": "sha256:ea4347f5528798bcfb3e0f7ccc461d990e1c3f0d20b9825c246d8fee7c03e032",
+  "harnesses": [
+    {
+      "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+      "covered_atom_digests": [
+        "sha256:2ab2729aeac39fbcd625693ffe671c14b2c0e92f1e0fa8961aa1b96946451e74",
+        "sha256:7870b404f2a014b9f9b17cdcb78177a1cda81f817b0f215b223fde7e2fe573a2",
+        "sha256:fc2d7ea30f2c40d68db7557cfc2534a925a62937bfc63e97c52c210bc8626660"
+      ],
+      "dataset_digest": "sha256:4de6269a07834c41910c2ad4f531ab4f455e9fe58003d3a01f9e16e17f74972f",
+      "driver_digest": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f",
+      "harness_id": "hpc/gemm-correctness",
+      "kind": "artifact_verifier",
+      "manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+      "oracle_digest": "sha256:042599540b952aa6e7e82d943673fc81ff6a800d8db6b5a6a58ef363546f8d38",
+      "result_schema_digest": "sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff",
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "version": "1.0.0"
+    }
+  ],
+  "lock_digest": "sha256:0c9368e299e41d271649f715f8530108040be010784e47888f9e8459e0f244b5",
+  "oracle_bundle_digest": "sha256:042599540b952aa6e7e82d943673fc81ff6a800d8db6b5a6a58ef363546f8d38",
+  "producer_component_id": "harness_resolver_v1",
+  "prompt_hash": null,
+  "requirements": [
+    {
+      "atom_digest": "sha256:2ab2729aeac39fbcd625693ffe671c14b2c0e92f1e0fa8961aa1b96946451e74",
+      "determinism_requirement": "deterministic",
+      "independence_requirement": "independent",
+      "method": "differential-testing",
+      "property_id": "numerical-equivalence",
+      "schema_version": "ari.harness-requirement/v1",
+      "scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "source_requirement_refs": [
+        "registration:hpc/gemm-correctness"
+      ],
+      "target_kind": "shared-library",
+      "tier": "screen",
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "verification_requirement_digest": "sha256:4bdb792bd59040e3b6ea751ae645ef7f3782c488fbc45d11159f93e27949d9bb"
+    },
+    {
+      "atom_digest": "sha256:7870b404f2a014b9f9b17cdcb78177a1cda81f817b0f215b223fde7e2fe573a2",
+      "determinism_requirement": "deterministic",
+      "independence_requirement": "independent",
+      "method": "repeated-execution",
+      "property_id": "reproducibility",
+      "schema_version": "ari.harness-requirement/v1",
+      "scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "source_requirement_refs": [
+        "registration:hpc/gemm-correctness"
+      ],
+      "target_kind": "shared-library",
+      "tier": "certify",
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "verification_requirement_digest": "sha256:4686436b8797e20b034059db1537699c20b1ebaa087ded32586e31dc2a9b8977"
+    },
+    {
+      "atom_digest": "sha256:fc2d7ea30f2c40d68db7557cfc2534a925a62937bfc63e97c52c210bc8626660",
+      "determinism_requirement": "deterministic",
+      "independence_requirement": "independent",
+      "method": "differential-testing",
+      "property_id": "numerical-equivalence",
+      "schema_version": "ari.harness-requirement/v1",
+      "scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "source_requirement_refs": [
+        "registration:hpc/gemm-correctness"
+      ],
+      "target_kind": "shared-library",
+      "tier": "certify",
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "verification_requirement_digest": "sha256:a270f0e7ce887b2a45b7bdf95ccdfdbf90a46221b050f2ce071c81453fad5362"
+    }
+  ],
+  "research_contract_digest": "sha256:27424023e6d24fa143c8f576cb5c7eed90a5c6645289fa3893b0a74d2b87916a",
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.baseline-harness-lock/v1",
+  "suite_digest": "sha256:edfcf961b091d1620642dad9a82d1fc8c509d289866c33369ccb7680750be9d0",
+  "unsatisfied_atom_digests": [],
+  "verification_contract_digest": "sha256:542d4c2d84e4af7fcf9fb1490591347b98fa18262a68f48ad704c45a57235583",
+  "verification_environment_digest": "sha256:b22edc9d284b87dc5091c6761b0f41f2d89bba3cb0f7523f9d6bc67ac63c2539"
+}

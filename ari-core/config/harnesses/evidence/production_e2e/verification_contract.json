@@ -1,0 +1,120 @@
+{
+  "admission_confidence": 1.0,
+  "baseline_knowledge_obligation_refs": [],
+  "contract_digest": "sha256:542d4c2d84e4af7fcf9fb1490591347b98fa18262a68f48ad704c45a57235583",
+  "human_review_identity": "sha256:a3545ca35c2130014c7c7569d3f9514ce094685ef5d1a588552fceb0e803ecf8",
+  "property_vocabulary_digest": "sha256:4c8f62f5b78d3925ff017d19ede8e305c6b14b3c5684f01f6d6b3f2e54ac83a1",
+  "requirements": [
+    {
+      "determinism_requirement": "deterministic",
+      "failure_policy": "block-publication",
+      "independence_requirement": "independent",
+      "property_id": "reproducibility",
+      "required_methods": [
+        "repeated-execution"
+      ],
+      "required_tier": "certify",
+      "required_verdict": "pass",
+      "requirement_digest": "sha256:4686436b8797e20b034059db1537699c20b1ebaa087ded32586e31dc2a9b8977",
+      "schema_version": "ari.verification-requirement/v1",
+      "scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "source_requirement_refs": [
+        "registration:hpc/gemm-correctness"
+      ],
+      "target_kind": "shared-library",
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "tolerance_policy_ref": "hpc-floating-point/v1"
+    },
+    {
+      "determinism_requirement": "deterministic",
+      "failure_policy": "exclude-from-scientific-frontier",
+      "independence_requirement": "independent",
+      "property_id": "numerical-equivalence",
+      "required_methods": [
+        "differential-testing"
+      ],
+      "required_tier": "screen",
+      "required_verdict": "pass",
+      "requirement_digest": "sha256:4bdb792bd59040e3b6ea751ae645ef7f3782c488fbc45d11159f93e27949d9bb",
+      "schema_version": "ari.verification-requirement/v1",
+      "scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "source_requirement_refs": [
+        "registration:hpc/gemm-correctness"
+      ],
+      "target_kind": "shared-library",
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "tolerance_policy_ref": "hpc-floating-point/v1"
+    },
+    {
+      "determinism_requirement": "deterministic",
+      "failure_policy": "block-publication",
+      "independence_requirement": "independent",
+      "property_id": "numerical-equivalence",
+      "required_methods": [
+        "differential-testing"
+      ],
+      "required_tier": "certify",
+      "required_verdict": "pass",
+      "requirement_digest": "sha256:a270f0e7ce887b2a45b7bdf95ccdfdbf90a46221b050f2ce071c81453fad5362",
+      "schema_version": "ari.verification-requirement/v1",
+      "scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "source_requirement_refs": [
+        "registration:hpc/gemm-correctness"
+      ],
+      "target_kind": "shared-library",
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "tolerance_policy_ref": "hpc-floating-point/v1"
+    }
+  ],
+  "research_contract_digest": "sha256:27424023e6d24fa143c8f576cb5c7eed90a5c6645289fa3893b0a74d2b87916a",
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.verification-contract/v1"
+}

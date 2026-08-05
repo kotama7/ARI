@@ -1,0 +1,15 @@
+{
+  "attempt_id": "mca-dc17244d595f68db-6639e048",
+  "backend_version": "linear-manuscript-v1",
+  "binding_digest": "sha256:97f32542c2b0135cc20d85b14d86dfc96b43db502e7a6171f9a1b2914fd10321",
+  "brief_bundle_digest": "sha256:533fac21853f300c0fd209c738e7a8fa61f869168243696fd541571453523d88",
+  "context_digest": "sha256:531589b9911695cc827b66976027c3e7ab2d80fe91f29534c9438182c6857acb",
+  "paper_mode": "linear",
+  "profile_digest": "sha256:6639e048128d9e78b5b7a0f67e3b149c826a51073f6f9c5c1f7f82244c217ba4",
+  "readiness_digest": "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330",
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.manuscript-authoring-binding/v1",
+  "source_snapshot_digest": "sha256:dc17244d595f68dbcccd2fb87294568e8aad4345da2111d962998172c9f3951e",
+  "target_build_id": "paper-native-certify-publication-e2e",
+  "target_build_revision": 0
+}
