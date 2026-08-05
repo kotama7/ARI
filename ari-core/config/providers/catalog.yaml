@@ -1,0 +1,54 @@
+schema_version: 1
+catalog_source_revision: ari-provider-catalog/1
+source_of_truth: existing-skill-manifests-and-SKILLS.lock
+entries:
+  - provider_id: ari.provider.coding
+    runtime_name: coding-skill
+    package: ari-skill-coding
+    package_version: 0.2.0
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: e4fadaef3955f261ba9d44e4746d3657c5094050
+      package_sha256: sha256:69325cc08dde037a9f7a8103df6502b36c80c31a1a492acb175b0709b4649528
+      license: MIT
+    manifest_sha256: sha256:990fb5a691ccf73869c5899df870abdd92c29453ec1bf6c15edb5f8defdfefb0
+    declared_capability_refs_by_tool:
+      emit_results: [ari.result.emit/v1]
+      read_file: [ari.code.inspect/v1, ari.data.read/v1]
+      run_bash: [ari.execution.benchmark/v1, ari.execution.compile/v1, ari.execution.run/v1]
+      run_code: [ari.execution.benchmark/v1, ari.execution.run/v1]
+      write_code: [ari.code.edit/v1]
+  - provider_id: ari.provider.hpc-slurm
+    runtime_name: hpc-skill
+    package: ari-skill-hpc
+    package_version: 0.3.1
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: e4fadaef3955f261ba9d44e4746d3657c5094050
+      package_sha256: sha256:12ac4b7082c6611ba8181dea949d0c8b0f79aba1d00a15ea1bb2555c882bc5fe
+      license: MIT
+    manifest_sha256: sha256:19a3dec4feb741d6f47af76bc51da86bc9a6d8f70cdbe71e8efb1d425c0f4c1b
+    declared_capability_refs_by_tool:
+      container_submit: [ari.execution.slurm-submit/v1]
+      job_submit: [ari.execution.slurm-submit/v1]
+      slurm_submit: [ari.execution.slurm-submit/v1]
+  - provider_id: ari.provider.web
+    runtime_name: web-skill
+    package: ari-skill-web
+    package_version: 0.2.0
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: e4fadaef3955f261ba9d44e4746d3657c5094050
+      package_sha256: sha256:0920b1eac8a8f21fc5fb6252442a3bac45175824caf1969bb5320c033a8e6a3d
+      license: MIT
+    manifest_sha256: sha256:2f0b1bfcf99dc4e07c3859b0882caa575ec5e52df51e1619c89808ce1efd9e64
+    declared_capability_refs_by_tool: {}
+notes:
+  - Provider launch identity remains in skill.yaml and live tool identity remains in SKILLS.lock.
+  - This catalog stores reviewed semantic projections only; it never repeats entrypoints or schemas.

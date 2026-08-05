@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from ari.public.result import ResultArtifactV1
 from ari_skill_hpc import (
+    ArtifactPinV1,
     ContainerRequestV1,
     EnvironmentPolicyV1,
     JobHandleV1,
@@ -62,17 +63,65 @@ class OpenRoadSchedulerProtocol(Protocol):
     async def cancel(self, handle_or_job_id: str) -> dict[str, Any]: ...
 
 
+class OpenRoadPortableRuntimeV1(BaseModel):
+    """Digest-pinned SIF extraction and PRoot execution on a containerless node.
+
+    This is not represented as a native container allocation.  The scheduler
+    verifies the SIF, extractor, and PRoot bytes before launch; the fixed batch
+    worker extracts that exact SIF into its private workspace and exposes only
+    that workspace to the guest root.  Network namespaces are unavailable on
+    the observed no-GRES node, so the policy records the residual host-network
+    visibility instead of claiming `network: none`.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    schema_version: Literal["ari.openroad-portable-runtime/v1"] = (
+        "ari.openroad-portable-runtime/v1"
+    )
+    kind: Literal["proot-sif"] = "proot-sif"
+    proot: ArtifactPinV1
+    image: ArtifactPinV1
+    unsquashfs: ArtifactPinV1
+    squashfs_offset: int = Field(ge=0, le=2**63 - 1)
+    network_policy: Literal["host-uncredentialed"] = "host-uncredentialed"
+
+    @model_validator(mode="after")
+    def _closed_identity(self) -> "OpenRoadPortableRuntimeV1":
+        names = {self.proot.logical_name, self.image.logical_name, self.unsquashfs.logical_name}
+        paths = {self.proot.path, self.image.path, self.unsquashfs.path}
+        if len(names) != 3 or len(paths) != 3:
+            raise ValueError("portable runtime artifacts must be distinct")
+        if self.proot.logical_name != "openroad-proot-runtime":
+            raise ValueError("portable runtime requires the fixed PRoot logical name")
+        if self.image.logical_name != "openroad-sif-image":
+            raise ValueError("portable runtime requires the fixed SIF logical name")
+        if self.unsquashfs.logical_name != "openroad-unsquashfs-runtime":
+            raise ValueError(
+                "portable runtime requires the fixed unsquashfs logical name"
+            )
+        return self
+
+
 class OpenRoadExecutionV1(BaseModel):
     """Closed local-MCP or scheduler/container execution policy."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     backend: Literal["local-mcp", "slurm"] = "local-mcp"
+    site_identity_digest: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
     work_root: str | None = None
     resources: ResourceRequestV1 | None = None
     environment: EnvironmentPolicyV1 = Field(default_factory=EnvironmentPolicyV1)
     container: ContainerRequestV1 | None = None
+    portable_runtime: OpenRoadPortableRuntimeV1 | None = None
     worker_python: str = "/usr/bin/python3"
+    worker_python_pin: ArtifactPinV1 | None = None
+    terminal_evidence_policy: Literal[
+        "scheduler-accounting", "fixed-wrapper-marker"
+    ] = "scheduler-accounting"
 
     @field_validator("work_root")
     @classmethod
@@ -105,24 +154,40 @@ class OpenRoadExecutionV1(BaseModel):
     @model_validator(mode="after")
     def _closed_backend(self) -> "OpenRoadExecutionV1":
         if self.backend == "local-mcp":
+            if self.site_identity_digest is not None:
+                raise ValueError("local-mcp execution cannot declare a site identity")
             if self.work_root is not None or self.resources is not None:
                 raise ValueError(
                     "local-mcp execution cannot declare scheduler work or resources"
                 )
-            if self.container is not None:
-                raise ValueError("local-mcp execution cannot declare a job container")
+            if self.container is not None or self.portable_runtime is not None:
+                raise ValueError(
+                    "local-mcp execution cannot declare a scheduler substrate"
+                )
             if self.environment != EnvironmentPolicyV1():
                 raise ValueError(
                     "local-mcp execution cannot declare a scheduler environment"
                 )
-            if self.worker_python != "/usr/bin/python3":
+            if self.worker_python != "/usr/bin/python3" or self.worker_python_pin is not None:
                 raise ValueError(
                     "local-mcp execution cannot declare a batch worker interpreter"
                 )
+            if self.terminal_evidence_policy != "scheduler-accounting":
+                raise ValueError(
+                    "local-mcp execution cannot declare scheduler terminal evidence"
+                )
             return self
-        if self.work_root is None or self.resources is None or self.container is None:
+        if (
+            self.site_identity_digest is None
+            or self.work_root is None
+            or self.resources is None
+        ):
             raise ValueError(
-                "slurm execution requires work_root, resources, and a pinned container"
+                "slurm execution requires site identity, work_root, and resources"
+            )
+        if (self.container is None) == (self.portable_runtime is None):
+            raise ValueError(
+                "slurm execution requires exactly one pinned execution substrate"
             )
         if self.resources.nodes != 1 or self.resources.tasks != 1:
             raise ValueError(
@@ -132,14 +197,33 @@ class OpenRoadExecutionV1(BaseModel):
             raise ValueError("OpenROAD batch tasks_per_node must be omitted or one")
         if self.resources.gpus_per_node or self.resources.gpus_per_task:
             raise ValueError("OpenROAD batch profiles do not declare GPU resources")
-        if not self.container.contain_all or not self.container.clean_environment:
-            raise ValueError(
-                "OpenROAD batch containers require contain_all and clean_environment"
-            )
-        if self.container.gpu:
-            raise ValueError("OpenROAD batch containers must not enable GPU passthrough")
-        if self.container.network != "none":
-            raise ValueError("OpenROAD batch containers require network isolation")
+        if self.container is not None:
+            if self.worker_python_pin is not None:
+                raise ValueError(
+                    "container execution cannot pin a host worker interpreter"
+                )
+            if not self.container.contain_all or not self.container.clean_environment:
+                raise ValueError(
+                    "OpenROAD batch containers require contain_all and clean_environment"
+                )
+            if self.container.gpu:
+                raise ValueError(
+                    "OpenROAD batch containers must not enable GPU passthrough"
+                )
+            if self.container.network != "none":
+                raise ValueError("OpenROAD batch containers require network isolation")
+        else:
+            if self.worker_python_pin is None:
+                raise ValueError(
+                    "portable execution requires a pinned worker interpreter"
+                )
+            if (
+                self.worker_python_pin.logical_name != "openroad-worker-python"
+                or self.worker_python_pin.path != self.worker_python
+            ):
+                raise ValueError(
+                    "portable worker interpreter path and pin must be identical"
+                )
         return self
 
 
@@ -183,6 +267,7 @@ class OpenRoadHpcRuntime:
             runner=LocalCommandRunner(scheduler_path=scheduler_path),
             ledger=SubmissionLedger(ledger_path),
             shared_filesystem=True,
+            terminal_evidence_policy=execution.terminal_evidence_policy,
         )
         self._schedulers[execution.work_root] = scheduler
         return scheduler
@@ -474,6 +559,7 @@ class OpenRoadHpcRuntime:
 __all__ = [
     "OpenRoadExecutionV1",
     "OpenRoadHpcRuntime",
+    "OpenRoadPortableRuntimeV1",
     "OpenRoadSchedulerProtocol",
     "hpc_runtime_digest",
     "verify_openroad_hpc_files",

@@ -108,6 +108,45 @@ def _resolve_cfg(config: "Path | None"):
     return auto_config()
 
 
+def _build_manuscript_repair_executors(
+    cfg,
+    bfts,
+    agent,
+    all_nodes,
+    experiment_data,
+    checkpoint_dir,
+    run_id,
+):
+    """Construct research executors only for the opt-in automatic posture.
+
+    Keeping the condition here preserves the ``manuscript.mode=off`` import
+    boundary: ordinary runs never import ``ari.manuscript`` or its runtime
+    adapter.  ``ari paper`` intentionally does not use this helper.
+    """
+
+    from ari.config import apply_manuscript_env_overrides
+
+    apply_manuscript_env_overrides(cfg)
+    manuscript = getattr(cfg, "manuscript", None)
+    repair = getattr(manuscript, "repair", None)
+    if not (
+        getattr(manuscript, "mode", "off") == "enforce"
+        and getattr(repair, "policy", "disabled") == "auto"
+    ):
+        return None
+    from ari.cli.manuscript_repair_runtime import build_research_repair_executors
+
+    return build_research_repair_executors(
+        cfg,
+        bfts,
+        agent,
+        all_nodes,
+        experiment_data,
+        checkpoint_dir,
+        run_id,
+    )
+
+
 
 def _setup_logging(cfg_logging, run_id: str) -> None:
     log_dir = Path(cfg_logging.dir.replace("{run_id}", run_id))
@@ -494,10 +533,20 @@ def run(
             # call the linear pipeline unconditionally, silently dropping a
             # configured/env-requested rqgm_archive.
             from ari.cli.paper_dispatch import run_paper_phase
+            _repair_executors = _build_manuscript_repair_executors(
+                cfg,
+                bfts,
+                agent,
+                all_nodes,
+                experiment_data,
+                checkpoint_dir,
+                run_id,
+            )
             run_paper_phase(
                 cfg, all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str,
                 linear_paper_fn=generate_paper_section, paper_llm=_paper_llm,
                 rqgm=getattr(bfts, "rqgm", None),
+                repair_executors=_repair_executors,
             )
         except Exception as _paper_err:
             _paper_raised = True
@@ -584,6 +633,23 @@ def resume(
             producer_component_id=nd.get("producer_component_id", ""),
             producer_prompt_hash=nd.get("producer_prompt_hash", ""),
             producer_epoch_id=nd.get("producer_epoch_id", ""),
+            knowledge_skill_refs=nd.get("knowledge_skill_refs") or [],
+            knowledge_skill_use_digest=nd.get("knowledge_skill_use_digest", ""),
+            instruction_identity_digest=nd.get("instruction_identity_digest", ""),
+            capability_binding_lock_digest=nd.get("capability_binding_lock_digest", ""),
+            bound_tool_refs=nd.get("bound_tool_refs") or [],
+            assurance_status=nd.get("assurance_status", ""),
+            assurance_tier=nd.get("assurance_tier", ""),
+            baseline_harness_lock_digest=nd.get("baseline_harness_lock_digest", ""),
+            active_harness_lock_digest=nd.get("active_harness_lock_digest", ""),
+            attestation_refs=nd.get("attestation_refs") or [],
+            verified_target_digest=nd.get("verified_target_digest", ""),
+            property_verdicts=nd.get("property_verdicts") or {},
+            frontier_class=nd.get("frontier_class", ""),
+            repair_request_id=nd.get("repair_request_id", ""),
+            repair_requirement_ids=nd.get("repair_requirement_ids") or [],
+            repair_context_digest=nd.get("repair_context_digest", ""),
+            repair_allowed_changes=nd.get("repair_allowed_changes") or [],
         )
         node.status = NodeStatus(nd["status"])
         # Restore label (default to DRAFT if missing from old checkpoints)
@@ -659,11 +725,21 @@ def resume(
             _cfg_str_r = str(_pkg_wf_r) if _pkg_wf_r.exists() else ""
         try:
             from ari.cli.paper_dispatch import run_paper_phase
+            _repair_executors_r = _build_manuscript_repair_executors(
+                cfg,
+                bfts,
+                agent,
+                all_nodes,
+                experiment_data,
+                checkpoint_dir,
+                run_id,
+            )
             run_paper_phase(
                 cfg, all_nodes, experiment_data, checkpoint_dir, mcp_resume,
                 _cfg_str_r, linear_paper_fn=generate_paper_section,
                 paper_llm=_paper_llm_r,
                 rqgm=getattr(bfts, "rqgm", None),
+                repair_executors=_repair_executors_r,
             )
         except Exception as _paper_err:
             console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")

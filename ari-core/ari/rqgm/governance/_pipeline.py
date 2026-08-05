@@ -371,6 +371,7 @@ def run_audit(
     loader=None,
     budget_manager=None,
     governance_cache=None,
+    artifact_root=None,
 ) -> tuple[GovernanceReport, list]:
     """Run the nine steps; return ``(report, produced_records)`` where
     ``produced_records`` is the ordered ``(record_type, payload)`` list the
@@ -449,6 +450,7 @@ def run_audit(
                 target_role=str(entry.get("role", "") or ""),
                 candidate_refs=candidate_refs_for_target(records_by_id, cid),
                 records_by_id=records_by_id,
+                artifact_root=artifact_root,
             )
     except Exception:
         log.warning("governance step 3 (assemble) failed", exc_info=True)

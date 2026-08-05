@@ -26,6 +26,20 @@ lineage_decision:
   rate_limit_per_run: 5
 root_idea_selection:
   enabled: true
+# Independent exploration-to-authoring completeness boundary.  The default is
+# exact legacy identity: no manuscript imports, artifacts, gates, or repair.
+manuscript:
+  mode: off
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
 # Story2Proposal Phase B3: claim_evidence_hard_gate policy. Consumed by the claim
 # stages below (enabled by default in warn mode). mode controls blocking (off never
 # blocks; warn = objective-integrity findings only; strict = all configured
@@ -94,6 +108,7 @@ bfts_pipeline:
   loop_back_to: select_and_run
 pipeline:
 - stage: search_related_work
+  segment: evidence
   skill: web-skill
   tool: search_papers
   description: Recorded deterministic literature retrieval -> related_refs.json
@@ -113,6 +128,7 @@ pipeline:
   # the evidence set or fail when the provider is offline/rate-limited.
   skip_if_exists: '{{checkpoint_dir}}/related_refs.json'
 - stage: audit_node_provenance
+  segment: evidence
   skill: memory-skill
   tool: audit_memory
   description: Re-hash every node artifact whose sha256 the node_report recorded and
@@ -133,6 +149,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/node_provenance_audit.json'
 - stage: transform_data
+  segment: evidence
   skill: transform-skill
   tool: nodes_to_science_data
   description: LLM-powered experiment tree analysis -> science_data.json
@@ -147,6 +164,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/science_data.json'
 - stage: generate_ear
+  segment: evidence
   skill: transform-skill
   tool: generate_ear
   description: Build the EAR
@@ -159,6 +177,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ear_manifest.json'
 - stage: ear_curate
+  segment: evidence
   skill: transform-skill
   tool: curate_ear
   description: Curate {checkpoint}/ear/ into {checkpoint}/ear_published/ via publish.yaml.
@@ -175,6 +194,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ear_curate.status.json'
 - stage: generate_figures
+  segment: evidence
   skill: plot-skill
   tool: generate_figures_llm
   description: LLM selects declarative specs; fixed renderer writes source-bound PDF/PNG figures
@@ -193,6 +213,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/figures_manifest.json'
 - stage: vlm_review_figures
+  segment: evidence
   skill: vlm-skill
   tool: review_figures_all
   description: VLM-based visual review of every figure in figures_manifest.json. Aggregate
@@ -212,6 +233,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/vlm_review.json'
 - stage: write_paper
+  segment: authoring
   skill: paper-skill
   tool: write_paper_iterative
   description: AI Scientist v2-style iterative paper writing with BibTeX
@@ -251,6 +273,7 @@ pipeline:
 # ARI_CLAIM_GATE_MODE=strict. To opt a single stage out, set its enabled: false.
 # ─────────────────────────────────────────────────────────────────────────────
 - stage: link_paper_claims_draft
+  segment: verification
   skill: paper-skill
   tool: link_paper_claims
   description: 'S2P Phase A2: reconcile % CLAIM:Cx:NCx anchors -> paper_claim_links.json.'
@@ -268,6 +291,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/paper_claim_links.json'
 - stage: claim_evidence_hard_gate_draft
+  segment: verification
   skill: evaluator-skill
   tool: claim_evidence_hard_gate
   description: 'S2P Phase B: deterministic claim/evidence hard gate (draft, non-blocking).'
@@ -290,6 +314,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_draft.json'
 - stage: review_paper
+  segment: verification
   skill: paper-skill
   tool: review_compiled_paper
   description: 'Rubric-driven paper review (AI Scientist v1/v2-compatible, NeurIPS
@@ -311,6 +336,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/review_report.json'
 - stage: evidence_grounded_semantic_review
+  segment: verification
   skill: evaluator-skill
   tool: evidence_grounded_semantic_review
   description: 'S2P Phase D: non-blocking evidence-grounded semantic review.'
@@ -330,6 +356,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review.json'
 - stage: merge_reviews
+  segment: verification
   skill: paper-skill
   tool: merge_reviews
   description: Post-hoc merge of the independent text reviewer output (review_report.json)
@@ -352,6 +379,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/review_merge_log.json'
 - stage: paper_refine
+  segment: verification
   skill: paper-skill
   tool: paper_refine
   description: 'S2P Phase E: apply suggested_revisions, preserving % CLAIM anchors.'
@@ -366,6 +394,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/full_paper.tex'
 - stage: render_paper
+  segment: verification
   skill: paper-skill
   tool: compile_paper
   description: 'S2P renderer (A_rend, eq.6 M=A_rend(M'',C)): recompile the refined
@@ -384,6 +413,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/full_paper.pdf'
 - stage: link_paper_claims_final
+  segment: verification
   skill: paper-skill
   tool: link_paper_claims
   description: 'S2P Phase A2: re-run claim-id post-processing on the refined paper.'
@@ -401,6 +431,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/paper_claim_links_final.json'
 - stage: evidence_grounded_semantic_review_post_refine
+  segment: verification
   skill: evaluator-skill
   tool: evidence_grounded_semantic_review
   description: 'S2P Phase E: re-run semantic review on the refined paper (score_delta).'
@@ -420,6 +451,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_post_refine.json'
 - stage: claim_evidence_hard_gate_final
+  segment: verification
   skill: evaluator-skill
   tool: claim_evidence_hard_gate
   description: 'S2P Phase B: deterministic hard gate (FINAL, refined paper; blocks finalize in strict mode).'
@@ -441,6 +473,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_final.json'
 - stage: ear_publish
+  segment: verification
   description: Package the curated EAR into a local tarball + publish_record.json
     so the ORS sandbox can fetch it via fetch_code_bundle. Default backend is local-tarball
     (zero deps, lives next to the checkpoint); switch to ari-registry / zenodo / gh
@@ -459,6 +492,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/publish_record.json'
 - stage: finalize_paper
+  segment: verification
   skill: paper-skill
   tool: inject_code_availability
   description: Inject the Code Availability section + machine-readable \codeavailability/\codedigest/\coderef
@@ -479,6 +513,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/finalize_paper.json'
 - stage: link_paper_claims_locked
+  segment: verification
   skill: paper-skill
   tool: link_paper_claims
   description: Reconcile claims again after deterministic Code Availability injection.
@@ -496,6 +531,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/paper_claim_links_locked.json'
 - stage: claim_evidence_hard_gate_locked
+  segment: verification
   skill: evaluator-skill
   tool: claim_evidence_hard_gate
   description: Final deterministic gate over the exact TeX that will be compiled and locked.
@@ -517,6 +553,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_locked.json'
 - stage: evidence_grounded_semantic_review_locked
+  segment: verification
   skill: evaluator-skill
   tool: evidence_grounded_semantic_review
   description: Independent advisory semantic review bound to the exact post-injection evidence set.
@@ -536,6 +573,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_locked.json'
 - stage: render_final_paper
+  segment: verification
   skill: paper-skill
   tool: compile_paper
   description: Compile the exact post-injection TeX through the bounded common execution contract.
@@ -550,6 +588,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/full_paper.pdf'
 - stage: lock_paper_build
+  segment: verification
   skill: paper-skill
   tool: finalize_paper_build
   description: Fail-closed PaperBuildV1 lock over exact inputs, calls, reviews, gate, compile logs, TeX, BibTeX, and PDF.
@@ -580,6 +619,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/paper_build.json'
 - stage: ors_generate_rubric
+  segment: verification
   skill: replicate-skill
   tool: generate_rubric
   description: Auto-generate a PaperBench-format rubric from the final paper. The
@@ -596,6 +636,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_rubric.meta.json'
 - stage: ors_audit_rubric
+  segment: verification
   skill: replicate-skill
   tool: audit_rubric
   description: Audit the auto-generated rubric before anything is graded against
@@ -616,6 +657,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_rubric.audit.json'
 - stage: ors_seed_sandbox
+  segment: verification
   skill: paper-re-skill
   tool: fetch_code_bundle
   description: Seed repro_sandbox/ from the curated EAR bundle published by ear_publish
@@ -632,6 +674,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_seed.json'
 - stage: ors_build_reproduce
+  segment: verification
   skill: paper-re-skill
   tool: build_reproduce_sh
   description: Replicator — drive PaperBench's BasicAgent / IterativeAgent (vendored
@@ -664,6 +707,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_replicator.json'
 - stage: ors_run_reproduce
+  segment: verification
   skill: paper-re-skill
   tool: run_reproduce
   description: Phase 1 — execute reproduce.sh in the configured sandbox. Auto sandbox
@@ -688,6 +732,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_phase1.json'
 - stage: ors_grade
+  segment: verification
   skill: paper-re-skill
   tool: grade_with_simplejudge
   description: Phase 2 — score the post-reproduce submission with PaperBench SimpleJudge.

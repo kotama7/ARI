@@ -374,7 +374,9 @@ def test_epoch_fingerprint_deterministic_and_wall_clock_free():
     assert epoch_fingerprint(closed) == a.epoch_fingerprint
     # Golden pins (P2: machine-stable; recomputed from canonical content).
     assert regs.prompts.registry_version() == "852526c4b2fa"
-    assert a.epoch_fingerprint == "746c074fd2fc"
+    # Re-pinned 2026-08-03: Tasks 16-19 add three fixed binder/resolver roles
+    # to the frozen component vocabulary committed by the epoch identity.
+    assert a.epoch_fingerprint == "70b33a359957"
     assert a.policy_fingerprint == policy_fingerprint(a)
     assert a.execution_fingerprint == execution_fingerprint(a)
     assert a.execution_identity["complete"] is False

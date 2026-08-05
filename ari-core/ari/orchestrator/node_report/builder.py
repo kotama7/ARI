@@ -724,6 +724,11 @@ def build_node_report(
         # The assembled view the metric-gaming adversary reads.
         "compute_env": _compute_env_block(run_env, parent_work_dir),
     }
+    from ari.orchestrator.node_report.scientific_assurance import (
+        scientific_assurance_fields,
+    )
+
+    report.update(scientific_assurance_fields(node))
     return report
 
 

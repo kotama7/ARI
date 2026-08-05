@@ -38,7 +38,7 @@ RESULT_ENVELOPE_V1 = "ari.result-envelope/v1"
 
 _KEBAB_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _TOOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_REF_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_REF_RE = re.compile(r"^[a-z0-9][a-z0-9._/-]*$")
 _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$")
 
 
@@ -145,7 +145,9 @@ class ToolManifestV1(BaseModel):
     def _valid_capability(cls, value: str) -> str:
         value = value.strip()
         if not _REF_RE.fullmatch(value):
-            raise ValueError("capability_ref must be a lowercase dotted identifier")
+            raise ValueError(
+                "capability_ref must be a lowercase dotted or canonical versioned identifier"
+            )
         return value
 
     @field_validator("phases")

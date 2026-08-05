@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from ari.public.evaluation import parse_gate_report, parse_semantic_review
@@ -247,6 +248,68 @@ def finalize_build(
         max_bytes=32 * 1024 * 1024,
     ).decode("utf-8")
     input_by_role = {artifact.role: artifact for artifact in draft.input_artifacts}
+    manuscript_publication_reasons: list[str] = []
+    if os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") == "enforce":
+        from ari.public.manuscript import (
+            ManuscriptAuthoringBindingV1,
+            ManuscriptContextV1,
+            ManuscriptReadinessReportV1,
+            ManuscriptRequirementProfileV1,
+            SectionBriefBundleV1,
+        )
+
+        required_manuscript_roles = {
+            "manuscript-profile",
+            "manuscript-context",
+            "manuscript-readiness",
+            "section-briefs",
+            "manuscript-authoring-binding",
+        }
+        if not required_manuscript_roles.issubset(input_by_role):
+            raise ValueError("enforced paper build lacks manuscript binding inputs")
+
+        def _manuscript_document(role, contract):
+            return contract.model_validate(
+                _json(workspace, input_by_role[role].relative_path)
+            )
+
+        manuscript_profile = _manuscript_document(
+            "manuscript-profile", ManuscriptRequirementProfileV1
+        )
+        manuscript_context = _manuscript_document(
+            "manuscript-context", ManuscriptContextV1
+        )
+        manuscript_readiness = _manuscript_document(
+            "manuscript-readiness", ManuscriptReadinessReportV1
+        )
+        manuscript_briefs = _manuscript_document(
+            "section-briefs", SectionBriefBundleV1
+        )
+        manuscript_binding = _manuscript_document(
+            "manuscript-authoring-binding", ManuscriptAuthoringBindingV1
+        )
+        if (
+            manuscript_context.profile_digest != manuscript_profile.profile_digest
+            or manuscript_readiness.profile_digest != manuscript_profile.profile_digest
+            or manuscript_briefs.profile_digest != manuscript_profile.profile_digest
+            or manuscript_binding.profile_digest != manuscript_profile.profile_digest
+            or manuscript_readiness.context_digest != manuscript_context.context_digest
+            or manuscript_briefs.context_digest != manuscript_context.context_digest
+            or manuscript_binding.context_digest != manuscript_context.context_digest
+            or manuscript_briefs.readiness_digest
+            != manuscript_readiness.readiness_digest
+            or manuscript_binding.readiness_digest
+            != manuscript_readiness.readiness_digest
+            or manuscript_binding.brief_bundle_digest
+            != manuscript_briefs.bundle_digest
+            or manuscript_binding.target_build_id != draft.build_id
+            or manuscript_binding.run_id != draft.run_id
+        ):
+            raise ValueError("paper build manuscript binding lineage is incoherent")
+        if manuscript_readiness.publication_verdict != "ready":
+            manuscript_publication_reasons.append(
+                "manuscript readiness blocks publication"
+            )
     science_document = _json(
         workspace,
         input_by_role["science-data"].relative_path,
@@ -448,6 +511,7 @@ def finalize_build(
     )
     previous = draft.revisions[-1]
     reasons: list[str] = []
+    reasons.extend(manuscript_publication_reasons)
     if not set(previous.claim_anchors).issubset(revision.claim_anchors):
         reasons.append("final revision dropped a claim anchor")
     if not set(previous.citation_keys).issubset(revision.citation_keys):

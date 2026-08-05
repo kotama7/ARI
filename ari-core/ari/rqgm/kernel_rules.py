@@ -22,7 +22,9 @@ no randomness (enforced by the import-grep test, plan 04 §5.7/§9.7).
 
 from __future__ import annotations
 
-from ari.rqgm import transition_rules
+import hashlib
+
+from ari.rqgm import kca_kernel_rules, transition_rules
 from ari.rqgm.events import canonical_json, hash12
 
 CONSTITUTION_VERSION: int = 1
@@ -80,6 +82,7 @@ RESOURCE_CLASSES: tuple[str, ...] = (
     "retired_prompt_text",
     "checkpoint_artifacts",
     "candidates",
+    *kca_kernel_rules.RESOURCE_CLASSES,
 )
 
 _Cap = tuple[str, str]
@@ -206,6 +209,10 @@ def _build_capability_matrix() -> dict[tuple[str, str], frozenset[_Cap]]:
     matrix[("constitutional_kernel", "fixed")] = _FIXED_READONLY
     matrix[("fixed_verifier", "fixed")] = _FIXED_READONLY
     matrix[("audit_log", "fixed")] = frozenset({("append", "audit_log")})
+    kca_kernel_rules.extend_capability_matrix(
+        matrix,
+        fixed_readonly=_FIXED_READONLY,
+    )
     return matrix
 
 
@@ -275,6 +282,7 @@ SEVERITY: dict[str, str] = {
     "CK-UTL-006": "warn",   # axis key outside the epoch's live axis set
     "CK-UTL-007": "block",  # depth_penalty_lambda / ucb_c out of range
     "CK-UTL-008": "block",  # body bytes do not hash to the registered id
+    **kca_kernel_rules.SEVERITY,
 }
 
 # ── context-scope whitelists (v1; Task 12 owns extension) ──────────────────
@@ -418,5 +426,14 @@ def constitution_hash() -> str:
     return hash12(canonical_json(_canonical_rules_payload()))
 
 
+def constitution_sha256() -> str:
+    """Authoritative full-SHA trust anchor for new KCA artifacts."""
+
+    return "sha256:" + hashlib.sha256(
+        canonical_json(_canonical_rules_payload()).encode("utf-8")
+    ).hexdigest()
+
+
 #: Computed once at import (pure function of the tables above).
 CONSTITUTION_HASH: str = constitution_hash()
+CONSTITUTION_SHA256: str = constitution_sha256()

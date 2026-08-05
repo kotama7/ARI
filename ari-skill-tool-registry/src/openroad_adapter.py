@@ -39,6 +39,7 @@ from openroad_contracts import (
 )
 from openroad_hpc import (
     OpenRoadHpcRuntime,
+    OpenRoadPortableRuntimeV1,
     OpenRoadSchedulerProtocol,
     hpc_runtime_digest,
 )
@@ -117,6 +118,69 @@ def openroad_adapter_digest() -> str:
             "local_runtime": openroad_local_runtime_digest(),
             "result_runtime": openroad_results_digest(),
         }
+    )
+
+
+def openroad_leaf_name(profile_id: str) -> str:
+    return f"ari_openroad_run__{profile_id.replace('-', '_').replace('.', '_')}"
+
+
+def openroad_virtual_tool(
+    profile: OpenRoadExperimentV1,
+    *,
+    provider_version: str,
+    provider_commit: str,
+) -> ProviderToolV1:
+    """Build the sole public operation for one immutable OpenROAD profile."""
+
+    metadata = {
+        "profile_id": profile.profile_id,
+        "experiment_digest": profile.experiment_digest,
+        "method_digest": profile.method_digest,
+        "provider_release": provider_version,
+        "provider_commit": provider_commit,
+        "toolchain": profile.toolchain.model_dump(mode="json"),
+        "technology": profile.technology.model_dump(mode="json"),
+        "execution": profile.execution.model_dump(mode="json"),
+        "workspace_input_digest": profile.workspace.input_digest,
+        "metrics": [
+            {
+                "metric_id": metric.metric_id,
+                "unit": metric.unit,
+                "corner": metric.corner,
+                "mode": metric.mode,
+                "stage": metric.stage,
+                "source_artifact": metric.source_artifact,
+            }
+            for metric in profile.metrics
+        ],
+    }
+    return ProviderToolV1(
+        name=openroad_leaf_name(profile.profile_id),
+        description=profile.description,
+        input_schema={
+            "type": "object",
+            "properties": {
+                "request_id": {
+                    "type": "string",
+                    "pattern": _REQUEST_ID_RE.pattern,
+                    "description": "Idempotency key for this immutable experiment",
+                }
+            },
+            "required": ["request_id"],
+            "additionalProperties": False,
+        },
+        output_schema={
+            "type": "object",
+            "properties": {
+                "handle_id": {"type": "string"},
+                "status": {"type": "string"},
+                "experiment_digest": {"type": "string"},
+            },
+            "required": ["handle_id", "status", "experiment_digest"],
+            "additionalProperties": True,
+        },
+        annotations={"ari_openroad": metadata},
     )
 
 @dataclass
@@ -201,64 +265,18 @@ class OpenRoadExperimentAdapter:
 
     @staticmethod
     def leaf_name(profile_id: str) -> str:
-        return f"ari_openroad_run__{profile_id.replace('-', '_').replace('.', '_')}"
+        return openroad_leaf_name(profile_id)
 
     def _virtual_tools(self) -> list[ProviderToolV1]:
         tools: list[ProviderToolV1] = []
         for profile in sorted(
             self.experiments.values(), key=lambda item: item.profile_id
         ):
-            metadata = {
-                "profile_id": profile.profile_id,
-                "experiment_digest": profile.experiment_digest,
-                "method_digest": profile.method_digest,
-                "provider_release": self.pin["version"],
-                "provider_commit": self.pin["repository_commit"],
-                "toolchain": profile.toolchain.model_dump(mode="json"),
-                "technology": profile.technology.model_dump(mode="json"),
-                "execution": profile.execution.model_dump(mode="json"),
-                "workspace_input_digest": profile.workspace.input_digest,
-                "metrics": [
-                    {
-                        "metric_id": metric.metric_id,
-                        "unit": metric.unit,
-                        "corner": metric.corner,
-                        "mode": metric.mode,
-                        "stage": metric.stage,
-                        "source_artifact": metric.source_artifact,
-                    }
-                    for metric in profile.metrics
-                ],
-            }
             tools.append(
-                ProviderToolV1(
-                    name=self.leaf_name(profile.profile_id),
-                    description=profile.description,
-                    input_schema={
-                        "type": "object",
-                        "properties": {
-                            "request_id": {
-                                "type": "string",
-                                "pattern": _REQUEST_ID_RE.pattern,
-                                "description": (
-                                    "Idempotency key for this immutable experiment"
-                                ),
-                            }
-                        },
-                        "required": ["request_id"],
-                        "additionalProperties": False,
-                    },
-                    output_schema={
-                        "type": "object",
-                        "properties": {
-                            "handle_id": {"type": "string"},
-                            "status": {"type": "string"},
-                            "experiment_digest": {"type": "string"},
-                        },
-                        "required": ["handle_id", "status", "experiment_digest"],
-                        "additionalProperties": True,
-                    },
-                    annotations={"ari_openroad": metadata},
+                openroad_virtual_tool(
+                    profile,
+                    provider_version=self.pin["version"],
+                    provider_commit=self.pin["repository_commit"],
                 )
             )
         return tools
@@ -434,11 +452,14 @@ __all__ = [
     "OpenRoadExperimentV1",
     "OpenRoadMetricV1",
     "OpenRoadOutputArtifactV1",
+    "OpenRoadPortableRuntimeV1",
     "OpenRoadProviderPinV1",
     "OpenRoadTechnologyV1",
     "OpenRoadToolchainV1",
     "OpenRoadWorkspaceV1",
     "openroad_adapter_digest",
+    "openroad_leaf_name",
+    "openroad_virtual_tool",
     "openroad_effective_launcher",
     "openroad_provider_release_pin",
     "openroad_toolchain_line",

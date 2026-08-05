@@ -1,0 +1,295 @@
+{
+  "artifact": {
+    "inventory_probe_digest": "sha256:6227c7f3102fb6cdcf190c0e394143548814f6e3d2e9d1f9b891ce256a4ab18e",
+    "job_contract_digest": "sha256:2a198e90dc5345b72913c9d9a616840d8b9363948ece7cd7d2523514960cd4b6",
+    "remote_nvcc_digest": "sha256:e4d89fec9260c0162c5afb820d5e7bfaea971f96d4eef94d47e0d08ec8bc85e7",
+    "remote_nvidia_smi_digest": "sha256:12d25c1a1bda99aa2545462955763b9a6172d8419e017f852892a650700551b9",
+    "scheduler_digest": "sha256:5f28f4ae74b4c38708e5b2d7dae7b557e9000716dad3f1f17ea4d0507448936f",
+    "source_base_commit": "e4fadaef3955f261ba9d44e4746d3657c5094050",
+    "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+    "source_overlay_digest": "sha256:90fff80ae35c17e813f9af947b99467746a2789af4f1f2961b1ba230472f3a65",
+    "source_repository": "https://github.com/kotama7/ARI.git",
+    "worker_digest": "sha256:f2f160e40fece8b5a7f6b0b5b5f5fdb05d11fe51e6f4b0067ae6467f197bedf0",
+    "worker_python_digest": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118"
+  },
+  "bundle_digest": "sha256:39df570eadcac4be64e6ec7912e4ad106eb1828c1e0f6d67f79bbf3f64d34c74",
+  "capability_scope": {
+    "capability_contract_digest": "sha256:489d102caad3237078a0ef574e51b3939fd8ffd71488e6c9946d83d4d7fe30f6",
+    "capability_ref": "ari.environment.cuda.validate/v1",
+    "context_requirement": "run",
+    "credential_scope_ids": [],
+    "determinism": "conditional",
+    "environment_requirements": [
+      "cuda-12.9",
+      "exclusive-node",
+      "nvidia-sm70",
+      "slurm"
+    ],
+    "input_schema_digest": "sha256:0b5a8b5e86c1f8c006dceb2f6252532aec7567284f917e03a3f4f02d3710b227",
+    "output_schema_digest": "sha256:02ea8f485a6237d7838d39e1eedd01bd25a29017a74d05554dcba3ac6e0ec8eb",
+    "permissions": [
+      "scheduler-submit",
+      "workspace-read",
+      "workspace-write"
+    ],
+    "resource_type": "gpu-slurm",
+    "side_effects": "scheduler-submit",
+    "tool_names": [
+      "ari_cuda_validate__exclusive_node_sm70"
+    ]
+  },
+  "captured_date": "2026-08-05",
+  "gate_evidence": {
+    "capability_contract_conformance": {
+      "capability_ref": "ari.environment.cuda.validate/v1",
+      "self_test": {
+        "all_negative_controls_detected": true,
+        "all_repeats_equal": true,
+        "architecture": "sm_70",
+        "case_count_per_device": [
+          4
+        ],
+        "compiler_digest": "sha256:e4d89fec9260c0162c5afb820d5e7bfaea971f96d4eef94d47e0d08ec8bc85e7",
+        "device_classes": [
+          {
+            "compute_capability": "7.0",
+            "memory_bytes": 16928342016,
+            "name": "Tesla V100-SXM2-16GB"
+          }
+        ],
+        "device_count": 4,
+        "maximum_absolute_error": 0.0,
+        "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+        "verdict": "pass"
+      }
+    },
+    "credential_scope": {
+      "credential_scope_ids": []
+    },
+    "environment_allowlist": {
+      "accelerator_count": 4,
+      "accelerator_model": "Tesla V100-SXM2-16GB",
+      "compute_capability": "7.0",
+      "cuda_compiler_version": "12.9.41",
+      "driver_version": "575.64.03",
+      "identity_disclosure": "salted-digest-only",
+      "inventory_identity_digest": "sha256:313810a5da4ba5208e5c196c0b1c62f9c7c09d0017e1608bc38309c465edabaf",
+      "memory_bytes_per_device": 17179869184,
+      "site_identity_digest": "sha256:573f81623cae9a9e8c5ec13b3622483961a98b768e0c4145ad543f54dec24b6a"
+    },
+    "live_tools_list_parity": {
+      "fixed_local_process_tool": [
+        "ari_cuda_validate__exclusive_node_sm70"
+      ],
+      "input_schema_digest": "sha256:0b5a8b5e86c1f8c006dceb2f6252532aec7567284f917e03a3f4f02d3710b227"
+    },
+    "malicious_description_boundary": {
+      "authority_source": "fixed typed request and verified lock",
+      "test_output_sha256": "sha256:7a7f50d0e11e0cf3143847f5c5b9aa83c31fe96c9cb9ed84b79302906c736491"
+    },
+    "manifest_schema": {
+      "schema": "ari.cuda-environment-provider-manifest/v1",
+      "test_output_sha256": "sha256:7a7f50d0e11e0cf3143847f5c5b9aa83c31fe96c9cb9ed84b79302906c736491"
+    },
+    "result_schema": {
+      "all_negative_controls_detected": true,
+      "all_repeats_equal": true,
+      "architecture": "sm_70",
+      "case_count_per_device": [
+        4
+      ],
+      "compiler_digest": "sha256:e4d89fec9260c0162c5afb820d5e7bfaea971f96d4eef94d47e0d08ec8bc85e7",
+      "device_classes": [
+        {
+          "compute_capability": "7.0",
+          "memory_bytes": 16928342016,
+          "name": "Tesla V100-SXM2-16GB"
+        }
+      ],
+      "device_count": 4,
+      "maximum_absolute_error": 0.0,
+      "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+      "verdict": "pass"
+    },
+    "revocation_behavior": {
+      "rule": "non-verified status is ineligible for enforce binding"
+    },
+    "schema_digest_pin": {
+      "input": "sha256:0b5a8b5e86c1f8c006dceb2f6252532aec7567284f917e03a3f4f02d3710b227",
+      "output": "sha256:02ea8f485a6237d7838d39e1eedd01bd25a29017a74d05554dcba3ac6e0ec8eb"
+    },
+    "schema_drift_detection": {
+      "inventory_identity_digest": "sha256:313810a5da4ba5208e5c196c0b1c62f9c7c09d0017e1608bc38309c465edabaf",
+      "remote_tool_identity": {
+        "cuda_compiler_version": "12.9.41",
+        "cuda_release": "12.9",
+        "nvcc_digest": "sha256:e4d89fec9260c0162c5afb820d5e7bfaea971f96d4eef94d47e0d08ec8bc85e7",
+        "nvcc_path": "/usr/local/cuda-12.9/bin/nvcc",
+        "nvidia_smi_digest": "sha256:12d25c1a1bda99aa2545462955763b9a6172d8419e017f852892a650700551b9",
+        "nvidia_smi_path": "/usr/bin/nvidia-smi"
+      }
+    },
+    "side_effect_declaration": {
+      "permissions": [
+        "scheduler-submit",
+        "workspace-read",
+        "workspace-write"
+      ],
+      "side_effects": "scheduler-submit"
+    },
+    "source_package_digest_pin": {
+      "artifact": {
+        "inventory_probe_digest": "sha256:6227c7f3102fb6cdcf190c0e394143548814f6e3d2e9d1f9b891ce256a4ab18e",
+        "job_contract_digest": "sha256:2a198e90dc5345b72913c9d9a616840d8b9363948ece7cd7d2523514960cd4b6",
+        "remote_nvcc_digest": "sha256:e4d89fec9260c0162c5afb820d5e7bfaea971f96d4eef94d47e0d08ec8bc85e7",
+        "remote_nvidia_smi_digest": "sha256:12d25c1a1bda99aa2545462955763b9a6172d8419e017f852892a650700551b9",
+        "scheduler_digest": "sha256:5f28f4ae74b4c38708e5b2d7dae7b557e9000716dad3f1f17ea4d0507448936f",
+        "source_base_commit": "e4fadaef3955f261ba9d44e4746d3657c5094050",
+        "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+        "source_overlay_digest": "sha256:90fff80ae35c17e813f9af947b99467746a2789af4f1f2961b1ba230472f3a65",
+        "source_repository": "https://github.com/kotama7/ARI.git",
+        "worker_digest": "sha256:f2f160e40fece8b5a7f6b0b5b5f5fdb05d11fe51e6f4b0067ae6467f197bedf0",
+        "worker_python_digest": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118"
+      }
+    },
+    "timeout_cancellation_process_group": {
+      "terminal_evidence_policy": "fixed-wrapper-marker",
+      "test_output_sha256": "sha256:7a7f50d0e11e0cf3143847f5c5b9aa83c31fe96c9cb9ed84b79302906c736491",
+      "timeout_seconds": 1200
+    },
+    "unbound_invocation_rejection": {
+      "surface": "one fixed self-test leaf; no arbitrary command input"
+    },
+    "workspace_isolation": {
+      "inventory_identity_digest": "sha256:313810a5da4ba5208e5c196c0b1c62f9c7c09d0017e1608bc38309c465edabaf",
+      "output_digests": {
+        "cuda-self-test-build-log": "sha256:4a9039e3453232c01f7268ec2cf78f30738e225eb22be0155616a8713600c863",
+        "cuda-self-test-result": "sha256:f892f6076c16b0c6cd486ef6fa3bef4be49660fd4ba3c1a47cded177edee0d24"
+      },
+      "provenance": [
+        {
+          "digest": "sha256:2026c6e372717303d9f5c196e16ea5b71db8eaf002e4ad4f53c4eba469768737",
+          "logical_name": "submission-record",
+          "size_bytes": 6149
+        },
+        {
+          "digest": "sha256:a3b9fff1bdaccccc6e66ff40a354eca0f647b7980e429f1336acfd28f9b8b169",
+          "logical_name": "wrapper-completion",
+          "size_bytes": 351
+        },
+        {
+          "digest": "sha256:9e97e36717dbb3ff60fa8119a87b0b386c828f0ce4a9ac8f5b5ddfefd585db1e",
+          "logical_name": "execution-environment",
+          "size_bytes": 718
+        },
+        {
+          "digest": "sha256:21a8d95daada244ab12d79a7595425f3d052107f9319550c4f289cee45248802",
+          "logical_name": "expected-accelerator-inventory",
+          "size_bytes": 344
+        },
+        {
+          "digest": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "logical_name": "exit-code",
+          "size_bytes": 2
+        }
+      ],
+      "request_digest": "sha256:6aa7a1051e90e018387c8c31ce8453ea52d1adc15970b7ebed5f5ae382f3dd7b",
+      "result_digest": "sha256:4b75dd5d7a7e21099c2a1a04a5c17ffd1ca1ab9d815baaa2ce3ec0de541250d6",
+      "site_identity_digest": "sha256:573f81623cae9a9e8c5ec13b3622483961a98b768e0c4145ad543f54dec24b6a",
+      "terminal_reason": "fixed-wrapper-completion-v1",
+      "terminal_state": "succeeded"
+    }
+  },
+  "observations": {
+    "cuda_self_test": {
+      "all_negative_controls_detected": true,
+      "all_repeats_equal": true,
+      "architecture": "sm_70",
+      "case_count_per_device": [
+        4
+      ],
+      "compiler_digest": "sha256:e4d89fec9260c0162c5afb820d5e7bfaea971f96d4eef94d47e0d08ec8bc85e7",
+      "device_classes": [
+        {
+          "compute_capability": "7.0",
+          "memory_bytes": 16928342016,
+          "name": "Tesla V100-SXM2-16GB"
+        }
+      ],
+      "device_count": 4,
+      "maximum_absolute_error": 0.0,
+      "source_digest": "sha256:428bd2d262987c9fb612dd3d2d57babbd02ffc82576b0cb92ee18a0a7f097c7e",
+      "verdict": "pass"
+    },
+    "execution": {
+      "inventory_identity_digest": "sha256:313810a5da4ba5208e5c196c0b1c62f9c7c09d0017e1608bc38309c465edabaf",
+      "output_digests": {
+        "cuda-self-test-build-log": "sha256:4a9039e3453232c01f7268ec2cf78f30738e225eb22be0155616a8713600c863",
+        "cuda-self-test-result": "sha256:f892f6076c16b0c6cd486ef6fa3bef4be49660fd4ba3c1a47cded177edee0d24"
+      },
+      "provenance": [
+        {
+          "digest": "sha256:2026c6e372717303d9f5c196e16ea5b71db8eaf002e4ad4f53c4eba469768737",
+          "logical_name": "submission-record",
+          "size_bytes": 6149
+        },
+        {
+          "digest": "sha256:a3b9fff1bdaccccc6e66ff40a354eca0f647b7980e429f1336acfd28f9b8b169",
+          "logical_name": "wrapper-completion",
+          "size_bytes": 351
+        },
+        {
+          "digest": "sha256:9e97e36717dbb3ff60fa8119a87b0b386c828f0ce4a9ac8f5b5ddfefd585db1e",
+          "logical_name": "execution-environment",
+          "size_bytes": 718
+        },
+        {
+          "digest": "sha256:21a8d95daada244ab12d79a7595425f3d052107f9319550c4f289cee45248802",
+          "logical_name": "expected-accelerator-inventory",
+          "size_bytes": 344
+        },
+        {
+          "digest": "sha256:9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "logical_name": "exit-code",
+          "size_bytes": 2
+        }
+      ],
+      "request_digest": "sha256:6aa7a1051e90e018387c8c31ce8453ea52d1adc15970b7ebed5f5ae382f3dd7b",
+      "result_digest": "sha256:4b75dd5d7a7e21099c2a1a04a5c17ffd1ca1ab9d815baaa2ce3ec0de541250d6",
+      "site_identity_digest": "sha256:573f81623cae9a9e8c5ec13b3622483961a98b768e0c4145ad543f54dec24b6a",
+      "terminal_reason": "fixed-wrapper-completion-v1",
+      "terminal_state": "succeeded"
+    },
+    "remote_tool_identity": {
+      "cuda_compiler_version": "12.9.41",
+      "cuda_release": "12.9",
+      "nvcc_digest": "sha256:e4d89fec9260c0162c5afb820d5e7bfaea971f96d4eef94d47e0d08ec8bc85e7",
+      "nvcc_path": "/usr/local/cuda-12.9/bin/nvcc",
+      "nvidia_smi_digest": "sha256:12d25c1a1bda99aa2545462955763b9a6172d8419e017f852892a650700551b9",
+      "nvidia_smi_path": "/usr/bin/nvidia-smi"
+    }
+  },
+  "provider_id": "ari-cuda-environment-validator",
+  "provider_version": "1.0.0+cuda12.9-sm70",
+  "schema_version": "ari.cuda-environment-registration-evidence/v1",
+  "test_run": {
+    "command": [
+      "<test-python>",
+      "-m",
+      "pytest",
+      "ari-skill-hpc/tests/test_contracts.py",
+      "ari-skill-hpc/tests/test_slurm_local.py",
+      "ari-skill-tool-registry/tests/test_cuda_validation.py",
+      "ari-skill-tool-registry/tests/test_site_privacy.py",
+      "-q"
+    ],
+    "exit_code": 0,
+    "output_sha256": "sha256:7a7f50d0e11e0cf3143847f5c5b9aa83c31fe96c9cb9ed84b79302906c736491",
+    "test_ids": [
+      "ari-skill-hpc/tests/test_contracts.py",
+      "ari-skill-hpc/tests/test_slurm_local.py",
+      "ari-skill-tool-registry/tests/test_cuda_validation.py",
+      "ari-skill-tool-registry/tests/test_site_privacy.py"
+    ]
+  }
+}

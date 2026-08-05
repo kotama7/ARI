@@ -31,9 +31,9 @@ class TestCaptureEnv:
         # kwargs win — that's the contract for slurm-injected snippets.
         monkeypatch.setenv("SLURM_JOB_ID", "9999")
         info = capture_env(tmp_path, executor="slurm",
-                           slurm_job_id="1274", slurm_partition="sx40")
+                           slurm_job_id="1274", slurm_partition="gpu-private")
         assert info["slurm_job_id"] == "1274"
-        assert info["slurm_partition"] == "sx40"
+        assert info["slurm_partition"] == "gpu-private"
         assert info["executor"] == "slurm"
 
     def test_overwrites_on_repeat(self, tmp_path):
@@ -96,7 +96,7 @@ class TestNodeReportIntegration:
 
     def test_node_report_includes_run_env_fields(self, tmp_path):
         capture_env(tmp_path, executor="slurm",
-                    slurm_job_id="42", slurm_partition="sx40")
+                    slurm_job_id="42", slurm_partition="gpu-private")
 
         from ari.orchestrator.node_report import build_node_report
 
@@ -120,7 +120,7 @@ class TestNodeReportIntegration:
         )
         assert report["executor"] == "slurm"
         assert report["slurm_job_id"] == "42"
-        assert report["slurm_partition"] == "sx40"
+        assert report["slurm_partition"] == "gpu-private"
         assert isinstance(report["cpu_info"], dict)
 
     def test_node_report_legacy_run_no_capture(self, tmp_path):

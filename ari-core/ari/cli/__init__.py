@@ -78,6 +78,18 @@ from ari.cli.lineage import (
 app = typer.Typer(name="ari", help="ARI - Autonomous Research Infrastructure")
 console = Console()
 
+# The three catalogs are deliberately separate.  ``ari.cli.kca`` itself has
+# no top-level domain imports, preserving the all-off run path.
+from ari.cli.kca import harness_app, knowledge_app, provider_app
+app.add_typer(knowledge_app, name="knowledge")
+app.add_typer(provider_app, name="provider")
+app.add_typer(harness_app, name="harness")
+
+# Manuscript Complete diagnostics are lazy at the domain boundary: the CLI
+# module itself has no top-level ``ari.manuscript`` imports.
+from ari.cli.manuscript import manuscript_app
+app.add_typer(manuscript_app, name="manuscript")
+
 # `ari memory` subparser.
 try:
     from ari.memory_cli import memory_app as _memory_app

@@ -57,6 +57,7 @@ from ari.rqgm.transition_rules import (
     TRANSITION_TABLE,
     ComponentStatus,
 )
+from ari.protocols.integrity import bytes_digest, canonical_digest
 
 # Hand-pinned (plan 04 §5.7/§9.8): any rule-table edit — including one to the
 # imported transition_rules.py — must be an explicit reviewed diff + re-pin.
@@ -114,7 +115,11 @@ from ari.rqgm.transition_rules import (
 # row rides the hash). The auditor/evidence_clerk/governance_judge FOUNDING
 # COMPONENT rows do NOT ride the hash (founding rows are not in the payload) —
 # they change registry identity / epoch fingerprint instead, asserted elsewhere.
-_EXPECTED_CONSTITUTION_HASH = "2edf93776904"
+# Re-pinned 2026-08-03 (Tasks 16-19): constitutional amendment adding the
+# fixed Knowledge Binder, Capability Binder, Harness Resolver, and Fixed
+# Verifier roles; their closed resource classes; and the CK-KNW/CK-CAP/CK-HAR
+# integrity tables.
+_EXPECTED_CONSTITUTION_HASH = "5e455c17da51"
 
 RTE = kernel_rules.REGISTRY_WRITER
 _H = "a" * 12
@@ -250,6 +255,375 @@ def _era(k, **over):
         inputs["frontier"], inputs["records"], inputs["prompt_registry"],
         known_record_ids=inputs["known_record_ids"],
         prompt_trace=inputs.get("prompt_trace"),
+    )
+
+
+def _sealed(document: dict, field: str) -> dict:
+    value = dict(document)
+    value[field] = canonical_digest(value)
+    return value
+
+
+def _knowledge_kernel_report(k, case: str = ""):
+    """One internally coherent raw KCA replay fixture, selectively forged."""
+
+    body = "# Procedure\nUse semantic compile capability.\n"
+    body_digest = bytes_digest(body.encode("utf-8"))
+    source = {
+        "repository": "https://example.invalid/knowledge",
+        "commit": "a" * 40,
+        "path": "knowledge-skills/hpc.gemm.optimization",
+        "body_sha256": body_digest,
+    }
+    manifest = {
+        "schema_version": 1,
+        "id": "hpc.gemm.optimization",
+        "version": "1.0.0",
+        "status": "verified",
+        "source": source,
+        "authority_ceiling": {"side_effects": ["read-only", "workspace-write"]},
+        "forbidden_capabilities": [],
+    }
+    source["manifest_sha256"] = canonical_digest(manifest)
+    requirement = {
+        "capability_ref": "ari.execution.compile/v1",
+        "side_effect_ceiling": "workspace-write",
+        "source_requirement_refs": ["knowledge:" + body_digest],
+    }
+
+    previous_catalog = None
+    if case == "CK-KNW-004":
+        old_source = dict(source, body_sha256="sha256:" + "b" * 64)
+        old_manifest = dict(manifest, source=old_source)
+        old_source["manifest_sha256"] = canonical_digest(old_manifest)
+        previous_catalog = {
+            "entries": [{
+                "manifest": old_manifest,
+                "status": "verified",
+                "entry_digest": canonical_digest(old_manifest),
+            }]
+        }
+    if case == "CK-KNW-007":
+        requirement["side_effect_ceiling"] = "external-write"
+    if case == "CK-KNW-008":
+        manifest["forbidden_capabilities"] = ["ari.execution.compile/v1"]
+    if case == "CK-KNW-010":
+        source["commit"] = "latest"
+    if case in {"CK-KNW-008", "CK-KNW-010"}:
+        source.pop("manifest_sha256", None)
+        source["manifest_sha256"] = canonical_digest(manifest)
+
+    status = "revoked" if case == "CK-KNW-012" else (
+        "candidate" if case == "CK-KNW-001" else "verified"
+    )
+    entry = {
+        "manifest": manifest,
+        "status": status,
+        "entry_digest": canonical_digest({"manifest": manifest, "status": status}),
+    }
+    ref = {
+        "id": manifest["id"],
+        "version": manifest["version"],
+        "body_sha256": source["body_sha256"],
+        "manifest_sha256": source["manifest_sha256"],
+    }
+    composition_digest = canonical_digest({"ordered": [body_digest]})
+    lock = _sealed({
+        "epoch_id": "epoch_000",
+        "admitted": [ref],
+        "capability_requirements": [requirement],
+    }, "lock_digest")
+    use = _sealed({
+        "node_id": "node_001",
+        "epoch_id": "epoch_000",
+        "epoch_lock_digest": lock["lock_digest"],
+        "ordered_skills": [ref],
+        "knowledge_composition_digest": composition_digest,
+    }, "use_digest")
+    if case == "CK-KNW-002":
+        bodies = {body_digest: body + "tampered"}
+    else:
+        bodies = {body_digest: body}
+    if case == "CK-KNW-003":
+        source["manifest_sha256"] = "sha256:" + "c" * 64
+        ref["manifest_sha256"] = source["manifest_sha256"]
+        use["ordered_skills"] = [dict(ref)]
+        use.pop("use_digest")
+        use = _sealed(use, "use_digest")
+    if case == "CK-KNW-006":
+        previous_use = dict(use, knowledge_composition_digest=canonical_digest("old"))
+    else:
+        previous_use = None
+    return k.validate_knowledge_integrity(
+        node_use=use,
+        epoch_lock=lock,
+        catalog_snapshot={"entries": [entry]},
+        body_by_sha256=bodies,
+        composition_digest=(
+            canonical_digest("different")
+            if case == "CK-KNW-005" else composition_digest
+        ),
+        expected_epoch_lock_digest=(
+            canonical_digest("stale") if case == "CK-KNW-011" else lock["lock_digest"]
+        ),
+        previous_catalog_snapshot=previous_catalog,
+        previous_node_use=previous_use,
+        actor=("generator", "institutional"),
+        attempted_catalog_write=case == "CK-KNW-009",
+        attachment_launch=case == "CK-KNW-015",
+        effective_directives=(
+            ("registry_write",) if case == "CK-KNW-013"
+            else (("harness_bypass",) if case == "CK-KNW-014" else ())
+        ),
+    )
+
+
+def _provider_lock(*, include_tool: bool = True, input_digest: str | None = None):
+    raw_input = input_digest or ("1" * 64)
+    tools = []
+    tool_refs = []
+    if include_tool:
+        tool_refs = ["provider-a::compile"]
+        tools = [{
+            "tool_ref": "provider-a::compile",
+            "name": "compile",
+            "skill_name": "provider-a",
+            "capability_ref": "ari.execution.compile/v1",
+            "input_schema": {},
+            "output_schema": {},
+            "input_schema_digest": raw_input,
+            "output_schema_digest": "2" * 64,
+            "policy": {},
+        }]
+    return {
+        "schema_version": "ari.skills-lock/v1",
+        "run_id": "run-1",
+        "registry_digest": "3" * 64,
+        "skills": [{
+            "name": "provider-a",
+            "package": "ari-skill-coding",
+            "version": "1.0.0",
+            "entrypoint": "ari-skill-coding",
+            "manifest_digest": "4" * 64,
+            "provider_digest": "5" * 64,
+            "configured_phases": ["bfts"],
+            "environment_policy": "complete",
+            "required_env": [],
+            "optional_env": [],
+            "credential_scopes": [],
+            "tool_refs": tool_refs,
+        }],
+        "tools": tools,
+        "disabled_tools": [],
+        "phase_active_tools": {"bfts": tool_refs},
+    }
+
+
+def _capability_kernel_report(k, case: str = ""):
+    contract_digest = "sha256:" + "6" * 64
+    requirement = {
+        "requirement_digest": "sha256:" + "7" * 64,
+        "capability_ref": "ari.execution.compile/v1",
+        "capability_contract_digest": contract_digest,
+        "side_effect_ceiling": "workspace-write",
+        "permitted_credential_scopes": ["workspace"],
+    }
+    binding = {
+        "requirement_digest": requirement["requirement_digest"],
+        "capability_ref": requirement["capability_ref"],
+        "capability_contract_digest": contract_digest,
+        "tool_ref": "provider-a::compile",
+        "provider_status": "verified",
+        "role": "generator",
+        "phase": "bfts",
+        "call_context": "node",
+        "side_effect_class": "workspace-write",
+        "credential_scope_ids": ["workspace"],
+        "input_schema_digest": "sha256:" + "1" * 64,
+        "output_schema_digest": "sha256:" + "2" * 64,
+    }
+    if case == "CK-CAP-010":
+        requirement["side_effect_ceiling"] = "read-only"
+    if case == "CK-CAP-011":
+        binding["credential_scope_ids"] = ["admin"]
+    if case == "CK-CAP-015":
+        binding["provider_status"] = "revoked"
+    bindings = [binding]
+    if case == "CK-CAP-017":
+        bindings.append(dict(
+            binding,
+            tool_ref="provider-b::compile",
+            capability_contract_digest="sha256:" + "8" * 64,
+        ))
+    provider = None
+    if case in {"CK-CAP-005", "CK-CAP-006", "CK-CAP-007", "CK-CAP-012"}:
+        provider = _provider_lock(
+            include_tool=case != "CK-CAP-012",
+            input_digest=("d" * 64 if case == "CK-CAP-006" else None),
+        )
+    provider_digest = canonical_digest(provider) if provider is not None else (
+        "sha256:" + "9" * 64
+    )
+    lock = _sealed({
+        "environment_digest": "sha256:" + "a" * 64,
+        "provider_lock_digest": (
+            "sha256:" + "b" * 64 if case == "CK-CAP-005" else provider_digest
+        ),
+        "requirements": [requirement],
+        "bindings": bindings,
+    }, "lock_digest")
+    if case == "CK-CAP-008":
+        lock["lock_digest"] = "sha256:" + "0" * 64
+    invocation = {
+        "tool_ref": (
+            "provider-a::unknown" if case == "CK-CAP-001" else "provider-a::compile"
+        ),
+        "capability_ref": (
+            "ari.execution.run/v1"
+            if case == "CK-CAP-002" else "ari.execution.compile/v1"
+        ),
+        "capability_contract_digest": (
+            "sha256:" + "c" * 64 if case == "CK-CAP-003" else contract_digest
+        ),
+        "role": "reviewer" if case == "CK-CAP-009" else "generator",
+        "phase": "bfts",
+        "call_context": "node",
+    }
+    live_tools = None
+    if case == "CK-CAP-007":
+        live_tools = []
+    return k.validate_capability_binding_integrity(
+        binding_lock=lock,
+        invocation=invocation,
+        provider_lock=provider,
+        live_tools=live_tools,
+        expected_lock_digest=(
+            canonical_digest("new") if case == "CK-CAP-014" else None
+        ),
+        expected_environment_digest=(
+            canonical_digest("other") if case == "CK-CAP-018" else None
+        ),
+        granted_credential_scopes=("workspace",),
+        actor_selected=case == "CK-CAP-004",
+        used_name_inference=case == "CK-CAP-013",
+        provider_description_effective=case == "CK-CAP-016",
+    )
+
+
+def _harness_kernel_report(k, case: str = ""):
+    atom = "sha256:" + "1" * 64
+    manifest_body = {
+        "id": "hpc/gemm-correctness",
+        "status": "candidate" if case == "CK-HAR-002" else "verified",
+        "oracle": {"sha256": "sha256:" + "2" * 64},
+        "dataset": {"sha256": "sha256:" + "3" * 64},
+        "driver": {"sha256": "sha256:" + "4" * 64},
+        "container": {"resolved_digest": "sha256:" + "5" * 64},
+    }
+    manifest = _sealed(manifest_body, "manifest_digest")
+    if case == "CK-HAR-007":
+        manifest["manifest_digest"] = "sha256:" + "6" * 64
+    locked = {
+        "harness_id": manifest["id"],
+        "manifest_digest": manifest["manifest_digest"],
+        "oracle_digest": manifest["oracle"]["sha256"],
+        "dataset_digest": manifest["dataset"]["sha256"],
+        "driver_digest": manifest["driver"]["sha256"],
+        "container_digest": manifest["container"]["resolved_digest"],
+        "covered_atom_digests": [atom],
+    }
+    pin_field = {
+        "CK-HAR-008": "oracle_digest",
+        "CK-HAR-009": "dataset_digest",
+        "CK-HAR-010": "driver_digest",
+        "CK-HAR-011": "container_digest",
+    }.get(case)
+    if pin_field:
+        locked[pin_field] = "sha256:" + "f" * 64
+    baseline = _sealed({
+        "requirements": [{"atom_digest": atom}],
+        "harnesses": [locked],
+    }, "lock_digest")
+    if case == "CK-HAR-001":
+        baseline["harnesses"][0]["covered_atom_digests"] = []
+        baseline.pop("lock_digest")
+        baseline = _sealed(baseline, "lock_digest")
+    if case == "CK-HAR-006":
+        baseline["lock_digest"] = "sha256:" + "0" * 64
+
+    old_tier = "certify" if case == "CK-HAR-016" else "screen"
+    old_tolerance = (
+        "sha256:" + "e" * 64 if case == "CK-HAR-017" else "sha256:" + "d" * 64
+    )
+    requirement = {
+        "property_id": "numerical-equivalence",
+        "target_kind": "shared-library",
+        "required_methods": ["differential-testing"],
+        "required_tier": "screen",
+        "scope": {"values": {"dtype": ["float64"]}},
+        "tolerance_policy_digest": "sha256:" + "d" * 64,
+        "failure_policy": "exclude-from-scientific-frontier",
+    }
+    previous_requirement = dict(
+        requirement,
+        required_tier=old_tier,
+        tolerance_policy_digest=old_tolerance,
+    )
+    if case == "CK-HAR-004":
+        previous_requirement["required_methods"] = [
+            "differential-testing", "metamorphic-testing"
+        ]
+    contract = {"requirements": [requirement]}
+    previous_contract = (
+        {"requirements": [previous_requirement]}
+        if case in {"CK-HAR-004", "CK-HAR-016", "CK-HAR-017"} else None
+    )
+    target = "sha256:" + "7" * 64
+    attestation = _sealed({
+        "node_id": "node_001",
+        "producer_component_id": "fixed_verifier_v1",
+        "producer_prompt_hash": None,
+        "active_harness_lock_digest": baseline["lock_digest"],
+        "target_digest": target,
+        "verdict": "pass",
+        "property_results": [{
+            "tier": "screen",
+            "verdict": "pass",
+            "covered_atom_digests": [atom],
+        }],
+    }, "attestation_digest")
+    request = {"property_atoms": [{"atom_digest": atom}]}
+    kwargs = {}
+    if case in {
+        "CK-HAR-012", "CK-HAR-013", "CK-HAR-014", "CK-HAR-015",
+        "CK-HAR-018",
+    }:
+        kwargs["attestation"] = attestation
+        kwargs["request"] = request
+    if case == "CK-HAR-012":
+        kwargs["current_target_digest"] = "sha256:" + "8" * 64
+    if case == "CK-HAR-013":
+        kwargs["active_harness_lock_digest"] = "sha256:" + "9" * 64
+    if case == "CK-HAR-014":
+        attestation["attestation_digest"] = "sha256:" + "0" * 64
+    if case == "CK-HAR-015":
+        request["property_atoms"] = [{"atom_digest": "sha256:" + "a" * 64}]
+    if case == "CK-HAR-018":
+        attestation["verdict"] = "fail"
+        kwargs["publication"] = True
+    if case == "CK-HAR-005":
+        kwargs["revision"] = {}
+    return k.validate_harness_integrity(
+        verification_contract=contract,
+        previous_verification_contract=previous_contract,
+        baseline_lock=baseline,
+        catalog_snapshot={"manifests": [manifest]},
+        selector_component_id=(
+            "evaluator_v1" if case == "CK-HAR-003" else "harness_resolver_v1"
+        ),
+        result_overridden=case == "CK-HAR-019",
+        hidden_oracle_access=case == "CK-HAR-020",
+        **kwargs,
     )
 
 
@@ -628,6 +1002,30 @@ _FIXTURES = {
     ),
 }
 
+_FIXTURES.update({
+    **{
+        f"CK-KNW-{index:03d}": (
+            lambda k, code=f"CK-KNW-{index:03d}": _knowledge_kernel_report(k, code),
+            lambda k: _knowledge_kernel_report(k),
+        )
+        for index in range(1, 16)
+    },
+    **{
+        f"CK-CAP-{index:03d}": (
+            lambda k, code=f"CK-CAP-{index:03d}": _capability_kernel_report(k, code),
+            lambda k: _capability_kernel_report(k),
+        )
+        for index in range(1, 19)
+    },
+    **{
+        f"CK-HAR-{index:03d}": (
+            lambda k, code=f"CK-HAR-{index:03d}": _harness_kernel_report(k, code),
+            lambda k: _harness_kernel_report(k),
+        )
+        for index in range(1, 21)
+    },
+})
+
 
 def test_every_severity_code_has_a_fixture():
     """The violation catalogue is fully exercised (plan 04 §9.1)."""
@@ -941,7 +1339,16 @@ def test_kernel_modules_have_no_llm_or_network_imports():
     pkg_dir = Path(rqgm_pkg.__file__).parent
     files = sorted(pkg_dir.glob("kernel*.py")) + [
         pkg_dir / "transition_rules.py"]
-    assert len(files) == 4  # kernel, kernel_rules, kernel_types, transitions
+    assert {path.name for path in files} == {
+        "kernel.py",
+        "kernel_capability_integrity.py",
+        "kernel_harness_integrity.py",
+        "kernel_kca_common.py",
+        "kernel_knowledge_integrity.py",
+        "kernel_rules.py",
+        "kernel_types.py",
+        "transition_rules.py",
+    }
     for path in files:
         text = path.read_text(encoding="utf-8")
         for name in ("litellm", "openai", "anthropic", "requests", "httpx",

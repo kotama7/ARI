@@ -50,7 +50,7 @@ default partition.
 export ARI_SLURM_PARTITION=large
 ```
 
-## Example: sx40 (single-node, 4×V100)
+## Example: anonymous no-GRES GPU partition
 
 If a site exposes physical GPUs without configuring scheduler GRES, SLURM
 cannot reserve them reliably. Select a GRES-enabled partition or ask the site

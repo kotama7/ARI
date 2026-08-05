@@ -86,7 +86,7 @@ def _setup_slurm(tmp_path: Path, *, with_partition: bool = True) -> Path:
     )
     if with_partition:
         (tmp_path / "launch_config.json").write_text(
-            json.dumps({"partition": "sx40"}), encoding="utf-8"
+            json.dumps({"partition": "gpu-private"}), encoding="utf-8"
         )
     return repo
 
@@ -105,7 +105,7 @@ def _execution(repo: Path, timeout: int = 60) -> ExecutionRequestV1:
 
 
 def test_auto_picks_slurm_only_with_binary_and_partition(monkeypatch):
-    monkeypatch.setenv("ARI_SLURM_PARTITION", "sx40")
+    monkeypatch.setenv("ARI_SLURM_PARTITION", "gpu-private")
     monkeypatch.delenv("ARI_PHASE1_SANDBOX", raising=False)
     with patch.object(S, "_has_bin", lambda name: name == "sbatch"):
         assert S._phase1_sandbox_kind() == "slurm"
@@ -123,7 +123,7 @@ def test_partition_resolution_precedence(monkeypatch, tmp_path):
     assert S._resolve_partition_for_repo(repo) == "from-env"
     monkeypatch.delenv("ARI_SLURM_PARTITION")
     monkeypatch.delenv("SLURM_PARTITION", raising=False)
-    assert S._resolve_partition_for_repo(repo) == "sx40"
+    assert S._resolve_partition_for_repo(repo) == "gpu-private"
 
 
 def test_walltime_is_bounded_to_at_least_one_minute():
@@ -241,7 +241,7 @@ async def test_run_reproduce_resolves_execution_profile_into_typed_request(
             rubric_path=str(rubric),
                 repo_dir=str(repo),
                 sandbox_kind="slurm",
-                partition="sx40",
+                partition="gpu-private",
                 network_policy="inherit",
             )
 
@@ -263,7 +263,7 @@ async def test_failed_scheduler_state_is_not_reported_as_success(tmp_path, monke
 
     with patch.object(S, "_has_bin", lambda name: name == "sbatch"):
         result = await S._execute_reproduction_slurm(
-            _execution(repo), repo / "reproduce.log", partition="sx40"
+            _execution(repo), repo / "reproduce.log", partition="gpu-private"
         )
 
     assert result["executed"] is True
@@ -279,7 +279,7 @@ async def test_missing_sbatch_cannot_be_downgraded_to_local(
     with patch.object(S, "_has_bin", lambda _name: False):
         with pytest.raises(RuntimeError, match="sbatch is not on PATH"):
             await S._execute_reproduction_slurm(
-                _execution(repo, 10), repo / "reproduce.log", partition="sx40"
+                _execution(repo, 10), repo / "reproduce.log", partition="gpu-private"
             )
 
 
@@ -319,14 +319,14 @@ async def test_contradictory_or_nonportable_resources_fail_closed(
                 await S._execute_reproduction_slurm(
                     _execution(repo),
                     repo / "reproduce.log",
-                    partition="sx40",
+                    partition="gpu-private",
                     **kwargs,
                 )
         else:
             result = await S._execute_reproduction_slurm(
                 _execution(repo),
                 repo / "reproduce.log",
-                partition="sx40",
+                partition="gpu-private",
                 **kwargs,
             )
             assert result["executed"] is False

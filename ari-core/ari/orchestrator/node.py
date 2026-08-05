@@ -120,6 +120,27 @@ class Node:
     # Relative pointer (from checkpoint root) to the per-node report file.
     # Optional: present only after `node_report.json` has been written.
     node_report_path: str | None = None
+    # Tasks 16–19 typed scientific provenance.  Values remain empty on the
+    # compatibility path and are omitted from serialized legacy nodes.
+    knowledge_skill_refs: list[dict] = field(default_factory=list)
+    knowledge_skill_use_digest: str = ""
+    instruction_identity_digest: str = ""
+    capability_binding_lock_digest: str = ""
+    bound_tool_refs: list[str] = field(default_factory=list)
+    assurance_status: str = ""
+    assurance_tier: str = ""
+    baseline_harness_lock_digest: str = ""
+    active_harness_lock_digest: str = ""
+    attestation_refs: list[str] = field(default_factory=list)
+    verified_target_digest: str = ""
+    property_verdicts: dict = field(default_factory=dict)
+    frontier_class: str = ""
+    # Manuscript repair lineage. Empty on ordinary exploration nodes; repair
+    # nodes inherit one digest-bound request envelope and cannot widen it.
+    repair_request_id: str = ""
+    repair_requirement_ids: list[str] = field(default_factory=list)
+    repair_context_digest: str = ""
+    repair_allowed_changes: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -147,7 +168,7 @@ class Node:
         self.completed_at = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "id": self.id,
             "parent_id": self.parent_id,
             "depth": self.depth,
@@ -172,3 +193,25 @@ class Node:
             "producer_epoch_id": self.producer_epoch_id,
             "node_report_path": self.node_report_path,
         }
+        scientific = {
+            "knowledge_skill_refs": self.knowledge_skill_refs,
+            "knowledge_skill_use_digest": self.knowledge_skill_use_digest,
+            "instruction_identity_digest": self.instruction_identity_digest,
+            "capability_binding_lock_digest": self.capability_binding_lock_digest,
+            "bound_tool_refs": self.bound_tool_refs,
+            "assurance_status": self.assurance_status,
+            "assurance_tier": self.assurance_tier,
+            "baseline_harness_lock_digest": self.baseline_harness_lock_digest,
+            "active_harness_lock_digest": self.active_harness_lock_digest,
+            "attestation_refs": self.attestation_refs,
+            "verified_target_digest": self.verified_target_digest,
+            "property_verdicts": self.property_verdicts,
+            "frontier_class": self.frontier_class,
+            "repair_request_id": self.repair_request_id,
+            "repair_requirement_ids": self.repair_requirement_ids,
+            "repair_context_digest": self.repair_context_digest,
+            "repair_allowed_changes": self.repair_allowed_changes,
+        }
+        if any(value not in ("", [], {}) for value in scientific.values()):
+            payload.update(scientific)
+        return payload

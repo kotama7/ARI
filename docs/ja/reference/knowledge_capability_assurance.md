@@ -1,0 +1,332 @@
+---
+sources:
+  - path: ari-core/ari/knowledge
+    role: implementation
+  - path: ari-core/ari/providers
+    role: implementation
+  - path: ari-core/ari/capability_binding
+    role: implementation
+  - path: ari-core/ari/assurance
+    role: implementation
+  - path: ari-core/ari/rqgm/admission_builder.py
+    role: implementation
+last_verified: 2026-08-05
+---
+
+# Knowledge、Capability、Scientific Assurance
+
+ARIは手続き知識、実行権限、独立検証を分離する。三つは別registryと別identityを
+持ち、package名、transport、vendor、repositoryが共通でも統合されない。
+
+| 概念 | 意味 | canonical実装 |
+|---|---|---|
+| **Knowledge Skill** | 何を、なぜ、いつ、どの順序で行うかを示す非実行・content-addressed知識 | `ari.knowledge` |
+| **Capability** | `ari.execution.compile/v1`等のversion付き意味実行契約 | `ari.capability_binding` ontology |
+| **Capability Provider** | 一つ以上のCapabilityを提供する実行主体 | 既存`ari.mcp`とProvider lockを再利用する`ari.providers` |
+| **MCP** | Providerのtransport / discovery protocol | `ari.mcp` |
+| **Tool** | Providerの原子的operation | Provider lockで固定 |
+| **Capability Binding** | 一run/epochに対するrequirementから`tool_ref`への決定論的解決 | `ari.capability_binding` |
+| **Harness** | 宣言target/property/scopeの独立検証器 | `ari.assurance` |
+| **RQGM** | 権限・証拠を誰が生成、利用、無視、歪曲したかの統治 | `ari.rqgm` bridge |
+
+規範上の非同一関係は次である。
+
+```text
+Knowledge Skill != Capability Provider
+Capability Provider != Harness
+Harness != Evaluator
+MCP != Skill
+Tool description != procedural knowledge
+Skill instruction != executable authority
+```
+
+## legacy Provider名称
+
+従来のPython型名とdisk上の名称はKnowledge Skillではなく、実行可能なMCP Providerを
+表している。
+
+| legacy名称 | 正式な製品上の意味 |
+|---|---|
+| `SkillManifestV1` / `skill.yaml` | Capability Provider Manifest |
+| `SkillConfig` | Capability Provider runtime configuration |
+| `SkillConnection` | MCP Provider connection |
+| `SKILLS.lock` | Providerとlive tool schemaのrun snapshot |
+
+`CapabilityProviderManifest`、`CapabilityProviderConfig`、
+`MCPProviderConnection`、`ProviderLock`は既存classとserialized bytesへのsemantic alias
+である。v1のcanonical fileは`skill.yaml`と`SKILLS.lock`のままで、`provider.yaml`や
+`PROVIDERS.lock`は作らない。`ari-skill-*` prefixも互換維持し、CLI、API、UIでは実行
+権限を指す場合に「Capability Provider」と表示する。
+
+## dependency境界
+
+```text
+ari.rqgm.knowledge_bridge -> ari.knowledge
+ari.knowledge             -> ari.capability_binding contracts
+ari.capability_binding    -> ari.providers / ari.mcp
+
+ari.rqgm.assurance_bridge -> ari.assurance
+```
+
+`ari.knowledge`と`ari.assurance`は`ari.rqgm`をimportしない。`ari.assurance`はAgent
+toolをbindせず、`ari.providers`はKnowledgeやHarnessを選択しない。共通契約は
+`ari.protocols`、read-onlyのsupported APIは`ari.public`に置く。
+
+## run admissionと固定identity
+
+有効な`ari_rqgm` runでは、最初のresearch node前にtrusted coordinatorが次を完了する。
+
+```text
+foundation bootstrap
+  -> catalog snapshots
+  -> ResearchContractV1
+  -> Router selection proposal
+  -> fixed Knowledge admission and EpochKnowledgeSkillLockV1
+  -> capability requirement union
+  -> fixed CapabilityBindingLockV1
+  -> VerificationContractV1
+  -> fixed Harness suite resolution and BaselineHarnessLockV1
+  -> run admission commit
+  -> first execution epoch freeze
+  -> Agent execution through bound Providers
+  -> target-bound HarnessAttestationV1
+```
+
+admission transactionは`rqgm/kca/admission-v1/`へ保存する。resumeは保存済みsnapshotと
+lockを読み、現在のcatalogへ再解決しない。Skill、binding、Harnessの追加はappend-only
+revisionとしてepoch境界でのみ採用する。node開始後はactive Knowledge body、binding、
+target Attestationを差し替えられない。
+
+instruction identityはbase/RQGM prompt hash、順序付きKnowledge body hash、composition
+digest、Capability Binding Lock、Verification Contract、active Harness Lock digestを含む。
+Provider tool descriptionはauthoritative instructionより下のuntrusted operation metadataで、
+Knowledge本文やProvider descriptionからvisible toolを拡張できない。
+
+## Knowledge package
+
+packageは`SKILL.md`、`skill.meta.yaml`、任意の`references/`から成り、manifestは
+`KnowledgeSkillManifestV1`である。実行field、command、environment/credential宣言、
+entrypoint、transportはschema errorになる。importで見つかったscript/notebookは
+non-executable attachmentであり、実行にはCapability Provider、Harness driver、または
+trusted build-time importerとしての別登録が必要である。
+
+外部sourceはrepository、full commit、subpath、manifest/body/referenceのfull SHA-256、
+license、importer versionで固定する。branch、tag、`latest`をruntime sourceにしない。
+本文中のtool名はnon-authoritative hintにすぎない。prompt-freeの固定Knowledge Binderが
+verified status、applicability、dependency、conflict、authority ceiling、forbidden
+capability、evaluation obligationを検査してepoch lockをmintする。
+
+### 外部import adapter
+
+`ari.knowledge.external_importer`はcandidate限定のadmin pathを4種類提供する。
+
+- exact Git repository commitとsubtree
+- 明示設定したscientific Skill sourceに対する同じGit adapter
+- required YAML frontmatterと任意の`references/`、`scripts/`、`assets/`を扱う
+  [Open Agent Skills specification](https://openagentskills.dev/docs/specification)
+- 独立したARI側`ToolUniverseKnowledgeCollectionProfileV1`で記述するToolUniverse
+  Knowledge collection
+
+Git importは一時bare object databaseを初期化し、指定full commitだけをfetch・検証し、
+`ls-tree`/`cat-file`でregular blobを読む。checkout、source hook、branch/tag参照、import
+script実行は行わない。symlink、submodule、special entry、path escape、安全でない
+remote-helper scheme、URL埋込みcredentialを拒否する。materialにはrepository、commit、
+subtree、tree snapshot、元`SKILL.md`、生成body/manifest/reference、attachment、importer、
+別admin profileの各digestを記録する。
+
+Open Agent Skills frontmatterはsource metadataだけである。`allowed-tools`と
+`compatibility`はnon-authoritative hint、`scripts/`、notebook、assetは
+`authority: none`のdigest-bound attachmentとなる。Capability requirement、evaluation
+obligation、authority ceiling、forbidden capabilityはuntrusted sourceの外にある
+`KnowledgeSkillImportProfileV1`だけから得る。`body_normalization: strict`はARI必須section
+を要求する。review済み`ari-wrapper-v1`は全upstream行をquoteし、必須precondition、
+authority境界、failure semantics、expected artifact、scientific caution、evaluation
+obligationを持つ固定ARI本文に包む。`curation_notes`も別hashのadmin profile由来である。
+どちらも実行権限を付与せず、全importは`candidate`で入る。
+
+`ari.knowledge-import-material/v1`はnormalized body、manifest、reference、attachmentと
+source executable bit、tool hint、外部provenance、自身のfull SHA-256を保持するself-contained
+materialである。checked-in catalogは第二のmanifest/bodyを作らず、このmaterialを参照
+できる。catalog loadは全materialをoffline検証し、repositoryを再fetchしない。
+
+```bash
+ari knowledge import \
+  --source-kind open-agent-skills \
+  --repository https://github.com/example/scientific-skills.git \
+  --commit 0123456789abcdef0123456789abcdef01234567 \
+  --subpath skills/reproduction-method \
+  --profile reviewed-import-profile.yaml \
+  --output candidate-import-material.json
+```
+
+### 登録済みIntel performance candidate
+
+catalogは`intel/intel-performance-skills`をfull commit
+`e9d0b6410fb1ad7a50fb81e0868fd23ae886882c`でpinし、三つのKnowledge identityを別々の
+candidateとして登録する。
+
+| Knowledge ID | upstream subtree | 境界 |
+|---|---|---|
+| `intel.performance-patterns` | `skills/performance-patterns` | x86 C/C++最適化知識。bundled Cと実行可能test assetはauthority-none attachment |
+| `intel.linux-perf` | `skills/linux-perf` | bound hardware-counter capabilityを要求するprofiling知識。`sudo`とhost sysctl変更は禁止 |
+| `intel.phoronix-test-suite` | `skills/phoronix-test-suite` | 事前pin済みPTS input向けworkflow知識。runtime refresh/download/install、home、`/var/lib` writeは禁止 |
+
+これらはProviderでもHarnessでもなく、`perf`、Phoronix、compiler、shell、credentialを
+active化しない。実行はCapability Binding Lockだけから解決する。Phoronix scoreはHarness
+Attestationではない。candidateのため、clean-task、portability、人間promotion evidenceが
+揃うまでenforce modeの固定Knowledge Binderはactive化しない。
+
+ToolUniverse collection profileはKnowledge subpathとadmin profileを持てるが、Provider ID、
+launcher、tool、credential、transport fieldを持たない。identityは
+`ari://knowledge-source/tooluniverse/...` namespaceを使い、`provider_activated: false`を
+出力する。ToolUniverse MCP Providerとそのnested Provider lockから独立している。
+
+## Capability ontologyとProvider binding
+
+`CapabilityContractV1`はsemantic input/output、side effect、determinism、context、
+permission、resource、version、compatibilityを固定する。Provider registrationはlive
+input/output schemaと契約の整合を検査し、同じtext labelだけでは互換としない。
+
+prompt-free Capability Binderは既存Provider lockにあるverified Providerのexact capability
+refとcontract digestだけを候補にする。role、phase、call context、side-effect ceiling、
+credential scope、environment、disabled tool、live schema identityでfilterし、exactness、
+verified status、explicit pin、context fit、side effect最小、determinism、reproducibility、
+feasibility、resource cost、lexicographic `tool_ref`順で決定する。coverage不足は
+`unsatisfied`で、substring、bare-name、LLM、network fallbackはない。
+
+enforce modeでAgentが見る集合は次に等しい。
+
+```text
+Provider Lock tools
+intersect Capability Binding Lock
+intersect role authority
+intersect phase policy
+intersect call context
+minus user-disabled tools
+```
+
+### environment evidenceとProvider substitution
+
+`ari.capability_binding.environment`はbinding前にsubstrateの観測事実を記録する。SLURM
+partition、local NVIDIA device、CUDA compilerをbounded・shell-free probeで調べる。
+`resources.gpus > 0`、SLURM ready、local deviceなしの場合だけ、`srun`で一回のbounded
+compute-node `nvidia-smi` queryを行う。config宣言からresourceを捏造できない。
+
+SLURM GPU visibilityとscheduler authorityは別である。GPU GRESがadvertiseされないnodeで
+deviceを観測した場合、`metadata.slurm_gpu`と`gpu-observed-on-slurm-node`は残すが`gpu`
+resource typeを追加しない。GRES観測時、またはoperatorが既存escape hatch
+`ARI_SLURM_ALLOW_NO_GRES=1`を明示した場合だけschedulableになる。device UUID/model/
+compute capability/memory/driverとoutput digestを含む全観測はfrozen environment identityへ
+入る。resumeはreprobeで置換しない。persist済み`EnvironmentSnapshotV1`はcanonical full-SHA
+identityを再計算し、resourceや観測値の改竄を無効にする。
+
+ToolUniverse authorityもexactである。review済みcategory profileはexact leaf名をcanonical
+`capability_ref`、equivalence key、result normalizerへ対応付ける。substringやdescriptionは
+使わない。最初のprojectionは`PubMed_search_articles`を`ari.literature.search/v1`へmapし、
+live responseをrecord単位のsource identityとfull payload digestを持つ
+`ari.retrieval-result/v1`へ変換する。production syncはreview済みwheel/package tree、exact
+upstream dependency lock bytes、closed dependency environment、live compact-MCP schema parityを
+要求する。
+
+`probe_provider_substitution`はprimary Providerのexact locked toolをdisableし、production
+Binderを二回実行する。digest-bound reportはbinding determinism/statusと任意のlive operation
+observationを分離する。そのため二Providerのsemantic resultが同じでも、一方がcandidate、
+drifted、inadmissibleならsubstitutionはbinding `unsatisfied`のままである。
+
+## Verification、Harness、Attestation
+
+Harness kindは閉じており相互代替しない。
+
+- `benchmark`: 固定benchmark subjectを評価し、任意external targetを検証しない
+- `artifact_verifier`: 生成program/libraryを宣言target kind/propertyについて検証する
+- `reproduction`: paper/repository reproduction packageを評価する
+- `claim_verifier`: claim/evidence整合を検査するが記録計算の正しさを証明しない
+
+`VerificationContractV1`はmint-once、canonical JSON、full-SHA boundである。Knowledge由来
+obligationはproperty/methodを追加するだけで、requirement削除、`certify -> validate -> screen`
+弱化、tolerance緩和、authoritative Harness指定はできない。固定Resolverがexact compatibility
+filterとdeterministic set coverを実行する。baseline lockはimmutableで、revisionはepoch境界で
+Harness追加またはproperty強化だけを行う。
+
+Fixed Verifierはimmutable target snapshotを受け、lock済みdriver、oracle、dataset、container
+だけを実行する。run/node/epoch、contract、Knowledge use、Provider/Binding/Harness lock、source
+asset、target digest、execution identity、property verdict、evidence artifactにboundされた
+full-SHA `HarnessAttestationV1`を出す。verdictは`pass`、`fail`、`inconclusive`、
+`infrastructure_error`、`tampered`である。Provider successはAttestationではなく、通常の
+candidate failureだけではconstitutional violationにならない。
+
+native `hpc/gemm-correctness`、`hpc/spmm-correctness`、`hpc/stencil-correctness`は
+deterministic generated case、独立reference、dtype/accumulation-aware error model、
+metamorphic/shape/boundary/repeat coverage、negative controlを持つ。checked-in verified catalog
+へのpromotionはrelease admissionであり、commit済みsource revision、immutable container、
+license review、reference pass、negative-control fail、registration reportが必要である。
+
+Inspect、Harbor、KernelBench/ComputeEval/scBench、PaperBench adapterはupstream frameworkを
+forkしない。pinned official routeを検証してstrict result envelopeへ正規化する。digest-bound
+official runner parity reportなしではregistrationは`not_available`、entryは`candidate`で、
+縮小local fallbackを使わない。
+
+`ExternalHarnessParityReportV1`がauthoritative parity inputである。`passed` reportはHarness
+Manifest、source revision、dataset、container、driverをbindし、official invocation/result、
+normalized result digestを保持し、reference pass、wrong-submission negative-control fail、
+result-schema parityを証明する。API import、CLI presence、scorer unit compatibilityは
+`non_authoritative_checks`にしか置けない。`passed` schemaは短いsource revisionとall-zero
+digest placeholderも拒否する。`ari-skill-paper-re/scripts/verify_paperbench_upstream.py`は
+credential-free upstream APIとdeterministic aggregationを診断するが、official rollout、
+reproduction、judge routeと全external pinが揃うまで
+`official_runner_status: not_available`を出す。
+
+### verification resource accounting
+
+valid Attestationの構築・再検証後、RQGM Assurance bridgeはverifier executionを
+`cost_trace.jsonl`へ一件記録する。Harness、execution identity/attempt、Attestation、node、
+epoch、tier、status、backend、executor wall interval、declared CPU/accelerator/memory allocationを
+bindする。derived resource値はallocation×observed wall intervalで、utilization sampleではない。
+Task 20は`screen`、`validate`、`certify`ごとの総量とvalid node当りの値を分離する。dollar値は
+authoritative charge/priceがある場合だけ記録し、それ以外は`cost_status: unpriced`として
+unknown costを無料と表示しない。
+
+## modeと互換性
+
+```yaml
+knowledge:
+  mode: off       # off | audit | enforce
+capability_binding:
+  mode: legacy    # legacy | audit | enforce
+assurance:
+  mode: off       # off | audit | enforce
+```
+
+defaultは`simple_bfts`を保持する。三つがdefaultならrun pathは新domain packageをimportせず、
+catalog snapshot、lock、checkpoint field、metric、prompt byte、visible-tool差分を生成しない。
+明示Knowledge/capability/verification requirementとoff/legacy modeの競合はrun admission errorに
+なる。`ari_rqgm` enforceは対応する全immutable snapshotとlockを要求する。
+
+## surfaceと管理
+
+人間向けdiagnostic commandは`ari knowledge`、`ari provider`、`ari harness`にある。
+dashboard Governance workspaceは三つのcatalog cardとlock/provenanceを分離表示する。
+`ari-skill-knowledge`と`ari-skill-harness`はdefault-offのquery/request Capability Providerで、
+MCP requestはnon-authoritativeである。register、promote、revoke、lock rewrite、oracle交換、
+tolerance変更、force passはできない。
+
+catalog lifecycle変更にはreview済みrepository changeまたはauthenticated human admin pathが
+必要である。revocationはtaint/status historyをappendし、過去lock、Attestation、provenanceを
+書き換えない。
+
+## 正直な限界
+
+Knowledge品質とcapability ontologyには人間のcurationが必要である。同じcapabilityのProvider
+も挙動が異なり得る。external service、model、hardware identityの完全性はsubstrateが公開する
+範囲に限られる。static inspectionだけで全Provider descriptionの無害性は証明できない。
+Harness passは宣言property/scope内に限り、formal-verifier Harnessだけがformal specificationを
+証明する。nondeterminismと不足external pinはprovenanceへ残す。infrastructure errorは
+fail-openしない。RQGMはVerifierの科学的結論を発明せず、固定結果を無視、抑圧、歪曲した
+actorを統治する。
+
+## extension gate
+
+新しいKnowledge、Provider、Harness entryはそれぞれ`ari.knowledge.registration`、
+`ari.providers.registration`、`ari.assurance.registration`のgateを使う。candidate fileは
+既存run lockへ入らない。statusを`verified`へ変える前にmaintainerがfull source/data/
+container/license pinと全gate evidenceを保持しなければならない。

@@ -8,7 +8,9 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/providers/qiskit-support-v1.json
     role: config
-last_verified: 2026-08-02
+  - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
+    role: config
+last_verified: 2026-08-05
 ---
 
 # Qiskit / IBM Quantum 実験 profile
@@ -33,14 +35,26 @@ distribution version、package bytesを検証し、range指定、改変install�
 科学admissionには閉じた実験、limitations、統計範囲、実在するgolden/replay fixture、
 domain reviewが別途必要である。
 
+正式にpromoteしたidentityは
+`qiskit/core-0.3.1+aer-0.17.2-local-ideal`だけであり、verified lock digestは
+`sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`
+である。scopeはcredential不要のseeded Bell-state Aer実行と
+`ari.quantum.sample.local-ideal/v1`だけであり、QPY、target、software、seed、count範囲、
+live MCP schema、golden/replay、15個のProvider gate、人間承認をdigestで固定する。
+IBM Runtime、remote simulator、IBM hardwareはcandidateのままである。admit済みcredential、
+exact live backend/configuration/calibration identity、backend-bound golden/replay evidenceが
+存在せず、local promotionからremote authorityを継承できないためである。promotionは
+Provider activationではなく、commit済みの既定`CATALOG.lock`は空のままである。各runは
+review済みProvider LockとCapability Binding Lockを明示的にfreezeする。
+
 ## 能力の分離
 
 | backend | capability | 意味 |
 |---|---|---|
-| `local-ideal` | `ari.quantum.sample.local-ideal` | noiseを持たないseeded Aer simulation |
-| `local-noisy` | `ari.quantum.sample.local-noisy` | 明示したnoise modelのseeded simulation |
-| `remote-simulator` | `ari.quantum.sample.remote-simulator` | remote service上のstochastic simulation |
-| `ibm-hardware` | `ari.quantum.sample.ibm-hardware` | live calibrationを持つhardware measurement |
+| `local-ideal` | `ari.quantum.sample.local-ideal/v1` | noiseを持たないseeded Aer simulation |
+| `local-noisy` | `ari.quantum.sample.local-noisy/v1` | 明示したnoise modelのseeded simulation |
+| `remote-simulator` | `ari.quantum.sample.remote-simulator/v1` | remote service上のstochastic simulation |
+| `ibm-hardware` | `ari.quantum.sample.ibm-hardware/v1` | live calibrationを持つhardware measurement |
 
 brokerはinvoke/replay時にこれらを代替しない。同じbackend kind/name、target、software
 stackを共有するprofileは同じindependence groupであり、複数wrapperや反復runを

@@ -540,6 +540,7 @@ class RqgmStateStore:
         node_count: int,
         run_id: str = "",
         prior: RqgmRuntimeState | None = None,
+        scientific_identity: dict | None = None,
     ) -> RqgmRuntimeState | None:
         """Open the initial epoch (``epoch_000``, or the next sequence when a
         closed prior epoch exists). Appends one bare ``epoch_open`` event —
@@ -559,6 +560,7 @@ class RqgmStateStore:
             previous_epoch_id=prev_id,
             opened_by_transition_id=None,
             checkpoint_dir=checkpoint_dir,
+            scientific_identity=scientific_identity,
         )
         ok = self.append_events(
             checkpoint_dir,
@@ -586,6 +588,7 @@ class RqgmStateStore:
         run_id: str = "",
         registry_events: list[TransitionEvent] | tuple = (),
         utility_policy_override: dict | None = None,
+        scientific_identity: dict | None = None,
     ) -> RqgmRuntimeState | None:
         """Execute the §5.6 epoch-boundary transaction.
 
@@ -621,6 +624,11 @@ class RqgmStateStore:
             opened_by_transition_id=tid,
             checkpoint_dir=checkpoint_dir,
             utility_policy_override=utility_policy_override,
+            scientific_identity=(
+                scientific_identity
+                if scientific_identity is not None
+                else dict(getattr(ep, "scientific_identity", {}) or {})
+            ),
         )
         with self.begin_transaction(checkpoint_dir, tid) as tx:
             for ev in registry_events:

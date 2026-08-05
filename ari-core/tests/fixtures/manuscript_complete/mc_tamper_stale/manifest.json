@@ -1,0 +1,9 @@
+{
+  "schema_version": "ari.manuscript-fixture/v1",
+  "fixture_id": "mc_tamper_stale",
+  "origin": "synthetic",
+  "generator_version": "manuscript-fixture-factory-v1",
+  "measurement_disclaimer": "Synthetic values are test data, never research evidence.",
+  "properties": {"missing_file": true, "digest_mismatch": true, "stale_node": true},
+  "expected_labels": ["excluded", "omission-recorded", "freshness-blocked"]
+}

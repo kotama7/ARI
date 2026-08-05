@@ -118,6 +118,9 @@ GOVERNANCE_ACTOR_ROLES: tuple[str, ...] = (
 #: evolve; enforced by Tasks 04/09, stored here).
 FIXED_ROLES: tuple[str, ...] = (
     "constitutional_kernel",
+    "knowledge_binder",
+    "capability_binder",
+    "harness_resolver",
     "fixed_verifier",
     "audit_log",
 )

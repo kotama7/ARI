@@ -4,6 +4,108 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **Knowledge–Capability–Assurance separation (Tasks 16–20).** Added the
+  non-executable, content-addressed `ari.knowledge` registry; the
+  `ari.providers` semantic facade over existing `skill.yaml`, `SKILLS.lock`,
+  and MCP runtime; deterministic `ari.capability_binding`; and independent
+  `ari.assurance` contracts, catalog, suite resolver, fixed runner, native HPC
+  verifiers, and artifact-bound attestations. RQGM now admits/freeze these
+  identities before the first execution epoch, limits Agent tools to the
+  binding lock in enforce mode, separates scientific/debug/uncertified
+  frontiers, admits dedicated Knowledge/Binding/Attestation evidence, and
+  applies `CK-KNW-*`, `CK-CAP-*`, and `CK-HAR-*` integrity rules. Legacy
+  defaults remain `knowledge.off`, `capability_binding.legacy`, and
+  `assurance.off`; `ari-skill-*`, `skill.yaml`, and `SKILLS.lock` remain the
+  single compatible Provider source. Added separate read-only CLI/MCP/
+  dashboard surfaces and orthogonal H/K evaluation families without changing
+  B0–B8.
+- **Pinned external Knowledge import.** `ari knowledge import` now accepts
+  exact Git commits, Open Agent Skills-compatible packages, explicitly
+  configured scientific Skill repositories, and ToolUniverse Knowledge
+  collections. Imports use a temporary bare Git object database without a
+  checkout, reject branches/tags, symlinks, submodules, special files, unsafe
+  protocols, and embedded URL credentials, and mint candidate-only material
+  with source/profile/tree/blob digests. Open Agent `allowed-tools`, scripts,
+  notebooks, and assets remain non-authoritative attachments; ToolUniverse
+  Knowledge identity never activates its MCP Provider identity. Candidate
+  material is now self-contained and can be the checked-in catalog source
+  without duplicating its manifest/body. An explicit `ari-wrapper-v1` adapter
+  quotes Open Agent bodies that lack ARI's required sections inside a fixed,
+  admin-profile-bound authority and assurance boundary. The Intel performance
+  repository is pinned at commit
+  `e9d0b6410fb1ad7a50fb81e0868fd23ae886882c`; `intel.performance-patterns`,
+  `intel.linux-perf`, and `intel.phoronix-test-suite` are separately registered
+  as candidates, with all bundled executable assets retained as
+  `authority: none` and no Provider or Harness activation.
+- **Observed GPU/SLURM admission facts.** Capability admission now derives its
+  environment identity from bounded, shell-free `sinfo`, `nvidia-smi`, and
+  `nvcc` probes. When a GPU is explicitly requested and no login-node device is
+  visible, it performs one bounded `srun` compute-node probe. A device visible
+  on a SLURM node without GPU GRES is recorded as
+  `gpu-observed-on-slurm-node` but is not exposed as a schedulable `gpu`
+  resource unless the existing explicit no-GRES operator override is active.
+  The 2026-08-04 anonymous-node check observed four V100 devices but no GPU GRES, and a
+  separate two-CPU SLURM job passed all three native HPC reference/negative
+  control families.
+- **ToolUniverse substitution is semantic and fail-closed.** Tool Registry
+  category profiles can project only an exact reviewed leaf name to a
+  canonical versioned Capability and exact result normalizer; descriptions,
+  substrings, and nearby names cannot grant that authority. The initial
+  PubMed projection normalizes live ToolUniverse results to the same
+  `ari.retrieval-result/v1` contract used by ARI retrieval Providers. Production
+  source verification now also requires the exact upstream dependency lock,
+  reviewed package tree, and a closed `pip check`. A diagnostic reuses the
+  production Binder twice and records binding and live execution separately.
+  Upstream ToolUniverse 1.3.1 remains `candidate`: its exact lock installs
+  `pathlib==1.0.1`, which prevents compact MCP startup on Python 3.12/3.13.
+  A separate metadata-only `1.3.1+ari.1` wheel replaces the mistaken `fitz`
+  distribution with `PyMuPDF==1.26.4`; two builds were byte-identical, its
+  158-package runtime lock passes `pip check`, and an evidence-bound fifteen-
+  gate lock promotes only anonymous `PubMed_search_articles` as
+  `ari.literature.search/v1`. Formal promotion also binds an explicit human-
+  maintainer approval to the exact manifest, evidence, report, and capability
+  scope; missing or mutated approval fails closed. Other ToolUniverse leaves
+  remain unadmitted.
+  Stdio execution now uses a value-free supervisor whose timeout/cancellation
+  path reaps the full Provider process group. Tool Registry admission now
+  recognizes the ontology's canonical `network-read` permission; an
+  environment-specific one-leaf `CATALOG.lock` consequently reaches
+  `callable` and completes an anonymous broker invocation instead of remaining
+  `discovered` under the older `network`-only policy vocabulary.
+- **Qiskit and OpenROAD exact-scope Provider promotions.** Evidence-bound,
+  human-approved locks now promote only Qiskit MCP 0.3.1 + Aer 0.17.2 seeded
+  local-ideal Bell-state execution as `ari.quantum.sample.local-ideal/v1`, and
+  the OpenROAD MCP 0.6.1 / ORFS 26Q3 x86_64 one-thread local CPU
+  GCD/Nangate45 profile and a separate anonymous exclusive-node SLURM CPU
+  profile as `ari.eda.openroad.place-route/v1`. The SLURM lock binds only a
+  salted site digest, fixed scheduler/runtime identities, zero GPUs, and
+  nonce-bound wrapper completion. IBM Runtime, remote simulator/hardware, GPU,
+  and other OpenROAD design/PDK/image scopes remain candidates rather than
+  inheriting authority. The OpenROAD
+  runtime now compiles reviewed typed commands into a private fixed Tcl file,
+  waits for normal process exit and metric flush, and rejects PTY echo as a
+  completion signal. Promotion is not activation: the compatibility-default
+  `CATALOG.lock` remains empty, and every enabled run must freeze an explicitly
+  materialized Provider and Capability Binding Lock.
+- **External Harness parity cannot be inferred from compatibility tests.** A
+  digest-bound `ExternalHarnessParityReportV1` now requires an actual official
+  invocation/result, ARI-normalized result, reference pass, negative-control
+  fail, schema parity, and exact source/data/container/driver pins before it can
+  pass. PaperBench's vendored upstream API and deterministic aggregation checks
+  pass at commit `51052cede8cc608f95bb00346635e03759013e5a`, but the report
+  remains `not_available` for official end-to-end parity without the pinned
+  dataset/container, permitted model credentials, and official rollout →
+  reproduction → judge controls.
+- **Measured Scientific Assurance cost.** A valid fixed-verifier execution now
+  appends its executor wall interval and declared CPU/accelerator/memory
+  allocation to the canonical `cost_trace.jsonl`, keyed by Harness,
+  execution/attempt, epoch, node, and Attestation digests. Task 20 reports
+  screen/validate/certify resource totals per valid node. Missing scheduler or
+  cloud pricing is explicitly `unpriced`, never `$0`. The 2026-08-04 anonymous-node
+  verifier-core control run measured 1.61 s wall, 0.89 s user CPU, 0.13 s
+  system CPU, and 55,537,664 bytes maximum RSS; it is retained as a
+  non-authoritative cost observation because no verified pinned Harness
+  container was available to issue an Attestation.
 - **Two execution modes; the default is untouched.** ARI now has a master
   switch `ari.mode` ∈ {`simple_bfts` (default), `ari_rqgm`} plus a redundant
   `rqgm.enabled` interlock — both must agree, resolved by the pure
@@ -2366,7 +2468,7 @@ legacy single-CPU papers without `execution_profile` produce the same
     instructions, silently dropping the HPC pathway. Added the
     extraction guidance + a regression test
     (`test_single_call_prompt_also_includes_execution_profile_guidance`).
-- **Real-SLURM sbatch smoke** against sx40 partition, 2026-05-13:
+- **Real-SLURM sbatch smoke** against an anonymous partition, 2026-05-13:
   sbatch accepted the new 15+1 flag invocation (`exit_code=0`,
   SLURM_NTASKS / SLURM_JOB_NUM_NODES surfaced to compute node),
   `extra_sbatch_args=['--no-requeue']` pass-through worked.
@@ -2378,7 +2480,7 @@ legacy single-CPU papers without `execution_profile` produce the same
        all three. Regression test:
        `test_gpu_flags_all_dropped_when_cluster_has_no_gres`.
     2. `--cpu-bind` / `--mem-bind` are documented srun-only flags on
-       many SLURM versions (incl. sx40) and produced
+       many SLURM versions (including the tested private cluster) and produced
        "unrecognized option" errors at sbatch time. Added a new
        `_sbatch_supports()` runtime probe that reads
        `sbatch --help` once and silently drops these flags when

@@ -27,6 +27,9 @@ CASSETTE_V1 = "ari.tool-cassette/v1"
 
 SHA256_PATTERN = r"^sha256:[0-9a-f]{64}$"
 _REF_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+_CAPABILITY_REF_RE = re.compile(
+    r"^[a-z0-9][a-z0-9._-]*(?:/v[1-9][0-9]*)?$"
+)
 _TOOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.:/-]*$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _SENSITIVE_KEY_RE = re.compile(
@@ -271,11 +274,20 @@ class CanonicalToolDescriptorV1(BaseModel):
     independence_group: str = Field(min_length=1)
     async_lifecycle: ProviderAsyncLifecycleV1 | None = None
 
-    @field_validator("provider_id", "adapter_id", "capability_ref")
+    @field_validator("provider_id", "adapter_id")
     @classmethod
     def _valid_ref(cls, value: str) -> str:
         if not _REF_RE.fullmatch(value):
             raise ValueError("identifier must be lowercase dotted/kebab text")
+        return value
+
+    @field_validator("capability_ref")
+    @classmethod
+    def _valid_capability_ref(cls, value: str) -> str:
+        if not _CAPABILITY_REF_RE.fullmatch(value):
+            raise ValueError(
+                "capability_ref must be lowercase dotted text with an optional /vN suffix"
+            )
         return value
 
     @field_validator("name", "provider_tool_name")

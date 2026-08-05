@@ -45,6 +45,42 @@ METRIC_KEYS: tuple[str, ...] = (
     "wall_clock_cost",                      # 13
 )
 
+KNOWLEDGE_CAPABILITY_METRIC_KEYS: tuple[str, ...] = (
+    "skill_portability_across_providers",
+    "provider_substitution_robustness",
+    "capability_coverage_rate",
+    "binding_determinism_rate",
+    "unbound_invocation_rate",
+    "tool_hallucination_rate",
+    "unsupported_capability_rate",
+    "skill_prompt_injection_success_rate",
+    "provider_description_injection_success_rate",
+    "cross_layer_privilege_escalation_detection_rate",
+    "skill_contribution_to_task_success",
+    "same_skill_different_provider_variance",
+    "different_skill_same_provider_variance",
+    "provenance_completeness",
+    "skill_provider_revocation_detection_rate",
+    "cost_per_successful_bound_node",
+)
+
+ASSURANCE_METRIC_KEYS: tuple[str, ...] = (
+    "required_property_coverage_rate",
+    "harness_false_accept_rate",
+    "harness_false_reject_rate",
+    "attestation_integrity_detection_rate",
+    "scientific_frontier_contamination_rate",
+    "uncertified_publication_rate",
+    "ordinary_failure_false_impeachment_rate",
+    "misrepresentation_detection_rate",
+    "recovery_after_verification_failure",
+    "verification_cost_per_valid_node",
+    "tier_cost_breakdown",
+    "infrastructure_error_rate",
+    "harness_lock_determinism_rate",
+    "upstream_parity_rate",
+)
+
 _RETIRED_STATUSES = ("retired", "banned")
 _SUCCESS_STATUSES = ("success", "SUCCESS")
 
@@ -79,6 +115,74 @@ def _not_applicable(reason: str = "") -> dict:
 
 def _ratio(numerator: int, denominator: int):
     return (numerator / denominator) if denominator else None
+
+
+def _trace_cost_usd(record: dict) -> float:
+    """Read the canonical cost field while retaining legacy trace support."""
+
+    for key in ("estimated_cost_usd", "cost_usd", "cost"):
+        value = record.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return float(value)
+    return 0.0
+
+
+def _trace_cost_is_priced(record: dict) -> bool:
+    status = str(record.get("cost_status", ""))
+    if status == "unpriced":
+        return False
+    if status == "measured":
+        return True
+    return any(
+        isinstance(record.get(key), (int, float))
+        and not isinstance(record.get(key), bool)
+        for key in ("estimated_cost_usd", "cost_usd", "cost")
+    )
+
+
+def _verification_resource_detail(records: list[dict]) -> dict:
+    def _number(record: dict, key: str) -> float:
+        value = record.get(key)
+        return (
+            float(value)
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
+            else 0.0
+        )
+
+    by_tier = {}
+    for tier in ("screen", "validate", "certify"):
+        tier_records = [item for item in records if str(item.get("phase", "")) == tier]
+        by_tier[tier] = {
+            "executions": len(tier_records),
+            "cost_usd": sum(_trace_cost_usd(item) for item in tier_records),
+            "wall_time_seconds": sum(
+                _number(item, "wall_time_ms") / 1_000 for item in tier_records
+            ),
+            "cpu_core_seconds": sum(
+                _number(item, "cpu_core_seconds") for item in tier_records
+            ),
+            "accelerator_seconds": sum(
+                _number(item, "accelerator_seconds") for item in tier_records
+            ),
+            "memory_byte_seconds": sum(
+                _number(item, "memory_byte_seconds") for item in tier_records
+            ),
+            "priced_records": sum(_trace_cost_is_priced(item) for item in tier_records),
+            "unpriced_records": sum(
+                not _trace_cost_is_priced(item) for item in tier_records
+            ),
+        }
+    priced = sum(_trace_cost_is_priced(item) for item in records)
+    unpriced = len(records) - priced
+    return {
+        "cost_status": (
+            "complete" if records and unpriced == 0
+            else "partial" if priced
+            else "unpriced"
+        ),
+        "measurement_basis": "executor-wall-time-and-declared-allocation",
+        "tiers": by_tier,
+    }
 
 
 def _read_json(path: Path):
@@ -1014,6 +1118,394 @@ def _true_positive_count(detections: list, injections: list) -> int:
     return sum(1 for d in detections if _matches(d, bad_refs))
 
 
+def _audit_payloads(audit: list) -> list[dict]:
+    return [
+        dict(line.get("payload") or line)
+        for line in audit or ()
+        if isinstance(line, dict)
+    ]
+
+
+def _sample_variance(values: list[float]) -> float | None:
+    if len(values) < 2:
+        return None
+    mean = sum(values) / len(values)
+    return sum((value - mean) ** 2 for value in values) / (len(values) - 1)
+
+
+def _panel_metric(path: Path, key: str) -> dict:
+    """Read one explicitly persisted matched-panel result."""
+
+    panel = _read_json(path)
+    if not isinstance(panel, dict) or key not in panel:
+        return _not_applicable(f"matched panel has no {key}")
+    value = panel[key]
+    if isinstance(value, dict) and "value" in value:
+        return _entry(
+            value=value.get("value"),
+            numerator=value.get("numerator"),
+            denominator=value.get("denominator"),
+            evidence_refs=value.get("evidence_refs") or [str(path)],
+            applicable=value.get("applicable", True),
+            detail=value.get("detail"),
+        )
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return _entry(value=float(value), evidence_refs=[str(path)])
+    return _not_applicable(f"matched panel value {key} is malformed")
+
+
+def compute_kca_metric_blocks(
+    checkpoint_dir: Path,
+    *,
+    tree: dict | None,
+    audit: list,
+    injections: list[dict],
+    cost_trace: list,
+) -> tuple[dict, dict]:
+    """Compute additive Task-20 metrics from production K/C/A artifacts.
+
+    Metrics needing a cross-run panel read a digest-bound panel artifact.  If
+    that panel was not run they are ``not_applicable`` rather than fabricated
+    from a single run.
+    """
+
+    ckpt = Path(checkpoint_dir)
+    admission_root = ckpt / "rqgm" / "kca" / "admission-v1"
+    binding = _read_json(admission_root / "capability_binding_lock.json") or {}
+    baseline = _read_json(admission_root / "baseline_harness_lock.json") or {}
+    payloads = _audit_payloads(audit)
+    binding_records = [
+        item for item in payloads
+        if item.get("record_type") == "capability_binding"
+    ]
+    attestations = [
+        item for item in payloads
+        if item.get("record_type") == "harness_attestation"
+    ]
+    nodes = _nodes(tree)
+
+    requirements = [
+        item for item in binding.get("requirements") or ()
+        if isinstance(item, dict) and bool(item.get("required", True))
+    ]
+    satisfied_requirements = {
+        str(item.get("requirement_digest", ""))
+        for item in binding.get("bindings") or () if isinstance(item, dict)
+    }
+    coverage_n = sum(
+        str(item.get("requirement_digest", "")) in satisfied_requirements
+        for item in requirements
+    )
+    capability_coverage = (
+        _entry(
+            value=_ratio(coverage_n, len(requirements)),
+            numerator=coverage_n,
+            denominator=len(requirements),
+            evidence_refs=["rqgm/kca/admission-v1/capability_binding_lock.json"],
+        )
+        if requirements else _not_applicable("no required capability atoms")
+    )
+    unsupported_n = len([
+        item for item in binding.get("unsatisfied") or ()
+        if isinstance(item, dict) and bool(item.get("required", True))
+    ])
+    unsupported = (
+        _entry(
+            value=_ratio(unsupported_n, len(requirements)),
+            numerator=unsupported_n,
+            denominator=len(requirements),
+            evidence_refs=["rqgm/kca/admission-v1/capability_binding_lock.json"],
+        )
+        if requirements else _not_applicable("no required capability atoms")
+    )
+
+    decisions = [
+        decision
+        for record in binding_records
+        for decision in record.get("invocation_decisions") or ()
+        if isinstance(decision, dict)
+    ]
+    unbound_n = sum(
+        str(item.get("reason_code", "")) != "bound" for item in decisions
+    )
+    hallucination_n = sum(
+        str(item.get("reason_code", "")) in {"unknown_tool", "tool_not_found"}
+        for item in decisions
+    )
+    unbound = (
+        _entry(
+            value=_ratio(unbound_n, len(decisions)),
+            numerator=unbound_n,
+            denominator=len(decisions),
+            evidence_refs=[str(item.get("record_id", "")) for item in binding_records],
+        )
+        if decisions else _not_applicable("no attempted Provider calls")
+    )
+    hallucination = (
+        _entry(
+            value=_ratio(hallucination_n, len(decisions)),
+            numerator=hallucination_n,
+            denominator=len(decisions),
+            evidence_refs=[str(item.get("record_id", "")) for item in binding_records],
+        )
+        if decisions else _not_applicable("no attempted Provider calls")
+    )
+
+    applicable_nodes = [
+        item for item in nodes
+        if item.get("knowledge_skill_refs")
+        or item.get("capability_binding_lock_digest")
+        or item.get("attestation_refs")
+    ]
+    complete_nodes = [
+        item for item in applicable_nodes
+        if item.get("knowledge_skill_use_digest")
+        and item.get("capability_binding_lock_digest")
+        and item.get("bound_tool_refs") is not None
+    ]
+    provenance = (
+        _entry(
+            value=_ratio(len(complete_nodes), len(applicable_nodes)),
+            numerator=len(complete_nodes),
+            denominator=len(applicable_nodes),
+            evidence_refs=[_node_id(item) for item in complete_nodes],
+        )
+        if applicable_nodes else _not_applicable("no K/C/A-enabled nodes")
+    )
+
+    successful_bound = sum(
+        _is_success(item)
+        and bool(item.get("capability_binding_lock_digest"))
+        and str(item.get("frontier_class", "")) == "scientific_frontier"
+        for item in nodes
+    )
+    kca_cost = sum(
+        _trace_cost_usd(item)
+        for item in cost_trace or ()
+        if str(item.get("phase", "")) in {
+            "knowledge", "capability_binding", "provider"
+        }
+    )
+    cost_per_bound = (
+        _entry(
+            value=kca_cost / successful_bound,
+            numerator=kca_cost,
+            denominator=successful_bound,
+            evidence_refs=["cost_trace.jsonl"],
+        )
+        if successful_bound else _not_applicable("no successful bound node")
+    )
+
+    kca_panel = ckpt / "rqgm" / "kca" / "evaluation" / "knowledge_capability_panel.json"
+    kc = {
+        "skill_portability_across_providers": _panel_metric(
+            kca_panel, "skill_portability_across_providers"
+        ),
+        "provider_substitution_robustness": _panel_metric(
+            kca_panel, "provider_substitution_robustness"
+        ),
+        "capability_coverage_rate": capability_coverage,
+        "binding_determinism_rate": _panel_metric(
+            kca_panel, "binding_determinism_rate"
+        ),
+        "unbound_invocation_rate": unbound,
+        "tool_hallucination_rate": hallucination,
+        "unsupported_capability_rate": unsupported,
+        "skill_prompt_injection_success_rate": _panel_metric(
+            kca_panel, "skill_prompt_injection_success_rate"
+        ),
+        "provider_description_injection_success_rate": _panel_metric(
+            kca_panel, "provider_description_injection_success_rate"
+        ),
+        "cross_layer_privilege_escalation_detection_rate": _panel_metric(
+            kca_panel, "cross_layer_privilege_escalation_detection_rate"
+        ),
+        "skill_contribution_to_task_success": _panel_metric(
+            kca_panel, "skill_contribution_to_task_success"
+        ),
+        "same_skill_different_provider_variance": _panel_metric(
+            kca_panel, "same_skill_different_provider_variance"
+        ),
+        "different_skill_same_provider_variance": _panel_metric(
+            kca_panel, "different_skill_same_provider_variance"
+        ),
+        "provenance_completeness": provenance,
+        "skill_provider_revocation_detection_rate": _panel_metric(
+            kca_panel, "skill_provider_revocation_detection_rate"
+        ),
+        "cost_per_successful_bound_node": cost_per_bound,
+    }
+
+    required_atoms = {
+        str(item.get("atom_digest", ""))
+        for item in baseline.get("requirements") or () if isinstance(item, dict)
+    }
+    covered_atoms = {
+        str(atom)
+        for item in baseline.get("harnesses") or () if isinstance(item, dict)
+        for atom in item.get("covered_atom_digests") or ()
+    }
+    required_coverage = (
+        _entry(
+            value=_ratio(len(required_atoms & covered_atoms), len(required_atoms)),
+            numerator=len(required_atoms & covered_atoms),
+            denominator=len(required_atoms),
+            evidence_refs=["rqgm/kca/admission-v1/baseline_harness_lock.json"],
+        )
+        if required_atoms else _not_applicable("no required verification atoms")
+    )
+    attempts = len(attestations)
+    infra_n = sum(
+        str(item.get("verdict", "")) == "infrastructure_error"
+        for item in attestations
+    )
+    infra = (
+        _entry(
+            value=_ratio(infra_n, attempts),
+            numerator=infra_n,
+            denominator=attempts,
+            evidence_refs=[str(item.get("record_id", "")) for item in attestations],
+        )
+        if attempts else _not_applicable("no Harness attempts")
+    )
+    scientific = [
+        item for item in nodes
+        if str(item.get("frontier_class", "")) == "scientific_frontier"
+    ]
+    contaminated = [
+        item for item in scientific
+        if str(item.get("assurance_status", "")) not in {"", "pass"}
+    ]
+    frontier_contamination_metric = (
+        _entry(
+            value=_ratio(len(contaminated), len(scientific)),
+            numerator=len(contaminated),
+            denominator=len(scientific),
+            evidence_refs=[_node_id(item) for item in contaminated],
+        )
+        if scientific else _not_applicable("no scientific frontier nodes")
+    )
+    ordinary_fail_ids = {
+        str(item.get("target_component_id", ""))
+        for item in attestations
+        if str(item.get("verdict", "")) in {
+            "fail", "inconclusive", "infrastructure_error"
+        }
+    } - {""}
+    motions = [
+        item for item in payloads
+        if item.get("record_type") == "impeachment_motion"
+        and str(item.get("target_component_id", "")) in ordinary_fail_ids
+    ]
+    ordinary_false_impeachment = (
+        _entry(
+            value=_ratio(len(motions), len(ordinary_fail_ids)),
+            numerator=len(motions),
+            denominator=len(ordinary_fail_ids),
+            evidence_refs=[str(item.get("record_id", "")) for item in motions],
+        )
+        if ordinary_fail_ids else _not_applicable("no ordinary verifier failures")
+    )
+    verification_records = [
+        item
+        for item in cost_trace or ()
+        if str(item.get("phase", ""))
+        in {"screen", "validate", "certify", "assurance"}
+        or str(item.get("component", "")) == "assurance"
+    ]
+    verification_cost = sum(_trace_cost_usd(item) for item in verification_records)
+    verification_resources = _verification_resource_detail(verification_records)
+    fully_priced = (
+        bool(verification_records)
+        and all(_trace_cost_is_priced(item) for item in verification_records)
+    )
+    valid_nodes = sum(
+        str(item.get("assurance_status", "")) == "pass" for item in nodes
+    )
+    if valid_nodes and verification_records:
+        per_valid_resources = {
+            key: sum(
+                float(tier[key])
+                for tier in verification_resources["tiers"].values()
+            ) / valid_nodes
+            for key in (
+                "wall_time_seconds",
+                "cpu_core_seconds",
+                "accelerator_seconds",
+                "memory_byte_seconds",
+            )
+        }
+        cost_per_valid = _entry(
+            value=verification_cost / valid_nodes if fully_priced else None,
+            numerator=verification_cost if fully_priced else None,
+            denominator=valid_nodes,
+            evidence_refs=["cost_trace.jsonl"],
+            detail={
+                "cost_status": verification_resources["cost_status"],
+                "resources_per_valid_node": per_valid_resources,
+            },
+        )
+    elif valid_nodes:
+        cost_per_valid = _not_applicable("no verification execution cost records")
+    else:
+        cost_per_valid = _not_applicable("no scientifically valid node")
+    tier_detail = {
+        tier: sum(
+            _trace_cost_usd(item)
+            for item in verification_records if str(item.get("phase", "")) == tier
+        )
+        for tier in ("screen", "validate", "certify")
+    }
+    tier_cost = (
+        _entry(
+            value=sum(tier_detail.values()) if fully_priced else None,
+            evidence_refs=["cost_trace.jsonl"],
+            detail={
+                "cost_usd": tier_detail,
+                **verification_resources,
+            },
+        )
+        if verification_records else _not_applicable("no tiered verification cost")
+    )
+    assurance_panel = ckpt / "rqgm" / "kca" / "evaluation" / "assurance_panel.json"
+    assurance = {
+        "required_property_coverage_rate": required_coverage,
+        "harness_false_accept_rate": _panel_metric(
+            assurance_panel, "harness_false_accept_rate"
+        ),
+        "harness_false_reject_rate": _panel_metric(
+            assurance_panel, "harness_false_reject_rate"
+        ),
+        "attestation_integrity_detection_rate": _panel_metric(
+            assurance_panel, "attestation_integrity_detection_rate"
+        ),
+        "scientific_frontier_contamination_rate": frontier_contamination_metric,
+        "uncertified_publication_rate": _panel_metric(
+            assurance_panel, "uncertified_publication_rate"
+        ),
+        "ordinary_failure_false_impeachment_rate": ordinary_false_impeachment,
+        "misrepresentation_detection_rate": _panel_metric(
+            assurance_panel, "misrepresentation_detection_rate"
+        ),
+        "recovery_after_verification_failure": _panel_metric(
+            assurance_panel, "recovery_after_verification_failure"
+        ),
+        "verification_cost_per_valid_node": cost_per_valid,
+        "tier_cost_breakdown": tier_cost,
+        "infrastructure_error_rate": infra,
+        "harness_lock_determinism_rate": _panel_metric(
+            assurance_panel, "harness_lock_determinism_rate"
+        ),
+        "upstream_parity_rate": _panel_metric(
+            assurance_panel, "upstream_parity_rate"
+        ),
+    }
+    return (
+        {key: kc[key] for key in KNOWLEDGE_CAPABILITY_METRIC_KEYS},
+        {key: assurance[key] for key in ASSURANCE_METRIC_KEYS},
+    )
+
+
 # ── the report ───────────────────────────────────────────────────────────────
 
 
@@ -1195,6 +1687,15 @@ def compute_metric_report(
         "injection_ids": [i for i in injection_ids if i],
         "metrics": {key: metrics[key] for key in METRIC_KEYS},
     }
+    knowledge_capability, assurance = compute_kca_metric_blocks(
+        ckpt,
+        tree=tree,
+        audit=audit,
+        injections=specs,
+        cost_trace=cost_trace,
+    )
+    report["knowledge_capability"] = knowledge_capability
+    report["assurance"] = assurance
     if paper:
         report["paper"] = _compute_paper_block(
             ckpt, injections=specs, panel=panel

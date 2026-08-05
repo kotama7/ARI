@@ -433,10 +433,10 @@ class QiskitExperimentV1(BaseModel):
     @property
     def capability_ref(self) -> str:
         return {
-            "local-ideal": "ari.quantum.sample.local-ideal",
-            "local-noisy": "ari.quantum.sample.local-noisy",
-            "remote-simulator": "ari.quantum.sample.remote-simulator",
-            "ibm-hardware": "ari.quantum.sample.ibm-hardware",
+            "local-ideal": "ari.quantum.sample.local-ideal/v1",
+            "local-noisy": "ari.quantum.sample.local-noisy/v1",
+            "remote-simulator": "ari.quantum.sample.remote-simulator/v1",
+            "ibm-hardware": "ari.quantum.sample.ibm-hardware/v1",
         }[self.backend.kind]
 
     @property
@@ -457,6 +457,9 @@ class QiskitExperimentV1(BaseModel):
             "limitations",
         ):
             payload.pop(key, None)
+        # Physical materialization paths are run-lock provenance, not scientific
+        # identity.  QPY bytes remain bound by the full digest and format/version.
+        payload["circuit"].pop("qpy_path", None)
         return payload
 
     @property

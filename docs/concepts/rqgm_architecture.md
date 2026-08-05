@@ -30,11 +30,17 @@ sources:
     role: implementation
   - path: ari-core/ari/schemas
     role: schema
+  - path: ari-core/ari/knowledge
+    role: implementation
+  - path: ari-core/ari/capability_binding
+    role: implementation
+  - path: ari-core/ari/assurance
+    role: implementation
   - path: ari-core/ari/prompts/rqgm
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-07-29
+last_verified: 2026-08-03
 ---
 
 # Constitutional ARI-RQGM Architecture
@@ -155,7 +161,7 @@ component ids are `{role}_v{N}`, prompt ids `{role}_prompt_v{N}`.
 
 | Layer | Tier | Roles | Evolves? |
 |---|---|---|---|
-| **0 — constitutional (fixed)** | `fixed` | `constitutional_kernel`, `fixed_verifier` (the deterministic `results.json` merge / metric recompute path), `audit_log` | **Never.** Registered for provenance only; rule tables live in code (`kernel_rules.py`, `transition_rules.py`, `clean_room_rules.py`, `meta_rules.py`), pinned by a `constitution_hash` that any rule edit must explicitly re-pin in `tests/test_rqgm_kernel.py`. |
+| **0 — constitutional (fixed)** | `fixed` | `constitutional_kernel`, `knowledge_binder`, `capability_binder`, `harness_resolver`, `fixed_verifier`, `audit_log` | **Never.** Registered for provenance only; each binder/resolver/verifier is prompt-free and deterministic. Rule tables live in code (`kernel_rules.py`, `transition_rules.py`, `clean_room_rules.py`, `meta_rules.py`), pinned by a `constitution_hash` that any rule edit must explicitly re-pin in `tests/test_rqgm_kernel.py`. |
 | **1 — institutional** | `institutional` | `generator`, `reviewer`, `adversary`, `defender`, `judge`, `router`; the governed evaluation criterion `utility_policy`; and (paper-mode only) `paper_writer`, `paper_reviewer` | Yes — through the prompt-evolution lifecycle, at epoch boundaries only. `utility_policy` is not prompt-defined — its incumbent is a policy *document* — but it is evolvable in exactly the same sense: one incumbent, replaced only through the transition engine at a boundary. |
 | **1 — governance judiciary** | `institutional` | `auditor`, `evidence_clerk`, `governance_judge` | No successor-generation path, but not immutable: all three are founding, registry-addressable, sanctionable actors. The judge recuses when it is the motion target. |
 | **2 — meta** | `meta` | `prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor`, `policy_mutator` | Yes — the agents that evolve Layer 1 are themselves governed, with strictly narrower authority (see invariants). `policy_mutator` proposes successor utility policies. |
@@ -173,6 +179,40 @@ are authoritative.
 
 ---
 
+## Knowledge, Capability, and Assurance separation
+
+RQGM governs three non-component registries without merging their identities:
+
+```text
+Research Contract
+  -> Epoch Knowledge Skill Lock
+  -> Capability Binding Lock
+  -> Verification Contract
+  -> Baseline/active Harness Lock
+  -> bound Provider execution
+  -> artifact-bound Harness Attestation
+  -> scientific frontier gate
+  -> Evidence Clerk and adversarial/governance review
+  -> certification-bound publication
+```
+
+A Knowledge Skill is immutable procedural text and cannot start a process or
+grant authority. A Capability Provider is the executable subject discovered
+through MCP, local process, or another admitted transport; only tools in the
+Provider lock and Capability Binding Lock are visible. A Harness is an
+independent verifier selected by `harness_resolver_v1`, never by the Generator
+or Evaluator. Individual Skills, Providers, and Harnesses are catalog entries,
+not `ComponentRegistry` actors.
+
+The trusted coordinator freezes every baseline catalog snapshot, contract,
+and lock before the first execution epoch. Resume reconstructs that persisted
+view instead of consulting current catalogs. Fixed checks `CK-KNW-*`,
+`CK-CAP-*`, and `CK-HAR-*` validate authority, binding, digests, monotonicity,
+and attestation scope; the kernel does not recompute scientific truth. See the
+[normative K/C/A reference](../reference/knowledge_capability_assurance.md).
+
+---
+
 ## The four facades
 
 `ari.core.build_runtime` constructs a single `RQGMRuntime`
@@ -185,7 +225,7 @@ governance machinery (all constructed lazily, all fail-open):
 
 | Facade | Module | Owns |
 |---|---|---|
-| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0. Twelve closed `validate_*` entry points (record schema, hashes, capability, epoch invariance, transitions, role separation, selective erasure, audit-log integrity, clean-room bundle, contamination, authority non-expansion, context scope) plus the enforcement adapters (`should_block`, fail-open `per_node_warn_check`, pre-flight `CapabilityGatedMCPClient`). Deterministic and non-evolving: zero LLM calls, zero network, zero wall-clock decisions. `rqgm.kernel.enforcement: audit_only` downgrades every context to warn-and-log. |
+| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0. The original twelve checks plus Knowledge integrity, Capability Binding integrity, and Harness integrity. It checks procedure, authority, identity, and monotonicity—not scientific correctness. Deterministic and non-evolving: zero LLM calls, zero network, zero wall-clock decisions. `rqgm.kernel.enforcement: audit_only` downgrades every context to warn-and-log. |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | The epoch-boundary audit: `audit_epoch(...) -> GovernanceReport`, a nine-step pipeline (observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report). Every LLM decision (Auditor / Defender / GovernanceJudge, prompts under `ari/prompts/governance/`) has a total deterministic fallback, so `llm=None` still produces a complete audit. The report is *advisory input* to the transition engine — the orchestrator never mutates registries. |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | The **sole** registry status writer. Pure `resolve_transition(...)` against the fixed T1–T21 table, then a five-step boundary protocol: freeze → resolve → kernel-validate → prepare → apply/commit over the epoch transaction. A T16 `emergency_quarantine` force-closes the current epoch and opens a newly fingerprinted epoch in that same transaction. |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | After a committed transition with retirements: the pure `trace_dependents` staleness closure and `rebuild_frontier`, emitting `SelectiveErasureEvent` / `FrontierRebuildEvent` records. Failure ladder: kernel-validation failure → conservative re-repair (flagged nodes dropped) → drain-only degradation (`expansion_halted`: the run finishes pending work but expands no further). Never a crash. |
@@ -615,7 +655,8 @@ Task-12 governance budget verbatim.
    matrix when no incumbent exists), and every meta output enters the
    lifecycle at `status: candidate` — the meta tier can propose, never
    appoint.
-9. **The fixed layer never evolves.** Kernel, fixed verifier, audit log,
+9. **The fixed layer never evolves.** Kernel, Knowledge Binder, Capability
+   Binder, Harness Resolver, Fixed Verifier, audit log,
    transition/severity/capability tables, the selective-erasure rule, and
    the claim-evidence hard gate are not evolution targets;
    `constitution_hash` pins the tables.

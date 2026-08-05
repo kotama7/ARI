@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "RequirementSpecV1": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_terminal_statuses": {
+          "default": [
+            "satisfied",
+            "not_applicable",
+            "unavailable",
+            "missing"
+          ],
+          "items": {
+            "enum": [
+              "satisfied",
+              "not_applicable",
+              "unavailable",
+              "missing"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Terminal Statuses",
+          "type": "array"
+        },
+        "applicability_rule_id": {
+          "title": "Applicability Rule Id",
+          "type": "string"
+        },
+        "authoring_blocking": {
+          "title": "Authoring Blocking",
+          "type": "boolean"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Evidence Kinds",
+          "type": "array"
+        },
+        "publication_blocking": {
+          "title": "Publication Blocking",
+          "type": "boolean"
+        },
+        "requirement_id": {
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "resolver_kinds": {
+          "items": {
+            "enum": [
+              "artifact_recovery",
+              "projection_rebuild",
+              "literature_search",
+              "baseline_comparison",
+              "repetition_or_uncertainty",
+              "ablation",
+              "validation_experiment",
+              "assurance_certification",
+              "method_clarification",
+              "limitation_disclosure",
+              "human_decision"
+            ],
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Resolver Kinds",
+          "type": "array"
+        },
+        "section_targets": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Section Targets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "description",
+        "section_targets",
+        "applicability_rule_id",
+        "authoring_blocking",
+        "publication_blocking"
+      ],
+      "title": "RequirementSpecV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "evaluator_compatibility": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Evaluator Compatibility",
+      "type": "array"
+    },
+    "paper_family": {
+      "title": "Paper Family",
+      "type": "string"
+    },
+    "policy_version": {
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Profile Digest",
+      "type": "string"
+    },
+    "profile_id": {
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_version": {
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "requirements": {
+      "items": {
+        "$ref": "#/$defs/RequirementSpecV1"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Requirements",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-requirement-profile/v1",
+      "default": "ari.manuscript-requirement-profile/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "profile_version",
+    "paper_family",
+    "policy_version",
+    "evaluator_compatibility",
+    "requirements",
+    "profile_digest"
+  ],
+  "title": "ManuscriptRequirementProfileV1",
+  "type": "object"
+}

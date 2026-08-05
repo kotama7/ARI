@@ -151,6 +151,44 @@
         "name": "propose_metric_contract"
       }
     ],
+    "ari-skill-harness": [
+      {
+        "args": [
+          "harness_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "describe_harness"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "list_verification_requirements"
+      },
+      {
+        "args": [
+          "attestation_digest"
+        ],
+        "idiom": "lowlevel",
+        "name": "read_attestation"
+      },
+      {
+        "args": [
+          "harness_hint",
+          "method",
+          "property_id",
+          "reason"
+        ],
+        "idiom": "lowlevel",
+        "name": "request_auxiliary_verification"
+      },
+      {
+        "args": [
+          "query"
+        ],
+        "idiom": "lowlevel",
+        "name": "search_harnesses"
+      }
+    ],
     "ari-skill-hpc": [
       {
         "args": [],
@@ -225,6 +263,36 @@
         ],
         "idiom": "fastmcp",
         "name": "survey"
+      }
+    ],
+    "ari-skill-knowledge": [
+      {
+        "args": [
+          "skill_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "describe_knowledge_skill"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
+        "name": "list_active_knowledge_skills"
+      },
+      {
+        "args": [
+          "reason",
+          "required",
+          "skill_id"
+        ],
+        "idiom": "lowlevel",
+        "name": "request_knowledge_skill"
+      },
+      {
+        "args": [
+          "query"
+        ],
+        "idiom": "lowlevel",
+        "name": "search_knowledge_skills"
       }
     ],
     "ari-skill-memory": [

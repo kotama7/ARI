@@ -232,7 +232,8 @@ def test_hashes_deterministic_across_two_processes(tmp_path):
         capture_output=True, text=True, check=True,
         cwd=str(Path(ari.__file__).resolve().parents[1]),
     ).stdout.split()
-    assert out == ["852526c4b2fa", "746c074fd2fc"]
+    # Re-pinned 2026-08-03 with the fixed Knowledge/Capability/Harness roles.
+    assert out == ["852526c4b2fa", "70b33a359957"]
 
 
 # ── write-path policy (§9 test 5) ────────────────────────────────────────────

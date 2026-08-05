@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import re
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from ari_skill_hpc.contracts import (
+    AcceleratorDeviceIdentityV1,
     ArtifactPinV1,
     ContainerRequestV1,
     EnvironmentPolicyV1,
+    ExclusiveNodeAcceleratorV1,
     JobRequestV1,
     OutputDeclarationV1,
     ResourceRequestV1,
@@ -100,6 +105,31 @@ def _scheduler(tmp_path: Path, runner: FakeRunner) -> SlurmScheduler:
         runner=runner,
         ledger=SubmissionLedger(tmp_path / "state" / "jobs.json"),
     )
+
+
+def _write_wrapper_completion(
+    handle,
+    raw_script: bytes,
+    *,
+    exit_code: int = 0,
+    nonce: str | None = None,
+) -> str:
+    script = raw_script.decode("utf-8")
+    match = re.search(r'completion_nonce":"([0-9a-f]{64})', script)
+    assert match is not None
+    expected_nonce = match.group(1)
+    value = {
+        "schema_version": "ari.hpc.wrapper-completion/v1",
+        "request_digest": handle.request_digest,
+        "cluster_identity": handle.cluster_identity,
+        "job_id": handle.job_id,
+        "exit_code": exit_code,
+        "completion_nonce": nonce or expected_nonce,
+    }
+    (Path(handle.artifact_scope) / "wrapper-completion-v1.json").write_text(
+        json.dumps(value), encoding="utf-8"
+    )
+    return expected_nonce
 
 
 @pytest.mark.asyncio
@@ -219,6 +249,63 @@ async def test_submit_renders_extended_resources_without_escape_hatch(
 
 
 @pytest.mark.asyncio
+async def test_no_gres_gpu_uses_exclusive_node_and_frozen_inventory(
+    tmp_path: Path,
+) -> None:
+    probe = tmp_path / "nvidia-smi"
+    probe.write_bytes(b"pinned nvidia-smi fixture\n")
+    base = _request(tmp_path)
+    request = base.model_copy(
+        update={
+            "resources": ResourceRequestV1(
+                partition="gpu-private",
+                nodes=1,
+                tasks=1,
+                cpus_per_task=1,
+                walltime="00:05:00",
+                nodelist="gpu-node-a",
+                exclusive=True,
+            ),
+            "accelerator_allocation": ExclusiveNodeAcceleratorV1(
+                partition="gpu-private",
+                node_name="gpu-node-a",
+                inventory_probe=ArtifactPinV1(
+                    logical_name="nvidia-smi-inventory-probe",
+                    path=str(probe),
+                    digest=file_digest(probe),
+                    size_bytes=probe.stat().st_size,
+                ),
+                devices=(
+                    AcceleratorDeviceIdentityV1(
+                        uuid="GPU-27714578-959a-9314-ad8a-21773f5e5649",
+                        name="Tesla V100-SXM2-16GB",
+                        driver_version="575.64.03",
+                        memory_mb=16384,
+                        compute_capability="7.0",
+                    ),
+                ),
+            ),
+        }
+    )
+    runner = FakeRunner(CommandResult("12348\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    await scheduler.submit(request)
+
+    script = runner.calls[0][1].decode()
+    assert "#SBATCH --nodelist=gpu-node-a" in script
+    assert "#SBATCH --exclusive" in script
+    assert "#SBATCH --gres" not in script
+    assert "#SBATCH --gpus" not in script
+    assert "accelerator-inventory.expected.csv" in script
+    assert "accelerator-inventory.observed.csv" in script
+    assert "--query-gpu=uuid,name,driver_version,memory.total,compute_cap" in script
+    assert "exclusive-node accelerator inventory mismatch" in script
+    assert probe.as_posix() in script
+    assert file_digest(probe).removeprefix("sha256:") in script
+
+
+@pytest.mark.asyncio
 async def test_definite_rejection_releases_claim_for_retry(tmp_path: Path) -> None:
     runner = FakeRunner(
         CommandResult("", "invalid partition", 1),
@@ -282,6 +369,78 @@ async def test_status_normalizes_sacct_and_squeue_states(tmp_path: Path) -> None
     assert completed.exit_code == 0
     assert pending.state == "submitted"
     assert pending.reason == "Resources"
+
+
+@pytest.mark.asyncio
+async def test_fixed_wrapper_marker_closes_terminal_state_without_accounting(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(
+        CommandResult("7301", "", 0),
+        CommandResult("", "accounting storage is disabled", 1),
+        CommandResult("", "", 0),
+    )
+    scheduler = SlurmScheduler(
+        runner=runner,
+        ledger=SubmissionLedger(tmp_path / "state/jobs.json"),
+        terminal_evidence_policy="fixed-wrapper-marker",
+    )
+    handle = await scheduler.submit(_request(tmp_path))
+    raw_script = runner.calls[0][1]
+    assert raw_script is not None
+    nonce = _write_wrapper_completion(handle, raw_script)
+
+    status = await scheduler.status(handle.handle_id)
+
+    assert status.state == "succeeded"
+    assert status.scheduler_state == "COMPLETED"
+    assert status.exit_code == 0
+    assert status.reason == "fixed-wrapper-completion-v1"
+    submission = json.loads(
+        (Path(handle.artifact_scope) / "submission-v1.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert submission["terminal_evidence_policy"] == "fixed-wrapper-marker"
+    assert submission["completion_nonce_sha256"] == hashlib.sha256(
+        nonce.encode("ascii")
+    ).hexdigest()
+    assert nonce not in json.dumps(submission)
+
+
+@pytest.mark.asyncio
+async def test_fixed_wrapper_marker_with_wrong_nonce_remains_unknown(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(
+        CommandResult("7302", "", 0),
+        CommandResult("", "accounting storage is disabled", 1),
+        CommandResult("", "", 0),
+    )
+    scheduler = SlurmScheduler(
+        runner=runner,
+        ledger=SubmissionLedger(tmp_path / "state/jobs.json"),
+        terminal_evidence_policy="fixed-wrapper-marker",
+    )
+    handle = await scheduler.submit(_request(tmp_path))
+    raw_script = runner.calls[0][1]
+    assert raw_script is not None
+    _write_wrapper_completion(handle, raw_script, nonce="0" * 64)
+
+    status = await scheduler.status(handle.handle_id)
+
+    assert status.state == "unknown"
+    assert status.scheduler_state == "UNKNOWN"
+
+
+def test_fixed_wrapper_marker_requires_shared_filesystem(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="requires a shared filesystem"):
+        SlurmScheduler(
+            runner=FakeRunner(),
+            ledger=SubmissionLedger(tmp_path / "state/jobs.json"),
+            shared_filesystem=False,
+            terminal_evidence_policy="fixed-wrapper-marker",
+        )
 
 
 @pytest.mark.asyncio

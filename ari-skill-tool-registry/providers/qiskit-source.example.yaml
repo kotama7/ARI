@@ -1,5 +1,10 @@
-# Template only. Replace every absolute path, backend identity, evidence file,
-# and SHA-256 placeholder, then run scripts/verify_qiskit.py before catalog sync.
+# Candidate multi-backend template only. The formally promoted credential-free
+# local-Aer identity is the exact profile and lock under
+# providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/; its verified lock digest is
+# sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684.
+# IBM Runtime and hardware remain outside that scope. Replace every absolute
+# path, backend identity, evidence file, and SHA-256 placeholder and complete a
+# separate credential/backend promotion before catalog sync.
 # QISKIT_IBM_TOKEN is supplied through the quantum.ibm-runtime credential scope;
 # it must never be written here.
 schema_version: ari.catalog-sources/v1

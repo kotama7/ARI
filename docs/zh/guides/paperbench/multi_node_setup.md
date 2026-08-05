@@ -47,9 +47,9 @@ ARI验证path与resource syntax，但无法证明mount共享性或partition能�
 export ARI_SLURM_PARTITION=large
 ```
 
-## 示例: sx40 (单节点, 4×V100)
+## 示例：匿名的未配置 GRES 的 GPU 分区
 
-`sx40` 是 CRA 分区,每节点暴露 `4× V100-SXM2-16GB`,未配置 GRES。
+该示例的单个节点暴露 `4× V100-SXM2-16GB`，但未配置 GRES。
 使用:
 
 ```jsonc

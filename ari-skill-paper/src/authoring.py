@@ -110,6 +110,11 @@ class AuthoringInputs:
     references_payload: bytes
     ear_payload: bytes
     verified_context: dict[str, Any] | None
+    manuscript_profile: Any | None = None
+    manuscript_context: Any | None = None
+    manuscript_readiness: Any | None = None
+    manuscript_briefs: Any | None = None
+    manuscript_binding: Any | None = None
 
 
 def _load_json(payload: bytes, label: str) -> dict[str, Any]:
@@ -143,6 +148,70 @@ def _validate_references(
     replayed = load_survey_snapshot_ref(workspace.root, snapshot_ref)
     if replayed != snapshot:
         raise ValueError("paper reference artifact does not reproduce the snapshot")
+
+
+def _load_enforced_manuscript_inputs(
+    workspace: WorkspaceRefV1,
+) -> tuple[list[PaperArtifactV1], tuple[Any, Any, Any, Any, Any]]:
+    """Load the exact ready bundle advertised by the fixed pipeline guard.
+
+    Imports stay inside the opt-in enforce branch so legacy and audit authoring
+    retain their historical import graph and PaperBuild bytes.
+    """
+
+    mode = os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off").strip().lower()
+    if mode != "enforce":
+        return [], (None, None, None, None, None)
+    from ari.public.manuscript import (
+        ManuscriptAuthoringBindingV1,
+        ManuscriptContextV1,
+        ManuscriptReadinessReportV1,
+        ManuscriptRequirementProfileV1,
+        SectionBriefBundleV1,
+    )
+
+    specs = (
+        ("manuscript-profile", "ARI_MANUSCRIPT_PROFILE_PATH", ManuscriptRequirementProfileV1),
+        ("manuscript-context", "ARI_MANUSCRIPT_CONTEXT_PATH", ManuscriptContextV1),
+        ("manuscript-readiness", "ARI_MANUSCRIPT_READINESS_PATH", ManuscriptReadinessReportV1),
+        ("section-briefs", "ARI_MANUSCRIPT_BRIEFS_PATH", SectionBriefBundleV1),
+        ("manuscript-authoring-binding", "ARI_MANUSCRIPT_BINDING_PATH", ManuscriptAuthoringBindingV1),
+    )
+    artifacts: list[PaperArtifactV1] = []
+    documents: list[Any] = []
+    for role, env_name, contract in specs:
+        path = os.environ.get(env_name, "").strip()
+        if not path:
+            raise ValueError(f"enforced manuscript authoring lacks {env_name}")
+        artifact, payload = artifact_from_workspace(
+            workspace,
+            role=role,
+            relative_path=path,
+            media_type="application/json",
+            max_bytes=64 * 1024 * 1024,
+        )
+        document = contract.model_validate(_load_json(payload, role))
+        artifacts.append(artifact)
+        documents.append(document)
+
+    profile, context, readiness, briefs, binding = documents
+    if (
+        context.profile_digest != profile.profile_digest
+        or readiness.profile_digest != profile.profile_digest
+        or briefs.profile_digest != profile.profile_digest
+        or binding.profile_digest != profile.profile_digest
+        or readiness.context_digest != context.context_digest
+        or briefs.context_digest != context.context_digest
+        or binding.context_digest != context.context_digest
+        or briefs.readiness_digest != readiness.readiness_digest
+        or binding.readiness_digest != readiness.readiness_digest
+        or binding.brief_bundle_digest != briefs.bundle_digest
+        or binding.source_snapshot_digest != context.source_snapshot_digest
+    ):
+        raise ValueError("manuscript authoring inputs do not share one digest lineage")
+    if readiness.authoring_verdict not in {"ready", "ready_with_disclosures"}:
+        raise ValueError("manuscript authoring binding is not authoring-ready")
+    return artifacts, (profile, context, readiness, briefs, binding)
 
 
 def load_authoring_inputs(
@@ -193,6 +262,22 @@ def load_authoring_inputs(
                 ),
                 "verified context",
             )
+    manuscript_artifacts, manuscript_documents = _load_enforced_manuscript_inputs(
+        workspace
+    )
+    artifacts.extend(manuscript_artifacts)
+    (
+        manuscript_profile,
+        manuscript_context,
+        manuscript_readiness,
+        manuscript_briefs,
+        manuscript_binding,
+    ) = manuscript_documents
+    if manuscript_binding is not None:
+        if manuscript_binding.run_id != science.run_id:
+            raise ValueError("manuscript binding belongs to another science-data run")
+        if manuscript_binding.target_build_id != f"paper-{science.run_id}":
+            raise ValueError("manuscript binding targets another paper build")
     return AuthoringInputs(
         workspace=workspace,
         science=science,
@@ -205,6 +290,11 @@ def load_authoring_inputs(
         references_payload=references_payload,
         ear_payload=ear_payload,
         verified_context=verified_context,
+        manuscript_profile=manuscript_profile,
+        manuscript_context=manuscript_context,
+        manuscript_readiness=manuscript_readiness,
+        manuscript_briefs=manuscript_briefs,
+        manuscript_binding=manuscript_binding,
     )
 
 

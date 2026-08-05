@@ -78,6 +78,53 @@ conditions:
   # + meta-agent evolution (Task 11) == the full ari_rqgm mode.
   B8: {inherits: B7, rqgm: {meta_evolution: {enabled: true}}}
 
+# Task-20 scientific-assurance axis.  These presets are intentionally outside
+# `conditions:` so the B0-B8 vocabulary and every historical expansion remain
+# byte-for-byte unchanged.  `rqgm.eval.kca_conditions.verification_tiers` is
+# comparison metadata consumed only by the evaluation harness; production
+# admission still derives mandatory requirements from Research Contract and
+# Verification Contract artifacts.
+assurance_conditions:
+  H0_assurance_off:
+    assurance: {mode: "off"}
+    rqgm:
+      eval:
+        kca_conditions: {verification_tiers: []}
+  H1_assurance_audit:
+    assurance: {mode: audit}
+    rqgm:
+      eval:
+        kca_conditions: {verification_tiers: [screen, validate, certify]}
+  H2_assurance_screen_enforced:
+    assurance: {mode: enforce}
+    rqgm:
+      eval:
+        kca_conditions: {verification_tiers: [screen]}
+  H3_assurance_full_certification:
+    assurance: {mode: enforce}
+    rqgm:
+      eval:
+        kca_conditions: {verification_tiers: [screen, validate, certify]}
+
+# Task-20 Knowledge/Capability axis.  K4 is not listed: it is the reporting
+# alias for K3 × H3 and cannot be independently combined.
+knowledge_capability_conditions:
+  K0_legacy_no_knowledge:
+    knowledge: {mode: "off"}
+    capability_binding: {mode: legacy}
+  K1_knowledge_injection_only:
+    knowledge: {mode: audit}
+    capability_binding: {mode: legacy}
+    rqgm:
+      eval:
+        kca_conditions: {legacy_comparison_only: true, publishable: false}
+  K2_capability_binding_audit:
+    knowledge: {mode: audit}
+    capability_binding: {mode: audit}
+  K3_capability_binding_enforced:
+    knowledge: {mode: enforce}
+    capability_binding: {mode: enforce}
+
 # Paper-archive B-baseline ladder (docs/plans/ari_rqgm_paper/07 §5.6).
 #
 # Three named presets that expand (via

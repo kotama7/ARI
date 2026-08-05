@@ -1,0 +1,38 @@
+{
+  "arguments": {
+    "request_id": "offline-fixture"
+  },
+  "experiment_digest": "sha256:cb3e20b6dc7f6abc78226acf90754189d66bd307e20f825dc7f8e3b05444f397",
+  "profile_id": "gcd-nangate45-26q3",
+  "result": {
+    "experiment_digest": "sha256:cb3e20b6dc7f6abc78226acf90754189d66bd307e20f825dc7f8e3b05444f397",
+    "metrics": [
+      {
+        "corner": "typical",
+        "metric_id": "route-drc-errors",
+        "mode": "functional",
+        "stage": "routing",
+        "unit": "count",
+        "value": 0.0
+      },
+      {
+        "corner": "typical",
+        "metric_id": "route-wirelength",
+        "mode": "functional",
+        "stage": "routing",
+        "unit": "um",
+        "value": 3603.0
+      },
+      {
+        "corner": "typical",
+        "metric_id": "route-vias",
+        "mode": "functional",
+        "stage": "routing",
+        "unit": "count",
+        "value": 3361.0
+      }
+    ],
+    "status": "completed"
+  },
+  "schema_version": "ari.openroad-replay-fixture/v1"
+}

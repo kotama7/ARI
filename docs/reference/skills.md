@@ -14,12 +14,24 @@ sources:
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-03
 ---
 
-# MCP Skills Reference
+# Capability Provider Packages (`ari-skill-*` compatibility names)
 
-Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. **14 skills total** (13 default, 1 additional) — `ari-skill-replicate` was added in v0.7.0 for the PaperBench-format reproducibility flow.
+The packages historically called “Skills” are executable **Capability
+Providers** connected through MCP. They are not Knowledge Skills. MCP is the
+transport/discovery protocol; each listed tool is an atomic Provider
+operation. Tools are deterministic where possible, and LLM-using operations
+are explicitly annotated. The on-disk `skill.yaml`, `SkillManifestV1`, and
+`SKILLS.lock` names remain compatibility names for the Provider manifest and
+run snapshot; there is no parallel `provider.yaml` or `PROVIDERS.lock`.
+
+Non-executable Knowledge Skills and independent Harnesses are documented in
+[Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md).
+The default-off `ari-skill-knowledge` and `ari-skill-harness` packages expose
+only read/query and non-authoritative request operations; neither grants
+catalog administration or fixed resolution authority.
 
 ## ari-skill-hpc
 

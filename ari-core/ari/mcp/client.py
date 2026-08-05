@@ -34,6 +34,7 @@ from ari.mcp.lock_runtime import SkillLockController
 from ari.mcp.invoke_runtime import invoke_with_retries
 from ari.mcp.registry_runtime import discover_registry
 from ari.protocols.stores import ArtifactStore
+from ari.protocols.mcp import ToolAuthorizationViewProtocol
 from ari.result import (
     DEFAULT_INLINE_RESULT_LIMIT,
     ResultEnvelopeNormalizer,
@@ -64,6 +65,7 @@ class MCPClient:
         skill_lock_path: str | Path | None = None,
         skill_lock_scope: str = "exact",
         strict_provider_loading: bool | None = None,
+        tool_authorization_view: ToolAuthorizationViewProtocol | None = None,
     ) -> None:
         import threading as _t
 
@@ -88,6 +90,7 @@ class MCPClient:
             scope=skill_lock_scope,
             strict_provider_loading=strict_provider_loading,
         )
+        self._tool_authorization_view = tool_authorization_view
         atexit.register(self.close_all)
 
     def _get_conn(self, skill_name: str) -> _SkillConnection | None:
@@ -130,6 +133,14 @@ class MCPClient:
                 for tool in tools
                 if context.satisfies(self._tool_context_requirement(tool["tool_ref"]))
             ]
+        if self._tool_authorization_view is not None:
+            tools = [
+                tool
+                for tool in tools
+                if self._tool_authorization_view.decide(
+                    tool["tool_ref"], phase=phase, context=context
+                ).allowed
+            ]
         return tools
 
     def _build_tools_cache(self) -> None:
@@ -168,6 +179,24 @@ class MCPClient:
             self._tools_cache = None
             self._skill_lock.clear()
             raise
+
+    def install_tool_authorization_view(
+        self, view: ToolAuthorizationViewProtocol
+    ) -> None:
+        """Install the run-frozen Binding projection exactly once.
+
+        Admission occurs after root proposal/Research Contract, whereas MCP
+        discovery creates ``SKILLS.lock`` earlier.  This narrow seam lets the
+        trusted runtime attach the resulting authority view without creating a
+        second MCP client or mutating Provider discovery state.
+        """
+
+        current = self._tool_authorization_view
+        if current is not None:
+            if getattr(current, "lock_digest", None) != getattr(view, "lock_digest", None):
+                raise ValueError("Capability Binding authorization view is immutable")
+            return
+        self._tool_authorization_view = view
 
     @property
     def skills_lock(self) -> SkillsLockV1 | None:
@@ -276,6 +305,14 @@ class MCPClient:
         if admission_error is not None:
             return admission_error
         assert skill_name is not None
+
+        observer = getattr(self._tool_authorization_view, "record_invocation", None)
+        if callable(observer):
+            observer(
+                tool_ref,
+                phase=effective_context.phase,
+                context=effective_context,
+            )
 
         return self._invoke_registered_tool(
             tool_name=tool_name,
@@ -426,6 +463,17 @@ class MCPClient:
             if not context.satisfies(requirement):
                 message = (
                     f"Tool '{tool_name}' requires explicit {requirement} context"
+                )
+        if not message and self._tool_authorization_view is not None:
+            decision = self._tool_authorization_view.decide(
+                tool_ref,
+                phase=context.phase,
+                context=context,
+            )
+            if not decision.allowed:
+                message = (
+                    f"Tool '{tool_name}' denied by Capability Binding: "
+                    f"{decision.reason_code}"
                 )
         if not message:
             return None

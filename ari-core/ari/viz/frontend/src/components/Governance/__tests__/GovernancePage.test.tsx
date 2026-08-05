@@ -39,7 +39,7 @@ import {
  * hooks and page logic stay REAL). Pins:
  *   - the capability STATE screen for a simple_bfts run (explanation, not
  *     an error);
- *   - each of the eight tabs rendering from mocked DTOs behind proper
+ *   - each of the nine tabs rendering from mocked DTOs behind proper
  *     tablist/tab/tabpanel roles (Wave 4b adds Epoch Timeline, Evolution
  *     and Paper Archive);
  *   - raw-vs-validated separation: a raw attack row can never show a
@@ -612,10 +612,10 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
     renderPage();
 
     await waitFor(() => expect(screen.getByText('epoch_2')).toBeInTheDocument());
-    // a11y composite (plan 02): tablist with 8 tabs; overview selected.
+    // a11y composite: tablist with 9 tabs; overview selected.
     const tablist = screen.getByRole('tablist');
     const tabs = within(tablist).getAllByRole('tab');
-    expect(tabs).toHaveLength(8);
+    expect(tabs).toHaveLength(9);
     expect(tabs.map((tab) => tab.textContent)).toEqual([
       'Overview',
       'Epoch Timeline',
@@ -624,6 +624,7 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
       'Score Lineage',
       'Evolution',
       'Paper Archive',
+      'Knowledge · Capability · Assurance',
       'Audit',
     ]);
     const selected = tabs.filter((tab) => tab.getAttribute('aria-selected') === 'true');

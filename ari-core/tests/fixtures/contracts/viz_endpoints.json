@@ -800,6 +800,7 @@
     "/file/raw",
     "/file?",
     "/filecontent",
+    "/kca",
     "/license",
     "/logs",
     "/logs?",

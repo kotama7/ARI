@@ -1,0 +1,20 @@
+schema_version: 1
+catalog_source_revision: ari-knowledge-catalog/2
+importer_version: ari.knowledge.importer/v1
+entries:
+  - manifest: builtin/hpc_gemm_optimization.yaml
+    body: bodies/hpc_gemm_optimization/SKILL.md
+  - manifest: builtin/hpc_spmm_optimization.yaml
+    body: bodies/hpc_spmm_optimization/SKILL.md
+  - manifest: builtin/hpc_stencil_optimization.yaml
+    body: bodies/hpc_stencil_optimization/SKILL.md
+  - manifest: builtin/literature_systematic_review.yaml
+    body: bodies/literature_systematic_review/SKILL.md
+  - manifest: builtin/scientific_reproduction.yaml
+    body: bodies/scientific_reproduction/SKILL.md
+  - import_material: imports/intel_linux_perf.json
+    import_profile: import_profiles/intel_linux_perf.yaml
+  - import_material: imports/intel_performance_patterns.json
+    import_profile: import_profiles/intel_performance_patterns.yaml
+  - import_material: imports/intel_phoronix_test_suite.json
+    import_profile: import_profiles/intel_phoronix_test_suite.yaml

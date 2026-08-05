@@ -450,7 +450,7 @@ def _phase1_sandbox_kind(default: str = "auto") -> str:
     ``auto`` priority:
         1. ``slurm`` — when sbatch is available AND ARI_SLURM_PARTITION is
            set. The reproduce.sh from BFTS was almost certainly compiled with
-           ``-march=native`` on a partition CPU (e.g. AVX-512 on sx40), so
+           ``-march=native`` on a partition CPU (e.g. AVX-512 on a private node), so
            re-running on the login node usually fails. Submit back to the
            same partition.
         2. ``docker`` — when daemon is usable AND we're not inside SLURM.

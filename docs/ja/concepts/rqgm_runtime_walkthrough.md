@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-07-28
+last_verified: 2026-08-03
 ---
 
 # RQGM ランタイムウォークスルー
@@ -503,7 +503,7 @@ self-preference ラウンドは現在、実際の過剰受理アーカイブド�
 └── prompt_trace.jsonl            # every rendered prompt, stamped with prompt_version
 ```
 
-`meta.json` はさらに `constitution_hash`（現在 `2edf93776904`）を記録
+`meta.json` はさらに `constitution_hash`（現在 `5e455c17da51`）を記録
 します — すべてのカーネル規則テーブルにわたるピンです。憲法改正は意図的な
 手作業の再ピン留めです: 規則テーブルの編集は、期待ハッシュが日付つき
 コメントとともに再ピン留めされるまで `tests/test_rqgm_kernel.py` を失敗
@@ -512,7 +512,9 @@ self-preference ラウンドは現在、実際の過剰受理アーカイブド�
 `CK-UTL-*` 規則）`→ 564a204dc694`（paper 設立ロール）`→ 6643c12a510e`
 （T21、paper ロールの shadow-standby エッジ）`→ 2edf93776904`（#78b、
 `governance_judge` を役割語彙に追加し、弾劾裁定者自身を統治対象・制裁可能な
-アクターにする）。
+アクターにする）`→ 5e455c17da51`（Tasks 16–19、固定
+Knowledge/Capability/Harness 主体、resource matrix、`CK-KNW-*` /
+`CK-CAP-*` / `CK-HAR-*` integrity rules を追加）。
 
 ## ランの観察方法
 

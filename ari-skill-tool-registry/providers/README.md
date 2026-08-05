@@ -31,17 +31,26 @@ Those identities and limitations remain leaf provenance and admission concerns.
    `scripts/verify_tooluniverse.py --smoke` for each proposed category.
 5. Add a new immutable support-matrix record. Never edit a historical release
    record to describe different bytes.
-6. Sync `sources.yaml` without approval and review the pending lock/index/diff,
+6. Run the Provider-specific promotion command with the authenticated human
+   maintainer identity. Retain its digest-bound promotion approval; registration
+   evidence alone is only `eligible-for-verified`.
+7. Sync `sources.yaml` without approval and review the pending lock/index/diff,
    quarantine changes, category profile changes, permissions, schema
    normalization, lineage, and admission decisions.
-7. Approve ordinary changes with `--approve`. If any input/output/default schema
+8. Approve ordinary changes with `--approve`. If any input/output/default schema
    changed, separately review them and add `--approve-schema-changes`.
-8. Run package tests, generic/direct-provider conformance, record/replay without
+9. Run package tests, generic/direct-provider conformance, record/replay without
    the provider environment, docs build, and manifest/schema checks.
 
 Rollback uses the previous support record, provider environment, active
 `CATALOG.lock`, and cassettes. Runtime never changes a release or catalog on
 startup.
+
+The formally promoted ToolUniverse, Qiskit local-Aer, and OpenROAD local-CPU
+identities live in separate immutable subdirectories. Each `verified-lock-v1.json`
+binds the exact Provider-specific capability scope and a human-maintainer
+approval. A support record or example YAML alone is still candidate, and a
+promotion lock never edits or activates the default `CATALOG.lock`.
 
 ## OpenROAD
 
@@ -57,6 +66,35 @@ The official project now recommends its maintained npm distribution and labels
 the Python distribution deprecated/final. ARI pins Python 0.6.1 only because the
 current reviewed generic process launcher is Python-only. Moving to npm is a new
 supply-chain and launcher admission, not an in-place edit of this record.
+
+`openroad/0.6.1+orfs-26q3-gcd-nangate45/verified-lock-v1.json` is the promoted
+local scope. It is local-MCP, x86_64 CPU, one thread, fixed GCD
+post-placement CTS/routing, Nangate45, and the retained ORFS SIF. The SIF itself
+is not committed because it is 1.54 GB; its full SHA-256, source OCI manifest,
+inner OpenROAD digest, and required materialization path are fixed.
+
+`openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/verified-lock-v1.json` is a
+second, independent promoted scope with lock
+`sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd`.
+It fixes an anonymous exclusive-node SLURM CPU allocation, zero requested GPUs,
+the same GCD/Nangate45 scientific inputs, exact scheduler-client snapshot,
+PRoot/SIF/unsquashfs/worker-Python identities, nonce-bound fixed-wrapper
+terminal evidence, live result, and human approval. GPU execution, another
+design/PDK/corner, and the npm MCP distribution remain separate identities and
+require their own promotion evidence.
+The only promotion entry points are the human-admin commands
+`scripts/promote_openroad_gcd_cpu.py` and
+`scripts/promote_openroad_gcd_slurm_cpu.py`; Agent MCP surfaces cannot call
+them.
+
+An OpenROAD SLURM identity is site-private. Its clear cluster, partition, and
+node selectors exist only in an ignored runtime configuration with a 256-bit
+nonce. Checked-in scheduler snapshots, manifests, evidence, fixtures, and locks
+bind the salted full SHA-256 `site_identity_digest` and disclose no physical
+selector. Promotion fails if the site file is tracked, is not ignored, has a
+predictable nonce, or if any Git candidate file contains a clear site identity.
+The same fail-closed check covers staged blob bytes, filenames, and symlink
+targets and is installed for this checkout as `.githooks/pre-commit`.
 
 ARI does not publish the upstream interactive session tools. Their generic exec
 surface accepts commands broader than a scientific flow profile should. Each
@@ -113,6 +151,16 @@ immutable `QiskitExperimentV1`, and the adapter internally calls only the
 transpilation or setup/snapshot/sampler/status/result/cancel subset needed by
 that profile. Local Aer execution happens in a separate distribution-verified
 worker. The four backend kinds have distinct capabilities and admission meaning.
+
+`qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json` promotes only
+the credential-free local-Aer profile and capability
+`ari.quantum.sample.local-ideal/v1`. IBM Runtime MCP and IBM hardware are not
+covered by this approval. Their candidate support pins remain useful inputs,
+but formal promotion additionally requires an admitted credential scope, exact
+backend/configuration/calibration identity, and live backend-bound golden/replay
+evidence without storing the token or raw instance CRN.
+The only promotion entry point is the human-admin command
+`scripts/promote_qiskit_local_aer.py`; Agent MCP surfaces cannot call it.
 
 QPY is the canonical circuit artifact. The verifier checks its bytes, `QISKIT`
 header, QPY format byte, producing Qiskit major/minor/patch, circuit dimensions,

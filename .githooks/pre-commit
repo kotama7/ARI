@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+repository="$(git rev-parse --show-toplevel)"
+configured_site="$(git config --local --get ari.sitePrivacy.config || true)"
+site_config="${ARI_PRIVATE_SLURM_SITE_CONFIG:-${configured_site:-${repository}/workspace/openroad-slurm-site-v1.json}}"
+privacy_required="$(git config --local --bool --get ari.sitePrivacy.required || true)"
+
+# A clone without private scheduler configuration has no local identity to
+# compare.  Operators using another ignored/out-of-tree file set the variable
+# above.  In the configured promotion clone this is a mandatory staged-blob and
+# worktree-candidate scan before every commit.
+if [ ! -f "${site_config}" ] && [ "${privacy_required}" = "true" ]; then
+    printf '%s\n' 'site-privacy-audit: FAIL (required private configuration is unavailable)' >&2
+    exit 1
+fi
+if [ ! -f "${site_config}" ]; then
+    exit 0
+fi
+
+exec python "${repository}/ari-skill-tool-registry/scripts/check_site_privacy.py" \
+    --repository "${repository}" \
+    --site-config "${site_config}"

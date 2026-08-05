@@ -8,6 +8,31 @@ models:
   # is set.  Read by ``ari/orchestrator/lineage_decision.py:_default_model``.
   lineage_decision_default: gpt-4o-mini
 
+# Knowledge–Capability–Assurance defaults are deliberately legacy-inert.
+# `simple_bfts` with these values takes no new imports/runtime path, writes no
+# catalog snapshots or locks, and preserves the existing prompt/tool surface.
+knowledge:
+  mode: "off"
+capability_binding:
+  mode: legacy
+assurance:
+  mode: "off"
+
+# Manuscript Complete is an independent, opt-in post-exploration boundary.
+# Off writes no `.ari-manuscript` artifacts and preserves the legacy paper path.
+manuscript:
+  mode: "off"
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
+
 # RQGM epoch defaults (docs/plans/ari_rqgm Task 02).  Mirrors the typed
 # ``ari.config.RQGMEpochConfig`` pydantic defaults — parity is pinned by
 # ``ari-core/tests/test_rqgm_state_store.py`` so the two homes cannot drift.
@@ -206,6 +231,16 @@ rqgm:
     # RQGM-paper-aligned P0-P4 selector. Empty is the production default;
     # the selector is ignored unless eval.enabled is true.
     paper_ablation: {condition_id: ""}
+    # Task-20 comparison identity. This metadata never grants authority or
+    # changes production selection/binding/resolution decisions.
+    kca_conditions:
+      b: ""
+      h: ""
+      k: ""
+      reporting_alias: null
+      verification_tiers: []
+      legacy_comparison_only: false
+      publishable: true
   # Paper-archive co-evolution (docs/plans/ari_rqgm_paper Tasks 01/02).
   # Mirrors the typed ``ari.config.RQGMPaperConfig`` pydantic defaults —
   # parity is pinned by ``ari-core/tests/test_paper_mode.py``.  Inert unless

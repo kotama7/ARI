@@ -61,6 +61,8 @@ def _support_document() -> dict[str, Any]:
         raise ProviderProtocolError("OpenROAD support matrix has no provider releases")
     if not isinstance(document.get("toolchain_lines"), list):
         raise ProviderProtocolError("OpenROAD support matrix has no toolchain lines")
+    if not isinstance(document.get("execution_images"), list):
+        raise ProviderProtocolError("OpenROAD support matrix has no execution images")
     return document
 
 
@@ -91,6 +93,19 @@ def openroad_toolchain_line(line_id: str) -> dict[str, Any]:
     if len(matches) != 1:
         raise ProviderProtocolError(
             f"OpenROAD toolchain line {sanitize_text(line_id, limit=100)!r} is unsupported"
+        )
+    return dict(matches[0])
+
+
+def openroad_execution_image(image_id: str) -> dict[str, Any]:
+    matches = [
+        item
+        for item in _support_document()["execution_images"]
+        if item.get("image_id") == image_id
+    ]
+    if len(matches) != 1:
+        raise ProviderProtocolError(
+            f"OpenROAD execution image {sanitize_text(image_id, limit=100)!r} is unsupported"
         )
     return dict(matches[0])
 

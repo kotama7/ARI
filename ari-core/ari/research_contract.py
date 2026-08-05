@@ -9,19 +9,24 @@ re-extract a metric or evidence vocabulary from prose.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from datetime import datetime
-from typing import Any, ClassVar, Literal
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
-    ConfigDict,
     Field,
-    ValidationInfo,
     field_validator,
     model_validator,
+)
+
+from ari.protocols.integrity import (
+    DigestBoundModel as _DigestBoundModel,
+    SHA256_DIGEST_PATTERN,
+    StrictModel as _StrictModel,
+    bytes_digest,
+    canonical_digest,
 )
 
 
@@ -37,57 +42,11 @@ RESEARCH_CONTRACT_V1 = "ari.research-contract/v1"
 RESEARCH_ARTIFACT_REF_V1 = "ari.research-artifact-ref/v1"
 CITATION_EDGE_V1 = "ari.citation-edge/v1"
 
-SHA256_DIGEST_PATTERN = r"^sha256:[0-9a-f]{64}$"
-_ZERO_DIGEST = "sha256:" + ("0" * 64)
 _SAFE_TOKEN = re.compile(r"^[a-z0-9][a-z0-9._:/@+-]{0,255}$")
 
 
 class ResearchContractError(ValueError):
     """A research hand-off is malformed, tampered with, or inconsistent."""
-
-
-def canonical_digest(value: Any) -> str:
-    """Return the stable digest of a JSON-compatible value or Pydantic model."""
-
-    if isinstance(value, BaseModel):
-        value = value.model_dump(mode="json")
-    payload = json.dumps(
-        value,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(payload).hexdigest()
-
-
-class _StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class _DigestBoundModel(_StrictModel):
-    """Base for records whose digest covers every field except itself."""
-
-    _digest_field: ClassVar[str]
-
-    @classmethod
-    def create(cls, **values: Any):
-        values[cls._digest_field] = _ZERO_DIGEST
-        return cls.model_validate(values, context={"bind_research_digest": True})
-
-    def digest_payload(self) -> dict[str, Any]:
-        return self.model_dump(mode="json", exclude={self._digest_field})
-
-    @model_validator(mode="after")
-    def _digest_matches(self, info: ValidationInfo):
-        expected = canonical_digest(self.digest_payload())
-        if info.context and info.context.get("bind_research_digest"):
-            object.__setattr__(self, self._digest_field, expected)
-        elif getattr(self, self._digest_field) != expected:
-            raise ValueError(
-                f"{self._digest_field} does not match the canonical payload"
-            )
-        return self
 
 
 class ResearchArtifactRefV1(_StrictModel):
@@ -618,7 +577,7 @@ def load_survey_snapshot_ref(
         artifact_payload = workspace.read_bytes(
             artifact.logical_name, max_bytes=max_bytes
         )
-        digest = "sha256:" + hashlib.sha256(artifact_payload).hexdigest()
+        digest = bytes_digest(artifact_payload)
         if digest != artifact.digest:
             raise ResearchContractError(
                 f"survey artifact digest mismatch: {artifact.logical_name}"

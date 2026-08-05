@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import re
+import sys
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -305,7 +306,14 @@ def provider_digest(launcher: PythonStdioLauncherV1) -> str:
 
 
 def stdio_adapter_digest() -> str:
-    return _file_digest(Path(__file__).resolve())
+    return sha256_digest(
+        {
+            "adapter_source": _file_digest(Path(__file__).resolve()),
+            "process_group_proxy": _file_digest(
+                Path(__file__).resolve().with_name("stdio_process_proxy.py")
+            ),
+        }
+    )
 
 
 class ProviderToolV1(BaseModel):
@@ -478,16 +486,37 @@ class StdioMCPAdapter:
         with tempfile.TemporaryDirectory(prefix="ari-provider-home-") as home_text:
             home = Path(home_text)
             with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as errlog:
-                parameters = StdioServerParameters(
-                    command=str(executable),
-                    args=self.launcher.command_arguments(entrypoint),
-                    env=self._environment(home),
-                    cwd=self.launcher.working_directory(root),
+                environment = self._environment(home)
+                proxy_spec = canonical_json(
+                    {
+                        "command": str(executable),
+                        "arguments": self.launcher.command_arguments(entrypoint),
+                        "cwd": str(self.launcher.working_directory(root)),
+                        "env_names": sorted(environment),
+                    }
                 )
+                parameters = StdioServerParameters(
+                    command=sys.executable,
+                    args=[
+                        str(
+                            Path(__file__)
+                            .resolve()
+                            .with_name("stdio_process_proxy.py")
+                        ),
+                        "--spec",
+                        proxy_spec,
+                    ],
+                    env=environment,
+                    cwd=Path(__file__).resolve().parent,
+                )
+                operation_failure: ProviderAdapterError | None = None
                 try:
                     async with stdio_client(parameters, errlog=errlog) as streams:
                         async with ClientSession(*streams) as session:
-                            async with asyncio.timeout(self.timeout_seconds):
+                            startup_timeout = max(
+                                10.0, min(self.timeout_seconds, 60.0)
+                            )
+                            async with asyncio.timeout(startup_timeout):
                                 await session.initialize()
                             # The session itself may intentionally outlive one
                             # provider call (for example, a stateful EDA run).
@@ -495,10 +524,20 @@ class StdioMCPAdapter:
                             # ``_call_in_session``; this timeout covers startup
                             # only instead of silently killing a healthy
                             # long-running connection.
-                            yield session
+                            try:
+                                yield session
+                            except ProviderAdapterError as exc:
+                                # Let both MCP contexts close normally before
+                                # re-raising the primary operation error.  If an
+                                # operation timeout escapes through the SDK
+                                # task group, its stream-shutdown error can
+                                # otherwise mask the fail-closed timeout.
+                                operation_failure = exc
                 except ProviderAdapterError:
                     raise
                 except Exception as exc:
+                    if operation_failure is not None:
+                        raise operation_failure from exc
                     errlog.seek(0)
                     diagnostic = self._redact_text(
                         sanitize_text(errlog.read(), limit=2_000)
@@ -511,6 +550,8 @@ class StdioMCPAdapter:
                     if isinstance(exc, (OSError, FileNotFoundError)):
                         raise ProviderLaunchError(message) from exc
                     raise ProviderProtocolError(message) from exc
+                if operation_failure is not None:
+                    raise operation_failure
 
     async def list_tools(self) -> list[ProviderToolV1]:
         tools: list[ProviderToolV1] = []

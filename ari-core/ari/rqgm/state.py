@@ -222,6 +222,7 @@ def reconcile_resume_mode(cfg: "ARIConfig", checkpoint_dir: str | Path) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 
 EPOCH_STATE_SCHEMA_VERSION = 2
+KCA_EPOCH_STATE_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -257,6 +258,10 @@ class EpochState:
     policy_fingerprint: str = ""
     execution_identity: dict = field(default_factory=dict)
     execution_fingerprint: str = ""
+    # Present only in schema-v3 execution epochs admitted through the
+    # Knowledge–Capability–Assurance gate.  Empty on every historical/all-off
+    # epoch so schema-v2 bytes and fingerprints remain unchanged.
+    scientific_identity: dict = field(default_factory=dict)
     epoch_fingerprint: str = ""
     created_at: str = ""  # metadata; never hashed
     schema_version: int = EPOCH_STATE_SCHEMA_VERSION
@@ -272,7 +277,7 @@ def epoch_state_payload(state: EpochState) -> dict:
     This is both the hashed body carried inside ``epoch_open`` events and the
     snapshot body (the snapshot re-adds ``created_at`` last).
     """
-    return {
+    payload = {
         "schema_version": state.schema_version,
         "record_id": state.record_id,
         "epoch_id": state.epoch_id,
@@ -293,6 +298,9 @@ def epoch_state_payload(state: EpochState) -> dict:
         "execution_fingerprint": state.execution_fingerprint,
         "epoch_fingerprint": state.epoch_fingerprint,
     }
+    if int(state.schema_version) >= KCA_EPOCH_STATE_SCHEMA_VERSION:
+        payload["scientific_identity"] = dict(state.scientific_identity)
+    return payload
 
 
 def policy_fingerprint(state: EpochState) -> str:
@@ -376,6 +384,7 @@ def epoch_state_from_payload(payload: dict, *, created_at: str = "") -> EpochSta
         policy_fingerprint=str(payload.get("policy_fingerprint", "")),
         execution_identity=dict(payload.get("execution_identity") or {}),
         execution_fingerprint=str(payload.get("execution_fingerprint", "")),
+        scientific_identity=dict(payload.get("scientific_identity") or {}),
         epoch_fingerprint=str(payload.get("epoch_fingerprint", "")),
         created_at=created_at,
         schema_version=int(payload.get("schema_version",
@@ -429,7 +438,7 @@ def capture_policy_settings(cfg) -> dict:
     }
 
 
-def capture_execution_identity(cfg) -> dict:
+def capture_execution_identity(cfg, scientific_identity: dict | None = None) -> dict:
     """Capture the observable execution identity at epoch open.
 
     Provider weights, tool bundles, environments and data snapshots are not
@@ -463,7 +472,7 @@ def capture_execution_identity(cfg) -> dict:
             or "unresolved"
         ),
     }
-    return {
+    identity = {
         "model_backend": str(getattr(llm, "backend", "") or ""),
         "model_id": str(getattr(llm, "model", "") or ""),
         "decoding": {
@@ -483,6 +492,9 @@ def capture_execution_identity(cfg) -> dict:
         **pins,
         "complete": all(value != "unresolved" for value in pins.values()),
     }
+    if scientific_identity:
+        identity["scientific_assurance"] = dict(scientific_identity)
+    return identity
 
 
 def utility_policy_body(cfg) -> dict:
@@ -632,6 +644,7 @@ def freeze_epoch(
     opened_by_transition_id: str | None = None,
     checkpoint_dir=None,
     utility_policy_override: dict | None = None,
+    scientific_identity: dict | None = None,
 ) -> EpochState:
     """Construct the frozen :class:`EpochState` at epoch open (plan 02 §5.6).
 
@@ -645,6 +658,7 @@ def freeze_epoch(
     utility-policy body read; omitted, it falls back to the
     ``ARI_CHECKPOINT_DIR`` run pin.
     """
+    kca_identity = dict(scientific_identity or {})
     state = EpochState(
         epoch_id=format_epoch_id(epoch_seq),
         epoch_seq=int(epoch_seq),
@@ -673,9 +687,14 @@ def freeze_epoch(
         ),
         registry_version=registries.prompts.registry_version(),
         policy_settings=capture_policy_settings(cfg),
-        execution_identity=capture_execution_identity(cfg),
+        execution_identity=capture_execution_identity(cfg, kca_identity),
+        scientific_identity=kca_identity,
         epoch_fingerprint="",
         created_at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        schema_version=(
+            KCA_EPOCH_STATE_SCHEMA_VERSION
+            if kca_identity else EPOCH_STATE_SCHEMA_VERSION
+        ),
     )
     state = replace(
         state,

@@ -15,7 +15,33 @@ actually read (``tool_manager`` also reads ``_COW_TOOLS``).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Protocol
+
+
+@dataclass(frozen=True)
+class ToolAuthorizationDecision:
+    """Provider-neutral semantic authority decision at the MCP choke point."""
+
+    allowed: bool
+    reason_code: str
+    audit_only: bool = False
+    binding_digest: str | None = None
+
+
+class ToolAuthorizationViewProtocol(Protocol):
+    """Immutable view created by the Capability Binder, never by MCP."""
+
+    @property
+    def mode(self) -> str: ...
+
+    def decide(
+        self,
+        tool_ref: str,
+        *,
+        phase: str | None = None,
+        context: Any | None = None,
+    ) -> ToolAuthorizationDecision: ...
 
 
 class MCPToolCaller(Protocol):

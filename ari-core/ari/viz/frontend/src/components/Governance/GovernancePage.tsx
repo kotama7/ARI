@@ -1,7 +1,7 @@
 // ARI Dashboard – Governance workspace (gui_refresh task 08 Wave 4a; plan
 // 08 §Workspace tabs / §Truth and presentation rules; plan 01 §Route model).
 //
-// READ-ONLY. Eight tabs (Overview / Epoch Timeline / Registry /
+// READ-ONLY. Nine tabs (Overview / Epoch Timeline / Registry /
 // Accountability / Score Lineage / Evolution / Paper Archive / Audit) over
 // the Wave-4a/4b `/api/v1/runs/{run_id}/rqgm/*` read models via the typed
 // react-query hooks (src/hooks/useV1.ts). The page never mutates governance
@@ -49,6 +49,7 @@ import { ScoreLineageTab } from './ScoreLineageTab';
 import { EvolutionTab } from './EvolutionTab';
 import { PaperArchiveTab } from './PaperArchiveTab';
 import { AuditTab } from './AuditTab';
+import { ScientificAssuranceTab } from './ScientificAssuranceTab';
 import type { RqgmCapabilitiesV1 } from '../../services/api/v1';
 
 // ── helpers ─────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ const TAB_IDS = [
   'lineage',
   'evolution',
   'paper',
+  'kca',
   'audit',
 ] as const;
 type TabId = (typeof TAB_IDS)[number];
@@ -81,6 +83,7 @@ const TAB_LABEL_KEYS: Record<TabId, string> = {
   lineage: 'gov_tab_lineage',
   evolution: 'gov_tab_evolution',
   paper: 'gov_tab_paper',
+  kca: 'gov_tab_kca',
   audit: 'gov_tab_audit',
 };
 
@@ -266,6 +269,7 @@ export function GovernancePage() {
               executionMode={caps.mode ?? (caps.enabled ? 'ari_rqgm' : 'simple_bfts')}
             />
           )}
+          {tab === 'kca' && <ScientificAssuranceTab runId={runId} />}
           {tab === 'audit' && <AuditTab runId={runId} />}
         </div>
       </>

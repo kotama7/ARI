@@ -1219,7 +1219,7 @@ async def write_paper_iterative(
 
         # Enrich only from the validated native ScienceDataV1.  The former
         # node-tree metric fallback bypassed units and claim eligibility.
-        if science_data_json:
+        if science_data_json and _authoring_inputs.manuscript_binding is None:
             try:
                 from ari.public.science_data import science_data_projection
 
@@ -1563,7 +1563,7 @@ async def write_paper_iterative(
 
         # Build comprehensive context for the LLM
         refs_context = ""
-        if refs_json:
+        if refs_json and _authoring_inputs.manuscript_binding is None:
             try:
                 _refs_data = (
                     json.loads(refs_json) if isinstance(refs_json, str) else refs_json
@@ -1582,7 +1582,10 @@ async def write_paper_iterative(
 
         # Verified context was already loaded through the closed workspace.
         _grounded_block = ""
-        if _authoring_inputs.verified_context is not None:
+        if (
+            _authoring_inputs.manuscript_binding is None
+            and _authoring_inputs.verified_context is not None
+        ):
             try:
                 from ari.public.verified_context import render_grounded_block as _rgb
 

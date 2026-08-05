@@ -1,5 +1,9 @@
-# Template only. Replace every absolute path and SHA-256 placeholder, generate
-# golden/replay fixtures, then run scripts/verify_openroad.py before catalog sync.
+# Candidate SLURM expansion template only. The formally promoted local-CPU
+# identity is the exact profile and lock under
+# providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/; its verified lock digest is
+# sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28.
+# Do not attach that lock to this different SLURM scope. Replace every absolute
+# path and SHA-256 placeholder and create a separate promotion before sync.
 schema_version: ari.catalog-sources/v1
 sources:
   - source_id: openroad.gcd-nangate45
@@ -22,7 +26,7 @@ sources:
         - "*.lock"
         - pyproject.toml
         - requirements*.txt
-    capability_ref: ari.eda.openroad.place-route
+    capability_ref: ari.eda.openroad.place-route/v1
     timeout_seconds: 60
     max_concurrent_jobs: 4
     max_retained_jobs: 1024

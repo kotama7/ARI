@@ -41,7 +41,11 @@ HARNESS_VERSION = 1
 EVAL_ID_PREFIX = "eval_"
 RESERVED_CASE_PREFIXES: tuple[str, ...] = ("adv_", "anchor_")
 
-MECHANISMS: tuple[str, ...] = ("fixture", "scripted_component")
+MECHANISMS: tuple[str, ...] = (
+    "fixture",
+    "scripted_component",
+    "kca_mutation",
+)
 GROUND_TRUTH_LABELS: tuple[str, ...] = ("bad", "good")
 
 
@@ -72,12 +76,34 @@ def load_injection_specs(path: "str | Path | None" = None) -> dict:
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or "injections" not in data:
         raise ValueError(f"{p} has no `injections:` list")
+    kca_injections = [dict(s) for s in data.get("kca_injections") or ()]
+    kca_controls = []
+    for spec in kca_injections:
+        if not bool(spec.get("paired_clean_control")):
+            continue
+        control = dict(spec)
+        injection_id = str(spec.get("injection_id") or "")
+        control["injection_id"] = injection_id.replace(
+            "eval_kca_", "eval_ctl_kca_", 1
+        )
+        control["ground_truth_label"] = "good"
+        control["mutation"] = "clean_control"
+        control["control_for"] = injection_id
+        control["paired_clean_control"] = False
+        control["expected_detection"] = {
+            "channels": ["none"],
+            "record_types": [],
+            "max_latency_epochs": 0,
+        }
+        kca_controls.append(control)
     return {
         "injections": [dict(s) for s in data.get("injections") or ()],
         "controls": [dict(s) for s in data.get("controls") or ()],
         "paper_injections": [
             dict(s) for s in data.get("paper_injections") or ()
         ],
+        "kca_injections": kca_injections,
+        "kca_controls": kca_controls,
     }
 
 
@@ -111,7 +137,19 @@ def spec_violations(spec: dict) -> list[str]:
             out.append("scripted_component injection has no target_role")
         if not str(d.get("double") or ""):
             out.append("scripted_component injection names no double")
-    expected = d.get("expected_detection")
+    if mechanism == "kca_mutation":
+        if str(d.get("layer") or "") not in {"knowledge", "provider", "harness"}:
+            out.append("kca_mutation layer must be knowledge/provider/harness")
+        if not str(d.get("mutation") or ""):
+            out.append("kca_mutation names no mutation")
+    out.extend(_expected_detection_violations(d.get("expected_detection")))
+    if not str(d.get("min_condition") or ""):
+        out.append("min_condition is missing")
+    return out
+
+
+def _expected_detection_violations(expected) -> list[str]:
+    out: list[str] = []
     if not isinstance(expected, dict):
         out.append("expected_detection is missing")
     else:
@@ -121,8 +159,6 @@ def spec_violations(spec: dict) -> list[str]:
             int(expected.get("max_latency_epochs"))
         except (TypeError, ValueError):
             out.append("expected_detection.max_latency_epochs is not an int")
-    if not str(d.get("min_condition") or ""):
-        out.append("min_condition is missing")
     return out
 
 
@@ -139,7 +175,7 @@ def smoke_only_spec_ids(specs: list) -> list[str]:
     return sorted(
         str(s.get("injection_id") or "")
         for s in specs or ()
-        if str(s.get("mechanism")) == "scripted_component"
+        if str(s.get("mechanism")) in {"scripted_component", "kca_mutation"}
     )
 
 
@@ -166,6 +202,29 @@ def apply_injection(spec: dict, checkpoint_dir: Path) -> list[str]:
     mechanism = str((spec or {}).get("mechanism") or "")
     if mechanism == "scripted_component":
         return []
+    if mechanism == "kca_mutation":
+        # A smoke-only typed fixture.  Production code never reads this path;
+        # the Task-20 runner feeds it into the real resolver/Kernel/Evidence
+        # path and records resulting detection records separately.
+        payload = {
+            "schema_version": "ari.rqgm-eval-kca-mutation/v1",
+            "injection_id": str(spec.get("injection_id") or ""),
+            "layer": str(spec.get("layer") or ""),
+            "mutation": str(spec.get("mutation") or ""),
+            "ground_truth_label": str(spec.get("ground_truth_label") or ""),
+            "control_for": str(spec.get("control_for") or ""),
+            "target_refs": sorted(str(item) for item in spec.get("target_refs") or ()),
+        }
+        relative = Path("rqgm") / "kca" / "evaluation" / "injections" / (
+            payload["injection_id"] + ".json"
+        )
+        target = ckpt / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        rendered = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+        if target.exists() and target.read_text(encoding="utf-8") != rendered:
+            raise ValueError("KCA injection fixture identity changed in place")
+        target.write_text(rendered, encoding="utf-8")
+        return [relative.as_posix()]
     if mechanism != "fixture":
         raise ValueError(f"unknown injection mechanism {mechanism!r}")
     payload = _payload_dir(spec)
