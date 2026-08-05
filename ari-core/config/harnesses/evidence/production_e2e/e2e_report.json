@@ -1,0 +1,19 @@
+{
+  "baseline_harness_lock_digest": "sha256:0c9368e299e41d271649f715f8530108040be010784e47888f9e8459e0f244b5",
+  "certify_attestation_digest": "sha256:3d3e5200d82dc351a14ce169c1da397c325e0c5be8efcc32a7f649f318951539",
+  "harness_catalog_snapshot_digest": "sha256:ea4347f5528798bcfb3e0f7ccc461d990e1c3f0d20b9825c246d8fee7c03e032",
+  "manuscript_readiness_digest": "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330",
+  "paper_build_digest": "sha256:6ef2900b86cfdfb30e749af048daf96d93d1817d51ec6d03fbdaa833b778dbc5",
+  "physical_node_identity_persisted": false,
+  "publication_decision": "publishable",
+  "publication_decision_digest": "sha256:cab0355aa441280ee86bc7fee749337c88273bd51f34475ec75ccd7ef6d95c1d",
+  "publication_lock_digest": "sha256:ce510ed5961736ea2c39dbfdac23555a687cc68b9a3e82544625d4f550dae488",
+  "published_pdf_digest": "sha256:5ea949a9da12f8242f2ae93c63bed152159360b4c1f823211afbda3b88bf320d",
+  "report_digest": "sha256:371161635d19d3cbc9c11ef80fec8e8a82b7d3eb46878a941d71c9dc1a4cc224",
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.certify-publication-e2e-report/v1",
+  "source_full_commit_sha": "d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b",
+  "target_digest": "sha256:5555181a93d1e7ab1d56866c825cad5475bd40a29f93fbccb2a0818fdcbd51c2",
+  "verification_contract_digest": "sha256:542d4c2d84e4af7fcf9fb1490591347b98fa18262a68f48ad704c45a57235583",
+  "verification_cost_measurement_digest": "sha256:6e82876107dcf9eb009a1a98b5eba7f2897c0abfffb85376342d1443f58d6257"
+}

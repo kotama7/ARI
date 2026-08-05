@@ -1,0 +1,99 @@
+{
+  "decision": "eligible-for-verified",
+  "gates": [
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:d460da9ab74eccf5457e7e275b6f63818ccd4ae863e56af75b4fd40bda238d80",
+      "gate_id": "reference_oracle_pass",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:61f69d9085026dd15875705521ef653b1f68ad5a57fdd83bf3b7337082cf1b10",
+      "gate_id": "negative_control_fail",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:498cab27ba698de5c63bc61e1a9c86de062c93e558896fa82906d340b2a16b50",
+      "gate_id": "clean_control_pass",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:5dd3921f42b3f33e5bd340c633b6ae07b80380f752d905ac2db90af8e5d417c6",
+      "gate_id": "official_runner_parity",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:498cab27ba698de5c63bc61e1a9c86de062c93e558896fa82906d340b2a16b50",
+      "gate_id": "target_oracle_test_isolation",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:541df6857aec95cb4b4dcc19ff915738f1b923fc862d858acd7519e486cea8b8",
+      "gate_id": "determinism_declaration",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:c901df8508a346c7f41f5ab54a4bdf55359ef3f81721333f348677dd4c242b66",
+      "gate_id": "infrastructure_failure_separation",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:c901df8508a346c7f41f5ab54a4bdf55359ef3f81721333f348677dd4c242b66",
+      "gate_id": "timeout_resource_enforcement",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:ce80c2aff2d9be652b2fffd3499de52da5023dfa8936d767d7590dd00a454e05",
+      "gate_id": "license_completeness",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:5dd3921f42b3f33e5bd340c633b6ae07b80380f752d905ac2db90af8e5d417c6",
+      "gate_id": "source_revision_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:d460da9ab74eccf5457e7e275b6f63818ccd4ae863e56af75b4fd40bda238d80",
+      "gate_id": "hidden_test_isolation",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:541df6857aec95cb4b4dcc19ff915738f1b923fc862d858acd7519e486cea8b8",
+      "gate_id": "multiple_run_stability",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:498cab27ba698de5c63bc61e1a9c86de062c93e558896fa82906d340b2a16b50",
+      "gate_id": "result_schema_conformance",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:308521fbb16f9b72c83da538efb61bb969710d4ebe6c9ec5c9e0e8fdb86823ae",
+      "gate_id": "full_sha256_integrity",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:d460da9ab74eccf5457e7e275b6f63818ccd4ae863e56af75b4fd40bda238d80",
+      "gate_id": "malicious_harness_sandbox",
+      "passed": true
+    }
+  ],
+  "harness_id": "hpc/stencil-correctness",
+  "manifest_digest": "sha256:8094399a6fd89f1510d00c627774509cd45a5096f4cc91253b1803d98637f051",
+  "report_digest": "sha256:0b6f233a1b8400382c38cf8ca43efb3551df5bd6269b32c78364413abe650627",
+  "schema_version": "ari.harness-registration-report/v1"
+}

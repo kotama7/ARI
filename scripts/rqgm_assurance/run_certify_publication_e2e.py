@@ -35,6 +35,7 @@ from ari.execution import MeasurementRecordV1, WorkspaceRefV1  # noqa: E402
 from ari.manuscript.digest import file_digest  # noqa: E402
 from ari.manuscript.runtime import (  # noqa: E402
     finalize_runtime_publication,
+    lock_runtime_publication,
     prepare_runtime_manuscript,
     transition_runtime_manuscript,
 )
@@ -67,6 +68,7 @@ from ari.pipeline.claim_gate.numeric import formula_registry_digest  # noqa: E40
 RUN_ID = "native-certify-publication-e2e"
 NODE_ID = "publication-candidate"
 ZERO_SHA = "sha256:" + "0" * 64
+PUBLICATION_SOURCE_DATE_EPOCH = "946684800"
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -107,6 +109,9 @@ def _science_artifact(checkpoint: Path, relative: str, role: str):
 
 def _build_science_data(checkpoint: Path, attestation, wall_seconds: float):
     tree_artifact = _science_artifact(checkpoint, "tree.json", "experiment-tree")
+    node_report_artifact = _science_artifact(
+        checkpoint, "node_provenance_audit.json", "node-report"
+    )
     measurement_payload = {
         "schema_version": "ari.e2e-measurement-set/v1",
         "metric_id": "verification_wall_seconds",
@@ -145,7 +150,11 @@ def _build_science_data(checkpoint: Path, attestation, wall_seconds: float):
             arch=platform.machine(),
             environment_digest=attestation.container_digest,
         ),
-        source_artifacts=(tree_artifact, measurement_artifact),
+        source_artifacts=(
+            tree_artifact,
+            node_report_artifact,
+            measurement_artifact,
+        ),
     )
     raw = ScienceRawV1.create(
         tree_artifact=tree_artifact,
@@ -170,7 +179,11 @@ def _build_science_data(checkpoint: Path, attestation, wall_seconds: float):
     provenance = ScienceProvenanceV1(
         producer_tool_ref="fixed_verifier_v1",
         producer_version="1",
-        input_artifacts=(tree_artifact, measurement_artifact),
+        input_artifacts=(
+            tree_artifact,
+            node_report_artifact,
+            measurement_artifact,
+        ),
         admission_artifacts=(),
     )
     return ScienceDataV1.create(
@@ -339,9 +352,18 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
         "-no-shell-escape",
         "full_paper.tex",
     ]
+    compile_environment = os.environ.copy()
+    compile_environment.update(
+        {
+            "FORCE_SOURCE_DATE": "1",
+            "SOURCE_DATE_EPOCH": PUBLICATION_SOURCE_DATE_EPOCH,
+            "TZ": "UTC",
+        }
+    )
     completed = subprocess.run(
         argv,
         cwd=paper_dir,
+        env=compile_environment,
         text=True,
         capture_output=True,
         check=False,
@@ -402,7 +424,9 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
         execution_identities=(
             canonical_digest(
                 {
-                    "compiler_digest": promotion._stream_digest(Path(compiler).resolve()),
+                    "compiler_digest": promotion._stream_digest(
+                        Path(compiler).resolve()
+                    ),
                     "tex_digest": tex_artifact.digest,
                     "argv": ["pdflatex", *argv[1:]],
                 }
@@ -411,7 +435,12 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
         log_artifacts=(stdout_artifact, stderr_artifact),
         pdf_artifact=pdf_artifact,
         environment_digest=canonical_digest(
-            {"architecture": platform.machine(), "compiler": "pdflatex"}
+            {
+                "architecture": platform.machine(),
+                "compiler": "pdflatex",
+                "source_date_epoch": PUBLICATION_SOURCE_DATE_EPOCH,
+                "timezone": "UTC",
+            }
         ),
     )
     inputs = (
@@ -435,6 +464,14 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
         ),
         _paper_artifact(
             checkpoint,
+            "manuscript-profile",
+            Path(os.environ["ARI_MANUSCRIPT_PROFILE_PATH"])
+            .relative_to(checkpoint)
+            .as_posix(),
+            "application/json",
+        ),
+        _paper_artifact(
+            checkpoint,
             "manuscript-context",
             Path(os.environ["ARI_MANUSCRIPT_CONTEXT_PATH"])
             .relative_to(checkpoint)
@@ -445,6 +482,14 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
             checkpoint,
             "manuscript-readiness",
             Path(os.environ["ARI_MANUSCRIPT_READINESS_PATH"])
+            .relative_to(checkpoint)
+            .as_posix(),
+            "application/json",
+        ),
+        _paper_artifact(
+            checkpoint,
+            "section-briefs",
+            Path(os.environ["ARI_MANUSCRIPT_BRIEFS_PATH"])
             .relative_to(checkpoint)
             .as_posix(),
             "application/json",
@@ -495,7 +540,9 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
 
 def _authoritative_cost(checkpoint: Path) -> dict[str, Any]:
     records = []
-    for line in (checkpoint / "cost_trace.jsonl").read_text(encoding="utf-8").splitlines():
+    for line in (
+        (checkpoint / "cost_trace.jsonl").read_text(encoding="utf-8").splitlines()
+    ):
         record = json.loads(line)
         if record.get("component") != "assurance":
             continue
@@ -528,7 +575,9 @@ def _authoritative_cost(checkpoint: Path) -> dict[str, Any]:
             "memory_byte_seconds": "declared allocation multiplied by measured wall time",
             "monetary_cost": "null until a digest-bound rate card or invoice exists",
         },
-        "records": sorted(records, key=lambda item: (item["tier"], item["execution_attempt_id"])),
+        "records": sorted(
+            records, key=lambda item: (item["tier"], item["execution_attempt_id"])
+        ),
         "totals": {
             "wall_time_seconds": sum(item["wall_time_seconds"] for item in records),
             "cpu_core_seconds": sum(item["cpu_core_seconds"] for item in records),
@@ -545,14 +594,55 @@ def _authoritative_cost(checkpoint: Path) -> dict[str, Any]:
 def _publish_evidence(
     *,
     evidence_root: Path,
+    checkpoint: Path,
+    screen_attestation_path: Path,
     attestation_path: Path,
     decision_path: Path,
+    publication_lock_path: Path,
     cost: dict[str, Any],
     report: dict[str, Any],
 ) -> None:
     outputs = {
+        evidence_root / "harness_catalog_snapshot.json": (
+            checkpoint / "harness_catalog_snapshot.json"
+        ).read_bytes(),
+        evidence_root / "verification_contract.json": (
+            checkpoint / "verification_contract.json"
+        ).read_bytes(),
+        evidence_root / "baseline_harness_lock.json": (
+            checkpoint / "baseline_harness_lock.json"
+        ).read_bytes(),
+        evidence_root / "verification_environment.json": (
+            checkpoint / "verification_environment.json"
+        ).read_bytes(),
+        evidence_root / "screen_attestation.json": screen_attestation_path.read_bytes(),
         evidence_root / "certify_attestation.json": attestation_path.read_bytes(),
+        evidence_root / "manuscript_readiness.json": Path(
+            os.environ["ARI_MANUSCRIPT_READINESS_PATH"]
+        ).read_bytes(),
+        evidence_root / "manuscript_authoring_binding.json": Path(
+            os.environ["ARI_MANUSCRIPT_BINDING_PATH"]
+        ).read_bytes(),
+        evidence_root / "paper_build.json": (
+            checkpoint / "paper_build.json"
+        ).read_bytes(),
+        evidence_root / "reproduction.json": (
+            checkpoint / "ors_phase1.json"
+        ).read_bytes(),
+        evidence_root / "reproduced_paper.pdf": (
+            checkpoint / "paper-reproduction" / "full_paper.pdf"
+        ).read_bytes(),
+        evidence_root / "reproduction_compile_stdout.log": (
+            checkpoint / "paper-reproduction" / "compile.stdout.log"
+        ).read_bytes(),
+        evidence_root / "reproduction_compile_stderr.log": (
+            checkpoint / "paper-reproduction" / "compile.stderr.log"
+        ).read_bytes(),
         evidence_root / "publication_decision.json": decision_path.read_bytes(),
+        evidence_root / "publication_lock.json": publication_lock_path.read_bytes(),
+        evidence_root / "published_paper.pdf": (
+            checkpoint / "paper" / "full_paper.pdf"
+        ).read_bytes(),
         evidence_root / "authoritative_verification_cost.json": _json_bytes(cost),
         evidence_root / "e2e_report.json": _json_bytes(report),
     }
@@ -573,9 +663,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     checkpoint.mkdir(parents=True, exist_ok=True)
     container_root = args.container_root.resolve(strict=True)
     os.environ["ARI_HARNESS_CONTAINER_ROOT"] = str(container_root)
-    catalog = load_harness_catalog(
-        ARI_CORE / "config" / "harnesses" / "catalog.yaml"
-    )
+    catalog = load_harness_catalog(ARI_CORE / "config" / "harnesses" / "catalog.yaml")
     manifest = next(
         (item for item in catalog.manifests if item.id == "hpc/gemm-correctness"),
         None,
@@ -619,6 +707,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         oracle_bundle_digest=manifest.oracle.sha256,
         suite=suite,
     )
+    _write_json(checkpoint / "harness_catalog_snapshot.json", catalog)
+    _write_json(checkpoint / "verification_contract.json", contract)
+    _write_json(checkpoint / "baseline_harness_lock.json", baseline)
+    _write_json(checkpoint / "verification_environment.json", environment)
     candidate_dir = checkpoint / "nodes" / NODE_ID / "candidate"
     candidate_dir.mkdir(parents=True)
     candidate = candidate_dir / "candidate.so"
@@ -695,6 +787,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "media_type": "application/x-sharedlib",
         }
     ]
+    screen_path = checkpoint / node.attestation_refs[0]
     certify_path = checkpoint / node.attestation_refs[-1]
     from ari.assurance.models import HarnessAttestationV1
 
@@ -717,7 +810,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         [node],
         experiment_data={"goal": "certify-to-publication E2E"},
     )
-    if outcome is None or not outcome.authoring_ready or outcome.authoring_binding is None:
+    if (
+        outcome is None
+        or not outcome.authoring_ready
+        or outcome.authoring_binding is None
+    ):
         raise RuntimeError("certified E2E evidence did not become authoring-ready")
     if outcome.readiness is None or outcome.readiness.publication_verdict != "ready":
         raise RuntimeError("certified E2E evidence did not become publication-ready")
@@ -740,20 +837,64 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         reason_code="fixed_e2e_authoring_completed",
         artifact_digests=(build.build_digest,),
     )
+    reproduction_dir = checkpoint / "paper-reproduction"
+    reproduction_dir.mkdir()
+    shutil.copyfile(
+        checkpoint / "paper" / "full_paper.tex",
+        reproduction_dir / "full_paper.tex",
+    )
+    shutil.copyfile(checkpoint / "paper" / "refs.bib", reproduction_dir / "refs.bib")
+    compiler = shutil.which("pdflatex")
+    if compiler is None:
+        raise RuntimeError("pdflatex is required for publication reproduction")
+    reproduction_argv = [
+        compiler,
+        "-interaction=nonstopmode",
+        "-halt-on-error",
+        "-no-shell-escape",
+        "full_paper.tex",
+    ]
+    reproduction_environment = os.environ.copy()
+    reproduction_environment.update(
+        {
+            "FORCE_SOURCE_DATE": "1",
+            "SOURCE_DATE_EPOCH": PUBLICATION_SOURCE_DATE_EPOCH,
+            "TZ": "UTC",
+        }
+    )
     reproduction = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            (
-                "from pathlib import Path; import sys; "
-                "p=Path(sys.argv[1]); "
-                "raise SystemExit(0 if p.is_file() and p.stat().st_size > 0 else 1)"
-            ),
-            str(checkpoint / "paper" / "full_paper.pdf"),
-        ],
+        reproduction_argv,
+        cwd=reproduction_dir,
+        env=reproduction_environment,
         capture_output=True,
         text=True,
         check=False,
+    )
+    (reproduction_dir / "compile.stdout.log").write_text(
+        reproduction.stdout, encoding="utf-8"
+    )
+    (reproduction_dir / "compile.stderr.log").write_text(
+        reproduction.stderr, encoding="utf-8"
+    )
+    original_pdf = checkpoint / "paper" / "full_paper.pdf"
+    reproduced_pdf = reproduction_dir / "full_paper.pdf"
+    original_pdf_digest = file_digest(original_pdf)[0]
+    reproduced_pdf_digest = (
+        file_digest(reproduced_pdf)[0] if reproduced_pdf.is_file() else ZERO_SHA
+    )
+    reproduction_passed = bool(
+        reproduction.returncode == 0
+        and reproduced_pdf.is_file()
+        and reproduced_pdf_digest == original_pdf_digest
+    )
+    reproduction_error = (
+        ""
+        if reproduction_passed
+        else "reproduction compile failed"
+        if reproduction.returncode != 0
+        else "reproduced PDF is missing"
+        if not reproduced_pdf.is_file()
+        else "reproduced PDF digest differs"
     )
     _write_json(
         checkpoint / "ors_phase1.json",
@@ -761,16 +902,28 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "schema_version": "ari.e2e-reproduction/v1",
             "executed": True,
             "exit_code": reproduction.returncode,
-            "missing": [],
-            "error": "" if reproduction.returncode == 0 else "reproduction failed",
+            "missing": [] if reproduced_pdf.is_file() else ["full_paper.pdf"],
+            "error": reproduction_error,
+            "expected_pdf_digest": original_pdf_digest,
+            "reproduced_pdf_digest": reproduced_pdf_digest,
+            "digest_match": reproduced_pdf_digest == original_pdf_digest,
             "command_identity": canonical_digest(
-                {"operation": "verify-pdf-present", "paper_build": build.build_digest}
+                {
+                    "operation": "clean-pdf-rebuild",
+                    "paper_build": build.build_digest,
+                    "compiler_digest": promotion._stream_digest(
+                        Path(compiler).resolve()
+                    ),
+                    "argv": ["pdflatex", *reproduction_argv[1:]],
+                    "source_date_epoch": PUBLICATION_SOURCE_DATE_EPOCH,
+                }
             ),
         },
     )
     decision = finalize_runtime_publication(checkpoint)
     if decision is None or decision.decision != "publishable":
         raise RuntimeError("certify-to-publication E2E was blocked")
+    publication_lock = lock_runtime_publication(checkpoint)
     decision_path = (
         checkpoint
         / ".ari-manuscript"
@@ -778,6 +931,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         / outcome.authoring_binding.attempt_id
         / "publication_decision.json"
     )
+    publication_lock_path = decision_path.with_name("publication_lock.json")
     cost = _authoritative_cost(checkpoint)
     report: dict[str, Any] = {
         "schema_version": "ari.certify-publication-e2e-report/v1",
@@ -792,14 +946,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "paper_build_digest": build.build_digest,
         "publication_decision_digest": decision.decision_digest,
         "publication_decision": decision.decision,
+        "publication_lock_digest": publication_lock.lock_digest,
+        "published_pdf_digest": publication_lock.pdf_digest,
         "verification_cost_measurement_digest": cost["measurement_digest"],
         "physical_node_identity_persisted": False,
     }
     report["report_digest"] = canonical_digest(report)
     _publish_evidence(
         evidence_root=args.evidence_root.resolve(),
+        checkpoint=checkpoint,
+        screen_attestation_path=screen_path,
         attestation_path=certify_path,
         decision_path=decision_path,
+        publication_lock_path=publication_lock_path,
         cost=cost,
         report=report,
     )
@@ -813,9 +972,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--evidence-root",
         type=Path,
-        default=(
-            ARI_CORE / "config" / "harnesses" / "evidence" / "production_e2e"
-        ),
+        default=(ARI_CORE / "config" / "harnesses" / "evidence" / "production_e2e"),
     )
     args = parser.parse_args(argv)
     report = run(args)

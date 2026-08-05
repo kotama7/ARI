@@ -1,0 +1,13 @@
+{
+  "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+  "driver_digest": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f",
+  "driver_revision": "ari.assurance.native-hpc/v1",
+  "kind": "gemm",
+  "negative_control_report_digest": "sha256:f791131fe0ab8d4d0d7e0a88a1198bdea6fd1c05f46b44580ed6c9be2e20997b",
+  "negative_control_verdict": "fail",
+  "official_runner_parity": true,
+  "reference_report_digest": "sha256:d559d733450e837acc8e7aea4b0d024e59ca5009dc83c4c3b16ddc0ac773b29c",
+  "reference_verdict": "pass",
+  "report_digest": "sha256:65ca767f7fac3a35c9b28025db22dd7d2d890839c77d155b756c9efb02386502",
+  "schema_version": "ari.native-hpc-official-runner-parity/v1"
+}

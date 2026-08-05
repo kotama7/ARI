@@ -1,0 +1,136 @@
+schema_version: ari.harness-manifest/v1
+id: hpc/spmm-correctness
+version: 1.0.0
+kind: artifact_verifier
+status: verified
+description: ARI-native CSR SpMM shared-library correctness verifier
+maintainer: ARI maintainers
+tags:
+- ari-native
+- cpu
+- hpc
+- spmm
+subject_types:
+- program
+target_kinds:
+- shared-library
+accepts_external_target: true
+supported_languages:
+- c
+supported_hardware:
+- cpu
+supported_architectures:
+- x86_64
+supported_dtypes:
+- float32
+- float64
+supported_domains:
+- spmm
+properties:
+- property_id: numerical-equivalence
+  methods:
+  - differential-testing
+  tiers:
+  - screen
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- property_id: interface-conformance
+  methods:
+  - interface-check
+  tiers:
+  - screen
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- property_id: reproducibility
+  methods:
+  - repeated-execution
+  tiers:
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+target_interface_contract: spmm-csr-c-abi/v1
+target_interface_digest: sha256:cce9f969663c13a5913df18df5a6c82e9e6fd8739e307f9a97f8e3d1b2632ad6
+source_repository: https://github.com/kotama7/ARI.git
+source_full_commit_sha: d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+implementation_license: MIT
+dataset:
+  revision: native-hpc-generated-cases/v1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+  sha256: sha256:37053d99defe8b6984ed22354f0be6914148b059d92a8c24137969da814a70c0
+  license: MIT
+oracle:
+  revision: ari-native-spmm-oracle/v1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+  sha256: sha256:fbdd686f652cc7e6aa9dcee12dd7d3c9eb36ece0e94f844e24c8dde6891418be
+  license: MIT
+driver:
+  revision: ari.assurance.native-hpc/v1
+  sha256: sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f
+  license: MIT
+model:
+  revision: not-applicable
+  sha256: sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7
+  license: not-applicable
+container:
+  reference: apptainer:ari-native-python310-openroad-2026q3.sif
+  resolved_digest: sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9
+  license: Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69
+network_policy: deny
+network_allowlist: []
+credential_policy: none
+credential_scope_ids: []
+filesystem_policy: isolated-readonly-target
+resources:
+  cpu_cores: 2
+  memory_bytes: 4294967296
+  accelerators: 0
+  disk_bytes: 268435456
+  features:
+  - landlock
+  - network-namespace
+timeout_seconds: 900
+scorer_determinism: deterministic
+nondeterminism_declaration: none
+hidden_test_policy: verifier-only
+oracle_independence: independent
+tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+expected_result_schema: ari.native-hpc-verification-report/v1
+expected_result_schema_digest: sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff
+infrastructure_failure_policy: separate
+retry_limit: 1
+negative_control_report_digest: sha256:42232cb803271db275e4d749fc3e9b39e120c98d9e7e23c4b9d4f884b1175463
+upstream_parity_report_digest: sha256:bbf7f021b4c3c58d19e930e894c14e307174cced87c17459397358c1cea591c4
+manifest_digest: sha256:0c18c8fb82531fff98c4815c3f9ffdb904bff0f75cebad1dbf2b7cdd81cf0783

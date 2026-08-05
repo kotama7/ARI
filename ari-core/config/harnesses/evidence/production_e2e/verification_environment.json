@@ -1,0 +1,22 @@
+{
+  "features": [
+    "landlock",
+    "network-namespace"
+  ],
+  "identity_digest": "sha256:b22edc9d284b87dc5091c6761b0f41f2d89bba3cb0f7523f9d6bc67ac63c2539",
+  "metadata": {
+    "architecture": "x86_64",
+    "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9"
+  },
+  "network_classes": [
+    "deny"
+  ],
+  "resource_types": [
+    "cpu",
+    "process"
+  ],
+  "schema_version": "ari.environment-snapshot/v1",
+  "transports": [
+    "local-process"
+  ]
+}

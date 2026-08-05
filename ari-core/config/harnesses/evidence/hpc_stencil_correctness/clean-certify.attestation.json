@@ -1,0 +1,166 @@
+{
+  "active_harness_lock_digest": "sha256:5c468091d564c564d5cc09a1428fb7e2a0c0e99e47af64e7e0e862d307c1687f",
+  "attempt_id": "har-c386ae5acb03ea3cd26bdc9d8fbff76e-0",
+  "attestation_digest": "sha256:e896f9e32fda8ec5fd72c9d402f2209b5fe4ae9d6a551b352b58335f9af149ab",
+  "baseline_harness_lock_digest": "sha256:5c468091d564c564d5cc09a1428fb7e2a0c0e99e47af64e7e0e862d307c1687f",
+  "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
+  "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+  "dataset_digest": "sha256:79cfae47a09ed3cb730bc7996bdb55e227a4551b5782a3e0395ec639a107f259",
+  "driver_digest": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f",
+  "epoch_id": "registration-epoch",
+  "evidence_artifact_refs": [
+    {
+      "digest": "sha256:5aaf654a8fd848a19bf3abeddece0fb82d71c9ef34d0056ee4e084f861e11064",
+      "logical_name": ".ari-execution/5aaf654a8fd848a19bf3abeddece0fb82d71c9ef34d0056ee4e084f861e11064.stdout.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stdout",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-stencil-correctness"
+    },
+    {
+      "digest": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
+      "logical_name": ".ari-execution/9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084.stderr.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stderr",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-stencil-correctness"
+    }
+  ],
+  "execution_identity": "sha256:8f51d61b6f239ac079d464866dd338d54fc544cf6896c1f26097b6789be93330",
+  "execution_result_digest": "sha256:0982b10a74447f56bb8ccef9f54a2c4db5946306022f6d3de654254ec071fb92",
+  "harness_manifest_digest": "sha256:8094399a6fd89f1510d00c627774509cd45a5096f4cc91253b1803d98637f051",
+  "infrastructure_status": "ready",
+  "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
+  "node_id": "registration-clean-certify",
+  "nondeterminism_declaration": "none",
+  "nondeterminism_observations": [],
+  "oracle_digest": "sha256:f2ff845c2c9f1764a5f7d0d48808cd5391d22278d012df71a2b0222f645e16c2",
+  "producer_component_id": "fixed_verifier_v1",
+  "producer_epoch_id": "registration-epoch",
+  "producer_prompt_hash": null,
+  "property_results": [
+    {
+      "covered_atom_digests": [
+        "sha256:89b70b533a86d4927503a173b88e7de2f272cebd023b6aa01114d5ddf4020d9a"
+      ],
+      "evidence_artifact_refs": [
+        {
+          "digest": "sha256:5aaf654a8fd848a19bf3abeddece0fb82d71c9ef34d0056ee4e084f861e11064",
+          "logical_name": ".ari-execution/5aaf654a8fd848a19bf3abeddece0fb82d71c9ef34d0056ee4e084f861e11064.stdout.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stdout",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-stencil-correctness"
+        },
+        {
+          "digest": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
+          "logical_name": ".ari-execution/9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084.stderr.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stderr",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-stencil-correctness"
+        }
+      ],
+      "measurements": {
+        "case_count": 80,
+        "failed_case_count": 0,
+        "max_abs_error": 3.05890868412817e-07,
+        "max_rel_error": 4.844753111588134e-05
+      },
+      "method": "differential-testing",
+      "oracle_comparison": {
+        "oracle": "independent Jacobi reference trajectory with explicit halo/boundary semantics",
+        "report_digest": "sha256:a81e925e986178b78c401924ea731693015e88391945bc03c1e20b81791d69cb"
+      },
+      "property_id": "trajectory-equivalence",
+      "tested_scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "tier": "certify",
+      "tolerance_evidence": {
+        "error_model": "dtype unit-roundoff gamma_(iterations*stencil-width) bound"
+      },
+      "verdict": "pass"
+    },
+    {
+      "covered_atom_digests": [
+        "sha256:b850187e7f74bb476662fa31fa178087573bff919b5d0e770b9c9c636bfc73b4"
+      ],
+      "evidence_artifact_refs": [
+        {
+          "digest": "sha256:5aaf654a8fd848a19bf3abeddece0fb82d71c9ef34d0056ee4e084f861e11064",
+          "logical_name": ".ari-execution/5aaf654a8fd848a19bf3abeddece0fb82d71c9ef34d0056ee4e084f861e11064.stdout.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stdout",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-stencil-correctness"
+        },
+        {
+          "digest": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
+          "logical_name": ".ari-execution/9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084.stderr.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stderr",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-stencil-correctness"
+        }
+      ],
+      "measurements": {
+        "case_count": 80,
+        "failed_case_count": 0,
+        "max_abs_error": 3.05890868412817e-07,
+        "max_rel_error": 4.844753111588134e-05
+      },
+      "method": "repeated-execution",
+      "oracle_comparison": {
+        "oracle": "independent Jacobi reference trajectory with explicit halo/boundary semantics",
+        "report_digest": "sha256:a81e925e986178b78c401924ea731693015e88391945bc03c1e20b81791d69cb"
+      },
+      "property_id": "reproducibility",
+      "tested_scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "tier": "certify",
+      "tolerance_evidence": {
+        "error_model": "dtype unit-roundoff gamma_(iterations*stencil-width) bound"
+      },
+      "verdict": "pass"
+    }
+  ],
+  "research_contract_digest": "sha256:53e789b2debcfbadad65ac6cafc926029041775d20ce0e75e00740e298f2a802",
+  "retry_index": 0,
+  "run_id": "harness-registration-hpc-stencil-correctness",
+  "schema_version": "ari.harness-attestation/v1",
+  "target_digest": "sha256:5555181a93d1e7ab1d56866c825cad5475bd40a29f93fbccb2a0818fdcbd51c2",
+  "target_kind": "shared-library",
+  "target_logical_name": "candidate.so",
+  "verdict": "pass",
+  "verification_contract_digest": "sha256:21a4afc4ac26b5722f614b46e30edcc1b1540745b5851048075de7aacb38d3f5"
+}

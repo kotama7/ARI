@@ -1,0 +1,99 @@
+{
+  "decision": "eligible-for-verified",
+  "gates": [
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:8460e3e67b2c0e87f5fd8afaa0d042e6bb0b8f4caff512b543b4a1c6aaed2ff6",
+      "gate_id": "reference_oracle_pass",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:854f952e1571173ddd5f93d39cfe21a6cbbf9a91b3753daf1349f05ba9372bf3",
+      "gate_id": "negative_control_fail",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:bf7302b1ecb8de8889504a91fba088390f7ed564a3454b50ac4505d7e7d560f4",
+      "gate_id": "clean_control_pass",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:c37b747a3bf4de08786895487a15fb2ab832233690bb848dea56069bc820e6c8",
+      "gate_id": "official_runner_parity",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:bf7302b1ecb8de8889504a91fba088390f7ed564a3454b50ac4505d7e7d560f4",
+      "gate_id": "target_oracle_test_isolation",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:997486db86a26c9c967ca6253acb845f6bec6cb07b6644aba139d32324dc4430",
+      "gate_id": "determinism_declaration",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:45aace3b7f82487a3ab1b7a317b7e29b954f2bea6923f6915ca18dfa9a884023",
+      "gate_id": "infrastructure_failure_separation",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:45aace3b7f82487a3ab1b7a317b7e29b954f2bea6923f6915ca18dfa9a884023",
+      "gate_id": "timeout_resource_enforcement",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:ce80c2aff2d9be652b2fffd3499de52da5023dfa8936d767d7590dd00a454e05",
+      "gate_id": "license_completeness",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:c37b747a3bf4de08786895487a15fb2ab832233690bb848dea56069bc820e6c8",
+      "gate_id": "source_revision_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:8460e3e67b2c0e87f5fd8afaa0d042e6bb0b8f4caff512b543b4a1c6aaed2ff6",
+      "gate_id": "hidden_test_isolation",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:997486db86a26c9c967ca6253acb845f6bec6cb07b6644aba139d32324dc4430",
+      "gate_id": "multiple_run_stability",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:bf7302b1ecb8de8889504a91fba088390f7ed564a3454b50ac4505d7e7d560f4",
+      "gate_id": "result_schema_conformance",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:c731da845fc6fa54cc53066fd6ecb3262f346cd29bc910b57c5e4ea10ac24609",
+      "gate_id": "full_sha256_integrity",
+      "passed": true
+    },
+    {
+      "detail": "passed by immutable native promotion evidence",
+      "evidence_digest": "sha256:8460e3e67b2c0e87f5fd8afaa0d042e6bb0b8f4caff512b543b4a1c6aaed2ff6",
+      "gate_id": "malicious_harness_sandbox",
+      "passed": true
+    }
+  ],
+  "harness_id": "hpc/gemm-correctness",
+  "manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+  "report_digest": "sha256:dacca97c39987026b8efa071a531813a6259a5e23e3f3640bee2ad0e46b9b78c",
+  "schema_version": "ari.harness-registration-report/v1"
+}

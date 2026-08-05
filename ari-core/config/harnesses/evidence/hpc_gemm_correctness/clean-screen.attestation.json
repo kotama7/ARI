@@ -1,0 +1,109 @@
+{
+  "active_harness_lock_digest": "sha256:47f411c040cd1469e25a05585d79a60984049fddb2ae85b37bcbdc9b5d60ab1a",
+  "attempt_id": "har-8624729d59337c47b7f9f9e02e173f2d-0",
+  "attestation_digest": "sha256:01837c20798a713120015394771d30595cc3a8311830bf29263aa49030b185a6",
+  "baseline_harness_lock_digest": "sha256:47f411c040cd1469e25a05585d79a60984049fddb2ae85b37bcbdc9b5d60ab1a",
+  "capability_binding_lock_digest": "sha256:194df4714255447584ae860c72eda00149f947de24df6dcc1812e4fe9acc6980",
+  "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+  "dataset_digest": "sha256:4de6269a07834c41910c2ad4f531ab4f455e9fe58003d3a01f9e16e17f74972f",
+  "driver_digest": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f",
+  "epoch_id": "registration-epoch",
+  "evidence_artifact_refs": [
+    {
+      "digest": "sha256:00d4524148a343e4fd69daed5349ba3904928295ae8106f5e4e6b21d356a8a4e",
+      "logical_name": ".ari-execution/00d4524148a343e4fd69daed5349ba3904928295ae8106f5e4e6b21d356a8a4e.stdout.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stdout",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-gemm-correctness"
+    },
+    {
+      "digest": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
+      "logical_name": ".ari-execution/9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084.stderr.log",
+      "media_type": "text/plain; charset=utf-8",
+      "role": "harness-stderr",
+      "schema_version": "ari.research-artifact-ref/v1",
+      "source_run_id": "harness-registration-hpc-gemm-correctness"
+    }
+  ],
+  "execution_identity": "sha256:d4053ae5235cf07f4afc4a19f459b472243913938fa4073620e4cf0a7850ab5e",
+  "execution_result_digest": "sha256:2eeedf79fb0a01c3c726fa04712a2ee1ea9d6c3f08c0a0488a85f600014b7148",
+  "harness_manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+  "infrastructure_status": "ready",
+  "knowledge_skill_use_digest": "sha256:8e2a116b1daea019352a9ed94735fc604385b48c7d554ce13a812255068422da",
+  "node_id": "registration-clean-screen",
+  "nondeterminism_declaration": "none",
+  "nondeterminism_observations": [],
+  "oracle_digest": "sha256:042599540b952aa6e7e82d943673fc81ff6a800d8db6b5a6a58ef363546f8d38",
+  "producer_component_id": "fixed_verifier_v1",
+  "producer_epoch_id": "registration-epoch",
+  "producer_prompt_hash": null,
+  "property_results": [
+    {
+      "covered_atom_digests": [
+        "sha256:2ab2729aeac39fbcd625693ffe671c14b2c0e92f1e0fa8961aa1b96946451e74"
+      ],
+      "evidence_artifact_refs": [
+        {
+          "digest": "sha256:00d4524148a343e4fd69daed5349ba3904928295ae8106f5e4e6b21d356a8a4e",
+          "logical_name": ".ari-execution/00d4524148a343e4fd69daed5349ba3904928295ae8106f5e4e6b21d356a8a4e.stdout.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stdout",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-correctness"
+        },
+        {
+          "digest": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
+          "logical_name": ".ari-execution/9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084.stderr.log",
+          "media_type": "text/plain; charset=utf-8",
+          "role": "harness-stderr",
+          "schema_version": "ari.research-artifact-ref/v1",
+          "source_run_id": "harness-registration-hpc-gemm-correctness"
+        }
+      ],
+      "measurements": {
+        "case_count": 33,
+        "failed_case_count": 0,
+        "max_abs_error": 2.1974382136136228e-07,
+        "max_rel_error": 2.6070511743415717e-06
+      },
+      "method": "differential-testing",
+      "oracle_comparison": {
+        "oracle": "decimal accumulation over an independently indexed row-major GEMM",
+        "report_digest": "sha256:50113c748884374adcefda8713ce729155a114a0af055cfbbe1b5a685ec1d6b9"
+      },
+      "property_id": "numerical-equivalence",
+      "tested_scope": {
+        "values": {
+          "architecture": [
+            "x86_64"
+          ],
+          "dtype": [
+            "float32",
+            "float64"
+          ],
+          "hardware": [
+            "cpu"
+          ],
+          "language": [
+            "c"
+          ]
+        }
+      },
+      "tier": "screen",
+      "tolerance_evidence": {
+        "error_model": "dtype unit-roundoff gamma_k bound plus absolute underflow floor"
+      },
+      "verdict": "pass"
+    }
+  ],
+  "research_contract_digest": "sha256:70d94411e2b44b9e5892dafb7815e6cea8a8258890a9b6ed4e336d7fbe8bf3e1",
+  "retry_index": 0,
+  "run_id": "harness-registration-hpc-gemm-correctness",
+  "schema_version": "ari.harness-attestation/v1",
+  "target_digest": "sha256:5555181a93d1e7ab1d56866c825cad5475bd40a29f93fbccb2a0818fdcbd51c2",
+  "target_kind": "shared-library",
+  "target_logical_name": "candidate.so",
+  "verdict": "pass",
+  "verification_contract_digest": "sha256:8f2386981cc544068c28baac492e2e7a6bbfe2cb2265550f32fda6735a2b47e9"
+}
