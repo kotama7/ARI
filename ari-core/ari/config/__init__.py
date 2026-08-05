@@ -238,9 +238,15 @@ class BFTSConfig(BaseModel):
                     "by `ARI_MAX_NODES`.",
     )
     max_react_steps: int = Field(
-        80,
+        20,
         description="Maximum ReAct iterations within a single node. "
-                    "Overridden by `ARI_MAX_REACT`.",
+                    "Overridden by `ARI_MAX_REACT`. 20 rather than the former "
+                    "80: on the previous campaign the number of steps a node "
+                    "needed to reach its own best result was p50=3, p90=13, "
+                    "p95=15, p99=20, so 20 covers virtually every node that was "
+                    "going to improve. The tail was not productive search - "
+                    "raising the cap from 25 to 40 bought about 28 more nodes, "
+                    "not the 101 a linear reading would predict.",
     )
     timeout_per_node: int = Field(
         7200,
@@ -1045,7 +1051,7 @@ def auto_config() -> ARIConfig:
         bfts=BFTSConfig(
             max_depth=int(os.environ.get("ARI_MAX_DEPTH", 5)),
             max_total_nodes=int(os.environ.get("ARI_MAX_NODES", 50)),
-            max_react_steps=int(os.environ.get("ARI_MAX_REACT", 80)),
+            max_react_steps=int(os.environ.get("ARI_MAX_REACT", 20)),
             timeout_per_node=int(os.environ.get("ARI_TIMEOUT_NODE", 7200)),
             max_parallel_nodes=int(os.environ.get("ARI_PARALLEL", 4)),
         ),

@@ -108,15 +108,15 @@ class TestEnvToConfig:
         assert cfg.bfts.max_react_steps == 42
 
     def test_auto_config_default(self, monkeypatch):
-        """auto_config() defaults to 80 when ARI_MAX_REACT not set."""
+        """auto_config() defaults to 20 when ARI_MAX_REACT not set."""
         monkeypatch.delenv("ARI_MAX_REACT", raising=False)
         cfg = auto_config()
-        assert cfg.bfts.max_react_steps == 80
+        assert cfg.bfts.max_react_steps == 20
 
     def test_bfts_config_default(self):
-        """BFTSConfig() default is 80."""
+        """BFTSConfig() default is 20."""
         bfts = BFTSConfig()
-        assert bfts.max_react_steps == 80
+        assert bfts.max_react_steps == 20
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -139,7 +139,7 @@ class TestYamlToConfig:
         assert cfg.bfts.max_react_steps == 120
 
     def test_yaml_without_max_react_uses_default(self):
-        """YAML without max_react_steps → default 80."""
+        """YAML without max_react_steps → default 20."""
         data = {
             "llm": {"backend": "openai", "model": "gpt-4o"},
             "bfts": {"max_depth": 7},
@@ -148,7 +148,7 @@ class TestYamlToConfig:
             yaml.dump(data, f)
             fpath = f.name
         cfg = load_config(fpath)
-        assert cfg.bfts.max_react_steps == 80
+        assert cfg.bfts.max_react_steps == 20
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -170,8 +170,14 @@ class TestConfigToAgentLoop:
         )
         assert loop.max_react_steps == 42
 
-    def test_agent_loop_default_80(self):
-        """AgentLoop without explicit max_react_steps defaults to 80."""
+    def test_agent_loop_default_20(self):
+        """AgentLoop without explicit max_react_steps defaults to 20.
+
+        Cut from 80 on measured evidence: the step at which a node reached
+        its OWN best result was p50=3, p90=13, p95=15, p99=20 on the previous
+        campaign, and raising the cap from 25 to 40 bought about 28 more
+        nodes rather than the 101 a linear reading would predict.
+        """
         from ari.agent.loop import AgentLoop
         loop = AgentLoop.__new__(AgentLoop)
         loop.__init__(
@@ -179,7 +185,7 @@ class TestConfigToAgentLoop:
             memory=mock.MagicMock(),
             mcp=mock.MagicMock(),
         )
-        assert loop.max_react_steps == 80
+        assert loop.max_react_steps == 20
 
     def test_build_runtime_passes_max_react(self, monkeypatch, tmp_path):
         """build_runtime passes cfg.bfts.max_react_steps to AgentLoop."""
@@ -228,10 +234,10 @@ class TestJsMaxReactStatic:
             "maxReact input not found in StepScope"
 
     def test_wiz_max_react_default_value(self):
-        """maxReact default value should be 80."""
+        """maxReact default value should be 20 (matching the backend)."""
         src = (REACT_COMPONENTS / "Wizard" / "WizardPage.tsx").read_text()
-        assert "maxReact: 80" in src, \
-            "maxReact default should be 80 in WizardPage"
+        assert "maxReact: 20" in src, \
+            "maxReact default should be 20 in WizardPage"
 
     def test_wiz_max_react_passed_to_launch(self):
         """WizardPage must pass maxReact to StepLaunch."""

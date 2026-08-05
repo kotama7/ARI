@@ -17,6 +17,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `cost_tracker.py` — per-call logs + per-experiment cost summaries.
 - `env_detect.py` — detect schedulers, container runtimes, and HPC resources.
 - `harness_registry.py` — resolves `<workspace>/harnesses/<task>/` into a `Harness` (seed_work_dir / measure / kernels_dir / digests). Lives at ARI top level, NOT under `evaluator/`: resolving where a harness lives is a file-layout concern, and `ari/evaluator/**` may not import `ari.paths` (report 003 §7 B5) — so it defers to `RuntimePathResolver.resolve_workspace_root()` rather than re-implementing a second source of truth for the workspace root (or falling back to the cwd, which would score every node 0.0 from a scheduler's default cwd). Reads `harness.toml` for the native axis, compatibility target/scale, and the per-task `measure_node` kwargs — deliberately NOT uniform (every harness accepts `(work_dir, *, seed=0)`, so a uniform call type-checks and silently measures something else). Verifies every pinned sha256 before binding, so modified measurement scaffolding refuses to score instead of scoring differently. `describe()` reads metadata without importing the harness. An unknown `ARI_TASK` raises rather than falling through to a default task.
+- `harness_select.py` — ranks the harness pool against a stated requirement (effect size to resolve, budget, capabilities, axes the question depends on) using ONLY what each harness declares about itself. It imports nothing that can score and takes no work_dir or result: "choose the harness under which the candidate does best" is a natural sentence and a machine for score hacking, so the guarantee is enforced by what the module can reach rather than by intent. Silence is treated as unknown, never as suitable — a harness whose band was never measured is refused when a resolution is required. When nothing qualifies it says so instead of returning the closest harness.
 - `lineage.py` — recursion lineage helpers; walk `parent_run_id` chains for ancestor artifacts.
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
 - `paths.py` — centralised `PathManager` for directory layout/resolution.
@@ -43,6 +44,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
   - `commands.py` — misc top-level commands + `_safe_backup`.
   - `doctor.py` — `ari doctor` sub-app: environment health checks (`ari doctor claude-code [--live]`).
+  - `harness.py` — TODO
   - `lineage.py` — end-of-phase lineage-decision helpers.
   - `migrate.py` — `ari migrate` sub-app.
   - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.

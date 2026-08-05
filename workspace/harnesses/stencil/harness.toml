@@ -18,17 +18,44 @@ scale = "log"
 [measure_kwargs]
 seed = {env = "ARI_SEED", default = 0}
 
+[declares]
+question = "time to solution on a bandwidth-bound sweep, against a competent frozen reference"
+denominator = "anchor_matched"
+resolves = 0.00149
+resolves_measured_on = "2026-08-03"
+resolves_reps = 15
+cost_s = 97.7
+requires = ["c_compiler", "openmp"]
+# The candidate allocates its own 268 MB and first-touches it INSIDE the timed
+# window, which is why this is the only registered harness where the large-page
+# policy reaches the measurement (measured: 5.9x).
+sees = ["memory_bandwidth", "numa_first_touch", "large_page_policy",
+        "temporal_blocking", "toolchain"]
+blind_to = ["problem_generation"]
+
+# The band was measured on the DEFAULT shapes. ARI_STENCIL_SHAPES can
+# replace the scored problem without moving a pinned byte or the
+# manifest hash, so the value it was measured under is named here and
+# a run that differs can be refused instead of quietly inheriting a
+# band from a problem it is not measuring.
+[declares.band_conditions]
+ARI_STENCIL_SHAPES = ""
+
 [files]
-"experiment.md" = "003663ee78912029d47a618f4abba04f0a81b399cbf06aafa932bb9cc624f62d"
-"stencil_harness.py" = "03d3a722660e7ca563ad321a792cff2c12ca0cf6d3b98f59bfe76b1eb0cf5841"
-"stencil_kernels/Makefile" = "79b1eec1ba11edc88a6d83addbb7d6389d810574851166e6f4eb444f1f21aafb"
+"experiment.md" = "007556e158aecb8902bc9140320409fc06a93dcd124d985738d8745710444b23"
+"stencil_harness.py" = "f7864bbfb02addf004107b01b99ed24321b8ab5f2640d6c95f6d525a2f7dd096"
+"stencil_kernels/Makefile" = "a29df7c11b271b381f8bf0bc1b0779b3d51958f395824af63b34649a7daa34d0"
 "stencil_kernels/baseline_stencil.c" = "a7f7494cbe9310d65e051bff078f6870d8cf94d78632dc14e2988ba74524a9ea"
 "stencil_kernels/candidate_stencil.c" = "eac632e1a7f70d99545a18caafe0852586d28a8e65d0a4c176ac9e73d723961e"
-"stencil_kernels/selftest.c" = "3c123a17c31d2c9de0f8c91aa865e92993258d2e7803c1e8ddd1ca6d04c30b1d"
+"stencil_kernels/selftest.c" = "c96c3a90a16d655697476694a2c293de2e69ff0bd69fb65d507aa9d68ad55d0e"
 "stencil_kernels/stencil_kernel.h" = "c4df1649de7148a56f97a090009cc9cddb55560de10d45509b8668d53006e790"
-"stencil_kernels/stencil_main.c" = "a14668bb3d1a5bc60f4b8b4c43060bf26dc7f6de86cd4b63635d4b902787e27e"
+"stencil_kernels/stencil_main.c" = "5ce4ca514f44c3a82340e24e491989a746f19f3812901e002fbbb9dcf6650587"
+
+"stencil_kernels/README.md" = "de07e04c4113245e85d621672707066abdaca7f7f9d64b00746d514f0e3a51ce"
+
+"stencil_kernels/reference_stencil.c" = "3624d2f32bb38d99ecc46e06b117ae21c757b242faaa89d53e8f5d85cda99030"
 
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "1946a3747634bccd4a1b8337140aa206d46166ddffd3a173039b5f64fc4a9e05"
+self_sha256 = "d4491d0de772436af1b350fd1a71b9126584c64ecaf98ab6238eac5de90a13aa"

@@ -31,22 +31,52 @@ def test_outcome_is_in_all_fields_and_default():
 
 
 def test_summary_surfaces_actionable_outcome():
+    """The diagnostic still reaches the child, but LABELLED for what it is.
+
+    v2 splits the old ``outcome:`` field, which silently alternated between the
+    evaluator's verdict and the agent's own narrative. The agent writes its
+    narrative BEFORE the evaluator scores it, so presenting the two
+    interchangeably let a self-reported success ride into the child as if it
+    were measured. The content must still arrive; only its labelling changed.
+    """
     v = node_summary_view(_report(), fields_enabled=None)
-    assert "outcome:" in v
     assert "edge-cut 327" in v          # the actionable diagnostic reaches the child
+    assert "self_report (unverified" in v   # ...and is not passed off as measured
+    assert "outcome (measured):" not in v   # this fixture has no evaluator verdict
+
+
+def test_measured_verdict_and_self_report_are_separate_fields():
+    """A child must be able to tell the measurement from the agent's claim."""
+    rep = _report(eval_summary="speedup 60x correct")
+    v = node_summary_view(rep, fields_enabled=None)
+    assert "outcome (measured): speedup 60x correct" in v
+    assert "self_report (unverified, written before scoring): edge-cut 327" in v
+
+
+def test_invalid_node_never_ships_the_narrative():
+    """The refuted claim must not travel next to the measurement that refuted it."""
+    rep = _report(self_assessment={"succeeded": True,
+                                   "headline": "achieves ~22.9x speedup"},
+                  measurement_valid=False,
+                  what_was_done="achieves ~22.9x speedup",
+                  eval_summary="candidate failed to compile")
+    v = node_summary_view(rep, fields_enabled=None)
+    assert "22.9x" not in v
+    assert "outcome (measured): candidate failed to compile" in v
 
 
 def test_outcome_falls_back_to_eval_summary():
     rep = _report(self_assessment={"succeeded": True, "headline": ""},
                   eval_summary="speedup 60x correct")
     v = node_summary_view(rep, fields_enabled=None)
-    assert "outcome: speedup 60x correct" in v
+    assert "outcome (measured): speedup 60x correct" in v
 
 
 def test_outcome_ablatable():
     # RQ-B ablation: dropping outcome removes it but keeps the rest.
     v = node_summary_view(_report(), fields_enabled=[f for f in ALL_FIELDS if f != "outcome"])
-    assert "outcome:" not in v and "key_metrics:" in v
+    assert "outcome (measured):" not in v and "self_report" not in v
+    assert "key_metrics:" in v
 
 
 def test_full_log_falls_back_to_tree_trace_log(tmp_path, monkeypatch):

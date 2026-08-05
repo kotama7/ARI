@@ -687,6 +687,11 @@ def build_node_report(
         "measurement_audit": measurement_audit,
         "self_assessment": self_assessment,
         "next_steps_hints": next_steps,
+        # Whether those hints were written AFTER the node was scored (the
+        # design) or before, because the post-scoring call failed. The two
+        # answer different questions, so an analysis must be able to tell
+        # them apart rather than pool them.
+        "self_report_stage": getattr(node, "self_report_stage", "pre_evaluation"),
         "build_command": build_cmd,
         "run_command": run_cmd,
         "artifacts": artifacts_out,

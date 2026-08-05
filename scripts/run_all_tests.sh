@@ -19,6 +19,14 @@ cd "$REPO_ROOT"
 
 PATHS=(
   "ari-core/tests"
+  # The registered harnesses pin the SCORING contract — the denominator, the
+  # measured environment, the per-compiler flags. They live outside ari-core
+  # because ARI ships no task, and they were absent from this list, so a green
+  # "full suite" said nothing about whether scoring still measured what it
+  # claimed to. The path is the harnesses ROOT, not its shared tests/ directory:
+  # each task also ships its own tests/, and pointing at the shared one ran 203
+  # of the 325.
+  "workspace/harnesses"
   "ari-skill-paper/tests"
   "ari-skill-paper-re/tests"
   "ari-skill-web/tests"
@@ -74,5 +82,16 @@ if [ ${#failed[@]} -ne 0 ]; then
   printf '\nfailing paths:\n'
   for p in "${failed[@]}"; do printf '  - %s\n' "$p"; done
   exit 1
+fi
+
+# A run that executed NOTHING used to exit 0, which reads as "everything
+# passed". It happened for real: invoking a copy of this script from outside the
+# tree made REPO_ROOT resolve elsewhere, every path reported "not present", and
+# the aggregate said 0/0/0 with a success code. Zero tests is not a pass.
+if [ "$total_pass" -eq 0 ] && [ "$total_skip" -eq 0 ]; then
+  printf '\nNO TESTS RAN. Every path was absent or produced no summary, so this\n'
+  printf 'result says nothing. Run this script from within the repository\n'
+  printf '(REPO_ROOT resolved to: %s).\n' "$REPO_ROOT"
+  exit 2
 fi
 exit 0

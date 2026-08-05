@@ -3,7 +3,7 @@
 Covers the fp64 reference, the contraction-length correctness bound, deterministic
 problem generation, measure_node aggregation with an injected runner, and the
 work_dir seeder. The real compile/run/timing runner is compute-node only; a
-login smoke test of the frozen baseline is included (skips without a compiler).
+login smoke test of the frozen reference is included (skips without a compiler).
 """
 import math
 import os
@@ -21,6 +21,8 @@ from gemm_harness import (
     seed_work_dir,
     _FROZEN_FIXTURES,
 )
+
+from gemm_harness import _kill_strays
 
 
 def test_gamma():
@@ -66,7 +68,7 @@ def _fake_runner(good=True):
             if not good:
                 C = C + 1e3  # wrong
             return 0.01, C        # candidate faster
-        return 1.0, C             # baseline slower
+        return 1.0, C             # reference slower
     return run
 
 
@@ -96,16 +98,16 @@ def test_measure_node_uses_matched_ratios_and_records_order():
         "", run_kernel=run, shapes=((8, 8, 8),), warmup=0, reps=3)
     family = out["families"]["8x8x8"]
     assert calls == [
-        "candidate", "baseline", "baseline",
-        "candidate", "candidate", "baseline",
+        "candidate", "reference", "reference",
+        "candidate", "candidate", "reference",
     ]
     # Pairwise ratios are [10, 10, 2] -> median 10. A ratio of separate
     # medians would be 10/2=5 and must not be used.
     assert family["speedup"] == pytest.approx(10.0)
     assert [r["execution_order"] for r in family["repetitions"]] == [
-        ["candidate", "baseline"],
-        ["baseline", "candidate"],
-        ["candidate", "baseline"],
+        ["candidate", "reference"],
+        ["reference", "candidate"],
+        ["candidate", "reference"],
     ]
 
 
@@ -117,9 +119,9 @@ def test_measure_node_reverses_starting_order_for_odd_seed():
     out = measure_node(
         "", run_kernel=run, shapes=((8, 8, 8),), warmup=0, reps=3, seed=1)
     assert [r["execution_order"] for r in out["families"]["8x8x8"]["repetitions"]] == [
-        ["baseline", "candidate"],
-        ["candidate", "baseline"],
-        ["baseline", "candidate"],
+        ["reference", "candidate"],
+        ["candidate", "reference"],
+        ["reference", "candidate"],
     ]
 
 
@@ -154,12 +156,62 @@ def test_seed_work_dir_seeds_and_preserves_candidate(tmp_path):
 
 
 def test_shapes_nonsquare():
-    assert (512, 512, 512) in SHAPES
     assert any(n != m for (n, _p, m) in SHAPES)  # at least one rectangular shape
 
 
-def test_default_runner_baseline_compiles_and_is_correct():
-    """Login smoke: real compile+run of the frozen baseline is correct (no BLAS)."""
+def test_every_shape_working_set_exceeds_the_cmg_l2():
+    """Blocking cannot pay while A, B and C all fit the 8 MiB CMG L2.
+
+    This is the invariant task #8 turned on, not a size preference: at the old
+    512-cube (6.0 MiB) an independently written register-blocked kernel measured
+    1.046x a plain vectorised one — a tie inside the 2.8% band — and 1.289x once
+    the working set left cache. A shape that slips back under the L2 silently
+    removes the thing the objective is supposed to reward.
+    """
+    l2_bytes = 8 * 1024 * 1024
+    for (n, p, m) in SHAPES:
+        working_set = (n * p + p * m + n * m) * 8
+        assert working_set > l2_bytes, (
+            f"shape {(n, p, m)} has a {working_set / 2**20:.1f} MiB working set, "
+            f"which fits the {l2_bytes / 2**20:.0f} MiB CMG L2")
+
+
+def test_no_shape_has_m_divisible_by_32():
+    """The B-column stride aliases the L1 sets when 32 | m.
+
+    Measured: n=m=p=2048 drove the frozen naive kernel to 242 s, past the 120 s
+    per-process cap, while m=2040 took 45 s — a 5.35x swing from a 0.4% change
+    in flops. A shape added later with 32 | m would time out rather than score.
+    """
+    for (n, p, m) in SHAPES:
+        assert m % 32 != 0, f"shape {(n, p, m)} has m divisible by 32"
+
+
+def test_default_runner_reference_compiles_and_is_correct():
+    """Login smoke: real compile+run of the frozen reference is correct (no BLAS)."""
+    import shutil
+    from gemm_harness import _default_run_kernel
+    if shutil.which(os.environ.get("ARI_GEMM_CC", "cc")) is None:
+        pytest.skip("no C compiler")
+    A, B = gen_problem((64, 48, 32), seed=1)
+    try:
+        t, C = _default_run_kernel("reference", "", A, B)
+    except RuntimeError as e:
+        pytest.skip(f"compile/run unavailable: {e}")
+    assert t >= 0.0
+    ok, mr = is_correct(C, reference_gemm(A, B), A, B)
+    assert ok, f"reference incorrect (max_rel={mr})"
+
+
+def test_default_runner_naive_anchor_compiles_and_is_correct():
+    """The naive kernel left the scoring path but is still the absolute anchor.
+
+    v2 scores against the competent reference, so nothing in a scored run builds
+    baseline_gemm.c any more. It is still seeded into the agent's work dir and is
+    still what the reported speedups are converted through to reach absolute
+    units, so it has to keep compiling and keep being correct — otherwise it rots
+    unnoticed until the calibration run needs it.
+    """
     import shutil
     from gemm_harness import _default_run_kernel
     if shutil.which(os.environ.get("ARI_GEMM_CC", "cc")) is None:
@@ -171,7 +223,7 @@ def test_default_runner_baseline_compiles_and_is_correct():
         pytest.skip(f"compile/run unavailable: {e}")
     assert t >= 0.0
     ok, mr = is_correct(C, reference_gemm(A, B), A, B)
-    assert ok, f"baseline incorrect (max_rel={mr})"
+    assert ok, f"naive anchor incorrect (max_rel={mr})"
 
 
 # ── Anti-gaming teeth (pre-run audit). Each of these candidates was a real
@@ -209,7 +261,17 @@ def test_gaming_forged_timer_is_ignored(tmp_path):
     fam = result["families"]
     # Tiny login-node shapes can fail closed when process overhead makes a
     # majority of pairs unverifiable. Either way, stdout cannot buy speedup.
-    assert result["evaluation_status"] in {"valid", "measurement_invalid"}
+    # v2 CONTRACT CHANGE, deliberately widened: v1 could only NEUTRALISE this
+    # (the time is read from a private file, so stdout buys nothing). v2 rejects
+    # the candidate outright, because the forgery is delivered by a DESTRUCTOR
+    # and v2 refuses any kernel object carrying .fini_array - the same mechanism
+    # the /proc/self/cmdline test uses to overwrite the timing file after main.
+    # The check cannot tell a harmless destructor from a harmful one, and a
+    # compute kernel has no legitimate use for either. The security property this
+    # test exists for - stdout cannot buy speedup - still holds, and now holds
+    # more strongly. The speedup assertion below is UNCHANGED.
+    assert result["evaluation_status"] in {"valid", "measurement_invalid",
+                                           "candidate_invalid"}
     assert all(
         not f["valid"] or f["speedup"] < 5.0 for f in fam.values()
     ), "forged timer leaked a huge speedup"
@@ -354,6 +416,161 @@ void gemm(int n,int m,int p,const double*A,const double*B,double*C){
     fam = out["families"]
     assert all(f["valid"] for f in fam.values()), (
         f"the guard invalidated an honest optimized kernel (reason={out.get('reason')!r})")
-    assert all(f["speedup"] > 2.0 for f in fam.values()), (
+    # Recalibrated for the v2 denominator, NOT relaxed to make the test pass.
+    # The old bound was >2.0 against the naive kernel; the same honest parallel
+    # ikj kernel now scores against the COMPETENT reference, where landing below
+    # 1.0 is the designed outcome — this kernel is exactly the "plain
+    # vectorised, no blocking" rung the reference is meant to sit above. What
+    # this test still pins is the guard's other side: an honest kernel must stay
+    # valid and must not be crushed toward zero the way a caught forgery is.
+    assert all(f["speedup"] > 0.3 for f in fam.values()), (
         f"an honest optimized kernel was credited almost no speedup: "
         f"{ {k: round(v['speedup'], 2) for k, v in fam.items()} }")
+
+
+def test_reference_is_not_seeded_into_the_agent_work_dir(tmp_path):
+    """The score denominator must be unreachable from the agent's directory.
+
+    This is the one leak that silently destroys the task rather than breaking
+    it: a candidate that copies reference_gemm.c scores 1.0 for no work, and
+    every downstream number would still look plausible. Seeding is a list of
+    filenames, so one careless addition is all it takes.
+    """
+    wd = str(tmp_path / "node")
+    seed_work_dir(wd)
+    seeded = sorted(os.listdir(wd))
+    leaked = [f for f in seeded if "reference" in f]
+    assert not leaked, f"the reference leaked into the work dir: {leaked}"
+    assert "reference_gemm.c" not in seeded
+
+
+def test_cached_problem_file_is_byte_identical_to_a_direct_write(tmp_path, monkeypatch):
+    """The problem-file cache must not change a single byte of what is scored.
+
+    The cache is OPT-IN now (problem files dominated the per-seed footprint and a
+    30-seed campaign would not have fitted the quota), so this enables it
+    explicitly. The guarantee still has to hold wherever storage allows the cache
+    to be turned back on.
+
+    _run_exe now hard links a cached problem.bin instead of rewriting the whole
+    problem per process launch. A size check alone would not catch a stale or
+    truncated entry, and a wrong problem file changes scores silently rather than
+    failing, so this compares the ACTUAL BYTES across the direct-write path, the
+    cache-write path and the cache-HIT path.
+    """
+    import subprocess
+    import gemm_harness as MH
+
+    A, B = gen_problem((24, 20, 16), seed=3)
+
+    captured = []
+
+    def fake_popen(argv, **kw):
+        captured.append(open(argv[1], "rb").read())
+        raise RuntimeError("stop once the problem file exists")
+
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+    monkeypatch.setenv("ARI_CACHE_PROBLEM_FILES", "1")
+    cache = tmp_path / "cache"
+    cache.mkdir()
+
+    for i, key in enumerate((None, "unit_key", "unit_key")):
+        wd = tmp_path / f"run{i}"
+        wd.mkdir()
+        if key is None:
+            monkeypatch.delenv("ARI_HARNESS_CACHE", raising=False)
+        else:
+            monkeypatch.setenv("ARI_HARNESS_CACHE", str(cache))
+        try:
+            MH._run_exe("/nonexistent", str(wd), A, B, problem_key=key)
+        except Exception:
+            pass
+
+    assert len(captured) == 3, f"expected three problem files, saw {len(captured)}"
+    assert captured[0] == captured[1], "cache-write path differs from the direct write"
+    assert captured[0] == captured[2], "cache-HIT path differs from the direct write"
+    assert (cache / "prob_unit_key.bin").is_file()
+
+
+def test_kill_strays_actually_kills_a_detached_grandchild():
+    """The fast path must still catch what the scan caught.
+
+    _kill_strays exists because a candidate can fork()+setsid() a process that
+    outlives its run and burns cores into the NEXT measurement - the candidate
+    slowing its own referee. Replacing the /proc scan with the kernel's own
+    children list made it 590x cheaper (84.42 ms -> 0.143 ms on a node with 709
+    processes, and it runs twice per repetition), and cheaper is worthless if it
+    stops finding the escapee.
+
+    Spawns a real detached process that reparents to us, then asserts it dies.
+    """
+    import os
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    # A child that detaches itself and would otherwise outlive the caller.
+    proc = subprocess.Popen(
+        [sys.executable, "-c",
+         "import os,time\nos.setsid()\ntime.sleep(120)"],
+        start_new_session=False)
+    try:
+        for _ in range(100):                    # let it get going
+            if proc.poll() is None:
+                break
+            time.sleep(0.01)
+        assert proc.poll() is None, "the test child exited before it could be found"
+
+        killed = _kill_strays(-1)               # -1: exempt nothing
+        assert killed >= 1, "the detached child was not found"
+
+        for _ in range(200):
+            if proc.poll() is not None:
+                break
+            time.sleep(0.01)
+        assert proc.poll() is not None, "the detached child survived _kill_strays"
+    finally:
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+
+
+def test_kill_strays_exempts_the_pid_it_is_told_to_keep():
+    """The scored process itself must never be killed by its own cleanup."""
+    import subprocess
+    import sys
+    import time
+
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        _kill_strays(proc.pid)
+        time.sleep(0.2)
+        assert proc.poll() is None, "the exempt pid was killed"
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+def test_selftest_shapes_match_the_scored_shapes():
+    """Same divergence guard as the stencil harness carries.
+
+    The C table and SHAPES are separate files; the stencil pair drifted when nt
+    changed, and nothing would have caught it. A self-test measuring a different
+    problem from the scorer is worse than no self-test, because the agent trusts
+    the number.
+    """
+    import pathlib
+    import re
+
+    src = (pathlib.Path(__file__).resolve().parents[1]
+           / "gemm_kernels" / "selftest.c").read_text()
+    m = re.search(r"static const int SHAPES\[N_SHAPES\]\[3\] = \{(.*?)\};", src, re.S)
+    assert m, "the self-test shape table moved; update this test"
+    shapes = [tuple(int(x) for x in g.split(","))
+              for g in re.findall(r"\{([^{}]+)\}", m.group(1))]
+    assert sorted(shapes) == sorted(tuple(s) for s in SHAPES), (
+        f"self-test shapes {sorted(shapes)} do not match SHAPES "
+        f"{sorted(tuple(s) for s in SHAPES)}")

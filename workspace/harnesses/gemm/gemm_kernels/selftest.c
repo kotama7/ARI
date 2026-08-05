@@ -1,10 +1,34 @@
 /* selftest.c — LOCAL developer harness for the GEMM task (handoff study task A).
  *
- * NOT the evaluator and NOT used for scoring. Runs your candidate gemm() on the
- * square problem and reports correctness (same contraction-length eps bound as
- * the evaluator) + an estimated speedup vs the naive ijl baseline. The evaluator
- * uses several shapes and fresh data, so a PASS is a strong-not-complete
- * predictor; the evaluator remains authoritative.
+ * NOT the evaluator, but v2 makes it MEASURE THE SAME THING the evaluator does,
+ * so a local number is a usable prediction of the score. In v1 it disagreed on
+ * four axes at once and the transfer slope of log(selftest) -> log(scored) was
+ * only 0.368, which is why 88.5% of gemm handoff blocks carried a self-reported
+ * speedup contradicting the evaluator metrics printed beside them:
+ *
+ *   1. SHAPE   — v1 ran one square n*n*n problem; the evaluator scores three
+ *                shapes, square + tall + fat. v2 runs all three.
+ *   2. THREADS — v1 defaulted to 16; the scored run takes the allocation's
+ *                thread count (48 here). v2 defaults to omp_get_max_threads().
+ *   3. AGGREGATION — v1 averaged raw seconds; the evaluator takes the MEDIAN of
+ *                per-repetition speedups within a shape and the GEOMETRIC MEAN
+ *                across shapes. v2 does the same.
+ *   4. WARMUP  — v1 ran a warmup call that primed both the thread team and the
+ *                DATA; the evaluator times one cold call on a fresh problem.
+ *                v2 creates the thread team outside the timer (as the frozen
+ *                driver now does) but never pre-touches the data.
+ *
+ * This reports ABSOLUTE performance (GF/s and ms), not a ratio. The evaluator
+ * scores t_reference/t_candidate against a frozen COMPETENT reference that is
+ * deliberately not shipped in here — it would simply be copied. Reporting a
+ * ratio against a naive kernel instead would print a number roughly 970x the
+ * actual score, which is worse than printing no ratio at all. GF/s is the unit
+ * the score converts through and is directly comparable across your own edits;
+ * experiment.md states the reference's GF/s per shape, so you can see the bar.
+ *
+ * There is no longer a cached reference time: nothing slow is measured here any
+ * more, and the correctness reference is parallel (a naive one cost about 5 s
+ * per call at these problem sizes and runs twice per shape).
  *
  * Build:  make selftest        Run:  ./selftest
  *
@@ -13,10 +37,23 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include <time.h>
 #include <omp.h>
 #include "gemm_kernel.h"
+
+#define C_EPS 8.0
+#define N_SHAPES 3
+#define REPS 3
+
+/* The evaluator's PREREG shape set (n, p, m) — keep in step with SHAPES in
+ * gemm_harness.py. */
+static const int SHAPES[N_SHAPES][3] = {
+    {1000, 1000, 1000}, {2000, 500, 500}, {1500, 600, 1500},
+};
+
+static const double FP64_U = 1.1102230246251565e-16; /* 2^-53 */
 
 static int env_int(const char *name, int dflt) {
     const char *v = getenv(name);
@@ -24,10 +61,6 @@ static int env_int(const char *name, int dflt) {
     int x = atoi(v);
     return x > 0 ? x : dflt;
 }
-
-#define C_EPS 8.0
-static const double FP64_U = 1.1102230246251565e-16; /* 2^-53 */
-
 static double now_sec(void) {
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
@@ -37,66 +70,123 @@ static double gamma_k(long k) {
     double ku = (double)k * FP64_U;
     return ku >= 1.0 ? INFINITY : ku / (1.0 - ku);
 }
+static int cmp_double(const void *a, const void *b) {
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+static double median(double *v, int n) {
+    qsort(v, (size_t)n, sizeof(double), cmp_double);
+    return (n % 2) ? v[n / 2] : 0.5 * (v[n / 2 - 1] + v[n / 2]);
+}
 
-/* naive ijl reference (distinct symbol so it links alongside gemm()). */
+/* Correctness reference (distinct symbol so it links alongside gemm()).
+ *
+ * This is PARALLEL ikj, not the naive ijl it used to be. The correctness
+ * reference only has to be INDEPENDENT of the candidate and numerically sound —
+ * it is never the thing being timed — and the error bound it feeds
+ * (C_EPS * gamma(p) * |A|·|B|) holds for any summation order, so the loop order
+ * is free. It had to change with the problem size: this runs twice per shape
+ * (once clean, once on |A|,|B| for the bound), and the naive version took about
+ * 5 s per call at the v2 sizes, which made a single selftest cost half a minute
+ * of pure reference time. The agent runs this repeatedly. */
 static void gemm_ref(int n, int m, int p,
                      const double *A, const double *B, double *C) {
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < m; ++j) {
-            double s = 0.0;
-            for (int l = 0; l < p; ++l) s += A[(long)i * p + l] * B[(long)l * m + j];
-            C[(long)i * m + j] = s;
+#pragma omp parallel for schedule(static)
+    for (int i = 0; i < n; ++i) {
+        double *ci = C + (long)i * m;
+        for (int j = 0; j < m; ++j) ci[j] = 0.0;
+        for (int l = 0; l < p; ++l) {
+            const double a = A[(long)i * p + l];
+            const double *bl = B + (long)l * m;
+            for (int j = 0; j < m; ++j) ci[j] += a * bl[j];
         }
+    }
 }
 
 int main(void) {
-    const int n = env_int("ARI_GEMM_N", 512);
-    const int m = n, p = n;
-    const int threads = env_int("ARI_GEMM_THREADS", 16);
-    const int warmup = 1, reps = 3;
+    const int threads = env_int("ARI_GEMM_THREADS", omp_get_max_threads());
     omp_set_num_threads(threads);
 
-    double *A = malloc(sizeof(double) * (size_t)n * p);
-    double *B = malloc(sizeof(double) * (size_t)p * m);
-    double *C = malloc(sizeof(double) * (size_t)n * m);
-    double *Cref = malloc(sizeof(double) * (size_t)n * m);
-    double *Cbnd = malloc(sizeof(double) * (size_t)n * m);  /* |A| @ |B| */
-    double *absA = malloc(sizeof(double) * (size_t)n * p);
-    double *absB = malloc(sizeof(double) * (size_t)p * m);
-    srand(7);
-    for (long i = 0; i < (long)n * p; ++i) { A[i] = (double)rand() / RAND_MAX * 2 - 1; absA[i] = fabs(A[i]); }
-    for (long i = 0; i < (long)p * m; ++i) { B[i] = (double)rand() / RAND_MAX * 2 - 1; absB[i] = fabs(B[i]); }
+    /* Create the thread team OUTSIDE every timed region, exactly as the frozen
+     * driver now does. The kernel is not called here. */
+    { double s = 0.0;
+      #pragma omp parallel for reduction(+ : s)
+      for (int i = 0; i < 64; ++i) s += (double)i;
+      if (s < 0.0) fprintf(stderr, "unreachable\n"); }
 
-    gemm_ref(n, m, p, A, B, Cref);
-    gemm_ref(n, m, p, absA, absB, Cbnd);
+    double per_shape[N_SHAPES];
+    int all_ok = 1;
+    double worst_rel = 0.0;
 
-    for (int w = 0; w < warmup; ++w) gemm(n, m, p, A, B, C);
-    double tc = 0.0;
-    for (int r = 0; r < reps; ++r) { double t0 = now_sec(); gemm(n, m, p, A, B, C); tc += now_sec() - t0; }
-    tc /= reps;
-    double tb = 0.0;
-    for (int r = 0; r < reps; ++r) { double t0 = now_sec(); gemm_ref(n, m, p, A, B, Cref); tb += now_sec() - t0; }
-    tb /= reps;
-    /* recompute a clean reference (the timing loop above reused Cref) */
-    gemm_ref(n, m, p, A, B, Cref);
+    printf("omp_threads=%d   (evaluator uses the allocation's thread count)\n", threads);
+    for (int s = 0; s < N_SHAPES; ++s) {
+        const int n = SHAPES[s][0], p = SHAPES[s][1], m = SHAPES[s][2];
+        double *A = malloc(sizeof(double) * (size_t)n * p);
+        double *B = malloc(sizeof(double) * (size_t)p * m);
+        double *C = malloc(sizeof(double) * (size_t)n * m);
+        double *Cref = malloc(sizeof(double) * (size_t)n * m);
+        double *Cbnd = malloc(sizeof(double) * (size_t)n * m);
+        double *absA = malloc(sizeof(double) * (size_t)n * p);
+        double *absB = malloc(sizeof(double) * (size_t)p * m);
+        if (!A || !B || !C || !Cref || !Cbnd || !absA || !absB) {
+            fprintf(stderr, "selftest: out of memory\n"); return 2;
+        }
+        srand(7 + s);
+        for (long i = 0; i < (long)n * p; ++i) { A[i] = (double)rand() / RAND_MAX * 2 - 1; absA[i] = fabs(A[i]); }
+        for (long i = 0; i < (long)p * m; ++i) { B[i] = (double)rand() / RAND_MAX * 2 - 1; absB[i] = fabs(B[i]); }
 
-    double g = gamma_k(p);
-    int ok = 1; double max_rel = 0.0;
-    for (long idx = 0; idx < (long)n * m; ++idx) {
-        double resid = fabs(C[idx] - Cref[idx]);
-        if (resid > C_EPS * g * Cbnd[idx]) ok = 0;
-        double denom = fabs(Cref[idx]);
-        if (denom > 0.0) { double rel = resid / denom; if (rel > max_rel) max_rel = rel; }
+        gemm_ref(n, m, p, A, B, Cref);   /* clean reference for the check */
+        gemm_ref(n, m, p, absA, absB, Cbnd);
+
+        /* v2 reports ABSOLUTE performance, not a ratio against a naive kernel.
+         * The evaluator's score is now t_reference/t_candidate against a frozen
+         * COMPETENT reference, which is deliberately not shipped in here — it
+         * would be copyable. A naive ratio would therefore report a number
+         * roughly 970x the actual score, which is worse than reporting no ratio
+         * at all. GF/s is the unit the score converts through, it is comparable
+         * across your own edits, and experiment.md states the reference's GF/s
+         * so you can see how far off the bar you are. */
+        const double flops = 2.0 * (double)n * (double)p * (double)m;
+        double gfs[REPS];
+        for (int r = 0; r < REPS; ++r) {
+            memset(C, 0, sizeof(double) * (size_t)n * m);
+            double t0 = now_sec();
+            gemm(n, m, p, A, B, C);
+            double tc = now_sec() - t0;
+            gfs[r] = (tc > 0.0) ? flops / tc / 1e9 : 0.0;
+        }
+
+        double g = gamma_k(p);
+        int ok = 1; double max_rel = 0.0;
+        for (long idx = 0; idx < (long)n * m; ++idx) {
+            double resid = fabs(C[idx] - Cref[idx]);
+            if (resid > C_EPS * g * Cbnd[idx]) ok = 0;
+            double denom = fabs(Cref[idx]);
+            if (denom > 0.0) { double rel = resid / denom; if (rel > max_rel) max_rel = rel; }
+        }
+        if (max_rel > worst_rel) worst_rel = max_rel;
+        all_ok = all_ok && ok;
+        per_shape[s] = median(gfs, REPS);
+        printf("  %4dx%4dx%-4d  %8.1f GF/s  (%8.3f ms)  correct=%-3s  max_rel=%.2e\n",
+               n, p, m, per_shape[s],
+               per_shape[s] > 0.0 ? flops / (per_shape[s] * 1e9) * 1e3 : 0.0,
+               ok ? "yes" : "NO", max_rel);
+
+        free(A); free(B); free(C); free(Cref); free(Cbnd); free(absA); free(absB);
     }
-    double speedup = (tc > 0.0) ? (tb / tc) : 0.0;
-    printf("problem: %dx%dx%d  omp_threads=%d\n", n, p, m, threads);
-    printf("candidate_sec=%.5f  baseline_naive_sec=%.5f  speedup~%.1fx  correct=%s  max_rel=%.2e\n",
-           tc, tb, speedup, ok ? "yes" : "NO", max_rel);
-    if (ok)
-        printf("SELFTEST: PASS  (correct; ~%.1fx vs naive baseline)\n", speedup);
+
+    /* Geometric mean across shapes — the evaluator's aggregation. A shape that
+     * fails correctness scores 0 there, so report the geomean only when every
+     * shape is correct, exactly as the all-or-nothing scoring rule does. */
+    double logsum = 0.0;
+    for (int s = 0; s < N_SHAPES; ++s) logsum += log(per_shape[s] > 0.0 ? per_shape[s] : 1e-12);
+    double geo = exp(logsum / N_SHAPES);
+
+    if (all_ok)
+        printf("SELFTEST: PASS  (correct on all %d shapes; geomean %.1f GF/s)\n"
+               "  score = your GF/s / the reference GF/s per shape; see experiment.md\n",
+               N_SHAPES, geo);
     else
         printf("SELFTEST: FAIL  (incorrect output => the evaluator scores 0; fix correctness first)\n");
-
-    free(A); free(B); free(C); free(Cref); free(Cbnd); free(absA); free(absB);
-    return ok ? 0 : 1;
+    return all_ok ? 0 : 1;
 }

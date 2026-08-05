@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 from datetime import datetime, timezone
+import pathlib
 from pathlib import Path
 from typing import Any
 
@@ -84,6 +85,13 @@ def capture_env(
 
     # Compiler version (best-effort; helps reproducibility)
     info["compilers"] = _capture_compilers()
+    # ...and what is in the vendor toolchain trees that `module avail` does not
+    # list, plus the page/NUMA state that can dominate a timing. Both were added
+    # after a day in which a machine was reported to have no profiler (it had
+    # two, beside the compiler) and a kernel was found to run 5.9x apart on one
+    # vendor memory variable.
+    info["toolchain_dirs"] = _capture_toolchain_dirs()
+    info["memory_system"] = _capture_memory_system()
 
     out_path = Path(work_dir) / _RUN_ENV_FILENAME
     try:
@@ -172,6 +180,73 @@ def _capture_compilers() -> dict:
     return out
 
 
+def _capture_toolchain_dirs(max_dirs: int = 12, max_each: int = 60) -> dict:
+    """Executables living in vendor toolchain trees, reported as DATA.
+
+    WHY THIS EXISTS. The catalog's `module avail` dump is cluster-agnostic but it
+    is not complete: on a two-level module tree a bare `module avail` lists entry
+    modules and no compiler at all, and a vendor toolchain installed under /opt is
+    invisible to it entirely. Measured 2026-08-03 on an A64FX system: the vendor
+    compiler and BOTH of its profilers sat in one /opt directory that no module
+    listed, and an audit that searched by module name concluded the machine had
+    no profiler. It had two.
+
+    NO NAME IS HARDCODED, keeping the property the rest of this module has: this
+    enumerates whatever is executable in directories that LOOK like toolchain
+    installs and hands the listing to the agent as data. It does not know what a
+    compiler is called, so it stays correct on a machine whose vendor is someone
+    else's.
+    """
+    import glob as _glob
+    out: dict[str, list[str]] = {}
+    seen: set[str] = set()
+    for pattern in ("/opt/*/bin", "/opt/*/*/bin", "/usr/local/*/bin"):
+        for d in sorted(_glob.glob(pattern)):
+            if d in seen or len(out) >= max_dirs:
+                continue
+            seen.add(d)
+            try:
+                names = sorted(
+                    e.name for e in os.scandir(d)
+                    if e.is_file() and os.access(e.path, os.X_OK))
+            except OSError:
+                continue
+            if names:
+                out[_mask_home(d)] = names[:max_each]
+    return out
+
+
+def _capture_memory_system() -> dict:
+    """Page-size and NUMA state, because it can dominate a measurement.
+
+    Measured 2026-08-03: the same stencil source ran 1375 ms or 232 ms -- 5.9x --
+    according to one environment variable, read only by a vendor large-page
+    library that only that vendor's builds link. None of this appears in
+    `module avail`, `lscpu`, or the compiler version strings, and an experiment
+    that does not record it is reporting a function of site configuration.
+    These are machine facts, not secrets, so values are safe to report here.
+    """
+    out: dict = {}
+    try:
+        thp = Path("/sys/kernel/mm/transparent_hugepage/enabled")
+        out["transparent_hugepage"] = thp.read_text().strip() if thp.is_file() else None
+        meminfo = Path("/proc/meminfo")
+        if meminfo.is_file():
+            for line in meminfo.read_text().splitlines():
+                for key in ("HugePages_Total", "Hugepagesize", "AnonHugePages"):
+                    if line.startswith(key + ":"):
+                        out[key.lower()] = line.split(":", 1)[1].strip()
+        nb = Path("/proc/sys/kernel/numa_balancing")
+        out["numa_balancing"] = nb.read_text().strip() if nb.is_file() else None
+        import glob as _glob
+        libs = _glob.glob("/opt/*/mmm/lib64/libmpg.so*") + _glob.glob(
+            "/opt/*/lib*/libhugetlbfs.so*")
+        out["large_page_library"] = _mask_home(libs[0]) if libs else None
+    except Exception:
+        pass
+    return out
+
+
 # ── Node-aware heterogeneous environment catalog (multi-node HPC) ───────────
 # ARI probes DIFFERENT things depending on where it was started:
 #   - login node  : recursively srun-probe each partition in ARI_PROBE_PARTITIONS
@@ -196,6 +271,11 @@ _ENV_ALLOWLIST = (
     "NVHPC_ROOT", "CC", "CXX", "FC", "F77", "F90",
     "OMP_NUM_THREADS", "OMP_PLACES", "OMP_PROC_BIND",
     "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MPI_HOME",
+    # Vendor memory/runtime controls. Presence only, like everything here; the
+    # harness records the VALUE separately into its own manifest, because a
+    # measurement has to be reproducible and one of these was measured moving a
+    # kernel 5.9x.
+    "XOS_MMM_L_PAGING_POLICY", "XOS_MMM_L_HPAGE_TYPE", "FLIB_HUGETLB",
 )
 
 # One portable probe script, run either locally or on a partition via srun. Emits
@@ -222,9 +302,171 @@ echo '###GPU###'; nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 echo '###ENV_PRESENT###'
 # names ONLY of set toolchain vars — never the value (would leak keys/usernames)
 for v in __ENV_ALLOWLIST__; do eval "_val=\${$v:-}"; [ -n "$_val" ] && echo "$v"; done
-echo '###MODULES###'; (module avail 2>&1 || echo '(no module system)')
+echo '###MODULES###'
+# TWO-TIER MODULE TREES. A single `module avail` lists only what the CURRENT
+# MODULEPATH exposes. On a hierarchical setup the top level is a set of entry
+# modules and the real toolchains only appear in MODULEPATH once one of them is
+# loaded, so a flat listing can show no compiler at all while several are
+# installed. `module spider` would flatten it in one call but is Lmod-only and
+# absent on Tcl Environment Modules, which is what this site runs.
+#
+# So: list the top level, then load each entry candidate IN A SUBSHELL and list
+# again, reporting only what is NEW. The subshell matters — loading modules for
+# real would change the compilers seen by everything that runs afterwards, and
+# this probe must not have side effects on the node it is describing.
+(
+  module avail 2>&1 || echo '(no module system)'
+)
+if command -v module >/dev/null 2>&1 || type module >/dev/null 2>&1; then
+  # Exclude Environment Modules' OWN pseudo-modules. These are package
+  # internals with fixed upstream names, not site names, so naming them here
+  # carries no site information; loading them reveals nothing and each one
+  # otherwise emits an empty section.
+  _skip='^(dot|null|modules|module-info|module-git|use\.own)$'
+  # `Key:` and friends are the avail legend, not module names.
+  _legend='^(Key|Loading|Where|Default|Module|Aliases|Versions)[:.]?$|^-+$'
+  _top=$(module avail 2>&1 | tr ' ' '\n' \
+         | grep -E '^[A-Za-z][A-Za-z0-9_.+-]*(/[A-Za-z0-9_.+-]+)?$' \
+         | grep -vE "$_skip" | grep -vE "$_legend" | sort -u | head -40)
+  _base=$(module avail 2>&1 | tr ' ' '\n' | sort -u)
+  for _m in $_top; do
+    _new=$( (module load "$_m" >/dev/null 2>&1 && module avail 2>&1) \
+            | tr ' ' '\n' | sort -u | comm -13 <(echo "$_base") - 2>/dev/null \
+            | grep -E '^[A-Za-z]' | grep -vE "$_legend" | head -25 )
+    if [ -n "$_new" ]; then
+      echo "--- after: module load $_m ---"
+      echo "$_new" | tr '\n' ' '
+      echo
+    fi
+  done
+fi
 echo '###END###'
 """.replace("__ENV_ALLOWLIST__", " ".join(_ENV_ALLOWLIST))
+
+# ── Cache geometry, MEASURED, because this target does not report it ────────
+# On the scoring machine every standard source is empty: `lscpu` prints
+# "unknown size" for L1d/L1i/L2, the sysfs `size` files are blank, and getconf
+# returns 0 for every level. sysfs is also actively MISLEADING - it lists the L2
+# as shared by all 48 CPUs when the part has one L2 per 12-core cluster.
+#
+# That matters because sizing a blocking factor to a cache is basic HPC work and
+# it cannot be done against a capacity the OS will not disclose. In the previous
+# campaign not one of the 87 highest-scoring GEMM candidates carried a blocking
+# constant, which is consistent with having nothing to size one against.
+#
+# So it is measured instead of assumed: a pointer chase over growing working
+# sets, whose latency is flat inside a level and steps up at each capacity
+# boundary. Pointer chasing rather than strided reads, or the prefetcher hides
+# the miss and the steps vanish. Measured this way the target shows 64 KiB of
+# L1D and an L2 knee before 8 MiB, matching the published part - but nothing
+# architecture-specific is hardcoded here, so it stays correct on another
+# machine.
+_CACHE_PROBE_C = r"""
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+static double now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);
+  return (double)t.tv_sec+(double)t.tv_nsec*1e-9;}
+int main(void){
+  long line = 128;
+#ifdef _SC_LEVEL1_DCACHE_LINESIZE
+  long l = sysconf(_SC_LEVEL1_DCACHE_LINESIZE); if (l > 0) line = l;
+#endif
+  for (long kib = 8; kib <= 32768; kib *= 2) {
+    long bytes = kib * 1024, n = bytes / line;
+    if (n < 8) continue;
+    char *buf = aligned_alloc(4096, (size_t)bytes);
+    if (!buf) break;
+    memset(buf, 0, (size_t)bytes);
+    long *idx = malloc(sizeof(long) * n);
+    if (!idx) { free(buf); break; }
+    for (long i = 0; i < n; ++i) idx[i] = i;
+    for (long i = n - 1; i > 0; --i) {
+      long j = (long)((i * 1103515245L + 12345L) % (i + 1));
+      long t = idx[i]; idx[i] = idx[j]; idx[j] = t; }
+    for (long i = 0; i < n; ++i)
+      *(void **)(buf + idx[i] * line) = buf + idx[(i + 1) % n] * line;
+    long iters = 12L * n; if (iters < 120000L) iters = 120000L;
+    if (iters > 3000000L) iters = 3000000L;
+    static void *volatile sink;          /* or the loop is dead code */
+    void *p = buf;
+    for (long i = 0; i < n; ++i) p = *(void **)p;
+    double t0 = now();
+    for (long i = 0; i < iters; ++i) p = *(void **)p;
+    double dt = now() - t0;
+    sink = p;
+    printf("%ld %.2f\n", kib, dt / (double)iters * 1e9);
+    free(idx); free(buf);
+  }
+  return 0;}
+"""
+
+
+def measure_cache_geometry(timeout_s: float = 60.0) -> dict:
+    """Return {'line_bytes', 'levels': [{'kib', 'ns'}...], 'l1d_kib', 'llc_kib'}.
+
+    Best effort: returns {} when no compiler is available or anything fails. A
+    missing measurement must degrade the catalogue, never break the probe.
+    """
+    import shutil
+    import subprocess
+    import tempfile
+
+    cc = os.environ.get("ARI_PROBE_CC") or shutil.which("cc") or shutil.which("gcc")
+    if not cc:
+        return {}
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "cg.c")
+            with open(src, "w") as fh:
+                fh.write("#include <unistd.h>\n" + _CACHE_PROBE_C)
+            exe = os.path.join(td, "cg")
+            cp = subprocess.run([cc, "-O2", src, "-o", exe],
+                                capture_output=True, text=True, timeout=timeout_s)
+            if cp.returncode != 0:
+                return {}
+            env = dict(os.environ)
+            env["OMP_NUM_THREADS"] = "1"
+            r = subprocess.run([exe], capture_output=True, text=True,
+                               timeout=timeout_s, env=env)
+            rows = []
+            for line in (r.stdout or "").splitlines():
+                parts = line.split()
+                if len(parts) == 2:
+                    try:
+                        rows.append({"kib": int(parts[0]), "ns": float(parts[1])})
+                    except ValueError:
+                        pass
+    except Exception:
+        return {}
+    if len(rows) < 4:
+        return {}
+
+    out: dict = {"levels": rows}
+    # os.sysconf has no cache names on this platform, but getconf does answer
+    # for the LINE SIZE even where it returns 0 for every capacity - so the one
+    # cache number the OS will give up is still worth taking.
+    try:
+        _lr = subprocess.run(["getconf", "LEVEL1_DCACHE_LINESIZE"],
+                             capture_output=True, text=True, timeout=5)
+        _lb = int((_lr.stdout or "0").strip() or 0)
+        if _lb > 0:
+            out["line_bytes"] = _lb
+    except Exception:
+        pass
+    # A level boundary is the last size before latency rises by half again.
+    knees = []
+    for a, b in zip(rows, rows[1:]):
+        if a["ns"] > 0 and b["ns"] > a["ns"] * 1.5:
+            knees.append(a["kib"])
+    if knees:
+        out["l1d_kib"] = knees[0]
+        out["llc_kib"] = knees[-1]
+    out["knees_kib"] = knees
+    return out
+
+
 
 def detect_node_role() -> str:
     """Where is ARI running? -> 'login' | 'compute' | 'local'.
@@ -367,7 +609,11 @@ def _parse_probe_output(text: str) -> dict:
     if mod:
         # Cap to keep the injected catalog bounded; the agent re-runs
         # `module avail` on the actual compute node for the authoritative list.
-        env["modules_avail"] = mod[:8000]
+        # Raised for the second tier: on a hierarchical tree the "after: module
+        # load X" sections are where the compilers actually are, and at 8000 they
+        # were the part that got cut — which left the catalog listing entry
+        # modules and no toolchain, the exact failure the recursion fixes.
+        env["modules_avail"] = mod[:24000]
     # Strip any username-bearing home path (e.g. a broken conda mpicc wrapper
     # echoes its full ~/miniconda/bin path) before the env reaches the agent.
     return _mask_home_deep(env)
@@ -380,9 +626,46 @@ def local_env() -> dict:
             ["bash", "-c", _PROBE_SCRIPT],
             capture_output=True, text=True, timeout=30,
         )
-        return _parse_probe_output(proc.stdout)
+        env = _parse_probe_output(proc.stdout)
     except Exception:
         return {}
+    # Cache capacities, measured, because this target reports none. Rendered as
+    # a short human-readable line rather than raw rows: the agent needs "how big
+    # is L1 / the last level" to size a blocking factor, not a latency table.
+    # Off via ARI_PROBE_CACHE=0; a failure just omits the key.
+    if os.environ.get("ARI_PROBE_CACHE", "1") not in ("0", "false", "False"):
+        try:
+            g = measure_cache_geometry()
+        except Exception:
+            g = {}
+        if g:
+            bits = []
+            if g.get("line_bytes"):
+                bits.append(f"line {g['line_bytes']} B")
+            if g.get("l1d_kib"):
+                bits.append(f"L1d ~{g['l1d_kib']} KiB")
+            if g.get("llc_kib") and g.get("llc_kib") != g.get("l1d_kib"):
+                bits.append(f"last level ~{g['llc_kib']} KiB")
+            if g.get("knees_kib"):
+                bits.append("capacity steps at "
+                            + ", ".join(f"{k} KiB" for k in g["knees_kib"]))
+            if bits:
+                # Say WHY it is measured only when it is actually true here.
+                # The scoring target reports nothing, but the login node's sysfs
+                # does have the sizes, and asserting otherwise there would be a
+                # false statement in the agent's own catalogue.
+                _os_silent = True
+                try:
+                    _sz = pathlib.Path(
+                        "/sys/devices/system/cpu/cpu0/cache/index0/size")
+                    _os_silent = not (_sz.is_file() and _sz.read_text().strip())
+                except Exception:
+                    pass
+                env["cache_measured"] = "; ".join(bits) + (
+                    "  (measured by pointer chase; this machine's lscpu, sysfs and"
+                    " getconf all report the capacities as unknown)"
+                    if _os_silent else "  (measured by pointer chase)")
+    return env
 
 
 def probe_partition_env(partition: str, timeout_s: int) -> dict | None:

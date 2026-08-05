@@ -60,7 +60,29 @@ int main(int argc, char **argv) {
      * check (NaN never satisfies the nt-scaled bound). */
     for (size_t i = 0; i < N; ++i) u[i] = NAN;
 
-    /* ONE cold timed call. No warmup in this process (see header). */
+    /* v2: create the OpenMP thread team OUTSIDE the timed window.
+     * This is NOT a warmup: the candidate kernel is not called here, so
+     * the candidate cannot precompute the answer. NOTE this is not a
+     * zero-surface region: the pragma lowers to an external GOMP_parallel
+     * call, which a candidate translation unit could define. Closing that
+     * needs a symbol allowlist on the candidate object (tracked
+     * separately). It
+     * removes a fixed ~3.2 ms 48-thread team-creation cost that the
+     * single-threaded frozen reference never paid, and it pins the master
+     * thread under OMP_PROC_BIND, so reference and candidate are finally
+     * measured under the same binding regime (v1 timed an UNPINNED reference
+     * against PINNED candidates). Paired with credited = internal timer;
+     * without that change this is provably inert, because the wall-derived
+     * clamp does not contain the candidate's internal time. */
+    {
+        static volatile double team_sink;
+        double s = 0.0;
+#pragma omp parallel for reduction(+ : s)
+        for (int i = 0; i < 64; ++i) s += (double)i;
+        team_sink = s;
+    }
+
+    /* ONE cold timed call on the candidate. */
     double t0 = now_sec();
     jacobi(nx, ny, nz, nt, u0, u);
     double elapsed = now_sec() - t0;

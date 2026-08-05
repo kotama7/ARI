@@ -103,10 +103,17 @@ class Harness:
     _kwargs: Callable[[], dict] = dict
     # path (relative to the harness dir) -> sha256, for every pinned file.
     pinned: dict[str, str] = field(default_factory=dict)
+    # work_dir-relative files that determine the score (candidate source + flags).
+    # Empty when the harness declares none, which keeps the legacy whole-directory
+    # sterility check.
+    score_inputs: tuple[str, ...] = ()
     # Formatting-independent digest of the scoring config (target/scale/axis/
     # measure_kwargs/files); recorded in provenance so a reader can re-check that
     # the manifest that scored a published number was not later edited.
     manifest_hash: str = ""
+    # What this harness says it is FOR. Empty when it has not been characterised;
+    # a selector must read that as "unknown", not as "suitable".
+    declares: "Declaration" = field(default_factory=lambda: Declaration())
 
     def measure(self, work_dir: str, **overrides: Any) -> dict:
         """Measure the node's candidate. ARI calls this; the node never sees it.
@@ -154,6 +161,20 @@ class Harness:
             # Self-digest of the scoring config; lets a reader detect a manifest
             # edited after the run (target/scale/axis/measure_kwargs/files).
             "manifest_sha256": self.manifest_hash,
+            # Which harness answered this task, and what else could have. With a
+            # pool the score is a property of the harness as much as the code,
+            # so "we used the best one" is unfalsifiable unless the alternatives
+            # are on the record next to the choice.
+            "harness": origin.name,
+            "alternatives": [n for n in harnesses_for(self.task)
+                             if n != origin.name],
+            "declares": {
+                "question": self.declares.question,
+                "denominator": self.declares.denominator,
+                "resolves": self.declares.resolves,
+                "resolves_measured_on": self.declares.resolves_measured_on,
+                "blind_to": list(self.declares.blind_to),
+            },
             "files": dict(self.pinned),
         }
 
@@ -220,6 +241,13 @@ def manifest_integrity_hash(man: dict[str, Any]) -> str:
     not matter), excluding the ``[integrity]`` block that carries this digest, so
     it can be self-pinned in the manifest and recomputed at load + recorded in
     provenance for later re-check.
+
+    ``[declares]`` is included for the same reason, one level up. It is what a
+    pool SELECTS on, so editing it changes which harness measures a study without
+    changing a single scored byte: lowering a declared band from 0.251% to 0.01%
+    makes the selector accept this harness for an effect it cannot resolve, and
+    the result is a well-formed null that means nothing. A declaration outside
+    the digest would be an unpinned scoring decision.
     """
     import hashlib
     import json
@@ -228,6 +256,7 @@ def manifest_integrity_hash(man: dict[str, Any]) -> str:
                     for k in sorted(man.get("harness") or {})},
         "measure_kwargs": man.get("measure_kwargs") or {},
         "files": man.get("files") or {},
+        "declares": man.get("declares") or {},
     }
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"),
@@ -329,6 +358,12 @@ def _load_external(task: str, d: Path) -> Harness:
     # different directory than the one actually measured. Flat layouts that define
     # no kernels_dir() fall back to the harness dir itself.
     _kdir = getattr(mod, "kernels_dir", None)
+    # score_inputs: the work_dir-relative files that actually determine the score.
+    # Only the harness knows this. Search control needs it to tell a real edit from
+    # a re-measurement: judging "did the child change anything?" by diffing the whole
+    # work_dir is useless, because every node rewrites bookkeeping files. A harness
+    # that declares nothing keeps the old whole-directory behaviour.
+    _si = getattr(mod, "SCORE_INPUTS", ())
     return Harness(
         task=task, target=target, scale=scale, axis=_axis_of(task, man), origin=str(d),
         seed_work_dir=mod.seed_work_dir,
@@ -336,6 +371,143 @@ def _load_external(task: str, d: Path) -> Harness:
         _measure_node=mod.measure_node,
         _kwargs=_kwargs_from_manifest(man), pinned=pinned,
         manifest_hash=manifest_hash,
+        score_inputs=tuple(str(x) for x in _si),
+        declares=_declaration_of(task, man),
+    )
+
+
+@dataclass(frozen=True)
+class Declaration:
+    """What a harness says it is FOR, so a pool can be chosen between.
+
+    A manifest already declares how to RUN a harness. It declares nothing about
+    what the harness answers, what it costs, or what it cannot see -- which is
+    exactly what selection needs. Everything here is optional: a harness that
+    declares nothing is still loadable and still scores. It is simply not
+    selectable on the axis it stayed silent about, and a selector must treat
+    silence as "unknown", never as "fine".
+
+    ``resolves`` is the measured band -- the smallest difference the harness can
+    separate. It is the one field a selector must refuse to guess: choosing a
+    harness with a 0.25% band for a study expecting a 0.1% effect produces a
+    well-formed null result that means nothing. It therefore carries the
+    conditions it was measured under, and a band with no measurement date is
+    treated as undeclared.
+
+    ``blind_to`` is not a disclaimer, it is data. It was MEASURED that the
+    large-page policy moves one harness 5.9x and leaves two others inside the
+    noise, because only the first has the candidate allocating and first-touching
+    its own memory inside the timed window. That is a permanent property of those
+    harnesses and belongs in the manifest rather than in someone's notes.
+    """
+
+    question: str = ""
+    denominator: str = ""          # naive | competent_frozen | anchor_matched | best_known
+    resolves: float | None = None  # measured band, as a fraction (0.00149 = 0.149%)
+    resolves_measured_on: str = ""  # date; a band with no date is not a measurement
+    resolves_reps: int | None = None
+    cost_s: float | None = None
+    requires: tuple[str, ...] = ()
+    sees: tuple[str, ...] = ()
+    blind_to: tuple[str, ...] = ()
+    # Environment variables whose value the band was measured UNDER, and which
+    # therefore must not differ at run time. `ARI_STENCIL_SHAPES` can replace the
+    # scored problem outright without touching a single pinned byte: the manifest
+    # hash does not move, `measure_kwargs` does not move, and the harness goes on
+    # advertising a band it measured on a different problem. Naming the variable
+    # here turns that from an unfalsifiable claim into a check.
+    band_conditions: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def band_is_measured(self) -> bool:
+        """A number without a measurement behind it is worse than no number."""
+        return self.resolves is not None and bool(self.resolves_measured_on)
+
+    def band_condition_drift(self) -> list[str]:
+        """Where the running environment differs from what the band assumed.
+
+        An empty list is not proof of agreement: it also means the harness named
+        no conditions. The distinction is the caller's to make, so this reports
+        differences and ``band_conditions`` reports whether any were claimed.
+        """
+        import os as _os
+        out = []
+        for name, want in self.band_conditions:
+            got = _os.environ.get(name)
+            if (got or "") != (want or ""):
+                out.append(f"{name}: band measured with {want!r}, now {got!r}")
+        return out
+
+
+_DENOMINATORS = ("naive", "competent_frozen", "anchor_matched", "best_known")
+
+
+def _conditions(task: str, raw: dict) -> tuple[tuple[str, str], ...]:
+    """``band_conditions`` as ordered (name, value) pairs."""
+    v = raw.get("band_conditions")
+    if v is None:
+        return ()
+    if not isinstance(v, dict):
+        raise HarnessIntegrityError(
+            f"harness {task}: [declares].band_conditions must be a table of "
+            f"VARIABLE = \"value it was measured under\"")
+    return tuple(sorted((str(k), "" if x is None else str(x)) for k, x in v.items()))
+
+
+def _declaration_of(task: str, man: dict[str, Any]) -> Declaration:
+    """Parse ``[declares]``. Absent is legal; malformed is not.
+
+    Silence is a harness that has not been characterised yet. A wrong type or an
+    unknown denominator is a harness whose author believed they had declared
+    something -- that must fail loudly, or the selector reads a typo as silence
+    and quietly considers the harness for work it cannot do.
+    """
+    raw = man.get("declares")
+    if raw is None:
+        return Declaration()
+    if not isinstance(raw, dict):
+        raise HarnessIntegrityError(
+            f"harness {task}: [declares] must be a table, got {type(raw).__name__}")
+
+    def _tuple(key: str) -> tuple[str, ...]:
+        v = raw.get(key, ())
+        if isinstance(v, str) or not isinstance(v, (list, tuple)):
+            raise HarnessIntegrityError(
+                f"harness {task}: [declares].{key} must be a list of strings")
+        return tuple(str(x) for x in v)
+
+    den = str(raw.get("denominator", ""))
+    if den and den not in _DENOMINATORS:
+        raise HarnessIntegrityError(
+            f"harness {task}: [declares].denominator={den!r} is not one of "
+            f"{_DENOMINATORS}. An unrecognised value would be read as 'no "
+            f"denominator declared', which is how a naive denominator gets "
+            f"selected for a study that needed a competent one.")
+
+    band = raw.get("resolves")
+    if band is not None:
+        try:
+            band = float(band)
+        except (TypeError, ValueError):
+            raise HarnessIntegrityError(
+                f"harness {task}: [declares].resolves must be a number")
+        if not 0 < band < 1:
+            raise HarnessIntegrityError(
+                f"harness {task}: [declares].resolves={band} is a FRACTION of "
+                f"the measured value (0.00149 means 0.149%). A band of 1 or "
+                f"more would let the selector accept this harness for any "
+                f"effect size.")
+    return Declaration(
+        question=str(raw.get("question", "")),
+        denominator=den,
+        resolves=band,
+        resolves_measured_on=str(raw.get("resolves_measured_on", "")),
+        resolves_reps=(int(raw["resolves_reps"])
+                       if raw.get("resolves_reps") is not None else None),
+        cost_s=(float(raw["cost_s"]) if raw.get("cost_s") is not None else None),
+        requires=_tuple("requires"), sees=_tuple("sees"),
+        blind_to=_tuple("blind_to"),
+        band_conditions=_conditions(task, raw),
     )
 
 
@@ -431,8 +603,14 @@ def _unknown(task: str) -> str:
                "No harnesses are registered (is ARI_WORKSPACE set?)."))
 
 
-def available_tasks() -> list[str]:
-    """Tasks registered under ``workspace/harnesses/``. ARI ships none."""
+def registered_harnesses() -> list[str]:
+    """Every harness directory under ``workspace/harnesses/``. ARI ships none.
+
+    A HARNESS is a directory; the TASK it serves is declared. The two used to be
+    the same string, which made "one way of measuring" and "the scientific
+    question" indistinguishable and left no room for a second harness to answer
+    the same question differently.
+    """
     root = workspace_harness_root()
     if not root.is_dir():
         return []
@@ -440,14 +618,87 @@ def available_tasks() -> list[str]:
                   if d.is_dir() and (d / MANIFEST_NAME).is_file())
 
 
-def load(task: str | None = None) -> Harness:
-    """Resolve the harness for *task* (default: ``$ARI_TASK``, else ``spmm``).
+def _task_of(name: str) -> str:
+    """The task a harness directory serves — declared, defaulting to its name.
+
+    Reads only the manifest; it does not import the harness or verify digests,
+    because enumerating the pool must not be as expensive as binding one.
+
+    A manifest that does not parse RAISES rather than falling back to the
+    directory name. Swallowing it looks harmless and is not: the harness would
+    silently leave the pool it declared membership in, ``load(task)`` would stop
+    seeing an ambiguity it should refuse, and the remaining harness would be
+    bound without anyone choosing it. Failing to read a registration is not the
+    same as a registration that says nothing.
+    """
+    d = workspace_harness_root() / name
+    try:
+        man = _load_manifest(d)
+    except Exception as exc:
+        raise HarnessIntegrityError(
+            f"harness {name}: {MANIFEST_NAME} could not be read ({exc}). It "
+            f"cannot be treated as serving its directory name -- that would "
+            f"quietly remove it from the pool it may have declared.") from exc
+    return str((man.get("harness") or {}).get("task", name)).lower()
+
+
+def available_tasks() -> list[str]:
+    """The distinct questions the pool can answer, not the harness count."""
+    return sorted({_task_of(n) for n in registered_harnesses()})
+
+
+def harnesses_for(task: str) -> list[str]:
+    """Every harness directory serving *task*. More than one is the point."""
+    task = task.lower()
+    return [n for n in registered_harnesses() if _task_of(n) == task]
+
+
+def load(task: str | None = None, *, harness: str | None = None) -> Harness:
+    """Resolve a harness for *task* (default: ``$ARI_TASK``, else ``spmm``).
 
     An external harness registered in the workspace WINS over a packaged one of
     the same name — that is what lets a study pin its own frozen scaffolding
     next to its results instead of depending on whatever the installed ARI ships.
+
+    When several harnesses serve one task this REFUSES to choose. Silently
+    binding whichever sorted first would make the measurement depend on a
+    directory name, and the resulting score would be attributed to the task
+    rather than to the harness that produced it — which is precisely the
+    conflation the pool exists to end. Name the harness, or ask
+    ``ari.harness_select`` for a ranking on declared properties.
     """
     task = (task or os.environ.get("ARI_TASK", "spmm")).lower()
+    # The choice travels the same way the task does, so every caller inherits it
+    # without a new argument. It is RECORDED in provenance below: a study that
+    # picked one of several harnesses and did not say which is not reproducible
+    # on the axis that decides its numbers.
+    harness = harness or os.environ.get("ARI_HARNESS") or None
+    if harness:
+        d = workspace_harness_root() / harness
+        if not (d / MANIFEST_NAME).is_file():
+            raise HarnessIntegrityError(_unknown(harness))
+        served = _task_of(harness)
+        if served != task:
+            raise HarnessIntegrityError(
+                f"harness {harness!r} serves task {served!r}, not {task!r}. "
+                f"Binding it anyway would score one question with another "
+                f"question's measurement.")
+        return _load_external(served, d)
+
+    candidates = harnesses_for(task)
+    if len(candidates) > 1:
+        raise HarnessIntegrityError(
+            f"task {task!r} is served by {len(candidates)} harnesses "
+            f"({', '.join(candidates)}) and no choice was made. Refusing to "
+            f"pick one: the result would be a property of whichever name "
+            f"sorted first, reported as a property of the task. Pass "
+            f"harness=... (or ARI_HARNESS), or rank them with "
+            f"`ari harness select`.")
+    if candidates:
+        return _load_external(task, workspace_harness_root() / candidates[0])
+
+    # No harness DECLARES this task; fall back to the directory of that name so
+    # a manifest without an explicit [harness].task keeps working.
     d = workspace_harness_root() / task
     if (d / MANIFEST_NAME).is_file():
         return _load_external(task, d)

@@ -18,6 +18,8 @@ from spmm_harness import (
     reference_spmm,
 )
 
+from spmm_harness import _kill_strays
+
 
 def test_gamma():
     assert gamma(10) > 0.0
@@ -67,9 +69,9 @@ def test_is_correct_rejects_gross_error():
 
 
 def _mock_runner(kind, work_dir, A, X):
-    # baseline 1.0s, candidate 0.5s (2x) and correct. ONE cold call per invocation
+    # reference 1.0s, candidate 0.5s (2x) and correct. ONE cold call per invocation
     # (the harness re-invokes the runner per rep on a fresh X).
-    return (1.0 if kind == "baseline" else 0.5), reference_spmm(A, X)
+    return (1.0 if kind == "reference" else 0.5), reference_spmm(A, X)
 
 
 def test_measure_node_valid_with_speedup():
@@ -84,7 +86,7 @@ def test_measure_node_valid_with_speedup():
 def test_measure_node_incorrect_candidate_is_invalid():
     def bad(kind, wd, A, X):
         Y = reference_spmm(A, X)
-        return (1.0, Y) if kind == "baseline" else (0.5, Y * 3.0 + 1.0)
+        return (1.0, Y) if kind == "reference" else (0.5, Y * 3.0 + 1.0)
     res = measure_node("/tmp", run_kernel=bad, families=("uniform",), n=64, k=4, reps=1, warmup=0)
     assert res["families"]["uniform"]["valid"] is False
 
@@ -102,14 +104,14 @@ def test_measure_node_uses_matched_ratios_and_records_order():
         n=32, k=2, reps=3, warmup=0)
     family = out["families"]["uniform"]
     assert calls == [
-        "candidate", "baseline", "baseline",
-        "candidate", "candidate", "baseline",
+        "candidate", "reference", "reference",
+        "candidate", "candidate", "reference",
     ]
     assert family["speedup"] == pytest.approx(10.0)
     assert [r["execution_order"] for r in family["repetitions"]] == [
-        ["candidate", "baseline"],
-        ["baseline", "candidate"],
-        ["candidate", "baseline"],
+        ["candidate", "reference"],
+        ["reference", "candidate"],
+        ["candidate", "reference"],
     ]
 
 
@@ -122,9 +124,9 @@ def test_measure_node_reverses_starting_order_for_odd_seed():
         "/tmp", run_kernel=run, families=("uniform",),
         n=32, k=2, reps=3, warmup=0, seed=1)
     assert [r["execution_order"] for r in out["families"]["uniform"]["repetitions"]] == [
-        ["baseline", "candidate"],
-        ["candidate", "baseline"],
-        ["baseline", "candidate"],
+        ["reference", "candidate"],
+        ["candidate", "reference"],
+        ["reference", "candidate"],
     ]
 
 
@@ -150,8 +152,8 @@ def test_default_runner_missing_candidate_raises():
         _default_run_kernel("candidate", "/nonexistent_handoff_dir", A, X)
 
 
-def test_default_runner_baseline_compiles_and_is_correct():
-    """Login smoke: real compile+run of the frozen baseline is correct.
+def test_default_runner_reference_compiles_and_is_correct():
+    """Login smoke: real compile+run of the frozen reference is correct.
 
     Skips when no C compiler is available (e.g. minimal CI). TIMING is NOT
     asserted here — its representativeness is validated on a compute node.
@@ -164,13 +166,37 @@ def test_default_runner_baseline_compiles_and_is_correct():
     A = gen_matrix("uniform", 32, density=0.1, seed=1)
     X = np.random.default_rng(2).standard_normal((32, 3))
     try:
-        t, Y = _default_run_kernel("baseline", "", A, X)
+        t, Y = _default_run_kernel("reference", "", A, X)
     except RuntimeError as e:
         pytest.skip(f"compile/run unavailable on this host: {e}")
     assert t >= 0.0
     ok, mr = is_correct(Y, reference_spmm(A, X), A, X)
-    assert ok, f"baseline kernel output incorrect (max_rel={mr})"
+    assert ok, f"reference kernel output incorrect (max_rel={mr})"
 
+
+
+def test_default_runner_naive_anchor_compiles_and_is_correct():
+    """The naive kernel left the scoring path but is still the absolute anchor.
+
+    v2 scores against the competent reference, so nothing in a scored run builds
+    baseline_spmm.c any more. It is still seeded into the agent's work dir and is
+    still what reported speedups convert through to reach absolute units, so it
+    has to keep compiling and keep being correct rather than rot unnoticed.
+    """
+    import shutil
+    from spmm_harness import _default_run_kernel
+    import os
+    if shutil.which(os.environ.get("ARI_SPMM_CC", "cc")) is None:
+        pytest.skip("no C compiler available")
+    A = gen_matrix("uniform", 32, density=0.1, seed=1)
+    X = np.random.default_rng(2).standard_normal((32, 3))
+    try:
+        t, Y = _default_run_kernel("baseline", "", A, X)
+    except RuntimeError as e:
+        pytest.skip(f"compile/run unavailable: {e}")
+    assert t >= 0.0
+    ok, mr = is_correct(Y, reference_spmm(A, X), A, X)
+    assert ok, f"naive anchor incorrect (max_rel={mr})"
 
 def test_families_constant():
     assert "uniform" in FAMILIES and len(FAMILIES) == 6
@@ -269,8 +295,18 @@ def test_gaming_forged_timer_is_ignored(tmp_path):
            + _HONEST_SPMM)
     res = _measure_candidate(tmp_path, src)
     fam = res["families"]
-    assert fam, res.get("reason")
-    assert res["evaluation_status"] in {"valid", "measurement_invalid"}
+    # v2 CONTRACT CHANGE, deliberately widened: v1 could only NEUTRALISE this
+    # (the time is read from a private file, so stdout buys nothing). v2 rejects
+    # the candidate at compile time, because the forgery is delivered by a
+    # DESTRUCTOR and v2 refuses any kernel object carrying .fini_array - the same
+    # mechanism the /proc/self/cmdline test uses to overwrite the timing file
+    # after main. The check cannot tell a harmless destructor from a harmful one,
+    # and a compute kernel has no legitimate use for either. A rejected candidate
+    # measures no families, so the emptiness check only applies when it compiled.
+    assert res["evaluation_status"] in {"valid", "measurement_invalid",
+                                        "candidate_invalid"}
+    if res.get("compile_ok"):
+        assert fam, res.get("reason")
     assert all(
         not f["valid"] or f["speedup"] < 5.0 for f in fam.values()
     ), "forged timer leaked a huge speedup"
@@ -370,3 +406,246 @@ void spmm(int n,int m,int k,const int*indptr,const int*indices,
         pytest.skip(f"compile/run unavailable on this host: {e}")
     assert not any(f["valid"] for f in fam.values()), \
         "forged in-process timer was not caught by the external wall-clock cross-check"
+
+
+def test_reference_is_not_seeded_into_the_agent_work_dir(tmp_path):
+    """The score denominator must be unreachable from the agent's directory.
+
+    This is the one leak that silently destroys the task rather than breaking
+    it: a candidate that copies reference_spmm.c scores 1.0 for no work, and
+    every downstream number would still look plausible. Seeding is a list of
+    filenames, so one careless addition is all it takes.
+    """
+    import os
+    from spmm_harness import seed_work_dir
+    wd = str(tmp_path / "node")
+    seed_work_dir(wd)
+    seeded = sorted(os.listdir(wd))
+    leaked = [f for f in seeded if "reference" in f]
+    assert not leaked, f"the reference leaked into the work dir: {leaked}"
+    assert "reference_spmm.c" not in seeded
+
+
+def test_cached_problem_file_is_byte_identical_to_a_direct_write(tmp_path, monkeypatch):
+    """The problem-file cache must not change a single byte of what is scored.
+
+    The cache is OPT-IN now (problem files dominated the per-seed footprint and a
+    30-seed campaign would not have fitted the quota), so this enables it
+    explicitly. The guarantee still has to hold wherever storage allows the cache
+    to be turned back on.
+
+    _run_exe now hard links a cached problem.bin instead of rewriting ~106 MB per
+    process launch. A size check alone would not catch a stale or truncated
+    cache entry, and a wrong problem file changes scores silently rather than
+    failing, so this compares the actual bytes on both paths.
+    """
+    import os
+    import numpy as np
+    import spmm_harness as SH
+
+    A = gen_matrix("uniform", 40, density=0.15, seed=3)
+    X = np.random.default_rng(4).standard_normal((A.shape[1], 5))
+
+    captured = {}
+
+    def fake_popen(argv, **kw):
+        # argv = [exe, prob, outf, tf]; snapshot the problem file, then fail the
+        # run so _run_exe raises and we do not need a real executable.
+        captured.setdefault("bytes", []).append(open(argv[1], "rb").read())
+        raise RuntimeError("stop after the problem file is written")
+
+    monkeypatch.setattr(SH._sub if hasattr(SH, "_sub") else __import__("subprocess"),
+                        "Popen", fake_popen, raising=False)
+    import subprocess
+    monkeypatch.setattr(subprocess, "Popen", fake_popen)
+
+    monkeypatch.setenv("ARI_CACHE_PROBLEM_FILES", "1")
+    cache = tmp_path / "cache"
+    cache.mkdir()
+
+    # 1) no key -> direct write
+    wd1 = tmp_path / "run1"
+    wd1.mkdir()
+    monkeypatch.delenv("ARI_HARNESS_CACHE", raising=False)
+    try:
+        SH._run_exe("/nonexistent", str(wd1), A, X, problem_key=None)
+    except Exception:
+        pass
+
+    # 2) with a key and a cache -> written to cache, hard linked in
+    wd2 = tmp_path / "run2"
+    wd2.mkdir()
+    monkeypatch.setenv("ARI_HARNESS_CACHE", str(cache))
+    try:
+        SH._run_exe("/nonexistent", str(wd2), A, X, problem_key="unit_test_key")
+    except Exception:
+        pass
+    # 3) again, now a cache HIT rather than a write
+    wd3 = tmp_path / "run3"
+    wd3.mkdir()
+    try:
+        SH._run_exe("/nonexistent", str(wd3), A, X, problem_key="unit_test_key")
+    except Exception:
+        pass
+
+    blobs = captured.get("bytes", [])
+    assert len(blobs) == 3, f"expected three problem files, saw {len(blobs)}"
+    assert blobs[0] == blobs[1], "cache-write path differs from the direct write"
+    assert blobs[0] == blobs[2], "cache-HIT path differs from the direct write"
+    assert (cache / "spmm_prob_unit_test_key.bin").is_file()
+
+
+def test_reference_cache_detects_a_corrupted_entry_and_recomputes(tmp_path, monkeypatch):
+    """A bad reference cache must never be trusted.
+
+    The cached array IS the correctness oracle, so a stale or corrupt entry
+    would not fail loudly — it would silently accept wrong candidate output.
+    The row check exists for exactly this, and this test corrupts an entry to
+    prove the check fires rather than assuming it does.
+    """
+    import numpy as np
+    import spmm_harness as SH
+
+    monkeypatch.setenv("ARI_HARNESS_CACHE", str(tmp_path))
+    A = gen_matrix("uniform", 64, density=0.2, seed=5)
+    X = np.random.default_rng(6).standard_normal((A.shape[1], 4))
+    key = "corrupt_test"
+
+    good = SH._cached_reference_spmm(A, X, key)
+    assert np.allclose(good, reference_spmm(A, X))
+    path = tmp_path / f"spmm_yref_{key}.npy"
+    assert path.is_file(), "the cache was never written"
+
+    # Corrupt it in a way a size check alone cannot see: same shape, same dtype.
+    bad = np.load(path)
+    bad += 1.0
+    np.save(path, bad)
+
+    again = SH._cached_reference_spmm(A, X, key)
+    assert np.allclose(again, reference_spmm(A, X)), (
+        "a corrupted reference cache entry was returned as the oracle")
+
+
+def test_reference_cache_survives_a_wrong_shape(tmp_path, monkeypatch):
+    """A cache entry from a different problem must be rejected, not reshaped."""
+    import numpy as np
+    import spmm_harness as SH
+
+    monkeypatch.setenv("ARI_HARNESS_CACHE", str(tmp_path))
+    A = gen_matrix("uniform", 48, density=0.2, seed=7)
+    X = np.random.default_rng(8).standard_normal((A.shape[1], 3))
+    key = "shape_test"
+    np.save(tmp_path / f"spmm_yref_{key}.npy", np.zeros((2, 2)))
+    out = SH._cached_reference_spmm(A, X, key)
+    assert out.shape == (A.shape[0], 3)
+    assert np.allclose(out, reference_spmm(A, X))
+
+
+def test_bound_cache_detects_a_corrupted_entry(tmp_path, monkeypatch):
+    """A too-large cached bound would LOOSEN the oracle, not fail it."""
+    import numpy as np
+    import scipy.sparse as sp
+    import spmm_harness as SH
+
+    monkeypatch.setenv("ARI_HARNESS_CACHE", str(tmp_path))
+    A = gen_matrix("uniform", 64, density=0.2, seed=9)
+    X = np.random.default_rng(10).standard_normal((A.shape[1], 4))
+    absA = sp.csr_matrix((np.abs(A.data), A.indices, A.indptr), shape=A.shape)
+    absX = np.abs(X)
+    key = "bound_corrupt"
+
+    good = SH._cached_abs_product(absA, absX, key)
+    assert np.allclose(good, absA @ absX)
+    path = tmp_path / f"spmm_absprod_{key}.npy"
+    assert path.is_file()
+
+    np.save(path, np.load(path) * 1e6)          # an inflated, same-shape bound
+    again = SH._cached_abs_product(absA, absX, key)
+    assert np.allclose(again, absA @ absX), (
+        "an inflated cached bound was accepted; the oracle would have been loosened")
+
+
+def test_is_correct_is_unchanged_by_the_bound_cache(tmp_path, monkeypatch):
+    """Caching must not move the accept/reject boundary at all."""
+    import numpy as np
+    import spmm_harness as SH
+
+    A = gen_matrix("uniform", 80, density=0.15, seed=11)
+    X = np.random.default_rng(12).standard_normal((A.shape[1], 5))
+    Yr = reference_spmm(A, X)
+    wrong = Yr.copy()
+    wrong[0, 0] += 1e3
+
+    monkeypatch.delenv("ARI_HARNESS_CACHE", raising=False)
+    ok_u, mr_u = SH.is_correct(Yr, Yr, A, X)
+    bad_u, _ = SH.is_correct(wrong, Yr, A, X)
+
+    monkeypatch.setenv("ARI_HARNESS_CACHE", str(tmp_path))
+    ok_c, mr_c = SH.is_correct(Yr, Yr, A, X, bound_key="parity")
+    bad_c, _ = SH.is_correct(wrong, Yr, A, X, bound_key="parity")
+
+    assert ok_u == ok_c is True
+    assert bad_u == bad_c is False
+    assert mr_u == mr_c
+
+
+def test_kill_strays_actually_kills_a_detached_grandchild():
+    """The fast path must still catch what the scan caught.
+
+    _kill_strays exists because a candidate can fork()+setsid() a process that
+    outlives its run and burns cores into the NEXT measurement - the candidate
+    slowing its own referee. Replacing the /proc scan with the kernel's own
+    children list made it 590x cheaper (84.42 ms -> 0.143 ms on a node with 709
+    processes, and it runs twice per repetition), and cheaper is worthless if it
+    stops finding the escapee.
+
+    Spawns a real detached process that reparents to us, then asserts it dies.
+    """
+    import os
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    # A child that detaches itself and would otherwise outlive the caller.
+    proc = subprocess.Popen(
+        [sys.executable, "-c",
+         "import os,time\nos.setsid()\ntime.sleep(120)"],
+        start_new_session=False)
+    try:
+        for _ in range(100):                    # let it get going
+            if proc.poll() is None:
+                break
+            time.sleep(0.01)
+        assert proc.poll() is None, "the test child exited before it could be found"
+
+        killed = _kill_strays(-1)               # -1: exempt nothing
+        assert killed >= 1, "the detached child was not found"
+
+        for _ in range(200):
+            if proc.poll() is not None:
+                break
+            time.sleep(0.01)
+        assert proc.poll() is not None, "the detached child survived _kill_strays"
+    finally:
+        try:
+            proc.kill()
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+
+
+def test_kill_strays_exempts_the_pid_it_is_told_to_keep():
+    """The scored process itself must never be killed by its own cleanup."""
+    import subprocess
+    import sys
+    import time
+
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+    try:
+        _kill_strays(proc.pid)
+        time.sleep(0.2)
+        assert proc.poll() is None, "the exempt pid was killed"
+    finally:
+        proc.kill()
+        proc.wait(timeout=5)

@@ -1,6 +1,16 @@
 /* selftest.c — LOCAL developer harness for the 3-D Jacobi stencil task.
  *
- * NOT the evaluator and NOT used for scoring. Runs your candidate jacobi() on a
+ * NOT the evaluator, but v2 makes it MEASURE THE SAME THING the evaluator does.
+ * v1 disagreed on four axes (transfer slope to the scored value 0.780): it ran a
+ * single 192-cube, which is NONE of the three scored grids; it defaulted to 16
+ * threads instead of the allocation's count; it averaged raw seconds instead of
+ * taking the median per-grid speedup then the geometric mean; and it ran a warmup
+ * call priming both the thread team and the DATA while the evaluator times one
+ * cold call. The naive reference is now measured once per (grid, threads) and
+ * cached in .selftest_ref_cache; v1 re-measured it every invocation and it
+ * drifted under load.
+ *
+ * NOT used for scoring. Runs your candidate jacobi() on a
  * single grid and reports correctness (same nt-scaled eps bound as the
  * evaluator) + an estimated speedup vs the naive single-thread baseline. The
  * evaluator uses several grid shapes and fresh data, so a PASS is a
@@ -65,54 +75,152 @@ static void jacobi_ref(int nx, int ny, int nz, int nt,
     free(cur); free(nxt);
 }
 
+/* The evaluator's PREREG grid set (nx, ny, nz, nt) - keep in step with SHAPES
+ * in stencil_harness.py. v1 ran a single 192-cube, which is NONE of these. */
+#define N_GRIDS 3
+#define REPS 3
+#define CACHE_PATH ".selftest_ref_cache"
+/* KEEP IN STEP WITH SHAPES IN stencil_harness.py. nt is 240, not 30: the
+ * candidate allocates its own buffers, so 268 MB of first-touch page faults land
+ * inside the timed window, and at nt=30 that was 64% of the score - the number
+ * measured allocation rather than sweeping. This table was left at 30 when the
+ * scorer moved to 240, which meant the self-test the agent iterates against was
+ * measuring a different problem from the one it is graded on. */
+static int GRIDS[N_GRIDS][4] = {
+    {256, 256, 256, 240}, {384, 192, 192, 240}, {192, 192, 384, 240},
+};
+static int n_grids = N_GRIDS;
+
+/* ...and FOLLOW the scorer when it is told to use other grids. The table above
+ * is a default, not the truth: the harness reads ARI_STENCIL_SHAPES, and the
+ * smoke configuration sets it to "128,128,128,10;160,96,96,10;96,96,160,10",
+ * three orders of magnitude cheaper. With the table hardcoded, every `make
+ * check` ran the FULL grids while the score came from the small ones. Measured:
+ * a smoke stencil node took 56-184 s against 20 s for the same node on gemm,
+ * with FEWER LLM calls -- the reference pass alone is 13.7+11.9+11.5 = 37 s per
+ * invocation. Worse, it aimed the agent's own feedback at a problem it was not
+ * graded on, which is exactly the failure the comment above records from the
+ * nt=30/240 era, arriving by a different route. */
+static void load_grids_from_env(void) {
+    const char *spec = getenv("ARI_STENCIL_SHAPES");
+    if (!spec || !*spec) return;
+    int parsed[N_GRIDS][4];
+    int g = 0, k = 0;
+    const char *p = spec;
+    while (*p && g < N_GRIDS) {
+        char *end;
+        long x = strtol(p, &end, 10);
+        if (end == p) break;
+        if (x <= 0) return;                 /* malformed: keep the defaults */
+        parsed[g][k++] = (int)x;
+        p = end;
+        if (k == 4) { ++g; k = 0; }
+        while (*p == ',' || *p == ';' || *p == ' ') ++p;
+    }
+    if (g == 0 || k != 0) return;           /* nothing complete: keep the defaults */
+    for (int i = 0; i < g; ++i)
+        for (int j = 0; j < 4; ++j) GRIDS[i][j] = parsed[i][j];
+    n_grids = g;
+}
+
+static int cmp_double(const void *a, const void *b) {
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+static double median_of(double *v, int n) {
+    qsort(v, (size_t)n, sizeof(double), cmp_double);
+    return (n % 2) ? v[n / 2] : 0.5 * (v[n / 2 - 1] + v[n / 2]);
+}
+static int cache_lookup(const int g[4], int threads, double *out) {
+    FILE *f = fopen(CACHE_PATH, "r");
+    if (!f) return 0;
+    int a, b, c, d, th; double sec; int hit = 0;
+    while (fscanf(f, "%d %d %d %d %d %lf", &a, &b, &c, &d, &th, &sec) == 6)
+        if (a == g[0] && b == g[1] && c == g[2] && d == g[3] && th == threads && sec > 0.0) {
+            *out = sec; hit = 1;
+        }
+    fclose(f);
+    return hit;
+}
+static void cache_store(const int g[4], int threads, double sec) {
+    FILE *f = fopen(CACHE_PATH, "a");
+    if (!f) return;
+    fprintf(f, "%d %d %d %d %d %.9f\n", g[0], g[1], g[2], g[3], threads, sec);
+    fclose(f);
+}
+
 int main(void) {
-    const int nx = env_int("ARI_STENCIL_NX", 192);
-    const int ny = nx, nz = nx;
-    const int nt = env_int("ARI_STENCIL_NT", 30);
-    const int threads = env_int("ARI_STENCIL_THREADS", 16);
-    const int warmup = 1, reps = 3;
-    const size_t N = (size_t)nx * ny * nz;
+    const int threads = env_int("ARI_STENCIL_THREADS", omp_get_max_threads());
     omp_set_num_threads(threads);
 
-    double *u0 = malloc(sizeof(double) * N);
-    double *u  = malloc(sizeof(double) * N);
-    double *ur = malloc(sizeof(double) * N);
-    if (!u0 || !u || !ur) { fprintf(stderr, "oom\n"); return 2; }
-    srand(7);
-    double amax = 0.0;
-    for (size_t i = 0; i < N; ++i) {
-        u0[i] = (double)rand() / RAND_MAX * 2.0 - 1.0;
-        double a = fabs(u0[i]); if (a > amax) amax = a;
+    /* Create the thread team OUTSIDE every timed region, as the frozen driver
+     * now does. The kernel is not called here. */
+    { double s = 0.0;
+#pragma omp parallel for reduction(+ : s)
+      for (int i = 0; i < 64; ++i) s += (double)i;
+      if (s < 0.0) fprintf(stderr, "unreachable\n"); }
+
+    double per_grid[N_GRIDS];
+    load_grids_from_env();
+    int all_ok = 1;
+    printf("omp_threads=%d   (evaluator uses the allocation's thread count)\n", threads);
+
+    for (int gi = 0; gi < n_grids; ++gi) {
+        const int nx = GRIDS[gi][0], ny = GRIDS[gi][1], nz = GRIDS[gi][2], nt = GRIDS[gi][3];
+        const size_t N = (size_t)nx * ny * nz;
+        double *u0 = malloc(sizeof(double) * N);
+        double *u  = malloc(sizeof(double) * N);
+        double *ur = malloc(sizeof(double) * N);
+        if (!u0 || !u || !ur) { fprintf(stderr, "selftest: out of memory\n"); return 2; }
+        srand(7 + gi);
+        double amax = 0.0;
+        for (size_t i = 0; i < N; ++i) {
+            u0[i] = (double)rand() / RAND_MAX * 2.0 - 1.0;
+            double a = fabs(u0[i]); if (a > amax) amax = a;
+        }
+        if (amax == 0.0) amax = 1.0;
+
+        double tb;
+        if (!cache_lookup(GRIDS[gi], threads, &tb)) {
+            double t0 = now_sec();
+            jacobi_ref(nx, ny, nz, nt, u0, ur);
+            tb = now_sec() - t0;
+            cache_store(GRIDS[gi], threads, tb);
+        }
+        jacobi_ref(nx, ny, nz, nt, u0, ur);   /* clean reference for the check */
+
+        double ratios[REPS];
+        for (int r = 0; r < REPS; ++r) {
+            for (size_t i = 0; i < N; ++i) u[i] = NAN;   /* poison, as the driver does */
+            double t0 = now_sec();
+            jacobi(nx, ny, nz, nt, u0, u);
+            double tc = now_sec() - t0;
+            ratios[r] = (tc > 0.0) ? tb / tc : 0.0;
+        }
+
+        double bound = C_EPS * gamma_k(7) * (double)(nt > 0 ? nt : 1) * amax;
+        int ok = 1; double max_abs = 0.0;
+        for (size_t idx = 0; idx < N; ++idx) {
+            double resid = fabs(u[idx] - ur[idx]);
+            if (!(resid <= bound)) ok = 0;       /* NaN-safe */
+            if (resid > max_abs) max_abs = resid;
+        }
+        all_ok = all_ok && ok;
+        per_grid[gi] = median_of(ratios, REPS);
+        printf("  %3dx%3dx%-3d t=%-3d  ref=%.4fs  speedup~%7.1fx  correct=%-3s  max_abs=%.2e  bound=%.2e\n",
+               nx, ny, nz, nt, tb, per_grid[gi], ok ? "yes" : "NO", max_abs, bound);
+        free(u0); free(u); free(ur);
     }
-    if (amax == 0.0) amax = 1.0;
 
-    jacobi_ref(nx, ny, nz, nt, u0, ur);
+    double logsum = 0.0;
+    for (int gi = 0; gi < n_grids; ++gi)
+        logsum += log(per_grid[gi] > 0.0 ? per_grid[gi] : 1e-12);
+    double geo = exp(logsum / n_grids);
 
-    for (int w = 0; w < warmup; ++w) jacobi(nx, ny, nz, nt, u0, u);
-    double tc = 0.0;
-    for (int r = 0; r < reps; ++r) { double t0 = now_sec(); jacobi(nx, ny, nz, nt, u0, u); tc += now_sec() - t0; }
-    tc /= reps;
-    double tb = 0.0;
-    for (int r = 0; r < reps; ++r) { double t0 = now_sec(); jacobi_ref(nx, ny, nz, nt, u0, ur); tb += now_sec() - t0; }
-    tb /= reps;
-    jacobi_ref(nx, ny, nz, nt, u0, ur); /* clean reference after timing */
-
-    double bound = C_EPS * gamma_k(7) * (double)(nt > 0 ? nt : 1) * amax;
-    int ok = 1; double max_abs = 0.0;
-    for (size_t idx = 0; idx < N; ++idx) {
-        double resid = fabs(u[idx] - ur[idx]);
-        if (resid > bound) ok = 0;
-        if (resid > max_abs) max_abs = resid;
-    }
-    double speedup = (tc > 0.0) ? (tb / tc) : 0.0;
-    printf("grid: %dx%dx%d  sweeps=%d  omp_threads=%d\n", nx, ny, nz, nt, threads);
-    printf("candidate_sec=%.5f  baseline_naive_sec=%.5f  speedup~%.1fx  correct=%s  max_abs_err=%.2e  bound=%.2e\n",
-           tc, tb, speedup, ok ? "yes" : "NO", max_abs, bound);
-    if (ok)
-        printf("SELFTEST: PASS  (correct; ~%.1fx vs naive baseline)\n", speedup);
+    if (all_ok)
+        printf("SELFTEST: PASS  (correct on all %d grids; geomean ~%.1fx vs naive baseline)\n",
+               n_grids, geo);
     else
         printf("SELFTEST: FAIL  (incorrect output => the evaluator scores 0; fix correctness first)\n");
-
-    free(u0); free(u); free(ur);
-    return ok ? 0 : 1;
+    return all_ok ? 0 : 1;
 }

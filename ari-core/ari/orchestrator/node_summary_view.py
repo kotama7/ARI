@@ -415,17 +415,35 @@ def node_summary_view(
         # one message, and it is unverified self-report re-entering a deliberately
         # deterministic loop — through the +summary arms ONLY, so it biased the arm
         # comparison the study exists to measure.
+        # v2: the two are no longer merged into one field. Dropping the narrative
+        # on invalid nodes fixed the gross case, but on a VALID node `outcome:`
+        # still silently switched between "the evaluator's verdict" and "what the
+        # agent said about itself", and the child had no way to tell which it was
+        # reading. The agent authors its narrative BEFORE the evaluator scores it,
+        # so the narrative cannot have been informed by the measurement — which is
+        # exactly how 88.5% of gemm handoff blocks came to carry a self-reported
+        # speedup contradicting the metrics printed beside them.
+        #
+        # Adjudicating the narrative's numbers against the score was considered and
+        # rejected: under v2 a legitimate narrative can quote a figure that is not
+        # the score at all (the self-test reports GF/s, the score is a ratio
+        # against the reference), so a regex comparison would delete true
+        # statements. Separating the fields is honest without pretending to judge.
         verdict = (rep.get("evaluator_reason") or rep.get("eval_summary") or "").strip()
-        if measured_invalid(rep):
-            h = verdict
-        else:
-            h = (rep.get("what_was_done") or "").strip()
-            if not h:
-                h = ((rep.get("self_assessment") or {}).get("headline") or "").strip()
-            if not h:
-                h = verdict
-        if h:
-            parts.append(f"  outcome: {_cap(h, max_chars)}")
+        if verdict:
+            parts.append(f"  outcome (measured): {_cap(verdict, max_chars)}")
+        if not measured_invalid(rep):
+            narrative = (rep.get("what_was_done") or "").strip()
+            if not narrative:
+                narrative = ((rep.get("self_assessment") or {}).get("headline") or "").strip()
+            if narrative and narrative != verdict:
+                parts.append(
+                    f"  self_report (unverified, written before scoring): "
+                    f"{_cap(narrative, max_chars)}")
+        elif not verdict:
+            # Invalid and the evaluator said nothing usable: say so rather than
+            # falling back to the narrative the measurement just refuted.
+            parts.append("  outcome (measured): no valid measurement")
     if "key_metrics" in enabled:
         km = _key_metrics(rep)
         if km:

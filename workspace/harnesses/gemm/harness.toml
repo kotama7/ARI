@@ -12,17 +12,35 @@ target_env = "ARI_GEMM_TARGET"
 axis = "speedup"
 scale = "log"
 
+[declares]
+question = "time to solution on fixed shapes, against a competent frozen reference"
+denominator = "anchor_matched"
+resolves = 0.00251
+resolves_measured_on = "2026-08-03"
+resolves_reps = 15
+cost_s = 13.1
+requires = ["c_compiler", "openmp"]
+sees = ["cache_blocking", "vectorisation", "thread_scaling", "toolchain"]
+# The problem arrives from outside the timed window, so the candidate never
+# allocates or first-touches it under measurement. Measured consequence: the
+# large-page policy that moves the stencil 5.9x leaves this harness inside its
+# own noise.
+blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
+
 [files]
-"experiment.md" = "ddb9f0433ca13ba1f95c562fedbcc2c1741f73bccab1f5d105755c4ee790ca30"
-"gemm_harness.py" = "d01b200112d7c83698b09a224f3fde3f59f5ecb56a4b3bf55180be322e95b697"
-"gemm_kernels/Makefile" = "020ca959e2549c33860cddf3d3df40fb9f72bad13284ae508b5ac5560dc7ce61"
+"experiment.md" = "941658eab3af6ea1a554b0a27acf274149653f90276ba69fb57f6c31a3b18c24"
+"gemm_harness.py" = "7d6527c332aa8c8311a75d6874e94410fd2de64382c09817568513ef3570ade1"
+"gemm_kernels/Makefile" = "aabee3392dd7fab79957fa2bb9d7610bf99c94743dd4ca9ae211ecf8beef4a06"
 "gemm_kernels/baseline_gemm.c" = "3fa8958d67f24ab5a04e48c23660451da5a9db84c3e4457d4a6854a29f8cffa2"
+"gemm_kernels/reference_gemm.c" = "5d5dc366a9733dbdf2d988ca936f124f6d7fd4f7b2fef604d1fec89be81575a2"
 "gemm_kernels/candidate_gemm.c" = "ded6ccea88d9f517f4f79548bb74e79bf8285b4a148546e90454b5dc3430ced5"
 "gemm_kernels/gemm_kernel.h" = "581403e694238b99b7c5d2b39db50c3c903fbab4e8f73f188bd52d872abbee56"
-"gemm_kernels/gemm_main.c" = "b936f72d68ae82542f6149b52661a3ce9d23f85399ab02c1ceeb80f0ea49e241"
-"gemm_kernels/selftest.c" = "4f78a7bc7e71eba5b6a3daec2b831985de2ae66e10be6f1e6d7aa0d887673267"
+"gemm_kernels/gemm_main.c" = "faa350c1720e4d217498e3da03ddd88ca992914a2839988f13e6744e2c4c04bf"
+"gemm_kernels/selftest.c" = "6a527269fc5ce032f203bc087321f5a28f69d8ec3012fca5529ee2258de7bd4e"
+
+"gemm_kernels/README.md" = "c73af7670390ee40679fe209efc1134fc96c3763746680f3dd9a16de9183c620"
 
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "d9d9b90f11c35a10f5ab58a4da6b250bf4bdb0162eb59bd8c5d72855ea2344bb"
+self_sha256 = "dcffea5b6bea222bba9dd50f616f177b79295f3dec6dae0c388831db0dc61e03"

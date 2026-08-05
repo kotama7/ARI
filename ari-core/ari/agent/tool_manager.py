@@ -17,6 +17,7 @@ don't need to change.
 from __future__ import annotations
 
 import json as _json
+import time as _time
 from typing import Any
 
 from ari.agent.message_utils import _tool_was_called
@@ -63,6 +64,41 @@ def available_tools_openai(
     ]
 
 
+# ── Per-node wall-clock budget for command execution ────────────────────────
+# A single run_bash is capped by its own timeout, but nothing capped the SUM.
+# One node could therefore spend the whole per-node timeout on shell calls and
+# be killed by the outer watchdog with no report at all, which is the worst
+# outcome: no score, no self-report, and no signal about why. Tracked per node
+# so a long build is fine while a loop of them is not. 0 disables the cap.
+_EXEC_TOOLS = frozenset({"run_bash", "run_code"})
+_exec_spent: dict[str, float] = {}
+
+
+def exec_budget_seconds() -> float:
+    """Per-node wall-clock budget for run_bash/run_code, 0 to disable."""
+    import os as _os
+
+    try:
+        return float(_os.environ.get("ARI_NODE_EXEC_BUDGET_S", "1800") or 0)
+    except ValueError:
+        return 1800.0
+
+
+def reset_exec_budget(node_id: str | None) -> None:
+    """Start a fresh budget for a node."""
+    if node_id:
+        _exec_spent.pop(str(node_id), None)
+
+
+def exec_budget_remaining(node_id: str | None) -> float:
+    """Seconds of command execution this node may still use (inf when off)."""
+    budget = exec_budget_seconds()
+    if budget <= 0 or not node_id:
+        return float("inf")
+    return max(0.0, budget - _exec_spent.get(str(node_id), 0.0))
+
+
+
 def execute_tool_calls(
     mcp: Any,
     tool_calls: list[dict],
@@ -99,10 +135,38 @@ def execute_tool_calls(
             # sub-path the model wanted goes in the filename/path/command args,
             # which the coding server devirtualizes against this same work_dir.
             args["work_dir"] = work_dir
+        if name in _EXEC_TOOLS:
+            _left = exec_budget_remaining(node_id)
+            if _left <= 0:
+                results.append({
+                    "tool_call_id": tc.get("id", ""), "name": name,
+                    "result": {
+                        "status": "error",
+                        "error": (
+                            f"this node has used its whole command-execution "
+                            f"budget of {exec_budget_seconds():.0f}s. Stop running "
+                            f"commands and return your result with what you have."
+                        ),
+                    },
+                })
+                continue
+            # Never let one call outlast what is left, so the cap cannot be
+            # overshot by a single long command.
+            if _left != float("inf"):
+                try:
+                    _req = float(args.get("timeout") or 0)
+                except (TypeError, ValueError):
+                    _req = 0.0
+                if _req <= 0 or _req > _left:
+                    args["timeout"] = int(max(1, _left))
+        _t0 = _time.monotonic()
         if node_id and name in mcp._COW_TOOLS:
             result = mcp.call_tool(name, args, cow_node_id=node_id)
         else:
             result = mcp.call_tool(name, args)
+        if name in _EXEC_TOOLS and node_id:
+            _exec_spent[str(node_id)] = (
+                _exec_spent.get(str(node_id), 0.0) + (_time.monotonic() - _t0))
         results.append({"tool_call_id": tc.get("id", ""), "name": name, "result": result})
     return results
 

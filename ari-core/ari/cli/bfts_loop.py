@@ -62,6 +62,30 @@ console = Console()
 # triple via ``_save_checkpoint``.
 
 
+def _mark_infrastructure_end(node, how: str, detail: str) -> None:
+    """Record HOW a node ended when it ended badly, and say it was not science.
+
+    A node killed by the watchdog or by an exception produced NO measurement.
+    Marking it as a plain failure conflates "the candidate was bad" with "the
+    framework broke" - the first is a result, the second is missing data, and
+    averaging them together biases exactly the arm comparison the study exists
+    to make. ``ended_by`` already distinguished finish_json from max_steps but
+    was left unset on these two paths, so a crashed node was indistinguishable
+    from one that simply never converged.
+    """
+    try:
+        node.ended_by = how
+        node.evaluation_status = "infrastructure_error"
+        node.has_real_data = False
+        node.metrics = {}
+        reason = f"infrastructure {how}: {detail}"
+        node.evaluator_reason = reason
+        node.eval_summary = reason
+    except Exception:          # never let bookkeeping mask the original failure
+        pass
+
+
+
 def _child_retires_parent(
     child_score: float, parent_score: float, *, child_sterile: bool
 ) -> bool:
@@ -79,12 +103,44 @@ def _child_retires_parent(
     return child_score > parent_score and not child_sterile
 
 
+def _score_inputs_for_task() -> tuple[str, ...]:
+    """The active harness's declared score-determining files, or () if it has none.
+
+    Resolved lazily and cached: the sterility check runs once per completed node,
+    and a harness that cannot be loaded must degrade to the legacy behaviour
+    rather than break the search.
+    """
+    import os as _os
+
+    task = _os.environ.get("ARI_TASK", "").strip().lower()
+    if not task:
+        return ()
+    cache = _score_inputs_for_task.__dict__.setdefault("_cache", {})
+    if task not in cache:
+        try:
+            from ari.harness_registry import load as _load_harness
+
+            cache[task] = tuple(getattr(_load_harness(task), "score_inputs", ()) or ())
+        except Exception:
+            # Cache only SUCCESSES. Caching the failure would let one transient
+            # import or filesystem error at the first completed node silently
+            # downgrade the whole run to the legacy whole-directory rule, which
+            # is known never to fire.
+            logging.getLogger(__name__).warning(
+                "sterility gate: could not read score_inputs for task %r; "
+                "falling back to the whole-directory rule for this node",
+                task, exc_info=True)
+            return ()
+    return cache[task]
+
+
 def _flag_sterile_node(
     node,
     parent_work_dir: Path,
     node_work_dir: Path,
     *,
     copy_workdir: bool,
+    score_inputs: tuple[str, ...] = (),
 ) -> bool:
     """Mark a no-op child without corrupting its evaluator result.
 
@@ -92,8 +148,35 @@ def _flag_sterile_node(
     retire its parent nor be expanded again. It is not a correctness or
     measurement failure, so the measured score, ``has_real_data``, and
     ``evaluation_status`` remain untouched.
+
+    When the harness declares ``score_inputs`` (the candidate source and its
+    flags file), sterility is decided by hashing exactly those files. Diffing the
+    whole work_dir instead — the original rule — never fires, because every node
+    rewrites bookkeeping files such as ``results.json``: across the 270-run v1
+    campaign it flagged 0 of 2700 nodes while 117 children shipped a candidate
+    byte-identical to their parent's, and 44 of those beat the parent on
+    measurement noise, retired it, and redirected the rest of the search.
     """
     from ari.orchestrator.node_report import compute_files_changed
+
+    if score_inputs:
+        import hashlib
+
+        def _digest(root: Path, rel: str) -> str | None:
+            try:
+                return hashlib.sha256((root / rel).read_bytes()).hexdigest()
+            except OSError:
+                return None  # absent on both sides still compares equal
+
+        sterile = all(
+            _digest(parent_work_dir, rel) == _digest(node_work_dir, rel)
+            for rel in score_inputs
+        )
+        if sterile:
+            if not isinstance(node.metrics, dict):
+                node.metrics = {}
+            node.metrics["_sterile"] = True
+        return sterile
 
     files_changed = compute_files_changed(parent_work_dir, node_work_dir)
     added = len(files_changed.get("added") or [])
@@ -109,6 +192,47 @@ def _flag_sterile_node(
             node.metrics = {}
         node.metrics["_sterile"] = True
     return sterile
+
+
+_FINALIZE_FILENAME = "finalize.json"
+
+
+def finalize_node_artifacts(node_work_dir: Path, score_inputs: tuple[str, ...],
+                            *, node_id: str = "") -> dict:
+    """Stamp WHAT WAS SCORED, after the agent stops and before scoring.
+
+    This is a finalize step in the sense that matters: it costs the agent no
+    ReAct budget - it runs outside the loop - and it pins the identity of the
+    artifact the score belongs to. Until now the sterility gate hashed exactly
+    these files and then threw the hashes away, so a node_report recorded a
+    number with no way to say which bytes produced it. That is the difference
+    between a result and an anecdote when a run is re-examined months later.
+
+    Records, per declared score input: presence, size and sha256. Never raises:
+    a finalize failure must not turn a measured node into a failed one.
+    """
+    import hashlib
+
+    out: dict = {"node_id": str(node_id or ""), "score_inputs": {}}
+    for rel in score_inputs or ():
+        entry: dict = {"present": False}
+        try:
+            fp = node_work_dir / rel
+            data = fp.read_bytes()
+            entry = {"present": True, "bytes": len(data),
+                     "sha256": hashlib.sha256(data).hexdigest()}
+        except OSError:
+            pass
+        out["score_inputs"][rel] = entry
+    out["complete"] = bool(score_inputs) and all(
+        e.get("present") for e in out["score_inputs"].values())
+    try:
+        (node_work_dir / _FINALIZE_FILENAME).write_text(
+            json.dumps(out, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return out
+
 
 
 _PROVENANCE_FILENAME = "provenance.json"
@@ -841,10 +965,14 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 except TimeoutError:
                     logging.getLogger(__name__).warning("Node %s timed out after %ds", node_ref.id, _timeout_s)
                     node_ref.mark_failed(error_log=f"timeout: exceeded {_timeout_s}s limit")
+                    _mark_infrastructure_end(node_ref, "timeout",
+                                             f"node exceeded the {_timeout_s}s limit")
                     result = node_ref
                 except Exception as exc:
                     logging.getLogger(__name__).warning("Node %s raised exception: %s", node_ref.id, exc)
                     node_ref.mark_failed(error_log=f"exception: {exc}")
+                    _mark_infrastructure_end(node_ref, "exception",
+                                             f"{type(exc).__name__}: {exc}")
                     result = node_ref
 
                 # Detect no-op children before frontier insertion and parent
@@ -875,6 +1003,7 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                             _parent_wd_for_report,
                             _result_wd,
                             copy_workdir=_copy_on,
+                            score_inputs=_score_inputs_for_task(),
                         ):
                             logging.getLogger(__name__).warning(
                                 "Node %s flagged STERILE (label=%s, parent=%s): "
@@ -963,6 +1092,21 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                 f"    Retired {_fn.id[-8:]} from frontier "
                                 f"(reached max_expansions_per_node={_max_exp})"
                             )
+
+                # FINALIZE, outside the ReAct budget: stamp which bytes the
+                # score belongs to. The sterility gate already hashes exactly
+                # these files and then discards the hashes, so a node_report
+                # carried a number with no way to say what produced it.
+                try:
+                    _fin_wd = Path(
+                        getattr(result, "work_dir", "")
+                        or _pm.node_work_dir(run_id, result.id)
+                    )
+                    finalize_node_artifacts(
+                        _fin_wd, _score_inputs_for_task(), node_id=str(result.id))
+                except Exception as _fin_e:
+                    logging.getLogger(__name__).warning(
+                        "finalize failed for %s: %s", result.id, _fin_e)
 
                 # Write per-node node_report.json now that the node is fully
                 # marked. This is best-effort: any failure is logged and

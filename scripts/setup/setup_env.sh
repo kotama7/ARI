@@ -432,7 +432,14 @@ _env_append_if_absent "# ARI_LETTA_VENV=  # override pip-mode venv path"
 _env_section "ARI limits"
 _env_append_if_absent "# ARI_MAX_DEPTH=5"
 _env_append_if_absent "# ARI_MAX_NODES=50"
-_env_append_if_absent "# ARI_MAX_REACT=80"
+_env_append_if_absent "# ARI_MAX_REACT=20"
+# v2 search-loop switches. Both default to the v2 behaviour; set them only
+# to reproduce the previous campaign for comparison.
+_env_append_if_absent "# ARI_KEEP_V1_TOOLS=0"
+_env_append_if_absent "# ARI_FRONTLOAD_CONTEXT=1"
+_env_append_if_absent "# ARI_NODE_EXEC_BUDGET_S=1800"
+_env_append_if_absent "# ARI_PROBE_CACHE=1"
+_env_append_if_absent "# ARI_PROBE_CC="
 _env_append_if_absent "# ARI_MAX_RECURSION_DEPTH="
 _env_append_if_absent "# ARI_TIMEOUT_NODE=7200"
 _env_append_if_absent "# ARI_PARALLEL=4"
@@ -637,6 +644,7 @@ _env_append_if_absent "# ARI_PROBE_TIMEOUT_S=120         # per-partition srun pr
 # run driver (workspace/run_handoff_ablation.py) sets these per-arm; they are
 # documented here for reproducibility. All optional / off by default.
 _env_append_if_absent "# ARI_TASK=spmm                   # which registered harness to score (spmm|gemm|stencil|erfc|meshpart)"
+_env_append_if_absent "# ARI_HARNESS=                     # WHICH harness measures that task, when several serve it. Unset is legal and means 'only one exists'; if several do, loading REFUSES rather than picking one, because the number would be a property of a directory name reported as a property of the task. See \`ari harness select\`."
 _env_append_if_absent "# ARI_SEED=                       # deterministic problem-generation seed (per-run)"
 _env_append_if_absent "# ARI_HANDOFF_MODE=               # inheritance channel: code_only | evidence_only | evidence_plus_reflection"
 _env_append_if_absent "# ARI_HANDOFF_SUMMARY_FIELDS=     # comma-separated node_report fields carried in the summary channel"

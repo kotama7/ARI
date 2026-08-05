@@ -25,7 +25,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-MAX_REACT_STEPS = 80  # default; overridden per-instance via AgentLoop(max_react_steps=...)
+import os as _os_front
+
+MAX_REACT_STEPS = 20  # default; overridden per-instance via AgentLoop(max_react_steps=...)
+# 20, not the former 80. Measured on the previous campaign, the step at which
+# a node reached its OWN best result was p50=3, p90=13, p95=15, p99=20, so a
+# cap of 20 costs almost no node its best work. The tail was not productive:
+# raising the cap from 25 to 40 bought about 28 additional nodes rather than
+# the 101 a linear reading of the budget would suggest.
 MIN_TOOL_CALLS = 2
 
 # MCP tools that the parent (ari-core) drives itself and must never be
@@ -926,6 +933,131 @@ def _load_parent_trace_log(pid, work_dir: str, *, limit: int = 200_000) -> str:
     return ""
 
 
+# Tools the v2 redesign removes from the BFTS search loop. They are SUPPRESSED
+# rather than deleted from the MCP servers, so other phases and other users of
+# ARI keep them and nothing outside this loop changes.
+#
+#   describe_environment — its whole output is now front-loaded into the prompt
+#       (see build_workdir_context_messages), so calling it re-fetches text the
+#       agent has already been given.
+#   run_code — a second execution path beside run_bash. Two ways to run things
+#       doubled the surface without adding capability, and the scored build is
+#       driven by `make` either way.
+#   emit_results — 2222 steps on the previous campaign went into a channel that
+#       does not feed the score at all; the self-report is derived from the
+#       node's own trace instead.
+#
+# With the step budget at 20 these are not neutral: every suppressed call is a
+# step returned to actually editing the kernel. ARI_KEEP_V1_TOOLS=1 restores
+# them for a comparison run.
+_V2_SUPPRESSED_TOOLS = frozenset({
+    "describe_environment",
+    "run_code",
+    "emit_results",
+})
+
+
+def v2_suppressed_tools() -> set:
+    """Tool names the search loop hides, or an empty set when disabled."""
+    import os as _os
+
+    if _os.environ.get("ARI_KEEP_V1_TOOLS", "").strip().lower() in ("1", "true", "yes", "on"):
+        return set()
+    return set(_V2_SUPPRESSED_TOOLS)
+
+
+
+def _frontload_env_summary(max_chars: int = 6000) -> str:
+    """The hardware catalogue front-loaded into every node, computed once.
+
+    Rendered as labelled lines rather than a dict repr so the agent reads it as
+    facts about the machine rather than as a serialised object.
+    """
+    cached = _frontload_env_summary.__dict__.get("_cache")
+    if cached is not None:
+        return cached
+    text = ""
+    try:
+        from ari.agent.run_env import local_env as _le
+
+        env = _le() or {}
+        order = ("arch", "cpu_model", "threads", "cache_measured", "numa",
+                 "cpu_detail", "mem_detail", "compilers", "modules_avail")
+        parts = []
+        for k in order:
+            v = env.get(k)
+            if not v:
+                continue
+            s = v if isinstance(v, str) else str(v)
+            parts.append(f"{k}: {s}")
+        text = "\n".join(parts)[:max_chars]
+    except Exception:
+        text = ""
+    _frontload_env_summary.__dict__["_cache"] = text
+    return text
+
+
+
+def build_workdir_context_messages(work_dir, *, max_chars: int = 20000,
+                                   env_summary: str = "") -> list[dict]:
+    """Front-load what the agent would otherwise burn ReAct steps discovering.
+
+    On the previous campaign the agent spent about 12,749 steps - 27.5% of all
+    steps - listing its own directory, reading back the candidate it inherited,
+    re-reading the task file, and re-querying the environment. None of that is
+    search; it is the agent reconstructing state the framework already has. With
+    a 20-step budget those steps are the difference between iterating on the
+    kernel and never getting to it.
+
+    Everything here is already visible to the agent through its tools, so this
+    grants no new information and cannot leak a sibling's work: it only removes
+    the round trips. Pure and unit-tested; returns [] when there is nothing to
+    say rather than an empty banner.
+    """
+    import os as _os
+
+    wd = str(work_dir or "").strip()
+    if not wd or not _os.path.isdir(wd):
+        return []
+    try:
+        names = sorted(n for n in _os.listdir(wd) if not n.startswith("."))
+    except OSError:
+        return []
+    if not names:
+        return []
+
+    parts: list[str] = ["[Your working directory — already on disk, no need to list or read it]"]
+    parts.append("files: " + ", ".join(names))
+
+    # The candidate the node starts from, in full. This is the single file the
+    # agent edits, and re-reading it was the most repeated tool call of all.
+    cand = [n for n in names
+            if n.startswith("candidate_") and n.endswith((".c", ".cpp", ".py"))]
+    for n in cand:
+        try:
+            body = open(_os.path.join(wd, n), errors="ignore").read()
+        except OSError:
+            continue
+        parts.append(f"\n--- {n} (current contents) ---\n{body}")
+
+    fl = _os.path.join(wd, "candidate_flags.txt")
+    if _os.path.isfile(fl):
+        try:
+            body = open(fl, errors="ignore").read().strip()
+        except OSError:
+            body = ""
+        parts.append(f"\n--- candidate_flags.txt ---\n{body or '(empty)'}")
+
+    if env_summary:
+        parts.append(f"\n--- environment (already probed; do not re-query) ---\n{env_summary}")
+
+    text = "\n".join(parts)
+    if len(text) > max_chars:
+        text = text[:max_chars] + "\n...[front-loaded context truncated]"
+    return [{"role": "user", "content": text}]
+
+
+
 def build_handoff_agent_messages(handoff, parent_report, parent_log) -> list[dict]:
     """Messages appended to a CHILD's prompt for the agent-face handoff channel.
 
@@ -1084,6 +1216,112 @@ class AgentLoop:
         except Exception:
             pass
 
+    def _post_evaluation_reflection(
+        self, node: "Node", messages: list[dict], experiment: dict,
+        eval_result: dict,
+    ) -> tuple[list[str], list[str]]:
+        """Self-review a node AFTER its score is known → (next_steps, concerns).
+
+        WHY THIS RUNS AFTER THE EVALUATOR. Previously the agent's next_steps and
+        concerns were taken from its own final message, which it writes BEFORE the
+        evaluator runs. That made the Self-Report evaluator-blind, and the
+        study's S-E contrast read as "evidence + a blind self-account" against
+        "evidence alone". It is not a clean separation either: the agent's own
+        self-test measures the scored shapes, so it already has a close estimate
+        of its score — the self-report was neither informed nor genuinely blind.
+
+        Running the review after scoring makes the contrast what it should be:
+        BOTH arms carry the same objective evidence, and S adds the LLM's
+        INTERPRETATION of that evidence. That is the question an agentic search
+        actually poses, and it is what most deployed systems do.
+
+        The known risk is that the review simply restates the numbers, turning S
+        into "E plus the same figures in prose". The prompt therefore forbids
+        repeating the measurements and asks for the reasoning and the next
+        action; the trajectory analyser measures adoption against the base rate
+        in the arms that received no proposals, which is what would expose a
+        restatement.
+
+        Returns ``([], [])`` on any failure — the caller keeps whatever the agent
+        already wrote, so a failed auxiliary call never costs a node.
+        """
+        _lines: list[str] = []
+        for _m in messages[-10:]:
+            if not isinstance(_m, dict):
+                continue
+            _role = _m.get("role", "")
+            _content = _m.get("content")
+            if isinstance(_content, list):
+                _content = " ".join(str(_c) for _c in _content)
+            _content = str(_content or "").strip()
+            if _content:
+                _lines.append(f"[{_role}] {_content[:350]}")
+        _trace_text = "\n".join(_lines) or "(no usable trace captured)"
+        _goal = experiment.get("goal", "") if isinstance(experiment, dict) else str(experiment)
+
+        _metrics = {k: v for k, v in list((node.metrics or {}).items())[:8]}
+        _verdict = {
+            "metrics": _metrics,
+            "reason": str(eval_result.get("reason", ""))[:400],
+            "scientific_score": eval_result.get("scientific_score"),
+        }
+
+        _msgs = [
+            {"role": "system", "content": (
+                "You review one node of an autonomous HPC-code-optimization agent, "
+                "AFTER an independent evaluator has scored it. You are given the "
+                "evaluator's verdict. Produce (1) what to try NEXT, and (2) CONCERNS "
+                "about this node's work.\n"
+                "RULES. Do NOT restate the evaluator's numbers — the child receives "
+                "them separately, and repeating them adds nothing. Say what the "
+                "result IMPLIES about the code and what should change because of it. "
+                "Be concrete about the code, not about process. Invent no "
+                "measurement that is not in the verdict or the trace. If the verdict "
+                "shows the node failed or was invalid, say what to fix first.\n"
+                'Reply ONLY with JSON: {"next_steps":["<concrete change>", ...],'
+                '"concerns":["<caveat/risk>", ...]}'
+            )},
+            {"role": "user", "content": (
+                f"Goal: {str(_goal)[:400]}\n\n"
+                f"Evaluator verdict: {json.dumps(_verdict, default=str)[:900]}\n\n"
+                f"Trace (final steps):\n{_trace_text}\n\n"
+                "Write the JSON review now."
+            )},
+        ]
+        _audit_call = {
+            "phase": "post_evaluation_reflection",
+            "messages": serialize_messages(_msgs),
+            "tools": [],
+        }
+        try:
+            _resp = self.llm.complete(
+                _msgs, tools=None, require_tool=False,
+                node_id=node.id, phase="post_evaluation_reflection",
+                skill="agent_loop",
+            )
+        except Exception as _error:
+            _audit_call["error"] = f"{type(_error).__name__}: {_error}"
+            node.auxiliary_llm_calls.append(_audit_call)
+            return ([], [])
+        _text = (getattr(_resp, "content", "") or "").strip()
+        _audit_call["response"] = {"role": "assistant", "content": _text}
+        node.auxiliary_llm_calls.append(_audit_call)
+        if not _text:
+            return ([], [])
+        try:
+            _body = _text
+            if "```" in _body:
+                _body = _body.split("```", 2)[1]
+                if _body.lstrip().lower().startswith("json"):
+                    _body = _body.lstrip()[4:]
+            _obj = json.loads(_body[_body.find("{"): _body.rfind("}") + 1])
+            if isinstance(_obj, dict):
+                return (_coerce_str_list(_obj.get("next_steps")),
+                        _coerce_str_list(_obj.get("concerns")))
+        except Exception:
+            pass
+        return ([], [])
+
     def _forced_max_steps_summary(
         self, node: Node, messages: list[dict], experiment: dict
     ) -> tuple[str, list[str], list[str]]:
@@ -1206,6 +1444,15 @@ class AgentLoop:
         # the shared /tmp/ari_work and the evaluator (which only reads this node's
         # dir) would score the inherited parent code. See tool_manager._WORKDIR_TOOLS.
         self._node_work_dir = _work_dir_early or None
+        # Fresh command-execution budget for this node (see
+        # tool_manager.exec_budget_seconds): a node must run out of COMMANDS
+        # while it still has turns left to report, not be killed mid-shell by
+        # the outer watchdog with nothing written.
+        try:
+            from ari.agent.tool_manager import reset_exec_budget as _reb
+            _reb(node.id)
+        except Exception:
+            pass
         # Expose the checkpoint dir to skill subprocesses (same pre-fork timing as
         # ARI_WORK_DIR) so make_metric_spec/survey can read the idea-stage
         # primary_metric (evaluation_criteria.json/idea.json) and the frozen VirSci
@@ -1214,7 +1461,8 @@ class AgentLoop:
         if _ckpt_early:
             import os as _os_ckpt
             _os_ckpt.environ["ARI_CHECKPOINT_DIR"] = str(_ckpt_early)
-        tools = self._available_tools_openai(suppress=getattr(self, "_suppress_tools", set()), phase="bfts")
+        _sup = set(getattr(self, "_suppress_tools", set())) | v2_suppressed_tools()
+        tools = self._available_tools_openai(suppress=_sup, phase="bfts")
         tool_names = [t["function"]["name"] for t in tools] if tools else []
         tool_desc = ", ".join(tool_names) if tool_names else "none"
         # Capture the full tool schemas (name + description + parameters) the model
@@ -1333,6 +1581,21 @@ class AgentLoop:
             system_content = "\n".join(
                 _ln for _ln in system_content.splitlines()
                 if not any(_d in _ln for _d in _drop)
+            )
+        # The prompt still tells the agent to call describe_environment first. If
+        # that tool is suppressed, the instruction costs a step on a tool that is
+        # not there. It cannot be handled by the line-drop above: the sentence
+        # sits inside the long line that also carries the whole JSON return
+        # format, so dropping the line would delete the output contract too.
+        # Replaced sentence-wise, and only when the tool is actually hidden.
+        if "describe_environment" in v2_suppressed_tools():
+            system_content = system_content.replace(
+                "If `describe_environment` is available, call it first; base "
+                "`environment` ONLY on real tool output (`describe_environment` "
+                "/ commands you ran) — do NOT fabricate;",
+                "Your environment has already been probed and is given to you in "
+                "the working-directory context message; base `environment` ONLY "
+                "on that or on commands you actually ran — do NOT fabricate;",
             )
         # Subtask 044: record which prompt template drove this ReAct call.
         from ari.prompts import record_prompt_use as _record_prompt_use
@@ -1543,6 +1806,26 @@ class AgentLoop:
                 _prep = _load_parent_node_report(node, work_dir) if _want_summary else None
                 _plog = _load_parent_log(node, work_dir) if _want_log else ""
                 messages.extend(build_handoff_agent_messages(_ho, _prep, _plog))
+
+        # Front-load the node's own working directory and the probed environment.
+        # See build_workdir_context_messages: this replaces the listing/read-back/
+        # re-probe round trips that consumed 27.5% of steps, which a 20-step
+        # budget cannot afford. Off via ARI_FRONTLOAD_CONTEXT=0.
+        if _os_front.environ.get("ARI_FRONTLOAD_CONTEXT", "1") not in ("0", "false", "False"):
+            try:
+                # local_env(), NOT get_environment_summary(). The latter returns
+                # only scheduler / container / partition rows - no CPU, no NUMA,
+                # no cache - so front-loading it handed the agent a queue listing
+                # while claiming to have given it the hardware. local_env carries
+                # arch, cpu model, thread count, the numactl topology, memory and
+                # the MEASURED cache geometry, which is what an architecture-aware
+                # implementation actually needs. Memoised per process: it costs
+                # about 4 s, almost all of it the cache probe, and nothing in it
+                # changes between nodes on the same host.
+                _envs = _frontload_env_summary()
+                messages.extend(build_workdir_context_messages(work_dir, env_summary=_envs))
+            except Exception as _fl_err:
+                logger.debug("front-load context skipped: %s", _fl_err)
 
         # Inject long-term (cross-experiment) memory if the tool is available.
         # B1: also gated by handoff.memory_off (cross-experiment memory is a
@@ -2413,10 +2696,11 @@ class AgentLoop:
                     # Capture the agent's own natural-language self-report so the
                     # handoff summary can carry it (anchored by deterministic metrics).
                     node.agent_summary = (summary or "")
-                    # Capture the agent's own self-reviewed next steps + concerns
-                    # (LLM self-review) -> node_report.next_steps_hints and
-                    # self_assessment.concerns. Deterministic scoring emits no graded
-                    # axes, so this self-review is the real source for both.
+                    # The agent's OWN next steps + concerns, written before it has
+                    # been scored. Kept only as a FALLBACK: after the evaluator runs,
+                    # `_post_evaluation_reflection` replaces these with a review that
+                    # has seen the verdict. If that auxiliary call fails, these
+                    # survive, so a node is never left with nothing to hand on.
                     node.agent_next_steps = _coerce_str_list(result.get("next_steps"))
                     node.agent_concerns = _coerce_str_list(result.get("concerns"))
                     # The agent's free-form compute-environment note (what it ran
@@ -2458,6 +2742,24 @@ class AgentLoop:
                                         node.id,
                                         {k: v for k, v in list(node.metrics.items())[:4]},
                                         node.has_real_data)
+                            # SELF-REPORT IS WRITTEN AFTER SCORING. The verdict is now
+                            # known, so the handoff's next_steps/concerns are the
+                            # agent's INTERPRETATION of its own result rather than a
+                            # guess made before it. Both study arms carry the same
+                            # objective evidence; S adds this interpretation on top.
+                            # Best-effort: on failure the pre-scoring self-report
+                            # captured above is left in place.
+                            try:
+                                _pn, _pc = self._post_evaluation_reflection(
+                                    node, messages, experiment, eval_result)
+                                if _pn or _pc:
+                                    node.agent_next_steps = _pn or node.agent_next_steps
+                                    node.agent_concerns = _pc or node.agent_concerns
+                                    node.self_report_stage = "post_evaluation"
+                            except Exception as _re:
+                                logger.warning(
+                                    "Node %s: post-evaluation reflection failed: %s",
+                                    node.id, _re)
                         except Exception as e:
                             _record_evaluator_exception(node, e)
                             logger.warning("Node %s: evaluator failed: %s", node.id, e)

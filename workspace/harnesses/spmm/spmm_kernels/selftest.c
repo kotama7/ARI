@@ -7,12 +7,20 @@
  *   - an estimated speedup vs the naive reference (the evaluator's baseline is
  *     the same naive algorithm), so a local number tracks the official one.
  *
- * It runs TWO sparsity structures — a uniform matrix and a skewed/heavy-tailed
- * one (most rows sparse, a few rows very dense). The evaluator tests 6 families;
- * the skewed case here catches the common family-specific failures (load
- * imbalance, dense-row index/accumulation bugs) that a uniform-only test misses.
- * It still does NOT cover every family, so a PASS is a strong-but-not-complete
- * predictor — the evaluator (fresh data, 6 families) remains authoritative.
+ * v2: it runs the SIX SCORED matrices, read from disk. It cannot generate them:
+ * four of the evaluator's families come out of scipy's RNG and are not
+ * reproducible in C, which is why v1 ran a C-generated uniform and skewed pair
+ * and its transfer slope to the scored value was only 0.365. The harness writes
+ * the real problems into the shared cache and leaves a pointer file next to your
+ * candidate. If that pointer is absent (no ARI_HARNESS_CACHE configured) this
+ * falls back to generating two structures in C and SAYS SO — in that mode the
+ * local number does not track the score.
+ *
+ * v2 also matches the evaluator's protocol: the allocation's thread count rather
+ * than a hardcoded 16, the median per-family speedup then the geometric mean
+ * across families, the thread team created outside every timed region, no warmup
+ * pass over the data, and a naive reference measured once per family and cached
+ * in .selftest_ref_cache instead of re-timed on every invocation.
  *
  * Build:  make selftest        Run:  ./selftest
  *
@@ -22,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 #include <time.h>
 #include <omp.h>
 #include "spmm_kernel.h"
@@ -116,6 +125,76 @@ static long gen_csr(int n, int m, double density, int skewed,
 }
 
 /* Run one structure; print its line; return 1 if correct, 0 if not. Sets *sp. */
+#define CACHE_PATH ".selftest_ref_cache"
+#define POINTER_PATH ".selftest_problems"
+static const char *FAMILIES[] = {"uniform", "banded", "power_law", "block",
+                                 "diagonal_dominant", "skewed"};
+#define N_FAMILIES ((int)(sizeof(FAMILIES) / sizeof(FAMILIES[0])))
+
+static int cmp_double(const void *a, const void *b) {
+    double x = *(const double *)a, y = *(const double *)b;
+    return (x > y) - (x < y);
+}
+static double median_of(double *v, int n) {
+    qsort(v, (size_t)n, sizeof(double), cmp_double);
+    return (n % 2) ? v[n / 2] : 0.5 * (v[n / 2 - 1] + v[n / 2]);
+}
+
+/* Reference seconds cached per (family, threads); the naive reference dominates
+ * this test's cost and it is a frozen kernel on a fixed machine. */
+static int ref_cache_lookup(const char *fam, int threads, double *out) {
+    FILE *f = fopen(CACHE_PATH, "r");
+    if (!f) return 0;
+    char nm[64]; int th; double sec; int hit = 0;
+    while (fscanf(f, "%63s %d %lf", nm, &th, &sec) == 3)
+        if (th == threads && sec > 0.0 && strcmp(nm, fam) == 0) { *out = sec; hit = 1; }
+    fclose(f);
+    return hit;
+}
+static void ref_cache_store(const char *fam, int threads, double sec) {
+    FILE *f = fopen(CACHE_PATH, "a");
+    if (!f) return;
+    fprintf(f, "%s %d %.9f\n", fam, threads, sec);
+    fclose(f);
+}
+
+/* The evaluator's problem layout, written by the harness:
+ *   int32 n, m, k, nnz | int32 indptr[n+1] | int32 indices[nnz]
+ *   | double values[nnz] | double X[m*k] */
+static int load_problem(const char *path, int *n, int *m, int *k, long *nnz,
+                        int **indptr, int **indices, double **values, double **X) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    int hdr[4];
+    if (fread(hdr, sizeof(int), 4, f) != 4) { fclose(f); return 0; }
+    *n = hdr[0]; *m = hdr[1]; *k = hdr[2]; *nnz = hdr[3];
+    if (*n <= 0 || *m <= 0 || *k <= 0 || *nnz < 0) { fclose(f); return 0; }
+    *indptr = malloc(sizeof(int) * (size_t)(*n + 1));
+    *indices = malloc(sizeof(int) * (size_t)(*nnz ? *nnz : 1));
+    *values = malloc(sizeof(double) * (size_t)(*nnz ? *nnz : 1));
+    *X = malloc(sizeof(double) * (size_t)*m * (size_t)*k);
+    int ok = *indptr && *indices && *values && *X
+        && fread(*indptr, sizeof(int), (size_t)(*n + 1), f) == (size_t)(*n + 1)
+        && (!*nnz || fread(*indices, sizeof(int), (size_t)*nnz, f) == (size_t)*nnz)
+        && (!*nnz || fread(*values, sizeof(double), (size_t)*nnz, f) == (size_t)*nnz)
+        && fread(*X, sizeof(double), (size_t)*m * (size_t)*k, f)
+           == (size_t)*m * (size_t)*k;
+    fclose(f);
+    return ok;
+}
+
+/* Directory the harness wrote the scored problems into, or NULL. */
+static const char *problem_dir(void) {
+    static char buf[4096];
+    FILE *f = fopen(POINTER_PATH, "r");
+    if (!f) return NULL;
+    if (!fgets(buf, sizeof buf, f)) { fclose(f); return NULL; }
+    fclose(f);
+    size_t L = strlen(buf);
+    while (L && (buf[L - 1] == '\n' || buf[L - 1] == '\r')) buf[--L] = 0;
+    return L ? buf : NULL;
+}
+
 static int run_case(const char *name, int n, int m, int k, int skewed,
                     double density, int warmup, int reps, double *sp) {
     int *indptr, *indices; double *values;
@@ -182,33 +261,134 @@ static int run_case(const char *name, int n, int m, int k, int skewed,
     return ok;
 }
 
+/* Score one SCORED family loaded from disk, under the evaluator's protocol:
+ * no warmup pass over the data, the thread team already created, the median of
+ * per-repetition speedups, and a reference timed once and cached. */
+static int run_loaded(const char *fam, const char *path, int threads, int reps,
+                      double *sp) {
+    int n, m, k; long nnz;
+    int *indptr = NULL, *indices = NULL; double *values = NULL, *X = NULL;
+    if (!load_problem(path, &n, &m, &k, &nnz, &indptr, &indices, &values, &X)) {
+        printf("  [%-17s] could not read %s\n", fam, path);
+        free(indptr); free(indices); free(values); free(X);
+        return 0;
+    }
+    double *absvalues = malloc((size_t)(nnz ? nnz : 1) * sizeof(double));
+    double *absX = malloc((size_t)m * k * sizeof(double));
+    double *Yref = malloc((size_t)n * k * sizeof(double));
+    double *Ycand = malloc((size_t)n * k * sizeof(double));
+    double *Ybound = malloc((size_t)n * k * sizeof(double));
+    if (!absvalues || !absX || !Yref || !Ycand || !Ybound) {
+        fprintf(stderr, "selftest: out of memory\n"); return 0;
+    }
+    for (long q = 0; q < nnz; ++q) absvalues[q] = fabs(values[q]);
+    for (long q = 0; q < (long)m * k; ++q) absX[q] = fabs(X[q]);
+
+    double tb;
+    if (!ref_cache_lookup(fam, threads, &tb)) {
+        double t0 = now_sec();
+        spmm_ref(n, m, k, indptr, indices, values, X, Yref);
+        tb = now_sec() - t0;
+        ref_cache_store(fam, threads, tb);
+    }
+    spmm_ref(n, m, k, indptr, indices, values, X, Yref);      /* clean reference */
+    spmm_ref(n, m, k, indptr, indices, absvalues, absX, Ybound);
+
+    double *ratios = malloc((size_t)reps * sizeof(double));
+    for (int r = 0; r < reps; ++r) {
+        for (long q = 0; q < (long)n * k; ++q) Ycand[q] = NAN;   /* poison, as the driver does */
+        double t0 = now_sec();
+        spmm(n, m, k, indptr, indices, values, X, Ycand);
+        double tc = now_sec() - t0;
+        ratios[r] = (tc > 0.0) ? tb / tc : 0.0;
+    }
+    double speedup = median_of(ratios, reps);
+    free(ratios);
+
+    int ok = 1; double max_rel = 0.0;
+    for (int i = 0; i < n; ++i) {
+        double g = gamma_k((long)(indptr[i + 1] - indptr[i]));
+        for (int c = 0; c < k; ++c) {
+            long idx = (long)i * k + c;
+            double resid = fabs(Ycand[idx] - Yref[idx]);
+            if (!(resid <= C_EPS * g * Ybound[idx])) ok = 0;   /* NaN-safe */
+            double denom = fabs(Yref[idx]);
+            if (denom > 0.0) { double rel = resid / denom; if (rel > max_rel) max_rel = rel; }
+        }
+    }
+    *sp = speedup;
+    printf("  [%-17s] nnz=%-9ld ref=%.4fs  speedup~%7.2fx  correct=%-3s  max_rel=%.2e\n",
+           fam, nnz, tb, speedup, ok ? "yes" : "NO", max_rel);
+    free(indptr); free(indices); free(values); free(X);
+    free(absvalues); free(absX); free(Yref); free(Ycand); free(Ybound);
+    return ok;
+}
+
 int main(void) {
-    /* Mirror the evaluator's study parameters so the local number tracks the
-     * official one: same matrix size and OpenMP thread budget. A tiny matrix on
-     * all cores measures ~1x even for a perfect kernel (parallel overhead). */
     const int n = env_int("ARI_SPMM_N", 20000);
     const int m = n;
     const int k = env_int("ARI_SPMM_K", 64);
-    const int threads = env_int("ARI_SPMM_THREADS", 16);
+    const int threads = env_int("ARI_SPMM_THREADS", omp_get_max_threads());
     const double density = 0.02;
-    const int warmup = 1, reps = 3;
+    const int reps = 3;
     omp_set_num_threads(threads);
     srand(12345u);
 
-    printf("problem: n=%d m=%d k=%d density=%.3f  omp_threads=%d  (2 structures)\n",
-           n, m, k, density, threads);
-    double sp_u = 0.0, sp_s = 0.0;
-    int ok_u = run_case("uniform", n, m, k, 0, density, warmup, reps, &sp_u);
-    int ok_s = run_case("skewed", n, m, k, 1, density, warmup, reps, &sp_s);
+    /* Create the thread team OUTSIDE every timed region, as the frozen driver
+     * now does. The kernel is not called here. */
+    { double s = 0.0;
+#pragma omp parallel for reduction(+ : s)
+      for (int i = 0; i < 64; ++i) s += (double)i;
+      if (s < 0.0) fprintf(stderr, "unreachable\n"); }
 
+    const char *dir = problem_dir();
+    printf("omp_threads=%d   (evaluator uses the allocation's thread count)\n", threads);
+
+    if (dir) {
+        printf("scoring the SIX SCORED families from %s\n", dir);
+        double logsum = 0.0; int all_ok = 1, got = 0;
+        for (int i = 0; i < N_FAMILIES; ++i) {
+            char path[4608];
+            snprintf(path, sizeof path, "%s/%s.bin", dir, FAMILIES[i]);
+            double sp = 0.0;
+            int ok = run_loaded(FAMILIES[i], path, threads, reps, &sp);
+            all_ok = all_ok && ok;
+            if (sp > 0.0) { logsum += log(sp); got++; }
+        }
+        double geo = got ? exp(logsum / got) : 0.0;
+        if (all_ok && got == N_FAMILIES) {
+            printf("SELFTEST: PASS  (correct on all %d scored families; geomean "
+                   "~%.2fx vs naive baseline)\n", N_FAMILIES, geo);
+            /* Measured against the evaluator on A64FX: this reads about 0.75x the
+             * scored value (per-family 0.70-0.80), because the reference here is
+             * timed in-process with the matrices already warm while the evaluator
+             * times it cold in a fresh process. The scale is consistent, so use
+             * this to compare YOUR OWN versions; it is not the score itself. */
+            printf("         (expect the scored value near %.2fx - this test times "
+                   "its reference warm, the evaluator times it cold)\n", geo / 0.75);
+        } else {
+            printf("SELFTEST: FAIL  (a family failing correctness => the evaluator "
+                   "scores 0; fix correctness first)\n");
+        }
+        return (all_ok && got == N_FAMILIES) ? 0 : 1;
+    }
+
+    /* Fallback: no scored problems available. Say so - in this mode the local
+     * number measures DIFFERENT matrices than the score. */
+    printf("WARNING: %s not found, so the scored matrices are unavailable.\n"
+           "         Falling back to two C-generated structures; this number does\n"
+           "         NOT track the score (four of the six scored families come from\n"
+           "         scipy and cannot be reproduced here).\n", POINTER_PATH);
+    double sp_u = 0.0, sp_s = 0.0;
+    int ok_u = run_case("uniform", n, m, k, 0, density, 1, reps, &sp_u);
+    int ok_s = run_case("skewed", n, m, k, 1, density, 1, reps, &sp_s);
     int ok = ok_u && ok_s;
     double worst = sp_u < sp_s ? sp_u : sp_s;
     if (ok)
-        printf("SELFTEST: PASS  (correct on both; worst speedup ~%.2fx vs naive baseline)\n",
-               worst);
+        printf("SELFTEST: PASS  (correct on both generated structures; worst "
+               "speedup ~%.2fx)\n", worst);
     else
-        printf("SELFTEST: FAIL  (incorrect on %s%s%s — a family failing correctness "
-               "=> the evaluator scores 0; fix correctness first)\n",
+        printf("SELFTEST: FAIL  (incorrect on %s%s%s)\n",
                ok_u ? "" : "uniform", (!ok_u && !ok_s) ? " and " : "",
                ok_s ? "" : "skewed");
     return ok ? 0 : 1;

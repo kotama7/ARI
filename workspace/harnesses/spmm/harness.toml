@@ -19,18 +19,33 @@ scale = "linear"
 n = {env = "ARI_SPMM_N", default = 20000}
 k = {env = "ARI_SPMM_K", default = 64}
 
+[declares]
+question = "time to solution on seeded sparse families, against a competent frozen reference"
+denominator = "anchor_matched"
+resolves = 0.00171
+resolves_measured_on = "2026-08-03"
+resolves_reps = 15
+cost_s = 56.8
+requires = ["c_compiler", "openmp"]
+sees = ["irregular_access", "load_balance", "thread_scaling", "toolchain"]
+blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
+
 [files]
-"experiment.md" = "e471ae7539a60bdb1868cbb33ae7093606acee21a5a93a582def2ca7d00d4cb8"
-"spmm_harness.py" = "3d109bedff5d0d370648bc177f718d2844ab3690e7aae9c1819cad8870ca1f43"
-"spmm_kernels/Makefile" = "02da1b07d4e0aa7b94e4763dc714fcb0b4f93856a977adf93bbb84dfdaa62eb2"
+"experiment.md" = "24019ae5e6f54383dfd479db8568f34901a4b7fdc81f590090a097d206bd73ac"
+"spmm_harness.py" = "2fa1ce59d0ac84fc5b5193ba4f2b67c2be22e9066d2f28f2334ce49bbff3ca15"
+"spmm_kernels/Makefile" = "3b596c55f68820f053771505b228bad252742afbfb517d398591d070511d375a"
 "spmm_kernels/Plan.md" = "4c40c2f40c46ebd8e8e2a2dad32df20a03d73e401ef563c8062cad4934f3cce4"
 "spmm_kernels/baseline_spmm.c" = "1a4e02d9b89c21fb2029d8be73a60677db72b97ba066fb74562bb25146b9af66"
 "spmm_kernels/candidate_spmm.c" = "c9ab6d88e3a925b59baf279a8234ee59de24918b7e3c97bdeb3391169624f522"
-"spmm_kernels/selftest.c" = "f6f0c76e12d0acba81cde8bb330a2394bd63ef8651c227d9130ed4d6759a0731"
+"spmm_kernels/selftest.c" = "f7494a557e1e5a7448d8a1c99b074f0aac37d5980edc50a64e37a8eebbad97af"
 "spmm_kernels/spmm_kernel.h" = "4012fce6bfe0b138dc171d1395de3181d2b666f9976254802fefcccedb1c348b"
-"spmm_kernels/spmm_main.c" = "9295d3888e8b371df4832a41993284f1f1b12b797d006121d73d912353c425c3"
+"spmm_kernels/spmm_main.c" = "854c7d5584cc34af03157ebe1b610fee477e5a6d28affbc49a907a24aef098fe"
+
+"spmm_kernels/README.md" = "70c3452f6a77a156d454d3a85f3b276055dec8d462e1e17761ba95885d642bde"
+
+"spmm_kernels/reference_spmm.c" = "9ced2b5af597c13113ad2e67d7714ce6e2d6000577ef51a623b0d370f43b76bd"
 
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "09a2ab634a9d2c7db55212960ee8f4016726a5ac8636e83c92a8bd30ec7ec082"
+self_sha256 = "2003c50f69b93e93e886e397c72b7647837940ff869c72de95970079bb16ac8b"

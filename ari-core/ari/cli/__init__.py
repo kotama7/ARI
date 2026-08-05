@@ -99,6 +99,13 @@ try:
 except Exception as _e:  # pragma: no cover - import guard
     logging.getLogger(__name__).warning("ari registry subcommand unavailable: %s", _e)
 
+# `ari harness` subparser (inspect the pool; selection never touches a score).
+try:
+    from ari.cli.harness import harness_app as _harness_app
+    app.add_typer(_harness_app, name="harness")
+except Exception as _e:  # pragma: no cover - import guard
+    logging.getLogger(__name__).warning("ari harness subcommand unavailable: %s", _e)
+
 # `ari doctor` subparser (environment health checks, e.g. claude-code).
 try:
     from ari.cli.doctor import doctor_app as _doctor_app

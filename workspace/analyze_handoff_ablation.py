@@ -33,6 +33,7 @@ from ari.evaluator.handoff_stats import (  # noqa: E402
     geomean,
     holm_adjust,
     paired_bootstrap_difference_ci,
+    sign_flip_ci,
     paired_permutation_test,
     summarize_arm,
 )
@@ -476,10 +477,23 @@ def aggregate_shards(
                 f"{cell['array_task_id']}"
             )
         array_job_id = str(allocation.get("slurm_array_job_id") or "")
-        if expected_array_job_id and array_job_id != str(expected_array_job_id):
+        # A COMMA-SEPARATED SET, not a single id. The check exists so that shards
+        # from an unrelated submission cannot be swept into this root, and one id
+        # expressed that as long as a campaign was exactly one submission. It is
+        # not: recovering a cell that died on a terminal API error resubmits just
+        # that cell, under a new array job id, into the same root. With a single
+        # expected id every shard is then wrong -- the resumed one against the
+        # original, or the original 269 against the resumed one. The launcher
+        # accumulates the ids it actually submitted for this root and passes them
+        # all, so the guarantee is unchanged: every shard must come from a
+        # submission this launcher made for this campaign.
+        accepted = {
+            v.strip() for v in str(expected_array_job_id or "").split(",") if v.strip()
+        }
+        if accepted and array_job_id not in accepted:
             errors.append(
-                f"{path}: Slurm array job {array_job_id!r} != "
-                f"{expected_array_job_id!r}"
+                f"{path}: Slurm array job {array_job_id!r} not in "
+                f"{sorted(accepted)!r}"
             )
 
         run_dir_raw = row.get("run_dir")
@@ -612,6 +626,9 @@ def aggregate_shards(
         "arms": arms,
         "seed_base": seed_base,
         "seeds": seeds,
+        # The literal keeps the "smoke_" prefix for compatibility with roots
+        # already on disk and with the tests that pin it, but it now covers
+        # --preflight as well: it means "not confirmatory", not "smoke".
         "analysis_role": (
             "smoke_descriptive_only" if descriptive_only else "confirmatory"
         ),
@@ -1157,10 +1174,19 @@ def main() -> int:
         native = paired_permutation_test(t_values, c_values)
         point, ci_lo, ci_hi = paired_bootstrap_difference_ci(
             t_values, c_values)
+        # The percentile bootstrap interval and the sign-flip p-value are two
+        # different procedures and can disagree at the boundary, which reads as
+        # an inconsistent result. Also report the interval obtained by INVERTING
+        # the sign-flip test, which agrees with the reported p-value by
+        # construction. The bootstrap interval and the p-value are unchanged.
+        _, sf_lo, sf_hi = sign_flip_ci(t_values, c_values)
         native.update({
             "effect": "mean(treatment-control) within seed",
             "ci_lo": ci_lo,
             "ci_hi": ci_hi,
+            "sign_flip_ci_lo": sf_lo,
+            "sign_flip_ci_hi": sf_hi,
+            "sign_flip_ci_n_perm": 500_000,
             "invalid_run_value": 0.0,
             "paired_seeds": paired_seeds,
             "unmatched_treatment_seeds": unmatched_treatment,

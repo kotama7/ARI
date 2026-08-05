@@ -60,7 +60,7 @@ export function WizardPage() {
     maxDepth: 5,
     maxNodes: 30,
     workers: 4,
-    maxReact: 80,
+    maxReact: 20,
     timeout: 120,
     maxRecursionDepth: 0,
     frontierScore: 'scientific_plus_diversity',

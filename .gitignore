@@ -82,7 +82,23 @@ Thumbs.db
 !/containers/README.md
 /ari-core/containers/*
 !/ari-core/containers/README.md
-workspace/
+# workspace/ holds the experiment data and is far too large to track. The
+# harnesses under it were already tracked before this rule existed and stay so.
+# workspace/tools/ is added here: it is the code that verifies the paper's
+# claims and has to travel with the paper.
+#
+# `workspace/` with a trailing slash stops git descending at all, so no later
+# negation can reach inside — that spelling left every tool ignored while
+# looking correct. `workspace/*` ignores the immediate children instead, which
+# leaves tools/ reachable for the negation below.
+# Check with:  git add -n workspace/tools/   (must list every file there)
+workspace/*
+!workspace/tools/
+# The repo-wide `*.c` rule (line 39) also catches the two C measurement
+# tools, so they need their own negation — un-ignoring the directory is
+# not enough when a pattern elsewhere matches the files.
+!workspace/tools/*.c
+workspace/tools/__pycache__/
 /workspace.zip
 *.sif
 

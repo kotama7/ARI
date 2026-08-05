@@ -135,6 +135,12 @@ class Node:
     # try next to improve this node. Populates node_report ``next_steps_hints``
     # under deterministic scoring, where the evaluator emits no graded axes.
     agent_next_steps: list[str] = field(default_factory=list)
+    # Which stage produced next_steps/concerns: "post_evaluation" when the
+    # reflection ran after the score was known (the design), or
+    # "pre_evaluation" when that auxiliary call failed and the agent's own
+    # pre-scoring self-report was kept. Recorded because the two answer
+    # different questions and a run must not silently mix them.
+    self_report_stage: str = "pre_evaluation"
     # The agent's own self-reviewed concerns (LLM self-review) — caveats/risks it
     # flags about this node. Populates node_report ``self_assessment.concerns``
     # (the headline there comes from ``agent_summary``); deterministic scoring

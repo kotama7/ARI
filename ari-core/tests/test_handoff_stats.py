@@ -137,3 +137,39 @@ def test_jt_handles_ties_including_zero_invalid_runs():
 def test_jt_needs_two_nonempty_groups():
     r = jonckheere_terpstra([[1, 2, 3], [], []], n_perm=100, seed=0)
     assert math.isnan(r["p_value"]) and "reason" in r
+
+
+def test_sign_flip_ci_agrees_with_the_test_it_inverts():
+    """The interval must exclude zero exactly when the sign-flip test rejects.
+
+    That agreement is the entire reason the interval exists: the paper reports a
+    percentile bootstrap interval next to a sign-flip p-value, and the two can
+    disagree at the boundary, which reads as an inconsistent result. Inverting
+    the same test removes the disagreement by construction, so a case where the
+    two disagree here means the inversion is wrong.
+    """
+    import numpy as np
+
+    from ari.evaluator.handoff_stats import paired_permutation_test, sign_flip_ci
+
+    rng = np.random.default_rng(3)
+    for shift in (0.0, 0.6, 1.5, 3.0):
+        a = rng.normal(shift, 1.0, 30)
+        b = rng.normal(0.0, 1.0, 30)
+        p = paired_permutation_test(a, b, n_perm=20000)["p_value"]
+        point, lo, hi = sign_flip_ci(a, b, n_perm=50_000)
+        excludes_zero = not (lo <= 0.0 <= hi)
+        assert excludes_zero == (p <= 0.05), (
+            f"shift={shift}: p={p} but interval [{lo}, {hi}]")
+        assert lo <= point <= hi
+        assert abs(point - float(np.mean(a - b))) < 1e-12
+
+
+def test_sign_flip_ci_degenerate_inputs_match_the_bootstrap_helper():
+    """Empty and ragged inputs return NaNs, as paired_bootstrap_difference_ci does."""
+    import math
+
+    from ari.evaluator.handoff_stats import sign_flip_ci
+
+    for a, b in (([], []), ([1.0, 2.0], [1.0])):
+        assert all(math.isnan(x) for x in sign_flip_ci(a, b))

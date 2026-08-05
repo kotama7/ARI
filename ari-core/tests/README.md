@@ -9,7 +9,7 @@ targets the like-named module under `ari/`.
 ## Contents
 
 - `README.md` — this file.
-- `_arch_boundaries.py` — TODO
+- `_arch_boundaries.py` — not a test: the shared AST/text scanners the architecture-boundary guards import instead of each re-implementing an `ari.*` import scanner. The leading underscore keeps it out of pytest collection. It only reads source with `ast.parse`; it never imports a skill's `server.py`.
 - `test_agent_smoke.py` — agent smoke test.
 - `test_analyze_handoff.py` — TODO
 - `test_api_lineage_decisions.py` — lineage-decisions API.
@@ -71,6 +71,8 @@ targets the like-named module under `ari/`.
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
 - `test_factory_registry.py` — TODO
 - `test_file_explorer.py` — file explorer.
+- `test_finalize_node_artifacts.py` — the score must be attributable to specific bytes. The sterility gate hashed exactly the scored files and then threw the hashes away, so a node report recorded a number with no way to say which source produced it. Finalize runs after the agent stops and before scoring, so it costs no ReAct budget, and it must never turn a measured node into a failed one.
+- `test_frontload_context.py` — front-loading the node's own state must remove round trips without granting anything new. About 27.5% of ReAct steps went on listing the work dir, re-reading the inherited candidate and re-probing the environment; with the budget cut to 20 those steps are the difference between iterating on the kernel and never reaching it. Both halves are pinned: the content arrives, and nothing outside the node's own directory does.
 - `test_ground_environment.py` — pins which conversation roles the environment-grounding corpus reads (`tool` and `user`), so agent-authored notes are not deleted as ungrounded. Regression: 4 of 17 notes were wrongly dropped when the corpus omitted a role.
 - `test_gui_env_propagation.py` — GUI env propagation.
 - `test_gui_errors.py` — GUI error handling.
@@ -78,10 +80,13 @@ targets the like-named module under `ari/`.
 - `test_handoff_content_fix.py` — handoff channels carry real payload: `node_summary_view` surfaces the actionable `outcome` (self-assessment headline / eval reason, with eval_summary fallback; ablatable), and `_load_parent_log` falls back to the parent's tree.json `trace_log` when no run.log exists so code_plus_full_log is not silently empty (regression guard for the degenerate-channel finding).
 - `test_handoff_driver.py` — TODO
 - `test_handoff_stats.py` — analysis statistics core for the handoff study: geomean, bootstrap confidence intervals, two-sided permutation tests, Holm adjustment, and per-arm summaries.
+- `test_harness_pool.py` — TODO
 - `test_harness_registry.py` — registry MECHANISM only, against synthetic harnesses built in `tmp_path` — ARI ships no task and the real ones live in an untracked workspace, so this must not load them. Pins: the per-task `[measure_kwargs]` declaration (a uniform `measure_node(work_dir, seed=seed)` type-checks against every harness and silently measures something else), sha256 tamper-refusal, unknown-task raising instead of falling through to a default benchmark, cwd-independent resolution via `RuntimePathResolver`, and that ARI core names no task.
+- `test_harness_select.py` — selection must never see a result, and silence must never pass. Two structural guards (the module's imports, and its public call surface) are asserted from the AST rather than trusted, and both were verified to fail when violated. The rest pins that an unmeasured band, a band with no measurement date, and an undeclared axis are all refused when the study asks for a guarantee — a number somebody typed and a number somebody took are otherwise indistinguishable. Also pins that an unanswerable requirement reports itself as such: this project ran a study to 270 runs before discovering every contrast had effect/MDE < 1.
 - `test_i18n_consistency.py` — i18n consistency.
 - `test_idea_integration.py` — idea integration.
 - `test_include_ear_toggle.py` — include-EAR toggle.
+- `test_infrastructure_end_state.py` — a crashed node must not be readable as a scientific result. A node killed by the watchdog produced NO measurement, and recording it as a plain failure conflates "the candidate was bad" (data) with "the framework broke" (missing data), biasing the arm comparison the study exists to make. `ended_by` separated finish from step-exhaustion but was never set on the crash paths, so a crash looked identical to non-convergence.
 - `test_integration.py` — integration.
 - `test_labels_disabled.py` — pins `ARI_BFTS_NO_LABEL` as a REAL feature switch at all three sites the exploration label steers the search — the system prompt's NODE ROLE, the child's `Task:` line, and `diversity_bonus` in node selection — not a record-only suppression. A flag that hides a live variable from the record deletes the evidence, not the influence.
 - `test_laptop_hpc_skill_drop.py` — laptop/HPC skill drop.
@@ -104,6 +109,7 @@ targets the like-named module under `ari/`.
 - `test_model_passthrough.py` — model passthrough.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
+- `test_node_exec_budget.py` — a node must not be able to spend its whole life inside `run_bash`. Each call had a timeout but nothing bounded the sum, so one node could consume the entire watchdog on shell calls and then be killed with no score, no self-report and no signal about why. The budget makes the node run out of COMMANDS while it still has turns left to report what it found.
 - `test_node_report.py` — node_report builder.
 - `test_node_selection.py` — node selection.
 - `test_node_summary_view.py` — node_summary_view field ablation / known_failures derivation / failure_only form / machine-info leak guard (handoff study G3).
@@ -118,6 +124,7 @@ targets the like-named module under `ari/`.
 - `test_pipeline_stage_architecture.py` — TODO
 - `test_pipeline_verified_context.py` — verified-context building blocks (best-node selection, lineage scoping, grounded-block renderer).
 - `test_plan_promote.py` — plan promotion.
+- `test_post_evaluation_reflection.py` — the handoff's next steps and concerns must be written AFTER the node is scored. Written before, the self-report is an account made without the verdict -- a different and muddier question, and not cleanly blind either, since the agent's own self-test already estimates its score. The fallback matters as much: an auxiliary LLM call that fails must never cost a node its handoff.
 - `test_prompt_extraction.py` — prompt extraction.
 - `test_prompt_provenance.py` — TODO
 - `test_prompt_registry.py` — TODO
@@ -132,6 +139,8 @@ targets the like-named module under `ari/`.
 - `test_root_idea_selector.py` — root-idea selector.
 - `test_run_env.py` — run environment.
 - `test_run_env_catalog.py` — asserts the run-environment catalog masks host identity (username paths, alternate filesystem mounts, MODULEPATH) before it reaches the agent, so a node reads as a self-contained container rather than a host account.
+- `test_run_env_machine_facts.py` — the machine facts a search-by-name misses, and the ones the catalog must not leak. Toolchain trees are enumerated by shape, not by vendor name, because a compiler and both its profilers can sit in one `/opt` directory that no module lists — searching `module avail` then reports a machine as having no profiler when it has two. Page/NUMA state is captured because one environment variable moved the same frozen source by 5.9x and appears in no module, `lscpu`, or version string. Pinned in both directions: too narrow and the agent never learns the toolchain exists while the catalog still looks well-formed; too wide and a value reaches every node's prompt and trace, which is why environment variables are reported by presence and never by value.
+- `test_run_env_module_recursion.py` — the environment probe must descend a HIERARCHICAL module tree. Where the top level is a set of entry modules and the real toolchains appear only after one is loaded, a flat `module avail` can show no compiler while several are installed, and the agent then plans against a toolchain it believes does not exist. Fixtures are synthetic and the assertions are about the mechanism, so no site module, partition or host name appears.
 - `test_run_loop.py` — run loop.
 - `test_run_provenance.py` — `<checkpoint>/provenance.json` — the record that lets a reader holding only the published workspace + this repo re-check a number: the harness's verified sha256 digests, its workspace-relative origin, target/scale/axis, the ARI commit, and the measurement env the (digest-pinned) harness source reads to build its compile command. Pins the two things that are easy to get wrong: REDACTION (the file ships inside a published artifact, so secret values and absolute paths must never appear, while the keys that determine the measurement must survive), and the round-trip (recompute every digest from the workspace and detect a tampered one). Also pins that the record is META: `_run_loop` copies every non-meta checkpoint-root file into each node, so a non-meta provenance.json handed every node the TARGET it is judged against — a leak only the real `_run_loop` exposed.
 - `test_runtime_path_reconciliation_005.py` — TODO
@@ -151,6 +160,7 @@ targets the like-named module under `ari/`.
 - `test_trace_store.py` — TODO
 - `test_tree_view_adapter.py` — TODO
 - `test_upload_to_node.py` — upload to compute node.
+- `test_v2_tool_suppression.py` — the v2 loop hides tools a 20-step budget cannot afford. They are suppressed, not removed from the MCP servers, so other phases are unaffected. Two things must hold together: the tools are gone from the loop, and the prompt stops telling the agent to call one -- otherwise the instruction itself burns a step on a tool that is not there.
 - `test_variable_passthrough.py` — variable passthrough.
 - `test_verified_context_wiring.py` — orchestrator gating of verified_context.json on `ARI_MEMORY_CONSOLIDATE` (off→skip / on→build / build-failure→pipeline survives).
 - `test_virsci_off.py` — VirSci-off path.

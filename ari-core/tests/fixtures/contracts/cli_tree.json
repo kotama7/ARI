@@ -105,6 +105,29 @@
         "options": [],
         "type": "group"
       },
+      "harness": {
+        "arguments": [],
+        "commands": {
+          "list": {
+            "arguments": [],
+            "options": [],
+            "type": "command"
+          },
+          "select": {
+            "arguments": [],
+            "options": [
+              "--budget-s",
+              "--denominator",
+              "--have",
+              "--must-see",
+              "--resolve"
+            ],
+            "type": "command"
+          }
+        },
+        "options": [],
+        "type": "group"
+      },
       "memory": {
         "arguments": [],
         "commands": {

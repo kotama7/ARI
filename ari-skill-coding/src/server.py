@@ -99,7 +99,7 @@ def _run_sandboxed(
 _CONTAINER_ROOT = "/workspace"
 # Filesystem tools that take a ``work_dir`` and operate under the container root.
 _WORKDIR_TOOLS = frozenset(
-    {"write_code", "run_code", "run_bash", "read_file", "emit_results"}
+    {"write_code", "edit_code", "run_code", "run_bash", "read_file", "emit_results"}
 )
 # ``/workspace`` followed by a path boundary (``/``, whitespace, quote, end) —
 # so ``/workspace_backup`` is left untouched.
@@ -230,6 +230,50 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="edit_code",
+            description=(
+                "Replace an exact snippet inside an existing file, leaving the "
+                "rest untouched. Prefer this over write_code when the file "
+                "already exists: 92.2% of writes in the previous campaign "
+                "rewrote a file that was already there, and re-emitting a whole "
+                "kernel to change a few lines both costs tokens and risks "
+                "dropping code that was working. `old_string` must appear "
+                "EXACTLY ONCE unless replace_all is set, so an ambiguous edit "
+                "fails instead of silently changing the wrong place."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "filename": {
+                        "type": "string",
+                        "description": "File to edit; it must already exist.",
+                    },
+                    "old_string": {
+                        "type": "string",
+                        "description": (
+                            "Exact text to replace, including indentation. Give "
+                            "enough surrounding context to make it unique."
+                        ),
+                    },
+                    "new_string": {
+                        "type": "string",
+                        "description": "Replacement text.",
+                    },
+                    "replace_all": {
+                        "type": "boolean",
+                        "description": "Replace every occurrence instead of requiring exactly one.",
+                        "default": False,
+                    },
+                    "work_dir": {
+                        "type": "string",
+                        "description": "Container root (leave unset — auto-pinned to /workspace).",
+                        "default": "/workspace",
+                    },
+                },
+                "required": ["filename", "old_string", "new_string"],
+            },
+        ),
+        Tool(
             name="run_code",
             description=(
                 "Execute a source file using an interpreter selected by its "
@@ -257,8 +301,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "timeout": {
                         "type": "integer",
-                        "description": "Timeout in seconds",
-                        "default": 60,
+                        "description": "Timeout in seconds (default 600). The scored build and self-test of an HPC kernel routinely exceed a minute; at 60 s the agent got a timeout instead of a result and spent further steps re-running it.",
+                        "default": 600,
                     },
                 },
                 "required": ["filename"],
@@ -286,8 +330,8 @@ async def list_tools() -> list[Tool]:
                     },
                     "timeout": {
                         "type": "integer",
-                        "description": "Timeout in seconds",
-                        "default": 60,
+                        "description": "Timeout in seconds (default 600). The scored build and self-test of an HPC kernel routinely exceed a minute; at 60 s the agent got a timeout instead of a result and spent further steps re-running it.",
+                        "default": 600,
                     },
                 },
                 "required": ["command"],
@@ -483,6 +527,15 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     # back to the real dir before execution (``_devirtualize``) and the real dir
     # is scrubbed out of every result (``_virtualize`` on the serialized output).
     wd = _resolve_work_dir(arguments.get("work_dir")) if name in _WORKDIR_TOOLS else None
+    if name == "edit_code":
+        result = _edit_code(
+            filename=arguments["filename"],
+            old_string=arguments["old_string"],
+            new_string=arguments["new_string"],
+            replace_all=bool(arguments.get("replace_all", False)),
+            work_dir=arguments.get("work_dir", "/workspace"),
+        )
+        return [TextContent(type="text", text=json.dumps(result))]
     if name == "write_code":
         # NB: ``code`` is written verbatim — never devirtualized — so the saved
         # artifact stays host-agnostic (the agent is told to use relative or
@@ -496,13 +549,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
         result = _run_code(
             filename=_devirtualize(arguments["filename"], wd),
             work_dir=wd,
-            timeout=arguments.get("timeout", 60),
+            timeout=arguments.get("timeout", 600),
         )
     elif name == "run_bash":
         result = _run_bash(
             command=_devirtualize(arguments["command"], wd),
             work_dir=wd,
-            timeout=arguments.get("timeout", 60),
+            timeout=arguments.get("timeout", 600),
         )
     elif name == "read_file":
         result = _read_file(
@@ -533,6 +586,41 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     if wd:
         text = _virtualize(text, wd)
     return [TextContent(type="text", text=text)]
+
+
+def _edit_code(filename: str, old_string: str, new_string: str,
+               replace_all: bool, work_dir: str) -> dict:
+    """Exact-match replacement inside an existing file.
+
+    Refuses on 0 or on multiple matches (unless replace_all): an edit that
+    silently lands in the wrong place is worse than one that fails, because the
+    agent then reports success on a kernel it did not actually change.
+    """
+    file_path = Path(work_dir) / filename
+    if not file_path.is_file():
+        return {"status": "error",
+                "error": f"no such file: {filename} (use write_code to create it)"}
+    try:
+        body = file_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"status": "error", "error": f"cannot read {filename}: {exc}"}
+    n = body.count(old_string)
+    if n == 0:
+        return {"status": "error",
+                "error": ("old_string not found; it must match the file exactly, "
+                          "including indentation")}
+    if n > 1 and not replace_all:
+        return {"status": "error",
+                "error": (f"old_string appears {n} times; add surrounding context "
+                          f"to make it unique, or set replace_all")}
+    updated = (body.replace(old_string, new_string) if replace_all
+               else body.replace(old_string, new_string, 1))
+    try:
+        file_path.write_text(updated, encoding="utf-8")
+    except OSError as exc:
+        return {"status": "error", "error": f"cannot write {filename}: {exc}"}
+    return {"path": str(file_path), "replacements": n if replace_all else 1,
+            "lines": len(updated.splitlines()), "status": "edited"}
 
 
 def _write_code(filename: str, code: str, work_dir: str) -> dict:

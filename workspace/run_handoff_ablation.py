@@ -15,7 +15,7 @@ Examples (on a compute node, after starting Ollama and exporting OLLAMA_HOST):
     # inspect the exact env+commands without running:
     python workspace/run_handoff_ablation.py --mode mvp --dry-run
 
-For fx700 batch submission, use the matrix launcher. It submits one independent
+For batch submission, use the matrix launcher. It submits one independent
 Slurm array element per task, arm, and seed:
     bash workspace/submit_handoff_ablation_array.sh --smoke
     bash workspace/submit_handoff_ablation_array.sh --full
@@ -39,7 +39,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 # Make ``ari`` importable without relying on a site-packages install. On the login
 # node the x86 .venv has ari installed, but a per-arch compute-node venv (e.g. the
-# aarch64 fx700 venv) does not, so `import ari` died with ModuleNotFoundError before
+# aarch64 venv) does not, so `import ari` died with ModuleNotFoundError before
 # the driver could even list tasks. Same one-liner the analyzer uses.
 sys.path.insert(0, str(REPO / "ari-core"))
 # The deterministic task selects the harness: its measurement, its frozen
@@ -59,6 +59,65 @@ def _task_choices() -> list[str]:
             "$ARI_WORKSPACE/harnesses/<task>/ (see ari/harness_registry.py)."
         )
     return tasks
+
+
+def _measurement_environment(task: str | None = None) -> dict:
+    """The environment as the HARNESS captures it, not a second list of names.
+
+    The manifest and the harness used to keep separate records and neither was a
+    superset of the other: the manifest named six BLAS threading variables the
+    harness did not capture, and the harness captured the XOS/FLIB/LD families
+    the manifest never named -- including the one measured to move the same
+    frozen source by 5.9x. Two partial records of the same fact is worse than
+    one, because each looks complete.
+
+    So the manifest asks a registered harness. If it cannot, that is RECORDED
+    rather than quietly degraded to an empty dict, because an empty environment
+    record is indistinguishable from a clean environment.
+    """
+    import importlib
+    # The harness that is actually SCORING is asked first. The three copies of
+    # the prefix set are identical today, but a divergence would otherwise be
+    # recorded silently: the manifest would describe one harness's view of the
+    # environment while a different harness produced the numbers.
+    #
+    # The fallback scans THIS repo's harness directories rather than asking the
+    # registry, because the registry resolves through ARI_WORKSPACE: an ambient
+    # value pointing elsewhere made the whole capture come back empty, and an
+    # empty environment record is indistinguishable from a clean environment.
+    # The manifest describes the tree it was written from, so it reads that tree.
+    here = sorted(d.name for d in (REPO / "workspace" / "harnesses").iterdir()
+                  if d.is_dir() and (d / f"{d.name}_harness.py").is_file())
+    order = ([task] if task else []) + [t for t in here if t != task]
+    for name in order:
+        d = REPO / "workspace" / "harnesses" / name
+        if not (d / f"{name}_harness.py").is_file():
+            continue
+        sys.path.insert(0, str(d))
+        try:
+            mod = importlib.import_module(f"{name}_harness")
+            fn = getattr(mod, "measurement_environment", None)
+            if fn is None:
+                continue
+            out = fn()
+            out["captured_via"] = f"{name}_harness.measurement_environment"
+            if task and name != task:
+                out["captured_via_note"] = (
+                    f"the scoring task is {task!r}, whose harness does not "
+                    f"expose measurement_environment; this record is "
+                    f"{name!r}'s view of the environment, not necessarily "
+                    f"the one that produced the numbers")
+            return out
+        except Exception:
+            continue
+        finally:
+            if str(d) in sys.path:
+                sys.path.remove(str(d))
+    return {"variables": {}, "sha256": None,
+            "capture_error": "no registered harness exposed "
+                             "measurement_environment; this record is EMPTY "
+                             "BECAUSE CAPTURE FAILED, not because the "
+                             "environment was clean"}
 
 
 def _experiment_for(task: str) -> Path:
@@ -96,8 +155,14 @@ _STUDY_EXTRA_FILES = (
     "workspace/analyze_handoff_ablation.py",
     "workspace/submit_handoff_ablation_array.sh",
     "workspace/submit_handoff_ablation_sbatch.sh",
-    "workspace/staging/fx700_smoke_config.yaml",
-    "report_temp/paper_ja.tex",
+    "workspace/staging/smoke_config.yaml",
+    # NOT the manuscript. report_temp/paper_ja.tex was listed here, and it cannot
+    # define the study: no worker reads it. What it did instead was make the
+    # campaign fragile -- the collector recomputes this manifest after the shards
+    # finish and refuses to analyse if it moved, so editing a single character of
+    # the paper during a multi-hour run discards the whole run's analysis. That
+    # is exactly what happened on the 1-seed pre-flight (fingerprint 886acf2e ->
+    # 591d2e3f, one changed file: the .tex).
 )
 _STUDY_TRACKED_PREFIXES = (
     "ari-core/ari/",
@@ -208,7 +273,7 @@ _ARM_CHANNELS = {
 }
 # Measurement isolation is part of the treatment-independent study contract.
 # NumPy's GEMM reference otherwise leaves a many-threaded BLAS pool active just
-# before the timed OpenMP candidate. On fx700 this made candidate-first pairs
+# before the timed OpenMP candidate. On this machine it made candidate-first pairs
 # 6-15x slower than baseline-first pairs. The kernel subprocess still receives
 # the task-specific 48-thread budget through ARI_{TASK}_THREADS; these variables
 # only serialize controller-side numerical libraries and pin kernel placement.
@@ -838,34 +903,12 @@ def _write_study_bundle(out_dir: Path, *, task: str, args) -> str:
         ),
         "fixed_env": dict(_FIXED),
         "arm_channels": _ARM_CHANNELS,
-        "measurement_environment": {
-            key: os.environ.get(key)
-            for key in (
-                "OMP_NUM_THREADS",
-                "OMP_PROC_BIND",
-                "OMP_PLACES",
-                "OMP_DYNAMIC",
-                "ARI_HARNESS_RUN_TIMEOUT_S",
-                "OPENBLAS_NUM_THREADS",
-                "GOTO_NUM_THREADS",
-                "MKL_NUM_THREADS",
-                "BLIS_NUM_THREADS",
-                "VECLIB_MAXIMUM_THREADS",
-                "NUMEXPR_NUM_THREADS",
-                "ARI_GEMM_THREADS",
-                "ARI_GEMM_CC",
-                "ARI_GEMM_CFLAGS",
-                "ARI_SPMM_THREADS",
-                "ARI_SPMM_CC",
-                "ARI_SPMM_CFLAGS",
-                "ARI_STENCIL_THREADS",
-                "ARI_STENCIL_CC",
-                "ARI_STENCIL_CFLAGS",
-                "ARI_SPMM_N",
-                "ARI_SPMM_K",
-                "ARI_STENCIL_SHAPES",
-            )
-        },
+        # Prefixes, not a hand list. This block used to name 24 variables and
+        # XOS_MMM_L_PAGING_POLICY was not among them -- it was found later, and
+        # measured to move the same frozen source by 5.9x. A list records what
+        # someone thought of; the harness capture it now shares records what is
+        # actually set under the families known to change a measurement.
+        "measurement_environment": _measurement_environment(task),
         "allocation": {
             "hostname": os.uname().nodename,
             "slurm_job_id": os.environ.get("SLURM_JOB_ID"),

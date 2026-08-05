@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import pathlib
 from pathlib import Path
 
 
@@ -40,6 +41,78 @@ def test_measurement_environment_serializes_reference_blas_and_pins_openmp():
         assert f"export {key}={value}" in sbatch
     assert 'export ARI_MAX_REACT="${ARI_MAX_REACT:-25}"' in sbatch
     assert "export ARI_HARNESS_RUN_TIMEOUT_S=120" in sbatch
+
+
+def test_the_observed_environment_is_recorded_separately_from_the_forced_one(
+        monkeypatch):
+    """`_FIXED` is what the study SETS; this is what was actually there.
+
+    They are not the same question and must not collapse into one field. The
+    forced set answers "what did we intend"; the observed record answers "what
+    were the conditions" -- and only the second can catch a variable nobody
+    thought to force. XOS_MMM_L_PAGING_POLICY is the case: the manifest used to
+    name 24 variables explicitly and that one was not among them, having been
+    found later and measured to move the same frozen source by 5.9x.
+    """
+    monkeypatch.setenv("XOS_MMM_L_PAGING_POLICY", "demand:demand:demand")
+    env = driver._measurement_environment("stencil")
+    assert env["variables"].get("XOS_MMM_L_PAGING_POLICY") == "demand:demand:demand", (
+        "the observed record must pick up a variable no one enumerated; that is "
+        "the whole difference between it and _FIXED")
+    assert len(env.get("sha256") or "") == 64
+    src = _DRIVER_PATH.read_text() if "_DRIVER_PATH" in globals() else (
+        pathlib.Path(driver.__file__).read_text())
+    assert '"fixed_env": dict(_FIXED)' in src
+    assert '"measurement_environment": _measurement_environment(task)' in src, (
+        "the manifest must carry the OBSERVED record, keyed to the task that is "
+        "actually scoring")
+
+
+def test_the_environment_record_survives_an_ambient_workspace_pointing_elsewhere(
+        monkeypatch):
+    """The manifest describes the tree it was written from, not $ARI_WORKSPACE.
+
+    The fallback originally asked the registry, which resolves through
+    ARI_WORKSPACE. With that variable pointing at another tree the capture came
+    back EMPTY -- and an empty environment record is indistinguishable from a
+    clean environment, so the manifest would have quietly asserted conditions
+    nobody observed.
+    """
+    monkeypatch.setenv("ARI_WORKSPACE", "/nonexistent-other-workspace")
+    env = driver._measurement_environment("erfc")
+    assert "capture_error" not in env, (
+        "an ambient ARI_WORKSPACE emptied the capture; the manifest must read "
+        "the tree it is describing")
+    assert len(env.get("sha256") or "") == 64
+
+
+def test_every_registered_harness_captures_its_own_environment():
+    """Borrowing is now the exception, not the norm.
+
+    This test was originally written the other way round: erfc exposed no
+    capture and the record it borrowed had to be labelled. Accuracy tasks turn
+    out to need the record MORE than timing ones -- a candidate built with
+    -ffast-math answers a different question about erfc and still reports a pass
+    fraction -- so every harness captures its own now.
+    """
+    from ari.harness_registry import registered_harnesses
+    for task in registered_harnesses():
+        env = driver._measurement_environment(task)
+        assert env["captured_via"] == f"{task}_harness.measurement_environment", (
+            f"{task} borrowed {env.get('captured_via')}: its own harness should "
+            f"expose measurement_environment")
+        assert "captured_via_note" not in env
+
+
+def test_a_borrowed_record_is_labelled_as_borrowed():
+    """The fallback must never assert conditions it did not observe."""
+    borrowed = driver._measurement_environment("no_such_task")
+    assert borrowed["captured_via"] != "no_such_task_harness.measurement_environment"
+    assert "captured_via_note" in borrowed, (
+        "this is some other harness's view of the machine; recording it "
+        "unlabelled would assert conditions that were never observed for the "
+        "scoring task")
+    assert len(borrowed.get("sha256") or "") == 64
 
 
 def test_study_fingerprint_covers_controls_and_registered_harnesses():
@@ -148,13 +221,121 @@ def test_registered_array_design_cannot_be_overridden_by_ambient_env():
         assert assignment in launcher
 
 
+def test_preflight_is_the_confirmatory_design_at_one_seed():
+    """A pre-flight must exercise the SCORED configuration, not a reduced one.
+
+    --smoke is the only other one-seed mode and it also swaps in 128^3/nt=10
+    problem sizes, so it can exercise the pipeline or the scored configuration
+    but never both. It is a mode rather than an ARI_SEEDS override because the
+    test above forbids reading the design from the environment, and that
+    prohibition is worth keeping: what ran must be readable from
+    launch_contract.json alone.
+    """
+    launcher = _ARRAY_PATH.read_text()
+    assert "--preflight) MODE=preflight ;;" in launcher
+    block = launcher.split('elif [[ "$MODE" == "preflight" ]]; then', 1)
+    assert len(block) == 2, "the preflight branch is gone"
+    body = block[1].split("else", 1)[0]
+    # one seed, but everything else identical to --full
+    assert "SEEDS=1" in body
+    assert "REMEASURE_REPS=15" in body
+    assert "MATRIX_SMOKE=0" in body, (
+        "preflight must NOT enable the reduced smoke problem sizes")
+
+
+def test_resume_reruns_only_incomplete_cells_from_the_frozen_contract():
+    """Recovery from a partial campaign must not become a different experiment.
+
+    The collector refuses a partial grid and nothing below it retries a cell, so
+    one terminal API error in 270 used to mean finding the cell by hand. --resume
+    does that mechanically, but it has to take the design from the ORIGINAL
+    launch_contract.json rather than from a mode branch, and it has to refuse
+    outright when the source tree has moved since -- otherwise the resubmitted
+    cells carry a different fingerprint from their siblings and the collector
+    throws the whole campaign away AFTER the compute has been spent.
+    """
+    launcher = _ARRAY_PATH.read_text()
+    assert '"--resume"' in launcher
+
+    # design comes from the contract, not from the mode branches
+    for key in ("mode)", "seeds)", "seed_base)", "max_nodes)",
+                "remeasure_reps)", "model)"):
+        assert key in launcher, f"resume does not read {key} back from the contract"
+
+    # the array spec is restricted to the incomplete indices
+    assert 'ARRAY_SPEC="${RESUME_INDICES}%${CONCURRENCY}"' in launcher
+    assert "find_incomplete_cells.py" in launcher
+
+    # and a moved source tree aborts, restoring the contract the fingerprint
+    # computation overwrote as a side effect
+    assert '"$STUDY_FINGERPRINT" != "$RESUMED_FINGERPRINT"' in launcher
+    assert 'mv -f "$ROOT/launch_contract.json.resume_backup"' in launcher
+    assert "exit 3" in launcher
+
+
+def test_launcher_refuses_a_campaign_whose_cache_will_not_fit():
+    """The seed count multiplies the oracle cache, and a pre-flight cannot show it.
+
+    ``remeasure_seed = run_seed + 1_000_000`` means every run seed gets its own
+    15 problems per shape, so the cache grows linearly in seeds: 26.7 GB for one,
+    ~800 GB for thirty, against ~694 GB of quota. Running into the quota part-way
+    through is the worst available failure — writes fail, oracles are recomputed
+    instead of read, and only the runs late in the campaign time out, so the
+    damage is unbalanced across seeds.
+    """
+    launcher = _ARRAY_PATH.read_text()
+    assert "check_cache_capacity.py" in launcher
+    assert 'ARI_SKIP_CAPACITY_CHECK' in launcher, "the check must be overridable"
+    assert "exit 4" in launcher
+    # and it must run BEFORE anything is submitted
+    assert launcher.index("check_cache_capacity.py") < launcher.index("sbatch --parsable")
+
+
+def test_collector_accepts_the_set_of_array_jobs_this_root_was_submitted_under():
+    """One id per campaign stopped being true the moment resume existed.
+
+    Recovering a dead cell resubmits it under a NEW Slurm array job into the same
+    root. With a single expected id every shard is then wrong — the resumed one
+    against the original, or the original 269 against the resumed one. Found by
+    killing a cell and running the recovery for real: the collector went from 1
+    error to 8. The launcher therefore accumulates the ids it submitted for this
+    root, and starts the list fresh for anything that is not a resume, so a reused
+    root cannot inherit an unrelated campaign's ids.
+    """
+    launcher = _ARRAY_PATH.read_text()
+    assert 'echo "$ARRAY_JOB" >> "$ROOT/array_job_ids.txt"' in launcher
+    assert 'echo "$ARRAY_JOB" > "$ROOT/array_job_ids.txt"' in launcher
+    assert '--expected-array-job-id "$ARRAY_JOB_SET"' in launcher
+
+    analyzer = (pathlib.Path(_ARRAY_PATH).parent / "analyze_handoff_ablation.py").read_text()
+    assert "accepted = {" in analyzer
+    assert "array_job_id not in accepted" in analyzer
+
+
+def test_preflight_is_not_recorded_as_a_confirmatory_analysis():
+    """One seed cannot support the confirmatory claim, and it prints like one.
+
+    With n=1 every contrast comes out p=1 with a zero-width CI, so a preflight
+    root left on ``analysis_role: confirmatory`` both reads like a result and is
+    filed as one. The collector must therefore pass --descriptive-only for
+    --preflight as well as --smoke.
+    """
+    launcher = _ARRAY_PATH.read_text()
+    assert 'if [[ "$MODE" == "smoke" || "$MODE" == "preflight" ]]; then' in launcher
+    guard = launcher.split('|| "$MODE" == "preflight" ]]; then', 1)[1]
+    assert guard.lstrip().startswith("COLLECT_ARGS+=(--descriptive-only)")
+
+
 def test_manifest_records_slurm_allocation(tmp_path, monkeypatch):
     manifest = tmp_path / "manifest.jsonl"
     monkeypatch.setenv("SLURM_JOB_ID", "123_4")
     monkeypatch.setenv("SLURM_ARRAY_JOB_ID", "123")
     monkeypatch.setenv("SLURM_ARRAY_TASK_ID", "4")
-    monkeypatch.setenv("SLURM_JOB_PARTITION", "fx700")
-    monkeypatch.setenv("SLURM_JOB_NODELIST", "fx29")
+    # A neutral fixture value: the test asserts that whatever Slurm reports is
+    # recorded verbatim, and naming this site's partition here would put site
+    # detail in the repository for no test-coverage gain.
+    monkeypatch.setenv("SLURM_JOB_PARTITION", "testpart")
+    monkeypatch.setenv("SLURM_JOB_NODELIST", "testnode01")
     monkeypatch.setenv("SLURM_CPUS_PER_TASK", "48")
     monkeypatch.setenv("ARI_STUDY_SOURCE_FINGERPRINT", "f" * 64)
 
@@ -164,8 +345,8 @@ def test_manifest_records_slurm_allocation(tmp_path, monkeypatch):
     allocation = row["allocation"]
     assert allocation["slurm_array_job_id"] == "123"
     assert allocation["slurm_array_task_id"] == "4"
-    assert allocation["slurm_partition"] == "fx700"
-    assert allocation["slurm_nodelist"] == "fx29"
+    assert allocation["slurm_partition"] == "testpart"
+    assert allocation["slurm_nodelist"] == "testnode01"
     assert allocation["slurm_cpus_per_task"] == "48"
     assert row["study_source_fingerprint"] == "f" * 64
 

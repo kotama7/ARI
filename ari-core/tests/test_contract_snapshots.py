@@ -86,7 +86,11 @@ def test_cli_command_tree():
         "clone", "run", "resume", "paper", "status", "skills-list",
         "viz", "projects", "show", "delete", "settings",
     }
-    assert groups == {"memory", "ear", "registry", "migrate", "doctor"}
+    # "harness" was added with the harness pool: `list` shows what each
+    # registered harness declares it is for, `select` ranks the pool against a
+    # requirement. Adding a group is a public-surface change and this list is
+    # what makes it deliberate rather than incidental.
+    assert groups == {"memory", "ear", "registry", "migrate", "doctor", "harness"}
     # Nested typer must survive the broad try/except import guards (010 §1).
     assert "token" in root["registry"]["commands"]
     assert set(root["registry"]["commands"]["token"]["commands"]) == {
@@ -101,7 +105,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 59 FastMCP + 29 low-level defs (87 unique names) + collision guard ──
+# ── MCP: 59 FastMCP + 30 low-level defs (88 unique names) + collision guard ──
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -116,9 +120,13 @@ def test_mcp_tool_counts_and_names():
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
     assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 29, f"expected 29 low-level tool defs, got {len(lowlevel)}"
+    # 30 since edit_code joined the coding skill: an exact-match replacement
+    # tool, added because 92.2% of writes in the previous campaign rewrote a
+    # file that already existed, and re-emitting a whole kernel to change a
+    # few lines both costs tokens and risks dropping working code.
+    assert len(lowlevel) == 30, f"expected 30 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 87, f"expected 87 unique tool names, got {len(unique)}"
+    assert len(unique) == 88, f"expected 88 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 

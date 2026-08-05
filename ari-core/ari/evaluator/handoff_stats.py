@@ -110,6 +110,92 @@ def paired_bootstrap_difference_ci(
     return point, float(lo), float(hi)
 
 
+def sign_flip_ci(
+    a: Sequence[float],
+    b: Sequence[float],
+    *,
+    n_perm: int = 500_000,
+    alpha: float = 0.05,
+    seed: int = 0,
+) -> tuple[float, float, float]:
+    """95% interval obtained by INVERTING the two-sided sign-flip test.
+
+    WHY THIS EXISTS ALONGSIDE THE BOOTSTRAP CI. The reported p-value comes from
+    :func:`paired_permutation_test` but the reported interval comes from a
+    percentile bootstrap, and the two can disagree at the boundary: a bootstrap
+    interval can exclude zero while the sign-flip test does not reject, or the
+    reverse. That looks like an inconsistency in the result when it is only two
+    different procedures. Inverting the SAME test that produced the p-value
+    gives an interval that agrees with it by construction: the interval excludes
+    a shift exactly when the test rejects that shift.
+
+    METHOD. The interval is the set of shifts d for which testing
+    ``differences - d`` against zero does not reject at ``alpha``. Rather than
+    redrawing signs for every candidate shift, note that for a fixed sign vector
+    ``s`` the permuted statistic is linear in the shift:
+
+        mean((x - d) * s) = mean(x * s) - d * mean(s)
+
+    so ONE pass storing ``U_b = mean(x*s_b)`` and ``V_b = mean(s_b)`` makes the
+    p-value a cheap function of ``d``, and the two endpoints follow by
+    bisection. The p-value uses the same ``(1 + #extreme) / (1 + n_perm)``
+    convention as the test being inverted, so the endpoints are consistent with
+    the frozen p-values rather than a second, differently-calibrated procedure.
+
+    Returns ``(point, lo, hi)``; all three are NaN when the inputs are empty or
+    unequal in length, matching :func:`paired_bootstrap_difference_ci`.
+    """
+    aa = np.asarray([float(x) for x in a], dtype=float)
+    bb = np.asarray([float(x) for x in b], dtype=float)
+    if aa.size == 0 or aa.size != bb.size:
+        return (float("nan"), float("nan"), float("nan"))
+    differences = aa - bb
+    point = float(differences.mean())
+    n_perm = int(n_perm)
+    if n_perm <= 0 or differences.size == 0:
+        return (point, float("nan"), float("nan"))
+
+    rng = np.random.default_rng(seed)
+    # Chunked so a large n_perm never materialises an (n_perm, n) sign matrix.
+    chunk = max(1, min(n_perm, 50_000))
+    u = np.empty(n_perm, dtype=float)
+    v = np.empty(n_perm, dtype=float)
+    done = 0
+    while done < n_perm:
+        take = min(chunk, n_perm - done)
+        signs = rng.choice((-1.0, 1.0), size=(take, differences.size))
+        u[done:done + take] = signs @ differences / differences.size
+        v[done:done + take] = signs.mean(axis=1)
+        done += take
+
+    def p_value(shift: float) -> float:
+        observed = abs(point - shift)
+        extreme = 1 + int(np.count_nonzero(
+            np.abs(u - shift * v) >= observed - 1e-15))
+        return extreme / (n_perm + 1)
+
+    spread = float(np.abs(differences).max()) + abs(point) + 1.0
+
+    def endpoint(direction: int) -> float:
+        """Outermost shift still accepted, found by expanding then bisecting."""
+        inside, outside = point, point + direction * spread
+        for _ in range(60):                      # expand until rejection
+            if p_value(outside) <= alpha:
+                break
+            inside, outside = outside, outside + direction * spread
+        else:
+            return float("nan")                  # never rejects: unbounded side
+        for _ in range(80):                      # bisect the boundary
+            mid = 0.5 * (inside + outside)
+            if p_value(mid) > alpha:
+                inside = mid
+            else:
+                outside = mid
+        return float(inside)
+
+    return point, endpoint(-1), endpoint(+1)
+
+
 def paired_permutation_test(
     a: Sequence[float],
     b: Sequence[float],
