@@ -97,7 +97,10 @@ def verify_performance(
         raise PerfInfrastructureError(
             f"case set {case_set.revision!r} is for family {case_set.kind!r}, "
             f"but problem {definition.revision!r} is {definition.family!r}")
-    cases = tuple(tuple(int(v) for v in case) for case in case_set.cases)
+    # Passed to the family verbatim. The loop used to coerce every element to
+    # int, which silently made a case descriptor a list of sizes -- true for
+    # GEMM and false for anything with a categorical in it.
+    cases = tuple(tuple(case) for case in case_set.cases)
     reps = TIER_REPETITIONS[tier]
 
     include_dir = loaded.directory

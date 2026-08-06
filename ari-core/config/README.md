@@ -28,6 +28,12 @@ Shipped default config files (YAML) loaded by ari-core.
     - `gemm-parity.yaml` — TODO
     - `gemm-scored-2026q3.yaml` — TODO
     - `gemm-smoke.yaml` — TODO
+    - `spmm-parity.yaml` — TODO
+    - `spmm-scored-2026q3.yaml` — TODO
+    - `spmm-smoke.yaml` — TODO
+    - `stencil-parity.yaml` — TODO
+    - `stencil-scored-2026q3.yaml` — TODO
+    - `stencil-smoke.yaml` — TODO
   - `contracts/` — ABI and oracle contracts used by native HPC harnesses.
     - `gemm-c-abi-v1.yaml` — dense GEMM C ABI, cases, oracle, and tolerance contract.
     - `spmm-csr-c-abi-v1.yaml` — CSR SpMM C ABI, cases, oracle, and tolerance contract.
@@ -116,6 +122,24 @@ Shipped default config files (YAML) loaded by ari-core.
       - `seed_gemm.c` — TODO
       - `slow_gemm.c` — TODO
       - `wrong_gemm.c` — TODO
+    - `spmm-csr-fp64/` — TODO
+      - `problem.yaml` — TODO
+      - `reference_spmm.c` — TODO
+      - `seed_spmm.c` — TODO
+      - `slow_spmm.c` — TODO
+      - `spmm_kernel.h` — TODO
+      - `spmm_main.c` — TODO
+      - `spmm_main_profiled.c` — TODO
+      - `wrong_spmm.c` — TODO
+    - `stencil-jacobi7-fp64/` — TODO
+      - `problem.yaml` — TODO
+      - `reference_stencil.c` — TODO
+      - `seed_stencil.c` — TODO
+      - `slow_stencil.c` — TODO
+      - `stencil_kernel.h` — TODO
+      - `stencil_main.c` — TODO
+      - `stencil_main_profiled.c` — TODO
+      - `wrong_stencil.c` — TODO
   - `reports/` — deterministic promotion gate reports for built-in harnesses.
     - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
     - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.

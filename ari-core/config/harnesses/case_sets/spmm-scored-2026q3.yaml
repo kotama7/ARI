@@ -1,0 +1,22 @@
+# WHICH PROBLEMS the CSR SpMM harness measures on.
+#
+# A case is (matrix_family, n, k): the matrix family is part of the case and not
+# of the harness, because "which sparsity structures are we scored over" is a
+# question about the science, not about the instrument. Six families, so a kernel
+# tuned for uniform rows alone is visibly worse rather than silently untested —
+# power_law and skewed have heavy-tailed row counts by construction.
+#
+# n=20000, k=64 is the prototype's scored size, roughly 8M nonzeros. The
+# harness's own small default (n=512, k=32) is ~39x smaller, where even a perfect
+# kernel scores about 1x and the search gradient dies.
+schema_version: ari.harness-case-set/v1
+revision: native-perf-spmm-cases/v1@scored-2026q3
+kind: spmm
+description: "The scored SpMM cases: six matrix families at 20000x20000, k=64."
+cases:
+  - [uniform, 20000, 64]
+  - [banded, 20000, 64]
+  - [power_law, 20000, 64]
+  - [block, 20000, 64]
+  - [diagonal_dominant, 20000, 64]
+  - [skewed, 20000, 64]

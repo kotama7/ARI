@@ -76,6 +76,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_perf_gemm.py` — the dense fp64 GEMM family: problem generator, on-disk instance format, expected output size, and the per-element backward-error oracle. Holds no measurement loop.
   - `native_perf_measure.py` — the measurement, once, for every problem: anchor/matched denominators, launch ordering, all timed launches before the oracle, per-role output files, and the verdict against the registered regression threshold. Refuses a case set whose family is not the problem's.
   - `native_perf_profile.py` — region-gated hardware counters for the scored region, carrying `scored: false`. Diagnostic only; a problem that declares no profiled driver is refused rather than profiled with the ungated one.
+  - `native_perf_spmm.py` — TODO
+  - `native_perf_stencil.py` — TODO
   - `problems.py` — the pinned problem asset: closed-schema `ProblemDefinitionV1` (no field for flags, timing or tolerances, so an unapproved problem cannot weaken the instrument), digest over the declaration and every file it names, and `materialize` as the seed_work_dir equivalent — which withholds the reference.
   - `registration.py` — execute harness registration gates and catalog promotion.
   - `registration_models.py` — promotion approval, evidence, and registration report models.

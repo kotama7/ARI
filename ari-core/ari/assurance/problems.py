@@ -160,6 +160,12 @@ class ProblemDefinitionV1(StrictModel):
     score_inputs: tuple[str, ...] = Field(min_length=1)
     #: A pinned case set, by revision. The size stays data.
     case_set: str
+    #: Where the parity probe certifies, if not the scored set. Separate so a
+    #: probe can be cheap without changing what a scored run measures. Still a
+    #: pinned set, still checked against the family, and the probe refuses one
+    #: that declares ``resolves: false`` -- an instrument certified at a size
+    #: where its own spread swamps the difference has not been certified.
+    parity_case_set: str | None = None
     axis: ProblemAxis
     denominator: ProblemDenominator
     #: The 課題文. Pinned with everything else because a prompt is an

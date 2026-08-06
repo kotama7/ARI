@@ -36,6 +36,7 @@ scaffolding:
 score_inputs:
   - candidate_gemm.c
 case_set: native-perf-gemm-cases/v1@scored-2026q3
+parity_case_set: native-perf-gemm-cases/v1@parity
 axis: speedup
 denominator: competent_frozen
 goal: |

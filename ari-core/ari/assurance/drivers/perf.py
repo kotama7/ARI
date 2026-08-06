@@ -43,13 +43,13 @@ from ari.research_contract import ResearchArtifactRefV1
 
 PERF_DRIVER_REVISION = "ari.assurance.native-perf/v1"
 
-#: The case set the parity probe measures at — named and pinned like any other,
-#: so the probe cannot certify the harness at a size no scored run uses. Separate
-#: from the scored set so a probe can be cheap without silently changing what a
-#: scored run measures. Registration has to happen on the node class that
-#: measures: at a small shape a single ~20 ms stall against a ~0.2 ms kernel gave
-#: a 100x spread here, against 0.095% at the scored shape.
-_PARITY_CASE_SET = "native-perf-gemm-cases/v1@parity"
+# WHERE the probe certifies is the PROBLEM's choice (``parity_case_set``,
+# falling back to its scored set). A constant here could only ever name one
+# family's set, and the probe certifies whichever harness it is handed. It is
+# still pinned like any other set, still checked against the family, and a set
+# declaring ``resolves: false`` is refused: registration has to happen where the
+# instrument resolves, and at a small shape a single ~20 ms stall against a
+# ~0.2 ms kernel gave a 100x spread against 0.095% at the scored shape.
 
 #: The controls used to be gemm source embedded here, which was fine while gemm
 #: was the only problem and wrong the moment the probe started probing the
@@ -86,7 +86,12 @@ def perf_driver_digest() -> str:
         package / "native_perf_common.py",
         package / "native_perf_family.py",
         package / "native_perf_measure.py",
+        # Every family: an oracle is what decides whether a fast answer counts,
+        # so all of them are inside the instrument's content address even when a
+        # given harness measures only one.
         package / "native_perf_gemm.py",
+        package / "native_perf_spmm.py",
+        package / "native_perf_stencil.py",
         # The profiler is part of the instrument too.
         package / "native_perf_profile.py",
         # A problem is only as pinned as the code that resolves and digests it.
@@ -281,46 +286,62 @@ class NativePerfDriver:
         anything else, while looking exactly as though it had.
         """
         problem = load_problem(manifest.oracle.revision)
-        scaffolding = problem.definition.scaffolding
+        definition = problem.definition
+        scaffolding = definition.scaffolding
+        parity_set = definition.parity_case_set or definition.case_set
+
+        def _refused(reason: str) -> dict:
+            # Fail closed, and say why. Reporting passed=False beats skipping the
+            # check: it is what keeps "a problem may be added without approval"
+            # from also meaning "a problem may be registered without evidence".
+            return {
+                "schema_version": "ari.native-perf-parity-report/v1",
+                "driver_digest": perf_driver_digest(),
+                "case_set": parity_set,
+                "problem": definition.revision,
+                "problem_digest": problem.digest,
+                "results": {},
+                "passed": False,
+                "reason": reason,
+            }
+
+        probe_set, _digest = load_case_set(parity_set)
+        if probe_set.kind != definition.family:
+            return _refused(
+                f"parity case set {parity_set!r} is for family "
+                f"{probe_set.kind!r}, not {definition.family!r}")
+        if not probe_set.resolves:
+            return _refused(
+                f"parity case set {parity_set!r} declares resolves=false; an "
+                f"instrument certified where its own spread swamps the "
+                f"difference it reports has not been certified")
         for which, name in (("slow", scaffolding.negative_control_slow),
                             ("wrong", scaffolding.negative_control_wrong)):
             if not name:
-                # Fail closed. Reporting passed=False with a reason, rather than
-                # skipping the missing control, is what keeps "a problem may be
-                # added without approval" from also meaning "a problem may be
-                # registered without evidence".
-                return {
-                    "schema_version": "ari.native-perf-parity-report/v1",
-                    "driver_digest": perf_driver_digest(),
-                    "case_set": _PARITY_CASE_SET,
-                    "problem": problem.definition.revision,
-                    "results": {},
-                    "passed": False,
-                    "reason": _MISSING_CONTROLS.format(
-                        revision=problem.definition.revision, which=which),
-                }
+                return _refused(_MISSING_CONTROLS.format(
+                    revision=definition.revision, which=which))
         flags = " ".join(reference_flags(problem))
         clean = verify_native_perf(
             problem, reference_source(problem), tier="validate",
-            dataset_revision=_PARITY_CASE_SET, candidate_flags=flags,
+            dataset_revision=parity_set, candidate_flags=flags,
             regression_threshold=0.95)
         slow = verify_native_perf(
             problem, problem.path(scaffolding.negative_control_slow),
-            tier="screen", dataset_revision=_PARITY_CASE_SET,
+            tier="screen", dataset_revision=parity_set,
             candidate_flags=flags, regression_threshold=0.95)
         wrong = verify_native_perf(
             problem, problem.path(scaffolding.negative_control_wrong),
-            tier="screen", dataset_revision=_PARITY_CASE_SET,
+            tier="screen", dataset_revision=parity_set,
             candidate_flags=flags, regression_threshold=0.95)
         slow_detail = slow.case_results[0].detail if slow.case_results else ""
         wrong_detail = wrong.case_results[0].detail if wrong.case_results else ""
         return {
             "schema_version": "ari.native-perf-parity-report/v1",
             "driver_digest": perf_driver_digest(),
-            "case_set": _PARITY_CASE_SET,
+            "case_set": parity_set,
             # Which question was probed. A probe report that named only the
             # driver could be read as evidence about a harness it never ran.
-            "problem": problem.definition.revision,
+            "problem": definition.revision,
             "problem_digest": problem.digest,
             "results": {
                 "clean_control": {

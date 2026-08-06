@@ -1,0 +1,52 @@
+# CSR sparse matrix times a dense panel. See ari/assurance/problems.py for what
+# a problem may and may not declare; this file adds no ARI code.
+schema_version: ari.harness-problem/v1
+id: spmm-csr-fp64
+revision: spmm-csr-fp64/v1@2026q3
+family: spmm
+entry_point: spmm
+description: >-
+  Y = A*X with A in CSR and X, Y row-major dense fp64, measured against a
+  frozen row-parallel reference over six matrix families.
+scaffolding:
+  contract_header: spmm_kernel.h
+  driver: spmm_main.c
+  reference: reference_spmm.c
+  seed_candidate: seed_spmm.c
+  profiled_driver: spmm_main_profiled.c
+  negative_control_slow: slow_spmm.c
+  negative_control_wrong: wrong_spmm.c
+score_inputs:
+  - candidate_spmm.c
+case_set: native-perf-spmm-cases/v1@scored-2026q3
+parity_case_set: native-perf-spmm-cases/v1@parity
+axis: speedup
+denominator: competent_frozen
+goal: |
+  Make `spmm` in candidate_spmm.c as fast as you can without changing what it
+  computes.
+
+  The contract is in spmm_kernel.h and must be kept exactly:
+
+      Y[n*k] = A[n x m] (CSR) * X[m*k],  X and Y row-major dense fp64
+      indptr has length n+1; indices and values have length indptr[n]
+
+  What you are measured on, stated so it is not a surprise:
+
+  - You are scored over SIX matrix families, not one: uniform, banded,
+    power_law, block, diagonal_dominant and skewed. Two of them (power_law,
+    skewed) have heavy-tailed row counts by construction, so a schedule that
+    hands one thread the dense rows leaves the rest idle. A kernel tuned for
+    uniform rows alone will lose on those two.
+  - Edit only candidate_spmm.c. The driver and the header are frozen.
+  - Do not call a sparse BLAS library. The build does not link one.
+  - Your object may define only the `spmm` symbol, and may not run code outside
+    the timed call.
+  - One cold call per process is timed. There is no warmup.
+  - The output buffer arrives poisoned with NaN, so a kernel that does not write
+    every element fails the oracle rather than scoring fast.
+  - Correctness is a per-element backward-error bound scaled by each row's
+    nonzero count, so reassociating a row's sum is allowed.
+
+  You are compared against a frozen reference that is row-parallel with a
+  measured dynamic schedule. Passing means not slower than it.

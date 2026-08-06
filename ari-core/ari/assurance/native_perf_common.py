@@ -234,7 +234,12 @@ class CaseSetV1(StrictModel):
     #: problem's family at load, so a set cannot be measured by the wrong oracle.
     kind: PerfFamily
     description: str
-    cases: tuple[tuple[int, ...], ...]
+    #: One descriptor per scored instance, interpreted by the family and by
+    #: nothing else. Not int-only: a GEMM case is three sizes, but an SpMM case
+    #: names a matrix family as well, and coercing that to an int here would
+    #: have forced "sparse matrices that look like this" to become a separate
+    #: problem for no reason but a type.
+    cases: tuple[tuple[int | str, ...], ...]
     #: False marks a set that is cheap but NOT resolved enough to support a
     #: verdict. Stated in the data rather than left for a reader to infer from
     #: the numbers after the fact.

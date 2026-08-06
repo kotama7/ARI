@@ -248,7 +248,7 @@ def profile_problem(
         output = build / "profiled.bin"
         timing = build / "timing.bin"
         for raw_case in case_set.cases:
-            case = tuple(int(v) for v in raw_case)
+            case = tuple(raw_case)
             case_id = "x".join(str(v) for v in case)
             expected = family.output_elements(case)
             for index in range(int(reps)):
