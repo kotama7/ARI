@@ -13,21 +13,26 @@
     "status": "pass"
   },
   "environment_digest": "sha256:1dbc7b68dd93d4e621389165d83782ce68d1f625cdea903f3108edef42642ad0",
-  "evidence_digest": "sha256:16bea84d31ee256b0eec27ae265050924f78715066369b48fa8a6da80742eb2a",
+  "evidence_digest": "sha256:7fc561e9a63005e1b18b6b5ade7cd0ca69187c74be956baaef3c00e0c0edba0b",
   "provider_portability": {
-    "binding_lock_digests": [],
+    "abstraction_report_digest": "sha256:b1d7c514e279ba8ab41b3411bf55ba342d9e833c13cd42930a6cd75a3ad402d4",
+    "binding_lock_digests": [
+      "sha256:6891c7cb57663023719aef61161f0a0102880f11a2b34585c720efdd2a2f83db",
+      "sha256:beddbf4fe2a119e71ed60c551e9e1c59f119b2df8136f717ff057fc55f26e240"
+    ],
     "compatible_provider_ids": [
       "ari.provider.coding"
     ],
-    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
-    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
-    "status": "not_applicable_no_second_provider"
+    "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 4 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/intel_performance_patterns.abstraction.json.",
+    "method": "synthetic-substitution",
+    "provider_catalog_digest": "sha256:7ebcfaa891983352e2fad1d570cd603517afd462d2962db42ef3d9ed13dd024d",
+    "status": "pass"
   },
   "schema_version": "ari.knowledge-skill-registration-evidence/v1",
   "skill_ref": {
     "body_sha256": "sha256:6d435fbbb0b1a1c229b373974d12cc6d998c21a03a9606b735de40e97ea841cd",
     "id": "intel.performance-patterns",
-    "manifest_sha256": "sha256:05249e8fbbc4fd7cd7dc868991b90d37734bbcdf1cde9550f748291a06c5f63c",
+    "manifest_sha256": "sha256:a37ccd515c6eec8f81ded65d47dd155e1c5c2b5300597a484999849f74342d46",
     "version": "0.1.0+git.e9d0b641"
   },
   "source_full_commit_sha": "e9d0b6410fb1ad7a50fb81e0868fd23ae886882c"

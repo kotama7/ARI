@@ -1,0 +1,15 @@
+{
+  "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
+  "evidence_digest": "sha256:376d5c6bdf25a7381600b0a0028efe9a6a799cfeee31bd3ef03d26694a6629c7",
+  "from_status": "candidate",
+  "parent_transition_digest": null,
+  "schema_version": "ari.knowledge-skill-status-transition/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:fd9c56e20b8777dead878c5c20db883c228382fa335ea375ad25179dacb948c8",
+    "id": "hpc.spmm.optimization",
+    "manifest_sha256": "sha256:62dffdf13269d9628a1ccb85d585eed918922cc4b12a49d20cba8c5666b521be",
+    "version": "1.0.0"
+  },
+  "to_status": "verified",
+  "transition_digest": "sha256:de15ed9fcf2efefbb52bb125f80f54675e8e91821a9df17cf44a29ebd9880390"
+}

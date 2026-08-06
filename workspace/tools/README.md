@@ -28,9 +28,10 @@ record.
 - `profile_candidate.py` — **why a candidate is slow, at a size and a run count
   you choose.** `measure_absolute_performance.py` says how fast it is; this says
   why: IPC, how often an access leaves L1, what fraction of those reach memory,
-  and bytes/cycle where the machine reports its line size — over exactly the
-  region the score is built from, with the candidate's own compiler and screened
-  flags. Never scored (`scored: false` in every record): a profile that could
+  and L1 fill bytes/cycle — over exactly the region the score is built from,
+  with the candidate's own compiler and screened flags. `--l2-granule-bytes`
+  adds the L2-side traffic; it is a different unit from the L1 line and no OS
+  reports it, so it is suppressed rather than guessed. Never scored (`scored: false` in every record): a profile that could
   move a score would be a second scoring channel with none of the first one's
   anti-gaming surface.
 
@@ -225,9 +226,15 @@ record.
   that ran is reported SUSPECT); `read_format` was 0, so multiplexed events were
   silently under-reported (the scaling factor is now computed and printed);
   and bytes/cycle hardcoded a 256-byte line in a file claiming architecture
-  neutrality (now from sysfs or `sysconf`, and **suppressed rather than guessed**
-  when neither answers — which is the case on the aarch64 compute nodes here, so
-  pass a measured `--line-bytes N` to get that ratio). Running it on the wrong
+  neutrality — AND applied it to the wrong counter. Measured by counting lines
+  under a stride sweep (`workspace/checkpoints/20260807_020000_cache_line_measure`):
+  the L1 line is 256 B, but `L2D_CACHE_REFILL` ticks per **128 B granule**, so
+  feeding it the line size reported about twice the traffic. The two units are
+  now separate — `--line-bytes` for the L1 line, which `sysconf` answers here so
+  **`L1 fill bytes/cycle` needs no flag at all**, and `--l2-granule-bytes` for
+  the L2 granule, which no OS reports and is therefore suppressed rather than
+  guessed. With both supplied the two counters agree on traffic to 5%
+  (2.60–2.71 vs 2.58 B/cycle). Running it on the wrong
   architecture no longer returns a clean empty result: raw ARMv8 encodings that
   read 0 cycles exit 5 with "a zero here is a wrong tool, not a fast kernel".
   Build with `cc -O2` (the file defines `_GNU_SOURCE` itself).

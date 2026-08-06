@@ -1,0 +1,26 @@
+{
+  "baseline_lock_digest": "sha256:4b9a6379ef101c51d0924182fe093184fd17247e0afbd1fd51ab12b1954d3738",
+  "baseline_request_digest": "sha256:87f60a40490c46c0f3e57abee2581c2448607312f775b72cc72818b6848946dc",
+  "covered_capability_refs": [
+    "ari.code.edit/v1",
+    "ari.code.inspect/v1",
+    "ari.execution.benchmark/v1",
+    "ari.execution.compile/v1"
+  ],
+  "deterministic": true,
+  "disabled_incumbent_tool_refs": [
+    "ari-skill-coding/emit_results@sha256:78f2060219e63edceca0a04e243cda66b7abe4e71abae348bf4befab389fbf0e",
+    "ari-skill-coding/read_file@sha256:b154c0fee4a9d1bc2e1878311b64a072e2a3cd2057b56ba04400b78f82822256",
+    "ari-skill-coding/run_bash@sha256:e5c8ba8ed167e0cb750b0151293ce93b1fd1aa3879813b098d6100aec3fc54ce",
+    "ari-skill-coding/run_code@sha256:4339cfbe80b3ab08ddec1a963b65af6e79c11afe06a32928bd81d88ee6ab5052",
+    "ari-skill-coding/write_code@sha256:81c03c002904f7250a3a7129ab3aa672dd9b6c666095416a695426893df737ea"
+  ],
+  "incumbent_provider_id": "ari.provider.coding",
+  "provider_bound_capability_refs": [],
+  "report_digest": "sha256:23f2ee7436a9421cea238c80b7483312b90da81e3789efe7ead676059a3f921a",
+  "schema_version": "ari.capability-abstraction-report/v1",
+  "status": "passed",
+  "substituted_lock_digest": "sha256:41bfcd00893ee6202809cc56501ace647a2e3cdbf3effeef55607fa9c901cc3f",
+  "substituted_request_digest": "sha256:438deac9d093984eef9bd8f2717be12b1662be12df7c15e9e2365bd79618da04",
+  "synthetic_provider_id": "ari.provider.synthetic-substitute"
+}

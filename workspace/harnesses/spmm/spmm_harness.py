@@ -1915,10 +1915,15 @@ def _counters_binary(build_dir: str) -> tuple[str, dict]:
                  "built_from_source": True}
 
 
-def _profile_launcher(counters: str, line_bytes) -> tuple:
+def _profile_launcher(counters: str, line_bytes, l2_granule_bytes=None) -> tuple:
     launcher = [counters, "--gate", "--json"]
     if line_bytes:
         launcher += ["--line-bytes", str(int(line_bytes))]
+    if l2_granule_bytes:
+        # The unit L2D_CACHE_REFILL ticks in, which is NOT the L1 line -- measured
+        # at 128 B here against a 256 B line, so passing the line would double the
+        # traffic. No OS reports it, so it is supplied or the ratio is suppressed.
+        launcher += ["--l2-granule-bytes", str(int(l2_granule_bytes))]
     launcher.append("--")          # region_counters needs it before the command
     return tuple(launcher)
 
@@ -1993,7 +1998,8 @@ def _profile_record(task: str, work_dir: str, points: list, digest: str,
         # worth acting on before acting on it. One point has none, by definition.
         "ratio_spread": {k: _spread(k) for k in
                          ("ipc", "l1d_refill_per_access",
-                          "l2d_refill_per_l1d_refill", "bytes_per_cycle")},
+                          "l2d_refill_per_l1d_refill", "l1_fill_bytes_per_cycle",
+                          "l2_refill_bytes_per_cycle")},
         "measurement_environment": measurement_environment(),
         "toolchain": _toolchain_identity(
             _os_pin.environ.get("ARI_SPMM_CC", "cc")),
@@ -2010,7 +2016,8 @@ def _profile_record(task: str, work_dir: str, points: list, digest: str,
 
 def profile_node(work_dir: str, *, seed: int = 0, reps: int = 3, cases=None,
                  families=None, n: int | None = None, k: int | None = None,
-                 line_bytes: int | None = None) -> dict:
+                 line_bytes: int | None = None,
+                 l2_granule_bytes: int | None = None) -> dict:
     """Counters for the candidate's SCORED region, over chosen families and reps.
 
     ``n``/``k`` default to the SCORED size, taken from the same environment the
@@ -2030,7 +2037,7 @@ def profile_node(work_dir: str, *, seed: int = 0, reps: int = 3, cases=None,
     td_obj = _tf.TemporaryDirectory()
     try:
         counters, digest = _counters_binary(td_obj.name)
-        launcher = _profile_launcher(counters, line_bytes)
+        launcher = _profile_launcher(counters, line_bytes, l2_granule_bytes)
         _cand_flags, _ = _sanitize_candidate_flags(work_dir)
         exe = _compile_kernel("candidate", work_dir, td_obj.name,
                               extra_flags=_cand_flags,

@@ -1,0 +1,18 @@
+{
+  "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:090ac4ac3b80785760dd3ff9a8bbb220971f756c4d38b4545b0a16936c8842c3",
+  "approved_date": "2026-08-07",
+  "authorization_basis": "Reviewed the measured clean task: exact per-step trajectory equivalence over sixteen steps, the linearity identity to 1.7e-16, undefined-behaviour/bounds, address and thread sanitizer runs clean over the two-thread barrier decomposition, and 1.656x or better across four alternating warm replays under a bound job step. Reviewed the stored capability-abstraction report. All sixteen registration gates pass.",
+  "from_status": "candidate",
+  "registration_evidence_digest": "sha256:5a20432ca9948d0e0b7284c71fb17aaa738b8953a6ba2dc2703bbdf913ec40b8",
+  "registration_report_digest": null,
+  "schema_version": "ari.knowledge-skill-promotion-approval/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:e794e2b776adfe72b88c4b2d89e7431b484517380ee8f231052fe50aedc93832",
+    "id": "hpc.stencil.optimization",
+    "manifest_sha256": "sha256:d6fd2583c5f40624b44c2faa6c604dbbd55d0f676667ff3a0fcf773013282341",
+    "version": "1.0.0"
+  },
+  "to_status": "verified"
+}

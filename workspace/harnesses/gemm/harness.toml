@@ -29,7 +29,7 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 
 [files]
 "experiment.md" = "941658eab3af6ea1a554b0a27acf274149653f90276ba69fb57f6c31a3b18c24"
-"gemm_harness.py" = "ce6b097012d90dafabbfdfef06b91fca5bd2efc9fb2ab23f4e8f2c6f31a66767"
+"gemm_harness.py" = "3913e6d8165952fe386b2217529c015f5d2ff35cf7a2662b5fbca089c7923c52"
 "gemm_kernels/Makefile" = "ffcf6102b7f00e3b884a3c040285c29cf17deefa52b28e7951f883a545b1955e"
 "gemm_kernels/baseline_gemm.c" = "3fa8958d67f24ab5a04e48c23660451da5a9db84c3e4457d4a6854a29f8cffa2"
 "gemm_kernels/reference_gemm.c" = "5d5dc366a9733dbdf2d988ca936f124f6d7fd4f7b2fef604d1fec89be81575a2"
@@ -44,4 +44,4 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "bd7cd85117af510a7d8512fd5073b947a0ee31e8091feceeebec11f26a01b8eb"
+self_sha256 = "7b3e8f7231eeac691f1ca32e9d9b6bdd30f36fbeff88e4b7012f70f8a4d061ce"

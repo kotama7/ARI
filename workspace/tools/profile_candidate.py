@@ -91,6 +91,11 @@ def main() -> int:
                     help="MEASURED L2 line size, for bytes/cycle. Without it that "
                          "ratio is suppressed rather than computed from a guess "
                          "when the machine does not report its cache geometry.")
+    ap.add_argument("--l2-granule-bytes", type=int, default=None,
+                    help="the unit L2D_CACHE_REFILL ticks in — NOT the L1 line. "
+                         "Measured at 128 B here against a 256 B line, so passing "
+                         "the line size would double the reported traffic. No OS "
+                         "reports it, so without this the L2 traffic is suppressed.")
     ap.add_argument("--plan-only", action="store_true",
                     help="print what would run, and its cost, without running it")
     ap.add_argument("--out", default=None)
@@ -104,6 +109,8 @@ def main() -> int:
         overrides["seed"] = args.seed
     if args.line_bytes:
         overrides["line_bytes"] = args.line_bytes
+    if args.l2_granule_bytes:
+        overrides["l2_granule_bytes"] = args.l2_granule_bytes
     if args.cases:
         cases = [_parse_case(args.task, c.strip())
                  for c in args.cases.split(",") if c.strip()]
@@ -158,7 +165,7 @@ def main() -> int:
               f"t={p['credited_seconds']:.6f}s  IPC={r.get('ipc')}  "
               f"L1refill/acc={r.get('l1d_refill_per_access')}  "
               f"L2/L1={r.get('l2d_refill_per_l1d_refill')}  "
-              f"B/cyc={r.get('bytes_per_cycle', 'suppressed')}{bad}")
+              f"L1fill B/cyc={r.get('l1_fill_bytes_per_cycle', 'suppressed')}{bad}")
     # Spread is PER CASE. Pooling two shapes would report their genuine
     # difference as measurement noise, which is the confusion this study already
     # spent a campaign untangling.

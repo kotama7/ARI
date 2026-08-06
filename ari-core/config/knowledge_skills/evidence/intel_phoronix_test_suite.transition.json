@@ -1,0 +1,15 @@
+{
+  "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
+  "evidence_digest": "sha256:1dce353c8baf7ac03810ee69e73be4b4fb73e478f943391b1352e4893902877f",
+  "from_status": "candidate",
+  "parent_transition_digest": null,
+  "schema_version": "ari.knowledge-skill-status-transition/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:341f9af9e1d38d68d6fdfcca85b33dc621f240a6a0dd834b7fa37b86bce8244d",
+    "id": "intel.phoronix-test-suite",
+    "manifest_sha256": "sha256:ce0d4059d6d469aac8345ced793072175c5a0691915e5b5045e06f28a791f6c8",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "to_status": "verified",
+  "transition_digest": "sha256:9862cf36c8d60f905a58a2a7f81821355bce89d989c20ad8568213a6777dc76c"
+}

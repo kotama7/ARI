@@ -1,9 +1,9 @@
 {
   "clean_task": {
     "artifact_digests": {
-      "evidence/hpc_gemm_optimization.clean_task.json": "sha256:f477eb9fec92ba3d2732a497afdef06ab902d66b00b2caaa97663fe658ff058e"
+      "evidence/hpc_gemm_optimization.clean_task.json": "sha256:b7efa60353b1455cb987d0c8051bf53b0d02eb556d704a511ab941d8ae35f9f9"
     },
-    "detail": "An independently authored dense GEMM task ran through the typed container Provider in the digest-pinned gcc 13.2.0 image. Its blocked candidate reproduced its own naive baseline exactly, held the scaling and additivity identities to 1.0e-15, passed undefined-behaviour/bounds and address sanitizer runs, and beat the baseline by 3.635x or more across four alternating warm replays against a 1.05x gate. No imported attachment executed.",
+    "detail": "An independently authored dense GEMM task ran through the typed container Provider in the digest-pinned gcc 13.2.0 image under an exclusive allocation. The blocked candidate reproduced its own naive baseline exactly, held the scaling and additivity identities to 1.0e-15, passed undefined-behaviour/bounds and address sanitizer runs, and beat the baseline by 3.634x or more across four alternating warm replays against a 1.05x gate. No imported attachment executed.",
     "methods": [
       "benchmark-comparison",
       "differential-testing",
@@ -14,22 +14,27 @@
     "status": "pass"
   },
   "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
-  "evidence_digest": "sha256:1d49e7aa5b7ede185cd55e629f2b4fd5c38ae33c40fc3a544d47ac03cd45af3d",
+  "evidence_digest": "sha256:2a9ee195534cae70edcc2007098982834b864f72788437ebcb601694b64e6581",
   "provider_portability": {
-    "binding_lock_digests": [],
+    "abstraction_report_digest": "sha256:41f626504f81a019d5d752a15ff3af54834417fdd7dbba9288067be1780ac949",
+    "binding_lock_digests": [
+      "sha256:0fbdc18721c7d7e1cbf4d2740620f8eb525e526edab22ddf5e939f80a4f1f0cb",
+      "sha256:a3b19d72763f1564148addd0e790ae0a2dd18df0c523cbd1f6563a654907a1ee"
+    ],
     "compatible_provider_ids": [
       "ari.provider.coding"
     ],
-    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
-    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
-    "status": "not_applicable_no_second_provider"
+    "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 4 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/hpc_gemm_optimization.abstraction.json.",
+    "method": "synthetic-substitution",
+    "provider_catalog_digest": "sha256:7ebcfaa891983352e2fad1d570cd603517afd462d2962db42ef3d9ed13dd024d",
+    "status": "pass"
   },
   "schema_version": "ari.knowledge-skill-registration-evidence/v1",
   "skill_ref": {
     "body_sha256": "sha256:8d0c22f3e95cd7e31860b14817ea5d546459412a28a1cbe9e1a6c5a926be1401",
     "id": "hpc.gemm.optimization",
-    "manifest_sha256": "sha256:a9f8f7904cde600f71a02cb757e93b405258e7af78a90ee1fa01177d38b6208d",
+    "manifest_sha256": "sha256:0a2d6a780a92bcd754539f00d6e712ada77e5692c09ba49a5ecba03f25ecb82a",
     "version": "1.0.0"
   },
-  "source_full_commit_sha": "e4fadaef3955f261ba9d44e4746d3657c5094050"
+  "source_full_commit_sha": "d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b"
 }

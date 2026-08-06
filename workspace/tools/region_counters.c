@@ -45,10 +45,13 @@
  * It reads a small, deliberately chosen set and reports the ratios an optimizer
  * acts on rather than raw counts:
  *
- *   IPC                instructions per cycle
- *   L1D refill/access  how often an access leaves L1
- *   L2D refill rate    how often it leaves L2 as well, i.e. goes to memory
- *   bytes/cycle        achieved traffic, for deciding bandwidth vs compute bound
+ *   IPC                    instructions per cycle
+ *   L1D refill/access      how often an access leaves L1
+ *   L2D refill / L1D       refill EVENTS per L1 line -- see the units note below;
+ *                          it is not a "fraction reaching memory" and its
+ *                          ceiling here is about 2, not 1
+ *   L1 fill bytes/cycle    achieved traffic into L1, for bandwidth vs compute
+ *   L2 refill bytes/cycle  the same on the L2 side, when its granule is known
  *
  * THREE MORE v1 DEFECTS, all of which made a wrong number look like a right one:
  *
@@ -60,9 +63,14 @@
  *   - read_format was 0, so five events sharing fewer PMU slots were multiplexed
  *     and silently under-reported. Now the scaling factor is computed AND
  *     printed; a heavily multiplexed run says so instead of quietly halving.
- *   - bytes/cycle hardcoded a 256-byte line, which is A64FX-specific in a file
- *     claiming to be architecture-neutral. The line size now comes from sysfs,
- *     and the ratio is suppressed (not guessed) when it cannot be read.
+ *   - bytes/cycle hardcoded a 256-byte line in a file claiming to be
+ *     architecture-neutral, AND applied it to the wrong counter. Measured on an
+ *     aarch64 compute node by counting lines under a stride sweep
+ *     (workspace/checkpoints/20260807_020000_cache_line_measure): the L1 line is
+ *     256 B, but L2D_CACHE_REFILL ticks per 128 B granule, so the old formula
+ *     reported roughly twice the traffic. The two units are now separate, each
+ *     taken from the OS where it answers and SUPPRESSED rather than guessed
+ *     where it does not.
  *
  * exclude_kernel is on by default, which drops page-fault handling. Pass
  * --include-kernel to count it; that needs a lower perf_event_paranoid on most
@@ -193,6 +201,12 @@ static int coherency_line_size(int want_level) {
      * directory at all. glibc still answers from the same place the kernel does,
      * so ask it before giving up. Still a MEASURED/reported value, never a
      * guess: if this is 0 too, the ratio is suppressed. */
+#ifdef _SC_LEVEL1_DCACHE_LINESIZE
+    if (want_level == 1) {
+        long v = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+        if (v > 0) return (int)v;
+    }
+#endif
 #ifdef _SC_LEVEL2_CACHE_LINESIZE
     if (want_level == 2) {
         long v = sysconf(_SC_LEVEL2_CACHE_LINESIZE);
@@ -214,9 +228,13 @@ static void usage(const char *me) {
         "                    whole child process, which is printed as such.\n"
         "  --include-kernel  also count kernel mode (page faults); needs a lower\n"
         "                    perf_event_paranoid on most systems.\n"
-        "  --line-bytes N    L2 cache line size, when sysfs does not publish it.\n"
-        "                    For a MEASURED value; without it bytes/cycle is\n"
-        "                    suppressed rather than computed from a guess.\n", me, me);
+        "  --line-bytes N    L1 data cache LINE size, if the OS will not say. Used\n"
+        "                    for L1 fill bytes/cycle. For a MEASURED value only.\n"
+        "  --l2-granule-bytes N\n"
+        "                    the unit L2D_CACHE_REFILL ticks in. It is NOT the L1\n"
+        "                    line: measured on the aarch64 compute nodes here it\n"
+        "                    ticks per 128B, so passing the 256B line would double\n"
+        "                    the traffic. Suppressed rather than guessed.\n", me, me);
 }
 
 int main(int argc, char **argv) {
@@ -229,7 +247,7 @@ int main(int argc, char **argv) {
     };
     const int N = (int)(sizeof(ctrs) / sizeof(ctrs[0]));
 
-    int self = 0, gate = 0, include_kernel = 0, as_json = 0, line_opt = 0;
+    int self = 0, gate = 0, include_kernel = 0, as_json = 0, line_opt = 0, l2_opt = 0;
     char **cmd = NULL;
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--self") == 0) self = 1;
@@ -237,10 +255,11 @@ int main(int argc, char **argv) {
         else if (strcmp(argv[i], "--include-kernel") == 0) include_kernel = 1;
         else if (strcmp(argv[i], "--json") == 0) as_json = 1;
         else if (strcmp(argv[i], "--line-bytes") == 0 && i + 1 < argc) line_opt = atoi(argv[++i]);
+        else if (strcmp(argv[i], "--l2-granule-bytes") == 0 && i + 1 < argc) l2_opt = atoi(argv[++i]);
         else if (strcmp(argv[i], "--") == 0 && i + 1 < argc) { cmd = &argv[i + 1]; break; }
         else { usage(argv[0]); return 2; }
     }
-    if (line_opt < 0) { usage(argv[0]); return 2; }
+    if (line_opt < 0 || l2_opt < 0) { usage(argv[0]); return 2; }
     if (!self && !cmd) { usage(argv[0]); return 2; }
     if (self && gate) {
         fprintf(stderr, "--gate needs a target to mark the region; not usable with --self\n");
@@ -370,15 +389,33 @@ int main(int argc, char **argv) {
     double acc = ctr_value(&ctrs[2]);
     double r1  = ctr_value(&ctrs[3]);
     double r2  = ctr_value(&ctrs[4]);
-    /* sysfs first; --line-bytes is the escape hatch for a machine that does not
-     * publish its cache geometry (the aarch64 compute nodes here do not). It is
-     * for a MEASURED value -- ari/agent/run_env.py measure_cache_geometry probes
-     * it by pointer chase -- not for a spec-sheet guess, which is why there is no
-     * default. Which source was used travels in the output.
+    /* TWO UNITS, because the two counters do not tick in the same one. Measured
+     * on an aarch64 compute node by counting lines under a stride sweep
+     * (workspace/checkpoints/20260807_020000_cache_line_measure):
+     *
+     *   L1D_CACHE_REFILL ticks per L1 LINE. The knee in refills-per-access sits
+     *   at 256 B: only that value keeps refills/(footprint/max(S,L)) >= 1 at
+     *   every stride and inside one narrow band. It is a clean per-thread
+     *   counter -- it reproduced to 0.004% with seven neighbours thrashing.
+     *
+     *   L2D_CACHE_REFILL does NOT tick per L1 line. Against the same data it
+     *   reads ~2.0 per L1 line when both 128 B halves are demanded (stride <=
+     *   128), ~1.0 when one is (stride >= 512), and 1.47 at stride 256 where
+     *   consecutive lines let the streamer complete whole lines. So it ticks per
+     *   128 B GRANULE, plus prefetch. Feeding it the L1 line size doubles the
+     *   traffic it reports, which is what this file used to do.
+     *
+     * The L1 line comes from the OS where it answers (this machine reports the
+     * L1 line and nothing else -- every capacity reads 0 and sysfs is empty).
+     * The L2 granule has no OS source here, so it is suppressed unless supplied.
+     * Which source was used travels in the output.
      */
-    int line = line_opt > 0 ? line_opt : coherency_line_size(2);
+    int line = line_opt > 0 ? line_opt : coherency_line_size(1);
     const char *line_src = line <= 0 ? "unknown"
                           : (line_opt > 0 ? "caller" : "os");
+    int l2g = l2_opt > 0 ? l2_opt : coherency_line_size(2);
+    const char *l2g_src = l2g <= 0 ? "unknown"
+                          : (l2_opt > 0 ? "caller" : "os");
 
     /* The largest scaling factor across the set: 1.0 means nothing was
      * multiplexed, 2.0 means an event ran half the time and its count has been
@@ -392,8 +429,10 @@ int main(int argc, char **argv) {
 
     if (as_json) {
         printf("{\"scope\":\"%s\",\"include_kernel\":%s,\"multiplex_scale\":%.4f,"
-               "\"l2_line_bytes\":%d,\"l2_line_source\":\"%s\",\"counters\":{", scope,
-               include_kernel ? "true" : "false", worst_scale, line, line_src);
+               "\"l1_line_bytes\":%d,\"l1_line_source\":\"%s\","
+               "\"l2_granule_bytes\":%d,\"l2_granule_source\":\"%s\",\"counters\":{", scope,
+               include_kernel ? "true" : "false", worst_scale,
+               line, line_src, l2g, l2g_src);
         for (int i = 0; i < N; ++i) {
             printf("%s\"%s\":", i ? "," : "", ctrs[i].name);
             if (!ctrs[i].opened || !ctrs[i].read_ok) printf("null");
@@ -407,8 +446,10 @@ int main(int argc, char **argv) {
         if (cyc > 0 && ins > 0) { printf("%s\"ipc\":%.4f", first ? "" : ",", ins / cyc); first = 0; }
         if (acc > 0 && r1 > 0)  { printf("%s\"l1d_refill_per_access\":%.6f", first ? "" : ",", r1 / acc); first = 0; }
         if (r1 > 0 && r2 > 0)   { printf("%s\"l2d_refill_per_l1d_refill\":%.6f", first ? "" : ",", r2 / r1); first = 0; }
-        if (cyc > 0 && r2 > 0 && line > 0)
-                                { printf("%s\"bytes_per_cycle\":%.4f", first ? "" : ",", (double)line * r2 / cyc); }
+        if (cyc > 0 && r1 > 0 && line > 0)
+                                { printf("%s\"l1_fill_bytes_per_cycle\":%.4f", first ? "" : ",", (double)line * r1 / cyc); first = 0; }
+        if (cyc > 0 && r2 > 0 && l2g > 0)
+                                { printf("%s\"l2_refill_bytes_per_cycle\":%.4f", first ? "" : ",", (double)l2g * r2 / cyc); }
         printf("}}\n");
         return 0;
     }
@@ -435,11 +476,23 @@ int main(int argc, char **argv) {
     puts("");
     if (cyc > 0 && ins > 0) printf("IPC                  %.3f\n", ins / cyc);
     if (acc > 0 && r1 > 0)  printf("L1D refill / access  %.4f\n", r1 / acc);
-    if (r1  > 0 && r2 > 0)  printf("L2D refill / L1D     %.4f  (fraction reaching memory)\n", r2 / r1);
+    /* NOT a "fraction reaching memory": measured here, this reads ~2 when both
+     * 128 B halves of an L1 line move and ~1 when one does, so its ceiling is 2.
+     * It is refill EVENTS per L1 line, and it is useful as a relative number. */
+    if (r1  > 0 && r2 > 0)  printf("L2D refill / L1D     %.4f  (events per L1 line; ~2 = both "
+                                   "128B halves moved, ~1 = one)\n", r2 / r1);
+    if (cyc > 0 && r1 > 0) {
+        if (line > 0) printf("L1 fill bytes/cycle  %.3f   (%dB line, from %s)\n",
+                             (double)line * r1 / cyc, line, line_src);
+        else puts("L1 fill bytes/cycle  suppressed: no L1 line size from the OS and none\n"
+                  "                     supplied; guessing one would fabricate traffic");
+    }
     if (cyc > 0 && r2 > 0) {
-        if (line > 0) printf("bytes/cycle (%dB, %s) %.3f\n", line, line_src, (double)line * r2 / cyc);
-        else puts("bytes/cycle          suppressed: the L2 line size is not readable from\n"
-                  "                     sysfs here, and guessing it would fabricate traffic");
+        if (l2g > 0) printf("L2 refill bytes/cycle %.3f  (%dB granule, from %s)\n",
+                            (double)l2g * r2 / cyc, l2g, l2g_src);
+        else puts("L2 refill bytes/cycle suppressed: the L2 refill GRANULE has no OS source\n"
+                  "                     here and is not the L1 line -- measured, this counter\n"
+                  "                     ticks per 128B. Pass --l2-granule-bytes to enable it.");
     }
     return 0;
 }

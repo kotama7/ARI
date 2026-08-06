@@ -37,6 +37,7 @@
   },
   "node_identifier_persisted": false,
   "performance": {
+    "affinity_policy": "inherited-unpinned-single-thread",
     "baseline": "independently authored naive kernel in the same binary",
     "clock": "CLOCK_MONOTONIC_RAW",
     "compiler_flags": [
@@ -45,10 +46,10 @@
       "-march=native"
     ],
     "replay_speedups": [
-      3.642824,
-      3.639638,
-      3.640222,
-      3.635166
+      3.639725,
+      3.640552,
+      3.638792,
+      3.634459
     ],
     "replays": 4,
     "result": "pass",
@@ -70,8 +71,8 @@
     ],
     "result": "pass"
   },
-  "release_binary_sha256": "sha256:167296baacb557bf0cf3bbd4a0e7f2902bb4ac2dc25b5edbcaa38fe4e4e5c3e3",
+  "release_binary_sha256": "sha256:3f8e7189f93790bdb22a58cfc799843725366e43ff5feb7b089e0f65165063f0",
   "result": "pass",
   "schema_version": "ari.hpc-gemm-optimization-clean-task/v1",
-  "task_source_sha256": "sha256:55af91b88a26c82a4d25b2b0939c26532a033c082b535af3f821a65f4fd45289"
+  "task_source_sha256": "sha256:8a7d77731f4cbee0f849ac254329ef6befce43377ad8898a3b4cb04e258794d7"
 }

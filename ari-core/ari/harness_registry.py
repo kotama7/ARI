@@ -140,7 +140,7 @@ class Harness:
     # `seed` is here for the same reason `measure` whitelists it: gemm declares
     # no [measure_kwargs] at all, so without it a caller could not choose one.
     _PROFILE_OVERRIDES = frozenset({"reps", "seed", "cases", "shapes", "families",
-                                    "line_bytes"})
+                                    "line_bytes", "l2_granule_bytes"})
 
     def profile(self, work_dir: str, **overrides: Any) -> dict:
         """Hardware counters for the region this harness scores. NEVER a score.
