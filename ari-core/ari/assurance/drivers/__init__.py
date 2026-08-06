@@ -13,10 +13,14 @@ def builtin_driver_map() -> dict[str, object]:
     from ari.assurance.drivers.inspect import InspectDriver
     from ari.assurance.drivers.native import NativeHPCDriver
     from ari.assurance.drivers.paperbench import PaperBenchDriver
+    from ari.assurance.drivers.perf import NativePerfDriver
     from ari.assurance.drivers.upstream import UpstreamCLIDriver
 
     drivers = (
         NativeHPCDriver(),
+        # Decides performance-regression, the property the vocabulary reserved
+        # and three knowledge-skill import profiles already require.
+        NativePerfDriver(),
         InspectDriver(),
         HarborDriver(),
         PaperBenchDriver(),

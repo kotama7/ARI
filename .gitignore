@@ -40,12 +40,23 @@ results*/
 experiments/
 benchmarks/
 *.c
+
+# The registered performance harness's frozen scaffolding is CONTENT-ADDRESSED by
+# its manifest and by the driver digest, so a checkout without it cannot verify
+# or reproduce a measurement. The blanket *.c above would drop it silently, which
+# is how the prototype's kernels ended up needing `git add -f` and a memory of
+# having done it.
+!ari-core/ari/assurance/kernels/**/*.c
+!ari-core/ari/assurance/kernels/**/*.h
 *.cpp
 *.f90
 *.def
 *.sbatch
 # Deterministic source/data fixtures exercised by assurance and RQGM CI.
 !/ari-core/tests/fixtures/assurance/native_reference_candidate.c
+# Knowledge clean-task sources are bound by digest from checked-in evidence, so
+# a checkout missing them fails the registration tests rather than skipping.
+!/ari-core/tests/fixtures/knowledge/*.c
 !/ari-core/tests/fixtures/knowledge/intel_performance_patterns_clean_task.c
 !/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/
 !/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/**
@@ -88,6 +99,13 @@ Thumbs.db
 # configuration; never use `git add -f` for any file below this directory.
 workspace/
 *.sif
+
+# Materialized Provider runtimes and the environment-specific catalogs built
+# from them.  Every path inside is absolute and machine-local, so none of it is
+# publishable; the reviewed evidence stays tracked under
+# ari-skill-tool-registry/providers/.  The README is kept.
+provider-artifacts/*
+!provider-artifacts/README.md
 
 # Temporary work files
 audit_prompt.txt

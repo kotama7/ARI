@@ -162,6 +162,7 @@ targets the like-named module under `ari/`.
 - `test_model_backend_protocol.py` — subtask 008 `BaseModelBackend` Protocol conformance: `LLMClient` structurally satisfies the `runtime_checkable` Protocol without subclassing, and the `LiteLLMBackend` alias plus `ari.public.llm.LLMClient` still resolve to it.
 - `test_model_passthrough.py` — model passthrough.
 - `test_native_hpc_verifier.py` — native GEMM, SpMM, and stencil verifier correctness, negative-control, and reproducibility coverage.
+- `test_native_perf_driver.py` — TODO
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
 - `test_node_exec_budget.py` — a node must not be able to spend its whole life inside `run_bash`. Each call had a timeout but nothing bounded the sum, so one node could consume the entire watchdog on shell calls and then be killed with no score, no self-report and no signal about why. The budget makes the node run out of COMMANDS while it still has turns left to report what it found.

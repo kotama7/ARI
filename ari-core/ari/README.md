@@ -70,6 +70,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_hpc_gemm.py` — authoritative native GEMM correctness verifier.
   - `native_hpc_spmm.py` — authoritative native sparse-matrix multiplication verifier.
   - `native_hpc_stencil.py` — authoritative native stencil correctness verifier.
+  - `native_perf.py` — TODO
   - `native_perf_common.py` — TODO
   - `native_perf_gemm.py` — TODO
   - `registration.py` — execute harness registration gates and catalog promotion.
@@ -87,11 +88,15 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `native_candidate_host.py` — isolated host for loading untrusted native candidates.
     - `native_worker.py` — worker entry point for authoritative native verification.
     - `paperbench.py` — PaperBench-compatible scientific reproduction driver.
+    - `perf.py` — TODO
+    - `perf_worker.py` — TODO
     - `shared_library.py` — ABI-bound shared-library candidate driver.
     - `upstream.py` — pinned upstream project runner and parity driver.
   - `kernels/` — TODO
     - `gemm/` — TODO
       - `gemm_kernel.h` — TODO
+      - `gemm_main.c` — TODO
+      - `reference_gemm.c` — TODO
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
 - `capability_binding/` — capability ontology, provider resolution, environment compatibility, substitution, authority, and immutable locks.
   - `__init__.py` — public capability-binding package exports.

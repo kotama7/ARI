@@ -19,7 +19,11 @@ from ari.assurance.drivers.upstream import UpstreamCLIDriver
 
 def test_external_driver_map_has_distinct_reviewed_identities():
     drivers = builtin_driver_map()
-    assert len(drivers) == 5
+    # The count is a canary for a driver added without review, not a magic
+    # number. Six since NativePerfDriver was added to decide
+    # performance-regression -- the property the vocabulary reserved and three
+    # knowledge-skill import profiles already require.
+    assert len(drivers) == 6
     for revision, driver in drivers.items():
         identity = driver.identity()
         assert identity["driver_revision"] == revision
