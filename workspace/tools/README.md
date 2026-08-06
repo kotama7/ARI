@@ -13,6 +13,18 @@ record.
 ## Contents
 
 - `README.md` — this file.
+- `_harness_access.py` — **the one way a tool reaches a harness.**
+  `verified_harness(task)` calls `ari.harness_registry.load()` first, so every
+  sha256 pin and the manifest self-digest are checked before anything is
+  measured, and then returns both the registry's `Harness` (prefer it:
+  `measure()` applies the manifest's own `[measure_kwargs]`, so a tool never
+  restates the scored problem size) and a read-only view of the module for the
+  internals some tools legitimately need — `_compile_kernel`, `gen_problem`,
+  `_REFERENCE_CFLAGS`, the cached oracles. Eight programs here used to
+  `__import__` the harness file directly, which skips the registry entirely;
+  `measure_resolution_band.py` is one of them, and it produces the band that is
+  copied into `[declares].resolves`, so the number certifying the instrument was
+  made by an unverified copy of the instrument.
 - `check_campaign_safe.py` — is it safe to edit right now, and is the running
   campaign still intact? A campaign freezes 524 files at submit; changing any of
   them mid-run makes every worker fail its post-run digest check and the
