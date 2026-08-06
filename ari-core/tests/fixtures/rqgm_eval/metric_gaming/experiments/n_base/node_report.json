@@ -1,0 +1,16 @@
+{
+  "cpu_info": {
+    "arch": "x86_64",
+    "model": "Old-Xeon-E5"
+  },
+  "executor": "local",
+  "files_changed": {
+    "added": [
+      "bench.c"
+    ],
+    "deleted": [],
+    "modified": []
+  },
+  "node_id": "n_base",
+  "schema_version": 1
+}

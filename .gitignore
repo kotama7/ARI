@@ -44,6 +44,10 @@ benchmarks/
 *.f90
 *.def
 *.sbatch
+# Deterministic source/data fixtures exercised by assurance and RQGM CI.
+!/ari-core/tests/fixtures/assurance/native_reference_candidate.c
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/**
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml

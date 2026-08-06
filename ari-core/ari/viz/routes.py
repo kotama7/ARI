@@ -483,7 +483,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         elif self.path.startswith("/static/"):
             fname = self.path[len("/static/"):]
-            static_dir = Path(__file__).parent / "static"
+            static_dir = REACT_DIST_DIR.parent
             fpath = static_dir / fname
             if fpath.exists() and fpath.is_file():
                 ext = fpath.suffix.lower().lstrip('.')

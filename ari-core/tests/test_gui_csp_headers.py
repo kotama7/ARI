@@ -29,6 +29,7 @@ import io
 import pytest
 
 from ari.viz import state as _st
+from ari.viz import routes as _routes
 from ari.viz.routes import (
     _Handler,
     _csp_enabled,
@@ -45,10 +46,16 @@ SECURITY_HEADERS = (
 
 
 @pytest.fixture(autouse=True)
-def _default_env(monkeypatch):
-    """CSP on (env unset = default); fixed server port for ws derivation."""
+def _default_env(monkeypatch, tmp_path):
+    """CSP on, fixed server port, and a self-contained static bundle."""
     monkeypatch.delenv("ARI_GUI_CSP", raising=False)
     monkeypatch.setattr(_st, "_server_port", 8765)
+    react_dist = tmp_path / "static" / "dist"
+    react_dist.mkdir(parents=True)
+    react_index = react_dist / "index.html"
+    react_index.write_text("<!doctype html><title>fixture</title>", encoding="utf-8")
+    monkeypatch.setattr(_routes, "REACT_DIST_DIR", react_dist)
+    monkeypatch.setattr(_routes, "REACT_INDEX", react_index)
 
 
 def _make_handler(path: str, headers: dict | None = None):
