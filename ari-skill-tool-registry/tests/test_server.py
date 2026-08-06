@@ -24,7 +24,7 @@ PUBLIC_OPERATIONS = [
 
 def _registry_launcher() -> PythonStdioLauncherV1:
     return PythonStdioLauncherV1(
-        python_executable=str(Path(sys.executable).resolve()),
+        python_executable=str(Path(sys.executable).absolute()),
         package_root=str(PACKAGE_ROOT.resolve()),
         entrypoint="src/server.py",
         expected_architecture=platform.machine(),

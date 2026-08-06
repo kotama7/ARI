@@ -41,7 +41,7 @@ def _launcher(
     architecture: str | None = None,
 ) -> PythonStdioLauncherV1:
     return PythonStdioLauncherV1(
-        python_executable=str(Path(sys.executable).resolve()),
+        python_executable=str(Path(sys.executable).absolute()),
         package_root=str(root.resolve()),
         entrypoint=entrypoint,
         expected_architecture=(
@@ -88,9 +88,13 @@ async def test_stdio_adapter_initializes_paginates_and_calls_normal_error_large(
     assert environment.structured["scoped_credential_present"] is False
     assert environment.structured["user"] == "ari-provider"
     assert "ari-provider-home-" in environment.structured["home"]
+    # Neither side is resolved: the claim is that the provider ran the
+    # interpreter we NAMED, and resolving both would also accept a different
+    # virtualenv that happens to share the same base interpreter — which is
+    # exactly the case that makes the packages differ.
     assert (
-        Path(environment.structured["executable"]).resolve()
-        == Path(sys.executable).resolve()
+        Path(environment.structured["executable"])
+        == Path(sys.executable).absolute()
     )
 
 
@@ -227,7 +231,7 @@ async def test_provider_identity_covers_imported_modules_and_cannot_be_narrowed(
 
     with pytest.raises(ValidationError, match="cannot weaken"):
         PythonStdioLauncherV1(
-            python_executable=str(Path(sys.executable).resolve()),
+            python_executable=str(Path(sys.executable).absolute()),
             package_root=str(provider.resolve()),
             entrypoint="server.py",
             identity_globs=["server.py"],
@@ -261,20 +265,20 @@ def test_launcher_rejects_shell_and_embedded_credentials():
     with pytest.raises(ValidationError, match="command_kind=python"):
         PythonStdioLauncherV1(
             command_kind="shell",
-            python_executable=str(Path(sys.executable).resolve()),
+            python_executable=str(Path(sys.executable).absolute()),
             package_root=str(FIXTURES.resolve()),
             entrypoint="stdio_server.py",
         )
     with pytest.raises(ValidationError, match="cannot be embedded"):
         PythonStdioLauncherV1(
-            python_executable=str(Path(sys.executable).resolve()),
+            python_executable=str(Path(sys.executable).absolute()),
             package_root=str(FIXTURES.resolve()),
             entrypoint="stdio_server.py",
             literal_env={"PROVIDER_API_KEY": "not-allowed"},
         )
     with pytest.raises(ValidationError, match="safe function name"):
         PythonStdioLauncherV1(
-            python_executable=str(Path(sys.executable).resolve()),
+            python_executable=str(Path(sys.executable).absolute()),
             package_root=str(FIXTURES.resolve()),
             python_module="tooluniverse.smcp_server",
             python_callable="run_stdio_server(); unsafe",

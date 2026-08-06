@@ -77,7 +77,7 @@ def _launcher(root: Path) -> PythonStdioLauncherV1:
     package.mkdir(parents=True, exist_ok=True)
     (package / "main.py").write_text("def main():\n    pass\n", encoding="utf-8")
     return PythonStdioLauncherV1(
-        python_executable=str(Path(sys.executable).resolve()),
+        python_executable=str(Path(sys.executable).absolute()),
         package_root=str(package.resolve()),
         python_module="openroad_mcp.main",
         python_callable="main",

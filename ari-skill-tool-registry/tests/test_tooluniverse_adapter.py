@@ -57,7 +57,7 @@ def _pin(version: str = "1.3.1") -> ToolUniversePinV1:
 
 def _launcher() -> PythonStdioLauncherV1:
     return PythonStdioLauncherV1(
-        python_executable=str(Path(sys.executable).resolve()),
+        python_executable=str(Path(sys.executable).absolute()),
         package_root=str(FIXTURES.resolve()),
         python_module="tooluniverse.smcp_server",
         python_callable="run_stdio_server",
@@ -654,7 +654,7 @@ async def test_real_module_compact_server_and_direct_source_contract_coexist():
     spec = _source_spec()
     source = ToolUniverseCatalogSource(spec, verify_source=False)
     direct_launcher = PythonStdioLauncherV1(
-        python_executable=str(Path(sys.executable).resolve()),
+        python_executable=str(Path(sys.executable).absolute()),
         package_root=str(FIXTURES.resolve()),
         entrypoint="stdio_server.py",
     )
