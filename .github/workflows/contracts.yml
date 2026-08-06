@@ -117,6 +117,12 @@ jobs:
         run: python scripts/sync_skill_metadata.py
       - name: Generated HPC contract schema drift
         run: python ari-skill-hpc/scripts/sync_contracts.py
+      - name: Provider catalog source pins
+        # The catalog loader verifies manifest_sha256 only, so a package edit
+        # that leaves the manifest untouched passes silently and the commit and
+        # package digests quietly stop describing the code. Checking here is
+        # what makes those pins mean anything.
+        run: python scripts/repin_provider_catalog.py
       - name: MCP tool-schema snapshot verify (advisory at Stage 1)
         continue-on-error: true
         run: python scripts/snapshot_contracts.py --surface mcp --check

@@ -247,7 +247,7 @@ manifest, SIF, and inner OpenROAD full digests and runtime path.
 The independent
 `openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identity is also formally
 promoted. Lock
-`sha256:7827e90e359d9d29b85353908ff0e46b693aec698f709d4c065380fd8309cdcd`
+`sha256:dc4bc141aac48fae922bca6221e6fb151060fedbe66476139fe2e80548cc4223`
 binds the anonymous exclusive-node CPU site digest, scheduler clients,
 PRoot/SIF/unsquashfs/worker Python, runtime-owned metrics lifecycle,
 nonce-bound fixed-wrapper completion, live DRC-zero result, fixtures, gates,
@@ -371,6 +371,19 @@ All five broker tools declare `ari_context` in their input schemas. They are
 `context_requirement: run`, so the transport injects the authorized call context
 under that name; a schema with `additionalProperties: false` that omits it
 refuses every authorized call.
+
+One rough edge remains and is not a defect in the result normalizer. ARI wraps
+the broker's own `ari.result-envelope/v1` in a second envelope, so a brokered
+async submission puts its handle in `structured_content.structured_content`
+while the outer `async_handle` stays null. That field carries
+`ari.async-tool-handle/v1`, which drives `get_async_status` / `get_async_result`
+/ `cancel_async` and is built for manifest-declared ARI async tools; a brokered
+leaf's handle is `ari.registry-handle/v1`, the broker's own protocol. Converting
+one to the other is mechanically possible — the binding now knows the lifecycle
+tool refs and the broker returns its state map — but it has no caller today, and
+adding an uncalled converter would repeat the mistake this work spent its time
+undoing. Until something needs it, a brokered async caller polls the bound
+lifecycle tools directly.
 
 ## Record, replay, and EAR
 
