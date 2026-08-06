@@ -117,9 +117,10 @@ Manuscript Complete は次の軸を結合するが、いずれも暗黙には有
 
 2026-08-06 時点で Tasks 01–09 のローカル実装、閉じた release manifest、4 topology E2E、
 13 failure-injection family、legacy migration/rollback dry run、authentic native Harness
-publication evidence が存在する。現在の焦点は、この worktree を安定 revision として commitし、
-同じ manifest の remote CI artifact を保持することである。未 commit worktree を revision 証跡
-として扱わず、authentic Harness を synthetic fixture で代用しない。
+publication evidence が存在する。実装は local revision
+`712ea52bbbab4081d97ab1793608fdfb73b6340a` に commit済みである。現在の焦点は、同じ
+manifest の remote CI artifact を保持し、merge/release reviewを閉じることである。
+authentic Harness は synthetic fixture で代用しない。
 
 ## Implementation evidence (2026-08-06)
 
@@ -135,14 +136,16 @@ publication evidence が存在する。現在の焦点は、この worktree を�
 
 The closed policy is `scripts/manuscript_complete_release_gates.json`; the permanent runner is
 `scripts/run_manuscript_complete_release.py`; and `.github/workflows/manuscript-complete.yml`
-retains the revision-bound report/log artifact. A pre-commit dry run passed every executable check
-but is deliberately `release_eligible=false`; final evidence must be generated from the clean commit
-and again in GitHub Actions.
+retains the revision-bound report/log artifact. The clean local run for revision
+`712ea52bbbab4081d97ab1793608fdfb73b6340a` passed all nine checks with
+`release_eligible=true` and report digest
+`sha256:dce4924ee33eeea7163c1049411725a809543db027223924f176c6ba64353a58`.
+The same evidence must now pass and be retained in GitHub Actions.
 
 ## Current deletion assessment
 
-All plans remain **not deletable**. The shared blockers are the currently uncommitted Manuscript
-revision, its remote CI artifact, merge/release review, and post-merge deletion-readiness review.
+All plans remain **not deletable**. The shared blockers are the remote CI artifact,
+merge/release review, and post-merge deletion-readiness review.
 Authentic evidence exists for the advertised verified native HPC Harness scope; unavailable external
 PaperBench/other Harness scopes remain explicitly unsupported rather than mocked. Permanent documents
 now carry the architecture, contracts, release policy, migration, rollback, and operator semantics.
