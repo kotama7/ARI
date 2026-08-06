@@ -128,9 +128,14 @@ class TestNodeReportIntegration:
         assert isinstance(report["cpu_info"], dict)
 
     def test_node_report_legacy_run_no_capture(self, tmp_path):
-        """Machine info is NEVER auto-scraped into node_report (no auto-embed at
-        all now); and with no agent-authored ``environment`` note the field is
-        omitted entirely, not emitted as an empty string."""
+        """No ``_run_env.json`` (legacy / dry runs): the resource-provenance keys
+        are still PRESENT, carrying empty values.
+
+        Machine provenance is deliberately auto-embedded. The keys are emitted
+        unconditionally so a consumer can tell "nothing was captured" (empty)
+        apart from "this key predates the field" (absent) — an omitted key
+        would make those two indistinguishable.
+        """
         from ari.orchestrator.node_report import build_node_report
 
         class _Node:
@@ -151,7 +156,66 @@ class TestNodeReportIntegration:
             node=_Node(), work_dir=tmp_path, parent_work_dir=None,
             eval_result=None, what_was_done="",
         )
-        assert "executor" not in report
-        assert "hostname" not in report
-        assert "cpu_info" not in report
-        assert "environment" not in report  # no agent note -> field omitted
+        assert report["executor"] == ""
+        assert report["hostname"] == ""
+        assert report["slurm_partition"] == ""
+        assert report["cpu_info"] == {}
+        assert report["partitions_used"]["used"] == []
+        # `environment` stays agent-authored: the builder never synthesises one.
+        assert "environment" not in report
+
+    def test_node_report_records_every_partition_the_run_used(self, tmp_path):
+        """The report names EVERY partition the run touched, not just this node's.
+
+        A run that spreads across a heterogeneous cluster otherwise left no
+        single record of where it had executed, so a cross-node metric
+        comparison could not be checked against the hardware behind it.
+
+        Partition names here are deliberately fictitious.
+        """
+        from ari.orchestrator.node_report import build_node_report
+
+        run_root = tmp_path / "run_1"
+        for node_id, part, nodelist in (
+            ("node_a", "partition-a", "testnode01"),
+            ("node_b", "partition-b", "testnode02"),
+            ("node_c", "partition-a", "testnode03"),
+        ):
+            wd = run_root / node_id
+            wd.mkdir(parents=True)
+            # capture_env takes the nodelist from the environment, as it does
+            # on a real compute node.
+            os.environ["SLURM_JOB_NODELIST"] = nodelist
+            try:
+                capture_env(wd, executor="slurm", slurm_job_id="1",
+                            slurm_partition=part)
+            finally:
+                os.environ.pop("SLURM_JOB_NODELIST", None)
+
+        class _Node:
+            id = "node_a"
+            parent_id = None
+            ancestor_ids: list[str] = []
+            label = "draft"
+            raw_label = "draft"
+            depth = 0
+            status = "success"
+            created_at = ""
+            completed_at = ""
+            metrics: dict = {}
+            artifacts: list = []
+            trace_log = None
+
+        report = build_node_report(
+            node=_Node(), work_dir=run_root / "node_a",
+            parent_work_dir=None, eval_result=None, what_was_done="",
+        )
+        used = report["partitions_used"]
+        # This node's own allocation, and the run-wide set it belongs to.
+        assert used["this_node"] == "partition-a"
+        assert used["used"] == ["partition-a", "partition-b"]
+        # Two nodes ran on partition-a, one on partition-b.
+        assert used["by_partition"]["partition-a"]["node_count"] == 2
+        assert used["by_partition"]["partition-b"]["node_count"] == 1
+        assert used["by_partition"]["partition-a"]["nodelists"] == [
+            "testnode01", "testnode03"]

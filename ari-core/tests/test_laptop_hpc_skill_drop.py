@@ -71,7 +71,11 @@ def test_core_build_runtime_applies_filter(monkeypatch):
         def __init__(self, skills, disabled_tools=None, **_kwargs):
             captured["skill_names"] = [getattr(s, "name", "") for s in skills]
             captured["disabled"] = list(disabled_tools or [])
-            captured["allowed"] = list(allowed_tools or [])
+            # `allowed_tools` is no longer a named parameter of MCPClient, so it
+            # arrives (if at all) through **_kwargs. Reading the bare name here
+            # was a latent NameError that only stayed quiet because this branch
+            # is not currently reached.
+            captured["allowed"] = list(_kwargs.get("allowed_tools") or [])
 
         def list_tools(self, phase=None):
             return []

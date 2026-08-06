@@ -11,7 +11,9 @@
     "read_file",
     "run_bash",
     "run_code",
-    "write_code"
+    "write_code",
+    "edit_code",
+    "describe_environment"
   ],
   "version": "0.2.0"
 }

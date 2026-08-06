@@ -447,6 +447,18 @@ class PathManager:
         # Per-node self-report. Each child must generate its own; never
         # inherit the parent's via the work_dir physical-copy data path.
         "node_report.json",
+        # Per-node full ReAct execution log, written at the node's completion
+        # (its own trace_log). Like node_report.json, each node writes its own
+        # and it is NEVER inherited into children via the work_dir copy.
+        #
+        # This entry is the ONLY thing excluding it: unlike node_report.json /
+        # results.json, full_log.json is absent from bfts_loop's
+        # _OUTPUT_BLACKLIST, so dropping it here silently reopens the code
+        # channel. That matters beyond tidiness — full_log.json IS the payload
+        # of the full_log handoff arm, so copying it into every child's
+        # work_dir hands the parent's execution log to arms that are defined by
+        # NOT receiving it (code_only), collapsing the factorial.
+        "full_log.json",
         # RQGM mode provenance + constitution copy (docs/plans/ari_rqgm Task
         # 01): checkpoint-root metadata for the opt-in ari_rqgm mode, never
         # copied into node work dirs. Absent on default simple_bfts runs.

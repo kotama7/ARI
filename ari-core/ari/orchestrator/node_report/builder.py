@@ -662,6 +662,110 @@ def _compute_env_block(run_env: dict, parent_work_dir) -> dict:
     }
 
 
+class _NotARunNodeDir(Exception):
+    """work_dir is not ``experiments/{run_id}/{node_id}`` — do not scan siblings."""
+
+
+def _partitions_used_block(work_dir, run_env: dict, node_id: str = "") -> dict:
+    """Every scheduler partition this EXPERIMENT ran on, not just this node's.
+
+    A node_report used to name only the partition of its own allocation, so a
+    run that spread across a heterogeneous cluster left no single record of
+    where it had actually executed — and a cross-node metric comparison could
+    not be checked against the hardware it came from.
+
+    Two independent sources, because they answer different questions:
+
+    - ``used``: scanned from every sibling node's ``_run_env.json`` under the
+      same run. This is where work REALLY ran (observed, not configured).
+    - ``catalog``: the per-partition probe from ``heterogeneous_env.json``.
+      This is what each partition IS. Probed partitions that never ran a node
+      still appear here, which is what makes "we could have used X but did
+      not" answerable.
+
+    The catalog is deliberately compacted to the identifying fields: the raw
+    ``module avail`` / ``lscpu`` dumps run to ~30 KB per partition and already
+    live once at the checkpoint root, so ``catalog_path`` points there rather
+    than copying them into every node's report.
+    """
+    block: dict = {
+        "this_node": str(run_env.get("slurm_partition", "") or ""),
+        "used": [],
+        "by_partition": {},
+        "catalog": {},
+        "catalog_path": "",
+    }
+    # ── observed: sibling node dirs of this run (experiments/{run_id}/{node_id})
+    #
+    # Only scan siblings when this work_dir really is a node dir of a run, i.e.
+    # its basename is the node id. Otherwise the "siblings" are some unrelated
+    # directory's children and any `_run_env.json` down there would be counted
+    # as part of THIS experiment — a wrong answer, not a missing one.
+    try:
+        wd = Path(work_dir)
+        if not node_id or wd.name != str(node_id):
+            raise _NotARunNodeDir
+        run_root = wd.parent
+        seen: dict[str, dict] = {}
+        for idx, node_dir in enumerate(sorted(run_root.iterdir())):
+            if idx >= 2000:  # runaway guard; runs are far smaller than this
+                break
+            if not node_dir.is_dir():
+                continue
+            env_file = node_dir / "_run_env.json"
+            if not env_file.is_file():
+                continue
+            try:
+                d = json.loads(env_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            part = str((d or {}).get("slurm_partition", "") or "")
+            if not part:
+                continue
+            rec = seen.setdefault(
+                part, {"node_count": 0, "nodelists": set(), "hostnames": set()})
+            rec["node_count"] += 1
+            for key, field in (("nodelists", "slurm_nodelist"),
+                               ("hostnames", "hostname")):
+                val = str((d or {}).get(field, "") or "")
+                if val:
+                    rec[key].add(val)
+        block["used"] = sorted(seen)
+        block["by_partition"] = {
+            p: {
+                "node_count": r["node_count"],
+                "nodelists": sorted(r["nodelists"]),
+                "hostnames": sorted(r["hostnames"]),
+            }
+            for p, r in sorted(seen.items())
+        }
+    except Exception:
+        pass
+    # ── catalog: the per-partition probe written once per checkpoint
+    try:
+        from ari.paths import PathManager as _PM
+
+        ckpt = _PM.checkpoint_dir_from_env()
+        if ckpt is not None:
+            cat_path = Path(ckpt) / "heterogeneous_env.json"
+            if cat_path.is_file():
+                cat = json.loads(cat_path.read_text(encoding="utf-8"))
+                block["catalog_path"] = str(cat_path)
+                for label, env in ((cat or {}).get("nodes") or {}).items():
+                    if not isinstance(env, dict):
+                        continue
+                    block["catalog"][str(label)] = {
+                        k: env.get(k)
+                        for k in ("arch", "cpu_model", "threads",
+                                  "mem_total_kb", "gpus", "compilers",
+                                  "cache_measured")
+                        if env.get(k) not in (None, "", [], {})
+                    }
+    except Exception:
+        pass
+    return block
+
+
 def build_node_report(
     *,
     node: Any,
@@ -853,6 +957,10 @@ def build_node_report(
         "slurm_job_id": run_env.get("slurm_job_id", "") or "",
         "slurm_partition": run_env.get("slurm_partition", "") or "",
         "slurm_nodelist": run_env.get("slurm_nodelist", "") or "",
+        # Every partition the EXPERIMENT touched, not just this node's — see
+        # _partitions_used_block. Authorised machine-provenance capture.
+        "partitions_used": _partitions_used_block(
+            work_dir, run_env, getattr(node, "id", "") or ""),
         "cpu_info": dict(run_env.get("cpu_info") or {}),
         "mem_total_kb": int(run_env.get("mem_total_kb") or 0) or 0,
         "compilers": dict(run_env.get("compilers") or {}),

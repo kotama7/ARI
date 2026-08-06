@@ -59,3 +59,11 @@ tools:
     capability_ref: ari.workspace.code.write
     side_effects: workspace-write
     permissions: [workspace-write]
+  - name: edit_code
+    capability_ref: ari.workspace.code.write
+    side_effects: workspace-write
+    permissions: [workspace-read, workspace-write]
+  - name: describe_environment
+    capability_ref: ari.environment.describe
+    side_effects: read-only
+    permissions: [workspace-read, process]
