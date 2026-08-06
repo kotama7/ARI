@@ -708,3 +708,50 @@ async def test_both_submit_paths_share_one_module_init(tmp_path: Path) -> None:
 def _mk(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+@pytest.mark.asyncio
+async def test_bridge_records_what_it_actually_ran_under(tmp_path: Path) -> None:
+    """The bridge was the one execution path recording nothing.
+
+    The declared-modules path snapshots `module -t list` right after its own
+    loads, so it captures what the SCHEDULER asked for. The bridge has no
+    declaration: the agent loads whatever it likes inside its own script, so
+    the only truthful record is the state left when that script ends — which
+    is why this is a trap and not a line appended after the body.
+    """
+    runner = FakeRunner(CommandResult("12345;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    await scheduler.submit_script_bridge(
+        script="module load compiler/1.0\nmake bench",
+        job_name="bridge", partition="compute-a64fx", nodes=1,
+        walltime="00:10:00", work_dir=str(tmp_path),
+    )
+    script = runner.calls[0][1].decode()
+
+    # Both files the artifact collector already looks for.
+    assert "execution-environment.txt" in script
+    assert "module-list.txt" in script
+    # Armed before the body, so it fires however that body ends and observes
+    # the state the body leaves behind.
+    assert script.index("trap __ari_bridge_provenance EXIT") < script.index("make bench")
+    # A recording gap must not become a job failure.
+    assert "set +eu +o pipefail" in script
+    # `module -t list` is meaningless without a module system.
+    assert "command -v module >/dev/null 2>&1 && module -t list" in script
+
+
+def test_snapshot_without_a_command_omits_command_path(tmp_path: Path) -> None:
+    # The bridge has no single argv to resolve; the shared snapshot helper must
+    # not emit an empty command_path for it.
+    from ari_skill_hpc.scheduler import SlurmScheduler
+
+    with_cmd = "\n".join(SlurmScheduler._environment_snapshot_lines(tmp_path, "python3"))
+    without = "\n".join(SlurmScheduler._environment_snapshot_lines(tmp_path))
+    assert "command_path=" in with_cmd
+    assert "command_path=" not in without
+    # Both record the resolution order a module load produced.
+    for text in (with_cmd, without):
+        assert "loaded_modules=" in text
+        assert "path=" in text

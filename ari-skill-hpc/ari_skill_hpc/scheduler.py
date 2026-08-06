@@ -1201,9 +1201,15 @@ class SlurmScheduler:
         return lines
 
     @staticmethod
-    def _runtime_snapshot(request: JobRequestV1, scope: Path) -> list[str]:
+    def _environment_snapshot_lines(
+        scope: Path, command: str | None = None
+    ) -> list[str]:
+        """Write `execution-environment.txt`, describing the node as it ran.
+
+        ``command`` is the payload whose resolved path is worth recording; the
+        script bridge has no single argv, so it passes None.
+        """
         snapshot = scope / "execution-environment.txt"
-        command = shlex.quote(request.argv[0])
         lines = [
             "{",
             "  printf 'hostname=%s\\n' \"$(hostname)\"",
@@ -1220,9 +1226,24 @@ class SlurmScheduler:
             "  printf 'gpu=%s\\n' \"$(nvidia-smi --query-gpu=name,uuid,driver_version "
             "--format=csv,noheader 2>/dev/null | paste -sd ';' - || true)\"",
             "  printf 'slurm_job_id=%s\\n' \"${SLURM_JOB_ID:-}\"",
-            f"  printf 'command_path=%s\\n' \"$(command -v -- {command} 2>/dev/null || true)\"",
-            f"}} > {shlex.quote(str(snapshot))}",
+            # The resolution order a module load actually produced. Recording
+            # PATH keeps "which binary did this use" answerable without the
+            # scheduler naming any tool.
+            "  printf 'path=%s\\n' \"${PATH:-}\"",
+            "  printf 'loaded_modules=%s\\n' \"${LOADEDMODULES:-}\"",
         ]
+        if command is not None:
+            lines.append(
+                f"  printf 'command_path=%s\\n' "
+                f'"$(command -v -- {shlex.quote(command)} 2>/dev/null || true)"'
+            )
+        lines.append(f"}} > {shlex.quote(str(snapshot))}")
+        return lines
+
+    @staticmethod
+    def _runtime_snapshot(request: JobRequestV1, scope: Path) -> list[str]:
+        lines = SlurmScheduler._environment_snapshot_lines(
+            scope, request.argv[0])
         if request.container:
             container_snapshot = scope / "container-runtime.txt"
             runtime = shlex.quote(request.container.runtime)
@@ -1233,6 +1254,41 @@ class SlurmScheduler:
                 ]
             )
         return lines
+
+    @staticmethod
+    def _bridge_provenance_lines(scope: Path) -> list[str]:
+        """Record what the bridge script actually ran under.
+
+        The declared-modules path records `module -t list` right after its own
+        loads, so it captures what the SCHEDULER asked for. The bridge has no
+        declaration to capture: the agent loads whatever it likes inside its
+        own script, so the only truthful record is the state left behind when
+        that script ends. Without it the bridge was the one execution path
+        whose environment went unrecorded, while the artifact collector was
+        already looking for exactly these two files.
+
+        An EXIT trap, so the record survives a failing script — a failed
+        measurement's environment is as interesting as a successful one's —
+        and so the script's exit status is preserved. The body relaxes
+        `set -euo pipefail` because a trap that aborts would turn a recording
+        gap into a job failure.
+        """
+        module_path = scope / "module-list.txt"
+        body = ["  set +eu +o pipefail"]
+        body.extend(
+            "  " + line
+            for line in SlurmScheduler._environment_snapshot_lines(scope)
+        )
+        body.append(
+            "  command -v module >/dev/null 2>&1 && "
+            f"module -t list 2> {shlex.quote(str(module_path))}"
+        )
+        return [
+            "__ari_bridge_provenance() {",
+            *body,
+            "}",
+            "trap __ari_bridge_provenance EXIT",
+        ]
 
     def _render_script_bridge(
         self,
@@ -1259,6 +1315,10 @@ class SlurmScheduler:
         # mentioning `module`: matching on the body would be guesswork, and
         # this is a no-op wherever there is no module system.
         lines.extend(self._module_init_lines())
+        # Armed BEFORE the agent's body so it fires however that body ends,
+        # and so it observes the state the body leaves behind rather than the
+        # state it started from.
+        lines.extend(self._bridge_provenance_lines(artifact_scope))
         # Generated executable content appears first, so #SBATCH text in the
         # compute-node body cannot override scheduler policy.
         lines.extend(["# ARI core-agent script bridge", script])
