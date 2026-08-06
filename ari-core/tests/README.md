@@ -125,7 +125,7 @@ targets the like-named module under `ari/`.
 - `test_handoff_driver.py` — TODO
 - `test_handoff_stats.py` — TODO
 - `test_harness_pool.py` — TODO
-- `test_harness_problems.py` — TODO
+- `test_harness_problems.py` — pins the boundary that lets a problem be pinned without being approved: no declarable flag/threshold/tolerance, no path escaping the problem directory or the work dir, the digest covering scaffolding and goal text, and the reference never being seeded.
 - `test_harness_registry.py` — TODO
 - `test_harness_select.py` — TODO
 - `test_i18n_consistency.py` — i18n consistency.
@@ -164,7 +164,7 @@ targets the like-named module under `ari/`.
 - `test_model_backend_protocol.py` — subtask 008 `BaseModelBackend` Protocol conformance: `LLMClient` structurally satisfies the `runtime_checkable` Protocol without subclassing, and the `LiteLLMBackend` alias plus `ari.public.llm.LLMClient` still resolve to it.
 - `test_model_passthrough.py` — model passthrough.
 - `test_native_hpc_verifier.py` — native GEMM, SpMM, and stencil verifier correctness, negative-control, and reproducibility coverage.
-- `test_native_perf_driver.py` — TODO
+- `test_native_perf_driver.py` — the performance driver and instrument: driver digest coverage and its fail-loud on a missing file, the manifest's problem/case-set pins, the flag screen, the object-level audits, oracle-after-launches ordering, and the profiler's gate.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
 - `test_node_exec_budget.py` — a node must not be able to spend its whole life inside `run_bash`. Each call had a timeout but nothing bounded the sum, so one node could consume the entire watchdog on shell calls and then be killed with no score, no self-report and no signal about why. The budget makes the node run out of COMMANDS while it still has turns left to report what it found.

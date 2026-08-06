@@ -106,8 +106,8 @@ Shipped default config files (YAML) loaded by ari-core.
       - `verification_environment.json` — canonical execution environment identity for verification and reproduction.
   - `policies/` — shared scientific verification and numerical tolerance policies.
     - `hpc-floating-point-v1.yaml` — floating-point comparison, NaN, overflow, and tolerance policy for HPC harnesses.
-  - `problems/` — TODO
-    - `gemm-dense-fp64/` — TODO
+  - `problems/` — pinned research problems. One directory per problem: scaffolding, goal text, entry point, case set and axis under a single digest. Added freely — no ARI edit and no approval — because the schema cannot reach the instrument.
+    - `gemm-dense-fp64/` — dense row-major fp64 C = A*B against a frozen competent reference at pinned shapes.
       - `gemm_kernel.h` — TODO
       - `gemm_main.c` — TODO
       - `gemm_main_profiled.c` — TODO

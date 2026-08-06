@@ -70,13 +70,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_hpc_gemm.py` — authoritative native GEMM correctness verifier.
   - `native_hpc_spmm.py` — authoritative native sparse-matrix multiplication verifier.
   - `native_hpc_stencil.py` — authoritative native stencil correctness verifier.
-  - `native_perf.py` — TODO
-  - `native_perf_common.py` — TODO
-  - `native_perf_family.py` — TODO
-  - `native_perf_gemm.py` — TODO
-  - `native_perf_measure.py` — TODO
-  - `native_perf_profile.py` — TODO
-  - `problems.py` — TODO
+  - `native_perf.py` — public facade for the ARI-native performance harnesses: takes a PINNED PROBLEM REVISION rather than a task name, and resolves the frozen reference and its build flags through the problem's registered family.
+  - `native_perf_common.py` — the instrument's shared machinery: report/case-set models, the compiler allowlist and flag screen, `compile_binary` (header-less staging, driver built with default flags, object-level symbol audit), `run_timed`, the thread regime, and the environment/placement records. Names no problems.
+  - `native_perf_family.py` — registry for the one thing a problem cannot express as data: its generator and its oracle. Adding a FAMILY is an ARI change; adding a PROBLEM in an existing family is not. Re-registering a name is refused so an import order can never decide which oracle judged a run.
+  - `native_perf_gemm.py` — the dense fp64 GEMM family: problem generator, on-disk instance format, expected output size, and the per-element backward-error oracle. Holds no measurement loop.
+  - `native_perf_measure.py` — the measurement, once, for every problem: anchor/matched denominators, launch ordering, all timed launches before the oracle, per-role output files, and the verdict against the registered regression threshold. Refuses a case set whose family is not the problem's.
+  - `native_perf_profile.py` — region-gated hardware counters for the scored region, carrying `scored: false`. Diagnostic only; a problem that declares no profiled driver is refused rather than profiled with the ungated one.
+  - `problems.py` — the pinned problem asset: closed-schema `ProblemDefinitionV1` (no field for flags, timing or tolerances, so an unapproved problem cannot weaken the instrument), digest over the declaration and every file it names, and `materialize` as the seed_work_dir equivalent — which withholds the reference.
   - `registration.py` — execute harness registration gates and catalog promotion.
   - `registration_models.py` — promotion approval, evidence, and registration report models.
   - `request.py` — validate and canonicalize screen and certify run requests.
@@ -97,9 +97,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `perf_worker.py` — TODO
     - `shared_library.py` — ABI-bound shared-library candidate driver.
     - `upstream.py` — pinned upstream project runner and parity driver.
-  - `kernels/` — TODO
+  - `kernels/` — scaffolding ARI itself owns. Per-problem kernels moved to their problem definitions; what stays is the instrument.
     - `tools/` — TODO
-      - `region_counters.c` — TODO
+      - `region_counters.c` — `perf_event_open` counter tool gated on the profiled driver's region marks, so counts describe the timed call rather than the whole process.
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
 - `capability_binding/` — capability ontology, provider resolution, environment compatibility, substitution, authority, and immutable locks.
   - `__init__.py` — public capability-binding package exports.
