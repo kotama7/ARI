@@ -258,6 +258,74 @@ def test_manifest_pinning_no_files_is_refused():
     assert "not falsifiable" in str(e.value)
 
 
+# --- the pin must also be COMPLETE, self-declared, and not escapable ---------
+
+def test_a_file_the_manifest_never_names_refuses_to_score():
+    """Verifying [files] answers "did these change", never "is this all of them".
+
+    A file added to the harness directory afterwards passes every check by not
+    being looked at — and the file most likely to be added late is a new
+    reference source, which is the denominator of every score.
+    """
+    d = register()
+    reg.load("t")
+    (d / "k" / "reference.c").write_text("/* unpinned denominator */\n")
+    with pytest.raises(HarnessIntegrityError) as e:
+        reg.load("t")
+    assert "NOT pinned in [files]" in str(e.value)
+    assert "k/reference.c" in str(e.value)
+
+
+def test_tests_and_bytecode_do_not_have_to_be_pinned():
+    """The harness's own tests are not the thing being measured, and pinning
+    __pycache__ would make every load depend on which interpreter ran last."""
+    d = register()
+    (d / "tests").mkdir()
+    (d / "tests" / "test_x.py").write_text("def test_x(): pass\n")
+    (d / "__pycache__").mkdir()
+    (d / "__pycache__" / "x.cpython-311.pyc").write_bytes(b"\x00")
+    reg.load("t")
+
+
+def test_a_manifest_without_a_self_hash_is_refused():
+    """Optional-when-absent let a manifest opt OUT of the scoring-config check by
+    deleting one line, and the deletion looked like a manifest predating the
+    field. An unpinned scoring config is not a weaker guarantee, it is none."""
+    register(integrity=False)
+    with pytest.raises(HarnessIntegrityError) as e:
+        reg.load("t")
+    assert "no [integrity].self_sha256" in str(e.value)
+
+
+def test_a_table_outside_the_named_four_is_still_covered_by_the_self_hash():
+    """The digest used to name harness/measure_kwargs/files/declares, so a table
+    added later sat outside it — an unpinned scoring key, which is the hole
+    [files] closes one level down."""
+    d = register()
+    reg.load("t")
+    man = d / reg.MANIFEST_NAME
+    man.write_text(man.read_text() + '\n[scoring]\nfudge = 2.0\n')
+    with pytest.raises(HarnessIntegrityError) as e:
+        reg.load("t")
+    assert "self-hash mismatch" in str(e.value)
+
+
+def test_the_module_route_cannot_escape_the_pins(tmp_path):
+    """``[harness].module`` is resolved by sys.path, so its FILE need not live in
+    the harness directory and need not be pinned — the one route by which the
+    code that measures could differ from the code just verified."""
+    d = register()
+    man = d / reg.MANIFEST_NAME
+    body = man.read_text().split("\n[integrity]")[0].replace(
+        'entry = "t_harness.py"', 'module = "json"')
+    man.write_text(body)
+    digest = reg.manifest_integrity_hash(reg._load_manifest(d))
+    man.write_text(body + f'\n[integrity]\nself_sha256 = "{digest}"\n')
+    with pytest.raises(HarnessIntegrityError) as e:
+        reg.load("t")
+    assert "not a pinned file inside" in str(e.value)
+
+
 def test_digests_are_recorded_and_are_a_copy():
     register()
     h = reg.load("t")

@@ -50,11 +50,18 @@ def harness(monkeypatch, tmp_path):
     (d / "k" / "driver.c").write_text("int main(void){return 0;}\n")
     (d / "t_harness.py").write_text(HARNESS_PY)
     pins = {p: sha256_file(d / p) for p in ("k/driver.c", "t_harness.py")}
-    (d / "harness.toml").write_text(
+    body = (
         '[harness]\nentry = "t_harness.py"\ntarget = 256.0\nscale = "log"\n'
         'axis = "speedup"\n\n[files]\n'
         + "".join(f'"{k}" = "{v}"\n' for k, v in pins.items())
     )
+    (d / "harness.toml").write_text(body)
+    # [integrity].self_sha256 is REQUIRED — a manifest without it could opt out
+    # of the scoring-config check by deleting one line, so load() refuses one.
+    from ari.harness_registry import _load_manifest, manifest_integrity_hash
+    digest = manifest_integrity_hash(_load_manifest(d))
+    (d / "harness.toml").write_text(
+        body + f'\n[integrity]\nself_sha256 = "{digest}"\n')
     return load("t")
 
 

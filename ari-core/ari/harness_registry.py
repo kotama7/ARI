@@ -230,6 +230,55 @@ def _verify(d: Path, pinned: dict[str, str]) -> None:
                 f"scaffolding was modified; refusing to score.")
 
 
+# What is NOT scored scaffolding, and so need not be pinned. The manifest cannot
+# pin itself (its digest would have to contain itself); tests are the harness's
+# own checks, not the thing being measured; build artefacts are derived.
+_UNPINNED_OK = frozenset({MANIFEST_NAME})
+_UNPINNED_SKIP_DIRS = frozenset({"tests", "__pycache__"})
+_UNPINNED_SKIP_SUFFIXES = frozenset({".pyc", ".so"})
+
+
+def unpinned_files(d: Path, pinned) -> list[str]:
+    """Files present in harness dir *d* that ``[files]`` does not pin.
+
+    The pin is a set of digests, so verifying it answers "did these files
+    change" and NOT "is this every file that matters". Anything added to the
+    directory afterwards is outside the manifest and freely editable, which is
+    the whole guarantee inverted for exactly the file most likely to be added
+    late — a new reference source is the score's denominator.
+    """
+    out = []
+    for p in sorted(d.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(d)
+        if rel.parts[0] in _UNPINNED_SKIP_DIRS or str(rel) in _UNPINNED_OK:
+            continue
+        if p.suffix in _UNPINNED_SKIP_SUFFIXES:
+            continue
+        if str(rel) not in pinned:
+            out.append(str(rel))
+    return out
+
+
+def _verify_complete(d: Path, pinned: dict[str, str]) -> None:
+    """Refuse a harness whose directory holds scaffolding the manifest ignores.
+
+    ``_verify`` walks the KEYS of ``[files]``; a file the manifest never names is
+    never hashed, so it passes every check by not being looked at. This was the
+    rule ``workspace/regen_manifest.py`` already refused to regenerate under —
+    but only at re-pin time, so a file added by hand afterwards stayed invisible
+    to the scorer. It belongs at load, where the refusal reaches scoring.
+    """
+    missing = unpinned_files(d, set(pinned))
+    if missing:
+        raise HarnessIntegrityError(
+            f"harness {d.name}: present but NOT pinned in [files]: "
+            f"{', '.join(missing)}. An unpinned file in the harness directory is "
+            f"scored scaffolding nobody is checking; refusing to score. Add it "
+            f"to {MANIFEST_NAME} and re-pin with workspace/regen_manifest.py.")
+
+
 def manifest_integrity_hash(man: dict[str, Any]) -> str:
     """A formatting-independent digest of the manifest's SCORING CONFIGURATION.
 
@@ -251,13 +300,12 @@ def manifest_integrity_hash(man: dict[str, Any]) -> str:
     """
     import hashlib
     import json
-    payload = {
-        "harness": {k: (man.get("harness") or {})[k]
-                    for k in sorted(man.get("harness") or {})},
-        "measure_kwargs": man.get("measure_kwargs") or {},
-        "files": man.get("files") or {},
-        "declares": man.get("declares") or {},
-    }
+    # EVERYTHING except [integrity]. Naming four tables meant a fifth added
+    # later sat outside the digest and could be edited without tripping the
+    # self-hash — a scoring key nobody pinned, which is the exact hole [files]
+    # exists to close one level down. Excluding [integrity] is structural: it
+    # carries this digest and cannot contain itself.
+    payload = {k: man[k] for k in sorted(man) if k != "integrity"}
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"),
                    ensure_ascii=True, default=str).encode()
@@ -270,12 +318,23 @@ def _verify_manifest_self(task: str, d: Path, man: dict[str, Any]) -> str:
     the scoring config that produced a published number)."""
     got = manifest_integrity_hash(man)
     want = (man.get("integrity") or {}).get("self_sha256")
-    if want and str(want) != got:
+    if not want:
+        # Optional-when-absent meant a manifest could opt OUT of the check by
+        # deleting one line, and the deletion looked like a manifest that simply
+        # predated the field. A scoring config nobody pinned is not a weaker
+        # guarantee, it is none.
+        raise HarnessIntegrityError(
+            f"harness {task}: {MANIFEST_NAME} has no [integrity].self_sha256. "
+            f"The scoring config (target/scale/axis/measure_kwargs/files/"
+            f"declares) would then be editable without tripping any check; "
+            f"refusing to score. Re-pin with workspace/regen_manifest.py "
+            f"(computed digest: {got}).")
+    if str(want) != got:
         raise HarnessIntegrityError(
             f"harness {task}: {MANIFEST_NAME} self-hash mismatch "
             f"(pinned {str(want)[:12]}…, found {got[:12]}…). A scoring constant "
-            f"(target/scale/axis/measure_kwargs/files) was modified without "
-            f"re-pinning; refusing to score.")
+            f"(target/scale/axis/measure_kwargs/files/declares) was modified "
+            f"without re-pinning; refusing to score.")
     return got
 
 
@@ -341,13 +400,14 @@ def _load_external(task: str, d: Path) -> Harness:
             f"harness {task}: {MANIFEST_NAME} pins no files. An unpinned harness "
             f"cannot be verified, so its scores are not falsifiable.")
     _verify(d, pinned)
+    _verify_complete(d, pinned)
     manifest_hash = _verify_manifest_self(task, d, man)
 
     scale, target = _describe_manifest(task, man)
 
     # The python half: an external harness supplies `module` (importable) or
     # `entry` (a file next to the manifest) exposing seed_work_dir/measure_node.
-    mod = _import_entry(h, d, task)
+    mod = _import_entry({**h, "_pinned": tuple(pinned)}, d, task)
     for fn in ("seed_work_dir", "measure_node"):
         if not callable(getattr(mod, fn, None)):
             raise HarnessIntegrityError(
@@ -563,7 +623,26 @@ def _import_entry(h: dict, d: Path, task: str):
     import importlib
     import importlib.util
     if h.get("module"):
-        return importlib.import_module(str(h["module"]))
+        # An importable module is resolved by sys.path, so its FILE need not be
+        # in the harness directory and therefore need not be pinned — the one
+        # route by which the scoring code could differ from what _verify just
+        # checked. The capability is kept (a harness may ship as a package), but
+        # only when the file it resolves to is inside this directory and pinned.
+        mod = importlib.import_module(str(h["module"]))
+        src = getattr(mod, "__file__", None)
+        pinned = {str(k) for k in (h.get("_pinned") or ())}
+        try:
+            rel = str(Path(src).resolve().relative_to(d.resolve())) if src else None
+        except ValueError:
+            rel = None
+        if rel is None or rel not in pinned:
+            raise HarnessIntegrityError(
+                f"harness {task}: [harness].module={h['module']!r} resolves to "
+                f"{src or '<no file>'}, which is not a pinned file inside "
+                f"{d}. The pins would then cover something other than the code "
+                f"that measures; refusing to score. Use [harness].entry, or pin "
+                f"the module's file in [files].")
+        return mod
     entry = str(h.get("entry") or f"{task}_harness.py")
     p = d / entry
     if not p.is_file():
