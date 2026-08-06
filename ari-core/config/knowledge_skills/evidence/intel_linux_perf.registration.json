@@ -1,17 +1,17 @@
 {
   "clean_task": {
     "artifact_digests": {
-      "evidence/intel_linux_perf.clean_task.json": "sha256:94e9d7d7a71e10c26f1b2bfd809d78e3468e5c0f9d642c12569f4bcef9ef6a67"
+      "evidence/intel_linux_perf.clean_task.json": "sha256:30daaa1ea26e1f127260c5675d9232a0f023da35d38ec862a50fb748f6de9014"
     },
-    "detail": "The governed CPU probe found perf but policy level 4 denied cycles/instructions; no sudo or security-setting change was attempted.",
+    "detail": "The governed CPU probe ran through the typed Provider (JobRequestV1 to handle to result) on an x86_64 CPU node; perf_event_open opened cycles and instructions under policy level 0 and both counters read back. No sudo was used and no security setting was changed. The recorded artifact is byte-identical to the job's own declared output pin.",
     "methods": [
       "hardware-counter-probe",
       "permission-probe"
     ],
-    "status": "unsatisfied"
+    "status": "pass"
   },
-  "environment_digest": "sha256:be280743f5f2258675f2a4e606f2695fc6428855e44ae974bb5745e0a1250d8b",
-  "evidence_digest": "sha256:165b9c8e702b613b0adfedb217dbf021899dd48e9cbe3f5d96069f1da6240067",
+  "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+  "evidence_digest": "sha256:cd587ed5f5faf300eab16b28f0a0c9a4d0f97ada35aa657fc11e8212e714118b",
   "provider_portability": {
     "binding_lock_digests": [],
     "compatible_provider_ids": [],

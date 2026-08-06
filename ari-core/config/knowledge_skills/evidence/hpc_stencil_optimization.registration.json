@@ -1,0 +1,36 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/hpc_stencil_optimization.clean_task.json": "sha256:cbd8d20593c57aaa8fb43dcf6108aef18e50292f28278ae72617484b071c7d54"
+    },
+    "detail": "An independently authored 5-point Jacobi task ran through the typed container Provider in the digest-pinned gcc 13.2.0 image. Correctness held: per-step trajectory equivalence over sixteen steps was exact, the linearity identity held to 1.7e-16, and the undefined-behaviour/bounds, address and thread sanitizer runs over the two-thread barrier decomposition were clean. Performance did not: the typed job receives the whole node in its affinity mask with no CPU binding, and under that placement the two-thread candidate reached only 0.96x of its own serial baseline, below the 1.05x gate. The same binary reached 1.68x in a CPU-bound four-core allocation, so the shortfall is thread placement rather than the candidate. This clean task is therefore unsatisfied until the typed path binds CPUs. No imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "differential-testing",
+      "metamorphic-testing",
+      "race-detection",
+      "repeated-execution",
+      "sanitizer"
+    ],
+    "status": "unsatisfied"
+  },
+  "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+  "evidence_digest": "sha256:2437984e6450b5895950ade8f6bda7b9a9d38227dbf01303c0def99c743c211f",
+  "provider_portability": {
+    "binding_lock_digests": [],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
+    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
+    "status": "not_applicable_no_second_provider"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:e794e2b776adfe72b88c4b2d89e7431b484517380ee8f231052fe50aedc93832",
+    "id": "hpc.stencil.optimization",
+    "manifest_sha256": "sha256:10009cca5f8138885ceca6c4cf40cc93bc544623665a353201ba2ca274d3f7ab",
+    "version": "1.0.0"
+  },
+  "source_full_commit_sha": "e4fadaef3955f261ba9d44e4746d3657c5094050"
+}

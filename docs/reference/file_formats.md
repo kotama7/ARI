@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-07-28
+last_verified: 2026-08-06
 ---
 
 # File Formats Reference
@@ -202,13 +202,36 @@ role/task; selection ignores labels). Labels are still recorded then — so a re
 | `raw_label` | Kept only when `label==other` (the original LLM-proposed label); empty for the canonical five |
 | `original_direction` | The direction text the parent's expand assigned to this child |
 
-### Optional group 2: run-environment provenance (populate-as-needed)
+### Optional group 2: run-environment provenance
 
 `executor` / `hostname` / `slurm_job_id` / `slurm_partition` / `slurm_nodelist` /
-`cpu_info` / `mem_total_kb` / `compilers` are emitted **only when the run_env skill
-actually captured non-empty data** (a field is omitted when empty). Nothing is
-fabricated from the ambient scheduler env, so machine info is fully absent when the
-skill is unused (never burned into the deliverable) yet present in full when it is.
+`cpu_info` / `mem_total_kb` / `compilers` record where this node actually ran.
+They are **always present**, carrying empty values when the run_env skill captured
+nothing (legacy runs, dry runs, evaluation-only). Emitting them unconditionally is
+deliberate: an omitted key would make "nothing was captured" indistinguishable from
+"this key predates the field", and a measurement whose machine is unknown must be
+distinguishable from one whose machine was never asked for.
+
+Machine identity is captured on purpose here. `node_report.json` is a run artifact
+under `workspace/checkpoints/`, not repository content — the rule against writing
+cluster/partition/host names into tracked source, tests and docs is unchanged.
+
+`partitions_used` widens this from *this node* to *the whole experiment*, because a
+run spread across a heterogeneous cluster otherwise left no single record of where
+it had executed and a cross-node metric comparison could not be checked against the
+hardware behind it:
+
+| Key | Meaning |
+|---|---|
+| `this_node` | The partition of this node's own allocation |
+| `used` | Every distinct partition the run touched, scanned from each sibling node's `_run_env.json` — observed, not configured |
+| `by_partition` | Per partition: `node_count`, and the distinct `nodelists` / `hostnames` seen on it |
+| `catalog` | Per-partition probe from `heterogeneous_env.json` — what each partition *is*. Includes partitions that were probed but never ran a node, which is what makes "we could have used X and did not" answerable. Compacted to `arch` / `cpu_model` / `threads` / `mem_total_kb` / `gpus` / `compilers` / `cache_measured` |
+| `catalog_path` | Path to the full catalog. The raw `module avail` / `lscpu` dumps run to ~30 KB per partition and already exist once at the checkpoint root, so they are pointed at rather than copied into every node's report |
+
+The sibling scan only runs when the node's `work_dir` really is
+`experiments/{run_id}/{node_id}`; otherwise `used` stays empty rather than
+counting an unrelated directory's files as part of this experiment.
 
 ```json
 {

@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-08-03
+last_verified: 2026-08-06
 ---
 
 # MCP Tools Reference
@@ -44,14 +44,18 @@ an LLM and therefore are not byte-deterministic.
 
 ## ari-skill-coding — write + run code
 
-`mcp.json` lists no tools; the actual tool list comes from
-`@server.list_tools()` in `src/server.py`.
+`mcp.json` carries the tool NAMES, generated from `skill.yaml` by
+`scripts/sync_skill_metadata.py --write`; the full schemas still come from
+`@server.list_tools()` in `src/server.py`. The three must agree —
+`scripts/check_skill_manifests.py` fails on drift between them.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `write_code` | Write a file into the node work_dir | ✗ |
+| `edit_code` | Replace an exact snippet in an existing file, leaving the rest untouched. Preferred over `write_code` when the file already exists: `old_string` must match exactly once unless `replace_all` is set, so an ambiguous edit fails instead of silently changing the wrong place | ✗ |
 | `run_code` | Execute a script with timeout + capture | ✗ |
 | `run_bash` | Ad-hoc bash command | ✗ |
+| `describe_environment` | Report this cluster's environment catalog (arch, CPU, GPUs, compilers on PATH, `module avail`, and the NAMES of set toolchain env vars). On a login node it also covers each configured compute partition; on a compute node, only that node | ✗ |
 | `emit_results` | Emit `metrics` + `has_real_data` for the evaluator (optional `provenance` arg → written verbatim as the `_provenance` key tagging how each value was measured, for the claim-evidence gate). The response's `contract_warnings` may include suggestion-only "POSSIBLE name matches" hints when an emitted key lexically resembles a required evidence name — advisory only: nothing is auto-bound and the gate never consumes them | ✗ |
 | `read_file` | Read a file the agent wrote earlier | ✗ |
 

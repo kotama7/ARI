@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 from types import SimpleNamespace
 
 import pytest
@@ -10,12 +11,37 @@ from ari.protocols.integrity import canonical_digest
 from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
 
 
+_REAL_COUNTER_PROBE = environment_module._hardware_counter_probe
+
+
 def _provider_lock():
     return SimpleNamespace(
         tools=(
             SimpleNamespace(policy={"permissions": ["scheduler-submit"]}),
         ),
         skills=(SimpleNamespace(entrypoint="ari-skill-hpc/src/server.py"),),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _counter_policy_is_not_inherited_from_the_test_host(monkeypatch):
+    """Keep substrate-independent cases off the live counter policy.
+
+    The counter probe reads the kernel policy of whatever machine runs the
+    suite, so the cases that assert exact resource sets pin it here.  The
+    counter cases below override this fixture with their own observation.
+    """
+
+    monkeypatch.setattr(
+        environment_module,
+        "_hardware_counter_probe",
+        lambda: {
+            "status": "denied",
+            "events": ["cycles", "instructions"],
+            "perf_event_paranoid": 3,
+            "architecture": "x86_64",
+            "errno": errno.EACCES,
+        },
     )
 
 
@@ -185,6 +211,83 @@ def test_explicit_exclusive_node_inventory_makes_no_gres_gpu_schedulable(
     assert snapshot.metadata["slurm_gpu"]["observed_inventory_digest"] == (
         canonical_digest(devices)
     )
+
+
+def _observe_counters(monkeypatch, *, opened, code=0, machine="x86_64", paranoid=0):
+    """Drive the real probe over one synthetic kernel answer."""
+
+    monkeypatch.setattr(
+        environment_module, "_hardware_counter_probe", _REAL_COUNTER_PROBE
+    )
+    monkeypatch.setattr(environment_module.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(environment_module.platform, "machine", lambda: machine)
+    monkeypatch.setattr(
+        environment_module, "_perf_event_paranoid", lambda: paranoid
+    )
+    monkeypatch.setattr(
+        environment_module,
+        "_open_hardware_counter",
+        lambda number, config: (opened, code),
+    )
+    monkeypatch.setattr(
+        environment_module,
+        "_probe_command",
+        lambda argv, timeout=5.0: {"status": "unavailable"},
+    )
+
+
+def test_opened_hardware_counters_admit_the_profiling_substrate(monkeypatch):
+    _observe_counters(monkeypatch, opened=True)
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(resources={}), _provider_lock()
+    )
+
+    assert "hardware-counters" in snapshot.resource_types
+    assert "hardware-counters" in snapshot.features
+    assert snapshot.metadata["hardware_counters"]["status"] == "ready"
+    assert snapshot.metadata["hardware_counters"]["perf_event_paranoid"] == 0
+    assert snapshot.metadata["hardware_counters"]["events"] == [
+        "cycles",
+        "instructions",
+    ]
+
+
+def test_denied_hardware_counters_do_not_fabricate_the_substrate(monkeypatch):
+    _observe_counters(monkeypatch, opened=False, code=errno.EACCES, paranoid=4)
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(resources={}), _provider_lock()
+    )
+
+    assert snapshot.resource_types == ("cpu", "process")
+    assert "hardware-counters" not in snapshot.features
+    assert snapshot.metadata["hardware_counters"]["status"] == "denied"
+    assert snapshot.metadata["hardware_counters"]["errno"] == errno.EACCES
+
+
+def test_unknown_architecture_reports_unsupported_rather_than_guessing(monkeypatch):
+    _observe_counters(monkeypatch, opened=True, machine="sparc64")
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(resources={}), _provider_lock()
+    )
+
+    assert "hardware-counters" not in snapshot.features
+    assert snapshot.metadata["hardware_counters"]["status"] == "unsupported"
+
+
+def test_counter_substrate_is_decided_by_execution_not_by_a_profiler_binary(
+    monkeypatch,
+):
+    """A present ``perf`` must not stand in for an actually openable counter."""
+
+    _observe_counters(monkeypatch, opened=False, code=errno.EACCES)
+    monkeypatch.setattr(
+        environment_module.shutil, "which", lambda name: f"/usr/bin/{name}"
+    )
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(resources={}), _provider_lock()
+    )
+
+    assert "hardware-counters" not in snapshot.features
 
 
 def test_persisted_environment_snapshot_rejects_fact_substitution(monkeypatch):

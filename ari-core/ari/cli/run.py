@@ -278,11 +278,16 @@ def run(
     # GUI-supplied caps (ARI_MAX_NODES etc.) must win over profile defaults.
     from ari.config import (
         apply_bfts_env_overrides, apply_evaluator_env_overrides,
-        apply_rqgm_env_overrides, export_resolved_config_to_skill_env,
+        apply_handoff_env_overrides, apply_rqgm_env_overrides,
+        export_resolved_config_to_skill_env,
     )
     apply_bfts_env_overrides(cfg)
     apply_evaluator_env_overrides(cfg)
     apply_rqgm_env_overrides(cfg)
+    # ARI_HANDOFF_* selects the arm and its per-channel ablations. Without this
+    # the switches documented on HandoffConfig (and in setup_env.sh) are read by
+    # nothing, so every arm would silently run with the YAML defaults.
+    apply_handoff_env_overrides(cfg)
     # Mode-provenance source, captured BEFORE export_resolved_config_to_
     # skill_env setdefaults ARI_MODE (which would make every run look
     # env-sourced afterwards).

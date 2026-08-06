@@ -1,0 +1,35 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/hpc_gemm_optimization.clean_task.json": "sha256:f477eb9fec92ba3d2732a497afdef06ab902d66b00b2caaa97663fe658ff058e"
+    },
+    "detail": "An independently authored dense GEMM task ran through the typed container Provider in the digest-pinned gcc 13.2.0 image. Its blocked candidate reproduced its own naive baseline exactly, held the scaling and additivity identities to 1.0e-15, passed undefined-behaviour/bounds and address sanitizer runs, and beat the baseline by 3.635x or more across four alternating warm replays against a 1.05x gate. No imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "differential-testing",
+      "metamorphic-testing",
+      "repeated-execution",
+      "sanitizer"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+  "evidence_digest": "sha256:1d49e7aa5b7ede185cd55e629f2b4fd5c38ae33c40fc3a544d47ac03cd45af3d",
+  "provider_portability": {
+    "binding_lock_digests": [],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
+    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
+    "status": "not_applicable_no_second_provider"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:8d0c22f3e95cd7e31860b14817ea5d546459412a28a1cbe9e1a6c5a926be1401",
+    "id": "hpc.gemm.optimization",
+    "manifest_sha256": "sha256:a9f8f7904cde600f71a02cb757e93b405258e7af78a90ee1fa01177d38b6208d",
+    "version": "1.0.0"
+  },
+  "source_full_commit_sha": "e4fadaef3955f261ba9d44e4746d3657c5094050"
+}

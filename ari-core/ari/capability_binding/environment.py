@@ -3,15 +3,39 @@
 from __future__ import annotations
 
 import csv
+import ctypes
+import errno
 import io
 import os
 import platform
 import re
 import shutil
+import struct
 import subprocess
 
 from ari.protocols.integrity import bytes_digest, canonical_digest, is_full_sha256
 from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
+
+
+# ``perf_event_open`` has no libc wrapper, so the syscall is issued directly.
+# aarch64 and riscv64 share the asm-generic table.
+_PERF_EVENT_OPEN_SYSCALL = {
+    "aarch64": 241,
+    "armv7l": 364,
+    "i386": 336,
+    "i686": 336,
+    "ppc64": 319,
+    "ppc64le": 319,
+    "riscv64": 241,
+    "s390x": 331,
+    "x86_64": 298,
+}
+_PERF_TYPE_HARDWARE = 0
+_PERF_COUNT_HW = {"cycles": 0, "instructions": 1}
+_PERF_ATTR_SIZE = 128
+# disabled | exclude_kernel | exclude_hv -- the least-privileged counter request
+# there is, so a denial reflects policy rather than an over-broad ask.
+_PERF_ATTR_FLAGS = (1 << 0) | (1 << 5) | (1 << 6)
 
 
 def _probe_command(argv: tuple[str, ...], *, timeout: float = 5.0) -> dict:
@@ -171,6 +195,89 @@ def _parse_gpu_devices(stdout: str) -> list[dict]:
     return devices
 
 
+def _perf_event_paranoid() -> int | None:
+    try:
+        with open(
+            "/proc/sys/kernel/perf_event_paranoid", encoding="ascii"
+        ) as handle:
+            return int(handle.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _open_hardware_counter(number: int, config: int) -> tuple[bool, int]:
+    """Open one counter on this process and close it again immediately."""
+
+    attr = bytearray(_PERF_ATTR_SIZE)
+    struct.pack_into(
+        "=IIQQQQQ",
+        attr,
+        0,
+        _PERF_TYPE_HARDWARE,
+        _PERF_ATTR_SIZE,
+        config,
+        0,
+        0,
+        0,
+        _PERF_ATTR_FLAGS,
+    )
+    buffer = ctypes.create_string_buffer(bytes(attr), _PERF_ATTR_SIZE)
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.syscall.restype = ctypes.c_long
+    ctypes.set_errno(0)
+    descriptor = libc.syscall(
+        ctypes.c_long(number),
+        ctypes.byref(buffer),
+        ctypes.c_int(0),   # pid: this process only
+        ctypes.c_int(-1),  # cpu: any
+        ctypes.c_int(-1),  # group_fd: no group
+        ctypes.c_ulong(0),
+    )
+    if descriptor < 0:
+        return False, ctypes.get_errno()
+    os.close(descriptor)
+    return True, 0
+
+
+def _hardware_counter_probe() -> dict:
+    """Decide the hardware-counter capability by execution, not by name.
+
+    A profiler binary proves nothing here: ``perf`` is absent from some
+    nodes that permit counters and present on some that deny them, and
+    vendor profilers live at site-dependent paths.  Opening the counter
+    observes the kernel policy that will actually apply, inside whatever
+    container the node runs in.
+    """
+
+    record = {
+        "status": "unavailable",
+        "events": sorted(_PERF_COUNT_HW),
+        "perf_event_paranoid": None,
+        "architecture": platform.machine() or "unknown",
+        "errno": None,
+    }
+    if platform.system().lower() != "linux":
+        return record
+    record["perf_event_paranoid"] = _perf_event_paranoid()
+    number = _PERF_EVENT_OPEN_SYSCALL.get(record["architecture"])
+    if number is None:
+        record["status"] = "unsupported"
+        return record
+    for name in record["events"]:
+        try:
+            opened, code = _open_hardware_counter(number, _PERF_COUNT_HW[name])
+        except (OSError, ValueError, AttributeError):
+            return record
+        if not opened:
+            record["status"] = (
+                "denied" if code in (errno.EACCES, errno.EPERM) else "unsupported"
+            )
+            record["errno"] = code
+            return record
+    record["status"] = "ready"
+    return record
+
+
 def _requested_gpu_count(resources: dict) -> int:
     value = resources.get("gpus", 0)
     if isinstance(value, bool):
@@ -298,6 +405,7 @@ def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
     }
     slurm = _slurm_probe()
     gpu = _gpu_probe()
+    counters = _hardware_counter_probe()
     slurm_gpu = (
         _slurm_gpu_probe(slurm, resources)
         if not gpu["devices"]
@@ -318,6 +426,8 @@ def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
         or slurm_gpu["schedulable"]
     ):
         resource_types.add("gpu")
+    if counters["status"] == "ready":
+        resource_types.add("hardware-counters")
     features = {
         value.strip()
         for value in os.environ.get("ARI_KCA_ENV_FEATURES", "").split(",")
@@ -335,6 +445,8 @@ def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
         features.add("gpu-via-slurm")
     if gpu["cuda_toolkit"]["status"] == "ready":
         features.add("cuda-toolkit")
+    if counters["status"] == "ready":
+        features.add("hardware-counters")
     transports = {
         "mcp-stdio" if str(item.entrypoint).endswith(".py") else "mcp-external"
         for item in provider_lock.skills
@@ -358,6 +470,7 @@ def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
             "slurm": slurm,
             "gpu": gpu,
             "slurm_gpu": slurm_gpu,
+            "hardware_counters": counters,
         },
     }
     return EnvironmentSnapshotV1.create(**body)

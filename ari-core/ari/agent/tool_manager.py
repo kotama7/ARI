@@ -60,6 +60,20 @@ def available_tools_openai(
     ]
 
 
+# Coding-skill filesystem tools that take a ``work_dir`` argument and, when the
+# model omits it, fall back to a SHARED default (``ARI_WORK_DIR`` snapshotted at
+# MCP fork time, else ``/tmp/ari_work``). In a multi-node BFTS run that default
+# is NOT the node's per-node work_dir, so an omitted ``work_dir`` silently routes
+# the agent's edits to a shared scratch dir that the evaluator never reads — the
+# node is then scored on its inherited (parent) code. We pin these calls to the
+# current node's work_dir whenever the model leaves it unset.
+#
+# ari-skill-coding/src/server.py documents this pinning as the invariant it
+# relies on, so the two must not drift apart.
+_WORKDIR_TOOLS = frozenset({"write_code", "run_code", "run_bash", "emit_results",
+                            "read_file", "edit_code"})
+
+
 # ── Per-node wall-clock budget for command execution ────────────────────────
 # A single run_bash is capped by its own timeout, but nothing capped the SUM.
 # One node could therefore spend the whole per-node timeout on shell calls and
@@ -99,11 +113,22 @@ def execute_tool_calls(
     mcp: Any,
     tool_calls: list[dict],
     context: ToolCallContextV1 | None = None,
+    *,
+    node_id: str | None = None,
+    work_dir: str | None = None,
 ) -> list[dict]:
     """Execute a batch of tool calls and return results.
 
     ``context`` is forwarded unchanged. The MCP control plane uses manifest
     policy to require and sign it only for tools that need run/node authority.
+
+    When *work_dir* is given, filesystem tools (:data:`_WORKDIR_TOOLS`) are
+    pinned to it — see that constant for why this cannot be left to the model
+    or to the environment. ``context`` does not carry a work_dir, so this is a
+    separate concern from the call-authority it does carry.
+
+    When *node_id* is given, run_bash/run_code additionally draw down that
+    node's wall-clock budget (:func:`exec_budget_remaining`).
     """
     results = []
     for tc in tool_calls:
@@ -113,7 +138,43 @@ def execute_tool_calls(
             args = _json.loads(func.get("arguments", "{}"))
         except _json.JSONDecodeError:
             args = {}
+        if work_dir and name in _WORKDIR_TOOLS:
+            # Always pin, whether the model omitted work_dir (it would route to
+            # the shared fork-time fallback the evaluator never reads) OR passed
+            # the virtual "/workspace" (the coding server cannot map that back to
+            # THIS node, its ARI_WORK_DIR being snapshotted at MCP fork time).
+            # Any sub-path the model wanted rides in the filename/path/command
+            # args, which the server devirtualizes against this same work_dir.
+            args["work_dir"] = work_dir
+        if name in _EXEC_TOOLS:
+            _left = exec_budget_remaining(node_id)
+            if _left <= 0:
+                results.append({
+                    "tool_call_id": tc.get("id", ""), "name": name,
+                    "result": {
+                        "status": "error",
+                        "error": (
+                            f"this node has used its whole command-execution "
+                            f"budget of {exec_budget_seconds():.0f}s. Stop running "
+                            f"commands and return your result with what you have."
+                        ),
+                    },
+                })
+                continue
+            # Never let one call outlast what is left, so the cap cannot be
+            # overshot by a single long command.
+            if _left != float("inf"):
+                try:
+                    _req = float(args.get("timeout") or 0)
+                except (TypeError, ValueError):
+                    _req = 0.0
+                if _req <= 0 or _req > _left:
+                    args["timeout"] = int(max(1, _left))
+        _t0 = _time.monotonic()
         result = mcp.call_tool(name, args, context=context)
+        if name in _EXEC_TOOLS and node_id:
+            _exec_spent[str(node_id)] = (
+                _exec_spent.get(str(node_id), 0.0) + (_time.monotonic() - _t0))
         results.append({"tool_call_id": tc.get("id", ""), "name": name, "result": result})
     return results
 

@@ -14,7 +14,7 @@ sources:
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-08-03
+last_verified: 2026-08-06
 ---
 
 # Capability Provider Packages (`ari-skill-*` compatibility names)
@@ -1014,6 +1014,10 @@ Code generation, execution, and file reading. **LLM: No** (deterministic).
 
 Write a source file to the work directory.
 
+#### `edit_code(filename, old_string, new_string, replace_all=False, work_dir="/tmp/ari_work")`
+
+Replace an exact snippet inside an existing file, leaving the rest untouched. Prefer this over `write_code` when the file already exists: re-emitting a whole kernel to change a few lines costs tokens and risks dropping code that was working. `old_string` must appear **exactly once** unless `replace_all` is set, so an ambiguous edit fails instead of silently changing the wrong place.
+
 #### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
 
 Execute a source file (auto-detects language from extension). Output is truncated with an informative marker showing omitted character count and a hint to redirect to a file.
@@ -1031,7 +1035,13 @@ result = read_file("results.csv", offset=0, limit=100)
 # Returns: {"content": "...", "next_offset": 100, "total_lines": 5000}
 ```
 
+#### `describe_environment()`
+
+Report this cluster's environment catalog so the agent does not have to discover the toolchain by trial and error. Per node it lists arch, CPU, GPUs, compilers on PATH, the raw `module avail` catalog, and the NAMES of set toolchain env vars (values are never dumped — the agent echoes the ones it needs). On a **login** node it reports the login node itself plus one entry per configured compute partition; on a **compute** node, only that node.
+
 Work directory: `work_dir` arg > `ARI_WORK_DIR` env > `/tmp/ari_work`.
+
+Inside a BFTS run the first of those is not left to the model: `ari.agent.tool_manager` pins the node's real `work_dir` on every filesystem tool. The env fallback cannot serve that role because the MCP server snapshots `ARI_WORK_DIR` at fork time, so per-node updates never reach it — an unpinned call would land in a shared scratch dir the evaluator never reads, and the node would be scored on inherited code.
 
 #### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
 

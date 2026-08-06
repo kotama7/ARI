@@ -1330,9 +1330,20 @@ class AgentLoop:
         self,
         tool_calls: list[dict],
         context: ToolCallContextV1 | None = None,
+        *,
+        node_id: str | None = None,
+        work_dir: str | None = None,
     ) -> list[dict]:
+        """Run a batch of tool calls for THIS node.
+
+        ``work_dir`` is threaded explicitly rather than read from the
+        environment inside tool_manager: with ``max_parallel_nodes > 1`` the
+        process environment is shared, so an env lookup would race and could
+        pin one node's calls to another node's directory.
+        """
         from ari.agent.tool_manager import execute_tool_calls as _et
-        return _et(self.mcp, tool_calls, context=context)
+        return _et(self.mcp, tool_calls, context=context,
+                   node_id=node_id, work_dir=work_dir)
 
     def _node_tool_context(
         self,
@@ -2319,6 +2330,8 @@ class AgentLoop:
                 results = self._execute_tool_calls(
                     response.tool_calls,
                     context=tool_context,
+                    node_id=node.id,
+                    work_dir=work_dir,
                 )
                 # Build args lookup by tool name for trace logging
                 _tc_args_by_name = {
@@ -2807,6 +2820,8 @@ class AgentLoop:
                             poll_results = self._execute_tool_calls(
                                 poll_tc,
                                 context=tool_context,
+                                node_id=node.id,
+                                work_dir=work_dir,
                             )
                             rc2 = json.dumps(poll_results[0]["result"], ensure_ascii=False)
                             logger.info("Auto-poll job %s: %s", job_ids[-1], rc2[:100])

@@ -2189,6 +2189,50 @@ def _apply_web_phase_for_bfts(cfg: "ARIConfig") -> None:
         return
 
 
+def apply_handoff_env_overrides(cfg: "ARIConfig") -> None:
+    """Let `ARI_HANDOFF_*` env vars select the handoff arm and per-channel ablations.
+
+    Mirrors apply_bfts_env_overrides. `ARI_HANDOFF_MODE` rebuilds HandoffConfig
+    so the mode->channel resolution runs; individual `ARI_HANDOFF_*` switches
+    then override single channels for ablation (RQ-B field drop, sensitivity).
+    Call AFTER profile overrides so the explicit choice wins.
+    See ari-core/PREREG_handoff_study.md.
+    """
+    _valid_modes = {
+        "disabled", "code_only", "evidence_only", "evidence_plus_reflection",
+        "summary_only", "code_plus_summary",
+        "code_plus_full_log", "code_plus_summary_plus_full_log",
+        "code_plus_truncated_log",
+        "rolling_summary", "failure_only_summary",
+    }
+    _m = os.environ.get("ARI_HANDOFF_MODE")
+    if _m in _valid_modes:
+        cfg.handoff = HandoffConfig(mode=_m)  # re-resolves channels from mode
+
+    def _envbool(name: str, current: bool) -> bool:
+        v = os.environ.get(name)
+        if v is None:
+            return current
+        return v.strip().lower() in ("1", "true", "yes", "on")
+
+    cfg.handoff.copy_workdir = _envbool("ARI_HANDOFF_COPY_WORKDIR", cfg.handoff.copy_workdir)
+    cfg.handoff.inject_agent_block = _envbool("ARI_HANDOFF_AGENT_BLOCK", cfg.handoff.inject_agent_block)
+    cfg.handoff.inject_planner_block = _envbool("ARI_HANDOFF_PLANNER_BLOCK", cfg.handoff.inject_planner_block)
+    cfg.handoff.memory_off = _envbool("ARI_HANDOFF_MEMORY_OFF", cfg.handoff.memory_off)
+    _lm = os.environ.get("ARI_HANDOFF_LOG_MODE")
+    if _lm in ("none", "full", "truncated", "masked"):
+        cfg.handoff.log_mode = _lm
+    _sf = os.environ.get("ARI_HANDOFF_SUMMARY_FORM")
+    if _sf in ("extractive", "rolling", "failure_only",
+               "evidence", "evidence_reflection"):
+        cfg.handoff.summary_form = _sf
+    _fields = os.environ.get("ARI_HANDOFF_SUMMARY_FIELDS")
+    if _fields:
+        cfg.handoff.summary_fields_enabled = [
+            f.strip() for f in _fields.split(",") if f.strip()
+        ]
+
+
 def apply_bfts_env_overrides(cfg: "ARIConfig") -> None:
     """Let GUI-injected ARI_MAX_NODES/DEPTH/REACT/PARALLEL/TIMEOUT_NODE win over YAML.
 

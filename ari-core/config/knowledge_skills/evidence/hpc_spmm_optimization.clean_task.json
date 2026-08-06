@@ -1,0 +1,75 @@
+{
+  "attachment_execution": "none",
+  "compiler": "gcc 13.2.0",
+  "container_sha256": null,
+  "correctness": {
+    "measurements": {
+      "csr_validation": "pass",
+      "differential_relative": "0.000e+00"
+    },
+    "methods": [
+      "csr_validation",
+      "differential_relative"
+    ],
+    "result": "pass"
+  },
+  "independently_authored_baseline": true,
+  "memory_safety": {
+    "checks": {
+      "address": {
+        "diagnostics": [],
+        "result": "pass",
+        "returncode": 0
+      },
+      "undefined": {
+        "diagnostics": [],
+        "result": "pass",
+        "returncode": 0
+      }
+    },
+    "methods": [
+      "address-sanitizer",
+      "undefined-behavior-sanitizer"
+    ],
+    "result": "pass"
+  },
+  "node_identifier_persisted": false,
+  "performance": {
+    "baseline": "independently authored naive kernel in the same binary",
+    "clock": "CLOCK_MONOTONIC_RAW",
+    "compiler_flags": [
+      "-O3",
+      "-fno-fast-math",
+      "-march=native"
+    ],
+    "replay_speedups": [
+      4.003969,
+      4.023074,
+      4.024223,
+      4.018267
+    ],
+    "replays": 4,
+    "result": "pass",
+    "sample_order": "alternating-baseline-candidate",
+    "statistic": "minimum of trials",
+    "threshold": 1.05,
+    "timer_overhead_subtracted": false,
+    "trials_per_replay": 3,
+    "warmup": "one untimed call per variant"
+  },
+  "race_detection": {
+    "detail": {
+      "diagnostics": [],
+      "result": "pass",
+      "returncode": 0
+    },
+    "methods": [
+      "thread-sanitizer"
+    ],
+    "result": "pass"
+  },
+  "release_binary_sha256": "sha256:167296baacb557bf0cf3bbd4a0e7f2902bb4ac2dc25b5edbcaa38fe4e4e5c3e3",
+  "result": "pass",
+  "schema_version": "ari.hpc-spmm-optimization-clean-task/v1",
+  "task_source_sha256": "sha256:55af91b88a26c82a4d25b2b0939c26532a033c082b535af3f821a65f4fd45289"
+}

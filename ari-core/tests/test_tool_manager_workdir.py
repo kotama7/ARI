@@ -12,13 +12,13 @@ from ari.agent.tool_manager import execute_tool_calls, _WORKDIR_TOOLS
 
 
 class _FakeMCP:
-    _COW_TOOLS = {"add_memory"}
-
     def __init__(self):
         self.calls = []
 
-    def call_tool(self, name, args, cow_node_id=None):
-        self.calls.append((name, dict(args), cow_node_id))
+    def call_tool(self, name, args, context=None, **_kw):
+        # Mirrors MCPClient.call_tool: per-node authority now travels in
+        # ``context`` (the earlier ``cow_node_id`` routing is gone).
+        self.calls.append((name, dict(args), context))
         return {"result": "{}"}
 
 
@@ -53,13 +53,17 @@ def test_explicit_workdir_is_overridden_to_node_root():
     assert mcp.calls[0][1]["work_dir"] == "/exp/run/n1"
 
 
-def test_non_fs_tool_not_injected_but_cow_preserved():
+def test_non_fs_tool_not_injected_and_context_is_forwarded():
+    # Pinning is scoped to the filesystem tools: a memory tool has no work_dir
+    # argument, and inventing one would be a wrong call, not a safer one.
+    # The per-node authority it does need rides in ``context``.
     mcp = _FakeMCP()
-    execute_tool_calls(mcp, [_tc("add_memory", {"text": "t"})],
+    sentinel = object()
+    execute_tool_calls(mcp, [_tc("add_memory", {"text": "t"})], sentinel,
                        node_id="n1", work_dir="/exp/run/n1")
-    name, args, cow = mcp.calls[0]
-    assert "work_dir" not in args          # memory tool must not gain a work_dir
-    assert cow == "n1"                       # existing CoW routing still applied
+    name, args, context = mcp.calls[0]
+    assert "work_dir" not in args
+    assert context is sentinel
 
 
 def test_no_workdir_means_no_injection():

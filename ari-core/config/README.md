@@ -125,6 +125,12 @@ Shipped default config files (YAML) loaded by ari-core.
     - `literature_systematic_review.yaml` — systematic-review skill manifest and requirements.
     - `scientific_reproduction.yaml` — reproduction skill manifest and requirements.
   - `evidence/` — TODO
+    - `hpc_gemm_optimization.clean_task.json` — measured GEMM clean-task record (correctness, metamorphic identities, sanitizers, replay speedups).
+    - `hpc_gemm_optimization.registration.json` — digest-bound GEMM registration evidence; resolves the clean-task gate only.
+    - `hpc_spmm_optimization.clean_task.json` — measured SpMM clean-task record (CSR validation, differential, sanitizers, replay speedups).
+    - `hpc_spmm_optimization.registration.json` — digest-bound SpMM registration evidence; resolves the clean-task gate only.
+    - `hpc_stencil_optimization.clean_task.json` — measured stencil clean-task record; correct and sanitizer-clean but below the speedup gate under unbound thread placement.
+    - `hpc_stencil_optimization.registration.json` — digest-bound stencil registration evidence recording the unsatisfied clean task.
     - `intel_linux_perf.clean_task.json` — TODO
     - `intel_linux_perf.registration.json` — TODO
     - `intel_performance_patterns.clean_task.json` — TODO

@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/health.py
     role: implementation
-last_verified: 2026-07-29
+last_verified: 2026-08-06
 ---
 
 # Environment Variable Reference
@@ -110,6 +110,27 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_PARENT_RUN_ID` | Parent run id during recursion (auto-set) | (auto) |
 | `ARI_DISABLED_TOOLS_FOR_CHILD` | Toolset trimmed for child runs | (none) |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` `top_k` ceiling | (skill default) |
+| `ARI_NODE_EXEC_BUDGET_S` | Per-node wall-clock budget shared by all `run_bash` / `run_code` calls. A single call is capped by its own timeout, but nothing capped the sum, so one node could burn the whole per-node timeout on shell calls and be killed with no report at all. A call is refused once the budget is gone, and no single call is allowed to outlast what remains. `0` disables | `1800` |
+
+### Parent→child handoff (`ARI_HANDOFF_*`)
+
+Applied by `apply_handoff_env_overrides` **after** profile overrides, so an
+explicit choice wins. `ARI_HANDOFF_MODE` rebuilds `HandoffConfig` so the
+mode→channel resolution runs; the individual switches below then override single
+channels for ablation. Config equivalents live under the `handoff:` block.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_HANDOFF_MODE` | Selects the arm, e.g. `disabled` / `code_only` / `summary_only` / `code_plus_summary` / `code_plus_full_log` / `evidence_only` / `evidence_plus_reflection`. An unrecognised value is ignored. Also names the run directory by task + arm + seed | (config) |
+| `ARI_HANDOFF_COPY_WORKDIR` | Whether the child inherits the parent's work_dir (the artifact/code channel) | (from mode) |
+| `ARI_HANDOFF_AGENT_BLOCK` | Inject the parent's operational summary into the child's agent prompt | (from mode) |
+| `ARI_HANDOFF_PLANNER_BLOCK` | Inject the parent's summary into the planner prompt | (from mode) |
+| `ARI_HANDOFF_MEMORY_OFF` | Suppress the de-facto memory channel, so an arm receives no operational state beyond its explicit handoff channels | (from mode) |
+| `ARI_HANDOFF_LOG_MODE` | `none` / `full` / `truncated` / `masked` — how much of the parent's execution log is passed | (from mode) |
+| `ARI_HANDOFF_LOG_LIMIT` | Character cap on the injected parent log | `48000` |
+| `ARI_HANDOFF_SUMMARY_FORM` | `extractive` / `rolling` / `failure_only` / `evidence` / `evidence_reflection` | (from mode) |
+| `ARI_HANDOFF_SUMMARY_FIELDS` | Comma-separated allowlist of summary fields (field-drop ablation) | (all) |
+| `ARI_HANDOFF_PAIRED_MODES` | Comma-separated arms to run paired within one invocation | (none) |
 
 ### Execution mode (RQGM)
 

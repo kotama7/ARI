@@ -729,6 +729,15 @@ _env_append_if_absent "# ARI_HANDOFF_MODE=               # handoff arm: none|cod
 _env_append_if_absent "# ARI_HANDOFF_MEMORY_OFF=         # 1 = suppress the de-facto memory channel"
 _env_append_if_absent "# ARI_HANDOFF_LOG_LIMIT=          # max chars of parent execution log injected"
 _env_append_if_absent "# ARI_HANDOFF_PAIRED_MODES=       # comma-separated arms to run paired"
+# Per-channel ablation switches, applied by apply_handoff_env_overrides AFTER
+# the mode resolves its channels, so a single channel can be varied on its own.
+_env_append_if_absent "# ARI_HANDOFF_COPY_WORKDIR=       # child inherits the parent work_dir (code channel)"
+_env_append_if_absent "# ARI_HANDOFF_AGENT_BLOCK=        # inject parent summary into the agent prompt"
+_env_append_if_absent "# ARI_HANDOFF_PLANNER_BLOCK=      # inject parent summary into the planner prompt"
+_env_append_if_absent "# ARI_HANDOFF_LOG_MODE=           # none|full|truncated|masked"
+_env_append_if_absent "# ARI_HANDOFF_SUMMARY_FORM=       # extractive|rolling|failure_only|evidence|evidence_reflection"
+_env_append_if_absent "# ARI_HANDOFF_SUMMARY_FIELDS=     # comma-separated summary-field allowlist (field-drop ablation)"
+_env_append_if_absent "# ARI_HANDOFF_LOG_SCRUB_EMIT=     # also strip the parent's own emit_results from the injected log"
 _env_append_if_absent "# ARI_SEED=                       # fixed sampling seed (GPU inference is still not bit-exact)"
 _env_append_if_absent "# ARI_TASK=                       # task id the run is scored against"
 _env_append_if_absent "# ARI_HARNESS=                    # registered harness id (see ari.harness_registry)"

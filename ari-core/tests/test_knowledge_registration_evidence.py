@@ -20,29 +20,33 @@ PERFORMANCE_FIXTURE = (
 )
 
 
-def test_intel_registration_evidence_is_digest_bound_and_does_not_promote():
+EVIDENCED = {
+    "hpc.gemm.optimization": "pass",
+    "hpc.spmm.optimization": "pass",
+    # Correct and sanitizer-clean, but the typed job runs unbound across the
+    # whole node and the two-thread candidate loses to its serial baseline
+    # under that placement.
+    "hpc.stencil.optimization": "unsatisfied",
+    "intel.linux-perf": "pass",
+    "intel.performance-patterns": "pass",
+    "intel.phoronix-test-suite": "pass",
+}
+
+
+def test_registration_evidence_is_digest_bound_and_does_not_promote():
     loaded = load_knowledge_catalog(CONFIG_ROOT / "catalog.yaml")
-    entries = {
-        item.manifest.id: item
-        for item in loaded.snapshot.entries
-        if item.manifest.id.startswith("intel.")
-    }
     evidence = {
         item.skill_ref.id: item for item in loaded.registration_evidence.values()
     }
+    entries = {
+        item.manifest.id: item
+        for item in loaded.snapshot.entries
+        if item.manifest.id in evidence
+    }
 
-    assert (
-        set(entries)
-        == set(evidence)
-        == {
-            "intel.linux-perf",
-            "intel.performance-patterns",
-            "intel.phoronix-test-suite",
-        }
-    )
-    assert evidence["intel.linux-perf"].clean_task.status == "unsatisfied"
-    assert evidence["intel.performance-patterns"].clean_task.status == "pass"
-    assert evidence["intel.phoronix-test-suite"].clean_task.status == "pass"
+    assert set(entries) == set(evidence) == set(EVIDENCED)
+    for skill_id, expected in EVIDENCED.items():
+        assert evidence[skill_id].clean_task.status == expected
 
     for skill_id, entry in entries.items():
         report = loaded.registration_reports[entry.registration_report_digest]
@@ -57,6 +61,9 @@ def test_intel_registration_evidence_is_digest_bound_and_does_not_promote():
             evidence[skill_id].provider_portability.status
             == "not_applicable_no_second_provider"
         )
+        # Empirical evidence resolves the two measured gates and nothing else:
+        # a working-tree built-in still cannot attest its own source commit.
+        assert gates["source_commit_pin"].passed is not skill_id.startswith("hpc.")
 
 
 def test_intel_clean_task_evidence_artifact_drift_is_rejected(tmp_path: Path):

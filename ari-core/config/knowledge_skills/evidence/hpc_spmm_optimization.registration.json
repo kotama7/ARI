@@ -1,0 +1,35 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/hpc_spmm_optimization.clean_task.json": "sha256:9b9c85a14bdd5eec911a10a4cafa060da94b21af8dea1c65ca28d4e28baf7b68"
+    },
+    "detail": "An independently authored CSR SpMM task ran through the typed container Provider in the digest-pinned gcc 13.2.0 image. The generated matrix passed CSR structural validation, the register-blocked candidate reproduced its own baseline exactly, undefined-behaviour/bounds and address sanitizer runs passed, and four alternating warm replays beat the baseline by 4.004x or more against a 1.05x gate. No imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "csr-validation",
+      "differential-testing",
+      "repeated-execution",
+      "sanitizer"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
+  "evidence_digest": "sha256:65396061e9efc12b9bd029f17928ffc59f440db6b853f98101cfad94dae1fd9e",
+  "provider_portability": {
+    "binding_lock_digests": [],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
+    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
+    "status": "not_applicable_no_second_provider"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:fd9c56e20b8777dead878c5c20db883c228382fa335ea375ad25179dacb948c8",
+    "id": "hpc.spmm.optimization",
+    "manifest_sha256": "sha256:8584634b51b4e19c5d42939944c251f800da885f1e11fe3b382aa48725fdbde3",
+    "version": "1.0.0"
+  },
+  "source_full_commit_sha": "e4fadaef3955f261ba9d44e4746d3657c5094050"
+}
