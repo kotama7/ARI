@@ -13,6 +13,14 @@ _ROOT = Path(__file__).resolve().parents[2]
 _DRIVER_PATH = _ROOT / "workspace" / "run_handoff_ablation.py"
 _SBATCH_PATH = _ROOT / "workspace" / "submit_handoff_ablation_sbatch.sh"
 _ARRAY_PATH = _ROOT / "workspace" / "submit_handoff_ablation_array.sh"
+# THE CAMPAIGN IS NOT ARI. This file tests a driver that lives in the untracked
+# workspace tree, and it executes that driver at IMPORT time -- so on a checkout
+# without it, or once that tree is retired, the whole module failed to COLLECT
+# and took the run down with it rather than reporting a skip. Its two siblings
+# (test_analyze_handoff, test_edit_lineage) already guard the same way.
+if not _DRIVER_PATH.is_file():
+    pytest.skip("run_handoff_ablation.py not found (workspace/ campaign absent)",
+                allow_module_level=True)
 _SPEC = importlib.util.spec_from_file_location("handoff_driver", _DRIVER_PATH)
 driver = importlib.util.module_from_spec(_SPEC)
 assert _SPEC.loader is not None
