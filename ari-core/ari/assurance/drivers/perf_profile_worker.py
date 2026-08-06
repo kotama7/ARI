@@ -31,7 +31,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="independent PROCESSES per case (default 3: one "
                              "point has no spread)")
     parser.add_argument("--compiler", default=None)
-    parser.add_argument("--flags", default=None)
+    parser.add_argument("--flags", default=None,
+                        help="PASS IT AS --flags=<value>, ALWAYS: a value that "
+                             "starts with '-' and has no space is read by "
+                             "argparse as an option, so a single declared flag "
+                             "is rejected while two are accepted")
     parser.add_argument("--line-bytes", type=int, default=None,
                         help="L1 data line size, if the OS will not say. MEASURED "
                              "values only; without it the ratio is suppressed "

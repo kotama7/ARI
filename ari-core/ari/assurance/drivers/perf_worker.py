@@ -34,7 +34,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--compiler", default=None,
                         help="compiler the candidate declared, if any")
     parser.add_argument("--flags", default=None,
-                        help="flags the candidate declared, screened before use")
+                        help="flags the candidate declared, screened before use. "
+                             "PASS IT AS --flags=<value>, ALWAYS. A value that "
+                             "starts with '-' and contains no space is read by "
+                             "argparse as an option, so ['--flags', '-O3'] is "
+                             "REJECTED while ['--flags', '-O3 -ffast-math'] is "
+                             "accepted -- a candidate declaring exactly one flag "
+                             "would fail as a verifier crash rather than as a "
+                             "candidate. Measured, not reasoned about.")
     parser.add_argument("--regression-threshold", type=float, default=1.0)
     parser.add_argument("--run-timeout", type=float, default=300.0)
     parser.add_argument("--negative-control", action="store_true")

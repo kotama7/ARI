@@ -258,3 +258,37 @@ def test_the_probe_refuses_a_parity_set_that_cannot_resolve(monkeypatch):
     assert report["passed"] is False
     assert "resolves=false" in report["reason"]
     assert report["driver_digest"] == perf_driver_digest()
+
+
+def test_the_worker_takes_a_single_declared_flag():
+    """``--flags=<value>``, always. Found by running the worker, not by reading it.
+
+    argparse reads a value that starts with '-' and contains no space as an
+    OPTION, so ``['--flags', '-O3']`` is rejected while ``['--flags',
+    '-O3 -ffast-math']`` is accepted. A candidate declaring exactly one compiler
+    flag would therefore fail as a VERIFIER CRASH -- a non-zero exit, i.e. an
+    infrastructure error -- rather than as a candidate, on the very axis this
+    harness exists to measure. Nothing had ever invoked the worker, so nothing
+    had noticed.
+    """
+    import argparse
+
+    from ari.assurance.drivers import perf_worker
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--flags", default=None)
+    assert parser.parse_args(["--flags=-O3"]).flags == "-O3", (
+        "the form the caller must use stopped working")
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--flags", "-O3"])
+
+    # And the trap is stated where whoever builds the argv will read it, since
+    # nothing can make argparse accept the bare form.
+    import contextlib
+    import io
+
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer), pytest.raises(SystemExit):
+        perf_worker.main(["--help"])
+    assert "--flags=<value>" in buffer.getvalue().replace("\n", " ").replace(
+        "  ", " "), "the caller-facing warning about the argparse trap is gone"
