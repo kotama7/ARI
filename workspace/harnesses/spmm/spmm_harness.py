@@ -1851,14 +1851,25 @@ def _isa_flags_for(cc: str) -> list[str]:
 # write-allocate traffic. So the profiled build marks the region and
 # region_counters gates on those marks.
 #
+# SIZE AND COUNT ARE CHOSEN, NOT ASSUMED. `cases` selects which scored cases to
+# profile (default: all of them, so the profile covers what the score covers) and
+# `reps` how many independent processes per case. The default of 3 is not a
+# rounding: one point has no spread, and a ratio quoted without one is how this
+# study previously mistook run-to-run variance for an effect. The problem SIZE
+# comes from the same place the score's does -- the manifest's [measure_kwargs],
+# reachable as `Harness.profile(...)` -- because a profile taken at the harness
+# default instead of the study size describes a different problem entirely
+# (spmm's default is ~39x smaller than the scored one).
+#
 # WHAT IT IS BLIND TO. The harness first-touches its buffers OUTSIDE the timed
 # window (the poison loop is serial), so page-fault, TLB and NUMA-placement work
 # is mostly not in here -- see [declares].blind_to. Only scratch the candidate
 # allocates itself faults inside the region.
 #
-# COLD, ONCE, like the score. No warmup and no in-process repetition: a warm
-# profile would describe a regime the score never measures. For statistics, run
-# this again in a fresh process.
+# COLD, ONCE PER PROCESS, like the score. No warmup and no in-process repetition:
+# a warm profile would describe a regime the score never measures. `reps` repeats
+# the PROCESS, exactly as the scored repetitions do, with the same input-seed
+# formula, so a profile point lines up with a scored repetition.
 _COUNTERS_SRC = "workspace/tools/region_counters.c"
 
 
@@ -1893,24 +1904,26 @@ def _counters_binary(build_dir: str) -> tuple[str, str]:
     return exe, digest
 
 
-def _profile_common(*, task, work_dir, counters, digest, td, exe, run_one,
-                    case, input_seed, line_bytes):
-    """Run one gated, counted execution and return the record."""
-    import json as _json
-    import os as _o
-
+def _profile_launcher(counters: str, line_bytes) -> tuple:
     launcher = [counters, "--gate", "--json"]
     if line_bytes:
         launcher += ["--line-bytes", str(int(line_bytes))]
     launcher.append("--")          # region_counters needs it before the command
+    return tuple(launcher)
+
+
+def _profile_point(run_one, case, input_seed, launcher, case_name) -> dict:
+    """One gated, counted process. Records its failure instead of raising: a
+    profile is diagnostic, and losing the whole set to one bad point would make
+    it less useful than the thing it is diagnosing."""
+    import json as _json
     cap: dict = {}
-    t_internal = None
+    credited = None
     error = None
     counters_out = None
     try:
-        res = run_one(exe, td, tuple(launcher), cap)
-        t_internal = res
-    except Exception as exc:                      # noqa: BLE001 - recorded, not raised
+        credited = run_one(case, input_seed, launcher, cap)
+    except Exception as exc:                  # noqa: BLE001 - recorded, not raised
         error = f"{type(exc).__name__}: {exc}"
     raw = (cap.get("stdout") or "").strip()
     if raw:
@@ -1920,18 +1933,48 @@ def _profile_common(*, task, work_dir, counters, digest, td, exe, run_one,
             error = error or f"counter output was not JSON: {raw[:200]}"
     elif error is None:
         error = "the counter tool produced no output"
+    return {"case": case_name, "input_seed": input_seed,
+            "credited_seconds": credited, "counters": counters_out,
+            "error": error}
+
+
+def _profile_record(task: str, work_dir: str, points: list, digest: str,
+                    sizes: dict) -> dict:
+    """The profile as it is written down. Everything needed to say WHICH machine,
+    WHICH build and WHICH problem it describes -- a profile compared against a
+    score taken under other conditions is worse than no profile."""
+    import statistics as _st
+
+    # PER CASE, never pooled. Two shapes have genuinely different IPC, and
+    # pooling them reports that difference as if it were measurement noise --
+    # which is the exact confusion this study spent a campaign untangling.
+    # Spread here means "the same problem, measured again".
+    def _spread(key):
+        by_case: dict = {}
+        for p in points:
+            v = ((p.get("counters") or {}).get("ratios") or {}).get(key)
+            if isinstance(v, (int, float)):
+                by_case.setdefault(p.get("case"), []).append(v)
+        out = {}
+        for case, vals in by_case.items():
+            if len(vals) < 2:
+                continue
+            med = _st.median(vals)
+            out[case] = {"n": len(vals), "median": med,
+                         "max_abs_dev": max(abs(v - med) for v in vals),
+                         "rel_spread": (max(vals) - min(vals)) / med if med else None}
+        return out or None
 
     return {
         "task": task,
         "scored": False,
-        "case": case,
-        "input_seed": input_seed,
-        "credited_seconds": t_internal,
-        "counters": counters_out,
-        "error": error,
-        # The same capture the score carries, so a profile can only ever be read
-        # next to a score taken under the same conditions. check_environment_drift
-        # compares these digests.
+        "points": points,
+        "sizes": sizes,
+        # The spread across repetitions, so a reader can see whether a ratio is
+        # worth acting on before acting on it. One point has none, by definition.
+        "ratio_spread": {k: _spread(k) for k in
+                         ("ipc", "l1d_refill_per_access",
+                          "l2d_refill_per_l1d_refill", "bytes_per_cycle")},
         "measurement_environment": measurement_environment(),
         "toolchain": _toolchain_identity(
             _os_pin.environ.get("ARI_SPMM_CC", "cc")),
@@ -1946,38 +1989,51 @@ def _profile_common(*, task, work_dir, counters, digest, td, exe, run_one,
     }
 
 
-def profile_node(work_dir: str, *, seed: int = 0, n: int = 512, k: int = 32,
-                 family: str | None = None, line_bytes: int | None = None) -> dict:
-    """Counters for the candidate's SCORED region on one spmm family.
+def profile_node(work_dir: str, *, seed: int = 0, reps: int = 3, cases=None,
+                 families=None, n: int | None = None, k: int | None = None,
+                 line_bytes: int | None = None) -> dict:
+    """Counters for the candidate's SCORED region, over chosen families and reps.
 
-    Uses the FIRST scored family and repetition 0's input seed by default. Pass
-    the study's n/k (they come from [measure_kwargs]); the harness defaults are
-    ~39x smaller than the scored problem."""
+    ``n``/``k`` default to the SCORED size, taken from the same environment the
+    manifest's ``[measure_kwargs]`` reads (``ARI_SPMM_N`` / ``ARI_SPMM_K``, else
+    20000/64). The harness's own measure_node default is n=512/k=32 — ~39x
+    smaller, where parallel overhead dominates — and a profile taken there would
+    describe a problem the score never measures. Prefer ``Harness.profile()``,
+    which supplies the manifest values directly.
+    """
     import os as _o
     import tempfile as _tf
 
-    fam = family or FAMILIES[0]
-    input_seed = seed * 100003 + 0 + 1
-    name = f"{fam}_n{n}_k{k}"
+    n = int(n if n is not None else _os_pin.environ.get("ARI_SPMM_N", 20000))
+    k = int(k if k is not None else _os_pin.environ.get("ARI_SPMM_K", 64))
+    chosen = cases if cases is not None else families
+    use = tuple(chosen) if chosen else tuple(FAMILIES)
     td_obj = _tf.TemporaryDirectory()
     try:
         counters, digest = _counters_binary(td_obj.name)
+        launcher = _profile_launcher(counters, line_bytes)
         _cand_flags, _ = _sanitize_candidate_flags(work_dir)
         exe = _compile_kernel("candidate", work_dir, td_obj.name,
                               extra_flags=_cand_flags,
                               main_src=_o.path.join(kernels_dir(),
                                                     "spmm_main_profiled.c"),
                               tag="candidate_profiled")
-        A = _gen_matrix_cached(fam, n, seed=seed)
-        X = np.random.default_rng(input_seed).standard_normal((A.shape[1], k))
 
-        def _run_one(exe, td, launcher, cap):
-            ti, _tw, _Y = _run_exe(exe, td, A, X, launcher=launcher, capture=cap)
+        def _run_one(fam, input_seed, launcher, cap):
+            A = _gen_matrix_cached(fam, n, seed=seed)
+            X = np.random.default_rng(input_seed).standard_normal((A.shape[1], k))
+            ti, _tw, _Y = _run_exe(exe, td_obj.name, A, X,
+                                   launcher=launcher, capture=cap)
             return ti
 
-        return _profile_common(
-            task="spmm", work_dir=work_dir, counters=counters, digest=digest,
-            td=td_obj.name, exe=exe, run_one=_run_one, case=name,
-            input_seed=input_seed, line_bytes=line_bytes)
+        points = []
+        for fam in use:
+            name = f"{fam}_n{n}_k{k}"
+            for r in range(int(reps)):
+                points.append(_profile_point(_run_one, fam,
+                                             seed * 100003 + r + 1, launcher, name))
+        return _profile_record("spmm", work_dir, points, digest,
+                               {"families_profiled": list(use), "n": n, "k": k,
+                                "reps": int(reps), "seed": int(seed)})
     finally:
         td_obj.cleanup()

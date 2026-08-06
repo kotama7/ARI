@@ -131,8 +131,10 @@ targets the like-named module under `ari/`.
 - `test_infrastructure_end_state.py` — a crashed node must not be readable as a scientific result. A node killed by the watchdog produced NO measurement, and recording it as a plain failure conflates "the candidate was bad" (data) with "the framework broke" (missing data), biasing the arm comparison the study exists to make. `ended_by` separated finish from step-exhaustion but was never set on the crash paths, so a crash looked identical to non-convergence.
 - `test_integration.py` — integration.
 - `test_kca_contracts.py` — KCA schema, serialization, digest, and cross-contract invariant coverage.
+- `test_kca_declaration_invariants.py` — every catalog-classified tool covers its capability contract's permissions and side-effect class, and the Router accounts for every entry it did not propose.
 - `test_kca_surfaces.py` — CLI, public API, config, and node-report KCA surface coverage.
 - `test_knowledge_external_importer.py` — pinned external knowledge-source import, provenance, and rejection coverage.
+- `test_knowledge_promotion_guard.py` — a verified Knowledge Skill must exhibit both passing registration gates and an approval bound to its exact manifest, body, and evidence.
 - `test_knowledge_registration_evidence.py` — TODO
 - `test_knowledge_resolver.py` — deterministic knowledge-skill catalog resolution, composition, locks, and ambiguity coverage.
 - `test_labels_disabled.py` — TODO
@@ -161,6 +163,7 @@ targets the like-named module under `ari/`.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
 - `test_node_exec_budget.py` — a node must not be able to spend its whole life inside `run_bash`. Each call had a timeout but nothing bounded the sum, so one node could consume the entire watchdog on shell calls and then be killed with no score, no self-report and no signal about why. The budget makes the node run out of COMMANDS while it still has turns left to report what it found.
+- `test_node_parking.py` — TODO
 - `test_node_report.py` — node_report builder.
 - `test_node_selection.py` — node selection.
 - `test_node_summary_view.py` — node_summary_view field ablation / known_failures derivation / failure_only form / machine-info leak guard (handoff study G3).

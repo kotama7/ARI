@@ -25,6 +25,35 @@ record.
   `measure_resolution_band.py` is one of them, and it produces the band that is
   copied into `[declares].resolves`, so the number certifying the instrument was
   made by an unverified copy of the instrument.
+- `profile_candidate.py` — **why a candidate is slow, at a size and a run count
+  you choose.** `measure_absolute_performance.py` says how fast it is; this says
+  why: IPC, how often an access leaves L1, what fraction of those reach memory,
+  and bytes/cycle where the machine reports its line size — over exactly the
+  region the score is built from, with the candidate's own compiler and screened
+  flags. Never scored (`scored: false` in every record): a profile that could
+  move a score would be a second scoring channel with none of the first one's
+  anti-gaming surface.
+
+  The SIZE defaults to the manifest's `[measure_kwargs]`, the size the score is
+  taken at, because the harnesses' own defaults are not that — spmm's is ~39x
+  smaller, where parallel overhead dominates and every kernel looks alike.
+  `--reps` is how many independent PROCESSES per case (default 3: one point has
+  no spread, and this study has already mistaken run-to-run variance for an
+  effect), using the scored input-seed formula so point r lines up with scored
+  repetition r. There is no warmup and no in-process repetition — the score is
+  one cold call per process, and a warm profile would describe a regime the score
+  never measures. `--plan-only` prints the shape of the run and its process count
+  before spending anything.
+
+  The recorded spread is **per case, never pooled**: two shapes have genuinely
+  different IPC, and pooling them reports that difference as measurement noise.
+  Measured on a compute node, three reps of the seeded stencil starter: IPC
+  1.302 at 96³ and 1.353 at 128³, each reproducing to 0.22% — tighter than the
+  0.32% wall-clock band for the same task.
+
+  Needs a compute node. The event numbers are ARMv8 PMUv3 encodings; on the
+  submit node's architecture they read zero, and `region_counters` exits rather
+  than printing a clean empty result.
 - `check_campaign_safe.py` — is it safe to edit right now, and is the running
   campaign still intact? A campaign freezes 524 files at submit; changing any of
   them mid-run makes every worker fail its post-run digest check and the

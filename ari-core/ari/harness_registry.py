@@ -131,6 +131,39 @@ class Harness:
         kwargs.update(overrides)
         return self._measure_node(work_dir, **kwargs)
 
+    # What `profile` accepts BEYOND the manifest's own kwargs. The manifest keys
+    # themselves (spmm's n/k) stay overridable exactly as they are for `measure`
+    # -- choosing the size is the point of a profile. What this fixes is the
+    # DEFAULT: it comes from [measure_kwargs], so a profile taken without saying
+    # otherwise is taken at the size the score is taken at, instead of the
+    # harness's own default, which for spmm is ~39x smaller.
+    # `seed` is here for the same reason `measure` whitelists it: gemm declares
+    # no [measure_kwargs] at all, so without it a caller could not choose one.
+    _PROFILE_OVERRIDES = frozenset({"reps", "seed", "cases", "shapes", "families",
+                                    "line_bytes"})
+
+    def profile(self, work_dir: str, **overrides: Any) -> dict:
+        """Hardware counters for the region this harness scores. NEVER a score.
+
+        Applies the manifest's ``[measure_kwargs]`` exactly as :meth:`measure`
+        does, so a profile is taken at the SCORED problem size. Calling
+        ``profile_node`` directly bypasses that and lands on the harness's own
+        default, which for spmm is ~39x smaller than the study size.
+        """
+        fn = getattr(self._measure_node, "__globals__", {}).get("profile_node")
+        if not callable(fn):
+            raise HarnessIntegrityError(
+                f"harness {self.task}: does not implement profile_node(). Counters "
+                f"are a property of a timed region; a score-shaped harness has none.")
+        kwargs = self._kwargs()
+        unknown = set(overrides) - set(kwargs) - self._PROFILE_OVERRIDES
+        if unknown:
+            raise TypeError(
+                f"harness {self.task}: unsupported profile override(s): "
+                f"{sorted(unknown)}")
+        kwargs.update(overrides)
+        return fn(work_dir, **kwargs)
+
     def digests(self) -> dict[str, str]:
         """Digests to record alongside the score, so a reader can later confirm
         WHICH scaffolding produced a published number."""
