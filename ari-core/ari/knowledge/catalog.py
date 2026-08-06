@@ -23,6 +23,11 @@ from ari.knowledge.models import (
     KnowledgeSkillStatusTransitionV1,
 )
 from ari.knowledge.importer import validate_body_sections
+from ari.knowledge.registration import (
+    KNOWLEDGE_REGISTRATION_GATES,
+    registration_report,
+)
+from ari.knowledge.registration_models import KnowledgeSkillRegistrationEvidenceV1
 from ari.protocols.integrity import bytes_digest, canonical_digest
 
 
@@ -178,6 +183,7 @@ class LoadedKnowledgeCatalog:
     snapshot: KnowledgeSkillCatalogSnapshotV1
     body_store: KnowledgeSkillBodyStore
     registration_reports: dict[str, KnowledgeSkillRegistrationReportV1]
+    registration_evidence: dict[str, KnowledgeSkillRegistrationEvidenceV1]
 
 
 def _catalog_relative(root: Path, value: str) -> Path:
@@ -202,6 +208,7 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
     body_store = KnowledgeSkillBodyStore()
     entries: list[KnowledgeSkillEntryV1] = []
     reports: dict[str, KnowledgeSkillRegistrationReportV1] = {}
+    evidence_by_digest: dict[str, KnowledgeSkillRegistrationEvidenceV1] = {}
     for item in raw.get("entries", []):
         has_import_material = "import_material" in item
         has_legacy_pair = "manifest" in item or "body" in item
@@ -211,11 +218,21 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
                 "or the manifest/body pair"
             )
         external_material: KnowledgeImportMaterialV1 | None = None
+        evidence_path_value = item.get("registration_evidence")
+        evidence_digest_value = item.get("registration_evidence_digest")
+        if (evidence_path_value is None) != (evidence_digest_value is None):
+            raise ValueError(
+                "Knowledge registration evidence path and digest must appear together"
+            )
         if has_import_material:
-            if set(item) != {"import_material", "import_profile"}:
+            allowed_keys = {"import_material", "import_profile"}
+            if evidence_path_value is not None:
+                allowed_keys.update(
+                    {"registration_evidence", "registration_evidence_digest"}
+                )
+            if set(item) != allowed_keys:
                 raise ValueError(
-                    "external Knowledge catalog entry requires exactly "
-                    "import_material and import_profile"
+                    "external Knowledge catalog entry has unsupported fields"
                 )
             material_path = _catalog_relative(root, str(item["import_material"]))
             profile_path = _catalog_relative(root, str(item["import_profile"]))
@@ -259,9 +276,14 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
                 attachment.path for attachment in external_material.attachments
             )
         else:
-            if set(item) != {"manifest", "body"}:
+            allowed_keys = {"manifest", "body"}
+            if evidence_path_value is not None:
+                allowed_keys.update(
+                    {"registration_evidence", "registration_evidence_digest"}
+                )
+            if set(item) != allowed_keys:
                 raise ValueError(
-                    "built-in Knowledge catalog entry requires exactly manifest and body"
+                    "built-in Knowledge catalog entry has unsupported fields"
                 )
             if "manifest" not in item or "body" not in item:
                 raise ValueError(
@@ -286,53 +308,80 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
         body_digest = body_store.put(body)
         if body_digest != manifest.source.body_sha256:
             raise ValueError(f"Knowledge body digest mismatch: {source_label}")
-        # Repository commit pins in a working tree cannot attest the newly
-        # added body until that commit actually contains it.  Candidates also
-        # cannot claim empirical clean-task/portability evidence before
-        # registration CI.  Promotion therefore remains an explicit later
-        # admin transition, never an optimistic loader side effect.
-        gate_names = (
-            "manifest_schema",
-            "full_sha256_integrity",
-            "source_commit_pin",
-            "license_completeness",
-            "no_executable_entrypoint",
-            "no_script_autolaunch",
-            "capability_ontology",
-            "forbidden_authority",
-            "authority_ceiling",
-            "property_vocabulary",
-            "reference_isolation",
-            "prompt_composition_schema",
-            "body_sections_and_size",
-            "hostile_instruction_boundary",
-            "clean_task",
-            "provider_portability",
-        )
+        empirical_evidence: KnowledgeSkillRegistrationEvidenceV1 | None = None
+        if evidence_path_value is not None:
+            evidence_path = _catalog_relative(root, str(evidence_path_value))
+            try:
+                empirical_evidence = (
+                    KnowledgeSkillRegistrationEvidenceV1.model_validate_json(
+                        evidence_path.read_text(encoding="utf-8")
+                    )
+                )
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise ValueError(
+                    f"Knowledge registration evidence is invalid: {evidence_path.name}"
+                ) from exc
+            if empirical_evidence.evidence_digest != str(evidence_digest_value):
+                raise ValueError("Knowledge registration evidence digest mismatch")
+            if empirical_evidence.skill_ref != manifest.exact_ref():
+                raise ValueError(
+                    "Knowledge registration evidence refers to another Skill"
+                )
+            if empirical_evidence.source_full_commit_sha != manifest.source.commit:
+                raise ValueError(
+                    "Knowledge registration evidence source commit mismatch"
+                )
+            for (
+                artifact_name,
+                expected_digest,
+            ) in empirical_evidence.clean_task.artifact_digests.items():
+                artifact_path = _catalog_relative(root, artifact_name)
+                if bytes_digest(artifact_path.read_bytes()) != expected_digest:
+                    raise ValueError(
+                        "Knowledge clean-task evidence artifact differs from its digest"
+                    )
+            evidence_by_digest[empirical_evidence.evidence_digest] = empirical_evidence
+        # A working-tree built-in cannot attest its own source commit until the
+        # body is committed.  External evidence may resolve empirical gates,
+        # but loading it only rebuilds the registration report: status promotion
+        # remains an explicit authenticated transition.
         pending_gates = {"clean_task", "provider_portability"}
         if external_material is None:
             pending_gates.add("source_commit_pin")
-        gates = tuple(
-            KnowledgeRegistrationGateV1(
-                gate_id=name,
-                passed=name not in pending_gates,
-                evidence_digest=canonical_digest(
-                    {"manifest": manifest.source.manifest_sha256, "gate": name}
-                ),
-                detail=(
-                    "pending committed-source or empirical registration evidence"
-                    if name in pending_gates
-                    else "checked-in static validation"
-                ),
+        gates: list[KnowledgeRegistrationGateV1] = []
+        for name in KNOWLEDGE_REGISTRATION_GATES:
+            passed = name not in pending_gates
+            detail = (
+                "pending committed-source or empirical registration evidence"
+                if name in pending_gates
+                else "checked-in static validation"
             )
-            for name in gate_names
-        )
-        report = KnowledgeSkillRegistrationReportV1.create(
+            evidence_digest = canonical_digest(
+                {"manifest": manifest.source.manifest_sha256, "gate": name}
+            )
+            if empirical_evidence is not None and name == "clean_task":
+                passed = empirical_evidence.clean_task.status == "pass"
+                detail = empirical_evidence.clean_task.detail
+                evidence_digest = canonical_digest(empirical_evidence.clean_task)
+            elif empirical_evidence is not None and name == "provider_portability":
+                passed = empirical_evidence.provider_portability.status == "pass"
+                detail = empirical_evidence.provider_portability.detail
+                evidence_digest = canonical_digest(
+                    empirical_evidence.provider_portability
+                )
+            gates.append(
+                KnowledgeRegistrationGateV1(
+                    gate_id=name,
+                    passed=passed,
+                    evidence_digest=evidence_digest,
+                    detail=detail,
+                )
+            )
+        report = registration_report(
             skill_ref=manifest.exact_ref(),
-            gates=gates,
+            gates=tuple(gates),
             non_authoritative_hints=non_authoritative_hints,
             attachments=attachment_paths,
-            decision="candidate",
         )
         reports[report.report_digest] = report
         entries.append(
@@ -349,7 +398,7 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
         importer_version=str(raw.get("importer_version", "unknown")),
         entries=tuple(entries),
     )
-    return LoadedKnowledgeCatalog(snapshot, body_store, reports)
+    return LoadedKnowledgeCatalog(snapshot, body_store, reports, evidence_by_digest)
 
 
 __all__ = [

@@ -46,6 +46,7 @@ benchmarks/
 *.sbatch
 # Deterministic source/data fixtures exercised by assurance and RQGM CI.
 !/ari-core/tests/fixtures/assurance/native_reference_candidate.c
+!/ari-core/tests/fixtures/knowledge/intel_performance_patterns_clean_task.c
 !/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/
 !/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/**
 

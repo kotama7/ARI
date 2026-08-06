@@ -1,0 +1,173 @@
+{
+  "$defs": {
+    "KnowledgeCleanTaskEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "minProperties": 1,
+          "title": "Artifact Digests",
+          "type": "object"
+        },
+        "detail": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Methods",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "unsatisfied"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "methods",
+        "artifact_digests",
+        "detail"
+      ],
+      "title": "KnowledgeCleanTaskEvidenceV1",
+      "type": "object"
+    },
+    "KnowledgeProviderPortabilityEvidenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "binding_lock_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Binding Lock Digests",
+          "type": "array"
+        },
+        "compatible_provider_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Compatible Provider Ids",
+          "type": "array"
+        },
+        "detail": {
+          "maxLength": 8192,
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "provider_catalog_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Provider Catalog Digest",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_applicable_no_second_provider"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "provider_catalog_digest",
+        "compatible_provider_ids",
+        "detail"
+      ],
+      "title": "KnowledgeProviderPortabilityEvidenceV1",
+      "type": "object"
+    },
+    "KnowledgeSkillRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "body_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Body Sha256",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,255}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "body_sha256",
+        "manifest_sha256"
+      ],
+      "title": "KnowledgeSkillRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/knowledge-skill-registration-evidence-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Reviewed clean-task and cross-Provider evidence for one exact Skill.",
+  "properties": {
+    "clean_task": {
+      "$ref": "#/$defs/KnowledgeCleanTaskEvidenceV1"
+    },
+    "environment_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Environment Digest",
+      "type": "string"
+    },
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "provider_portability": {
+      "$ref": "#/$defs/KnowledgeProviderPortabilityEvidenceV1"
+    },
+    "schema_version": {
+      "const": "ari.knowledge-skill-registration-evidence/v1",
+      "default": "ari.knowledge-skill-registration-evidence/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "skill_ref": {
+      "$ref": "#/$defs/KnowledgeSkillRefV1"
+    },
+    "source_full_commit_sha": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Source Full Commit Sha",
+      "type": "string"
+    }
+  },
+  "required": [
+    "skill_ref",
+    "source_full_commit_sha",
+    "environment_digest",
+    "clean_task",
+    "provider_portability",
+    "evidence_digest"
+  ],
+  "title": "ARI Knowledge Skill Registration Evidence v1",
+  "type": "object"
+}
