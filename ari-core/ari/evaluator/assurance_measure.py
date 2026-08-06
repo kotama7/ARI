@@ -181,13 +181,29 @@ def report_to_measurement(report, *, compile_ok: bool = True) -> dict[str, Any]:
             "toolchain_gain": case.toolchain_gain,
             "credited_seconds": min(credited) if credited else None,
         }]
+        # THE AUDIT RECORD IS A CLOSED CONTRACT. node_report.schema.json declares
+        # each repetition as {index, status, valid, measurements} with
+        # additionalProperties: false, so the typed fields are named and
+        # everything else goes in the generic bag. Emitting the pydantic model's
+        # own field names instead would have failed validation -- which is what
+        # the schema is for, and what it caught.
         entry["repetitions"] = [
             {
-                "index": r.index, "input_seed": r.input_seed,
-                "credited_seconds": r.credited_seconds,
-                "reference_seconds": r.reference_seconds,
-                "speedup": r.speedup, "correct": r.correct,
-                "max_rel_error": r.max_rel_error,
+                "index": r.index,
+                "status": "ok" if r.correct else "failed_correctness",
+                "valid": bool(r.correct),
+                "measurements": {
+                    key: value for key, value in (
+                        ("input_seed", r.input_seed),
+                        ("credited_seconds", r.credited_seconds),
+                        ("reference_seconds", r.reference_seconds),
+                        ("speedup", r.speedup),
+                        ("matched_seconds", r.matched_seconds),
+                        ("speedup_matched", r.speedup_matched),
+                        ("toolchain_gain", r.toolchain_gain),
+                        ("max_rel_error", r.max_rel_error),
+                    ) if value is not None
+                },
             }
             for r in case.repetitions
         ]

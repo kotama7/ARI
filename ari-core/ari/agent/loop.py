@@ -1821,6 +1821,245 @@ class AgentLoop:
             except Exception as _seed_err:
                 logger.warning("seed_core_memory failed: %s", _seed_err)
 
+    # ------------------------------------------------------------------
+    # Self-review calls. RESTORED: a merge kept every call site and every
+    # test but deleted both definitions, so each call raised AttributeError
+    # into an ``except Exception`` that logged a warning and moved on. The
+    # effect was silent and total -- no node has produced a post-evaluation
+    # self-report or a max-steps summary since, while the runs still looked
+    # complete. That is the handoff content this study exists to compare.
+    # ------------------------------------------------------------------
+
+    def _verdict_for_review(self, node: "Node", eval_result: dict) -> dict | None:
+        """What the reviewer is shown, from EITHER evaluator. ``None`` = do not review.
+
+        The two judges answer in different currencies -- the LLM judge writes a
+        bounded composite plus per-axis rationales, the harness writes a native
+        speedup plus per-case validity -- and the reviewer is asked to interpret
+        whichever arrived rather than to know which one it was.
+
+        ``None`` when there is nothing to interpret. An infrastructure error
+        carries no metrics and no score by construction (an outage is not a
+        claim about the candidate), and asking a model to review it produces
+        invented content in the one channel this study measures.
+        """
+        status = str(eval_result.get("evaluation_status") or "")
+        if status == "infrastructure_error":
+            return None
+        metrics = {k: v for k, v in list((node.metrics or {}).items())[:8]}
+        verdict: dict = {
+            "metrics": metrics,
+            "reason": str(eval_result.get("reason", ""))[:400],
+        }
+        score = eval_result.get("scientific_score")
+        if score is not None:
+            verdict["scientific_score"] = score
+        # The LLM judge's per-axis rationales, when that is the judge in use.
+        axes = eval_result.get("axis_scores") or eval_result.get("_axis_scores")
+        if isinstance(axes, dict) and axes:
+            verdict["axis_scores"] = {str(k): v for k, v in list(axes.items())[:8]}
+        # The harness's per-case validity, when that is. Validity only -- the
+        # measurements themselves already reach the child through
+        # ``evaluation_cases`` and repeating them here is what the prompt below
+        # forbids.
+        cases = eval_result.get("evaluation_cases")
+        if isinstance(cases, dict) and cases:
+            verdict["case_validity"] = {
+                str(name): bool((case or {}).get("valid"))
+                for name, case in list(cases.items())[:8]
+            }
+        if not (metrics or verdict.get("scientific_score") is not None
+                or verdict.get("axis_scores") or verdict.get("case_validity")):
+            # Nothing measurable arrived. Reviewing prose alone would invent the
+            # evidence it claims to interpret.
+            return None
+        return verdict
+
+    def _post_evaluation_reflection(
+        self, node: "Node", messages: list[dict], experiment: dict,
+        eval_result: dict,
+    ) -> tuple[list[str], list[str]]:
+        """Self-review a node AFTER its score is known → (next_steps, concerns).
+
+        WHY THIS RUNS AFTER THE EVALUATOR. The agent's next_steps and concerns
+        used to be taken from its own final message, which it writes BEFORE the
+        evaluator runs. That made the Self-Report evaluator-blind, and the
+        study's S-E contrast read as "evidence + a blind self-account" against
+        "evidence alone". It was not a clean separation either: the agent's own
+        self-test measures the scored shapes, so it already had a close estimate
+        of its score -- the self-report was neither informed nor genuinely blind.
+
+        Running the review after scoring makes the contrast what it should be:
+        BOTH arms carry the same objective evidence, and S adds the model's
+        INTERPRETATION of it. That is the question an agentic search poses, and
+        it is what most deployed systems do.
+
+        The known risk is that the review restates the numbers, turning S into
+        "E plus the same figures in prose". The prompt therefore forbids
+        repeating the measurements and asks for the reasoning and the next
+        action; the trajectory analyser measures adoption against the base rate
+        in the arms that received no proposals, which is what would expose a
+        restatement.
+
+        Returns ``([], [])`` on any failure -- the caller keeps whatever the
+        agent already wrote, so a failed auxiliary call never costs a node.
+        """
+        verdict = self._verdict_for_review(node, eval_result)
+        if verdict is None:
+            return ([], [])
+
+        lines: list[str] = []
+        for entry in messages[-10:]:
+            if not isinstance(entry, dict):
+                continue
+            content = entry.get("content")
+            if isinstance(content, list):
+                content = " ".join(str(part) for part in content)
+            content = str(content or "").strip()
+            if content:
+                lines.append(f"[{entry.get('role', '')}] {content[:350]}")
+        trace_text = "\n".join(lines) or "(no usable trace captured)"
+        goal = (experiment.get("goal", "") if isinstance(experiment, dict)
+                else str(experiment))
+
+        review_messages = [
+            {"role": "system", "content": (
+                "You review one node of an autonomous code-optimization agent, "
+                "AFTER an independent evaluator has scored it. You are given the "
+                "evaluator's verdict. Produce (1) what to try NEXT, and (2) "
+                "CONCERNS about this node's work.\n"
+                "RULES. Do NOT restate the evaluator's numbers — the child "
+                "receives them separately, and repeating them adds nothing. Say "
+                "what the result IMPLIES about the code and what should change "
+                "because of it. Be concrete about the code, not about process. "
+                "Invent no measurement that is not in the verdict or the trace. "
+                "If the verdict shows the node failed or was invalid, say what to "
+                "fix first.\n"
+                'Reply ONLY with JSON: {"next_steps":["<concrete change>", ...],'
+                '"concerns":["<caveat/risk>", ...]}'
+            )},
+            {"role": "user", "content": (
+                f"Goal: {str(goal)[:400]}\n\n"
+                f"Evaluator verdict: {json.dumps(verdict, default=str)[:900]}\n\n"
+                f"Trace (final steps):\n{trace_text}\n\n"
+                "Write the JSON review now."
+            )},
+        ]
+        return self._json_self_review(
+            node, review_messages, phase="post_evaluation_reflection",
+            keys=("next_steps", "concerns"))
+
+    def _forced_max_steps_summary(
+        self, node: Node, messages: list[dict], experiment: dict
+    ) -> tuple[str, list[str], list[str]]:
+        """Self-review a node that ran out of ReAct steps → (summary, next_steps, concerns).
+
+        When the agent exhausts ``max_react_steps`` without emitting a final
+        summary, force ONE tool-less call whose prompt states the overflow and
+        asks -- from the node's OWN trace -- for a concise factual account, a
+        short next_steps list and a short concerns list. Without it such a node
+        hands its child an empty ``what_was_done``, which is indistinguishable
+        from a node that did nothing.
+
+        Returns ``("", [], [])`` on a reply that carries nothing; the caller
+        treats an empty summary as "no self-report".
+        """
+        lines: list[str] = []
+        for entry in messages[-12:]:
+            if not isinstance(entry, dict):
+                continue
+            content = entry.get("content")
+            if isinstance(content, list):
+                content = " ".join(str(part) for part in content)
+            content = str(content or "").strip()
+            calls = entry.get("tool_calls") or []
+            if calls:
+                names = ", ".join(
+                    call.get("function", {}).get("name", "?") for call in calls)
+                lines.append(f"[{entry.get('role', '')} → tools: {names}] {content[:300]}")
+            elif content:
+                lines.append(f"[{entry.get('role', '')}] {content[:400]}")
+        trace_text = "\n".join(lines) or "(no usable trace captured)"
+        goal = (experiment.get("goal", "") if isinstance(experiment, dict)
+                else str(experiment))
+
+        summary_messages = [
+            {"role": "system", "content": (
+                "You self-review a single node of an autonomous code-optimization "
+                "agent. IMPORTANT CONTEXT: this node EXCEEDED its ReAct step "
+                "budget and stopped BEFORE it could emit a final summary, so no "
+                "self-report exists. From the trace only, produce (1) a concise, "
+                "factual 1-3 sentence summary of what the node ATTEMPTED and what "
+                "it ACCOMPLISHED, (2) a short self-review of what to try NEXT, and "
+                "(3) a short list of CONCERNS about the node. Do not invent "
+                "measurements or results not present in the trace. State "
+                "explicitly that the node ran out of its step budget.\n"
+                'Reply ONLY with JSON: {"summary":"<1-3 sentences>",'
+                '"next_steps":["<concrete next step>", ...],'
+                '"concerns":["<caveat/risk>", ...]}'
+            )},
+            {"role": "user", "content": (
+                f"Goal: {str(goal)[:400]}\n\n"
+                f"Trace (final steps):\n{trace_text}\n\n"
+                f"The node consumed all {self.max_react_steps} ReAct steps "
+                "without producing a final summary. Write the JSON self-review now."
+            )},
+        ]
+        parsed = self._json_self_review(
+            node, summary_messages, phase="fallback_summary",
+            keys=("summary", "next_steps", "concerns"), raise_on_error=True)
+        return parsed
+
+    def _json_self_review(self, node, review_messages, *, phase, keys,
+                          raise_on_error: bool = False):
+        """One auxiliary LLM call, audited, parsed as JSON. Shared by both reviews.
+
+        Every such call is appended to ``node.auxiliary_llm_calls`` WITH its
+        prompt, because a study that compares what a child was handed has to be
+        able to show what produced it. The two reviews differed only in prompt
+        and in what they returned; keeping one parser means a fix to the fence
+        handling cannot apply to one of them and not the other.
+        """
+        empty = tuple("" if key == "summary" else [] for key in keys)
+        audit = {"phase": phase, "messages": serialize_messages(review_messages),
+                 "tools": []}
+        try:
+            response = self.llm.complete(
+                review_messages, tools=None, require_tool=False,
+                node_id=node.id, phase=phase, skill="agent_loop")
+        except Exception as error:
+            audit["error"] = f"{type(error).__name__}: {error}"
+            node.auxiliary_llm_calls.append(audit)
+            if raise_on_error:
+                raise
+            return empty
+        text = (getattr(response, "content", "") or "").strip()
+        audit["response"] = {"role": "assistant", "content": text}
+        node.auxiliary_llm_calls.append(audit)
+        if not text:
+            return empty
+        body = text
+        if "```" in body:                       # strip a ```json ... ``` fence
+            body = body.split("```", 2)[1]
+            if body.lstrip().lower().startswith("json"):
+                body = body.lstrip()[4:]
+        try:
+            parsed = json.loads(body[body.find("{"): body.rfind("}") + 1])
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict) and any(parsed.get(key) for key in keys):
+            return tuple(
+                str(parsed.get(key, "")).strip() if key == "summary"
+                else _coerce_str_list(parsed.get(key))
+                for key in keys
+            )
+        # Unparseable but non-empty: keep the prose as the summary when one was
+        # asked for, rather than discarding a reply that may be the only account
+        # of the node there is.
+        if "summary" in keys:
+            return tuple(text if key == "summary" else [] for key in keys)
+        return empty
+
     def run(self, node: Node, experiment: dict) -> Node:
         node.mark_running()
         _effective_handoff = self._handoff_for_node(node)

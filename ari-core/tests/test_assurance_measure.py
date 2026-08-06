@@ -338,3 +338,30 @@ def test_the_harness_object_path_still_writes_provenance(tmp_path):
     _write_run_provenance(tmp_path, _Harness())
     record = json.loads((tmp_path / "provenance.json").read_text())["harness"]
     assert record["task"] == "legacy"
+
+
+def test_the_audit_record_validates_against_the_report_schema():
+    """The audit record is a CLOSED contract, and closing it is the point.
+
+    node_report.schema.json declares each repetition as
+    {index, status, valid, measurements} with additionalProperties: false. This
+    code first emitted the pydantic model's own field names instead, which the
+    schema rejected -- caught only because the schema property had been restored
+    after a merge deleted it while the builder kept writing the field.
+    """
+    import json
+    from pathlib import Path
+
+    jsonschema = pytest.importorskip("jsonschema")
+
+    report = _report([_case("c1", verdict="pass", correct=True, speedup=1.5)])
+    scored = DeterministicEvaluator().score_result(am.report_to_measurement(report))
+    schema = json.loads(
+        (Path(__file__).resolve().parents[1] / "ari" / "schemas"
+         / "node_report.schema.json").read_text())
+    jsonschema.validate(
+        {"measurement_audit": scored["measurement_audit"],
+         "evaluation_cases": scored["evaluation_cases"],
+         "evaluation_status": scored["evaluation_status"],
+         "measurement_valid": scored["has_real_data"]},
+        {"type": "object", "properties": schema["properties"]})

@@ -113,6 +113,43 @@ class Node:
     # LLM-generated exploration direction before evaluation.
     evaluator_reason: str = ""
     eval_summary: str | None = None  # LLM evaluation comment
+    # --- the node's own account of its work ---------------------------------
+    #
+    # RESTORED. These were dropped by a merge that kept every reader and every
+    # test, so the code that writes them still ran and the code that reads them
+    # got a default: a node's self-report and how it ended were silently empty
+    # for every run since. Nothing raised, because a dataclass accepts an
+    # attribute nobody declared and ``getattr(node, ..., "")`` answers for one
+    # nobody wrote.
+    #
+    # ``agent_summary``/``next_steps``/``concerns`` are what a child inherits, so
+    # this is the handoff itself -- the quantity the study exists to compare.
+    agent_summary: str = ""
+    agent_next_steps: list[str] = field(default_factory=list)
+    agent_concerns: list[str] = field(default_factory=list)
+    #: ``pre_evaluation`` until the post-scoring review replaces the two lists
+    #: above. A reader cannot otherwise tell an evaluator-informed self-report
+    #: from a guess the agent made before it was scored.
+    self_report_stage: str = "pre_evaluation"
+    #: The agent's free-form note about what it ran on, kept only when grounded
+    #: in this node's tool output. Never auto-scraped, so no machine identity is
+    #: embedded without the agent having observed it.
+    agent_environment: str = ""
+    #: ``{path: note}`` the report builder grafts onto files_changed.
+    file_notes: dict = field(default_factory=dict)
+    react_steps_used: int = 0
+    #: HOW a node ended -- finish_json, max_steps, watchdog, exception. Without
+    #: it a crashed node is indistinguishable from one that never converged, and
+    #: averaging the two biases exactly the arm comparison the study makes.
+    ended_by: str = ""
+    full_messages: list = field(default_factory=list)
+    full_tools: list = field(default_factory=list)
+    #: Auxiliary (non-ReAct) LLM calls made about this node, with their prompts
+    #: and replies. Appended to, so its absence was an AttributeError rather
+    #: than a silent default -- which is why the two self-review calls could
+    #: never complete even once their definitions came back.
+    auxiliary_llm_calls: list = field(default_factory=list)
+    handoff_mode: str = ""
     label: NodeLabel = NodeLabel.DRAFT  # Exploration purpose label
     raw_label: str = ""  # Original LLM-proposed label (preserved when label==OTHER)
     name: str = ""  # Human-readable short name (set after hypothesis is known)

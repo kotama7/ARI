@@ -749,9 +749,32 @@ _env_append_if_absent "# ARI_HANDOFF_SUMMARY_FORM=       # extractive|rolling|fa
 _env_append_if_absent "# ARI_HANDOFF_SUMMARY_FIELDS=     # comma-separated summary-field allowlist (field-drop ablation)"
 _env_append_if_absent "# ARI_HANDOFF_LOG_SCRUB_EMIT=     # also strip the parent's own emit_results from the injected log"
 _env_append_if_absent "# ARI_SEED=                       # fixed sampling seed (GPU inference is still not bit-exact)"
-_env_append_if_absent "# ARI_TASK=                       # task id the run is scored against"
-_env_append_if_absent "# ARI_HARNESS=                    # registered harness id (see ari.harness_registry)"
+_env_append_if_absent "# ARI_TASK=                       # LEGACY task id (prototype harness registry). Prefer ARI_PROBLEM"
+_env_append_if_absent "# ARI_HARNESS=                    # LEGACY registered harness id (see ari.harness_registry)"
 _env_append_if_absent "# ARI_FREEZE_CONTRACT=            # 1 = refuse to run if the metric contract changed"
+
+# --- Pinned problem: WHICH QUESTION a scored run measures --------------------
+# A problem is one digest-addressed directory holding the scaffolding, the goal
+# text, the case set and the entry point. There is NO default: an unset task id
+# used to fall through to a different benchmark and report it under the
+# requested name, so naming the question is required rather than assumed.
+_env_append_if_absent "# ARI_PROBLEM=                    # pinned problem revision, e.g. gemm-dense-fp64/v1@2026q3"
+_env_append_if_absent "# ARI_PERF_TIER=                  # screen|validate|certify — repetitions per case (default validate)"
+_env_append_if_absent "# ARI_HARNESS_PROBLEMS=           # override the problem directory (default config/harnesses/problems)"
+_env_append_if_absent "# ARI_HARNESS_CASE_SETS=          # override the case-set directory (default config/harnesses/case_sets)"
+
+# --- Measurement instrument --------------------------------------------------
+# These belong to the INSTRUMENT, not to any problem: a problem definition has
+# no field for them, which is what lets a problem be pinned without being
+# approved. Set them only to describe the machine, never to tune a score.
+_env_append_if_absent "# ARI_PERF_CC=                    # default compiler for the measurement (default: cc)"
+_env_append_if_absent "# ARI_PERF_THREADS=               # thread budget override; default is the cpuset width"
+_env_append_if_absent "# ARI_REGION_COUNTERS=            # prebuilt region_counters binary (profiler only; source digest then describes the tree, not what ran)"
+# Set by the harness itself before each timed launch and RECORDED with the
+# result; listed here so a reader knows they are not free variables of a run.
+_env_append_if_absent "# OMP_PROC_BIND=                  # set by the measurement (spread); recorded in the placement record"
+_env_append_if_absent "# OMP_PLACES=                     # set by the measurement (cores); recorded in the placement record"
+_env_append_if_absent "# OMP_DYNAMIC=                    # set by the measurement (FALSE); recorded in the placement record"
 
 # --- Search-loop determinism ------------------------------------------------
 _env_append_if_absent "# ARI_BFTS_DETERMINISTIC=         # 1 = deterministic node ordering"

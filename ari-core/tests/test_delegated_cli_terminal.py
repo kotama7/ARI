@@ -282,7 +282,16 @@ def test_delegated_prose_without_evidence_still_fails_on_budget(tmp_path):
 
     assert node.status == NodeStatus.FAILED
     assert node.error_log == "Max ReAct steps exceeded"
-    assert llm.calls == 6  # every step consumed, as before the fix
+    # Every ReAct step consumed, plus ONE forced self-review. That extra call is
+    # the point of the max-steps path: a node that overran its budget has no
+    # final summary, so without it the child inherits an empty what_was_done and
+    # cannot tell this node from one that did nothing.
+    #
+    # This asserted 6 while that review was dead code -- a merge had deleted the
+    # method while keeping the call site, so the AttributeError was swallowed
+    # into a warning. The count encoded the outage.
+    assert llm.calls == 7
+    assert [c["phase"] for c in node.auxiliary_llm_calls] == ["fallback_summary"]
 
 
 def test_delegated_inherited_results_do_not_count_as_evidence(tmp_path):
