@@ -243,6 +243,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `ear.ts` — Experiment Artifact Repository family — browse a run's EAR, `curateEAR` bundling, the `publish.yaml` read/save editor, and `cloneVerifyBundle` sha256 verification.
     - `experiment.ts` — experiment lifecycle family — `runStage`, `launchExperiment`, and `stopExperiment`, which needs a `stop-all` challenge id or the server refuses with HTTP 428.
     - `files.ts` — Overleaf-like checkpoint file management — file list/filetree/content reads, save/delete, the bespoke octet-stream `uploadCheckpointFile` (`X-Filename`), and `compileCheckpointPaper`.
+    - `kca.ts` — typed client for knowledge, capability, and assurance dashboard endpoints.
     - `memory.ts` — Letta memory family — per-checkpoint entries grouped `by_node`, the read/write access log, `/api/memory/health`, and `restartLetta`.
     - `nodeReport.ts` — `fetchNodeReport` plus the v0.7.0 `NodeReport` DTO (files_changed, metrics, self_assessment, artifacts) served by `/api/nodes/{run}/{node}/report`.
     - `paperbench.ts` — PaperBench family on the no-throw `pbGet`/`pbPost` regime (the backend answers 200 + `{error}`): paper registry list/import/delete, arXiv metadata, cost estimate, run launch, results, report export.

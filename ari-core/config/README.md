@@ -8,12 +8,138 @@ Shipped default config files (YAML) loaded by ari-core.
 - `constitution.yaml` — bundled ARI-RQGM constitution copied into the checkpoint once at run start under `ari_rqgm` mode — a human-readable statement + provenance marker; the authoritative rule tables live in `ari/rqgm/kernel_rules.py` / `transition_rules.py`.
 - `default.yaml` — default settings (e.g. BFTS search parameters).
 - `workflow.yaml` — workflow defaults (LLM backend/model, memory backend, etc.).
+- `capabilities/` — canonical capability ontology, aliases, and role-authority policy.
+  - `legacy_aliases.yaml` — migration aliases from legacy tool names to canonical capability references.
+  - `ontology.yaml` — canonical scientific capability definitions and compatibility relationships.
+  - `role_authority.yaml` — allowed capability classes and side effects for each execution role.
+- `harnesses/` — built-in scientific verification harnesses, contracts, approvals, evidence, policies, and registration reports.
+  - `catalog.yaml` — admitted harness catalog and immutable support-record references.
+  - `property_vocabulary.yaml` — canonical scientific properties and their verification semantics.
+  - `approvals/` — reviewed human promotion approvals for built-in native harnesses.
+    - `hpc_gemm_correctness.approval.json` — promotion approval for the native GEMM correctness harness.
+    - `hpc_spmm_correctness.approval.json` — promotion approval for the native SpMM correctness harness.
+    - `hpc_stencil_correctness.approval.json` — promotion approval for the native stencil correctness harness.
+  - `builtin/` — built-in native harness manifests.
+    - `hpc_gemm_correctness.yaml` — native dense GEMM correctness harness manifest.
+    - `hpc_spmm_correctness.yaml` — native CSR SpMM correctness harness manifest.
+    - `hpc_stencil_correctness.yaml` — native seven-point stencil correctness harness manifest.
+  - `contracts/` — ABI and oracle contracts used by native HPC harnesses.
+    - `gemm-c-abi-v1.yaml` — dense GEMM C ABI, cases, oracle, and tolerance contract.
+    - `spmm-csr-c-abi-v1.yaml` — CSR SpMM C ABI, cases, oracle, and tolerance contract.
+    - `stencil-7point-c-abi-v1.yaml` — seven-point stencil C ABI, cases, oracle, and tolerance contract.
+  - `datasets/` — deterministic verification datasets and generated-case specifications.
+    - `native-hpc-generated-cases-v1.yaml` — seeded generated cases shared by the native HPC verifiers.
+  - `evidence/` — retained registration and authentic execution evidence for promoted harnesses.
+    - `native_container_license_inventory.json` — reviewed license inventory for the native verifier container environment.
+    - `hpc_gemm_correctness/` — promotion evidence for the native GEMM correctness harness.
+      - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic GEMM results.
+      - `clean-certify.attestation.json` — clean authoritative GEMM certification attestation.
+      - `clean-screen.attestation.json` — clean bounded GEMM screening attestation.
+      - `negative-screen.attestation.json` — injected-invalid GEMM screening rejection attestation.
+      - `official_runner_parity.json` — parity comparison with the official GEMM verification runner.
+      - `registration_evidence.json` — complete reviewed evidence bundle for GEMM harness promotion.
+      - `resource_measurements.json` — measured GEMM verifier runtime and resource envelope.
+      - `logs/` — retained stdout and stderr for GEMM promotion runs.
+        - `clean-certify-repeat-stderr.log` — stderr from repeated clean GEMM certification.
+        - `clean-certify-repeat-stdout.log` — stdout from repeated clean GEMM certification.
+        - `clean-certify-stderr.log` — stderr from clean GEMM certification.
+        - `clean-certify-stdout.log` — stdout from clean GEMM certification.
+        - `clean-screen-stderr.log` — stderr from clean GEMM screening.
+        - `clean-screen-stdout.log` — stdout from clean GEMM screening.
+        - `negative-screen-stderr.log` — stderr from invalid GEMM screening.
+        - `negative-screen-stdout.log` — stdout from invalid GEMM screening.
+    - `hpc_spmm_correctness/` — promotion evidence for the native SpMM correctness harness.
+      - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic SpMM results.
+      - `clean-certify.attestation.json` — clean authoritative SpMM certification attestation.
+      - `clean-screen.attestation.json` — clean bounded SpMM screening attestation.
+      - `negative-screen.attestation.json` — injected-invalid SpMM screening rejection attestation.
+      - `official_runner_parity.json` — parity comparison with the official SpMM verification runner.
+      - `registration_evidence.json` — complete reviewed evidence bundle for SpMM harness promotion.
+      - `resource_measurements.json` — measured SpMM verifier runtime and resource envelope.
+      - `logs/` — retained stdout and stderr for SpMM promotion runs.
+        - `clean-certify-repeat-stderr.log` — stderr from repeated clean SpMM certification.
+        - `clean-certify-repeat-stdout.log` — stdout from repeated clean SpMM certification.
+        - `clean-certify-stderr.log` — stderr from clean SpMM certification.
+        - `clean-certify-stdout.log` — stdout from clean SpMM certification.
+        - `clean-screen-stderr.log` — stderr from clean SpMM screening.
+        - `clean-screen-stdout.log` — stdout from clean SpMM screening.
+        - `negative-screen-stderr.log` — stderr from invalid SpMM screening.
+        - `negative-screen-stdout.log` — stdout from invalid SpMM screening.
+    - `hpc_stencil_correctness/` — promotion evidence for the native stencil correctness harness.
+      - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic stencil results.
+      - `clean-certify.attestation.json` — clean authoritative stencil certification attestation.
+      - `clean-screen.attestation.json` — clean bounded stencil screening attestation.
+      - `negative-screen.attestation.json` — injected-invalid stencil screening rejection attestation.
+      - `official_runner_parity.json` — parity comparison with the official stencil verification runner.
+      - `registration_evidence.json` — complete reviewed evidence bundle for stencil harness promotion.
+      - `resource_measurements.json` — measured stencil verifier runtime and resource envelope.
+      - `logs/` — retained stdout and stderr for stencil promotion runs.
+        - `clean-certify-repeat-stderr.log` — stderr from repeated clean stencil certification.
+        - `clean-certify-repeat-stdout.log` — stdout from repeated clean stencil certification.
+        - `clean-certify-stderr.log` — stderr from clean stencil certification.
+        - `clean-certify-stdout.log` — stdout from clean stencil certification.
+        - `clean-screen-stderr.log` — stderr from clean stencil screening.
+        - `clean-screen-stdout.log` — stdout from clean stencil screening.
+        - `negative-screen-stderr.log` — stderr from invalid stencil screening.
+        - `negative-screen-stdout.log` — stdout from invalid stencil screening.
+    - `production_e2e/` — authentic screen/certify, manuscript build, reproduction, decision, and publication-lock evidence.
+      - `authoritative_verification_cost.json` — measured cost and resource envelope for authoritative certification.
+      - `baseline_harness_lock.json` — exact harness and verification contract selected for the publication run.
+      - `certify_attestation.json` — authoritative certification attestation used by the publication decision.
+      - `e2e_report.json` — aggregate verdict and digest lineage for the full production path.
+      - `harness_catalog_snapshot.json` — immutable harness catalog visible during resolution.
+      - `manuscript_authoring_binding.json` — exact readiness and evidence bundle admitted to paper authoring.
+      - `manuscript_readiness.json` — publication-run manuscript requirement coverage and disclosure obligations.
+      - `paper_build.json` — immutable final paper inputs, model provenance, artifacts, and compile result.
+      - `publication_decision.json` — fail-closed decision over the exact build and reproduction evidence.
+      - `publication_lock.json` — immutable lock for the accepted publication artifact and lineage.
+      - `published_paper.pdf` — publication candidate PDF bound by the decision and lock.
+      - `reproduced_paper.pdf` — independently reproduced PDF used for byte comparison.
+      - `reproduction.json` — reproduction commands, environment, outputs, and equality verdict.
+      - `screen_attestation.json` — bounded pre-certification screening attestation.
+      - `verification_contract.json` — scientific property, oracle, tolerance, and environment contract.
+      - `verification_environment.json` — canonical execution environment identity for verification and reproduction.
+  - `policies/` — shared scientific verification and numerical tolerance policies.
+    - `hpc-floating-point-v1.yaml` — floating-point comparison, NaN, overflow, and tolerance policy for HPC harnesses.
+  - `reports/` — deterministic promotion gate reports for built-in harnesses.
+    - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
+    - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.
+    - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.
+- `knowledge_skills/` — built-in and imported knowledge skills, source profiles, and the admitted catalog.
+  - `catalog.yaml` — canonical knowledge-skill catalog with source and compatibility references.
+  - `bodies/` — human-readable instruction bodies bound by knowledge-skill manifests.
+    - `hpc_gemm_optimization/` — GEMM optimization knowledge-skill body.
+      - `SKILL.md` — evidence-aware GEMM optimization workflow and boundaries.
+    - `hpc_spmm_optimization/` — sparse-matrix optimization knowledge-skill body.
+      - `SKILL.md` — evidence-aware SpMM optimization workflow and boundaries.
+    - `hpc_stencil_optimization/` — stencil optimization knowledge-skill body.
+      - `SKILL.md` — evidence-aware stencil optimization workflow and boundaries.
+    - `literature_systematic_review/` — systematic literature-review knowledge-skill body.
+      - `SKILL.md` — reproducible search, screening, synthesis, and citation workflow.
+    - `scientific_reproduction/` — scientific reproduction knowledge-skill body.
+      - `SKILL.md` — independent build, rerun, comparison, and reporting workflow.
+  - `builtin/` — canonical manifests for built-in knowledge skills.
+    - `hpc_gemm_optimization.yaml` — GEMM optimization skill manifest and requirements.
+    - `hpc_spmm_optimization.yaml` — SpMM optimization skill manifest and requirements.
+    - `hpc_stencil_optimization.yaml` — stencil optimization skill manifest and requirements.
+    - `literature_systematic_review.yaml` — systematic-review skill manifest and requirements.
+    - `scientific_reproduction.yaml` — reproduction skill manifest and requirements.
+  - `import_profiles/` — pinned external source and extraction policies.
+    - `intel_linux_perf.yaml` — import profile for Intel's Linux performance guidance.
+    - `intel_performance_patterns.yaml` — import profile for Intel performance-pattern guidance.
+    - `intel_phoronix_test_suite.yaml` — import profile for Intel Phoronix Test Suite material.
+  - `imports/` — immutable results of approved external knowledge imports.
+    - `intel_linux_perf.json` — verified Intel Linux performance knowledge import.
+    - `intel_performance_patterns.json` — verified Intel performance-pattern knowledge import.
+    - `intel_phoronix_test_suite.json` — verified Intel Phoronix Test Suite knowledge import.
 - `paperbench_rubrics/` — Venue-conditioned PaperBench-format rubric templates. Mirrors
 - `profiles/` — environment profile overlays (laptop / hpc / cloud).
   - `README.md` — profiles index.
   - `cloud.yaml` — cloud profile overlay.
   - `hpc.yaml` — HPC profile overlay.
   - `laptop.yaml` — laptop profile overlay.
+- `providers/` — registered scientific provider catalog configuration.
+  - `catalog.yaml` — provider identities, capabilities, environments, and support-record references.
 - `reviewer_rubrics/` — reviewer rubric definitions, one YAML per venue/journal.
   - `README.md` — reviewer_rubrics index.
   - `acl.yaml` — ACL reviewer rubric.

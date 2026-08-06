@@ -14,9 +14,9 @@ troubleshooting ARI.
 - `extension_guide.md` — Extension Guide: extending ARI for new use cases, domains, and capabilities.
 - `gui_cutover_runbook.md` — GUI Cutover Runbook: promoting the v2 dashboard to the default, the rollback levers, and the legacy-removal order.
 - `hpc_setup.md` — HPC Setup Guide: running ARI on a SLURM cluster.
-- `migration.md` — Migration Guide: moving between ARI's checkpoint-format releases, plus the GUI refresh behaviour changes.
 - `manuscript_complete_migration.md` — Manuscript Complete: additive migration and rollback for legacy checkpoints.
 - `manuscript_complete_operations.md` — Manuscript Complete: activation, inspection, repair, resume, and publication operations.
+- `migration.md` — Migration Guide: moving between ARI's checkpoint-format releases, plus the GUI refresh behaviour changes.
 - `remote_access.md` — Remote Access and Operations Guide: bind policy, token auth, CORS/CSP, confirmation challenges, tunnels, and the health/diagnostics endpoints.
 - `rqgm_evaluation.md` — RQGM Evaluation and Ablation: measuring whether each governance layer earns its cost.
 - `rqgm_gui.md` — RQGM Governance Workspace Guide: reading the governance tabs, raw vs validated attacks, policy-hash facets, and degraded chains.

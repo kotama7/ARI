@@ -20,16 +20,20 @@ Operational and utility scripts for building images, running services, and dev t
 - `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes the 8 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
 - `check_skill_manifests.py` — validate canonical Skill manifests, package metadata, runtime commands, schemas, workflows, and compatibility mirrors.
 - `check_viz_api_schema.py` — reconcile the dashboard routes (`viz/routes.py`) with their sole consumer `frontend/src/services/api.ts`; reports client-only (broken calls) + server-only (candidate unused) endpoints via static dispatch simulation; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API/node).
+- `evaluate_manuscript_complete.py` — evaluate one Manuscript Complete workspace against the profile, readiness, publication, and repair contracts.
 - `generate_quality_report.py` — aggregator that detects nothing itself: merges the sibling checkers' §3 JSON envelopes into one Markdown + JSON quality roll-up (per-area LOC, dead-code buckets with a before/after delta), degrading a missing/crashing/unparseable checker to `unavailable`/`error` so a valid report comes out of even zero checkers (`--run-checkers`, `--baseline`, `--fail-on-regression`; no LLM/API).
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
+- `manuscript_complete_release_gates.json` — canonical release-gate manifest covering required topologies, failure injections, migrations, and executable checks.
 - `migrate_science_data.py` — explicit offline migration of legacy science-data payloads with provenance and loss reports.
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
 - `reproduce_constitutional_rqgm.py` — build the local Constitutional ARI-RQGM reproduction bundle: exact collected-test lists, run logs, a fully expanded authority matrix, dependency snapshot, and content hashes for all files under `ari-core/ari` and `ari-core/tests` plus selected build inputs; records a dirty tree honestly and makes no public-artifact claim.
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
+- `run_manuscript_complete_release.py` — run the commit-bound Manuscript Complete release suite and emit digest-addressed release evidence with retained logs.
 - `run_ollama_gpu.sh` — start Ollama on a SLURM GPU node and tunnel it to the login node.
 - `sc_paper_dogfood.py` — end-to-end dogfood driver: external paper PDF → PaperBench-format rubric generation (+ optional judge dry-run).
 - `sc_paper_stage23_chain.py` — run Stage 2 (reproduce) + Stage 3 (judge) against a completed Stage 1 rollout workspace.
 - `snapshot_contracts.py` — deterministic generator/verifier for the four contract-snapshot goldens under `ari-core/tests/fixtures/contracts/` (public API / CLI tree / MCP catalog / viz REST); `--surface <x> --check` gates drift, `--update` re-baselines; stdlib-only (AST/importlib), no LLM/API. Shares its `build_*`/`compare` helpers with `ari-core/tests/test_contract_snapshots.py`.
+- `sync_manuscript_schemas.py` — deterministically synchronize Manuscript Complete JSON Schemas between source and packaged schema trees.
 - `sync_skill_metadata.py` — deterministically regenerate compatibility `mcp.json` files and shared Skill/result/context/execution schemas.
 - `docs/` — documentation lint/gate scripts.
   - `README.md` — docs index.
@@ -95,6 +99,9 @@ Operational and utility scripts for building images, running services, and dev t
   - `docker-compose.yml` — production stack (nginx + uvicorn + sqlite file volume).
   - `start_local.sh` — uvicorn + sqlite single-process, for laptop/dev.
   - `start_singularity.sh` — HPC fallback running the registry inside an Apptainer SIF.
+- `rqgm_assurance/` — release utilities for promoting native scientific harnesses and exercising their publication path.
+  - `promote_native_harnesses.py` — validate and promote the native HPC harness set with immutable registration evidence.
+  - `run_certify_publication_e2e.py` — execute the authentic screen/certify-to-publication flow and retain its evidence bundle.
 - `rqgm_eval/` — the RQGM evaluation/ablation harness (RQGM Task 13): condition matrix, failure-injection specs, the `run_ablation.py` campaign driver, the post-hoc `run_paper_panel.py` rubric panel, and the shared benchmark experiment set; the unit-testable logic lives in `ari.rqgm.evaluation.*` — these files only wire processes.
   - `ablation_matrix.yaml` — the evaluation presets `ari.rqgm.evaluation.conditions` expands into `workflow.yaml` overlays: the nine-rung B0-B8 exploration ladder, the three paper-archive B conditions, and the RQGM-paper P0-P4 arms (`audit_only` vs `standard` kernel), plus `eval_defaults` (paired seeds, node-budget parity, per-campaign model pinning) and the fixed post-hoc reviewer panel.
   - `failure_injections.yaml` — the deterministic failure-injection specs loaded by `ari.rqgm.evaluation.injection`: ten exploration injections (`eval_inj_*`), three paper-archive ones (PI1-PI3), and the clean control forming the false-reject denominator — each with ground-truth label, `target_refs`, expected detection channels/record types, and `min_condition`.

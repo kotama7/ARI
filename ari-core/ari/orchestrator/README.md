@@ -19,6 +19,7 @@ LLM node scoring, lineage decisions, and root-idea selection.
   - `__init__.py` — re-exports the builder + legacy shim.
   - `builder.py` — v0.7+ `node_report.json` builder.
   - `legacy_reconstruct.py` — v0.5 → v0.7 reconstruct shim.
+  - `scientific_assurance.py` — project scientific assurance outcomes and evidence references into governed node reports.
 
 ## See also
 

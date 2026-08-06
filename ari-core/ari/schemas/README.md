@@ -11,8 +11,11 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `analysis_result_v1.schema.json` — provenance-bound analysis result with typed tables, tests, and artifacts.
 - `async_tool_handle_v1.schema.json` — immutable submit/status/result/cancel handle contract.
 - `call_context_v1.schema.json` — explicit run, node, ordered-lineage, and call-provenance context.
+- `capability_binding_lock_v1.schema.json` — immutable capability-to-provider binding, environment, substitution, and authority lock.
+- `capability_contract_v1.schema.json` — declared capability semantics, requirements, compatibility, and evidence obligations.
 - `clean_room_bundle.schema.json` — the closed `CleanRoomInputBundle` assembled for the `CleanRoomPromptGenerator`; `additionalProperties:false` plus `bundle_hash` keep the generator's entire input surface auditable.
 - `clean_room_request.schema.json` — one `CleanRoomGenerationRequest` line of append-only `{ckpt}/rqgm_cleanroom.jsonl`, minted from a transition-engine retirement event with the five forbidden-input flags pinned const-false.
+- `epoch_knowledge_skill_lock_v1.schema.json` — epoch-bound snapshot of admitted knowledge skills and their immutable provenance.
 - `epoch_state.schema.json` — derived rollup of the open (or last closed) `EpochState`; `rqgm_transitions.jsonl` stays the source of truth and rebuilds it on fingerprint mismatch.
 - `epoch_transition.schema.json` — the `EpochTransition` record produced by the `RegistryTransitionEngine` at each boundary: adoptions, sanctions, retirements, bans, and the T1-T21 `rule_id` behind every status change.
 - `erasure_state.schema.json` — derived `{ckpt}/rqgm_erasure_state.json` rollup of erasure/rebuild events; readers derive staleness from `stale_record_ids` because stored JSONL is never rewritten.
@@ -22,8 +25,33 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `frontier_rebuild_event.schema.json` — one `FrontierRebuildEvent` appended to `rqgm_audit.jsonl` after the `FrontierRepairEngine` recomputes the frontier — removed, reinstated, and recomputed node ids.
 - `gate_report_v1.schema.json` — deterministic policy/evidence/formula-bound hard-gate report.
 - `governance_report.schema.json` — the `GovernanceReport` returned by `GovernanceOrchestrator.audit_epoch` and appended to `{ckpt}/rqgm_audit.jsonl`: motions, defenses, adjudications, and closed-set recommendations.
+- `harness_attestation_v1.schema.json` — digest-bound outcome of a scientific harness screen or certification run.
+- `harness_catalog_snapshot_v1.schema.json` — immutable catalog view of admitted harnesses for one resolution context.
+- `harness_lock_revision_v1.schema.json` — authorized additive revision linking one harness lock generation to the next.
+- `harness_lock_v1.schema.json` — immutable selected harness, verifier, environment, and contract binding.
+- `harness_manifest_v1.schema.json` — declared harness identity, property coverage, execution driver, and resource policy.
+- `harness_promotion_approval_v1.schema.json` — explicit human approval binding a reviewed harness promotion candidate.
+- `harness_registration_evidence_v1.schema.json` — source, dependency, parity, safety, and validation evidence for harness registration.
+- `harness_registration_report_v1.schema.json` — deterministic registration-gate decisions and resulting catalog status.
+- `harness_run_request_v1.schema.json` — bounded screen or certify request tied to an immutable harness lock.
 - `idea_candidate_v1.schema.json` — admitted falsifiable hypothesis candidate.
 - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
+- `knowledge_skill_catalog_snapshot_v1.schema.json` — immutable catalog snapshot used for deterministic knowledge-skill resolution.
+- `knowledge_skill_manifest_v1.schema.json` — declared knowledge skill, source provenance, compatibility, and evidence policy.
+- `manuscript_authoring_binding_v1.schema.json` — exact profile, context, readiness, brief, and source lineage admitted to authoring.
+- `manuscript_auto_repair_round_v1.schema.json` — one bounded repair attempt with findings, actions, progress, and stop state.
+- `manuscript_context_v1.schema.json` — evidence-grounded authoring context assembled for a manuscript profile and source snapshot.
+- `manuscript_evaluation_report_v1.schema.json` — deterministic structural, evidentiary, disclosure, and publication evaluation findings.
+- `manuscript_exploration_snapshot_v1.schema.json` — immutable projection of exploration outputs available to manuscript preparation.
+- `manuscript_omission_manifest_v1.schema.json` — explicit record of unavailable, excluded, or intentionally undisclosed manuscript material.
+- `manuscript_publication_decision_v1.schema.json` — fail-closed publish or reject decision over exact final artifacts and evaluations.
+- `manuscript_publication_lock_v1.schema.json` — immutable accepted publication artifact and full digest lineage lock.
+- `manuscript_readiness_v1.schema.json` — requirement coverage, disclosure obligations, omissions, and authoring verdict.
+- `manuscript_repair_transaction_v1.schema.json` — transactional repair state binding all rounds and their rollback-safe artifacts.
+- `manuscript_requirement_profile_v1.schema.json` — venue and project requirements, budgets, evidence rules, and publication thresholds.
+- `manuscript_section_brief_bundle_v1.schema.json` — section-level authoring briefs with required claims, evidence, disclosures, and budgets.
+- `manuscript_segment_record_v1.schema.json` — immutable manuscript segment identity, provenance, and validation status.
+- `manuscript_transition_v1.schema.json` — append-only manuscript lifecycle transition with authority and digest lineage.
 - `measurement_set_v1.schema.json` — typed parameter, measurement, unit, execution, and artifact separation.
 - `memory_backup_v1.schema.json` — content-addressed memory backup with backend and retention provenance.
 - `memory_record_v1.schema.json` — immutable scoped memory record with lifecycle and evidence metadata.
@@ -32,6 +60,8 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `metric_contract_proposal_v1.schema.json` — provenance-bound untrusted LLM metric proposal.
 - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
 - `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
+- `native_hpc_verification_report_v1.schema.json` — authoritative native HPC verifier outputs, tolerances, resources, and reproducibility evidence.
+- `node_knowledge_skill_use_v1.schema.json` — per-node record of resolved knowledge-skill use and resulting artifact lineage.
 - `node_report.schema.json` — per-node report schema.
 - `paper_build_v1.schema.json` — immutable paper inputs, revisions, compile outcome, and publication readiness.
 - `paper_model_call_batch_v1.schema.json` — ordered model-call provenance and usage records for one paper operation.
@@ -39,6 +69,8 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `proposal_summary_view.schema.json` — the eight character-budgeted summary fields that are the only proposal representation BFTS may consume; full transcripts stay archive-only.
 - `publish.schema.json` — publish record / manifest schema.
 - `research_contract_v1.schema.json` — selected mint-once scientific hand-off consumed by downstream stages.
+- `research_repair_plan_v1.schema.json` — bounded research repair actions derived from manuscript readiness gaps.
+- `research_repair_request_v1.schema.json` — governed request to acquire missing evidence or rerun research before authoring.
 - `result_envelope_v1.schema.json` — typed MCP result plus artifact, error, and credential-scope provenance.
 - `retrieval_record_v1.schema.json` — provider-neutral literature or web record identity and payload digest.
 - `rqgm_attack_records.schema.json` — the four adversarial-loop shapes (`RawAttackRecord`, `DefenderResponse`, `JudgmentRecord`, `ValidatedAttackRecord`) multiplexed into `{ckpt}/rqgm_adversarial_cases.jsonl`; only a judge verdict mints a validated record.
@@ -60,6 +92,7 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `skills_lock_v1.schema.json` — immutable provider, schema, phase, and credential-authority snapshot.
 - `statistical_test_request_v1.schema.json` — explicit samples, pairing, hypotheses, method, correction, and threshold request.
 - `survey_snapshot_v1.schema.json` — digest-bound record/replay retrieval input and citation graph.
+- `verification_contract_v1.schema.json` — scientific property, oracle, tolerance, environment, and reproduction contract.
 - `visual_review_batch_v1.schema.json` — criteria profiles, artifact identities, findings, and reviewer provenance.
 - `viz_checkpoint.schema.json` — one item of the `GET /api/checkpoints` list built by `checkpoint_api`, mirroring the frontend `Checkpoint` type; `best_scientific_score` is the only optional key.
 - `viz_checkpoint_summary.schema.json` — response of `GET /api/checkpoint/<id>/summary`; only `id` and `path` are guaranteed, the paper/review/repro/ORS keys appear only when their backing files exist.

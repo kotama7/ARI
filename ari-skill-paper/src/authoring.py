@@ -171,16 +171,40 @@ def _load_enforced_manuscript_inputs(
     )
 
     specs = (
-        ("manuscript-profile", "ARI_MANUSCRIPT_PROFILE_PATH", ManuscriptRequirementProfileV1),
-        ("manuscript-context", "ARI_MANUSCRIPT_CONTEXT_PATH", ManuscriptContextV1),
-        ("manuscript-readiness", "ARI_MANUSCRIPT_READINESS_PATH", ManuscriptReadinessReportV1),
-        ("section-briefs", "ARI_MANUSCRIPT_BRIEFS_PATH", SectionBriefBundleV1),
-        ("manuscript-authoring-binding", "ARI_MANUSCRIPT_BINDING_PATH", ManuscriptAuthoringBindingV1),
+        (
+            "manuscript-profile",
+            "ARI_MANUSCRIPT_PROFILE_PATH",
+            os.environ.get("ARI_MANUSCRIPT_PROFILE_PATH", "").strip(),
+            ManuscriptRequirementProfileV1,
+        ),
+        (
+            "manuscript-context",
+            "ARI_MANUSCRIPT_CONTEXT_PATH",
+            os.environ.get("ARI_MANUSCRIPT_CONTEXT_PATH", "").strip(),
+            ManuscriptContextV1,
+        ),
+        (
+            "manuscript-readiness",
+            "ARI_MANUSCRIPT_READINESS_PATH",
+            os.environ.get("ARI_MANUSCRIPT_READINESS_PATH", "").strip(),
+            ManuscriptReadinessReportV1,
+        ),
+        (
+            "section-briefs",
+            "ARI_MANUSCRIPT_BRIEFS_PATH",
+            os.environ.get("ARI_MANUSCRIPT_BRIEFS_PATH", "").strip(),
+            SectionBriefBundleV1,
+        ),
+        (
+            "manuscript-authoring-binding",
+            "ARI_MANUSCRIPT_BINDING_PATH",
+            os.environ.get("ARI_MANUSCRIPT_BINDING_PATH", "").strip(),
+            ManuscriptAuthoringBindingV1,
+        ),
     )
     artifacts: list[PaperArtifactV1] = []
     documents: list[Any] = []
-    for role, env_name, contract in specs:
-        path = os.environ.get(env_name, "").strip()
+    for role, env_name, path, contract in specs:
         if not path:
             raise ValueError(f"enforced manuscript authoring lacks {env_name}")
         artifact, payload = artifact_from_workspace(
