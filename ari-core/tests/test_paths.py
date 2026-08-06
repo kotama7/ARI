@@ -637,9 +637,30 @@ class TestResolverEnvHelpers:
         )
 
     def test_set_checkpoint_dir_env(self, monkeypatch, tmp_path):
+        # setenv FIRST, so monkeypatch has the variable on record and removes it
+        # at teardown. delenv(raising=False) on an ALREADY-ABSENT key records
+        # nothing, and set_checkpoint_dir_env writes os.environ directly — so
+        # this test's tmp_path leaked into the environment of every later test
+        # in the same process. ARI_CHECKPOINT_DIR wins the workspace-root
+        # precedence, so anything resolving a workspace afterwards (the harness
+        # registry, for one) looked for it under a deleted temp directory and
+        # reported "no harnesses are registered".
+        monkeypatch.setenv("ARI_CHECKPOINT_DIR", "")
         monkeypatch.delenv("ARI_CHECKPOINT_DIR", raising=False)
         RuntimePathResolver.set_checkpoint_dir_env(tmp_path / "ck")
         assert PathManager.checkpoint_dir_from_env() == (tmp_path / "ck")
+
+    def test_setting_the_checkpoint_dir_does_not_leak_out_of_a_test(self):
+        """The environment this suite runs under must survive its own tests.
+
+        Not hypothetical: the leak above made every harness-registry test in the
+        same process fail with "no harnesses are registered", and it fired only
+        when the two suites ran together — each was green on its own.
+        """
+        import os
+        value = os.environ.get("ARI_CHECKPOINT_DIR")
+        assert value is None or "pytest-of-" not in value, (
+            f"ARI_CHECKPOINT_DIR still points into a test temp dir: {value}")
 
     def test_from_checkpoint_dir_parity_with_pathmanager(self, tmp_path):
         ck = tmp_path / "checkpoints" / "run1"
