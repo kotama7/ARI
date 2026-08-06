@@ -559,23 +559,46 @@ def test_the_report_says_which_problems_it_measured():
 
 # --- the profiler: a diagnostic that can never become a verdict -----------------
 
-def test_the_profiled_driver_reduces_to_the_scored_driver(tmp_path):
+def _profiled_pairs():
+    """Every problem that declares a profiled driver, as (revision, scored, profiled)."""
+    from ari.assurance.problems import load_problem, registered_problems
+
+    out = []
+    for revision in registered_problems():
+        loaded = load_problem(revision)
+        scaffolding = loaded.definition.scaffolding
+        if scaffolding.profiled_driver:
+            out.append(pytest.param(
+                loaded.path(scaffolding.driver),
+                loaded.path(scaffolding.profiled_driver),
+                id=loaded.definition.id))
+    assert out, "no problem declares a profiled driver"
+    return out
+
+
+@pytest.mark.parametrize("scored_path,profiled_path", _profiled_pairs())
+def test_the_profiled_driver_reduces_to_the_scored_driver(scored_path, profiled_path):
     """Delete every /*GATE*/ line and the SCORED driver must come back exactly.
 
     The profiled driver is a checked-in copy; without this the two diverge the
     first time the timing semantics change and the profile keeps describing the
-    old one while looking current.
+    old one while looking current. Parametrized over every problem, because the
+    pair can drift per problem and a gemm-only check would not notice.
     """
-    kdir = problem_dir()
-    scored = (kdir / "gemm_main.c").read_text()
-    profiled = (kdir / "gemm_main_profiled.c").read_text()
-    stripped = "".join(l for l in profiled.splitlines(keepends=True)
+    stripped = "".join(l for l in profiled_path.read_text().splitlines(keepends=True)
                        if "/*GATE*/" not in l)
-    assert stripped == scored
+    assert stripped == scored_path.read_text()
 
 
-def test_the_gate_brackets_exactly_the_timed_call():
-    lines = (problem_dir() / "gemm_main_profiled.c").read_text().splitlines()
+@pytest.mark.parametrize("scored_path,profiled_path", _profiled_pairs())
+def test_the_gate_brackets_exactly_the_timed_call(scored_path, profiled_path):
+    """The counted region must be the timed call and nothing else.
+
+    Counting the whole process was measured at 7.16x the region's cycles, so a
+    gate that drifted outside the timer would report a different program's
+    behaviour under the scored program's name.
+    """
+    lines = profiled_path.read_text().splitlines()
     enter = next(i for i, l in enumerate(lines) if "gate_enter();" in l)
     t0 = next(i for i, l in enumerate(lines) if l.startswith("    double t0 = now_sec();"))
     el = next(i for i, l in enumerate(lines)
