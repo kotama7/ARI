@@ -12,6 +12,9 @@ entrypoint:
 required_env: []
 optional_env:
   - ARI_CHECKPOINT_DIR
+  # Site policy: the set of nodes this scheduler may place work on. Held in the
+  # environment because node names are site identity and are not carried here.
+  - ARI_HPC_ALLOWED_NODES
   - ARI_HPC_LEDGER_PATH
   - ARI_PROBE_TOOLS
   - ARI_SCHEDULER_PATH
@@ -98,7 +101,10 @@ tools:
   - name: probe_platform_capabilities
     capability_ref: ari.hpc.platform.probe
     description: Probe a compute partition and atomically cache its capability record.
-    side_effects: workspace-write
+    # The probe allocates a bounded job through the scheduler, so its authority
+    # is scheduler-submit, not workspace-write. Declaring the lower class let a
+    # caller holding only workspace authority cause a scheduler allocation.
+    side_effects: stateful
     timeout_class: bounded
     permissions: [workspace-read, workspace-write, process, scheduler]
   - name: slurm_submit

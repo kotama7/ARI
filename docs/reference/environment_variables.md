@@ -256,6 +256,7 @@ directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_op
 | Variable | Purpose |
 |---|---|
 | `ARI_SLURM_PARTITION` | Default partition |
+| `ARI_HPC_ALLOWED_NODES` | Site policy: the only nodes ARI may place work on, in SLURM hostlist syntax (`cn01,cn02`, `cn[01-04]`). Unset = no restriction, and requests pass through untouched. When set it is enforced at the scheduler boundary, so it covers `job_submit`, `container_submit` and `slurm_submit` alike: a request naming **no** nodes is confined to this set — without a nodelist the scheduler is free to pick any node in the partition, which is what the policy exists to prevent — and one naming anything outside it is refused before submission. Confinement is applied before the request digest, so where a job may run is part of its claim identity and a resumed run cannot inherit a claim made under a wider policy. A nodelist that cannot be expanded exactly is refused rather than admitted. Held in the environment, not a tracked file, because node names are site identity |
 | `ARI_SLURM_CPUS` | Default `--cpus-per-task` |
 | `ARI_SLURM_GPUS` | Default `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | Default memory request |

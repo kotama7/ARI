@@ -109,33 +109,35 @@ Shipped default config files (YAML) loaded by ari-core.
   - `catalog.yaml` — canonical knowledge-skill catalog with source and compatibility references.
   - `evidence/` — TODO
     - `hpc_gemm_optimization.abstraction.json` — GEMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
-    - `hpc_gemm_optimization.approval.json` — TODO
+    - `hpc_gemm_optimization.approval.json` — recorded human approval promoting the GEMM skill, bound to the exact manifest, body, and evidence reviewed.
     - `hpc_gemm_optimization.clean_task.json` — measured GEMM clean-task record (correctness, metamorphic identities, sanitizers, replay speedups).
     - `hpc_gemm_optimization.registration.json` — digest-bound GEMM registration evidence; resolves the clean-task and portability gates.
-    - `hpc_gemm_optimization.transition.json` — TODO
+    - `hpc_gemm_optimization.transition.json` — append-only record of the GEMM skill's candidate-to-verified transition and the approval it acted on.
     - `hpc_spmm_optimization.abstraction.json` — SpMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
-    - `hpc_spmm_optimization.approval.json` — TODO
+    - `hpc_spmm_optimization.approval.json` — recorded human approval promoting the SpMM skill, bound to the exact manifest, body, and evidence reviewed.
     - `hpc_spmm_optimization.clean_task.json` — measured SpMM clean-task record (CSR validation, differential, sanitizers, replay speedups).
     - `hpc_spmm_optimization.registration.json` — digest-bound SpMM registration evidence; resolves the clean-task and portability gates.
-    - `hpc_spmm_optimization.transition.json` — TODO
+    - `hpc_spmm_optimization.transition.json` — append-only record of the SpMM skill's candidate-to-verified transition and the approval it acted on.
     - `hpc_stencil_optimization.abstraction.json` — stencil capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
-    - `hpc_stencil_optimization.clean_task.json` — measured stencil clean-task record; correct and sanitizer-clean but below the speedup gate under unbound thread placement.
-    - `hpc_stencil_optimization.registration.json` — digest-bound stencil registration evidence recording the unsatisfied clean task.
+    - `hpc_stencil_optimization.approval.json` — TODO
+    - `hpc_stencil_optimization.clean_task.json` — measured stencil clean-task record (trajectory equivalence, linearity, sanitizers including thread, replay speedups).
+    - `hpc_stencil_optimization.registration.json` — digest-bound stencil registration evidence; resolves the clean-task and portability gates.
+    - `hpc_stencil_optimization.transition.json` — TODO
     - `intel_linux_perf.abstraction.json` — Intel Linux perf capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
-    - `intel_linux_perf.approval.json` — TODO
+    - `intel_linux_perf.approval.json` — recorded human approval promoting the Intel Linux perf skill, bound to the exact manifest, body, and evidence reviewed.
     - `intel_linux_perf.clean_task.json` — TODO
     - `intel_linux_perf.registration.json` — TODO
-    - `intel_linux_perf.transition.json` — TODO
+    - `intel_linux_perf.transition.json` — append-only record of the Intel Linux perf skill's candidate-to-verified transition and the approval it acted on.
     - `intel_performance_patterns.abstraction.json` — Intel performance-pattern capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
-    - `intel_performance_patterns.approval.json` — TODO
+    - `intel_performance_patterns.approval.json` — recorded human approval promoting the Intel performance-pattern skill, bound to the exact manifest, body, and evidence reviewed.
     - `intel_performance_patterns.clean_task.json` — TODO
     - `intel_performance_patterns.registration.json` — TODO
-    - `intel_performance_patterns.transition.json` — TODO
+    - `intel_performance_patterns.transition.json` — append-only record of the Intel performance-pattern skill's candidate-to-verified transition and the approval it acted on.
     - `intel_phoronix_test_suite.abstraction.json` — Intel Phoronix capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
-    - `intel_phoronix_test_suite.approval.json` — TODO
+    - `intel_phoronix_test_suite.approval.json` — recorded human approval promoting the Intel Phoronix skill, bound to the exact manifest, body, and evidence reviewed.
     - `intel_phoronix_test_suite.clean_task.json` — TODO
     - `intel_phoronix_test_suite.registration.json` — TODO
-    - `intel_phoronix_test_suite.transition.json` — TODO
+    - `intel_phoronix_test_suite.transition.json` — append-only record of the Intel Phoronix skill's candidate-to-verified transition and the approval it acted on.
   - `import_profiles/` — pinned external source and extraction policies.
     - `hpc_gemm_optimization.yaml` — import profile pinning the GEMM optimization body to its commit.
     - `hpc_spmm_optimization.yaml` — import profile pinning the SpMM optimization body to its commit.

@@ -457,6 +457,91 @@ def default_ledger_path() -> Path:
     )
 
 
+ALLOWED_NODES_ENV = "ARI_HPC_ALLOWED_NODES"
+
+_HOSTLIST_GROUP_RE = re.compile(r"^([A-Za-z0-9._-]*)\[([0-9,\-]+)\]([A-Za-z0-9._-]*)$")
+_PLAIN_HOST_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,252}$")
+_HOSTLIST_MAX = 4096
+
+
+def expand_hostlist(spec: str) -> frozenset[str]:
+    """Expand a SLURM nodelist into explicit names.
+
+    Handles the forms a nodelist actually takes — ``a,b``, ``n[01-04]``,
+    ``n[1,3-5]``, with an optional suffix — and preserves zero padding, since
+    ``n01`` and ``n1`` are different nodes.
+
+    FAIL CLOSED: anything it cannot expand exactly raises. This backs an
+    allowlist, and a spec that cannot be proven to be inside the allowed set
+    must be refused, not admitted on the grounds that it looked unfamiliar.
+    """
+    if not spec or not spec.strip():
+        return frozenset()
+    out: set[str] = set()
+    for token in _split_hostlist(spec):
+        match = _HOSTLIST_GROUP_RE.match(token)
+        if match is None:
+            if not _PLAIN_HOST_RE.match(token):
+                raise SchedulerValidationError(
+                    "nodelist contains an entry this policy cannot expand"
+                )
+            out.add(token)
+            continue
+        prefix, ranges, suffix = match.groups()
+        for part in ranges.split(","):
+            if not part:
+                raise SchedulerValidationError("nodelist range is malformed")
+            if "-" not in part:
+                out.add(f"{prefix}{part}{suffix}")
+                continue
+            low, _, high = part.partition("-")
+            if not low.isdigit() or not high.isdigit():
+                raise SchedulerValidationError("nodelist range is malformed")
+            width = len(low)
+            start, end = int(low), int(high)
+            if end < start or (end - start) >= _HOSTLIST_MAX:
+                raise SchedulerValidationError("nodelist range is malformed or too wide")
+            for value in range(start, end + 1):
+                out.add(f"{prefix}{value:0{width}d}{suffix}")
+        if len(out) > _HOSTLIST_MAX:
+            raise SchedulerValidationError("nodelist expands to too many nodes")
+    return frozenset(out)
+
+
+def _split_hostlist(spec: str) -> list[str]:
+    """Split on commas that are OUTSIDE brackets, so ``n[1,2],m`` survives."""
+    tokens: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in spec.strip():
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth < 0:
+                raise SchedulerValidationError("nodelist brackets are unbalanced")
+        if ch == "," and depth == 0:
+            tokens.append("".join(current).strip())
+            current = []
+            continue
+        current.append(ch)
+    if depth != 0:
+        raise SchedulerValidationError("nodelist brackets are unbalanced")
+    tail = "".join(current).strip()
+    if tail:
+        tokens.append(tail)
+    return [t for t in tokens if t]
+
+
+def allowed_nodes_from_env() -> frozenset[str]:
+    """The configured set of nodes ARI may place work on, empty when unset.
+
+    Read from the environment rather than a tracked file on purpose: the names
+    are site identity, and this repository does not carry them.
+    """
+    return expand_hostlist(os.environ.get(ALLOWED_NODES_ENV, "") or "")
+
+
 @dataclass
 class SlurmScheduler:
     runner: CommandRunner
@@ -467,6 +552,43 @@ class SlurmScheduler:
     terminal_evidence_policy: Literal[
         "scheduler-accounting", "fixed-wrapper-marker"
     ] = "scheduler-accounting"
+    # Nodes this scheduler may place work on. Empty (the default) means the
+    # site imposes no restriction and every request passes through untouched,
+    # so existing deployments are unaffected.
+    allowed_nodes: frozenset[str] = field(default_factory=allowed_nodes_from_env)
+
+    def _confine_to_allowed_nodes(
+        self, resources: ResourceRequestV1
+    ) -> ResourceRequestV1:
+        """Hold a request inside the configured node set, or refuse it.
+
+        Applied BEFORE the request digest is taken, so the confinement is part
+        of the claim: two requests that differ only in where they may run are
+        different jobs, and a resumed run cannot inherit a claim made under a
+        wider policy.
+
+        A request that names no nodes is CONFINED rather than rejected —
+        without a nodelist the scheduler is free to pick any node in the
+        partition, which is exactly what the policy exists to prevent. A
+        request that does name nodes must already be inside the set; narrowing
+        it silently would run something other than what was asked for.
+        """
+        if not self.allowed_nodes:
+            return resources
+        requested = expand_hostlist(resources.nodelist or "")
+        if not requested:
+            return resources.model_copy(
+                update={"nodelist": ",".join(sorted(self.allowed_nodes))}
+            )
+        outside = requested - self.allowed_nodes
+        if outside:
+            # The names are the caller's own input, so echoing the count rather
+            # than the names keeps site identity out of logs and error paths.
+            raise SchedulerValidationError(
+                f"requested nodelist includes {len(outside)} node(s) outside "
+                f"the {ALLOWED_NODES_ENV} policy"
+            )
+        return resources
 
     def __post_init__(self) -> None:
         if (
@@ -490,6 +612,9 @@ class SlurmScheduler:
 
     async def submit(self, request: JobRequestV1) -> JobHandleV1:
         self._verify_request_artifacts(request)
+        confined = self._confine_to_allowed_nodes(request.resources)
+        if confined is not request.resources:
+            request = request.model_copy(update={"resources": confined})
         request_payload = request.model_dump(mode="json")
         request_digest = request.request_digest
         prior = self.ledger.claim(request_digest, request_payload)
@@ -615,6 +740,9 @@ class SlurmScheduler:
             walltime=walltime,
             account=account,
         )
+        # Same confinement as the typed path, before the digest below, so the
+        # bridge is not a way around the node policy.
+        resources = self._confine_to_allowed_nodes(resources)
         work = _validated_work_dir(work_dir)
         # Validated through the same policy the declared path uses, so the
         # bridge cannot smuggle a module name the typed contract would reject.
@@ -1129,6 +1257,7 @@ class SlurmScheduler:
                 )
             )
             command = self._container_command(request)
+        command = self._bound_step_command(command, request.resources)
         exit_path = scope / "exit-code.txt"
         lines.extend(
             [
@@ -1409,6 +1538,35 @@ class SlurmScheduler:
         if resources.reservation:
             lines.append(f"#SBATCH --reservation={resources.reservation}")
         return lines
+
+    @staticmethod
+    def _bound_step_command(
+        command: list[str], resources: ResourceRequestV1
+    ) -> list[str]:
+        """Run a single-task payload as a job step, so it gets the CPUs it asked for.
+
+        Measured, not assumed: a batch step inherits the whole node in its
+        affinity mask -- 192 CPUs for a four-CPU request -- while an `srun`
+        step gets exactly `--cpus-per-task`. A threaded payload therefore
+        placed its threads across the machine and a two-thread candidate lost
+        to its own serial baseline, which reads as a slow kernel rather than as
+        an unbound allocation. `--exact` was not needed to get the binding, so
+        it is left off and no Slurm version floor is introduced.
+
+        Only the single-task, single-node case is wrapped. A request for
+        several tasks is orchestrating its own launch (mpirun and friends);
+        turning that into `srun --ntasks=N` would run the payload N times
+        instead of once, which is a different job, not a bound one.
+        """
+
+        if resources.tasks != 1 or resources.nodes != 1:
+            return command
+        return [
+            "srun",
+            "--ntasks=1",
+            f"--cpus-per-task={resources.cpus_per_task}",
+            *command,
+        ]
 
     @staticmethod
     def _module_init_lines() -> list[str]:

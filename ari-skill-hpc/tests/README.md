@@ -6,6 +6,7 @@ Pytest suite for the HPC skill (SLURM + Singularity).
 
 - `README.md` — this file.
 - `conftest.py` — shared fixtures.
+- `test_allowed_nodes.py` — TODO
 - `test_capability_probe.py` — deterministic platform-capability probe: `_parse_capability_output` parsing, `probe_platform_capabilities` cache short-circuit, and graceful skip paths (no partition / `srun` absent).
 - `test_contracts.py` — strict validation, stable digests, and public JSON Schema.
 - `test_execution_adapter.py` — common execution identity/input/environment

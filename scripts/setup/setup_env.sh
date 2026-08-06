@@ -536,6 +536,11 @@ _env_append_if_absent "# ARI_SLURM_MEM_GB="
 _env_append_if_absent "# ARI_SLURM_GPUS="
 _env_append_if_absent "# ARI_SLURM_WALLTIME=04:00:00"
 _env_append_if_absent "# ARI_SLURM_PARTITION="
+# Site policy: the ONLY nodes ARI may place work on. SLURM hostlist syntax
+# (cn01,cn02 or cn[01-04]). Unset = no restriction. When set, a job that names
+# no nodes is confined to this set rather than left to the scheduler's choice,
+# and a job naming anything outside it is refused before submission.
+_env_append_if_absent "# ARI_HPC_ALLOWED_NODES="
 _env_append_if_absent "# ARI_HPC_LEDGER_PATH=  # durable idempotency ledger"
 _env_append_if_absent "# ARI_SCHEDULER_PATH=/usr/local/bin:/usr/bin:/bin"
 # Comma-separated tool names the compute-node capability probe checks for
