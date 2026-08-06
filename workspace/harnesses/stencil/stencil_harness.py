@@ -574,7 +574,8 @@ def _assert_selected_toolchain(sel: dict) -> None:
 
 
 def _compile_kernel(kind: str, work_dir: str, out_td: str,
-                    extra_flags=()) -> str:
+                    extra_flags=(), main_src: str | None = None,
+                    tag: str | None = None) -> str:
     """Compile ``stencil_main.c`` + the {baseline|candidate} kernel into
     ``out_td``; return the exe path. IDENTICAL compiler + flags for both
     (anti-gaming). The baseline comes from the package ``kernels_dir()`` and the
@@ -590,7 +591,13 @@ def _compile_kernel(kind: str, work_dir: str, out_td: str,
     import os as _os
     import subprocess as _sub
     kdir = kernels_dir()
-    main_c = _os.path.join(kdir, "stencil_main.c")
+    # main_src swaps the FROZEN DRIVER only -- same kernel source, same
+    # compiler, same flags, same symbol and out-of-band checks. It exists for
+    # stencil_main_profiled.c, which is this driver plus a counter gate; the
+    # scored build passes nothing and is unchanged. Keeping one compile path
+    # is the point: a second one would drift from the flags being profiled.
+    main_c = main_src or _os.path.join(kdir, "stencil_main.c")
+    _tag = tag or kind
     _PKG_KERNELS = {
         "reference": "reference_stencil.c",
         "baseline": "baseline_stencil.c",
@@ -612,7 +619,7 @@ def _compile_kernel(kind: str, work_dir: str, out_td: str,
     src_c = kern_c
     if kind == "candidate":
         import shutil as _sh
-        src_c = _os.path.join(out_td, "candidate_stencil.c")
+        src_c = _os.path.join(out_td, f"candidate_{_tag}_stencil.c")
         _sh.copy2(kern_c, src_c)
 
     _cc_default = _os.environ.get("ARI_STENCIL_CC", "cc")
@@ -627,9 +634,9 @@ def _compile_kernel(kind: str, work_dir: str, out_td: str,
     _env_cflags = _os.environ.get("ARI_STENCIL_CFLAGS")
     base_cflags = (_env_cflags.split() if _env_cflags
                    else ["-O3", "-fopenmp", *_isa_flags_for(cc)])
-    exe = _os.path.join(out_td, f"kernel_{kind}.exe")
-    main_o = _os.path.join(out_td, f"main_{kind}.o")
-    kern_o = _os.path.join(out_td, f"kern_{kind}.o")
+    exe = _os.path.join(out_td, f"kernel_{_tag}.exe")
+    main_o = _os.path.join(out_td, f"main_{_tag}.o")
+    kern_o = _os.path.join(out_td, f"kern_{_tag}.o")
 
     def _run(argv, what):
         try:
@@ -969,7 +976,8 @@ def _runtime_libs_for(resolved_cc: str | None) -> str | None:
 
 
 def _run_exe(exe: str, work_td: str, u0, nx: int, ny: int, nz: int, nt: int, problem_key: str | None = None,
-             ld_library_path: str | None = None):
+             ld_library_path: str | None = None, launcher: tuple = (),
+             capture: dict | None = None):
     """Run ONE cold timed call of ``exe`` on (u0, nx, ny, nz, nt) in a fresh
     process; return ``(t_internal, t_wall, u_final)``.
 
@@ -1091,7 +1099,7 @@ def _run_exe(exe: str, work_td: str, u0, nx: int, ny: int, nz: int, nt: int, pro
     # the candidate slowing its own referee. Kill the whole group afterwards so no
     # candidate-spawned work survives into another timing window.
     import signal as _signal
-    _pr = _sub.Popen([exe, prob, outf, tf], stdout=_sub.PIPE, stderr=_sub.PIPE,
+    _pr = _sub.Popen([*launcher, exe, prob, outf, tf], stdout=_sub.PIPE, stderr=_sub.PIPE,
                      text=True, env=run_env, start_new_session=True)
     _timed_out = False
     try:
@@ -1110,6 +1118,12 @@ def _run_exe(exe: str, work_td: str, u0, nx: int, ny: int, nz: int, nt: int, pro
     if _timed_out:
         _pr.wait()
         raise RuntimeError("run timed out")
+    # `capture` is how the counter launcher's stdout gets back out. Nothing
+    # reads it otherwise: the scored path drains stdout only so the pipe
+    # cannot fill. Default None => byte-identical behaviour.
+    if capture is not None:
+        capture["stdout"] = _out
+        capture["stderr"] = _err
     rp = _sub.CompletedProcess(_pr.args, _pr.returncode, _out, _err)
     if rp.returncode != 0:
         raise RuntimeError(f"run failed: {rp.stderr.strip()[-600:]}")
@@ -1663,3 +1677,150 @@ def _isa_flags_for(cc: str) -> list[str]:
     if base in ("fcc", "FCC", "mpifcc", "mpiFCC"):
         return []
     return ["-march=native"]
+
+
+# ── hardware counters for the SCORED region ────────────────────────────────
+# NEVER SCORED, and deliberately so. This measures the same region the score is
+# built from, with the same compiler and the same flags, but its numbers do not
+# enter `speedup`, `valid`, or anything the evaluator reads. A profile that could
+# move a score would be a second scoring channel with none of the anti-gaming
+# surface of the first.
+#
+# WHY THE REGION AND NOT THE PROCESS. The timed window is one kernel call; around
+# it in the same process sit the problem read, the serial NaN poison of the
+# output and the write-out. Counting the whole process was measured at 7.16x the
+# region's cycles on a compute node, and it drags the L2D ratio toward
+# "memory bound" for every candidate, because the poison pass is pure
+# write-allocate traffic. So the profiled build marks the region and
+# region_counters gates on those marks.
+#
+# WHAT IT IS BLIND TO. The harness first-touches its buffers OUTSIDE the timed
+# window (the poison loop is serial), so page-fault, TLB and NUMA-placement work
+# is mostly not in here -- see [declares].blind_to. Only scratch the candidate
+# allocates itself faults inside the region.
+#
+# COLD, ONCE, like the score. No warmup and no in-process repetition: a warm
+# profile would describe a regime the score never measures. For statistics, run
+# this again in a fresh process.
+_COUNTERS_SRC = "workspace/tools/region_counters.c"
+
+
+def _counters_binary(build_dir: str) -> tuple[str, str]:
+    """Resolve region_counters, building it if needed. Returns (path, sha256).
+
+    The source digest travels with the profile because region_counters lives in
+    workspace/tools/, OUTSIDE this harness's [files] pins -- so unlike the scored
+    scaffolding it is not content-addressed by the registry, and the record has
+    to carry its own provenance or the profile is unattributable.
+    """
+    import hashlib as _hl
+    import os as _o
+    import subprocess as _sp
+
+    repo = _o.path.dirname(_o.path.dirname(_o.path.dirname(
+        _o.path.dirname(_o.path.abspath(__file__)))))
+    src = _o.path.join(repo, _COUNTERS_SRC)
+    if not _o.path.isfile(src):
+        raise HarnessInfrastructureError(f"counter tool source not found: {src}")
+    digest = _hl.sha256(open(src, "rb").read()).hexdigest()
+    given = _os_pin.environ.get("ARI_REGION_COUNTERS")
+    if given and _o.path.isfile(given):
+        return given, digest
+    exe = _o.path.join(build_dir, "region_counters")
+    cc = _os_pin.environ.get("ARI_PROBE_CC") or "cc"
+    cp = _sp.run([cc, "-O2", src, "-o", exe], capture_output=True, text=True,
+                 timeout=120)
+    if cp.returncode != 0:
+        raise HarnessInfrastructureError(
+            f"could not build the counter tool: {cp.stderr.strip()[-400:]}")
+    return exe, digest
+
+
+def _profile_common(*, task, work_dir, counters, digest, td, exe, run_one,
+                    case, input_seed, line_bytes):
+    """Run one gated, counted execution and return the record."""
+    import json as _json
+    import os as _o
+
+    launcher = [counters, "--gate", "--json"]
+    if line_bytes:
+        launcher += ["--line-bytes", str(int(line_bytes))]
+    launcher.append("--")          # region_counters needs it before the command
+    cap: dict = {}
+    t_internal = None
+    error = None
+    counters_out = None
+    try:
+        res = run_one(exe, td, tuple(launcher), cap)
+        t_internal = res
+    except Exception as exc:                      # noqa: BLE001 - recorded, not raised
+        error = f"{type(exc).__name__}: {exc}"
+    raw = (cap.get("stdout") or "").strip()
+    if raw:
+        try:
+            counters_out = _json.loads(raw.splitlines()[-1])
+        except ValueError:
+            error = error or f"counter output was not JSON: {raw[:200]}"
+    elif error is None:
+        error = "the counter tool produced no output"
+
+    return {
+        "task": task,
+        "scored": False,
+        "case": case,
+        "input_seed": input_seed,
+        "credited_seconds": t_internal,
+        "counters": counters_out,
+        "error": error,
+        # The same capture the score carries, so a profile can only ever be read
+        # next to a score taken under the same conditions. check_environment_drift
+        # compares these digests.
+        "measurement_environment": measurement_environment(),
+        "toolchain": _toolchain_identity(
+            _os_pin.environ.get("ARI_STENCIL_CC", "cc")),
+        "candidate_toolchain": _select_candidate_cc(work_dir),
+        "counter_tool_sha256": digest,
+        "threads": _os_pin.environ.get(
+            "ARI_STENCIL_THREADS", _os_pin.environ.get("OMP_NUM_THREADS", "")),
+        # Which node class produced this. The array job is submitted without an
+        # explicit partition, so the scheduler decides; a profile compared across
+        # architectures would be comparing two machines.
+        "machine": _os_pin.uname().machine,
+    }
+
+
+def profile_node(work_dir: str, *, seed: int = 0, shape=None,
+                 line_bytes: int | None = None) -> dict:
+    """Counters for the candidate's SCORED region on one stencil shape.
+
+    Uses the FIRST scored shape and repetition 0's input seed by default, so the
+    profile describes a problem the score was actually taken on."""
+    import os as _o
+    import tempfile as _tf
+
+    shape = tuple(shape) if shape else SHAPES[0]
+    input_seed = seed * 100003 + 0
+    nx0, ny0, nz0, nt0 = shape
+    name = f"{nx0}x{ny0}x{nz0}t{nt0}"
+    td_obj = _tf.TemporaryDirectory()
+    try:
+        counters, digest = _counters_binary(td_obj.name)
+        _cand_flags, _ = _sanitize_candidate_flags(work_dir)
+        exe = _compile_kernel("candidate", work_dir, td_obj.name,
+                              extra_flags=_cand_flags,
+                              main_src=_o.path.join(kernels_dir(),
+                                                    "stencil_main_profiled.c"),
+                              tag="candidate_profiled")
+        u0, nx, ny, nz, nt = gen_problem(shape, seed=input_seed)
+
+        def _run_one(exe, td, launcher, cap):
+            ti, _tw, _u = _run_exe(exe, td, u0, nx, ny, nz, nt,
+                                   launcher=launcher, capture=cap)
+            return ti
+
+        return _profile_common(
+            task="stencil", work_dir=work_dir, counters=counters, digest=digest,
+            td=td_obj.name, exe=exe, run_one=_run_one, case=name,
+            input_seed=input_seed, line_bytes=line_bytes)
+    finally:
+        td_obj.cleanup()

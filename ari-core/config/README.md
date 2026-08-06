@@ -114,27 +114,27 @@ Shipped default config files (YAML) loaded by ari-core.
       - `SKILL.md` — evidence-aware SpMM optimization workflow and boundaries.
     - `hpc_stencil_optimization/` — stencil optimization knowledge-skill body.
       - `SKILL.md` — evidence-aware stencil optimization workflow and boundaries.
-    - `literature_systematic_review/` — systematic literature-review knowledge-skill body.
-      - `SKILL.md` — reproducible search, screening, synthesis, and citation workflow.
-    - `scientific_reproduction/` — scientific reproduction knowledge-skill body.
-      - `SKILL.md` — independent build, rerun, comparison, and reporting workflow.
   - `builtin/` — canonical manifests for built-in knowledge skills.
     - `hpc_gemm_optimization.yaml` — GEMM optimization skill manifest and requirements.
     - `hpc_spmm_optimization.yaml` — SpMM optimization skill manifest and requirements.
     - `hpc_stencil_optimization.yaml` — stencil optimization skill manifest and requirements.
-    - `literature_systematic_review.yaml` — systematic-review skill manifest and requirements.
-    - `scientific_reproduction.yaml` — reproduction skill manifest and requirements.
   - `evidence/` — TODO
+    - `hpc_gemm_optimization.abstraction.json` — GEMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `hpc_gemm_optimization.clean_task.json` — measured GEMM clean-task record (correctness, metamorphic identities, sanitizers, replay speedups).
-    - `hpc_gemm_optimization.registration.json` — digest-bound GEMM registration evidence; resolves the clean-task gate only.
+    - `hpc_gemm_optimization.registration.json` — digest-bound GEMM registration evidence; resolves the clean-task and portability gates.
+    - `hpc_spmm_optimization.abstraction.json` — SpMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `hpc_spmm_optimization.clean_task.json` — measured SpMM clean-task record (CSR validation, differential, sanitizers, replay speedups).
-    - `hpc_spmm_optimization.registration.json` — digest-bound SpMM registration evidence; resolves the clean-task gate only.
+    - `hpc_spmm_optimization.registration.json` — digest-bound SpMM registration evidence; resolves the clean-task and portability gates.
+    - `hpc_stencil_optimization.abstraction.json` — stencil capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `hpc_stencil_optimization.clean_task.json` — measured stencil clean-task record; correct and sanitizer-clean but below the speedup gate under unbound thread placement.
     - `hpc_stencil_optimization.registration.json` — digest-bound stencil registration evidence recording the unsatisfied clean task.
+    - `intel_linux_perf.abstraction.json` — Intel Linux perf capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `intel_linux_perf.clean_task.json` — TODO
     - `intel_linux_perf.registration.json` — TODO
+    - `intel_performance_patterns.abstraction.json` — Intel performance-pattern capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `intel_performance_patterns.clean_task.json` — TODO
     - `intel_performance_patterns.registration.json` — TODO
+    - `intel_phoronix_test_suite.abstraction.json` — Intel Phoronix capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `intel_phoronix_test_suite.clean_task.json` — TODO
     - `intel_phoronix_test_suite.registration.json` — TODO
   - `import_profiles/` — pinned external source and extraction policies.

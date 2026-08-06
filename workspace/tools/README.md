@@ -160,16 +160,47 @@ record.
   `pa1` yields the named statistics. The first version matched header words per
   line and reported "no statistics" on a report that had them -- fapp wraps a
   header across two lines.
-- `region_counters.c` — hardware counters on a machine with no `perf`. Reads
-  cycles, instructions, L1D access/refill and L2D refill through
-  `perf_event_open(2)` and reports the ratios an optimizer acts on: IPC, L1D
-  refill rate, the fraction of L1 misses reaching memory, and bytes/cycle.
-  Verified on a compute node: a streaming sum gives L2D/L1D = 0.9125 (memory
-  bound) against 0.0008 for a register-resident loop (compute bound) — three
-  orders of magnitude apart, so the classification is real. This is the answer to
-  "reflection without a profiler is a poor design": `perf`, PAPI and likwid are
-  all absent here, but the PMU is exposed as `armv8_pmuv3_0` with
-  `perf_event_paranoid` 0, so what was missing was the tool, not the counters.
+- `region_counters.c` — **hardware counters for the region that is actually
+  scored**, on a machine with no `perf`. Reads cycles, instructions, L1D
+  access/refill and L2D refill through `perf_event_open(2)` and reports IPC, the
+  L1D refill rate, the fraction of L1 misses reaching memory, and bytes/cycle.
+  `perf`, PAPI and likwid are all absent here, but the PMU is exposed and
+  `perf_event_open` works, so what was missing was the tool, not the counters.
+  Root is NOT needed and neither is `perf_event_paranoid=0`: `pid>=0` with
+  `cpu=-1` and `exclude_kernel=1` is permitted at 2.
+
+  **v1 counted the whole child process while claiming to count "a region the
+  caller marks" — there was no marking mechanism at all.** That is not a naming
+  quibble on this harness: the scored kernel call is ONE statement, and around it
+  in the same process sit a 134 MB read, a 134 MB serial NaN-poison write and a
+  134 MB write-out. Measured on a compute node with the same 0.0097 s region: the
+  whole process reads **7.16x** the region's cycles, and because the poison pass
+  is pure write-allocate traffic the L2D ratio is dragged toward "memory bound"
+  for every candidate. Two candidates with identical kernels but different setup
+  would have received different profiler feedback.
+
+  So `--gate` makes the region real, and the TARGET marks it: the parent hands
+  the child two pipe fds (`ARI_COUNTER_GATE_FD`, `ARI_COUNTER_ACK_FD`), the
+  target writes a byte and BLOCKS until the counters are armed, runs the region,
+  and writes a second byte. Blocking is the point — without it the counters start
+  microseconds into the region. Measured: wake-up 4.2 us mean / 26.6 us worst, so
+  only the closing edge carries lag, under 0.02% of a 161 ms region. Verified on
+  hardware: with the gate, adding 7.2x more untimed work around the region moved
+  the count by 0.07% (152,542,426 vs 152,428,858 cycles); without it, by 7.16x.
+  A target that does not mark exits 4 rather than silently falling back to
+  whole-process counting.
+
+  Three more v1 defects, each of which made a wrong number look right: a counter
+  was "ok" if its fd opened, so an event the chip does not implement read 0 and
+  printed as "no misses" (now `time_running` is carried and a zero over a region
+  that ran is reported SUSPECT); `read_format` was 0, so multiplexed events were
+  silently under-reported (the scaling factor is now computed and printed);
+  and bytes/cycle hardcoded a 256-byte line in a file claiming architecture
+  neutrality (now from sysfs or `sysconf`, and **suppressed rather than guessed**
+  when neither answers — which is the case on the aarch64 compute nodes here, so
+  pass a measured `--line-bytes N` to get that ratio). Running it on the wrong
+  architecture no longer returns a clean empty result: raw ARMv8 encodings that
+  read 0 cycles exit 5 with "a zero here is a wrong tool, not a fast kernel".
   Build with `cc -O2` (the file defines `_GNU_SOURCE` itself).
 - `measure_clock.c` — core clock via `perf_event_open(2)`. `perf` is not installed
   here and no module provides it, and there is no `cpufreq` directory, but the PMU

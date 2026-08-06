@@ -29,13 +29,14 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 
 [files]
 "experiment.md" = "941658eab3af6ea1a554b0a27acf274149653f90276ba69fb57f6c31a3b18c24"
-"gemm_harness.py" = "3b821f21fc741a26723302e3987920f8bc4e8926a0bcc4481fc5bbb852db2d01"
+"gemm_harness.py" = "1ea4fa547eb1033186e295b46fb657fea88cc91fda9ea18715a4a7bec9145c02"
 "gemm_kernels/Makefile" = "ffcf6102b7f00e3b884a3c040285c29cf17deefa52b28e7951f883a545b1955e"
 "gemm_kernels/baseline_gemm.c" = "3fa8958d67f24ab5a04e48c23660451da5a9db84c3e4457d4a6854a29f8cffa2"
 "gemm_kernels/reference_gemm.c" = "5d5dc366a9733dbdf2d988ca936f124f6d7fd4f7b2fef604d1fec89be81575a2"
 "gemm_kernels/candidate_gemm.c" = "ded6ccea88d9f517f4f79548bb74e79bf8285b4a148546e90454b5dc3430ced5"
 "gemm_kernels/gemm_kernel.h" = "581403e694238b99b7c5d2b39db50c3c903fbab4e8f73f188bd52d872abbee56"
 "gemm_kernels/gemm_main.c" = "faa350c1720e4d217498e3da03ddd88ca992914a2839988f13e6744e2c4c04bf"
+"gemm_kernels/gemm_main_profiled.c" = "e65de69ecaf6bccd86c526487c11d3446752d1e2004d7b13c1a5f68c54deccef"
 "gemm_kernels/selftest.c" = "6a527269fc5ce032f203bc087321f5a28f69d8ec3012fca5529ee2258de7bd4e"
 
 "gemm_kernels/README.md" = "c73af7670390ee40679fe209efc1134fc96c3763746680f3dd9a16de9183c620"
@@ -43,4 +44,4 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "2902df80152019aa9dc959819f23b319b35ec14a5cd0b3b45e5f419fa877c1af"
+self_sha256 = "e62be8008ae4835e39e736f89b6ea845e5ab605217d107a9f74debca1e5736a8"

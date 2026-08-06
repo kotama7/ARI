@@ -32,7 +32,7 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 
 [files]
 "experiment.md" = "24019ae5e6f54383dfd479db8568f34901a4b7fdc81f590090a097d206bd73ac"
-"spmm_harness.py" = "ca7d56ab997e87bd73623aeca1da15365b93b56928947d705108bf2b8006bc9f"
+"spmm_harness.py" = "78de5fb65df537ee3145f1a84df1000ed28accff6f41dcbc72f64e34e1d75b72"
 "spmm_kernels/Makefile" = "2a2dae927d9c4a5a2a994c0a722e9bb3793cf1a7e77dc6ad7793d45e1f64307b"
 "spmm_kernels/Plan.md" = "4c40c2f40c46ebd8e8e2a2dad32df20a03d73e401ef563c8062cad4934f3cce4"
 "spmm_kernels/baseline_spmm.c" = "1a4e02d9b89c21fb2029d8be73a60677db72b97ba066fb74562bb25146b9af66"
@@ -40,6 +40,7 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 "spmm_kernels/selftest.c" = "f7494a557e1e5a7448d8a1c99b074f0aac37d5980edc50a64e37a8eebbad97af"
 "spmm_kernels/spmm_kernel.h" = "4012fce6bfe0b138dc171d1395de3181d2b666f9976254802fefcccedb1c348b"
 "spmm_kernels/spmm_main.c" = "854c7d5584cc34af03157ebe1b610fee477e5a6d28affbc49a907a24aef098fe"
+"spmm_kernels/spmm_main_profiled.c" = "f663fc531fed84c31464555590a8eb68c0509d850a18a12083a387c4b6f48622"
 
 "spmm_kernels/README.md" = "70c3452f6a77a156d454d3a85f3b276055dec8d462e1e17761ba95885d642bde"
 
@@ -48,4 +49,4 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "d6f619f3a56d4c1e5231ebca87726753448c5a360f0d3673bee84b7af5f823af"
+self_sha256 = "51a1ed509267e6aa6cef6414ce40dd9c1d1ae10165b8c3f02571d6fff3fcf45d"
