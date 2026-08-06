@@ -103,7 +103,14 @@ def test_environment_snapshot_uses_observed_slurm_and_gpu_facts(monkeypatch):
     assert first.model_dump_json() == second.model_dump_json()
     # gpu-slurm is derived, not observed: a capability wanting a GPU through the
     # scheduler needs both halves and the prober only ever emits them apart.
-    assert first.resource_types == ("cpu", "gpu", "gpu-slurm", "process", "slurm")
+    assert first.resource_types == (
+        "cpu",
+        "gpu",
+        "gpu-slurm",
+        "process",
+        "quantum-simulator",
+        "slurm",
+    )
     assert {"cuda-toolkit", "gpu-via-slurm", "nvidia-gpu", "slurm-controller"}.issubset(
         first.features
     )
@@ -125,7 +132,10 @@ def test_declared_gpu_does_not_fabricate_an_unobserved_resource(monkeypatch):
     cfg = SimpleNamespace(resources={"gpus": 8, "hpc_enabled": True})
     snapshot = build_environment_snapshot(cfg, _provider_lock())
 
-    assert snapshot.resource_types == ("cpu", "process")
+    # quantum-simulator derives from cpu alone: a seeded two-qubit CPU
+    # statevector pass needs nothing else. A substrate claim, not an
+    # availability claim -- the pinned artifact still has to be registered.
+    assert snapshot.resource_types == ("cpu", "process", "quantum-simulator")
     assert snapshot.metadata["declared_resources"]["gpus"] == 8
     assert snapshot.metadata["gpu"]["status"] == "failed"
     assert snapshot.metadata["slurm"]["status"] == "unavailable"
@@ -165,7 +175,12 @@ def test_slurm_visible_gpu_without_gres_is_observed_but_not_schedulable(
         _provider_lock(),
     )
 
-    assert snapshot.resource_types == ("cpu", "process", "slurm")
+    assert snapshot.resource_types == (
+        "cpu",
+        "process",
+        "quantum-simulator",
+        "slurm",
+    )
     assert "gpu-observed-on-slurm-node" in snapshot.features
     assert "gpu-via-slurm" not in snapshot.features
     assert snapshot.metadata["slurm_gpu"]["devices"][0]["name"] == "Tesla V100"
@@ -285,7 +300,7 @@ def test_denied_hardware_counters_do_not_fabricate_the_substrate(monkeypatch):
         SimpleNamespace(resources={}), _provider_lock()
     )
 
-    assert snapshot.resource_types == ("cpu", "process")
+    assert snapshot.resource_types == ("cpu", "process", "quantum-simulator")
     assert "hardware-counters" not in snapshot.features
     assert snapshot.metadata["hardware_counters"]["status"] == "denied"
     assert snapshot.metadata["hardware_counters"]["errno"] == errno.EACCES
@@ -406,6 +421,7 @@ def test_either_fork_derives_the_reviewed_sif_capability(monkeypatch):
         assert snapshot.metadata["derived_from_review"] == (
             "feature:sif-container-runtime",
             "resource_type:eda-cpu",
+            "resource_type:quantum-simulator",
         )
 
 
@@ -424,7 +440,11 @@ def test_derivations_cannot_invent_a_fact_the_prober_did_not_observe(monkeypatch
         SimpleNamespace(), _provider_lock(), resource_derivations=_derivations()
     )
     assert "eda-cpu" not in snapshot.resource_types
-    assert snapshot.metadata["derived_from_review"] == ()
+    # Only the cpu-derived class fires: nothing here invented a container
+    # runtime, a route, or a counter the prober did not see.
+    assert snapshot.metadata["derived_from_review"] == (
+        "resource_type:quantum-simulator",
+    )
 
 
 def test_a_derivation_without_a_reason_is_refused(tmp_path):
@@ -457,7 +477,11 @@ def test_shipped_derivations_reach_a_fixpoint_through_a_chained_row():
     )
     assert "sif-container-runtime" in features
     assert "eda-cpu" in resources
-    assert fired == ("feature:sif-container-runtime", "resource_type:eda-cpu")
+    assert fired == (
+        "feature:sif-container-runtime",
+        "resource_type:eda-cpu",
+        "resource_type:quantum-simulator",
+    )
 
 
 def _observe_route(monkeypatch, *, ipv4=False, ipv6=False):
@@ -493,12 +517,15 @@ def test_an_air_gapped_node_supplies_no_network_resource(monkeypatch):
     assert "network" not in snapshot.resource_types
 
 
-def test_the_shipped_table_has_no_row_for_the_unregistered_quantum_class():
-    """It could only derive from cpu, which every substrate has.
+def test_the_quantum_class_derives_from_cpu_and_says_why_that_is_enough():
+    """Withheld while nothing supplied it; accurate now that something does.
 
-    A row that fires everywhere would put the class into every run's identity
-    and assert that any node can supply a pinned Aer target, when what decides
-    that is a materialized Provider artifact no derivation can see.
+    A seeded two-qubit CPU statevector pass needs a CPU and nothing else. The
+    row is weak because the capability is, and the rationale has to say so --
+    what actually bounds it is the pinned artifact no derivation can see.
     """
 
-    assert not [row for row in _derivations() if row.emits == "quantum-simulator"]
+    (row,) = [item for item in _derivations() if item.emits == "quantum-simulator"]
+    assert row.requires_resource_types == frozenset({"cpu"})
+    assert row.requires_features == frozenset()
+    assert "no device" in row.rationale

@@ -70,10 +70,16 @@ entries:
       # these. Without them a bound async Capability starts work whose result
       # the run is not authorized to collect.
       lifecycle_tools: [get_status, get_result]
+      # Every leaf named here must be present in whatever lock is in force, so a
+      # site that wants both domains materializes one lock over all its sources
+      # rather than a lock per domain.
       declared_capability_refs_by_brokered_tool:
         ? >-
           ari-tool://openroad-mcp/openroad-profile%3Agcd-nangate45-26q3%3Asha256%3A4a6478f89886d91f36a45622fba01d3bc5b66ce5a1ce7f180acffed8f4633577@sha256:a1fe96a25819b0d8893aa138f27d9314ba2cdf6e8748bc9cdd30e36444091f5d
         : [ari.eda.openroad.place-route/v1]
+        ? >-
+          ari-tool://qiskit-mcp-servers/qiskit-profile%3Alocal-ideal%3Asha256%3A68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b@sha256:5f4ec7861a2bf7a290831c295586559b08482e547a27a9e1f0246728cd8a1391
+        : [ari.quantum.sample.local-ideal/v1]
   - provider_id: ari.provider.web
     runtime_name: web-skill
     package: ari-skill-web

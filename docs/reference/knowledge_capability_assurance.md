@@ -557,14 +557,23 @@ containing the leaf; the reviewed table names leaves across all of a site's
 sources, so a site that wants both EDA and retrieval materializes one lock over
 both rather than a lock per domain.
 
-`ari.quantum.sample.local-ideal/v1` remains unsupplied because no materialized
-catalog registers it. Its `environment_requirements: [cpu]` was a category
-error — `cpu` is a resource class, checked through `resource_type`, never a
-feature the prober emits — and is corrected, but the derivation table
-deliberately has **no** row for `quantum-simulator`: the only available one
-would derive it from `cpu` alone, firing on every substrate and asserting that
-any node can supply a pinned Aer target when what decides that is an artifact
-no derivation can see. The capability stays honestly unsupplied.
+`ari.quantum.sample.local-ideal/v1` is supplied. Its promoted local-Aer bundle
+was materialized but never registered, so a site source was assembled from the
+bundle's own materialized profile — nothing invented, since a wrong value fails
+the catalog build — and the leaf now binds and runs: 4096 shots of a seeded
+Bell circuit returning `{"00": 2046, "11": 2050}` and no other outcome, inside
+the ranges the promotion golden fixes, in about ten seconds. That is the bridge
+working on a second domain and a second adapter kind, from one lock holding
+both sources.
+
+Its `environment_requirements: [cpu]` was the same category error and is
+corrected. `quantum-simulator` now has a derivation row from `cpu` alone. That
+row was deliberately withheld while nothing supplied the capability — a row that
+fires on every substrate and makes an unsupplied capability look resolved is
+worse than none — and is simply accurate now: a seeded two-qubit CPU statevector
+pass needs a CPU and nothing else. What bounds it is the digest-pinned artifact
+the catalog verifies, which no derivation can see; a substrate claim is not an
+availability claim.
 
 The CUDA contract's `slurm` requirement was the same category error and now
 reads `slurm-controller`, the feature the prober actually emits; `gpu-slurm`

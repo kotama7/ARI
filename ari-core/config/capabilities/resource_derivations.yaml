@@ -65,10 +65,16 @@ derivations:
       the prober only ever emits them separately, so this class could not be
       claimed by any substrate. Note that gpu itself is already the conservative
       one: a device seen on a node without GRES is recorded but not schedulable.
-# There is deliberately no row for `quantum-simulator`. It would have to derive
-# from `cpu` alone, which fires on every substrate and would put the class into
-# every run's environment identity -- asserting that any node can supply a
-# pinned Aer target when what actually decides that is a materialized Provider
-# artifact none of these rows can see. The capability stays unsupplied until
-# that artifact is registered, which is the honest reason rather than a weak row
-# that makes it look resolved.
+  - emits: quantum-simulator
+    kind: resource_type
+    requires_resource_types: [cpu]
+    rationale: >-
+      This row was deliberately withheld while nothing supplied the capability,
+      because deriving it from `cpu` alone fires on every substrate and a row
+      that makes an unsupplied capability look resolved is worse than none. Now
+      that a promoted local-Aer profile is registerable the weakness is just
+      accurate: a seeded two-qubit statevector pass on a pinned CPU target needs
+      a CPU and nothing else -- no device, no scheduler, no network. What
+      actually bounds it is the digest-pinned Provider artifact, which the
+      catalog verifies separately and no row here can see. A substrate claim is
+      not an availability claim.
