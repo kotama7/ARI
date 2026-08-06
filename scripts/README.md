@@ -25,7 +25,9 @@ Operational and utility scripts for building images, running services, and dev t
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
 - `manuscript_complete_release_gates.json` — canonical release-gate manifest covering required topologies, failure injections, migrations, and executable checks.
 - `migrate_science_data.py` — explicit offline migration of legacy science-data payloads with provenance and loss reports.
+- `promote_knowledge_skill.py` — authenticated human-maintainer surface that promotes one `eligible-for-verified` Knowledge Skill: refuses anything short of sixteen passing gates, writes the approval and the append-only transition record, re-seals every bound digest, and reloads the catalog to prove the result (`--dry-run` shows the identities without writing).
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
+- `repin_provider_catalog.py` — verify or rewrite the source pins in the Capability Provider catalog (`--update`); the loader only checks `manifest_sha256`, so a package edit that leaves the manifest alone drifts silently while a manifest edit fails the whole load.
 - `reproduce_constitutional_rqgm.py` — build the local Constitutional ARI-RQGM reproduction bundle: exact collected-test lists, run logs, a fully expanded authority matrix, dependency snapshot, and content hashes for all files under `ari-core/ari` and `ari-core/tests` plus selected build inputs; records a dirty tree honestly and makes no public-artifact claim.
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
 - `run_manuscript_complete_release.py` — run the commit-bound Manuscript Complete release suite and emit digest-addressed release evidence with retained logs.

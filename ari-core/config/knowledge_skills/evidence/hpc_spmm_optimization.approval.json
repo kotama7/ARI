@@ -1,17 +1,17 @@
 {
   "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:376d5c6bdf25a7381600b0a0028efe9a6a799cfeee31bd3ef03d26694a6629c7",
+  "approval_digest": "sha256:9d2599bb9ce0c5f42c55718fca342ceee3e164f8b18282f8566e801b02bcc4f6",
   "approved_date": "2026-08-07",
-  "authorization_basis": "Reviewed the measured clean task: an independently authored CSR SpMM task passed structural validation, reproduced its own baseline exactly, passed sanitizer runs, and beat its baseline by 3.0x across four alternating replays. Reviewed the stored capability-abstraction report. All sixteen registration gates pass.",
+  "authorization_basis": "Reviewed the rewritten body against the measured clean task (CSR structural validation, exact differential, sanitizer runs, alternating replays above the gate) and the stored capability-abstraction report. The body now requires structural validation before measurement and states why row-length distribution is the workload. All sixteen registration gates pass.",
   "from_status": "candidate",
-  "registration_evidence_digest": "sha256:b78c30012d92507e1f990fd2752e3bba430e762b88e8fa292ae5484a6051d8d9",
+  "registration_evidence_digest": "sha256:3b0d11e7449ae62efa726db261831a9e1e98f26cde7b989e95a318a2a2fc33d3",
   "registration_report_digest": null,
   "schema_version": "ari.knowledge-skill-promotion-approval/v1",
   "skill_ref": {
-    "body_sha256": "sha256:fd9c56e20b8777dead878c5c20db883c228382fa335ea375ad25179dacb948c8",
+    "body_sha256": "sha256:2d6a37bb790b1a7db413e5d7f34ac422c7d7a9836414cd045a135778f77e6094",
     "id": "hpc.spmm.optimization",
-    "manifest_sha256": "sha256:cdd7d1c853201ff4e6b26cfd57084ce7a185af9c1c8a27bff9301511c15e4c7f",
+    "manifest_sha256": "sha256:a2454a7e3b5456359894e63516885fdb82cf26131467f2e83741c2197b6aab29",
     "version": "1.0.0"
   },
   "to_status": "verified"

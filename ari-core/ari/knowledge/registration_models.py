@@ -41,10 +41,28 @@ class KnowledgeCleanTaskEvidenceV1(StrictModel):
 
 
 class KnowledgeProviderPortabilityEvidenceV1(StrictModel):
+    """How the Skill was shown not to depend on one Capability Provider.
+
+    ``two-providers`` is the original ecosystem test: the required capability
+    set binds and completes on two verified Providers.  It measures the
+    Provider population as much as the Skill, so a correct Skill is blocked
+    until someone registers a second implementation for unrelated reasons.
+
+    ``synthetic-substitution`` is the artifact-level test: the incumbent is
+    withdrawn and the identical contracts are re-offered under a reserved
+    stand-in identity.  It proves the requirement set names a capability
+    rather than a Provider.  It is strictly weaker -- no second implementation
+    ran -- and must not be described as cross-Provider portability.
+    """
+
     status: Literal["pass", "fail", "not_applicable_no_second_provider"]
+    method: Literal["two-providers", "synthetic-substitution"] = "two-providers"
     provider_catalog_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     compatible_provider_ids: tuple[str, ...]
     binding_lock_digests: tuple[str, ...] = Field(default_factory=tuple)
+    abstraction_report_digest: str | None = Field(
+        default=None, pattern=SHA256_DIGEST_PATTERN
+    )
     detail: str = Field(min_length=1, max_length=8192)
 
     @field_validator("compatible_provider_ids", "binding_lock_digests")
@@ -55,19 +73,77 @@ class KnowledgeProviderPortabilityEvidenceV1(StrictModel):
         return value
 
     @model_validator(mode="after")
-    def _status_matches_provider_count(self):
-        if self.status == "pass" and (
-            len(self.compatible_provider_ids) < 2 or len(self.binding_lock_digests) < 2
-        ):
+    def _status_matches_method(self):
+        substitution = self.method == "synthetic-substitution"
+        if not substitution and self.abstraction_report_digest is not None:
             raise ValueError(
-                "portability pass requires two Providers and two Binding Locks"
+                "an abstraction report belongs to synthetic-substitution only"
             )
-        if (
-            self.status == "not_applicable_no_second_provider"
-            and len(self.compatible_provider_ids) > 1
-        ):
-            raise ValueError("not-applicable portability cannot name two Providers")
+        if self.status == "pass":
+            if substitution:
+                # Baseline and substituted locks: the stand-in must have been
+                # bound, not merely offered.
+                if self.abstraction_report_digest is None:
+                    raise ValueError(
+                        "synthetic-substitution pass requires an abstraction report"
+                    )
+                if len(self.binding_lock_digests) < 2:
+                    raise ValueError(
+                        "synthetic-substitution pass requires the baseline and "
+                        "substituted Binding Locks"
+                    )
+            elif (
+                len(self.compatible_provider_ids) < 2
+                or len(self.binding_lock_digests) < 2
+            ):
+                raise ValueError(
+                    "portability pass requires two Providers and two Binding Locks"
+                )
+        if self.status == "not_applicable_no_second_provider":
+            if substitution:
+                raise ValueError(
+                    "synthetic-substitution is always runnable and is never "
+                    "not-applicable"
+                )
+            if len(self.compatible_provider_ids) > 1:
+                raise ValueError("not-applicable portability cannot name two Providers")
         return self
+
+
+class KnowledgeSkillPromotionApprovalV1(DigestBoundModel):
+    """Human/admin authorization for one exact verified Knowledge Skill.
+
+    Passing all sixteen gates makes a Skill *eligible*; it does not promote
+    it.  Promotion is this separate authenticated act, bound to the exact
+    body, manifest, registration report, and evidence that were reviewed, so
+    a later edit to any of them invalidates the approval instead of silently
+    inheriting it.
+    """
+
+    _digest_field = "approval_digest"
+
+    schema_version: Literal["ari.knowledge-skill-promotion-approval/v1"] = (
+        "ari.knowledge-skill-promotion-approval/v1"
+    )
+    skill_ref: KnowledgeSkillRefV1
+    from_status: Literal["candidate"] = "candidate"
+    to_status: Literal["verified"] = "verified"
+    actor_kind: Literal["human-maintainer", "authenticated-admin-cli"]
+    actor_id: str = Field(min_length=1, max_length=512)
+    authorization_basis: str = Field(min_length=1, max_length=1024)
+    approved_date: str = Field(min_length=10, max_length=64)
+    registration_evidence_digest: str | None = Field(
+        default=None, pattern=SHA256_DIGEST_PATTERN
+    )
+    # Optional, and checked when present.  The registration report is derived
+    # at load time from the promoted manifest, so requiring its digest here
+    # would make an approval unauthorable: the promoter would need a value
+    # that only a successful load produces, and the load needs the approval.
+    # ``skill_ref`` already pins the exact manifest and body bytes.
+    registration_report_digest: str | None = Field(
+        default=None, pattern=SHA256_DIGEST_PATTERN
+    )
+    approval_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
 
 
 class KnowledgeSkillRegistrationEvidenceV1(DigestBoundModel):
@@ -89,5 +165,6 @@ class KnowledgeSkillRegistrationEvidenceV1(DigestBoundModel):
 __all__ = [
     "KnowledgeCleanTaskEvidenceV1",
     "KnowledgeProviderPortabilityEvidenceV1",
+    "KnowledgeSkillPromotionApprovalV1",
     "KnowledgeSkillRegistrationEvidenceV1",
 ]

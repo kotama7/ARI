@@ -1,0 +1,130 @@
+{
+  "$defs": {
+    "KnowledgeSkillRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "body_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Body Sha256",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,255}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "body_sha256",
+        "manifest_sha256"
+      ],
+      "title": "KnowledgeSkillRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/knowledge-skill-promotion-approval-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Human/admin authorization for one exact verified Knowledge Skill.\n\nPassing all sixteen gates makes a Skill *eligible*; it does not promote\nit.  Promotion is this separate authenticated act, bound to the exact\nbody, manifest, registration report, and evidence that were reviewed, so\na later edit to any of them invalidates the approval instead of silently\ninheriting it.",
+  "properties": {
+    "actor_id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "actor_kind": {
+      "enum": [
+        "human-maintainer",
+        "authenticated-admin-cli"
+      ],
+      "title": "Actor Kind",
+      "type": "string"
+    },
+    "approval_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Approval Digest",
+      "type": "string"
+    },
+    "approved_date": {
+      "maxLength": 64,
+      "minLength": 10,
+      "title": "Approved Date",
+      "type": "string"
+    },
+    "authorization_basis": {
+      "maxLength": 1024,
+      "minLength": 1,
+      "title": "Authorization Basis",
+      "type": "string"
+    },
+    "from_status": {
+      "const": "candidate",
+      "default": "candidate",
+      "title": "From Status",
+      "type": "string"
+    },
+    "registration_evidence_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Registration Evidence Digest"
+    },
+    "registration_report_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Registration Report Digest"
+    },
+    "schema_version": {
+      "const": "ari.knowledge-skill-promotion-approval/v1",
+      "default": "ari.knowledge-skill-promotion-approval/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "skill_ref": {
+      "$ref": "#/$defs/KnowledgeSkillRefV1"
+    },
+    "to_status": {
+      "const": "verified",
+      "default": "verified",
+      "title": "To Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "skill_ref",
+    "actor_kind",
+    "actor_id",
+    "authorization_basis",
+    "approved_date",
+    "approval_digest"
+  ],
+  "title": "ARI Knowledge Skill Promotion Approval v1",
+  "type": "object"
+}

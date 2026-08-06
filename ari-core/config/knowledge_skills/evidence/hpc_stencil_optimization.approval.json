@@ -1,17 +1,17 @@
 {
   "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:090ac4ac3b80785760dd3ff9a8bbb220971f756c4d38b4545b0a16936c8842c3",
+  "approval_digest": "sha256:0cff4383e8e89bf9e4cb4d48e50d3ca6a90180e3dac9da0240bbc6f1e601557a",
   "approved_date": "2026-08-07",
-  "authorization_basis": "Reviewed the measured clean task: exact per-step trajectory equivalence over sixteen steps, the linearity identity to 1.7e-16, undefined-behaviour/bounds, address and thread sanitizer runs clean over the two-thread barrier decomposition, and 1.656x or better across four alternating warm replays under a bound job step. Reviewed the stored capability-abstraction report. All sixteen registration gates pass.",
+  "authorization_basis": "Reviewed the rewritten body against the measured clean task (per-step trajectory equivalence, linearity identity, UBSan/ASan/TSan clean, alternating replays above the gate under a bound job step) and the stored capability-abstraction report. The body now carries the thread-placement and timed-region discipline this repository established by measurement. All sixteen registration gates pass.",
   "from_status": "candidate",
-  "registration_evidence_digest": "sha256:5a20432ca9948d0e0b7284c71fb17aaa738b8953a6ba2dc2703bbdf913ec40b8",
+  "registration_evidence_digest": "sha256:4ba770ec72e902c927991f45644a69ab9ee30c1176fed10a290636c1282ce4df",
   "registration_report_digest": null,
   "schema_version": "ari.knowledge-skill-promotion-approval/v1",
   "skill_ref": {
-    "body_sha256": "sha256:e794e2b776adfe72b88c4b2d89e7431b484517380ee8f231052fe50aedc93832",
+    "body_sha256": "sha256:a73df05ab4266f93af629b1b486e4c7c5ac06d1813e2ef1c7b13e65c09cce241",
     "id": "hpc.stencil.optimization",
-    "manifest_sha256": "sha256:d6fd2583c5f40624b44c2faa6c604dbbd55d0f676667ff3a0fcf773013282341",
+    "manifest_sha256": "sha256:4fbf7f26f8dd26fc2eac540a50b92dfba87b038a6948588e464b47c002c86de7",
     "version": "1.0.0"
   },
   "to_status": "verified"

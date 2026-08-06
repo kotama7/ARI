@@ -270,6 +270,10 @@ class KnowledgeSkillSelectionProposalV1(DigestBoundModel):
     epoch_id: str
     research_contract_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     proposed: tuple[KnowledgeSkillRefV1, ...]
+    # Why every other catalog entry was left out. Without it a proposal of
+    # zero is indistinguishable from an empty catalog, and the reason a
+    # Skill never reached the Binder is unrecoverable from the artifacts.
+    not_proposed: tuple["KnowledgeAdmissionFindingV1", ...] = ()
     scope: Literal["epoch", "node"] = "epoch"
     required: bool = True
     reason: str = Field(min_length=1, max_length=8192)

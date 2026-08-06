@@ -46,7 +46,21 @@
     },
     "KnowledgeProviderPortabilityEvidenceV1": {
       "additionalProperties": false,
+      "description": "How the Skill was shown not to depend on one Capability Provider.\n\n``two-providers`` is the original ecosystem test: the required capability\nset binds and completes on two verified Providers.  It measures the\nProvider population as much as the Skill, so a correct Skill is blocked\nuntil someone registers a second implementation for unrelated reasons.\n\n``synthetic-substitution`` is the artifact-level test: the incumbent is\nwithdrawn and the identical contracts are re-offered under a reserved\nstand-in identity.  It proves the requirement set names a capability\nrather than a Provider.  It is strictly weaker -- no second implementation\nran -- and must not be described as cross-Provider portability.",
       "properties": {
+        "abstraction_report_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Abstraction Report Digest"
+        },
         "binding_lock_digests": {
           "items": {
             "type": "string"
@@ -65,6 +79,15 @@
           "maxLength": 8192,
           "minLength": 1,
           "title": "Detail",
+          "type": "string"
+        },
+        "method": {
+          "default": "two-providers",
+          "enum": [
+            "two-providers",
+            "synthetic-substitution"
+          ],
+          "title": "Method",
           "type": "string"
         },
         "provider_catalog_digest": {

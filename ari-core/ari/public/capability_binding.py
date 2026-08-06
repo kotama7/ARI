@@ -28,12 +28,17 @@ from ari.capability_binding.resolver import (
     validate_binding_revision,
 )
 from ari.capability_binding.substitution import (
+    SYNTHETIC_SUBSTITUTE_PROVIDER_ID,
+    CapabilityAbstractionReportV1,
     CapabilityProviderSubstitutionReportV1,
     ProviderExecutionObservationV1,
+    probe_capability_abstraction,
     probe_provider_substitution,
+    synthetic_substitute_provision,
 )
 
 __all__ = [
+    "CapabilityAbstractionReportV1",
     "CapabilityBindingError",
     "CapabilityBindingLockError",
     "CapabilityBindingLockV1",
@@ -45,15 +50,18 @@ __all__ = [
     "CapabilityOntology",
     "CapabilityOntologyError",
     "CapabilityOntologySnapshotV1",
-    "CapabilityProvisionV1",
     "CapabilityProviderSubstitutionReportV1",
+    "CapabilityProvisionV1",
     "CapabilityRequirementV1",
     "ProviderExecutionObservationV1",
+    "SYNTHETIC_SUBSTITUTE_PROVIDER_ID",
     "bind_capabilities",
     "bound_tool_refs",
     "load_binding_lock",
     "load_capability_ontology",
+    "probe_capability_abstraction",
     "probe_provider_substitution",
+    "synthetic_substitute_provision",
     "validate_binding_revision",
     "write_or_verify_binding_lock",
 ]

@@ -1,17 +1,17 @@
 {
   "actor_id": "kotama7 <kotamatakanori2@gmail.com>",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:df9848600724dfec95e579abdf53c2651952e521a38aff6af5a4417d84e4102b",
+  "approval_digest": "sha256:43646be6a123ce675ac8e945b259cd3efdec094f582f3d7742bf9ad943d4a633",
   "approved_date": "2026-08-07",
-  "authorization_basis": "Reviewed the measured clean task: an independently authored dense GEMM task reproduced its own baseline exactly, held two metamorphic identities, passed undefined-behaviour and address sanitizer runs, and beat its baseline by 3.6x across four alternating replays. Reviewed the stored capability-abstraction report. All sixteen registration gates pass.",
+  "authorization_basis": "Reviewed the rewritten body against the measured clean task (exact differential, two metamorphic identities, sanitizer runs, alternating replays above the gate) and the stored capability-abstraction report. The body now states the mechanism behind each transformation and carries no measured ratio of its own. All sixteen registration gates pass.",
   "from_status": "candidate",
-  "registration_evidence_digest": "sha256:2a9ee195534cae70edcc2007098982834b864f72788437ebcb601694b64e6581",
+  "registration_evidence_digest": "sha256:0f61b7a6916b26621048e6d8842cc41c8197b1932950143a2feab64dc3234202",
   "registration_report_digest": null,
   "schema_version": "ari.knowledge-skill-promotion-approval/v1",
   "skill_ref": {
-    "body_sha256": "sha256:8d0c22f3e95cd7e31860b14817ea5d546459412a28a1cbe9e1a6c5a926be1401",
+    "body_sha256": "sha256:cbea396dc6d5a67665769b075af252a867c6cbc755e49f89793b25d9143eafb4",
     "id": "hpc.gemm.optimization",
-    "manifest_sha256": "sha256:0a2d6a780a92bcd754539f00d6e712ada77e5692c09ba49a5ecba03f25ecb82a",
+    "manifest_sha256": "sha256:37cf65fba256b1101a3a3e590e8e2d359a1527d5b4d78f832f56b98c6e1ba1ba",
     "version": "1.0.0"
   },
   "to_status": "verified"

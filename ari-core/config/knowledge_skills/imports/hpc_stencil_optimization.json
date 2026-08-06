@@ -1,0 +1,167 @@
+{
+  "attachments": [],
+  "authoritative": false,
+  "body": "# Stencil Optimization\n\n## When to use\n\nUse this procedure when optimizing an iterative stencil sweep where trajectory\nequivalence, boundary behavior, and reproducible measurement are mandatory.\n\n## Preconditions\n\nThe Research Contract identifies the stencil shape, boundary treatment, data\nlayout, iteration count, supported hardware, baseline implementation, and\nadmissible performance metric.\n\n## Procedure\n\nConstruct a reference trajectory, not a reference answer. Compare the field\nafter every step, because a candidate that drifts and re-converges passes a\nfinal-state check while being wrong throughout. Per-step comparison is the\ncheapest defect detector this kernel has.\n\nEstablish the baseline in the same binary as the candidate so both see\nidentical initial conditions and compiler settings.\n\nThen work the transformation ladder, one hypothesis at a time:\n\n1. **Layout and update order.** Contiguity in the innermost dimension and a\n   clean flip between the two buffers come first; they are numerically neutral\n   and usually the largest single change.\n2. **Tiling and temporal blocking.** Only when a measurement says the sweep is\n   bandwidth-bound rather than issue-bound. Temporal blocking changes which\n   values are live at a step boundary, so it requires the per-step comparison\n   above rather than a final-state check.\n3. **Threading.** Last, and with the placement discipline below, because on a\n   multi-domain machine the placement decides the result more often than the\n   decomposition does.\n\nFor a threaded decomposition, synchronise once per timestep so that every read\nof a neighbour's halo happens after the write that produced it, and prove it\nwith a race detector rather than by inspection.\n\nThen place the threads deliberately:\n\n- Read the affinity mask the process was actually given. Do not infer it from\n  the number of CPUs requested; a batch step can inherit the whole machine in\n  its mask even when far fewer CPUs were asked for, and then nothing binds the\n  threads at all.\n- Derive one CPU per physical core from the topology's sibling lists, and pin\n  one worker to each. On a machine with simultaneous multithreading and an\n  unrestricted mask, the lowest-numbered allowed CPUs are frequently siblings\n  of a single physical core: two threads then share one core's execution\n  resources and the parallel candidate loses to its own serial baseline. This\n  failure looks exactly like a slow kernel and is not one.\n- Record the placement policy with the measurement. A speedup reported without\n  it cannot be compared against anything.\n\nCheck the paging and first-touch policy before attributing a bandwidth result\nto the kernel. Some toolchains default to pre-allocating pages before the\nprogram touches them, which places memory without regard to the thread that\nwill read it and destroys locality on a bandwidth-bound sweep; a demand-paging\npolicy restores it. The effect is comfortably larger than most kernel changes,\nso a sweep measured under the wrong policy mismeasures the change under test.\n\n## Decision points\n\nAdopt an optimization only if boundary/halo behavior and the full trajectory are\npreserved and measured resource behavior supports the hypothesis.\n\nPrefer a change whose benefit survives non-cubic and small domains. A tiling\ntuned to one cubic size regularly reverses when a dimension becomes short\nenough that the tile no longer divides it.\n\n## Failure conditions\n\nStop scientific promotion on boundary/halo divergence, trajectory divergence at\nany step, race-detector finding, sanitizer finding, nondeterministic\ndisagreement, or missing performance provenance.\n\nStop also when the timed region contains anything other than the sweep.\nAllocation, first touch, environment queries, and topology reads inside the\ntimed call are attributed to the kernel; a per-thread topology query inside the\ntimed region has been observed to make a correct candidate measure several\ntimes slower than its own baseline. Read the environment once, before timing.\n\n## Expected artifacts\n\nProduce source, compiler invocation, binary identity, initial-condition and\nboundary manifest, per-step equivalence evidence, race-detector and sanitizer\nresults, thread-placement and paging policy, raw timings, summarized\nmeasurements, and environment identity.\n\n## Scientific cautions\n\nFor a linear stencil, linearity is a metamorphic identity worth testing:\nsweeping the sum of two fields must equal the sum of the two swept fields, to\nrounding. It catches boundary and halo mistakes that a single differential\ncomparison against one initial condition misses.\n\nA parallel result is a statement about the kernel *and* the placement. Report\nboth, and when a threaded candidate underperforms, rule out placement before\nconcluding anything about the decomposition.\n\nDo not conflate a converged final state with an equivalent trajectory, relax a\ntolerance after observing failures, or treat Provider success as correctness.\n\n## Evaluation obligations\n\nRequire trajectory equivalence through differential and metamorphic testing,\nmemory-safety and race detection, performance-regression checks, and\nreproducibility across the declared domain shapes, thread counts, and placement\npolicy.\n",
+  "body_sha256": "sha256:a73df05ab4266f93af629b1b486e4c7c5ac06d1813e2ef1c7b13e65c09cce241",
+  "decision": "candidate",
+  "manifest": {
+    "applies_to": {
+      "phases": [
+        "bfts"
+      ],
+      "roles": [
+        "generator"
+      ],
+      "task_tags": [
+        "stencil",
+        "structured-grid"
+      ]
+    },
+    "authority_ceiling": {
+      "side_effects": [
+        "read-only",
+        "workspace-write",
+        "scheduler-submit"
+      ]
+    },
+    "composition": {
+      "exclusive": false,
+      "priority": 100,
+      "slot": "domain-method"
+    },
+    "conflicts": [],
+    "dependencies": [],
+    "description": "Boundary- and trajectory-preserving stencil optimization procedure.",
+    "evaluation_obligations": [
+      {
+        "property_id": "trajectory-equivalence",
+        "required_methods": [
+          "differential-testing",
+          "metamorphic-testing"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "memory-safety",
+        "required_methods": [
+          "race-detection",
+          "sanitizer"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "performance-regression",
+        "required_methods": [
+          "benchmark-comparison"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "reproducibility",
+        "required_methods": [
+          "repeated-execution"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      }
+    ],
+    "forbidden_capabilities": [
+      "ari.publish.external/v1",
+      "ari.registry.write/v1"
+    ],
+    "id": "hpc.stencil.optimization",
+    "license": {
+      "body": "MIT",
+      "references": "MIT"
+    },
+    "optional_capabilities": [
+      {
+        "explicit_provider_pin": null,
+        "ref": "ari.profiling.hardware-counters/v1",
+        "required": false,
+        "semantic_constraints": {}
+      },
+      {
+        "explicit_provider_pin": null,
+        "ref": "ari.execution.slurm-submit/v1",
+        "required": false,
+        "semantic_constraints": {}
+      }
+    ],
+    "references": [],
+    "requires": {
+      "capabilities": [
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.code.inspect/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.code.edit/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.execution.compile/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.execution.benchmark/v1",
+          "required": true,
+          "semantic_constraints": {}
+        }
+      ]
+    },
+    "schema_version": 1,
+    "source": {
+      "body_sha256": "sha256:a73df05ab4266f93af629b1b486e4c7c5ac06d1813e2ef1c7b13e65c09cce241",
+      "commit": "ec220484edcbdb72b9abad7337f65871254d0c73",
+      "manifest_sha256": "sha256:4fbf7f26f8dd26fc2eac540a50b92dfba87b038a6948588e464b47c002c86de7",
+      "path": "ari-core/config/knowledge_skills/bodies/hpc_stencil_optimization",
+      "repository": "https://github.com/kotama7/ARI.git"
+    },
+    "status": "verified",
+    "title": "Stencil Optimization",
+    "version": "1.0.0"
+  },
+  "material_digest": "sha256:d9c3d1fcaee5278d0973890e391b140dee666abf0b7116ab1789756054944c9e",
+  "non_authoritative_tool_hints": [
+    "Use",
+    "are"
+  ],
+  "reference_digests": {},
+  "schema_version": "ari.knowledge-import-material/v1",
+  "source_provenance": {
+    "adapter_version": "ari.knowledge.external-importer/v1",
+    "body_normalization": "strict",
+    "collection_identity_digest": null,
+    "commit": "ec220484edcbdb72b9abad7337f65871254d0c73",
+    "import_profile_digest": "sha256:d707f98ca7b9e974ae31e06778560f306fe50a3c53d22cc165ab3cd0c7f49f93",
+    "layout": "plain",
+    "provenance_digest": "sha256:44fe6e6854b42d3e056eeee0b35053cdf99d496bf5e60728ea60db2533e28c5d",
+    "repository": "https://github.com/kotama7/ARI.git",
+    "schema_version": "ari.knowledge-external-source-provenance/v1",
+    "snapshot_digest": "sha256:79146f9e36286e4c9da50ef1f3578163fb7ca5cc64df81323a595dee72a55266",
+    "source_kind": "git",
+    "source_skill_md_sha256": "sha256:a73df05ab4266f93af629b1b486e4c7c5ac06d1813e2ef1c7b13e65c09cce241",
+    "subpath": "ari-core/config/knowledge_skills/bodies/hpc_stencil_optimization",
+    "upstream_metadata_digest": null,
+    "upstream_name": null
+  }
+}

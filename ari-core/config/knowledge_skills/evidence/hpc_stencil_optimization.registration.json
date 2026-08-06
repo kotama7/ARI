@@ -15,27 +15,27 @@
     "status": "pass"
   },
   "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
-  "evidence_digest": "sha256:5a20432ca9948d0e0b7284c71fb17aaa738b8953a6ba2dc2703bbdf913ec40b8",
+  "evidence_digest": "sha256:4ba770ec72e902c927991f45644a69ab9ee30c1176fed10a290636c1282ce4df",
   "provider_portability": {
-    "abstraction_report_digest": "sha256:5b1f75fa2f613b5b56024ac554771ced492bbddbc3df9878f51002a718477588",
+    "abstraction_report_digest": "sha256:54e355f94b937f8fc3e888ab938d0ca95b16b69596133d0d8acb6ef9895e3166",
     "binding_lock_digests": [
-      "sha256:1465e18beb63ceb29977464591fe83e41741711b56d928097a67d0abeb34daee",
-      "sha256:b6f4319f1f8af808237213eb5882ecff50324d2d9f6b2e037381e2738f9bade4"
+      "sha256:b8f794fe60bb758730609fb0753644bd4da79d629b4e24c9c01529d1e1f466fd",
+      "sha256:f1cfca15c16a30c03d2fa23be910898e9e7fa887e36d9bdd9638d7fe7e58fc1d"
     ],
     "compatible_provider_ids": [
       "ari.provider.coding"
     ],
     "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 4 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/hpc_stencil_optimization.abstraction.json.",
     "method": "synthetic-substitution",
-    "provider_catalog_digest": "sha256:7ebcfaa891983352e2fad1d570cd603517afd462d2962db42ef3d9ed13dd024d",
+    "provider_catalog_digest": "sha256:dd8c35c5ffa6f61df5dbaca6f9a59ae68a2b98ddf96ee3b0b226163817bc4ac3",
     "status": "pass"
   },
   "schema_version": "ari.knowledge-skill-registration-evidence/v1",
   "skill_ref": {
-    "body_sha256": "sha256:e794e2b776adfe72b88c4b2d89e7431b484517380ee8f231052fe50aedc93832",
+    "body_sha256": "sha256:a73df05ab4266f93af629b1b486e4c7c5ac06d1813e2ef1c7b13e65c09cce241",
     "id": "hpc.stencil.optimization",
-    "manifest_sha256": "sha256:d6fd2583c5f40624b44c2faa6c604dbbd55d0f676667ff3a0fcf773013282341",
+    "manifest_sha256": "sha256:4fbf7f26f8dd26fc2eac540a50b92dfba87b038a6948588e464b47c002c86de7",
     "version": "1.0.0"
   },
-  "source_full_commit_sha": "d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b"
+  "source_full_commit_sha": "ec220484edcbdb72b9abad7337f65871254d0c73"
 }

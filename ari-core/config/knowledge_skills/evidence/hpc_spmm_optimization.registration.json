@@ -14,27 +14,27 @@
     "status": "pass"
   },
   "environment_digest": "sha256:77bf7484d2c47dc8864564dcfa2b9aac0ff714c372bd24d923357aeaa4361a4e",
-  "evidence_digest": "sha256:b78c30012d92507e1f990fd2752e3bba430e762b88e8fa292ae5484a6051d8d9",
+  "evidence_digest": "sha256:3b0d11e7449ae62efa726db261831a9e1e98f26cde7b989e95a318a2a2fc33d3",
   "provider_portability": {
-    "abstraction_report_digest": "sha256:eb0db63f4e1c62603efb4fd7a45a68183ae4edf12026b691abdbc18002757826",
+    "abstraction_report_digest": "sha256:de636b2f5b1cc9334dc5867217b6a85ca558c1df7124224465a7c9dcdaab8200",
     "binding_lock_digests": [
-      "sha256:01383118068ca036b26c521ad809e21f2c4165b85b806f183173b511415017c5",
-      "sha256:63f664c3d79384e61c67372c14a34ee391308ca47600f6ac5d220448ca13625f"
+      "sha256:41457cdc2b9e6043d1563f185f8a8a9390288078b185c40e5d3c5477255795f8",
+      "sha256:fb28aa7150f83c8df84c206a562d4758cf99db53efbc4962de86ea9bfaeb7a79"
     ],
     "compatible_provider_ids": [
       "ari.provider.coding"
     ],
     "detail": "Provider independence was established by withdrawing the incumbent ari.provider.coding and re-offering the identical capability contracts under the reserved stand-in identity ari.provider.synthetic-substitute. All 4 capabilities the incumbent had won rebound, deterministically, and none stayed bound to the incumbent. No second implementation was executed, so this is not cross-Provider portability: it shows only that the requirement set names capabilities rather than a Provider. The report is stored beside this file as evidence/hpc_spmm_optimization.abstraction.json.",
     "method": "synthetic-substitution",
-    "provider_catalog_digest": "sha256:7ebcfaa891983352e2fad1d570cd603517afd462d2962db42ef3d9ed13dd024d",
+    "provider_catalog_digest": "sha256:dd8c35c5ffa6f61df5dbaca6f9a59ae68a2b98ddf96ee3b0b226163817bc4ac3",
     "status": "pass"
   },
   "schema_version": "ari.knowledge-skill-registration-evidence/v1",
   "skill_ref": {
-    "body_sha256": "sha256:fd9c56e20b8777dead878c5c20db883c228382fa335ea375ad25179dacb948c8",
+    "body_sha256": "sha256:2d6a37bb790b1a7db413e5d7f34ac422c7d7a9836414cd045a135778f77e6094",
     "id": "hpc.spmm.optimization",
-    "manifest_sha256": "sha256:cdd7d1c853201ff4e6b26cfd57084ce7a185af9c1c8a27bff9301511c15e4c7f",
+    "manifest_sha256": "sha256:a2454a7e3b5456359894e63516885fdb82cf26131467f2e83741c2197b6aab29",
     "version": "1.0.0"
   },
-  "source_full_commit_sha": "d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b"
+  "source_full_commit_sha": "ec220484edcbdb72b9abad7337f65871254d0c73"
 }

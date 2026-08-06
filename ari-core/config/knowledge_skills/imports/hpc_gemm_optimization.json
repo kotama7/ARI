@@ -1,0 +1,166 @@
+{
+  "attachments": [],
+  "authoritative": false,
+  "body": "# GEMM Optimization\n\n## When to use\n\nUse this procedure when optimizing dense matrix multiplication while numerical\nequivalence and reproducible measurement remain mandatory.\n\n## Preconditions\n\nThe Research Contract identifies the target interface, data types, supported\nhardware, baseline implementation, and admissible performance metric.\n\n## Procedure\n\nState the GEMM equation before touching code, including transpose flags,\nleading-dimension semantics, and the alpha/beta accumulation. Most \"wrong\nanswer\" findings in this kernel come from disagreeing about that statement\nrather than from the arithmetic.\n\nEstablish a baseline you own. A baseline you did not write is a second\nunknown: when the measured ratio surprises you, you cannot tell which side\nmoved. Keep it in the same binary as the candidate so both see identical\ninputs and identical compiler settings.\n\nThen work the transformation ladder in this order, changing one hypothesis at\na time:\n\n1. **Loop order.** The textbook `i, j, k` form walks one operand down a column\n   in the innermost loop, so every element load is strided by the leading\n   dimension. Reordering so the innermost loop walks contiguous memory in both\n   the read and the accumulation is usually the single largest change\n   available, and it costs nothing in numerical terms if the accumulation\n   order is preserved.\n2. **Blocking.** Tile the iteration space so that one block triple's working\n   set fits the cache level you are targeting, and hoist the scalar operand out\n   of the innermost loop so it lives in a register instead of being reloaded.\n   Blocking without hoisting usually disappoints.\n3. **Vectorization and threading.** Only after the first two, and only when a\n   measurement says the remaining bottleneck is issue width or a single core's\n   bandwidth. Both change the accumulation order, so both require the\n   equivalence evidence below rather than a spot check.\n\nMeasure by alternating baseline and candidate inside one process, warming both\npaths before any timing, and taking the minimum over several trials as the\nstatistic. Alternation cancels slow drift in machine state; the minimum\nrejects interference rather than averaging it in. Repeat the whole alternating\nblock several times and report the per-replay values, not one number.\n\n## Decision points\n\nChoose blocking, vectorization, threading, or accelerator specialization only\nafter the measured bottleneck and target architecture justify it. Prefer the\nleast side-effecting bound Provider that satisfies the required capability.\n\nPrefer a change whose benefit survives a shape sweep. A transformation tuned\nto one square shape frequently reverses on a tall-skinny or short-fat one, and\na result reported on a single shape cannot distinguish the two cases.\n\n## Failure conditions\n\nStop scientific promotion on ABI mismatch, sanitizer finding, numerical error\noutside the dtype/accumulation-length model, nondeterministic disagreement, or\nmissing performance provenance.\n\nStop also when the timed region contains anything other than the kernel. Setup,\nallocation, first touch, environment queries, and file reads inside the timed\ncall are attributed to the kernel by the measurement, and a correct candidate\ncan be made to look several times slower than its own baseline this way. Move\nevery such step outside the timing and re-measure before believing a\nregression.\n\n## Expected artifacts\n\nProduce source, compiler invocation, binary identity, test-case manifest,\ncorrectness evidence, raw timings, summarized measurements, and environment\nidentity.\n\n## Scientific cautions\n\nA single differential check against the baseline is weaker than it looks: it\ncompares one input against one output. Metamorphic identities test the\ntransformation itself. For GEMM, two are cheap and effective \u2014 scaling an\noperand must scale the result, and the product distributes over a sum of the\nother operand. A correct blocked implementation holds both to rounding; a\nreassociation bug that survives a spot check usually does not.\n\nDo not tune to one square shape, conflate correctness with performance, relax a\ntolerance after observing failures, or treat Provider success as correctness.\n\nReport the compiler, the flags, and the statistic alongside any ratio. A\nspeedup without them is not a measurement, and `-ffast-math` in particular\nchanges what \"equivalent\" means before any of your own changes do.\n\n## Evaluation obligations\n\nRequire numerical equivalence through differential and metamorphic testing,\nperformance-regression checks, memory-safety checks, and reproducibility across\nthe declared shape/thread matrix.\n",
+  "body_sha256": "sha256:cbea396dc6d5a67665769b075af252a867c6cbc755e49f89793b25d9143eafb4",
+  "decision": "candidate",
+  "manifest": {
+    "applies_to": {
+      "phases": [
+        "bfts"
+      ],
+      "roles": [
+        "generator"
+      ],
+      "task_tags": [
+        "dense-linear-algebra",
+        "gemm"
+      ]
+    },
+    "authority_ceiling": {
+      "side_effects": [
+        "read-only",
+        "workspace-write",
+        "scheduler-submit"
+      ]
+    },
+    "composition": {
+      "exclusive": false,
+      "priority": 100,
+      "slot": "domain-method"
+    },
+    "conflicts": [],
+    "dependencies": [],
+    "description": "Correctness-preserving dense GEMM optimization procedure.",
+    "evaluation_obligations": [
+      {
+        "property_id": "numerical-equivalence",
+        "required_methods": [
+          "differential-testing",
+          "metamorphic-testing"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "memory-safety",
+        "required_methods": [
+          "sanitizer"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "performance-regression",
+        "required_methods": [
+          "benchmark-comparison"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      },
+      {
+        "property_id": "reproducibility",
+        "required_methods": [
+          "repeated-execution"
+        ],
+        "required_tier": "screen",
+        "schema_version": "ari.evaluation-obligation/v1",
+        "scope": {},
+        "source_skill_digest": null
+      }
+    ],
+    "forbidden_capabilities": [
+      "ari.publish.external/v1",
+      "ari.registry.write/v1"
+    ],
+    "id": "hpc.gemm.optimization",
+    "license": {
+      "body": "MIT",
+      "references": "MIT"
+    },
+    "optional_capabilities": [
+      {
+        "explicit_provider_pin": null,
+        "ref": "ari.profiling.hardware-counters/v1",
+        "required": false,
+        "semantic_constraints": {}
+      },
+      {
+        "explicit_provider_pin": null,
+        "ref": "ari.execution.slurm-submit/v1",
+        "required": false,
+        "semantic_constraints": {}
+      }
+    ],
+    "references": [],
+    "requires": {
+      "capabilities": [
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.code.inspect/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.code.edit/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.execution.compile/v1",
+          "required": true,
+          "semantic_constraints": {}
+        },
+        {
+          "explicit_provider_pin": null,
+          "ref": "ari.execution.benchmark/v1",
+          "required": true,
+          "semantic_constraints": {}
+        }
+      ]
+    },
+    "schema_version": 1,
+    "source": {
+      "body_sha256": "sha256:cbea396dc6d5a67665769b075af252a867c6cbc755e49f89793b25d9143eafb4",
+      "commit": "ec220484edcbdb72b9abad7337f65871254d0c73",
+      "manifest_sha256": "sha256:37cf65fba256b1101a3a3e590e8e2d359a1527d5b4d78f832f56b98c6e1ba1ba",
+      "path": "ari-core/config/knowledge_skills/bodies/hpc_gemm_optimization",
+      "repository": "https://github.com/kotama7/ARI.git"
+    },
+    "status": "verified",
+    "title": "GEMM Optimization",
+    "version": "1.0.0"
+  },
+  "material_digest": "sha256:b77e3c25cf0d37e52f986c3786c9bb04394808e62d57b9d2807ba7053ef27450",
+  "non_authoritative_tool_hints": [
+    "Use",
+    "are"
+  ],
+  "reference_digests": {},
+  "schema_version": "ari.knowledge-import-material/v1",
+  "source_provenance": {
+    "adapter_version": "ari.knowledge.external-importer/v1",
+    "body_normalization": "strict",
+    "collection_identity_digest": null,
+    "commit": "ec220484edcbdb72b9abad7337f65871254d0c73",
+    "import_profile_digest": "sha256:92e8ea720facb616ec4980433bd4e2cf4f6087fe81fb5319b9aa80ceaaca05bc",
+    "layout": "plain",
+    "provenance_digest": "sha256:2af3135912e77232b68a6fbb433091a5fb478d52666c75d3e0a2d07fec04da04",
+    "repository": "https://github.com/kotama7/ARI.git",
+    "schema_version": "ari.knowledge-external-source-provenance/v1",
+    "snapshot_digest": "sha256:1ad76f059bfc35379f1ff514e5fa47ae5f698a66c1fa5f6ab3f9cde672ebb11f",
+    "source_kind": "git",
+    "source_skill_md_sha256": "sha256:cbea396dc6d5a67665769b075af252a867c6cbc755e49f89793b25d9143eafb4",
+    "subpath": "ari-core/config/knowledge_skills/bodies/hpc_gemm_optimization",
+    "upstream_metadata_digest": null,
+    "upstream_name": null
+  }
+}

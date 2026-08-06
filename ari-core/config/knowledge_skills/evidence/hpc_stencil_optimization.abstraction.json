@@ -1,6 +1,6 @@
 {
-  "baseline_lock_digest": "sha256:b6f4319f1f8af808237213eb5882ecff50324d2d9f6b2e037381e2738f9bade4",
-  "baseline_request_digest": "sha256:d77a3789cb0af7311c677c463a43a416e9412286b9a884990c6a05275869a1c2",
+  "baseline_lock_digest": "sha256:b8f794fe60bb758730609fb0753644bd4da79d629b4e24c9c01529d1e1f466fd",
+  "baseline_request_digest": "sha256:772a862a09283c9640b21fc014df7cb221b09a810613343bb520436f2a0eb6fa",
   "covered_capability_refs": [
     "ari.code.edit/v1",
     "ari.code.inspect/v1",
@@ -17,10 +17,10 @@
   ],
   "incumbent_provider_id": "ari.provider.coding",
   "provider_bound_capability_refs": [],
-  "report_digest": "sha256:5b1f75fa2f613b5b56024ac554771ced492bbddbc3df9878f51002a718477588",
+  "report_digest": "sha256:54e355f94b937f8fc3e888ab938d0ca95b16b69596133d0d8acb6ef9895e3166",
   "schema_version": "ari.capability-abstraction-report/v1",
   "status": "passed",
-  "substituted_lock_digest": "sha256:1465e18beb63ceb29977464591fe83e41741711b56d928097a67d0abeb34daee",
-  "substituted_request_digest": "sha256:9b5ad06bda8c74555b1054d9ac635b20e9e8a1cbc3f64fa3d87f2fc15308d5f3",
+  "substituted_lock_digest": "sha256:f1cfca15c16a30c03d2fa23be910898e9e7fa887e36d9bdd9638d7fe7e58fc1d",
+  "substituted_request_digest": "sha256:73177bbc89d48a816ec1150c0d65dab5a21cbb6b4fbd2ab4e7042da9604c66b5",
   "synthetic_provider_id": "ari.provider.synthetic-substitute"
 }

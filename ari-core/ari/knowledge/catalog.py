@@ -27,7 +27,10 @@ from ari.knowledge.registration import (
     KNOWLEDGE_REGISTRATION_GATES,
     registration_report,
 )
-from ari.knowledge.registration_models import KnowledgeSkillRegistrationEvidenceV1
+from ari.knowledge.registration_models import (
+    KnowledgeSkillPromotionApprovalV1,
+    KnowledgeSkillRegistrationEvidenceV1,
+)
 from ari.protocols.integrity import bytes_digest, canonical_digest
 
 
@@ -82,6 +85,7 @@ class GovernedKnowledgeSkillRegistry:
         to_status: KnowledgeCatalogStatus,
         actor_id: str,
         evidence_digest: str,
+        approval: KnowledgeSkillPromotionApprovalV1 | None = None,
     ) -> KnowledgeSkillStatusTransitionV1:
         key = (skill_ref.id, skill_ref.version, skill_ref.body_sha256)
         entry = self.entries.get(key)
@@ -95,6 +99,21 @@ class GovernedKnowledgeSkillRegistry:
             raise ValueError(
                 f"illegal Knowledge status transition {current}->{to_status}"
             )
+        # Promotion is the one transition that grants authority, so it is the
+        # one that needs an authenticated act behind it. The checked-in catalog
+        # demands the same approval; requiring it here too means the ledger and
+        # the catalog cannot disagree about who promoted what.
+        if to_status == "verified":
+            if approval is None:
+                raise ValueError("promotion to verified requires a promotion approval")
+            if approval.skill_ref != skill_ref:
+                raise ValueError("promotion approval names another Knowledge Skill")
+            if evidence_digest != approval.approval_digest:
+                raise ValueError(
+                    "promotion transition must record its approval as the evidence"
+                )
+        elif approval is not None:
+            raise ValueError("a promotion approval only authorises verification")
         parent = next(
             (
                 item.transition_digest
@@ -184,6 +203,7 @@ class LoadedKnowledgeCatalog:
     body_store: KnowledgeSkillBodyStore
     registration_reports: dict[str, KnowledgeSkillRegistrationReportV1]
     registration_evidence: dict[str, KnowledgeSkillRegistrationEvidenceV1]
+    promotion_approvals: dict[str, KnowledgeSkillPromotionApprovalV1]
 
 
 def _catalog_relative(root: Path, value: str) -> Path:
@@ -209,6 +229,7 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
     entries: list[KnowledgeSkillEntryV1] = []
     reports: dict[str, KnowledgeSkillRegistrationReportV1] = {}
     evidence_by_digest: dict[str, KnowledgeSkillRegistrationEvidenceV1] = {}
+    approvals: dict[str, KnowledgeSkillPromotionApprovalV1] = {}
     for item in raw.get("entries", []):
         has_import_material = "import_material" in item
         has_legacy_pair = "manifest" in item or "body" in item
@@ -224,11 +245,21 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
             raise ValueError(
                 "Knowledge registration evidence path and digest must appear together"
             )
+        approval_path_value = item.get("promotion_approval")
+        approval_digest_value = item.get("promotion_approval_digest")
+        if (approval_path_value is None) != (approval_digest_value is None):
+            raise ValueError(
+                "Knowledge promotion approval path and digest must appear together"
+            )
         if has_import_material:
             allowed_keys = {"import_material", "import_profile"}
             if evidence_path_value is not None:
                 allowed_keys.update(
                     {"registration_evidence", "registration_evidence_digest"}
+                )
+            if approval_path_value is not None:
+                allowed_keys.update(
+                    {"promotion_approval", "promotion_approval_digest"}
                 )
             if set(item) != allowed_keys:
                 raise ValueError(
@@ -280,6 +311,10 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
             if evidence_path_value is not None:
                 allowed_keys.update(
                     {"registration_evidence", "registration_evidence_digest"}
+                )
+            if approval_path_value is not None:
+                allowed_keys.update(
+                    {"promotion_approval", "promotion_approval_digest"}
                 )
             if set(item) != allowed_keys:
                 raise ValueError(
@@ -384,6 +419,52 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
             attachments=attachment_paths,
         )
         reports[report.report_digest] = report
+        # Clearing the gates makes a Skill eligible; it does not promote it.
+        # A catalog that declares `verified` must exhibit both the passing
+        # registration report and the authenticated approval that acted on it,
+        # exactly as the Harness catalog does.  Without this, `status` is a
+        # free-text field and sixteen gates decide nothing.
+        if manifest.status == "verified":
+            if report.decision != "eligible-for-verified":
+                raise ValueError(
+                    f"verified Knowledge Skill lacks passing registration gates: "
+                    f"{manifest.id}"
+                )
+            if approval_path_value is None:
+                raise ValueError(
+                    f"verified Knowledge Skill lacks a promotion approval: {manifest.id}"
+                )
+            approval_path = _catalog_relative(root, str(approval_path_value))
+            try:
+                approval = KnowledgeSkillPromotionApprovalV1.model_validate_json(
+                    approval_path.read_text(encoding="utf-8")
+                )
+            except (json.JSONDecodeError, ValueError) as exc:
+                raise ValueError(
+                    f"Knowledge promotion approval is invalid: {approval_path.name}"
+                ) from exc
+            if (
+                approval.approval_digest != str(approval_digest_value)
+                or approval.skill_ref != manifest.exact_ref()
+                or approval.registration_evidence_digest
+                != (
+                    empirical_evidence.evidence_digest
+                    if empirical_evidence is not None
+                    else None
+                )
+                or (
+                    approval.registration_report_digest is not None
+                    and approval.registration_report_digest != report.report_digest
+                )
+            ):
+                raise ValueError(
+                    f"Knowledge promotion approval differs: {manifest.id}"
+                )
+            approvals[manifest.id] = approval
+        elif approval_path_value is not None:
+            raise ValueError(
+                f"promotion approval requires a verified Knowledge Skill: {manifest.id}"
+            )
         entries.append(
             KnowledgeSkillEntryV1.create(
                 manifest=manifest,
@@ -398,7 +479,9 @@ def load_knowledge_catalog(path: str | Path) -> LoadedKnowledgeCatalog:
         importer_version=str(raw.get("importer_version", "unknown")),
         entries=tuple(entries),
     )
-    return LoadedKnowledgeCatalog(snapshot, body_store, reports, evidence_by_digest)
+    return LoadedKnowledgeCatalog(
+        snapshot, body_store, reports, evidence_by_digest, approvals
+    )
 
 
 __all__ = [

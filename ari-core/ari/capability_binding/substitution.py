@@ -10,13 +10,23 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
-from ari.capability_binding.models import CapabilityBindingRequestV1
+from ari.capability_binding.models import (
+    CapabilityBindingRequestV1,
+    CapabilityProvisionV1,
+)
 from ari.capability_binding.resolver import bind_capabilities
 from ari.protocols.integrity import (
     DigestBoundModel,
     SHA256_DIGEST_PATTERN,
     StrictModel,
+    canonical_digest,
 )
+
+
+# Reserved identity for the stand-in offered by the abstraction probe.  It is
+# never a Provider: it exists only inside a diagnostic request and cannot be
+# reached from a persisted catalog, lock, or run.
+SYNTHETIC_SUBSTITUTE_PROVIDER_ID = "ari.provider.synthetic-substitute"
 
 
 class ProviderExecutionObservationV1(StrictModel):
@@ -80,6 +90,152 @@ def _audit_request(
     payload["mode"] = "audit"
     payload.update(updates)
     return CapabilityBindingRequestV1.create(**payload)
+
+
+def synthetic_substitute_provision(
+    provision: CapabilityProvisionV1,
+) -> CapabilityProvisionV1:
+    """Re-offer one provision under a reserved non-incumbent identity.
+
+    Everything the capability contract fixes is preserved -- contract digest,
+    side-effect class, context requirement, environment requirements, resource
+    type, permissions, roles, phases.  Only the Provider identity and the tool
+    reference change.  A requirement that binds to the incumbent but not to
+    this stand-in is tied to that Provider rather than to the capability, which
+    is the only thing the abstraction probe is entitled to conclude.
+    """
+
+    payload = provision.model_dump(mode="python")
+    payload.pop("provision_digest", None)
+    payload.update(
+        provider_id=SYNTHETIC_SUBSTITUTE_PROVIDER_ID,
+        provider_identity_digest=canonical_digest(
+            {"synthetic_substitute_for": provision.provider_identity_digest}
+        ),
+        tool_ref=f"{SYNTHETIC_SUBSTITUTE_PROVIDER_ID}/{provision.tool_ref}",
+        subject_tool_ref=None,
+        dispatch_tool_ref=None,
+        nested_source_lock_digests=(),
+    )
+    return CapabilityProvisionV1.create(**payload)
+
+
+class CapabilityAbstractionReportV1(DigestBoundModel):
+    """Whether one Skill's requirements survive losing their incumbent.
+
+    This is not portability evidence about a Provider ecosystem: no second
+    implementation is executed and none is claimed.  It answers the narrower,
+    artifact-level question of whether the requirement set names a capability
+    or a Provider.
+    """
+
+    _digest_field = "report_digest"
+
+    schema_version: Literal["ari.capability-abstraction-report/v1"] = (
+        "ari.capability-abstraction-report/v1"
+    )
+    incumbent_provider_id: str
+    synthetic_provider_id: Literal[SYNTHETIC_SUBSTITUTE_PROVIDER_ID] = (
+        SYNTHETIC_SUBSTITUTE_PROVIDER_ID
+    )
+    baseline_request_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
+    baseline_lock_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
+    substituted_request_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
+    substituted_lock_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
+    disabled_incumbent_tool_refs: tuple[str, ...]
+    covered_capability_refs: tuple[str, ...]
+    provider_bound_capability_refs: tuple[str, ...]
+    status: Literal["passed", "failed", "vacuous"]
+    deterministic: bool
+    report_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
+
+    @field_validator(
+        "disabled_incumbent_tool_refs",
+        "covered_capability_refs",
+        "provider_bound_capability_refs",
+    )
+    @classmethod
+    def _sorted_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if value != tuple(sorted(set(value))):
+            raise ValueError("abstraction report values must be unique and sorted")
+        return value
+
+
+def probe_capability_abstraction(
+    request: CapabilityBindingRequestV1,
+    *,
+    incumbent_provider_id: str,
+) -> CapabilityAbstractionReportV1:
+    """Disable the incumbent, offer the same contracts, and re-run the binder.
+
+    Only capabilities the incumbent actually won in the baseline are judged:
+    a capability that never bound cannot demonstrate anything about Provider
+    independence, and reading it as a failure would re-import the environment
+    into an artifact-level gate.
+    """
+
+    baseline_request = _audit_request(request)
+    baseline_a, _ = bind_capabilities(baseline_request)
+    baseline_b, _ = bind_capabilities(baseline_request)
+    deterministic = baseline_a.model_dump_json() == baseline_b.model_dump_json()
+    incumbent_refs = {
+        item.capability_ref
+        for item in baseline_a.bindings
+        if item.provider_id == incumbent_provider_id
+    }
+    disabled = tuple(
+        sorted(
+            {
+                item.tool_ref
+                for item in request.provisions
+                if item.provider_id == incumbent_provider_id
+            }
+        )
+    )
+    substitutes = tuple(
+        synthetic_substitute_provision(item)
+        for item in request.provisions
+        if item.provider_id == incumbent_provider_id
+    )
+    substituted_request = _audit_request(
+        request,
+        provisions=tuple(request.provisions) + substitutes,
+        available_tool_refs=tuple(
+            sorted(
+                set(request.available_tool_refs)
+                | {item.tool_ref for item in substitutes}
+            )
+        ),
+        user_disabled_tools=tuple(
+            sorted(set(request.user_disabled_tools) | set(disabled))
+        ),
+    )
+    substituted_a, _ = bind_capabilities(substituted_request)
+    substituted_b, _ = bind_capabilities(substituted_request)
+    deterministic = deterministic and (
+        substituted_a.model_dump_json() == substituted_b.model_dump_json()
+    )
+    rebound = {item.capability_ref for item in substituted_a.bindings}
+    covered = tuple(sorted(incumbent_refs & rebound))
+    lost = tuple(sorted(incumbent_refs - rebound))
+    if not incumbent_refs:
+        status = "vacuous"
+    elif lost:
+        status = "failed"
+    else:
+        status = "passed"
+    return CapabilityAbstractionReportV1.create(
+        incumbent_provider_id=incumbent_provider_id,
+        baseline_request_digest=baseline_request.request_digest,
+        baseline_lock_digest=baseline_a.lock_digest,
+        substituted_request_digest=substituted_request.request_digest,
+        substituted_lock_digest=substituted_a.lock_digest,
+        disabled_incumbent_tool_refs=disabled,
+        covered_capability_refs=covered,
+        provider_bound_capability_refs=lost,
+        status=status,
+        deterministic=deterministic,
+    )
 
 
 def _binding_for(lock, capability_ref: str):
@@ -314,7 +470,11 @@ def probe_provider_substitution(
 
 
 __all__ = [
+    "CapabilityAbstractionReportV1",
     "CapabilityProviderSubstitutionReportV1",
     "ProviderExecutionObservationV1",
+    "SYNTHETIC_SUBSTITUTE_PROVIDER_ID",
+    "probe_capability_abstraction",
     "probe_provider_substitution",
+    "synthetic_substitute_provision",
 ]

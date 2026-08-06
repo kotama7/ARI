@@ -10,6 +10,7 @@ from ari.knowledge.models import (
     EpochKnowledgeSkillLockV1,
     InstructionCompositionV1,
     KnowledgeAdmissionContextV1,
+    KnowledgeAdmissionFindingV1,
     KnowledgeSkillCatalogSnapshotV1,
     KnowledgeSkillSelectionProposalV1,
     KnowledgeSkillUseRecordV1,
@@ -66,25 +67,40 @@ class RQGMKnowledgeBridge:
         """Router proposal over exact verified entries; still non-authoritative."""
 
         proposed = []
+        skipped = []
+
+        def skip(manifest, code: str, detail: str) -> None:
+            skipped.append(
+                KnowledgeAdmissionFindingV1(
+                    skill_ref=manifest.exact_ref(), code=code, detail=detail
+                )
+            )
+
         for entry in catalog.entries:
             manifest = entry.manifest
             if entry.status != "verified":
+                skip(manifest, f"status_{entry.status}", "only verified content is proposable")
                 continue
             if context.role not in manifest.applies_to.roles:
+                skip(manifest, "role_not_applicable", context.role)
                 continue
             if context.phase not in manifest.applies_to.phases:
+                skip(manifest, "phase_not_applicable", context.phase)
                 continue
             if manifest.applies_to.task_tags and not (
                 set(manifest.applies_to.task_tags) & set(context.task_tags)
             ):
+                skip(manifest, "task_tag_not_applicable", "no matching task tag")
                 continue
             proposed.append(manifest.exact_ref())
         proposed.sort(key=lambda item: (item.id, item.version, item.body_sha256))
+        skipped.sort(key=lambda item: (item.skill_ref.id, item.skill_ref.version, item.code))
         return KnowledgeSkillSelectionProposalV1.create(
             run_id=run_id,
             epoch_id=epoch_id,
             research_contract_digest=research_contract_digest,
             proposed=tuple(proposed),
+            not_proposed=tuple(skipped),
             scope="epoch",
             required=required,
             reason="existing RQGM Router applicability proposal over the frozen catalog",

@@ -1,0 +1,61 @@
+schema_version: 1
+id: hpc.stencil.optimization
+version: 1.0.0
+title: Stencil Optimization
+description: Boundary- and trajectory-preserving stencil optimization procedure.
+license:
+  body: MIT
+  references: MIT
+applies_to:
+  roles:
+  - generator
+  phases:
+  - bfts
+  task_tags:
+  - stencil
+  - structured-grid
+requires:
+  capabilities:
+  - ref: ari.code.inspect/v1
+    required: true
+  - ref: ari.code.edit/v1
+    required: true
+  - ref: ari.execution.compile/v1
+    required: true
+  - ref: ari.execution.benchmark/v1
+    required: true
+optional_capabilities:
+- ref: ari.profiling.hardware-counters/v1
+  required: false
+- ref: ari.execution.slurm-submit/v1
+  required: false
+evaluation_obligations:
+- property_id: trajectory-equivalence
+  required_methods:
+  - differential-testing
+  - metamorphic-testing
+- property_id: memory-safety
+  required_methods:
+  - sanitizer
+  - race-detection
+- property_id: performance-regression
+  required_methods:
+  - benchmark-comparison
+- property_id: reproducibility
+  required_methods:
+  - repeated-execution
+authority_ceiling:
+  side_effects:
+  - read-only
+  - workspace-write
+  - scheduler-submit
+forbidden_capabilities:
+- ari.publish.external/v1
+- ari.registry.write/v1
+dependencies: []
+conflicts: []
+composition:
+  slot: domain-method
+  priority: 100
+  exclusive: false
+body_normalization: strict

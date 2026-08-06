@@ -1,32 +1,40 @@
 schema_version: 1
-catalog_source_revision: ari-knowledge-catalog/2
+catalog_source_revision: ari-knowledge-catalog/4
 importer_version: ari.knowledge.importer/v1
 entries:
-  - manifest: builtin/hpc_gemm_optimization.yaml
-    body: bodies/hpc_gemm_optimization/SKILL.md
+  - import_material: imports/hpc_gemm_optimization.json
+    import_profile: import_profiles/hpc_gemm_optimization.yaml
     registration_evidence: evidence/hpc_gemm_optimization.registration.json
-    registration_evidence_digest: sha256:1d49e7aa5b7ede185cd55e629f2b4fd5c38ae33c40fc3a544d47ac03cd45af3d
-  - manifest: builtin/hpc_spmm_optimization.yaml
-    body: bodies/hpc_spmm_optimization/SKILL.md
+    registration_evidence_digest: sha256:0f61b7a6916b26621048e6d8842cc41c8197b1932950143a2feab64dc3234202
+    promotion_approval: evidence/hpc_gemm_optimization.approval.json
+    promotion_approval_digest: sha256:43646be6a123ce675ac8e945b259cd3efdec094f582f3d7742bf9ad943d4a633
+  - import_material: imports/hpc_spmm_optimization.json
+    import_profile: import_profiles/hpc_spmm_optimization.yaml
     registration_evidence: evidence/hpc_spmm_optimization.registration.json
-    registration_evidence_digest: sha256:65396061e9efc12b9bd029f17928ffc59f440db6b853f98101cfad94dae1fd9e
-  - manifest: builtin/hpc_stencil_optimization.yaml
-    body: bodies/hpc_stencil_optimization/SKILL.md
+    registration_evidence_digest: sha256:3b0d11e7449ae62efa726db261831a9e1e98f26cde7b989e95a318a2a2fc33d3
+    promotion_approval: evidence/hpc_spmm_optimization.approval.json
+    promotion_approval_digest: sha256:9d2599bb9ce0c5f42c55718fca342ceee3e164f8b18282f8566e801b02bcc4f6
+  - import_material: imports/hpc_stencil_optimization.json
+    import_profile: import_profiles/hpc_stencil_optimization.yaml
     registration_evidence: evidence/hpc_stencil_optimization.registration.json
-    registration_evidence_digest: sha256:2437984e6450b5895950ade8f6bda7b9a9d38227dbf01303c0def99c743c211f
-  - manifest: builtin/literature_systematic_review.yaml
-    body: bodies/literature_systematic_review/SKILL.md
-  - manifest: builtin/scientific_reproduction.yaml
-    body: bodies/scientific_reproduction/SKILL.md
+    registration_evidence_digest: sha256:4ba770ec72e902c927991f45644a69ab9ee30c1176fed10a290636c1282ce4df
+    promotion_approval: evidence/hpc_stencil_optimization.approval.json
+    promotion_approval_digest: sha256:0cff4383e8e89bf9e4cb4d48e50d3ca6a90180e3dac9da0240bbc6f1e601557a
   - import_material: imports/intel_linux_perf.json
     import_profile: import_profiles/intel_linux_perf.yaml
     registration_evidence: evidence/intel_linux_perf.registration.json
-    registration_evidence_digest: sha256:cd587ed5f5faf300eab16b28f0a0c9a4d0f97ada35aa657fc11e8212e714118b
+    registration_evidence_digest: sha256:6bc84105aa1f7882878617543fe3b96ddaa374301b6c94e2bf6b8ed14fb7024e
+    promotion_approval: evidence/intel_linux_perf.approval.json
+    promotion_approval_digest: sha256:af65a3e44ddd608157d41e27a7e19c86dbba93d8b4e8541efb37e8c01d470f7a
   - import_material: imports/intel_performance_patterns.json
     import_profile: import_profiles/intel_performance_patterns.yaml
     registration_evidence: evidence/intel_performance_patterns.registration.json
-    registration_evidence_digest: sha256:16bea84d31ee256b0eec27ae265050924f78715066369b48fa8a6da80742eb2a
+    registration_evidence_digest: sha256:7fc561e9a63005e1b18b6b5ade7cd0ca69187c74be956baaef3c00e0c0edba0b
+    promotion_approval: evidence/intel_performance_patterns.approval.json
+    promotion_approval_digest: sha256:4317b7e6fd3c41874733cf5ce442c1fda58d8915d6c69a6d46165e268927e89a
   - import_material: imports/intel_phoronix_test_suite.json
     import_profile: import_profiles/intel_phoronix_test_suite.yaml
     registration_evidence: evidence/intel_phoronix_test_suite.registration.json
-    registration_evidence_digest: sha256:6c6c02cda1c9d4b67b3bec81788a1e745709537479380ff2b02644bc25d6154d
+    registration_evidence_digest: sha256:ac2ac750bc97ec4072012d0591284fa60697c72cd7e849f90b3b6c99e65491cc
+    promotion_approval: evidence/intel_phoronix_test_suite.approval.json
+    promotion_approval_digest: sha256:1dce353c8baf7ac03810ee69e73be4b4fb73e478f943391b1352e4893902877f
