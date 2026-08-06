@@ -964,6 +964,12 @@ def build_node_report(
         "cpu_info": dict(run_env.get("cpu_info") or {}),
         "mem_total_kb": int(run_env.get("mem_total_kb") or 0) or 0,
         "compilers": dict(run_env.get("compilers") or {}),
+        # What the measurement ACTUALLY ran under, recorded by the executing
+        # shell itself. `compilers` above is the PRE-module view taken from
+        # the ARI process, so without this a report cannot say which modules
+        # produced its numbers — and two module configurations, the very thing
+        # loading them exists to compare, would look identical in the record.
+        "execution_env": dict(run_env.get("execution") or {}),
         # The assembled view the metric-gaming adversary reads.
         "compute_env": _compute_env_block(run_env, parent_work_dir),
     }

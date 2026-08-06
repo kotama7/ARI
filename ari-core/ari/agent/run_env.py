@@ -27,6 +27,9 @@ from pathlib import Path
 from typing import Any
 
 _RUN_ENV_FILENAME = "_run_env.json"
+# Written by the executing shell (ari-skill-coding), not by this module. Kept
+# beside its reader so the two names cannot drift apart silently.
+_EXEC_ENV_FILENAME = "_exec_env.json"
 
 
 def capture_env(
@@ -103,18 +106,53 @@ def capture_env(
 
 
 def read_run_env(work_dir: Path | str) -> dict:
-    """Read `<work_dir>/_run_env.json` if present.
+    """Read `<work_dir>/_run_env.json`, merged with the execution record.
 
     Returns ``{}`` when the file is missing or unparseable. Used by the
     node_report builder to enrich the report with executor metadata.
+
+    ``_run_env.json`` is written from the ARI process, so its ``compilers``
+    are the PRE-module view. ``_exec_env.json`` is written by the executing
+    shell itself and is the only record of what the measurement actually ran
+    under — which modules were loaded, and the PATH that resolved its tools.
+    Merged under ``execution`` rather than flattened so neither view can be
+    mistaken for the other.
     """
     p = Path(work_dir) / _RUN_ENV_FILENAME
+    info: dict = {}
+    if p.exists():
+        try:
+            info = json.loads(p.read_text())
+        except (OSError, json.JSONDecodeError):
+            info = {}
+    if not isinstance(info, dict):
+        info = {}
+    execution = _read_exec_env(work_dir)
+    if execution:
+        info["execution"] = execution
+    return info
+
+
+def _read_exec_env(work_dir: Path | str) -> dict:
+    """The executing shell's own record of its toolchain environment."""
+    p = Path(work_dir) / _EXEC_ENV_FILENAME
     if not p.exists():
         return {}
     try:
-        return json.loads(p.read_text())
+        raw = json.loads(p.read_text())
     except (OSError, json.JSONDecodeError):
         return {}
+    if not isinstance(raw, dict):
+        return {}
+    # `module list` order is meaningful (a later module can override an
+    # earlier one's paths), so the split preserves it rather than sorting.
+    loaded = str(raw.get("loaded_modules", "") or "")
+    return {
+        "recorded_at": str(raw.get("recorded_at", "") or ""),
+        "loaded_modules": [m for m in loaded.split(":") if m],
+        "module_path": str(raw.get("module_path", "") or ""),
+        "path": str(raw.get("path", "") or ""),
+    }
 
 
 def _capture_cpu_info() -> dict:

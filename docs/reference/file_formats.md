@@ -216,6 +216,25 @@ Machine identity is captured on purpose here. `node_report.json` is a run artifa
 under `workspace/checkpoints/`, not repository content — the rule against writing
 cluster/partition/host names into tracked source, tests and docs is unchanged.
 
+`compilers` above is the **pre-module** view: it is captured in the ARI process,
+which never loaded anything. `execution_env` is the record the executing shell
+writes about *itself*, and is the only place that says which modules produced a
+measurement — without it two module configurations, the very thing loading them
+exists to compare, look identical in the report meant to compare them.
+
+| Key | Meaning |
+|---|---|
+| `loaded_modules` | `$LOADEDMODULES` at the end of the command, split in order. Order matters: a later module can override an earlier one's paths, so it is neither sorted nor de-duplicated. `[]` means the command ran with nothing loaded, which is distinct from the key being absent (no shell tool ran at all) |
+| `module_path` | `$MODULEPATH` as the command saw it |
+| `path` | `$PATH` after module loading — the complete tool-resolution order, so any "which binary did this use" question stays answerable without ARI naming a single compiler |
+| `recorded_at` | When the shell wrote the record |
+
+It is written by an `EXIT` trap, so it survives a failing command (a failed
+measurement's environment is as interesting as a successful one's) and the
+command's exit status is preserved. `_exec_env.json` is in
+`PathManager.META_FILES`: it describes one node's execution, so an inherited
+copy would attribute the parent's modules to a child that never loaded them.
+
 `partitions_used` widens this from *this node* to *the whole experiment*, because a
 run spread across a heterogeneous cluster otherwise left no single record of where
 it had executed and a cross-node metric comparison could not be checked against the

@@ -219,3 +219,90 @@ class TestNodeReportIntegration:
         assert used["by_partition"]["partition-b"]["node_count"] == 1
         assert used["by_partition"]["partition-a"]["nodelists"] == [
             "testnode01", "testnode03"]
+
+
+class TestExecutionEnvRecord:
+    """The executing shell's own record of what a measurement ran under.
+
+    `_run_env.json` is written from the ARI process, so its `compilers` are the
+    PRE-module view. Without a record taken inside the command's own shell,
+    two module configurations — the thing loading them exists to compare —
+    are indistinguishable in the report meant to compare them.
+    """
+
+    def _write(self, work_dir, **fields):
+        payload = {
+            "recorded_at": "2026-08-06T00:00:00Z",
+            "loaded_modules": "",
+            "module_path": "",
+            "path": "/usr/bin",
+        }
+        payload.update(fields)
+        (Path(work_dir) / "_exec_env.json").write_text(
+            json.dumps(payload), encoding="utf-8")
+
+    def test_absent_record_leaves_no_execution_key(self, tmp_path):
+        # Absent must stay distinguishable from "ran with nothing loaded".
+        capture_env(tmp_path, executor="local")
+        assert "execution" not in read_run_env(tmp_path)
+
+    def test_loaded_modules_are_split_in_order(self, tmp_path):
+        # Order is meaningful: a later module can override an earlier one's
+        # paths, so the list must not be sorted or de-duplicated.
+        capture_env(tmp_path, executor="local")
+        self._write(tmp_path, loaded_modules="pkg/b:pkg/a:pkg/c")
+        assert read_run_env(tmp_path)["execution"]["loaded_modules"] == [
+            "pkg/b", "pkg/a", "pkg/c"]
+
+    def test_no_modules_loaded_is_an_empty_list_not_a_missing_key(self, tmp_path):
+        capture_env(tmp_path, executor="local")
+        self._write(tmp_path, loaded_modules="")
+        assert read_run_env(tmp_path)["execution"]["loaded_modules"] == []
+
+    def test_unparseable_record_does_not_break_the_read(self, tmp_path):
+        capture_env(tmp_path, executor="local")
+        (tmp_path / "_exec_env.json").write_text("{ not json", encoding="utf-8")
+        info = read_run_env(tmp_path)
+        assert info["executor"] == "local"      # the rest still reads
+        assert "execution" not in info
+
+    def test_record_survives_without_run_env_json(self, tmp_path):
+        # A node whose only tool call was run_bash still has an execution
+        # record, even though capture_env never ran.
+        self._write(tmp_path, loaded_modules="pkg/a")
+        assert read_run_env(tmp_path)["execution"]["loaded_modules"] == ["pkg/a"]
+
+    def test_node_report_carries_the_execution_env(self, tmp_path):
+        from ari.orchestrator.node_report import build_node_report
+
+        capture_env(tmp_path, executor="local")
+        self._write(tmp_path, loaded_modules="pkg/a:pkg/b", path="/opt/pkg/bin:/usr/bin")
+
+        class _Node:
+            id = "node_z"
+            parent_id = None
+            ancestor_ids: list[str] = []
+            label = "draft"
+            raw_label = "draft"
+            depth = 0
+            status = "success"
+            created_at = ""
+            completed_at = ""
+            metrics: dict = {}
+            artifacts: list = []
+            trace_log = None
+
+        report = build_node_report(
+            node=_Node(), work_dir=tmp_path, parent_work_dir=None,
+            eval_result=None, what_was_done="",
+        )
+        assert report["execution_env"]["loaded_modules"] == ["pkg/a", "pkg/b"]
+        assert report["execution_env"]["path"] == "/opt/pkg/bin:/usr/bin"
+
+    def test_execution_record_is_never_inherited_by_a_child(self):
+        # It describes ONE node's execution; an inherited copy would attribute
+        # the parent's modules to a child that never loaded them.
+        from ari.paths import PathManager
+
+        assert PathManager.is_meta_file("_exec_env.json") is True
+        assert PathManager.is_meta_file("_exec_env.json", scope="node") is True

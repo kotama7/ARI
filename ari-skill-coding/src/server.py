@@ -1031,6 +1031,39 @@ def _module_environment() -> dict[str, str]:
     }
 
 
+# Written by the executing shell itself, because nothing outside it can know
+# what the command actually ran under: `module load` changes only that process,
+# and `_run_env.json` records the compilers ARI sees, which is the pre-module
+# view. Without this a report could not say WHICH modules produced a
+# measurement — and comparing two module configurations is the point of being
+# able to load them at all.
+#
+# Deliberately records no tool names: LOADEDMODULES answers "which modules",
+# and PATH is the complete resolution order, so any toolchain question can be
+# answered afterwards without ARI knowing a single compiler name.
+#
+# An EXIT trap, so the agent's exit status is preserved and the record is
+# written even when the command fails — a failed measurement's environment is
+# exactly as interesting as a successful one's. Every step is guarded: this
+# must never turn a working command into a failing one. Relative path: the
+# shell already runs with cwd=work_dir, so the host path never enters the
+# command text.
+_EXEC_ENV_FILENAME = "_exec_env.json"
+_EXEC_ENV_SNIPPET = (
+    '__ari_esc() { printf %s "$1" | sed \'s/\\\\/\\\\\\\\/g; s/"/\\\\"/g\'; }\n'
+    '__ari_record_exec_env() {\n'
+    '  {\n'
+    '    printf \'{"recorded_at":"%s"\' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)"\n'
+    '    printf \',"loaded_modules":"%s"\' "$(__ari_esc "${LOADEDMODULES:-}")"\n'
+    '    printf \',"module_path":"%s"\' "$(__ari_esc "${MODULEPATH:-}")"\n'
+    '    printf \',"path":"%s"}\\n\' "$(__ari_esc "${PATH:-}")"\n'
+    f'  }} > {_EXEC_ENV_FILENAME}.tmp 2>/dev/null'
+    f' && mv -f {_EXEC_ENV_FILENAME}.tmp {_EXEC_ENV_FILENAME} 2>/dev/null || true\n'
+    '}\n'
+    'trap __ari_record_exec_env EXIT\n'
+)
+
+
 def _run_code(filename: str, work_dir: str, timeout: int) -> dict:
     try:
         workspace = WorkspaceRefV1(root=work_dir)
@@ -1119,7 +1152,9 @@ def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
             # produce dangling references and break the isolation contract.
             request = ExecutionRequestV1(
                 workspace=workspace,
-                shell_command=_MODULE_INIT_SNIPPET + command,
+                shell_command=(
+                    _MODULE_INIT_SNIPPET + _EXEC_ENV_SNIPPET + command
+                ),
                 timeout_seconds=timeout,
                 environment=_module_environment(),
                 limits=_execution_limits(),

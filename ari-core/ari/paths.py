@@ -447,6 +447,12 @@ class PathManager:
         # Per-node self-report. Each child must generate its own; never
         # inherit the parent's via the work_dir physical-copy data path.
         "node_report.json",
+        # The executing shell's own record of the toolchain environment a
+        # measurement ran under (loaded modules, MODULEPATH, PATH). It
+        # describes ONE node's execution, so an inherited copy would not be
+        # merely redundant — it would attribute the parent's modules to a
+        # child that never loaded them.
+        "_exec_env.json",
         # Per-node full ReAct execution log, written at the node's completion
         # (its own trace_log). Like node_report.json, each node writes its own
         # and it is NEVER inherited into children via the work_dir copy.
