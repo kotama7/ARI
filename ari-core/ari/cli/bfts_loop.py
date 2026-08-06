@@ -328,24 +328,35 @@ def _measurement_env() -> dict:
     return out
 
 
-def _write_run_provenance(checkpoint_dir, harness) -> None:
+def _write_run_provenance(checkpoint_dir, instrument) -> None:
     """Write ``<checkpoint>/provenance.json``: which instrument, which framework,
     which knobs. Without it a published number names no scaffolding, and
     ``uploads/`` shows input bytes without binding them to the scores.
+
+    Takes the provenance MAPPING rather than an object with ``.provenance()``:
+    the pinned-problem path has no harness object to ask, and a run that scored
+    through it would otherwise have written no provenance at all -- exactly the
+    silence this function exists to prevent.
     """
+    record = (instrument if isinstance(instrument, dict)
+              else instrument.provenance())
     payload = {
         "schema_version": "1.0",
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "ari": _ari_version(),
-        "harness": harness.provenance(),
+        "harness": record,
         "env": _measurement_env(),
     }
     p = Path(checkpoint_dir) / _PROVENANCE_FILENAME
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    # The two paths name the instrument differently -- a harness has a ``task``,
+    # a problem has a ``problem`` revision -- so this reads whichever is there
+    # rather than assuming one and turning a successful write into a KeyError.
     logging.getLogger(__name__).info(
-        "run provenance: harness=%s (%d files pinned), ari=%s",
-        payload["harness"]["task"], len(payload["harness"]["files"]),
+        "run provenance: instrument=%s (%d files pinned), ari=%s",
+        record.get("problem") or record.get("task") or "?",
+        len(record.get("files") or {}),
         (payload["ari"].get("git_sha") or "?")[:12])
 
 
@@ -1158,6 +1169,45 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                         )
                 except Exception as _se:
                     logging.getLogger(__name__).warning("kernel seed failed: %s", _se)
+            elif (os.environ.get("ARI_PROBLEM") or "").strip():
+                # SAME RECORD, THE OTHER PATH. Seeding itself happens per node in
+                # the agent loop; what is missing here is the RUN-level record,
+                # and a run that scored through the pinned problem would
+                # otherwise have written no provenance.json and left uploads/
+                # empty -- the published number would name no scaffolding, which
+                # is the silence the harness path was given this block to end.
+                try:
+                    from ari.assurance.problems import load_problem as _load_prob
+
+                    _prob = _load_prob(os.environ["ARI_PROBLEM"].strip())
+                    _defn = _prob.definition
+                    _write_run_provenance(checkpoint_dir, {
+                        "problem": _defn.revision,
+                        "problem_id": _defn.id,
+                        "problem_digest": _prob.digest,
+                        "family": _defn.family,
+                        "entry_point": _defn.entry_point,
+                        "case_set": _defn.case_set,
+                        "score_inputs": list(_defn.score_inputs),
+                        "denominator": _defn.denominator,
+                        "axis": _defn.axis,
+                        # Per file, so a reader can see WHICH byte moved rather
+                        # than only that the bundle digest changed.
+                        "files": {name: digest for name, digest in _prob.file_digests},
+                    })
+                    # The input bytes themselves, beside the record that binds
+                    # them to the scores.
+                    import shutil as _sh_pu
+
+                    _up = Path(checkpoint_dir) / "uploads"
+                    _up.mkdir(parents=True, exist_ok=True)
+                    for _name, _ in _prob.file_digests:
+                        _dst = _up / _name
+                        if not _dst.exists():
+                            _sh_pu.copy2(_prob.path(_name), _dst)
+                except Exception as _pe:
+                    logging.getLogger(__name__).warning(
+                        "problem provenance record failed: %s", _pe)
             # Inject work_dir into per-node experiment copy
             # Copy provided_files (parsed from .md) into each node's work_dir
             _provided = getattr(agent.hints, "provided_files", []) if hasattr(agent, "hints") else []

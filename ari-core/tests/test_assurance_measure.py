@@ -298,3 +298,43 @@ def test_a_scored_node_records_which_instrument_produced_it():
     assert provenance["dataset_revision"] == "native-perf-gemm-cases/v1@smoke"
     assert provenance["report_digest"] == report.report_digest
     assert provenance["regression_threshold"] == pytest.approx(0.95)
+
+
+def test_a_problem_run_still_records_which_instrument_produced_it(tmp_path):
+    """The run-level record, which the pinned-problem path nearly lost.
+
+    Seeding, uploads/ and provenance.json all lived inside one ``if ARI_TASK``
+    block, so routing scoring through a problem silently skipped all three: the
+    published number would have named no scaffolding at all, which is the exact
+    silence that block was added to end.
+    """
+    import json
+
+    from ari.assurance.problems import load_problem
+    from ari.cli.bfts_loop import _write_run_provenance
+
+    loaded = load_problem(PROBLEM)
+    _write_run_provenance(tmp_path, {
+        "problem": loaded.definition.revision,
+        "problem_digest": loaded.digest,
+        "files": {name: digest for name, digest in loaded.file_digests},
+    })
+    record = json.loads((tmp_path / "provenance.json").read_text())["harness"]
+    assert record["problem"] == PROBLEM
+    assert record["problem_digest"] == loaded.digest
+    assert len(record["files"]) == len(loaded.file_digests)
+
+
+def test_the_harness_object_path_still_writes_provenance(tmp_path):
+    """Taking a mapping must not break the run configured the old way."""
+    import json
+
+    from ari.cli.bfts_loop import _write_run_provenance
+
+    class _Harness:
+        def provenance(self):
+            return {"task": "legacy", "files": {"k/driver.c": "sha256:0"}}
+
+    _write_run_provenance(tmp_path, _Harness())
+    record = json.loads((tmp_path / "provenance.json").read_text())["harness"]
+    assert record["task"] == "legacy"
