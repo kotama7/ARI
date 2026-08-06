@@ -133,6 +133,7 @@ targets the like-named module under `ari/`.
 - `test_integration.py` — integration.
 - `test_kca_contracts.py` — KCA schema, serialization, digest, and cross-contract invariant coverage.
 - `test_kca_declaration_invariants.py` — every catalog-classified tool covers its capability contract's permissions and side-effect class, and the Router accounts for every entry it did not propose.
+- `test_kca_skill_catalog_paths.py` — TODO
 - `test_kca_surfaces.py` — CLI, public API, config, and node-report KCA surface coverage.
 - `test_knowledge_external_importer.py` — pinned external knowledge-source import, provenance, and rejection coverage.
 - `test_knowledge_promotion_guard.py` — a verified Knowledge Skill must exhibit both passing registration gates and an approval bound to its exact manifest, body, and evidence; covers the catalog loader, the append-only ledger transition, and the `promote_knowledge_skill.py` maintainer surface end to end.

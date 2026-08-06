@@ -107,6 +107,13 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.
 - `knowledge_skills/` — built-in and imported knowledge skills, source profiles, and the admitted catalog.
   - `catalog.yaml` — canonical knowledge-skill catalog with source and compatibility references.
+  - `bodies/` — TODO
+    - `hpc_gemm_optimization/` — hpc gemm optimization knowledge-skill body.
+      - `SKILL.md` — dense GEMM optimization body: transformation ladder with the reason for each rung, metamorphic equivalence, and the measurement traps that misattribute setup cost to the kernel.
+    - `hpc_spmm_optimization/` — hpc spmm optimization knowledge-skill body.
+      - `SKILL.md` — sparse-dense optimization body: structural validation before measurement, register-blocked accumulation, and why row-length distribution rather than nonzero count decides the workload.
+    - `hpc_stencil_optimization/` — hpc stencil optimization knowledge-skill body.
+      - `SKILL.md` — stencil optimization body: per-step trajectory equivalence, thread placement on simultaneous-multithreading machines, and the paging policy that decides a bandwidth result before the kernel does.
   - `evidence/` — TODO
     - `hpc_gemm_optimization.abstraction.json` — GEMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `hpc_gemm_optimization.approval.json` — recorded human approval promoting the GEMM skill, bound to the exact manifest, body, and evidence reviewed.
@@ -147,7 +154,7 @@ Shipped default config files (YAML) loaded by ari-core.
     - `intel_phoronix_test_suite.yaml` — import profile for Intel Phoronix Test Suite material.
   - `imports/` — immutable results of approved external knowledge imports.
     - `hpc_gemm_optimization.json` — GEMM optimization body imported byte-for-byte from its own commit.
-    - `hpc_spmm_optimization.json` — SpMM optimization body imported byte-for-byte from its own commit.
+    - `hpc_spmm_optimization.json` — TODO
     - `hpc_stencil_optimization.json` — stencil optimization body imported byte-for-byte from its own commit.
     - `intel_linux_perf.json` — verified Intel Linux performance knowledge import.
     - `intel_performance_patterns.json` — verified Intel performance-pattern knowledge import.

@@ -96,6 +96,22 @@ def load_harness_catalog(path: str | Path) -> HarnessCatalogSnapshotV1:
         manifest = HarnessManifestV1.create(**document)
         if advertised is not None and advertised != manifest.manifest_digest:
             raise ValueError(f"Harness manifest digest mismatch: {manifest.id}")
+        # The `id` column is what a human reads to see what is registered, and
+        # nothing compared it against the manifest it points at: a mis-paired row
+        # loaded clean, and renaming an id there changed nothing. Required rather
+        # than checked-when-present, because a row with no id is a row nobody can
+        # audit, and "optional when absent" is an opt-out by deleting a line.
+        advertised_id = str(entry.get("id", "")).strip()
+        if not advertised_id:
+            raise ValueError(
+                f"Harness catalog entry for {entry.get('manifest')!r} has no id; "
+                f"an unlabelled row cannot be audited against its manifest"
+            )
+        if advertised_id != manifest.id:
+            raise ValueError(
+                f"Harness catalog entry id {advertised_id!r} points at manifest "
+                f"{manifest.id!r}: the row and the manifest disagree"
+            )
         report_path = _safe_manifest(root, str(entry["registration_report"]))
         report_document = yaml.safe_load(report_path.read_text(encoding="utf-8")) or {}
         report = HarnessRegistrationReportV1.model_validate(report_document)

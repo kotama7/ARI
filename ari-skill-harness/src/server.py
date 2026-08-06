@@ -18,7 +18,13 @@ server = Server("ari-harness-query-skill")
 
 def _repo_root() -> Path:
     configured = os.environ.get("ARI_ROOT", "").strip()
-    return Path(configured).resolve() if configured else Path(__file__).resolve().parents[2].parent
+    # parents[2] IS the repository root: this file is <repo>/<package>/src/server.py.
+    # The trailing .parent walked one directory ABOVE the repo, so with no
+    # ARI_ROOT set the catalog path did not exist -- and because every failure
+    # here is returned as data in an error envelope rather than raised, that
+    # read as "no harnesses registered" instead of as a misconfiguration.
+    # ari-skill-paper-re/src/server.py:129 has it right at the same depth.
+    return Path(configured).resolve() if configured else Path(__file__).resolve().parents[2]
 
 
 def _catalog_path() -> Path:
