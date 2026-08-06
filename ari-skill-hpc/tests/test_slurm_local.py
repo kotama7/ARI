@@ -604,3 +604,54 @@ def test_submission_script_changes_when_argv_changes(tmp_path: Path) -> None:
     changed = request.model_copy(update={"argv": ("python3", "different.py")})
     second = scheduler._render_script(changed, scope)
     assert sha256_digest(first) != sha256_digest(second)
+
+
+@pytest.mark.asyncio
+async def test_module_init_is_sourced_on_the_node(tmp_path: Path) -> None:
+    """A module request must not fall straight through to exit 86.
+
+    `module` is a SHELL FUNCTION from the module system's profile script. The
+    job runs under --export=NIL with a non-login `#!/bin/bash`, so nothing is
+    inherited from the submitting shell and no profile is read — the function
+    was always undefined and every module request failed, on a cluster where
+    the toolchain is reachable only through modules.
+
+    The init is sourced ON THE NODE, so --export=NIL keeps its meaning: the
+    login node's state still cannot leak into a measurement.
+    """
+    runner = FakeRunner(CommandResult("12345;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    request = _request(tmp_path, modules=("gcc/13.2",))
+
+    await scheduler.submit(request)
+    script = runner.calls[0][1].decode()
+
+    # Nothing is inherited: the isolation the fix must not weaken.
+    assert "--export=NIL" in script
+    # The init attempt precedes the availability check, or the check can only
+    # ever fail.
+    init_at = script.index("_ari_module_init")
+    assert init_at < script.index("exit 86")
+    # Standard install paths of the module SOFTWARE, not any one site's.
+    assert "/etc/profile.d/modules.sh" in script
+    assert "/etc/profile.d/lmod.sh" in script
+    # A profile script is not written for `set -euo pipefail`; sourcing it
+    # under -u would abort an otherwise valid job.
+    assert "set +eu +o pipefail" in script
+    assert "set -eu -o pipefail" in script
+    # The honest failure survives for a node with no module system at all.
+    assert "exit 86" in script
+    assert "module load gcc/13.2" in script
+
+
+@pytest.mark.asyncio
+async def test_no_module_request_leaves_the_script_untouched(tmp_path: Path) -> None:
+    # A job that never asked for modules must not gain a module preamble.
+    runner = FakeRunner(CommandResult("12345;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    await scheduler.submit(_request(tmp_path))
+    script = runner.calls[0][1].decode()
+
+    assert "_ari_module_init" not in script
+    assert "exit 86" not in script

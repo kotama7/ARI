@@ -1091,6 +1091,40 @@ class SlurmScheduler:
         if request.environment.modules:
             lines.extend(
                 [
+                    # `module` is a SHELL FUNCTION defined by the module
+                    # system's profile script. The job runs under
+                    # --export=NIL with a `#!/bin/bash` (non-login) shell, so
+                    # nothing is inherited from the submitting shell AND no
+                    # profile is read: the function was always undefined and
+                    # every module request fell straight through to exit 86.
+                    #
+                    # Sourcing the init ON THE NODE fixes that without
+                    # weakening --export=NIL, which exists so the login node's
+                    # state cannot leak into a measurement. Nothing is
+                    # inherited; the node describes itself.
+                    #
+                    # These are the module SOFTWARE's standard install paths,
+                    # not a site's: no cluster knowledge is added here. The
+                    # loop stops at the first one that yields the function.
+                    "if ! command -v module >/dev/null 2>&1; then",
+                    # A profile script is not written for `set -euo pipefail`
+                    # and may read unset variables; relaxing around the source
+                    # keeps it from aborting an otherwise valid job.
+                    "  set +eu +o pipefail",
+                    "  for _ari_module_init in"
+                    " /etc/profile.d/modules.sh"
+                    " /etc/profile.d/lmod.sh"
+                    ' "${MODULESHOME:-}/init/bash"; do',
+                    '    [ -r "$_ari_module_init" ] || continue',
+                    '    . "$_ari_module_init" >/dev/null 2>&1',
+                    "    command -v module >/dev/null 2>&1 && break",
+                    "  done",
+                    "  unset _ari_module_init",
+                    "  set -eu -o pipefail",
+                    "fi",
+                    # Kept as the honest failure for a node with no module
+                    # system at all: a job that asked for modules must not
+                    # quietly run without them.
                     "if ! command -v module >/dev/null 2>&1; then",
                     "  echo 'ARI: requested environment modules are unavailable' >&2",
                     "  exit 86",
