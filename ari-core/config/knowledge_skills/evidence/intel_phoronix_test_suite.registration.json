@@ -1,0 +1,34 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/intel_phoronix_test_suite.clean_task.json": "sha256:c51e41710b51f7bb7a15f791f45d2504cc2e7d9c6178e2213657858cb815b7c2"
+    },
+    "detail": "The official PTS 10.8.3 CLI ran pinned c-ray-2.0.0 twice in a digest-pinned SIF with application networking disabled; whole-run averages differed by 0.575 percent and no imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "digest-validation",
+      "official-runner",
+      "repeated-execution"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:9579d62b2662834cbf425f515b4c851e5457f38ad2ba7400a6a3b6d69d8bbacc",
+  "evidence_digest": "sha256:6c6c02cda1c9d4b67b3bec81788a1e745709537479380ff2b02644bc25d6154d",
+  "provider_portability": {
+    "binding_lock_digests": [],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
+    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
+    "status": "not_applicable_no_second_provider"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:341f9af9e1d38d68d6fdfcca85b33dc621f240a6a0dd834b7fa37b86bce8244d",
+    "id": "intel.phoronix-test-suite",
+    "manifest_sha256": "sha256:ce0d4059d6d469aac8345ced793072175c5a0691915e5b5045e06f28a791f6c8",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "source_full_commit_sha": "e9d0b6410fb1ad7a50fb81e0868fd23ae886882c"
+}

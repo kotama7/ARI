@@ -1,0 +1,30 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/intel_linux_perf.clean_task.json": "sha256:94e9d7d7a71e10c26f1b2bfd809d78e3468e5c0f9d642c12569f4bcef9ef6a67"
+    },
+    "detail": "The governed CPU probe found perf but policy level 4 denied cycles/instructions; no sudo or security-setting change was attempted.",
+    "methods": [
+      "hardware-counter-probe",
+      "permission-probe"
+    ],
+    "status": "unsatisfied"
+  },
+  "environment_digest": "sha256:be280743f5f2258675f2a4e606f2695fc6428855e44ae974bb5745e0a1250d8b",
+  "evidence_digest": "sha256:165b9c8e702b613b0adfedb217dbf021899dd48e9cbe3f5d96069f1da6240067",
+  "provider_portability": {
+    "binding_lock_digests": [],
+    "compatible_provider_ids": [],
+    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
+    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
+    "status": "not_applicable_no_second_provider"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:c40f2d023c5c34dc57142d8473cb12c9d28efd737d2b2e19c597ce7cff8a1870",
+    "id": "intel.linux-perf",
+    "manifest_sha256": "sha256:dc7dc7b077025466ce8baca4ca1ec2e9eb13f6b23684fb4101b2ffce65924092",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "source_full_commit_sha": "e9d0b6410fb1ad7a50fb81e0868fd23ae886882c"
+}

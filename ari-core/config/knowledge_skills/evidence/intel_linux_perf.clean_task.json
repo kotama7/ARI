@@ -1,0 +1,18 @@
+{
+  "attachment_execution": "none",
+  "capability_ref": "ari.profiling.hardware-counters/v1",
+  "execution_location": "typed-slurm-cpu-provider",
+  "hardware_counters_available": false,
+  "node_identifier_persisted": false,
+  "perf_event_paranoid": 4,
+  "perf_present": true,
+  "probe_events": [
+    "cycles",
+    "instructions"
+  ],
+  "probe_returncode": 255,
+  "result": "unsatisfied",
+  "schema_version": "ari.intel-linux-perf-clean-task/v1",
+  "security_setting_changed": false,
+  "stderr_category": "permission-denied"
+}

@@ -69,6 +69,9 @@ from ari.knowledge.models import (  # noqa: E402
     KnowledgeSkillManifestV1,
     NodeKnowledgeSkillUseV1,
 )
+from ari.knowledge.registration_models import (  # noqa: E402
+    KnowledgeSkillRegistrationEvidenceV1,
+)
 from ari.capability_binding.models import (  # noqa: E402
     CapabilityBindingLockV1,
     CapabilityContractV1,
@@ -420,6 +423,12 @@ def expected_outputs(repo_root: Path = REPO_ROOT) -> dict[Path, str]:
             KnowledgeSkillCatalogSnapshotV1,
             "knowledge-skill-catalog-snapshot-v1",
             "ARI Knowledge Skill Catalog Snapshot v1",
+        ),
+        (
+            schema_dir / "knowledge_skill_registration_evidence_v1.schema.json",
+            KnowledgeSkillRegistrationEvidenceV1,
+            "knowledge-skill-registration-evidence-v1",
+            "ARI Knowledge Skill Registration Evidence v1",
         ),
         (
             schema_dir / "epoch_knowledge_skill_lock_v1.schema.json",
