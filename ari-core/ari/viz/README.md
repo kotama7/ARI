@@ -11,6 +11,7 @@ Entry points: `serve` (programmatic), `main` (`ari viz`).
 - `api_capabilities.py` — `GET /api/capabilities` server feature flags (`ARI_GUI_V2` shell switch).
 - `api_experiment.py` — launch, run stages, log streaming.
 - `api_fewshot.py` — reviewer_rubrics/fewshot_examples corpus management.
+- `api_kca.py` — read-only dashboard endpoints for knowledge, capability, and assurance state.
 - `api_memory.py` — memory backend health + local Letta start/stop.
 - `api_ollama.py` — GPU/model detection + Ollama proxy.
 - `api_orchestrator.py` — sub-experiment registry, launch, listing.

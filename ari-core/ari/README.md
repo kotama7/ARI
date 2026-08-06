@@ -55,14 +55,57 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `shims/` — executable `PATH` shims for the reproducibility sandbox.
     - `README.md` — shims index.
     - `git.sh` — intercepts only `git clone` of the paper's ref; other git passes through.
+- `assurance/` — scientific harness catalogs, resolution, execution, attestation, registration, and immutable certification locks.
+  - `__init__.py` — public assurance package exports.
+  - `attestation.py` — construct and validate digest-bound harness run attestations.
+  - `catalog.py` — load, snapshot, and query the admitted harness catalog.
+  - `contract.py` — verification-contract parsing and compatibility checks.
+  - `executors.py` — bounded harness execution backends and result normalization.
+  - `lock.py` — create and verify immutable harness selection locks and revisions.
+  - `models.py` — core assurance manifests, catalog, lock, and attestation models.
+  - `native_hpc.py` — dispatch native HPC verification across supported kernel families.
+  - `native_hpc_common.py` — shared native HPC case, tolerance, resource, and report helpers.
+  - `native_hpc_gemm.py` — authoritative native GEMM correctness verifier.
+  - `native_hpc_spmm.py` — authoritative native sparse-matrix multiplication verifier.
+  - `native_hpc_stencil.py` — authoritative native stencil correctness verifier.
+  - `registration.py` — execute harness registration gates and catalog promotion.
+  - `registration_models.py` — promotion approval, evidence, and registration report models.
+  - `request.py` — validate and canonicalize screen and certify run requests.
+  - `resolver.py` — select compatible harnesses and fail closed on missing or ambiguous coverage.
+  - `runner.py` — coordinate locked harness execution and attestation persistence.
+  - `suite.py` — run multi-property assurance suites and aggregate their verdicts.
+  - `drivers/` — isolated adapters for native, container, external, shared-library, upstream, and PaperBench harnesses.
+    - `__init__.py` — assurance driver registry exports.
+    - `external.py` — shell-free external verifier driver with bounded artifacts and diagnostics.
+    - `harbor.py` — Harbor-backed container image identity and execution support.
+    - `inspect.py` — static driver and dependency inspection helpers.
+    - `native.py` — in-process native verifier driver.
+    - `native_candidate_host.py` — isolated host for loading untrusted native candidates.
+    - `native_worker.py` — worker entry point for authoritative native verification.
+    - `paperbench.py` — PaperBench-compatible scientific reproduction driver.
+    - `shared_library.py` — ABI-bound shared-library candidate driver.
+    - `upstream.py` — pinned upstream project runner and parity driver.
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
+- `capability_binding/` — capability ontology, provider resolution, environment compatibility, substitution, authority, and immutable locks.
+  - `__init__.py` — public capability-binding package exports.
+  - `authority.py` — role authority and capability-use authorization checks.
+  - `environment.py` — canonical execution-environment identity and compatibility rules.
+  - `lock.py` — create and validate immutable capability binding locks.
+  - `models.py` — capability contracts, provider records, bindings, and substitution models.
+  - `ontology.py` — load and query the canonical capability ontology and legacy aliases.
+  - `resolver.py` — deterministically resolve requirements to compatible providers.
+  - `substitution.py` — validate declared capability substitutions without semantic weakening.
+  - `validation.py` — cross-contract integrity and catalog validation helpers.
 - `cli/` — CLI entry point (thin Typer wrapper; delegates to `ari.core`).
   - `README.md` — cli index.
   - `__init__.py` — Typer app entry point.
   - `__main__.py` — `python -m ari.cli` entry.
   - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
   - `commands.py` — misc top-level commands + `_safe_backup`.
+  - `kca.py` — command handlers for knowledge, capability, and assurance inspection and registration.
   - `lineage.py` — end-of-phase lineage-decision helpers.
+  - `manuscript.py` — Manuscript Complete preparation, evaluation, publication, and repair commands.
+  - `manuscript_repair_runtime.py` — transactional auto-repair runtime used by the manuscript CLI.
   - `migrate.py` — `ari migrate` sub-app.
   - `paper_dispatch.py` — shared paper-axis dispatch behind `ari paper`/`run`/`resume`; resolves linear vs rqgm_archive, builds the agent-as-judge score fn, and runs the RQGM paper-candidate pre-flight (the exploration-axis escalation that can rewrite `_scientific_score`).
   - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.
@@ -83,6 +126,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — Pydantic config models + env-var overrides.
   - `field_registry.py` — canonical inventory of every declared `ARIConfig` leaf plus its metadata overlay (category / level / scope / sensitivity / mutability); pure and deterministic, backs `GET /api/v1/config/schema`.
   - `finder.py` — workflow / profile YAML discovery.
+  - `kca_runtime.py` — load and validate knowledge/capability/assurance runtime policy from configuration and environment.
   - `resolver.py` — resolved-config reconstruction: post-hoc for an existing checkpoint and preview for a new run, emitting values + per-leaf provenance + digest + warnings without running the imperative override chain.
   - `skill_runtime.py` — resolve canonical Skill manifests, runtime environments, credentials, and lock identities.
 - `configs/` — external config tables (Phase PC).
@@ -96,12 +140,42 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public symbols + axis design.
   - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
   - `llm_evaluator.py` — `LLMEvaluator`: extraction + multi-axis composite scoring.
+- `knowledge/` — governed knowledge-skill manifests, imports, catalogs, composition, provenance, resolution, and epoch locks.
+  - `__init__.py` — public knowledge package exports.
+  - `catalog.py` — load, validate, snapshot, and query the knowledge-skill catalog.
+  - `composition.py` — compose compatible skills while preserving source and requirement lineage.
+  - `external_importer.py` — import pinned external knowledge sources into immutable local artifacts.
+  - `external_models.py` — contracts for external source profiles, imports, and verification results.
+  - `git_source.py` — resolve and verify digest-pinned Git knowledge sources.
+  - `importer.py` — canonicalize built-in knowledge skills and their bodies.
+  - `lock.py` — construct and verify immutable epoch knowledge-skill locks.
+  - `models.py` — knowledge skill, catalog, resolution, and node-use models.
+  - `provenance.py` — normalize source identities and validate provenance chains.
+  - `registration.py` — validate and admit knowledge skills into the catalog.
+  - `resolver.py` — deterministically select compatible knowledge skills for a task.
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.
   - `__init__.py` — public `LLMClient` + contract.
   - `cli_server.py` — OpenAI-compatible HTTP shim for agentic CLIs.
   - `client.py` — `LLMClient`/`LLMMessage`: completion + tool calling + cost recording.
   - `routing.py` — `resolve_litellm_model`: single source of truth for litellm provider-prefix rules so every caller routes a `(model, backend)` to the same id.
+- `manuscript/` — evidence-grounded Manuscript Complete preparation, authoring, evaluation, repair, publication, and lifecycle state.
+  - `__init__.py` — public manuscript package exports.
+  - `authority.py` — authorize manuscript lifecycle actions and reject forged transitions.
+  - `briefs.py` — build budgeted section briefs from readiness and evidence requirements.
+  - `builder.py` — assemble manuscript contexts, omission manifests, and authoring bindings.
+  - `contracts.py` — strict Manuscript Complete Pydantic contracts and canonical serialization.
+  - `coordinator.py` — coordinate preparation, evaluation, repair, and publication operations.
+  - `digest.py` — canonical JSON, Unicode normalization, and digest helpers.
+  - `evaluation.py` — evaluate structure, evidence use, disclosures, omissions, and final content.
+  - `profiles.py` — load and validate venue/project manuscript requirement profiles.
+  - `publication.py` — issue fail-closed publication decisions and immutable locks.
+  - `readiness.py` — compute requirement coverage and authoring-readiness verdicts.
+  - `repair.py` — plan and execute bounded transactional manuscript auto-repair.
+  - `runtime.py` — opt-in audit/enforce integration with linear and RQGM paper runtimes.
+  - `segments.py` — persist and validate immutable manuscript segment records.
+  - `snapshot.py` — project exploration artifacts into a bounded authoring snapshot.
+  - `state.py` — append-only manuscript transition log and resumable lifecycle state.
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
   - `__init__.py` — public `MCPClient` + contract.
@@ -148,6 +222,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `__init__.py` — re-exports the builder + legacy shim.
     - `builder.py` — v0.7+ `node_report.json` builder.
     - `legacy_reconstruct.py` — v0.5 → v0.7 reconstruct shim.
+    - `scientific_assurance.py` — project scientific assurance outcomes and evidence references into governed node reports.
 - `pipeline/` — generic workflow execution engine driven by `workflow.yaml`.
   - `README.md` — pipeline index.
   - `__init__.py` — sub-module map + public re-exports.
@@ -207,16 +282,29 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `protocols/` — internal Protocols / ABCs for cross-subsystem contracts.
   - `README.md` — protocols index.
   - `__init__.py` — currently exposed protocols + roadmap.
+  - `assurance.py` — protocol interfaces for harness resolution, execution, attestation, and certification.
   - `evaluator.py` — `Evaluator` Protocol.
+  - `immutable_store.py` — append-only and content-addressed artifact storage protocol.
+  - `integrity.py` — digest and integrity-verification protocol boundaries.
   - `mcp.py` — `MCPToolCaller` Protocol — the caller-facing `MCPClient` surface the RQGM tool-surface proxies duck-type.
   - `model_backend.py` — `BaseModelBackend` Protocol — the `complete` / `set_context` / `stream` surface `LLMClient` satisfies structurally.
+  - `provider.py` — provider catalog and invocation protocol boundaries.
+  - `scientific_requirements.py` — protocol types for declaring and resolving scientific verification requirements.
   - `search.py` — `SearchStrategy` + `NodeExecutor` Protocols — BFTS ranking/selection split from single-node ReAct execution.
   - `stores.py` — `CheckpointStore` / `TraceStore` Protocols + the `ArtifactStore` ABC — the runtime storage I/O seams.
+- `providers/` — scientific provider manifests, catalogs, compatibility decisions, and registration evidence.
+  - `__init__.py` — public provider package exports.
+  - `catalog.py` — load, snapshot, and query registered scientific providers.
+  - `compatibility.py` — compare provider capabilities and environments against requirements.
+  - `models.py` — provider manifest, catalog, support, and registration models.
+  - `registration.py` — validate provider evidence and produce admission reports.
 - `public/` — public API surface for ARI skills (import-only contract).
   - `README.md` — public index.
   - `__init__.py` — exported sub-modules + rationale.
   - `analysis.py` — versioned deterministic analysis requests and result contracts.
+  - `assurance.py` — Verification Contracts, Harness catalogs, locks, and Attestations.
   - `call_context.py` — explicit run/node/lineage models plus signed transport capability helpers.
+  - `capability_binding.py` — Capability ontology and deterministic binding contracts.
   - `claim_gate.py` — canonical deterministic gate plus versioned metric
   - `clone.py` — digest-verified EAR bundle retrieval and safe extraction.
   - `config_schema.py` — re-export of `ari.config` models.
@@ -225,13 +313,16 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `evaluation.py` — stable evaluator-contract surface shared by idea,
   - `execution.py` — versioned workspace, bounded execution, complete-log
   - `figures.py` — declarative `FigureSpecV1`, digest-bound render/batch
+  - `knowledge.py` — non-executable Knowledge Skill catalogs, pinned external
   - `latex_claims.py` — canonical lexical LaTeX claim/number/citation/figure parser.
   - `lineage.py` — stable recursion-lineage lookup and ancestor artifact traversal.
   - `llm.py` — re-export of `ari.llm.client.LLMClient`.
+  - `manuscript.py` — stable public exports for Manuscript Complete contracts and runtime operations.
   - `memory.py` — content-addressed memory records, retrievals, events, and backups.
   - `node_selection.py` — deterministic downstream node/source selection.
   - `paper.py` — immutable paper build, revision, model-call, compile, review, and
   - `paths.py` — re-export of `ari.paths.PathManager`.
+  - `providers.py` — canonical Provider aliases and semantic catalog projections.
   - `publish.py` — staged EAR publication and promotion.
   - `research_contract.py` — stable immutable research, metric, retrieval, evidence, and survey contracts.
   - `result.py` — versioned `ResultEnvelopeV1`, artifact references, typed errors,
@@ -261,6 +352,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `rqgm/` — Constitutional ARI-RQGM runtime: the opt-in `ari_rqgm` execution mode (epoch governance and co-evolution). Internal package — never exported via `ari.public.*`, never imported on the default `simple_bfts` path (`ari.core.build_runtime` imports it lazily only when `ari.mode: ari_rqgm` and `rqgm.enabled: true` agree).
   - `README.md` — rqgm index.
   - `__init__.py` — package charter + import rules (kept import-free).
+  - `admission.py` — immutable admission decisions for governed evidence and scientific claims.
+  - `admission_builder.py` — construct admission records from verified research artifacts and policy outcomes.
+  - `assurance_bridge.py` — translate scientific assurance attestations into RQGM evidence and kernel inputs.
   - `authority_manifest.py` — deterministic complete export of the deny-by-default role × tier × operation × resource capability table (`python -m ari.rqgm.authority_manifest`).
   - `budget.py` — cost control (RQGM Task 12): the governance level ladder (L0 fixed … L3 adjudicated) + deterministic §5.2 escalation triggers (`assign_level`; sterile nodes never exceed L0; top-K ties broken by node id), `BudgetedAction`/`BudgetVerdict`/`GovernanceBudgetManager` (decision-point gating `allow | degrade | skip` over the per-epoch call caps — `rqgm.governance.*` defender/judge, `rqgm.adversarial.*` adversary, `rqgm.shadow.*`, `rqgm.replay.*`, `rqgm.prompt_evolution.*`, `proposal_router.generators.virsci` — plus the `rqgm.budgets` spend caps read from the passive `cost_tracker`; never raises, never blocks the loop; the L0 fixed layer is exempt), durable `budget_consumed`/`budget_degraded`/`governance_level` audit lines (counters restore from `rqgm_audit.jsonl` on resume), and the §5.6 hash-based deterministic shadow sampling.
   - `clean_room.py` — clean-room regeneration (RQGM Task 08): `CleanRoomGenerationRequest`/`CleanRoomInputBundle` records, the deterministic fixed-tier `CleanRoomInputBundleAssembler` (the ONLY bundle writer; reads committed catalogs + abstract summaries, never registry prompt text), the one-shot meta-tier `CleanRoomPromptGenerator` (single injectable completion over `rqgm/clean_room_generator.md` + the canonical bundle JSON; candidates ONLY — no registry/activation surface, invariant 15), the Layer-B `RetiredPromptAccessGuard` (kernel `validate_capability` denial + audit-log violation; only the kernel checker and the audit CLI are exempt), the fail-open `{ckpt}/rqgm_cleanroom.jsonl` event log, and the budget-capped epoch-boundary `CleanRoomCoordinator` (pre/post kernel screens blocking at admission, fail-open for the run, §5.6 baseline fallback so no role is ever vacant).
@@ -270,9 +364,15 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `events.py` — RQGM vocabulary (status/role/tier), id formats (`epoch_%03d`, `transition_%03d_to_%03d`, `evt_%06d`), canonical serialization, and the hash-chained `TransitionEvent` envelope. Schema v2 binds the schema, event id/type, transaction id, payload, and predecessor with full SHA-256; legacy schema-v1 payload-only events remain readable.
   - `frontier_repair.py` — `FrontierRepairEngine` (RQGM Task 10): pure `trace_dependents` staleness closure (record-type-pair materiality table, cycle-tolerant) + pure `rebuild_frontier` (stale/invalid/sterile exclusion, reinstatement rules), the per-role invalidate-vs-recompute policy, and the kernel-validated epoch-boundary repair step emitting `SelectiveErasureEvent`/`FrontierRebuildEvent` (conservative → drain-only failure ladder).
   - `governance_cache.py` — the governance result cache (RQGM Task 12 §5.5/§6.2): the spec-fixed `cache_key = sha256(artifact_hash ␟ prompt_hash ␟ role ␟ epoch_id ␟ input_context_hash ␟ output_schema_hash)[:16]`, canonical-JSON content hashing (`canonical_hash`), the §6.2 replay lookup rule (`replay_lookup_key` uses the case's ORIGIN epoch id — the one sanctioned cross-epoch hit), and the append-only `{ckpt}/rqgm_governance_cache.jsonl` store + in-memory index (`GovernanceCache`; absence == empty cache; entries are never invalidated in place — retired prompt hashes simply never recur in lookups).
+  - `kca_kernel_rules.py` — deterministic kernel rules governing knowledge, capability, and assurance state transitions.
   - `kernel.py` — `ConstitutionalKernel` (RQGM Task 04): the deterministic, non-evolving Layer-0 checker — NOT an LLM judge (zero LLM/network calls, zero wall-clock decisions; P2). Twelve closed `validate_*` entry points, plus the enforcement adapters (`should_block`, fail-open `per_node_warn_check`, pre-flight `CapabilityGatedMCPClient`).
+  - `kernel_capability_integrity.py` — validate capability bindings and substitutions at the constitutional boundary.
+  - `kernel_harness_integrity.py` — validate harness locks, attestations, and certification lineage at the constitutional boundary.
+  - `kernel_kca_common.py` — shared KCA kernel checks, findings, and deterministic record helpers.
+  - `kernel_knowledge_integrity.py` — validate knowledge-skill locks, provenance, and usage at the constitutional boundary.
   - `kernel_rules.py` — frozen constitutional tables: `ROLE_RULES`, `CAPABILITY_MATRIX`, `SEVERITY` (the §5.5 blocking matrix), envelope/governance vocabularies, and the `constitution_hash` pin (covers the imported `transition_rules` tables; hand-pinned in `tests/test_rqgm_kernel.py`). Rules live in code, never in config.
   - `kernel_types.py` — `Violation` / `KernelReport` frozen verdict dataclasses, sorted-deterministic constructors, `kernel_report` audit payload.
+  - `knowledge_bridge.py` — bind resolved knowledge skills and their provenance into governed RQGM execution.
   - `meta_evolution.py` — meta-agent evolution (RQGM Task 11): `MetaAgentOutputRecord` + the append-only `{ckpt}/rqgm_meta_outputs.jsonl` (content-derived ids so MCP-style retries dedup at read time), frozen read-only `PromptRegistryView`/`ComponentRegistryView` (retired prompts appear as no-text/no-path/no-hash stubs — M7 defense in depth), `assemble_filtered_inputs` (committed catalogs + abstract summaries + ids only), `MetaSandboxMCPProxy` (MCPClient duck-type; read-only allowlist + synthesized `submit_meta_output` final tool; everything else gets the `{"error"}` envelope) + `run_meta_sandboxed` over `react_driver.run_react`, the `MetaEvolutionCoordinator` epoch-boundary step (after `audit_epoch`, before `resolve_transition`; kernel-gated, budget-capped, fail-open; every output enters the Task 07 lifecycle at `status: candidate` — never an activation), deterministic cached `MetaCandidateSandbox` + `downstream_fate` + `MetaCandidateEvaluation` (rides Task 09's `candidate_evaluations`), and the §5.8 `MetricSpecWeightCap` (epoch-frozen weights outrank node-initiated `make_metric_spec` axis weights under `ari_rqgm` only).
   - `meta_rules.py` — Task 11's Layer-0 authority tables (imported by the kernel; the `clean_room_rules`/`transition_rules` precedent): the closed capability-flag vocabulary (`can_*`; deny-by-default), the closed meta-action + output-kind vocabularies, the v1 evolving (`prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor`) vs frozen (reserved names) meta role split, schema-level hard denials (meta hard-denied flags const-false; fixed tier all-false), the invariant-18 flag/target subset arithmetic, and the §5.6.2 cross-generation rule.
   - `mode.py` — `EffectiveMode` enum + pure `resolve_effective_mode(cfg)` interlock table.
@@ -306,6 +406,10 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `conditions.py` — B0-B8 exploration, B paper-archive, and RQGM-paper P0-P4 preset expansion over `scripts/rqgm_eval/ablation_matrix.yaml`: `inherits` deep-merge sugar, workflow-overlay conversion (`mode` → `ari.mode`), flag-path flattening for the additive-ladder property, and the §5.2 VirSci-off checkpoint assertion (`virsci_absence_violations`: no VirSci prompt in `prompt_trace.jsonl`, no `virsci_logs/`/`virsci_snapshot/`, no `generator: virsci` record).
     - `doubles.py` — scripted deterministic component doubles (`EVAL_DOUBLE_REGISTRY`: always_attack adversary, always/never_validate judges, schema-violating generator, degenerate prompt mutator). Config-only substitution via `rqgm.eval.scripted_components`, refused unless `rqgm.eval.enabled` — the eval_double tier never leaks into a production run.
     - `injection.py` — the ten §5.3 failure injections: spec loading/validation (held-out `eval_*` namespace, disjoint from `adv_*`/`anchor_*`), deterministic idempotent fixture application, the `rqgm_injection_provenance.json` marker, and the claim-gate detection helper (`run_hard_gate(write=False)`) for injections 1/2.
+    - `kca_conditions.py` — KCA evaluation-condition overlays and ablation toggles.
+    - `kca_probe.py` — coordinate deterministic KCA failure-injection probes.
+    - `kca_probe_knowledge.py` — knowledge-skill and provenance probe implementations.
+    - `kca_probe_reporting.py` — aggregate KCA probe outcomes into evaluation metrics and reports.
     - `metrics.py` — `compute_metric_report(checkpoint_dir, ...)`: the thirteen §5.4 metrics as pure functions over persisted checkpoint artifacts (fixed `{value, numerator, denominator, evidence_refs, applicable}` shape; absence-tolerant, byte-deterministic — P2) plus the `rqgm_eval_metrics.json` writer.
     - `paper_ablation.py` — evaluation-only P0-P4 mechanism postures and consistency checks. P0 gates successor generation to `paper_writer` (fixed critic); P0-P3 retain the kernel in nonblocking `audit_only`, while P4 uses standard enforcement. Inert unless `rqgm.eval.enabled` is true.
     - `smoke.py` — offline Tier-2 smoke runner: synthetic stub-component runs per condition through the REAL Task 03/06/07 record constructors and stores (seconds, no LLM) into `workspace/rqgm_eval/<eval_id>/`, plus the `ablation_report.{json,md}` aggregation (per-seed values, medians, paired ladder deltas).
@@ -333,8 +437,11 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `analysis_result_v1.schema.json` — provenance-bound analysis result with typed tables, tests, and artifacts.
   - `async_tool_handle_v1.schema.json` — immutable submit/status/result/cancel handle contract.
   - `call_context_v1.schema.json` — explicit run, node, ordered-lineage, and call-provenance context.
+  - `capability_binding_lock_v1.schema.json` — immutable capability-to-provider binding, environment, substitution, and authority lock.
+  - `capability_contract_v1.schema.json` — declared capability semantics, requirements, compatibility, and evidence obligations.
   - `clean_room_bundle.schema.json` — the closed `CleanRoomInputBundle` assembled for the `CleanRoomPromptGenerator`; `additionalProperties:false` plus `bundle_hash` keep the generator's entire input surface auditable.
   - `clean_room_request.schema.json` — one `CleanRoomGenerationRequest` line of append-only `{ckpt}/rqgm_cleanroom.jsonl`, minted from a transition-engine retirement event with the five forbidden-input flags pinned const-false.
+  - `epoch_knowledge_skill_lock_v1.schema.json` — epoch-bound snapshot of admitted knowledge skills and their immutable provenance.
   - `epoch_state.schema.json` — derived rollup of the open (or last closed) `EpochState`; `rqgm_transitions.jsonl` stays the source of truth and rebuilds it on fingerprint mismatch.
   - `epoch_transition.schema.json` — the `EpochTransition` record produced by the `RegistryTransitionEngine` at each boundary: adoptions, sanctions, retirements, bans, and the T1-T21 `rule_id` behind every status change.
   - `erasure_state.schema.json` — derived `{ckpt}/rqgm_erasure_state.json` rollup of erasure/rebuild events; readers derive staleness from `stale_record_ids` because stored JSONL is never rewritten.
@@ -344,8 +451,33 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `frontier_rebuild_event.schema.json` — one `FrontierRebuildEvent` appended to `rqgm_audit.jsonl` after the `FrontierRepairEngine` recomputes the frontier — removed, reinstated, and recomputed node ids.
   - `gate_report_v1.schema.json` — deterministic policy/evidence/formula-bound hard-gate report.
   - `governance_report.schema.json` — the `GovernanceReport` returned by `GovernanceOrchestrator.audit_epoch` and appended to `{ckpt}/rqgm_audit.jsonl`: motions, defenses, adjudications, and closed-set recommendations.
+  - `harness_attestation_v1.schema.json` — digest-bound outcome of a scientific harness screen or certification run.
+  - `harness_catalog_snapshot_v1.schema.json` — immutable catalog view of admitted harnesses for one resolution context.
+  - `harness_lock_revision_v1.schema.json` — authorized additive revision linking one harness lock generation to the next.
+  - `harness_lock_v1.schema.json` — immutable selected harness, verifier, environment, and contract binding.
+  - `harness_manifest_v1.schema.json` — declared harness identity, property coverage, execution driver, and resource policy.
+  - `harness_promotion_approval_v1.schema.json` — explicit human approval binding a reviewed harness promotion candidate.
+  - `harness_registration_evidence_v1.schema.json` — source, dependency, parity, safety, and validation evidence for harness registration.
+  - `harness_registration_report_v1.schema.json` — deterministic registration-gate decisions and resulting catalog status.
+  - `harness_run_request_v1.schema.json` — bounded screen or certify request tied to an immutable harness lock.
   - `idea_candidate_v1.schema.json` — admitted falsifiable hypothesis candidate.
   - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
+  - `knowledge_skill_catalog_snapshot_v1.schema.json` — immutable catalog snapshot used for deterministic knowledge-skill resolution.
+  - `knowledge_skill_manifest_v1.schema.json` — declared knowledge skill, source provenance, compatibility, and evidence policy.
+  - `manuscript_authoring_binding_v1.schema.json` — exact profile, context, readiness, brief, and source lineage admitted to authoring.
+  - `manuscript_auto_repair_round_v1.schema.json` — one bounded repair attempt with findings, actions, progress, and stop state.
+  - `manuscript_context_v1.schema.json` — evidence-grounded authoring context assembled for a manuscript profile and source snapshot.
+  - `manuscript_evaluation_report_v1.schema.json` — deterministic structural, evidentiary, disclosure, and publication evaluation findings.
+  - `manuscript_exploration_snapshot_v1.schema.json` — immutable projection of exploration outputs available to manuscript preparation.
+  - `manuscript_omission_manifest_v1.schema.json` — explicit record of unavailable, excluded, or intentionally undisclosed manuscript material.
+  - `manuscript_publication_decision_v1.schema.json` — fail-closed publish or reject decision over exact final artifacts and evaluations.
+  - `manuscript_publication_lock_v1.schema.json` — immutable accepted publication artifact and full digest lineage lock.
+  - `manuscript_readiness_v1.schema.json` — requirement coverage, disclosure obligations, omissions, and authoring verdict.
+  - `manuscript_repair_transaction_v1.schema.json` — transactional repair state binding all rounds and their rollback-safe artifacts.
+  - `manuscript_requirement_profile_v1.schema.json` — venue and project requirements, budgets, evidence rules, and publication thresholds.
+  - `manuscript_section_brief_bundle_v1.schema.json` — section-level authoring briefs with required claims, evidence, disclosures, and budgets.
+  - `manuscript_segment_record_v1.schema.json` — immutable manuscript segment identity, provenance, and validation status.
+  - `manuscript_transition_v1.schema.json` — append-only manuscript lifecycle transition with authority and digest lineage.
   - `measurement_set_v1.schema.json` — typed parameter, measurement, unit, execution, and artifact separation.
   - `memory_backup_v1.schema.json` — content-addressed memory backup with backend and retention provenance.
   - `memory_record_v1.schema.json` — immutable scoped memory record with lifecycle and evidence metadata.
@@ -354,6 +486,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `metric_contract_proposal_v1.schema.json` — provenance-bound untrusted LLM metric proposal.
   - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
   - `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
+  - `native_hpc_verification_report_v1.schema.json` — authoritative native HPC verifier outputs, tolerances, resources, and reproducibility evidence.
+  - `node_knowledge_skill_use_v1.schema.json` — per-node record of resolved knowledge-skill use and resulting artifact lineage.
   - `node_report.schema.json` — per-node report schema.
   - `paper_build_v1.schema.json` — immutable paper inputs, revisions, compile outcome, and publication readiness.
   - `paper_model_call_batch_v1.schema.json` — ordered model-call provenance and usage records for one paper operation.
@@ -361,6 +495,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `proposal_summary_view.schema.json` — the eight character-budgeted summary fields that are the only proposal representation BFTS may consume; full transcripts stay archive-only.
   - `publish.schema.json` — publish record / manifest schema.
   - `research_contract_v1.schema.json` — selected mint-once scientific hand-off consumed by downstream stages.
+  - `research_repair_plan_v1.schema.json` — bounded research repair actions derived from manuscript readiness gaps.
+  - `research_repair_request_v1.schema.json` — governed request to acquire missing evidence or rerun research before authoring.
   - `result_envelope_v1.schema.json` — typed MCP result plus artifact, error, and credential-scope provenance.
   - `retrieval_record_v1.schema.json` — provider-neutral literature or web record identity and payload digest.
   - `rqgm_attack_records.schema.json` — the four adversarial-loop shapes (`RawAttackRecord`, `DefenderResponse`, `JudgmentRecord`, `ValidatedAttackRecord`) multiplexed into `{ckpt}/rqgm_adversarial_cases.jsonl`; only a judge verdict mints a validated record.
@@ -382,6 +518,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `skills_lock_v1.schema.json` — immutable provider, schema, phase, and credential-authority snapshot.
   - `statistical_test_request_v1.schema.json` — explicit samples, pairing, hypotheses, method, correction, and threshold request.
   - `survey_snapshot_v1.schema.json` — digest-bound record/replay retrieval input and citation graph.
+  - `verification_contract_v1.schema.json` — scientific property, oracle, tolerance, environment, and reproduction contract.
   - `visual_review_batch_v1.schema.json` — criteria profiles, artifact identities, findings, and reviewer provenance.
   - `viz_checkpoint.schema.json` — one item of the `GET /api/checkpoints` list built by `checkpoint_api`, mirroring the frontend `Checkpoint` type; `best_scientific_score` is the only optional key.
   - `viz_checkpoint_summary.schema.json` — response of `GET /api/checkpoint/<id>/summary`; only `id` and `path` are guaranteed, the paper/review/repro/ORS keys appear only when their backing files exist.
@@ -395,6 +532,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `api_capabilities.py` — `GET /api/capabilities` server feature flags (`ARI_GUI_V2` shell switch).
   - `api_experiment.py` — launch, run stages, log streaming.
   - `api_fewshot.py` — reviewer_rubrics/fewshot_examples corpus management.
+  - `api_kca.py` — read-only dashboard endpoints for knowledge, capability, and assurance state.
   - `api_memory.py` — memory backend health + local Letta start/stop.
   - `api_ollama.py` — GPU/model detection + Ollama proxy.
   - `api_orchestrator.py` — sub-experiment registry, launch, listing.

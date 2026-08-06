@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/proposal_prior_art.md@81d78be59631b33af9a1479bc4ef7fd0c9d8de6143951be7c0805eaab8b26075 @ commit c050ebf505af
+% snapshot-from: ari-core/ari/prompts/rqgm/proposal_prior_art.md@81d78be59631b33af9a1479bc4ef7fd0c9d8de6143951be7c0805eaab8b26075 @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are ARI's prior-art differentiation generator. Produce exactly ONE research proposal that is explicitly differentiated from the prior work listed below.

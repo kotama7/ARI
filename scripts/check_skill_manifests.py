@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import re
 import sys
@@ -60,6 +61,20 @@ from ari.research_contract import (  # noqa: E402
     SurveySnapshotV1,
 )
 from snapshot_contracts import _scan_skill_tools  # noqa: E402
+
+
+# The value-free process-group proxy receives an already allowlisted environment
+# from StdioMCPAdapter, then removes any baseline variables reintroduced by the
+# MCP SDK before launching the provider.  Its names are necessarily data-driven,
+# not reads from the Skill's ambient authority.  Pin the source bytes and exact
+# access site so any change forces a fresh security review instead of silently
+# widening this narrowly scoped forwarding waiver.
+_DYNAMIC_ENVIRONMENT_FORWARDER_WAIVERS = {
+    "ari-skill-tool-registry/src/stdio_process_proxy.py": {
+        "sha256": "23b7851929253da67d52e9acb8a4443244d8b7af202e4895bd72d97914bfb83b",
+        "locations": {"102:name"},
+    }
+}
 
 
 @dataclass(frozen=True)
@@ -318,6 +333,26 @@ def _scan_environment_reads(source_root: Path) -> tuple[set[str], list[str]]:
     return reads, sorted(set(unresolved))
 
 
+def _filter_reviewed_dynamic_environment_forwarders(
+    repo_root: Path,
+    unresolved: list[str],
+) -> list[str]:
+    """Remove only byte- and location-pinned reviewed forwarding accesses."""
+
+    waived: set[str] = set()
+    for relative_path, policy in _DYNAMIC_ENVIRONMENT_FORWARDER_WAIVERS.items():
+        source_path = (repo_root / relative_path).resolve()
+        try:
+            source_digest = hashlib.sha256(source_path.read_bytes()).hexdigest()
+        except OSError:
+            continue
+        if source_digest != policy["sha256"]:
+            continue
+        for location in policy["locations"]:
+            waived.add(f"{source_path}:{location}")
+    return sorted(set(unresolved) - waived)
+
+
 def _project_version(pyproject: Path) -> str | None:
     """Read ``project.version`` without adding a TOML dependency on Python 3.9."""
 
@@ -381,6 +416,10 @@ def check_repo(repo_root: Path = REPO_ROOT) -> list[Finding]:
             )
         environment_reads, dynamic_environment_reads = _scan_environment_reads(
             entrypoint.parent
+        )
+        dynamic_environment_reads = _filter_reviewed_dynamic_environment_forwarders(
+            repo_root,
+            dynamic_environment_reads,
         )
         declared_environment = set(manifest.environment_names())
         implicit_environment = set(SAFE_INHERITED_ENV_NAMES) | set(

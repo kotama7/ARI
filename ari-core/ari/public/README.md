@@ -18,8 +18,8 @@ or force-pass operations.
 - `__init__.py` — exported sub-modules + rationale.
 - `analysis.py` — versioned deterministic analysis requests and result contracts.
 - `assurance.py` — Verification Contracts, Harness catalogs, locks, and Attestations.
-- `capability_binding.py` — Capability ontology and deterministic binding contracts.
 - `call_context.py` — explicit run/node/lineage models plus signed transport capability helpers.
+- `capability_binding.py` — Capability ontology and deterministic binding contracts.
 - `claim_gate.py` — canonical deterministic gate plus versioned metric
 - `clone.py` — digest-verified EAR bundle retrieval and safe extraction.
 - `config_schema.py` — re-export of `ari.config` models.
@@ -28,17 +28,17 @@ or force-pass operations.
 - `evaluation.py` — stable evaluator-contract surface shared by idea,
 - `execution.py` — versioned workspace, bounded execution, complete-log
 - `figures.py` — declarative `FigureSpecV1`, digest-bound render/batch
+- `knowledge.py` — non-executable Knowledge Skill catalogs, pinned external
 - `latex_claims.py` — canonical lexical LaTeX claim/number/citation/figure parser.
 - `lineage.py` — stable recursion-lineage lookup and ancestor artifact traversal.
-- `knowledge.py` — non-executable Knowledge Skill catalogs, pinned external
-  import, admission, and provenance.
 - `llm.py` — re-export of `ari.llm.client.LLMClient`.
+- `manuscript.py` — stable public exports for Manuscript Complete contracts and runtime operations.
 - `memory.py` — content-addressed memory records, retrievals, events, and backups.
 - `node_selection.py` — deterministic downstream node/source selection.
 - `paper.py` — immutable paper build, revision, model-call, compile, review, and
 - `paths.py` — re-export of `ari.paths.PathManager`.
-- `publish.py` — staged EAR publication and promotion.
 - `providers.py` — canonical Provider aliases and semantic catalog projections.
+- `publish.py` — staged EAR publication and promotion.
 - `research_contract.py` — stable immutable research, metric, retrieval, evidence, and survey contracts.
 - `result.py` — versioned `ResultEnvelopeV1`, artifact references, typed errors,
 - `run_env.py` — re-export of `ari.agent.run_env` capture helpers.

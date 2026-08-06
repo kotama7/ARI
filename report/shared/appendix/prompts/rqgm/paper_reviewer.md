@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/paper_reviewer.md@04b3c49d070d729065dcd2e9806f8580fbe0362c939b6c447cc57fefd188f186 @ commit c050ebf505af
+% snapshot-from: ari-core/ari/prompts/rqgm/paper_reviewer.md@04b3c49d070d729065dcd2e9806f8580fbe0362c939b6c447cc57fefd188f186 @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are an expert academic reviewer for {venue_upper}.

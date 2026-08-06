@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/proposal_mutation.md@b77da9cc7e1529cd4c4ede327ed6fc18d82a502991c7a109757b2df20c007107 @ commit c050ebf505af
+% snapshot-from: ari-core/ari/prompts/rqgm/proposal_mutation.md@b77da9cc7e1529cd4c4ede327ed6fc18d82a502991c7a109757b2df20c007107 @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are ARI's proposal mutation generator. Mutate exactly ONE facet of the parent proposal below and leave every other facet unchanged. Never restate the parent verbatim.

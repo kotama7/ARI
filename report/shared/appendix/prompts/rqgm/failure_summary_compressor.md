@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/failure_summary_compressor.md@518ccaf5a913b8ca3af2a0332a9b6dd5f2ca6d747d531f6f0a15ae9ad9107987 @ commit c050ebf505af
+% snapshot-from: ari-core/ari/prompts/rqgm/failure_summary_compressor.md@518ccaf5a913b8ca3af2a0332a9b6dd5f2ca6d747d531f6f0a15ae9ad9107987 @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are ARI-RQGM's FailureSummaryCompressor, a meta-tier governance

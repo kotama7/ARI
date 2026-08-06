@@ -20,6 +20,7 @@ targets the like-named module under `ari/`.
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_architecture_boundary_index.py` — boundary coverage map (report `003` §16): every boundary B1-B11 must name a live guard file under `ari-core/tests/` or an explicit `waived:` reason, so a new or renamed boundary can never ship silently unguarded.
 - `test_artifact_store.py` — `CheckpointArtifactStore` by-logical-name artefact access over the flat checkpoint layout: `ArtifactStore` ABC non-instantiability + structural conformance, text/bytes/source-path `put` with subdir creation, `exists`/`get` on misses, prefix listing.
+- `test_assurance_resolver.py` — harness catalog resolution, compatibility filtering, lock creation, and fail-closed ambiguity coverage.
 - `test_async_tool_lifecycle.py` — asynchronous handle state transitions, polling budgets, cancellation, and expiry.
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
@@ -29,6 +30,8 @@ targets the like-named module under `ari/`.
 - `test_bfts_prompt_builder.py` — byte-exact goldens for the pure `bfts_prompt_builder` context builders (`build_select_candidate_descriptions`, `build_expand_select_candidate_descriptions`, `build_expand_context`, `_BUDGET` re-export) pinning the extraction out of `BFTS` as behaviour-identical (P2 determinism).
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
 - `test_call_context.py` — signed call capabilities, phase/tool authorization, lineage ordering, and tamper rejection.
+- `test_capability_binding.py` — capability ontology, provider binding, substitutions, authority, and immutable lock coverage.
+- `test_capability_environment.py` — environment identity, compatibility, drift detection, and capability execution-boundary coverage.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_checkpoint_migration_reader.py` — immutable checkpoint-version detection and explicit legacy reader/migration behavior.
 - `test_checkpoint_store.py` — `JsonCheckpointStore` + module back-compat shims: byte-identical JSON writes, 3-tier `load_nodes_tree` precedence (incl. legacy `node_*` glob), the 1.0 s incremental throttle with per-instance isolation and loud forced-flush failures, and the `_INCR_LAST_SAVE_MONO` monkeypatch surface `test_gui_errors.py` relies on.
@@ -65,6 +68,7 @@ targets the like-named module under `ari/`.
 - `test_evaluator_protocol.py` — conformance for the extended `ari.protocols.Evaluator`: `LLMEvaluator` satisfies it structurally without subclassing, the Protocol stays `runtime_checkable`, an evaluator lacking `evaluate_sync`/`metric_spec` is rejected (the extension is not vacuous), and the `AgentLoop` injection seam still defaults to `None`.
 - `test_event_loop_and_csv.py` — event loop + CSV logging.
 - `test_execution_contract.py` — closed-workspace execution, resource/network enforcement, logs, and request/result digests.
+- `test_external_harness_drivers.py` — external, upstream, container, and shared-library harness driver isolation and attestation coverage.
 - `test_factory_registry.py` — unified factory layer: `ari._factory.BaseRegistry` eager/lazy registration with a uniform unknown-key error, composite-registry keys vs the `EvaluatorConfig.composite` `Literal`, publish backends vs the `publish.schema.json` enum (the schema-only `s3` gap must raise, not resolve), and the `_COMPOSITES`/`_load_backend` back-compat shims.
 - `test_figure_contract.py` — declarative figure, render, batch, and review-hand-off contract validation.
 - `test_file_explorer.py` — file explorer.
@@ -81,6 +85,7 @@ targets the like-named module under `ari/`.
 - `test_gui_env_propagation.py` — GUI env propagation.
 - `test_gui_errors.py` — GUI error handling.
 - `test_gui_health_diagnostics.py` — gui_refresh Wave 5b (task 09) plan 09 §Operational visibility/MN-9 health probes + bounded diagnostics: `GET /health/live` constant `{"status": "ok"}` (no dependency consulted — still ok when every readiness check raises), `GET /health/ready` check map (http/websocket/watcher/event_bus/active_checkpoint; all-green => ok, dead watcher thread => degraded with HTTP 200 — never a 500, crashing check reads as false), MN-8 interplay (`/health/*` auth-exempt in remote mode while `GET /api/v1/diagnostics` requires the Bearer token), diagnostics shape (sse subscribers/buffer_len/last_event_id via `events.bus_stats`, watcher alive/last_scan_age_s, process tracked_runs count, `cache: false`, schema/openapi versions) with zero secret/checkpoint-path leakage, `stream_events` live subscriber counting, `state_sync._watcher_thread` handle self-registration + heartbeat stamping, `ARI_GUI_HEALTH=0` kill-switch (SPA fallback restored, diagnostics typed 404).
+- `test_gui_kca.py` — knowledge/capability/assurance dashboard API and frontend contract coverage.
 - `test_gui_path_proxy_hardening.py` — gui_refresh Wave 5a (task 09) RR-P0-5/RR-P0-7/MN-5: `_codefile_resolve` canonical boundary (active checkpoint + checkpoint search bases; negative: `../` traversal, symlink escape, `/etc/passwd`, crafted `*/checkpoints/*` outside bases, directory/missing), `GET /codefile` end-to-end via socketless handler + run fixture factory, Ollama proxy gate (`_ollama_proxy_refusal` five-path allowlist, 403 with no upstream connection when no host configured and backend is not ollama, settings/`OLLAMA_HOST` opt-in incl. cli-shim).
 - `test_gui_remote_auth.py` — gui_refresh Wave 5b (task 09) RR-P0-3 auth sub-scope/MN-8/ADR-13 remote bearer-token auth: pure `is_remote_bind` bind classification + `resolve_token` matrix (local => no auth even with a token exported, remote + `ARI_GUI_TOKEN` => that token, remote unset => fail-secure generated 32-hex, `ARI_GUI_AUTH=0` kill-switch) + `check_authorization` Bearer-header/query-token acceptance with `hmac.compare_digest` pinned by source, `_Handler` gate via socketless handlers (loopback default unauthenticated; remote 401 typed body + `WWW-Authenticate` without echoing the token across GET/POST/PUT/PATCH/DELETE; 200 with the token; `/health/*` exemption; SSE query token on the EventSource-consumed streams `/api/v1/events/stream` + paperbench run logs, header auth on the fetch-consumed legacy `/api/logs`), `_ws_process_request` handshake 401 vs query/header token, `viz_access.jsonl` `token=***` redaction, one-time generated-token stderr banner.
 - `test_gui_rqgm_fixtures.py` — gui_refresh Wave 4a deterministic RQGM checkpoint fixtures: `fixtures/gui_refresh/rqgm_fixture_factory.py` layered on the base run factory — per-artifact `ari/schemas` validation, hash12 chain integrity + utility-policy seal parity, `RqgmStateStore.replay` snapshot consistency, same-seed byte-identity, corrupt modes (`broken_chain`/`truncated_transitions`/`registry_mismatch`), penalty/erasure sentinel truth rules (raw attack never scores), base `simple_bfts` fixture byte-untouched.
@@ -102,6 +107,10 @@ targets the like-named module under `ari/`.
 - `test_idea_integration.py` — idea integration.
 - `test_include_ear_toggle.py` — include-EAR toggle.
 - `test_integration.py` — integration.
+- `test_kca_contracts.py` — KCA schema, serialization, digest, and cross-contract invariant coverage.
+- `test_kca_surfaces.py` — CLI, public API, config, and node-report KCA surface coverage.
+- `test_knowledge_external_importer.py` — pinned external knowledge-source import, provenance, and rejection coverage.
+- `test_knowledge_resolver.py` — deterministic knowledge-skill catalog resolution, composition, locks, and ambiguity coverage.
 - `test_laptop_hpc_skill_drop.py` — laptop/HPC skill drop.
 - `test_launch_config.py` — launch config.
 - `test_letta_restart_live.py` — Letta restart (live).
@@ -113,6 +122,8 @@ targets the like-named module under `ari/`.
 - `test_llm_evaluator_axes.py` — LLM evaluator axes.
 - `test_llm_routing.py` — single-source litellm provider-prefix routing: `resolve_litellm_model` prefix-by-backend (idempotent, env fallback) + `cost_tracker._apply_ari_routing`/metadata injector so a skill's bare `litellm.completion` reaches the shim.
 - `test_loop_message_order.py` — `loop.repair_tool_message_order` defense-in-depth: restores contiguous tool-response blocks, moves interleaved user injections past them, and drops orphaned assistant/partial pairings the API would reject.
+- `test_manuscript_assurance_boundary.py` — manuscript-to-scientific-assurance binding and fail-closed publication-boundary coverage.
+- `test_manuscript_complete.py` — end-to-end Manuscript Complete topology, failure-injection, migration, repair, and publication-lock coverage.
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_memory.py` — memory backend.
@@ -121,6 +132,7 @@ targets the like-named module under `ari/`.
 - `test_model_backend_independence.py` — B6 layering guard (report `003` §8): the model-backend layer `ari/llm/**` imports none of `ari.viz` / `ari.evaluator` / `ari.cli` (litellm stays allowed — that is where the provider dependency belongs).
 - `test_model_backend_protocol.py` — subtask 008 `BaseModelBackend` Protocol conformance: `LLMClient` structurally satisfies the `runtime_checkable` Protocol without subclassing, and the `LiteLLMBackend` alias plus `ari.public.llm.LLMClient` still resolve to it.
 - `test_model_passthrough.py` — model passthrough.
+- `test_native_hpc_verifier.py` — native GEMM, SpMM, and stencil verifier correctness, negative-control, and reproducibility coverage.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
 - `test_node_report.py` — node_report builder.
@@ -142,6 +154,7 @@ targets the like-named module under `ari/`.
 - `test_pipeline_stage_architecture.py` — subtask-012 stage-architecture characterization: `BasePipelineStage` / `SubprocessMCPStage` / `ReActStage` / `WorkflowDriver` / `StageContext` importable from `ari.pipeline`, `make_stage` dispatch by `react` key, stage identity fields, and dispatch through the `ari.pipeline._run_stage_subprocess` monkeypatch surface — structure only, no real MCP subprocess or LLM call.
 - `test_pipeline_verified_context.py` — verified-context building blocks (best-node selection, lineage scoping, grounded-block renderer).
 - `test_plan_promote.py` — plan promotion.
+- `test_production_harness_evidence.py` — authentic production harness promotion and certify-to-publication evidence verification.
 - `test_prompt_extraction.py` — prompt extraction.
 - `test_prompt_provenance.py` — subtask 044 prompt-provenance recorder + run rollup: `hash12` determinism matching `load_versioned`, the additive-schema JSONL record, no-op without a checkpoint dir, env-pin resolution, `build_prompt_versions_rollup`, and ARI-metadata registration of the new artifact filenames.
 - `test_prompt_registry.py` — subtask 038 `PromptRegistry`: discovery of exactly the 28 core keys (READMEs excluded), byte-/hash-identical delegation to the wrapped `FilesystemPromptLoader`, placeholder parsing tolerant of `{{`/`}}` JSON escapes, the config-injected-key tolerance policy, and loader dependency injection.
@@ -165,6 +178,11 @@ targets the like-named module under `ari/`.
 - `test_rqgm_eval_detection_fixture.py` — Task 13 Tier-1 fixtures: the committed injection checkpoints are caught by the EXISTING deterministic detectors (claim gate, Task 07 candidate validation, `validate_clean_room_bundle`, `validate_selective_erasure`) and the control fixture passes clean.
 - `test_rqgm_eval_doubles.py` — Task 13 scripted component doubles: the documented key set, LLM-free determinism, `resolve_double` refusing substitution unless `rqgm.eval.enabled`, and each double's failure caught by the same checks production faces.
 - `test_rqgm_eval_injection.py` — Task 13 failure-injection machinery: the ten specs in `failure_injections.yaml`, `eval_*` namespace disjointness from governance's `adv_*`/`anchor_*`, deterministic idempotent `apply_injection`, and the provenance-marker round-trip.
+- `test_rqgm_eval_kca_conditions.py` — KCA evaluation-condition expansion and ablation parity coverage.
+- `test_rqgm_eval_kca_injection.py` — deterministic KCA failure-injection specification and ground-truth coverage.
+- `test_rqgm_eval_kca_isolation.py` — evaluation workspace, seed, artifact, and condition isolation coverage.
+- `test_rqgm_eval_kca_metrics.py` — KCA detection, false-reject, utility, and cost metric computation coverage.
+- `test_rqgm_eval_kca_probe.py` — KCA probe orchestration, evidence capture, and reporting coverage.
 - `test_rqgm_eval_metrics.py` — Task 13's thirteen evaluation metrics against known-answer fixtures: absence tolerance (missing records ⇒ `applicable: false`, never an exception), byte-determinism, sterile/stale exclusion, and the `rqgm_eval_metrics.json` envelope.
 - `test_rqgm_eval_smoke.py` — Task 13 offline smoke runner: `run_smoke` writes per-run metrics + `ablation_report.{json,md}` with no LLM/network/subprocess, keeps the B0 checkpoint RQGM-artifact-free, and degrades rather than crashes on a misbehaving double.
 - `test_rqgm_founding_bootstrap.py` — GAP-1/GAP-3 regression: `RQGMRuntime._register_founding` actually fires at boot (registry no longer empty), is byte-stable across identical boots, replays instead of re-registering on resume, and governance resolves real registered actor ids instead of `*_v0`.

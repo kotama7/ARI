@@ -9,6 +9,7 @@ their env-var overrides (`ARI_BACKEND`, `ARI_MODEL`, …).
 - `__init__.py` — Pydantic config models + env-var overrides.
 - `field_registry.py` — canonical inventory of every declared `ARIConfig` leaf plus its metadata overlay (category / level / scope / sensitivity / mutability); pure and deterministic, backs `GET /api/v1/config/schema`.
 - `finder.py` — workflow / profile YAML discovery.
+- `kca_runtime.py` — load and validate knowledge/capability/assurance runtime policy from configuration and environment.
 - `resolver.py` — resolved-config reconstruction: post-hoc for an existing checkpoint and preview for a new run, emitting values + per-leaf provenance + digest + warnings without running the imperative override chain.
 - `skill_runtime.py` — resolve canonical Skill manifests, runtime environments, credentials, and lock identities.
 

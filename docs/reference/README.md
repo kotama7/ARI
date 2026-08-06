@@ -19,10 +19,11 @@ file formats, and terminology.
 - `file_formats.md` — File Formats Reference: the self-describing ARI checkpoint directory.
 - `glossary.md` — Glossary: short definitions of terms recurring across the docs.
 - `internal_boundaries.md` — Internal boundaries: the LLM, OS/scheduler/container, and two-engine orchestration boundaries + their concurrency hazards.
-- `mcp_tools.md` — MCP Tools Reference: the MCP servers ARI ships (one per skill package).
-- `memory_contract.md` — scoped immutable records, retrieval authorization, lifecycle events, backups, and deletion gates.
+- `knowledge_capability_assurance.md` — contracts and operational boundaries for knowledge skills, capability binding, and scientific assurance.
 - `manuscript_complete_contracts.md` — Manuscript Complete V1 digests, states, repair transactions, authoring binding, and publication lock.
 - `manuscript_complete_profile.md` — `generic_empirical_v1` requirements, applicability, evidence lanes, and subject selection.
+- `mcp_tools.md` — MCP Tools Reference: the MCP servers ARI ships (one per skill package).
+- `memory_contract.md` — scoped immutable records, retrieval authorization, lifecycle events, backups, and deletion gates.
 - `orchestrator.md` — authenticated durable run control, lifecycle, quotas, reconciliation, and artifact access.
 - `paper_build_contract.md` — immutable authoring inputs, revisions, model calls, compilation, review, and finalization.
 - `public_api.md` — `ari.public`: the only stable module surface for `ari-skill-*` packages.

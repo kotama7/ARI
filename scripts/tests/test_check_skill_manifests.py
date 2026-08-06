@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scripts.check_skill_manifests import _scan_environment_reads
+from scripts.check_skill_manifests import (
+    _filter_reviewed_dynamic_environment_forwarders,
+    _scan_environment_reads,
+)
 
 
 def test_environment_scan_resolves_aliases_loops_helpers_and_membership(
@@ -66,3 +69,15 @@ def test_environment_scan_fails_closed_on_unparseable_source(tmp_path: Path) -> 
     assert reads == set()
     assert len(unresolved) == 1
     assert unresolved[0].endswith(":syntax-error")
+
+
+def test_reviewed_dynamic_environment_forwarder_is_byte_and_location_pinned() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    proxy = (
+        repo_root / "ari-skill-tool-registry/src/stdio_process_proxy.py"
+    ).resolve()
+
+    assert _filter_reviewed_dynamic_environment_forwarders(
+        repo_root,
+        [f"{proxy}:102:name", f"{proxy}:103:name"],
+    ) == [f"{proxy}:103:name"]

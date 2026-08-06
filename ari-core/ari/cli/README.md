@@ -10,7 +10,10 @@ construction logic is delegated to `ari.core`.
 - `__main__.py` — `python -m ari.cli` entry.
 - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
 - `commands.py` — misc top-level commands + `_safe_backup`.
+- `kca.py` — command handlers for knowledge, capability, and assurance inspection and registration.
 - `lineage.py` — end-of-phase lineage-decision helpers.
+- `manuscript.py` — Manuscript Complete preparation, evaluation, publication, and repair commands.
+- `manuscript_repair_runtime.py` — transactional auto-repair runtime used by the manuscript CLI.
 - `migrate.py` — `ari migrate` sub-app.
 - `paper_dispatch.py` — shared paper-axis dispatch behind `ari paper`/`run`/`resume`; resolves linear vs rqgm_archive, builds the agent-as-judge score fn, and runs the RQGM paper-candidate pre-flight (the exploration-axis escalation that can rewrite `_scientific_score`).
 - `projects.py` — `ari paper` / `status` / `projects` / `show` commands.

@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/rqgm/clean_room_generator.md@1def8e77f92fdd0e735708f6b2fa5fd5d878b9b297a84c68d2e266552e880550 @ commit c050ebf505af
+% snapshot-from: ari-core/ari/prompts/rqgm/clean_room_generator.md@1def8e77f92fdd0e735708f6b2fa5fd5d878b9b297a84c68d2e266552e880550 @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 You are ARI-RQGM's CleanRoomPromptGenerator, a meta-tier governance

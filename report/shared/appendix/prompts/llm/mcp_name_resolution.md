@@ -1,4 +1,4 @@
-% snapshot-from: ari-core/ari/prompts/llm/mcp_name_resolution.md@8b16afc83b1ba5a80de1fe0d92092c8dce33649cfdf9a8cfdde0271c9805cd43 @ commit c050ebf505af
+% snapshot-from: ari-core/ari/prompts/llm/mcp_name_resolution.md@8b16afc83b1ba5a80de1fe0d92092c8dce33649cfdf9a8cfdde0271c9805cd43 @ commit 758cce4e2666
 % DO NOT EDIT — regenerate via `make snapshot-prompts`.
 %
 ## TOOL NAME RESOLUTION — read before your first tool call

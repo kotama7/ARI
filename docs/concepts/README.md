@@ -9,8 +9,8 @@ behind the autonomous research system.
 - `architecture.md` — ARI Architecture: end-to-end system from research goal to output.
 - `bfts.md` — BFTS Algorithm: Best-First Tree Search with its two-pool design.
 - `gui_architecture.md` — Dashboard Architecture: the strangler shell, the route registry, run-scoped server-state caching, realtime as invalidation, and the seam from HTTP down to checkpoint artifacts.
-- `memory.md` — Memory Architecture: how each node reads from its ancestor chain.
 - `manuscript_complete_architecture.md` — Manuscript Complete: the digest-bound exploration-to-authoring compiler, repair authority, and publication interlock.
+- `memory.md` — Memory Architecture: how each node reads from its ancestor chain.
 - `PHILOSOPHY.md` — ARI Design Philosophy: the rationale behind ARI's approach to research automation.
 - `publication-lifecycle.md` — Publication Lifecycle (v0.7.0): how the EAR flow evolved from whole-checkpoint drops.
 - `research_and_governance_state.md` — Research and Governance State: run lifecycle, research phase, governance stage and node score state as four separate state machines, plus the stale / invalidated / removed / deleted distinction.
