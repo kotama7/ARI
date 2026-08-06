@@ -524,6 +524,9 @@ def compile_binary(
     compiler: str,
     extra_flags: tuple[str, ...] = (),
     reference_flags: tuple[str, ...] = (),
+    main_src: Path | None = None,
+    tag: str | None = None,
+    entry_point: str | None = None,
 ) -> Path:
     """Compile the frozen driver plus one kernel into ``out_dir``.
 
@@ -538,18 +541,24 @@ def compile_binary(
     one reached through ``-I``.
     """
     kdir = kernels_root() / kind
-    main_c = kdir / f"{kind}_main.c"
+    # main_src swaps the FROZEN DRIVER only -- same kernel source, same compiler,
+    # same flags, same object-level audit. It exists for the profiled driver,
+    # which is the scored one plus a counter gate; the scored build passes
+    # nothing and is unchanged. One compile path, because a second would drift
+    # from the flags being profiled.
+    main_c = Path(main_src) if main_src else kdir / f"{kind}_main.c"
+    _tag = tag or role
     if not main_c.is_file():
         raise PerfInfrastructureError(f"frozen driver missing: {main_c}")
     staged = source
     if role == "candidate":
-        staged = out_dir / f"candidate_{kind}.c"
+        staged = out_dir / f"candidate_{_tag}_{kind}.c"
         shutil.copy2(source, staged)
 
     base = ["-O3", "-fopenmp", *isa_flags_for(compiler)]
-    main_o = out_dir / f"main_{role}.o"
-    kern_o = out_dir / f"kern_{role}.o"
-    exe = out_dir / f"kernel_{role}.exe"
+    main_o = out_dir / f"main_{_tag}.o"
+    kern_o = out_dir / f"kern_{_tag}.o"
+    exe = out_dir / f"kernel_{_tag}.exe"
 
     def _run(argv: list[str], what: str):
         try:
@@ -574,7 +583,7 @@ def compile_binary(
 
     # Audit BEFORE linking: once the object is in the executable the symbols have
     # already won, and the point is to refuse rather than to detect afterwards.
-    audit_kernel_object(kind, kern_o, role=role)
+    audit_kernel_object(entry_point or kind, kern_o, role=role)
 
     completed = _run([compiler, *base, *reference_flags, str(main_o), str(kern_o),
                       "-o", str(exe), "-lm"], "linker")
@@ -586,20 +595,12 @@ def compile_binary(
     return exe
 
 
-#: The only global symbol a kernel object may define. The candidate object is
-#: linked into the FROZEN DRIVER, so a definition of ``clock_gettime`` wins the
-#: link and forges the timer, and a constructor or destructor moves work outside
-#: the measured call or rewrites the timing file after it.
-KERNEL_ENTRY_POINTS: dict[str, str] = {
-    "gemm": "gemm", "spmm": "spmm", "stencil": "jacobi",
-}
-
 #: Sections that mean "this object runs code outside the measured call".
 _OUT_OF_BAND_SECTIONS = (".init_array", ".preinit_array", ".ctors",
                          ".fini_array", ".dtors")
 
 
-def audit_kernel_object(kind: str, obj: Path, *, role: str) -> None:
+def audit_kernel_object(entry_point: str, obj: Path, *, role: str) -> None:
     """Refuse a kernel object that can act outside the timed call.
 
     Three checks, because they catch three different things and the first two
@@ -620,9 +621,9 @@ def audit_kernel_object(kind: str, obj: Path, *, role: str) -> None:
     and nothing may be measured with it: an unaudited object that scored would
     make every one of these checks optional in practice.
     """
-    entry = KERNEL_ENTRY_POINTS.get(kind)
-    if entry is None:
-        raise PerfInfrastructureError(f"no declared entry point for {kind!r}")
+    entry = entry_point
+    if not entry:
+        raise PerfInfrastructureError("no entry point declared for this kernel")
 
     def _tool(argv: list[str], what: str):
         try:
@@ -741,6 +742,8 @@ def measurement_thread_regime() -> dict[str, str]:
 def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
               *, timeout: float, role: str = "candidate",
               ld_library_path: str | None = None,
+              launcher: tuple[str, ...] = (),
+              capture: dict[str, str] | None = None,
               env: dict[str, str] | None = None) -> float:
     """One cold call in a fresh process; return the driver's own credited time.
 
@@ -770,11 +773,16 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
                                       if previous else ld_library_path)
     try:
         completed = subprocess.run(
-            [str(exe), str(problem), str(out_path), str(timing)],
+            [*launcher, str(exe), str(problem), str(out_path), str(timing)],
             capture_output=True, text=True, timeout=timeout, env=run_env,
             start_new_session=True)
     except subprocess.TimeoutExpired as exc:
         raise _fault(role)(f"{role} exceeded {timeout:g}s") from exc
+    # `capture` is how a launcher's stdout gets back out. The scored path drains
+    # stdout only so the pipe cannot fill; default None keeps that behaviour.
+    if capture is not None:
+        capture["stdout"] = completed.stdout or ""
+        capture["stderr"] = completed.stderr or ""
     if completed.returncode != 0:
         raise _fault(role)(f"{role} run failed: {completed.stderr.strip()[-400:]}")
     if not timing.is_file():
@@ -835,7 +843,6 @@ __all__ = [
     "CaseSetV1",
     "case_sets_root",
     "compile_binary",
-    "KERNEL_ENTRY_POINTS",
     "crosses_compiler_boundary",
     "default_compiler",
     "isa_flags_for",

@@ -73,7 +73,6 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_perf.py` — TODO
   - `native_perf_common.py` — TODO
   - `native_perf_gemm.py` — TODO
-  - `native_perf_profile.py` — TODO
   - `registration.py` — execute harness registration gates and catalog promotion.
   - `registration_models.py` — promotion approval, evidence, and registration report models.
   - `request.py` — validate and canonicalize screen and certify run requests.
@@ -90,7 +89,6 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `native_worker.py` — worker entry point for authoritative native verification.
     - `paperbench.py` — PaperBench-compatible scientific reproduction driver.
     - `perf.py` — TODO
-    - `perf_profile_worker.py` — TODO
     - `perf_worker.py` — TODO
     - `shared_library.py` — ABI-bound shared-library candidate driver.
     - `upstream.py` — pinned upstream project runner and parity driver.
@@ -98,10 +96,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `gemm/` — TODO
       - `gemm_kernel.h` — TODO
       - `gemm_main.c` — TODO
-      - `gemm_main_profiled.c` — TODO
       - `reference_gemm.c` — TODO
-    - `tools/` — TODO
-      - `region_counters.c` — TODO
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
 - `capability_binding/` — capability ontology, provider resolution, environment compatibility, substitution, authority, and immutable locks.
   - `__init__.py` — public capability-binding package exports.

@@ -487,3 +487,96 @@ def test_the_report_says_which_problems_it_measured():
     body = json.loads(rep.model_dump_json())
     assert body["dataset_revision"] and body["dataset_sha256"].startswith("sha256:")
 
+
+
+# --- the profiler: a diagnostic that can never become a verdict -----------------
+
+def test_the_profiled_driver_reduces_to_the_scored_driver(tmp_path):
+    """Delete every /*GATE*/ line and the SCORED driver must come back exactly.
+
+    The profiled driver is a checked-in copy; without this the two diverge the
+    first time the timing semantics change and the profile keeps describing the
+    old one while looking current.
+    """
+    kdir = kernels_root() / "gemm"
+    scored = (kdir / "gemm_main.c").read_text()
+    profiled = (kdir / "gemm_main_profiled.c").read_text()
+    stripped = "".join(l for l in profiled.splitlines(keepends=True)
+                       if "/*GATE*/" not in l)
+    assert stripped == scored
+
+
+def test_the_gate_brackets_exactly_the_timed_call():
+    lines = (kernels_root() / "gemm" / "gemm_main_profiled.c").read_text().splitlines()
+    enter = next(i for i, l in enumerate(lines) if "gate_enter();" in l)
+    t0 = next(i for i, l in enumerate(lines) if l.startswith("    double t0 = now_sec();"))
+    el = next(i for i, l in enumerate(lines)
+              if l.startswith("    double elapsed = now_sec() - t0;"))
+    leave = next(i for i, l in enumerate(lines) if "gate_leave();" in l)
+    assert enter < t0 < el < leave
+    assert el - t0 == 2, "something moved into the timed window"
+
+
+def test_the_counter_tool_is_inside_the_driver_digest():
+    """Counting the whole process was measured at 7.16x the region's cycles, so
+    the tool that scopes the region decides the numbers as much as the kernel."""
+    before = perf_driver_digest()
+    source = kernels_root() / "tools" / "region_counters.c"
+    assert source.is_file()
+    original = source.read_bytes()
+    try:
+        source.write_bytes(original + b"\n/* drift */\n")
+        assert perf_driver_digest() != before
+    finally:
+        source.write_bytes(original)
+
+
+def test_a_profile_can_never_become_a_score():
+    """A profile is a second measurement channel with none of the verdict path's
+    anti-gaming surface."""
+    from ari.assurance.native_perf_profile import NativePerfProfileV1
+
+    fields = NativePerfProfileV1.model_fields
+    assert fields["scored"].default is False
+    for scored_key in ("verdict", "speedup", "valid", "families", "case_results",
+                       "regression_threshold"):
+        assert scored_key not in fields, f"the profile carries {scored_key}"
+
+
+def test_the_profile_says_which_problems_and_which_tool():
+    from ari.assurance.native_perf_profile import NativePerfProfileV1
+
+    fields = NativePerfProfileV1.model_fields
+    for key in ("dataset_revision", "dataset_sha256", "counter_tool",
+                "environment", "placement", "ratio_spread", "reps"):
+        assert key in fields
+
+
+def test_the_profile_spread_is_per_case():
+    """Two shapes have genuinely different IPC; pooling them reports that
+    difference as measurement noise."""
+    from ari.assurance.native_perf_profile import ProfilePointV1, _spread
+
+    points = [
+        ProfilePointV1(case_id="a", input_seed=0, counters={"ratios": {"ipc": 1.0}}),
+        ProfilePointV1(case_id="a", input_seed=1, counters={"ratios": {"ipc": 1.02}}),
+        ProfilePointV1(case_id="b", input_seed=0, counters={"ratios": {"ipc": 2.0}}),
+        ProfilePointV1(case_id="b", input_seed=1, counters={"ratios": {"ipc": 2.02}}),
+    ]
+    out = _spread(points, "ipc")
+    assert set(out) == {"a", "b"}
+    assert out["a"]["relative_spread"] < 0.05 and out["b"]["relative_spread"] < 0.05
+
+
+def test_a_prebuilt_counter_tool_is_recorded_as_such(tmp_path, monkeypatch):
+    """Recording the SOURCE digest beside someone else's executable made the one
+    field a reader would use to identify the tool a false statement."""
+    from ari.assurance.native_perf_profile import build_counter_tool
+
+    fake = tmp_path / "prebuilt"
+    fake.write_bytes(b"not really a counter tool")
+    monkeypatch.setenv("ARI_REGION_COUNTERS", str(fake))
+    path, record = build_counter_tool(tmp_path)
+    assert path == fake
+    assert record["built_from_source"] is False
+    assert record["binary_sha256"] != record["source_sha256"]

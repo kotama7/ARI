@@ -47,6 +47,11 @@ from ari.assurance.native_perf_common import (
 #: not transfer.
 DEFAULT_CASE_SET = "native-perf-gemm-cases/v1@scored-2026q3"
 
+#: The only global symbol a candidate kernel object may define. Declared
+#: beside the kernel, not in a table in core: which symbol a kernel exports
+#: is knowledge that belongs with the kernel.
+ENTRY_POINT = "gemm"
+
 #: The reference is built the way a competent user of this toolchain would build
 #: it, so the denominator is not handicapped relative to the candidates it is the
 #: bar for.
@@ -153,15 +158,18 @@ def verify_gemm_performance(
         # denominator and must stay exactly the object it has always been.
         anchor_exe = compile_binary(
             kind="gemm", role="reference", source=reference_source, out_dir=build,
-            compiler=default_cc, reference_flags=reference_flags())
+            compiler=default_cc, reference_flags=reference_flags(),
+            entry_point=ENTRY_POINT)
         candidate_exe = compile_binary(
             kind="gemm", role="candidate", source=candidate_source, out_dir=build,
-            compiler=resolved, extra_flags=accepted)
+            compiler=resolved, extra_flags=accepted,
+            entry_point=ENTRY_POINT)
         matched_exe = None
         if boundary:
             matched_exe = compile_binary(
                 kind="gemm", role="reference_matched", source=reference_source,
-                out_dir=build, compiler=resolved, extra_flags=accepted)
+                out_dir=build, compiler=resolved, extra_flags=accepted,
+                entry_point=ENTRY_POINT)
 
         problem = build / "problem.bin"
         # ONE OUTPUT FILE PER ROLE. Sharing one meant the anchor overwrote the
@@ -297,5 +305,5 @@ def gemm_reference_source() -> Path:
     return kernels_root() / "gemm" / "reference_gemm.c"
 
 
-__all__ = ["DEFAULT_CASE_SET", "gemm_reference_source", "gen_problem", "reference_flags",
+__all__ = ["DEFAULT_CASE_SET", "ENTRY_POINT", "gemm_reference_source", "gen_problem", "reference_flags",
            "verify_gemm_performance"]

@@ -83,8 +83,12 @@ def perf_driver_digest() -> str:
         package / "native_perf.py",
         package / "native_perf_common.py",
         package / "native_perf_gemm.py",
+        # The profiler is part of the instrument too: a profile taken with a
+        # counter tool that changed under a pinned manifest is unattributable.
+        package / "native_perf_profile.py",
         root / "perf.py",
         root / "perf_worker.py",
+        root / "perf_profile_worker.py",
     ]
     kernels = package / "kernels"
     files.extend(sorted(kernels.rglob("*.c")))
