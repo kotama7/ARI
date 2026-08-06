@@ -111,6 +111,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_DISABLED_TOOLS_FOR_CHILD` | Toolset trimmed for child runs | (none) |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` `top_k` ceiling | (skill default) |
 | `ARI_NODE_EXEC_BUDGET_S` | Per-node wall-clock budget shared by all `run_bash` / `run_code` calls. A single call is capped by its own timeout, but nothing capped the sum, so one node could burn the whole per-node timeout on shell calls and be killed with no report at all. A call is refused once the budget is gone, and no single call is allowed to outlast what remains. `0` disables | `1800` |
+| `ARI_V2_SUPPRESS_TOOLS` | Hide `describe_environment` / `run_code` / `emit_results` from the **search loop** (they stay available to every other phase and to other users of ARI). Each hidden call is a step returned to editing the kernel, which matters at a 20-step budget. Opt-in, because it is not a local trim: `system.md` gates *finishing* on `emit_results`, so enabling it also rewrites that sentence — otherwise the agent is left with a stop condition it cannot satisfy — and the evidence path a run is scored through changes with it. Paper-reproduction routes need exactly these tools, so nothing is hidden unless asked | (unset ⇒ every tool offered) |
 
 ### Parent→child handoff (`ARI_HANDOFF_*`)
 

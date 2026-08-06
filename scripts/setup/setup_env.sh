@@ -476,9 +476,9 @@ _env_section "ARI limits"
 _env_append_if_absent "# ARI_MAX_DEPTH=5"
 _env_append_if_absent "# ARI_MAX_NODES=50"
 _env_append_if_absent "# ARI_MAX_REACT=20"
-# v2 search-loop switches. Both default to the v2 behaviour; set them only
-# to reproduce the previous campaign for comparison.
-_env_append_if_absent "# ARI_KEEP_V1_TOOLS=0"
+# v2 search-loop switches. ARI_V2_SUPPRESS_TOOLS is opt-in (default: every
+# tool offered); ARI_FRONTLOAD_CONTEXT defaults on.
+_env_append_if_absent "# ARI_V2_SUPPRESS_TOOLS=  # 1 = hide describe_environment/run_code/emit_results from the search loop (also rewrites the prompt finish condition)"
 _env_append_if_absent "# ARI_FRONTLOAD_CONTEXT=1"
 _env_append_if_absent "# ARI_NODE_EXEC_BUDGET_S=1800"
 _env_append_if_absent "# ARI_PROBE_CACHE=1"

@@ -1117,8 +1117,16 @@ def _load_parent_trace_log(pid, work_dir: str, *, limit: int = 200_000) -> str:
 #       node's own trace instead.
 #
 # With the step budget at 20 these are not neutral: every suppressed call is a
-# step returned to actually editing the kernel. ARI_KEEP_V1_TOOLS=1 restores
-# them for a comparison run.
+# step returned to actually editing the kernel.
+#
+# OFF unless ARI_V2_SUPPRESS_TOOLS is set. Opt-in rather than opt-out because
+# suppression is not a local trim: system.md gates FINISHING on emit_results,
+# so hiding it rewrites the prompt too (see patch_prompt_for_suppressed_tools),
+# and the evidence path a run is scored through changes with it. A switch that
+# large should be asked for, not inherited by every run that never mentioned
+# it — including the paper-reproduction routes, which need exactly the tools
+# this set removes.
+_V2_SUPPRESS_ENV = "ARI_V2_SUPPRESS_TOOLS"
 _V2_SUPPRESSED_TOOLS = frozenset({
     "describe_environment",
     "run_code",
@@ -1126,13 +1134,43 @@ _V2_SUPPRESSED_TOOLS = frozenset({
 })
 
 
+def patch_prompt_for_suppressed_tools(system_content: str) -> str:
+    """Keep the prompt honest about the tools actually offered.
+
+    Hiding a tool and rewriting the prompt are two halves of ONE switch;
+    applied apart, either half is a bug. ``emit_results`` is the case that
+    matters, because system.md makes it a FINISH CONDITION — "do not finish
+    until ... scientifically_admissible=true" — so with the tool suppressed
+    the agent can never legitimately stop.
+
+    Replaced sentence-wise rather than by dropping the line: the same line
+    also carries the params / measurements contract, which still applies.
+    A no-op when nothing is suppressed, which is the default.
+    """
+    if "emit_results" not in v2_suppressed_tools():
+        return system_content
+    return system_content.replace(
+        "Do not manually write or copy `results.json`, and do not "
+        "finish until `emit_results` reports "
+        "`scientifically_admissible=true`.",
+        "`emit_results` is not available in this loop; your measured values "
+        "are taken from the tool results in your own trace, so finish once "
+        "your final measurement run has completed successfully. Do not "
+        "manually write or copy `results.json`.",
+    )
+
+
 def v2_suppressed_tools() -> set:
-    """Tool names the search loop hides, or an empty set when disabled."""
+    """Tool names the search loop hides, empty unless explicitly enabled.
+
+    Enabled by ``ARI_V2_SUPPRESS_TOOLS``; off is the default, so a run that
+    says nothing about tools gets every tool.
+    """
     import os as _os
 
-    if _os.environ.get("ARI_KEEP_V1_TOOLS", "").strip().lower() in ("1", "true", "yes", "on"):
-        return set()
-    return set(_V2_SUPPRESSED_TOOLS)
+    if _os.environ.get(_V2_SUPPRESS_ENV, "").strip().lower() in ("1", "true", "yes", "on"):
+        return set(_V2_SUPPRESSED_TOOLS)
+    return set()
 
 
 
@@ -1633,8 +1671,16 @@ class AgentLoop:
             phase="bfts",
             run_id=str(experiment.get("run_id") or ""),
         )
+        # The v2 suppression set is unioned in here, at the ONE place deciding
+        # which tools the model is offered. Empty unless ARI_V2_SUPPRESS_TOOLS
+        # asks for it; what matters is that the SAME switch also rewrites the
+        # prompt below. Arming only this half is what makes the two designs
+        # look incompatible: system.md requires emit_results before finishing,
+        # so hiding it without touching the prompt leaves an agent that cannot
+        # satisfy its own stop condition.
+        _sup = set(getattr(self, "_suppress_tools", set())) | v2_suppressed_tools()
         tools = self._available_tools_openai(
-            suppress=getattr(self, "_suppress_tools", set()),
+            suppress=_sup,
             phase="bfts",
             context=tool_context,
         )
@@ -1748,6 +1794,7 @@ class AgentLoop:
         # block is always empty — the conditional is kept for future use.
         _sys_tmpl, _sys_hash = _system_prompt_versioned()
         system_content = _sys_tmpl.format(tool_desc=tool_desc, memory_rules=memory_rules, extra=extra)
+        system_content = patch_prompt_for_suppressed_tools(system_content)
         # Tasks 16/19: already-admitted, content-addressed procedural knowledge
         # is appended inside an explicit instruction-only data boundary.  It is
         # prepared before AgentLoop starts; this loop never fetches a mutable
