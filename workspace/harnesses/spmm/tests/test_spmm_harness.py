@@ -362,12 +362,15 @@ void spmm(int n,int m,int k,const int*indptr,const int*indices,
 
 
 def test_gaming_procself_cmdline_timer_forge_is_rejected(tmp_path):
-    """A destructor that reads /proc/self/cmdline to find the private timing file
-    (argv[3]) and overwrites it with ~0 — defeating the in-process 'private file'
-    timer — is caught by the EXTERNAL wall-clock cross-check: the process
-    wall-clock reveals the real (slow) compute, so the fabricated tiny internal
-    time is rejected as implausible. Uses a study-scale size so the honest naive
-    compute reliably clears the wall-clock guard's noise floor (~0.02s)."""
+    """A destructor that locates and overwrites the private timing file -- the
+    forgery that defeats an in-process timer -- is refused at COMPILE time: the
+    object carries a .fini_array, and a candidate that runs code outside the
+    measured call is not scored at all.
+
+    The docstring used to credit the external wall-clock cross-check. That guard
+    is present but DISABLED as a rejection criterion (_REJECT_RATIO = 0.0), so it
+    rejects nothing today, and a reader fixing a failure here would have gone
+    looking at the wrong mechanism."""
     import os
     import shutil
     from spmm_harness import seed_work_dir
@@ -405,7 +408,7 @@ void spmm(int n,int m,int k,const int*indptr,const int*indices,
     except RuntimeError as e:
         pytest.skip(f"compile/run unavailable on this host: {e}")
     assert not any(f["valid"] for f in fam.values()), \
-        "forged in-process timer was not caught by the external wall-clock cross-check"
+        "forged in-process timer was not refused; the structural check on\n         out-of-band sections (.init_array/.fini_array/.ctors, IFUNC) is what\n         stops it -- the wall-clock cross-check is recorded, not enforced"
 
 
 def test_reference_is_not_seeded_into_the_agent_work_dir(tmp_path):

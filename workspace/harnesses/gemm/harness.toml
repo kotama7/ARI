@@ -29,8 +29,8 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 
 [files]
 "experiment.md" = "941658eab3af6ea1a554b0a27acf274149653f90276ba69fb57f6c31a3b18c24"
-"gemm_harness.py" = "7d6527c332aa8c8311a75d6874e94410fd2de64382c09817568513ef3570ade1"
-"gemm_kernels/Makefile" = "aabee3392dd7fab79957fa2bb9d7610bf99c94743dd4ca9ae211ecf8beef4a06"
+"gemm_harness.py" = "3b821f21fc741a26723302e3987920f8bc4e8926a0bcc4481fc5bbb852db2d01"
+"gemm_kernels/Makefile" = "ffcf6102b7f00e3b884a3c040285c29cf17deefa52b28e7951f883a545b1955e"
 "gemm_kernels/baseline_gemm.c" = "3fa8958d67f24ab5a04e48c23660451da5a9db84c3e4457d4a6854a29f8cffa2"
 "gemm_kernels/reference_gemm.c" = "5d5dc366a9733dbdf2d988ca936f124f6d7fd4f7b2fef604d1fec89be81575a2"
 "gemm_kernels/candidate_gemm.c" = "ded6ccea88d9f517f4f79548bb74e79bf8285b4a148546e90454b5dc3430ced5"
@@ -43,4 +43,4 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "dcffea5b6bea222bba9dd50f616f177b79295f3dec6dae0c388831db0dc61e03"
+self_sha256 = "2902df80152019aa9dc959819f23b319b35ec14a5cd0b3b45e5f419fa877c1af"

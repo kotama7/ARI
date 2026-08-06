@@ -259,8 +259,12 @@ def is_correct(u_cand, u_ref, u0, nt: int, c_eps: float = _C_EPS, u: float = _FP
 # rule diffed the whole work_dir, which never fired because every node
 # rewrites results.json. Complete by construction: the evaluator compiles
 # this source alone, from a header-less copy, against the sha256-pinned
-# kernels dir, plus these flags - nothing else in the node dir reaches it.
-SCORE_INPUTS: tuple[str, ...] = ("candidate_stencil.c", "candidate_flags.txt")
+# kernels dir, plus these flags AND the declared compiler - nothing else in
+# the node dir reaches it. candidate_cc.txt was missing from a list whose
+# comment claimed completeness, so changing only the compiler read as a pure
+# re-measurement while moving the score across a toolchain boundary.
+SCORE_INPUTS: tuple[str, ...] = ("candidate_stencil.c", "candidate_flags.txt",
+                                  "candidate_cc.txt")
 
 
 _FROZEN_FIXTURES: tuple[str, ...] = (
@@ -457,6 +461,32 @@ _CC_ALLOW = {
     # the install path is tried directly as well.
     "fcc": ("fcc", "/opt/FJSVstclanga/cp-1.0.30.01/bin/fcc"),
 }
+
+
+def _selected_cc_crosses_a_compiler_boundary(sel: dict) -> bool:
+    """True when the candidate's resolved compiler is NOT the default one.
+
+    The matched denominator exists to remove a COMPILER BOUNDARY from the
+    comparison. ``status == "selected"`` only means the candidate named an
+    allowlisted compiler that resolved -- and the allowlist contains the default
+    (``cc``), while ``gcc`` falls back to ``cc``. Gating on status alone
+    therefore built a matched reference for candidates that selected the very
+    compiler the anchor already uses, where the two builds differ only by
+    _REFERENCE_CFLAGS: the quotient then reads as "what the toolchain bought"
+    while measuring the reference's own flags. Resolved paths are compared
+    through realpath, so ``cc`` and ``gcc`` naming one binary is one compiler.
+    """
+    import os as _o
+    import shutil as _sh
+
+    if sel.get("status") != "selected":
+        return False
+    chosen = str(sel.get("resolved_path") or "")
+    if not chosen:
+        return False
+    default = _os_pin.environ.get("ARI_STENCIL_CC", "cc")
+    default_path = _sh.which(default) or default
+    return _o.path.realpath(chosen) != _o.path.realpath(default_path)
 
 
 def _select_candidate_cc(work_dir: str) -> dict:
@@ -1124,7 +1154,11 @@ def _measure_node_once(
     run_kernel: Callable | None = None,
     shapes: tuple[tuple[int, int, int, int], ...] = SHAPES,
     seed: int = 0,
-    warmup: int = 1,   # accepted for compatibility; cold measurement uses no warmup
+    # INERT. Accepted so an old caller does not break, and never read: the
+    # measurement is one cold call in a fresh process per repetition, which
+    # is what makes an in-process warmup unexploitable. A default of 1
+    # read as "this many warmup iterations happen"; none do.
+    warmup: int = 1,
     reps: int = 3,
 ) -> dict:
     """Measure a node's candidate stencil against the fixed grid set.
@@ -1192,7 +1226,7 @@ def _measure_node_once(
             # contribution of the code alone, and their difference is what the
             # compiler bought. The frozen source is still one object.
             _sel_cc = _select_candidate_cc(work_dir)
-            if _sel_cc.get("status") == "selected":
+            if _selected_cc_crosses_a_compiler_boundary(_sel_cc):
                 exes["reference_matched"] = _compile_kernel(
                     "reference_matched", work_dir, td_obj.name,
                     extra_flags=_cand_flags)
@@ -1527,9 +1561,14 @@ def measure_node(work_dir: str, **kwargs) -> dict:
     try:
         seed_work_dir(td)
         _sh.copy2(src, _os.path.join(td, "candidate_stencil.c"))
-        fl = _os.path.join(snap, "candidate_flags.txt")
-        if _os.path.isfile(fl):
-            _sh.copy2(fl, _os.path.join(td, "candidate_flags.txt"))
+        # Everything in SCORE_INPUTS, not just the source: restoring the
+        # code without the compiler that built it re-scores the last-good
+        # candidate under the DEFAULT toolchain and reports the number as
+        # if it were that candidate's.
+        for _name in SCORE_INPUTS[1:]:
+            _p = _os.path.join(snap, _name)
+            if _os.path.isfile(_p):
+                _sh.copy2(_p, _os.path.join(td, _name))
         rolled = _measure_node_once(td, **kwargs)
     except Exception:
         return result

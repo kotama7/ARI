@@ -32,8 +32,8 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 
 [files]
 "experiment.md" = "24019ae5e6f54383dfd479db8568f34901a4b7fdc81f590090a097d206bd73ac"
-"spmm_harness.py" = "2fa1ce59d0ac84fc5b5193ba4f2b67c2be22e9066d2f28f2334ce49bbff3ca15"
-"spmm_kernels/Makefile" = "3b596c55f68820f053771505b228bad252742afbfb517d398591d070511d375a"
+"spmm_harness.py" = "ca7d56ab997e87bd73623aeca1da15365b93b56928947d705108bf2b8006bc9f"
+"spmm_kernels/Makefile" = "2a2dae927d9c4a5a2a994c0a722e9bb3793cf1a7e77dc6ad7793d45e1f64307b"
 "spmm_kernels/Plan.md" = "4c40c2f40c46ebd8e8e2a2dad32df20a03d73e401ef563c8062cad4934f3cce4"
 "spmm_kernels/baseline_spmm.c" = "1a4e02d9b89c21fb2029d8be73a60677db72b97ba066fb74562bb25146b9af66"
 "spmm_kernels/candidate_spmm.c" = "c9ab6d88e3a925b59baf279a8234ee59de24918b7e3c97bdeb3391169624f522"
@@ -48,4 +48,4 @@ blind_to = ["large_page_policy", "numa_first_touch", "problem_generation"]
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "2003c50f69b93e93e886e397c72b7647837940ff869c72de95970079bb16ac8b"
+self_sha256 = "d6f619f3a56d4c1e5231ebca87726753448c5a360f0d3673bee84b7af5f823af"

@@ -43,8 +43,8 @@ ARI_STENCIL_SHAPES = ""
 
 [files]
 "experiment.md" = "007556e158aecb8902bc9140320409fc06a93dcd124d985738d8745710444b23"
-"stencil_harness.py" = "f7864bbfb02addf004107b01b99ed24321b8ab5f2640d6c95f6d525a2f7dd096"
-"stencil_kernels/Makefile" = "a29df7c11b271b381f8bf0bc1b0779b3d51958f395824af63b34649a7daa34d0"
+"stencil_harness.py" = "ed252f59172937b27ff86d9d0bd61433af1e301955c7e3d3052e7b4c9f93c76e"
+"stencil_kernels/Makefile" = "9e2cba0462ed104bfcff500265c9d5fb771521d9a3923323b3bab2882e254241"
 "stencil_kernels/baseline_stencil.c" = "a7f7494cbe9310d65e051bff078f6870d8cf94d78632dc14e2988ba74524a9ea"
 "stencil_kernels/candidate_stencil.c" = "eac632e1a7f70d99545a18caafe0852586d28a8e65d0a4c176ac9e73d723961e"
 "stencil_kernels/selftest.c" = "c96c3a90a16d655697476694a2c293de2e69ff0bd69fb65d507aa9d68ad55d0e"
@@ -58,4 +58,4 @@ ARI_STENCIL_SHAPES = ""
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "d4491d0de772436af1b350fd1a71b9126584c64ecaf98ab6238eac5de90a13aa"
+self_sha256 = "9c863ec4933ca4401d0ed53992858cd71a017940067478f14413a39343635a80"

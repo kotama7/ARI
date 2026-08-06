@@ -43,6 +43,7 @@ check: selftest
 	./selftest
 	@mkdir -p .lastgood && cp -f candidate_spmm.c .lastgood/ 2>/dev/null || true
 	@test -f candidate_flags.txt && cp -f candidate_flags.txt .lastgood/ || true
+	@test -f candidate_cc.txt && cp -f candidate_cc.txt .lastgood/ || true
 	@echo "snapshot: .lastgood/ updated (selftest passed)"
 
 clean:

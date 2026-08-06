@@ -350,12 +350,15 @@ def test_header_pin_survives_workdir_tamper(tmp_path):
 
 
 def test_gaming_procself_cmdline_timer_forge_is_rejected(tmp_path):
-    """A destructor that reads /proc/self/cmdline to find the private timing file
-    (argv[3]) and overwrites it with ~0 — defeating the in-process 'private file'
-    timer — is caught by the EXTERNAL wall-clock cross-check: the process
-    wall-clock reveals the real (slow) sweep time, so the fabricated tiny internal
-    time is rejected as implausible. Uses a study-scale size so the honest naive
-    sweep reliably clears the wall-clock guard's noise floor (~0.02s)."""
+    """A destructor that locates and overwrites the private timing file -- the
+    forgery that defeats an in-process timer -- is refused at COMPILE time: the
+    object carries a .fini_array, and a candidate that runs code outside the
+    measured call is not scored at all.
+
+    The docstring used to credit the external wall-clock cross-check. That guard
+    is present but DISABLED as a rejection criterion (_REJECT_RATIO = 0.0), so it
+    rejects nothing today, and a reader fixing a failure here would have gone
+    looking at the wrong mechanism."""
     import shutil
     if shutil.which(os.environ.get("ARI_STENCIL_CC", "cc")) is None:
         pytest.skip("no C compiler")
@@ -393,7 +396,7 @@ void jacobi(int nx,int ny,int nz,int nt,const double*u0,double*u){
     # study-scale (160^3, nt=16) so honest sweep >> 0.02s noise floor
     fam = measure_node(wd, seed=0, shapes=((160, 160, 160, 16),), reps=2)["families"]
     assert not any(f["valid"] for f in fam.values()), \
-        "forged in-process timer was not caught by the external wall-clock cross-check"
+        "forged in-process timer was not refused; the structural check on\n         out-of-band sections (.init_array/.fini_array/.ctors, IFUNC) is what\n         stops it -- the wall-clock cross-check is recorded, not enforced"
 
 
 def test_default_runner_naive_anchor_compiles_and_is_correct():

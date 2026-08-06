@@ -307,9 +307,14 @@ void gemm(int n,int m,int p,const double*A,const double*B,double*C){
 def test_gaming_procself_cmdline_timer_forge_is_rejected(tmp_path):
     """A destructor that reads /proc/self/cmdline to locate the timing file and
     overwrites it with ~0 (defeating the in-process 'private file' timer) is
-    caught by the EXTERNAL wall-clock cross-check: the process wall-clock reveals
-    the real (slow) compute time, so the fabricated tiny internal time is
-    rejected as implausible. Sized so the honest compute clears the noise floor."""
+    refused at COMPILE time: the object carries a .fini_array, and a candidate
+    that runs code outside the measured call is not scored at all.
+
+    The docstring used to credit the external wall-clock cross-check. That guard
+    is present but DISABLED as a rejection criterion (_REJECT_RATIO = 0.0) -- no
+    threshold separated a fast honest kernel from a forgery, because the bound
+    does not measure the kernel -- so it rejects nothing today, and a reader
+    fixing a failure here would have gone looking at the wrong mechanism."""
     src = r'''
 #include <stdio.h>
 #include <string.h>
@@ -331,14 +336,14 @@ void gemm(int n,int m,int p,const double*A,const double*B,double*C){
     seed_work_dir(wd)
     with open(os.path.join(wd, "candidate_gemm.c"), "w") as fh:
         fh.write(src)
-    # 512^3 (the real study size) so the honest naive compute reliably clears the
-    # wall-clock guard's noise floor (~0.02s); at tiny shapes the guard is
-    # intentionally skipped (a genuinely fast kernel is indistinguishable from
-    # overhead and gains nothing by forging). reps=1 keeps the test quick.
+    # The study-scale shape is kept, not because the refusal needs it -- the
+    # structural check fires at compile time and never reaches a measurement --
+    # but so this test still exercises the scored path end to end if the
+    # structural check is ever loosened. reps=1 keeps it quick.
     fam = measure_node(wd, seed=0, shapes=((512, 512, 512),), reps=1)["families"]
     # honest-but-slow kernel + forged timer: must NOT be credited a valid speedup
     assert not any(f["valid"] for f in fam.values()), \
-        "forged in-process timer was not caught by the external wall-clock cross-check"
+        "forged in-process timer was not refused; the structural check on\n         out-of-band sections (.init_array/.fini_array/.ctors, IFUNC) is what\n         stops it -- the wall-clock cross-check is recorded, not enforced"
 
 
 def test_gaming_FAST_kernel_with_forged_timer_is_rejected(tmp_path):
