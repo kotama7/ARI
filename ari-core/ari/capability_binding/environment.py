@@ -182,7 +182,13 @@ def _parse_gpu_devices(stdout: str) -> list[dict]:
         try:
             memory = int(memory_mb)
         except ValueError:
-            continue
+            # A device whose memory figure will not parse is still a device.
+            # Grace-Blackwell reports memory.total as "[N/A]" because the memory
+            # is unified, and dropping the row here made ARI see no GPU at all
+            # on a node that has one -- every GPU capability silently unbindable
+            # there. Observed on real hardware; it cannot be reproduced from a
+            # login node, which is why it survived.
+            memory = None
         devices.append(
             {
                 "uuid": uuid,
@@ -540,6 +546,22 @@ def build_environment_snapshot(
         features.add("gpu-via-slurm")
     if gpu["cuda_toolkit"]["status"] == "ready":
         features.add("cuda-toolkit")
+        # The toolkit version is already observed and was being thrown away, so
+        # a contract asking for a specific CUDA could never be satisfied by
+        # anything. Emitting it is an observation, not a derivation: a node with
+        # 12.0 does not claim 12.9.
+        release = str(gpu["cuda_toolkit"].get("release") or "")
+        version = re.match(r"(\d+)\.(\d+)", release)
+        if version:
+            features.add(f"cuda-{version.group(1)}.{version.group(2)}")
+    for device in gpu["devices"]:
+        # NVIDIA's own sm_XY naming, from the capability the device reports.
+        # Exactly what it is and nothing about what it is compatible with:
+        # whether an sm70 build runs on a newer architecture depends on how it
+        # was built, and guessing at that is not a probe's job.
+        capability = re.match(r"(\d+)\.(\d+)", str(device.get("compute_capability") or ""))
+        if capability:
+            features.add(f"nvidia-sm{capability.group(1)}{capability.group(2)}")
     if counters["status"] == "ready":
         features.add("hardware-counters")
     if container["status"] == "ready":

@@ -529,3 +529,69 @@ def test_the_quantum_class_derives_from_cpu_and_says_why_that_is_enough():
     assert row.requires_resource_types == frozenset({"cpu"})
     assert row.requires_features == frozenset()
     assert "no device" in row.rationale
+
+
+# ------------------------------------------------------- observed GPU identity
+
+
+def test_a_device_with_an_unreadable_memory_figure_is_still_a_device():
+    """Grace-Blackwell reports memory.total as "[N/A]" -- unified memory.
+
+    Dropping the row made ARI see no GPU at all on a node that has one, so
+    every GPU capability was silently unbindable there. This is the exact line
+    a real GB10 node returns for the prober's own query; it cannot be
+    reproduced from a login node, which is why it survived.
+    """
+
+    row = "GPU-e24bed87-5853-1036-cbfc-b54eac6acda1, NVIDIA GB10, 12.1, [N/A], 580.159.03"
+    (device,) = environment_module._parse_gpu_devices(row)
+    assert device["name"] == "NVIDIA GB10"
+    assert device["compute_capability"] == "12.1"
+    assert device["memory_mb"] is None
+
+
+def test_the_toolkit_version_and_device_generation_become_features(monkeypatch):
+    """Both were observed and thrown away, so a contract naming either could
+    never be satisfied by anything."""
+
+    def probe(argv, *, timeout=5.0):
+        del timeout
+        if argv[0] == "nvidia-smi":
+            return _ready("GPU-1, Tesla V100-SXM2-16GB, 7.0, 16384, 575.64.03\n")
+        if argv[0] == "nvcc":
+            return _ready(
+                "Cuda compilation tools, release 12.9, V12.9.41\n"
+                "Build cuda_12.9.r12.9/compiler.0_0\n"
+            )
+        return {"status": "unavailable"}
+
+    monkeypatch.setattr(environment_module, "_probe_command", probe)
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(resources={"gpus": 1}), _provider_lock()
+    )
+    assert "cuda-12.9" in snapshot.features
+    assert "nvidia-sm70" in snapshot.features
+    # Exactly what was observed, and nothing about what it is compatible with.
+    assert "cuda-12.0" not in snapshot.features
+    assert "nvidia-sm80" not in snapshot.features
+
+
+def test_a_newer_device_does_not_claim_an_older_generation(monkeypatch):
+    """Whether an sm70 build runs on Blackwell depends on how it was built."""
+
+    def probe(argv, *, timeout=5.0):
+        del timeout
+        if argv[0] == "nvidia-smi":
+            return _ready("GPU-1, NVIDIA GB10, 12.1, [N/A], 580.159.03\n")
+        if argv[0] == "nvcc":
+            return _ready("Cuda compilation tools, release 12.0, V12.0.140\n")
+        return {"status": "unavailable"}
+
+    monkeypatch.setattr(environment_module, "_probe_command", probe)
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(resources={"gpus": 1}), _provider_lock()
+    )
+    assert "nvidia-sm121" in snapshot.features
+    assert "nvidia-sm70" not in snapshot.features
+    assert "cuda-12.0" in snapshot.features
+    assert "cuda-12.9" not in snapshot.features

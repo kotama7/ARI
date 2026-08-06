@@ -588,11 +588,25 @@ the catalog verifies, which no derivation can see; a substrate claim is not an
 availability claim.
 
 The CUDA contract's `slurm` requirement was the same category error and now
-reads `slurm-controller`, the feature the prober actually emits; `gpu-slurm`
-gained a derivation from the two halves the prober emits separately. Its
-`cuda-12.9`, `nvidia-sm70`, and `exclusive-node` requirements remain
-unsatisfiable: they are version, hardware-generation, and allocation facts that
-need a GPU node to observe and could not be verified from a login node.
+reads `slurm-controller`; `gpu-slurm` gained a derivation from the two halves
+the prober emits separately. Running the prober on a real GPU node closed two
+more and found a defect that a login node cannot show.
+
+The toolkit version and the device generation were both being observed and
+thrown away, so a contract naming either could never be satisfied. The prober
+now emits `cuda-<major>.<minor>` from the observed compiler release and
+`nvidia-sm<major><minor>` from each device's reported compute capability —
+observations, not derivations. A node with 12.0 does not claim 12.9, and a
+Blackwell device does not claim `nvidia-sm70`: whether an sm70 build runs on a
+newer architecture depends on how it was built, and guessing at that is not a
+probe's job. `exclusive-node` is still unemitted; it is an allocation property,
+observable only from inside the allocation.
+
+The defect: `memory.total` reads `[N/A]` on Grace-Blackwell because the memory
+is unified, and the device parser discarded any row whose memory would not
+parse. ARI therefore saw **no GPU at all** on a node that has one, making every
+GPU capability silently unbindable there. A device whose memory figure will not
+parse is still a device.
 
 ## Extension gate
 
