@@ -54,6 +54,7 @@ targets the like-named module under `ari/`.
 - `test_cli_extended.py` — extended CLI cases.
 - `test_cli_shim_toolcalls.py` — CLI shim (`ari.llm.cli_server`) function-calling: `extract_tool_calls`/`render_prompt`/`complete` turn text-only `claude -p`/`codex exec` into OpenAI `tool_calls`, plus cost passthrough and MCP-direct mode vs. text-catalog fallback.
 - `test_clone.py` — clone behaviour.
+- `test_compute_budget.py` — TODO
 - `test_config.py` — config loading.
 - `test_container.py` — container runtime.
 - `test_context_budget.py` — TODO
@@ -134,7 +135,7 @@ targets the like-named module under `ari/`.
 - `test_kca_declaration_invariants.py` — every catalog-classified tool covers its capability contract's permissions and side-effect class, and the Router accounts for every entry it did not propose.
 - `test_kca_surfaces.py` — CLI, public API, config, and node-report KCA surface coverage.
 - `test_knowledge_external_importer.py` — pinned external knowledge-source import, provenance, and rejection coverage.
-- `test_knowledge_promotion_guard.py` — a verified Knowledge Skill must exhibit both passing registration gates and an approval bound to its exact manifest, body, and evidence.
+- `test_knowledge_promotion_guard.py` — a verified Knowledge Skill must exhibit both passing registration gates and an approval bound to its exact manifest, body, and evidence; covers the catalog loader, the append-only ledger transition, and the `promote_knowledge_skill.py` maintainer surface end to end.
 - `test_knowledge_registration_evidence.py` — TODO
 - `test_knowledge_resolver.py` — deterministic knowledge-skill catalog resolution, composition, locks, and ambiguity coverage.
 - `test_labels_disabled.py` — TODO

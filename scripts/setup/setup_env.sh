@@ -481,6 +481,11 @@ _env_append_if_absent "# ARI_MAX_REACT=20"
 _env_append_if_absent "# ARI_V2_SUPPRESS_TOOLS=  # 1 = hide describe_environment/run_code/emit_results from the search loop (also rewrites the prompt finish condition)"
 _env_append_if_absent "# ARI_FRONTLOAD_CONTEXT=1"
 _env_append_if_absent "# ARI_NODE_EXEC_BUDGET_S=1800"
+# Per-node SCHEDULER budget in NODE-SECONDS (nodes x walltime), the unit a
+# scheduler allocates in. Charged at submission against the reservation, so
+# an over-budget job is refused before it is queued. Unset/0 = no limit;
+# ARI_NODE_EXEC_BUDGET_S above only covers run_bash/run_code on one machine.
+_env_append_if_absent "# ARI_NODE_COMPUTE_BUDGET_NS="
 _env_append_if_absent "# ARI_PROBE_CACHE=1"
 _env_append_if_absent "# ARI_PROBE_CC="
 _env_append_if_absent "# ARI_MAX_RECURSION_DEPTH="
