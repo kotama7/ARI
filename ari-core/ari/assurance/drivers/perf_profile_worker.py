@@ -15,14 +15,15 @@ import argparse
 import sys
 from pathlib import Path
 
-from ari.assurance.native_perf_profile import profile_gemm
+from ari.assurance.native_perf_profile import profile_problem
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kind", choices=("gemm",), required=True)
+    parser.add_argument("--problem", required=True,
+                        help="the PINNED problem revision to profile")
     parser.add_argument("--candidate", required=True)
-    parser.add_argument("--dataset-revision", required=True,
+    parser.add_argument("--dataset-revision", default=None,
                         help="the PINNED case set to profile on, so a profile and "
                              "a score can be read next to each other")
     parser.add_argument("--seed", type=int, default=0)
@@ -42,9 +43,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-timeout", type=float, default=300.0)
     args = parser.parse_args(argv)
 
-    profilers = {"gemm": profile_gemm}
-    profile = profilers[args.kind](
-        Path(args.candidate), dataset_revision=args.dataset_revision,
+    profile = profile_problem(
+        args.problem, Path(args.candidate),
+        dataset_revision=args.dataset_revision,
         seed=args.seed, reps=args.reps, candidate_compiler=args.compiler,
         candidate_flags=args.flags, line_bytes=args.line_bytes,
         l2_granule_bytes=args.l2_granule_bytes, run_timeout=args.run_timeout)

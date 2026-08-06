@@ -23,7 +23,6 @@ performance harness from a stopwatch.
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 from ari.assurance.models import (
@@ -37,6 +36,7 @@ from ari.assurance.native_perf import (
     reference_source,
     verify_native_perf,
 )
+from ari.assurance.problems import load_problem
 from ari.protocols.integrity import bytes_digest, canonical_digest
 from ari.research_contract import ResearchArtifactRefV1
 
@@ -51,45 +51,56 @@ PERF_DRIVER_REVISION = "ari.assurance.native-perf/v1"
 #: a 100x spread here, against 0.095% at the scored shape.
 _PARITY_CASE_SET = "native-perf-gemm-cases/v1@parity"
 
-_SLOW_BUT_CORRECT = """#include "gemm_kernel.h"
-void gemm(int n, int m, int p, const double *A, const double *B, double *C) {
-  for (int i = 0; i < n; i++)
-    for (int j = 0; j < m; j++) {
-      double s = 0.0;
-      for (int l = 0; l < p; l++) s += A[i * p + l] * B[l * m + j];
-      C[i * m + j] = s;
-    }
-}
-"""
-
-_FAST_BUT_WRONG = """#include "gemm_kernel.h"
-void gemm(int n, int m, int p, const double *A, const double *B, double *C) {
-  (void)A; (void)B; (void)p;
-  for (int i = 0; i < n * m; i++) C[i] = 0.0;
-}
-"""
+#: The controls used to be gemm source embedded here, which was fine while gemm
+#: was the only problem and wrong the moment the probe started probing the
+#: manifest's OWN problem: they must keep that problem's contract to compile at
+#: all. They are declared scaffolding now, and a problem that omits them cannot
+#: be registered -- see ``parity_probe``.
+_MISSING_CONTROLS = (
+    "problem {revision!r} declares no {which} negative control, so this probe "
+    "could only show that the harness runs, not that it can tell a wrong answer "
+    "from a slow one"
+)
 
 
 def perf_driver_digest() -> str:
-    """Content address for the driver AND the frozen scaffolding it measures with.
+    """Content address for the INSTRUMENT: what measures, not what is measured.
 
-    The C files are included deliberately: the denominator is part of the
-    instrument, so a driver digest that covered only python would let the
-    reference change under a pinned manifest.
+    This used to cover the gemm kernels too, on the reasoning that the
+    denominator is part of the instrument. It is not — it is part of the
+    problem, and it moved there with the rest of the scaffolding. Keeping it
+    here would have meant that adding a research theme changed the driver
+    digest, which is a re-registration of every harness using this driver, for a
+    file none of them read. The problem's own digest covers those bytes and a
+    manifest pins it in ``oracle.sha256``; ``prepare`` checks both.
+
+    What remains is the measuring half: the loop, the flag screen, the family
+    oracles, the compile rules, and the counter tool, whose source stays under
+    ``kernels/tools`` because a profile taken with a tool that changed under a
+    pinned manifest is unattributable.
     """
     root = Path(__file__).resolve().parent
     package = root.parent
     files = [
         package / "native_perf.py",
         package / "native_perf_common.py",
+        package / "native_perf_family.py",
+        package / "native_perf_measure.py",
         package / "native_perf_gemm.py",
-        # The profiler is part of the instrument too: a profile taken with a
-        # counter tool that changed under a pinned manifest is unattributable.
+        # The profiler is part of the instrument too.
         package / "native_perf_profile.py",
+        # A problem is only as pinned as the code that resolves and digests it.
+        package / "problems.py",
         root / "perf.py",
         root / "perf_worker.py",
         root / "perf_profile_worker.py",
     ]
+    # No skip-if-absent: a missing instrument file must fail loudly here rather
+    # than drop out of the digest, which would make deleting one of these a
+    # change no pin could see.
+    missing = [str(path.name) for path in files if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"instrument files missing from the digest: {missing}")
     kernels = package / "kernels"
     files.extend(sorted(kernels.rglob("*.c")))
     files.extend(sorted(kernels.rglob("*.h")))
@@ -123,15 +134,31 @@ class NativePerfDriver:
                 "performance verifier must be credential-free and network-denied")
         if request.execution_request.network != "deny":
             raise ValueError("performance Harness request does not require isolation")
-        # WHICH PROBLEMS is part of what was registered. Resolving the manifest's
-        # own dataset revision here is what makes "verified" mean "verified at
-        # this size": without it a run could measure anything and still carry an
-        # attestation naming this manifest.
+        # WHICH QUESTION is part of what was registered. A problem definition is
+        # PINNED BUT NOT APPROVED -- anyone may add one, no signature -- so this
+        # check is what the whole arrangement rests on: an unapproved problem may
+        # be measured, but only the exact bytes this manifest was registered
+        # against may be measured AS this manifest. Without it, a run could swap
+        # the scaffolding, the goal text or the reference and still carry an
+        # attestation naming this harness.
+        problem = load_problem(manifest.oracle.revision)
+        if problem.digest != manifest.oracle.sha256:
+            raise ValueError(
+                f"problem {manifest.oracle.revision!r} does not match the "
+                f"manifest pin; the registered question has changed")
+        # WHICH PROBLEMS is part of it too. Registration evidence is established
+        # at a size and does not transfer: without this a run could measure
+        # anything and still carry an attestation naming this manifest.
         case_set, digest = load_case_set(manifest.dataset.revision)
         if digest != manifest.dataset.sha256:
             raise ValueError(
                 f"case set {manifest.dataset.revision!r} does not match the "
                 f"manifest pin; the registered problem set has changed")
+        if case_set.kind != problem.definition.family:
+            raise ValueError(
+                f"case set {manifest.dataset.revision!r} is for family "
+                f"{case_set.kind!r}, but the pinned problem is "
+                f"{problem.definition.family!r}")
         if not case_set.resolves:
             raise ValueError(
                 f"case set {manifest.dataset.revision!r} declares resolves=false, "
@@ -247,31 +274,54 @@ class NativePerfDriver:
         )
 
     def parity_probe(self, manifest):
-        """Clean control passes, both negative controls fail, for different reasons."""
-        flags = " ".join(reference_flags())
+        """Clean control passes, both negative controls fail, for different reasons.
+
+        Probes THE MANIFEST'S OWN problem, not a fixed one: a probe that always
+        certified gemm would say nothing about a harness registered against
+        anything else, while looking exactly as though it had.
+        """
+        problem = load_problem(manifest.oracle.revision)
+        scaffolding = problem.definition.scaffolding
+        for which, name in (("slow", scaffolding.negative_control_slow),
+                            ("wrong", scaffolding.negative_control_wrong)):
+            if not name:
+                # Fail closed. Reporting passed=False with a reason, rather than
+                # skipping the missing control, is what keeps "a problem may be
+                # added without approval" from also meaning "a problem may be
+                # registered without evidence".
+                return {
+                    "schema_version": "ari.native-perf-parity-report/v1",
+                    "driver_digest": perf_driver_digest(),
+                    "case_set": _PARITY_CASE_SET,
+                    "problem": problem.definition.revision,
+                    "results": {},
+                    "passed": False,
+                    "reason": _MISSING_CONTROLS.format(
+                        revision=problem.definition.revision, which=which),
+                }
+        flags = " ".join(reference_flags(problem))
         clean = verify_native_perf(
-            "gemm", reference_source("gemm"), tier="validate",
+            problem, reference_source(problem), tier="validate",
             dataset_revision=_PARITY_CASE_SET, candidate_flags=flags,
             regression_threshold=0.95)
-        with tempfile.TemporaryDirectory() as raw:
-            slow_path = Path(raw, "slow.c")
-            slow_path.write_text(_SLOW_BUT_CORRECT)
-            slow = verify_native_perf(
-                "gemm", slow_path, tier="screen",
-                dataset_revision=_PARITY_CASE_SET,
-                candidate_flags=flags, regression_threshold=0.95)
-            wrong_path = Path(raw, "wrong.c")
-            wrong_path.write_text(_FAST_BUT_WRONG)
-            wrong = verify_native_perf(
-                "gemm", wrong_path, tier="screen",
-                dataset_revision=_PARITY_CASE_SET,
-                candidate_flags=flags, regression_threshold=0.95)
+        slow = verify_native_perf(
+            problem, problem.path(scaffolding.negative_control_slow),
+            tier="screen", dataset_revision=_PARITY_CASE_SET,
+            candidate_flags=flags, regression_threshold=0.95)
+        wrong = verify_native_perf(
+            problem, problem.path(scaffolding.negative_control_wrong),
+            tier="screen", dataset_revision=_PARITY_CASE_SET,
+            candidate_flags=flags, regression_threshold=0.95)
         slow_detail = slow.case_results[0].detail if slow.case_results else ""
         wrong_detail = wrong.case_results[0].detail if wrong.case_results else ""
         return {
             "schema_version": "ari.native-perf-parity-report/v1",
             "driver_digest": perf_driver_digest(),
             "case_set": _PARITY_CASE_SET,
+            # Which question was probed. A probe report that named only the
+            # driver could be read as evidence about a harness it never ran.
+            "problem": problem.definition.revision,
+            "problem_digest": problem.digest,
             "results": {
                 "clean_control": {
                     "verdict": clean.verdict,

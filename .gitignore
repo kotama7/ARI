@@ -48,6 +48,12 @@ benchmarks/
 # having done it.
 !ari-core/ari/assurance/kernels/**/*.c
 !ari-core/ari/assurance/kernels/**/*.h
+# A problem definition is the same case one level out: its scaffolding is what
+# the agent starts from and what the reference is built from, and its digest
+# covers those bytes. Dropping them here would leave a problem that loads on the
+# machine that wrote it and nowhere else.
+!ari-core/config/harnesses/problems/**/*.c
+!ari-core/config/harnesses/problems/**/*.h
 *.cpp
 *.f90
 *.def

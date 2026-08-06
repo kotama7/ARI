@@ -1,0 +1,66 @@
+# WHAT IS BEING ASKED, as an asset rather than as constants spread through code.
+#
+# Everything a run needs in order to be comparable to another run of "the same"
+# problem is here and is covered by one digest: the scaffolding the agent starts
+# from, the question it is asked, which file is scored, what the answer is
+# compared against, and at which sizes.
+#
+# This file is PINNED but not APPROVED. A new research theme is a new directory
+# beside this one -- no ARI edit, no signing ceremony. That is safe because the
+# schema is closed: there is no field here for a compiler flag, a repetition
+# count, a timed window or an oracle tolerance, so a problem cannot weaken the
+# instrument that measures it. See ari/assurance/problems.py.
+schema_version: ari.harness-problem/v1
+id: gemm-dense-fp64
+revision: gemm-dense-fp64/v1@2026q3
+# Which oracle and problem generator measure it. The residual bound for a dense
+# GEMM is code, not data, so a problem names a registered family instead of ARI
+# naming the problem. Adding a FAMILY is still an ARI change; adding a PROBLEM
+# is not.
+family: gemm
+entry_point: gemm
+description: >-
+  Dense row-major fp64 general matrix multiply, C = A*B, measured against a
+  frozen competent reference at pinned shapes.
+scaffolding:
+  contract_header: gemm_kernel.h
+  driver: gemm_main.c
+  reference: reference_gemm.c
+  seed_candidate: seed_gemm.c
+  profiled_driver: gemm_main_profiled.c
+  # The parity probe's controls. They keep this problem's contract, so they
+  # cannot live in ARI; the probe requires both and requires them to fail for
+  # different reasons.
+  negative_control_slow: slow_gemm.c
+  negative_control_wrong: wrong_gemm.c
+score_inputs:
+  - candidate_gemm.c
+case_set: native-perf-gemm-cases/v1@scored-2026q3
+axis: speedup
+denominator: competent_frozen
+goal: |
+  Make `gemm` in candidate_gemm.c as fast as you can without changing what it
+  computes.
+
+  The contract is in gemm_kernel.h and must be kept exactly:
+
+      C = A * B   (dense, row-major, fp64)
+      A is n x p, B is p x m, C is n x m
+      C[i*m + j] = sum_l A[i*p + l] * B[l*m + j]
+
+  Rules that the measurement enforces, stated here so they are not a surprise:
+
+  - Edit only candidate_gemm.c. The driver and the header are frozen; a change
+    to your copy of them is not used.
+  - Do not call a BLAS/LAPACK library. The build does not link one.
+  - Your object may define only the `gemm` symbol, and may not run code outside
+    the timed call (no constructors, no static initialisers).
+  - One cold call per process is timed. There is no warmup, so a cache the
+    kernel warms itself is the only warm cache there is.
+  - The output buffer arrives poisoned with NaN. A kernel that does not write
+    every element fails the correctness oracle rather than scoring fast.
+  - Correctness is a per-element backward-error bound, not exact equality, so
+    reassociation is allowed; producing a different-but-valid rounding is fine.
+
+  You are compared against a frozen reference built by a competent user of this
+  toolchain. Passing means not slower than it.

@@ -34,6 +34,15 @@ from ari.assurance.native_perf_common import (
 
 CORE = Path(__file__).resolve().parents[1]
 
+#: The problem the instrument is exercised against here. A revision, not a
+#: task name: ARI no longer has a list of measurable problems.
+PROBLEM = "gemm-dense-fp64/v1@2026q3"
+
+
+def problem_dir():
+    from ari.assurance.problems import load_problem
+    return load_problem(PROBLEM).directory
+
 
 def test_the_driver_is_registered_and_its_revision_is_unique():
     drivers = builtin_driver_map()
@@ -42,28 +51,72 @@ def test_the_driver_is_registered_and_its_revision_is_unique():
     assert len(drivers) == len({type(d).__name__ for d in drivers.values()})
 
 
-def test_the_driver_digest_covers_the_frozen_scaffolding(tmp_path, monkeypatch):
-    """The denominator is part of the instrument.
+def test_the_frozen_reference_cannot_drift_under_a_pinned_manifest():
+    """The denominator is pinned — by the PROBLEM's digest, not the driver's.
 
-    A driver digest over python only would let the frozen reference change under
-    a manifest that still pinned the same driver — the scaffolding is what the
-    ratio is measured against, so it has to be inside the content address.
+    It used to be inside the driver digest, on the reasoning that the
+    denominator is part of the instrument. That was the right property attached
+    to the wrong thing: it made adding an unrelated research theme a
+    re-registration of every harness on this driver, for a file none of them
+    read. The reference belongs to its problem, so what must hold now is that
+    editing it moves the PROBLEM digest and that ``prepare`` refuses when the
+    manifest's pin no longer matches. Both are asserted, because the digest
+    moving is useless if nothing checks it.
     """
-    before = perf_driver_digest()
-    reference = kernels_root() / "gemm" / "reference_gemm.c"
+    from ari.assurance.problems import load_problem
+
+    before = load_problem(PROBLEM).digest
+    reference = problem_dir() / "reference_gemm.c"
     original = reference.read_bytes()
     try:
         reference.write_bytes(original + b"\n/* drift */\n")
-        assert perf_driver_digest() != before, (
-            "editing the frozen reference did not move the driver digest")
+        assert load_problem(PROBLEM).digest != before, (
+            "editing the frozen reference did not move the problem digest")
+        with pytest.raises(ValueError, match="registered question has changed"):
+            NativePerfDriver().prepare(
+                _Manifest(problem_sha256=before), _Request())
     finally:
         reference.write_bytes(original)
+    assert load_problem(PROBLEM).digest == before
+
+
+def test_the_driver_digest_covers_the_instrument():
+    """What measures, as opposed to what is measured.
+
+    A driver digest over some of the instrument is a pin that misses the rest:
+    the measurement loop decides the numbers as much as the reference does.
+    """
+    before = perf_driver_digest()
+    for name in ("native_perf_measure.py", "native_perf_common.py",
+                 "problems.py", "native_perf_family.py"):
+        path = CORE / "ari" / "assurance" / name
+        original = path.read_bytes()
+        try:
+            path.write_bytes(original + b"\n# drift\n")
+            assert perf_driver_digest() != before, (
+                f"editing {name} did not move the driver digest")
+        finally:
+            path.write_bytes(original)
     assert perf_driver_digest() == before
+
+
+def test_a_deleted_instrument_file_fails_loudly_rather_than_leaving_the_digest():
+    """Skip-if-absent would make deleting one of these invisible to every pin."""
+    import ari.assurance.drivers.perf as perf_mod
+
+    real = Path(perf_mod.__file__).resolve().parent.parent / "native_perf_measure.py"
+    original = real.read_bytes()
+    try:
+        real.unlink()
+        with pytest.raises(FileNotFoundError, match="native_perf_measure.py"):
+            perf_driver_digest()
+    finally:
+        real.write_bytes(original)
 
 
 def test_the_scaffolding_is_present_and_compilable_in_core():
     """The point of the move: a registered harness must not need a workspace."""
-    kdir = kernels_root() / "gemm"
+    kdir = problem_dir()
     for name in ("gemm_kernel.h", "gemm_main.c", "reference_gemm.c"):
         assert (kdir / name).is_file(), f"{name} is missing from ari-core"
     text = (kdir / "gemm_main.c").read_text()
@@ -94,6 +147,14 @@ class _Manifest:
         revision, digest = _real_case_set(
             kw.get("dataset_revision", "native-perf-gemm-cases/v1@parity"))
         self.dataset = _Asset(revision, kw.get("dataset_sha256", digest))
+        # The problem rides in the manifest's ``oracle`` slot: it is what decides
+        # both what a right answer is and what the ratio is against, and using an
+        # existing slot means the frozen 46-field manifest did not have to grow
+        # a field to make problems free.
+        from ari.assurance.problems import load_problem
+        loaded = load_problem(kw.get("problem_revision", PROBLEM))
+        self.oracle = _Asset(loaded.definition.revision,
+                             kw.get("problem_sha256", loaded.digest))
         self.kind = kw.get("kind", "benchmark")
         self.network_policy = kw.get("network_policy", "deny")
         self.credential_policy = kw.get("credential_policy", "none")
@@ -155,7 +216,10 @@ def _report(**kw):
                            max_rel_error=0.5)
     case = PerfCaseResultV1(case_id="c", verdict="pass", detail="d", speedup=2.0,
                             relative_spread=None, repetitions=(rep,))
-    values = dict(kind="gemm", tier="validate", verdict="pass",
+    values = dict(problem_id="gemm-dense-fp64",
+                  problem_revision=PROBLEM,
+                  problem_digest="sha256:" + "1" * 64,
+                  family="gemm", tier="validate", verdict="pass",
                   case_results=(case,), regression_threshold=1.0,
                   default_toolchain={"requested": "cc", "resolved_path": "/usr/bin/cc",
                                      "version": "cc (GCC) x"},
@@ -341,7 +405,9 @@ def _build(tmp_path, body: str, **kw):
     source.write_text(body)
     out = tmp_path / "out"
     out.mkdir(exist_ok=True)
-    return compile_binary(kind="gemm", role="candidate", source=source,
+    d = problem_dir()
+    return compile_binary(include_dir=d, driver=d / "gemm_main.c",
+                          entry_point="gemm", role="candidate", source=source,
                           out_dir=out, compiler="cc", **kw)
 
 
@@ -412,10 +478,12 @@ def test_the_oracle_does_not_run_between_the_timed_launches():
     lands on the same cores, on one side of the comparison only — so it moved
     toolchain_gain. The property is positional: no timed launch may follow the
     oracle within a repetition."""
-    lines = (CORE / "ari" / "assurance" / "native_perf_gemm.py").read_text().splitlines()
+    lines = (CORE / "ari" / "assurance" / "native_perf_measure.py"
+             ).read_text().splitlines()
     start = next(i for i, l in enumerate(lines) if "for index in range(reps):" in l)
     launches = [i for i, l in enumerate(lines[start:], start) if "run_timed(" in l]
-    oracle = next(i for i, l in enumerate(lines[start:], start) if "_residual_ok(" in l)
+    oracle = next(i for i, l in enumerate(lines[start:], start)
+                  if "family.check(" in l)
     assert launches, "no timed launch found"
     assert max(launches) < oracle, (
         "a timed launch happens after the oracle; the oracle's BLAS call lands "
@@ -454,8 +522,8 @@ def test_a_size_is_chosen_by_naming_a_pinned_set_not_by_passing_shapes():
     attestation saying "verified" about a problem the manifest never named."""
     import inspect
 
-    from ari.assurance.native_perf_gemm import verify_gemm_performance
-    params = inspect.signature(verify_gemm_performance).parameters
+    from ari.assurance.native_perf_measure import verify_performance
+    params = inspect.signature(verify_performance).parameters
     assert "dataset_revision" in params
     assert "shapes" not in params, "the unpinned size path is back"
 
@@ -498,7 +566,7 @@ def test_the_profiled_driver_reduces_to_the_scored_driver(tmp_path):
     first time the timing semantics change and the profile keeps describing the
     old one while looking current.
     """
-    kdir = kernels_root() / "gemm"
+    kdir = problem_dir()
     scored = (kdir / "gemm_main.c").read_text()
     profiled = (kdir / "gemm_main_profiled.c").read_text()
     stripped = "".join(l for l in profiled.splitlines(keepends=True)
@@ -507,7 +575,7 @@ def test_the_profiled_driver_reduces_to_the_scored_driver(tmp_path):
 
 
 def test_the_gate_brackets_exactly_the_timed_call():
-    lines = (kernels_root() / "gemm" / "gemm_main_profiled.c").read_text().splitlines()
+    lines = (problem_dir() / "gemm_main_profiled.c").read_text().splitlines()
     enter = next(i for i, l in enumerate(lines) if "gate_enter();" in l)
     t0 = next(i for i, l in enumerate(lines) if l.startswith("    double t0 = now_sec();"))
     el = next(i for i, l in enumerate(lines)

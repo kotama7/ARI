@@ -52,8 +52,8 @@ from pydantic import Field
 from ari.assurance.native_perf_common import (
     NativePerfReportV1,  # noqa: F401  (re-exported shape reference)
     PerfBuildError,
+    PerfFamily,
     PerfInfrastructureError,
-    PerfKind,
     compile_binary,
     crosses_compiler_boundary,
     default_compiler,
@@ -67,6 +67,8 @@ from ari.assurance.native_perf_common import (
     screen_flags,
     toolchain_identity,
 )
+from ari.assurance.native_perf_family import get_family
+from ari.assurance.problems import LoadedProblemV1
 from ari.protocols.integrity import DigestBoundModel, StrictModel
 
 
@@ -92,7 +94,12 @@ class NativePerfProfileV1(DigestBoundModel):
     _digest_field = "profile_digest"
 
     schema_version: Literal["ari.native-perf-profile/v1"] = "ari.native-perf-profile/v1"
-    kind: PerfKind
+    #: The same pinned identity the verdict carries, so a profile and a score can
+    #: be shown to be about one question rather than assumed to be.
+    problem_id: str
+    problem_revision: str
+    problem_digest: str
+    family: PerfFamily
     scored: Literal[False] = False
     points: tuple[ProfilePointV1, ...]
     dataset_revision: str
@@ -171,10 +178,11 @@ def _spread(points: list[ProfilePointV1], key: str) -> dict[str, dict[str, Any]]
     return out
 
 
-def profile_gemm(
+def profile_problem(
+    problem: str | LoadedProblemV1,
     candidate_source: Path,
     *,
-    dataset_revision: str,
+    dataset_revision: str | None = None,
     seed: int = 0,
     reps: int = 3,
     candidate_compiler: str | None = None,
@@ -189,18 +197,30 @@ def profile_gemm(
     without one is how this study previously mistook run-to-run variance for an
     effect. The size comes from the same pinned case sets the verdict uses, so a
     profile and a score can be read next to each other.
+
+    A problem that declares no ``profiled_driver`` cannot be profiled, and says
+    so rather than being profiled with the scored driver -- which has no counter
+    gate, so every number would describe the whole process instead of the region.
     """
     import numpy as np
 
     from ari.assurance.native_perf_common import run_timed
-    from ari.assurance.native_perf_gemm import (
-        ENTRY_POINT as GEMM_ENTRY_POINT, _residual_ok, _write_problem,
-        gen_problem)
+    from ari.assurance.native_perf_measure import resolve_problem
 
-    case_set, dataset_digest = load_case_set(dataset_revision)
-    if case_set.kind != "gemm":
+    loaded = resolve_problem(problem)
+    definition = loaded.definition
+    family = get_family(definition.family)
+    profiled_driver = definition.scaffolding.profiled_driver
+    if not profiled_driver:
         raise PerfInfrastructureError(
-            f"case set {dataset_revision!r} is for {case_set.kind!r}, not gemm")
+            f"problem {definition.revision!r} declares no profiled driver, so "
+            f"its scored region is not marked and cannot be counted")
+
+    case_set, dataset_digest = load_case_set(dataset_revision or definition.case_set)
+    if case_set.kind != definition.family:
+        raise PerfInfrastructureError(
+            f"case set {case_set.revision!r} is for family {case_set.kind!r}, "
+            f"but problem {definition.revision!r} is {definition.family!r}")
 
     status, resolved = resolve_compiler(candidate_compiler)
     accepted, _rejected = screen_flags(candidate_flags)
@@ -218,21 +238,23 @@ def profile_gemm(
             launcher += ["--l2-granule-bytes", str(int(l2_granule_bytes))]
         launcher.append("--")
         exe = compile_binary(
-            kind="gemm", role="candidate", source=candidate_source, out_dir=build,
-            compiler=resolved, extra_flags=accepted,
-            main_src=kernels_root() / "gemm" / "gemm_main_profiled.c",
-            tag="candidate_profiled", entry_point=GEMM_ENTRY_POINT)
+            include_dir=loaded.directory,
+            driver=loaded.path(profiled_driver),
+            entry_point=definition.entry_point,
+            role="candidate", source=candidate_source, out_dir=build,
+            compiler=resolved, extra_flags=accepted, tag="candidate_profiled")
 
-        problem = build / "problem.bin"
+        instance_path = build / "problem.bin"
         output = build / "profiled.bin"
         timing = build / "timing.bin"
-        for case in case_set.cases:
-            n, p, m = (int(v) for v in case)
-            case_id = "x".join(str(int(v)) for v in case)
+        for raw_case in case_set.cases:
+            case = tuple(int(v) for v in raw_case)
+            case_id = "x".join(str(v) for v in case)
+            expected = family.output_elements(case)
             for index in range(int(reps)):
                 input_seed = seed * 100003 + index
-                a, b = gen_problem((n, p, m), input_seed)
-                _write_problem(problem, a, b)
+                instance = family.generate(case, input_seed)
+                family.write(instance_path, instance)
                 captured: dict[str, str] = {}
                 credited = None
                 error = None
@@ -241,7 +263,7 @@ def profile_gemm(
                 worst = None
                 try:
                     credited = run_timed(
-                        exe, problem, output, timing, timeout=run_timeout,
+                        exe, instance_path, output, timing, timeout=run_timeout,
                         role="candidate", ld_library_path=candidate_libs,
                         launcher=tuple(launcher), capture=captured)
                 except (PerfBuildError, PerfInfrastructureError) as exc:
@@ -256,8 +278,8 @@ def profile_gemm(
                     error = "the counter tool produced no output"
                 if credited is not None:
                     got = np.fromfile(output, dtype=np.float64)
-                    if got.size == n * m:
-                        correct, worst = _residual_ok(got.reshape(n, m), a, b)
+                    if got.size == expected:
+                        correct, worst = family.check(got, case, instance)
                     else:
                         correct, worst = False, float("inf")
                 points.append(ProfilePointV1(
@@ -266,7 +288,9 @@ def profile_gemm(
                     output_correct=correct, output_rel_error=worst, error=error))
 
     return NativePerfProfileV1.create(
-        kind="gemm", points=tuple(points),
+        problem_id=definition.id, problem_revision=definition.revision,
+        problem_digest=loaded.digest, family=definition.family,
+        points=tuple(points),
         dataset_revision=case_set.revision, dataset_sha256=dataset_digest,
         reps=int(reps),
         ratio_spread={key: _spread(points, key) for key in
@@ -286,5 +310,5 @@ __all__ = [
     "ProfilePointV1",
     "build_counter_tool",
     "counter_tool_source",
-    "profile_gemm",
+    "profile_problem",
 ]

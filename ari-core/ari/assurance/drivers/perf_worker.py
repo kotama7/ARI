@@ -16,7 +16,11 @@ from ari.assurance.native_perf import verify_native_perf
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kind", choices=("gemm",), required=True)
+    parser.add_argument("--problem", required=True,
+                        help="the PINNED problem revision to measure. Not a "
+                             "choice out of a fixed list: a problem is a "
+                             "registered directory, so adding a research theme "
+                             "is not an ARI edit.")
     parser.add_argument("--candidate", required=True,
                         help="path to the candidate kernel source")
     parser.add_argument("--tier", choices=("screen", "validate", "certify"),
@@ -36,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--negative-control", action="store_true")
     args = parser.parse_args(argv)
     report = verify_native_perf(
-        args.kind, args.candidate, tier=args.tier, seed=args.seed,
+        args.problem, args.candidate, tier=args.tier, seed=args.seed,
         candidate_compiler=args.compiler, candidate_flags=args.flags,
         **({"dataset_revision": args.dataset_revision}
            if args.dataset_revision else {}),

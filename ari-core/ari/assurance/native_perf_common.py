@@ -65,7 +65,14 @@ for _blas in ("OPENBLAS_NUM_THREADS", "GOTO_NUM_THREADS", "MKL_NUM_THREADS",
 from ari.protocols.integrity import DigestBoundModel, StrictModel
 
 
-PerfKind = Literal["gemm", "spmm", "stencil"]
+#: ARI NAMES NO PROBLEMS. This used to be ``Literal["gemm", "spmm", "stencil"]``,
+#: which made adding a research theme an edit to ARI core and made the set of
+#: answerable questions a property of this file. A problem is now a pinned asset
+#: (``ari.assurance.problems``) and what appears here is only the FAMILY -- which
+#: registered generator and oracle measure it -- because "the residual bound for
+#: a dense GEMM" is code and cannot be expressed as data. Adding a family is
+#: still an ARI change; adding a problem is not.
+PerfFamily = str
 PerfTier = Literal["screen", "validate", "certify"]
 
 #: Repetitions per case, per tier. A tier buys statistical resolution, exactly
@@ -153,7 +160,14 @@ class NativePerfReportV1(DigestBoundModel):
     _digest_field = "report_digest"
 
     schema_version: Literal["ari.native-perf-report/v1"] = "ari.native-perf-report/v1"
-    kind: PerfKind
+    #: WHICH QUESTION, pinned. The problem supplies the scaffolding, the goal
+    #: text and the contract, all of which are experimental conditions; a report
+    #: naming only a family could not distinguish two problems in that family.
+    problem_id: str
+    problem_revision: str
+    problem_digest: str
+    #: Which registered generator and oracle produced and checked the answers.
+    family: PerfFamily
     tier: PerfTier
     verdict: Literal["pass", "fail", "inconclusive"]
     case_results: tuple[PerfCaseResultV1, ...]
@@ -215,7 +229,10 @@ class CaseSetV1(StrictModel):
 
     schema_version: Literal["ari.harness-case-set/v1"] = "ari.harness-case-set/v1"
     revision: str
-    kind: PerfKind
+    #: The FAMILY the shapes are meaningful for -- a (n, p, m) triple means one
+    #: thing to the gemm generator and nothing to a stencil. Checked against the
+    #: problem's family at load, so a set cannot be measured by the wrong oracle.
+    kind: PerfFamily
     description: str
     cases: tuple[tuple[int, ...], ...]
     #: False marks a set that is cheap but NOT resolved enough to support a
@@ -512,21 +529,28 @@ class PerfInfrastructureError(RuntimeError):
 
 
 def kernels_root() -> Path:
+    """Scaffolding ARI itself owns — currently only the counter tool.
+
+    The per-problem kernels used to live here under a directory named after a
+    task, which is what made the set of measurable problems a property of this
+    package. They belong to their problem now. What stays is the instrument: a
+    problem cannot supply a counter tool any more than it can supply flags.
+    """
     return Path(__file__).resolve().parent / "kernels"
 
 
 def compile_binary(
     *,
-    kind: PerfKind,
+    include_dir: Path,
+    driver: Path,
+    entry_point: str,
     role: Literal["candidate", "reference", "reference_matched"],
     source: Path,
     out_dir: Path,
     compiler: str,
     extra_flags: tuple[str, ...] = (),
     reference_flags: tuple[str, ...] = (),
-    main_src: Path | None = None,
     tag: str | None = None,
-    entry_point: str | None = None,
 ) -> Path:
     """Compile the frozen driver plus one kernel into ``out_dir``.
 
@@ -540,19 +564,20 @@ def compile_binary(
     beside an edited copy of the header would bind to that instead of the pinned
     one reached through ``-I``.
     """
-    kdir = kernels_root() / kind
-    # main_src swaps the FROZEN DRIVER only -- same kernel source, same compiler,
-    # same flags, same object-level audit. It exists for the profiled driver,
-    # which is the scored one plus a counter gate; the scored build passes
-    # nothing and is unchanged. One compile path, because a second would drift
-    # from the flags being profiled.
-    main_c = Path(main_src) if main_src else kdir / f"{kind}_main.c"
+    # BOTH COME FROM THE PROBLEM. They used to be derived from a task name, so
+    # the set of measurable problems was whatever directories existed under a
+    # path in this package. `driver` also carries the profiled variant -- the
+    # scored driver plus a counter gate -- which is the same kernel source,
+    # compiler, flags and object audit; one compile path, because a second would
+    # drift from the flags being profiled.
+    kdir = Path(include_dir)
+    main_c = Path(driver)
     _tag = tag or role
     if not main_c.is_file():
         raise PerfInfrastructureError(f"frozen driver missing: {main_c}")
     staged = source
     if role == "candidate":
-        staged = out_dir / f"candidate_{_tag}_{kind}.c"
+        staged = out_dir / f"candidate_{_tag}.c"
         shutil.copy2(source, staged)
 
     base = ["-O3", "-fopenmp", *isa_flags_for(compiler)]
@@ -583,7 +608,7 @@ def compile_binary(
 
     # Audit BEFORE linking: once the object is in the executable the symbols have
     # already won, and the point is to refuse rather than to detect afterwards.
-    audit_kernel_object(entry_point or kind, kern_o, role=role)
+    audit_kernel_object(entry_point, kern_o, role=role)
 
     completed = _run([compiler, *base, *reference_flags, str(main_o), str(kern_o),
                       "-o", str(exe), "-lm"], "linker")
@@ -836,7 +861,7 @@ __all__ = [
     "PerfBuildError",
     "PerfCaseResultV1",
     "PerfInfrastructureError",
-    "PerfKind",
+    "PerfFamily",
     "PerfRepetitionV1",
     "PerfTier",
     "audit_kernel_object",
