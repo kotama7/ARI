@@ -8,9 +8,11 @@ Design principles:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
+import threading
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -1134,6 +1136,129 @@ _V2_SUPPRESSED_TOOLS = frozenset({
 })
 
 
+@contextlib.contextmanager
+def parked_for_job(reason: str = "job"):
+    """Give up this node's concurrency permit while it can only wait.
+
+    A node blocked on a scheduler job holds one of at most four executor slots
+    for as long as the job runs — four such nodes stall the whole search while
+    using no CPU at all. Releasing the permit lets the orchestrator start
+    another node in its place; the thread stays (it is asleep, not working),
+    which is what keeps this out of the 1,767-line `run()` and away from
+    splitting a live research loop into continuations.
+
+    The permit is installed by the orchestrator through
+    :func:`set_node_concurrency_gate`. With no gate installed this is a plain
+    no-op, so AgentLoop stays usable on its own and in tests.
+
+    Re-acquired on the way out, so the code after the wait runs under the same
+    limit as the code before it. If re-acquiring has to queue, that is the
+    intended back-pressure: the slot was genuinely given away.
+    """
+    gate = _NODE_CONCURRENCY_GATE
+    if gate is None:
+        yield
+        return
+    gate.release()
+    logger.debug("node parked (%s): concurrency permit released", reason)
+    try:
+        yield
+    finally:
+        gate.acquire()
+        logger.debug("node resumed (%s): concurrency permit re-acquired", reason)
+
+
+_NODE_CONCURRENCY_GATE = None
+
+
+def set_node_concurrency_gate(gate) -> None:
+    """Install the semaphore that bounds concurrently ACTIVE nodes.
+
+    ``gate`` needs only ``acquire()`` / ``release()``. Passing None removes it.
+    """
+    global _NODE_CONCURRENCY_GATE
+    _NODE_CONCURRENCY_GATE = gate
+
+
+class _NodeLocalState(threading.local):
+    """State owned by the node currently running, not by the shared AgentLoop.
+
+    Subclassing ``threading.local`` gives each worker its own copy; the class
+    attributes below are the defaults a fresh thread sees.
+    """
+
+    slurm_real_stdout: str = ""
+    node_work_dir: "str | None" = None
+    current_node_depth: int = 0
+    ideas_generated: bool = False
+    suppress_tools: frozenset = frozenset()
+
+
+# How often the completion marker is stat'd while waiting. Small enough that a
+# finished job is noticed promptly, large enough that a 30 s wait costs ~10
+# local stats. The scheduler is still queried on the original 30 s cadence.
+_MARKER_POLL_SECONDS = 3.0
+
+
+def _completion_marker_path(work_dir: str, submit_result) -> "Path | None":
+    """Where the job writes its own completion record, or None.
+
+    The scheduler places it at ``{work_dir}/.ari-hpc/{request_digest}/`` and
+    the submit response carries the digest, so this is derived rather than
+    returned — the response deliberately does not expose an absolute host path
+    to the tool surface, and there is no reason to start.
+
+    Watching it is what makes the wait responsive: the job writes the file to
+    a temporary name and ``mv -f``s it into place, so its appearance is atomic
+    and cannot be observed half-written. It is only ever a FAST PATH — a job
+    the scheduler kills never runs its wrapper, so no marker appears and the
+    periodic status call remains the source of truth.
+    """
+    from pathlib import Path as _P
+
+    if not work_dir:
+        return None
+    try:
+        payload = submit_result
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        digest = str((payload or {}).get("request_digest") or "")
+    except (ValueError, TypeError, AttributeError):
+        return None
+    digest = digest.removeprefix("sha256:")
+    if not re.fullmatch(r"[0-9a-f]{64}", digest):
+        return None
+    return _P(work_dir) / ".ari-hpc" / digest / "wrapper-completion-v1.json"
+
+
+def _append_poll_observation(
+    messages: list, poller_tool: str, job_id: str, seq: int, result_json: str
+) -> None:
+    """Record ONE job-state observation as a tool-call pair.
+
+    The provider requires a tool message to follow an assistant message that
+    carries the matching tool_calls, so both halves are appended together.
+    """
+    call_id = f"autopoll_{seq}"
+    messages.append({
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [{
+            "id": call_id,
+            "type": "function",
+            "function": {
+                "name": poller_tool,
+                "arguments": json.dumps({"job_id": job_id}),
+            },
+        }],
+    })
+    messages.append({
+        "role": "tool",
+        "tool_call_id": call_id,
+        "content": result_json[:800],
+    })
+
+
 def patch_prompt_for_suppressed_tools(system_content: str) -> str:
     """Keep the prompt honest about the tools actually offered.
 
@@ -1311,6 +1436,64 @@ from ari.agent.message_utils import _extract_job_ids, _tool_was_called  # noqa: 
 
 
 class AgentLoop:
+    # Per-node state, reached through the running thread's slot. Kept as
+    # properties so every existing `self._slurm_real_stdout` reference keeps
+    # working — the isolation is in where the value lives, not in how it is
+    # spelled at the call sites.
+    def _thread_state(self) -> "_NodeLocalState":
+        """This thread's slot, created on demand.
+
+        Tests build partially-initialised loops with ``AgentLoop.__new__`` to
+        exercise one method without standing up an LLM, MCP client and
+        evaluator. Requiring __init__ to have run would break that for no gain,
+        so the slot is created where it is first used.
+        """
+        state = self.__dict__.get("_node_local")
+        if state is None:
+            state = _NodeLocalState()
+            self.__dict__["_node_local"] = state
+        return state
+
+    @property
+    def _slurm_real_stdout(self) -> str:
+        return self._thread_state().slurm_real_stdout
+
+    @_slurm_real_stdout.setter
+    def _slurm_real_stdout(self, value: str) -> None:
+        self._thread_state().slurm_real_stdout = value
+
+    @property
+    def _node_work_dir(self):
+        return self._thread_state().node_work_dir
+
+    @_node_work_dir.setter
+    def _node_work_dir(self, value) -> None:
+        self._thread_state().node_work_dir = value
+
+    @property
+    def _current_node_depth(self) -> int:
+        return self._thread_state().current_node_depth
+
+    @_current_node_depth.setter
+    def _current_node_depth(self, value: int) -> None:
+        self._thread_state().current_node_depth = value
+
+    @property
+    def _ideas_generated(self) -> bool:
+        return self._thread_state().ideas_generated
+
+    @_ideas_generated.setter
+    def _ideas_generated(self, value: bool) -> None:
+        self._thread_state().ideas_generated = value
+
+    @property
+    def _suppress_tools(self):
+        return self._thread_state().suppress_tools
+
+    @_suppress_tools.setter
+    def _suppress_tools(self, value) -> None:
+        self._thread_state().suppress_tools = value
+
     def __init__(
         self,
         llm: LLMClient,
@@ -1326,7 +1509,15 @@ class AgentLoop:
         self.memory = memory
         self.mcp = mcp
         self.evaluator = evaluator
-        self._slurm_real_stdout: str = ""
+        # ONE AgentLoop serves every node (core.build_runtime constructs a
+        # single instance) and bfts_loop runs up to four of them at once in a
+        # ThreadPoolExecutor. The state below belongs to the node currently
+        # executing, not to the loop, so plain attributes let concurrent nodes
+        # overwrite each other — `run()` even resets _slurm_real_stdout on
+        # entry, so a node starting could blank a sibling's captured output
+        # mid-flight. Held per thread instead; a node runs start-to-finish on
+        # one thread, including while parked waiting for a job.
+        self._node_local = _NodeLocalState()
         self.hints = workflow_hints or WorkflowHints()
         self.max_react_steps = max_react_steps
         self.timeout_per_node = timeout_per_node
@@ -2852,9 +3043,30 @@ class AgentLoop:
                         # After slurm_submit, status is not yet known → seed with PENDING
                         if last == self.hints.job_submitter_tool:
                             last_status = "PENDING"
+                        # Fast path: the job's own completion marker. Checking a
+                        # local stat every few seconds turns a wait that could
+                        # overshoot by 30 s into one that ends within seconds,
+                        # and costs the scheduler nothing. It cannot REPLACE the
+                        # status call — a job the scheduler kills never runs its
+                        # wrapper and writes no marker — so it only shortens the
+                        # sleep, never the authority.
+                        _marker = _completion_marker_path(work_dir, _res)
                         poll_count = 0
                         while last_status in ("RUNNING", "PENDING", "CONFIGURING") and poll_count < 60:
-                            _time.sleep(30)
+                            # Only the sleep is parked, not the status call:
+                            # the poll itself is work, and running it outside
+                            # the limit would let an unbounded number of nodes
+                            # hit the scheduler at once.
+                            with parked_for_job(f"job {job_ids[-1]}"):
+                                _waited = 0.0
+                                while _waited < 30.0:
+                                    _time.sleep(_MARKER_POLL_SECONDS)
+                                    _waited += _MARKER_POLL_SECONDS
+                                    try:
+                                        if _marker is not None and _marker.is_file():
+                                            break
+                                    except OSError:
+                                        pass
                             poll_count += 1
                             poll_tc = [{
                                 "id": f"autopoll_{poll_count}",
@@ -2872,34 +3084,31 @@ class AgentLoop:
                             )
                             rc2 = json.dumps(poll_results[0]["result"], ensure_ascii=False)
                             logger.info("Auto-poll job %s: %s", job_ids[-1], rc2[:100])
-                            # OpenAI requires tool message to follow assistant message with tool_calls
-                            messages.append({
-                                "role": "assistant",
-                                "content": None,
-                                "tool_calls": [{
-                                    "id": f"autopoll_{poll_count}",
-                                    "type": "function",
-                                    "function": {
-                                        "name": self.hints.job_poller_tool,
-                                        "arguments": json.dumps({"job_id": job_ids[-1]}),
-                                    },
-                                }],
-                            })
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": f"autopoll_{poll_count}",
-                                "content": rc2[:800],
-                            })
                             try:
                                 _pr = poll_results[0]["result"]
                                 if isinstance(_pr, str): _pr = json.loads(_pr)
-                                last_status = _pr.get("status", "") if isinstance(_pr, dict) else ""
+                                _new_status = _pr.get("status", "") if isinstance(_pr, dict) else ""
                                 # COMPLETED + stdout → set actual measurement flag here too
-                                if last_status == "COMPLETED" and isinstance(_pr, dict) and _pr.get("stdout"):
+                                if _new_status == "COMPLETED" and isinstance(_pr, dict) and _pr.get("stdout"):
                                     self._slurm_real_stdout = _pr["stdout"]
                                     logger.info("Auto-poll: captured real SLURM stdout (%d chars)", len(self._slurm_real_stdout))
                             except Exception:
                                 break
+                            # Record a TRANSITION, not every poll. Job state is
+                            # idempotent: sixty copies of "RUNNING" carry the
+                            # information of one. Appending each poll put ~57k
+                            # chars of repetition into a 92k-char budget
+                            # (context_budget_chars), and _build_safe_window
+                            # keeps head + pinned + the last 20 messages — the
+                            # poller is not pinned and the polls ARE the tail,
+                            # so what got dropped was the agent's own reasoning
+                            # while the noise survived. The loop then re-derived
+                            # what it had already tried, on a 20-step budget.
+                            if _new_status != last_status:
+                                _append_poll_observation(
+                                    messages, self.hints.job_poller_tool,
+                                    job_ids[-1], poll_count, rc2)
+                            last_status = _new_status
                     except Exception as _e:
                         logger.warning("Auto-poll error: %s", _e)
 

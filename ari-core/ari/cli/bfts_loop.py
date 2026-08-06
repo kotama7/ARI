@@ -430,6 +430,19 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
               experiment_data, checkpoint_dir, run_id, total_processed=0):
     from ari.orchestrator.node import Node, NodeStatus
     max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))
+    # Concurrency is bounded by a SEMAPHORE rather than by the pool size, so a
+    # node waiting on a scheduler job can hand its permit back and let another
+    # node run. Without this, four nodes each waiting on a job stalled the
+    # whole search for the duration of the longest job while using no CPU.
+    #
+    # The pool is therefore sized for active + parked threads. A parked thread
+    # is asleep, so the extra ones cost stack, not time; the cap keeps that
+    # bounded rather than growing with the frontier.
+    _MAX_PARKED_NODES = 8
+    from ari.agent.loop import set_node_concurrency_gate as _set_gate
+    _node_gate = threading.Semaphore(max_workers)
+    _set_gate(_node_gate)
+    pool_size = max_workers + _MAX_PARKED_NODES
 
     def _effective_handoff_for_node(node):
         mode = (getattr(node, "handoff_mode", "") or "").strip()
@@ -942,7 +955,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
         # uploads on HPC filesystems).
         _flush_tree_progress(force=True)
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # pool_size, not max_workers: the semaphore is what limits ACTIVE
+        # nodes. The surplus threads exist only to hold parked ones.
+        with ThreadPoolExecutor(max_workers=pool_size) as executor:
             # Create per-node work directory via PathManager.
             # Key by run_id (not topic slug) so concurrent/serial runs with the
             # same experiment name never share experiments/{bucket}/ and risk
@@ -1224,7 +1239,23 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                     d["slurm_max_cpus"] = _max_cpus
                 return d
             _timeout_s = cfg.bfts.timeout_per_node
-            futures = {executor.submit(agent.run, n, _node_exp(n)): n for n in batch}
+            def _run_gated(_node, _exp):
+                """Hold a concurrency permit for as long as this node is ACTIVE.
+
+                Every node in the batch is submitted at once, but the pool is
+                deliberately larger than the limit, so the permit — not the
+                pool — is what decides how many run together. A node that
+                parks to wait for a job hands its permit back
+                (agent.loop.parked_for_job) and takes it again afterwards, so
+                the slot is used by whoever can actually make progress.
+                """
+                _node_gate.acquire()
+                try:
+                    return agent.run(_node, _exp)
+                finally:
+                    _node_gate.release()
+
+            futures = {executor.submit(_run_gated, n, _node_exp(n)): n for n in batch}
             for future in as_completed(futures):
                 node_ref = futures[future]
                 try:
