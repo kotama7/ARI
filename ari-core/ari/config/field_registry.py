@@ -173,6 +173,18 @@ FIELD_META: dict[str, dict] = {
         "notes": "The viz wizard appends to this list when bfts_pipeline "
                  "stages are toggled off.",
     },
+    # ── Parent→child handoff (evidence/reflection ablation knobs) ──
+    "handoff.": {
+        "category": "Search (BFTS)",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "notes": "Selects what a parent node passes to its children "
+                 "(work dir, agent/planner blocks, log form, summary "
+                 "shape, memory). Treatment arms of a run must be held "
+                 "fixed for the run's results to stay comparable.",
+    },
     # ── Search (BFTS): 5 env-hooked core knobs basic/draft; the rest are
     #    advanced (frontier_score / allow_web, env-hooked) or expert
     #    yaml_only tuning knobs. ──

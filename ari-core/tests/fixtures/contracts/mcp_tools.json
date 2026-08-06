@@ -56,6 +56,18 @@
       },
       {
         "args": [
+          "filename",
+          "new_string",
+          "old_string",
+          "replace_all",
+          "work_dir"
+        ],
+        "idiom": "lowlevel",
+        "name": "edit_code"
+      },
+      {
+        "args": [
+          "cases",
           "execution",
           "file",
           "measurements",

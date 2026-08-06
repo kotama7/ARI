@@ -1145,12 +1145,12 @@ def _render_evolution_md(chain: list[dict], reports: dict[str, dict]) -> str:
             delta_text_first = delta_text_first[0] if delta_text_first else ""
         rows.append(
             f"| {idx} | {label_disp} | {m_str} | {delta_str} | "
-            f"{change_text_first[:90]} |"
+            f"{delta_text_first[:90]} |"
         )
 
         block = [f"### Step {idx}: {label_disp}", ""]
-        if change_text_first:
-            block.append(f"**What changed:** {change_text_first}")
+        if delta_text_first:
+            block.append(f"**What changed:** {delta_text_first}")
             block.append("")
         sa = report.get("self_assessment") or {}
         if sa.get("headline"):

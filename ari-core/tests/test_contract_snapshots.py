@@ -101,6 +101,8 @@ def test_cli_command_tree():
     assert groups == {
         "memory", "ear", "registry", "migrate",
         "knowledge", "provider", "harness", "manuscript",
+        # Additive on the bfts_compare side; no RQGM group of this name.
+        "doctor",
     }
     # Nested typer must survive the broad try/except import guards (010 §1).
     assert "token" in root["registry"]["commands"]
@@ -132,9 +134,9 @@ def test_mcp_tool_counts_and_names():
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
     assert len(fastmcp) == 67, f"expected 67 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 31, f"expected 31 low-level tool defs, got {len(lowlevel)}"
+    assert len(lowlevel) == 33, f"expected 33 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 96, f"expected 96 unique tool names, got {len(unique)}"
+    assert len(unique) == 98, f"expected 98 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 

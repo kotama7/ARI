@@ -1394,7 +1394,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 # marked. This is best-effort: any failure is logged and
                 # ignored so the orchestration loop continues.
                 try:
-                    from ari.orchestrator.node_report import write_node_report
+                    from ari.orchestrator.node_report import (
+                        compute_files_changed, write_node_report,
+                    )
 
                     # Phase 7-2: sterile-node detection.
                     # When a child node finishes its ReAct loop without
@@ -1536,6 +1538,11 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                         except Exception:
                             logging.getLogger(__name__).warning(
                                 "per-node kernel check failed", exc_info=True)
+
+                    # Keep the agent's narrative separate from verified facts.
+                    # ``files_changed`` and ``metrics`` are structured report
+                    # fields, so no redundant aggregate string is stored.
+                    _what_was_done = (getattr(result, "agent_summary", "") or "").strip()[:1000]
 
                     write_node_report(
                         node=result,

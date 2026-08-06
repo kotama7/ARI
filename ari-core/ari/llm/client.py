@@ -230,6 +230,7 @@ class LLMClient:
             if call_context is not None
             else getattr(self, "_call_context", None)
         )
+        _model = self._model_name()
         kwargs: dict = {
             "model": _model,
             "messages": msgs,

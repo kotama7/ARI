@@ -669,6 +669,7 @@ def build_node_report(
     parent_work_dir: Path | None,
     eval_result: dict | None = None,
     what_was_done: str | None = None,
+    migration_source: str = "fresh",
 ) -> dict:
     """Construct a node_report dict for *node* by gathering everything we know.
 
@@ -677,6 +678,15 @@ def build_node_report(
     data becomes empty/null in the returned dict so the schema remains valid.
     """
     work_dir = Path(work_dir)
+
+    # Populated by ari.agent.run_env (writes _run_env.json from inside the
+    # executing process — slurm_submit on the compute node, run_bash locally).
+    # Empty dict means no skill captured anything (older runs, dry-run, etc.).
+    try:
+        from ari.agent.run_env import read_run_env as _read_run_env
+        run_env = _read_run_env(work_dir) or {}
+    except Exception:
+        run_env = {}
 
     label_value = getattr(node, "label", "")
     if hasattr(label_value, "value"):
@@ -810,6 +820,8 @@ def build_node_report(
         "node_id": getattr(node, "id", ""),
         "parent_id": getattr(node, "parent_id", None),
         "ancestor_ids": list(getattr(node, "ancestor_ids", []) or []),
+        "label": label_value,
+        "raw_label": getattr(node, "raw_label", "") or "",
         "depth": int(getattr(node, "depth", 0) or 0),
         "status": status_value,
         "started_at": started_at,
@@ -862,6 +874,7 @@ def write_node_report(
     parent_work_dir: Path | None,
     eval_result: dict | None = None,
     what_was_done: str | None = None,
+    migration_source: str = "fresh",
 ) -> Path:
     """Build and write `node_report.json` into *work_dir*.
 
@@ -879,6 +892,7 @@ def write_node_report(
             parent_work_dir=parent_work_dir,
             eval_result=eval_result,
             what_was_done=what_was_done,
+            migration_source=migration_source,
         )
         out_path.write_text(json.dumps(report, indent=2, ensure_ascii=False))
         # Update the node's pointer field if it has one.
@@ -910,6 +924,7 @@ def write_node_report(
                 "self_assessment": {"headline": "", "concerns": []},
                 "artifacts": [],
                 "depth": int(getattr(node, "depth", 0) or 0),
+                "label": "other",
             }, indent=2))
         except Exception:
             pass

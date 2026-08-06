@@ -198,6 +198,8 @@ class Node:
             "evaluation_cases": self.evaluation_cases,
             "evaluation_status": self.evaluation_status,
             "eval_summary": self.eval_summary,
+            "label": self.label.value,
+            "raw_label": self.raw_label,
             "name": self.name,
             "error_log": self.error_log,
             "ancestor_ids": self.ancestor_ids,

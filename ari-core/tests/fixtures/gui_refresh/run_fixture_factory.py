@@ -181,6 +181,10 @@ def _build_nodes(n_nodes: int, seed: int, run_id: str) -> list[dict]:
                 "artifacts": artifacts,
                 "metrics": metrics,
                 "has_real_data": has_real_data,
+                # Per-case evaluation detail carried by Node.to_dict(); the
+                # fixture keeps them empty (deterministic, no clock/scores).
+                "evaluation_cases": {},
+                "evaluation_status": "",
                 "eval_summary": eval_summary,
                 "label": label,
                 "raw_label": raw_label,

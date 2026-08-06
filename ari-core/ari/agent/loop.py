@@ -1987,6 +1987,10 @@ class AgentLoop:
         # Inject the parent's operational summary / execution log into the CHILD
         # prompt when the handoff arm requests it. None / disabled arms add nothing.
         _ho = _effective_handoff
+        # B1 (handoff study): gate the de-facto memory channel so code_only /
+        # summary_only arms receive no operational state beyond the explicit
+        # handoff channels (G4). None / disabled arms inject as before.
+        _mem_off = bool(_ho is not None and getattr(_ho, "memory_off", False))
         if _ho is not None:
             _want_summary = bool(getattr(_ho, "inject_agent_block", False))
             _want_log = getattr(_ho, "log_mode", "none") in ("full", "truncated")

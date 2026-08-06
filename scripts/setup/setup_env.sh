@@ -720,3 +720,38 @@ _env_append_if_absent "# ARI_CLI_SHIM_CODEX_REASONING=   # codex reasoning effor
 
 # --- HPC module-path (R-CCS / system Env Modules) ---------------------------
 _env_append_if_absent "# MODULEPATH=                     # colon-separated module-search path; auto-populated by Env Modules on HPC"
+
+_env_section "handoff study / harness / claude_code (merged from bfts_compare)"
+# --- Handoff-study ablation switches ----------------------------------------
+# Select what a parent node passes to its children. Config equivalents live
+# under the `handoff:` block (see ari.config.HandoffConfig).
+_env_append_if_absent "# ARI_HANDOFF_MODE=               # handoff arm: none|code_only|summary_only|full"
+_env_append_if_absent "# ARI_HANDOFF_MEMORY_OFF=         # 1 = suppress the de-facto memory channel"
+_env_append_if_absent "# ARI_HANDOFF_LOG_LIMIT=          # max chars of parent execution log injected"
+_env_append_if_absent "# ARI_HANDOFF_PAIRED_MODES=       # comma-separated arms to run paired"
+_env_append_if_absent "# ARI_SEED=                       # fixed sampling seed (GPU inference is still not bit-exact)"
+_env_append_if_absent "# ARI_TASK=                       # task id the run is scored against"
+_env_append_if_absent "# ARI_HARNESS=                    # registered harness id (see ari.harness_registry)"
+_env_append_if_absent "# ARI_FREEZE_CONTRACT=            # 1 = refuse to run if the metric contract changed"
+
+# --- Search-loop determinism ------------------------------------------------
+_env_append_if_absent "# ARI_BFTS_DETERMINISTIC=         # 1 = deterministic node ordering"
+_env_append_if_absent "# ARI_BFTS_MAX_EXPANSIONS=        # hard cap on node expansions"
+
+# --- LLM context / retries --------------------------------------------------
+_env_append_if_absent "# ARI_LLM_NUM_CTX=32768           # model context limit used to size the per-call char budget"
+_env_append_if_absent "# ARI_LLM_NUM_RETRIES=            # per-call retry count"
+
+# --- Environment probing ----------------------------------------------------
+# Left blank on purpose: site-specific scheduler names must not be baked in.
+_env_append_if_absent "# ARI_PROBE_PARTITIONS=           # partitions to probe (site-specific; leave unset)"
+_env_append_if_absent "# ARI_PROBE_TIMEOUT_S=            # per-probe timeout in seconds"
+
+# --- claude_code backend ----------------------------------------------------
+_env_append_if_absent "# ARI_CLAUDE_CODE_MODE=strict_reproducibility"
+_env_append_if_absent "# ARI_CLAUDE_CODE_MODEL="
+_env_append_if_absent "# ARI_CLAUDE_CODE_MAX_TURNS=1"
+_env_append_if_absent "# ARI_CLAUDE_CODE_TIMEOUT_SEC=300"
+_env_append_if_absent "# ARI_CLAUDE_CODE_RECORD_PROVENANCE=1"
+_env_append_if_absent "# ARI_CLAUDE_CODE_BIN=claude"
+_env_append_if_absent "# ANTHROPIC_AUTH_TOKEN=           # token auth alternative to ANTHROPIC_API_KEY"

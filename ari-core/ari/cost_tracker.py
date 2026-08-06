@@ -124,6 +124,14 @@ class CallRecord:
     memory_byte_seconds: float | None = None
     resource_measurement_basis: str | None = None
     cost_status: str | None = None
+    # Failed-call accounting. A call that errored still SENT its prompt, so its
+    # tokens were spent; booking only successes under-reports what a run
+    # consumed and silently hides retry storms. ``error`` carries the exception
+    # type name. Both follow the additive-field convention below (emitted only
+    # when set), so a run with no failures stays byte-identical on disk and
+    # ``None`` reads as "ok".
+    status: str | None = None
+    error: str | None = None
 
 class CostTracker:
     """Thread-safe per-experiment cost tracker."""
@@ -213,7 +221,9 @@ class CostTracker:
                accelerator_seconds: float | None = None,
                memory_byte_seconds: float | None = None,
                resource_measurement_basis: str | None = None,
-               cost_status: str | None = None) -> None:
+               cost_status: str | None = None,
+               status: str | None = None,
+               error: str | None = None) -> None:
         # Trust an authoritative upstream cost when provided (e.g. the CLI shim
         # forwards claude -p's ``total_cost_usd``). litellm's pricing table has
         # no entry for synthetic shim models like "claude-cli", so without this
@@ -243,6 +253,8 @@ class CostTracker:
             memory_byte_seconds=memory_byte_seconds,
             resource_measurement_basis=resource_measurement_basis,
             cost_status=cost_status,
+            status=status,
+            error=error,
         )
         with self._lock:
             self._records.append(rec)
@@ -264,6 +276,8 @@ class CostTracker:
                 "memory_byte_seconds",
                 "resource_measurement_basis",
                 "cost_status",
+                "status",
+                "error",
             ):
                 if line.get(key) is None:
                     line.pop(key, None)
@@ -354,7 +368,7 @@ class CostTracker:
         # reported separately as well. Folding them in silently would make a run
         # that burnt its budget on retries indistinguishable from one that did
         # the same work cleanly; dropping them would under-report what it cost.
-        failed = [r for r in records if r.status != "ok"]
+        failed = [r for r in records if (r.status or "ok") != "ok"]
         summary = {
             "total_cost_usd": round(total_cost, 6),
             "total_tokens": total_tokens,
@@ -367,6 +381,14 @@ class CostTracker:
                          for k, v in by_phase.items()},
             "by_model": {k: {"cost_usd": round(v["cost_usd"], 6), "tokens": v["tokens"]}
                          for k, v in by_model.items()},
+            "failed_call_count": len(failed),
+            "failed_tokens": sum(r.total_tokens for r in failed),
+            "by_status": {
+                s: {"calls": sum(1 for r in records if (r.status or "ok") == s),
+                    "tokens": sum(r.total_tokens for r in records
+                                  if (r.status or "ok") == s)}
+                for s in sorted({(r.status or "ok") for r in records})
+            },
         }
         verification = [r for r in records if r.component == "assurance"]
         if verification:
