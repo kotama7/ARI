@@ -1414,6 +1414,10 @@ def _measure_node_once(
         "candidate_toolchain": _select_candidate_cc(work_dir),
         "reference_cflags": list(_REFERENCE_CFLAGS),
         "measurement_environment": measurement_environment(),
+        # WHERE it ran, not just under what. Without this two allocations of
+        # different shape -- 4 memory domains or 1, the whole node or a
+        # fragment of it -- produce identical records.
+        "measurement_placement": measurement_placement(),
     }
 
 
@@ -1585,6 +1589,142 @@ def measurement_environment(extra: dict | None = None) -> dict:
     return {"variables": env, "sha256": digest,
             "note": "recorded, not restricted; an ambient variable outside this "
                     "prefix set is neither captured nor known to be harmless"}
+
+
+# ── where the measurement was PLACED ───────────────────────────────────────
+# measurement_environment() answers "under what settings". It does not answer
+# "on what, and where", and nothing else did either: two runs on allocations of
+# different shape produced byte-identical records. Measured on two partitions of
+# one cluster on 2026-08-07 — 4 NUMA domains of 12 cores with 64 KiB pages and a
+# cpuset covering the whole node, against 1 domain with 4 KiB pages and a cpuset
+# of 8 cores plus their SMT siblings carved out of 192. Nothing in a result told
+# them apart, and the drift checker compares launcher-exported constants that
+# are invariant to the hardware.
+#
+# It is not a neutral fact. The scored arrays are first-touched SERIALLY outside
+# the timed window, so every page lands on ONE domain — measured, 100% on one
+# node — while the threads are spread across all of them (OMP_PROC_BIND=spread
+# put 8 threads on one core per domain pair). A candidate that first-touches its
+# OWN scratch in parallel gets 25/25/25/25 instead. On the frozen stencil the
+# archived gate measured placement at about 1.29x.
+#
+# SEPARATE DIGEST, deliberately. Folding these fields into
+# measurement_environment() would change that digest and break comparability
+# with every record already written.
+#
+# Read in the harness process from procfs/sysfs: the child inherits all of it,
+# nothing is compiled and nothing is run. A machine that does not publish a
+# field records None rather than a guess.
+def _cpu_list_count(spec: str) -> int | None:
+    """'0-7,96-103' -> 16. None when the field is absent or unparseable."""
+    if not spec:
+        return None
+    total = 0
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                total += int(hi) - int(lo) + 1
+            else:
+                int(part)
+                total += 1
+        except ValueError:
+            return None
+    return total
+
+
+def _cpu_list_set(spec: str) -> set:
+    out: set = set()
+    for part in (spec or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if "-" in part:
+                lo, hi = part.split("-", 1)
+                out.update(range(int(lo), int(hi) + 1))
+            else:
+                out.add(int(part))
+        except ValueError:
+            return set()
+    return out
+
+
+def measurement_placement() -> dict:
+    """The allocation's shape and the machine's memory topology, with a digest."""
+    import glob as _gl
+    import hashlib as _hl
+    import json as _js
+    import os as _o
+
+    def _read(path):
+        try:
+            return open(path, encoding="utf-8", errors="replace").read().strip()
+        except OSError:
+            return None
+
+    cpus_allowed = None
+    mems_allowed = None
+    status = _read("/proc/self/status") or ""
+    for line in status.splitlines():
+        if line.startswith("Cpus_allowed_list:"):
+            cpus_allowed = line.split(":", 1)[1].strip()
+        elif line.startswith("Mems_allowed_list:"):
+            mems_allowed = line.split(":", 1)[1].strip()
+
+    nodes = {}
+    for d in sorted(_gl.glob("/sys/devices/system/node/node*")):
+        name = _o.path.basename(d)
+        cl = _read(_o.path.join(d, "cpulist"))
+        if cl is not None:
+            nodes[name] = cl
+
+    allowed = _cpu_list_set(cpus_allowed or "")
+    spanned = sorted(n for n, cl in nodes.items()
+                     if allowed and (_cpu_list_set(cl) & allowed))
+
+    try:
+        page = _o.sysconf("SC_PAGESIZE")
+    except (ValueError, OSError):
+        page = None
+
+    # What the TIMED CHILD will see, resolved the way _run_exe resolves it --
+    # recording the ambient value would describe the harness, not the measurement.
+    threads = _os_pin.environ.get("ARI_GEMM_THREADS",
+                            _os_pin.environ.get("OMP_NUM_THREADS", "16"))
+
+    body = {
+        "machine": _o.uname().machine,
+        "page_size_bytes": page,
+        "cpus_allowed": cpus_allowed,
+        "cpus_allowed_count": _cpu_list_count(cpus_allowed or ""),
+        "mems_allowed": mems_allowed,
+        "numa_nodes_total": len(nodes) or None,
+        "numa_node_cpulists": nodes or None,
+        # How many memory domains the allocation actually spans. One thread
+        # budget over four domains is a different machine from the same budget
+        # over one, and the score knows it even when the record does not.
+        "numa_nodes_spanned": len(spanned) or None,
+        "thread_budget": threads,
+        # The binding regime, as the child will inherit it. These decide the
+        # SHAPE of the thread layout; they decide nothing about memory, which is
+        # left to the kernel's first-touch default.
+        "omp_proc_bind": _os_pin.environ.get("OMP_PROC_BIND"),
+        "omp_places": _os_pin.environ.get("OMP_PLACES"),
+        "omp_dynamic": _os_pin.environ.get("OMP_DYNAMIC"),
+        # Stated, not implied: nothing here is SET by the study. There is no
+        # numactl, taskset, mbind or set_mempolicy anywhere on the measurement
+        # path, so every one of these is a default that was inherited.
+        "placement_is_set_by_the_study": False,
+    }
+    digest = _hl.sha256(
+        _js.dumps(body, sort_keys=True, separators=(",", ":"),
+                  default=str).encode()).hexdigest()
+    return {**body, "sha256": digest}
+
 
 # ---------------------------------------------------------------------------
 def _isa_flags_for(cc: str) -> list[str]:
@@ -1773,6 +1913,10 @@ def _profile_record(task: str, work_dir: str, points: list, digest: str,
                           "l2d_refill_per_l1d_refill", "l1_fill_bytes_per_cycle",
                           "l2_refill_bytes_per_cycle")},
         "measurement_environment": measurement_environment(),
+        # WHERE it ran, not just under what. Without this two allocations of
+        # different shape -- 4 memory domains or 1, the whole node or a
+        # fragment of it -- produce identical records.
+        "measurement_placement": measurement_placement(),
         "toolchain": _toolchain_identity(
             _os_pin.environ.get("ARI_GEMM_CC", "cc")),
         "candidate_toolchain": _select_candidate_cc(work_dir),
