@@ -287,6 +287,15 @@ is empty on purpose — a materialized one records absolute local paths and
 cannot be committed — so the reviewed leaf-to-capability table lives in the
 repository while the lock it refers to stays at the site.
 
+A leaf whose descriptor declares an asynchronous lifecycle is submitted through
+the dispatch tool and completed through others. Those are not separate
+capabilities — polling a job you were authorized to submit adds no authority —
+but they are separate `tool_ref`s, so the composite carries them as
+`lifecycle_tool_refs` and the authorization view admits them under the same
+binding, phase, and call context. Without that, a bound async capability starts
+work whose result the run is not authorized to collect. A synchronous leaf gets
+no lifecycle surface.
+
 Four properties are enforced rather than assumed:
 
 - The federated lock is re-authenticated. ARI recomputes `catalog_digest` under
@@ -473,11 +482,22 @@ pins remain explicit provenance. Infrastructure error never fails open. RQGM
 does not invent a verifier's scientific conclusion; it governs actors that
 ignore, suppress, or misrepresent the fixed result.
 
-The composite-provision path has been bound end to end against a real
-materialized OpenROAD leaf — a `scientifically_admitted` descriptor, the
-broker's real manifest, the shipped ontology, and a node where the runtime
-probe actually found SingularityCE — but it has not yet been *called* through
-that binding. Binding proves the authority; it does not prove the invocation.
+The composite-provision path has been called end to end. A real materialized
+OpenROAD leaf — a `scientifically_admitted` descriptor — was bound in enforce
+mode, dispatched through the broker's `invoke`, polled to completion through the
+bound lifecycle tools, and returned CTS-plus-routing metrics inside the ranges
+its promotion golden fixes: 0 DRC errors, 3603 um wire length, 3361 vias, in
+about fifty seconds inside the pinned SIF.
+
+Getting there took three fixes, and each had made the path unusable rather than
+merely awkward. The broker's tool schemas set `additionalProperties: false`
+without declaring `ari_context`, so the transport's injected call context was
+rejected and no context-gated broker tool could ever be called. The result
+normalizer treated the presence of an `error` key as failure, so every Provider
+returning `ari.result-envelope/v1` — the schema ARI itself defines — had its
+successes reported as tool errors with the message `null`. And a bound
+asynchronous capability had no authority over its own lifecycle tools, so it
+could start work and never collect it.
 
 Two of the three declared brokered capabilities remain unsupplied, and for
 reasons worth stating rather than hiding. `ari.literature.search/v1` is

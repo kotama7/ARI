@@ -66,6 +66,10 @@ entries:
       # absolute local paths and must never be committed.
       catalog_lock: ../../../ari-skill-tool-registry/CATALOG.lock
       dispatch_tool: invoke
+      # An asynchronous leaf is submitted through `invoke` and completed through
+      # these. Without them a bound async Capability starts work whose result
+      # the run is not authorized to collect.
+      lifecycle_tools: [get_status, get_result]
       declared_capability_refs_by_brokered_tool:
         ? >-
           ari-tool://openroad-mcp/openroad-profile%3Agcd-nangate45-26q3%3Asha256%3A4a6478f89886d91f36a45622fba01d3bc5b66ce5a1ce7f180acffed8f4633577@sha256:a1fe96a25819b0d8893aa138f27d9314ba2cdf6e8748bc9cdd30e36444091f5d

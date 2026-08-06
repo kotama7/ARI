@@ -83,6 +83,13 @@
           "title": "Input Schema Digest",
           "type": "string"
         },
+        "lifecycle_tool_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Lifecycle Tool Refs",
+          "type": "array"
+        },
         "manifest_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Manifest Digest",

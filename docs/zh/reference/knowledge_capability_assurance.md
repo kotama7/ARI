@@ -244,6 +244,12 @@ provision 描述的都是并未被调用的 leaf。packaged 的`CATALOG.lock`为
 后的 lock 记录绝对本地路径，无法提交——因此仓库里只保留 reviewed leaf→capability 表，它所指
 向的 lock 留在 site。
 
+descriptor 声明异步 lifecycle 的 leaf，由 dispatch tool 提交、由另外的 tool 收取。它们不是
+独立的 capability——轮询一个你已被授权提交的 job 并不增加 authority——但它们是不同的
+tool_ref，因此 composite 以`lifecycle_tool_refs`携带它们，authorization view 在同一 binding、
+phase 与 call context 下放行。否则一个已 bind 的异步 capability 会启动它无权收取结果的工作。
+同步 leaf 不获得 lifecycle 面。
+
 有四项性质是被强制检查而非假定的：
 
 - federated lock 会被重新认证。ARI 以 broker 自身的 canonicalization 重算
@@ -388,10 +394,17 @@ property/scope；只有 formal-verifier Harness 能证明 formal specification�
 external pin 保留在 provenance。infrastructure error 绝不 fail-open。RQGM 不创造 Verifier 的
 科学结论，而是治理忽略、压制或歪曲固定结果的 actor。
 
-composite provision 路径已针对真实 materialize 的 OpenROAD leaf 端到端完成 binding——
-`scientifically_admitted`的 descriptor、broker 的真实 manifest、随包 ontology，以及一台
-runtime prober 确实发现了 SingularityCE 的 node。但尚未通过该 binding 发起**调用**。
-binding 证明的是 authority，不是 invocation。
+composite provision 路径已端到端**完成调用**。一个真实 materialize 的 OpenROAD leaf
+（`scientifically_admitted`的 descriptor）在 enforce mode 下被 bind，经 broker 的`invoke`
+dispatch，通过已 bind 的 lifecycle tool 轮询至完成，并返回落在其 promotion golden 区间内的
+CTS 与 routing metric：DRC error 0、wire length 3603 um、via 3361，在 pin 定的 SIF 内约 50 秒。
+
+抵达这一步需要三处修复，且每一处都使该路径不可用而非仅仅不便。broker 的 tool schema 设了
+`additionalProperties: false`却未声明`ari_context`，于是 transport 注入的 call context 被拒绝，
+任何 context-gated 的 broker tool 都无法被调用。result normalizer 把`error`键的**存在**当作
+失败，于是任何返回`ari.result-envelope/v1`——ARI 自己定义的 schema——的 Provider，其成功都被
+报告为 message 为`null`的 tool error。而已 bind 的异步 capability 对自己的 lifecycle tool 没有
+authority，因此能启动工作却无法收取。
 
 三个已声明的 brokered capability 中有两个仍未获得供给，理由值得写明而非隐藏。
 `ari.literature.search/v1`是`read-only`，而 reviewed 的 PubMed leaf 与 broker 自身的

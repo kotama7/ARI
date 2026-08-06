@@ -234,7 +234,7 @@ the session, and interruption cannot resume an ephemeral local run.
 
 The formally promoted local OpenROAD identity is the checked-in
 `openroad/0.6.1+orfs-26q3-gcd-nangate45` bundle. Its verified lock digest is
-`sha256:bc27d96193024e19907d647cd67ae02402d9fc5c286482c3325f035601ade714`.
+`sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`.
 It covers one x86_64, one-thread, local-MCP CPU run over the exact GCD placed
 database and Nangate45 PDK/library, with live schema parity, DRC-zero metrics,
 golden/replay evidence, an official ORFS reference run, fifteen registration
@@ -247,7 +247,7 @@ manifest, SIF, and inner OpenROAD full digests and runtime path.
 The independent
 `openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identity is also formally
 promoted. Lock
-`sha256:77e6b17c83e3b1786b6d9fc9ac76f5a337ad535336f06a8942ea71405ee86f8e`
+`sha256:7827e90e359d9d29b85353908ff0e46b693aec698f709d4c065380fd8309cdcd`
 binds the anonymous exclusive-node CPU site digest, scheduler clients,
 PRoot/SIF/unsquashfs/worker Python, runtime-owned metrics lifecycle,
 nonce-bound fixed-wrapper completion, live DRC-zero result, fixtures, gates,
@@ -352,6 +352,25 @@ granted by both. `invoke` declares `stateful`, so no `read-only` capability can
 be supplied through it today — that is why `ari.literature.search/v1` stays
 unsupplied despite a reviewed PubMed leaf, and it needs a review decision rather
 than a weaker check.
+
+A leaf whose descriptor declares an asynchronous lifecycle is submitted through
+`invoke` and completed through `get_status` and `get_result`. Those are named in
+the entry's `lifecycle_tools` and travel on the binding, so the authorization
+view admits them under the same binding, phase, and call context. They are not
+separate capabilities: polling a job you were authorized to submit adds no
+authority. Without them a bound async capability starts work and cannot collect
+it, which is what happened before they were carried.
+
+Because the broker is one process with one credential surface, a composite
+carries every credential scope the Provider declares — binding the OpenROAD leaf
+therefore requires granting `quantum.ibm-runtime`, which has nothing to do with
+EDA. This is the same rule the direct Provider path already applies, and it
+fails closed: an operator must grant the scope explicitly or nothing binds.
+
+All five broker tools declare `ari_context` in their input schemas. They are
+`context_requirement: run`, so the transport injects the authorized call context
+under that name; a schema with `additionalProperties: false` that omits it
+refuses every authorized call.
 
 ## Record, replay, and EAR
 

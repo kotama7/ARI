@@ -250,6 +250,13 @@ siteは`ARI_TOOL_REGISTRY_LOCK`でfederated lockを選び、ARIも同じ変数�
 commitできない。reviewed leaf→capability tableだけがrepositoryに残り、それが指すlockは
 site側に留まる。
 
+descriptorがasynchronous lifecycleを宣言するleafは、dispatch toolで投入し別のtoolで回収
+する。それらは別capabilityではない——投入をauthorizeされたjobをpollしてもauthorityは増えない
+——が、tool_refとしては別物なので、compositeは`lifecycle_tool_refs`として持ち、authorization
+viewは同じbinding・phase・call contextの下でそれらを通す。これが無いと、bind済みのasync
+capabilityは「結果を回収するauthorityが無い仕事」を開始してしまう。synchronousなleafには
+lifecycle面を与えない。
+
 前提ではなく検査される性質が4つある。
 
 - federated lockは再認証される。ARIはbroker自身のcanonicalizationで`catalog_digest`を
@@ -400,10 +407,18 @@ Harness passは宣言property/scope内に限り、formal-verifier Harnessだけ�
 fail-openしない。RQGMはVerifierの科学的結論を発明せず、固定結果を無視、抑圧、歪曲した
 actorを統治する。
 
-composite provision経路は、実materialize済みのOpenROAD leaf——`scientifically_admitted`な
-descriptor、brokerの実manifest、同梱ontology、runtime proberが実際にSingularityCEを発見した
-node——に対してend-to-endでbindまで到達した。ただしそのbindingを通した**呼び出し**はまだ
-行っていない。bindingはauthorityを証明するが、invocationは証明しない。
+composite provision経路はend-to-endで**呼び出しまで到達した**。実materialize済みのOpenROAD
+leaf(`scientifically_admitted`なdescriptor)をenforce modeでbindし、brokerの`invoke`へdispatch、
+bind済みlifecycle toolでpollして完了させ、promotion goldenが定める範囲内のCTS+routing metricを
+得た——DRC error 0、wire length 3603 um、via 3361、pin済みSIF内で約50秒。
+
+そこに至るまでに3つの修正が要り、いずれも「不便」ではなく「経路が使用不能」だった。broker側の
+tool schemaが`ari_context`を宣言せずに`additionalProperties: false`だったため、transportが注入
+するcall contextが拒否され、context-gatedなbroker toolは一つも呼べなかった。result normalizerが
+`error`キーの**存在**を失敗と見なしていたため、`ari.result-envelope/v1`——ARI自身が定義する
+schema——を返すProviderは成功が全て`null`というmessageのtool errorとして報告されていた。そして
+bind済みasync capabilityは自分のlifecycle toolに対するauthorityを持たず、仕事を開始できても
+回収できなかった。
 
 宣言済みbrokered capability 3つのうち2つは未供給であり、その理由は隠さず述べる。
 `ari.literature.search/v1`は`read-only`だが、reviewed PubMed leafもbroker自身の`invoke`も

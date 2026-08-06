@@ -152,6 +152,12 @@ async def list_tools() -> list[Tool]:
                         "enum": ["live", "record", "replay"],
                         "default": "live",
                     },
+                    # The transport injects the call context under this name for
+                    # any tool declaring context_requirement: run. A schema that
+                    # refuses it refuses every authorized call -- which is what
+                    # this one did, so no bound Capability could ever be
+                    # dispatched through the broker.
+                    "ari_context": {"type": "object"},
                 },
                 "required": ["tool_ref", "args"],
                 "additionalProperties": False,
@@ -165,7 +171,10 @@ async def list_tools() -> list[Tool]:
             ),
             inputSchema={
                 "type": "object",
-                "properties": {"handle": {"type": "object"}},
+                "properties": {
+                    "handle": {"type": "object"},
+                    "ari_context": {"type": "object"},
+                },
                 "required": ["handle"],
                 "additionalProperties": False,
             },
@@ -177,7 +186,10 @@ async def list_tools() -> list[Tool]:
             ),
             inputSchema={
                 "type": "object",
-                "properties": {"handle": {"type": "object"}},
+                "properties": {
+                    "handle": {"type": "object"},
+                    "ari_context": {"type": "object"},
+                },
                 "required": ["handle"],
                 "additionalProperties": False,
             },

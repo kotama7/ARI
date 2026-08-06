@@ -146,6 +146,12 @@ class CapabilityProvisionV1(DigestBoundModel):
     tool_ref: str
     subject_tool_ref: str | None = None
     dispatch_tool_ref: str | None = None
+    # A leaf whose descriptor declares an asynchronous lifecycle is submitted by
+    # one call and completed by others. Those are not separate capabilities --
+    # polling a job you were authorized to submit adds no authority -- but they
+    # are separate tool_refs, and without them an async Capability binds, runs,
+    # and its result is unreachable.
+    lifecycle_tool_refs: tuple[str, ...] = Field(default_factory=tuple)
     nested_source_lock_digests: tuple[str, ...] = Field(default_factory=tuple)
     declared_capability_ref: str
     capability_ref: str = Field(pattern=CAPABILITY_REF_PATTERN)
@@ -290,6 +296,7 @@ class CapabilityBindingV1(DigestBoundModel):
     tool_ref: str
     subject_tool_ref: str | None = None
     dispatch_tool_ref: str | None = None
+    lifecycle_tool_refs: tuple[str, ...] = Field(default_factory=tuple)
     provider_lock_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     manifest_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     input_schema_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)

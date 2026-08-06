@@ -284,10 +284,16 @@ class ResultEnvelopeNormalizer:
             structured = parsed
         structured_dict = _structured_dict(structured)
 
+        # An explicit ``"error": null`` is the canonical way this envelope says
+        # nothing went wrong, so the key's presence cannot be the test. Any
+        # Provider returning ``ari.result-envelope/v1`` -- the schema ARI itself
+        # defines and manifests declare -- carries that key on every success,
+        # and testing presence reported all of them as tool errors with the
+        # message "null".
         is_tool_error = bool(response.get("_mcp_is_error", False)) or (
             isinstance(parsed, dict)
             and (
-                "error" in parsed
+                parsed.get("error") is not None
                 or str(parsed.get("status", "")).strip().casefold() == "error"
             )
         )
@@ -427,7 +433,7 @@ def _result_status(
 
 
 def _tool_error_message(parsed: Any, raw: str) -> str:
-    if isinstance(parsed, dict) and "error" in parsed:
+    if isinstance(parsed, dict) and parsed.get("error") is not None:
         error = parsed["error"]
         return (
             error if isinstance(error, str) else json.dumps(error, ensure_ascii=False)

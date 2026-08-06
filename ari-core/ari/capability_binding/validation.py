@@ -23,6 +23,13 @@ class BoundToolAuthorizationView:
         by_tool: dict[str, list] = {}
         for item in lock.bindings:
             by_tool.setdefault(item.tool_ref, []).append(item)
+            # A binding whose subject is asynchronous is submitted through one
+            # tool and completed through others. Admitting only the dispatch
+            # tool authorizes starting work that can never be collected, so the
+            # lifecycle tools the binding names inherit exactly its authority --
+            # same phase, same context, same binding digest.
+            for lifecycle_ref in item.lifecycle_tool_refs:
+                by_tool.setdefault(lifecycle_ref, []).append(item)
         self._by_tool = {
             tool_ref: tuple(sorted(items, key=lambda value: value.capability_ref))
             for tool_ref, items in by_tool.items()

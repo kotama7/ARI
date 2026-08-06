@@ -397,3 +397,54 @@ def test_immutable_tool_ref_preserves_explicit_node_context(monkeypatch):
     assert [call[0] for call in connection.calls] == ["add_memory"]
     assert connection.calls[0][1]["ari_context"] == {"transport_injected": True}
     assert connection.contexts == [context.model_copy(update={"selection_reason": "immutable-tool-ref"})]
+
+
+def test_an_explicit_null_error_is_not_an_error():
+    """``ari.result-envelope/v1`` carries ``error: null`` on every success.
+
+    Testing for the key's presence classified every Provider that returns the
+    canonical envelope -- the schema ARI defines and manifests declare -- as
+    having failed, with the message "null".
+    """
+
+    raw = json.dumps(
+        {
+            "schema_version": "ari.result-envelope/v1",
+            "status": "ok",
+            "content": "{}",
+            "error": None,
+            "structured_content": {"metric": 1},
+        }
+    )
+    envelope = _normalize(ResultEnvelopeNormalizer(), {"result": raw})
+    assert envelope.status == "ok"
+    assert envelope.error is None
+
+
+def test_a_null_error_does_not_mask_an_async_status():
+    raw = json.dumps(
+        {
+            "schema_version": "ari.result-envelope/v1",
+            "status": "submitted",
+            "error": None,
+            "structured_content": {"status": "submitted", "handle_id": "job-1"},
+        }
+    )
+    envelope = _normalize(ResultEnvelopeNormalizer(), {"result": raw})
+    assert envelope.status == "submitted"
+    assert envelope.error is None
+
+
+def test_a_populated_error_is_still_an_error():
+    raw = json.dumps({"error": "provider refused the request", "status": "error"})
+    envelope = _normalize(ResultEnvelopeNormalizer(), {"result": raw})
+    assert envelope.status == "error"
+    assert envelope.error is not None
+    assert envelope.error.message == "provider refused the request"
+
+
+def test_a_structured_error_object_is_still_an_error():
+    raw = json.dumps({"error": {"kind": "tool", "message": "boom"}})
+    envelope = _normalize(ResultEnvelopeNormalizer(), {"result": raw})
+    assert envelope.status == "error"
+    assert "boom" in envelope.error.message

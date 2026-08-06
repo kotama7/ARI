@@ -356,6 +356,17 @@ def load_provider_catalog(
                     f"broker dispatch tool is absent from the run lock: "
                     f"{runtime_name}/{dispatch_name}"
                 )
+            lifecycle_names = tuple(
+                str(item) for item in (brokered_config.get("lifecycle_tools") or ())
+            )
+            absent_lifecycle = [
+                item for item in lifecycle_names if item not in locked_tools
+            ]
+            if absent_lifecycle:
+                raise ValueError(
+                    f"broker lifecycle tools are absent from the run lock: "
+                    f"{runtime_name}/{absent_lifecycle}"
+                )
             provisions.extend(
                 build_brokered_provisions(
                     brokered_document,
@@ -369,6 +380,11 @@ def load_provider_catalog(
                         registration_report_digest=report.report_digest,
                         policy=dict(dispatch_tool.policy),
                         credential_scope_ids=scope_ids,
+                        lifecycle_tool_refs=tuple(
+                            sorted(
+                                locked_tools[item].tool_ref for item in lifecycle_names
+                            )
+                        ),
                     ),
                     ontology=ontology,
                     reviewed_capability_refs_by_leaf={

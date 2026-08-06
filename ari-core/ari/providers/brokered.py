@@ -116,6 +116,10 @@ class BrokerDispatchV1:
     registration_report_digest: str
     policy: dict[str, Any]
     credential_scope_ids: tuple[str, ...] = ()
+    # The broker's own lifecycle surface, in the run lock. A leaf's descriptor
+    # names the *provider's* status/result tool names; the broker re-exposes
+    # them as its own, and those are what the run can actually call.
+    lifecycle_tool_refs: tuple[str, ...] = ()
 
 
 def _canonical_value(value: Any, *, parent_key: str = "") -> Any:
@@ -306,6 +310,12 @@ def _composite_provision(
         tool_ref=dispatch.tool_ref,
         subject_tool_ref=leaf,
         dispatch_tool_ref=dispatch.tool_ref,
+        # Only a leaf that says it is asynchronous gets the lifecycle surface.
+        # A synchronous one has no job to poll, and handing it those tools would
+        # widen the run's authority for nothing.
+        lifecycle_tool_refs=(
+            dispatch.lifecycle_tool_refs if descriptor.get("async_lifecycle") else ()
+        ),
         nested_source_lock_digests=nested,
         declared_capability_ref=str(descriptor.get("capability_ref") or ""),
         capability_ref=contract.capability_ref,

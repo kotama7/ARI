@@ -531,7 +531,14 @@ def _catalog_yaml(tmp_path, manifest, *, brokered):
     return path
 
 
-def _load(tmp_path, *, refs, dispatch_tool="invoke", lock_name="CATALOG.lock"):
+def _load(
+    tmp_path,
+    *,
+    refs,
+    dispatch_tool="invoke",
+    lock_name="CATALOG.lock",
+    lifecycle_tools=(),
+):
     from ari.config import SkillConfig
     from ari.providers.catalog import load_provider_catalog
     from ari.skill_manifest import load_skill_manifest
@@ -547,6 +554,7 @@ def _load(tmp_path, *, refs, dispatch_tool="invoke", lock_name="CATALOG.lock"):
         brokered={
             "catalog_lock": lock_name,
             "dispatch_tool": dispatch_tool,
+            "lifecycle_tools": list(lifecycle_tools),
             "declared_capability_refs_by_brokered_tool": refs,
         },
     )
@@ -630,3 +638,94 @@ def test_without_the_override_the_configured_path_is_used(tmp_path, monkeypatch)
     _write(tmp_path, _lock([_descriptor()]))
     loaded = _load(tmp_path, refs={LEAF: ["ari.eda.place-route/v1"]})
     assert loaded.provisions[0].subject_tool_ref == LEAF
+
+
+# --------------------------------------------------- asynchronous lifecycle
+
+
+def _async_descriptor(**updates):
+    values = _descriptor(
+        async_lifecycle={
+            "status_tool": "leaf_status",
+            "result_tool": "leaf_result",
+            "handle_field": "handle_id",
+        }
+    )
+    values.update(updates)
+    return values
+
+
+LIFECYCLE = ("tool-registry-skill::get_result@1", "tool-registry-skill::get_status@1")
+
+
+def test_an_async_leaf_carries_the_lifecycle_surface():
+    """Submitting work the run cannot collect is not a bound capability."""
+
+    contract = _contract()
+    (provision,) = _build(
+        _lock([_async_descriptor()]),
+        contract=contract,
+        dispatch=_dispatch(lifecycle_tool_refs=LIFECYCLE),
+    )
+    assert provision.lifecycle_tool_refs == LIFECYCLE
+
+
+def test_a_synchronous_leaf_gets_no_lifecycle_surface():
+    """A leaf with no job to poll must not widen the run's authority."""
+
+    (provision,) = _build(
+        _lock([_descriptor()]), dispatch=_dispatch(lifecycle_tool_refs=LIFECYCLE)
+    )
+    assert provision.lifecycle_tool_refs == ()
+
+
+def test_the_authorization_view_admits_the_bound_lifecycle_tools():
+    from ari.call_context import ToolCallContextV1
+    from ari.capability_binding.validation import BoundToolAuthorizationView
+
+    contract = _contract()
+    (provision,) = _build(
+        _lock([_async_descriptor()]),
+        contract=contract,
+        dispatch=_dispatch(lifecycle_tool_refs=LIFECYCLE),
+    )
+    lock, _ = bind_capabilities(_request(_requirement(contract), (provision,)))
+    view = BoundToolAuthorizationView(lock, mode="enforce")
+    context = ToolCallContextV1.for_node(run_id="run-1", node_id="n1", phase="bfts")
+    for ref in ("tool-registry-skill::invoke@1", *LIFECYCLE):
+        decision = view.decide(ref, phase="bfts", context=context)
+        assert decision.allowed, ref
+        assert decision.reason_code == "bound"
+    denied = view.decide(
+        "tool-registry-skill::describe@1", phase="bfts", context=context
+    )
+    assert not denied.allowed
+    assert denied.reason_code == "unbound_tool"
+
+
+def test_lifecycle_tools_inherit_the_binding_phase_not_a_wider_one():
+    from ari.call_context import ToolCallContextV1
+    from ari.capability_binding.validation import BoundToolAuthorizationView
+
+    contract = _contract()
+    (provision,) = _build(
+        _lock([_async_descriptor()]),
+        contract=contract,
+        dispatch=_dispatch(lifecycle_tool_refs=LIFECYCLE),
+    )
+    lock, _ = bind_capabilities(_request(_requirement(contract), (provision,)))
+    view = BoundToolAuthorizationView(lock, mode="enforce")
+    context = ToolCallContextV1.for_node(run_id="run-1", node_id="n1", phase="paper")
+    decision = view.decide(LIFECYCLE[0], phase="paper", context=context)
+    assert not decision.allowed
+    assert decision.reason_code == "binding_phase_mismatch"
+
+
+def test_loader_refuses_lifecycle_tools_absent_from_the_run_lock(tmp_path):
+    _write(tmp_path, _lock([_async_descriptor()]))
+    with pytest.raises(ValueError, match="lifecycle tools are absent"):
+        _load(
+            tmp_path,
+            refs={LEAF: ["ari.eda.place-route/v1"]},
+            lifecycle_tools=["get_status", "no_such_tool"],
+        )

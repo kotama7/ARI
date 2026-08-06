@@ -176,6 +176,7 @@ def _binding(
         tool_ref=candidate.tool_ref,
         subject_tool_ref=candidate.subject_tool_ref,
         dispatch_tool_ref=candidate.dispatch_tool_ref,
+        lifecycle_tool_refs=candidate.lifecycle_tool_refs,
         provider_lock_digest=candidate.provider_lock_digest,
         manifest_digest=candidate.manifest_digest,
         input_schema_digest=candidate.input_schema_digest,
