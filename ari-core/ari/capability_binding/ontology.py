@@ -135,9 +135,21 @@ def apply_resource_derivations(
 # that are not checked yet, which is at least visible instead of silent.
 _COMPATIBILITY_RULES: dict[str, str] = {
     "measurement-envelope-v1": "core",
-    # These have no core implementation. The shipped ontology declares no
-    # semantic_inputs or semantic_outputs on any contract, so there is nothing
-    # for a structural rule to compare against; populating them is separate work.
+    # Not merely unimplemented -- not implementable against the live surface as
+    # it stands, which was established by reading it rather than assumed.
+    #
+    # Every classified Provider tool publishes an empty MCP outputSchema, so
+    # each provision's output_schema_digest is the digest of {} and detects no
+    # drift for any Provider today. Nothing can conform to nothing.
+    #
+    # The input side cannot be name-based either, and correctly so: three tools
+    # supply ari.execution.slurm-submit/v1 with disjoint properties (`request`
+    # against `job_name`/`partition`/`script`), and two supply
+    # ari.execution.run/v1 with `command` against `filename`. That is what a
+    # semantic contract is for. Checking it needs a reviewed per-tool mapping
+    # from contract field to provider property, and the catalog has nowhere to
+    # put one -- declared_capability_refs_by_tool maps tools to capabilities and
+    # stops there. Closing this is a data-model change, not a missing function.
     "json-schema-structural-conformance": "unenforced",
     "artifact-result-v1": "unenforced",
     "async-handle-v1": "unenforced",

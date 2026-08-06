@@ -249,10 +249,22 @@ digest-bound, documented, and consulted by nothing, so every rule name in the
 ontology was inert. A name outside the reviewed table is now refused, and each
 name states where it is checked: `measurement-envelope-v1` in core, four
 result-shape rules by the Provider that supplies the capability against its own
-golden and replay evidence, and the rest explicitly `unenforced`. That last
-group is honest rather than fixed: no shipped contract declares
-`semantic_inputs` or `semantic_outputs`, so a structural rule has nothing to
-compare against, and populating them is separate work.
+golden and replay evidence, and the rest explicitly `unenforced`.
+
+`json-schema-structural-conformance` is in that last group, and reading the live
+surface shows it is not merely unimplemented but not implementable as the model
+stands. Every classified Provider tool publishes an **empty** MCP
+`outputSchema`, so each provision's `output_schema_digest` is the digest of `{}`
+and detects no drift for any Provider today — nothing can conform to nothing.
+The input side cannot be name-based either, and correctly so: three tools supply
+`ari.execution.slurm-submit/v1` with disjoint properties (`request` against
+`job_name`/`partition`/`script`), and two supply `ari.execution.run/v1` with
+`command` against `filename`. That difference is exactly what a semantic
+contract exists to span. Checking it needs a reviewed per-tool mapping from
+contract field to provider property, and the catalog has nowhere to put one:
+`declared_capability_refs_by_tool` maps tools to capabilities and stops.
+Closing this is a data-model change, not a missing function, so it is recorded
+rather than half-built.
 
 `measurement-envelope-v1` says a measurement is only interpretable together with
 the conditions it was taken under, so a contract claiming it must declare the
