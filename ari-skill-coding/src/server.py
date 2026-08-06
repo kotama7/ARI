@@ -989,6 +989,48 @@ _INTERPRETERS: dict[str, list[str]] = {
 }
 
 
+# ── Environment Modules passthrough ─────────────────────────────────────────
+# `describe_environment` reports the site's whole module tree, but the executor
+# builds a scrubbed environment from scratch (`build_minimal_environment`) and
+# runs `/bin/bash --noprofile --norc -c`. That combination made the catalogue a
+# lie: MODULEPATH was dropped, the profile that defines the `module` SHELL
+# FUNCTION was never sourced, so `module load` failed with "command not found"
+# and any toolchain reachable only through the module system could not be used
+# or compared at all.
+#
+# Only these names are restored, and only their values — no wildcard inherit.
+# They are pure location pointers into the module tree; the executor still
+# rejects anything matching its secret-name policy, and PATH / LD_LIBRARY_PATH
+# stay scrubbed so a module must be loaded explicitly to take effect.
+# No module, compiler or site name appears here: ARI carries no cluster
+# knowledge, it just stops discarding the pointers the site already exported.
+_MODULE_ENV_NAMES = (
+    "MODULESHOME",      # Tcl Environment Modules + Lmod: init/ lives under it
+    "MODULEPATH",       # the search path itself; without it the tree is empty
+    "MODULERCFILE",
+    "LOADEDMODULES",    # what the launching shell had loaded
+    "LMOD_CMD",         # Lmod-only; absent on Tcl Modules
+    "LMOD_PKG",
+)
+
+# Sourced before the agent's command so `module` exists as a function. Guarded:
+# on a node with no module system MODULESHOME is unset and this is a no-op, and
+# a failure to source must never turn into a failure of the agent's command.
+_MODULE_INIT_SNIPPET = (
+    'if [ -n "${MODULESHOME:-}" ] && [ -r "$MODULESHOME/init/bash" ]; then'
+    ' . "$MODULESHOME/init/bash" >/dev/null 2>&1 || true; fi\n'
+)
+
+
+def _module_environment() -> dict[str, str]:
+    """Module-system pointers to hand through to a node's execution."""
+    return {
+        name: os.environ[name]
+        for name in _MODULE_ENV_NAMES
+        if os.environ.get(name)
+    }
+
+
 def _run_code(filename: str, work_dir: str, timeout: int) -> dict:
     try:
         workspace = WorkspaceRefV1(root=work_dir)
@@ -1015,6 +1057,10 @@ def _run_code(filename: str, work_dir: str, timeout: int) -> dict:
             workspace=workspace,
             argv=interp + [relative_path],
             timeout_seconds=timeout,
+            # No init snippet here: this is argv, not a shell. The pointers are
+            # still passed so a script that shells out can source the init and
+            # reach the same tree run_bash does.
+            environment=_module_environment(),
             limits=_execution_limits(),
             input_digests={relative_path: workspace.file_digest(relative_path)},
         )
@@ -1067,10 +1113,15 @@ def _run_bash(command: str, work_dir: str, timeout: int) -> dict:
             )
             normalized = execute_local(request)
         else:
+            # Host execution: make `module` usable. In the container branch
+            # above this is deliberately NOT done — the host's module tree does
+            # not exist inside the container, so passing its paths would only
+            # produce dangling references and break the isolation contract.
             request = ExecutionRequestV1(
                 workspace=workspace,
-                shell_command=command,
+                shell_command=_MODULE_INIT_SNIPPET + command,
                 timeout_seconds=timeout,
+                environment=_module_environment(),
                 limits=_execution_limits(),
             )
             normalized = execute_local(request)

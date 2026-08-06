@@ -18,6 +18,15 @@ optional_env:
   - ARI_CONTAINER_MODE
   - ARI_MAX_CHILD_PROCS
   - ARI_WORK_DIR
+  # Environment Modules pointers handed through to host execution so a loaded
+  # toolchain is actually reachable. Location pointers only; PATH and
+  # LD_LIBRARY_PATH stay scrubbed, and nothing is passed in container mode.
+  - LMOD_CMD
+  - LMOD_PKG
+  - LOADEDMODULES
+  - MODULEPATH
+  - MODULERCFILE
+  - MODULESHOME
   - SINGULARITY_CACHEDIR
   - SLURM_JOB_ID
   - SLURM_JOB_NODELIST

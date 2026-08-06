@@ -628,3 +628,72 @@ def test_emit_results_rejects_ambiguous_or_invalid_measurement_metadata(work_dir
     assert "names overlap" in overlap["error"]
     assert unknown_unit["unknown_units"] == ["throughput"]
     assert not (Path(work_dir) / "bad.json").exists()
+
+
+# ── Environment Modules reachability ────────────────────────────────────────
+# Guard for the gap where `describe_environment` advertised the site's whole
+# module tree while the executor scrubbed MODULEPATH and ran bash --noprofile
+# --norc, so `module load` failed with "command not found" and a
+# module-only toolchain could be neither used nor compared.
+
+def _coding_server_module():
+    import importlib.util, pathlib, sys
+    root = pathlib.Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "_coding_srv_modenv", root / "src" / "server.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["_coding_srv_modenv"] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_module_pointers_are_passed_through(monkeypatch):
+    srv = _coding_server_module()
+    monkeypatch.setenv("MODULESHOME", "/opt/modules")
+    monkeypatch.setenv("MODULEPATH", "/opt/modules/files:/site/files")
+    env = srv._module_environment()
+    assert env["MODULESHOME"] == "/opt/modules"
+    assert env["MODULEPATH"] == "/opt/modules/files:/site/files"
+
+
+def test_unset_module_pointers_are_omitted(monkeypatch):
+    # A node with no module system must yield no keys at all rather than
+    # empty strings, which would look like a configured-but-blank tree.
+    srv = _coding_server_module()
+    for name in srv._MODULE_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
+    assert srv._module_environment() == {}
+
+
+def test_module_pointers_are_declared_in_the_manifest():
+    # The manifest gate (scripts/check_skill_manifests.py) enforces this too;
+    # pinning it here makes the coupling visible where the names are defined.
+    import pathlib
+    import yaml
+    srv = _coding_server_module()
+    root = pathlib.Path(srv.__file__).resolve().parents[1]
+    manifest = yaml.safe_load((root / "skill.yaml").read_text(encoding="utf-8"))
+    declared = set(manifest.get("optional_env") or [])
+    assert set(srv._MODULE_ENV_NAMES) <= declared
+
+
+def test_init_snippet_is_guarded_and_prefixes_the_command():
+    # Must be a no-op (never an error) where there is no module system.
+    srv = _coding_server_module()
+    assert 'MODULESHOME' in srv._MODULE_INIT_SNIPPET
+    assert '|| true' in srv._MODULE_INIT_SNIPPET
+    assert srv._MODULE_INIT_SNIPPET.endswith("\n")
+
+
+def test_module_function_is_defined_for_run_bash(tmp_path, monkeypatch):
+    # End-to-end through the real executor: `module` is a SHELL FUNCTION from
+    # the init script, so --noprofile --norc leaves it undefined unless the
+    # snippet runs. Skipped where the host has no module system.
+    import os
+    srv = _coding_server_module()
+    if not os.environ.get("MODULESHOME"):
+        import pytest
+        pytest.skip("host has no Environment Modules installation")
+    out = srv._run_bash("type module 2>&1 | head -1", str(tmp_path), 60)
+    text = (out.get("stdout") or "") + (out.get("stderr") or "")
+    assert "function" in text, text
