@@ -68,11 +68,14 @@ CHILD = r'''
 import json, os, pathlib, statistics, sys, tempfile
 src, flags, n, m, p, reps = sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6])
 repo = "%s"
-sys.path.insert(0, repo + "/ari-core")
 os.environ["ARI_WORKSPACE"] = repo + "/workspace"
 os.environ["ARI_HARNESS_CACHE"] = repo + "/workspace/checkpoints/harness_cache"
-sys.path.insert(0, repo + "/workspace/harnesses/gemm")
-H = __import__("gemm_harness")
+# Through the registry, so the pins are verified. `shapes` is a candidate-shape
+# probe, not a manifest kwarg, so measure_node is still the call — but only
+# after load() has checked the harness. See workspace/tools/_harness_access.py.
+sys.path.insert(0, repo + "/workspace/tools")
+from _harness_access import verified_module
+H = verified_module("gemm")
 with tempfile.TemporaryDirectory() as td:
     wd = pathlib.Path(td, "node"); wd.mkdir(); H.seed_work_dir(str(wd))
     (wd / "candidate_gemm.c").write_text(pathlib.Path(src).read_text())

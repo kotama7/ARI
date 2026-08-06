@@ -34,17 +34,21 @@ VAR = "XOS_MMM_L_PAGING_POLICY"
 
 def score(task: str, reps: int, out: pathlib.Path) -> dict:
     """One real scoring of the frozen reference, written out whole."""
-    sys.path.insert(0, str(REPO / "ari-core"))
-    sys.path.insert(0, str(REPO / "workspace/harnesses" / task))
-    H = __import__(f"{task}_harness")
-    kw = {"n": 20000, "k": 64} if task == "spmm" else {}
+    # Through the registry: an environment record proved against an unverified
+    # harness proves nothing about the harness that scores. See _harness_access.
+    os.environ.setdefault("ARI_WORKSPACE", str(REPO / "workspace"))
+    sys.path.insert(0, str(REPO / "workspace/tools"))
+    from _harness_access import verified_harness
+    harness, H = verified_harness(task)
     with tempfile.TemporaryDirectory() as td:
         wd = pathlib.Path(td, "w")
         wd.mkdir()
         H.seed_work_dir(str(wd))
         ref = (pathlib.Path(H.kernels_dir()) / f"reference_{task}.c").read_text()
         (wd / f"candidate_{task}.c").write_text(ref)
-        r = H.measure_node(str(wd), reps=reps, **kw)
+        # measure() applies the manifest's [measure_kwargs], so the scored size
+        # is not restated here (it used to be, as a literal n=20000/k=64).
+        r = harness.measure(str(wd), reps=reps)
     out.write_text(json.dumps(r, indent=1, default=str))
     return r
 

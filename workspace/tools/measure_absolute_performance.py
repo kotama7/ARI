@@ -51,11 +51,13 @@ CHILD = r'''
 import json, os, pathlib, statistics, sys, tempfile
 task, src, reps = sys.argv[1], sys.argv[2], int(sys.argv[3])
 repo = "%s"
-sys.path.insert(0, repo + "/ari-core")
 os.environ["ARI_WORKSPACE"] = repo + "/workspace"
 os.environ["ARI_HARNESS_CACHE"] = repo + "/workspace/checkpoints/harness_cache"
-sys.path.insert(0, repo + f"/workspace/harnesses/{task}")
-H = __import__(f"{task}_harness")
+# Through the registry, so the pins are verified before an ABSOLUTE number is
+# attributed to this harness. See workspace/tools/_harness_access.py.
+sys.path.insert(0, repo + "/workspace/tools")
+from _harness_access import verified_harness
+harness, H = verified_harness(task)
 KD = pathlib.Path(H.kernels_dir())
 with tempfile.TemporaryDirectory() as td:
     wd = pathlib.Path(td, "n"); wd.mkdir(); H.seed_work_dir(str(wd))
@@ -63,8 +65,9 @@ with tempfile.TemporaryDirectory() as td:
             else (KD / f"reference_{task}.c").read_text())
     (wd / f"candidate_{task}.c").write_text(text)
     (wd / "candidate_flags.txt").write_text(" ".join(H._REFERENCE_CFLAGS) + "\n")
-    kw = {"n": 20000, "k": 64} if task == "spmm" else {}
-    r = H.measure_node(str(wd), reps=reps, **kw)
+    # measure() applies the manifest's [measure_kwargs]; the scored size used to
+    # be restated here as a literal n=20000/k=64.
+    r = harness.measure(str(wd), reps=reps)
 out = {}
 for name, fam in (r.get("families") or {}).items():
     secs = []

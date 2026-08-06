@@ -49,7 +49,9 @@ def _out_dir(default_slug: str) -> "pathlib.Path":
 
 HERE = _out_dir("reference_competence")
 BEST = json.loads((HERE / "best_corpus.json").read_text())
-EXTRA = {"spmm": {"n": 20000, "k": 64}}
+# The scored problem size comes from the manifest's [measure_kwargs] via
+# Harness.measure; restating it here made this file a second source of truth.
+EXTRA = {}
 REPS = 7
 
 CHILD = r'''
@@ -57,18 +59,21 @@ import json, os, pathlib, sys, tempfile
 task, src, flags, reps = sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4])
 extra = json.loads(sys.argv[5])
 repo = "%s"
-sys.path.insert(0, repo + "/ari-core")
 os.environ["ARI_WORKSPACE"] = repo + "/workspace"
 os.environ["ARI_HARNESS_CACHE"] = repo + "/workspace/checkpoints/harness_cache"
-sys.path.insert(0, repo + f"/workspace/harnesses/{task}")
-H = __import__(f"{task}_harness")
+# Through the registry, so the pins are verified: this program decides whether
+# the DENOMINATOR is competent, and it cannot answer that about a harness it
+# never checked. See workspace/tools/_harness_access.py.
+sys.path.insert(0, repo + "/workspace/tools")
+from _harness_access import verified_harness
+harness, H = verified_harness(task)
 with tempfile.TemporaryDirectory() as td:
     wd = pathlib.Path(td, "node"); wd.mkdir(); H.seed_work_dir(str(wd))
     (wd / f"candidate_{task}.c").write_text(pathlib.Path(src).read_text())
     fp = pathlib.Path(flags)
     (wd / "candidate_flags.txt").write_text(
         fp.read_text() if fp.is_file() else " ".join(H._REFERENCE_CFLAGS) + "\n")
-    r = H.measure_node(str(wd), reps=reps, **extra)
+    r = harness.measure(str(wd), reps=reps, **extra)
 out = {"reason": r.get("reason"), "families": {}}
 for name, fam in (r.get("families") or {}).items():
     out["families"][name] = {"speedup": fam.get("speedup"),

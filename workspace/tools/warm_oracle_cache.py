@@ -22,14 +22,16 @@ import pathlib
 import sys
 import time
 
-REPO = pathlib.Path(__file__).resolve().parents[3]
+REPO = pathlib.Path(__file__).resolve().parents[2]
 
 
 def warm(task: str, reps: int, seed: int, extra: dict) -> None:
-    sys.path.insert(0, str(REPO / "ari-core"))
-    sys.path.insert(0, str(REPO / f"workspace/harnesses/{task}"))
+    # Through the registry: an oracle warmed from an unverified harness would be
+    # keyed by a problem generator the scorer refuses to use. See _harness_access.
     os.environ.setdefault("ARI_WORKSPACE", str(REPO / "workspace"))
-    H = __import__(f"{task}_harness")
+    sys.path.insert(0, str(REPO / "workspace/tools"))
+    from _harness_access import verified_module
+    H = verified_module(task)
 
     cache = os.environ.get("ARI_HARNESS_CACHE", "")
     if not cache:

@@ -51,10 +51,13 @@ REPO = pathlib.Path(__file__).resolve().parents[2]
 
 
 def _harness(task: str):
-    sys.path.insert(0, str(REPO / "ari-core"))
-    sys.path.insert(0, str(REPO / "workspace/harnesses" / task))
+    """Through the registry, so the sha256 pins are verified before this tool
+    builds the SCORED binary with the harness's own _compile_kernel. Importing
+    the file directly measured whatever was on disk. See _harness_access.py."""
     os.environ.setdefault("ARI_WORKSPACE", str(REPO / "workspace"))
-    return __import__(f"{task}_harness")
+    sys.path.insert(0, str(REPO / "workspace/tools"))
+    from _harness_access import verified_module
+    return verified_module(task)
 
 
 def _write_problem(path: pathlib.Path, H, nx: int, ny: int, nz: int, nt: int, seed: int):

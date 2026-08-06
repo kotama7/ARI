@@ -26,13 +26,18 @@ REP_COUNTS = [int(x) for x in (sys.argv[2].split(",") if len(sys.argv) > 2
                                else "3,5,15,30".split(","))]
 TRIALS = int(sys.argv[3]) if len(sys.argv) > 3 else 12
 
-sys.path.insert(0, str(REPO / "ari-core"))
-sys.path.insert(0, str(REPO / f"workspace/harnesses/{TASK}"))
 os.environ["ARI_WORKSPACE"] = str(REPO / "workspace")
 os.environ.setdefault("ARI_HARNESS_CACHE",
                       str(REPO / "workspace/checkpoints/harness_cache"))
 
-H = __import__(f"{TASK}_harness")
+# Through the REGISTRY, not by importing the file: this tool produces the band
+# that is copied into [declares].resolves, and a band measured with an
+# unverified copy of the instrument cannot certify the instrument. See
+# _harness_access.py.
+sys.path.insert(0, str(REPO / "workspace/tools"))
+from _harness_access import verified_harness              # noqa: E402
+
+HARNESS, H = verified_harness(TASK)
 seed_work_dir = H.seed_work_dir
 measure_node = H.measure_node
 CAND = f"candidate_{TASK}.c"
@@ -57,10 +62,10 @@ try:
 except (TypeError, ValueError):
     ACCEPTS_REPS = True
 
-EXTRA = {}
-if TASK == "spmm":                       # scored size lives in harness.toml
-    EXTRA = {"n": int(os.environ.get("ARI_SPMM_N", "20000")),
-             "k": int(os.environ.get("ARI_SPMM_K", "64"))}
+# The scored problem size comes from the manifest's [measure_kwargs], resolved by
+# HARNESS.measure. It used to be restated here for spmm, which made this file a
+# second source of truth for the size the band is quoted at.
+EXTRA = HARNESS._kwargs()
 
 # The v1 median top1-top2 sibling gaps, in percent, for the tasks that had a v1.
 # A rep count "resolves siblings" when the band is at most a third of this.
