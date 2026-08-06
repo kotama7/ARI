@@ -43,7 +43,9 @@ tools:
   - name: emit_results
     capability_ref: ari.execution.results.emit
     side_effects: workspace-write
-    permissions: [workspace-read, workspace-write]
+    # `ari.result.emit/v1` requires result-write; the tool has always written
+    # results, but the permission was missing from the declaration.
+    permissions: [workspace-read, workspace-write, result-write]
   - name: read_file
     capability_ref: ari.workspace.file.read
     side_effects: read-only

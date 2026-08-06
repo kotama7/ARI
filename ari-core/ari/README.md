@@ -90,6 +90,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `native_worker.py` — worker entry point for authoritative native verification.
     - `paperbench.py` — PaperBench-compatible scientific reproduction driver.
     - `perf.py` — TODO
+    - `perf_profile_worker.py` — TODO
     - `perf_worker.py` — TODO
     - `shared_library.py` — ABI-bound shared-library candidate driver.
     - `upstream.py` — pinned upstream project runner and parity driver.

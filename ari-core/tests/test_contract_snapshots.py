@@ -134,9 +134,9 @@ def test_mcp_tool_counts_and_names():
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
     assert len(fastmcp) == 67, f"expected 67 FastMCP tools, got {len(fastmcp)}"
-    assert len(lowlevel) == 33, f"expected 33 low-level tool defs, got {len(lowlevel)}"
+    assert len(lowlevel) == 35, f"expected 35 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 98, f"expected 98 unique tool names, got {len(unique)}"
+    assert len(unique) == 100, f"expected 100 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 

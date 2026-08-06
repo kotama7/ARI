@@ -215,6 +215,11 @@
       {
         "args": [],
         "idiom": "lowlevel",
+        "name": "counter_support"
+      },
+      {
+        "args": [],
+        "idiom": "lowlevel",
         "name": "job_cancel"
       },
       {
@@ -236,6 +241,16 @@
         "args": [],
         "idiom": "lowlevel",
         "name": "job_submit"
+      },
+      {
+        "args": [
+          "ari_context",
+          "events",
+          "pid",
+          "window_ms"
+        ],
+        "idiom": "lowlevel",
+        "name": "measure_counters"
       },
       {
         "args": [

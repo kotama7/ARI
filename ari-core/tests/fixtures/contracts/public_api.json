@@ -87,6 +87,7 @@
       "verify_tool_context"
     ],
     "ari.public.capability_binding": [
+      "CapabilityAbstractionReportV1",
       "CapabilityBindingError",
       "CapabilityBindingLockError",
       "CapabilityBindingLockV1",
@@ -102,11 +103,14 @@
       "CapabilityProvisionV1",
       "CapabilityRequirementV1",
       "ProviderExecutionObservationV1",
+      "SYNTHETIC_SUBSTITUTE_PROVIDER_ID",
       "bind_capabilities",
       "bound_tool_refs",
       "load_binding_lock",
       "load_capability_ontology",
+      "probe_capability_abstraction",
       "probe_provider_substitution",
+      "synthetic_substitute_provision",
       "validate_binding_revision",
       "write_or_verify_binding_lock"
     ],

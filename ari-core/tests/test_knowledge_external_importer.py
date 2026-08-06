@@ -461,7 +461,7 @@ def test_external_import_cli_emits_candidate_material_without_catalog_write(
     assert not (tmp_path / "catalog.yaml").exists()
 
 
-def test_checked_in_intel_performance_skills_are_distinct_pinned_candidates():
+def test_checked_in_intel_performance_skills_are_distinct_pinned_entries():
     config_root = Path(__file__).resolve().parents[1] / "config" / "knowledge_skills"
     loaded = load_knowledge_catalog(config_root / "catalog.yaml")
     intel_entries = {
@@ -475,7 +475,9 @@ def test_checked_in_intel_performance_skills_are_distinct_pinned_candidates():
         "intel.performance-patterns",
         "intel.phoronix-test-suite",
     }
-    assert all(entry.status == "candidate" for entry in intel_entries.values())
+    # Promoted on reviewed evidence; each promotion carries its own approval.
+    assert all(entry.status == "verified" for entry in intel_entries.values())
+    assert set(loaded.promotion_approvals) >= set(intel_entries)
     assert all(
         entry.importer_version == "ari.knowledge.external-importer/v1"
         for entry in intel_entries.values()

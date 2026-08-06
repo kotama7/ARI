@@ -11,8 +11,11 @@ from ari.capability_binding.models import (
 )
 from ari.capability_binding.resolver import CapabilityBindingError, bind_capabilities
 from ari.capability_binding.substitution import (
+    SYNTHETIC_SUBSTITUTE_PROVIDER_ID,
     ProviderExecutionObservationV1,
+    probe_capability_abstraction,
     probe_provider_substitution,
+    synthetic_substitute_provision,
 )
 from ari.capability_binding.validation import BoundToolAuthorizationView
 from ari.protocols.integrity import canonical_digest
@@ -262,3 +265,72 @@ def test_provider_substitution_reports_candidate_primary_as_unsatisfied():
     assert report.binding_reason_codes == ("provider_not_verified",)
     assert report.replacement_provider_id == "provider-b"
     assert report.execution_status == "passed"
+
+
+def test_abstraction_probe_passes_when_the_requirement_names_a_capability():
+    contract = _contract()
+    requirement = _requirement(contract)
+    incumbent = _provision(contract)
+    request = _request(requirement, [incumbent], mode="audit")
+
+    report = probe_capability_abstraction(request, incumbent_provider_id="provider-a")
+
+    assert report.status == "passed"
+    assert report.deterministic is True
+    assert report.covered_capability_refs == (contract.capability_ref,)
+    assert report.provider_bound_capability_refs == ()
+    assert report.disabled_incumbent_tool_refs == (incumbent.tool_ref,)
+    assert report.synthetic_provider_id == SYNTHETIC_SUBSTITUTE_PROVIDER_ID
+    assert report.baseline_lock_digest != report.substituted_lock_digest
+
+
+def test_abstraction_probe_fails_when_the_requirement_pins_a_provider():
+    """A pinned Provider is exactly the dependency this gate must catch."""
+
+    contract = _contract()
+    requirement = _requirement(contract, explicit_provider_pin="provider-a")
+    incumbent = _provision(contract)
+    request = _request(requirement, [incumbent], mode="audit")
+
+    report = probe_capability_abstraction(request, incumbent_provider_id="provider-a")
+
+    assert report.status == "failed"
+    assert report.provider_bound_capability_refs == (contract.capability_ref,)
+    assert report.covered_capability_refs == ()
+
+
+def test_abstraction_probe_is_vacuous_when_the_incumbent_won_nothing():
+    contract = _contract()
+    requirement = _requirement(contract)
+    other = _provision(contract, provider="provider-b", tool="provider-b::compile")
+    request = _request(requirement, [other], mode="audit")
+
+    report = probe_capability_abstraction(request, incumbent_provider_id="provider-a")
+
+    assert report.status == "vacuous"
+    assert report.covered_capability_refs == ()
+    assert report.disabled_incumbent_tool_refs == ()
+
+
+def test_synthetic_substitute_changes_only_the_provider_identity():
+    contract = _contract()
+    incumbent = _provision(contract)
+    stand_in = synthetic_substitute_provision(incumbent)
+
+    assert stand_in.provider_id == SYNTHETIC_SUBSTITUTE_PROVIDER_ID
+    assert stand_in.tool_ref != incumbent.tool_ref
+    assert stand_in.provider_identity_digest != incumbent.provider_identity_digest
+    for field in (
+        "capability_ref",
+        "capability_contract_digest",
+        "side_effect_class",
+        "determinism_class",
+        "context_requirement",
+        "environment_requirements",
+        "resource_type",
+        "permissions",
+        "roles",
+        "phases",
+        "credential_scope_ids",
+    ):
+        assert getattr(stand_in, field) == getattr(incumbent, field)

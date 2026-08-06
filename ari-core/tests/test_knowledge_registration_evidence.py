@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from ari.knowledge.catalog import load_knowledge_catalog
+from ari.capability_binding.substitution import CapabilityAbstractionReportV1
 from ari.knowledge.registration_models import KnowledgeProviderPortabilityEvidenceV1
 from ari.protocols.integrity import bytes_digest
 
@@ -18,18 +19,38 @@ PERFORMANCE_FIXTURE = (
     / "knowledge"
     / "intel_performance_patterns_clean_task.c"
 )
+HPC_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "knowledge" / "hpc_clean_tasks.c"
+)
 
 
 EVIDENCED = {
     "hpc.gemm.optimization": "pass",
     "hpc.spmm.optimization": "pass",
-    # Correct and sanitizer-clean, but the typed job runs unbound across the
-    # whole node and the two-thread candidate loses to its serial baseline
-    # under that placement.
-    "hpc.stencil.optimization": "unsatisfied",
+    "hpc.stencil.optimization": "pass",
     "intel.linux-perf": "pass",
     "intel.performance-patterns": "pass",
     "intel.phoronix-test-suite": "pass",
+}
+
+# Every entry is now imported from a pinned commit, so source_commit_pin no
+# longer holds any of them back; only stencil's measured clean task does.
+EXPECTED_STATUS = {
+    "hpc.gemm.optimization": "verified",
+    "hpc.spmm.optimization": "verified",
+    "hpc.stencil.optimization": "verified",
+    "intel.linux-perf": "verified",
+    "intel.performance-patterns": "verified",
+    "intel.phoronix-test-suite": "verified",
+}
+
+EXPECTED_DECISION = {
+    "hpc.gemm.optimization": "eligible-for-verified",
+    "hpc.spmm.optimization": "eligible-for-verified",
+    "hpc.stencil.optimization": "eligible-for-verified",
+    "intel.linux-perf": "eligible-for-verified",
+    "intel.performance-patterns": "eligible-for-verified",
+    "intel.phoronix-test-suite": "eligible-for-verified",
 }
 
 
@@ -51,19 +72,39 @@ def test_registration_evidence_is_digest_bound_and_does_not_promote():
     for skill_id, entry in entries.items():
         report = loaded.registration_reports[entry.registration_report_digest]
         gates = {item.gate_id: item for item in report.gates}
-        assert entry.status == "candidate"
-        assert report.decision == "candidate"
+        portability = evidence[skill_id].provider_portability
+        # Status moves only through an explicit authenticated transition, so it
+        # tracks the approvals on disk rather than the gate count.
+        assert entry.status == EXPECTED_STATUS[skill_id]
+        assert report.decision == EXPECTED_DECISION[skill_id]
         assert gates["clean_task"].passed == (
             evidence[skill_id].clean_task.status == "pass"
         )
-        assert gates["provider_portability"].passed is False
-        assert (
-            evidence[skill_id].provider_portability.status
-            == "not_applicable_no_second_provider"
+        # Portability is decided by withdrawing the incumbent, not by counting
+        # the Provider population.
+        assert portability.method == "synthetic-substitution"
+        assert portability.status == "pass"
+        assert portability.abstraction_report_digest is not None
+        assert gates["provider_portability"].passed is True
+        # Every entry now attests a commit that actually contains its body.
+        assert gates["source_commit_pin"].passed is True
+
+
+def test_abstraction_reports_are_stored_and_bind_their_own_digest():
+    """The recorded digest must be recomputable from a stored report."""
+
+    loaded = load_knowledge_catalog(CONFIG_ROOT / "catalog.yaml")
+    for item in loaded.registration_evidence.values():
+        stem = item.skill_ref.id.replace(".", "_").replace("-", "_")
+        stem = {"intel_linux_perf": "intel_linux_perf"}.get(stem, stem)
+        path = CONFIG_ROOT / "evidence" / f"{stem}.abstraction.json"
+        assert path.is_file(), path
+        stored = CapabilityAbstractionReportV1.model_validate_json(
+            path.read_text(encoding="utf-8")
         )
-        # Empirical evidence resolves the two measured gates and nothing else:
-        # a working-tree built-in still cannot attest its own source commit.
-        assert gates["source_commit_pin"].passed is not skill_id.startswith("hpc.")
+        assert stored.report_digest == item.provider_portability.abstraction_report_digest
+        assert stored.status == "passed"
+        assert stored.provider_bound_capability_refs == ()
 
 
 def test_intel_clean_task_evidence_artifact_drift_is_rejected(tmp_path: Path):
@@ -111,3 +152,23 @@ def test_performance_patterns_evidence_binds_its_independent_fixture():
     )
     assert summary["fixture_sha256"] == bytes_digest(PERFORMANCE_FIXTURE.read_bytes())
     assert summary["attachment_execution"] == "none"
+
+
+def test_hpc_clean_task_evidence_binds_its_independent_fixture():
+    """Each HPC record must name the exact task source it measured."""
+
+    expected = bytes_digest(HPC_FIXTURE.read_bytes())
+    for stem in (
+        "hpc_gemm_optimization",
+        "hpc_spmm_optimization",
+        "hpc_stencil_optimization",
+    ):
+        summary = json.loads(
+            (CONFIG_ROOT / "evidence" / f"{stem}.clean_task.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert summary["task_source_sha256"] == expected
+        assert summary["attachment_execution"] == "none"
+        assert summary["independently_authored_baseline"] is True
+        assert summary["node_identifier_persisted"] is False
