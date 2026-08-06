@@ -37,12 +37,24 @@ def _items_for(section: str, context: ManuscriptContextV1) -> list[dict[str, Any
         return [
             {"item_id": "research-question", "kind": "research-question", "value": context.research_question},
             {"item_id": "subject-selection", "kind": "subjects", "value": context.subjects},
-            {"item_id": "contributions", "kind": "contributions", "value": list(context.contribution_map)},
+        ] + [
+            {
+                "item_id": str(item.get("contribution_id") or f"contribution-{index}"),
+                "kind": "contribution",
+                "value": item,
+            }
+            for index, item in enumerate(context.contribution_map)
         ]
     if section == "introduction":
         return [
             {"item_id": "research-question", "kind": "research-question", "value": context.research_question},
-            {"item_id": "contributions", "kind": "contributions", "value": list(context.contribution_map)},
+        ] + [
+            {
+                "item_id": str(item.get("contribution_id") or f"contribution-{index}"),
+                "kind": "contribution",
+                "value": item,
+            }
+            for index, item in enumerate(context.contribution_map)
         ]
     if section == "related-work":
         return [
@@ -53,7 +65,14 @@ def _items_for(section: str, context: ManuscriptContextV1) -> list[dict[str, Any
         return [
             {"item_id": str(item.get("method_id") or f"method-{index}"), "kind": "method", "value": item}
             for index, item in enumerate(context.methods)
-        ] + [{"item_id": "exploration-history", "kind": "selection-history", "value": list(context.exploration_history)}]
+        ] + [
+            {
+                "item_id": f"history:{item.get('node_id', index)}",
+                "kind": "selection-history",
+                "value": item,
+            }
+            for index, item in enumerate(context.exploration_history)
+        ]
     if section == "experimental-setup":
         return [{"item_id": "reproducibility", "kind": "setup", "value": context.reproducibility}]
     if section == "results":
@@ -177,8 +196,23 @@ def render_brief_bundle(bundle: SectionBriefBundleV1) -> str:
     for brief in bundle.briefs:
         lines.append(f"\n## {brief.section_id}")
         lines.append(f"brief_digest: {brief.brief_digest}")
+        lines.append(
+            "Allowed positive-claim evidence IDs: "
+            + (", ".join(brief.allowed_evidence_ids) or "(none)")
+        )
+        lines.append(
+            "Contextual-negative evidence IDs (disclose, never use as positive support): "
+            + (", ".join(brief.contextual_negative_ids) or "(none)")
+        )
+        lines.append(
+            "Forbidden/non-publishable evidence IDs: "
+            + (", ".join(brief.forbidden_evidence_ids) or "(none)")
+        )
         if brief.required_disclosures:
-            lines.append("Required disclosures:")
+            lines.append(
+                "Required disclosures (copy each line verbatim at least once; "
+                "additional paraphrase is allowed):"
+            )
             lines.extend(f"- {item}" for item in brief.required_disclosures)
         for item in brief.content_items:
             lines.append(json.dumps(item, ensure_ascii=False, sort_keys=True))

@@ -74,6 +74,7 @@ def test_public_api_submodules_present():
     assert "filter_nodes" in golden["ari.public.node_selection"]
     assert "publish" in golden["ari.public.publish"]
     assert "KnowledgeSkillManifestV1" in golden["ari.public.knowledge"]
+    assert "ManuscriptContextV1" in golden["ari.public.manuscript"]
     assert "CapabilityProviderManifest" in golden["ari.public.providers"]
     assert (
         "CapabilityProviderSubstitutionReportV1"

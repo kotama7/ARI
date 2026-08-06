@@ -4,7 +4,7 @@ If a new ``from ari.X import ...`` slips into a sibling skill outside
 the allowed list, this test fails so the boundary violation is caught
 before merge.
 
-Two known historical violations are grandfathered in:
+Three known historical violations are grandfathered in:
 
 * ``ari-skill-coding/tests/test_server.py`` — patches the ``ari.container``
   symbol on the actual module object so the skill's local import
@@ -13,6 +13,10 @@ Two known historical violations are grandfathered in:
 * ``ari-skill-plot/src/server.py`` — uses ``ari.public.cost_tracker``
   with a try/except fallback to the legacy ``ari.cost_tracker`` path
   for compatibility with older ari-core checkouts.
+* ``ari-skill-tool-registry/src/provider_promotion.py`` — its exact source
+  digest is embedded in human-approved Qiskit/OpenROAD promotion locks. Moving
+  the import requires a new evidence bundle and promotion approval, not a
+  source-only boundary rewrite.
 """
 from __future__ import annotations
 
@@ -89,6 +93,10 @@ _GRANDFATHERED: dict[str, set[int]] = {
     "ari-skill-paper/src/server.py": {21},  # cost_tracker fallback
     "ari-skill-plot/src/server.py": {34},  # try-block legacy fallback
     "ari-skill-replicate/src/server.py": {28},  # cost_tracker fallback
+    # Exact verifier source is bound by authentic promotion locks. Keep this
+    # line-pinned waiver synchronized with test_skill_public_contract.py until
+    # a separately approved re-promotion migrates the import.
+    "ari-skill-tool-registry/src/provider_promotion.py": {15},
     "ari-skill-transform/src/server.py": {55, 690, 2101, 2451, 2469},  # cost_tracker fallback + ari.orchestrator/ari.publish (deferred; lines shifted by the Story2Proposal claims + forward-declaration config_nodes + metric-correctness anomaly-annotation + provenance-propagation + metric_contract-propagation + provenance-union blocks + the RQGM erasure-filter clauses in the best-node resolvers)
     "ari-skill-vlm/src/server.py": {18},  # cost_tracker fallback
     "ari-skill-web/src/server.py": {24},  # cost_tracker fallback

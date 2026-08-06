@@ -1,6 +1,6 @@
 # Task 07: Explicit Repair and Resume
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00, 01, 02, 03, 04
 > **Optional integration dependencies**: 05 for KCA repair; existing research runtime for experiment repair
 > **Gate**: G6 — bounded, authorized, idempotent repair

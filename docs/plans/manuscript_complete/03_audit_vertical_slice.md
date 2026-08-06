@@ -1,6 +1,6 @@
 # Task 03: Audit-Only Simple BFTS + Linear Vertical Slice
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00, 01, 02
 > **Gate**: G2 — observable completeness without behavior change
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

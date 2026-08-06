@@ -1339,6 +1339,35 @@ keys: `enabled` (may the router route to it) and `max_calls_per_epoch`
 
 ---
 
+## Manuscript Complete (opt-in)
+
+`manuscript` is an axis independent of `ari.mode`, `paper.mode`, and the K/C/A
+postures. Quoting `"off"` is required for portability across YAML 1.1 parsers.
+
+```yaml
+manuscript:
+  mode: "off"               # off | audit | enforce
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled         # disabled | explicit | auto
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
+```
+
+`off` preserves the legacy path and writes no `.ari-manuscript` data. `audit`
+compiles a shadow readiness attempt without changing writer inputs. `enforce`
+splits evidence, authoring, and verification into digest-bound transactions and
+blocks authoring when a critical requirement is unresolved. `repair.policy:
+auto` is rejected outside enforce; `explicit` runs only a named, pre-admitted
+request. See the [profile reference](manuscript_complete_profile.md),
+[contract reference](manuscript_complete_contracts.md), and
+[operations guide](../guides/manuscript_complete_operations.md).
+
 ## EAR Curation (`ear/publish.yaml`) — v0.7.0+
 
 Curation gates which subset of `{checkpoint}/ear/` becomes the publish-ready

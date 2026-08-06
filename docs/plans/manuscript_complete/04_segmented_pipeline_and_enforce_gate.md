@@ -1,6 +1,6 @@
 # Task 04: Segmented Pipeline and Enforce Gate
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00, 01, 02, 03
 > **Gate**: G3 — pre-authoring readiness enforcement
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

@@ -129,6 +129,7 @@ _PUBLIC_SUBMODULES = (
     "knowledge",
     "memory",
     "lineage",
+    "manuscript",
     "node_selection",
     "paths",
     "paper",

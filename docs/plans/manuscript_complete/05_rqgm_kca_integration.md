@@ -1,6 +1,6 @@
 # Task 05: Research RQGM and KCA Integration
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00, 01, 02, 03, 04
 > **External dependencies**: ARI-RQGM Tasks 18/19 for authentic certify/publication closure
 > **Gate**: G4 — assurance-aware evidence and publication subject binding

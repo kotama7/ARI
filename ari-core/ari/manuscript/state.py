@@ -8,7 +8,11 @@ from pathlib import Path
 from typing import Any
 
 from ari.manuscript.contracts import ManuscriptTransitionV1
-from ari.manuscript.digest import canonical_json_bytes
+from ari.manuscript.digest import (
+    canonical_json_bytes,
+    path_has_symlink_component,
+    safe_relative_path,
+)
 
 
 ROOT_NAME = ".ari-manuscript"
@@ -65,6 +69,12 @@ class ManuscriptStateStore:
             raise ValueError("invalid manuscript attempt ID")
         return self.attempts_root / value
 
+    def _assert_safe_namespace(self, path: Path | None = None) -> None:
+        if self.root.is_symlink():
+            raise ValueError("manuscript namespace cannot be a symlink")
+        if path is not None and path_has_symlink_component(self.root, path):
+            raise ValueError("manuscript artifact path traverses a symlink")
+
     @staticmethod
     def _atomic_write(path: Path, payload: bytes) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +83,9 @@ class ManuscriptStateStore:
         os.replace(temporary, path)
 
     def write_once(self, relative_path: str, value: Any) -> Path:
+        safe_relative_path(relative_path)
         path = self.root / relative_path
+        self._assert_safe_namespace(path)
         payload = _json_bytes(value)
         if path.exists():
             if path.read_bytes() != payload:
@@ -88,16 +100,64 @@ class ManuscriptStateStore:
         return self.write_once(f"attempts/{attempt}/{filename}", value)
 
     def read_state(self) -> dict[str, Any]:
-        if not self.state_path.is_file():
+        self._assert_safe_namespace()
+        transitions = self._read_transitions()
+        if not transitions:
+            if self.state_path.exists() or self.state_path.is_symlink():
+                raise ValueError("manuscript state exists without a transition chain")
             return {"schema_version": "ari.manuscript-state/v1", "state": "absent"}
-        value = json.loads(self.state_path.read_text(encoding="utf-8"))
+
+        tail = transitions[-1]
+        expected = {
+            "schema_version": "ari.manuscript-state/v1",
+            "run_id": tail.run_id,
+            "attempt_id": tail.attempt_id,
+            "state": tail.to_state,
+            "last_transition_digest": tail.transition_digest,
+            "sequence": tail.sequence,
+            "artifact_digests": list(tail.artifact_digests),
+        }
+        if not self.state_path.is_file() or self.state_path.is_symlink():
+            # The transition append is fsync'd before its mutable projection is
+            # replaced. Recover the only safe crash window from the immutable
+            # chain instead of inventing state.
+            if self.state_path.is_symlink():
+                raise ValueError("manuscript state projection cannot be a symlink")
+            self._atomic_write(self.state_path, _json_bytes(expected))
+            return expected
+        try:
+            value = json.loads(self.state_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError("manuscript state projection is unreadable") from exc
         if not isinstance(value, dict):
             raise ValueError("manuscript state is not an object")
-        return value
+        if value == expected:
+            return value
+
+        # Recover only the single-transition crash interval. Any other drift is
+        # an external mutation or non-atomic writer and must fail closed.
+        if len(transitions) >= 2:
+            prior = transitions[-2]
+            prior_projection = {
+                "schema_version": "ari.manuscript-state/v1",
+                "run_id": prior.run_id,
+                "attempt_id": prior.attempt_id,
+                "state": prior.to_state,
+                "last_transition_digest": prior.transition_digest,
+                "sequence": prior.sequence,
+                "artifact_digests": list(prior.artifact_digests),
+            }
+            if value == prior_projection:
+                self._atomic_write(self.state_path, _json_bytes(expected))
+                return expected
+        raise ValueError("manuscript state projection differs from transition chain")
 
     def _read_transitions(self) -> list[ManuscriptTransitionV1]:
+        self._assert_safe_namespace(self.transitions_path)
         if not self.transitions_path.is_file():
             return []
+        if self.transitions_path.is_symlink():
+            raise ValueError("manuscript transition log cannot be a symlink")
         out: list[ManuscriptTransitionV1] = []
         for line in self.transitions_path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
@@ -119,6 +179,7 @@ class ManuscriptStateStore:
         reason_code: str,
         artifact_digests: tuple[str, ...] = (),
     ) -> ManuscriptTransitionV1:
+        self._assert_safe_namespace()
         transitions = self._read_transitions()
         current = transitions[-1].to_state if transitions else "absent"
         if transitions and current == to_state and transitions[-1].attempt_id == attempt:

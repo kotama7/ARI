@@ -29,7 +29,8 @@ root_idea_selection:
 # Independent exploration-to-authoring completeness boundary.  The default is
 # exact legacy identity: no manuscript imports, artifacts, gates, or repair.
 manuscript:
-  mode: off
+  # Quote YAML 1.1 boolean-like scalars (`off` would otherwise become false).
+  mode: "off"
   profile: generic_empirical_v1
   brief_character_budget: 24000
   repair:

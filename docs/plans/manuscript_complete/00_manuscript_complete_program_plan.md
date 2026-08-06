@@ -1,6 +1,6 @@
 # Task 00: Manuscript Complete Program Plan
 
-> **Status**: planned
+> **Status**: in progress
 > **Internal dependencies**: none
 > **External integration dependencies**: ARI-RQGM Tasks 18/19 for KCA-bound
 > publication; ARI-RQGM-paper Task 07 for the existing final claim-gate handoff

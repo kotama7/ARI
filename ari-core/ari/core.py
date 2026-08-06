@@ -537,6 +537,11 @@ def generate_paper_section(
     if not stages:
         log.error("No enabled pipeline stages in %s", pipeline_yaml)
         print(f"[Paper Pipeline] ERROR: No enabled stages in {pipeline_yaml}", flush=True)
+        if _segment_execution is not None:
+            _segment_execution.finish(
+                status="blocked",
+                blocking_reason="no_enabled_stages",
+            )
         return
 
     stage_names = [s.get("stage", "?") for s in stages]

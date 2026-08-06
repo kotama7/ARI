@@ -4,17 +4,25 @@ from __future__ import annotations
 
 import os
 import json
+import math
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from ari.manuscript.contracts import RepairBudgetV1
+from ari.manuscript.contracts import (
+    AutoRepairRoundResultV1,
+    ManuscriptAutoRepairRoundV1,
+    ManuscriptRepairTransactionV1,
+    RepairBudgetUsageV1,
+    RepairBudgetV1,
+)
 from ari.manuscript.coordinator import (
     ManuscriptAuthoringBlocked,
     ManuscriptOutcome,
     compile_manuscript,
 )
-from ari.manuscript.digest import file_digest
+from ari.manuscript.digest import file_digest, path_has_symlink_component
 from ari.manuscript.state import ManuscriptStateStore
 
 
@@ -32,6 +40,19 @@ def _runtime_int(name: str, default: int) -> int:
         return max(0, int(os.environ.get(name, str(default)) or default))
     except (TypeError, ValueError):
         return default
+
+
+def _runtime_optional_float(name: str) -> float | None:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be a finite non-negative number") from exc
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"{name} must be a finite non-negative number")
+    return value
 
 
 def prepare_runtime_manuscript(
@@ -87,6 +108,9 @@ def prepare_runtime_manuscript(
                 "ARI_MANUSCRIPT_MAX_EXPERIMENT_RUNS", 0
             ),
             max_llm_calls=_runtime_int("ARI_MANUSCRIPT_MAX_LLM_CALLS", 0),
+            max_resource_units=_runtime_optional_float(
+                "ARI_MANUSCRIPT_MAX_RESOURCE_UNITS"
+            ),
         ),
         authority=authority,
     )
@@ -106,7 +130,7 @@ class RuntimeRepairLoopResult:
     outcome: ManuscriptOutcome
     rounds: int
     termination_reason: str
-    used_budget: dict[str, int]
+    used_budget: dict[str, int | float]
 
 
 def run_runtime_auto_repair(
@@ -129,50 +153,81 @@ def run_runtime_auto_repair(
     max_rounds = _runtime_int("ARI_MANUSCRIPT_MAX_ROUNDS", 0)
     store = ManuscriptStateStore(checkpoint)
 
-    def _transaction_documents() -> list[dict[str, Any]]:
+    def _transaction_documents() -> list[ManuscriptRepairTransactionV1]:
         root = store.root / "repair-transactions"
-        documents: list[dict[str, Any]] = []
+        documents: list[ManuscriptRepairTransactionV1] = []
         if not root.is_dir():
             return documents
+        if path_has_symlink_component(checkpoint, root):
+            raise ValueError("repair transaction directory cannot be a symlink")
         for path in sorted(root.glob("*.json")):
             try:
-                value = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+                if path_has_symlink_component(checkpoint, path):
+                    raise ValueError("repair transaction cannot be a symlink")
+                value = ManuscriptRepairTransactionV1.model_validate_json(
+                    path.read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError):
                 raise ValueError(f"invalid persisted repair transaction: {path}")
-            if not isinstance(value, dict) or value.get("schema_version") != (
-                "ari.manuscript-repair-transaction/v1"
-            ):
-                raise ValueError(f"unknown persisted repair transaction: {path}")
+            if path.name != f"{value.request_id}.json":
+                raise ValueError("repair transaction filename disagrees with its request")
             documents.append(value)
         return documents
 
-    usage: dict[str, int] = {"new_nodes": 0, "experiment_runs": 0, "llm_calls": 0}
+    usage: dict[str, int | float] = {
+        "new_nodes": 0,
+        "experiment_runs": 0,
+        "llm_calls": 0,
+        "resource_units": 0.0,
+    }
     for document in _transaction_documents():
-        details = document.get("details") or {}
-        if not isinstance(details, dict):
-            raise ValueError("persisted repair transaction details are invalid")
+        details = document.details
         for key in usage:
-            value = int(details.get(key, 0) or 0)
-            if value < 0:
+            raw_value = details.get(key, 0.0 if key == "resource_units" else 0)
+            if key == "resource_units":
+                if (
+                    not isinstance(raw_value, (int, float))
+                    or isinstance(raw_value, bool)
+                ):
+                    raise ValueError(
+                        "persisted repair transaction has invalid budget use"
+                    )
+                value: int | float = float(raw_value)
+            else:
+                if not isinstance(raw_value, int) or isinstance(raw_value, bool):
+                    raise ValueError(
+                        "persisted repair transaction has invalid budget use"
+                    )
+                value = raw_value
+            if not math.isfinite(value) or value < 0:
                 raise ValueError("persisted repair transaction has negative budget use")
             usage[key] += value
 
     round_root = store.root / "auto-rounds"
-    existing_rounds: dict[str, dict[str, Any]] = {}
+    existing_rounds: dict[str, ManuscriptAutoRepairRoundV1] = {}
     if round_root.is_dir():
+        if path_has_symlink_component(checkpoint, round_root):
+            raise ValueError("automatic repair round directory cannot be a symlink")
         for path in sorted(round_root.glob("*.json")):
             try:
-                value = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+                if path_has_symlink_component(checkpoint, path):
+                    raise ValueError("automatic repair round cannot be a symlink")
+                value = ManuscriptAutoRepairRoundV1.model_validate_json(
+                    path.read_text(encoding="utf-8")
+                )
+            except (OSError, ValueError):
                 raise ValueError(f"invalid persisted automatic repair round: {path}")
-            if not isinstance(value, dict) or value.get("schema_version") != (
-                "ari.manuscript-auto-repair-round/v1"
-            ):
-                raise ValueError(f"unknown automatic repair round: {path}")
-            plan_digest = str(value.get("plan_digest") or "")
+            plan_digest = value.plan_digest
             if not plan_digest or plan_digest in existing_rounds:
                 raise ValueError("automatic repair round identity is invalid or duplicated")
+            expected_name = f"{plan_digest.removeprefix('sha256:')[:32]}.json"
+            if path.name != expected_name:
+                raise ValueError("automatic repair round filename disagrees with its plan")
             existing_rounds[plan_digest] = value
+        if sorted(item.round for item in existing_rounds.values()) != list(
+            range(len(existing_rounds))
+        ):
+            raise ValueError("automatic repair round sequence is not contiguous")
 
     seen: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
     reconciled_rounds: set[str] = set()
@@ -241,6 +296,14 @@ def run_runtime_auto_repair(
             or usage["experiment_runs"]
             > _runtime_int("ARI_MANUSCRIPT_MAX_EXPERIMENT_RUNS", 0)
             or usage["llm_calls"] > _runtime_int("ARI_MANUSCRIPT_MAX_LLM_CALLS", 0)
+            or (
+                _runtime_optional_float("ARI_MANUSCRIPT_MAX_RESOURCE_UNITS")
+                is not None
+                and usage["resource_units"]
+                > float(
+                    _runtime_optional_float("ARI_MANUSCRIPT_MAX_RESOURCE_UNITS")
+                )
+            )
         ):
             reason = "cumulative_budget_exhausted"
             break
@@ -267,60 +330,14 @@ def run_runtime_auto_repair(
             raise ValueError(
                 f"automatic repair cannot start from manuscript state {current_state}"
             )
-        from ari.manuscript.repair import RepairExecutionResult, execute_repair_plan
+        from ari.manuscript.repair import (
+            bind_transactional_executors,
+            execute_repair_plan,
+        )
 
-        transactional: dict[str, Any] = {}
-        for kind, executor in executors.items():
-            def _wrap(request, remaining, *, _executor=executor):
-                transaction_name = f"{request.request_id}.json"
-                transaction_path = store.root / "repair-transactions" / transaction_name
-                if transaction_path.is_file():
-                    value = json.loads(transaction_path.read_text(encoding="utf-8"))
-                    if (
-                        value.get("request_digest") != request.request_digest
-                        or value.get("authority_digest") != request.authority_digest
-                    ):
-                        raise ValueError("repair transaction identity mismatch")
-                    details = dict(value.get("details") or {})
-                    prior_use = {
-                        key: int(details.get(key, 0) or 0)
-                        for key in ("new_nodes", "experiment_runs", "llm_calls")
-                    }
-                    details.update(
-                        {
-                            "new_nodes": 0,
-                            "experiment_runs": 0,
-                            "llm_calls": 0,
-                            "idempotent_reuse": True,
-                            "prior_budget_use": prior_use,
-                        }
-                    )
-                    return RepairExecutionResult(
-                        request.request_id, str(value.get("status")), details
-                    )
-                import inspect
-
-                result = (
-                    _executor(request, remaining)
-                    if len(inspect.signature(_executor).parameters) >= 2
-                    else _executor(request)
-                )
-                store.write_once(
-                    f"repair-transactions/{transaction_name}",
-                    {
-                        "schema_version": "ari.manuscript-repair-transaction/v1",
-                        "run_id": plan.run_id,
-                        "request_id": request.request_id,
-                        "request_digest": request.request_digest,
-                        "source_context_digest": request.source_context_digest,
-                        "authority_digest": request.authority_digest,
-                        "status": result.status,
-                        "details": result.details,
-                    },
-                )
-                return result
-
-            transactional[kind] = _wrap
+        transactional = bind_transactional_executors(
+            plan, checkpoint, executors
+        )
 
         results = execute_repair_plan(
             plan,
@@ -328,22 +345,31 @@ def run_runtime_auto_repair(
             used_budget=usage,
         )
         round_index = len(existing_rounds)
-        round_record = {
-            "schema_version": "ari.manuscript-auto-repair-round/v1",
-            "round": round_index,
-            "plan_digest": plan.plan_digest,
-            "source_context_digest": readiness.context_digest,
-            "request_ids": [item.request_id for item in plan.requests],
-            "results": [
-                {
-                    "request_id": item.request_id,
-                    "status": item.status,
-                    "details": item.details,
-                }
+        transaction_digests: list[str] = []
+        for item in results:
+            path = store.root / "repair-transactions" / f"{item.request_id}.json"
+            if path.is_file() and not path_has_symlink_component(checkpoint, path):
+                transaction_digests.append(
+                    ManuscriptRepairTransactionV1.model_validate_json(
+                        path.read_text(encoding="utf-8")
+                    ).transaction_digest
+                )
+        round_record = ManuscriptAutoRepairRoundV1.create(
+            round=round_index,
+            plan_digest=plan.plan_digest,
+            source_context_digest=readiness.context_digest,
+            request_ids=tuple(item.request_id for item in plan.requests),
+            transaction_digests=tuple(transaction_digests),
+            results=tuple(
+                AutoRepairRoundResultV1(
+                    request_id=item.request_id,
+                    status=item.status,
+                    details=item.details,
+                )
                 for item in results
-            ],
-            "used_budget": dict(usage),
-        }
+            ),
+            used_budget=RepairBudgetUsageV1.model_validate(usage),
+        )
         suffix = plan.plan_digest.removeprefix("sha256:")[:32]
         store.write_once(f"auto-rounds/{suffix}.json", round_record)
         store.write_attempt_artifact(
@@ -459,10 +485,23 @@ def _source_inputs_fresh(checkpoint: Path, attempt_id: str) -> bool:
             path.read_text(encoding="utf-8")
         )
         for artifact in snapshot.artifacts:
-            if artifact.status != "present" or artifact.relative_path is None:
+            if artifact.relative_path is None:
                 continue
             source = checkpoint / artifact.relative_path
-            if not source.is_file() or file_digest(source)[0] != artifact.digest:
+            if artifact.status == "missing":
+                if source.exists() or path_has_symlink_component(checkpoint, source):
+                    return False
+                continue
+            if artifact.digest is None or artifact.size_bytes is None:
+                # A path-bearing source with no stable byte identity cannot
+                # authorize publication freshness.
+                return False
+            if (
+                not source.is_file()
+                or path_has_symlink_component(checkpoint, source)
+                or file_digest(source)
+                != (artifact.digest, artifact.size_bytes)
+            ):
                 return False
     except (OSError, ValueError):
         return False
@@ -494,7 +533,7 @@ def _paper_build_artifacts_fresh(checkpoint: Path, build: Any) -> bool:
         visit(payload)
         for (_, relative), expected in refs.items():
             source = checkpoint / relative
-            if not source.is_file() or source.is_symlink():
+            if not source.is_file() or path_has_symlink_component(checkpoint, source):
                 return False
             if file_digest(source) != expected:
                 return False
@@ -518,27 +557,184 @@ def _bound_manuscript_inputs_fresh(
     by_role = {item.role: item for item in build.input_artifacts}
     if not set(required).issubset(by_role):
         return False
+    loaded: dict[str, Any] = {}
+    from ari.manuscript.contracts import (
+        ManuscriptAuthoringBindingV1,
+        ManuscriptContextV1,
+        ManuscriptReadinessReportV1,
+        ManuscriptRequirementProfileV1,
+        SectionBriefBundleV1,
+    )
+
+    contracts = {
+        "manuscript-profile": ManuscriptRequirementProfileV1,
+        "manuscript-context": ManuscriptContextV1,
+        "manuscript-readiness": ManuscriptReadinessReportV1,
+        "section-briefs": SectionBriefBundleV1,
+        "manuscript-authoring-binding": ManuscriptAuthoringBindingV1,
+    }
+    expected_names = {
+        "manuscript-profile": "requirement_profile.json",
+        "manuscript-context": "context.json",
+        "manuscript-readiness": "readiness.json",
+        "section-briefs": "section_briefs.json",
+        "manuscript-authoring-binding": "authoring_binding.json",
+    }
+    expected_root = (
+        checkpoint / ".ari-manuscript" / "attempts" / binding.attempt_id
+    ).resolve()
     for role, env_name in required.items():
         raw = os.environ.get(env_name, "").strip()
         if not raw:
             return False
-        path = Path(raw).resolve()
+        path = Path(os.path.abspath(Path(raw)))
         try:
             relative = path.relative_to(checkpoint).as_posix()
         except ValueError:
             return False
         declared = by_role[role]
         if (
-            declared.relative_path != relative
+            path.parent != expected_root
+            or path.name != expected_names[role]
+            or declared.relative_path != relative
             or not path.is_file()
-            or path.is_symlink()
+            or path_has_symlink_component(checkpoint, path)
             or file_digest(path) != (declared.digest, declared.size_bytes)
         ):
             return False
+        try:
+            loaded[role] = contracts[role].model_validate_json(
+                path.read_text(encoding="utf-8")
+            )
+        except (OSError, ValueError):
+            return False
+    profile = loaded["manuscript-profile"]
+    context = loaded["manuscript-context"]
+    readiness = loaded["manuscript-readiness"]
+    briefs = loaded["section-briefs"]
+    loaded_binding = loaded["manuscript-authoring-binding"]
     return bool(
-        binding.target_build_id == build.build_id
+        loaded_binding == binding
+        and context.profile_digest == profile.profile_digest
+        and readiness.profile_digest == profile.profile_digest
+        and briefs.profile_digest == profile.profile_digest
+        and binding.profile_digest == profile.profile_digest
+        and readiness.context_digest == context.context_digest
+        and briefs.context_digest == context.context_digest
+        and binding.context_digest == context.context_digest
+        and briefs.readiness_digest == readiness.readiness_digest
+        and binding.readiness_digest == readiness.readiness_digest
+        and binding.brief_bundle_digest == briefs.bundle_digest
+        and binding.source_snapshot_digest == context.source_snapshot_digest
+        and binding.target_build_id == build.build_id
+        and binding.target_build_revision == build.build_revision
         and binding.run_id == build.run_id
         and binding.attempt_id
+        and readiness.authoring_verdict in {"ready", "ready_with_disclosures"}
+    )
+
+
+def _normalise_required_text(value: str) -> str:
+    """Normalise prose for deterministic disclosure-presence checks."""
+
+    value = re.sub(r"\\[A-Za-z@]+\*?", " ", str(value or ""))
+    value = "".join(
+        character if character.isalnum() else " "
+        for character in value.casefold()
+    )
+    return " ".join(value.split())
+
+
+def _contains_machine_id(text: str, identity: str) -> bool:
+    token = str(identity or "")
+    if not token:
+        return False
+    # A period commonly follows an ID at sentence end, so it is deliberately
+    # treated as a delimiter. Generated Manuscript evidence IDs do not end in
+    # a period.
+    alphabet = r"A-Za-z0-9_:/-"
+    return bool(
+        re.search(
+            rf"(?<![{alphabet}]){re.escape(token)}(?![{alphabet}])",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
+def _manuscript_authoring_content_pass(
+    checkpoint: Path,
+    build: Any,
+) -> bool:
+    """Re-check the fixed brief obligations against the exact final TeX.
+
+    Contextual-negative evidence remains available to write an honest negative
+    result in prose, but its machine evidence ID cannot be emitted as claim
+    support.  The same conservative rule applies to exploratory/excluded IDs.
+    Required disclosures must occur at least once after LaTeX-insensitive text
+    normalisation.  This check is shared by linear and archive authoring at the
+    publication boundary; archive candidate screening is an earlier defence,
+    not the final authority.
+    """
+
+    from ari.manuscript.contracts import SectionBriefBundleV1
+
+    briefs_raw = os.environ.get("ARI_MANUSCRIPT_BRIEFS_PATH", "").strip()
+    if not briefs_raw:
+        return False
+    briefs_path = Path(os.path.abspath(briefs_raw))
+    try:
+        briefs_path.relative_to(checkpoint)
+    except ValueError:
+        return False
+    if (
+        not briefs_path.is_file()
+        or briefs_path.is_symlink()
+        or path_has_symlink_component(checkpoint, briefs_path)
+    ):
+        return False
+    try:
+        briefs = SectionBriefBundleV1.model_validate_json(
+            briefs_path.read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError):
+        return False
+
+    final_tex = [item for item in build.final_artifacts if item.role == "final-tex"]
+    if len(final_tex) != 1:
+        return False
+    tex_path = checkpoint / final_tex[0].relative_path
+    if (
+        not tex_path.is_file()
+        or tex_path.is_symlink()
+        or path_has_symlink_component(checkpoint, tex_path)
+    ):
+        return False
+    try:
+        text = tex_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    non_positive_ids = {
+        str(evidence_id)
+        for brief in briefs.briefs
+        for evidence_id in (
+            *brief.contextual_negative_ids,
+            *brief.forbidden_evidence_ids,
+        )
+        if str(evidence_id)
+    }
+    if any(_contains_machine_id(text, evidence_id) for evidence_id in non_positive_ids):
+        return False
+    required = {
+        str(disclosure)
+        for brief in briefs.briefs
+        for disclosure in brief.required_disclosures
+        if _normalise_required_text(str(disclosure))
+    }
+    normalised_text = _normalise_required_text(text)
+    return all(
+        _normalise_required_text(disclosure) in normalised_text
+        for disclosure in required
     )
 
 
@@ -563,6 +759,13 @@ def finalize_runtime_publication(
     )
     if not build_path.is_file() or any(not os.environ.get(name) for name in required_env):
         return None
+    if path_has_symlink_component(checkpoint, build_path) or any(
+        path_has_symlink_component(
+            checkpoint, Path(os.path.abspath(os.environ[name]))
+        )
+        for name in required_env
+    ):
+        raise ValueError("publication input path is outside or traverses a symlink")
 
     from ari.manuscript.contracts import (
         ManuscriptAuthoringBindingV1,
@@ -596,7 +799,9 @@ def finalize_runtime_publication(
     reproduction_path = checkpoint / "ors_phase1.json"
     reproduction_passed = False
     reproduction_digest = "sha256:" + "0" * 64
-    if reproduction_path.is_file():
+    if reproduction_path.is_file() and not path_has_symlink_component(
+        checkpoint, reproduction_path
+    ):
         reproduction_digest = file_digest(reproduction_path)[0]
         try:
             reproduction = json.loads(reproduction_path.read_text(encoding="utf-8"))
@@ -614,7 +819,11 @@ def finalize_runtime_publication(
         context.assurance.get("publication_candidate")
         and context.assurance.get("attestation_item_ids")
     ) if assurance_required else None
-    claim_passed = bool(build.gate and build.gate.status == "pass")
+    claim_passed = bool(
+        build.gate
+        and build.gate.status == "pass"
+        and _manuscript_authoring_content_pass(checkpoint, build)
+    )
     claim_digest = (
         build.gate.report_digest if build.gate is not None else "sha256:" + "0" * 64
     )
@@ -695,7 +904,9 @@ def lock_runtime_publication(checkpoint_dir: str | Path) -> Any:
     from ari.paper_contract import parse_paper_build
 
     binding_path = Path(os.environ.get("ARI_MANUSCRIPT_BINDING_PATH", ""))
-    if not binding_path.is_file():
+    if not binding_path.is_file() or path_has_symlink_component(
+        checkpoint, Path(os.path.abspath(binding_path))
+    ):
         raise ValueError("publication lock requires an exposed authoring binding")
     binding = ManuscriptAuthoringBindingV1.model_validate_json(
         binding_path.read_text(encoding="utf-8")
@@ -730,6 +941,7 @@ def lock_runtime_publication(checkpoint_dir: str | Path) -> Any:
     if (
         reproduction.status != "pass"
         or not reproduction_path.is_file()
+        or path_has_symlink_component(checkpoint, reproduction_path)
         or file_digest(reproduction_path)[0] not in reproduction.artifact_digests
     ):
         raise ValueError("publication reproduction evidence is stale")

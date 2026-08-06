@@ -103,6 +103,18 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_RQGM_ENABLED` | RQGM master-interlock override: `0`/`1`/`true`/`false` (overrides `rqgm.enabled` in workflow.yaml). Both this AND `ARI_MODE=ari_rqgm` must agree for the governance runtime to be constructed | `false` |
 | `ARI_PAPER_AGENT_AS_JUDGE` | Agent-as-judge draft-scoring override: `0`/`1`/`true`/`false` (overrides `rqgm.paper.reviewer.agent_as_judge.enabled`; invalid values warn and are ignored). Applied by `apply_paper_env_overrides` with the same validate-before-assign posture as `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED`. Off ⇒ the deterministic, LLM-free venue-rubric scorer, so no live LLM call sits on the draft-scoring path (P2). On ⇒ a real `LLMClient`-backed reviewer scores each archive draft over the *same* venue-rubric axes, weighted by the ACTIVE governed `paper_reviewer` prompt's emphasis, and can read axes no deterministic reader can (`novelty`, `significance`); it fails open to the deterministic rubric on an LLM error, an unparseable reply or one covering too little of the rubric's axis weight. Only meaningful under the effective `rqgm_archive` paper mode (`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`) | (unset ⇒ off) |
 
+### Manuscript Complete
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_MANUSCRIPT_MODE` | New-attempt posture: `off` \| `audit` \| `enforce`. It is independent of research and paper modes; resume cannot rewrite a persisted attempt binding. | `off` |
+| `ARI_MANUSCRIPT_REPAIR_POLICY` | Repair posture: `disabled` \| `explicit` \| `auto`. `auto` is invalid unless the effective manuscript mode is `enforce`. | `disabled` |
+
+The additional `ARI_MANUSCRIPT_*_PATH`, budget, topology, and effective-policy
+variables are private, scoped hand-offs installed by the paper dispatcher.
+Operators should configure them through `workflow.yaml`, not export them
+directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_operations.md).
+
 ### Backend + executor
 
 | Variable | Purpose |

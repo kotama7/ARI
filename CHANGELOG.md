@@ -4,6 +4,21 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **Manuscript Complete exploration-to-publication boundary.** Added an
+  independent, default-off `off|audit|enforce` compiler that inventories BFTS
+  or RQGM evidence, preserves negative results, records every omission, builds
+  bounded section briefs, and binds either linear or RQGM-archive authoring to
+  exact source digests. Explicit and enforce-only automatic repair use fixed
+  authority/budget envelopes and the normal research runtime. Publication now
+  requires the logical AND of readiness, claim evidence, applicable assurance,
+  compile, reproduction, and freshness, followed by an immutable PDF/build
+  lock. Added `ari manuscript`, V1 schemas, program evaluation, migration and
+  operator guides, and default-off identity coverage. The final content gate
+  now rejects contextual-negative/forbidden evidence IDs and missing required
+  disclosures for both linear and archive authoring. A closed release manifest
+  runs all four topologies, 13 failure-injection families, migration/rollback,
+  authentic native Harness evidence, and contract/documentation checks, with a
+  revision-bound report retained by dedicated CI.
 - **Knowledge–Capability–Assurance separation (Tasks 16–20).** Added the
   non-executable, content-addressed `ari.knowledge` registry; the
   `ari.providers` semantic facade over existing `skill.yaml`, `SKILLS.lock`,

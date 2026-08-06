@@ -12,7 +12,12 @@ from ari.manuscript.contracts import (
     ManuscriptArtifactRefV1,
     ManuscriptSegmentRecordV1,
 )
-from ari.manuscript.digest import canonical_digest, file_digest, safe_relative_path
+from ari.manuscript.digest import (
+    canonical_digest,
+    file_digest,
+    path_has_symlink_component,
+    safe_relative_path,
+)
 from ari.manuscript.state import ManuscriptStateStore
 
 
@@ -84,7 +89,7 @@ def _is_inventory_path(relative: str) -> bool:
 def _inventory(checkpoint: Path) -> dict[str, tuple[str, int]]:
     out: dict[str, tuple[str, int]] = {}
     for path in sorted(checkpoint.rglob("*"), key=lambda item: item.as_posix()):
-        if not path.is_file() or path.is_symlink():
+        if not path.is_file() or path_has_symlink_component(checkpoint, path):
             continue
         try:
             relative = safe_relative_path(path.relative_to(checkpoint).as_posix())
@@ -105,12 +110,12 @@ def _bound_inputs(checkpoint: Path) -> dict[str, tuple[str, int]]:
         raw = os.environ.get(env_name, "").strip()
         if not raw:
             continue
-        path = Path(raw).resolve()
+        path = Path(os.path.abspath(Path(raw)))
         try:
             relative = safe_relative_path(path.relative_to(checkpoint).as_posix())
         except (OSError, ValueError):
             continue
-        if not path.is_file() or path.is_symlink():
+        if not path.is_file() or path_has_symlink_component(checkpoint, path):
             continue
         try:
             out[relative] = file_digest(path)
@@ -137,7 +142,9 @@ def _output_paths(stages: Iterable[dict[str, Any]], segments: tuple[str, ...], c
             )
             path = Path(expanded)
             try:
-                relative = safe_relative_path(path.resolve().relative_to(checkpoint).as_posix())
+                relative = safe_relative_path(
+                    Path(os.path.abspath(path)).relative_to(checkpoint).as_posix()
+                )
             except (OSError, ValueError):
                 continue
             paths.add(relative)
@@ -182,7 +189,11 @@ def _fresh_outputs(checkpoint: Path, record: ManuscriptSegmentRecordV1) -> bool:
             if path.exists():
                 return False
             continue
-        if item.status != "present" or not path.is_file() or path.is_symlink():
+        if (
+            item.status != "present"
+            or not path.is_file()
+            or path_has_symlink_component(checkpoint, path)
+        ):
             return False
         try:
             if file_digest(path) != (item.digest, item.size_bytes):
@@ -196,9 +207,13 @@ def _read_records(checkpoint: Path) -> list[ManuscriptSegmentRecordV1]:
     root = checkpoint / ".ari-manuscript" / "segments"
     if not root.is_dir():
         return []
+    if path_has_symlink_component(checkpoint, root):
+        return []
     records: list[ManuscriptSegmentRecordV1] = []
     for path in sorted(root.glob("*.json")):
         try:
+            if path_has_symlink_component(checkpoint, path):
+                continue
             records.append(
                 ManuscriptSegmentRecordV1.model_validate_json(
                     path.read_text(encoding="utf-8")
@@ -232,11 +247,6 @@ class SegmentExecution:
         after.update(_bound_inputs(self.checkpoint))
         before = dict(self.before)
         before.update(_bound_inputs(self.checkpoint))
-        logical_inputs = {
-            path: value
-            for path, value in before.items()
-            if path not in self.excluded_output_paths
-        }
         changed_paths = sorted(
             path
             for path in set(before) | set(after)

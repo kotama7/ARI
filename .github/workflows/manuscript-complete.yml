@@ -1,0 +1,44 @@
+name: manuscript-complete
+
+on:
+  pull_request:
+    branches:
+      - main
+      - refactoring
+  workflow_dispatch:
+
+jobs:
+  release-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install runtime and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -e ari-skill-memory
+          pip install -e ari-core
+          pip install scipy numpy pandas
+          pip install pytest pytest-asyncio pytest-mock respx
+      - name: Run revision-bound Manuscript Complete release gates
+        env:
+          ARI_MANUSCRIPT_RELEASE_DIR: ${{ runner.temp }}/manuscript-complete-release
+        run: |
+          python scripts/run_manuscript_complete_release.py \
+            --output-dir "$ARI_MANUSCRIPT_RELEASE_DIR" \
+            --require-clean --require-ci --keep-going
+      - name: Upload retained release evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: manuscript-complete-release-${{ github.sha }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/manuscript-complete-release
+          if-no-files-found: error
+          retention-days: 90

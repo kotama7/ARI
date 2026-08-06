@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -55,6 +56,29 @@ def safe_relative_path(value: str) -> str:
     return value
 
 
+def path_has_symlink_component(root: Path, path: Path) -> bool:
+    """Return whether a root-contained lexical path traverses a symlink.
+
+    ``Path.resolve()`` is intentionally not used for the candidate: resolving
+    first would erase the very symlink identity that publication freshness and
+    provenance inventory need to reject.
+    """
+
+    root_path = root.resolve()
+    candidate = path if path.is_absolute() else root_path / path
+    lexical = Path(os.path.abspath(candidate))
+    try:
+        relative = lexical.relative_to(root_path)
+    except ValueError:
+        return True
+    current = root_path
+    for part in relative.parts:
+        current = current / part
+        if current.is_symlink():
+            return True
+    return False
+
+
 def normalize_digest(value: Any) -> str | None:
     """Normalize a recorded SHA-256 value without inventing a missing digest."""
 
@@ -78,5 +102,6 @@ __all__ = [
     "canonical_json_bytes",
     "file_digest",
     "normalize_digest",
+    "path_has_symlink_component",
     "safe_relative_path",
 ]

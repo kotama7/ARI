@@ -1,6 +1,6 @@
 # Task 02: Contracts and Deterministic Compiler Core
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00, 01
 > **Gate**: G1 — contract and compiler determinism
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

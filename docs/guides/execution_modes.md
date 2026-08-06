@@ -404,6 +404,20 @@ before. Enabled RQGM runs persist the admitted snapshots and locks under
 new catalog contents. See the
 [K/C/A reference](../reference/knowledge_capability_assurance.md).
 
+## Manuscript Complete is a separate axis
+
+`manuscript.mode: "off"|audit|enforce` does not enable RQGM or the paper
+archive, and neither of those modes enables manuscript gating. Consequently,
+the same compiler and readiness contracts operate over all four combinations
+of `simple_bfts|ari_rqgm` and `linear|rqgm_archive`. `audit` observes without
+changing writer inputs; `enforce` requires fresh evidence and binding before
+authoring. Automatic research repair is additionally restricted to
+`enforce` and to the `ari run`/`ari resume` research runtime.
+
+See the [architecture](../concepts/manuscript_complete_architecture.md) and
+[operations guide](manuscript_complete_operations.md) for the complete
+activation matrix and resume behavior.
+
 ## Compatibility guarantees
 
 - `rqgm.enabled: false` (or `ari.mode: simple_bfts`) makes the entire RQGM

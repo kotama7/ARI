@@ -41,6 +41,7 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.latex_claims` | Canonical lexical LaTeX claim-anchor, number, citation, and figure-reference parser | evaluator and paper |
 | `ari.public.knowledge` | Non-executable Knowledge Skill import, catalog, admission, composition, and provenance | Knowledge read/request surfaces |
 | `ari.public.memory` | Content-addressed memory records, retrievals, events, and backup contracts | memory and verified-context consumers |
+| `ari.public.manuscript` | Immutable Manuscript Complete V1 read contracts, deterministic compiler/evaluator helpers, and publication decision builder | paper, evaluation, and read-only integrations |
 | `ari.public.paper` | `PaperBuildV1`, revision/model-call/compile/review records, parsers, and canonical digest | paper and publication consumers |
 | `ari.public.science_data` | Native raw/derived/interpreted science-data contract and explicit migration reader | transform, evaluator, plot, paper |
 | `ari.public.visual_review` | Criteria profiles and artifact-bound, failure-preserving visual review batches | VLM, plot, paper |
@@ -126,6 +127,12 @@ strict, digest-bound models rather than schema-less dictionaries. The
 [ScienceData contract](science_data_contract.md),
 [figure and visual-review contract](figure_visual_contract.md), and
 [PaperBuild contract](paper_build_contract.md) are normative.
+
+`ari.public.manuscript` adds the exploration-to-authoring completeness layer:
+profiles, snapshots, contexts, omissions, readiness, briefs, bindings, repair
+plans, publication decisions/locks, and labelled-program evaluation. Mutable
+state/coordinator internals remain private. See the
+[Manuscript Complete contract reference](manuscript_complete_contracts.md).
 
 ## `ari.public.skill_manifest`
 

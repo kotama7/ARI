@@ -84,6 +84,29 @@ unbounded legacy context. RQGM archive candidates receive the same brief and
 authoring binding; archive failure may fall back only to the bound linear
 writer. Neither backend receives a research executor.
 
+Before an RQGM archive starts or resumes, it validates the exact attempt-local
+profile, snapshot, omission, context, readiness, brief, and binding chain. A
+canonical archive-input fingerprint additionally covers every section brief
+digest, allowed/contextual-negative/forbidden evidence ID, required disclosure,
+and omission count. The fingerprint is stored on `paper_archive_state.json`,
+every draft record, and governed reviewer review records. Evolved writer or
+reviewer prompt hashes remain separate identities: prompt evolution cannot
+change the fixed manuscript block.
+
+In enforce mode, each candidate receives a read-only preliminary claim gate,
+artifact/provenance check, contextual-negative/forbidden evidence-ID check, and
+mandatory-disclosure check before best-belief selection. A hard-failing
+candidate remains in archive history but has `_valid_for_frontier=false`;
+reviewer utility cannot compensate for it. The final publication evaluator
+repeats the evidence-lane and disclosure check against the exact final TeX for
+both linear and archive authoring, so candidate screening is never the sole
+interlock. Audit mode records the same diagnostics without changing authoring
+eligibility and labels the result as legacy authoring. An unchanged resume
+reuses bound records, while a changed fingerprint is detected before either
+the winner-skip path or a new model call. If archive generation fails under
+enforce, only a fallback explicitly marked as consuming the same binding is
+allowed.
+
 Automatic research repair exists only in `ari run` and `ari resume`. It creates
 at most the admitted nodes, uses the normal BFTS/RQGM execution loop, and runs
 normal RQGM/KCA hooks. `ari paper` can report a repair plan but cannot start an

@@ -326,6 +326,10 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
     paper_dir.mkdir(parents=True)
     tex_relative = "paper/full_paper.tex"
     bib_relative = "paper/refs.bib"
+    required_disclosures = tuple(
+        dict.fromkeys((*context.limitations, *context.threats_to_validity))
+    )
+    disclosure_text = "\n".join(required_disclosures)
     tex = (
         "\\documentclass{article}\n"
         "\\usepackage[T1]{fontenc}\n"
@@ -334,7 +338,9 @@ def _compile_paper(checkpoint: Path, binding, readiness, context, attestation):
         "\\begin{document}\n\\maketitle\n"
         "A locked native verifier certified the exact candidate artifact. "
         "The measured verifier wall time is reported only from executor timestamps.\n"
-        "\\section{Limitations}\nThe result is scoped to the registered Harness.\n"
+        "\\section{Limitations}\n"
+        + disclosure_text
+        + "\n"
         "\\end{document}\n"
     )
     (checkpoint / tex_relative).write_text(tex, encoding="utf-8")
