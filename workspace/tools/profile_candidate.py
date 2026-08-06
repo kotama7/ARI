@@ -151,11 +151,14 @@ def main() -> int:
         if p.get("error"):
             print(f"  {p['case']:24s} seed={p['input_seed']:<12} FAILED {p['error'][:70]}")
             continue
+        # A profile of a wrong answer describes a program that would have scored
+        # zero. Say so on the line, not in a field nobody reads.
+        bad = "" if p.get("output_correct") else "  ** OUTPUT FAILED THE ORACLE **"
         print(f"  {p['case']:24s} seed={p['input_seed']:<12} "
               f"t={p['credited_seconds']:.6f}s  IPC={r.get('ipc')}  "
               f"L1refill/acc={r.get('l1d_refill_per_access')}  "
               f"L2/L1={r.get('l2d_refill_per_l1d_refill')}  "
-              f"B/cyc={r.get('bytes_per_cycle', 'suppressed')}")
+              f"B/cyc={r.get('bytes_per_cycle', 'suppressed')}{bad}")
     # Spread is PER CASE. Pooling two shapes would report their genuine
     # difference as measurement noise, which is the confusion this study already
     # spent a campaign untangling.
@@ -180,7 +183,10 @@ def main() -> int:
 
     if not points:
         return 2
-    return 1 if any(p.get("error") for p in points) else 0
+    if any(p.get("error") for p in points):
+        return 1
+    # A profile whose output is wrong is not a profile of the scored program.
+    return 1 if any(not p.get("output_correct") for p in points) else 0
 
 
 if __name__ == "__main__":

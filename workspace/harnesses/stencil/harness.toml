@@ -43,7 +43,7 @@ ARI_STENCIL_SHAPES = ""
 
 [files]
 "experiment.md" = "007556e158aecb8902bc9140320409fc06a93dcd124d985738d8745710444b23"
-"stencil_harness.py" = "bbf92c605d23b2fbcf22cb31e59ba31e0514cf15bce6d1486076e19f9b19bb0b"
+"stencil_harness.py" = "40d91bddea3be8b76749f2a5af73cce9c2ce71c8ef7fd52c780298e12e53de3f"
 "stencil_kernels/Makefile" = "9e2cba0462ed104bfcff500265c9d5fb771521d9a3923323b3bab2882e254241"
 "stencil_kernels/baseline_stencil.c" = "a7f7494cbe9310d65e051bff078f6870d8cf94d78632dc14e2988ba74524a9ea"
 "stencil_kernels/candidate_stencil.c" = "eac632e1a7f70d99545a18caafe0852586d28a8e65d0a4c176ac9e73d723961e"
@@ -59,4 +59,4 @@ ARI_STENCIL_SHAPES = ""
 [integrity]
 # Self-digest of the scoring config (target/scale/axis/measure_kwargs/
 # files). Recomputed at load; a mismatch refuses to score.
-self_sha256 = "0e92b1e8d0d4064a67bd0a9284cb5cc258de05abeb3ea027f54e5b484516e962"
+self_sha256 = "f81d22a15d71277d84fecb195e7fedb49f0f8b514be5c2d7a7d779a295730c8a"

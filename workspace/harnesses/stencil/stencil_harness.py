@@ -1716,8 +1716,8 @@ def _isa_flags_for(cc: str) -> list[str]:
 _COUNTERS_SRC = "workspace/tools/region_counters.c"
 
 
-def _counters_binary(build_dir: str) -> tuple[str, str]:
-    """Resolve region_counters, building it if needed. Returns (path, sha256).
+def _counters_binary(build_dir: str) -> tuple[str, dict]:
+    """Resolve region_counters, building it if needed. Returns (path, provenance).
 
     The source digest travels with the profile because region_counters lives in
     workspace/tools/, OUTSIDE this harness's [files] pins -- so unlike the scored
@@ -1736,7 +1736,16 @@ def _counters_binary(build_dir: str) -> tuple[str, str]:
     digest = _hl.sha256(open(src, "rb").read()).hexdigest()
     given = _os_pin.environ.get("ARI_REGION_COUNTERS")
     if given and _o.path.isfile(given):
-        return given, digest
+        # A PREBUILT BINARY IS NOT THE RECORDED SOURCE. Returning the source's
+        # digest next to someone else's executable made counter_tool_sha256 a
+        # false statement -- the one field a reader would use to say which tool
+        # produced a profile. Record both, and say which one ran.
+        return given, {"source_sha256": digest,
+                       "binary_sha256": _hl.sha256(open(given, "rb").read()).hexdigest(),
+                       "built_from_source": False,
+                       "note": "ARI_REGION_COUNTERS supplied a prebuilt binary; "
+                               "the source digest describes the file in the "
+                               "workspace, NOT necessarily what ran"}
     exe = _o.path.join(build_dir, "region_counters")
     cc = _os_pin.environ.get("ARI_PROBE_CC") or "cc"
     cp = _sp.run([cc, "-O2", src, "-o", exe], capture_output=True, text=True,
@@ -1744,7 +1753,9 @@ def _counters_binary(build_dir: str) -> tuple[str, str]:
     if cp.returncode != 0:
         raise HarnessInfrastructureError(
             f"could not build the counter tool: {cp.stderr.strip()[-400:]}")
-    return exe, digest
+    return exe, {"source_sha256": digest,
+                 "binary_sha256": _hl.sha256(open(exe, "rb").read()).hexdigest(),
+                 "built_from_source": True}
 
 
 def _profile_launcher(counters: str, line_bytes) -> tuple:
@@ -1764,8 +1775,10 @@ def _profile_point(run_one, case, input_seed, launcher, case_name) -> dict:
     credited = None
     error = None
     counters_out = None
+    correct = None
+    rel_err = None
     try:
-        credited = run_one(case, input_seed, launcher, cap)
+        credited, correct, rel_err = run_one(case, input_seed, launcher, cap)
     except Exception as exc:                  # noqa: BLE001 - recorded, not raised
         error = f"{type(exc).__name__}: {exc}"
     raw = (cap.get("stdout") or "").strip()
@@ -1778,6 +1791,12 @@ def _profile_point(run_one, case, input_seed, launcher, case_name) -> dict:
         error = "the counter tool produced no output"
     return {"case": case_name, "input_seed": input_seed,
             "credited_seconds": credited, "counters": counters_out,
+            # THE PROFILED RUN USED TO BE THE ONE RUN NOBODY CHECKED. Its output
+            # was discarded, so a candidate that behaves differently under the
+            # gate -- deliberately, or by accident through some env-keyed path --
+            # produced a profile of a program that was never scored, and nothing
+            # said so. The same oracle the score uses now runs on it.
+            "output_correct": correct, "output_rel_error": rel_err,
             "error": error}
 
 
@@ -1822,7 +1841,7 @@ def _profile_record(task: str, work_dir: str, points: list, digest: str,
         "toolchain": _toolchain_identity(
             _os_pin.environ.get("ARI_STENCIL_CC", "cc")),
         "candidate_toolchain": _select_candidate_cc(work_dir),
-        "counter_tool_sha256": digest,
+        "counter_tool": digest,
         "threads": _os_pin.environ.get(
             "ARI_STENCIL_THREADS", _os_pin.environ.get("OMP_NUM_THREADS", "")),
         # Which node class produced this. The array job is submitted without an
@@ -1857,11 +1876,20 @@ def profile_node(work_dir: str, *, seed: int = 0, reps: int = 3, cases=None,
                                                     "stencil_main_profiled.c"),
                               tag="candidate_profiled")
 
+        _cand_libs = _runtime_libs_for(
+            (_select_candidate_cc(work_dir) or {}).get("resolved_path"))
+
         def _run_one(shape, input_seed, launcher, cap):
             u0, nx, ny, nz, nt = gen_problem(shape, seed=input_seed)
-            ti, _tw, _u = _run_exe(exe, td_obj.name, u0, nx, ny, nz, nt,
-                                   launcher=launcher, capture=cap)
-            return ti
+            key = f"stencil_{nx}x{ny}x{nz}t{nt}_s{input_seed}"
+            ti, _tw, u = _run_exe(exe, td_obj.name, u0, nx, ny, nz, nt,
+                                  launcher=launcher, capture=cap,
+                                  problem_key=key, ld_library_path=_cand_libs)
+            # Same oracle the score uses, through the same cache, so a profile
+            # point taken at a scored seed costs nothing extra.
+            ok, rel = is_correct(u, _cached_reference_jacobi(u0, nx, ny, nz, nt, key),
+                                 u0, nt)
+            return ti, bool(ok), float(rel)
 
         points = []
         for shape in use:
