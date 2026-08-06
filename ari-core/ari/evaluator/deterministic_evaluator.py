@@ -241,12 +241,15 @@ def _default_measure(work_dir: str) -> dict:
 
 
 def _harness():
-    """Resolve this run's harness via the registry (packaged, or registered in
-    ``workspace/harnesses/<task>/``).
+    """Resolve this run's harness via the prototype registry.
 
-    Replaces a hardcoded ``if task == ...`` chain: adding a task no longer needs
-    an ARI core edit, and a study can pin its own frozen scaffolding next to its
-    results so ``workspace + the ARI repo`` are self-contained.
+    THE OLD PATH, and it is reached only when ``ARI_PROBLEM`` is unset. It looks
+    under ``$ARI_WORKSPACE/harnesses/<task>/`` and imports a python module found
+    there -- a module free to define its own timing, its own flags and its own
+    oracle. ARI ships no such tree, and the one this study used has been retired,
+    so in practice this now resolves nothing unless an operator points
+    ``ARI_WORKSPACE`` at a harness tree of their own. The supported path is a
+    pinned problem; see ``_default_measure``.
 
     UNKNOWN TASKS: the old chain fell through to SpMM, i.e. a typo in ARI_TASK
     silently scored a DIFFERENT benchmark. The registry raises instead — see

@@ -1,7 +1,9 @@
 """Run-level statistics for the evidence/reflection handoff study.
 
-Pure, unit-tested statistics the ``workspace/analyze_handoff_ablation.py`` CLI
-composes. The unit of analysis is the RUN (one BFTS tree -> one scalar primary
+Pure, unit-tested statistics a campaign analyser composes. The one that did
+-- ``workspace/analyze_handoff_ablation.py`` -- was retired with the rest of
+the prototype tree; these functions are the part worth keeping, because the
+unit of analysis is a design decision and not a script. The unit of analysis is the RUN (one BFTS tree -> one scalar primary
 outcome); these functions therefore resample/compare whole runs and NEVER
 lineage-correlated nodes (PREREG §7).
 
