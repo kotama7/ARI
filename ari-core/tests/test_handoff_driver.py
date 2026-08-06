@@ -8,6 +8,8 @@ import json
 import pathlib
 from pathlib import Path
 
+import pytest
+
 
 _ROOT = Path(__file__).resolve().parents[2]
 _DRIVER_PATH = _ROOT / "workspace" / "run_handoff_ablation.py"
