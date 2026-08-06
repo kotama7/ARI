@@ -321,6 +321,44 @@ def _container_runtime_probe() -> dict:
     return record
 
 
+def _network_route_probe() -> dict:
+    """Observe whether the kernel has any path off this host.
+
+    Reading the route table is a local fact and costs nothing.  Resolving a name
+    or opening a connection would be the stronger evidence, but it is an
+    outbound request to somebody else's service made merely to describe our own
+    substrate; that is not a probe's business.  A default route is necessary and
+    not sufficient -- a proxy or firewall can still refuse the call -- which
+    puts it on the same footing as ``sinfo`` answering: the scheduler exists,
+    the job may still fail.  On an air-gapped node there is no route and this
+    fails closed.
+    """
+
+    record: dict = {"status": "unavailable", "families": []}
+    families = []
+    try:
+        with open("/proc/net/route", encoding="ascii") as handle:
+            next(handle, None)
+            for line in handle:
+                fields = line.split()
+                if len(fields) > 1 and fields[1] == "0" * 8:
+                    families.append("ipv4")
+                    break
+    except (OSError, ValueError):
+        pass
+    try:
+        with open("/proc/net/ipv6_route", encoding="ascii") as handle:
+            for line in handle:
+                if line.startswith("0" * 32):
+                    families.append("ipv6")
+                    break
+    except (OSError, ValueError):
+        pass
+    if families:
+        record.update({"status": "ready", "families": sorted(set(families))})
+    return record
+
+
 def _requested_gpu_count(resources: dict) -> int:
     value = resources.get("gpus", 0)
     if isinstance(value, bool):
@@ -462,6 +500,7 @@ def build_environment_snapshot(
     gpu = _gpu_probe()
     counters = _hardware_counter_probe()
     container = _container_runtime_probe()
+    network = _network_route_probe()
     slurm_gpu = (
         _slurm_gpu_probe(slurm, resources)
         if not gpu["devices"]
@@ -507,6 +546,8 @@ def build_environment_snapshot(
         # The name that answered, not a normalized one: the equivalence between
         # the two forks is a reviewed derivation, not an observation.
         features.add(str(container["runtime"]))
+    if network["status"] == "ready":
+        features.add("network-route")
     derivations = (
         _default_resource_derivations()
         if resource_derivations is None
@@ -540,6 +581,7 @@ def build_environment_snapshot(
             "slurm_gpu": slurm_gpu,
             "hardware_counters": counters,
             "container_runtime": container,
+            "network_route": network,
             # Which reviewed rows fired is part of the frozen identity: a
             # resource class that was derived rather than observed must be
             # visible as such when the run is audited.

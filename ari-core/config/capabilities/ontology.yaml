@@ -1,5 +1,5 @@
 schema_version: 1
-source_revision: ari-capability-ontology/3
+source_revision: ari-capability-ontology/4
 property_vocabulary_version: ari.assurance-properties/v1
 contracts:
   - capability_ref: ari.eda.openroad.place-route/v1
@@ -112,20 +112,28 @@ contracts:
     required_permissions: [scheduler-submit, workspace-read, workspace-write]
     credential_scope_class: none
     resource_type: gpu-slurm
-    environment_requirements: [cuda-12.9, exclusive-node, nvidia-sm70, slurm]
+    # `slurm` named a resource class, which is checked through resource_type;
+    # this list is matched against observed features, and the prober emits
+    # `slurm-controller` for a scheduler that answered.
+    environment_requirements: [cuda-12.9, exclusive-node, nvidia-sm70, slurm-controller]
     compatibility_rules: [json-schema-structural-conformance, cuda-self-test-v1]
   - capability_ref: ari.literature.search/v1
     contract_version: v1
     title: Search scientific literature
     description: Query an admitted literature index and return source-provenanced records.
-    side_effect_class: read-only
+    # Not read-only. An admitted retrieval writes the record that makes it
+    # evidence -- cassettes and content-addressed raw payloads land in the run's
+    # EAR -- and ARI's ladder grades a call by what it does to this substrate,
+    # not by whether it mutates the remote index. A retrieval that left no trace
+    # would not be admissible anyway.
+    side_effect_class: workspace-write
     determinism_class: live-data
     nondeterminism_fields: [provider-index, retrieval-time]
     context_requirement: run
     required_permissions: [network-read]
     credential_scope_class: literature-provider
     resource_type: network
-    environment_requirements: [network-read]
+    environment_requirements: [network-read]  # observed; see resource_derivations.yaml
     compatibility_rules: [json-schema-structural-conformance, retrieval-record-v1]
   - capability_ref: ari.profiling.hardware-counters/v1
     contract_version: v1
@@ -151,7 +159,9 @@ contracts:
     required_permissions: [workspace-read, workspace-write, process-execute]
     credential_scope_class: none
     resource_type: quantum-simulator
-    environment_requirements: [cpu]
+    # `cpu` is a resource class, already required through resource_type; it was
+    # never a feature the prober emits, so this list could not be satisfied.
+    environment_requirements: []
     compatibility_rules: [json-schema-structural-conformance, qiskit-sampling-result-v1]
   - capability_ref: ari.result.emit/v1
     contract_version: v1

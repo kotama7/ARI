@@ -38,3 +38,37 @@ derivations:
       runtime cannot supply it, and a node with a runtime but no CPU does not
       exist; requiring both keeps the resource class from being claimed by a
       substrate that would fail at the first invocation.
+  - emits: network-read
+    kind: feature
+    requires_features: [network-route]
+    rationale: >-
+      A default route is the kernel saying it has a path off this host. It is
+      necessary and not sufficient -- a proxy or firewall can still refuse the
+      call -- which is the same standing sinfo answering gives the scheduler:
+      it exists, the job may still fail. The alternative evidence, resolving a
+      name or opening a connection, is an outbound request to somebody else's
+      service made only to describe our own substrate. On an air-gapped node
+      there is no route and nothing here fires.
+  - emits: network
+    kind: resource_type
+    requires_resource_types: [process]
+    requires_features: [network-read]
+    rationale: >-
+      A retrieval capability runs in a local process and reaches an external
+      index. Both halves have to be observed: a node with no route cannot supply
+      it however many processes it can run.
+  - emits: gpu-slurm
+    kind: resource_type
+    requires_resource_types: [gpu, slurm]
+    rationale: >-
+      A capability that wants a GPU through the scheduler needs both halves, and
+      the prober only ever emits them separately, so this class could not be
+      claimed by any substrate. Note that gpu itself is already the conservative
+      one: a device seen on a node without GRES is recorded but not schedulable.
+# There is deliberately no row for `quantum-simulator`. It would have to derive
+# from `cpu` alone, which fires on every substrate and would put the class into
+# every run's environment identity -- asserting that any node can supply a
+# pinned Aer target when what actually decides that is a materialized Provider
+# artifact none of these rows can see. The capability stays unsupplied until
+# that artifact is registered, which is the honest reason rather than a weak row
+# that makes it look resolved.

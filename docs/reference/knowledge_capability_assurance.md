@@ -380,6 +380,14 @@ resource class can be audited back to the sentence that allowed it. The shipped
 table records that Apptainer and SingularityCE both execute SIF and that neither
 podman nor docker does, then derives `eda-cpu` from CPU plus a SIF runtime.
 
+Outbound reach is observed from the route table rather than by contacting
+anything. A default route is the kernel saying it has a path off this host: it
+is necessary and not sufficient — a proxy or firewall can still refuse the call
+— which is the standing `sinfo` answering gives the scheduler. The stronger
+evidence, resolving a name or opening a connection, would be an outbound request
+to somebody else's service made only to describe our own substrate. On an
+air-gapped node there is no route and the retrieval capability stays unsupplied.
+
 SLURM GPU visibility and scheduler authority are intentionally different. A
 device observed on a compute node without advertised GPU GRES is retained under
 `metadata.slurm_gpu` and adds `gpu-observed-on-slurm-node`, but it does not add
@@ -537,18 +545,33 @@ successes reported as tool errors with the message `null`. And a bound
 asynchronous capability had no authority over its own lifecycle tools, so it
 could start work and never collect it.
 
-Two of the three declared brokered capabilities remain unsupplied, and for
-reasons worth stating rather than hiding. `ari.literature.search/v1` is
-`read-only`, while both the reviewed PubMed leaf and the broker's own `invoke`
-declare `stateful`; under the envelope rule no read-only capability can be
-supplied through a dispatch tool that writes, so this needs a review decision
-(a read-only dispatch surface, or a contract that admits the write) and not a
-weaker check. `ari.quantum.sample.local-ideal/v1` has no materialized catalog
-to register. Separately, several contracts still list resource classes and
-environment requirements that no derivation supplies — `quantum-simulator`,
-`network`, and the CUDA contract's `slurm` feature, which the prober emits as
-`slurm-controller`. Those are latent in the same way `apptainer` was, and each
-needs its own reviewed row before it can bind.
+`ari.literature.search/v1` was blocked by its own contract, not by the envelope
+rule. It declared `read-only` while both the reviewed PubMed leaf and the
+broker's `invoke` declare `stateful`, so nothing could ever supply it. The
+contract was wrong: an admitted retrieval writes the record that makes it
+evidence — cassettes and content-addressed payloads land in the run's EAR — and
+the ladder grades a call by what it does to this substrate, not by whether it
+mutates the remote index. It is now `workspace-write`, and the reviewed PubMed
+leaf builds a composite against it. Registering that mapping needs a site lock
+containing the leaf; the reviewed table names leaves across all of a site's
+sources, so a site that wants both EDA and retrieval materializes one lock over
+both rather than a lock per domain.
+
+`ari.quantum.sample.local-ideal/v1` remains unsupplied because no materialized
+catalog registers it. Its `environment_requirements: [cpu]` was a category
+error — `cpu` is a resource class, checked through `resource_type`, never a
+feature the prober emits — and is corrected, but the derivation table
+deliberately has **no** row for `quantum-simulator`: the only available one
+would derive it from `cpu` alone, firing on every substrate and asserting that
+any node can supply a pinned Aer target when what decides that is an artifact
+no derivation can see. The capability stays honestly unsupplied.
+
+The CUDA contract's `slurm` requirement was the same category error and now
+reads `slurm-controller`, the feature the prober actually emits; `gpu-slurm`
+gained a derivation from the two halves the prober emits separately. Its
+`cuda-12.9`, `nvidia-sm70`, and `exclusive-node` requirements remain
+unsatisfiable: they are version, hardware-generation, and allocation facts that
+need a GPU node to observe and could not be verified from a login node.
 
 ## Extension gate
 

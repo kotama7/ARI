@@ -58,6 +58,18 @@ def _container_runtime_is_not_inherited_from_the_test_host(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _network_route_is_not_inherited_from_the_test_host(monkeypatch):
+    """A host with a default route would otherwise derive the network resource
+    into every exact-resource assertion below."""
+
+    monkeypatch.setattr(
+        environment_module,
+        "_network_route_probe",
+        lambda: {"status": "unavailable", "families": []},
+    )
+
+
 def test_environment_snapshot_uses_observed_slurm_and_gpu_facts(monkeypatch):
     def probe(argv, *, timeout=5.0):
         del timeout
@@ -89,7 +101,9 @@ def test_environment_snapshot_uses_observed_slurm_and_gpu_facts(monkeypatch):
     second = build_environment_snapshot(cfg, _provider_lock())
 
     assert first.model_dump_json() == second.model_dump_json()
-    assert first.resource_types == ("cpu", "gpu", "process", "slurm")
+    # gpu-slurm is derived, not observed: a capability wanting a GPU through the
+    # scheduler needs both halves and the prober only ever emits them apart.
+    assert first.resource_types == ("cpu", "gpu", "gpu-slurm", "process", "slurm")
     assert {"cuda-toolkit", "gpu-via-slurm", "nvidia-gpu", "slurm-controller"}.issubset(
         first.features
     )
@@ -444,3 +458,47 @@ def test_shipped_derivations_reach_a_fixpoint_through_a_chained_row():
     assert "sif-container-runtime" in features
     assert "eda-cpu" in resources
     assert fired == ("feature:sif-container-runtime", "resource_type:eda-cpu")
+
+
+def _observe_route(monkeypatch, *, ipv4=False, ipv6=False):
+    monkeypatch.setattr(
+        environment_module,
+        "_network_route_probe",
+        lambda: {
+            "status": "ready" if (ipv4 or ipv6) else "unavailable",
+            "families": [n for n, on in (("ipv4", ipv4), ("ipv6", ipv6)) if on],
+        },
+    )
+
+
+def test_a_default_route_derives_the_network_resource(monkeypatch):
+    _observe_route(monkeypatch, ipv4=True)
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(), _provider_lock(), resource_derivations=_derivations()
+    )
+    assert "network-route" in snapshot.features
+    assert "network-read" in snapshot.features
+    assert "network" in snapshot.resource_types
+
+
+def test_an_air_gapped_node_supplies_no_network_resource(monkeypatch):
+    """No route, nothing fires -- the retrieval capability stays unsupplied."""
+
+    _observe_route(monkeypatch)
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(), _provider_lock(), resource_derivations=_derivations()
+    )
+    assert "network-route" not in snapshot.features
+    assert "network-read" not in snapshot.features
+    assert "network" not in snapshot.resource_types
+
+
+def test_the_shipped_table_has_no_row_for_the_unregistered_quantum_class():
+    """It could only derive from cpu, which every substrate has.
+
+    A row that fires everywhere would put the class into every run's identity
+    and assert that any node can supply a pinned Aer target, when what decides
+    that is a materialized Provider artifact no derivation can see.
+    """
+
+    assert not [row for row in _derivations() if row.emits == "quantum-simulator"]
