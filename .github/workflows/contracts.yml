@@ -126,6 +126,13 @@ jobs:
       - name: MCP tool-schema snapshot verify (advisory at Stage 1)
         continue-on-error: true
         run: python scripts/snapshot_contracts.py --surface mcp --check
+      - name: Provider capability pins vs the ontology (advisory)
+        # Advisory because it starts red: two bundles are bound to contracts
+        # that have since been corrected and three never recorded a contract at
+        # all. Ratchet to --strict once re-promotion has caught up; until then
+        # the point is that a lock going stale is visible instead of silent.
+        continue-on-error: true
+        run: python scripts/check_provider_capability_pins.py
 
   quality-report:
     # subtask 031 — aggregation reporter. Reads the per-job --json artifacts and
