@@ -20,6 +20,7 @@ from typing import Any, Literal, Protocol, Sequence
 
 from ari_skill_hpc.contracts import (
     ArtifactPinV1,
+    EnvironmentPolicyV1,
     JobErrorV1,
     JobHandleV1,
     JobLogV1,
@@ -589,6 +590,7 @@ class SlurmScheduler:
         memory_gb: int | None = None,
         gres: str | None = None,
         account: str | None = None,
+        modules: tuple[str, ...] = (),
     ) -> JobHandleV1:
         """Compile the retained core-agent script bridge into a durable claim."""
         if len(script.encode("utf-8")) > 4 * 1024 * 1024 or "\x00" in script:
@@ -614,6 +616,9 @@ class SlurmScheduler:
             account=account,
         )
         work = _validated_work_dir(work_dir)
+        # Validated through the same policy the declared path uses, so the
+        # bridge cannot smuggle a module name the typed contract would reject.
+        environment = EnvironmentPolicyV1(modules=tuple(modules))
         payload = {
             "schema_version": "ari.hpc.script-bridge/v1",
             "script_digest": "sha256:"
@@ -621,6 +626,10 @@ class SlurmScheduler:
             "job_name": job_name,
             "work_dir": str(work),
             "resources": resources.model_dump(mode="json"),
+            # Part of the claim identity: the same script with a different
+            # toolchain is a different job, and folding them onto one claim
+            # would return the first one's result for the second one's run.
+            "modules": list(environment.modules),
         }
         request_digest = sha256_digest(payload)
         prior = self.ledger.claim(request_digest, payload)
@@ -634,6 +643,7 @@ class SlurmScheduler:
                 resources=resources,
                 work_dir=str(work),
                 artifact_scope=artifact_scope,
+                modules=environment.modules,
             )
         except Exception:
             self.ledger.release(request_digest)
@@ -1298,6 +1308,7 @@ class SlurmScheduler:
         resources: ResourceRequestV1,
         work_dir: str,
         artifact_scope: Path,
+        modules: tuple[str, ...] = (),
     ) -> str:
         lines = self._header(
             job_name=job_name,
@@ -1319,6 +1330,22 @@ class SlurmScheduler:
         # and so it observes the state the body leaves behind rather than the
         # state it started from.
         lines.extend(self._bridge_provenance_lines(artifact_scope))
+        if modules:
+            # Declared modules get the same treatment as the typed path:
+            # purge first, so the toolchain is the one asked for rather than
+            # whatever the node happened to default to, and fail loudly rather
+            # than build with something else. A `module load` written inside
+            # the script still works, but gets neither.
+            lines.extend(
+                [
+                    "if ! command -v module >/dev/null 2>&1; then",
+                    "  echo 'ARI: requested environment modules are unavailable' >&2",
+                    "  exit 86",
+                    "fi",
+                    "module --force purge",
+                ]
+            )
+            lines.extend(f"module load {shlex.quote(m)}" for m in modules)
         # Generated executable content appears first, so #SBATCH text in the
         # compute-node body cannot override scheduler policy.
         lines.extend(["# ARI core-agent script bridge", script])

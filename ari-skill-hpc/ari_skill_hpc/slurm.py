@@ -102,6 +102,7 @@ class SlurmClient:
                 ),
                 gres=str(kwargs.get("gres") or _gres_from_environment() or "") or None,
                 account=str(kwargs.get("account") or "") or None,
+                modules=tuple(str(m) for m in (kwargs.get("modules") or ())),
             )
         except SchedulerError as exc:
             return {

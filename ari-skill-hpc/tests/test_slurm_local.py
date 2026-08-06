@@ -755,3 +755,92 @@ def test_snapshot_without_a_command_omits_command_path(tmp_path: Path) -> None:
     for text in (with_cmd, without):
         assert "loaded_modules=" in text
         assert "path=" in text
+
+
+@pytest.mark.asyncio
+async def test_bridge_accepts_declared_modules(tmp_path: Path) -> None:
+    """`slurm_submit` can declare modules, not only load them by hand.
+
+    Writing `module load` inside the script works, but gets neither the purge
+    (so the toolchain is the one asked for rather than whatever the node
+    defaulted to) nor the availability check (so a node that cannot provide it
+    builds with something else instead of failing).
+    """
+    runner = FakeRunner(CommandResult("12345;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    await scheduler.submit_script_bridge(
+        script="make bench", job_name="b", partition="p", nodes=1,
+        walltime="00:10:00", work_dir=str(tmp_path),
+        modules=("compiler/1.0", "mpi/2.0"),
+    )
+    script = runner.calls[0][1].decode()
+
+    assert "module --force purge" in script
+    assert "module load compiler/1.0" in script
+    assert "module load mpi/2.0" in script
+    assert "exit 86" in script
+    # Loaded before the body, or the body cannot use them.
+    assert script.index("module load mpi/2.0") < script.index("make bench")
+
+
+@pytest.mark.asyncio
+async def test_bridge_without_modules_gains_no_module_block(tmp_path: Path) -> None:
+    runner = FakeRunner(CommandResult("12345;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    await scheduler.submit_script_bridge(
+        script="make bench", job_name="b", partition="p", nodes=1,
+        walltime="00:10:00", work_dir=str(tmp_path),
+    )
+    script = runner.calls[0][1].decode()
+
+    assert "module --force purge" not in script
+    assert "exit 86" not in script
+
+
+@pytest.mark.asyncio
+async def test_modules_are_part_of_the_claim_identity(tmp_path: Path) -> None:
+    # The same script built against a different toolchain is a DIFFERENT job.
+    # If modules were outside the claim digest the second submission would be
+    # deduplicated onto the first and return a result measured elsewhere.
+    runner = FakeRunner(
+        CommandResult("111;cluster\n", "", 0), CommandResult("222;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    common = dict(script="make bench", job_name="b", partition="p", nodes=1,
+                  walltime="00:10:00", work_dir=str(tmp_path))
+
+    first = await scheduler.submit_script_bridge(**common, modules=("compiler/1.0",))
+    second = await scheduler.submit_script_bridge(**common, modules=("compiler/2.0",))
+
+    assert first.request_digest != second.request_digest
+    assert len(runner.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_identical_modules_still_deduplicate(tmp_path: Path) -> None:
+    runner = FakeRunner(CommandResult("111;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    common = dict(script="make bench", job_name="b", partition="p", nodes=1,
+                  walltime="00:10:00", work_dir=str(tmp_path),
+                  modules=("compiler/1.0",))
+
+    first = await scheduler.submit_script_bridge(**common)
+    second = await scheduler.submit_script_bridge(**common)
+
+    assert first == second
+    assert len(runner.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_bridge_modules_go_through_the_typed_policy(tmp_path: Path) -> None:
+    # The bridge must not be a way around the validation the typed path gets.
+    runner = FakeRunner(CommandResult("111;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    with pytest.raises(Exception):
+        await scheduler.submit_script_bridge(
+            script="make bench", job_name="b", partition="p", nodes=1,
+            walltime="00:10:00", work_dir=str(tmp_path),
+            modules=("bad name; rm -rf /",),
+        )

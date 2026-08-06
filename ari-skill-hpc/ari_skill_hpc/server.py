@@ -92,6 +92,19 @@ def _legacy_submit_schema() -> dict[str, Any]:
                 "type": "string",
                 "description": "Existing absolute shared-filesystem directory",
             },
+            "modules": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Environment modules to load before the script runs. "
+                    "Declaring them here purges first, so the toolchain is the "
+                    "one asked for rather than whatever the node defaulted to, "
+                    "and the job fails loudly if the node cannot provide them "
+                    "instead of silently building with something else. Writing "
+                    "`module load` inside the script works too, but is neither "
+                    "purged nor checked."
+                ),
+            },
         },
         "required": ["script", "job_name", "partition"],
         "additionalProperties": False,
@@ -230,6 +243,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     nodes=arguments.get("nodes", 1),
                     walltime=arguments.get("walltime", "01:00:00"),
                     work_dir=arguments.get("work_dir", ""),
+                    modules=arguments.get("modules") or (),
                 )
             else:
                 result = {
