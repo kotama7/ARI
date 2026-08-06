@@ -323,6 +323,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `stores.py` — `CheckpointStore` / `TraceStore` Protocols + the `ArtifactStore` ABC — the runtime storage I/O seams.
 - `providers/` — scientific provider manifests, catalogs, compatibility decisions, and registration evidence.
   - `__init__.py` — public provider package exports.
+  - `brokered.py` — TODO
   - `catalog.py` — load, snapshot, and query registered scientific providers.
   - `compatibility.py` — compare provider capabilities and environments against requirements.
   - `models.py` — provider manifest, catalog, support, and registration models.

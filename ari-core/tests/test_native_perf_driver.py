@@ -148,8 +148,16 @@ def _report(**kw):
                             relative_spread=None, repetitions=(rep,))
     values = dict(kind="gemm", tier="validate", verdict="pass",
                   case_results=(case,), regression_threshold=1.0,
-                  default_toolchain="cc", candidate_toolchain="cc",
-                  crossed_compiler_boundary=False, placement={})
+                  default_toolchain={"requested": "cc", "resolved_path": "/usr/bin/cc",
+                                     "version": "cc (GCC) x"},
+                  candidate_toolchain={"requested": None, "resolved_path": "/usr/bin/cc",
+                                       "version": "cc (GCC) x", "status": "default"},
+                  crossed_compiler_boundary=False,
+                  base_flags=("-O3", "-fopenmp"), reference_flags=("-ffast-math",),
+                  accepted_flags=(), rejected_flags=(),
+                  environment={"variables": {}, "sha256": "sha256:" + "0" * 64,
+                               "note": "n"},
+                  placement=measurement_placement())
     values.update(kw)
     return NativePerfReportV1.create(**values)
 
@@ -205,6 +213,34 @@ def test_instrumentation_flags_are_refused():
     assert "-fprofile-generate" in rejected and "-flto" in rejected
 
 
+def test_the_flag_screen_is_an_allowlist_not_a_denylist():
+    """A deny-only screen let -I through, and an accepted -I lands BEFORE the
+    pinned -I<kernels> in the argv — so a candidate-supplied header won the quoted
+    include and the header-less staging was inert. Verified by compiling a
+    candidate with its own gemm_kernel.h. -B was accepted too, which substitutes
+    the compiler proper inside the scored compile."""
+    accepted, rejected = screen_flags(
+        "-I/tmp/evil -B/tmp/fake -D X -L/l -lm -Wl,-z -include h -o x -static "
+        "-SSL2 -save-temps -nostdlib")
+    assert accepted == (), f"these must never reach the compile line: {accepted}"
+    assert "-I/tmp/evil" in rejected and "-B/tmp/fake" in rejected
+
+
+def test_the_flag_screen_still_admits_real_optimisation_flags():
+    """An allowlist that rejected the useful flags would remove the axis it is
+    protecting, including the vendor's -K/-N namespaces."""
+    accepted, _ = screen_flags("-O3 -march=native -funroll-loops -Kfast -Nclang "
+                               "--param=max-unrolled-insns=200")
+    assert len(accepted) == 6
+
+
+def test_a_flag_file_written_with_literal_backslash_n_still_works():
+    """54 of 2133 corpus files wrote it that way; the comment tail then glued
+    itself onto the first real flag and destroyed it."""
+    accepted, _ = screen_flags("-O3 # note\\n-funroll-loops")
+    assert "-O3" in accepted and "-funroll-loops" in accepted
+
+
 def test_one_repetition_has_no_spread():
     """Reporting 0.0 for a single point would read as perfect stability."""
     assert relative_spread([1.0]) is None
@@ -214,14 +250,50 @@ def test_one_repetition_has_no_spread():
     assert relative_spread([1.0, 1.05, 1.1]) == pytest.approx(0.1 / 1.05, rel=1e-9)
 
 
-def test_the_placement_record_says_nothing_is_pinned():
-    """Every field is an inherited default: there is no numactl, taskset or
-    mbind anywhere on this path, and a reader who assumed otherwise would draw
-    the opposite conclusion from the same numbers."""
+def test_the_placement_record_separates_what_is_set_from_what_is_not():
+    """The harness DOES pin the binding regime — both sides of a comparison have
+    to be measured the same way — and does NOT pin the memory policy: there is no
+    numactl, taskset, mbind or set_mempolicy on this path. Reporting one flag for
+    both would let a reader draw the opposite conclusion about either."""
     place = measurement_placement()
-    assert place["placement_is_set_by_the_harness"] is False
-    for key in ("machine", "page_size_bytes", "cpus_allowed", "numa_nodes_total"):
-        assert key in place
+    assert place["binding_is_set_by_the_harness"] is True
+    assert place["memory_policy_is_set_by_the_harness"] is False
+    for key in ("machine", "page_size_bytes", "cpus_allowed", "cpus_allowed_count",
+                "mems_allowed", "numa_nodes_total", "numa_node_cpulists",
+                "numa_nodes_spanned", "thread_budget", "omp_dynamic", "sha256"):
+        assert key in place, f"placement lost {key}"
+
+
+def test_placement_carries_its_own_digest():
+    """Folded into the report digest alone it identifies the whole run and
+    nothing smaller — records could not be grouped by allocation shape."""
+    place = measurement_placement()
+    assert place["sha256"].startswith("sha256:")
+    assert measurement_placement()["sha256"] == place["sha256"]
+
+
+def test_a_report_without_a_real_placement_is_refused():
+    """An empty placement is a valid dict and an invalid measurement."""
+    with pytest.raises(Exception):
+        _report(placement={})
+
+
+def test_the_report_records_the_flags_that_produced_it():
+    rep = _report()
+    body = json.loads(rep.model_dump_json())
+    for key in ("base_flags", "reference_flags", "accepted_flags", "rejected_flags",
+                "environment"):
+        assert key in body
+    assert body["environment"]["sha256"].startswith("sha256:")
+
+
+def test_the_report_records_what_the_candidate_ASKED_for():
+    """A run that requested the vendor compiler, did not get it, and was scored on
+    the default was indistinguishable from one that requested nothing."""
+    rep = _report()
+    assert set(rep.candidate_toolchain) >= {"requested", "resolved_path",
+                                            "version", "status"}
+    assert rep.default_toolchain["version"] is not None
 
 
 # --- degradation ---------------------------------------------------------------
@@ -248,3 +320,116 @@ def test_the_parity_probe_requires_two_different_failure_reasons():
     assert "negative_control_slow" in source and "negative_control_wrong" in source
     assert '"threshold" in slow_detail' in source
     assert '"residual bound" in wrong_detail' in source
+
+
+# --- the object-level checks the flag deny list was defending -------------------
+
+def _build(tmp_path, body: str, **kw):
+    from ari.assurance.native_perf_common import compile_binary
+    source = tmp_path / "cand.c"
+    source.write_text(body)
+    out = tmp_path / "out"
+    out.mkdir(exist_ok=True)
+    return compile_binary(kind="gemm", role="candidate", source=source,
+                          out_dir=out, compiler="cc", **kw)
+
+
+_HONEST = """#include "gemm_kernel.h"
+void gemm(int n,int m,int p,const double*A,const double*B,double*C){
+  for(int i=0;i<n;i++)for(int j=0;j<m;j++){double s=0;
+    for(int l=0;l<p;l++)s+=A[i*p+l]*B[l*m+j]; C[i*m+j]=s;} }
+"""
+
+
+def test_an_honest_kernel_still_builds(tmp_path):
+    assert _build(tmp_path, _HONEST).is_file()
+
+
+def test_a_kernel_that_runs_code_outside_the_measured_call_is_refused(tmp_path):
+    """Out-of-band code exports no extra global symbol, so the name check cannot
+    see it. A destructor is exactly how the prototype's own forge test cheated:
+    it read /proc/self/cmdline for the private timing path and overwrote it."""
+    from ari.assurance.native_perf_common import PerfBuildError
+    # The destructor needs an observable side effect or -O3 deletes it and no
+    # .fini_array is emitted -- the control would then pass for the wrong reason.
+    body = ('#include <stdio.h>\n#include "gemm_kernel.h"\n'
+            'static volatile int _sink;\n'
+            '__attribute__((destructor)) static void s(void){ _sink = 1; }\n'
+            + _HONEST)
+    with pytest.raises(PerfBuildError, match="outside the measured call"):
+        _build(tmp_path, body)
+
+
+def test_a_kernel_that_defines_the_clock_is_refused(tmp_path):
+    """The candidate object links into the FROZEN DRIVER, so a definition of
+    clock_gettime wins the link and forges the timer."""
+    from ari.assurance.native_perf_common import PerfBuildError
+    body = ('#include <time.h>\n#include "gemm_kernel.h"\n'
+            'int clock_gettime(clockid_t c, struct timespec *t){(void)c;'
+            't->tv_sec=0;t->tv_nsec=1;return 0;}\n' + _HONEST)
+    with pytest.raises(PerfBuildError, match="exports symbols other than"):
+        _build(tmp_path, body)
+
+
+def test_the_reference_flags_reach_the_link(tmp_path):
+    """-ffast-math sets process-wide FTZ/DAZ at LINK time. Leaving it off the
+    link made the anchor a different binary from the one it is supposed to be,
+    so ratios were not comparable with the harness this replaces."""
+    source = (CORE / "ari" / "assurance" / "native_perf_common.py").read_text()
+    assert "*base, *reference_flags, str(main_o), str(kern_o)" in source
+
+
+def test_a_reference_failure_is_not_charged_to_the_candidate():
+    """"candidate exceeded 300s" named a program the candidate did not write."""
+    from ari.assurance.native_perf_common import (
+        PerfBuildError, PerfInfrastructureError, _fault)
+    assert _fault("candidate") is PerfBuildError
+    for role in ("reference", "reference_matched"):
+        assert _fault(role) is PerfInfrastructureError
+
+
+def test_the_control_side_blas_is_pinned_before_numpy_loads():
+    """The oracle runs in THIS process; an unpinned pool sized to the allocation
+    stays alive on the cores the next timed child will use."""
+    import os
+    for name in ("OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        assert os.environ.get(name), f"{name} is not pinned"
+
+
+def test_the_oracle_does_not_run_between_the_timed_launches():
+    """A full-size numpy GEMM between the candidate and the matched reference
+    lands on the same cores, on one side of the comparison only — so it moved
+    toolchain_gain. The property is positional: no timed launch may follow the
+    oracle within a repetition."""
+    lines = (CORE / "ari" / "assurance" / "native_perf_gemm.py").read_text().splitlines()
+    start = next(i for i, l in enumerate(lines) if "for index in range(reps):" in l)
+    launches = [i for i, l in enumerate(lines[start:], start) if "run_timed(" in l]
+    oracle = next(i for i, l in enumerate(lines[start:], start) if "_residual_ok(" in l)
+    assert launches, "no timed launch found"
+    assert max(launches) < oracle, (
+        "a timed launch happens after the oracle; the oracle's BLAS call lands "
+        "between two measurements it is supposed to sit outside")
+
+
+def test_the_vendor_compiler_is_looked_for_off_PATH():
+    """which() alone reported "unavailable" for a compiler sitting on the disk;
+    the measuring job pins a bare PATH, so the whole toolchain axis collapsed."""
+    from ari.assurance.native_perf_common import COMPILER_SEARCH_GLOBS
+    assert COMPILER_SEARCH_GLOBS.get("fcc")
+
+
+def test_the_environment_is_captured_by_prefix_not_by_a_hand_list():
+    """A hand list records exactly the variables somebody thought of — and the
+    prototype's omitted the one later measured to move the same frozen source by
+    5.9x."""
+    from ari.assurance.native_perf_common import measurement_environment
+    record = measurement_environment({"XOS_MMM_L_PAGING_POLICY": "demand:demand:demand"})
+    assert record["variables"]["XOS_MMM_L_PAGING_POLICY"] == "demand:demand:demand"
+    assert record["sha256"].startswith("sha256:")
+
+
+def test_a_credential_value_never_reaches_the_record(monkeypatch):
+    monkeypatch.setenv("ARI_LLM_API_KEY", "super-secret")
+    from ari.assurance.native_perf_common import measurement_environment
+    assert "super-secret" not in json.dumps(measurement_environment())
+

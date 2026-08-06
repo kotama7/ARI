@@ -18,6 +18,7 @@ import numpy as np
 
 from ari.assurance.native_perf_common import (
     TIER_REPETITIONS,
+    PerfInfrastructureError as _PerfInfra,
     NativePerfReportV1,
     PerfBuildError,
     PerfCaseResultV1,
@@ -30,8 +31,12 @@ from ari.assurance.native_perf_common import (
     measurement_placement,
     median,
     relative_spread,
+    isa_flags_for,
+    measurement_environment,
     resolve_compiler,
+    runtime_libs_for,
     screen_flags,
+    toolchain_identity,
 )
 
 #: The scored shapes. Fixed, because a shape a candidate could choose is a shape
@@ -126,8 +131,16 @@ def verify_gemm_performance(
 
     status, resolved = resolve_compiler(candidate_compiler)
     boundary = crosses_compiler_boundary(status, resolved)
-    accepted, _rejected = screen_flags(candidate_flags)
+    accepted, rejected = screen_flags(candidate_flags)
     default_cc = default_compiler()
+    default_identity = toolchain_identity(default_cc)
+    candidate_identity = {**toolchain_identity(resolved),
+                          "requested": candidate_compiler, "status": status}
+    # The candidate's process may need its selected compiler's runtime on the
+    # loader path; the anchor's must not be given anything extra, because the
+    # denominator has to stay exactly the object it has always been.
+    candidate_libs = runtime_libs_for(resolved) if boundary else None
+    base = ("-O3", "-fopenmp", *isa_flags_for(resolved))
 
     results: list[PerfCaseResultV1] = []
     with tempfile.TemporaryDirectory() as raw_td:
@@ -147,7 +160,11 @@ def verify_gemm_performance(
                 out_dir=build, compiler=resolved, extra_flags=accepted)
 
         problem = build / "problem.bin"
-        out_path = build / "c.bin"
+        # ONE OUTPUT FILE PER ROLE. Sharing one meant the anchor overwrote the
+        # candidate's answer, so the correctness check had to run between the two
+        # timed launches -- see below.
+        outputs = {role: build / f"{role}.bin"
+                   for role in ("candidate", "reference", "reference_matched")}
         timing = build / "timing.bin"
 
         for shape in cases:
@@ -161,21 +178,38 @@ def verify_gemm_performance(
                 input_seed = seed * 100003 + index
                 a, b = gen_problem(shape, input_seed)
                 _write_problem(problem, a, b)
+                # ALL TIMED LAUNCHES FIRST, THEN THE ORACLE. The oracle is a
+                # multi-threaded numpy GEMM running in THIS process; sitting it
+                # between the candidate and the matched reference put a
+                # full-size BLAS call on the same cores in between, and only on
+                # one side of the comparison -- so it moved toolchain_gain.
+                # Nothing but the timed processes runs inside this block.
                 try:
-                    # Order alternates so an odd repetition count does not
-                    # systematically favour whichever runs first.
                     if (index + seed) % 2 == 0:
-                        t_cand = run_timed(candidate_exe, problem, out_path, timing,
-                                           timeout=run_timeout)
-                        c_out = np.fromfile(out_path, dtype=np.float64)
-                        t_ref = run_timed(anchor_exe, problem, out_path, timing,
-                                          timeout=run_timeout)
+                        order = (("candidate", candidate_exe), ("reference", anchor_exe))
                     else:
-                        t_ref = run_timed(anchor_exe, problem, out_path, timing,
-                                          timeout=run_timeout)
-                        t_cand = run_timed(candidate_exe, problem, out_path, timing,
-                                           timeout=run_timeout)
-                        c_out = np.fromfile(out_path, dtype=np.float64)
+                        order = (("reference", anchor_exe), ("candidate", candidate_exe))
+                    seconds: dict[str, float] = {}
+                    for role, exe in order:
+                        seconds[role] = run_timed(
+                            exe, problem, outputs[role], timing,
+                            timeout=run_timeout, role=role,
+                            ld_library_path=(candidate_libs
+                                             if role != "reference" else None))
+                    if matched_exe is not None:
+                        try:
+                            seconds["reference_matched"] = run_timed(
+                                matched_exe, problem, outputs["reference_matched"],
+                                timing, timeout=run_timeout,
+                                role="reference_matched",
+                                ld_library_path=candidate_libs)
+                        except _PerfInfra:
+                            # A matched-run failure must not discard an anchor
+                            # measurement that already succeeded.
+                            pass
+                    t_cand = seconds["candidate"]
+                    t_ref = seconds["reference"]
+                    c_out = np.fromfile(outputs["candidate"], dtype=np.float64)
                 except PerfBuildError as exc:
                     verdict, detail = "fail", str(exc)
                     break
@@ -196,19 +230,12 @@ def verify_gemm_performance(
                         credited_seconds=t_cand, reference_seconds=t_ref,
                         speedup=t_ref / t_cand, correct=False, max_rel_error=worst))
                     break
-                matched_seconds = None
+                matched_seconds = seconds.get("reference_matched")
                 speedup_matched = None
                 gain = None
-                if matched_exe is not None:
-                    try:
-                        matched_seconds = run_timed(matched_exe, problem, out_path,
-                                                    timing, timeout=run_timeout)
-                        speedup_matched = matched_seconds / t_cand
-                        gain = (t_ref / t_cand) / speedup_matched
-                    except PerfBuildError:
-                        # A matched-run failure must not discard an anchor
-                        # measurement that already succeeded.
-                        matched_seconds = None
+                if matched_seconds is not None:
+                    speedup_matched = matched_seconds / t_cand
+                    gain = (t_ref / t_cand) / speedup_matched
                 ratio = t_ref / t_cand
                 ratios.append(ratio)
                 repetitions.append(PerfRepetitionV1(
@@ -246,8 +273,11 @@ def verify_gemm_performance(
     return NativePerfReportV1.create(
         kind="gemm", tier=tier, verdict=overall, case_results=tuple(results),
         regression_threshold=regression_threshold,
-        default_toolchain=default_cc, candidate_toolchain=resolved,
+        default_toolchain=default_identity, candidate_toolchain=candidate_identity,
         crossed_compiler_boundary=boundary,
+        base_flags=base, reference_flags=reference_flags(),
+        accepted_flags=accepted, rejected_flags=rejected,
+        environment=measurement_environment(),
         placement=measurement_placement(), negative_control=negative_control)
 
 
