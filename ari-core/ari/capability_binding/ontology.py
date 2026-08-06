@@ -157,6 +157,10 @@ _COMPATIBILITY_RULES: dict[str, str] = {
     # Checked by the Provider that supplies the capability, against its own
     # golden/replay evidence, not by the binder.
     "cuda-self-test-v1": "provider",
+    # Witnessed from inside the allocation by the job the Provider submits, not
+    # by the binder: at bind time no allocation exists, so this cannot be an
+    # environment feature however much the contract wanted one.
+    "exclusive-allocation-witness-v1": "provider",
     "openroad-profile-result-v1": "provider",
     "qiskit-sampling-result-v1": "provider",
     "retrieval-record-v1": "provider",

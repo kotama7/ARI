@@ -844,3 +844,78 @@ async def test_bridge_modules_go_through_the_typed_policy(tmp_path: Path) -> Non
             walltime="00:10:00", work_dir=str(tmp_path),
             modules=("bad name; rm -rf /",),
         )
+
+
+def test_exclusive_allocation_witness_compares_the_job_not_the_step(
+    tmp_path: Path,
+) -> None:
+    """SLURM_CPUS_ON_NODE is the step's cpus, not the job's.
+
+    Measured on a real exclusive allocation: the step reported 4 while the job
+    held 20. A witness built on it reports a false negative on exactly the
+    allocation it exists to confirm, so the comparison must be
+    SLURM_JOB_CPUS_PER_NODE against the node's CPUTot.
+    """
+
+    lines = SlurmScheduler._exclusive_allocation_check(None, tmp_path)
+    script = "\n".join(lines)
+    assert "SLURM_JOB_CPUS_PER_NODE" in script
+    assert "SLURM_CPUS_ON_NODE" not in script
+    assert "CPUTot" in script and "CPUAlloc" in script
+
+
+def test_exclusive_allocation_witness_records_oversubscribe_without_trusting_it(
+    tmp_path: Path,
+) -> None:
+    """Measured on one sharing partition: an --exclusive job and a shared job
+    both report OverSubscribe=YES, so the field discriminates nothing. It is
+    recorded as evidence and no branch reads it."""
+
+    lines = SlurmScheduler._exclusive_allocation_check(None, tmp_path)
+    script = "\n".join(lines)
+    assert "job_oversubscribe=" in script
+    branches = [
+        line
+        for line in lines
+        if line.lstrip().startswith(("if ", "  if ", "elif "))
+        and "oversubscribe" in line.lower()
+    ]
+    assert branches == []
+
+
+def test_exclusive_allocation_witness_refuses_rather_than_guesses(
+    tmp_path: Path,
+) -> None:
+    lines = SlurmScheduler._exclusive_allocation_check(None, tmp_path)
+    script = "\n".join(lines)
+    # Unparseable fields, a missing scontrol, and the multi-node range form of
+    # SLURM_JOB_CPUS_PER_NODE all end in refusal, never in an assumption.
+    assert "ari_verdict=refused" in script
+    assert "unparsed-allocation-fields" in script
+    assert "exit 88" in script
+    assert 'case "$ari_job_cpus" in ""|*[!0-9]*)' in script
+    # The witness is written before the refusal: a denied job still yields it.
+    assert script.index("exclusive-allocation-witness.txt") < script.rindex("exit 88")
+
+
+def test_exclusive_allocation_witness_runs_before_the_device_probe(
+    tmp_path: Path,
+) -> None:
+    """Cheapest guard first: a shared grant is refused before nvidia-smi runs."""
+
+    request = _request(tmp_path)
+    scheduler = _scheduler(tmp_path, FakeRunner())
+    scope = scheduler._ensure_artifact_scope(str(tmp_path), request.request_digest)
+    rendered = "\n".join(scheduler._render_script(request, scope))
+    # This request carries no accelerator allocation, so neither check appears.
+    assert "exclusive-allocation-witness" not in rendered
+
+
+def test_witness_is_retained_as_job_provenance() -> None:
+    import inspect
+
+    source = inspect.getsource(SlurmScheduler._collect_provenance)
+    assert "exclusive-allocation-witness" in source
+    assert source.index("exclusive-allocation-witness") < source.index(
+        "expected-accelerator-inventory"
+    )

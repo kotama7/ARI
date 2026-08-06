@@ -1187,6 +1187,13 @@ class SlurmScheduler:
             ("module-snapshot", "module-list.txt", "text/plain"),
             ("container-runtime", "container-runtime.txt", "text/plain"),
             (
+                # Retained whether the allocation was held or refused: a denied
+                # job's witness is the evidence for why it was denied.
+                "exclusive-allocation-witness",
+                "exclusive-allocation-witness.txt",
+                "text/plain",
+            ),
+            (
                 "expected-accelerator-inventory",
                 "accelerator-inventory.expected.csv",
                 "text/csv",
@@ -1254,6 +1261,12 @@ class SlurmScheduler:
             module_path = scope / "module-list.txt"
             lines.append(f"module -t list 2> {shlex.quote(str(module_path))} || true")
         if request.accelerator_allocation is not None:
+            # Cheapest guard first: a shared grant is refused before nvidia-smi
+            # is invoked. Gated on accelerator_allocation rather than
+            # resources.exclusive because the promoted OpenROAD SLURM CPU
+            # profile sets exclusive with no accelerator allocation, and gating
+            # on that would newly fail-close an already-verified Provider.
+            lines.extend(self._exclusive_allocation_check(request, scope))
             lines.extend(self._accelerator_inventory_check(request, scope))
         lines.extend(self._runtime_snapshot(request, scope))
         for artifact in request.inputs:
@@ -1302,6 +1315,74 @@ class SlurmScheduler:
             )
         lines.append('exit "$ari_job_rc"')
         return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _exclusive_allocation_check(
+        request: JobRequestV1, scope: Path
+    ) -> list[str]:
+        """Witness, from inside the allocation, that the node is not shared.
+
+        ``JobRequestV1`` already refuses to build this job unless it *asked* for
+        an exclusive single node with a pinned nodelist and no GRES. What was
+        missing is proof the scheduler *granted* it, and that is only observable
+        from inside: a capability contract cannot require it as an environment
+        feature, because at bind time no allocation exists yet and the job the
+        Provider will submit minutes later is not the one any probe could test.
+
+        The comparison is deliberately ``SLURM_JOB_CPUS_PER_NODE`` against the
+        node's ``CPUTot``. ``SLURM_CPUS_ON_NODE`` is the *step's* cpus, not the
+        job's -- measured as 4 against the job's 20 on a genuinely exclusive
+        node -- so a witness built on it reports a false negative on exactly the
+        allocation it is supposed to confirm.
+
+        ``OverSubscribe`` is recorded and asserted on by nothing: under
+        ``select/cons_tres`` a partition reporting ``NO`` means allocated cores
+        are not shared, which is also what a job that never passed
+        ``--exclusive`` sees, so it cannot carry the claim on its own.
+        """
+
+        witness = scope / "exclusive-allocation-witness.txt"
+        return [
+            "command -v scontrol >/dev/null 2>&1 || "
+            "{ echo 'ARI: scontrol unavailable; cannot witness exclusivity' >&2; exit 88; }",
+            'ari_job_cpus="${SLURM_JOB_CPUS_PER_NODE:-}"',
+            # The multi-node range form (20(x2)) is refused rather than guessed;
+            # this allocation is single-node by construction.
+            'case "$ari_job_cpus" in ""|*[!0-9]*) ari_job_cpus="" ;; esac',
+            'ari_job_show="$(scontrol show job "$SLURM_JOB_ID" 2>/dev/null || true)"',
+            'ari_node_show="$(scontrol show node "$SLURMD_NODENAME" 2>/dev/null || true)"',
+            "ari_node_tot=\"$(printf '%s' \"$ari_node_show\" | tr ' ' '\\n' "
+            "| sed -n 's/^CPUTot=\\([0-9][0-9]*\\)$/\\1/p' | head -1)\"",
+            "ari_node_alloc=\"$(printf '%s' \"$ari_node_show\" | tr ' ' '\\n' "
+            "| sed -n 's/^CPUAlloc=\\([0-9][0-9]*\\)$/\\1/p' | head -1)\"",
+            "ari_job_cpus_total=\"$(printf '%s' \"$ari_job_show\" | tr ' ' '\\n' "
+            "| sed -n 's/^NumCPUs=\\([0-9][0-9]*\\)$/\\1/p' | head -1)\"",
+            "ari_oversubscribe=\"$(printf '%s' \"$ari_job_show\" | tr ' ' '\\n' "
+            "| sed -n 's/^OverSubscribe=\\(.*\\)$/\\1/p' | head -1)\"",
+            'ari_verdict=refused',
+            'ari_reason=unparsed-allocation-fields',
+            'if [ -n "$ari_job_cpus" ] && [ -n "$ari_node_tot" ] && [ -n "$ari_node_alloc" ]; then',
+            '  if [ "$ari_job_cpus" -eq "$ari_node_tot" ] && [ "$ari_node_alloc" -eq "$ari_node_tot" ]; then',
+            '    ari_verdict=held; ari_reason=job-holds-every-cpu-on-the-node',
+            '  else',
+            '    ari_verdict=refused; ari_reason=node-is-shared',
+            '  fi',
+            'fi',
+            # Written before the refusal so a denied job still yields its witness.
+            f"printf '%s\\n' "
+            '"job_cpus_per_node=${ari_job_cpus}" '
+            '"node_cpu_alloc=${ari_node_alloc}" '
+            '"node_cpu_tot=${ari_node_tot}" '
+            '"job_num_cpus=${ari_job_cpus_total}" '
+            '"job_oversubscribe=${ari_oversubscribe}" '
+            '"result=${ari_verdict}" '
+            '"reason=${ari_reason}" '
+            f"> {shlex.quote(str(witness))}",
+            'if [ "$ari_verdict" != held ]; then',
+            "  echo \"ARI: allocation is not exclusive (${ari_reason})\" >&2",
+            "  exit 88",
+            "fi",
+        ]
 
     @staticmethod
     def _accelerator_inventory_check(
@@ -1486,7 +1567,15 @@ class SlurmScheduler:
             lines.extend(f"module load {shlex.quote(m)}" for m in modules)
         # Generated executable content appears first, so #SBATCH text in the
         # compute-node body cannot override scheduler policy.
-        lines.extend(["# ARI core-agent script bridge", script])
+        if resources.launcher == "srun":
+            # The bridge body is a script, not an argv, so it is launched
+            # through a shell as one job step. Without this the parameter was
+            # accepted and ignored: the body ran once on the first node while
+            # the rest of the allocation sat idle.
+            step = self._bound_step_command(["bash", "-c", script], resources)
+            lines.extend(["# ARI core-agent script bridge", shlex.join(step)])
+        else:
+            lines.extend(["# ARI core-agent script bridge", script])
         return "\n".join(lines) + "\n"
 
     def _header(

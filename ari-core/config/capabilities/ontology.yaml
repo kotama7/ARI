@@ -1,5 +1,5 @@
 schema_version: 1
-source_revision: ari-capability-ontology/4
+source_revision: ari-capability-ontology/5
 property_vocabulary_version: ari.assurance-properties/v1
 contracts:
   - capability_ref: ari.eda.openroad.place-route/v1
@@ -107,7 +107,7 @@ contracts:
     description: Execute the fixed all-device CUDA self-test and negative control on one digest-bound exclusive-node inventory.
     side_effect_class: scheduler-submit
     determinism_class: conditional
-    nondeterminism_fields: [scheduler, driver, hardware]
+    nondeterminism_fields: [allocation, driver, hardware, scheduler]
     context_requirement: run
     required_permissions: [scheduler-submit, workspace-read, workspace-write]
     credential_scope_class: none
@@ -115,8 +115,19 @@ contracts:
     # `slurm` named a resource class, which is checked through resource_type;
     # this list is matched against observed features, and the prober emits
     # `slurm-controller` for a scheduler that answered.
-    environment_requirements: [cuda-12.9, exclusive-node, nvidia-sm70, slurm-controller]
-    compatibility_rules: [json-schema-structural-conformance, cuda-self-test-v1]
+    #
+    # `exclusive-node` is gone from this list, not renamed. It is a property of
+    # an allocation, and at bind time no allocation exists -- the job this
+    # Provider submits is created minutes later, so nothing a prober could test
+    # is the same proposition. The demand moved to where it can be answered:
+    # exclusive-allocation-witness-v1, checked from inside the allocation by the
+    # submitted job itself. `allocation` joins nondeterminism_fields because the
+    # binding lock no longer pins it.
+    environment_requirements: [cuda-12.9, nvidia-sm70, slurm-controller]
+    compatibility_rules:
+      - json-schema-structural-conformance
+      - cuda-self-test-v1
+      - exclusive-allocation-witness-v1
   - capability_ref: ari.literature.search/v1
     contract_version: v1
     title: Search scientific literature

@@ -68,16 +68,25 @@ def main() -> int:
             if live[ref] in pinned:
                 continue
             if not pinned:
-                # Worse than stale: this lock names a capability and never bound
-                # its contract, so it cannot go stale because it never committed.
+                # Worse than a mismatch: this lock names a capability and never
+                # bound its contract, so it cannot go stale -- it never
+                # committed to anything.
                 unbound.append(f"{bundle} -> {ref}")
-                print(f"unbound  {bundle}")
-                print(f"         {ref}: lock records no capability_contract_digest")
+                print(f"unbound   {bundle}")
+                print(f"          {ref}: lock records no capability_contract_digest")
                 continue
+            # Deliberately not called "stale". A mismatch is one of two very
+            # different things and this cannot tell them apart without history:
+            # the contract moved after a real binding (re-promote), or the lock
+            # pins a digest built by a different rule and was never bound to the
+            # ontology at all (a promotion script computing its own synthetic
+            # value over {capability_ref, semantic} produces exactly this, and
+            # such a lock can never match and never detect the contract moving).
+            # Calling both "stale" would assert a history that was not checked.
             stale.append(f"{bundle} -> {ref}")
-            print(f"stale    {bundle}")
-            print(f"         {ref}")
-            print(f"         ontology now {live[ref][:23]}…; not among the {len(pinned)} pinned")
+            print(f"mismatch  {bundle}")
+            print(f"          {ref}")
+            print(f"          ontology now {live[ref][:23]}…; not among the {len(pinned)} pinned")
 
     if not stale and not unbound:
         print(f"all {checked} Provider capability pin(s) match the ontology")
@@ -85,9 +94,13 @@ def main() -> int:
     print()
     if stale:
         print(
-            f"{len(stale)} stale of {checked}: bound to a contract that has since "
-            "changed, so the promotion no longer describes what was verified. "
-            "Re-promote against the current contract."
+            f"{len(stale)} mismatched of {checked}: the pinned digest is not the "
+            "ontology's. Either the contract moved after a real binding, in which "
+            "case re-promote against the current one; or the lock pins a digest "
+            "built by a different rule and was never bound to the ontology, in "
+            "which case re-promoting changes nothing and the promotion script is "
+            "what needs fixing. Compare the pinned value against the ontology's "
+            "own construction before assuming which."
         )
     if unbound:
         print(

@@ -599,8 +599,28 @@ now emits `cuda-<major>.<minor>` from the observed compiler release and
 observations, not derivations. A node with 12.0 does not claim 12.9, and a
 Blackwell device does not claim `nvidia-sm70`: whether an sm70 build runs on a
 newer architecture depends on how it was built, and guessing at that is not a
-probe's job. `exclusive-node` is still unemitted; it is an allocation property,
-observable only from inside the allocation.
+probe's job.
+
+`exclusive-node` is gone from that contract rather than emitted, because it is
+not an environment feature at all. It is a claim about the allocation the
+Provider creates when it is invoked, and at bind time no allocation exists — the
+job is submitted minutes later, so nothing a prober could test is the same
+proposition. `JobRequestV1` already refuses to build that job unless it *asks*
+for an exclusive single node with a pinned nodelist and no GRES; the missing
+half was proof the scheduler *granted* it. That now happens where it can be
+answered: `exclusive-allocation-witness-v1`, checked from inside the allocation
+by the submitted job, which refuses with exit 88 before the device probe runs
+and retains its witness as job provenance either way.
+
+The witness compares `SLURM_JOB_CPUS_PER_NODE` against the node's `CPUTot`, and
+that choice is measured rather than assumed. `SLURM_CPUS_ON_NODE` is the
+*step's* cpu count — observed as 4 while the job held 20 on a genuinely
+exclusive node — so a witness built on it would fail exactly the allocation it
+exists to confirm. `OverSubscribe` is recorded and read by nothing: on one
+sharing partition an `--exclusive` job and a shared job both reported `YES`, so
+the field discriminates nothing on its own. Both controls were run on a real
+cluster: `--exclusive` on a sharing partition gives 8 of 8 allocated of 8 and
+`held`; the same partition without it gives 2 of 4 allocated of 8 and `refused`.
 
 The defect: `memory.total` reads `[N/A]` on Grace-Blackwell because the memory
 is unified, and the device parser discarded any row whose memory would not
