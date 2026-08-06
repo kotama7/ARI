@@ -14,6 +14,8 @@
     "job_logs",
     "job_cancel",
     "probe_platform_capabilities",
+    "counter_support",
+    "measure_counters",
     "slurm_submit"
   ],
   "version": "0.3.1"

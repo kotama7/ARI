@@ -107,6 +107,23 @@ tools:
     side_effects: stateful
     timeout_class: bounded
     permissions: [workspace-read, workspace-write, process, scheduler]
+  - name: counter_support
+    capability_ref: ari.hpc.counter.support
+    description: Report whether this node grants hardware counters, by opening one.
+    # Profiling, not execution: no process is created, nothing is written, and
+    # the scheduler is not touched, so this asks for process-profile alone.
+    side_effects: read-only
+    timeout_class: bounded
+    determinism: conditional
+    permissions: [workspace-read, process-profile]
+  - name: measure_counters
+    capability_ref: ari.hpc.counter.measure
+    description: Count reviewed hardware events on an existing process over a bounded window.
+    side_effects: read-only
+    timeout_class: bounded
+    determinism: conditional
+    context_requirement: node
+    permissions: [workspace-read, process-profile]
   - name: slurm_submit
     capability_ref: ari.hpc.legacy.slurm-submit
     description: Compatibility bridge for the core agent batch-script workflow.

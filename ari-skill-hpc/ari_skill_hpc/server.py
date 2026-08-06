@@ -10,7 +10,7 @@ from typing import Any
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
-from ari_skill_hpc import slurm
+from ari_skill_hpc import counters, slurm
 from ari_skill_hpc.contracts import JobSubmitArgumentsV1
 from ari_skill_hpc.scheduler import (
     RemoteConfig,
@@ -222,6 +222,48 @@ async def list_tools() -> list[Tool]:
                 "additionalProperties": False,
             },
         ),
+        Tool(
+            name="counter_support",
+            description=(
+                "Report whether this node grants hardware counters, established by "
+                "opening one rather than by looking for a profiler binary."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        ),
+        Tool(
+            name="measure_counters",
+            description=(
+                "Count reviewed hardware events on an existing process over a bounded "
+                "window. Creates no process and writes nothing."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "pid": {"type": "integer", "minimum": 1},
+                    "window_ms": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": counters.MAX_WINDOW_MS,
+                        "default": 1000,
+                    },
+                    "events": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": sorted(counters.REVIEWED_EVENTS),
+                        },
+                        "minItems": 1,
+                        "default": list(counters.DEFAULT_EVENTS),
+                    },
+                },
+                "required": ["pid"],
+                "additionalProperties": False,
+            },
+        ),
     ]
 
 
@@ -249,7 +291,15 @@ def _public_error_message(exc: Exception) -> str:
 async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     client: SlurmClient | None = None
     try:
-        if name == "probe_platform_capabilities":
+        if name == "counter_support":
+            result = counters.counter_support()
+        elif name == "measure_counters":
+            result = counters.measure_counters(
+                pid=int(arguments["pid"]),
+                window_ms=int(arguments.get("window_ms", 1000)),
+                events=tuple(arguments.get("events") or counters.DEFAULT_EVENTS),
+            )
+        elif name == "probe_platform_capabilities":
             result = await slurm.probe_platform_capabilities(
                 checkpoint_dir=arguments["checkpoint_dir"],
                 partition=arguments.get("partition", ""),
