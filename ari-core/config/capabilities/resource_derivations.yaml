@@ -1,0 +1,40 @@
+schema_version: 1
+source_revision: ari-resource-derivations/1
+# The environment prober observes substrate facts: this binary executed and
+# said what it is, this counter opened, this scheduler answered. Naming an
+# ontology resource class from those facts is a different act -- it is a review
+# decision about what a fact is sufficient evidence for -- and it belongs here,
+# with its reason, rather than inside the prober.
+#
+# Rows are applied to a fixpoint, so a row may consume a feature an earlier row
+# emitted. A row fires only when every requirement it names is already present;
+# nothing here can invent a fact the prober did not observe.
+derivations:
+  - emits: sif-container-runtime
+    kind: feature
+    requires_features: [apptainer]
+    rationale: >-
+      Apptainer executes SIF images. The capability a reviewed container profile
+      needs is "a runtime that can execute this SIF", not a particular project's
+      name, so the ontology names the neutral capability and this row supplies
+      it from the observed binary.
+  - emits: sif-container-runtime
+    kind: feature
+    requires_features: [singularity]
+    rationale: >-
+      SingularityCE and Apptainer are forks of one codebase and both execute the
+      SIF format the reviewed profiles are pinned to; which name a site installs
+      is a packaging decision. This equivalence is recorded once, here, rather
+      than aliased silently in the prober -- a run that binds through it can be
+      audited back to this row. It does not extend to OCI-only runtimes: podman
+      and docker do not execute SIF and deliberately have no row.
+  - emits: eda-cpu
+    kind: resource_type
+    requires_resource_types: [cpu]
+    requires_features: [sif-container-runtime]
+    rationale: >-
+      The reviewed EDA profile is a container-delivered toolchain pinned by OCI
+      manifest and inner-binary digest, run on CPU. A node with CPU but no SIF
+      runtime cannot supply it, and a node with a runtime but no CPU does not
+      exist; requiring both keeps the resource class from being claimed by a
+      substrate that would fail at the first invocation.

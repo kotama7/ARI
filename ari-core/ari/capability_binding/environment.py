@@ -13,6 +13,7 @@ import shutil
 import struct
 import subprocess
 
+from ari.capability_binding.ontology import apply_resource_derivations
 from ari.protocols.integrity import bytes_digest, canonical_digest, is_full_sha256
 from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
 
@@ -278,6 +279,48 @@ def _hardware_counter_probe() -> dict:
     return record
 
 
+# Forks of one runtime, in the order they are asked.  Both execute SIF images;
+# which name a site installs is a packaging accident, so the observed fact is
+# recorded under the name that answered and the equivalence is left to the
+# reviewed derivation table rather than aliased here.
+_SIF_RUNTIMES = ("apptainer", "singularity")
+
+
+def _container_runtime_probe() -> dict:
+    """Decide the container-runtime capability by executing it, not by name.
+
+    ``shutil.which`` finding a binary is not the fact that matters -- a
+    runtime can be installed and refuse to run without user namespaces or
+    setuid, and the two forks of Singularity are installed under different
+    names at different sites.  Running ``--version`` observes that the binary
+    on this node actually executes and says what it is.
+
+    The executable's path is deliberately not kept: it is site-dependent, and
+    nothing in binding needs it once the runtime has identified itself.
+    """
+
+    record: dict = {"status": "unavailable", "runtime": None, "version": None}
+    for name in _SIF_RUNTIMES:
+        observed = _probe_command((name, "--version"))
+        if observed["status"] != "ready":
+            if observed["status"] != "unavailable":
+                # Present but not working is a different fact from absent, and
+                # it is the one an operator needs to see.
+                record["status"] = observed["status"]
+                record["runtime"] = name
+            continue
+        record.update(
+            {
+                "status": "ready",
+                "runtime": name,
+                "version": observed["stdout"].strip()[:200],
+                "stdout_digest": observed["stdout_digest"],
+            }
+        )
+        return record
+    return record
+
+
 def _requested_gpu_count(resources: dict) -> int:
     value = resources.get("gpus", 0)
     if isinstance(value, bool):
@@ -395,7 +438,19 @@ def _slurm_gpu_probe(slurm: dict, resources: dict) -> dict:
     }
 
 
-def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
+def _default_resource_derivations():
+    """Load the reviewed table from the package config unless one is given."""
+
+    from ari.capability_binding.ontology import load_resource_derivations
+    from ari.config.finder import package_config_root
+
+    path = package_config_root() / "capabilities" / "resource_derivations.yaml"
+    return load_resource_derivations(path) if path.is_file() else ()
+
+
+def build_environment_snapshot(
+    cfg, provider_lock, *, resource_derivations=None
+) -> EnvironmentSnapshotV1:
     resources = dict(getattr(cfg, "resources", None) or {})
     tool_policies = [dict(item.policy) for item in provider_lock.tools]
     permissions = {
@@ -406,6 +461,7 @@ def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
     slurm = _slurm_probe()
     gpu = _gpu_probe()
     counters = _hardware_counter_probe()
+    container = _container_runtime_probe()
     slurm_gpu = (
         _slurm_gpu_probe(slurm, resources)
         if not gpu["devices"]
@@ -447,6 +503,18 @@ def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
         features.add("cuda-toolkit")
     if counters["status"] == "ready":
         features.add("hardware-counters")
+    if container["status"] == "ready":
+        # The name that answered, not a normalized one: the equivalence between
+        # the two forks is a reviewed derivation, not an observation.
+        features.add(str(container["runtime"]))
+    derivations = (
+        _default_resource_derivations()
+        if resource_derivations is None
+        else tuple(resource_derivations)
+    )
+    features, resource_types, derived = apply_resource_derivations(
+        features=features, resource_types=resource_types, derivations=derivations
+    )
     transports = {
         "mcp-stdio" if str(item.entrypoint).endswith(".py") else "mcp-external"
         for item in provider_lock.skills
@@ -471,6 +539,11 @@ def build_environment_snapshot(cfg, provider_lock) -> EnvironmentSnapshotV1:
             "gpu": gpu,
             "slurm_gpu": slurm_gpu,
             "hardware_counters": counters,
+            "container_runtime": container,
+            # Which reviewed rows fired is part of the frozen identity: a
+            # resource class that was derived rather than observed must be
+            # visible as such when the run is audited.
+            "derived_from_review": derived,
         },
     }
     return EnvironmentSnapshotV1.create(**body)

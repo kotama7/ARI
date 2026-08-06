@@ -72,8 +72,11 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_hpc_stencil.py` — authoritative native stencil correctness verifier.
   - `native_perf.py` — TODO
   - `native_perf_common.py` — TODO
+  - `native_perf_family.py` — TODO
   - `native_perf_gemm.py` — TODO
+  - `native_perf_measure.py` — TODO
   - `native_perf_profile.py` — TODO
+  - `problems.py` — TODO
   - `registration.py` — execute harness registration gates and catalog promotion.
   - `registration_models.py` — promotion approval, evidence, and registration report models.
   - `request.py` — validate and canonicalize screen and certify run requests.
@@ -95,11 +98,6 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `shared_library.py` — ABI-bound shared-library candidate driver.
     - `upstream.py` — pinned upstream project runner and parity driver.
   - `kernels/` — TODO
-    - `gemm/` — TODO
-      - `gemm_kernel.h` — TODO
-      - `gemm_main.c` — TODO
-      - `gemm_main_profiled.c` — TODO
-      - `reference_gemm.c` — TODO
     - `tools/` — TODO
       - `region_counters.c` — TODO
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
@@ -109,7 +107,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `environment.py` — canonical execution-environment identity and compatibility rules.
   - `lock.py` — create and validate immutable capability binding locks.
   - `models.py` — capability contracts, provider records, bindings, and substitution models.
-  - `ontology.py` — load and query the canonical capability ontology and legacy aliases.
+  - `ontology.py` — load and query the canonical capability ontology and legacy aliases, plus the reviewed table that derives ontology resource classes from observed substrate facts.
   - `resolver.py` — deterministically resolve requirements to compatible providers.
   - `substitution.py` — validate declared capability substitutions without semantic weakening.
   - `validation.py` — cross-contract integrity and catalog validation helpers.

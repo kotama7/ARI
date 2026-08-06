@@ -234,7 +234,7 @@ the session, and interruption cannot resume an ephemeral local run.
 
 The formally promoted local OpenROAD identity is the checked-in
 `openroad/0.6.1+orfs-26q3-gcd-nangate45` bundle. Its verified lock digest is
-`sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28`.
+`sha256:bc27d96193024e19907d647cd67ae02402d9fc5c286482c3325f035601ade714`.
 It covers one x86_64, one-thread, local-MCP CPU run over the exact GCD placed
 database and Nangate45 PDK/library, with live schema parity, DRC-zero metrics,
 golden/replay evidence, an official ORFS reference run, fifteen registration
@@ -247,7 +247,7 @@ manifest, SIF, and inner OpenROAD full digests and runtime path.
 The independent
 `openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identity is also formally
 promoted. Lock
-`sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd`
+`sha256:77e6b17c83e3b1786b6d9fc9ac76f5a337ad535336f06a8942ea71405ee86f8e`
 binds the anonymous exclusive-node CPU site digest, scheduler clients,
 PRoot/SIF/unsquashfs/worker Python, runtime-owned metrics lifecycle,
 nonce-bound fixed-wrapper completion, live DRC-zero result, fixtures, gates,
@@ -312,7 +312,7 @@ gates.
 
 The only formally promoted Qiskit identity is the checked-in
 `qiskit/core-0.3.1+aer-0.17.2-local-ideal` bundle. Its verified lock digest is
-`sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`.
+`sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`.
 It covers the credential-free seeded Bell-state local-Aer profile and
 `ari.quantum.sample.local-ideal/v1` only. The lock binds the QPY bytes/version,
 target, software stack, seeds, counts bounds, live MCP schema, golden/replay
@@ -327,6 +327,31 @@ Provider promotion changes governed eligibility, not activation. Both promoted
 identities remain absent from the checked-in empty `CATALOG.lock`; an operator
 must materialize the exact environment, sync/review the source, and freeze a new
 Provider/Capability Binding Lock for a run.
+
+### Reaching an ARI Capability
+
+A leaf in this catalog is not an ARI Provider and never appears in
+`SKILLS.lock`, so the Capability Binder cannot authorize it directly. The
+`ari.provider.tool-registry` entry in `ari-core/config/providers/catalog.yaml`
+bridges the two: its `brokered` block names this catalog lock, the dispatch tool
+(`invoke`), and a reviewed table from leaf `tool_ref` to ARI `capability_ref`.
+Each reviewed leaf becomes a composite `CapabilityProvisionV1` whose callable
+identity is `invoke` and whose semantic identity is the leaf. A descriptor's own
+`capability_ref` belongs to this registry's namespace and is never read as that
+mapping; only the checked-in table decides.
+
+ARI resolves the lock with `ARI_TOOL_REGISTRY_LOCK`, the same variable the
+broker uses, and falls back to the packaged path when it is unset. Both must
+resolve to one lock or ARI would describe leaves the broker is not dispatching.
+A materialized lock records absolute local paths and stays out of the
+repository, which is why the reviewed table is checked in and the lock is not.
+
+Authority is the envelope of both hops: the composite's side-effect class is the
+worse of the leaf's and `invoke`'s, and a contract's required permissions must be
+granted by both. `invoke` declares `stateful`, so no `read-only` capability can
+be supplied through it today — that is why `ari.literature.search/v1` stays
+unsupplied despite a reviewed PubMed leaf, and it needs a review decision rather
+than a weaker check.
 
 ## Record, replay, and EAR
 

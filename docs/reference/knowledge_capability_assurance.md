@@ -279,6 +279,14 @@ source digests, and the federated lock's own `catalog_digest` joins the
 Provider's `nested_source_lock_digests`, so swapping a leaf behind the broker
 changes the Provider catalog snapshot that the binding request pins.
 
+A site selects its federated lock with `ARI_TOOL_REGISTRY_LOCK`, and ARI reads
+the same variable. This is not a convenience: if ARI projected the packaged
+lock while the broker dispatched a site lock, every composite provision would
+describe a leaf that is not the one being called. The packaged `CATALOG.lock`
+is empty on purpose — a materialized one records absolute local paths and
+cannot be committed — so the reviewed leaf-to-capability table lives in the
+repository while the lock it refers to stays at the site.
+
 Four properties are enforced rather than assumed:
 
 - The federated lock is re-authenticated. ARI recomputes `catalog_digest` under
@@ -305,6 +313,25 @@ NVIDIA devices, and the CUDA compiler. If `resources.gpus` is positive, SLURM
 is ready, and no local device is visible, it additionally runs one bounded
 compute-node `nvidia-smi` query through `srun`. Declared config remains metadata
 and cannot fabricate a resource.
+
+It also decides the container runtime by executing it. `shutil.which` finding a
+binary is not the fact that matters — a runtime can be installed and refuse to
+run — and the two forks of Singularity are installed under different names at
+different sites, so `--version` is run and the name that answered is what gets
+recorded. The executable's path is deliberately not kept: it is site-dependent
+and binding needs none of it.
+
+Turning an observed fact into an ontology resource class is a separate act, and
+`config/capabilities/resource_derivations.yaml` is where it happens. Each row
+names what it emits, what must already be present, and the reason; a row without
+a rationale is refused at load, because a derivation without a reason is an
+alias and an alias is what the table exists to prevent. Rows are applied to a
+fixpoint so one may consume what another emitted, nothing can invent a fact the
+prober did not observe, and the rows that fired are recorded in
+`metadata.derived_from_review` — so a binding that depended on a derived
+resource class can be audited back to the sentence that allowed it. The shipped
+table records that Apptainer and SingularityCE both execute SIF and that neither
+podman nor docker does, then derives `eda-cpu` from CPU plus a SIF runtime.
 
 SLURM GPU visibility and scheduler authority are intentionally different. A
 device observed on a compute node without advertised GPU GRES is retained under
@@ -446,11 +473,24 @@ pins remain explicit provenance. Infrastructure error never fails open. RQGM
 does not invent a verifier's scientific conclusion; it governs actors that
 ignore, suppress, or misrepresent the fixed result.
 
-The composite-provision path is implemented and covered but not yet exercised
-by a real instrument: the shipped broker catalog lock contains zero sources and
-zero tools, and no Provider catalog entry declares a `brokered` block. It is
-verified against synthetic locks and against the broker's real manifest, not
-against a live federated leaf.
+The composite-provision path has been bound end to end against a real
+materialized OpenROAD leaf — a `scientifically_admitted` descriptor, the
+broker's real manifest, the shipped ontology, and a node where the runtime
+probe actually found SingularityCE — but it has not yet been *called* through
+that binding. Binding proves the authority; it does not prove the invocation.
+
+Two of the three declared brokered capabilities remain unsupplied, and for
+reasons worth stating rather than hiding. `ari.literature.search/v1` is
+`read-only`, while both the reviewed PubMed leaf and the broker's own `invoke`
+declare `stateful`; under the envelope rule no read-only capability can be
+supplied through a dispatch tool that writes, so this needs a review decision
+(a read-only dispatch surface, or a contract that admits the write) and not a
+weaker check. `ari.quantum.sample.local-ideal/v1` has no materialized catalog
+to register. Separately, several contracts still list resource classes and
+environment requirements that no derivation supplies — `quantum-simulator`,
+`network`, and the CUDA contract's `slurm` feature, which the prober emits as
+`slurm-controller`. Those are latent in the same way `apptainer` was, and each
+needs its own reviewed row before it can bind.
 
 ## Extension gate
 

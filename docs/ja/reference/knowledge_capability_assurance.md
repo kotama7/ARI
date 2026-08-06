@@ -243,6 +243,13 @@ tool、leaf `tool_ref`からARI `capability_ref`へのreviewed tableである。
 `catalog_digest`はProviderの`nested_source_lock_digests`に加わる。broker背後でleafを
 差し替えると、binding requestがpinするProvider catalog snapshotが動く。
 
+siteは`ARI_TOOL_REGISTRY_LOCK`でfederated lockを選び、ARIも同じ変数を読む。これは
+利便性ではない。ARIがpackaged lockをprojectしている間にbrokerがsite lockへdispatchすると、
+すべてのcomposite provisionが「呼ばれていないleaf」を記述することになる。packagedの
+`CATALOG.lock`が空なのは意図的で、materialize済みのものは絶対local pathを記録するため
+commitできない。reviewed leaf→capability tableだけがrepositoryに残り、それが指すlockは
+site側に留まる。
+
 前提ではなく検査される性質が4つある。
 
 - federated lockは再認証される。ARIはbroker自身のcanonicalizationで`catalog_digest`を
@@ -265,6 +272,21 @@ tool、leaf `tool_ref`からARI `capability_ref`へのreviewed tableである。
 partition、local NVIDIA device、CUDA compilerをbounded・shell-free probeで調べる。
 `resources.gpus > 0`、SLURM ready、local deviceなしの場合だけ、`srun`で一回のbounded
 compute-node `nvidia-smi` queryを行う。config宣言からresourceを捏造できない。
+
+container runtimeも実行して判定する。`shutil.which`がbinaryを見つけることは重要な事実では
+ない——installされていてもuser namespace不足で起動を拒む runtime はある——し、Singularityの
+2つのforkはsiteごとに別名でinstallされる。よって`--version`を実行し、応答した名前をそのまま
+記録する。executableのpathは意図的に保持しない。site依存であり、bindingはそれを必要としない。
+
+観測された事実をontologyのresource classへ変換するのは別の行為であり、
+`config/capabilities/resource_derivations.yaml`がその場所である。各rowは何をemitするか、
+何が既に存在していなければならないか、そして理由を述べる。rationaleの無いrowはload時に拒否
+される——理由の無いderivationはaliasであり、aliasこそこのtableが防ぐために存在するものだから
+である。rowはfixpointまで適用されるので、あるrowが別のrowのemitを消費できる。proberが観測
+しなかった事実をここで発明することはできず、発火したrowは`metadata.derived_from_review`に
+記録される——derivedなresource classに依存したbindingは、それを許した一文まで監査できる。
+同梱tableはApptainerとSingularityCEが共にSIFを実行すること、podman/dockerは実行しないことを
+記録し、そこからCPU + SIF runtimeで`eda-cpu`を導く。
 
 SLURM GPU visibilityとscheduler authorityは別である。GPU GRESがadvertiseされないnodeで
 deviceを観測した場合、`metadata.slurm_gpu`と`gpu-observed-on-slurm-node`は残すが`gpu`
@@ -378,10 +400,21 @@ Harness passは宣言property/scope内に限り、formal-verifier Harnessだけ�
 fail-openしない。RQGMはVerifierの科学的結論を発明せず、固定結果を無視、抑圧、歪曲した
 actorを統治する。
 
-composite provision経路は実装済みかつtest済みだが、実instrumentでは未行使である。同梱の
-broker catalog lockはsource 0件・tool 0件で、`brokered` blockを宣言するProvider catalog
-entryも無い。検証は合成lockとbrokerの実manifestに対してであり、live federated leafに
-対してではない。
+composite provision経路は、実materialize済みのOpenROAD leaf——`scientifically_admitted`な
+descriptor、brokerの実manifest、同梱ontology、runtime proberが実際にSingularityCEを発見した
+node——に対してend-to-endでbindまで到達した。ただしそのbindingを通した**呼び出し**はまだ
+行っていない。bindingはauthorityを証明するが、invocationは証明しない。
+
+宣言済みbrokered capability 3つのうち2つは未供給であり、その理由は隠さず述べる。
+`ari.literature.search/v1`は`read-only`だが、reviewed PubMed leafもbroker自身の`invoke`も
+`stateful`を宣言している。envelope則の下では、writeするdispatch toolを通してread-only
+capabilityを供給することはできない。ここに必要なのはcheckの緩和ではなくreview判断
+(read-onlyなdispatch面を用意するか、契約がwriteを認めるか)である。
+`ari.quantum.sample.local-ideal/v1`はregisterできるmaterialized catalogがまだ無い。
+別件として、どのderivationも供給しないresource class / environment requirementを持つ契約が
+残っている——`quantum-simulator`、`network`、そしてCUDA契約の`slurm` feature(proberが出すのは
+`slurm-controller`)。これらは`apptainer`と同種の潜在的な穴で、bindするにはそれぞれ固有の
+reviewed rowが要る。
 
 ## extension gate
 

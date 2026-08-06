@@ -34,7 +34,7 @@ targets the like-named module under `ari/`.
 - `test_brokered_provisions.py` — the broker-to-binder bridge: a federated catalog lock is re-authenticated rather than trusted, its reviewed leaves become composite provisions whose callable identity is the broker's dispatch tool and whose authority is the envelope of both hops, and the loader refuses stale review, quarantine, under-admission, and a dispatch tool the run lock does not contain.
 - `test_call_context.py` — signed call capabilities, phase/tool authorization, lineage ordering, and tamper rejection.
 - `test_capability_binding.py` — capability ontology, provider binding, substitutions, authority, and immutable lock coverage.
-- `test_capability_environment.py` — environment identity, compatibility, drift detection, and capability execution-boundary coverage.
+- `test_capability_environment.py` — environment identity, compatibility, drift detection, and capability execution-boundary coverage; also the container runtime decided by executing it rather than by finding a binary, and the reviewed derivation table that turns an observed fact into an ontology resource class without being able to invent one.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_checkpoint_migration_reader.py` — immutable checkpoint-version detection and explicit legacy reader/migration behavior.
 - `test_checkpoint_store.py` — `JsonCheckpointStore` + module back-compat shims: byte-identical JSON writes, 3-tier `load_nodes_tree` precedence (incl. legacy `node_*` glob), the 1.0 s incremental throttle with per-instance isolation and loud forced-flush failures, and the `_INCR_LAST_SAVE_MONO` monkeypatch surface `test_gui_errors.py` relies on.
@@ -125,6 +125,7 @@ targets the like-named module under `ari/`.
 - `test_handoff_driver.py` — TODO
 - `test_handoff_stats.py` — TODO
 - `test_harness_pool.py` — TODO
+- `test_harness_problems.py` — TODO
 - `test_harness_registry.py` — TODO
 - `test_harness_select.py` — TODO
 - `test_i18n_consistency.py` — i18n consistency.

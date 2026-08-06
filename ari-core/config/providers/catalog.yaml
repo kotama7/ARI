@@ -3,7 +3,7 @@ schema_version: 1
 # bytes_digest(blob)}) over every git-tracked file of the package at
 # source.full_commit_sha. The previous values predate this definition and
 # were not reproducible from the repository; these are.
-catalog_source_revision: ari-provider-catalog/2
+catalog_source_revision: ari-provider-catalog/3
 source_of_truth: existing-skill-manifests-and-SKILLS.lock
 entries:
   - provider_id: ari.provider.coding
@@ -14,8 +14,8 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: cf2c8b6351871e69308c46c4fee9dc1495141cb1
-      package_sha256: sha256:8668b0c13539165c6d435dc4bde83d877961d2f5ee6669d18863dd092acf0deb
+      full_commit_sha: 175458fec35d28059d8179b1b00eed51c06a378b
+      package_sha256: sha256:12590e4979edd5ab70657719d38cc39892f6370d1a2c85fc1665d8aef6d39cba
       license: MIT
     manifest_sha256: sha256:2f2cba035b0aa931ebd584b0de49e029340ac001919c0fea64e990adc0395fab
     declared_capability_refs_by_tool:
@@ -41,6 +41,35 @@ entries:
       job_submit: [ari.execution.slurm-submit/v1]
       measure_counters: [ari.profiling.hardware-counters/v1]
       slurm_submit: [ari.execution.slurm-submit/v1]
+  - provider_id: ari.provider.tool-registry
+    runtime_name: tool-registry-skill
+    package: ari-skill-tool-registry
+    package_version: 0.3.0
+    # Same basis as the three entries around it: an in-repo package owned by ARI
+    # maintainers, pinned by manifest, commit, and package digest. It says
+    # nothing about the third-party leaves behind it -- those are admitted by
+    # the federated lock's own evidence, which this loader re-authenticates.
+    status: verified
+    maintainer: ARI maintainers
+    source:
+      repository: https://github.com/kotama7/ARI.git
+      full_commit_sha: 8dd85a31e68032a21c07bab2bf71aa0193ee4be9
+      package_sha256: sha256:70a3d0066f7ccc8b63c82187adbb34cfcc725dba59d2ec5c81b39829dc344cf6
+      license: MIT
+    manifest_sha256: sha256:7da627b5afd62cd09c405435cce7ce7c19ae1b4b0a84fd89f616113b5c1d8bf6
+    # discover/describe/invoke are the broker's own surface, not ontology
+    # capabilities; nothing here is classified.
+    declared_capability_refs_by_tool: {}
+    brokered:
+      # The packaged lock is empty. A site points ARI and the broker at the same
+      # materialized catalog with ARI_TOOL_REGISTRY_LOCK; that lock records
+      # absolute local paths and must never be committed.
+      catalog_lock: ../../../ari-skill-tool-registry/CATALOG.lock
+      dispatch_tool: invoke
+      declared_capability_refs_by_brokered_tool:
+        ? >-
+          ari-tool://openroad-mcp/openroad-profile%3Agcd-nangate45-26q3%3Asha256%3A4a6478f89886d91f36a45622fba01d3bc5b66ce5a1ce7f180acffed8f4633577@sha256:a1fe96a25819b0d8893aa138f27d9314ba2cdf6e8748bc9cdd30e36444091f5d
+        : [ari.eda.openroad.place-route/v1]
   - provider_id: ari.provider.web
     runtime_name: web-skill
     package: ari-skill-web
@@ -63,4 +92,10 @@ notes:
     `catalog_lock` (path relative to this file), `dispatch_tool` (a tool name in the run lock), and
     `declared_capability_refs_by_brokered_tool` (leaf tool_ref -> ARI capability refs). The loader
     re-authenticates the federated lock and emits composite provisions; see
-    docs/reference/knowledge_capability_assurance.md. No entry declares one today.
+    docs/reference/knowledge_capability_assurance.md.
+  - >-
+    The tool-registry entry is inert until two things are true. tool-registry-skill must be in the
+    run's skills config so it reaches SKILLS.lock, and ARI_TOOL_REGISTRY_LOCK must point at a
+    materialized catalog. The packaged CATALOG.lock is empty on purpose -- a real one records
+    absolute local paths. Both ARI and the broker read that variable, so they cannot disagree
+    about which lock is in force.

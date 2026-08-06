@@ -1,5 +1,5 @@
 schema_version: 1
-source_revision: ari-capability-ontology/2
+source_revision: ari-capability-ontology/3
 property_vocabulary_version: ari.assurance-properties/v1
 contracts:
   - capability_ref: ari.eda.openroad.place-route/v1
@@ -13,7 +13,12 @@ contracts:
     required_permissions: [workspace-read, workspace-write, process-execute]
     credential_scope_class: none
     resource_type: eda-cpu
-    environment_requirements: [cpu, apptainer]
+    # `apptainer` named one fork of the SIF runtime, so a site running
+    # SingularityCE could never satisfy it however correctly the profile was
+    # pinned; and `cpu` is a resource class, checked through resource_type,
+    # not a feature the prober emits. What the profile actually needs is a
+    # runtime that executes its SIF -- see config/capabilities/resource_derivations.yaml.
+    environment_requirements: [sif-container-runtime]
     compatibility_rules: [json-schema-structural-conformance, openroad-profile-result-v1]
   - capability_ref: ari.code.inspect/v1
     contract_version: v1

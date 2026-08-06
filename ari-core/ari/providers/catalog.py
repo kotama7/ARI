@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -138,6 +139,24 @@ def _entry_report(
     )
 
 
+def _brokered_lock_path(catalog_source: Path, brokered_config: dict) -> Path:
+    """Resolve the federated lock ARI reads, honouring the broker's override.
+
+    The broker selects its lock with ``ARI_TOOL_REGISTRY_LOCK`` and falls back
+    to the one packaged beside it.  ARI must follow the same selection or the
+    two disagree: ARI would project the packaged lock while the broker
+    dispatches a site lock, and every composite provision would describe a leaf
+    that is not the one being called.  A materialized site lock also carries
+    absolute local paths, so it cannot live in the repository and the override
+    is the only way to reach it.
+    """
+
+    override = os.environ.get("ARI_TOOL_REGISTRY_LOCK", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return (catalog_source.parent / str(brokered_config["catalog_lock"])).resolve()
+
+
 def load_provider_catalog(
     path: str | Path,
     *,
@@ -202,7 +221,7 @@ def load_provider_catalog(
         brokered_config = document.get("brokered")
         if brokered_config is not None:
             brokered_document = load_brokered_catalog(
-                (source.parent / str(brokered_config["catalog_lock"])).resolve()
+                _brokered_lock_path(source, brokered_config)
             )
 
         verified = str(document.get("status", "candidate")) == "verified"

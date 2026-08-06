@@ -12,6 +12,7 @@ from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
 
 
 _REAL_COUNTER_PROBE = environment_module._hardware_counter_probe
+_REAL_CONTAINER_PROBE = environment_module._container_runtime_probe
 
 
 def _provider_lock():
@@ -42,6 +43,18 @@ def _counter_policy_is_not_inherited_from_the_test_host(monkeypatch):
             "architecture": "x86_64",
             "errno": errno.EACCES,
         },
+    )
+
+
+@pytest.fixture(autouse=True)
+def _container_runtime_is_not_inherited_from_the_test_host(monkeypatch):
+    """Same reason as the counter fixture: a host that has Singularity would
+    otherwise derive ``eda-cpu`` into every exact-resource assertion below."""
+
+    monkeypatch.setattr(
+        environment_module,
+        "_container_runtime_probe",
+        lambda: {"status": "unavailable", "runtime": None, "version": None},
     )
 
 
@@ -304,3 +317,130 @@ def test_persisted_environment_snapshot_rejects_fact_substitution(monkeypatch):
     document["resource_types"].append("gpu")
     with pytest.raises(ValueError, match="identity_digest"):
         EnvironmentSnapshotV1.model_validate(document)
+
+
+# ------------------------------------------- container runtime and derivations
+
+
+def _observe_runtime(monkeypatch, answers):
+    """Restore the real probe and let ``answers`` decide what each binary says."""
+
+    monkeypatch.setattr(
+        environment_module, "_container_runtime_probe", _REAL_CONTAINER_PROBE
+    )
+
+    def probe(argv, *, timeout=5.0):
+        del timeout
+        return answers.get(argv[0], {"status": "unavailable"})
+
+    monkeypatch.setattr(environment_module, "_probe_command", probe)
+
+
+def _ready(stdout):
+    return {
+        "status": "ready",
+        "stdout": stdout,
+        "stdout_digest": canonical_digest(stdout),
+        "stderr": "",
+    }
+
+
+def _derivations():
+    from ari.capability_binding.ontology import load_resource_derivations
+    from ari.config.finder import package_config_root
+
+    return load_resource_derivations(
+        package_config_root() / "capabilities" / "resource_derivations.yaml"
+    )
+
+
+def test_container_runtime_records_the_fork_that_actually_answered(monkeypatch):
+    _observe_runtime(
+        monkeypatch, {"singularity": _ready("singularity-ce version 4.5.0\n")}
+    )
+    snapshot = build_environment_snapshot(SimpleNamespace(), _provider_lock())
+    assert "singularity" in snapshot.features
+    assert "apptainer" not in snapshot.features
+    assert snapshot.metadata["container_runtime"]["runtime"] == "singularity"
+    # The path the binary was found at is site-dependent and binding needs none
+    # of it, so it is not carried into the frozen identity.
+    assert "executable" not in snapshot.metadata["container_runtime"]
+
+
+def test_a_runtime_that_is_installed_but_broken_is_not_a_capability(monkeypatch):
+    _observe_runtime(
+        monkeypatch, {"apptainer": {"status": "failed", "exit_code": 1, "stdout": ""}}
+    )
+    snapshot = build_environment_snapshot(SimpleNamespace(), _provider_lock())
+    assert "apptainer" not in snapshot.features
+    assert "sif-container-runtime" not in snapshot.features
+    assert "eda-cpu" not in snapshot.resource_types
+    # Present-but-failing is a different fact from absent, and the operator
+    # needs to see which one it was.
+    assert snapshot.metadata["container_runtime"]["status"] == "failed"
+    assert snapshot.metadata["container_runtime"]["runtime"] == "apptainer"
+
+
+def test_either_fork_derives_the_reviewed_sif_capability(monkeypatch):
+    for name in ("apptainer", "singularity"):
+        _observe_runtime(monkeypatch, {name: _ready(f"{name} version 1.4.0\n")})
+        snapshot = build_environment_snapshot(
+            SimpleNamespace(), _provider_lock(), resource_derivations=_derivations()
+        )
+        assert "sif-container-runtime" in snapshot.features, name
+        assert "eda-cpu" in snapshot.resource_types, name
+        assert snapshot.metadata["derived_from_review"] == (
+            "feature:sif-container-runtime",
+            "resource_type:eda-cpu",
+        )
+
+
+def test_an_oci_only_runtime_does_not_derive_the_sif_capability(monkeypatch):
+    _observe_runtime(monkeypatch, {"podman": _ready("podman version 5.8.2\n")})
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(), _provider_lock(), resource_derivations=_derivations()
+    )
+    assert "sif-container-runtime" not in snapshot.features
+    assert "eda-cpu" not in snapshot.resource_types
+
+
+def test_derivations_cannot_invent_a_fact_the_prober_did_not_observe(monkeypatch):
+    _observe_runtime(monkeypatch, {})
+    snapshot = build_environment_snapshot(
+        SimpleNamespace(), _provider_lock(), resource_derivations=_derivations()
+    )
+    assert "eda-cpu" not in snapshot.resource_types
+    assert snapshot.metadata["derived_from_review"] == ()
+
+
+def test_a_derivation_without_a_reason_is_refused(tmp_path):
+    from ari.capability_binding.ontology import (
+        ResourceDerivationError,
+        load_resource_derivations,
+    )
+
+    path = tmp_path / "derivations.yaml"
+    path.write_text(
+        "derivations:\n"
+        "  - emits: eda-cpu\n"
+        "    kind: resource_type\n"
+        "    requires_resource_types: [cpu]\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ResourceDerivationError, match="rationale"):
+        load_resource_derivations(path)
+
+
+def test_shipped_derivations_reach_a_fixpoint_through_a_chained_row():
+    from ari.capability_binding.ontology import apply_resource_derivations
+
+    # eda-cpu depends on a feature another row emits, so a single pass is not
+    # enough; this is what the fixpoint loop is for.
+    features, resources, fired = apply_resource_derivations(
+        features={"singularity"},
+        resource_types={"cpu", "process"},
+        derivations=_derivations(),
+    )
+    assert "sif-container-runtime" in features
+    assert "eda-cpu" in resources
+    assert fired == ("feature:sif-container-runtime", "resource_type:eda-cpu")

@@ -601,3 +601,32 @@ def test_loader_refuses_a_dispatch_tool_absent_from_the_run_lock(tmp_path):
 def test_loader_refuses_a_missing_brokered_lock(tmp_path):
     with pytest.raises(BrokeredCatalogError, match="regular file"):
         _load(tmp_path, refs={})
+
+
+def test_the_site_lock_override_wins_over_the_packaged_path(tmp_path, monkeypatch):
+    """ARI must read the lock the broker will serve, not the one beside it.
+
+    A site selects its materialized catalog with ARI_TOOL_REGISTRY_LOCK. If ARI
+    ignored that and projected the packaged lock, every composite would name a
+    leaf the broker is not dispatching -- the provisions would be about a
+    different catalog than the calls.
+    """
+
+    site = tmp_path / "site"
+    site.mkdir()
+    _write(site, _lock([_descriptor()]), name="materialized.lock")
+    # The path configured in the catalog does not exist at all, so a pass only
+    # happens if the override is what was read.
+    monkeypatch.setenv("ARI_TOOL_REGISTRY_LOCK", str(site / "materialized.lock"))
+    loaded = _load(
+        tmp_path, refs={LEAF: ["ari.eda.place-route/v1"]}, lock_name="absent.lock"
+    )
+    (provision,) = loaded.provisions
+    assert provision.subject_tool_ref == LEAF
+
+
+def test_without_the_override_the_configured_path_is_used(tmp_path, monkeypatch):
+    monkeypatch.delenv("ARI_TOOL_REGISTRY_LOCK", raising=False)
+    _write(tmp_path, _lock([_descriptor()]))
+    loaded = _load(tmp_path, refs={LEAF: ["ari.eda.place-route/v1"]})
+    assert loaded.provisions[0].subject_tool_ref == LEAF

@@ -11,6 +11,7 @@ Shipped default config files (YAML) loaded by ari-core.
 - `capabilities/` — canonical capability ontology, aliases, and role-authority policy.
   - `legacy_aliases.yaml` — migration aliases from legacy tool names to canonical capability references.
   - `ontology.yaml` — canonical scientific capability definitions and compatibility relationships.
+  - `resource_derivations.yaml` — reviewed steps from an observed substrate fact to an ontology resource class or runtime-neutral feature, each with the reason it is sufficient; the prober stays fact-only and a row without a rationale is refused at load.
   - `role_authority.yaml` — allowed capability classes and side effects for each execution role.
 - `harnesses/` — built-in scientific verification harnesses, contracts, approvals, evidence, policies, and registration reports.
   - `catalog.yaml` — admitted harness catalog and immutable support-record references.
@@ -105,6 +106,16 @@ Shipped default config files (YAML) loaded by ari-core.
       - `verification_environment.json` — canonical execution environment identity for verification and reproduction.
   - `policies/` — shared scientific verification and numerical tolerance policies.
     - `hpc-floating-point-v1.yaml` — floating-point comparison, NaN, overflow, and tolerance policy for HPC harnesses.
+  - `problems/` — TODO
+    - `gemm-dense-fp64/` — TODO
+      - `gemm_kernel.h` — TODO
+      - `gemm_main.c` — TODO
+      - `gemm_main_profiled.c` — TODO
+      - `problem.yaml` — TODO
+      - `reference_gemm.c` — TODO
+      - `seed_gemm.c` — TODO
+      - `slow_gemm.c` — TODO
+      - `wrong_gemm.c` — TODO
   - `reports/` — deterministic promotion gate reports for built-in harnesses.
     - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
     - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.

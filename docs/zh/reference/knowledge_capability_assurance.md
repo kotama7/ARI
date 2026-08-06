@@ -238,6 +238,12 @@ tool——run lock 中唯一存在的 ref——而`subject_tool_ref`是该 leaf�
 `catalog_digest`并入该 Provider 的`nested_source_lock_digests`；因此在 broker 背后替换
 leaf 会改变 binding request 所 pin 的 Provider catalog snapshot。
 
+site 用`ARI_TOOL_REGISTRY_LOCK`选择 federated lock，ARI 读取同一个变量。这不是便利设施：
+若 ARI 在 project packaged lock 而 broker 却向 site lock dispatch，则每一条 composite
+provision 描述的都是并未被调用的 leaf。packaged 的`CATALOG.lock`为空是刻意的——materialize
+后的 lock 记录绝对本地路径，无法提交——因此仓库里只保留 reviewed leaf→capability 表，它所指
+向的 lock 留在 site。
+
 有四项性质是被强制检查而非假定的：
 
 - federated lock 会被重新认证。ARI 以 broker 自身的 canonicalization 重算
@@ -260,6 +266,20 @@ leaf 会改变 binding request 所 pin 的 Provider catalog snapshot。
 shell-free probe 检查 SLURM partition、local NVIDIA device 和 CUDA compiler。当
 `resources.gpus > 0`、SLURM ready 且看不到 local device 时，才通过`srun`执行一次 bounded
 compute-node `nvidia-smi` query。config 声明不能虚构 resource。
+
+container runtime 同样以执行来判定。`shutil.which`找到二进制并不是关键事实——runtime 可能
+已安装却因缺少 user namespace 而拒绝启动——而且 Singularity 的两个 fork 在不同 site 以不同
+名字安装。因此实际运行`--version`，并按应答者的名字记录。executable 的路径刻意不保留：它依
+赖 site，而 binding 并不需要它。
+
+把观测到的事实变成 ontology 的 resource class 是另一件事，发生在
+`config/capabilities/resource_derivations.yaml`。每一行声明它 emit 什么、必须已存在什么，
+以及理由；没有 rationale 的行在 load 时被拒绝——没有理由的 derivation 就是 alias，而 alias
+正是这张表存在的目的所要防止的。行被应用到 fixpoint，因此一行可以消费另一行 emit 的结果；
+这里无法凭空造出 prober 未观测到的事实，而触发过的行记录在`metadata.derived_from_review`
+中——依赖 derived resource class 的 binding 可以一路审计到允许它的那句话。随包的表记录了
+Apptainer 与 SingularityCE 都执行 SIF、而 podman 与 docker 都不执行，并由 CPU 加 SIF
+runtime 推导出`eda-cpu`。
 
 SLURM GPU visibility 与 scheduler authority 不同。在没有 advertised GPU GRES 的 node 上
 观察到 device 时，记录保留在`metadata.slurm_gpu`并增加
@@ -368,10 +388,20 @@ property/scope；只有 formal-verifier Harness 能证明 formal specification�
 external pin 保留在 provenance。infrastructure error 绝不 fail-open。RQGM 不创造 Verifier 的
 科学结论，而是治理忽略、压制或歪曲固定结果的 actor。
 
-composite provision 路径已实现并有测试覆盖，但尚未被真实 instrument 行使：随包提供的
-broker catalog lock 有 0 个 source 与 0 个 tool，也没有任何 Provider catalog entry 声明
-`brokered` block。验证是针对合成 lock 与 broker 的真实 manifest，而非针对 live federated
-leaf。
+composite provision 路径已针对真实 materialize 的 OpenROAD leaf 端到端完成 binding——
+`scientifically_admitted`的 descriptor、broker 的真实 manifest、随包 ontology，以及一台
+runtime prober 确实发现了 SingularityCE 的 node。但尚未通过该 binding 发起**调用**。
+binding 证明的是 authority，不是 invocation。
+
+三个已声明的 brokered capability 中有两个仍未获得供给，理由值得写明而非隐藏。
+`ari.literature.search/v1`是`read-only`，而 reviewed 的 PubMed leaf 与 broker 自身的
+`invoke`都声明`stateful`；在 envelope 规则下，任何 read-only capability 都无法经由一个会
+写入的 dispatch tool 供给。这里需要的是 review 决定（提供 read-only 的 dispatch 面，或让
+契约承认该写入），而不是放松检查。`ari.quantum.sample.local-ideal/v1`还没有可注册的
+materialized catalog。另外，仍有若干契约列出的 resource class 与 environment requirement
+没有任何 derivation 供给——`quantum-simulator`、`network`，以及 CUDA 契约中的`slurm`
+feature（prober 输出的是`slurm-controller`）。它们与`apptainer`属于同一类潜在缺口，各自都
+需要一条自己的 reviewed 行才能 bind。
 
 ## extension gate
 

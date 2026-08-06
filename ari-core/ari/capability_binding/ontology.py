@@ -42,6 +42,92 @@ class CapabilityOntology:
         )
 
 
+@dataclass(frozen=True)
+class ResourceDerivationV1:
+    """One reviewed step from observed substrate facts to ontology vocabulary.
+
+    A derivation cannot invent a fact.  It fires only when every requirement it
+    names is already present, and what it emits carries the rationale that
+    justified it, so a binding that depended on a derived resource class can be
+    audited back to the sentence that allowed it.
+    """
+
+    emits: str
+    kind: str
+    requires_features: frozenset[str]
+    requires_resource_types: frozenset[str]
+    rationale: str
+
+
+class ResourceDerivationError(ValueError):
+    pass
+
+
+def load_resource_derivations(path: str | Path) -> tuple[ResourceDerivationV1, ...]:
+    source = Path(path)
+    raw = yaml.safe_load(source.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ResourceDerivationError("resource derivations must be a YAML mapping")
+    rows: list[ResourceDerivationV1] = []
+    for document in raw.get("derivations", ()) or ():
+        kind = str(document.get("kind") or "")
+        if kind not in {"feature", "resource_type"}:
+            raise ResourceDerivationError(f"unknown derivation kind: {kind!r}")
+        rationale = str(document.get("rationale") or "").strip()
+        if not rationale:
+            # A derivation without a reason is an alias, and an alias is the
+            # thing this table exists to prevent.
+            raise ResourceDerivationError(
+                f"derivation for {document.get('emits')!r} states no rationale"
+            )
+        rows.append(
+            ResourceDerivationV1(
+                emits=str(document["emits"]),
+                kind=kind,
+                requires_features=frozenset(
+                    str(item) for item in (document.get("requires_features") or ())
+                ),
+                requires_resource_types=frozenset(
+                    str(item) for item in (document.get("requires_resource_types") or ())
+                ),
+                rationale=rationale,
+            )
+        )
+    return tuple(rows)
+
+
+def apply_resource_derivations(
+    *,
+    features: set[str],
+    resource_types: set[str],
+    derivations: tuple[ResourceDerivationV1, ...],
+) -> tuple[frozenset[str], frozenset[str], tuple[str, ...]]:
+    """Close the observed facts under the reviewed table and say which fired.
+
+    Rows are applied to a fixpoint because one row may consume what another
+    emitted.  The loop is bounded by the number of rows: each pass must add at
+    least one name or it stops.
+    """
+
+    fired: list[str] = []
+    for _ in range(len(derivations) + 1):
+        added = False
+        for row in derivations:
+            target = features if row.kind == "feature" else resource_types
+            if row.emits in target:
+                continue
+            if not row.requires_features <= features:
+                continue
+            if not row.requires_resource_types <= resource_types:
+                continue
+            target.add(row.emits)
+            fired.append(f"{row.kind}:{row.emits}")
+            added = True
+        if not added:
+            break
+    return frozenset(features), frozenset(resource_types), tuple(sorted(set(fired)))
+
+
 def _contract(document: dict[str, Any]) -> CapabilityContractV1:
     payload = dict(document)
     payload.pop("contract_digest", None)
@@ -85,4 +171,12 @@ def load_capability_ontology(path: str | Path) -> CapabilityOntology:
     return CapabilityOntology(snapshot)
 
 
-__all__ = ["CapabilityOntology", "CapabilityOntologyError", "load_capability_ontology"]
+__all__ = [
+    "CapabilityOntology",
+    "CapabilityOntologyError",
+    "ResourceDerivationError",
+    "ResourceDerivationV1",
+    "apply_resource_derivations",
+    "load_capability_ontology",
+    "load_resource_derivations",
+]
