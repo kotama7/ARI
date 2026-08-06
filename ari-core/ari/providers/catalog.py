@@ -12,6 +12,11 @@ from ari.capability_binding.models import (
     CapabilityProvisionV1,
 )
 from ari.protocols.integrity import canonical_digest, normalize_sha256
+from ari.providers.brokered import (
+    BrokerDispatchV1,
+    build_brokered_provisions,
+    load_brokered_catalog,
+)
 from ari.providers.models import (
     CapabilityProviderIdentityV1,
     CapabilityProviderRegistrationReportV1,
@@ -79,6 +84,26 @@ def _side_effect(policy: dict) -> str:
     if "scheduler" in permissions or "scheduler-submit" in permissions:
         return "scheduler-submit"
     return "external-write" if declared == "destructive" else "workspace-write"
+
+
+_PERMISSION_ALIASES = {
+    "process": "process-execute",
+    "scheduler": "scheduler-submit",
+    "network": "network-read",
+}
+
+
+def _granted_permissions(policy: dict) -> frozenset[str]:
+    """Normalize the existing manifest vocabulary onto the contract's.
+
+    Same posture as ``_side_effect``: the mapping is a fixed table, not an
+    inspection of tool names.
+    """
+
+    return frozenset(
+        _PERMISSION_ALIASES.get(str(item), str(item))
+        for item in (policy.get("permissions") or ())
+    )
 
 
 def _reproducibility(determinism: str) -> str:
@@ -169,12 +194,28 @@ def load_provider_catalog(
             for ref in refs:
                 if ref not in contracts:
                     raise ValueError(f"Provider classification uses unknown capability: {ref}")
+        # A broker entry carries a second, nested lock: the catalog of leaves it
+        # federates.  Read it before the entry is sealed so its digest becomes
+        # part of this Provider's identity -- a leaf swapped behind the broker
+        # then changes the catalog snapshot the binding request pins.
+        brokered_document: dict | None = None
+        brokered_config = document.get("brokered")
+        if brokered_config is not None:
+            brokered_document = load_brokered_catalog(
+                (source.parent / str(brokered_config["catalog_lock"])).resolve()
+            )
+
         verified = str(document.get("status", "candidate")) == "verified"
         evidence = {
             "provider_lock_digest": lock_digest,
             "provider_digest": locked_provider.provider_digest,
             "manifest_sha256": expected_manifest,
             "classifications": declared,
+            **(
+                {"brokered_catalog_digest": brokered_document["catalog_digest"]}
+                if brokered_document is not None
+                else {}
+            ),
         }
         report = _entry_report(
             provider_id=str(document["provider_id"]),
@@ -195,7 +236,14 @@ def load_provider_catalog(
             registration_report_digest=report.report_digest,
             declared_capability_refs_by_tool=declared,
             nested_source_lock_digests=tuple(
-                sorted(document.get("nested_source_lock_digests") or ())
+                sorted(
+                    set(document.get("nested_source_lock_digests") or ())
+                    | (
+                        {brokered_document["catalog_digest"]}
+                        if brokered_document is not None
+                        else set()
+                    )
+                )
             ),
         )
         identity = derive_provider_identity(entry, provider_lock)
@@ -220,6 +268,17 @@ def load_provider_catalog(
                 if normalized_side_effect != contract.side_effect_class:
                     raise ValueError(
                         f"side-effect classification mismatch for {runtime_name}/{tool_name} -> {ref}"
+                    )
+                # The contract states the authority the capability needs. A tool
+                # classified into it while declaring less is a projection that
+                # cannot be honoured at call time.
+                missing = sorted(
+                    set(contract.required_permissions) - _granted_permissions(policy)
+                )
+                if missing:
+                    raise ValueError(
+                        f"declared permissions do not cover {ref} for "
+                        f"{runtime_name}/{tool_name}: missing {missing}"
                     )
                 provisions.append(
                     CapabilityProvisionV1.create(
@@ -270,6 +329,41 @@ def load_provider_catalog(
                     )
                 )
 
+        if brokered_document is not None:
+            dispatch_name = str(brokered_config["dispatch_tool"])
+            dispatch_tool = locked_tools.get(dispatch_name)
+            if dispatch_tool is None:
+                raise ValueError(
+                    f"broker dispatch tool is absent from the run lock: "
+                    f"{runtime_name}/{dispatch_name}"
+                )
+            provisions.extend(
+                build_brokered_provisions(
+                    brokered_document,
+                    dispatch=BrokerDispatchV1(
+                        provider_id=entry.provider_id,
+                        provider_identity_digest=identity.identity_digest,
+                        provider_status=entry.status,
+                        tool_ref=dispatch_tool.tool_ref,
+                        provider_lock_digest=lock_digest,
+                        manifest_digest=expected_manifest,
+                        registration_report_digest=report.report_digest,
+                        policy=dict(dispatch_tool.policy),
+                        credential_scope_ids=scope_ids,
+                    ),
+                    ontology=ontology,
+                    reviewed_capability_refs_by_leaf={
+                        str(leaf): tuple(str(ref) for ref in refs)
+                        for leaf, refs in dict(
+                            brokered_config.get(
+                                "declared_capability_refs_by_brokered_tool"
+                            )
+                            or {}
+                        ).items()
+                    },
+                )
+            )
+
     snapshot = build_provider_catalog_snapshot(
         catalog_source_revision=str(raw.get("catalog_source_revision", "unknown")),
         ontology_snapshot_digest=ontology.snapshot_digest,
@@ -286,7 +380,16 @@ def load_provider_catalog(
     return LoadedProviderCatalog(
         snapshot=snapshot,
         provisions=tuple(
-            sorted(provisions, key=lambda item: (item.capability_ref, item.tool_ref))
+            sorted(
+                provisions,
+                key=lambda item: (
+                    item.capability_ref,
+                    item.tool_ref,
+                    # Composites share one dispatch tool_ref, so the leaf is
+                    # what separates them.
+                    item.subject_tool_ref or "",
+                ),
+            )
         ),
         registration_reports=reports,
     )

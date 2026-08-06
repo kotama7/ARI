@@ -171,8 +171,31 @@ candidate。
 
 三者既不是 Provider 也不是 Harness，不会激活`perf`、Phoronix、compiler、shell 或 credential；
 实际执行仅由 Capability Binding Lock 解析。Phoronix score 不是 Harness Attestation。candidate
-状态也会阻止 enforce mode 的固定 Knowledge Binder 激活它们，直到 clean-task、portability 与
-human-promotion evidence 完整。
+三者现已具备实测的 clean-task 与 portability evidence，通过全部十六个 gate，并依据已
+记录的 approval 晋升为 `verified`，因此固定 Knowledge Binder 可以 admit 它们。三个 HPC 优化 Skill 走了同样的路径，因此 catalog 中的每个条目现在都依据已记录的
+approval 处于 verified。多线程 clean task 起初低于自身的串行 baseline：
+型化 Provider 在 batch step 中执行 payload，而 batch step 会继承整个节点的 affinity
+mask；Provider 现在将单 task 的 payload 作为受绑定的 job step 运行。
+
+### eligibility 不等于 promotion
+
+通过 gate 只代表 eligible。catalog 中的 `status: verified` 还需要
+`ari.knowledge-skill-promotion-approval/v1`，并绑定到精确的 `skill_ref`（manifest 与 body
+字节）以及经审阅的 registration evidence。catalog 加载会拒绝注册决定不是
+`eligible-for-verified` 的 verified 条目、缺少 approval 的条目、以及指向其他字节的
+approval；同样拒绝挂在无人晋升条目上的 approval。修改 manifest、body 或 evidence 会使
+approval 失效，而不会被悄悄沿用。
+
+promotion 只有一个写入者：`scripts/promote_knowledge_skill.py`。它拒绝决定不是
+`eligible-for-verified` 的 Skill，写明批准者与依据，并同时记录 approval 与
+append-only 的 `ari.knowledge-skill-status-transition/v1`。
+`GovernedKnowledgeSkillRegistry.transition` 同样拒绝缺少匹配 approval 的晋升，
+因此台账与 catalog 不会在“谁晋升了什么”上产生分歧。
+
+portability 通过撤下在任 Provider、并以保留的替身身份重新提供完全相同的 capability 契约
+来判定（`method: synthetic-substitution`），它询问的是该 Skill 指向 capability 还是指向某个
+Provider。这严格弱于执行第二个实现，绝不称之为 cross-Provider portability。原有的
+`method: two-providers` 规则保持可用且未改动。
 
 ToolUniverse collection profile 可包含 Knowledge subpath 与 admin profile，但没有 Provider
 ID、launcher、tool、credential 或 transport field。所得 identity 使用
@@ -189,8 +212,8 @@ schema 与该契约的兼容性；相同文字 label 不足以证明语义兼容
 capability ref 与 contract digest。它按 role、phase、call context、side-effect ceiling、
 credential scope、environment、disabled tool 与 live schema identity 过滤，再按 exactness、
 verified status、explicit pin、context fit、最小 side effect、determinism、reproducibility、
-feasibility、resource cost、lexicographic `tool_ref`确定排序。缺少 coverage 返回
-`unsatisfied`，不存在 substring、bare-name、LLM 或 network fallback。
+feasibility、resource cost、lexicographic `tool_ref`与`subject_tool_ref`确定排序。缺少
+coverage 返回`unsatisfied`，不存在 substring、bare-name、LLM 或 network fallback。
 
 enforce mode 下 Agent 可见集合严格等于：
 
@@ -202,6 +225,34 @@ intersect phase policy
 intersect call context
 minus user-disabled tools
 ```
+
+### brokered leaf 与 composite provision
+
+经由 broker 到达的 domain instrument 不是 ARI Provider，也从不出现在 Provider Lock 中，
+因此 Binder 无法直接 authorize 它。`ari.providers.brokered`补上这一半：Provider catalog
+entry 可携带一个`brokered` block，内含 federated catalog lock、dispatch tool，以及从 leaf
+`tool_ref`到 ARI `capability_ref`的 reviewed table。每个 reviewed leaf 成为一条
+`CapabilityProvisionV1`，其`tool_ref`与`dispatch_tool_ref`是 broker 的 dispatch
+tool——run lock 中唯一存在的 ref——而`subject_tool_ref`是该 leaf。
+`nested_source_lock_digests`承载 leaf 的 source digest，federated lock 自身的
+`catalog_digest`并入该 Provider 的`nested_source_lock_digests`；因此在 broker 背后替换
+leaf 会改变 binding request 所 pin 的 Provider catalog snapshot。
+
+有四项性质是被强制检查而非假定的：
+
+- federated lock 会被重新认证。ARI 以 broker 自身的 canonicalization 重算
+  `catalog_digest`，并重新检查每个 tool 恰有一条 admission、id 唯一、policy digest 单一。
+  被编辑过的 lock 被拒绝，而不是被 project。
+- authority 是两跳的 envelope。side-effect class 取 leaf 与 dispatch tool 声明中较重者；
+  contract 的 required permission 必须由两者共同授予——broker 因为 runtime 对它设 gate，
+  leaf 因为实际工作由它完成。
+- mapping 从不属于 broker。descriptor 自身的`capability_ref`属于 broker 的 namespace，
+  仅作为`declared_capability_ref`记录以便发现 drift，绝不当作 mapping 读取。决定权只在
+  已签入的 reviewed table。
+- reproducibility 受 admission 封顶。仅达到`callable`的 leaf 无论 determinism 字段声称
+  什么都记为`unknown`；`reproducible`最高`bounded`，`scientifically_admitted`最高
+  `exact`。低于自身`required_level`的 leaf、被 quarantine 的 leaf、catalog 中不存在的
+  reviewed leaf，以及 run lock 中不存在的 dispatch tool，一律拒绝。
 
 ### environment evidence 与 Provider substitution
 
@@ -316,6 +367,11 @@ Knowledge 质量和 capability ontology 需要人工 curation。同一 capabilit
 property/scope；只有 formal-verifier Harness 能证明 formal specification。nondeterminism 与缺失
 external pin 保留在 provenance。infrastructure error 绝不 fail-open。RQGM 不创造 Verifier 的
 科学结论，而是治理忽略、压制或歪曲固定结果的 actor。
+
+composite provision 路径已实现并有测试覆盖，但尚未被真实 instrument 行使：随包提供的
+broker catalog lock 有 0 个 source 与 0 个 tool，也没有任何 Provider catalog entry 声明
+`brokered` block。验证是针对合成 lock 与 broker 的真实 manifest，而非针对 live federated
+leaf。
 
 ## extension gate
 

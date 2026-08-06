@@ -31,6 +31,7 @@ targets the like-named module under `ari/`.
 - `test_bfts_frontier_score.py` — BFTS frontier scoring.
 - `test_bfts_prompt_builder.py` — byte-exact goldens for the pure `bfts_prompt_builder` context builders (`build_select_candidate_descriptions`, `build_expand_select_candidate_descriptions`, `build_expand_context`, `_BUDGET` re-export) pinning the extraction out of `BFTS` as behaviour-identical (P2 determinism).
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
+- `test_brokered_provisions.py` — the broker-to-binder bridge: a federated catalog lock is re-authenticated rather than trusted, its reviewed leaves become composite provisions whose callable identity is the broker's dispatch tool and whose authority is the envelope of both hops, and the loader refuses stale review, quarantine, under-admission, and a dispatch tool the run lock does not contain.
 - `test_call_context.py` — signed call capabilities, phase/tool authorization, lineage ordering, and tamper rejection.
 - `test_capability_binding.py` — capability ontology, provider binding, substitutions, authority, and immutable lock coverage.
 - `test_capability_environment.py` — environment identity, compatibility, drift detection, and capability execution-boundary coverage.

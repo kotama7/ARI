@@ -73,6 +73,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_perf.py` — TODO
   - `native_perf_common.py` — TODO
   - `native_perf_gemm.py` — TODO
+  - `native_perf_profile.py` — TODO
   - `registration.py` — execute harness registration gates and catalog promotion.
   - `registration_models.py` — promotion approval, evidence, and registration report models.
   - `request.py` — validate and canonicalize screen and certify run requests.
@@ -96,7 +97,10 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `gemm/` — TODO
       - `gemm_kernel.h` — TODO
       - `gemm_main.c` — TODO
+      - `gemm_main_profiled.c` — TODO
       - `reference_gemm.c` — TODO
+    - `tools/` — TODO
+      - `region_counters.c` — TODO
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
 - `capability_binding/` — capability ontology, provider resolution, environment compatibility, substitution, authority, and immutable locks.
   - `__init__.py` — public capability-binding package exports.
@@ -323,7 +327,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `stores.py` — `CheckpointStore` / `TraceStore` Protocols + the `ArtifactStore` ABC — the runtime storage I/O seams.
 - `providers/` — scientific provider manifests, catalogs, compatibility decisions, and registration evidence.
   - `__init__.py` — public provider package exports.
-  - `brokered.py` — TODO
+  - `brokered.py` — project a broker's federated catalog leaves onto composite Capability Provisions (dispatch tool callable, leaf semantic, authority the envelope of both).
   - `catalog.py` — load, snapshot, and query registered scientific providers.
   - `compatibility.py` — compare provider capabilities and environments against requirements.
   - `models.py` — provider manifest, catalog, support, and registration models.

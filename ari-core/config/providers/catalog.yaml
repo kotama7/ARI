@@ -1,5 +1,9 @@
 schema_version: 1
-catalog_source_revision: ari-provider-catalog/1
+# source.package_sha256 is canonical_digest({package-relative path:
+# bytes_digest(blob)}) over every git-tracked file of the package at
+# source.full_commit_sha. The previous values predate this definition and
+# were not reproducible from the repository; these are.
+catalog_source_revision: ari-provider-catalog/2
 source_of_truth: existing-skill-manifests-and-SKILLS.lock
 entries:
   - provider_id: ari.provider.coding
@@ -10,10 +14,10 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: e4fadaef3955f261ba9d44e4746d3657c5094050
-      package_sha256: sha256:69325cc08dde037a9f7a8103df6502b36c80c31a1a492acb175b0709b4649528
+      full_commit_sha: cf2c8b6351871e69308c46c4fee9dc1495141cb1
+      package_sha256: sha256:8668b0c13539165c6d435dc4bde83d877961d2f5ee6669d18863dd092acf0deb
       license: MIT
-    manifest_sha256: sha256:990fb5a691ccf73869c5899df870abdd92c29453ec1bf6c15edb5f8defdfefb0
+    manifest_sha256: sha256:2f2cba035b0aa931ebd584b0de49e029340ac001919c0fea64e990adc0395fab
     declared_capability_refs_by_tool:
       emit_results: [ari.result.emit/v1]
       read_file: [ari.code.inspect/v1, ari.data.read/v1]
@@ -28,13 +32,14 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: e4fadaef3955f261ba9d44e4746d3657c5094050
-      package_sha256: sha256:12ac4b7082c6611ba8181dea949d0c8b0f79aba1d00a15ea1bb2555c882bc5fe
+      full_commit_sha: 45d8db3a565474290320761c90ac4cb927f6432e
+      package_sha256: sha256:317ae9e4eb78f7a6db6e26bef079a2ae9c9e299832ef2668905fed8f028debcb
       license: MIT
-    manifest_sha256: sha256:19a3dec4feb741d6f47af76bc51da86bc9a6d8f70cdbe71e8efb1d425c0f4c1b
+    manifest_sha256: sha256:76fe7760e327d4bf2f20e9ae8dd026639d2d76fd14aa9a6803046bcdccdabf79
     declared_capability_refs_by_tool:
       container_submit: [ari.execution.slurm-submit/v1]
       job_submit: [ari.execution.slurm-submit/v1]
+      measure_counters: [ari.profiling.hardware-counters/v1]
       slurm_submit: [ari.execution.slurm-submit/v1]
   - provider_id: ari.provider.web
     runtime_name: web-skill
@@ -44,11 +49,18 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: e4fadaef3955f261ba9d44e4746d3657c5094050
-      package_sha256: sha256:0920b1eac8a8f21fc5fb6252442a3bac45175824caf1969bb5320c033a8e6a3d
+      full_commit_sha: d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+      package_sha256: sha256:f594631048811eed329012b55f2ccf3fa90397a2e2c37c9b0e47727075c6ad45
       license: MIT
     manifest_sha256: sha256:2f0b1bfcf99dc4e07c3859b0882caa575ec5e52df51e1619c89808ce1efd9e64
     declared_capability_refs_by_tool: {}
 notes:
   - Provider launch identity remains in skill.yaml and live tool identity remains in SKILLS.lock.
   - This catalog stores reviewed semantic projections only; it never repeats entrypoints or schemas.
+  - manifest_sha256 is the only field the loader verifies; a package edit that leaves the manifest
+    untouched does not fail the load, so source.* must be re-pinned deliberately after a package change.
+  - An entry that federates third-party instruments may add an optional `brokered` block with
+    `catalog_lock` (path relative to this file), `dispatch_tool` (a tool name in the run lock), and
+    `declared_capability_refs_by_brokered_tool` (leaf tool_ref -> ARI capability refs). The loader
+    re-authenticates the federated lock and emits composite provisions; see
+    docs/reference/knowledge_capability_assurance.md. No entry declares one today.

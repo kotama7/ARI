@@ -173,8 +173,34 @@ candidateとして登録する。
 
 これらはProviderでもHarnessでもなく、`perf`、Phoronix、compiler、shell、credentialを
 active化しない。実行はCapability Binding Lockだけから解決する。Phoronix scoreはHarness
-Attestationではない。candidateのため、clean-task、portability、人間promotion evidenceが
-揃うまでenforce modeの固定Knowledge Binderはactive化しない。
+Attestationではない。3件とも実測のclean-taskとportability evidenceを持ち、16 gateを
+すべて通過し、記録されたapprovalに基づいて`verified`へ昇格済みであるため、固定
+Knowledge Binderがadmitできる。HPC最適化Skillも同じ経路を通り、catalogの全entryが記録されたapprovalに基づいて
+verifiedである。スレッド化したclean-taskは当初、自分の直列baselineを
+下回った。型付きProviderがpayloadをbatch stepで実行しており、batch stepはノード全体を
+affinity maskに継承するためである。Providerは現在、単一taskのpayloadを束縛されたjob step
+として実行する。
+
+### eligibilityはpromotionではない
+
+gateを通過してもeligibleになるだけである。catalogの`status: verified`にはさらに
+`ari.knowledge-skill-promotion-approval/v1`が必要で、正確な`skill_ref`（manifestとbodyの
+バイト列）および審査したregistration evidenceに束縛される。catalog loadは、登録決定が
+`eligible-for-verified`でないverified entry、approvalを欠くentry、別のバイト列を指す
+approvalを拒否し、誰も昇格させていないentryに付いたapprovalも同様に拒否する。manifest、
+body、evidenceを編集するとapprovalは無効化され、黙って引き継がれることはない。
+
+promotionの書き手は`scripts/promote_knowledge_skill.py`ただ一つである。決定が
+`eligible-for-verified`でないSkillを拒否し、承認者と根拠を明記し、approvalと
+append-onlyな`ari.knowledge-skill-status-transition/v1`の両方を記録する。
+`GovernedKnowledgeSkillRegistry.transition`も一致するapprovalの無い昇格を拒否
+するため、台帳とcatalogが「誰が何を昇格させたか」で食い違うことはない。
+
+portabilityは、現職Providerを取り下げて同一のcapability契約を予約済みのstand-in identity
+で再提示することで判定する（`method: synthetic-substitution`）。これはSkillがcapabilityを
+指しているのかProviderを指しているのかを問う。2つ目の実装を実行するより厳密に弱い証拠で
+あり、cross-Provider portabilityとは決して呼ばない。従来の`method: two-providers`規則も
+そのまま利用できる。
 
 ToolUniverse collection profileはKnowledge subpathとadmin profileを持てるが、Provider ID、
 launcher、tool、credential、transport fieldを持たない。identityは
@@ -191,8 +217,8 @@ prompt-free Capability Binderは既存Provider lockにあるverified Providerの
 refとcontract digestだけを候補にする。role、phase、call context、side-effect ceiling、
 credential scope、environment、disabled tool、live schema identityでfilterし、exactness、
 verified status、explicit pin、context fit、side effect最小、determinism、reproducibility、
-feasibility、resource cost、lexicographic `tool_ref`順で決定する。coverage不足は
-`unsatisfied`で、substring、bare-name、LLM、network fallbackはない。
+feasibility、resource cost、lexicographic `tool_ref`と`subject_tool_ref`順で決定する。
+coverage不足は`unsatisfied`で、substring、bare-name、LLM、network fallbackはない。
 
 enforce modeでAgentが見る集合は次に等しい。
 
@@ -204,6 +230,34 @@ intersect phase policy
 intersect call context
 minus user-disabled tools
 ```
+
+### brokered leafとcomposite provision
+
+brokerを経由して届くdomain instrumentはARI Providerではなく、Provider Lockに現れない。
+したがってBinderは直接authorizeできない。`ari.providers.brokered`がその半分を供給する。
+Provider catalog entryは`brokered` blockを持てる。中身はfederated catalog lock、dispatch
+tool、leaf `tool_ref`からARI `capability_ref`へのreviewed tableである。reviewed leafは1件
+ずつ`CapabilityProvisionV1`になり、`tool_ref`と`dispatch_tool_ref`はbrokerのdispatch tool
+——run lockに存在する唯一のref——、`subject_tool_ref`がleafになる。
+`nested_source_lock_digests`はleafのsource digestを運び、federated lock自身の
+`catalog_digest`はProviderの`nested_source_lock_digests`に加わる。broker背後でleafを
+差し替えると、binding requestがpinするProvider catalog snapshotが動く。
+
+前提ではなく検査される性質が4つある。
+
+- federated lockは再認証される。ARIはbroker自身のcanonicalizationで`catalog_digest`を
+  再計算し、tool毎に1件のadmission、id一意性、単一policy digestを再検査する。編集された
+  lockはprojectionではなく拒否になる。
+- authorityは2hopのenvelopeである。side-effect classはleafとdispatch toolの宣言のうち
+  重い方、contractのrequired permissionは両者が付与していなければならない。runtimeが
+  gateするのはbroker、実際に作業するのはleafだからである。
+- mappingはbrokerのものではない。descriptor自身の`capability_ref`はbrokerのnamespaceで
+  あり、drift検出用に`declared_capability_ref`として記録するだけで、mappingとしては
+  読まない。決めるのはcheck-in済みreviewed tableだけである。
+- reproducibilityはadmissionで上限が付く。`callable`止まりのleafはdeterminism fieldが
+  何を主張しても`unknown`、`reproducible`は最良で`bounded`、`scientifically_admitted`は
+  最良で`exact`。自身の`required_level`未満のleaf、quarantined leaf、catalogに無い
+  reviewed leaf、run lockに無いdispatch toolはいずれも拒否である。
 
 ### environment evidenceとProvider substitution
 
@@ -323,6 +377,11 @@ Harness passは宣言property/scope内に限り、formal-verifier Harnessだけ�
 証明する。nondeterminismと不足external pinはprovenanceへ残す。infrastructure errorは
 fail-openしない。RQGMはVerifierの科学的結論を発明せず、固定結果を無視、抑圧、歪曲した
 actorを統治する。
+
+composite provision経路は実装済みかつtest済みだが、実instrumentでは未行使である。同梱の
+broker catalog lockはsource 0件・tool 0件で、`brokered` blockを宣言するProvider catalog
+entryも無い。検証は合成lockとbrokerの実manifestに対してであり、live federated leafに
+対してではない。
 
 ## extension gate
 

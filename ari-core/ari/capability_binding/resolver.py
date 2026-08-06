@@ -150,6 +150,11 @@ def _rank(
         0,
         candidate.declared_resource_cost,
         candidate.tool_ref,
+        # Every composite provision of one broker shares its dispatch tool_ref,
+        # so without the leaf the final tie-break is not a tie-break at all and
+        # the winner falls out of provision_digest order -- stable, but keyed on
+        # a digest that moves when any unrelated field of the leaf changes.
+        candidate.subject_tool_ref or "",
     )
 
 
@@ -202,7 +207,10 @@ def bind_capabilities(
         request.requirements,
         key=lambda item: (not item.required, item.capability_ref, item.requirement_digest),
     )
-    candidates = sorted(request.provisions, key=lambda item: item.tool_ref)
+    candidates = sorted(
+        request.provisions,
+        key=lambda item: (item.tool_ref, item.subject_tool_ref or ""),
+    )
     for requirement in requirements:
         eligible: list[CapabilityProvisionV1] = []
         observed_codes: set[str] = set()

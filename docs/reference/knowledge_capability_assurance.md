@@ -195,9 +195,40 @@ candidate Knowledge identities:
 The three entries are neither Providers nor Harnesses. They do not activate
 `perf`, Phoronix, a compiler, a shell, or a credential; concrete execution is
 resolved only from a Capability Binding Lock. A Phoronix score is not a
-Harness Attestation. Candidate status also prevents activation by the fixed
-Knowledge Binder in enforce mode until the remaining clean-task, portability,
-and human-promotion evidence exists.
+Harness Attestation. All three now carry measured clean-task and portability
+evidence, clear all sixteen gates, and have been promoted to `verified` on a
+recorded approval, so the fixed Knowledge Binder can admit them. The three HPC
+optimization Skills followed the same path, so every catalog entry is now
+verified on a recorded approval. A threaded clean task first measured
+below its own serial baseline because the typed Provider ran the payload in the
+batch step, which inherits the whole node in its affinity mask; the Provider now
+runs a single-task payload as a bound job step.
+
+### Eligibility is not promotion
+
+Clearing the gates only makes a Skill eligible. `status: verified` in the
+catalog additionally requires `ari.knowledge-skill-promotion-approval/v1`,
+bound to the exact `skill_ref` (manifest and body bytes) and to the
+registration evidence that was reviewed. Catalog loading refuses a verified
+entry whose registration decision is not `eligible-for-verified`, whose
+approval is absent, or whose approval names other bytes; it equally refuses an
+approval attached to an entry nobody promoted. Editing a manifest, a body, or
+the evidence invalidates the approval instead of silently carrying it forward.
+
+Promotion has one writer: `scripts/promote_knowledge_skill.py`. It refuses a
+Skill whose decision is not `eligible-for-verified`, names the approver and
+the basis, and records both the approval and an append-only
+`ari.knowledge-skill-status-transition/v1` entry.
+`GovernedKnowledgeSkillRegistry.transition` refuses a promotion without a
+matching approval as well, so the ledger and the catalog cannot disagree
+about who promoted what.
+
+Portability is decided by withdrawing the incumbent Provider and re-offering
+the identical capability contracts under a reserved stand-in identity
+(`method: synthetic-substitution`), which asks whether the Skill names a
+capability or a Provider. It is strictly weaker than executing a second
+implementation and is never described as cross-Provider portability. The
+original `method: two-providers` rule remains available and unchanged.
 
 ToolUniverse collection profiles contain Knowledge subpaths and their admin
 profiles, but have no Provider ID, launcher, tool, credential, or transport
@@ -219,8 +250,9 @@ Provider lock. It filters by role, phase, call context, side-effect ceiling,
 credential scope, environment, disabled tools, and live schema identity. It
 then ranks deterministically by exactness, verified status, explicit pin,
 context fit, least side effect, determinism, reproducibility, feasibility,
-resource cost, and lexicographic `tool_ref`. Missing coverage is
-`unsatisfied`; there is no substring, bare-name, LLM, or network fallback.
+resource cost, and lexicographic `tool_ref` then `subject_tool_ref`. Missing
+coverage is `unsatisfied`; there is no substring, bare-name, LLM, or network
+fallback.
 
 In enforce mode the Agent sees exactly:
 
@@ -232,6 +264,38 @@ intersect phase policy
 intersect call context
 minus user-disabled tools
 ```
+
+### Brokered leaves and composite provisions
+
+A domain instrument reached through a broker is not an ARI Provider and never
+appears in the Provider Lock, so the Binder cannot authorize it directly.
+`ari.providers.brokered` supplies the missing half: a Provider catalog entry may
+carry a `brokered` block naming a federated catalog lock, a dispatch tool, and a
+reviewed table from leaf `tool_ref` to ARI `capability_ref`. Each reviewed leaf
+becomes one `CapabilityProvisionV1` whose `tool_ref` and `dispatch_tool_ref` are
+the broker's dispatch tool — the only ref the run lock contains — and whose
+`subject_tool_ref` is the leaf. `nested_source_lock_digests` carries the leaf's
+source digests, and the federated lock's own `catalog_digest` joins the
+Provider's `nested_source_lock_digests`, so swapping a leaf behind the broker
+changes the Provider catalog snapshot that the binding request pins.
+
+Four properties are enforced rather than assumed:
+
+- The federated lock is re-authenticated. ARI recomputes `catalog_digest` under
+  the broker's own canonicalization and re-checks one admission per tool, unique
+  ids, and a single policy digest. An edited lock is refused, not projected.
+- Authority is the envelope of both hops. Side-effect class is the worse of the
+  leaf's and the dispatch tool's declarations, and a contract's required
+  permissions must be granted by both — the broker because the runtime gates it,
+  the leaf because it does the work.
+- The mapping is never the broker's. A descriptor's own `capability_ref` is the
+  broker's namespace; it is recorded as `declared_capability_ref` for drift and
+  never read as a mapping. Only the checked-in reviewed table decides.
+- Reproducibility is capped by admission. A leaf admitted only `callable` grades
+  `unknown` whatever its determinism field claims; `reproducible` grades at best
+  `bounded`, `scientifically_admitted` at best `exact`. A leaf admitted below its
+  own `required_level`, a quarantined leaf, a reviewed leaf absent from the
+  catalog, and a dispatch tool absent from the run lock are all refusals.
 
 ### Environment evidence and Provider substitution
 
@@ -381,6 +445,12 @@ Harness proves a formal specification. Nondeterminism and unavailable external
 pins remain explicit provenance. Infrastructure error never fails open. RQGM
 does not invent a verifier's scientific conclusion; it governs actors that
 ignore, suppress, or misrepresent the fixed result.
+
+The composite-provision path is implemented and covered but not yet exercised
+by a real instrument: the shipped broker catalog lock contains zero sources and
+zero tools, and no Provider catalog entry declares a `brokered` block. It is
+verified against synthetic locks and against the broker's real manifest, not
+against a live federated leaf.
 
 ## Extension gate
 
