@@ -1089,39 +1089,9 @@ class SlurmScheduler:
         for name, value in sorted(request.environment.variables.items()):
             lines.append(f"export {name}={shlex.quote(value)}")
         if request.environment.modules:
+            lines.extend(self._module_init_lines())
             lines.extend(
                 [
-                    # `module` is a SHELL FUNCTION defined by the module
-                    # system's profile script. The job runs under
-                    # --export=NIL with a `#!/bin/bash` (non-login) shell, so
-                    # nothing is inherited from the submitting shell AND no
-                    # profile is read: the function was always undefined and
-                    # every module request fell straight through to exit 86.
-                    #
-                    # Sourcing the init ON THE NODE fixes that without
-                    # weakening --export=NIL, which exists so the login node's
-                    # state cannot leak into a measurement. Nothing is
-                    # inherited; the node describes itself.
-                    #
-                    # These are the module SOFTWARE's standard install paths,
-                    # not a site's: no cluster knowledge is added here. The
-                    # loop stops at the first one that yields the function.
-                    "if ! command -v module >/dev/null 2>&1; then",
-                    # A profile script is not written for `set -euo pipefail`
-                    # and may read unset variables; relaxing around the source
-                    # keeps it from aborting an otherwise valid job.
-                    "  set +eu +o pipefail",
-                    "  for _ari_module_init in"
-                    " /etc/profile.d/modules.sh"
-                    " /etc/profile.d/lmod.sh"
-                    ' "${MODULESHOME:-}/init/bash"; do',
-                    '    [ -r "$_ari_module_init" ] || continue',
-                    '    . "$_ari_module_init" >/dev/null 2>&1',
-                    "    command -v module >/dev/null 2>&1 && break",
-                    "  done",
-                    "  unset _ari_module_init",
-                    "  set -eu -o pipefail",
-                    "fi",
                     # Kept as the honest failure for a node with no module
                     # system at all: a job that asked for modules must not
                     # quietly run without them.
@@ -1280,6 +1250,15 @@ class SlurmScheduler:
             artifact_scope=artifact_scope,
         )
         lines.extend(self._clean_environment("/usr/local/bin:/usr/bin:/bin"))
+        # The bridge hands the agent a raw script, and on a cluster whose
+        # toolchain is reachable only through modules the first thing such a
+        # script writes is `module load`. Without this it died with a bare
+        # "module: command not found" (exit 127) and no explanation — correct
+        # HPC code failing for a reason the agent could not see or fix.
+        # Unconditional and guarded, rather than conditional on the script
+        # mentioning `module`: matching on the body would be guesswork, and
+        # this is a no-op wherever there is no module system.
+        lines.extend(self._module_init_lines())
         # Generated executable content appears first, so #SBATCH text in the
         # compute-node body cannot override scheduler policy.
         lines.extend(["# ARI core-agent script bridge", script])
@@ -1343,6 +1322,41 @@ class SlurmScheduler:
         if resources.reservation:
             lines.append(f"#SBATCH --reservation={resources.reservation}")
         return lines
+
+    @staticmethod
+    def _module_init_lines() -> list[str]:
+        """Make `module` usable on the node, inheriting nothing.
+
+        `module` is a SHELL FUNCTION defined by the module system's profile
+        script. A batch job gets one from neither direction: --export=NIL
+        carries nothing over from the submitting shell, and `#!/bin/bash` is
+        not a login shell so no profile is read. Sourcing the init ON THE NODE
+        is what keeps --export=NIL meaningful — nothing is inherited, the node
+        describes itself, and a login node's state still cannot reach a
+        measurement.
+
+        These are the module SOFTWARE's standard install paths, not any one
+        site's, so no cluster knowledge is added here. A no-op where there is
+        no module system, which is why the callers keep their own checks.
+        """
+        return [
+            "if ! command -v module >/dev/null 2>&1; then",
+            # A profile script is not written for `set -euo pipefail` and may
+            # read unset variables; relaxing around the source keeps it from
+            # aborting an otherwise valid job.
+            "  set +eu +o pipefail",
+            "  for _ari_module_init in"
+            " /etc/profile.d/modules.sh"
+            " /etc/profile.d/lmod.sh"
+            ' "${MODULESHOME:-}/init/bash"; do',
+            '    [ -r "$_ari_module_init" ] || continue',
+            '    . "$_ari_module_init" >/dev/null 2>&1',
+            "    command -v module >/dev/null 2>&1 && break",
+            "  done",
+            "  unset _ari_module_init",
+            "  set -eu -o pipefail",
+            "fi",
+        ]
 
     @staticmethod
     def _clean_environment(path: str) -> list[str]:

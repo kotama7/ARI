@@ -655,3 +655,56 @@ async def test_no_module_request_leaves_the_script_untouched(tmp_path: Path) -> 
 
     assert "_ari_module_init" not in script
     assert "exit 86" not in script
+
+
+@pytest.mark.asyncio
+async def test_script_bridge_can_use_module(tmp_path: Path) -> None:
+    """A raw bridge script must be able to `module load`.
+
+    The bridge hands the agent a script and nothing else, so on a cluster
+    whose toolchain is reachable only through modules the first line it writes
+    is `module load`. Under --export=NIL with a non-login shell that died with
+    a bare "module: command not found" (exit 127) and no explanation — correct
+    HPC code failing for a reason the agent could neither see nor fix. Unlike
+    the declared-modules path there is not even an exit-86 diagnostic here.
+    """
+    runner = FakeRunner(CommandResult("12345;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    await scheduler.submit_script_bridge(
+        script="module load compiler/1.0\nmake bench",
+        job_name="bridge", partition="compute-a64fx", nodes=1,
+        walltime="00:10:00", work_dir=str(tmp_path),
+    )
+    script = runner.calls[0][1].decode()
+
+    assert "--export=NIL" in script          # isolation is not weakened
+    # The init must precede the agent's body, or its `module load` still dies.
+    assert script.index("_ari_module_init") < script.index("module load compiler/1.0")
+    assert "/etc/profile.d/modules.sh" in script
+
+
+@pytest.mark.asyncio
+async def test_both_submit_paths_share_one_module_init(tmp_path: Path) -> None:
+    # The two paths reached the same defect independently; they must not drift
+    # apart while being fixed.
+    runner_a = FakeRunner(CommandResult("1;c\n", "", 0))
+    await _scheduler(tmp_path / "a", runner_a).submit(
+        _request(_mk(tmp_path / "a"), modules=("gcc/13.2",)))
+    runner_b = FakeRunner(CommandResult("2;c\n", "", 0))
+    await _scheduler(tmp_path / "b", runner_b).submit_script_bridge(
+        script="module load gcc/13.2", job_name="b", partition="p",
+        nodes=1, walltime="00:05:00", work_dir=str(_mk(tmp_path / "b")))
+
+    # Compare against the helper's own output rather than a hand-counted
+    # window, so the test cannot drift as the block grows or shrinks.
+    from ari_skill_hpc.scheduler import SlurmScheduler
+
+    block = "\n".join(SlurmScheduler._module_init_lines())
+    assert block in runner_a.calls[0][1].decode()
+    assert block in runner_b.calls[0][1].decode()
+
+
+def _mk(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
