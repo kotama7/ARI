@@ -29,16 +29,16 @@
 
 | ID | Plan | Status | Internal dependency | External integration dependency | Deletion status |
 |---|---|---|---|---|---|
-| 00 | [Manuscript Complete program plan](00_manuscript_complete_program_plan.md) | in progress | none | RQGM 18/19; paper 07 | not deletable |
-| 01 | [Baseline and decision freeze](01_baseline_and_decision_freeze.md) | in progress | 00 | none | not deletable |
-| 02 | [Contracts and deterministic compiler core](02_contracts_and_compiler_core.md) | in progress | 00, 01 | none | not deletable |
-| 03 | [Audit-only simple BFTS + linear vertical slice](03_audit_vertical_slice.md) | in progress | 00, 01, 02 | none | not deletable |
-| 04 | [Segmented pipeline and enforce gate](04_segmented_pipeline_and_enforce_gate.md) | in progress | 00–03 | none | not deletable |
-| 05 | [Research RQGM and KCA integration](05_rqgm_kca_integration.md) | in progress | 00–04 | RQGM 18/19 | not deletable |
-| 06 | [Paper RQGM archive integration](06_paper_archive_integration.md) | in progress | 00–04 | RQGM-paper 01–07 | not deletable |
-| 07 | [Explicit repair and resume](07_explicit_repair_and_resume.md) | in progress | 00–04 | Task 05 only for KCA repair | not deletable |
-| 08 | [Automatic repair and full topology](08_auto_repair_and_full_topology.md) | in progress | 00–07 | none beyond dependencies | not deletable |
-| 09 | [Publication lock, evaluation, migration, and documentation](09_publication_evaluation_migration_docs.md) | in progress | 00–08 | authentic RQGM 18/19 certification where applicable | not deletable |
+| 00 | [Manuscript Complete program plan](00_manuscript_complete_program_plan.md) | implemented | none | RQGM 18/19; paper 07 | not deletable |
+| 01 | [Baseline and decision freeze](01_baseline_and_decision_freeze.md) | implemented | 00 | none | not deletable |
+| 02 | [Contracts and deterministic compiler core](02_contracts_and_compiler_core.md) | implemented | 00, 01 | none | not deletable |
+| 03 | [Audit-only simple BFTS + linear vertical slice](03_audit_vertical_slice.md) | implemented | 00, 01, 02 | none | not deletable |
+| 04 | [Segmented pipeline and enforce gate](04_segmented_pipeline_and_enforce_gate.md) | implemented | 00–03 | none | not deletable |
+| 05 | [Research RQGM and KCA integration](05_rqgm_kca_integration.md) | implemented | 00–04 | RQGM 18/19 | not deletable |
+| 06 | [Paper RQGM archive integration](06_paper_archive_integration.md) | implemented | 00–04 | RQGM-paper 01–07 | not deletable |
+| 07 | [Explicit repair and resume](07_explicit_repair_and_resume.md) | implemented | 00–04 | Task 05 only for KCA repair | not deletable |
+| 08 | [Automatic repair and full topology](08_auto_repair_and_full_topology.md) | implemented | 00–07 | none beyond dependencies | not deletable |
+| 09 | [Publication lock, evaluation, migration, and documentation](09_publication_evaluation_migration_docs.md) | implemented | 00–08 | authentic RQGM 18/19 certification where applicable | not deletable |
 
 Status legend:
 
@@ -115,24 +115,25 @@ Manuscript Complete は次の軸を結合するが、いずれも暗黙には有
 
 ## Current focus
 
-2026-08-06 時点で Tasks 01–09 のローカル実装、閉じた release manifest、4 topology E2E、
-13 failure-injection family、legacy migration/rollback dry run、authentic native Harness
-publication evidence が存在する。実装は local revision
-`712ea52bbbab4081d97ab1793608fdfb73b6340a` に commit済みである。現在の焦点は、同じ
-manifest の remote CI artifact を保持し、merge/release reviewを閉じることである。
-authentic Harness は synthetic fixture で代用しない。
+2026-08-06 時点で Tasks 00–09 の completion criteria に実行可能な証拠があり、
+closed release manifest、4 topology E2E、13 failure-injection family、legacy
+migration/rollback dry run、authentic native Harness publication evidence は PR head
+`5f413c73d6f9c94cbf3135871325623cc7805631` に commit されている。GitHub Actions の
+retained release artifact も `release_eligible=true` であるため、全 task を
+`implemented` と評価する。現在の焦点は merge/release review と post-merge の
+deletion-readiness review である。authentic Harness は synthetic fixture で代用しない。
 
 ## Implementation evidence (2026-08-06)
 
-| Gate | Local executable evidence | Remaining before `implemented` / deletion |
+| Gate | Executable evidence | Remaining before deletion |
 |---|---|---|
-| G0–G2 | seven generated fixture classes; digest-bound compiler/readiness/omission contracts; off/audit CLI and idempotence tests | committed/merged revision and retained remote CI |
-| G3 | additive evidence/authoring/verification segments; stale-safe records; enforce pre-authoring gate; exact off identity tests | committed/merged revision and retained remote CI |
-| G4 | RQGM node/frontier/attestation projection plus checked-in verified native GEMM/SpMM/Stencil registration, parity, negative controls, and certify→publication chain | committed/merged Manuscript revision and retained remote CI |
-| G5 | common archive fingerprint; writer/reviewer/draft provenance; contextual-negative/forbidden/disclosure hard disqualification; exact winner handoff; stale/bound fallback tests | committed/merged revision and retained remote CI |
-| G6 | typed repair authority/budgets; recorded retrieval; normal BFTS/RQGM repair nodes; transaction, interruption, exhaustion, no-progress, and human-stop tests | committed/merged revision and retained remote CI |
-| G7 | opt-in outer auto loop; cumulative budgets; full four-topology compile→bound build→decision→lock E2E | committed/merged revision and retained remote CI artifact |
-| G8 | independent decision/lock; final content/freshness recheck; evaluation; all 13 failure families; additive migration/rollback; permanent docs | committed/merged revision, remote CI artifact, and release review |
+| G0–G2 | seven generated fixture classes; digest-bound compiler/readiness/omission contracts; off/audit CLI and idempotence tests | main/release merge and post-merge deletion review |
+| G3 | additive evidence/authoring/verification segments; stale-safe records; enforce pre-authoring gate; exact off identity tests | main/release merge and post-merge deletion review |
+| G4 | RQGM node/frontier/attestation projection plus checked-in verified native GEMM/SpMM/Stencil registration, parity, negative controls, and certify→publication chain | main/release merge and post-merge deletion review |
+| G5 | common archive fingerprint; writer/reviewer/draft provenance; contextual-negative/forbidden/disclosure hard disqualification; exact winner handoff; stale/bound fallback tests | main/release merge and post-merge deletion review |
+| G6 | typed repair authority/budgets; recorded retrieval; normal BFTS/RQGM repair nodes; transaction, interruption, exhaustion, no-progress, and human-stop tests | main/release merge and post-merge deletion review |
+| G7 | opt-in outer auto loop; cumulative budgets; full four-topology compile→bound build→decision→lock E2E | main/release merge and post-merge deletion review |
+| G8 | independent decision/lock; final content/freshness recheck; evaluation; all 13 failure families; additive migration/rollback; permanent docs | main/release merge, release review, and post-merge deletion review |
 
 The closed policy is `scripts/manuscript_complete_release_gates.json`; the permanent runner is
 `scripts/run_manuscript_complete_release.py`; and `.github/workflows/manuscript-complete.yml`
@@ -140,12 +141,21 @@ retains the revision-bound report/log artifact. The clean local run for revision
 `712ea52bbbab4081d97ab1793608fdfb73b6340a` passed all nine checks with
 `release_eligible=true` and report digest
 `sha256:dce4924ee33eeea7163c1049411725a809543db027223924f176c6ba64353a58`.
-The same evidence must now pass and be retained in GitHub Actions.
+[GitHub Actions run 31077892535](https://github.com/kotama7/ARI/actions/runs/31077892535)
+then passed the same nine gates for PR head
+`5f413c73d6f9c94cbf3135871325623cc7805631` via merge revision
+`dcbe214d05fb12c727b2b5df699242f29a291fc2` and tree
+`d53f8c0f6c91fd05af3a91d08f1f9f4567e5ff72`. Its report digest is
+`sha256:db7492aeb36c2d1c2e7e8425da521da8888fa6205467fe9aaf9ebd901f515bbc`.
+The retained artifact is `manuscript-complete-release-dcbe214d05fb12c727b2b5df699242f29a291fc2-1`
+(artifact ID `8958284666`, artifact digest
+`sha256:2b3840cb4876a3874c9a108f2fb13f8bafca3c826becc3dc0064bfb5a492a3c6`,
+expiry `2026-11-04T06:37:10Z`).
 
 ## Current deletion assessment
 
-All plans remain **not deletable**. The shared blockers are the remote CI artifact,
-merge/release review, and post-merge deletion-readiness review.
+All plans remain **not deletable**. The retained remote CI artifact requirement is satisfied; the
+shared blockers are merge/release review and post-merge deletion-readiness review.
 Authentic evidence exists for the advertised verified native HPC Harness scope; unavailable external
 PaperBench/other Harness scopes remain explicitly unsupported rather than mocked. Permanent documents
 now carry the architecture, contracts, release policy, migration, rollback, and operator semantics.
