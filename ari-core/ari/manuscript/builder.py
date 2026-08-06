@@ -59,7 +59,9 @@ def _lane(
         return "excluded", ("artifact_digest_mismatch",)
     if any(value == "missing" for value in provenance_statuses):
         return "excluded", ("artifact_missing",)
-    if any(value in {"unhashed", "invalid"} for value in provenance_statuses):
+    if any(value == "invalid" for value in provenance_statuses):
+        return "excluded", ("artifact_invalid",)
+    if any(value == "unhashed" for value in provenance_statuses):
         return "exploratory", ("artifact_unhashed",)
     if not node.valid_for_frontier:
         return "excluded", ("stale_or_erased",)
@@ -159,6 +161,58 @@ def _extract_limitations(
     if assurance_mode == "enforce" and publication_candidate is None:
         values.append("The scientific winner does not yet have publication-admissible certification.")
     return tuple(dict.fromkeys(values))
+
+
+def _declared_claim_characteristics(
+    *documents: dict[str, Any] | None,
+) -> dict[str, bool]:
+    """Read only explicit typed applicability declarations.
+
+    Free-form draft/reviewer prose is deliberately excluded. Research
+    contracts and typed claim records may declare the fixed applicability
+    booleans directly or through a bounded claim type vocabulary.
+    """
+
+    out: dict[str, bool] = {}
+    type_map = {
+        "comparative": "comparative_claim",
+        "superiority": "comparative_claim",
+        "stochastic": "stochastic_claim",
+        "aggregate": "stochastic_claim",
+        "component-causal": "multi_component_claim",
+        "multi-component": "multi_component_claim",
+        "novelty": "novelty_claim",
+        "result": "result_claim",
+        "numeric-result": "numeric_result",
+        "reproducibility": "reproducibility_claim",
+    }
+    allowed = set(type_map.values()) | {
+        "hypothesis_testing",
+        "empirical",
+    }
+    for document in documents:
+        if not isinstance(document, dict):
+            continue
+        declared = document.get("claim_characteristics")
+        if isinstance(declared, dict):
+            for key, value in declared.items():
+                if key in allowed and isinstance(value, bool):
+                    out[key] = out.get(key, False) or value
+        raw_types = document.get("claim_types")
+        if isinstance(raw_types, str):
+            raw_types = [raw_types]
+        if isinstance(raw_types, (list, tuple)):
+            for raw in raw_types:
+                mapped = type_map.get(str(raw).strip().lower())
+                if mapped:
+                    out[mapped] = True
+        raw_type = str(
+            document.get("claim_type") or document.get("category") or ""
+        ).strip().lower()
+        mapped = type_map.get(raw_type)
+        if mapped:
+            out[mapped] = True
+    return out
 
 
 def build_manuscript_context(
@@ -321,29 +375,60 @@ def build_manuscript_context(
     claims = _records(raw, "claims") or _records(science, "claims")
     metric_evidence = [record for record in evidence if record.metric_values]
     related_work = _extract_references(parsed.get("retrieval-records"))
+    declared = _declared_claim_characteristics(
+        idea,
+        contract,
+        first_idea,
+        *claims,
+    )
     empirical = bool(metric_evidence or measurement_records or configurations)
-    comparative = len([record for record in evidence if record.metric_values]) >= 2
+    comparator_exists = len(metric_evidence) >= 2 or any(
+        str(item.get("role") or item.get("kind") or "").lower()
+        in {"baseline", "comparator", "control"}
+        for item in configurations
+    )
+    comparative = bool(declared.get("comparative_claim") or comparator_exists)
     has_ablation = any(node.label == "ablation" for node in snapshot.nodes)
-    stochastic = bool(
-        len(measurement_records) > len(configurations) > 0
+    uncertainty_evidence = bool(
+        len(measurement_records) > max(1, len(configurations))
         or any(
-            any(token in key.lower() for token in ("std", "variance", "confidence", "stderr"))
-            for record in metric_evidence
-            for key in record.metric_values
+            any(
+                token in str(key).lower()
+                for token in ("std", "variance", "confidence", "stderr", "error_bar")
+            )
+            for record in [*metric_evidence, *measurement_records]
+            for key in (
+                record.metric_values.keys()
+                if isinstance(record, EvidenceRecordV1)
+                else record.keys()
+            )
         )
     )
+    stochastic = bool(declared.get("stochastic_claim") or uncertainty_evidence)
     claim_characteristics = {
-        "empirical": empirical,
-        "hypothesis_testing": bool(hypothesis or falsification),
-        "result_claim": bool(metric_evidence or claims),
-        "numeric_result": bool(metric_evidence or measurement_records),
+        "empirical": bool(declared.get("empirical") or empirical),
+        "hypothesis_testing": bool(
+            declared.get("hypothesis_testing") or hypothesis or falsification
+        ),
+        "result_claim": bool(
+            declared.get("result_claim") or metric_evidence or claims
+        ),
+        "numeric_result": bool(
+            declared.get("numeric_result") or metric_evidence or measurement_records
+        ),
         "stochastic_claim": stochastic,
         "comparative_claim": comparative,
-        "comparator_exists": comparative,
-        "multi_component_claim": has_ablation or len(contribution_map) > 1,
+        "comparator_exists": comparator_exists,
+        "multi_component_claim": bool(
+            declared.get("multi_component_claim")
+            or has_ablation
+            or len(contribution_map) > 1
+        ),
         "multiple_candidates": len(snapshot.nodes) > 1,
-        "novelty_claim": bool(question),
-        "reproducibility_claim": empirical,
+        "novelty_claim": bool(declared.get("novelty_claim") or question),
+        "reproducibility_claim": bool(
+            declared.get("reproducibility_claim") or empirical
+        ),
         "assurance_enforce": assurance_mode == "enforce",
         "manuscript_enabled": True,
     }
@@ -373,7 +458,7 @@ def build_manuscript_context(
         "configuration_count": len(configurations),
         "measurement_count": len(measurement_records) or len(metric_evidence),
         "claim_count": len(claims),
-        "uncertainty_evidence": stochastic,
+        "uncertainty_evidence": uncertainty_evidence,
         "commands": commands,
         "environment": environment,
     }
@@ -419,7 +504,11 @@ def build_manuscript_context(
         elif artifact.status == "stale":
             reason = "stale"
         elif artifact.status == "invalid":
-            reason = "unsafe_path" if artifact.relative_path is None else "parse_failure"
+            reason = (
+                "unsafe_path"
+                if artifact.relative_path is None or artifact.metadata.get("unsafe_path")
+                else "parse_failure"
+            )
         elif artifact.status == "unhashed":
             reason = "policy_excluded"
         if reason:

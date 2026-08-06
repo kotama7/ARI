@@ -387,7 +387,7 @@
       "additionalProperties": {
         "type": "string"
       },
-      "maxProperties": 10000,
+      "maxProperties": 200000,
       "title": "Source Digests",
       "type": "object"
     }

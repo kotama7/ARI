@@ -29,16 +29,16 @@
 
 | ID | Plan | Status | Internal dependency | External integration dependency | Deletion status |
 |---|---|---|---|---|---|
-| 00 | [Manuscript Complete program plan](00_manuscript_complete_program_plan.md) | planned | none | RQGM 18/19; paper 07 | not deletable |
-| 01 | [Baseline and decision freeze](01_baseline_and_decision_freeze.md) | planned | 00 | none | not deletable |
-| 02 | [Contracts and deterministic compiler core](02_contracts_and_compiler_core.md) | planned | 00, 01 | none | not deletable |
-| 03 | [Audit-only simple BFTS + linear vertical slice](03_audit_vertical_slice.md) | planned | 00, 01, 02 | none | not deletable |
-| 04 | [Segmented pipeline and enforce gate](04_segmented_pipeline_and_enforce_gate.md) | planned | 00–03 | none | not deletable |
-| 05 | [Research RQGM and KCA integration](05_rqgm_kca_integration.md) | planned | 00–04 | RQGM 18/19 | not deletable |
-| 06 | [Paper RQGM archive integration](06_paper_archive_integration.md) | planned | 00–04 | RQGM-paper 01–07 | not deletable |
-| 07 | [Explicit repair and resume](07_explicit_repair_and_resume.md) | planned | 00–04 | Task 05 only for KCA repair | not deletable |
-| 08 | [Automatic repair and full topology](08_auto_repair_and_full_topology.md) | planned | 00–07 | none beyond dependencies | not deletable |
-| 09 | [Publication lock, evaluation, migration, and documentation](09_publication_evaluation_migration_docs.md) | planned | 00–08 | authentic RQGM 18/19 certification where applicable | not deletable |
+| 00 | [Manuscript Complete program plan](00_manuscript_complete_program_plan.md) | in progress | none | RQGM 18/19; paper 07 | not deletable |
+| 01 | [Baseline and decision freeze](01_baseline_and_decision_freeze.md) | in progress | 00 | none | not deletable |
+| 02 | [Contracts and deterministic compiler core](02_contracts_and_compiler_core.md) | in progress | 00, 01 | none | not deletable |
+| 03 | [Audit-only simple BFTS + linear vertical slice](03_audit_vertical_slice.md) | in progress | 00, 01, 02 | none | not deletable |
+| 04 | [Segmented pipeline and enforce gate](04_segmented_pipeline_and_enforce_gate.md) | in progress | 00–03 | none | not deletable |
+| 05 | [Research RQGM and KCA integration](05_rqgm_kca_integration.md) | in progress | 00–04 | RQGM 18/19 | not deletable |
+| 06 | [Paper RQGM archive integration](06_paper_archive_integration.md) | in progress | 00–04 | RQGM-paper 01–07 | not deletable |
+| 07 | [Explicit repair and resume](07_explicit_repair_and_resume.md) | in progress | 00–04 | Task 05 only for KCA repair | not deletable |
+| 08 | [Automatic repair and full topology](08_auto_repair_and_full_topology.md) | in progress | 00–07 | none beyond dependencies | not deletable |
+| 09 | [Publication lock, evaluation, migration, and documentation](09_publication_evaluation_migration_docs.md) | in progress | 00–08 | authentic RQGM 18/19 certification where applicable | not deletable |
 
 Status legend:
 
@@ -115,7 +115,34 @@ Manuscript Complete は次の軸を結合するが、いずれも暗黙には有
 
 ## Current focus
 
-最初の実装対象は Task 01 の baseline/decision freeze、その後 Task 02 の compiler core で
-ある。Task 03 で `simple_bfts + linear + manuscript.audit + repair.disabled` の vertical
-slice を作り、既存挙動を止めずに writer へ届かない情報、本当に取得されていない情報、
-公開上利用できない情報を分離する。その証拠を基準に Tasks 04–09 を gate 順に進める。
+2026-08-06 時点で Tasks 01–09 のローカル実装、閉じた release manifest、4 topology E2E、
+13 failure-injection family、legacy migration/rollback dry run、authentic native Harness
+publication evidence が存在する。現在の焦点は、この worktree を安定 revision として commitし、
+同じ manifest の remote CI artifact を保持することである。未 commit worktree を revision 証跡
+として扱わず、authentic Harness を synthetic fixture で代用しない。
+
+## Implementation evidence (2026-08-06)
+
+| Gate | Local executable evidence | Remaining before `implemented` / deletion |
+|---|---|---|
+| G0–G2 | seven generated fixture classes; digest-bound compiler/readiness/omission contracts; off/audit CLI and idempotence tests | committed/merged revision and retained remote CI |
+| G3 | additive evidence/authoring/verification segments; stale-safe records; enforce pre-authoring gate; exact off identity tests | committed/merged revision and retained remote CI |
+| G4 | RQGM node/frontier/attestation projection plus checked-in verified native GEMM/SpMM/Stencil registration, parity, negative controls, and certify→publication chain | committed/merged Manuscript revision and retained remote CI |
+| G5 | common archive fingerprint; writer/reviewer/draft provenance; contextual-negative/forbidden/disclosure hard disqualification; exact winner handoff; stale/bound fallback tests | committed/merged revision and retained remote CI |
+| G6 | typed repair authority/budgets; recorded retrieval; normal BFTS/RQGM repair nodes; transaction, interruption, exhaustion, no-progress, and human-stop tests | committed/merged revision and retained remote CI |
+| G7 | opt-in outer auto loop; cumulative budgets; full four-topology compile→bound build→decision→lock E2E | committed/merged revision and retained remote CI artifact |
+| G8 | independent decision/lock; final content/freshness recheck; evaluation; all 13 failure families; additive migration/rollback; permanent docs | committed/merged revision, remote CI artifact, and release review |
+
+The closed policy is `scripts/manuscript_complete_release_gates.json`; the permanent runner is
+`scripts/run_manuscript_complete_release.py`; and `.github/workflows/manuscript-complete.yml`
+retains the revision-bound report/log artifact. A pre-commit dry run passed every executable check
+but is deliberately `release_eligible=false`; final evidence must be generated from the clean commit
+and again in GitHub Actions.
+
+## Current deletion assessment
+
+All plans remain **not deletable**. The shared blockers are the currently uncommitted Manuscript
+revision, its remote CI artifact, merge/release review, and post-merge deletion-readiness review.
+Authentic evidence exists for the advertised verified native HPC Harness scope; unavailable external
+PaperBench/other Harness scopes remain explicitly unsupported rather than mocked. Permanent documents
+now carry the architecture, contracts, release policy, migration, rollback, and operator semantics.

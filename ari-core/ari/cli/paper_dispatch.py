@@ -55,6 +55,7 @@ _MANUSCRIPT_RUNTIME_ENV = (
     "ARI_MANUSCRIPT_MAX_NEW_NODES",
     "ARI_MANUSCRIPT_MAX_EXPERIMENT_RUNS",
     "ARI_MANUSCRIPT_MAX_LLM_CALLS",
+    "ARI_MANUSCRIPT_MAX_RESOURCE_UNITS",
     "ARI_MANUSCRIPT_ASSURANCE_MODE",
     "ARI_MANUSCRIPT_KNOWLEDGE_MODE",
     "ARI_MANUSCRIPT_CAPABILITY_MODE",
@@ -103,6 +104,12 @@ def _manuscript_runtime_environment(cfg, *, paper_mode: str):
         "ARI_MANUSCRIPT_EXPLORATION_MODE": getattr(cfg.ari, "mode", "simple_bfts"),
         "ARI_MANUSCRIPT_PAPER_MODE": paper_mode,
     }
+    if repair.max_resource_units is not None:
+        values["ARI_MANUSCRIPT_MAX_RESOURCE_UNITS"] = str(
+            repair.max_resource_units
+        )
+    else:
+        os.environ.pop("ARI_MANUSCRIPT_MAX_RESOURCE_UNITS", None)
     os.environ.update(values)
     try:
         yield
@@ -579,6 +586,11 @@ def run_paper_phase(
                     include_segments=frozenset({"verification"}),
                 )
 
+            # Enforce-mode archive failures may only degrade to a fallback that
+            # consumes the already-validated binding.  The runtime checks this
+            # explicit marker rather than inferring safety from a callable's
+            # name or from the exception that caused the fallback.
+            _segmented_fallback._ari_manuscript_bound = True
             fallback = _segmented_fallback
         rt.run_archive(
             all_nodes, experiment_data, checkpoint_dir, mcp, cfg_str,

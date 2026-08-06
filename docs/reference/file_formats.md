@@ -728,6 +728,38 @@ Campaign-level outputs (`ablation_report.{json,md}`, expanded condition
 configs) live outside the checkpoint under `workspace/rqgm_eval/<eval_id>/`
 — see `docs/guides/rqgm_evaluation.md`.
 
+## `.ari-manuscript/` (opt-in Manuscript Complete)
+
+This namespace is absent when `manuscript.mode: "off"`. Audit and enforce
+attempts use immutable, digest-bound JSON documents:
+
+```text
+.ari-manuscript/
+├── state.json
+├── transitions.jsonl
+├── attempts/<attempt-id>/
+│   ├── source_snapshot.json
+│   ├── requirement_profile.json
+│   ├── context.json
+│   ├── omission_manifest.json
+│   ├── readiness.json
+│   ├── section_briefs.json
+│   ├── authoring_binding.json        # only when authoring-ready
+│   └── publication_decision.json     # after verification/finalization
+├── segments/*.json
+├── repair-transactions/*.json
+├── auto-rounds/*.json
+└── attempts/<attempt-id>/publication_lock.json
+                                        # only after a fresh publishable decision
+```
+
+The attempt identity is derived from the source snapshot and profile digests;
+source mutation creates a new attempt rather than rewriting an old one.
+Schemas are named `manuscript_*_v1.schema.json` and
+`research_repair_*_v1.schema.json` under `ari-core/ari/schemas/`. The full
+lineage and status rules are in the
+[Manuscript Complete contract reference](manuscript_complete_contracts.md).
+
 ## `settings.json`
 
 Per-checkpoint settings used by the viz dashboard.
@@ -811,6 +843,6 @@ into the published paper.
 - `docs/concepts/architecture.md` (Checkpoint Directory Layout) — narrative
   view of the same files.
 - `ari-core/ari/schemas/` — formal JSON Schemas for `node_report` and
-  the publish manifest.
+  the publish and Manuscript Complete manifests.
 - `ari-core/ari/pipeline/yaml_loader.py` — workflow.yaml parser.
 - `docs/guides/experiment_file.md` — long-form `experiment.md` guide.

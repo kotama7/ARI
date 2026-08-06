@@ -239,6 +239,16 @@ class PaperDraftExecutor:
         return found
 
     def run(self, node: Node, experiment: dict) -> Node:
+        manuscript = dict(experiment.get("manuscript_binding") or {})
+        fixed_block = str(experiment.get("manuscript_fixed_block") or "")
+        bind_reviewer = getattr(self.reviewer, "bind_manuscript_inputs", None)
+        if callable(bind_reviewer):
+            bind_reviewer(manuscript, fixed_block)
+        writer_prompt = str(experiment.get("writer_prompt_text") or "")
+        if fixed_block:
+            writer_prompt = (
+                f"{writer_prompt}\n\n{fixed_block}" if writer_prompt else fixed_block
+            )
         rel_tex = self._rel_tex_path(node)
         if node.original_direction == "seed":
             i = self._seed_index(node)
@@ -261,7 +271,7 @@ class PaperDraftExecutor:
                     # byte-identical). The evolving bytes live only in ari-core.
                     "writer_prompt_override": experiment.get(
                         "writer_prompt_text", ""
-                    ),
+                    ) if not fixed_block else writer_prompt,
                     # §5.4 decision 5: candidate i is SAMPLED under its own seed.
                     # Recording the seed without sending it made every record
                     # advertise a decode identity nothing honoured — with n == 1
@@ -298,7 +308,7 @@ class PaperDraftExecutor:
                     "venue": experiment.get("venue", "arxiv"),
                     "writer_prompt_override": experiment.get(
                         "writer_prompt_text", ""
-                    ),
+                    ) if not fixed_block else writer_prompt,
                     "decode_seed": decode_seed,
                 },
             )
@@ -338,6 +348,12 @@ class PaperDraftExecutor:
             "_reviewer_prompt_hash": getattr(
                 self.reviewer, "prompt_hash", ""
             ),
+            "_manuscript_input_fingerprint": str(
+                manuscript.get("input_fingerprint") or ""
+            ),
+            "_manuscript_binding_digest": str(
+                manuscript.get("binding_digest") or ""
+            ),
         }
         record = {
             "schema_version": PAPER_DRAFT_ARCHIVE_SCHEMA_VERSION,
@@ -360,6 +376,45 @@ class PaperDraftExecutor:
             "is_best_belief": False,
             "compiled": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "manuscript_bound": bool(manuscript.get("manuscript_bound", False)),
+            "manuscript_mode": str(manuscript.get("mode") or "off"),
+            "manuscript_attempt_id": str(manuscript.get("attempt_id") or ""),
+            "manuscript_input_fingerprint": str(
+                manuscript.get("input_fingerprint") or ""
+            ),
+            "manuscript_binding_digest": str(
+                manuscript.get("binding_digest") or ""
+            ),
+            "manuscript_profile_digest": str(
+                manuscript.get("profile_digest") or ""
+            ),
+            "manuscript_context_digest": str(
+                manuscript.get("context_digest") or ""
+            ),
+            "manuscript_readiness_digest": str(
+                manuscript.get("readiness_digest") or ""
+            ),
+            "manuscript_brief_bundle_digest": str(
+                manuscript.get("brief_bundle_digest") or ""
+            ),
+            "manuscript_section_brief_digests": list(
+                manuscript.get("section_brief_digests") or ()
+            ),
+            "manuscript_allowed_evidence_ids": list(
+                manuscript.get("allowed_evidence_ids") or ()
+            ),
+            "manuscript_contextual_negative_ids": list(
+                manuscript.get("contextual_negative_ids") or ()
+            ),
+            "manuscript_forbidden_evidence_ids": list(
+                manuscript.get("forbidden_evidence_ids") or ()
+            ),
+            "manuscript_required_disclosures": list(
+                manuscript.get("required_disclosures") or ()
+            ),
+            "manuscript_omission_count": int(
+                manuscript.get("omission_count") or 0
+            ),
         }
         self._records[node.id] = record
         write_paper_draft_record(self.ckpt, record)

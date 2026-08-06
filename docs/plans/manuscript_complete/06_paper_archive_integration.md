@@ -1,6 +1,6 @@
 # Task 06: Paper RQGM Archive Integration
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00, 01, 02, 03, 04
 > **External references**: ARI-RQGM-paper Tasks 01–07
 > **Gate**: G5 — common manuscript input across paper backends

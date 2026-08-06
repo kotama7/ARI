@@ -22,6 +22,7 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari run` | Run a new experiment | New Experiment wizard → Launch |
 | `ari resume` | Resume an interrupted experiment | Experiments page → Resume button |
 | `ari paper` | Generate paper only (skip experiments) | `POST /api/run-stage {stage: "paper"}` |
+| `ari manuscript <subcmd>` | Compile, inspect, repair, and lock Manuscript Complete attempts | — |
 | `ari status` | Show experiment tree and summary | Monitor / Tree page |
 | `ari viz` | Launch the web dashboard | — |
 | `ari projects` | List all past experiments | Experiments page |
@@ -41,6 +42,29 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 > `ARI_RQGM_ENABLED` environment overrides. Every command above behaves
 > identically under the default `simple_bfts` mode. See
 > [Execution modes](../guides/execution_modes.md).
+
+## `ari manuscript` — completeness and publication operations
+
+This command group is the machine-readable operator surface for the opt-in
+exploration-to-authoring compiler. It does not run on the default
+`manuscript.mode: "off"` path.
+
+```bash
+ari manuscript compile CHECKPOINT --mode audit|enforce \
+  [--profile generic_empirical_v1] [--repair-policy disabled|explicit|auto]
+ari manuscript status CHECKPOINT [--fail-if-blocked]
+ari manuscript inspect CHECKPOINT [--requirement ID] [--lane LANE] [--node ID]
+ari manuscript plan-repair CHECKPOINT [--config WORKFLOW]
+ari manuscript repair CHECKPOINT --request REQUEST_ID [--config WORKFLOW]
+ari manuscript explain-publication CHECKPOINT
+ari manuscript lock-publication CHECKPOINT
+```
+
+`plan-repair` is read-only with respect to external systems. `repair` first
+persists the admitted request and budget, then uses the normal bounded research
+runtime; `ari paper` never starts research repair. `lock-publication` succeeds
+only for a fresh, publishable decision bound to the exact final build and PDF.
+See the [operator runbook](../guides/manuscript_complete_operations.md).
 
 ---
 

@@ -331,8 +331,16 @@ def build_agent_as_judge_score_fn(
         if not (draft_text or "").strip():
             # empty draft: no LLM spend
             return _fallback(prompt_text, draft_text, "empty_draft")
+        evidence = dict(_evidence)
+        fixed = str(getattr(score_fn, "manuscript_fixed_block", "") or "")
+        if fixed:
+            evidence["verified_context"] = (
+                f"{evidence['verified_context']}\n\n{fixed}"
+                if evidence["verified_context"]
+                else fixed
+            )
         context = _paper_reviewer_string_view(
-            draft_manuscript=draft_text, **_evidence,
+            draft_manuscript=draft_text, **evidence,
         )
         messages = _render_messages(prompt_text, context, axes)
         kw = {"require_tool": False, "phase": "paper_judge"}
@@ -374,4 +382,10 @@ def build_agent_as_judge_score_fn(
     score_fn.judged = 0
     score_fn.degraded = 0
     score_fn.last_source = None
+    score_fn.manuscript_fixed_block = ""
+
+    def _bind_manuscript_inputs(_binding: dict, fixed_block: str) -> None:
+        score_fn.manuscript_fixed_block = str(fixed_block or "")
+
+    score_fn.bind_manuscript_inputs = _bind_manuscript_inputs
     return score_fn

@@ -1,6 +1,6 @@
 # Task 01: Baseline and Decision Freeze
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00
 > **Gate**: G0 — baseline and normative decision freeze
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

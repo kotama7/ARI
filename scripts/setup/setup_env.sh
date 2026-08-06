@@ -662,6 +662,32 @@ _env_append_if_absent "# ARI_MODEL_REVISION=            # exact provider/model r
 _env_append_if_absent "# ARI_TOOL_BUNDLE_REVISION=      # immutable tool-bundle revision for the RQGM execution fingerprint"
 _env_append_if_absent "# ARI_ENVIRONMENT_DIGEST=        # container or environment digest for the RQGM execution fingerprint"
 _env_append_if_absent "# ARI_DATA_SNAPSHOT_DIGEST=      # immutable external-data snapshot digest for the RQGM execution fingerprint"
+_env_append_if_absent "# ARI_HARNESS_CONTAINER_ROOT=    # absolute root used to resolve admitted logical Harness container references"
+
+# --- Manuscript Complete (independent opt-in posture) -----------------------
+_env_append_if_absent "# ARI_MANUSCRIPT_MODE=off          # off|audit|enforce; independent of ARI_MODE and ARI_PAPER_MODE"
+_env_append_if_absent "# ARI_MANUSCRIPT_PROFILE=generic_empirical_v1"
+_env_append_if_absent "# ARI_MANUSCRIPT_REPAIR_POLICY=disabled  # disabled|explicit|auto; auto requires enforce"
+_env_append_if_absent "# ARI_MANUSCRIPT_BRIEF_CHARACTER_BUDGET=24000"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_ROUNDS=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_NEW_NODES=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_EXPERIMENT_RUNS=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_LLM_CALLS=0"
+_env_append_if_absent "# ARI_MANUSCRIPT_MAX_RESOURCE_UNITS=  # optional finite non-negative aggregate resource cap"
+# The following values are normally set and cleared by the fixed coordinator;
+# they are listed so environment audits are exhaustive, not as user overrides.
+_env_append_if_absent "# ARI_MANUSCRIPT_RUNTIME_MODE=off"
+_env_append_if_absent "# ARI_MANUSCRIPT_REPAIR_POLICY_EFFECTIVE=disabled"
+_env_append_if_absent "# ARI_MANUSCRIPT_ASSURANCE_MODE=off"
+_env_append_if_absent "# ARI_MANUSCRIPT_KNOWLEDGE_MODE=off"
+_env_append_if_absent "# ARI_MANUSCRIPT_CAPABILITY_MODE=legacy"
+_env_append_if_absent "# ARI_MANUSCRIPT_EXPLORATION_MODE=simple_bfts"
+_env_append_if_absent "# ARI_MANUSCRIPT_PAPER_MODE=linear"
+_env_append_if_absent "# ARI_MANUSCRIPT_PROFILE_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_CONTEXT_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_READINESS_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_BRIEFS_PATH="
+_env_append_if_absent "# ARI_MANUSCRIPT_BINDING_PATH="
 
 # --- Paper-archive execution mode (docs/plans/ari_rqgm_paper Task 01) --------
 _env_append_if_absent "# ARI_PAPER_MODE=                # paper-phase mode override: linear|rqgm_archive (archive also needs ARI_RQGM_PAPER_ENABLED=1; default linear)"

@@ -6,7 +6,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ari.manuscript.digest import canonical_digest, file_digest
+from ari.manuscript.digest import (
+    canonical_digest,
+    file_digest,
+    path_has_symlink_component,
+)
 
 
 _AUTHORITY_FILES = (
@@ -32,7 +36,9 @@ def capture_repair_authority(
     artifacts: list[dict[str, Any]] = []
     for relative in _AUTHORITY_FILES:
         path = checkpoint / relative
-        if path.is_file() and not path.is_symlink():
+        if path_has_symlink_component(checkpoint, path):
+            artifacts.append({"relative_path": relative, "status": "unsafe_symlink"})
+        elif path.is_file():
             digest, size = file_digest(path)
             artifacts.append(
                 {

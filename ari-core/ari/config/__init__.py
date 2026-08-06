@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ari.config.skill_runtime import manifest_runtime_metadata
 from ari.skill_manifest import (
@@ -388,6 +388,14 @@ class ManuscriptConfig(BaseModel):
     profile: str = Field("generic_empirical_v1", min_length=1, max_length=256)
     brief_character_budget: int = Field(24_000, ge=1_000, le=2_000_000)
     repair: ManuscriptRepairConfig = Field(default_factory=ManuscriptRepairConfig)
+
+    @model_validator(mode="after")
+    def _validate_repair_posture(self) -> "ManuscriptConfig":
+        if self.repair.policy == "auto" and self.mode != "enforce":
+            raise ValueError(
+                "manuscript.repair.policy=auto requires manuscript.mode=enforce"
+            )
+        return self
 
 
 class KnowledgeRuntimeConfig(BaseModel):
@@ -2102,6 +2110,13 @@ def apply_manuscript_env_overrides(cfg: "ARIConfig") -> None:
                 "(disabled | explicit | auto); ignored",
                 _policy,
             )
+    if (
+        getattr(cfg.manuscript.repair, "policy", "disabled") == "auto"
+        and getattr(cfg.manuscript, "mode", "off") != "enforce"
+    ):
+        raise ValueError(
+            "manuscript.repair.policy=auto requires manuscript.mode=enforce"
+        )
 
 
 def _effective_manuscript_mode_str(cfg: "ARIConfig") -> str:

@@ -1,6 +1,6 @@
 # Task 09: Publication Lock, Evaluation, Migration, and Documentation
 
-> **Status**: planned
+> **Status**: in progress
 > **Depends on**: 00, 01, 02, 03, 04, 05, 06, 07, 08
 > **External dependencies**: authentic ARI-RQGM Tasks 18/19 certification evidence where applicable; existing paper final gate/reproduction contracts
 > **Gate**: G8 — release and permanent-spec closure

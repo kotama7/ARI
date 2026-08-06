@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import inspect
+import json
+import math
 from typing import Any, Callable
 
 from ari.manuscript.contracts import (
+    ManuscriptRepairTransactionV1,
     ManuscriptReadinessReportV1,
     RepairBudgetV1,
     ResearchRepairPlanV1,
@@ -157,9 +160,151 @@ class RepairExecutionResult:
             "human_required", "unavailable",
         }:
             raise ValueError(f"unknown repair execution status: {self.status}")
+        if not isinstance(self.details, dict):
+            raise ValueError("repair execution details must be an object")
+        try:
+            json.dumps(self.details, ensure_ascii=False, allow_nan=False)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("repair execution details must be finite JSON") from exc
 
 
 RepairExecutor = Callable[[ResearchRepairRequestV1], RepairExecutionResult]
+
+
+def bind_transactional_executors(
+    plan: ResearchRepairPlanV1,
+    checkpoint_dir,
+    executors: dict[str, RepairExecutor],
+) -> dict[str, RepairExecutor]:
+    """Wrap resolvers in immutable request-level idempotency commits."""
+
+    from pathlib import Path
+
+    from ari.manuscript.digest import path_has_symlink_component
+    from ari.manuscript.state import ManuscriptStateStore
+
+    store = ManuscriptStateStore(checkpoint_dir)
+    checkpoint = Path(checkpoint_dir).resolve()
+    transactional: dict[str, RepairExecutor] = {}
+    for kind, executor in executors.items():
+
+        def _wrap(request, remaining=None, *, _executor=executor):
+            transaction_name = f"{request.request_id}.json"
+            transaction_path = (
+                store.root / "repair-transactions" / transaction_name
+            )
+            if transaction_path.exists() or transaction_path.is_symlink():
+                if (
+                    not transaction_path.is_file()
+                    or path_has_symlink_component(checkpoint, transaction_path)
+                ):
+                    raise ValueError("repair transaction path is unsafe")
+                value = ManuscriptRepairTransactionV1.model_validate_json(
+                    transaction_path.read_text(encoding="utf-8")
+                )
+                if (
+                    value.run_id != plan.run_id
+                    or value.request_id != request.request_id
+                    or value.request_digest != request.request_digest
+                    or value.source_context_digest != request.source_context_digest
+                    or value.authority_digest != request.authority_digest
+                ):
+                    raise ValueError("repair transaction identity mismatch")
+                details = dict(value.details)
+                prior_use = {
+                    "new_nodes": details.get("new_nodes", 0),
+                    "experiment_runs": details.get("experiment_runs", 0),
+                    "llm_calls": details.get("llm_calls", 0),
+                    "resource_units": details.get("resource_units", 0.0),
+                }
+                details.update(
+                    {
+                        "new_nodes": 0,
+                        "experiment_runs": 0,
+                        "llm_calls": 0,
+                        "resource_units": 0.0,
+                        "idempotent_reuse": True,
+                        "prior_budget_use": prior_use,
+                    }
+                )
+                return RepairExecutionResult(request.request_id, value.status, details)
+            result = (
+                _executor(request, remaining)
+                if remaining is not None
+                and len(inspect.signature(_executor).parameters) >= 2
+                else _executor(request)
+            )
+            if result.request_id != request.request_id:
+                raise ValueError("repair executor returned another request identity")
+            transaction = ManuscriptRepairTransactionV1.create(
+                run_id=plan.run_id,
+                request_id=request.request_id,
+                request_digest=request.request_digest,
+                source_context_digest=request.source_context_digest,
+                authority_digest=request.authority_digest,
+                status=result.status,
+                details=result.details,
+            )
+            store.write_once(
+                f"repair-transactions/{transaction_name}", transaction
+            )
+            return result
+
+        transactional[kind] = _wrap
+    return transactional
+
+
+def committed_repair_usage(
+    plan: ResearchRepairPlanV1,
+    checkpoint_dir,
+) -> dict[str, int | float]:
+    """Reconstruct plan-local consumed budget from verified transactions."""
+
+    from pathlib import Path
+
+    from ari.manuscript.digest import path_has_symlink_component
+    from ari.manuscript.state import ManuscriptStateStore
+
+    checkpoint = Path(checkpoint_dir).resolve()
+    store = ManuscriptStateStore(checkpoint)
+    usage: dict[str, int | float] = {
+        "new_nodes": 0,
+        "experiment_runs": 0,
+        "llm_calls": 0,
+        "resource_units": 0.0,
+    }
+    for request in plan.requests:
+        path = store.root / "repair-transactions" / f"{request.request_id}.json"
+        if not (path.exists() or path.is_symlink()):
+            continue
+        if not path.is_file() or path_has_symlink_component(checkpoint, path):
+            raise ValueError("repair transaction path is unsafe")
+        record = ManuscriptRepairTransactionV1.model_validate_json(
+            path.read_text(encoding="utf-8")
+        )
+        if (
+            record.run_id != plan.run_id
+            or record.request_id != request.request_id
+            or record.request_digest != request.request_digest
+            or record.source_context_digest != request.source_context_digest
+            or record.authority_digest != request.authority_digest
+        ):
+            raise ValueError("repair transaction identity mismatch")
+        for key in ("new_nodes", "experiment_runs", "llm_calls"):
+            value = record.details.get(key, 0)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError("repair transaction has invalid budget use")
+            usage[key] = int(usage[key]) + value
+        resource = record.details.get("resource_units", 0.0)
+        if (
+            not isinstance(resource, (int, float))
+            or isinstance(resource, bool)
+            or not math.isfinite(float(resource))
+            or float(resource) < 0
+        ):
+            raise ValueError("repair transaction has invalid resource use")
+        usage["resource_units"] = float(usage["resource_units"]) + float(resource)
+    return usage
 
 
 def execute_repair_plan(
@@ -167,7 +312,7 @@ def execute_repair_plan(
     *,
     executors: dict[str, RepairExecutor],
     selected_request_ids: set[str] | None = None,
-    used_budget: dict[str, int] | None = None,
+    used_budget: dict[str, int | float] | None = None,
 ) -> tuple[RepairExecutionResult, ...]:
     """Execute admitted callbacks without inferring unavailable authority.
 
@@ -187,9 +332,44 @@ def execute_repair_plan(
         raise ValueError("selected repair request is absent from the admitted plan")
     results: list[RepairExecutionResult] = []
     usage = used_budget if used_budget is not None else {}
-    used_nodes = int(usage.get("new_nodes", 0) or 0)
-    used_runs = int(usage.get("experiment_runs", 0) or 0)
-    used_calls = int(usage.get("llm_calls", 0) or 0)
+
+    def budget_integer(value: Any, *, label: str) -> int:
+        if value is None:
+            return 0
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"repair budget has invalid {label}")
+        return value
+
+    def resource_value(value: Any, *, label: str) -> float:
+        if value is None:
+            return 0.0
+        if (
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(float(value))
+            or float(value) < 0
+        ):
+            raise ValueError(f"repair budget has invalid {label}")
+        return float(value)
+
+    used_nodes = budget_integer(usage.get("new_nodes", 0), label="node use")
+    used_runs = budget_integer(
+        usage.get("experiment_runs", 0), label="experiment use"
+    )
+    used_calls = budget_integer(usage.get("llm_calls", 0), label="call use")
+    used_resources = resource_value(
+        usage.get("resource_units", 0.0), label="resource use"
+    )
+    if (
+        used_nodes > plan.budget.max_new_nodes
+        or used_runs > plan.budget.max_experiment_runs
+        or used_calls > plan.budget.max_llm_calls
+        or (
+            plan.budget.max_resource_units is not None
+            and used_resources > plan.budget.max_resource_units
+        )
+    ):
+        raise ValueError("committed repair use exceeds admitted plan budget")
     for request in plan.requests:
         if request.request_id not in selected:
             continue
@@ -207,7 +387,11 @@ def execute_repair_plan(
                 0, plan.budget.max_experiment_runs - used_runs
             ),
             max_llm_calls=max(0, plan.budget.max_llm_calls - used_calls),
-            max_resource_units=plan.budget.max_resource_units,
+            max_resource_units=(
+                None
+                if plan.budget.max_resource_units is None
+                else max(0.0, plan.budget.max_resource_units - used_resources)
+            ),
         )
         if (
             remaining.max_new_nodes < minimum[0]
@@ -231,27 +415,50 @@ def execute_repair_plan(
         if result.request_id != request.request_id:
             raise ValueError("repair executor returned another request identity")
         results.append(result)
-        new_nodes = int(result.details.get("new_nodes", 0) or 0)
-        new_runs = int(result.details.get("experiment_runs", 0) or 0)
-        new_calls = int(result.details.get("llm_calls", 0) or 0)
-        if min(new_nodes, new_runs, new_calls) < 0:
-            raise ValueError("repair executor reported negative budget use")
+        new_nodes = budget_integer(
+            result.details.get("new_nodes", 0), label="executor node use"
+        )
+        new_runs = budget_integer(
+            result.details.get("experiment_runs", 0),
+            label="executor experiment use",
+        )
+        new_calls = budget_integer(
+            result.details.get("llm_calls", 0), label="executor call use"
+        )
+        new_resources = resource_value(
+            result.details.get("resource_units", 0.0),
+            label="executor resource use",
+        )
         if (
             new_nodes > request.budget.max_new_nodes
             or new_runs > request.budget.max_experiment_runs
             or new_calls > request.budget.max_llm_calls
+            or (
+                request.budget.max_resource_units is not None
+                and new_resources > request.budget.max_resource_units
+            )
         ):
             raise ValueError("repair executor exceeded its request budget")
         used_nodes += new_nodes
         used_runs += new_runs
         used_calls += new_calls
-        if used_nodes > plan.budget.max_new_nodes or used_runs > plan.budget.max_experiment_runs or used_calls > plan.budget.max_llm_calls:
+        used_resources += new_resources
+        if (
+            used_nodes > plan.budget.max_new_nodes
+            or used_runs > plan.budget.max_experiment_runs
+            or used_calls > plan.budget.max_llm_calls
+            or (
+                plan.budget.max_resource_units is not None
+                and used_resources > plan.budget.max_resource_units
+            )
+        ):
             raise ValueError("repair executor exceeded admitted plan budget")
         usage.update(
             {
                 "new_nodes": used_nodes,
                 "experiment_runs": used_runs,
                 "llm_calls": used_calls,
+                "resource_units": used_resources,
             }
         )
     return tuple(results)
@@ -265,6 +472,8 @@ __all__ = [
     "REPAIR_MINIMUM_COST",
     "RepairExecutionResult",
     "authority_digest",
+    "bind_transactional_executors",
+    "committed_repair_usage",
     "build_repair_plan",
     "execute_repair_plan",
 ]

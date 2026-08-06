@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -15,15 +16,19 @@ from ari.manuscript.digest import (
     canonical_digest,
     file_digest,
     normalize_digest,
+    path_has_symlink_component,
     safe_relative_path,
 )
 
 
 KNOWN_CHECKPOINT_ARTIFACTS: tuple[tuple[str, str], ...] = (
+    ("experiment.md", "experiment-spec"),
     ("idea.json", "research-contract"),
     ("evaluation_criteria.json", "metric-contract"),
+    ("metric_contract.json", "metric-contract-v1"),
     ("nodes_tree.json", "nodes-tree"),
     ("tree.json", "tree-state"),
+    ("results.json", "run-results"),
     ("node_provenance_audit.json", "provenance-audit"),
     ("science_data.json", "science-data"),
     ("related_refs.json", "retrieval-records"),
@@ -78,23 +83,72 @@ def _artifact_id(kind: str, identity: str) -> str:
     return f"artifact-{canonical_digest([kind, identity])[7:31]}"
 
 
+def _relative_artifact_path(
+    checkpoint_dir: Path,
+    raw_path: str,
+    *,
+    node: Any | None = None,
+) -> str | None:
+    """Resolve a node/manifest path without allowing checkpoint escape."""
+
+    raw = raw_path.strip()
+    if not raw:
+        return None
+    candidate = Path(raw)
+    candidates: list[Path] = []
+    if candidate.is_absolute():
+        candidates.append(candidate)
+    else:
+        work_dir = _string(_get(node, "work_dir", "")) if node is not None else ""
+        report_path = (
+            _string(_get(node, "node_report_path", ""))
+            if node is not None
+            else ""
+        )
+        if work_dir:
+            work = Path(work_dir)
+            candidates.append((work if work.is_absolute() else checkpoint_dir / work) / candidate)
+        if report_path:
+            report = Path(report_path)
+            report = report if report.is_absolute() else checkpoint_dir / report
+            candidates.append(report.parent / candidate)
+        candidates.append(checkpoint_dir / candidate)
+    # Prefer an existing candidate, then preserve the first declared location
+    # so a missing artifact remains addressable and freshness-checkable.
+    ordered = sorted(candidates, key=lambda item: not (item.exists() or item.is_symlink()))
+    for item in ordered:
+        try:
+            # Normalize ``..`` lexically but retain symlink components so the
+            # caller can classify them as unsafe instead of hashing a target
+            # reached through an alias.
+            relative = Path(os.path.abspath(item)).relative_to(
+                checkpoint_dir
+            ).as_posix()
+            return safe_relative_path(relative)
+        except (OSError, ValueError):
+            continue
+    return None
+
+
 def _node_artifact_refs(
     checkpoint_dir: Path, node: Any
 ) -> list[ManuscriptArtifactRefV1]:
     node_id = _string(_get(node, "id"))
     out: list[ManuscriptArtifactRefV1] = []
     for index, artifact in enumerate(_get(node, "artifacts", []) or []):
-        data = artifact if isinstance(artifact, dict) else {}
+        data = (
+            artifact
+            if isinstance(artifact, dict)
+            else {"path": artifact}
+            if isinstance(artifact, str)
+            else {}
+        )
         raw_path = data.get("relative_path") or data.get("path") or data.get("file")
         path: str | None = None
         if isinstance(raw_path, str) and raw_path.strip():
-            try:
-                candidate = Path(raw_path.strip())
-                if candidate.is_absolute():
-                    candidate = candidate.resolve().relative_to(checkpoint_dir)
-                path = safe_relative_path(candidate.as_posix())
-            except ValueError:
-                path = None
+            path = _relative_artifact_path(
+                checkpoint_dir, raw_path, node=node
+            )
         recorded_digest = normalize_digest(data.get("sha256") or data.get("digest"))
         recorded_size = data.get("size_bytes", data.get("size"))
         if (
@@ -107,11 +161,18 @@ def _node_artifact_refs(
         size = recorded_size
         identity = path or str(data.get("id") or index)
         status = "unhashed"
+        unsafe_path: str | None = None
         if path is None and raw_path:
             status = "invalid"
+            unsafe_path = "escape_or_invalid"
         elif path is not None:
             source = checkpoint_dir / path
-            if not source.is_file():
+            if path_has_symlink_component(checkpoint_dir, source):
+                status = "invalid"
+                unsafe_path = "symlink"
+                digest = None
+                size = None
+            elif not source.is_file():
                 status = "missing"
                 digest = None
                 size = None
@@ -149,7 +210,8 @@ def _node_artifact_refs(
                     and isinstance(value, (str, int, float, bool, type(None)))
                 }
                 | ({"recorded_digest": recorded_digest} if recorded_digest else {})
-                | ({"recorded_size": recorded_size} if recorded_size is not None else {}),
+                | ({"recorded_size": recorded_size} if recorded_size is not None else {})
+                | ({"unsafe_path": unsafe_path} if unsafe_path else {}),
             )
         )
     return out
@@ -160,6 +222,17 @@ def _checkpoint_artifacts(checkpoint_dir: Path) -> list[ManuscriptArtifactRefV1]
     for relative_path, kind in KNOWN_CHECKPOINT_ARTIFACTS:
         path = checkpoint_dir / relative_path
         item_id = _artifact_id(kind, relative_path)
+        if path_has_symlink_component(checkpoint_dir, path):
+            out.append(
+                ManuscriptArtifactRefV1(
+                    item_id=item_id,
+                    kind=kind,
+                    relative_path=relative_path,
+                    status="invalid",
+                    metadata={"unsafe_path": "symlink"},
+                )
+            )
+            continue
         if not path.is_file():
             out.append(
                 ManuscriptArtifactRefV1(
@@ -195,6 +268,191 @@ def _checkpoint_artifacts(checkpoint_dir: Path) -> list[ManuscriptArtifactRefV1]
     return out
 
 
+def _node_report_artifacts(
+    checkpoint_dir: Path,
+    nodes: Iterable[Any],
+) -> list[ManuscriptArtifactRefV1]:
+    out: list[ManuscriptArtifactRefV1] = []
+    for node in nodes:
+        node_id = _string(_get(node, "id", ""))
+        raw = _string(_get(node, "node_report_path", ""))
+        if not node_id or not raw:
+            continue
+        # node_report_path is already checkpoint-relative by the Node contract;
+        # do not resolve it again relative to its own parent.
+        relative = _relative_artifact_path(checkpoint_dir, raw)
+        item_id = _artifact_id("node-report", f"{node_id}:{relative or raw}")
+        if relative is None:
+            out.append(
+                ManuscriptArtifactRefV1(
+                    item_id=item_id,
+                    kind="node-report",
+                    source_node_id=node_id,
+                    status="invalid",
+                    metadata={"recorded_ref": raw, "unsafe_path": "escape_or_invalid"},
+                )
+            )
+            continue
+        source = checkpoint_dir / relative
+        if path_has_symlink_component(checkpoint_dir, source):
+            out.append(
+                ManuscriptArtifactRefV1(
+                    item_id=item_id,
+                    kind="node-report",
+                    relative_path=relative,
+                    source_node_id=node_id,
+                    status="invalid",
+                    metadata={"unsafe_path": "symlink"},
+                )
+            )
+        elif not source.is_file():
+            out.append(
+                ManuscriptArtifactRefV1(
+                    item_id=item_id,
+                    kind="node-report",
+                    relative_path=relative,
+                    source_node_id=node_id,
+                    status="missing",
+                )
+            )
+        else:
+            try:
+                digest, size = file_digest(source)
+                out.append(
+                    ManuscriptArtifactRefV1(
+                        item_id=item_id,
+                        kind="node-report",
+                        relative_path=relative,
+                        digest=digest,
+                        size_bytes=size,
+                        source_node_id=node_id,
+                        status="present",
+                    )
+                )
+            except (OSError, ValueError) as exc:
+                out.append(
+                    ManuscriptArtifactRefV1(
+                        item_id=item_id,
+                        kind="node-report",
+                        relative_path=relative,
+                        source_node_id=node_id,
+                        status="invalid",
+                        metadata={"error": str(exc)[:500]},
+                    )
+                )
+    return out
+
+
+def _manifest_referenced_artifacts(
+    checkpoint_dir: Path,
+    sources: Iterable[ManuscriptArtifactRefV1],
+) -> list[ManuscriptArtifactRefV1]:
+    """Inventory file references nested in known JSON source contracts."""
+
+    known_paths = {
+        item.relative_path for item in sources if item.relative_path is not None
+    }
+    discovered: dict[tuple[str, str], ManuscriptArtifactRefV1] = {}
+
+    def visit(value: Any, *, source_kind: str) -> None:
+        if isinstance(value, dict):
+            raw = value.get("relative_path") or value.get("path") or value.get("file")
+            if isinstance(raw, str) and raw.strip():
+                relative = _relative_artifact_path(checkpoint_dir, raw)
+                identity = relative or raw.strip()
+                key = (source_kind, identity)
+                if relative not in known_paths and key not in discovered:
+                    recorded_digest = normalize_digest(
+                        value.get("digest") or value.get("sha256")
+                    )
+                    recorded_size = value.get("size_bytes", value.get("size"))
+                    if not isinstance(recorded_size, int) or isinstance(recorded_size, bool):
+                        recorded_size = None
+                    status = "invalid" if relative is None else "missing"
+                    unsafe_path = "escape_or_invalid" if relative is None else None
+                    # A missing file cannot carry a content identity.  Keep any
+                    # identity asserted by the enclosing manifest as metadata so
+                    # the omission remains diagnosable without making the
+                    # artifact contract internally inconsistent.
+                    digest = None
+                    size = None
+                    if relative is not None:
+                        path = checkpoint_dir / relative
+                        if path_has_symlink_component(checkpoint_dir, path):
+                            status = "invalid"
+                            unsafe_path = "symlink"
+                            digest = None
+                            size = None
+                        elif path.is_file():
+                            try:
+                                actual = file_digest(path)
+                                status = (
+                                    "mismatch"
+                                    if (
+                                        recorded_digest is not None
+                                        and recorded_digest != actual[0]
+                                    )
+                                    or (
+                                        recorded_size is not None
+                                        and recorded_size != actual[1]
+                                    )
+                                    else "present"
+                                )
+                                digest, size = actual
+                            except (OSError, ValueError):
+                                status = "invalid"
+                                digest = None
+                                size = None
+                    discovered[key] = ManuscriptArtifactRefV1(
+                        item_id=_artifact_id(
+                            "manifest-artifact", f"{source_kind}:{identity}"
+                        ),
+                        kind="manifest-artifact",
+                        relative_path=relative,
+                        digest=digest,
+                        size_bytes=size,
+                        status=status,
+                        metadata={
+                            "source_kind": source_kind,
+                            **(
+                                {"recorded_digest": recorded_digest}
+                                if recorded_digest
+                                else {}
+                            ),
+                            **({"unsafe_path": unsafe_path} if unsafe_path else {}),
+                        },
+                    )
+            for child in value.values():
+                visit(child, source_kind=source_kind)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child, source_kind=source_kind)
+
+    reference_bearing_source_kinds = {
+        "ear-manifest",
+        "figure-batch",
+        "provenance-audit",
+        "science-data",
+        "verified-context",
+    }
+    for source in sources:
+        if (
+            source.status != "present"
+            or source.relative_path is None
+            or not source.relative_path.endswith(".json")
+            or source.kind not in reference_bearing_source_kinds
+        ):
+            continue
+        try:
+            document = json.loads(
+                (checkpoint_dir / source.relative_path).read_text(encoding="utf-8")
+            )
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        visit(document, source_kind=source.kind)
+    return [discovered[key] for key in sorted(discovered)]
+
+
 def _attestation_artifacts(
     checkpoint_dir: Path,
     nodes: Iterable[Any],
@@ -218,11 +476,26 @@ def _attestation_artifacts(
                         kind="harness-attestation",
                         source_node_id=node_id or None,
                         status="invalid",
-                        metadata={"recorded_ref": raw.strip()},
+                        metadata={
+                            "recorded_ref": raw.strip(),
+                            "unsafe_path": "escape_or_invalid",
+                        },
                     )
                 )
                 continue
             path = checkpoint_dir / relative
+            if path_has_symlink_component(checkpoint_dir, path):
+                out.append(
+                    ManuscriptArtifactRefV1(
+                        item_id=item_id,
+                        kind="harness-attestation",
+                        relative_path=relative,
+                        source_node_id=node_id or None,
+                        status="invalid",
+                        metadata={"unsafe_path": "symlink"},
+                    )
+                )
+                continue
             if not path.is_file():
                 out.append(
                     ManuscriptArtifactRefV1(
@@ -366,7 +639,9 @@ def build_exploration_snapshot(
     artifacts = _checkpoint_artifacts(checkpoint)
     for node in raw_nodes:
         artifacts.extend(_node_artifact_refs(checkpoint, node))
+    artifacts.extend(_node_report_artifacts(checkpoint, raw_nodes))
     artifacts.extend(_attestation_artifacts(checkpoint, raw_nodes))
+    artifacts.extend(_manifest_referenced_artifacts(checkpoint, artifacts))
     artifacts = sorted(artifacts, key=lambda item: item.item_id)
     by_node: dict[str, list[str]] = {}
     for item in artifacts:
@@ -472,7 +747,7 @@ def build_exploration_snapshot(
     if not question:
         question = str((experiment_data or {}).get("goal") or "")
     source_digests = {
-        item.kind: item.digest
+        item.item_id: item.digest
         for item in artifacts
         if item.digest is not None and item.source_node_id is None
     }

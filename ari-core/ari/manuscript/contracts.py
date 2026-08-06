@@ -8,6 +8,7 @@ backends receive the same immutable context/readiness/brief identities.
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Any, ClassVar, Literal
 
@@ -40,8 +41,11 @@ MANUSCRIPT_SECTION_BRIEF_BUNDLE_V1 = "ari.manuscript-section-brief-bundle/v1"
 MANUSCRIPT_AUTHORING_BINDING_V1 = "ari.manuscript-authoring-binding/v1"
 RESEARCH_REPAIR_REQUEST_V1 = "ari.research-repair-request/v1"
 RESEARCH_REPAIR_PLAN_V1 = "ari.research-repair-plan/v1"
+MANUSCRIPT_REPAIR_TRANSACTION_V1 = "ari.manuscript-repair-transaction/v1"
+MANUSCRIPT_AUTO_REPAIR_ROUND_V1 = "ari.manuscript-auto-repair-round/v1"
 MANUSCRIPT_PUBLICATION_DECISION_V1 = "ari.manuscript-publication-decision/v1"
 MANUSCRIPT_PUBLICATION_LOCK_V1 = "ari.manuscript-publication-lock/v1"
+MANUSCRIPT_EVALUATION_REPORT_V1 = "ari.manuscript-evaluation-report/v1"
 MANUSCRIPT_SEGMENT_RECORD_V1 = "ari.manuscript-segment-record/v1"
 MANUSCRIPT_TRANSITION_V1 = "ari.manuscript-transition/v1"
 
@@ -72,6 +76,15 @@ RepairKind = Literal[
     "method_clarification",
     "limitation_disclosure",
     "human_decision",
+]
+RepairExecutionStatus = Literal[
+    "executed",
+    "satisfied",
+    "still_missing",
+    "failed",
+    "exhausted",
+    "human_required",
+    "unavailable",
 ]
 
 
@@ -297,7 +310,7 @@ class ExplorationSnapshotV1(DigestBoundModel):
         default_factory=tuple, max_length=200_000
     )
     scientific_winner_id: str | None = None
-    source_digests: dict[str, str] = Field(default_factory=dict, max_length=10_000)
+    source_digests: dict[str, str] = Field(default_factory=dict, max_length=200_000)
     snapshot_digest: str = Field(pattern=SHA256_PATTERN)
 
     @field_validator("run_id", "checkpoint_id")
@@ -717,8 +730,107 @@ class ResearchRepairPlanV1(DigestBoundModel):
                 item.budget.max_new_nodes > self.budget.max_new_nodes
                 or item.budget.max_experiment_runs > self.budget.max_experiment_runs
                 or item.budget.max_llm_calls > self.budget.max_llm_calls
+                or (
+                    self.budget.max_resource_units is not None
+                    and (
+                        item.budget.max_resource_units is None
+                        or item.budget.max_resource_units
+                        > self.budget.max_resource_units
+                    )
+                )
             ):
                 raise ValueError("repair request exceeds plan budget")
+        return self
+
+
+class RepairBudgetUsageV1(StrictModel):
+    new_nodes: int = Field(default=0, ge=0, le=100_000)
+    experiment_runs: int = Field(default=0, ge=0, le=100_000)
+    llm_calls: int = Field(default=0, ge=0, le=100_000)
+    resource_units: float = Field(default=0.0, ge=0)
+
+    @field_validator("resource_units")
+    @classmethod
+    def _finite_resources(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("repair resource use must be finite")
+        return value
+
+
+class ManuscriptRepairTransactionV1(DigestBoundModel):
+    """Immutable commit record for one admitted repair executor result."""
+
+    digest_field = "transaction_digest"
+    schema_version: Literal["ari.manuscript-repair-transaction/v1"] = (
+        MANUSCRIPT_REPAIR_TRANSACTION_V1
+    )
+    run_id: str
+    request_id: str
+    request_digest: str = Field(pattern=SHA256_PATTERN)
+    source_context_digest: str = Field(pattern=SHA256_PATTERN)
+    authority_digest: str = Field(pattern=SHA256_PATTERN)
+    status: RepairExecutionStatus
+    details: dict[str, Any] = Field(default_factory=dict, max_length=1_000)
+    transaction_digest: str = Field(pattern=SHA256_PATTERN)
+
+    @field_validator("run_id", "request_id")
+    @classmethod
+    def _transaction_identity(cls, value: str) -> str:
+        return _validate_id(value)
+
+    @field_validator("details")
+    @classmethod
+    def _transaction_details(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _finite_json(value, label="repair transaction details")
+
+
+class AutoRepairRoundResultV1(StrictModel):
+    request_id: str
+    status: RepairExecutionStatus
+    details: dict[str, Any] = Field(default_factory=dict, max_length=1_000)
+
+    @field_validator("request_id")
+    @classmethod
+    def _round_request_id(cls, value: str) -> str:
+        return _validate_id(value)
+
+    @field_validator("details")
+    @classmethod
+    def _round_details(cls, value: dict[str, Any]) -> dict[str, Any]:
+        return _finite_json(value, label="automatic repair result details")
+
+
+class ManuscriptAutoRepairRoundV1(DigestBoundModel):
+    """Digest-bound coordinator commit for one complete automatic round."""
+
+    digest_field = "round_digest"
+    schema_version: Literal["ari.manuscript-auto-repair-round/v1"] = (
+        MANUSCRIPT_AUTO_REPAIR_ROUND_V1
+    )
+    round: int = Field(ge=0, le=100)
+    plan_digest: str = Field(pattern=SHA256_PATTERN)
+    source_context_digest: str = Field(pattern=SHA256_PATTERN)
+    request_ids: tuple[str, ...] = Field(default_factory=tuple, max_length=10_000)
+    transaction_digests: tuple[str, ...] = Field(
+        default_factory=tuple, max_length=10_000
+    )
+    results: tuple[AutoRepairRoundResultV1, ...] = Field(
+        default_factory=tuple, max_length=10_000
+    )
+    used_budget: RepairBudgetUsageV1
+    round_digest: str = Field(pattern=SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def _round_coherent(self) -> "ManuscriptAutoRepairRoundV1":
+        result_ids = [item.request_id for item in self.results]
+        if len(self.request_ids) != len(set(self.request_ids)):
+            raise ValueError("automatic repair round has duplicate request IDs")
+        if len(result_ids) != len(set(result_ids)) or set(result_ids) != set(
+            self.request_ids
+        ):
+            raise ValueError("automatic repair round results do not cover its requests")
+        if len(self.transaction_digests) != len(set(self.transaction_digests)):
+            raise ValueError("automatic repair round has duplicate transactions")
         return self
 
 
@@ -797,6 +909,66 @@ class PublicationLockV1(DigestBoundModel):
     @classmethod
     def _lock_identity(cls, value: str) -> str:
         return _validate_id(value)
+
+
+class ManuscriptEvaluationMetricV1(StrictModel):
+    metric_id: str
+    numerator: float = Field(ge=0)
+    denominator: float | None = Field(default=None, ge=0)
+    value: float | None = Field(default=None, ge=0)
+    status: Literal["measured", "not_applicable"]
+    evidence_refs: tuple[str, ...] = Field(default_factory=tuple, max_length=100_000)
+
+    @field_validator("metric_id")
+    @classmethod
+    def _metric_id(cls, value: str) -> str:
+        return _validate_id(value)
+
+    @model_validator(mode="after")
+    def _metric_coherent(self) -> "ManuscriptEvaluationMetricV1":
+        if self.denominator == 0:
+            if self.status != "not_applicable" or self.value is not None:
+                raise ValueError("zero-denominator metric cannot claim a value")
+        elif self.denominator is not None:
+            expected = self.numerator / self.denominator
+            if self.status != "measured" or self.value is None or abs(self.value - expected) > 1e-12:
+                raise ValueError("ratio metric value differs from numerator/denominator")
+        elif self.status != "measured" or self.value != self.numerator:
+            raise ValueError("count metric value differs from its numerator")
+        return self
+
+
+class ManuscriptEvaluationReportV1(DigestBoundModel):
+    digest_field = "report_digest"
+    schema_version: Literal["ari.manuscript-evaluation-report/v1"] = (
+        MANUSCRIPT_EVALUATION_REPORT_V1
+    )
+    dataset_id: str
+    evaluator_version: str
+    case_ids: tuple[str, ...] = Field(default_factory=tuple, max_length=100_000)
+    metrics: tuple[ManuscriptEvaluationMetricV1, ...] = Field(
+        min_length=1, max_length=256
+    )
+    blocked_reason_distribution: dict[str, int] = Field(default_factory=dict)
+    topology_costs: tuple[dict[str, Any], ...] = Field(default_factory=tuple)
+    report_digest: str = Field(pattern=SHA256_PATTERN)
+
+    @field_validator("dataset_id", "evaluator_version")
+    @classmethod
+    def _evaluation_id(cls, value: str) -> str:
+        return _validate_id(value)
+
+    @model_validator(mode="after")
+    def _evaluation_coherent(self) -> "ManuscriptEvaluationReportV1":
+        if len(self.case_ids) != len(set(self.case_ids)):
+            raise ValueError("evaluation report contains duplicate cases")
+        metric_ids = [item.metric_id for item in self.metrics]
+        if len(metric_ids) != len(set(metric_ids)):
+            raise ValueError("evaluation report contains duplicate metrics")
+        if any(value < 0 for value in self.blocked_reason_distribution.values()):
+            raise ValueError("blocked reason count cannot be negative")
+        _finite_json(self.topology_costs, label="manuscript topology costs")
+        return self
 
 
 class ManuscriptSegmentRecordV1(DigestBoundModel):

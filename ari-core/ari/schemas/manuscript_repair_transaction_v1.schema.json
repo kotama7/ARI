@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable commit record for one admitted repair executor result.",
+  "properties": {
+    "authority_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authority Digest",
+      "type": "string"
+    },
+    "details": {
+      "additionalProperties": true,
+      "maxProperties": 1000,
+      "title": "Details",
+      "type": "object"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "request_id": {
+      "title": "Request Id",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-repair-transaction/v1",
+      "default": "ari.manuscript-repair-transaction/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Context Digest",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "executed",
+        "satisfied",
+        "still_missing",
+        "failed",
+        "exhausted",
+        "human_required",
+        "unavailable"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "transaction_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Transaction Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "request_id",
+    "request_digest",
+    "source_context_digest",
+    "authority_digest",
+    "status",
+    "transaction_digest"
+  ],
+  "title": "ManuscriptRepairTransactionV1",
+  "type": "object"
+}

@@ -25,6 +25,7 @@ is handed to the EXISTING linear compile + claim-gate tail unchanged.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -42,6 +43,7 @@ from ari.rqgm.paper_archive import (
     archive_node_budget,
     erase_paper_reviewer_utilities,
     mark_paper_draft_flags,
+    record_paper_draft_manuscript_evaluation,
     read_paper_draft_archive,
     restore_archive_round,
 )
@@ -83,6 +85,10 @@ PAPER_MODE_SOURCES = ("config", "env", "resume")
 #: see the 2026-07-17 residual in 07 §12. This set is exactly what §5.4/R5's
 #: single-writer invariant requires and nothing more.
 HANDOFF_DISABLED_STAGES = frozenset({"paper_refine"})
+
+
+class ManuscriptArchiveAuthoringError(RuntimeError):
+    """The archive could not produce an admissible, manuscript-bound draft."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -436,6 +442,8 @@ class GovernedPaperReviewer:
         self._review_seq = 0
         self._rubric_warned = False
         self._axes = None                 # lazy venue-rubric score dimensions
+        self._manuscript_binding: dict = {}
+        self._manuscript_fixed_block = ""
         # The reviewer's held-out anchor agreement rate (0..1), set by the
         # runtime's anchor scorer before draft scoring. Stamped on every DRAFT
         # review_record's ``agreement`` so a reviewer that disagrees with the
@@ -444,6 +452,37 @@ class GovernedPaperReviewer:
         self._anchor_agreement = None
 
     # ── the archive-scorer surface (injected into PaperDraftExecutor) ────
+    def bind_manuscript_inputs(self, binding: dict, fixed_block: str) -> None:
+        """Bind every draft judgement to one immutable manuscript bundle.
+
+        The governed prompt hash continues to identify the evolvable reviewer
+        bytes.  The separate manuscript fingerprint identifies the fixed
+        evidence/readiness block; neither identity is allowed to masquerade as
+        the other.  Rebinding one reviewer instance to different bytes is a
+        stale-input error, not prompt evolution.
+        """
+
+        incoming = dict(binding or {})
+        prior = str(self._manuscript_binding.get("input_fingerprint") or "")
+        current = str(incoming.get("input_fingerprint") or "")
+        if prior and prior != current:
+            raise ValueError("paper reviewer manuscript binding changed within an epoch")
+        self._manuscript_binding = incoming
+        self._manuscript_fixed_block = str(fixed_block or "")
+        for callback in (self._score_fn, self._revise_fn):
+            bind = getattr(callback, "bind_manuscript_inputs", None)
+            if callable(bind):
+                bind(incoming, self._manuscript_fixed_block)
+
+    def _draft_prompt_text(self) -> str:
+        if not self._manuscript_fixed_block:
+            return self.prompt_text
+        return (
+            f"{self.prompt_text}\n\n{self._manuscript_fixed_block}"
+            if self.prompt_text
+            else self._manuscript_fixed_block
+        )
+
     def review(self, tex_path: str):
         """REAL suggested revisions so ``paper_refine`` deepens the tree."""
         text = _read_text(tex_path)
@@ -587,6 +626,21 @@ class GovernedPaperReviewer:
                 "node_id": str(node_id),
                 "source_refs": list(source_refs),
             }
+            if self._manuscript_binding:
+                payload.update({
+                    "manuscript_input_fingerprint": str(
+                        self._manuscript_binding.get("input_fingerprint") or ""
+                    ),
+                    "manuscript_binding_digest": str(
+                        self._manuscript_binding.get("binding_digest") or ""
+                    ),
+                    "manuscript_brief_bundle_digest": str(
+                        self._manuscript_binding.get("brief_bundle_digest") or ""
+                    ),
+                    "manuscript_section_brief_digests": list(
+                        self._manuscript_binding.get("section_brief_digests") or ()
+                    ),
+                })
             if confidence is not None:
                 payload["confidence"] = float(confidence)
             if agreement is not None:
@@ -930,6 +984,10 @@ class PaperArchiveRuntime:
         self._current_epoch_obj = None
         self._compiles = 0                # lazy-compile audit (§6.3, bounded top-K)
         self._last_expansions = 0         # last round's draft population (§6.3)
+        # Opt-in Manuscript Complete binding.  Populated before any archive
+        # resume check or model call; ``None`` keeps the historical off path
+        # byte/import compatible.
+        self._manuscript_inputs: dict | None = None
 
     @property
     def paper_mode(self) -> PaperMode:
@@ -1017,6 +1075,306 @@ class PaperArchiveRuntime:
             evaluation_condition_id=evaluation_condition_id,
         )
 
+    @staticmethod
+    def _manuscript_runtime_mode() -> str:
+        mode = os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off").strip().lower()
+        if mode not in {"off", "audit", "enforce"}:
+            raise ValueError(f"unknown manuscript runtime mode: {mode!r}")
+        return mode
+
+    def _write_manuscript_archive_state(
+        self, ckpt: Path, manuscript_state: dict, *, require_round_trip: bool
+    ) -> None:
+        state = read_paper_archive_state(ckpt) or {
+            "schema_version": PAPER_ARCHIVE_STATE_SCHEMA_VERSION,
+            "paper_mode": "rqgm_archive",
+            "rqgm_paper_enabled": True,
+            "mode_source": "config",
+        }
+        state["manuscript_authoring"] = dict(manuscript_state)
+        write_paper_archive_state(ckpt, state)
+        if require_round_trip:
+            persisted = (read_paper_archive_state(ckpt) or {}).get(
+                "manuscript_authoring"
+            )
+            expected = json.loads(json.dumps(manuscript_state, ensure_ascii=False))
+            if persisted != expected:
+                raise ManuscriptArchiveAuthoringError(
+                    "enforced archive manuscript binding did not persist"
+                )
+
+    def _prepare_manuscript_archive_binding(self, ckpt: Path) -> dict | None:
+        """Validate and freeze the complete authoring lineage before resume.
+
+        This runs before ``_winner_already_materialised``.  Consequently a
+        stale bundle cannot hide behind an already-written winner and skip the
+        validation that a fresh archive invocation receives.
+        """
+
+        mode = self._manuscript_runtime_mode()
+        self._manuscript_inputs = None
+        if mode == "off":
+            return None
+
+        from ari.manuscript.digest import path_has_symlink_component
+        from ari.public.manuscript import (
+            ExplorationSnapshotV1,
+            ManuscriptAuthoringBindingV1,
+            ManuscriptContextV1,
+            ManuscriptReadinessReportV1,
+            ManuscriptRequirementProfileV1,
+            OmissionManifestV1,
+            SectionBriefBundleV1,
+            canonical_digest,
+        )
+
+        root = ckpt.resolve()
+        specs = (
+            ("ARI_MANUSCRIPT_PROFILE_PATH", "requirement_profile.json",
+             ManuscriptRequirementProfileV1),
+            ("ARI_MANUSCRIPT_CONTEXT_PATH", "context.json", ManuscriptContextV1),
+            ("ARI_MANUSCRIPT_READINESS_PATH", "readiness.json",
+             ManuscriptReadinessReportV1),
+            ("ARI_MANUSCRIPT_BRIEFS_PATH", "section_briefs.json",
+             SectionBriefBundleV1),
+            ("ARI_MANUSCRIPT_BINDING_PATH", "authoring_binding.json",
+             ManuscriptAuthoringBindingV1),
+        )
+        loaded: dict[str, object] = {}
+        paths: dict[str, Path] = {}
+        for env_name, filename, model in specs:
+            raw = os.environ.get(env_name, "").strip()
+            if not raw:
+                raise ManuscriptArchiveAuthoringError(
+                    f"manuscript archive lacks {env_name}"
+                )
+            path = Path(os.path.abspath(raw))
+            try:
+                path.relative_to(root)
+            except ValueError as exc:
+                raise ManuscriptArchiveAuthoringError(
+                    f"{env_name} escapes the manuscript checkpoint"
+                ) from exc
+            if (
+                not path.is_file()
+                or path.is_symlink()
+                or path_has_symlink_component(root, path)
+            ):
+                raise ManuscriptArchiveAuthoringError(
+                    f"{env_name} is missing or traverses a symlink"
+                )
+            try:
+                loaded[filename] = model.model_validate_json(
+                    path.read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                raise ManuscriptArchiveAuthoringError(
+                    f"{filename} is not a valid digest-bound manuscript contract"
+                ) from exc
+            paths[filename] = path
+
+        profile = loaded["requirement_profile.json"]
+        context = loaded["context.json"]
+        readiness = loaded["readiness.json"]
+        briefs = loaded["section_briefs.json"]
+        binding = loaded["authoring_binding.json"]
+        attempt = root / ".ari-manuscript" / "attempts" / binding.attempt_id
+        for _env_name, filename, _model in specs:
+            if paths[filename] != attempt / filename:
+                raise ManuscriptArchiveAuthoringError(
+                    "archive manuscript inputs do not share the exact attempt directory"
+                )
+        snapshot_path = attempt / "source_snapshot.json"
+        omission_path = attempt / "omission_manifest.json"
+        for path in (snapshot_path, omission_path):
+            if (
+                not path.is_file()
+                or path.is_symlink()
+                or path_has_symlink_component(root, path)
+            ):
+                raise ManuscriptArchiveAuthoringError(
+                    f"archive manuscript attempt lacks safe {path.name}"
+                )
+        try:
+            snapshot = ExplorationSnapshotV1.model_validate_json(
+                snapshot_path.read_text(encoding="utf-8")
+            )
+            omissions = OmissionManifestV1.model_validate_json(
+                omission_path.read_text(encoding="utf-8")
+            )
+        except Exception as exc:
+            raise ManuscriptArchiveAuthoringError(
+                "archive manuscript source/omission contract is invalid"
+            ) from exc
+
+        lineage_ok = (
+            binding.paper_mode == "rqgm_archive"
+            and binding.attempt_id == attempt.name
+            and snapshot.run_id == context.run_id == readiness.run_id
+            == briefs.run_id == binding.run_id
+            and binding.source_snapshot_digest == snapshot.snapshot_digest
+            == context.source_snapshot_digest == omissions.source_snapshot_digest
+            and profile.profile_digest == context.profile_digest
+            == readiness.profile_digest == briefs.profile_digest
+            == binding.profile_digest
+            and context.omission_manifest_digest == omissions.manifest_digest
+            and context.context_digest == readiness.context_digest
+            == briefs.context_digest == binding.context_digest
+            and readiness.readiness_digest == briefs.readiness_digest
+            == binding.readiness_digest
+            and briefs.bundle_digest == binding.brief_bundle_digest
+        )
+        if not lineage_ok:
+            raise ManuscriptArchiveAuthoringError(
+                "archive manuscript inputs do not share one digest lineage"
+            )
+        if mode == "enforce" and readiness.authoring_verdict not in {
+            "ready", "ready_with_disclosures"
+        }:
+            raise ManuscriptArchiveAuthoringError(
+                "enforced archive binding is not authoring-ready"
+            )
+
+        section_digests = tuple(brief.brief_digest for brief in briefs.briefs)
+        allowed = tuple(sorted({
+            item for brief in briefs.briefs for item in brief.allowed_evidence_ids
+        }))
+        negatives = tuple(sorted({
+            item for brief in briefs.briefs for item in brief.contextual_negative_ids
+        }))
+        forbidden = tuple(sorted({
+            item for brief in briefs.briefs for item in brief.forbidden_evidence_ids
+        }))
+        disclosures = tuple(sorted({
+            item for brief in briefs.briefs for item in brief.required_disclosures
+        }))
+        fingerprint_payload = {
+            "schema_version": "ari.manuscript-archive-input/v1",
+            "run_id": binding.run_id,
+            "attempt_id": binding.attempt_id,
+            "source_snapshot_digest": binding.source_snapshot_digest,
+            "profile_digest": profile.profile_digest,
+            "context_digest": context.context_digest,
+            "readiness_digest": readiness.readiness_digest,
+            "brief_bundle_digest": briefs.bundle_digest,
+            "binding_digest": binding.binding_digest,
+            "section_brief_digests": section_digests,
+            "allowed_evidence_ids": allowed,
+            "contextual_negative_ids": negatives,
+            "forbidden_evidence_ids": forbidden,
+            "required_disclosures": disclosures,
+            "omission_count": len(omissions.omissions),
+        }
+        fingerprint = canonical_digest(fingerprint_payload)
+        info = {
+            "mode": mode,
+            "manuscript_bound": mode == "enforce",
+            "run_id": binding.run_id,
+            "attempt_id": binding.attempt_id,
+            "source_snapshot_digest": binding.source_snapshot_digest,
+            "profile_digest": profile.profile_digest,
+            "context_digest": context.context_digest,
+            "readiness_digest": readiness.readiness_digest,
+            "brief_bundle_digest": briefs.bundle_digest,
+            "binding_digest": binding.binding_digest,
+            "section_brief_digests": section_digests,
+            "allowed_evidence_ids": allowed,
+            "contextual_negative_ids": negatives,
+            "forbidden_evidence_ids": forbidden,
+            "required_disclosures": disclosures,
+            "omission_count": len(omissions.omissions),
+            "input_fingerprint": fingerprint,
+            "_briefs": briefs,
+            "_binding": binding,
+        }
+
+        state = read_paper_archive_state(root) or {}
+        prior = state.get("manuscript_authoring")
+        prior = prior if isinstance(prior, dict) else {}
+        records = read_paper_draft_archive(root)
+        stale_reasons: list[str] = []
+        if prior:
+            if str(prior.get("input_fingerprint") or "") != fingerprint:
+                stale_reasons.append("input_fingerprint_changed")
+            if str(prior.get("mode") or "") != mode:
+                stale_reasons.append("manuscript_mode_changed")
+        elif records:
+            stale_reasons.append("preexisting_archive_has_no_binding_state")
+        for record in records:
+            recorded = str(record.get("manuscript_input_fingerprint") or "")
+            if recorded != fingerprint:
+                stale_reasons.append(
+                    f"draft_binding_mismatch:{record.get('epoch_id', '')}:"
+                    f"{record.get('node_id', '')}"
+                )
+                break
+
+        state_record = {
+            key: value
+            for key, value in info.items()
+            if not key.startswith("_")
+        }
+        state_record.update({
+            "status": (
+                "stale_detected"
+                if stale_reasons
+                else "bound"
+                if mode == "enforce"
+                else "audit_legacy_authoring_observed"
+            ),
+            "stale_reasons": stale_reasons,
+        })
+        self._write_manuscript_archive_state(
+            root, state_record, require_round_trip=mode == "enforce"
+        )
+        if stale_reasons and mode == "enforce":
+            raise ManuscriptArchiveAuthoringError(
+                "stale manuscript archive binding detected before resume: "
+                + ", ".join(stale_reasons)
+            )
+        info["stale"] = bool(stale_reasons)
+        self._manuscript_inputs = info
+        return info
+
+    def _record_manuscript_archive_outcome(
+        self,
+        ckpt: Path,
+        *,
+        status: str,
+        failure_reason: str = "",
+        winner=None,
+    ) -> None:
+        info = self._manuscript_inputs
+        if not info:
+            return
+        record = {
+            key: value for key, value in info.items()
+            if not key.startswith("_") and key != "stale"
+        }
+        record["status"] = str(status)
+        record["stale_reasons"] = list(
+            ((read_paper_archive_state(ckpt) or {}).get("manuscript_authoring") or {})
+            .get("stale_reasons", [])
+        )
+        if failure_reason:
+            record["failure_reason"] = str(failure_reason)[:2_000]
+        tex_ref = self._winner_tex_ref(winner)
+        if tex_ref:
+            path = Path(tex_ref)
+            try:
+                record["winner_id"] = str(getattr(winner, "id", "") or "")
+                record["winner_tex_sha256"] = hashlib.sha256(
+                    path.read_bytes()
+                ).hexdigest()
+            except OSError:
+                record["winner_id"] = str(getattr(winner, "id", "") or "")
+                record["winner_tex_sha256"] = ""
+        self._write_manuscript_archive_state(
+            ckpt,
+            record,
+            require_round_trip=info.get("mode") == "enforce",
+        )
+
     # ── the runnable archive (Task 02 §5.3) ─────────────────────────────
     def run_archive(
         self,
@@ -1034,7 +1392,15 @@ class PaperArchiveRuntime:
         linear pipeline (claim-gate tail). Fail-open: any archive failure
         degrades to the linear pipeline (§8.5)."""
         ckpt = Path(checkpoint_dir)
-        if self._winner_already_materialised(ckpt):
+        manuscript = self._prepare_manuscript_archive_binding(ckpt)
+        archive_error: Exception | None = None
+        stale_audit = bool(manuscript and manuscript.get("stale"))
+        if stale_audit:
+            archive_error = ManuscriptArchiveAuthoringError(
+                "stale manuscript bundle detected; archive continuation skipped"
+            )
+            log.warning("paper archive: %s", archive_error)
+        elif self._winner_already_materialised(ckpt):
             # 07 §8.6.6 / §9 Resume / R5: a resumed run whose winner is already
             # on the canonical path skips straight to the unchanged tail — no
             # re-spend of the archive's LLM budget, and no second materialise.
@@ -1048,10 +1414,65 @@ class PaperArchiveRuntime:
                     self._run_coevolution(all_nodes, experiment_data, ckpt, mcp)
                 else:
                     self._run_one_round(all_nodes, experiment_data, ckpt, mcp)
-            except Exception:
+                if not self._winner_already_materialised(ckpt):
+                    raise ManuscriptArchiveAuthoringError(
+                        "paper archive produced no admissible winner"
+                    )
+            except Exception as exc:
+                archive_error = exc
                 log.warning(
                     "paper archive failed; falling back to the linear pipeline",
                     exc_info=True,
+                )
+
+        winner_record = next(
+            (
+                record
+                for record in reversed(read_paper_draft_archive(ckpt))
+                if bool(record.get("is_best_belief"))
+            ),
+            None,
+        )
+        winner = None
+        if winner_record is not None:
+            winner = SimpleNamespace(
+                id=str(winner_record.get("node_id") or ""),
+                artifacts=[str(ckpt / str(winner_record.get("tex_path") or ""))],
+            )
+
+        if manuscript:
+            if archive_error is None:
+                self._record_manuscript_archive_outcome(
+                    ckpt,
+                    status=(
+                        "manuscript_bound_winner"
+                        if manuscript.get("mode") == "enforce"
+                        else "audit_legacy_archive_winner"
+                    ),
+                    winner=winner,
+                )
+            elif manuscript.get("mode") == "enforce":
+                if not bool(
+                    getattr(linear_fallback, "_ari_manuscript_bound", False)
+                ):
+                    self._record_manuscript_archive_outcome(
+                        ckpt,
+                        status="authoring_backend_failed",
+                        failure_reason=str(archive_error),
+                    )
+                    raise ManuscriptArchiveAuthoringError(
+                        "enforced archive failure has no explicitly bound linear fallback"
+                    ) from archive_error
+                self._record_manuscript_archive_outcome(
+                    ckpt,
+                    status="bound_linear_fallback",
+                    failure_reason=str(archive_error),
+                )
+            else:
+                self._record_manuscript_archive_outcome(
+                    ckpt,
+                    status="audit_legacy_linear_fallback",
+                    failure_reason=str(archive_error),
                 )
         # THE Task 07 handoff (07 §5.1/§5.4/R5). The archive substitutes for the
         # generation stages; the EXISTING tail (link_paper_claims_final ->
@@ -1074,12 +1495,28 @@ class PaperArchiveRuntime:
         # (archive failed / fail-open) => the ORIGINAL cfg, so `write_paper` runs
         # and the run degrades to the linear result (§8.3).
         if linear_fallback is not None:
-            if self._winner_already_materialised(ckpt):
-                linear_fallback(all_nodes, experiment_data, checkpoint_dir, mcp,
-                                cfg_str, disable_stages=HANDOFF_DISABLED_STAGES)
-            else:
-                linear_fallback(all_nodes, experiment_data, checkpoint_dir, mcp,
-                                cfg_str)
+            try:
+                use_archive_winner = self._winner_already_materialised(ckpt) and not (
+                    manuscript and archive_error is not None
+                )
+                if use_archive_winner:
+                    linear_fallback(
+                        all_nodes, experiment_data, checkpoint_dir, mcp,
+                        cfg_str, disable_stages=HANDOFF_DISABLED_STAGES,
+                    )
+                else:
+                    linear_fallback(
+                        all_nodes, experiment_data, checkpoint_dir, mcp, cfg_str
+                    )
+            except Exception as exc:
+                if manuscript:
+                    self._record_manuscript_archive_outcome(
+                        ckpt,
+                        status="verification_or_fallback_failed",
+                        failure_reason=str(exc),
+                        winner=winner,
+                    )
+                raise
         return ckpt / "full_paper.tex"
 
     @staticmethod
@@ -1271,6 +1708,10 @@ class PaperArchiveRuntime:
         # derived-from-durable-records value. Empty on a fresh checkpoint, so a
         # first run is byte-identical to before.
         archive: list = restore_archive_round(ckpt, strat, root, epoch_id)
+        archive = [
+            self._evaluate_manuscript_candidate(node, ckpt)
+            for node in archive
+        ]
         execu.restore(archive)
         if archive:
             log.info(
@@ -1291,6 +1732,7 @@ class PaperArchiveRuntime:
                 continue
             cand = strat.select_next_node(children, goal, self.memory)
             cand = execu.run(cand, experiment)              # ONE skill call (§5.4)
+            cand = self._evaluate_manuscript_candidate(cand, ckpt)
             strat.record_run(cand)
             archive.append(cand)
             frontier.append(cand)                           # a refined draft is expandable
@@ -1306,6 +1748,192 @@ class PaperArchiveRuntime:
         # Persisted AFTER finalize so the winner's lazy compile is reflected.
         self._persist_budget_counters(ckpt)
         return best
+
+    @staticmethod
+    def _normalise_disclosure_text(value: str) -> str:
+        value = re.sub(r"\\[A-Za-z@]+\*?", " ", str(value or ""))
+        value = "".join(
+            character if character.isalnum() else " "
+            for character in value.casefold()
+        )
+        return " ".join(value.split())
+
+    @staticmethod
+    def _contains_manuscript_evidence_id(text: str, evidence_id: str) -> bool:
+        token = str(evidence_id or "")
+        if not token:
+            return False
+        # A sentence-ending period is a delimiter; generated evidence IDs do
+        # not end in a period.
+        alphabet = r"A-Za-z0-9_:/-"
+        return bool(
+            re.search(
+                rf"(?<![{alphabet}]){re.escape(token)}(?![{alphabet}])",
+                text,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    def _evaluate_manuscript_candidate(self, node, ckpt: Path):
+        """Apply non-compensable candidate checks before archive selection.
+
+        The existing Layer-0 gate remains the final authority.  This read-only
+        pass prevents a candidate already known to violate the same objective
+        constraints from winning merely because an evolving reviewer assigned
+        it a larger utility score.  Audit mode persists identical diagnostics
+        without changing eligibility.
+        """
+
+        info = self._manuscript_inputs
+        if not info:
+            return node
+        mode = str(info.get("mode") or "audit")
+        metrics = getattr(node, "metrics", None)
+        if not isinstance(metrics, dict):
+            metrics = {}
+            node.metrics = metrics
+        reasons: list[str] = []
+        records = [
+            record
+            for record in read_paper_draft_archive(ckpt)
+            if str(record.get("node_id") or "") == str(getattr(node, "id", ""))
+            and str(record.get("epoch_id") or "")
+            == str(metrics.get("_paper_epoch_id") or "")
+        ]
+        record = records[-1] if records else {}
+        expected_fields = {
+            "manuscript_input_fingerprint": info["input_fingerprint"],
+            "manuscript_binding_digest": info["binding_digest"],
+            "manuscript_profile_digest": info["profile_digest"],
+            "manuscript_context_digest": info["context_digest"],
+            "manuscript_readiness_digest": info["readiness_digest"],
+            "manuscript_brief_bundle_digest": info["brief_bundle_digest"],
+        }
+        for field, expected in expected_fields.items():
+            if str(record.get(field) or "") != str(expected):
+                reasons.append(f"input_digest_mismatch:{field}")
+        if mode == "enforce" and not bool(record.get("manuscript_bound", False)):
+            reasons.append("candidate_not_manuscript_bound")
+
+        tex_ref = self._winner_tex_ref(node)
+        tex_path = Path(tex_ref) if tex_ref else Path()
+        text = ""
+        artifact_digest = ""
+        try:
+            from ari.manuscript.digest import path_has_symlink_component
+
+            absolute = Path(os.path.abspath(tex_path))
+            absolute.relative_to(ckpt.resolve())
+            if (
+                not absolute.is_file()
+                or absolute.is_symlink()
+                or path_has_symlink_component(ckpt.resolve(), absolute)
+            ):
+                raise OSError("unsafe candidate path")
+            raw = absolute.read_bytes()
+            artifact_digest = hashlib.sha256(raw).hexdigest()
+            if artifact_digest != str(record.get("tex_sha256") or ""):
+                reasons.append("candidate_artifact_digest_mismatch")
+            text = raw.decode("utf-8")
+        except (OSError, UnicodeError, ValueError):
+            reasons.append("invalid_candidate_artifact")
+
+        contextual_negative_mentions = [
+            evidence_id
+            for evidence_id in info.get("contextual_negative_ids", ())
+            if self._contains_manuscript_evidence_id(text, evidence_id)
+        ]
+        reasons.extend(
+            f"contextual_negative_evidence:{evidence_id}"
+            for evidence_id in contextual_negative_mentions
+        )
+        forbidden_mentions = [
+            evidence_id
+            for evidence_id in info.get("forbidden_evidence_ids", ())
+            if self._contains_manuscript_evidence_id(text, evidence_id)
+        ]
+        reasons.extend(
+            f"forbidden_evidence:{evidence_id}"
+            for evidence_id in forbidden_mentions
+        )
+        normalised_draft = self._normalise_disclosure_text(text)
+        missing_disclosures = [
+            disclosure
+            for disclosure in info.get("required_disclosures", ())
+            if self._normalise_disclosure_text(disclosure) not in normalised_draft
+        ]
+        reasons.extend("missing_required_disclosure" for _ in missing_disclosures)
+
+        gate_report: dict = {}
+        if text:
+            try:
+                from ari.pipeline.claim_gate.gate import run_hard_gate
+                from ari.public.manuscript import canonical_digest
+
+                def _json_artifact(name: str) -> dict:
+                    path = ckpt / name
+                    try:
+                        value = json.loads(path.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        return {}
+                    return value if isinstance(value, dict) else {}
+
+                gate_report = run_hard_gate(
+                    ckpt,
+                    paper_tex=text,
+                    science_data=_json_artifact("science_data.json"),
+                    figures_manifest=_json_artifact("figures_manifest.json"),
+                    policy={"mode": "strict"},
+                    phase="draft",
+                    write=False,
+                )
+                for finding in gate_report.get("blocking_findings", ()) or ():
+                    finding_type = str((finding or {}).get("type") or "unknown")
+                    reasons.append(f"claim_gate:{finding_type}")
+                gate_digest = canonical_digest(gate_report)
+            except Exception as exc:
+                reasons.append(f"candidate_gate_error:{type(exc).__name__}")
+                gate_digest = ""
+        else:
+            gate_digest = ""
+
+        reasons = list(dict.fromkeys(reasons))
+        disqualified = mode == "enforce" and bool(reasons)
+        metrics["_manuscript_hard_disqualified"] = disqualified
+        metrics["_manuscript_hard_disqualification_reasons"] = tuple(reasons)
+        metrics["_manuscript_input_fingerprint"] = str(
+            info["input_fingerprint"]
+        )
+        if disqualified:
+            metrics["_valid_for_frontier"] = False
+        evaluation = {
+            "manuscript_candidate_status": (
+                "hard_disqualified"
+                if disqualified
+                else "audit_findings"
+                if reasons
+                else "admissible"
+            ),
+            "manuscript_hard_disqualified": disqualified,
+            "manuscript_hard_disqualification_reasons": reasons,
+            "manuscript_candidate_artifact_sha256": artifact_digest,
+            "manuscript_candidate_gate_digest": gate_digest,
+            "manuscript_candidate_gate_status": str(
+                gate_report.get("status") or "not_run"
+            ),
+            "manuscript_contextual_negative_evidence_mentions": (
+                contextual_negative_mentions
+            ),
+            "manuscript_forbidden_evidence_mentions": forbidden_mentions,
+            "manuscript_missing_required_disclosures": missing_disclosures,
+        }
+        record_paper_draft_manuscript_evaluation(
+            ckpt,
+            str(getattr(node, "id", "")),
+            epoch_id=str(metrics.get("_paper_epoch_id") or ""),
+            evaluation=evaluation,
+        )
+        return node
 
     def _make_paper_root(self, best_node) -> "Node":
         """A synthetic depth-0 ``Node`` wrapping the exploration winner. It is
@@ -1352,31 +1980,39 @@ class PaperArchiveRuntime:
             getattr(getattr(pe, "prompt_evolution", None), "enabled", True)
         )
         experiment_summary = experiment_data.get("goal", "")
-        if os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") == "enforce":
-            brief_path = os.environ.get("ARI_MANUSCRIPT_BRIEFS_PATH", "")
-            binding_path = os.environ.get("ARI_MANUSCRIPT_BINDING_PATH", "")
-            if not brief_path or not binding_path:
-                raise ValueError(
-                    "manuscript-enforced archive lacks a ready authoring bundle"
+        manuscript_record: dict = {}
+        manuscript_fixed_block = ""
+        manuscript_mode = self._manuscript_runtime_mode()
+        if manuscript_mode != "off":
+            info = self._manuscript_inputs or self._prepare_manuscript_archive_binding(
+                Path(ckpt)
+            )
+            if info is None:
+                raise ManuscriptArchiveAuthoringError(
+                    "manuscript archive lacks a prepared input binding"
                 )
-            from ari.public.manuscript import (
-                ManuscriptAuthoringBindingV1,
-                SectionBriefBundleV1,
-                render_brief_bundle,
-            )
+            manuscript_record = {
+                key: value for key, value in info.items()
+                if not key.startswith("_") and key != "stale"
+            }
+            if manuscript_mode == "enforce":
+                from ari.public.manuscript import render_brief_bundle
 
-            briefs = SectionBriefBundleV1.model_validate_json(
-                Path(brief_path).read_text(encoding="utf-8")
-            )
-            binding = ManuscriptAuthoringBindingV1.model_validate_json(
-                Path(binding_path).read_text(encoding="utf-8")
-            )
-            if (
-                binding.paper_mode != "rqgm_archive"
-                or binding.brief_bundle_digest != briefs.bundle_digest
-            ):
-                raise ValueError("archive manuscript binding is stale or for another backend")
-            experiment_summary = render_brief_bundle(briefs)
+                rendered = render_brief_bundle(info["_briefs"])
+                manuscript_fixed_block = "\n".join((
+                    "══ IMMUTABLE MANUSCRIPT ARCHIVE INPUT ══",
+                    f"input_fingerprint: {info['input_fingerprint']}",
+                    f"binding_digest: {info['binding_digest']}",
+                    f"profile_digest: {info['profile_digest']}",
+                    f"context_digest: {info['context_digest']}",
+                    f"readiness_digest: {info['readiness_digest']}",
+                    f"brief_bundle_digest: {info['brief_bundle_digest']}",
+                    rendered,
+                    "Do not alter evidence lanes, readiness, required disclosures, "
+                    "or the fixed digests above.",
+                    "══ END IMMUTABLE MANUSCRIPT ARCHIVE INPUT ══",
+                ))
+                experiment_summary = manuscript_fixed_block
         return {
             "goal": experiment_data.get("goal", ""),
             "experiment_summary": experiment_summary,
@@ -1390,6 +2026,8 @@ class PaperArchiveRuntime:
             "writer_prompt_hashes": [str(writer_hash or "founding")],
             "writer_prompt_text": str(writer_text or ""),   # §5.8 override
             "prompt_evolution_enabled": pe_enabled,
+            "manuscript_binding": manuscript_record,
+            "manuscript_fixed_block": manuscript_fixed_block,
         }
 
     # ── co-evolution helpers (inner RQGM machinery reuse) ───────────────

@@ -356,6 +356,58 @@ def mark_paper_draft_flags(
         )
 
 
+def record_paper_draft_manuscript_evaluation(
+    checkpoint_dir: str | Path,
+    node_id: str,
+    *,
+    epoch_id: str,
+    evaluation: dict,
+) -> None:
+    """Attach deterministic Manuscript Complete diagnostics to one draft.
+
+    Draft creation remains append-first so an interruption never loses the
+    generated artifact.  This targeted, last-record-wins rewrite then binds the
+    preliminary hard-gate result to the exact epoch/node record.  A failed
+    write is deliberately *not* hidden: enforce-mode eligibility relies on
+    these diagnostics, and the caller verifies that the record round-trips.
+    """
+
+    path = Path(checkpoint_dir) / PAPER_DRAFT_ARCHIVE_FILENAME
+    records = read_paper_draft_archive(checkpoint_dir)
+    matches = [
+        index
+        for index, record in enumerate(records)
+        if str(record.get("node_id") or "") == str(node_id)
+        and str(record.get("epoch_id") or "") == str(epoch_id)
+    ]
+    if not matches:
+        raise ValueError("paper draft record is absent for manuscript evaluation")
+    records[matches[-1]].update(dict(evaluation))
+    try:
+        path.write_text(
+            "\n".join(
+                json.dumps(record, ensure_ascii=False, sort_keys=True)
+                for record in records
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise ValueError("paper draft manuscript evaluation could not be persisted") from exc
+
+    persisted = read_paper_draft_archive(checkpoint_dir)
+    matching = [
+        record
+        for record in persisted
+        if str(record.get("node_id") or "") == str(node_id)
+        and str(record.get("epoch_id") or "") == str(epoch_id)
+    ]
+    if not matching or any(
+        matching[-1].get(key) != value for key, value in evaluation.items()
+    ):
+        raise ValueError("paper draft manuscript evaluation did not round-trip")
+
+
 def erase_paper_reviewer_utilities(
     checkpoint_dir: str | Path,
     reviewer_prompt_hash: str,
@@ -517,6 +569,15 @@ def restore_archive_round(
             ),
             "_valid_for_frontier": not bool(
                 rec.get("review_score_stale", False)
+            ) and not bool(rec.get("manuscript_hard_disqualified", False)),
+            "_manuscript_hard_disqualified": bool(
+                rec.get("manuscript_hard_disqualified", False)
+            ),
+            "_manuscript_input_fingerprint": str(
+                rec.get("manuscript_input_fingerprint") or ""
+            ),
+            "_manuscript_binding_digest": str(
+                rec.get("manuscript_binding_digest") or ""
             ),
         }
         if parent is not None:

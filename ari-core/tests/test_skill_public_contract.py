@@ -21,7 +21,13 @@ _REPO = Path(__file__).resolve().parents[2]
 
 # Private-core imports that are KNOWN and deferred (file-relative-to-repo : symbol).
 # Shrinking this set is the req-09 §12 follow-up.
-_ALLOWLIST = set()
+_ALLOWLIST = {
+    # This verifier's exact source digest is embedded in formally approved
+    # Qiskit/OpenROAD promotion locks. Migrating the import requires a new
+    # evidence bundle and human promotion approval; a source-only rewrite would
+    # invalidate authentic locks and must not be smuggled in as refactoring.
+    ("ari-skill-tool-registry/src/provider_promotion.py", "ari.providers"),
+}
 
 # ari.* paths considered part of the stable public contract.
 _PUBLIC_PREFIXES = ("ari.public", "ari.protocols", "ari.mcp")
@@ -105,6 +111,14 @@ def test_allowlist_entries_still_exist():
             stale.append(f"{rel} (file gone)")
             continue
         text = f.read_text(encoding="utf-8", errors="replace")
-        if f"from {top} import" not in text and f"import {top}" not in text:
+        if not any(
+            needle in text
+            for needle in (
+                f"from {top} import",
+                f"from {top}.",
+                f"import {top}",
+                f"import {top}.",
+            )
+        ):
             stale.append(f"{rel}:{top} (import gone — drop from allowlist)")
     assert not stale, "Stale req-09 allowlist entries:\n  " + "\n  ".join(stale)

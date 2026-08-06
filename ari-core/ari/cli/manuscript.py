@@ -488,7 +488,11 @@ def manuscript_repair(
     from ari.cli.manuscript_repair_runtime import build_research_repair_executors
     from ari.cli.paper_dispatch import _manuscript_runtime_environment
     from ari.manuscript.coordinator import compile_manuscript
-    from ari.manuscript.repair import execute_repair_plan
+    from ari.manuscript.repair import (
+        bind_transactional_executors,
+        committed_repair_usage,
+        execute_repair_plan,
+    )
     from ari.manuscript.authority import capture_repair_authority
 
     current_state = str(state.get("state") or "absent")
@@ -517,7 +521,8 @@ def manuscript_repair(
     executors = build_research_repair_executors(
         cfg, bfts, agent, nodes, data, checkpoint, run_id
     )
-    used_budget: dict[str, int] = {}
+    executors = bind_transactional_executors(plan, checkpoint, executors)
+    used_budget = committed_repair_usage(plan, checkpoint)
     with _manuscript_runtime_environment(cfg, paper_mode=_paper_mode(cfg)):
         results = execute_repair_plan(
             plan,

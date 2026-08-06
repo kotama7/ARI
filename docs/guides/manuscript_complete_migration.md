@@ -27,3 +27,11 @@ Known legacy information loss includes bounded configuration, claim, reference,
 source, and prompt projections. Audit reports what is still observable and an
 omission reason where possible; absence of historical bytes is not evidence
 that an item never existed.
+
+The permanent dry run is
+`test_legacy_migration_and_rollback_are_additive` in
+`ari-core/tests/test_manuscript_complete.py`. It verifies that off creates no
+Manuscript state, audit records gaps, enforce remains blocked when history is
+unverifiable, and rollback preserves every prior attempt plus the byte-exact
+legacy paper. The release manifest executes this test and retains its log; do
+not replace it with a hand-edited migration checklist.

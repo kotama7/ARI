@@ -19,6 +19,7 @@ from ari.manuscript.authority import (
     validate_repair_authority,
 )
 from ari.manuscript.contracts import RepairBudgetV1, ResearchRepairRequestV1
+from ari.manuscript.digest import canonical_digest
 from ari.manuscript.repair import RepairExecutionResult
 
 
@@ -191,14 +192,48 @@ def build_research_repair_executors(
         failed = _preflight(request)
         if failed is not None:
             return failed
-        mcp = getattr(agent, "mcp", None)
-        if mcp is None or not hasattr(mcp, "call_tool"):
-            return _result(request, "unavailable", reason="literature_resolver_unavailable")
         topic = str(experiment_data.get("goal") or "").strip()
         if not topic:
             return _result(request, "human_required", reason="research_topic_missing")
+        target = checkpoint / "related_refs.json"
+        existing = _json_object(target)
+        if existing is None:
+            return _result(request, "failed", reason="existing_retrieval_record_invalid")
+        old_records = existing.get("records") or existing.get("papers") or []
+        revisions = existing.get("retrieval_revisions") or []
+        if not isinstance(old_records, list) or not isinstance(revisions, list):
+            return _result(request, "failed", reason="existing_retrieval_record_invalid")
+        for revision in revisions:
+            if not isinstance(revision, dict):
+                return _result(
+                    request, "failed", reason="existing_retrieval_record_invalid"
+                )
+            if revision.get("request_digest") == request.request_digest:
+                # The recorded response is the idempotency boundary.  A crash
+                # after the provider call but before the transaction record can
+                # therefore resume with no network access or duplicate query.
+                return _result(
+                    request,
+                    "executed",
+                    action="recorded_literature_retrieval_reused",
+                    retrieval_revision_id=str(
+                        revision.get("retrieval_revision_id") or ""
+                    ),
+                    record_count=len(
+                        [item for item in old_records if isinstance(item, dict)]
+                    ),
+                    cache_reuse=True,
+                    new_nodes=0,
+                    experiment_runs=0,
+                    llm_calls=1,
+                )
+
+        mcp = getattr(agent, "mcp", None)
+        if mcp is None or not hasattr(mcp, "call_tool"):
+            return _result(request, "unavailable", reason="literature_resolver_unavailable")
+        parameters = {"topic": topic[:1200], "max_papers": 12}
         try:
-            raw = mcp.call_tool("survey", {"topic": topic[:1200], "max_papers": 12})
+            raw = mcp.call_tool("survey", parameters)
             if not isinstance(raw, dict) or raw.get("error"):
                 return _result(
                     request,
@@ -220,13 +255,6 @@ def build_research_repair_executors(
         if not records:
             return _result(request, "still_missing", reason="literature_result_empty")
 
-        target = checkpoint / "related_refs.json"
-        existing = _json_object(target)
-        if existing is None:
-            return _result(request, "failed", reason="existing_retrieval_record_invalid")
-        old_records = existing.get("records") or existing.get("papers") or []
-        if not isinstance(old_records, list):
-            return _result(request, "failed", reason="existing_retrieval_record_invalid")
         merged: dict[str, dict[str, Any]] = {}
         for index, item in enumerate([*old_records, *records]):
             if not isinstance(item, dict):
@@ -241,20 +269,42 @@ def build_research_repair_executors(
                 or f"record-{index:04d}"
             )
             merged.setdefault(identity, dict(item))
+        ordered_record_ids = sorted(merged)
+        revision_payload = {
+            "request_id": request.request_id,
+            "request_digest": request.request_digest,
+            "source_context_digest": request.source_context_digest,
+            "semantic_capability_id": "ari.literature.search/v1",
+            "tool_name": "survey",
+            "query": topic[:1200],
+            "parameters": parameters,
+            "ordered_record_ids": ordered_record_ids,
+            "cache_policy": "recorded-response-reuse-v1",
+        }
+        retrieval_revision_id = canonical_digest(revision_payload)
+        revision = {
+            "retrieval_revision_id": retrieval_revision_id,
+            **revision_payload,
+        }
         _atomic_json(
             target,
             {
                 "schema_version": "ari.related-refs/v1",
-                "records": [merged[key] for key in sorted(merged)],
+                "records": [merged[key] for key in ordered_record_ids],
                 "repair_request_ids": sorted(
                     set(existing.get("repair_request_ids") or ()) | {request.request_id}
                 ),
+                "retrieval_revisions": [
+                    *revisions,
+                    revision,
+                ],
             },
         )
         return _result(
             request,
             "executed",
             action="recorded_literature_retrieval",
+            retrieval_revision_id=retrieval_revision_id,
             record_count=len(merged),
             new_nodes=0,
             experiment_runs=0,
@@ -339,73 +389,121 @@ def build_research_repair_executors(
             None,
         )
         if existing is not None:
-            return _result(
-                request,
-                "executed",
-                action="existing_repair_node_reused",
-                node_id=str(getattr(existing, "id", node_id)),
-                node_status=str(
-                    getattr(getattr(existing, "status", ""), "value", getattr(existing, "status", ""))
-                ),
-                new_nodes=0,
-                experiment_runs=0,
-                llm_calls=0,
+            existing_status = str(
+                getattr(
+                    getattr(existing, "status", ""),
+                    "value",
+                    getattr(existing, "status", ""),
+                )
             )
+            if existing_status == "success":
+                return _result(
+                    request,
+                    "executed",
+                    action="existing_repair_node_reused",
+                    node_id=str(getattr(existing, "id", node_id)),
+                    node_status=existing_status,
+                    new_nodes=0,
+                    experiment_runs=0,
+                    llm_calls=0,
+                )
+            if existing_status in {"failed", "abandoned"}:
+                return _result(
+                    request,
+                    "failed",
+                    action="existing_repair_node_terminal",
+                    reason=f"repair_node_{existing_status}",
+                    node_id=str(getattr(existing, "id", node_id)),
+                    node_status=existing_status,
+                    new_nodes=0,
+                    experiment_runs=0,
+                    llm_calls=0,
+                )
+            if existing_status not in {"pending", "running"}:
+                return _result(
+                    request,
+                    "failed",
+                    reason="repair_node_status_invalid",
+                    node_id=str(getattr(existing, "id", node_id)),
+                    node_status=existing_status,
+                    new_nodes=0,
+                    experiment_runs=0,
+                    llm_calls=0,
+                )
 
-        from ari.orchestrator.node import Node, NodeLabel
-        from ari.pipeline.verified_context import select_best_node
+        if existing is None:
+            from ari.orchestrator.node import Node, NodeLabel
+            from ari.pipeline.verified_context import select_best_node
 
-        parent = select_best_node(all_nodes)
-        label = NodeLabel.from_str(_EXPERIMENT_LABELS[request.kind])
-        direction = (
-            _EXPERIMENT_DIRECTIVES[request.kind]
-            + "\n\nManuscript repair envelope (mandatory):\n"
-            + f"- request_id: {request.request_id}\n"
-            + f"- source_context_digest: {request.source_context_digest}\n"
-            + f"- requirement_ids: {', '.join(request.requirement_ids)}\n"
-            + f"- fixed_variables: {json.dumps(request.fixed_variables, sort_keys=True)}\n"
-            + f"- allowed_changes: {', '.join(request.allowed_changes)}\n"
-            + "Do not change variables or authority outside this envelope. "
-            + "Report failure or unavailability explicitly; do not fabricate a result."
+            parent = select_best_node(all_nodes)
+            label = NodeLabel.from_str(_EXPERIMENT_LABELS[request.kind])
+            direction = (
+                _EXPERIMENT_DIRECTIVES[request.kind]
+                + "\n\nManuscript repair envelope (mandatory):\n"
+                + f"- request_id: {request.request_id}\n"
+                + f"- source_context_digest: {request.source_context_digest}\n"
+                + f"- requirement_ids: {', '.join(request.requirement_ids)}\n"
+                + f"- fixed_variables: {json.dumps(request.fixed_variables, sort_keys=True)}\n"
+                + f"- allowed_changes: {', '.join(request.allowed_changes)}\n"
+                + "Do not change variables or authority outside this envelope. "
+                + "Report failure or unavailability explicitly; do not fabricate a result."
+            )
+            node = Node(
+                id=node_id,
+                parent_id=(str(getattr(parent, "id")) if parent is not None else None),
+                depth=(
+                    int(getattr(parent, "depth", -1)) + 1
+                    if parent is not None
+                    else 0
+                ),
+                memory_snapshot=(
+                    list(getattr(parent, "memory_snapshot", []) or [])
+                    if parent is not None
+                    else []
+                ),
+                label=label,
+                raw_label="manuscript-repair",
+                ancestor_ids=(
+                    list(getattr(parent, "ancestor_ids", []) or [])
+                    + [str(getattr(parent, "id"))]
+                    if parent is not None
+                    else []
+                ),
+                original_direction=direction,
+                repair_request_id=request.request_id,
+                repair_requirement_ids=list(request.requirement_ids),
+                repair_context_digest=request.source_context_digest,
+                repair_allowed_changes=list(request.allowed_changes),
+            )
+            node.eval_summary = direction
+            node.name = f"manuscript repair: {request.kind}"
+            if parent is not None and node.id not in getattr(parent, "children", []):
+                parent.children.append(node.id)
+
+            rqgm = getattr(bfts, "rqgm", None)
+            if rqgm is not None:
+                stamp = getattr(rqgm, "stamp_node_producer", None)
+                if callable(stamp):
+                    stamp(node)
+                record = getattr(rqgm, "record_expansion_proposal", None)
+                if callable(record) and parent is not None:
+                    record(parent, node)
+
+            all_nodes.append(node)
+        else:
+            node = existing
+
+        # Commit materialization before invoking the ordinary research loop.
+        # If the process stops here, resume finds the lineage-bound pending
+        # node and continues it instead of creating a duplicate request node.
+        from ari.cli.bfts_loop import _run_loop, _save_checkpoint
+
+        _save_checkpoint(
+            checkpoint,
+            run_id,
+            experiment_data.get("file", checkpoint / "experiment.md"),
+            all_nodes,
         )
-        node = Node(
-            id=node_id,
-            parent_id=(str(getattr(parent, "id")) if parent is not None else None),
-            depth=(int(getattr(parent, "depth", -1)) + 1 if parent is not None else 0),
-            memory_snapshot=(
-                list(getattr(parent, "memory_snapshot", []) or [])
-                if parent is not None
-                else []
-            ),
-            label=label,
-            raw_label="manuscript-repair",
-            ancestor_ids=(
-                list(getattr(parent, "ancestor_ids", []) or [])
-                + [str(getattr(parent, "id"))]
-                if parent is not None
-                else []
-            ),
-            original_direction=direction,
-            repair_request_id=request.request_id,
-            repair_requirement_ids=list(request.requirement_ids),
-            repair_context_digest=request.source_context_digest,
-            repair_allowed_changes=list(request.allowed_changes),
-        )
-        node.eval_summary = direction
-        node.name = f"manuscript repair: {request.kind}"
-        if parent is not None and node.id not in getattr(parent, "children", []):
-            parent.children.append(node.id)
-
-        rqgm = getattr(bfts, "rqgm", None)
-        if rqgm is not None:
-            stamp = getattr(rqgm, "stamp_node_producer", None)
-            if callable(stamp):
-                stamp(node)
-            record = getattr(rqgm, "record_expansion_proposal", None)
-            if callable(record) and parent is not None:
-                record(parent, node)
-
-        all_nodes.append(node)
         before_trace = _trace_count(checkpoint)
         original_nodes = cfg.bfts.max_total_nodes
         original_steps = cfg.bfts.max_react_steps
@@ -417,8 +515,6 @@ def build_research_repair_executors(
             cfg.bfts.max_react_steps = min(
                 int(original_steps), max(1, int(remaining.max_llm_calls))
             )
-            from ari.cli.bfts_loop import _run_loop
-
             _run_loop(
                 cfg,
                 bfts,
@@ -440,6 +536,8 @@ def build_research_repair_executors(
             action="bounded_research_node_executed",
             node_id=node.id,
             node_status=str(getattr(node.status, "value", node.status)),
+            # A pre-existing pending/running node is a crash-reconciled unit
+            # whose cost was not yet committed to a repair transaction.
             new_nodes=1,
             experiment_runs=1,
             llm_calls=prompt_uses,
