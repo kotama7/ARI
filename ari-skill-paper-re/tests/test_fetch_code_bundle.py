@@ -193,7 +193,12 @@ async def test_broad_overwrite_destination_is_rejected(unsafe):
         overwrite=True,
     )
     assert result["populated"] is False
-    assert "refusing broad bundle destination" in result["error"]
+    # The property is that a broad destination is REFUSED, not which guard
+    # refuses it. `Path.home()` reaches the breadth check on a plain home and
+    # the symlink check on a home mounted through one; both are correct
+    # refusals, and pinning one message made the test pass or fail on how the
+    # machine happens to mount home. Both name the destination.
+    assert "bundle destination" in result["error"]
 
 
 @pytest.mark.asyncio
