@@ -28,6 +28,7 @@ from ari.assurance.native_perf_common import (
     crosses_compiler_boundary,
     default_compiler,
     kernels_root,
+    load_case_set,
     measurement_placement,
     median,
     relative_spread,
@@ -39,13 +40,12 @@ from ari.assurance.native_perf_common import (
     toolchain_identity,
 )
 
-#: The scored shapes. Fixed, because a shape a candidate could choose is a shape
-#: a candidate could choose to be easy.
-SHAPES: tuple[tuple[int, int, int], ...] = (
-    (1000, 1000, 1000),
-    (2000, 500, 500),
-    (1500, 600, 1500),
-)
+#: WHICH PROBLEMS is data, not code. The shapes live in a pinned case set the
+#: manifest names and digests; see load_case_set. A theme that needs other sizes
+#: registers a harness against another set rather than passing shapes through a
+#: request, because the registration evidence is established at a size and does
+#: not transfer.
+DEFAULT_CASE_SET = "native-perf-gemm-cases/v1@scored-2026q3"
 
 #: The reference is built the way a competent user of this toolchain would build
 #: it, so the denominator is not handicapped relative to the candidates it is the
@@ -107,7 +107,7 @@ def verify_gemm_performance(
     *,
     tier: Literal["screen", "validate", "certify"] = "screen",
     seed: int = 0,
-    shapes: tuple[tuple[int, int, int], ...] | None = None,
+    dataset_revision: str = DEFAULT_CASE_SET,
     candidate_compiler: str | None = None,
     candidate_flags: str | None = None,
     regression_threshold: float = 1.0,
@@ -122,7 +122,11 @@ def verify_gemm_performance(
     """
     from ari.assurance.native_perf_common import run_timed
 
-    cases = tuple(shapes) if shapes else SHAPES
+    case_set, dataset_digest = load_case_set(dataset_revision)
+    if case_set.kind != "gemm":
+        raise PerfInfrastructureError(
+            f"case set {dataset_revision!r} is for {case_set.kind!r}, not gemm")
+    cases = tuple(tuple(int(v) for v in case) for case in case_set.cases)
     reps = TIER_REPETITIONS[tier]
     kdir = kernels_root() / "gemm"
     reference_source = kdir / "reference_gemm.c"
@@ -270,6 +274,11 @@ def verify_gemm_performance(
         overall = "fail"
     elif any(item.verdict == "inconclusive" for item in results) or not results:
         overall = "inconclusive"
+    if not case_set.resolves and overall == "pass":
+        # A cheap set can show that a candidate built and was right. It cannot
+        # support "did not regress": at this size the measurement's own spread
+        # swamps the difference the verdict claims to have found.
+        overall = "inconclusive"
     return NativePerfReportV1.create(
         kind="gemm", tier=tier, verdict=overall, case_results=tuple(results),
         regression_threshold=regression_threshold,
@@ -278,6 +287,7 @@ def verify_gemm_performance(
         base_flags=base, reference_flags=reference_flags(),
         accepted_flags=accepted, rejected_flags=rejected,
         environment=measurement_environment(),
+        dataset_revision=case_set.revision, dataset_sha256=dataset_digest,
         placement=measurement_placement(), negative_control=negative_control)
 
 
@@ -287,5 +297,5 @@ def gemm_reference_source() -> Path:
     return kernels_root() / "gemm" / "reference_gemm.c"
 
 
-__all__ = ["SHAPES", "gemm_reference_source", "gen_problem", "reference_flags",
+__all__ = ["DEFAULT_CASE_SET", "gemm_reference_source", "gen_problem", "reference_flags",
            "verify_gemm_performance"]

@@ -81,10 +81,19 @@ class _Asset:
         self.sha256 = sha256
 
 
+def _real_case_set(revision="native-perf-gemm-cases/v1@parity"):
+    from ari.assurance.native_perf_common import load_case_set
+    _set, digest = load_case_set(revision)
+    return revision, digest
+
+
 class _Manifest:
     def __init__(self, **kw):
         self.driver = _Asset(kw.get("driver_revision", PERF_DRIVER_REVISION),
                              kw.get("driver_sha256", perf_driver_digest()))
+        revision, digest = _real_case_set(
+            kw.get("dataset_revision", "native-perf-gemm-cases/v1@parity"))
+        self.dataset = _Asset(revision, kw.get("dataset_sha256", digest))
         self.kind = kw.get("kind", "benchmark")
         self.network_policy = kw.get("network_policy", "deny")
         self.credential_policy = kw.get("credential_policy", "none")
@@ -157,6 +166,8 @@ def _report(**kw):
                   accepted_flags=(), rejected_flags=(),
                   environment={"variables": {}, "sha256": "sha256:" + "0" * 64,
                                "note": "n"},
+                  dataset_revision="native-perf-gemm-cases/v1@parity",
+                  dataset_sha256="sha256:" + "0" * 64,
                   placement=measurement_placement())
     values.update(kw)
     return NativePerfReportV1.create(**values)
@@ -432,4 +443,47 @@ def test_a_credential_value_never_reaches_the_record(monkeypatch):
     monkeypatch.setenv("ARI_LLM_API_KEY", "super-secret")
     from ari.assurance.native_perf_common import measurement_environment
     assert "super-secret" not in json.dumps(measurement_environment())
+
+
+# --- which problems is registered, not requested --------------------------------
+
+def test_a_size_is_chosen_by_naming_a_pinned_set_not_by_passing_shapes():
+    """Registration evidence is established at a size and does not transfer:
+    measured on an aarch64 compute node, 0.095% spread at the scored shape
+    against 100x at a small one. A run free to choose its own size would carry an
+    attestation saying "verified" about a problem the manifest never named."""
+    import inspect
+
+    from ari.assurance.native_perf_gemm import verify_gemm_performance
+    params = inspect.signature(verify_gemm_performance).parameters
+    assert "dataset_revision" in params
+    assert "shapes" not in params, "the unpinned size path is back"
+
+
+def test_an_unregistered_case_set_is_refused():
+    from ari.assurance.native_perf_common import PerfInfrastructureError, load_case_set
+    with pytest.raises(PerfInfrastructureError, match="no registered case set"):
+        load_case_set("native-perf-gemm-cases/v1@invented")
+
+
+def test_prepare_refuses_a_dataset_pin_that_no_longer_matches():
+    """This is what makes 'verified' mean 'verified at this size'."""
+    with pytest.raises(ValueError, match="registered problem set has changed"):
+        NativePerfDriver().prepare(
+            _Manifest(dataset_sha256="sha256:" + "9" * 64), _Request())
+
+
+def test_prepare_refuses_a_case_set_that_cannot_support_a_verdict():
+    """A cheap set can show a candidate built and was right; it cannot support
+    'did not regress' when its own spread swamps the difference claimed."""
+    with pytest.raises(ValueError, match="resolves=false"):
+        NativePerfDriver().prepare(
+            _Manifest(dataset_revision="native-perf-gemm-cases/v1@smoke"),
+            _Request())
+
+
+def test_the_report_says_which_problems_it_measured():
+    rep = _report()
+    body = json.loads(rep.model_dump_json())
+    assert body["dataset_revision"] and body["dataset_sha256"].startswith("sha256:")
 

@@ -180,6 +180,10 @@ class NativePerfReportV1(DigestBoundModel):
     #: Captured by prefix with its own digest, so a run can be compared with
     #: another only when the conditions match.
     environment: dict[str, Any]
+    #: WHICH PROBLEMS, named and pinned. A report that did not say this could be
+    #: read as evidence about a size it never measured.
+    dataset_revision: str
+    dataset_sha256: str
     #: Where it ran. Two allocations of different shape otherwise produce
     #: identical records, and placement is not neutral for a timed kernel.
     placement: dict[str, Any]
@@ -200,6 +204,71 @@ class NativePerfReportV1(DigestBoundModel):
             raise ValueError(f"placement record is missing {missing}")
         return self
     report_digest: str = Field(default="")
+
+
+# --------------------------------------------------------------------------
+# which problems: a pinned case set, never a request parameter
+# --------------------------------------------------------------------------
+
+class CaseSetV1(StrictModel):
+    """A named, digest-pinned set of problems a harness measures on."""
+
+    schema_version: Literal["ari.harness-case-set/v1"] = "ari.harness-case-set/v1"
+    revision: str
+    kind: PerfKind
+    description: str
+    cases: tuple[tuple[int, ...], ...]
+    #: False marks a set that is cheap but NOT resolved enough to support a
+    #: verdict. Stated in the data rather than left for a reader to infer from
+    #: the numbers after the fact.
+    resolves: bool = True
+
+
+def case_sets_root() -> Path:
+    configured = os.environ.get("ARI_HARNESS_CASE_SETS")
+    if configured:
+        return Path(configured)
+    return (Path(__file__).resolve().parents[2]
+            / "config" / "harnesses" / "case_sets")
+
+
+def load_case_set(revision: str) -> tuple[CaseSetV1, str]:
+    """Resolve a case-set revision to its cases and the digest of its bytes.
+
+    The size a harness measures at is DATA, not a request parameter. Registration
+    evidence is established at a size and does not transfer -- measured on an
+    aarch64 compute node, the same harness reproduced to 0.095% at the scored
+    shape and to a 100x spread at a small one. A run free to choose its own size
+    would carry an attestation saying "verified" about a problem the manifest
+    never named.
+
+    So the manifest names a revision in ``dataset.revision`` and pins these bytes
+    in ``dataset.sha256``: changing a size changes this file, which changes the
+    manifest digest, which is a re-registration. Returns ``(case_set, sha256)``
+    so the caller can check the pin.
+    """
+    import yaml as _yaml
+
+    root = case_sets_root()
+    if not root.is_dir():
+        raise PerfInfrastructureError(f"no case-set directory at {root}")
+    for path in sorted(root.glob("*.yaml")):
+        raw = _yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if str(raw.get("revision", "")) != revision:
+            continue
+        case_set = CaseSetV1.model_validate(raw)
+        digest = f"sha256:{hashlib.sha256(path.read_bytes()).hexdigest()}"
+        if not case_set.cases:
+            raise PerfInfrastructureError(
+                f"case set {revision!r} declares no cases")
+        return case_set, digest
+    known = sorted(
+        str((_yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("revision"))
+        for p in sorted(root.glob("*.yaml"))
+    )
+    raise PerfInfrastructureError(
+        f"no registered case set {revision!r}; a size is chosen by naming a "
+        f"pinned set, not by passing shapes. Known: {known}")
 
 
 # --------------------------------------------------------------------------
@@ -763,12 +832,15 @@ __all__ = [
     "PerfRepetitionV1",
     "PerfTier",
     "audit_kernel_object",
+    "CaseSetV1",
+    "case_sets_root",
     "compile_binary",
     "KERNEL_ENTRY_POINTS",
     "crosses_compiler_boundary",
     "default_compiler",
     "isa_flags_for",
     "kernels_root",
+    "load_case_set",
     "measurement_environment",
     "measurement_placement",
     "measurement_thread_regime",

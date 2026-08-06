@@ -30,6 +30,7 @@ from ari.assurance.models import (
     HarnessPropertyResultV1,
     NormalizedHarnessResultV1,
 )
+from ari.assurance.native_perf_common import load_case_set
 from ari.assurance.native_perf import (
     NativePerfReportV1,
     reference_flags,
@@ -42,11 +43,13 @@ from ari.research_contract import ResearchArtifactRefV1
 
 PERF_DRIVER_REVISION = "ari.assurance.native-perf/v1"
 
-#: The shape the parity probe measures at. Small enough to run at registration,
-#: large enough to be a measurement: at 256^3 a single 20 ms stall against a
-#: 0.2 ms kernel produced a 100x spread on this hardware, while 1000^3 reproduced
-#: to 0.7%. Registration therefore has to happen on the node class that measures.
-_PARITY_SHAPE = ((1000, 1000, 1000),)
+#: The case set the parity probe measures at — named and pinned like any other,
+#: so the probe cannot certify the harness at a size no scored run uses. Separate
+#: from the scored set so a probe can be cheap without silently changing what a
+#: scored run measures. Registration has to happen on the node class that
+#: measures: at a small shape a single ~20 ms stall against a ~0.2 ms kernel gave
+#: a 100x spread here, against 0.095% at the scored shape.
+_PARITY_CASE_SET = "native-perf-gemm-cases/v1@parity"
 
 _SLOW_BUT_CORRECT = """#include "gemm_kernel.h"
 void gemm(int n, int m, int p, const double *A, const double *B, double *C) {
@@ -116,6 +119,19 @@ class NativePerfDriver:
                 "performance verifier must be credential-free and network-denied")
         if request.execution_request.network != "deny":
             raise ValueError("performance Harness request does not require isolation")
+        # WHICH PROBLEMS is part of what was registered. Resolving the manifest's
+        # own dataset revision here is what makes "verified" mean "verified at
+        # this size": without it a run could measure anything and still carry an
+        # attestation naming this manifest.
+        case_set, digest = load_case_set(manifest.dataset.revision)
+        if digest != manifest.dataset.sha256:
+            raise ValueError(
+                f"case set {manifest.dataset.revision!r} does not match the "
+                f"manifest pin; the registered problem set has changed")
+        if not case_set.resolves:
+            raise ValueError(
+                f"case set {manifest.dataset.revision!r} declares resolves=false, "
+                f"so it cannot support a regression verdict")
         return None
 
     def build_request(self, manifest, request):
@@ -231,23 +247,27 @@ class NativePerfDriver:
         flags = " ".join(reference_flags())
         clean = verify_native_perf(
             "gemm", reference_source("gemm"), tier="validate",
-            shapes=_PARITY_SHAPE, candidate_flags=flags, regression_threshold=0.95)
+            dataset_revision=_PARITY_CASE_SET, candidate_flags=flags,
+            regression_threshold=0.95)
         with tempfile.TemporaryDirectory() as raw:
             slow_path = Path(raw, "slow.c")
             slow_path.write_text(_SLOW_BUT_CORRECT)
             slow = verify_native_perf(
-                "gemm", slow_path, tier="screen", shapes=_PARITY_SHAPE,
+                "gemm", slow_path, tier="screen",
+                dataset_revision=_PARITY_CASE_SET,
                 candidate_flags=flags, regression_threshold=0.95)
             wrong_path = Path(raw, "wrong.c")
             wrong_path.write_text(_FAST_BUT_WRONG)
             wrong = verify_native_perf(
-                "gemm", wrong_path, tier="screen", shapes=_PARITY_SHAPE,
+                "gemm", wrong_path, tier="screen",
+                dataset_revision=_PARITY_CASE_SET,
                 candidate_flags=flags, regression_threshold=0.95)
         slow_detail = slow.case_results[0].detail if slow.case_results else ""
         wrong_detail = wrong.case_results[0].detail if wrong.case_results else ""
         return {
             "schema_version": "ari.native-perf-parity-report/v1",
             "driver_digest": perf_driver_digest(),
+            "case_set": _PARITY_CASE_SET,
             "results": {
                 "clean_control": {
                     "verdict": clean.verdict,

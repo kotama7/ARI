@@ -18,7 +18,7 @@ from ari.assurance.native_perf_common import (
     PerfTier,
 )
 from ari.assurance.native_perf_gemm import (
-    SHAPES as GEMM_SHAPES,
+    DEFAULT_CASE_SET as GEMM_DEFAULT_CASE_SET,
     gemm_reference_source,
     reference_flags,
     verify_gemm_performance,
@@ -49,7 +49,7 @@ def reference_source(kind: PerfKind) -> Path:
 
 
 __all__ = [
-    "GEMM_SHAPES",
+    "GEMM_DEFAULT_CASE_SET",
     "NativePerfReportV1",
     "PerfBuildError",
     "PerfInfrastructureError",

@@ -23,6 +23,10 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_gemm_correctness.yaml` — native dense GEMM correctness harness manifest.
     - `hpc_spmm_correctness.yaml` — native CSR SpMM correctness harness manifest.
     - `hpc_stencil_correctness.yaml` — native seven-point stencil correctness harness manifest.
+  - `case_sets/` — TODO
+    - `gemm-parity.yaml` — TODO
+    - `gemm-scored-2026q3.yaml` — TODO
+    - `gemm-smoke.yaml` — TODO
   - `contracts/` — ABI and oracle contracts used by native HPC harnesses.
     - `gemm-c-abi-v1.yaml` — dense GEMM C ABI, cases, oracle, and tolerance contract.
     - `spmm-csr-c-abi-v1.yaml` — CSR SpMM C ABI, cases, oracle, and tolerance contract.

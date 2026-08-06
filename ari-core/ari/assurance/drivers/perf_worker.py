@@ -22,6 +22,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tier", choices=("screen", "validate", "certify"),
                         required=True)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--dataset-revision", default=None,
+                        help="the PINNED case set to measure on. A size is chosen "
+                             "by naming a registered set, never by passing shapes: "
+                             "registration evidence is established at a size and "
+                             "does not transfer.")
     parser.add_argument("--compiler", default=None,
                         help="compiler the candidate declared, if any")
     parser.add_argument("--flags", default=None,
@@ -33,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
     report = verify_native_perf(
         args.kind, args.candidate, tier=args.tier, seed=args.seed,
         candidate_compiler=args.compiler, candidate_flags=args.flags,
+        **({"dataset_revision": args.dataset_revision}
+           if args.dataset_revision else {}),
         regression_threshold=args.regression_threshold,
         run_timeout=args.run_timeout, negative_control=args.negative_control)
     sys.stdout.write(report.model_dump_json() + "\n")
