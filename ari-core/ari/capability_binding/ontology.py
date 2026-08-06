@@ -128,10 +128,59 @@ def apply_resource_derivations(
     return frozenset(features), frozenset(resource_types), tuple(sorted(set(fired)))
 
 
+# Compatibility rules were a free-form string tuple: digest-bound, documented as
+# what makes "a shared text label insufficient", and read by nothing. Every name
+# below was inert. Closing the vocabulary means a contract can no longer invent a
+# rule, and each name now has to say where it is checked -- including the ones
+# that are not checked yet, which is at least visible instead of silent.
+_COMPATIBILITY_RULES: dict[str, str] = {
+    "measurement-envelope-v1": "core",
+    # These have no core implementation. The shipped ontology declares no
+    # semantic_inputs or semantic_outputs on any contract, so there is nothing
+    # for a structural rule to compare against; populating them is separate work.
+    "json-schema-structural-conformance": "unenforced",
+    "artifact-result-v1": "unenforced",
+    "async-handle-v1": "unenforced",
+    "result-envelope-v1": "unenforced",
+    # Checked by the Provider that supplies the capability, against its own
+    # golden/replay evidence, not by the binder.
+    "cuda-self-test-v1": "provider",
+    "openroad-profile-result-v1": "provider",
+    "qiskit-sampling-result-v1": "provider",
+    "retrieval-record-v1": "provider",
+}
+
+
+def compatibility_rule_enforcement(rule: str) -> str:
+    """Return where a reviewed compatibility rule is checked."""
+
+    try:
+        return _COMPATIBILITY_RULES[rule]
+    except KeyError:
+        raise CapabilityOntologyError(f"unknown compatibility rule: {rule!r}") from None
+
+
+def _check_compatibility_rules(contract: CapabilityContractV1) -> None:
+    for rule in contract.compatibility_rules:
+        enforcement = compatibility_rule_enforcement(rule)
+        if enforcement != "core":
+            continue
+        if rule == "measurement-envelope-v1" and not contract.nondeterminism_fields:
+            # The rule says a measurement is only interpretable together with
+            # the conditions it was taken under. A contract that claims it while
+            # naming no conditions is not stating an envelope at all.
+            raise CapabilityOntologyError(
+                f"{contract.capability_ref} claims measurement-envelope-v1 but "
+                "declares no nondeterminism_fields"
+            )
+
+
 def _contract(document: dict[str, Any]) -> CapabilityContractV1:
     payload = dict(document)
     payload.pop("contract_digest", None)
-    return CapabilityContractV1.create(**payload)
+    contract = CapabilityContractV1.create(**payload)
+    _check_compatibility_rules(contract)
+    return contract
 
 
 def load_capability_ontology(path: str | Path) -> CapabilityOntology:
@@ -174,6 +223,7 @@ def load_capability_ontology(path: str | Path) -> CapabilityOntology:
 __all__ = [
     "CapabilityOntology",
     "CapabilityOntologyError",
+    "compatibility_rule_enforcement",
     "ResourceDerivationError",
     "ResourceDerivationV1",
     "apply_resource_derivations",

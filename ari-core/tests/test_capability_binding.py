@@ -334,3 +334,81 @@ def test_synthetic_substitute_changes_only_the_provider_identity():
         "credential_scope_ids",
     ):
         assert getattr(stand_in, field) == getattr(incumbent, field)
+
+
+# ------------------------------------------------------- compatibility rules
+
+
+def test_the_shipped_ontology_names_only_reviewed_compatibility_rules():
+    """The field was free-form and read by nothing; every name was inert."""
+
+    from ari.capability_binding.ontology import (
+        compatibility_rule_enforcement,
+        load_capability_ontology,
+    )
+    from ari.config.finder import package_config_root
+
+    ontology = load_capability_ontology(
+        package_config_root() / "capabilities" / "ontology.yaml"
+    )
+    for item in ontology.snapshot.contracts:
+        assert item.compatibility_rules
+        for rule in item.compatibility_rules:
+            assert compatibility_rule_enforcement(rule) in {
+                "core",
+                "provider",
+                "unenforced",
+            }
+
+
+def test_an_invented_compatibility_rule_is_refused():
+    from ari.capability_binding.ontology import (
+        CapabilityOntologyError,
+        compatibility_rule_enforcement,
+    )
+
+    with pytest.raises(CapabilityOntologyError, match="unknown compatibility rule"):
+        compatibility_rule_enforcement("looks-plausible-v1")
+
+
+def test_measurement_envelope_requires_the_conditions_it_promises(tmp_path):
+    """A measurement rule on a contract that names no conditions is empty."""
+
+    import yaml
+
+    from ari.capability_binding.ontology import (
+        CapabilityOntologyError,
+        load_capability_ontology,
+    )
+
+    document = {
+        "schema_version": 1,
+        "source_revision": "test/1",
+        "property_vocabulary_version": "v1",
+        "contracts": [
+            {
+                "capability_ref": "ari.execution.measure/v1",
+                "contract_version": "v1",
+                "title": "Measure",
+                "description": "Measure something",
+                "side_effect_class": "read-only",
+                "determinism_class": "conditional",
+                "compatibility_rules": [
+                    "json-schema-structural-conformance",
+                    "measurement-envelope-v1",
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "ontology.yaml"
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+    with pytest.raises(CapabilityOntologyError, match="no nondeterminism_fields"):
+        load_capability_ontology(path)
+
+    document["contracts"][0]["nondeterminism_fields"] = ["hardware", "sampling"]
+    path.write_text(yaml.safe_dump(document), encoding="utf-8")
+    ontology = load_capability_ontology(path)
+    assert ontology.snapshot.contracts[0].nondeterminism_fields == (
+        "hardware",
+        "sampling",
+    )

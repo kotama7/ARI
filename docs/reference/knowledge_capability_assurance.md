@@ -244,6 +244,21 @@ determinism, context, permissions, resources, version, and compatibility.
 Provider registration checks the live input/output schema against that
 contract. A shared text label is insufficient semantic compatibility.
 
+`compatibility_rules` is a closed vocabulary. It was a free-form string tuple —
+digest-bound, documented, and consulted by nothing, so every rule name in the
+ontology was inert. A name outside the reviewed table is now refused, and each
+name states where it is checked: `measurement-envelope-v1` in core, four
+result-shape rules by the Provider that supplies the capability against its own
+golden and replay evidence, and the rest explicitly `unenforced`. That last
+group is honest rather than fixed: no shipped contract declares
+`semantic_inputs` or `semantic_outputs`, so a structural rule has nothing to
+compare against, and populating them is separate work.
+
+`measurement-envelope-v1` says a measurement is only interpretable together with
+the conditions it was taken under, so a contract claiming it must declare the
+`nondeterminism_fields` that are those conditions. One that claims the rule and
+names no conditions is refused at load — it is not stating an envelope at all.
+
 A run's requirements come from two sources. Admitted Knowledge Skills declare
 what their instructions presuppose, and `capability_binding.required_capability_refs`
 lets the operator declare what the run's own task needs. The second exists

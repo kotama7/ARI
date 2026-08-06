@@ -21,6 +21,7 @@ targets the like-named module under `ari/`.
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_architecture_boundary_index.py` — boundary coverage map (report `003` §16): every boundary B1-B11 must name a live guard file under `ari-core/tests/` or an explicit `waived:` reason, so a new or renamed boundary can never ship silently unguarded.
 - `test_artifact_store.py` — `CheckpointArtifactStore` by-logical-name artefact access over the flat checkpoint layout: `ArtifactStore` ABC non-instantiability + structural conformance, text/bytes/source-path `put` with subdir creation, `exists`/`get` on misses, prefix listing.
+- `test_assurance_measure.py` — TODO
 - `test_assurance_resolver.py` — harness catalog resolution, compatibility filtering, lock creation, and fail-closed ambiguity coverage.
 - `test_async_tool_lifecycle.py` — asynchronous handle state transitions, polling budgets, cancellation, and expiry.
 - `test_bfts.py` — BFTS loop.
@@ -33,7 +34,7 @@ targets the like-named module under `ari/`.
 - `test_bfts_prompt_selection.py` — BFTS prompt selection.
 - `test_brokered_provisions.py` — the broker-to-binder bridge: a federated catalog lock is re-authenticated rather than trusted, its reviewed leaves become composite provisions whose callable identity is the broker's dispatch tool and whose authority is the envelope of both hops, and the loader refuses stale review, quarantine, under-admission, and a dispatch tool the run lock does not contain.
 - `test_call_context.py` — signed call capabilities, phase/tool authorization, lineage ordering, and tamper rejection.
-- `test_capability_binding.py` — capability ontology, provider binding, substitutions, authority, and immutable lock coverage.
+- `test_capability_binding.py` — capability ontology, provider binding, substitutions, authority, and immutable lock coverage; includes the closed compatibility-rule vocabulary that replaced a free-form string tuple nothing read, and `measurement-envelope-v1` refusing a contract that claims a measurement envelope while naming no conditions.
 - `test_capability_environment.py` — environment identity, compatibility, drift detection, and capability execution-boundary coverage; also the container runtime decided by executing it rather than by finding a binary, and the reviewed derivation table that turns an observed fact into an ontology resource class without being able to invent one.
 - `test_checkpoint_legacy_tree.py` — legacy node_*/tree.json resolution in list/summary.
 - `test_checkpoint_migration_reader.py` — immutable checkpoint-version detection and explicit legacy reader/migration behavior.

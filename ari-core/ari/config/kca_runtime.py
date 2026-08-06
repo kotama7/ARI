@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from ari.config import ARIConfig
+
+logger = logging.getLogger(__name__)
 
 
 class KCAAdmissionConfigError(ValueError):
@@ -54,6 +57,16 @@ def resolve_kca_modes(
             raise KCAAdmissionConfigError("RQGM Knowledge enforce requires Capability Binding enforce")
         if modes.assurance == "enforce" and modes.capability_binding != "enforce":
             raise KCAAdmissionConfigError("RQGM Assurance enforce requires Capability Binding enforce")
+        if modes.all_legacy_off:
+            # The shipped defaults. Outside RQGM they are simply not in play,
+            # but a run that opted into the governance mode and left every
+            # layer inert produces admission artifacts that govern nothing --
+            # worth saying out loud rather than discovering from an empty lock.
+            logger.warning(
+                "RQGM is active with knowledge=off, capability_binding=legacy, and "
+                "assurance=off: admission records the run's identity but governs "
+                "no Knowledge, no tool authority, and no verification."
+            )
     return modes
 
 

@@ -195,3 +195,47 @@ def test_a_required_capability_forbids_legacy_binding_mode():
 
     with pytest.raises(KCAAdmissionConfigError, match="required capability"):
         resolve_kca_modes(Config(), required_capability=True)
+
+
+# ------------------------------------------------------------- inert-mode notice
+
+
+class _Modes:
+    """Minimal config shape resolve_kca_modes reads."""
+
+    def __init__(self, *, knowledge="off", binding="legacy", assurance="off", rqgm=True):
+        self.knowledge = type("K", (), {"mode": knowledge})()
+        self.capability_binding = CapabilityBindingRuntimeConfig(mode=binding)
+        self.assurance = type("A", (), {"mode": assurance})()
+        self.ari = type("R", (), {"mode": "ari_rqgm" if rqgm else "simple_bfts"})()
+        self.rqgm = type("G", (), {"enabled": rqgm})()
+
+
+def test_rqgm_with_every_layer_inert_says_so(caplog):
+    """all_legacy_off existed to detect exactly this and was never consulted."""
+
+    from ari.config.kca_runtime import resolve_kca_modes
+
+    with caplog.at_level("WARNING"):
+        modes = resolve_kca_modes(_Modes())
+    assert modes.all_legacy_off is True
+    assert any("governs" in record.message for record in caplog.records)
+
+
+def test_the_notice_is_not_raised_outside_rqgm(caplog):
+    """simple_bfts is the shipped run mode and KCA correctly does not apply."""
+
+    from ari.config.kca_runtime import resolve_kca_modes
+
+    with caplog.at_level("WARNING"):
+        resolve_kca_modes(_Modes(rqgm=False))
+    assert not [r for r in caplog.records if "governs" in r.message]
+
+
+def test_no_notice_once_a_layer_is_active(caplog):
+    from ari.config.kca_runtime import resolve_kca_modes
+
+    with caplog.at_level("WARNING"):
+        modes = resolve_kca_modes(_Modes(binding="audit"))
+    assert modes.all_legacy_off is False
+    assert not [r for r in caplog.records if "governs" in r.message]
