@@ -70,6 +70,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_hpc_gemm.py` — authoritative native GEMM correctness verifier.
   - `native_hpc_spmm.py` — authoritative native sparse-matrix multiplication verifier.
   - `native_hpc_stencil.py` — authoritative native stencil correctness verifier.
+  - `native_perf_common.py` — TODO
+  - `native_perf_gemm.py` — TODO
   - `registration.py` — execute harness registration gates and catalog promotion.
   - `registration_models.py` — promotion approval, evidence, and registration report models.
   - `request.py` — validate and canonicalize screen and certify run requests.
@@ -87,6 +89,9 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `paperbench.py` — PaperBench-compatible scientific reproduction driver.
     - `shared_library.py` — ABI-bound shared-library candidate driver.
     - `upstream.py` — pinned upstream project runner and parity driver.
+  - `kernels/` — TODO
+    - `gemm/` — TODO
+      - `gemm_kernel.h` — TODO
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
 - `capability_binding/` — capability ontology, provider resolution, environment compatibility, substitution, authority, and immutable locks.
   - `__init__.py` — public capability-binding package exports.
@@ -483,6 +488,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
   - `knowledge_skill_catalog_snapshot_v1.schema.json` — immutable catalog snapshot used for deterministic knowledge-skill resolution.
   - `knowledge_skill_manifest_v1.schema.json` — declared knowledge skill, source provenance, compatibility, and evidence policy.
+  - `knowledge_skill_promotion_approval_v1.schema.json` — explicit human approval binding one knowledge-skill promotion to the exact manifest, body, and evidence reviewed.
   - `knowledge_skill_registration_evidence_v1.schema.json` — TODO
   - `manuscript_authoring_binding_v1.schema.json` — exact profile, context, readiness, brief, and source lineage admitted to authoring.
   - `manuscript_auto_repair_round_v1.schema.json` — one bounded repair attempt with findings, actions, progress, and stop state.

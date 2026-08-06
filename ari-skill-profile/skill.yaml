@@ -1,0 +1,31 @@
+schema_version: 1
+name: profile-skill
+package: ari-skill-profile
+version: 0.1.0
+display_name: Read hardware performance counters
+description: Read-only hardware-counter measurement over an already-running process; creates no process and writes nothing.
+enabled_by_default: false
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env: [LANG, LC_ALL, PATH]
+credential_scopes: []
+tool_defaults:
+  phases: [bfts, evaluation, reproduce]
+  side_effects: read-only
+  determinism: conditional
+  timeout_class: bounded
+  # `process-profile` is the authority this asks for, and the only one. It does
+  # not launch processes, so it never asks for process-execute.
+  permissions: [workspace-read, process-profile]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: counter_support
+    capability_ref: ari.profiling.counter-support
+    determinism: deterministic
+  - name: measure_counters
+    capability_ref: ari.profiling.hardware-counters
+    context_requirement: node

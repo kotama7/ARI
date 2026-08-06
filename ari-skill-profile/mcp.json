@@ -1,0 +1,14 @@
+{
+  "description": "Read-only hardware-counter measurement over an already-running process; creates no process and writes nothing.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "profile-skill",
+  "package": "ari-skill-profile",
+  "runtime": "python",
+  "schema_version": 1,
+  "tools": [
+    "counter_support",
+    "measure_counters"
+  ],
+  "version": "0.1.0"
+}
