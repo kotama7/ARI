@@ -10,7 +10,7 @@ verifies the live tree still matches them:
 
   * ``public``  -> ``public_api.json``    (``ari.public.*`` exported symbol tables)
   * ``cli``     -> ``cli_tree.json``      (the ``ari = ari.cli:app`` Typer surface)
-  * ``mcp``     -> ``mcp_tools.json``      (14 ``ari-skill-*/src/server.py`` tool catalog)
+  * ``mcp``     -> ``mcp_tools.json``      (manifested skill entrypoint tool catalog)
   * ``viz``     -> ``viz_endpoints.json``  (dashboard REST inventory + response keys)
 
 Design principle P2 (determinism): stdlib only (``ast``/``json``/``importlib``);
@@ -30,12 +30,14 @@ helpers here so ``pytest`` and ``--check`` can never disagree (single source of
 truth).  This script adds no third-party dependency and wires no CI gate (that is
 subtasks 029/030/032/046).
 """
+
 from __future__ import annotations
 
 import argparse
 import ast
 import importlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -94,12 +96,15 @@ def _meta(surface: str) -> dict:
 
 
 def _fixture_path(surface: str) -> Path:
-    return FIXTURES_DIR / {
-        "public": "public_api.json",
-        "cli": "cli_tree.json",
-        "mcp": "mcp_tools.json",
-        "viz": "viz_endpoints.json",
-    }[surface]
+    return (
+        FIXTURES_DIR
+        / {
+            "public": "public_api.json",
+            "cli": "cli_tree.json",
+            "mcp": "mcp_tools.json",
+            "viz": "viz_endpoints.json",
+        }[surface]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -107,14 +112,37 @@ def _fixture_path(surface: str) -> Path:
 # ---------------------------------------------------------------------------
 
 _PUBLIC_SUBMODULES = (
+    "analysis",
+    "assurance",
+    "call_context",
+    "capability_binding",
     "claim_gate",
+    "clone",
     "config_schema",
     "container",
     "cost_tracker",
+    "evaluation",
+    "execution",
+    "figures",
+    "latex_claims",
     "llm",
+    "knowledge",
+    "memory",
+    "lineage",
+    "manuscript",
+    "node_selection",
     "paths",
+    "paper",
+    "publish",
+    "providers",
+    "research_contract",
+    "result",
     "run_env",
+    "science_data",
+    "skill_lock",
+    "skill_manifest",
     "verified_context",
+    "visual_review",
 )
 
 
@@ -212,8 +240,7 @@ def _describe_click(cmd) -> dict:
     }
     if is_group:
         node["commands"] = {
-            name: _describe_click(sub)
-            for name, sub in sorted(subcommands.items())
+            name: _describe_click(sub) for name, sub in sorted(subcommands.items())
         }
     return node
 
@@ -305,7 +332,11 @@ def _scan_skill_tools(server_py: Path) -> list[dict]:
                 if _is_mcp_tool_decorator(dec):
                     name = _decorator_name_override(dec) or node.name
                     tools.append(
-                        {"name": name, "args": _func_arg_names(node), "idiom": "fastmcp"}
+                        {
+                            "name": name,
+                            "args": _func_arg_names(node),
+                            "idiom": "fastmcp",
+                        }
                     )
         elif isinstance(node, ast.Call) and _is_tool_ctor(node):
             name, props = _tool_ctor_fields(node)
@@ -315,11 +346,35 @@ def _scan_skill_tools(server_py: Path) -> list[dict]:
     return tools
 
 
+def _manifest_entrypoint(skill_dir: Path) -> Path | None:
+    """Read the simple, canonical ``entrypoint.module`` YAML scalar.
+
+    This snapshot generator intentionally remains stdlib-only.  Skill manifest
+    conformance is enforced separately, so a small indentation-aware reader is
+    sufficient here and avoids restoring the obsolete ``src/server.py`` rule.
+    """
+    manifest = skill_dir / "skill.yaml"
+    if manifest.is_file():
+        in_entrypoint = False
+        for raw in manifest.read_text(encoding="utf-8").splitlines():
+            if raw and not raw.startswith((" ", "\t")):
+                in_entrypoint = raw.strip() == "entrypoint:"
+                continue
+            if in_entrypoint:
+                match = re.fullmatch(r"\s+module:\s*['\"]?([^'\"#]+?)['\"]?\s*", raw)
+                if match:
+                    candidate = skill_dir / match.group(1).strip()
+                    if candidate.is_file() and candidate.is_relative_to(skill_dir):
+                        return candidate
+    fallback = skill_dir / "src" / "server.py"
+    return fallback if fallback.is_file() else None
+
+
 def _skill_server_files() -> list[tuple[str, Path]]:
     out: list[tuple[str, Path]] = []
     for child in sorted(REPO_ROOT.glob("ari-skill-*")):
-        server = child / "src" / "server.py"
-        if server.is_file():
+        server = _manifest_entrypoint(child)
+        if server is not None:
             out.append((child.name, server))
     return out
 
@@ -329,8 +384,8 @@ def build_mcp_static() -> dict:
     for skill_name, server in _skill_server_files():
         skills[skill_name] = _scan_skill_tools(server)
 
-    # Cross-skill duplicate tool names (the flat-namespace clobber: the
-    # MCPClient._tool_registry resolves last-skill-wins). Recorded, NOT fixed.
+    # Cross-skill duplicate tool names. MCPClient rejects these when the owners
+    # are admitted together; the catalog keeps them visible for policy review.
     seen: dict[str, list[str]] = {}
     for skill_name, tools in skills.items():
         for tool in tools:
@@ -358,6 +413,19 @@ def build_mcp_static() -> dict:
 # (subtask 020, itself grounded in ari-core/ari/viz/routes.py + api_*.py).
 _VIZ_ENDPOINTS = [
     # --- GET (do_GET) ---
+    # Task 09 Wave 5b (MN-9, plan 09 §Operational visibility): liveness/
+    # readiness probes — non-/api legacy-style paths served by a dedicated
+    # routes.py branch ahead of the dispatch chain (payload builders +
+    # ARI_GUI_HEALTH ADR-07 kill-switch register: ari/viz/health.py).
+    # /health/live is the constant {"status": "ok"} with no dependencies;
+    # /health/ready reports {status: "ok"|"degraded", checks: {http,
+    # websocket, watcher, event_bus, active_checkpoint}} and never answers
+    # 500 — degraded is an honest 200. Both stay auth-exempt in remote
+    # mode (the MN-8 gate's /health prefix exemption: probes must work
+    # without credentials). Under ARI_GUI_HEALTH=0 both paths fall back to
+    # the pre-MN-9 SPA response.
+    {"method": "GET", "path": "/health/live", "owner": "health"},
+    {"method": "GET", "path": "/health/ready", "owner": "health"},
     {"method": "GET", "path": "/logo.png", "owner": "routes"},
     {"method": "GET", "path": "/", "owner": "routes"},
     {"method": "GET", "path": "/static/<path>", "owner": "routes"},
@@ -373,19 +441,36 @@ _VIZ_ENDPOINTS = [
     {"method": "GET", "path": "/api/checkpoints", "owner": "checkpoint_api"},
     {"method": "GET", "path": "/api/rubrics", "owner": "api_settings"},
     {"method": "GET", "path": "/api/fewshot/<rubric>", "owner": "api_fewshot"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/summary", "owner": "checkpoint_api"},
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/summary",
+        "owner": "checkpoint_api",
+    },
     {"method": "GET", "path": "/api/checkpoint/<id>/memory", "owner": "node_work_api"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/memory_access", "owner": "api_memory"},
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/memory_access",
+        "owner": "api_memory",
+    },
     {"method": "GET", "path": "/api/memory/health", "owner": "api_memory"},
     {"method": "GET", "path": "/api/memory/detect", "owner": "api_memory"},
     {"method": "GET", "path": "/api/checkpoint/<id>/files", "owner": "file_api"},
     {"method": "GET", "path": "/api/checkpoint/<id>/file", "owner": "file_api"},
     {"method": "GET", "path": "/api/checkpoint/<id>/file/raw", "owner": "file_api"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/filetree", "owner": "node_work_api"},
-    {"method": "GET", "path": "/api/checkpoint/<id>/filecontent", "owner": "node_work_api"},
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/filetree",
+        "owner": "node_work_api",
+    },
+    {
+        "method": "GET",
+        "path": "/api/checkpoint/<id>/filecontent",
+        "owner": "node_work_api",
+    },
     {"method": "GET", "path": "/api/ear/<rid>/publish-yaml", "owner": "ear"},
     {"method": "GET", "path": "/api/ear/<rid>", "owner": "ear"},
     {"method": "GET", "path": "/api/nodes/<rid>/<nid>/report", "owner": "ear"},
+    {"method": "GET", "path": "/api/capabilities", "owner": "api_capabilities"},
     {"method": "GET", "path": "/api/settings", "owner": "api_settings"},
     {"method": "GET", "path": "/api/publish/settings", "owner": "api_publish"},
     {"method": "GET", "path": "/api/publish/<rid>/preview", "owner": "api_publish"},
@@ -406,22 +491,193 @@ _VIZ_ENDPOINTS = [
     {"method": "GET", "path": "/api/slurm/partitions", "owner": "api_settings"},
     {"method": "GET", "path": "/api/logs", "owner": "api_experiment"},
     {"method": "GET", "path": "/api/sub-experiments", "owner": "api_orchestrator"},
-    {"method": "GET", "path": "/api/sub-experiments/<rid>", "owner": "api_orchestrator"},
-    {"method": "GET", "path": "/api/lineage-decisions/<ckpt>", "owner": "checkpoint_api"},
+    {
+        "method": "GET",
+        "path": "/api/sub-experiments/<rid>",
+        "owner": "api_orchestrator",
+    },
+    {
+        "method": "GET",
+        "path": "/api/lineage-decisions/<ckpt>",
+        "owner": "checkpoint_api",
+    },
     {"method": "GET", "path": "/api/paperbench/papers", "owner": "api_paperbench"},
     {"method": "GET", "path": "/api/paperbench/arxiv/<id>", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/papers/<id>/license", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/run/<jid>/logs", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/run/<jid>/results", "owner": "api_paperbench"},
-    {"method": "GET", "path": "/api/paperbench/run/<jid>/report", "owner": "api_paperbench"},
+    {
+        "method": "GET",
+        "path": "/api/paperbench/papers/<id>/license",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "GET",
+        "path": "/api/paperbench/run/<jid>/logs",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "GET",
+        "path": "/api/paperbench/run/<jid>/results",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "GET",
+        "path": "/api/paperbench/run/<jid>/report",
+        "owner": "api_paperbench",
+    },
     {"method": "GET", "path": "/api/paperbench/run/<jid>", "owner": "api_paperbench"},
+    # --- /api/v1 (gui_refresh Wave 2a, ADR-02/ADR-08; declarative table in
+    # ari/viz/v1/router.py — routes.py holds a single startswith('/api/v1/')
+    # delegation branch) ---
+    {"method": "GET", "path": "/api/v1/projects", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/projects/<project_id>/runs", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/summary", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/tree", "owner": "v1"},
+    # Wave 4c: idea read model — pure {ckpt}/idea.json read (ideas /
+    # gap_analysis / primary_metric / metric_rationale, the exact keys the
+    # legacy IdeaPage /state injection consumes); absent file =>
+    # present=false, never fabricated empties.
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/idea", "owner": "v1"},
+    # Task 07 Wave 4d: results / EAR read models (plan 07 §Evidence,
+    # Results, and PaperBench) — bounded scalars only.  /results serves
+    # paper presence + review scores + the ORS chain verdict (READ-ONLY
+    # reuse of ari/viz/ear.py _synth_repro_report_from_ors) + the EAR
+    # curate/publish/promote lineage flags; /ear serves the ear/ listing
+    # METADATA (path/kind/size), publish.yaml presence, and the
+    # manifest.lock / publish_record.json digest scalars — file contents
+    # never ride either endpoint (readers: ari/viz/v1/results.py).
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/results", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/ear", "owner": "v1"},
+    # Task 07 tail (plan 07 §Artifacts, logs, and diagnostics): cursor-based
+    # log explorer — bounded byte-offset pagination over the append-only
+    # plain-text {ckpt}/ari.log (reader: ari/viz/v1/logs.py).  cursor = raw
+    # byte offset (grep filters returned lines, never consumed bytes, so
+    # cursors are filter-stable); committed lines only (a partial trailing
+    # line is never emitted; next_cursor parks at its first byte); <= 1 MiB
+    # scanned per request (a window exhausted before `limit` matches
+    # returns early with eof=false); absent file => 200 present=false
+    # (never 404 — only an unknown run 404s).
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/logs", "owner": "v1"},
+    # Wave 3a (ADR-11 / RR-P0-2): secret READINESS — configured/source_class/
+    # last_updated only, never values; replaces reading GET /api/env-keys
+    # (now redacted) for secret readback.
+    {"method": "GET", "path": "/api/v1/secrets/status", "owner": "v1"},
+    # Task 06 Wave 4d (ADR-05): canonical write-only secret assignment —
+    # {value} body, SECRET_NAMES allowlist (404 otherwise), value validated
+    # (non-empty after strip, no newline/control chars) then delegated to
+    # the hardened api_settings._upsert_env_key writer (atomic tmp+fsync+
+    # replace, 0o600, live os.environ export); the response is the
+    # post-write READINESS row (SecretUpdatedV1), never the value.
+    {"method": "PUT", "path": "/api/v1/secrets/<secret_id>", "owner": "v1"},
+    # Task 09 Wave 5a (MN-6, RR-P0-6/RR-P0-9): server-issued confirmation
+    # challenges for dangerous operations — {action, target} body (actions
+    # delete-checkpoint / stop-all / gpu-monitor-stop), single-use grant
+    # chg-<12hex> with a 60s monotonic TTL (deque cap 100, audit-logged to
+    # viz_access.jsonl). POST /api/delete-checkpoint, POST /api/stop, and
+    # POST /api/gpu-monitor action=stop now REQUIRE the challenge_id back
+    # (else frozen {ok:false} + HTTP 428) unless ARI_GUI_CHALLENGES=0.
+    {"method": "POST", "path": "/api/v1/challenges", "owner": "v1"},
+    # Task 06 Wave 4d (plan 05 §Configuration API): server-side model/
+    # provider catalog — the legacy GET /api/models static suggestions
+    # re-served single-source (checkpoint_api._api_models) plus each
+    # provider's API-key env name (PROVIDER_ENV_KEYS ⊆ SECRET_NAMES) for
+    # the Studio SecretField.
+    {"method": "GET", "path": "/api/v1/config/catalogs/models", "owner": "v1"},
+    # Wave 3a (task 05): canonical config field registry — metadata only
+    # (path/type/default/enum + category/level/scope/sensitivity/mutability/
+    # applies_when/env_override); secret_reference fields carry no default.
+    # Registry: ari/config/field_registry.py.
+    {"method": "GET", "path": "/api/v1/config/schema", "owner": "v1"},
+    # Wave 3a (task 05): legacy-compatible-1 resolved manifest for one run —
+    # post-hoc effective values + per-leaf provenance + digest + warnings;
+    # secrets redacted before the digest (resolver: ari/config/resolver.py).
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/resolved-config", "owner": "v1"},
+    # Wave 2b (ADR-03): same-origin SSE realtime stream — handled by its own
+    # routes.py branch BEFORE the /api/v1/ JSON delegation (chunked
+    # text/event-stream, not a dict response); bus in ari/viz/v1/events.py.
+    {"method": "GET", "path": "/api/v1/events/stream", "owner": "v1"},
+    # Wave 3b (task 05): config CRUD over the ADR-12 GUI document store
+    # ({workspace_root}/gui_store/, ari/viz/v1/store.py; handlers in
+    # ari/viz/v1/config_api.py). Mutations use If-Match optimistic
+    # concurrency (missing -> 400, stale -> 409 'revision_conflict'); PATCH
+    # bodies are {values: {dotted.path: value}} validated by
+    # ari.config.field_registry.validate_patch; POST /run-templates is
+    # create-only (409 'already_exists'); draft IDs are server-generated.
+    {"method": "GET", "path": "/api/v1/projects/<project_id>/config", "owner": "v1"},
+    {"method": "PATCH", "path": "/api/v1/projects/<project_id>/config", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/run-templates", "owner": "v1"},
+    {"method": "POST", "path": "/api/v1/run-templates", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/run-templates/<template_id>", "owner": "v1"},
+    {"method": "PATCH", "path": "/api/v1/run-templates/<template_id>", "owner": "v1"},
+    {"method": "DELETE", "path": "/api/v1/run-templates/<template_id>", "owner": "v1"},
+    {"method": "POST", "path": "/api/v1/run-drafts", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/run-drafts/<draft_id>", "owner": "v1"},
+    {"method": "PATCH", "path": "/api/v1/run-drafts/<draft_id>", "owner": "v1"},
+    # Wave 3b (task 05): new-run preview resolution — the plan-05 chain
+    # (defaults < bundled workflow < profile 4-key merge < project <
+    # template < draft < documented ARI_* env) previewed for one draft
+    # (resolver: ari/config/resolver.py resolve_new_run_config; handlers in
+    # ari/viz/v1/config_api.py). resolve-config returns the manifest with
+    # rejected/ignored overrides as explanations; validate distills
+    # {valid, errors, warnings} with interlock mismatch as an ERROR.
+    {"method": "POST", "path": "/api/v1/run-drafts/<draft_id>/resolve-config", "owner": "v1"},
+    {"method": "POST", "path": "/api/v1/run-drafts/<draft_id>/validate", "owner": "v1"},
+    # Wave 4e (tasks 04/06, MN-10): the canonical idempotent launch — POST
+    # /api/v1/runs (handler ari/viz/v1/launch.py). Validation-first over the
+    # draft (governance/mode paths locked per ADR-09-pending -> 400), then a
+    # server-minted collision-resistant run_id (<UTC ts>_<slug>-<6 hex>),
+    # checkpoint materialization (experiment.md / workflow.yaml CoW seed /
+    # launch_config.json / resolved_config.json manifest +
+    # launch_events.jsonl lifecycle) BEFORE the same `ari.cli run` subprocess
+    # the legacy path spawns; idempotency_key -> gui_store/launches/ record
+    # (duplicate POST replays the SAME run_id and spawns nothing). The
+    # legacy POST /api/launch stays unchanged in parallel.
+    {"method": "POST", "path": "/api/v1/runs", "owner": "v1"},
+    # Wave 4a (task 08): RQGM governance/score-lineage read models (plan 08;
+    # readers in ari/viz/v1/rqgm.py — direct committed-artifact reads, no
+    # ari.rqgm import, no kernel/score re-execution). GET-only by plan: the
+    # v1 RQGM surface is read-only and no governance mutation endpoint may
+    # exist. Non-RQGM runs answer the typed 404 envelope everywhere except
+    # capabilities (enabled=false, reason 'simple_bfts run'); corrupt
+    # artifacts answer 200 with integrity flags + degraded_reasons.
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/capabilities", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/overview", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/registry", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/transitions", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/audit", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/policies", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/score-rewrites", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/nodes/<node_id>/lineage", "owner": "v1"},
+    # Wave 4b (task 08): remaining RQGM read models — epochs (committed
+    # replay rows with per-epoch policy hashes), epoch detail (boundary
+    # transaction refs + policy body + governance_report presence),
+    # evolution (prompt_evolution.jsonl / rqgm_meta_outputs.jsonl lineage;
+    # adoption joined via committed registry replay only), paper-archive
+    # (bounded scalars with explicit absent flags). Still GET-only.
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/epochs", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/epochs/<epoch_id>", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/evolution", "owner": "v1"},
+    {"method": "GET", "path": "/api/v1/runs/<run_id>/rqgm/paper-archive", "owner": "v1"},
+    # Task 09 Wave 5b (MN-9, plan 09 §Operational visibility): bounded
+    # operational diagnostics — sse {subscribers, buffer_len,
+    # last_event_id}, watcher {alive, last_scan_age_s}, process
+    # {tracked_runs}, cache: false (no cache subsystem yet — explicit),
+    # plus schema/openapi versions. No secrets and no filesystem paths
+    # ride the payload (tracked_runs is a count, never the checkpoint-path
+    # keys of the tracking table); auth REQUIRED in remote mode — the
+    # route rides the normal MN-8 do_GET gate like every other endpoint
+    # (builder: ari/viz/health.py; ARI_GUI_HEALTH=0 answers the typed 404).
+    {"method": "GET", "path": "/api/v1/diagnostics", "owner": "v1"},
     # --- POST (do_POST) ---
     {"method": "POST", "path": "/api/settings", "owner": "api_settings"},
     {"method": "POST", "path": "/api/memory/start-local", "owner": "api_memory"},
     {"method": "POST", "path": "/api/memory/stop-local", "owner": "api_memory"},
     {"method": "POST", "path": "/api/memory/restart", "owner": "api_memory"},
     {"method": "POST", "path": "/api/launch", "owner": "api_experiment"},
-    {"method": "POST", "path": "/api/sub-experiments/launch", "owner": "api_orchestrator"},
+    {
+        "method": "POST",
+        "path": "/api/sub-experiments/launch",
+        "owner": "api_orchestrator",
+    },
     {"method": "POST", "path": "/api/run-stage", "owner": "api_experiment"},
     {"method": "POST", "path": "/api/config/generate", "owner": "api_tools"},
     {"method": "POST", "path": "/api/chat-goal", "owner": "api_tools"},
@@ -429,7 +685,11 @@ _VIZ_ENDPOINTS = [
     {"method": "POST", "path": "/api/upload/delete", "owner": "api_tools"},
     {"method": "POST", "path": "/api/env-keys", "owner": "api_settings"},
     {"method": "POST", "path": "/api/ssh/test", "owner": "api_tools"},
-    {"method": "POST", "path": "/api/switch-checkpoint", "owner": "checkpoint_lifecycle"},
+    {
+        "method": "POST",
+        "path": "/api/switch-checkpoint",
+        "owner": "checkpoint_lifecycle",
+    },
     {"method": "POST", "path": "/api/ear/<rid>/curate", "owner": "ear"},
     {"method": "POST", "path": "/api/ear/<rid>/publish-yaml", "owner": "ear"},
     {"method": "POST", "path": "/api/ear/clone-verify", "owner": "ear"},
@@ -438,12 +698,35 @@ _VIZ_ENDPOINTS = [
     {"method": "POST", "path": "/api/publish/<rid>", "owner": "api_publish"},
     {"method": "POST", "path": "/api/fewshot/<rid>/sync", "owner": "api_fewshot"},
     {"method": "POST", "path": "/api/fewshot/<rid>/upload", "owner": "api_fewshot"},
-    {"method": "POST", "path": "/api/fewshot/<rid>/<ex>/delete", "owner": "api_fewshot"},
-    {"method": "POST", "path": "/api/paperbench/papers/import", "owner": "api_paperbench"},
-    {"method": "POST", "path": "/api/paperbench/papers/<id>/delete", "owner": "api_paperbench"},
-    {"method": "POST", "path": "/api/paperbench/papers/<id>/metadata", "owner": "api_paperbench"},
+    {
+        "method": "POST",
+        "path": "/api/fewshot/<rid>/<ex>/delete",
+        "owner": "api_fewshot",
+    },
+    {
+        "method": "POST",
+        "path": "/api/paperbench/papers/import",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "POST",
+        "path": "/api/paperbench/papers/<id>/delete",
+        "owner": "api_paperbench",
+    },
+    {
+        "method": "POST",
+        "path": "/api/paperbench/papers/<id>/metadata",
+        "owner": "api_paperbench",
+    },
     {"method": "POST", "path": "/api/paperbench/run", "owner": "api_paperbench"},
-    {"method": "POST", "path": "/api/paperbench/cost-estimate", "owner": "api_paperbench"},
+    {
+        "method": "POST",
+        "path": "/api/paperbench/cost-estimate",
+        "owner": "api_paperbench",
+    },
+    # F6a resolved (gui_refresh Wave 4a): FE requestPaperbenchReport POSTs a
+    # {languages, formats} body; same _api_run_report handler as the GET variant.
+    {"method": "POST", "path": "/api/paperbench/run/<jid>/report", "owner": "api_paperbench"},
     {"method": "POST", "path": "/api/ollama/<path>", "owner": "api_ollama"},
     {"method": "POST", "path": "/api/gpu-monitor", "owner": "api_process"},
     {"method": "POST", "path": "/api/stop", "owner": "api_process"},
@@ -451,7 +734,11 @@ _VIZ_ENDPOINTS = [
     {"method": "POST", "path": "/api/checkpoint/file/delete", "owner": "file_api"},
     {"method": "POST", "path": "/api/checkpoint/compile", "owner": "file_api"},
     {"method": "POST", "path": "/api/checkpoint/<id>/file/upload", "owner": "file_api"},
-    {"method": "POST", "path": "/api/delete-checkpoint", "owner": "checkpoint_lifecycle"},
+    {
+        "method": "POST",
+        "path": "/api/delete-checkpoint",
+        "owner": "checkpoint_lifecycle",
+    },
     {"method": "POST", "path": "/api/workflow", "owner": "api_settings"},
     {"method": "POST", "path": "/api/workflow/flow", "owner": "api_workflow"},
     {"method": "POST", "path": "/api/workflow/skills", "owner": "api_workflow"},
@@ -643,7 +930,9 @@ def compare(surface: str, golden: dict, fresh: dict) -> list[str]:
             msgs.append("[viz] mirrored response_keys changed")
     else:  # cli — structural equality of the introspected tree + env effects
         # Ignore import-guarded optional subcommands absent in a lean env (CI).
-        g_root, f_root = _cli_drop_absent_optional(golden.get("root"), fresh.get("root"))
+        g_root, f_root = _cli_drop_absent_optional(
+            golden.get("root"), fresh.get("root")
+        )
         if g_root != f_root:
             msgs.append("[cli] command/option tree drifted from golden")
         if golden.get("env_side_effects") != fresh.get("env_side_effects"):
@@ -679,7 +968,9 @@ def _check(surface: str) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--surface", choices=(*SURFACES, "all"), default="all",
+        "--surface",
+        choices=(*SURFACES, "all"),
+        default="all",
         help="contract surface to snapshot/verify",
     )
     mode = parser.add_mutually_exclusive_group()

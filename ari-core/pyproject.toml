@@ -10,22 +10,19 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 dependencies = [
-    "litellm>=1.0",
+    "litellm>=1.91.0",
     # litellm.llms.bedrock / sagemaker import botocore at module load to
     # preload event-stream response shapes; without it every skill subprocess
     # logs two WARNINGs at startup. We don't actually call Bedrock/SageMaker
     # — botocore is here purely to silence the noise and to keep the option
     # open if someone routes a provider through AWS later.
     "botocore",
-    "pydantic>=2.0",
-    "typer>=0.12",
-    "rich>=13.0",
+    "pydantic>=2.13.4",
+    "typer>=0.26.8",
+    "rich>=15.0.0",
     "python-dotenv>=1.0",
-    "pyyaml>=6.0",
-    "paramiko>=3.0",
-    # claude_code backend: ARI-side validation of response_schema outputs
-    # (ari/llm/claude_code/validation.py).
-    "jsonschema>=4.0",
+    "pyyaml>=6.0.3",
+    "paramiko>=5.0.0",
 ]
 # NOTE: ari-core imports ``ari_skill_memory`` directly (first
 # ari-core→ari-skill-* dependency, introduced in v0.6.0). The skill is

@@ -118,14 +118,14 @@ export function StepScope({
 
   const currentPreset = !isManual ? SCOPE_PRESETS[scopeVal - 1] : null;
 
-  const summaryHtml = `Depth: <b>${scope.maxDepth}</b>&nbsp;&nbsp; Nodes: <b>${scope.maxNodes}</b>&nbsp;&nbsp; React: <b>${scope.maxReact}</b>&nbsp;&nbsp; Workers: <b>${scope.workers}</b>&nbsp;&nbsp; Timeout: <b>${scope.timeout}m</b>${currentPreset ? '&nbsp;&nbsp;⏱ ' + currentPreset.est : ''}`;
-
   return (
     <div>
       <div className="card">
         <div className="card-title">{t('wiz_scope_title')}</div>
 
-        {/* Scope summary */}
+        {/* Scope summary. Plain JSX on purpose (RR-P0-10 / MN-7): this was
+            the SPA's only dangerouslySetInnerHTML and the values are local
+            numeric state, so nothing warrants a raw-HTML path. */}
         <div
           className="card"
           style={{
@@ -134,8 +134,12 @@ export function StepScope({
             fontSize: '.875rem',
             lineHeight: 1.7,
           }}
-          dangerouslySetInnerHTML={{ __html: summaryHtml }}
-        />
+        >
+          Depth: <b>{scope.maxDepth}</b>&nbsp;&nbsp; Nodes: <b>{scope.maxNodes}</b>
+          &nbsp;&nbsp; React: <b>{scope.maxReact}</b>&nbsp;&nbsp; Workers:{' '}
+          <b>{scope.workers}</b>&nbsp;&nbsp; Timeout: <b>{scope.timeout}m</b>
+          {currentPreset ? <>&nbsp;&nbsp;{'⏱'} {currentPreset.est}</> : null}
+        </div>
 
         {/* Form fields */}
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 16 }}>

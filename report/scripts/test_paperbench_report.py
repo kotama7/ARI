@@ -91,7 +91,7 @@ def synthetic_checkpoint(tmp_path: Path) -> Path:
     }))
     (ckpt / "repro_result.json").write_text(json.dumps({
         "sandbox_kind": "slurm",
-        "partition": "sx40",
+        "partition": "gpu-private",
         "walltime": "01:00:00",
         "exit_code": 0,
         "elapsed_sec": 1234.5,

@@ -1,0 +1,16 @@
+{
+  "actor_id": "t-kotama",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:9317c4ff7e15f488f758fc253b9afd96345abd6d3730405f5669c93a6eabc608",
+  "approved_date": "2026-08-05",
+  "authorization_basis": "explicit-maintainer-approval",
+  "capability_scope_digest": "sha256:f7d7aac0a0e9071a99ba8b9db76b4509adda8665ef5d6ed92957ca44781f77a9",
+  "evidence_bundle_digest": "sha256:b002633b9e0c3a05f2a785a3c54b92485f4f01c4dd817cc8dd09317b0c752d50",
+  "from_status": "candidate",
+  "provider_id": "tooluniverse-pubmed",
+  "provider_manifest_digest": "sha256:5321d1357258f47c36ab5a734a5d15c225e5621b878d1ae5d1a5a5c3cf99f511",
+  "provider_version": "1.3.1+ari.1",
+  "registration_report_digest": "sha256:c460908ca8bc2188e89b400e2c923f41e7628a64b1e09ec72c1862db0a965d3d",
+  "schema_version": "ari.capability-provider-promotion-approval/v1",
+  "to_status": "verified"
+}

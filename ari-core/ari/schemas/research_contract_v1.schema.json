@@ -1,0 +1,373 @@
+{
+  "$defs": {
+    "MetricContractV1": {
+      "additionalProperties": false,
+      "description": "Idea-owned metric vocabulary; evaluator enforcement is read-only.",
+      "properties": {
+        "admission_status": {
+          "enum": [
+            "admitted",
+            "human-review-required"
+          ],
+          "title": "Admission Status",
+          "type": "string"
+        },
+        "comparison_scope": {
+          "enum": [
+            "same-environment",
+            "cross-environment",
+            "within-subject",
+            "not-applicable"
+          ],
+          "title": "Comparison Scope",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "contract_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Contract Digest",
+          "type": "string"
+        },
+        "correctness": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MetricCorrectnessV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "correctness_required": {
+          "title": "Correctness Required",
+          "type": "boolean"
+        },
+        "direction": {
+          "enum": [
+            "higher",
+            "lower",
+            "target",
+            "none"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "formula": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Formula",
+          "type": "string"
+        },
+        "formula_provenance": {
+          "$ref": "#/$defs/MetricFormulaProvenanceV1"
+        },
+        "invariants": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Invariants",
+          "type": "array"
+        },
+        "name": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "normalization_ceiling": {
+          "enum": [
+            "measured",
+            "not-applicable"
+          ],
+          "title": "Normalization Ceiling",
+          "type": "string"
+        },
+        "operands": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "maxProperties": 16,
+          "minProperties": 1,
+          "title": "Operands",
+          "type": "object"
+        },
+        "rationale": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "required_evidence": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Required Evidence",
+          "type": "array"
+        },
+        "required_measured": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Required Measured",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.metric-contract/v1",
+          "default": "ari.metric-contract/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "target_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Value"
+        },
+        "tolerance": {
+          "$ref": "#/$defs/MetricToleranceV1"
+        },
+        "unit": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract_digest",
+        "name",
+        "unit",
+        "direction",
+        "comparison_scope",
+        "rationale",
+        "required_evidence",
+        "correctness_required",
+        "normalization_ceiling",
+        "formula",
+        "operands",
+        "tolerance",
+        "formula_provenance",
+        "confidence",
+        "admission_status"
+      ],
+      "title": "MetricContractV1",
+      "type": "object"
+    },
+    "MetricCorrectnessV1": {
+      "additionalProperties": false,
+      "properties": {
+        "expr": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Expr",
+          "type": "string"
+        },
+        "requires": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "title": "Requires",
+          "type": "array"
+        }
+      },
+      "required": [
+        "expr",
+        "requires"
+      ],
+      "title": "MetricCorrectnessV1",
+      "type": "object"
+    },
+    "MetricFormulaProvenanceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "prompt_digests": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Prompt Digests",
+          "type": "array"
+        },
+        "source": {
+          "enum": [
+            "idea-generation-lock",
+            "human-admission",
+            "legacy-migration"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "source_digest"
+      ],
+      "title": "MetricFormulaProvenanceV1",
+      "type": "object"
+    },
+    "MetricToleranceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "absolute": {
+          "minimum": 0,
+          "title": "Absolute",
+          "type": "number"
+        },
+        "relative": {
+          "minimum": 0,
+          "title": "Relative",
+          "type": "number"
+        }
+      },
+      "required": [
+        "absolute",
+        "relative"
+      ],
+      "title": "MetricToleranceV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/research-contract-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Mint-once scientific contract selected from an admitted idea candidate.",
+  "properties": {
+    "artifact_references": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact References",
+      "type": "array"
+    },
+    "citations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1000,
+      "minItems": 1,
+      "title": "Citations",
+      "type": "array"
+    },
+    "contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Contract Digest",
+      "type": "string"
+    },
+    "experiment_plan": {
+      "maxLength": 100000,
+      "minLength": 1,
+      "title": "Experiment Plan",
+      "type": "string"
+    },
+    "falsification_conditions": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Falsification Conditions",
+      "type": "array"
+    },
+    "generation_lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Generation Lock Digest",
+      "type": "string"
+    },
+    "hypothesis": {
+      "maxLength": 10000,
+      "minLength": 1,
+      "title": "Hypothesis",
+      "type": "string"
+    },
+    "idea_set_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Idea Set Digest",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 64,
+      "minItems": 1,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "metric_contract": {
+      "$ref": "#/$defs/MetricContractV1"
+    },
+    "schema_version": {
+      "const": "ari.research-contract/v1",
+      "default": "ari.research-contract/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "selected_candidate_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Selected Candidate Id",
+      "type": "string"
+    },
+    "source_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Snapshot Digest",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "contract_digest",
+    "idea_set_digest",
+    "selected_candidate_id",
+    "source_snapshot_digest",
+    "title",
+    "hypothesis",
+    "experiment_plan",
+    "falsification_conditions",
+    "metric_contract",
+    "citations",
+    "limitations",
+    "generation_lock_digest"
+  ],
+  "title": "ARI Research Contract v1",
+  "type": "object"
+}

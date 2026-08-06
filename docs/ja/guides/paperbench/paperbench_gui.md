@@ -91,13 +91,13 @@ authors / year / license を自動入力する。
 | gpus_per_task | int | `--gpus-per-task` |
 | memory_gb_per_node | int | `--mem` |
 | exclusive | bool | `--exclusive` |
-| gpu_type | str | `--gres=gpu:<type>:N` (`_slurm_has_gres()` でゲート) |
+| gpu_type | str | count一方と組み合わせる型付きGPU selector |
 | constraint | str | `--constraint` |
-| cpu_bind | str | `--cpu-bind` |
-| mem_bind | str | `--mem-bind` |
+| cpu_bind | str | `reproduce.sh`内の`srun --cpu-bind` |
+| mem_bind | str | `reproduce.sh`内の`srun --mem-bind` |
 | hint | str | `--hint` |
 | nodelist | str | `--nodelist` |
-| extra_sbatch_args | str (空白区切り) | pass-through |
+| account / qos / reservation | str | 型付きselector。任意pass-throughなし |
 
 詳細セマンティクスは [実行プロファイル仕様](../../reference/execution_profile.md) 参照。
 
@@ -133,19 +133,16 @@ curl http://localhost:8765/api/paperbench/run/<job_id>
 
 ## v0.8.0 アップデート
 
-- **Step 3 Reproduce: `container_image` フィールド追加** — SIF パス /
-  `docker://` URI / `image:tag` / 短縮エイリアス `pb-env` /
-  `pb-reproducer` (`scripts/build_pb_images.sh` で構築) を受領。
+- **Step 3 Reproduce: `container_image` フィールド追加** — 非 symlink の
+  ローカル SIF、完全な Docker `sha256:<image-id>`、または
+  `@sha256:<digest>` 固定 URI を受領。mutable tag と短縮 alias は拒否する。
   `sandbox=docker`/`apptainer`/`singularity` 時のみ有効。
-- **GPU フラグ整合**: `gpus_per_task` 単独 → `--ntasks 1` を自動 pair。
-  `gpu_type` 設定時は `--gres=gpu:TYPE:N` を canonical として
-  untyped `--gpus-per-task` を drop (SLURM 24.05 の typed/untyped 衝突回避)。
+- **GPU resource整合**: 型付き共通schedulerがcount/typeを一つのdirectiveへ
+  compileし、per-task/per-nodeの矛盾は拒否する。resourceを黙ってdropしない。
 - **fail-loud 前提条件**: docker daemon / apptainer / sbatch / partition
-  / GRES が不足する場合エラーで停止 (legacy 静黙フォールバックは
-  `ARI_PHASE1_ALLOW_FALLBACK=1` / `ARI_SLURM_ALLOW_NO_GRES=1` で opt-in)。
-- **Step 4 Judge: `code_only` 自動有効化** — Stage 2 がスキップされた
-  時 (reproduce.log 不在), rubric が Code Development 葉のみに pruning
-  され、Code Execution / Result Analysis 葉の structural 0 を回避。
+  / GRES が不足する場合エラーで停止し、host-local fallback はない。
+- **Step 4 Judge: `code_only`** — verified Stage 2 recordに対する明示的な
+  scope指定。reproduce record不在時はscoreを発行せず失敗する。
 
 ## 関連
 

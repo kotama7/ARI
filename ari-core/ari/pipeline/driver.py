@@ -43,6 +43,71 @@ from ari.pipeline.yaml_loader import _resolve_templates
 log = logging.getLogger(__name__)
 
 
+def _prepare_manuscript_authoring(
+    ctx: StageContext,
+    *,
+    all_nodes,
+    experiment_data: dict[str, Any],
+) -> None:
+    """Compile and enforce the fixed exploration-to-authoring boundary.
+
+    This hook is deliberately called immediately before ``write_paper`` and
+    outside the stage's fail-open exception boundary.  Evidence-producing
+    stages have therefore completed, while no authoring model call has begun.
+    The function is a no-op (including imports and filesystem writes) unless
+    paper dispatch explicitly installed an audit/enforce runtime posture.
+    """
+
+    mode = os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off").strip().lower()
+    if mode == "off":
+        return
+    if ctx.stage_outputs.get("_manuscript_boundary", {}).get("prepared"):
+        return
+
+    from ari.manuscript.briefs import render_brief_bundle
+    from ari.manuscript.runtime import prepare_runtime_manuscript
+
+    outcome = prepare_runtime_manuscript(
+        ctx.checkpoint_dir,
+        all_nodes,
+        experiment_data=experiment_data,
+    )
+    if outcome is None:  # defensive: mode was checked above
+        return
+    paths = outcome.artifact_paths or {}
+
+    readiness = outcome.readiness
+    ctx.stage_outputs["_manuscript_boundary"] = {
+        "prepared": True,
+        "mode": mode,
+        "attempt_id": outcome.attempt_id,
+        "state": outcome.state,
+        "authoring_verdict": (
+            readiness.authoring_verdict if readiness is not None else "blocked"
+        ),
+        "publication_verdict": (
+            readiness.publication_verdict if readiness is not None else "blocked"
+        ),
+        "artifact_paths": paths,
+    }
+    if mode == "enforce":
+        # The writer sees the bounded, evidence-lane-aware briefs instead of
+        # the legacy concatenation.  Audit mode intentionally leaves bytes and
+        # template inputs untouched.
+        brief_text = render_brief_bundle(outcome.briefs)
+        ctx.tpl_vars["experiment_summary"] = brief_text
+        ctx.tpl_vars["paper_context"] = brief_text
+    from ari.manuscript.runtime import transition_runtime_manuscript
+
+    transition_runtime_manuscript(
+        ctx.checkpoint_dir,
+        "authoring",
+        reason_code=(
+            "authoring_started" if mode == "enforce" else "audit_authoring_started"
+        ),
+    )
+
+
 class WorkflowDriver:
     """Drive one post-BFTS pipeline run to completion.
 
@@ -98,9 +163,41 @@ class WorkflowDriver:
         # Written to checkpoint as evaluation_criteria.json for downstream use
         _eval_criteria_path = checkpoint_dir / "evaluation_criteria.json"
         if not _eval_criteria_path.exists():
-            _ec = {"primary_metric": "", "higher_is_better": True, "metric_rationale": ""}
+            _ec = {
+                "primary_metric": "",
+                "higher_is_better": True,
+                "metric_rationale": "",
+                "metric_unit": "",
+                "research_contract_digest": "",
+            }
+            # Typed idea contracts are authoritative and already contain the
+            # frozen metric vocabulary. Verify the self-digest before consulting
+            # legacy memory/prose projections.
+            try:
+                from ari.public.research_contract import (
+                    ResearchContractError,
+                    parse_research_contract_document,
+                )
+
+                _typed_idea_path = Path(checkpoint_dir) / "idea.json"
+                if _typed_idea_path.is_file():
+                    _typed_idea = json.loads(_typed_idea_path.read_text())
+                    _typed_contract = parse_research_contract_document(_typed_idea)
+                    if _typed_contract is not None:
+                        _typed_metric = _typed_contract.metric_contract
+                        _ec["primary_metric"] = _typed_metric.name
+                        _ec["higher_is_better"] = _typed_metric.direction != "lower"
+                        _ec["metric_rationale"] = _typed_metric.rationale
+                        _ec["metric_unit"] = _typed_metric.unit
+                        _ec["research_contract_digest"] = (
+                            _typed_contract.contract_digest
+                        )
+            except ResearchContractError:
+                raise
+            except Exception as _typed_exc:
+                log.warning("Typed research contract rejected: %s", _typed_exc)
             # Strategy 1: check node memory_snapshot (populated if memory.add() succeeded)
-            for _n in all_nodes:
+            for _n in (all_nodes if not _ec["primary_metric"] else []):
                 for _snap in (_n.memory_snapshot if hasattr(_n, "memory_snapshot") else []):
                     if isinstance(_snap, str) and "EVALUATION_CRITERIA:" in _snap:
                         import re as _re_ec
@@ -262,7 +359,15 @@ class WorkflowDriver:
             _sd_path = Path(checkpoint_dir) / "science_data.json"
             if _sd_path.exists():
                 _sd = _json.loads(_sd_path.read_text())
-                _exp_ctx = _sd.get("experiment_context", {})
+                if _sd.get("schema_version") == "ari.science-data/v1":
+                    _annotation = _sd.get("interpretation") or {}
+                    _exp_ctx = (
+                        _annotation.get("experiment_context", {})
+                        if _annotation.get("status") == "ok"
+                        else {}
+                    )
+                else:
+                    _exp_ctx = _sd.get("experiment_context", {})
                 if _exp_ctx and not _exp_ctx.get("error"):
                     # Prioritize key_results and implementation_details at the front
                     # so they survive truncation in downstream prompts.
@@ -291,6 +396,38 @@ class WorkflowDriver:
                 _idea_data = json.loads(_idea_path.read_text())
                 _gap = _idea_data.get("gap_analysis", "")
                 _ideas = _idea_data.get("ideas", [])
+                _directive_idea_data = _idea_data
+                if _idea_data.get("research_contract") is not None:
+                    from ari.public.research_contract import (
+                        parse_research_contract_document,
+                    )
+
+                    _selected_contract = parse_research_contract_document(
+                        _idea_data
+                    )
+                    if _selected_contract is not None:
+                        _selected_idea = {
+                            "title": _selected_contract.title,
+                            "description": _selected_contract.hypothesis,
+                            "hypothesis": _selected_contract.hypothesis,
+                            "experiment_plan": _selected_contract.experiment_plan,
+                            "candidate_id": _selected_contract.selected_candidate_id,
+                            "falsification_conditions": list(
+                                _selected_contract.falsification_conditions
+                            ),
+                            "citations": list(_selected_contract.citations),
+                            "limitations": list(_selected_contract.limitations),
+                            "contract_status": "admitted",
+                        }
+                        _alternatives = [
+                            item
+                            for item in _ideas
+                            if not isinstance(item, dict)
+                            or item.get("candidate_id")
+                            != _selected_contract.selected_candidate_id
+                        ]
+                        _ideas = [_selected_idea, *_alternatives]
+                        _directive_idea_data = {**_idea_data, "ideas": _ideas}
                 if _ideas:
                     # Phase 1: auto-append plan/alternatives to checkpoint experiment.md.
                     # Mode is read from workflow.yaml (default index_only). Idempotent —
@@ -299,7 +436,9 @@ class WorkflowDriver:
                         _plan_promote_mode = str(_wf_cfg.get("plan_promote", "index_only")).lower()
                         if _plan_promote_mode in ("full", "index_only"):
                             _did_promote = _promote_plan_to_experiment_md(
-                                checkpoint_dir, _idea_data, mode=_plan_promote_mode
+                                checkpoint_dir,
+                                _directive_idea_data,
+                                mode=_plan_promote_mode,
                             )
                             if _did_promote:
                                 log.info(
@@ -369,9 +508,46 @@ class WorkflowDriver:
         except Exception:
             pass
 
+        # ``run_id`` / ``experiments_root`` are NOT new conventions: they are the
+        # values ``ari.paths`` already owns, exposed to templates so a stage can
+        # name them. The recovery-from-checkpoint-dir idiom below is the same one
+        # ``ari/orchestrator/bfts.py:_resolve_pm_and_run_id`` and
+        # ``ari/trace_store.py:_resolve_pm_and_run_id`` already run in production
+        # (``PathManager.from_checkpoint_dir`` + basename), so the reader of
+        # ``experiments/{run_id}/{node_id}/`` and the writer of those node dirs
+        # agree by construction rather than by a duplicated path expression.
+        # run_id resolution uses the GUARDED idiom (``tree.json`` first, dir name
+        # only as fallback) that ``ari/cli/migrate.py:57`` and
+        # ``ari/viz/api_orchestrator.py:53`` already use — NOT the bare basename.
+        # The bare form is wrong exactly when it matters: ``ari resume`` reads the
+        # authoritative run_id from ``tree.json`` and then forces
+        # ``cfg.checkpoint.dir`` to wherever the checkpoint now lives
+        # (``ari/cli/run.py:522,539``), so on a renamed or moved checkpoint the
+        # basename and the run_id that the node dirs were actually written under
+        # diverge. Getting this wrong is silent: ``audit_checkpoint`` skips a
+        # missing run dir and returns an EMPTY result set, which reads as "clean".
+        try:
+            from ari.paths import PathManager as _PM_tpl
+            _pm_tpl = _PM_tpl.from_checkpoint_dir(checkpoint_dir)
+            _experiments_root_tpl = str(_pm_tpl.experiments_root)
+            _run_id_tpl = ""
+            _tree_p = Path(checkpoint_dir) / "tree.json"
+            if _tree_p.exists():
+                try:
+                    _run_id_tpl = str(json.loads(_tree_p.read_text()).get("run_id") or "")
+                except Exception:
+                    _run_id_tpl = ""
+            if not _run_id_tpl:
+                _run_id_tpl = _os.path.basename(str(checkpoint_dir).rstrip("/"))
+        except Exception as _pm_err:  # pragma: no cover - defensive
+            log.warning("pipeline: could not resolve run_id/experiments_root: %s", _pm_err)
+            _run_id_tpl, _experiments_root_tpl = "", ""
+
         tpl_vars: dict = {
             "ckpt":              str(checkpoint_dir),
             "checkpoint_dir":    str(checkpoint_dir),
+            "run_id":            _run_id_tpl,
+            "experiments_root":  _experiments_root_tpl,
             "context":           context,
             "experiment_summary": context,
             "paper_context":     _paper_ctx,
@@ -461,6 +637,8 @@ class WorkflowDriver:
         # Initialise the feedback slot so {{vlm_feedback}} resolves to "" on
         # the first pass (before any loop has injected real feedback).
         ctx.tpl_vars.setdefault("vlm_feedback", "")
+        ctx.tpl_vars.setdefault("plot_revision", 0)
+        ctx.tpl_vars.setdefault("previous_figure_batch", "")
 
         _stage_idx = 0
         while _stage_idx < len(stages):
@@ -469,11 +647,30 @@ class WorkflowDriver:
             stage_name = stage.stage_name
             desc = stage.desc
 
+            if stage_name == "write_paper":
+                _prepare_manuscript_authoring(
+                    ctx,
+                    all_nodes=all_nodes,
+                    experiment_data=experiment_data,
+                )
+
             log.info("=== Stage [%s]: %s ===", stage_name, desc)
             print(f"[Paper Pipeline] Stage [{stage_name}]: {desc} ...", flush=True)
 
             # ── skip checks (disabled_tools + depends_on + skip_if_exists) ──
             if stage.should_skip(ctx):
+                if (
+                    stage_name == "write_paper"
+                    and os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") != "off"
+                    and (ctx.checkpoint_dir / "full_paper.tex").is_file()
+                ):
+                    from ari.manuscript.runtime import transition_runtime_manuscript
+
+                    transition_runtime_manuscript(
+                        ctx.checkpoint_dir,
+                        "authored",
+                        reason_code="existing_bound_draft_reused",
+                    )
                 _stage_idx += 1
                 continue
 
@@ -487,8 +684,35 @@ class WorkflowDriver:
                 # ── save outputs (type-sniff writer + figures manifest) ────
                 stage.persist_outputs(ctx, result)
 
+                if (
+                    stage_name == "write_paper"
+                    and os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") != "off"
+                ):
+                    from ari.manuscript.runtime import transition_runtime_manuscript
+
+                    transition_runtime_manuscript(
+                        ctx.checkpoint_dir,
+                        "authored",
+                        reason_code="bound_draft_authored",
+                    )
+
                 # Stage completed successfully
                 print(f"[Paper Pipeline] Stage [{stage_name}]: DONE", flush=True)
+
+                # A stage that returns `warnings` was reporting them to nobody:
+                # the driver stored the result and moved on, so a tool could say
+                # "N inserted sentences assert a verification nobody requested"
+                # and the run would print only DONE. Surface them at the one
+                # place every stage passes through.
+                _warns = (result or {}).get("warnings") if isinstance(result, dict) else None
+                for _w in (_warns or [])[:5]:
+                    _msg = _w if isinstance(_w, str) else str(_w)
+                    print(f"[Paper Pipeline] Stage [{stage_name}]: WARNING {_msg[:300]}",
+                          flush=True)
+                    log.warning("pipeline stage %s: %s", stage_name, _msg[:500])
+                if _warns and len(_warns) > 5:
+                    print(f"[Paper Pipeline] Stage [{stage_name}]: "
+                          f"WARNING (+{len(_warns) - 5} more)", flush=True)
 
                 # ── loop_back_to runtime ─────────────────────────────────────
                 # If this stage declares a `loop_back_to` target and its result
@@ -527,8 +751,30 @@ class WorkflowDriver:
                             )
                         else:
                             _loop_iterations[stage_name] = _count + 1
-                            # Surface review feedback to downstream template vars
-                            ctx.tpl_vars["vlm_feedback"] = _format_vlm_feedback(result)
+                            # Preserve the exact reviewed batch and revision. Native
+                            # visual reviews stay structured so plot feedback binds
+                            # manifest/review digests instead of an ad-hoc prose fold.
+                            _target_state = ctx.tpl_vars["stages"].get(
+                                _loop_target, {}
+                            )
+                            ctx.tpl_vars["previous_figure_batch"] = str(
+                                _target_state.get("output") or ""
+                            )
+                            ctx.tpl_vars["plot_revision"] = _count + 1
+                            if (
+                                isinstance(result, dict)
+                                and result.get("schema_version")
+                                == "ari.visual-review-batch/v1"
+                            ):
+                                ctx.tpl_vars["vlm_feedback"] = json.dumps(
+                                    result,
+                                    ensure_ascii=False,
+                                    sort_keys=True,
+                                )
+                            else:
+                                ctx.tpl_vars["vlm_feedback"] = _format_vlm_feedback(
+                                    result
+                                )
                             # Reset state for stages [target_idx .. _stage_idx]
                             # so they actually re-run (don't hit skip_if_exists
                             # on their own outputs).
@@ -571,5 +817,20 @@ class WorkflowDriver:
                 ctx.tpl_vars["stages"][stage_name] = {"output": "", "outputs": {}}
 
             _stage_idx += 1
+
+        if (
+            os.environ.get("ARI_MANUSCRIPT_RUNTIME_MODE", "off") != "off"
+            and any(
+                stage.get("stage") in {"lock_paper_build", "ors_run_reproduce"}
+                for stage in stages
+            )
+        ):
+            from ari.manuscript.runtime import finalize_runtime_publication
+
+            decision = finalize_runtime_publication(ctx.checkpoint_dir)
+            if decision is not None:
+                ctx.stage_outputs["_manuscript_publication"] = (
+                    decision.model_dump(mode="json")
+                )
 
         return ctx.stage_outputs

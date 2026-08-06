@@ -1,0 +1,93 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_utility_policy_candidate.schema.json",
+  "title": "ARI-RQGM UtilityPolicyCandidate",
+  "description": "One proposed successor utility policy (docs/plans/ari_rqgm/14 §6.2, owned by Task 14). Mirrors prompt_candidate and rides the SAME prompt-evolution log — no new store. The envelope is the mandatory common one (rqgm_defs.schema.json): its author is the POLICY_MUTATOR, not the policy, because a candidate is a proposal BY a component — which is why component_id / role / prompt_hash name the proposer while the proposed policy rides `policy` (by value) + `policy_hash`. `policy` is the §6.1 body: hash12(canonical_json(policy)) IS policy_hash IS the utility_policy_hash the candidate would freeze if adopted — one value, three names, zero new hashing. Legality (closed value spaces + axis-weight bounds) is NOT expressed here: it is frozen code in ari.rqgm.kernel_rules.UTILITY_POLICY_RULES, inside constitution_hash, and enforced by CK-UTL-001..008 before a candidate can ever score a node. rationale cites ABSTRACT evidence only — never raw attack text. created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
+  "type": "object",
+  "required": [
+    "record_type",
+    "schema_version",
+    "record_id",
+    "epoch_id",
+    "component_id",
+    "prompt_hash",
+    "role",
+    "created_at",
+    "status",
+    "candidate_id",
+    "mutation_kind",
+    "policy",
+    "policy_hash",
+    "source_refs"
+  ],
+  "properties": {
+    "record_type": {"const": "utility_policy_candidate"},
+    "schema_version": {"const": 1},
+    "record_id": {"type": "string", "pattern": "^upc_[0-9]{6,}$"},
+    "epoch_id": {"type": "string"},
+    "component_id": {"type": "string", "minLength": 1},
+    "prompt_hash": {
+      "description": "The PROPOSER's own template hash (the policy_mutator meta-prompt) — the envelope names the author, not the proposal. May be empty when the template is unresolvable (best-effort: a missing template never costs a boundary its candidate).",
+      "type": "string"
+    },
+    "role": {
+      "description": "The AUTHOR's role: policy_mutator. The TARGET role (utility_policy) is implied by record_type.",
+      "const": "policy_mutator"
+    },
+    "created_at": {"type": "string"},
+    "status": {"$ref": "#/$defs/rqgm_status"},
+    "candidate_id": {"type": "string", "minLength": 1},
+    "parent_prompt_id": {"type": ["string", "null"]},
+    "mutation_kind": {
+      "type": "string",
+      "enum": [
+        "axis_reweighting",
+        "composite_swap",
+        "frontier_score_swap",
+        "exploration_tuning",
+        "freeform_policy_proposal"
+      ]
+    },
+    "policy": {
+      "description": "The §6.1 policy body. The file/record never contains utility_policy_hash itself: the hash is OF the body, and capture_utility_policy re-appends it to the returned dict.",
+      "type": "object",
+      "required": [
+        "composite",
+        "axis_weights",
+        "frontier_score",
+        "depth_penalty_lambda",
+        "ucb_c"
+      ],
+      "properties": {
+        "composite": {"type": "string"},
+        "axis_weights": {
+          "type": "object",
+          "additionalProperties": {"type": "number"}
+        },
+        "frontier_score": {"type": "string"},
+        "depth_penalty_lambda": {"type": "number"},
+        "ucb_c": {"type": "number"}
+      }
+    },
+    "policy_hash": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+    "rationale": {"type": "string"},
+    "source_refs": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "rqgm_status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "validated",
+        "shadow",
+        "probationary_active",
+        "active",
+        "warning",
+        "probation",
+        "quarantine",
+        "retired",
+        "banned"
+      ]
+    }
+  }
+}

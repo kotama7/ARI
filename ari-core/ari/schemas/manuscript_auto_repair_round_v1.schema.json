@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "AutoRepairRoundResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "details": {
+          "additionalProperties": true,
+          "maxProperties": 1000,
+          "title": "Details",
+          "type": "object"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "executed",
+            "satisfied",
+            "still_missing",
+            "failed",
+            "exhausted",
+            "human_required",
+            "unavailable"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "request_id",
+        "status"
+      ],
+      "title": "AutoRepairRoundResultV1",
+      "type": "object"
+    },
+    "RepairBudgetUsageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "experiment_runs": {
+          "default": 0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Experiment Runs",
+          "type": "integer"
+        },
+        "llm_calls": {
+          "default": 0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Llm Calls",
+          "type": "integer"
+        },
+        "new_nodes": {
+          "default": 0,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "New Nodes",
+          "type": "integer"
+        },
+        "resource_units": {
+          "default": 0.0,
+          "minimum": 0,
+          "title": "Resource Units",
+          "type": "number"
+        }
+      },
+      "title": "RepairBudgetUsageV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Digest-bound coordinator commit for one complete automatic round.",
+  "properties": {
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Plan Digest",
+      "type": "string"
+    },
+    "request_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Request Ids",
+      "type": "array"
+    },
+    "results": {
+      "items": {
+        "$ref": "#/$defs/AutoRepairRoundResultV1"
+      },
+      "maxItems": 10000,
+      "title": "Results",
+      "type": "array"
+    },
+    "round": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Round",
+      "type": "integer"
+    },
+    "round_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Round Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-auto-repair-round/v1",
+      "default": "ari.manuscript-auto-repair-round/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Context Digest",
+      "type": "string"
+    },
+    "transaction_digests": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 10000,
+      "title": "Transaction Digests",
+      "type": "array"
+    },
+    "used_budget": {
+      "$ref": "#/$defs/RepairBudgetUsageV1"
+    }
+  },
+  "required": [
+    "round",
+    "plan_digest",
+    "source_context_digest",
+    "used_budget",
+    "round_digest"
+  ],
+  "title": "ManuscriptAutoRepairRoundV1",
+  "type": "object"
+}

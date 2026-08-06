@@ -1,0 +1,282 @@
+{
+  "$defs": {
+    "HarnessRequirementV1": {
+      "additionalProperties": false,
+      "properties": {
+        "atom_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Atom Digest",
+          "type": "string"
+        },
+        "determinism_requirement": {
+          "title": "Determinism Requirement",
+          "type": "string"
+        },
+        "independence_requirement": {
+          "title": "Independence Requirement",
+          "type": "string"
+        },
+        "method": {
+          "title": "Method",
+          "type": "string"
+        },
+        "property_id": {
+          "title": "Property Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.harness-requirement/v1",
+          "default": "ari.harness-requirement/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/VerificationScopeV1"
+        },
+        "source_requirement_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Requirement Refs",
+          "type": "array"
+        },
+        "target_kind": {
+          "title": "Target Kind",
+          "type": "string"
+        },
+        "tier": {
+          "enum": [
+            "screen",
+            "validate",
+            "certify"
+          ],
+          "title": "Tier",
+          "type": "string"
+        },
+        "tolerance_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Tolerance Policy Digest",
+          "type": "string"
+        },
+        "verification_requirement_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Verification Requirement Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verification_requirement_digest",
+        "property_id",
+        "method",
+        "tier",
+        "target_kind",
+        "scope",
+        "tolerance_policy_digest",
+        "independence_requirement",
+        "determinism_requirement",
+        "source_requirement_refs",
+        "atom_digest"
+      ],
+      "title": "HarnessRequirementV1",
+      "type": "object"
+    },
+    "LockedHarnessV1": {
+      "additionalProperties": false,
+      "properties": {
+        "container_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Container Digest",
+          "type": "string"
+        },
+        "covered_atom_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Covered Atom Digests",
+          "type": "array"
+        },
+        "dataset_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Dataset Digest",
+          "type": "string"
+        },
+        "driver_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Driver Digest",
+          "type": "string"
+        },
+        "harness_id": {
+          "title": "Harness Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "benchmark",
+            "artifact_verifier",
+            "reproduction",
+            "claim_verifier"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        },
+        "oracle_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Oracle Digest",
+          "type": "string"
+        },
+        "result_schema_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Result Schema Digest",
+          "type": "string"
+        },
+        "tolerance_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Tolerance Policy Digest",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "harness_id",
+        "version",
+        "kind",
+        "manifest_digest",
+        "dataset_digest",
+        "oracle_digest",
+        "driver_digest",
+        "container_digest",
+        "result_schema_digest",
+        "tolerance_policy_digest",
+        "covered_atom_digests"
+      ],
+      "title": "LockedHarnessV1",
+      "type": "object"
+    },
+    "VerificationScopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "title": "VerificationScopeV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/harness-lock-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "coverage_proof_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Coverage Proof Digest",
+      "type": "string"
+    },
+    "harness_catalog_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Harness Catalog Snapshot Digest",
+      "type": "string"
+    },
+    "harnesses": {
+      "items": {
+        "$ref": "#/$defs/LockedHarnessV1"
+      },
+      "title": "Harnesses",
+      "type": "array"
+    },
+    "lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lock Digest",
+      "type": "string"
+    },
+    "oracle_bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Oracle Bundle Digest",
+      "type": "string"
+    },
+    "producer_component_id": {
+      "const": "harness_resolver_v1",
+      "default": "harness_resolver_v1",
+      "title": "Producer Component Id",
+      "type": "string"
+    },
+    "prompt_hash": {
+      "default": null,
+      "title": "Prompt Hash",
+      "type": "null"
+    },
+    "requirements": {
+      "items": {
+        "$ref": "#/$defs/HarnessRequirementV1"
+      },
+      "title": "Requirements",
+      "type": "array"
+    },
+    "research_contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Research Contract Digest",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.baseline-harness-lock/v1",
+      "default": "ari.baseline-harness-lock/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "suite_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Suite Digest",
+      "type": "string"
+    },
+    "unsatisfied_atom_digests": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unsatisfied Atom Digests",
+      "type": "array"
+    },
+    "verification_contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Verification Contract Digest",
+      "type": "string"
+    },
+    "verification_environment_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Verification Environment Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "research_contract_digest",
+    "verification_contract_digest",
+    "harness_catalog_snapshot_digest",
+    "verification_environment_digest",
+    "oracle_bundle_digest",
+    "suite_digest",
+    "requirements",
+    "harnesses",
+    "coverage_proof_digest",
+    "lock_digest"
+  ],
+  "title": "ARI Baseline Harness Lock v1",
+  "type": "object"
+}

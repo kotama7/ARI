@@ -48,7 +48,7 @@ curl -X POST http://localhost:8765/api/paperbench/papers/import \
 在注册表页面勾选论文,点击 **🚀 运行 PaperBench**。共 5 步:
 
 1. **论文** — 确认选择。
-2. **评分单** — 生成器模型 (默认 `gemini-2.5-pro`, two_stage 开)。
+2. **评分单** — 生成器模型 (默认 `gemini-2.5-pro`，calibrated hierarchical strategy)。
    参见[评分单 schema](../../reference/rubric_schema.md)。
 3. **再现** — 再现模型与时间预算。展开「执行配置覆盖」即可手动覆盖
    SLURM 分配标志 (`--nodes`, `--gpus-per-task`, `--exclusive`, ...)。
@@ -142,19 +142,18 @@ python scripts/sc_paper_dogfood.py \
 **互斥** — paper_audit 评分论文本身; `--with-reproduction` 评分执行
 后的 submission, 二者不可同时启用。
 
-若需使用 vendor 镜像, 请先执行 `scripts/build_pb_images.sh` 构建
-`pb-env` / `pb-reproducer`, 然后传入
-`--rollout-container-image pb-env --reproduce-container-image pb-reproducer`。
+使用 vendor 镜像时先运行 `scripts/build_pb_images.sh`。Stage 2 使用脚本
+输出的完整 Docker image ID；Stage 1 Apptainer rollout 先执行
+`apptainer pull pb-env.sif docker-daemon://pb-env:latest`，再传入 SIF 的绝对
+路径。不要直接传递可变标签。
 
 > **fail-loud 前置条件 (v0.8.0)**。
 > 当请求的 sandbox / GPU 资源在 host 不可满足时, 直接报错而不会静默
-> 降级到 host CPU:
-> - `ARI_PHASE1_ALLOW_FALLBACK=1` — 当 docker / apptainer / sbatch
->   缺失时, opt-in 回到 legacy 静默降级
-> - `ARI_SLURM_ALLOW_NO_GRES=1` — 集群无 GRES 配置时, opt-in 静默
->   丢弃 `--gres` / `--gpus-*` 标志
+> 降级到 host CPU；legacy 回退路径已删除。
 >
-> 两者默认 OFF (报错并给出可操作的提示)。
+> GPU/resource 请求没有静默丢弃 override；应修复集群配置或选择兼容分区。
+> network deny 默认开启；未隔离的 local/SLURM 需要管理员 attestation，
+> 或显式选择 `network_policy=inherit`。
 
 ## HPC 集群 sbatch 包装脚本(示例)
 

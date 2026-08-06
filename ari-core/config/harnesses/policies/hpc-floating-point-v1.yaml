@@ -1,0 +1,15 @@
+schema_version: ari.harness-tolerance-policy/v1
+id: hpc-floating-point/v1
+comparison:
+  relative_limit: max(8 * gamma_n, 8 * unit_roundoff)
+  absolute_floor: 64 * unit_roundoff
+  gamma_n: (n * unit_roundoff) / (1 - n * unit_roundoff)
+accumulation_parameter:
+  gemm: k
+  spmm: maximum row nnz
+  stencil: max(1, iterations * 7)
+special_values:
+  nan: expected NaN requires actual NaN
+  infinity: sign must match
+determinism: repeated candidate results must be elementwise identical, with NaN equal to NaN
+authority: fixed-verifier-policy

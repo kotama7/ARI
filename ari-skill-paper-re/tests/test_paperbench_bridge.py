@@ -11,6 +11,7 @@ are skipped on CI by default.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import uuid
 from pathlib import Path
@@ -282,49 +283,15 @@ def test_load_dotenv_file_handles_comments_quotes_and_empty():
         path.unlink()
 
 
-def test_reproduce_submission_signature_includes_tarball_and_salvage():
-    """Regression for the (b) tarball capture and (a) salvage retries
-    Stage 2 fixes: both flags must be on the bridge surface so a
-    caller (wizard / CLI / external orchestrator) can opt in/out.
-    """
+def test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage():
+    """Tar capture remains, while source-mutating salvage is absent."""
     import inspect
     sig = inspect.signature(B.reproduce_submission)
     params = set(sig.parameters)
-    for required in (
-        "capture_tarball", "tarball_dir",
-        "salvage_retries", "retry_threshold_sec",
-    ):
+    for required in ("capture_tarball", "tarball_dir"):
         assert required in params, f"reproduce_submission missing {required!r}"
-    # Defaults: tarball ON, salvage OFF (preserves existing dogfood
-    # behaviour and only adds work when caller asks).
     assert sig.parameters["capture_tarball"].default is True
-    assert sig.parameters["salvage_retries"].default == 0
-
-
-def test_install_and_restore_salvage_wrapper_roundtrip(tmp_path):
-    """The salvage wrapper must wrap reproduce.sh with a venv prelude
-    AND restore the original byte-for-byte on cleanup."""
-    sub = tmp_path / "sub"
-    sub.mkdir()
-    repro = sub / "reproduce.sh"
-    original_body = "#!/usr/bin/env bash\necho original\n"
-    repro.write_text(original_body)
-    repro.chmod(0o755)
-
-    B._install_salvage_wrapper(sub)
-    wrapped = repro.read_text()
-    assert "ari-skill-paper-re salvage retry" in wrapped
-    assert ".salvage_venv" in wrapped
-    assert "original reproduce.sh body" in wrapped
-    assert wrapped.endswith(original_body)
-    # Backup preserved exactly
-    backup = repro.with_suffix(repro.suffix + B._SALVAGE_WRAPPER_SUFFIX)
-    assert backup.is_file()
-    assert backup.read_text() == original_body
-
-    B._restore_salvage_wrapper(sub)
-    assert repro.read_text() == original_body
-    assert not backup.is_file()
+    assert "salvage_retries" not in params
 
 
 def test_write_executed_tarball_round_trip(tmp_path):
@@ -1028,24 +995,6 @@ def test_env_patch_is_installed_on_vendor_get_instructions():
     )
 
 
-def test_resolve_container_image_alias():
-    """``pb-env`` / ``pb-reproducer`` short aliases must resolve to the
-    canonical ``image:latest`` tags that ``scripts/build_pb_images.sh``
-    produces. Anything else (URIs, paths, arbitrary tags, empty) must
-    pass through verbatim — operators rely on supplying their own
-    images for non-vendor workflows.
-    """
-    assert B._resolve_container_image_alias("pb-env") == "pb-env:latest"
-    assert B._resolve_container_image_alias("pb-reproducer") == "pb-reproducer:latest"
-    assert B._resolve_container_image_alias("") == ""
-    assert B._resolve_container_image_alias("ubuntu:24.04") == "ubuntu:24.04"
-    assert B._resolve_container_image_alias("docker://nvcr.io/nvidia/pytorch:24.05-py3") == \
-        "docker://nvcr.io/nvidia/pytorch:24.05-py3"
-    assert B._resolve_container_image_alias("/scratch/img.sif") == "/scratch/img.sif"
-    # Whitespace tolerance (operators pasting wizard input):
-    assert B._resolve_container_image_alias("  pb-env  ") == "pb-env:latest"
-
-
 def test_rollout_submission_signature_includes_blacklist_urls():
     """(g) regression: bridge surface exposes blacklist_urls so the
     wizard / CLI can forbid the agent from accessing the paper's own
@@ -1071,6 +1020,7 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
         # Snapshot the values the bridge handed off.
         captured["env"] = dict(kwargs.get("env") or {})
         captured["paper_md_path"] = kwargs.get("paper_md_path")
+        captured["completer_config"] = kwargs.get("completer_config")
         return {"populated": False, "warnings": [], "files": []}
 
     # _replicator_agent is imported lazily inside rollout_submission.
@@ -1078,6 +1028,7 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
     fake_mod = type(_sys)("_replicator_agent")
     fake_mod.run_replicator_agent = fake_run_replicator_agent  # type: ignore
     monkeypatch.setitem(_sys.modules, "_replicator_agent", fake_mod)
+    monkeypatch.setenv("ARI_LLM_API_BASE", "http://127.0.0.1:8911/v1")
 
     # Stub out the OpenAI Responses completer + LiteLLM completer so
     # the bridge does not try to import them for a non-OpenAI fake
@@ -1085,7 +1036,7 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
     asyncio.run(B.rollout_submission(
         paper_md="hello paper body",
         work_dir=tmp_path / "wd",
-        agent_model="anthropic/test",  # routes through LiteLLM branch
+        agent_model="openai/codex-cli:gpt-5.6-sol",
         sandbox_kind="local",
         blacklist_urls=[
             "https://github.com/author/original-repo",
@@ -1098,6 +1049,10 @@ def test_blacklist_urls_prepend_into_paper_md_smoke(tmp_path, monkeypatch):
     assert "ARI_BLACKLIST_URLS" in env, env
     assert "github.com/author/original-repo" in env["ARI_BLACKLIST_URLS"]
     assert "huggingface.co/author/original-model" in env["ARI_BLACKLIST_URLS"]
+    config = captured["completer_config"]
+    assert config.api_base == "http://127.0.0.1:8911/v1"
+    assert config.tool_choice == "required"
+    assert config.extra_kwargs == {"allowed_openai_params": ["tool_choice"]}
 
     # paper_md on disk has the FORBIDDEN URLS prelude
     pm = Path(captured["paper_md_path"]).read_text()
@@ -1308,6 +1263,51 @@ def test_resolve_submission_repo_root_descends_into_nested(tmp_path):
     assert resolved == repo.resolve(), (
         f"must descend to the nested self-contained repo; got {resolved}")
     assert (resolved / "src" / "main.cu").is_file()
+
+
+def test_resolve_submission_repo_root_prefers_fully_promoted_root(tmp_path):
+    """A complete promotion must be graded at the Phase-1 root; the nested
+    rollout tree can contain measurements from the agent's earlier smoke run.
+    """
+    work = tmp_path / "submission"
+    repo = work / "submission"
+    repo.mkdir(parents=True)
+    script = "cc kernel.c -o kernel\n./kernel > results.csv\n"
+    source = "int main(void) { return 0; }\n"
+    (repo / "reproduce.sh").write_text(script)
+    (repo / "kernel.c").write_text(source)
+    (repo / ".gitignore").write_text("results.csv\n")
+    (repo / "results.csv").write_text("stale\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "reproduce.sh", "kernel.c", ".gitignore"],
+        check=True,
+    )
+    (work / "reproduce.sh").write_text(script)
+    (work / "kernel.c").write_text(source)
+    (work / ".gitignore").write_text("results.csv\n")
+    (work / "results.csv").write_text("fresh\n")
+
+    assert B._resolve_submission_repo_root(work) == work.resolve()
+
+
+def test_resolve_submission_repo_root_rejects_partial_git_promotion(tmp_path):
+    work = tmp_path / "submission"
+    repo = work / "submission"
+    (repo / "src").mkdir(parents=True)
+    (repo / "reproduce.sh").write_text("python3 src/run.py\n")
+    (repo / "README.md").write_text("fixture\n")
+    (repo / "src" / "run.py").write_text("print('ok')\n")
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "add", "reproduce.sh", "README.md", "src/run.py"],
+        check=True,
+    )
+    # The script and one sibling match, but a tracked dependency is absent.
+    (work / "reproduce.sh").write_text("python3 src/run.py\n")
+    (work / "README.md").write_text("fixture\n")
+
+    assert B._resolve_submission_repo_root(work) == repo.resolve()
 
 
 def test_resolve_submission_repo_root_no_nesting_is_identity(tmp_path):

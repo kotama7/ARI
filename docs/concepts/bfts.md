@@ -4,9 +4,13 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/metric_contract.py
     role: implementation
+  - path: ari-core/ari/rqgm/runtime.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-12
+last_verified: 2026-07-30
 ---
 
 # BFTS Algorithm
@@ -28,7 +32,7 @@ stateDiagram-v2
     frontier --> frontier: persistent — stays re-expandable
     frontier --> pending: select best (score + diversity bonus) → expand one child
     frontier --> retired: Rule A (child outscores parent) OR Rule B (max_expansions_per_node reached)
-    pending --> pruned: should_prune (total ≥ max_total_nodes / depth ≥ max_depth / _sterile)
+    pending --> pruned: should_prune (total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false)
     retired --> [*]
     pruned --> [*]
 ```
@@ -71,7 +75,7 @@ def bfts(experiment, config):
 Key properties:
 - **Single-child expansion**: `expand()` generates exactly one child per call with rich context (sibling scores, ancestor chain, tree diversity metrics, existing children) to avoid duplicates. The prompt also surfaces the current depth/`max_depth` and the remaining node budget so the planner can pace itself (v0.7.2, I-4).
 - **Persistent frontier**: completed nodes stay in frontier after expansion, available for re-expansion with `_touched_this_round` / `_failed_this_round` tracking. A frontier node is **retired** when either (Rule A) its child outscores it on `_scientific_score`, or (Rule B) it has been expanded `max_expansions_per_node` times (v0.7.2, B-6).
-- **`should_prune` predicate**: hard cutoffs only — `current_total >= max_total_nodes` (B-1), `depth >= max_depth` (B-2, previously dead config), or `metrics._sterile is True` (B-4). LLM judgement happens elsewhere.
+- **`should_prune` predicate**: hard cutoffs only — `current_total >= max_total_nodes` (B-1), `depth >= max_depth` (B-2, previously dead config), `metrics._sterile is True` (B-4), or `metrics._valid_for_frontier is False` (RQGM selective erasure; the key is written only by RQGM machinery, so the clause is inert under `simple_bfts` — but it is read unconditionally, so a node erased under `ari_rqgm` stays excluded after a switch back). LLM judgement happens elsewhere.
 - **Diversity bonus**: `+0.05` for underrepresented labels (last 20 runs tracked) when `my_count * 2 ≤ max_count` (I-2); applied in *both* selector fallbacks (I-3 / L-3) and in `select_next_node` LLM prompts.
 - **Coverage-aware expansion selection**: when the run carries a claims-bearing metric contract, the goal text passed to `select_best_to_expand` additionally carries a run-level claim-coverage block plus a **LINEAGE** hint (see *Lineage Chaining* below), so "evidences a still-uncovered claim" can inform *which* node to expand — the scheduler-only signal; node reasoning context is untouched.
 - **Score calibration**: evaluator injects recent score history into prompts to prevent score collapse (all scores clustering around the same value)
@@ -126,6 +130,38 @@ with the claim gate's evidence view.
 
 ---
 
+## Governed BFTS under `ari_rqgm` (opt-in)
+
+In the opt-in `ari_rqgm` execution mode the algorithm above is unchanged —
+governance *wraps* it at four seams (all fail-open; under the default
+`simple_bfts` none of this code is imported):
+
+- **`GovernedSearchStrategy` seam** (`ari/rqgm/runtime.py`): `build_runtime`
+  wraps the BFTS strategy in a pure-delegation wrapper implementing the same
+  seven `SearchStrategy` methods. The run loop detects it with one
+  duck-typed read (`getattr(bfts, "rqgm", None)`); selection, pruning, and
+  diversity logic are forwarded verbatim.
+- **Summary-only expand context**: when a selected `ProposalRecord` exists,
+  the `idea_context` passed into `expand()` is re-rendered from its capped
+  `ProposalSummaryView` (budget: `proposal_router.summary_budget_chars`)
+  instead of the raw `idea.json` text; each proposed child direction is
+  recorded back as a proposal observation. Full records never reach BFTS.
+- **Epoch boundaries**: the loop calls `ensure_epoch` at start and at each
+  outer-loop head; after every `rqgm.epoch.nodes_per_epoch` new nodes the
+  boundary transaction runs on the main thread (audit → transition →
+  repair) with no node in flight. After evaluation, each completed node also
+  gets a best-effort adversarial round before its node report is written.
+- **Frontier repair hook**: the boundary tick receives the live
+  `frontier`/`pending`/`all_nodes` state so retirements can logically erase
+  stale records and rebuild the frontier; a double kernel-validation failure
+  sets `expansion_halted` and the loop drains pending work without further
+  expansion.
+
+The layers, epoch algorithm, and invariants are documented in
+[Constitutional ARI-RQGM Architecture](rqgm_architecture.md).
+
+---
+
 ## See also
 
-[Architecture](architecture.md) · [Memory architecture](memory.md) · [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) · [Glossary](../reference/glossary.md)
+[Architecture](architecture.md) · [Constitutional ARI-RQGM Architecture](rqgm_architecture.md) · [Memory architecture](memory.md) · [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) · [Glossary](../reference/glossary.md)

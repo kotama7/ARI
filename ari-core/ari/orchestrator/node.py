@@ -127,70 +127,35 @@ class Node:
     # verbatim through the lifetime of the node so downstream consumers can
     # see "what we set out to do" even after evaluator overwrites eval_summary.
     original_direction: str | None = None
-    # The agent's own natural-language self-report (the ``summary`` field it
-    # returns when it concludes). Captured so the handoff summary can carry the
-    # agent's narrative of what it did, anchored by deterministic metrics.
-    agent_summary: str = ""
-    # The agent's own self-reviewed next steps (LLM self-review) — what it would
-    # try next to improve this node. Populates node_report ``next_steps_hints``
-    # under deterministic scoring, where the evaluator emits no graded axes.
-    agent_next_steps: list[str] = field(default_factory=list)
-    # Which stage produced next_steps/concerns: "post_evaluation" when the
-    # reflection ran after the score was known (the design), or
-    # "pre_evaluation" when that auxiliary call failed and the agent's own
-    # pre-scoring self-report was kept. Recorded because the two answer
-    # different questions and a run must not silently mix them.
-    self_report_stage: str = "pre_evaluation"
-    # The agent's own self-reviewed concerns (LLM self-review) — caveats/risks it
-    # flags about this node. Populates node_report ``self_assessment.concerns``
-    # (the headline there comes from ``agent_summary``); deterministic scoring
-    # emits no graded axes, so this is the real source.
-    agent_concerns: list[str] = field(default_factory=list)
-    # The agent's own free-form note of the compute environment it actually ran
-    # on (compilers, ISA, CPU/GPU it used), authored AFTER querying the real env
-    # (describe_environment / run_bash) and kept only when grounded in this
-    # node's tool outputs (anti-fabrication). Replaces the framework's old
-    # auto-scraped machine provenance in node_report, so no hostname/partition is
-    # embedded automatically; the agent records only what it chose to.
-    agent_environment: str = ""
-    # The agent's own light per-file explanation ({path: note}) from the finish
-    # JSON ``file_notes``. The node_report builder grafts each note onto the
-    # matching files_changed entry (added/modified/deleted), so a reader sees WHAT
-    # each touched file is without opening it. Best-effort; unlisted files carry
-    # no note.
-    file_notes: dict = field(default_factory=dict)
-    # How the ReAct loop ended, and how many iterations it really took.
-    # ``ended_by``: "finish_json" (the agent concluded) | "max_steps" (it ran out
-    # of budget; any resulting ``success`` came from the framework scoring the
-    # work_dir, not from the agent). Surfaced in full_log — without them a reader
-    # cannot tell the two apart, and the old ``steps`` field counted TRACE ENTRIES
-    # (2 per iteration), which read as double the real count.
-    react_steps_used: int = 0
-    ended_by: str = ""
-    # Full ReAct conversation (system prompt + injected handoff + task + every
-    # user/assistant/tool turn) — a live reference set by AgentLoop.run so the
-    # per-node ``full_log.json`` can serialize the COMPLETE input+output record,
-    # not just the tool-call trace_log. Deliberately EXCLUDED from ``to_dict`` so
-    # it never bloats tree.json; it lands only in full_log.json.
-    full_messages: list = field(default_factory=list)
-    # OpenAI-format tool schemas (name + description + parameters) the model was
-    # actually given via the function-calling ``tools=`` argument — i.e. HOW to
-    # use each tool, which the AVAILABLE TOOLS prompt line (names only) omits.
-    # Set by AgentLoop.run for full_log.json; EXCLUDED from to_dict.
-    full_tools: list = field(default_factory=list)
-    # Tool-less auxiliary LLM calls made after the main ReAct conversation, such
-    # as the forced self-review when a node exhausts its step budget. Stored only
-    # in full_log.json so every LLM-generated Reflection field has an auditable
-    # prompt and response.
-    auxiliary_llm_calls: list = field(default_factory=list)
+    # RQGM-only producer provenance. A governed runtime stamps these from the
+    # epoch-frozen active map; legacy/simple_bfts nodes leave them empty.
+    producer_component_id: str = ""
+    producer_prompt_hash: str = ""
+    producer_epoch_id: str = ""
     # Relative pointer (from checkpoint root) to the per-node report file.
     # Optional: present only after `node_report.json` has been written.
     node_report_path: str | None = None
-    # Optional per-node handoff arm. Empty means "use the run-level handoff".
-    # Paired handoff experiments stamp sibling children from the same parent with
-    # different values so the only per-child difference is the inherited text
-    # channel, not the parent workspace.
-    handoff_mode: str = ""
+    # Tasks 16–19 typed scientific provenance.  Values remain empty on the
+    # compatibility path and are omitted from serialized legacy nodes.
+    knowledge_skill_refs: list[dict] = field(default_factory=list)
+    knowledge_skill_use_digest: str = ""
+    instruction_identity_digest: str = ""
+    capability_binding_lock_digest: str = ""
+    bound_tool_refs: list[str] = field(default_factory=list)
+    assurance_status: str = ""
+    assurance_tier: str = ""
+    baseline_harness_lock_digest: str = ""
+    active_harness_lock_digest: str = ""
+    attestation_refs: list[str] = field(default_factory=list)
+    verified_target_digest: str = ""
+    property_verdicts: dict = field(default_factory=dict)
+    frontier_class: str = ""
+    # Manuscript repair lineage. Empty on ordinary exploration nodes; repair
+    # nodes inherit one digest-bound request envelope and cannot widen it.
+    repair_request_id: str = ""
+    repair_requirement_ids: list[str] = field(default_factory=list)
+    repair_context_digest: str = ""
+    repair_allowed_changes: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.created_at:
@@ -218,7 +183,7 @@ class Node:
         self.completed_at = datetime.now(timezone.utc).isoformat()
 
     def to_dict(self) -> dict:
-        d = {
+        payload = {
             "id": self.id,
             "parent_id": self.parent_id,
             "depth": self.depth,
@@ -237,22 +202,31 @@ class Node:
             "error_log": self.error_log,
             "ancestor_ids": self.ancestor_ids,
             "trace_log": self.trace_log,
+            "original_direction": self.original_direction,
+            "producer_component_id": self.producer_component_id,
+            "producer_prompt_hash": self.producer_prompt_hash,
+            "producer_epoch_id": self.producer_epoch_id,
             "node_report_path": self.node_report_path,
         }
-        if self.handoff_mode:
-            d["handoff_mode"] = self.handoff_mode
-        # label / raw_label / original_direction follow ONE switch,
-        # ``ARI_BFTS_NO_LABEL``. When the label feature is ON they are emitted so a
-        # LIVE variable is never hidden from the record (a record-only suppression
-        # is how a label confound once survived a 4-arm study invisibly — the
-        # ABLATION share ran 0/1/3/4 across arms). When the feature is OFF the
-        # label drives nothing (NODE ROLE, child task line, diversity_bonus are all
-        # neutral), so it is INERT and the keys are OMITTED ENTIRELY from tree.json
-        # too — consistent with node_report.json. (Lazy import: ``ari.agent.loop``
-        # imports ``Node`` at module top, so a top-level import here would cycle.)
-        from ari.agent.loop import labels_disabled as _labels_off
-        if not _labels_off():
-            d["label"] = self.label.value
-            d["raw_label"] = self.raw_label
-            d["original_direction"] = self.original_direction
-        return d
+        scientific = {
+            "knowledge_skill_refs": self.knowledge_skill_refs,
+            "knowledge_skill_use_digest": self.knowledge_skill_use_digest,
+            "instruction_identity_digest": self.instruction_identity_digest,
+            "capability_binding_lock_digest": self.capability_binding_lock_digest,
+            "bound_tool_refs": self.bound_tool_refs,
+            "assurance_status": self.assurance_status,
+            "assurance_tier": self.assurance_tier,
+            "baseline_harness_lock_digest": self.baseline_harness_lock_digest,
+            "active_harness_lock_digest": self.active_harness_lock_digest,
+            "attestation_refs": self.attestation_refs,
+            "verified_target_digest": self.verified_target_digest,
+            "property_verdicts": self.property_verdicts,
+            "frontier_class": self.frontier_class,
+            "repair_request_id": self.repair_request_id,
+            "repair_requirement_ids": self.repair_requirement_ids,
+            "repair_context_digest": self.repair_context_digest,
+            "repair_allowed_changes": self.repair_allowed_changes,
+        }
+        if any(value not in ("", [], {}) for value in scientific.values()):
+            payload.update(scientific)
+        return payload

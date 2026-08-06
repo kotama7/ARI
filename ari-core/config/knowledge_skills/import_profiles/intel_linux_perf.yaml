@@ -1,0 +1,31 @@
+schema_version: 1
+id: intel.linux-perf
+version: 0.1.0+git.e9d0b641
+title: Intel Linux perf Profiling
+description: Diagnose x86 Linux CPU performance with bounded perf measurements and reproducible interpretation.
+license: {body: MIT, references: MIT}
+applies_to:
+  roles: [generator]
+  phases: [bfts]
+  task_tags: [cpu-performance, linux, profiling, x86]
+requires:
+  capabilities:
+    - {ref: ari.code.inspect/v1, required: true}
+    - {ref: ari.profiling.hardware-counters/v1, required: true}
+optional_capabilities:
+  - {ref: ari.execution.benchmark/v1, required: false}
+  - {ref: ari.execution.compile/v1, required: false}
+evaluation_obligations:
+  - {property_id: performance-regression, required_methods: [benchmark-comparison]}
+  - {property_id: reproducibility, required_methods: [repeated-execution]}
+authority_ceiling:
+  side_effects: [read-only, workspace-write]
+forbidden_capabilities: [ari.publish.external/v1, ari.registry.write/v1]
+dependencies: []
+conflicts: []
+composition: {slot: execution-strategy, priority: 80, exclusive: false}
+body_normalization: ari-wrapper-v1
+curation_notes:
+  - Never invoke sudo, change perf_event_paranoid, or alter host security settings; report unavailable profiling authority as unsatisfied.
+  - Treat event names and numeric thresholds as hardware- and kernel-specific observations that require environment provenance.
+  - Treat bundled Python tools as authority-none attachments and do not execute them without separate Capability Provider admission and binding.

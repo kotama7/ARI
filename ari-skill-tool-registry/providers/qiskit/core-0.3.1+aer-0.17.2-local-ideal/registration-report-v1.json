@@ -1,0 +1,99 @@
+{
+  "decision": "eligible-for-verified",
+  "gates": [
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:3bcfb1cffc8c961e53d0893bdaa92b24591931641a447a5808be9d13616348ec",
+      "gate_id": "manifest_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:acac3dc555d3e89dd4ed6c003d3903db47f53433e2c8fb48e1b5832ace362ed8",
+      "gate_id": "source_package_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:4d29a3f45b7652cee6585b11e536a62f12df7ddbc0f0de1a7213d480ef9f42a0",
+      "gate_id": "live_tools_list_parity",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:f2b1bf9859cbd94413c611ce2230e463e92f16645b5297ca25d2e41b85b0bd64",
+      "gate_id": "schema_digest_pin",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:00c5727c2f3f145dcb4d679b685b1b3223c0401d6de5767edeb5462f561767aa",
+      "gate_id": "capability_contract_conformance",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:9fff203455485d84ff7b189a4efbb632a25ee67cd25ae7548e226c47e3aaa6e4",
+      "gate_id": "side_effect_declaration",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:6135ac2efa82d5caf858d27b932904117bb031e49eba884e3b75a4a00e8790d6",
+      "gate_id": "credential_scope",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:de1783e14a956793e16dbdae1d1fe6212faccbcf1099140b829c4eb36b33bf15",
+      "gate_id": "environment_allowlist",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:cef6088f4d006c7f2b7eeeaad1dc82d857ba13d421ce4636c4545dd73a37b72a",
+      "gate_id": "timeout_cancellation_process_group",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:0bebf565216f512b1af3a47b0cf69e63645033f84d7d5cf5234bf225127d68b8",
+      "gate_id": "result_schema",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:97cc4e7d6f2232cab57ef835da3be3defafd7a21f5837e6231b621631d7c82cf",
+      "gate_id": "malicious_description_boundary",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:225ecfefa6cdce457b25a3c8d7d3a4310c56bf52f4152d3ce1556163bef2d1f8",
+      "gate_id": "workspace_isolation",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:b226da069f1e3f9ab7115b291e88521c7ec8dd17b0f892ad7fd7a6c6459c78fd",
+      "gate_id": "revocation_behavior",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:765d9b46a8623e0c53bc7bc4f421c0b651d34c582e48e4434f4cbaf5176002ea",
+      "gate_id": "schema_drift_detection",
+      "passed": true
+    },
+    {
+      "detail": "closed Qiskit local-Aer registration evidence passed",
+      "evidence_digest": "sha256:38cccc5faa9d1e0a5ed1ffc437038aa18b5563b17dcb12a8024a2f2b5b9b0080",
+      "gate_id": "unbound_invocation_rejection",
+      "passed": true
+    }
+  ],
+  "manifest_sha256": "sha256:c7b7bf50b6101bad217ebeb17e4f625a2c3deac4de5383fe295f9b1c11a4c726",
+  "provider_id": "qiskit-mcp-servers",
+  "report_digest": "sha256:e7d372b6483847e55c5a6573fd6645b61441674077dde9eef7898aad83225be3",
+  "schema_version": "ari.capability-provider-registration-report/v1"
+}

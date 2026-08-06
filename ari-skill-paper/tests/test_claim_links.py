@@ -2,6 +2,7 @@
 
 Pure unit tests over LaTeX strings + science_data dicts. No LLM, no disk.
 """
+
 from __future__ import annotations
 
 from src.claim_links import (
@@ -18,19 +19,36 @@ from src.claim_links import (
 SCIENCE_DATA = {
     "claims": [
         {
-            "id": "C1", "text": "absolute", "section": "results", "status": "draft",
-            "numeric_assertions": [{"id": "NC1", "metric": "GFlops", "value": 150.0, "formula": "identity"}],
+            "id": "C1",
+            "text": "absolute",
+            "section": "results",
+            "status": "draft",
+            "numeric_assertions": [
+                {"id": "NC1", "metric": "GFlops", "value": 150.0, "formula": "identity"}
+            ],
         },
         {
-            "id": "C2", "text": "comparison", "section": "results", "status": "draft",
-            "numeric_assertions": [{"id": "NC2", "metric": "GFlops", "value": 50.0, "formula": "relative_increase_percent"}],
+            "id": "C2",
+            "text": "comparison",
+            "section": "results",
+            "status": "draft",
+            "numeric_assertions": [
+                {
+                    "id": "NC2",
+                    "metric": "GFlops",
+                    "value": 50.0,
+                    "formula": "relative_increase_percent",
+                }
+            ],
         },
     ],
 }
 
 FIG_MANIFEST = {
     "figures": {"fig_1": "/x/fig_1.pdf"},
-    "latex_snippets": {"fig_1": "\\begin{figure}\\includegraphics{fig_1.pdf}\\caption{c}\\label{fig:1}\\end{figure}"},
+    "latex_snippets": {
+        "fig_1": "\\begin{figure}\\includegraphics{fig_1.pdf}\\caption{c}\\label{fig:1}\\end{figure}"
+    },
 }
 
 
@@ -87,6 +105,15 @@ def test_numeric_classification_citation_year_and_setting():
     assert by_val[2024.0]["requires_assertion"] is False
 
 
+def test_matrix_shape_times_is_not_a_speedup_result():
+    tex = r"\section{Introduction} We use a \(2048 \times 2048\) grid."
+    mentions = extract_numeric_mentions(tex, build_section_map(tex))
+    shapes = [item for item in mentions if item["value"] == 2048.0]
+    assert len(shapes) == 2
+    assert all(item["type"] != "result_claim" for item in shapes)
+    assert all(item["requires_assertion"] is False for item in shapes)
+
+
 def test_cite_and_ref_digits_are_not_scanned():
     tex = "\\section{Results}\nAs shown~\\cite{smith2024} in Figure~\\ref{fig:1}.\n"
     smap = build_section_map(tex)
@@ -112,7 +139,7 @@ def test_link_resolves_anchors_against_science_data():
         "This improves throughput by 50\\% over the baseline.\n"
     )
     out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
-    links = {l["anchor"]: l for l in out["paper_claim_links"]}
+    links = {item["anchor"]: item for item in out["paper_claim_links"]}
     assert "CLAIM:C1:NC1" in links
     assert links["CLAIM:C1:NC1"]["resolved"] is True
     assert links["CLAIM:C2:NC2"]["resolved"] is True
@@ -143,9 +170,28 @@ def test_figure_late_bind_records_manifest_id():
         "Figure~\\ref{fig:1} shows the kernel sustains 150 GFlop/s.\n"
     )
     out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
-    link = [l for l in out["paper_claim_links"] if l["anchor"] == "CLAIM:C1:NC1"][0]
+    link = [
+        item for item in out["paper_claim_links"] if item["anchor"] == "CLAIM:C1:NC1"
+    ][0]
     assert "fig_1" in link["figures"]
     assert "fig_1" in out["figure_refs"]
+
+
+def test_manifest_bound_caption_number_is_figure_evidence_not_uncovered_prose():
+    tex = (
+        "\\section{Results}\n"
+        "\\begin{figure}\n"
+        "\\includegraphics{fig_1.pdf}\n"
+        "\\caption{Measured throughput is 150 GFlop/s.}\n"
+        "\\label{fig:1}\n"
+        "\\end{figure}\n"
+        "Figure~\\ref{fig:1} summarizes the measurement.\n"
+    )
+    out = link_paper_claims(tex, SCIENCE_DATA, FIG_MANIFEST)
+    mention = next(item for item in out["numeric_mentions"] if item["value"] == 150.0)
+    assert mention["type"] == "figure_evidence"
+    assert mention["requires_assertion"] is False
+    assert out["uncovered_numeric_candidates"] == []
 
 
 def test_span_hash_stable_under_whitespace_and_anchor():
@@ -157,13 +203,17 @@ def test_span_hash_stable_under_whitespace_and_anchor():
 def test_writer_assertion_inline_declaration_parsed():
     """Story2Proposal (c): inline forward declaration on the anchor line is parsed
     into a verifiable assertion; config_id resolves to node_id."""
-    sd = {"_config_nodes": {
-        "cfg1": {"node_id": "nA", "environment": {}, "metrics": ["GFlops/s"]},
-        "cfg2": {"node_id": "nB", "environment": {}, "metrics": ["GFlops/s"]},
-    }}
-    tex = ("\\section{Results}\n"
-           "% CLAIM:C7:NC7 metric=GFlops/s formula=relative_increase_percent baseline=cfg2 proposed=cfg1\n"
-           "We improve throughput by 50\\%.\n")
+    sd = {
+        "_config_nodes": {
+            "cfg1": {"node_id": "nA", "environment": {}, "metrics": ["GFlops/s"]},
+            "cfg2": {"node_id": "nB", "environment": {}, "metrics": ["GFlops/s"]},
+        }
+    }
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C7:NC7 metric=GFlops/s formula=relative_increase_percent baseline=cfg2 proposed=cfg1\n"
+        "We improve throughput by 50\\%.\n"
+    )
     out = link_paper_claims(tex, sd, None)
     wa = {a["id"]: a for a in out["writer_assertions"]}
     assert "NC7" in wa
@@ -171,17 +221,29 @@ def test_writer_assertion_inline_declaration_parsed():
     assert wa["NC7"]["operands"]["baseline"]["node_id"] == "nB"
     assert wa["NC7"]["operands"]["proposed"]["node_id"] == "nA"
     # anchor counts as resolved via the writer declaration (not in science_data)
-    link = [l for l in out["paper_claim_links"] if l["anchor"] == "CLAIM:C7:NC7"][0]
+    link = [
+        item for item in out["paper_claim_links"] if item["anchor"] == "CLAIM:C7:NC7"
+    ][0]
     assert link["resolved"] is True
     assert out["counts"]["writer_assertions"] == 1
 
 
 def test_writer_assertion_cross_metric_override():
     """cfgN:metric form supports a ratio of two metrics of one config (attainment)."""
-    sd = {"_config_nodes": {"cfg1": {"node_id": "nA", "environment": {}, "metrics": ["GFlops/s", "ceil"]}}}
-    tex = ("\\section{Results}\n"
-           "% CLAIM:C8:NC8 formula=ratio_percent baseline=cfg1:ceil proposed=cfg1:GFlops/s\n"
-           "Attainment is 72\\%.\n")
+    sd = {
+        "_config_nodes": {
+            "cfg1": {
+                "node_id": "nA",
+                "environment": {},
+                "metrics": ["GFlops/s", "ceil"],
+            }
+        }
+    }
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C8:NC8 formula=ratio_percent baseline=cfg1:ceil proposed=cfg1:GFlops/s\n"
+        "Attainment is 72\\%.\n"
+    )
     out = link_paper_claims(tex, sd, None)
     wa = {a["id"]: a for a in out["writer_assertions"]}["NC8"]
     assert wa["operands"]["baseline"]["metric_path"] == "ceil"
@@ -192,26 +254,40 @@ def test_writer_assertion_cross_metric_override():
 def test_classify_latex_math_wrapped_units():
     """Numbers wrapped in $...$ / ~ / \\times must still be classified by their unit
     so settings (48 threads) and results (6.04 GFlop/s, 4.18x) are not 'ambiguous'."""
-    tex = ("\\section{Results}\n"
-           "At $48$ threads this rises to $6.04$~GFlop/s.\n"
-           "At $K=128$ the build is $4.18\\times$ slower.\n")
+    tex = (
+        "\\section{Results}\n"
+        "At $48$ threads this rises to $6.04$~GFlop/s.\n"
+        "At $K=128$ the build is $4.18\\times$ slower.\n"
+    )
     smap = build_section_map(tex)
     by = {m["value"]: m for m in extract_numeric_mentions(tex, smap)}
-    assert by[48.0]["type"] == "experimental_setting"      # 48 threads
-    assert by[6.04]["type"] == "result_claim"              # 6.04 GFlop/s
-    assert by[4.18]["type"] == "result_claim"              # 4.18x speedup
-    assert by[128.0]["type"] != "result_claim"             # K=128 is not a result
+    assert by[48.0]["type"] == "experimental_setting"  # 48 threads
+    assert by[6.04]["type"] == "result_claim"  # 6.04 GFlop/s
+    assert by[4.18]["type"] == "result_claim"  # 4.18x speedup
+    assert by[128.0]["type"] != "result_claim"  # K=128 is not a result
 
 
 def test_writer_assertion_unescapes_latex_underscores():
     """The LLM writes LaTeX-escaped underscores in the comment (metric=banded\\_single,
     formula=ratio\\_percent); the parser must unescape so they resolve/match."""
-    sd = {"_config_nodes": {"cfg1": {"node_id": "nA", "environment": {},
-                                     "metrics": ["banded_single_GFlops_per_s", "banded_strat_peak_GFlops_per_s"]}}}
-    tex = ("\\section{Results}\n"
-           "% CLAIM:C8:NC8 formula=ratio\\_percent baseline=cfg1:banded\\_strat\\_peak\\_GFlops\\_per\\_s "
-           "proposed=cfg1:banded\\_single\\_GFlops\\_per\\_s\n"
-           "Attainment is 3.6\\%.\n")
+    sd = {
+        "_config_nodes": {
+            "cfg1": {
+                "node_id": "nA",
+                "environment": {},
+                "metrics": [
+                    "banded_single_GFlops_per_s",
+                    "banded_strat_peak_GFlops_per_s",
+                ],
+            }
+        }
+    }
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C8:NC8 formula=ratio\\_percent baseline=cfg1:banded\\_strat\\_peak\\_GFlops\\_per\\_s "
+        "proposed=cfg1:banded\\_single\\_GFlops\\_per\\_s\n"
+        "Attainment is 3.6\\%.\n"
+    )
     out = link_paper_claims(tex, sd, None)
     wa = {a["id"]: a for a in out["writer_assertions"]}["NC8"]
     assert wa["formula"] == "ratio_percent"  # unescaped -> matches registry
@@ -222,17 +298,25 @@ def test_writer_assertion_unescapes_latex_underscores():
 
 def test_writer_assertion_unresolved_config_ref():
     """A declaration referencing an unknown config is not silently accepted."""
-    sd = {"_config_nodes": {"cfg1": {"node_id": "nA", "environment": {}, "metrics": ["x"]}}}
+    sd = {
+        "_config_nodes": {
+            "cfg1": {"node_id": "nA", "environment": {}, "metrics": ["x"]}
+        }
+    }
     tex = "\\section{Results}\n% CLAIM:C9:NC9 metric=x formula=identity value=cfg9\nVal 5.\n"
     out = link_paper_claims(tex, sd, None)
     wa = {a["id"]: a for a in out["writer_assertions"]}["NC9"]
     assert wa.get("unresolved_config_refs") == ["cfg9"]
-    link = [l for l in out["paper_claim_links"] if l["anchor"] == "CLAIM:C9:NC9"][0]
+    link = [
+        item for item in out["paper_claim_links"] if item["anchor"] == "CLAIM:C9:NC9"
+    ][0]
     assert link["resolved"] is False  # unresolved operand => not resolved
 
 
 def test_normalize_drops_latex_commands():
-    assert normalize_sentence("\\textbf{The} kernel~\\cite{x} runs.") == "the kernel runs."
+    assert (
+        normalize_sentence("\\textbf{The} kernel~\\cite{x} runs.") == "the kernel runs."
+    )
 
 
 def test_writer_formula_synonyms_normalize_to_identity():
@@ -241,13 +325,16 @@ def test_writer_formula_synonyms_normalize_to_identity():
     # UNVERIFIED (operand_unresolved) — unrepairable downstream because anchor
     # lines are edit-forbidden in refine. Synonyms must normalize at parse time.
     from src.claim_links import _parse_writer_assertions
-    tex = ("% CLAIM:C7:NC7 metric=achieved\\_gflops formula=value operands:value=cfg1\n"
-           "Some sentence. % CLAIM:C7:NC7\n")
+
+    tex = (
+        "% CLAIM:C7:NC7 metric=achieved\\_gflops formula=value operands:value=cfg1\n"
+        "Some sentence. % CLAIM:C7:NC7\n"
+    )
     cfg = {"cfg1": {"node_id": "node_x", "environment": {}}}
-    out = _parse_writer_assertions(tex, cfg)
+    out, _dropped, _suspect = _parse_writer_assertions(tex, cfg)
     rec = out["NC7"]
-    assert rec["formula"] == "identity"                      # synonym normalized
-    assert rec["operands"]["value"]["node_id"] == "node_x"   # operand resolved
+    assert rec["formula"] == "identity"  # synonym normalized
+    assert rec["operands"]["value"]["node_id"] == "node_x"  # operand resolved
     assert rec["operands"]["value"]["metric_path"] == "achieved_gflops"
 
 
@@ -255,31 +342,41 @@ def test_writer_operands_label_prefix_stripped():
     # a real run declared all 15 anchors as `formula=value operands=value=cfgN`;
     # the labelled token swallowed the role and every number shipped unverified.
     from src.claim_links import _parse_writer_assertions
+
     cfg = {"cfg4": {"node_id": "node_x", "environment": {}}}
-    tex = ("Text.\n"
-           "% CLAIM:Cw1:NCw1 metric=spmm\\_max\\_abs\\_error\\_vs\\_reference\\_fp32 "
-           "formula=value operands=value=cfg4\n")
-    out = _parse_writer_assertions(tex, cfg)
+    tex = (
+        "Text.\n"
+        "% CLAIM:Cw1:NCw1 metric=spmm\\_max\\_abs\\_error\\_vs\\_reference\\_fp32 "
+        "formula=value operands=value=cfg4\n"
+    )
+    out, _dropped, _suspect = _parse_writer_assertions(tex, cfg)
     a = out["NCw1"]
-    assert a["formula"] == "identity"                      # alias still applied
-    assert a["operands"]["value"]["config_id"] == "cfg4"   # label stripped, role parsed
-    assert a["operands"]["value"]["metric_path"] == "spmm_max_abs_error_vs_reference_fp32"
+    assert a["formula"] == "identity"  # alias still applied
+    assert a["operands"]["value"]["config_id"] == "cfg4"  # label stripped, role parsed
+    assert (
+        a["operands"]["value"]["metric_path"] == "spmm_max_abs_error_vs_reference_fp32"
+    )
 
 
 def test_writer_bare_operands_unchanged():
     from src.claim_links import _parse_writer_assertions
-    cfg = {"cfg1": {"node_id": "n1", "environment": {}},
-           "cfg2": {"node_id": "n2", "environment": {}}}
+
+    cfg = {
+        "cfg1": {"node_id": "n1", "environment": {}},
+        "cfg2": {"node_id": "n2", "environment": {}},
+    }
     tex = "% CLAIM:C2:NC2 metric=GFlops formula=relative_increase_percent baseline=cfg2 proposed=cfg1\n"
-    out = _parse_writer_assertions(tex, cfg)
+    out, _dropped, _suspect = _parse_writer_assertions(tex, cfg)
     a = out["NC2"]
     assert set(a["operands"]) == {"baseline", "proposed"}
 
 
 # --- scientific-notation extraction (false numeric_mismatch fix) ---
 
+
 def test_mentions_latex_scientific_notation():
     from src.claim_links import extract_numeric_mentions, build_section_map
+
     tex = r"The FP64 maximum absolute error is \(4.440892098500626\times 10^{-16}\)."
     ms = extract_numeric_mentions(tex, build_section_map(tex))
     sci = [m for m in ms if m["value"] < 1e-10]
@@ -293,32 +390,64 @@ def test_mentions_latex_scientific_notation():
 
 def test_mentions_e_notation_and_cdot():
     from src.claim_links import extract_numeric_mentions, build_section_map
+
     tex = "tolerance 1.2e-6 and \\(3.5\\cdot 10^{4}\\) ops"
-    vals = sorted(m["value"] for m in extract_numeric_mentions(tex, build_section_map(tex)))
+    vals = sorted(
+        m["value"] for m in extract_numeric_mentions(tex, build_section_map(tex))
+    )
     assert any(abs(v - 1.2e-6) < 1e-12 for v in vals)
     assert any(abs(v - 3.5e4) < 1e-6 for v in vals)
 
 
 def test_mentions_speedup_x_not_exponent():
     from src.claim_links import extract_numeric_mentions, build_section_map
+
     tex = r"We observe a \(4.18\times\) speedup over 10 runs."
     ms = extract_numeric_mentions(tex, build_section_map(tex))
     vals = sorted(m["value"] for m in ms)
-    assert vals == [4.18, 10.0]      # 4.18 stays 4.18; "10" is a separate token
+    assert vals == [4.18, 10.0]  # 4.18 stays 4.18; "10" is a separate token
+
+
+def test_mentions_bare_power_of_ten_not_the_base():
+    """``p<10^{-23}`` (a bare power of ten, no ×-multiplier) must parse to
+    1e-23, not 10.0 — the misread that shipped a false p-value claim in the
+    e2e run. Mirrors the ari-core claim_gate test."""
+    from src.claim_links import extract_numeric_mentions, build_section_map
+    tex = r"each significant with $p<10^{-23}$ over $n=5$ repeats"
+    ms = extract_numeric_mentions(tex, build_section_map(tex))
+    vals = [m["value"] for m in ms]
+    assert 1e-23 in vals, vals
+    assert 10.0 not in vals, f"base 10 leaked: {vals}"
+    assert [m for m in ms if m["value"] == 1e-23][0]["type"] == "result_claim"
+
+
+def test_positive_bare_power_conversion_is_not_a_result_claim():
+    from src.claim_links import extract_numeric_mentions, build_section_map
+
+    tex = r"\section{Methodology} BW=24T(N-2)^2/(10^9t)\quad\text{GB/s}."
+    mention = next(
+        item
+        for item in extract_numeric_mentions(tex, build_section_map(tex))
+        if item["value"] == 1e9
+    )
+    assert mention["type"] == "ambiguous"
+    assert mention["requires_assertion"] is False
 
 
 def test_mentions_huge_exponent_no_crash_no_nonfinite():
     # quad-precision max etc.: must neither raise OverflowError (which made the
     # whole gate fail OPEN upstream) nor emit non-finite JSON-poisoning values.
     from src.claim_links import extract_numeric_mentions, build_section_map
+
     tex = r"quad-precision max is \(1.19\times 10^{4932}\), and 1e999 too; speed 95.2"
     ms = extract_numeric_mentions(tex, build_section_map(tex))
     assert all(m["value"] == m["value"] and abs(m["value"]) != float("inf") for m in ms)
-    assert any(abs(m["value"] - 95.2) < 1e-9 for m in ms)   # rest of line still scanned
+    assert any(abs(m["value"] - 95.2) < 1e-9 for m in ms)  # rest of line still scanned
 
 
 def test_mentions_sentence_final_e_notation():
     from src.claim_links import extract_numeric_mentions, build_section_map
+
     ms = extract_numeric_mentions("the error is 4.4e-16.", build_section_map(""))
     assert any(abs(m["value"] - 4.4e-16) < 1e-22 for m in ms)
 
@@ -328,6 +457,7 @@ def test_mentions_e_notation_setting_stays_setting():
     # _classify verdict, so they never outrank the true claimed value in the
     # anchor binder nor demand assertion coverage.
     from src.claim_links import extract_numeric_mentions, build_section_map
+
     ms = extract_numeric_mentions("we train for 1e4 iterations", build_section_map(""))
     m = next(m for m in ms if m["value"] == 1e4)
     assert m["type"] == "experimental_setting"
@@ -338,33 +468,45 @@ def test_mentions_paren_math_unit_detected():
     # unit detection — the binder then picked an unrelated number (e.g. a CPU
     # model number) in the same sentence.
     from src.claim_links import extract_numeric_mentions, build_section_map
-    ms = extract_numeric_mentions(r"bandwidth is \(734.803418\) GB/s here",
-                                  build_section_map(""))
+
+    ms = extract_numeric_mentions(
+        r"bandwidth is \(734.803418\) GB/s here", build_section_map("")
+    )
     m = next(m for m in ms if abs(m["value"] - 734.803418) < 1e-6)
     assert m["type"] == "result_claim"
 
 
 # --- duplicate-ID anchors (writer stamped every line with the same ID) ---
 
+
 def _dup_id_tex():
-    return ("\\section{Results}\n"
-            "Throughput is 100 GFLOP/s.\n"
-            "% CLAIM:Cw:NCw metric=tput_a formula=value <operands> value=cfg1\n"
-            "Bandwidth is 200 GB/s.\n"
-            "% CLAIM:Cw:NCw metric=tput_b formula=value value=cfg2\n"
-            "Latency is 3 ms.\n"
-            "% CLAIM:Cw:NCw metric=lat_c formula=value value=cfg1\n")
+    return (
+        "\\section{Results}\n"
+        "Throughput is 100 GFLOP/s.\n"
+        "% CLAIM:Cw:NCw metric=tput_a formula=value <operands> value=cfg1\n"
+        "Bandwidth is 200 GB/s.\n"
+        "% CLAIM:Cw:NCw metric=tput_b formula=value value=cfg2\n"
+        "Latency is 3 ms.\n"
+        "% CLAIM:Cw:NCw metric=lat_c formula=value value=cfg1\n"
+    )
 
 
 def _dup_id_sd():
-    return {"_config_nodes": {"cfg1": {"node_id": "n1", "environment": {}},
-                              "cfg2": {"node_id": "n2", "environment": {}}}}
+    return {
+        "_config_nodes": {
+            "cfg1": {"node_id": "n1", "environment": {}},
+            "cfg2": {"node_id": "n2", "environment": {}},
+        }
+    }
 
 
 def test_duplicate_anchor_ids_yield_independent_assertions():
     from src.claim_links import _parse_writer_assertions
-    out = _parse_writer_assertions(_dup_id_tex(), _dup_id_sd()["_config_nodes"])
-    assert len(out) == 3                      # was 1 (last-wins collapse)
+
+    out, _dropped, _suspect = _parse_writer_assertions(
+        _dup_id_tex(), _dup_id_sd()["_config_nodes"]
+    )
+    assert len(out) == 3  # was 1 (last-wins collapse)
     metrics = sorted(a["metric"] for a in out.values())
     assert metrics == ["lat_c", "tput_a", "tput_b"]
     assert all(a["operands"].get("value") for a in out.values())
@@ -375,20 +517,117 @@ def test_duplicate_anchor_ids_yield_independent_assertions():
 
 def test_duplicate_anchor_ids_yield_per_line_links():
     from src.claim_links import link_paper_claims
+
     pcl = link_paper_claims(_dup_id_tex(), _dup_id_sd(), None)
     links = pcl["paper_claim_links"]
-    assert len(links) == 3                    # was 1 (anchor-string dedup)
-    assert all(l["resolved"] for l in links)
+    assert len(links) == 3  # was 1 (anchor-string dedup)
+    assert all(item["resolved"] for item in links)
     # link numeric_id matches the assertion id per line (gate pairing intact)
     a_ids = {a["id"] for a in pcl["writer_assertions"]}
-    assert {l["numeric_id"] for l in links} == a_ids
+    assert {item["numeric_id"] for item in links} == a_ids
     assert pcl["counts"]["writer_assertions"] == 3
 
 
 def test_reference_only_repeated_anchor_still_dedups():
     from src.claim_links import link_paper_claims
-    tex = ("A result. % CLAIM:C1:NC1\n"
-           "Restated later. % CLAIM:C1:NC1\n")
+
+    tex = "A result. % CLAIM:C1:NC1\nRestated later. % CLAIM:C1:NC1\n"
     sd = {"claims": [{"id": "C1", "numeric_assertions": [{"id": "NC1"}]}]}
     pcl = link_paper_claims(tex, sd, None)
     assert len(pcl["paper_claim_links"]) == 1  # legacy dedup preserved
+
+
+# --- L1: closing the formula vocabulary at the LLM ingest boundary ----------
+
+def test_unknown_formula_is_recorded_but_the_assertion_is_kept():
+    """A token outside the gate's closed vocabulary must be SURFACED, not
+    dropped: dropping it here would take away the gate's chance to emit its
+    named `unknown_formula` finding and would shrink writer_assertions,
+    hiding the problem instead of reporting it."""
+    from src.claim_links import link_paper_claims
+
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C1:NC1 metric=gbs formula=percent_change baseline=cfg1 proposed=cfg2\n"
+        "The kernel reaches 16.3441 GB/s.\n"
+    )
+    sd = {"_config_nodes": {"cfg1": {"node_id": "n1"}, "cfg2": {"node_id": "n2"}},
+          "claims": [], "numeric_assertions": []}
+    out = link_paper_claims(tex, sd, None)
+    assert out["counts"]["writer_assertions"] == 1, "the assertion must survive"
+    assert out["counts"]["suspect_declarations"] == 1
+    assert "percent_change" in out["suspect_declarations"][0]["reason"]
+
+
+def test_a_dropped_declaration_reports_its_real_cause_not_a_hardcoded_string():
+    """The unresolved reason was ONE hardcoded string blaming the writer for
+    referencing a non-existent id. In a real run 6 anchors were reported that
+    way while every one of their values was in results.json verbatim — the parse
+    had discarded them for lacking a formula= token."""
+    from src.claim_links import link_paper_claims
+
+    tex = (
+        "\\section{Results}\n"
+        "% CLAIM:C9:NC9 metric=gbs value=cfg1\n"
+        "The kernel reaches 16.3441 GB/s.\n"
+    )
+    sd = {"_config_nodes": {"cfg1": {"node_id": "n1"}}, "claims": [],
+          "numeric_assertions": []}
+    out = link_paper_claims(tex, sd, None)
+    assert out["counts"]["dropped_declarations"] == 1
+    assert "no inline formula=" in out["dropped_declarations"][0]["reason"]
+    unresolved = out["unresolved_anchors"]
+    assert unresolved and "declaration dropped at parse" in unresolved[0]["reason"]
+
+
+def test_known_formulas_degrades_to_empty_without_ari_core():
+    """A skill must not hard-fail on an optional ari-core import; an empty set
+    means "cannot validate" and the old pass-through applies, so this can only
+    ADD detection, never remove a working path."""
+    from src.claim_links import known_formulas
+
+    got = known_formulas()
+    assert isinstance(got, frozenset)
+
+
+# --- L4: an anchorless INSERTION must not pass unexamined ------------------
+
+def test_refine_insertions_are_detected():
+    """Every guard on paper_refine is an `issubset` PRESERVATION check on
+    anchors, so an anchorless inserted sentence passes them all by construction
+    (the empty set is a subset of anything) and nothing else reads the final
+    text. `full_paper.draft.tex` — the pre-refine copy that makes an insertion
+    trivially detectable — was written by the tool and read by nothing."""
+    from src.server import _inserted_sentences
+
+    before = ("\\section{Results}\n"
+              "The untiled baseline sustains an effective bandwidth of 11.2286 GB/s here.\n")
+    after = (before +
+             "We independently re-verified each such figure against the underlying "
+             "wall-clock measurements and confirm they agree to within rounding.\n")
+    ins = _inserted_sentences(before, after)
+    assert len(ins) == 1, ins
+    assert "re-verified" in ins[0]
+
+    # A rewording of an existing sentence is NOT an insertion.
+    reworded = ("\\section{Results}\n"
+                "The untiled baseline sustains effective bandwidth of 11.2286 GB/s here.\n")
+    assert _inserted_sentences(before, reworded) == []
+
+
+def test_an_unrequested_verification_claim_is_flagged():
+    """A refiner may reword a result; it may not invent a PROCESS. The live
+    insertion asserted a verification that never happened and was factually
+    false (8 figures deviated ~437x the stated rounding budget), and it shipped
+    in the compiled PDF."""
+    from src.server import _unrequested_process_claims
+
+    claim = ("We independently re-verified each such figure against the underlying "
+             "wall-clock measurements and confirm they agree to within rounding.")
+    plain = ("The untiled baseline sustains an effective bandwidth of 11.2286 GB/s "
+             "across the five repetitions reported here.")
+
+    assert _unrequested_process_claims([claim, plain], []) == [claim]
+    # Not flagged when a revision actually asked for that text.
+    asked = [{"replacement": claim}]
+    assert _unrequested_process_claims([claim], asked) == []

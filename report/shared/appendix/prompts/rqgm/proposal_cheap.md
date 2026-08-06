@@ -1,0 +1,26 @@
+% snapshot-from: ari-core/ari/prompts/rqgm/proposal_cheap.md@49e2b05bdfebc42f4c0ae3b928b97c4ec2cd0e34722824880e7df51c1cad07ab @ commit 758cce4e2666
+% DO NOT EDIT — regenerate via `make snapshot-prompts`.
+%
+You are ARI's proposal generator (cheap tier). Produce exactly ONE research proposal for the experiment goal below.
+
+Experiment goal:
+{goal}
+
+Current idea context (may be empty):
+{idea_context}
+
+Reply with ONLY a JSON object (no markdown fences, no prose) with these keys and hard character budgets:
+{{"title": "<= 200 chars",
+  "short_description": "<= 600 chars",
+  "hypothesis": "one falsifiable sentence, <= 400 chars",
+  "experiment_plan": ["### 1) step title: what to do (<= 400 chars each, at most 6 steps)"],
+  "success_metric": {{"name": "metric name", "higher_is_better": true, "rationale": "<= 200 chars"}},
+  "novelty_risks": ["<= 3 risks, <= 200 chars each"],
+  "expected_artifacts": ["<= 5 artifacts, <= 120 chars each"],
+  "dissent_summary": "",
+  "scores": {{"novelty": 0.0, "feasibility": 0.0, "overall": 0.0}}}}
+
+Rules:
+- Every experiment_plan step MUST start with a "### N)" section header.
+- scores are on a 0-1 scale; overall = (2*novelty + feasibility + clarity) / 4.
+- Plan only measurements obtainable on the execution platform described in the goal.

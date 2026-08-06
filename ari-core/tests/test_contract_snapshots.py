@@ -67,8 +67,20 @@ def test_public_api_submodules_present():
     assert set(golden) == expected, "public_api.json submodule set drifted"
     # Spot-check load-bearing exports from 010 §2 are recorded.
     assert "CONCEPT_INVARIANTS" in golden["ari.public.claim_gate"]
+    assert "clone" in golden["ari.public.clone"]
     assert "PathManager" in golden["ari.public.paths"]
     assert "LLMClient" in golden["ari.public.llm"]
+    assert "ExecutionRequestV1" in golden["ari.public.execution"]
+    assert "filter_nodes" in golden["ari.public.node_selection"]
+    assert "publish" in golden["ari.public.publish"]
+    assert "KnowledgeSkillManifestV1" in golden["ari.public.knowledge"]
+    assert "ManuscriptContextV1" in golden["ari.public.manuscript"]
+    assert "CapabilityProviderManifest" in golden["ari.public.providers"]
+    assert (
+        "CapabilityProviderSubstitutionReportV1"
+        in golden["ari.public.capability_binding"]
+    )
+    assert "ExternalHarnessParityReportV1" in golden["ari.public.assurance"]
     for sym in ("ARIConfig", "LLMConfig", "EvaluatorConfig"):
         assert sym in golden["ari.public.config_schema"]
     for sym in ("build_verified_context", "render_grounded_block",
@@ -86,11 +98,10 @@ def test_cli_command_tree():
         "clone", "run", "resume", "paper", "status", "skills-list",
         "viz", "projects", "show", "delete", "settings",
     }
-    # "harness" was added with the harness pool: `list` shows what each
-    # registered harness declares it is for, `select` ranks the pool against a
-    # requirement. Adding a group is a public-surface change and this list is
-    # what makes it deliberate rather than incidental.
-    assert groups == {"memory", "ear", "registry", "migrate", "doctor", "harness"}
+    assert groups == {
+        "memory", "ear", "registry", "migrate",
+        "knowledge", "provider", "harness", "manuscript",
+    }
     # Nested typer must survive the broad try/except import guards (010 §1).
     assert "token" in root["registry"]["commands"]
     assert set(root["registry"]["commands"]["token"]["commands"]) == {
@@ -105,7 +116,7 @@ def test_cli_env_side_effects_recorded():
     assert "ARI_FEWSHOT_MODE" in env["paper"]
 
 
-# ── MCP: 59 FastMCP + 30 low-level defs (88 unique names) + collision guard ──
+# ── MCP tool census + collision guard ──────────────────────────────────────
 
 def test_mcp_tool_counts_and_names():
     golden = sc.load_golden("mcp")
@@ -114,25 +125,22 @@ def test_mcp_tool_counts_and_names():
         "ari-skill-benchmark", "ari-skill-coding", "ari-skill-evaluator",
         "ari-skill-hpc", "ari-skill-idea", "ari-skill-memory",
         "ari-skill-orchestrator", "ari-skill-paper", "ari-skill-paper-re",
-        "ari-skill-plot", "ari-skill-replicate", "ari-skill-transform",
+        "ari-skill-plot", "ari-skill-replicate", "ari-skill-tool-registry",
+        "ari-skill-transform", "ari-skill-knowledge", "ari-skill-harness",
         "ari-skill-vlm", "ari-skill-web",
     }, f"MCP skill package set drifted: {sorted(skills)}"
     fastmcp = [t for tools in skills.values() for t in tools if t["idiom"] == "fastmcp"]
     lowlevel = [t for tools in skills.values() for t in tools if t["idiom"] == "lowlevel"]
-    assert len(fastmcp) == 59, f"expected 59 FastMCP tools, got {len(fastmcp)}"
-    # 30 since edit_code joined the coding skill: an exact-match replacement
-    # tool, added because 92.2% of writes in the previous campaign rewrote a
-    # file that already existed, and re-emitting a whole kernel to change a
-    # few lines both costs tokens and risks dropping working code.
-    assert len(lowlevel) == 30, f"expected 30 low-level tool defs, got {len(lowlevel)}"
+    assert len(fastmcp) == 67, f"expected 67 FastMCP tools, got {len(fastmcp)}"
+    assert len(lowlevel) == 31, f"expected 31 low-level tool defs, got {len(lowlevel)}"
     unique = {t["name"] for tools in skills.values() for t in tools}
-    assert len(unique) == 88, f"expected 88 unique tool names, got {len(unique)}"
+    assert len(unique) == 96, f"expected 96 unique tool names, got {len(unique)}"
     assert golden["invariants"]["return_envelope"] == ["error", "result"]
     assert golden["invariants"]["fq_name_pattern"] == "mcp__<skill>__<tool>"
 
 
 def test_mcp_no_unrecorded_cross_skill_collision():
-    """The flat-namespace clobber: only recorded collisions are allowed."""
+    """Inventory cross-package names so admission policy sees every collision."""
     fresh = sc.build_mcp_static()
     seen: dict[str, set[str]] = {}
     for skill, tools in fresh["skills"].items():
@@ -145,8 +153,9 @@ def test_mcp_no_unrecorded_cross_skill_collision():
         f"(fresh={sorted(duplicates)} recorded={sorted(recorded)}); "
         "run `python scripts/snapshot_contracts.py --surface mcp --update`"
     )
-    # The one known collision is read_file (coding + orchestrator, both low-level).
-    assert recorded == {"read_file"}
+    # These names are shared only with default-off components. MCPClient rejects
+    # either collision if both providers are explicitly admitted together.
+    assert recorded == {"get_result", "get_status"}
 
 
 # ── viz: route-literal drift (exact) + additive/subset response keys ─────────
@@ -166,7 +175,12 @@ def test_viz_endpoint_inventory_shape():
     assert endpoints, "viz endpoint inventory is empty"
     for ep in endpoints:
         assert set(ep) == {"method", "path", "owner"}
-        assert ep["method"] in ("GET", "POST")
+        # PATCH/DELETE joined the vocabulary with the /api/v1 config CRUD
+        # surface (gui_refresh task 05 Wave 3b; routes.py do_PATCH/do_DELETE
+        # delegate only /api/v1/ to ari/viz/v1/router.py); PUT joined with
+        # the ADR-05 secret assignment (task 06 Wave 4d; routes.py do_PUT
+        # delegates only /api/v1/ the same way).
+        assert ep["method"] in ("GET", "POST", "PATCH", "PUT", "DELETE")
     paths_by_method = {(e["method"], e["path"]) for e in endpoints}
     for critical in (
         ("GET", "/state"),

@@ -13,7 +13,7 @@ from unittest import mock
 import pytest
 import yaml
 
-from ari.config import ARIConfig, BFTSConfig, auto_config, load_config
+from ari.config import BFTSConfig, auto_config, load_config
 from ari.viz import state as _st
 from ari.viz.api_experiment import _api_launch
 
@@ -194,24 +194,24 @@ class TestConfigToAgentLoop:
         ckpt = tmp_path / "checkpoints" / "test_run"
         ckpt.mkdir(parents=True, exist_ok=True)
 
-        captured = {}
-        orig_init = None
-
         from ari.agent.loop import AgentLoop
-        orig_init = AgentLoop.__init__
+        from ari.core import build_runtime
 
-        def spy_init(self, *args, **kwargs):
-            captured["max_react_steps"] = kwargs.get("max_react_steps")
-            orig_init(self, *args, **kwargs)
+        # This is a constructor-wiring test, not an MCP integration test. Keep
+        # it independent of optional external providers such as Letta so a
+        # clean CI runner reaches the AgentLoop boundary deterministically.
+        with (
+            mock.patch("ari.mcp.client.MCPClient") as mcp_cls,
+            mock.patch.object(AgentLoop, "__init__", return_value=None) as agent_init,
+        ):
+            mcp_cls.return_value.list_tools.return_value = []
+            build_runtime(
+                cfg,
+                experiment_text="test experiment",
+                checkpoint_dir=ckpt,
+            )
 
-        with mock.patch.object(AgentLoop, "__init__", spy_init):
-            from ari.core import build_runtime
-            try:
-                build_runtime(cfg, experiment_text="test experiment", checkpoint_dir=ckpt)
-            except Exception:
-                pass  # MCP/skill init may fail — we only care about the constructor call
-
-        assert captured.get("max_react_steps") == 55
+        assert agent_init.call_args.kwargs["max_react_steps"] == 55
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -482,19 +482,15 @@ class TestLaunchConfigBftsPersistence:
 
     def _run_launch_and_get_config(self, setup_state, monkeypatch, launch_body):
         """Launch and return the launch_config dict that would be written."""
-        captured_cfg = {}
-
         def fake_popen(cmd, **kw):
             return FakeProc()
 
         monkeypatch.setattr(subprocess, "Popen", fake_popen)
         body = json.dumps(launch_body).encode()
         # Capture _launch_cfg via the watch thread
-        with mock.patch("threading.Thread") as mock_thread, \
+        with mock.patch("threading.Thread"), \
              mock.patch("builtins.open", mock.mock_open()):
             _api_launch(body)
-        # Access _launch_cfg from api_experiment module scope
-        from ari.viz import api_experiment
         # The _launch_cfg is local, but it's embedded in _watch_for_checkpoint closure.
         # Instead, verify the launch_config content by inspecting what would be written.
         # We need to check that the module-level code sets up launch_cfg correctly.
@@ -524,7 +520,6 @@ class TestLaunchConfigBftsPersistence:
             return FakeProc()
 
         # Patch Path.write_text to capture launch_config.json content
-        original_path_write = Path.write_text
         def capture_path_write(self_path, content, *a, **kw):
             if self_path.name == "launch_config.json":
                 captured_cfg.update(json.loads(content))
@@ -534,8 +529,6 @@ class TestLaunchConfigBftsPersistence:
         # Create checkpoint structure so _watch_for_checkpoint finds a new dir
         ckpt_root = setup_state / "checkpoints"
         ckpt_root.mkdir(exist_ok=True)
-        before_dirs = {d.name for d in ckpt_root.iterdir() if d.is_dir()}
-
         body = json.dumps({
             "experiment_md": "test",
             "max_react": 25,

@@ -428,6 +428,30 @@ def _verdict_for(cand: Candidate, census: dict[str, tuple[str, str]]) -> tuple[s
     return best if best is not None else ("REVIEW_REQUIRED", "")
 
 
+def _prior_verdict_for(
+    cand: Candidate, previous: dict[str, dict]
+) -> tuple[str, str] | None:
+    """Preserve reviewed classification when only source line numbers move."""
+
+    entry = previous.get(cand.key)
+    if entry is None:
+        matches = [
+            item
+            for item in previous.values()
+            if item.get("file") == cand.file
+            and item.get("name") == cand.name
+            and item.get("lines") == cand.lines
+            and item.get("chars") == cand.chars
+            and item.get("markers") == cand.markers
+        ]
+        entry = matches[0] if len(matches) == 1 else None
+    if entry is None:
+        return None
+    verdict = str(entry.get("verdict") or "REVIEW_REQUIRED")
+    prompt_id = str(entry.get("prompt_id") or "")
+    return verdict, prompt_id
+
+
 # --------------------------------------------------------------------------- findings
 def build_findings(cands: list[Candidate], allow: dict[str, dict]) -> list[dict]:
     findings: list[dict] = []
@@ -557,10 +581,12 @@ def update_baseline(cfg: dict) -> int:
     targets = resolve_targets(None, cfg)
     cands = scan_targets(targets, cfg)
     census = _census_verdicts()
+    previous = load_allow(DEFAULT_ALLOWLIST)
 
     known: list[dict] = []
     for c in cands:
-        verdict, pid = _verdict_for(c, census)
+        prior = _prior_verdict_for(c, previous)
+        verdict, pid = prior or _verdict_for(c, census)
         entry: dict[str, object] = {
             "id": c.key,
             "file": c.file,

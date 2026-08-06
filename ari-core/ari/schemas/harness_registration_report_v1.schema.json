@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "HarnessRegistrationGateV1": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "default": "",
+          "title": "Detail",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "gate_id": {
+          "title": "Gate Id",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "gate_id",
+        "passed",
+        "evidence_digest"
+      ],
+      "title": "HarnessRegistrationGateV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/harness-registration-report-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "decision": {
+      "enum": [
+        "candidate",
+        "eligible-for-verified",
+        "rejected"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "gates": {
+      "items": {
+        "$ref": "#/$defs/HarnessRegistrationGateV1"
+      },
+      "title": "Gates",
+      "type": "array"
+    },
+    "harness_id": {
+      "title": "Harness Id",
+      "type": "string"
+    },
+    "manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Digest",
+      "type": "string"
+    },
+    "report_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.harness-registration-report/v1",
+      "default": "ari.harness-registration-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "harness_id",
+    "manifest_digest",
+    "gates",
+    "decision",
+    "report_digest"
+  ],
+  "title": "ARI Harness Registration Report v1",
+  "type": "object"
+}

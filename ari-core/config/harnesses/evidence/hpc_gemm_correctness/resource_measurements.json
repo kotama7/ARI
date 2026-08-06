@@ -1,0 +1,73 @@
+{
+  "executions": [
+    {
+      "attempt_id": "har-51eeec6baece31c05dcd79167932bdcf-0",
+      "attestation_digest": "sha256:e1a75e6abe21800e912074861fac3d5fa8ed1ce1d56fe5cf400d0afd9417bb9f",
+      "completed_at": "2026-08-05T19:07:05.764802Z",
+      "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+      "cpu_core_seconds": 185.811036,
+      "execution_identity": "sha256:bd3a5f1e73672861b77e37bb7063588fbe07ce6e008dbb54827ba0bc238b1011",
+      "execution_result_digest": "sha256:7e94964aecbf9a37f8e7890517f2ad1fc5d200f566b7cb0a5e6c05d6e66bad50",
+      "execution_status": "completed",
+      "memory_byte_seconds": 399026161427.93933,
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-05T19:05:32.859284Z",
+      "tier": "certify",
+      "wall_seconds": 92.905518
+    },
+    {
+      "attempt_id": "har-8624729d59337c47b7f9f9e02e173f2d-0",
+      "attestation_digest": "sha256:01837c20798a713120015394771d30595cc3a8311830bf29263aa49030b185a6",
+      "completed_at": "2026-08-05T19:05:28.920714Z",
+      "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+      "cpu_core_seconds": 58.78865,
+      "execution_identity": "sha256:d4053ae5235cf07f4afc4a19f459b472243913938fa4073620e4cf0a7850ab5e",
+      "execution_result_digest": "sha256:2eeedf79fb0a01c3c726fa04712a2ee1ea9d6c3f08c0a0488a85f600014b7148",
+      "execution_status": "completed",
+      "memory_byte_seconds": 126247664562.9952,
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-05T19:04:59.526389Z",
+      "tier": "screen",
+      "wall_seconds": 29.394325
+    },
+    {
+      "attempt_id": "har-bc492eaaf0c2c07b2ea76f042ee9f268-1",
+      "attestation_digest": "sha256:c300976afd49195aa6525dfd2ffccbba372a87ebe12278c37a1ce0bc0c8679ca",
+      "completed_at": "2026-08-05T19:08:42.584220Z",
+      "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+      "cpu_core_seconds": 185.76639,
+      "execution_identity": "sha256:48e14655b9022df818a54ac9fc082e942434936e226c7feb63856770625ee2c8",
+      "execution_result_digest": "sha256:0f8a22e9784e07208d021ea48dafaff49d04aacf668fc24c2b3ac309e4a6a8cf",
+      "execution_status": "completed",
+      "memory_byte_seconds": 398930284872.9907,
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-05T19:07:09.701025Z",
+      "tier": "certify",
+      "wall_seconds": 92.883195
+    },
+    {
+      "attempt_id": "har-da87eea9d33cfc052734f42ece8c4f0f-0",
+      "attestation_digest": "sha256:8e7b5d07fa7875ee3f30095e7e30338ebc31b71cf16f2e6a7852758d35fe8b25",
+      "completed_at": "2026-08-05T19:09:15.580704Z",
+      "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+      "cpu_core_seconds": 58.053816,
+      "execution_identity": "sha256:ea5dbe1c2b5d6092227fba073003d894d57d1bdfb5cde9d76295cdc1eb16641e",
+      "execution_result_digest": "sha256:17011d889d36a4107d9aee694d925d93c34507cb118e6faca86265017e2ee2aa",
+      "execution_status": "completed",
+      "memory_byte_seconds": 124669620564.00076,
+      "pricing_status": "unpriced",
+      "started_at": "2026-08-05T19:08:46.553796Z",
+      "tier": "screen",
+      "wall_seconds": 29.026908
+    }
+  ],
+  "harness_id": "hpc/gemm-correctness",
+  "measurement_digest": "sha256:c01bed5ed7e7fbb9a9ba600d19a5702cf4d90c0f06a2a9f10d496dd223b1b091",
+  "measurement_semantics": {
+    "cpu_core_seconds": "declared cores multiplied by measured wall seconds",
+    "memory_byte_seconds": "declared bytes multiplied by measured wall seconds",
+    "monetary_cost": "unpriced without a locked rate card or invoice",
+    "wall_seconds": "executor timestamps"
+  },
+  "schema_version": "ari.harness-registration-resource-measurements/v1"
+}

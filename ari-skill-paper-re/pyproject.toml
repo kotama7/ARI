@@ -1,9 +1,10 @@
 [project]
 name = "ari-skill-paper-re"
-version = "0.8.0"
+version = "1.0.0"
 requires-python = ">=3.13"
 dependencies = [
-    "mcp>=1.0",
+    "mcp>=1.28.1",
+    "ari-skill-hpc>=0.3.0",
     # PaperBench upstream dependencies. The vendored packages
     # (paperbench / nanoeval / preparedness_turn_completer) are loaded
     # via sys.path injection from ``vendor/paperbench/`` at module import
@@ -15,8 +16,8 @@ dependencies = [
     "tiktoken>=0.9.0",
     "openai>=1.99.9",
     "tenacity>=9.0.0",
-    "litellm>=1.40.0",
-    "pydantic>=2.0",
+    "litellm>=1.91.0",
+    "pydantic>=2.13.4",
     "typing-extensions",
     # pymupdf4llm is used by the dogfood script + the multimodal expander
     # in ``_litellm_completer.py`` (resolves ``![](images/...)`` references

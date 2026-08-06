@@ -19,6 +19,7 @@ surfaces the tests rely on keep working.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -28,6 +29,55 @@ from ari.pipeline.stage_context import StageContext
 from ari.pipeline.yaml_loader import _resolve_templates
 
 log = logging.getLogger(__name__)
+
+
+def _recorded_inputs_unchanged(contract_path: Path, workspace_root: Path) -> bool:
+    """Return whether every input artifact recorded by *contract_path* is exact.
+
+    ``skip_if_exists`` alone is unsafe for derived artifacts such as a paper:
+    a resumed run may regenerate ``science_data.json`` or a figure batch while
+    leaving ``full_paper.tex`` in place.  PaperBuildV1 already records the byte
+    digest and size of each authoring input, so the pipeline can cheaply verify
+    that contract before deciding to reuse the paper.  The helper is deliberately
+    fail-closed; malformed contracts, paths outside the checkpoint, and missing
+    or changed inputs all force the stage to run again.
+    """
+    try:
+        document = json.loads(contract_path.read_text(encoding="utf-8"))
+        artifacts = document.get("input_artifacts")
+        if not isinstance(artifacts, list) or not artifacts:
+            return False
+        root = workspace_root.resolve()
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                return False
+            relative_path = artifact.get("relative_path")
+            digest = artifact.get("digest")
+            size_bytes = artifact.get("size_bytes")
+            if (
+                not isinstance(relative_path, str)
+                or not relative_path
+                or not isinstance(digest, str)
+                or not digest.startswith("sha256:")
+                or not isinstance(size_bytes, int)
+                or isinstance(size_bytes, bool)
+                or size_bytes < 0
+            ):
+                return False
+            candidate = (root / relative_path).resolve()
+            if not candidate.is_relative_to(root) or not candidate.is_file():
+                return False
+            if candidate.stat().st_size != size_bytes:
+                return False
+            hasher = hashlib.sha256()
+            with candidate.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    hasher.update(chunk)
+            if "sha256:" + hasher.hexdigest() != digest:
+                return False
+        return True
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return False
 
 
 class OutputSink:
@@ -139,6 +189,17 @@ class OutputSink:
 
         # Handle figures_manifest specially
         if stage_name == "generate_figures" or "figures" in stage_name:
+            if (
+                isinstance(result, dict)
+                and result.get("schema_version") == "ari.figure-batch/v1"
+            ):
+                log.info(
+                    "Stage [%s]: preserved canonical figure batch %s (%d manifests)",
+                    stage_name,
+                    primary_file,
+                    len(result.get("manifests") or []),
+                )
+                return
             figs = result.get("figures", {}) if isinstance(result, dict) else {}
             latex_snips = result.get("latex_snippets", {}) if isinstance(result, dict) else {}
             fig_kinds = result.get("figure_kinds", {}) if isinstance(result, dict) else {}
@@ -244,6 +305,27 @@ class BasePipelineStage:
                         _skip_ok = False
                 else:
                     _skip_ok = _skip_file.stat().st_size > 0
+            # Some outputs are reusable only while the immutable inputs bound
+            # into a sidecar contract still match disk.  In particular this
+            # prevents a resumed paper stage from reusing TeX after science
+            # data, figures, retrieval records, or the EAR manifest changed.
+            _input_contract_tpl = stage_cfg.get(
+                "skip_if_inputs_unchanged", ""
+            )
+            if _skip_ok and _input_contract_tpl:
+                _input_contract = Path(
+                    _resolve_templates(_input_contract_tpl, tpl_vars)
+                )
+                _skip_ok = _recorded_inputs_unchanged(
+                    _input_contract,
+                    Path(ctx.checkpoint_dir),
+                )
+                if not _skip_ok:
+                    log.info(
+                        "Stage [%s]: existing output is stale against %s; rerun",
+                        stage_name,
+                        _input_contract,
+                    )
             if _skip_ok:
                 log.info("Stage [%s]: skipping (output exists: %s)", stage_name, skip_path)
                 print(f"[Paper Pipeline] Stage [{stage_name}]: SKIPPED (output exists)", flush=True)

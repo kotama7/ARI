@@ -1,0 +1,136 @@
+schema_version: ari.harness-manifest/v1
+id: hpc/stencil-correctness
+version: 1.0.0
+kind: artifact_verifier
+status: verified
+description: ARI-native 7-point Stencil shared-library correctness verifier
+maintainer: ARI maintainers
+tags:
+- ari-native
+- cpu
+- hpc
+- stencil
+subject_types:
+- program
+target_kinds:
+- shared-library
+accepts_external_target: true
+supported_languages:
+- c
+supported_hardware:
+- cpu
+supported_architectures:
+- x86_64
+supported_dtypes:
+- float32
+- float64
+supported_domains:
+- stencil
+properties:
+- property_id: trajectory-equivalence
+  methods:
+  - differential-testing
+  tiers:
+  - screen
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- property_id: interface-conformance
+  methods:
+  - interface-check
+  tiers:
+  - screen
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- property_id: reproducibility
+  methods:
+  - repeated-execution
+  tiers:
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+target_interface_contract: stencil-7point-c-abi/v1
+target_interface_digest: sha256:e95259fcb2a8ecdf950485a7593be9ba60f7afaf4ba824756cb0073e7a56715d
+source_repository: https://github.com/kotama7/ARI.git
+source_full_commit_sha: d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+implementation_license: MIT
+dataset:
+  revision: native-hpc-generated-cases/v1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+  sha256: sha256:79cfae47a09ed3cb730bc7996bdb55e227a4551b5782a3e0395ec639a107f259
+  license: MIT
+oracle:
+  revision: ari-native-stencil-oracle/v1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+  sha256: sha256:f2ff845c2c9f1764a5f7d0d48808cd5391d22278d012df71a2b0222f645e16c2
+  license: MIT
+driver:
+  revision: ari.assurance.native-hpc/v1
+  sha256: sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f
+  license: MIT
+model:
+  revision: not-applicable
+  sha256: sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7
+  license: not-applicable
+container:
+  reference: apptainer:ari-native-python310-openroad-2026q3.sif
+  resolved_digest: sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9
+  license: Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69
+network_policy: deny
+network_allowlist: []
+credential_policy: none
+credential_scope_ids: []
+filesystem_policy: isolated-readonly-target
+resources:
+  cpu_cores: 2
+  memory_bytes: 4294967296
+  accelerators: 0
+  disk_bytes: 268435456
+  features:
+  - landlock
+  - network-namespace
+timeout_seconds: 900
+scorer_determinism: deterministic
+nondeterminism_declaration: none
+hidden_test_policy: verifier-only
+oracle_independence: independent
+tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+expected_result_schema: ari.native-hpc-verification-report/v1
+expected_result_schema_digest: sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff
+infrastructure_failure_policy: separate
+retry_limit: 1
+negative_control_report_digest: sha256:7d5fc1b300745c825613b964f3143728e7422e997957043f0b2fb8bae9fff033
+upstream_parity_report_digest: sha256:a9116d5d32f7d364cdf168e0edca0960a434186b59d00c6680e60937dcb9c5a1
+manifest_digest: sha256:8094399a6fd89f1510d00c627774509cd45a5096f4cc91253b1803d98637f051

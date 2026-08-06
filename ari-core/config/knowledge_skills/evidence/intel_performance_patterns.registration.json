@@ -1,0 +1,34 @@
+{
+  "clean_task": {
+    "artifact_digests": {
+      "evidence/intel_performance_patterns.clean_task.json": "sha256:9b130584f9cd651b8a0ba678e5ea53b526ce6dca5a96fd40650dccb875a9df0b"
+    },
+    "detail": "An independently authored accumulator task passed exact differential checks, UBSan bounds/object-size checks, and four alternating warm benchmark replays above the 1.05 speedup gate; no imported attachment executed.",
+    "methods": [
+      "benchmark-comparison",
+      "differential-testing",
+      "repeated-execution",
+      "sanitizer"
+    ],
+    "status": "pass"
+  },
+  "environment_digest": "sha256:1dbc7b68dd93d4e621389165d83782ce68d1f625cdea903f3108edef42642ad0",
+  "evidence_digest": "sha256:16bea84d31ee256b0eec27ae265050924f78715066369b48fa8a6da80742eb2a",
+  "provider_portability": {
+    "binding_lock_digests": [],
+    "compatible_provider_ids": [
+      "ari.provider.coding"
+    ],
+    "detail": "The verified Provider snapshot contains fewer than two Provider sets satisfying every required capability; portability is not claimed as passed.",
+    "provider_catalog_digest": "sha256:9f5b32908bda134060ab2b20541e72cdff524e93e6b04d1da4c2e20385326aaf",
+    "status": "not_applicable_no_second_provider"
+  },
+  "schema_version": "ari.knowledge-skill-registration-evidence/v1",
+  "skill_ref": {
+    "body_sha256": "sha256:6d435fbbb0b1a1c229b373974d12cc6d998c21a03a9606b735de40e97ea841cd",
+    "id": "intel.performance-patterns",
+    "manifest_sha256": "sha256:05249e8fbbc4fd7cd7dc868991b90d37734bbcdf1cde9550f748291a06c5f63c",
+    "version": "0.1.0+git.e9d0b641"
+  },
+  "source_full_commit_sha": "e9d0b6410fb1ad7a50fb81e0868fd23ae886882c"
+}

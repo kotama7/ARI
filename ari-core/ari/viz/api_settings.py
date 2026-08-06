@@ -1,5 +1,6 @@
-from __future__ import annotations
 """ARI viz: api_settings — env keys, settings, workflow, skills, profiles."""
+
+from __future__ import annotations
 
 import json
 import logging
@@ -10,48 +11,57 @@ from pathlib import Path
 from . import state as _st
 
 log = logging.getLogger(__name__)
+_PINNED_RETRIEVAL_BACKENDS = frozenset(
+    {"semantic_scholar", "arxiv", "alphaxiv"}
+)
 
 
-def _extract_tools_from_server(skill_dir: Path) -> list[str]:
-    """Extract MCP tool names from server.py when mcp.json has no tools.
+# Redaction placeholder served instead of any non-empty secret value
+# (RR-P0-2 / ADR-11 / MN-2 — GET /api/env-keys never returns plaintext).
+ENV_KEY_REDACTED = "***configured***"
 
-    Looks for two patterns:
-    - ``@mcp.tool()`` decorator followed by ``async def <name>(`` or ``def <name>(``
-    - ``Tool(name="<name>"`` in ``list_tools()`` style registration
+# POST /api/env-keys name allowlist (plan 09 §Secret policy / ADR-11):
+# UPPER_SNAKE, must start with a letter, max 64 chars total. `fullmatch` is
+# deliberate — `re.match` with `$` would accept a trailing newline.
+_ENV_KEY_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]{0,63}")
+
+
+def _env_chain() -> list[tuple[Path, str]]:
+    """Ordered ``(.env path, source_class)`` candidates — project > repo > user.
+
+    Shared by the legacy ``GET /api/env-keys`` harvest and the v1 secret
+    readiness endpoint (``ari.viz.v1.secrets``) so the two can never disagree
+    about which file wins. ``source_class`` vocabulary is the ADR-11 one:
+    ``project_env`` (active checkpoint), ``repo_env`` (ARI/.env or
+    ari-core/.env), ``user_env`` (~/.env); ``process_env`` is the os.environ
+    fallback handled by the callers.
     """
-    server_py = skill_dir / "src" / "server.py"
-    if not server_py.exists():
-        return []
-    try:
-        src = server_py.read_text()
-    except Exception:
-        return []
-    tools: list[str] = []
-    # Pattern 1: @mcp.tool() decorator
-    for m in re.finditer(r"@mcp\.tool\(\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(", src):
-        tools.append(m.group(1))
-    # Pattern 2: Tool(name="...")
-    for m in re.finditer(r'Tool\(\s*name\s*=\s*"(\w+)"', src):
-        if m.group(1) not in tools:
-            tools.append(m.group(1))
-    return tools
+    _here = Path(__file__).parent
+    _ari_root = _here.parent.parent.parent  # /ARI/
+    chain = [
+        (_ari_root / ".env", "repo_env"),              # /ARI/.env
+        (_ari_root / "ari-core" / ".env", "repo_env"), # /ARI/ari-core/.env
+        (Path.home() / ".env", "user_env"),            # ~/.env (global fallback)
+    ]
+    if _st._checkpoint_dir:
+        chain.insert(0, (_st._checkpoint_dir / ".env", "project_env"))
+    return chain
 
 
 def _api_get_env_keys() -> dict:
-    """Read API keys from all .env files (project-specific first, then global)."""
-    _here = Path(__file__).parent
-    _ari_root = _here.parent.parent.parent  # /ARI/
-    candidates = [
-        _ari_root / ".env",             # /ARI/.env (project root — highest priority)
-        _ari_root / "ari-core" / ".env", # /ARI/ari-core/.env
-        Path.home() / ".env",            # ~/.env (global fallback)
-    ]
-    if _st._checkpoint_dir:
-        candidates.insert(0, _st._checkpoint_dir / ".env")
+    """List secret-bearing keys from the .env chain — REDACTED (RR-P0-2).
+
+    ADR-11 / MN-2: this endpoint historically returned every value whose name
+    contains ``API_KEY``/``SECRET``/``TOKEN`` in plaintext. It now serves only
+    readiness: each non-empty value is replaced by :data:`ENV_KEY_REDACTED`,
+    empty values stay ``""``, the ``source`` map is unchanged, and a top-level
+    ``"redacted": true`` marker lets clients detect the new contract. Secret
+    values can no longer be read over HTTP; the write path (POST) is separate.
+    """
     keys = {}
     source = {}  # track which file each key came from
     # Read all files; first occurrence wins (project > global)
-    for env_path in candidates:
+    for env_path, _cls in _env_chain():
         if not env_path.exists():
             continue
         for line in env_path.read_text().splitlines():
@@ -60,17 +70,18 @@ def _api_get_env_keys() -> dict:
                 continue
             if "=" in line:
                 k, _, v = line.partition("=")
-                k = k.strip(); v = v.strip().strip('"').strip("'")
+                k = k.strip()
+                v = v.strip().strip('"').strip("'")
                 if any(x in k.upper() for x in ["API_KEY", "SECRET", "TOKEN"]):
                     if k not in keys:
-                        keys[k] = v
+                        keys[k] = ENV_KEY_REDACTED if v else ""
                         source[k] = str(env_path)
     # Also check os.environ as final fallback
     for k in ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"]:
         if k not in keys and os.environ.get(k):
-            keys[k] = os.environ[k]
+            keys[k] = ENV_KEY_REDACTED
             source[k] = "os.environ"
-    return {"keys": keys, "source": source}
+    return {"keys": keys, "source": source, "redacted": True}
 
 
 
@@ -100,17 +111,59 @@ def _upsert_env_key(name: str, value: str, *, quote: bool) -> None:
             new_lines.append(line)
     if not found:
         new_lines.append(rendered)
-    env_path.write_text("\n".join(new_lines) + "\n")
+    # RR-P0-4 hardening (gui_refresh Wave 3b): atomic same-dir tmp + fsync +
+    # os.replace so a crash mid-write can never truncate the .env, and the
+    # secret-bearing file is owner-only (0o600) from the moment it exists.
+    # Content is byte-identical to the historical write_text form.
+    import tempfile
+    payload = "\n".join(new_lines) + "\n"
+    fd, tmp_path = tempfile.mkstemp(dir=str(env_path.parent), prefix=".env.tmp-")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, env_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+    try:
+        os.chmod(env_path, 0o600)
+    except OSError:
+        pass
     os.environ[name] = value
 
 
 def _api_save_env_key(body: bytes) -> dict:
-    """Append or update a key in project .env (ARI root)."""
+    """Append or update a key in project .env (ARI root).
+
+    Name allowlist enforcement (plan 09 §Secret policy / ADR-11): the key
+    must fullmatch ``^[A-Z][A-Z0-9_]{0,63}$`` and carry no newline/control
+    characters — anything else is rejected with HTTP 400 (the ``_status``
+    pop convention in routes.py). The happy-path write is unchanged.
+    """
     data = json.loads(body)
     key_name  = data.get("key","").strip()
     key_value = data.get("value","").strip()
     if not key_name or not key_value:
         return {"ok": False, "error": "key and value required"}
+    raw_name = data.get("key", "")
+    if (
+        any(ord(c) < 0x20 or ord(c) == 0x7F for c in raw_name)
+        or not _ENV_KEY_NAME_RE.fullmatch(key_name)
+    ):
+        return {
+            "ok": False,
+            "error": (
+                "invalid key name: must match ^[A-Z][A-Z0-9_]{0,63}$ "
+                "(UPPER_SNAKE, max 64 chars, no control characters)"
+            ),
+            "_status": 400,
+        }
     _upsert_env_key(key_name, key_value, quote=True)
     return {"ok": True}
 
@@ -201,6 +254,16 @@ def _api_get_settings() -> dict:
 
 def _api_save_settings(body: bytes) -> dict:
     data = json.loads(body)
+    retrieval_backend = data.get("retrieval_backend")
+    if (
+        retrieval_backend is not None
+        and retrieval_backend not in _PINNED_RETRIEVAL_BACKENDS
+    ):
+        return {
+            "ok": False,
+            "error": "retrieval_backend must select one pinned provider",
+            "_status": 400,
+        }
     # Extract API key — write to .env instead of settings.json
     _raw_key = data.pop("api_key", "") or data.pop("llm_api_key", "") or ""
     # Also remove from the dict so it's never persisted in settings.json
@@ -246,42 +309,34 @@ def _api_get_workflow() -> dict:
     for wf in wf_candidates:
         if wf.exists():
             try:
-                data = yaml.safe_load(wf.read_text())
-                # Load MCP tool metadata from each skill directory
+                raw = wf.read_bytes()
+                data = yaml.safe_load(raw)
+                # Load dashboard metadata from the same canonical manifests as
+                # runtime admission. Generated mcp.json and source scraping are
+                # deliberately not dashboard authorities.
+                from ari.skill_manifest import load_skill_manifest, manifest_digest
                 ari_root = wf.parent.parent.parent
                 skill_mcp: dict = {}
-                # Build dir-name → mcp data mapping first
                 dir_mcp: dict[str, dict] = {}
-                for skill_dir in sorted(ari_root.glob("ari-skill-*")):
-                    mcp_file = skill_dir / "mcp.json"
-                    tools: list = []
-                    mcp_name = skill_dir.name
-                    mcp_desc = ""
-                    mcp_ver = ""
-                    if mcp_file.exists():
-                        try:
-                            mcp_data = json.loads(mcp_file.read_text())
-                            mcp_name = mcp_data.get("name") or skill_dir.name
-                            mcp_desc = mcp_data.get("description", "")
-                            tools = mcp_data.get("tools", [])
-                            mcp_ver = mcp_data.get("version", "")
-                        except Exception:
-                            log.debug("skill metadata read error", exc_info=True)
-                    # Fallback: extract tool names from server.py if
-                    # mcp.json has no tools listed
-                    if not tools:
-                        tools = _extract_tools_from_server(skill_dir)
+                for manifest_path in sorted(ari_root.glob("ari-skill-*/skill.yaml")):
+                    skill_dir = manifest_path.parent
+                    manifest = load_skill_manifest(manifest_path)
+                    resolved_tools = manifest.resolved_tools()
                     entry = {
-                        "name": mcp_name,
-                        "description": mcp_desc,
-                        "tools": tools,
-                        "version": mcp_ver,
+                        "name": manifest.name,
+                        "description": manifest.description,
+                        "tools": [tool.name for tool in resolved_tools],
+                        "version": manifest.version,
                         "dir": skill_dir.name,
+                        "manifest_digest": manifest_digest(manifest),
+                        "capabilities": {
+                            tool.name: tool.capability_ref for tool in resolved_tools
+                        },
                     }
                     dir_mcp[skill_dir.name] = entry
                     skill_mcp[entry["name"]] = entry
-                # Resolve workflow.yaml skills section: map workflow skill
-                # names to their mcp.json tools via the path field
+                # Resolve workflow aliases to canonical manifest entries via
+                # the configured package path.
                 for sk in data.get("skills", []):
                     sk_name = sk.get("name", "")
                     sk_path = sk.get("path", "")
@@ -289,7 +344,7 @@ def _api_get_workflow() -> dict:
                     resolved = sk_path.replace("{{ari_root}}", str(ari_root))
                     dir_name = Path(resolved).name if resolved else ""
                     if dir_name and dir_name in dir_mcp:
-                        # Merge mcp.json data under the workflow skill name
+                        # Merge canonical data under the workflow skill name.
                         src = dir_mcp[dir_name]
                         entry = {
                             "name": sk_name,
@@ -297,12 +352,14 @@ def _api_get_workflow() -> dict:
                             "tools": src["tools"],
                             "version": src["version"],
                             "dir": src["dir"],
+                            "manifest_digest": src["manifest_digest"],
+                            "capabilities": src["capabilities"],
                         }
                         # Read phase directly from workflow.yaml skills entry
                         if sk.get("phase"):
                             entry["phase"] = sk["phase"]
                         skill_mcp[sk_name] = entry
-                        # Remove the mcp.json alias if it differs from
+                        # Remove the canonical alias if it differs from
                         # the workflow name (e.g. vlm-review-skill vs
                         # vlm-skill) to avoid duplicate entries
                         mcp_alias = src["name"]
@@ -350,31 +407,19 @@ def _api_get_workflow() -> dict:
                         elif sk_name in paper_skills:
                             entry["phase"] = "pipeline"
 
-                # Determine usage: stage / active / registered
-                # Scan core source for tool name references
-                core_dir = ari_root / "ari-core" / "ari"
-                _core_src = ""
-                if core_dir.is_dir():
-                    for py in core_dir.rglob("*.py"):
-                        if "viz/" in str(py) or "__pycache__" in str(py):
-                            continue
-                        try:
-                            _core_src += py.read_text(errors="ignore")
-                        except Exception:
-                            pass
+                # Usage is declarative: pipeline-owned, configured/active, or
+                # manifest-only/registered. Source-text references are not an
+                # execution contract.
+                configured_skills = {
+                    str(skill.get("name") or "") for skill in data.get("skills", [])
+                }
                 for sk_name, entry in skill_mcp.items():
                     if sk_name in bfts_skills or sk_name in paper_skills:
                         entry["usage"] = "stage"
+                    elif sk_name in configured_skills:
+                        entry["usage"] = "active"
                     else:
-                        tool_names = [
-                            t if isinstance(t, str) else t.get("name", "")
-                            for t in entry.get("tools", [])
-                        ]
-                        called = any(
-                            f'"{tn}"' in _core_src or f"'{tn}'" in _core_src
-                            for tn in tool_names if tn
-                        )
-                        entry["usage"] = "active" if called else "registered"
+                        entry["usage"] = "registered"
 
                 # Read BFTS and paper pipelines from YAML (no hardcoded stages)
                 bfts_pipeline = data.get("bfts_pipeline") or []
@@ -387,11 +432,16 @@ def _api_get_workflow() -> dict:
                     for s in paper_pipeline:
                         if not s.get("depends_on"):
                             s["depends_on"] = [last_bfts]
+                # Weak revision of the served bytes (gui_refresh Wave 4d,
+                # additive key): revision-aware clients echo it back as
+                # base_revision on writes; legacy consumers ignore it.
+                from .api_workflow import workflow_revision
                 return {"ok": True, "workflow": data, "path": str(wf), "skill_mcp": skill_mcp,
                         "disabled_tools": data.get("disabled_tools") or [],
                         "bfts_pipeline": bfts_pipeline,
                         "paper_pipeline": paper_pipeline,
-                        "full_pipeline": bfts_pipeline + paper_pipeline}
+                        "full_pipeline": bfts_pipeline + paper_pipeline,
+                        "revision": workflow_revision(raw)}
             except Exception as e:
                 return {"ok": False, "error": str(e)}
     return {"ok": False, "error": "workflow.yaml not found"}
@@ -401,13 +451,23 @@ def _api_get_workflow() -> dict:
 def _api_save_workflow(body: bytes) -> dict:
     """Save modified workflow.yaml into active checkpoint."""
     import yaml
-    err = _st.require_checkpoint_dir()
-    if err:
-        return {"ok": False, "error": err, "_status": 400}
+    from .api_workflow import (
+        _workflow_revision_guard,
+        _workflow_write_guard,
+        workflow_revision,
+    )
+    guard = _workflow_write_guard()
+    if guard:
+        return guard
     data = json.loads(body)
     pipeline = data.get("pipeline")
     if not pipeline:
         return {"ok": False, "error": "missing pipeline"}
+    # Optional optimistic concurrency (gui_refresh Wave 4d): a stale
+    # base_revision refuses with the frozen 409 payload before any write.
+    stale = _workflow_revision_guard(data.get("base_revision"))
+    if stale:
+        return stale
     # Always write to checkpoint dir, not arbitrary path
     wf_p = _st._checkpoint_dir / "workflow.yaml"
     try:
@@ -419,8 +479,9 @@ def _api_save_workflow(body: bytes) -> dict:
         elif wf_p.exists():
             existing = yaml.safe_load(wf_p.read_text()) or {}
         existing["pipeline"] = pipeline
-        wf_p.write_text(yaml.dump(existing, allow_unicode=True, sort_keys=False))
-        return {"ok": True}
+        text = yaml.dump(existing, allow_unicode=True, sort_keys=False)
+        wf_p.write_text(text)
+        return {"ok": True, "revision": workflow_revision(text.encode("utf-8"))}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -429,7 +490,6 @@ def _api_save_workflow(body: bytes) -> dict:
 
 def _api_skill_detail(name: str) -> dict:
     """Return skill source files and README."""
-    import yaml as _yaml
     ari_root = Path(__file__).parent.parent.parent.parent
     skill_dir = ari_root / ("ari-skill-" + name.replace("ari-skill-", "").replace("-skill", "") + "-skill" if not name.startswith("ari-") else name)
     # Try multiple candidate names
@@ -491,7 +551,9 @@ def _api_skills() -> list:
                     data.setdefault("name", d.name)
                     data.setdefault("display_name", d.name)
                     data.setdefault("description", "")
-                    data.setdefault("requires_env", [])
+                    # Frontend compatibility while canonical manifests use the
+                    # grammatically explicit required_env field.
+                    data.setdefault("requires_env", data.get("required_env", []))
                     skills.append(data)
                 except Exception:
                     skills.append({"name": d.name, "display_name": d.name, "description": "", "requires_env": []})
@@ -551,5 +613,3 @@ def _api_rubrics() -> list:
         except Exception:
             continue
     return out
-
-

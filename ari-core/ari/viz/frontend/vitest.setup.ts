@@ -9,6 +9,17 @@
 import '@testing-library/jest-dom/vitest';
 import { vi, afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import en from './src/i18n/en';
+import ja from './src/i18n/ja';
+import zh from './src/i18n/zh';
+import { registerDicts } from './src/i18n';
+
+// In production the locale dicts are lazy-loaded (dynamic import behind the
+// I18nProvider ready-gate — gui_refresh Wave 4d main-chunk reduction). Tests
+// render components directly, without the provider, and assert on real
+// strings, so preload all three dicts into the module cache eagerly: t()
+// then resolves synchronously exactly as before the split.
+registerDicts({ en, ja, zh });
 
 afterEach(() => {
   cleanup();

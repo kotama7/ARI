@@ -20,7 +20,9 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/rqgm
+    role: implementation
+last_verified: 2026-07-30
 ---
 
 # 用語集
@@ -67,7 +69,8 @@ BFTS ノードが親に対して果たす役割: `draft`、`improve`、`debug`�
 
 **should_prune**
 BFTS の硬い打ち切り述語: `current_total ≥ max_total_nodes`、
-`depth ≥ max_depth`、または `_sterile is True` のときに剪定します。
+`depth ≥ max_depth`、`_sterile is True`、または `_valid_for_frontier is False`
+（RQGM 選択的消去）のときに剪定します。
 ここに LLM の判断は入りません。[BFTS アルゴリズム](../concepts/bfts.md)を参照。
 
 **computed-evidence claim（計算由来エビデンスのクレーム）**
@@ -184,6 +187,105 @@ Model Context Protocol サーバーとしてパッケージ化された機能（
 `generate_ideas` を通じて一度だけ実行されます。
 [アーキテクチャ](../concepts/architecture.md#full-data-flow)を参照。
 
+## RQGM（オプトインの憲法ガバナンス）
+
+オプトインの `ari_rqgm` 実行モードに固有の用語です。デフォルトのランには
+どれも当てはまりません。[実行モード](../guides/execution_modes.md)と
+[RQGM 評価](../guides/rqgm_evaluation.md)を参照。
+
+**simple_bfts / ari_rqgm（実行モード）**
+`ari.mode` の 2 つの値。`simple_bfts`（デフォルト）は現行の ARI そのままで、
+変更はありません — RQGM オブジェクトを構築せず、`ari.rqgm` モジュールを
+インポートしません。`ari_rqgm` はエポックガバナンスへのオプトインで、加えて
+`rqgm.enabled: true` インターロックを必要とします; 不一致は警告とともに
+`simple_bfts` へ fail-safe します（`ari/rqgm/mode.py`）。
+[実行モード](../guides/execution_modes.md)を参照。
+
+**epoch（エポック）**
+`ari_rqgm` ランのガバナンス時間区分。境界トランザクションは新規 BFTS ノード
+`rqgm.epoch.nodes_per_epoch` 個ごとに発火します（デフォルト 10; `<= 0` は
+ランを `epoch_000` に留めます）。ガバナンス、レジストリ遷移、リプレイプール
+への受け入れはこれらの境界でのみ起こります。
+
+**EpochState**
+アクティブなプロンプト / コンポーネント集合と utility policy の、エポック
+ごとの不変な凍結（`ari/rqgm/state.py`、`epoch_state.json` へスナップ
+ショット）。エポックの間は凍結されたままで、壁時計フィールド抜きで
+フィンガープリントされるため、後のレジストリ変更が閉じたエポックに漏れる
+ことは決してありません。
+
+**ConstitutionalKernel**
+進化しない Layer-0 チェッカ（`ari/rqgm/kernel.py`）: バイト安定な
+`KernelReport` 判定を返し、何も書かない、純粋で決定論的なバリデータです。
+severity はコード（`kernel_rules.py`）に凍結され、決して設定できません;
+設定に置かれるのは姿勢（`rqgm.kernel.enforcement`: `standard` /
+`audit_only`）と浮動小数トレランスのみです。
+
+**GovernanceOrchestrator**
+エポック境界ガバナンスの単一のエントリポイント（`ari/rqgm/governance/`）:
+閉じようとしているエポックに対する証拠収集、追及、弁護、裁定で、
+ConstitutionalKernel によって自己監査されます。予算と姿勢は
+`rqgm.governance` / `rqgm.replay` にあります。
+
+**RegistryTransitionEngine**
+レジストリステータスの唯一の書き込み手（`ari/rqgm/transition_engine.py`）。
+ガバナンスの結果を、RQGM ストアを通じて永続化されるコミット済み
+`EpochTransition`（有効化 / 退役）へ変えます; 他のいかなるコンポーネントも
+プロンプトやコンポーネントのステータスを変更できません。
+
+**FrontierRepairEngine**
+退役を伴う遷移の後、エポック境界で走ります
+（`ari/rqgm/frontier_repair.py`）: 退役した `prompt_hash` に実質的に依存
+するレコードをトレースし、stale とマークし（論理のみ — 何も削除されない）、
+生き残ったものを再計算し、BFTS フロンティアを決定論的に再構築します。
+
+**ProposalRecord / ProposalSummaryView**
+`ProposalRecord` はアーカイブされる提案 1 件です（append-only な
+`{checkpoint}/proposals/proposal_records.jsonl`）; `ProposalSummaryView` は
+そこから導出される有界のサマリ — BFTS が見る**唯一の**形です
+（`ari/rqgm/proposals/records.py`）。`ProposalRouter` は
+`proposal_router.*` の予算の下でジェネレータレジストリへ生成を
+ディスパッチします; VirSci ジェネレータはオプトインで、デフォルトでは off
+です。
+
+**PromptSpec**
+バージョン付きのプロンプトアイデンティティ 1 件（`ari/rqgm/prompt_spec.py`）。
+不変です: あらゆる変更は新しい `prompt_id` + `prompt_hash` であり、編集では
+ありません。進化済みテンプレート本文は `{checkpoint}/rqgm_prompts/` 以下に
+write-once で保存されます。
+
+**ValidatedAttackRecord**
+裁定を生き延びた敵対的発見 — 判定 `valid` / `partially_valid` に対してのみ
+存在し（`ari/rqgm/adversarial/records.py`）、リプレイプールに受け入れ可能な
+唯一の攻撃形です。
+
+**AdversarialReplayPool**
+裁定済み失敗ケースのキュレートされたプール
+（`ari/rqgm/adversarial/pool.py`）で、
+`{checkpoint}/rqgm/adversarial_replay_pool.json` へスナップショットされ
+ます; append-only な真実は `rqgm_adversarial_cases.jsonl` です。受け入れは
+エポック境界でのみ起こります; サイズは `rqgm.adversarial.pool.*` にあり
+ます。
+
+**selective erasure（選択的消去）**
+退役したプロンプトが生んだ — またはそれに実質的に依存する — レコードの、
+論理のみの無効化。物理的な削除や書き換えは何も起こりません: staleness は
+`SelectiveErasureEvent` / `FrontierRebuildEvent` の監査ログ行と、導出された
+`rqgm_erasure_state.json` ロールアップに存在し、読み取り側が読み取り時に
+`stale` を導出します。
+
+**clean-room regeneration（クリーンルーム再生成）**
+退役ロールの置換プロンプトを、退役プロンプトのテキストへアクセスせずに
+起草すること（`ari/rqgm/clean_room.py`、`CleanRoomCoordinator`）。候補の
+受け入れに対しては fail-closed、ランに対しては fail-open です: 違反があれば
+ロールはコミット済みのベースラインテンプレートへ戻り、ループは継続します。
+
+**meta tier（メタティア）**
+3 つのレジストリティア（`fixed` / `institutional` / `meta`）の最上位。
+メタティアのガバナンスコンポーネントは進化できますが、その権限は拡大でき
+ません: capability フラグは deny-by-default で、`ari/rqgm/meta_rules.py` の
+凍結された権限テーブルに対してチェックされます。
+
 ## 状態と公開
 
 **checkpoint（チェックポイント）**
@@ -191,7 +293,11 @@ Model Context Protocol サーバーとしてパッケージ化された機能（
 `run_id` は `YYYYMMDDHHMMSS_<slug>` 形式です。すべての状態はここに置かれ、`PathManager`
 （`ari/paths.py`）が唯一の真実源です。API キーはここには決して保存されません —
 `.env` または環境から取得されます。
-[アーキテクチャ → ファイル構造](../concepts/architecture.md#file-structure)を参照。
+完全なレイアウトは[アーキテクチャ → ファイル構造](../concepts/architecture.md#file-structure)を、
+ファイルごとのスキーマは[ファイルフォーマット](file_formats.md)を参照して
+ください。`ari_rqgm` ランは加えて RQGM 状態ファイル（`rqgm_state.json`、
+`rqgm_registry.json`、`rqgm_audit.jsonl`、`proposals/`、`rqgm_prompts/`、
+…）を書きます — デフォルトのランにはすべて不在です。
 
 **EAR (Experiment Artifact Repository)**
 論文に同梱される、決定論的にビルドされる `ear/` バンドル（コード、入力データ、図表、README、
@@ -237,4 +343,5 @@ ORS ルーブリックの仕組みを逆向きに用い（v0.7.2）、ベニュ�
 関連: [アーキテクチャ](../concepts/architecture.md) ·
 [BFTS アルゴリズム](../concepts/bfts.md) ·
 [メモリアーキテクチャ](../concepts/memory.md) ·
+[実行モード](../guides/execution_modes.md) ·
 [設定](configuration.md)

@@ -1,0 +1,13 @@
+{
+  "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+  "driver_digest": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f",
+  "driver_revision": "ari.assurance.native-hpc/v1",
+  "kind": "stencil",
+  "negative_control_report_digest": "sha256:7d5fc1b300745c825613b964f3143728e7422e997957043f0b2fb8bae9fff033",
+  "negative_control_verdict": "fail",
+  "official_runner_parity": true,
+  "reference_report_digest": "sha256:15a7b28a9e223d7e3fe8d61b5a3beb89d0e6f7236d184961a184208e219755f4",
+  "reference_verdict": "pass",
+  "report_digest": "sha256:a9116d5d32f7d364cdf168e0edca0960a434186b59d00c6680e60937dcb9c5a1",
+  "schema_version": "ari.native-hpc-official-runner-parity/v1"
+}

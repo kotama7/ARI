@@ -1,0 +1,185 @@
+# Candidate multi-backend template only. The formally promoted credential-free
+# local-Aer identity is the exact profile and lock under
+# providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/; its verified lock digest is
+# sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684.
+# IBM Runtime and hardware remain outside that scope. Replace every absolute
+# path, backend identity, evidence file, and SHA-256 placeholder and complete a
+# separate credential/backend promotion before catalog sync.
+# QISKIT_IBM_TOKEN is supplied through the quantum.ibm-runtime credential scope;
+# it must never be written here.
+schema_version: ari.catalog-sources/v1
+sources:
+  - source_id: qiskit.bell-validation
+    kind: qiskit
+    provider_id: qiskit-mcp-servers
+    core_support_release: 0.3.1
+    core_provider_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    core_launcher:
+      command_kind: python
+      python_executable: /absolute/qiskit-env/bin/python
+      package_root: /absolute/qiskit-env/lib/python3.13/site-packages/qiskit_mcp_server
+      python_module: qiskit_mcp_server
+      python_callable: main
+      expected_architecture: x86_64
+      arguments: []
+      literal_env: {}
+      identity_globs:
+        - "**/*"
+        - "**/*.py"
+        - "*.lock"
+        - pyproject.toml
+        - requirements*.txt
+    runtime_support_release: 0.6.1
+    runtime_provider_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    runtime_launcher:
+      command_kind: python
+      python_executable: /absolute/qiskit-runtime-env/bin/python
+      package_root: /absolute/qiskit-runtime-env/lib/python3.13/site-packages/qiskit_ibm_runtime_mcp_server
+      python_module: qiskit_ibm_runtime_mcp_server
+      python_callable: main
+      expected_architecture: x86_64
+      arguments: []
+      literal_env: {}
+      identity_globs:
+        - "**/*"
+        - "**/*.py"
+        - "*.lock"
+        - pyproject.toml
+        - requirements*.txt
+    timeout_seconds: 60
+    max_concurrent_jobs: 4
+    max_retained_jobs: 1024
+    experiments:
+      - schema_version: ari.qiskit-experiment/v1
+        profile_id: bell-local-ideal
+        description: Seeded Bell-state sampling on a pinned local Aer target.
+        software:
+          qiskit_version: 2.5.1
+          qiskit_aer_version: 0.17.2
+          stack_digest: sha256:cd14a34b9292176de862f9d98c472e41b5a8143f8e34c6114ab389a1922710f5
+        circuit:
+          qpy_path: /absolute/circuits/bell-phi-plus.qpy
+          qpy_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          qpy_version: 17
+          num_qubits: 2
+          num_clbits: 2
+          parameter_bindings: {}
+          parameter_units: {}
+        transpilation:
+          pass_manager: preset
+          optimization_level: 1
+          seed_transpiler: 731
+          initial_layout: [0, 1]
+        backend:
+          kind: local-ideal
+          backend_name: aer_simulator
+          target:
+            num_qubits: 2
+            basis_gates: [cx, id, rz, sx, x]
+            coupling_map: [[0, 1], [1, 0]]
+            target_digest: sha256:937b43bd4e3d4e47436c27784e67c9766f3b3fe991c7ba3828e52f12dc27c80d
+          simulator_method: statevector
+          precision: double
+          device: CPU
+          max_parallel_threads: 1
+          noise_model: null
+        shots: 4096
+        seed_simulator: 20260802
+        mitigation:
+          dynamical_decoupling: false
+          dd_sequence: XY4
+          gate_twirling: false
+          measure_twirling: false
+        expected_outcomes:
+          - {bitstring: "00", probability_min: 0.45, probability_max: 0.55}
+          - {bitstring: "11", probability_min: 0.45, probability_max: 0.55}
+        max_unlisted_probability: 0.0
+        golden_fixture_path: /absolute/evidence/bell-local-ideal.golden.json
+        golden_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+        replay_fixture_path: /absolute/evidence/bell-local-ideal.replay.json
+        replay_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+        evidence:
+          protocol_conformance: true
+          provider_pinned: true
+          launcher_verified: true
+          dependencies_pinned: true
+          replay_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          scientific_validation_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          limitations_documented: true
+          semantics_documented: true
+          units_documented: true
+          method_identity_documented: true
+          architecture: x86_64
+          notes: [Replace template evidence with independently reviewed fixture bytes.]
+        limitations:
+          - The validation applies only to this circuit, target, software stack, seeds, method, and shot count.
+          - Sampling remains statistical even when simulator and transpiler seeds are fixed.
+        timeout_seconds: 3600
+        poll_interval_seconds: 0.25
+
+      - schema_version: ari.qiskit-experiment/v1
+        profile_id: bell-ibm-hardware
+        description: Bell-state sampling on one reviewed IBM Quantum hardware target.
+        software:
+          qiskit_version: 2.5.1
+          qiskit_ibm_runtime_version: 0.48.0
+          stack_digest: sha256:7943f5c78e665845b2d81d306510797beef8de87ff51198b9e73d49ced96bf24
+        circuit:
+          qpy_path: /absolute/circuits/bell-phi-plus.qpy
+          qpy_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          qpy_version: 17
+          num_qubits: 2
+          num_clbits: 2
+          parameter_bindings: {}
+          parameter_units: {}
+        transpilation:
+          pass_manager: preset
+          optimization_level: 1
+          seed_transpiler: 731
+          initial_layout: [0, 1]
+        backend:
+          kind: ibm-hardware
+          backend_name: replace-with-reviewed-backend
+          backend_version: replace-with-snapshot-version
+          target:
+            num_qubits: 2
+            basis_gates: [cx, id, rz, sx, x]
+            coupling_map: [[0, 1], [1, 0]]
+            target_digest: sha256:937b43bd4e3d4e47436c27784e67c9766f3b3fe991c7ba3828e52f12dc27c80d
+          channel: ibm_quantum_platform
+          instance_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          access_tier_id: replace-with-tier
+          calibration_required: true
+        shots: 4096
+        seed_simulator: null
+        mitigation:
+          dynamical_decoupling: true
+          dd_sequence: XY4
+          gate_twirling: true
+          measure_twirling: true
+        expected_outcomes:
+          - {bitstring: "00", probability_min: 0.30, probability_max: 0.65}
+          - {bitstring: "11", probability_min: 0.30, probability_max: 0.65}
+        max_unlisted_probability: 0.35
+        golden_fixture_path: /absolute/evidence/bell-ibm-hardware.golden.json
+        golden_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+        replay_fixture_path: /absolute/evidence/bell-ibm-hardware.replay.json
+        replay_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+        evidence:
+          protocol_conformance: true
+          provider_pinned: true
+          launcher_verified: true
+          dependencies_pinned: true
+          replay_fixture_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          scientific_validation_digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+          limitations_documented: true
+          semantics_documented: true
+          units_documented: true
+          method_identity_documented: true
+          architecture: x86_64
+          notes: [Review live calibration, access tier, queue behavior, and statistical bounds.]
+        limitations:
+          - Hardware availability, queue time, and calibration are live and can change after catalog review.
+          - Results from profiles sharing this backend are not independent-method evidence.
+        timeout_seconds: 172800
+        poll_interval_seconds: 2

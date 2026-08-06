@@ -1,50 +1,54 @@
 \documentclass[a4paper,10pt,twocolumn]{article}
 
-% Opt in to CJK; preamble loads ctex (xelatex) or fontspec+Fandol (lualatex)
-% depending on engine. The lualatex path is what `make4ht -ul` uses for HTML.
+% Opt in to CJK; the shared preamble loads luatexja-fontspec with embedded
+% Fandol fonts for the canonical LuaLaTeX PDF and the make4ht HTML path.
 \def\AriCJK{}
 \def\AriLangZh{}
 \input{../shared/preamble.tex}
 \input{strings.tex}
 
-\title{ARI:自主研究基础设施}
+\title{Constitutional ARI-RQGM:\\面向自主研究的受治理协同演化}
 \author{树神 宇德}
-\date{v0.9.0, 2026-06-12}
+\date{v0.9.0, Constitutional RQGM 版, 2026-07-28}
 
 \begin{document}
 \twocolumn[
 \maketitle
 \begin{abstract}
-本报告描述了一个自主研究基础设施 \textbf{ARI},它将基于树搜索的
-探索循环与论文生成流水线相结合。探索循环是对研究步节点的最佳优先
-树搜索 (BFTS);节点扩展由 Reason-and-Act
-(ReAct~\cite{yao2023react}) 风格的智能体执行,该智能体向 14 个领
-域技能的注册表发出工具调用。论文流水线将存活的谱系汇编为草稿,
-并在层次化评分细则下迭代改稿。所有产物都驻留在单一的检查点目录中,
-该目录是可复现性、谱系与成本核算的单位。本报告形式化算法与设计依据,
-报告初步观察,并讨论制约设计的确定性与新颖性的权衡。
+自主研究系统正把提案、评估与写作判断交给由模型定义的角色。让这些
+角色及其评分策略可以演化,既可能改善制度本身,也可能使系统学会
+自我奖励、隐藏失败或扩张权限。本文提出
+\textbf{Constitutional ARI-RQGM}:一种把不可变的确定性内核与可演化
+提示词、组件和效用策略分离的受治理协同演化架构。制度变更只在纪元边界
+提交；T16 紧急隔离会立即强制形成具有新指纹的边界。在边界上,对抗证据、
+角色分离的起诉与辩护、重放和锚点评估,
+以及固定的 T1--T21 转换表共同决定候选者能否进入服务。注册表写入由
+单一权限掌握,事务可重放,退役会触发考虑来源的前沿修复而不删除历史。
+同一宪制还治理论文存档:writer 与 reviewer 共同演化,而固定的结构化
+数值主张--证据闸门始终处于二者权限之外。本文给出完整转换表、权限矩阵、
+事件契约、恢复过程与确定性边界。1,124 项直接相关试验全部通过,五个固定
+故障样例被拒绝且一个正常样例通过。这些结果不能证明研究质量提升、一般
+检测率、归因准确性或成本收益。
 \end{abstract}
 \vspace{2ex}
 ]
 
 \input{chapters/01_introduction.tex}
 \input{chapters/02_system_overview.tex}
-\input{chapters/03_exploration.tex}
-\input{chapters/04_paper_pipeline.tex}
+\input{chapters/08_rqgm.tex}
 \input{chapters/05_evaluation.tex}
 \input{chapters/06_related.tex}
 \input{chapters/07_discussion.tex}
 
 % Single column for the appendix so the verbatim prompt listings wrap
 % inside the full page width. \onecolumn is wrapped in \clearpage to make
-% the switch robust (a bare \onecolumn after \appendix was silently
-% ignored under xelatex/ctex, leaving the appendix in two columns).
+% the switch reliable across engines and keep the appendix from remaining
+% in two columns.
 \clearpage
 \onecolumn
 \appendix
-\input{chapters/appendix_notation.tex}
+\input{chapters/appendix_specification.tex}
 \input{chapters/appendix_prompts.tex}
-\input{chapters/appendix_samplepaper.tex}
 
 \clearpage
 \twocolumn

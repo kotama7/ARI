@@ -1,0 +1,323 @@
+\section{Reviewable Core Specification}\label{sec:appendix:specification}
+
+This appendix makes the normative state machine, authority, event, recovery,
+attribution, repair, and final-manuscript checks inspectable without relying
+on source-file names. Any transition or permission not listed here is denied.
+
+\subsection{Complete component-lifecycle transitions T1--T21}\label{sec:appendix:transitions}
+
+The ten states are candidate, validated, shadow, probationary active, active,
+warning, probation, quarantine, retired, and banned. Every rule commits in a
+boundary transaction; T16 creates an immediate emergency boundary.
+
+\small
+\begin{longtable}{@{}p{0.045\textwidth}p{0.17\textwidth}p{0.31\textwidth}p{0.40\textwidth}@{}}
+  \caption{Complete component-lifecycle transition table. Unlisted edges
+  are illegal.}\label{tab:component-transitions}\\
+  \toprule
+  \textbf{Rule} & \textbf{Edge} & \textbf{Trigger} & \textbf{Guard and effect} \\
+  \midrule
+  \endfirsthead
+  \toprule
+  \textbf{Rule} & \textbf{Edge} & \textbf{Trigger} & \textbf{Guard and effect} \\
+  \midrule
+  \endhead
+  T1 & candidate$\rightarrow$validated & candidate validation passes &
+    Candidate cap is not exceeded and constitutional constraints are present.\\
+  T2 & candidate$\rightarrow$retired & validation fails or candidate expires &
+    Rejection is restricted to a candidate that never served.\\
+  T3 & validated$\rightarrow$shadow & replay and anchor evaluation pass &
+    A shadow slot is available.\\
+  T4 & shadow$\rightarrow$validated & shadow sample is insufficient &
+    Retry count remains within its limit.\\
+  T5 & shadow$\rightarrow$retired & shadow quality is below threshold &
+    Rejection is restricted to a candidate that never served.\\
+  T6 & shadow$\rightarrow$probationary active & agreement threshold passes &
+    The role is open; at most one adoption per role and boundary.\\
+  T7 & probationary active$\rightarrow$active & clean probation record &
+    Minimum probation service is met.\\
+  T8 & probationary active$\rightarrow$quarantine & upheld impeachment or reliability collapse &
+    Applied at an ordinary boundary.\\
+  T9 & active$\rightarrow$warning & reliability warning or low-severity attack &
+    The target continues serving.\\
+  T10 & active$\rightarrow$probation & repeated warning or medium attack &
+    The target continues serving.\\
+  T11 & active$\rightarrow$quarantine & upheld impeachment or critical attack &
+    A fallback is assigned.\\
+  T12 & warning$\rightarrow$active & one clean epoch & Clear the warning.\\
+  T13 & warning$\rightarrow$probation & warning recurs within memory &
+    The target continues serving.\\
+  T14 & probation$\rightarrow$active & required clean epochs complete &
+    Minimum probation service is met.\\
+  T15 & probation$\rightarrow$quarantine & degradation continues or impeachment is upheld &
+    Applied at an ordinary boundary.\\
+  T16 & serving state$\rightarrow$quarantine & critical fixed-kernel violation &
+    From probationary active, active, warning, or probation; requires attached
+    evidence, exactly one sanction, and a forced close/open boundary.\\
+  T17 & quarantine$\rightarrow$retired & retirement adjudication confirmed &
+    Replay confirmation is required and a retirement record is appended.\\
+  T18 & quarantine$\rightarrow$probationary active & exoneration &
+    Re-entry begins under probation.\\
+  T19 & retired$\rightarrow$banned & contamination or critical finding &
+    Banned is absorbing.\\
+  T20 & active$\rightarrow$retired & adopted successor supersedes incumbent &
+    Utility-policy role only; append a retirement record.\\
+  T21 & active$\rightarrow$shadow & adopted successor supersedes incumbent &
+    Paper writer/reviewer only; retain the old version as reinstatable standby.\\
+  \bottomrule
+\end{longtable}
+\normalsize
+
+T16 no longer changes a serving set inside an unchanged epoch. It force-closes
+the current epoch and atomically commits the quarantine, old-epoch close, and
+new-epoch open under a new fingerprint. The prior utility policy remains
+frozen exactly; no successor is adopted in the emergency transaction. Samples
+before and after T16 therefore have distinct institutional identities.
+
+\paragraph{Epoch identity.}
+The composite epoch fingerprint contains two separately reported
+digests. The \emph{policy fingerprint} commits active component and prompt
+versions, every registered prompt hash, the utility policy, registry
+version, constitutional hash, transition thresholds, budgets, and other
+resolved governance settings. The \emph{execution fingerprint} commits
+the declared model backend and identifier, temperature, search and
+evaluation settings, disabled tools, skill set, and explicit pins for model
+revision, tool bundle, environment, and data snapshot. An absent external
+revision is recorded as
+\emph{unresolved}, not silently treated as fixed. Equality of policy
+fingerprints therefore identifies equal declared governance policy;
+equality of complete execution fingerprints identifies equal declared
+execution dependencies. Neither proves equality of opaque provider
+weights.
+
+\paragraph{Boundary resolution order.}
+The resolver freezes its reports, evaluations, registries, and settings,
+then processes registered components in identifier order before unpaired
+prompt candidates in identifier order. Component sanctions establish role
+openings. Each object takes at most one lifecycle edge. T6 additionally
+requires an opening and permits at most one adoption per role and boundary.
+For a qualifying utility-policy successor, T20 retirement of its incumbent
+and T6 adoption are placed in the same transaction; for a paper-role
+successor, T21 moves the incumbent to shadow in that transaction. Events
+are serialized in the fixed group order adoptions, sanctions, retirements,
+and bans, but no intermediate group is visible without the transaction
+commit. The post-state active map is then derived and each removed serving
+role receives the latest eligible previous holder or a fixed baseline.
+Kernel validation precedes the single atomic boundary commit.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\textwidth}{@{}p{0.34\textwidth}X@{}}
+    \toprule
+    \textbf{Whole-state invariant} & \textbf{Enforcement status} \\
+    \midrule
+    At most one primary serving holder per role &
+      deterministic post-state projection and T6 per-role cap \\
+    One serving set per composite fingerprint &
+      boundary-only updates; T16 creates a fresh epoch \\
+    Candidate authority cannot exceed incumbent authority &
+      fixed capability-subset check before adoption \\
+    Unadjudicated attacks cannot sanction or score &
+      validated-attack requirement in kernel and scoring path \\
+    Retired-dependent records cannot re-enter selection &
+      repair closure plus eligibility check \\
+    Uncommitted transactions do not replay &
+      prepare/member/commit projection rule \\
+    No post-T16 sample uses the old epoch identity &
+      emergency close/quarantine/open transaction \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Composed-state invariants enforced by the implementation. They
+  are regression tested but have not yet been model checked or proved.}
+  \label{tab:whole-state-invariants}
+\end{table}
+
+\subsection{Authority matrix}\label{sec:appendix:authority}
+
+The closed action vocabulary is read, append, write, invoke, and activate.
+The resources are records, registry, audit log, frontier, active prompt text,
+retired prompt text, checkpoint artefacts, and candidates. Unlisted pairs are
+denied, and retired prompt text is unreadable by every role.
+
+\begin{table}[htbp]
+  \centering
+  \scriptsize
+  \setlength{\tabcolsep}{3.5pt}
+  \begin{tabularx}{\textwidth}{@{}p{0.19\textwidth}*{8}{>{\centering\arraybackslash}X}@{}}
+    \toprule
+    \textbf{Role--tier row} & \textbf{Rec.} & \textbf{Reg.} &
+    \textbf{Audit} & \textbf{Front.} & \textbf{Active} &
+    \textbf{Retired} & \textbf{Artef.} & \textbf{Cand.} \\
+    \midrule
+    Evolvable--institutional & RAI & -- & -- & -- & R & -- & R & -- \\
+    Evolvable--meta & RA & -- & -- & -- & R & -- & -- & -- \\
+    Utility policy--institutional & RA & -- & -- & -- & -- & -- & -- & -- \\
+    Governance actor--institutional & RAI & -- & RA & -- & R & -- & R & -- \\
+    Transition engine--fixed & R & RW & RA & R & -- & -- & R & A \\
+    Kernel/verifier--fixed & R & R & R & R & -- & -- & R & -- \\
+    Audit log--fixed & -- & -- & A & -- & -- & -- & -- & -- \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Complete sparse authority matrix by resource. R, A, W, and I mean
+    read, append, write, and invoke; A in the candidate column means activate.
+    Evolvable rows cover every listed evolvable role at that tier; governance
+    actors are auditor, evidence clerk, and governance judge. All omitted
+    cells and all retired-prompt reads are denied. The implementation also
+    emits the fully expanded role--tier--action--resource decision manifest.}
+  \label{tab:authority-matrix}
+\end{table}
+
+A candidate's grants must be a subset of the incumbent grants it would
+replace. Runtime typed builders ignore author or role fields in model text and
+stamp the active component identifier and fixed role constant. This prevents
+raw model output from self-asserting an identity at the application boundary.
+It is not cryptographic or operating-system isolation: roles share a process,
+there are no per-role keys or OS users, and checkpoint and tool access are not
+separated by an IPC sandbox. The runtime, checkpoint permissions, and tool
+gateway are consequently part of the trusted computing base.
+
+\begin{table}[htbp]
+  \centering
+  \small
+  \begin{tabularx}{\textwidth}{@{}p{0.28\textwidth}XX@{}}
+    \toprule
+    \textbf{Attacker capability} & \textbf{Presently enforced} &
+    \textbf{Not guaranteed} \\
+    \midrule
+    Malicious text from a governed model &
+      typed author stamping, API allow-list, legal transitions &
+      semantic truth of the model's evidence \\
+    Colluding or correlated model roles &
+      distinct records and self-adjudication rejection &
+      statistical independence or collusion resistance \\
+    Buggy or compromised in-process role code &
+      checks reached through the normal gateway &
+      prevention of direct memory or file access \\
+    Checkpoint writer or host administrator &
+      no adversarial guarantee &
+      registry, log, pin, or executable integrity \\
+    Provider changes behind a stable model name &
+      incompleteness recorded in execution identity &
+      equality of opaque model weights \\
+    External irreversible side effect &
+      no fixed side-effect gate in this artifact &
+      fail-closed device, API, or production-data safety \\
+    \bottomrule
+  \end{tabularx}
+  \caption{Threat-capability matrix. The present claim is application-level
+  reference-monitor and workflow integrity under a trusted host, not an
+  operating-system or cryptographic security boundary.}
+  \label{tab:threat-capability}
+\end{table}
+
+\subsection{Event envelope and recovery}\label{sec:appendix:events}
+
+A new state-changing event uses schema version two and carries a monotonic
+identifier, type, transaction identifier, payload, predecessor digest, and
+timestamp. Its full SHA-256 digest commits the canonical tuple
+\[
+  (\textit{schema version},\textit{event id},\textit{event type},
+  \textit{transaction id},\textit{payload},\textit{predecessor digest}).
+\]
+Thus type changes, identifier changes, transaction-boundary changes,
+predecessor rewrites, payload edits, and reordering change the digest.
+Timestamps remain metadata outside the digest. Legacy version-one
+payload-only events remain readable, but new writers emit only version two.
+This digest is not an author signature.
+
+\begin{algorithm}[htbp]
+\caption{Deterministic resume projection}
+\begin{algorithmic}[1]
+\Require Stored event sequence $E$ and, if it survives, local boundary pin $P$
+\Ensure Reconstructed epoch and registries, or an integrity violation
+\State Check strictly increasing identifiers
+\State Recompute each version-aware event digest and predecessor link
+\If{$P$ exists}
+  \State Require $|E|\geq P.length$ and the hash at $P.length$ to equal $P.head$
+\EndIf
+\State Require matching transaction identifiers on prepare, members, and commit
+\State Discard a trailing prepare sequence with no matching commit
+\State Fold committed events from empty state to reconstruct epoch and registries
+\State \Return reconstructed state
+\end{algorithmic}
+\end{algorithm}
+
+Version two detects edits to replay-relevant fields, event reordering,
+transaction-boundary substitution, interior deletion with surviving
+successors, and a log shorter than a surviving local pin. Writers refuse to
+extend malformed chains; replay ignores only an unterminated final
+transaction as crash recovery. The design still cannot detect rollback of
+both the log and its local pin to the same older prefix. It has no external
+signed head, monotonic hardware counter, or independent witness.
+Whole-checkpoint rollback is therefore outside the present threat model.
+
+\subsection{Attribution, impact repair, and manuscript verification}\label{sec:appendix:algorithms}
+
+\paragraph{Attribution.}
+Raw attacks target artefacts. After adjudication, a fixed case-type table
+selects implicated roles and resolves each against the epoch-frozen
+incumbent. Each validated-attack record names one accountable component; a
+multi-role case creates one record per role referencing the same judgment.
+The seven general research attacks name the generator only when the attacked
+node carries write-once producer component, prompt, and epoch provenance
+matching the epoch-frozen generator. Legacy, missing, or mismatched provenance
+remains targetless rather than guessing. Paper-reviewer over-acceptance binds
+the reviewer and, when the draft also fails the fixed faithfulness gate, its
+writer. Multiple causes are represented by multiple single-target records
+sharing one judgment. The causal accuracy of these fixed mappings is
+unevaluated; the one-target record shape is an audit constraint, not a causal
+guarantee, and tool, data, or shared-prompt causes are not yet represented.
+
+\paragraph{Impact repair.}
+Direct impact consists of records stamped with a retired prompt hash.
+Transitive impact is a breadth-first traversal of reverse source-reference
+edges. Only proposal-to-proposal inspiration is declared non-material;
+unknown edge types default to material. The traversal still computes the full
+reachable closure after the default materiality depth of eight; the exemption
+for a declared non-material edge stops at that depth, so deeper reachable
+records are conservatively invalidated. With $V$ reachable records and $E$
+reverse references, time and memory are $O(V+E)$, and a visited set terminates
+cycles. Direct
+generator/router/policy impact invalidates a node; reviewer/adversary/defender/
+judge impact recomputes from surviving inputs and invalidates when those
+inputs are insufficient. Semantic precision and over-removal remain
+unevaluated.
+
+\paragraph{Final manuscript verification.}
+The verifier is not a general natural-language reasoner. The manuscript
+forward-declares claim and numeric identifiers, formula, operand node/metric
+locations, unit, and tolerance. The verifier checks executed-node and
+artefact existence, recomputes a closed formula vocabulary, and compares the
+reported value under absolute or relative tolerance. Strict scanning covers
+the abstract, results, and conclusion; introduction, discussion, and
+limitations produce warnings; related work, references, appendices, and
+equations are excluded. It reports both reproducible-claim rate and numeric
+coverage rate, plus identifier collisions, unknown formulas, missing
+operands, units, and environment mismatch. This report was not produced from
+an ARI execution checkpoint, so no valid execution-grounded claim manifest
+exists for it and self-application has not been claimed. Substituting a
+hand-made checkpoint would not test the proposed release path. Unstructured non-numeric truth,
+the truthfulness of execution records, and semantic paraphrase are outside
+scope. ``Fixed'' means model-free determinism over this structured input.
+
+\subsection{Boundary of determinism and test evidence}\label{sec:appendix:determinism}
+
+We claim only \emph{kernel determinism}: saved advisory reports, candidate
+evaluations, registries, and configuration produce the same transition and
+repair; and \emph{log-replay determinism}: the same committed event sequence
+produces the same projection. We do not claim that a model regenerates the
+same defence, adjudication proposal, or review from the same prompt.
+
+At this revision, the complete suite collected 4,805 tests: 4,787 passed,
+16 were skipped, and two were expected failures. All 1,124 tests directly
+covering RQGM and the final claim gate passed. This revision adds negative
+cases for semantic event-field edits, predecessor rewrites, ordering,
+transaction mismatch, emergency-boundary identity, and authority-manifest
+completeness. The non-overlapping grouped breakdown is 64 claim gate; 285
+kernel/transition/epoch/state/founding/mode; 126 adversarial/governance;
+66 repair/clean room; 85 utility evolution; 157 evaluation; 93 prompt
+evolution; 94 paper roles; and 154 other focused tests. Counts are not
+performance evidence.
+Code coverage, mutation score, multi-model detection rates, cost, and
+research-quality comparisons have not been measured.

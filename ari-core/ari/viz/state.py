@@ -29,6 +29,9 @@ _launch_config: "dict | None" = None
 _gpu_monitor_proc = None
 _sub_experiments: dict = {}  # {run_id: meta dict with parent_run_id, recursion_depth, ...}
 _staging_dir: "Path | None" = None  # temporary upload staging before launch
+# MN-9 (gui_refresh task 09 Wave 5b): flipped by server._main once ws_serve
+# is live; read by ari/viz/health.py for the /health/ready websocket check.
+_ws_server_started: bool = False
 
 
 def get_sub_experiments() -> dict:

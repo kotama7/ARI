@@ -1,0 +1,20 @@
+schema_version: ari.harness-target-interface/v1
+id: spmm-csr-c-abi/v1
+target_kind: shared-library
+symbols:
+  - ari_spmm_f32
+  - ari_spmm_f64
+return_contract: zero on success; nonzero is required for structurally invalid CSR
+arguments:
+  - m,k,n,nnz: signed dimensions and stored-entry count
+  - row_ptr,col_idx,values: zero-based CSR arrays
+  - b,c: row-major dense input B and in-out C buffers
+  - ldb,ldc: dense leading dimensions
+  - alpha,beta: dtype scalar
+  - thread_count: requested positive thread count
+  - flags: bit zero requests duplicate-index summation
+semantics: C := alpha * A_csr * B + beta * C
+dtype_suffixes:
+  f32: IEEE-754 binary32
+  f64: IEEE-754 binary64
+authority: interface-only

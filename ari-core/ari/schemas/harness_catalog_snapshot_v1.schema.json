@@ -1,0 +1,550 @@
+{
+  "$defs": {
+    "ContainerPinV1": {
+      "additionalProperties": false,
+      "properties": {
+        "license": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "reference": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        },
+        "resolved_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Resolved Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "reference",
+        "resolved_digest",
+        "license"
+      ],
+      "title": "ContainerPinV1",
+      "type": "object"
+    },
+    "HarnessManifestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "accepts_external_target": {
+          "title": "Accepts External Target",
+          "type": "boolean"
+        },
+        "container": {
+          "$ref": "#/$defs/ContainerPinV1"
+        },
+        "credential_policy": {
+          "enum": [
+            "none",
+            "scoped"
+          ],
+          "title": "Credential Policy",
+          "type": "string"
+        },
+        "credential_scope_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Credential Scope Ids",
+          "type": "array"
+        },
+        "dataset": {
+          "$ref": "#/$defs/PinnedHarnessAssetV1"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "driver": {
+          "$ref": "#/$defs/PinnedHarnessAssetV1"
+        },
+        "expected_result_schema": {
+          "title": "Expected Result Schema",
+          "type": "string"
+        },
+        "expected_result_schema_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Expected Result Schema Digest",
+          "type": "string"
+        },
+        "filesystem_policy": {
+          "enum": [
+            "isolated-readonly-target",
+            "closed-workspace"
+          ],
+          "title": "Filesystem Policy",
+          "type": "string"
+        },
+        "hidden_test_policy": {
+          "enum": [
+            "none",
+            "verifier-only"
+          ],
+          "title": "Hidden Test Policy",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "implementation_license": {
+          "title": "Implementation License",
+          "type": "string"
+        },
+        "infrastructure_failure_policy": {
+          "enum": [
+            "separate",
+            "retry-locked-environment"
+          ],
+          "title": "Infrastructure Failure Policy",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "benchmark",
+            "artifact_verifier",
+            "reproduction",
+            "claim_verifier"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "maintainer": {
+          "title": "Maintainer",
+          "type": "string"
+        },
+        "manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Digest",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/PinnedHarnessAssetV1"
+        },
+        "negative_control_report_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Negative Control Report Digest",
+          "type": "string"
+        },
+        "network_allowlist": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Network Allowlist",
+          "type": "array"
+        },
+        "network_policy": {
+          "enum": [
+            "deny",
+            "allowlisted"
+          ],
+          "title": "Network Policy",
+          "type": "string"
+        },
+        "nondeterminism_declaration": {
+          "title": "Nondeterminism Declaration",
+          "type": "string"
+        },
+        "oracle": {
+          "$ref": "#/$defs/PinnedHarnessAssetV1"
+        },
+        "oracle_independence": {
+          "enum": [
+            "independent",
+            "declared-dependent"
+          ],
+          "title": "Oracle Independence",
+          "type": "string"
+        },
+        "properties": {
+          "items": {
+            "$ref": "#/$defs/HarnessPropertyCoverageV1"
+          },
+          "title": "Properties",
+          "type": "array"
+        },
+        "resources": {
+          "$ref": "#/$defs/HarnessResourceRequirementsV1"
+        },
+        "retry_limit": {
+          "maximum": 16,
+          "minimum": 0,
+          "title": "Retry Limit",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": "ari.harness-manifest/v1",
+          "default": "ari.harness-manifest/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scorer_determinism": {
+          "enum": [
+            "deterministic",
+            "seeded",
+            "nondeterministic"
+          ],
+          "title": "Scorer Determinism",
+          "type": "string"
+        },
+        "source_full_commit_sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Full Commit Sha",
+          "type": "string"
+        },
+        "source_repository": {
+          "title": "Source Repository",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "candidate",
+            "verified",
+            "deprecated",
+            "revoked"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "subject_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Subject Types",
+          "type": "array"
+        },
+        "supported_architectures": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Architectures",
+          "type": "array"
+        },
+        "supported_domains": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Domains",
+          "type": "array"
+        },
+        "supported_dtypes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Dtypes",
+          "type": "array"
+        },
+        "supported_hardware": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Hardware",
+          "type": "array"
+        },
+        "supported_languages": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Supported Languages",
+          "type": "array"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "target_interface_contract": {
+          "title": "Target Interface Contract",
+          "type": "string"
+        },
+        "target_interface_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Target Interface Digest",
+          "type": "string"
+        },
+        "target_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Kinds",
+          "type": "array"
+        },
+        "timeout_seconds": {
+          "exclusiveMinimum": 0,
+          "maximum": 604800,
+          "title": "Timeout Seconds",
+          "type": "integer"
+        },
+        "tolerance_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Tolerance Policy Digest",
+          "type": "string"
+        },
+        "upstream_parity_report_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Upstream Parity Report Digest",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "kind",
+        "status",
+        "description",
+        "maintainer",
+        "tags",
+        "subject_types",
+        "target_kinds",
+        "accepts_external_target",
+        "supported_languages",
+        "supported_hardware",
+        "supported_architectures",
+        "supported_dtypes",
+        "supported_domains",
+        "properties",
+        "target_interface_contract",
+        "target_interface_digest",
+        "source_repository",
+        "source_full_commit_sha",
+        "implementation_license",
+        "dataset",
+        "oracle",
+        "driver",
+        "model",
+        "container",
+        "network_policy",
+        "credential_policy",
+        "filesystem_policy",
+        "resources",
+        "timeout_seconds",
+        "scorer_determinism",
+        "nondeterminism_declaration",
+        "hidden_test_policy",
+        "oracle_independence",
+        "tolerance_policy_digest",
+        "expected_result_schema",
+        "expected_result_schema_digest",
+        "infrastructure_failure_policy",
+        "retry_limit",
+        "negative_control_report_digest",
+        "upstream_parity_report_digest",
+        "manifest_digest"
+      ],
+      "title": "HarnessManifestV1",
+      "type": "object"
+    },
+    "HarnessPropertyCoverageV1": {
+      "additionalProperties": false,
+      "properties": {
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Methods",
+          "type": "array"
+        },
+        "property_id": {
+          "title": "Property Id",
+          "type": "string"
+        },
+        "scope": {
+          "$ref": "#/$defs/VerificationScopeV1"
+        },
+        "tiers": {
+          "items": {
+            "enum": [
+              "screen",
+              "validate",
+              "certify"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Tiers",
+          "type": "array"
+        },
+        "tolerance_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Tolerance Policy Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "property_id",
+        "methods",
+        "tiers",
+        "scope",
+        "tolerance_policy_digest"
+      ],
+      "title": "HarnessPropertyCoverageV1",
+      "type": "object"
+    },
+    "HarnessResourceRequirementsV1": {
+      "additionalProperties": false,
+      "properties": {
+        "accelerators": {
+          "minimum": 0,
+          "title": "Accelerators",
+          "type": "integer"
+        },
+        "cpu_cores": {
+          "minimum": 0,
+          "title": "Cpu Cores",
+          "type": "integer"
+        },
+        "disk_bytes": {
+          "minimum": 0,
+          "title": "Disk Bytes",
+          "type": "integer"
+        },
+        "features": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Features",
+          "type": "array"
+        },
+        "memory_bytes": {
+          "minimum": 0,
+          "title": "Memory Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cpu_cores",
+        "memory_bytes",
+        "accelerators",
+        "disk_bytes"
+      ],
+      "title": "HarnessResourceRequirementsV1",
+      "type": "object"
+    },
+    "PinnedHarnessAssetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "license": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "revision": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Revision",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision",
+        "sha256",
+        "license"
+      ],
+      "title": "PinnedHarnessAssetV1",
+      "type": "object"
+    },
+    "VerificationScopeV1": {
+      "additionalProperties": false,
+      "properties": {
+        "values": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Values",
+          "type": "object"
+        }
+      },
+      "title": "VerificationScopeV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/harness-catalog-snapshot-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "catalog_source_revision": {
+      "title": "Catalog Source Revision",
+      "type": "string"
+    },
+    "driver_protocol_version": {
+      "title": "Driver Protocol Version",
+      "type": "string"
+    },
+    "manifests": {
+      "items": {
+        "$ref": "#/$defs/HarnessManifestV1"
+      },
+      "title": "Manifests",
+      "type": "array"
+    },
+    "promotion_approval_digests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Promotion Approval Digests",
+      "type": "object"
+    },
+    "property_vocabulary_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Property Vocabulary Digest",
+      "type": "string"
+    },
+    "registration_evidence_digests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Registration Evidence Digests",
+      "type": "object"
+    },
+    "registration_report_digests": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Registration Report Digests",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "ari.harness-catalog-snapshot/v1",
+      "default": "ari.harness-catalog-snapshot/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "catalog_source_revision",
+    "property_vocabulary_digest",
+    "driver_protocol_version",
+    "manifests",
+    "registration_report_digests",
+    "registration_evidence_digests",
+    "snapshot_digest"
+  ],
+  "title": "ARI Harness Catalog Snapshot v1",
+  "type": "object"
+}

@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-07-03
+last_verified: 2026-07-10
 ---
 
 # ARI CLI Reference
@@ -22,6 +22,7 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari run` | Run a new experiment | New Experiment wizard → Launch |
 | `ari resume` | Resume an interrupted experiment | Experiments page → Resume button |
 | `ari paper` | Generate paper only (skip experiments) | `POST /api/run-stage {stage: "paper"}` |
+| `ari manuscript <subcmd>` | Compile, inspect, repair, and lock Manuscript Complete attempts | — |
 | `ari status` | Show experiment tree and summary | Monitor / Tree page |
 | `ari viz` | Launch the web dashboard | — |
 | `ari projects` | List all past experiments | Experiments page |
@@ -35,6 +36,36 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari registry <subcmd>` | Self-hosted EAR registry: `serve` / `token issue|revoke|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | Backfill `node_report.json` for legacy (v0.6.0) checkpoints | — |
 | `ari doctor claude-code` | Health-check the `claude_code` LLM backend (binary/policy/flags; `--live` runs one real call) | — |
+
+> **Execution modes.** The opt-in `ari_rqgm` mode adds **no CLI flags** in
+> v1 — it is enabled purely via config (`ari.mode: ari_rqgm` +
+> `rqgm.enabled: true` in workflow.yaml) or the `ARI_MODE` /
+> `ARI_RQGM_ENABLED` environment overrides. Every command above behaves
+> identically under the default `simple_bfts` mode. See
+> [Execution modes](../guides/execution_modes.md).
+
+## `ari manuscript` — completeness and publication operations
+
+This command group is the machine-readable operator surface for the opt-in
+exploration-to-authoring compiler. It does not run on the default
+`manuscript.mode: "off"` path.
+
+```bash
+ari manuscript compile CHECKPOINT --mode audit|enforce \
+  [--profile generic_empirical_v1] [--repair-policy disabled|explicit|auto]
+ari manuscript status CHECKPOINT [--fail-if-blocked]
+ari manuscript inspect CHECKPOINT [--requirement ID] [--lane LANE] [--node ID]
+ari manuscript plan-repair CHECKPOINT [--config WORKFLOW]
+ari manuscript repair CHECKPOINT --request REQUEST_ID [--config WORKFLOW]
+ari manuscript explain-publication CHECKPOINT
+ari manuscript lock-publication CHECKPOINT
+```
+
+`plan-repair` is read-only with respect to external systems. `repair` first
+persists the admitted request and budget, then uses the normal bounded research
+runtime; `ari paper` never starts research repair. `lock-publication` succeeds
+only for a fresh, publishable decision bound to the exact final build and PDF.
+See the [operator runbook](../guides/manuscript_complete_operations.md).
 
 ---
 
@@ -89,7 +120,7 @@ ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 **What happens:**
 
 1. ARI generates a unique project name (LLM-generated title)
-2. Creates checkpoint directory: `./checkpoints/<run_id>/`
+2. Creates checkpoint directory: `./workspace/checkpoints/<run_id>/`
 3. Searches related papers on arXiv and Semantic Scholar
 4. Generates hypotheses via VirSci multi-agent deliberation
 5. Runs Best-First Tree Search (BFTS) experiments
@@ -110,7 +141,7 @@ ari resume <checkpoint_dir> [--config <config.yaml>]
 **Example:**
 
 ```bash
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 Loads the saved tree, identifies pending/failed nodes, and continues from where it stopped.
@@ -138,13 +169,13 @@ ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml
 **Example — v2-compatible default (NeurIPS form, 1-shot, 5 reflections):**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 **Example — Supercomputing (SC) rubric with 5-reviewer ensemble + meta-review:**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/ \
+ari paper ./workspace/checkpoints/20260328_matrix_opt/ \
           --rubric sc --num-reviews-ensemble 5
 ```
 
@@ -169,7 +200,7 @@ ari status <checkpoint_dir>
 **Example:**
 
 ```bash
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # Output:
 # ── Experiment Tree ──
@@ -201,10 +232,10 @@ ari viz <checkpoint_dir> [--port <port>]
 
 ```bash
 # Start dashboard
-ari viz ./checkpoints/ --port 8765
+ari viz ./workspace/checkpoints/ --port 8765
 
 # Monitor a specific run
-ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
+ari viz ./workspace/checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
 Open `http://localhost:<port>` in your browser. See the [QuickStart Guide](../getting-started/quickstart.md) for dashboard usage.
@@ -354,19 +385,19 @@ Backends: `ari-registry` (self-hosted, see `ari registry`),
 
 ```bash
 # 1. Author curates the bundle (after running the paper pipeline).
-ari ear curate ./checkpoints/run_20260504_xy/
+ari ear curate ./workspace/checkpoints/run_20260504_xy/
 
 # 2. Inspect what made it past the allow/deny rules.
-ari ear status ./checkpoints/run_20260504_xy/
+ari ear status ./workspace/checkpoints/run_20260504_xy/
 # bundle_sha256: 0ccabb16...
 # files:         42
 # visibility:    staged
 
 # 3. Ship it to a registry (still staged).
-ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+ari ear publish ./workspace/checkpoints/run_20260504_xy/ --backend ari-registry
 
 # 4. After the reviewer + reproducibility check pass, promote to public.
-ari ear promote ./checkpoints/run_20260504_xy/ --target public
+ari ear promote ./workspace/checkpoints/run_20260504_xy/ --target public
 ```
 
 The `bundle_sha256` is the value baked into the paper's
@@ -439,6 +470,8 @@ ari skills-list [--config <config.yaml>]
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
 | `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
 | `LLM_API_BASE` | Generic API base URL (fallback) | — |
+| `ARI_MODE` | Execution-mode override: `simple_bfts` / `ari_rqgm` (see [Execution modes](../guides/execution_modes.md)) | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM safety interlock override (`0`/`1`/`true`/`false`; must agree with `ARI_MODE=ari_rqgm`) | off |
 
 ### BFTS Configuration
 

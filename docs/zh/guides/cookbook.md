@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # Cookbook
@@ -119,13 +119,23 @@ bfts:
   depth_penalty_lambda: 0.1
 ```
 
-**衡量自定义轴（例如 speedup）而非通用五轴：**
+**衡量自定义轴（例如 speedup）而非 rubric 推导出的轴**
+（`axis_mode` 默认为 `dynamic`，即从当前 rubric 构建轴）。`custom_axes` 是
+`{name, description, weight}` 记录的列表——纯字符串列表会在配置加载时被拒绝：
 
 ```yaml
 evaluator:
   axis_mode: custom
-  custom_axes: [correctness, speedup, reproducibility]
-  # axis_weights below set the relative weight of each named axis
+  custom_axes:
+    - name: correctness
+      description: "结果是否在容差范围内与参考实现一致"
+      weight: 0.4
+    - name: speedup
+      description: "相对基线的墙钟加速比（1.0 = 无变化）"
+      weight: 0.4
+    - name: reproducibility
+      description: "能否依据记录的产物重跑该次运行"
+      weight: 0.2
 ```
 
 **精确复刻审计前 (pre-audit) 行为**（固定为标准五轴与调和平均）：

@@ -1,17 +1,16 @@
-from __future__ import annotations
 """ARI viz: api_experiment — launch, run stages, log streaming."""
 
+from __future__ import annotations
+
 import json
+import logging
 import os
 import re
 import subprocess
-import threading
-import time
 from pathlib import Path
 
 from . import state as _st
 
-import logging
 log = logging.getLogger(__name__)
 
 
@@ -140,6 +139,34 @@ def _api_launch(body: bytes) -> dict:
         data = json.loads(body)
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         return {"ok": False, "error": f"Invalid request body: {e}"}
+    requested_retrieval = data.get("retrieval_backend")
+    if requested_retrieval and requested_retrieval not in {
+        "semantic_scholar",
+        "arxiv",
+        "alphaxiv",
+    }:
+        return {
+            "ok": False,
+            "error": "retrieval_backend must select one pinned provider",
+        }
+    if not requested_retrieval:
+        settings_path = _st._settings_path
+        if settings_path is not None and settings_path.is_file():
+            try:
+                saved_retrieval = json.loads(settings_path.read_text()).get(
+                    "retrieval_backend"
+                )
+            except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+                return {"ok": False, "error": f"Invalid project settings: {exc}"}
+            if saved_retrieval and saved_retrieval not in {
+                "semantic_scholar",
+                "arxiv",
+                "alphaxiv",
+            }:
+                return {
+                    "ok": False,
+                    "error": "saved retrieval_backend must select one pinned provider",
+                }
     profile = data.get("profile", "")
     experiment_md = data.get("experiment_md", "")
     # ── Trace: log received experiment_md from GUI ──────────────────
@@ -302,6 +329,12 @@ def _api_launch(body: bytes) -> dict:
                     val = saved.get(f"model_{skill}", "")
                     if val:
                         proc_env[f"ARI_MODEL_{skill.upper()}"] = val
+                        if skill == "eval":
+                            # The GUI keeps one evaluator-model field for
+                            # compatibility, but the evaluator Skill has two
+                            # independently addressable LLM operations.
+                            proc_env["ARI_MODEL_METRIC_PROPOSAL"] = val
+                            proc_env["ARI_MODEL_SEMANTIC_REVIEW"] = val
                 # VLM review model from settings
                 _vlm_model = saved.get("vlm_review_model", "")
                 if _vlm_model:
@@ -503,8 +536,6 @@ def _api_launch(body: bytes) -> dict:
                 proc_env["ARI_RUBRIC_GEN_TARGET_LEAVES"] = str(int(wiz_ors["rubric_gen_target_leaves"]))
             if wiz_ors.get("rubric_gen_temperature") is not None:
                 proc_env["ARI_RUBRIC_GEN_TEMPERATURE"] = str(float(wiz_ors["rubric_gen_temperature"]))
-            if wiz_ors.get("rubric_gen_two_stage") is not None:
-                proc_env["ARI_RUBRIC_GEN_TWO_STAGE"] = "1" if wiz_ors["rubric_gen_two_stage"] else "0"
             if wiz_ors.get("judge_n_runs") is not None:
                 proc_env["ARI_JUDGE_N_RUNS"] = str(int(wiz_ors["judge_n_runs"]))
             # Replicator agent (v0.7+) — wall-clock budget and BasicAgent vs
@@ -631,7 +662,8 @@ def _api_launch(body: bytes) -> dict:
         if isinstance(wiz_ors, dict) and wiz_ors:
             _launch_cfg["ors"] = {k: v for k, v in wiz_ors.items()}
         _st._launch_config = _launch_cfg
-        import time, shutil
+        import shutil
+        import time
         # Write log and launch_config.json inside pre-created checkpoint
         log_path = _pre_ckpt / f"ari_run_{int(time.time())}.log"
         _st._last_log_path = log_path
@@ -916,5 +948,3 @@ def _api_logs_sse(wfile) -> None:
             break
         time.sleep(1)
     _emit({"msg": "[end of log]"})
-
-

@@ -7,4 +7,4 @@ Pytest suite for the coding skill's MCP server.
 - `README.md` — this file.
 - `conftest.py` — shared fixtures.
 - `test_edit_code.py` — TODO
-- `test_server.py` — exercises `write_code`, `run_code`, `run_bash`, `emit_results`.
+- `test_server.py` — exercises traversal/symlink rejection, bounded local and

@@ -1,0 +1,15 @@
+{
+  "actor_id": "user-authorized-maintainer",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:e9fc8ee2894a0bdcfc9c2dcbd5ed9032ddeb90422f637d28d5e25968b9e8e76a",
+  "approved_date": "2026-08-05",
+  "authorization_basis": "User explicitly authorized production Harness promotion on 2026-08-05",
+  "evidence_bundle_digest": "sha256:308521fbb16f9b72c83da538efb61bb969710d4ebe6c9ec5c9e0e8fdb86823ae",
+  "from_status": "candidate",
+  "harness_id": "hpc/stencil-correctness",
+  "harness_manifest_digest": "sha256:8094399a6fd89f1510d00c627774509cd45a5096f4cc91253b1803d98637f051",
+  "harness_version": "1.0.0",
+  "registration_report_digest": "sha256:0b6f233a1b8400382c38cf8ca43efb3551df5bd6269b32c78364413abe650627",
+  "schema_version": "ari.harness-promotion-approval/v1",
+  "to_status": "verified"
+}

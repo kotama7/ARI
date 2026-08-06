@@ -4,7 +4,13 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+  - path: scripts/setup/setup_env.sh
+    role: config
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
+  - path: ari-core/ari/viz/health.py
+    role: implementation
+last_verified: 2026-07-29
 ---
 
 # 環境変数リファレンス
@@ -41,6 +47,9 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_LLM_API_BASE` | LiteLLM API ベース上書き | LiteLLM デフォルト |
 | `ARI_MODEL` | スキル横断フォールバックモデル ID | (`ARI_LLM_MODEL` にフォールスルー) |
 | `ARI_MODEL_EVAL` | LLM 評価器のモデル | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_PAPER` | 論文執筆・改稿モデル | `ARI_LLM_MODEL` にフォールスルー |
+| `ARI_MODEL_RUBRIC` | 独立rubric査読・固定論文パネルのモデル | `ARI_LLM_MODEL` にフォールスルー |
+| `ARI_PANEL_SEED` | 固定査読パネルの各評価呼出しに記録する要求シード | 未設定。標本化を制御できるかは提供元・実行基盤に依存 |
 | `ARI_MODEL_JUDGE` | BFTS ジャッジのモデル | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_LINEAGE` | 停滞 / lineage 決定のモデル (v0.7.0) | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_ROOT_SELECT` | シードアイデアを選ぶモデル | `ARI_MODEL` にフォールスルー |
@@ -100,6 +109,14 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_PARENT_RUN_ID` | 再帰時の親 run ID（自動設定） | (自動) |
 | `ARI_DISABLED_TOOLS_FOR_CHILD` | 子実行で削減するツールセット | (なし) |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` の `top_k` 上限 | (スキルデフォルト) |
+
+### 実行モード (RQGM)
+
+| 変数 | 目的 | デフォルト |
+|---|---|---|
+| `ARI_MODE` | 実行モードのオーバーライド: `simple_bfts` \| `ari_rqgm`（workflow.yaml の `ari.mode` をオーバーライド; 不正な値は警告の上で無視される）。RQGM の有効化には加えて `ARI_RQGM_ENABLED` インターロックが必要 — 不一致はすべて `simple_bfts` にフォールバックする。`export_resolved_config_to_skill_env` はスキルサブプロセス向けにこれを*実効*モードで `setdefault` する（v1 でこれを読むスキルは無い）。`ari resume` では `rqgm_state.json` に永続化されたモードがこの変数に優先する。`docs/guides/execution_modes.md` を参照 | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM マスターインターロックのオーバーライド: `0`/`1`/`true`/`false`（workflow.yaml の `rqgm.enabled` をオーバーライド）。ガバナンスランタイムが構築されるには、これ**と** `ARI_MODE=ari_rqgm` の両方が一致している必要がある | `false` |
+| `ARI_PAPER_AGENT_AS_JUDGE` | agent-as-judge によるドラフト採点のオーバーライド: `0`/`1`/`true`/`false`（`rqgm.paper.reviewer.agent_as_judge.enabled` をオーバーライド; 不正な値は警告の上で無視される）。`ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED` と同じ「代入前に検証する」方針で `apply_paper_env_overrides` が適用する。無効 ⇒ 決定論的で LLM を使わない会議ルーブリック採点器が使われ、ドラフト採点経路にライブ LLM 呼び出しは載らない（P2）。有効 ⇒ 実際の `LLMClient` を用いた査読者が各アーカイブドラフトを*同じ*会議ルーブリックの軸で採点し、その重みは ACTIVE な統治対象 `paper_reviewer` プロンプトの強調に従う。決定論的リーダでは読めない軸（`novelty`、`significance`）も読める。LLM エラー、解析不能な応答、ルーブリックの軸重みを十分に覆わない応答では決定論的ルーブリックへフェイルオープンする。実効的な `rqgm_archive` 論文モード（`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`）でのみ意味を持つ | (未設定 ⇒ 無効) |
 
 ### バックエンド + エグゼキュータ
 
@@ -228,6 +245,28 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_JUDGE_N_RUNS` | ウィザード / 呼び出し元が `0` を渡したときの SimpleJudge 呼び出しのデフォルト `n_runs`。PaperBench 論文 §4.1 のシングルパスデフォルトは 1。 |
 | `ARI_MODEL_JUDGE` | デフォルトジャッジモデル ID（LiteLLM ルーティング）。 |
 | `ARI_MODEL_REPLICATOR` | デフォルト Stage 1 ロールアウトモデル ID。 |
+
+### GUI サーバー (`ARI_GUI_*`)
+
+8 つのスイッチが `ari viz` ダッシュボードのシェル、そのネットワーク露出、運用面を
+制御します。8 つすべてが `scripts/setup/setup_env.sh` に（コメントアウトで）宣言
+されており、すべてが**ロールバックレバー**です: 解除すれば現在の既定値になり、設定
+すれば再デプロイ無しに文書化された以前の挙動へ戻ります。
+
+| 変数 | デフォルト（未設定時） | 設定時の効果 | ロールバックの意味論 |
+|---|---|---|---|
+| `ARI_GUI_V2` | オン (`1`) | `0` / `false` でレガシーのダッシュボードシェルへ戻す。 | v2 シェルのキルスイッチ; 撤去ゲートは G6。 |
+| `ARI_GUI_BIND` | ループバックのみ (`127.0.0.1` + `::1`) | バインドアドレス: `::` = レガシーの全インタフェースデュアルスタック、`0.0.0.0` = IPv4 ワイルドカード、または単一アドレス。 | 従来の全インタフェースバインドを復元。非ループバックの値はサーバーを**リモートモード**へ切り替える（`ARI_GUI_TOKEN` を参照）。 |
+| `ARI_GUI_CORS_ANY` | オフ — same-origin のエコーのみ | `1` でレガシーの `Access-Control-Allow-Origin: *` ワイルドカードを復元。 | クロスオリジンのトンネル / ポータル構成でのみ必要; `:5173` の Vite 開発プロキシには**不要**。 |
+| `ARI_GUI_CHALLENGES` | オン — チャレンジ必須 | `0` で delete-checkpoint / stop / gpu-monitor-stop のサーバー発行確認チャレンジを無効化し、直接実行へ戻す。 | オンのとき、これらのエンドポイントは有効な `challenge_id` なしに `428` を返す; 発行側エンドポイントはどちらでも利用可能。 |
+| `ARI_GUI_CSP` | オン — ヘッダを送出 | `0` で GUI の index / 静的レスポンスから `Content-Security-Policy`、`X-Content-Type-Options`、`Referrer-Policy` を外す。 | プロキシ構成が WebSocket ポートをリマップし、ポリシーがそれをブロックする場合にのみ必要（そのとき GUI はポーリングへ縮退する）。 |
+| `ARI_GUI_TOKEN` | 未設定 | リモートモードが要求する bearer トークン: `/health*` 接頭辞を除くすべてのリクエストが `Authorization: Bearer <token>` を送る必要がある; SSE と WebSocket は `?token=` として受け付ける。 | **リモートバインド時に**未設定であることは開放ではなくフェイルセキュアです: サーバーが起動時にランダムな 32 hex のトークンを生成し、stderr へ一度だけ出力する。ループバック既定では決して必要ない。 |
+| `ARI_GUI_AUTH` | オン（リモートモード時） | `0` でリモートのトークンゲートを無効化し、未認証のリモートバインドへ戻す。 | 自前で認証を終端する信頼済みネットワーク（例: 認証を行うリバースプロキシ）のための文書化された脱出ハッチ。ループバックバインドはいずれにせよ未認証。 |
+| `ARI_GUI_HEALTH` | オン | `0` で運用可視化の面を無効化: `GET /health/live` と `/health/ready` は SPA レスポンスへ落ち、`GET /api/v1/diagnostics` は型付き 404 を返す。 | 新しい JSON を見てはならないプローブ収集構成のために、プローブ導入前のワイヤ挙動を厳密に復元する。 |
+
+完全な信頼モデルは
+[REST API → 認証](rest_api.md#認証)を、チャレンジのプロトコルは
+[REST API → 確認チャレンジ](rest_api.md#確認チャレンジ)を参照してください。
 
 ## SLURM (`SLURM_*`)
 

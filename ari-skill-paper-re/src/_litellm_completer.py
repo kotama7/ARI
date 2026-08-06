@@ -7,20 +7,23 @@ snapshots, Azure, Anthropic, Gemini, Ollama, etc. This module supplies a
 drop-in alternative ``LiteLLMTurnCompleter`` + ``LiteLLMConfig`` that
 ``SimpleJudge`` accepts via the ``completer_config`` parameter.
 
-Only the *main* per-leaf grading completer needs to be swapped — the int/float
-structured completers ``SimpleJudge`` uses for score parsing default to
-``gpt-4o-2024-08-06`` (which IS in PaperBench's registry) and may stay on
-OpenAI direct, since the parse task is small and reliable there.
+The bridge supplies this completer for the main leaf judgment and for both
+structured score parsers. This keeps provider identity consistent and allows
+every prompt/response pair to be captured under one evidence directory.
 """
 
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
+import math
 import os
 import re
+import secrets
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Unpack
 
@@ -32,7 +35,7 @@ from openai.types.chat import (
 from openai.types.chat.chat_completion_message_tool_call import Function
 from openai.types.completion_usage import CompletionUsage
 from preparedness_turn_completer.turn_completer import TurnCompleter
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,125 @@ _DEFAULT_N_CTX_BY_PREFIX: tuple[tuple[str, int], ...] = (
     ("ollama", 32_000),
 )
 _DEFAULT_N_CTX_FALLBACK = 128_000
+
+_TREE_ENTRY_RE = re.compile(
+    r"^(?P<prefix>(?:(?:\u2502   )|(?:    ))*)(?:\u251c\u2500\u2500 |\u2514\u2500\u2500 )(?P<name>.+?)\s*$"
+)
+
+
+def _paperbench_file_tree_paths(conversation: list[Any]) -> set[str] | None:
+    """Return paths shown by PaperBench's file-ranking prompt.
+
+    ``None`` means this is not the distinctive file-ranking turn; an empty
+    set means it is a ranking turn for an empty submission.  Keeping those
+    states distinct lets negative-control grading avoid asking a provider to
+    invent a filename when PaperBench has explicitly shown no files.
+    """
+
+    if not conversation:
+        return None
+    last = conversation[-1]
+    prompt = last.get("content") if isinstance(last, dict) else None
+    if not isinstance(prompt, str) or not (
+        "Directory structure:\n" in prompt
+        and "most relevant files in order of relevance" in prompt
+    ):
+        return None
+    tree_text = prompt.split("Directory structure:\n", 1)[1].split(
+        "\n\nNow return", 1
+    )[0]
+    components: list[str] = []
+    tree_paths: set[str] = set()
+    for line in tree_text.splitlines():
+        match = _TREE_ENTRY_RE.match(line)
+        if match is None:
+            continue
+        depth = len(match.group("prefix")) // 4
+        components[depth:] = [match.group("name")]
+        tree_paths.add("/".join(components))
+    return tree_paths
+
+
+def _normalize_paperbench_file_selection(
+    conversation: list[Any], content: str | None
+) -> str | None:
+    """Map PaperBench file-ranking replies back to paths in its shown tree.
+
+    CLI-backed models know their private shim cwd and can prepend it even
+    though the prompt's directory tree is submission-relative.  Upstream then
+    treats every returned line as relative and joins it to ``submission_dir``,
+    making a correct absolute selection unreadable.  Only the distinctive
+    file-ranking prompt is adapted.  The raw provider reply remains unchanged
+    in the model-call trace; the returned chat message uses the longest suffix
+    that actually occurs in the tree (so ``submission/x.c`` wins over ``x.c``
+    when that is what the model selected).
+    """
+
+    if not isinstance(content, str) or not content.strip():
+        return content
+    tree_paths = _paperbench_file_tree_paths(conversation)
+    if not tree_paths:
+        return content
+
+    candidates = sorted(
+        tree_paths,
+        key=lambda value: (value.count("/"), len(value)),
+        reverse=True,
+    )
+    normalized: list[str] = []
+    for line in content.splitlines():
+        value = line.strip().strip("`\"'").replace("\\", "/").rstrip("/")
+        if not value:
+            continue
+        match = next(
+            (
+                candidate
+                for candidate in candidates
+                if value == candidate or value.endswith("/" + candidate)
+            ),
+            None,
+        )
+        if match is not None and match not in normalized:
+            normalized.append(match)
+    return "\n".join(normalized) if normalized else content
+
+
+def _jsonable(value: Any) -> Any:
+    """Convert SDK/Pydantic values into finite, lossless-enough trace JSON."""
+
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    if isinstance(value, float):
+        return value if math.isfinite(value) else str(value)
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, type):
+        schema = (
+            value.model_json_schema()
+            if hasattr(value, "model_json_schema")
+            else None
+        )
+        return {"type_name": value.__name__, "json_schema": _jsonable(schema)}
+    if hasattr(value, "model_dump"):
+        try:
+            dumped = value.model_dump(mode="json")
+        except TypeError:
+            dumped = value.model_dump()
+        return _jsonable(dumped)
+    return {"type_name": value.__class__.__name__, "text": str(value)}
+
+
+def _canonical_digest(value: Any) -> str:
+    encoded = json.dumps(
+        _jsonable(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
 def _infer_n_ctx(model: str) -> int:
@@ -174,7 +296,7 @@ def _expand_one_string(content: str, search_roots: list[Path]) -> list[dict] | s
                     })
                     images_added += 1
                 except Exception as e:
-                    log.warning("multimodal: failed to attach %s: %s", img_path, e)
+                    logger.warning("multimodal: failed to attach %s: %s", img_path, e)
                     blocks.append({"type": "text", "text": m.group(0)})
             else:
                 # Reference unresolvable — keep markdown verbatim so the
@@ -214,7 +336,8 @@ def _expand_markdown_images(
     out: list[Any] = []
     for msg in conversation:
         if not isinstance(msg, dict):
-            out.append(msg); continue
+            out.append(msg)
+            continue
         content = msg.get("content")
         if isinstance(content, str):
             expanded = _expand_one_string(content, unique_roots)
@@ -252,6 +375,7 @@ class LiteLLMTurnCompleter(TurnCompleter):
         extra_kwargs: dict | None = None,
         tools: list[dict] | None = None,
         tool_choice: str | None = None,
+        trace_dir: str | None = None,
     ):
         self.model = model
         self.encoding_name = encoding_name or _infer_encoding_name(model)
@@ -267,6 +391,11 @@ class LiteLLMTurnCompleter(TurnCompleter):
         # for the conversion from PaperBench's Responses-shaped FunctionToolParam).
         self.tools = list(tools) if tools else None
         self.tool_choice = tool_choice
+        self.trace_dir = Path(trace_dir).resolve() if trace_dir else None
+        if self.trace_dir is not None:
+            self.trace_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if self.trace_dir.is_symlink() or not self.trace_dir.is_dir():
+                raise ValueError("trace_dir must be a real directory")
         # Used by ``BasicAgentTurnCompleterConfig`` siblings (e.g.
         # ``OpenAIResponsesTurnCompleter``) to surface retry time. We track
         # it via litellm's ``num_retries`` parameter; on each retry we add
@@ -290,6 +419,7 @@ class LiteLLMTurnCompleter(TurnCompleter):
         extra_kwargs: dict | None = None
         tools: list[dict] | None = None
         tool_choice: str | None = None
+        trace_dir: str | None = None
 
         def build(self) -> "LiteLLMTurnCompleter":
             return LiteLLMTurnCompleter(
@@ -305,6 +435,7 @@ class LiteLLMTurnCompleter(TurnCompleter):
                 extra_kwargs=self.extra_kwargs,
                 tools=self.tools,
                 tool_choice=self.tool_choice,
+                trace_dir=self.trace_dir,
             )
 
     class Completion(TurnCompleter.Completion):
@@ -347,8 +478,66 @@ class LiteLLMTurnCompleter(TurnCompleter):
             if self.tool_choice:
                 kwargs["tool_choice"] = self.tool_choice
 
+        call_id = f"{time.time_ns()}-{secrets.token_hex(8)}"
+        started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        trace_request = {
+            "model": self.model,
+            "messages": _jsonable(expanded_messages),
+            "parameters": {
+                key: _jsonable(kwargs[key])
+                for key in (
+                    "temperature",
+                    "max_tokens",
+                    "top_p",
+                    "response_format",
+                    "timeout",
+                    "tools",
+                    "tool_choice",
+                )
+                if key in kwargs
+            },
+        }
+        if _paperbench_file_tree_paths(expanded_messages) == set():
+            # PaperBench deliberately grades an empty repository as a negative
+            # control.  There is no scientifically valid filename to rank, and
+            # CLI models may represent that answer as no assistant item at all.
+            # Return the empty selection deterministically and record that no
+            # provider inference was used.
+            self._last_retry_time = 0.0
+            self._write_trace(
+                call_id,
+                started_at=started_at,
+                request=trace_request,
+                response={
+                    "provider_model": None,
+                    "content": "",
+                    "refusal": None,
+                    "tool_calls": [],
+                    "finish_reason": "deterministic-empty-file-tree",
+                    "usage": None,
+                    "synthetic_reason": "paperbench-empty-submission-tree",
+                },
+                error=None,
+            )
+            return LiteLLMTurnCompleter.Completion(
+                input_conversation=conversation,
+                output_messages=[
+                    ChatCompletionMessage(role="assistant", content="")
+                ],
+                usage=None,
+            )
         t0 = time.monotonic()
-        resp = await litellm.acompletion(**kwargs)
+        try:
+            resp = await litellm.acompletion(**kwargs)
+        except Exception as exc:
+            self._write_trace(
+                call_id,
+                started_at=started_at,
+                request=trace_request,
+                response=None,
+                error=f"{exc.__class__.__name__}: {exc}"[:4096],
+            )
+            raise
         # litellm exposes the cumulative API retry/backoff time on the
         # response when ``num_retries`` triggers. Best-effort; falls back
         # to wall-clock delta — which inflates by request latency, but
@@ -360,6 +549,22 @@ class LiteLLMTurnCompleter(TurnCompleter):
 
         choice = resp.choices[0]
         msg = choice.message
+        raw_content = getattr(msg, "content", None)
+        self._write_trace(
+            call_id,
+            started_at=started_at,
+            request=trace_request,
+            response={
+                "provider_model": getattr(resp, "model", None),
+                "content": _jsonable(raw_content),
+                "refusal": _jsonable(getattr(msg, "refusal", None)),
+                "tool_calls": _jsonable(getattr(msg, "tool_calls", None) or []),
+                "finish_reason": getattr(choice, "finish_reason", None),
+                "usage": _jsonable(getattr(resp, "usage", None)),
+            },
+            error=None,
+        )
+
         # litellm's ``message.tool_calls`` is a list of OpenAI-shaped
         # ``ChatCompletionMessageToolCall`` dicts. Coerce each into the
         # typed ``ChatCompletionMessageFunctionToolCall`` that
@@ -391,7 +596,9 @@ class LiteLLMTurnCompleter(TurnCompleter):
             )
         chat_msg = ChatCompletionMessage(
             role="assistant",
-            content=getattr(msg, "content", None),
+            content=_normalize_paperbench_file_selection(
+                expanded_messages, raw_content
+            ),
             refusal=getattr(msg, "refusal", None),
             tool_calls=tool_calls_typed or None,
         )
@@ -409,6 +616,54 @@ class LiteLLMTurnCompleter(TurnCompleter):
             output_messages=[chat_msg],
             usage=usage_dump,
         )
+
+    def _write_trace(
+        self,
+        call_id: str,
+        *,
+        started_at: str,
+        request: dict[str, Any],
+        response: dict[str, Any] | None,
+        error: str | None,
+    ) -> None:
+        if self.trace_dir is None:
+            return
+        request_digest = _canonical_digest(request)
+        payload = {
+            "schema_version": "ari.model-call-trace/v1",
+            "call_id": call_id,
+            "started_at": started_at,
+            "completed_at": datetime.now(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            ),
+            "request": request,
+            "request_digest": request_digest,
+            "response": response,
+            "response_digest": _canonical_digest(response)
+            if response is not None
+            else None,
+            "error": error,
+        }
+        encoded = json.dumps(
+            payload,
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+            allow_nan=False,
+        ).encode("utf-8")
+        temporary = self.trace_dir / f".{call_id}.tmp"
+        destination = self.trace_dir / f"{call_id}.json"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(temporary, flags, 0o600)
+        try:
+            view = memoryview(encoded)
+            while view:
+                written = os.write(descriptor, view)
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.replace(temporary, destination)
 
 
 # ─── BasicAgent-compatible config (tool conversion + retry tracking) ──
@@ -500,6 +755,7 @@ def _make_litellm_basicagent_config_class():
                 extra_kwargs=self.extra_kwargs,
                 tools=self.tools,
                 tool_choice=self.tool_choice,
+                trace_dir=self.trace_dir,
             )
 
             # Surface ``retry_config`` so ``make_completer_request`` can read

@@ -33,11 +33,9 @@ which srun mpirun          # 优先 srun (PMI/PMIx 集成)
 module avail openmpi 2>&1 | head
 ```
 
-ARI 的安全探测:
-- `_is_shared_fs()` — checkpoint 目录看起来是节点本地时警告
-- `_slurm_has_gres()` — `sinfo` 报告无 GRES 时静默剥离
-  `--gres=gpu:<type>:N` 标志,但保留 `--gpus-per-task`,使提交不被
-  拒绝
+ARI验证path与resource syntax，但无法证明mount共享性或partition能力。
+使用compute node可见的filesystem并在launch前检查`sinfo`。resource请求按原样
+提交，绝不静默删除。
 
 ## 选择正确的分区
 
@@ -49,9 +47,9 @@ ARI 的安全探测:
 export ARI_SLURM_PARTITION=large
 ```
 
-## 示例: sx40 (单节点, 4×V100)
+## 示例：匿名的未配置 GRES 的 GPU 分区
 
-`sx40` 是 CRA 分区,每节点暴露 `4× V100-SXM2-16GB`,未配置 GRES。
+该示例的单个节点暴露 `4× V100-SXM2-16GB`，但未配置 GRES。
 使用:
 
 ```jsonc

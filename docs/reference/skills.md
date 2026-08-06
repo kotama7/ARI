@@ -1,6 +1,6 @@
 ---
 sources:
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
@@ -12,12 +12,26 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-08-03
 ---
 
-# MCP Skills Reference
+# Capability Provider Packages (`ari-skill-*` compatibility names)
 
-Skills are MCP servers that provide tools to the ARI agent. Tools are deterministic where possible; LLM-using tools are explicitly annotated. **14 skills total** (13 default, 1 additional) — `ari-skill-replicate` was added in v0.7.0 for the PaperBench-format reproducibility flow.
+The packages historically called “Skills” are executable **Capability
+Providers** connected through MCP. They are not Knowledge Skills. MCP is the
+transport/discovery protocol; each listed tool is an atomic Provider
+operation. Tools are deterministic where possible, and LLM-using operations
+are explicitly annotated. The on-disk `skill.yaml`, `SkillManifestV1`, and
+`SKILLS.lock` names remain compatibility names for the Provider manifest and
+run snapshot; there is no parallel `provider.yaml` or `PROVIDERS.lock`.
+
+Non-executable Knowledge Skills and independent Harnesses are documented in
+[Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md).
+The default-off `ari-skill-knowledge` and `ari-skill-harness` packages expose
+only read/query and non-authoritative request operations; neither grants
+catalog administration or fixed resolution authority.
 
 ## ari-skill-hpc
 
@@ -63,6 +77,16 @@ result = job_status("12345")
 
 Cancel a running or pending SLURM job.
 
+#### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+
+Probe tool availability (`command -v`) **on the compute partition** and cache
+the result to `{checkpoint_dir}/platform_capabilities.json`. Best-effort by
+design: any failure (no partition, `srun` missing, queue wait beyond the
+timeout) returns `{"status": "skipped", ...}` and writes nothing; an existing
+cache is returned as `{"status": "cached", ...}` without re-probing. The claims
+extractor reads the cached note so it never declares evidence that depends on
+tools the platform verifiably lacks.
+
 #### `singularity_build(definition_file, output_path, partition)`
 
 Build a Singularity container from a definition file.
@@ -93,18 +117,31 @@ Literature survey and idea generation. **LLM: Yes** (generate_ideas uses VirSci 
 
 #### `survey(topic, max_papers=8)`
 
-Search Semantic Scholar for related papers. Deterministic (no LLM).
+Prior-work survey. Deterministic (no LLM). Sources are tried in order:
+the frozen `virsci_snapshot` corpus the idea stage already built for this
+run's topic, then a live Semantic Scholar query (HTTP, then the
+`semanticscholar` client as a retry), then an **arXiv fallback** — so a
+keyless or rate-limited S2 does not silently erase prior-art grounding.
+The top results are then enriched with their citing papers (2-hop). Every
+degradation, including a final 0-paper result, is reported on stderr.
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
 # Returns: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
 ```
 
-Requires `S2_API_KEY` environment variable for higher Semantic Scholar rate limits.
+Set `S2_API_KEY` for higher Semantic Scholar rate limits. `max_papers` is
+capped at 15.
+
+`survey` and `generate_ideas` are the skill's **only** registered MCP tools;
+`_load_virsci_snapshot_papers` is a plain helper `survey` calls directly and
+must never be agent-visible. `tests/test_server.py` pins both facts through
+`mcp.list_tools()` (a lost/misplaced `@mcp.tool()` decorator has shipped
+before).
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
 
-Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple AI personas (researcher, critic, expert, synthesizer) debate the research question. Called **once** before BFTS starts (pre-BFTS only).
+Generate research hypotheses using VirSci multi-agent LLM deliberation. Multiple AI personas (researcher, critic, expert, synthesizer) debate the research question. In the default `simple_bfts` mode it is called **once** before BFTS starts (pre-BFTS only). In the opt-in `ari_rqgm` mode with `proposal_router.generators.virsci.enabled: true`, the core-side `VirSciAdapter` additionally calls `survey` + `generate_ideas` through the ProposalRouter's event-triggered, budget-capped dispatch — see [VirSci Integration](../guides/virsci_integration.md).
 
 Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 
@@ -393,6 +430,7 @@ deterministic chain whose grading core is taken from PaperBench:
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
+ors_audit_rubric     (replicate-skill)    → ors_rubric.audit.json (flags leaves in ors_rubric.json in place)
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (local-tarball default)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (deterministic; fetch_code_bundle ← publish_record.json)
@@ -401,6 +439,14 @@ ors_build_reproduce  (paper-re-skill)     → repro_sandbox/{reproduce.sh, sourc
 ors_run_reproduce    (paper-re-skill)     → ors_phase1.json   (Phase 1: sandbox-execute reproduce.sh)
 ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: SimpleJudge over the rubric leaves)
 ```
+
+`ors_audit_rubric` checks the rubric everything downstream is graded
+against: it flags each leaf `vague_qualifier` / `no_paper_evidence` /
+`duplicate` (deterministic) and `unverifiable` (one LLM call per leaf),
+rewrites `ors_rubric.json` in place with those flags, and reports
+`regen_recommended` when >20% of leaves are flagged. It is a signal, not a
+gate — grading proceeds either way, but the flags travel with the rubric.
+Point it at a different model than the generator with `ARI_MODEL_RUBRIC_AUDIT`.
 
 EAR-on runs flow through `ors_seed_sandbox` (deterministic seed); the
 LLM `ors_build_reproduce` skips when reproduce.sh is already present,

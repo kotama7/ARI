@@ -8,7 +8,23 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
-last_verified: 2026-07-03
+  - path: ari-core/ari/config/field_registry.py
+    role: implementation
+  - path: ari-core/ari/config/resolver.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/store.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/config_api.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/tests/test_gui_baseline_settings_contract.py
+    role: test
+  - path: ari-core/tests/test_gui_config_shadow_legacy.py
+    role: test
+  - path: ari-core/tests/test_gui_v1_mode_selection.py
+    role: test
+last_verified: 2026-07-29
 ---
 
 # Configuration Reference
@@ -54,11 +70,308 @@ empty env var as missing (YAML/default kept; `base_url` uses an explicit
 `!= ""`). The GUI merge `{**defaults, **saved}` lets a present-but-empty saved
 key win, then re-forces only `llm_model`/`llm_provider` from `workflow.yaml`.
 
-> ⚠ This precedence is **documented as observed today**, not changed. Per the
-> refactoring rules, the order is locked by tests
-> (`test_config.py`, `test_default_provider.py`, `test_launch_config.py`,
-> `test_settings_*`) before any consolidation. A central config-loader is a
-> proposed follow-up — see `refactoring/notes/08_config_precedence.md`.
+> ⚠ This precedence is **documented as observed today**, not changed. The
+> order is locked by tests (`test_config.py`, `test_default_provider.py`,
+> `test_launch_config.py`, `test_settings_*`) before any consolidation. The
+> central config-loader that used to be a proposed follow-up now exists for
+> the GUI path only — `ari.config.resolver` (`legacy-compatible-1`), described
+> in the next section. It **reconstructs** this chain post-hoc; it does not
+> replace it, and the CLI still resolves exactly as above.
+
+## Configuration control plane (`/api/v1/config/*`)
+
+The GUI's configuration surface is built on three machine-checked pieces:
+
+1. a **field registry** — the canonical metadata inventory of every declared
+   config leaf (`ari-core/ari/config/field_registry.py`);
+2. a **resolver** — one function per resolution context that explains where
+   each effective value came from (`ari-core/ari/config/resolver.py`);
+3. a **document store** — GUI-only project config / run templates / run
+   drafts (`ari-core/ari/viz/v1/store.py`).
+
+All three are read-only with respect to the runtime: they never mutate
+`ARIConfig`, never write to `os.environ`, and the CLI / `simple_bfts` path
+never reads them. They exist so a UI can *explain* configuration; the values
+a run actually uses still arrive through the precedence chains above.
+
+### Field registry (canonical field metadata)
+
+`GET /api/v1/config/schema` serves the registry — **metadata only, never an
+effective value**. Each entry describes one `ARIConfig` leaf:
+
+| Key | Meaning |
+|---|---|
+| `path` | Dotted leaf path (`bfts.max_total_nodes`). The stable identity. |
+| `value_type` | Rendered pydantic annotation (`int`, `str \| None`, `list[SkillConfig]`, `dict[str, float]`, …). A `Literal` renders as the type of its members (`str`), with the members in `enum`. |
+| `default` | The pydantic default (or the default factory's value). Forced to `null` for `secret_reference` leaves. |
+| `enum` | The `Literal` members when the annotation is a closed set, else `null`. |
+| `required` | Whether the field has no default. |
+| `category` | UI grouping: Models, Skills, Search (BFTS), Infrastructure, Evaluation, Execution mode, Governance, Proposal routing. |
+| `level` | `basic` / `advanced` / `expert` — progressive disclosure. |
+| `scope` | `preference` / `installation` / `project` / `template` / `run` — which document may own the value. |
+| `sensitivity` | `public` / `internal` / `secret_reference`. |
+| `mutability` | `draft` / `new_run_only` / `resume_mutable` / `read_only`. |
+| `applies_when` | Dependency predicate (`bfts.frontier_score=depth_penalized`) or `null`. |
+| `notes` | Hand-authored caveat (e.g. "yaml_only: no GUI field or `ARI_*` hook"). |
+| `source` | `pydantic` — the walk covers declared model fields only. |
+| `env_override` | The `ARI_*` variable that overrides this leaf, or `null`. |
+
+**Coverage invariant.** The registry currently has **144 leaves and 100 %
+metadata coverage**: `build_field_registry()` raises `LookupError` when any
+walked leaf lacks a `FIELD_META` prefix or exact entry, so a new config field
+cannot ship without schema metadata. Today's distribution: 96 Governance /
+14 Search (BFTS) / 14 Proposal routing / 5 Models / 5 Infrastructure /
+4 Evaluation / 4 Execution mode / 2 Skills; 119 expert, 16 advanced, 9 basic;
+143 `public` + 1 `secret_reference` (`llm.api_key`); 114 `new_run_only` +
+30 `draft`; 20 leaves carry an `env_override`.
+
+Deliberate fidelity limits (documented, not silent):
+
+- Only **declared pydantic fields** are walked. `extra="allow"` YAML blocks
+  (`hpc`, `container`, `memory`, `letta`, `claim_gate_policy`,
+  `lineage_decision`, …) have no model field and therefore no leaf; their
+  `FIELD_META` prefixes are forward-declared for the day they become typed.
+- List/dict fields (`skills`, `resources`, `evaluator.axis_weights`,
+  `evaluator.custom_axes`) are **single composite leaves** — element paths
+  are index-dependent and would not be stable identities.
+- The module is pure: no filesystem, no clock, no environment read, no LLM.
+  Two builds are byte-identical (P2).
+
+The same registry drives write validation. `PATCH` bodies are
+`{"values": {"dotted.path": value}}` and are checked by `validate_patch`,
+whose closed rejection vocabulary is `unknown_path`, `secret_reference`,
+`read_only`, `not_project_scope`, `invalid_enum`, `invalid_type` plus the
+cross-path `mode_interlock_mismatch`. Secrets and `read_only` fields are
+rejected for every target; `new_run_only` fields are legitimate in
+templates/drafts (they configure future runs) but rejected in the project
+config unless their scope is `project`.
+
+**Mode leaves and the interlock rule.** The four `Execution mode` leaves
+(`ari.mode`, `rqgm.enabled`, `paper.mode`, `rqgm.paper.enabled`) are
+`scope: run`, `mutability: new_run_only`, and form **two pairs** —
+`MODE_INTERLOCK_PAIRS` in `field_registry.py`, the single source that
+`resolver.INTERLOCK_PAIRS` aliases. A pair is one intent: a document in
+which one half appears without its agreeing twin is rejected with
+`mode_interlock_mismatch` (`validate_mode_interlocks`, evaluated on the
+merged document values, not the raw patch). Since ADR-09 these four are the
+only mode/governance leaves a GUI client may write, and only for a new run;
+the remaining 96 paths in the `Execution mode` category and the `rqgm.*`
+tree stay file-only and are refused by `POST /api/v1/runs` with
+`mode_locked`. Their `applies_when` metadata carries a pairing *note*
+("paired with `rqgm.enabled` (one intent — set both)") rather than a
+`path=value` gate, because gating either half on the other would make the
+interlock self-gating.
+
+The `env_override` column is the literal transcription of the
+`apply_*_env_overrides` family in `ari/config/__init__.py`:
+
+| Config leaf | Env variable |
+|---|---|
+| `llm.model` | `ARI_MODEL` (alias `ARI_LLM_MODEL`) |
+| `llm.backend` | `ARI_BACKEND` |
+| `llm.base_url` | `ARI_LLM_API_BASE` |
+| `checkpoint.dir` | `ARI_CHECKPOINT_DIR` |
+| `logging.dir` | `ARI_LOG_DIR` |
+| `logging.level` | `ARI_LOG_LEVEL` (auto-config / no-YAML path only) |
+| `bfts.max_total_nodes` | `ARI_MAX_NODES` |
+| `bfts.max_depth` | `ARI_MAX_DEPTH` |
+| `bfts.max_react_steps` | `ARI_MAX_REACT` |
+| `bfts.max_parallel_nodes` | `ARI_PARALLEL` |
+| `bfts.timeout_per_node` | `ARI_TIMEOUT_NODE` |
+| `bfts.frontier_score` | `ARI_FRONTIER_SCORE` |
+| `bfts.allow_web` | `ARI_BFTS_ALLOW_WEB` |
+| `evaluator.composite` | `ARI_COMPOSITE` |
+| `evaluator.axis_mode` | `ARI_AXIS_MODE` |
+| `ari.mode` | `ARI_MODE` |
+| `rqgm.enabled` | `ARI_RQGM_ENABLED` |
+| `paper.mode` | `ARI_PAPER_MODE` |
+| `rqgm.paper.enabled` | `ARI_RQGM_PAPER_ENABLED` |
+| `rqgm.paper.reviewer.agent_as_judge.enabled` | `ARI_PAPER_AGENT_AS_JUDGE` |
+
+### Resolution model
+
+Both resolution modes report `resolver_version: "legacy-compatible-1"` —
+the algorithm identity, versioned separately from the payload
+`schema_version`. The initial resolver deliberately *reproduces* today's
+imperative precedence rather than improving it.
+
+**A) Existing checkpoint** (`GET /api/v1/runs/{run_id}/resolved-config`) —
+explains a run post-hoc without re-running `load_config`:
+
+| # | Layer | `source` | Confidence |
+|:--:|---|---|---|
+| 1 | pydantic defaults | `default` | high |
+| 2 | `{ckpt}/workflow.yaml` (model-field keys) | `workflow` | high |
+| 3 | `{ckpt}/launch_config.json` knobs | `launch_config` | high |
+| 4 | **current** environment, documented `ARI_*` only | `env` | **low** |
+| 5 | `{ckpt}/rqgm_state.json` persisted mode | `checkpoint_state` | high, `mutable: false` |
+
+Layer 4 is low-confidence on purpose: the environment being read is the
+*server's* environment now, not necessarily the one the run was launched
+with. Layer 5 is immutable because a run's execution mode is fixed at
+launch (resume reconciliation is downgrade-only).
+
+**B) New run** (`POST /api/v1/run-drafts/{draft_id}/resolve-config`) —
+previews a run that does not exist yet:
+
+| # | Layer | `source` |
+|:--:|---|---|
+| 1 | pydantic defaults | `default` |
+| 2 | **bundled** `config/workflow.yaml` | `workflow` |
+| 3 | selected execution profile (`--profile laptop\|hpc\|cloud`) | `profile` |
+| 4 | project config document | `project` |
+| 5 | run template document | `template` |
+| 6 | run draft document | `draft` |
+| 7 | documented `ARI_*` env overrides | `env` (confidence low) |
+
+then two closing steps:
+
+- **validated effective** — the merged values are constructed as an
+  `ARIConfig`; a value pydantic rejects reverts to the last *valid* layer
+  value and is annotated with a `rejected_override` provenance entry plus a
+  warning. Rejected or ignored overrides are returned as explanations, never
+  silently dropped.
+- **interlock resolution** — `ari.mode` + `rqgm.enabled` and `paper.mode` +
+  `rqgm.paper.enabled` must agree. The runtime resolves a mismatch as
+  *warn + fallback* (`simple_bfts` / `linear`) and the manifest shows the
+  **effective** mode. Draft validation
+  (`POST /api/v1/run-drafts/{draft_id}/validate`) is stricter: there a
+  mismatch is an `interlock_mismatch` **error**, so the GUI refuses to launch
+  an inconsistent intent.
+
+> **The 4-key profile merge caveat.** `--profile` does *not* deep-merge the
+> profile YAML. `_apply_profile` (`ari/cli/run.py`) merges exactly four keys:
+> `bfts.max_total_nodes`, `bfts.max_parallel_nodes` (historical spelling
+> `bfts.parallel`, accepted only when `max_parallel_nodes` is absent),
+> `hpc.enabled` → `resources.hpc_enabled`, and `hpc.scheduler` →
+> `resources.scheduler`. The resolver reproduces that exactly and emits a
+> warning listing **every other profile key it ignored**, so a profile knob
+> that has no effect is visible instead of invisible. Profiles are also not
+> recorded anywhere in the checkpoint — for an existing run their effect is
+> only observable through `launch_config.json` / env.
+
+Other deliberate gaps, each surfaced as a warning rather than a silent
+difference: `skills` auto-discovery and the `allow_web` phase rewrite are
+runtime-only; checkpoint `settings.json` is not an overlay layer (it reaches
+a run only through the launch-time env translation, which the
+`launch_config` and `env` layers already represent).
+
+### Provenance and confidence
+
+Every resolved leaf carries a provenance entry:
+
+| Field | Meaning |
+|---|---|
+| `source` | The winning layer. Existing-checkpoint vocabulary: `default`, `workflow`, `launch_config`, `env`, `checkpoint_state`. New-run vocabulary: `default`, `workflow`, `profile`, `project`, `template`, `draft`, `env`. |
+| `mutable` | Whether the value can still be changed. In the new-run preview every non-`read_only` field is mutable (before launch even `new_run_only` windows are open); for an existing checkpoint the persisted mode is `mutable: false`. |
+| `confidence` | `high` when the source artifact was present; `low` for the environment overlay (and for reconstructed layers) — the launch-time environment may differ from the one being read. |
+| `rejected_override` | New-run only: `{source, value, reason, expected}` when a layer's value was rejected by validation and the previous layer's value was kept. |
+
+`source_stack` lists the layers that actually participated. Note the
+documented asymmetry: the existing-checkpoint stack always contains `env`
+(the overlay is always evaluated), while the new-run stack lists only layers
+that were present.
+
+### `resolved_config.json` (the launch manifest)
+
+`POST /api/v1/runs` materializes the previewed manifest into the checkpoint
+as `{ckpt}/resolved_config.json` — "the resolved manifest becomes real at
+launch". It is additive: `launch_config.json` is still written for the
+legacy display path.
+
+```json
+{
+  "schema_version": 1,
+  "resolver_version": "legacy-compatible-1",
+  "run_id": "20260726T101500_matmul-9f3a12",
+  "resolved_at": "2026-07-26T10:15:00Z",
+  "digest": "sha256:1f0c…",
+  "source_stack": ["default", "workflow", "profile", "draft"],
+  "values":   { "bfts": { "max_total_nodes": 24 }, "...": "..." },
+  "provenance": { "bfts.max_total_nodes": { "source": "draft", "mutable": true, "confidence": "high" } },
+  "secret_references": { "llm.api_key": { "provider": "env", "configured": true } },
+  "warnings": ["profile 'hpc': ignored non-merged keys …"]
+}
+```
+
+Rules worth knowing:
+
+- **Secrets are excluded, structurally.** Leaves whose registry sensitivity
+  is `secret_reference` never appear in `values`, `provenance` or the digest
+  input; they surface only as `secret_references` entries carrying
+  `{provider, configured}` — there is no value field to leak into.
+- **`digest` = `sha256:` over the canonical JSON of `values` alone**
+  (`sort_keys=True`, no whitespace, `ensure_ascii=False`). Because secrets
+  are already excluded, the digest is computed over the redacted document,
+  and environment noise outside the documented `ARI_*` families never moves
+  it. Two identical configurations produce the same digest on any machine.
+- **No clock inside the resolver.** `resolved_at` is filled by the caller
+  from source-file mtimes, never `now()`, so repeated GETs are byte-stable.
+
+### GUI document store (`gui_store/`)
+
+The GUI-only configuration documents live beside the checkpoints, never in a
+global home directory:
+
+```
+{workspace_root}/gui_store/
+├── project_config.json              # the single default project's config
+├── run_templates/{template_id}.json
+├── run_drafts/{draft_id}.json
+└── launches/{idempotency_key}.json  # idempotent-launch records
+```
+
+| Property | Contract |
+|---|---|
+| Envelope | `{"schema_version": 1, "kind": ..., "revision": n, "body": {...}}`, serialized deterministically (`sort_keys`, 2-space indent, trailing newline). |
+| `revision` | Per-document integer starting at 1, incremented on every write; it is the `If-Match` token of the HTTP API (`0` means "must not exist yet"). |
+| Durability | Same-directory temp file + `fsync` + `os.replace` (+ best-effort directory fsync): a crash mid-write leaves the previous document byte-intact. |
+| Permissions | Files `0o600`, store directories `0o700`. |
+| IDs | Caller-supplied and validated against `^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$` — no `/`, no `.`, so path traversal is structurally impossible. Draft ids are server-generated (`draft-<12 hex>`). |
+| Root | `RuntimePathResolver.resolve_workspace_root()` — the same policy every workspace consumer uses (`ARI_CHECKPOINT_DIR` wins). |
+
+**The CLI never reads `gui_store/`.** It is a GUI convenience layer:
+templates outlive the runs they spawned, and launch materializes every
+effective value into the checkpoint exactly as before. Nothing in `ari/`
+outside `ari.viz.v1` imports the store.
+
+### Legacy Settings keys: what is actually wired
+
+The legacy `GET/POST /api/settings` surface is frozen (its exact key sets are
+pinned by `ari-core/tests/test_gui_baseline_settings_contract.py`), quirks
+included. Two of those quirks matter when reading the Settings page:
+
+**1. The GET/POST key sets do not match.** `GET /api/settings` returns
+exactly **27** top-level keys (26 scalar/list + the nested `ors` object with
+10 sub-keys); the Save button POSTs exactly **24** flat keys, and `POST` is a
+*whole-file replace* (keys absent from the body are erased from
+`settings.json`). 16 keys are shared:
+
+| Only in the POST body (8) | Only in the GET response (11) |
+|---|---|
+| `llm_backend`, `llm_base_url`, `ssh_host`, `ssh_port`, `ssh_user`, `ssh_path`, `ssh_key`, `slurm_partitions` | `llm_provider`, `ollama_host`, `mcp_skills`, `slurm_gpus`, `vlm_review_enabled`, `vlm_review_max_iter`, `vlm_review_threshold`, `letta_deployment`, `letta_deployment_image`, `letta_deployment_venv`, `ors` |
+
+Consequence: the provider is written as `llm_backend` but read back as
+`llm_provider`, which is why the GET merge re-forces `llm_provider` (and
+`llm_model`) from `workflow.yaml` when the saved value is falsy — the
+"falsy-re-force quirk" noted in the precedence section above.
+
+**2. Some keys are decorative.** They are persisted and rendered, but no
+runtime reads them:
+
+| Settings key | Status | Detail |
+|---|---|---|
+| `temperature` | **dead** | Never exported to the launch environment and no `ARI_*` hook exists; a run keeps the pydantic `llm.temperature` default. (The canonical config API *does* apply the `llm.temperature` leaf — the two paths differ here by design of the freeze.) |
+| `container_pull` | **dead on both routes** | Never exported to env and no canonical config leaf exists. |
+| `retrieval_backend` | **decorative in `workflow.yaml`** | The value *is* exported as `ARI_RETRIEVAL_BACKEND` at launch, but `retrieval` is an untyped top-level workflow key with no typed leaf — the registry only forward-declares it. |
+| `slurm_partition` / `slurm_cpus` / `slurm_memory_gb` / `slurm_walltime` | **seed only** | The SLURM card's values never reach the launch environment. `slurm_cpus` / `slurm_memory_gb` / `slurm_walltime` pre-fill the Wizard's HPC step; the wizard's own values are what get used. |
+| `slurm_partitions` | **UI-local** | A Settings-page multiselect state; the Wizard's partition list comes from `GET /api/slurm/partitions` detection instead. |
+| `container_mode` / `container_image` / `vlm_review_model` / `letta_*` | **env-only** | Exported as `ARI_CONTAINER_MODE` / `ARI_CONTAINER_IMAGE` / `VLM_MODEL` / `LETTA_*`, but the corresponding workflow blocks are untyped `extra="allow"` sections, so the field registry has no typed leaf for them yet. |
+| `letta_api_key` | **frozen defect** | Persisted verbatim into `settings.json` in plaintext. The canonical config API refuses secrets in `values`; use `PUT /api/v1/secrets/{secret_id}` instead. |
+
+The overlap between the 24 POST keys, the legacy launch env exports and the
+canonical config leaves — including every divergence above — is asserted
+literally by `ari-core/tests/test_gui_config_shadow_legacy.py`.
 
 ## workflow.yaml (Canonical Developer Config)
 
@@ -165,6 +478,16 @@ pipeline:
     depends_on: [review_paper, vlm_review_figures]
     # Post-hoc structural merge of text + VLM reviewer outputs (no LLM).
 
+  # Re-hash node artifacts against their recorded sha256 before any of them
+  # become paper evidence. {{run_id}}/{{experiments_root}} are resolved by the
+  # pipeline driver from checkpoint_dir (tree.json wins over the dir name).
+  - stage: audit_node_provenance
+    skill: memory-skill
+    tool: audit_memory
+    depends_on: []
+    inputs:
+      experiments_root: '{{experiments_root}}'
+      run_id: '{{run_id}}'
   # ─── ORS auto-rubric reproducibility (PaperBench, v0.7.0) ───
   # Replaces the legacy `reproducibility_check` stage.
   - stage: ors_generate_rubric
@@ -175,6 +498,13 @@ pipeline:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       output_path: '{{checkpoint_dir}}/ors_rubric.json'
       target_leaf_count: 0     # 0 = auto from paper length
+  - stage: ors_audit_rubric    # quality audit of the rubric everything is graded against
+    skill: replicate-skill
+    tool: audit_rubric
+    depends_on: [ors_generate_rubric]
+    inputs:
+      rubric_path: '{{checkpoint_dir}}/ors_rubric.json'   # rewritten in place with flags
+      paper_path: '{{checkpoint_dir}}/full_paper.tex'
   - stage: ear_publish          # v0.7.0+: enabled by default with local-tarball
     skill: transform-skill
     tool: publish_ear
@@ -193,7 +523,7 @@ pipeline:
   - stage: ors_build_reproduce  # v0.7.0+: LLM fallback (skips if seeded above)
     skill: paper-re-skill
     tool: build_reproduce_sh
-    depends_on: [ors_generate_rubric, ors_seed_sandbox, finalize_paper]
+    depends_on: [ors_audit_rubric, ors_seed_sandbox, finalize_paper]
     inputs:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
@@ -202,7 +532,7 @@ pipeline:
   - stage: ors_run_reproduce
     skill: paper-re-skill
     tool: run_reproduce        # Phase 1 (sandbox-execute reproduce.sh)
-    depends_on: [ors_generate_rubric, ors_build_reproduce]
+    depends_on: [ors_audit_rubric, ors_build_reproduce]
     inputs:
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
       repo_dir: '{{checkpoint_dir}}/repro_sandbox'
@@ -469,6 +799,9 @@ Any value in `inputs:` supports `{{variable}}` substitution:
 | Variable | Value |
 |----------|-------|
 | `{{ckpt}}` | Checkpoint directory path |
+| `{{checkpoint_dir}}` | Same value as `{{ckpt}}` (both are bound; most stages use this spelling) |
+| `{{run_id}}` | The run's id. Read from `{checkpoint_dir}/tree.json` when present, else the directory name — `ari resume` can repoint `checkpoint.dir` at a renamed directory, and the two then differ |
+| `{{experiments_root}}` | `{workspace_root}/experiments` — the per-node scratch tree, a SIBLING of `checkpoints/`, resolved via `ari.paths.PathManager`. Node dirs are `{{experiments_root}}/{{run_id}}/<node_id>/` |
 | `{{ari_root}}` | ARI project root (`$ARI_ROOT` or auto-detected) |
 | `{{llm.model}}` | LLM model name from `llm:` section |
 | `{{llm.base_url}}` | LLM base URL from `llm:` section |
@@ -762,6 +1095,305 @@ raises immediately (fail-fast); there is no silent fallback.
   ```
 
 ---
+
+## Execution Mode and RQGM Governance (opt-in)
+
+ARI has two execution modes.  `simple_bfts` is the default and is
+unchanged — a config with no `ari:` / `rqgm:` blocks (i.e. every pre-RQGM
+config) behaves exactly as before and never loads an `ari.rqgm` module.
+`ari_rqgm` opts in to Constitutional ARI-RQGM epoch governance.  See
+[Execution Modes](../guides/execution_modes.md) for the semantics and
+[RQGM Schema Reference](rqgm_schemas.md) for the records it persists.
+
+All `rqgm.*` / `proposal_router.*` defaults below live in
+`ari-core/ari/configs/defaults.yaml` and mirror the typed Pydantic models
+in `ari-core/ari/config/__init__.py` (parity between the two homes is
+pinned by the `ari-core/tests/test_rqgm_*.py` suites).  Every block is
+structurally inert unless the mode is active; unknown later-version keys
+parse warn-free (`extra: allow`).
+
+### Activation: `ari.mode` + `rqgm.enabled`
+
+```yaml
+ari:
+  mode: simple_bfts     # simple_bfts | ari_rqgm  (master switch)
+rqgm:
+  enabled: false        # redundant safety interlock
+```
+
+Both keys must agree; any disagreement fails safe to `simple_bfts` with a
+warning (`ari.rqgm.mode.resolve_effective_mode`).  Environment overrides
+(applied after profiles, so an explicit env choice wins over YAML):
+`ARI_MODE` ∈ {`simple_bfts`, `ari_rqgm`} and `ARI_RQGM_ENABLED` ∈
+{`0`,`1`,`true`,`false`}; invalid values warn and are ignored.  There is
+no `--mode` CLI flag, and profiles (`--profile`) do not merge RQGM keys.
+The dashboard's Configuration Studio can set this pair (and the
+`paper.mode` pair) for a **new** run — one control writes both keys — but
+no surface can change the mode of a run that already exists, and the
+remaining `rqgm.*` parameters stay configuration-file only (ADR-09; see
+[Execution modes](../guides/execution_modes.md)).
+
+Four optional environment pins make the execution fingerprint more
+specific. When any is absent the epoch records it as `unresolved` and
+`execution_identity.complete` is `false`; ARI does not claim that a mutable
+provider alias is reproducible.
+
+| Variable | Identity it pins |
+|---|---|
+| `ARI_MODEL_REVISION` | Exact provider/model weight or deployment revision |
+| `ARI_TOOL_BUNDLE_REVISION` | Immutable tool bundle revision |
+| `ARI_ENVIRONMENT_DIGEST` | Container or resolved environment digest |
+| `ARI_DATA_SNAPSHOT_DIGEST` | Immutable external-data snapshot |
+
+### `rqgm.epoch` — epoch-boundary sizing
+
+| Key | Default | Meaning |
+|---|---|---|
+| `boundary` | `node_count` | Boundary trigger kind; v1 supports only `node_count`. |
+| `nodes_per_epoch` | `10` | New BFTS nodes after which the boundary transaction fires; `<= 0` disables automatic boundaries (the run stays in `epoch_000`). |
+
+### `rqgm.kernel` — ConstitutionalKernel posture
+
+Numeric tolerances and posture only — the rule tables are frozen code
+(`ari/rqgm/kernel_rules.py` + `ari/rqgm/transition_rules.py`), never
+config.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enforcement` | `standard` | `standard` applies the blocking matrix; `audit_only` downgrades every context to warn-and-log (staged rollout / ablations). Read at run start / epoch boundaries only. |
+| `audit_chain` | `auto` | Chain-verification posture; v1: only `auto` (verify the hash chain iff chain fields are present). |
+| `float_tolerance` | `1.0e-9` | Single float-comparison tolerance used by kernel checks. |
+
+### `rqgm.governance` — GovernanceOrchestrator budgets and posture
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Epoch-boundary governance audit on/off inside `ari_rqgm` (ablation rungs run `ari_rqgm` with governance off). |
+| `default_level` | `1` | Default per-epoch governance level stamped into the report. |
+| `full_governance_only_on_top_k` | `3` | Full adversary/defender/judge attention only for the top-k nodes. |
+| `judge_on_disputed_only` | `true` | Invoke the GovernanceJudge only on filed motions. |
+| `impeachment_only_at_epoch_boundary` | `true` | Motions are filed only inside `audit_epoch`. |
+| `max_llm_calls_per_audit` | `12` | Hard cap per `audit_epoch`; past it every step degrades to its deterministic fallback. |
+| `max_defender_calls_per_epoch` | `12` | Per-epoch Defender LLM-call cap (the adversary cap lives only in `rqgm.adversarial.max_adversary_calls_per_epoch`). |
+| `max_judge_calls_per_epoch` | `8` | Per-epoch Judge LLM-call cap. |
+| `low_confidence_threshold` | `0.4` | Reviewer confidence below this marks the node disputed. |
+| `novelty_claim_threshold` | `0.8` | Novelty axis at/above this (or non-empty novelty risks) triggers the contested tier. |
+| `max_motions_per_epoch` | `2` | Hard cap on impeachment motions per epoch. |
+| `bond_units_per_motion` | `1` | Legacy field name for motion-quota units. Counters are returned on upheld and consumed on dismissed; no value is transferred. |
+| `jury_panel_enabled` | `false` | JuryPanel (multi-sample judge aggregation); off in v1. |
+| `fail_mode` | `open` | v1: only `open` — degrade to a no-action report, never block the run loop. |
+
+### `rqgm.replay` — replay/anchor case sizing
+
+| Key | Default | Meaning |
+|---|---|---|
+| `max_cases_per_epoch` | `8` | Max replay/anchor cases scored per subject per audit. |
+| `max_cases_for_retirement` | `12` | Higher cap when a motion puts a RetirementEvent under consideration. |
+| `use_cached_results` | `true` | Prefer cached case results (`rqgm_governance_cache.jsonl`); the boards are deterministic given cached results. |
+
+### `rqgm.transition` — RegistryTransitionEngine thresholds
+
+The thresholds are the **only** tunable part of the transition layer;
+the T1–T21 table topology is fixed code (`ari/rqgm/transition_rules.py`).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `replay_pass_threshold` | `0.8` | T3: minimum replay-board score for a validated candidate to enter shadow. |
+| `replay_min_cases` | `4` | T3: minimum replay cases behind the score. Waived for the roles that have no executed replay case *by construction* and declare it (`transition_engine.NO_REPLAY_BASIS_ROLES` — `utility_policy`, `paper_writer`, `paper_reviewer`); the waiver is recorded on the transition's notes. Behavioural exploration roles are always held to this floor. |
+| `shadow_pass_threshold` | `0.7` | T6: minimum shadow agreement for probationary adoption; below it with sufficient samples is the T5 rejection. |
+| `shadow_min_samples` | `5` | T6: minimum live-shadow comparisons before adoption/rejection is decidable. Waived for the same declared `NO_REPLAY_BASIS_ROLES`: a passive `utility_policy` document is never shadow-executed and no paper role has a shadow-serving path, so their shadow stage is vacuous by construction rather than under-populated (plan 14 §5.5). A reported `shadow_score` still has to clear `shadow_pass_threshold` — only the count is waived. |
+| `shadow_max_epochs` | `2` | T4: epochs in shadow without sufficient samples before the bounded retry. |
+| `shadow_retry_limit` | `1` | T4: bounded shadow retries; beyond it the candidate takes the T5 rejection. |
+| `probation_min_epochs` | `1` | T7/T14: full clean epochs served before promotion to active. |
+| `warning_escalation_count` | `2` | T10: consecutive warning epochs before escalation to probation. |
+| `warning_memory_epochs` | `3` | T13: recurrence window after entering warning that escalates to probation. |
+| `retirement_replay_min_cases` | `8` | T17: minimum ReplayBoard case coverage before a retirement commits (`<= rqgm.replay.max_cases_for_retirement`). |
+| `candidate_max_age_epochs` | `3` | T2: epochs a candidate may wait for validation before expiry. |
+| `max_adoptions_per_role_per_boundary` | `1` | T6: adoption cap per role per epoch boundary. |
+
+### `rqgm.adversarial` — attack→defense→adjudication loop
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Whether the adversarial round runs per completed node. |
+| `types` | all eight | Enabled adversary types (closed set): the seven exploration types `overclaim`, `metric_gaming`, `prior_art`, `reproducibility`, `evidence_gap`, `cost_explosion`, `prompt_injection`, plus `paper_self_preference`. The eighth is inert unless the paper-archive phase is active. |
+| `max_attacks_per_node` | `3` | Hard cap on raw attacks per round. |
+| `max_adversary_calls_per_epoch` | `24` | Hard per-epoch cap on adversary LLM calls (the one schema home for this cap). |
+| `sample_mod` | `5` | Deterministic 1-in-N node sampling (`hash(node_id+epoch_id) mod N == 0`; P2-safe). `<= 0` disables sampling. |
+| `jump_threshold` | `0.25` | Score jump over the parent that triggers a round. |
+| `full_governance_only_on_top_k` | `3` | Frontier top-K membership that triggers a round. |
+| `penalty.cap` | `0.5` | Hard per-node cap on the summed validated-attack penalty (penalties never raise a score). |
+| `penalty.severity_weights` | `low: 0.05`, `medium: 0.15`, `high: 0.3`, `critical: 0.5` | Judge-assigned-severity → weight, multiplied by the fixed verdict factor (valid = 1.0, partially_valid = 0.5). |
+| `pool.max_cases` | `64` | Bounded AdversarialReplayPool size (eviction is logical-only). |
+| `pool.min_severity` | `medium` | Pool admission floor on the judge-assigned severity. |
+| `pool.min_per_type` | `2` | Per-type eviction floor so adversary-type coverage survives the cap. |
+
+### `rqgm.shadow` — shadow live-evaluation sampling
+
+Shadow output is observation-only: it never reaches BFTS scores, the
+frontier, or memory.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Shadow live-evaluation on/off (off == a zero shadow budget). |
+| `sample_rate` | `0.2` | Fraction of live calls shadow-sampled per candidate (deterministic hash sampling). |
+| `max_shadow_calls_per_epoch` | `10` | Hard cap on shadow side-by-side calls per epoch. |
+
+### `rqgm.prompt_evolution` — candidate caps
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Prompt evolution on/off inside `ari_rqgm` (supports ablations with governance but frozen prompts). |
+| `max_candidates_per_role_per_epoch` | `1` | Cap on new prompt candidates per role per epoch. |
+| `max_total_candidates_per_epoch` | `4` | Cap on new prompt candidates per epoch across all roles. |
+| `max_clean_room_generations_per_epoch` | `1` | Cap on clean-room regenerations per epoch (consumed by the clean-room pipeline). |
+| `mutation_kinds` | all five | Enabled PromptMutator families: `freeform_mutation`, `threshold_tuning`, `schema_tightening`, `specialization`, `distillation`. |
+
+### `rqgm.clean_room` — clean-room regeneration posture
+
+The screen *policy* is code (`ari/rqgm/clean_room_rules.py`); only the
+numeric knobs live here.  The per-epoch generation budget rides
+`rqgm.prompt_evolution.max_clean_room_generations_per_epoch`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `generation_backend` | `one_shot` | v1's only backend: a single LLM completion with no tools/filesystem (a tool-bearing loop could read retired prompt text). |
+| `contamination_screen.shingle_k` | `8` | Word-shingle length of the deterministic contamination screen. |
+| `contamination_screen.fail_on_any_hit` | `true` | Any surviving k-shingle overlap with the forbidden corpus blocks candidate admission. |
+| `generator_prompt_key` | `rqgm/clean_room_generator` | Committed meta-prompt key of the CleanRoomPromptGenerator. |
+
+### `rqgm.frontier_repair` — selective erasure / frontier rebuild
+
+Runs only when a committed EpochTransition carries retirements.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Whether repair runs at boundaries with retirements. |
+| `max_trace_depth` | `8` | BFS cap of the dependency-closure tracer; past it consumers are swept in conservatively (invalidate). |
+| `recompute_utilities` | `true` | For stale scored evidence, recompute utilities from surviving inputs under the original epoch's frozen weights; `false` invalidates the node instead. Utility-policy retirement independently re-scores stored `_axis_scores` under the new policy, so this switch does not disable the policy rewrite. |
+| `abandon_stale_pending` | `true` | Abandon pending children whose proposal record went stale before they ever run. |
+
+### `rqgm.meta_evolution` — meta-tier budgets and switches
+
+The authority matrix itself is frozen code (`ari/rqgm/meta_rules.py`),
+never config.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Meta-evolution step on/off (disabled: the coordinator no-ops with one audit line). |
+| `evolving_roles` | `prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor` | The v1 evolving meta roles; shrinkable to `[]` to freeze the layer without code changes. |
+| `max_meta_candidates_per_epoch` | `1` | Cap on meta candidates per epoch, total across meta roles. |
+| `sandbox.max_cases` | `6` | Historical meta-task bundles replayed per sandbox evaluation. |
+| `sandbox.use_cached_results` | `true` | Reuse content-keyed sandbox results. |
+| `shadow.min_epochs_before_probation` | `2` | Meta candidates spend at least this many epochs in shadow before `probationary_active` (stricter than the institutional floor). |
+| `metric_spec_weight_cap` | `true` | Constitutional cap: node-initiated MetricSpec axis-weights are suppressed in favor of the epoch-frozen weight regime (ignored under `simple_bfts`). |
+
+### `rqgm.budgets` — per-epoch governance spend caps
+
+Read against the passive `cost_tracker` records; `0` means unlimited
+(attribution only — the inert default).  Exhaustion degrades governance,
+never node execution; the fixed layer is exempt by construction.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `max_governance_cost_usd_per_epoch` | `0` | Per-epoch USD cap on governance-phase LLM spend. |
+| `max_governance_tokens_per_epoch` | `0` | Per-epoch token cap on governance-phase LLM spend. |
+| `on_exhausted` | `degrade` | `degrade` caps the node's effective governance level; `skip` drops the single action. Never a crash. |
+
+### `rqgm.eval` — evaluation-harness posture
+
+All defaults off: scripted eval doubles are refused and injections never
+applied unless the `scripts/rqgm_eval` harness enables them on a run it
+launches itself.  See [RQGM Evaluation](../guides/rqgm_evaluation.md).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Master interlock for the evaluation harness. Never enabled by default. |
+| `scripted_components` | `{}` | `role -> double_name` substitutions (harness-only). |
+| `injection_specs` | `[]` | Active `eval_*` injection ids; recorded into `rqgm_injection_provenance.json`. |
+| `paper_ablation.condition_id` | `""` | Evaluation-only RQGM-paper arm (`P0_hgm_h_fixed_critic` through `P4_constitutional_rqgm`). Empty, or `eval.enabled: false`, preserves normal behavior; this is not a `paper.mode`. |
+
+### `rqgm.paper.reviewer.agent_as_judge` — agent-as-judge draft scoring
+
+Read **only** under the effective `rqgm_archive` paper mode (`paper.mode:
+rqgm_archive` *and* `rqgm.paper.enabled: true` must agree), which is
+orthogonal to `ari.mode`.  Off by default, so the archive's draft scorer
+stays the deterministic, LLM-free venue rubric and no live LLM call sits on
+the draft-scoring path (P2).  On, the shared paper dispatch
+(`ari/cli/paper_dispatch.py`, used by `ari paper` / `ari run` / `ari resume`)
+injects an `LLMClient`-backed reviewer scorer (`ari/rqgm/paper_judge.py`) that
+scores each draft over the *same* venue-rubric axes, weighted by the
+**active** governed `paper_reviewer` prompt's emphasis — the only path that
+can read axes no deterministic reader can (`novelty`, `significance`).
+Fail-open: an LLM error, an unparseable reply, or a reply covering less than
+50% of the rubric's total axis weight degrades to the deterministic rubric
+score, never a fabricated constant (a non-finite axis value is discarded
+rather than propagated into selection).  The same dispatch logs the run's
+judged/degraded counts to `ari.log`, because a judged score and a fallback
+score are the same float to every consumer.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Agent-as-judge draft scoring on/off. Overridden by `ARI_PAPER_AGENT_AS_JUDGE` ∈ {`0`,`1`,`true`,`false`}; invalid values warn and are ignored. |
+| `max_tokens` | `1024` | Cap on the judge reply length (cost control), passed through `LLMClient.complete(max_tokens=...)`. |
+
+### `proposal_router` — proposal generation routing
+
+Consumed **only** when the effective mode is `ari_rqgm` — except
+`record_only`, which is honored in `simple_bfts` (record-only dual-write,
+ablation B1).  `generators.virsci.enabled` is deliberately not read in
+`simple_bfts`: the existing VirSci levers
+(`bfts_pipeline.generate_idea.enabled` / `ARI_IDEA_VIRSCI_REAL`) stay
+authoritative there, and mode resolution never reads `proposal_router.*`
+(VirSci is orthogonal to `ari.mode`).
+
+| Key | Default | Meaning |
+|---|---|---|
+| `record_only` | `false` | In `simple_bfts`, additionally import the agent-loop's `idea.json` output into `proposals/proposal_records.jsonl` as `legacy_idea_json` records. Zero behavior change; rollback = delete the flag. |
+| `summary_budget_chars` | `6000` | Total character budget of the rendered ProposalSummaryView expand context. |
+
+Per-generator entries under `proposal_router.generators.*` share two
+keys: `enabled` (may the router route to it) and `max_calls_per_epoch`
+(`0` = unlimited):
+
+| Generator | `enabled` | `max_calls_per_epoch` | Notes |
+|---|---|---|---|
+| `cheap` | `true` | `0` (unlimited) | One-shot LLM proposal generator; the deterministic routing fallback. |
+| `mutation` | `true` | `2` | Mutates one facet of an existing ProposalRecord. |
+| `attack_driven` | `false` | `0` | Consumes ValidatedAttackRecords; disabled and absent from the routing table by default. |
+| `prior_art` | `true` | `1` | Differentiates proposals against survey/related refs; degrades to skipped when no prior-art source exists. |
+| `virsci` | `false` | `2` | Opt-in high-cost deliberative VirSciAdapter; never enabled by default. Extra keys: `mode: event_triggered` (v1's only mode) and `trigger_on: [initial_exploration, frontier_stagnation, major_pivot, paper_candidate]`. |
+
+---
+
+## Manuscript Complete (opt-in)
+
+`manuscript` is an axis independent of `ari.mode`, `paper.mode`, and the K/C/A
+postures. Quoting `"off"` is required for portability across YAML 1.1 parsers.
+
+```yaml
+manuscript:
+  mode: "off"               # off | audit | enforce
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled         # disabled | explicit | auto
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
+```
+
+`off` preserves the legacy path and writes no `.ari-manuscript` data. `audit`
+compiles a shadow readiness attempt without changing writer inputs. `enforce`
+splits evidence, authoring, and verification into digest-bound transactions and
+blocks authoring when a critical requirement is unresolved. `repair.policy:
+auto` is rejected outside enforce; `explicit` runs only a named, pre-admitted
+request. See the [profile reference](manuscript_complete_profile.md),
+[contract reference](manuscript_complete_contracts.md), and
+[operations guide](../guides/manuscript_complete_operations.md).
 
 ## EAR Curation (`ear/publish.yaml`) — v0.7.0+
 

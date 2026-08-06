@@ -5,10 +5,9 @@ The class keeps thin delegating methods so subclasses + monkeypatches
 don't need to change.
 
 - :func:`available_tools_openai` — convert MCP tool list to the OpenAI
-  function-calling shape, filtering ``_set_current_node`` and any
-  user-supplied suppress set.
+  function-calling shape, filtering any user-supplied suppress set.
 - :func:`execute_tool_calls`     — dispatch a batch of tool calls,
-  routing CoW-guarded memory tools through ``cow_node_id``.
+  attaching the explicit run/node context to every dispatch.
 - :func:`active_tools`           — phase-aware filter over the
   available tool list (post-survey vs post-job-submit vs final
   output, etc.).
@@ -20,36 +19,33 @@ import json as _json
 import time as _time
 from typing import Any
 
+from ari.call_context import ToolCallContextV1
 from ari.agent.message_utils import _tool_was_called
 from ari.agent.workflow import WorkflowHints
-
-
-# MCP tools that the parent (ari-core) drives itself and must never be
-# exposed to the LLM — otherwise the model could set an arbitrary node
-# id and bypass the memory skill's CoW check.
-_INTERNAL_MCP_TOOLS = frozenset({"_set_current_node"})
-
-# Coding-skill filesystem tools that take a ``work_dir`` argument and, when the
-# model omits it, fall back to a SHARED default (``ARI_WORK_DIR`` snapshotted at
-# MCP fork time, else ``/tmp/ari_work``). In a multi-node BFTS run that default
-# is NOT the node's per-node work_dir, so an omitted ``work_dir`` silently routes
-# the agent's edits to a shared scratch dir that the evaluator never reads — the
-# node is then scored on its inherited (parent) code. We pin these calls to the
-# current node's work_dir whenever the model leaves it unset.
-_WORKDIR_TOOLS = frozenset({"write_code", "run_code", "run_bash", "emit_results", "read_file"})
 
 
 def available_tools_openai(
     mcp: Any,
     suppress: set | None = None,
     phase: str | None = None,
+    context: ToolCallContextV1 | None = None,
 ) -> list[dict]:
     """Return the MCP tool list in OpenAI function-calling format.
 
     ``suppress`` excludes tools by name (e.g. already-called once-only
     tools); ``phase`` filters to tools whose declared phase matches.
     """
-    suppress = (suppress or set()) | _INTERNAL_MCP_TOOLS
+    suppress = suppress or set()
+    try:
+        listed_tools = mcp.list_tools(phase=phase, context=context)
+    except TypeError as context_error:
+        # Compatibility for pre-context clients and lightweight test doubles.
+        # Only retry a callable that explicitly rejects the new keyword; do
+        # not hide TypeError raised by the implementation itself.
+        message = str(context_error)
+        if "context" not in message or "unexpected keyword" not in message:
+            raise
+        listed_tools = mcp.list_tools(phase=phase)
     return [
         {
             "type": "function",
@@ -59,7 +55,7 @@ def available_tools_openai(
                 "parameters": t.get("inputSchema") or t.get("parameters") or {"type": "object", "properties": {}},
             },
         }
-        for t in mcp.list_tools(phase=phase)
+        for t in listed_tools
         if t.get("name", "") not in suppress
     ]
 
@@ -102,20 +98,12 @@ def exec_budget_remaining(node_id: str | None) -> float:
 def execute_tool_calls(
     mcp: Any,
     tool_calls: list[dict],
-    node_id: str | None = None,
-    work_dir: str | None = None,
+    context: ToolCallContextV1 | None = None,
 ) -> list[dict]:
     """Execute a batch of tool calls and return results.
 
-    When *node_id* is provided and the call targets a CoW-guarded
-    memory tool, ``cow_node_id`` is forwarded to ``mcp.call_tool`` so
-    the ``(_set_current_node, write)`` pair is locked atomically —
-    prevents the env-var race when ``max_parallel_nodes > 1``.
-
-    When *work_dir* is provided, filesystem tools (:data:`_WORKDIR_TOOLS`)
-    that the model called WITHOUT a ``work_dir`` argument are pinned to it,
-    so per-node edits land in the node's evaluated dir instead of the shared
-    ``/tmp/ari_work`` fallback (which the evaluator never reads).
+    ``context`` is forwarded unchanged. The MCP control plane uses manifest
+    policy to require and sign it only for tools that need run/node authority.
     """
     results = []
     for tc in tool_calls:
@@ -125,48 +113,7 @@ def execute_tool_calls(
             args = _json.loads(func.get("arguments", "{}"))
         except _json.JSONDecodeError:
             args = {}
-        if work_dir and name in _WORKDIR_TOOLS:
-            # The node's real work_dir is authoritative and is mounted at the
-            # virtual container root (``/workspace``) that the agent sees. Always
-            # pin it — whether the model omitted work_dir (would route to the
-            # shared fork-time fallback the evaluator never reads) OR passed the
-            # virtual "/workspace" (the coding server cannot map that back to THIS
-            # node, since its ARI_WORK_DIR is snapshotted at MCP fork time). Any
-            # sub-path the model wanted goes in the filename/path/command args,
-            # which the coding server devirtualizes against this same work_dir.
-            args["work_dir"] = work_dir
-        if name in _EXEC_TOOLS:
-            _left = exec_budget_remaining(node_id)
-            if _left <= 0:
-                results.append({
-                    "tool_call_id": tc.get("id", ""), "name": name,
-                    "result": {
-                        "status": "error",
-                        "error": (
-                            f"this node has used its whole command-execution "
-                            f"budget of {exec_budget_seconds():.0f}s. Stop running "
-                            f"commands and return your result with what you have."
-                        ),
-                    },
-                })
-                continue
-            # Never let one call outlast what is left, so the cap cannot be
-            # overshot by a single long command.
-            if _left != float("inf"):
-                try:
-                    _req = float(args.get("timeout") or 0)
-                except (TypeError, ValueError):
-                    _req = 0.0
-                if _req <= 0 or _req > _left:
-                    args["timeout"] = int(max(1, _left))
-        _t0 = _time.monotonic()
-        if node_id and name in mcp._COW_TOOLS:
-            result = mcp.call_tool(name, args, cow_node_id=node_id)
-        else:
-            result = mcp.call_tool(name, args)
-        if name in _EXEC_TOOLS and node_id:
-            _exec_spent[str(node_id)] = (
-                _exec_spent.get(str(node_id), 0.0) + (_time.monotonic() - _t0))
+        result = mcp.call_tool(name, args, context=context)
         results.append({"tool_call_id": tc.get("id", ""), "name": name, "result": result})
     return results
 

@@ -1,0 +1,16 @@
+{
+  "actor_id": "kotama7",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:c1565242f2c3ae8ee9718e97186261af2893451d99957bb1e3ac9d6cb88871cd",
+  "approved_date": "2026-08-05",
+  "authorization_basis": "explicit-maintainer-approval",
+  "capability_scope_digest": "sha256:77348b489a32ddc0318491cb0f9c0b763b7018a6f778301d06af344169b1d6c5",
+  "evidence_bundle_digest": "sha256:fc258ac965b82da0c43c6c08d3d20db17cb5ce2e5fc3f91fd03dc67afc76e005",
+  "from_status": "candidate",
+  "provider_id": "qiskit-mcp-servers",
+  "provider_manifest_digest": "sha256:c7b7bf50b6101bad217ebeb17e4f625a2c3deac4de5383fe295f9b1c11a4c726",
+  "provider_version": "core-0.3.1",
+  "registration_report_digest": "sha256:e7d372b6483847e55c5a6573fd6645b61441674077dde9eef7898aad83225be3",
+  "schema_version": "ari.capability-provider-promotion-approval/v1",
+  "to_status": "verified"
+}

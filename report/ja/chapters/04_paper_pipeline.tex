@@ -123,7 +123,8 @@ $\lineage{\bestnode}$ に沿って各寄与ノードが触れたファイルを�
 \Require ノード単位レポート付きの系譜ノード $\Nodes$;メトリック方向写像
 \Ensure  科学レコード $\Evidence$:型付き構成、軸ごとの極値、方法論物語
 \State $\bestnode \gets \operatorname*{arg\,max}_{n \in \Nodes}\, \nodescore{n}$
-       \Comment{同点: 検証済み、次に深い方}
+       \Comment{同点: 検証済み、次に深い方。論理消去済みノード
+       (\cref{sec:rqgm:boundary})は除外、全て消去済みなら勝者なし}
 \State $L \gets \lineage{\bestnode}$ \Comment{根から最良への先祖連鎖}
 \State $\mathcal{C} \gets \{\, n \in L : \textsc{Contributes}(n) \,\}$
        \Comment{役割述語(コード)}

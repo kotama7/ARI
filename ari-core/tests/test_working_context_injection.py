@@ -327,3 +327,62 @@ def test_contract_obligation_noop_without_env(tmp_path, monkeypatch):
         depth=0, ancestor_ids=[], eval_summary=None, experiment_goal=None,
     )
     assert not any("METRIC-CORRECTNESS CONTRACT" in m["content"] for m in msgs)
+
+
+# ── selective erasure: erased ancestors never steer the node ─────────────
+
+def test_erased_ancestors_excluded_from_injection(tmp_path, monkeypatch):
+    # A valid node CAN have an erased ancestor (erasure never propagates to
+    # descendants); its conclusions must not be injected as "established".
+    (tmp_path / "rqgm_erasure_state.json").write_text(json.dumps({
+        "schema_version": 1,
+        "retired_prompt_hashes": {},
+        "stale_record_ids": {},
+        "invalid_frontier_node_ids": {"p1": "erase_000001"},
+        "last_erasure_event_id": "erase_000001",
+        "last_rebuild_event_id": "",
+    }))
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    nm = {
+        "root": [_rs("ROOT: baseline 100 GB/s")],
+        "p1": [_rs("P1: erased conclusion 999 GB/s")],
+    }
+    calls: list = []
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory=nm, calls=calls),
+        depth=2, ancestor_ids=["root", "p1"], eval_summary="q",
+        experiment_goal="g",
+    )
+    joined = json.dumps(msgs)
+    assert "ROOT: baseline 100 GB/s" in joined
+    assert "erased conclusion" not in joined
+    # Neither Tier 1(b) nor the Tier-2 search ever sees the erased id.
+    assert all(a.get("node_id") != "p1"
+               for (n, a) in calls if n == "get_node_memory")
+    search_calls = [a for (n, a) in calls if n == "search_memory"]
+    assert search_calls and search_calls[0]["ancestor_ids"] == ["root"]
+
+
+def test_all_ancestors_erased_skips_memory_injection(tmp_path, monkeypatch):
+    (tmp_path / "rqgm_erasure_state.json").write_text(json.dumps({
+        "invalid_frontier_node_ids": {"root": "e1", "p1": "e1"},
+    }))
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory={}),
+        depth=2, ancestor_ids=["root", "p1"], eval_summary="q",
+        experiment_goal="g",
+    )
+    assert not any("Established conclusions" in m["content"]
+                   or "Related prior findings" in m["content"] for m in msgs)
+
+
+def test_missing_erasure_file_is_a_noop(monkeypatch):
+    # simple_bfts / pre-RQGM checkpoints never have the rollup: byte-identical.
+    monkeypatch.setenv("ARI_CHECKPOINT_DIR", "/nonexistent/ckpt")
+    nm = {"root": [_rs("ROOT: fine")]}
+    msgs = build_working_context_messages(
+        _fake_call_tool(node_memory=nm),
+        depth=1, ancestor_ids=["root"], eval_summary="q", experiment_goal="g",
+    )
+    assert any("ROOT: fine" in m["content"] for m in msgs)

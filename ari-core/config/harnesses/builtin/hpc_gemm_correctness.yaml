@@ -1,0 +1,136 @@
+schema_version: ari.harness-manifest/v1
+id: hpc/gemm-correctness
+version: 1.0.0
+kind: artifact_verifier
+status: verified
+description: ARI-native GEMM shared-library correctness verifier
+maintainer: ARI maintainers
+tags:
+- ari-native
+- cpu
+- hpc
+- gemm
+subject_types:
+- program
+target_kinds:
+- shared-library
+accepts_external_target: true
+supported_languages:
+- c
+supported_hardware:
+- cpu
+supported_architectures:
+- x86_64
+supported_dtypes:
+- float32
+- float64
+supported_domains:
+- gemm
+properties:
+- property_id: numerical-equivalence
+  methods:
+  - differential-testing
+  tiers:
+  - screen
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- property_id: interface-conformance
+  methods:
+  - interface-check
+  tiers:
+  - screen
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- property_id: reproducibility
+  methods:
+  - repeated-execution
+  tiers:
+  - validate
+  - certify
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float32
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+target_interface_contract: gemm-c-abi/v1
+target_interface_digest: sha256:478f6ea1cf9bd1ba188b6f964dbc5ca0c27cf3e43e728fcd102f58f996612f7e
+source_repository: https://github.com/kotama7/ARI.git
+source_full_commit_sha: d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+implementation_license: MIT
+dataset:
+  revision: native-hpc-generated-cases/v1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+  sha256: sha256:4de6269a07834c41910c2ad4f531ab4f455e9fe58003d3a01f9e16e17f74972f
+  license: MIT
+oracle:
+  revision: ari-native-gemm-oracle/v1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+  sha256: sha256:042599540b952aa6e7e82d943673fc81ff6a800d8db6b5a6a58ef363546f8d38
+  license: MIT
+driver:
+  revision: ari.assurance.native-hpc/v1
+  sha256: sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f
+  license: MIT
+model:
+  revision: not-applicable
+  sha256: sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7
+  license: not-applicable
+container:
+  reference: apptainer:ari-native-python310-openroad-2026q3.sif
+  resolved_digest: sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9
+  license: Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69
+network_policy: deny
+network_allowlist: []
+credential_policy: none
+credential_scope_ids: []
+filesystem_policy: isolated-readonly-target
+resources:
+  cpu_cores: 2
+  memory_bytes: 4294967296
+  accelerators: 0
+  disk_bytes: 268435456
+  features:
+  - landlock
+  - network-namespace
+timeout_seconds: 900
+scorer_determinism: deterministic
+nondeterminism_declaration: none
+hidden_test_policy: verifier-only
+oracle_independence: independent
+tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+expected_result_schema: ari.native-hpc-verification-report/v1
+expected_result_schema_digest: sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff
+infrastructure_failure_policy: separate
+retry_limit: 1
+negative_control_report_digest: sha256:f791131fe0ab8d4d0d7e0a88a1198bdea6fd1c05f46b44580ed6c9be2e20997b
+upstream_parity_report_digest: sha256:65ca767f7fac3a35c9b28025db22dd7d2d890839c77d155b756c9efb02386502
+manifest_digest: sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c

@@ -1,0 +1,459 @@
+{
+  "$defs": {
+    "EvaluationObligationV1": {
+      "additionalProperties": false,
+      "description": "A Knowledge Skill's non-authoritative request for scientific checks.",
+      "properties": {
+        "property_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Property Id",
+          "type": "string"
+        },
+        "required_methods": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Required Methods",
+          "type": "array"
+        },
+        "required_tier": {
+          "default": "screen",
+          "enum": [
+            "screen",
+            "validate",
+            "certify"
+          ],
+          "title": "Required Tier",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.evaluation-obligation/v1",
+          "default": "ari.evaluation-obligation/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "object"
+        },
+        "source_skill_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Skill Digest"
+        }
+      },
+      "required": [
+        "property_id"
+      ],
+      "title": "EvaluationObligationV1",
+      "type": "object"
+    },
+    "KnowledgeAuthorityCeilingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "side_effects": {
+          "items": {
+            "enum": [
+              "read-only",
+              "workspace-write",
+              "scheduler-submit",
+              "external-write",
+              "physical-actuation"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Side Effects",
+          "type": "array"
+        }
+      },
+      "required": [
+        "side_effects"
+      ],
+      "title": "KnowledgeAuthorityCeilingV1",
+      "type": "object"
+    },
+    "KnowledgeCapabilityRequirementV1": {
+      "additionalProperties": false,
+      "properties": {
+        "explicit_provider_pin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explicit Provider Pin"
+        },
+        "ref": {
+          "pattern": "^ari\\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$",
+          "title": "Ref",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "semantic_constraints": {
+          "additionalProperties": true,
+          "title": "Semantic Constraints",
+          "type": "object"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "KnowledgeCapabilityRequirementV1",
+      "type": "object"
+    },
+    "KnowledgeCapabilitySetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "$ref": "#/$defs/KnowledgeCapabilityRequirementV1"
+          },
+          "title": "Capabilities",
+          "type": "array"
+        }
+      },
+      "title": "KnowledgeCapabilitySetV1",
+      "type": "object"
+    },
+    "KnowledgeCompositionV1": {
+      "additionalProperties": false,
+      "properties": {
+        "exclusive": {
+          "default": false,
+          "title": "Exclusive",
+          "type": "boolean"
+        },
+        "priority": {
+          "maximum": 1000000,
+          "minimum": -1000000,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "slot": {
+          "enum": [
+            "scientific-safety",
+            "scientific-method",
+            "domain-method",
+            "execution-strategy",
+            "reporting"
+          ],
+          "title": "Slot",
+          "type": "string"
+        }
+      },
+      "required": [
+        "slot",
+        "priority"
+      ],
+      "title": "KnowledgeCompositionV1",
+      "type": "object"
+    },
+    "KnowledgeSkillApplicabilityV1": {
+      "additionalProperties": false,
+      "properties": {
+        "phases": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Phases",
+          "type": "array"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Roles",
+          "type": "array"
+        },
+        "task_tags": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Task Tags",
+          "type": "array"
+        }
+      },
+      "required": [
+        "roles",
+        "phases"
+      ],
+      "title": "KnowledgeSkillApplicabilityV1",
+      "type": "object"
+    },
+    "KnowledgeSkillLicenseV1": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Body",
+          "type": "string"
+        },
+        "references": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "References",
+          "type": "string"
+        }
+      },
+      "required": [
+        "body",
+        "references"
+      ],
+      "title": "KnowledgeSkillLicenseV1",
+      "type": "object"
+    },
+    "KnowledgeSkillRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "body_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Body Sha256",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,255}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "body_sha256",
+        "manifest_sha256"
+      ],
+      "title": "KnowledgeSkillRefV1",
+      "type": "object"
+    },
+    "KnowledgeSkillReferenceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "license": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "License"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "title": "KnowledgeSkillReferenceV1",
+      "type": "object"
+    },
+    "KnowledgeSkillSourceV1": {
+      "additionalProperties": false,
+      "properties": {
+        "body_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Body Sha256",
+          "type": "string"
+        },
+        "commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Commit",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "repository": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Repository",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "commit",
+        "path",
+        "body_sha256",
+        "manifest_sha256"
+      ],
+      "title": "KnowledgeSkillSourceV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/knowledge-skill-manifest-v1.schema.json",
+  "additionalProperties": false,
+  "description": "A Knowledge package contract.  Executable fields are schema errors.",
+  "properties": {
+    "applies_to": {
+      "$ref": "#/$defs/KnowledgeSkillApplicabilityV1"
+    },
+    "authority_ceiling": {
+      "$ref": "#/$defs/KnowledgeAuthorityCeilingV1"
+    },
+    "composition": {
+      "$ref": "#/$defs/KnowledgeCompositionV1"
+    },
+    "conflicts": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Conflicts",
+      "type": "array"
+    },
+    "dependencies": {
+      "items": {
+        "$ref": "#/$defs/KnowledgeSkillRefV1"
+      },
+      "title": "Dependencies",
+      "type": "array"
+    },
+    "description": {
+      "maxLength": 4096,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+    },
+    "evaluation_obligations": {
+      "items": {
+        "$ref": "#/$defs/EvaluationObligationV1"
+      },
+      "title": "Evaluation Obligations",
+      "type": "array"
+    },
+    "forbidden_capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Forbidden Capabilities",
+      "type": "array"
+    },
+    "id": {
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,255}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "license": {
+      "$ref": "#/$defs/KnowledgeSkillLicenseV1"
+    },
+    "optional_capabilities": {
+      "items": {
+        "$ref": "#/$defs/KnowledgeCapabilityRequirementV1"
+      },
+      "title": "Optional Capabilities",
+      "type": "array"
+    },
+    "references": {
+      "items": {
+        "$ref": "#/$defs/KnowledgeSkillReferenceV1"
+      },
+      "title": "References",
+      "type": "array"
+    },
+    "requires": {
+      "$ref": "#/$defs/KnowledgeCapabilitySetV1"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source": {
+      "$ref": "#/$defs/KnowledgeSkillSourceV1"
+    },
+    "status": {
+      "enum": [
+        "candidate",
+        "verified",
+        "deprecated",
+        "revoked"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "title": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "version": {
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "version",
+    "title",
+    "description",
+    "status",
+    "source",
+    "license",
+    "applies_to",
+    "authority_ceiling",
+    "composition"
+  ],
+  "title": "ARI Knowledge Skill Manifest v1",
+  "type": "object"
+}

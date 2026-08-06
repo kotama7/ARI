@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "MeasurementRecordV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Artifact Digests",
+          "type": "array"
+        },
+        "execution_attempt_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Attempt Id"
+        },
+        "execution_identity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Identity"
+        },
+        "execution_status": {
+          "default": "unreported",
+          "enum": [
+            "completed",
+            "failed",
+            "timed_out",
+            "cancelled",
+            "unreported"
+          ],
+          "title": "Execution Status",
+          "type": "string"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "provenance": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provenance"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "unit_status": {
+          "enum": [
+            "declared",
+            "missing"
+          ],
+          "title": "Unit Status",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "metric_id",
+        "value",
+        "unit_status"
+      ],
+      "title": "MeasurementRecordV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/measurement-set-v1.schema.json",
+  "additionalProperties": false,
+  "description": "Canonical typed scientific-measurement document.",
+  "properties": {
+    "artifact_digests": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Artifact Digests",
+      "type": "array"
+    },
+    "measurements": {
+      "items": {
+        "$ref": "#/$defs/MeasurementRecordV1"
+      },
+      "title": "Measurements",
+      "type": "array"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "predictions": {
+      "additionalProperties": true,
+      "title": "Predictions",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "ari.measurement-set/v1",
+      "default": "ari.measurement-set/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scores": {
+      "additionalProperties": true,
+      "title": "Scores",
+      "type": "object"
+    }
+  },
+  "title": "ARI Measurement Set v1",
+  "type": "object"
+}

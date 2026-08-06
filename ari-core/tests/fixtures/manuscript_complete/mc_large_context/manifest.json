@@ -1,0 +1,9 @@
+{
+  "schema_version": "ari.manuscript-fixture/v1",
+  "fixture_id": "mc_large_context",
+  "origin": "synthetic",
+  "generator_version": "manuscript-fixture-factory-v1",
+  "measurement_disclaimer": "Synthetic values are test data, never research evidence.",
+  "properties": {"configuration_count": 11, "claim_count": 21, "reference_count": 13, "context_characters_min": 48001},
+  "expected_labels": ["budget-crossing", "deterministic-split", "no-silent-omission"]
+}

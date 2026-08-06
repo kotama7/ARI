@@ -222,10 +222,9 @@ class TestSurvey:
 
     def test_empty_results(self):
         with patch("server._s2_search", return_value=[]), \
-             patch("server.SemanticScholar") as MockSch:
-            MockSch.return_value.search_paper.side_effect = Exception("timeout")
+             patch("server._s2_citations", return_value=[]):
             result = server.survey("nonexistent", max_papers=5)
-        assert result["papers"] == [] or isinstance(result["papers"], list)
+        assert result["papers"] == []
 
     def test_abstract_truncated_to_1000(self):
         raw = [{"title": "Long", "abstract": "x" * 2000, "year": 2023,
@@ -252,18 +251,17 @@ class TestSurvey:
             if p["paperId"]:
                 assert p["url"].startswith("https://www.semanticscholar.org/paper/")
 
-    def test_fallback_to_semanticscholar_lib(self):
-        mock_p = MagicMock()
-        mock_p.title = "Fallback"
-        mock_p.abstract = "From lib."
-        mock_p.year = 2021
-        mock_p.citationCount = 3
-        mock_p.paperId = "fb1"
+    def test_record_mode_does_not_switch_provider(self):
         with patch("server._s2_search", return_value=[]), \
-             patch("server.SemanticScholar") as MockSch:
-            MockSch.return_value.search_paper.return_value = [mock_p]
+             patch("server._s2_citations", return_value=[]):
             result = server.survey("topic", max_papers=5)
-        assert any(p["title"] == "Fallback" for p in result["papers"])
+        assert result["papers"] == []
+        assert result["survey_snapshot"]["provider"] == "semantic-scholar"
+
+    def test_record_mode_surfaces_provider_outage(self):
+        with patch("server._s2_search", side_effect=RuntimeError("outage")):
+            with pytest.raises(RuntimeError, match="outage"):
+                server.survey("topic", max_papers=5)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -705,3 +703,31 @@ class TestNoHardcodedAssumptions:
         source = Path(server.__file__).read_text()
         # Should not contain literal API keys
         assert "sk-" not in source or "sk-" in "# sk-example"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 8. MCP tool registration (RQGM Task 03 Stage-0 regression guard)
+# ══════════════════════════════════════════════════════════════════════════════
+#
+# Direct function calls (everything above) cannot catch a lost @mcp.tool()
+# decorator — that regression shipped once (commits 711dad0/0625d2d/3707fd6
+# left only _load_virsci_snapshot_papers registered). This test goes through
+# FastMCP's own registry, exactly what MCPClient.list_tools() sees.
+
+class TestMcpToolRegistration:
+    @staticmethod
+    def _registered_tool_names() -> set:
+        import asyncio
+
+        return {t.name for t in asyncio.run(server.mcp.list_tools())}
+
+    def test_survey_and_generate_ideas_are_registered(self):
+        tools = self._registered_tool_names()
+        assert "survey" in tools
+        assert "generate_ideas" in tools
+
+    def test_snapshot_helper_is_not_a_tool(self):
+        # Internal helper: survey() calls it directly; it must never be
+        # agent-visible.
+        tools = self._registered_tool_names()
+        assert "_load_virsci_snapshot_papers" not in tools

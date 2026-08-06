@@ -128,6 +128,9 @@ def _fake_s2_batch(path, json_body, params, **kwargs):
 
 class TestSnapshot:
     def test_build_snapshot(self, tmp_path, monkeypatch):
+        # build_snapshot -> build_faiss_index needs the optional
+        # `virsci` extra (faiss-cpu); heavy-dep tests skip without it.
+        pytest.importorskip("faiss")
         monkeypatch.setattr(snap_mod, "_s2_get", _fake_s2_get)
         snap = snap_mod.build_snapshot("molecular GNN", tmp_path, n_authors=3, n_papers=10)
 
@@ -152,6 +155,30 @@ class TestSnapshot:
         # faiss index aligns with corpus
         idx = snap.build_faiss_index()
         assert idx is not None and idx.ntotal == 2
+        manifest = json.loads(
+            (snap.dir / "snapshot_manifest.json").read_text()
+        )
+        assert manifest["schema_version"] == "ari.virsci-snapshot/v1"
+        assert manifest["snapshot_digest"].startswith("sha256:")
+        assert manifest["artifacts"]
+
+    def test_snapshot_cache_rejects_artifact_tampering(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(snap_mod, "_s2_get", _fake_s2_get)
+        snap = snap_mod.build_snapshot(
+            "tamper topic", tmp_path, n_authors=3, n_papers=10
+        )
+        manifest = json.loads((snap.dir / "snapshot_manifest.json").read_text())
+        assert snap_mod._manifest_valid(
+            snap.dir,
+            manifest,
+            snap_mod._manifest_signature("tamper topic", 3, 10),
+        )
+        (snap.dir / "papers" / "0.txt").write_text("tampered")
+        assert not snap_mod._manifest_valid(
+            snap.dir,
+            manifest,
+            snap_mod._manifest_signature("tamper topic", 3, 10),
+        )
 
     def test_n_authors_one_floored_to_two(self, tmp_path, monkeypatch):
         # Regression: n_authors=1 must NOT yield a 1x1 zero-row adjacency

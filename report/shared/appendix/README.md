@@ -12,6 +12,12 @@ Verbatim appendix material shared across the en/ja/zh report builds.
   - `evaluator/` — evaluator prompt snapshots (auto-generated): `extract_metrics.md`, `peer_review.md`.
     - `extract_metrics.md` — metric-extraction prompt.
     - `peer_review.md` — peer-review prompt.
+  - `governance/` — governance prompt snapshots (auto-generated): `auditor.md`, `defender.md`, `governance_judge.md`.
+    - `auditor.md` — governance Auditor prompt for filing an impeachment motion from the verified evidence bundle.
+    - `defender.md` — governance Defender prompt for rebutting an impeachment motion from the record.
+    - `governance_judge.md` — GovernanceJudge prompt ruling on an impeachment motion, bounded by the deterministic board scores.
+  - `llm/` — llm prompt snapshots (auto-generated): `mcp_name_resolution.md`.
+    - `mcp_name_resolution.md` — tool-name resolution preamble mapping bare tool names to their namespaced MCP names.
   - `orchestrator/` — orchestrator prompt snapshots (auto-generated): `bfts_expand.md`, `bfts_expand_select.md`, `bfts_select.md`, `lineage_decision.md`, `root_idea_selector.md`.
     - `bfts_expand.md` — BFTS expand prompt.
     - `bfts_expand_select.md` — BFTS combined expand+select prompt.
@@ -20,6 +26,27 @@ Verbatim appendix material shared across the en/ja/zh report builds.
     - `root_idea_selector.md` — root-idea selection prompt.
   - `pipeline/` — pipeline prompt snapshots (auto-generated): `keyword_librarian.md`.
     - `keyword_librarian.md` — keyword-librarian prompt.
+  - `rqgm/` — rqgm prompt snapshots (auto-generated): the eight `adversary_*.md` attack roles, `defender.md`, `judge_adjudication.md`, the three `proposal_*.md` generators, `paper_writer.md` / `paper_reviewer.md`, and the meta-tier `clean_room_generator.md`, `failure_summary_compressor.md`, `policy_mutator.md`, `prompt_mutator.md`, `replay_selector.md`.
+    - `adversary_cost_explosion.md` — cost-explosion adversary prompt attacking experiment plans that cannot execute within the remaining budget.
+    - `adversary_evidence_gap.md` — evidence-gap adversary prompt attacking supported claims whose required evidence never appears in the checkpoint.
+    - `adversary_metric_gaming.md` — metric-gaming adversary prompt attacking weakened baselines and cherry-picked measurements.
+    - `adversary_overclaim.md` — overclaim adversary prompt attacking claims that assert more than the recorded evidence supports.
+    - `adversary_paper_self_preference.md` — paper self-preference adversary prompt attacking AI-authored drafts the reviewer over-accepted against the human anchor.
+    - `adversary_prior_art.md` — prior-art adversary prompt attacking novelty claims left undifferentiated from the supplied references.
+    - `adversary_prompt_injection.md` — prompt-injection adversary prompt confirming flagged spans that try to instruct a downstream evaluator.
+    - `adversary_reproducibility.md` — reproducibility adversary prompt attacking results a third party could not reproduce from the recorded commands.
+    - `clean_room_generator.md` — clean-room generator prompt writing a retired role's successor template from the abstract bundle alone.
+    - `defender.md` — artifact Defender prompt that rebuts, concedes, or proposes a fix for one adversary attack.
+    - `failure_summary_compressor.md` — failure-summary compressor prompt turning validated failure evidence into abstract, clean-room-safe summaries.
+    - `judge_adjudication.md` — ArtifactJudge prompt adjudicating one attack/defense pair on the cited evidence alone.
+    - `paper_reviewer.md` — governed paper-review prompt returning strengths, weaknesses, and an accept recommendation, flagging non-reproducible environment details.
+    - `paper_writer.md` — governed LaTeX revision prompt fixing reflection-identified errors without hallucinating results or citations.
+    - `policy_mutator.md` — PolicyMutator prompt proposing one candidate utility policy (composite, axis weights, depth penalty, UCB constant).
+    - `prompt_mutator.md` — PromptMutator prompt proposing one candidate template for a role, placeholders and constitutional lines preserved.
+    - `proposal_cheap.md` — cheap-tier proposal generator prompt emitting one budgeted research proposal as JSON.
+    - `proposal_mutation.md` — proposal-mutation prompt changing exactly one facet of a parent proposal.
+    - `proposal_prior_art.md` — prior-art differentiation prompt emitting a proposal explicitly distinguished from listed prior work.
+    - `replay_selector.md` — ReplayCaseSelector prompt recommending, non-bindingly, which regression replay cases a candidate evaluation should run.
   - `viz/` — viz prompt snapshots (auto-generated): `wizard_chat_goal.md`, `wizard_generate_config.md`.
     - `wizard_chat_goal.md` — wizard chat goal prompt.
     - `wizard_generate_config.md` — wizard config-generation prompt.

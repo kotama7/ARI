@@ -5,28 +5,39 @@ Operational and utility scripts for building images, running services, and dev t
 ## Contents
 
 - `README.md` — this file.
+- `__init__.py` — package marker for importing deterministic maintenance utilities in tests and tooling.
 - `analyze_references.py` — build the deterministic code/data reference graph (static imports + dynamic string-key/path/MCP/cross-language overlays) seeded from the 053 roots; emits `docs/refactoring/reports/reference_graph.{json,md}` (`--check` gates drift; no LLM/API).
 - `build_pb_images.sh` — build the vendor PaperBench Docker images (`pb-env`, `pb-reproducer`).
+- `check_bundle_budget.py` — SPA bundle-weight budget gate (gui_refresh plan 09): gzips the built `viz/static/dist/assets/*.js` chunks and enforces entry ≤ 100 / route ≤ 150 (Settings/Wizard ≤ 50) / total ≤ 600 KiB gzip with hash-independent finding ids; warning-mode-first (`--json`, `--fail-on-regression`; no LLM/API/node).
 - `check_complexity.py` — source-code size (LOC tiers) + cyclomatic-complexity (ruff `C901`) gate; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API).
-- `check_dashboard_ux.py` — TODO
+- `check_dashboard_ux.py` — dashboard-UX invariants no other gate covers: React `i18n/{en,ja,zh}.ts` key-set parity (the unquoted-identifier syntax `check_i18n_js.py` structurally cannot see), a line-independent raw/debug exposure inventory (`dangerouslySetInnerHTML`, the `{ } Raw` tab, `JSON.stringify` render dumps, `/api/env-keys`, `confirmed: true`), and advisory route↔nav parity; guards only, never edits — warning-mode-first (`--json`, `--fail-on-regression`; no LLM/API/node).
 - `check_dead_code.py` — dead-code candidate classifier over the 053/054 `reference_graph.json`: labels each node with the 013 §7 vocabulary (`PUBLIC_CONTRACT`/`DYNAMIC_REFERENCE_RISK`/`TEST_ONLY`/`QUARANTINE_CANDIDATE`/`SAFE_DELETE_CANDIDATE`/`REVIEW_REQUIRED`) and emits a ranked `dead_code_candidates.{md,json}`; deletes nothing (056/057 act); ruff-corroborated `SAFE_DELETE`, warning-mode-first `--check`; no LLM/API.
-- `check_directory_policy.py` — TODO
-- `check_docs_source_sync.allow.yaml` — TODO
-- `check_docs_source_sync.py` — TODO
+- `check_directory_policy.py` — placement/naming policy gate for the dimension `readme_sync.py` omits — Rule A pins the config trio (`ari/config` locator code / `ari/configs` packaged data / `ari-core/config` rubric+workflow data) and keeps a fourth config-family sibling or a `sonfig*` dir from ever appearing, Rule B warns on a new top-level storage dir, Rule C flags tracked build artifacts over `git ls-files`; warning-mode-first (`--json`, `--fail-on-regression`, `--strict`; no LLM/API).
+- `check_docs_source_sync.allow.yaml` — frozen trunk-state staleness baseline for `check_docs_source_sync.py` (79 already-merged doc/source pairs whose source outran the doc's `last_verified`, frozen 2026-07-02); regenerate deliberately, never auto-bump.
+- `check_docs_source_sync.py` — trunk-state docs↔source staleness gate: flags a doc whose `last_verified` predates the newest `main` commit touching a declared `sources[].path` — the one dimension the forward `check_doc_sources.py` and the PR-diff `check_ref_coupling.py` leave uncovered; reuses their `parse_doc`/`is_translation` and fails open without git history (`--json`, `--warning-only`; no LLM/API).
 - `check_import_boundaries.py` — AST import-boundary gate: skills may import core only via `ari.public.*`/`ari.protocols.*` (B1) and core may not import skills except `ari_skill_memory` (B2); warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API).
 - `check_prompts.py` — inline-prompt externalization inventory: AST-scans the runtime tree for role-marked multi-line LLM prompts still hardcoded in `ari-skill-*/src` (against a frozen allowlist seeded from the Subtask 036 census); defers snapshot byte-verification to Gate 10 via `--with-snapshots` (never re-implemented); warning-mode-first (`--json`, `--fail-on-regression`, `--update-baseline`; no LLM/API). `ari-core/ari/agent/loop.py` is the clean negative control.
 - `check_public_api_contracts.py` — snapshot & diff gate for the `ari.public.*` API surface (freezes the 8 re-export submodules; `--update` re-baselines, `--strict` fails on removed symbols; stdlib-only, no LLM/API).
+- `check_skill_manifests.py` — validate canonical Skill manifests, package metadata, runtime commands, schemas, workflows, and compatibility mirrors.
 - `check_viz_api_schema.py` — reconcile the dashboard routes (`viz/routes.py`) with their sole consumer `frontend/src/services/api.ts`; reports client-only (broken calls) + server-only (candidate unused) endpoints via static dispatch simulation; warning-mode-first with a frozen allowlist (`--json`, `--fail-on-regression`; no LLM/API/node).
-- `generate_quality_report.py` — TODO
+- `evaluate_manuscript_complete.py` — evaluate one Manuscript Complete workspace against the profile, readiness, publication, and repair contracts.
+- `generate_quality_report.py` — aggregator that detects nothing itself: merges the sibling checkers' §3 JSON envelopes into one Markdown + JSON quality roll-up (per-area LOC, dead-code buckets with a before/after delta), degrading a missing/crashing/unparseable checker to `unavailable`/`error` so a valid report comes out of even zero checkers (`--run-checkers`, `--baseline`, `--fail-on-regression`; no LLM/API).
 - `gpu_ollama_monitor.sh` — monitor the SLURM GPU node running Ollama and re-tunnel it.
+- `manuscript_complete_release_gates.json` — canonical release-gate manifest covering required topologies, failure injections, migrations, and executable checks.
+- `migrate_science_data.py` — explicit offline migration of legacy science-data payloads with provenance and loss reports.
 - `readme_sync.py` — sync per-directory README `## Contents` indexes with the tree (`--check` gates drift, `--write` regenerates; no LLM/API).
+- `reproduce_constitutional_rqgm.py` — build the local Constitutional ARI-RQGM reproduction bundle: exact collected-test lists, run logs, a fully expanded authority matrix, dependency snapshot, and content hashes for all files under `ari-core/ari` and `ari-core/tests` plus selected build inputs; records a dirty tree honestly and makes no public-artifact claim.
 - `run_all_tests.sh` — run each skill's pytest suite in its own process.
+- `run_manuscript_complete_release.py` — run the commit-bound Manuscript Complete release suite and emit digest-addressed release evidence with retained logs.
 - `run_ollama_gpu.sh` — start Ollama on a SLURM GPU node and tunnel it to the login node.
 - `sc_paper_dogfood.py` — end-to-end dogfood driver: external paper PDF → PaperBench-format rubric generation (+ optional judge dry-run).
 - `sc_paper_stage23_chain.py` — run Stage 2 (reproduce) + Stage 3 (judge) against a completed Stage 1 rollout workspace.
 - `snapshot_contracts.py` — deterministic generator/verifier for the four contract-snapshot goldens under `ari-core/tests/fixtures/contracts/` (public API / CLI tree / MCP catalog / viz REST); `--surface <x> --check` gates drift, `--update` re-baselines; stdlib-only (AST/importlib), no LLM/API. Shares its `build_*`/`compare` helpers with `ari-core/tests/test_contract_snapshots.py`.
+- `sync_manuscript_schemas.py` — deterministically synchronize Manuscript Complete JSON Schemas between source and packaged schema trees.
+- `sync_skill_metadata.py` — deterministically regenerate compatibility `mcp.json` files and shared Skill/result/context/execution schemas.
 - `docs/` — documentation lint/gate scripts.
   - `README.md` — docs index.
+  - `__init__.py` — documentation-utility package marker.
   - `assemble_site.sh` — assemble the single Pages artifact `_site/` (L3): bespoke landing at the root, VitePress dist at `/docs/`, a noindex `docs.html` redirect stub, and `.nojekyll`. Run after `vitepress build`.
   - `check_doc_links.py` — verify intra-docs links and HTML hrefs resolve to real files.
   - `check_doc_sources.py` — validate the `sources` front-matter each doc declares against the tree.
@@ -59,21 +70,22 @@ Operational and utility scripts for building images, running services, and dev t
   - `README.md` — quality index.
   - `_common.py` — shared checker infrastructure (the `Finding` record + §3 JSON schema, allowlist loader, Markdown-table writer, `--base-ref` git-diff resolver) reused by the `scripts/quality/` checkers; stdlib + PyYAML only.
   - `analyze_references.yaml` — scan-root / prompt-base / data-selector / ignore config for `scripts/analyze_references.py` (subtask 054 reference-graph analyzer).
+  - `check_bundle_budget.yaml` — budget config for `check_bundle_budget.py` — dist path, route-chunk regex, and the KiB-gzip budgets (entry/route/shared/total + Settings/Wizard route overrides) so a budget change is a one-line reviewable diff.
   - `check_complexity.allow.yaml` — frozen size/complexity baseline for `check_complexity.py` (41 LOC-tier + 64 over-complexity offenders); regenerate with `--update-baseline`.
   - `check_complexity.yaml` — thresholds for `check_complexity.py` — LOC tiers (warn>500/review>800/split>1200), ruff `C901` `max-complexity`, test exclusion, and default scan scope.
-  - `check_dashboard_ux.allow.yaml` — TODO
-  - `check_dashboard_ux.yaml` — TODO
+  - `check_dashboard_ux.allow.yaml` — frozen raw/debug-exposure baseline for `check_dashboard_ux.py` (13 line-independent REVIEW_REQUIRED surfaces — 2 dangerous-HTML, the `{ } Raw` tab, 2 `/api/env-keys` readbacks, 8 `JSON.stringify` dumps; the i18n and route↔nav sections are empty because both are clean today); it records ownership by 070/071, never an authorization to edit a surface.
+  - `check_dashboard_ux.yaml` — extraction config for `check_dashboard_ux.py` — the `i18n/` dir + `en/ja/zh` locales, the five raw-pattern kinds with their scopes/regexes (`json_dump` scoped to `components/` so `services/api.ts` body serialization is not miscounted), and the `App.tsx`/`Sidebar.tsx` route↔nav targets plus the hidden-route allowlist.
   - `check_dead_code.allow.yaml` — frozen `SAFE_DELETE_CANDIDATE` baseline for `check_dead_code.py` (empty at seed; only shrinks as subtask 057 deletes reviewed candidates); regenerate with `--update-baseline`.
   - `check_dead_code.yaml` — classification config for `check_dead_code.py` — graph path, PUBLIC_CONTRACT / dynamic-seam / TEST_ONLY / under-traced-seam path lists, `SAFE_DELETE` eligibility (ruff-corroborated), and the `--check` budget.
-  - `check_directory_policy.allow.yaml` — TODO
-  - `check_directory_policy.yaml` — TODO
+  - `check_directory_policy.allow.yaml` — frozen allowlist for `check_directory_policy.py`, empty at seed (every rule verified clean 2026-07-02: trio intact, no `sonfigs/` dir, no tracked artifacts) and documenting the finding-id shapes (`trio-missing:`/`trio-kind:`/`trio-marker:`/`config-collision:`/`banned-dir:`/`storage:`/`artifact:`) future entries must use.
+  - `check_directory_policy.yaml` — rule config for `check_directory_policy.py` — the three config-trio paths with their required kind + marker files, legal config-family names and scan parents, the banned `sonfig*` globs, the storage-family names/allowlist, and the forbidden tracked-artifact dirs/suffixes.
   - `check_import_boundaries.allow.yaml` — frozen baseline of known import-boundary edges (the 7 B1 seed edges + the sanctioned core→skill edge).
   - `check_import_boundaries.yaml` — rule config for `check_import_boundaries.py` (allowed skill→core roots, sanctioned core→skill package, rule toggles).
   - `check_prompts.allow.yaml` — frozen inline-prompt baseline for `check_prompts.py` (23 role-marked candidates seeded from the Subtask 036 census, each tagged with its 036/011 §5.x verdict); regenerate with `--update-baseline`.
   - `check_prompts.yaml` — heuristics for `check_prompts.py` — role/JSON/rubric markers, min-lines/min-chars thresholds, default scan scope, and vendored `KEEP_INLINE` excludes.
   - `check_viz_api_schema.allow.yaml` — frozen baseline for `check_viz_api_schema.py` (1 known client-only F6a drift + 20 legitimately server-only routes: static/SSE/direct-URL/proxy/no-FE-consumer).
   - `check_viz_api_schema.yaml` — config for `check_viz_api_schema.py` (routes.py + api.ts targets, the four get/post/pbGet/pbPost helper→method map, declarative-route toggle).
-  - `generate_quality_report.yaml` — TODO
+  - `generate_quality_report.yaml` — checker roster for `generate_quality_report.py` — eight entries (`module_or_path`, `argv`, `json_flag`, `weight`), all `required: false` so an absent checker reports `unavailable` instead of failing the run — plus the optional per-area LOC override.
   - `baselines/` — committed quality baselines the checkers consume (relocated out of the retired `docs/refactoring/` tree).
     - `053_reference_roots.json` — reference-root manifest (R1..R12) seeding `analyze_references` reachability.
     - `dead_code_baseline.json` — frozen dead-code counts; `generate_quality_report` reports the before/after delta.
@@ -87,6 +99,14 @@ Operational and utility scripts for building images, running services, and dev t
   - `docker-compose.yml` — production stack (nginx + uvicorn + sqlite file volume).
   - `start_local.sh` — uvicorn + sqlite single-process, for laptop/dev.
   - `start_singularity.sh` — HPC fallback running the registry inside an Apptainer SIF.
+- `rqgm_assurance/` — release utilities for promoting native scientific harnesses and exercising their publication path.
+  - `promote_native_harnesses.py` — validate and promote the native HPC harness set with immutable registration evidence.
+  - `run_certify_publication_e2e.py` — execute the authentic screen/certify-to-publication flow and retain its evidence bundle.
+- `rqgm_eval/` — the RQGM evaluation/ablation harness (RQGM Task 13): condition matrix, failure-injection specs, the `run_ablation.py` campaign driver, the post-hoc `run_paper_panel.py` rubric panel, and the shared benchmark experiment set; the unit-testable logic lives in `ari.rqgm.evaluation.*` — these files only wire processes.
+  - `ablation_matrix.yaml` — the evaluation presets `ari.rqgm.evaluation.conditions` expands into `workflow.yaml` overlays: the nine-rung B0-B8 exploration ladder, the three paper-archive B conditions, and the RQGM-paper P0-P4 arms (`audit_only` vs `standard` kernel), plus `eval_defaults` (paired seeds, node-budget parity, per-campaign model pinning) and the fixed post-hoc reviewer panel.
+  - `failure_injections.yaml` — the deterministic failure-injection specs loaded by `ari.rqgm.evaluation.injection`: ten exploration injections (`eval_inj_*`), three paper-archive ones (PI1-PI3), and the clean control forming the false-reject denominator — each with ground-truth label, `target_refs`, expected detection channels/record types, and `min_condition`.
+  - `run_ablation.py` — RQGM ablation campaign driver: expands the selected conditions into per-run overlays and drives each condition × seed × experiment as a FRESH `ari run` checkpoint under `workspace/rqgm_eval/<eval_id>/`, then computes `rqgm_eval_metrics.json` + the campaign `ablation_report.{json,md}`; `--dry-run` expands configs only and `--smoke` is the offline no-LLM tier; standalone argparse, no `ari.public.*` import (the CLI surface stays unchanged).
+  - `run_paper_panel.py` — post-hoc fixed rubric panel over one final manuscript: asserts disjointness from the co-evolving `paper_reviewer` lineage and the anchor corpus, runs rubric × ensemble members with per-member provenance seeds, and writes the `panel_review_report.json` the P1 paper metric consumes; Tier-3 only (real LLMs).
 - `setup/` — installer step scripts and shared shell helpers.
   - `README.md` — setup index.
   - `banner.sh` — ASCII banner printer.
@@ -107,11 +127,16 @@ Operational and utility scripts for building images, running services, and dev t
 - `tests/` — Unit and smoke tests for the top-level `scripts/` quality checkers
   - `README.md` — tests index.
   - `test_analyze_references.py` — unit + smoke + determinism tests for `analyze_references.py` (string-key/MCP fixtures + publish-backend/prompt non-orphan repo smoke).
-  - `test_check_dashboard_ux.py` — TODO
+  - `test_check_bundle_budget.py` — unit + smoke tests for `check_bundle_budget.py` (Vite hash-stem extraction, entry/route/shared classification, tmp fake-dist over/within-budget + route-override + total-aggregate cases, gzip determinism, real-dist plan-09 budget smoke — skipped with a clear message when the frontend build is absent).
+  - `test_check_dashboard_ux.py` — unit + smoke tests for `check_dashboard_ux.py` (unquoted-key i18n extraction + duplicate detection, parity union-diff, `json_dump` scoped to `components/`, line-independent finding ids, route↔nav hidden-route allowlist, allowlist `known` marking, and repo smoke: zero net-new with the seeded allowlist, still exit 0 with an empty one).
   - `test_check_dead_code.py` — unit + smoke + determinism tests for `check_dead_code.py` (precedence, hard-downgrade, ruff-gated `SAFE_DELETE` + `--check` ratchet, repo firewall smoke).
-  - `test_check_directory_policy.py` — TODO
-  - `test_check_docs_source_sync.py` — TODO
+  - `test_check_directory_policy.py` — unit + smoke tests for `check_directory_policy.py` (trio missing/kind/marker findings, `sonfigs/` + config-family collision while a benign `config2` sibling stays silent, Rule B new-storage-dir warning, Rule C tracked `node_modules`/`*.pyc` over the git universe, allowlist `known` marking, real-tree clean + `--strict` smoke).
+  - `test_check_doc_links.py` — intra-documentation Markdown/HTML link resolution, anchors, exclusions, and repo smoke tests.
+  - `test_check_docs_source_sync.py` — unit + smoke + determinism tests for `check_docs_source_sync.py` over a temp git repo (stale vs fresh `last_verified`, allowlist suppression, docs missing `sources`/`last_verified` skipped, translations ignored, fail-open when git history is absent, byte-identical reruns, shipped-allowlist validity).
   - `test_check_import_boundaries.py` — unit + smoke tests for `check_import_boundaries.py` (B1/B2 fixtures + repo-level seed-edge smoke).
   - `test_check_prompts.py` — unit + smoke tests for `check_prompts.py` (synthetic new/allowlisted, user-message negative filter, `agent/loop.py` negative control, census-reproduction + unique-id repo smoke, Gate 10 delegation).
+  - `test_check_skill_manifests.py` — manifest/package/runtime/workflow/schema conformance fixtures and repository smoke tests.
+  - `test_check_translation_freshness.py` — translation source timestamps, front matter, missing locales, and drift detection.
   - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).
-  - `test_generate_quality_report.py` — TODO
+  - `test_generate_quality_report.py` — unit + smoke tests for `generate_quality_report.py` (zero-checker graceful report, `--target` ingestion of valid/missing/malformed/unknown-version envelopes, JSON round-trip re-ingestible as `--baseline`, net-new delta with `--fail-on-regression`/`--warning-only` exits, `--run-checkers` ok/unavailable/crash, live per-area LOC + longest-prefix attribution, and the dead-code section's seven buckets + delta).
+  - `test_readme_sync.py` — deterministic Contents regeneration, description preservation, deletion, ignore, and drift checks.

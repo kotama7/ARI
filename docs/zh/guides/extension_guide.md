@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # 扩展指南
@@ -45,7 +45,7 @@ Minimize energy score of protein folding simulation using different force field 
 2. 运行：
 
 ```bash
-ari run your_experiment.md --config config/bfts.yaml
+ari run your_experiment.md
 ```
 
 就这样。ARI 会读取目标、提出假设并自主搜索。
@@ -110,12 +110,17 @@ if __name__ == "__main__":
 
 ### 注册
 
-在 BFTS 配置 YAML 中：
+在 `ari-core/config/workflow.yaml` 的 `skills:` 块中。`name` 是流水线阶段
+引用的注册技能名（随包提供的条目采用 `<领域>-skill` 约定，例如
+`paper-skill`），必须完全一致——阶段分发会用 `s.name == stage.skill`
+过滤 `cfg.skills`：
 
 ```yaml
 skills:
   - name: your-skill
     path: /abs/path/to/ari-skill-yourskill
+    description: 该技能的说明
+    phase: bfts          # bfts | paper | reproduce，或它们的列表
 ```
 
 在 `experiment.md` 中：
@@ -139,40 +144,51 @@ skills:
 ## 3. 添加 Post-BFTS 流水线阶段
 
 在 BFTS 搜索完成后添加自动化后处理。
-仅需编辑 `config/pipeline.yaml`，无需修改核心代码。
+仅需编辑 `ari-core/config/workflow.yaml` 的 `pipeline:` 块（旧文件名
+`pipeline.yaml` 仍作为回退被接受），无需修改核心代码。
 
 ```yaml
 pipeline:
-  - stage: generate_paper
-    skill: ari-skill-paper
-    tool: generate_section
+  - stage: write_paper
+    skill: paper-skill
+    tool: write_paper_iterative
+    depends_on: [transform_data]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       venue: arxiv
 
-  - stage: review
-    skill: ari-skill-paper
-    tool: review_section
-    enabled: true
-
   - stage: my_new_stage            # ← 在此添加
-    skill: ari-skill-yourskill
+    skill: your-skill              # 必须与某个 `skills:` 条目的 name 一致
     tool: your_analysis_tool
+    depends_on: [write_paper]
     enabled: true
-    args:
+    phase: paper
+    inputs:
       custom_param: value
+      nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
+    outputs:
+      file: '{{checkpoint_dir}}/my_new_stage.json'
 
-  - stage: reproducibility_check
-    skill: ari-skill-paper-re
-    tool: reproducibility_report
+  - stage: ors_grade
+    skill: paper-re-skill
+    tool: grade_with_simplejudge
+    depends_on: [ors_run_reproduce]
     enabled: true
+    phase: paper
 ```
 
-每个阶段接收：
-- `best_node`：BFTS 中得分最高的节点
-- `all_nodes`：所有已探索的节点
-- `nodes_json_path`：`nodes_tree.json` 的路径
-- YAML 中指定的任何 `args`
+阶段的键：
+- `skill` / `tool` —— 注册技能名与它调用的 MCP 工具。
+- `inputs:`（别名 `input:`）—— 工具的关键字参数，支持 `{{var}}` 模板替换
+  （`{{checkpoint_dir}}`、`{{run_id}}`、`{{ari_root}}` 等）。`params:` 原样
+  传递；`<key>_from:` 简写会解析检查点相对文件名**并**读入其内容（另见
+  `load_inputs:`）。不存在 `args:` 键。
+- `depends_on:` —— 编排器按文件顺序执行阶段，不做拓扑排序，因此请让声明顺序
+  与依赖顺序一致；依赖被跳过的阶段也会被跳过（依赖被显式 `enabled: false`
+  的情况除外）。
+- `phase:` —— `bfts` / `paper` / `reproduce`；决定 GUI 图的分组。
+- `outputs.file` —— 驱动器写入该工具返回值的位置。
 
 ---
 
@@ -198,8 +214,10 @@ llm:
   base_url: http://your-server:8000/v1
 ```
 
-如果 LLM 不支持函数/工具调用，请在 `config/bfts.yaml` 中设置 `tool_choice="none"`，
-并确保实验工作流使用 `## Required Workflow` 来引导逐步执行。
+不存在 `tool_choice` 配置旋钮——`ari/llm/client.py` 自行设置它
+（`required` / `auto`）。如果 LLM 不支持函数/工具调用，请改走 CLI-shim
+后端（`ARI_BACKEND=cli-shim`），其 OpenAI 兼容服务器会回退到文本工具协议；
+同时让实验工作流使用 `## Required Workflow` 来引导逐步执行。
 
 ---
 
@@ -238,10 +256,10 @@ VENUES = [
 ### 在流水线中使用
 
 ```yaml
-- stage: generate_paper
-  skill: ari-skill-paper
-  tool: generate_section
-  args:
+- stage: write_paper
+  skill: paper-skill
+  tool: write_paper_iterative
+  inputs:
     venue: your_venue   # ← 在此指定
 ```
 
@@ -265,7 +283,8 @@ mpirun -np 128 ./my_parallel_program
 ```
 ```
 
-在 `config/bfts.yaml` 中增加超时时间：
+在 `ari-core/config/default.yaml`（随包提供的 BFTS 默认值）中增加超时时间——
+也可以用 `ARI_TIMEOUT_NODE` 按次运行覆盖：
 
 ```yaml
 bfts:

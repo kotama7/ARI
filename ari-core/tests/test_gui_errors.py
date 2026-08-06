@@ -23,6 +23,10 @@ from ari.viz import state as _st
 @pytest.fixture(autouse=True)
 def _reset_state(monkeypatch, tmp_path):
     """Isolate shared state for every test."""
+    # MN-6: this module pins the POST-challenge legacy behavior of the
+    # delete handler; the confirmation-challenge gate is covered by
+    # tests/test_gui_confirmation_challenges.py.
+    monkeypatch.setenv("ARI_GUI_CHALLENGES", "0")
     monkeypatch.setattr(_st, "_checkpoint_dir", None)
     monkeypatch.setattr(_st, "_last_proc", None)
     monkeypatch.setattr(_st, "_last_log_fh", None)
@@ -791,6 +795,8 @@ class TestGetEnvKeys:
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "nohome")
         result = _api_get_env_keys()
         assert isinstance(result["keys"], dict)
+        # RR-P0-2 / ADR-11 / MN-2: the redaction marker is always present.
+        assert result["redacted"] is True
 
     def test_env_file_with_comments_and_blanks(self, monkeypatch, tmp_path):
         """Comments and blank lines in .env are skipped."""
@@ -816,6 +822,9 @@ class TestGetEnvKeys:
         result = _api_get_env_keys()
         assert "OPENAI_API_KEY" in result["keys"]
         assert "SOME_OTHER_VAR" not in result["keys"]
+        # RR-P0-2 / ADR-11 / MN-2: value is redacted, plaintext never served.
+        assert result["keys"]["OPENAI_API_KEY"] == "***configured***"
+        assert "sk-test123" not in json.dumps(result)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

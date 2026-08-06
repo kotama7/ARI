@@ -6,46 +6,59 @@
 \input{../shared/preamble.tex}
 \input{strings.tex}
 
-\title{ARI: 自律型研究基盤}
+\renewcommand{\abstractname}{要旨}
+\renewcommand{\figurename}{図}
+\renewcommand{\tablename}{表}
+\crefname{section}{節}{節}
+\Crefname{section}{節}{節}
+\crefname{figure}{図}{図}
+\Crefname{figure}{図}{図}
+\crefname{table}{表}{表}
+\Crefname{table}{表}{表}
+\DefineBibliographyStrings{english}{bibliography={参考文献},references={参考文献}}
+
+\title{Constitutional ARI-RQGM:\\自律研究を統治する共進化機構}
 \author{樹神 宇徳}
-\date{v0.9.0, 2026-06-12}
+\date{v0.9.0, 立憲型 RQGM 版, 2026-07-28}
 
 \begin{document}
 \twocolumn[
 \maketitle
 \begin{abstract}
-本レポートでは、木探索ベースの探索ループと論文生成パイプラインを
-組み合わせた自律型研究基盤 \textbf{ARI} を述べる。探索ループは
-研究ステップノードに対する最良優先木探索 (BFTS) であり、ノード
-拡張は Reason-and-Act (ReAct~\cite{yao2023react}) 形式のエージェ
-ントが14のドメインスキルレジストリにツール呼び出しを発する形で
-行う。論文生成パイプラインは生き残った
-系譜から草稿を生成し、階層型ルブリックの下で反復的に改稿する。
-すべての成果物は単一のチェックポイントディレクトリに格納され、
-これが再現性、系譜、コスト計上の単位となる。本レポートは
-アルゴリズムと設計上の論拠を形式化し、予備的観察を報告し、
-設計を制約する決定性と新規性のトレードオフを議論する。
+自律研究システムでは、研究案の作成、成果の評価、論文の執筆を、
+言語モデルで定義した役割へ委ねる。これらの役割や採点規則を更新
+できれば、成果物だけでなく研究制度そのものも改善できる。しかし、
+制度が自分に有利な採点へ書き換わり、失敗を隠し、権限を広げる危険も
+生じる。本稿は、不変の決定論的カーネルと、更新可能な指示文・構成
+要素・効用規則を分離する \textbf{Constitutional ARI-RQGM} を示す。
+制度更新は期の境界でのみ確定し、重大なカーネル違反に対する T16 は
+現期を強制終了して新しい指紋値の期を開く。候補の採否は、敵対的な検証結果、訴追と弁護の
+役割分離、過去事例による再試験、固定された T1--T21 の遷移規則に
+基づいて決める。台帳の更新権限は
+一か所に集約し、更新処理は再現可能にする。役割を退役させても履歴は
+削除せず、その役割に依存した候補だけを再評価する。同じ憲法は、
+執筆役と査読役が共進化する論文保管庫にも適用される。ただし、
+最終的な主張と証拠の照合は両者から独立した固定処理とする。本稿は、
+この仕組みの構成要素状態遷移表、権限行列、再開・修復・原稿
+検証手続きと、保証の限界を報告する。現時点の証拠は 1,124 件の関連試験、五種類の
+固定故障例、一つの正常例に限られ、研究品質、一般的な検出率、責任帰属
+精度、計算負担の改善を立証しない。
 \end{abstract}
 \vspace{2ex}
 ]
 
 \input{chapters/01_introduction.tex}
 \input{chapters/02_system_overview.tex}
-\input{chapters/03_exploration.tex}
-\input{chapters/04_paper_pipeline.tex}
+\input{chapters/08_rqgm.tex}
 \input{chapters/05_evaluation.tex}
 \input{chapters/06_related.tex}
 \input{chapters/07_discussion.tex}
 
-% Single column for the appendix so the verbatim prompt listings wrap
-% inside the full page width. \clearpage makes the \onecolumn switch
-% robust across engines (see en/main.tex for the xelatex/ctex note).
 \clearpage
 \onecolumn
 \appendix
-\input{chapters/appendix_notation.tex}
+\input{chapters/appendix_specification.tex}
 \input{chapters/appendix_prompts.tex}
-\input{chapters/appendix_samplepaper.tex}
 
 \clearpage
 \twocolumn

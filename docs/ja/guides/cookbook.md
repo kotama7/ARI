@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # クックブック
@@ -121,13 +121,24 @@ bfts:
   depth_penalty_lambda: 0.1
 ```
 
-**汎用の 5 軸の代わりにカスタム軸（例: 高速化）を測定する:**
+**ルーブリック由来の軸の代わりにカスタム軸（例: 高速化）を測定する**
+（`axis_mode` のデフォルトは `dynamic` で、有効なルーブリックから軸を構築します）。
+`custom_axes` は `{name, description, weight}` レコードのリストです — 文字列だけの
+リストは設定ロード時に拒否されます:
 
 ```yaml
 evaluator:
   axis_mode: custom
-  custom_axes: [correctness, speedup, reproducibility]
-  # axis_weights below set the relative weight of each named axis
+  custom_axes:
+    - name: correctness
+      description: "結果が許容誤差内で参照実装と一致するか"
+      weight: 0.4
+    - name: speedup
+      description: "ベースラインに対する実時間の高速化率（1.0 = 変化なし）"
+      weight: 0.4
+    - name: reproducibility
+      description: "記録された成果物から実行を再現できるか"
+      weight: 0.2
 ```
 
 **監査前の挙動を厳密に再現する**（正規の 5 軸と調和平均を固定する）:

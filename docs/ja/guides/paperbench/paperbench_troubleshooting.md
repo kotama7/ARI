@@ -76,10 +76,8 @@ print(_format_hpc_appendix(
 
 ### Q. `sbatch: error: Invalid GRES gpu:v100:1`
 
-クラスタが GRES 未設定。 v0.7.2 は `_slurm_has_gres()` 経由で
-flag を自動的に落とす — エラーが残るなら旧ビルド、 または `sinfo`
-が PATH に無い。 ワークアラウンド: ウィザード Step 3 の *実行
-プロファイル上書き* で `gpu_type` を空にする。
+選択partitionが型付きGPU要求を満たせない。`sinfo -o '%P %G'`で確認し、
+対応partitionを選ぶかsiteのGRES設定を修正する。ARIは要求を削除してCPU実行しない。
 
 ### Q. sbatch は成功したが `reproduce.sh` がシングルノードでしか動かない
 
@@ -176,9 +174,8 @@ ja/zh ミラーは XeLaTeX + Noto CJK font 必須。 `report/setup_fonts.sh`
 ### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
 
 docker daemon が起動していないか到達不能。bridge / `run_reproduce` は
-silent fallback を拒否する。docker を起動するか、`sandbox_kind` を
-別の値 (`local` / `apptainer` / `slurm`) に変えるか、または legacy
-fallback を opt-in する: `export ARI_PHASE1_ALLOW_FALLBACK=1`。
+silent fallback を拒否する。docker を起動するか、review済みの別の
+`sandbox_kind` に変える。legacy host-local fallback は存在しない。
 `sandbox_kind=apptainer` の binary 不在、`sandbox_kind=slurm` の sbatch
 不在 / partition 解決失敗 にも同じ対処。
 
@@ -190,7 +187,8 @@ fallback を opt-in する: `export ARI_PHASE1_ALLOW_FALLBACK=1`。
 
 1. SLURM の GRES 設定を直す
 2. GRES 設定済 partition を選ぶ (`sinfo -o '%P %G'` で確認)
-3. silent drop を opt-in: `export ARI_SLURM_ALLOW_NO_GRES=1`
+
+GPU要求をCPU実験へ変えるsilent dropは意図的に提供しない。
 
 ### Q. agent が Stage 1 を動かしたが Stage 3 で全 leaf が 0 点
 

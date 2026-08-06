@@ -4,7 +4,13 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+  - path: scripts/setup/setup_env.sh
+    role: config
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
+  - path: ari-core/ari/viz/health.py
+    role: implementation
+last_verified: 2026-07-29
 ---
 
 # Environment Variable Reference
@@ -41,6 +47,9 @@ page is the alphabetical lookup.
 | `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
 | `ARI_MODEL` | Cross-skill fallback model id | (falls through to `ARI_LLM_MODEL`) |
 | `ARI_MODEL_EVAL` | Model for the LLM evaluator | falls through to `ARI_MODEL` |
+| `ARI_MODEL_PAPER` | Model for paper writing and refinement | falls through to `ARI_LLM_MODEL` |
+| `ARI_MODEL_RUBRIC` | Model for independent rubric review and the fixed paper panel | falls through to `ARI_LLM_MODEL` |
+| `ARI_PANEL_SEED` | Requested seed recorded for each fixed-panel rubric completion | unset; sampling control is provider/backend dependent |
 | `ARI_MODEL_JUDGE` | Model for the BFTS judge | falls through to `ARI_MODEL` |
 | `ARI_MODEL_LINEAGE` | Model for stagnation / lineage decisions (v0.7.0) | falls through to `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | Model that picks the seed idea | falls through to `ARI_MODEL` |
@@ -101,6 +110,26 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_PARENT_RUN_ID` | Parent run id during recursion (auto-set) | (auto) |
 | `ARI_DISABLED_TOOLS_FOR_CHILD` | Toolset trimmed for child runs | (none) |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` `top_k` ceiling | (skill default) |
+
+### Execution mode (RQGM)
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_MODE` | Execution-mode override: `simple_bfts` \| `ari_rqgm` (overrides `ari.mode` in workflow.yaml; invalid values warn and are ignored). RQGM activation additionally requires the `ARI_RQGM_ENABLED` interlock — any disagreement falls back to `simple_bfts`. `export_resolved_config_to_skill_env` `setdefault`s this to the *effective* mode for skill subprocesses (no skill reads it in v1). On `ari resume` the mode persisted in `rqgm_state.json` wins over this variable. See `docs/guides/execution_modes.md` | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM master-interlock override: `0`/`1`/`true`/`false` (overrides `rqgm.enabled` in workflow.yaml). Both this AND `ARI_MODE=ari_rqgm` must agree for the governance runtime to be constructed | `false` |
+| `ARI_PAPER_AGENT_AS_JUDGE` | Agent-as-judge draft-scoring override: `0`/`1`/`true`/`false` (overrides `rqgm.paper.reviewer.agent_as_judge.enabled`; invalid values warn and are ignored). Applied by `apply_paper_env_overrides` with the same validate-before-assign posture as `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED`. Off ⇒ the deterministic, LLM-free venue-rubric scorer, so no live LLM call sits on the draft-scoring path (P2). On ⇒ a real `LLMClient`-backed reviewer scores each archive draft over the *same* venue-rubric axes, weighted by the ACTIVE governed `paper_reviewer` prompt's emphasis, and can read axes no deterministic reader can (`novelty`, `significance`); it fails open to the deterministic rubric on an LLM error, an unparseable reply or one covering too little of the rubric's axis weight. Only meaningful under the effective `rqgm_archive` paper mode (`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`) | (unset ⇒ off) |
+
+### Manuscript Complete
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_MANUSCRIPT_MODE` | New-attempt posture: `off` \| `audit` \| `enforce`. It is independent of research and paper modes; resume cannot rewrite a persisted attempt binding. | `off` |
+| `ARI_MANUSCRIPT_REPAIR_POLICY` | Repair posture: `disabled` \| `explicit` \| `auto`. `auto` is invalid unless the effective manuscript mode is `enforce`. | `disabled` |
+
+The additional `ARI_MANUSCRIPT_*_PATH`, budget, topology, and effective-policy
+variables are private, scoped hand-offs installed by the paper dispatcher.
+Operators should configure them through `workflow.yaml`, not export them
+directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_operations.md).
 
 ### Backend + executor
 
@@ -229,6 +258,29 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_JUDGE_N_RUNS` | Default `n_runs` for the SimpleJudge call when the wizard / caller passes `0`. PaperBench paper §4.1 single-pass default is 1. |
 | `ARI_MODEL_JUDGE` | Default judge model id (LiteLLM-routed). |
 | `ARI_MODEL_REPLICATOR` | Default Stage 1 rollout model id. |
+
+### GUI server (`ARI_GUI_*`)
+
+Eight switches govern the `ari viz` dashboard shell, its network exposure and
+its operational surfaces. All eight are declared (commented out) by
+`scripts/setup/setup_env.sh`, and all are **rollback levers**: unsetting them
+gives the current default, setting them restores a documented earlier
+behaviour without a redeploy.
+
+| Variable | Default (unset) | Effect when set | Rollback semantics |
+|---|---|---|---|
+| `ARI_GUI_V2` | on (`1`) | `0` / `false` reverts to the legacy dashboard shell. | Kill-switch for the v2 shell; removal gate G6. |
+| `ARI_GUI_BIND` | loopback only (`127.0.0.1` + `::1`) | A bind address: `::` = legacy all-interfaces dual-stack, `0.0.0.0` = IPv4 wildcard, or a single address. | Restores the historical all-interfaces bind. Any non-loopback value switches the server into **remote mode** (see `ARI_GUI_TOKEN`). |
+| `ARI_GUI_CORS_ANY` | off — same-origin echo only | `1` restores the legacy `Access-Control-Allow-Origin: *` wildcard. | Needed only for cross-origin tunnel/portal topologies; the Vite dev proxy on `:5173` does **not** need it. |
+| `ARI_GUI_CHALLENGES` | on — challenges required | `0` disables the server-issued confirmation challenges on delete-checkpoint / stop / gpu-monitor-stop, restoring direct execution. | With it on, those endpoints answer `428` without a valid `challenge_id`; the issuing endpoint stays available either way. |
+| `ARI_GUI_CSP` | on — headers sent | `0` drops `Content-Security-Policy`, `X-Content-Type-Options` and `Referrer-Policy` from the GUI index/static responses. | Only needed if a proxy topology remaps the WebSocket port and the policy blocks it (the GUI then degrades to polling). |
+| `ARI_GUI_TOKEN` | unset | The bearer token remote mode requires: every request except the `/health*` prefix must send `Authorization: Bearer <token>`; SSE and WebSocket accept it as `?token=`. | Unset **while remote-bound** is fail-secure, not open: the server generates a random 32-hex token at startup and prints it once to stderr. Never required on the loopback default. |
+| `ARI_GUI_AUTH` | on (in remote mode) | `0` disables the remote token gate, restoring an unauthenticated remote bind. | The documented escape hatch for a trusted network that terminates its own auth (e.g. an authenticating reverse proxy). Loopback binds are unauthenticated either way. |
+| `ARI_GUI_HEALTH` | on | `0` disables the operational-visibility surfaces: `GET /health/live` and `/health/ready` fall back to the SPA response and `GET /api/v1/diagnostics` answers the typed 404. | Restores the exact pre-probe wire behaviour for probe-scraping topologies that must not see the new JSON. |
+
+See [REST API → Authentication](rest_api.md#authentication) for the full trust
+model and [REST API → Confirmation challenges](rest_api.md#confirmation-challenges)
+for the challenge protocol.
 
 ## SLURM (`SLURM_*`)
 

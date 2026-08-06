@@ -1,72 +1,68 @@
 # ari-skill-benchmark
 
-Statistical analysis, visualisation, and hypothesis testing as MCP
-tools.  Fully deterministic (P2-safe): every tool reads numeric
-inputs and returns numeric outputs without invoking an LLM.
+Deterministic scientific summaries, statistical inference, and run comparison.
+The server makes no LLM calls and delegates every figure to
+`ari-skill-plot:render_figure`.
 
 ## MCP tools
 
-| Tool | Purpose | LLM |
-|---|---|:---:|
-| `analyze_results` | Compute summary statistics (mean / std / quantiles, ...) from a result file (CSV / JSON / npy) | ✗ |
-| `plot` | Render a matplotlib figure from a fixed schema | ✗ |
-| `statistical_test` | Hypothesis test (`t_test`, `mann_whitney_u`, `paired_t_test`, ...) | ✗ |
+| Tool | Contract | Purpose |
+|---|---|---|
+| `analyze_results` | `AnalysisRequestV1` | Unit-bearing summary statistics and mean confidence intervals |
+| `statistical_test` | `StatisticalTestRequestV1` | Paired/unpaired tests, effect sizes, confidence intervals, assumptions, and corrected p-values |
+| `compare_runs` | `RunComparisonRequestV1` | Rankings plus environment, replicate, and provenance differences |
 
-### `analyze_results`
+All tools return `AnalysisResultV1`. Public models are available from
+`ari.public.analysis`, with generated JSON Schemas under
+`ari-core/ari/schemas/`.
 
-| Field | Meaning |
-|---|---|
-| `result_path` | Path to the input file (CSV / JSON / npy) |
-| `metrics` (optional) | Subset of metric names; defaults to every column |
+## Inputs and provenance
 
-Returns `{"<metric>": {"mean": ..., "std": ..., "min": ..., "max": ..., "p25": ..., "p50": ..., "p75": ...}}`.
+Samples can be inline observations or a typed `csv`, `json`, or `npy` source.
+A file source must name a closed `WorkspaceRefV1`, a safe relative path, an
+expected SHA-256 digest, a numeric value column when needed, and optional
+replicate/pair/backend/environment identity columns. NumPy object arrays and
+pickle loading are prohibited.
 
-### `plot`
+Every metric has an explicit unit. Empty samples, all-missing samples, unit
+mismatches, and paired-length mismatches fail. Missing and non-finite values are
+either rejected or dropped according to `missing_policy`; dropping is reported
+in the result.
 
-| Field | Meaning |
-|---|---|
-| `data_path` | Input file |
-| `figure_spec` | Dict with keys `kind` (`line` / `bar` / `scatter` / `hist`), `x`, `y`, `groupby`, `title`, ... |
-| `output_path` | PNG / PDF target |
+`AnalysisResultV1` records the resolved input digest, Python/NumPy/SciPy
+versions, counts, effect size, confidence interval, assumption diagnostics, and
+the pre-registration `analysis_plan_digest` when supplied. Multiple comparisons
+must select Bonferroni, Holm, or Benjamini-Hochberg correction.
 
-Returns `{"figure_path": "...", "size_bytes": ...}`.
+## Artifacts
 
-### `statistical_test`
-
-| Field | Meaning |
-|---|---|
-| `test` | `t_test` / `mann_whitney_u` / `paired_t_test` / ... |
-| `sample_a`, `sample_b` | Numeric arrays |
-| `alpha` (optional) | Significance level (default 0.05) |
-
-Returns `{"statistic": ..., "p_value": ..., "significant": bool}`.
-
-## Determinism
-
-All three tools are byte-deterministic for given inputs.  No LLM
-calls; all randomness is seeded at the matplotlib level (figures use
-the `Agg` backend with no GUI dependency).
-
-## Environment variables
-
-None.  The skill reads only its tool arguments.
-
-## Dependencies
-
-- `numpy >= 1.26`
-- `scipy >= 1.11`
-- `matplotlib >= 3.8`
-- `pandas >= 2.0`
-- `mcp >= 1.0`
+An optional `artifact_target` writes deterministic `result.json` and
+`table.csv` files through a closed workspace. The paths are keyed by the
+resolved input digest and returned with byte digests and media types.
 
 ## Example
 
 ```json
 {
-  "tool": "analyze_results",
+  "tool": "statistical_test",
   "args": {
-    "result_path": "results.json",
-    "metrics": ["GFlops/s"]
+    "request": {
+      "schema_version": "ari.statistical-test-request/v1",
+      "comparisons": [{
+        "comparison_id": "candidate-vs-baseline",
+        "group_a": {
+          "metric_id": "latency",
+          "unit": "ms",
+          "observations": [{"value": 8.1}, {"value": 8.4}, {"value": 8.2}]
+        },
+        "group_b": {
+          "metric_id": "latency",
+          "unit": "ms",
+          "observations": [{"value": 10.1}, {"value": 9.8}, {"value": 10.0}]
+        },
+        "test_family": "welch_t"
+      }]
+    }
   }
 }
 ```
@@ -74,14 +70,8 @@ None.  The skill reads only its tool arguments.
 ## Development
 
 ```bash
-pytest tests/ -q
+PYTHONPATH=../ari-core pytest tests -q
 ```
 
-## Compatibility
-
-P2 (determinism) compliant: same inputs, same outputs.
-
-## See also
-
-- `docs/reference/skills.md` — high-level summary in the master skill index.
-- `docs/reference/mcp_tools.md` — argument signatures.
+See [the analysis contract](../docs/reference/analysis_contract.md) for the
+normative statistical and migration rules.

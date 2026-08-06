@@ -1,0 +1,38 @@
+schema_version: 1
+id: hpc.gemm.optimization
+version: 1.0.0
+title: GEMM Optimization
+description: Correctness-preserving dense GEMM optimization procedure.
+status: candidate
+source:
+  repository: https://github.com/kotama7/ARI.git
+  commit: e4fadaef3955f261ba9d44e4746d3657c5094050
+  path: ari-core/config/knowledge_skills/bodies/hpc_gemm_optimization
+  body_sha256: sha256:8d0c22f3e95cd7e31860b14817ea5d546459412a28a1cbe9e1a6c5a926be1401
+  manifest_sha256: sha256:a9f8f7904cde600f71a02cb757e93b405258e7af78a90ee1fa01177d38b6208d
+license: {body: MIT, references: MIT}
+references: []
+applies_to:
+  roles: [generator]
+  phases: [bfts]
+  task_tags: [dense-linear-algebra, gemm]
+requires:
+  capabilities:
+    - {ref: ari.code.inspect/v1, required: true}
+    - {ref: ari.code.edit/v1, required: true}
+    - {ref: ari.execution.compile/v1, required: true}
+    - {ref: ari.execution.benchmark/v1, required: true}
+optional_capabilities:
+  - {ref: ari.profiling.hardware-counters/v1, required: false}
+  - {ref: ari.execution.slurm-submit/v1, required: false}
+evaluation_obligations:
+  - {property_id: numerical-equivalence, required_methods: [differential-testing, metamorphic-testing]}
+  - {property_id: memory-safety, required_methods: [sanitizer]}
+  - {property_id: performance-regression, required_methods: [benchmark-comparison]}
+  - {property_id: reproducibility, required_methods: [repeated-execution]}
+authority_ceiling:
+  side_effects: [read-only, workspace-write]
+forbidden_capabilities: [ari.publish.external/v1, ari.registry.write/v1]
+dependencies: []
+conflicts: []
+composition: {slot: domain-method, priority: 100, exclusive: false}

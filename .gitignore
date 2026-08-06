@@ -30,6 +30,9 @@ slurm-*.out
 # Checkpoint directories (generated at runtime)
 *_ckpt_*/
 checkpoints/
+# Versioned migration fixtures exercise legacy checkpoint readers in CI.
+!/ari-core/tests/fixtures/checkpoints/
+!/ari-core/tests/fixtures/checkpoints/**
 output*/
 results*/
 
@@ -41,15 +44,11 @@ benchmarks/
 *.f90
 *.def
 *.sbatch
-# Handoff study (B2b): the SpMM kernel fixtures are tracked source, not
-# user-created experiment files — re-include them despite the *.c rule above.
-!ari-core/ari/evaluator/spmm_kernels/*.c
-# Handoff study (task A): GEMM kernel fixtures are likewise tracked source.
-!ari-core/ari/evaluator/gemm_kernels/*.c
-# Handoff study (task B / erfc Goldilocks): erfc fixtures are tracked source.
-!ari-core/ari/evaluator/erfc_kernels/*.c
-# Handoff study (task C / meshpart Goldilocks): partitioning fixtures are tracked.
-!ari-core/ari/evaluator/meshpart_kernels/*.c
+# Deterministic source/data fixtures exercised by assurance and RQGM CI.
+!/ari-core/tests/fixtures/assurance/native_reference_candidate.c
+!/ari-core/tests/fixtures/knowledge/intel_performance_patterns_clean_task.c
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/**
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml
@@ -82,24 +81,12 @@ Thumbs.db
 !/containers/README.md
 /ari-core/containers/*
 !/ari-core/containers/README.md
-# workspace/ holds the experiment data and is far too large to track. The
-# harnesses under it were already tracked before this rule existed and stay so.
-# workspace/tools/ is added here: it is the code that verifies the paper's
-# claims and has to travel with the paper.
-#
-# `workspace/` with a trailing slash stops git descending at all, so no later
-# negation can reach inside — that spelling left every tool ignored while
-# looking correct. `workspace/*` ignores the immediate children instead, which
-# leaves tools/ reachable for the negation below.
-# Check with:  git add -n workspace/tools/   (must list every file there)
-workspace/*
-!workspace/tools/
-# The repo-wide `*.c` rule (line 39) also catches the two C measurement
-# tools, so they need their own negation — un-ignoring the directory is
-# not enough when a pattern elsewhere matches the files.
-!workspace/tools/*.c
-workspace/tools/__pycache__/
-/workspace.zip
+# Runtime workspaces also hold private scheduler site selectors. Physical
+# cluster/partition/node names stay here; tracked locks contain only a salted
+# site-identity digest. The repository pre-commit hook and promotion commands
+# scan both worktree candidates and staged Git blobs against the ignored site
+# configuration; never use `git add -f` for any file below this directory.
+workspace/
 *.sif
 
 # Temporary work files
@@ -118,6 +105,8 @@ ari-core/checkpoints/
 # ── Runtime / temp files (generated at runtime, never track) ────
 experiment.md
 ari-core/experiment.md
+# The migration contract intentionally contains historical experiment.md.
+!/ari-core/tests/fixtures/checkpoints/v0_7_golden/experiment.md
 tmp*.md
 # Run-environment capture (carries hostname/partition/nodelist — machine info, never track)
 _run_env.json

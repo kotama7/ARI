@@ -1,0 +1,29 @@
+schema_version: 1
+catalog_source_revision: ari-harness-catalog/1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b
+driver_protocol_version: ari.harness-driver/v1
+property_vocabulary_version: ari.assurance-properties/v1
+entries:
+- id: hpc/gemm-correctness
+  manifest: builtin/hpc_gemm_correctness.yaml
+  registration_report: reports/hpc_gemm_correctness.registration.json
+  registration_report_digest: sha256:dacca97c39987026b8efa071a531813a6259a5e23e3f3640bee2ad0e46b9b78c
+  registration_evidence: evidence/hpc_gemm_correctness/registration_evidence.json
+  registration_evidence_digest: sha256:c731da845fc6fa54cc53066fd6ecb3262f346cd29bc910b57c5e4ea10ac24609
+  promotion_approval: approvals/hpc_gemm_correctness.approval.json
+  promotion_approval_digest: sha256:56739f92d63e37e00bfb9b9d53efd2930960ab1888a2d85bf205f0b72eb2dfc3
+- id: hpc/spmm-correctness
+  manifest: builtin/hpc_spmm_correctness.yaml
+  registration_report: reports/hpc_spmm_correctness.registration.json
+  registration_report_digest: sha256:cc7fdf932f836916594d38f7a2b72489836292c60f236a2db836e75400f68cbd
+  registration_evidence: evidence/hpc_spmm_correctness/registration_evidence.json
+  registration_evidence_digest: sha256:d0524100c2ea17e622b468f8bbd8935329ed25d40edf9b08e89617638b9555bb
+  promotion_approval: approvals/hpc_spmm_correctness.approval.json
+  promotion_approval_digest: sha256:4f1ac99729174486fcb3fbd770d823b846d8c3ce71cd69d37d86e8ebea8012e9
+- id: hpc/stencil-correctness
+  manifest: builtin/hpc_stencil_correctness.yaml
+  registration_report: reports/hpc_stencil_correctness.registration.json
+  registration_report_digest: sha256:0b6f233a1b8400382c38cf8ca43efb3551df5bd6269b32c78364413abe650627
+  registration_evidence: evidence/hpc_stencil_correctness/registration_evidence.json
+  registration_evidence_digest: sha256:308521fbb16f9b72c83da538efb61bb969710d4ebe6c9ec5c9e0e8fdb86823ae
+  promotion_approval: approvals/hpc_stencil_correctness.approval.json
+  promotion_approval_digest: sha256:e9fc8ee2894a0bdcfc9c2dcbd5ed9032ddeb90422f637d28d5e25968b9e8e76a

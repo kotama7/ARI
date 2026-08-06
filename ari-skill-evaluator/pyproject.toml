@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ari-skill-evaluator"
-version = "1.0.0"
+version = "1.1.0"
 requires-python = ">=3.11"
-dependencies = ["mcp>=1.0"]
+dependencies = ["mcp>=1.28.1"]
 
 [tool.setuptools]
-# Ship the skill-local prompt templates (src/prompts/*.md, subtask 040) in the
+# Ship the two reviewed, versioned prompt templates in the
 # wheel/sdist. The standard runtime path is an editable install (setup.sh
 # `pip install -e`), which resolves these files via `Path(__file__).parent`;
 # these keys additionally include them in a built distribution.

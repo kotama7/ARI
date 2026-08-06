@@ -466,3 +466,49 @@ def test_export_config_skips_auto_partition():
                         resources={"partition": "auto"})
         export_resolved_config_to_skill_env(cfg)
         assert "ARI_SLURM_PARTITION" not in os.environ   # "auto" => let the skill auto-detect
+
+
+# ── `ari settings` must write a block that SURVIVES load_config (sweep) ──────
+#
+# The command wrote a top-level `slurm:` block, but ARIConfig has no `slurm`
+# field and `load_config` DROPS unknown top-level keys — so every
+# `ari settings --partition/--cpus/--mem` was silently discarded while
+# reporting success.
+
+def test_a_top_level_slurm_block_is_discarded(tmp_path):
+    import yaml
+
+    from ari.config import load_config
+
+    wf = tmp_path / "workflow.yaml"
+    wf.write_text(yaml.safe_dump({"slurm": {"partition": "gpu",
+                                            "cpus_per_task": 32}}))
+    cfg = load_config(str(wf))
+    assert not hasattr(cfg, "slurm")
+    assert cfg.resources == {}          # the values are simply gone
+
+
+def test_settings_values_survive_under_resources(tmp_path):
+    import yaml
+
+    from ari.config import load_config
+
+    wf = tmp_path / "workflow.yaml"
+    wf.write_text(yaml.safe_dump({"resources": {"partition": "gpu",
+                                                "cpus": 32, "mem_gb": 256}}))
+    cfg = load_config(str(wf))
+    assert cfg.resources["partition"] == "gpu"
+    assert cfg.resources["cpus"] == 32
+    assert cfg.resources["mem_gb"] == 256
+
+
+def test_the_settings_command_targets_the_surviving_block():
+    from pathlib import Path
+
+    import ari.cli.commands as _c
+
+    src = Path(_c.__file__).read_text(encoding="utf-8")
+    assert 'setdefault("slurm", {})' not in src, (
+        "`ari settings` still writes a block load_config discards"
+    )
+    assert 'setdefault("resources", {})["partition"]' in src

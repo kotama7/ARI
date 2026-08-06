@@ -1,0 +1,385 @@
+{
+  "$defs": {
+    "CapabilityRequirementV1": {
+      "additionalProperties": false,
+      "description": "A semantic capability need; it grants no executable authority.",
+      "properties": {
+        "capability_contract_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Contract Digest",
+          "type": "string"
+        },
+        "capability_ref": {
+          "pattern": "^ari\\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*$",
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "context_requirement": {
+          "default": "none",
+          "enum": [
+            "none",
+            "run",
+            "node"
+          ],
+          "title": "Context Requirement",
+          "type": "string"
+        },
+        "environment_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Environment Requirements",
+          "type": "array"
+        },
+        "explicit_provider_pin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explicit Provider Pin"
+        },
+        "explicit_tool_pin": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Explicit Tool Pin"
+        },
+        "forbidden_capability_refs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Capability Refs",
+          "type": "array"
+        },
+        "permitted_credential_scopes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Permitted Credential Scopes",
+          "type": "array"
+        },
+        "phases": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Phases",
+          "type": "array"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "requirement_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Requirement Digest",
+          "type": "string"
+        },
+        "resource_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Resource Types",
+          "type": "array"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Roles",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.capability-requirement/v1",
+          "default": "ari.capability-requirement/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "semantic_constraints": {
+          "additionalProperties": true,
+          "title": "Semantic Constraints",
+          "type": "object"
+        },
+        "side_effect_ceiling": {
+          "default": "read-only",
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "scheduler-submit",
+            "external-write",
+            "physical-actuation"
+          ],
+          "title": "Side Effect Ceiling",
+          "type": "string"
+        },
+        "source_requirement_refs": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Requirement Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "capability_ref",
+        "capability_contract_digest",
+        "source_requirement_refs",
+        "requirement_digest"
+      ],
+      "title": "CapabilityRequirementV1",
+      "type": "object"
+    },
+    "EvaluationObligationV1": {
+      "additionalProperties": false,
+      "description": "A Knowledge Skill's non-authoritative request for scientific checks.",
+      "properties": {
+        "property_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Property Id",
+          "type": "string"
+        },
+        "required_methods": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Required Methods",
+          "type": "array"
+        },
+        "required_tier": {
+          "default": "screen",
+          "enum": [
+            "screen",
+            "validate",
+            "certify"
+          ],
+          "title": "Required Tier",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "ari.evaluation-obligation/v1",
+          "default": "ari.evaluation-obligation/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "scope": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "title": "Scope",
+          "type": "object"
+        },
+        "source_skill_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Skill Digest"
+        }
+      },
+      "required": [
+        "property_id"
+      ],
+      "title": "EvaluationObligationV1",
+      "type": "object"
+    },
+    "KnowledgeAdmissionFindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "skill_ref": {
+          "$ref": "#/$defs/KnowledgeSkillRefV1"
+        }
+      },
+      "required": [
+        "skill_ref",
+        "code",
+        "detail"
+      ],
+      "title": "KnowledgeAdmissionFindingV1",
+      "type": "object"
+    },
+    "KnowledgeSkillRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "body_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Body Sha256",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z0-9][a-z0-9._-]{0,255}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "manifest_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Manifest Sha256",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "body_sha256",
+        "manifest_sha256"
+      ],
+      "title": "KnowledgeSkillRefV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/epoch-knowledge-skill-lock-v1.schema.json",
+  "additionalProperties": false,
+  "properties": {
+    "admitted": {
+      "items": {
+        "$ref": "#/$defs/KnowledgeSkillRefV1"
+      },
+      "title": "Admitted",
+      "type": "array"
+    },
+    "capability_requirements": {
+      "items": {
+        "$ref": "#/$defs/CapabilityRequirementV1"
+      },
+      "title": "Capability Requirements",
+      "type": "array"
+    },
+    "catalog_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Catalog Snapshot Digest",
+      "type": "string"
+    },
+    "context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Context Digest",
+      "type": "string"
+    },
+    "epoch_id": {
+      "title": "Epoch Id",
+      "type": "string"
+    },
+    "evaluation_obligations": {
+      "items": {
+        "$ref": "#/$defs/EvaluationObligationV1"
+      },
+      "title": "Evaluation Obligations",
+      "type": "array"
+    },
+    "lock_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lock Digest",
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "audit",
+        "enforce"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "ontology_snapshot_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ontology Snapshot Digest",
+      "type": "string"
+    },
+    "producer_component_id": {
+      "const": "knowledge_binder_v1",
+      "default": "knowledge_binder_v1",
+      "title": "Producer Component Id",
+      "type": "string"
+    },
+    "prompt_hash": {
+      "default": null,
+      "title": "Prompt Hash",
+      "type": "null"
+    },
+    "proposal_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Proposal Digest",
+      "type": "string"
+    },
+    "rejected": {
+      "items": {
+        "$ref": "#/$defs/KnowledgeAdmissionFindingV1"
+      },
+      "title": "Rejected",
+      "type": "array"
+    },
+    "research_contract_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Research Contract Digest",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.epoch-knowledge-skill-lock/v1",
+      "default": "ari.epoch-knowledge-skill-lock/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "unsatisfied": {
+      "items": {
+        "$ref": "#/$defs/KnowledgeAdmissionFindingV1"
+      },
+      "title": "Unsatisfied",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run_id",
+    "epoch_id",
+    "research_contract_digest",
+    "catalog_snapshot_digest",
+    "proposal_digest",
+    "ontology_snapshot_digest",
+    "context_digest",
+    "admitted",
+    "capability_requirements",
+    "evaluation_obligations",
+    "rejected",
+    "unsatisfied",
+    "mode",
+    "lock_digest"
+  ],
+  "title": "ARI Epoch Knowledge Skill Lock v1",
+  "type": "object"
+}

@@ -321,3 +321,61 @@
 \figlabeldef{F21.head.gate}{Claim--evidence gate}
 \figlabeldef{F21.verdict}{12/12 grounded\\0 errors}
 \figlabeldef{F21.finalize}{finalize}
+
+% F22 — governed-run lifecycle (boot / governed search / epoch boundary)
+\figlabeldef{F22.head.boot}{Boot}
+\figlabeldef{F22.mode}{resolve execution mode\\(config + env interlock)}
+\figlabeldef{F22.founding}{founding registration\\32 records, 20 components}
+\figlabeldef{F22.freeze0}{epoch 000 opens\\active set frozen}
+\figlabeldef{F22.head.search}{Governed search}
+\figlabeldef{F22.proposal}{proposal round\\summary to executor}
+\figlabeldef{F22.execute}{node executes\\(never vetoed)}
+\figlabeldef{F22.level}{governance level\\and warn checks}
+\figlabeldef{F22.adversarial}{adversarial round\\on node artefacts}
+\figlabeldef{F22.loop}{per node}
+\figlabeldef{F22.note.trigger}{epoch trigger:\\$N$ nodes}
+\figlabeldef{F22.head.boundary}{Epoch boundary}
+\figlabeldef{F22.audit}{governance audit\\(advisory report)}
+\figlabeldef{F22.transition}{transition engine\\+ kernel T1--T21}
+\figlabeldef{F22.repair}{frontier repair\\+ clean room}
+\figlabeldef{F22.freeze1}{next epoch opens\\new set frozen}
+\figlabeldef{F22.note.next}{run continues}
+
+% F23 — epoch-boundary governance pipeline (audit / transition)
+\figlabeldef{F23.head.audit}{Epoch audit}
+\figlabeldef{F23.observe}{collect epoch\\observations}
+\figlabeldef{F23.reliability}{reliability\\assessment}
+\figlabeldef{F23.evidence}{evidence assembly\\(clerk only)}
+\figlabeldef{F23.prosecute}{prosecution\\motion quota}
+\figlabeldef{F23.defense}{defense\\generation}
+\figlabeldef{F23.adjudicate}{adjudication\\panel}
+\figlabeldef{F23.replaypool}{replay-pool\\update}
+\figlabeldef{F23.selfaudit}{governance\\self-audit}
+\figlabeldef{F23.note.advisory}{advisory: no registry writes}
+\figlabeldef{F23.head.transition}{Boundary transition}
+\figlabeldef{F23.report}{governance report\\(hash-chained log)}
+\figlabeldef{F23.resolve}{transition engine\\resolves sanctions}
+\figlabeldef{F23.kernel}{kernel validates\\T1--T21 edges}
+\figlabeldef{F23.blocked}{illegal edge blocked\\(fail closed)}
+\figlabeldef{F23.txn}{transaction: prepare,\\close, open, commit}
+\figlabeldef{F23.repair}{frontier repair}
+\figlabeldef{F23.note.retire}{only on retirements}
+
+% F24 — governed prompt lifecycle (statuses + sanction edges)
+\figlabeldef{F24.cleanroom}{meta tier emits\\mutator / clean room}
+\figlabeldef{F24.candidate}{candidate}
+\figlabeldef{F24.validated}{validated}
+\figlabeldef{F24.shadow}{shadow}
+\figlabeldef{F24.probact}{probationary\\active}
+\figlabeldef{F24.active}{active}
+\figlabeldef{F24.warning}{warning}
+\figlabeldef{F24.probation}{probation}
+\figlabeldef{F24.quarantine}{quarantine}
+\figlabeldef{F24.retired}{retired\\(text sealed)}
+\figlabeldef{F24.banned}{banned\\(absorbing)}
+\figlabeldef{F24.note.emit}{candidates only}
+\figlabeldef{F24.note.adopt}{boundary\\adoption}
+\figlabeldef{F24.note.rehab}{rehabilitation}
+\figlabeldef{F24.note.emergency}{forced emergency\\boundary}
+\figlabeldef{F24.note.exon}{exoneration}
+\figlabeldef{F24.note.reenter}{retirement re-enters as candidate}

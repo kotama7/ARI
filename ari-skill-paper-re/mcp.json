@@ -1,11 +1,16 @@
 {
-  "name": "ari-skill-paper-re",
-  "description": "Reproducibility grading via PaperBench SimpleJudge: Phase 1 sandbox runner (run_reproduce) and Phase 2 grader (grade_with_simplejudge).",
-  "version": "0.4.0",
+  "description": "PaperBench-compatible isolated reproduction and SimpleJudge grading.",
+  "entrypoint": "src/server.py",
+  "generated_from": "skill.yaml",
+  "name": "paper-re-skill",
+  "package": "ari-skill-paper-re",
+  "runtime": "python",
+  "schema_version": 1,
   "tools": [
-    "fetch_code_bundle",
     "build_reproduce_sh",
-    "run_reproduce",
-    "grade_with_simplejudge"
-  ]
+    "fetch_code_bundle",
+    "grade_with_simplejudge",
+    "run_reproduce"
+  ],
+  "version": "1.0.0"
 }

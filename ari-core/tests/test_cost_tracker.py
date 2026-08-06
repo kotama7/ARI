@@ -800,3 +800,111 @@ class TestUpstreamCostOverride:
     def test_extract_upstream_cost_dict_input(self):
         """Plain dict usage objects are also supported."""
         assert cost_tracker_mod._extract_upstream_cost({"cost_usd": 0.01}) == 0.01
+
+
+def test_a_dropped_cost_record_is_counted_not_silent(tmp_path):
+    """This is the SINGLE recording path for every litellm call in the process.
+    A swallowed failure undercounted call_count / total_cost with nothing
+    explaining the delta (a str metadata value once masked an AttributeError and
+    unbooked the whole run). The drop is now counted and stamped in the summary."""
+    import json
+
+    import ari.cost_tracker as CT
+
+    t = CT.CostTracker(tmp_path)
+    t.record(model="gpt-4o", prompt_tokens=10, completion_tokens=5)
+    t._dropped_records += 1          # a recording that raised in the callback
+    t._write_summary()
+
+    summary = json.loads((tmp_path / "cost_summary.json").read_text())
+    assert summary["call_count"] == 1
+    assert summary["dropped_records"] == 1
+    assert "pricing_table_unavailable" in summary
+
+
+def test_a_broken_pricing_table_is_flagged_and_not_memoised(monkeypatch):
+    """One malformed row, or a missing PyYAML in a skill venv, discarded all 30
+    models and priced every call at $0.00 — reported as applicable, i.e. "the
+    run was free". The failure must be flagged and NOT frozen for the process."""
+    from unittest import mock
+
+    import ari.cost_tracker as CT
+
+    monkeypatch.setattr(CT, "_PRICING_CACHE", None, raising=False)
+    monkeypatch.setattr(CT, "PRICING_TABLE_UNAVAILABLE", False, raising=False)
+    with mock.patch("ari.configs.FilesystemConfigLoader") as FL:
+        FL.return_value.load.side_effect = RuntimeError("malformed appended row")
+        got = CT._pricing()
+    assert got == {}
+    assert CT.PRICING_TABLE_UNAVAILABLE is True
+    assert not CT._PRICING_CACHE      # empty result not memoised
+
+
+def test_verification_execution_records_measured_resources_without_fake_price(
+    tmp_path,
+):
+    tracker = CostTracker(tmp_path)
+    tracker.record_verification(
+        node_id="node-1",
+        epoch="epoch-1",
+        tier="screen",
+        harness_id="hpc/gemm-correctness",
+        execution_identity="sha256:" + "1" * 64,
+        execution_attempt_id="attempt-1",
+        attestation_digest="sha256:" + "2" * 64,
+        execution_status="completed",
+        started_at="2026-08-04T12:00:00Z",
+        completed_at="2026-08-04T12:00:01.500000Z",
+        cpu_cores=2,
+        accelerators=1,
+        memory_bytes=1024,
+        backend="apptainer",
+    )
+
+    record = json.loads((tmp_path / "cost_trace.jsonl").read_text())
+    assert record["estimated_cost_usd"] == 0.0
+    assert record["cost_status"] == "unpriced"
+    assert record["wall_time_ms"] == 1500.0
+    assert record["cpu_core_seconds"] == 3.0
+    assert record["accelerator_seconds"] == 1.5
+    assert record["memory_byte_seconds"] == 1536.0
+    assert record["attestation_digest"] == "sha256:" + "2" * 64
+    assert record["resource_measurement_basis"] == (
+        "declared-allocation-x-executor-wall-time"
+    )
+
+    summary = json.loads((tmp_path / "cost_summary.json").read_text())
+    resources = summary["verification_resources"]
+    assert resources["wall_time_seconds"] == 1.5
+    assert resources["cpu_core_seconds"] == 3.0
+    assert resources["accelerator_seconds"] == 1.5
+    assert resources["unpriced_records"] == 1
+    assert resources["priced_records"] == 0
+
+    reloaded = CostTracker(tmp_path)
+    restored = reloaded._records[0]
+    assert restored.execution_identity == "sha256:" + "1" * 64
+    assert restored.cpu_core_seconds == 3.0
+
+
+def test_verification_execution_rejects_invalid_time_or_tier(tmp_path):
+    tracker = CostTracker(tmp_path)
+    common = {
+        "node_id": "node-1",
+        "epoch": "epoch-1",
+        "harness_id": "hpc/gemm-correctness",
+        "execution_identity": "sha256:" + "1" * 64,
+        "execution_attempt_id": "attempt-1",
+        "attestation_digest": "sha256:" + "2" * 64,
+        "execution_status": "completed",
+        "started_at": "2026-08-04T12:00:00Z",
+        "completed_at": "2026-08-04T11:59:59Z",
+        "cpu_cores": 1,
+        "accelerators": 0,
+        "memory_bytes": 1,
+        "backend": "local-process",
+    }
+    with pytest.raises(ValueError, match="completion predates"):
+        tracker.record_verification(tier="screen", **common)
+    with pytest.raises(ValueError, match="tier is invalid"):
+        tracker.record_verification(tier="debug", **common)

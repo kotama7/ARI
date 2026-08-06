@@ -1,5 +1,129 @@
+schema_version: 1
 name: paper-skill
-display_name: "Write the paper"
-description: "Auto-generates a complete LaTeX academic paper from experiment results and scientific data"
-requires_env: []
-version: "0.4.1"
+package: ari-skill-paper
+version: 0.3.0
+display_name: Write an evidence-grounded paper
+description: LaTeX paper generation, review, claim linking, revision, and compilation.
+environment_policy: complete
+entrypoint:
+  transport: stdio
+  command_kind: python
+  module: src/server.py
+required_env: []
+optional_env:
+  - ARI_BACKEND
+  - ARI_CHECKPOINT_DIR
+  - ARI_LLM_API_BASE
+  - ARI_LLM_MODEL
+  - ARI_MANUSCRIPT_BINDING_PATH
+  - ARI_MANUSCRIPT_BRIEFS_PATH
+  - ARI_MANUSCRIPT_CONTEXT_PATH
+  - ARI_MANUSCRIPT_PROFILE_PATH
+  - ARI_MANUSCRIPT_READINESS_PATH
+  - ARI_MANUSCRIPT_RUNTIME_MODE
+  - ARI_MODEL_PAPER
+  - ARI_MODEL_PAPER_PROVIDER
+  - ARI_MODEL_PAPER_REVISION
+  - ARI_MODEL_RUBRIC
+  - ARI_NUM_REFLECTIONS
+  - ARI_NUM_REVIEWS_ENSEMBLE
+  - ARI_PANEL_SEED
+  - ARI_PAPER_LANGUAGE
+  - ARI_RUBRIC_DIR
+  - ARI_STRICT_DYNAMIC
+  - AWS_DEFAULT_REGION
+  - AWS_REGION
+  - AZURE_API_BASE
+  - AZURE_API_VERSION
+  - LLM_API_BASE
+  - LLM_MODEL
+  - OLLAMA_HOST
+  - VERTEXAI_LOCATION
+  - VERTEXAI_PROJECT
+credential_scopes:
+  - id: model.provider
+    optional_env:
+      - ANTHROPIC_API_KEY
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+      - AZURE_API_KEY
+      - AZURE_OPENAI_API_KEY
+      - COHERE_API_KEY
+      - DATABRICKS_API_TOKEN
+      - DEEPINFRA_API_KEY
+      - DEEPSEEK_API_KEY
+      - GEMINI_API_KEY
+      - GOOGLE_API_KEY
+      - GOOGLE_APPLICATION_CREDENTIALS
+      - GROQ_API_KEY
+      - MISTRAL_API_KEY
+      - OPENAI_API_KEY
+      - OPENROUTER_API_KEY
+      - REPLICATE_API_TOKEN
+      - TOGETHERAI_API_KEY
+      - VERTEXAI_CREDENTIALS
+      - WATSONX_APIKEY
+      - XAI_API_KEY
+tool_defaults:
+  phases: [paper]
+  side_effects: workspace-write
+  determinism: stochastic
+  timeout_class: slow
+  permissions: [workspace-read, workspace-write, model]
+  result_schema: ari.result-envelope/v1
+tools:
+  - name: check_format
+    capability_ref: ari.paper.format.check
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: compile_paper
+    capability_ref: ari.paper.compile
+    determinism: conditional
+    permissions: [workspace-read, workspace-write, process]
+  - name: finalize_paper_build
+    capability_ref: ari.paper.build.finalize
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: get_template
+    capability_ref: ari.paper.template.read
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: inject_code_availability
+    capability_ref: ari.paper.code-availability.inject
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: link_paper_claims
+    capability_ref: ari.paper.claims.link
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: list_rubrics
+    capability_ref: ari.paper.rubrics.list
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: list_venues
+    capability_ref: ari.paper.venues.list
+    side_effects: read-only
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read]
+  - name: merge_reviews
+    capability_ref: ari.paper.reviews.merge
+    determinism: deterministic
+    timeout_class: bounded
+    permissions: [workspace-read, workspace-write]
+  - name: paper_refine
+    capability_ref: ari.paper.refine
+  - name: review_compiled_paper
+    capability_ref: ari.paper.review
+  - name: write_paper_iterative
+    capability_ref: ari.paper.write-iterative

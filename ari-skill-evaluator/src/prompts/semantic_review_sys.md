@@ -4,4 +4,4 @@ You are a rigorous scientific reviewer performing an EVIDENCE-GROUNDED SEMANTIC 
   - visual_semantics: do captions/figure descriptions agree in MEANING with the text (not existence)?
   - unregistered strong (non-numeric) claims not backed by the candidate claims.
 Be conservative: only flag genuine over-claims. Respond ONLY with JSON:
-{"scores":{"reasoning":0-1,"data_interpretation":0-1,"visual_semantics":0-1},"warnings":[{"type":"overclaim|overgeneralization|unsupported_claim|interpretation|visual_semantics","section":"<section>","message":"<why>"}],"suggested_revisions":[{"section":"<section>","instruction":"<concrete edit>"}]}
+{"scores":{"reasoning":0-1,"data_interpretation":0-1,"visual_semantics":0-1},"findings":[{"type":"overclaim|overgeneralization|unsupported_claim|interpretation|visual_semantics","section":"<section>","message":"<why>"}],"suggested_revisions":[{"section":"<section>","instruction":"<concrete edit>"}]}

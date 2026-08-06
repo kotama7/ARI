@@ -1,0 +1,32 @@
+schema_version: 1
+id: literature.systematic-review
+version: 1.0.0
+title: Systematic Literature Review
+description: Reproducible source-provenanced literature review procedure.
+status: candidate
+source:
+  repository: https://github.com/kotama7/ARI.git
+  commit: e4fadaef3955f261ba9d44e4746d3657c5094050
+  path: ari-core/config/knowledge_skills/bodies/literature_systematic_review
+  body_sha256: sha256:74178bf00eb2bf8b406218f48d2517a92b4a3676a900d5ba40dcd0a7f990aac8
+  manifest_sha256: sha256:8128f8d5d147a51f58c553642c0217dc195247a114ae3ae1290854c2689987bb
+license: {body: MIT, references: MIT}
+references: []
+applies_to:
+  roles: [generator]
+  phases: [bfts]
+  task_tags: [literature, review]
+requires:
+  capabilities:
+    - {ref: ari.literature.search/v1, required: true}
+    - {ref: ari.data.read/v1, required: true}
+optional_capabilities: []
+evaluation_obligations:
+  - {property_id: retrieval-provenance, required_methods: [snapshot-replay]}
+  - {property_id: claim-evidence-consistency, required_methods: [claim-gate]}
+authority_ceiling:
+  side_effects: [read-only]
+forbidden_capabilities: [ari.publish.external/v1, ari.registry.write/v1]
+dependencies: []
+conflicts: []
+composition: {slot: scientific-method, priority: 100, exclusive: false}

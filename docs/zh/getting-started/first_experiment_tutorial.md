@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # 你的第一个实验，端到端
@@ -82,11 +82,12 @@ Overview、Trace（每一次工具调用）、Code 和 Output 标签页。
 
 当搜索结束时，一条由 `workflow.yaml` 驱动的管线将树变成一篇论文（参见 [发表生命周期](../concepts/publication-lifecycle.md)）：
 
-1. **transform_data** 读取整棵树，并将硬件、方法论和发现提取到 `science_data.json`。
-2. **generate_figures** 编写绘图代码；随后一个 **VLM** 评审主图，若得分低则循环回去重做。
-3. **write_paper** 起草 LaTeX、修订它，并从调研结果中拉取 BibTeX → `full_paper.tex` / `.pdf`。
-4. **review_paper** 针对所选的 venue rubric 运行一个或多个评审代理（当评审多于一个时，会有一个 Area Chair 元评审进行汇总）。
-5. **generate_ear** 组装可复现性包 `ear/`（代码、输入数据、图表、`reproduce.sh`、LICENSE —— 但不含实验输出）。
+1. **audit_node_provenance** 对 node_report 记录了 sha256 的每个节点产物重新哈希，并与磁盘上的实体比对——正好在节点输出不再是"实验结果"、而开始成为"论文证据"的那个边界上。它按产物报告 verified / mismatch / missing / unhashed 到 `node_provenance_audit.json`。这是信号，不是门。
+2. **transform_data** 读取整棵树，并将硬件、方法论和发现提取到 `science_data.json`。
+3. **generate_figures** 编写绘图代码；随后一个 **VLM** 评审主图，若得分低则循环回去重做。
+4. **write_paper** 起草 LaTeX、修订它，并从调研结果中拉取 BibTeX → `full_paper.tex` / `.pdf`。
+5. **review_paper** 针对所选的 venue rubric 运行一个或多个评审代理（当评审多于一个时，会有一个 Area Chair 元评审进行汇总）。
+6. **generate_ear** 组装可复现性包 `ear/`（代码、输入数据、图表、`reproduce.sh`、LICENSE —— 但不含实验输出）。
 
 默认情况下，管线现在还会运行一个 **claim-evidence 验证回路**：一个确定性硬门重新推导所报告的数值，一个不阻断的 evidence-grounded 语义评审依据这些证据检查行文，随后一次保持锚点的修订与重新渲染闭合该回路。它默认以仅报告的（**warn**）模式运行 —— 它会暴露发现，但除非你设置 `ARI_CLAIM_GATE_MODE=strict`（或 `claim_gate_policy.mode: strict`），否则不会阻断 finalize。详情参见[发表生命周期](../concepts/publication-lifecycle.md)。
 
@@ -97,9 +98,10 @@ Overview、Trace（每一次工具调用）、Code 和 Output 标签页。
 最后，ARI 会像一位独立的审稿人那样检查自己的工作
 （[ORS](../guides/paperbench/paperbench_quickstart.md)）：
 
+- **Phase 0** 从最终论文生成 PaperBench rubric，然后在任何评分发生之前**审计这份 rubric 本身**：为每个叶节点标记 `vague_qualifier` / `no_paper_evidence` / `duplicate` / `unverifiable`，并把这些标记写回 `ors_rubric.json`（摘要在 `ors_rubric.audit.json`）。评分仍照常进行——这是质量信号，好让读者看到哪些标准并不可靠。
 - **Phase 1** 在沙箱中运行 `reproduce.sh`（如有则用 SLURM，否则用
   docker / apptainer / local）并检查预期的产物是否出现。
-- **Phase 2** 针对一份自动生成的 PaperBench rubric 对结果评分，其中包括一项 **negative control（阴性对照）**（一个空仓库必须得分接近零），使得无所作为无法赢得评分。
+- **Phase 2** 针对该 rubric 对结果评分，其中包括一项 **negative control（阴性对照）**（一个空仓库必须得分接近零），使得无所作为无法赢得评分。
 
 裁决结果在 `reproducibility_report.json` 中。
 

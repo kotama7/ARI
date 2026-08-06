@@ -4,9 +4,11 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/verified_context.py
     role: implementation
+  - path: ari-core/ari/memory
+    role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-06-04
+last_verified: 2026-07-10
 ---
 
 # ARI 検証可能リサーチメモリ
@@ -91,7 +93,10 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   `audit_memory`, …）として公開され、すべてフックから呼ばれる。
 - `ari-core`: `pipeline/verified_context.py`（best-node lineage スコープ＋
   grounded-block レンダリング）、`bfts_loop` のノード終了時 consolidation フック、
-  および write_paper での消費。
+  および write_paper での消費。コア側からスキルのバックエンドとコンテキスト
+  ビルダーへのアクセスはすべて `ari/memory/` ファネル
+  （`ari.memory.get_backend` / `ari.memory.build_verified_context`）を通る —
+  `ari_skill_memory` のインポートを許される唯一の ari-core パッケージ。
 
 ## ゲーティングとコスト
 

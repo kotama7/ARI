@@ -4,7 +4,13 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
-last_verified: 2026-07-03
+  - path: scripts/setup/setup_env.sh
+    role: config
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
+  - path: ari-core/ari/viz/health.py
+    role: implementation
+last_verified: 2026-07-29
 ---
 
 # 环境变量参考
@@ -36,6 +42,9 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_LLM_API_BASE` | LiteLLM API base 覆盖 | LiteLLM 默认值 |
 | `ARI_MODEL` | 跨技能回退模型 id | （回退至 `ARI_LLM_MODEL`） |
 | `ARI_MODEL_EVAL` | LLM 评估器使用的模型 | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_PAPER` | 论文写作与修订模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_MODEL_RUBRIC` | 独立rubric评审与固定论文面板模型 | 回退至 `ARI_LLM_MODEL` |
+| `ARI_PANEL_SEED` | 为固定评审面板的每次 rubric 调用记录的请求 seed | 未设置；能否控制采样取决于提供方和后端 |
 | `ARI_MODEL_JUDGE` | BFTS judge 使用的模型 | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_LINEAGE` | 停滞/沿袭决策使用的模型（v0.7.0） | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | 选取种子 idea 使用的模型 | 回退至 `ARI_MODEL` |
@@ -94,6 +103,14 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_PARENT_RUN_ID` | 递归时父运行 id（自动设置） | （自动） |
 | `ARI_DISABLED_TOOLS_FOR_CHILD` | 子运行裁剪的工具集 | （无） |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` `top_k` 上限 | （技能默认值） |
+
+### 执行模式（RQGM）
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_MODE` | 执行模式覆盖：`simple_bfts` \| `ari_rqgm`（覆盖 workflow.yaml 中的 `ari.mode`；无效值警告并忽略）。RQGM 激活还需要 `ARI_RQGM_ENABLED` 联锁 —— 任何不一致都回退到 `simple_bfts`。`export_resolved_config_to_skill_env` 会将其 `setdefault` 为技能子进程的*生效*模式（v1 中没有任何技能读取它）。在 `ari resume` 时，`rqgm_state.json` 中持久化的模式优先于此变量。见 `docs/guides/execution_modes.md` | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM 主联锁覆盖：`0`/`1`/`true`/`false`（覆盖 workflow.yaml 中的 `rqgm.enabled`）。此变量与 `ARI_MODE=ari_rqgm` 必须同时一致，治理运行时才会被构造 | `false` |
+| `ARI_PAPER_AGENT_AS_JUDGE` | agent-as-judge 草稿评分覆盖：`0`/`1`/`true`/`false`（覆盖 `rqgm.paper.reviewer.agent_as_judge.enabled`；无效值警告并忽略）。由 `apply_paper_env_overrides` 应用，采用与 `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED` 相同的「先校验后赋值」策略。关闭 ⇒ 使用确定性的、不调用 LLM 的会议评分表评分器，草稿评分路径上不会出现实时 LLM 调用（P2）。开启 ⇒ 由真实 `LLMClient` 支撑的审稿人按*同一套*会议评分表的维度为每份存档草稿打分，权重取自当前 ACTIVE 的受治理 `paper_reviewer` 提示的侧重点，并且可以读取确定性读取器无法读取的维度（`novelty`、`significance`）。当 LLM 出错、回复无法解析、或回复覆盖的评分表维度权重过少时，会开放式回退到确定性评分表。仅在生效的 `rqgm_archive` 论文模式（`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`）下才有意义 | （未设置 ⇒ 关闭） |
 
 ### 后端 + 执行器
 
@@ -222,6 +239,27 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_JUDGE_N_RUNS` | 向导 / 调用者传入 `0` 时 SimpleJudge 调用的默认 `n_runs`。PaperBench 论文 §4.1 单次默认值为 1。 |
 | `ARI_MODEL_JUDGE` | 默认 judge 模型 id（LiteLLM 路由）。 |
 | `ARI_MODEL_REPLICATOR` | 默认 Stage 1 展开模型 id。 |
+
+### GUI 服务器（`ARI_GUI_*`）
+
+八个开关支配 `ari viz` 仪表盘外壳、它的网络暴露方式以及它的运维接口面。
+八个变量全部由 `scripts/setup/setup_env.sh` 声明（默认注释掉），并且全部是
+**回滚手段**：不设置它们即得到当前默认行为，设置它们则可在不重新部署的
+前提下恢复某个有文档记录的旧行为。
+
+| 变量 | 默认值（未设置） | 设置后的效果 | 回滚语义 |
+|---|---|---|---|
+| `ARI_GUI_V2` | 开启（`1`） | `0` / `false` 回退到 legacy 仪表盘外壳。 | v2 外壳的紧急开关；移除关卡为 G6。 |
+| `ARI_GUI_BIND` | 仅回环（`127.0.0.1` + `::1`） | 一个绑定地址：`::` = legacy 的全接口双栈，`0.0.0.0` = IPv4 通配符，或单个地址。 | 恢复历史上的全接口绑定。任何非回环值都会把服务器切换到**远程模式**（见 `ARI_GUI_TOKEN`）。 |
+| `ARI_GUI_CORS_ANY` | 关闭 —— 仅同源回显 | `1` 恢复 legacy 的 `Access-Control-Allow-Origin: *` 通配符。 | 只有跨源隧道/门户拓扑才需要；`:5173` 上的 Vite 开发代理**不**需要它。 |
+| `ARI_GUI_CHALLENGES` | 开启 —— 需要挑战 | `0` 关闭 delete-checkpoint / stop / gpu-monitor-stop 上服务器签发的确认挑战，恢复直接执行。 | 开启时，这些端点在没有有效 `challenge_id` 时返回 `428`；无论哪种情况签发端点都保持可用。 |
+| `ARI_GUI_CSP` | 开启 —— 发送响应头 | `0` 会从 GUI 首页/静态响应中去掉 `Content-Security-Policy`、`X-Content-Type-Options` 与 `Referrer-Policy`。 | 仅当某种代理拓扑重映射了 WebSocket 端口而策略把它拦下时才需要（此时 GUI 会降级为轮询）。 |
+| `ARI_GUI_TOKEN` | 未设置 | 远程模式所需的 bearer token：除 `/health*` 前缀外的每个请求都必须发送 `Authorization: Bearer <token>`；SSE 与 WebSocket 接受 `?token=` 形式。 | **在远程绑定下**不设置是安全失败而非开放：服务器在启动时生成一个随机 32 位十六进制 token，并向 stderr 打印一次。在回环默认配置下从不需要它。 |
+| `ARI_GUI_AUTH` | 开启（在远程模式下） | `0` 关闭远程 token 闸门，恢复无认证的远程绑定。 | 这是为自行终结认证的可信网络准备的、有文档记录的逃生舱（例如一个负责认证的反向代理）。回环绑定无论如何都是无认证的。 |
+| `ARI_GUI_HEALTH` | 开启 | `0` 关闭运维可见性接口面：`GET /health/live` 与 `/health/ready` 回落到 SPA 响应，`GET /api/v1/diagnostics` 返回类型化的 404。 | 为那些绝不能看到新 JSON 的探针抓取拓扑，恢复引入探针之前的精确线上行为。 |
+
+完整的信任模型见 [REST API → 认证](rest_api.md#认证)，挑战协议见
+[REST API → 确认挑战](rest_api.md#确认挑战)。
 
 ## SLURM (`SLURM_*`)
 
