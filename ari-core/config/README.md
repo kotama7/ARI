@@ -28,12 +28,12 @@ Shipped default config files (YAML) loaded by ari-core.
     - `gemm-parity.yaml` — TODO
     - `gemm-scored-2026q3.yaml` — TODO
     - `gemm-smoke.yaml` — TODO
-    - `spmm-parity.yaml` — TODO
-    - `spmm-scored-2026q3.yaml` — TODO
-    - `spmm-smoke.yaml` — TODO
-    - `stencil-parity.yaml` — TODO
-    - `stencil-scored-2026q3.yaml` — TODO
-    - `stencil-smoke.yaml` — TODO
+    - `spmm-parity.yaml` — where the SpMM parity probe certifies: one uniform matrix, large enough that the timed kernel dominates.
+    - `spmm-scored-2026q3.yaml` — the scored SpMM cases: six matrix families at n=20000, k=64. The family is part of the case because which sparsity structures a run is scored over is a question about the science.
+    - `spmm-smoke.yaml` — a cheap SpMM wiring check; declares `resolves: false`, so it cannot support a regression verdict.
+    - `stencil-parity.yaml` — where the Jacobi parity probe certifies: one 256-cube at 240 sweeps.
+    - `stencil-scored-2026q3.yaml` — the scored Jacobi grids: one cube and two anisotropic boxes of equal volume at 240 sweeps, so a kernel blocked for one layout does not read as a general improvement.
+    - `stencil-smoke.yaml` — a cheap Jacobi wiring check; declares `resolves: false`.
   - `contracts/` — ABI and oracle contracts used by native HPC harnesses.
     - `gemm-c-abi-v1.yaml` — dense GEMM C ABI, cases, oracle, and tolerance contract.
     - `spmm-csr-c-abi-v1.yaml` — CSR SpMM C ABI, cases, oracle, and tolerance contract.
@@ -122,7 +122,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `seed_gemm.c` — TODO
       - `slow_gemm.c` — TODO
       - `wrong_gemm.c` — TODO
-    - `spmm-csr-fp64/` — TODO
+    - `spmm-csr-fp64/` — Y = A*X with A in CSR and X, Y dense fp64, against a frozen row-parallel reference.
       - `problem.yaml` — TODO
       - `reference_spmm.c` — TODO
       - `seed_spmm.c` — TODO
@@ -131,7 +131,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `spmm_main.c` — TODO
       - `spmm_main_profiled.c` — TODO
       - `wrong_spmm.c` — TODO
-    - `stencil-jacobi7-fp64/` — TODO
+    - `stencil-jacobi7-fp64/` — nt sweeps of a 3-D 7-point Jacobi stencil with fixed boundary planes, against a frozen parallel-first-touch reference.
       - `problem.yaml` — TODO
       - `reference_stencil.c` — TODO
       - `seed_stencil.c` — TODO

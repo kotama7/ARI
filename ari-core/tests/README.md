@@ -165,7 +165,7 @@ targets the like-named module under `ari/`.
 - `test_model_passthrough.py` — model passthrough.
 - `test_native_hpc_verifier.py` — native GEMM, SpMM, and stencil verifier correctness, negative-control, and reproducibility coverage.
 - `test_native_perf_driver.py` — the performance driver and instrument: driver digest coverage and its fail-loud on a missing file, the manifest's problem/case-set pins, the flag screen, the object-level audits, oracle-after-launches ordering, and the profiler's gate.
-- `test_native_perf_families.py` — TODO
+- `test_native_perf_families.py` — the seam that makes a second family cheap: a family supplies only a generator and an oracle (asserted by refusing one that reaches into the measurement loop), each case set belongs to one family, and the oracles are checked against independently known answers rather than the implementations they were ported from.
 - `test_no_user_home_writes.py` — no-user-home-writes guard.
 - `test_node.py` — Node data model.
 - `test_node_exec_budget.py` — a node must not be able to spend its whole life inside `run_bash`. Each call had a timeout but nothing bounded the sum, so one node could consume the entire watchdog on shell calls and then be killed with no score, no self-report and no signal about why. The budget makes the node run out of COMMANDS while it still has turns left to report what it found.
