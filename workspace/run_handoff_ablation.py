@@ -76,9 +76,12 @@ def _measurement_environment(task: str | None = None) -> dict:
     record is indistinguishable from a clean environment.
     """
     import importlib
-    # The harness that is actually SCORING is asked first. The three copies of
-    # the prefix set are identical today, but a divergence would otherwise be
-    # recorded silently: the manifest would describe one harness's view of the
+    # The harness that is actually SCORING is asked first. There is one copy of
+    # the prefix set PER REGISTERED HARNESS -- five today, not three: they are
+    # standalone modules by design, so there is nowhere shared to put it, and
+    # test_measurement_environment.test_every_harness_captures_the_same_prefix_set
+    # is what keeps them in step. A divergence would otherwise be recorded
+    # silently: the manifest would describe one harness's view of the
     # environment while a different harness produced the numbers.
     #
     # The fallback scans THIS repo's harness directories rather than asking the
@@ -809,7 +812,28 @@ def _record(manifest: Path | None, **row) -> None:
     row["study_source_fingerprint"] = os.environ.get(
         "ARI_STUDY_SOURCE_FINGERPRINT"
     )
-    with open(manifest, "a") as fh:
+    # A RE-RUN of a cell replaces that cell's row; it does not add a second one.
+    # Append-only plus `--resume` meant a resubmitted cell left two rows in its
+    # shard manifest, and the collector requires exactly one per shard
+    # ("expected exactly one row, found 2") -- so the resume that exists to
+    # recover incomplete cells made them unusable instead. Identity is
+    # (task, arm, seed), which is what the collector keys on.
+    key = (row.get("task"), row.get("arm"), row.get("seed"))
+    kept: list[str] = []
+    if manifest.exists():
+        for line in manifest.read_text().splitlines():
+            if not line.strip():
+                continue
+            try:
+                old = json.loads(line)
+            except json.JSONDecodeError:
+                kept.append(line)       # unreadable: preserved, never silently dropped
+                continue
+            if (old.get("task"), old.get("arm"), old.get("seed")) != key:
+                kept.append(line)
+    with open(manifest, "w") as fh:
+        for line in kept:
+            fh.write(line + "\n")
         fh.write(json.dumps(row) + "\n")
 
 

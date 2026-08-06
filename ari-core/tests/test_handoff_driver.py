@@ -458,3 +458,48 @@ def test_study_bundle_contains_ignored_harness_and_exact_controls(
     assert config["max_react"] == "25"
     for key, value in driver._MEASUREMENT_ENV.items():
         assert config["fixed_env"][key] == value
+
+
+def test_a_rerun_replaces_its_own_manifest_row(tmp_path):
+    """`--resume` re-runs the cells that did not finish. The manifest was opened
+    in append mode, so a resumed cell left TWO rows in its shard manifest, and
+    the collector requires exactly one per shard ("expected exactly one row,
+    found 2") — the recovery path made the cells it recovered unusable.
+
+    Identity is (task, arm, seed), which is what the collector keys on; other
+    cells in the same file must be untouched.
+    """
+    manifest = tmp_path / "manifest.jsonl"
+    driver._record(manifest, task="gemm", arm="code_only", seed=0, rc=86)
+    driver._record(manifest, task="gemm", arm="evidence_only", seed=0, rc=0)
+    driver._record(manifest, task="gemm", arm="code_only", seed=0, rc=0)  # the resume
+    rows = [json.loads(x) for x in manifest.read_text().splitlines() if x.strip()]
+    assert len(rows) == 2, rows
+    by_arm = {r["arm"]: r for r in rows}
+    assert by_arm["code_only"]["rc"] == 0, "the resumed row must win"
+    assert by_arm["evidence_only"]["rc"] == 0, "a different cell must survive"
+
+
+def test_a_rerun_never_drops_an_unreadable_row(tmp_path):
+    """Rewriting the file must not become a way to lose evidence: a line this
+    code cannot parse is preserved, so a corrupt manifest is visible to the
+    collector rather than quietly cleaned up by a re-run."""
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text("{not json\n")
+    driver._record(manifest, task="gemm", arm="code_only", seed=0, rc=0)
+    lines = [x for x in manifest.read_text().splitlines() if x.strip()]
+    assert lines[0] == "{not json"
+    assert len(lines) == 2
+
+
+def test_the_worker_checks_for_files_added_since_launch():
+    """The frozen digest walks the RECORDED path list, so it sees modification
+    and deletion and is blind to ADDITION by construction — a new file under a
+    pinned prefix changes what the study is made of and changes no recorded
+    digest. The worker must therefore re-enumerate, and must report an
+    unanswerable check as unknown rather than as zero."""
+    text = _SBATCH_PATH.read_text()
+    assert "from workspace.run_handoff_ablation import study_source_manifest" in text
+    assert 'print("unknown")' in text, (
+        "a re-enumeration that could not run must not report zero additions")
+    assert "failed_before_added" in text
