@@ -30,6 +30,64 @@ def _research_contract(checkpoint_dir: Path):
     return contract
 
 
+def _run_capability_requirements(cfg, ontology_snapshot, knowledge_lock):
+    """Merge the run's declared capability needs with the Knowledge-derived ones.
+
+    Knowledge Skills were the only source, which meant a run could never require
+    an instrument no Skill happened to mention -- a domain capability could hold
+    a contract, a reviewed supplier, and admitted evidence, and still never be
+    asked for.  The operator declaration closes that without becoming a
+    discovery channel: refs are config, not model output, and one that is not in
+    the reviewed ontology is refused rather than ignored.
+    """
+
+    from ari.capability_binding.models import CapabilityRequirementV1
+
+    merged = {
+        item.requirement_digest: item
+        for item in (
+            knowledge_lock.capability_requirements if knowledge_lock is not None else ()
+        )
+    }
+    binding_cfg = getattr(cfg, "capability_binding", None)
+    declared = tuple(
+        (ref, True)
+        for ref in getattr(binding_cfg, "required_capability_refs", ()) or ()
+    ) + tuple(
+        (ref, False)
+        for ref in getattr(binding_cfg, "optional_capability_refs", ()) or ()
+    )
+    if not declared:
+        return tuple(sorted(merged.values(), key=lambda item: (item.capability_ref, item.requirement_digest)))
+
+    contracts = {item.capability_ref: item for item in ontology_snapshot.contracts}
+    for ref, required in declared:
+        contract = contracts.get(ref)
+        if contract is None:
+            raise ValueError(
+                f"capability_binding config requires an unknown capability: {ref}"
+            )
+        requirement = CapabilityRequirementV1.create(
+            capability_ref=contract.capability_ref,
+            capability_contract_digest=contract.contract_digest,
+            required=required,
+            context_requirement=contract.context_requirement,
+            # The contract states the authority the capability needs; a run
+            # declaration cannot raise a ceiling above it.
+            side_effect_ceiling=contract.side_effect_class,
+            environment_requirements=contract.environment_requirements,
+            resource_types=(contract.resource_type,),
+            phases=("bfts",),
+            source_requirement_refs=(f"config:capability_binding/{ref}",),
+        )
+        # A Knowledge Skill asking for the same capability wins on identity, so a
+        # declaration cannot silently relax a Skill's stricter requirement.
+        merged.setdefault(requirement.requirement_digest, requirement)
+    return tuple(
+        sorted(merged.values(), key=lambda item: (item.capability_ref, item.requirement_digest))
+    )
+
+
 def _router_prompt_hash(state) -> str | None:
     if state is None:
         return None
@@ -85,6 +143,14 @@ def build_kca_admission(
     root = package_config_root()
     modes = resolve_kca_modes(
         cfg,
+        # A run that names a required capability and then leaves binding in
+        # legacy mode would have that requirement quietly dropped; the existing
+        # interlock exists for exactly this and was never given the signal.
+        required_capability=bool(
+            getattr(
+                getattr(cfg, "capability_binding", None), "required_capability_refs", ()
+            )
+        ),
         required_verification=bool(contract.metric_contract.correctness_required),
     )
     mode_snapshot = KCAModeSnapshotV1(
@@ -191,9 +257,7 @@ def build_kca_admission(
             configured_skills=tuple(getattr(cfg, "skills", ()) or ()),
         )
         environment = build_environment_snapshot(cfg, provider_lock)
-        requirements = (
-            knowledge_lock.capability_requirements if knowledge_lock is not None else ()
-        )
+        requirements = _run_capability_requirements(cfg, ontology.snapshot, knowledge_lock)
         request = CapabilityBindingRequestV1.create(
             run_id=run_id,
             epoch_id="epoch_000",

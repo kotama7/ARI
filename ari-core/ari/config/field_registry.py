@@ -344,6 +344,25 @@ FIELD_META: dict[str, dict] = {
         "applies_when": "ari.mode=ari_rqgm",
         "notes": "legacy | audit | enforce; enforce exposes only deterministically bound tools.",
     },
+    "capability_binding.required_capability_refs": {
+        "category": "Scientific assurance",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "ari.mode=ari_rqgm",
+        "notes": "Capabilities the run needs whatever Knowledge admits; refs must exist "
+                 "in the reviewed ontology, and naming one forbids legacy binding mode.",
+    },
+    "capability_binding.optional_capability_refs": {
+        "category": "Scientific assurance",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "ari.mode=ari_rqgm",
+        "notes": "Bind when supplied; unlike required refs these never fail a run.",
+    },
     "assurance.mode": {
         "category": "Scientific assurance",
         "level": "expert",

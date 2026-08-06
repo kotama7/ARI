@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ari.config.skill_runtime import manifest_runtime_metadata
 from ari.skill_manifest import (
@@ -714,6 +714,40 @@ class CapabilityBindingRuntimeConfig(BaseModel):
         description="legacy preserves current MCP discovery/visibility; audit records "
                     "semantic decisions; enforce exposes and invokes only bound tools.",
     )
+    required_capability_refs: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Capabilities this run needs regardless of which Knowledge Skills "
+                    "were admitted. Knowledge is the only other requirement source, so "
+                    "a domain instrument no Knowledge Skill mentions can otherwise "
+                    "never be required, and therefore never bound. Operator input: it "
+                    "is not derived from a model, and every ref must exist in the "
+                    "reviewed ontology.",
+    )
+    optional_capability_refs: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Capabilities to bind when available. Unlike required refs these "
+                    "do not fail a run in enforce mode when nothing supplies them.",
+    )
+
+    @field_validator("required_capability_refs", "optional_capability_refs")
+    @classmethod
+    def _unique_sorted_refs(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        normalized = tuple(sorted({str(item).strip() for item in values if str(item).strip()}))
+        for ref in normalized:
+            if not re.fullmatch(r"ari\.[a-z0-9][a-z0-9.-]*/v[1-9][0-9]*", ref):
+                raise ValueError(f"not a capability reference: {ref!r}")
+        return normalized
+
+    @model_validator(mode="after")
+    def _requirement_classes_are_disjoint(self):
+        overlap = sorted(
+            set(self.required_capability_refs) & set(self.optional_capability_refs)
+        )
+        if overlap:
+            raise ValueError(
+                f"a capability cannot be both required and optional: {overlap}"
+            )
+        return self
 
 
 class AssuranceRuntimeConfig(BaseModel):

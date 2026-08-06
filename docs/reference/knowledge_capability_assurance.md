@@ -244,6 +244,20 @@ determinism, context, permissions, resources, version, and compatibility.
 Provider registration checks the live input/output schema against that
 contract. A shared text label is insufficient semantic compatibility.
 
+A run's requirements come from two sources. Admitted Knowledge Skills declare
+what their instructions presuppose, and `capability_binding.required_capability_refs`
+lets the operator declare what the run's own task needs. The second exists
+because the first was the only one: a domain instrument no Knowledge Skill
+happens to mention could hold a contract, a reviewed supplier, admitted
+evidence, and a proven invocation path and still never be *asked for*, so it
+would never bind. The declaration is config, never model output; a ref outside
+the reviewed ontology is refused rather than ignored; the contract — not the
+declaration — fixes the side-effect ceiling, resources, and environment; and a
+Knowledge Skill's requirement for the same capability is never replaced by it.
+Naming a required ref while leaving binding in `legacy` mode is refused, since
+the requirement would otherwise be silently dropped.
+`optional_capability_refs` binds when supplied and never fails a run.
+
 The prompt-free Capability Binder considers only exact capability refs and
 contract digests from verified Providers already present in the existing
 Provider lock. It filters by role, phase, call context, side-effect ceiling,
@@ -286,6 +300,15 @@ describe a leaf that is not the one being called. The packaged `CATALOG.lock`
 is empty on purpose — a materialized one records absolute local paths and
 cannot be committed — so the reviewed leaf-to-capability table lives in the
 repository while the lock it refers to stays at the site.
+
+A provision carries only the credential scopes whose values are actually
+present. A declared-but-absent credential confers no authority — the child
+process is built from present values alone, and the call context already
+filters the same way — so carrying the declared set made every provision of a
+multi-domain Provider demand every scope it might ever use. Binding an EDA tool
+through the broker required granting an IBM Quantum credential that was not set
+anywhere. Presence is observed at lock time and frozen into the Provider Lock,
+so a token that appears later changes the lock rather than slipping past.
 
 A leaf whose descriptor declares an asynchronous lifecycle is submitted through
 the dispatch tool and completed through others. Those are not separate

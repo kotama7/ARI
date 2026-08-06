@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
 
@@ -478,6 +479,25 @@ def _provider_lock(manifest, *, run_id="run-1"):
             "context_requirement": invoke.context_requirement,
         },
     )
+    # Scope identities the way the child-environment builder records them: a
+    # declared credential is only "present" when its variable actually holds a
+    # value, and that is what the lock freezes.
+    from ari.skill_lock import LockedCredentialScopeV1
+
+    scopes = []
+    for scope in manifest.credential_scopes:
+        declared = sorted(set(scope.required_env) | set(scope.optional_env))
+        present = [name for name in declared if os.environ.get(name)]
+        scopes.append(
+            LockedCredentialScopeV1(
+                scope_id=scope.id,
+                declared_env=declared,
+                present_env=present,
+                identity_digest=canonical_digest(
+                    {"scope_id": scope.id, "present_env": present}
+                ),
+            )
+        )
     skill = LockedSkillV1(
         name="tool-registry-skill",
         package=manifest.package,
@@ -487,6 +507,7 @@ def _provider_lock(manifest, *, run_id="run-1"):
         provider_digest=canonical_digest({"provider": "tool-registry-skill"}),
         configured_phases=["bfts"],
         environment_policy="complete",
+        credential_scopes=scopes,
         tool_refs=[tool.tool_ref],
     )
     return SkillsLockV1(
@@ -729,3 +750,26 @@ def test_loader_refuses_lifecycle_tools_absent_from_the_run_lock(tmp_path):
             refs={LEAF: ["ari.eda.place-route/v1"]},
             lifecycle_tools=["get_status", "no_such_tool"],
         )
+
+
+def test_a_credential_scope_with_no_present_value_is_not_carried(tmp_path, monkeypatch):
+    """An absent credential grants nothing, so it must not gate the binding.
+
+    The broker declares an IBM Quantum scope. Carrying it regardless of presence
+    made binding an EDA leaf require granting a quantum credential that is not
+    set anywhere -- authority demanded for a capability the route cannot use.
+    """
+
+    monkeypatch.delenv("QISKIT_IBM_TOKEN", raising=False)
+    _write(tmp_path, _lock([_descriptor()]))
+    loaded = _load(tmp_path, refs={LEAF: ["ari.eda.place-route/v1"]})
+    (provision,) = loaded.provisions
+    assert provision.credential_scope_ids == ()
+
+
+def test_a_credential_scope_that_is_present_is_still_carried(tmp_path, monkeypatch):
+    monkeypatch.setenv("QISKIT_IBM_TOKEN", "not-a-real-token")
+    _write(tmp_path, _lock([_descriptor()]))
+    loaded = _load(tmp_path, refs={LEAF: ["ari.eda.place-route/v1"]})
+    (provision,) = loaded.provisions
+    assert provision.credential_scope_ids == ("quantum.ibm-runtime",)

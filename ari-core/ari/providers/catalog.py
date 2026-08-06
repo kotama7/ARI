@@ -274,7 +274,21 @@ def load_provider_catalog(
             if item.skill_name == runtime_name
         }
         resolved_tools = {item.name: item for item in manifest.resolved_tools()}
-        scope_ids = tuple(sorted(item.scope_id for item in locked_provider.credential_scopes))
+        # A scope whose credential is absent from the environment confers no
+        # authority: the child process is built from the present values only, and
+        # the call context already filters the same way. Carrying the declared
+        # set instead made every provision of a multi-domain Provider demand
+        # every scope it might ever use -- binding an EDA tool required granting
+        # an IBM Quantum credential that is not even set. Presence is observed
+        # at lock time and is part of the frozen Provider Lock, so a token that
+        # appears later changes the lock rather than sneaking past this.
+        scope_ids = tuple(
+            sorted(
+                item.scope_id
+                for item in locked_provider.credential_scopes
+                if item.present_env
+            )
+        )
         for tool_name, refs in sorted(declared.items()):
             locked_tool = locked_tools.get(tool_name)
             resolved = resolved_tools.get(tool_name)

@@ -19,6 +19,7 @@ never edits this package.
 
 - `README.md` — this file.
 - `__init__.py` — public symbols + axis design.
+- `assurance_measure.py` — TODO
 - `deterministic_evaluator.py` — `DeterministicEvaluator`: non-LLM judge; writes `metrics._scientific_score` to drive BFTS selection (handoff study). Selected via `ARI_EVALUATOR=deterministic`; task via `ARI_TASK`. Owns the scoring CONTRACT only (geomean over the family set, native geomean speedup as the BFTS ranking value, "invalid if any required family fails" — no zeros mixed into the geomean). Speedup-shaped harnesses report a geomean speedup; score-shaped ones store a bounded `[0,1]` score in the same field for analyzer reuse (it is NOT a speedup — the analyzer reports each on its native axis). When the measurement could not be taken at all (`evaluation_status="infrastructure_error"`) it emits `metrics={}` and NO top-level `scientific_score`: an outage is not a candidate result, and a 0.0 there ranked a missing harness exactly like a kernel that ran and lost.
 - `dynamic_axes.py` — venue/run-specific evaluation-axis derivation.
 - `handoff_stats.py` — run-level analysis statistics for the handoff study: native-outcome permutation tests, run-level bootstrap confidence intervals, Holm correction, and per-arm summaries. Pure; consumed by `workspace/analyze_handoff_ablation.py`.

@@ -46,7 +46,7 @@ _REQUEST_ID_RE = re.compile(r"^req-[0-9a-f]{12}$")
 # When this assertion fails after a config change, (1) bump the count and
 # (2) add/extend a FIELD_META prefix or exact entry for the new path(s) —
 # the coverage test below will name exactly which paths are missing.
-EXPECTED_LEAF_COUNT = 202
+EXPECTED_LEAF_COUNT = 204
 
 # The wire keys of one registry entry / ConfigFieldV1 (metadata only — a
 # "value" channel must never appear here).

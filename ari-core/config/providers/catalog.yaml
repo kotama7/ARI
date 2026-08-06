@@ -53,10 +53,10 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: 8dd85a31e68032a21c07bab2bf71aa0193ee4be9
-      package_sha256: sha256:70a3d0066f7ccc8b63c82187adbb34cfcc725dba59d2ec5c81b39829dc344cf6
+      full_commit_sha: 271da52654b01a95228a28bb2eef2ed56e2ed8d3
+      package_sha256: sha256:c38d7fa39b0d7c11dee692580d9450a0741d3820c6d2357a8bdf4fd2fef50cad
       license: MIT
-    manifest_sha256: sha256:7da627b5afd62cd09c405435cce7ce7c19ae1b4b0a84fd89f616113b5c1d8bf6
+    manifest_sha256: sha256:0cd43d39c2311def2f5d8016b20ae371128c7503c92b1070ea9c04417d138dc1
     # discover/describe/invoke are the broker's own surface, not ontology
     # capabilities; nothing here is classified.
     declared_capability_refs_by_tool: {}
