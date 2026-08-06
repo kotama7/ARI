@@ -718,6 +718,7 @@ class SlurmScheduler:
         modules: tuple[str, ...] = (),
         tasks: int | None = None,
         tasks_per_node: int | None = None,
+        launcher: str = "auto",
     ) -> JobHandleV1:
         """Compile the retained core-agent script bridge into a durable claim."""
         if len(script.encode("utf-8")) > 4 * 1024 * 1024 or "\x00" in script:
@@ -740,6 +741,7 @@ class SlurmScheduler:
             # see _bound_step_command for why the scheduler does not.
             tasks=tasks if tasks is not None else 1,
             tasks_per_node=tasks_per_node,
+            launcher=launcher,
             cpus_per_task=cpus_per_task,
             memory_mb_per_node=memory_gb * 1024 if memory_gb else None,
             gpus_per_node=gpus,
@@ -1560,12 +1562,35 @@ class SlurmScheduler:
         an unbound allocation. `--exact` was not needed to get the binding, so
         it is left off and no Slurm version floor is introduced.
 
-        Only the single-task, single-node case is wrapped. A request for
-        several tasks is orchestrating its own launch (mpirun and friends);
-        turning that into `srun --ntasks=N` would run the payload N times
-        instead of once, which is a different job, not a bound one.
+        Under the default ``launcher="auto"`` only the single-task, single-node
+        case is wrapped. A request for several tasks is assumed to be
+        orchestrating its own launch (mpirun and friends); turning that into
+        `srun --ntasks=N` would run the payload N times instead of once, which
+        is a different job, not a bound one.
+
+        ``launcher="srun"`` says the payload IS the parallel program, so the
+        declared shape is launched. That is the multi-node case, and it is
+        opt-in for the reason above: the two kinds of multi-task request look
+        identical from here, and guessing wrong is silent — a payload that
+        launches its own ranks would run tasks x its own count.
         """
 
+        if resources.launcher == "none":
+            return command
+        if resources.launcher == "srun":
+            # The caller has said the payload IS the parallel program, so the
+            # declared shape is launched rather than described. --nodes is
+            # passed too: with several tasks Slurm would otherwise be free to
+            # pack them onto fewer nodes than the allocation holds.
+            step = [
+                "srun",
+                f"--nodes={resources.nodes}",
+                f"--ntasks={resources.tasks}",
+                f"--cpus-per-task={resources.cpus_per_task}",
+            ]
+            if resources.tasks_per_node is not None:
+                step.append(f"--ntasks-per-node={resources.tasks_per_node}")
+            return [*step, *command]
         if resources.tasks != 1 or resources.nodes != 1:
             return command
         return [

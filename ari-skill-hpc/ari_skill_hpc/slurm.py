@@ -105,6 +105,7 @@ class SlurmClient:
                 modules=tuple(str(m) for m in (kwargs.get("modules") or ())),
                 tasks=_optional_int(kwargs.get("tasks")),
                 tasks_per_node=_optional_int(kwargs.get("tasks_per_node")),
+                launcher=str(kwargs.get("launcher") or "auto"),
             )
         except SchedulerError as exc:
             return {

@@ -116,6 +116,22 @@ def _legacy_submit_schema() -> dict[str, Any]:
                     "asked for rather than the whole node."
                 ),
             },
+            "launcher": {
+                "type": "string",
+                "enum": ["auto", "srun", "none"],
+                "default": "auto",
+                "description": (
+                    "How the script is started inside the allocation. "
+                    "'auto' binds a single-task job to its CPUs and starts "
+                    "anything larger directly, leaving the parallel launch to "
+                    "you — this is what you want when your script already "
+                    "calls srun or mpirun. 'srun' starts the script itself "
+                    "with the declared nodes/tasks, which is what an MPI or "
+                    "SPMD binary needs; do NOT combine it with your own "
+                    "launcher or you get tasks x your own count. 'none' never "
+                    "wraps."
+                ),
+            },
             "walltime": {"type": "string", "default": "01:00:00"},
             "work_dir": {
                 "type": "string",
@@ -276,6 +292,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     tasks=arguments.get("tasks"),
                     tasks_per_node=arguments.get("tasks_per_node"),
                     cpus_per_task=arguments.get("cpus_per_task"),
+                    launcher=arguments.get("launcher") or "auto",
                 )
             else:
                 result = {

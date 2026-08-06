@@ -39,9 +39,34 @@ HPC job management via SLURM and Singularity. **LLM: No** (fully deterministic).
 
 ### Tools
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+#### `slurm_submit(script, job_name, partition, nodes=1, tasks=1, tasks_per_node=None, cpus_per_task=1, launcher="auto", walltime="01:00:00", work_dir, modules=[])`
 
 Submit a SLURM batch job.
+
+**Allocating more than one node does not, by itself, use more than one node.**
+The batch body runs on the first node; the rest sit idle unless something
+launches a parallel step. `launcher` decides who does that:
+
+| `launcher` | The script is started as | Use when |
+|---|---|---|
+| `auto` (default) | bound to its CPUs when the shape is one task on one node, otherwise started directly | your script calls `srun` / `mpirun` itself, or is serial |
+| `srun` | `srun` with the declared `nodes` / `tasks` / `cpus_per_task` | the script IS the parallel program (MPI / SPMD) |
+| `none` | exactly as written | the payload must see the batch step untouched |
+
+`auto` binds the single-task case because a batch step inherits the whole
+node's affinity mask — a threaded payload otherwise spreads across the machine
+and can lose to its own serial baseline, which reads as a slow kernel rather
+than an unbound allocation.
+
+Do **not** combine `launcher="srun"` with your own launcher: `srun --ntasks=8
+mpirun -np 8 ./x` is sixty-four ranks, and nothing downstream can tell that
+from a correct run. That is why the choice is explicit rather than inferred
+from `tasks > 1` — the two kinds of multi-task request are indistinguishable
+to the scheduler.
+
+The launch mode and the allocation shape are both part of the request digest,
+so the same script submitted under a different shape or launcher is a
+different job rather than a cache hit on the first one.
 
 ```python
 result = slurm_submit(

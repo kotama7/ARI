@@ -218,6 +218,23 @@ class ResourceRequestV1(ContractModel):
     account: SafeIdentifier | None = None
     qos: SafeIdentifier | None = None
     reservation: SafeIdentifier | None = None
+    # How the payload is started inside the allocation.
+    #
+    #   auto — bind a single-task, single-node payload with `srun --ntasks=1`
+    #          so it gets the cores it asked for instead of the whole node,
+    #          and start anything larger directly, leaving the parallel launch
+    #          to the payload. The historical behaviour, and the default.
+    #   srun — start the payload as `srun` with the DECLARED shape. This is
+    #          what an SPMD/MPI binary wants: `tasks` ranks actually appear.
+    #   none — never wrap. For a payload that must see the batch step exactly
+    #          as written.
+    #
+    # Explicit rather than inferred from `tasks > 1`, because the two readings
+    # of a multi-task request are indistinguishable from here and one of them
+    # is silently catastrophic: a payload that launches its own ranks
+    # (`mpirun -np 4 ./x`) started under `srun --ntasks=4` runs sixteen, and
+    # nothing downstream can tell that from a correct run.
+    launcher: Literal["auto", "srun", "none"] = "auto"
 
     @model_validator(mode="after")
     def validate_resource_shape(self) -> ResourceRequestV1:

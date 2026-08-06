@@ -189,3 +189,65 @@ def test_the_shape_is_part_of_the_claim(tmp_path):
             walltime="00:10:00", work_dir=str(tmp_path), **shape))
         seen.append(h.request_digest)
     assert seen[0] != seen[1]
+
+
+# ── how the payload is launched inside the allocation ──────────────────────
+
+def _shape(**kw) -> ResourceRequestV1:
+    return ResourceRequestV1(partition="p", walltime="00:10:00", **kw)
+
+
+def test_auto_binds_a_single_task_and_leaves_larger_shapes_alone():
+    """The historical behaviour, unchanged and now pinned.
+
+    A batch step inherits the whole node's affinity mask, so a threaded
+    payload spreads across the machine and loses to its own serial baseline —
+    which reads as a slow kernel rather than an unbound allocation.
+    """
+    one = SlurmScheduler._bound_step_command(
+        ["./bench"], _shape(nodes=1, tasks=1, cpus_per_task=8))
+    assert one == ["srun", "--ntasks=1", "--cpus-per-task=8", "./bench"]
+    # Several tasks under `auto` are assumed to launch themselves.
+    assert SlurmScheduler._bound_step_command(
+        ["mpirun", "-np", "8", "./bench"],
+        _shape(nodes=2, tasks=8)) == ["mpirun", "-np", "8", "./bench"]
+
+
+def test_srun_launches_the_declared_shape():
+    step = SlurmScheduler._bound_step_command(
+        ["./bench"],
+        _shape(nodes=2, tasks=8, tasks_per_node=4, cpus_per_task=6,
+               launcher="srun"))
+    assert step[0] == "srun"
+    # --nodes is passed too: otherwise Slurm may pack the tasks onto fewer
+    # nodes than the allocation holds, which is not the requested shape.
+    for flag in ("--nodes=2", "--ntasks=8", "--cpus-per-task=6",
+                 "--ntasks-per-node=4"):
+        assert flag in step, flag
+    assert step[-1] == "./bench"
+
+
+def test_none_never_wraps():
+    assert SlurmScheduler._bound_step_command(
+        ["./bench"], _shape(nodes=1, tasks=1, launcher="none")) == ["./bench"]
+
+
+def test_the_launcher_is_part_of_the_claim(tmp_path):
+    """Same script, same shape, different launch = different job.
+
+    One runs the payload once, the other runs it `tasks` times. Sharing a
+    claim would return the wrong one's result.
+    """
+    base = _request(tmp_path)
+    digests = set()
+    for mode in ("auto", "srun"):
+        resources = base.resources.model_copy(
+            update={"nodes": 2, "tasks": 8, "launcher": mode})
+        digests.add(base.model_copy(
+            update={"resources": resources}).request_digest)
+    assert len(digests) == 2
+
+
+def test_auto_is_the_default():
+    # A caller that says nothing must keep the behaviour it had.
+    assert _shape().launcher == "auto"
