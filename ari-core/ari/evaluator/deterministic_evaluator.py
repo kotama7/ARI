@@ -119,6 +119,7 @@ def _measurement_audit(result: dict, families: dict[str, dict]) -> dict[str, Any
     material, not treatment text, so they live in this separate report field.
     """
     cases: dict[str, list[dict[str, Any]]] = {}
+    diagnostics: dict[str, list[dict[str, Any]]] = {}
     for name, family in families.items():
         repetitions = family.get("repetitions")
         if isinstance(repetitions, list):
@@ -127,7 +128,20 @@ def _measurement_audit(result: dict, families: dict[str, dict]) -> dict[str, Any
                 for item in repetitions
                 if isinstance(item, dict)
             ]
-    return {
+        # Per-case observations a reader needs and an AGENT must not be handed:
+        # the regression verdict, the run-to-run spread, what the toolchain
+        # bought, and an absolute wall-clock time. They live here rather than in
+        # the family's scalars because those are rendered verbatim into the
+        # child's prompt, and this study compares handoff arms -- a new field in
+        # the prompt is a change to the treatment, not extra information.
+        observations = family.get("diagnostics")
+        if isinstance(observations, list):
+            diagnostics[str(name)] = [
+                _json_audit_value(item)
+                for item in observations
+                if isinstance(item, dict)
+            ]
+    audit: dict[str, Any] = {
         "effective_candidate_compile_flags": [
             str(v) for v in (result.get("candidate_cflags") or [])
         ],
@@ -136,6 +150,22 @@ def _measurement_audit(result: dict, families: dict[str, dict]) -> dict[str, Any
         ],
         "cases": cases,
     }
+    if diagnostics:
+        audit["case_diagnostics"] = diagnostics
+    # WHICH INSTRUMENT PRODUCED THIS, kept so a scored node stays re-checkable.
+    # Without it the numbers survive and the question does not: a checkpoint
+    # recorded a speedup with nothing saying which problem, which sizes, or
+    # which frozen bytes it was measured against, so a later reader could not
+    # tell two runs of different questions apart.
+    provenance = {
+        key: result[key]
+        for key in ("problem_revision", "problem_digest", "dataset_revision",
+                    "report_digest", "regression_verdict", "regression_threshold")
+        if result.get(key) is not None
+    }
+    if provenance:
+        audit["measurement_provenance"] = _json_audit_value(provenance)
+    return audit
 
 
 def _json_audit_value(value: Any) -> Any:
@@ -180,19 +210,33 @@ def _measurement_reason(
 
 
 def _default_measure(work_dir: str) -> dict:
-    """Invoke the SpMM harness measurement (compute-node validated; added in B2b).
+    """Measure this node, through the pinned problem when one is named.
 
-    Importing lazily so the evaluator/dispatch are usable before the kernel
-    harness lands. Raises a clear error if the harness is not yet installed.
+    TWO PATHS, AND THE FIRST IS THE ONE THAT SURVIVES. ``ARI_PROBLEM`` names a
+    problem registered under ``config/harnesses/problems/``: pinned scaffolding,
+    a pinned case set, a registered oracle, and one shared instrument that owns
+    the flags and the timed window. Nothing outside the repository is read, so a
+    plain checkout can score.
 
-    Problem size and the OpenMP thread budget are study parameters (frozen
-    defaults, env-overridable). They MUST sit where parallelism actually pays
-    off: on a many-core node a tiny matrix makes even a perfect kernel ~1x
-    (parallel overhead dominates), which would collapse the study's dynamic
-    range. Validated on a compute node — n=20000/k=64/48 threads gives a naive
-    1x baseline room to reach ~12-15x, keeping the native speedup ranking
-    informative.
+    The second path is the prototype registry, which imports a python module
+    found under ``$ARI_WORKSPACE/harnesses/<task>/``. That module defines its own
+    timing, its own flags and its own oracle, and it lives in an untracked tree,
+    so a checkout without that tree cannot score at all. It is kept only so a
+    run configured the old way still works while it is being moved, and it is
+    reached ONLY when ``ARI_PROBLEM`` is unset.
+
+    Problem size is not decided here any more. It is data: a case set the problem
+    names and the manifest pins. It still has to sit where parallelism pays off
+    -- on a many-core node a tiny matrix makes even a perfect kernel ~1x and the
+    study's dynamic range collapses -- but that is now a property of a file
+    somebody registered rather than of a default in this function.
     """
+    import os as _os
+
+    if (_os.environ.get("ARI_PROBLEM") or "").strip():
+        from ari.evaluator.assurance_measure import measure as _measure
+
+        return _measure(work_dir)
     return _harness().measure(work_dir)
 
 

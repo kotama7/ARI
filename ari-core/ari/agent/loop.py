@@ -2304,6 +2304,33 @@ class AgentLoop:
         if work_dir:
             _os.environ["ARI_WORK_DIR"] = work_dir
             _os.makedirs(work_dir, exist_ok=True)  # idempotent safety net
+            # SEED FROM THE PINNED PROBLEM. ari-core used to create this
+            # directory empty and rely on an external campaign script to fill
+            # it, which is why a scored run needed an untracked tree beside the
+            # repository. When ARI_PROBLEM names a problem, the scaffolding, the
+            # starting candidate and the question itself are written here from
+            # the pinned bundle instead.
+            #
+            # Never overwrites: a child's work_dir is a copy of its parent's and
+            # the parent's candidate IS the handoff, so seed_work_dir writes
+            # nothing when a scored input is already present. Best effort by
+            # design -- if this cannot seed, the evaluator raises later and the
+            # node is recorded as an infrastructure error rather than scored,
+            # which is the outcome that keeps an outage out of the results.
+            if (_os.environ.get("ARI_PROBLEM") or "").strip():
+                try:
+                    from ari.evaluator.assurance_measure import (
+                        seed_work_dir as _seed)
+
+                    _record = _seed(work_dir)
+                    logger.info(
+                        "Node %s: problem %s, %s", node.id,
+                        _record.get("problem_revision"),
+                        "inherited a candidate" if _record.get("already_seeded")
+                        else f"seeded {len(_record.get('seeded') or [])} files")
+                except Exception as _seed_err:
+                    logger.warning("Node %s: could not seed from the pinned "
+                                   "problem: %s", node.id, _seed_err)
 
         self._slurm_real_stdout = ""  # reset per-run state
         tools_called = 0

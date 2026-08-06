@@ -105,13 +105,37 @@ def _child_retires_parent(
 
 
 def _score_inputs_for_task() -> tuple[str, ...]:
-    """The active harness's declared score-determining files, or () if it has none.
+    """The score-determining files, from the pinned problem or the old harness.
+
+    A pinned problem DECLARES ``score_inputs``, so when one is named it answers
+    directly and no untracked tree is read. Otherwise this falls back to the
+    prototype registry, which is the only reason ``ARI_TASK`` still appears here.
 
     Resolved lazily and cached: the sterility check runs once per completed node,
-    and a harness that cannot be loaded must degrade to the legacy behaviour
+    and a source that cannot be loaded must degrade to the legacy behaviour
     rather than break the search.
     """
     import os as _os
+
+    problem = (_os.environ.get("ARI_PROBLEM") or "").strip()
+    if problem:
+        cache = _score_inputs_for_task.__dict__.setdefault("_cache", {})
+        if problem not in cache:
+            try:
+                from ari.assurance.problems import load_problem as _load_problem
+
+                cache[problem] = tuple(
+                    _load_problem(problem).definition.score_inputs)
+            except Exception:
+                # Same rule as below: cache only successes, so one transient
+                # failure at the first completed node cannot silently downgrade
+                # the whole run to a rule that is known never to fire.
+                logging.getLogger(__name__).warning(
+                    "sterility gate: could not read score_inputs for problem %r; "
+                    "falling back to the whole-directory rule for this node",
+                    problem, exc_info=True)
+                return ()
+        return cache[problem]
 
     task = _os.environ.get("ARI_TASK", "").strip().lower()
     if not task:

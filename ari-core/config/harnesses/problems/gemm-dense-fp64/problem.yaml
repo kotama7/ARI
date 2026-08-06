@@ -34,7 +34,15 @@ scaffolding:
   negative_control_slow: slow_gemm.c
   negative_control_wrong: wrong_gemm.c
 score_inputs:
+  # WHAT ACTUALLY DETERMINES THE SCORE, and therefore what the sterility gate
+  # hashes to tell a real edit from a pure re-measurement. The two declaration
+  # files are here because the prototype left the compiler one out: a node that
+  # changed ONLY its compiler then read as an unchanged copy while moving the
+  # score across a toolchain boundary. [0] is the candidate source and is the
+  # file the seed is written to; the other two are optional and agent-written.
   - candidate_gemm.c
+  - candidate_flags.txt
+  - candidate_cc.txt
 case_set: native-perf-gemm-cases/v1@scored-2026q3
 parity_case_set: native-perf-gemm-cases/v1@parity
 axis: speedup
