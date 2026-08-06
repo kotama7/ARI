@@ -86,7 +86,36 @@ def _legacy_submit_schema() -> dict[str, Any]:
             },
             "job_name": {"type": "string"},
             "partition": {"type": "string"},
-            "nodes": {"type": "integer", "minimum": 1, "default": 1},
+            "nodes": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 1,
+                "description": (
+                    "Nodes to allocate. Allocating more than one does NOT "
+                    "spread the script: the batch body runs on the first node "
+                    "only. Launch the parallel step yourself (srun / mpirun) "
+                    "or the extra nodes sit idle."
+                ),
+            },
+            "tasks": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Total tasks (--ntasks) for the allocation",
+            },
+            "tasks_per_node": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Tasks per node (--ntasks-per-node)",
+            },
+            "cpus_per_task": {
+                "type": "integer",
+                "minimum": 1,
+                "description": (
+                    "CPUs per task (--cpus-per-task). Also what a single-task "
+                    "step is bound to, so a threaded payload gets the cores it "
+                    "asked for rather than the whole node."
+                ),
+            },
             "walltime": {"type": "string", "default": "01:00:00"},
             "work_dir": {
                 "type": "string",
@@ -244,6 +273,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     walltime=arguments.get("walltime", "01:00:00"),
                     work_dir=arguments.get("work_dir", ""),
                     modules=arguments.get("modules") or (),
+                    tasks=arguments.get("tasks"),
+                    tasks_per_node=arguments.get("tasks_per_node"),
+                    cpus_per_task=arguments.get("cpus_per_task"),
                 )
             else:
                 result = {

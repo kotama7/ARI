@@ -716,6 +716,8 @@ class SlurmScheduler:
         gres: str | None = None,
         account: str | None = None,
         modules: tuple[str, ...] = (),
+        tasks: int | None = None,
+        tasks_per_node: int | None = None,
     ) -> JobHandleV1:
         """Compile the retained core-agent script bridge into a durable claim."""
         if len(script.encode("utf-8")) > 4 * 1024 * 1024 or "\x00" in script:
@@ -733,6 +735,11 @@ class SlurmScheduler:
         resources = ResourceRequestV1(
             partition=partition,
             nodes=nodes,
+            # Defaults to one task per allocation, matching the typed path.
+            # A bridge script that wants a parallel step launches it itself;
+            # see _bound_step_command for why the scheduler does not.
+            tasks=tasks if tasks is not None else 1,
+            tasks_per_node=tasks_per_node,
             cpus_per_task=cpus_per_task,
             memory_mb_per_node=memory_gb * 1024 if memory_gb else None,
             gpus_per_node=gpus,

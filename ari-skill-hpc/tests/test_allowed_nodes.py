@@ -144,3 +144,48 @@ def test_confinement_changes_the_claim_identity(tmp_path):
     narrow = _sched(tmp_path, "cn01")._confine_to_allowed_nodes(base.resources)
     assert (base.model_copy(update={"resources": wide}).request_digest
             != base.model_copy(update={"resources": narrow}).request_digest)
+
+
+# ── multi-node shape through the bridge ────────────────────────────────────
+
+def test_the_bridge_can_request_a_multi_node_shape(tmp_path):
+    """`nodes` alone is not enough to use more than one node.
+
+    The allocation shape has four parts and the bridge exposed only `nodes`,
+    so a script could take four nodes and still be given one task on one of
+    them. All four now reach the batch header.
+    """
+    runner = FakeRunner(CommandResult("1;c\n", "", 0))
+    s = _scheduler(tmp_path, runner)
+    asyncio.run(s.submit_script_bridge(
+        script="srun --ntasks=8 ./bench", job_name="b", partition="p",
+        nodes=2, tasks=8, tasks_per_node=4, cpus_per_task=12,
+        walltime="00:10:00", work_dir=str(tmp_path)))
+    script = runner.calls[0][1].decode()
+    for header in ("--nodes=2", "--ntasks=8", "--ntasks-per-node=4",
+                   "--cpus-per-task=12"):
+        assert f"#SBATCH {header}" in script, header
+
+
+def test_the_bridge_still_defaults_to_a_single_task(tmp_path):
+    # Unspecified must stay what it was, so existing callers are untouched.
+    runner = FakeRunner(CommandResult("1;c\n", "", 0))
+    s = _scheduler(tmp_path, runner)
+    asyncio.run(s.submit_script_bridge(
+        script="make", job_name="b", partition="p", nodes=1,
+        walltime="00:10:00", work_dir=str(tmp_path)))
+    assert "#SBATCH --ntasks=1" in runner.calls[0][1].decode()
+
+
+def test_the_shape_is_part_of_the_claim(tmp_path):
+    # Same script on a different allocation shape is a different job; folding
+    # them onto one claim would return the first shape's result for the second.
+    seen = []
+    for shape in ({"nodes": 1, "tasks": 1}, {"nodes": 4, "tasks": 16}):
+        runner = FakeRunner(CommandResult("1;c\n", "", 0))
+        s = _scheduler(tmp_path / f"n{shape['nodes']}", runner)
+        h = asyncio.run(s.submit_script_bridge(
+            script="./bench", job_name="b", partition="p",
+            walltime="00:10:00", work_dir=str(tmp_path), **shape))
+        seen.append(h.request_digest)
+    assert seen[0] != seen[1]
