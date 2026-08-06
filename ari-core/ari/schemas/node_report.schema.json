@@ -158,9 +158,6 @@
     "what_was_done": {
       "type": "string"
     },
-    "delta_vs_parent": {
-      "type": "string"
-    },
     "metrics": {
       "type": "object"
     },

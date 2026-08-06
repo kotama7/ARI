@@ -81,9 +81,6 @@ function NodeReportSection({ runId, nodeId }: { runId: string; nodeId: string })
         {report.what_was_done !== undefined && report.what_was_done !== '' && (
           <InspectorRow label={t('tree2_report_what')}>{report.what_was_done}</InspectorRow>
         )}
-        {report.delta_vs_parent !== undefined && report.delta_vs_parent !== '' && (
-          <InspectorRow label={t('tree2_report_delta')}>{report.delta_vs_parent}</InspectorRow>
-        )}
         {report.evaluator_reason !== undefined && report.evaluator_reason !== '' && (
           <InspectorRow label={t('tree2_report_evaluator')}>
             {report.evaluator_reason}

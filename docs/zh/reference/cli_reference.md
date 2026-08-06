@@ -311,7 +311,7 @@ ari migrate node-reports /path/to/checkpoint --overwrite   # 同时重写已存�
 重建的报告带有 `migration_source: "auto"`，以便下游过滤器应用稍保守
 的规则（例如 `for_code` 即使恢复出的 `files_changed` 为空也保留自动
 重建的节点，因为 diff 可能已无法恢复）。无法推断的字段
-（`original_direction`、`delta_vs_parent`、`next_steps_hints`）置为
+（`original_direction`、`next_steps_hints`）置为
 null。
 
 ---

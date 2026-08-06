@@ -1,8 +1,8 @@
 You are a scientific analyst. Read the following structured node reports
-(search trajectory; each node lists its delta_vs_parent, files added/modified,
-headline metric, concerns flagged by the evaluator, and the literal build/run
-commands) and the verbatim source files from the contributing chain, then
-extract what a peer reviewer needs to evaluate this work.
+(search trajectory; each node lists the files it added/modified with a note on
+each, its headline metric, concerns flagged by the evaluator, and the literal
+build/run commands) and the verbatim source files from the contributing chain,
+then extract what a peer reviewer needs to evaluate this work.
 
 Include only scientifically meaningful content: successful measurements, key
 improvements, ablation insights, and validated results. Omit failed runs and

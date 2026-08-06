@@ -271,7 +271,6 @@ describe('TreeV2Page (gui_refresh Wave 4c v2 slice)', () => {
         node_id: 'n2',
         files_changed: { added: [], modified: [], deleted: [], inherited_unchanged: [] },
         what_was_done: 'Fixed the data loader',
-        delta_vs_parent: 'Loader no longer drops rows',
       },
     });
     renderPage();
@@ -279,7 +278,6 @@ describe('TreeV2Page (gui_refresh Wave 4c v2 slice)', () => {
     await waitFor(() =>
       expect(screen.getByText('Fixed the data loader')).toBeInTheDocument(),
     );
-    expect(screen.getByText('Loader no longer drops rows')).toBeInTheDocument();
     expect(reportMock).toHaveBeenCalledWith(RUN, 'n2');
 
     // Governance deep link: ?run= ONLY (GovernancePage reads no node from

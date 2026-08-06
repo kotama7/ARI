@@ -1132,6 +1132,14 @@ def _render_evolution_md(chain: list[dict], reports: dict[str, dict]) -> str:
         else:
             delta_str = "—"
         prev_metric = m_val if m_val is not None else prev_metric
+        # `self_assessment.headline` is the source for reports written by this
+        # version. `delta_vs_parent` was the earlier free-text summary of the
+        # change against the parent; it was retired in favour of structured
+        # fields (per-file `files_changed[].note` plus `metrics`), and the
+        # builder no longer emits it. It is still read FIRST so archived runs
+        # and reports rebuilt by `ari migrate node-reports` keep rendering the
+        # text they were written with — for current reports it is simply absent
+        # and the headline is used.
         delta_text = (
             (report.get("delta_vs_parent") or "").replace("|", " ").splitlines()
         )
@@ -1863,7 +1871,13 @@ def generate_ear(
             {
                 "dest": "EVOLUTION.md",
                 "method": "deterministic_render",
-                "source_field": "node_reports::delta_vs_parent + metrics",
+                # Names what is actually read. The retired `delta_vs_parent`
+                # is still consulted first for archived reports that carry it,
+                # but naming it here as the source would claim a provenance
+                # current reports do not have.
+                "source_field": (
+                    "node_reports::self_assessment.headline + metrics"
+                ),
             }
             if has_evolution
             else None,
