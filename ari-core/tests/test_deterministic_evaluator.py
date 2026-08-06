@@ -269,10 +269,34 @@ def test_nonfinite_measurement_is_strict_json_and_typed_invalid():
     )
 
 
-def test_default_measure_without_candidate_is_graceful(monkeypatch):
-    # No candidate kernel in work_dir -> measure_node fails the candidate step
-    # and the evaluator returns a graceful invalid (score 0), never raising.
+def test_a_missing_candidate_scores_zero_and_a_missing_instrument_does_not(
+        monkeypatch):
+    """Two different failures that used to produce the same number.
+
+    This test asserted one outcome for both. It passed only because a harness
+    happened to resolve, so "no candidate in the work dir" was what actually got
+    exercised; once nothing resolves at all, the same call is an OUTAGE, and
+    scoring that 0.0 is how a run with no instrument produced a full sheet of
+    zeros that read as "every agent failed".
+
+    Both are pinned here explicitly, and neither depends on a tree outside the
+    repository.
+    """
+    # A working instrument, no candidate: a fact about the candidate, ranked 0.0.
     monkeypatch.setenv("ARI_WORK_DIR", "/nonexistent_handoff_dir")
-    out = DeterministicEvaluator().evaluate_sync("g", [], "s")
+    out = DeterministicEvaluator(measure_fn=lambda _wd: {
+        "compile_ok": False, "families": {},
+        "reason": "no candidate kernel in the work dir",
+    }).evaluate_sync("g", [], "s")
     assert out["metrics"]["_scientific_score"] == 0.0
+    assert out["valid"] is False
+
+    # No instrument at all: not a property of the candidate, so not rankable.
+    def _no_instrument(_wd):
+        raise RuntimeError("no harness registered and no problem named")
+
+    out = DeterministicEvaluator(
+        measure_fn=_no_instrument).evaluate_sync("g", [], "s")
+    assert out["evaluation_status"] == "infrastructure_error"
+    assert out["metrics"] == {}
     assert out["valid"] is False
