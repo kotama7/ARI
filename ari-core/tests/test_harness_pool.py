@@ -24,10 +24,25 @@ import pytest
 
 from ari.harness_registry import (HarnessIntegrityError, available_tasks,
                                   harnesses_for, load, manifest_integrity_hash,
-                                  registered_harnesses)
+                                  registered_harnesses, sha256_file)
 
-REPO = pathlib.Path(__file__).resolve().parents[2]
-SRC = REPO / "workspace/harnesses/gemm"
+#: SYNTHETIC ON PURPOSE, like ``test_harness_registry``. This file tests the
+#: POOL MECHANISM -- ambiguity refusal, independent pinning, provenance -- none
+#: of which is a property of any particular harness. Copying a real harness
+#: directory to get a fixture tied these tests to one untracked tree, so they
+#: failed on a checkout without it and would have to be rewritten whenever that
+#: tree moved. What the mechanism needs is two directories serving one task;
+#: that is all this builds.
+_BODY = (
+    "def kernels_dir():\n"
+    "    import os\n"
+    "    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'k')\n"
+    "def seed_work_dir(work_dir):\n"
+    "    return ['driver.c']\n"
+    "def measure_node(work_dir, **kw):\n"
+    "    return {'compile_ok': True,"
+    " 'families': {'f': {'speedup': 2.0, 'valid': True}}}\n"
+)
 
 
 def _repin(d: pathlib.Path) -> None:
@@ -38,23 +53,47 @@ def _repin(d: pathlib.Path) -> None:
                          text, flags=re.M))
 
 
+def _make(root: pathlib.Path, name: str, *, task: str | None = None,
+          band: bool = True) -> pathlib.Path:
+    """One harness directory, pinned like a real one.
+
+    ``band=False`` builds a variant nobody characterised: the band fields are
+    ABSENT rather than copied, because a band inherited from a different
+    configuration is a number with no measurement behind it.
+    """
+    d = root / name
+    (d / "k").mkdir(parents=True)
+    (d / "k" / "driver.c").write_text("int main(void){return 0;}\n")
+    entry = f"{name}_harness.py"
+    (d / entry).write_text(_BODY)
+
+    lines = ["[harness]"]
+    if task:
+        lines.append(f'task = "{task}"')
+    lines += [f'entry = "{entry}"', "target = 16.0", 'scale = "linear"',
+              "", "[declares]", 'question = "how fast is the kernel"',
+              'denominator = "competent_frozen"',
+              'blind_to = ["placement", "page size"]']
+    if band:
+        lines += ["resolves = 0.00149", 'resolves_measured_on = "2026-01-01"',
+                  "resolves_reps = 5"]
+    lines += ["", "[files]"]
+    lines += [f'"{f}" = "{sha256_file(d / f)}"' for f in ("k/driver.c", entry)]
+    text = "\n".join(lines) + "\n"
+    (d / "harness.toml").write_text(text)
+    _pin = manifest_integrity_hash(tomllib.loads(text))
+    (d / "harness.toml").write_text(
+        text + f'\n[integrity]\nself_sha256 = "{_pin}"\n')
+    return d
+
+
 @pytest.fixture
 def pool(tmp_path, monkeypatch):
     """Two harness directories serving one task."""
     root = tmp_path / "harnesses"
     root.mkdir()
-    shutil.copytree(SRC, root / "gemm")
-    shutil.copytree(SRC, root / "gemm_variant")
-    tp = root / "gemm_variant/harness.toml"
-    s = tp.read_text().replace("[harness]\n", '[harness]\ntask = "gemm"\n', 1)
-    # A variant nobody characterised: the band fields go away rather than
-    # being copied, because a band inherited from a different configuration is
-    # a number with no measurement behind it.
-    for pat in (r'resolves = [0-9.]+\n', r'resolves_measured_on = "[^"]*"\n',
-                r'resolves_reps = \d+\n'):
-        s = re.sub(pat, "", s)
-    tp.write_text(s)
-    _repin(root / "gemm_variant")
+    _make(root, "gemm")
+    _make(root, "gemm_variant", task="gemm", band=False)
     monkeypatch.setenv("ARI_WORKSPACE", str(tmp_path))
     for m in [k for k in sys.modules if k.endswith("_harness")]:
         sys.modules.pop(m, None)

@@ -186,8 +186,31 @@ def test_evaluate_sync_injected_and_graceful_on_error():
         raise RuntimeError("boom")
 
     bad = DeterministicEvaluator(measure_fn=boom).evaluate_sync("g", [], "s")
-    assert bad["metrics"]["_scientific_score"] == 0.0 and not bad["valid"]
+    assert not bad["valid"]
     assert bad["evaluation_status"] == "infrastructure_error"
+    # An outage must not be rankable. BFTS selects on
+    # metrics["_scientific_score"]; a 0.0 there made "the harness is gone"
+    # look exactly like "the kernel ran and lost", so a run with no harness
+    # produced a full sheet of zeros that reads as a research result.
+    assert bad["metrics"] == {}
+    # Omitted, not zeroed: node_report.builder copies a present top-level
+    # ``scientific_score`` back into metrics, which would reinstate the 0.0.
+    assert "scientific_score" not in bad
+
+
+def test_candidate_failure_still_scores_zero_unlike_an_outage():
+    """The distinction item 2 exists to draw, asserted from both sides."""
+    lost = DeterministicEvaluator()._score({"compile_ok": False, "families": {}})
+    # A candidate that was measured and failed IS a result: it ranks at 0.0.
+    assert lost["metrics"]["_scientific_score"] == 0.0
+    assert lost["valid"] is False
+
+    def boom(_wd):
+        raise RuntimeError("registry resolved no harness")
+
+    outage = DeterministicEvaluator(measure_fn=boom).evaluate_sync("g", [], "s")
+    assert outage["metrics"] == {}
+    assert lost["metrics"] != outage["metrics"]
 
 
 def test_raw_repetitions_and_effective_flags_are_audit_only():

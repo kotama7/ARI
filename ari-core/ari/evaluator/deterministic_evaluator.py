@@ -24,6 +24,11 @@ Contract returned by ``evaluate_sync`` (and async ``evaluate``):
    "reason": str}``. ``node.metrics`` is populated from ``["metrics"]`` at
 ``ari/agent/loop.py``, so ``_scientific_score`` MUST live inside ``metrics``.
 
+One exception, and it is the point of the exception: when the measurement could
+not be taken at all (``evaluation_status == "infrastructure_error"``) BOTH
+``metrics["_scientific_score"]`` and the top-level ``scientific_score`` are
+ABSENT, not zero. A zero there is a claim about the candidate; an outage is not.
+
 See ari-core/ari/evaluator/Plan.md and ari-core/PREREG_handoff_study.md.
 """
 
@@ -376,10 +381,26 @@ class DeterministicEvaluator:
             measure = self._measure_fn or _default_measure
             result = measure(work_dir)
         except Exception as e:
+            # A MISSING INSTRUMENT IS NOT A RESULT. This path fires when the
+            # measurement could not be taken at all — the harness registry
+            # resolved nothing, a pinned digest drifted, the work dir was gone.
+            # None of that is a property of the candidate, so it must not enter
+            # the ranking channel: BFTS reads ``metrics["_scientific_score"]``
+            # directly, and emitting 0.0 there made a broken harness
+            # indistinguishable from a kernel that ran and lost. A whole run
+            # with no harness then produced a full sheet of zeros that reads as
+            # "every agent failed" — a research finding, from an outage.
+            # ``metrics={}`` is the same shape ``bfts_loop._mark_infrastructure_end``
+            # already uses for the watchdog/crash paths, and the ranking keys
+            # treat absent as "no measurement" (``verified_context`` -> -1.0)
+            # rather than as a score. ``scientific_score`` is omitted for the
+            # same reason: ``node_report.builder`` copies that top-level key
+            # back into ``metrics`` when present, which would reinstate the 0.0.
+            # A candidate that genuinely compiled and lost still scores 0.0 via
+            # ``_score``; only the no-measurement case is unranked.
             return {
-                "metrics": {"_scientific_score": 0.0, "valid_geomean_speedup": 0.0},
+                "metrics": {},
                 "has_real_data": False,
-                "scientific_score": 0.0,
                 "valid": False,
                 "evaluation_status": "infrastructure_error",
                 "evaluation_cases": {},
