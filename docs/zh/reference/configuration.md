@@ -108,8 +108,20 @@ checkpoint 优先的读取与只读包内的读取共处于同一个文件
 `ari/cli/run.py`，`lineage_decision` 走
 `ari/cli/lineage.py:_load_lineage_decision_config`，此外还有
 `bfts_pipeline`、`pipeline` 和 `claim_gate_policy`。
-`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` 就是目前被认定拥有这类
-读取器的顶层键的枚举。*其余*所有顶层键都会被丢掉，且丢掉时不会记录任何
+`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` 枚举了解析器目前认定拥有
+这类读取器的顶层键 —— 但它是手工维护的清单而非推导出来的，而且**并不
+完整**。有第二个通用消费者没有被它计入：流水线驱动器
+（`ari/pipeline/driver.py`）会重读原始 `workflow.yaml`，把每一个顶层标量
+都灌进阶段模板的命名空间（顶层 dict 也会以点号形式暴露，`pipeline`/
+`skills`/`stages` 除外）。因此一个未声明的顶层键虽然从 `ARIConfig` 里被
+丢掉，却仍可在阶段的 `inputs:` 中以 `{{key}}` 触达。内置的 `ari-core/config/workflow.yaml` 正是依赖这一点：
+`paper_venue: arxiv` 与 `paper_rubric: generic_conference` 既不在
+`ARIConfig.model_fields` 中也不在 `KNOWN_NON_CONFIG_TOP_KEYS` 中，却是活的
+—— `write_paper` 取 `rubric_id: '{{paper_rubric}}'` 与
+`venue: '{{paper_venue}}'`，`review_compiled_paper` 再次取 `rubric_id`。
+`paper_rubric` 就是挑选评审 rubric 的那个设置，而 `write_paper_iterative`
+对它既没有环境变量兜底也没有猜测出来的默认值，所以它恰恰不是死配置。
+一个*没有任何地方以模板引用*的顶层键才会被彻底丢掉，且丢掉时不会记录任何
 日志；`ari.config` 中**不存在近似拼写（"你是不是想输入…"）检查**。因此把
 `rqgm:` 拼成 `rqmg:`，这次运行就会静默地停留在默认值上，没有任何错误可供
 察觉。有两件事可以部分弥补，但都不在加载时的 CLI 上：
@@ -122,7 +134,11 @@ checkpoint 优先的读取与只读包内的读取共处于同一个文件
   `GET /api/v1/runs/{run_id}/resolved-config`（读取 checkpoint 中
   `workflow.yaml` 的副本）以及新运行预览（读取内置的那份）的 `warnings`
   数组传达给你。它只是一份列举，不是拼写建议；由于 `ari.viz.v1` 之外没有
-  任何代码调用解析器，手动运行的 CLI 永远看不到它。
+  任何代码调用解析器，手动运行的 CLI 永远看不到它。另外，别把其中
+  `(no reader consumes it)` 的措辞当成已核实的结论：在内置
+  `workflow.yaml` 上它只会发出两条警告，分别针对 `paper_venue` 和
+  `paper_rubric`，而这两个键都*确实*有人消费。该警告证明的是这个键没进入
+  `ARIConfig`，而不是这个键无效。
 - **缺失在 checkpoint 中是可观测的。** 只有当 `ari.mode: ari_rqgm` 与
   `rqgm.enabled: true` 同时成立时才会写出
   `{checkpoint}/rqgm_state.json`（`ari/cli/run.py`），所以该文件不存在就

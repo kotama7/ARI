@@ -133,10 +133,13 @@ migration ledger 的配置。runtime authoring 不调用此 helper。
 
 ## 已删除 runtime 路径与回滚
 
-版本 0.3.0 删除了逐 section 的 `generate_section`、`review_section` 和 `revise_section`、通用
-node-tree metric discovery、模型 figure inserter、重复 LaTeX parser、caller 指定 compiler path 与
-raw subprocess compilation。对应替代方案分别是 whole-document authoring/review、原生契约、固定
-renderer、共享 parser 与公共 execution contract。
+版本 0.3.0 删除了逐 section 的 authoring runtime、通用 node-tree metric discovery、模型 figure
+inserter、重复 LaTeX parser、caller 指定 compiler path 与 raw subprocess compilation。已注册的 tool
+中不再有任何 section 级入口：`write_paper_iterative` 撰写整篇 document，`review_compiled_paper` 按
+rubric 审查整篇 document，revision 由 `paper_refine` 执行——它应用 `merge_reviews` 输出的
+`suggested_revisions`；即使某条 revision 标注了 `section`，编辑仍以保留 anchor 的定向替换落在同一份
+manuscript 上。metric 来自原生 `ScienceDataV1` 契约，figure 来自 fixed renderer，claim 解析来自共享
+parser，编译来自公共 execution contract。
 
 回滚边界是最后一个 v0.2.0 paper Skill commit。已发布的 `PaperBuildV1`、legacy rubric migration 与
 pre-batch call reader 作为 data reader 保留；replay 不会恢复已删除的不安全 producer 路径。

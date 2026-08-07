@@ -640,7 +640,7 @@ Both files contain the BFTS node tree, but are written at different lifecycle st
 | File              | Writer                                                | Phase            | Schema                                                |
 |-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
 | `tree.json`       | `_save_checkpoint()` in `cli/bfts_loop.py`            | During BFTS      | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `run_pipeline()` (`ari/pipeline/driver.py`, entered from `generate_paper_section()`) | BFTS + post-BFTS | `{experiment_goal, nodes}` (lightweight)              |
+| `nodes_tree.json` | `_save_checkpoint()` + `WorkflowDriver.run()` (`ari/pipeline/driver.py`, reached through `run_pipeline()` in `ari/pipeline/orchestrator.py`, entered from `generate_paper_section()`) | BFTS + post-BFTS | `{experiment_goal, nodes}` (lightweight)              |
 
 **Reader convention**: All readers MUST prefer `tree.json` and fall back to
 `nodes_tree.json`. This ensures up-to-date data during BFTS while remaining

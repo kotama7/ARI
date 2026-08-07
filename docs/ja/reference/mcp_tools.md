@@ -1,62 +1,136 @@
 ---
 sources:
-  - path: ari-skill-hpc/mcp.json
+  - path: ari-skill-benchmark/mcp.json
     role: config
-  - path: ari-skill-hpc/ari_skill_hpc/server.py
+  - path: ari-skill-benchmark/src/server.py
     role: implementation
   - path: ari-skill-coding/mcp.json
     role: config
   - path: ari-skill-coding/src/server.py
     role: implementation
+  - path: ari-skill-evaluator/mcp.json
+    role: config
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-skill-harness/mcp.json
+    role: config
+  - path: ari-skill-harness/src/server.py
+    role: implementation
+  - path: ari-skill-hpc/mcp.json
+    role: config
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
+    role: implementation
+  - path: ari-skill-idea/mcp.json
+    role: config
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+  - path: ari-skill-knowledge/mcp.json
+    role: config
+  - path: ari-skill-knowledge/src/server.py
+    role: implementation
+  - path: ari-skill-memory/mcp.json
+    role: config
+  - path: ari-skill-memory/src/server.py
+    role: implementation
+  - path: ari-skill-orchestrator/mcp.json
+    role: config
+  - path: ari-skill-orchestrator/src/server.py
+    role: implementation
+  - path: ari-skill-paper/mcp.json
+    role: config
+  - path: ari-skill-paper/src/server.py
+    role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-  - path: ari-skill-idea/src/server.py
+  - path: ari-skill-plot/mcp.json
+    role: config
+  - path: ari-skill-plot/src/server.py
     role: implementation
+  - path: ari-skill-replicate/mcp.json
+    role: config
+  - path: ari-skill-replicate/src/server.py
+    role: implementation
+  - path: ari-skill-transform/mcp.json
+    role: config
+  - path: ari-skill-transform/src/server.py
+    role: implementation
+  - path: ari-skill-vlm/mcp.json
+    role: config
+  - path: ari-skill-vlm/src/server.py
+    role: implementation
+  - path: ari-skill-web/mcp.json
+    role: config
+  - path: ari-skill-web/src/server.py
+    role: implementation
+  - path: ari-core/tests/fixtures/contracts/mcp_tools.json
+    role: test
 last_verified: 2026-07-30
 ---
 
 # MCP ツールリファレンス
 
-ARI には 14 の MCP サーバが付属しています（`ari-skill-*` パッケージごとに 1 つ）。
+ARI には `ari-skill-*` パッケージごとに 1 つ、17 の MCP サーバが同梱されています。
+このうち 13 は `ari-core/config/workflow.yaml` の `skills:` が既定で登録し、
+`ari-skill-orchestrator` は外部クライアント向けに別プロセスとして起動します。
+残る `ari-skill-knowledge` / `ari-skill-harness` は admission 済みカタログに対する
+読み取り系サーフェス、`ari-skill-tool-registry` は大規模な MCP collection の
+ブローカで、いずれも既定の `skills:` には載りません（tool-registry の 5 操作は
+[tool_registry.md](tool_registry.md) を参照）。
+
 このページはエージェントが呼び出せるすべてのツールのフラットなカタログです。
 各スキルの詳細は個別の `README.md` を参照してください。セクション
 [skills.md](skills.md) では責務ごとにグループ分けされています。
 
-`mcp.json`（各スキルの `pyproject.toml` の隣に配置）がツール*名前*の信頼できる
-情報源です。`@mcp.tool()` で装飾された関数（または古いスキルの
-`@server.list_tools()` エントリ）が引数と戻り値の形式を定義します。
+`mcp.json`（各スキルの `pyproject.toml` の隣に配置）はツール*名前*を運び、
+`skill.yaml` から `scripts/sync_skill_metadata.py --write` が生成します。
+`@mcp.tool()` で装飾された関数（または `@server.list_tools()` のエントリ）が
+引数と戻り値の形式を定義します。3 者がずれると
+`scripts/check_skill_manifests.py` が失敗し、スキルごとのツール名一覧は
+`ari-core/tests/fixtures/contracts/mcp_tools.json` にスナップショットとして
+固定されています。
 
 "LLM" 列は **P2 例外** のツールを示します — LLM を呼び出すため
 バイト単位での決定論性がありません。
 
-## ari-skill-benchmark — 統計 + プロット（決定論的）
+## ari-skill-benchmark — 統計 + run 比較（決定論的）
+
+3 ツールとも引数は `request` ただ 1 つで、`ari.public.analysis` の型付き
+リクエスト（`AnalysisRequestV1` / `StatisticalTestRequestV1` /
+`RunComparisonRequestV1`）を包みます。全 metric が `unit` の明示を要求されます。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `analyze_results` | CSV / JSON / npy からのサマリ統計 | ✗ |
-| `plot` | 固定スキーマからの決定論的 matplotlib 図 | ✗ |
-| `statistical_test` | 仮説検定（t 検定、Mann-Whitney など） | ✗ |
+| `analyze_results` | unit 付きサンプル集合の要約統計（信頼区間、正規性診断、欠損数、解決済み input digest） | ✗ |
+| `statistical_test` | 事前宣言した比較族の検定（`welch_t` / `student_t` / `paired_t` / `mann_whitney` / `wilcoxon` / `auto`）。効果量と補正済み p 値を返し、2 件以上の比較では `bonferroni` / `holm` / `benjamini_hochberg` の明示が必須 | ✗ |
+| `compare_runs` | スカラー run のランキングと環境 / provenance の互換性報告。`require_compatible_environment=true`（既定）は環境の異なる run の順位付けを拒否し、同一 backend/environment を独立 replicate とは推論せず共有 substrate として記録 | ✗ |
+
+旧 `plot` は v0.2 で削除されました。作図は `plot-skill` の `render_figure` が
+source / data / spec / environment / PNG・PDF digest を持つマニフェストとして
+生成します（[決定論的解析契約](analysis_contract.md) を参照）。
 
 ## ari-skill-coding — コードの作成 + 実行
 
-`mcp.json` にはツールが記載されていません。実際のツール一覧は
+`mcp.json` は `skill.yaml` から生成されたツール*名*を運び、完全なスキーマは
 `src/server.py` の `@server.list_tools()` から提供されます。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
 | `write_code` | ノードの work_dir にファイルを書き込む | ✗ |
+| `edit_code` | 既存ファイル内の厳密一致した断片だけを置換し、残りには触れない。ファイルが既にある場合は `write_code` より優先します：`old_string` は `replace_all` を立てない限り**ちょうど 1 回**しか一致してはならず、曖昧な編集は黙って別の場所を書き換えるのではなく失敗します | ✗ |
 | `run_code` | タイムアウト + キャプチャ付きでスクリプトを実行 | ✗ |
 | `run_bash` | アドホックな bash コマンド | ✗ |
+| `describe_environment` | このクラスタの環境カタログ（アーキテクチャ、CPU、GPU、PATH 上のコンパイラ、`module avail` の生カタログ、設定済みツールチェイン環境変数の**名前**）を返す。ログインノードではログインノード自身に加えて設定された各計算パーティションを、計算ノードではそのノードのみを報告。引数なし | ✗ |
 | `emit_results` | 評価器向けに `metrics` + `has_real_data` を出力（オプションの `provenance` 引数 → `_provenance` キーとしてそのまま書き込まれ、各値がどのように測定されたかをタグ付けし、claim-evidence ゲートで使用）。レスポンスの `contract_warnings` には、出力したキーが要求エビデンス名と字句的に類似する場合、提案のみの「POSSIBLE name matches」ヒントが含まれることがあります — あくまで助言であり、自動バインドは行われず、ゲートがこれを参照することもありません | ✗ |
 | `read_file` | エージェントが以前に書いたファイルを読み込む | ✗ |
 
-## ari-skill-evaluator — LLM メトリクス抽出
+## ari-skill-evaluator — メトリクス契約 + 主張ゲート
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `make_metric_spec` | LLM が `experiment.md` からメトリクス定義を抽出；実行レベルの `metric_contract` も出力 → `{checkpoint}/metric_contract.json`。mint-once: claims を含む契約がすでに永続化されている場合、呼び出しは再抽出せず、その契約を `contract_frozen: true` 付きでそのまま返します（scoring guide などノードごとの spec フィールドは呼び出しごとに計算） | ✓ |
+| `make_metric_spec` | 不変の `ResearchContractV1` または人間が admit した提案から MetricSpec を決定論的に materialize；実行レベルの `metric_contract` も出力 → `{checkpoint}/metric_contract.json`。mint-once: claims を含む契約がすでに永続化されている場合、呼び出しは再抽出せず、その契約を `contract_frozen: true` 付きでそのまま返します（scoring guide などノードごとの spec フィールドは呼び出しごとに計算）。契約が 1 つも無い場合は LLM に落ちるのではなく `admission_status: "human-review-required"` と `proposal_tool: "propose_metric_contract"` を返します | ✗ |
+| `propose_metric_contract` | 明示的に要求されたときだけ走る LLM 提案ステップ。出力は `MetricContractProposalV1`（`requires_human_review: true`）で `{checkpoint}/metric_contract_proposal.json` に永続化され、それ自体では決して admit されません。アイデアが所有する型付き契約がある場合は拒否されます | ✓ |
 | `claim_evidence_hard_gate` | 決定論的な主張/証拠ハードゲート（実行データの忠実性）；strict モードでは final フェーズで finalize をブロック | ✗ |
 | `evidence_grounded_semantic_review` | 非ブロッキングの証拠に基づくセマンティック査読；`paper_refine` 向けに `suggested_revisions` を出力 | ✓ |
 
@@ -125,15 +199,14 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 ## ari-skill-memory — 祖先スコープのノードメモリ
 
 このスキルは `src/server.py` の FastMCP `@mcp.tool()` デコレータを使用します。
-静的な `mcp.json` は古く（ノードスコープの 4 ツールのみ記載）なっていますが、
-以下のデコレートされた関数はすべて実行時に公開**されます**。
+`mcp.json` は同じ 13 ツールを名前で列挙し、`scripts/check_skill_manifests.py`
+が両者の一致を検査します。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
 | `add_memory` | 現在のノードのメモリにエントリを追加 | ✗ |
 | `search_memory` | 現在のノード + 祖先をまたいだ埋め込みランク検索 | ✗（サーバサイド埋め込み） |
 | `get_node_memory` | 現在のノードのすべてのエントリ | ✗ |
-| `clear_node_memory` | 現在のノードのエントリを削除（CoW；祖先は変更なし） | ✗ |
 | `get_experiment_context` | Letta コアメモリから安定した実験レベルの事実を取得 | ✗ |
 | `add_experiment_result` | 型付き experiment_result を記録（CoW：自ノードのみ） | ✗ |
 | `add_failure_case` | 型付き failure_case を記録（CoW：自ノードのみ） | ✗ |
@@ -146,29 +219,45 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 | `consolidate_node_memory` | ノード終了時に node_report から型付きメモリを導出 + 書き込み（CoW：自ノード） | ✗ |
 
 このスキルは設計ドキュメントで「LLM 呼び出しなし」と明示しています —
-`ari-skill-memory/README.md` を参照してください。
+`ari-skill-memory/README.md` を参照してください。エントリを削除するツールは
+ありません。ARI の governance がノードを論理的に消去した場合も、記録は残った
+まま `erased` / `erasure_event_id` / `erasure_note` のラベルが付いて返ります
+（黙って落とされることはありません）。
 
 ## ari-skill-orchestrator — 再帰的 ARI ランナー
 
+12 ツールすべてがエラーを例外ではなく `{"error": {"code", "message"}}` の
+封筒で返し、`code` は `invalid_request` / `forbidden` / `not_found` /
+`idempotency_conflict` / `quota_exceeded` / `artifact_policy` /
+`authentication_failed` / `orchestrator_error` / `internal_error` の
+いずれかです。契約の詳細は
+[Orchestrator control plane](orchestrator.md) を参照してください。
+
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `run_experiment` | 子 ARI 実行を起動 | ✗ |
-| `get_status` | 子実行のステータス | ✗ |
-| `list_runs` | 既知のすべての実行 | ✗ |
-| `get_paper` | 実行の生成 LaTeX / PDF | ✗ |
+| `run_experiment` | quota で拘束された ARI 実行を冪等に投入し、永続ハンドルを返す（`idempotency_key` 必須） | ✗ |
+| `get_status` | 実行の永続 state と上限付きの進捗 | ✗ |
+| `get_result` | 終端メタデータと digest でアドレスされた成果物 | ✗ |
+| `stop_experiment` | 実行をキャンセルし、終了を伝播して 1 つの終端状態に確定 | ✗ |
+| `list_runs` | 認証された principal が所有する実行のみを列挙（admin は全件） | ✗ |
+| `list_children` | 指定した親実行の、認可された直接の子を列挙 | ✗ |
+| `list_artifacts` | allowlist 済み・digest 検証済みの成果物を、パスを晒さずに列挙 | ✗ |
+| `read_artifact` | admit された成果物を SHA-256 identity で境界付きで読む | ✗ |
+| `get_paper` | 実行の論文成果物の参照 | ✗ |
+| `get_ear` | 検証済み EAR と証拠成果物の参照 | ✗ |
+| `list_skills` | run に紐づく `SKILLS.lock` のサニタイズ済みビュー | ✗ |
+| `get_workflow` | ロックされた phase / tool メンバーシップ（生の workflow や秘密設定は返さない） | ✗ |
 
 ## ari-skill-paper — LaTeX 論文執筆
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `list_venues` | 利用可能な LaTeX テンプレート（ACM / NeurIPS / SC / ICPP / arXiv） | ✗ |
+| `list_venues` | 利用可能な LaTeX テンプレート（ACM / NeurIPS / SC / ICPP / ISC / arXiv） | ✗ |
 | `get_template` | venue のテンプレートを取得 | ✗ |
-| `generate_section` | LLM がセクション（序論、手法など）を執筆 | ✓ |
-| `compile_paper` | pdflatex コンパイル | ✗ |
-| `check_format` | LaTeX フォーマット検証 | ✗ |
-| `review_section` | LLM がルーブリックで 1 セクションを査読 | ✓ |
-| `revise_section` | LLM が査読フィードバックを使って書き直し | ✓ |
-| `write_paper_iterative` | 生成 / 査読 / 修正ループをエンドツーエンドで駆動 | ✓ |
+| `compile_paper` | LaTeX プロジェクトを PDF にコンパイルし、`.ari-paper/compile/final.json` に記録を残す | ✗ |
+| `check_format` | venue のフォーマット要件（ページ数など）に対する PDF 検証。ページ数が判定不能な場合も `ok: false` として記録し、未検証を合格と読ませない | ✗ |
+| `write_paper_iterative` | 論文全体の執筆 / 査読 / 修正ループをエンドツーエンドで駆動。セクション単位のツールは存在せず、テンプレートの `FILL_*` ブロックを 1 回の LLM 呼び出しで埋める | ✓ |
+| `finalize_paper_build` | 論文の証拠・査読・コンパイル記録・claim リンク・最終成果物を 1 つの `PaperBuildV1` に固定。`finalized` にならなければ blocking 理由を添えて例外を送出 | ✗ |
 | `review_compiled_paper` | コンパイル済み PDF に対する最終パス査読（図は VLM に委譲） | ✓ |
 | `link_paper_claims` | `% CLAIM:Cx:NCx` アンカーを science_data の主張と照合し、`paper_claim_links` を構築（決定論的） | ✗ |
 | `paper_refine` | `% CLAIM:Cx:NCx` アンカーを保持しつつ提案された修正を適用（決定論的置換 + 境界付き LLM の検索/置換） | ✓ |
@@ -189,7 +278,7 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 
 | ツール | 新しい引数 |
 |---|---|
-| `build_reproduce_sh` | `container_image`（レガシーの `apptainer_image` を置き換え / 上位互換；後方互換のため両方受け付け） |
+| `build_reproduce_sh` | `container_image`（レガシーの `apptainer_image` を置き換え。旧名はシグネチャから削除済み） |
 
 ### v0.8.0 新フィールド（Stage 2）
 
@@ -222,8 +311,9 @@ sbatch / パーティションが欠落している場合、ローカル CPU へ
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `generate_figures` | `nodes_tree.json` から決定論的 matplotlib 図を生成 | ✗ |
-| `generate_figures_llm` | LLM が matplotlib コードを書いて実行 | ✓ |
+| `render_figure` | 正準の `FigureSpecV1` を 1 枚レンダリングする固定レンダラ。引数は `spec` / `workspace` / `relative_directory` のちょうど 3 つで、呼び出し側のコードは実行されない | ✗ |
+| `generate_figures` | ネイティブの `ScienceDataV1` から決定論的な既定 spec を生成し、同じ固定レンダラで描画（`revision=0` のみ） | ✗ |
+| `generate_figures_llm` | LLM が選べるのは `metric_id` / `chart_type` / `x_mode` だけで、数値・単位・キャプション・パス・成果物バイト列は検証済みの科学レコードから決定論的に決まる。`revision>0` は VLM フィードバックと直前のバッチの両方を要求 | ✓ |
 
 ## ari-skill-replicate — ルーブリック自動生成 (v0.7.0)
 
@@ -231,6 +321,7 @@ sbatch / パーティションが欠落している場合、ローカル CPU へ
 |---|---|:---:|
 | `generate_rubric` | 二段階（スケルトン + サブツリー）PaperBench ルーブリック合成 | ✓ |
 | `audit_rubric` | LLM が曖昧 / 検証不可能 / 重複した基準の葉を監査 | ✓ |
+| `suggest_target_leaf_count` | 論文長から目標葉数と単語数を算定して返す（GUI Wizard の "Target leaves" 欄の事前埋め用） | ✗ |
 
 ### `generate_rubric` — venue 条件付きテンプレート（未リリース）
 
@@ -260,8 +351,8 @@ sbatch / パーティションが欠落している場合、ローカル CPU へ
 
 ## ari-skill-transform — ツリー走査 + EAR パイプライン
 
-`mcp.json` にはツールが記載されていません（ファイルは内部専用）。
-`src/server.py` の `@mcp.tool()` デコレータが正式です。
+`mcp.json` は `skill.yaml` から生成された 5 ツールの名前を運び、引数と戻り値は
+`src/server.py` の `@mcp.tool()` デコレータが定義します。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
@@ -273,28 +364,71 @@ sbatch / パーティションが欠落している場合、ローカル CPU へ
 
 ## ari-skill-vlm — 図 / 表の査読（VLM）
 
-`mcp.json` にはツールが記載されていません。スキルは内部の査読ヘルパーのみを公開
-します。
+査読対象はディレクトリ走査ではなく、検証済みの `FigureBatchV1` マニフェストと
+content-addressed な成果物参照で指定します。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `review_figure` | VLM が画像 + キャプションを読んで批評を返す | ✓（ビジョン） |
-| `review_table` | VLM がテーブルを査読 | ✓（ビジョン） |
-| `review_paper_figures` | 論文ディレクトリ内のすべての図をバッチ査読 | ✓（ビジョン） |
+| `review_figure` | `FigureBatchV1` から `figure_id` で 1 枚を選んで査読 | ✓（ビジョン） |
+| `review_figures_all` | バッチ内の全図を査読。図数 / 総バイト数 / モデル呼び出し数 / 並列度の予算を宣言でき、上限に触れた図は握り潰されず `limit-error` として個別に記録される。集約は `minimum-fail-closed`（1 枚でも失敗すればスコアは 0.0） | ✓（ビジョン） |
+| `review_table` | 閉じた workspace 内の content-addressed な表成果物を 1 件査読。引数は閉じたスキーマの `request` 1 つ | ✓（ビジョン） |
 
 ## ari-skill-web — 検索 + 取得
 
+決定論的な取得ツールは LLM を呼びません。`rerank_retrieval_records` だけが
+独立した stochastic ツールです。`search_papers` / `web_search` / `fetch_url` /
+`walk_citations` は `record`（既定）/ `live` / `replay` の実行モードを共有し、
+`record` と `replay` は `ARI_CHECKPOINT_DIR` を要求します
+（[検索契約とネットワークポリシー](retrieval_contract.md) を参照）。
+
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo（API キー不要） | ✗ |
-| `fetch_url` | URL → 読み取り可能なテキスト | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | シード論文から引用グラフを辿る | ✗ |
+| `web_search` | DuckDuckGo（API キー不要）。`n` は 1〜10 に丸められる | ✗ |
+| `fetch_url` | URL → 読み取り可能なテキスト。検証済み IP へ固定接続し、redirect ごとに再検証、HTTPS downgrade / サイズ超過を拒否し、返す本文は untrusted external data と明示する | ✗ |
+| `search_papers` | 固定した 1 つの provider（`semantic-scholar` 既定 / `arxiv` / `alphaxiv`）を検索し `RetrievalRecordV1` を返す。provider 障害は別 provider へのフォールバックではなく明示エラーになり、`both` のような合成指定は拒否される | ✗ |
+| `walk_citations` | Semantic Scholar の引用グラフを depth / node / request の予算とサイクル検出付きで辿る。上限到達時は保持済み record と `partial_reason` を返す | ✗ |
+| `rerank_retrieval_records` | 取得済み `RetrievalRecordV1` を研究課題に対して LLM が並べ替える。model / API identity / temperature / prompt・input・output digest を provenance として記録 | ✓ |
+| `list_uploaded_files` | チェックポイントの `uploads/` にあるユーザアップロードファイルを一覧 | ✗ |
+| `read_uploaded_file` | アップロードファイルをテキストとして読む（バイナリ検出付き） | ✗ |
+
+## ari-skill-knowledge — Knowledge の読み取り専用サーフェス
+
+非実行の手続き知識に対する問い合わせと、権威を持たない要求だけを公開します。
+Knowledge Skill の登録・昇格・失効・lock の書き換え・有効化はできません。
+
+| ツール | 用途 | 権威 |
+|---|---|:---:|
+| `search_knowledge_skills` | 凍結されたカタログ射影を検索（結果はツール権限を与えない） | なし |
+| `describe_knowledge_skill` | content-addressed な Knowledge Skill を 1 件、untrusted な instruction data として記述 | なし |
+| `list_active_knowledge_skills` | この実行の epoch Knowledge lock を読む | なし |
+| `request_knowledge_skill` | 次 epoch 向けの選択提案を作る（admit できるのは固定の Knowledge Binder のみ） | なし |
+
+## ari-skill-harness — Assurance の読み取り専用サーフェス
+
+Harness の探索、証拠の読み取り、補助検証の要求だけを公開します。Harness
+Resolver でも Fixed Verifier でもなく、エージェントのツール選択が権威ある
+スイートを選んだりロック済み検証を実行したりすることはできません。
+
+| ツール | 用途 | 権威 |
+|---|---|:---:|
+| `search_harnesses` | 凍結された Harness カタログ射影を検索（Harness は選択されない） | なし |
+| `describe_harness` | Harness 1 件と宣言された assurance scope を記述 | なし |
+| `request_auxiliary_verification` | 追加的な検証要件を提案（固定の解決は内部に留まる） | なし |
+| `read_attestation` | 完全な SHA-256 で不変の Attestation を 1 件読む | なし |
+| `list_verification_requirements` | 不変の Verification Contract から要件を読む | なし |
+
+どちらのパッケージも登録・昇格・失効・lock 書き換え・許容誤差 / オラクルの
+差し替え・`force_pass` を公開しません。カタログ管理は人間が認証する CLI / PR
+ワークフローです。詳細は
+[Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md)
+を参照してください。
 
 ## 関連ドキュメント
 
-- `docs/reference/skills.md` — 各スキルのナラティブな説明（責務、環境変数、例）。
-- `docs/reference/environment_variables.md` — 環境変数ごとのリファレンス。
+- `docs/ja/reference/skills.md` — 各スキルのナラティブな説明（責務、環境変数、例）。
+- `docs/ja/reference/tool_registry.md` — `ari-skill-tool-registry` の 5 操作。
+- `docs/ja/reference/knowledge_capability_assurance.md` — 3 層の identity、admission、lock、拡張ゲート。
+- `docs/ja/reference/environment_variables.md` — 環境変数ごとのリファレンス。
 - 各スキルの `mcp.json` — 標準的なツール名一覧。
 - 各スキルの `src/server.py` の `@mcp.tool()` / `@server.list_tools()` — 標準的な引数シグネチャ。
+- `ari-core/tests/fixtures/contracts/mcp_tools.json` — スキルごとのツール名を固定した契約スナップショット。

@@ -455,9 +455,9 @@ pipeline がたった今生成した `evidence_bundle`、`impeachment_motion`、
 |---|---|
 | `checked_components` | 検査したガバナンス主体をソートしたもの: auditor、evidence clerk、defender、governance judge |
 | `kernel_violations_found` | 再検証で得た違反件数 |
-| `findings` | 監査中に立った決定論的な所見 — `judge_clamped_by_board`、`no_admissible_evidence`、`same_role_prosecution_skipped`、`motion_refused` など |
-| `escalations` | **ブロッキング**なカーネルレポートの各違反について `{code}:{subject_ref}` |
-| `ban_recommendations` | 汚染クラスのコード — `CK-AUD-001`（監査ログ追記専用違反）、`CK-AUD-002`（監査ログ先頭の改竄）、`CK-AUD-003`（監査ログのハッシュ鎖の断絶）、`CK-ACC-002`（引退プロンプト本文へのアクセス）、`CK-ROL-901`（レジストリ書き手権限の偽装） — に巻き込まれた主体、および `contamination` / `clean_room_lineage_failure` の所見。RegistryTransitionEngine がこのキーを読むが、あくまで助言であり、禁止が適用されるのは実際に retired のコンポーネントに対してのみである |
+| `findings` | 監査中に立った決定論的な所見。追加されうる種類はちょうど 4 つ: `same_role_prosecution_skipped`、`no_admissible_evidence`、`motion_refused`（訴追）と `judge_clamped_by_board`（裁定） |
+| `escalations` | **ブロッキング**なカーネルレポートの各違反について `{code}:{subject_ref}`。**出荷される実行では常に空:** 再検証が回すのは、生成された 4 種のレコードに対する `validate_record_schema` と `validate_role_separation` だけであり、それらの型に対して両検査が立てられるのは `warn` のコードのみである（`CK-SCH-N01`、`CK-ROL-001` / `CK-ROL-002` / `CK-ROL-003`）。ブロッキングの `CK-SCH-G01` は `epoch_transition` か `governance_report` を、`CK-ROL-901` は `epoch_transition` か `registry_write` を必要とするが、そのいずれも自己監査には渡されない — レポート自身も同様である（ステップ 9 がステップ 8 の後に組み立てる） |
+| `ban_recommendations` | 汚染クラスのエスカレーション — `CK-AUD-001`（監査ログ追記専用違反）、`CK-AUD-002`（監査ログ先頭の改竄）、`CK-AUD-003`（監査ログのハッシュ鎖の断絶）、`CK-ACC-002`（引退プロンプト本文へのアクセス）、`CK-ROL-901`（レジストリ書き手権限の偽装） — あるいは `contamination` / `clean_room_lineage_failure` の所見が巻き込む*はずの*主体。**予約された設計であって、実行が示す挙動ではない:** `escalations` は常に空であり（上記）、汚染系のどちらの種類もパイプラインが追加する 4 つの所見に含まれないため、このキーはどの境界でも `[]` のまま出荷される。T19 の両端はどちらも出荷されている — `_ban_recommendations` がこのキーを書き、RegistryTransitionEngine の `_ban_targets` がそれを読む — 欠けているのは、そこに入れる汚染シグナルを上流で生む生成者だけである。禁止が適用されるのは、その上で実際に retired のコンポーネントに対してのみである |
 | `stats` | `auditor_motion_precision`、`judge_board_clamp_count`、`defender_substantive_rate`。動議が 1 件も提起されなかったとき、2 つの比率は `null` になる — 決して補完されない |
 
 `governance_report.schema.json` が宣言しているのは最初の 4 キーだけで、

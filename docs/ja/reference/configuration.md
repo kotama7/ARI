@@ -114,10 +114,27 @@ ARI の設定は複数の入口から入ってきます。**優先順位のチ�
 ためです — `memory` は `_apply_memory_section`、`container` は
 `ari/cli/run.py`、`lineage_decision` は
 `ari/cli/lineage.py:_load_lineage_decision_config`、加えて `bfts_pipeline`、
-`pipeline`、`claim_gate_policy`。そうしたリーダが現在認められている
-トップレベルキーの列挙が
-`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` です。それ*以外*のトップ
-レベルキーは破棄され、その際に何もログされません。`ari.config` の中に
+`pipeline`、`claim_gate_policy`。リゾルバがそうしたリーダを現在認めて
+いるトップレベルキーを列挙したものが
+`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` ですが、これは導出された
+一覧ではなく手で維持されている一覧であり、**網羅していません**。この
+一覧が勘定に入れていない汎用の消費者がもう 1 つあります: パイプライン
+ドライバ (`ari/pipeline/driver.py`) が生の `workflow.yaml` を読み直し、
+トップレベルのスカラーをすべてステージテンプレートの名前空間に流し込み
+ます（トップレベルの dict も `pipeline`/`skills`/`stages` を除きドット記法
+用に露出します）。したがって宣言されていないトップレベルキーは
+`ARIConfig` からは落ちても、ステージの `inputs:` 内では `{{key}}` として
+依然到達可能です。バンドル版の
+`ari-core/config/workflow.yaml` はまさにこれに依存していて、
+`paper_venue: arxiv` と `paper_rubric: generic_conference` は
+`ARIConfig.model_fields` にも `KNOWN_NON_CONFIG_TOP_KEYS` にも無いのに
+生きています — `write_paper` が `rubric_id: '{{paper_rubric}}'` と
+`venue: '{{paper_venue}}'` を取り、`review_compiled_paper` も再度
+`rubric_id` を取ります。`paper_rubric` はレビュー用 rubric を選ぶ設定で
+あり、`write_paper_iterative` にはその環境変数フォールバックも推測既定値も
+無いので、死んだ設定どころかその逆です。*どこからもテンプレート参照され
+ない*トップレベルキーは完全に破棄され、その際に何もログされません。
+`ari.config` の中に
 **近似綴りの検出（「もしかして」チェック）は存在しません**。したがって
 `rqgm:` を `rqmg:` と綴り間違えると、エラーは一切出ないまま、その実行は
 黙ってデフォルトのままになります。これを部分的に補うものが 2 つありますが、
@@ -132,7 +149,12 @@ ARI の設定は複数の入口から入ってきます。**優先順位のチ�
   `workflow.yaml` のコピーを読む）と新規実行プレビュー（バンドル版を読む）の
   `warnings` 配列を通じて届きます。綴りの提案ではなく単なる列挙であり、
   `ari.viz.v1` の外からリゾルバを呼ぶものは無いので、手動で回した CLI が
-  これを見ることはありません。
+  これを見ることはありません。なお `(no reader consumes it)` という文面は
+  検証済みの主張として読まないでください: バンドル版 `workflow.yaml` に
+  対してこの警告が出るのは `paper_venue` と `paper_rubric` の 2 件だけで、
+  そのどちらも実際には消費されています。この警告が示すのはキーが
+  `ARIConfig` に届かなかったことであって、そのキーが無効であることでは
+  ありません。
 - **不在は checkpoint 側で観測できます。** `{checkpoint}/rqgm_state.json` は
   `ari.mode: ari_rqgm` と `rqgm.enabled: true` の両方が成り立つときだけ
   書かれる（`ari/cli/run.py`）ので、ファイルが無いことはその実行が

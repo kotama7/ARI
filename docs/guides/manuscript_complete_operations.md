@@ -66,28 +66,44 @@ completed segment is reused. An already committed repair request is not called
 again; the coordinator first rebuilds evidence and reassesses it. Cumulative
 node/run/call use is recovered from transaction records.
 
-The automatic loop always stops, and it stops for exactly one recorded reason.
-When it stops without reaching authoring readiness, that reason is appended to
-the transition chain as `automatic_repair_<reason>`, referencing by digest the
-attempt's `readiness.json`, where the outstanding requirements stay readable.
-Cumulative node/run/call/resource use is carried in every committed round
-record under `auto-rounds/`.
+The automatic loop always stops, and it stops for exactly one reason. That
+reason is the `termination_reason` on the loop's return value, and it is not
+persisted. Only some stops also leave a record in the transition chain: the
+terminating transition `automatic_repair_<reason>` is appended only when its
+target state is a legal successor of the state the store currently holds. When
+it is appended it references by digest the attempt's `readiness.json`, where
+the outstanding requirements stay readable. Cumulative node/run/call/resource
+use is carried in every committed round record under `auto-rounds/`.
 
-| Termination reason | Condition | Target state |
-|---|---|---|
-| `authoring_ready` | readiness reached `ready` or `ready_with_disclosures` | none appended; authoring proceeds |
-| `no_admitted_repair_request` | the compile produced no readiness report, no repair plan, or a plan with no requests | `blocked_unavailable` |
-| `human_decision_required` | no request was executed or satisfied and at least one returned `human_required` | `blocked_unavailable` |
-| `required_resolver_unavailable` | no request was executed or satisfied, and none was `human_required` or `exhausted` | `blocked_unavailable` |
-| `round_budget_exhausted` | committed round records reached `repair.max_rounds` | `repair_pending` |
-| `cumulative_budget_exhausted` | recovered use exceeds `max_new_nodes`, `max_experiment_runs`, `max_llm_calls`, or `max_resource_units`; or no request was executed or satisfied and one reported `exhausted` | `repair_pending` |
-| `no_progress_cycle` | the same source context digest and the same requirement-status vector recurred | `repair_pending` |
+| Termination reason | Condition | Target state | Appended to the chain |
+|---|---|---|---|
+| `authoring_ready` | readiness reached `ready` or `ready_with_disclosures` | none | no; authoring proceeds |
+| `no_admitted_repair_request` | the compile produced no readiness report, no repair plan, or a plan with no requests | `blocked_unavailable` | yes, unless the compile had already written `blocked_unavailable` |
+| `human_decision_required` | no request was executed or satisfied and at least one returned `human_required` | `blocked_unavailable` | yes |
+| `required_resolver_unavailable` | no request was executed or satisfied, and none was `human_required` or `exhausted` | `blocked_unavailable` | yes |
+| `cumulative_budget_exhausted`, after a round | no request was executed or satisfied and one reported `exhausted` | `repair_pending` | yes |
+| `cumulative_budget_exhausted`, before a round | recovered use exceeds `max_new_nodes`, `max_experiment_runs`, `max_llm_calls`, or `max_resource_units` | `repair_pending` | no |
+| `round_budget_exhausted` | committed round records reached `repair.max_rounds` | `repair_pending` | no |
+| `no_progress_cycle` | the same source context digest and the same requirement-status vector recurred | `repair_pending` | no |
+
+The last three rows are the common non-ready stops, and none of them is
+recorded. They break at a point where the last compile has already written
+`repair_pending`, and `repair_pending` is not a legal successor of itself, so
+nothing is appended. Do not grep the chain for
+`automatic_repair_no_progress_cycle` or
+`automatic_repair_round_budget_exhausted`; they are never written. Read those
+stops from the loop's return value, or reconstruct them from the committed
+round records under `auto-rounds/` and the attempt's `readiness.json`.
+Persisting the reason for them is designed but not implemented:
+`ManuscriptAutoRepairRoundV1` carries the round, its plan and source context
+digests, its request and transaction IDs, its per-request results, and the used
+budget, but no termination-reason field, and no other artifact records one.
 
 No progress is decided on the source context digest and the
 `(requirement_id, status)` vector alone. Reworded prose, a new draft, or a
-differently phrased summary is not progress; only changed evidence is. The
-terminating transition is appended only when it is legal from the current
-state, so a stopped loop never rewrites a state the compiler already owns.
+differently phrased summary is not progress; only changed evidence is. Because
+the terminating transition is appended only when it is legal from the current
+state, a stopped loop never rewrites a state the compiler already owns.
 
 A crash can land between a committed round and its evidence rebuild. On the
 next invocation the loop recognises that the current plan digest already has a

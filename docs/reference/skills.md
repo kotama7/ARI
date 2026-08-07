@@ -54,9 +54,12 @@ Ten tools in three groups: two typed submitters (`job_submit`,
 `container_submit`) plus the retained batch-script bridge (`slurm_submit`); four
 lifecycle operations that share one handle selector (`job_status`, `job_result`,
 `job_logs`, `job_cancel`); and three probes (`probe_platform_capabilities`,
-`counter_support`, `measure_counters`). Containers are reached only through
-`container_submit` and the digest-pinned `ContainerRequestV1` it carries — the
-package exposes no image build, pull or run commands.
+`counter_support`, `measure_counters`). Containers are declared by the
+digest-pinned `ContainerRequestV1` carried on the request, not by the choice of
+tool: `container_submit` is the same submission with that field made mandatory,
+and `job_submit` — which declares the identical input schema — accepts a request
+that carries a container and runs it through exactly the same path, it simply
+does not require one. The package exposes no image build, pull or run commands.
 
 ### Tools
 
@@ -464,30 +467,91 @@ CLI flags on `ari run`: `--virsci-live` / `--no-virsci-live`, `--virsci-k`,
 
 ## ari-skill-evaluator
 
-Metric spec extraction from experiment files. **LLM: Conditional** (fallback only when metric_keyword not found in text).
+Metric contracts, deterministic claim gates, and evidence-grounded semantic
+review. **LLM: Split** — the two contract tools are separated so that the one
+which *decides* is deterministic and the one which *guesses* cannot admit its
+own guess.
 
 ### Tools
 
-#### `make_metric_spec(experiment_text)`
+#### `make_metric_spec(experiment_text, checkpoint_dir="", proposal_json=None, reviewer="")`
 
-Parse experiment Markdown to extract evaluation criteria. Deterministic when `metric_keyword` and `min_expected_metric` are present in the text; falls back to LLM if not found.
+Materialize one frozen metric contract. **Deterministic, no LLM.** The
+experiment Markdown is always parsed for `metric_keyword` /
+`min_expected_metric` and friends, but that parser output is *evidence*, not a
+contract. What gets frozen depends on what exists:
+
+- an idea-owned `ari.research-contract/v1` at the checkpoint whose
+  `admission_status` is `admitted` → its `metric_gate_projection` is used (a
+  contract still awaiting human review is refused, not silently accepted);
+- otherwise a `proposal_json` **plus** a non-empty `reviewer` → the proposal is
+  admitted under that reviewer's name and an admission decision is recorded;
+- otherwise an already-persisted `metric_contract.json` → read back, migrating
+  the legacy shape through a reader that does not rewrite the file;
+- otherwise the parser result alone, returned with `contract_frozen: false`,
+  `admission_status: "human-review-required"` and
+  `proposal_tool: "propose_metric_contract"`.
+
+Persisting is mint-once: writing a projection whose `projection_digest` differs
+from the one already at `{checkpoint}/metric_contract.json` raises rather than
+overwrites.
 
 ```python
-result = make_metric_spec(open("experiment.md").read())
-# Returns: {
-#   "metric_keyword": "GFLOP_per_s",
-#   "expected_metrics": ["GFLOP_per_s", "GB_per_s"],   # MEASURED outputs
-#   "expected_params":  ["M", "K", "nnz", "threads"],  # INPUT knobs
+result = make_metric_spec(
+    open("experiment.md").read(),
+    checkpoint_dir="/path/to/checkpoint",
+)
+# Frozen: {
+#   "metric_keyword": "GFLOP_per_s",          # the contract's metric name
+#   "metric_unit": "GFLOP/s", "metric_direction": "higher",
+#   "expected_metrics": ["GFLOP_per_s", ...], # name + required_evidence
+#   "expected_params": [],
 #   "min_expected_metric": 50000.0,
-#   "scoring_guide": "..."
+#   "scoring_guide": "...",
+#   "metric_contract": {...}, "metric_contract_digest": "...",
+#   "projection_digest": "...", "contract_frozen": True,
+#   "contract_source": "idea.research-contract/v1",
+#   "admission_status": "admitted"
 # }
+# Not frozen: the parser fields plus
+#   {"metric_contract": None, "contract_frozen": False,
+#    "admission_status": "human-review-required",
+#    "proposal_tool": "propose_metric_contract"}
 ```
 
-`expected_metrics` and `expected_params` are strictly disjoint by contract — a name appears in one or the other, never both. The LLM-fallback path is the only one that fills `expected_params` (the regex path covers the experiment.md-format quick path, which has no consistent "## Parameters" header to mine). `loop.py` threads `expected_params` into `MetricSpec` so the LLM evaluator emits a typed `params` / `measurements` split on each node, which `transform-skill::nodes_to_science_data` then propagates to `configurations[*].parameters` (C contract — see also the D contract via `coding-skill::emit_results`).
+`parser_result` is always carried alongside, so a reader can tell what the text
+said from what the contract admitted. `expected_metrics` on the frozen path is
+the contract's own `name` plus its `required_evidence`, deduplicated —
+not a second extraction. `expected_params` is `[]` on every path; the typed
+`params` / `measurements` split reaching `transform-skill::nodes_to_science_data`
+comes from `coding-skill::emit_results` (D contract).
 
-`make_metric_spec` also builds an **idea-owned run-level `metric_contract`** from the idea's `primary_metric`, its structured `falsifiable_claims`, and the `correctness_required` / `ceiling_must_be_measured` requirement flags. It persists this to `{checkpoint}/metric_contract.json` (next to `idea.json` / `tree.json`). The contract is idea-owned so an agent cannot drop a claim or requirement to dodge the check; it is read back by `transform-skill::nodes_to_science_data` (grafted onto `science_data.metric_contract`) and enforced by the deterministic hard gate.
+The frozen contract is **idea-owned** — built from the idea's `primary_metric`,
+its structured `falsifiable_claims`, and the `correctness_required` /
+`ceiling_must_be_measured` requirement flags — so an agent cannot drop a claim
+or requirement to dodge the check. It is read back by
+`transform-skill::nodes_to_science_data` (grafted onto
+`science_data.metric_contract`) and enforced by the deterministic hard gate.
 
-Model (fallback): `ARI_MODEL` env > `gpt-4o-mini`.
+#### `propose_metric_contract(idea_json=None, checkpoint_dir="", model="", model_revision="")`
+
+The explicit LLM proposal step, for the case where no typed contract exists
+yet. **LLM: Yes**. Reads the idea from `idea_json` (an object, a path, or a
+JSON string; bare text is accepted as `idea_text`) or falls back to
+`{checkpoint_dir}/idea.json`, and emits a `MetricContractProposalV1` recording
+the source idea digest, evidence digest, model, model revision, prompt digest,
+the proposed contract and the model's own `confidence`. Written to
+`{checkpoint}/metric_contract_proposal.json`.
+
+Two refusals define it. It raises on an idea that already carries
+`typed_schema_version: "ari.research-contract/v1"` — a typed idea already owns
+its contract and an LLM does not get to restate it. And `requires_human_review`
+is always `true`: the output is inert until a human passes it back through
+`make_metric_spec` with a `reviewer`. Nothing here writes
+`metric_contract.json`.
+
+Model: `model` arg > `ARI_MODEL_METRIC_PROPOSAL` env > `ARI_LLM_MODEL` env >
+`gpt-4o-mini`, called at `temperature=0.0`.
 
 #### `claim_evidence_hard_gate(checkpoint_dir, paper_path, science_data_json="", paper_claim_links_path="", figures_manifest_json="", policy=None, phase="draft")`
 
@@ -515,31 +579,46 @@ Supported venues: `neurips` (9 pages), `icpp` (10 pages), `sc` (12 pages), `isc`
 
 Returns the LaTeX template for a venue.
 
-#### `generate_section(section, context, venue="arxiv", nodes_json_path="", refs_json="")`
+#### `compile_paper(tex_dir, main_file="main.tex", figures_manifest_path="")`
 
-Generate a LaTeX section using LLM. Section types: `introduction`, `related_work`, `method`, `experiment`, `conclusion`.
-
-#### `compile_paper(tex_dir, main_file="main.tex")`
-
-Run pdflatex compilation. Returns success status and error messages.
+Run pdflatex compilation. Returns `success`, `pdf_path`, `log` and the typed
+`compile` record. A missing directory or main file comes back as
+`success: False` with the reason in `log` rather than raising.
 
 #### `check_format(venue, pdf_path)`
 
-Validate paper format against venue requirements (page count, etc.).
+Validate paper format against venue requirements (page count, etc.). An
+unknown `venue` raises with the valid list attached.
 
-#### `review_section(latex, context, venue="arxiv")`
+#### `write_paper_iterative(workspace_root, science_data_path, figures_manifest_path, references_path, ear_manifest_path, rubric_id, experiment_summary="", context="", verified_context_path="", venue="arxiv", max_revision_rounds=2, author_name="", writer_prompt_override="", decode_seed=0)`
 
-Review a LaTeX section. Returns strengths, weaknesses, and suggestions.
+Full paper generation, and the primary pipeline tool. **LLM: Yes**. There is no
+per-section drafting, review or revision tool: the loop lives inside this call.
+It fills the venue template in one LLM call — every `FILL_*_START … FILL_*_END`
+block at once — then runs `max(1, max_revision_rounds)` reflection rounds over
+the *same* message history, each round feeding back compile errors, BibTeX
+status, figures available but unreferenced, figure references that match no
+file, and chktex output, until the model answers `I am done`. There is always
+at least one reflection round; `max_revision_rounds=0` does not skip it.
 
-#### `revise_section(section, latex, feedback, context, venue="arxiv")`
+Every input arrives as a path resolved inside the closed `workspace_root`
+(`science_data_path`, `figures_manifest_path`, `references_path`,
+`ear_manifest_path`, optional `verified_context_path`) rather than as inline
+JSON. Two contracts are enforced against each reflection: a revision that
+changes or drops a `% CLAIM:Cx:NCx` comment is rejected, and so is one that
+edits, adds or removes a renderer-owned figure block.
 
-Revise a LaTeX section based on review feedback.
+`decode_seed=0` keeps the linear, unseeded behaviour; a non-zero seed is passed
+to litellm so callers generating a *population* of drafts get distinct samples
+instead of K copies — best-effort and provider-dependent, so it buys diversity,
+not bit-exact replay. `writer_prompt_override` replaces the bundled
+`paper_writer.md` reflection instruction with a supplied string; it is a plain
+instruction, not governance — the skill imports no `ari.rqgm`.
 
-#### `write_paper_iterative(experiment_summary="", context="", nodes_json_path="", refs_json="", figures_manifest_json="", science_data_json="", venue="arxiv", max_revision_rounds=2, author_name="")`
+Returns `latex`, `sections`, `reviews`, `revision_counts`, `bib`, `key_list`
+and the draft `paper_build`.
 
-Full paper generation with iterative draft → review → revise loop. Primary pipeline tool.
-
-#### `review_compiled_paper(tex_path, pdf_path, figures_manifest_json, experiment_summary, rubric_id="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
+#### `review_compiled_paper(rubric_id, tex_path="", pdf_path="", figures_manifest_json="", experiment_summary="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
 Rubric-driven paper review compatible with the **AI Scientist v1/v2** pipeline
 (Nature / arXiv:2408.06292 Appendix A.4). Loads a YAML rubric from
@@ -563,9 +642,19 @@ Add a new venue by dropping `<id>.yaml` into `reviewer_rubrics/` — no code
 changes required. Each rubric declares `score_dimensions`, `text_sections`,
 `decision` rules, execution parameters, and a SHA256 hash for P2 determinism.
 
-Rubric resolution order: explicit `rubric_id` arg → `ARI_RUBRIC` env →
-`neurips` → built-in `legacy` fallback (v0.5 schema, used when neither
-`rubric_id` nor any matching YAML resolves).
+Rubric resolution is explicit and has no fallback chain. `rubric_id` is the
+first, required argument; `resolve_rubric` refuses an empty one outright
+("migrate legacy ARI_RUBRIC/default config to an explicit workflow input")
+rather than reaching for an environment variable, a `neurips` default, or a
+built-in `legacy` schema. Which rubric graded a paper is therefore always
+recorded in the call that made it.
+
+Old launch or workflow documents that relied on that chain are converted
+offline: `src/rubric_migration.py::migrate_legacy_rubric_selection` walks
+`paper_rubric` → `rubric_id` → `ARI_RUBRIC` → the `neurips` pre-v1 default,
+validates the result, and returns an explicit `paper_rubric` field plus a
+record naming which `source` supplied it. It is a one-off migration helper, not
+a runtime fallback.
 
 #### Symmetric author / reviewer venue conditioning (unreleased)
 
@@ -573,15 +662,15 @@ Rubric resolution order: explicit `rubric_id` arg → `ARI_RUBRIC` env →
 
 - `system_hint` — injected into peer-review prompts by `review_engine`
   (existing behaviour).
-- `author_hint` — injected into paper-drafting prompts by
-  `generate_section` as a dedicated `══ VENUE-SPECIFIC AUTHOR
-  GUIDANCE ══` block. Tells the drafter what reviewers will look for,
-  so the paper is written to make those signals easy to surface.
+- `author_hint` — appended to `write_paper_iterative`'s drafting system
+  prompt as a dedicated `VENUE RUBRIC AUTHOR GUIDANCE` block. Tells the
+  drafter what reviewers will look for, so the paper is written to make
+  those signals easy to surface.
 
-Empty `author_hint` preserves the legacy weak append (just `Target
-venue: X. Page limit: N pages.`). SC and NeurIPS ship calibrated
-`author_hint` blocks; remaining venues are empty and can be filled in
-incrementally without touching code.
+Empty `author_hint` adds no block at all, leaving the drafting prompt's
+bare `Target venue: X.` line as the only venue signal. SC and NeurIPS
+ship calibrated `author_hint` blocks; remaining venues are empty and can
+be filled in incrementally without touching code.
 
 Nature Ablation defaults (best-config rationale):
 
@@ -647,6 +736,28 @@ anchor present in the draft must survive (anchor-dropping edits are rejected and
 on net anchor loss the original paper is kept). Math-safe underscore escaping
 skips `\( … \)` / `\[ … \]` and math environments. The refined LaTeX is returned
 under `latex` (the draft is preserved as `full_paper.draft.tex`).
+
+#### `finalize_paper_build(workspace_root, draft_build_path, tex_path, bib_path, pdf_path, compile_record_path, figures_manifest_path, claim_links_path, hard_gate_path, text_review_path, visual_review_path, semantic_review_path, refinement_call_path="", visual_passing_score=0.7, output_path="paper_build.json")`
+
+The last stage of the paper phase: turn the draft `PaperBuildV1` that
+`write_paper_iterative` returned into the immutable final record.
+**Deterministic, no LLM**. Every path resolves inside the closed
+`workspace_root`, and every artifact the draft declared — its inputs, each
+recorded revision's TeX and bibliography, each recorded model call — is
+re-verified against its digest before anything new is read. It then hashes the
+final tex / bib / PDF, parses the compile record, and requires the claim links
+document to be `ari.paper-claim-links/v1` from the `link_paper_claims` stage.
+
+Finalization is a judgement, not a formality. `blocking_reasons` accumulates
+each failure — a final revision that dropped a canonical figure ID or changed
+mathematical content, a hard gate that was disabled or reported blocking
+findings, unresolved claim anchors, uncovered numeric result mentions, a
+compile that did not complete, a PDF whose digest differs from the compile
+record's, a visual review with failed targets or a score below
+`visual_passing_score`. Any reason at all makes the status `blocked` (or
+`compile-error` when a compile reason is among them) instead of `finalized`,
+and the MCP tool then raises with the reasons joined into the message. The
+record is written either way, so a blocked build is auditable rather than lost.
 
 ##### Few-shot corpus management
 
@@ -1008,9 +1119,12 @@ rank order itself — children see entries most relevant to their
 
 All entries for a specific node (chronological, no scoring).
 
-#### `clear_node_memory(node_id)`
-
-Debug-only per-node clear. Same CoW rule as `add_memory`.
+There is no per-node clear, debug-only or otherwise. Nothing in the skill's
+thirteen tools removes an entry: writes are append-only and CoW-guarded, and
+`tests/test_cow.py::test_destructive_clear_is_not_publicly_exposed` asserts the
+absence directly (`assert not hasattr(server, "clear_node_memory")`). The way
+to shrink a node's footprint is to add a consolidated typed entry with
+`consolidate_node_memory`, not to delete the originals.
 
 #### `get_experiment_context()`
 
@@ -1085,31 +1199,85 @@ stable lessons belong in `experiment.md`, code, or prior papers.
 
 Expose ARI as an MCP server for external agents and IDEs. Supports recursive sub-experiments. **LLM: No** (delegates to ARI CLI).
 
-Dual transport: **stdio** (MCP for Claude Desktop / other MCP clients) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
+Dual transport: **stdio** (the default, for Claude Desktop / other MCP clients)
+and **MCP Streamable HTTP** (`--transport streamable-http`, port from
+`ARI_ORCHESTRATOR_HTTP_PORT`, default 9890). The HTTP transport refuses to
+start without `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` — over the network,
+authentication is required rather than optional.
+
+Every tool is authorized against the calling principal, so the twelve below are
+one submit / one cancel and ten reads, not a general remote-control surface.
 
 ### Tools
 
-#### `run_experiment(experiment_md, max_nodes=10, model="", max_recursion_depth=3, parent_run_id="", llm_backend="", llm_api_key="", llm_base_url="", executor="", cpus=0, timeout_minutes=0, retrieval_backend="")`
+#### `run_experiment(experiment_md, idempotency_key, parent_run_id="", max_recursion_depth=None, max_nodes=10, max_total_nodes=100, max_descendant_runs=32, estimated_cost_usd=0.0, max_cost_usd=100.0, cpus=1, timeout_minutes=60, model="", llm_backend="", executor="", retrieval_backend="")`
 
-Launch an ARI experiment asynchronously. Returns `run_id`. When `parent_run_id` is set, the experiment is tracked as a child of the parent (for recursive sub-experiment workflows).
+Idempotently submit one quota-bound ARI run and return its durable handle.
+`idempotency_key` is required, not optional: it is what makes a retried submit
+return the existing run instead of starting a second one.
+
+The quota block is part of the request, and recursion is bounded on three axes
+at once — `max_nodes` for this run, `max_total_nodes` across the tree, and
+`max_descendant_runs` for how many child runs the subtree may spawn — with
+`max_cost_usd` over the top. `parent_run_id` and `max_recursion_depth` fall
+back to the inherited `ARI_PARENT_RUN_ID` / `ARI_MAX_RECURSION_DEPTH` (depth
+defaulting to 3) so a child run cannot escape its parent's budget merely by
+omitting the arguments. `model` / `llm_backend` / `executor` /
+`retrieval_backend` likewise fall back to `ARI_MODEL` / `ARI_BACKEND` /
+`ARI_EXECUTOR` / `ARI_RETRIEVAL_BACKEND`. There is no credential argument: the
+tool takes neither an API key nor a base URL.
 
 #### `get_status(run_id)`
 
-Return progress, current best metrics, and recursion metadata for a run.
+Return the exact durable state and bounded scientific progress for a run.
+
+#### `get_result(run_id)`
+
+Return terminal metadata and digest-addressed artifacts for a run.
+
+#### `stop_experiment(run_id)`
+
+Cancel a run, propagate termination to its descendants, and settle exactly one
+terminal state.
 
 #### `list_runs()`
 
-List all past experiment runs.
+List only runs owned by the authenticated principal; an admin principal may
+list all.
 
-#### `list_children(run_id)`
+#### `list_children(parent_run_id)`
 
-Return child runs of a parent experiment (for recursive sub-experiment tracking).
+Return the authorized direct descendants of one exact parent run ID (for
+recursive sub-experiment tracking).
+
+#### `list_artifacts(run_id)`
+
+List the allowlisted, digest-verified artifacts of a run. Filesystem paths are
+not exposed — an artifact is named by its identity, not its location.
+
+#### `read_artifact(run_id, artifact_id)`
+
+Read one bounded admitted artifact by its exact SHA-256 identity.
 
 #### `get_paper(run_id)`
 
-Return the generated paper (LaTeX).
+Return paper artifact references for an authorized run.
 
-Workspace: `ARI_WORKSPACE` env (default: `~/ARI`). Parent-child relationships persisted in `meta.json` per checkpoint.
+#### `get_ear(run_id)`
+
+Return verified EAR and evidence artifact references for an authorized run.
+
+#### `list_skills(run_id)`
+
+Return the sanitized, immutable `SKILLS.lock` view for one run — which
+Providers that run was actually locked to.
+
+#### `get_workflow(run_id)`
+
+Return the locked phase / tool membership for a run, without the raw workflow
+document or any secret config.
+
+Workspace: `ARI_WORKSPACE` env, defaulting to the resolved ARI repository root. Parent-child relationships persisted in `meta.json` per checkpoint.
 
 ---
 
@@ -1226,40 +1394,85 @@ exist, `generate_ear` emits one of: **MIT**, **Apache-2.0**,
 
 ## ari-skill-web
 
-Web search and academic literature retrieval with pluggable backends. **LLM: Partial** (only `collect_references_iterative` uses LLM).
+Web search and academic literature retrieval under one record/replay contract. **LLM: Partial** (only `rerank_retrieval_records` uses LLM).
+
+### The retrieval contract
+
+There is no tool per provider and no tool that mutates provider state. The four
+retrieval tools — `web_search`, `fetch_url`, `search_papers` and
+`walk_citations` — instead share the same two arguments, `mode` and
+`snapshot_ref`:
+
+| `mode` | Behaviour |
+|---|---|
+| `record` (default) | Fetch, then write a `SurveySnapshotV1` under the checkpoint. Requires `ARI_CHECKPOINT_DIR`; without it the call is refused up front |
+| `live` | Fetch without snapshotting |
+| `replay` | **No network access at all.** Replays the snapshot named by the checkpoint-relative `snapshot_ref` an earlier record returned |
+
+Each of the four returns the same `ari.retrieval-result/v1` document —
+`provider`, `query`, `count`, normalised `records` (`RetrievalRecordV1`),
+`alias_groups`, the embedded `survey_snapshot` with its
+`survey_snapshot_digest`, the `snapshot_ref` to replay it, and the
+`execution_mode` that produced it. A cited paper is therefore always traceable
+to the exact retrieval that found it. The remaining three tools —
+`rerank_retrieval_records`, `list_uploaded_files`, `read_uploaded_file` — take
+no `mode`: they consume records that were already retrieved, or read the
+checkpoint's own `uploads/`.
 
 ### Tools
 
-#### `web_search(query, n=5)`
+#### `web_search(query, n=5, mode="record", snapshot_ref="")`
 
-DuckDuckGo web search. No API key required. Deterministic.
+DuckDuckGo web search. No API key required. `n` is clamped to 10. Result
+snippets are carried with `use_restriction: "untrusted search-result snippet"`
+— they are data, never instructions.
 
-#### `fetch_url(url, max_chars=8000)`
+#### `fetch_url(url, max_chars=8000, mode="record", snapshot_ref="", max_bytes=2097152)`
 
-Fetch and extract text from a URL via BeautifulSoup. Deterministic.
+Fetch and extract readable text from a URL, through pinned-IP SSRF and redirect
+controls. `max_chars` is clamped to 100,000 and `max_bytes` may not exceed 2
+MiB; a non-2xx status is a `NetworkPolicyError`, not an empty result. HTML is
+reduced with BeautifulSoup after `script` / `style` / `nav` / `footer` /
+`header` are dropped.
 
-#### `search_arxiv(query, max_results=5)`
+#### `search_papers(query, max_results=10, provider=None, mode="record", snapshot_ref="")`
 
-arXiv paper search. Deterministic.
+Search **one pinned academic provider**. The provider comes from the `provider`
+argument, else from `ARI_RETRIEVAL_BACKEND`, and must be `semantic-scholar`
+(the default), `arxiv` or `alphaxiv` — AlphaXiv is reached over MCP JSON-RPC at
+`ARI_ALPHAXIV_ENDPOINT`. `max_results` is clamped to 50.
 
-#### `search_semantic_scholar(query, limit=8, extra_queries=None)`
+`provider="both"` is **refused**, with the instruction to issue two pinned
+calls and merge them by aliases. A composite search has no single provider
+identity, so its snapshot could not say what was actually queried; `record`
+and `live` never silently switch provider either. Underscores are accepted in
+provider names (`semantic_scholar` normalises to `semantic-scholar`).
 
-Semantic Scholar API with fallback to arXiv. Deterministic.
+#### `walk_citations(seed_ids, direction="references", max_depth=2, max_nodes=50, request_budget=20, mode="record", snapshot_ref="")`
 
-#### `search_papers(query, max_results=10)`
+Bounded Semantic Scholar citation-graph walk with cycle detection —
+breadth-first from up to 20 deduplicated seed IDs (an `s2:` prefix is
+stripped), following `references` or `citations`. Every bound is clamped:
+`max_depth` to 5, `max_nodes` to 500, `request_budget` to 500.
 
-Dispatches to the configured retrieval backend (`ARI_RETRIEVAL_BACKEND`):
-- `"semantic_scholar"` (default) — Semantic Scholar API
-- `"alphaxiv"` — AlphaXiv via MCP JSON-RPC over HTTP
-- `"both"` — parallel execution with deduplication
+Exhaustion is reported, not hidden. The result carries `citation_edges`,
+`requests_used`, and `partial` — set when the budget ran out or a provider call
+failed, with the reason recorded — so a truncated graph cannot be mistaken for
+a complete one.
 
-#### `set_retrieval_backend(backend)`
+#### `rerank_retrieval_records(research_question, records, max_results=10)`
 
-Dynamically switch the retrieval backend at runtime. Valid values: `"semantic_scholar"`, `"alphaxiv"`, `"both"`.
+Reorder already-retrieved `RetrievalRecordV1` rows by relevance to a research
+question. **LLM: Yes**, and deliberately a separate tool: the deterministic
+retrieval path never calls it, so the stochastic step is opt-in and visible.
+The model may only permute supplied indices — it never introduces a record —
+and a response with no valid index is an error rather than a silent passthrough.
 
-#### `collect_references_iterative(experiment_summary, keywords, max_rounds=20, min_papers=10)`
-
-AI Scientist v2-style iterative citation collection. LLM generates search queries and selects relevant papers across multiple rounds.
+The returned `provenance` block records the model, the API base identity
+(scheme, host and port only — no credentials), the temperature, and the prompt,
+input and output digests, so the ordering can be audited later. Record text is
+passed to the model as data with an explicit instruction to ignore any
+instructions inside it.
 
 Model: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`.
 
@@ -1323,8 +1536,13 @@ Work directory: `ARI_WORK_DIR` (default `/tmp/ari_work`) fixes the workspace
 root. A `work_dir` argument does not replace that root — it selects a directory
 *beneath* it, created on demand, and a path that resolves outside it is refused
 rather than rewritten. The agent is shown the root as the fixed container path
-`/workspace`, which the filesystem tools map back to the real directory before
-touching it and scrub out of every result.
+`/workspace`, which the filesystem tools map back to the real directory in the
+`filename`, `command` and `path` arguments before touching it, and scrub out of
+every result. The `work_dir` argument itself is **not** mapped back — it is
+resolved against the real root as given, so a literal `/workspace` there is
+refused as escaping that root even though it is the argument's declared schema
+default. Leave `work_dir` unset (it then resolves to the root), or let
+`ari.agent.tool_manager` pin the node's real path (below).
 
 Inside a BFTS run the `work_dir` argument is not left to the model: `ari.agent.tool_manager` pins the node's real `work_dir` on every filesystem tool. The env fallback cannot serve that role because the MCP server snapshots `ARI_WORK_DIR` at fork time, so per-node updates never reach it — an unpinned call would land in a shared scratch dir the evaluator never reads, and the node would be scored on inherited code.
 
@@ -1347,77 +1565,185 @@ The optional `units` arg is a `{measurement: unit}` map; a measurement with no d
 
 The optional `provenance` arg is an `{operand: source}` map recorded on the corresponding canonical measurement record and consumed by the claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"` when its value is an empirically **MEASURED** ceiling/peak (so a normalized metric is not flagged as resting on a placeholder), and `"correctness"` or `"reference"` when it is a residual computed against an **independent** reference (so the output is not flagged as unverified). Best-effort; omitted entirely when empty.
 
-The downstream `transform-skill::nodes_to_science_data` populates `configurations[*].parameters` from this file when present (D contract). When `emit_results` is not called, the LLM evaluator's typed split (C contract — see `ari-skill-evaluator::make_metric_spec` below) supplies the same information from artifact analysis.
+The downstream `transform-skill::nodes_to_science_data` populates `configurations[*].parameters` from this file when present (D contract). The older C-contract path — the LLM evaluator's typed split, driven by `MetricSpec.expected_params` — is still wired through `ari-core/ari/agent/loop.py`, but `evaluator-skill::make_metric_spec` now returns `expected_params: []` on every path, so nothing feeds it. Call `emit_results`: it is the only route by which a node's input parameters reach `science_data`.
 
 ---
 
 ## ari-skill-benchmark
 
-Performance analysis, plotting, and statistical testing. **LLM: No** (deterministic).
+Typed deterministic summaries, statistical tests, and provenance-aware run
+comparison. **LLM: No** (deterministic). Figures are not this skill's job —
+`ari-skill-plot` renders them.
+
+All three tools take exactly one `request` object and return one
+`AnalysisResultV1` carrying `kind`, an `input_digest` over the fully resolved
+inputs, the caller's `analysis_plan_digest`, and the `library_versions`
+(python / numpy / scipy) the numbers were produced under. An optional
+`artifact_target` additionally writes the result and a CSV table into a closed
+workspace as digest-bound `AnalysisArtifactV1` entries.
+
+Samples arrive as `MetricSampleSetV1`: a `metric_id`, an explicit non-empty
+`unit`, and either inline `observations` or an `AnalysisDataSourceV1` naming a
+digest-bound numeric column (`auto` / `csv` / `json` / `npy`) inside a closed
+workspace. `missing_policy` is `error` by default — a missing value is refused
+rather than quietly dropped — and the resolved `missing_count` is reported
+either way.
 
 ### Tools
 
-#### `analyze_results(result_path, metrics)`
+#### `analyze_results(request)`
 
-Load and analyze CSV, JSON, or NPY result files. Returns summary statistics.
+Summarize one or more datasets. Per metric: `count`, `missing_count`, `mean`,
+`std`, `variance`, `minimum`, `q25`, `median`, `q75`, `maximum`, the
+`mean_confidence_interval` at the request's `confidence_level` (0.95 by
+default), a `constant_data` flag, an `independence_status` of `verified` /
+`declared` / `not-established`, and the `source_digest` the values came from.
+Duplicate `metric_id` values in one request are refused.
 
-#### `plot(data, plot_type, output_path, title="", xlabel="", ylabel="")`
+#### `statistical_test(request)`
 
-Generate matplotlib figures. Plot types: `bar`, `line`, `scatter`, `heatmap`.
+Run a **pre-declared** family of comparisons. Each `StatisticalComparisonV1`
+names its own `comparison_id`, two sample sets, a `test_family` (`auto`,
+`welch_t`, `student_t`, `paired_t`, `mann_whitney`, `wilcoxon`), a `pairing`
+(`unpaired`, `ordered`, `pair_id`), an `alternative` and its `alpha`.
 
-#### `statistical_test(data_a, data_b, test)`
+Multiplicity is not optional: a request with more than one comparison and
+`correction: "none"` is rejected outright, so `bonferroni`, `holm` or
+`benjamini_hochberg` must be chosen before the tests are run rather than after
+the p-values are seen.
 
-Run scipy statistical tests: `ttest`, `mannwhitney`, `wilcoxon`.
+#### `compare_runs(request)`
+
+Rank at least two scalar `RunRecordV1` runs in the declared `direction`
+(`higher` or `lower`) against `baseline_run_id` (the first run when unset),
+reporting each run's `delta` and `relative_delta`.
+
+The caveats are the point. Runs are grouped by `(backend_id,
+environment_digest)`; when more than one group is present,
+`environment_compatible` is false and — because `require_compatible_environment`
+defaults to true — the call **raises**, telling the caller to set it false to
+obtain an explicitly caveated cross-environment ranking. Each group is marked
+`shared_substrate` and `independence_inference: "not-permitted"`: sharing a
+substrate is never read as independent replication. `independence_status` is
+`declared` only when every run carries a distinct `replicate_id`, otherwise
+`not-established` with no replicate count at all. `provenance_differences`
+lists what changed relative to the baseline.
 
 ---
 
 ## ari-skill-plot
 
-Scientific figure generator. Two modes: **deterministic** (`generate_figures`, P2-safe matplotlib over a fixed schema) and **LLM-driven** (`generate_figures_llm`, an AI-Scientist-v2-style code-write-and-run path with optional VLM caption pass). **LLM: Mixed** (deterministic + P2-exception).
+Source-bound declarative figure planning over a **fixed** renderer. **LLM:
+Mixed** (deterministic + P2-exception) — but the exception is narrow: the LLM
+may only *plan* a figure, never draw one. There is one renderer, it takes a
+canonical `FigureSpecV1`, and no caller-supplied code, SVG or artifact bytes
+reach it on any path.
 
 ### Tools
 
-#### `generate_figures(nodes_json_path, output_dir, figures=None, science_data_path="", vlm_captions=True, experiment_context="")`
+#### `render_figure(request)`
 
-Render canonical comparison figures from `nodes_tree.json` into `output_dir`.  Returns a manifest of every emitted figure with its caption and source node ids.  Byte-deterministic for a given matplotlib version.
+Render one canonical `FigureSpecV1` and return its manifest. The request must
+be exactly `{spec, workspace, relative_directory}` — any other key set is
+refused before anything is read — and a rendering failure comes back as a
+`ValueError` describing the rejection rather than a partial figure. This is the
+primitive the two generators below both call; nothing else can draw.
 
-#### `generate_figures_llm(nodes_json_path, output_dir, experiment_summary="", context="", n_figures=3, science_data_path="", vlm_feedback="")`
+#### `generate_figures(science_data_path, output_dir, n_figures=3, revision=0)`
 
-LLM examines the data shape + natural-language `intent`, writes matplotlib code, runs it in the same `_run_plot_code` sandbox, and (optionally) calls a VLM to caption the result.  P2 exception.
+Derive deterministic default specs from a native `ScienceDataV1` (loaded with
+its artifact digest) and render them into `output_dir`, returning the
+`FigureBatchV1`. `revision` must be `0`: the deterministic path has no feedback
+round, and a non-zero revision is refused rather than treated as a re-render.
 
-The `kind="plot"` system prompt now enforces a **LAYOUT** rule (call `fig.tight_layout()` and save with `bbox_inches='tight'`, put the legend outside the axes, rotate long tick labels; a figure with overlapping or truncated text is **REJECTED**) and a **COMPARABILITY** rule (do not juxtapose values measured on different scales/regimes without a clear axis or annotation). These are prompt-level guidance to the figure-writing LLM — no new mechanical gate is added.
+#### `generate_figures_llm(science_data_path, output_dir, experiment_summary="", n_figures=3, vlm_feedback="", revision=0, previous_batch_path="")`
+
+The LLM picks admitted fields only — `metric_id`, `chart_type`, `x_mode` —
+after which the same fixed renderer produces the figure. Numeric values, units,
+captions, paths, code, SVG and artifact bytes are all selected or produced
+deterministically from the verified science record, so a hallucinated number
+cannot reach a figure. P2 exception.
+
+Revisions are bound rather than free-form. `revision=0` refuses any
+`vlm_feedback`; `revision > 0` requires both a feedback document **and** the
+`previous_batch_path` whose `revision` is exactly its parent. The feedback must
+bind that manifest's digest, the metric set is carried over from the previous
+batch, and a revision that changes a stable `figure_id` is refused — so a
+review round cannot quietly become a different figure.
 
 ### Environment variables
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `VLM_MODEL` | Vision LLM for caption pass | `openai/gpt-4o` |
-| `ARI_LLM_MODEL` | LLM that writes matplotlib code in `_llm` mode | (none — required for `_llm`) |
+| `ARI_MODEL_PLOT` | Planner LLM for `generate_figures_llm` | (none) |
+| `ARI_LLM_MODEL` | Planner fallback | (none) |
 | `LLM_MODEL` | Cross-skill fallback | (none) |
-| `ARI_LLM_API_BASE` | LiteLLM API base override | LiteLLM default |
-| `OPENAI_API_KEY` | Required for OpenAI-hosted LLM/VLM | (none) |
+| `ARI_LLM_API_BASE` | LiteLLM API base override (then `LLM_API_BASE`) | LiteLLM default |
+| `OPENAI_API_KEY` | Required for an OpenAI-hosted planner | (none) |
+
+Planning is called at `temperature=0.0`, and with none of the three model
+variables set `generate_figures_llm` raises rather than silently picking a
+model. Figure *review* is `ari-skill-vlm`'s job, not this skill's — there is no
+caption VLM here.
 
 ### ari-core boundary
 
-`src/server.py` imports `from ari import cost_tracker`; Phase 4 of the master refactor migrates this to `ari.public.cost_tracker`.
+`src/server.py` reaches ari-core only through the public surface
+(`from ari.public import cost_tracker`, then `bootstrap_skill("plot")`).
 
 ---
 
 ## ari-skill-vlm
 
-Vision-Language model for figure and table quality review. **LLM: Yes** (VLM).
+Artifact-bound, criteria-versioned visual review of scientific figures and
+tables. **LLM: Yes** (VLM).
+
+Two things make a review citable rather than an opinion. The target is bound:
+a figure is selected out of a verified `FigureBatchV1`, a table is named by
+content-addressed artifact reference inside a closed workspace — never a loose
+path the reviewer could be pointed away from. And the criteria are versioned:
+each `VisualReviewV1` records `criteria_profile_id` **and**
+`criteria_profile_digest` alongside the model, model revision, provider,
+prompt digest and `sampling` (`temperature: 0.0`), so a score cannot be
+compared across silently-edited criteria.
+
+Bundled profiles: `figure-publication/v1` (source integrity, units/labels,
+readability, comparability, accessibility; passing 0.7),
+`figure-domain-integrity/v1` (source integrity, uncertainty, domain semantics,
+readability; passing 0.75) and `table-publication/v1` (source integrity,
+units/labels, precision, readability; passing 0.7). An unknown profile ID, or
+one whose `target_kind` does not match the call, is refused.
 
 ### Tools
 
-#### `review_figure(image_path, context="", criteria=None)`
+#### `review_figure(figures_manifest_path, figure_id, context="", criteria_profile_id="figure-publication/v1", max_output_tokens=2048)`
 
-VLM reviews an experiment figure. Returns score (0-1), issues, suggestions.
+Review one figure selected by `figure_id` from a verified `FigureBatchV1`. A
+`figure_id` the batch does not carry is refused rather than resolved to
+something nearby.
 
-#### `review_table(latex_or_path, context="")`
+#### `review_figures_all(figures_manifest_path, context="", criteria_profile_id="figure-publication/v1", budget=None)`
 
-VLM reviews a table (LaTeX source or rendered image). Returns score, issues, suggestions.
+Review every figure in one batch, bounded by a `ReviewBudgetV1`:
+`max_figures` (default 20, ≤100), `max_total_bytes` (default 100 MiB, ≤512
+MiB), `max_concurrency` (default 2, ≤4), `max_model_calls` (default 20, ≤100)
+and `max_output_tokens` (default 2,048, 128–8,192). Individual failures are
+preserved as failed reviews with their raw evidence instead of collapsing the
+batch, and figures past the budget are recorded as such rather than dropped
+silently. This is the tool the pipeline's figure-review stage runs.
 
-Model: `VLM_MODEL` env > `openai/gpt-4o`.
+#### `review_table(request)`
+
+Review one content-addressed table artifact. The request schema is exact —
+`workspace`, `target_id`, `artifact`, `context`, `criteria_profile_id`,
+`iteration` (0–2) and `max_output_tokens`, no more and no less. An unsupported
+artifact media type comes back as a recorded `artifact-error` review rather
+than an exception, so the failure is still evidence.
+
+Model: `ARI_VLM_MODEL` env > `VLM_MODEL` env — there is no default. With
+neither set the review raises rather than quietly picking a model. Provider and
+revision are recorded from `ARI_MODEL_VLM_PROVIDER` / `ARI_MODEL_VLM_REVISION`,
+the provider defaulting to the model string's own prefix.
 
 ---
 

@@ -425,9 +425,9 @@ utility record、raw attack 以及 K/C/A 来历类型 —— 外加关于该对�
 |---|---|
 | `checked_components` | 受检治理主体的排序列表：auditor、evidence clerk、defender、governance judge |
 | `kernel_violations_found` | 重新校验得到的违规计数 |
-| `findings` | 审计过程中立起的确定性发现 —— `judge_clamped_by_board`、`no_admissible_evidence`、`same_role_prosecution_skipped`、`motion_refused` 等 |
-| `escalations` | 对每份**阻断性**内核报告中的各条违规给出 `{code}:{subject_ref}` |
-| `ban_recommendations` | 被污染类代码牵连的主体 —— `CK-AUD-001`（审计日志只追加违规）、`CK-AUD-002`（审计日志前缀篡改）、`CK-AUD-003`（审计日志哈希链断裂）、`CK-ACC-002`（访问已退役提示词正文）、`CK-ROL-901`（伪造注册表写入权限）—— 以及任何 `contamination` / `clean_room_lineage_failure` 发现。RegistryTransitionEngine 读取此键；它仍只是建议，且封禁只施加于确实处于 retired 的组件 |
+| `findings` | 审计过程中立起的确定性发现。被追加的种类恰好只有四种：`same_role_prosecution_skipped`、`no_admissible_evidence`、`motion_refused`（起诉）与 `judge_clamped_by_board`（裁决） |
+| `escalations` | 对每份**阻断性**内核报告中的各条违规给出 `{code}:{subject_ref}`。**在任何出货运行中都为空：**重新校验只对四种已产出的记录类型跑 `validate_record_schema` 与 `validate_role_separation`，而对这些类型两项检查只能立起 `warn` 级代码（`CK-SCH-N01`；`CK-ROL-001` / `CK-ROL-002` / `CK-ROL-003`）。阻断性的 `CK-SCH-G01` 需要 `epoch_transition` 或 `governance_report`，`CK-ROL-901` 需要 `epoch_transition` 或 `registry_write` —— 二者都从未交给自审计，报告本身也不例外（第 9 步在第 8 步之后才组装它） |
+| `ban_recommendations` | 污染类升级 —— `CK-AUD-001`（审计日志只追加违规）、`CK-AUD-002`（审计日志前缀篡改）、`CK-AUD-003`（审计日志哈希链断裂）、`CK-ACC-002`（访问已退役提示词正文）、`CK-ROL-901`（伪造注册表写入权限）—— 或 `contamination` / `clean_room_lineage_failure` 发现*本应*牵连的主体。**这是预留设计，而非运行会表现出的行为：**`escalations` 恒为空（见上），且两种污染类发现都不在流水线追加的那四种之内，因此该键在每个边界都以 `[]` 出货。T19 的两端都已出货 —— `_ban_recommendations` 会写入该键，RegistryTransitionEngine 的 `_ban_targets` 读取它 —— 缺的只是上游没有任何生产者产出可放进去的污染信号。在此之上，封禁也只施加于确实处于 retired 的组件 |
 | `stats` | `auditor_motion_precision`、`judge_board_clamp_count`、`defender_substantive_rate`。若本纪元一个动议也没提起，这两个比率为 `null` —— 绝不插补 |
 
 `governance_report.schema.json` 只声明了前四个键；`ban_recommendations` 与

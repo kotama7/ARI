@@ -140,11 +140,20 @@ ARI 仪表盘是一个由 `ari/viz/` 中的 Python HTTP 服务器提供的 React
 这个形态**不是**什么 —— 而这正是最容易的误读 —— 它不是一层薄薄的 legacy
 facade 架在一个共享的应用服务之上。`ari/viz/services/` 里只有三个模块
 （`state_service`、`file_service`、`launch_service`），而 `/api/v1` 从中调用
-的只有 `launch_service.load_dotenv_files`。除了少数几个底层辅助函数 ——
-检查点目录解析、pid 探测、逐字节保真的树适配器 —— legacy 处理器与 v1 read
-模块是覆盖同一批工件的两套独立实现，而且 v1 侧是刻意不使用 legacy 构建器的
-（§7）。配置抵达一次运行同样有两条路径：legacy 的「保存设置 + 启动」链把选定
-的键映射成派生 CLI 的环境变量，而 `/api/v1` 的配置端点走的是权威解析器。两者
+的只有 `launch_service.load_dotenv_files`。除了几个共享的辅助函数 ——
+检查点目录解析、检查点搜索基路径、pid 探测、逐字节保真的树适配器、`.env`
+链读取、访问日志写入 —— legacy 处理器与 v1 read 模块大体上是覆盖同一批工件
+的两套独立实现。但凡是 legacy 侧的函数已经是唯一真实来源的地方，v1 模块都是
+刻意复用它而不是 fork 它：`catalogs.py` 原样再供 legacy 的 `/api/models` 负载
+（`checkpoint_api._api_models`），只多加一个字段 —— 该 provider 的 API key
+环境变量名；`results.py` 以只读方式调用 `ear._synth_repro_report_from_ors`
+来填充 ORS 的 verdict、分数与叶子计数，因此两个 Results 界面不可能给出不同的
+verdict；`secrets.py` 的写入则经由 `api_settings._upsert_env_key`。正是这些
+复用点让两侧保持同步，而它们同样是 legacy 移除必须拆解的东西：删掉 legacy 的
+`/api/models` 处理器或 `ear.py` 会弄坏 `/api/v1` 的读模型（§7）。
+
+配置抵达一次运行同样有两条路径：legacy 的「保存设置 + 启动」链把选定的键映射成
+派生 CLI 的环境变量，而 `/api/v1` 的配置端点走的是权威解析器。两者
 并非处处一致，其差异就是[配置](../reference/configuration.md)中列举的那些
 dead 与 env-only 的 Settings 键。
 
@@ -280,10 +289,13 @@ v1 端点提供它。缩小这份例外清单是受欢迎的；扩大它则是�
 页面依赖它，`AppContext` 就无法被删除。
 
 **持久化偏好没有存储层。** 语言（`ari_lang`，默认 `ja`）、开发者模式
-（`ari_dev_mode`）与远程 bearer token（`ari_gui_token`）都在各自的使用点上直接
-从 `localStorage` 读写。没有偏好存储的抽象，没有这些键的 schema，也没有迁移
-路径，因此重命名或改变其类型意味着要修改每一个读取方。刷新后的外壳曾规定过一个
-偏好层，但并未实现；请把这三个键名当作真正的契约。
+（`ari_dev_mode`）与远程 bearer token（`ari_gui_token`）都直接落在
+`localStorage` 上，各自藏在一个只管一个键的访问器背后 —— `i18n.storedLang()`、
+`useDevMode.isDevMode()`、`client.getGuiToken()` —— 而 Settings 页面至今仍自己
+从 `localStorage` 读 `ari_lang`。这三者之上没有偏好存储的抽象，没有这些键的
+schema，也没有迁移路径，因此重命名或改变其类型是逐键的改动，没有一个能一次改完
+的地方。刷新后的外壳曾规定过一个偏好层，但并未实现；请把这三个键名当作真正的
+契约。
 
 ---
 
@@ -407,8 +419,11 @@ API 层之所以自己拥有路由、错误信封和 OpenAPI 生成，是因为�
   永远不必读取 `gui_store/` 就能复现一次运行。
 
 **这条接缝的浏览器一侧有三种传输 regime，而且是刻意不统一的。**
-`services/api/client.ts` 是一个 `request` 原语之上的三对包装器，一次调用用
-哪一对，本身就是契约的一部分：
+`services/api/client.ts` 暴露三对包装器，一次调用用哪一对，本身就是契约的
+一部分。六个之中有五个共享同一个 `request` 原语；第六个 `v1Send` 刻意自己
+构造 `RequestInit` —— 因为这个原语的选项形状本身就是被冻结的 legacy wire
+契约的一部分，所以 v1 的写入传输（包括 `If-Match` 头）是放在 `request` 旁边，
+而不是并进它里面：
 
 - `get` / `post` 在任何非 2xx 上抛出
   `Error('<METHOD> <path> failed: <status>')`。legacy 的 `useApi` 钩子及其
@@ -428,8 +443,8 @@ API 层之所以自己拥有路由、错误信封和 OpenAPI 生成，是因为�
 
 这个客户端有两处缺口值得点名，因为它们的缺席很容易被误当成一种策略：
 
-- **没有客户端侧的 abort，也没有 timeout。** 共享的 `request` 原语既不传
-  `AbortSignal`，也不设置期限，因此一个挂起的请求会一直挂到浏览器放弃为止，
+- **没有客户端侧的 abort，也没有 timeout。** 共享的 `request` 原语与 `v1Send`
+  都既不传 `AbortSignal`，也不设置期限，因此一个挂起的请求会一直挂到浏览器放弃为止，
   而离开一个页面并不会取消它仍在飞行中的 fetch。重试策略就是 react-query 的
   默认值（重试一次）加上错误信封上由服务器声明的 `retryable` 标志 —— 后者调用
   方可以查看，但没有任何东西会自动消费它。幂等性是按端点而不是按方法元数据

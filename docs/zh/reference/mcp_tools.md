@@ -21,35 +21,42 @@ last_verified: 2026-07-30
 
 ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页是智能体可调用的所有工具的平铺目录。每个技能的深入介绍位于其各自的 `README.md`；[skills.md](skills.md) 按职责对它们进行分组。
 
-`mcp.json`（位于各技能的 `pyproject.toml` 旁边）是工具*名称*的权威来源；被 `@mcp.tool()` 装饰的函数（或旧版技能的 `@server.list_tools()` 中的条目）定义了参数和返回结构。
+`mcp.json`（位于各技能的 `pyproject.toml` 旁边）是工具*名称*的权威来源，它由 `scripts/sync_skill_metadata.py --write` 从 `skill.yaml` 生成；被 `@mcp.tool()` 装饰的函数（或旧版技能的 `@server.list_tools()` 中的条目）定义了参数和返回结构。三者必须一致——`scripts/check_skill_manifests.py` 会在漂移时失败。
 
 "LLM" 列标记了**P2 例外**工具 — 它们会调用 LLM，因此不是字节确定性的。
 
-## ari-skill-benchmark — 统计 + 绘图（确定性）
+## ari-skill-benchmark — 统计 + 运行比较（确定性）
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `analyze_results` | 从 CSV / JSON / npy 计算摘要统计 | ✗ |
-| `plot` | 从固定 schema 生成确定性 matplotlib 图表 | ✗ |
-| `statistical_test` | 假设检验（t 检验、Mann-Whitney 等） | ✗ |
+| `analyze_results` | 按 `AnalysisRequestV1` 汇总带单位的 typed 样本（inline observations 或不可变 source），给出摘要统计、置信区间与独立性状态 | ✗ |
+| `statistical_test` | 按 `StatisticalTestRequestV1` 运行预先声明的检验族（`auto` / `welch_t` / `student_t` / `paired_t` / `mann_whitney` / `wilcoxon`），附效应量与多重比较校正（`none` / `bonferroni` / `holm` / `benjamini_hochberg`；多于一个比较时必须显式声明校正） | ✗ |
+| `compare_runs` | 按 `RunComparisonRequestV1` 对标量 run 排名，并报告环境 / provenance 的可比性与独立性状态 | ✗ |
+
+绘图不在本技能内：固定 schema 的确定性渲染由 `ari-skill-plot` 的 `render_figure` /
+`generate_figures` 承担。
 
 ## ari-skill-coding — 编写 + 运行代码
 
-`mcp.json` 未列出工具；实际工具列表来自 `src/server.py` 中的 `@server.list_tools()`。
+`mcp.json` 记录工具*名称*，由 `skill.yaml` 生成；完整 schema 仍来自 `src/server.py`
+中的 `@server.list_tools()`。
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
 | `write_code` | 向节点 work_dir 写入文件 | ✗ |
+| `edit_code` | 在已存在的文件中替换一段精确文本，其余部分原样保留。文件已存在时优先于 `write_code`：除非设置 `replace_all`，`old_string` 必须**恰好**匹配一次，因此有歧义的编辑会失败，而不是悄悄改错地方 | ✗ |
 | `run_code` | 执行脚本（含超时 + 捕获） | ✗ |
 | `run_bash` | 临时 bash 命令 | ✗ |
+| `describe_environment` | 返回本集群的环境目录（架构、CPU、GPU、PATH 上的编译器、原始 `module avail`，以及已设置的工具链环境变量的**名字**）。在登录节点上还会逐个报告已配置的计算分区，在计算节点上只报告该节点。无参数 | ✗ |
 | `emit_results` | 向评估器提交 `metrics` + `has_real_data`（可选 `provenance` 参数 → 原样写入 `_provenance` 键，标记每个值是如何测量的，供 claim-evidence 门使用） | ✗ |
 | `read_file` | 读取智能体之前写入的文件 | ✗ |
 
-## ari-skill-evaluator — LLM 指标提取
+## ari-skill-evaluator — 指标契约 + 声明门
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `make_metric_spec` | LLM 从 `experiment.md` 提取指标定义；同时输出运行级 `metric_contract` → `{checkpoint}/metric_contract.json` | ✓ |
+| `make_metric_spec` | 确定性地把一份不可变契约物化为 MetricSpec：优先取 idea 拥有的 `ResearchContractV1`，其次是经人工准入（`reviewer`）的 proposal，再次是已持久化的 `metric_contract.json`；都没有时只返回 parser 证据并标记 `admission_status: "human-review-required"`。同时写出 `{checkpoint}/metric_contract.json` | ✗ |
+| `propose_metric_contract` | 显式的 LLM 提案步骤：从 `idea.json`（或传入的 idea 证据）提出一份 `MetricContractProposalV1` → `{checkpoint}/metric_contract_proposal.json`。输出永远 `requires_human_review`，且不能取代 idea 拥有的 typed 契约 | ✓ |
 | `claim_evidence_hard_gate` | 确定性的声明/证据硬门（执行数据保真度）；strict 模式下在 final 阶段阻止 finalize | ✗ |
 | `evidence_grounded_semantic_review` | 非阻塞的、以证据为基础的语义评审；为 `paper_refine` 输出 `suggested_revisions` | ✓ |
 
@@ -110,15 +117,15 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 ## ari-skill-memory — 祖先作用域节点记忆
 
-该技能使用 `src/server.py` 中的 FastMCP `@mcp.tool()` 装饰器；其静态 `mcp.json`
-已过时（仅列出四个节点作用域工具），但下面所有被装饰的函数在运行时**都会**被暴露。
+该技能使用 `src/server.py` 中的 FastMCP `@mcp.tool()` 装饰器；`mcp.json` 由
+`skill.yaml` 生成，与下面被装饰的 13 个函数一一对应。本技能不暴露任何删除条目的
+工具。
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
 | `add_memory` | 向当前节点的记忆追加条目 | ✗ |
 | `search_memory` | 跨当前节点 + 祖先的嵌入排序搜索 | ✗（服务端嵌入） |
 | `get_node_memory` | 当前节点的所有条目 | ✗ |
-| `clear_node_memory` | 删除当前节点的条目（CoW；祖先不受影响） | ✗ |
 | `get_experiment_context` | 从 Letta 核心记忆获取稳定的实验级事实 | ✗ |
 | `add_experiment_result` | 记录类型化的 experiment_result（CoW：仅自身节点） | ✗ |
 | `add_failure_case` | 记录类型化的 failure_case（CoW：仅自身节点） | ✗ |
@@ -136,10 +143,18 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `run_experiment` | 启动子 ARI 运行 | ✗ |
-| `get_status` | 子运行状态 | ✗ |
-| `list_runs` | 所有已知运行 | ✗ |
-| `get_paper` | 某次运行生成的 LaTeX / PDF | ✗ |
+| `run_experiment` | 幂等地提交一次受配额约束的子 ARI 运行（需要 `idempotency_key`），返回其持久句柄 | ✗ |
+| `get_status` | 子运行的确切持久状态与有界的科研进度 | ✗ |
+| `get_result` | 终态元数据与按 digest 寻址的产物 | ✗ |
+| `stop_experiment` | 取消运行、向下传播终止，并落定唯一的终态 | ✗ |
+| `list_runs` | 只列出认证 principal 拥有的运行（admin 可列全部） | ✗ |
+| `list_children` | 某个父运行 ID 的已授权直接子代 | ✗ |
+| `list_artifacts` | 列出在 allowlist 内、经 digest 校验的产物，不暴露路径 | ✗ |
+| `read_artifact` | 按确切的 SHA-256 身份读取一份已准入的有界产物 | ✗ |
+| `get_paper` | 某次运行的论文产物引用 | ✗ |
+| `get_ear` | 某次运行经校验的 EAR 与证据产物引用 | ✗ |
+| `list_skills` | 该运行经净化的、不可变的 `SKILLS.lock` 视图 | ✗ |
+| `get_workflow` | 锁定的 phase / 工具成员关系（不含原始 workflow 与机密配置） | ✗ |
 
 ## ari-skill-paper — LaTeX 论文撰写
 
@@ -147,13 +162,11 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 |---|---|:---:|
 | `list_venues` | 可用 LaTeX 模板（ACM / NeurIPS / SC / ICPP / arXiv） | ✗ |
 | `get_template` | 获取某 venue 的模板 | ✗ |
-| `generate_section` | LLM 撰写一个章节（引言、方法等） | ✓ |
 | `compile_paper` | pdflatex 编译 | ✗ |
 | `check_format` | LaTeX 格式验证 | ✗ |
-| `review_section` | LLM 对某章节进行规范评审 | ✓ |
-| `revise_section` | LLM 根据评审反馈重写 | ✓ |
-| `write_paper_iterative` | 端到端驱动生成 / 评审 / 修改循环 | ✓ |
-| `review_compiled_paper` | 对已编译 PDF 进行最终评审（图表委托 VLM） | ✓ |
+| `write_paper_iterative` | 端到端驱动整篇论文的 起草 → 反思修订 → 编译 循环；章节级的撰写、评审与改写都是本工具内部的步骤，不再是单独的 MCP 工具 | ✓ |
+| `review_compiled_paper` | 对已编译 PDF 进行最终的 rubric 评审（图表委托 VLM） | ✓ |
+| `finalize_paper_build` | 确定性地封口一次论文 build：把 tex / bib / pdf / 编译记录 / 图表清单 / claim 链接 / 硬门 / 三类评审锁进一份 `PaperBuildV1`；未达 `finalized` 时以 blocking_reasons 报错 | ✗ |
 | `link_paper_claims` | 将 `% CLAIM:Cx:NCx` 锚点与 science_data 声明核对，构建 `paper_claim_links`（确定性） | ✗ |
 | `paper_refine` | 在保留 `% CLAIM:Cx:NCx` 锚点的前提下应用建议的修订（确定性替换 + 有界 LLM 查找/替换） | ✓ |
 | `list_rubrics` | 可用的评审规范 | ✗ |
@@ -195,8 +208,9 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `generate_figures` | 从 `nodes_tree.json` 生成确定性 matplotlib 图表 | ✗ |
-| `generate_figures_llm` | LLM 编写 matplotlib 代码后运行 | ✓ |
+| `render_figure` | 渲染一份规范的 `FigureSpecV1`，不执行调用方提供的任何代码 | ✗ |
+| `generate_figures` | 从原生 `ScienceDataV1` 生成确定性的默认 spec 并渲染 | ✗ |
+| `generate_figures_llm` | 让 LLM 只挑选被准入的字段（`metric_id` / `chart_type` / `x_mode`），数值、单位、caption、路径与产物字节仍由固定渲染器确定性产出 | ✓ |
 
 ## ari-skill-replicate — 规范自动生成（v0.7.0）
 
@@ -204,6 +218,7 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 |---|---|:---:|
 | `generate_rubric` | 两阶段（骨架 + 子树）PaperBench 规范合成 | ✓ |
 | `audit_rubric` | LLM 审核叶节点中模糊/不可验证/重复的标准 | ✓ |
+| `suggest_target_leaf_count` | 按论文长度估算目标叶数与词数（供 GUI Wizard "Target leaves" 字段预填） | ✗ |
 
 ### `generate_rubric` — venue 条件化模板（未发布）
 
@@ -226,7 +241,8 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 ## ari-skill-transform — 树遍历 + EAR 流水线
 
-`mcp.json` 未列出工具（该文件仅供内部使用）；`src/server.py` 中的 `@mcp.tool()` 装饰器是权威来源。
+`mcp.json` 由 `skill.yaml` 生成并列出下面五个名字；参数与返回结构以 `src/server.py`
+中的 `@mcp.tool()` 装饰器为准。
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
@@ -238,23 +254,27 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 ## ari-skill-vlm — 图表 / 表格评审（VLM）
 
-`mcp.json` 未列出工具；该技能仅暴露内部评审辅助函数。
+`mcp.json` 由 `skill.yaml` 生成并列出下面三个名字。评审对象都必须来自已校验的
+产物：图表按 `figure_id` 从 `FigureBatchV1` 中选出，表格则是封闭 workspace 下按
+内容寻址的产物。
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `review_figure` | VLM 读取图像 + 标题，返回评审意见 | ✓（视觉） |
-| `review_table` | VLM 评审表格 | ✓（视觉） |
-| `review_paper_figures` | 批量评审论文目录中的所有图表 | ✓（视觉） |
+| `review_figure` | 按 `figure_id` 从已校验的 `FigureBatchV1` 中选出一张图评审 | ✓（视觉） |
+| `review_figures_all` | 批量评审该 batch 中的每一张图，逐图保留失败与原始证据（受 `budget` 的并发 / 图数 / token 上限约束） | ✓（视觉） |
+| `review_table` | 按封闭 schema 评审一份内容寻址的表格产物 | ✓（视觉） |
 
 ## ari-skill-web — 搜索 + 获取
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo（无需 API 密钥） | ✗ |
-| `fetch_url` | URL → 可读文本 | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | 从种子论文遍历引用图 | ✗ |
+| `web_search` | DuckDuckGo（无需 API 密钥），走与检索工具相同的 record / replay 契约 | ✗ |
+| `fetch_url` | URL → 可读文本，经 pinned-IP 的 SSRF 与重定向管控 | ✗ |
+| `search_papers` | 检索**一个**钉定的学术 provider（`semantic-scholar` / `arxiv` / `alphaxiv`，由 `provider` 参数或 `ARI_RETRIEVAL_BACKEND` 选定）并返回 `RetrievalRecordV1`。`record` / `live` 绝不在中途换 provider，`replay` 不做任何网络访问且需要先前 record 返回的 `snapshot_ref`；复合选择（`both`）被显式拒绝——请发两次钉定调用再按 alias 合并 | ✗ |
+| `walk_citations` | 从种子 paper id 出发、带环检测与请求预算上限的 Semantic Scholar 引用图遍历（`direction` 取 `references` / `citations`） | ✗ |
+| `rerank_retrieval_records` | 显式的随机性重排：LLM 按研究问题对已检索的记录重新排序（确定性检索路径绝不调用它），并记录 model / prompt digest / 输入输出 digest | ✓ |
+| `list_uploaded_files` | 列出检查点 `uploads/` 下用户上传的文件 | ✗ |
+| `read_uploaded_file` | 按文件名读取上传文件的文本内容（带二进制检测） | ✗ |
 
 ## 另请参阅
 

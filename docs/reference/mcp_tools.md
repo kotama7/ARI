@@ -34,13 +34,17 @@ entry in `@server.list_tools()`) defines the live arguments and result shape.
 The "LLM" column marks tools that are **P2 exceptions** — they call
 an LLM and therefore are not byte-deterministic.
 
-## ari-skill-benchmark — statistics + plots (deterministic)
+## ari-skill-benchmark — typed analysis (deterministic)
+
+All three tools take exactly one `request` object and return an
+`AnalysisResultV1`. Figures are not this skill's job — `ari-skill-plot`
+renders them.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `analyze_results` | Summary stats from CSV / JSON / npy | ✗ |
-| `plot` | Deterministic matplotlib figure from a fixed schema | ✗ |
-| `statistical_test` | Hypothesis tests (t-test, Mann-Whitney, ...) | ✗ |
+| `analyze_results` | Summary stats over unit-bearing `MetricSampleSetV1` datasets — observations inline, or a digest-bound CSV / JSON / npy column in a closed workspace | ✗ |
+| `statistical_test` | A pre-declared family of comparisons (`auto`, `welch_t`, `student_t`, `paired_t`, `mann_whitney`, `wilcoxon`) with effect sizes; more than one comparison is refused unless `correction` is set to something other than `none` | ✗ |
+| `compare_runs` | Rank scalar `RunRecordV1` runs against a baseline and report environment compatibility, provenance differences, and whether replicate independence is `declared` or `not-established` | ✗ |
 
 ## ari-skill-coding — write + run code
 
@@ -59,11 +63,12 @@ an LLM and therefore are not byte-deterministic.
 | `emit_results` | Emit `metrics` + `has_real_data` for the evaluator (optional `provenance` arg → written verbatim as the `_provenance` key tagging how each value was measured, for the claim-evidence gate). The response's `contract_warnings` may include suggestion-only "POSSIBLE name matches" hints when an emitted key lexically resembles a required evidence name — advisory only: nothing is auto-bound and the gate never consumes them | ✗ |
 | `read_file` | Read a file the agent wrote earlier | ✗ |
 
-## ari-skill-evaluator — LLM metric extraction
+## ari-skill-evaluator — metric contracts + claim gates
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `make_metric_spec` | LLM extracts metric definitions from `experiment.md`; also emits a run-level `metric_contract` → `{checkpoint}/metric_contract.json`. Mint-once: when a persisted claims-bearing contract already exists, the call returns it verbatim with `contract_frozen: true` instead of re-extracting (per-node spec fields like the scoring guide stay per-call) | ✓ |
+| `make_metric_spec` | Materialize the run-level metric contract from an immutable idea-owned `ResearchContractV1`, or from a proposal a named `reviewer` has admitted, and persist the projection to `{checkpoint}/metric_contract.json`. Mint-once: a persisted projection whose `projection_digest` differs from the new one is a refusal, not an overwrite. With no admitted contract the call still returns the `experiment.md` parser output, but as evidence only — `contract_frozen: false`, `admission_status: "human-review-required"` | ✗ |
+| `propose_metric_contract` | The explicitly requested LLM proposal step: reads the idea (`idea_json`, or `{checkpoint}/idea.json`) and emits a `MetricContractProposalV1` with `requires_human_review: true` to `metric_contract_proposal.json`. It never admits its own output, and it refuses an idea that already carries a typed `ari.research-contract/v1` contract | ✓ |
 | `claim_evidence_hard_gate` | Deterministic claim/evidence hard gate (execution data fidelity); strict mode blocks finalize on the final phase | ✗ |
 | `evidence_grounded_semantic_review` | Non-blocking, evidence-grounded semantic review; emits `suggested_revisions` for `paper_refine` | ✓ |
 
@@ -131,15 +136,14 @@ is reported in `virsci_integration_status` (`real_wrap` vs `reimpl: ...`).
 ## ari-skill-memory — ancestor-scoped node memory
 
 This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`; its
-static `mcp.json` is stale (it lists only the four node-scope tools) but
-every decorated function below **is** exposed at runtime.
+`mcp.json` lists the same thirteen names, and every decorated function below
+**is** exposed at runtime.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `add_memory` | Append an entry to the current node's memory | ✗ |
 | `search_memory` | Embedding-ranked search across the current node + ancestors | ✗ (server-side embedding) |
 | `get_node_memory` | All entries for the current node | ✗ |
-| `clear_node_memory` | Drop the current node's entries (CoW; ancestors untouched) | ✗ |
 | `get_experiment_context` | Stable, experiment-level facts from Letta core memory | ✗ |
 | `add_experiment_result` | Record a typed experiment_result (CoW: self node only) | ✗ |
 | `add_failure_case` | Record a typed failure_case (CoW: self node only) | ✗ |
@@ -154,14 +158,31 @@ every decorated function below **is** exposed at runtime.
 The skill explicitly declares "no LLM calls" in its design doc — see
 `ari-skill-memory/README.md`.
 
+There is no destructive clear. Entries are never dropped by an agent-visible
+operation, and `ari-skill-memory/tests/test_cow.py` pins the absence
+(`assert not hasattr(server, "clear_node_memory")`). To reduce a node's memory,
+write a consolidated typed entry with `consolidate_node_memory`, which derives
+from the node's `node_report` and is itself CoW-guarded to the current node.
+
 ## ari-skill-orchestrator — recursive ARI runner
+
+Every tool is authorized against the calling principal; the read tools return
+digest-addressed references rather than filesystem paths.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `run_experiment` | Launch a child ARI run | ✗ |
-| `get_status` | Status of a child run | ✗ |
-| `list_runs` | All known runs | ✗ |
-| `get_paper` | Generated LaTeX / PDF for a run | ✗ |
+| `run_experiment` | Idempotently submit a child ARI run under an explicit `idempotency_key` and quota block (`max_nodes`, `max_total_nodes`, `max_descendant_runs`, `max_cost_usd`, `timeout_minutes`), returning its durable handle | ✗ |
+| `get_status` | Durable state and bounded scientific progress for a run | ✗ |
+| `get_result` | Terminal metadata plus digest-addressed artifacts for a run | ✗ |
+| `stop_experiment` | Cancel a run, propagate termination to descendants, and settle one terminal state | ✗ |
+| `list_runs` | Runs owned by the authenticated principal (admins may list all) | ✗ |
+| `list_children` | Authorized direct descendants of one exact parent run ID | ✗ |
+| `list_artifacts` | Allowlisted, digest-verified artifacts for a run — no paths are exposed | ✗ |
+| `read_artifact` | Read one bounded admitted artifact by its exact SHA-256 identity | ✗ |
+| `get_paper` | Paper artifact references for an authorized run | ✗ |
+| `get_ear` | Verified EAR and evidence artifact references for an authorized run | ✗ |
+| `list_skills` | The sanitized, immutable `SKILLS.lock` view for one run | ✗ |
+| `get_workflow` | Locked phase / tool membership, without raw workflow or secret config | ✗ |
 
 ## ari-skill-paper — LaTeX paper writing
 
@@ -169,13 +190,11 @@ The skill explicitly declares "no LLM calls" in its design doc — see
 |---|---|:---:|
 | `list_venues` | Available LaTeX templates (ACM / NeurIPS / SC / ICPP / arXiv) | ✗ |
 | `get_template` | Fetch a venue's template | ✗ |
-| `generate_section` | LLM writes a section (intro, methods, ...) | ✓ |
 | `compile_paper` | pdflatex compile | ✗ |
 | `check_format` | LaTeX format validation | ✗ |
-| `review_section` | LLM rubric review of one section | ✓ |
-| `revise_section` | LLM rewrite using review feedback | ✓ |
-| `write_paper_iterative` | Drive the generate / review / revise loop end-to-end | ✓ |
+| `write_paper_iterative` | Fill the whole venue template in one call, then run `max_revision_rounds` reflection rounds over the same message history. There is no per-section tool: drafting and revision are stages inside this one, and it returns `latex` / `sections` / `reviews` / `revision_counts` / `paper_build` | ✓ |
 | `review_compiled_paper` | Final-pass review on compiled PDF (delegates to VLM for figures) | ✓ |
+| `finalize_paper_build` | Lock the exact evidence set — tex, bib, PDF, compile record, figures manifest, claim links, hard gate, text / visual / semantic reviews — into a `PaperBuildV1` at `output_path`. Raises when the build is not `finalized`, listing `blocking_reasons` | ✗ |
 | `link_paper_claims` | Reconcile `% CLAIM:Cx:NCx` anchors against science_data claims, build `paper_claim_links` (deterministic) | ✗ |
 | `paper_refine` | Apply suggested revisions while preserving `% CLAIM:Cx:NCx` anchors (deterministic subs + bounded LLM find/replace) | ✓ |
 | `list_rubrics` | Available reviewer rubrics |  ✗ |
@@ -227,8 +246,9 @@ single calling vocabulary, see
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `generate_figures` | Deterministic matplotlib figures from `nodes_tree.json` | ✗ |
-| `generate_figures_llm` | LLM writes matplotlib code, then runs it | ✓ |
+| `render_figure` | Render one canonical `FigureSpecV1` into a closed workspace and return its manifest. The request object is exactly `spec` + `workspace` + `relative_directory`; no caller code is executed | ✗ |
+| `generate_figures` | Derive deterministic default specs from a native `ScienceDataV1` and render them. `revision` must be `0` — the deterministic path has no feedback round | ✗ |
+| `generate_figures_llm` | The LLM chooses only `metric_id`, `chart_type` and `x_mode`; numeric values, units, captions, paths and artifact bytes all come from the verified science record through the same fixed renderer. `revision > 0` requires both a `vlm_feedback` document and the `previous_batch_path` it binds | ✓ |
 
 ## ari-skill-replicate — rubric auto-generation (v0.7.0)
 
@@ -236,6 +256,7 @@ single calling vocabulary, see
 |---|---|:---:|
 | `generate_rubric` | Two-stage (skeleton + subtree) PaperBench rubric synthesis | ✓ |
 | `audit_rubric` | LLM audits leaves for vague / unverifiable / duplicate criteria | ✓ |
+| `suggest_target_leaf_count` | Return `{target, word_count}` — the leaf count `generate_rubric` would auto-compute for a paper, so a caller can pre-fill it instead of guessing | ✗ |
 
 ### `generate_rubric` — venue-conditioned templates (unreleased)
 
@@ -266,8 +287,8 @@ for the YAML schema and authoring guide.
 
 ## ari-skill-transform — tree walk + EAR pipeline
 
-`mcp.json` has no tools listed (the file is internal-only); the
-`@mcp.tool()` decorators in `src/server.py` are authoritative.
+`mcp.json` lists the same five names, generated from `skill.yaml`; the
+`@mcp.tool()` decorators in `src/server.py` carry the argument shapes.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
@@ -279,24 +300,37 @@ for the YAML schema and authoring guide.
 
 ## ari-skill-vlm — figure / table review (VLM)
 
-`mcp.json` has no tools listed; the skill exposes internal review
-helpers only.
+Reviews are artifact-bound: the target is selected out of a verified
+`FigureBatchV1` or named by content-addressed artifact reference, never by a
+loose path, and the criteria profile is versioned (`figure-publication/v1` by
+default).
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `review_figure` | VLM reads an image + caption, returns critique | ✓ (vision) |
-| `review_table` | VLM reviews a table | ✓ (vision) |
-| `review_paper_figures` | Batch review of every figure in a paper dir | ✓ (vision) |
+| `review_figure` | Review one figure picked out of a `FigureBatchV1` by `figure_id`; an ID the batch does not carry is refused | ✓ (vision) |
+| `review_figures_all` | Review every figure in one batch under a `ReviewBudgetV1` (`max_figures`, `max_concurrency`, `max_output_tokens`); a figure that fails individually is recorded as a failed review rather than sinking the batch | ✓ (vision) |
+| `review_table` | Review one content-addressed table artifact under a closed workspace. The request schema is exact — `workspace`, `target_id`, `artifact`, `context`, `criteria_profile_id`, `iteration` (0–2), `max_output_tokens` — and an unsupported media type comes back as an `artifact-error` review | ✓ (vision) |
 
 ## ari-skill-web — search + fetch
 
+Retrieval is one contract, not one tool per provider. Every network tool takes
+`mode` — `record` (fetch and snapshot), `live` (fetch, no snapshot), or
+`replay` (no network at all; requires the checkpoint-relative `snapshot_ref` a
+previous record returned) — and returns `RetrievalRecordV1` rows.
+
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `web_search` | DuckDuckGo (no API key) | ✗ |
-| `fetch_url` | URL → readable text | ✗ |
-| `search_arxiv` | arXiv API | ✗ |
-| `search_semantic_scholar` | Semantic Scholar API | ✗ |
-| `collect_references_iterative` | Walk the citation graph from a seed paper | ✗ |
+| `web_search` | DuckDuckGo (no API key), `n` clamped to 10 | ✗ |
+| `fetch_url` | URL → readable text, through pinned-IP SSRF and redirect controls | ✗ |
+| `search_papers` | Search **one** pinned academic provider — `semantic-scholar` (the default), `arxiv` or `alphaxiv`, from the `provider` argument or `ARI_RETRIEVAL_BACKEND`. There is no per-provider tool and no composite: `provider="both"` is refused, with the instruction to issue two pinned calls and merge by aliases | ✗ |
+| `walk_citations` | Bounded Semantic Scholar citation walk with cycle detection, `direction` `references` or `citations`, capped by `max_depth` (≤5), `max_nodes` (≤500) and `request_budget` | ✗ |
+| `rerank_retrieval_records` | Reorder already-retrieved `RetrievalRecordV1` rows against a research question. Explicitly stochastic and separate: the deterministic retrieval path never calls it, and the result carries the model, prompt digest, input digest and output digest that produced the order | ✓ |
+| `list_uploaded_files` | List `{name, size_bytes}` under the checkpoint's `uploads/` | ✗ |
+| `read_uploaded_file` | Read one uploaded text file, with binary detection | ✗ |
+
+The retrieval backend is chosen per call or by environment; there is no tool
+that mutates it for the process, so two concurrent callers cannot change each
+other's provider (`ari-core/tests/test_retrieval_backend.py` pins that absence).
 
 ## ari-skill-knowledge — read-only Knowledge surface
 
@@ -330,6 +364,26 @@ Neither package exposes registration, promotion, revocation, lock rewrite,
 tolerance/oracle replacement, or `force_pass`. Catalog administration is a
 human-authenticated CLI/PR workflow. See
 [Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md).
+
+## ari-skill-tool-registry — brokered access to large MCP collections
+
+Five federation operations stand in for an entire upstream collection, so a
+collection of thousands of leaves costs the agent five tool slots rather than
+thousands. Leaf provider schemas are never exposed through `tools/list`.
+
+| Tool | Purpose | LLM |
+|---|---|:---:|
+| `discover` | Search the immutable federated catalog under `lexical` / `exact` / `diverse` strategy. Returns bounded summaries and opaque `tool_ref` values, at most 25 per page; it executes nothing | ✗ |
+| `describe` | Read one paginated descriptor `section` (`summary`, `schema`, `provenance`, `admission`, `limitations`, `all`) for one exact `tool_ref`. Provider text and schemas are handled as untrusted data | ✗ |
+| `invoke` | Invoke one admitted leaf by immutable `tool_ref` in `live`, `record` or `replay` mode. A bare or unqualified name is refused | ✗ |
+| `get_status` | Poll an asynchronous registry `handle` through the lifecycle operations bound into its immutable descriptor | ✗ |
+| `get_result` | Fetch the final normalized result for an asynchronous registry `handle` | ✗ |
+
+`invoke`, `get_status` and `get_result` declare a run-scope context
+requirement, so their input schemas declare `ari_context` for the transport to
+fill — the same injection rule as `measure_counters` above. For catalog
+identity, admission levels, and the provider adapters, see
+[Federated Scientific Tool Registry](tool_registry.md).
 
 ## See also
 

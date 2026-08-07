@@ -30,9 +30,13 @@ sources:
     role: implementation
   - path: ari-core/ari/manuscript/coordinator.py
     role: implementation
+  - path: ari-skill-paper-re/src/_compute/computer.py
+    role: implementation
   - path: scripts/snapshot_contracts.py
     role: implementation
   - path: ari-core/tests/test_manuscript_complete.py
+    role: test
+  - path: ari-core/tests/test_manuscript_assurance_boundary.py
     role: test
   - path: ari-core/tests/test_rqgm_mode.py
     role: test
@@ -109,9 +113,24 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 
 Known duplication to consolidate toward these owners (not incorrect behaviour,
 but drift risk): `viz/api_memory.py` re-derives container-runtime dispatch.
-`ari-skill-paper-re` no longer re-implements either half — it submits through
-`ari_skill_hpc.SlurmScheduler` and runs its local attempts through
-`ari.execution.execute_local`.
+`ari-skill-paper-re`'s **reproduce path** no longer re-implements either half —
+it submits through `ari_skill_hpc.SlurmScheduler` (`src/server.py`) and runs its
+local attempts through `ari.execution.execute_local` (`src/sandbox.py`). Its
+**PaperBench agent computer** (`src/_compute/computer.py`) is still a second
+implementation of both: `ApptainerComputer.send_shell_command` hand-builds an
+`apptainer exec` argv and `LocalComputer.send_shell_command` a bare
+`bash --noprofile --norc -c` argv, and both dispatch through the module's own
+`_run_subprocess` (`asyncio.create_subprocess_exec(..., start_new_session=True)`
+plus a `killpg` SIGTERM→SIGKILL group teardown) rather than through
+`ari.execution`; the module's only core import is
+`ari.public.execution.WorkspaceRefV1`. The container half has already drifted
+from `container_shell_argv`: the skill emits `--cleanenv --containall --no-home`
+with `--bind {work_dir}:/work:rw --pwd /work` and no `--writable-tmpfs`, where
+core emits `--cleanenv --containall --writable-tmpfs` with a bare
+`--bind <workdir>`. This is production code, not a dead seam —
+`src/server.py` → `_replicator_agent.run_replicator_agent` →
+`_compute.make_computer` — so it is the file to read when auditing
+container-exec or local-exec duplication.
 
 **`ari.viz.state` process-handle coupling.** `ari/viz/state.py` holds live OS
 handles as module globals (imported as `_st`): `_last_proc` (most-recent
@@ -301,7 +320,7 @@ names an RQGM type:
 |---------|-------|
 | Mode | plain `str` keyword arguments — `compile_manuscript(..., exploration_mode="simple_bfts", paper_mode="linear")`, forwarded to `build_exploration_snapshot(..., exploration_mode=...)` and normalised to one of the two literals before it lands on the contract. There is no RQGM provider object and no typed RQGM block in either signature; `manuscript/runtime.py:prepare_runtime_manuscript` fills both from `ARI_MANUSCRIPT_EXPLORATION_MODE` / `ARI_MANUSCRIPT_PAPER_MODE`. |
 | Node state | duck-typed reads off whatever node objects the caller already holds. `snapshot._get(value, name, default)` is `value.get(...)` for a mapping and `getattr(...)` otherwise, so `attestation_refs`, `verified_target_digest` and `metrics` are looked up by name, and a `simple_bfts` node that carries none of them simply yields the default. |
-| Evidence | files read at checkpoint-relative paths, never handed over as objects. `snapshot._attestation_artifacts` digests whatever relative path a node's `attestation_refs` names and validates it as `HarnessAttestationV1` (statuses `present` / `missing` / `invalid`); `authority.capture_repair_authority` only digests the fixed `_AUTHORITY_FILES` list (statuses `present` / `absent` / `unsafe_symlink`) without parsing it. In both, an absent or symlinked path yields a recorded status, not an exception. |
+| Evidence | files read at checkpoint-relative paths, never handed over as objects. `snapshot._attestation_artifacts` digests whatever relative path a node's `attestation_refs` names and validates it as `HarnessAttestationV1` (statuses `present` / `stale` / `missing` / `invalid` — `stale` is the attestation that parses and whose `node_id` matches, but whose `target_digest` does not match the node's `verified_target_digest`, so the evidence stays visible while the node cannot certify publication; it is neither discardable like `invalid` nor publishable like `present`, and `test_manuscript_assurance_boundary.py::test_stale_target_attestation_remains_visible_but_cannot_publish` pins that); `authority.capture_repair_authority` only digests the fixed `_AUTHORITY_FILES` list (statuses `present` / `absent` / `unsafe_symlink`) without parsing it. In both, an absent or symlinked path yields a recorded status, not an exception. |
 
 **The reverse edge is allowed and used.** `ari.rqgm.paper_runtime` imports
 `ari.manuscript.digest.path_has_symlink_component` to re-check archive inputs,

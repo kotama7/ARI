@@ -521,17 +521,24 @@ afterwards on the edited file. What the handoff guarantees is that nothing
 re-authors or revises the winner's content between materialisation and the
 claim-evidence gate that reads it.
 
-The outcome record names the winner it materialised. When the winning draft's
-`.tex` is readable, `manuscript_authoring` additionally carries `winner_id` and
-`winner_tex_sha256` — the SHA-256 of that draft's own `.tex`, the exact bytes
-copied to the canonical path — so a build can be tied back to the candidate
-record in `paper_draft_archive.jsonl`. One consequence is deliberate and worth
-stating: an archive winner never receives the linear pipeline's `paper_refine`
-revision pass. The archive's own reviewer-driven `paper_refine` children are
-where that revision happens instead, which makes it exactly as live as the
-active reviewer — the deterministic, LLM-free default reviewer that runs until a
-governed `paper_reviewer` prompt is active returns no actionable revisions at
-all.
+The outcome record names the winner it materialised. Whenever the winning draft
+resolves to a `.tex`, `manuscript_authoring` additionally carries `winner_id`
+and `winner_tex_sha256` — the SHA-256 of that draft's own `.tex`, the exact
+bytes copied to the canonical path, left empty when those bytes cannot be read —
+so a build can be tied back to the candidate record in
+`paper_draft_archive.jsonl`. One consequence is deliberate and worth stating: an
+archive winner never receives the linear pipeline's `paper_refine` revision
+pass. The archive's own reviewer-driven `paper_refine` children are where that
+revision happens instead, which makes it exactly as live as the reviewer each
+round builds. That reviewer is live from the first round on the default path:
+with no reviewer oracle injected, `run_archive` takes the co-evolution branch,
+and every round rebuilds a `GovernedPaperReviewer` from the epoch's active
+`paper_reviewer` prompt — falling back to the founding prompt bytes when
+governance has adopted none — whose `review` returns a real revision instruction
+even with no revision seam injected. The deterministic, LLM-free default
+reviewer, whose `review` returns no actionable revisions at all, is reached only
+where the inner RQGM runtime cannot be built and the archive degrades to a
+single ungoverned round, or where a caller injects its own reviewer oracle.
 
 ## Program evaluation
 

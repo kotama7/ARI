@@ -149,11 +149,17 @@ ledger. This helper is not called by runtime authoring.
 
 ## Removed runtime paths and rollback
 
-Version 0.3.0 removed per-section `generate_section`, `review_section`, and
-`revise_section`, generic node-tree metric discovery, the model figure inserter,
-duplicate LaTeX parsing, caller-selected compiler paths, and raw subprocess
-compilation. Use whole-document authoring/review, native contracts, the fixed
-renderer, shared parser, and common execution contract respectively.
+Version 0.3.0 removed the per-section authoring runtime, generic node-tree
+metric discovery, the model figure inserter, duplicate LaTeX parsing,
+caller-selected compiler paths, and raw subprocess compilation. No registered
+tool is section-scoped any more: `write_paper_iterative` authors the whole
+document, `review_compiled_paper` reviews the whole document against the
+rubric, and `paper_refine` performs revision — it applies the
+`suggested_revisions` that `merge_reviews` emits, and a revision entry may name
+a `section`, but the edit lands as a targeted, anchor-preserving replacement in
+the one manuscript. Metrics come from the native `ScienceDataV1` contract,
+figures from the fixed renderer, claim parsing from the shared parser, and
+compilation from the common execution contract.
 
 The rollback boundary is the last v0.2.0 paper Skill commit. Published
 `PaperBuildV1`, legacy rubric migration, and pre-batch call readers are retained

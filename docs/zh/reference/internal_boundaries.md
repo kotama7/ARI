@@ -30,9 +30,13 @@ sources:
     role: implementation
   - path: ari-core/ari/manuscript/coordinator.py
     role: implementation
+  - path: ari-skill-paper-re/src/_compute/computer.py
+    role: implementation
   - path: scripts/snapshot_contracts.py
     role: implementation
   - path: ari-core/tests/test_manuscript_complete.py
+    role: test
+  - path: ari-core/tests/test_manuscript_assurance_boundary.py
     role: test
   - path: ari-core/tests/test_rqgm_mode.py
     role: test
@@ -73,7 +77,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 | `ari/mcp/connection.py` | `SkillConnection` —— 经由 MCP SDK 的 `stdio_client`（一个封装，而非裸 spawn）派生一个技能的 stdio 服务器。`ari/mcp/client.py:MCPClient` 负责这些连接之上的池化、发现与分派。 |
 | `ari-skill-hpc/ari_skill_hpc/scheduler.py` | 规范的 SLURM submit/status/cancel（`SlurmScheduler`，由 `LocalCommandRunner` ＝ `asyncio.create_subprocess_exec` 或 `RemoteCommandRunner` ＝ paramiko 驱动）；提交一律为 `sbatch --parsable --export=NIL`。`ari_skill_hpc/slurm.py` 仍以 `SlurmClient` 的形式持有一个按环境配置的调度器。 |
 
-应向这些归属者整合的已知重复（并非错误行为，但有漂移风险）：`viz/api_memory.py` 重新推导了容器运行时分派。`ari-skill-paper-re` 已不再重新实现其中任何一半 —— 它经由 `ari_skill_hpc.SlurmScheduler` 提交，并经由 `ari.execution.execute_local` 运行本地尝试。
+应向这些归属者整合的已知重复（并非错误行为，但有漂移风险）：`viz/api_memory.py` 重新推导了容器运行时分派。`ari-skill-paper-re` 的 **reproduce 路径**已不再重新实现其中任何一半 —— 它经由 `ari_skill_hpc.SlurmScheduler`（`src/server.py`）提交，并经由 `ari.execution.execute_local`（`src/sandbox.py`）运行本地尝试。但它的 **PaperBench agent computer**（`src/_compute/computer.py`）仍是这两半各自的第二份实现：`ApptainerComputer.send_shell_command` 自行拼装 `apptainer exec` 的 argv，`LocalComputer.send_shell_command` 自行拼装裸的 `bash --noprofile --norc -c` argv，两者都走该模块自带的 `_run_subprocess`（`asyncio.create_subprocess_exec(..., start_new_session=True)` 加上 `killpg` 的 SIGTERM→SIGKILL 进程组拆除），而不是走 `ari.execution`；该模块从 core 引入的只有 `ari.public.execution.WorkspaceRefV1`。容器那一半已经相对 `container_shell_argv` 发生漂移：技能侧发出 `--cleanenv --containall --no-home`，配 `--bind {work_dir}:/work:rw --pwd /work` 且没有 `--writable-tmpfs`；core 侧发出 `--cleanenv --containall --writable-tmpfs`，配裸的 `--bind <workdir>`。这是生产代码而非死接缝（`src/server.py` → `_replicator_agent.run_replicator_agent` → `_compute.make_computer`），因此在审计容器执行或本地执行的重复时，正是应当阅读的那个文件。
 
 **`ari.viz.state` 的进程句柄耦合。** `ari/viz/state.py` 将活动的操作系统句柄作为模块全局变量（以 `_st` 导入）持有：`_last_proc`（最近一次实验的 Popen；由 `api_process._api_stop` 通过 `os.killpg(os.getpgid(pid))` 拆除）、`_running_procs`（checkpoint-path→Popen 映射，由两条启动路径写入），以及 `_gpu_monitor_proc`（其逻辑位于 `api_process.py`；服务器会跨重启回收一个陈旧的监视器）。这是"避免通过全局可变状态产生隐藏耦合"这一告诫的典范例子 —— 只在有意为之时才触碰它的生命周期。
 
@@ -216,7 +220,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 |------|------|
 | 模式 | 普通的 `str` 关键字参数 —— `compile_manuscript(..., exploration_mode="simple_bfts", paper_mode="linear")` 转发给 `build_exploration_snapshot(..., exploration_mode=...)`，并在落到契约之前被归一化为两个字面量之一。两个签名里都没有 RQGM 提供者对象，也没有带类型的 RQGM 块；`manuscript/runtime.py:prepare_runtime_manuscript` 从 `ARI_MANUSCRIPT_EXPLORATION_MODE` / `ARI_MANUSCRIPT_PAPER_MODE` 填入两者。 |
 | 节点状态 | 对调用方本就持有的节点对象做鸭子类型读取。`snapshot._get(value, name, default)` 对映射是 `value.get(...)`，否则是 `getattr(...)`，因此 `attestation_refs`、`verified_target_digest` 与 `metrics` 都按名字查找；不带这些字段的 `simple_bfts` 节点直接得到默认值。 |
-| 证据 | 从检查点相对路径读取的文件，绝不以对象形式交接。`snapshot._attestation_artifacts` 对节点 `attestation_refs` 所指的相对路径取摘要，并按 `HarnessAttestationV1` 校验（status 为 `present` / `missing` / `invalid`）；`authority.capture_repair_authority` 只对固定的 `_AUTHORITY_FILES` 清单取摘要而不解析（status 为 `present` / `absent` / `unsafe_symlink`）。两者遇到路径缺失或含符号链接时，都是记录一个 status，而不是抛出异常。 |
+| 证据 | 从检查点相对路径读取的文件，绝不以对象形式交接。`snapshot._attestation_artifacts` 对节点 `attestation_refs` 所指的相对路径取摘要，并按 `HarnessAttestationV1` 校验（status 为 `present` / `stale` / `missing` / `invalid` —— `stale` 指能够解析且 `node_id` 匹配、但 `target_digest` 与该节点的 `verified_target_digest` 不一致的证明：证据仍然可见，而该节点无法 certify 发表；它既不像 `invalid` 那样可丢弃，也不像 `present` 那样可发表，该行为由 `test_manuscript_assurance_boundary.py::test_stale_target_attestation_remains_visible_but_cannot_publish` 钉住）；`authority.capture_repair_authority` 只对固定的 `_AUTHORITY_FILES` 清单取摘要而不解析（status 为 `present` / `absent` / `unsafe_symlink`）。两者遇到路径缺失或含符号链接时，都是记录一个 status，而不是抛出异常。 |
 
 **反向的边是被允许且实际使用的。** `ari.rqgm.paper_runtime` 导入
 `ari.manuscript.digest.path_has_symlink_component` 来复查归档输入，而

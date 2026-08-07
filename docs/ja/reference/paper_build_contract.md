@@ -137,10 +137,13 @@ authoringから呼ばれません。
 
 ## 削除済みruntime経路とrollback
 
-version 0.3.0では、section単位の`generate_section`、`review_section`、`revise_section`、genericな
-node-tree metric discovery、model figure inserter、重複LaTeX parser、caller指定compiler path、raw
-subprocess compileを削除しました。それぞれwhole-document authoring/review、native contract、fixed
-renderer、shared parser、common execution contractを使います。
+version 0.3.0では、section単位のauthoring runtime、genericなnode-tree metric discovery、model figure
+inserter、重複LaTeX parser、caller指定compiler path、raw subprocess compileを削除しました。registerされた
+toolにsection単位のものはもうありません。document全体のauthoringは`write_paper_iterative`、document全体の
+rubric reviewは`review_compiled_paper`、revisionは`paper_refine`が担当します。`paper_refine`は
+`merge_reviews`が出力する`suggested_revisions`を適用し、revision entryが`section`を指していても、編集は
+単一manuscript上でanchorを保つtargeted replacementとして着地します。metricはnativeな`ScienceDataV1`契約、
+figureはfixed renderer、claim parseはshared parser、compileは共通execution contractから得ます。
 
 rollback boundaryは最後のv0.2.0 paper Skill commitです。公開済み`PaperBuildV1`、legacy rubric
 migration、pre-batch call readerはdata readerとして保持します。replayがunsafeなproducer経路を

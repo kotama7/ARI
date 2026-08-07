@@ -30,9 +30,13 @@ sources:
     role: implementation
   - path: ari-core/ari/manuscript/coordinator.py
     role: implementation
+  - path: ari-skill-paper-re/src/_compute/computer.py
+    role: implementation
   - path: scripts/snapshot_contracts.py
     role: implementation
   - path: ari-core/tests/test_manuscript_complete.py
+    role: test
+  - path: ari-core/tests/test_manuscript_assurance_boundary.py
     role: test
   - path: ari-core/tests/test_rqgm_mode.py
     role: test
@@ -112,9 +116,24 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 
 これらのオーナーへ統合していくべき既知の重複（誤った挙動ではないが、ドリフトの
 リスク）: `viz/api_memory.py` はコンテナランタイムのディスパッチを再導出して
-います。`ari-skill-paper-re` はもうそのどちらも再実装しておらず、投入は
-`ari_skill_hpc.SlurmScheduler` を、ローカル実行は
-`ari.execution.execute_local` を通ります。
+います。`ari-skill-paper-re` の **reproduce 経路**はもうそのどちらも再実装して
+おらず、投入は `ari_skill_hpc.SlurmScheduler`（`src/server.py`）を、ローカル
+実行は `ari.execution.execute_local`（`src/sandbox.py`）を通ります。一方で
+**PaperBench エージェント computer**（`src/_compute/computer.py`）は、いまも
+その両方の 2 つ目の実装です: `ApptainerComputer.send_shell_command` は
+`apptainer exec` の argv を、`LocalComputer.send_shell_command` は素の
+`bash --noprofile --norc -c` の argv をそれぞれ自前で組み立て、どちらも
+`ari.execution` ではなくモジュール自前の `_run_subprocess`
+（`asyncio.create_subprocess_exec(..., start_new_session=True)` ＋ `killpg` に
+よる SIGTERM→SIGKILL のグループ停止）に流します。このモジュールが core から
+import しているのは `ari.public.execution.WorkspaceRefV1` だけです。コンテナ側
+はすでに `container_shell_argv` からドリフトしています: スキル側は
+`--cleanenv --containall --no-home` に `--bind {work_dir}:/work:rw --pwd /work`
+で `--writable-tmpfs` なし、core 側は `--cleanenv --containall --writable-tmpfs`
+に素の `--bind <workdir>` です。これは死んだ継ぎ目ではなく本番コードで
+（`src/server.py` → `_replicator_agent.run_replicator_agent` →
+`_compute.make_computer`）、コンテナ実行やローカル実行の重複を監査するときに
+読むべきファイルです。
 
 **`ari.viz.state` のプロセスハンドル結合。** `ari/viz/state.py` は、ライブの
 OS ハンドルをモジュールグローバル（`_st` としてインポートされる）として
@@ -317,7 +336,7 @@ duck-typed なのは意図的です —— `GovernedSearchStrategy` の docstrin
 |---------|-----|
 | モード | 素の `str` キーワード引数 —— `compile_manuscript(..., exploration_mode="simple_bfts", paper_mode="linear")` が `build_exploration_snapshot(..., exploration_mode=...)` へ転送され、コントラクトに載る前に 2 つのリテラルのいずれかへ正規化されます。どちらのシグネチャにも RQGM のプロバイダオブジェクトや型付き RQGM ブロックはありません。`manuscript/runtime.py:prepare_runtime_manuscript` が両者を `ARI_MANUSCRIPT_EXPLORATION_MODE` / `ARI_MANUSCRIPT_PAPER_MODE` から埋めます。 |
 | ノード状態 | 呼び出し側がすでに持っているノードオブジェクトからの duck-typed な読み取り。`snapshot._get(value, name, default)` はマッピングなら `value.get(...)`、それ以外なら `getattr(...)` なので、`attestation_refs`・`verified_target_digest`・`metrics` は名前で引かれ、それらを持たない `simple_bfts` のノードは単にデフォルトを返します。 |
-| 証拠 | チェックポイント相対パスから読むファイル。オブジェクトとして渡されることはありません。`snapshot._attestation_artifacts` はノードの `attestation_refs` が指す相対パスをダイジェストし `HarnessAttestationV1` として検証します（status は `present` / `missing` / `invalid`）。`authority.capture_repair_authority` は固定の `_AUTHORITY_FILES` 一覧をダイジェストするだけでパースはしません（status は `present` / `absent` / `unsafe_symlink`）。いずれも、パスが無い場合や symlink を含む場合は例外ではなく status として記録されます。 |
+| 証拠 | チェックポイント相対パスから読むファイル。オブジェクトとして渡されることはありません。`snapshot._attestation_artifacts` はノードの `attestation_refs` が指す相対パスをダイジェストし `HarnessAttestationV1` として検証します（status は `present` / `stale` / `missing` / `invalid`。`stale` は、パースに成功し `node_id` も一致するが `target_digest` がノードの `verified_target_digest` と一致しない証明書で、証拠としては見えたままだがそのノードは publication を certify できません。`invalid` のように捨てられるものでも `present` のように publish できるものでもなく、`test_manuscript_assurance_boundary.py::test_stale_target_attestation_remains_visible_but_cannot_publish` がこの挙動を固定しています）。`authority.capture_repair_authority` は固定の `_AUTHORITY_FILES` 一覧をダイジェストするだけでパースはしません（status は `present` / `absent` / `unsafe_symlink`）。いずれも、パスが無い場合や symlink を含む場合は例外ではなく status として記録されます。 |
 
 **逆向きの辺は許可され、実際に使われています。**
 `ari.rqgm.paper_runtime` はアーカイブ入力を再検査するために

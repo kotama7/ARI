@@ -582,7 +582,7 @@ checkpoints/{run_id}/
 | ファイル          | 書き込み元                                            | フェーズ          | スキーマ                                              |
 |-------------------|-------------------------------------------------------|-------------------|-------------------------------------------------------|
 | `tree.json`       | `cli/bfts_loop.py` の `_save_checkpoint()`            | BFTS 中          | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `run_pipeline()`（`ari/pipeline/driver.py`、`generate_paper_section()` から呼ばれる） | BFTS + post-BFTS | `{experiment_goal, nodes}` (軽量)                    |
+| `nodes_tree.json` | `_save_checkpoint()` + `WorkflowDriver.run()`（`ari/pipeline/driver.py`。`ari/pipeline/orchestrator.py` の `run_pipeline()` 経由で、`generate_paper_section()` から呼ばれる） | BFTS + post-BFTS | `{experiment_goal, nodes}` (軽量)                    |
 
 **読み取り側の規約**: 全ての読み取りは `tree.json` を優先し、`nodes_tree.json` にフォールバック
 しなければならない。これにより BFTS 中の最新データを保ちつつ、`nodes_tree.json` を前提とする

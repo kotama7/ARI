@@ -165,13 +165,25 @@ One thing this shape is **not**, and it is the tempting misreading: a thin
 legacy facade over a shared application service. `ari/viz/services/` holds
 three modules (`state_service`, `file_service`, `launch_service`), and the
 only thing `/api/v1` calls from it is `launch_service.load_dotenv_files`.
-Beyond a handful of low-level helpers — checkpoint-directory resolution, the
-pid probe, the byte-preserving tree adapter — the legacy handlers and the v1
-read modules are two independent implementations over the same artifacts, and
-the v1 modules decline the legacy builders deliberately (§7). Configuration
-reaches a run by two routes as well: the legacy Settings-save-and-launch chain
-maps selected keys into environment variables for the spawned CLI, while the
-`/api/v1` config endpoints go through the canonical resolver — and the two do
+Beyond a set of shared helpers — checkpoint-directory resolution, the
+checkpoint search bases, the pid probe, the byte-preserving tree adapter, the
+`.env` chain reader, the access-log writer — the legacy handlers and the v1
+read modules are largely two independent implementations over the same
+artifacts. But where a legacy function is already the single source of truth,
+the v1 module reuses it deliberately rather than forking it: `catalogs.py`
+re-serves the legacy `/api/models` payload (`checkpoint_api._api_models`) with
+one field added, the provider's API-key env name; `results.py` calls
+`ear._synth_repro_report_from_ors` read-only for the ORS verdict, scores and
+leaf counts, so the two Results surfaces cannot show different verdicts; and
+`secrets.py` writes through `api_settings._upsert_env_key`. Those reuse points
+are what keeps the two sides in step, and they are also what legacy removal has
+to unpick: deleting the legacy `/api/models` handler or `ear.py` would break
+`/api/v1` read models (§7).
+
+Configuration reaches a run by two routes as well: the legacy
+Settings-save-and-launch chain maps selected keys into environment variables
+for the spawned CLI, while the `/api/v1` config endpoints go through the
+canonical resolver — and the two do
 not agree everywhere, which the dead and env-only Settings keys in
 [Configuration](../reference/configuration.md) enumerate.
 
@@ -333,11 +345,13 @@ because `AppContext` cannot be deleted while a v2 screen depends on it.
 
 **Durable preferences have no store.** Locale (`ari_lang`, default `ja`),
 developer mode (`ari_dev_mode`) and the remote bearer token (`ari_gui_token`)
-are read from and written to `localStorage` directly at their use sites. There
-is no preference-store abstraction, no schema for these keys and no migration
-path, so renaming or re-typing one means editing every reader. A preference
-layer was specified for the refreshed shell and is not implemented; treat the
-three key names as the actual contract.
+go straight to `localStorage`, each behind its own one-key accessor —
+`i18n.storedLang()`, `useDevMode.isDevMode()`, `client.getGuiToken()` — and the
+Settings page still reads `ari_lang` from `localStorage` itself. There is no
+preference-store abstraction over the three, no schema for these keys and no
+migration path, so a rename or a re-type is a per-key edit with no single place
+to make it. A preference layer was specified for the refreshed shell and is not
+implemented; treat the three key names as the actual contract.
 
 ---
 
@@ -486,8 +500,12 @@ easy to erode:
   checkpoint, so the CLI never has to read `gui_store/` to reproduce a run.
 
 **The browser side of the seam has three transport regimes, deliberately not
-unified.** `services/api/client.ts` is one `request` primitive behind three
-pairs of wrappers, and which pair a call uses is part of the contract:
+unified.** `services/api/client.ts` exposes three pairs of wrappers, and which
+pair a call uses is part of the contract. Five of the six share one `request`
+primitive; the sixth, `v1Send`, deliberately builds its own `RequestInit`,
+because the primitive's options shape is itself part of the frozen legacy wire
+contract — so the v1 mutation transport, `If-Match` header included, sits
+beside `request` rather than inside it:
 
 - `get` / `post` throw `Error('<METHOD> <path> failed: <status>')` on any
   non-2xx. The legacy `useApi` hook and its callers depend on the throw.
@@ -508,10 +526,10 @@ legacy caller sees. New code uses the `/api/v1` regime.
 Two gaps in that client are worth naming, because their absence is easy to
 mistake for a policy:
 
-- **There is no client-side abort or timeout.** The shared `request` primitive
-  passes no `AbortSignal` and sets no deadline, so a hung request hangs until
-  the browser gives up, and navigating away from a page does not cancel its
-  in-flight fetches. Retry policy is the react-query default (one retry) plus
+- **There is no client-side abort or timeout.** Neither the shared `request`
+  primitive nor `v1Send` passes an `AbortSignal` or sets a deadline, so a hung
+  request hangs until the browser gives up, and navigating away from a page
+  does not cancel its in-flight fetches. Retry policy is the react-query default (one retry) plus
   the server-declared `retryable` flag on the error envelope, which a caller
   may inspect but which nothing consumes automatically. Idempotency is
   per-endpoint rather than per-method metadata: only run launch carries an

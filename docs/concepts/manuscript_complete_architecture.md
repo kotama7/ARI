@@ -264,8 +264,13 @@ commit the round record → rebuild evidence → recompile as the next round
 ```
 
 Rounds are numbered from zero and must stay contiguous. The round budget caps
-how many rounds an attempt commits in total, counted from the persisted round
-records rather than per invocation.
+how many rounds the checkpoint commits in total, counted from the persisted
+round records rather than per invocation or per attempt. Those records live in
+one `.ari-manuscript/auto-rounds/` directory with no attempt component, and the
+guard compares every record in it against the maximum; since an attempt ID is
+derived from the snapshot and profile digests, and each round rebuilds evidence
+and so moves the snapshot, successive rounds of one loop can belong to different
+attempts while still drawing down the same counter.
 
 The loop never authors ahead of readiness. Both the linear and the archive
 backend run the evidence segment, compile, and enter the loop before any
@@ -348,13 +353,15 @@ the [REST reference](../reference/rest_api.md) nor the
 [GUI architecture](gui_architecture.md) describes one.
 
 What an operator reads is the `ari manuscript` command group and the attempt
-artifacts under `.ari-manuscript/`. Every subcommand prints JSON, and the three
+artifacts under `.ari-manuscript/`. Every subcommand prints JSON, and the four
 that decide something exit `2` when the answer is no: `status --fail-if-blocked`
 on a `repair_required` or `blocked` authoring verdict or a `blocked` publication
-verdict, `explain-publication` on any decision other than `publishable`, and
-`lock-publication` when the lock is refused — a non-publishable decision, a
-decision that no longer names the current build, an unfinalized attempt, changed
-inputs, stale reproduction evidence, or no single final PDF. That is the
+verdict, `repair` when the recompile that follows its executed requests leaves
+any admitted request's requirements unclosed, `explain-publication` on any
+decision other than `publishable`, and `lock-publication` when the lock is
+refused — a non-publishable decision, a decision that no longer names the
+current build, an unfinalized attempt, changed inputs, stale reproduction
+evidence, or no single final PDF. That is the
 property which makes the missing viewer harmless: no publication-safety
 guarantee may depend on one existing, so an unavailable dashboard can never be
 the reason an unsafe build was published.

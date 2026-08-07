@@ -557,7 +557,7 @@ checkpoints/{run_id}/
 | 文件              | 写入方                                                | 阶段             | 模式                                                  |
 |-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
 | `tree.json`       | `cli/bfts_loop.py` 中的 `_save_checkpoint()`          | BFTS 阶段        | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `run_pipeline()`（`ari/pipeline/driver.py`，由 `generate_paper_section()` 进入） | BFTS + post-BFTS | `{experiment_goal, nodes}` (轻量)                     |
+| `nodes_tree.json` | `_save_checkpoint()` + `WorkflowDriver.run()`（`ari/pipeline/driver.py`，经 `ari/pipeline/orchestrator.py` 的 `run_pipeline()`，由 `generate_paper_section()` 进入） | BFTS + post-BFTS | `{experiment_goal, nodes}` (轻量)                     |
 
 **读取方约定**: 所有读取方必须优先使用 `tree.json` 并回退到 `nodes_tree.json`。
 这可确保 BFTS 期间获得最新数据，同时保持与预期 `nodes_tree.json` 的流水线阶段的兼容性。

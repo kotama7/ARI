@@ -109,13 +109,28 @@ nothing here: the filter runs *before* construction, so an undeclared block
 never reaches the model. Blocks like `memory`, `container`, `lineage_decision`,
 `bfts_pipeline`, `pipeline` and `claim_gate_policy` survive only because
 something re-reads the raw YAML for them;
-`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` is the enumeration of the
-top-level keys currently credited with such a reader. Every *other* top-level
-key is discarded, and nothing is logged when it happens; there is **no
-near-miss ("did you mean") check** anywhere in `ari.config`. A misspelled
-block — `rqmg:` for `rqgm:` — therefore leaves the run silently on defaults,
-with no error to notice. Two things partly cover this, neither of them on the
-CLI at load time:
+`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` enumerates the top-level keys
+the resolver currently credits with such a reader — but it is a hand-curated
+list, not a derived one, and it is **incomplete**. There is a second, generic
+consumer it does not account for: the pipeline driver
+(`ari/pipeline/driver.py`) re-reads the raw `workflow.yaml` and splats every
+top-level scalar into the stage-template namespace (top-level dicts are
+exposed too, for dot-notation, bar `pipeline`/`skills`/`stages`), so an
+undeclared top-level key is dropped from `ARIConfig` yet still reachable as
+`{{key}}` inside a stage's `inputs:`.
+The bundled `ari-core/config/workflow.yaml` relies on exactly that for
+`paper_venue: arxiv` and `paper_rubric: generic_conference`, which are in
+neither `ARIConfig.model_fields` nor `KNOWN_NON_CONFIG_TOP_KEYS` and are
+nonetheless live — `write_paper` takes `rubric_id: '{{paper_rubric}}'` and
+`venue: '{{paper_venue}}'`, and `review_compiled_paper` takes `rubric_id`
+again. `paper_rubric` is the setting that picks the reviewer rubric, and
+`write_paper_iterative` has no environment fallback and no guessed default
+for it, so it is the opposite of dead config. A top-level key that *nothing*
+templates on is discarded outright, and nothing is logged when it happens;
+there is **no near-miss ("did you mean") check** anywhere in `ari.config`. A
+misspelled block — `rqmg:` for `rqgm:` — therefore leaves the run silently on
+defaults, with no error to notice. Two things partly cover this, neither of
+them on the CLI at load time:
 
 - **The resolver warns, in its payload.** `_apply_workflow_layer`
   (`ari/config/resolver.py`) appends `workflow.yaml top-level key '…' is not
@@ -126,6 +141,10 @@ CLI at load time:
   copy of `workflow.yaml`) and of the new-run preview (which reads the
   bundled one). It is a listing, not a spelling suggestion, and since nothing
   outside `ari.viz.v1` calls the resolver, a hand-run CLI never sees it.
+  Treat its `(no reader consumes it)` wording as unverified: on the bundled
+  `workflow.yaml` the only two warnings it emits are for `paper_venue` and
+  `paper_rubric`, both of which *are* consumed. The warning proves the key
+  missed `ARIConfig`, not that it is inert.
 - **Absence is observable in the checkpoint.**
   `{checkpoint}/rqgm_state.json` is written only when `ari.mode: ari_rqgm`
   and `rqgm.enabled: true` both hold (`ari/cli/run.py`), so its absence means
