@@ -1793,6 +1793,52 @@ def test_resume_integrity_pass_suspends_on_tampered_audit_log(tmp_path):
     assert runtime2.governance_suspended is False
 
 
+def _write_proposal_record(ckpt, record):
+    proposals = ckpt / "proposals"
+    proposals.mkdir(parents=True, exist_ok=True)
+    (proposals / "proposal_records.jsonl").write_text(
+        json.dumps(record) + "\n", encoding="utf-8")
+
+
+def test_resume_integrity_pass_suspends_on_stale_frontier_record(tmp_path):
+    """§5.6.6 runs ``validate_selective_erasure`` too, not just the audit log.
+
+    A record left ``stale`` but still marked frontier-valid across a restart is
+    exactly what the erasure half exists to catch (CK-ERA-001). The audit log
+    here is absent, which also pins the independence of the two halves: the
+    erasure pass must still run.
+    """
+    from ari.rqgm.runtime import RQGMRuntime
+
+    cfg = ARIConfig(ari={"mode": "ari_rqgm"}, rqgm={"enabled": True})
+    _write_proposal_record(tmp_path, {
+        "record_id": "r-stale-1",
+        "record_type": "proposal_record",
+        "stale": True,
+        "valid_for_frontier": True,
+    })
+    runtime = RQGMRuntime(cfg, tmp_path)
+    runtime.resume_integrity_check(tmp_path)
+    assert runtime.governance_suspended is True
+
+
+def test_resume_integrity_pass_clean_erasure_state_does_not_suspend(tmp_path):
+    """Negative control: a healthy frontier record must NOT suspend, so the
+    previous test is proving CK-ERA-001 rather than a blanket suspension."""
+    from ari.rqgm.runtime import RQGMRuntime
+
+    cfg = ARIConfig(ari={"mode": "ari_rqgm"}, rqgm={"enabled": True})
+    _write_proposal_record(tmp_path, {
+        "record_id": "r-clean-1",
+        "record_type": "proposal_record",
+        "stale": False,
+        "valid_for_frontier": True,
+    })
+    runtime = RQGMRuntime(cfg, tmp_path)
+    runtime.resume_integrity_check(tmp_path)
+    assert runtime.governance_suspended is False
+
+
 # ── config parity (defaults.yaml <-> typed model, Task 02 pattern) ─────────
 
 

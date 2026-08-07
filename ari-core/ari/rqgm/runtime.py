@@ -329,13 +329,34 @@ class RQGMRuntime:
     def resume_integrity_check(self, checkpoint_dir) -> None:
         """The §5.6.6 resume integrity pass (best-effort, never raises).
 
-        Verifies the restored audit log; blocking findings put the run into
+        Runs BOTH checks the section names against the restored state:
+        ``validate_audit_log_integrity`` over the restored audit log and
+        ``validate_selective_erasure`` over the restored records and prompt
+        registry. Blocking findings from either put the run into
         governance-suspended carry-over (active set frozen for Tasks 05/09;
         the flag is advisory until those tasks land) — never a refusal to
         resume.
+
+        The two halves are deliberately independent: an unreadable audit log
+        must not silently skip the erasure half, so they do not share a
+        ``try``/``except``.
         """
         if self.kernel is None:
             return
+        self._resume_audit_log_pass(checkpoint_dir)
+        self._resume_erasure_pass(checkpoint_dir)
+
+    def _suspend_governance(self, source: str, report) -> None:
+        """Carry a blocking resume finding over as governance-suspended."""
+        self.governance_suspended = True
+        log.warning(
+            "resume integrity: %s findings %s — governance suspended "
+            "carry-over (state changes frozen; run continues)",
+            source, [v.code for v in report.violations],
+        )
+
+    def _resume_audit_log_pass(self, checkpoint_dir) -> None:
+        """§5.6.6 half 1: the restored audit log's append-only + hash chain."""
         try:
             from ari.rqgm.kernel import should_block
             from ari.rqgm.store import ImmutableAuditLog
@@ -345,14 +366,47 @@ class RQGMRuntime:
                 return
             report = self.kernel.validate_audit_log_integrity(lines)
             if should_block(report, self.kernel_enforcement):
-                self.governance_suspended = True
-                log.warning(
-                    "resume integrity: audit-log findings %s — governance "
-                    "suspended carry-over (state changes frozen; run "
-                    "continues)", [v.code for v in report.violations],
-                )
+                self._suspend_governance("audit-log", report)
         except Exception:
-            log.warning("resume integrity pass failed (fail-open)",
+            log.warning("resume audit-log pass failed (fail-open)",
+                        exc_info=True)
+
+    def _resume_erasure_pass(self, checkpoint_dir) -> None:
+        """§5.6.6 half 2: the restored selective-erasure state.
+
+        The frontier view is every record the checkpoint still marks
+        frontier-valid, deliberately WITHOUT filtering on ``stale`` — that is
+        what lets CK-ERA-001 fire when a stale record survived as a frontier
+        candidate across the restart. CK-ERA-005 (physical deletion) cannot
+        fire from here because the view is built out of resolved records
+        rather than dangling ids; the boundary pass in
+        :mod:`ari.rqgm.frontier_repair` owns that check.
+        """
+        try:
+            from ari.rqgm.frontier_repair import (
+                _load_prompt_trace_lines,
+                load_rqgm_records,
+            )
+            from ari.rqgm.kernel import should_block
+
+            records = list(load_rqgm_records(checkpoint_dir) or ())
+            if not records:
+                return
+            frontier = [
+                rec for rec in records
+                if rec.get("valid_for_frontier") is not False
+            ]
+            st = self._epoch_state
+            report = self.kernel.validate_selective_erasure(
+                frontier,
+                records,
+                st.prompts if st is not None else None,
+                prompt_trace=_load_prompt_trace_lines(Path(checkpoint_dir)),
+            )
+            if should_block(report, self.kernel_enforcement):
+                self._suspend_governance("selective-erasure", report)
+        except Exception:
+            log.warning("resume selective-erasure pass failed (fail-open)",
                         exc_info=True)
 
     @property

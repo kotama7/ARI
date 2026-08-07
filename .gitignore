@@ -153,6 +153,12 @@ viz.bak/
 # ── Virtual environments ───────────────────────────────────────
 .venv/
 venv/
+# A SECOND VENV, FOR THE OTHER ARCHITECTURE. The repo venv holds x86_64 wheels
+# (`...cpython-311-x86_64-linux-gnu.so`), so on an aarch64 compute node numpy
+# will not import and nothing measured there can run. The arch-specific one is
+# built on that node and is hundreds of MB of binaries; it is a build artifact,
+# not a checkout.
+.venv-*/
 
 # ── Node / Frontend ───────────────────────────────────────────
 node_modules/
