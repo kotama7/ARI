@@ -22,6 +22,7 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_stencil_correctness.approval.json` — promotion approval for the native stencil correctness harness.
   - `builtin/` — built-in native harness manifests. All three currently refuse to run with `native Harness driver bytes drifted`: the correctness-family registry joined the native driver digest, and the manifests were deliberately not re-pinned, because re-pinning would make three human-maintainer attestations describe code nobody approved. They need re-attestation.
     - `hpc_gemm_correctness.yaml` — native dense GEMM correctness harness manifest.
+    - `hpc_gemm_performance.yaml` — TODO
     - `hpc_spmm_correctness.yaml` — native CSR SpMM correctness harness manifest.
     - `hpc_stencil_correctness.yaml` — native seven-point stencil correctness harness manifest.
   - `case_sets/` — the pinned answer to WHICH PROBLEMS a performance harness measures on. A manifest names a revision and pins the file's bytes, so a size is chosen by naming a registered set and never by passing shapes through a request, and changing a size is a re-registration. Each set declares the family its case tuples are meaningful for, so a set cannot be handed to the wrong oracle, and `resolves: false` marks in data the sets that are too cheap to carry a verdict.
