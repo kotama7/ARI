@@ -207,7 +207,29 @@ async def list_tools() -> list[Tool]:
                 "New programmatic callers should prefer job_submit."
             ),
             inputSchema=_legacy_submit_schema(),
-            outputSchema=_result_or_error(_model_schema(JobHandleV1)),
+            # NOT _model_schema(JobHandleV1). This bridge does not return a
+            # JobHandleV1 dump -- SlurmClient.submit builds its own flatter
+            # dict, and JobHandleV1 forbids extra properties while requiring
+            # five the bridge never carries. Declaring the sibling tools' shape
+            # here refused every successful submission *after* sbatch had
+            # already queued the job, leaving the handle unreachable.
+            outputSchema=_result_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "schema_version": {"type": "string"},
+                        "handle_id": {"type": "string"},
+                        "job_id": {"type": "string"},
+                        "state": {"type": ["string", "null"]},
+                        "status": {"type": ["string", "null"]},
+                        "message": {"type": "string"},
+                        "partition": {"type": "string"},
+                        "request_digest": {"type": "string"},
+                        "submission_digest": {"type": "string"},
+                    },
+                    "required": ["job_id", "status"],
+                }
+            ),
         ),
         Tool(
             name="probe_platform_capabilities",
@@ -339,16 +361,22 @@ def _model_schema(model) -> dict:
 
 
 def _result_or_error(success: dict) -> dict:
-    """Admit either the tool's own result or the handler's error envelope.
+    """Admit the tool's own result, the handler's error envelope, or both.
 
     Every handler here funnels failures into ``{"error": {...}}``. A schema that
     described only success would turn a scheduler failure into an output
     validation error and discard the message that says what went wrong, so the
-    declared shape has to be the union the handler can actually produce.
+    declared shape has to be the union the handler can actually produce -- and
+    an inclusive union, because a payload may legitimately satisfy both arms.
     """
 
+    # anyOf, not oneOf: oneOf demands exactly one arm matches, and these
+    # shapes are not exclusive. A timed-out execution is a complete result
+    # that also carries an error string, so it satisfies both arms and
+    # oneOf rejects it -- destroying the very payload that says what
+    # happened, after the work was already done.
     return {
-        "oneOf": [
+        "anyOf": [
             success,
             {
                 "type": "object",

@@ -301,7 +301,7 @@ class MCPClient:
             context=effective_context,
             normalizer=normalizer,
             started_at=started_at,
-            arguments=args,
+            arguments=args or {},
         )
         if admission_error is not None:
             return admission_error
@@ -313,7 +313,7 @@ class MCPClient:
                 tool_ref,
                 phase=effective_context.phase,
                 context=effective_context,
-                arguments=args,
+                arguments=args or {},
             )
 
         return self._invoke_registered_tool(
@@ -476,7 +476,7 @@ class MCPClient:
                 # reviewed leaf. Without the arguments the view can only see the
                 # dispatch tool, and every leaf in the federated catalog would
                 # ride in on the first leaf's authorization.
-                arguments=arguments,
+                arguments=arguments if arguments is not None else {},
             )
             if not decision.allowed:
                 message = (

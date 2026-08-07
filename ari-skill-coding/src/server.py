@@ -88,16 +88,23 @@ _HOST_NAMES = tuple(
 
 
 def _or_error(success: dict) -> dict:
-    """Admit either the tool's result or its error shape.
+    """Admit the tool's result, its error shape, or a payload that is both.
 
     Every tool here reports failure as ``{"error": "<message>"}`` -- a plain
     string, unlike the structured envelope the HPC provider uses. Declaring only
     the success shape would make the library reject the failure as an output
-    validation error and discard the message that says what went wrong.
+    validation error and discard the message that says what went wrong. The
+    union must be inclusive: a timed-out execution is a complete result that
+    also carries an error string.
     """
 
+    # anyOf, not oneOf: oneOf demands exactly one arm matches, and these
+    # shapes are not exclusive. A timed-out execution is a complete result
+    # that also carries an error string, so it satisfies both arms and
+    # oneOf rejects it -- destroying the very payload that says what
+    # happened, after the work was already done.
     return {
-        "oneOf": [
+        "anyOf": [
             success,
             {
                 "type": "object",
@@ -616,6 +623,14 @@ async def call_tool(
             work_dir=arguments.get("work_dir", "/workspace"),
         )
         edited = json.dumps(result)
+        # Through the same scrub as every other tool. This path happens not to
+        # embed a real path today -- _edit_code is handed the agent's virtual
+        # work_dir, not the resolved one -- but it is in _WORKDIR_TOOLS and the
+        # invariant asserted below is that the structured half always comes from
+        # scrubbed text. An exception message that started carrying a real path
+        # would otherwise reach the agent through the one return that opted out.
+        if wd:
+            edited = _virtualize(edited, wd)
         return [TextContent(type="text", text=edited)], json.loads(edited)
     if name == "write_code":
         # NB: ``code`` is written verbatim — never devirtualized — so the saved

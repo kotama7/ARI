@@ -21,6 +21,7 @@ class BoundToolAuthorizationView:
         self._lock = lock
         self._mode = mode
         by_tool: dict[str, list] = {}
+        lifecycle_only: dict[str, set] = {}
         for item in lock.bindings:
             by_tool.setdefault(item.tool_ref, []).append(item)
             # A binding whose subject is asynchronous is submitted through one
@@ -29,10 +30,23 @@ class BoundToolAuthorizationView:
             # lifecycle tools the binding names inherit exactly its authority --
             # same phase, same context, same binding digest.
             for lifecycle_ref in item.lifecycle_tool_refs:
+                if lifecycle_ref == item.tool_ref:
+                    continue
                 by_tool.setdefault(lifecycle_ref, []).append(item)
+                lifecycle_only.setdefault(lifecycle_ref, set()).add(
+                    item.binding_digest
+                )
         self._by_tool = {
             tool_ref: tuple(sorted(items, key=lambda value: value.capability_ref))
             for tool_ref, items in by_tool.items()
+        }
+        # Which refs reached the table only as a lifecycle surface. A poll
+        # carries a job handle, never a leaf ref, so the subject gate below
+        # cannot apply to it -- the leaf was decided when the job was submitted.
+        self._lifecycle_only = {
+            ref: digests
+            for ref, digests in lifecycle_only.items()
+            if ref not in {item.tool_ref for item in lock.bindings}
         }
         self._record_lock = threading.Lock()
         self._invocations_by_node: dict[str, list[tuple[str, str, str | None]]] = {}
@@ -78,7 +92,17 @@ class BoundToolAuthorizationView:
         # carry every other leaf the federated catalog holds -- including ones
         # whose capability this run forbids, and ones never reviewed at all.
         composite = tuple(item for item in compatible if item.subject_tool_ref)
-        if composite:
+        # Two cases the subject gate must not touch.
+        #
+        # `arguments is None` means nobody supplied any -- a visibility check,
+        # not a call. Refusing there removed every composite from the agent's
+        # tool list, so the dispatch tool the binding exists to expose became
+        # invisible and unusable.
+        #
+        # A lifecycle ref carries a handle, not a leaf, so it can never satisfy
+        # a subject gate; applying one refused every legal poll of exactly the
+        # asynchronous binding the lifecycle surface was added to permit.
+        if composite and arguments is not None and tool_ref not in self._lifecycle_only:
             direct = tuple(item for item in compatible if not item.subject_tool_ref)
             allowed_subjects = {
                 item.subject_tool_ref: item for item in composite

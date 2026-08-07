@@ -760,11 +760,25 @@ def test_a_composite_does_not_authorize_a_leaf_it_did_not_bind():
         assert not denied.allowed, other
         assert denied.reason_code == "composite_subject_unbound"
 
-    # A decision made without the arguments cannot fall back on the dispatch
-    # tool's authority either.
-    blind = view.decide(dispatch_ref, phase="bfts", context=context)
-    assert not blind.allowed
-    assert blind.reason_code == "composite_subject_unknown"
+    # A real call that names no subject at all is still refused.
+    empty = view.decide(dispatch_ref, phase="bfts", context=context, arguments={})
+    assert not empty.allowed
+    assert empty.reason_code == "composite_subject_unknown"
+
+    # But a visibility check supplies no arguments, and refusing there would
+    # delete the dispatch tool from the agent's tool list -- the tool the
+    # binding exists to expose.
+    visible = view.decide(dispatch_ref, phase="bfts", context=context)
+    assert visible.allowed and visible.reason_code == "bound"
+
+    # A lifecycle ref carries a job handle, never a leaf, so the subject gate
+    # cannot apply to it; applying one refused every legal poll.
+    for ref in LIFECYCLE:
+        poll = view.decide(
+            ref, phase="bfts", context=context, arguments={"handle": {"handle_id": "j1"}}
+        )
+        assert poll.allowed, ref
+        assert poll.reason_code == "bound"
 
 
 def test_lifecycle_tools_inherit_the_binding_phase_not_a_wider_one():

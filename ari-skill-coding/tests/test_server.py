@@ -743,6 +743,11 @@ async def test_the_structured_half_is_scrubbed_like_the_text() -> None:
     import server
 
     source = inspect.getsource(server.call_tool)
-    # The structured value returned must be derived from the virtualized text.
-    assert "json.loads(text)" in source
-    assert "return [TextContent(type=\"text\", text=text)], json.loads(text)" in source
+    # EVERY return must derive its structured value from scrubbed text, not just
+    # the main one: a single early return that opted out would be the one path
+    # carrying whatever _virtualize removes.
+    returns = [line.strip() for line in source.splitlines() if "return [TextContent" in line]
+    assert returns, "call_tool must return TextContent"
+    for line in returns:
+        assert "json.loads(" in line, line
+    assert source.count("_virtualize(") >= len(returns)
