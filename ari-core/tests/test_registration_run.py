@@ -57,6 +57,14 @@ class _Driver:
         return {
             "driver_digest": self.digest,
             "passed": True,
+            "controls": {
+                "clean": {"verdict": "pass", "median_speedup": speedup,
+                          "relative_spread": 0.01, "resolved": True},
+                "negatives": [
+                    {"name": "slow", "verdict": "fail", "detail": "threshold"},
+                    {"name": "wrong", "verdict": "fail", "detail": "residual bound"},
+                ],
+            },
             "results": {
                 "clean_control": {"verdict": "pass", "median_speedup": speedup,
                                   "relative_spread": 0.01, "resolved": True},

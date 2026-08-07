@@ -45,6 +45,13 @@ def _passing(manifest=None):
     probe = {
         "driver_digest": "sha256:" + "a" * 64,
         "passed": True,
+        "controls": {
+            "clean": {"verdict": "pass", "relative_spread": 0.01, "resolved": True},
+            "negatives": [
+                {"name": "slow-but-correct", "verdict": "fail", "detail": "threshold"},
+                {"name": "fast-but-wrong", "verdict": "fail", "detail": "residual bound"},
+            ],
+        },
         "results": {
             "clean_control": {"verdict": "pass", "relative_spread": 0.01,
                               "resolved": True},
@@ -110,15 +117,15 @@ def test_the_probe_gates_read_the_probe():
 
     # Both negatives failing the SAME way is a stopwatch, not a harness.
     same = _passing()
-    same.parity["results"]["negative_control_wrong"]["detail"] = "threshold"
+    same.parity["controls"]["negatives"][1]["detail"] = "threshold"
     fails = {g.gate_id: g for g in evaluate_gates(same)}
     assert not fails["negative_control_fail"].passed
     assert "same reason" in fails["negative_control_fail"].detail
 
     # A clean control that passed without resolving certifies noise.
     noisy = _passing()
-    noisy.parity["results"]["clean_control"].update(resolved=False,
-                                                    relative_spread=1.16)
+    noisy.parity["controls"]["clean"].update(resolved=False,
+                                            relative_spread=1.16)
     assert not {g.gate_id: g for g in evaluate_gates(noisy)}["clean_control_pass"].passed
 
     # A probe run against a different driver says nothing about this one.

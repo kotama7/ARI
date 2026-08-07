@@ -71,8 +71,17 @@ def gate(gate_id: str):
     return register
 
 
-def _probe_results(evidence: GateEvidence) -> dict:
-    return (evidence.parity.get("results") or {})
+def _controls(evidence: GateEvidence) -> dict:
+    """The probe's controls in the COMMON vocabulary every driver emits.
+
+    These gates first read the performance driver's own report shape, which
+    meant a correctness driver -- whose probe reports per-family verdicts and
+    has no slow/wrong split at all -- could not satisfy a gate it genuinely
+    passes. Asking each driver to answer in one vocabulary is the same
+    correction as giving each requirement the target kind its property implies:
+    a gate should not have to know which driver answered it.
+    """
+    return (evidence.parity.get("controls") or {})
 
 
 # --- the four the parity probe settles -----------------------------------------
@@ -84,7 +93,7 @@ def _reference_oracle_pass(evidence: GateEvidence):
     The clean control IS the reference scored as a candidate, so a reference
     that failed its own oracle could not produce this verdict.
     """
-    clean = _probe_results(evidence).get("clean_control") or {}
+    clean = _controls(evidence).get("clean") or {}
     if not clean:
         return False, "the parity probe reported no clean control", None
     ok = clean.get("verdict") == "pass"
@@ -98,18 +107,24 @@ def _negative_control_fail(evidence: GateEvidence):
     A probe whose two negatives fail the same way cannot tell a wrong answer
     from a slow one, which is the difference between a harness and a stopwatch.
     """
-    results = _probe_results(evidence)
-    slow = results.get("negative_control_slow") or {}
-    wrong = results.get("negative_control_wrong") or {}
-    if not (slow and wrong):
-        return False, "the parity probe reported fewer than two negative controls", None
-    both_fail = slow.get("verdict") == "fail" and wrong.get("verdict") == "fail"
-    distinct = (slow.get("detail") or "") != (wrong.get("detail") or "")
-    if not both_fail:
-        return False, f"negative controls: {slow.get('verdict')!r}, {wrong.get('verdict')!r}", results
-    if not distinct:
-        return False, "both negative controls failed for the same reason", results
-    return True, "both failed, for different reasons", results
+    negatives = _controls(evidence).get("negatives") or []
+    if not negatives:
+        return False, "the parity probe reported no negative control", None
+    verdicts = [item.get("verdict") for item in negatives]
+    if any(v != "fail" for v in verdicts):
+        return False, f"negative controls: {verdicts}", negatives
+    # DISTINCTNESS IS DEMANDED WHERE IT MEANS SOMETHING. Two negatives failing
+    # the same way cannot tell a wrong answer from a slow one -- but that is a
+    # question about a STOPWATCH, and a correctness verifier has only one kind
+    # of negative to offer. So: all must fail, and where a driver supplies more
+    # than one they must fail for different reasons. The performance driver
+    # refuses to probe at all when one of its two is missing, so the strength
+    # lives where it belongs.
+    details = [item.get("detail") or "" for item in negatives]
+    if len(negatives) >= 2 and len(set(details)) < 2:
+        return False, "every negative control failed for the same reason", negatives
+    return True, (f"{len(negatives)} negative control(s) failed"
+                  + (", for different reasons" if len(negatives) >= 2 else "")), negatives
 
 
 @gate("clean_control_pass")
@@ -121,7 +136,7 @@ def _clean_control_pass(evidence: GateEvidence):
     shared node, the probe passed once in three runs and the passing run's
     spread was 1.16.
     """
-    clean = _probe_results(evidence).get("clean_control") or {}
+    clean = _controls(evidence).get("clean") or {}
     if not clean:
         return False, "the parity probe reported no clean control", None
     if clean.get("verdict") != "pass":

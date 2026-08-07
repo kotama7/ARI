@@ -33,6 +33,7 @@ from typing import Any
 
 from ari.assurance.registration import registration_report
 from ari.assurance.registration_gates import GateEvidence
+from ari.protocols.integrity import canonical_digest
 
 
 class RegistrationEvidenceError(RuntimeError):
@@ -87,9 +88,12 @@ def result_schema_for(schema_version: str) -> dict | None:
     return None
 
 
+def _clean_control(probe: dict) -> dict:
+    return ((probe.get("controls") or {}).get("clean") or {})
+
+
 def _clean_control_speedup(probe: dict) -> float | None:
-    value = ((probe.get("results") or {}).get("clean_control") or {}).get(
-        "median_speedup")
+    value = _clean_control(probe).get("median_speedup")
     return float(value) if isinstance(value, (int, float)) else None
 
 
@@ -111,12 +115,28 @@ def probe_repeatedly(driver: Any, manifest: Any, *, runs: int = 3) -> tuple[dict
         probes.append(driver.parity_probe(manifest))
     observed = [value for value in map(_clean_control_speedup, probes)
                 if value is not None and value > 0]
-    stability: dict[str, Any] = {"runs": len(observed)}
-    if len(observed) >= 2:
-        centre = sorted(observed)[len(observed) // 2]
-        stability["relative_spread"] = ((max(observed) - min(observed)) / centre
-                                        if centre else None)
-        stability["clean_control_speedups"] = observed
+    stability: dict[str, Any] = {"runs": len(probes)}
+    if observed:
+        # A TIMED instrument: stability is the spread of the clean control.
+        stability["runs"] = len(observed)
+        if len(observed) >= 2:
+            centre = sorted(observed)[len(observed) // 2]
+            stability["relative_spread"] = ((max(observed) - min(observed)) / centre
+                                            if centre else None)
+            stability["clean_control_speedups"] = observed
+    else:
+        # A DETERMINISTIC one: there is no spread to measure, and asking for one
+        # would make a correctness verifier permanently unregistrable. What
+        # repeating it establishes is that it repeats -- so the answers must be
+        # IDENTICAL, and a difference is the finding.
+        answers = {canonical_digest(_clean_control(probe)) for probe in probes}
+        stability["kind"] = "deterministic"
+        stability["distinct_clean_control_answers"] = len(answers)
+        stability["relative_spread"] = 0.0 if len(answers) == 1 else None
+        if len(answers) != 1:
+            stability["reason"] = (
+                f"{len(answers)} different clean-control answers across "
+                f"{len(probes)} runs of a verifier declared deterministic")
     # The LAST probe is reported, not the best: picking the one that passed
     # would make the record describe a run chosen for its answer.
     return probes[-1], stability
