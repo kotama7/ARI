@@ -213,6 +213,32 @@ launcher、tool、credential、transport fieldを持たない。identityは
 permission、resource、version、compatibilityを固定する。Provider registrationはlive
 input/output schemaと契約の整合を検査し、同じtext labelだけでは互換としない。
 
+`compatibility_rules`はclosed vocabularyである。以前はdigestに束縛され、documentされ、そして
+誰にも参照されないfree-form stringのtupleだった——つまりontology中の全rule名がinertだった。
+reviewed table外の名前は現在拒否され、各名前は自分がどこで検査されるかを述べる。
+`measurement-envelope-v1`はcoreで、5つはcapabilityを供給するProviderで——うち4つは自身の
+goldenとreplay evidenceに対して、`exclusive-allocation-witness-v1`は投入したjobがallocationの
+内側から——残りは明示的に`unenforced`である。
+
+`json-schema-structural-conformance`は実装ではなく**廃止**された。残る3つの`unenforced`との
+差が、それらを残す根拠でもある。3つはいずれもProviderを判定できる*payloadの形*——envelope、
+artifact、async handle——を名指す。未実装なだけだ。廃止された1つは、どの契約も述べていない
+「toolのschemaとcapability側structureの関係」を名指していた。13契約すべてが`semantic_inputs`と
+`semantic_outputs`を空にしており、それらのfieldと`SemanticFieldV1`はrepository内に読み手が
+一人もいなかった——引数の欠けた述語である。しかも13契約中13に載っており、すべてに真な性質は
+何も区別しない。ruleとorphanなsemantic surfaceは共に消え、3契約は今や正当に
+compatibility ruleゼロを宣言する。placeholderではなく、それが真である。
+
+このruleに帰されがちなものは既に別の場所で強制されている。provision構築時のside-effect class
+一致と`required_permissions` coverage、binderの`provider_lock_mismatch`によるlock全体の
+identity、そしてtoolのlive `input_schema`/`output_schema`をそのまま畳み込むprovision digest——
+schemaが変わればruleを誰が書いたかに関係なくprovisionが変わる。
+
+`declared_capability_refs_by_tool`だけがprovisionを作る。skill.yaml側の`capability_ref`は
+`declared_capability_ref`として運ばれるが、bindはしない。だからこのtableに載らないtoolは、
+どれだけ自分でcapabilityを名乗ってもCapability requirementの解決先にはならない——呼べなくなる
+わけではなく、bindの対象にならないという意味である。
+
 prompt-free Capability Binderは既存Provider lockにあるverified Providerのexact capability
 refとcontract digestだけを候補にする。role、phase、call context、side-effect ceiling、
 credential scope、environment、disabled tool、live schema identityでfilterし、exactness、
@@ -446,16 +472,62 @@ schema——を返すProviderは成功が全て`null`というmessageのtool err
 bind済みasync capabilityは自分のlifecycle toolに対するauthorityを持たず、仕事を開始できても
 回収できなかった。
 
-宣言済みbrokered capability 3つのうち2つは未供給であり、その理由は隠さず述べる。
-`ari.literature.search/v1`は`read-only`だが、reviewed PubMed leafもbroker自身の`invoke`も
-`stateful`を宣言している。envelope則の下では、writeするdispatch toolを通してread-only
-capabilityを供給することはできない。ここに必要なのはcheckの緩和ではなくreview判断
-(read-onlyなdispatch面を用意するか、契約がwriteを認めるか)である。
-`ari.quantum.sample.local-ideal/v1`はregisterできるmaterialized catalogがまだ無い。
-別件として、どのderivationも供給しないresource class / environment requirementを持つ契約が
-残っている——`quantum-simulator`、`network`、そしてCUDA契約の`slurm` feature(proberが出すのは
-`slurm-controller`)。これらは`apptainer`と同種の潜在的な穴で、bindするにはそれぞれ固有の
-reviewed rowが要る。
+`ari.literature.search/v1`を塞いでいたのはenvelope則ではなく、自分自身の契約だった。
+`read-only`を宣言していたが、reviewed PubMed leafもbrokerの`invoke`も`stateful`である以上、
+誰も供給できなかった。誤っていたのは契約の方である——admitted retrievalは、それをevidenceに
+する記録を書く(cassetteとcontent-addressed payloadがrunのEARへ入る)のであり、ladderが等級を
+つけるのは「このsubstrateに何をしたか」であって「remote indexを変更したか」ではない。現在は
+`workspace-write`であり、reviewed PubMed leafがそれに対してcompositeを構成する。このmapping
+のregisterにはleafを含むsite lockが要る。reviewed tableはsiteの全sourceにまたがってleafを
+名指すので、EDAとretrievalの両方が欲しいsiteはdomainごとにlockを分けず、両者を1つのlockへ
+materializeする。
+
+`ari.quantum.sample.local-ideal/v1`は供給済みである。promote済みlocal-Aer bundleは
+materializeされていたがregisterされていなかったので、bundle自身のmaterialized profileから
+site sourceを組んだ——捏造は無い、誤った値はcatalog buildで落ちる——そしてleafはbindして走る。
+seed済みBell回路4096 shotが`{"00": 2046, "11": 2050}`のみを返し、promotion goldenの範囲内、
+約10秒。1つのlockが両sourceを保持したまま、bridgeが第二のdomainと第二のadapter種別で動いた
+ということである。
+
+その`environment_requirements: [cpu]`も同種のcategory errorで、訂正済みである。
+`quantum-simulator`は`cpu`のみからのderivation rowを持つ。このrowは、capabilityを供給する
+ものが無い間は意図的に伏せてあった——あらゆるsubstrateで発火し、未供給のcapabilityを解決済みに
+見せるrowは、rowが無いより悪い——今は単に正確である。seed済み2-qubit CPU statevector passに
+必要なのはCPUだけだ。境界を与えるのはcatalogが検証するdigest-pinned artifactであり、それは
+どのderivationにも見えない。substrateの主張はavailabilityの主張ではない。
+
+CUDA契約の`slurm` requirementも同じcategory errorで、今は`slurm-controller`と読む。
+`gpu-slurm`はproberが別々にemitする2つの半分からのderivationを得た。実GPU nodeでproberを
+走らせたことで、さらに2つが閉じ、login nodeでは見えないdefectが1つ見つかった。
+
+toolkit versionとdevice generationはどちらも観測しては捨てられていたので、いずれかを名指す
+契約は決して満たされ得なかった。proberは観測したcompiler releaseから`cuda-<major>.<minor>`を、
+各deviceが報告するcompute capabilityから`nvidia-sm<major><minor>`をemitする——derivationでは
+なくobservationである。12.0のnodeが12.9を名乗ることはなく、Blackwell deviceが`nvidia-sm70`を
+名乗ることもない。sm70 buildが新しいarchitectureで走るかはbuildのされ方に依存し、それを推測
+するのはproberの仕事ではない。
+
+`exclusive-node`はその契約からemitされるのではなく、消えた。そもそもenvironment featureでは
+ないからである。それはProviderがinvokeされたときに作るallocationについての主張であり、bind
+時点でallocationは存在しない——jobが投入されるのは数分後で、proberが試せるものは同じ命題では
+ない。`JobRequestV1`は既に、pin済みnodelistとGRESなしのexclusive single nodeを*要求*しない
+限りそのjobを組み立てることを拒否している。欠けていたのはschedulerがそれを*許可した*という
+証明の側だった。それは答えられる場所で行われるようになった——`exclusive-allocation-witness-v1`が
+投入されたjobの内側からallocationを検査し、device probeより前にexit 88で拒否し、いずれの結果
+でもwitnessをjob provenanceとして保持する。
+
+witnessは`SLURM_JOB_CPUS_PER_NODE`をnodeの`CPUTot`と比較する。この選択は仮定ではなく実測に
+基づく。`SLURM_CPUS_ON_NODE`は*step*のcpu数であり——真にexclusiveなnodeでjobが20を保持している
+間に4と観測された——これを土台にしたwitnessは、まさに確認すべきallocationで落ちることになる。
+`OverSubscribe`は記録するが何も読まない。あるsharing partitionでは`--exclusive`なjobと共有job
+の双方が`YES`を報告し、このfieldだけでは何も判別しない。両方のcontrolを実clusterで走らせた。
+sharing partitionでの`--exclusive`は8のうち8 allocatedで`held`、同じpartitionで付けない場合は
+8のうち4のうち2 allocatedで`refused`。
+
+見つかったdefect: Grace-Blackwellではmemoryがunifiedのため`memory.total`が`[N/A]`を返し、
+device parserはmemoryがparseできないrowを丸ごと捨てていた。よってARIはGPUを持つnodeで
+**GPUを1つも見ていなかった**——そこでは全GPU capabilityが黙ってbind不能になる。memoryの値が
+parseできないdeviceも、deviceである。
 
 ## extension gate
 

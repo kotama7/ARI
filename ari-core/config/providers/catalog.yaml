@@ -3,7 +3,7 @@ schema_version: 1
 # bytes_digest(blob)}) over every git-tracked file of the package at
 # source.full_commit_sha. The previous values predate this definition and
 # were not reproducible from the repository; these are.
-catalog_source_revision: ari-provider-catalog/3
+catalog_source_revision: ari-provider-catalog/4
 source_of_truth: existing-skill-manifests-and-SKILLS.lock
 entries:
   - provider_id: ari.provider.coding
@@ -53,8 +53,8 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: 271da52654b01a95228a28bb2eef2ed56e2ed8d3
-      package_sha256: sha256:c38d7fa39b0d7c11dee692580d9450a0741d3820c6d2357a8bdf4fd2fef50cad
+      full_commit_sha: 03e038e24437e9a5770bac86398a9506b461d0b8
+      package_sha256: sha256:1a642e771364255497fb3914fe58e4f5c231979a11b65cff3d4956fd38d50668
       license: MIT
     manifest_sha256: sha256:0cd43d39c2311def2f5d8016b20ae371128c7503c92b1070ea9c04417d138dc1
     # discover/describe/invoke are the broker's own surface, not ontology
@@ -92,7 +92,18 @@ entries:
       package_sha256: sha256:f594631048811eed329012b55f2ccf3fa90397a2e2c37c9b0e47727075c6ad45
       license: MIT
     manifest_sha256: sha256:2f0b1bfcf99dc4e07c3859b0882caa575ec5e52df51e1619c89808ce1efd9e64
-    declared_capability_refs_by_tool: {}
+    # Every tool here already names a capability_ref in skill.yaml, and the alias
+    # table already resolves most of them -- but nothing reached the binder,
+    # because a provision is created from this table alone. The four below are
+    # the ones whose locked policy actually satisfies the contract they claim:
+    # matching side-effect class, and permissions that cover what the contract
+    # requires. The other three are deliberately absent; see the note at the end
+    # of this file.
+    declared_capability_refs_by_tool:
+      list_uploaded_files: [ari.data.read/v1]
+      read_uploaded_file: [ari.data.read/v1]
+      search_papers: [ari.literature.search/v1]
+      walk_citations: [ari.literature.search/v1]
 notes:
   - Provider launch identity remains in skill.yaml and live tool identity remains in SKILLS.lock.
   - This catalog stores reviewed semantic projections only; it never repeats entrypoints or schemas.
@@ -103,6 +114,20 @@ notes:
     `declared_capability_refs_by_brokered_tool` (leaf tool_ref -> ARI capability refs). The loader
     re-authenticates the federated lock and emits composite provisions; see
     docs/reference/knowledge_capability_assurance.md.
+  - >-
+    Three web-skill tools are unclassified on purpose, not by oversight.
+    rerank_retrieval_records declares ari.literature.rerank, which the alias
+    table maps onto ari.literature.search/v1 -- but its locked policy is
+    read-only with a `model` permission, while that contract is workspace-write
+    and requires network-read. It consumes retrieval records rather than
+    fetching them, so the alias asserts a mapping this loader would refuse and
+    would be refusing correctly. fetch_url and web_search name
+    ari.web.url.fetch and ari.web.search, for which the ontology declares no
+    contract; an unprovenanced live fetch is not something a scientific
+    requirement should be able to bind to, and inventing a contract to make the
+    table look complete would admit exactly that. All three remain callable --
+    classification governs what a Capability requirement may bind, not what the
+    agent may invoke.
   - >-
     The tool-registry entry is inert until two things are true. tool-registry-skill must be in the
     run's skills config so it reaches SKILLS.lock, and ARI_TOOL_REGISTRY_LOCK must point at a

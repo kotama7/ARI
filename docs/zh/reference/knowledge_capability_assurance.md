@@ -208,6 +208,32 @@ ToolUniverse MCP Provider 及 nested Provider lock 相互独立。
 permission、resource、version 和 compatibility。Provider registration 检查 live input/output
 schema 与该契约的兼容性；相同文字 label 不足以证明语义兼容。
 
+`compatibility_rules`是一个封闭词表。它原本是一个 free-form 字符串 tuple——被 digest 绑定、
+被写进文档，却没有任何代码读它，因此 ontology 里每一个 rule 名字都是惰性的。现在，reviewed
+表之外的名字一律被拒绝，且每个名字都说明自己在哪里被检查：`measurement-envelope-v1`在 core，
+五个在供给该 capability 的 Provider——其中四个对着自己的 golden 与 replay evidence，
+`exclusive-allocation-witness-v1`由它提交的 job 从 allocation 内部见证——其余显式为
+`unenforced`。
+
+`json-schema-structural-conformance`被**废止**而非实现，它与留下的三个`unenforced`之间的
+区别，正是保留后者的理由。那三个各自指名一种可以据以判定 Provider 的*payload 形状*——
+envelope、artifact、async handle——只是尚未写。被废止的那个指名的是「tool 的 schema 与
+capability 侧结构之间的关系」，而没有任何契约陈述过该结构：十三个契约的`semantic_inputs`
+与`semantic_outputs`全为空，这两个字段连同`SemanticFieldV1`在整个仓库里没有任何读者——这是
+一个缺了实参的谓词。它还挂在 13 个契约中的 13 个上，而对一切都为真的性质不区分任何东西。
+该 rule 与那片孤立的 semantic surface 一并移除，三个契约现在正当地声明零条 compatibility
+rule：这是真话，而不是占位符。
+
+人们归给该 rule 的东西早已在别处强制：构建 provision 时的 side-effect class 相等与
+`required_permissions`覆盖、binder 的`provider_lock_mismatch`所保证的整个 lock 的 identity，
+以及把 tool 的 live `input_schema`与`output_schema`原样折入的 provision digest——schema 一变，
+provision 就变，与是否有人为它写过 rule 无关。
+
+只有`declared_capability_refs_by_tool`会产生 provision。skill.yaml 一侧的`capability_ref`
+作为`declared_capability_ref`被携带，但不参与 bind。因此不在该表中的 tool，无论自称什么
+capability，都不会成为某个 Capability requirement 的解决对象——这不意味着它不能被调用，
+只意味着它不是 bind 的候选。
+
 无 prompt 的 Capability Binder 只考虑现有 Provider lock 中 verified Provider 的 exact
 capability ref 与 contract digest。它按 role、phase、call context、side-effect ceiling、
 credential scope、environment、disabled tool 与 live schema identity 过滤，再按 exactness、
@@ -429,15 +455,58 @@ CTS 与 routing metric：DRC error 0、wire length 3603 um、via 3361，在 pin 
 报告为 message 为`null`的 tool error。而已 bind 的异步 capability 对自己的 lifecycle tool 没有
 authority，因此能启动工作却无法收取。
 
-三个已声明的 brokered capability 中有两个仍未获得供给，理由值得写明而非隐藏。
-`ari.literature.search/v1`是`read-only`，而 reviewed 的 PubMed leaf 与 broker 自身的
-`invoke`都声明`stateful`；在 envelope 规则下，任何 read-only capability 都无法经由一个会
-写入的 dispatch tool 供给。这里需要的是 review 决定（提供 read-only 的 dispatch 面，或让
-契约承认该写入），而不是放松检查。`ari.quantum.sample.local-ideal/v1`还没有可注册的
-materialized catalog。另外，仍有若干契约列出的 resource class 与 environment requirement
-没有任何 derivation 供给——`quantum-simulator`、`network`，以及 CUDA 契约中的`slurm`
-feature（prober 输出的是`slurm-controller`）。它们与`apptainer`属于同一类潜在缺口，各自都
-需要一条自己的 reviewed 行才能 bind。
+挡住`ari.literature.search/v1`的不是 envelope 规则，而是它自己的契约。它声明`read-only`，
+而 reviewed 的 PubMed leaf 与 broker 的`invoke`都声明`stateful`，因此谁都无法供给它。错的
+是契约：一次被 admit 的 retrieval 会写下使其成为 evidence 的记录——cassette 与
+content-addressed payload 进入该 run 的 EAR——而 ladder 评定一次调用，看的是它对这个
+substrate 做了什么，而不是它是否改动了远端 index。它现在是`workspace-write`，reviewed 的
+PubMed leaf 据此构成 composite。注册这一 mapping 需要一个包含该 leaf 的 site lock；reviewed
+表跨 site 的所有 source 指名 leaf，因此同时需要 EDA 与 retrieval 的 site 会把两者
+materialize 进同一个 lock，而不是每个 domain 一个。
+
+`ari.quantum.sample.local-ideal/v1`已获供给。其 promote 后的 local-Aer bundle 曾被
+materialize 却从未注册，于是从该 bundle 自身的 materialized profile 组出一个 site source
+——没有任何臆造，错误的值会让 catalog build 失败——该 leaf 现在可以 bind 并运行：seed 过的
+Bell 电路 4096 shot 返回`{"00": 2046, "11": 2050}`且无其他结果，落在 promotion golden 的
+区间内，约 10 秒。这就是同一个 lock 同时持有两个 source 时，bridge 在第二个 domain、第二种
+adapter 上的运转。
+
+其`environment_requirements: [cpu]`是同一类 category error，已更正。`quantum-simulator`
+现在有一条仅从`cpu`出发的 derivation 行。在没有任何东西供给该 capability 期间，这一行是被
+刻意压住的——一条在任何 substrate 上都触发、把未获供给的 capability 显示为已解决的行，比
+没有这一行更糟——如今它只是准确：一次 seed 过的双量子比特 CPU statevector pass 只需要 CPU。
+为它划定边界的是 catalog 校验的 digest-pin artifact，那是任何 derivation 都看不见的；
+substrate 声明不是 availability 声明。
+
+CUDA 契约的`slurm` requirement 是同一类 category error，现在写作`slurm-controller`；
+`gpu-slurm`获得了一条来自 prober 分别 emit 的两半的 derivation。在真实 GPU node 上运行
+prober 又关掉了两处，并发现了一个 login node 无法暴露的缺陷。
+
+toolkit 版本与 device 世代都被观测后丢弃，因此任何指名其一的契约都永远无法被满足。prober
+现在从观测到的 compiler release emit `cuda-<major>.<minor>`，从每个 device 报告的 compute
+capability emit `nvidia-sm<major><minor>`——是 observation，不是 derivation。12.0 的 node
+不会自称 12.9，Blackwell device 也不会自称`nvidia-sm70`：一个 sm70 build 能否在更新的
+architecture 上运行取决于它是怎么 build 的，猜这个不是 prober 的职责。
+
+`exclusive-node`从该契约中消失，而不是被 emit，因为它根本不是 environment feature。它是关于
+Provider 被 invoke 时所创建的 allocation 的断言，而 bind 时并不存在 allocation——job 要在数
+分钟后才提交，prober 能测的东西与该命题并不相同。`JobRequestV1`本就拒绝构建不*请求*
+pin 定 nodelist、无 GRES 的 exclusive 单 node 的 job；缺的那一半是 scheduler 确实*批准*了它
+的证明。这件事现在发生在能够回答它的地方：`exclusive-allocation-witness-v1`由被提交的 job
+从 allocation 内部检查，在 device probe 之前以 exit 88 拒绝，且无论结果如何都把 witness
+保留为 job provenance。
+
+witness 用`SLURM_JOB_CPUS_PER_NODE`与该 node 的`CPUTot`比较，这个选择来自实测而非假定。
+`SLURM_CPUS_ON_NODE`是*step*的 cpu 数——在一个真正 exclusive 的 node 上，job 持有 20 时它被
+观测为 4——建立在它之上的 witness 会恰好在它本该确认的 allocation 上失败。`OverSubscribe`
+被记录但无人读取：在某个 sharing partition 上，`--exclusive`的 job 与共享 job 都报告`YES`，
+该字段本身不区分任何东西。两个对照都在真实集群上跑过：sharing partition 上加`--exclusive`
+得到 8 分之 8 allocated 且`held`；同一 partition 不加则是 8 分之 4 中的 2 allocated 且
+`refused`。
+
+发现的缺陷：在 Grace-Blackwell 上内存是统一的，`memory.total`读到`[N/A]`，而 device parser
+会丢弃任何内存无法解析的行。于是 ARI 在一台确实有 GPU 的 node 上**一个 GPU 都没看到**，使
+那里的所有 GPU capability 静默地无法 bind。一个内存数值解析不出来的 device 仍然是 device。
 
 ## extension gate
 
