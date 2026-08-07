@@ -140,10 +140,11 @@ gate 或修复；`audit` 记录一次影子完整性评估；`enforce` 在 autho
 被解决之前阻塞撰写（`repair.policy: auto` 也要求它）。`workflow.yaml` 中
 每个流水线阶段现在都声明
 `segment: evidence | authoring | verification`，正是这一点让
-`generate_paper_section(..., include_segments=…)` 能在
-`ARI_MANUSCRIPT_RUNTIME_MODE` 不为 `off` 时按段执行论文流水线：被排除的段
-在一份*派生*工作流中表现为禁用阶段，因此跨段的 `depends_on` 仍由持久化输出
-满足。默认的 `include_segments=None` 会像以前一样运行每个启用的阶段。
+`generate_paper_section(..., include_segments=…)` 能按段执行论文流水线：被排除
+的段在一份*派生*工作流中表现为禁用阶段，因此跨段的 `depends_on` 仍由持久化输出
+满足。这一选择本身不需要任何 mode；`ARI_MANUSCRIPT_RUNTIME_MODE` 不为 `off`
+时新增的是 segment-execution 记录 —— 本次执行被绑定到 workflow digest 及其
+逻辑输入，若已有匹配的 completed 记录则直接复用而不重跑。默认的 `include_segments=None` 会像以前一样运行每个启用的阶段。
 
 ---
 
@@ -419,7 +420,7 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     将 review_report.json 与 vlm_review.json 做结构合并 (无 LLM)。
     输出：review_report.json (附 vlm_figure_review)
 
-  阶段 11：ors_generate_rubric  (ari-skill-replicate)  [在阶段 5 之后, v0.7.0]
+  阶段 11：ors_generate_rubric  (ari-skill-replicate)  [在 lock_paper_build 之后, v0.7.0]
     从最终论文自动生成 PaperBench 形式 (TaskNode 树) rubric。
     task_category 与 finegrained_task_category 锁定到 PaperBench 封闭
     词汇 (LLM 越界由确定性归一化器纠正)；JSON 输出时清洗游离 LaTeX
@@ -463,7 +464,8 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
   阶段 16：ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [在阶段 15 之后, v0.7.0]
     Phase 2。主评分 completer 通过 LiteLLM 路由 (任意供应商；绕过
     PaperBench 原生 CONTEXT_WINDOW_LENGTHS 约束)，structured score-parser
-    仍使用 gpt-4o-2024-08-06。N 次 (默认 3) 加权聚合 + negative control
+    仍使用 gpt-4o-2024-08-06。N 次 (默认 1 —— PaperBench §4.1 的单次评分；
+    用 ARI_JUDGE_N_RUNS 调高) 加权聚合 + negative control
     (两者均需 < 5%)。
     输出：ors_grade.json { ors_score, raw_score, leaf_grades,
                           judge_model, n_runs, rubric_sha256,
@@ -531,8 +533,11 @@ checkpoints/{run_id}/
 每节点的工作目录作为 `checkpoints/` 的兄弟目录创建:
 
 ```
-{workspace}/experiments/{slug}/{node_id}/
+{workspace}/experiments/{run_id}/{node_id}/
 ```
+
+中间那一段是 **`run_id`** 而不是主题 slug —— `PathManager.node_work_dir` 接收
+`run_id`，由 `ari/cli/bfts_loop.py` 传入，因此实验名相同的两次运行绝不会写入同一个桶。
 
 在节点执行时，`_run_loop` 将以下用户文件复制到每个节点的 work_dir:
 - **Provided files**: `experiment.md` 中 `## Provided Files` (`## 提供ファイル` / `## 提供文件`) 下列出的路径
@@ -580,6 +585,65 @@ checkpoints/{run_id}/
 API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 (搜索顺序: checkpoint → ARI root → ari-core → home) 或启动时注入的环境变量中读取。
 
+### 工作区根目录的解析
+
+上面路径中的 `{workspace}` 并不是一个固定目录。决定它的只有一个函数：
+`RuntimePathResolver.resolve_workspace_root()`（`ari/paths.py`）。优先级为先匹配者胜：
+
+1. **`ARI_CHECKPOINT_DIR`** —— 从被 pin 住的检查点目录 *反推* 根目录：向上走到最外层
+   的 `checkpoints/` 祖先并取其父目录；若没有 `checkpoints/` 祖先，则取该检查点目录
+   自身的父目录。
+2. 显式传入的 `workspace_root` 参数。
+3. **`ARI_ROOT`** → `{ARI_ROOT}/workspace`。
+4. `{repo root}/workspace` —— 仅当 `{repo root}/ari-core` 是目录时采用，也就是从检出
+   的仓库内部运行时。
+5. 进程的工作目录。
+
+第 1 步压过第 2 步是个容易踩的坑：只要 `ARI_CHECKPOINT_DIR` 被设置，显式传入
+`workspace_root` **不会** 移动根目录。目前采用该策略的调用方是
+`ari/config/__init__.py`（`auto_config`，默认的 `{workspace}/checkpoints/{run_id}`
+模板由此拼出）、`ari/harness_registry.py`（`{workspace}/harnesses`），以及
+`ari/viz/v1/` 下的 v1 GUI 文档存储与 launch 路径。
+
+该策略是选择性启用而非隐式生效：不带参数构造的 `PathManager()` 仍然默认为进程工作
+目录，完全不会走上面这条链。只有此处列出的调用点才以这种方式解析根目录。
+
+### 分桶的 `runs/` 布局 —— 只有设计，从未落地
+
+`RuntimePathResolver` 还认识第二种按运行分桶的布局：
+
+```
+{workspace}/runs/{run_id}/
+├── workspace/     # 每节点暂存区（旧布局对应：上文的节点工作目录）
+├── checkpoints/   # 运行级元数据 JSON（旧布局对应：检查点根目录）
+├── artifacts/     # 图片、LaTeX、refs.bib
+├── traces/        # 成本 / 提示 / 记忆访问日志
+└── reports/       # node_report.json、评审与复现报告、ors_*.json
+```
+
+**没有任何东西写入这种布局，`ari/paths.py` 之外也没有任何调用方请求过它。** 请把它当作
+一个设计出来却从未被采用的目标形态 —— 它既不是当前磁盘上的布局，也不是进行中的迁移。
+ARI 实际产出的每条路径都是上文那种扁平布局。`ari/paths.py` 中真实存在的只是读取侧的
+兼容能力，使得万一出现一个分桶的运行也能解析：
+
+- `checkpoint_file(run_id, name)` 用 `bucket_for` 对 `name` 分类（一组固定的成本 /
+  提示 / 遥测与 RQGM 日志文件名，以及 `memory_access.*.jsonl` 归 `traces`；`node_report.json` /
+  `review_report.json` / `reproducibility_report.json` 与 `ors_*.json` 归 `reports`；
+  `fig_` 前缀或 `.tex` / `.pdf` / `.bbl` / `.bib` / `.png` / `.svg` 扩展名归
+  `artifacts`；其余一律归 `checkpoints`），先探测该桶再探测其余三个，若都不存在则返回
+  扁平的 `checkpoints/{run_id}/{name}`。分类只决定扫描 *顺序* —— 无论如何四个桶都会被
+  检查，所以分类错误不会产生错误的路径。
+- `artifacts_dir` / `traces_dir` / `reports_dir` 仅在对应目录已存在时返回桶路径，否则
+  返回扁平的检查点根目录；`workspace_dir` 仅在 `runs/{run_id}/workspace/` 存在时返回
+  `runs/{run_id}/workspace/{node_id}`，否则返回上文 *节点工作目录* 的旧路径。
+
+由于没有任何东西会创建这些桶，上述方法在结构上必然返回扁平路径。`runs_root`、
+`run_dir`、`bucket_for` 以及 dual-layout 访问器（`checkpoint_file`、`artifacts_dir`、
+`traces_dir`、`reports_dir`、`workspace_dir`）在 `ari/paths.py` 之外没有调用方
+—— 唯一行使它们的是 `ari-core/tests/test_paths.py`（外加 `tests/test_rqgm_proposals.py`
+中的一条 `bucket_for` 断言）。不要把它当作新布局工作的范例；请把它理解为读取侧的死代码
+脚手架：保留成本很低，但若把它描述成 ARI 的布局就会误导读者。
+
 ---
 
 ## 模块参考
@@ -603,6 +667,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | `ari/mcp/client.py` | 异步 MCP 客户端 — 线程安全，为并行执行创建新的事件循环 |
 | `ari/llm/client.py` | 通过 litellm 进行 LLM 路由（Ollama、OpenAI、Anthropic、任何 OpenAI 兼容接口） |
 | `ari/config.py` | 配置数据类（BFTSConfig、LLMConfig、PipelineConfig） |
+| `ari/prompts/` | 通过 `FilesystemPromptLoader` 加载的外部化 LLM 提示词。已提交的模板目录包括 `agent/`、`orchestrator/`、`pipeline/`、`evaluator/`、`viz/`、`llm/`（注入到 CLI shim 系统提示中的 MCP 工具名解析片段），以及 RQGM 时期的两个目录 —— `governance/`（弹劾流水线的 `auditor` / `defender` / `governance_judge` 角色）与 `rqgm/`（ProposalRouter 的生成器、对抗 → 防御 → 裁决循环，以及 PromptMutator 与 clean-room 元提示）。所有目录都使用同一套带版本的方案：`load_versioned("<dir>/<name>")` 返回模板正文与 `sha256(text)[:12]`，该短哈希即记录中保存的 `prompt_hash` —— 见 [RQGM 模式 → Id 与哈希纪律](../reference/rqgm_schemas.md#id-与哈希纪律)。运行时 *进化出来的* 提示词正文绝不提交在此，它们按检查点存放。钉定由 `tests/test_prompt_extraction.py`（手工维护的 sha256 列表）与 `tests/test_prompt_snapshots.py`（自动发现目录下每个 `*.md`）完成 |
 | `ari/core.py` | 顶层运行时构建器 — 连接所有组件 |
 | `ari/cli/` | Typer CLI 拆分包：`__init__`、`run`、`projects`、`commands`、`bfts_loop`、`lineage`、`migrate` + `paper_dispatch`（`ari run` / `ari resume` / `ari paper` 共享的论文阶段执行模式分派） |
 
@@ -678,8 +743,12 @@ generate_ideas (idea-skill)
             不覆盖。
 ```
 
-`ARI_RUBRIC` 选择读取哪个 venue 文件。切换它会同时改变 BFTS 的打分轴
-（Phase 3）与所发表评审的标准 —— **同一个 rubric 同时驱动二者**。
+`ARI_RUBRIC`（默认 `neurips`）选择 BFTS 打分轴（Phase 3，`ari/core.py`
+的 `_load_rubric_dict_for_axes`）所依据的 venue 文件。论文评审不再共享
+这一选择：`review_paper` 阶段传入 `rubric_id: {{paper_rubric}}`，其值来自
+`workflow.yaml` 的顶层 `paper_rubric` 键（默认 `generic_conference`）；
+`resolve_rubric` 会拒绝空 id，而不是回退到环境变量。若希望同一个 venue
+同时驱动打分与评审，请把 `ARI_RUBRIC` 与 `paper_rubric` 设为同一个 id。
 
 ### 子实验的继承
 
@@ -750,7 +819,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
 - **沙箱**：`react.sandbox` 指向一个目录(默认 `{{checkpoint_dir}}/repro_sandbox/`)。工具参数会被扫描绝对路径和 `..` 穿越，沙箱外的路径(论文 `.tex` 的 allow-list 除外)会在抵达 MCP 之前被拒绝并返回 `sandbox violation`。MCP 服务器 fork 之前会将 `ARI_WORK_DIR` 设置为沙箱目录，所以 `coding-skill.run_bash` 的默认 cwd 也会在沙箱内。
 - **终止条件**：智能体调用 `react.final_tool`(默认 `report_metric`)结束循环。该调用不会转发给 MCP，而是被驱动捕获，其参数成为传递给 stage `post_tool` 的 `actual_value` / `actual_unit` / `actual_notes`。
 
-这一分离使 `reproduce_from_paper` 式 stage 的"仅读论文文本"约束能从 YAML 审计，而不是埋在技能 Python 里。
+这一分离使复现 stage 的"仅读论文文本"约束能从 YAML 审计，而不是埋在技能 Python 里。
 
 ---
 
@@ -905,15 +974,23 @@ Workflow:
 
 注意 `get_experiment_context()` 载荷（`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec`）**已不再** 在此列表中 —— 它现在作为上述工作上下文注入的 Tier 1a 对每个节点自动注入。
 
-### CoW 桥接 — 与记忆技能保持同步
+### 签名 call context — 与记忆技能保持同步
 
-在 LLM 往返开始之前，`loop.py:378-381` 发出：
+不存在桥接工具，也不存在承载「当前节点」的环境变量。在该节点的工具调用开始之前，`loop.py:1601` 构建一个不可变上下文，并由该节点的所有调用共享：
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids or [],
+    phase=phase,
+)
 ```
 
-这是 `ari-skill-memory` 暴露的内部工具；它更新池化技能子进程内的 `$ARI_CURRENT_NODE_ID`，使任何后续 `add_memory(node_id=...)` 调用可以针对活跃节点进行 CoW 验证。代理永远看不到此工具 ── 它被 `_INTERNAL_MCP_TOOLS` 从 `tool_desc` 中过滤。
+`MCPClient` 为每条技能连接生成一个 256-bit authority key（`new_context_authority_key()`，`mcp/client.py:76-77`），并作为 `ARI_CONTEXT_AUTHORITY_KEY` 导出到技能子进程。对于 `context_requirement` 不为 `none` 的工具，分发时会把 HMAC 签名后的上下文注入调用参数（`connection.authorize_args`，`mcp/client.py:540-545`），而 `ari-skill-memory` 在触及后端之前用 `verify_tool_context(...)` 验证签名（`ari-skill-memory/src/server.py:55-63`）。
+
+因此活跃节点是随 **每次签名调用本身** 传递的，而不是放在子进程环境里；这正是兄弟节点并发共享同一个池化子进程仍然安全的原因。
 
 ### Soft 强制 vs Hard 强制
 
@@ -921,7 +998,7 @@ self.mcp.call_tool("_set_current_node", {"node_id": node.id})
 
 | 规则 | 强制方式 |
 |-----|---------|
-| 不能为其他节点写记忆 | **Hard** — 后端拒绝 `node_id` ≠ `$ARI_CURRENT_NODE_ID` |
+| 不能为其他节点写记忆 | **Hard** — 技能拒绝 `node_id` 与签名 call context 中节点不一致的写入（"node write target is not the authorized self node"） |
 | 不能读取兄弟记忆 | **Hard** — `search_memory` 按 `ancestor_ids` 过滤 |
 | `generate_ideas` 最多调用一次 | **Hard** — 首次后 `_suppress_tools` 排除 |
 | 子节点不应调用 `survey` | **Soft** — 仅文字（"parent already completed the survey"）；工具仍在 `tool_desc` 中 |

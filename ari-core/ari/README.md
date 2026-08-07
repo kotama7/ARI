@@ -87,7 +87,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `request.py` — validate and canonicalize screen and certify run requests.
   - `resolver.py` — select compatible harnesses and fail closed on missing or ambiguous coverage.
   - `runner.py` — coordinate locked harness execution and attestation persistence.
-  - `sandbox.py` — TODO
+  - `sandbox.py` — Landlocks the process that runs untrusted code, so a check is not the only defence. Every forgery demonstrated against the performance harness used the same two primitives: `fork()` and reading `/proc/self/cmdline` to find the file the credited time is written to. The harness catches those after the fact, but a check only refuses what someone thought to check for — a candidate that cannot READ the path cannot use it, and one that cannot read the problem directory cannot find the frozen reference that is its own denominator. Filesystem access control only: it does not stop `fork`, CPU spinning, or code that never touches the filesystem, so the after-the-fact checks stay for the family it does not cover. On a kernel without Landlock it RAISES rather than running unprotected, and the run records which it was.
   - `suite.py` — run multi-property assurance suites and aggregate their verdicts.
   - `drivers/` — isolated adapters for native, container, external, shared-library, upstream, and PaperBench harnesses.
     - `__init__.py` — assurance driver registry exports.

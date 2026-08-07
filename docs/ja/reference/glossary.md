@@ -109,9 +109,13 @@ computed-evidence claim を到達可能にする BFTS の仕組み: 展開選択
 [アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan--venue-contract-v070)を参照。
 
 **venue（ベニュー）**
-実行の *判定基準* — どの次元を、どのように採点するか。ベニューは `ARI_RUBRIC` で選択される
-`ari-core/config/reviewer_rubrics/<id>.yaml` ファイルです。
-ベニューを切り替えると、BFTS の採点軸と、公開される査読の基準が同時に変わります。
+実行の *判定基準* — どの次元を、どのように採点するか。ベニューは
+`ari-core/config/reviewer_rubrics/<id>.yaml` ファイルです。選択子は 2 つあり、
+互いに独立しています: BFTS の採点軸には `ARI_RUBRIC`（既定 `neurips`）、
+論文査読には `workflow.yaml` のトップレベル `paper_rubric` キー（既定
+`generic_conference`）で、こちらは review ステージへ明示的な `rubric_id`
+として渡されます。1 つのベニューで採点と査読の両方を駆動したい場合は、
+両方に同じ id を設定してください。
 [アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan--venue-contract-v070)を参照。
 
 **rubric（ルーブリック）**

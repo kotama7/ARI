@@ -13,9 +13,14 @@ last_verified: 2026-05-25
 エージェントが生成した login node 上ではない。 以下 7 規約 (L1–L7)
 は compute node で完走するために必要。
 
-PaperBench レプリケータエージェントは
-`ari-skill-paper-re/src/prompts/replicator.md` の
-`COMPUTE-NODE EXECUTION CONVENTIONS` block 経由でこれらを指示される
+PaperBench レプリケータエージェントは、`_format_hpc_appendix`
+(`ari-skill-paper-re/src/_replicator_agent.py`) が vendor 版 PaperBench の
+instruction に付加する ARI 側 appendix の
+`COMPUTE-NODE EXECUTION CONVENTIONS` block 経由でこれらを指示される。
+この appendix は rubric の `reproduce_contract.execution_profile` が
+非空のときだけ出力されるため、非 HPC 論文のエージェントは受け取らない。
+`ari-skill-paper-re/src/prompts/replicator.md` は同じ block のより詳しい
+mirror を持つが、実行時に読み込まれることはない
 (本ドキュメントは reproduce.sh を手 audit するための reference)。
 
 ## L1 — 共有 FS

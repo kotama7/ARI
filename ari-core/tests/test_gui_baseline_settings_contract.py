@@ -210,8 +210,10 @@ class TestGetDefaultsShape:
         assert len(out["ors"]) == 10
 
     def test_frozen_default_values(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 3, "The default *values* are
+        frozen too, not just the key names"):
         the env-independent default VALUES are pinned too — types and
         magic literals the GUI currently renders. llm_provider/llm_model
         fall back to workflow.yaml (config, not code) so only their
@@ -364,8 +366,10 @@ class TestPostApiKeyHandling:
     def test_valid_openai_key_upserted_into_env_unquoted(
         self, active_checkpoint,
     ):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 4, "`api_key` never reaches
+        `settings.json`"):
         a plausible key (len>=20, no 'test' substring) with provider
         'openai' is routed into the project .env as OPENAI_API_KEY in the
         UNQUOTED KEY=value form, and exported live into os.environ."""
@@ -379,8 +383,10 @@ class TestPostApiKeyHandling:
         assert os.environ.get("OPENAI_API_KEY") == key  # live export quirk
 
     def test_short_key_silently_dropped(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 5, "QUIRK — three ways an api key
+        is discarded in silence", the length row):
         a key shorter than 20 chars is SILENTLY dropped — no .env write,
         no error, save still reports ok."""
         out = _post({"llm_provider": "openai", "api_key": "sk-short"})
@@ -388,8 +394,10 @@ class TestPostApiKeyHandling:
         assert not (active_checkpoint / ".env").exists()
 
     def test_key_containing_test_silently_dropped(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 5, "QUIRK — three ways an api key
+        is discarded in silence", the substring row):
         any key containing the substring 'test' is SILENTLY dropped even
         when len>=20 and the provider is mapped — a substring heuristic,
         frozen as-is."""
@@ -401,8 +409,10 @@ class TestPostApiKeyHandling:
         assert not (active_checkpoint / ".env").exists()
 
     def test_unmapped_provider_silently_dropped(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 5, "QUIRK — three ways an api key
+        is discarded in silence", the provider-map row):
         providers outside {openai, anthropic, gemini} (e.g. 'ollama')
         have no env-var mapping — the key is SILENTLY dropped with no
         .env write and no error."""
@@ -435,8 +445,10 @@ class TestPostApiKeyHandling:
 
 class TestPostWithoutCheckpoint:
     def test_refused_with_exact_legacy_error_payload(self, no_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 6, "QUIRK — a refused save is not
+        a no-op", the "No active project" row):
         with no active checkpoint there is nowhere to persist — the save
         is refused with this exact error payload and _status 400."""
         out = _post({"llm_model": "model-x"})
@@ -450,8 +462,10 @@ class TestPostWithoutCheckpoint:
         }
 
     def test_env_upsert_still_happens_before_refusal(self, no_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 6, "QUIRK — a refused save is not
+        a no-op", which records this handler ordering):
         QUIRK — the api-key .env upsert runs BEFORE the checkpoint check,
         so a refused save (400) still writes the key into .env and
         os.environ. Frozen as-is; reordering is a behavior change."""
@@ -540,8 +554,11 @@ class TestFrontendSavePayload24Keys:
     def test_llm_backend_is_provider_fallback_for_env_upsert(
         self, active_checkpoint,
     ):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — point 5, closing paragraph: every save
+        from the real Settings page resolves its provider through the
+        fallback arm):
         the frontend body has no 'llm_provider' — the env-upsert path
         falls back to 'llm_backend' ('openai' here), so the popped
         llm_api_key still lands in .env as OPENAI_API_KEY."""

@@ -1,9 +1,10 @@
 """Role-specific context views — deterministic, capped projections (Task 12).
 
-Each governance actor receives a **view**, never the archive (plan
-``docs/plans/ari_rqgm/12`` §5.7 visibility matrix). Pure functions in the
-``bfts_prompt_builder`` style: LLM-free, byte-deterministic for identical
-inputs, unit-testable, no I/O.
+Each governance actor receives a **view**, never the archive — the visibility
+matrix in ``docs/reference/internal_boundaries.md``, "Governance context views
+(``ari.rqgm.context_views``)". Pure functions in the ``bfts_prompt_builder``
+style: LLM-free, byte-deterministic for identical inputs, unit-testable, no
+I/O.
 
 The BFTS row is the load-bearing one: **BFTS sees ProposalSummaryView
 only, never full transcripts**. Enforcement is layered (§5.7):

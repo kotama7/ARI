@@ -13,10 +13,15 @@ last_verified: 2026-08-02
 not on the login node where the agent generated it. The following
 conventions (L1–L7) ensure the script can actually complete there.
 
-The PaperBench replicator agent is prompted with these conventions via
-`ari-skill-paper-re/src/prompts/replicator.md` (look for the
-`COMPUTE-NODE EXECUTION CONVENTIONS` block). They are reproduced here so
-you can audit a generated `reproduce.sh` by hand.
+The PaperBench replicator agent receives these conventions as an ARI-side
+appendix that `_format_hpc_appendix`
+(`ari-skill-paper-re/src/_replicator_agent.py`) appends to the vendored
+PaperBench instructions — look for its `COMPUTE-NODE EXECUTION CONVENTIONS`
+block. The appendix is emitted only when the rubric's
+`reproduce_contract.execution_profile` is non-empty, so a non-HPC paper's agent
+never sees it. `ari-skill-paper-re/src/prompts/replicator.md` holds a fuller
+mirror of the same block, but nothing reads it at run time. They are reproduced
+here so you can audit a generated `reproduce.sh` by hand.
 
 ## L1 — Shared filesystem
 

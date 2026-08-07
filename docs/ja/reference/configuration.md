@@ -8,6 +8,14 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
+  - path: ari-core/ari/viz/state.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/secrets.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/rqgm/budget.py
+    role: implementation
   - path: ari-core/ari/config/field_registry.py
     role: implementation
   - path: ari-core/ari/config/resolver.py
@@ -28,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-29
+last_verified: 2026-08-08
 ---
 
 # 設定リファレンス
@@ -72,9 +80,29 @@ ARI の設定は複数の入口から入ってきます。**優先順位のチ�
 | GUI ポート | `ARI_GUI_PORT`（`start.sh` 経由）> `--port`（argparse デフォルト **8765**）> `state.py` の `9886` プレースホルダ | `start.sh`、`viz/server.py:main` |
 | SLURM パーティション | 明示的なツール `partition` kwarg（sinfo 検証済み）> `SLURM_DEFAULT_PARTITION` > sinfo の先頭。kwarg 自体は experiment.md の `Partition:` > `ARI_SLURM_PARTITION` > sinfo から選ばれる | `ari-skill-hpc/slurm.py`、`ari/agent/workflow.py` |
 | checkpoint ディレクトリ | `ARI_CHECKPOINT_DIR` > YAML `checkpoint.dir` > `workspace/checkpoints/{run_id}` | `config/__init__.py:_apply_checkpoint_env_overrides`、`PathManager` |
+| workspace ルート | `ARI_CHECKPOINT_DIR`（そこから復元: 最も外側の `checkpoints/` 祖先の親。該当する祖先が無ければ checkpoint 自身の親）> 明示的な `workspace_root` 引数 > `{ARI_ROOT}/workspace` > `{repo_root}/workspace`（`{repo_root}/ari-core` がディレクトリのときのみ）> 解決済みのカレントディレクトリ | `paths.py:RuntimePathResolver.resolve_workspace_root` |
 | `bfts_pipeline[].enabled` | `{checkpoint}/workflow.yaml` > パッケージ同梱の `ari-core/config/workflow.yaml` > `true` | `cli/bfts_loop.py`（生 YAML 読み） |
 | `lineage_decision.*` | 有効な rubric の `lineage_thresholds`（`ARI_RUBRIC`。4 つのしきい値キーのみで `mode` は対象外）> パッケージ同梱の `ari-core/config/workflow.yaml` > `./config/workflow.yaml`（プロセスの cwd）> 呼び出し側のデフォルト | `cli/lineage.py:_load_lineage_decision_config` |
 | `root_idea_selection.enabled` | パッケージ同梱の `ari-core/config/workflow.yaml` **のみ** > `false` | `cli/bfts_loop.py`（生 YAML 読み） |
+
+**「workspace ルートとは何か」の所有者は 1 つだけです。** 上表の 5 段の
+ラダーは `RuntimePathResolver.resolve_workspace_root()`
+（`ari-core/ari/paths.py`）という単一の関数にしか存在せず、本番の呼び出し元は
+すでに 4 箇所あります: `ARI_CHECKPOINT_DIR` が未設定のときの `auto_config()`
+（`ari/config/__init__.py`）、`workspace_harness_root()`
+（`ari/harness_registry.py`。自前の `ARI_WORKSPACE` ショートサーキットの後）、
+GUI 文書ストア（`ari/viz/v1/store.py`）、そして
+`{workspace_root}/checkpoints/{run_id}` を発行する v1 起動パス
+（`ari/viz/v1/launch.py`）です。コードを開いたときに読み飛ばすべき点が 2 つ:
+このメソッドの docstring はいまだに自らを*additive* と述べ、オプトインは
+「005 に先送り」と書いていますが、これは古い記述です（上記 4 箇所がその
+オプトインです）。また [環境変数](environment_variables.md) は
+*チェックポイント + パス* の節で `ARI_ROOT` を「テストで使用」と
+位置づけていますが、これは過小評価です。`ARI_ROOT` は
+このラダーの第 3 段であり、`ARI_CHECKPOINT_DIR` が未設定なら実運用のランが
+どこに落ちるかを決めます。一方で*変わっていない*こと: `PathManager()` の
+素のコンストラクタは今もカレントディレクトリを既定とし、このラダーを
+参照しません。
 
 **falsy と欠損の違い:** core 側の環境変数オーバーライドのガード（`if _m:` など）は
 空の環境変数を欠損として扱います（YAML／デフォルトを保持。`base_url` だけは
@@ -431,9 +459,12 @@ GUI 専用の設定文書は、グローバルなホームディレクトリで�
 
 ### レガシー Settings のキー: 実際に配線されているもの
 
-レガシーの `GET/POST /api/settings` 面は、癖も含めて凍結されています（正確なキー集合は
+レガシーの `GET/POST /api/settings` 面は、癖も含めて凍結されています（正確な
+キー集合・デフォルト値・保存パスの挙動は
 `ari-core/tests/test_gui_baseline_settings_contract.py` がピン留めしています）。
-Settings ページを読むときに効いてくる癖が 2 つあります:
+以下はすべて**実測された凍結挙動**です。テストが依存しており運用者がつまずく
+ので記録していますが、真似すべき設計ではありません。Settings ページを読むときに
+効いてくる点が 6 つあります:
 
 **1. GET と POST のキー集合が一致していません。** `GET /api/settings` はちょうど
 **27** のトップレベルキーを返します（26 のスカラ / リスト + 10 のサブキーを持つ
@@ -460,6 +491,142 @@ POST し、`POST` は*ファイル全体の置換*です（ボディに無いキ
 | `slurm_partitions` | **UI ローカル** | Settings ページのマルチセレクトの状態です; ウィザードのパーティション一覧は `GET /api/slurm/partitions` の検出から来ます。 |
 | `container_mode` / `container_image` / `vlm_review_model` / `letta_*` | **env のみ** | `ARI_CONTAINER_MODE` / `ARI_CONTAINER_IMAGE` / `VLM_MODEL` / `LETTA_*` としてエクスポートされますが、対応するワークフローブロックは未型付けの `extra="allow"` セクションなので、フィールドレジストリにはまだ型付き葉がありません。 |
 | `letta_api_key` | **凍結された欠陥** | `settings.json` へ平文のまま永続化されます。正準の設定 API は `values` 内のシークレットを拒否します; 代わりに `PUT /api/v1/secrets/{secret_id}` を使ってください。 |
+
+**3. 凍結されているのはキー名だけでなくデフォルト*値*もです。**
+`_api_get_settings`（`ari/viz/api_settings.py`）はリテラルの `defaults` dict を
+1 つ組み立てており、`test_frozen_default_values` がその中身をピン留めしています。
+これらは「何も再導出しないピン留めされたリテラル」として読んでください —
+チューニング済みの推奨値ではなく、これを見て何かを決める実行時も存在しません。
+
+トップレベル 20 スロットと `ors` サブキー 5 つは純粋な定数です:
+
+| キー | 凍結値 |
+|---|---|
+| `llm_api_key` | `""` |
+| `semantic_scholar_key` | `""` |
+| `temperature` | `1.0` |
+| `slurm_partition` | `""` |
+| `slurm_cpus` | `null` |
+| `slurm_memory_gb` | `null` |
+| `slurm_gpus` | `0` |
+| `slurm_walltime` | `"04:00:00"` |
+| `mcp_skills` | `[]` |
+| `container_mode` | `"auto"` |
+| `container_image` | `""` |
+| `container_pull` | `"on_start"` |
+| `vlm_review_enabled` | `true` |
+| `vlm_review_model` | `"openai/gpt-4o"` |
+| `vlm_review_max_iter` | `3` |
+| `vlm_review_threshold` | `0.7` |
+| `letta_deployment` | `"auto"` |
+| `letta_deployment_image` | `""` |
+| `letta_deployment_venv` | `""` |
+| `letta_api_key` | `""` |
+| `ors.rubric_gen_temperature` | `0.0` |
+| `ors.rubric_gen_target_leaves` | `0` |
+| `ors.rubric_gen_two_stage` | `true` |
+| `ors.judge_n_runs` | `3` |
+| `ors.phase1_max_runtime_sec` | `21600` |
+
+残るトップレベル 6 スロットと `ors` サブキー 5 つは**環境変数が先**であり、
+凍結されているのはフォールバックだけです。定数として引用しないでください:
+
+| キー | 先に読む変数 | その変数が未設定のときの値 |
+|---|---|---|
+| `ollama_host` | `OLLAMA_HOST` | `"http://localhost:11434"` |
+| `retrieval_backend` | `ARI_RETRIEVAL_BACKEND` | `"semantic_scholar"` |
+| `letta_base_url` | `LETTA_BASE_URL` | `"http://localhost:8283"` |
+| `letta_embedding_config` | `LETTA_EMBEDDING_CONFIG` | `"letta-default"` |
+| `ors.replicator_model` | `ARI_MODEL_REPLICATE` | `"claude-opus-4-7"` |
+| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini-2.5-pro"` |
+| `ors.rubric_audit_model` | `ARI_MODEL_RUBRIC_AUDIT` | `"claude-opus-4-7"` |
+| `ors.judge_model` | `ARI_MODEL_JUDGE` | `"gpt-4o-2024-11-20"` |
+| `ors.phase1_sandbox_kind` | `ARI_PHASE1_SANDBOX` | `"auto"` |
+| `llm_model` | `ARI_LLM_MODEL` | パッケージ同梱 `workflow.yaml` の `llm.model`、無ければ `""` |
+| `llm_provider` | `ARI_BACKEND` | パッケージ同梱 `workflow.yaml` の `llm.backend`、無ければ `""` |
+
+表に載せられない細部が 2 つあります。`os.environ.get(VAR, リテラル)` 形式の
+9 スロットは変数が**存在しない**ときにのみフォールバックします — 空文字列に
+設定された変数は `""` を返し、リテラルにはなりません。`llm_model` /
+`llm_provider` は `os.environ.get(VAR, "") or …` なので、この 2 つだけは空でも
+フォールバックします。契約テストが凍結リテラルを観測できるのは、`_clean_env`
+フィクスチャが 11 個の変数を先に削除しているからにすぎません。開発者のシェル上
+ではペイロードは違うものになります。
+
+**4. `api_key` は `settings.json` に到達しません — `.env` ファイルと稼働中の
+サーバプロセスに書かれます。** `POST /api/settings` はボディから `api_key`
+（次に `llm_api_key`）を pop し、さらに両方を無条件で pop し直すので、どちらも
+永続化されることはありません。値が下記 5 の妥当性ガードを通過し、*かつ*
+プロバイダが環境変数名にマップされる場合にのみ
+`_upsert_env_key(name, key, quote=False)` が走ります。このヘルパは:
+
+- 対象ファイルの中で strip 後に `NAME=` で始まる行を**すべて**書き換え、
+  1 つも無ければ行を追加します。（ヘルパ自身の docstring は「最初の行」と
+  書いていますが、ループに早期脱出は無いので、`NAME` の重複エントリを既に
+  含むファイルではそのすべてが書き換わります。）;
+- アトミックに書きます — 同一ディレクトリの `mkstemp`、`fchmod 0o600`、
+  `fsync`、`os.replace`、最後にベストエフォートの `chmod 0o600`;
+- **引用符なし**の `NAME=value` 形式で描画します。`NAME="value"`
+  （`quote=True`）を書くのは env キーエディタと
+  `PUT /api/v1/secrets/{secret_id}` で、同じヘルパを通ります。ヘルパの
+  docstring には、2 つの呼び出し元は歴史的にこの引用符だけが違っており、
+  統一することは挙動変更にあたる、と記録されています;
+- そして最後に**稼働中のサーバプロセス**で `os.environ[name] = value` を
+  設定します。設定の保存はファイルだけでなくライブの環境も書き換えます。
+
+書き込み先はモジュールグローバルの `ari.viz.state._env_write_path` で、import
+時に ARI リポジトリルートの `.env` に一度だけ束縛されます。
+`set_active_checkpoint` が再束縛するのは `_checkpoint_dir` と `_settings_path`
+だけで `_env_write_path` は触らず、`ari/` 配下にこれを再代入するコードは
+ありません — つまりこれは選択中の checkpoint の `.env` ではなく**リポジトリ
+ルート**の `.env` です。（契約テストが checkpoint ローカルの `.env` を書くように
+見えるのは、フィクスチャがこのグローバルを monkeypatch しているからです。）
+正準ルートも同じファイルに到達します:
+[Configuration Studio](../guides/configuration_studio.md) の
+*シークレットの扱い* を参照してください。
+
+**5. 癖 — API キーが黙って捨てられる 3 つの経路。** `.env` 分岐全体が
+`if _raw_key and "test" not in _raw_key and len(_raw_key) >= 20:` という 1 行の
+条件にぶら下がっており、その後にインライン dict でのプロバイダ検索が続きます。
+`else` 分岐もログ行もレスポンス上のフィールドも存在しないため、以下のいずれの
+ケースでも書き込みは丸ごとスキップされ、アクティブな checkpoint があれば
+ハンドラはそのまま `{"ok": true}` を返します。運用者には保存成功と伝えつつ、
+資格情報は捨てられています。
+
+| 捨てられる条件 | 詳細 |
+|---|---|
+| キーが 20 文字未満 | `20` は条件式に直書きされたマジックナンバーです — 名前付き定数も設定ノブもメッセージもありません。 |
+| キーのどこかに `test` が含まれる | キー全体に対する大文字小文字を区別する部分文字列判定で、長さチェックより先に評価されます。たまたまその 4 文字を含む本物の資格情報は、プレースホルダとまったく同じように捨てられます。一方 `TEST` はマッチしません。 |
+| プロバイダがマップに無い | マップは `openai` → `OPENAI_API_KEY`、`anthropic` / `claude_code` / `claude-code` → `ANTHROPIC_API_KEY`、`gemini` → `GOOGLE_API_KEY` です。5 つの綴りで 3 つの変数。`.get(provider, "")` はそれ以外（`ollama`、vLLM、その他すべての OpenAI 互換 `base_url` バックエンド）に対して `""` を返し、書き込みはスキップされます。 |
+
+これら 3 つはテストがピン留めしている長さと部分文字列のヒューリスティクスです。
+バリデーションでもシークレット検出でもないので、そのように説明しないで
+ください。さらにこのマップがこのルートの到達範囲そのものです:
+`GEMINI_API_KEY`、`SEMANTIC_SCHOLAR_API_KEY`、`LETTA_API_KEY`、`ZENODO_TOKEN`、
+`ARI_REGISTRY_TOKEN` はいずれも v1 シークレット許可リスト
+（`ari/viz/v1/secrets.py`）にありますが、ここからは 1 つも到達できません。
+
+癖 1 の帰結がこの経路に効いてきます。プロバイダ名は
+`data.get("llm_provider", "") or data.get("llm_backend", "")` として読まれ、
+フロントエンドの 24 キーの Save ボディには `llm_backend` があって
+`llm_provider` はありません — つまり実際の Settings ページからの保存はすべて
+*フォールバック*側の腕でプロバイダを解決しています。GUI からキーを設定できる
+のはこのフォールバックのおかげであり、両キーが無いか falsy ならプロバイダは
+`""` となり、`""` にマップされてキーは捨てられます。
+
+**6. 癖 — 拒否された保存は no-op ではありません。** `_api_save_settings` の
+実行順は、ボディのパース → `retrieval_backend` ガード → API キーの pop と
+`.env` upsert → アクティブ checkpoint チェック → `settings.json` 書き込み、
+です。したがって 2 つの拒否は残すものが違います:
+
+| 拒否（どちらも `_status` 400） | 副作用 |
+|---|---|
+| `{"ok": false, "error": "retrieval_backend must select one pinned provider"}` — ボディに `semantic_scholar`、`arxiv`、`alphaxiv` のいずれでもない `retrieval_backend` が含まれている（キー自体が無い場合は通過します） | ありません。キーを読む前に return します。 |
+| `{"ok": false, "error": "No active project. Create or select a checkpoint before saving settings."}` — `state._settings_path` が `None` | キーは**すでに** `.env` に書かれ `os.environ` にエクスポート済みです。`_env_write_path` は `_settings_path` とは別の状態なので、checkpoint 未選択でも書き込み可能なままです。 |
+
+覚えておくべきは 2 行目です。このエンドポイントの 400 は「何も起きなかった」を
+意味しません — どちらにせよシークレットはディスク上とプロセス内にあります。
+現状のまま凍結されており、ハンドラの順序変更は挙動変更にあたります。
 
 24 の POST キー、レガシー起動時の env エクスポート、正準の設定葉の三者の重なり —
 上記のすべての乖離を含めて — は
@@ -496,7 +663,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    tool: ''                   # 表示専用の行: 評価は MCP ツールではなく
+                               # ari-core のインプロセス LLMEvaluator が担当
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -508,7 +676,11 @@ bfts_pipeline:
 pipeline:
   - stage: search_related_work
     skill: web-skill
-    tool: collect_references_iterative
+    tool: search_papers
+    params:
+      provider: semantic-scholar
+      max_results: 15
+      mode: record
     skip_if_exists: '{{ckpt}}/related_refs.json'
     # ...
   - stage: transform_data
@@ -652,10 +824,11 @@ retrieval:
 # CLI フラグ (--rubric、--fewshot-mode、--num-reviews-ensemble、
 # --num-reflections) または環境変数 (ARI_RUBRIC、ARI_FEWSHOT_MODE、
 # ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS) で上書き可能。
-# ari-core/config/reviewer_rubrics/ に同梱されている 16 種のルーブリック:
+# ari-core/config/reviewer_rubrics/ に同梱されている 23 個の YAML ルーブリック:
 #   neurips (既定、v2 互換) | iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
 #   | journal_generic | workshop | generic_conference
+#   | aer | ahr | apsr | econometrica | philreview | pmla | qje
 # 加えて内蔵の `legacy` フォールバック (v0.5 スキーマ)。新しい venue は
 # <id>.yaml を reviewer_rubrics/ に追加するだけで対応 (コード変更不要)。
 #
@@ -715,7 +888,7 @@ skills:
     phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
-    phase: none
+    phase: bfts
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
     phase: [bfts, reproduce]
@@ -762,7 +935,7 @@ skills:
 | `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Letta self-edit を無効化 (CoW セーフ) | `true` |
 | `ARI_MEMORY_ACCESS_LOG` | `{checkpoint}/memory_access.jsonl` を有効化 | `on` |
 | `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 時にバックアップを自動復元 | `true` |
-| `ARI_RUBRIC` | 査読 rubric_id (例: `neurips`、`sc`、`nature`) | `neurips` |
+| `ARI_RUBRIC` | BFTS の動的軸評価器 (Phase 3) と lineage 判定しきい値が読む rubric_id (例: `neurips`、`sc`、`nature`)。論文査読はこれを読まず、`review_paper` は `workflow.yaml` のトップレベル `paper_rubric` から明示的な `rubric_id` を受け取る (`resolve_rubric` は空の id を環境変数へフォールバックせず拒否) | `neurips` |
 | `ARI_FEWSHOT_MODE` | `static` / `dynamic` | `static` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | 独立査読者数 | `1` |
 | `ARI_NUM_REFLECTIONS` | self-reflection ループ回数 | `5` |
@@ -939,7 +1112,7 @@ degrade するため BFTS ループはこの hook で詰まりません。
 lineage_decision:
   mode: stagnation_rule           # off | stagnation_rule | every_node
   stagnation_window: 5            # composite score の window
-  stagnation_threshold: 0.02      # max-min < threshold で停滞
+  stagnation_threshold: 0.05      # max-min < threshold で停滞
   min_nodes_before_decision: 3    # 序盤での発火を抑制
   rate_limit_per_run: 5           # 1 run あたりの escalation 上限
 ```
@@ -1308,6 +1481,27 @@ shadow の出力は観察のみです: BFTS のスコア、フロンティア、
 | `max_clean_room_generations_per_epoch` | `1` | エポックごとのクリーンルーム再生成のキャップ（クリーンルームパイプラインが消費） |
 | `mutation_kinds` | 全 5 種 | 有効な PromptMutator ファミリ: `freeform_mutation`、`threshold_tuning`、`schema_tightening`、`specialization`、`distillation` |
 
+### `rqgm.utility_evolution` — スコア自身の統治された書き換え
+
+エポック境界では utility 関数そのものが統治対象オブジェクトです。書き換えは
+`PolicyMutator` → `CandidateValidationPipeline` → `RegistryTransitionEngine`
+→ `ConstitutionalKernel` の経路でしか起こらず、その場で書き換えられることは
+ありません。
+
+**数値と語彙のノブのみです。** 合法性ルール — 閉じた値空間と軸重みの上下限 —
+は `ari.rqgm.kernel_rules.UTILITY_POLICY_RULES` の凍結されたコードであり、
+`constitution_hash` の*内側*にあります。調整可能な重み上限は調整可能な憲法に
+なってしまいます。ここに置かれていそうで意図的に置かれていない予算が 2 つ
+あります。それぞれ既にスキーマ上の住所を 1 つ持っているからです: 候補キャップは
+`rqgm.prompt_evolution.max_candidates_*` に、採用キャップは
+`rqgm.transition.max_adoptions_per_role_per_boundary` に乗ります。
+
+| キー | デフォルト | 意味 |
+|---|---|---|
+| `enabled` | `true` | `ari_rqgm` 内での統治された utility 進化の on/off。`false` は書き換え導入前のスコアリング挙動を正確に再現します — 候補は 1 つも生成されず、何も置き換わらず、`utility_policy_hash` はラン全体で一定です（アブレーション用の段）。founding で登録される `utility_policy_v1` / `policy_mutator_v1` コンポーネントの登録を取り消すわけでは**ありません**。 |
+| `mutation_kinds` | `axis_reweighting`、`composite_swap`、`frontier_score_swap`、`exploration_tuning` | 有効な `PolicyMutator` ファミリ。既定の 4 つはいずれも境界の証拠に対する純粋な算術で、LLM も時計も乱数も使いません。したがって既定の書き換えストリームは決定論的です。`freeform_policy_proposal` は LLM を参照するオプトインで、有効化すると候補ストリームのバイト再現性を失います（再現不能な*提案*であっても、未検証の policy になることはできません — カーネルはどちらの場合も検証します）。 |
+| `min_epochs_between_rewrites` | `1` | 採用される書き換え 2 回の間の最小エポック数。修復コストを抑えます: 書き換えは旧ポリシー下で採点された全ノードを無効化し、早い境界ではそれが木全体になりえます。 |
+
 ### `rqgm.clean_room` — クリーンルーム再生成の姿勢
 
 スクリーンの*ポリシー*はコード（`ari/rqgm/clean_room_rules.py`）です;
@@ -1360,6 +1554,35 @@ shadow の出力は観察のみです: BFTS のスコア、フロンティア、
 | `max_governance_tokens_per_epoch` | `0` | ガバナンスフェーズの LLM 支出に対するエポックごとのトークンキャップ |
 | `on_exhausted` | `degrade` | `degrade` はノードの実効ガバナンスレベルに上限をかける; `skip` は単一のアクションを落とす。クラッシュは決してしない |
 
+**予算対象のアクション種別。** 上記 3 キーはこのブロックが所有する唯一の
+ノブですが、`GovernanceBudgetManager` が数えているのはそれだけではありません。
+提出されるガバナンスアクションはいずれも 10 種の*アクション種別*
+（`ari/rqgm/budget.py` の `ACTION_KINDS`）のどれかを持ち、それぞれ独自の
+エポックごとカウンタを持ちます。各種別のキャップはそのノブを所有する
+ブロックから読まれ、別名は存在しません。語彙は閉じています:
+
+| アクション種別 | エポックごとのキャップの出どころ | デフォルト |
+|---|---|---|
+| `adversary_call` | `rqgm.adversarial.max_adversary_calls_per_epoch` | `24` |
+| `defender_call` | `rqgm.governance.max_defender_calls_per_epoch` | `12` |
+| `judge_call` | `rqgm.governance.max_judge_calls_per_epoch` | `8` |
+| `shadow_call` | `rqgm.shadow.max_shadow_calls_per_epoch`。`rqgm.shadow.enabled` が false なら `0` | `10` |
+| `replay_case` | `rqgm.replay.max_cases_per_epoch`。RetirementEvent が検討中なら `rqgm.replay.max_cases_for_retirement` | `8` / `12` |
+| `virsci_call` | `proposal_router.generators.virsci.max_calls_per_epoch`。当該ジェネレータが無効なら `0`、値が `<= 0` なら無制限 | `2` |
+| `prompt_candidate` | `rqgm.prompt_evolution.max_candidates_per_role_per_epoch`（ロール単位で計数）。加えて全ロール合計の第 2 の天井として `max_total_candidates_per_epoch` | `1` / `4` |
+| `clean_room_generation` | `rqgm.prompt_evolution.max_clean_room_generations_per_epoch` | `1` |
+| `governance_llm_call` | `rqgm.governance.max_llm_calls_per_audit` | `12` |
+| `paper_anchor_scoring` | `rqgm.paper.anchor.sample_size`。`rqgm.paper.anchor.enabled` が false なら `0` | `8` |
+
+レベル 0 の固定チェックはアクションを提出せず、構造上その対象外です。
+カウンタのキーは `(epoch_id, kind)`（ロール単位の `prompt_candidate` は
+`(epoch_id, kind:role)`）で、構築時に `budget_consumed` の監査行から
+再構成されるため、キャップは `ari resume` をまたいで生き残ります。キャップが
+無い場合は無制限を意味し、チェック内部の失敗は警告をログして**フェイル
+オープン**します（ランをブロックしません）。`paper_anchor_scoring` は
+paper-archive フェーズが元の 9 種に追加した唯一の種別です。そのキャップの
+背後にあるコストモデルは下の `rqgm.paper.anchor` の節にあります。
+
 ### `rqgm.eval` — 評価ハーネスの姿勢
 
 すべてのデフォルトは off です: `scripts/rqgm_eval` ハーネスが自身の起動
@@ -1372,6 +1595,58 @@ shadow の出力は観察のみです: BFTS のスコア、フロンティア、
 | `scripted_components` | `{}` | `role -> double_name` の差し替え（ハーネス専用） |
 | `injection_specs` | `[]` | アクティブな `eval_*` 注入 id; `rqgm_injection_provenance.json` に記録される |
 | `paper_ablation.condition_id` | `""` | RQGM元論文に合わせた評価専用条件（`P0_hgm_h_fixed_critic`～`P4_constitutional_rqgm`）。空、または `eval.enabled: false` なら通常挙動を保つ。`paper.mode` ではない |
+
+### `rqgm.paper` — paper-archive 共進化
+
+`rqgm.paper.*` ブロックは全体として、**実効 paper モードが `rqgm_archive`
+でない限り不活性**です（`paper.mode: rqgm_archive` と
+`rqgm.paper.enabled: true` の両方が一致していること）。`ari.mode` とは直交で、
+上の探索側 `rqgm.*` ノブを覆い隠すことは決してありません — 名前が似ていても
+2 つの層はスキーマ上の住所が別です。意味論はコンセプト側にあります:
+[RQGM アーキテクチャ](../concepts/rqgm_architecture.md) の
+*paper-archive レイヤ*。
+
+| キー | デフォルト | 意味 |
+|---|---|---|
+| `enabled` | `false` | `rqgm.enabled` を写した冗長な安全インターロック |
+| `archive.width` | `4` | 深さ 1 のシードドラフト数 — ルートの分岐数 |
+| `archive.refine_rounds` | `2` | ドラフトごとの refine 子ノード数 — ドラフトの分岐数 |
+| `archive.max_expansions` | `12` | エポックごとのノード予算。archive が BFTS の `max_total_nodes` として使う*実効*キャップは `min(width × (1 + refine_rounds), max_expansions)` で、既定値では両項が一致します（4 × 3 = 12）。この上限が、自前の予算アクション種別を持たない paper アクタを構造的に制限します |
+| `archive.depth` | `3` | ドラフト木の深さ。archive の BFTS `max_depth` として使われます。木を深くしても同じノード予算が配り直されるだけで、増えることはありません |
+| `archive.compile_threshold` | `0.0` | 勝者を遅延コンパイルするために必要な best-belief スコアの下限 |
+| `epoch.rounds` | `2` | paper フェーズあたりの archive ラウンド数。1 ラウンド = 1 paper エポック。この安価な既定値では reviewer の採用完了は意図的に買えません: その道のりは candidate → validated → shadow → probationary_active であり、先にロールの空きが必要なので概ね 5 境界かかります。`2` では既定のランでもループ・adversary・弾劾は動きますが、アクティブな reviewer ハッシュが変わるところは観測できません。採用を観測させたいランでは引き上げてください |
+| `self_preference.enabled` | `true` | self-preference adversary。`rqgm_archive` paper モード下でのみ意味を持ちます |
+| `self_preference.corpus_path` | `""` | `""` は anchor コーパスとその著者ラベルを再利用します |
+| `self_preference.sample_size` | `8` | エポックごとに採点する held-out 論文数（anchor のサンプルを写したもの） |
+| `self_preference.accept_threshold` | `0.6` | reviewer の「accepted」カットオフ |
+| `self_preference.margin` | `0.1` | 事前シグナルを発火させる AI 対 人間の平均スコア差 |
+| `prompt_evolution.enabled` | `true` | archive 内での reviewer / writer 共進化。`false` にすると共進化なしのレビュー済みドラフト best-of-N に縮退します |
+
+### `rqgm.paper.anchor` — held-out な accept/reject 一致度
+
+`paper_reviewer` のグラウンドトゥルース・アンカー: `train` / `held_out` に
+分割された読み取り専用の accept/reject コーパスで、その形は
+[RQGM スキーマリファレンス](rqgm_schemas.md) の
+*`paper_anchor_corpus.jsonl` — 読み取り専用の accept/reject アンカー* に
+記載されています。既定は off で、これは縮退したオンランプです: コーパスは
+読まれず、`anchor_evaluation` ステージはゼロカバレッジのパスを取り、reviewer
+候補は anchor でゲートされません。`paper_writer` にもアンカーはありますが、
+そちらは Layer-0 の claim-evidence ゲートでありキュレーション済みコーパスを
+必要としません — ただし writer の忠実性ケースはこのプールに着地するため、
+`enabled: false` は writer 側の制裁もゲートします。
+
+| キー | デフォルト | 意味 |
+|---|---|---|
+| `enabled` | `false` | anchor コーパス採点の on/off。`paper_anchor_scoring` 予算のスイッチでもあり、無効ならキャップは `0` — `shadow_call` / `virsci_call` と同じ「無効ならゼロ」の規則です |
+| `corpus_path` | `""` | accept/reject コーパスのパス（checkpoint 相対または絶対） |
+| `sample_size` | `8` | held-out 一致度のサンプルサイズであり、**同時に** `paper_anchor_scoring` のエポックごとキャップです。reviewer 候補は `sample_size` 件の held-out 論文に対して採点されることで anchor 一致度の utility を得るため、ガバナンスコストは O(候補数 × `sample_size`) になります。だからこのキャップは別途チューニングされた数値ではなくサンプルサイズそのものです。チューニング済み定数ではなくコストモデルとして読んでください |
+| `max_bootstrap_label_fraction` | `0.5` | `label_source=gate_bootstrap` のケースが占めうる割合の機械的な上限で、コーパス*および* held-out 部分集合の両方で検査されます。違反するとコーパスは拒否され — ロードは何も返さずランはオンランプに落ちます — ランに例外が飛ぶことはありません。`0.0` は人手ラベルのみ、`1.0` は完全に自己ラベル付けされたアンカーも受け入れます（フィンガープリントされます） |
+
+知っておくべき不整合が 1 つあります。`enabled` の型付きデフォルトは `false`
+（`RQGMPaperAnchorConfig`）ですが、予算マネージャが anchor ブロックのオブジェクト
+自体を*見つけられなかった*ときのフォールバックは `true` です。このフォールバックが
+効くのは `anchor` ブロックを持たない設定に対してだけで、同梱デフォルトから
+組み立てられた設定は常に `enabled: false` を提示します。
 
 ### `rqgm.paper.reviewer.agent_as_judge` — agent-as-judge によるドラフト採点
 

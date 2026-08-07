@@ -8,6 +8,14 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
+  - path: ari-core/ari/viz/state.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/secrets.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/rqgm/budget.py
+    role: implementation
   - path: ari-core/ari/config/field_registry.py
     role: implementation
   - path: ari-core/ari/config/resolver.py
@@ -28,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-29
+last_verified: 2026-08-08
 ---
 
 # Configuration Reference
@@ -71,9 +79,28 @@ re-parsed by `ari.config`.
 | GUI port | `ARI_GUI_PORT` (via `start.sh`) > `--port` (argparse default **8765**) > `state.py` `9886` placeholder | `start.sh`, `viz/server.py:main` |
 | SLURM partition | explicit tool `partition` kwarg (sinfo-validated) > `SLURM_DEFAULT_PARTITION` > sinfo first; the kwarg is chosen from: experiment.md `Partition:` > `ARI_SLURM_PARTITION` > sinfo | `ari-skill-hpc/slurm.py`, `ari/agent/workflow.py` |
 | checkpoint dir | `ARI_CHECKPOINT_DIR` > YAML `checkpoint.dir` > `workspace/checkpoints/{run_id}` | `config/__init__.py:_apply_checkpoint_env_overrides`, `PathManager` |
+| workspace root | `ARI_CHECKPOINT_DIR` (recovered: the outermost `checkpoints/` ancestor's parent, or the checkpoint's own parent when it has no such ancestor) > an explicit `workspace_root` argument > `{ARI_ROOT}/workspace` > `{repo_root}/workspace`, only when `{repo_root}/ari-core` is a directory > the resolved current working directory | `paths.py:RuntimePathResolver.resolve_workspace_root` |
 | `bfts_pipeline[].enabled` | `{checkpoint}/workflow.yaml` > package `ari-core/config/workflow.yaml` > `true` | `cli/bfts_loop.py` (raw YAML read) |
 | `lineage_decision.*` | active rubric's `lineage_thresholds` (`ARI_RUBRIC`; the four threshold keys only, not `mode`) > package `ari-core/config/workflow.yaml` > `./config/workflow.yaml` (process cwd) > call-site defaults | `cli/lineage.py:_load_lineage_decision_config` |
 | `root_idea_selection.enabled` | package `ari-core/config/workflow.yaml` **only** > `false` | `cli/bfts_loop.py` (raw YAML read) |
+
+**One owner for "what is the workspace root".** The five-step ladder in the
+table above lives in exactly one function,
+`RuntimePathResolver.resolve_workspace_root()` (`ari-core/ari/paths.py`), and
+four production call sites already route through it: `auto_config()`
+(`ari/config/__init__.py`) when `ARI_CHECKPOINT_DIR` is unset,
+`workspace_harness_root()` (`ari/harness_registry.py`, after its own
+`ARI_WORKSPACE` short-circuit), the GUI document store (`ari/viz/v1/store.py`)
+and the v1 launch path (`ari/viz/v1/launch.py`), which mints
+`{workspace_root}/checkpoints/{run_id}`. Two things to read past when you open
+the code: the method's own docstring still describes itself as *additive* with
+opt-in "deferred to 005" — that sentence is stale, the four callers above are
+the opt-in — and [Environment Variables](environment_variables.md) files
+`ARI_ROOT` under *Checkpoint + paths* as the "ARI source tree root (used in
+tests)", which understates it. `ARI_ROOT` is tier 3 of this ladder, so with
+`ARI_CHECKPOINT_DIR` unset it decides where real runs land. What has *not*
+changed: `PathManager()`'s bare constructor still defaults to the current
+working directory and does not consult the ladder.
 
 **Falsy-vs-missing:** the core env-override guards (`if _m:` etc.) treat an
 empty env var as missing (YAML/default kept; `base_url` uses an explicit
@@ -424,9 +451,12 @@ outside `ari.viz.v1` imports the store.
 
 ### Legacy Settings keys: what is actually wired
 
-The legacy `GET/POST /api/settings` surface is frozen (its exact key sets are
-pinned by `ari-core/tests/test_gui_baseline_settings_contract.py`), quirks
-included. Two of those quirks matter when reading the Settings page:
+The legacy `GET/POST /api/settings` surface is frozen (its exact key sets,
+default values and save-path behaviour are pinned by
+`ari-core/tests/test_gui_baseline_settings_contract.py`), quirks included.
+Everything below is **observed, frozen behaviour** — recorded here because
+tests depend on it and operators trip over it, not because it is a pattern to
+copy. Six points matter when reading the Settings page:
 
 **1. The GET/POST key sets do not match.** `GET /api/settings` returns
 exactly **27** top-level keys (26 scalar/list + the nested `ors` object with
@@ -455,6 +485,141 @@ runtime reads them:
 | `slurm_partitions` | **UI-local** | A Settings-page multiselect state; the Wizard's partition list comes from `GET /api/slurm/partitions` detection instead. |
 | `container_mode` / `container_image` / `vlm_review_model` / `letta_*` | **env-only** | Exported as `ARI_CONTAINER_MODE` / `ARI_CONTAINER_IMAGE` / `VLM_MODEL` / `LETTA_*`, but the corresponding workflow blocks are untyped `extra="allow"` sections, so the field registry has no typed leaf for them yet. |
 | `letta_api_key` | **frozen defect** | Persisted verbatim into `settings.json` in plaintext. The canonical config API refuses secrets in `values`; use `PUT /api/v1/secrets/{secret_id}` instead. |
+
+**3. The default *values* are frozen too, not just the key names.**
+`_api_get_settings` (`ari/viz/api_settings.py`) builds one literal `defaults`
+dict and `test_frozen_default_values` pins its contents. Read these as pinned
+literals that nothing re-derives — they are not tuned recommendations, and no
+runtime consults them to decide anything.
+
+Twenty top-level slots and five `ors` sub-keys are plain constants:
+
+| Key | Frozen value |
+|---|---|
+| `llm_api_key` | `""` |
+| `semantic_scholar_key` | `""` |
+| `temperature` | `1.0` |
+| `slurm_partition` | `""` |
+| `slurm_cpus` | `null` |
+| `slurm_memory_gb` | `null` |
+| `slurm_gpus` | `0` |
+| `slurm_walltime` | `"04:00:00"` |
+| `mcp_skills` | `[]` |
+| `container_mode` | `"auto"` |
+| `container_image` | `""` |
+| `container_pull` | `"on_start"` |
+| `vlm_review_enabled` | `true` |
+| `vlm_review_model` | `"openai/gpt-4o"` |
+| `vlm_review_max_iter` | `3` |
+| `vlm_review_threshold` | `0.7` |
+| `letta_deployment` | `"auto"` |
+| `letta_deployment_image` | `""` |
+| `letta_deployment_venv` | `""` |
+| `letta_api_key` | `""` |
+| `ors.rubric_gen_temperature` | `0.0` |
+| `ors.rubric_gen_target_leaves` | `0` |
+| `ors.rubric_gen_two_stage` | `true` |
+| `ors.judge_n_runs` | `3` |
+| `ors.phase1_max_runtime_sec` | `21600` |
+
+The remaining six top-level slots and five `ors` sub-keys are **env-first**;
+only their fallback is frozen, so do not quote them as constants:
+
+| Key | Read from | Value when that variable is unset |
+|---|---|---|
+| `ollama_host` | `OLLAMA_HOST` | `"http://localhost:11434"` |
+| `retrieval_backend` | `ARI_RETRIEVAL_BACKEND` | `"semantic_scholar"` |
+| `letta_base_url` | `LETTA_BASE_URL` | `"http://localhost:8283"` |
+| `letta_embedding_config` | `LETTA_EMBEDDING_CONFIG` | `"letta-default"` |
+| `ors.replicator_model` | `ARI_MODEL_REPLICATE` | `"claude-opus-4-7"` |
+| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini-2.5-pro"` |
+| `ors.rubric_audit_model` | `ARI_MODEL_RUBRIC_AUDIT` | `"claude-opus-4-7"` |
+| `ors.judge_model` | `ARI_MODEL_JUDGE` | `"gpt-4o-2024-11-20"` |
+| `ors.phase1_sandbox_kind` | `ARI_PHASE1_SANDBOX` | `"auto"` |
+| `llm_model` | `ARI_LLM_MODEL` | package `workflow.yaml` `llm.model`, else `""` |
+| `llm_provider` | `ARI_BACKEND` | package `workflow.yaml` `llm.backend`, else `""` |
+
+Two details the table cannot show. The nine `os.environ.get(VAR, literal)`
+slots fall back only when the variable is **absent** — a variable set to the
+empty string yields `""`, not the literal. `llm_model` / `llm_provider` use
+`os.environ.get(VAR, "") or …` instead, so for those two an empty variable
+does fall through. The contract test sees the frozen literals at all only
+because its `_clean_env` fixture deletes all eleven variables first; on a
+developer shell the payload will differ.
+
+**4. `api_key` never reaches `settings.json` — it goes to a `.env` file and
+into the live server process.** `POST /api/settings` pops `api_key` (then
+`llm_api_key`) out of the body, and pops both again unconditionally, so
+neither is ever persisted. If the value clears the plausibility guard in
+point 5 *and* the provider maps to an environment-variable name,
+`_upsert_env_key(name, key, quote=False)` runs. That helper:
+
+- rewrites **every** line of the target file whose stripped form starts with
+  `NAME=`, and appends the line when there is none. (The helper's own
+  docstring says "the first line"; the loop has no early exit, so a file that
+  already contains duplicate entries for `NAME` gets all of them rewritten.);
+- writes atomically — same-directory `mkstemp`, `fchmod 0o600`, `fsync`,
+  `os.replace`, then a best-effort `chmod 0o600`;
+- renders the **unquoted** `NAME=value` form. `NAME="value"` (`quote=True`) is
+  what the env-key editor and `PUT /api/v1/secrets/{secret_id}` write through
+  the same helper. The helper's docstring records that the two callers
+  historically differed only by this quoting and that unifying it would be a
+  behaviour change;
+- and finally sets `os.environ[name] = value` **in the running server
+  process**. A settings save mutates the live environment, not only a file.
+
+The write target is the module-global `ari.viz.state._env_write_path`, bound
+once at import to the ARI repo root's `.env`. `set_active_checkpoint` rebinds
+`_checkpoint_dir` and `_settings_path` and leaves `_env_write_path` alone, and
+nothing under `ari/` reassigns it — so this is the **repo-root** `.env`, not
+the selected checkpoint's. (The contract test appears to write a
+checkpoint-local `.env` only because its fixture monkeypatches that global.)
+The canonical route reaches the same file: see
+[Configuration Studio](../guides/configuration_studio.md), *How secrets work*.
+
+**5. QUIRK — three ways an api key is discarded in silence.** The whole
+`.env` branch hangs off one condition,
+`if _raw_key and "test" not in _raw_key and len(_raw_key) >= 20:`, followed by
+a provider lookup in an inline dict. There is no `else` branch, no log line
+and no field in the response, so in each case below the write is skipped
+entirely and — with an active checkpoint — the handler goes on to return
+`{"ok": true}`. The operator is told the save succeeded while the credential
+was thrown away.
+
+| Discarded when | Detail |
+|---|---|
+| the key is shorter than 20 characters | `20` is a bare magic number in the condition — no named constant, no configuration knob, no message. |
+| `test` appears anywhere in the key | A case-sensitive substring check over the whole key, evaluated before the length check. A real credential that happens to contain those four characters is dropped exactly like a placeholder, while `TEST` is not matched at all. |
+| the provider is not in the map | The map is `openai` → `OPENAI_API_KEY`; `anthropic`, `claude_code` and `claude-code` → `ANTHROPIC_API_KEY`; `gemini` → `GOOGLE_API_KEY`. Five spellings, three variables. `.get(provider, "")` yields `""` for anything else — `ollama`, vLLM, every other OpenAI-compatible `base_url` backend — and the write is skipped. |
+
+These are length and substring heuristics that the tests pin. They are not
+validation and they are not secret detection; do not present them as either.
+The map is also the route's whole reach: `GEMINI_API_KEY`,
+`SEMANTIC_SCHOLAR_API_KEY`, `LETTA_API_KEY`, `ZENODO_TOKEN` and
+`ARI_REGISTRY_TOKEN` are all in the v1 secrets allowlist
+(`ari/viz/v1/secrets.py`) and none of them is reachable from here.
+
+One consequence of quirk 1 lands on this path. The provider name is read as
+`data.get("llm_provider", "") or data.get("llm_backend", "")`, and the
+frontend's 24-key Save body carries `llm_backend` and no `llm_provider` — so
+every save from the real Settings page resolves its provider through the
+*fallback* arm. That fallback is the only reason the GUI can configure a key
+at all; with both keys absent or falsy the provider is `""`, which maps to
+`""`, and the key is dropped.
+
+**6. QUIRK — a refused save is not a no-op.** `_api_save_settings` runs in
+this order: parse body → `retrieval_backend` guard → api-key pop and `.env`
+upsert → active-checkpoint check → `settings.json` write. The two refusals
+therefore differ in what they leave behind:
+
+| Refusal (`_status` 400 in both cases) | Side effect |
+|---|---|
+| `{"ok": false, "error": "retrieval_backend must select one pinned provider"}` — the body carries a `retrieval_backend` that is not one of `semantic_scholar`, `arxiv`, `alphaxiv` (an absent key passes) | None. It returns before the key is read. |
+| `{"ok": false, "error": "No active project. Create or select a checkpoint before saving settings."}` — `state._settings_path` is `None` | The key has **already** been written to `.env` and exported into `os.environ`. `_env_write_path` is separate state from `_settings_path`, so it stays writable with no checkpoint selected. |
+
+The second row is the one to remember: a 400 from this endpoint does not mean
+"nothing happened" — the secret is on disk and in the process either way.
+Frozen as-is; reordering the handler would be a behaviour change.
 
 The overlap between the 24 POST keys, the legacy launch env exports and the
 canonical config leaves — including every divergence above — is asserted
@@ -652,11 +817,12 @@ retrieval:
 # Plus the built-in `legacy` fallback (v0.5 schema). Add new venues by
 # dropping <id>.yaml into reviewer_rubrics/ — no code changes required.
 #
-# `prompt_overrides.author_hint` (unreleased) is the inverse of
-# system_hint: it's injected into paper-drafting prompts by
-# `generate_section` so writing is venue-conditioned at the same
-# strength as peer review. SC and NeurIPS ship calibrated hints;
-# other venues default to empty (legacy weak append).
+# `prompt_overrides.author_hint` is the inverse of system_hint: it's
+# injected into the paper-drafting system prompt by
+# `write_paper_iterative`, as a `VENUE RUBRIC AUTHOR GUIDANCE` block,
+# so writing is venue-conditioned at the same strength as peer review.
+# SC and NeurIPS ship calibrated hints; when the hint is empty the
+# block is simply omitted.
 #
 # PaperBench rubric templates (separate venue YAMLs for the rubric
 # generator) live under ari-core/config/paperbench_rubrics/. See
@@ -720,7 +886,7 @@ skills:
     phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
-    phase: none
+    phase: bfts
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
     phase: [bfts, reproduce]
@@ -779,7 +945,7 @@ skills:
 | `ARI_MODEL_JUDGE` | Judge LLM for `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; routed via LiteLLM, any provider OK) | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | LLM judge for `decide_lineage_action` (lineage decision, v0.7.0). Falls through `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` | (auto) |
 | `ARI_MODEL_ROOT_SELECT` | LLM that picks `ideas[0]` from the VirSci pool (lineage decision, v0.7.0). Same fallback chain as `ARI_MODEL_LINEAGE` | (auto) |
-| `ARI_RUBRIC` | Rubric id used by both review and the BFTS dynamic axis evaluator (Phase 3, v0.7.0). Reads `ari-core/config/reviewer_rubrics/<id>.yaml` | `neurips` |
+| `ARI_RUBRIC` | Rubric id read by the BFTS dynamic axis evaluator (Phase 3, v0.7.0) and by the lineage-decision thresholds. Reads `ari-core/config/reviewer_rubrics/<id>.yaml`. The paper review no longer reads it: `review_paper` takes an explicit `rubric_id` from `workflow.yaml`'s top-level `paper_rubric`, and `resolve_rubric` refuses an empty id rather than falling back to the environment | `neurips` |
 | `ARI_PHASE1_SANDBOX` | Phase 1 sandbox: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
 | `ARI_PHASE1_DOCKER_IMAGE` | Container image for the docker sandbox runner | `ubuntu:24.04` |
 | `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Image for the Apptainer/Singularity sandbox runner | `docker://ubuntu:24.04` |
@@ -947,7 +1113,7 @@ never blocks on this hook.
 lineage_decision:
   mode: stagnation_rule           # off | stagnation_rule | every_node
   stagnation_window: 5            # composite-score window
-  stagnation_threshold: 0.02      # max-min < threshold ⇒ stagnant
+  stagnation_threshold: 0.05      # max-min < threshold ⇒ stagnant
   min_nodes_before_decision: 3    # never fire on the very first nodes
   rate_limit_per_run: 5           # cap escalations per run
 ```
@@ -1057,7 +1223,7 @@ knobs:
 |-------|---------|-------|
 | `max_depth` | 5 | Hard cap on depth (`ARI_MAX_DEPTH`). Activated in v0.7.2 (B-2). |
 | `max_total_nodes` | 50 | Hard cap on node count (`ARI_MAX_NODES`). |
-| `max_react_steps` | 80 | Per-node ReAct iteration cap. |
+| `max_react_steps` | 20 | Per-node ReAct iteration cap (`ARI_MAX_REACT`). Lowered from 80; the field's own description in `ari/config/__init__.py` records the step-count measurement behind the new value. |
 | `timeout_per_node` | 7200 | Per-node wall-time budget (s). |
 | `max_parallel_nodes` | 4 | Worker concurrency. |
 | `max_expansions_per_node` | 4 | New in v0.7.2 (B-6). After N expansions of the same frontier node, BFTS retires it. |
@@ -1338,6 +1504,27 @@ frontier, or memory.
 | `max_clean_room_generations_per_epoch` | `1` | Cap on clean-room regenerations per epoch (consumed by the clean-room pipeline). |
 | `mutation_kinds` | all five | Enabled PromptMutator families: `freeform_mutation`, `threshold_tuning`, `schema_tightening`, `specialization`, `distillation`. |
 
+### `rqgm.utility_evolution` — governed rewriting of the score itself
+
+At epoch boundaries the utility function is itself a governed object: it is
+rewritten only through `PolicyMutator` → `CandidateValidationPipeline` →
+`RegistryTransitionEngine` → `ConstitutionalKernel`, never in place.
+
+**Numeric and vocabulary knobs only.** The legality rules — the closed value
+spaces and the axis-weight bounds — are frozen code in
+`ari.rqgm.kernel_rules.UTILITY_POLICY_RULES` and live *inside*
+`constitution_hash`; a tunable weight bound would be a tunable constitution.
+Two budgets that look as if they belong here deliberately do not, because each
+already has one schema home: candidate caps ride
+`rqgm.prompt_evolution.max_candidates_*` and adoption caps ride
+`rqgm.transition.max_adoptions_per_role_per_boundary`.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `true` | Governed utility evolution on/off inside `ari_rqgm`. `false` reproduces the pre-rewrite scoring behaviour exactly — no candidate is minted, nothing supersedes, and `utility_policy_hash` is constant for the whole run (the ablation rung). It does **not** unregister the founding `utility_policy_v1` / `policy_mutator_v1` components. |
+| `mutation_kinds` | `axis_reweighting`, `composite_swap`, `frontier_score_swap`, `exploration_tuning` | Enabled `PolicyMutator` families. All four defaults are pure arithmetic over the boundary's evidence — no LLM, no clock, no randomness — so the default rewrite stream is deterministic. `freeform_policy_proposal` consults an LLM and is opt-in; enabling it costs byte-reproducibility of the candidate stream (an irreproducible *proposal* still cannot become an unvalidated policy — the kernel validates it either way). |
+| `min_epochs_between_rewrites` | `1` | Minimum epochs between two adopted rewrites. Bounds the repair cost: a rewrite invalidates every node scored under the old policy, which at an early boundary can be the entire tree. |
+
 ### `rqgm.clean_room` — clean-room regeneration posture
 
 The screen *policy* is code (`ari/rqgm/clean_room_rules.py`); only the
@@ -1389,6 +1576,35 @@ never node execution; the fixed layer is exempt by construction.
 | `max_governance_tokens_per_epoch` | `0` | Per-epoch token cap on governance-phase LLM spend. |
 | `on_exhausted` | `degrade` | `degrade` caps the node's effective governance level; `skip` drops the single action. Never a crash. |
 
+**The budgeted action kinds.** The three keys above are the only ones this
+block owns, but they are not the only thing `GovernanceBudgetManager` counts.
+Every governance action submitted to it carries one of ten *action kinds*
+(`ACTION_KINDS` in `ari/rqgm/budget.py`) with its own per-epoch counter, and
+each kind's cap is read from the block that owns that knob — there are no
+aliases. The vocabulary is closed:
+
+| Action kind | Per-epoch cap comes from | Default |
+|---|---|---|
+| `adversary_call` | `rqgm.adversarial.max_adversary_calls_per_epoch` | `24` |
+| `defender_call` | `rqgm.governance.max_defender_calls_per_epoch` | `12` |
+| `judge_call` | `rqgm.governance.max_judge_calls_per_epoch` | `8` |
+| `shadow_call` | `rqgm.shadow.max_shadow_calls_per_epoch`, or `0` when `rqgm.shadow.enabled` is false | `10` |
+| `replay_case` | `rqgm.replay.max_cases_per_epoch`, or `rqgm.replay.max_cases_for_retirement` while a RetirementEvent is under consideration | `8` / `12` |
+| `virsci_call` | `proposal_router.generators.virsci.max_calls_per_epoch`; `0` when that generator is disabled, unlimited when the value is `<= 0` | `2` |
+| `prompt_candidate` | `rqgm.prompt_evolution.max_candidates_per_role_per_epoch`, counted per role, with `max_total_candidates_per_epoch` as a second ceiling across all roles | `1` / `4` |
+| `clean_room_generation` | `rqgm.prompt_evolution.max_clean_room_generations_per_epoch` | `1` |
+| `governance_llm_call` | `rqgm.governance.max_llm_calls_per_audit` | `12` |
+| `paper_anchor_scoring` | `rqgm.paper.anchor.sample_size`, or `0` when `rqgm.paper.anchor.enabled` is false | `8` |
+
+Level-0 fixed checks never submit an action and are exempt by construction.
+Counters are keyed by `(epoch_id, kind)` — by `(epoch_id, kind:role)` for the
+per-role `prompt_candidate` cap — and are rebuilt at construction from the
+`budget_consumed` audit lines, so caps survive `ari resume`. An absent cap
+means unlimited, and any failure inside the check fails **open** with a logged
+warning rather than blocking the run. `paper_anchor_scoring` is the only kind
+the paper-archive phase added to the original nine; the cost model behind its
+cap is in the `rqgm.paper.anchor` subsection below.
+
 ### `rqgm.eval` — evaluation-harness posture
 
 All defaults off: scripted eval doubles are refused and injections never
@@ -1402,6 +1618,58 @@ launches itself.  See [RQGM Evaluation](../guides/rqgm_evaluation.md).
 | `injection_specs` | `[]` | Active `eval_*` injection ids; recorded into `rqgm_injection_provenance.json`. |
 | `paper_ablation.condition_id` | `""` | Evaluation-only RQGM-paper arm (`P0_hgm_h_fixed_critic` through `P4_constitutional_rqgm`). Empty, or `eval.enabled: false`, preserves normal behavior; this is not a `paper.mode`. |
 | `kca_conditions` | `b`/`h`/`k` `""`, `reporting_alias` `null`, `verification_tiers` `[]`, `legacy_comparison_only` `false`, `publishable` `true` | Task-20 factorial comparison identity. Metadata only: it never grants authority or changes production selection/binding/resolution decisions. |
+
+### `rqgm.paper` — paper-archive co-evolution
+
+The whole `rqgm.paper.*` block is **inert unless the effective paper mode is
+`rqgm_archive`** (`paper.mode: rqgm_archive` *and* `rqgm.paper.enabled: true`
+must agree). It is orthogonal to `ari.mode` and it never shadows the
+exploration `rqgm.*` knobs above — the two layers have separate schema homes
+even where the names rhyme. The semantics are on the concept side:
+[RQGM Architecture](../concepts/rqgm_architecture.md), *The paper-archive
+layer*.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Redundant safety interlock, mirroring `rqgm.enabled`. |
+| `archive.width` | `4` | Seed drafts at depth 1 — the root branch factor. |
+| `archive.refine_rounds` | `2` | Refine children per draft — the draft branch factor. |
+| `archive.max_expansions` | `12` | Per-epoch node budget. The *effective* cap the archive uses as its BFTS `max_total_nodes` is `min(width × (1 + refine_rounds), max_expansions)`; at the defaults the two terms coincide (4 × 3 = 12). This bound is what structurally limits the paper actors that carry no budgeted action kind of their own. |
+| `archive.depth` | `3` | Draft-tree depth, used as the archive's BFTS `max_depth`. A deeper tree redistributes the same node budget; it never multiplies it. |
+| `archive.compile_threshold` | `0.0` | Minimum best-belief score before the winner is lazily compiled. |
+| `epoch.rounds` | `2` | Archive rounds per paper phase; one round is one paper epoch. The cheap default deliberately does *not* buy a completed reviewer adoption: that climb is candidate → validated → shadow → probationary_active and needs a role opening first, so it takes roughly five boundaries. At `2` a default run exercises the loop, the adversary and impeachment, but you will not see the active reviewer hash change. Raise it for a run that must witness an adoption. |
+| `self_preference.enabled` | `true` | The self-preference adversary; meaningful only under the `rqgm_archive` paper mode. |
+| `self_preference.corpus_path` | `""` | `""` reuses the anchor corpus and its authorship labels. |
+| `self_preference.sample_size` | `8` | Held-out papers scored per epoch (mirrors the anchor sample). |
+| `self_preference.accept_threshold` | `0.6` | Reviewer "accepted" cutoff. |
+| `self_preference.margin` | `0.1` | AI-vs-human mean-score gap that fires the pre-signal. |
+| `prompt_evolution.enabled` | `true` | Reviewer/writer co-evolution inside the archive. `false` degrades to best-of-N reviewed drafts with no co-evolution. |
+
+### `rqgm.paper.anchor` — held-out accept/reject agreement
+
+The `paper_reviewer`'s ground-truth anchor: a read-only accept/reject corpus,
+split `train` / `held_out`, whose shape is documented in
+[RQGM Schema Reference](rqgm_schemas.md),
+*`paper_anchor_corpus.jsonl` — the read-only accept/reject anchor*. Off by
+default, which is the degraded on-ramp: no corpus is read, the
+`anchor_evaluation` stage takes its zero-coverage pass, and reviewer
+candidates are not anchor-gated. `paper_writer` is anchored too, but to the
+Layer-0 claim-evidence gate, which needs no curated corpus — the writer's
+faithfulness case still lands on this pool, so `enabled: false` gates the
+writer sanction as well.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Anchor-corpus scoring on/off. Also the `paper_anchor_scoring` budget switch: disabled means a cap of `0`, the same disabled-returns-zero rule `shadow_call` and `virsci_call` follow. |
+| `corpus_path` | `""` | Accept/reject corpus path, checkpoint-relative or absolute. |
+| `sample_size` | `8` | Held-out agreement sample size — **and** the per-epoch `paper_anchor_scoring` cap. A reviewer candidate earns its anchor-agreement utility by being scored against `sample_size` held-out papers, so governance cost is O(candidates × `sample_size`); the cap is the sample size itself rather than a separately tuned number. Read it as a cost model, not as a tuned constant. |
+| `max_bootstrap_label_fraction` | `0.5` | Machine-enforced ceiling on the share of `label_source=gate_bootstrap` cases, checked over the corpus *and* over the held-out subset. A breach refuses the corpus — the load returns nothing and the run falls back to the on-ramp — never an exception into the run. `0.0` demands human labels only; `1.0` accepts a fully self-labelled anchor (fingerprinted). |
+
+One inconsistency to know about: the typed default for `enabled` is `false`
+(`RQGMPaperAnchorConfig`), while the budget manager's own fallback when it
+finds *no* anchor block object at all reads `true`. The fallback only applies
+to a config that carries no `anchor` block; a config built from the shipped
+defaults always presents `enabled: false`.
 
 ### `rqgm.paper.reviewer.agent_as_judge` — agent-as-judge draft scoring
 

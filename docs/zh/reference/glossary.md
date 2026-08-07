@@ -87,9 +87,11 @@ BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
 [架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
 
 **venue (会场)**
-一次运行的*评判标准* —— 评分哪些维度以及如何评分。一个 venue 是
-由 `ARI_RUBRIC` 选定的 `ari-core/config/reviewer_rubrics/<id>.yaml` 文件。
-切换 venue 会同时改变 BFTS 的评分维度和发表评审的标准。参见
+一次运行的*评判标准* —— 评分哪些维度以及如何评分。一个 venue 是一份
+`ari-core/config/reviewer_rubrics/<id>.yaml` 文件。有两个彼此独立的选择器：
+`ARI_RUBRIC`（默认 `neurips`）决定 BFTS 的评分维度，`workflow.yaml` 的顶层
+`paper_rubric` 键（默认 `generic_conference`）作为显式 `rubric_id` 传给评审
+阶段。若要让同一个 venue 同时驱动打分与评审，请将两者设为同一个 id。参见
 [架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
 
 **rubric (评分准则)**

@@ -91,11 +91,11 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 | シンボル | 用途 |
 |---|---|
-| `CostTracker` | `cost_log.jsonl` に書き込むアグリゲータインスタンス |
-| `CallRecord` | 呼び出しごとのデータクラス（`model`、`prompt_tokens`、`completion_tokens`、`cost_usd`、`metadata`） |
+| `CostTracker` | `cost_trace.jsonl` に書き込むアグリゲータインスタンス |
+| `CallRecord` | 呼び出しごとのデータクラス（`model`、`prompt_tokens`、`completion_tokens`、`estimated_cost_usd`、加えて skill/phase/node タグと execution identity のフィールド） |
 | `init(log_dir)` | `log_dir` をルートにグローバルトラッカーを初期化 |
 | `init_from_env()` | `ARI_CHECKPOINT_DIR` を使って自動的に初期化（ほとんどの呼び出し元はこちらを使用） |
-| `bootstrap_skill(skill_name, phase=None)` | スキル向けの便利なラッパー — 初期化して各レコードにタグ付け |
+| `bootstrap_skill(skill, phase=None)` | スキル向けの便利なラッパー — 初期化して各レコードにタグ付け |
 | `record(**kwargs)` | 手動で `CallRecord` を追加（LiteLLM コールバック経由でない場合に使用） |
 | `set_default_metadata(**kwargs)` | 後続のすべてのレコードに追加メタデータをタグ付け |
 | `get()` | 現在のトラッカーを取得（なければ `None`） |

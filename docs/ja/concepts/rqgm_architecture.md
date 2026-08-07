@@ -150,7 +150,7 @@ Constitutional ARI-RQGM は 4 つの定義的なコミットメントの上に�
 
 | レイヤ | ティア | ロール | 進化する? |
 |---|---|---|---|
-| **0 — 憲法（固定）** | `fixed` | `constitutional_kernel`、`fixed_verifier`（決定論的な `results.json` マージ / メトリクス再計算パス）、`audit_log` | **決してしない。** 来歴のためだけに登録される; 規則テーブルはコードに存在し（`kernel_rules.py`、`transition_rules.py`、`clean_room_rules.py`、`meta_rules.py`）、`constitution_hash` でピン留めされる。規則を編集するには `tests/test_rqgm_kernel.py` で明示的に再ピン留めが必要 |
+| **0 — 憲法（固定）** | `fixed` | `constitutional_kernel`、`knowledge_binder`、`capability_binder`、`harness_resolver`、`fixed_verifier`、`audit_log` | **決してしない。** プロンプトを持たず決定論的で、来歴のためだけに登録される — そもそも登録されるのは Knowledge/Capability/Assurance のいずれかのレイヤが有効なときだけ: この 6 行は `KCA_FIXED_COMPONENT_TABLE`（`prompt_spec.py`）であり、設立時のトランザクションではなく専用の `transition_kca_fixed_admission` トランザクションでコミットされる。規則テーブルはコードに存在し（`kernel_rules.py`、`transition_rules.py`、`clean_room_rules.py`、`meta_rules.py`）、`constitution_hash` でピン留めされる。規則を編集するには `tests/test_rqgm_kernel.py` で明示的に再ピン留めが必要 |
 | **1 — 制度** | `institutional` | `generator`、`reviewer`、`adversary`、`defender`、`judge`、`router`; 統治された評価基準 `utility_policy`; そして（paper モードのみ）`paper_writer`、`paper_reviewer` | する — プロンプト進化ライフサイクルを通じて、エポック境界でのみ。`utility_policy` はプロンプト定義ではなく（現職はポリシー*文書*）が、まったく同じ意味で進化可能: 1 つの現職が、境界で遷移エンジンを通じてのみ置き換えられる |
 | **1 — ガバナンス司法** | `institutional` | `auditor`、`evidence_clerk`、`governance_judge` | 後継生成経路はないが不変ではない。3 者とも設立時に登録され、レジストリから名指しでき、制裁可能。judge 自身が motion の対象なら忌避する |
 | **2 — メタ** | `meta` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor`、`policy_mutator` | する — Layer 1 を進化させるエージェント自身も統治され、権限は厳密に狭い（不変条件を参照）。`policy_mutator` は後継 utility policy を提案する |
@@ -180,7 +180,7 @@ BFTS 戦略を純粋委譲の `GovernedSearchStrategy` で包みます。ラン�
 
 | ファサード | モジュール | 所有するもの |
 |---|---|---|
-| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0。12 個の閉じた `validate_*` エントリポイント（レコードスキーマ、ハッシュ、capability、エポック不変性、遷移、ロール分離、選択的消去、監査ログ完全性、クリーンルームバンドル、汚染、権限非拡大、コンテキストスコープ）と執行アダプタ（`should_block`、fail-open な `per_node_warn_check`、事前チェックの `CapabilityGatedMCPClient`）。決定論的かつ非進化的: LLM 呼び出しゼロ、ネットワークゼロ、壁時計判定ゼロ。`rqgm.kernel.enforcement: audit_only` はすべてのコンテキストを warn-and-log へ格下げ |
+| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0。16 個の閉じた `validate_*` エントリポイント: 当初の 12 個（レコードスキーマ、ハッシュ、capability、エポック不変性、遷移、ロール分離、選択的消去、監査ログ完全性、クリーンルームバンドル、汚染、権限非拡大、コンテキストスコープ）、Task 14 の `validate_utility_policy`、そして Knowledge 完全性、Capability Binding 完全性、Harness 完全性。加えて執行アダプタ（`should_block`、fail-open な `per_node_warn_check`、事前チェックの `CapabilityGatedMCPClient`）。決定論的かつ非進化的: LLM 呼び出しゼロ、ネットワークゼロ、壁時計判定ゼロ。`rqgm.kernel.enforcement: audit_only` はすべてのコンテキストを warn-and-log へ格下げ |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | エポック境界の監査: `audit_epoch(...) -> GovernanceReport`。9 ステップのパイプライン（observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report）。すべての LLM 判定（Auditor / Defender / GovernanceJudge、プロンプトは `ari/prompts/governance/` 以下）には完全な決定論的フォールバックがあり、`llm=None` でも完全な監査が得られる。レポートは遷移エンジンへの*助言的入力*であり、オーケストレータがレジストリを変更することは決してない。構築時点でこの権限関係が必須化される: `kernel` が無ければ `__init__` が `ValueError` を送出する。役割分離の権限を持つのはオーケストレータ自身のレコード構築処理ではなくカーネルであり、監査が生成したレコード（evidence bundle、motion、defense、outcome）をステップ 8 で `validate_record_schema` と `validate_role_separation` により再検証するのもカーネルだからである。残り 2 つの seam は設計上オプショナル: `llm=None` は保証された劣化動作であり、CI 向けの決定論的な下限である。`audit_writer=None` はレコードを書き出さず `self.written` 上のメモリに収集し、テストはこれを通じて監査を観測する。レコードの追記が例外を送出することはない — writer の失敗はログに記録され、監査は続行する |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | レジストリステータスの**唯一の**書き込み手。固定の T1–T21 テーブルに対する純粋な `resolve_transition(...)` と、その後の 5 ステップ境界プロトコル: freeze → resolve → kernel-validate → prepare → apply/commit をエポックトランザクション上で実行。T16 の `emergency_quarantine` は現期を強制終了し、同じ取引で新しい指紋値を持つ期を開始する |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 退役を伴う遷移のコミット後: 純粋な `trace_dependents` による staleness 閉包と `rebuild_frontier`。`SelectiveErasureEvent` / `FrontierRebuildEvent` レコードを発行。失敗のはしご: カーネル検証失敗 → 保守的再修復（フラグ付きノードを除外）→ drain-only 縮退（`expansion_halted`: ランは残作業を完了するがそれ以上展開しない）。クラッシュは決して起こさない |
@@ -444,6 +444,38 @@ Layer-0 の claim-evidence hard gate がドラフトの忠実性を**決定論�
 Layer 0 のままです: RQGM はその所見を**読む**だけです
 （`run_hard_gate(write=False)`、永続化せず、包まず、進化させません）。
 
+**8 番目の敵対者が発火する条件。** その事前シグナル
+`_pre_paper_self_preference`（`ari/rqgm/adversarial/engine.py`）は決定論的で
+LLM フリーです。`AdversaryEngine.attack` は事前シグナルが証拠を返さない
+タイプをスキップするので、沈黙したシグナルは adversary の LLM 呼び出しを
+1 回も消費しません。ノードが paper 候補で**かつ** reviewer の受理スコアが
+受理しきい値（`rqgm.paper.self_preference.accept_threshold`、デフォルト
+`0.6`。解決済みしきい値は paper ランタイムが予約メトリクスとしてノードに
+刻み、事前シグナルはそこから読みます）以上でない限り、何も返しません。
+その受理ゲートを越えると、**3 つの独立した過剰受理シグナル**を収集し、
+*いずれか*が証拠を生んだ時点で発火します:
+
+1. Layer-0 の claim gate が既にドラフトをフラグしている — 種別
+   `numeric_mismatch`、`missing_evidence`、`uncovered_numeric`、
+   `invariant_violation` の所見を、各所見自身のパスで引用;
+2. 著者性コーパスの**母集団**マージンが `rqgm.paper.self_preference.margin`
+   （デフォルト `0.1`）に達している — `rqgm/paper_self_preference_stat.json`
+   を引用;
+3. **ドラフト単位**のアンカー過剰受理 — 人間のグラウンドトゥルースが
+   `reject` であるこの特定のアンカーケースを現職が受理した — ケース id を
+   ref の pointer に置いて `paper_anchor_corpus.jsonl` を引用。
+
+通常のコーパスで機構を担うのはシグナル 3 です: AI 対人間の著者性分割を
+必要としないので、全て人間のコーパス（母集団マージンが `0.0` でシグナル 2 が
+正しく沈黙する場合）でも、実在する証拠 — ケースそのもの — の上で過剰受理を
+訴追できます。各シグナルは意図的に*それ自身の*主題の成果物を引用します:
+ドラフト単位の所見が母集団統計を引用していたことこそが、かつて Defender と
+Judge に `{"margin": 0.0}` と読めるファイルを「その攻撃自身のトリガの証拠」
+として手渡していた原因でした。バンドルの各フィールドはフェイルセーフな
+既定値付きの `getattr` で読まれるので、paper フィールドを持たないダック
+タイピングの探索バンドルは「paper フェーズ外」と読まれ、raise ではなく
+「証拠なし」を返します。
+
 **弾劾チェーン（Task 15）。** 敵対者の事前シグナル（どの過剰受理ドラフトを
 攻撃するか）が*本物の* adversary → Defender → ArtifactJudge ラウンドを
 駆動します。結果の `ValidatedAttackRecord` は今やオプションの
@@ -469,6 +501,43 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
 ゲートされます: 過剰受理でも**忠実な**ドラフトは reviewer のみをバインドします。
 `paper_writer` は paper フェーズ外では `""` へ解決されるので、探索のレコードは
 バイト単位で同一のままです。
+
+**ケース型付けされたリプレイ期待。** validated attack は `expected_behavior`
+マップ — 正しいコンポーネントなら何をしたはずかについての、リプレイプールの
+表明 — を持ちます。7 種の探索タイプに対しては汎用
+（`reviewer` / `generator` / `judge`。`ari/rqgm/adversarial/round.py` の
+モジュールレベル `_EXPECTED_BEHAVIOR`）で、ケース型ごとに
+`_EXPECTED_BEHAVIOR_BY_TYPE` が上書きします。現在その行は 1 つだけで、
+`paper_self_preference` が `paper_reviewer`（「受理された品質が人間アンカーの
+支持する水準を超える AI 執筆ドラフトを reject する」）と `paper_writer`
+（「主張がアンカーに支持されるドラフトを産出する」）を与えます。ルック
+アップは他のケース型では汎用マップへフォールバックするので、探索のレコードは
+バイト単位で同一のままです。これらのキーは下流で効いています: 決定論的な
+`build_failure_summary` は failure summary の `affected_roles` をソート済みの
+`expected_behavior` キーから導出し、攻撃文・防御文を一切読みません。これが
+抽象クリーンルームビューを構成上汚染安全にしています（不変条件 7）。
+
+**候補予算を使うのは paper ロールだけ。** paper フェーズの境界では、
+プロンプト候補ループ（`RQGMRuntime._active_evolvable_incumbents`、
+`ari/rqgm/runtime.py`）はアクティブ状態のレジストリエントリ全体から始め、
+`PromptMutator` 自身のロールを外し（同一ロール生成は憲法違反）、その上で
+— paper フェーズのときだけ — ロール名が `paper_` で始まるエントリだけを
+残します。paper チェックポイントは依然として**完全な**設立集合を登録するので、
+統治とカーネルの機構は完全なままです; このフィルタが決めるのは「どのロールが
+エポックごとの候補予算を使うか」であって「どのロールが登録されるか」では
+ありません。そしてこのフェーズが走らせない探索ロールに予算を使うことは
+決してありません。探索起動はこの分岐に到達しません。設定された P0–P4 の
+評価姿勢（`rqgm.eval.enabled` と `rqgm.eval.paper_ablation.condition_id`、
+`ari/rqgm/evaluation/paper_ablation.py`）は `role_evolution_enabled` を通じて
+2 段目のフィルタを適用し、`paper_writer` または `paper_reviewer` を個別に
+オフにできます（他のロールはそのまま通過）; 評価ラン以外では姿勢は存在せず、
+2 段目のフィルタもありません。この候補チャネル全体の ON/OFF スイッチは
+`rqgm.paper.prompt_evolution.enabled` — 探索側の
+`rqgm.prompt_evolution.enabled` とは**別の**キーで、paper フェーズでのみ
+読まれます — であり、`false` のときは 2 つの候補チャネルがこのフィルタに
+到達する前に降りてしまいます（prompt-evolution チャネルは
+`prompt_evolution_skipped` の監査行を追記し、何も生成しません）: paper ロールは
+登録されたまま（スコアリングは動く）ですが、決して共進化しません。
 
 **最良ドラフトは無変更のゲートへ流れます。** アーカイブの最良ドラフトは
 純粋・LLM フリーの `materialize_winner` によって `{ckpt}/full_paper.tex` へ
@@ -647,7 +716,8 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
    （incumbent が無いときは固定 capability matrix が上限）。すべての
    メタ出力は `status: candidate` でライフサイクルに入ります —
    メタティアは提案できても、任命は決してできません。
-9. **固定層は決して進化しない。** カーネル、固定検証器、監査ログ、遷移 /
+9. **固定層は決して進化しない。** カーネル、Knowledge Binder、Capability
+   Binder、Harness Resolver、固定検証器、監査ログ、遷移 /
    severity / capability テーブル、選択的消去規則、claim-evidence hard
    gate は進化対象ではありません; `constitution_hash` がテーブルを
    ピン留めします。
@@ -660,6 +730,52 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
 11. **決定論 (P2)。** カーネル判定、遷移解決、フロンティア修復、予算
     レベル、shadow サンプリング（ハッシュベース）、評価メトリクスは純粋
     関数です — 乱数なし、壁時計判定なし、リプレイでバイト単位に同一。
+12. **各アクタが受け取るのは上限付きのロールビューであり、アーカイブでは
+    ない。** `ari/rqgm/context_views.py` はアクタ行ごとに 1 つの決定論的な
+    射影を持ちます — LLM フリー、I/O フリー、ロールごとに 1 ビルダ。BFTS の
+    行が要であり、3 通りで強制されます: `build_bfts_summary_context` は
+    `ProposalSummaryView` データクラスのみを受け取り、完全な
+    `ProposalRecord` には `TypeError` を投げるので、フルレコード漏洩は
+    構築時の失敗になります; `ConstitutionalKernel.validate_context_scope` は
+    描画されたキー集合をロールのホワイトリストと突き合わせます（実運用の
+    expand パスは違反時に `kernel_report` 監査行も追記します。
+    `RQGMRuntime._flag_bfts_view_scope`）; そしてリーク回帰テストが、描画済み
+    expand コンテキストに `ARCHIVE_ONLY_FIELDS` の名前（`transcript`、
+    `discussion_log`、`raw_proposals`、`raw_output`、`agent_messages`、
+    `attack_texts`、`defense_texts`、`evidence_bundles`）が決して現れないことを
+    表明します。ホワイトリストは `kernel_rules.CONTEXT_VIEW_WHITELISTS` から
+    *別名参照*されているので、カーネル検査とリークテストは 1 つのソースを
+    読み、乖離しえません。そしてその表は `constitution_hash` の内側に乗ります
+    — ホワイトリストの編集は設定変更ではなく憲法改正です。残りの行は
+    ホワイトリストではなく構成による排除です: Judge ビューはフロンティア /
+    utility シグナル（`frontier_scores`、`frontier_rank`、`scientific_score`、
+    `_scientific_score`、`utility`、`utility_score`）をすべてスクラブするので
+    スコアで偏らされません; 統治（監査）ビューはプロンプト本文（`prompt_text`、
+    `prompt_body`、`template`、`template_text`、`body` — 不変条件 7 の退役
+    テキスト規則）をスクラブします; 同一ロール分離は構造的で、reviewer と
+    paper-reviewer のビルダには他の reviewer の出力を渡す引数がそもそも
+    ありません。dict ビュー内の文字列はすべて 4000 文字で切り詰められます。
+
+    **正直な限界。** チェック時の半分は設計として**警告のみ**です:
+    `_enforce_scope` は違反をログするだけで例外も飲み込みます。そして
+    `CK-CTX-001` はカーネルの表で severity `warn` です（
+    [憲法違反コード](../reference/rqgm_schemas.md#憲法違反コード)
+    参照）。カーネルはホワイトリスト違反を*記録*しますが、ノードを止めません。
+    ホワイトリストを持つロールは今日 3 つだけ — `generator`（BFTS が乗る）、
+    `paper_writer`、`paper_reviewer` — で、`validate_context_scope` は
+    ホワイトリストを持たないロールを未検査のまま通します。カバレッジは
+    さらに狭く、7 つのビルダのうち実運用パスに乗っているのは
+    `build_bfts_summary_context` だけです。paper-reviewer のホワイトリストは
+    別の関数（`paper_judge._paper_reviewer_string_view`。アーカイブの生の
+    文字列を同じホワイトリストキーの下に載せ、キー集合を assert します）を
+    通じて、オプトインの agent-as-judge パスで実運用に届きます。reviewer、
+    adversary、judge、governance、paper-writer のビルダはテストからのみ
+    行使されます — この行列は「宣言された契約 + 実配線 2 行」として読むべきで、
+    「強制された 7 行」ではありません。同様に `CHARTER_BLOCK_CAP = 1200` は
+    自身のテストだけが読む宣言定数です。ここでの凍結された経緯は
+    `_enforce_scope` 自身の docstring が記録しています: 検査がビルダの内側へ
+    移されるまで、ホワイトリストは宣言されているだけで実運用の呼び出し元が
+    1 つもありませんでした。
 
 ---
 
@@ -709,7 +825,8 @@ JSON Schema（`ari-core/ari/schemas/` 内。例: `epoch_state`、
 （両者は一致していなければなりません —
 [実行モード](../guides/execution_modes.md)を参照）。チューニング可能な面は
 意図的にスイッチ・予算・数値しきい値に限定されています: `rqgm.epoch`、
-`rqgm.kernel`、`rqgm.governance`、`rqgm.replay`、`rqgm.transition`、
+`rqgm.kernel`、`rqgm.governance`、`rqgm.replay`、
+`rqgm.utility_evolution`、`rqgm.transition`、
 `rqgm.adversarial`、`rqgm.shadow`、`rqgm.prompt_evolution`、
 `rqgm.clean_room`、`rqgm.frontier_repair`、`rqgm.meta_evolution`、
 `rqgm.budgets`、`rqgm.eval`、および `proposal_router.*` ブロック

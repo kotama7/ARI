@@ -2,19 +2,25 @@
 sources:
   - path: ari-core/tests
     role: test
+  - path: ari-core/tests/fixtures/gui_refresh
+    role: test
   - path: pytest.ini
     role: config
   - path: scripts/docs
     role: test
   - path: scripts/check_dashboard_ux.py
     role: test
+  - path: scripts/check_bundle_budget.py
+    role: test
+  - path: scripts/quality/check_bundle_budget.yaml
+    role: config
   - path: ari-core/ari/viz/frontend/src/i18n
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__
     role: test
   - path: .github/workflows
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # 如何测试 ARI 代码
@@ -88,6 +94,55 @@ ARI 过去将文件写入 `$HOME/.ari/`。v0.5.0 已移除该路径；防护测�
 2. 二分查找变更集；问题几乎总出在引入了 `dict` 顺序依赖或
    依赖 `id(...)` 的哈希上。
 3. 将测试加入对应领域的测试套件（memory、BFTS 等）。
+
+### 合成 checkpoint fixture
+
+GUI 与 `/api/v1` 的读取端测试并不附带 checkpoint —— 它们自己生成。
+`ari-core/tests/fixtures/gui_refresh/` 下有两个纯 Python 工厂：
+
+- `run_fixture_factory.py` —— `make_run_checkpoint(dest, nodes=N, seed=S)`
+  通过真实的 `ari.checkpoint.save_*_json` 辅助函数写出一份运行 checkpoint
+  （`tree.json`、`nodes_tree.json`、`results.json`、`experiment.md`、
+  `idea.json`、`meta.json`、`cost_trace.jsonl`），因此 JSON 的格式与生产写入端
+  逐字节一致。可选的 `paper` / `review` / `ors` / `ear` 结果层默认全部关闭。
+- `rqgm_fixture_factory.py` —— `make_rqgm_checkpoint(dest, nodes=10,
+  epochs=2, ...)` 先调用基础工厂，再在其上叠加一层确定性的 RQGM 治理面
+  （哈希链式的 transition 与 audit 日志、registry 汇总、prompt 主体、节点
+  metrics 哨兵值）；哈希与状态辅助函数是从真实的 `ari.rqgm` 导入的，而不是
+  重新实现。
+
+使用时有三条性质值得注意。
+
+**不提交任何东西。** 两个工厂都生成到调用方给定的目录里（所有消费方都是
+`tmp_path`），因此仓库中不会留下会过期的 fixture 数据。
+
+**确定性（P2）。** 每个值要么是固定字面量，要么由种子经 `hashlib` 推导；
+`random` 从未被导入，时间戳是对字面量 `2026-07-23T00:00:00Z` 的定点算术，
+而不是 `datetime.now()`。相同的 `(nodes, seed)` 产生逐字节相同的文件，
+`ari-core/tests/test_gui_baseline_run_fixtures.py` 直接断言了这一点。
+
+**损坏模式就是健壮性输入。** `corrupt=` 先写出一份完全合法的 checkpoint，
+然后只破坏一处，因此一个测试每次只隔离一种失败形态：`"truncated_jsonl"`
+把 `cost_trace.jsonl` 的最后一行从中间截断，`"invalid_json"` 削掉
+`tree.json` 的尾部，`"partial_write"` 删除 `tree.json` 而让
+`nodes_tree.json` 保持合法。RQGM 工厂有自己的三种 —— `"broken_chain"`、
+`"truncated_transitions"`、`"registry_mismatch"`。两者都会以 `ValueError`
+拒绝无法识别的模式。
+
+尺寸档位是命名约定，而不是契约。工厂的 docstring 与
+`ari-core/tests/fixtures/gui_refresh/README.md` 把 `nodes=10` / `1000` /
+`10000` 称作 small / medium / large，并称 small 档是"every reader must load
+it（每个读取端都必须加载）"的那一档 —— 但没有任何机制强制这一点。`nodes`
+只是一个普通整数参数，仅带一条 `nodes >= 1` 校验；真正跑遍三个档位的只有
+`test_gui_baseline_run_fixtures.py`（而且它的确定性用例用的是 `nodes=50`）；
+读取端套件只传断言所需的数量，在其余 `test_gui_*` 各文件中是 `nodes=2` 到
+`nodes=10`。请把档位名当作阅读那些测试时的简称，而不是必须遵守的规则。另外，
+在 `test_gui_baseline_run_fixtures.py` 中 large 档只被生成、从不被重新加载，
+因为本仓库没有定义可供挂载 skip 的 `slow` 标记。
+
+消费方并不导入这个包，而是用
+`importlib.util.spec_from_file_location` 按文件路径加载工厂，因此每个消费文件
+的开头都重复着一个小小的加载辅助函数。
 
 ## Skill 级规范
 
@@ -226,6 +281,54 @@ roving tabindex 上走 <kbd>↓</kbd>/<kbd>→</kbd>/<kbd>Enter</kbd>；按键�
 
 WCAG 2.2 AA 关卡——无论自动还是人工——是仪表盘改版的目标，而不是本测试套件已经
 确立的性质。不要把一次绿色运行读作 AA 合规的证据。
+
+**SPA 打包体积** —— `scripts/check_bundle_budget.py` 把仪表盘构建产物约束在一组
+gzip 预算内，而它同样**未接入任何工作流**。这里的原因是结构性的：没有任何工作流
+会构建前端，且 `ari-core/ari/viz/static/dist/` 是生成物而非提交物，所以该检查器
+要测量的目录在 runner 上根本不存在。它*确实*登记在
+`scripts/quality/generate_quality_report.yaml` 中，但读取该文件的聚合器在
+`contracts.yml` 里以 `--target` 模式运行 —— 它只合并其他作业上传的 JSON 制品，
+不执行任何检查器 —— 因此打包预算在那里显示为 `unavailable`。请在构建之后自行
+运行；它是人工执行的 cutover 前检查清单中的一行
+（`docs/guides/gui_cutover_runbook.md` §2）：
+
+```bash
+cd ari-core/ari/viz/frontend && npm run build   # the checker never builds
+python scripts/check_bundle_budget.py --fail-on-regression
+```
+
+它在进程内对每个 `ari-core/ari/viz/static/dist/assets/*.js` 做 gzip（level 6、
+`mtime=0`，因此对同一份构建重跑会给出完全相同的数字），并把每个 chunk 与其
+类别预算（单位为 KiB 的 gzip 体积）比较：
+
+| 类别 | 匹配对象 | 预算 |
+|---|---|---|
+| `entry` | `dist/index.html` 引用的 `<script type="module">` chunk | 100 |
+| `route` | 懒加载路由 chunk，按 `<Name>Page-<hash>.js` 匹配 | 150，其中 `SettingsPage` 与 `WizardPage` 收紧到 50 |
+| `shared` | 其余所有 `.js` chunk —— vendor 拆分、语言词典、共享组件 | 150 |
+| `total` | 所有 `.js` chunk 的 gzip 体积之和 | 600 |
+
+`shared` 的上限是刻意保守的超集：当初被单独定预算的只有路由 chunk，把同一个
+数字扩展到其余部分，是为了让一个拆分失当的 vendor bundle 无法躲在路由类别之外。
+`total` 是棘轮式的天花板而非目标值 —— 它存在的意义是抓住逐 chunk 预算看不见的
+唯一一种失败模式：某个依赖被重复打进多个 chunk，或者涌现出一大批各自都不超预算
+的新 chunk。
+
+浏览器指标（LCP、INP、CLS）被刻意**排除**在关卡之外：jsdom 不做绘制，而共享
+runner 对 pass/fail 预算而言噪声太大。因此一次绿色的打包检查对体感性能什么都
+没说；那一半是在固定机器上的人工 profile，记录在发布证据中。
+
+退出码约定与 `scripts/quality` 家族的其余成员一致。裸执行只打印报告并以 exit 0
+退出。`--fail-on-regression` 在存在任何未冻结于
+`scripts/quality/check_bundle_budget.allow.yaml` 的 finding 时以 exit 1 退出，
+而该文件并不存在 —— 从来没有哪条预算需要被冻结，而允许列表文件缺失即等于空
+允许列表，因此超预算的 chunk 在首次运行即失败。缺少 `dist/assets` 时以 exit 2
+退出，因为构建缺失属于环境问题，而不是预算回归。
+
+预算本身位于 `scripts/quality/check_bundle_budget.yaml` —— dist 路径、路由
+chunk 的正则、四个类别预算以及按路由的覆盖值。所有键都可省略，且检查器在代码里
+携带着同样的默认值，因此这份 YAML 的全部价值就在于让预算变更成为一行可评审的
+diff，而不是一次代码编辑。请在那里调整，而不是改脚本。
 
 ## 编写回归测试
 

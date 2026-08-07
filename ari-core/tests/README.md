@@ -72,7 +72,7 @@ targets the like-named module under `ari/`.
 - `test_delegated_cli_terminal.py` — `AgentLoop.run` terminal-protocol handling for the cli-shim MCP-direct backend: one bounded nudge for the terminal JSON, acceptance from `results*.json` the delegated run verifiably wrote (`result_source="delegated_cli_artifacts"`, inherited files excluded), and strict inertness unless `last_request_delegated` is literally `True`.
 - `test_delete_checkpoint_experiments.py` — checkpoint-experiment deletion.
 - `test_deterministic_evaluator.py` — deterministic-evaluator scoring-contract tests (geomean / native `_scientific_score` ranking value / invalid-family rule; handoff study B2).
-- `test_direct_classification_gates.py` — TODO
+- `test_direct_classification_gates.py` — what stops a Provider claiming a capability it cannot honour: the catalog turns a reviewed `declared_capability_refs_by_tool` entry into a `CapabilityProvisionV1` only if the tool's locked policy matches the contract's side-effect class exactly AND already declares every permission the contract requires. Both refusals were untested, which matters more than usual — a classification the loader waves through is a Provider claiming authority it never declared, and every requirement bound to that capability inherits the claim.
 - `test_disabled_tools_flow.py` — disabled-tools flow.
 - `test_dynamic_axes.py` — dynamic evaluation axes.
 - `test_ear.py` — EAR (experiment/analysis/report).
@@ -146,7 +146,7 @@ targets the like-named module under `ari/`.
 - `test_labels_disabled.py` — `ARI_BFTS_NO_LABEL` turns the exploration-LABEL feature off at every site it acts on, not just in the record. The label steers three things and only the third is reporting: the system prompt's per-label ORDERS, the child's task line, and the frontier `diversity_bonus` that decides WHICH node is expanded. The flags that looked like off switches were record-only, so a full multi-arm run carried the confound while node_report showed nothing — the ablation share of children came out monotone in handoff richness and was inseparable from the treatment. Pins the truthy/falsy parsing, the diversity bonus and frontier ranking going label-blind, that the record-only flag is gone from LIVE code (checked by AST, so a docstring explaining its removal still passes) while the label fields are always recorded, and that the study driver disables the feature instead of hiding it.
 - `test_laptop_hpc_skill_drop.py` — laptop/HPC skill drop.
 - `test_launch_config.py` — launch config.
-- `test_launch_env_precedence.py` — TODO
+- `test_launch_env_precedence.py` — pins that a configured key does not lose to a file nobody remembers writing. `load_dotenv_files` fills blanks in the subprocess environment and the launch paths fall back to the Settings key only when the slot is still empty, so a value from a stale `~/.env` was indistinguishable from one the operator exported — the dotfile silently outranked the key just configured, with no diagnostic. Exercises the helper against `tmp_path` files only; nothing here touches a real `.env`.
 - `test_letta_restart_live.py` — Letta restart (live).
 - `test_letta_start_scripts.py` — Letta start scripts.
 - `test_lineage_and_inherit.py` — lineage + inheritance.

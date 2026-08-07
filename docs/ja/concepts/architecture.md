@@ -146,11 +146,14 @@ MCP クライアントは憲法的ケイパビリティゲート（`ari/core.py`
 完全性評価を記録し、`enforce` は authoring 要件が解決されるまで執筆を
 ブロックします（`repair.policy: auto` にはこれが必須）。`workflow.yaml` の
 各パイプラインステージは `segment: evidence | authoring | verification` を
-宣言するようになり、これにより `ARI_MANUSCRIPT_RUNTIME_MODE` が `off` でない
-とき `generate_paper_section(..., include_segments=…)` が論文パイプラインを
+宣言するようになり、これにより
+`generate_paper_section(..., include_segments=…)` が論文パイプラインを
 セグメント単位で実行できます: 除外されたセグメントは*派生*ワークフロー上で
 無効ステージとして表現されるので、セグメントをまたぐ `depends_on` は永続化
-済みの出力で満たされたままです。既定の `include_segments=None` では従来どおり
+済みの出力で満たされたままです。この選択自体に mode は不要で、
+`ARI_MANUSCRIPT_RUNTIME_MODE` が `off` 以外のときに加わるのは
+segment-execution レコードです — 実行が workflow digest と論理的な入力に
+束縛され、一致する completed レコードがあれば再実行せず再利用されます。既定の `include_segments=None` では従来どおり
 有効なステージがすべて走ります。
 
 ---
@@ -438,7 +441,7 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     合成 (LLM 不使用)。
     出力: review_report.json (vlm_figure_review が後付けで添付される)
 
-  ステージ 11: ors_generate_rubric  (ari-skill-replicate)  [v0.7.0]
+  ステージ 11: ors_generate_rubric  (ari-skill-replicate)  [lock_paper_build の後, v0.7.0]
     最終論文から PaperBench 形式 (TaskNode ツリー) のオートルーブリックを
     生成。task_category と finegrained_task_category は PaperBench の閉じた
     語彙に固定 (LLM が外したら decided 正規化で補正)。JSON 出力時は迷い
@@ -486,8 +489,9 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
 
   ステージ 17: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [v0.7.0]
     Phase 2。メイン採点 completer を LiteLLM 経由化 (任意 provider 対応)、
-    structured score-parser は gpt-4o-2024-08-06 のまま。N 回 (デフォルト 3)、
-    重み付き葉スコア集約 + 負例コントロール。
+    structured score-parser は gpt-4o-2024-08-06 のまま。N 回
+    (デフォルト 1 — PaperBench §4.1 の single-pass 採点。増やすときは
+    ARI_JUDGE_N_RUNS)、重み付き葉スコア集約 + 負例コントロール。
     出力: ors_grade.json { ors_score, raw_score, leaf_grades,
                            judge_model, n_runs, rubric_sha256,
                            negative_control: {empty, boilerplate, passed} }
@@ -555,8 +559,12 @@ checkpoints/{run_id}/
 ノード毎の作業ディレクトリは `checkpoints/` と兄弟ディレクトリとして作成される:
 
 ```
-{workspace}/experiments/{slug}/{node_id}/
+{workspace}/experiments/{run_id}/{node_id}/
 ```
+
+中間のセグメントはトピック slug ではなく **`run_id`** である。`PathManager.node_work_dir`
+は `run_id` を受け取り、`ari/cli/bfts_loop.py` がそれを渡すため、実験名が同じ 2 つの
+ラン同士が同じバケットに書き込むことはない。
 
 ノード実行時、`_run_loop` は以下のユーザファイルを各ノードの work_dir にコピーする:
 - **Provided files**: `experiment.md` の `## Provided Files` (`## 提供ファイル` / `## 提供文件`) にリストされたパス
@@ -607,6 +615,75 @@ checkpoints/{run_id}/
 API キーは **絶対に** `settings.json` には保存されない。`.env` ファイル
 (探索順: checkpoint → ARI root → ari-core → home) または起動時に注入された環境変数から読み取る。
 
+### ワークスペースルートの解決
+
+上記のパスに現れる `{workspace}` は固定ディレクトリではない。これを決めるのは
+`RuntimePathResolver.resolve_workspace_root()` (`ari/paths.py`) ただ 1 つの関数である。
+優先順位は先に一致したものが勝つ:
+
+1. **`ARI_CHECKPOINT_DIR`** — pin されたチェックポイントディレクトリからルートを
+   *復元* する: 最も外側の `checkpoints/` 祖先まで遡ってその親を採る。`checkpoints/`
+   祖先が無い場合はチェックポイントディレクトリ自身の親を採る。
+2. 明示的に渡された `workspace_root` 引数。
+3. **`ARI_ROOT`** → `{ARI_ROOT}/workspace`。
+4. `{repo root}/workspace` — `{repo root}/ari-core` がディレクトリである場合、
+   つまりチェックアウト内部から実行している場合にのみ採用される。
+5. プロセスの作業ディレクトリ。
+
+ステップ 1 がステップ 2 より強いのは踏みやすい落とし穴である: `ARI_CHECKPOINT_DIR` が
+設定されている間は、`workspace_root` を明示的に渡してもルートは **移動しない**。
+現時点でこのポリシーに乗っている呼び出し元は `ari/config/__init__.py` (`auto_config`。
+既定の `{workspace}/checkpoints/{run_id}` テンプレートをここから組み立てる)、
+`ari/harness_registry.py` (`{workspace}/harnesses`)、および `ari/viz/v1/` 配下の
+v1 GUI ドキュメントストアと launch のパスである。
+
+このポリシーは opt-in であり、暗黙には効かない: 引数なしで構築した `PathManager()` は
+依然としてプロセスの作業ディレクトリを既定とし、上記のチェーンを一切参照しない。
+ここに挙げた呼び出し元だけがこの方式でルートを解決する。
+
+### バケット化された `runs/` レイアウト — 設計のみで未採用
+
+`RuntimePathResolver` は、ラン単位でバケット化された第 2 のレイアウトも理解する:
+
+```
+{workspace}/runs/{run_id}/
+├── workspace/     # ノード毎のスクラッチ (レガシー相当: 上記のノード作業ディレクトリ)
+├── checkpoints/   # ラン単位メタデータ JSON (レガシー相当: チェックポイントルート)
+├── artifacts/     # 図、LaTeX、refs.bib
+├── traces/        # コスト / プロンプト / メモリアクセスのログ
+└── reports/       # node_report.json、レビュー・再現性レポート、ors_*.json
+```
+
+**このレイアウトを書くものは存在せず、`ari/paths.py` の外にこれを要求する呼び出し元も
+存在しない。** これは設計されたのち採用されなかった目標形として読むこと — 現在の
+ディスク上のレイアウトでもなければ、進行中の移行でもない。ARI が実際に生成するパスは
+すべて上記のフラットなレイアウトである。`ari/paths.py` に実在するのは読み取り側の許容
+だけで、バケット化されたランが万一現れれば解決できる、という状態にとどまる:
+
+- `checkpoint_file(run_id, name)` は `bucket_for` で `name` を分類し
+  (コスト / プロンプト / テレメトリと RQGM ログの固定ファイル名集合および
+  `memory_access.*.jsonl` は `traces`、
+  `node_report.json` / `review_report.json` / `reproducibility_report.json` と
+  `ors_*.json` は `reports`、`fig_` 接頭辞または `.tex` / `.pdf` / `.bbl` / `.bib` /
+  `.png` / `.svg` 拡張子は `artifacts`、それ以外はすべて `checkpoints`)、そのバケットを
+  先に、残り 3 つを後に調べ、どれも存在しなければフラットな
+  `checkpoints/{run_id}/{name}` を返す。分類は走査の *順序* を決めるだけで、いずれに
+  せよ全バケットを調べるため、分類を誤っても誤ったパスにはならない。
+- `artifacts_dir` / `traces_dir` / `reports_dir` は該当ディレクトリが既に存在する場合の
+  みバケットを返し、そうでなければフラットなチェックポイントルートを返す。
+  `workspace_dir` は `runs/{run_id}/workspace/` が存在する場合のみ
+  `runs/{run_id}/workspace/{node_id}` を返し、そうでなければ上記 *ノード作業ディレクトリ*
+  のレガシーパスを返す。
+
+バケットを作るものが存在しない以上、これらはすべて構造上フラットなパスを返す。
+`runs_root` / `run_dir` / `bucket_for` と dual-layout アクセサ (`checkpoint_file`、
+`artifacts_dir`、`traces_dir`、`reports_dir`、`workspace_dir`) には
+`ari/paths.py` 自身の外に呼び出し元が無く、これらを行使しているのは
+`ari-core/tests/test_paths.py` (と `tests/test_rqgm_proposals.py` の `bucket_for`
+アサーション 1 件) だけである。新しいレイアウト作業のお手本として扱ってはならない。
+維持コストは安いが ARI のレイアウトとして説明すると誤解を招く、読み取り側の死んだ
+足場だと理解すること。
+
 ---
 
 ## モジュールリファレンス
@@ -626,6 +703,7 @@ API キーは **絶対に** `settings.json` には保存されない。`.env` �
 | `ari/mcp/client.py` | 非同期 MCP クライアント — スレッドセーフ、並列実行用の新しいイベントループ |
 | `ari/llm/client.py` | litellm 経由の LLM ルーティング（Ollama、OpenAI、Anthropic、任意の OpenAI 互換） |
 | `ari/config.py` | 設定データクラス（BFTSConfig、LLMConfig、PipelineConfig） |
+| `ari/prompts/` | `FilesystemPromptLoader` 経由で読み込む外部化 LLM プロンプト。コミット済みテンプレートのディレクトリは `agent/`、`orchestrator/`、`pipeline/`、`evaluator/`、`viz/`、`llm/`（CLI シムのシステムプロンプトに注入される MCP ツール名解決フラグメント）に加え、RQGM 期の 2 ディレクトリ — `governance/`（弾劾パイプラインの `auditor` / `defender` / `governance_judge` アクタ）と `rqgm/`（ProposalRouter のジェネレータ群、敵対 → 防御 → 裁定のループ、PromptMutator と clean-room のメタプロンプト）。どのディレクトリも同じバージョン付きスキームを使う: `load_versioned("<dir>/<name>")` はテンプレート本文と `sha256(text)[:12]` を返し、この短いハッシュがレコードの `prompt_hash` として保存される — [RQGM スキーマ → Id とハッシュの規律](../reference/rqgm_schemas.md#id-とハッシュの規律) を参照。ランタイムで *進化した* プロンプト本文はここにコミットされず、チェックポイント単位で保持される。ピン留めは `tests/test_prompt_extraction.py`（手書きの sha256 一覧）と `tests/test_prompt_snapshots.py`（配下の `*.md` を自動探索）|
 | `ari/core.py` | トップレベルのランタイムビルダー — 全コンポーネントの接続 |
 | `ari/cli/` | Typer CLI 分割パッケージ: `__init__`, `run`, `projects`, `commands`, `bfts_loop`, `lineage`, `migrate` + `paper_dispatch`（`ari run` / `ari resume` / `ari paper` が共有する論文フェーズ実行モードディスパッチ） |
 
@@ -702,9 +780,15 @@ generate_ideas (idea-skill)
             新 idea を append (上書きしない)。
 ```
 
-`ARI_RUBRIC` がどの venue ファイルを読むかを決めます。切り替えると
-BFTS のスコアリング軸 (Phase 3) と論文 review の評価基準が同時に変化
-します — **同じ rubric が両方を駆動**します。
+`ARI_RUBRIC` (既定 `neurips`) は BFTS のスコアリング軸 (Phase 3、
+`ari/core.py` の `_load_rubric_dict_for_axes`) を導く venue ファイルを
+選びます。論文 review はこの選択を共有しなくなりました: `review_paper`
+ステージは `rubric_id: {{paper_rubric}}` を渡し、その値は
+`workflow.yaml` のトップレベル `paper_rubric` キー (既定
+`generic_conference`) から解決されます。`resolve_rubric` は空の id を
+env にフォールバックせず拒否します。同じ venue でスコアリングと review
+の両方を駆動したい場合は、`ARI_RUBRIC` と `paper_rubric` に同じ id を
+設定してください。
 
 ### サブ実験での継承
 
@@ -759,7 +843,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
 - **サンドボックス**: `react.sandbox` はディレクトリ(既定 `{{checkpoint_dir}}/repro_sandbox/`)。ツール呼び出しの引数は絶対パスと `..` トラバーサルを走査され、sandbox 外 (論文 `.tex` の allow-list を除く) は MCP 到達前に `sandbox violation` として拒否される。MCP サーバー起動前に `ARI_WORK_DIR` を sandbox にセットするため、`coding-skill.run_bash` も自然に sandbox で cwd される。
 - **終了条件**: エージェントは `react.final_tool`(既定 `report_metric`)を呼んでループを終える。その呼び出しは MCP には転送されずドライバが捕捉し、引数が post_tool に渡る `actual_value` / `actual_unit` / `actual_notes` となる。
 
-この分離により、`reproduce_from_paper` スタイルのステージにおける「論文テキストのみを読む」制約が、スキル Python 内ではなく YAML から監査可能になります。
+この分離により、再現ステージの「論文テキストのみを読む」制約が、スキル Python 内ではなく YAML から監査可能になります。
 
 ---
 
@@ -914,15 +998,23 @@ Workflow:
 
 なお `get_experiment_context()` のペイロード（`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec`）は **もはやこのリストには含まれません** — 上記ワーキングコンテキスト注入の Tier 1a として全ノードに自動注入されるようになりました。
 
-### CoW ブリッジ — メモリスキルとの同期維持
+### 署名付き call context — メモリスキルとの同期維持
 
-LLM へのラウンドトリップが始まる直前、`loop.py:378-381` で:
+ブリッジツールも「現在ノード」を持つ環境変数も存在しません。そのノードのツール呼び出しが始まる前に `loop.py:1601` が不変のコンテキストを 1 つ組み立て、そのノードの全呼び出しで共有します:
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids or [],
+    phase=phase,
+)
 ```
 
-を発行します。これは `ari-skill-memory` が公開する内部ツールで、プールされたスキルサブプロセス内の `$ARI_CURRENT_NODE_ID` を更新し、後続の `add_memory(node_id=...)` 呼び出しがアクティブノードに対して CoW 検証されるようにします。エージェントはこのツールを見ません ── `_INTERNAL_MCP_TOOLS` で `tool_desc` から除外されています。
+`MCPClient` はスキル接続ごとに 256-bit の authority key を発行し（`new_context_authority_key()`、`mcp/client.py:76-77`）、スキルのサブプロセスへ `ARI_CONTEXT_AUTHORITY_KEY` としてエクスポートします。`context_requirement` が `none` でないツールでは、ディスパッチが HMAC 署名済みコンテキストを呼び出し引数へ注入し（`connection.authorize_args`、`mcp/client.py:540-545`）、`ari-skill-memory` はバックエンドに触れる前に `verify_tool_context(...)` で署名を検証します（`ari-skill-memory/src/server.py:55-63`）。
+
+つまりアクティブノードはサブプロセスの環境ではなく **署名された各呼び出しの中** で運ばれます。プールされた 1 つのサブプロセスを兄弟ノードが並行して共有しても安全なのはこのためです。
 
 ### Soft 強制 vs Hard 強制
 
@@ -930,7 +1022,7 @@ self.mcp.call_tool("_set_current_node", {"node_id": node.id})
 
 | ルール | 強制方法 |
 |-------|---------|
-| 他ノードのメモリに書けない | **Hard** — バックエンドが `node_id` ≠ `$ARI_CURRENT_NODE_ID` を reject |
+| 他ノードのメモリに書けない | **Hard** — 署名付き call context のノードと `node_id` が一致しない書き込みをスキルが reject（"node write target is not the authorized self node"） |
 | 兄弟メモリを読めない | **Hard** — `search_memory` が `ancestor_ids` でフィルタ |
 | `generate_ideas` は最大 1 回 | **Hard** — 初回後 `_suppress_tools` で除外 |
 | 子は `survey` を呼ぶべきでない | **Soft** — 文章のみ（"parent already completed the survey"）。ツールは `tool_desc` に残る |

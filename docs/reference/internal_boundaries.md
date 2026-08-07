@@ -24,6 +24,8 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/runtime.py
     role: implementation
+  - path: ari-core/ari/rqgm/context_views.py
+    role: implementation
   - path: ari-core/ari/rqgm/governance/__init__.py
     role: implementation
   - path: ari-core/ari/manuscript/snapshot.py
@@ -293,6 +295,102 @@ move the execution mode into the frozen CLI tree and turn every later
 mode-related change into a golden-file diff. Keep new mode surfaces in
 configuration — the same reasoning is why the wrapper above is discovered by
 attribute rather than by type.
+
+### Governance context views (`ari.rqgm.context_views`)
+
+One more rule lives inside the package, and it is the one most likely to be
+read as a general pattern when it is not: **each governance actor is handed a
+capped, role-specific projection — a *view* — never the archive.** The builders
+in `ari/rqgm/context_views.py` are pure (no LLM, no I/O) and byte-deterministic,
+so a view is a function of its inputs and of nothing else.
+
+**The BFTS row is the load-bearing one**, and it is stated in three places at
+once. For the `CK-CTX-001` code and its severity see
+[RQGM schemas → Constitutional violation codes](rqgm_schemas.md#constitutional-violation-codes);
+for the view's own field list see
+[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal_summary_viewschemajson).
+
+| Layer | Mechanism | Does it stop anything? |
+|---|---|---|
+| construction-time | `build_bfts_summary_context` accepts a `ProposalSummaryView` and raises `TypeError` for anything else — a `ProposalRecord`, and the summary's own `to_dict()` too | Yes; this is the only layer that raises. |
+| check-time | `ConstitutionalKernel.validate_context_scope(role, view)` subtracts the role's whitelist from the view's key set and reports `CK-CTX-001` for the remainder | No — warn-and-flag, never blocks node execution. |
+| test-time | `ari-core/tests/test_rqgm_context_views.py::test_no_archive_field_reaches_the_rendered_expand_context` renders a fixture `ProposalRecord` carrying every `ARCHIVE_ONLY_FIELDS` name and asserts that neither those names nor a sentinel survives into the rendered string | In CI only. |
+
+**One whitelist, constitution-pinned.** `PROPOSAL_SUMMARY_FIELDS` is not a copy
+of the kernel table — it *is* `kernel_rules.CONTEXT_VIEW_WHITELISTS["generator"]`
+(BFTS rides the `generator` role), and
+`test_rqgm_context_views.py::test_whitelist_constant_is_the_kernel_table_entry`
+pins the `is` identity so a second list cannot appear and drift. The table is
+serialised into `kernel_rules._canonical_rules_payload()` under
+`context_view_whitelists`, so it rides `constitution_hash()`: adding or widening
+a row is an explicit re-pin, the same treatment the transition table gets.
+
+**Read the ordering before you rely on the layering.** The only non-test caller
+in `ari-core/ari` is `RQGMRuntime.render_expand_context` (`ari/rqgm/runtime.py`),
+reached from `GovernedSearchStrategy.expand` when the caller passed an
+`idea_context` kwarg. It runs the check-time layer **first**
+(`_flag_bfts_view_scope` — a log warning plus a `kernel_report` line on the
+immutable audit log, the whole hook wrapped fail-open) and the type gate
+**second**. What actually prevents the leak is the type gate: an out-of-scope
+view is a plain `dict`, `build_bfts_summary_context` raises, the surrounding
+`try` in `render_expand_context` swallows it and returns `""`, and the caller
+keeps its `idea.json` context. The kernel layer records the fact; it does not
+prevent it. Note too that the `_enforce_scope("generator", …)` call *inside* the
+builder runs after the type gate, on `ProposalSummaryView.to_dict()`, whose key
+set is exactly the ten whitelisted names — so on the BFTS row that in-builder
+call can never produce a violation. It is belt-and-braces, not the check that
+fires.
+
+**Only three roles are kernel-checked at all.** `CONTEXT_VIEW_WHITELISTS` has
+rows for `generator`, `paper_writer` and `paper_reviewer`;
+`validate_context_scope` looks the role up and returns a clean report when the
+lookup misses, so every other role is unchecked by design
+(`test_a_role_without_a_whitelist_is_unchecked` pins that). The Judge,
+adversary, reviewer and governance views therefore rest on two weaker
+mechanisms, and it is worth being precise about how weak:
+
+- **Constructive exclusion** — the builder has no parameter for the material it
+  must not see (`build_reviewer_context` cannot be handed another reviewer's
+  output; `build_judge_context` is given attack, defense and bundle only and
+  never holds a registry handle). Real, but a property of the signature rather
+  than a check.
+- **`_scrub` key deletion** — `JUDGE_EXCLUDED_KEYS` (`frontier_scores`,
+  `frontier_rank`, `scientific_score`, `_scientific_score`, `utility`,
+  `utility_score`) and `GOVERNANCE_EXCLUDED_KEYS` (`prompt_text`, `prompt_body`,
+  `template`, `template_text`, `body`) are dropped recursively **by key name**,
+  and every string is truncated at `_FIELD_CAP` (4000) characters. Key-name
+  deletion is exactly as strong as the name list: the same value under a key the
+  set does not name survives untouched.
+
+**Most of the module has no production caller — read it as declared, not as
+observed.** Inside `ari-core/ari`, `build_bfts_summary_context` is the only
+builder with a non-test call site. `build_reviewer_context`,
+`build_adversary_context`, `build_judge_context`, `build_governance_context` and
+`build_paper_writer_context` have none; they are exercised only by
+`test_rqgm_context_views.py` (and, for `build_paper_writer_context`,
+`test_rqgm_paper_candidate.py`),
+and `CHARTER_BLOCK_CAP = 1200` has no consumer at all — its test only asserts
+the number and that it is ≤ `ari.agent.loop._IDEA_FIELD_CAP`. The module is the
+BFTS row plus a set of prepared-but-unwired projections; do not cite the others
+as a description of what a run does.
+
+**The paper-reviewer view is built somewhere else, and that is a workaround, not
+a design.** `ari/rqgm/paper_judge.py:_paper_reviewer_string_view` assembles the
+paper-reviewer view itself — four capped strings under the same four whitelisted
+keys — because `context_views._plain` keeps only mappings and objects carrying a
+`to_dict`, so a raw string projects to `{}`; the module comment records that
+routing the archive's string inputs through `build_paper_reviewer_context`
+silently dropped the draft body. It imports `PAPER_REVIEWER_FIELDS` to keep the
+key set honest, but pins it with a bare `assert` instead of calling the kernel,
+so the live paper-reviewer path emits no `CK-CTX-001` report of its own.
+
+**If you add a governed role**, add its row to `CONTEXT_VIEW_WHITELISTS` —
+accepting the `constitution_hash` re-pin — and call `_enforce_scope` from the
+builder;
+`test_rqgm_context_views.py::test_every_whitelisted_builder_runs_the_check`
+inspects the source of all three whitelisted builders for exactly that call. A
+builder for a role with no whitelist row is unchecked no matter how much it
+scrubs.
 
 ### Manuscript compiler boundary (`ari.manuscript`)
 

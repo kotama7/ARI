@@ -324,6 +324,57 @@ MCP 包装器将 `should_block`（仅在 strict 策略下的 `phase: final`，�
 
 决策类型：`continue` / `switch_to_idea` / `fanout` / `terminate`。来源：`ari-core/ari/orchestrator/lineage_decision.py`。
 
+## `prompt_trace.jsonl` / `prompt_versions.json`
+
+提示词溯源：记录每次受管提示词的 LLM 调用是由哪个*模板* —— 以及在调用处能拿到
+已渲染字符串时，由哪个*已渲染提示词* —— 产生的。`prompt_trace.jsonl` 是按调用
+的仅追加轨迹，`prompt_versions.json` 是它的运行级汇总。两者都写在检查点根目录，
+都在 `PathManager.META_FILES` 中，因此绝不会被复制进节点工作目录；
+`prompt_trace.jsonl` 还被归入 `_TRACE_FILES` —— 即在路径解析器同样能理解的分桶
+运行目录布局下位于 `runs/<run_id>/traces/` 之下的那组文件。来源：
+`ari-core/ari/prompts/_provenance.py`；汇总的写入统一经
+`ari.checkpoint.save_prompt_versions_json`。
+
+轨迹每行一个 JSON 对象。`prompt_name` 与 `template_hash` 是必填且总能计算出的
+字段，其余字段都带默认值，因此记录形状可以在不破坏读取方的前提下扩展：
+
+```json
+{"timestamp": "2026-07-10T10:34:32Z", "prompt_name": "pipeline/keyword_librarian",
+ "template_hash": "9f2c01ab34de", "rendered_prompt_hash": "34de9f2c01ab",
+ "prompt_version": null, "prompt_registry_version": null,
+ "model": "...", "node_id": "", "phase": "context_builder", "source": "core"}
+```
+
+哈希是 `sha256(text)[:12]` —— 与 `FilesystemPromptLoader.load_versioned` 完全
+相同的方案，所以同一份模板正文在这里、在那里、在不同机器上都得到相同的值。
+`timestamp` 是元数据，绝不进入任何哈希。`rendered_prompt_hash` 只有在调用处传入
+了已渲染文本时才有值，否则为 `null`；有几个调用处只加载模板而不在当地拼出最终
+字符串，所以 `null` 表示「未采集」，而不是「空提示词」。
+
+`prompt_version` / `prompt_registry_version` **被观察到几乎总是 `null`**，这是
+调用处被冻结的性质，而不是关于提示词本身的论断。填充它们的写入方只有一个：RQGM
+PromptRegistry 的打戳路径（`ari-core/ari/rqgm/registry.py`），它把
+`prompt_version` 设为*注册表提示词 ID*、`prompt_registry_version` 设为注册表版本。
+其余一切 —— 智能体循环、LLM 评估器、上下文构建器、viz 向导工具，以及 RQGM 的
+治理／提示词进化／提案的全部调用 —— 两者都保持 `null`。应把 `null` 读作
+「未打戳」，而不是「无版本的提示词」。`source` 同样恒为 `"core"`：
+`record_prompt_use` 将其硬编码且不接受对应参数，所以该字段预留的 `"skill"` 值
+没有任何随发行版出货的写入方会写出。
+
+`prompt_versions.json` 是按首次出现顺序排列的 `{prompt_name: {template_hash,
+prompt_version, call_count}}`，其中 `template_hash` 与 `prompt_version` 取自该
+名字*第一条*出现的记录 —— 运行中途换过模板的提示词在这里只会显示第一个哈希，
+真相仍在 JSONL 一侧。每当 BFTS 循环刷写检查点时，`build_prompt_versions_rollup`
+就从轨迹重建它（带节流的写入；终止性刷写为强制），所以它是派生物而非权威。这次
+刷写是它唯一的写入方，因此一个记录了提示词使用却没有进入 BFTS 循环的阶段，只会
+留下有轨迹而无汇总的结果。
+
+两个写入方都刻意是 best-effort 的，产物也必须这样读。`record_prompt_use` 在解析
+不出检查点目录时（单元测试、启动前）为 no-op，在模块锁下追加，并吞掉**每一个**
+异常，这样溯源记录失败绝不会弄坏它正在记录的那次 LLM 调用；汇总写入也以同样方式
+包裹。所以两个文件中任何一个缺失只意味着「未记录溯源」—— 既不是错误，也不能证明
+某次调用没有发生。
+
 ## RQGM 纪元治理文件（可选启用的 `ari_rqgm` 模式）
 
 仅当 `ari.mode: ari_rqgm` **且** `rqgm.enabled: true` 一致时才写入
@@ -418,9 +469,12 @@ RegistryTransitionEngine（Task 09），因此报告本身不改变任何状态�
 
 - `rqgm_audit.jsonl` —— 始终：上述治理记录加上最终的
   `governance_report`。
-- `prompt_trace.jsonl` / `prompt_versions.json` —— 共享提示词渲染
-  路径产出的普通溯源记录，仅覆盖治理的 LLM 调用。确定性审计
-  （未接入 LLM 接缝）不渲染任何治理提示词，两个文件都不写。
+- `prompt_trace.jsonl` —— 共享提示词渲染路径产出的普通溯源记录，仅覆盖
+  治理的 LLM 调用。这些调用只会间接进入 `prompt_versions.json`：要等到
+  BFTS 检查点刷写下一次从轨迹重建该汇总时（参见上文
+  「`prompt_trace.jsonl` / `prompt_versions.json`」）；`audit_epoch` 自身
+  从不写这份汇总。确定性审计（未接入 LLM 接缝）不渲染任何治理提示词，
+  也不会在这里追加任何内容。
 - `rqgm_adversarial_cases.jsonl` 以及由其派生的
   `rqgm/adversarial_replay_pool.json` —— 第 7 步的重放池更新，仅在
   传入池时发生。被接纳/被支持的案例**追加**到作为真相的 JSONL，
@@ -490,6 +544,16 @@ FrontierRepairEngine（RQGM Task 10，
 由 `constitution_hash` —— `sha256(canonical_json(<全部规则表>))[:12]`
 —— 钉住，该哈希还以可选的 `constitution_hash` 键增量式地记录进
 `meta.json`。
+
+因此检查点里的这份副本是**溯源标记，而不是控制面**：编辑它不会改变任何行为，
+因为 ARI 没有任何代码回读它 —— 触碰该路径的只有
+`ari.rqgm.state.copy_constitution_if_missing`（由 `ari/cli/run.py` 在模式门控下
+调用；参见[内部边界](internal_boundaries.md)的「RQGM 模式边界（`ari.rqgm`）」）。
+这是刻意为之而非疏漏：检查点目录是扁平的，任何 skill 都能往里写，规则文件放在
+那里就会成为一条进化／篡改通道，所以规则表留在代码中。该副本注册在
+`PathManager.META_FILES`，绝不会进入节点工作目录。复制在两个方向上都是
+best-effort —— 未打包 `constitution.yaml` 的发行版既不复制也不报错 —— 所以文件
+不存在本身并不能证明该次运行是 `simple_bfts`。
 
 ### `epoch_state.json`
 
@@ -706,6 +770,22 @@ ensure_ascii=False`）；JSON Schema：
 trace_depth_exceeded` —— 仅诊断用）和 `_erasure_event_id`，通过
 `tree.json` 持久化；即使切回 `simple_bfts` 模式，它们也让被擦除
 的节点保持被排除（污染不会因为切换模式而变干净）。
+
+这份汇总同时也是 ARI **向其他包发布**的表面，因此消费侧另有两条规则。
+其一，`invalid_frontier_node_ids` 是被钉住的跨包契约 —— ari-core 写、
+memory skill 读，`ari-skill-memory/tests/test_erasure_annotation.py` 会 grep
+ari-core 侧的写入方，所以任何一侧改名都会让测试失败，而不是悄悄让擦除感知
+失效。其二，那个跨包读取方
+（`ari-skill-memory/src/ari_skill_memory/erasure.py`）以**降级**的方式保持
+向前兼容：它钉住 `SUPPORTED_SCHEMA_VERSION = 1`，凡是 `schema_version` 不是
+它能理解的整数的文件 —— 高于支持版本，或是字符串 / 浮点 / 布尔 —— 都会被读
+成「无任何过期」，而不去冒打上错误擦除标签的风险；这与它对缺失、不可读或
+格式错误文件给出的判定相同。缺少 `schema_version` 键时按支持版本处理。
+
+请注意这种不对称是读取方的性质而非格式的性质：ari-core 自己的
+`view_from_payload`（`ari-core/ari/rqgm/erasure_state.py`）根本不检查
+`schema_version` —— 它是写入方的容缺孪生 —— 而 JSON Schema 把
+`schema_version` 声明为 `const: 1`。只有跨包读取方实现了这条降级阶梯。
 
 ### `rqgm_governance_cache.jsonl`（RQGM Task 12）
 

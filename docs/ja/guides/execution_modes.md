@@ -291,6 +291,35 @@ BFTS の `max_total_nodes` になります — ツリーを深くしても同じ
   best-of-N として振る舞います
   （[論文アーカイブの採用](rqgm_migration.md#papermode-の採用)を参照）。
 
+論文フェーズがガバナンス予算の閉じた `ACTION_KINDS` 集合
+（`ari/rqgm/budget.py`）に追加するアクション種別はちょうど 1 つ、
+`paper_anchor_scoring` だけです。これはアクティブなレビュアが採点される
+held-out アンカーケース 1 件につき 1 単位を消費します。エポックあたりの上限は
+`rqgm.paper.anchor.sample_size`（デフォルト `8`）であり、
+`rqgm.paper.anchor.enabled` が false のとき——上記のデフォルト——は `0` です。
+したがってデフォルトの on-ramp では、アンカー一致度の採点は単にスキップされる
+のではなく、予算がゼロとして計上されます（`shadow_call` や `virsci_call` が
+既に持つ「無効なら 0 を返す」形と同じです）。論文アーカイブが取る他の予算対象
+アクションは、すべて既存の上限に計上されます: 例えば self-preference
+アドバーサリは各攻撃ラウンドを `adversary_call` /
+`rqgm.adversarial.max_adversary_calls_per_epoch` でゲートします。
+
+ここでの「エポックあたり」とは*論文*エポックあたりの意味です — アーカイブは
+`current_paper_epoch`（論文エポックオブジェクトが開いていなければ
+`paper_epoch_000`）の上に自前の `GovernanceBudgetManager` を構築します。
+予算の枯渇はいつもの形で縮退します: ケースのループが止まり、レビュアは採点
+済みの接頭部が与えた一致率をそのまま保ち、論文ループへ例外は送出されません。
+カウンタを読む際に効いてくる点が 2 つあります。予算はレビュアが判定を出す
+*前*に計上されるため、判定が得られなかったケース——したがって一致度の
+カバレッジからは除外されるケース——も 1 単位を消費します。そして予算マネージャ
+は `None` への fail-open であり、チェックポイントディレクトリのない論文ラン、
+あるいはマネージャの構築に失敗したランでは、アンカー採点はブロックされるので
+はなく**ゲートされないまま**走ります。エポックあたりの集計は
+`{checkpoint}/paper_archive_state.json` の `budget_counters`
+（`anchor_scoring_calls`）へベストエフォートでミラーされ、`rqgm_audit.jsonl`
+の永続的な `budget_consumed` 行から導出されるため、再実行しても二重計上には
+なりません。
+
 ## GUI からモードを選択する
 
 ここまでの記述が正準です: モードは設定上の決定であり、標準の優先順位で
@@ -331,7 +360,7 @@ GUI パスもありません。
    プロジェクト既定値の文書はそれらを拒否します（`not_project_scope`）; そのスコープ
    ではコントロールが無効化され、理由が表示されます。
 4. **開かれているのはこの 4 葉だけ。** `Execution mode` カテゴリと `rqgm.*` ツリー
-   の残り 97 パス（epoch、kernel、governance、adversarial、予算のチューニング）は、
+   の残り 104 パス（epoch、kernel、governance、adversarial、予算のチューニング）は、
    本リリースでは GUI から編集**できません**。それらは実効値付きの読み取り専用
    として表示され続け、それらを持つドラフトは起動時に `mode_locked` で拒否され
    ます — 変更するには `workflow.yaml` を編集してください。モードを選ぶことは

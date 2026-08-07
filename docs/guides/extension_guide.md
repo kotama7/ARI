@@ -481,7 +481,7 @@ Out-of-band tables that change without code changes live as YAML under
 | File                | Owner                                        |
 |---------------------|----------------------------------------------|
 | `model_prices.yaml` | LLM cost estimation (`ari/cost_tracker.py`). An unreadable/empty table sets `PRICING_TABLE_UNAVAILABLE`, which `cost_summary.json` reports — it is not silently a free run |
-| `defaults.yaml`     | Model fall-backs (`models.lineage_decision_default`) **plus** the out-of-band RQGM defaults (`rqgm.epoch` / `kernel` / `governance` / `transition` / …), which mirror the typed `ari.config` pydantic defaults; the mirror is pinned by the `test_rqgm_*` tests |
+| `defaults.yaml`     | Model fall-backs (`models.lineage_decision_default`) **plus** the out-of-band RQGM defaults (`rqgm.epoch` / `kernel` / `governance` / `transition` / …), which mirror the typed `ari.config` pydantic defaults; the mirror is pinned by the `test_rqgm_*` tests. The same file also mirrors the Knowledge–Capability–Assurance (`knowledge` / `capability_binding` / `assurance`) and `manuscript` defaults, which are `off` / `legacy` / `off` / `off` |
 
 Read via `from ari.configs import FilesystemConfigLoader; loader.load("model_prices")`.
 

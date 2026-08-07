@@ -102,7 +102,7 @@ prepare → … → commit トランザクションを通じて登録されま�
  "payload": {"transition_id": "transition_founding"}, "prev_event_hash": ""}
 {"event_id": "evt_000001", "event_type": "prompt_registered",
  "payload": {"prompt_id": "agent_system_prompt_v1", "role": "generator",
-             "status": "active", "prompt_hash": "a50abe13d568",
+             "status": "active", "prompt_hash": "6eff1fb33e63",
              "source": {"kind": "committed_template", "key": "agent/system"}, …}}
 // … 31 more prompt_registered, then 20 component_registered …
 {"event_id": "evt_000053", "event_type": "epoch_transaction_commit",
@@ -337,8 +337,10 @@ attack を生み、不正な generator の替え玉はスキーマチェック�
 ラン終了時の `ensure_epoch` フラッシュ（ステップ 6）は、ノード数トリガが
 満たされていれば最後の境界を発火させます; そうでなければ末尾のエポックは
 単に `open` のままで、クラッシュリカバリのセマンティクスと一致します —
-`ari resume` はイベントログをリプレイし、監査ログのハッシュ連鎖を再検証
-して継続します（ブロッキングな完全性検出は governance-suspended
+`ari resume` はイベントログをリプレイし、復元された状態に対して独立な
+2 つの完全性パス（監査ログの append-only ハッシュ連鎖と、復元されたレコード
+に対する selective-erasure チェック）を走らせてから継続します
+（どちらのブロッキングな完全性検出も governance-suspended
 carry-over へ縮退し、resume の拒否には決してなりません）。
 
 続く論文フェーズは **paper-candidate プリフライト**を走らせます: 永続化された
@@ -442,7 +444,26 @@ rqgm_archive` + `rqgm.paper.enabled: true`
    ハッシュキーであることが重要です: 1 つのコンポーネント id は連続する
    プロンプトバージョンを跨ぐので、コンポーネントキーのスコアは現職の忠実性を
    後継へ漏らし、新しい writer を即座に弾劾可能にしてしまいます。
-3. **採用（共進化の証人）。** ロールが開かれると、共進化した後継
+3. **採用（共進化の証人）。** その前に候補プールが絞られています。境界の
+   メタステップ（ステップ 6）はアクティブ現職を持つ evolvable ロールごとに
+   候補を 1 件鋳造しますが、paper 境界では
+   `RQGMRuntime._active_evolvable_incumbents` がまずその集合を
+   **名前が `paper_` で始まる**ロールへ絞り込み、`paper_writer` と
+   `paper_reviewer` が残ります。paper チェックポイントは設立セット全体
+   （35 プロンプト / 23 コンポーネント）を*登録*したままなので、カーネルと
+   ガバナンス機構は完全なままです; 絞られるのは鋳造だけで、これによりエポック
+   あたりの候補予算がこのフェーズが実際に走らせる 2 ロールへ集中し、paper ラン
+   中に探索ロールの候補が出ない理由になっています。フィルタは宣言されたロール
+   一覧ではなく文字どおりの名前プレフィックス判定なので、paper モードゲート付き
+   の 8 番目の敵対者も一緒に落ちます: それは通常の `adversary` ロールで登録され、
+   レジストリ統治下かつ制裁可能なままですが、このフェーズで候補が鋳造される
+   ことはありません。探索は無変更です — `paper_phase` を渡すのは
+   `PaperArchiveRuntime` だけなので、探索 `ari_rqgm` の境界はこの分岐に
+   到達しません。RQGM-paper 評価ポスチャ（`rqgm.eval.enabled: true` と
+   `rqgm.eval.paper_ablation.condition_id`）の下では、ポスチャが残りをもう一段
+   絞ります — `P0_hgm_h_fixed_critic` は `paper_writer` だけを残します。
+
+   ロールが開かれると、共進化した後継
    プロンプトが `validated → shadow → probationary_active` を登り採用され
    えます; T21 がその後、格下げされた現職を復帰可能な `shadow` スタンバイへ
    移します。証人は各ラウンド先頭で観察されるアクティブな `prompt_hash`

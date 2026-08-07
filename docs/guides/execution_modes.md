@@ -291,6 +291,32 @@ default cheap and honest:
   default `rqgm_archive` behaves as reviewed best-of-N until a curated corpus is
   supplied (see [Adopting the paper archive](rqgm_migration.md#adopting-papermode)).
 
+The paper phase adds exactly one action kind to the governance budget's closed
+`ACTION_KINDS` set (`ari/rqgm/budget.py`): `paper_anchor_scoring`, charged one
+unit per held-out anchor case the ACTIVE reviewer is scored on. Its per-epoch
+cap is `rqgm.paper.anchor.sample_size` (default `8`), and `0` whenever
+`rqgm.paper.anchor.enabled` is false — the default above — so on the default
+on-ramp anchor-agreement scoring is not merely skipped, it is budgeted at zero
+(the same disabled-returns-0 shape `shadow_call` and `virsci_call` already
+have). Every other budgeted action the paper archive takes is charged to a cap
+that already existed: the self-preference adversary, for example, gates each
+attack round on `adversary_call` / `rqgm.adversarial.max_adversary_calls_per_epoch`.
+
+"Per epoch" here means per *paper* epoch — the archive builds its own
+`GovernanceBudgetManager` over `current_paper_epoch` (`paper_epoch_000` when no
+paper epoch object is open). Exhaustion degrades in the usual shape: the case
+loop stops, the reviewer keeps the agreement rate its scored prefix earned, and
+nothing is raised into the paper loop. Two details matter when reading a
+counter. Budget is charged *before* the reviewer produces a verdict, so a case
+that yields no verdict — and is therefore excluded from agreement coverage —
+still costs a unit. And the budget manager is fail-open to `None`, so a
+paper run without a checkpoint directory, or one whose manager construction
+failed, scores the anchor **ungated** rather than blocked. The per-epoch tally
+is mirrored best-effort into `budget_counters` (`anchor_scoring_calls`) in
+`{checkpoint}/paper_archive_state.json`, derived from the durable
+`budget_consumed` lines in `rqgm_audit.jsonl` so re-invocation never
+double-counts.
+
 ## Selecting the mode from the GUI
 
 Everything above is the canonical description: a mode is a configuration
@@ -331,7 +357,7 @@ Four properties are worth knowing before you use it:
 3. **Project scope still refuses.** The mode paths are `scope: run`, so the
    project-defaults document rejects them (`not_project_scope`); the controls
    are disabled there with the reason shown.
-4. **Only these four leaves.** The other 97 paths in the `Execution mode`
+4. **Only these four leaves.** The other 104 paths in the `Execution mode`
    category and the `rqgm.*` tree (epoch, kernel, governance, adversarial,
    budget tuning) are **not** editable from the GUI in this release. They stay
    visible read-only with their effective values, and a draft carrying one of
@@ -493,7 +519,10 @@ frontier and certify pass for publication.
 with `knowledge.off`, a required Capability with legacy binding, or a required
 Verification requirement with `assurance.off` is a run-admission error. In an
 active RQGM run, Knowledge or Assurance `enforce` also requires Capability
-Binding `enforce`. There is no implicit mode upgrade.
+Binding `enforce`. There is no implicit mode upgrade. An active RQGM run that
+leaves all three at their defaults is legal and still admitted, but
+`resolve_kca_modes` logs a warning saying so — admission records the run's
+identity while governing no Knowledge, no tool authority, and no verification.
 
 With the three defaults above, `simple_bfts` performs no K/C/A imports at the
 runtime gate, writes no catalog snapshot/lock/record, changes no prompt bytes,

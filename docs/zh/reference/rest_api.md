@@ -30,13 +30,19 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_orchestrator.py
     role: implementation
+  - path: ari-core/ari/viz/ui_helpers.py
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_workflow_editor.py
     role: test
   - path: ari-core/tests/test_orchestrator.py
     role: test
-last_verified: 2026-08-07
+  - path: ari-core/tests/test_gui_baseline_settings_contract.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
+    role: test
+last_verified: 2026-08-08
 ---
 
 # REST API 参考
@@ -396,9 +402,32 @@ GUI 刷新计划改变了少数几处 legacy 行为；每一处都以编号迁�
 
 ### 约定（legacy）
 
-- 错误以 `{"error": "<message>"}` 格式返回，附带非 2xx HTTP 状态码（部分
-  处理器使用 `{"ok": false, "error": ...}`）。
+- 错误以 `{"error": "<message>"}` 格式返回（部分处理器使用
+  `{"ok": false, "error": ...}`）。它是否以非 2xx HTTP 状态码抵达客户端，取决于
+  分发分支 —— 见下面的 `_status` 约定。
 - CORS 预检（`OPTIONS`）在 `/api/*` 上只对同源请求作答（MN-4）。
+
+**`_status` 弹出约定 —— legacy，且逐分支适用。** legacy 处理器只是返回 dict 的
+普通函数，自身无法设置 HTTP 状态码。约定是把状态码放在响应体*内部*，形如
+`{"ok": false, "error": ..., "_status": 400}`，再由 `ari-core/ari/viz/routes.py`
+中的分发分支用 `self._json(r, status=r.pop("_status", 200))` 取出 —— 这一次调用
+既设置线上状态码，又把这个私有键从响应体中移除。该取出动作是逐分支选择性启用的：
+多数分支并不这么做，而只要其处理器从不设置 `_status`，这就是无害的。确实会取出的
+legacy 分支是 `POST /api/launch`、`/api/run-stage`、`/api/sub-experiments/launch`、
+`/api/upload`、`/api/env-keys`、`/api/publish/<run_id>`、`/api/gpu-monitor`、
+`/api/stop`、`/api/delete-checkpoint` 以及四个 `/api/workflow*` 写入端点，外加所有
+`/api/v1/` 分支。
+
+**怪癖 —— `POST /api/settings` 会设置 `_status`，但它的分支不取出。** 它的分发是
+裸的 `self._json(_api_save_settings(body))`，而 `_json` 默认 `status=200`。因此
+被拒绝的保存会返回 **HTTP 200，`_status: 400` 仍留在 JSON 响应体里**（该处理器的
+两处拒绝都是这样 —— 见「设置 + workflow」一节）。在 `ari/viz/` 下会设置 `_status`
+的处理器中，只有它所在的分支不 pop。线上状态码也没有任何东西钉住：契约测试直接
+调用处理器，因此它钉住的是 dict，而不是响应状态码。
+
+所以 legacy 客户端必须依据响应体（`ok` / `error`）分支，而不能只看状态行。这是被
+冻结外观的遗留产物，不是可以效仿的模式 —— `/api/v1` 会配合类型化的「错误信封」
+（见本页上文）返回真实的状态码。
 
 ### 类型化契约（稳定端点）
 
@@ -496,6 +525,25 @@ curl http://localhost:8765/api/checkpoints
 | GET | `/api/gpu-monitor` | GPU 利用率轮询 | `routes.py` |
 | GET | `/api/resource-metrics` | CPU / 内存 / 磁盘指标 | `routes.py` |
 | GET | `/api/logs` | 当前运行的最近日志行 | `routes.py` |
+
+**`GET /api/resource-metrics` —— 载荷形状。** `_collect_resource_metrics()`
+（`ari-core/ari/viz/ui_helpers.py`）遍历 `/proc`，统计服务器自身 uid 所拥有的进程，
+返回八个键：`process_count`、`memory_rss_mb`、`cpu_load_1m`、`cpu_load_5m`、
+`cpu_load_15m`、`cpu_count`、`experiment_pid`（除非被启动的实验进程仍存活，否则为
+`null`）以及 `timestamp`（UTC ISO-8601）。每个采样步骤各自带 `except`，因此失败降级的
+是*取值*而不是丢键 —— 负载均值回落到 `0.0`，读不到的进程被跳过；现状的采集器始终
+输出全部八个键。
+
+**尽管如此，客户端仍必须把每个数值字段都当作可选。** 部分载荷曾经拖垮了整个
+Monitor 路由：旧页面无条件调用 `.toFixed()`，于是 `{"process_count": 3}` 这样的
+响应体抛出 `resourceMetrics.memory_rss_mb.toFixed is not a function`。修复在客户端，
+由 `ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx`
+钉住：该测试给真实页面喂入正是这个响应体，并断言存在的字段照常渲染，而缺失的字段
+渲染为占位符 `—`。在编写新的消费方之前有两点值得知道。回归说明把这类响应体归因于
+采样器预热、抓取错误或较旧的服务器 —— 而不是上述采集器的任何分支。另外
+`ari-core/ari/viz/frontend/src/types/index.ts` 中的 `ResourceMetrics` 接口仍将八个
+字段全部声明为**必填**，因此可选性存在于页面的运行时守卫（`isFiniteNumber`）里，
+而不在类型里：TypeScript 消费方在这里得不到编译器帮助，必须先守卫再格式化。
 
 ### 模型 + 技能
 
@@ -634,6 +682,40 @@ terminate 检查刻意是尽力而为的：`parent_run_id` 无法解析，或父
 被规范化掉，标量会以其规范形式重写（`yes` → `true`、`"x"` → `x`），YAML 锚点会
 以生成的名称（`&id001`）重新输出。捆绑的 `config/workflow.yaml` 因为无人写入，
 其注释得以保留。
+
+**没有活动检查点时的 `POST /api/settings`（冻结的 legacy 行为）。** 设置是按项目
+作用域的。当 `_st._settings_path` 为 `None` 时无处可持久化，于是
+`_api_save_settings`（`ari-core/ari/viz/api_settings.py`）用恰好这个 dict 拒绝：
+
+```json
+{ "ok": false,
+  "error": "No active project. Create or select a checkpoint before saving settings.",
+  "_status": 400 }
+```
+
+`ari-core/tests/test_gui_baseline_settings_contract.py` 连同消息字符串逐字符断言了
+它，因此这是冻结的契约，不是可以改写的措辞。在真实 HTTP 上，这个 `_status` 到不了
+状态行 —— 本页「约定（legacy）」一节点名的正是这条路由，拒绝会以携带上述 dict 的
+`200` 送达。**读取不会被拒绝：** 当没有活动检查点（以及已保存文件无法解析）时，
+`_api_get_settings` 返回内置默认值，因此 `GET /api/settings` 总会作答。读取回退，
+只有写入拒绝 —— 这是 MN-1 在设置侧的对应物，MN-1 覆盖的是四个 workflow 写入。
+
+**怪癖 —— 被拒绝的保存其实已经把 API key 写掉了。** 在 `_api_save_settings` 中，
+`.env` 的 upsert 跑在检查点判定*之前*。`api_key` / `llm_api_key` 字段会从请求体中
+被 pop 出来（因此绝不会写进 `settings.json`），并且只有通过三道 legacy 过滤器时
+才会转交给 `_upsert_env_key`；这三道过滤器**都会静默丢弃 key，不报任何错**：值必须
+至少 20 个字符，不得包含子串 `test`，且请求的 `llm_provider`（为空时取
+`llm_backend`）必须能映射到已知的环境变量名（`openai` → `OPENAI_API_KEY`，
+`anthropic` / `claude_code` / `claude-code` → `ANTHROPIC_API_KEY`，`gemini` →
+`GOOGLE_API_KEY`）。一个确实通过了这三道过滤器、且没有活动检查点的请求，会收到上面
+那个拒绝（响应体内的 `_status: 400`），**同时**它早已把 `NAME=value` 写入了
+ARI 根目录的 `.env`
+（`_st._env_write_path`，不加引号的形式，原子替换，权限 `0o600`），并在运行中的服务器
+进程里设置了 `os.environ[NAME]`。调用方被告知什么都没保存，而机密已经落盘并被注入
+到活动进程中。这个顺序由同一个契约测试钉住，因此它是被冻结的行为而非有意的设计：
+应把该端点的拒绝理解为「`settings.json` 没有被写入」，绝不能理解为「什么都没发生」。
+同一对端点的键集合与「死键」怪癖记录在配置参考的「legacy Settings 键：实际接线情况」
+一节（[configuration.md](configuration.md)）。
 
 ### 向导 / 配置生成
 

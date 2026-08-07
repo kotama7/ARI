@@ -84,11 +84,11 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 | 符号 | 用途 |
 |---|---|
-| `CostTracker` | 写入 `cost_log.jsonl` 的聚合器实例 |
-| `CallRecord` | 每次调用的数据类（`model`、`prompt_tokens`、`completion_tokens`、`cost_usd`、`metadata`） |
+| `CostTracker` | 写入 `cost_trace.jsonl` 的聚合器实例 |
+| `CallRecord` | 每次调用的数据类（`model`、`prompt_tokens`、`completion_tokens`、`estimated_cost_usd`，以及 skill/phase/node 标签与 execution identity 字段） |
 | `init(log_dir)` | 初始化以 `log_dir` 为根目录的全局追踪器 |
 | `init_from_env()` | 自动使用 `ARI_CHECKPOINT_DIR` 进行初始化（大多数调用方使用此方式） |
-| `bootstrap_skill(skill_name, phase=None)` | 技能便捷封装 — 初始化并标记每条记录 |
+| `bootstrap_skill(skill, phase=None)` | 技能便捷封装 — 初始化并标记每条记录 |
 | `record(**kwargs)` | 追加手动 `CallRecord`（不通过 LiteLLM 回调时使用） |
 | `set_default_metadata(**kwargs)` | 为后续所有记录附加额外元数据标签 |
 | `get()` | 获取当前追踪器（或 `None`） |

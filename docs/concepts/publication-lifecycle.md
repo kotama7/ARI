@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # Publication Lifecycle (v0.7.0)
@@ -24,7 +24,7 @@ generate_ear ──▶ {checkpoint}/ear/                 (full author-curated re
         │
         ▼ ear_curate (transform-skill)
         ▼
-{checkpoint}/ear_published/  +  manifest.lock      (sha256 of canonical {path,sha256,size} JSON)
+{checkpoint}/ear_published/  +  manifest.lock      (sha256 of canonical v2 JSON: {path,sha256,size,role})
         │
         ▼ ear_publish (transform-skill, optional)
         ▼
@@ -108,9 +108,12 @@ Four robustness behaviours keep the loop honest end-to-end:
   delta — a negative value means the count *grew* after refine and is
   surfaced as a regression instead of being clamped to zero.
 - **Numeric verification understands scientific notation.** The
-  numeric-mention scanner (mirrored in
-  `ari-skill-paper/src/claim_links.py` and ari-core's
-  `claim_gate/latex.py`) parses mantissa × 10^exp forms
+  numeric-mention scanner is a single implementation,
+  `ari-core/ari/latex_claims.py` — reached by
+  `ari-skill-paper/src/claim_links.py` through `ari.public.latex_claims`
+  and by ari-core's `ari/pipeline/claim_gate/latex.py` compatibility
+  re-export, so the
+  two callers can no longer drift apart. It parses mantissa × 10^exp forms
   (`4.44 \times 10^{-16}`, with `x`/`\times`/`\cdot`) and attached
   e-notation (including sentence-final), keeps digit-bearing tokens,
   and treats `\( \)` as math delimiters when locating a value's unit
@@ -124,15 +127,19 @@ Four robustness behaviours keep the loop honest end-to-end:
   line stamped `% CLAIM:Cw:NCw`) the anchors are disambiguated per
   line so each declaration is verified independently.
 - **The metric contract is minted once.** The first `make_metric_spec`
-  call that produces a claims-bearing contract persists it as
-  `{checkpoint}/metric_contract.json`; every later call returns that
-  file verbatim (the response carries `contract_frozen: true`). LLM
-  naming is not referentially stable — regenerating the contract
-  mid-run changes the evidence vocabulary and hides sibling evidence
-  emitted under earlier names from the exact-match gate (observed on
-  a real run). Per-node spec fields (scoring guide etc.) are still
-  computed per call; scaffold-only contracts (no claims) never
-  freeze.
+  call that resolves an idea-owned Research Contract — or admits a
+  human-reviewed `propose_metric_contract` proposal — persists the
+  projection as `{checkpoint}/metric_contract.json`; every later call
+  reads that file back and returns it (the response carries
+  `contract_frozen: true`), and a re-mint whose `projection_digest`
+  differs is refused outright. LLM naming is not referentially stable —
+  regenerating the contract mid-run changes the evidence vocabulary and
+  hides sibling evidence emitted under earlier names from the
+  exact-match gate (observed on a real run). Per-node spec fields
+  (scoring guide etc.) are still computed per call. With no idea-owned
+  contract and no reviewer, nothing freezes: the response is
+  `contract_frozen: false`, `admission_status: human-review-required`,
+  and the parser output is evidence only, never promoted to a contract.
 
 Artifacts: `paper_claim_links.json` (draft) /
 `paper_claim_links_final.json` / `paper_claim_links_locked.json`, and

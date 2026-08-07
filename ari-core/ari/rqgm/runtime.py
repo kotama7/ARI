@@ -1273,12 +1273,14 @@ class RQGMRuntime:
             if entry.status in ACTIVE_STATUSES:
                 latest[entry.role] = entry  # replay order: latest wins
         latest.pop(PromptMutator.ROLE, None)
-        # Paper phase (docs/plans/ari_rqgm_paper/03 §5.9): co-evolve ONLY the
-        # paper roles. The paper checkpoint registers the full founding set so
-        # the governance/kernel machinery is complete, but the paper boundary
-        # exercises paper_writer/paper_reviewer — focusing the per-epoch
-        # candidate budget on them (and never spending it on exploration roles
-        # that this phase does not run). Exploration is unaffected (gated).
+        # Paper phase (docs/concepts/rqgm_architecture.md, "The paper-archive
+        # layer" — "Only the paper roles spend the candidate budget"):
+        # co-evolve ONLY the paper roles. The paper checkpoint registers the
+        # full founding set so the governance/kernel machinery is complete, but
+        # the paper boundary exercises paper_writer/paper_reviewer — focusing
+        # the per-epoch candidate budget on them (and never spending it on
+        # exploration roles that this phase does not run). Exploration is
+        # unaffected (gated).
         if self._paper_phase:
             latest = {
                 role: entry

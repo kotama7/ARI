@@ -240,11 +240,11 @@ Re-exports the LLM cost tracker from `ari.cost_tracker`:
 
 | Symbol | Purpose |
 |---|---|
-| `CostTracker` | Aggregator instance written to `cost_log.jsonl` |
-| `CallRecord` | Per-call dataclass (`model`, `prompt_tokens`, `completion_tokens`, `cost_usd`, `metadata`) |
+| `CostTracker` | Aggregator instance written to `cost_trace.jsonl` |
+| `CallRecord` | Per-call dataclass (`model`, `prompt_tokens`, `completion_tokens`, `estimated_cost_usd`, plus skill/phase/node tags and execution-identity fields) |
 | `init(log_dir)` | Initialise the global tracker rooted at `log_dir` |
 | `init_from_env()` | Initialise using `ARI_CHECKPOINT_DIR` automatically (most callers want this) |
-| `bootstrap_skill(skill_name, phase=None)` | Convenience wrapper for skills — initialises + tags every record |
+| `bootstrap_skill(skill, phase=None)` | Convenience wrapper for skills — initialises + tags every record |
 | `record(**kwargs)` | Append a manual `CallRecord` (used when not going through LiteLLM callback) |
 | `set_default_metadata(**kwargs)` | Tag every subsequent record with extra metadata |
 | `get()` | Get the current tracker (or `None`) |

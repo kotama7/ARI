@@ -19,7 +19,7 @@ generate_ear ──▶ {checkpoint}/ear/                 (作者完整 repo)
         │
         ▼ ear_curate (transform-skill)
         ▼
-{checkpoint}/ear_published/  +  manifest.lock      ({path,sha256,size} 正规化 JSON 的 sha256)
+{checkpoint}/ear_published/  +  manifest.lock      (正规化 v2 JSON: {path,sha256,size,role} 的 sha256)
         │
         ▼ ear_publish (transform-skill, 可选)
         ▼
@@ -91,9 +91,10 @@ integrity finding，其余仅报告；`strict`还会阻断数值不匹配、未�
   `resolved_overclaim_count` 是原始的 previous−current 差值 ——
   负值意味着计数在 refine 后*增长*了，会作为回归被呈现，而不是被
   钳制为零。
-- **数值校验理解科学计数法。**数值提及扫描器（镜像存在于
-  `ari-skill-paper/src/claim_links.py` 与 ari-core 的
-  `claim_gate/latex.py`）解析尾数 × 10^exp 形式
+- **数值校验理解科学计数法。**数值提及扫描器只有一份实现，位于
+  `ari-core/ari/latex_claims.py`：`ari-skill-paper/src/claim_links.py`
+  经 `ari.public.latex_claims` 取用，ari-core 侧经 `ari/pipeline/claim_gate/latex.py`
+  的兼容 re-export 取用，二者不再可能各自漂移。它解析尾数 × 10^exp 形式
   （`4.44 \times 10^{-16}`，支持 `x`/`\times`/`\cdot`）与贴连的
   e 记法（含句尾形式），保留含数字的 token，并在定位数值单位时把
   `\( \)` 视为数学定界符 —— 消除此类数值上的伪
@@ -103,14 +104,18 @@ integrity finding，其余仅报告；`strict`还会阻断数值不匹配、未�
   注册表名称；裸 `k=v` token 前多余的 `operands=` 标签前缀被剥除；
   当所有 anchor 共享同一个 id 时（例如每行都盖 `% CLAIM:Cw:NCw`），
   anchor 会被逐行消歧，使每条声明独立校验。
-- **指标契约只铸造一次。**第一次产生含 claim 契约的
-  `make_metric_spec` 调用会把它持久化为
-  `{checkpoint}/metric_contract.json`；之后的每次调用都原样返回该
-  文件（响应携带 `contract_frozen: true`）。LLM 命名不具备指称
-  稳定性 —— 运行中途重新生成契约会改变证据词汇表，使兄弟节点以
-  旧名称发出的证据对精确匹配闸门不可见（在真实运行中观测到）。
-  每节点的 spec 字段（评分指南等）仍按调用计算；仅脚手架的契约
-  （无 claim）永不冻结。
+- **指标契约只铸造一次。**第一次解析出 idea 拥有的 Research Contract
+  ——或采纳经人工评审的 `propose_metric_contract` 提案——的
+  `make_metric_spec` 调用会把该 projection 持久化为
+  `{checkpoint}/metric_contract.json`；之后的每次调用都读回该文件并
+  返回（响应携带 `contract_frozen: true`），而 `projection_digest`
+  不同的重铸会被直接拒绝。LLM 命名不具备指称稳定性 —— 运行中途
+  重新生成契约会改变证据词汇表，使兄弟节点以旧名称发出的证据对
+  精确匹配闸门不可见（在真实运行中观测到）。每节点的 spec 字段
+  （评分指南等）仍按调用计算。若既无 idea 拥有的契约也无评审者，
+  则什么都不会冻结：响应为 `contract_frozen: false`、
+  `admission_status: human-review-required`，解析器输出仅作证据，
+  绝不晋升为契约。
 
 产物：`paper_claim_links.json`（draft）/
 `paper_claim_links_final.json` / `paper_claim_links_locked.json`，以及

@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_paper_eval.py
     role: test
-last_verified: 2026-07-29
+last_verified: 2026-08-08
 ---
 
 # RQGM 評価とアブレーション
@@ -22,10 +22,18 @@ last_verified: 2026-07-29
 ## アブレーション条件 B0–B8
 
 `scripts/rqgm_eval/ablation_matrix.yaml` の名前付きプリセット 9 個で、設定
-だけで切り替えられます。各条件は具体的な `ari.mode` + 機能フラグのオーバーレイ
-（`ari.rqgm.evaluation.conditions.condition_overlay`）に展開されます; 正確な
-展開結果は `ari-core/tests/test_rqgm_eval_conditions.py` によってピン留め
-されています。
+だけで切り替えられます。`ari.rqgm.evaluation.conditions.expand_condition` が
+各プリセットの `inherits` 連鎖を畳み込み（積み上げ式のはしごを明示するための
+ハーネス側 deep-merge 糖衣で、展開結果からは取り除かれるため `inherits` キーが
+workflow オーバーレイに届くことはありません）、`condition_overlay` が解決後の
+`mode` キーを `ari.mode` の設定パスへ写し、`rqgm` / `proposal_router` /
+`bfts` ブロックを所有機能自身の設定パスの下へそのまま通します。プリセットが
+設定するキーはすべて測定対象の機能のものです: B0–B8 のどのプリセットも評価
+ハーネス自身の `rqgm.eval.*` ブロックには関与せず、各段の実効
+`rqgm.eval.enabled` は `false` のまま、`scripted_components` も空です
+（`test_no_preset_engages_the_eval_harness`）。正確な展開結果は
+`ari-core/tests/test_rqgm_eval_conditions.py`
+（`test_expansion_pinned_exactly`）が id ごとにピン留めしています。
 
 | 条件 | モード | 追加されるもの（B3 以上は積み上げ式） |
 |---|---|---|
@@ -42,6 +50,14 @@ last_verified: 2026-07-29
 各レイヤの限界価値はペア差分で得られます: adversarial = B4−B3、governance =
 B5−B4、retirement/erasure = B6−B5、evolution = B7−B6、meta = B8−B7;
 VirSci = B2−B3。
+
+同じファイルには、全条件が引き継ぐキャンペーン既定値も入っています。
+`eval_defaults.seeds` は `[11, 12, 13]` を出荷しています — `--seeds` で
+上書きしない限りキャンペーンが走らせる 3 個以上のペアシードです。併せて
+`eval_defaults.bfts`（ノード予算の同一性）と `eval_defaults.models`
+（キャンペーン単位のモデル固定）も持ち、この 2 つは下の「比較ポリシー」で
+説明します。`test_eval_defaults_declared` がピン留めするのは 3 個以上という
+下限と予算の数値であって、個々のシード値ではありません。
 
 レイヤ別フラグ（`rqgm.{adversarial,governance,frontier_repair,
 prompt_evolution,meta_evolution}.enabled`）は型付き設定でデフォルト **true**
@@ -83,9 +99,17 @@ prompt_evolution,meta_evolution}.enabled`）は型付き設定でデフォルト
 
 ## 失敗注入
 
-二値のグラウンドトゥルース（injected = bad、control = good）を持つ決定論的
-注入 10 個が `scripts/rqgm_eval/failure_injections.yaml` で規定されています。
-機構は 2 つで、どちらにも LLM はありません:
+`scripts/rqgm_eval/failure_injections.yaml` の `injections:` ブロックにある
+決定論的注入 10 個と、`controls:` にある清浄コントロール 1 個 — 偽拒否の
+分母（メトリクス 5）— です。グラウンドトゥルースは二値かつ構成上真であり
+（injected = bad、control = good）、各スペックの `target_refs` は、検出が
+真陽性と数えられるために検出レコードが指していなければならない成果物 /
+レコード / コンポーネントの id を示します。個数（注入 10、コントロール 1）は
+`test_rqgm_paper_eval.py::test_paper_injections_valid_and_loaded` が
+ピン留めしています。手で数えるときは注意が要ります: 同じファイルには後述の
+`kca_injections` と `paper_injections` という別ブロックもあるため、ファイル
+全体の `injection_id:` の出現数は 10 をはるかに超えます。機構は 2 つで、
+どちらにも LLM はありません:
 
 - **fixture**（1 metric gaming、2 overclaim、3 hallucinated prior art、
   7 contaminated prompt、9 clean-room violation、10 stale record leakage）—
@@ -101,8 +125,14 @@ prompt_evolution,meta_evolution}.enabled`）は型付き設定でデフォルト
   を決して参照しないため、`run_ablation.py` は `--smoke` の外では scripted
   スペックを拒否します — 注入されてもいない障害を記録しないためです。
 
-注入 id は隔離された `eval_*` 名前空間（`adv_*` / `anchor_*` と交わらない）を
-使い、注入されたすべてのランは `rqgm_injection_provenance.json` を持ちます。
+注入 id は隔離された `eval_*` 名前空間を使い、ガバナンスの `adv_*` リプレイ
+ケースおよび `anchor_*` ケースとは構成上交わりません。スペックは
+`ari.rqgm.evaluation.injection.load_injection_specs` が読み、`spec_violations`
+が検査します — `eval_*` の外にある id と、予約された `adv_*` / `anchor_*`
+接頭辞で始まる id を拒否するため、評価セットがガバナンスの学習対象へ
+流れ込むことはありません。fixture のペイロードは
+`ari-core/tests/fixtures/rqgm_eval/` 以下にあり、注入されたすべてのランは
+`rqgm_injection_provenance.json` を持ちます。
 
 ## メトリクス
 
@@ -127,7 +157,7 @@ retirement precision）; 9–10 は消去の健全性（frontier contamination�
 
 論文執筆軸には独自の並行評価トラックがあります — 別の B はしご、独自の
 P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: rqgm_archive`
-パス用です（[実行モード → paper.mode](execution_modes.md#the-paper-execution-axis-papermode)
+パス用です（[実行モード](execution_modes.md)の「論文実行軸: `paper.mode`」
 を参照）。同じハーネス、`eval_*` 名前空間、ノード予算による公平性を再利用
 します。
 
@@ -138,18 +168,47 @@ P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: 
 （`ari.rqgm.evaluation.conditions.PAPER_CONDITION_IDS`）。探索の段とは異なり
 これらは**設定パスネイティブ**です — プリセットは
 （`conditions.paper_condition_overlay`）で `paper.mode` + `rqgm.paper.*`
-オーバーレイへ直接展開されるため、展開結果がそのまま実効設定になります。
+オーバーレイへ直接展開されるため、展開結果がそのままオーバーレイになります
+（`mode` キーの読み替え段がありません）。ただしそれは実効設定の全体では
+ありません: プリセットが省いたキーは型付きデフォルトから埋められ、ここでは
+それが効いてきます（後述の癖を参照）。
 `ari-core/tests/test_rqgm_paper_eval.py` でピン留めされています。
 
 | 条件 | `paper.mode` | 追加されるもの |
 |---|---|---|
 | B0_paper_linear | `linear` | コントロール — 出荷デフォルトの論文パイプラインそのまま |
 | B_archive_no_coevo | `rqgm_archive` | best-first ドラフトアーカイブ（width 4、refine 2、depth 3、≤ 12 ノード）、`prompt_evolution.enabled: false` — best-of-N reviewed drafts、単一の凍結された writer/reviewer |
-| B_full | `rqgm_archive` | + `prompt_evolution.enabled: true` + アンカー効用（`anchor.enabled: true`）+ `paper_self_preference` アドバーサリ |
+| B_full | `rqgm_archive` | + `prompt_evolution.enabled: true` + アンカー効用（`anchor.enabled: true`）+ `paper_self_preference` アドバーサリ（`self_preference.enabled: true`） |
+
+出荷されている論文プリセットが設定するキーはすべて `paper.mode` か
+`rqgm.paper.*` の下にあり、それ以外には触れません。アドバーサリのトグルの
+スキーマ上の住所は `rqgm.paper.self_preference.enabled`
+（`ari.config.RQGMPaperSelfPreferenceConfig`）ただ 1 つで、別名はありません。
 
 限界価値の読み: **探索価値** = B_archive_no_coevo − B0_paper_linear;
 **共進化価値** = B_full − B_archive_no_coevo。ここでも常にコストは*報告*され、
 決して均等化されません。
+
+**凍結された癖 — 論文はしごは自分で無効化しない。** 探索の段と違い、論文
+プリセットは「持たない」と称するレイヤを明示的に切りません。
+`rqgm.paper.self_preference.enabled` は型付き設定でも
+`ari-core/ari/configs/defaults.yaml` でも `true` であり、
+`B_archive_no_coevo` はこれを設定しません — したがってこの条件の*実効*設定
+でもアドバーサリのスイッチは `true` を読み、`B_full` の
+`self_preference: {enabled: true}` は既定値を反復しているだけで、切り替えては
+いません。`load_config` が欠けたキーを埋めた後、2 つのアーカイブ条件が実際に
+異なるのは `prompt_evolution.enabled`（型付きデフォルト `true`、
+`B_archive_no_coevo` で明示的に `false`）と `anchor.enabled`（型付き
+デフォルト `false`、`B_full` で明示的に `true`）です。`B_archive_no_coevo`
+でアドバーサリが静かなのはトグルのおかげではなく、アンカーコーパスが無い
+からです: `anchor.enabled` が false のとき
+`paper_anchor.load_anchor_corpus` は `None` を返し、自己選好ラウンドは
+レビュアのアンカーケースに対して発火するため、アンカープールの無い条件では
+攻撃対象となる過剰受理ケースが 1 件も生じません。
+`ari-core/tests/test_rqgm_paper_eval.py` がピン留めしているのは*展開結果*だけ
+であり、`test_effective_config_realizes_the_ladder` に相当する論文版は
+存在しません。真似すべき型は、各段より上のレイヤを明示的に無効化している
+探索のはしごのほうです。
 
 ### RQGM 元論文に合わせた条件（P0–P4）
 
@@ -227,10 +286,21 @@ P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: 
 ### 論文失敗注入 PI1–PI3
 
 `scripts/rqgm_eval/failure_injections.yaml` の追加的な `paper_injections`
-ブロックにある決定論的注入 3 個で
-（`ari.rqgm.evaluation.injection.load_injection_specs` 経由でロード）、探索
-集合と同じ `FailureInjectionSpec` 形状と `eval_*` 名前空間に、追加的な
-`authorship` フィールドを加えたものです:
+ブロックにある決定論的注入 3 個で、探索集合と同じ `FailureInjectionSpec`
+形状と `eval_*` 名前空間に、AI 著のペイロードを示す追加的な `authorship`
+フィールド（P3 が数える対象）を加えたものです。意図して**別**ブロックに
+してあるため探索の `injections` / `controls` は 1 バイトも変わらず、
+`ari.rqgm.evaluation.injection.load_injection_specs` はこのキーを読みつつ
+不在にも寛容です — キーの無いスペックファイルはエラーではなく `[]` を
+返します。fixture のペイロードは
+`ari-core/tests/fixtures/rqgm_eval/paper_*` 以下にあります。
+
+これらのスペックへの経路はそのローダーです — Tier-1 の論文テスト
+`ari-core/tests/test_rqgm_paper_eval.py` がロードして `apply_injection` を
+呼びます。`run_ablation.py --inject` は**届きません**: `_select_specs` が
+カタログを組むのは `injections`、`controls`、`kca_injections`、
+`kca_controls` の各ブロックだけなので、`eval_pi*` の id は未知の注入 id
+として拒否されます。
 
 - **PI1 — draft overclaim**（`eval_pi1_draft_overclaim`、fixture、最小
   `B0_paper_linear`）。勝者の `full_paper.tex` が `% CLAIM` アンカーも証拠
@@ -277,13 +347,22 @@ P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: 
 
 ## 実行方法
 
+`run_ablation.py` は意図的に独立した `argparse` スクリプトであり — `ari` の
+Typer コマンドではなく — `ari.public.*` を一切 import しません（import する
+のは `ari.rqgm.evaluation.{conditions,injection,metrics,smoke}` だけです）。
+そのためキャンペーンを走らせても CLI 面も契約面も変わりません。スクリプトが
+やるのはプロセスの配線だけで、単体テスト可能なロジックはすべて CI が届く
+パッケージ側にあります。
+
 ```bash
 # Expand configs only (no runs):
 python scripts/rqgm_eval/run_ablation.py --dry-run --conditions B0,B3,B8
 
-# Paper-archive B-ladder (expands to paper.mode + rqgm.paper.* overlays;
-# dry-run supported). --inject accepts the fixture PI1/PI2 here; PI3 is
-# scripted_component and only loads under --smoke:
+# Paper-archive B-ladder (expands to paper.mode + rqgm.paper.* overlays).
+# --dry-run ONLY: without it the script exits with a message instead of
+# running, because it carries no Tier-3 driver for this ladder — take the
+# emitted overlays through `ari run` + `ari paper` per condition yourself.
+# --inject is not consulted at all on this path:
 python scripts/rqgm_eval/run_ablation.py --dry-run \
     --paper-conditions B0_paper_linear,B_archive_no_coevo,B_full
 
@@ -314,7 +393,7 @@ python scripts/rqgm_eval/run_ablation.py --smoke --conditions B0,B3 --seeds 11
 # Tier-3 real campaign (LLM cost; never in CI). Runs every benchmark in
 # scripts/rqgm_eval/experiments/*.md per condition × seed; narrow the set
 # with repeatable --experiment flags. --inject accepts FIXTURE ids only
-# here (scripted_component specs are smoke-tier and refused outside
+# here (scripted_component AND kca_mutation specs are smoke-tier and refused outside
 # --smoke):
 python scripts/rqgm_eval/run_ablation.py --conditions B0,B3,B4,B6,B8 \
     --eval-id campaign_2026_07 \
@@ -324,11 +403,24 @@ eval_inj_001_metric_gaming,eval_inj_002_overclaim,\
 eval_inj_003_hallucinated_prior_art,eval_ctl_001_clean_baseline"
 ```
 
-結果は `workspace/rqgm_eval/<eval_id>/` に置かれます: ランごとの
-チェックポイントは `runs/<condition>_s<seed>_<experiment>/`（実験を取らない
-合成 smoke ティアでは `runs/<condition>_s<seed>/`）、展開済み設定は
-`configs/`、そしてキャンペーンの `ablation_report.json` +
-`ablation_report.md`（条件 × メトリクスの中央値とペア差分）です。
+結果は、スクリプトが `--workspace`（既定はリポジトリルート直下の
+`workspace/rqgm_eval/`）と `--eval-id` から組み立てるキャンペーンルート
+`<workspace>/<eval_id>/` に置かれ、必要になった時点で作成されます。
+`workspace/` は追跡対象外なので、このツリーはキャンペーンを実際に走らせた
+後にしか存在しません。その中身は: ランごとのチェックポイントが
+`runs/<condition>_s<seed>_<experiment>/`（実験を取らない合成 smoke ティアでは
+`runs/<condition>_s<seed>/`）、展開済み設定が `configs/`、そしてキャンペーンの
+`ablation_report.json` + `ablation_report.md`（条件 × メトリクスの中央値と
+ペア差分）です。
+
+実キャンペーン経路では、条件 × シード × 実験のそれぞれが**新しい**
+チェックポイントであり、これは慣習ではなく機械的に保証されています:
+`_run_one` はランごとのディレクトリを `exist_ok=False` で作成するため、同じ
+`--eval-id` で 2 度目のキャンペーンを走らせると、最初に衝突したランの時点で
+例外になり、続きから走ることはありません。resume 経路は無く、条件間の
+`skip_if_exists` 再利用もありません。例外はオフライン smoke ティアで、
+合成チェックポイントを `exist_ok=True` で書くため、ディレクトリを再利用して
+自分が生成する成果物を上書きします。
 
 ## テストティア
 

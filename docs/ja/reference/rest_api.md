@@ -30,13 +30,19 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_orchestrator.py
     role: implementation
+  - path: ari-core/ari/viz/ui_helpers.py
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_workflow_editor.py
     role: test
   - path: ari-core/tests/test_orchestrator.py
     role: test
-last_verified: 2026-08-07
+  - path: ari-core/tests/test_gui_baseline_settings_contract.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
+    role: test
+last_verified: 2026-08-08
 ---
 
 # REST API リファレンス
@@ -415,10 +421,40 @@ GUI リフレッシュのプログラムはいくつかのレガシー挙動を�
 
 ### 規約（レガシー）
 
-- エラーは非 2xx HTTP コードとともに `{"error": "<message>"}` として返されます
-  （一部のハンドラは `{"ok": false, "error": ...}` を使います）。
+- エラーは `{"error": "<message>"}` として返されます（一部のハンドラは
+  `{"ok": false, "error": ...}` を使います）。それがクライアントに非 2xx の
+  HTTP コードとして届くかどうかはディスパッチ分岐次第です — 下記の `_status`
+  規約を参照してください。
 - CORS プリフライト（`OPTIONS`）は `/api/*` に対し same-origin のリクエストにのみ
   応答します（MN-4）。
+
+**`_status` の pop 規約 — レガシーであり、分岐ごとの適用です。** レガシーの
+ハンドラは dict を返すただの関数であり、自分で HTTP ステータスを設定できません。
+そこで規約として、コードをボディの*中*に
+`{"ok": false, "error": ..., "_status": 400}` の形で返し、
+`ari-core/ari/viz/routes.py` のディスパッチ分岐が
+`self._json(r, status=r.pop("_status", 200))` で取り出します — この 1 回の呼び出しが
+ワイヤ上のステータス設定とボディからのプライベートキー除去を同時に行います。
+この取り出しは分岐ごとのオプトインです。多くの分岐は行っておらず、ハンドラが
+`_status` を設定しない限りそれは無害です。実際に取り出しているレガシー分岐は
+`POST /api/launch`、`/api/run-stage`、`/api/sub-experiments/launch`、
+`/api/upload`、`/api/env-keys`、`/api/publish/<run_id>`、`/api/gpu-monitor`、
+`/api/stop`、`/api/delete-checkpoint` と 4 つの `/api/workflow*` 書き込み、
+そしてすべての `/api/v1/` 分岐です。
+
+**クセ — `POST /api/settings` は `_status` を設定するのに、その分岐は取り出しません。**
+このディスパッチは素の `self._json(_api_save_settings(body))` であり、`_json` の
+既定は `status=200` です。したがって拒否された保存は **HTTP 200 を返し、
+`_status: 400` は JSON ボディの中に残ったまま**になります（このハンドラの 2 つの
+拒否はいずれもこの挙動です — 「設定 + ワークフロー」の節を参照）。`ari/viz/` 配下で
+`_status` を設定するハンドラのうち、分岐が pop しないのはこれだけです。ワイヤ上の
+ステータスを固定するものもありません: 契約テストはハンドラを直接呼ぶため、
+固定しているのは dict であってレスポンスコードではありません。
+
+したがってレガシークライアントは、ステータス行だけでなくボディ（`ok` / `error`）で
+分岐しなければなりません。これは凍結ファサードの副産物であり、真似すべきパターンでは
+ありません — `/api/v1` は型付きの「エラーエンベロープ」（本ページ上部）とともに
+本物のステータスコードを返します。
 
 ### 型付き契約（安定エンドポイント）
 
@@ -520,6 +556,32 @@ curl http://localhost:8765/api/checkpoints
 | GET | `/api/gpu-monitor` | GPU 使用率ポーリング | `routes.py` |
 | GET | `/api/resource-metrics` | CPU / メモリ / ディスクメトリクス | `routes.py` |
 | GET | `/api/logs` | アクティブな実行の最近のログ行 | `routes.py` |
+
+**`GET /api/resource-metrics` — ペイロードの形。** `_collect_resource_metrics()`
+（`ari-core/ari/viz/ui_helpers.py`）はサーバー自身の uid が所有するプロセスを
+`/proc` から走査し、8 個のキーを返します: `process_count`、`memory_rss_mb`、
+`cpu_load_1m`、`cpu_load_5m`、`cpu_load_15m`、`cpu_count`、`experiment_pid`
+（起動された実験プロセスが生存している場合を除き `null`）、`timestamp`
+（UTC ISO-8601）。サンプリングの各ステップは個別に `except` を持つため、失敗しても
+落ちるのはキーではなく*値*です — ロードアベレージは `0.0` にフォールバックし、
+読めないプロセスはスキップされます。現状のコレクタは常に 8 個すべてを出力します。
+
+**それでもクライアントは、数値フィールドをすべて省略可能として扱わなければ
+なりません。** 部分的なペイロードは、かつて Monitor ルート全体を落としました:
+レガシーのページが無条件に `.toFixed()` を呼んでいたため、`{"process_count": 3}`
+というボディが `resourceMetrics.memory_rss_mb.toFixed is not a function` を
+送出したのです。修正はクライアント側にあり、
+`ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx`
+が固定しています。このテストは実物のページにまさにそのボディを与え、存在する
+フィールドは描画され、欠けているフィールドはプレースホルダ `—` として描画される
+ことを検証します。新しいコンシューマを書く前に知っておくべき点が 2 つあります。
+リグレッションの注記は、そうしたボディの由来をサンプラのウォームアップ、スクレイプ
+エラー、または古いサーバーに帰しており、上記コレクタのいずれかの分岐に帰しては
+いません。そして `ari-core/ari/viz/frontend/src/types/index.ts` の
+`ResourceMetrics` インターフェイスは依然として 8 フィールドすべてを**必須**と
+宣言しているため、省略可能性はページのランタイムガード（`isFiniteNumber`）にあり、
+型にはありません: TypeScript のコンシューマはここでコンパイラの助けを得られず、
+整形の前に自分でガードする必要があります。
 
 ### モデル + スキル
 
@@ -670,6 +732,51 @@ flow に無いステージは削除され、新しいステージはそのまま
 失われ、スカラーは正準形に書き直され（`yes` → `true`、`"x"` → `x`）、YAML
 アンカーは生成名（`&id001`）で再出力されます。同梱の `config/workflow.yaml` は
 誰も書き込まないためコメントを保ったままです。
+
+**アクティブなチェックポイントが無いときの `POST /api/settings`（凍結レガシー）。**
+設定はプロジェクトスコープです。`_st._settings_path` が `None` のときは永続化先が
+無いため、`_api_save_settings`（`ari-core/ari/viz/api_settings.py`）はまさにこの
+dict で拒否します:
+
+```json
+{ "ok": false,
+  "error": "No active project. Create or select a checkpoint before saving settings.",
+  "_status": 400 }
+```
+
+`ari-core/tests/test_gui_baseline_settings_contract.py` はこれをメッセージ文字列
+込みで 1 文字単位でアサートしています。したがってこれは凍結された契約であり、
+言い換えてよいメッセージではありません。実際の HTTP 上では、この `_status` は
+ステータス行に届きません — 本ページの「規約（レガシー）」で名指しされている
+ルートがこれであり、拒否は上記の dict を載せた `200` として届きます。
+**読み取りは拒否しません:** `_api_get_settings` はアクティブなチェックポイントが
+無いとき（および保存済みファイルがパースできないとき）に組み込みのデフォルトを
+返すため、`GET /api/settings` は常に応答します。読み取りはフォールバックし、
+書き込みだけが拒否する — これは 4 つのワークフロー書き込みを扱う MN-1 の、
+設定側の対応物です。
+
+**クセ — 拒否された保存は、すでに API キーを書き込んでいます。**
+`_api_save_settings` では `.env` の upsert がチェックポイント検査の*前*に走ります。
+`api_key` / `llm_api_key` フィールドはボディから pop され（そのため
+`settings.json` に永続化されることはありません）、3 つのレガシーフィルタを
+通過した場合にのみ `_upsert_env_key` へ渡されます。いずれのフィルタも
+**エラーを出さず黙ってキーを捨てます**: 値は 20 文字以上でなければならず、
+部分文字列 `test` を含んではならず、リクエストの `llm_provider`（空のときは
+`llm_backend`）が既知の環境変数名にマップされなければなりません
+（`openai` → `OPENAI_API_KEY`、`anthropic` / `claude_code` / `claude-code` →
+`ANTHROPIC_API_KEY`、`gemini` → `GOOGLE_API_KEY`）。これらを通過し、かつ
+アクティブなチェックポイントが無いリクエストは、上記の拒否（ボディ内の
+`_status: 400`）を受け取ると
+**同時に**、すでに ARI ルートの `.env`（`_st._env_write_path`、クォート無しの形式、
+アトミックな置換、モード `0o600`）へ `NAME=value` を書き込み、稼働中のサーバー
+プロセスに `os.environ[NAME]` を設定し終えています。呼び出し側は「何も保存されて
+いない」と伝えられる一方で、シークレットはディスクに永続化され稼働プロセスへ
+注入されています。この順序は同じ契約テストが固定しているため、意図された設計では
+なく凍結された挙動です: このエンドポイントからの拒否は「`settings.json` は
+書かれなかった」と解釈すべきで、「何も起きなかった」と解釈してはいけません。
+同じエンドポイント対のキー集合や死んだキーのクセは、設定リファレンスの
+「レガシー Settings のキー: 実際に配線されているもの」（[configuration.md](configuration.md)）に
+記載されています。
 
 ### ウィザード / 設定生成
 

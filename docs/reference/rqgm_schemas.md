@@ -173,8 +173,12 @@ escalation is logged and no transition is composed.
 references — the `rqgm_record_base` envelope, the closed status / role /
 tier vocabularies, and the id/hash formats.  **Owning module:**
 `ari/rqgm/events.py` (the Python mirror of the vocabularies).  The copies
-of these `$defs` embedded in the other schema files are pinned byte-equal
-to this file by `ari-core/tests/test_rqgm_state_store.py`.
+of these `$defs` embedded in `epoch_state.schema.json`,
+`rqgm_registry.schema.json` and `rqgm_transition_event.schema.json` are
+pinned to this file by `ari-core/tests/test_rqgm_state_store.py` — entry by
+entry on the parsed JSON, not byte-for-byte — which also pins the
+status / role / tier enums and the event-type enum to the `ari.rqgm.events`
+vocabulary.
 
 Every governance record carries the eight mandatory `rqgm_record_base`
 fields (documented **once** here; the per-schema tables below list only
@@ -205,8 +209,12 @@ Closed vocabularies:
   `utility_policy` (RQGM Task 14 — the governed score and its proposer),
   `paper_writer` and `paper_reviewer` (paper-archive; registered only under
   the effective `rqgm_archive` paper mode, so an exploration boot is
-  byte-identical); fixed (registered for provenance, constitutionally
-  immutable): `constitutional_kernel`, `fixed_verifier`, `audit_log`.
+  byte-identical); governance actors — no prompt-mutation successor path,
+  but sanctionable, retirable and bannable like any other component:
+  `auditor`, `evidence_clerk`, `governance_judge`; fixed (registered for
+  provenance, constitutionally immutable): `constitutional_kernel`,
+  `knowledge_binder`, `capability_binder`, `harness_resolver`,
+  `fixed_verifier`, `audit_log`.
 - **Tiers**: `fixed`, `institutional`, `meta`.
 
 ## State and event-log schemas (Task 02)
@@ -251,6 +259,14 @@ the snapshot is disposable and rebuilt from replay on mismatch.
 | `execution_identity` / `execution_fingerprint` | Declared model/backend/temperature, search and evaluation settings, skills, disabled tools, and explicit model/tool/environment/data revision pins. Missing pins are stored as `unresolved` and set `complete: false` |
 | `epoch_fingerprint` | Composite 12-hex identity over policy and execution identity, excluding `created_at`, `status`, and itself |
 | `created_at` | Metadata; excluded from the fingerprint |
+
+The shipped schema pins `schema_version` to `1 | 2`.  `ari/rqgm/state.py`
+mints a **v3** payload instead — one additional `scientific_identity` block,
+plus a `scientific_assurance` copy inside `execution_identity` — whenever the
+epoch is frozen with a Knowledge/Capability/Assurance identity
+(`KCA_EPOCH_STATE_SCHEMA_VERSION`).  That shape is not declared here, so a v3
+snapshot does not validate against the shipped schema; an all-off epoch stays
+v2 and byte-identical.
 
 ### `rqgm_registry.schema.json`
 
@@ -639,7 +655,7 @@ per-node round).
 | `raw_attack` | `atk_%06d` / `adversary` | `adversary_type` (the shipped-schema enum is the closed seven-type exploration set: `overclaim`, `metric_gaming`, `prior_art`, `reproducibility`, `evidence_gap`, `cost_explosion`, `prompt_injection`; the paper phase adds an eighth, `paper_self_preference` — see [Paper-archive schemas](#paper-archive-schemas-paper-rqgm_archive-mode)); `target_artifact.type` (closed set: `proposal`, `experiment_plan`, `node_report`, `metric_result`, `paper_claim`, `novelty_claim`, `citation_claim`, `reproducibility_claim` — never a component); `attack_claim`; `attack_evidence_refs` (≥ 1 required); `severity_claimed`.  Audit material only — raw attacks never touch a score (invariant 8) |
 | `defender_response` | `def_%06d` / `defender` | `raw_attack_id`; `stance` `rebut` \| `concede` \| `propose_fix` |
 | `judgment_record` | `jdg_%06d` / `judge` | `raw_attack_id`; `verdict` `valid` \| `partially_valid` \| `invalid`; judge-assigned `severity` (`low`–`critical`); `defense_status`.  Always written, even for `invalid` |
-| `validated_attack` | `vat_%06d` / `judge` | `case_type`, `raw_attack_id`, `judgment_id`, `validated`, `verdict`, `severity`.  Exists **only** for `valid` / `partially_valid` verdicts (adjudication required, invariant 9).  Carries the accountability binding — see below |
+| `validated_attack` | `vat_%06d` / `judge` | `case_type`, `raw_attack_id`, `judgment_id`, `validated`, `verdict`, `severity`, `expected_behavior` (the case-typed `role → expected behaviour` map).  Exists **only** for `valid` / `partially_valid` verdicts (adjudication required, invariant 9).  Carries the accountability binding — see below |
 
 #### The accountability binding on `validated_attack`
 
@@ -649,7 +665,7 @@ Roles are **observed**; components are **bound**; and the binding is minted
 
 | Field | Value space | Who reads it |
 |---|---|---|
-| `affected_components` | ROLE names (`["reviewer"]`) — the plural observation of who is implicated.  A role is the only thing an attack can honestly know, and nothing sanctions a role.  (The name holds roles; it is kept unrenamed because renaming it would rewrite every stored record.) | the FailureSummary's `affected_roles` |
+| `affected_components` | ROLE names (`["reviewer"]`) — the plural observation of who is implicated.  A role is the only thing an attack can honestly know, and nothing sanctions a role.  (The name holds roles; it is kept unrenamed because renaming it would rewrite every stored record.) | the RQGM viz read model (`RqgmValidatedAttackV1.affected_components`).  **Not** the FailureSummary — its `affected_roles` are the keys of `expected_behavior`, below |
 | `target_component_id` | ONE registry-resolvable component id (`"reviewer_v3"`) — the incumbent that made the decision the attack invalidates | `ReliabilityMonitor.validated_attack_involvement`, `EvidenceClerk` target selection ⇒ the whole impeachment chain |
 
 `target_component_id` is **optional and present-or-absent, never
@@ -674,6 +690,21 @@ hash, and epoch. The seven adversary types bind `generator_v1` only when that
 provenance matches the epoch-frozen incumbent. Legacy, missing, or mismatched
 provenance remains targetless, so a successor is never blamed for a
 predecessor's artifact.
+
+**Where `affected_roles` comes from** — not from `affected_components`, despite
+the name.  `build_failure_summary` (`ari/rqgm/adversarial/records.py`) sets
+`affected_roles` to `tuple(sorted(validated.expected_behavior))`: the sorted
+KEYS of a third role-shaped field, `expected_behavior`, the
+`role → expected behaviour` map `AdversarialRound._expected_behavior` stamps
+onto the record.  That map is **case-typed**: the seven exploration types all
+take one module-level generic template keyed `reviewer` / `generator` /
+`judge` — so their records stay byte-identical — while `paper_self_preference`
+supplies its own two keys, `paper_reviewer` and `paper_writer`.  The two fields
+diverge by construction on a paper case that resolves both bindings: the round
+writes one record per resolvable role, each naming its single role in
+`affected_components`, while both records carry the same two-key
+`expected_behavior` — so both FailureSummaries report both roles.  Reading one
+field when you meant the other is a real mistake, not a synonym swap.
 
 ### `rqgm_utility_record.schema.json`
 
@@ -709,7 +740,21 @@ module:** `ari/rqgm/adversarial/pool.py`; persisted via
 | Field | Notes |
 |---|---|
 | `case_seq` | Monotonic case counter |
-| `cases[]` | AdversarialReplayCase: `case_id` (`adv_case_%05d`), `case_type` (the shipped schema's seven exploration types; paper runtime adds the inert-off-phase eighth type described below), `validated_attack_id`, `severity`, `admitted_epoch` / `last_confirmed_epoch`, `status` `active` \| `evicted` (eviction is logical-only), `replay_view` (full materials — denied to role `clean_room_generator`) and `abstract_view` (contamination-safe FailureSummary — no raw attack/defense text) |
+| `cases[]` | AdversarialReplayCase: `case_id` (`adv_case_%05d`), `case_type` (the shipped schema's seven exploration types; paper runtime adds the inert-off-phase eighth type described below), `validated_attack_id`, `severity`, `admitted_epoch` / `last_confirmed_epoch`, `status` `active` \| `evicted` (eviction is logical-only), `replay_view` (full materials — `artifact_refs`, the three record ids, and the record's `expected_behavior` map copied by value; denied to role `clean_room_generator`) and `abstract_view` (contamination-safe FailureSummary — `case_type`, `failure_pattern`, `violated_expectation`, `affected_roles`; no raw attack/defense text) |
+
+The two views split the same role information.  `replay_view.expected_behavior`
+is the `role → expected behaviour` map taken by value off the
+ValidatedAttackRecord; `abstract_view.affected_roles` is that map's sorted key
+set and nothing more (see
+[The accountability binding on `validated_attack`](#the-accountability-binding-on-validated_attack)).
+Because the map is case-typed, the roles a replayed case names depend on its
+`case_type`: the seven exploration types share the generic `reviewer` /
+`generator` / `judge` template, while a paper-phase `paper_self_preference`
+case names `paper_reviewer` and `paper_writer`.  In the shipped schema
+`abstract_view` is `additionalProperties: false` — the contamination boundary
+is a declared shape, not only the compressor's discipline — whereas
+`replay_view` carries no such restriction and is instead gated by capability
+(denied to `clean_room_generator`).
 
 ## Prompt-evolution schemas (Task 07)
 
@@ -729,8 +774,25 @@ active prompt text is never mutated in place.  **Owning module:**
 | `parent_prompt_id` | Lineage (`null` for founding prompts) |
 | `template_ref` | `{kind: package \| checkpoint \| policy, key\|path}` — where the bytes live (committed template, evolved body `rqgm_prompts/<prompt_id>.md`, or a Task-14 governed utility-policy body referenced by `path`) |
 | `prompt_hash` / `full_sha256` | `hash12` + full sha256 of the template bytes (the exact `FilesystemPromptLoader.load_versioned` scheme) |
-| `evolvable` / `epoch_introduced` | Evolution eligibility + provenance |
-| `spec` | The behavioural contract: `role_instruction`, `constitutional_constraints[]`, `input_contract.required_fields[]`, `output_schema`, optional `rubric` / `calibration_policy` / `budget_policy` |
+| `evolvable` / `epoch_introduced` | Evolution eligibility + provenance.  Registration rule for a template v1 does **not** evolve: it is registered `evolvable=False` under the NEAREST role of Task 02's closed vocabulary rather than getting a role of its own, because a new role key would change `active_prompt_hashes` and hence `registry_version` for no functional gain.  Six founding rows sit there today — `agent/system`, `pipeline/keyword_librarian`, `viz/wizard_chat_goal`, `viz/wizard_generate_config` under `generator`, the raw-loaded `orchestrator/root_idea_selector` under `router`, and `governance/auditor` under `reviewer` (the last on the same precedent even though `auditor` IS a registrable role for COMPONENTS — `auditor_v1` is founding; impeachability comes from the component, not from the prompt's role).  Row order inside a role is load-bearing: the evolving primary must come LAST for the registry's latest-active-wins rollup, so each of these is placed before its role's primary.  `evolvable=False` is also used for a different reason — the three `rqgm/proposal_*` templates are governed for accountability, not role substitutes |
+| `spec` | The behavioural contract: `role_instruction`, `constitutional_constraints[]`, `input_contract.required_fields[]`, `output_schema`, optional `rubric` / `calibration_policy` / `budget_policy`.  `output_schema` reserves exactly ONE key, `__reply__`, for the reply KIND (`bare_index` \| `json_array` \| `json_object` \| `freeform`; absent ⇒ `json_object`); every other key is a required JSON field name mapped to a type name (`list`, `dict`, `string` / `str`, `float`, `int`, `bool`).  The consumer is `check_output_against_schema` (`ari/rqgm/prompt_evolution.py`), which skips `__reply__` in the required-field loop.  The reservation lives in the code only: the shipped schema declares `output_schema` as a required object and says nothing about `__reply__` |
+
+**Quirk (frozen): two founding specs record an EMPTY `required_fields`.**
+`input_contract.required_fields[]` is normally the template's extracted
+placeholder set, sorted.  Two committed templates are exceptions —
+`orchestrator/lineage_decision` and `orchestrator/root_idea_selector` are
+listed in `RAW_LOADED_KEYS` (`ari/rqgm/prompt_spec.py`) and their founding
+specs get `[]` instead.  This is not a contract choice.  Both bodies are
+loaded and used verbatim as system prompts (`_load_system_prompt_versioned` in
+`ari/orchestrator/lineage_decision.py` and
+`ari/orchestrator/root_idea_selector.py`), never `.format`-ed, so the literal
+JSON braces of their "reply ONLY with JSON: `{…}`" line register as
+pseudo-placeholders: the extractor reports `"action"` and `"chosen_index"` —
+quoted JSON keys, not input names.  Recording those as required inputs would
+be worse than recording none, so the founding table records none.  Read it as
+an observed, test-pinned exception
+(`ari-core/tests/test_rqgm_prompt_spec.py`), not as a pattern: a new template
+that takes no inputs should have no placeholders, not a suppression entry.
 
 ### `rqgm_prompt_evolution.schema.json`
 
@@ -953,8 +1015,10 @@ Write-once at paper-phase start.  Shape owned by `ari/rqgm/paper_runtime.py`
 (`build_paper_run_start_state`): `schema_version`, `paper_mode`
 (`linear` \| `rqgm_archive`), `rqgm_paper_enabled`, `mode_source`
 (∈ `config` \| `env` \| `resume`), `created_at` (metadata only, never hashed),
-`exploration_mode`, `seed_node_id`, `switch_journal[]`.  The persisted mode
-wins on re-invocation — resume never silently flips the paper mode.  Writer:
+`exploration_mode`, `seed_node_id`, `switch_journal[]`, plus
+`evaluation_condition_id` when — and only when — the caller pins an evaluation
+condition.  The persisted mode wins on re-invocation — resume never silently
+flips the paper mode.  Writer:
 `ari.checkpoint.save_paper_archive_state_json`.
 
 `seed_node_id` is the one field write-once cannot keep current: it records
@@ -988,6 +1052,30 @@ and the selective-erasure staleness fields `review_score_stale` /
 logically erased — stale rows are ineligible for best-belief and
 cross-round winner selection).
 
+Each line also carries `created_at` and the Manuscript-Complete `manuscript_*`
+block: the binding fields written with the draft (`manuscript_bound`,
+`manuscript_mode`, `manuscript_attempt_id`, the `manuscript_input_fingerprint`
+/ `manuscript_binding_digest` / `manuscript_profile_digest` /
+`manuscript_context_digest` / `manuscript_readiness_digest` /
+`manuscript_brief_bundle_digest` pins, `manuscript_section_brief_digests`, the
+`manuscript_allowed_evidence_ids` / `manuscript_contextual_negative_ids` /
+`manuscript_forbidden_evidence_ids` lists, `manuscript_required_disclosures`
+and `manuscript_omission_count`), then the deterministic diagnostics
+`record_paper_draft_manuscript_evaluation` attaches afterwards
+(`manuscript_candidate_status`, `manuscript_hard_disqualified` +
+`manuscript_hard_disqualification_reasons`,
+`manuscript_candidate_artifact_sha256`, `manuscript_candidate_gate_digest` /
+`manuscript_candidate_gate_status`, and the
+`manuscript_contextual_negative_evidence_mentions` /
+`manuscript_forbidden_evidence_mentions` /
+`manuscript_missing_required_disclosures` findings).  That attachment is the
+one writer here that is **not** best-effort: it is a targeted
+last-record-wins rewrite that re-reads the file and raises unless the values
+round-trip, because enforce-mode eligibility depends on them.  Under the
+default `manuscript.mode: "off"` the block is the empty/false defaults, and a
+`manuscript_hard_disqualified` row is excluded from the frontier exactly as a
+stale one is.
+
 ### `paper_anchor_corpus.jsonl` — the read-only accept/reject anchor
 
 The APReS-equivalent held-out corpus that anchors the `paper_reviewer` utility.
@@ -1015,16 +1103,48 @@ snapshot dir, best-effort (never raises into the paper phase).  Shape owned by
 mean(… | authorship == human)`, **`0.0` when the corpus carries no AI/human
 split** (the corpus-absent / AI-only degradation, never an error).
 
+**Where the corpus comes from.**  The statistic has no corpus of its own: it
+runs over `reviewer_anchor_cases(pool)` — the same `paper_anchor_corpus.jsonl`
+pool the reviewer's anchor utility uses — read with one extra label dimension,
+each case's `authorship` (`human` \| `ai`) field documented above.  The AI/human
+split is therefore a property of the anchor corpus.  With a corpus that carries
+no split, `margin` is `0.0`, the population signal goes silent, and the
+adversary still prosecutes on the other two over-acceptance signals — a
+claim-gate finding, or the direct per-case disagreement where the incumbent
+accepted an anchor case whose ground truth is `reject`.  With no corpus at all
+— the default, since `anchor.enabled` is `false` — there are no over-accepted
+cases to find and the round never fires.
+
+The knobs are `rqgm.paper.self_preference.*`, meaningful only under the
+effective `rqgm_archive` paper mode: `enabled: true`; `sample_size: 8`
+(the held-out cases scored per epoch, deterministically the first N by
+`case_id`; the same number is applied a second time to the over-accepted subset
+and so also bounds how many cases are attacked, under the shared per-epoch
+adversary call cap);
+`accept_threshold: 0.6` (the reviewer-"accepted" cutoff, mirroring the
+governance `CANDIDATE_PASS_THRESHOLD`, also `0.6`) — carried into the attack
+bundle for the over-acceptance pre-signal, **not** used by the margin itself,
+which binarises the reviewer's `accept_recommendation`; and `margin: 0.1` (the
+AI-vs-human gap that fires the deterministic pre-signal).  One knob is
+**declared but unwired**: `corpus_path: ""` is described as "`""` reuses the
+anchor corpus, a path overrides with a dedicated authorship set", and the `""`
+half is what the code does — but nothing reads
+`rqgm.paper.self_preference.corpus_path`, so setting a path there has no effect
+today.  The only corpus path the loader resolves is
+`rqgm.paper.anchor.corpus_path`.
+
 **The eighth adversary type.**  `paper_self_preference` is the eighth member of
 the Python `ADVERSARY_TYPES` tuple (`ari/rqgm/adversarial/records.py`, the
 write-path validity check `validate_raw_attack` uses), added for the paper
 phase and inert off it; the shipped `rqgm_attack_records.schema.json`
 `adversary_type` / `case_type` enum documents the seven **exploration** types.
-A `paper_self_preference` case implicates the `paper_reviewer` role, which —
-unlike the seven's `generator` — HAS a registered incumbent (`paper_reviewer_v1`
-under the paper mode), so the Task-15 `target_component_id` binding fires and the
-validated-attack → impeachment chain runs in production; off the paper phase the
-role resolves to `""` and exploration stays byte-identical.
+A `paper_self_preference` case implicates the `paper_reviewer` role — and, on a
+draft the Layer-0 claim gate confirms unfaithful, also `paper_writer`.  Both,
+unlike the seven's `generator`, HAVE a registered incumbent (`paper_reviewer_v1`
+/ `paper_writer_v1` under the paper mode), so the Task-15 `target_component_id`
+binding fires and the validated-attack → impeachment chain runs in production;
+off the paper phase both roles resolve to `""` and exploration stays
+byte-identical.
 
 ## Checkpoint file inventory
 

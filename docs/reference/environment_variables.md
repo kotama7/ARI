@@ -12,7 +12,11 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/server.py
     role: implementation
-last_verified: 2026-08-07
+  - path: ari-core/ari/rqgm/state.py
+    role: implementation
+  - path: ari-core/ari/assurance/executors.py
+    role: implementation
+last_verified: 2026-08-08
 ---
 
 # Environment Variable Reference
@@ -40,6 +44,28 @@ page is the alphabetical lookup.
 | `ARI_LOG_DIR` | Application log directory | `$ARI_CHECKPOINT_DIR` | – |
 | `ARI_ROOT` | ARI source tree root (used in tests) | (auto-detect) | – |
 | `ARI_SOURCE_FILE` | Override input experiment.md path | (none) | – |
+
+`ARI_CHECKPOINT_DIR` additionally carries a writer-side **convention** the table
+cannot show. Code that pins the current process to a run is expected to call
+`PathManager.set_checkpoint_dir_env` — which delegates to
+`RuntimePathResolver.set_checkpoint_dir_env`, the single function in
+`ari-core/ari/paths.py` that assigns `os.environ["ARI_CHECKPOINT_DIR"]` — rather
+than assigning the variable itself, so the run pin has one owner. Read that as a
+convention, not a guarantee:
+
+- **Nothing enforces it.** No test, lint rule or import-boundary check fails when
+  a writer assigns the variable directly. The helper is honoured by the pipeline
+  driver, the Letta client, `ari memory`, three `ari viz` modules and two CLI
+  entry points.
+- **One known in-tree bypass.** `ari-core/ari/agent/loop.py` assigns
+  `os.environ["ARI_CHECKPOINT_DIR"]` directly before building a node's tool
+  context, so the helper's docstring claim that going through it "keeps every
+  writer routed through PathManager" overstates what the code achieves. Treat
+  that sentence as intent, not fact.
+- **Child-process env dicts are outside the rule.** The GUI launch, orchestrator
+  and experiment paths set the key on a `proc_env` mapping handed to a
+  subprocess; they never mutate this process's environment, so they are not
+  bypasses.
 
 ### LLM model selection
 
@@ -138,11 +164,47 @@ channels for ablation. Config equivalents live under the `handoff:` block.
 
 ### Execution mode (RQGM)
 
+Two independent axes — exploration (`ARI_MODE`) and the paper phase
+(`ARI_PAPER_MODE`) — each sit behind a **two-key interlock**: the mode variable
+and its `*_ENABLED` companion must *both* select the governed path, or that axis
+falls back to its default (`simple_bfts` / `linear`). One key on its own
+activates nothing. `scripts/setup/setup_env.sh` appends every variable below to
+a generated `.env` as a commented-out template line — only when the key is not
+already present — and spells the interlock out in the comment ("both must agree
+or ARI falls back to `simple_bfts`" / "…or the paper phase falls back to
+`linear`").
+
 | Variable | Purpose | Default |
 |---|---|---|
 | `ARI_MODE` | Execution-mode override: `simple_bfts` \| `ari_rqgm` (overrides `ari.mode` in workflow.yaml; invalid values warn and are ignored). RQGM activation additionally requires the `ARI_RQGM_ENABLED` interlock — any disagreement falls back to `simple_bfts`. `export_resolved_config_to_skill_env` `setdefault`s this to the *effective* mode for skill subprocesses (no skill reads it in v1). On `ari resume` the mode persisted in `rqgm_state.json` wins over this variable. See `docs/guides/execution_modes.md` | `simple_bfts` |
 | `ARI_RQGM_ENABLED` | RQGM master-interlock override: `0`/`1`/`true`/`false` (overrides `rqgm.enabled` in workflow.yaml). Both this AND `ARI_MODE=ari_rqgm` must agree for the governance runtime to be constructed | `false` |
+| `ARI_PAPER_MODE` | Paper-phase mode override: `linear` \| `rqgm_archive` (overrides `paper.mode` in workflow.yaml; invalid values warn and are ignored). Orthogonal to `ARI_MODE` — the exploration and paper axes are set independently. The archive additionally requires the `ARI_RQGM_PAPER_ENABLED` interlock; any disagreement falls back to `linear`. Applied by `apply_paper_env_overrides`, which the paper command must call **explicitly**: the paper entry's config loader applies no env overrides, so this variable cannot free-ride on the `ari run` / `ari resume` override block. See [The paper execution axis: `paper.mode`](../guides/execution_modes.md#the-paper-execution-axis-papermode) | `linear` |
+| `ARI_RQGM_PAPER_ENABLED` | Paper-archive interlock override: `0`/`1`/`true`/`false` (overrides `rqgm.paper.enabled` in workflow.yaml; invalid values warn and are ignored). Both this AND `ARI_PAPER_MODE=rqgm_archive` must agree for the draft archive to activate | `false` |
 | `ARI_PAPER_AGENT_AS_JUDGE` | Agent-as-judge draft-scoring override: `0`/`1`/`true`/`false` (overrides `rqgm.paper.reviewer.agent_as_judge.enabled`; invalid values warn and are ignored). Applied by `apply_paper_env_overrides` with the same validate-before-assign posture as `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED`. Off ⇒ the deterministic, LLM-free venue-rubric scorer, so no live LLM call sits on the draft-scoring path (P2). On ⇒ a real `LLMClient`-backed reviewer scores each archive draft over the *same* venue-rubric axes, weighted by the ACTIVE governed `paper_reviewer` prompt's emphasis, and can read axes no deterministic reader can (`novelty`, `significance`); it fails open to the deterministic rubric on an LLM error, an unparseable reply or one covering too little of the rubric's axis weight. Only meaningful under the effective `rqgm_archive` paper mode (`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`) | (unset ⇒ off) |
+
+The four variables below are not switches: they are optional deployment
+declarations that make an RQGM epoch's execution identity specific.
+`capture_execution_identity` reads each one when an epoch opens, records an
+unset or blank value as the literal string `unresolved`, and leaves
+`execution_identity.complete` `false` unless all four resolve — ARI does not
+claim that a mutable provider alias is a fixed implementation. Nothing verifies
+that a supplied value is true; the pin is a declaration, not a measurement.
+`docs/reference/configuration.md` lists the same four against the identity each
+pins.
+
+| Variable | Identity it pins | Default |
+|---|---|---|
+| `ARI_MODEL_REVISION` | Exact provider/model revision | (unset ⇒ recorded as `unresolved`) |
+| `ARI_TOOL_BUNDLE_REVISION` | Immutable tool-bundle revision | (unset ⇒ recorded as `unresolved`) |
+| `ARI_ENVIRONMENT_DIGEST` | Container or environment digest | (unset ⇒ recorded as `unresolved`) |
+| `ARI_DATA_SNAPSHOT_DIGEST` | Immutable external-data snapshot digest | (unset ⇒ recorded as `unresolved`) |
+
+`ARI_HARNESS_CONTAINER_ROOT` is declared in the same `setup_env.sh` block but
+belongs to the Harness substrate rather than to mode selection:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_HARNESS_CONTAINER_ROOT` | Absolute root under which a **logical** Harness container reference — `apptainer:<name>.sif` or `singularity:<name>.sif` — is resolved. Verified entries carry the logical form precisely so a published manifest holds no site path, which means the concrete directory can only come from the environment. Unset ⇒ a logical reference is refused with `HarnessSubstrateError`; a plain path reference is a compatibility input that passes through and never consults this variable. The root must be absolute, a real directory and not a symlink, and the resolved image must be a regular non-symlink file sitting directly in that root — anything resolving outside it is refused | (none — needed only for logical references) |
 
 ### Manuscript Complete
 

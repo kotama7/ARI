@@ -115,21 +115,29 @@ apptainer run containers/letta.sif &
 UI が "Letta unhealthy" と表示している場合はクラスタで Letta サービスが
 起動していません。
 
-### `LETTA_EMBEDDING_CONFIG is required`
+### `Letta agent embedding mismatch`
 
-**原因:** Letta はアーカイブコレクションを構築するために埋め込みモデル設定が必要です。
+**原因:** `LETTA_EMBEDDING_CONFIG` は設定ファイルのパスではなく embedding の
+*handle* であり、しかも Letta はエージェントの `embedding_config` を作成時点で
+凍結します。チェックポイントのエージェントが別の handle — 多くはホスト版の
+`letta/letta-free` → `embeddings.memgpt.ai` エンドポイント（上流が落ちると空
+ボディの 522 を返します）— で作成されていた場合、env var の値によらず凍結済みの
+handle が使われ続け、`add_memory` は不透明な 400 で失敗します。
 
-**修正:** 埋め込みエンドポイントを記述した JSON ファイルを `LETTA_EMBEDDING_CONFIG`
-に指定してください。OpenAI 互換の例:
+**修正:** handle を設定したうえで、チェックポイントのエージェントを purge し、
+次の `add_memory` でその handle により再作成させてください
+（`LettaBackend.purge_checkpoint`。既存の archival passages は削除されます）:
 
-```json
-{
-  "embedding_endpoint_type": "openai",
-  "embedding_model": "text-embedding-3-small",
-  "embedding_dim": 1536,
-  "embedding_endpoint": "https://api.openai.com/v1"
-}
+```bash
+export LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small
 ```
+
+未設定の場合は `letta-default` が既定値です。ARI は空値・`letta-default`・
+`letta/letta-free` を同じもの（「明示的な選択なし」）として扱うため、不安定な
+MemGPT ホスト側エンドポイントでもバックエンドは警告を出すだけです。上記の
+ハードエラーは、エージェントが凍結した handle とは*異なる* handle を明示的に
+要求した場合にのみ送出されます。`letta-default` がサーバ側で何に展開されるかは
+Letta 自身の決定であり、ARI の関与するところではありません。
 
 ### `archival memory search returned 0 results`
 
@@ -233,13 +241,17 @@ file $ARI_CHECKPOINT_DIR/figures/fig1.png   # should report PNG
 
 ### `RLIMIT_NPROC: resource temporarily unavailable`
 
-**原因:** coding サンドボックスが `ARI_MAX_CHILD_PROCS` (デフォルト 1024) で
-fork() を制限しており、子プロセスがその上限を超えました。
+**原因:** `ARI_MAX_CHILD_PROCS` が設定されているため、coding サンドボックスが
+`RLIMIT_NPROC` で fork() を制限しており、子プロセスがその上限を超えました。
+**デフォルトの上限はありません** — 未設定なら `ari.container` も coding skill も
+一切の上限を課しません。
 
 **修正:** 問題のコマンドを削減するか (採点プロンプトが曖昧だとエージェントが
 フォークボムに陥ることがあります)、`ARI_MAX_CHILD_PROCS` を増やしてください。
-デフォルト値は意図的に余裕を持たせているため、上限に達した場合は予算不足ではなく
-実際のバグが原因であることがほとんどです。
+`RLIMIT_NPROC` はプロセスツリー単位ではなく real uid 単位で適用される点に注意して
+ください。その uid がホスト上のどこかで既に持っている task をすべて数えるため、
+小さい値を明示すると、ほかに何もしていないビルドでも `EAGAIN` になります。
+多くの場合は設定を解除するのが正解です。
 
 ## ダッシュボード / viz
 
@@ -251,10 +263,10 @@ SSH 接続している場合は、ポートのフォワーディングが必要�
 **修正:**
 
 ```bash
-# From your laptop:
-ssh -L 8000:127.0.0.1:8000 user@remote-host
-# Then on the remote:
-ari viz --port 8000
+# 手元のマシンから — WebSocket は port+1 を使うので両方フォワードします:
+ssh -L 8765:127.0.0.1:8765 -L 8766:127.0.0.1:8766 user@remote-host
+# リモート側で (checkpoint ディレクトリは必須引数。--port の既定値は 8765):
+ari viz /abs/path/to/checkpoints/<run_id>
 ```
 
 ### フロントエンドが古いステートを表示する

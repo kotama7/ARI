@@ -398,6 +398,73 @@ finalize がスキップされます。ソース:
 決定値: `continue` / `switch_to_idea` / `fanout` / `terminate`。
 ソース: `ari-core/ari/orchestrator/lineage_decision.py`。
 
+## `prompt_trace.jsonl` / `prompt_versions.json`
+
+プロンプトの来歴です: 管理対象プロンプトの LLM 呼び出しごとに、どの
+*テンプレート*が — そして呼び出し側でレンダリング済み文字列が得られた
+場合はどの*レンダリング済みプロンプト*が — その呼び出しを生んだのかを
+記録します。`prompt_trace.jsonl` が呼び出し単位の追記専用トレース、
+`prompt_versions.json` がそのラン単位のロールアップです。どちらも
+チェックポイント直下に書かれ、どちらも `PathManager.META_FILES` にある
+ため、ノードの作業ディレクトリにコピーされることはありません;
+`prompt_trace.jsonl` はさらに `_TRACE_FILES` に分類されています — これは
+パス解決器が併せて理解するバケット化ランディレクトリレイアウトにおいて
+`runs/<run_id>/traces/` の下に置かれるファイル群です。ソース:
+`ari-core/ari/prompts/_provenance.py`; ロールアップの書き込みは
+`ari.checkpoint.save_prompt_versions_json` に集約されます。
+
+トレースは 1 行 1 JSON オブジェクトです。`prompt_name` と
+`template_hash` が必須で常に計算可能なフィールドであり、それ以外は
+すべて既定値を持つため、読み取り側を壊さずにレコード形状を拡張できます:
+
+```json
+{"timestamp": "2026-07-10T10:34:32Z", "prompt_name": "pipeline/keyword_librarian",
+ "template_hash": "9f2c01ab34de", "rendered_prompt_hash": "34de9f2c01ab",
+ "prompt_version": null, "prompt_registry_version": null,
+ "model": "...", "node_id": "", "phase": "context_builder", "source": "core"}
+```
+
+ハッシュは `sha256(text)[:12]` — `FilesystemPromptLoader.load_versioned`
+と同一の方式なので、テンプレート本文はここでもあちらでも、また異なる
+マシン間でも同じ値になります。`timestamp` はメタデータで、ハッシュには
+決して入りません。`rendered_prompt_hash` は呼び出し側がレンダリング済み
+テキストを渡した場合にのみ入り、それ以外は `null` です; テンプレートを
+読み込むだけで最終文字列をその場で組み立てない呼び出し箇所がいくつか
+あるため、`null` は「未取得」であって「空のプロンプト」ではありません。
+
+`prompt_version` / `prompt_registry_version` は**ほぼ常に `null` である
+と観測されます**。これはプロンプトについての主張ではなく、呼び出し側の
+凍結された性質です。これらを埋める writer はただ一つ、RQGM
+PromptRegistry のスタンプ経路（`ari-core/ari/rqgm/registry.py`）で、
+`prompt_version` に*レジストリのプロンプト ID*、
+`prompt_registry_version` にレジストリバージョンを入れます。それ以外 —
+エージェントループ、LLM 評価器、コンテキストビルダ、viz ウィザード
+ツール、そして RQGM のガバナンス／プロンプト進化／提案の全呼び出し —
+では両方とも `null` のままです。`null` は「未スタンプ」と読むべきで、
+「バージョンの無いプロンプト」ではありません。`source` も同様に常に
+`"core"` です: `record_prompt_use` がハードコードしており引数も持たない
+ため、フィールドが予約している `"skill"` 値を出荷物は誰も出しません。
+
+`prompt_versions.json` は `{prompt_name: {template_hash, prompt_version,
+call_count}}` を初出順に並べたもので、`template_hash` と
+`prompt_version` はその名前で*最初に*見たレコードから採られます — ラン
+の途中でテンプレートが変わったプロンプトは最初のハッシュしか現れず、
+真実は JSONL 側に残ります。BFTS ループがチェックポイントをフラッシュ
+するたびに `build_prompt_versions_rollup` がトレースから再構築します
+（スロットル付きの書き込み。終端のフラッシュは強制）。つまり導出物で
+あって権威ではありません。このフラッシュが唯一の writer なので、BFTS
+ループに入らないままプロンプト使用を記録したフェーズは、ロールアップの
+無いトレースだけを残します。
+
+どちらの writer も意図的にベストエフォートであり、成果物もそのように
+読む必要があります。`record_prompt_use` はチェックポイントディレクトリ
+が解決できないとき（ユニットテスト、起動前）は no-op になり、モジュール
+ロックの下で追記し、**あらゆる**例外を握り潰します — 来歴の記録失敗が、
+記録対象の LLM 呼び出しを壊すことは決してありません。ロールアップの
+書き込みも同じ形で包まれています。したがってどちらかのファイルが無い
+ことは「来歴が記録されていない」を意味するだけで、エラーではなく、
+呼び出しが無かった証拠にもなりません。
+
 ## RQGM エポックガバナンスファイル（オプトイン `ari_rqgm` モード）
 
 `ari.mode: ari_rqgm` **と** `rqgm.enabled: true` が一致するときにのみ
@@ -500,11 +567,14 @@ no_action`）。あるエポックの最新レポートは、その `epoch_id` �
 
 - `rqgm_audit.jsonl` — 常に: 上記のガバナンスレコードと最終的な
   `governance_report`。
-- `prompt_trace.jsonl` / `prompt_versions.json` — 共有のプロンプト
-  レンダリング経路が出す通常のプロヴェナンスレコードで、対象は
-  ガバナンスの LLM 呼び出しのみ。決定論的な監査（LLM シーム未配線）は
-  ガバナンスプロンプトを一切レンダリングせず、どちらのファイルも
-  書きません。
+- `prompt_trace.jsonl` — 共有のプロンプトレンダリング経路が出す通常の
+  プロヴェナンスレコードで、対象はガバナンスの LLM 呼び出しのみ。これらの
+  呼び出しが `prompt_versions.json` に届くのは間接的で、次に BFTS の
+  チェックポイントフラッシュがトレースからロールアップを再構築したとき
+  です（上の「`prompt_trace.jsonl` / `prompt_versions.json`」を参照）;
+  `audit_epoch` 自身がロールアップを書くことはありません。決定論的な監査
+  （LLM シーム未配線）はガバナンスプロンプトを一切レンダリングせず、
+  ここにも何も追記しません。
 - `rqgm_adversarial_cases.jsonl` と、そこから派生する
   `rqgm/adversarial_replay_pool.json` — ステップ 7 のリプレイプール
   更新で、プールが渡された場合のみ。承認 / 支持されたケースは真実で
@@ -583,6 +653,20 @@ FrontierRepairEngine（RQGM Task 10、
 `sha256(canonical_json(<all rule tables>))[:12]` — でピン留めされます。
 このハッシュは `meta.json` の任意の `constitution_hash` キーとしても
 追加的に記録されます。
+
+したがってチェックポイント上のコピーは **来歴マーカーであって制御面では
+ありません**: これを編集しても挙動は何も変わりません。ARI のどのコードも
+読み戻さず、このパスに触れるのは `ari.rqgm.state.copy_constitution_if_missing`
+だけだからです（呼び出しはモードゲート下の `ari/cli/run.py` から。
+[内部境界](internal_boundaries.md) の「RQGM モード境界 (`ari.rqgm`)」を参照）。
+これは見落としではなく意図です: チェックポイントディレクトリはフラットで
+どのスキルからも書き込めるため、そこに規則ファイルを置けば進化／改竄の
+経路になってしまいます。だから規則テーブルはコード側に残しています。
+このコピーは `PathManager.META_FILES` に登録されており、ノードの作業
+ディレクトリには決して届きません。コピー処理は双方向にベストエフォート
+です — 同梱 `constitution.yaml` を持たないパッケージングでは何もコピー
+されず何も報告されません — したがってファイルが無いこと自体は
+その実行が `simple_bfts` だった証拠にはなりません。
 
 ### `epoch_state.json`
 
@@ -818,6 +902,26 @@ staleness は**読み取り時**です: レコードが stale であるのは、
 診断のみ）、`_erasure_event_id` を運びます; これらは `simple_bfts` へ
 モードを戻した後も消去されたノードを除外し続けます（汚染はモード切替に
 よって清浄にはなりません）。
+
+このロールアップは ARI が**他パッケージ向けに公開する**面でもあるため、
+消費側の規則が 2 つあります。第一に `invalid_frontier_node_ids` は
+ピン留めされたパッケージ間契約です — ari-core が書き、memory スキルが
+読み、`ari-skill-memory/tests/test_erasure_annotation.py` が ari-core 側の
+writer を grep するので、どちらかを改名すると消去認識が黙って死ぬのでは
+なくテストが落ちます。第二に、そのパッケージ間リーダ
+（`ari-skill-memory/src/ari_skill_memory/erasure.py`）は**縮退する**ことで
+前方互換を保ちます: `SUPPORTED_SCHEMA_VERSION = 1` をピン留めしており、
+`schema_version` が理解できる整数でないファイル — サポート版より大きい、
+あるいは文字列 / 浮動小数 / 真偽値 — は、誤った消去ラベルを付ける危険を
+冒すより「何も stale でない」として読まれます。これは不在・読み取り不能・
+不正形式のファイルに対して返すのと同じ判定です。`schema_version` キーが
+無い場合はサポート版とみなされます。
+
+この非対称性は形式ではなくリーダ側の性質である点に注意してください:
+ari-core 自身の `view_from_payload`（`ari-core/ari/rqgm/erasure_state.py`）
+は `schema_version` を一切見ません — writer の不在耐性のある双子です —
+そして JSON Schema は `schema_version` を `const: 1` と宣言しています。
+縮退のはしごを実装しているのはパッケージ間リーダだけです。
 
 ### `rqgm_governance_cache.jsonl`（RQGM Task 12）
 

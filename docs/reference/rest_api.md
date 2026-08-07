@@ -30,13 +30,19 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_orchestrator.py
     role: implementation
+  - path: ari-core/ari/viz/ui_helpers.py
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_workflow_editor.py
     role: test
   - path: ari-core/tests/test_orchestrator.py
     role: test
-last_verified: 2026-08-07
+  - path: ari-core/tests/test_gui_baseline_settings_contract.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
+    role: test
+last_verified: 2026-08-08
 ---
 
 # REST API Reference
@@ -424,10 +430,41 @@ tables further down list the *routes*, which are unchanged; these are the
 
 ### Conventions (legacy)
 
-- Errors come back as `{"error": "<message>"}` with a non-2xx HTTP code
-  (some handlers use `{"ok": false, "error": ...}`).
+- Errors come back as `{"error": "<message>"}` (some handlers use
+  `{"ok": false, "error": ...}`). Whether that reaches the client as a
+  non-2xx HTTP code depends on the dispatch branch — see the `_status`
+  convention below.
 - CORS preflight (`OPTIONS`) is answered on `/api/*` for same-origin
   requests only (MN-4).
+
+**The `_status` pop convention — legacy, applied per branch.** A legacy
+handler is a plain function returning a dict; it cannot set an HTTP status
+itself. The convention is to return the code *inside* the body as
+`{"ok": false, "error": ..., "_status": 400}` and let the dispatch branch in
+`ari-core/ari/viz/routes.py` lift it out with
+`self._json(r, status=r.pop("_status", 200))` — one call that both sets the
+wire status and removes the private key from the body. The lift is opt-in per
+branch: most branches omit it, which is harmless where the handler never sets
+`_status`. The legacy branches that do lift it are `POST /api/launch`,
+`/api/run-stage`, `/api/sub-experiments/launch`, `/api/upload`,
+`/api/env-keys`, `/api/publish/<run_id>`, `/api/gpu-monitor`, `/api/stop`,
+`/api/delete-checkpoint` and the four `/api/workflow*` writes, plus every
+`/api/v1/` branch.
+
+**Quirk — `POST /api/settings` sets `_status` but its branch does not lift
+it.** Its dispatch is a bare `self._json(_api_save_settings(body))`, and
+`_json` defaults to `status=200`. A refused save therefore answers **HTTP 200
+with `_status: 400` still sitting in the JSON body** (both of that handler's
+refusals behave this way — see
+[Settings + workflow](#settings--workflow)). Of the handlers under `ari/viz/`
+that set `_status`, it is the only one whose branch does not pop it. Nothing
+pins the wire status either: the contract test calls the handler directly, so
+it asserts the dict, not the response code.
+
+A legacy client must therefore branch on the body (`ok` / `error`), not on the
+status line alone. This is an artefact of the frozen facade, not a pattern to
+copy — `/api/v1` returns real status codes with the
+[typed error envelope](#error-envelope).
 
 ### Typed contracts (stable endpoints)
 
@@ -528,6 +565,32 @@ The list is one portfolio across every checkpoint search base, ordered by
 | GET | `/api/gpu-monitor` | GPU utilisation poll | `routes.py` |
 | GET | `/api/resource-metrics` | CPU / memory / disk metrics | `routes.py` |
 | GET | `/api/logs` | Recent log lines for the active run | `routes.py` |
+
+**`GET /api/resource-metrics` — payload shape.** `_collect_resource_metrics()`
+(`ari-core/ari/viz/ui_helpers.py`) walks `/proc` for the processes owned by the
+server's own uid and returns eight keys: `process_count`, `memory_rss_mb`,
+`cpu_load_1m`, `cpu_load_5m`, `cpu_load_15m`, `cpu_count`, `experiment_pid`
+(`null` unless a launched experiment process is still alive) and `timestamp`
+(UTC ISO-8601). Each sampling step carries its own `except`, so a failure
+degrades a *value* — the load averages fall back to `0.0`, an unreadable
+process is skipped — rather than dropping a key; the collector as it stands
+always emits all eight.
+
+**Clients must nevertheless treat every numeric field as optional.** A partial
+payload once took down the whole Monitor route: the legacy page called
+`.toFixed()` unconditionally, so a body of `{"process_count": 3}` threw
+`resourceMetrics.memory_rss_mb.toFixed is not a function`. The fix is
+client-side and is pinned by
+`ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx`,
+which feeds the real page exactly that body and asserts that the present field
+renders while each absent one renders the placeholder `—`. Two things are worth
+knowing before writing a new consumer. The regression note attributes such a
+body to sampler warm-up, a scrape error or an older server — not to any branch
+of the collector described above. And the `ResourceMetrics` interface in
+`ari-core/ari/viz/frontend/src/types/index.ts` still declares all eight fields
+**required**, so the optionality lives in the page's runtime guards
+(`isFiniteNumber`), not in the type: a TypeScript consumer gets no compiler
+help here and must guard before formatting.
 
 ### Models + skills
 
@@ -676,6 +739,48 @@ and flow style (`[a, b]`, `{a: 1}`) are normalised away on the first GUI save,
 scalars are re-spelled in their canonical form (`yes` → `true`, `"x"` → `x`),
 and YAML anchors are re-emitted under generated names (`&id001`). The bundled
 `config/workflow.yaml` keeps its comments because nothing writes it.
+
+**`POST /api/settings` without an active checkpoint (frozen legacy).** Settings
+are project-scoped. When `_st._settings_path` is `None` there is nowhere to
+persist, so `_api_save_settings` (`ari-core/ari/viz/api_settings.py`) refuses
+with exactly this dict:
+
+```json
+{ "ok": false,
+  "error": "No active project. Create or select a checkpoint before saving settings.",
+  "_status": 400 }
+```
+
+`ari-core/tests/test_gui_baseline_settings_contract.py` asserts it
+character-for-character, message string included, so it is frozen contract and
+not a message to reword. Over real HTTP that `_status` never reaches the status
+line — this is the route named in
+[Conventions (legacy)](#conventions-legacy), so the refusal arrives as a `200`
+carrying the dict above. **Reads do not refuse:** `_api_get_settings` returns
+the built-in defaults when there is no active checkpoint (and when the saved
+file cannot be parsed), so `GET /api/settings` always answers. Reads fall back,
+only writes refuse — the settings-side counterpart of MN-1, which covers the
+four workflow writes.
+
+**Quirk — a refused save has already written the API key.** In
+`_api_save_settings` the `.env` upsert runs *before* the no-checkpoint check.
+An `api_key` / `llm_api_key` field is popped out of the body (so it is never
+persisted into `settings.json`) and forwarded to `_upsert_env_key` only if it
+clears three legacy filters, each of which drops the key **silently, with no
+error**: the value must be at least 20 characters, must not contain the
+substring `test`, and the request's `llm_provider` — or `llm_backend` when that
+is empty — must map to a known env-var name (`openai` → `OPENAI_API_KEY`,
+`anthropic` / `claude_code` / `claude-code` → `ANTHROPIC_API_KEY`, `gemini` →
+`GOOGLE_API_KEY`). A request that *does* clear them and has no active
+checkpoint gets the refusal above **and** has already written
+`NAME=value` into the ARI-root `.env` (`_st._env_write_path`, unquoted form,
+atomic replace, mode `0o600`) and set `os.environ[NAME]` in the running server
+process. The caller is told nothing was saved while a secret was persisted to
+disk and injected into the live process. The ordering is pinned by the same
+contract test, so it is frozen rather than intended: treat a refusal from this
+endpoint as "`settings.json` was not written", never as "nothing happened".
+The key-set and dead-key quirks of the same endpoint pair are documented in
+[Configuration → Legacy Settings keys: what is actually wired](configuration.md#legacy-settings-keys-what-is-actually-wired).
 
 ### Wizard / config gen
 

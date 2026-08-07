@@ -13,9 +13,14 @@ last_verified: 2026-05-25
 而不是代理生成它的登录节点。以下约定 (L1–L7) 确保脚本能在计算节点
 真正跑完。
 
-PaperBench 复现代理通过 `ari-skill-paper-re/src/prompts/replicator.md`
-中的 `COMPUTE-NODE EXECUTION CONVENTIONS` 区块被指示这些约定 (这里
-也复述一份,以便你手动审查生成的 reproduce.sh)。
+PaperBench 复现代理通过 `_format_hpc_appendix`
+(`ari-skill-paper-re/src/_replicator_agent.py`) 追加到 vendored PaperBench
+instruction 之后的 ARI 侧 appendix 中的 `COMPUTE-NODE EXECUTION CONVENTIONS`
+区块被指示这些约定。该 appendix 仅在 rubric 的
+`reproduce_contract.execution_profile` 非空时才输出,因此非 HPC 论文的代理
+根本看不到它。`ari-skill-paper-re/src/prompts/replicator.md` 保存着同一区块
+更完整的 mirror,但运行时没有任何代码读取它 (这里也复述一份,以便你手动
+审查生成的 reproduce.sh)。
 
 ## L1 — 共享文件系统
 

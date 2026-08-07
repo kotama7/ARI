@@ -12,7 +12,11 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/server.py
     role: implementation
-last_verified: 2026-07-29
+  - path: ari-core/ari/rqgm/state.py
+    role: implementation
+  - path: ari-core/ari/assurance/executors.py
+    role: implementation
+last_verified: 2026-08-08
 ---
 
 # 環境変数リファレンス
@@ -40,6 +44,26 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | `ARI_LOG_DIR` | アプリケーションログディレクトリ | `$ARI_CHECKPOINT_DIR` | – |
 | `ARI_ROOT` | ARI ソースツールルート（テストで使用） | (自動検出) | – |
 | `ARI_SOURCE_FILE` | 入力 experiment.md パスの上書き | (なし) | – |
+
+`ARI_CHECKPOINT_DIR` には、表では表せない書き込み側の**慣習**があります。現在の
+プロセスを特定の run に固定するコードは、変数を自分で代入するのではなく
+`PathManager.set_checkpoint_dir_env` を呼ぶことが期待されています（これは
+`RuntimePathResolver.set_checkpoint_dir_env` に委譲され、`ari-core/ari/paths.py`
+の中で `os.environ["ARI_CHECKPOINT_DIR"]` に代入する唯一の関数です）。run pin の
+所有者を 1 箇所に保つためです。ただしこれは保証ではなく慣習として読んでください。
+
+- **強制する仕組みはありません。** 書き込み側が変数へ直接代入しても失敗する
+  テスト・lint ルール・import 境界チェックは存在しません。このヘルパは pipeline
+  driver、Letta クライアント、`ari memory`、`ari viz` の 3 モジュール、CLI の
+  2 つのエントリポイントで使われています。
+- **既知の迂回が 1 件あります。** `ari-core/ari/agent/loop.py` は、ノードの tool
+  context を組み立てる前に `os.environ["ARI_CHECKPOINT_DIR"]` へ直接代入します。
+  したがってヘルパの docstring にある「すべての書き込みを PathManager 経由に保つ」
+  という記述は、コードが実際に達成していることを過大に述べています。この一文は
+  事実ではなく意図として扱ってください。
+- **子プロセス用の env 辞書はこの規則の対象外です。** GUI の launch、orchestrator、
+  experiment の各経路はサブプロセスへ渡す `proc_env` マッピングにこのキーを設定
+  しますが、このプロセスの環境は変更しないため迂回には当たりません。
 
 ### LLM モデル選択
 
@@ -114,11 +138,45 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 
 ### 実行モード (RQGM)
 
+探索（`ARI_MODE`）と論文フェーズ（`ARI_PAPER_MODE`）という 2 つの独立した軸は、
+それぞれ**二重キーのインターロック**の背後にあります。モード変数とその
+`*_ENABLED` の相方が*両方とも*統治経路を選んでいなければ、その軸は既定値
+（`simple_bfts` / `linear`）にフォールバックします。片方だけでは何も有効に
+なりません。`scripts/setup/setup_env.sh` は以下の変数すべてを、生成される `.env`
+にコメントアウトされたテンプレート行として（そのキーがまだ存在しない場合にのみ）
+追記し、インターロックをコメントに明記します（「both must agree or ARI falls back
+to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
+
 | 変数 | 目的 | デフォルト |
 |---|---|---|
 | `ARI_MODE` | 実行モードのオーバーライド: `simple_bfts` \| `ari_rqgm`（workflow.yaml の `ari.mode` をオーバーライド; 不正な値は警告の上で無視される）。RQGM の有効化には加えて `ARI_RQGM_ENABLED` インターロックが必要 — 不一致はすべて `simple_bfts` にフォールバックする。`export_resolved_config_to_skill_env` はスキルサブプロセス向けにこれを*実効*モードで `setdefault` する（v1 でこれを読むスキルは無い）。`ari resume` では `rqgm_state.json` に永続化されたモードがこの変数に優先する。`docs/guides/execution_modes.md` を参照 | `simple_bfts` |
 | `ARI_RQGM_ENABLED` | RQGM マスターインターロックのオーバーライド: `0`/`1`/`true`/`false`（workflow.yaml の `rqgm.enabled` をオーバーライド）。ガバナンスランタイムが構築されるには、これ**と** `ARI_MODE=ari_rqgm` の両方が一致している必要がある | `false` |
+| `ARI_PAPER_MODE` | 論文フェーズのモードオーバーライド: `linear` \| `rqgm_archive`（workflow.yaml の `paper.mode` をオーバーライド; 不正な値は警告の上で無視される）。`ARI_MODE` とは直交しており、探索軸と論文軸は独立に設定する。アーカイブの有効化には加えて `ARI_RQGM_PAPER_ENABLED` インターロックが必要で、不一致はすべて `linear` にフォールバックする。`apply_paper_env_overrides` が適用するが、論文コマンドはこれを**明示的に**呼ぶ必要がある: 論文エントリの config ローダは env オーバーライドを一切適用しないため、この変数は `ari run` / `ari resume` のオーバーライドブロックに便乗できない。[実行モード](../guides/execution_modes.md)の「論文実行軸: `paper.mode`」を参照 | `linear` |
+| `ARI_RQGM_PAPER_ENABLED` | 論文アーカイブのインターロックオーバーライド: `0`/`1`/`true`/`false`（workflow.yaml の `rqgm.paper.enabled` をオーバーライド; 不正な値は警告の上で無視される）。ドラフトアーカイブが有効になるには、これ**と** `ARI_PAPER_MODE=rqgm_archive` の両方が一致している必要がある | `false` |
 | `ARI_PAPER_AGENT_AS_JUDGE` | agent-as-judge によるドラフト採点のオーバーライド: `0`/`1`/`true`/`false`（`rqgm.paper.reviewer.agent_as_judge.enabled` をオーバーライド; 不正な値は警告の上で無視される）。`ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED` と同じ「代入前に検証する」方針で `apply_paper_env_overrides` が適用する。無効 ⇒ 決定論的で LLM を使わない会議ルーブリック採点器が使われ、ドラフト採点経路にライブ LLM 呼び出しは載らない（P2）。有効 ⇒ 実際の `LLMClient` を用いた査読者が各アーカイブドラフトを*同じ*会議ルーブリックの軸で採点し、その重みは ACTIVE な統治対象 `paper_reviewer` プロンプトの強調に従う。決定論的リーダでは読めない軸（`novelty`、`significance`）も読める。LLM エラー、解析不能な応答、ルーブリックの軸重みを十分に覆わない応答では決定論的ルーブリックへフェイルオープンする。実効的な `rqgm_archive` 論文モード（`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`）でのみ意味を持つ | (未設定 ⇒ 無効) |
+
+以下の 4 つはスイッチではありません。RQGM エポックの実行アイデンティティをより
+具体的にするための、任意の配備側の申告です。`capture_execution_identity` はエポック
+開始時にそれぞれを読み、未設定または空白の値をリテラル文字列 `unresolved` として
+記録し、4 つすべてが解決されない限り `execution_identity.complete` を `false` の
+ままにします。ARI は可変のプロバイダエイリアスを固定された実装だとは主張しません。
+与えられた値が真実かどうかを検証する仕組みはなく、この pin は測定ではなく申告です。
+`docs/reference/configuration.md` にも同じ 4 つが、pin する対象と対応づけて
+掲載されています。
+
+| 変数 | pin する対象 | デフォルト |
+|---|---|---|
+| `ARI_MODEL_REVISION` | 提供元 / モデルの厳密な版 | (未設定 ⇒ `unresolved` として記録) |
+| `ARI_TOOL_BUNDLE_REVISION` | 変更不能なツール一式の版 | (未設定 ⇒ `unresolved` として記録) |
+| `ARI_ENVIRONMENT_DIGEST` | コンテナまたは環境のダイジェスト | (未設定 ⇒ `unresolved` として記録) |
+| `ARI_DATA_SNAPSHOT_DIGEST` | 変更不能な外部データスナップショットのダイジェスト | (未設定 ⇒ `unresolved` として記録) |
+
+`ARI_HARNESS_CONTAINER_ROOT` は同じ `setup_env.sh` のブロックで宣言されますが、
+モード選択ではなく Harness の実行基盤に属します。
+
+| 変数 | 目的 | デフォルト |
+|---|---|---|
+| `ARI_HARNESS_CONTAINER_ROOT` | **論理的な** Harness コンテナ参照（`apptainer:<name>.sif` または `singularity:<name>.sif`）を解決する絶対ルート。検証済みエントリが論理形式を持つのは、公開されるマニフェストにサイト固有のパスを含めないためであり、その結果として具体的なディレクトリは環境からしか与えられない。未設定 ⇒ 論理参照は `HarnessSubstrateError` で拒否される。素のパス参照は互換入力としてそのまま通り、この変数を参照しない。ルートは絶対パスかつ実在するディレクトリで、シンボリックリンクであってはならない。解決後のイメージはそのルート直下にある通常ファイル（シンボリックリンク不可）でなければならず、ルート外へ解決されるものは拒否される | (なし — 論理参照を使う場合のみ必要) |
 
 ### バックエンド + エグゼキュータ
 

@@ -24,13 +24,17 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/components/Governance/AuditTab.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Governance/ScientificAssuranceTab.tsx
+    role: implementation
+  - path: ari-core/ari/viz/api_kca.py
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/components/Governance/shared.tsx
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # RQGM Governance Workspace Guide
@@ -43,9 +47,13 @@ and how that changed the scores.
 the `/api/v1` RQGM surface at all — every route under
 `/api/v1/runs/{run_id}/rqgm/*` is a GET, and the one tab served outside that
 surface (Knowledge · Capability · Assurance) reads
-`GET /api/checkpoint/{run_id}/kca`, likewise a GET. Nothing you can click in
-this workspace registers a component, adopts a policy, opens an epoch, or
-rewrites a score. Governance changes come from the run itself. (The Studio
+`GET /api/checkpoint/{run_id}/kca` through its own client, likewise a GET.
+The other eight tabs draw their data from those `rqgm/*` read models through
+the typed `/api/v1` client hooks. The only other read that feeds the page is
+the shared node selector's option list, filled from the run tree read model
+(`GET /api/v1/runs/{run_id}/tree`) purely to enumerate node ids — a GET as
+well. Nothing you can click in this workspace registers a component, adopts
+a policy, opens an epoch, or rewrites a score. Governance changes come from the run itself. (The Studio
 can pick `ari_rqgm` for a **new** run — that decides which algorithm a run
 executes, not what the institutions do; see below.)
 
@@ -59,6 +67,17 @@ metric sentinels) and import no kernel code. What you see is a replay, not a
 rerun.
 
 ## Getting there, and the capability state
+
+Governance is a **v2-only route**, gated on the shell's `gui_v2` capability
+flag. With `ARI_GUI_V2=0` or `false` the sidebar drops the Governance entry
+and `#/governance` resolves to Home exactly like an unknown hash — silently,
+with no message. That fallback lives in the shell router, above this
+workspace, so it cannot show the capability screen described below: nothing
+governance-specific ever mounts to explain itself. In practice you meet this
+only when someone set the kill-switch on purpose — the flag ships on, and a
+failed `GET /api/capabilities` is treated as `gui_v2: true` rather than
+dropping you into the fallback shell (see
+[Dashboard guide → The capability flag](dashboard.md#the-capability-flag)).
 
 Open the tab from the run Overview, or type the URL. If the run has no
 `rqgm_state.json` you do **not** get an error — you get a capability
@@ -85,7 +104,7 @@ Configuration Studio's Execution control (new runs only; see
 [Configuration Studio](configuration_studio.md)). Choosing a mode there is
 a launch decision, not a governance mutation: it registers no component,
 adopts no policy and rewrites no score, so this workspace stays read-only
-either way. The 97 `rqgm.*` governance and tuning parameters are still
+either way. The 104 `rqgm.*` governance and tuning parameters are still
 configuration-file only.
 
 The tab strip is a real `role="tablist"` composite with

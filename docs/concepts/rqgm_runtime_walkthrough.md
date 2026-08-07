@@ -100,7 +100,7 @@ single prepare → … → commit transaction on `rqgm_transitions.jsonl` —
  "payload": {"transition_id": "transition_founding"}, "prev_event_hash": ""}
 {"event_id": "evt_000001", "event_type": "prompt_registered",
  "payload": {"prompt_id": "agent_system_prompt_v1", "role": "generator",
-             "status": "active", "prompt_hash": "a50abe13d568",
+             "status": "active", "prompt_hash": "6eff1fb33e63",
              "source": {"kind": "committed_template", "key": "agent/system"}, …}}
 // … 31 more prompt_registered, then 20 component_registered …
 {"event_id": "evt_000053", "event_type": "epoch_transaction_commit",
@@ -332,9 +332,11 @@ without interrupting a single node.
 The end-of-run `ensure_epoch` flush (step 6) fires a final boundary if the
 node-count trigger is met; otherwise the trailing epoch simply stays
 `open`, matching crash-recovery semantics — `ari resume` replays the event
-logs, re-verifies the audit-log hash chain, and continues (a blocking
-integrity finding degrades to governance-suspended carry-over, never a
-refusal to resume).
+logs, then runs two independent integrity passes over the restored state —
+the audit log's append-only hash chain, and a selective-erasure check over
+the restored records — and continues (a blocking integrity finding from
+either degrades to governance-suspended carry-over, never a refusal to
+resume).
 
 The paper phase that follows then runs the **paper-candidate pre-flight**:
 persisted utility penalties are replayed onto the loaded nodes, the best
@@ -435,7 +437,27 @@ rqgm_archive` + `rqgm.paper.enabled: true` (see
    The hash keying matters: one component id spans successive prompt versions,
    so a component-keyed score would leak the incumbent's faithfulness onto its
    successor and make a fresh writer instantly impeachable.
-3. **Adoption (co-evolution witness).** With the role opened, a co-evolved
+3. **Adoption (co-evolution witness).** The candidate pool is narrowed before
+   any of this. The boundary meta step (step 6) mints one candidate per
+   evolvable role with an active incumbent, but on a paper boundary
+   `RQGMRuntime._active_evolvable_incumbents` first filters that set down to
+   roles whose **name starts with `paper_`** — leaving `paper_writer` and
+   `paper_reviewer`. The paper checkpoint still *registers* the full founding
+   set (35 prompts / 23 components), so the kernel and governance machinery stay
+   complete; only minting is narrowed, which concentrates the per-epoch
+   candidate budget on the two roles this phase actually runs and is why
+   exploration roles show no candidates during a paper run. The filter is a
+   literal name-prefix test rather than a declared role list, so the
+   paper-mode-gated eighth adversary goes with them: it registers under the
+   ordinary `adversary` role, stays registry-governed and sanctionable, but
+   never has a candidate minted for it in this phase. Exploration is untouched —
+   `paper_phase` is passed only by `PaperArchiveRuntime`, so an exploration
+   `ari_rqgm` boundary never reaches the branch. Under an RQGM-paper evaluation
+   posture (`rqgm.eval.enabled: true` plus a
+   `rqgm.eval.paper_ablation.condition_id`) the posture filters the survivors
+   once more — `P0_hgm_h_fixed_critic` leaves only `paper_writer`.
+
+   With the role opened, a co-evolved
    successor prompt can climb `validated → shadow → probationary_active` and
    adopt; T21 then moves the demoted incumbent to a reinstatable `shadow`
    standby. The witness is the active `prompt_hash` observed at each round

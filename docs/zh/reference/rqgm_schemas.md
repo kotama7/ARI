@@ -158,8 +158,11 @@ Id 格式（全部零填充、按检查点计数）：
 **用途：**所有 RQGM 记录 schema 引用的规范共享 `$defs` ——
 `rqgm_record_base` 信封、封闭的状态 / 角色 / 层级词汇表，以及
 id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
-镜像）。其他 schema 文件中内嵌的这些 `$defs` 副本由
-`ari-core/tests/test_rqgm_state_store.py` 钉为与本文件逐字节相等。
+镜像）。`epoch_state.schema.json`、`rqgm_registry.schema.json` 与
+`rqgm_transition_event.schema.json` 中内嵌的这些 `$defs` 副本由
+`ari-core/tests/test_rqgm_state_store.py` 钉到本文件 —— 是在解析后的 JSON
+上逐条目比较，而非逐字节；该测试同时把状态 / 角色 / 层级列举与 event_type
+列举钉到 `ari.rqgm.events` 的词汇表。
 
 每条治理记录都携带 `rqgm_record_base` 的八个必填字段（**只在**此处
 记录一次；下面各 schema 表只列记录特有字段）：
@@ -189,8 +192,11 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
   `failure_summary_compressor`、`policy_mutator` 与 `utility_policy`
   （RQGM Task 14 —— 受治的分数及其提案者）、`paper_writer` 与
   `paper_reviewer`（paper-archive；仅在实效的 `rqgm_archive` paper
-  模式下注册，因此探索启动字节一致）；固定（为溯源而注册，宪法上
-  不可变）：`constitutional_kernel`、`fixed_verifier`、`audit_log`。
+  模式下注册，因此探索启动字节一致）；治理行动者（没有提示词变异的后继
+  路径，但与其他组件一样可被制裁、retire 与 ban）：`auditor`、
+  `evidence_clerk`、`governance_judge`；固定（为溯源而注册，宪法上
+  不可变）：`constitutional_kernel`、`knowledge_binder`、
+  `capability_binder`、`harness_resolver`、`fixed_verifier`、`audit_log`。
 - **层级**：`fixed`、`institutional`、`meta`。
 
 ## 状态与事件日志 schema（Task 02）
@@ -233,6 +239,13 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 | `execution_identity` / `execution_fingerprint` | 声明的模型/后端/温度、搜索与评估设置、技能、禁用工具，以及模型/工具/环境/数据修订固定值。缺失固定值存为 `unresolved`，并设置 `complete: false` |
 | `epoch_fingerprint` | 合成政策与执行身份的12位摘要，排除 `created_at`、`status` 和自身 |
 | `created_at` | 元数据；被指纹排除 |
+
+随发布的 schema 把 `schema_version` 钉为 `1 | 2`。而 `ari/rqgm/state.py` 在
+以 Knowledge/Capability/Assurance identity 冻结纪元时会改写出 **v3** 载荷
+（多出一个 `scientific_identity` 块，并在 `execution_identity` 内复制一份
+`scientific_assurance`，见 `KCA_EPOCH_STATE_SCHEMA_VERSION`）。该形状未在此
+声明，因此 v3 快照无法通过随发布 schema 的校验；全部关闭的纪元仍为 v2 且
+字节一致。
 
 ### `rqgm_registry.schema.json`
 
@@ -572,7 +585,7 @@ paper-archive 阶段才抵达审计 —— 该阶段换入一个携带它的、�
 | `raw_attack` | `atk_%06d` / `adversary` | `adversary_type`（随发布 schema 的 enum 是封闭七类**探索**集合：`overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`；paper 阶段增加第八类 `paper_self_preference` —— 见 [Paper-archive schema](#paper-archive-schemas-paper-rqgm_archive-mode)）；`target_artifact.type`（封闭集合：`proposal`、`experiment_plan`、`node_report`、`metric_result`、`paper_claim`、`novelty_claim`、`citation_claim`、`reproducibility_claim` —— 绝不是组件）；`attack_claim`；`attack_evidence_refs`（要求 ≥ 1）；`severity_claimed`。仅为审计材料 —— 原始攻击从不触碰分数（不变量 8） |
 | `defender_response` | `def_%06d` / `defender` | `raw_attack_id`；`stance` `rebut` \| `concede` \| `propose_fix` |
 | `judgment_record` | `jdg_%06d` / `judge` | `raw_attack_id`；`verdict` `valid` \| `partially_valid` \| `invalid`；裁判指定的 `severity`（`low`–`critical`）；`defense_status`。总是写入，即使为 `invalid` |
-| `validated_attack` | `vat_%06d` / `judge` | `case_type`、`raw_attack_id`、`judgment_id`、`validated`、`verdict`、`severity`。**仅**对 `valid` / `partially_valid` 裁定存在（必须经过裁决，不变量 9）。承载问责绑定 —— 见下文 |
+| `validated_attack` | `vat_%06d` / `judge` | `case_type`、`raw_attack_id`、`judgment_id`、`validated`、`verdict`、`severity`、`expected_behavior`（按 case 类型取值的 `角色 → 预期行为` 映射）。**仅**对 `valid` / `partially_valid` 裁定存在（必须经过裁决，不变量 9）。承载问责绑定 —— 见下文 |
 
 #### `validated_attack` 上的问责绑定
 
@@ -581,7 +594,7 @@ paper-archive 阶段才抵达审计 —— 该阶段换入一个携带它的、�
 
 | 字段 | 值空间 | 读者 |
 |---|---|---|
-| `affected_components` | 角色名（`["reviewer"]`）—— 关于谁被牵涉的复数观测。角色是攻击唯一能诚实知晓的东西，而没有任何机制会制裁一个角色。（该名称承载的是角色；之所以不改名，是因为改名会重写每一条已存储的记录） | FailureSummary 的 `affected_roles` |
+| `affected_components` | 角色名（`["reviewer"]`）—— 关于谁被牵涉的复数观测。角色是攻击唯一能诚实知晓的东西，而没有任何机制会制裁一个角色。（该名称承载的是角色；之所以不改名，是因为改名会重写每一条已存储的记录） | RQGM viz 读模型（`RqgmValidatedAttackV1.affected_components`）。**不是** FailureSummary —— 它的 `affected_roles` 取自下文 `expected_behavior` 的键 |
 | `target_component_id` | **单个**可由注册表解析的组件 id（`"reviewer_v3"`）—— 做出该攻击所推翻之决定的在任者 | `ReliabilityMonitor.validated_attack_involvement`、`EvidenceClerk` 的目标选择 ⇒ 整条弹劾链 |
 
 `target_component_id` 是**可选的，且要么存在要么缺席，绝不会存在但为空**
@@ -599,6 +612,19 @@ paper-archive 阶段才抵达审计 —— 该阶段换入一个携带它的、�
 生成组件、提示词摘要和纪元。七种对抗者类型只有在该来源与纪元冻结现任一致时
 才绑定 `generator_v1`；旧记录、缺失或不匹配来源保持无目标，不会让后继为前任
 成果受罚。
+
+**`affected_roles` 来自何处** —— 尽管名字相似，它并不来自
+`affected_components`。`build_failure_summary`（`ari/rqgm/adversarial/records.py`）
+把 `affected_roles` 设为 `tuple(sorted(validated.expected_behavior))`：即第三个
+角色形字段 `expected_behavior` 的排序后**键集**，该 `角色 → 预期行为` 映射由
+`AdversarialRound._expected_behavior` 打在记录上。该映射**按 case 类型取值**：
+七种探索类型全都取同一个模块级通用模板，键为 `reviewer` / `generator` /
+`judge`（因此它们的记录保持字节一致），而 `paper_self_preference` 提供自己的
+两个键 `paper_reviewer` 与 `paper_writer`。在两个绑定都能解析的 paper 案例上，
+这两个字段按构造就会分叉：回合为每个可解析角色写一条记录，每条只在
+`affected_components` 中写自己的那一个角色，而两条记录都携带同样的双键
+`expected_behavior` —— 于是两份 FailureSummary 都报告两个角色。想读其中一个却
+读了另一个，是实打实的错误，而非同义替换。
 
 ### `rqgm_utility_record.schema.json`
 
@@ -632,7 +658,18 @@ Task-10 路径：在新策略下重新组合每个节点保存的 `_axis_scores`
 | 字段 | 说明 |
 |---|---|
 | `case_seq` | 单调案例计数器 |
-| `cases[]` | AdversarialReplayCase：`case_id`（`adv_case_%05d`）、`case_type`（随发布 schema 的七种探索类型；paper runtime 增加下文所述、阶段外 inert 的第八种）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` `active` \| `evicted`（逐出为仅逻辑）、`replay_view`（完整材料 —— 对角色 `clean_room_generator` 拒绝）与 `abstract_view`（污染安全的 FailureSummary —— 不含原始攻防文本） |
+| `cases[]` | AdversarialReplayCase：`case_id`（`adv_case_%05d`）、`case_type`（随发布 schema 的七种探索类型；paper runtime 增加下文所述、阶段外 inert 的第八种）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` `active` \| `evicted`（逐出为仅逻辑）、`replay_view`（完整材料 —— `artifact_refs`、三个记录 id，以及按值拷贝的记录 `expected_behavior` 映射；对角色 `clean_room_generator` 拒绝）与 `abstract_view`（污染安全的 FailureSummary —— `case_type`、`failure_pattern`、`violated_expectation`、`affected_roles`；不含原始攻防文本） |
+
+两个视图切分的是同一份角色信息。`replay_view.expected_behavior` 是从
+ValidatedAttackRecord 按值取来的 `角色 → 预期行为` 映射；
+`abstract_view.affected_roles` 则只是该映射排序后的键集，别无其他（见
+本页「`validated_attack` 上的问责绑定」一节）。由于该映射
+按 case 类型取值，被重放案例所指名的角色取决于其 `case_type`：七种探索类型共用
+通用的 `reviewer` / `generator` / `judge` 模板，而 paper 阶段的
+`paper_self_preference` 案例指名 `paper_reviewer` 与 `paper_writer`。随发布
+schema 中 `abstract_view` 为 `additionalProperties: false` —— 污染边界是被声明
+的形状，而不仅是压缩器的自律 —— 而 `replay_view` 没有这一限制，改由 capability
+把关（对角色 `clean_room_generator` 拒绝）。
 
 ## 提示词进化 schema（Task 07）
 
@@ -651,8 +688,23 @@ Task-10 路径：在新策略下重新组合每个节点保存的 `_axis_scores`
 | `parent_prompt_id` | 世系（创始提示词为 `null`） |
 | `template_ref` | `{kind: package \| checkpoint \| policy, key\|path}` —— 字节所在位置（已提交模板、进化后的正文 `rqgm_prompts/<prompt_id>.md`，或由 `path` 引用的 Task-14 受治效用策略正文） |
 | `prompt_hash` / `full_sha256` | 模板字节的 `hash12` + 完整 sha256（与 `FilesystemPromptLoader.load_versioned` 完全相同的方案） |
-| `evolvable` / `epoch_introduced` | 进化资格 + 溯源 |
-| `spec` | 行为契约：`role_instruction`、`constitutional_constraints[]`、`input_contract.required_fields[]`、`output_schema`，可选 `rubric` / `calibration_policy` / `budget_policy` |
+| `evolvable` / `epoch_introduced` | 进化资格 + 溯源。对 v1 不去进化的模板，注册规则是：不为其新造角色，而是以 `evolvable=False` 注册在 Task 02 封闭角色词汇中**最接近**的角色之下 —— 因为新增一个角色键会改变 `active_prompt_hashes`，进而改变 `registry_version`，却没有任何功能收益。目前有六行属于此列 —— `generator` 之下的 `agent/system`、`pipeline/keyword_librarian`、`viz/wizard_chat_goal`、`viz/wizard_generate_config`，`router` 之下以 raw 方式加载的 `orchestrator/root_idea_selector`，以及 `reviewer` 之下的 `governance/auditor`（最后一条沿用同一先例，尽管 `auditor` 对**组件**而言确是可注册角色（`auditor_v1` 属创始）—— 可弹劾性来自组件，而非提示词的角色）。角色内部的行序是有意义的：为了注册表"最后一个活跃者胜出"的汇总，会进化的 primary 必须排在**最后**，因此上述各行都置于其角色 primary 之前。另需注意，`evolvable=False` 也被用于另一种理由 —— 三个 `rqgm/proposal_*` 模板是为问责而受治，并非角色替身 |
+| `spec` | 行为契约：`role_instruction`、`constitutional_constraints[]`、`input_contract.required_fields[]`、`output_schema`，可选 `rubric` / `calibration_policy` / `budget_policy`。`output_schema` 恰好保留一个键 `__reply__` 表示回复**种类**（`bare_index` \| `json_array` \| `json_object` \| `freeform`；缺席 ⇒ `json_object`）；其余每个键都是必填 JSON 字段名，值为类型名（`list`、`dict`、`string` / `str`、`float`、`int`、`bool`）。消费者是 `check_output_against_schema`（`ari/rqgm/prompt_evolution.py`），它在必填字段循环中跳过 `__reply__`。该保留只存在于代码里：随发布 schema 只把 `output_schema` 声明为必填对象，对 `__reply__` 只字未提 |
+
+**怪癖（已冻结）：两个创始 spec 记录空的 `required_fields`。**
+`input_contract.required_fields[]` 通常是模板抽取出的占位符集合（已排序）。
+已提交模板中有两个例外 —— `orchestrator/lineage_decision` 与
+`orchestrator/root_idea_selector` 列在 `RAW_LOADED_KEYS`
+（`ari/rqgm/prompt_spec.py`）中，其创始 spec 记录的是 `[]`。这不是契约上的
+选择。两者的正文都被原样当作系统提示词加载
+（`ari/orchestrator/lineage_decision.py` 与
+`ari/orchestrator/root_idea_selector.py` 中的
+`_load_system_prompt_versioned`），从不 `.format`，因此其"reply ONLY with
+JSON: `{…}`"一行中字面的 JSON 花括号会被登记为伪占位符：抽取器报出
+`"action"` 和 `"chosen_index"` —— 带引号的 JSON 键，而不是输入名。把它们记为必填输入比一个都不记更糟，所以
+创始表一个都不记。请把它读作被测试固定下来的观测性例外
+（`ari-core/tests/test_rqgm_prompt_spec.py`），而不是可以效仿的范式：不需要
+输入的新模板应当没有占位符，而不是再加一条抑制条目。
 
 ### `rqgm_prompt_evolution.schema.json`
 
@@ -868,7 +920,8 @@ paper-archive 的 paper 模式（`paper.mode: rqgm_archive`，由
 （`build_paper_run_start_state`）拥有：`schema_version`、`paper_mode`
 （`linear` \| `rqgm_archive`）、`rqgm_paper_enabled`、`mode_source`
 （∈ `config` \| `env` \| `resume`）、`created_at`（仅元数据，从不哈希）、
-`exploration_mode`、`seed_node_id`、`switch_journal[]`。持久化的模式在
+`exploration_mode`、`seed_node_id`、`switch_journal[]`，以及仅当调用方
+pin 了评估条件时才出现的 `evaluation_condition_id`。持久化的模式在
 再次调用时胜出 —— resume 绝不静默翻转 paper 模式。写入方：
 `ari.checkpoint.save_paper_archive_state_json`。
 
@@ -884,6 +937,28 @@ paper-archive 的 paper 模式（`paper.mode: rqgm_archive`，由
 —— 前沿 + best-belief 排序键）、`suggested_revisions_ref`、
 `anchors_preserved`、`decode_seed`、`epoch_id`，以及读取时标志
 `is_best_belief` / `compiled`（由 `mark_paper_draft_flags` 原地更新）。
+
+每行还带有 `created_at` 以及 Manuscript Complete 的 `manuscript_*` 块：
+随草稿一同写入的绑定字段（`manuscript_bound`、`manuscript_mode`、
+`manuscript_attempt_id`，`manuscript_input_fingerprint` /
+`manuscript_binding_digest` / `manuscript_profile_digest` /
+`manuscript_context_digest` / `manuscript_readiness_digest` /
+`manuscript_brief_bundle_digest` 这些 pin、`manuscript_section_brief_digests`、
+`manuscript_allowed_evidence_ids` / `manuscript_contextual_negative_ids` /
+`manuscript_forbidden_evidence_ids` 列表、`manuscript_required_disclosures`
+与 `manuscript_omission_count`），以及随后由
+`record_paper_draft_manuscript_evaluation` 附加的确定性诊断
+（`manuscript_candidate_status`、`manuscript_hard_disqualified` 及
+`manuscript_hard_disqualification_reasons`、
+`manuscript_candidate_artifact_sha256`、`manuscript_candidate_gate_digest` /
+`manuscript_candidate_gate_status`，以及
+`manuscript_contextual_negative_evidence_mentions` /
+`manuscript_forbidden_evidence_mentions` /
+`manuscript_missing_required_disclosures` 这些发现）。唯独这次附加**不是**
+尽力而为：它是只针对该记录的 last-record-wins 重写，并会重新读回文件，
+若取值无法 round-trip 就抛错 —— 因为 enforce 模式的资格判定依赖它们。
+在默认的 `manuscript.mode: "off"` 下该块为空 / false 默认值；
+`manuscript_hard_disqualified` 的行会像 stale 行一样被排除出前沿。
 
 ### `paper_anchor_corpus.jsonl` —— 只读 accept/reject 锚
 
@@ -912,15 +987,39 @@ AI 对人类自我偏好边际。写入 `{ckpt}/rqgm/` 快照目录，尽力而�
 authorship == human)`，**当语料库无 AI/人类划分时为 `0.0`**（语料缺失 /
 仅 AI 的降级，绝非错误）。
 
+**语料库从哪里来。** 该统计没有自己的语料库：它跑在
+`reviewer_anchor_cases(pool)` 之上 —— 与评审者锚定效用所用的同一个
+`paper_anchor_corpus.jsonl` 池 —— 只是多读一个标签维度，即上文所述每个案例的
+`authorship`（`human` \| `ai`）字段。因此 AI/人类划分是锚语料库的属性。若语料库
+存在但没有划分，`margin` 为 `0.0`，母体信号沉默，而对抗者仍会依据另外两个
+过度接受信号提起指控 —— 声明门控的发现，或"在任者接受了某个 ground truth 为
+`reject` 的锚案例"这一逐案例的直接不一致。若根本没有语料库（由于
+`anchor.enabled` 默认为 `false`，这正是默认情形），就没有可发现的过度接受
+案例，该回合根本不会发火。
+
+相关旋钮是 `rqgm.paper.self_preference.*`，仅在生效的 `rqgm_archive` paper
+模式下有意义：`enabled: true`；`sample_size: 8`（每纪元打分的 held-out 案例
+数，确定性地取 `case_id` 序的前 N 个；同一个数字还会第二次施加到过度接受子集
+上，因而也限定了被攻击的案例数 —— 之上还有共享的每纪元对抗者调用上限）；`accept_threshold: 0.6`（评审者
+"已接受"的阈值，照搬治理侧的 `CANDIDATE_PASS_THRESHOLD`，同为 `0.6`）——
+它只被带入攻击 bundle 供过度接受的前置信号使用，边际计算本身**并不**用它，
+而是把评审者的 `accept_recommendation` 二值化；`margin: 0.1`（触发确定性前置
+信号的 AI 对人类差值）。有一个旋钮**已声明但未接线**：`corpus_path: ""` 被
+描述为"`""` 复用锚语料库，给出路径则以专门的 authorship 集合覆盖"，其中 `""`
+一侧确是代码的行为，但没有任何代码读取
+`rqgm.paper.self_preference.corpus_path`，因此在那里设置路径今天没有任何效果。
+加载器唯一会解析的语料库路径是 `rqgm.paper.anchor.corpus_path`。
+
 **第八个对抗者类型。** `paper_self_preference` 是 Python `ADVERSARY_TYPES`
 元组（`ari/rqgm/adversarial/records.py`，写入路径有效性检查
 `validate_raw_attack` 使用的）的第八个成员，为 paper 阶段而加，在其之外
 inert；随发布的 `rqgm_attack_records.schema.json` 的 `adversary_type` /
 `case_type` enum 记录七个**探索**类型。`paper_self_preference` 案例牵涉
-`paper_reviewer` 角色，它 —— 不同于七类的 `generator` —— **拥有**已注册
-在任者（paper 模式下的 `paper_reviewer_v1`），因此 Task-15 的
+`paper_reviewer` 角色 —— 若 Layer-0 声明门控确认该草稿不忠实，还会牵涉
+`paper_writer`。两者 —— 不同于七类的 `generator` —— 都**拥有**已注册在任者
+（paper 模式下的 `paper_reviewer_v1` / `paper_writer_v1`），因此 Task-15 的
 `target_component_id` 绑定发火，validated-attack → 弹劾链在生产中运行；
-在 paper 阶段之外，角色解析为 `""`，探索保持字节一致。
+在 paper 阶段之外，两个角色都解析为 `""`，探索保持字节一致。
 
 ## 检查点文件清单
 

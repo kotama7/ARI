@@ -2,19 +2,25 @@
 sources:
   - path: ari-core/tests
     role: test
+  - path: ari-core/tests/fixtures/gui_refresh
+    role: test
   - path: pytest.ini
     role: config
   - path: scripts/docs
     role: test
   - path: scripts/check_dashboard_ux.py
     role: test
+  - path: scripts/check_bundle_budget.py
+    role: test
+  - path: scripts/quality/check_bundle_budget.yaml
+    role: config
   - path: ari-core/ari/viz/frontend/src/i18n
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__
     role: test
   - path: .github/workflows
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # ARI コードのテスト方法
@@ -90,6 +96,61 @@ ARI はかつて `$HOME/.ari/` に書き込んでいました。v0.5.0 でその
 2. 変更セットを二分探索する。ほとんどの場合、`dict` の順序依存または
    `id(...)` に依存するハッシュが原因です。
 3. 該当ドメインのスイート (memory、BFTS など) にテストを追加する。
+
+### 合成チェックポイントフィクスチャ
+
+GUI と `/api/v1` のリーダーテストはチェックポイントを同梱しません — 生成します。
+`ari-core/tests/fixtures/gui_refresh/` には純 Python のファクトリが 2 つあります:
+
+- `run_fixture_factory.py` — `make_run_checkpoint(dest, nodes=N, seed=S)` が
+  実行チェックポイント (`tree.json`、`nodes_tree.json`、`results.json`、
+  `experiment.md`、`idea.json`、`meta.json`、`cost_trace.jsonl`) を本物の
+  `ari.checkpoint.save_*_json` ヘルパー経由で書き出すため、JSON の整形が
+  本番ライターとバイト単位で一致します。オプションの `paper` / `review` /
+  `ors` / `ear` の結果レイヤーはすべて既定で OFF です。
+- `rqgm_fixture_factory.py` — `make_rqgm_checkpoint(dest, nodes=10, epochs=2,
+  ...)` はまずベースファクトリを呼び、その上に決定論的な RQGM ガバナンス
+  サーフェス (ハッシュチェーンされた transition / audit ログ、registry の
+  ロールアップ、prompt 本体、node metrics のセンチネル) を重ねます。ハッシュ
+  とステートのヘルパーは再実装せず本物の `ari.rqgm` から import しています。
+
+使う際に効いてくる性質が 3 つあります。
+
+**何もコミットしません。** どちらのファクトリも呼び出し側が渡したディレクトリ
+(全消費側で `tmp_path`) に生成するため、古くなっていくフィクスチャデータが
+リポジトリに残りません。
+
+**決定性 (P2)。** すべての値は固定リテラルか、シードから `hashlib` で導出した
+ものです。`random` は一度も import されず、タイムスタンプは
+`datetime.now()` ではなくリテラル `2026-07-23T00:00:00Z` への固定演算です。
+同じ `(nodes, seed)` はバイト同一のファイルを生み、
+`ari-core/tests/test_gui_baseline_run_fixtures.py` がそれを直接検証しています。
+
+**破損モードが堅牢性の入力です。** `corrupt=` はまず完全に妥当なチェックポイント
+を書き、その後ちょうど 1 箇所だけを壊すので、テストは一度に 1 つの失敗形状だけを
+切り出せます: `"truncated_jsonl"` は `cost_trace.jsonl` の最終行を途中で切り、
+`"invalid_json"` は `tree.json` の末尾を削り、`"partial_write"` は
+`nodes_tree.json` を妥当なまま残して `tree.json` を削除します。RQGM ファクトリは
+独自の 3 つ — `"broken_chain"`、`"truncated_transitions"`、`"registry_mismatch"`
+— を持ちます。どちらも未知のモードは `ValueError` で拒否します。
+
+サイズ階層は命名の慣習であって契約ではありません。ファクトリの docstring と
+`ari-core/tests/fixtures/gui_refresh/README.md` は `nodes=10` / `1000` /
+`10000` を small / medium / large と呼び、small 階層を「every reader must load
+it (すべてのリーダーがロードしなければならない)」と述べていますが、それを強制
+する仕組みはありません。`nodes` は `nodes >= 1` の検査が 1 つあるだけの素の
+整数パラメータで、3 階層を実際に使うのは
+`test_gui_baseline_run_fixtures.py` だけ (しかも決定性ケースには `nodes=50` を
+使います)。リーダー側のスイートはアサーションに必要な数を渡すだけで、
+他の `test_gui_*` 各ファイルでは `nodes=2` から `nodes=10` の範囲です。階層名は
+それらのテストを読むときの略語として扱い、従うべきルールとしては読まないで
+ください。なお `test_gui_baseline_run_fixtures.py` では large 階層は生成される
+だけで再ロードされません。skip を掛けるための `slow` マーカーをリポジトリが
+定義していないためです。
+
+消費側はパッケージを import せず
+`importlib.util.spec_from_file_location` でファイルパスからファクトリを読み込む
+ため、小さなローダーヘルパーが各消費ファイルの冒頭に繰り返し置かれています。
 
 ## スキルレベルの規約
 
@@ -244,6 +305,60 @@ npx vitest run src/__tests__/shellA11yBaseline.test.tsx
 WCAG 2.2 AA のゲートは、自動・手動のいずれであれ、ダッシュボード刷新の目標で
 あって、このスイートが確立している性質ではありません。green な実行を AA 適合の
 証拠として読まないでください。
+
+**SPA のバンドル重量** — `scripts/check_bundle_budget.py` はダッシュボードの
+ビルドを一連の gzip 予算に収めますが、これも**どのワークフローにも組み込まれて
+いません**。ここでの理由は構造的です: frontend をビルドするワークフローが存在
+せず、`ari-core/ari/viz/static/dist/` はコミットされず生成される成果物なので、
+チェッカーが計測するディレクトリが runner 上に存在しません。
+`scripts/quality/generate_quality_report.yaml` には登録*されて*いますが、この
+ファイルを読む集約スクリプトは `contracts.yml` 内で `--target` モードで動きます
+— 他ジョブがアップロードした JSON アーティファクトをマージするだけでチェッカー
+は一切実行しません — そのため bundle budget はそこでは `unavailable` として現れ
+ます。ビルドの後に自分で実行してください。手動で実施する cutover 前チェック
+リストの 1 行です (`docs/guides/gui_cutover_runbook.md` §2):
+
+```bash
+cd ari-core/ari/viz/frontend && npm run build   # the checker never builds
+python scripts/check_bundle_budget.py --fail-on-regression
+```
+
+`ari-core/ari/viz/static/dist/assets/*.js` の各ファイルをインプロセスで gzip し
+(level 6、`mtime=0` なので同じビルドに対する再実行は同一の数値を報告します)、
+各 chunk をそのクラス予算 (単位は KiB の gzip サイズ) と比較します:
+
+| クラス | 対象 | 予算 |
+|---|---|---|
+| `entry` | `dist/index.html` が参照する `<script type="module">` の chunk | 100 |
+| `route` | 遅延ロードされるルート chunk (`<Name>Page-<hash>.js` で判定) | 150、ただし `SettingsPage` と `WizardPage` は 50 に絞る |
+| `shared` | その他すべての `.js` chunk — vendor 分割、ロケール辞書、共有コンポーネント | 150 |
+| `total` | 全 `.js` chunk の gzip サイズの合計 | 600 |
+
+`shared` の上限は意図的に保守的な上位集合です: 個別に予算が定められていたのは
+route chunk だけで、同じ数値をそれ以外にも広げることで、分割を誤った vendor
+バンドルが route クラスの外に隠れられないようにしています。`total` は目標値では
+なくラチェットの天井で、chunk ごとの予算では見えない唯一の失敗モード — 多数の
+chunk に重複した依存や、予算未満の新規 chunk が大量に増える事象 — のために存在
+します。
+
+ブラウザ側の指標 (LCP・INP・CLS) は意図的にゲートして**いません**: jsdom は描画
+せず、共有 runner は pass/fail 予算には騒がしすぎるためです。したがってバンドル
+の green な実行は体感性能について何も述べていません。その半分は固定マシン上の
+手動プロファイルで、リリースのエビデンスに記録します。
+
+終了コードの規約は `scripts/quality` ファミリーの他と同じです。素の実行はレポート
+を出力して exit 0。`--fail-on-regression` は
+`scripts/quality/check_bundle_budget.allow.yaml` に凍結されていない findings が
+1 つでもあれば exit 1 になりますが、このファイルは存在しません — 凍結が必要に
+なった予算がこれまで無く、allow ファイルが無ければ許可リストは空なので、予算
+超過の chunk は最初の実行で失敗します。`dist/assets` が無い場合は exit 2 です。
+ビルドの不在は予算の回帰ではなく環境の問題だからです。
+
+予算そのものは `scripts/quality/check_bundle_budget.yaml` にあります — dist の
+パス、route chunk の正規表現、4 つのクラス予算、そしてルートごとの上書きです。
+すべてのキーは省略可能で、チェッカーはコード内の既定値として同じ値を持っている
+ため、この YAML の存在意義は「予算の変更をコード編集ではなくレビュー可能な 1 行
+の diff にする」ことだけです。調整はスクリプトではなくこちらで行ってください。
 
 ## 回帰テストの書き方
 

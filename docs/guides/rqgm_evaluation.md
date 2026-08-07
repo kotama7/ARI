@@ -12,7 +12,7 @@ sources:
     role: test
   - path: ari-core/tests/test_rqgm_eval_kca_injection.py
     role: test
-last_verified: 2026-08-03
+last_verified: 2026-08-08
 ---
 
 # RQGM Evaluation and Ablation
@@ -25,9 +25,19 @@ script — no CLI command, no MCP tool, zero contract-surface change.
 ## Ablation conditions B0–B8
 
 Nine named presets in `scripts/rqgm_eval/ablation_matrix.yaml`, switchable
-via config alone. Each expands to a concrete `ari.mode` + feature-flag
-overlay (`ari.rqgm.evaluation.conditions.condition_overlay`); the exact
-expansions are pinned by `ari-core/tests/test_rqgm_eval_conditions.py`.
+via config alone. `ari.rqgm.evaluation.conditions.expand_condition` folds each
+preset's `inherits` chain — harness-side deep-merge sugar that makes the
+additive ladder explicit, and stripped from the result so no `inherits` key
+ever reaches a workflow overlay — and `condition_overlay` maps the resolved
+`mode` key onto the `ari.mode` config path and passes the `rqgm` /
+`proposal_router` / `bfts` blocks through under the owning features' own
+config paths. Every key a preset sets belongs to the feature it measures: no
+B0–B8 preset engages the evaluation harness's own `rqgm.eval.*` block — every
+rung's effective `rqgm.eval.enabled` stays `false` with an empty
+`scripted_components` (`test_no_preset_engages_the_eval_harness`). The exact
+expansions are pinned id by id by
+`ari-core/tests/test_rqgm_eval_conditions.py`
+(`test_expansion_pinned_exactly`).
 
 | Cond | Mode | Adds (additive from B3 upward) |
 |---|---|---|
@@ -44,6 +54,14 @@ expansions are pinned by `ari-core/tests/test_rqgm_eval_conditions.py`.
 The marginal value of each layer is the paired difference: adversarial =
 B4−B3, governance = B5−B4, retirement/erasure = B6−B5, evolution = B7−B6,
 meta = B8−B7; VirSci = B2−B3.
+
+The same file carries the campaign defaults every condition inherits.
+`eval_defaults.seeds` ships `[11, 12, 13]` — the ≥ 3 paired seeds a campaign
+runs unless `--seeds` overrides them — alongside `eval_defaults.bfts`
+(node-budget parity) and `eval_defaults.models` (per-campaign model pinning),
+both described under Comparison policies below.
+`test_eval_defaults_declared` pins the ≥ 3 floor and the budget numbers; the
+particular seed values are not pinned.
 
 ## Orthogonal Knowledge/Capability and Assurance axes
 
@@ -111,9 +129,17 @@ schema, reserved metric keys). Pinned by
 
 ## Failure injections
 
-Ten deterministic injections with binary ground truth (injected = bad,
-control = good), specified in `scripts/rqgm_eval/failure_injections.yaml`.
-Two mechanisms, no LLM in either:
+Ten deterministic injections in the `injections:` block of
+`scripts/rqgm_eval/failure_injections.yaml`, plus the single clean control in
+`controls:` — the false-reject denominator (metric 5). Ground truth is binary
+and true by construction (injected = bad, control = good), and each spec's
+`target_refs` names the artifact/record/component ids a detection record must
+point at for a detection to count as a true positive. The counts are pinned
+(10 injections, 1 control) by
+`test_rqgm_paper_eval.py::test_paper_injections_valid_and_loaded`. Counting by
+hand needs care: the same file also carries the separate `kca_injections` and
+`paper_injections` blocks covered further down, so `injection_id:` occurrences
+across the whole file run far past ten. Two mechanisms, no LLM in either:
 
 - **fixture** (1 metric gaming, 2 overclaim, 3 hallucinated prior art,
   7 contaminated prompt, 9 clean-room violation, 10 stale record leakage) —
@@ -129,8 +155,14 @@ Two mechanisms, no LLM in either:
   `run_ablation.py` refuses scripted specs outside `--smoke` instead of
   recording a fault that was never injected.
 
-Injection ids use the held-out `eval_*` namespace (disjoint from `adv_*` /
-`anchor_*`); every injected run carries `rqgm_injection_provenance.json`.
+Injection ids use the held-out `eval_*` namespace, disjoint by construction
+from governance's `adv_*` replay cases and its `anchor_*` cases. Specs are
+read by `ari.rqgm.evaluation.injection.load_injection_specs` and checked by
+`spec_violations`, which rejects any id outside `eval_*` and any id starting
+with the reserved `adv_*` / `anchor_*` prefixes, so the eval set cannot drift
+into what governance trains on. Fixture payloads live under
+`ari-core/tests/fixtures/rqgm_eval/`; every injected run carries
+`rqgm_injection_provenance.json`.
 
 Task 20 adds 38 `kca_mutation` cases and 38 same-shape clean controls:
 11 Knowledge attacks (body/source/authority/composition), 12 Provider and
@@ -181,8 +213,11 @@ utilization. Scheduler/cloud dollars remain `unpriced` until an authoritative
 charge is attached; the metric stays applicable for resource reporting but its
 USD value is `null` rather than a fabricated zero. A standalone verifier-core
 timing without a valid Attestation may be retained as a Tier-3 diagnostic, but
-it must set `authoritative_cost_trace_eligible: false` and cannot enter the
-production per-valid-node denominator.
+it is not authoritative cost — and keeping it out is campaign discipline, not
+code: `compute_metric_report` selects verification-cost rows from
+`cost_trace.jsonl` by their `phase` / `component` label alone (`screen` /
+`validate` / `certify` / `assurance`), never consults an Attestation, and has
+no eligibility field guarding the per-valid-node metric.
 
 External official-runner parity likewise distinguishes `passed`, `failed`, and
 `not_available`. Compatibility imports and deterministic scorer-unit controls
@@ -206,18 +241,44 @@ Three named presets in the `paper_conditions` block of
 (`ari.rqgm.evaluation.conditions.PAPER_CONDITION_IDS`). Unlike the exploration
 rungs these are **config-path native** — the preset expands
 (`conditions.paper_condition_overlay`) directly to a `paper.mode` +
-`rqgm.paper.*` overlay, so the expansion *is* the effective config. Pinned by
-`ari-core/tests/test_rqgm_paper_eval.py`.
+`rqgm.paper.*` overlay, so the expansion *is* the overlay, with no `mode`-key
+translation step. It is not the whole *effective* config: keys a preset leaves
+out are still filled from the typed defaults, which matters here (see the
+quirk below). Pinned by `ari-core/tests/test_rqgm_paper_eval.py`.
 
 | Cond | `paper.mode` | Adds |
 |---|---|---|
 | B0_paper_linear | `linear` | Control — the shipped default paper pipeline, verbatim. |
 | B_archive_no_coevo | `rqgm_archive` | Best-first draft archive (width 4, refine 2, depth 3, ≤ 12 nodes), `prompt_evolution.enabled: false` — best-of-N reviewed drafts, a single frozen writer/reviewer. |
-| B_full | `rqgm_archive` | + `prompt_evolution.enabled: true` + anchor utility (`anchor.enabled: true`) + the `paper_self_preference` adversary. |
+| B_full | `rqgm_archive` | + `prompt_evolution.enabled: true` + anchor utility (`anchor.enabled: true`) + the `paper_self_preference` adversary (`self_preference.enabled: true`). |
+
+Every key a shipped paper preset sets lives under `paper.mode` or
+`rqgm.paper.*` — nothing else is touched, and the adversary toggle has exactly
+one schema home, `rqgm.paper.self_preference.enabled`
+(`ari.config.RQGMPaperSelfPreferenceConfig`), with no alias.
 
 The marginal reads are: **search value** = B_archive_no_coevo − B0_paper_linear;
 **co-evolution value** = B_full − B_archive_no_coevo. As everywhere here, cost
 is *reported*, never equalized.
+
+**Frozen quirk — the paper ladder is not self-disabling.** Unlike the
+exploration rungs, the paper presets do not switch off the layer they claim
+not to have. `rqgm.paper.self_preference.enabled` is `true` both in the typed
+config and in `ari-core/ari/configs/defaults.yaml`, and `B_archive_no_coevo`
+never sets it — so the adversary switch reads `true` in that arm's *effective*
+config as well, and `B_full`'s `self_preference: {enabled: true}` restates the
+default rather than flipping it. After `load_config` fills the absent keys, the
+two archive arms actually differ in `prompt_evolution.enabled` (typed default
+`true`, explicitly `false` in `B_archive_no_coevo`) and `anchor.enabled` (typed
+default `false`, explicitly `true` in `B_full`). What keeps the adversary quiet in
+`B_archive_no_coevo` is that absent anchor corpus, not the toggle:
+`paper_anchor.load_anchor_corpus` returns `None` whenever `anchor.enabled` is
+false, and the self-preference round is fired over the reviewer's anchor cases,
+so an arm with no anchor pool yields no over-accepted case to attack. Only the
+*expansions* are pinned by `ari-core/tests/test_rqgm_paper_eval.py`; there is
+no paper equivalent of `test_effective_config_realizes_the_ladder`. Read the
+exploration ladder, which disables every layer above each rung explicitly, as
+the pattern to copy.
 
 ### RQGM-paper-aligned conditions (P0–P4)
 
@@ -299,10 +360,21 @@ exploration metrics:
 ### Paper failure injections PI1–PI3
 
 Three deterministic injections in the additive `paper_injections` block of
-`scripts/rqgm_eval/failure_injections.yaml` (loaded via
-`ari.rqgm.evaluation.injection.load_injection_specs`), same
-`FailureInjectionSpec` shape and `eval_*` namespace as the exploration set,
-plus an additive `authorship` field:
+`scripts/rqgm_eval/failure_injections.yaml`, same `FailureInjectionSpec` shape
+and `eval_*` namespace as the exploration set, plus an additive `authorship`
+field that marks AI-authored payloads (it is what P3 counts over). A
+**separate** block on purpose, so the exploration `injections` / `controls`
+lists stay byte-unchanged; `ari.rqgm.evaluation.injection.load_injection_specs`
+reads the key and is absence-tolerant — a specs file without it yields `[]`
+rather than an error. Fixture payloads live under
+`ari-core/tests/fixtures/rqgm_eval/paper_*`.
+
+These specs are reached through that loader — the Tier-1 paper tests in
+`ari-core/tests/test_rqgm_paper_eval.py` load them and call `apply_injection`.
+`run_ablation.py --inject` does **not** reach them: its `_select_specs` builds
+its catalog from the `injections`, `controls`, `kca_injections` and
+`kca_controls` blocks only, so an `eval_pi*` id is rejected as an unknown
+injection id.
 
 - **PI1 — draft overclaim** (`eval_pi1_draft_overclaim`, fixture, min
   `B0_paper_linear`). The winning `full_paper.tex` asserts a number with no
@@ -351,13 +423,22 @@ plus an additive `authorship` field:
 
 ## Running
 
+`run_ablation.py` is deliberately a standalone `argparse` script — not an
+`ari` Typer command — and imports nothing from `ari.public.*` (only
+`ari.rqgm.evaluation.{conditions,injection,metrics,smoke}`), so running a
+campaign changes neither the CLI nor the contract surface. The script only
+wires processes; every piece of unit-testable logic lives in the package,
+where CI can reach it.
+
 ```bash
 # Expand configs only (no runs):
 python scripts/rqgm_eval/run_ablation.py --dry-run --conditions B0,B3,B8
 
-# Paper-archive B-ladder (expands to paper.mode + rqgm.paper.* overlays;
-# dry-run supported). --inject accepts the fixture PI1/PI2 here; PI3 is
-# scripted_component and only loads under --smoke:
+# Paper-archive B-ladder (expands to paper.mode + rqgm.paper.* overlays).
+# --dry-run ONLY: without it the script exits with a message instead of
+# running, because it carries no Tier-3 driver for this ladder — take the
+# emitted overlays through `ari run` + `ari paper` per condition yourself.
+# --inject is not consulted at all on this path:
 python scripts/rqgm_eval/run_ablation.py --dry-run \
     --paper-conditions B0_paper_linear,B_archive_no_coevo,B_full
 
@@ -393,8 +474,8 @@ python scripts/rqgm_eval/run_ablation.py --smoke --conditions B8 \
 # Tier-3 real campaign (LLM cost; never in CI). Runs every benchmark in
 # scripts/rqgm_eval/experiments/*.md per condition × seed; narrow the set
 # with repeatable --experiment flags. --inject accepts FIXTURE ids only
-# here (scripted_component specs are smoke-tier and refused outside
-# --smoke):
+# here (scripted_component AND kca_mutation specs are smoke-tier and
+# refused outside --smoke):
 python scripts/rqgm_eval/run_ablation.py --conditions B0,B3,B4,B6,B8 \
     --eval-id campaign_2026_07 \
     --experiment scripts/rqgm_eval/experiments/spmm_roofline.md \
@@ -403,17 +484,31 @@ eval_inj_001_metric_gaming,eval_inj_002_overclaim,\
 eval_inj_003_hallucinated_prior_art,eval_ctl_001_clean_baseline"
 ```
 
-Results land in `workspace/rqgm_eval/<eval_id>/`: per-run checkpoints under
-`runs/<condition>_s<seed>_<experiment>/` (`runs/<condition>_s<seed>/` for
-the synthetic smoke tier, which takes no experiment), expanded configs
-under `configs/`, and the campaign `ablation_report.json` +
-`ablation_report.md` (condition × metric medians and paired deltas).
+Results land in the campaign root the script builds from `--workspace`
+(default: `workspace/rqgm_eval/` under the repo root) and `--eval-id` —
+`<workspace>/<eval_id>/`, created on demand. `workspace/` is not tracked, so
+that tree exists only once a campaign has actually run. Inside it: per-run
+checkpoints under `runs/<condition>_s<seed>_<experiment>/`
+(`runs/<condition>_s<seed>/` for the synthetic smoke tier, which takes no
+experiment), expanded configs under `configs/`, and the campaign
+`ablation_report.json` + `ablation_report.md` (condition × metric medians and
+paired deltas).
+
+On the real campaign path each condition × seed × experiment is a **fresh**
+checkpoint, and that is mechanical rather than a convention: `_run_one`
+creates the per-run directory with `exist_ok=False`, so a second campaign under
+the same `--eval-id` raises on the first colliding run instead of continuing
+it. There is no resume path and no `skip_if_exists` reuse across conditions.
+The offline smoke tier is the exception: it writes its synthetic checkpoints
+with `exist_ok=True`, reusing the directory and overwriting the artifacts it
+produces.
 
 ## Test tiers
 
 - **Tier 1 (CI-hard)** — `ari-core/tests/test_rqgm_eval_{conditions,metrics,
-  injection,detection_fixture,doubles}.py` plus the Task-20 pair
-  `test_rqgm_eval_kca_{conditions,injection}.py`: pure fixtures, no LLM.
+  injection,detection_fixture,doubles}.py` plus the five Task-20 modules
+  `test_rqgm_eval_kca_{conditions,injection,isolation,metrics,probe}.py`:
+  pure fixtures, no LLM.
 - **Tier 2 (CI-hard, offline smoke)** — `test_rqgm_eval_smoke.py`: synthetic
   stub-component runs per condition through the real Task 03/06/07 record
   paths, completing in seconds.

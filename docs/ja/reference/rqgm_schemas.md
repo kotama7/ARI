@@ -171,9 +171,12 @@ MCP ラッパから T16 緊急隔離経路へ渡されます: `audit_only` が�
 **目的:** すべての RQGM レコードスキーマが参照する正準の共有 `$defs` —
 `rqgm_record_base` エンベロープ、閉じたステータス / ロール / ティア語彙、
 id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語彙の Python
-ミラー）。他のスキーマファイルに埋め込まれたこれら `$defs` のコピーは、
-`ari-core/tests/test_rqgm_state_store.py` によってこのファイルとバイト等価に
-ピン留めされています。
+ミラー）。`epoch_state.schema.json`、`rqgm_registry.schema.json`、
+`rqgm_transition_event.schema.json` に埋め込まれたこれら `$defs` のコピーは、
+`ari-core/tests/test_rqgm_state_store.py` によってこのファイルへピン留め
+されています — バイト単位ではなく、パース済み JSON をエントリ単位で比較する
+形で。同テストはステータス / ロール / ティア列挙と event_type 列挙も
+`ari.rqgm.events` の語彙にピン留めします。
 
 すべてのガバナンスレコードは 8 個の必須 `rqgm_record_base` フィールドを
 持ちます（ここに**一度だけ**記載します; 以下の各スキーマの表はレコード固有の
@@ -204,8 +207,11 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
   `utility_policy`（RQGM Task 14 — governed なスコアとその提案者）、
   `paper_writer` と `paper_reviewer`（paper-archive; 実効的な
   `rqgm_archive` paper モードでのみ登録されるため、探索ブートはバイト
-  同一）; 固定（来歴のために登録、憲法上不変）: `constitutional_kernel`、
-  `fixed_verifier`、`audit_log`。
+  同一）; ガバナンスアクター（プロンプト変異による後継経路を持たない一方、
+  他のコンポーネントと同様に制裁・retire・ban の対象）: `auditor`、
+  `evidence_clerk`、`governance_judge`; 固定（来歴のために登録、憲法上
+  不変）: `constitutional_kernel`、`knowledge_binder`、
+  `capability_binder`、`harness_resolver`、`fixed_verifier`、`audit_log`。
 - **ティア**: `fixed`、`institutional`、`meta`。
 
 ## 状態とイベントログのスキーマ (Task 02)
@@ -249,6 +255,14 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
 | `execution_identity` / `execution_fingerprint` | 宣言済みモデル・接続先・温度、探索・評価設定、技能、無効道具、モデル・道具・環境・データの固定値。不明な固定値は `unresolved`、`complete: false` |
 | `epoch_fingerprint` | 政策と実行識別を合成した12桁要約値。`created_at`、`status`、自身を除く |
 | `created_at` | メタデータ; フィンガープリントから除外 |
+
+同梱スキーマは `schema_version` を `1 | 2` にピン留めしています。一方
+`ari/rqgm/state.py` は、Knowledge/Capability/Assurance の identity 付きで
+エポックを凍結した場合に **v3** ペイロード（`scientific_identity` ブロックの
+追加と、`execution_identity` 内の `scientific_assurance` コピー）を生成します
+（`KCA_EPOCH_STATE_SCHEMA_VERSION`）。その形はここで宣言されていないため、
+v3 スナップショットは同梱スキーマでは検証を通りません。すべて off の
+エポックは v2 のままバイト同一です。
 
 ### `rqgm_registry.schema.json`
 
@@ -621,7 +635,7 @@ attack の ref である。`retired` 配列は空で初期化され、そこへ�
 | `raw_attack` | `atk_%06d` / `adversary` | `adversary_type`（同梱スキーマの enum は閉じた 7 タイプの**探索**集合: `overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`; paper フェーズは 8 番目の `paper_self_preference` を追加 — [paper-archive スキーマ](#paper-archive-schemas-paper-rqgm_archive-mode)を参照）; `target_artifact.type`（閉じた集合: `proposal`、`experiment_plan`、`node_report`、`metric_result`、`paper_claim`、`novelty_claim`、`citation_claim`、`reproducibility_claim` — 決してコンポーネントではない）; `attack_claim`; `attack_evidence_refs`（1 個以上必須）; `severity_claimed`。監査資料のみ — 生の攻撃はスコアに決して触れない（不変条件 8） |
 | `defender_response` | `def_%06d` / `defender` | `raw_attack_id`; `stance` は `rebut` \| `concede` \| `propose_fix` |
 | `judgment_record` | `jdg_%06d` / `judge` | `raw_attack_id`; `verdict` は `valid` \| `partially_valid` \| `invalid`; ジャッジが割り当てる `severity`（`low`–`critical`）; `defense_status`。`invalid` でも常に書かれる |
-| `validated_attack` | `vat_%06d` / `judge` | `case_type`、`raw_attack_id`、`judgment_id`、`validated`、`verdict`、`severity`。`valid` / `partially_valid` 判定に対して**のみ**存在（裁定必須、不変条件 9）。説明責任バインディングを保持 — 下記参照 |
+| `validated_attack` | `vat_%06d` / `judge` | `case_type`、`raw_attack_id`、`judgment_id`、`validated`、`verdict`、`severity`、`expected_behavior`（ケースタイプ依存の `ロール → 期待される振る舞い` マップ）。`valid` / `partially_valid` 判定に対して**のみ**存在（裁定必須、不変条件 9）。説明責任バインディングを保持 — 下記参照 |
 
 #### `validated_attack` の説明責任バインディング
 
@@ -631,7 +645,7 @@ attack の ref である。`retired` 配列は空で初期化され、そこへ�
 
 | フィールド | 値空間 | 読み手 |
 |---|---|---|
-| `affected_components` | ロール名（`["reviewer"]`）— 誰が関与しているかという複数形の観測。ロールは攻撃が正直に知りうる唯一のものであり、ロールを制裁するものは何もない。（この名前はロールを保持する。改名すれば保存済みの全レコードを書き換えることになるため、そのまま維持している） |  FailureSummary の `affected_roles` |
+| `affected_components` | ロール名（`["reviewer"]`）— 誰が関与しているかという複数形の観測。ロールは攻撃が正直に知りうる唯一のものであり、ロールを制裁するものは何もない。（この名前はロールを保持する。改名すれば保存済みの全レコードを書き換えることになるため、そのまま維持している） | RQGM viz の read model（`RqgmValidatedAttackV1.affected_components`）。FailureSummary は**読まない** — その `affected_roles` は下記 `expected_behavior` のキーである |
 | `target_component_id` | レジストリで解決可能な**単一の**コンポーネント id（`"reviewer_v3"`）— その攻撃が無効化した判断を下した現職 | `ReliabilityMonitor.validated_attack_involvement`、`EvidenceClerk` のターゲット選択 ⇒ 弾劾チェーン全体 |
 
 `target_component_id` は**任意であり、存在するか不在かのいずれかで、決して
@@ -655,6 +669,23 @@ attack の ref である。`retired` 配列は空で初期化され、そこへ�
 します。7 つのアドバーサリタイプは、その来歴がエポック凍結済み現職と一致
 する場合だけ `generator_v1` へ結びます。古い記録、欠落、不一致は対象なし
 とし、前任の成果物で後継を制裁しません。
+
+**`affected_roles` はどこから来るか** — 名前に反して `affected_components`
+からではありません。`build_failure_summary`
+（`ari/rqgm/adversarial/records.py`）は `affected_roles` を
+`tuple(sorted(validated.expected_behavior))` に設定します: すなわち第 3 の
+ロール様フィールド `expected_behavior`（`AdversarialRound._expected_behavior`
+がレコードに刻む `ロール → 期待される振る舞い` マップ）のソート済み**キー**
+です。このマップは**ケースタイプ依存**で、7 つの探索タイプはすべて
+`reviewer` / `generator` / `judge` をキーとするモジュールレベルの汎用
+テンプレートを取り（したがってレコードはバイト同一のまま）、
+`paper_self_preference` だけが独自の 2 キー `paper_reviewer` と
+`paper_writer` を供給します。両方のバインディングが解決される paper ケース
+では、2 つのフィールドは構造上ずれます: ラウンドは解決可能なロールごとに 1 件
+のレコードを書き、各レコードは `affected_components` に自身の単一ロールだけを
+名指ししますが、両レコードは同じ 2 キーの `expected_behavior` を保持する —
+よって両方の FailureSummary が両ロールを報告します。一方を意図して他方を読む
+のは同義語の取り違えではなく、実際の誤りです。
 
 ### `rqgm_utility_record.schema.json`
 
@@ -690,7 +721,21 @@ utility-policy 退役は別の Task-10 経路を通り、各ノードに保存�
 | フィールド | 備考 |
 |---|---|
 | `case_seq` | 単調増加のケースカウンタ |
-| `cases[]` | AdversarialReplayCase: `case_id`（`adv_case_%05d`）、`case_type`（同梱スキーマの探索用 7 タイプ。paper runtime は後述するフェーズ外 inert の 8 番目を追加）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` は `active` \| `evicted`（eviction は論理のみ）、`replay_view`（完全な資料 — ロール `clean_room_generator` には拒否）と `abstract_view`（汚染安全な FailureSummary — 生の攻撃 / 防御テキストなし） |
+| `cases[]` | AdversarialReplayCase: `case_id`（`adv_case_%05d`）、`case_type`（同梱スキーマの探索用 7 タイプ。paper runtime は後述するフェーズ外 inert の 8 番目を追加）、`validated_attack_id`、`severity`、`admitted_epoch` / `last_confirmed_epoch`、`status` は `active` \| `evicted`（eviction は論理のみ）、`replay_view`（完全な資料 — `artifact_refs`、3 つのレコード id、そしてレコードの `expected_behavior` マップを値でコピー; ロール `clean_room_generator` には拒否）と `abstract_view`（汚染安全な FailureSummary — `case_type`、`failure_pattern`、`violated_expectation`、`affected_roles`; 生の攻撃 / 防御テキストなし） |
+
+2 つのビューは同じロール情報を分割して持ちます。
+`replay_view.expected_behavior` は ValidatedAttackRecord から値で取った
+`ロール → 期待される振る舞い` マップであり、`abstract_view.affected_roles` は
+そのマップのソート済みキー集合そのもの（それ以上ではない）です（
+本ページの「`validated_attack` の説明責任バインディング」節
+を参照）。マップがケースタイプ依存であるため、リプレイされるケースが名指しする
+ロールはその `case_type` に依存します: 7 つの探索タイプは汎用の
+`reviewer` / `generator` / `judge` テンプレートを共有し、paper フェーズの
+`paper_self_preference` ケースは `paper_reviewer` と `paper_writer` を名指し
+します。同梱スキーマでは `abstract_view` が `additionalProperties: false` —
+汚染境界はコンプレッサの規律だけでなく宣言された形として強制されます — 一方
+`replay_view` にはその制約がなく、代わりに capability で制御されます
+（ロール `clean_room_generator` には拒否）。
 
 ## プロンプト進化スキーマ (Task 07)
 
@@ -710,8 +755,27 @@ utility-policy 退役は別の Task-10 経路を通り、各ノードに保存�
 | `parent_prompt_id` | 系譜（founding プロンプトでは `null`） |
 | `template_ref` | `{kind: package \| checkpoint \| policy, key\|path}` — バイトの所在（コミット済みテンプレート、進化した本体 `rqgm_prompts/<prompt_id>.md`、または `path` で参照される Task-14 の governed ユーティリティポリシー本体） |
 | `prompt_hash` / `full_sha256` | テンプレートバイトの `hash12` + 完全 sha256（まさに `FilesystemPromptLoader.load_versioned` のスキーム） |
-| `evolvable` / `epoch_introduced` | 進化の適格性 + 来歴 |
-| `spec` | 振る舞い契約: `role_instruction`、`constitutional_constraints[]`、`input_contract.required_fields[]`、`output_schema`、任意の `rubric` / `calibration_policy` / `budget_policy` |
+| `evolvable` / `epoch_introduced` | 進化の適格性 + 来歴。v1 で進化させないテンプレートの登録規則: 専用ロールを新設せず、Task 02 の閉じたロール語彙のうち**最も近い**ロールの下に `evolvable=False` で登録します。ロールキーを増やすと `active_prompt_hashes` が変わり、ひいては `registry_version` が変わるのに、機能上の利得がないためです。現在 6 行がここに属します — `generator` の下に `agent/system`、`pipeline/keyword_librarian`、`viz/wizard_chat_goal`、`viz/wizard_generate_config`、`router` の下に raw ロードの `orchestrator/root_idea_selector`、`reviewer` の下に `governance/auditor`（最後の 1 件は、`auditor` が**コンポーネント**としては登録可能なロールである（`auditor_v1` は founding）にもかかわらず同じ先例に従う — 弾劾可能性はコンポーネントに由来し、プロンプトのロールに由来しないため）。ロール内の行順は意味を持ちます: レジストリの「最後のアクティブが勝つ」ロールアップのため、進化する primary が**最後**に来る必要があり、これらはいずれも自ロールの primary より前に置かれます。なお `evolvable=False` は別の理由でも使われます — 3 つの `rqgm/proposal_*` テンプレートは説明責任のために governed であり、ロールの代替ではありません |
+| `spec` | 振る舞い契約: `role_instruction`、`constitutional_constraints[]`、`input_contract.required_fields[]`、`output_schema`、任意の `rubric` / `calibration_policy` / `budget_policy`。`output_schema` はちょうど 1 つのキー `__reply__` を応答の**種別**（`bare_index` \| `json_array` \| `json_object` \| `freeform`; 不在なら `json_object`）に予約します; それ以外のキーはすべて必須 JSON フィールド名で、値は型名（`list`、`dict`、`string` / `str`、`float`、`int`、`bool`）です。消費者は `check_output_against_schema`（`ari/rqgm/prompt_evolution.py`）で、必須フィールドのループでは `__reply__` をスキップします。この予約はコード側にのみ存在します: 同梱スキーマは `output_schema` を必須オブジェクトとして宣言するだけで、`__reply__` については何も述べません |
+
+**クセ（凍結）: 2 件の founding spec は `required_fields` を空で記録する。**
+`input_contract.required_fields[]` は通常、テンプレートから抽出した
+プレースホルダ集合（ソート済み）です。コミット済みテンプレートのうち 2 件は
+例外で、`orchestrator/lineage_decision` と
+`orchestrator/root_idea_selector` は `RAW_LOADED_KEYS`
+（`ari/rqgm/prompt_spec.py`）に列挙され、その founding spec は代わりに `[]`
+を記録します。これは契約上の選択ではありません。どちらの本体も
+（`ari/orchestrator/lineage_decision.py` と
+`ari/orchestrator/root_idea_selector.py` の `_load_system_prompt_versioned`
+で）そのままシステムプロンプトとして読み込まれ、`.format` されることは
+決してないため、「reply ONLY with JSON: `{…}`」の行にあるリテラルの JSON
+波括弧が疑似プレースホルダとして登録されてしまいます: 抽出器は `"action"` と
+`"chosen_index"` を報告します — 引用符付きの JSON キーであって入力名ではありません。それらを
+必須入力として記録することは何も記録しないより悪いので、founding テーブルは
+何も記録しません。これはテストで固定された観測上の例外
+（`ari-core/tests/test_rqgm_prompt_spec.py`）であって、真似すべきパターンでは
+ありません: 入力を取らない新しいテンプレートは、抑制エントリを増やすのでは
+なくプレースホルダを持たないようにすべきです。
 
 ### `rqgm_prompt_evolution.schema.json`
 
@@ -934,7 +998,8 @@ paper フェーズ開始時に write-once。形は `ari/rqgm/paper_runtime.py`
 （`build_paper_run_start_state`）が所有: `schema_version`、`paper_mode`
 （`linear` \| `rqgm_archive`）、`rqgm_paper_enabled`、`mode_source`
 （∈ `config` \| `env` \| `resume`）、`created_at`（メタデータのみ、決して
-ハッシュされない）、`exploration_mode`、`seed_node_id`、`switch_journal[]`。
+ハッシュされない）、`exploration_mode`、`seed_node_id`、`switch_journal[]`、
+さらに呼び出し側が評価条件を pin したときに限り `evaluation_condition_id`。
 永続化されたモードが再呼び出し時に勝ちます — resume が paper モードを黙って
 切り替えることはありません。書き込み手:
 `ari.checkpoint.save_paper_archive_state_json`。
@@ -953,6 +1018,29 @@ composite — フロンティア + best-belief のランキングキー）、
 `suggested_revisions_ref`、`anchors_preserved`、`decode_seed`、`epoch_id`、
 そして読み取り時フラグ `is_best_belief` / `compiled`（`mark_paper_draft_flags`
 が in-place で更新）。
+
+各行はさらに `created_at` と Manuscript Complete の `manuscript_*` ブロックを
+持ちます: ドラフトと同時に書かれるバインディング項（`manuscript_bound`、
+`manuscript_mode`、`manuscript_attempt_id`、`manuscript_input_fingerprint` /
+`manuscript_binding_digest` / `manuscript_profile_digest` /
+`manuscript_context_digest` / `manuscript_readiness_digest` /
+`manuscript_brief_bundle_digest` の pin、`manuscript_section_brief_digests`、
+`manuscript_allowed_evidence_ids` / `manuscript_contextual_negative_ids` /
+`manuscript_forbidden_evidence_ids` のリスト、`manuscript_required_disclosures`
+と `manuscript_omission_count`）と、その後に
+`record_paper_draft_manuscript_evaluation` が付ける決定的な診断
+（`manuscript_candidate_status`、`manuscript_hard_disqualified` と
+`manuscript_hard_disqualification_reasons`、
+`manuscript_candidate_artifact_sha256`、`manuscript_candidate_gate_digest` /
+`manuscript_candidate_gate_status`、および
+`manuscript_contextual_negative_evidence_mentions` /
+`manuscript_forbidden_evidence_mentions` /
+`manuscript_missing_required_disclosures` の所見）。この付与だけは
+best-effort **ではありません**: 対象レコードのみを last-record-wins で書き直し、
+ファイルを読み直して値が round-trip しなければ raise します — enforce モードの
+適格判定がこれらに依存するためです。既定の `manuscript.mode: "off"` では
+ブロックは空 / false の既定値であり、`manuscript_hard_disqualified` の行は
+stale な行と同じくフロンティアから除外されます。
 
 ### `paper_anchor_corpus.jsonl` — 読み取り専用の accept/reject アンカー
 
@@ -983,17 +1071,48 @@ curated コーパスが供給されるまで reviewed best-of-N です。
 == human)`、**コーパスが AI/人間の split を持たないとき `0.0`**（コーパス
 不在 / AI のみの縮退。決してエラーではない）。
 
+**コーパスはどこから来るか。** この統計は専用のコーパスを持ちません:
+`reviewer_anchor_cases(pool)` — レビュアのアンカーユーティリティが使うのと同じ
+`paper_anchor_corpus.jsonl` プール — を、ラベル次元を 1 つだけ追加して、
+すなわち上述の各ケースの `authorship`（`human` \| `ai`）フィールドとともに
+読みます。したがって AI/人間の split はアンカーコーパスの性質です。split を
+持たないコーパスでは `margin` は `0.0` となり、母集団シグナルは沈黙しますが、
+アドバーサリは残る 2 つの過剰受理シグナル — クレームゲートの指摘、または
+ground truth が `reject` のアンカーケースを現職が受理したという直接の
+ケース単位の不一致 — で依然として訴追します。コーパスがまったく無い場合
+（`anchor.enabled` が `false` である既定）は、見つけるべき過剰受理ケースが
+存在せず、ラウンド自体が発火しません。
+
+ノブは `rqgm.paper.self_preference.*` で、実効 `rqgm_archive` paper モードの
+下でのみ意味を持ちます: `enabled: true`; `sample_size: 8`（エポックあたりに
+採点する held-out ケース数。決定論的に `case_id` 順の先頭 N 件。同じ数が
+過剰受理サブセットにも 2 度目に適用されるため、攻撃されるケース数の上限にも
+なります — さらに共有のエポック単位アドバーサリ呼び出し上限が掛かります）;
+`accept_threshold: 0.6`（レビュアが「accept した」と見なす閾値。ガバナンスの
+`CANDIDATE_PASS_THRESHOLD` — こちらも `0.6` — を写したもの）は
+過剰受理の事前シグナル用に攻撃バンドルへ運ばれるだけで、マージン計算自体は
+これを**使わず**レビュアの `accept_recommendation` を二値化します;
+`margin: 0.1`（決定論的な事前シグナルを発火させる AI 対人間の差）。1 つの
+ノブは**宣言されているが未配線**です: `corpus_path: ""` は「`""` はアンカー
+コーパスを再利用し、パスを与えると専用の authorship セットで上書きする」と
+説明されており、`""` 側の挙動はコードのとおりですが、
+`rqgm.paper.self_preference.corpus_path` を読むコードは存在せず、ここにパスを
+設定しても現状は何の効果もありません。ローダが解決するコーパスパスは
+`rqgm.paper.anchor.corpus_path` だけです。
+
 **8 番目のアドバーサリタイプ。** `paper_self_preference` は Python
 `ADVERSARY_TYPES` タプル（`ari/rqgm/adversarial/records.py`; 書き込みパスの
 妥当性チェック `validate_raw_attack` が使用）の 8 番目のメンバで、paper
 フェーズ用に追加され、それ以外では inert です; 同梱の
 `rqgm_attack_records.schema.json` の `adversary_type` / `case_type` enum は
 7 つの**探索**タイプを文書化します。`paper_self_preference` ケースは
-`paper_reviewer` ロールを関与させ、これは — 7 つの `generator` と異なり —
-登録済みの現職（paper モード下の `paper_reviewer_v1`）を**持つ**ため、Task-15
-の `target_component_id` バインディングが発火し、validated-attack → 弾劾
-チェーンが本番で動きます; paper フェーズ以外ではロールは `""` に解決され、
-探索はバイト同一のままです。
+`paper_reviewer` ロールを関与させ、Layer-0 クレームゲートが不誠実と確認した
+ドラフトではさらに `paper_writer` も関与させます。どちらも — 7 つの
+`generator` と異なり — 登録済みの現職（paper モード下の `paper_reviewer_v1` /
+`paper_writer_v1`）を**持つ**ため、Task-15 の `target_component_id`
+バインディングが発火し、validated-attack → 弾劾チェーンが本番で動きます;
+paper フェーズ以外では両ロールとも `""` に解決され、探索はバイト同一の
+ままです。
 
 ## チェックポイントファイルインベントリ
 

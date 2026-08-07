@@ -457,6 +457,66 @@ line:
 Decisions: `continue` / `switch_to_idea` / `fanout` / `terminate`.
 Source: `ari-core/ari/orchestrator/lineage_decision.py`.
 
+## `prompt_trace.jsonl` / `prompt_versions.json`
+
+Prompt provenance: which *template* — and, where a rendered string was
+available at the call site, which *rendered prompt* — produced each
+managed-prompt LLM call. `prompt_trace.jsonl` is the append-only per-call
+trace; `prompt_versions.json` is its run-level rollup. Both are written at the
+checkpoint root and both are in `PathManager.META_FILES`, so neither is ever
+copied into a node work dir; `prompt_trace.jsonl` is additionally classified in
+`_TRACE_FILES`, the set of files that live under `runs/<run_id>/traces/` in the
+bucketed run-directory layout the path resolver also understands. Source:
+`ari-core/ari/prompts/_provenance.py`; the rollup write funnels
+through `ari.checkpoint.save_prompt_versions_json`.
+
+One JSON object per trace line. `prompt_name` and `template_hash` are the
+mandatory, always-computable fields; every other field carries a default, so
+the record shape can grow without breaking readers:
+
+```json
+{"timestamp": "2026-07-10T10:34:32Z", "prompt_name": "pipeline/keyword_librarian",
+ "template_hash": "9f2c01ab34de", "rendered_prompt_hash": "34de9f2c01ab",
+ "prompt_version": null, "prompt_registry_version": null,
+ "model": "...", "node_id": "", "phase": "context_builder", "source": "core"}
+```
+
+Hashes are `sha256(text)[:12]` — the same scheme
+`FilesystemPromptLoader.load_versioned` uses, so a template body hashes
+identically here, there and across machines. `timestamp` is metadata and never
+enters a hash. `rendered_prompt_hash` is `null` unless the call site passed the
+rendered text; several sites only load a template and never render a final
+string there, so `null` means "not captured", not "empty prompt".
+
+`prompt_version` / `prompt_registry_version` are **observed as almost always
+`null`**, and that is a frozen property of the call sites rather than a
+statement about the prompt. Exactly one writer fills them: the RQGM
+PromptRegistry's stamp path (`ari-core/ari/rqgm/registry.py`), which sets
+`prompt_version` to the *registry prompt id* and `prompt_registry_version` to
+the registry version. Everywhere else — the agent loop, the LLM evaluator, the
+context builder, the viz wizard tools, and every RQGM governance /
+prompt-evolution / proposal call — both stay `null`. Read `null` as
+"unstamped", never as "unversioned prompt". `source` is likewise always
+`"core"`: `record_prompt_use` hard-codes it and takes no parameter for it, so
+the `"skill"` value the field reserves is emitted by nothing that ships.
+
+`prompt_versions.json` is `{prompt_name: {template_hash, prompt_version,
+call_count}}` in first-seen order, with `template_hash` and `prompt_version`
+taken from the *first* record seen for that name — a prompt whose template
+changed mid-run shows only its first hash there, and the JSONL remains the
+truth. It is rebuilt from the trace by `build_prompt_versions_rollup` each time
+the BFTS loop flushes the checkpoint (a throttled write; terminal flushes are
+forced), so it is derived, never authoritative. That flush is its only writer,
+so a phase that records prompt uses without entering the BFTS loop leaves a
+trace with no rollup.
+
+Both writers are deliberately best-effort, and the artifacts must be read that
+way. `record_prompt_use` no-ops when no checkpoint dir resolves (unit tests,
+pre-launch), appends under a module lock, and swallows **every** exception so
+provenance logging can never break the LLM call it is recording; the rollup
+write is wrapped the same way. Absence of either file means "no provenance
+recorded" — never an error, and never proof that a call did not happen.
+
 ## RQGM epoch-governance files (opt-in `ari_rqgm` mode)
 
 Written only when `ari.mode: ari_rqgm` **and** `rqgm.enabled: true` agree
@@ -556,10 +616,13 @@ a report on its own changes no status. Its write set is closed:
 
 - `rqgm_audit.jsonl` — always: the governance records above plus the final
   `governance_report`.
-- `prompt_trace.jsonl` / `prompt_versions.json` — the ordinary provenance
-  records of the shared prompt-render path, covering the governance LLM calls
-  only. A deterministic audit (no LLM seam wired) renders no governance
-  prompt and writes neither file.
+- `prompt_trace.jsonl` — the ordinary provenance records of the shared
+  prompt-render path, covering the governance LLM calls only. Those calls
+  reach `prompt_versions.json` only indirectly, when the BFTS checkpoint
+  flush next rebuilds that rollup from the trace (see
+  `prompt_trace.jsonl` / `prompt_versions.json` above); `audit_epoch` never
+  writes the rollup itself. A deterministic audit (no LLM seam wired) renders
+  no governance prompt and appends nothing here.
 - `rqgm_adversarial_cases.jsonl` plus the derived
   `rqgm/adversarial_replay_pool.json` — the step-7 replay-pool update, only
   when a pool is passed. Admitted and upheld cases are **appended** to the
@@ -632,6 +695,20 @@ authoritative rules are frozen code (`ari/rqgm/kernel_rules.py` +
 `ari/rqgm/transition_rules.py`), pinned by `constitution_hash` —
 `sha256(canonical_json(<all rule tables>))[:12]` — which is also recorded
 additively as an optional `constitution_hash` key in `meta.json`.
+
+So the checkpoint copy is a **provenance marker, not a control surface**:
+editing it changes no behaviour, because no ARI code reads it back —
+`ari.rqgm.state.copy_constitution_if_missing` is the only code that touches the
+path (it is called from `ari/cli/run.py` under the mode gate; see
+[Internal Boundaries](internal_boundaries.md), "RQGM mode boundary
+(`ari.rqgm`)"). That is
+the point rather than an oversight: the checkpoint directory is flat and any
+skill can write into it, so a rules file living there would be an
+evolution/tampering channel, and the rule tables stay in code instead. The copy
+is registered in `PathManager.META_FILES`, so it never reaches a node work dir.
+Copying is best-effort in both directions — a packaging that ships no bundled
+`constitution.yaml` copies nothing and reports nothing — so an absent file is
+not on its own evidence that the run was `simple_bfts`.
 
 ### `epoch_state.json`
 
@@ -849,6 +926,27 @@ trace_depth_exceeded` — diagnostic only), and `_erasure_event_id`,
 persisted through `tree.json`; they keep an erased node excluded even
 after a mode switch back to `simple_bfts` (contamination does not become
 clean by switching modes).
+
+This rollup is also the surface ARI publishes to **other packages**, so two
+consumer-side rules apply to it. First, `invalid_frontier_node_ids` is a pinned
+cross-package contract — ari-core writes it, the memory skill reads it, and
+`ari-skill-memory/tests/test_erasure_annotation.py` greps the ari-core writer
+so a rename on either side fails rather than silently disabling erasure
+awareness. Second, that cross-package reader
+(`ari-skill-memory/src/ari_skill_memory/erasure.py`) is forward-compatible by
+**degrading**: it pins `SUPPORTED_SCHEMA_VERSION = 1`, and a file whose
+`schema_version` is not an integer it understands — above its supported
+version, or a string / float / bool — is read as "nothing is stale" rather than
+risking a wrong erasure label, the same verdict it returns for an absent,
+unreadable or malformed file. A missing `schema_version` key is read as the
+supported version.
+
+Note the asymmetry, which is a property of the readers rather than of the
+format: ari-core's own `view_from_payload`
+(`ari-core/ari/rqgm/erasure_state.py`) does **not** inspect `schema_version` at
+all — it is the writer's absence-tolerant twin — and the JSON Schema declares
+`schema_version` as `const: 1`. Only the cross-package reader implements the
+degrade ladder.
 
 ### `rqgm_governance_cache.jsonl` (RQGM Task 12)
 

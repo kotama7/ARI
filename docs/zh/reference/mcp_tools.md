@@ -19,7 +19,7 @@ last_verified: 2026-07-30
 
 # MCP 工具参考
 
-ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页是智能体可调用的所有工具的平铺目录。每个技能的深入介绍位于其各自的 `README.md`；[skills.md](skills.md) 按职责对它们进行分组。
+ARI 附带 17 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。其中 13 个由 `ari-core/config/workflow.yaml` 的 `skills:` 默认注册，`ari-skill-orchestrator` 作为独立进程为外部客户端启动，其余 `ari-skill-knowledge` / `ari-skill-harness` / `ari-skill-tool-registry` 不在默认 `skills:` 列表中。本页是智能体可调用的所有工具的平铺目录。每个技能的深入介绍位于其各自的 `README.md`；[skills.md](skills.md) 按职责对它们进行分组。
 
 `mcp.json`（位于各技能的 `pyproject.toml` 旁边）是工具*名称*的权威来源，它由 `scripts/sync_skill_metadata.py --write` 从 `skill.yaml` 生成；被 `@mcp.tool()` 装饰的函数（或旧版技能的 `@server.list_tools()` 中的条目）定义了参数和返回结构。三者必须一致——`scripts/check_skill_manifests.py` 会在漂移时失败。
 
@@ -95,14 +95,15 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `survey` | 先前工作调研：存在冻结的 `virsci_snapshot` 语料库时复用之，否则实时查询 Semantic Scholar，再否则回退到 arXiv；纯 HTTP | ✗ |
+| `survey` | 针对**单个**钉住 provider（`semantic-scholar` 默认 / `virsci-snapshot`）的先前工作调研。`record` / `live` 不切换后端，`replay` 完全不访问网络，未支持的 provider 会被拒绝而不是被替换 | ✗ |
 | `generate_ideas` | LLM 根据调研 + 上下文生成排序的 idea 候选 | ✓ |
 
 这两个是该技能仅有的已注册工具——`_load_virsci_snapshot_papers` 只是
 `survey` 直接调用的普通辅助函数，绝不对 agent 可见；
 `ari-skill-idea/tests/test_server.py` 通过 `mcp.list_tools()` 同时钉住
-这两点。当快照缺失且 Semantic Scholar 不可用（无 key 或被限流）时，
-`survey` 会回退到 arXiv；即使最终 0 篇也会在 stderr 上报告，而不是悄悄放行。
+这两点。provider 之间没有回退：`virsci-snapshot` 的调研在语料库缺失时抛出
+`FileNotFoundError`，Semantic Scholar 的调研遇到 HTTP 错误时直接抛出——故障
+时得到的是一次拒绝，而不是悄悄变成另一份语料库。
 它们也是 RQGM `VirSciAdapter` 背后的 MCP 表面：在可选启用的
 `ari_rqgm` 模式下且 `proposal_router.generators.virsci.enabled: true`
 时，core 侧的 ProposalRouter 会在每纪元调用预算内把构思事件路由到
@@ -186,7 +187,7 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 | 工具 | 新增参数 |
 |---|---|
-| `build_reproduce_sh` | `container_image`（替代/取代旧版 `apptainer_image`；两者均向后兼容） |
+| `build_reproduce_sh` | `container_image`（替代旧版 `apptainer_image`，后者已从签名中删除——`container_image` 是唯一的镜像参数，且只被 `apptainer` rollout 采用） |
 
 ### v0.8.0 新增字段（Stage 2）
 
@@ -276,9 +277,61 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 | `list_uploaded_files` | 列出检查点 `uploads/` 下用户上传的文件 | ✗ |
 | `read_uploaded_file` | 按文件名读取上传文件的文本内容（带二进制检测） | ✗ |
 
+## ari-skill-knowledge — 只读的 Knowledge 表面
+
+这个沿用旧命名的包是一个 Capability Provider，只对 ARI Knowledge Skill
+Registry 暴露查询和不具权威的请求。它无法注册、晋升、吊销 Knowledge Skill，
+也无法改写 lock 或激活某个 Knowledge Skill；固定的 `knowledge_binder_v1`
+仍然是唯一权威。
+
+| 工具 | 用途 | 具权威 |
+|---|---|:---:|
+| `search_knowledge_skills` | 检索非可执行的过程性知识；结果不授予任何工具权限 | 否 |
+| `describe_knowledge_skill` | 按 `skill_id` 把一个内容寻址的 Knowledge Skill 描述为 untrusted 的指令数据 | 否 |
+| `list_active_knowledge_skills` | 读取本次运行不可变的 active epoch Knowledge lock | 否 |
+| `request_knowledge_skill` | 生成面向下一个 epoch 的选择请求，只有固定的 Knowledge Binder 可以准入 | 否 |
+
+## ari-skill-harness — 只读的 Assurance 表面
+
+该包只暴露 Harness 的检索、证据读取与辅助验证请求。它既不是 Harness
+Resolver 也不是 Fixed Verifier，agent 的工具选择既选不出权威套件，也执行不了
+已锁定的验证运行。
+
+| 工具 | 用途 | 具权威 |
+|---|---|:---:|
+| `search_harnesses` | 检索独立验证定义；不会因此选中任何 Harness | 否 |
+| `describe_harness` | 按 `harness_id` 描述一个 Harness 及其声明的 assurance scope | 否 |
+| `request_auxiliary_verification` | 提出附加性的属性验证请求；固定的解析过程仍留在内部 | 否 |
+| `read_attestation` | 按完整 SHA-256 读取一份不可变、绑定目标的 Attestation | 否 |
+| `list_verification_requirements` | 从不可变的 Verification Contract 读取要求 | 否 |
+
+这两个包都不暴露注册、晋升、吊销、lock 改写、容差 / 预言机替换或
+`force_pass`。目录管理是需要人工认证的 CLI / PR 流程。
+
+## ari-skill-tool-registry — 大型 MCP collection 的经纪表面
+
+五个联邦操作代表整个上游 collection，因此哪怕 collection 有数千个 leaf，
+agent 付出的也只是五个工具位而非数千个。leaf provider 的 schema 绝不会经由
+`tools/list` 暴露。
+
+| 工具 | 用途 | LLM |
+|---|---|:---:|
+| `discover` | 以 `lexical` / `exact` / `diverse` 策略检索不可变的联邦目录。返回有界摘要与不透明的 `tool_ref`，`top_k` 上限 25，翻页通过 `constraints.cursor`；它不执行任何候选 | ✗ |
+| `describe` | 对恰好一个 `tool_ref` 分页读取描述符的某个 `section`（`summary` 默认 / `schema` / `provenance` / `admission` / `limitations` / `all`）。provider 的文本与 schema 均按 untrusted 数据处理 | ✗ |
+| `invoke` | 以不可变的 `tool_ref` 在 `live`（默认）/ `record` / `replay` 模式调用一个已准入的 leaf；裸名或非限定名会被拒绝 | ✗ |
+| `get_status` | 用绑定在不可变描述符中的生命周期操作轮询异步的 registry `handle` | ✗ |
+| `get_result` | 取回异步 registry `handle` 的最终规范化结果 | ✗ |
+
+`invoke` / `get_status` / `get_result` 声明了 run 作用域的 context 要求，因此
+它们的输入 schema 声明了 `ari_context`——与上文 `measure_counters` 相同的注入
+规则，由 transport 填入，并非 agent 需要提供的参数。目录 identity、准入级别与
+provider adapter 参见 [tool_registry.md](tool_registry.md)。
+
 ## 另请参阅
 
-- `docs/reference/skills.md` — 每个技能的叙述说明（职责、环境变量、示例）。
-- `docs/reference/environment_variables.md` — 逐变量环境变量参考。
+- `docs/zh/reference/skills.md` — 每个技能的叙述说明（职责、环境变量、示例）。
+- `docs/zh/reference/tool_registry.md` — `ari-skill-tool-registry` 五个操作的目录 identity、准入与 provider adapter。
+- `docs/zh/reference/knowledge_capability_assurance.md` — 三层 identity、准入、lock 与扩展门。
+- `docs/zh/reference/environment_variables.md` — 逐变量环境变量参考。
 - 各技能的 `mcp.json` — 规范工具名称列表。
 - 各技能 `src/server.py` 中的 `@mcp.tool()` / `@server.list_tools()` — 规范参数签名。

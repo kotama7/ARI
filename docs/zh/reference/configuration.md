@@ -8,6 +8,14 @@ sources:
     role: config
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
+  - path: ari-core/ari/viz/state.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/secrets.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/rqgm/budget.py
+    role: implementation
   - path: ari-core/ari/config/field_registry.py
     role: implementation
   - path: ari-core/ari/config/resolver.py
@@ -28,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-29
+last_verified: 2026-08-08
 ---
 
 # 配置参考
@@ -69,9 +77,26 @@ CLI —— 它把选项写入子进程的 `ARI_*` 环境变量，**并**快照�
 | GUI 端口 | `ARI_GUI_PORT`（经 `start.sh`）> `--port`（argparse 默认 **8765**）> `state.py` 的 `9886` 占位值 | `start.sh`、`viz/server.py:main` |
 | SLURM 分区 | 显式工具 `partition` kwarg（经 sinfo 校验）> `SLURM_DEFAULT_PARTITION` > sinfo 首个分区；该 kwarg 依次取自：experiment.md 的 `Partition:` > `ARI_SLURM_PARTITION` > sinfo | `ari-skill-hpc/slurm.py`、`ari/agent/workflow.py` |
 | checkpoint 目录 | `ARI_CHECKPOINT_DIR` > YAML `checkpoint.dir` > `workspace/checkpoints/{run_id}` | `config/__init__.py:_apply_checkpoint_env_overrides`、`PathManager` |
+| workspace 根目录 | `ARI_CHECKPOINT_DIR`（据此还原：最外层 `checkpoints/` 祖先目录的父目录；若不存在这样的祖先，则取该 checkpoint 自身的父目录）> 显式传入的 `workspace_root` 参数 > `{ARI_ROOT}/workspace` > `{repo_root}/workspace`（仅当 `{repo_root}/ari-core` 是目录时）> 解析后的当前工作目录 | `paths.py:RuntimePathResolver.resolve_workspace_root` |
 | `bfts_pipeline[].enabled` | `{checkpoint}/workflow.yaml` > 包内自带的 `ari-core/config/workflow.yaml` > `true` | `cli/bfts_loop.py`（原始 YAML 读取） |
 | `lineage_decision.*` | 生效 rubric 的 `lineage_thresholds`（`ARI_RUBRIC`；仅四个阈值键，不含 `mode`）> 包内自带的 `ari-core/config/workflow.yaml` > `./config/workflow.yaml`（进程 cwd）> 调用点默认值 | `cli/lineage.py:_load_lineage_decision_config` |
 | `root_idea_selection.enabled` | **仅**包内自带的 `ari-core/config/workflow.yaml` > `false` | `cli/bfts_loop.py`（原始 YAML 读取） |
+
+**「workspace 根目录是什么」只有一个所有者。** 上表中的五级阶梯只存在于一个
+函数里 —— `RuntimePathResolver.resolve_workspace_root()`
+（`ari-core/ari/paths.py`），并且已有四个生产调用点走这条路径：
+`ARI_CHECKPOINT_DIR` 未设置时的 `auto_config()`
+（`ari/config/__init__.py`）、`workspace_harness_root()`
+（`ari/harness_registry.py`，在它自己的 `ARI_WORKSPACE` 短路之后）、GUI 文档
+存储（`ari/viz/v1/store.py`），以及铸造
+`{workspace_root}/checkpoints/{run_id}` 的 v1 启动路径
+（`ari/viz/v1/launch.py`）。打开代码时有两处需要略过：该方法自己的 docstring
+仍称自身是*additive*、并说 opt-in「推迟到 005」—— 这句话已经过时，上面四个
+调用点就是那个 opt-in；另外 [环境变量](environment_variables.md) 在
+*检查点 + 路径* 一节把 `ARI_ROOT` 定位为「测试时使用」，这低估了它。
+`ARI_ROOT` 是这条阶梯的第三级，因此在 `ARI_CHECKPOINT_DIR` 未设置时，它决定
+真实运行落在哪里。而*没有*改变的是：`PathManager()` 的裸构造函数仍然默认当前
+工作目录，并不查询这条阶梯。
 
 **falsy 与缺失的区别：** core 侧的环境变量覆盖守卫（`if _m:` 等）把
 空环境变量当作缺失处理（保留 YAML/默认值；`base_url` 使用显式的
@@ -399,9 +424,11 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 
 ### legacy Settings 键：实际接线情况
 
-legacy 的 `GET/POST /api/settings` 接口面已冻结（其精确的键集合由
-`ari-core/tests/test_gui_baseline_settings_contract.py` 固定），连同其怪癖
-一起冻结。阅读 Settings 页面时，其中两个怪癖尤为重要：
+legacy 的 `GET/POST /api/settings` 接口面已冻结（其精确的键集合、默认值与
+保存路径行为由 `ari-core/tests/test_gui_baseline_settings_contract.py`
+固定），连同其怪癖一起冻结。下面的一切都是**实测到的冻结行为** —— 记录在
+这里是因为测试依赖它、运维会被它绊倒，而不是因为它值得效仿。阅读 Settings
+页面时有六点尤为重要：
 
 **1. GET 与 POST 的键集合并不一致。** `GET /api/settings` 恰好返回 **27** 个
 顶层键（26 个标量/列表 + 嵌套的 `ors` 对象，后者含 10 个子键）；Save 按钮
@@ -429,6 +456,131 @@ legacy 的 `GET/POST /api/settings` 接口面已冻结（其精确的键集合�
 | `slurm_partitions` | **仅 UI 本地** | 这是 Settings 页面的一个多选控件状态；向导的分区列表改为来自 `GET /api/slurm/partitions` 的探测结果。 |
 | `container_mode` / `container_image` / `vlm_review_model` / `letta_*` | **仅环境变量** | 会被导出为 `ARI_CONTAINER_MODE` / `ARI_CONTAINER_IMAGE` / `VLM_MODEL` / `LETTA_*`，但对应的 workflow 块是无类型的 `extra="allow"` 区段，因此字段注册表尚无对应的类型化叶子。 |
 | `letta_api_key` | **被冻结的缺陷** | 以明文原样持久化进 `settings.json`。规范配置 API 拒绝在 `values` 中出现 secret；请改用 `PUT /api/v1/secrets/{secret_id}`。 |
+
+**3. 被冻结的不只是键名，还有默认*值*。**
+`_api_get_settings`（`ari/viz/api_settings.py`）构造出一个字面量 `defaults`
+字典，`test_frozen_default_values` 固定了它的内容。请把它们读作「没有任何
+东西会重新推导的固定字面量」—— 它们不是调优后的推荐值，也没有任何运行时
+依据它们做决定。
+
+二十个顶层槽位与五个 `ors` 子键是纯常量：
+
+| 键 | 冻结值 |
+|---|---|
+| `llm_api_key` | `""` |
+| `semantic_scholar_key` | `""` |
+| `temperature` | `1.0` |
+| `slurm_partition` | `""` |
+| `slurm_cpus` | `null` |
+| `slurm_memory_gb` | `null` |
+| `slurm_gpus` | `0` |
+| `slurm_walltime` | `"04:00:00"` |
+| `mcp_skills` | `[]` |
+| `container_mode` | `"auto"` |
+| `container_image` | `""` |
+| `container_pull` | `"on_start"` |
+| `vlm_review_enabled` | `true` |
+| `vlm_review_model` | `"openai/gpt-4o"` |
+| `vlm_review_max_iter` | `3` |
+| `vlm_review_threshold` | `0.7` |
+| `letta_deployment` | `"auto"` |
+| `letta_deployment_image` | `""` |
+| `letta_deployment_venv` | `""` |
+| `letta_api_key` | `""` |
+| `ors.rubric_gen_temperature` | `0.0` |
+| `ors.rubric_gen_target_leaves` | `0` |
+| `ors.rubric_gen_two_stage` | `true` |
+| `ors.judge_n_runs` | `3` |
+| `ors.phase1_max_runtime_sec` | `21600` |
+
+其余六个顶层槽位与五个 `ors` 子键是**环境变量优先**的；被冻结的只是回退值，
+所以不要把它们当常量引用：
+
+| 键 | 优先读取 | 该变量未设置时的取值 |
+|---|---|---|
+| `ollama_host` | `OLLAMA_HOST` | `"http://localhost:11434"` |
+| `retrieval_backend` | `ARI_RETRIEVAL_BACKEND` | `"semantic_scholar"` |
+| `letta_base_url` | `LETTA_BASE_URL` | `"http://localhost:8283"` |
+| `letta_embedding_config` | `LETTA_EMBEDDING_CONFIG` | `"letta-default"` |
+| `ors.replicator_model` | `ARI_MODEL_REPLICATE` | `"claude-opus-4-7"` |
+| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini-2.5-pro"` |
+| `ors.rubric_audit_model` | `ARI_MODEL_RUBRIC_AUDIT` | `"claude-opus-4-7"` |
+| `ors.judge_model` | `ARI_MODEL_JUDGE` | `"gpt-4o-2024-11-20"` |
+| `ors.phase1_sandbox_kind` | `ARI_PHASE1_SANDBOX` | `"auto"` |
+| `llm_model` | `ARI_LLM_MODEL` | 包内自带 `workflow.yaml` 的 `llm.model`，否则 `""` |
+| `llm_provider` | `ARI_BACKEND` | 包内自带 `workflow.yaml` 的 `llm.backend`，否则 `""` |
+
+有两个细节表格无法呈现。那九个 `os.environ.get(VAR, 字面量)` 槽位只有在变量
+**不存在**时才回退 —— 被设为空字符串的变量会得到 `""`，而不是字面量。
+`llm_model` / `llm_provider` 用的是 `os.environ.get(VAR, "") or …`，因此只有
+这两个在变量为空时也会继续回退。契约测试之所以能看到这些冻结字面量，仅仅是
+因为它的 `_clean_env` fixture 先删掉了全部十一个变量；在开发者的 shell 上
+payload 会不一样。
+
+**4. `api_key` 不会进入 `settings.json` —— 它写入 `.env` 文件并写进存活的
+服务器进程。** `POST /api/settings` 会从请求体里 pop 掉 `api_key`（其次是
+`llm_api_key`），并且无条件再 pop 一次，因此两者都不会被持久化。只有当该值
+通过下面第 5 点的可信度守卫，*并且* provider 能映射到某个环境变量名时，
+`_upsert_env_key(name, key, quote=False)` 才会执行。这个 helper 会：
+
+- 重写目标文件中 strip 之后以 `NAME=` 开头的**每一**行；若一行都没有则追加
+  一行。（helper 自己的 docstring 写的是「第一行」；但循环没有提前退出，因此
+  一个已经含有重复 `NAME` 条目的文件会被全部重写。）；
+- 原子写入 —— 同目录 `mkstemp`、`fchmod 0o600`、`fsync`、`os.replace`，最后
+  尽力而为地 `chmod 0o600`；
+- 渲染**不带引号**的 `NAME=value` 形式。写 `NAME="value"`（`quote=True`）的
+  是环境变量编辑器与 `PUT /api/v1/secrets/{secret_id}`，两者走同一个 helper。
+  helper 的 docstring 记录了：这两个调用方在历史上只有引号这一点不同，统一
+  它属于行为变更；
+- 最后在**存活的服务器进程**中设置 `os.environ[name] = value`。一次设置保存
+  改写的不只是文件，还有实时环境。
+
+写入目标是模块级全局 `ari.viz.state._env_write_path`，它在 import 时被一次性
+绑定到 ARI 仓库根目录的 `.env`。`set_active_checkpoint` 只重绑
+`_checkpoint_dir` 与 `_settings_path`，不碰 `_env_write_path`，而 `ari/` 下也
+没有任何代码重新赋值它 —— 所以这是**仓库根目录**的 `.env`，不是所选
+checkpoint 的。（契约测试看起来写的是 checkpoint 本地的 `.env`，只是因为它的
+fixture monkeypatch 了那个全局量。）规范路由抵达的是同一个文件：参见
+[Configuration Studio](../guides/configuration_studio.md) 的 *secret 如何工作*。
+
+**5. 怪癖 —— api key 被静默丢弃的三条路径。** 整个 `.env` 分支挂在一个条件
+上：`if _raw_key and "test" not in _raw_key and len(_raw_key) >= 20:`，其后是
+在一个内联 dict 中查找 provider。既没有 `else` 分支，也没有日志行，响应里
+也没有对应字段，因此下面每一种情况都会整块跳过写入；只要存在活动的
+checkpoint，handler 随后仍会返回 `{"ok": true}`：运维被告知保存成功，而凭据
+已被丢掉。
+
+| 丢弃的条件 | 详情 |
+|---|---|
+| key 短于 20 个字符 | `20` 是写死在条件里的魔数 —— 没有具名常量，没有配置开关，也没有提示信息。 |
+| key 中任意位置出现 `test` | 对整个 key 做区分大小写的子串判断，且在长度检查之前生效。一个恰好含有这四个字符的真实凭据，会像占位符一样被丢弃；而 `TEST` 根本不会命中。 |
+| provider 不在映射表中 | 映射为 `openai` → `OPENAI_API_KEY`；`anthropic`、`claude_code`、`claude-code` → `ANTHROPIC_API_KEY`；`gemini` → `GOOGLE_API_KEY`。五种写法，三个变量。`.get(provider, "")` 对其它一切（`ollama`、vLLM，以及所有其它 OpenAI 兼容的 `base_url` 后端）返回 `""`，写入被跳过。 |
+
+这三条都是被测试固定下来的长度与子串启发式。它们既不是校验，也不是 secret
+检测，请勿如此描述。这张映射表同时也是这条路由的全部覆盖范围：
+`GEMINI_API_KEY`、`SEMANTIC_SCHOLAR_API_KEY`、`LETTA_API_KEY`、`ZENODO_TOKEN`
+和 `ARI_REGISTRY_TOKEN` 都在 v1 secret 白名单
+（`ari/viz/v1/secrets.py`）中，却没有一个能从这里抵达。
+
+怪癖 1 的一个后果落在这条路径上。provider 名读作
+`data.get("llm_provider", "") or data.get("llm_backend", "")`，而前端 24 键的
+Save 请求体带的是 `llm_backend`、没有 `llm_provider` —— 因此真实 Settings
+页面的每一次保存都是通过*回退*那一支来解析 provider 的。正是这个回退让 GUI
+能够配置 key；若两个键都缺失或为 falsy，provider 就是 `""`，映射到 `""`，
+key 被丢弃。
+
+**6. 怪癖 —— 被拒绝的保存并不是 no-op。** `_api_save_settings` 的执行顺序
+是：解析请求体 → `retrieval_backend` 守卫 → pop api key 并做 `.env` upsert →
+活动 checkpoint 检查 → 写 `settings.json`。因此两种拒绝留下的痕迹不同：
+
+| 拒绝（两者 `_status` 均为 400） | 副作用 |
+|---|---|
+| `{"ok": false, "error": "retrieval_backend must select one pinned provider"}` —— 请求体带了一个不属于 `semantic_scholar`、`arxiv`、`alphaxiv` 的 `retrieval_backend`（该键缺失则放行） | 无。它在读取 key 之前就返回了。 |
+| `{"ok": false, "error": "No active project. Create or select a checkpoint before saving settings."}` —— `state._settings_path` 为 `None` | key **已经**被写入 `.env` 并导出到 `os.environ`。`_env_write_path` 与 `_settings_path` 是彼此独立的状态，因此在没有选中 checkpoint 时它依然可写。 |
+
+需要记住的是第二行：这个端点返回 400 并不意味着「什么都没发生」—— 无论如何
+secret 都已经在磁盘上、也已经在进程里。它就这样被冻结；调整 handler 的顺序
+属于行为变更。
 
 24 个 POST 键、legacy 启动环境变量导出与规范配置叶子三者之间的重叠关系 ——
 包括上面每一处分歧 —— 都由
@@ -465,7 +617,8 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    tool: ''                   # 仅用于展示的行：评估由 ari-core 的进程内
+                               # LLMEvaluator 负责，而不是某个 MCP 工具
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -477,7 +630,11 @@ bfts_pipeline:
 pipeline:
   - stage: search_related_work
     skill: web-skill
-    tool: collect_references_iterative
+    tool: search_papers
+    params:
+      provider: semantic-scholar
+      max_results: 15
+      mode: record
     skip_if_exists: '{{ckpt}}/related_refs.json'
     # ...
   - stage: transform_data
@@ -621,10 +778,11 @@ retrieval:
 # 通过 CLI 标志（--rubric、--fewshot-mode、--num-reviews-ensemble、
 # --num-reflections）或环境变量（ARI_RUBRIC、ARI_FEWSHOT_MODE、
 # ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS）覆盖。
-# ari-core/config/reviewer_rubrics/ 中内置 16 种评审规范：
+# ari-core/config/reviewer_rubrics/ 中内置 23 个 YAML 评审规范：
 #   neurips（默认，v2 兼容）| iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
 #   | journal_generic | workshop | generic_conference
+#   | aer | ahr | apsr | econometrica | philreview | pmla | qje
 # 加上内置的 `legacy` 回退（v0.5 schema）。新 venue 只需把 <id>.yaml
 # 放进 reviewer_rubrics/ 即可，无需修改代码。
 #
@@ -682,7 +840,7 @@ skills:
     phase: bfts
   - name: idea-skill
     path: "{{ari_root}}/ari-skill-idea"
-    phase: none
+    phase: bfts
   - name: hpc-skill
     path: "{{ari_root}}/ari-skill-hpc"
     phase: [bfts, reproduce]
@@ -729,7 +887,7 @@ skills:
 | `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | 禁用 Letta self-edit (CoW 安全) | `true` |
 | `ARI_MEMORY_ACCESS_LOG` | 启用 `{checkpoint}/memory_access.jsonl` | `on` |
 | `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 时自动恢复备份 | `true` |
-| `ARI_RUBRIC` | 评审使用的 rubric_id（例 `neurips`、`sc`、`nature`） | `neurips` |
+| `ARI_RUBRIC` | BFTS 动态打分轴（Phase 3）与 lineage 判定阈值读取的 rubric_id（例 `neurips`、`sc`、`nature`）。论文评审不再读取它：`review_paper` 从 `workflow.yaml` 顶层的 `paper_rubric` 取得显式 `rubric_id`，而 `resolve_rubric` 对空 id 直接拒绝，不回退到环境变量 | `neurips` |
 | `ARI_FEWSHOT_MODE` | `static` / `dynamic` | `static` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | 独立审稿人数量 | `1` |
 | `ARI_NUM_REFLECTIONS` | self-reflection 循环轮数 | `5` |
@@ -902,7 +1060,7 @@ silently 降级为 `continue`，BFTS 循环不会因此 hook 卡住。
 lineage_decision:
   mode: stagnation_rule           # off | stagnation_rule | every_node
   stagnation_window: 5
-  stagnation_threshold: 0.02
+  stagnation_threshold: 0.05
   min_nodes_before_decision: 3
   rate_limit_per_run: 5
 ```
@@ -1256,6 +1414,25 @@ Shadow 输出是仅观察的：它绝不触达 BFTS 分数、前沿或记忆。
 | `max_clean_room_generations_per_epoch` | `1` | 每纪元洁净室再生成的上限（由洁净室流水线消耗）。 |
 | `mutation_kinds` | 全部五种 | 启用的 PromptMutator 家族：`freeform_mutation`、`threshold_tuning`、`schema_tightening`、`specialization`、`distillation`。 |
 
+### `rqgm.utility_evolution` —— 对评分函数自身的受治理改写
+
+在纪元边界上，效用函数本身也是一个被治理的对象：它只能沿
+`PolicyMutator` → `CandidateValidationPipeline` → `RegistryTransitionEngine`
+→ `ConstitutionalKernel` 的路径被改写，绝不就地修改。
+
+**只有数值与词表旋钮。** 合法性规则 —— 封闭的取值空间与轴权重上下界 ——
+是 `ari.rqgm.kernel_rules.UTILITY_POLICY_RULES` 中被冻结的代码，位于
+`constitution_hash` *内部*；一个可调的权重上界就等于一部可调的宪法。有两类
+看起来该放在这里、但被刻意排除的预算，因为它们各自已有唯一的 schema 归属：
+候选上限走 `rqgm.prompt_evolution.max_candidates_*`，采纳上限走
+`rqgm.transition.max_adoptions_per_role_per_boundary`。
+
+| 键 | 默认值 | 含义 |
+|---|---|---|
+| `enabled` | `true` | `ari_rqgm` 内受治理的效用进化开关。`false` 精确复现引入改写之前的评分行为 —— 不铸造任何候选，不发生任何取代，`utility_policy_hash` 在整次运行中恒定（消融档位）。它**不会**注销 founding 时注册的 `utility_policy_v1` / `policy_mutator_v1` 组件。 |
+| `mutation_kinds` | `axis_reweighting`、`composite_swap`、`frontier_score_swap`、`exploration_tuning` | 启用的 `PolicyMutator` 家族。四个默认项都是对边界证据的纯算术 —— 无 LLM、无时钟、无随机 —— 因此默认的改写流是确定性的。`freeform_policy_proposal` 会调用 LLM，属于可选启用；启用它会失去候选流的逐字节可复现性（但一个不可复现的*提案*仍然不可能变成未经校验的 policy —— 内核在两种情况下都会校验）。 |
+| `min_epochs_between_rewrites` | `1` | 两次被采纳的改写之间的最小纪元数。用于约束修复成本：一次改写会作废在旧策略下评过分的全部节点，在早期边界上这可能就是整棵树。 |
+
 ### `rqgm.clean_room` —— 洁净室再生成姿态
 
 筛查*策略*是代码（`ari/rqgm/clean_room_rules.py`）；这里只有数值
@@ -1306,6 +1483,33 @@ Shadow 输出是仅观察的：它绝不触达 BFTS 分数、前沿或记忆。
 | `max_governance_tokens_per_epoch` | `0` | 治理阶段 LLM 花费的每纪元 token 上限。 |
 | `on_exhausted` | `degrade` | `degrade` 限制该节点的生效治理级别；`skip` 丢弃单个动作。绝不崩溃。 |
 
+**被计入预算的动作种类。** 上面三个键是本块唯一拥有的旋钮，但它们并不是
+`GovernanceBudgetManager` 计数的全部。提交给它的每个治理动作都带有十种
+*动作种类*（`ari/rqgm/budget.py` 中的 `ACTION_KINDS`）之一，各自拥有独立的
+每纪元计数器；每种的上限都从拥有该旋钮的那个块读取 —— 不存在别名。这个词表
+是封闭的：
+
+| 动作种类 | 每纪元上限来自 | 默认值 |
+|---|---|---|
+| `adversary_call` | `rqgm.adversarial.max_adversary_calls_per_epoch` | `24` |
+| `defender_call` | `rqgm.governance.max_defender_calls_per_epoch` | `12` |
+| `judge_call` | `rqgm.governance.max_judge_calls_per_epoch` | `8` |
+| `shadow_call` | `rqgm.shadow.max_shadow_calls_per_epoch`；`rqgm.shadow.enabled` 为 false 时为 `0` | `10` |
+| `replay_case` | `rqgm.replay.max_cases_per_epoch`；当 RetirementEvent 正在被考虑时改用 `rqgm.replay.max_cases_for_retirement` | `8` / `12` |
+| `virsci_call` | `proposal_router.generators.virsci.max_calls_per_epoch`；该生成器被禁用时为 `0`，取值 `<= 0` 表示不限 | `2` |
+| `prompt_candidate` | `rqgm.prompt_evolution.max_candidates_per_role_per_epoch`（按角色计数），并以 `max_total_candidates_per_epoch` 作为跨全部角色的第二道天花板 | `1` / `4` |
+| `clean_room_generation` | `rqgm.prompt_evolution.max_clean_room_generations_per_epoch` | `1` |
+| `governance_llm_call` | `rqgm.governance.max_llm_calls_per_audit` | `12` |
+| `paper_anchor_scoring` | `rqgm.paper.anchor.sample_size`；`rqgm.paper.anchor.enabled` 为 false 时为 `0` | `8` |
+
+第 0 级的固定检查从不提交动作，在构造上即豁免。计数器以
+`(epoch_id, kind)` 为键（按角色计数的 `prompt_candidate` 则为
+`(epoch_id, kind:role)`），并在构造时从 `budget_consumed` 审计行重建，因此
+上限能跨 `ari resume` 存活。没有上限即表示不限；检查内部的任何失败都会
+记录警告并**失败即放行**，而不是阻断运行。`paper_anchor_scoring` 是
+paper-archive 阶段在原有九种之上新增的唯一一种；其上限背后的成本模型见下面
+的 `rqgm.paper.anchor` 小节。
+
 ### `rqgm.eval` —— 评估工具链姿态
 
 默认全部关闭：脚本化的评估替身会被拒绝，注入也绝不被应用，除非
@@ -1318,6 +1522,53 @@ Shadow 输出是仅观察的：它绝不触达 BFTS 分数、前沿或记忆。
 | `scripted_components` | `{}` | `role -> double_name` 替换（仅限工具链）。 |
 | `injection_specs` | `[]` | 激活的 `eval_*` 注入 id；被记录进 `rqgm_injection_provenance.json`。 |
 | `paper_ablation.condition_id` | `""` | 与 RQGM 原论文对齐的评估专用条件（`P0_hgm_h_fixed_critic` 至 `P4_constitutional_rqgm`）。空值或 `eval.enabled: false` 保持正常行为；它不是 `paper.mode`。 |
+
+### `rqgm.paper` —— paper-archive 协同进化
+
+整个 `rqgm.paper.*` 块**在生效 paper 模式不是 `rqgm_archive` 时完全惰性**
+（`paper.mode: rqgm_archive` 与 `rqgm.paper.enabled: true` 必须一致）。它与
+`ari.mode` 正交，并且绝不会遮蔽上面探索侧的 `rqgm.*` 旋钮 —— 即便名字相近，
+两层也各有独立的 schema 归属。语义在概念侧：
+[RQGM 架构](../concepts/rqgm_architecture.md) 的 *paper-archive 层*。
+
+| 键 | 默认值 | 含义 |
+|---|---|---|
+| `enabled` | `false` | 冗余的安全互锁，镜像 `rqgm.enabled`。 |
+| `archive.width` | `4` | 深度 1 上的种子草稿数 —— 根节点的分支因子。 |
+| `archive.refine_rounds` | `2` | 每份草稿的 refine 子节点数 —— 草稿的分支因子。 |
+| `archive.max_expansions` | `12` | 每纪元的节点预算。archive 实际用作 BFTS `max_total_nodes` 的*生效*上限是 `min(width × (1 + refine_rounds), max_expansions)`；在默认值下两项恰好相等（4 × 3 = 12）。正是这个界限在结构上限制了那些没有自己预算动作种类的 paper 参与者。 |
+| `archive.depth` | `3` | 草稿树深度，用作 archive 的 BFTS `max_depth`。更深的树只是把同一份节点预算重新分配，绝不会让它变多。 |
+| `archive.compile_threshold` | `0.0` | 惰性编译胜出草稿所需的 best-belief 分数下限。 |
+| `epoch.rounds` | `2` | 每个 paper 阶段的 archive 轮数；一轮即一个 paper 纪元。这个廉价的默认值刻意买不到一次完成的 reviewer 采纳：那条路径是 candidate → validated → shadow → probationary_active，而且需要先出现角色空缺，因此大约需要五个边界。在 `2` 下，默认运行会跑通循环、adversary 与弹劾，但你不会看到生效的 reviewer 哈希发生变化。若某次运行必须见证一次采纳，请调高它。 |
+| `self_preference.enabled` | `true` | self-preference adversary；仅在 `rqgm_archive` paper 模式下有意义。 |
+| `self_preference.corpus_path` | `""` | `""` 表示复用锚语料库及其作者身份标签。 |
+| `self_preference.sample_size` | `8` | 每纪元评分的留出论文数（镜像锚的采样数）。 |
+| `self_preference.accept_threshold` | `0.6` | reviewer 的「accepted」判定阈值。 |
+| `self_preference.margin` | `0.1` | 触发前置信号的 AI 对人类平均分差。 |
+| `prompt_evolution.enabled` | `true` | archive 内的 reviewer / writer 协同进化。`false` 会退化为不带协同进化的 best-of-N 已评审草稿。 |
+
+### `rqgm.paper.anchor` —— 留出集上的 accept/reject 一致度
+
+`paper_reviewer` 的基准真值锚：一份按 `train` / `held_out` 划分的只读
+accept/reject 语料库，其形状记录在
+[RQGM Schema 参考](rqgm_schemas.md) 的
+*`paper_anchor_corpus.jsonl` —— 只读 accept/reject 锚* 一节。默认关闭，这就是
+那条降级的入门坡道：不读取任何语料库，`anchor_evaluation` 阶段走它的零覆盖
+通过路径，reviewer 候选不受锚门控。`paper_writer` 同样有锚，但它锚在第 0 层
+的论断–证据门上，不需要任何精选语料库 —— 不过 writer 的忠实性案例仍然落在
+这个池子里，所以 `enabled: false` 同时也门控了对 writer 的制裁。
+
+| 键 | 默认值 | 含义 |
+|---|---|---|
+| `enabled` | `false` | 锚语料库评分开关。它同时是 `paper_anchor_scoring` 的预算开关：禁用即上限为 `0` —— 与 `shadow_call`、`virsci_call` 相同的「禁用即归零」规则。 |
+| `corpus_path` | `""` | accept/reject 语料库路径（相对 checkpoint 或绝对路径）。 |
+| `sample_size` | `8` | 留出一致度的采样数，**同时**也是 `paper_anchor_scoring` 的每纪元上限。reviewer 候选是通过在 `sample_size` 篇留出论文上被评分来获得其锚一致度效用的，因此治理成本是 O(候选数 × `sample_size`)；这正是上限取采样数本身、而不是另行调优某个数字的原因。请把它读作成本模型，而不是调优出来的常量。 |
+| `max_bootstrap_label_fraction` | `0.5` | 对 `label_source=gate_bootstrap` 案例占比的机器强制上限，在整个语料库*以及*留出子集上分别检查。一旦越界，语料库会被拒绝 —— 加载不返回任何东西，运行落回入门坡道 —— 而绝不会把异常抛进运行。`0.0` 表示只接受人工标注；`1.0` 表示接受完全自标注的锚（会被指纹化）。 |
+
+有一处不一致需要知道：`enabled` 的类型化默认值是 `false`
+（`RQGMPaperAnchorConfig`），而预算管理器在**根本找不到** anchor 块对象时
+自身的回退值是 `true`。该回退只对完全不带 `anchor` 块的配置生效；由随附默认
+值构建出来的配置总是呈现 `enabled: false`。
 
 ### `rqgm.paper.reviewer.agent_as_judge` —— agent-as-judge 草稿评分
 

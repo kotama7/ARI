@@ -161,7 +161,7 @@ component ids are `{role}_v{N}`, prompt ids `{role}_prompt_v{N}`.
 
 | Layer | Tier | Roles | Evolves? |
 |---|---|---|---|
-| **0 — constitutional (fixed)** | `fixed` | `constitutional_kernel`, `knowledge_binder`, `capability_binder`, `harness_resolver`, `fixed_verifier`, `audit_log` | **Never.** Registered for provenance only; each binder/resolver/verifier is prompt-free and deterministic. Rule tables live in code (`kernel_rules.py`, `transition_rules.py`, `clean_room_rules.py`, `meta_rules.py`), pinned by a `constitution_hash` that any rule edit must explicitly re-pin in `tests/test_rqgm_kernel.py`. |
+| **0 — constitutional (fixed)** | `fixed` | `constitutional_kernel`, `knowledge_binder`, `capability_binder`, `harness_resolver`, `fixed_verifier`, `audit_log` | **Never.** Prompt-free and deterministic, and registered for provenance only — registered *at all* only when a Knowledge/Capability/Assurance layer is enabled: the six rows are `KCA_FIXED_COMPONENT_TABLE` (`prompt_spec.py`), committed by their own `transition_kca_fixed_admission` transaction, never by the founding one. Rule tables live in code (`kernel_rules.py`, `transition_rules.py`, `clean_room_rules.py`, `meta_rules.py`), pinned by a `constitution_hash` that any rule edit must explicitly re-pin in `tests/test_rqgm_kernel.py`. |
 | **1 — institutional** | `institutional` | `generator`, `reviewer`, `adversary`, `defender`, `judge`, `router`; the governed evaluation criterion `utility_policy`; and (paper-mode only) `paper_writer`, `paper_reviewer` | Yes — through the prompt-evolution lifecycle, at epoch boundaries only. `utility_policy` is not prompt-defined — its incumbent is a policy *document* — but it is evolvable in exactly the same sense: one incumbent, replaced only through the transition engine at a boundary. |
 | **1 — governance judiciary** | `institutional` | `auditor`, `evidence_clerk`, `governance_judge` | No successor-generation path, but not immutable: all three are founding, registry-addressable, sanctionable actors. The judge recuses when it is the motion target. |
 | **2 — meta** | `meta` | `prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor`, `policy_mutator` | Yes — the agents that evolve Layer 1 are themselves governed, with strictly narrower authority (see invariants). `policy_mutator` proposes successor utility policies. |
@@ -204,6 +204,15 @@ independent verifier selected by `harness_resolver_v1`, never by the Generator
 or Evaluator. Individual Skills, Providers, and Harnesses are catalog entries,
 not `ComponentRegistry` actors.
 
+All three layers are opt-in and inert at the shipped defaults
+(`knowledge.mode: off`, `capability_binding.mode: legacy`,
+`assurance.mode: off` in `ari-core/ari/configs/defaults.yaml`). With all three
+at those values `RQGMRuntime` reports `kca_feature_enabled: false`: an
+`ari_rqgm` run registers no `fixed`-tier components, admits no baseline
+bundle, and keeps the legacy MCP discovery/visibility. Any other value on any
+one of the three enables the feature, and the run loop's admission call is
+then deliberately fail-closed rather than best-effort.
+
 The trusted coordinator freezes every baseline catalog snapshot, contract,
 and lock before the first execution epoch. Resume reconstructs that persisted
 view instead of consulting current catalogs. Fixed checks `CK-KNW-*`,
@@ -225,7 +234,7 @@ governance machinery (all constructed lazily, all fail-open):
 
 | Facade | Module | Owns |
 |---|---|---|
-| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0. The original twelve checks plus Knowledge integrity, Capability Binding integrity, and Harness integrity. It checks procedure, authority, identity, and monotonicity—not scientific correctness. Deterministic and non-evolving: zero LLM calls, zero network, zero wall-clock decisions. `rqgm.kernel.enforcement: audit_only` downgrades every context to warn-and-log. |
+| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0. Sixteen closed `validate_*` entry points: the original twelve (record schema, hashes, capability, epoch invariance, transitions, role separation, selective erasure, audit-log integrity, clean-room bundle, contamination, authority non-expansion, context scope), the Task-14 `validate_utility_policy`, plus Knowledge integrity, Capability Binding integrity, and Harness integrity. It checks procedure, authority, identity, and monotonicity—not scientific correctness. Deterministic and non-evolving: zero LLM calls, zero network, zero wall-clock decisions. `rqgm.kernel.enforcement: audit_only` downgrades every context to warn-and-log. |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | The epoch-boundary audit: `audit_epoch(...) -> GovernanceReport`, a nine-step pipeline (observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report). Every LLM decision (Auditor / Defender / GovernanceJudge, prompts under `ari/prompts/governance/`) has a total deterministic fallback, so `llm=None` still produces a complete audit. The report is *advisory input* to the transition engine — the orchestrator never mutates registries. Construction makes that authority relationship non-optional: a missing `kernel` raises `ValueError` in `__init__`, because the kernel — not the orchestrator's own record builders — is the role-separation authority, and it is the kernel that re-validates the records the audit produced (evidence bundles, motions, defenses, outcomes) at step 8, via `validate_record_schema` and `validate_role_separation`. The other two seams are optional by design: `llm=None` is the guaranteed-degradation, CI-friendly deterministic floor, and `audit_writer=None` collects records in memory on `self.written` instead of writing them, which is how the tests observe the audit. Appending a record never raises — a writer failure is logged and the audit continues. |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | The **sole** registry status writer. Pure `resolve_transition(...)` against the fixed T1–T21 table, then a five-step boundary protocol: freeze → resolve → kernel-validate → prepare → apply/commit over the epoch transaction. A T16 `emergency_quarantine` force-closes the current epoch and opens a newly fingerprinted epoch in that same transaction. |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | After a committed transition with retirements: the pure `trace_dependents` staleness closure and `rebuild_frontier`, emitting `SelectiveErasureEvent` / `FrontierRebuildEvent` records. Failure ladder: kernel-validation failure → conservative re-repair (flagged nodes dropped) → drain-only degradation (`expansion_halted`: the run finishes pending work but expands no further). Never a crash. |
@@ -485,6 +494,39 @@ reviewer), not its anchor-less paper-writing domain. The gate itself stays
 Layer 0: RQGM only **reads** its findings (`run_hard_gate(write=False)`,
 never persisted, never wrapped, never evolved).
 
+**When the eighth adversary fires.** Its pre-signal,
+`_pre_paper_self_preference` (`ari/rqgm/adversarial/engine.py`), is
+deterministic and LLM-free, and `AdversaryEngine.attack` skips any type whose
+pre-signal returns no evidence — so a silent signal costs zero adversary LLM
+calls. It returns nothing unless the node is a paper candidate **and** carries
+a reviewer accept score at or above the accept threshold
+(`rqgm.paper.self_preference.accept_threshold`, default `0.6`; the paper
+runtime stamps the resolved thresholds onto the node as reserved metrics, and
+the pre-signal reads them from there). Past that acceptance gate it collects
+**three independent over-acceptance signals** and fires if *any* of them
+produced evidence:
+
+1. the Layer-0 claim gate already flagged the draft — findings of kind
+   `numeric_mismatch`, `missing_evidence`, `uncovered_numeric` or
+   `invariant_violation`, each cited at the finding's own path;
+2. the authorship-corpus **population** margin reaches
+   `rqgm.paper.self_preference.margin` (default `0.1`), cited to
+   `rqgm/paper_self_preference_stat.json`;
+3. a **per-draft** anchor over-acceptance — the incumbent accepted this
+   specific anchor case whose human ground truth is `reject` — cited to
+   `paper_anchor_corpus.jsonl` with the case id as the ref pointer.
+
+Signal 3 is what carries the mechanism on an ordinary corpus: it needs no
+AI-vs-human authorship split, so an all-human corpus (where the population
+margin is `0.0` and signal 2 is correctly silent) still prosecutes
+over-acceptance on the evidence that exists — the case itself. Each signal
+cites the artifact for *its own* subject, deliberately: a per-draft finding
+that cited the population statistic is what once handed the Defender and the
+Judge an artifact reading `{"margin": 0.0}` as the evidence for the attack's
+own trigger. Every bundle field is read through `getattr` with a fail-safe
+default, so a duck-typed exploration bundle reads as off-phase and returns no
+evidence rather than raising.
+
 **The impeachment chain (Task 15).** The adversary's pre-signal (which
 over-accepted drafts to attack) drives a *genuine*
 adversary → Defender → ArtifactJudge round. The resulting
@@ -510,6 +552,46 @@ writer binding is gated per node on that draft's Layer-0 faithfulness: an
 over-accepted but **faithful** draft binds the reviewer only. `paper_writer`
 resolves to `""` off the paper phase, so exploration records stay
 byte-identical.
+
+**Case-typed replay expectations.** A validated attack carries an
+`expected_behavior` map — the replay pool's statement of what a correct
+component would have done. It is generic for the seven exploration types
+(`reviewer` / `generator` / `judge`; the module-level `_EXPECTED_BEHAVIOR` in
+`ari/rqgm/adversarial/round.py`) and overridden per case type by
+`_EXPECTED_BEHAVIOR_BY_TYPE`, which today holds exactly one row:
+`paper_self_preference` supplies `paper_reviewer` ("reject AI-authored drafts
+whose accepted quality exceeds the human-anchor-supported bar") and
+`paper_writer` ("produce drafts whose claims are anchor-supported"). The
+lookup falls back to the generic map for any other case type, so exploration
+records stay byte-identical. Those keys are load-bearing downstream: the
+deterministic `build_failure_summary` derives the failure summary's
+`affected_roles` from the sorted `expected_behavior` keys and reads no attack
+or defense text at all, which is what makes the abstract clean-room view
+contamination-safe by construction (invariant 7).
+
+**Only the paper roles spend the candidate budget.** At a paper-phase
+boundary the prompt-candidate loop
+(`RQGMRuntime._active_evolvable_incumbents`, `ari/rqgm/runtime.py`) starts
+from every registry entry in an active status, drops the `PromptMutator`'s
+own role (same-role generation is a constitutional violation), and then —
+under the paper phase only — keeps only the entries whose role name starts
+with `paper_`. The paper checkpoint still registers the **full** founding
+set, so the governance and kernel machinery is complete; the filter decides
+which roles spend the per-epoch candidate budget, not which roles are
+registered, and it never spends that budget on exploration roles this phase
+does not run. An exploration boot never reaches the branch. A configured
+P0–P4 evaluation posture (`rqgm.eval.enabled` plus
+`rqgm.eval.paper_ablation.condition_id`,
+`ari/rqgm/evaluation/paper_ablation.py`) applies a second filter through
+`role_evolution_enabled`, which can switch `paper_writer` or `paper_reviewer`
+off individually and passes every other role through; outside an evaluation
+run there is no posture and no second filter. The on/off switch for the whole
+candidate channel is `rqgm.paper.prompt_evolution.enabled` — a **separate**
+key from the exploration `rqgm.prompt_evolution.enabled`, read only under the
+paper phase — and at `false` both candidate channels stand down before this
+filter is ever reached (the prompt-evolution channel appends a
+`prompt_evolution_skipped` audit line and mints nothing): the paper roles stay
+registered, so scoring works, but they never co-evolve.
 
 **The best draft flows to the untouched gate.** The archive's best draft is
 copied **once** to `{ckpt}/full_paper.tex` by the pure, LLM-free
@@ -707,6 +789,55 @@ Task-12 governance budget verbatim.
     repair, budget levels, shadow sampling (hash-based), and the
     evaluation metrics are pure functions — no randomness, no wall-clock
     decisions, byte-identical on replay.
+12. **Each actor gets a capped role view, never the archive.**
+    `ari/rqgm/context_views.py` holds one deterministic projection per actor
+    row — LLM-free, I/O-free, one builder per role. BFTS's row is the
+    load-bearing one and is enforced three ways:
+    `build_bfts_summary_context` accepts a `ProposalSummaryView` dataclass
+    and raises `TypeError` on a full `ProposalRecord`, so a full-record leak
+    is a construction-time failure;
+    `ConstitutionalKernel.validate_context_scope` compares the rendered key
+    set against the role whitelist at check time (the live expand path also
+    appends a `kernel_report` audit line on a violation, via
+    `RQGMRuntime._flag_bfts_view_scope`); and a leak-regression test asserts that no
+    `ARCHIVE_ONLY_FIELDS` name (`transcript`, `discussion_log`,
+    `raw_proposals`, `raw_output`, `agent_messages`, `attack_texts`,
+    `defense_texts`, `evidence_bundles`) ever appears in a rendered expand
+    context. The whitelists are *aliased* from
+    `kernel_rules.CONTEXT_VIEW_WHITELISTS`, so the kernel check and the leak
+    test read one source and cannot drift, and that table rides inside
+    `constitution_hash` — editing a whitelist is a constitutional amendment,
+    not a config change. The remaining rows are exclusions by construction
+    rather than by whitelist: the Judge view scrubs every frontier/utility
+    signal (`frontier_scores`, `frontier_rank`, `scientific_score`,
+    `_scientific_score`, `utility`, `utility_score`) so it cannot be biased
+    by score; the governance/audit view scrubs prompt bodies (`prompt_text`,
+    `prompt_body`, `template`, `template_text`, `body` — the retired-text
+    rule of invariant 7); and same-role isolation is structural, since the
+    reviewer and paper-reviewer builders have no parameter for another
+    reviewer's output. Every string inside a dict view is truncated at 4000
+    characters.
+
+    **Honest limits.** The check-time half is **warn-only** by design:
+    `_enforce_scope` logs each violation and swallows any exception, and
+    `CK-CTX-001` is severity `warn` in the kernel's table (see
+    [Constitutional violation codes](../reference/rqgm_schemas.md#constitutional-violation-codes)).
+    The kernel *records* a whitelist breach; it does not stop the node.
+    Only three roles have a whitelist today — `generator` (which BFTS rides),
+    `paper_writer`, and `paper_reviewer` — and `validate_context_scope`
+    leaves a role without one unchecked. Coverage is narrower still: of the
+    seven builders, only `build_bfts_summary_context` is on a production
+    path, and the paper-reviewer whitelist reaches production through a
+    different function (`paper_judge._paper_reviewer_string_view`, which
+    carries the archive's raw strings under the same whitelisted keys and
+    asserts the key set) on the opt-in agent-as-judge path. The reviewer,
+    adversary, judge, governance, and paper-writer builders are exercised by
+    tests only — read the matrix as the declared contract plus two wired
+    rows, not as seven enforced ones. Likewise `CHARTER_BLOCK_CAP = 1200` is
+    a declared constant that only its own test reads. `_enforce_scope`'s own
+    docstring records the frozen legacy here: the whitelists were declared
+    and had no production caller at all until the check was moved inside the
+    builders.
 
 ---
 
@@ -753,7 +884,8 @@ JSON Schemas (in `ari-core/ari/schemas/`, e.g. `epoch_state`,
 agree — see [Execution Modes](../guides/execution_modes.md)). The tunable
 surface is deliberately limited to switches, budgets, and numeric
 thresholds: `rqgm.epoch`, `rqgm.kernel`,
-`rqgm.governance`, `rqgm.replay`, `rqgm.transition`, `rqgm.adversarial`,
+`rqgm.governance`, `rqgm.replay`, `rqgm.utility_evolution`,
+`rqgm.transition`, `rqgm.adversarial`,
 `rqgm.shadow`, `rqgm.prompt_evolution`, `rqgm.clean_room`,
 `rqgm.frontier_repair`, `rqgm.meta_evolution`, `rqgm.budgets`, `rqgm.eval`,
 plus the `proposal_router.*` block (defaults in

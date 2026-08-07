@@ -117,9 +117,11 @@ compare against, what ablations to run. Sourced from
 
 **venue**
 The *judgement criteria* of a run — which dimensions are scored and how. A venue
-is a `ari-core/config/reviewer_rubrics/<id>.yaml` file selected by `ARI_RUBRIC`.
-Switching the venue changes the BFTS scoring axes and the published review's
-criteria together. See
+is a `ari-core/config/reviewer_rubrics/<id>.yaml` file. Two selectors pick one
+independently: `ARI_RUBRIC` (default `neurips`) for the BFTS scoring axes, and
+the top-level `paper_rubric` key in `workflow.yaml` (default
+`generic_conference`), passed to the review stage as an explicit `rubric_id`.
+Set both to the same id for one venue to drive scoring and review together. See
 [Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
 
 **rubric**

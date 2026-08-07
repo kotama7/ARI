@@ -98,7 +98,7 @@ boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registra
  "payload": {"transition_id": "transition_founding"}, "prev_event_hash": ""}
 {"event_id": "evt_000001", "event_type": "prompt_registered",
  "payload": {"prompt_id": "agent_system_prompt_v1", "role": "generator",
-             "status": "active", "prompt_hash": "a50abe13d568",
+             "status": "active", "prompt_hash": "6eff1fb33e63",
              "source": {"kind": "committed_template", "key": "agent/system"}, …}}
 // … 31 more prompt_registered, then 20 component_registered …
 {"event_id": "evt_000053", "event_type": "epoch_transaction_commit",
@@ -304,8 +304,10 @@ shingle 筛查和 `RetiredPromptAccessGuard` 强制执行）。元层可以
 
 运行结束时的 `ensure_epoch` 冲刷（第 6 步）在节点计数触发条件满足
 时触发最后一次边界；否则尾部纪元就保持 `open`，与崩溃恢复语义
-一致 —— `ari resume` 重放事件日志、重新校验审计日志哈希链并继续
-（阻断级的完整性发现会降级为治理挂起式延续，绝不拒绝 resume）。
+一致 —— `ari resume` 重放事件日志，再对恢复出来的状态跑两趟彼此独立的
+完整性检查（审计日志的 append-only 哈希链，以及针对恢复出来的记录的
+selective-erasure 检查），然后继续
+（任一趟给出阻断级的完整性发现都会降级为治理挂起式延续，绝不拒绝 resume）。
 
 随后的论文阶段会运行 **paper-candidate 预检**：把已持久化的效用惩罚
 重放到已加载的节点上，对最优节点执行一次 L3 paper-candidate 对抗回合，
@@ -396,7 +398,23 @@ paper 阶段是一个**独立、正交的**模式：`paper.mode: rqgm_archive` +
 
    以哈希为键很关键：一个组件 id 会跨越接连的提示词版本，因此以组件为键的
    分数会把在任者的忠实度泄漏给它的后继，使一个全新的写作器立即可被弹劾。
-3. **采纳（协同进化的见证）。**角色被开启后，一个协同进化的后继
+3. **采纳（协同进化的见证）。**在这一切之前，候选池已经被收窄。边界的元
+   步骤（步骤 6）会为每个拥有活跃在任者的 evolvable 角色铸造一个候选，
+   但在 paper 边界上，`RQGMRuntime._active_evolvable_incumbents` 会先把该
+   集合过滤为**名字以 `paper_` 开头**的角色 —— 只剩下 `paper_writer` 与
+   `paper_reviewer`。paper 检查点仍然*注册*完整的创始集合（35 个提示词 /
+   23 个组件），因此内核与治理机制保持完整；被收窄的只有铸造，这把每个纪元
+   的候选预算集中到本阶段真正运行的两个角色上，也正是 paper 运行中探索角色
+   看不到候选的原因。该过滤是字面上的名字前缀判断，而非一份声明式的角色
+   清单，因此受 paper 模式门控的第八个对抗者也一并被滤掉：它注册在普通的
+   `adversary` 角色下，仍受注册表治理、仍可被制裁，但在本阶段永远不会为它
+   铸造候选。探索路径未受影响 —— 只有 `PaperArchiveRuntime` 会传入
+   `paper_phase`，所以探索 `ari_rqgm` 的边界永远走不到这个分支。在 RQGM-paper
+   评估姿态下（`rqgm.eval.enabled: true` 加上
+   `rqgm.eval.paper_ablation.condition_id`），该姿态会把幸存者再过滤一次 ——
+   `P0_hgm_h_fixed_critic` 只留下 `paper_writer`。
+
+   角色被开启后，一个协同进化的后继
    提示词可以爬升 `validated → shadow → probationary_active` 并被采纳；
    T21 随后把被降级的在任者移入一个可复位的 `shadow` 待命位。见证是每个
    回合头部观察到的活跃 `prompt_hash`。在一次真实的 8 回合证明中，评审者

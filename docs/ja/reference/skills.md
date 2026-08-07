@@ -169,11 +169,15 @@ SLURM バッチジョブを投入します。
 
 | `launcher` | スクリプトの起動され方 | 使う場面 |
 |---|---|---|
-| `auto`（デフォルト） | 1 ノード 1 タスクの形状なら CPU に束縛して起動、それ以外はそのまま起動 | スクリプト自身が `srun` / `mpirun` を呼ぶ、または逐次実行 |
-| `srun` | 宣言された `nodes` / `tasks` / `cpus_per_task` で `srun` 起動 | スクリプト自体が並列プログラム（MPI / SPMD） |
+| `auto`（デフォルト） | 記述どおりそのまま | スクリプト自身が `srun` / `mpirun` を呼ぶ、または逐次実行 |
+| `srun` | 宣言された `nodes` / `tasks` / `cpus_per_task`（宣言があれば `--ntasks-per-node` も）で `bash -c <script>` を `srun` 起動 | スクリプト自体が並列プログラム（MPI / SPMD） |
 | `none` | 記述どおりそのまま | ペイロードにバッチステップを一切触らせない |
 
-`auto` が単一タスクの場合に束縛するのは、バッチステップがノード全体の affinity
+したがってここでは `auto` と `none` はノード上で同じものになります。bridge の
+本体はスクリプトであり、包むのは `srun` だけです。`auto` による CPU 束縛は
+typed な `job_submit` / `container_submit` 側の話で、そちらはペイロードが
+`argv` であり、1 ノード 1 タスクの要求は `srun --ntasks=1 --cpus-per-task=N`
+として起動されます。この束縛があるのは、バッチステップがノード全体の affinity
 mask を継承するためです。そうしないとスレッド化されたペイロードがマシン全体へ
 広がり、自分自身の逐次ベースラインに負けることさえあります。これは束縛されて
 いない allocation ではなく遅い kernel として読めてしまいます。
@@ -406,15 +410,23 @@ result = measure_counters(pid=12345, window_ms=2000)
 
 ### ツール
 
-#### `survey(topic, max_papers=8)`
+#### `survey(topic, max_papers=8, mode="record", snapshot_path="survey_snapshot_v1.json", provider="semantic-scholar")`
 
-先行研究調査。決定論的（LLM なし）。参照元は順に試されます: この run の
-トピックについてアイデア段階が既に構築した凍結 `virsci_snapshot` コーパス、
-次にライブの Semantic Scholar クエリ（HTTP、続けて `semanticscholar`
-クライアントによるリトライ）、最後に **arXiv フォールバック** — キー無しや
-レート制限の S2 が先行研究の裏付けを黙って消してしまわないようにするため
-です。得られた上位結果はその被引用論文で 2 ホップ分エンリッチされます。
-劣化はすべて（最終的に 0 件だった場合も含め）stderr に報告されます。
+先行研究調査。決定論的（LLM なし）。provider は**チェーンではなく pin**
+されます: `provider` が受け付けるのは `semantic-scholar` と
+`virsci-snapshot` だけで、それ以外は raise します。したがって `record` /
+`live` の呼び出しが障害中にバックエンドを切り替えることはなく、コーパスが
+黙って別物になることもありません。`virsci-snapshot`（または
+`mode="frozen"`）は凍結コーパスが無ければネットワークに退避せず
+`FileNotFoundError` を、Semantic Scholar は HTTP エラー時に他 provider へ
+退避せずそのまま raise します。**arXiv フォールバックはありません**。`mode`
+は `record` / `live` / `replay` / `frozen` で、`replay` はネットワークに
+一切アクセスせず、`snapshot_path` が指す checkpoint artifact が無い、または
+digest が検証できない場合は失敗します。Semantic Scholar 経路では上位 3 件を
+それぞれ最大 3 件の被引用論文で 1 ホップだけエンリッチし、保持されたレコード
+間のエッジのみを残します。戻り値は `papers`（レガシー projection）、
+`survey_snapshot`（`SurveySnapshotV1`）、`survey_snapshot_digest`、
+`execution_mode` です。
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
@@ -430,11 +442,23 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 `mcp.list_tools()` 経由でこの両方をピン留めしています（`@mcp.tool()`
 デコレータの欠落・付け間違いが過去に出荷されたためです）。
 
-#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
+#### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=None, survey_snapshot_ref="", seed=None, generation_mode="auto")`
 
 VirSci マルチエージェント LLM 討論を使用して研究仮説を生成します。複数の AI ペルソナ（researcher、critic、expert、synthesizer）が研究課題について議論します。デフォルトの `simple_bfts` モードでは、BFTS 開始前に**一度だけ**呼び出されます（pre-BFTS のみ）。オプトインの `ari_rqgm` モードで `proposal_router.generators.virsci.enabled: true` のとき、コア側の `VirSciAdapter` が加えて、ProposalRouter のイベントトリガかつ予算上限付きのディスパッチを通じて `survey` + `generate_ideas` を呼びます — [VirSci 統合](../guides/virsci_integration.md)を参照。
 
 モデル: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`。
+
+文献入力は最初のモデル呼び出しの前に凍結されます。`survey` が返した
+`SurveySnapshotV1` オブジェクトそのもの（`survey_snapshot`）、検証済み
+snapshot への checkpoint 相対参照（`survey_snapshot_ref`。`ARI_CHECKPOINT_DIR`
+が必要で、インラインの文献リストとの併用は raise）、あるいはレガシーな
+インライン `papers` リストのいずれかを渡します。3 つとも空の場合は、他
+provider へフォールバックせず pin された Semantic Scholar の record 操作を
+1 回だけ行います。`seed` は generation lock に記録されます。
+`generation_mode` は `auto` / `default` / `virsci` で、それ以外は raise し、
+明示的な `virsci` は re-impl ループへ退避せず fail closed します。`n_ideas`
+は 1–5、`n_agents` は 2–4、`max_discussion_rounds` は 0–3 に clamp され、
+`max_recursion_depth` は再帰オーケストレーション用の予約（現状未使用）です。
 
 #### VirSci-live (vendor-wrap) — opt-in の実エンジン
 
@@ -550,9 +574,9 @@ source idea / evidence / prompt の digest、model、model revision を伴い、
 
 決定論的な claim/evidence ハードゲート（実行データの忠実性）。**LLM なし**。science_data の claim が実行済みノードを参照していることを検証し、`results.json` から `numeric_assertions` を再計算して論文に記載された数値が許容誤差内かをチェックし、セクションポリシーに従って未カバーの結果数値を検出し、図の存在を確認します。ari-core の `run_hard_gate`（`ari.public.claim_gate`）の薄い MCP ラッパです。strict モードでは、ブロッキングエラーが存在するとき `final` フェーズは `{"error": ...}` を返すため、ステージランナーが例外を送出し `finalize_paper` がスキップされます。`draft` フェーズおよび warn/off モードでは決してブロックしません。`evaluation/claim_evidence_hard_gate_{phase}.json` に書き出します。
 
-#### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial")`
+#### `evidence_grounded_semantic_review(checkpoint_dir, paper_path, science_data_json="", hard_gate_path="", paper_claim_links_path="", phase="initial", model="", model_revision="")`
 
-非ブロッキングの、証拠に基づくセマンティック査読。**LLM: Yes**。LLM がハードゲートの証拠に接地して over-claiming / 解釈の問題 / 未登録の強い主張を検出します。独立したテキスト査読器には一切触れず、数値の再チェックも行いません。`paper_refine` が消費する `suggested_revisions` とスコアを出力します。`evaluation/evidence_grounded_semantic_review.json` に書き出します。決してブロックしません。
+非ブロッキングの、証拠に基づくセマンティック査読。**LLM: Yes**。LLM がハードゲートの証拠に接地して over-claiming / 解釈の問題 / 未登録の強い主張を検出します。独立したテキスト査読器には一切触れず、数値の再チェックも行いません。`paper_refine` が消費する `suggested_revisions` とスコアを出力します。`evaluation/evidence_grounded_semantic_review.json` に書き出します。決してブロックしません。必須引数は `checkpoint_dir` と `paper_path` のみです。`model` はこの呼び出しの査読モデルを pin します（未指定なら `ARI_MODEL_SEMANTIC_REVIEW` > `ARI_LLM_MODEL` > `gpt-4o-mini`）。`model_revision` はどの revision が走ったかを記録します。両者は prompt / evidence / hard-gate の digest とともにレポートへ書き込まれ、査読を厳密なモデル identity に帰属させます。
 
 ---
 
@@ -597,8 +621,33 @@ FILL_*_END` ブロックを 1 回の LLM 呼び出しで埋め、bibliography �
 スナップショットが admit した範囲で構築し、図の環境は `FigureBatchV1` が
 所有する snippet で復元してから、AI Scientist v2 形式の reflection ラウンドを
 `max_revision_rounds` 回まわします（各ラウンドで実際にコンパイルします）。
-`decode_seed` が非 0 のときだけ payload に seed が乗ります（litellm の `seed`
-は best-effort で、多様性は得られますがビット単位の再生ではありません）。
+`writer_prompt_override` と `decode_seed` は後付けの seam で、その既定値は
+推奨設定ではなく凍結された互換契約です。`""` と `0` は引数が存在しなかった
+時点のツールをバイト単位で再現しなければなりません（`paper_refine` も同じ
+2 引数・同じ既定値を取ります）。
+
+`writer_prompt_override=""` は同梱の `paper_writer.md` を読み込みます。非空の
+値は reflection の system プロンプトをそれで**置き換え**ます。最初の
+テンプレート充填呼び出しはどちらの場合も自前の `fill_in_writer` プロンプトを
+使うため、override が届くのは reflection ループだけです。これはガバナンスでは
+なく素の指示文字列で、`tests/test_writer_prompt_override.py` が、既定の
+reflection プロンプトが読み込んだ `paper_writer.md` + 言語指示そのものである
+こと、非空の override ではその呼び出しに `paper_writer.md` の本文が残らない
+こと、そしてスキルの import が `ari.rqgm` モジュールを一切引き込まないことを
+検査します。
+
+`decode_seed=0` は payload に `seed` キーを一切載せず、linear（無 seed）の挙動を
+保ちます。非 0 のときは初回の執筆呼び出しと各 reflection 呼び出しの両方で
+litellm に渡されるため、draft を*集団*として生成する呼び出し側は K 個のコピー
+ではなく異なるサンプルを得ます。litellm の `seed` は best-effort かつ
+プロバイダ依存なので、得られるのは多様性でありビット単位の再生では
+ありません。この引数が存在する理由は逆向きの失敗です。
+`tests/test_server.py::test_a_non_zero_decode_seed_reaches_the_payload` の
+回帰メモが記録するとおり、payload が一度も運ばなかった seed を記録していた
+呼び出し側が「8 個の seed を 1 つの draft に潰した」のでした。記録された seed は
+payload に届いて初めて意味を持ちます。このツールの seed 配線を検査するスキル
+テストは無く、payload の assertion は後述の `paper_refine` 側にあります。
+
 戻り値は `latex` / `sections` / `reviews` / `revision_counts` です
 （後 3 者は下流互換のために置かれた空の dict）。
 
@@ -619,7 +668,7 @@ Appendix A.4 準拠)。`ari-core/config/reviewer_rubrics/<rubric_id>.yaml` を
 査読者ノートとしてプロンプトに注入し、Few-shot 例を先頭に付加、Self-reflection
 ループで自己批判・改訂を行い、ルーブリック準拠の JSON で出力。
 
-同梱ルーブリック (`ari-core/config/reviewer_rubrics/` に 16 個の YAML):
+同梱ルーブリック (`ari-core/config/reviewer_rubrics/` に 23 個の YAML):
 
 | 系統 | rubric_id |
 |---|---|
@@ -627,6 +676,7 @@ Appendix A.4 準拠)。`ari-core/config/reviewer_rubrics/<rubric_id>.yaml` を
 | システム / HPC | `sc` / `osdi` / `usenix_security` |
 | 理論 / グラフィックス | `stoc` / `siggraph` |
 | HCI / ロボティクス | `chi` / `icra` |
+| 経済学 / 人文系ジャーナル | `aer` / `qje` / `econometrica` / `apsr` / `ahr` / `pmla` / `philreview` |
 | ジャーナル / 汎用 | `nature` / `journal_generic` / `workshop` / `generic_conference` |
 
 `reviewer_rubrics/` に YAML を 1 枚追加するだけで新しい venue を拡張可能
@@ -681,17 +731,38 @@ Scientist v1 best-config 方式）を実行します。N>1 のときは Area Cha
 
 `finalize_paper` ステージで実行されます。`ear_published/manifest.lock` と `publish_record.json` から `ref` / `bundle_sha256` / `doi` を自動ロードし、機械可読な `\codeavailability{}` / `\codedigest{}` / `\coderef{}` マクロと人間可読な Code Availability セクションを `full_paper.tex` に注入します。digest が信頼の起点となり、読者は registry を信頼することなく `ari clone <ref> --expect-sha256 <baked-digest>` で検証可能です。キュレート済みバンドルが無ければ静かにスキップ（v0.6.0 checkpoint の互換維持）。
 
-#### `merge_reviews(review_report_path, vlm_review_path="")` — v0.7.0
+#### `merge_reviews(review_report_path, vlm_review_path="", hard_gate_path="", semantic_review_path="")` — v0.7.0
 
 `review_report.json`（テキスト査読）と `vlm_review.json`（VLM 図表レビュー）を構造的にマージするポストホック処理。完全に決定論的、LLM なし。`vlm_figure_review` と `_review_composition` メタデータを付与して GUI / CLI の両出力を出典付きで表示できるようにします。上流ステージは独立性（AI Scientist v2 の `perform_review` 契約）を保ち、ここで初めて統合されます。
+
+必須は `review_report_path` のみで、残る 3 つは任意です（v0.6.0 の 2 引数呼び出しはそのまま動きます）。テキスト査読と VLM 査読は `independent_reviews` の下に置かれ、変更されません。`hard_gate_path`（`claim_evidence_hard_gate`）と `semantic_review_path`（`evidence_grounded_semantic_review`）は `evidence_grounded_reviews` として別枠で報告され、この 2 つから `paper_refine` が消費する統合 `suggested_revisions` リストが生成されます — 省略するとそのリストには何も載りません。
 
 #### `link_paper_claims(tex_path="", science_data_json="", figures_manifest_json="", output_path="")` — v0.9.0
 
 `% CLAIM:Cx:NCx` アンカーを science_data の claim と照合し、claim ハードゲートが消費する `paper_claim_links.json`（anchors / writer_assertions / numeric_mentions / figure_refs / unresolved_anchors / uncovered_numeric_candidates）を構築します。**決定論的、LLM なし**。transform ステージの `science_data.json` は決して変更されず、図のバインディングはここで記録されます。`write_paper`（draft）の後、および `paper_refine`（final）の後に再度実行します。失敗時は有効な空の結果にデグレードする（error のみにはならない）ため、finalize チェーンを連鎖的にスキップさせることはありません。
 
-#### `paper_refine(tex_path="", suggested_revisions_json="", merged_review_path="", semantic_review_path="", venue="arxiv")` — v0.9.0
+#### `paper_refine(tex_path="", suggested_revisions_json="", merged_review_path="", semantic_review_path="", venue="arxiv", writer_prompt_override="", decode_seed=0)` — v0.9.0
 
-`suggested_revisions`（`evidence_grounded_semantic_review` / マージ済み査読由来）を適用する、アンカー保持の修正パス。**LLM: Yes**。明示的な `replace "X" with "Y"` 置換をまず決定論的に適用し、残りは境界付きのマルチパス LLM の検索/置換で処理します。draft 内に存在するすべての `% CLAIM` アンカーは生き残らなければなりません（アンカーを落とす編集は拒否され、ネットでアンカーが減った場合は元の論文を保持します）。math-safe なアンダースコアのエスケープは `\( … \)` / `\[ … \]` および数式環境をスキップします。修正後の LaTeX は `latex` の下に返されます（draft は `full_paper.draft.tex` として保存されます）。
+`suggested_revisions`（`evidence_grounded_semantic_review` / マージ済み査読由来）を適用する、アンカー保持の修正パス。**LLM: Yes**。明示的な `replace "X" with "Y"` 置換をまず決定論的に適用し、残りは境界付きのマルチパス LLM の検索/置換で処理します。draft 内に存在するすべての `% CLAIM` アンカーは生き残らなければなりません（アンカーを落とす編集は拒否され、ネットでアンカーが減った場合は元の論文を保持します）。math-safe なアンダースコアのエスケープは `\( … \)` / `\[ … \]` および数式環境をスキップします。修正後の LaTeX は `latex` の下に返されます（draft は `full_paper.draft.tex` として保存されます）。`refine_passes` に実行された LLM パス数（最大 3）が、old span が残っている明示置換は `unaddressed_substitutions` に報告されます。
+
+追加の 2 引数は、未設定なら既定経路をバイト単位で変えません。その既定値は
+チューニング用の摘みではなく凍結された互換契約です。`writer_prompt_override`
+は素の指示文字列で、非空のときは同梱の `global_coherence.md` プロンプトの
+**前に連結**され、渡された paper-writer テキストが refine を先導します。ここに
+非対称性があります — 同じ引数名が `write_paper_iterative` では同梱プロンプトを
+*置き換える*のに対し、こちらでは前置きするだけです。`decode_seed` は `0` の
+あいだ payload に載らず、非ゼロにすると refine がその draft の seed の下で
+サンプリングされ、refine が親の decode identity を継承します。
+
+スキルテストが実際に固定しているのはこの 2 つの seam です。
+`tests/test_server.py` は payload 側を両方向から検査します — `0` のときは捕捉した
+`litellm.acompletion` 呼び出しのどれにも `seed` キーが無く messages は引数を
+省略した場合と同一であること、非 0 のときは捕捉したすべての呼び出しがちょうど
+その seed を運ぶこと。記録された seed が「モデルの見なかった seed」になるのを
+止める assertion です。`tests/test_writer_prompt_override.py` はプロンプト側を
+検査し、既定の system プロンプトが前置き無しの `global_coherence.md` + 言語指示
+そのものであること、非空の override では
+`override + "\n\n" + global_coherence + 言語指示` になることを assert します。
 
 ##### Few-shot コーパス管理
 
@@ -751,15 +822,19 @@ PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採�
 
 決定論的にサンドボックスを populate（LLM なし）。**v0.7.0+**: `checkpoint_dir` を渡すと `{checkpoint_dir}/publish_record.json` から ref + sha256 を自動読込（`ari ear publish` が書き出すファイル）。`dest/reproduce.sh` 既存時は `populated=False, skipped_reason=...` を返してスキップ。
 
-#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", apptainer_image="", overwrite=False)`
+#### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
 **v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。LiteLLM 経由で任意プロバイダ対応。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
 
-#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", container_image="", timeout_global_sec=0, partition="", cpus=0, walltime="", …SLURM flags)`
+`sandbox_kind` は `auto` / `local` / `apptainer` / `slurm` で、エージェントの rollout 自体をどこで走らせるかを選びます。`container_image` を解釈するのは `apptainer` rollout だけで、値は不変のローカル SIF か digest pin されたリモート URI です（引数が空なら `ARI_PHASE1_APPTAINER_IMAGE` を参照）。`local` / `slurm` は無視します。レガシーの `apptainer_image` 引数は**ありません**。シグネチャから削除済みでスキル内のどこにも登場しないため、ここでイメージを指定する手段は `container_image` だけです。
+
+#### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", container_image="", timeout_global_sec=0, network_policy="deny", network_isolation_attested=False, partition="", cpus=0, walltime="", …SLURM flags)`
 
 **Phase 1**。`repo_dir/reproduce.sh` をサンドボックスで実行し、`reproduce.log` と成果物リストを取得。ルーブリック envelope の `expected_artifacts` と突き合わせ、未生成の成果物を `missing` として返します。
 
 サンドボックス優先順位（`auto` の場合）: `slurm`（sbatch + `ARI_SLURM_PARTITION` あり、BFTS と同じパーティション）→ `docker`（デーモン利用可かつ HPC 上ではない時）→ `apptainer` → `singularity` → `local`。**SLURM dispatch** は v0.5.0 から復元され、`sbatch --wait` で同期実行。spool relocation 対策 wrapper を生成して `$0` 相対 cd を保護します。
+
+**ネットワークは既定で遮断**されます。`network_policy` は `deny` で、隔離されていない基盤を使う場合のみ `network_policy="inherit"` として明示的に admit する必要があります。`network_isolation_attested` は、その隔離が仮定ではなく attest されたことを記録します。ソースツリーは read-only でスナップショットされ、実行はプライベートな attempt tree で行われるため、同一の成功プランは冪等に replay され、失敗プランには紐付いた retry attempt が追加されます。
 
 #### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
@@ -841,7 +916,7 @@ Schema: [`docs/reference/execution_profile.md`](execution_profile.md)。
 
 #### `add_memory(node_id, text, metadata=None)`
 
-`node_id` でタグ付けされたエントリを保存します。**Copy-on-Write**: `node_id` が `$ARI_CURRENT_NODE_ID` と一致しない書き込みは拒否されます。
+`node_id` でタグ付けされたエントリを保存します。**Copy-on-Write**: `node_id` が署名付き call context のノードと一致しない書き込みは拒否されます。
 
 #### `search_memory(query, ancestor_ids, limit=5)`
 
@@ -868,7 +943,7 @@ Letta のコアメモリからシードされた実験ファクト（`experiment
 
 #### 型付き検証可能リサーチメモリのツール
 
-型付きエントリ（Phase 1）は構造化された来歴を持ち、論文 / 図ステージが再現可能なアーティファクトに claim を接地できるようにします。呼び出し元は loop / pipeline フックであり、LLM のプルではありません。すべての書き込みツールは **Copy-on-Write ガード** 付きです: `node_id` は `$ARI_CURRENT_NODE_ID` と一致しなければならず（ari-core の MCPClient が書き込みを `_set_current_node` ブリッジ経由でルーティングします）、子は祖先のエントリを変更できません。
+型付きエントリ（Phase 1）は構造化された来歴を持ち、論文 / 図ステージが再現可能なアーティファクトに claim を接地できるようにします。呼び出し元は loop / pipeline フックであり、LLM のプルではありません。すべての書き込みツールは **Copy-on-Write ガード** 付きです: `node_id` は、ari-core の MCPClient が呼び出しへ注入する署名付き call context のノードと一致しなければならず、子は祖先のエントリを変更できません。
 
 #### `add_experiment_result(node_id, text, metric_ptr=None, artifact_refs=None, node_report_ref=None)`
 
@@ -1210,13 +1285,15 @@ result = read_file("results.csv", offset=0, limit=100)
 
 作業ディレクトリ: workspace root は `ARI_WORK_DIR`（既定 `/tmp/ari_work`）で固定されます。`work_dir` 引数はこの root を置き換えるものではなく、その **配下** のディレクトリを選ぶもので、必要なら作成されます。root の外に解決されるパスは書き換えではなく拒否されます。agent には root が固定のコンテナパス `/workspace` として見え、ファイル系ツールは `filename` / `command` / `path` 引数についてはアクセス前に実ディレクトリへ戻し、結果からは必ずスクラブします。ただし `work_dir` 引数そのものは戻されません。渡された値がそのまま実 root に対して解決されるため、スキーマ上の既定値であるにもかかわらず `/workspace` をそこに直接渡すと root からの逸脱として拒否されます。`work_dir` は未指定のままにする（その場合 root に解決されます）か、後述の `ari.agent.tool_manager` にノードの実パスを固定させてください。
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=None, file="results.json", work_dir="/workspace")`
+#### `emit_results(params, measurements, cases={}, predictions={}, scores={}, provenance={}, units={}, execution=None, file="results.json", work_dir="/workspace")`
 
 入力パラメタと測定された出力を分離した型付き `results.json` を書き出します。下流（`transform → science_data`、論文執筆、summary stats）が「測定したもの」と「実行した条件」を取り違えないようにするためのツールで、best-of 集約で入力サイズ（`nnz`、`M`、`K`、`threads`）を実メトリクス（`GFlops_per_s` 等）より優先してしまう事故を防ぎます。`params` と `measurements` は disjoint でなければなりません。
 
 ファイルは `{"schema_version": "1.0", "typed_schema_version": "ari.measurement-set/v1", "measurement_set": {...}}` で、正準の `MeasurementSetV1` オブジェクトだけを持ち、その横に flat な射影は置きません（[実行と測定の契約](execution_contract.md) を参照）。各グループは finite JSON でなければならず、シリアライズできない値（`pathlib.Path` 等）や `NaN`/`Infinity`、数値でない measurement は強制変換されず `error` として拒否されます。
 
 オプションの `units` 引数は `{measurement: unit}` マップで、unit のない measurement は `unit_status: "missing"` として記録されます（unit は推測されません）。オプションの `execution` 引数は直前の `run_code`/`run_bash` 応答の `measurement_execution` ブロックをそのまま渡すもので（execution identity/attempt、status、exit code、artifact digest、サーバ発行の receipt）、渡さない場合 measurement は `execution_status: "unreported"` となり scientifically admissible になりません。`measurements` に無い名前を指す `units` / `provenance` キーは拒否されます。
+
+`cases` 引数はツールの input schema に宣言されています（複数の問題サイズ / 形状を測った run 向けの、任意の `{case 名: {"params": {...}, "measurements": {...}}}` マップ）。ただし現行サーバはこれを転送しません: `call_tool` の `emit_results` 分岐が渡すのは `params` / `measurements` / `predictions` / `scores` / `provenance` / `units` / `execution` / `file` / `work_dir` のみで、書き出し側に `cases` パラメタはありません。したがって `cases` に載せた内容は受理されたうえで破棄されるため、複数ケースの run を `cases` だけで報告してはいけません。`file` 名を変えてケースごとに `results.json` を出してください。
 
 オプションの `provenance` 引数は `{operand: source}` マップで、対応する正準 measurement レコードに記録され、claim/メトリクス正当性ゲートが消費します。値が経験的に **測定された** 上限/ピークであるオペランドには `"microbench"` または `"benchmark"` を（正規化メトリクスが placeholder に依拠していると誤検出されないように）、**独立した** リファレンスに対して計算した残差には `"correctness"` または `"reference"` を（出力が未検証と誤検出されないように）タグ付けします。ベストエフォートで、空のときは完全に省略されます。
 

@@ -148,10 +148,14 @@ requirements are resolved (and is required before `repair.policy: auto`).
 Every pipeline stage in `workflow.yaml` now declares
 `segment: evidence | authoring | verification`, which is what lets
 `generate_paper_section(..., include_segments=…)` run the paper pipeline one
-segment at a time when `ARI_MANUSCRIPT_RUNTIME_MODE` is not `off`: excluded
-segments are represented as disabled stages in a *derived* workflow, so
-cross-segment `depends_on` edges stay satisfied by durable outputs. With the
-default `include_segments=None` every enabled stage runs, exactly as before.
+segment at a time: excluded segments are represented as disabled stages in a
+*derived* workflow, so cross-segment `depends_on` edges stay satisfied by
+durable outputs. The selection itself needs no mode; what
+`ARI_MANUSCRIPT_RUNTIME_MODE` (anything other than `off`) adds is the
+segment-execution record — the run is bound to the workflow digest and its
+logical inputs, and a matching completed record is reused instead of re-run.
+With the default `include_segments=None` every enabled stage runs, exactly as
+before.
 
 ---
 
@@ -486,7 +490,7 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     VLM figure review (vlm_review.json). Purely deterministic — no LLM.
     Output: review_report.json (with vlm_figure_review attached)
 
-  Stage 11: ors_generate_rubric  (ari-skill-replicate)  [after stage 5, v0.7.0]
+  Stage 11: ors_generate_rubric  (ari-skill-replicate)  [after lock_paper_build, v0.7.0]
     Auto-generates a PaperBench-format rubric (TaskNode tree) from the
     final paper. task_category and finegrained_task_category are pinned
     to PaperBench's closed vocabulary; a deterministic normalizer maps
@@ -543,7 +547,8 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     against (repo_dir + reproduce.log + paper). The main per-leaf
     grading completer routes through LiteLLM (any provider works);
     the score-parsing structured completer remains on gpt-4o-2024-08-06.
-    N runs (default 3), weighted leaf aggregation. A negative-control
+    N runs (default 1 — PaperBench §4.1 single-pass judging; raise it
+    with ARI_JUDGE_N_RUNS), weighted leaf aggregation. A negative-control
     pass (empty repo + trivial reproduce.sh) verifies the rubric does
     not reward absence-of-work — both controls must score < 5%.
     Output: ors_grade.json { ors_score, raw_score, leaf_grades,
@@ -613,8 +618,12 @@ checkpoints/{run_id}/
 Per-node working directories are created as siblings of `checkpoints/`:
 
 ```
-{workspace}/experiments/{slug}/{node_id}/
+{workspace}/experiments/{run_id}/{node_id}/
 ```
+
+The middle segment is the **`run_id`**, not a topic slug — `PathManager.node_work_dir`
+takes `run_id` and `ari/cli/bfts_loop.py` passes it, so two runs that share an
+experiment name never write into the same bucket.
 
 At node execution time, `_run_loop` copies user files into each node's work_dir:
 - **Provided files**: paths listed under `## Provided Files` (or `## 提供ファイル` / `## 提供文件`) in `experiment.md`
@@ -667,6 +676,77 @@ API keys are **never** stored in `settings.json`. They are read from `.env`
 files (search order: checkpoint → ARI root → ari-core → home) or from
 environment variables injected at launch.
 
+### Workspace root resolution
+
+`{workspace}` in the paths above is not a fixed directory.
+`RuntimePathResolver.resolve_workspace_root()` (`ari/paths.py`) is the one
+function that decides it. Precedence, first match wins:
+
+1. **`ARI_CHECKPOINT_DIR`** — the root is *recovered* from the pinned checkpoint
+   directory: walk up to the outermost `checkpoints/` ancestor and take its
+   parent; with no `checkpoints/` ancestor, take the checkpoint directory's own
+   parent.
+2. An explicit `workspace_root` argument.
+3. **`ARI_ROOT`** → `{ARI_ROOT}/workspace`.
+4. `{repo root}/workspace` — used only when `{repo root}/ari-core` is a
+   directory, i.e. when running from inside a checkout.
+5. The process working directory.
+
+Step 1 outranking step 2 is easy to trip over: while `ARI_CHECKPOINT_DIR` is
+set, passing an explicit `workspace_root` does **not** move the root. Callers on
+this policy today are `ari/config/__init__.py` (`auto_config`, which builds the
+default `{workspace}/checkpoints/{run_id}` template from it),
+`ari/harness_registry.py` (`{workspace}/harnesses`), and the v1 GUI document
+store and launch paths under `ari/viz/v1/`.
+
+The policy is opt-in, not ambient: `PathManager()` constructed with no argument
+still defaults to the process working directory and never consults the chain
+above. Only the call sites named here resolve the root this way.
+
+### The bucketed `runs/` layout — designed, never adopted
+
+`RuntimePathResolver` also understands a second, bucketed per-run layout:
+
+```
+{workspace}/runs/{run_id}/
+├── workspace/     # per-node scratch (legacy equivalent: the node work dirs above)
+├── checkpoints/   # run metadata JSON (legacy equivalent: the checkpoint root)
+├── artifacts/     # figures, LaTeX, refs.bib
+├── traces/        # cost / prompt / memory-access logs
+└── reports/       # node_report.json, review + repro reports, ors_*.json
+```
+
+**Nothing writes this layout, and no caller outside `ari/paths.py` ever asks for
+it.** Read it as a target shape that was designed and then never adopted — not
+as the current on-disk layout, and not as a migration in progress. Every path
+ARI actually produces is the flat one documented above. What does exist in
+`ari/paths.py` is read-side tolerance, so a bucketed run *would* resolve if one
+ever appeared:
+
+- `checkpoint_file(run_id, name)` classifies `name` with `bucket_for`
+  (`traces` for a fixed set of cost / prompt / telemetry and RQGM log
+  filenames plus `memory_access.*.jsonl`;
+  `reports` for `node_report.json` / `review_report.json` /
+  `reproducibility_report.json` and `ors_*.json`; `artifacts` for a `fig_`
+  prefix or a `.tex` / `.pdf` / `.bbl` / `.bib` / `.png` / `.svg` extension;
+  `checkpoints` for everything else), probes that bucket first and the other
+  three after, and returns the flat `checkpoints/{run_id}/{name}` when none of
+  them exists on disk. The classification only *orders* the scan — every bucket
+  is checked either way, so a misclassification cannot yield a wrong path.
+- `artifacts_dir` / `traces_dir` / `reports_dir` return their bucket only if that
+  directory already exists, else the flat checkpoint root; `workspace_dir`
+  returns `runs/{run_id}/workspace/{node_id}` only if `runs/{run_id}/workspace/`
+  exists, else the legacy per-node path from *Node Work Directories* above.
+
+Because nothing ever creates a bucket, all of these return the flat path by
+construction. `runs_root`, `run_dir`, `bucket_for` and the dual-layout accessors
+(`checkpoint_file`, `artifacts_dir`, `traces_dir`, `reports_dir`,
+`workspace_dir`) have no callers outside `ari/paths.py` itself —
+`ari-core/tests/test_paths.py` (plus a single `bucket_for` assertion in
+`tests/test_rqgm_proposals.py`) is the only thing exercising them. Do not treat this as the pattern to copy for new
+layout work; treat it as dead read-side scaffolding that is cheap to keep and
+would be misleading to describe as ARI's layout.
+
 ---
 
 ## Module Reference
@@ -689,13 +769,12 @@ environment variables injected at launch.
 | `ari/evaluator/llm_evaluator.py` | Metric extraction + peer-review scoring (`scientific_score`, `comparison_found`); selected via `ari.protocols.Evaluator` injection. Composite formula (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) and axis set (`legacy` / `dynamic` / `custom`) are **configurable** via `EvaluatorConfig` — see [Configuration → BFTS Evaluation Layers](../reference/configuration.md#bfts-evaluation-layers-configurable) |
 | `ari/memory/letta_client.py` | `LettaMemoryClient` — ReAct-trace persistence backed by the `ari_react_*` Letta collection |
 | `ari/memory/file_client.py` | Deprecated v0.5.x file-backed client; kept only for `ari memory migrate --react` |
-| `ari/memory/auto_migrate.py` | First-launch v0.5.x JSONL → Letta importer (legacy shim wraps `migrations/v05_to_v07/memory.py`) |
 | `ari/memory_cli.py` | `ari memory …` subcommand (migrate / backup / restore / start-local / …) |
 | `ari/mcp/client.py` | Async MCP client — thread-safe, fresh event loops for parallel execution |
 | `ari/llm/client.py` | LLM routing via litellm (Ollama, OpenAI, Anthropic, any OpenAI-compatible) |
 | `ari/config/` | Config dataclasses (BFTSConfig, LLMConfig, PipelineConfig) + workflow.yaml finder (Phase 2) |
 | `ari/configs/` | YAML lookup tables (`model_prices.yaml`, `defaults.yaml`) loaded via `FilesystemConfigLoader` |
-| `ari/prompts/` | Externalised LLM prompts (`agent/`, `orchestrator/`, `pipeline/`, `evaluator/`, `viz/`) loaded via `FilesystemPromptLoader`; sha256-pinned in `tests/test_prompt_extraction.py` |
+| `ari/prompts/` | Externalised LLM prompts loaded via `FilesystemPromptLoader`. Committed template directories: `agent/`, `orchestrator/`, `pipeline/`, `evaluator/`, `viz/`, `llm/` (the MCP tool-name resolution fragment injected into CLI-shim system prompts), plus the two RQGM-era directories — `governance/` (the `auditor` / `defender` / `governance_judge` actors of the impeachment pipeline) and `rqgm/` (the ProposalRouter generators, the adversarial attack → defend → adjudicate loop, and the PromptMutator / clean-room meta-prompts). Every directory uses the same versioned scheme: `load_versioned("<dir>/<name>")` returns the template text plus `sha256(text)[:12]`, and that short hash is what a record stores as its `prompt_hash` — see [RQGM Schemas → Id and hash discipline](../reference/rqgm_schemas.md#id-and-hash-discipline). Runtime-*evolved* prompt bodies are never committed here; they are checkpoint-scoped. Pinned by `tests/test_prompt_extraction.py` (hand-listed sha256) and `tests/test_prompt_snapshots.py` (auto-discovers every `*.md` under the tree) |
 | `ari/protocols/` | Cross-layer Protocols — `Evaluator`, `PromptLoader`, `ConfigLoader` |
 | `ari/paths.py` | `PathManager` — single source of truth for `ARI_CHECKPOINT_DIR` reads + writes (Phase 1) |
 | `ari/checkpoint.py` | Shared `tree.json` / `nodes_tree.json` I/O (Phase 2) |
@@ -780,9 +859,15 @@ generate_ideas (idea-skill)
             after the pinned one without overwriting.
 ```
 
-`ARI_RUBRIC` selects which venue file is read. Switching it changes the
-BFTS scoring axes (Phase 3) and the published review's criteria
-together — the same rubric drives both.
+`ARI_RUBRIC` (default `neurips`) selects the venue file the BFTS scoring
+axes are built from (Phase 3, `_load_rubric_dict_for_axes` in
+`ari/core.py`). The paper review no longer shares that selection: the
+`review_paper` stage passes `rubric_id: {{paper_rubric}}`, resolved from
+the top-level `paper_rubric` key in `workflow.yaml` (default
+`generic_conference`), and `resolve_rubric` refuses an empty id instead
+of falling back to the environment. Set `ARI_RUBRIC` and `paper_rubric`
+to the same id when you want one venue to drive scoring and review
+together.
 
 ### Inheritance for sub-experiments
 
@@ -886,8 +971,8 @@ Key properties:
   `actual_value` / `actual_unit` / `actual_notes` passed to the stage's
   `post_tool`.
 
-This separation keeps `reproduce_from_paper`-style stages "only reads
-the paper text" auditable in YAML instead of buried in skill Python.
+This separation keeps a reproduction stage's "only reads the paper text"
+constraint auditable in YAML instead of buried in skill Python.
 
 ---
 
@@ -1103,19 +1188,34 @@ Note that the `get_experiment_context()` payload (`primary_metric`,
 this list — it is now auto-injected for every node as Tier 1a of the
 working-context injection above.
 
-### CoW bridge — keeping the memory skill in sync
+### Signed call context — keeping the memory skill in sync
 
-Right before the LLM round-trip starts, `loop.py:378-381` issues:
+There is no bridge tool and no ambient "current node" variable. Before the
+node's tool calls run, `loop.py:1601` builds one immutable context and
+shares it across every call that node makes:
 
 ```python
-self.mcp.call_tool("_set_current_node", {"node_id": node.id})
+ToolCallContextV1.for_node(
+    run_id=run_id,
+    node_id=node.id,
+    parent_node_id=node.parent_id,
+    ancestor_node_ids=node.ancestor_ids or [],
+    phase=phase,
+)
 ```
 
-This is an internal tool exposed by `ari-skill-memory`; it updates
-`$ARI_CURRENT_NODE_ID` inside the pooled skill subprocess so any
-subsequent `add_memory(node_id=...)` call can be CoW-validated against
-the active node. The agent never sees this tool; it is filtered out of
-`tool_desc` by `_INTERNAL_MCP_TOOLS`.
+`MCPClient` mints a 256-bit authority key per skill connection
+(`new_context_authority_key()`, `mcp/client.py:76-77`) and exports it to the
+skill subprocess as `ARI_CONTEXT_AUTHORITY_KEY`. For any tool whose
+`context_requirement` is not `none`, the dispatch injects the HMAC-signed
+context into the call arguments (`connection.authorize_args`,
+`mcp/client.py:540-545`), and `ari-skill-memory` verifies the signature with
+`verify_tool_context(...)` before touching the backend
+(`ari-skill-memory/src/server.py:55-63`).
+
+The active node is therefore carried *inside each signed call*, not in the
+subprocess environment, which is what makes concurrent sibling nodes sharing
+one pooled subprocess safe.
 
 ### Soft vs hard enforcement
 
@@ -1125,7 +1225,7 @@ debugging unexpected agent behaviour:
 
 | Rule | Enforcement |
 |------|-------------|
-| Cannot write memory for another node | **Hard** — backend rejects on `node_id` ≠ `$ARI_CURRENT_NODE_ID` |
+| Cannot write memory for another node | **Hard** — the skill rejects any write whose `node_id` ≠ the node in the signed call context ("node write target is not the authorized self node") |
 | Cannot read sibling memories | **Hard** — `search_memory` filters by `ancestor_ids` |
 | `generate_ideas` runs at most once | **Hard** — `_suppress_tools` after first call |
 | Children should not call `survey` | **Soft** — prose only ("parent already completed the survey"); the tool stays in `tool_desc` |

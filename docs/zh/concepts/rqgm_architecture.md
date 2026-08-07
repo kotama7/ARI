@@ -134,7 +134,7 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 
 | 层 | 层级 | 角色 | 是否进化？ |
 |---|---|---|---|
-| **0 —— 宪法层（固定）** | `fixed` | `constitutional_kernel`、`fixed_verifier`（确定性的 `results.json` 合并 / 指标重算路径）、`audit_log` | **永不。**仅为溯源而注册；规则表存在于代码中（`kernel_rules.py`、`transition_rules.py`、`clean_room_rules.py`、`meta_rules.py`），由 `constitution_hash` 钉住 —— 任何规则修改都必须在 `tests/test_rqgm_kernel.py` 中显式重钉。 |
+| **0 —— 宪法层（固定）** | `fixed` | `constitutional_kernel`、`knowledge_binder`、`capability_binder`、`harness_resolver`、`fixed_verifier`、`audit_log` | **永不。**无提示词且确定性，仅为溯源而注册 —— 而且只有在 Knowledge/Capability/Assurance 中任一层被启用时才会被注册：这六行来自 `KCA_FIXED_COMPONENT_TABLE`（`prompt_spec.py`），由它们专属的 `transition_kca_fixed_admission` 事务提交，而非由创始事务提交。规则表存在于代码中（`kernel_rules.py`、`transition_rules.py`、`clean_room_rules.py`、`meta_rules.py`），由 `constitution_hash` 钉住 —— 任何规则修改都必须在 `tests/test_rqgm_kernel.py` 中显式重钉。 |
 | **1 —— 制度层** | `institutional` | `generator`、`reviewer`、`adversary`、`defender`、`judge`、`router`；被治理的评估基准 `utility_policy`；以及（仅 paper 模式）`paper_writer`、`paper_reviewer` | 是 —— 通过提示词进化生命周期，且仅在纪元边界。`utility_policy` 不是提示词定义的（其在任者是一份策略*文档*），但在完全相同的意义上可进化：一个在任者，仅通过边界处的转换引擎被置换。 |
 | **1 —— 治理司法** | `institutional` | `auditor`、`evidence_clerk`、`governance_judge` | 没有后继生成路径，但并非不可变：三者均为创始、可由注册表寻址、可受制裁的行动者。judge 自身为 motion 目标时必须回避。 |
 | **2 —— 元层** | `meta` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor`、`policy_mutator` | 是 —— 进化第 1 层的 agent 本身也被治理，且权限严格更窄（见不变量）。`policy_mutator` 提议后继效用策略。 |
@@ -162,7 +162,7 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 
 | 门面 | 模块 | 职责 |
 |---|---|---|
-| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | 第 0 层。十二个封闭的 `validate_*` 入口（记录 schema、哈希、能力、纪元不变性、转换、角色分离、选择性擦除、审计日志完整性、洁净室 bundle、污染、权限不扩张、上下文范围），加上执法适配器（`should_block`、fail-open 的 `per_node_warn_check`、预检的 `CapabilityGatedMCPClient`）。确定性且不可进化：零 LLM 调用、零网络、零挂钟决策。`rqgm.kernel.enforcement: audit_only` 将所有上下文降级为仅警告并记录。 |
+| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | 第 0 层。十六个封闭的 `validate_*` 入口：最初的十二个（记录 schema、哈希、能力、纪元不变性、转换、角色分离、选择性擦除、审计日志完整性、洁净室 bundle、污染、权限不扩张、上下文范围）、Task 14 的 `validate_utility_policy`，再加上 Knowledge 完整性、Capability Binding 完整性、Harness 完整性，以及执法适配器（`should_block`、fail-open 的 `per_node_warn_check`、预检的 `CapabilityGatedMCPClient`）。确定性且不可进化：零 LLM 调用、零网络、零挂钟决策。`rqgm.kernel.enforcement: audit_only` 将所有上下文降级为仅警告并记录。 |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | 纪元边界审计：`audit_epoch(...) -> GovernanceReport`，一条九步流水线（观察 → 评估可靠性 → 汇集证据 → 检控 → 辩护 → 裁决 → 重放池更新 → 自我审计 → 报告）。每个 LLM 决策（Auditor / Defender / GovernanceJudge，提示词位于 `ari/prompts/governance/`）都有完整的确定性回退，因此 `llm=None` 仍能产出完整的审计。报告只是转换引擎的*咨询性输入* —— 编排器从不改动注册表。构造阶段就把这一权限关系设为不可选：缺少 `kernel` 时 `__init__` 会抛出 `ValueError`，因为角色分离的权威是内核，而非编排器自身的记录构建逻辑；并且正是内核在第 8 步通过 `validate_record_schema` 与 `validate_role_separation` 重新校验审计产出的记录（evidence bundle、motion、defense、outcome）。另外两个接缝在设计上是可选的：`llm=None` 是有保证的降级路径，也是适合 CI 的确定性下界；`audit_writer=None` 则不落盘，而是把记录收集到内存中的 `self.written`，测试正是据此观察审计过程。追加记录永不抛出异常 —— writer 失败只记录日志，审计继续。 |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | **唯一**的注册表状态写入方。先对固定 T1–T21 表做纯 `resolve_transition(...)`，再执行五步边界协议：冻结 → 解析 → 内核校验 → prepare → 在纪元事务上 apply/commit。T16 `emergency_quarantine` 强制关闭当前纪元，并在同一事务中开启具有新指纹的纪元。 |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 在一次带退役的已提交转换之后：纯函数 `trace_dependents` 的过期闭包与 `rebuild_frontier`，发出 `SelectiveErasureEvent` / `FrontierRebuildEvent` 记录。失败阶梯：内核校验失败 → 保守式再修复（被标记的节点被丢弃）→ 仅排空式降级（`expansion_halted`：运行完成挂起的工作但不再扩展）。绝不崩溃。 |
@@ -386,6 +386,33 @@ ARI 书写的是**真正运行过**的实验，因此第 0 层的 claim-evidence
 RQGM 只**读取**其发现（`run_hard_gate(write=False)`，不持久化、不包裹、
 不进化）。
 
+**第八个对抗者何时触发。**它的预信号 `_pre_paper_self_preference`
+（`ari/rqgm/adversarial/engine.py`）是确定性且免 LLM 的；`AdversaryEngine.attack`
+会跳过任何预信号返回空证据的类型，因此一次沉默的信号消耗零次对抗者 LLM
+调用。除非该节点是 paper 候选，**且**携带一个不低于接受阈值的评审者接受
+分数（`rqgm.paper.self_preference.accept_threshold`，默认 `0.6`；paper 运行时
+把解析后的阈值作为保留度量打在节点上，预信号从那里读取），否则它什么也不
+返回。越过该接受门之后，它收集**三个互相独立的过度接受信号**，只要*任一*
+产出了证据就触发：
+
+1. 第 0 层的 claim gate 已经标记了该草稿 —— 种类为 `numeric_mismatch`、
+   `missing_evidence`、`uncovered_numeric` 或 `invariant_violation` 的发现，
+   各自引用该发现自己的路径；
+2. 作者身份语料的**总体**边际达到 `rqgm.paper.self_preference.margin`
+   （默认 `0.1`），引用 `rqgm/paper_self_preference_stat.json`；
+3. 一次**逐草稿**的锚过度接受 —— 在任者接受了这一具体锚案例，而其人工基准
+   真值是 `reject` —— 引用 `paper_anchor_corpus.jsonl`，并以案例 id 作为 ref
+   的 pointer。
+
+在一份普通语料上真正撑起该机制的是信号 3：它不需要 AI 对人类的作者身份
+划分，因此即便是全人工语料（此时总体边际为 `0.0`、信号 2 正确地保持沉默），
+仍能在真实存在的证据 —— 案例本身 —— 上追究过度接受。每个信号都刻意引用
+*属于它自己主题*的工件：正是「逐草稿的发现却引用总体统计」这一点，曾把一份
+写着 `{"margin": 0.0}` 的工件当作该攻击自身触发条件的证据交给 Defender 与
+Judge。bundle 的每个字段都通过带失败安全默认值的 `getattr` 读取，因此一个
+缺少 paper 字段的鸭子类型探索 bundle 会被读成「不在 paper 阶段」并返回空
+证据，而不是抛异常。
+
 **弹劾链（Task 15）。**对抗者的预信号（该攻击哪些过度接受的草稿）驱动
 一次*真实的* adversary → Defender → ArtifactJudge 回合。所得的
 `ValidatedAttackRecord` 如今携带一个可选的 `target_component_id`，在
@@ -404,6 +431,35 @@ classify_target →` 弹劾链。研究 `generator` 现在是已注册的创始�
 每条记录只点名它所针对的那一个角色。写作器的绑定按节点以该草稿的第 0 层
 忠实度为门：一份被过度接受但**忠实**的草稿只绑定评审者。`paper_writer`
 在 paper 阶段之外解析为 `""`，因此探索记录保持逐字节一致。
+
+**按案例类型分型的重放期望。**一条已验证攻击携带一个 `expected_behavior`
+映射 —— 即重放池对「一个正确的组件本应做什么」的陈述。对七种探索类型它是
+通用的（`reviewer` / `generator` / `judge`；`ari/rqgm/adversarial/round.py`
+中模块级的 `_EXPECTED_BEHAVIOR`），并由 `_EXPECTED_BEHAVIOR_BY_TYPE` 按案例
+类型覆盖，而后者今天只有一行：`paper_self_preference` 提供 `paper_reviewer`
+（「拒绝那些被接受的质量超出人类锚所支持水准的 AI 撰写草稿」）与
+`paper_writer`（「产出主张能被锚支持的草稿」）。查表对其他案例类型回退到
+通用映射，因此探索记录保持逐字节一致。这些键在下游是承重的：确定性的
+`build_failure_summary` 从排序后的 `expected_behavior` 键推导失败摘要的
+`affected_roles`，且完全不读取攻击或防御文本 —— 这正是抽象洁净室视图在
+构造上免于污染的原因（不变量 7）。
+
+**只有 paper 角色消耗候选预算。**在 paper 阶段的边界上，提示词候选循环
+（`RQGMRuntime._active_evolvable_incumbents`，`ari/rqgm/runtime.py`）从所有
+处于活跃状态的注册表条目出发，摘除 `PromptMutator` 自己的角色（同角色生成
+是宪法违规），随后 —— 仅在 paper 阶段 —— 只保留角色名以 `paper_` 开头的
+条目。paper 检查点仍然注册**完整的**创始集合，因此治理与内核机制是完备的；
+该过滤决定的是「哪些角色消耗每纪元的候选预算」，而非「哪些角色被注册」，
+并且绝不把预算花在此阶段并不运行的探索角色上。探索启动根本到不了这个分支。
+一个被配置的 P0–P4 评估姿态（`rqgm.eval.enabled` 加上
+`rqgm.eval.paper_ablation.condition_id`，`ari/rqgm/evaluation/paper_ablation.py`）
+会经由 `role_evolution_enabled` 施加第二道过滤，可以单独关闭 `paper_writer`
+或 `paper_reviewer`，其余角色一律放行；在评估运行之外没有姿态，也没有第二道
+过滤。整个候选通道的开关是 `rqgm.paper.prompt_evolution.enabled` —— 与探索侧
+的 `rqgm.prompt_evolution.enabled` 是**两个不同**的键，且只在 paper 阶段被
+读取 —— 取 `false` 时两个候选通道在抵达该过滤之前就已停摆（prompt-evolution
+通道会追加一条 `prompt_evolution_skipped` 审计行并且不铸造任何候选）：paper
+角色仍然注册（因此打分照常工作），但绝不协同进化。
 
 **最佳草稿流向未触动的门。**存档的最佳草稿由纯粹、免 LLM 的
 `materialize_winner` **一次性**复制到 `{ckpt}/full_paper.tex`，而**既有**
@@ -546,7 +602,8 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
    serving incumbent 比较，执行权限不扩张校验（若无 incumbent，则以固定
    capability matrix 为上限）。每个元输出都以 `status: candidate`
    进入生命周期 —— 元层可以提议，绝不能任命。
-9. **固定层永不进化。**内核、固定校验器、审计日志、转换/严重度/
+9. **固定层永不进化。**内核、Knowledge Binder、Capability Binder、
+   Harness Resolver、固定校验器、审计日志、转换/严重度/
    能力表、选择性擦除规则和 claim-evidence 硬门都不是进化目标；
    `constitution_hash` 钉住这些表。
 10. **状态变更失败时关闭。**硬阻断集合否决 RQGM 状态变更（转换提交、
@@ -557,6 +614,45 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
 11. **确定性（P2）。**内核裁定、转换解析、前沿修复、预算级别、
     影子采样（基于哈希）和评估指标都是纯函数 —— 无随机性、无挂钟
     决策、重放时逐字节一致。
+12. **每个行为者拿到的是有上限的角色视图，而非存档。**
+    `ari/rqgm/context_views.py` 为每个行为者行持有一个确定性投影 ——
+    免 LLM、免 I/O，每个角色一个构建器。BFTS 那一行是承重的，并由三重
+    机制强制：`build_bfts_summary_context` 只接受 `ProposalSummaryView`
+    数据类，对完整的 `ProposalRecord` 抛 `TypeError`，因此整条记录的泄漏
+    是构造期失败；`ConstitutionalKernel.validate_context_scope` 在检查期把
+    渲染出的键集合与角色白名单比对（生产的 expand 路径在违规时还会追加一条
+    `kernel_report` 审计行，见 `RQGMRuntime._flag_bfts_view_scope`）；以及一个
+    泄漏回归测试断言：任何 `ARCHIVE_ONLY_FIELDS` 名称（`transcript`、
+    `discussion_log`、`raw_proposals`、`raw_output`、`agent_messages`、
+    `attack_texts`、`defense_texts`、`evidence_bundles`）绝不出现在渲染后的
+    expand 上下文中。白名单是从 `kernel_rules.CONTEXT_VIEW_WHITELISTS`
+    *取的别名*，因此内核检查与泄漏测试读同一个来源、不可能漂移；而该表位于
+    `constitution_hash` 之内 —— 编辑一条白名单是宪法修订，而非配置变更。
+    其余各行是靠构造而非白名单来排除的：Judge 视图会擦除全部前沿/效用信号
+    （`frontier_scores`、`frontier_rank`、`scientific_score`、
+    `_scientific_score`、`utility`、`utility_score`），因此它无法被分数带偏；
+    治理（审计）视图擦除提示词正文（`prompt_text`、`prompt_body`、
+    `template`、`template_text`、`body` —— 即不变量 7 的已退役文本规则）；
+    同角色隔离是结构性的，因为 reviewer 与 paper-reviewer 的构建器根本没有
+    接收另一位评审者输出的参数。dict 视图内的每个字符串都在 4000 字符处截断。
+
+    **诚实的限制。**检查期这一半按设计就是**仅告警**的：`_enforce_scope`
+    只记录违规并吞掉任何异常，而 `CK-CTX-001` 在内核表中的 severity 是
+    `warn`（见
+    [宪法违规码](../reference/rqgm_schemas.md#宪法违规码)）。
+    内核会*记录*一次白名单越界，但不会阻止该节点。今天只有三个角色拥有
+    白名单 —— `generator`（BFTS 骑在它上面）、`paper_writer` 与
+    `paper_reviewer` —— 而 `validate_context_scope` 对没有白名单的角色不作
+    检查。覆盖面还要更窄：七个构建器中只有 `build_bfts_summary_context`
+    位于生产路径上；paper-reviewer 白名单是经由另一个函数
+    （`paper_judge._paper_reviewer_string_view`，它把存档的原始字符串放在
+    同样的白名单键下并断言键集合）在可选启用的 agent-as-judge 路径上抵达
+    生产的。reviewer、adversary、judge、governance 与 paper-writer 的构建器
+    只被测试行使 —— 请把这张矩阵读作「已声明的契约加两行真正接线」，而不是
+    「七行都被强制」。同样，`CHARTER_BLOCK_CAP = 1200` 是一个只有它自己的
+    测试才会读取的声明常量。这里被冻结下来的历史由 `_enforce_scope` 自己的
+    docstring 记录着：在该检查被移进构建器内部之前，这些白名单只是被声明，
+    没有任何生产调用方。
 
 ---
 
@@ -602,7 +698,8 @@ JSON Schema（位于 `ari-core/ari/schemas/`，例如 `epoch_state`、
 `ari.mode` + `rqgm.enabled` 联锁激活该模式（两者必须一致 —— 见
 [执行模式](../guides/execution_modes.md)）。可调面被刻意限制为
 开关、预算和数值阈值：`rqgm.epoch`、`rqgm.kernel`、
-`rqgm.governance`、`rqgm.replay`、`rqgm.transition`、
+`rqgm.governance`、`rqgm.replay`、`rqgm.utility_evolution`、
+`rqgm.transition`、
 `rqgm.adversarial`、`rqgm.shadow`、`rqgm.prompt_evolution`、
 `rqgm.clean_room`、`rqgm.frontier_repair`、`rqgm.meta_evolution`、
 `rqgm.budgets`、`rqgm.eval`，加上 `proposal_router.*` 块（默认值在

@@ -61,8 +61,10 @@ VIRSCI_CALL = "virsci_call"
 PROMPT_CANDIDATE = "prompt_candidate"
 CLEAN_ROOM_GENERATION = "clean_room_generation"
 GOVERNANCE_LLM_CALL = "governance_llm_call"
-# Paper-archive Task 06 (docs/plans/ari_rqgm_paper/06 §5.3/§6.2): the ONE
-# additive action kind. Anchor-agreement utility scoring for a paper_reviewer
+# Paper-archive: the ONE additive action kind (docs/reference/configuration.md,
+# "`rqgm.budgets` — per-epoch governance spend caps" — the action-kind table and
+# the note that this is the only kind the paper-archive phase added to the
+# original nine). Anchor-agreement utility scoring for a paper_reviewer
 # candidate is O(sample_size) per candidate; capped at rqgm.paper.anchor.
 # sample_size, returning 0 when anchor scoring is disabled (the
 # SHADOW_CALL/VIRSCI_CALL disabled-returns-0 pattern). Every other paper actor

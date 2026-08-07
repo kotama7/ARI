@@ -2,19 +2,25 @@
 sources:
   - path: ari-core/tests
     role: test
+  - path: ari-core/tests/fixtures/gui_refresh
+    role: test
   - path: pytest.ini
     role: config
   - path: scripts/docs
     role: test
   - path: scripts/check_dashboard_ux.py
     role: test
+  - path: scripts/check_bundle_budget.py
+    role: test
+  - path: scripts/quality/check_bundle_budget.yaml
+    role: config
   - path: ari-core/ari/viz/frontend/src/i18n
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__
     role: test
   - path: .github/workflows
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # How to Test ARI Code
@@ -93,6 +99,61 @@ When a determinism regression sneaks in:
 2. Bisect the change set; the offender almost always introduces a
    `dict` ordering reliance or a hash that depends on `id(...)`.
 3. Add the test to the per-domain suite (memory, BFTS, etc.).
+
+### Synthetic checkpoint fixtures
+
+The GUI and `/api/v1` reader tests do not ship checkpoints — they generate
+them. `ari-core/tests/fixtures/gui_refresh/` holds two pure-Python factories:
+
+- `run_fixture_factory.py` — `make_run_checkpoint(dest, nodes=N, seed=S)`
+  writes a run checkpoint (`tree.json`, `nodes_tree.json`, `results.json`,
+  `experiment.md`, `idea.json`, `meta.json`, `cost_trace.jsonl`) through the
+  real `ari.checkpoint.save_*_json` helpers, so the JSON formatting matches the
+  production writers byte for byte. The optional `paper` / `review` / `ors` /
+  `ear` result layers all default off.
+- `rqgm_fixture_factory.py` — `make_rqgm_checkpoint(dest, nodes=10, epochs=2,
+  ...)` calls the base factory first, then layers a deterministic RQGM
+  governance surface on top (hash-chained transition and audit logs, the
+  registry rollup, prompt bodies, node-metric sentinels), importing the real
+  `ari.rqgm` hash and state helpers rather than reimplementing them.
+
+Three properties matter when you use them.
+
+**Nothing is committed.** Both factories generate into a caller-supplied
+directory — `tmp_path` in every consumer — so no fixture data sits in the
+repository going stale.
+
+**Determinism (P2).** Every value is a fixed literal or derived from the seed
+via `hashlib`; `random` is never imported, and timestamps are fixed arithmetic
+on the literal `2026-07-23T00:00:00Z`, never `datetime.now()`. The same
+`(nodes, seed)` yields byte-identical files, which
+`ari-core/tests/test_gui_baseline_run_fixtures.py` asserts directly.
+
+**Corrupt modes are the robustness inputs.** `corrupt=` writes a fully valid
+checkpoint first and then damages exactly one thing, so a test isolates one
+failure shape at a time: `"truncated_jsonl"` tears the last line of
+`cost_trace.jsonl`, `"invalid_json"` chops the tail off `tree.json`, and
+`"partial_write"` deletes `tree.json` while leaving `nodes_tree.json` valid.
+The RQGM factory has its own trio — `"broken_chain"`,
+`"truncated_transitions"`, `"registry_mismatch"`. Both reject an unrecognised
+mode with `ValueError`.
+
+The size tiers are a naming convention, not a contract. The factory docstring
+and `ari-core/tests/fixtures/gui_refresh/README.md` describe `nodes=10` /
+`1000` / `10000` as small / medium / large and call the small tier the one
+"every reader must load" — but nothing enforces any of that. `nodes` is a plain
+integer parameter carrying a single `nodes >= 1` check; only
+`test_gui_baseline_run_fixtures.py` exercises the three tiers (and it also uses
+`nodes=50` for the determinism cases); and the reader suites pass whatever
+count their assertion needs, `nodes=2` through `nodes=10` across the other
+`test_gui_*` files. Read the tier names as shorthand when following those
+tests, not as a rule to obey. In `test_gui_baseline_run_fixtures.py` the large
+tier is generated but never reloaded, because the repo defines no `slow` marker
+to hang a skip on.
+
+Consumers load the factories by file path with
+`importlib.util.spec_from_file_location` instead of importing the package, so a
+small loader helper is repeated at the top of every consumer file.
 
 ## Skill-level conventions
 
@@ -256,6 +317,61 @@ of a test.
 A WCAG 2.2 AA gate, automated or manual, is a goal of the dashboard refresh, not
 a property this suite establishes. Do not read a green run as evidence of AA
 conformance.
+
+**SPA bundle weight** — `scripts/check_bundle_budget.py` holds the dashboard
+build to a set of gzip budgets, and it is **not wired into any workflow**
+either. Here the reason is structural: no workflow builds the frontend, and
+`ari-core/ari/viz/static/dist/` is generated rather than committed, so the
+directory the checker measures never exists on a runner. It *is* registered in
+`scripts/quality/generate_quality_report.yaml`, but the aggregator that reads
+that file runs in `contracts.yml` in `--target` mode — it merges the JSON
+artifacts other jobs uploaded and executes no checker — so the bundle budget
+surfaces there as `unavailable`. Run it yourself after a build; it is a row of
+the by-hand pre-cutover checklist (`docs/guides/gui_cutover_runbook.md` §2):
+
+```bash
+cd ari-core/ari/viz/frontend && npm run build   # the checker never builds
+python scripts/check_bundle_budget.py --fail-on-regression
+```
+
+It gzips every `ari-core/ari/viz/static/dist/assets/*.js` in-process (level 6,
+`mtime=0`, so a rerun over the same build reports identical numbers) and
+compares each chunk against its class budget, in KiB of gzip:
+
+| Class | What it matches | Budget |
+|---|---|---|
+| `entry` | the `<script type="module">` chunk(s) `dist/index.html` references | 100 |
+| `route` | lazy route chunks, matched as `<Name>Page-<hash>.js` | 150, with `SettingsPage` and `WizardPage` tightened to 50 |
+| `shared` | every other `.js` chunk — vendor splits, locale dictionaries, shared components | 150 |
+| `total` | the sum of every `.js` chunk's gzip size | 600 |
+
+The `shared` cap is a deliberate conservative superset: only route chunks were
+ever budgeted individually, and extending the same number to everything else
+stops a mis-split vendor bundle from hiding outside the route class. The
+`total` is a ratchet ceiling, not a target — it exists for the one failure mode
+per-chunk budgets are blind to, a dependency duplicated across many chunks or a
+fleet of new sub-budget chunks.
+
+Browser metrics (LCP, INP, CLS) are deliberately **not** gated: jsdom paints
+nothing, and a shared runner is too noisy for a pass/fail budget. A green bundle
+run therefore says nothing about perceived performance; that half is a manual
+profile on a fixed machine, recorded in the release evidence.
+
+The exit convention matches the rest of the `scripts/quality` family. A plain
+invocation reports and exits 0. `--fail-on-regression` exits 1 on any finding
+not frozen in `scripts/quality/check_bundle_budget.allow.yaml`, and that file
+does not exist — no budget has ever needed freezing, and a missing allow file
+means an empty allowlist, so an over-budget chunk fails on its first run. A
+missing `dist/assets` exits 2,
+because an absent build is an environment problem rather than a budget
+regression.
+
+The budgets themselves live in `scripts/quality/check_bundle_budget.yaml` —
+dist path, the route-chunk regex, the four class budgets, and the per-route
+overrides. Every key is optional and the checker carries the same values as
+in-code defaults, so the YAML earns its place purely by making a budget change
+a one-line reviewable diff instead of a code edit. Retune it there, not in the
+script.
 
 ## Writing a regression test
 

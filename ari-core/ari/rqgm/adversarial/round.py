@@ -46,7 +46,8 @@ _EXPECTED_BEHAVIOR = {
 }
 
 #: ``case_type -> expected-behavior map`` for case types that need
-#: role-specific replay expectations (docs/plans/ari_rqgm_paper/05 §5.2).
+#: role-specific replay expectations (docs/concepts/rqgm_architecture.md,
+#: "The paper-archive layer" — "Case-typed replay expectations").
 #: The seven exploration types use the module-level generic generator
 #: expectation; the paper case supplies separate reviewer/writer behavior.
 _EXPECTED_BEHAVIOR_BY_TYPE: dict[str, dict[str, str]] = {
@@ -219,8 +220,9 @@ class AdversarialRound:
         return dict(getattr(state, "active_prompt_hashes", None) or {})
 
     def _expected_behavior(self, case_type: str) -> dict:
-        """Case-typed expected-behavior map (docs/plans/ari_rqgm_paper/05
-        §5.2), falling back to the module-level generic
+        """Case-typed expected-behavior map (docs/concepts/rqgm_architecture.md,
+        "The paper-archive layer" — "Case-typed replay expectations"),
+        falling back to the module-level generic
         :data:`_EXPECTED_BEHAVIOR` for the seven exploration types (whose
         records thereby stay byte-identical). The keys become the record's
         ``affected_roles`` in ``build_failure_summary``."""

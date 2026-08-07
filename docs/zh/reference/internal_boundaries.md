@@ -24,6 +24,8 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/runtime.py
     role: implementation
+  - path: ari-core/ari/rqgm/context_views.py
+    role: implementation
   - path: ari-core/ari/rqgm/governance/__init__.py
     role: implementation
   - path: ari-core/ari/manuscript/snapshot.py
@@ -195,6 +197,95 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 挪进被冻结的 CLI 树，使此后每一次与模式相关的改动都变成一次 golden 文件
 差分。请把新的模式接口留在配置一侧 —— 上文的包装器之所以按属性而非按
 类型来发现，出于的也是同一个理由。
+
+### 治理上下文视图（`ari.rqgm.context_views`）
+
+包内部还有一条规则，而它最容易被当成一种通用模式 —— 其实并不是：
+**每个治理角色拿到的是一份封顶的、按角色定制的投影 —— 一个*视图* ——
+而绝不是归档本身。** `ari/rqgm/context_views.py` 中的构造函数都是纯的
+（无 LLM、无 I/O）且逐字节确定的，因此一个视图只是其输入的函数，不依赖
+任何其它东西。
+
+**BFTS 这一行是承重的**，并且它同时被写在三处。`CK-CTX-001` 这个码及其
+严重度见
+[RQGM schema → 宪法违规码](rqgm_schemas.md#宪法违规码)；视图自身的字段
+清单见
+[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal_summary_viewschemajson)。
+
+| 层 | 机制 | 它拦得住什么吗？ |
+|---|---|---|
+| 构造期 | `build_bfts_summary_context` 只接受 `ProposalSummaryView`，对其它一切 —— `ProposalRecord`，乃至该 summary 自己的 `to_dict()` —— 都抛出 `TypeError` | 是；只有这一层会抛出。 |
+| 检查期 | `ConstitutionalKernel.validate_context_scope(role, view)` 从视图的键集合中减去该角色的白名单，并对剩余部分报告 `CK-CTX-001` | 否 —— 只是 warn-and-flag，从不阻断节点执行。 |
+| 测试期 | `ari-core/tests/test_rqgm_context_views.py::test_no_archive_field_reaches_the_rendered_expand_context` 渲染一个带有全部 `ARCHIVE_ONLY_FIELDS` 名称的 fixture `ProposalRecord`，并断言这些名称与哨兵串都不会残留在渲染结果里 | 只在 CI 中。 |
+
+**白名单只有一份，并被钉进宪法。** `PROPOSAL_SUMMARY_FIELDS` 不是内核表的
+副本 —— 它就是 `kernel_rules.CONTEXT_VIEW_WHITELISTS["generator"]`（BFTS
+搭在 `generator` 角色上），而
+`test_rqgm_context_views.py::test_whitelist_constant_is_the_kernel_table_entry`
+钉定了 `is` 同一性，因此不会出现第二份可以漂移的列表。该表以
+`context_view_whitelists` 之名被序列化进
+`kernel_rules._canonical_rules_payload()`，从而搭上 `constitution_hash()`：
+新增或放宽一行都是一次显式的重新钉定，与转换表所受的待遇相同。
+
+**在依赖这套分层之前，请先读清顺序。** 在 `ari-core/ari` 内，唯一的非测试
+调用点是 `RQGMRuntime.render_expand_context`（`ari/rqgm/runtime.py`），它
+在调用方传入 `idea_context` 关键字参数时由 `GovernedSearchStrategy.expand`
+到达。那里**先**跑检查期这一层（`_flag_bfts_view_scope` —— 一条日志警告
+外加向 immutable audit log 追加的 `kernel_report` 行，整个钩子以 fail-open
+包裹），**后**才是类型闸门。真正挡住泄漏的是类型闸门：越界的视图是一个
+普通 `dict`，`build_bfts_summary_context` 抛出，`render_expand_context`
+外层的 `try` 把它吞掉并返回 `""`，调用方于是保留自己的 `idea.json`
+上下文。内核那一层只记录事实，并不阻止它。另外要注意，构造函数**内部**的
+`_enforce_scope("generator", …)` 调用发生在类型闸门之后，作用于
+`ProposalSummaryView.to_dict()`，而后者的键集合恰好就是白名单里的那十个
+名字 —— 所以在 BFTS 这一行上，这次内部调用永远不可能产生违规。它是双保险，
+而不是真正会触发的那道检查。
+
+**根本上被内核检查的角色只有三个。** `CONTEXT_VIEW_WHITELISTS` 只有
+`generator`、`paper_writer` 与 `paper_reviewer` 三行；`validate_context_scope`
+按角色查表，查不到就返回一份干净的报告，因此其余角色按设计就是不受检查的
+（`test_a_role_without_a_whitelist_is_unchecked` 钉定了这一点）。于是
+Judge、adversary、reviewer 与 governance 的视图只能依赖两种更弱的机制，
+而这份"弱"值得说准确：
+
+- **构造性排除** —— 构造函数根本没有接收禁止材料的参数
+  （`build_reviewer_context` 无从被塞入另一位 reviewer 的输出；
+  `build_judge_context` 只拿到 attack、defense 与 bundle，也从不持有注册表
+  句柄）。这是实打实的，但它是签名的性质，而非一次检查。
+- **`_scrub` 的按键删除** —— `JUDGE_EXCLUDED_KEYS`（`frontier_scores`、
+  `frontier_rank`、`scientific_score`、`_scientific_score`、`utility`、
+  `utility_score`）与 `GOVERNANCE_EXCLUDED_KEYS`（`prompt_text`、
+  `prompt_body`、`template`、`template_text`、`body`）会被**按键名**递归
+  删除，且每个字符串都被截断到 `_FIELD_CAP`（4000）字符。按键名删除的强度
+  恰好等于那份名字清单：同一个值若挂在清单未列出的键下，就会原封不动地
+  留下来。
+
+**这个模块的大部分没有生产调用点 —— 请把它读作"声明"，而不是"观测"。**
+在 `ari-core/ari` 内，拥有非测试调用点的构造函数只有
+`build_bfts_summary_context`。`build_reviewer_context`、
+`build_adversary_context`、`build_judge_context`、
+`build_governance_context` 与 `build_paper_writer_context` 都没有；执行它们
+的只有 `test_rqgm_context_views.py`（以及仅就 `build_paper_writer_context`
+而言的 `test_rqgm_paper_candidate.py`）。而 `CHARTER_BLOCK_CAP = 1200` 更是
+一个消费者都没有 —— 它的测试只断言这个数值以及它 ≤
+`ari.agent.loop._IDEA_FIELD_CAP`。该模块 = BFTS 这一行 + 一组已备好但未接线
+的投影；不要把其余那些当作"一次运行实际做了什么"来引用。
+
+**paper-reviewer 的视图是在别处组装的，那是一处变通，不是设计。**
+`ari/rqgm/paper_judge.py:_paper_reviewer_string_view` 自行组装 paper-reviewer
+视图 —— 在同样那四个白名单键下放四个封顶字符串 —— 原因是
+`context_views._plain` 只保留映射以及带 `to_dict` 的对象，于是一个裸字符串
+会被投影成 `{}`；模块注释记录了：把归档里的字符串输入送进
+`build_paper_reviewer_context` 曾把草稿正文悄悄丢掉。它导入
+`PAPER_REVIEWER_FIELDS` 以保持键集合诚实，但用一句裸 `assert` 来钉定，
+而不是调用内核，因此在跑着的 paper-reviewer 路径上不会产生任何属于它自己的
+`CK-CTX-001` 报告。
+
+**若要新增一个受治角色**，请往 `CONTEXT_VIEW_WHITELISTS` 里加一行（并接受
+`constitution_hash` 的重新钉定），并从构造函数里调用 `_enforce_scope`；
+`test_rqgm_context_views.py::test_every_whitelisted_builder_runs_the_check`
+会检查那三个带白名单的构造函数的源码里确实有这一次调用。没有白名单行的
+角色，其构造函数无论擦洗多少东西，都仍然是不受检查的。
 
 ### 稿件编译器边界（`ari.manuscript`）
 

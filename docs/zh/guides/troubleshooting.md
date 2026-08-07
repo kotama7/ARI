@@ -111,21 +111,28 @@ apptainer run containers/letta.sif &
 仪表盘的 `/api/memory/health` 路由使用相同的探针，因此如果 UI 显示
 "Letta unhealthy"，说明集群上没有运行中的 Letta 服务。
 
-### `LETTA_EMBEDDING_CONFIG is required`
+### `Letta agent embedding mismatch`
 
-**原因：** Letta 需要嵌入模型配置来构建归档集合。
+**原因：** `LETTA_EMBEDDING_CONFIG` 是 embedding *handle*，而不是配置文件
+路径；而且 Letta 会在创建时冻结 agent 的 `embedding_config`。如果该检查点的
+agent 是用另一个 handle 创建的 —— 通常是托管的 `letta/letta-free` →
+`embeddings.memgpt.ai` 端点（其上游宕机时会返回空 body 的 522）—— 那么无论
+环境变量写了什么，被冻结的 handle 都会继续生效，`add_memory` 会以一个不透明
+的 400 失败。
 
-**修复：** 将 `LETTA_EMBEDDING_CONFIG` 指向描述嵌入端点的 JSON 文件。
-兼容 OpenAI 的示例：
+**修复：** 先设置 handle，再 purge 该检查点的 agent，让下一次 `add_memory`
+用这个 handle 重新创建它（`LettaBackend.purge_checkpoint`；注意这会删除已有
+的 archival passages）：
 
-```json
-{
-  "embedding_endpoint_type": "openai",
-  "embedding_model": "text-embedding-3-small",
-  "embedding_dim": 1536,
-  "embedding_endpoint": "https://api.openai.com/v1"
-}
+```bash
+export LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small
 ```
+
+不设置时默认为 `letta-default`。ARI 把空值、`letta-default` 与
+`letta/letta-free` 视为同一种情况 ——「未做显式选择」—— 因此在不稳定的
+MemGPT 托管端点上后端只会记录一条警告。上面那个硬错误仅在你显式要求了与
+agent 冻结时*不同*的 handle 时才会抛出。`letta-default` 在服务端展开成什么，
+是 Letta 自己的决定，与 ARI 无关。
 
 ### `archival memory search returned 0 results`
 
@@ -225,13 +232,16 @@ file $ARI_CHECKPOINT_DIR/figures/fig1.png   # should report PNG
 
 ### `RLIMIT_NPROC: resource temporarily unavailable`
 
-**原因：** coding 沙箱将 fork() 上限设为 `ARI_MAX_CHILD_PROCS`
-（默认 1024），某个子进程突破了该限制。
+**原因：** 设置了 `ARI_MAX_CHILD_PROCS`，于是 coding 沙箱用
+`RLIMIT_NPROC` 限制了 fork()，而某个子进程突破了该限制。**并不存在
+默认上限** —— 不设置时，`ari.container` 与 coding skill 都不会施加任何
+上限。
 
 **修复：** 要么精简导致问题的命令（如果评分提示词含糊，智能体
-常会陷入 fork bomb 循环），要么提高 `ARI_MAX_CHILD_PROCS`。
-默认值已故意设得较为宽松 —— 触达上限通常意味着真实的 bug，
-而非预算不足。
+常会陷入 fork bomb 循环），要么提高 `ARI_MAX_CHILD_PROCS`。注意
+`RLIMIT_NPROC` 是按 real uid 而非按进程树生效的：该上限会把你的用户
+在这台机器上已有的所有 task 一并计入，所以一个偏小的显式上限会让
+一次本来空闲的构建也报 `EAGAIN`。多数情况下取消设置才是正解。
 
 ## 仪表盘 / viz
 
@@ -243,10 +253,10 @@ file $ARI_CHECKPOINT_DIR/figures/fig1.png   # should report PNG
 **修复：**
 
 ```bash
-# From your laptop:
-ssh -L 8000:127.0.0.1:8000 user@remote-host
-# Then on the remote:
-ari viz --port 8000
+# 在你的本机 —— WebSocket 使用 port+1，所以两个端口都要转发：
+ssh -L 8765:127.0.0.1:8765 -L 8766:127.0.0.1:8766 user@remote-host
+# 然后在远程主机上（checkpoint 目录是必填参数；--port 默认 8765）：
+ari viz /abs/path/to/checkpoints/<run_id>
 ```
 
 ### 前端显示陈旧状态

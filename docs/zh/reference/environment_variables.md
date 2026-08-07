@@ -12,7 +12,11 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/server.py
     role: implementation
-last_verified: 2026-07-29
+  - path: ari-core/ari/rqgm/state.py
+    role: implementation
+  - path: ari-core/ari/assurance/executors.py
+    role: implementation
+last_verified: 2026-08-08
 ---
 
 # 环境变量参考
@@ -35,6 +39,23 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | `ARI_LOG_DIR` | 应用日志目录 | `$ARI_CHECKPOINT_DIR` | – |
 | `ARI_ROOT` | ARI 源代码树根目录（测试时使用） | （自动检测） | – |
 | `ARI_SOURCE_FILE` | 覆盖输入 experiment.md 路径 | （无） | – |
+
+`ARI_CHECKPOINT_DIR` 还带有一条表格无法表达的写入侧**约定**。把当前进程钉到某次
+运行的代码，应当调用 `PathManager.set_checkpoint_dir_env`（它委托给
+`RuntimePathResolver.set_checkpoint_dir_env`，即 `ari-core/ari/paths.py` 中唯一
+对 `os.environ["ARI_CHECKPOINT_DIR"]` 赋值的函数），而不是自行赋值，从而让这个
+运行 pin 只有一个所有者。请把它读作约定，而非保证：
+
+- **没有任何强制手段。** 当写入方直接给该变量赋值时，不会有任何测试、lint 规则或
+  导入边界检查失败。该 helper 目前被 pipeline driver、Letta 客户端、`ari memory`、
+  `ari viz` 的三个模块以及两个 CLI 入口点采用。
+- **存在一处已知的绕过。** `ari-core/ari/agent/loop.py` 在构建节点的 tool context
+  之前直接给 `os.environ["ARI_CHECKPOINT_DIR"]` 赋值，因此该 helper docstring 中
+  「让每个写入方都经由 PathManager」的说法夸大了代码实际做到的事情。请把那句话
+  当作意图，而不是事实。
+- **子进程的 env 字典不在此规则范围内。** GUI launch、orchestrator 与 experiment
+  三条路径是在交给子进程的 `proc_env` 映射上设置该键，并不修改当前进程的环境，
+  因此不算绕过。
 
 ### LLM 模型选择
 
@@ -108,11 +129,42 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 
 ### 执行模式（RQGM）
 
+探索（`ARI_MODE`）与论文阶段（`ARI_PAPER_MODE`）是两个彼此独立的轴，各自都位于
+一道**双钥联锁**之后：模式变量与其 `*_ENABLED` 搭档必须*同时*选择受治理路径，
+否则该轴回退到自身默认值（`simple_bfts` / `linear`）。只有其中一把钥匙不会启用
+任何东西。`scripts/setup/setup_env.sh` 会把下列全部变量以注释掉的模板行追加到
+生成的 `.env` 中（仅在该键尚不存在时追加），并在注释里写明该联锁（「both must
+agree or ARI falls back to `simple_bfts`」/「…or the paper phase falls back to
+`linear`」）。
+
 | 变量 | 用途 | 默认值 |
 |---|---|---|
 | `ARI_MODE` | 执行模式覆盖：`simple_bfts` \| `ari_rqgm`（覆盖 workflow.yaml 中的 `ari.mode`；无效值警告并忽略）。RQGM 激活还需要 `ARI_RQGM_ENABLED` 联锁 —— 任何不一致都回退到 `simple_bfts`。`export_resolved_config_to_skill_env` 会将其 `setdefault` 为技能子进程的*生效*模式（v1 中没有任何技能读取它）。在 `ari resume` 时，`rqgm_state.json` 中持久化的模式优先于此变量。见 `docs/guides/execution_modes.md` | `simple_bfts` |
 | `ARI_RQGM_ENABLED` | RQGM 主联锁覆盖：`0`/`1`/`true`/`false`（覆盖 workflow.yaml 中的 `rqgm.enabled`）。此变量与 `ARI_MODE=ari_rqgm` 必须同时一致，治理运行时才会被构造 | `false` |
+| `ARI_PAPER_MODE` | 论文阶段模式覆盖：`linear` \| `rqgm_archive`（覆盖 workflow.yaml 中的 `paper.mode`；无效值警告并忽略）。与 `ARI_MODE` 正交 —— 探索轴与论文轴各自独立设置。启用存档还需要 `ARI_RQGM_PAPER_ENABLED` 联锁；任何不一致都回退到 `linear`。由 `apply_paper_env_overrides` 应用，但论文命令必须**显式**调用它：论文入口的 config 加载器不施加任何 env 覆盖，因此该变量无法搭 `ari run` / `ari resume` 覆盖块的便车。参见[执行模式](../guides/execution_modes.md)的「论文执行轴：`paper.mode`」一节 | `linear` |
+| `ARI_RQGM_PAPER_ENABLED` | 论文存档联锁覆盖：`0`/`1`/`true`/`false`（覆盖 workflow.yaml 中的 `rqgm.paper.enabled`；无效值警告并忽略）。此变量与 `ARI_PAPER_MODE=rqgm_archive` 必须同时一致，草稿存档才会激活 | `false` |
 | `ARI_PAPER_AGENT_AS_JUDGE` | agent-as-judge 草稿评分覆盖：`0`/`1`/`true`/`false`（覆盖 `rqgm.paper.reviewer.agent_as_judge.enabled`；无效值警告并忽略）。由 `apply_paper_env_overrides` 应用，采用与 `ARI_PAPER_MODE` / `ARI_RQGM_PAPER_ENABLED` 相同的「先校验后赋值」策略。关闭 ⇒ 使用确定性的、不调用 LLM 的会议评分表评分器，草稿评分路径上不会出现实时 LLM 调用（P2）。开启 ⇒ 由真实 `LLMClient` 支撑的审稿人按*同一套*会议评分表的维度为每份存档草稿打分，权重取自当前 ACTIVE 的受治理 `paper_reviewer` 提示的侧重点，并且可以读取确定性读取器无法读取的维度（`novelty`、`significance`）。当 LLM 出错、回复无法解析、或回复覆盖的评分表维度权重过少时，会开放式回退到确定性评分表。仅在生效的 `rqgm_archive` 论文模式（`ARI_PAPER_MODE=rqgm_archive` + `ARI_RQGM_PAPER_ENABLED=1`）下才有意义 | （未设置 ⇒ 关闭） |
+
+下面四个变量不是开关，而是可选的部署侧声明，用于让一个 RQGM epoch 的执行身份
+更加具体。`capture_execution_identity` 在 epoch 开启时逐一读取它们，把未设置或
+空白的值记录为字面字符串 `unresolved`，并且只要四者未全部解析，就让
+`execution_identity.complete` 保持 `false` —— ARI 不会声称一个可变的提供方别名
+就是固定的实现。没有任何机制验证所填的值是否属实；该 pin 是声明，不是测量。
+`docs/reference/configuration.md` 也列出了同样这四个变量及其各自所钉的身份。
+
+| 变量 | 所钉的身份 | 默认值 |
+|---|---|---|
+| `ARI_MODEL_REVISION` | 提供方 / 模型的精确修订 | （未设置 ⇒ 记录为 `unresolved`） |
+| `ARI_TOOL_BUNDLE_REVISION` | 不可变工具包修订 | （未设置 ⇒ 记录为 `unresolved`） |
+| `ARI_ENVIRONMENT_DIGEST` | 容器或环境摘要 | （未设置 ⇒ 记录为 `unresolved`） |
+| `ARI_DATA_SNAPSHOT_DIGEST` | 不可变外部数据快照摘要 | （未设置 ⇒ 记录为 `unresolved`） |
+
+`ARI_HARNESS_CONTAINER_ROOT` 在 `setup_env.sh` 的同一个块中声明，但它属于
+Harness 运行基座，而不属于模式选择：
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_HARNESS_CONTAINER_ROOT` | 解析**逻辑** Harness 容器引用（`apptainer:<name>.sif` 或 `singularity:<name>.sif`）所用的绝对根目录。已验证条目之所以采用逻辑形式，正是为了让发布出去的 manifest 不含站点路径，于是具体目录只能来自环境。未设置 ⇒ 逻辑引用会以 `HarnessSubstrateError` 被拒绝；普通路径引用作为兼容输入原样通过，且完全不读取该变量。该根必须是绝对路径、真实目录且不是符号链接；解析后的镜像必须是直接位于该根下的常规文件（不能是符号链接），任何解析到根之外的情况都会被拒绝 | （无 —— 仅在使用逻辑引用时需要） |
 
 ### 后端 + 执行器
 

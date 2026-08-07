@@ -19,7 +19,7 @@ generate_ear ──▶ {checkpoint}/ear/                 (著者のフルレポ)
         │
         ▼ ear_curate (transform-skill)
         ▼
-{checkpoint}/ear_published/  +  manifest.lock      ({path,sha256,size} 正規化 JSON の sha256)
+{checkpoint}/ear_published/  +  manifest.lock      (正規化 v2 JSON: {path,sha256,size,role} の sha256)
         │
         ▼ ear_publish (transform-skill, 任意)
         ▼
@@ -95,9 +95,11 @@ TeX そのものに対して 3 回目を実行)、hard gate と semantic review 
   減りようがなかったため)。報告される `resolved_overclaim_count` は前回−今回の
   生の差分です — 負値は refine 後に件数が*増えた*ことを意味し、0 に clamp せず
   回帰としてそのまま表面化します。
-- **数値検証は科学的記数法を理解する。** numeric-mention スキャナ
-  (`ari-skill-paper/src/claim_links.py` と ari-core の `claim_gate/latex.py` にミラー)
-  は仮数 × 10^指数形 (`4.44 \times 10^{-16}`、`x`/`\times`/`\cdot` 対応) と
+- **数値検証は科学的記数法を理解する。** numeric-mention スキャナは
+  `ari-core/ari/latex_claims.py` の単一実装で、`ari-skill-paper/src/claim_links.py`
+  は `ari.public.latex_claims` 経由、ari-core 側は `ari/pipeline/claim_gate/latex.py` の
+  互換 re-export 経由で同じものを使うため、両者が乖離することはありません。
+  仮数 × 10^指数形 (`4.44 \times 10^{-16}`、`x`/`\times`/`\cdot` 対応) と
   付随する e 記法 (文末も含む) をパースし、数字を含むトークンを保持し、単位の
   特定では `\( \)` を数式デリミタとして扱います — こうした値での偽の
   `numeric_mismatch` 検出を排除します。巨大な指数はスキップされ、gate を
@@ -107,14 +109,19 @@ TeX そのものに対して 3 回目を実行)、hard gate と semantic review 
   レジストリ名に正規化、bare な `k=v` トークン前の `operands=` ラベル接頭辞は
   除去、全 anchor が 1 つの id を共有する場合 (例: 全行が `% CLAIM:Cw:NCw`) は
   行ごとに曖昧性を解消し、各宣言を独立に検証します。
-- **metric contract は一度だけ mint される。** claims を持つ contract を最初に
-  生成した `make_metric_spec` 呼び出しが `{checkpoint}/metric_contract.json` として
-  永続化し、以後の呼び出しはそのファイルを verbatim に返します (レスポンスに
-  `contract_frozen: true` が付く)。LLM の命名は参照的に安定せず、run 途中の
-  再生成はエビデンス語彙を変え、旧名で emit 済みの sibling evidence を
-  exact-match gate から隠してしまいます (実 run で観測)。per-node の spec
-  フィールド (scoring guide 等) は従来どおり呼び出しごとに計算され、claims の
-  無い scaffold-only contract は freeze しません。
+- **metric contract は一度だけ mint される。** idea 所有の Research Contract を
+  解決した — または human review 済みの `propose_metric_contract` 提案を admit
+  した — 最初の `make_metric_spec` 呼び出しが projection を
+  `{checkpoint}/metric_contract.json` として永続化し、以後の呼び出しはその
+  ファイルを読み戻して返します (レスポンスに `contract_frozen: true` が付く)。
+  `projection_digest` が異なる再 mint は拒否されます。LLM の命名は参照的に
+  安定せず、run 途中の再生成はエビデンス語彙を変え、旧名で emit 済みの
+  sibling evidence を exact-match gate から隠してしまいます (実 run で観測)。
+  per-node の spec フィールド (scoring guide 等) は従来どおり呼び出しごとに
+  計算されます。idea 所有の contract も reviewer も無い場合は何も freeze されず、
+  レスポンスは `contract_frozen: false` / `admission_status:
+  human-review-required` となり、パーサ出力は evidence 止まりで contract には
+  昇格しません。
 
 成果物: `paper_claim_links.json` (draft) /
 `paper_claim_links_final.json` / `paper_claim_links_locked.json`、および

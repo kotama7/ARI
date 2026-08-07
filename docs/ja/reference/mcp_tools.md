@@ -52,6 +52,10 @@ sources:
     role: config
   - path: ari-skill-replicate/src/server.py
     role: implementation
+  - path: ari-skill-tool-registry/mcp.json
+    role: config
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
   - path: ari-skill-transform/mcp.json
     role: config
   - path: ari-skill-transform/src/server.py
@@ -77,7 +81,8 @@ ARI には `ari-skill-*` パッケージごとに 1 つ、17 の MCP サーバ�
 残る `ari-skill-knowledge` / `ari-skill-harness` は admission 済みカタログに対する
 読み取り系サーフェス、`ari-skill-tool-registry` は大規模な MCP collection の
 ブローカで、いずれも既定の `skills:` には載りません（tool-registry の 5 操作は
-[tool_registry.md](tool_registry.md) を参照）。
+本ページ末尾に、カタログ identity と provider adapter は
+[tool_registry.md](tool_registry.md) にあります）。
 
 このページはエージェントが呼び出せるすべてのツールのフラットなカタログです。
 各スキルの詳細は個別の `README.md` を参照してください。セクション
@@ -172,15 +177,16 @@ context 要件を持つツールに対してこの名前で認可済み call con
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `survey` | 先行研究調査: 凍結された `virsci_snapshot` コーパスが存在すればそれを再利用し、なければライブの Semantic Scholar、それも駄目なら arXiv フォールバック；純粋な HTTP | ✗ |
+| `survey` | 固定した **1 つ** の provider（`semantic-scholar` 既定 / `virsci-snapshot`）に対する先行研究調査。`record` / `live` はバックエンドを切り替えず、`replay` はネットワークに一切アクセスせず、未対応の provider は代替されずに拒否される | ✗ |
 | `generate_ideas` | LLM が調査 + コンテキストからランク付きアイデア候補を生成 | ✓ |
 
 この 2 つがこのスキルの唯一の登録ツールです —
 `_load_virsci_snapshot_papers` は `survey` が直接呼ぶただのヘルパーであり
 エージェントからは決して見えません。`ari-skill-idea/tests/test_server.py` が
-`mcp.list_tools()` 経由でこの両方をピン留めしています。スナップショットが
-無く Semantic Scholar も使えない（キー無し / レート制限）場合、`survey` は
-arXiv にフォールバックし、0 件になった場合も黙って通さず stderr に報告します。
+`mcp.list_tools()` 経由でこの両方をピン留めしています。provider 間の
+フォールバックはありません: `virsci-snapshot` の survey はコーパスが無ければ
+`FileNotFoundError` を、Semantic Scholar の survey は HTTP エラーをそのまま
+raise します。障害時に得られるのは黙って別物になったコーパスではなく拒否です。
 両者は RQGM の `VirSciAdapter` の背後にある MCP 面でも
 あります: オプトインの `ari_rqgm` モードで
 `proposal_router.generators.virsci.enabled: true` のとき、コア側の
@@ -422,6 +428,27 @@ Resolver でも Fixed Verifier でもなく、エージェントのツール選�
 ワークフローです。詳細は
 [Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md)
 を参照してください。
+
+## ari-skill-tool-registry — 大規模 MCP collection へのブローカ
+
+上流 collection 全体を 5 つの federation 操作が代表するため、数千の leaf を
+持つ collection でもエージェントが消費するツールスロットは数千ではなく 5 つ
+です。leaf provider のスキーマが `tools/list` に露出することはありません。
+
+| ツール | 用途 | LLM |
+|---|---|:---:|
+| `discover` | 不変の federated カタログを `lexical` / `exact` / `diverse` の strategy で検索。返るのは上限付きサマリと不透明な `tool_ref` で、`top_k` は最大 25、次ページは `constraints.cursor` で辿る。何も実行しない | ✗ |
+| `describe` | 厳密に 1 つの `tool_ref` について descriptor の `section`（`summary` 既定 / `schema` / `provenance` / `admission` / `limitations` / `all`）をページングして読む。provider のテキストとスキーマは untrusted data として扱われる | ✗ |
+| `invoke` | admit 済みの leaf 1 つを不変の `tool_ref` で `live`（既定）/ `record` / `replay` モード実行する。裸の名前や非修飾名は拒否される | ✗ |
+| `get_status` | 非同期の registry `handle` を、その不変 descriptor に束縛された lifecycle 操作でポーリングする | ✗ |
+| `get_result` | 非同期の registry `handle` について正規化された最終結果を取得する | ✗ |
+
+`invoke` / `get_status` / `get_result` は run スコープの context requirement を
+宣言するため、input schema に `ari_context` を持ちます — 上記
+`measure_counters` と同じ注入規則で、transport が埋めるのでエージェントが渡す
+引数ではありません。カタログの identity、admission レベル、provider adapter に
+ついては [Federated Scientific Tool Registry](tool_registry.md) を参照して
+ください。
 
 ## 関連ドキュメント
 

@@ -24,6 +24,8 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/runtime.py
     role: implementation
+  - path: ari-core/ari/rqgm/context_views.py
+    role: implementation
   - path: ari-core/ari/rqgm/governance/__init__.py
     role: implementation
   - path: ari-core/ari/manuscript/snapshot.py
@@ -306,6 +308,109 @@ duck-typed なのは意図的です —— `GovernedSearchStrategy` の docstrin
 以後のモード関連の変更がすべて golden ファイルの差分になってしまいます。
 新しいモードのサーフェスは設定側に留めてください —— 上のラッパーを型では
 なく属性で発見しているのも同じ理由です。
+
+### ガバナンスコンテキストビュー (`ari.rqgm.context_views`)
+
+パッケージの内側にはもう 1 つ規則があり、そしてこれは一般的なパターンとして
+読まれやすいのに実際はそうではないものです: **各ガバナンスアクターが受け取る
+のは上限付きのロール固有の射影 —— *ビュー* —— であり、アーカイブでは決して
+ありません。** `ari/rqgm/context_views.py` のビルダは純粋（LLM なし、I/O なし）
+かつバイト決定的なので、ビューは入力だけの関数であり、それ以外の何にも依存
+しません。
+
+**BFTS の行が要となる行**であり、それは 3 か所で同時に述べられています。
+`CK-CTX-001` のコードと重大度は
+[RQGM スキーマ → 憲法違反コード](rqgm_schemas.md#憲法違反コード)を、
+ビュー自身のフィールド一覧は
+[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal_summary_viewschemajson)
+を参照してください。
+
+| レイヤ | 仕組み | 何かを止めるか？ |
+|---|---|---|
+| 構築時 | `build_bfts_summary_context` は `ProposalSummaryView` のみを受け取り、それ以外 —— `ProposalRecord` はもちろん、そのサマリ自身の `to_dict()` でさえ —— には `TypeError` を送出する | はい。送出するのはこのレイヤだけです。 |
+| 検査時 | `ConstitutionalKernel.validate_context_scope(role, view)` がビューのキー集合からロールのホワイトリストを引き、残りに対して `CK-CTX-001` を報告する | いいえ —— warn-and-flag であり、ノード実行を決してブロックしません。 |
+| テスト時 | `ari-core/tests/test_rqgm_context_views.py::test_no_archive_field_reaches_the_rendered_expand_context` が `ARCHIVE_ONLY_FIELDS` のすべての名前を載せた fixture の `ProposalRecord` を描画し、それらの名前もセンチネルもレンダリング結果に残らないことをアサートする | CI の中だけです。 |
+
+**ホワイトリストは 1 つ、憲法にピン留めされています。**
+`PROPOSAL_SUMMARY_FIELDS` はカーネルのテーブルのコピーではありません ——
+それ自体が `kernel_rules.CONTEXT_VIEW_WHITELISTS["generator"]` です（BFTS は
+`generator` ロールに乗ります）。そして
+`test_rqgm_context_views.py::test_whitelist_constant_is_the_kernel_table_entry`
+が `is` の同一性を固定しているため、2 つ目のリストが現れてドリフトすることは
+ありません。このテーブルは `kernel_rules._canonical_rules_payload()` の
+`context_view_whitelists` としてシリアライズされ、`constitution_hash()` に
+乗ります: 行の追加や緩和は明示的な再ピン留めであり、遷移テーブルと同じ扱いです。
+
+**レイヤリングに頼る前に順序を読んでください。** `ari-core/ari` 内でテスト
+以外の唯一の呼び出し元は `RQGMRuntime.render_expand_context`
+（`ari/rqgm/runtime.py`）で、呼び出し側が `idea_context` キーワード引数を
+渡したときに `GovernedSearchStrategy.expand` から到達されます。ここでは検査時の
+レイヤが**先**に走り（`_flag_bfts_view_scope` —— ログ警告に加えて
+immutable audit log への `kernel_report` 行。フック全体が fail-open で
+包まれています）、型ゲートは**後**です。実際に漏洩を防いでいるのは型ゲートの
+方です: スコープ外のビューは素の `dict` なので `build_bfts_summary_context` が
+送出し、`render_expand_context` を囲む `try` がそれを飲み込んで `""` を返し、
+呼び出し側は自分の `idea.json` コンテキストを保ちます。カーネル側のレイヤは
+事実を記録するだけで、防いではいません。さらに、ビルダの**内部**にある
+`_enforce_scope("generator", …)` の呼び出しは型ゲートの後に
+`ProposalSummaryView.to_dict()` に対して走り、そのキー集合はホワイトリストの
+10 個ちょうどです —— したがって BFTS の行では、この内部呼び出しが違反を
+生むことは決してありません。これは念のための二重掛けであって、発火する
+チェックではありません。
+
+**そもそもカーネルが検査するロールは 3 つだけです。**
+`CONTEXT_VIEW_WHITELISTS` が持つ行は `generator`、`paper_writer`、
+`paper_reviewer` です。`validate_context_scope` はロールを引き、見つからなければ
+きれいなレポートを返すので、それ以外のロールは設計として未検査です
+（`test_a_role_without_a_whitelist_is_unchecked` がこれを固定しています）。
+したがって Judge・adversary・reviewer・governance のビューは、より弱い 2 つの
+仕組みに依存しています。その弱さは正確に述べる価値があります:
+
+- **構成による排除** —— ビルダには、見てはならない素材を受け取る引数がそもそも
+  ありません（`build_reviewer_context` に他のレビュアの出力を渡す術はなく、
+  `build_judge_context` は attack・defense・bundle しか与えられず、レジストリ
+  ハンドルを保持することもありません）。実効はありますが、これはチェックでは
+  なくシグネチャの性質です。
+- **`_scrub` によるキー削除** —— `JUDGE_EXCLUDED_KEYS`（`frontier_scores`、
+  `frontier_rank`、`scientific_score`、`_scientific_score`、`utility`、
+  `utility_score`）と `GOVERNANCE_EXCLUDED_KEYS`（`prompt_text`、
+  `prompt_body`、`template`、`template_text`、`body`）が**キー名で**再帰的に
+  削除され、すべての文字列は `_FIELD_CAP`（4000）文字で切り詰められます。
+  キー名による削除の強さはその名前リストとちょうど同じです: 同じ値が、集合に
+  載っていないキーの下にあれば手つかずで残ります。
+
+**このモジュールの大半には本番の呼び出し元がありません —— 観測ではなく宣言
+として読んでください。** `ari-core/ari` の中でテスト以外の呼び出し箇所を持つ
+ビルダは `build_bfts_summary_context` だけです。`build_reviewer_context`、
+`build_adversary_context`、`build_judge_context`、`build_governance_context`、
+`build_paper_writer_context` にはそれがなく、実行するのは
+`test_rqgm_context_views.py`（および `build_paper_writer_context` について
+のみ `test_rqgm_paper_candidate.py`）だけです。
+`CHARTER_BLOCK_CAP = 1200` に至っては消費者が 1 つもありません —— テストは
+その数値と、`ari.agent.loop._IDEA_FIELD_CAP` 以下であることをアサートするだけ
+です。このモジュールは BFTS の行に、用意されただけで配線されていない射影群を
+足したものです。他のものを「ランが何をするか」の説明として引用しないで
+ください。
+
+**paper-reviewer のビューは別の場所で組み立てられており、それは設計ではなく
+回避策です。** `ari/rqgm/paper_judge.py:_paper_reviewer_string_view` は
+paper-reviewer のビューを自前で組み立てます —— 同じ 4 つのホワイトリスト済み
+キーの下に、上限付きの 4 つの文字列として。理由は `context_views._plain` が
+マッピングと `to_dict` を持つオブジェクトしか保たないため、素の文字列が `{}`
+に射影されてしまうからです。アーカイブの文字列入力を
+`build_paper_reviewer_context` に通すとドラフト本文が黙って落ちた、と
+モジュールのコメントが記録しています。この関数はキー集合を正しく保つために
+`PAPER_REVIEWER_FIELDS` をインポートしますが、カーネルを呼ぶ代わりに素の
+`assert` で固定しているので、稼働中の paper-reviewer 経路は自前の
+`CK-CTX-001` レポートを一切出しません。
+
+**ガバナンスのロールを追加するときは**、`CONTEXT_VIEW_WHITELISTS` に行を
+追加し（`constitution_hash` の再ピン留めを受け入れ）、ビルダから
+`_enforce_scope` を呼んでください。
+`test_rqgm_context_views.py::test_every_whitelisted_builder_runs_the_check` が
+ホワイトリスト済み 3 ビルダのソースに、まさにその呼び出しがあることを検査
+します。ホワイトリストの行を持たないロールのビルダは、どれだけスクラブしても
+未検査のままです。
 
 ### 原稿コンパイラ境界 (`ari.manuscript`)
 

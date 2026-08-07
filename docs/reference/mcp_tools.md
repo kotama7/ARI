@@ -110,15 +110,16 @@ argument the agent supplies.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `survey` | Prior-work survey: reuses the frozen `virsci_snapshot` corpus when present, else live Semantic Scholar, else an arXiv fallback; pure HTTP | ✗ |
+| `survey` | Prior-work survey against **one pinned** provider — `semantic-scholar` (the default) or `virsci-snapshot`; `record` / `live` never switch backends, `replay` performs no network access, and an unsupported provider is refused rather than substituted | ✗ |
 | `generate_ideas` | LLM generates ranked idea candidates from survey + context | ✓ |
 
 These two are the skill's only registered tools — `_load_virsci_snapshot_papers`
 is a plain helper `survey` calls directly, never agent-visible, and
 `ari-skill-idea/tests/test_server.py` pins both facts via `mcp.list_tools()`.
-When the snapshot is absent and Semantic Scholar is unavailable (keyless or
-rate-limited), `survey` falls back to arXiv; a 0-paper result is reported on
-stderr rather than passing silently. They are also
+There is no cross-provider fallback: a `virsci-snapshot` survey whose corpus is
+absent raises `FileNotFoundError`, and a Semantic Scholar survey raises on the
+HTTP error, so an outage produces a refusal rather than a silently different
+corpus. They are also
 the MCP surface behind the RQGM `VirSciAdapter`: in the opt-in `ari_rqgm`
 mode with `proposal_router.generators.virsci.enabled: true`, the core-side
 ProposalRouter routes ideation events to `survey` + `generate_ideas` under a
@@ -214,7 +215,7 @@ digest-addressed references rather than filesystem paths.
 
 | Tool | New args |
 |---|---|
-| `build_reproduce_sh` | `container_image` (replaces / supersedes legacy `apptainer_image`; both accepted for back-compat) |
+| `build_reproduce_sh` | `container_image` (replaces the legacy `apptainer_image`, which has been deleted from the signature — `container_image` is now the only image argument, and it is honoured only by the `apptainer` rollout) |
 
 ### v0.8.0 new fields (Stage 2)
 

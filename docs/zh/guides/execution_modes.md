@@ -274,6 +274,29 @@ BFTS 的 `max_total_nodes` —— 更深的树只是重新分配同一预算，�
   一份精选语料库之前也表现为受审的 best-of-N
   （见[采用论文归档](rqgm_migration.md#采用-papermode)）。
 
+论文阶段向治理预算那个封闭的 `ACTION_KINDS` 集合（`ari/rqgm/budget.py`）中
+恰好只新增一种动作类型：`paper_anchor_scoring`，按当前生效的审稿人每被评分
+一个 held-out 锚点用例计一个单位。它的每纪元上限是
+`rqgm.paper.anchor.sample_size`（默认 `8`）；只要
+`rqgm.paper.anchor.enabled` 为 false —— 也就是上文的默认值 —— 上限即为 `0`。
+因此在默认 on-ramp 下，锚点一致度评分并非只是被跳过，而是预算本身就记为零
+（与 `shadow_call`、`virsci_call` 既有的「禁用即返回 0」形态相同）。论文归档
+所做的其他受预算动作，一律计入已经存在的上限：例如 self-preference 对手会把
+每一轮攻击都通过 `adversary_call` /
+`rqgm.adversarial.max_adversary_calls_per_epoch` 来把关。
+
+这里的「每纪元」指的是每个*论文*纪元 —— 归档在 `current_paper_epoch`（若没有
+打开的论文纪元对象，则为 `paper_epoch_000`）之上构建自己的
+`GovernanceBudgetManager`。预算耗尽按惯常方式降级：用例循环停止，审稿人保留
+其已评分前缀所得到的一致率，且不会有异常抛入论文循环。读取计数器时有两点值得
+留意。预算是在审稿人给出判定*之前*就已计入的，因此一个没有产生判定的用例
+——它也因此被排除在一致度覆盖之外 —— 同样消耗一个单位。另外，预算管理器对
+`None` 是 fail-open 的，所以没有检查点目录的论文运行、或者管理器构造失败的
+运行，会**在不受把关的情况下**完成锚点评分，而不是被阻断。每纪元的合计会以
+尽力而为的方式镜像到 `{checkpoint}/paper_archive_state.json` 的
+`budget_counters`（`anchor_scoring_calls`），它派生自 `rqgm_audit.jsonl` 中
+持久的 `budget_consumed` 行，因此重复调用绝不会重复计数。
+
 ## 从 GUI 选择模式
 
 上文所述才是权威说明：模式是一项配置决策，按标准优先级从 `workflow.yaml` +
@@ -309,7 +332,7 @@ GUI 开关」的表述 —— `--mode` CLI 标志依然不存在，也没有任�
 3. **project 作用域依然拒绝。** 这些模式路径是 `scope: run`，因此项目默认值
    文档会拒绝它们（`not_project_scope`）；在该作用域下这两个控件被禁用，并给出
    原因。
-4. **开放的只有这四个叶子。** `Execution mode` 分类与 `rqgm.*` 树中其余 97 条
+4. **开放的只有这四个叶子。** `Execution mode` 分类与 `rqgm.*` 树中其余 104 条
    路径（epoch、kernel、governance、adversarial、预算调优）在本次发布中**不能**
    从 GUI 编辑。它们仍以只读方式连同其生效值一起展示，携带其中任何一条的草稿
    在启动时仍会被以 `mode_locked` 拒绝 —— 要修改请编辑 `workflow.yaml`。选择
