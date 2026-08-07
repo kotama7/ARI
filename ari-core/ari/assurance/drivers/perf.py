@@ -51,6 +51,11 @@ PERF_DRIVER_REVISION = "ari.assurance.native-perf/v1"
 # instrument resolves, and at a small shape a single ~20 ms stall against a
 # ~0.2 ms kernel gave a 100x spread against 0.095% at the scored shape.
 
+#: The most run-to-run spread a clean control may show and still certify. Same
+#: figure ``normalize_result`` reports an ordinary run at, because an instrument
+#: cannot be certified to a looser standard than it is read at.
+_MAX_CLEAN_SPREAD = 0.1
+
 #: The controls used to be gemm source embedded here, which was fine while gemm
 #: was the only problem and wrong the moment the probe started probing the
 #: manifest's OWN problem: they must keep that problem's contract to compile at
@@ -335,6 +340,17 @@ class NativePerfDriver:
             candidate_flags=flags, regression_threshold=0.95)
         slow_detail = slow.case_results[0].detail if slow.case_results else ""
         wrong_detail = wrong.case_results[0].detail if wrong.case_results else ""
+        clean_spread = (clean.case_results[0].relative_spread
+                        if clean.case_results else None)
+        # THE PROBE HAD THE SPREAD AND DID NOT USE IT. ``normalize_result``
+        # already reports a spread above 0.1 as "the median is not resolving the
+        # difference it is quoted to" -- and the probe, whose whole job is to
+        # certify the instrument, ignored its own. Measured on a shared node:
+        # the probe passed once in three runs, and the run that PASSED had a
+        # clean-control spread of 1.16, eleven times the figure the same code
+        # calls unresolved. Registration evidence produced there would have
+        # certified noise.
+        resolved = clean_spread is not None and clean_spread <= _MAX_CLEAN_SPREAD
         return {
             "schema_version": "ari.native-perf-parity-report/v1",
             "driver_digest": perf_driver_digest(),
@@ -347,8 +363,8 @@ class NativePerfDriver:
                 "clean_control": {
                     "verdict": clean.verdict,
                     "median_speedup": clean.case_results[0].speedup if clean.case_results else 0.0,
-                    "relative_spread": (clean.case_results[0].relative_spread
-                                        if clean.case_results else None),
+                    "relative_spread": clean_spread,
+                    "resolved": resolved,
                     "report_digest": clean.report_digest,
                 },
                 "negative_control_slow": {
@@ -361,14 +377,22 @@ class NativePerfDriver:
                 },
             },
             # The two negatives must fail for DIFFERENT reasons, or the harness
-            # is a stopwatch that cannot tell a wrong answer from a slow one.
+            # is a stopwatch that cannot tell a wrong answer from a slow one --
+            # AND the clean control must have resolved, or the three verdicts
+            # are three coin flips that happened to land right.
             "passed": (
                 clean.verdict == "pass"
                 and slow.verdict == "fail"
                 and wrong.verdict == "fail"
                 and "threshold" in slow_detail
                 and "residual bound" in wrong_detail
+                and resolved
             ),
+            "reason": (
+                None if resolved else
+                f"clean-control spread {clean_spread} exceeds "
+                f"{_MAX_CLEAN_SPREAD}; the instrument did not resolve on this "
+                f"node, so these verdicts certify nothing"),
         }
 
 

@@ -124,6 +124,29 @@ def verify_performance(
     candidate_libs = runtime_libs_for(resolved) if boundary else None
     base = ("-O3", "-fopenmp", *isa_flags_for(resolved))
 
+    def _report(*, verdict, results, build_error=None):
+        """One shape for every way this function can end.
+
+        The early return for a candidate that did not build has to carry the
+        same provenance -- toolchains, flags, environment, placement, which
+        problem, which sizes -- as a completed measurement, or a build failure
+        would be the one outcome a reader could not attribute.
+        """
+        return NativePerfReportV1.create(
+            problem_id=definition.id, problem_revision=definition.revision,
+            problem_digest=loaded.digest, family=definition.family,
+            tier=tier, verdict=verdict, case_results=results,
+            build_error=build_error,
+            regression_threshold=regression_threshold,
+            default_toolchain=default_identity,
+            candidate_toolchain=candidate_identity,
+            crossed_compiler_boundary=boundary,
+            base_flags=base, reference_flags=ref_flags,
+            accepted_flags=accepted, rejected_flags=rejected,
+            environment=measurement_environment(),
+            dataset_revision=case_set.revision, dataset_sha256=dataset_digest,
+            placement=measurement_placement(), negative_control=negative_control)
+
     results: list[PerfCaseResultV1] = []
     with tempfile.TemporaryDirectory() as raw_td:
         build = Path(raw_td)
@@ -133,10 +156,18 @@ def verify_performance(
             include_dir=include_dir, driver=driver, entry_point=entry_point,
             role="reference", source=reference_source, out_dir=build,
             compiler=default_cc, reference_flags=ref_flags)
-        candidate_exe = compile_binary(
-            include_dir=include_dir, driver=driver, entry_point=entry_point,
-            role="candidate", source=candidate_source, out_dir=build,
-            compiler=resolved, extra_flags=accepted)
+        try:
+            candidate_exe = compile_binary(
+                include_dir=include_dir, driver=driver, entry_point=entry_point,
+                role="candidate", source=candidate_source, out_dir=build,
+                compiler=resolved, extra_flags=accepted)
+        except PerfBuildError as exc:
+            # ONE ANSWER FOR BOTH ENTRY POINTS. This compile is outside the
+            # repetition loop, so the error used to escape and the two callers
+            # classified it differently -- the evaluator as a candidate failure,
+            # the worker as a non-zero exit the driver reads as an
+            # infrastructure error. A candidate that does not build is a result.
+            return _report(build_error=str(exc), verdict="fail", results=())
         matched_exe = None
         if boundary:
             matched_exe = compile_binary(
@@ -145,11 +176,17 @@ def verify_performance(
                 compiler=resolved, extra_flags=accepted)
 
         instance_path = build / "problem.bin"
-        # ONE OUTPUT FILE PER ROLE. Sharing one meant the anchor overwrote the
-        # candidate's answer, so the correctness check had to run between the two
-        # timed launches -- see below.
-        outputs = {role: build / f"{role}.bin"
-                   for role in ("candidate", "reference", "reference_matched")}
+        # ONE OUTPUT FILE PER ROLE, AND THE NAME DOES NOT SAY WHICH. Sharing one
+        # meant the anchor overwrote the candidate's answer, so the correctness
+        # check had to run between the two timed launches -- see below. Naming
+        # them after the role then handed the driver its own role in argv[2],
+        # and the driver is PROBLEM-owned C: one line comparing that path could
+        # scale the candidate's credited time and nothing here would see it.
+        # The problem still supplies the driver; it no longer learns which side
+        # of the comparison it is running.
+        outputs = {role: build / f"out{ordinal}.bin"
+                   for ordinal, role in enumerate(
+                       ("candidate", "reference", "reference_matched"))}
         timing = build / "timing.bin"
 
         for case in cases:
@@ -195,9 +232,29 @@ def verify_performance(
                     t_cand = seconds["candidate"]
                     t_ref = seconds["reference"]
                     c_out = np.fromfile(outputs["candidate"], dtype=np.float64)
+                    r_out = np.fromfile(outputs["reference"], dtype=np.float64)
                 except PerfBuildError as exc:
                     verdict, detail = "fail", str(exc)
                     break
+                # THE DENOMINATOR IS CHECKED TOO. This module's docstring has
+                # always said the frozen reference is checked at the scored size
+                # -- "a reference that were wrong and fast would deflate every
+                # candidate" -- and it was not: the reference's output file was
+                # written and never read. A wrong-and-fast denominator makes
+                # every candidate look bad, and nothing downstream could tell
+                # that from candidates that were bad. It is the instrument, so
+                # its failure is an infrastructure error, not a verdict.
+                if r_out.size != expected:
+                    raise PerfInfrastructureError(
+                        f"the frozen reference wrote {r_out.size} values where "
+                        f"{expected} were expected; the denominator is not "
+                        f"solving this problem")
+                ref_ok, ref_worst = family.check(r_out, case, instance)
+                if not ref_ok:
+                    raise PerfInfrastructureError(
+                        f"the frozen reference failed its own oracle "
+                        f"({ref_worst:.3g}x the bound); every ratio measured "
+                        f"against it would be meaningless")
                 if c_out.size != expected:
                     verdict, detail = "fail", "candidate wrote the wrong output size"
                     break
@@ -245,6 +302,7 @@ def verify_performance(
             gains = [r.toolchain_gain for r in repetitions if r.toolchain_gain is not None]
             results.append(PerfCaseResultV1(
                 case_id=case_id, verdict=verdict, detail=detail, speedup=centre,
+                repetitions_requested=reps,
                 speedup_matched=median(matched_values) if matched_values else None,
                 toolchain_gain=median(gains) if gains else None,
                 relative_spread=relative_spread(ratios),
@@ -255,23 +313,18 @@ def verify_performance(
         overall = "fail"
     elif any(item.verdict == "inconclusive" for item in results) or not results:
         overall = "inconclusive"
-    if not case_set.resolves and overall == "pass":
+    if not case_set.resolves and overall in ("pass", "fail"):
         # A cheap set can show that a candidate built and was right. It cannot
-        # support "did not regress": at this size the measurement's own spread
-        # swamps the difference the verdict claims to have found.
+        # support "did not regress" OR "did regress": at this size the
+        # measurement's own spread swamps the difference either verdict claims
+        # to have found.
+        #
+        # This used to downgrade only ``pass``, so the set's declared inability
+        # to resolve protected exactly the direction that flatters -- a ratio of
+        # 0.79x on a set whose own YAML says it cannot support a verdict was
+        # emitted verbatim as a regression.
         overall = "inconclusive"
-    return NativePerfReportV1.create(
-        problem_id=definition.id, problem_revision=definition.revision,
-        problem_digest=loaded.digest, family=definition.family,
-        tier=tier, verdict=overall, case_results=tuple(results),
-        regression_threshold=regression_threshold,
-        default_toolchain=default_identity, candidate_toolchain=candidate_identity,
-        crossed_compiler_boundary=boundary,
-        base_flags=base, reference_flags=ref_flags,
-        accepted_flags=accepted, rejected_flags=rejected,
-        environment=measurement_environment(),
-        dataset_revision=case_set.revision, dataset_sha256=dataset_digest,
-        placement=measurement_placement(), negative_control=negative_control)
+    return _report(verdict=overall, results=tuple(results))
 
 
 __all__ = ["resolve_problem", "verify_performance"]

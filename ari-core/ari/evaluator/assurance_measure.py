@@ -151,8 +151,11 @@ def report_to_measurement(report, *, compile_ok: bool = True) -> dict[str, Any]:
         # So validity is CORRECTNESS plus a completed repetition. The regression
         # verdict is a separate statement and travels in the reason and in
         # ``regression_verdict`` below, where nothing ranks on it.
-        correct = bool(case.repetitions) and all(
-            r.correct for r in case.repetitions)
+        # Complete AND correct. Counting only the repetitions that survived let
+        # a case that timed out after one of three rank as a finished
+        # measurement carrying that one repetition's speedup.
+        complete = len(case.repetitions) >= case.repetitions_requested
+        correct = complete and all(r.correct for r in case.repetitions)
         # WHAT GOES IN A FAMILY IS TREATMENT TEXT. Scalars here reach
         # ``evaluation_cases`` and are rendered verbatim into the CHILD's prompt
         # (orchestrator/node_summary_view.py). This study compares handoff
@@ -215,6 +218,22 @@ def report_to_measurement(report, *, compile_ok: bool = True) -> dict[str, Any]:
     # from one that computed the wrong answer. ``_score`` re-derives this anyway
     # from the families, so this only has to be honest about which of the two
     # happened when something did go wrong.
+    if report.build_error:
+        # The candidate did not build. One report says so now, whichever entry
+        # point produced it, so the worker and the evaluator cannot disagree
+        # about whose fault it was.
+        return {
+            "compile_ok": False,
+            "families": {},
+            "evaluation_status": "candidate_invalid",
+            "candidate_cflags": list(report.accepted_flags),
+            "rejected_cflags": list(report.rejected_flags),
+            "reason": f"candidate did not build: {report.build_error}",
+            "problem_revision": report.problem_revision,
+            "problem_digest": report.problem_digest,
+            "dataset_revision": report.dataset_revision,
+            "report_digest": report.report_digest,
+        }
     every_case_correct = bool(families) and all(
         entry["valid"] for entry in families.values())
     if every_case_correct:

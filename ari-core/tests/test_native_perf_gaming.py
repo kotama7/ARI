@@ -153,9 +153,16 @@ def test_an_honest_kernel_is_not_caught_by_the_same_guard(problem):
 def test_the_denominator_is_not_on_the_candidates_include_path(problem):
     """Withholding the reference from the WORK DIR does not withhold it from the
     compiler: the candidate's include root used to be the problem directory,
-    which is where the frozen reference lives. One line made the task a copy."""
-    with pytest.raises(PerfBuildError):
-        _score(problem, COPIES_THE_DENOMINATOR)
+    which is where the frozen reference lives. One line made the task a copy.
+
+    It comes back as a REPORT saying the candidate did not build, not as a
+    raise: a build failure is a fact about the candidate, and the worker and the
+    evaluator used to classify the same failure differently.
+    """
+    report = _score(problem, COPIES_THE_DENOMINATOR)
+    assert report.build_error and "reference_gemm.c" in report.build_error
+    assert report.verdict == "fail"
+    assert report.case_results == ()
 
 
 def test_the_contract_header_is_still_reachable(problem):

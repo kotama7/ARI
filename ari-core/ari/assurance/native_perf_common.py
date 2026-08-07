@@ -162,6 +162,12 @@ class PerfCaseResultV1(StrictModel):
     #: repetition has none, by construction.
     relative_spread: float | None = None
     repetitions: tuple[PerfRepetitionV1, ...]
+    #: How many the TIER asked for. A case that stops early -- a timeout, a
+    #: build fault, a wrong answer -- keeps the repetitions that completed, and
+    #: a reader counting only those cannot tell a finished measurement from an
+    #: abandoned one. Measured: a case that timed out after one repetition was
+    #: ranked as valid with that repetition's speedup.
+    repetitions_requested: int = Field(ge=1, default=1)
 
 
 class NativePerfReportV1(DigestBoundModel):
@@ -212,6 +218,15 @@ class NativePerfReportV1(DigestBoundModel):
     #: identical records, and placement is not neutral for a timed kernel.
     placement: dict[str, Any]
     negative_control: bool = False
+    #: Set when the CANDIDATE did not build. A build failure is a fact about the
+    #: candidate, but it used to be reported as one thing by the evaluator
+    #: (candidate_invalid) and another by the worker: the compile happens
+    #: outside the repetition loop, so the error escaped ``verify_performance``,
+    #: the worker had no handler, and a non-zero exit is what the driver reads
+    #: as an INFRASTRUCTURE error -- the exact conflation the worker's own
+    #: docstring says it prevents. Both entry points now receive one report that
+    #: says which happened.
+    build_error: str | None = None
 
     @model_validator(mode="after")
     def _placement_is_a_record(self):
