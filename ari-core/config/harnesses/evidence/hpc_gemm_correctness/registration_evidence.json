@@ -1,40 +1,27 @@
 {
   "attestation_digests": [
-    "sha256:01837c20798a713120015394771d30595cc3a8311830bf29263aa49030b185a6",
-    "sha256:8e7b5d07fa7875ee3f30095e7e30338ebc31b71cf16f2e6a7852758d35fe8b25",
-    "sha256:c300976afd49195aa6525dfd2ffccbba372a87ebe12278c37a1ce0bc0c8679ca",
-    "sha256:e1a75e6abe21800e912074861fac3d5fa8ed1ce1d56fe5cf400d0afd9417bb9f"
+    "sha256:6700305662a354dd1eefca2680f15dcf7137b14acc2d0c7aec453853dc85c968"
   ],
   "clean_control_verdict": "pass",
-  "environment_digest": "sha256:cb1f6a9b9bd9002ec4b5d1aef6231c741561eb5ebcb0f0bbc79c6e43f738fd04",
+  "environment_digest": "sha256:4a3ff3543f0712ccecba0933132d5cdfc3549e5b5d39b928a69114d2acc89a09",
   "evidence_artifact_digests": {
-    "evidence/hpc_gemm_correctness/clean-certify-repeat.attestation.json": "sha256:997486db86a26c9c967ca6253acb845f6bec6cb07b6644aba139d32324dc4430",
-    "evidence/hpc_gemm_correctness/clean-certify.attestation.json": "sha256:bf7302b1ecb8de8889504a91fba088390f7ed564a3454b50ac4505d7e7d560f4",
-    "evidence/hpc_gemm_correctness/clean-screen.attestation.json": "sha256:8460e3e67b2c0e87f5fd8afaa0d042e6bb0b8f4caff512b543b4a1c6aaed2ff6",
-    "evidence/hpc_gemm_correctness/logs/clean-certify-repeat-stderr.log": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
-    "evidence/hpc_gemm_correctness/logs/clean-certify-repeat-stdout.log": "sha256:31ee637b94e04d1f9b8455d71b816f5e8de9c215436be7002846ad5da801780e",
-    "evidence/hpc_gemm_correctness/logs/clean-certify-stderr.log": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
-    "evidence/hpc_gemm_correctness/logs/clean-certify-stdout.log": "sha256:5f84442f0bbd9e435b076daa64c2f7a454ae26895ff0188eb4b9277405f993be",
-    "evidence/hpc_gemm_correctness/logs/clean-screen-stderr.log": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
-    "evidence/hpc_gemm_correctness/logs/clean-screen-stdout.log": "sha256:00d4524148a343e4fd69daed5349ba3904928295ae8106f5e4e6b21d356a8a4e",
-    "evidence/hpc_gemm_correctness/logs/negative-screen-stderr.log": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
-    "evidence/hpc_gemm_correctness/logs/negative-screen-stdout.log": "sha256:ae4bf217cab0177e6ec6234928d1e4bda53567f852ecd0b24ba0c0eaeeb8e72d",
-    "evidence/hpc_gemm_correctness/negative-screen.attestation.json": "sha256:854f952e1571173ddd5f93d39cfe21a6cbbf9a91b3753daf1349f05ba9372bf3",
-    "evidence/hpc_gemm_correctness/official_runner_parity.json": "sha256:c37b747a3bf4de08786895487a15fb2ab832233690bb848dea56069bc820e6c8",
-    "evidence/hpc_gemm_correctness/resource_measurements.json": "sha256:45aace3b7f82487a3ab1b7a317b7e29b954f2bea6923f6915ca18dfa9a884023",
-    "evidence/native_container_license_inventory.json": "sha256:ce80c2aff2d9be652b2fffd3499de52da5023dfa8936d767d7590dd00a454e05"
+    "evidence/hpc_gemm_correctness/gate_findings.json": "sha256:4b255a56e33d2d3eed42a2b3264eb3485e40d2b332790d1c4528b53dca8f59fa",
+    "evidence/hpc_gemm_correctness/measurement_environment.json": "sha256:4a3ff3543f0712ccecba0933132d5cdfc3549e5b5d39b928a69114d2acc89a09",
+    "evidence/hpc_gemm_correctness/multiple_run_stability.json": "sha256:97fe49e20957f9cc1040217bd692f8f08c7e0ab70aadec275193f5f0e1fff926",
+    "evidence/hpc_gemm_correctness/official_runner_parity.json": "sha256:35dabdb39535ce10e0ba8621bd65e65ce5f3f4e095ca0fbbd70b8947b6b8cdd1",
+    "evidence/hpc_gemm_correctness/registration_report.json": "sha256:62053fe14abffec48731f2f92b4318cd59a15e9760aae6beb334c9718948e743"
   },
-  "evidence_digest": "sha256:c731da845fc6fa54cc53066fd6ecb3262f346cd29bc910b57c5e4ea10ac24609",
+  "evidence_digest": "sha256:e6c1eb5a80bd34c5d9f150c13a39bb1d1cb9c17fecd548e081c62f20a3e5e909",
   "harness_id": "hpc/gemm-correctness",
   "harness_version": "1.0.0",
-  "manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+  "manifest_digest": "sha256:cf5747493c7c07a47e6c98b1dc4ce61b2a4530e9466dac0414e0ab9c9de86a91",
   "negative_control_verdict": "fail",
   "network_isolation": "proved",
   "official_runner_parity": true,
   "oracle_visibility": "denied",
   "result_schema_conformant": true,
-  "run_count": 4,
+  "run_count": 3,
   "schema_version": "ari.harness-registration-evidence/v1",
-  "source_full_commit_sha": "d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b",
+  "source_full_commit_sha": "a72f22f27f30908498abc0e01f9f4900c6beff2b",
   "target_write_isolation": "proved"
 }

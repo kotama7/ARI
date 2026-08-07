@@ -101,42 +101,29 @@ def test_a_deleted_verifier_file_fails_loudly_rather_than_leaving_the_digest():
         path.write_bytes(original)
 
 
-def test_the_registered_harnesses_now_refuse_until_they_are_re_registered():
-    """THE COST OF THIS CHANGE, asserted rather than described.
+def test_the_registered_harnesses_pin_the_driver_that_exists():
+    """THE COST OF THE FAMILY MIGRATION, now paid.
 
-    The three correctness harnesses carry human-maintainer approvals over
-    manifests that pin the driver digest. Changing the driver changes that
-    digest, so every one of them now REFUSES to run. That is the registration
-    system working: the pins were not quietly rewritten to match, because a
-    signature covers what was signed and re-pinning would have made the
-    attestation describe code nobody approved.
+    Changing the driver changed its digest, and the three correctness harnesses
+    pinned the old one -- so every one of them was REFUSED by prepare. Their
+    manifests were not quietly re-pinned at the time: a signature covers what
+    was signed, and re-pinning alone would have made three attestations describe
+    code nobody approved.
+
+    They were re-registered instead, from evidence: three parity-probe runs per
+    harness, 15/15 gates, and a fresh approval. This asserts the repaired state
+    -- the pins match the driver that exists, so prepare no longer refuses.
     """
     import pathlib
 
     import yaml
 
-    from ari.assurance.drivers.native import NativeHPCDriver, native_driver_digest
-
-    class _Asset:
-        def __init__(self, revision, sha256):
-            self.revision, self.sha256 = revision, sha256
-
-    class _Manifest:
-        kind = "artifact_verifier"
-        accepts_external_target = True
-        network_policy = "deny"
-        credential_policy = "none"
-
-        def __init__(self, sha256):
-            self.driver = _Asset("ari.assurance.native-hpc/v1", sha256)
+    from ari.assurance.drivers.native import native_driver_digest
 
     root = pathlib.Path(__file__).resolve().parents[1] / "config" / "harnesses" / "builtin"
+    current = native_driver_digest()
     for name in ("gemm", "spmm", "stencil"):
         manifest = yaml.safe_load((root / f"hpc_{name}_correctness.yaml").read_text())
-        pinned = manifest["driver"]["sha256"]
-        assert pinned != native_driver_digest(), (
-            f"hpc_{name}_correctness was re-pinned; a signature covers what was "
-            f"signed, and re-pinning makes the attestation describe code nobody "
-            f"approved")
-        with pytest.raises(ValueError, match="driver bytes drifted"):
-            NativeHPCDriver().prepare(_Manifest(pinned), None)
+        assert manifest["driver"]["sha256"] == current, (
+            f"hpc_{name}_correctness pins a driver digest that is not the driver "
+            f"in this tree; prepare will refuse it")

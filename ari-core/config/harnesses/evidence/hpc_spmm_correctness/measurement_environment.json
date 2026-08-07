@@ -1,0 +1,4 @@
+{
+  "note": "A deterministic verifier: the parity probe was run three times and every clean-control answer was identical, which is what repeating establishes when there is no spread.",
+  "registration_commit": "a72f22f27f30908498abc0e01f9f4900c6beff2b"
+}

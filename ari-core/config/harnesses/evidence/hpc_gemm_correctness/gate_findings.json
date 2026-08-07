@@ -1,0 +1,77 @@
+[
+  {
+    "detail": "clean control verdict 'pass'",
+    "gate_id": "reference_oracle_pass",
+    "passed": true
+  },
+  {
+    "detail": "3 negative control(s) failed, for different reasons",
+    "gate_id": "negative_control_fail",
+    "passed": true
+  },
+  {
+    "detail": "passed at spread 0.0",
+    "gate_id": "clean_control_pass",
+    "passed": true
+  },
+  {
+    "detail": "probe passed against this driver",
+    "gate_id": "official_runner_parity",
+    "passed": true
+  },
+  {
+    "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+    "gate_id": "target_oracle_test_isolation",
+    "passed": true
+  },
+  {
+    "detail": "scorer 'deterministic', nondeterminism 'none'",
+    "gate_id": "determinism_declaration",
+    "passed": true
+  },
+  {
+    "detail": "an outage produces no ranking metric",
+    "gate_id": "infrastructure_failure_separation",
+    "passed": true
+  },
+  {
+    "detail": "timeout pinned at 900s",
+    "gate_id": "timeout_resource_enforcement",
+    "passed": true
+  },
+  {
+    "detail": "all four pinned assets licensed",
+    "gate_id": "license_completeness",
+    "passed": true
+  },
+  {
+    "detail": "pinned at d303a4ca15ca, an ancestor of a72f22f27f30",
+    "gate_id": "source_revision_digest_pin",
+    "passed": true
+  },
+  {
+    "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+    "gate_id": "hidden_test_isolation",
+    "passed": true
+  },
+  {
+    "detail": "spread 0 over 3 runs",
+    "gate_id": "multiple_run_stability",
+    "passed": true
+  },
+  {
+    "detail": "schema declares 11 properties",
+    "gate_id": "result_schema_conformance",
+    "passed": true
+  },
+  {
+    "detail": "4 pinned digests are full sha256",
+    "gate_id": "full_sha256_integrity",
+    "passed": true
+  },
+  {
+    "detail": "network 'deny', credentials 'none' (structural check only; the answer is the approval)",
+    "gate_id": "malicious_harness_sandbox",
+    "passed": true
+  }
+]

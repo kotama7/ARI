@@ -1,0 +1,6 @@
+{
+  "distinct_clean_control_answers": 1,
+  "kind": "deterministic",
+  "relative_spread": 0.0,
+  "runs": 3
+}

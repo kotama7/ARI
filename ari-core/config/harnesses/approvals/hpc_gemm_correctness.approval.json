@@ -1,15 +1,15 @@
 {
-  "actor_id": "user-authorized-maintainer",
+  "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:56739f92d63e37e00bfb9b9d53efd2930960ab1888a2d85bf205f0b72eb2dfc3",
-  "approved_date": "2026-08-05",
-  "authorization_basis": "User explicitly authorized production Harness promotion on 2026-08-05",
-  "evidence_bundle_digest": "sha256:c731da845fc6fa54cc53066fd6ecb3262f346cd29bc910b57c5e4ea10ac24609",
+  "approval_digest": "sha256:c19bc11c47c3b2a20600a4d9fd40551286706c12d18ab6e5b2f7dabb667924c8",
+  "approved_date": "2026-08-08",
+  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'). The previous approval covered a driver digest that no longer exists: the verifier's family registry changed, so these harnesses had been REFUSED by prepare since. Over report sha256:6700305662a354dd1eefca2680f15dcf7137b14acc2d0c7aec453853dc85c968, minted from three parity-probe runs at commit a72f22f27f30 on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:e6c1eb5a80bd34c5d9f150c13a39bb1d1cb9c17fecd548e081c62f20a3e5e909",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-correctness",
-  "harness_manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+  "harness_manifest_digest": "sha256:cf5747493c7c07a47e6c98b1dc4ce61b2a4530e9466dac0414e0ab9c9de86a91",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:dacca97c39987026b8efa071a531813a6259a5e23e3f3640bee2ad0e46b9b78c",
+  "registration_report_digest": "sha256:6700305662a354dd1eefca2680f15dcf7137b14acc2d0c7aec453853dc85c968",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

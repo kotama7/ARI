@@ -284,13 +284,14 @@ def _passing_gate_evidence(manifest):
     probe = {
         "driver_digest": manifest.driver.sha256,
         "passed": True,
-        "results": {
-            "clean_control": {"verdict": "pass", "relative_spread": 0.01,
-                              "resolved": True},
-            "negative_control_slow": {"verdict": "fail",
-                                      "detail": "below the threshold"},
-            "negative_control_wrong": {"verdict": "fail",
-                                       "detail": "failed the residual bound"},
+        # The COMMON vocabulary both drivers emit; a gate should not have to
+        # know which one answered it.
+        "controls": {
+            "clean": {"verdict": "pass", "relative_spread": 0.01, "resolved": True},
+            "negatives": [
+                {"name": "slow", "verdict": "fail", "detail": "below the threshold"},
+                {"name": "wrong", "verdict": "fail", "detail": "failed the residual bound"},
+            ],
         },
     }
     return GateEvidence(

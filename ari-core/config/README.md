@@ -18,12 +18,12 @@ Shipped default config files (YAML) loaded by ari-core.
   - `property_vocabulary.yaml` — canonical scientific properties and their verification semantics.
   - `approvals/` — reviewed human promotion approvals for built-in native harnesses.
     - `hpc_gemm_correctness.approval.json` — promotion approval for the native GEMM correctness harness.
-    - `hpc_gemm_performance.approval.json` — TODO
+    - `hpc_gemm_performance.approval.json` — promotion approval for the native GEMM performance harness. Its `authorization_basis` records what the maintainer ACTUALLY saw — the assistant's report of the evidence, not the raw artifacts — and pins the artifacts so a later reader can check them independently, because a basis claiming a review that did not happen is the defect the signature exists to prevent.
     - `hpc_spmm_correctness.approval.json` — promotion approval for the native SpMM correctness harness.
     - `hpc_stencil_correctness.approval.json` — promotion approval for the native stencil correctness harness.
   - `builtin/` — built-in native harness manifests. All three currently refuse to run with `native Harness driver bytes drifted`: the correctness-family registry joined the native driver digest, and the manifests were deliberately not re-pinned, because re-pinning would make three human-maintainer attestations describe code nobody approved. They need re-attestation.
     - `hpc_gemm_correctness.yaml` — native dense GEMM correctness harness manifest.
-    - `hpc_gemm_performance.yaml` — TODO
+    - `hpc_gemm_performance.yaml` — the performance harness's manifest, and the first to declare `kind: benchmark`. Until it existed the performance-regression slot six knowledge-skill import profiles require was reserved and empty, and the driver that fills it was unreachable, because resolution keys on driver revision and no manifest named one. It covers `benchmark-submission` rather than an external target: a benchmark scores a SUBMISSION, and a candidate kernel handed to one is exactly that, so no rule was relaxed to make it fit. The oracle slot pins the PROBLEM (contract header, frozen driver, reference, seed, negative controls) and the dataset slot pins WHICH SIZES, so a change to either is a re-registration.
     - `hpc_spmm_correctness.yaml` — native CSR SpMM correctness harness manifest.
     - `hpc_stencil_correctness.yaml` — native seven-point stencil correctness harness manifest.
   - `case_sets/` — the pinned answer to WHICH PROBLEMS a performance harness measures on. A manifest names a revision and pins the file's bytes, so a size is chosen by naming a registered set and never by passing shapes through a request, and changing a size is a re-registration. Each set declares the family its case tuples are meaningful for, so a set cannot be handed to the wrong oracle, and `resolves: false` marks in data the sets that are too cheap to carry a verdict.
@@ -48,9 +48,13 @@ Shipped default config files (YAML) loaded by ari-core.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic GEMM results.
       - `clean-certify.attestation.json` — clean authoritative GEMM certification attestation.
       - `clean-screen.attestation.json` — clean bounded GEMM screening attestation.
+      - `gate_findings.json` — TODO
+      - `measurement_environment.json` — TODO
+      - `multiple_run_stability.json` — TODO
       - `negative-screen.attestation.json` — injected-invalid GEMM screening rejection attestation.
       - `official_runner_parity.json` — parity comparison with the official GEMM verification runner.
       - `registration_evidence.json` — complete reviewed evidence bundle for GEMM harness promotion.
+      - `registration_report.json` — TODO
       - `resource_measurements.json` — measured GEMM verifier runtime and resource envelope.
       - `logs/` — retained stdout and stderr for GEMM promotion runs.
         - `clean-certify-repeat-stderr.log` — stderr from repeated clean GEMM certification.
@@ -61,20 +65,24 @@ Shipped default config files (YAML) loaded by ari-core.
         - `clean-screen-stdout.log` — stdout from clean GEMM screening.
         - `negative-screen-stderr.log` — stderr from invalid GEMM screening.
         - `negative-screen-stdout.log` — stdout from invalid GEMM screening.
-    - `hpc_gemm_performance/` — TODO
-      - `gate_findings.json` — TODO
-      - `measurement_environment.json` — TODO
-      - `multiple_run_stability.json` — TODO
-      - `official_runner_parity.json` — TODO
-      - `registration_evidence.json` — TODO
-      - `registration_report.json` — TODO
+    - `hpc_gemm_performance/` — registration evidence for the native GEMM performance harness, produced by three parity-probe runs on an exclusive compute node from a clean worktree.
+      - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
+      - `measurement_environment.json` — the node class and registration commit, recorded because a verdict is a statement about a machine: the same commit and the same clean worktree scored 15/15 on the aarch64 node and 13/15 on an exclusive x86 64-core node, where the clean control did not resolve.
+      - `multiple_run_stability.json` — the three clean-control speedups and their relative spread (0.0141), which is what turns stability from a claim into a measurement.
+      - `official_runner_parity.json` — the parity probe on the `@parity` case set: the clean control's median speedup and spread beside both negative controls, each with its report digest, plus the problem and driver digests the probe ran against. This is the evidence that the instrument can tell a wrong answer from a slow one.
+      - `registration_evidence.json` — the bundle the gates are computed from: manifest digest, clean and negative control verdicts, oracle visibility, network isolation, environment digest, and a digest per evidence artifact.
+      - `registration_report.json` — the minted report: every gate with its evidence digest, and the resulting `eligible-for-verified` decision. Minted from evidence rather than handed a decision.
     - `hpc_spmm_correctness/` — promotion evidence for the native SpMM correctness harness.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic SpMM results.
       - `clean-certify.attestation.json` — clean authoritative SpMM certification attestation.
       - `clean-screen.attestation.json` — clean bounded SpMM screening attestation.
+      - `gate_findings.json` — TODO
+      - `measurement_environment.json` — TODO
+      - `multiple_run_stability.json` — TODO
       - `negative-screen.attestation.json` — injected-invalid SpMM screening rejection attestation.
       - `official_runner_parity.json` — parity comparison with the official SpMM verification runner.
       - `registration_evidence.json` — complete reviewed evidence bundle for SpMM harness promotion.
+      - `registration_report.json` — TODO
       - `resource_measurements.json` — measured SpMM verifier runtime and resource envelope.
       - `logs/` — retained stdout and stderr for SpMM promotion runs.
         - `clean-certify-repeat-stderr.log` — stderr from repeated clean SpMM certification.
@@ -89,9 +97,13 @@ Shipped default config files (YAML) loaded by ari-core.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic stencil results.
       - `clean-certify.attestation.json` — clean authoritative stencil certification attestation.
       - `clean-screen.attestation.json` — clean bounded stencil screening attestation.
+      - `gate_findings.json` — TODO
+      - `measurement_environment.json` — TODO
+      - `multiple_run_stability.json` — TODO
       - `negative-screen.attestation.json` — injected-invalid stencil screening rejection attestation.
       - `official_runner_parity.json` — parity comparison with the official stencil verification runner.
       - `registration_evidence.json` — complete reviewed evidence bundle for stencil harness promotion.
+      - `registration_report.json` — TODO
       - `resource_measurements.json` — measured stencil verifier runtime and resource envelope.
       - `logs/` — retained stdout and stderr for stencil promotion runs.
         - `clean-certify-repeat-stderr.log` — stderr from repeated clean stencil certification.
@@ -151,7 +163,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `wrong_stencil.c` — parity-probe negative control: FAST but wrong. It applies zero sweeps and hands back the input, which writes every element and so clears the NaN poison and the size check; the nt-scaled residual bound is what refuses it. Every scored case has nt >= 1, so it is wrong by construction rather than by luck.
   - `reports/` — deterministic promotion gate reports for built-in harnesses.
     - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
-    - `hpc_gemm_performance.registration.json` — TODO
+    - `hpc_gemm_performance.registration.json` — the retained registration record for the GEMM performance harness, binding its manifest, evidence bundle and approval into the catalog entry.
     - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.
     - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.
 - `knowledge_skills/` — built-in and imported knowledge skills, source profiles, and the admitted catalog.
