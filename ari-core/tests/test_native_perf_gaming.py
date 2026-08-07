@@ -30,6 +30,7 @@ from ari.assurance.native_perf import reference_flags, verify_native_perf
 from ari.assurance.native_perf_common import (
     PerfBuildError, PerfInfrastructureError, compile_binary)
 from ari.assurance.problems import load_problem
+from ari.assurance.sandbox import SandboxUnavailable, sandbox_record
 
 PROBLEM = "gemm-dense-fp64/v1@2026q3"
 SMOKE = "native-perf-gemm-cases/v1@smoke"
@@ -92,14 +93,32 @@ def problem():
     return load_problem(PROBLEM)
 
 
-def _score(problem, source_text: str):
-    with tempfile.TemporaryDirectory() as raw:
-        path = Path(raw, "candidate.c")
-        path.write_text(source_text)
-        return verify_native_perf(
-            problem, path, tier="screen", dataset_revision=SMOKE,
-            candidate_flags=" ".join(reference_flags(problem)),
-            regression_threshold=0.95)
+def _score(problem, source_text: str, *, sandboxed: bool = True):
+    """Measure a candidate, optionally as a kernel WITHOUT Landlock would.
+
+    The two layers are tested separately on purpose. With the sandbox a forgery
+    cannot be attempted -- it cannot read /proc to find the file. Without it
+    (an older kernel, or an unsupported architecture) the checks are the only
+    thing standing, and they have to still work: a defence that is only ever
+    exercised behind another one is a defence nobody has tested.
+    """
+    import ari.assurance.sandbox as sandbox_module
+
+    real = sandbox_module.restrict_to
+    if not sandboxed:
+        def _refuse(*_a, **_k):
+            raise SandboxUnavailable("sandbox disabled for this test")
+        sandbox_module.restrict_to = _refuse
+    try:
+        with tempfile.TemporaryDirectory() as raw:
+            path = Path(raw, "candidate.c")
+            path.write_text(source_text)
+            return verify_native_perf(
+                problem, path, tier="screen", dataset_revision=SMOKE,
+                candidate_flags=" ".join(reference_flags(problem)),
+                regression_threshold=0.95)
+    finally:
+        sandbox_module.restrict_to = real
 
 
 def _build(problem, source_text: str, flags=()) -> bool:
@@ -132,7 +151,7 @@ def test_a_kernel_cannot_credit_itself_a_time_it_did_not_take(problem):
     process group before reading -- the forger's writer used to outlive the
     wait.
     """
-    report = _score(problem, FORGES_ITS_TIMING)
+    report = _score(problem, FORGES_ITS_TIMING, sandboxed=False)
     case = report.case_results[0]
     assert case.verdict == "fail"
     assert "wall clock" in case.detail, case.detail
@@ -230,8 +249,39 @@ def test_a_kernel_that_times_itself_cannot_write_a_fraction_of_it(problem):
     loop, so its overhead is a live calibration for the candidate's -- no
     constant, no assumption about the host.
     """
-    report = _score(problem, FORGES_ADAPTIVELY)
+    report = _score(problem, FORGES_ADAPTIVELY, sandboxed=False)
     case = report.case_results[0]
     assert case.verdict == "fail"
     assert "does not account for what ran" in case.detail, case.detail
     assert case.speedup == 0.0
+
+
+# --- the layer that makes the forgery impossible rather than detectable --------
+
+def test_the_sandbox_denies_the_path_the_forgeries_used(problem):
+    """Both forgeries found the timing file by reading /proc/self/cmdline.
+
+    Landlock's ruleset does not include /proc, and it is applied between fork
+    and exec so it binds the child and everything the child starts. The forgery
+    code therefore returns early and the kernel just computes: it scores like
+    what it is, an honest naive loop, with no forged credit and no check having
+    to fire.
+    """
+    if not sandbox_record()["filesystem_isolation"]:
+        pytest.skip("this kernel has no Landlock; the checks are the only layer")
+    report = _score(problem, FORGES_ITS_TIMING)
+    case = report.case_results[0]
+    assert case.repetitions and case.repetitions[0].correct
+    # Not refused -- it never managed to forge anything.
+    assert "wall clock" not in case.detail
+    assert "does not account" not in case.detail
+
+
+def test_what_the_sandbox_does_not_claim():
+    """A record that overstates is worse than none: this is filesystem access
+    control, and fork, CPU and memory are not restricted by it."""
+    record = sandbox_record("/tmp")
+    if not record["filesystem_isolation"]:
+        pytest.skip("no Landlock on this kernel")
+    assert record["mechanism"] == "landlock"
+    assert set(record["does_not_restrict"]) >= {"fork", "cpu", "memory"}

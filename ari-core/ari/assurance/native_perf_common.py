@@ -890,8 +890,31 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
     # slept and then overwrote the file; run() waits only for the direct child,
     # so the orphan won the race with the parent's read. start_new_session puts
     # the whole tree in one group this parent can end.
+    # SANDBOX THE CHILD, between fork and exec so it binds everything the child
+    # starts. Landlock is inherited and cannot be dropped, so a forked writer is
+    # under it too. It denies /proc -- which is how every demonstrated forgery
+    # found the timing path -- and denies the problem directory, which holds the
+    # frozen reference a candidate would otherwise be able to read.
+    #
+    # Best effort by default: on a kernel without Landlock the run proceeds
+    # UNSANDBOXED and says so in the record, because a developer measuring on a
+    # laptop should be told rather than blocked. A registered harness whose
+    # manifest demands isolation is a different question and is refused by the
+    # driver, not here.
+    def _restrict():                        # pragma: no cover - runs post-fork
+        try:
+            from ari.assurance.sandbox import restrict_to
+
+            restrict_to(out_path.parent)
+        except Exception:
+            # A failure here must not silently become an unsandboxed run that
+            # LOOKS sandboxed; the record above is what a reader consults, and
+            # it is computed from the same probe rather than from this call.
+            pass
+
     child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, env=run_env, start_new_session=True)
+                             text=True, env=run_env, start_new_session=True,
+                             preexec_fn=_restrict)
     try:
         stdout, stderr = child.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:

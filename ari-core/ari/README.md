@@ -23,8 +23,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
 - `env_detect.py` — detect schedulers, container runtimes, and HPC resources.
 - `execution.py` — closed-workspace execution requests/results, enforcement records, and complete-log artifacts.
 - `figure_contract.py` — declarative figure specifications, render provenance, and review-ready batch contracts.
-- `harness_registry.py` — resolves a task's scoring harness from `<workspace>/harnesses/<task>/`. ARI ships NO harness, so a checkout with no workspace can run no task and `available_tasks()` returns `[]` — the instrument travels with the experiment. Every pinned file is content-addressed and the manifest self-digests its own scoring config (target/scale/axis/measure_kwargs/files/declares), so a modified harness REFUSES TO SCORE rather than scoring differently; a file present in the directory but absent from `[files]` is refused for the same reason, since an unpinned file is scored scaffolding nobody is checking. Isolation from the node is by RESOLUTION PATH, not permission: driver, baseline and `-I` come from `kernels_dir()` and only `candidate_*.c` from `work_dir`, so a node editing its seeded copies changes its own selftest and nothing else. Refuses to bind when two harnesses serve one task — the number would be a property of whichever directory name sorted first, reported as a property of the task.
-- `harness_select.py` — ranks the pool against a requirement stated before anything is measured (effect size to resolve, seconds per scoring, capabilities the machine was probed to have, axes the question depends on) and says why for every harness, eligible or rejected. It imports nothing that can score, takes no work_dir and is handed no result — structurally, because "choose the harness the candidate does best under" is a natural sentence and a fatal criterion. Silence is unknown, never suitability: an unmeasured band, a band wider than the effect, or a band measured under conditions this run does not match are all refusals, since each would yield a well-formed null that says nothing. Ranks; does not decide.
+- `harness_registry.py` — TODO
+- `harness_select.py` — TODO
 - `latex_claims.py` — canonical lexical LaTeX claim, numeric, citation, and figure parser.
 - `lineage.py` — recursion lineage helpers; walk `parent_run_id` chains for ancestor artifacts.
 - `memory_cli.py` — `ari memory` subcommand (migrate / backup / …).
@@ -81,13 +81,12 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_perf_stencil.py` — the 3-D 7-point Jacobi family: field generator, the ping-pong fp64 reference sweep (bit-identical to the naive expression, without its 24 GB of temporaries), and an nt-scaled bound. Refuses an nt=0 case, where handing back the input would be a correct answer.
   - `problems.py` — the pinned problem asset: closed-schema `ProblemDefinitionV1` (no field for flags, timing or tolerances, so an unapproved problem cannot weaken the instrument), digest over the declaration and every file it names, and `materialize` as the seed_work_dir equivalent — which withholds the reference.
   - `registration.py` — execute harness registration gates and catalog promotion.
-  - `registration_gates.py` — computes the promotion gates instead of being handed their answers. `registration_report` used to check that the gate ids matched the canonical list and that every `passed` was True, while nothing computed any `passed` — so a registration recorded fifteen satisfied gates, a human signed it, and no gate had been evaluated. One evaluator per gate now, each reading a specific artifact; a gate that cannot be decided from the evidence it was given returns `passed=False` with the reason, never True by default, because answering True without looking is the exact failure being fixed. Three gates are marked `requires_human`: structural checks here, whose real answer is the approval a maintainer signs — marking them is the point, since the old arrangement made them indistinguishable from the twelve a machine can settle. Each gate digests THE ARTIFACT IT READ, so two registrations agree only if they read the same bytes.
+  - `registration_gates.py` — TODO
   - `registration_models.py` — promotion approval, evidence, and registration report models.
-  - `registration_run.py` — produces the evidence a registration is made of. The gates can be computed only from evidence someone hands them, and nothing in production produced any: `parity_probe`, the one piece of code that establishes an instrument can tell a wrong answer from a slow one, had no caller outside tests, so a gate that CAN be computed and never is sits a short distance from a decorative one. This module is that caller — it runs the probe against the driver being registered, repeats it so stability is measured rather than claimed, reads the commit out of the repository instead of accepting one, and resolves the result schema from the report type the harness actually emits. It refuses a dirty working tree (a pin taken from uncommitted code names a commit that does not describe what ran), a probe run against a different driver, and a stability claim from fewer than two runs. The cost is real: the probe compiles and runs the reference, a slow control and a wrong control, once per repetition.
+  - `registration_run.py` — TODO
   - `request.py` — validate and canonicalize screen and certify run requests.
   - `resolver.py` — select compatible harnesses and fail closed on missing or ambiguous coverage.
   - `runner.py` — coordinate locked harness execution and attestation persistence.
-  - `sandbox.py` — TODO
   - `suite.py` — run multi-property assurance suites and aggregate their verdicts.
   - `drivers/` — isolated adapters for native, container, external, shared-library, upstream, and PaperBench harnesses.
     - `__init__.py` — assurance driver registry exports.
@@ -98,13 +97,13 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
     - `native_candidate_host.py` — isolated host for loading untrusted native candidates.
     - `native_worker.py` — worker entry point for authoritative native verification.
     - `paperbench.py` — PaperBench-compatible scientific reproduction driver.
-    - `perf.py` — the measuring driver for the `performance-regression` slot the property vocabulary reserved. It does not yet FILL that slot: no manifest names this revision, so nothing resolves to it and nothing it measures is attested. `prepare` refuses anything the registration did not cover — a drifted driver digest, a problem whose bytes no longer match `oracle.sha256`, a case set of the wrong family or one declaring `resolves=false`, a request that is not credential-free and network-denied — because a problem may be ADDED without approval, so pinning the exact question is what keeps an unapproved one from being measured AS this manifest. `normalize_result` reports the ratio the verdict was decided on and the absolute seconds beside it (a ratio cannot say whether the machine was used well) plus the repetition spread, since a median with no spread is a number with no claim attached. `perf_driver_digest` covers the measuring half only — loop, flag screen, every family oracle, the counter tool — and refuses to skip a missing file, so deleting one cannot quietly drop out of the digest. `parity_probe` certifies the manifest's OWN problem, not a fixed one, with three controls that must fail differently: the reference built the reference's way passes, a correct-but-slow kernel fails on the RATIO, a fast-but-wrong one fails on the ORACLE — and the clean control's own spread must be within 0.1, after a run whose clean control spread 1.16 "passed" and would have certified noise.
-    - `perf_profile_worker.py` — subprocess entry point printing one typed profile on stdout. Deliberately a separate worker from the verdict path: a profile has no threshold, no negative control and no verdict, and taking it in the scored process would put the counter tool's fork/exec between two timings it must sit outside. Exit status is reserved for substrate failure, so a candidate that could not be profiled is a completed run whose typed profile records the error per point. Cache geometry (`--line-bytes`, and the L2 refill granule, which is NOT the L1 line) is accepted only as a measured value; absent, the derived ratio is suppressed rather than computed from a guess.
-    - `perf_worker.py` — subprocess entry point printing one typed `NativePerfReportV1` on stdout. Mirrors `native_worker` deliberately: a slow or wrong candidate is a SUCCESSFULLY COMPLETED execution whose report says `fail`, and a non-zero process status is reserved for verifier or substrate failure, so infrastructure accounting never conflates the two. Takes the problem and the case set as pinned revisions rather than shapes — registration evidence is established at a size and does not transfer. `--flags` must be passed as `--flags=<value>`: a candidate declaring exactly one flag (`-O3`) is read by argparse as an option and rejected, which would surface as a verifier crash instead of as a candidate result.
+    - `perf.py` — TODO
+    - `perf_profile_worker.py` — TODO
+    - `perf_worker.py` — TODO
     - `shared_library.py` — ABI-bound shared-library candidate driver.
     - `upstream.py` — pinned upstream project runner and parity driver.
   - `kernels/` — scaffolding ARI itself owns. Per-problem kernels moved to their problem definitions; what stays is the instrument.
-    - `tools/` — the measurement tools the instrument itself owns, pinned inside the performance driver's content address: a tool that could change under a pinned manifest makes every profile taken with it unattributable.
+    - `tools/` — TODO
       - `region_counters.c` — `perf_event_open` counter tool gated on the profiled driver's region marks, so counts describe the timed call rather than the whole process.
 - `calibration/` — `evaluator_v1.json` is the permanent, versioned calibration input for ARI's
 - `capability_binding/` — capability ontology, provider resolution, environment compatibility, substitution, authority, and immutable locks.
@@ -123,8 +122,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__main__.py` — `python -m ari.cli` entry.
   - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
   - `commands.py` — misc top-level commands + `_safe_backup`.
-  - `doctor.py` — `ari doctor claude-code`: an offline end-to-end check of the claude_code backend — binary and version, policy validation of the resolved config, the exact strict-mode command (session-reuse flags asserted absent), and per-flag support. A flag missing from `--help` is informational only, because the CLI hides flags it supports; only `--live`, which spends real tokens, tells a hidden flag from a rejected one.
-  - `harness.py` — `ari harness list` prints what each registered harness declares it is for, including what it is blind to and whether its resolution band was ever measured; `ari harness select` ranks the pool against a requirement and exits 2 when nothing qualifies, because "no harness can answer this" is a result and running the closest one anyway produces a number rather than an answer.
+  - `doctor.py` — TODO
+  - `harness.py` — TODO
   - `kca.py` — command handlers for knowledge, capability, and assurance inspection and registration.
   - `lineage.py` — end-of-phase lineage-decision helpers.
   - `manuscript.py` — Manuscript Complete preparation, evaluation, publication, and repair commands.
@@ -178,7 +177,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `models.py` — knowledge skill, catalog, resolution, and node-use models.
   - `provenance.py` — normalize source identities and validate provenance chains.
   - `registration.py` — validate and admit knowledge skills into the catalog.
-  - `registration_models.py` — the digest-bound empirical evidence the knowledge-skill registration gates read (clean-task outcome, cross-Provider portability, source commit, environment) plus the separate promotion approval. Portability records its METHOD because the two are not interchangeable: `two-providers` measures the Provider population as much as the Skill, while `synthetic-substitution` withdraws the incumbent and re-offers identical contracts under a reserved stand-in — it proves the requirement set names a capability rather than a Provider, but strictly weaker, since no second implementation ran; the validators refuse to let it be recorded as cross-Provider portability. Passing the gates makes a Skill ELIGIBLE, never promoted: approval is a separate authenticated act bound to the exact body, manifest and evidence reviewed, so a later edit to any of them invalidates it instead of being silently inherited.
+  - `registration_models.py` — TODO
   - `resolver.py` — deterministically select compatible knowledge skills for a task.
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.
@@ -405,7 +404,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `frontier_repair.py` — `FrontierRepairEngine` (RQGM Task 10): pure `trace_dependents` staleness closure (record-type-pair materiality table, cycle-tolerant) + pure `rebuild_frontier` (stale/invalid/sterile exclusion, reinstatement rules), the per-role invalidate-vs-recompute policy, and the kernel-validated epoch-boundary repair step emitting `SelectiveErasureEvent`/`FrontierRebuildEvent` (conservative → drain-only failure ladder).
   - `governance_cache.py` — the governance result cache (RQGM Task 12 §5.5/§6.2): the spec-fixed `cache_key = sha256(artifact_hash ␟ prompt_hash ␟ role ␟ epoch_id ␟ input_context_hash ␟ output_schema_hash)[:16]`, canonical-JSON content hashing (`canonical_hash`), the §6.2 replay lookup rule (`replay_lookup_key` uses the case's ORIGIN epoch id — the one sanctioned cross-epoch hit), and the append-only `{ckpt}/rqgm_governance_cache.jsonl` store + in-memory index (`GovernanceCache`; absence == empty cache; entries are never invalidated in place — retired prompt hashes simply never recur in lookups).
   - `kca_kernel_rules.py` — deterministic kernel rules governing knowledge, capability, and assurance state transitions.
-  - `kernel.py` — `ConstitutionalKernel` (RQGM Task 04): the deterministic, non-evolving Layer-0 checker — NOT an LLM judge (zero LLM/network calls, zero wall-clock decisions; P2). Sixteen closed `validate_*` entry points, plus the enforcement adapters (`should_block`, fail-open `per_node_warn_check`, pre-flight `CapabilityGatedMCPClient`).
+  - `kernel.py` — `ConstitutionalKernel` (RQGM Task 04): the deterministic, non-evolving Layer-0 checker — NOT an LLM judge (zero LLM/network calls, zero wall-clock decisions; P2). Twelve closed `validate_*` entry points, plus the enforcement adapters (`should_block`, fail-open `per_node_warn_check`, pre-flight `CapabilityGatedMCPClient`).
   - `kernel_capability_integrity.py` — validate capability bindings and substitutions at the constitutional boundary.
   - `kernel_harness_integrity.py` — validate harness locks, attestations, and certification lineage at the constitutional boundary.
   - `kernel_kca_common.py` — shared KCA kernel checks, findings, and deterministic record helpers.
@@ -505,7 +504,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `knowledge_skill_catalog_snapshot_v1.schema.json` — immutable catalog snapshot used for deterministic knowledge-skill resolution.
   - `knowledge_skill_manifest_v1.schema.json` — declared knowledge skill, source provenance, compatibility, and evidence policy.
   - `knowledge_skill_promotion_approval_v1.schema.json` — explicit human approval binding one knowledge-skill promotion to the exact manifest, body, and evidence reviewed.
-  - `knowledge_skill_registration_evidence_v1.schema.json` — closed clean-task and provider-portability evidence bound to one exact Skill, its source commit, and its environment digest. Portability must name its method, so the weaker `synthetic-substitution` — the incumbent withdrawn and identical contracts re-offered under a reserved stand-in — cannot be read as two independent Providers.
+  - `knowledge_skill_registration_evidence_v1.schema.json` — TODO
   - `manuscript_authoring_binding_v1.schema.json` — exact profile, context, readiness, brief, and source lineage admitted to authoring.
   - `manuscript_auto_repair_round_v1.schema.json` — one bounded repair attempt with findings, actions, progress, and stop state.
   - `manuscript_context_v1.schema.json` — evidence-grounded authoring context assembled for a manuscript profile and source snapshot.
@@ -529,7 +528,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
   - `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
   - `native_hpc_verification_report_v1.schema.json` — authoritative native HPC verifier outputs, tolerances, resources, and reproducibility evidence.
-  - `native_perf_report_v1.schema.json` — the typed report the ARI-native performance worker prints and the driver normalizes: per-case verdicts over repetition records that each pin one process launch and one cold timed call, with `denominator` const-pinned to `frozen-reference-anchor`. Generated from `NativePerfReportV1`; until it existed, registration's result-schema-conformance gate had no schema for the driver's declared report type and could never have passed.
+  - `native_perf_report_v1.schema.json` — TODO
   - `node_knowledge_skill_use_v1.schema.json` — per-node record of resolved knowledge-skill use and resulting artifact lineage.
   - `node_report.schema.json` — per-node report schema.
   - `paper_build_v1.schema.json` — immutable paper inputs, revisions, compile outcome, and publication readiness.
