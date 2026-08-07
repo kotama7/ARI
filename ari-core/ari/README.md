@@ -67,7 +67,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `models.py` — core assurance manifests, catalog, lock, and attestation models.
   - `native_hpc.py` — dispatch native HPC verification across supported kernel families.
   - `native_hpc_common.py` — shared native HPC case, tolerance, resource, and report helpers.
-  - `native_hpc_family.py` — TODO
+  - `native_hpc_family.py` — registry for the correctness families. Each supplies cases-and-oracle (`verify`), the independent `reference` the parity probe uses as its clean control, and the ctypes ABI its candidates are called through. The set used to be written out in five places, so a family added to four of them was dispatchable and attested while the probe never ran it — and the probe still said `passed`. Inside the driver digest, because it decides WHICH ORACLE judges a run. Adding a family is still an ARI change: an oracle a caller could supply is one a caller could weaken.
   - `native_hpc_gemm.py` — authoritative native GEMM correctness verifier.
   - `native_hpc_spmm.py` — authoritative native sparse-matrix multiplication verifier.
   - `native_hpc_stencil.py` — authoritative native stencil correctness verifier.
