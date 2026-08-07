@@ -275,17 +275,19 @@ wrote a rule about it.
 A separate gap sat beside this, and it has since been closed for the tools that
 carry a capability. Every Provider tool used to publish an **empty** MCP
 `outputSchema`, so each provision's `output_schema_digest` was the digest of
-`{}` and detected no drift for anyone. The nine classified tools — five in
-`ari-skill-coding`, four in `ari-skill-hpc` — now declare one, and each declared
-schema is an `anyOf` of the tool's success shape and its own failure shape:
-describing only success would turn a real execution failure into an
+`{}` and detected no drift for anyone. The nine tools classified at the time —
+five in `ari-skill-coding`, four in `ari-skill-hpc` — now declare one, and each
+declared schema is an `anyOf` of the tool's success shape and its own failure
+shape: describing only success would turn a real execution failure into an
 output-validation error and throw away the message saying what went wrong, and
 `oneOf` would reject a payload that is legitimately both, such as a timed-out
 execution that is a complete result also carrying an error. Declaring a schema
 obliges the handler to return structured content beside the text as well,
-because the library validates `structuredContent` against what was declared. A
-tool classified into no capability still publishes nothing, so its
-`output_schema_digest` remains the digest of `{}`.
+because the library validates `structuredContent` against what was declared.
+Declaring a schema and being classified into a capability remain separate acts:
+`counter_support` declares one without being classified at all, and the web
+Provider's four retrieval tools were classified later and declare none, so their
+`output_schema_digest` is still the digest of `{}`.
 
 `measurement-envelope-v1` says a measurement is only interpretable together with
 the conditions it was taken under, so a contract claiming it must declare the
@@ -517,12 +519,14 @@ ARI change, reviewed like any other, because an oracle a caller could supply is
 an oracle a caller could weaken. What changed is that the set is declared in one
 place per family instead of five places per set.
 
-The cost is real and is stated rather than discovered: the driver digest
-changed, so all three currently **refuse to run** with `native Harness driver
-bytes drifted`. Their manifests were deliberately not re-pinned, because a
-signature covers what was signed and re-pinning would make three
-human-maintainer attestations describe code nobody approved. They need
-re-registration before they can be run again.
+The cost was real and was paid rather than absorbed: the driver digest changed,
+so all three **refused to run** with `native Harness driver bytes drifted`.
+Their manifests were not simply re-pinned, because a signature covers what was
+signed and re-pinning alone would make three human-maintainer attestations
+describe code nobody approved. They were re-registered instead — three
+parity-probe runs each on a clean worktree, 15 of 15 gates,
+`eligible-for-verified`, with fresh registration reports, evidence bundles and
+maintainer approvals — and their pins now name the driver that exists.
 
 Inspect, Harbor, KernelBench/ComputeEval/scBench, and PaperBench adapters do
 not fork their upstream frameworks. Their drivers validate a pinned official
@@ -650,6 +654,30 @@ The CUDA contract's `slurm` requirement was the same category error and now
 reads `slurm-controller`; `gpu-slurm` gained a derivation from the two halves
 the prober emits separately. Running the prober on a real GPU node closed two
 more and found a defect that a login node cannot show.
+
+`cuda-12.9` and `nvidia-sm70` were that error one step further in, and they are
+gone from the contract too. A toolkit release and a device generation are facts
+about the machine a Provider was promoted on, not about what the capability
+means, and requiring them made it unbindable on every substrate that is not that
+machine while proving nothing extra: the exact version and per-device compute
+capability are already recorded in the Provider's `runtime_target`. The contract
+now requires `cuda-toolkit`, `nvidia-gpu`, and `slurm-controller`, all three of
+which the prober emits from observation. This is measured, not argued. On a real
+GPU node the prober reports `cuda-13.2` and `nvidia-sm121` beside the generic
+features, the self-test compiles for the architecture it actually found and
+passes with its negative control detected and zero absolute error, and the same
+run shows the device reporting 130 GB through the CUDA API while
+`nvidia-smi --query-gpu=memory.total` answers `[N/A]`.
+
+The self-test's own architecture argument was pinned to the single value
+`sm_70`. Constraining it is right — it reaches `nvcc`'s command line — but
+constraining it to one value is not a safety property, it is a validation that
+cannot run. It is now checked by shape, so `sm_70; rm -rf /` is still refused
+while a real architecture is not. The promotion's copy of the requirement list
+is gone the same way its locally-built contract digest is: both now come from
+the contract, because the hand-written list had gone on naming `exclusive-node`
+and `slurm` for as long as the retirement had been in effect, and nothing ever
+compared the two.
 
 The toolkit version and the device generation were both being observed and
 thrown away, so a contract naming either could never be satisfied. The prober

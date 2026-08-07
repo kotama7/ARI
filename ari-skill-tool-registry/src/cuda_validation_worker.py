@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -80,13 +81,29 @@ def _validate_result(value: object) -> dict:
     return value
 
 
+_ARCHITECTURE = re.compile(r"\Asm_[0-9]{2,3}\Z")
+
+
+def _architecture(value: str) -> str:
+    if not _ARCHITECTURE.match(value):
+        raise argparse.ArgumentTypeError(
+            "CUDA architecture must be sm_<digits>"
+        )
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", required=True)
     parser.add_argument("--source-digest", required=True)
     parser.add_argument("--nvcc", required=True)
     parser.add_argument("--nvcc-digest", required=True)
-    parser.add_argument("--architecture", required=True, choices=("sm_70",))
+    # An allowlist by shape, not by value. The point of constraining this is
+    # that it reaches nvcc's command line, so it must not be arbitrary text; it
+    # was never that only sm_70 is a real architecture. Pinning the single value
+    # here made the self-test unrunnable on any device the site actually has,
+    # which is not a safety property -- it is a validation that cannot run.
+    parser.add_argument("--architecture", required=True, type=_architecture)
     parser.add_argument("--work-dir", required=True)
     parser.add_argument("--result", required=True)
     parser.add_argument("--build-log", required=True)
@@ -103,11 +120,16 @@ def main(argv: list[str] | None = None) -> int:
     if binary.exists() and (binary.is_symlink() or not binary.is_file()):
         raise ValueError("CUDA self-test binary path is unsafe")
 
+    # The compiler's own directory, taken from the compiler that was pinned and
+    # digest-checked above, rather than a fixed toolkit path. The literal
+    # /usr/local/cuda-12.9/bin named one machine's install; anywhere else it was
+    # a PATH entry pointing at nothing, and the only reason that was survivable
+    # is that nvcc is invoked by absolute path.
     environment = {
         "HOME": "/nonexistent",
         "LANG": "C",
         "LC_ALL": "C",
-        "PATH": "/usr/local/cuda-12.9/bin:/usr/local/bin:/usr/bin:/bin",
+        "PATH": f"{nvcc.parent}:/usr/local/bin:/usr/bin:/bin",
     }
     compile_result = subprocess.run(
         [

@@ -27,8 +27,9 @@ for dependency in (
     if str(dependency) not in sys.path:
         sys.path.insert(0, str(dependency))
 
-from ari.capability_binding.ontology import (  # noqa: E402
-    load_capability_ontology,
+from capability_pins import (  # noqa: E402
+    capability_contract,
+    capability_environment_requirements,
 )
 from ari.providers.registration import (  # noqa: E402
     PROVIDER_REGISTRATION_GATES,
@@ -630,14 +631,7 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
     # could not go stale when the contract moved, because it had never been
     # bound to the contract at all. The sibling ToolUniverse promotion has read
     # the ontology and verified against it all along; this one simply did not.
-    ontology = load_capability_ontology(
-        REPO_ROOT / "ari-core" / "config" / "capabilities" / "ontology.yaml"
-    )
-    contract = ontology.contract(CUDA_CAPABILITY_REF)
-    if contract is None:
-        raise RuntimeError(
-            f"capability ontology does not declare {CUDA_CAPABILITY_REF}"
-        )
+    contract = capability_contract(CUDA_CAPABILITY_REF)
     scope = {
         "capability_ref": CUDA_CAPABILITY_REF,
         "capability_contract_digest": contract.contract_digest,
@@ -647,12 +641,13 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
         "side_effects": "scheduler-submit",
         "permissions": ["scheduler-submit", "workspace-read", "workspace-write"],
         "credential_scope_ids": [],
-        "environment_requirements": [
-            "cuda-12.9",
-            "exclusive-node",
-            "nvidia-sm70",
-            "slurm",
-        ],
+        # From the contract, not restated here. The hand-written list still
+        # named `exclusive-node` and `slurm` after both were retired, and
+        # nothing compared the two -- the same way this scope's contract digest
+        # was built locally and could never match.
+        "environment_requirements": capability_environment_requirements(
+            CUDA_CAPABILITY_REF
+        ),
         "resource_type": "gpu-slurm",
         "determinism": "conditional",
         "context_requirement": "run",

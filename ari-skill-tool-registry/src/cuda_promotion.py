@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from capability_pins import capability_environment_requirements
 from provider_promotion import load_json_artifact, verify_provider_verified_lock
 from providers import ProviderProtocolError
 
@@ -45,8 +46,13 @@ def verify_cuda_verified_lock(
         scope.get("capability_ref") != CUDA_CAPABILITY_REF
         or scope.get("tool_names") != ["ari_cuda_validate__exclusive_node_sm70"]
         or scope.get("credential_scope_ids") != []
+        # Read from the contract rather than restated. The literal list here
+        # went on asserting `exclusive-node` and `slurm` after both were retired
+        # from the contract, so the verifier was pinning a shape the ontology no
+        # longer describes -- and would have passed a lock that disagreed with
+        # the capability it claims.
         or scope.get("environment_requirements")
-        != ["cuda-12.9", "exclusive-node", "nvidia-sm70", "slurm"]
+        != capability_environment_requirements(CUDA_CAPABILITY_REF)
         or target.get("identity_disclosure") != "salted-digest-only"
         or set(target)
         != {

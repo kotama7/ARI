@@ -1,5 +1,5 @@
 schema_version: 1
-source_revision: ari-capability-ontology/6
+source_revision: ari-capability-ontology/7
 property_vocabulary_version: ari.assurance-properties/v1
 contracts:
   - capability_ref: ari.eda.openroad.place-route/v1
@@ -123,7 +123,19 @@ contracts:
     # exclusive-allocation-witness-v1, checked from inside the allocation by the
     # submitted job itself. `allocation` joins nondeterminism_fields because the
     # binding lock no longer pins it.
-    environment_requirements: [cuda-12.9, nvidia-sm70, slurm-controller]
+    #
+    # `cuda-12.9` and `nvidia-sm70` were the same category error one step
+    # further in: a toolkit release and a device generation are facts about the
+    # one machine a Provider was promoted on, not about what this capability
+    # means. Requiring them here made the capability unbindable on every
+    # substrate that is not that machine, while proving nothing extra -- the
+    # exact toolkit version and compute capability are already recorded, per
+    # device, in the Provider's own runtime_target, and the self-test compiles
+    # for the architecture it actually found. Measured on a real GPU node: the
+    # prober emits `cuda-toolkit`, `nvidia-gpu`, and `slurm-controller`
+    # alongside the exact `cuda-13.2` and `nvidia-sm121`, so the generic
+    # features below are observed facts and not a weakening to a wildcard.
+    environment_requirements: [cuda-toolkit, nvidia-gpu, slurm-controller]
     compatibility_rules:
       - cuda-self-test-v1
       - exclusive-allocation-witness-v1

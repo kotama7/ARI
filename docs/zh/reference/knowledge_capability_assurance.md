@@ -379,10 +379,12 @@ probe 的 reference table、ABI dispatch dict 和两个 argparse `choices` tuple
 持有 oracle。新增一个仍是需要照常 review 的 ARI 变更，因为 caller 能提供的 oracle 就是
 caller 能削弱的 oracle。改变的只是集合按 family 声明一次，而不再是按集合声明五次。
 
-cost 是真实的，因此写在此处而不是留待发现：driver digest 已改变，所以三者目前都以
-`native Harness driver bytes drifted`拒绝运行。它们的 manifest 被刻意不重新 pin，因为
-signature 只覆盖被签署的内容，重新 pin 会让三份 human-maintainer attestation 描述无人
-批准的 code。它们需要 re-registration 才能再次运行。
+cost 是真实的，而且已被支付而非被吸收：driver digest 曾改变，所以三者一度都以
+`native Harness driver bytes drifted`拒绝运行。它们的 manifest 没有被简单地重新 pin，因为
+signature 只覆盖被签署的内容，仅重新 pin 会让三份 human-maintainer attestation 描述无人
+批准的 code。它们改为被重新 registration——在 clean worktree 上各跑三次 parity probe，
+15/15 gate，`eligible-for-verified`，registration report、evidence bundle 与 maintainer
+approval 全部重新签发——这些 pin 现在指向真实存在的 driver。
 
 Inspect、Harbor、KernelBench/ComputeEval/scBench 和 PaperBench adapter 不 fork upstream
 framework。其 driver 验证 pinned official route 并规范化 strict result envelope。没有
@@ -481,6 +483,23 @@ substrate 声明不是 availability 声明。
 CUDA 契约的`slurm` requirement 是同一类 category error，现在写作`slurm-controller`；
 `gpu-slurm`获得了一条来自 prober 分别 emit 的两半的 derivation。在真实 GPU node 上运行
 prober 又关掉了两处，并发现了一个 login node 无法暴露的缺陷。
+
+`cuda-12.9`与`nvidia-sm70`是同一错误再深一层，也已从契约中移除。toolkit 发行版与 device
+世代是关于该 Provider 被 promote 的那台**机器**的事实，而不是关于该 capability 含义的事实；
+要求它们会使该 capability 在除那台机器以外的所有 substrate 上都无法 bind，却不额外证明任何
+东西——精确的版本与每个 device 的 compute capability 早已记录在 Provider 自己的
+`runtime_target`里。契约现在要求`cuda-toolkit`、`nvidia-gpu`与`slurm-controller`，三者都由
+prober 从观测中 emit。这是实测而非论证：在真实 GPU node 上，prober 与通用 feature 并列报告
+`cuda-13.2`和`nvidia-sm121`，self-test 针对它实际找到的 architecture 编译，并以 negative
+control 被检出、绝对误差为 0 通过；同一次运行中 device 经 CUDA API 报告 130 GB，而
+`nvidia-smi --query-gpu=memory.total`返回`[N/A]`。
+
+self-test 自身的 architecture 参数曾被钉死为单一值`sm_70`。约束它是对的——它会进入`nvcc`
+的命令行——但约束为单一值不是 safety property，而是一个无法运行的 validation。现在按**形状**
+检查，因此`sm_70; rm -rf /`仍被拒绝，而真实的 architecture 不会。promotion 中那份
+requirement 列表副本，也沿着与它本地构造的 contract digest 相同的路径消失了：两者现在都来自
+契约。手写的列表在 retirement 生效之后仍长期声称`exclusive-node`与`slurm`，而没有任何东西
+比较过这两者。
 
 toolkit 版本与 device 世代都被观测后丢弃，因此任何指名其一的契约都永远无法被满足。prober
 现在从观测到的 compiler release emit `cuda-<major>.<minor>`，从每个 device 报告的 compute

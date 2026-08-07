@@ -391,10 +391,13 @@ familyはoracleを持つ。family追加は今も他と同様にreviewされるAR
 できるoracleはcallerが弱められるoracleだからである。変わったのは、setがsetごとに五箇所では
 なくfamilyごとに一箇所で宣言される点だけである。
 
-costは実在するので明記する。driver digestが変わったため、三つとも現在は
-`native Harness driver bytes drifted`で実行を拒否する。manifestは意図的に再pinしていない。
-signatureは署名した対象だけを覆うので、再pinすれば三つのhuman-maintainer attestationが
-誰も承認していないcodeを記述することになる。再び実行するにはre-registrationが必要である。
+costは実在し、吸収ではなく支払われた。driver digestが変わったため、三つとも
+`native Harness driver bytes drifted`で実行を拒否していた。manifestを単に再pinはしなかった。
+signatureは署名した対象だけを覆うので、再pinだけでは三つのhuman-maintainer attestationが
+誰も承認していないcodeを記述することになるからである。代わりにre-registrationした——
+clean worktreeで各三回のparity probe run、15/15 gate、`eligible-for-verified`、
+registration report・evidence bundle・maintainer approvalはいずれも新規である。
+pinは現に存在するdriverを指している。
 
 Inspect、Harbor、KernelBench/ComputeEval/scBench、PaperBench adapterはupstream frameworkを
 forkしない。pinned official routeを検証してstrict result envelopeへ正規化する。digest-bound
@@ -499,6 +502,25 @@ seed済みBell回路4096 shotが`{"00": 2046, "11": 2050}`のみを返し、prom
 CUDA契約の`slurm` requirementも同じcategory errorで、今は`slurm-controller`と読む。
 `gpu-slurm`はproberが別々にemitする2つの半分からのderivationを得た。実GPU nodeでproberを
 走らせたことで、さらに2つが閉じ、login nodeでは見えないdefectが1つ見つかった。
+
+`cuda-12.9`と`nvidia-sm70`は同じ誤りのもう一段先であり、契約から取り除いた。toolkitの
+releaseとdeviceのgenerationは、そのProviderがpromoteされた**機械**についての事実であって、
+capabilityの意味についての事実ではない。それを要求することは、その機械でない全substrateで
+capabilityをbind不能にする一方、何も余分に証明しない——正確なversionとdevice毎のcompute
+capabilityはProviderの`runtime_target`に既に記録されている。契約は今`cuda-toolkit`、
+`nvidia-gpu`、`slurm-controller`を要求し、3つともproberが観測からemitする。これは議論では
+なく実測である。実GPU nodeでproberは汎用featureと並べて`cuda-13.2`と`nvidia-sm121`を報告し、
+self-testは実際に見つけたarchitecture向けにcompileされ、negative control検出・絶対誤差0で
+passした。同じrunで、deviceはCUDA API経由で130 GBを報告する一方
+`nvidia-smi --query-gpu=memory.total`は`[N/A]`を返した。
+
+self-test自身のarchitecture引数は`sm_70`という単一値に固定されていた。制約すること自体は
+正しい——`nvcc`のcommand lineに届くからだ——が、単一値への固定はsafety propertyではなく、
+「実行できないvalidation」である。現在は**形**で検査するので、`sm_70; rm -rf /`は依然
+拒否される一方、実在のarchitectureは拒否されない。promotionが持っていたrequirement listの
+複製も、locally構築されていたcontract digestと同じ経路で消えた。どちらも今は契約から来る。
+手書きのlistは、retirementが効いている間ずっと`exclusive-node`と`slurm`を名乗り続け、
+両者を比較するものが一つも無かったからである。
 
 toolkit versionとdevice generationはどちらも観測しては捨てられていたので、いずれかを名指す
 契約は決して満たされ得なかった。proberは観測したcompiler releaseから`cuda-<major>.<minor>`を、

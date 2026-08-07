@@ -30,8 +30,8 @@ ONTOLOGY_PATH = (
 )
 
 
-def capability_contract_digest(capability_ref: str) -> str:
-    """Return the ontology's digest for `capability_ref`, or refuse."""
+def capability_contract(capability_ref: str):
+    """Return the ontology's contract for `capability_ref`, or refuse."""
 
     ontology = load_capability_ontology(ONTOLOGY_PATH)
     contract = ontology.contract(capability_ref)
@@ -39,7 +39,30 @@ def capability_contract_digest(capability_ref: str) -> str:
         raise ProviderProtocolError(
             f"capability ontology does not declare {capability_ref}"
         )
-    return contract.contract_digest
+    return contract
 
 
-__all__ = ["ONTOLOGY_PATH", "capability_contract_digest"]
+def capability_contract_digest(capability_ref: str) -> str:
+    """Return the ontology's digest for `capability_ref`, or refuse."""
+
+    return capability_contract(capability_ref).contract_digest
+
+
+def capability_environment_requirements(capability_ref: str) -> list[str]:
+    """Return the features the contract demands of the substrate.
+
+    A promotion that writes this list by hand keeps a second copy of something
+    the contract already states, and the copies drift silently: the CUDA
+    promotion still named `exclusive-node` and `slurm` long after both were
+    retired from the contract, and nothing compared them.
+    """
+
+    return list(capability_contract(capability_ref).environment_requirements)
+
+
+__all__ = [
+    "ONTOLOGY_PATH",
+    "capability_contract",
+    "capability_contract_digest",
+    "capability_environment_requirements",
+]
