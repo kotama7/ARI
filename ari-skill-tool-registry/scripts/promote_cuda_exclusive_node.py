@@ -27,6 +27,9 @@ for dependency in (
     if str(dependency) not in sys.path:
         sys.path.insert(0, str(dependency))
 
+from ari.capability_binding.ontology import (  # noqa: E402
+    load_capability_ontology,
+)
 from ari.providers.registration import (  # noqa: E402
     PROVIDER_REGISTRATION_GATES,
     ProviderRegistrationGateV1,
@@ -621,14 +624,23 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
         "job_contract_digest": file_digest(HPC_CONTRACT),
         "scheduler_digest": file_digest(HPC_SCHEDULER),
     }
+    # The ontology's own digest, not a synthetic one. This used to hash
+    # {capability_ref, semantic} locally, which produced a value that was never
+    # ARI's contract digest and could therefore never match it -- so the lock
+    # could not go stale when the contract moved, because it had never been
+    # bound to the contract at all. The sibling ToolUniverse promotion has read
+    # the ontology and verified against it all along; this one simply did not.
+    ontology = load_capability_ontology(
+        REPO_ROOT / "ari-core" / "config" / "capabilities" / "ontology.yaml"
+    )
+    contract = ontology.contract(CUDA_CAPABILITY_REF)
+    if contract is None:
+        raise RuntimeError(
+            f"capability ontology does not declare {CUDA_CAPABILITY_REF}"
+        )
     scope = {
         "capability_ref": CUDA_CAPABILITY_REF,
-        "capability_contract_digest": sha256_digest(
-            {
-                "capability_ref": CUDA_CAPABILITY_REF,
-                "semantic": "fixed all-device CUDA vector-add self-test with negative control",
-            }
-        ),
+        "capability_contract_digest": contract.contract_digest,
         "tool_names": ["ari_cuda_validate__exclusive_node_sm70"],
         "input_schema_digest": sha256_digest(input_schema),
         "output_schema_digest": sha256_digest(output_schema),
