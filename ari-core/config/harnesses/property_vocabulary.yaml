@@ -38,3 +38,26 @@ target_kinds:
   # is the label that lets a performance harness resolve without relaxing
   # either.
   performance-regression: benchmark-submission
+  # The concrete properties correctness is established BY, below.
+  numerical-equivalence: shared-library
+  interface-conformance: shared-library
+
+# WHAT "CORRECTNESS IS REQUIRED" ASKS FOR.
+#
+# The contract used to emit one hardcoded property, ``artifact-correctness``,
+# whenever a research contract required correctness. No shipped manifest
+# declares that property -- the three registered harnesses declare
+# numerical-equivalence, interface-conformance and reproducibility -- so the
+# requirement matched nothing and correctness resolved to no harness at all.
+# Verified against the real catalog: artifact-correctness selected 0 manifests,
+# numerical-equivalence selected 1.
+#
+# So the abstract obligation names the concrete properties it is established by,
+# as data. reproducibility is deliberately absent: the shipped manifests offer
+# it at validate and certify only, and a correctness requirement is raised at
+# screen, so demanding it would make every screen run unsatisfiable.
+#
+# Unset falls back to ["artifact-correctness"], the previous behaviour.
+correctness_properties:
+  - numerical-equivalence
+  - interface-conformance

@@ -24,9 +24,13 @@ class PropertyVocabulary(dict):
     a place to guess the rest.
     """
 
-    def __init__(self, properties, target_kinds=None):
+    def __init__(self, properties, target_kinds=None, correctness_properties=None):
         super().__init__(properties)
         self.target_kinds: dict[str, str] = dict(target_kinds or {})
+        #: What "correctness is required" asks for. Unset keeps the single
+        #: hardcoded property this replaced.
+        self.correctness_properties: tuple[str, ...] = tuple(
+            correctness_properties or ("artifact-correctness",))
 
     def target_kind_for(self, property_id: str, default: str) -> str:
         return self.target_kinds.get(property_id, default)
@@ -48,7 +52,30 @@ def load_property_vocabulary(path: str | Path) -> tuple[PropertyVocabulary, str]
         # otherwise sit inert and be read as a decision.
         raise ValueError(
             f"target_kinds names properties the vocabulary does not define: {unknown}")
-    return PropertyVocabulary(properties, target_kinds), canonical_digest(raw)
+    correctness = tuple(str(p) for p in (raw.get("correctness_properties") or ()))
+    missing = sorted(set(correctness) - set(properties))
+    if missing:
+        raise ValueError(
+            f"correctness_properties names properties the vocabulary does not "
+            f"define: {missing}")
+    return (PropertyVocabulary(properties, target_kinds, correctness or None),
+            canonical_digest(raw))
+
+
+def _correctness_properties(vocabulary) -> tuple[str, ...]:
+    """The properties a correctness requirement is established BY.
+
+    THE DEFECT THIS FIXES. One hardcoded property, ``artifact-correctness``, was
+    emitted whenever a research contract required correctness -- and no shipped
+    manifest declares it. Measured against the real catalog:
+    ``artifact-correctness`` selected 0 manifests, ``numerical-equivalence``
+    selected 1. So every correctness obligation resolved to nothing, silently.
+
+    Declared in the vocabulary because which concrete properties establish
+    correctness is a statement about the science, not about this function.
+    """
+    return tuple(getattr(vocabulary, "correctness_properties",
+                         ("artifact-correctness",)))
 
 
 def _target_kind_for(vocabulary, property_id: str, fallback: str) -> str:
@@ -92,8 +119,13 @@ def build_verification_contract(
     )
     requirements: list[VerificationRequirementV1] = []
     metric = research_contract.metric_contract
-    if metric.correctness_required:
-        property_id = "artifact-correctness"
+    for property_id in _correctness_properties(property_vocabulary):
+        if not metric.correctness_required:
+            break
+        if property_id not in property_vocabulary:
+            raise ValueError(
+                f"correctness requires {property_id!r}, which the property "
+                f"vocabulary does not define")
         methods = property_vocabulary[property_id]
         requirements.append(
             VerificationRequirementV1.create(
