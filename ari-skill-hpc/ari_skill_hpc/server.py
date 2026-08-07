@@ -11,7 +11,7 @@ from mcp.server import Server
 from mcp.types import TextContent, Tool
 
 from ari_skill_hpc import counters, slurm
-from ari_skill_hpc.contracts import JobSubmitArgumentsV1
+from ari_skill_hpc.contracts import JobHandleV1, JobSubmitArgumentsV1
 from ari_skill_hpc.scheduler import (
     RemoteConfig,
     SchedulerError,
@@ -167,6 +167,7 @@ async def list_tools() -> list[Tool]:
                 "JobHandleV1. Commands are argv arrays; the login-node shell is never used."
             ),
             inputSchema=canonical_submit,
+            outputSchema=_result_or_error(_model_schema(JobHandleV1)),
         ),
         Tool(
             name="container_submit",
@@ -175,6 +176,7 @@ async def list_tools() -> list[Tool]:
                 "must include its container declaration."
             ),
             inputSchema=canonical_submit,
+            outputSchema=_result_or_error(_model_schema(JobHandleV1)),
         ),
         Tool(
             name="job_status",
@@ -205,6 +207,7 @@ async def list_tools() -> list[Tool]:
                 "New programmatic callers should prefer job_submit."
             ),
             inputSchema=_legacy_submit_schema(),
+            outputSchema=_result_or_error(_model_schema(JobHandleV1)),
         ),
         Tool(
             name="probe_platform_capabilities",
@@ -233,6 +236,31 @@ async def list_tools() -> list[Tool]:
                 "properties": {},
                 "additionalProperties": False,
             },
+            # Declaring this obliges the handler to return structured content --
+            # the library validates it and refuses the call outright if it is
+            # missing. It must therefore admit the error envelope every handler
+            # can return, or a failure would surface as an output-validation
+            # error and the real message would be lost.
+            outputSchema=_result_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "schema_version": {"const": "ari.hpc.counter-support/v1"},
+                        "architecture": {"type": "string"},
+                        "perf_event_paranoid": {"type": ["integer", "null"]},
+                        "reviewed_events": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": ["ready", "denied", "unsupported", "unavailable"],
+                        },
+                        "detail": {"type": ["string", "null"]},
+                    },
+                    "required": ["schema_version", "status", "architecture"],
+                }
+            ),
         ),
         Tool(
             name="measure_counters",
@@ -259,12 +287,86 @@ async def list_tools() -> list[Tool]:
                         "minItems": 1,
                         "default": list(counters.DEFAULT_EVENTS),
                     },
+                    # The transport injects the node context under this name for
+                    # any tool declaring context_requirement: node. A schema that
+                    # refuses it refuses every authorized call.
+                    "ari_context": {"type": "object"},
                 },
                 "required": ["pid"],
                 "additionalProperties": False,
             },
+            outputSchema=_result_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "schema_version": {
+                            "const": "ari.hpc.counter-measurement/v1"
+                        },
+                        "status": {
+                            "type": "string",
+                            "enum": ["measured", "denied", "unavailable", "unsupported"],
+                        },
+                        # The envelope the measurement is only interpretable
+                        # inside: the support record it was taken under, the
+                        # window it covers, and what was excluded from it.
+                        "support": {"type": "object"},
+                        "counters": {
+                            "type": "object",
+                            "additionalProperties": {"type": "integer"},
+                        },
+                        "pid": {"type": "integer"},
+                        "window_seconds": {"type": "number"},
+                        "excluded": {"type": "array", "items": {"type": "string"}},
+                        "detail": {"type": ["string", "null"]},
+                    },
+                    "required": ["schema_version", "status", "support", "counters"],
+                }
+            ),
         ),
     ]
+
+
+def _model_schema(model) -> dict:
+    """Derive a tool's declared output shape from the model that produces it.
+
+    Hand-writing a copy would be a second source of truth for the same bytes,
+    and the two would drift the first time the contract gained a field.
+    """
+
+    schema = model.model_json_schema()
+    schema.pop("title", None)
+    return schema
+
+
+def _result_or_error(success: dict) -> dict:
+    """Admit either the tool's own result or the handler's error envelope.
+
+    Every handler here funnels failures into ``{"error": {...}}``. A schema that
+    described only success would turn a scheduler failure into an output
+    validation error and discard the message that says what went wrong, so the
+    declared shape has to be the union the handler can actually produce.
+    """
+
+    return {
+        "oneOf": [
+            success,
+            {
+                "type": "object",
+                "properties": {
+                    "error": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "string"},
+                            "message": {"type": "string"},
+                            "retryable": {"type": "boolean"},
+                        },
+                        "required": ["kind", "message"],
+                    }
+                },
+                "required": ["error"],
+            },
+        ]
+    }
 
 
 def _selector(arguments: dict[str, Any]) -> str:
@@ -288,7 +390,9 @@ def _public_error_message(exc: Exception) -> str:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+async def call_tool(
+    name: str, arguments: dict[str, Any]
+) -> tuple[list[TextContent], dict[str, Any]]:
     client: SlurmClient | None = None
     try:
         if name == "counter_support":
@@ -384,11 +488,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     finally:
         if client is not None:
             client.close()
-    return [
+    rendered = [
         TextContent(
             type="text", text=json.dumps(result, ensure_ascii=False, sort_keys=True)
         )
     ]
+    # Both halves: the text keeps the exact bytes ARI already digests, and the
+    # structured copy is what a declared outputSchema is validated against.
+    return rendered, result
 
 
 async def main() -> None:

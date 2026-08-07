@@ -697,3 +697,52 @@ def test_module_function_is_defined_for_run_bash(tmp_path, monkeypatch):
     out = srv._run_bash("type module 2>&1 | head -1", str(tmp_path), 60)
     text = (out.get("stdout") or "") + (out.get("stderr") or "")
     assert "function" in text, text
+
+
+@pytest.mark.asyncio
+async def test_every_declared_output_schema_admits_the_error_shape() -> None:
+    """A declared outputSchema obliges the handler to return structured content
+    and the library validates it, so a schema describing only success would turn
+    every tool failure into an output-validation error and discard the message.
+
+    These tools report failure as ``{"error": "<message>"}`` -- a plain string,
+    unlike the structured envelope the HPC provider uses -- so the two packages
+    need different unions and neither can be assumed from the other.
+    """
+
+    import jsonschema
+
+    from server import list_tools
+
+    declared = [t for t in await list_tools() if t.outputSchema]
+    assert {t.name for t in declared} == {
+        "emit_results",
+        "read_file",
+        "run_bash",
+        "run_code",
+        "write_code",
+    }
+    for tool in declared:
+        jsonschema.validate(
+            instance={"error": "rejected", "exit_code": -1}, schema=tool.outputSchema
+        )
+        jsonschema.validate(instance={"error": "rejected"}, schema=tool.outputSchema)
+
+
+@pytest.mark.asyncio
+async def test_the_structured_half_is_scrubbed_like_the_text() -> None:
+    """_virtualize exists to keep the real work_dir, $HOME, username and
+    hostname off the tool boundary. A declared outputSchema sends a second copy
+    of every result to the agent, so parsing it back from the scrubbed text --
+    rather than handing over the raw dict -- is what stops the structured twin
+    carrying everything the text had removed.
+    """
+
+    import inspect
+
+    import server
+
+    source = inspect.getsource(server.call_tool)
+    # The structured value returned must be derived from the virtualized text.
+    assert "json.loads(text)" in source
+    assert "return [TextContent(type=\"text\", text=text)], json.loads(text)" in source

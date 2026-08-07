@@ -71,10 +71,13 @@ async def test_canonical_submit_round_trip(tmp_path: Path) -> None:
         ledger=SubmissionLedger(tmp_path / "state" / "jobs.json"),
     )
     with patch("ari_skill_hpc.server._get_slurm_client", return_value=client):
-        content = await call_tool(
+        content, structured = await call_tool(
             "job_submit", {"request": request.model_dump(mode="json")}
         )
     payload = json.loads(content[0].text)
+    # Both halves must agree: the text is what ARI digests, the structured copy
+    # is what a declared outputSchema is validated against.
+    assert structured == payload
     assert payload["schema_version"] == "ari.hpc.job-handle/v1"
     assert payload["job_id"] == "1234"
     assert runner.calls[0][0] == ["sbatch", "--parsable", "--export=NIL"]
@@ -96,3 +99,55 @@ def test_public_error_message_redacts_credentials() -> None:
     assert "abc123" not in message
     assert "hunter2" not in message
     assert "safe diagnostic" in message
+
+
+@pytest.mark.asyncio
+async def test_every_declared_output_schema_admits_the_error_envelope() -> None:
+    """Declaring an outputSchema obliges the handler to return structured
+    content, and the library refuses the call if it does not conform.
+
+    Every handler here funnels failures into ``{"error": {...}}``. A schema that
+    described only success would turn a scheduler failure into an output
+    validation error and throw away the message saying what went wrong -- the
+    failure would be reported as a schema problem. This is asserted rather than
+    reproduced because provoking each tool's own failure at runtime is
+    unreliable, and a schema that admits it is what actually matters.
+    """
+
+    import jsonschema
+
+    from ari_skill_hpc.server import list_tools
+
+    envelope = {
+        "error": {
+            "kind": "scheduler",
+            "message": "sbatch refused the submission",
+            "retryable": False,
+        }
+    }
+    declared = [t for t in await list_tools() if t.outputSchema]
+    assert {t.name for t in declared} == {
+        "container_submit",
+        "counter_support",
+        "job_submit",
+        "measure_counters",
+        "slurm_submit",
+    }
+    for tool in declared:
+        jsonschema.validate(instance=envelope, schema=tool.outputSchema)
+
+
+@pytest.mark.asyncio
+async def test_a_declared_schema_accepts_its_own_tool_result() -> None:
+    """The other half: the success shape must validate too, or the tool is
+    unusable the moment it works."""
+
+    import jsonschema
+
+    from ari_skill_hpc import counters
+    from ari_skill_hpc.server import list_tools
+
+    schemas = {t.name: t.outputSchema for t in await list_tools() if t.outputSchema}
+    jsonschema.validate(
+        instance=counters.counter_support(), schema=schemas["counter_support"]
+    )

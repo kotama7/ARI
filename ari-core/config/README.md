@@ -20,14 +20,14 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_gemm_correctness.approval.json` — promotion approval for the native GEMM correctness harness.
     - `hpc_spmm_correctness.approval.json` — promotion approval for the native SpMM correctness harness.
     - `hpc_stencil_correctness.approval.json` — promotion approval for the native stencil correctness harness.
-  - `builtin/` — built-in native harness manifests.
+  - `builtin/` — built-in native harness manifests. All three currently refuse to run with `native Harness driver bytes drifted`: the correctness-family registry joined the native driver digest, and the manifests were deliberately not re-pinned, because re-pinning would make three human-maintainer attestations describe code nobody approved. They need re-attestation.
     - `hpc_gemm_correctness.yaml` — native dense GEMM correctness harness manifest.
     - `hpc_spmm_correctness.yaml` — native CSR SpMM correctness harness manifest.
     - `hpc_stencil_correctness.yaml` — native seven-point stencil correctness harness manifest.
-  - `case_sets/` — TODO
-    - `gemm-parity.yaml` — TODO
-    - `gemm-scored-2026q3.yaml` — TODO
-    - `gemm-smoke.yaml` — TODO
+  - `case_sets/` — the pinned answer to WHICH PROBLEMS a performance harness measures on. A manifest names a revision and pins the file's bytes, so a size is chosen by naming a registered set and never by passing shapes through a request, and changing a size is a re-registration. Each set declares the family its case tuples are meaningful for, so a set cannot be handed to the wrong oracle, and `resolves: false` marks in data the sets that are too cheap to carry a verdict.
+    - `gemm-parity.yaml` — where the GEMM registration parity probe measures: one shape at the scored size. Separate from the scored set so a probe can be cheap, but not cheap here — at a small shape the probe's clean control would be indistinguishable from its negative controls inside the noise.
+    - `gemm-scored-2026q3.yaml` — the scored GEMM shapes: one 1000-cube and two rectangles, large enough that the timed kernel dominates. Fixed, because a shape a candidate could choose is a shape it could choose to be easy; a theme needing other sizes adds a set beside this one rather than editing it.
+    - `gemm-smoke.yaml` — a cheap 256-cube for wiring checks; declares `resolves: false`, because a single stall of tens of milliseconds dominates a sub-millisecond kernel there. It can say a candidate built and was right; it cannot support a regression verdict.
     - `spmm-parity.yaml` — where the SpMM parity probe certifies: one uniform matrix, large enough that the timed kernel dominates.
     - `spmm-scored-2026q3.yaml` — the scored SpMM cases: six matrix families at n=20000, k=64. The family is part of the case because which sparsity structures a run is scored over is a question about the science.
     - `spmm-smoke.yaml` — a cheap SpMM wiring check; declares `resolves: false`, so it cannot support a regression verdict.
@@ -114,46 +114,46 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc-floating-point-v1.yaml` — floating-point comparison, NaN, overflow, and tolerance policy for HPC harnesses.
   - `problems/` — pinned research problems. One directory per problem: scaffolding, goal text, entry point, case set and axis under a single digest. Added freely — no ARI edit and no approval — because the schema cannot reach the instrument.
     - `gemm-dense-fp64/` — dense row-major fp64 C = A*B against a frozen competent reference at pinned shapes.
-      - `gemm_kernel.h` — TODO
-      - `gemm_main.c` — TODO
-      - `gemm_main_profiled.c` — TODO
-      - `problem.yaml` — TODO
-      - `reference_gemm.c` — TODO
-      - `seed_gemm.c` — TODO
-      - `slow_gemm.c` — TODO
-      - `wrong_gemm.c` — TODO
+      - `gemm_kernel.h` — the contract a candidate must keep exactly: `gemm(n, m, p, A, B, C)`, dense row-major fp64, no BLAS. It lives with the problem rather than in ARI because which contract is demanded is part of the question being asked; what ARI keeps is the instrument — the flags, the timed window and the oracle — and this file cannot reach any of them.
+      - `gemm_main.c` — the frozen timing and binary-I/O driver, and the file that makes the timer un-gameable: one cold timed call per process with no warmup to prime from, the output poisoned to NaN so a kernel that skips elements fails the oracle instead of scoring fast, the elapsed time written to a private file the kernel is never handed a path to, and the OpenMP team created before the timer so team creation is not charged to the kernel.
+      - `gemm_main_profiled.c` — NOT scored: `gemm_main.c` plus a counter gate that blocks until the parent has armed the counters, so a profile covers the region rather than starting microseconds inside it. Every added line is marked `/*GATE*/` and a test asserts that deleting the marked lines reproduces the scored driver byte for byte, so wanting a profile can never drift what is measured. Inert when the gate fds are absent, so the binary still runs standalone.
+      - `problem.yaml` — the whole question under one digest: the scaffolding the agent starts from, the goal text, which files determine the score, the case set, and the axis. Pinned but NOT approved — a new problem is a new directory beside this one — which is safe only because the schema is closed: there is no field here for a compiler flag, a repetition count, a timed window or a tolerance, so a problem cannot weaken the instrument that measures it.
+      - `reference_gemm.c` — the score denominator: an MR=4 register-blocked OpenMP kernel, deliberately in contract (plain C, no intrinsics, nothing the agent is forbidden to write) so the agent is not asked to beat something it could not have produced, and deliberately not naive, because against a naive denominator the score says how far a candidate is from doing nothing. Its header records the structural variants that were measured and LOST so they are not retried, and it is withheld from the work dir — a copy of the denominator would score 1.0 for free.
+      - `seed_gemm.c` — where the agent starts: correct, single-threaded, naive ijk. Not the reference, and deliberately not good — a strong seed would compress the range the search has to work in and flatter every arm equally — but correct and building, so a run that improves nothing still yields a scoreable candidate rather than a build failure indistinguishable from an infrastructure fault.
+      - `slow_gemm.c` — parity-probe negative control: correct but SLOW, so it must fail on the ratio. It is half of what separates a performance harness from a stopwatch — a probe carrying only this control would pass on an instrument that never checked an answer — and the probe asserts the two controls fail for different reasons.
+      - `wrong_gemm.c` — parity-probe negative control: FAST but wrong, so it must fail on the oracle. It writes every element, so it clears the NaN poison and the size check and only the residual bound refuses it; without it a probe would pass on an instrument that only timed.
     - `spmm-csr-fp64/` — Y = A*X with A in CSR and X, Y dense fp64, against a frozen row-parallel reference.
-      - `problem.yaml` — TODO
-      - `reference_spmm.c` — TODO
-      - `seed_spmm.c` — TODO
-      - `slow_spmm.c` — TODO
-      - `spmm_kernel.h` — TODO
-      - `spmm_main.c` — TODO
-      - `spmm_main_profiled.c` — TODO
-      - `wrong_spmm.c` — TODO
+      - `problem.yaml` — the CSR SpMM question under one digest, on the same closed schema and adding no ARI code. Its goal text states up front that two of the six scored families have heavy-tailed row counts, so a kernel tuned for uniform rows loses for a stated reason rather than by ambush.
+      - `reference_spmm.c` — the score denominator: row-parallel with `schedule(dynamic, 8)`, four-nonzero unrolling, and a unit-stride inner loop over k with the irregular row selection hoisted out of it. The chunk is 8 by measurement and for the score's STABILITY as much as its speed — at a larger chunk the heavy-tailed families' run-to-run spread was several times the others', and candidate and reference draw that thread lottery independently, so it does not cancel in the ratio.
+      - `seed_spmm.c` — the naive single-threaded CSR row loop the agent starts from: one output row at a time, a full k-wide read-modify-write per nonzero. Its own header still calls itself the frozen denominator; `problem.yaml` is what decides, and it names this file `seed_candidate`.
+      - `slow_spmm.c` — parity-probe negative control: correct but SLOW — a naive single-threaded row loop against a row-parallel reference — so it must fail on the ratio rather than on the oracle.
+      - `spmm_kernel.h` — the contract a candidate must keep exactly: `spmm(n, m, k, indptr, indices, values, X, Y)`, A in CSR and X, Y row-major dense fp64. The agent edits only its own translation unit; the timing harness is frozen and checksum-guarded, so the timer and the reference comparison are out of reach.
+      - `spmm_main.c` — the frozen SpMM driver, mirroring the GEMM one: one cold timed call per process with no warmup, Y poisoned to NaN, the timing written to a private file rather than stdout so a destructor cannot forge it, and the OpenMP team created outside the timed window. A fresh random X per rep with every rep verified, so a kernel that caches an answer in static state is wrong rather than fast.
+      - `spmm_main_profiled.c` — NOT scored: `spmm_main.c` plus the same marked counter gate, so obtaining a profile never requires touching the scored driver's pins or timing semantics.
+      - `wrong_spmm.c` — parity-probe negative control: FAST but wrong. It writes every element of Y, so the NaN poison and the output size check both pass and only the per-row backward-error bound refuses it.
     - `stencil-jacobi7-fp64/` — nt sweeps of a 3-D 7-point Jacobi stencil with fixed boundary planes, against a frozen parallel-first-touch reference.
-      - `problem.yaml` — TODO
-      - `reference_stencil.c` — TODO
-      - `seed_stencil.c` — TODO
-      - `slow_stencil.c` — TODO
-      - `stencil_kernel.h` — TODO
-      - `stencil_main.c` — TODO
-      - `stencil_main_profiled.c` — TODO
-      - `wrong_stencil.c` — TODO
+      - `problem.yaml` — the Jacobi question under one digest, and the one goal text that has to warn about where memory lives: the kernel's own scratch is allocated inside the timed call, so touching it from a single thread puts every page on one NUMA domain, while the driver's input and output fields are first-touched outside the window.
+      - `reference_stencil.c` — the score denominator, and one property comes before every other in it: PARALLEL FIRST TOUCH, with the touch loop using the same static decomposition over i as the sweep. Measured, that placement is worth about 3x on this bandwidth-bound grid for no added arithmetic, so a reference without it would measure agents against a kernel crippled in exactly the way that dominates the problem. No spatial or temporal blocking — those are real further levers, left for the candidate to find.
+      - `seed_stencil.c` — the textbook naive sweep the agent starts from: single-threaded ijk with a ping-pong buffer initialised by one thread. Its header still describes itself as the frozen 1x denominator; `problem.yaml` names it `seed_candidate` and names `reference_stencil.c` as the reference.
+      - `slow_stencil.c` — parity-probe negative control: correct but SLOW — naive ijk, single-threaded, and its buffers initialised by one thread, so every page also lands on the master's NUMA domain against a reference that first-touches in parallel. It must fail on the ratio.
+      - `stencil_kernel.h` — the contract a candidate must keep exactly: `jacobi(nx, ny, nz, nt, u0, u)` with c0 = 0.5, cw = 1/12 and Dirichlet planes fixed for all sweeps. It grants the one permission that shapes the whole task — the kernel MAY allocate its own scratch — and states that reassociating the six-neighbour sum is allowed while dropping terms, changing coefficients or precomputing the answer is not.
+      - `stencil_main.c` — the frozen Jacobi driver: one cold timed call covering all nt sweeps, a fresh random field per rep with every rep's output verified, the output poisoned to NaN so a kernel that leaves the boundary planes unwritten fails the oracle, timing to a private file, and the OpenMP team created before the timer.
+      - `stencil_main_profiled.c` — NOT scored: `stencil_main.c` plus the same marked counter gate, so a profiled run measures the identical program the scored one does.
+      - `wrong_stencil.c` — parity-probe negative control: FAST but wrong. It applies zero sweeps and hands back the input, which writes every element and so clears the NaN poison and the size check; the nt-scaled residual bound is what refuses it. Every scored case has nt >= 1, so it is wrong by construction rather than by luck.
   - `reports/` — deterministic promotion gate reports for built-in harnesses.
     - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
     - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.
     - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.
 - `knowledge_skills/` — built-in and imported knowledge skills, source profiles, and the admitted catalog.
   - `catalog.yaml` — canonical knowledge-skill catalog with source and compatibility references.
-  - `bodies/` — TODO
+  - `bodies/` — the SKILL.md sources for the skills that originate in this repository rather than upstream. The importer treats them as an external source like any other — pinned to a commit, hashed, and copied byte-for-byte into `imports/` — so a run loads the bytes an approval was given over and not whatever happens to be on disk here.
     - `hpc_gemm_optimization/` — hpc gemm optimization knowledge-skill body.
       - `SKILL.md` — dense GEMM optimization body: transformation ladder with the reason for each rung, metamorphic equivalence, and the measurement traps that misattribute setup cost to the kernel.
     - `hpc_spmm_optimization/` — hpc spmm optimization knowledge-skill body.
       - `SKILL.md` — sparse-dense optimization body: structural validation before measurement, register-blocked accumulation, and why row-length distribution rather than nonzero count decides the workload.
     - `hpc_stencil_optimization/` — hpc stencil optimization knowledge-skill body.
       - `SKILL.md` — stencil optimization body: per-step trajectory equivalence, thread placement on simultaneous-multithreading machines, and the paging policy that decides a bandwidth result before the kernel does.
-  - `evidence/` — TODO
+  - `evidence/` — one promotion record per skill, in five parts: the measured clean task, the registration evidence that resolves the gates, the capability-abstraction report, the recorded human approval, and the append-only candidate-to-verified transition. `catalog.yaml` pins the registration and approval digests, so an edited evidence file stops matching rather than being quietly believed.
     - `hpc_gemm_optimization.abstraction.json` — GEMM capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `hpc_gemm_optimization.approval.json` — recorded human approval promoting the GEMM skill, bound to the exact manifest, body, and evidence reviewed.
     - `hpc_gemm_optimization.clean_task.json` — measured GEMM clean-task record (correctness, metamorphic identities, sanitizers, replay speedups).
@@ -165,24 +165,24 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_spmm_optimization.registration.json` — digest-bound SpMM registration evidence; resolves the clean-task and portability gates.
     - `hpc_spmm_optimization.transition.json` — append-only record of the SpMM skill's candidate-to-verified transition and the approval it acted on.
     - `hpc_stencil_optimization.abstraction.json` — stencil capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
-    - `hpc_stencil_optimization.approval.json` — TODO
+    - `hpc_stencil_optimization.approval.json` — recorded human approval promoting the stencil skill, bound to the exact manifest, body, and evidence reviewed; its stated basis is that the rewritten body now carries the thread-placement and timed-region discipline this repository established by measurement.
     - `hpc_stencil_optimization.clean_task.json` — measured stencil clean-task record (trajectory equivalence, linearity, sanitizers including thread, replay speedups).
     - `hpc_stencil_optimization.registration.json` — digest-bound stencil registration evidence; resolves the clean-task and portability gates.
-    - `hpc_stencil_optimization.transition.json` — TODO
+    - `hpc_stencil_optimization.transition.json` — append-only record of the stencil skill's candidate-to-verified transition and the approval it acted on.
     - `intel_linux_perf.abstraction.json` — Intel Linux perf capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `intel_linux_perf.approval.json` — recorded human approval promoting the Intel Linux perf skill, bound to the exact manifest, body, and evidence reviewed.
-    - `intel_linux_perf.clean_task.json` — TODO
-    - `intel_linux_perf.registration.json` — TODO
+    - `intel_linux_perf.clean_task.json` — measured Intel Linux perf clean-task record: `perf_event_open` opened cycles and instructions through the typed Provider on an x86_64 CPU node and both counters read back. It records the kernel's `perf_event_paranoid` level as it found it, with `security_setting_changed: false` and no node identifier persisted — the profiling authority is a fact the probe observed, not one it arranged for itself.
+    - `intel_linux_perf.registration.json` — digest-bound Intel Linux perf registration evidence; resolves the hardware-counter, permission, and portability gates, and records that the retained artifact is byte-identical to the job's own declared output pin.
     - `intel_linux_perf.transition.json` — append-only record of the Intel Linux perf skill's candidate-to-verified transition and the approval it acted on.
     - `intel_performance_patterns.abstraction.json` — Intel performance-pattern capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `intel_performance_patterns.approval.json` — recorded human approval promoting the Intel performance-pattern skill, bound to the exact manifest, body, and evidence reviewed.
-    - `intel_performance_patterns.clean_task.json` — TODO
-    - `intel_performance_patterns.registration.json` — TODO
+    - `intel_performance_patterns.clean_task.json` — measured Intel performance-pattern clean-task record: eight independent accumulators against one serial accumulator, exact differential agreement, and four alternating warm replays above the 1.05 gate with timer overhead subtracted and only the kernel call timed. AddressSanitizer is recorded as `infrastructure-limit`, not pass — its shadow reservation was refused by the site virtual-memory limit — so the gap sits in the evidence instead of being papered over by the sanitizers that did run.
+    - `intel_performance_patterns.registration.json` — digest-bound Intel performance-pattern registration evidence; resolves the clean-task and portability gates.
     - `intel_performance_patterns.transition.json` — append-only record of the Intel performance-pattern skill's candidate-to-verified transition and the approval it acted on.
     - `intel_phoronix_test_suite.abstraction.json` — Intel Phoronix capability-abstraction report: the incumbent Provider withdrawn, identical contracts re-offered under the reserved stand-in, every capability rebound.
     - `intel_phoronix_test_suite.approval.json` — recorded human approval promoting the Intel Phoronix skill, bound to the exact manifest, body, and evidence reviewed.
-    - `intel_phoronix_test_suite.clean_task.json` — TODO
-    - `intel_phoronix_test_suite.registration.json` — TODO
+    - `intel_phoronix_test_suite.clean_task.json` — measured Intel Phoronix clean-task record: the official PTS CLI ran a pinned c-ray profile twice inside a digest-pinned container image with application networking disabled, and the two whole-run averages differ by 0.57%. It also records what was NOT established — `container_network_namespace_proved: false` — rather than reporting the disabled setting as isolation.
+    - `intel_phoronix_test_suite.registration.json` — digest-bound Intel Phoronix registration evidence; resolves the clean-task and portability gates through the upstream runner and image digests rather than a re-implementation.
     - `intel_phoronix_test_suite.transition.json` — append-only record of the Intel Phoronix skill's candidate-to-verified transition and the approval it acted on.
   - `import_profiles/` — pinned external source and extraction policies.
     - `hpc_gemm_optimization.yaml` — import profile pinning the GEMM optimization body to its commit.
@@ -193,7 +193,7 @@ Shipped default config files (YAML) loaded by ari-core.
     - `intel_phoronix_test_suite.yaml` — import profile for Intel Phoronix Test Suite material.
   - `imports/` — immutable results of approved external knowledge imports.
     - `hpc_gemm_optimization.json` — GEMM optimization body imported byte-for-byte from its own commit.
-    - `hpc_spmm_optimization.json` — TODO
+    - `hpc_spmm_optimization.json` — SpMM optimization body imported byte-for-byte from its own commit. Like every import it lands with `decision: candidate` and `authoritative: false`, so importing a body never promotes it — that is the approval's job.
     - `hpc_stencil_optimization.json` — stencil optimization body imported byte-for-byte from its own commit.
     - `intel_linux_perf.json` — verified Intel Linux performance knowledge import.
     - `intel_performance_patterns.json` — verified Intel performance-pattern knowledge import.

@@ -87,6 +87,49 @@ _HOST_NAMES = tuple(
 )
 
 
+def _or_error(success: dict) -> dict:
+    """Admit either the tool's result or its error shape.
+
+    Every tool here reports failure as ``{"error": "<message>"}`` -- a plain
+    string, unlike the structured envelope the HPC provider uses. Declaring only
+    the success shape would make the library reject the failure as an output
+    validation error and discard the message that says what went wrong.
+    """
+
+    return {
+        "oneOf": [
+            success,
+            {
+                "type": "object",
+                "properties": {
+                    "error": {"type": "string"},
+                    "exit_code": {"type": "integer"},
+                },
+                "required": ["error"],
+            },
+        ]
+    }
+
+
+_EXECUTION_RESULT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "schema_version": {"type": "string"},
+        "stdout": {"type": "string"},
+        "stderr": {"type": "string"},
+        "stdout_truncated": {"type": "boolean"},
+        "stderr_truncated": {"type": "boolean"},
+        "truncated": {"type": "boolean"},
+        "exit_code": {"type": "integer"},
+        "status": {"type": "string"},
+        "execution_identity": {"type": ["string", "null"]},
+        "execution_status": {"type": ["string", "null"]},
+        "attempt_id": {"type": ["string", "null"]},
+    },
+    "required": ["exit_code", "stdout", "stderr"],
+}
+
+
 def _virtualize(s: str, real: str) -> str:
     """Scrub host identity from tool OUTPUT so the node looks like a
     self-contained container. Removes, in order: the real work_dir (raw and
@@ -175,6 +218,18 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["filename", "code"],
             },
+            outputSchema=_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "digest": {"type": "string"},
+                        "lines": {"type": "integer"},
+                        "status": {"type": "string"},
+                    },
+                    "required": ["path", "digest", "status"],
+                }
+            ),
         ),
         Tool(
             name="edit_code",
@@ -252,6 +307,7 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["filename"],
             },
+            outputSchema=_or_error(_EXECUTION_RESULT_SCHEMA),
         ),
         Tool(
             name="run_bash",
@@ -280,6 +336,7 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["command"],
             },
+            outputSchema=_or_error(_EXECUTION_RESULT_SCHEMA),
         ),
         Tool(
             name="emit_results",
@@ -430,6 +487,17 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": [],
             },
+            outputSchema=_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "digest": {"type": "string"},
+                        "status": {"type": "string"},
+                    },
+                    "required": ["status"],
+                }
+            ),
         ),
         Tool(
             name="read_file",
@@ -466,6 +534,21 @@ async def list_tools() -> list[Tool]:
                 },
                 "required": ["path"],
             },
+            outputSchema=_or_error(
+                {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                        "offset": {"type": "integer"},
+                        "returned_chars": {"type": "integer"},
+                        "total_chars": {"type": "integer"},
+                        "truncated": {"type": "boolean"},
+                        "next_offset": {"type": ["integer", "null"]},
+                    },
+                    "required": ["path", "content", "offset", "total_chars"],
+                }
+            ),
         ),
         Tool(
             name="describe_environment",
@@ -516,7 +599,9 @@ def _describe_environment() -> dict:
 
 
 @server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
+async def call_tool(
+    name: str, arguments: dict
+) -> tuple[list[TextContent], dict]:
     # Resolve the real work_dir ONCE per call. Filesystem tools present a virtual
     # ``/workspace`` root to the agent: agent-supplied paths/commands are mapped
     # back to the real dir before execution (``_devirtualize``) and the real dir
@@ -530,7 +615,8 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
             replace_all=bool(arguments.get("replace_all", False)),
             work_dir=arguments.get("work_dir", "/workspace"),
         )
-        return [TextContent(type="text", text=json.dumps(result))]
+        edited = json.dumps(result)
+        return [TextContent(type="text", text=edited)], json.loads(edited)
     if name == "write_code":
         # NB: ``code`` is written verbatim — never devirtualized — so the saved
         # artifact stays host-agnostic (the agent is told to use relative or
@@ -581,7 +667,13 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     text = json.dumps(result, ensure_ascii=False)
     if wd:
         text = _virtualize(text, wd)
-    return [TextContent(type="text", text=text)]
+    # The structured copy is parsed back from the SCRUBBED text, never from
+    # ``result``. A declared outputSchema makes this half reach the agent too,
+    # and handing over the unvirtualized dict would push the real work_dir,
+    # $HOME, username and hostname straight through the boundary that
+    # _virtualize exists to hold -- the text would be clean and the structured
+    # twin would carry everything it removed.
+    return [TextContent(type="text", text=text)], json.loads(text)
 
 
 def _edit_code(filename: str, old_string: str, new_string: str,
