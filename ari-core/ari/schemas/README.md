@@ -38,6 +38,7 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
 - `knowledge_skill_catalog_snapshot_v1.schema.json` — immutable catalog snapshot used for deterministic knowledge-skill resolution.
 - `knowledge_skill_manifest_v1.schema.json` — declared knowledge skill, source provenance, compatibility, and evidence policy.
+- `knowledge_skill_registration_evidence_v1.schema.json` — TODO
 - `manuscript_authoring_binding_v1.schema.json` — exact profile, context, readiness, brief, and source lineage admitted to authoring.
 - `manuscript_auto_repair_round_v1.schema.json` — one bounded repair attempt with findings, actions, progress, and stop state.
 - `manuscript_context_v1.schema.json` — evidence-grounded authoring context assembled for a manuscript profile and source snapshot.

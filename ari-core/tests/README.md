@@ -110,6 +110,7 @@ targets the like-named module under `ari/`.
 - `test_kca_contracts.py` — KCA schema, serialization, digest, and cross-contract invariant coverage.
 - `test_kca_surfaces.py` — CLI, public API, config, and node-report KCA surface coverage.
 - `test_knowledge_external_importer.py` — pinned external knowledge-source import, provenance, and rejection coverage.
+- `test_knowledge_registration_evidence.py` — TODO
 - `test_knowledge_resolver.py` — deterministic knowledge-skill catalog resolution, composition, locks, and ambiguity coverage.
 - `test_laptop_hpc_skill_drop.py` — laptop/HPC skill drop.
 - `test_launch_config.py` — launch config.

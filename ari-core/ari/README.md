@@ -152,6 +152,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `models.py` — knowledge skill, catalog, resolution, and node-use models.
   - `provenance.py` — normalize source identities and validate provenance chains.
   - `registration.py` — validate and admit knowledge skills into the catalog.
+  - `registration_models.py` — TODO
   - `resolver.py` — deterministically select compatible knowledge skills for a task.
 - `llm/` — thin LiteLLM wrappers for the agent loop and skills.
   - `README.md` — llm index.
@@ -464,6 +465,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `idea_set_v1.schema.json` — generation lock, admitted candidates, and explicit rejections.
   - `knowledge_skill_catalog_snapshot_v1.schema.json` — immutable catalog snapshot used for deterministic knowledge-skill resolution.
   - `knowledge_skill_manifest_v1.schema.json` — declared knowledge skill, source provenance, compatibility, and evidence policy.
+  - `knowledge_skill_registration_evidence_v1.schema.json` — TODO
   - `manuscript_authoring_binding_v1.schema.json` — exact profile, context, readiness, brief, and source lineage admitted to authoring.
   - `manuscript_auto_repair_round_v1.schema.json` — one bounded repair attempt with findings, actions, progress, and stop state.
   - `manuscript_context_v1.schema.json` — evidence-grounded authoring context assembled for a manuscript profile and source snapshot.

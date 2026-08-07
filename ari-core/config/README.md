@@ -124,6 +124,13 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_stencil_optimization.yaml` — stencil optimization skill manifest and requirements.
     - `literature_systematic_review.yaml` — systematic-review skill manifest and requirements.
     - `scientific_reproduction.yaml` — reproduction skill manifest and requirements.
+  - `evidence/` — TODO
+    - `intel_linux_perf.clean_task.json` — TODO
+    - `intel_linux_perf.registration.json` — TODO
+    - `intel_performance_patterns.clean_task.json` — TODO
+    - `intel_performance_patterns.registration.json` — TODO
+    - `intel_phoronix_test_suite.clean_task.json` — TODO
+    - `intel_phoronix_test_suite.registration.json` — TODO
   - `import_profiles/` — pinned external source and extraction policies.
     - `intel_linux_perf.yaml` — import profile for Intel's Linux performance guidance.
     - `intel_performance_patterns.yaml` — import profile for Intel performance-pattern guidance.
