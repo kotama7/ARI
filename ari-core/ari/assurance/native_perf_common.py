@@ -117,6 +117,16 @@ FLAG_DENY_SUBSTRINGS: tuple[str, ...] = (
     "ssl2", "scalapack",
 )
 
+#: How small a fraction of its own process a credited kernel time may be.
+#:
+#: Everything the child does outside the timed call is real work bounded above
+#: by the wall clock, so a credit orders of magnitude below it did not come from
+#: timing this kernel. Deliberately loose: a genuinely fast kernel on a large
+#: problem IS a small fraction of its own process (a 0.3 ms kernel inside a
+#: 50 ms process is 0.006), so this catches forgery by magnitude and refuses to
+#: adjudicate close calls, which is the only thing a wall bound can honestly do.
+CREDIT_FLOOR_FRACTION = 1e-4
+
 #: A command line is not an essay. The cap also bounds what a malformed flag
 #: file can do to the argv.
 FLAG_MAX_TOKENS = 32
@@ -581,9 +591,23 @@ def compile_binary(
     if not main_c.is_file():
         raise PerfInfrastructureError(f"frozen driver missing: {main_c}")
     staged = source
+    # THE CANDIDATE'S INCLUDE ROOT IS NOT THE PROBLEM DIRECTORY. It used to be,
+    # and the problem directory holds the frozen reference: a candidate whose
+    # entire contents were `#include "reference_gemm.c"` compiled and scored
+    # 13.7x, verdict pass. Withholding the reference from the WORK DIR does not
+    # withhold it from the compiler.
+    #
+    # So the candidate is given a directory containing the contract header and
+    # nothing else. The driver still compiles against the real directory,
+    # because it is frozen and is the thing the header is a contract WITH.
+    candidate_includes = kdir
     if role == "candidate":
         staged = out_dir / f"candidate_{_tag}.c"
         shutil.copy2(source, staged)
+        candidate_includes = out_dir / f"contract_{_tag}"
+        candidate_includes.mkdir(exist_ok=True)
+        for header in sorted(kdir.glob("*.h")):
+            shutil.copy2(header, candidate_includes / header.name)
 
     base = ["-O3", "-fopenmp", *isa_flags_for(compiler)]
     main_o = out_dir / f"main_{_tag}.o"
@@ -603,8 +627,8 @@ def compile_binary(
             f"frozen driver failed to compile: {completed.stderr.strip()[-400:]}")
 
     kernel_flags = [*base, *reference_flags, *extra_flags]
-    completed = _run([compiler, *kernel_flags, f"-I{kdir}", "-c", str(staged),
-                      "-o", str(kern_o)], "compiler")
+    completed = _run([compiler, *kernel_flags, f"-I{candidate_includes}", "-c",
+                      str(staged), "-o", str(kern_o)], "compiler")
     if completed.returncode != 0:
         message = f"{role} failed to compile: {completed.stderr.strip()[-400:]}"
         if role == "candidate":
@@ -669,9 +693,17 @@ def audit_kernel_object(entry_point: str, obj: Path, *, role: str) -> None:
     fault = PerfBuildError if role == "candidate" else PerfInfrastructureError
 
     listing = _tool(["nm", "-g", "--defined-only", str(obj)], "nm")
+    # EVERY GLOBAL nm REPORTS, not a list of the types somebody thought of.
+    # The filter was ``in "TDBRWVi"``, which omits nm's ``C`` -- a COMMON
+    # symbol. ``-fcommon`` passes the flag screen, and with it a candidate's
+    # file-scope globals become ``C`` instead of ``B``: measured, `nm` showed
+    # `T gemm | C sneaky_scratch` and this audit PASSED, while the same source
+    # without the flag was refused. An allowlist of symbol types is the same
+    # mistake as a denylist of flags, one level down.
     exported = sorted({
         parts[-1] for line in listing.splitlines()
-        if len(parts := line.split()) >= 3 and parts[-2] in "TDBRWVi"
+        if len(parts := line.split()) >= 3 and len(parts[-2]) == 1
+        and parts[-2].isalpha()
     } - {entry})
     if exported:
         raise fault(
@@ -801,13 +833,45 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
         previous = run_env.get("LD_LIBRARY_PATH", "")
         run_env["LD_LIBRARY_PATH"] = (f"{ld_library_path}:{previous}"
                                       if previous else ld_library_path)
+    # THE PARENT'S CLOCK IS THE ONE THE CANDIDATE CANNOT REACH. The credited
+    # figure is the driver's internal timer, because wall time includes process
+    # start and the problem read -- but that timer is written to a file whose
+    # path the child necessarily knows, and a kernel can read its own
+    # /proc/self/cmdline from inside the timed call. Demonstrated: a CORRECT
+    # naive kernel that forked a writer for that file was credited 1e-9 s and
+    # scored 336887x, verdict pass, oracle satisfied. Nothing in the object
+    # audit can see it; the code runs inside the entry point, which is where
+    # the audit stops looking.
+    #
+    # So the parent times the whole child and uses that as a BOUND. A forged
+    # credit can only be too SMALL, and wall time is an upper bound on the real
+    # kernel time no matter what the child writes. This does not floor a
+    # measurement, it refuses one: a credit below what the wall clock allows is
+    # not a fast kernel, it is a number that did not come from this run.
+    started = time.perf_counter()
+    argv = [*launcher, str(exe), str(problem), str(out_path), str(timing)]
+    # Popen rather than run(), because the process GROUP has to be reaped before
+    # the timing file is read. The forging kernel above forked a writer that
+    # slept and then overwrote the file; run() waits only for the direct child,
+    # so the orphan won the race with the parent's read. start_new_session puts
+    # the whole tree in one group this parent can end.
+    child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, env=run_env, start_new_session=True)
     try:
-        completed = subprocess.run(
-            [*launcher, str(exe), str(problem), str(out_path), str(timing)],
-            capture_output=True, text=True, timeout=timeout, env=run_env,
-            start_new_session=True)
+        stdout, stderr = child.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        _reap_group(child)
+        child.communicate()
         raise _fault(role)(f"{role} exceeded {timeout:g}s") from exc
+    finally:
+        _reap_group(child)
+    wall = time.perf_counter() - started
+
+    class _Completed:                       # keeps the rest of this function unchanged
+        returncode = child.returncode
+
+    completed = _Completed()
+    completed.stdout, completed.stderr = stdout, stderr
     # `capture` is how a launcher's stdout gets back out. The scored path drains
     # stdout only so the pipe cannot fill; default None keeps that behaviour.
     if capture is not None:
@@ -823,7 +887,48 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
     seconds = struct.unpack("<d", raw[:8])[0]
     if not (math.isfinite(seconds) and seconds > 0):
         raise _fault(role)(f"{role} reported an impossible time: {seconds!r}")
+    # THE FORGE GUARD. The credited time cannot exceed the wall clock, and it
+    # cannot be an arbitrarily small fraction of it either: everything the child
+    # does outside the timed call -- exec, the problem read, the first touch,
+    # the NaN poison, the write-out -- is real work bounded above by the wall,
+    # so a credit far below `wall * CREDIT_FLOOR_FRACTION` did not come from
+    # timing this kernel.
+    #
+    # It REJECTS, it never clamps. Flooring a suspicious repetition would credit
+    # the floor and let a forger tune to it; refusing says the measurement did
+    # not happen. The threshold is deliberately loose -- a genuinely fast kernel
+    # on a large problem is a small fraction of its own process -- so this
+    # catches forgery by orders of magnitude rather than adjudicating close
+    # calls, which is the only thing a wall bound can honestly do.
+    if seconds > wall:
+        raise _fault(role)(
+            f"{role} credited {seconds:.6g}s, longer than the {wall:.6g}s the "
+            f"whole process took; the credited timer is not measuring this run")
+    if seconds < wall * CREDIT_FLOOR_FRACTION:
+        raise _fault(role)(
+            f"{role} credited {seconds:.6g}s against {wall:.6g}s of wall clock "
+            f"({seconds / wall:.3g} of the process); a credit that small did not "
+            f"come from timing this kernel")
     return float(seconds)
+
+
+def _reap_group(child) -> None:
+    """End everything the timed child started, before anyone reads its output.
+
+    A candidate that forks lives past its parent. Left alone, such a process can
+    overwrite the timing file after this parent has waited for the direct child
+    and before it reads -- which is exactly how a naive-but-correct kernel was
+    credited 1e-9 s. It can also keep running on the cores the NEXT repetition
+    is about to be measured on.
+    """
+    import errno
+    import signal
+
+    try:
+        os.killpg(os.getpgid(child.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError) as exc:
+        if getattr(exc, "errno", None) not in (errno.ESRCH, errno.EPERM, None):
+            raise
 
 
 def median(values: list[float]) -> float:
