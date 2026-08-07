@@ -26,9 +26,17 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/api_orchestrator.py
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/tests/test_workflow_editor.py
+    role: test
+  - path: ari-core/tests/test_orchestrator.py
+    role: test
+last_verified: 2026-08-07
 ---
 
 # REST API 参考
@@ -358,7 +366,10 @@ ttl_seconds: 60}`。仅当请求体中的 `challenge_id` 未被使用、未过�
 ## 无版本的 legacy API（legacy 外观 —— 已冻结，见 MN 注记）
 
 > **已冻结。** 下面的无版本接口面是为 legacy 仪表盘页面与既有集成保留的。
-> 它**不会**被扩展：新数据必须由一个 run 显式的 `/api/v1` 端点提供。特别是
+> 它**不会**被扩展：新数据必须由一个 run 显式的 `/api/v1` 端点提供。该规则写下之后
+> 仍有一条路由落在这个面上 —— `GET /api/checkpoint/<id>/kca`（2026-08-05）——
+> 因此它没有 OpenAPI 条目、没有类型化的错误信封、也没有 `schema_version: 1` 的
+> DTO；下文按其现状记录，而非作为先例。特别是
 > `GET /state`，它是一个冻结外观，其顶层键集合被
 > `ari-core/tests/test_gui_state_facade_freeze.py` 精确固定（无活动检查点时
 > 7 个键，检查点完全填充时 35 个键）—— 向其中添加键会按设计导致该测试失败，
@@ -508,6 +519,7 @@ curl http://localhost:8765/api/checkpoints
 |---|---|---|
 | GET | `/api/checkpoints` | 列出所有检查点搜索基路径下的检查点，按新到旧（`mtime` 降序） |
 | GET | `/api/checkpoint/<id>/summary` | 运行摘要（目标、节点数、状态、最优指标） |
+| GET | `/api/checkpoint/<id>/kca` | 对检查点已提交的 admission 文档做只读的 Knowledge / Provider / Assurance 分域投影（`schema_version: "ari.viz-kca/v1"`；没有 `run_admission.json` 的运行返回 `present: false`；无法读取的输入不会导致失败，而是出现在 `degraded_reasons` 中） |
 | GET | `/api/checkpoint/<id>/memory` | Letta 记忆内容 |
 | GET | `/api/checkpoint/<id>/memory_access` | 记忆写入/读取遥测数据 |
 | GET | `/api/checkpoint/<id>/files` | 含大小 + 类型的文件列表 |
@@ -539,6 +551,36 @@ curl http://localhost:8765/api/checkpoints
 | POST | `/api/sub-experiments/launch` | 从父检查点继承启动子运行 |
 | GET | `/api/lineage-decisions/<run_id>` | 停滞规则生成的决策（v0.7.0） |
 
+#### 子实验列表与启动守卫
+
+`GET /api/sub-experiments` **以磁盘为准**：每次调用都会重新扫描编排器的子实验
+检查点根目录（`api_orchestrator._logs_root()`，可用 `ARI_ORCHESTRATOR_LOGS`
+覆盖）下一层的 `<checkpoint>/meta.json`，
+并用扫描结果*替换*服务器的内存记录集合 —— 因此被删除的检查点会从列表中消失，
+而不会作为过期缓存条目残留
+（`ari-core/tests/test_orchestrator.py::test_gui_list_sub_experiments_prunes_deleted`）。
+每条记录是该检查点的 `meta.json` 加上附加的 `checkpoint_dir`，按
+`(created_at, run_id)` 倒序（最新在前）排列。`GET /api/sub-experiments/<run_id>`
+先读磁盘，读不到再回退到内存缓存；未知 id 返回 HTTP `200` 的
+`{"error": "..."}`，而不是 `404`。
+
+`POST /api/sub-experiments/launch` 在两种谱系情形下拒绝启动子运行。两者都以
+HTTP `200` 返回 `{"ok": false, "error": ...}` —— legacy 分发器只有在处理器设置了
+`_status` 时才覆盖状态码，而这两个守卫都不设置。
+
+| 条件 | 原因 | 响应中一并回显 |
+|---|---|---|
+| `recursion_depth >= max_recursion_depth` | 为递归自启动设定上限；`max_recursion_depth` 默认为 `3`（`api_orchestrator.DEFAULT_MAX_RECURSION_DEPTH`），可按请求覆盖 | `recursion_depth`、`max_recursion_depth`、`parent_run_id` |
+| 父检查点的 `meta.json` 带有 `parent_terminated` | 上游的 lineage decision 已经终结了该谱系 —— 当选定动作为 `terminate` 时由 `ari-core/ari/cli/lineage.py` 写入该标记；没有这道闸门，过期的后台调用方会在谱系被宣告耗尽之后继续派生子运行 | `parent_run_id`、`parent_terminated_rationale`（截断到 300 字符） |
+
+深度检查先执行，因此同时超出深度*并且*父谱系已终结的请求会被报告为深度拒绝。
+terminate 检查刻意是尽力而为的：`parent_run_id` 无法解析，或父 `meta.json`
+缺失、不可读时，启动会继续进行，而不会因读取错误而失败关闭。
+
+`inherit_idea_index` 还有自己的拒绝条件（缺少 `parent_run_id`、父运行无法解析、
+父 `idea.json` 缺失或格式错误、索引非整数或越界）。它只读取父运行的 `idea.json`
+目录 —— 从不读取父运行的 `plan.md` —— 因此继承而来的子运行仍可转向。
+
 ### 记忆后端
 
 | 方法 | 路径 | 用途 |
@@ -565,6 +607,33 @@ curl http://localhost:8765/api/checkpoints
 | POST | `/api/workflow/flow` | 保存 DAG 视图（可选 `base_revision` —— MN-1/MN-3） |
 | POST | `/api/workflow/skills` | 切换启用的技能（可选 `base_revision` —— MN-1/MN-3） |
 | POST | `/api/workflow/disabled-tools` | 每技能工具白名单 / 黑名单（可选 `base_revision` —— MN-1/MN-3） |
+
+这四个写入端点都只编辑**活动检查点**的 `{ckpt}/workflow.yaml`；捆绑的
+`config/workflow.yaml` 永远不会被 GUI 写入（MN-1）。当检查点尚无副本时，
+`/api/workflow/flow`、`/api/workflow/skills` 与 `/api/workflow/disabled-tools`
+会先把捆绑文件复制进检查点（`ari-core/ari/viz/api_workflow.py` 中的
+`_checkpoint_workflow_path`）。`POST /api/workflow` 不使用该辅助函数：它用调用方
+从 `GET /api/workflow` 回传的 `path` 作为首次写入的种子；若该字段缺失或不可读，
+它写出的检查点副本将只包含 `pipeline`。
+
+**workflow 写入会保留什么。** 每次写入都会载入其种子来源的整个 YAML 映射，只修改
+其中一节，再以 `sort_keys=False` 重新序列化整个映射。因此 GUI 未建模的顶层键会在一次编辑
+往返后保持其值与原有键序不变 —— 包括捆绑的 `config/workflow.yaml` 中未类型化的
+`extra="allow"` 小节（`memory:`、`lineage_decision:`、`claim_gate_policy:`、
+`container:`）；`ari-core/ari/config/field_registry.py` 将它们前置声明为目前尚无
+带类型 pydantic 叶子的块。只有
+`POST /api/workflow/flow` 还会在*阶段*粒度上合并：`_merge_stages` 仅覆盖 DAG
+编辑器携带的十个字段（`stage`、`skill`、`tool`、`description`、`depends_on`、
+`enabled`、`phase`、`loop_back_to`、`pre_tool`、`post_tool`），每个阶段的其余部分
+—— `inputs`、`outputs`、`skip_if_exists`、`react:` 块 —— 仍取自磁盘；提交的 flow
+中缺失的阶段会被丢弃，新增的阶段则原样追加。`POST /api/workflow` 会用提交的内容
+整体替换 `pipeline` 列表，因此调用方未发送的按阶段字段**不会**被合并回来。
+
+**workflow 写入不会保留什么：注释与排版。** 文件是从已解析的映射重新输出的，
+因此注释、空行分组、引号与流式风格（`[a, b]`、`{a: 1}`）会在第一次 GUI 保存时
+被规范化掉，标量会以其规范形式重写（`yes` → `true`、`"x"` → `x`），YAML 锚点会
+以生成的名称（`&id001`）重新输出。捆绑的 `config/workflow.yaml` 因为无人写入，
+其注释得以保留。
 
 ### 向导 / 配置生成
 

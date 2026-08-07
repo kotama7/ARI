@@ -72,13 +72,24 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   转储）。这是 *继承* 路径，与下方的可验证层相互独立。
 - **有类型索引／verified context**：上述的可验证层，由 `consolidation_enabled()`
   （默认 ON）门控。
+- **选择性擦除（selective erasure）**：被 RQGM 逻辑擦除的节点既不能在选择中胜出，
+  也不能为主张提供接地。core 侧的 `select_best_node` 将其排除，
+  `build_verified_context` 将其从 lineage 中剔除（二者都依据
+  `metrics['_valid_for_frontier'] is False`）；技能侧的 `context_builder` 只用
+  幸存的祖先构建 claim 列表（对 `{checkpoint}/rqgm_erasure_state.json` 执行
+  `erasure.drop_erased`）。`failure_case` 的 limitations 仍保留完整的祖先集合，
+  只做标注而非隐藏。在非 RQGM 检查点上（没有该 rollup 文件）该机制不生效。
 
 ## 组件
 
-- `ari-skill-memory`：`schemas.py`（有类型记录）、`provenance.py`（来自 node_report 的
+- `ari-skill-memory`：`schemas.py`（`MEMORY_KINDS` / `REPRO_STATUSES` 词表，以及
+  哈希之前的输入辅助类型 `ArtifactRef` —— *被存储的* 有类型记录是
+  `ari.public.memory` 导出的 `MemoryRecordV1`，采用内容寻址：`record_id` 与
+  `record_digest` 都是其自身载荷的规范摘要）、`provenance.py`（来自 node_report 的
   sha256 引用）、`audit.py`（claim↔artifact 完整性）、`writer.py` / `retriever.py`
   （有类型写入＋按 kind/scope/artifact 过滤的读取＋可复现性折叠）、`consolidation.py`
-  （node_report → specs）、`context_builder.py`（verified context）。以 MCP 工具
+  （node_report → specs）、`erasure.py`（已发布 erasure rollup 的读取方：pull 路径上
+  加标注，接地路径上硬性排除）、`context_builder.py`（verified context）。以 MCP 工具
   （`add_experiment_result`, `search_research_memory`, `get_verified_context`,
   `consolidate_node_memory`, `audit_memory`, …）暴露，全部由钩子调用。
 - `ari-core`：`pipeline/verified_context.py`（best-node lineage 作用域＋grounded-block

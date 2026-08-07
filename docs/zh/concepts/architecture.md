@@ -81,7 +81,7 @@ flowchart TB
         transform["transform_data → science_data.json"]
         figures["generate_figures → VLM 评审"]
         paper["write_paper → review_paper<br/>（集成 + Area Chair 元评审）"]
-        claimtail["claim-evidence 尾链（Story2Proposal）:<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper"]
+        claimtail["claim-evidence 尾链（Story2Proposal）:<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper<br/>→ locked 复检 → render_final_paper → lock_paper_build"]
         ear["generate_ear → curate → publish（EAR）"]
         provenance --> transform
         transform --> figures
@@ -129,6 +129,22 @@ flowchart TB
 [Constitutional ARI-RQGM 架构](rqgm_architecture.md)，激活方式与
 模式切换策略见[执行模式](../guides/execution_modes.md)。
 
+### `manuscript` 轴（可选启用，默认 off）
+
+`workflow.yaml` 还带有第三个顶层开关 `manuscript.mode`
+（`off` | `audit` | `enforce`，默认 `"off"`；同时还有
+`profile: generic_empirical_v1`、`brief_character_budget: 24000`，以及
+`policy` 默认为 `disabled` 的 `repair:` 块）。它与 `ari.mode`、`paper.mode`
+都相互独立。`off` 与旧路径完全一致 —— 不做任何 manuscript 导入、产物、
+gate 或修复；`audit` 记录一次影子完整性评估；`enforce` 在 authoring 要求
+被解决之前阻塞撰写（`repair.policy: auto` 也要求它）。`workflow.yaml` 中
+每个流水线阶段现在都声明
+`segment: evidence | authoring | verification`，正是这一点让
+`generate_paper_section(..., include_segments=…)` 能在
+`ARI_MANUSCRIPT_RUNTIME_MODE` 不为 `off` 时按段执行论文流水线：被排除的段
+在一份*派生*工作流中表现为禁用阶段，因此跨段的 `depends_on` 仍由持久化输出
+满足。默认的 `include_segments=None` 会像以前一样运行每个启用的阶段。
+
 ---
 
 ## 系统概览
@@ -156,9 +172,9 @@ flowchart TB
      │                            │                              │
 ┌────▼──────────┐  ┌─────────────▼──────┐  ┌───────────────────▼──┐
 │ari-skill-hpc  │  │ari-skill-idea      │  │ari-skill-evaluator   │
-│ slurm_submit  │  │ survey             │  │ make_metric_spec     │
-│ job_status    │  │ generate_ideas     │  │ (scientific_score)   │
-│ run_bash      │  │ (VirSci MCP)       │  │                      │
+│ job_submit    │  │ survey             │  │ make_metric_spec     │
+│ job_status    │  │ generate_ideas     │  │ claim_evidence_      │
+│ slurm_submit  │  │ (VirSci MCP)       │  │   hard_gate          │
 └───────────────┘  └────────────────────┘  └──────────────────────┘
 
 Post-BFTS Pipeline (workflow.yaml):
@@ -282,20 +298,32 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     LLM 提取：硬件规格、方法论、关键发现、比较结果
     输出：science_data.json  { configurations, experiment_context, per_key_summary }
 
-  阶段 2：search_related_work  (ari-skill-web)  [与阶段 1 并行]
-    LLM 生成的关键词 → 可插拔检索后端 (Semantic Scholar / AlphaXiv / both)
+  阶段 2：search_related_work  (ari-skill-web: search_papers)  [与阶段 1 并行]
+    LLM 生成的关键词 → 一个被钉住的提供方（workflow.yaml 钉住
+    provider: semantic-scholar、max_results: 15、mode: record）。
+    record 会把响应快照下来，因此之后的 replay 不需要网络；
+    record 与 live 都不会切换提供方。该阶段带有
+    skip_if_exists: related_refs.json —— 已记录的检索是不可变的实验输入，
+    因此 resume 会复用它而不是重新查询。
     输出：related_refs.json
 
-  阶段 3：generate_figures  (ari-skill-plot)  [在阶段 1 之后]
-    输入：完整的 science_data.json（包含 experiment_context）+ {{vlm_feedback}}
-    LLM 编写完整的 matplotlib 代码 → 执行 → 保存为 PDF 图表
-    图表类型由 LLM 根据数据自主选择（非预设）
-    输出：figures_manifest.json
+  阶段 3：generate_figures  (ari-skill-plot: generate_figures_llm)  [在阶段 1 之后]
+    输入：science_data.json + {{experiment_summary}} + {{vlm_feedback}}
+    LLM 只充当规划者：它只能给出 metric_id / chart_type / x_mode。
+    数值、单位、题注、路径与图像字节都由固定渲染器从已验证的 science 记录
+    确定性地产生（execution_mode "declarative-fixed-renderer"），并按图写入
+    figures/revisions/{NN}/{figure_id}/ 下的 source_data.json /
+    figure_spec.json / .png / .pdf。revision > 0 必须携带绑定上一份 manifest
+    摘要的 VLM 反馈；revision 0 则拒绝反馈。
+    输出：figures_manifest.json  {figures, latex_snippets, figure_kinds}
+      （figure_kinds 即 spec 的 chart_type）
 
-  阶段 3b：vlm_review_figures  (ari-skill-vlm)  [在阶段 3 之后]
-    VLM 视觉审阅主图 (fig_1.png)
+  阶段 3b：vlm_review_figures  (ari-skill-vlm: review_figures_all)  [在阶段 3 之后]
+    VLM 审阅 figures_manifest.json 中的**每一张**图；聚合分数取各图的最小值，
+    因此只要有一张弱图就会触发回环。issues 与 suggestions 都以 [fig_id] 前缀，
+    让重生成方知道该修哪一张。
     若得分 < 0.7：携带 VLM 反馈回环到 generate_figures（最多 2 次迭代）
-    输出：vlm_figure_review.json
+    输出：vlm_review.json
 
   阶段 4：generate_ear  (ari-skill-transform)  [在阶段 1 之后]
     以 node_report 驱动的确定性 ear/ 构建。
@@ -335,9 +363,20 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
         → evidence_grounded_semantic_review_post_refine
         → claim_evidence_hard_gate_final   (FINAL gate；strict 模式下阻塞 finalize)
         → finalize_paper            (下方阶段 8)
-    由 workflow.yaml 顶层 claim_gate_policy 块控制
-      (默认 mode: warn —— FINAL gate 非阻塞；mode: strict 在 FINAL gate
-      处阻塞 finalize_paper)。解析优先级最终落到
+        → link_paper_claims_locked  (Code Availability 注入之后重新核对 claim)
+        → claim_evidence_hard_gate_locked        (phase: final，针对将被编译并
+                                                  锁定的那份 TeX 本身)
+        → evidence_grounded_semantic_review_locked   (phase: locked，建议性)
+        → render_final_paper        (直接编译注入之后的 TeX)
+        → lock_paper_build          (对输入、调用、评审、gate、编译日志、TeX、
+                                     BibTeX 与 PDF 做 fail-closed 的
+                                     PaperBuildV1 锁定)
+    由 workflow.yaml 顶层 claim_gate_policy 块控制。
+      只有 FINAL 阶段可以阻塞，草稿阶段的报告永不阻塞。mode: off 从不阻塞；
+      mode: warn（默认）仍会在客观完整性的 always_block_on 层
+      （invariant_violation、correctness_failed、recompute_mismatch 等）上阻塞；
+      mode: strict 还会阻塞配置的 block_on 发现以及 strict 小节中未被覆盖的
+      数值。解析优先级最终落到
       env ARI_CLAIM_GATE_MODE (off | warn | strict) 与 ARI_COMPARISON_SCOPE。
     繁重的 gate 逻辑位于新的 ari/pipeline/claim_gate/ 包
       (contract / gate / policy / numeric / latex / invariants / resolve)，
@@ -369,8 +408,9 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
   阶段 9：ear_publish  (ari-skill-transform: publish_ear)  [在阶段 7 之后, 可选]
     从 ear_published/ 构建可复现 tarball，并发布到 backend
     (ari-registry / local-tarball / gh / zenodo)。首发布始终
-    visibility=staged (FR-P5)。默认禁用，可通过 workflow.yaml 中
-    `enabled: true` 或运行参数 publish=true 启用。
+    visibility=staged (FR-P5)。在 workflow.yaml 中默认启用
+    (`enabled: true`、backend `local-tarball`、`dry_run: false`)，
+    finalize_paper 依赖它。
     输出：publish_record.json
 
   阶段 10：review_paper / merge_reviews  (ari-skill-paper)  [在阶段 5+3b 之后]
@@ -460,7 +500,9 @@ checkpoints/{run_id}/
 ├── science_data.json           # Transform-skill 输出
 ├── related_refs.json           # 文献搜索结果
 ├── figures_manifest.json       # 生成的图片元数据
-├── fig_*.{pdf,png,eps,svg}     # 生成的图片
+├── figures/revisions/{NN}/{figure_id}/  # 每张图的渲染产物：
+│                               #   source_data.json / figure_spec.json /
+│                               #   {figure_id}.png / .pdf / figure_manifest.json
 ├── vlm_review.json             # VLM 图片审查输出
 ├── full_paper.tex              # 生成的 LaTeX 论文
 ├── refs.bib                    # BibTeX 引用
@@ -497,10 +539,15 @@ checkpoints/{run_id}/
 - **检查点根**: 检查点目录中的非 meta 文件
 - **uploads 子目录**: `checkpoint/uploads/` 中的非 meta 文件
 
-`PathManager.META_FILES` 定义了绝不能复制到节点 work_dir 的文件
-(`experiment.md`, `tree.json`, `nodes_tree.json`, `launch_config.json`, `meta.json`,
-`results.json`, `idea.json`, `cost_trace.jsonl`, `cost_summary.json`, `workflow.yaml`,
-`ari.log`, `evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`)。
+`PathManager.META_FILES` 定义了绝不能复制到节点 work_dir 的文件。它涵盖运行级
+元数据 (`experiment.md`, `tree.json`, `nodes_tree.json`, `launch_config.json`,
+`meta.json`, `results.json`, `idea.json`, `cost_trace.jsonl`, `cost_summary.json`,
+`provenance.json`, `workflow.yaml`, `ari.log`, `evaluation_criteria.json`,
+`.ari_pid`, `.pipeline_started`)、每个节点必须自己写出的节点级记录
+(`node_report.json`, `full_log.json`, `_run_env.json`, `_exec_env.json`)，
+以及 RQGM / 论文归档产物。节点级条目并非可有可无：`full_log.json`、
+`_run_env.json` 与 `_exec_env.json` 都不在 `bfts_loop` 的 `_OUTPUT_BLACKLIST` 中，
+因此正是这个集合在阻止父节点的执行日志、机器与已加载模块流入子节点。
 扩展名为 `.log` 的文件也视为 meta。
 
 ### tree.json 和 nodes_tree.json
@@ -510,7 +557,7 @@ checkpoints/{run_id}/
 | 文件              | 写入方                                                | 阶段             | 模式                                                  |
 |-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
 | `tree.json`       | `cli/bfts_loop.py` 中的 `_save_checkpoint()`          | BFTS 阶段        | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()`（`core.py`） | BFTS + post-BFTS | `{experiment_goal, nodes}` (轻量)                     |
+| `nodes_tree.json` | `_save_checkpoint()` + `run_pipeline()`（`ari/pipeline/driver.py`，由 `generate_paper_section()` 进入） | BFTS + post-BFTS | `{experiment_goal, nodes}` (轻量)                     |
 
 **读取方约定**: 所有读取方必须优先使用 `tree.json` 并回退到 `nodes_tree.json`。
 这可确保 BFTS 期间获得最新数据，同时保持与预期 `nodes_tree.json` 的流水线阶段的兼容性。
@@ -546,7 +593,7 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 | `ari/orchestrator/node_report/` | 每节点自报告构建器 + 旧版重建（v0.7.1 拆分为包） |
 | `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM 钩子（BFTS rewind / branch / continue） |
 | `ari/orchestrator/root_idea_selector.py` | VirSci 池 → `ideas[0]` 再选择器 |
-| `ari/rqgm/` | Constitutional ARI-RQGM 运行时（可选启用的 `ari_rqgm` 模式）：`RQGMRuntime` 门面、宪法内核、治理编排器（`governance/` 下的弹劾流水线）、注册表转换引擎、前沿修复、提案/对抗/提示词进化各层，以及论文归档协同进化运行时（`PaperArchiveStrategy` —— 草稿空间上的第二个最佳优先搜索）。在 `simple_bfts` 下绝不被导入 — 见 [Constitutional ARI-RQGM 架构](rqgm_architecture.md) |
+| `ari/rqgm/` | Constitutional ARI-RQGM 运行时（可选启用的 `ari_rqgm` 模式）：`RQGMRuntime` 门面、宪法内核、治理编排器（`governance/` 下的弹劾流水线）、注册表转换引擎、前沿修复、提案/对抗/提示词进化各层、论文归档协同进化运行时（`PaperArchiveStrategy` —— 草稿空间上的第二个最佳优先搜索），以及 Knowledge–Capability–Assurance 层（`admission.py` 发布原子的运行准入基线，`kernel_knowledge_integrity` / `kernel_capability_integrity` / `kernel_harness_integrity` 是它的纯内核检查）。在 `simple_bfts` 下绝不被导入 — 见 [Constitutional ARI-RQGM 架构](rqgm_architecture.md) |
 | `ari/agent/loop.py` | ReAct 智能体循环 — 每个节点的 LLM + 工具调用；自动轮询 SLURM 作业；注入祖先记忆 |
 | `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | 从 `agent/loop.py` 提取出的辅助模块（Phase 3D, v0.7.1） |
 | `ari/agent/workflow.py` | WorkflowHints — 从实验文本自动提取（工具序列、指标关键词、分区） |
@@ -565,19 +612,19 @@ API 密钥 **绝不** 存储在 `settings.json` 中。它们从 `.env` 文件
 
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
-| `ari-skill-hpc` | `slurm_submit`、`job_status`、`job_cancel`、`singularity_build`、`singularity_run`、`singularity_pull`、`singularity_build_fakeroot`、`singularity_run_gpu` | HPC 作业管理 + Singularity 容器 | ✗ |
-| `ari-skill-memory` | `add_memory`、`search_memory`、`get_node_memory`、`clear_node_memory`、`get_experiment_context`、`audit_memory` | 祖先作用域的节点记忆（Letta 后端）；`audit_memory` 驱动 `audit_node_provenance` 阶段 | △ |
+| `ari-skill-hpc` | `job_submit`、`container_submit`、`job_status`、`job_result`、`job_logs`、`job_cancel`、`probe_platform_capabilities`、`counter_support`、`measure_counters`、`slurm_submit` | 基于 digest 固定 request 的类型化 SLURM 作业生命周期；容器经由 `container_submit` 抵达，而非逐条 Singularity 命令；`slurm_submit` 作为批处理脚本桥接保留 | ✗ |
+| `ari-skill-memory` | `add_memory`、`search_memory`、`search_research_memory`、`get_node_memory`、`get_experiment_context`、`get_verified_context`、`consolidate_node_memory`、`add_experiment_result`、`add_failure_case`、`add_procedure_memory`、`add_reflection`、`add_reproducibility_event`、`audit_memory` | 祖先作用域的节点记忆（Letta 后端）；`audit_memory` 驱动 `audit_node_provenance` 阶段 | △ |
 | `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
-| `ari-skill-evaluator` | `make_metric_spec` | 从实验文件提取指标规格 | △ |
-| `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/publish 生命周期 (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`、`fetch_url`、`search_arxiv`、`search_semantic_scholar`、`collect_references_iterative` | 网络搜索、arXiv、Semantic Scholar、迭代式引用收集 | △ |
-| `ari-skill-plot` | `generate_figures`、`generate_figures_llm` | 确定性 + LLM 图表生成（按图通过 `kind` 字段选择 matplotlib 绘图或 SVG 图） | ✓ |
-| `ari-skill-paper` | `list_venues`、`get_template`、`generate_section`、`compile_paper`、`check_format`、`review_section`、`revise_section`、`write_paper_iterative`、`review_compiled_paper`、`list_rubrics`、`inject_code_availability`、`merge_reviews` | LaTeX 论文撰写、编译、基于评审规范的同行评审 (兼容 AI Scientist v1/v2)。v0.7.0：`inject_code_availability` 注入 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏；`merge_reviews` 事后合并文本评审与 VLM 评审 JSON。 | ✓ |
-| `ari-skill-paper-re` | `fetch_code_bundle`、`run_reproduce`、`grade_with_simplejudge` | PaperBench 形式可复现性 (v0.7.0)：通过 `ari.clone` 预填沙箱、Phase 1 沙箱 runner、Phase 2 PaperBench SimpleJudge 评分。PaperBench 同捆于 `vendor/paperbench`。 | ✓ |
-| `ari-skill-replicate` | `generate_rubric`、`audit_rubric` | PaperBench 形式自动 rubric 生成与审计 (v0.7.0)。驱动 ORS 可复现性流。 | ✓ |
-| `ari-skill-benchmark` | `analyze_results`、`plot`、`statistical_test` | CSV/JSON/NPY 分析、绘图、scipy 统计（BFTS analyze 阶段使用） | ✗ |
-| `ari-skill-vlm` | `review_figure`、`review_table` | VLM 驱动的图表/表格审查（驱动 VLM 审查循环） | ✓ |
-| `ari-skill-coding` | `write_code`、`run_code`、`read_file`、`run_bash` | 代码生成 + 执行 + 分页文件读取 | ✗ |
+| `ari-skill-evaluator` | `make_metric_spec`、`propose_metric_contract`、`claim_evidence_hard_gate`、`evidence_grounded_semantic_review` | 从实验文件提取指标规格，并作为 `ari/pipeline/claim_gate/` 的瘦 MCP 表面 | △ |
+| `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`promote_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/promote/publish 生命周期 (v0.7.0) | ✓ |
+| `ari-skill-web` | `web_search`、`fetch_url`、`search_papers`、`rerank_retrieval_records`、`walk_citations`、`list_uploaded_files`、`read_uploaded_file` | 网络搜索 + 每次调用一个被钉住的学术提供方（`semantic-scholar` / `arxiv` / `alphaxiv`；`both` 会被拒绝），支持 `record` / `live` / `replay` 快照模式、引用游走、上传文件访问 | △ |
+| `ari-skill-plot` | `render_figure`、`generate_figures`、`generate_figures_llm` | 由固定渲染器绘制声明式 figure spec：`generate_figures` 使用确定性默认 spec，`generate_figures_llm` 只让 LLM 选择 `metric_id` / `chart_type` / `x_mode` | ✓ |
+| `ari-skill-paper` | `list_venues`、`get_template`、`compile_paper`、`check_format`、`write_paper_iterative`、`review_compiled_paper`、`list_rubrics`、`link_paper_claims`、`paper_refine`、`inject_code_availability`、`merge_reviews`、`finalize_paper_build` | LaTeX 论文撰写、编译、基于评审规范的同行评审 (兼容 AI Scientist v1/v2)。v0.7.0：`inject_code_availability` 注入 `\codeavailability{}` / `\codedigest{}` / `\coderef{}` 宏；`merge_reviews` 事后合并文本评审与 VLM 评审 JSON；`finalize_paper_build` 写出 fail-closed 的 `PaperBuildV1` 锁。 | ✓ |
+| `ari-skill-paper-re` | `fetch_code_bundle`、`build_reproduce_sh`、`run_reproduce`、`grade_with_simplejudge` | PaperBench 形式可复现性 (v0.7.0)：通过 `ari.clone` 预填沙箱、Phase 1 沙箱 runner、Phase 2 PaperBench SimpleJudge 评分。PaperBench 同捆于 `vendor/paperbench`。 | ✓ |
+| `ari-skill-replicate` | `generate_rubric`、`audit_rubric`、`suggest_target_leaf_count` | PaperBench 形式自动 rubric 生成与审计 (v0.7.0)。驱动 ORS 可复现性流。 | ✓ |
+| `ari-skill-benchmark` | `analyze_results`、`statistical_test`、`compare_runs` | CSV/JSON/NPY 分析、scipy 统计、跨运行比较（BFTS analyze 阶段使用） | ✗ |
+| `ari-skill-vlm` | `review_figure`、`review_figures_all`、`review_table` | VLM 驱动的图表/表格审查（`review_figures_all` 驱动覆盖整批图的 VLM 审查循环） | ✓ |
+| `ari-skill-coding` | `write_code`、`edit_code`、`run_code`、`run_bash`、`read_file`、`emit_results`、`describe_environment` | 代码生成与编辑 + 执行、分页文件读取、类型化结果输出、环境描述 | ✗ |
 
 **附加技能**（可用，不在默认工作流中）：
 
@@ -667,6 +714,8 @@ generate_ideas (idea-skill)
 | `data/`、`inputs/` 下的数据文件 | `run.log`、`run_*.log`、`*.run.log` |
 | 嵌套源目录下的任何内容（如 `src/lib.cpp`） | `slurm-*.out`、`slurm-*.err`、`stdout.txt`、`stderr.txt`、`out.txt`、`err.txt` |
 |  | `node_report.json`（每个节点重建自己的） |
+|  | `results.json`、`*_results.json`、`selftest_output.txt`、`*_output.txt` —— 父节点的**数值**，绝不能走代码通道 |
+|  | `heterogeneous_env.json`（工具产物且含探测到的机器信息；子节点自己重新探测） |
 
 执行后，`compute_files_changed(parent, child)` 基于 sha256 diff 返回
 `{added, modified, deleted, inherited_unchanged}`。当

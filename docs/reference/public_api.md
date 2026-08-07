@@ -87,7 +87,7 @@ Re-exports the container runtime from `ari.container`:
 
 | Symbol | Purpose |
 |---|---|
-| `ContainerConfig` | Dataclass: `mode`, `image`, `bind_paths`, `gpu`, ... |
+| `ContainerConfig` | Dataclass: `image`, `mode` (`auto`/`docker`/`singularity`/`apptainer`/`none`), `pull` (`always`/`on_start`/`never`), `extra_args` |
 | `detect_runtime()` | Returns `"singularity"` / `"apptainer"` / `"docker"` / `"none"` based on `which` lookups |
 | `config_from_env()` | Builds a `ContainerConfig` from `ARI_CONTAINER_*` env vars (returns `None` when unset) |
 | `pull_image(cfg)` | Pulls / builds the image referenced by `cfg` |
@@ -276,7 +276,8 @@ Re-exports `PathManager` from `ari.paths`:
 from ari.public.paths import PathManager
 
 paths = PathManager.from_env()        # honours ARI_CHECKPOINT_DIR
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 ```
 
 `PathManager` is the central resolver — never read `ARI_CHECKPOINT_DIR`
@@ -346,7 +347,8 @@ cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
 
 # 2. Resolve paths through PathManager — never read ARI_CHECKPOINT_DIR directly.
 paths = PathManager.from_env()
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM call goes through ARI's wrapper, so the cost is recorded automatically.
 client = LLMClient(model="ollama/qwen3:32b")

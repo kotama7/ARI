@@ -85,6 +85,14 @@ rubric，而是写入独立的 `ari.replication-rubric-audit/v2` artifact。
 }
 ```
 
+叶节点字段还有另一种形式。`rationale_from_paper` 可以改为
+`{"external_prerequisite": {"description", "source"}}`,对应的 `evidence_span`
+则是 `{"kind": "external-prerequisite", "description", "source"}` —— schema 要求
+每个叶节点要么绑定论文中的精确 evidence,要么绑定一个显式声明的 external
+prerequisite。`verification` 还接受
+`{"kind": "log-pattern", "relative_path": "reproduce.log", "pattern": "..."}` 与
+`{"kind": "metric", "relative_path": "...", "metric": "...", "unit": "..."}`。
+
 ### 类别 (封闭词表)
 
 `task_category` — 恰好是以下之一:
@@ -144,7 +152,9 @@ validator.validate(rubric)  # 违反 schema 时抛异常
 ## sha256 验证
 
 ```python
-from ari_skill_replicate.manifest import verify
+# ari-skill-replicate/src/manifest.py —— skill 内的模块是扁平的,
+# skill 自身的代码也是这样 import 的 (见 src/migration.py)。
+from manifest import verify
 verify(rubric)   # rubric_sha256 与重计算匹配返回 True
 ```
 

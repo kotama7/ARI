@@ -38,8 +38,7 @@ Minimize energy score of protein folding simulation using different force field 
 3. Poll until completion with `job_status`
 4. Read results with `run_bash`
 
-<!-- min_expected_metric: -500 -->
-<!-- metric_keyword: energy_score -->
+<!-- min_expected_metric: 500 -->
 ```
 
 2. 実行:
@@ -54,14 +53,17 @@ ari run your_experiment.md
 
 ### experiment.md によるドメインカスタマイズ
 
+`from_experiment_text`（`ari/agent/workflow.py`）が実際にパースするのは以下だけ
+です。残りは LLM がゴールとして読む散文です:
+
 | セクション | 用途 | 影響 |
 |---------|---------|--------|
 | `## Research Goal` | 最適化対象 | LLM の仮説生成を駆動 |
-| `## Required Workflow` | どのツールをどの順序で | WorkflowHints の `tool_sequence` を設定 |
-| `## Hardware Limits` | ハード制約 | 各エージェントステップにシステムヒントとして注入 |
-| `## SLURM Script Template` | 実験の開始点 | LLM が各仮説に合わせて修正 |
-| `<!-- metric_keyword: X -->` | 抽出するメトリクス | エバリュエーターと evaluator-skill が使用 |
-| `<!-- min_expected_metric: N -->` | 許容最小値 | バリデーションチェックをトリガー |
+| `## Required Workflow` | どのツールをどの順序で | `WorkflowHints.post_survey_hint`（「Follow this workflow from the experiment spec: …」）になる。`tool_sequence` はこのセクションではなく MCP が実際に公開しているツールから構築される |
+| `## Provided Files`（`## 提供ファイル` / `## 提供文件` / `## Local Files` も可） | ローカル入力 | 絶対パスが各ノードの `work_dir` にコピーされる |
+| `Partition: <name>` / `Max CPUs: <n>` | HPC 配置 | HPC 有効時のみ読まれる。無ければ `ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` か検出された up パーティションが埋める |
+| 本文中の SLURM への言及（`slurm_submit`、`sbatch`、`srun` など） | 投入 / ポーリング / 読取ツールの三点セットを選ぶ | `slurm_submit` + `job_status` + `run_bash` に切り替わる。HPC プロファイルでは `ARI_SLURM_PARTITION` が設定されていればキーワード無しでも同じ |
+| `<!-- min_expected_metric: N -->` | 許容最小値 | `WorkflowHints.min_expected_metric` にパースされ、抽出値がすべてこれ未満のノードは failed になる。**数字のみ** — 負の閾値はパースされない |
 
 ---
 
@@ -77,10 +79,20 @@ ari-skill-yourskill/
 │   └── server.py          ← FastMCP サーバー（必須）
 ├── tests/
 │   └── test_server.py     ← テスト（最低 3 つ）
+├── skill.yaml             ← 正準マニフェスト（必須・レビュー対象のソース）
+├── mcp.json               ← skill.yaml からの派生物。手で編集しない
 ├── pyproject.toml         ← パッケージ設定
 ├── README.md              ← ツールの説明と使用例
 └── REQUIREMENTS.md        ← 設計仕様
 ```
+
+`skill.yaml` が正準マニフェストで、`mcp.json` は決定論的な派生物です:
+マニフェストを変更したら `python3 scripts/sync_skill_metadata.py --write` で
+再生成してください。`scripts/check_skill_manifests.py` は `skill.yaml` の欠落
+(`manifest-missing`)、一致しなくなった `mcp.json`(`compat-metadata-drift`)、
+`pyproject.toml` と食い違う `version`(`version-drift`)、`complete` でない
+`environment_policy` を失敗させます。サーバーが公開するツールはすべて
+`skill.yaml` に宣言する必要があります。
 
 ### サーバーテンプレート
 
@@ -192,6 +204,14 @@ pipeline:
   ステージを実行するため、宣言順を依存順に保ってください。依存がスキップ
   されたステージもスキップされます（依存が明示的に `enabled: false` の場合を除く）。
 - `phase:` — `bfts` / `paper` / `reproduce`。GUI グラフのグルーピングに使われます。
+- `segment:` — `evidence` / `authoring` / `verification`。既定のフル実行では
+  無視されますが、セグメント分割実行は有効なセグメントを持たない有効ステージが
+  1 つでもあると開始を拒否するため、新しい `pipeline:` ステージにはこれを
+  宣言しておく必要があります。
+- `skip_if_exists:` — 解決済みパス。それが存在して空でなければ（`.json` の
+  場合はさらにトップレベルの `error` キーが無ければ）ステージはスキップされます。
+  `skip_if_inputs_unchanged:` はディスクと一致し続けている必要のあるサイドカー
+  コントラクトを指し、入力が変わった後に再利用可能な出力が再利用されるのを防ぎます。
 - `outputs.file` — ドライバがツールの戻り値を書き出す先。
 
 ---
@@ -326,34 +346,51 @@ from mcp import ClientSession
 async with ClientSession(...) as session:
     result = await session.call_tool("run_experiment", {
         "experiment_md": open("experiment.md").read(),
+        "idempotency_key": "my-unique-key",   # 必須
         "max_nodes": 10
     })
     run_id = result["run_id"]
 ```
 
-### REST API として（オーケストレーター経由）
+`idempotency_key` は必須引数です: 同じキーは 2 本目のランを投入せず、記録済みの
+ハンドルをリプレイします。
 
-オーケストレーター MCP サーバーは、CI/CD 統合のために HTTP ゲートウェイ経由でプロキシできます。
+### HTTP 経由（CI/CD 向け）
+
+オーケストレーターは `--transport` で選ぶ 2 つのトランスポートを持つ MCP サーバー
+です: **stdio**（既定）と **streamable-http**（`http://{host}:{port}/mcp` の MCP。
+host は `ARI_ORCHESTRATOR_HTTP_HOST` = `127.0.0.1`、port は
+`ARI_ORCHESTRATOR_HTTP_PORT` = 9890）。独自パスを持つ REST/SSE API は存在せず、
+HTTP でも**同じ MCP ツール面**を呼びます。`streamable-http` は
+`ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` が無ければ起動を拒否します — 認証の無い
+ネットワーク制御は提供されません。
 
 ---
 
 ## 8. BFTS 選択戦略の変更
 
-現在の戦略は `has_real_data=True` で最も高いメトリクス値を持つノードを選択します。
-これを変更するには、`ari/orchestrator/bfts.py` を修正します:
+選択を担うのは `ari/orchestrator/bfts.py` の `BFTS.select_next_node` で、既定では
+候補フロンティアに対する **LLM** の判断です。コードに手を入れる前に 2 つの seam が
+あります:
+
+- `bfts.deterministic_selector: true` は LLM を完全にバイパスし `_select_fallback`
+  でランク付けします（LLM が選べなかったときに走るのと同じ経路）。優先順位は
+  まず `has_real_data=True` のノード、次に `_fallback_score` の高い順です。
+- `bfts.frontier_score` はそのフォールバックのスコア式を選びます:
+  `scientific_plus_diversity`（既定）、`scientific_only`、`depth_penalized`
+  （`depth_penalty_lambda * depth` を引く）、`ucb_like`（`ucb_c` でスケールした
+  UCB1 風の項を足す）。
+
+本当に新しい戦略 — たとえば多目的のパレート最適選択 — を入れるなら、同ファイルの
+`_fallback_score` / `_select_fallback` を編集します:
 
 ```python
-def _select_best_node(self, nodes: list[Node]) -> Node:
-    """
-    カスタム選択戦略。
-    デフォルト: 実データを持つノードの中で最高メトリクス。
-    """
-    candidates = [n for n in nodes if n.has_real_data]
-    if not candidates:
-        return nodes[0]
-
+def _select_fallback(self, candidates: list[Node]) -> Node:
+    """候補フロンティアに対するカスタム決定論的選択。"""
+    real = [n for n in candidates if n.has_real_data]
+    pool = real or candidates
     # 例: 多目的最適化のためのパレート最適選択
-    return pareto_select(candidates, objectives=["score", "energy"])
+    return pareto_select(pool, objectives=["score", "energy"])
 ```
 
 ---
@@ -367,6 +404,7 @@ def _select_best_node(self, nodes: list[Node]) -> Node:
 | エバリュエーターからスカラースコアを返す | P3（多目的）に違反 | 完全な `metrics` dict を返す |
 | skill 内にモデル名をハードコード | P4（DI）に違反 | 設定またはツール引数で渡す |
 | SBATCH で相対パスを使用 | 計算ノードでパスエラー発生 | 常に絶対パスを使用 |
+| ARI 内部ファイルをチェックポイント直下に basename 登録なしで書き出す | `PathManager.is_meta_file` が認識しないファイルは全ノードの `work_dir` にコピーされ、未登録の `.json` はさらに `node_report.json` に role `data_output` として記録される | basename を `PathManager.META_FILES`（`ari/paths.py`）に追加。内部 JSON の場合は `_INTERNAL_JSON_NAMES`（`ari/orchestrator/node_report/builder.py`）にも追加し、`test_new_filenames_are_meta_files` 形式のテスト（`ari-core/tests/test_prompt_provenance.py`）で両方を固定する |
 
 ---
 

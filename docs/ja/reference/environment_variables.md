@@ -10,6 +10,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/health.py
     role: implementation
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
 last_verified: 2026-07-29
 ---
 
@@ -199,6 +201,17 @@ ARI は約 90 の環境変数を参照します。ここではそれらを一覧
 | 変数 | 用途 |
 |---|---|
 | `ARI_RETRIEVAL_BACKEND` | `semantic_scholar` / `arxiv` / `alphaxiv` |
+
+### Federated tool registry スキル
+
+Skill フラグとカタログは独立した 2 つのゲートです。`ari-skill-tool-registry`
+を有効化してもリーフは 1 つも有効になりません。選択された lock に存在する
+source だけが実行できるためです。
+
+| 変数 | 用途 | デフォルト |
+|---|---|---|
+| `ARI_TOOL_REGISTRY_LOCK` | ブローカーがプロセス起動時に読み込む、レビュー済みの `CATALOG.lock`。ARI 側の Provider カタログローダーも同じ変数を読むため、composite provision が指すリーフが両者でずれることはない。マテリアライズ済みカタログは絶対パスを含みリポジトリには置けないので、この上書きが唯一の到達手段 | スキルに同梱された `CATALOG.lock`。これは可搬なデフォルトであり、内容の入ったカタログはマシン固有のエビデンスなので、設計上そのまま空でチェックインされている |
+| `ARI_TOOL_REGISTRY_INDEX` | その lock に対応する派生インデックス | 解決された lock と同じディレクトリの `catalog.index.json`。ファイルが無い場合は lock から再構築 |
 
 ### 公開 + レジストリ + clone
 

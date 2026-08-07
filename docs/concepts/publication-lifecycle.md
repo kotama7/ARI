@@ -46,12 +46,20 @@ backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
         │        ▼ render_paper (recompile refined .tex ──▶ full_paper.pdf)
         │        ▼ link_paper_claims (final)          ──▶ paper_claim_links_final.json
         │        ▼ claim_evidence_hard_gate (FINAL)   ──▶ evaluation/claim_evidence_hard_gate_final.json
-        │        │   (blocks finalize in strict mode)
+        │        │   (blocks finalize: objective falsehoods always,
+        │        │    the configured block_on list in strict mode)
         ▼        ▼
         └────────┴──▶ finalize_paper (paper-skill: inject_code_availability)
                        DEPENDS ON ear_publish AND the FINAL hard gate
         ▼
 full_paper.tex with \codeavailability{} \codedigest{} \coderef{}
+        │
+        ▼ link_paper_claims_locked                  ──▶ paper_claim_links_locked.json
+        ▼ claim_evidence_hard_gate_locked (final)   ──▶ evaluation/claim_evidence_hard_gate_locked.json
+        ▼ evidence_grounded_semantic_review_locked (advisory)
+        ▼ render_final_paper (compile the injected .tex ──▶ full_paper.pdf)
+        ▼ lock_paper_build (paper-skill: finalize_paper_build)
+        │                                            ──▶ paper_build.json (PaperBuildV1)
         │
         ▼ ari clone <ref> --expect-sha256 <baked digest>
         ▼
@@ -65,17 +73,19 @@ a non-blocking **evidence-grounded semantic review**, and an
 **anchor-preserving refine/render loop** on top of the existing paper
 stages. The loop links the paper's `% CLAIM` anchors to recorded
 results (`link_paper_claims`), checks them against the experiment data
-(`claim_evidence_hard_gate`, run once on the draft and again on the
-refined paper), threads both the hard gate and the semantic review into
-the merged review, applies suggested revisions while preserving the
-claim anchors (`paper_refine`), and recompiles the refined `.tex`
+(`claim_evidence_hard_gate`, run once on the draft, again on the
+refined paper, and a third time on the exact post-injection TeX that
+`lock_paper_build` locks), threads both the hard gate and the semantic
+review into the merged review, applies suggested revisions while
+preserving the claim anchors (`paper_refine`), and recompiles the refined `.tex`
 (`render_paper`). It is governed by the `claim_gate_policy` block in
-`ari-core/config/workflow.yaml` and is **default-on in `warn`
-(report-only) mode** — the gate records findings but never blocks the
-build. Setting `claim_gate_policy.mode: strict` (or
-`ARI_CLAIM_GATE_MODE=strict`) makes the **FINAL** gate block
-`finalize_paper` on blocking errors (numeric mismatch, unresolved
-operands, missing evidence).
+`ari-core/config/workflow.yaml` and is **default-on in `warn` mode** —
+in `warn` only the objective-integrity `always_block_on` tier can stop
+the build, and only at the **FINAL** phase; every other finding is
+recorded without blocking. Setting `claim_gate_policy.mode: strict` (or
+`ARI_CLAIM_GATE_MODE=strict`) additionally blocks `finalize_paper` on the
+configured `block_on` errors (numeric mismatch, unresolved operands,
+missing evidence). `mode: off` never blocks, in either tier.
 
 Four robustness behaviours keep the loop honest end-to-end:
 
@@ -125,8 +135,8 @@ Four robustness behaviours keep the loop honest end-to-end:
   freeze.
 
 Artifacts: `paper_claim_links.json` (draft) /
-`paper_claim_links_final.json`, and
-`evaluation/claim_evidence_hard_gate_{draft,final}.json`.
+`paper_claim_links_final.json` / `paper_claim_links_locked.json`, and
+`evaluation/claim_evidence_hard_gate_{draft,final,locked}.json`.
 
 Trust model: the **paper itself is the trust anchor**, not the
 registry. `ari clone` hard-fails on any bundle whose recomputed

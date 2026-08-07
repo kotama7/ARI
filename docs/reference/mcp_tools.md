@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-08-06
+last_verified: 2026-08-07
 ---
 
 # MCP Tools Reference
@@ -69,20 +69,37 @@ an LLM and therefore are not byte-deterministic.
 
 ## ari-skill-hpc — SLURM + Singularity
 
-`mcp.json` has an empty list; tools come from `@server.list_tools()`
-in `src/server.py`.
+`mcp.json` carries the tool NAMES, generated from `skill.yaml`; the full
+schemas come from `@server.list_tools()` in `ari_skill_hpc/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `slurm_submit` | sbatch with explicit partition / time / cpus / nodes / GPUs | ✗ |
-| `job_status` | squeue + sacct lookup | ✗ |
-| `job_cancel` | scancel a running job | ✗ |
+| `job_submit` | Submit an immutable `JobRequestV1` and return an idempotent `JobHandleV1`; commands are argv arrays and the login-node shell is never used | ✗ |
+| `container_submit` | The same lifecycle, requiring a digest-pinned Apptainer/Singularity container declaration on the request | ✗ |
+| `job_status` | Provider-neutral `JobStatusV1` for an ARI handle or a raw SLURM ID (squeue + sacct lookup) | ✗ |
+| `job_result` | Collect a terminal `JobResultV1`, rehashing declared inputs, outputs, and logs | ✗ |
+| `job_logs` | Bounded, digest-bound stdout / stderr for an ARI job handle | ✗ |
+| `job_cancel` | Request cancellation of an ARI or SLURM job | ✗ |
+| `slurm_submit` | Compatibility bridge for the core agent's batch-script workflow: sbatch with explicit partition / time / nodes / tasks / cpus / modules and an explicit `launcher`. New programmatic callers use `job_submit` | ✗ |
 | `probe_platform_capabilities` | Probe tool availability (`command -v`) **on the compute partition** and cache it to `{checkpoint}/platform_capabilities.json`; best-effort (any failure is reported as skipped and writes nothing) | ✗ |
-| `singularity_build` | Build a SIF from a definition file | ✗ |
-| `singularity_run` | Run a command inside a SIF | ✗ |
-| `singularity_pull` | Pull a SIF from a remote URI | ✗ |
-| `singularity_build_fakeroot` | Fakeroot build (no privileged daemon) | ✗ |
-| `singularity_run_gpu` | GPU variant of `singularity_run` | ✗ |
+| `counter_support` | Report whether this node grants hardware counters, established by opening one rather than by looking for a profiler binary | ✗ |
+| `measure_counters` | Count reviewed hardware events on an existing process over a bounded window; creates no process and writes nothing | ✗ |
+
+`launcher` says how the script is started inside its allocation, and it is
+declared rather than inferred from `tasks > 1`: `auto` (the default) binds a
+single-task, single-node payload with `srun --ntasks=1` and starts any larger
+shape directly, leaving the parallel launch to the script; `srun` starts the
+script itself with the declared `nodes` / `tasks` / `cpus_per_task`, which is
+what an MPI or SPMD binary needs; `none` never wraps. The launch mode is part
+of the request digest. See [skills.md](skills.md#ari-skill-hpc) for the full
+argument list.
+
+`measure_counters` declares `context_requirement: node`, so its input schema
+declares an `ari_context` object property. The transport injects the authorized
+call context under that name for any tool with a context requirement; a schema
+with `additionalProperties: false` that omits it refuses every authorized call.
+The proxy strips the property back out of `tools/list`, so it is never an
+argument the agent supplies.
 
 ## ari-skill-idea — literature survey + idea generation
 

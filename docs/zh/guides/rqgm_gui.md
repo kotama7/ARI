@@ -39,7 +39,9 @@ last_verified: 2026-07-30
 哪些机构、它们彼此做了什么，以及这如何改变了得分。
 
 **GUI 对治理是只读的。** `/api/v1` 的 RQGM 接口面上根本不存在变更端点 ——
-`/api/v1/runs/{run_id}/rqgm/*` 下的每一个路由都是 GET。你在这个工作区里点击
+`/api/v1/runs/{run_id}/rqgm/*` 下的每一个路由都是 GET；唯一在该接口面之外提供
+的标签页（Knowledge · Capability · Assurance）读取
+`GET /api/checkpoint/{run_id}/kca`，同样是 GET。你在这个工作区里点击
 任何东西，都不会注册组件、采纳策略、开启纪元或改写得分。治理的变更来自运行
 本身。（Studio 可以为**新建**运行选择 `ari_rqgm` —— 那决定的是一次运行执行
 哪种算法，而不是这些机构做什么；见下文。）
@@ -48,7 +50,8 @@ last_verified: 2026-07-30
 （`rqgm_state.json`、`rqgm_transitions.jsonl`、`rqgm_audit.jsonl`、
 `rqgm_adversarial_cases.jsonl`、`rqgm_registry.json`、
 `prompt_evolution.jsonl`、`rqgm_meta_outputs.jsonl`、
-`paper_archive_state.json`，以及节点 metric 哨兵字段），不导入任何内核代码。
+`paper_archive_state.json`、`rqgm/kca/admission-v1/` 快照，以及节点 metric
+哨兵字段），不导入任何内核代码。
 你看到的是一次重放，而不是一次重跑。
 
 ## 如何进入，以及能力状态
@@ -80,10 +83,12 @@ last_verified: 2026-07-30
 
 ## 逐个标签页
 
-标签条本身读作 **Overview · Epoch Timeline · Registry · Accountability ·
-Score Lineage · Evolution · Paper Archive · Audit**。下面各节改按阅读顺序
+标签条共有九个标签，依次读作 **Overview**、**Epoch Timeline**、**Registry**、
+**Accountability**、**Score Lineage**、**Evolution**、**Paper Archive**、
+**Knowledge · Capability · Assurance**、**Audit**。下面各节改按阅读顺序
 组织：先看当前状态，再看两个节点作用域的标签页（Accountability 与 Score
-Lineage 共享一个节点选择器），然后是全运行范围的时间线，最后是原始日志。
+Lineage 共享一个节点选择器），然后是全运行范围的时间线，接着是被冻结的
+knowledge / capability / assurance 记录，最后是原始日志。
 
 ### Overview —— 「当前受治理的状态是什么？」
 
@@ -94,7 +99,9 @@ Lineage 共享一个节点选择器），然后是全运行范围的时间线，
 
 *这张截图取自一个**夹具**检查点（`20260727120000_rqgm_governance_demo`），
 它纯粹是为了拍摄这个工作区而生成的。图中的每一个哈希、纪元编号与计数都属于
-那个道具 —— 你自己的值会不一样，也没有什么可以拿来对照。*
+那个道具 —— 你自己的值会不一样，也没有什么可以拿来对照。它同样早于
+Knowledge · Capability · Assurance 标签页，因此图中的标签条显示的是八个标签，
+而不是当前的九个。*
 
 请照字面理解这三态：
 
@@ -259,6 +266,27 @@ chip 会**带着**「derived from absence」说明渲染（`state_present = fals
 
 当 `anchor.enabled` 为 `false` 时，该标签页会逐字给出其后果：归档是经评审的
 best-of-N，且写作者制裁无法触发。
+
+### Knowledge · Capability · Assurance —— 「这次运行被允许知道什么、执行什么、用什么来验证？」
+
+由 `GET /api/checkpoint/{run_id}/kca`（`ari.viz-kca/v1`）提供：它直接读取该运行
+已提交的 `rqgm/kca/admission-v1/` 快照，不导入任何注册表或解析器。三张卡片在
+线格式与 UI 两侧都保持分离，使得一个领域的权威绝不会被读成另一个领域的：
+
+- **ARI Knowledge Skill Registry** —— 不可执行、内容寻址的过程性知识；它不授予
+  任何工具权限。展示目录快照摘要、Knowledge Skill Lock 摘要、活跃技能数与节点
+  使用记录数，以及目录表。
+- **ARI Capability Provider Federation** —— 可执行的 provider 及其按运行冻结的
+  工具 schema（MCP 是传输，而不是 Knowledge Skill）。展示 Provider Lock 与
+  Capability Binding Lock 摘要，以及已绑定与未满足的 capability 计数。
+- **ARI Harness Registry / Scientific Assurance** —— 独立的、绑定目标的验证；
+  provider 成功并不等于 Attestation。展示 Verification Contract 与 Baseline
+  Harness Lock 摘要，以及验证要求数与 Attestation 数。
+
+没有 `run_admission.json` 的运行会看到 *"This run has no K/C/A admission
+snapshot."* —— 这是能力状态，而非错误。无法读取、超出体积上限或在记录上限处
+被截断的快照文件，会作为 `degraded_reasons` 条目出现在工作区其余部分所用的同一
+degraded 面板里，而不是悄悄让表格变短。
 
 ### Audit —— 「把原始日志给我看」
 

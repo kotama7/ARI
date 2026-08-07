@@ -16,13 +16,31 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/api_wizard.py
+    role: implementation
   - path: ari-core/ari/core.py
     role: implementation
   - path: ari-core/ari/rqgm/runtime.py
     role: implementation
+  - path: ari-core/ari/rqgm/governance/__init__.py
+    role: implementation
+  - path: ari-core/ari/manuscript/snapshot.py
+    role: implementation
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
+  - path: scripts/snapshot_contracts.py
+    role: implementation
+  - path: ari-core/tests/test_manuscript_complete.py
+    role: test
   - path: ari-core/tests/test_rqgm_mode.py
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/tests/test_rqgm_governance.py
+    role: test
+  - path: ari-core/tests/test_contract_snapshots.py
+    role: test
+last_verified: 2026-08-07
 ---
 
 # Internal boundaries
@@ -83,16 +101,17 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 
 | Module | Owns |
 |--------|------|
-| `ari/container.py` | container exec: `detect_runtime`, `run_in_container` (Popen + `_sandbox_preexec` = `os.setsid` new process group + optional `RLIMIT_NPROC` via `ARI_MAX_CHILD_PROCS`), `_run_shell_sandboxed` (group SIGTERM→SIGKILL on timeout), `run_shell_in_container`, `pull_image`. Re-exported by `ari.public.container`. |
-| `ari/env_detect.py` | scheduler/runtime probes (`sinfo`, `qstat`, `docker info`, `lscpu`) — read-only, best-effort, no hardcoded cluster knowledge. |
-| `ari/mcp/client.py` | spawns skill stdio servers via the MCP SDK `stdio_client` (a wrapper, not a raw spawn). |
-| `ari-skill-hpc/src/slurm.py` | the canonical SLURM submit/status/cancel (`SlurmClient`: `_run_local` asyncio subprocess, `_run_remote` paramiko), incl. `ARI_SBATCH_EXPORT_MODE` clean-env logic. |
+| `ari/container.py` | container exec: `detect_runtime`, `run_in_container` (Popen + `start_new_session=True` + `ari.execution.build_minimal_environment`), `container_shell_argv` / `run_shell_in_container` (with a `network="inherit"` or `"deny"` switch), `pull_image`. `_run_shell_sandboxed` is now only a compatibility adapter: it builds an `ExecutionRequestV1` and calls `ari.execution.execute_local`. An unsupported mode raises `ValueError` instead of falling back to the host. Re-exported by `ari.public.container`. |
+| `ari/execution.py` | the process primitives container exec delegates to: `execute_local` (`os.setsid` plus `RLIMIT_CPU`/`RLIMIT_AS`/`RLIMIT_NPROC`/`RLIMIT_FSIZE` in `_preexec`, and group SIGTERM→SIGKILL on timeout) and `build_minimal_environment` (an explicit environment, never a parent copy). `ARI_MAX_CHILD_PROCS` reaches it as `ExecutionLimitsV1.max_processes`. |
+| `ari/env_detect.py` | scheduler/runtime probes: `detect_scheduler` (`sinfo`/`qstat`/`bhosts`/`qhost`/`kubectl`), `detect_container` (a `shutil.which` for apptainer/singularity/docker), `get_slurm_partitions` (`sinfo --noheader`) — read-only, best-effort, no hardcoded cluster knowledge. |
+| `ari/mcp/connection.py` | `SkillConnection` — spawns one skill stdio server via the MCP SDK `stdio_client` (a wrapper, not a raw spawn). `ari/mcp/client.py:MCPClient` owns the pool, discovery and dispatch over these connections. |
+| `ari-skill-hpc/ari_skill_hpc/scheduler.py` | the canonical SLURM submit/status/cancel (`SlurmScheduler`, driven by `LocalCommandRunner` = `asyncio.create_subprocess_exec`, or `RemoteCommandRunner` = paramiko); submission is always `sbatch --parsable --export=NIL`. `ari_skill_hpc/slurm.py` keeps `SlurmClient` as the environment-configured owner of one such scheduler. |
 
 Known duplication to consolidate toward these owners (not incorrect behaviour,
-but drift risk): `viz/api_memory.py` re-derives container-runtime dispatch;
-`ari-skill-paper-re/src/server.py` re-implements `sbatch`/`apptainer exec` and
-already diverges from `slurm.py` (it hardcodes `--export ALL`); its local
-fallback lacks `setsid`/`killpg`, so a hung reproduce can orphan.
+but drift risk): `viz/api_memory.py` re-derives container-runtime dispatch.
+`ari-skill-paper-re` no longer re-implements either half — it submits through
+`ari_skill_hpc.SlurmScheduler` and runs its local attempts through
+`ari.execution.execute_local`.
 
 **`ari.viz.state` process-handle coupling.** `ari/viz/state.py` holds live OS
 handles as module globals (imported as `_st`): `_last_proc` (most-recent
@@ -122,16 +141,29 @@ fork that constructs its own `MCPClient` in the child.
 
 ### Concurrency hazards (preserve under any change here)
 
-1. **Env-var-at-fork timing.** MCP servers snapshot `os.environ` at spawn.
-   `ARI_WORK_DIR` and the sandbox vars (`ARI_REAL_GIT`, `ARI_REPRO_*`, `PATH`)
-   must be set **before** `MCPClient` spawns; deferring MCP construction or
-   reordering env setup silently breaks sandboxing / work-dir pinning.
-2. **Shared-process global-env race under parallel workers.** Up to 4
-   `AgentLoop` threads share one process and one `MCPClient`. Memory
-   copy-on-write keys off the process-global `ARI_CURRENT_NODE_ID`; the only safe
-   write path is `mcp.call_tool(name, args, cow_node_id=node_id)` (it serializes
-   the set-node+write pair under `MCPClient._cow_lock`). A per-run single
-   `_set_current_node` is unsafe at `max_parallel_nodes > 1`.
+1. **Env-var-at-first-connect timing.** An MCP server no longer inherits
+   `os.environ`. `mcp/child_environment.py:build_child_environment` resolves a
+   fail-closed allowlist — `SAFE_INHERITED_ENV_NAMES` (`PATH`, `LANG`, `LC_ALL`,
+   `LC_CTYPE`, `TZ`, `TMPDIR`, the CA-bundle names) plus whatever the skill's
+   `skill.yaml` declares under `required_env` / `optional_env` — and
+   `SkillConnection` caches the result in `_server_parameters`, so the parent
+   environment is read once, at the first connect. The timing invariant is
+   therefore unchanged: `ARI_WORK_DIR` (declared `optional_env` by the coding and
+   hpc skills) must be set **before** that first connect, or work-dir pinning
+   breaks silently. The reproduce-sandbox vars (`ARI_REAL_GIT`, `ARI_REPRO_*`)
+   are declared by no skill manifest, so they reach only the react /
+   stage-runner subprocess paths, never a skill server.
+2. **Shared-process state under parallel workers.** One `AgentLoop` instance and
+   one `MCPClient` are shared by every node thread; `_run_loop` caps concurrency
+   at `max_workers = min(cfg.bfts.max_parallel_nodes, 4)`, enforced by a
+   `threading.Semaphore` rather than by the pool size (the pool is
+   `max_workers + 8`, so a node waiting on a scheduler job can park and hand its
+   permit back). Node identity is never carried in process-global state: the safe
+   path is an explicit `ToolCallContextV1`, built once per node by
+   `AgentLoop._node_tool_context`, threaded through `_execute_tool_calls`, and
+   signed per connection into the `ari_context` tool argument by
+   `SkillConnection.authorize_args`. `work_dir` is threaded explicitly for the
+   same reason — an env lookup would race at `max_parallel_nodes > 1`.
 3. **Shared checkpoint-tree writes.** There is **no git worktree**: concurrent
    committers all write the same `tree.json` / `nodes_tree.json` / `results.json`
    via one shared `agent._progress_cb` → `_save_tree_incremental`; thread-safety
@@ -181,6 +213,19 @@ config flags before the import happens:
 structural (`runtime_checkable`), so importing `ari.protocols` pulls in
 nothing from `ari.rqgm`.
 
+**`rqgm` is a reserved attribute name.** `getattr(bfts, "rqgm", None)` is the
+only supported way to discover the governance runtime, and the read is
+duck-typed deliberately — the `GovernedSearchStrategy` docstring states the
+rule as "detection is duck-typed attribute presence, never `isinstance` of
+this concrete class". The wrapper is internal and unversioned, so no consumer
+may branch on `isinstance(bfts, GovernedSearchStrategy)`; today none does. The
+same `getattr` probe is repeated across `cli/bfts_loop.py`, `cli/run.py`,
+`cli/projects.py`, `cli/manuscript_repair_runtime.py` and `core.py`, so the
+name is reserved on **any** object handed around as the run's
+`SearchStrategy`: do not attach an unrelated `rqgm` attribute to a strategy,
+and if a future component needs richer discovery, add a typed accessor rather
+than a second magic attribute.
+
 **Enforcement.**
 `ari-core/tests/test_rqgm_mode.py::test_build_runtime_default_is_identity`
 builds a default runtime and asserts (a) no `ari.rqgm*` entry in
@@ -189,3 +234,123 @@ with no `.rqgm` attribute, and (c) no `rqgm_state.json` / `constitution.yaml`
 in the checkpoint. On the skill side, `ari.rqgm` is not re-exported through
 `ari.public.*`, and `scripts/quality/check_import_boundaries.allow.yaml`
 carries no `ari.rqgm` exception — no skill may import it.
+
+**The governance facade is the only commitment.** One level down, inside the
+package, the same discipline applies to the epoch-boundary audit.
+`ari.rqgm.governance` exports exactly two names — `GovernanceOrchestrator` and
+`GovernanceReport` — and
+`ari-core/tests/test_rqgm_governance.py::test_facade_exports_only_the_two_public_names`
+pins `__all__` to that pair. Everything the audit is made of lives in
+underscore-private modules of that package: the reliability monitors
+(`_reliability.py`), the evidence clerk and its admissibility checkers
+(`_evidence.py`), the auditor/prosecutor and its bond accounting
+(`_prosecution.py`), the defender (`_defense.py`), the boards and the
+governance judge (`_adjudication.py`), the self-audit (`_self_audit.py`), plus
+the nine-step pipeline itself (`_pipeline.py`) and the record dataclasses
+(`_records.py`, out of which only `GovernanceReport` is lifted into the
+facade). Nothing else is re-exported, nothing is added to `ari.public.*`,
+nothing gains a CLI flag, and nothing is exposed as an MCP tool. The only
+non-test call site in the tree is `RQGMRuntime.run_epoch_audit`
+(`ari/rqgm/runtime.py`), which constructs the orchestrator lazily and calls
+`audit_epoch` once per epoch boundary.
+
+That narrowness is deliberate. The fine-grained actor names are a conceptual
+vocabulary, not an interface: publishing a dozen of them would freeze
+still-moving signatures into the frozen contract-snapshot surface
+(`ari-core/tests/fixtures/contracts/public_api.json`), where every later
+refactor becomes a golden-file diff. Holding the facade at one class, one
+public method and one return type lets the internal actors be reshaped freely
+while the single call site and the `GovernanceReport` the transition engine
+consumes stay stable.
+
+**The mode costs no contract surface.** Activation is configuration and
+environment only: RQGM adds no `ari` CLI command or flag and exports no symbol
+through `ari.public.*`, so neither frozen snapshot needs regeneration for it —
+`ari-core/tests/fixtures/contracts/cli_tree.json` and `public_api.json` (built
+and verified by `scripts/snapshot_contracts.py`, gated by
+`ari-core/tests/test_contract_snapshots.py`) contain no `rqgm` entry at all.
+That is a deliberate budget decision, not an oversight: a `--mode` flag would
+move the execution mode into the frozen CLI tree and turn every later
+mode-related change into a golden-file diff. Keep new mode surfaces in
+configuration — the same reasoning is why the wrapper above is discovered by
+attribute rather than by type.
+
+### Manuscript compiler boundary (`ari.manuscript`)
+
+The same one-way discipline governs the manuscript compiler, and it is worth
+stating on its own because the arrow points the other way: `ari.manuscript` is
+the package RQGM depends **on**, never the reverse.
+
+**No module under `ari.manuscript` imports `ari.rqgm`.** The package's only
+imports of another `ari` package are two lazy, function-local ones —
+`ari.assurance.models.HarnessAttestationV1` (`manuscript/snapshot.py`, to parse
+a node's harness attestation) and `ari.paper_contract.parse_paper_build`
+(`manuscript/runtime.py`) — and neither of those reaches `ari.rqgm`:
+`ari/paper_contract.py` imports no `ari` module at all, and `ari/assurance/**`
+contains no `rqgm` reference. Inside `ari.manuscript` the name appears only as
+data — the `Literal["simple_bfts", "ari_rqgm"]` and
+`Literal["linear", "rqgm_archive"]` contract fields in `manuscript/contracts.py`,
+the strings they are normalised to in `snapshot.py` / `coordinator.py`, and four
+checkpoint-relative paths under `rqgm/kca/admission-v1/` in
+`manuscript/authority.py:_AUTHORITY_FILES`.
+
+**How RQGM state reaches the compiler instead.** Three channels, none of which
+names an RQGM type:
+
+| Channel | Shape |
+|---------|-------|
+| Mode | plain `str` keyword arguments — `compile_manuscript(..., exploration_mode="simple_bfts", paper_mode="linear")`, forwarded to `build_exploration_snapshot(..., exploration_mode=...)` and normalised to one of the two literals before it lands on the contract. There is no RQGM provider object and no typed RQGM block in either signature; `manuscript/runtime.py:prepare_runtime_manuscript` fills both from `ARI_MANUSCRIPT_EXPLORATION_MODE` / `ARI_MANUSCRIPT_PAPER_MODE`. |
+| Node state | duck-typed reads off whatever node objects the caller already holds. `snapshot._get(value, name, default)` is `value.get(...)` for a mapping and `getattr(...)` otherwise, so `attestation_refs`, `verified_target_digest` and `metrics` are looked up by name, and a `simple_bfts` node that carries none of them simply yields the default. |
+| Evidence | files read at checkpoint-relative paths, never handed over as objects. `snapshot._attestation_artifacts` digests whatever relative path a node's `attestation_refs` names and validates it as `HarnessAttestationV1` (statuses `present` / `missing` / `invalid`); `authority.capture_repair_authority` only digests the fixed `_AUTHORITY_FILES` list (statuses `present` / `absent` / `unsafe_symlink`) without parsing it. In both, an absent or symlinked path yields a recorded status, not an exception. |
+
+**The reverse edge is allowed and used.** `ari.rqgm.paper_runtime` imports
+`ari.manuscript.digest.path_has_symlink_component` to re-check archive inputs,
+and `ari/cli/paper_dispatch.py` is the layer that drives both — it lazily imports
+`ari.rqgm.paper_runtime` / `ari.rqgm.paper_judge` and `ari.manuscript.runtime` /
+`ari.manuscript.coordinator` side by side. `ari/cli/manuscript_repair_runtime.py`
+is the pattern to copy for glue that needs both at once: it imports
+`ari.manuscript.*` directly but reaches the governance runtime only through the
+reserved `getattr(bfts, "rqgm", None)` probe described above. So RQGM may depend
+on the manuscript contracts; the manuscript contracts may never depend on RQGM.
+That is what lets one compiler serve both exploration modes and both paper modes
+without a second implementation — the difference is recorded as field values
+(`paper_mode`, and the `backend_version` string `coordinator.py` derives from it)
+rather than branched into a parallel code path — and it is why an RQGM concept
+the compiler needs must arrive through one of the three channels above rather
+than as an import.
+
+**Nothing enforces this direction.** There is no test and no quality-gate rule
+for it: `scripts/quality/check_import_boundaries.yaml` constrains the skill→core
+and core→skill edges only and names no core-internal package pair. The adjacent
+rule that *is* enforced is a different one —
+`ari-core/tests/test_manuscript_complete.py::test_default_cli_import_does_not_load_manuscript_domain`
+asserts that importing `ari.cli` loads no `ari.manuscript*` module, which keeps
+the compiler off the default import path but says nothing about what the
+compiler may import. Until someone adds a check, treat the no-`ari.rqgm`-import
+rule as a review obligation.
+
+## GUI HTTP dispatch boundary
+
+The viz server dispatches an HTTP request in exactly two places (for the layering
+around them see [Dashboard architecture](../concepts/gui_architecture.md)): the
+legacy `/api/…` surface is an `if`/`elif` chain over `self.path` in the
+`BaseHTTPRequestHandler` subclass in `ari/viz/routes.py`, which imports each
+handler directly from its `api_*` module; `/api/v1/…` is delegated to the
+declarative `ROUTES` table in `ari/viz/v1/router.py`.
+
+**`ari/viz/api_wizard.py: WIZARD_ROUTES` is not a third one.** The module
+re-exports six wizard handlers under short names and then builds a four-entry
+`{path: (method, callable)}` dict — but nothing in the tree imports the module,
+in production or in tests, and no dispatcher consults the dict. Two consequences
+for anyone touching the wizard: adding an entry to `WIZARD_ROUTES` does not
+create a route, and the dict is not the wizard's contract — it has already
+drifted, since one of its four paths (`/api/generate-config`) does not exist on
+the server at all (the dispatcher answers `/api/config/generate`). The
+REST-schema checker can parse a module-level `ROUTES` / `WIZARD_ROUTES` map
+(`scripts/check_viz_api_schema.py: parse_declarative_routes`), but that path is
+off by default — `use_declarative_routes: false` in
+`scripts/quality/check_viz_api_schema.yaml` — precisely because this map is
+stale, so the checker extracts routes from the `if`/`elif` chain instead. The
+repo-root `DEPRECATION_REMOVAL.md` ledger records the symbol as a delete
+candidate; until it is deleted, treat the two dispatchers above as the only
+statement of which wizard endpoints exist.

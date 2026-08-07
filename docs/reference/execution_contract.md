@@ -12,7 +12,7 @@ sources:
     role: schema
   - path: ari-core/ari/schemas/measurement_set_v1.schema.json
     role: schema
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # Execution and measurement contracts

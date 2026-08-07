@@ -65,11 +65,11 @@ administrator to configure it; do not convert the request to CPU implicitly.
 }
 ```
 
-## Example: R-CCS Cloud (Web UI, manual)
+## Example: notebook-fronted allocation (Web UI, manual)
 
-R-CCS Cloud Jupyter exposes a SLURM allocation through a web
-notebook. ARI runs cannot `sbatch` directly from inside the notebook —
-instead:
+Some sites expose a SLURM allocation through a hosted Jupyter notebook
+rather than a login shell. ARI runs cannot `sbatch` directly from inside
+the notebook — instead:
 
 1. From the notebook, `python -m ari.viz.server --host 0.0.0.0`.
 2. From a separate terminal session (inside the same allocation), run

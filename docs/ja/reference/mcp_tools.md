@@ -62,20 +62,37 @@ ARI には 14 の MCP サーバが付属しています（`ari-skill-*` パッ�
 
 ## ari-skill-hpc — SLURM + Singularity
 
-`mcp.json` は空のリストです。ツールは `src/server.py` の `@server.list_tools()`
-から提供されます。
+`mcp.json` はツール*名*のみを記載し、`skill.yaml` から生成されます。完全な
+スキーマは `ari_skill_hpc/server.py` の `@server.list_tools()` から提供されます。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `slurm_submit` | パーティション / 時間 / CPU 数 / ノード数 / GPU 数を明示して sbatch | ✗ |
-| `job_status` | squeue + sacct 検索 | ✗ |
-| `job_cancel` | 実行中のジョブを scancel | ✗ |
+| `job_submit` | 不変の `JobRequestV1` を投入し、冪等な `JobHandleV1` を即座に返す；コマンドは argv 配列で、ログインノードのシェルは一切使わない | ✗ |
+| `container_submit` | 同じライフサイクル。ただしリクエストに digest 固定された Apptainer/Singularity のコンテナ宣言が必須 | ✗ |
+| `job_status` | ARI ハンドルまたは生の SLURM ID に対する provider 非依存の `JobStatusV1`（squeue + sacct 検索） | ✗ |
+| `job_result` | 終端状態の `JobResultV1` を収集し、宣言された入力 / 出力 / ログを再ハッシュ | ✗ |
+| `job_logs` | ARI ジョブハンドルの stdout / stderr を境界付き・digest 付きで返す | ✗ |
+| `job_cancel` | ARI または SLURM のジョブのキャンセルを要求 | ✗ |
+| `slurm_submit` | コアエージェントのバッチスクリプト用互換ブリッジ：パーティション / 時間 / ノード数 / タスク数 / CPU 数 / modules と明示的な `launcher` を指定して sbatch。新しいプログラム的呼び出しは `job_submit` を使う | ✗ |
 | `probe_platform_capabilities` | **計算パーティション上**でツールの有無（`command -v`）を調べ、`{checkpoint}/platform_capabilities.json` にキャッシュ；ベストエフォート（失敗時は skipped を返し何も書かない） | ✗ |
-| `singularity_build` | 定義ファイルから SIF をビルド | ✗ |
-| `singularity_run` | SIF 内でコマンドを実行 | ✗ |
-| `singularity_pull` | リモート URI から SIF を取得 | ✗ |
-| `singularity_build_fakeroot` | Fakeroot ビルド（特権デーモン不要） | ✗ |
-| `singularity_run_gpu` | `singularity_run` の GPU バリアント | ✗ |
+| `counter_support` | このノードがハードウェアカウンタを許可するかを、プロファイラのバイナリを探すのではなく実際に 1 つ開いて確かめて報告 | ✗ |
+| `measure_counters` | 既存プロセスの審査済みハードウェアイベントを境界付きウィンドウで計数；プロセスを生成せず、何も書かない | ✗ |
+
+`launcher` はスクリプトを allocation 内でどう起動するかを表し、`tasks > 1` から
+推論するのではなく明示的に宣言します。`auto`（デフォルト）は 1 ノード 1 タスクの
+ペイロードを `srun --ntasks=1` で束縛し、それより大きい形状はそのまま起動して
+並列起動をスクリプト側に委ねます。`srun` は宣言された
+`nodes` / `tasks` / `cpus_per_task` でスクリプト自体を起動し、MPI / SPMD
+バイナリはこれを必要とします。`none` は決してラップしません。起動モードは
+リクエスト digest の一部です。引数の全一覧は
+[skills.md](skills.md#ari-skill-hpc) を参照してください。
+
+`measure_counters` は `context_requirement: node` を宣言しているため、その入力
+スキーマは `ari_context` オブジェクトプロパティを宣言します。transport は
+context 要件を持つツールに対してこの名前で認可済み call context を注入するので、
+`additionalProperties: false` でありながらこれを宣言しないスキーマは、認可された
+呼び出しをすべて拒否します。proxy は `tools/list` からこのプロパティを取り除く
+ため、エージェントが渡す引数になることはありません。
 
 ## ari-skill-idea — 文献調査 + アイデア生成
 

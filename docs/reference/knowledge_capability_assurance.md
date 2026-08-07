@@ -247,9 +247,10 @@ contract. A shared text label is insufficient semantic compatibility.
 `compatibility_rules` is a closed vocabulary. It was a free-form string tuple —
 digest-bound, documented, and consulted by nothing, so every rule name in the
 ontology was inert. A name outside the reviewed table is now refused, and each
-name states where it is checked: `measurement-envelope-v1` in core, four
-result-shape rules by the Provider that supplies the capability against its own
-golden and replay evidence, and the rest explicitly `unenforced`.
+name states where it is checked: `measurement-envelope-v1` in core, five by the
+Provider that supplies the capability — four against its own golden and replay
+evidence, and `exclusive-allocation-witness-v1` witnessed from inside the
+allocation by the job it submits — and the rest explicitly `unenforced`.
 
 `json-schema-structural-conformance` was **retired** rather than implemented,
 and the distinction from the three that remain `unenforced` is what justifies
@@ -267,15 +268,24 @@ the true statement rather than a placeholder.
 What people attribute to the rule is already enforced elsewhere: side-effect
 class equality and `required_permissions` coverage when the provision is built,
 whole-lock identity through the binder's `provider_lock_mismatch`, and the
-provision digest, which folds the tool's live `input_schema` in verbatim so a
-changed schema changes the provision whether or not anyone wrote a rule about
-it.
+provision digest, which folds the tool's live `input_schema` and `output_schema`
+in verbatim so a changed schema changes the provision whether or not anyone
+wrote a rule about it.
 
-A separate and genuine gap survives this: every classified Provider tool
-publishes an **empty** MCP `outputSchema`, so each provision's
-`output_schema_digest` is the digest of `{}` and detects no drift for anyone.
-That is Providers not declaring what they return, and fixing it needs no
-ontology change.
+A separate gap sat beside this, and it has since been closed for the tools that
+carry a capability. Every Provider tool used to publish an **empty** MCP
+`outputSchema`, so each provision's `output_schema_digest` was the digest of
+`{}` and detected no drift for anyone. The nine classified tools — five in
+`ari-skill-coding`, four in `ari-skill-hpc` — now declare one, and each declared
+schema is an `anyOf` of the tool's success shape and its own failure shape:
+describing only success would turn a real execution failure into an
+output-validation error and throw away the message saying what went wrong, and
+`oneOf` would reject a payload that is legitimately both, such as a timed-out
+execution that is a complete result also carrying an error. Declaring a schema
+obliges the handler to return structured content beside the text as well,
+because the library validates `structuredContent` against what was declared. A
+tool classified into no capability still publishes nothing, so its
+`output_schema_digest` remains the digest of `{}`.
 
 `measurement-envelope-v1` says a measurement is only interpretable together with
 the conditions it was taken under, so a contract claiming it must declare the
@@ -326,7 +336,13 @@ carry a `brokered` block naming a federated catalog lock, a dispatch tool, and a
 reviewed table from leaf `tool_ref` to ARI `capability_ref`. Each reviewed leaf
 becomes one `CapabilityProvisionV1` whose `tool_ref` and `dispatch_tool_ref` are
 the broker's dispatch tool — the only ref the run lock contains — and whose
-`subject_tool_ref` is the leaf. `nested_source_lock_digests` carries the leaf's
+`subject_tool_ref` is the leaf. `subject_argument` names the dispatch argument
+that carries that leaf, and a real dispatch call whose arguments name a leaf
+this run did not bind is refused: every composite shares the dispatch `tool_ref`
+by construction, so without that comparison one reviewed leaf's authorization
+would carry every leaf the federated catalog holds. A visibility check supplies
+no arguments and a lifecycle ref carries a job handle rather than a leaf, so
+neither is subject-gated. `nested_source_lock_digests` carries the leaf's
 source digests, and the federated lock's own `catalog_digest` joins the
 Provider's `nested_source_lock_digests`, so swapping a leaf behind the broker
 changes the Provider catalog snapshot that the binding request pins.
@@ -406,10 +422,14 @@ podman nor docker does, then derives `eda-cpu` from CPU plus a SIF runtime.
 Outbound reach is observed from the route table rather than by contacting
 anything. A default route is the kernel saying it has a path off this host: it
 is necessary and not sufficient — a proxy or firewall can still refuse the call
-— which is the standing `sinfo` answering gives the scheduler. The stronger
-evidence, resolving a name or opening a connection, would be an outbound request
-to somebody else's service made only to describe our own substrate. On an
-air-gapped node there is no route and the retrieval capability stays unsupplied.
+— which is the standing `sinfo` answering gives the scheduler. A
+default-destination row counts only when it is up, is not a reject route, and is
+not on loopback: the kernel carries an unreachable `::/0` on every host, so
+matching the destination alone read that as a path off an air-gapped one. The
+stronger evidence, resolving a name or opening a connection, would be an
+outbound request to somebody else's service made only to describe our own
+substrate. On an air-gapped node there is no route and the retrieval capability
+stays unsupplied.
 
 SLURM GPU visibility and scheduler authority are intentionally different. A
 device observed on a compute node without advertised GPU GRES is retained under

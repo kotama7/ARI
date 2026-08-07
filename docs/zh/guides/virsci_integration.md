@@ -99,15 +99,17 @@ v1 运行循环接线：循环在根构思阶段调度 `initial_exploration`
 v1 中绝不移动 `ideas[0]` 指令 —— 晋升一个再构思结果属于治理决策。
 
 适配器本身通过 MCP 先调用 `survey`（主题 → 论文列表；失败时降级为
-空列表），再调用 `generate_ideas`，并把 9 键的 `generate_ideas`
-载荷归一化为每个想法一个 `ProposalDraft`。任何工具失败都降级为零
+空列表），再调用 `generate_ideas`，并把 `generate_ideas`
+载荷归一化为每个想法一个 `ProposalDraft` —— 它只读取九个遗留顶层键
+（`virsci_adapter.GENERATE_IDEAS_KEYS`），而这些如今只是技能返回内容的
+一个子集。任何工具失败都降级为零
 草稿；存储层的内容键去重使整条路径在重试下幂等。
 
 ## 归档 vs. 摘要
 
 VirSci 输出在写入时即被拆分（"存储全部，只展示摘要"）：
 
-- **归档在检查点下** —— 完整的 9 键载荷（原始想法列表、
+- **归档在检查点下** —— 完整的 `generate_ideas` 载荷（原始想法列表、
   `gap_analysis`、生成器配置）进入
   `{checkpoint}/proposals/archive/<record_id>/`（`raw_output.json`、
   `generator_config.json`）。技能在磁盘上的转录工件 ——
@@ -122,13 +124,21 @@ VirSci 输出在写入时即被拆分（"存储全部，只展示摘要"）：
   `test_rqgm_virsci_adapter.py::test_transcript_content_never_reaches_expand_context`
   钉住。
 
-共享的 9 键附加项（`gap_analysis`、`papers_analyzed`、`n_agents`、
-`discussion_rounds`、`virsci_integration_status`）还会一并进入
-`idea.json` 投影的顶层键，从而保留 RQGM 之前的 `idea.json` 契约。
+共享的附加项还会一并进入 `idea.json` 投影的顶层键，从而保留 RQGM
+之前的 `idea.json` 契约：`ProposalRouter._projection_meta` 重新读取
+已归档的载荷，并把五个遗留键（`gap_analysis`、`papers_analyzed`、
+`n_agents`、`discussion_rounds`、`virsci_integration_status`）以及技能
+如今还会返回的十个 typed contract 键（`typed_schema_version`、
+`contract_status`、`survey_snapshot`、`survey_snapshot_digest`、
+`survey_snapshot_ref`、`idea_set`、`idea_set_digest`、
+`research_contract`、`research_contract_digest`、`rejected_candidates`）
+中存在的那些复制过去。
 
 ## `enabled: false` 时的保证
 
-在默认的 `enabled: false` 下（全部由
+在默认的 `enabled: false` **且** typed contract 姿态保持默认
+（`knowledge.mode: off`、`capability_binding.mode: legacy`、
+`assurance.mode: off`）时（全部由
 `ari-core/tests/test_rqgm_virsci_adapter.py` 钉住）：
 
 - **适配器从不被构造。**`ProposalRouter._build_generators` 只在标志
@@ -146,6 +156,12 @@ VirSci 输出在写入时即被拆分（"存储全部，只展示摘要"）：
   `virsci_absence_violations` 会让出现 VirSci 提示词或转录文件的
   运行失败 —— 见 [RQGM 评估](rqgm_evaluation.md)。
 
+以上保证只覆盖默认姿态。一旦 `knowledge.mode`、
+`capability_binding.mode`、`assurance.mode` 中任何一个偏离默认值，
+`ProposalRouter._typed_contract_required()` 即为 true，路由器便会
+（只要存在 MCP 客户端）构造适配器，并且无论
+`generators.virsci.enabled` 取何值都把 `virsci` 视为已启用。
+
 ## 模式 × VirSci 的四种组合
 
 `proposal_router.generators.virsci.enabled` 与 `ari.mode` 正交：
@@ -157,7 +173,7 @@ VirSci 输出在写入时即被拆分（"存储全部，只展示摘要"）：
 |---|---|---|
 | `simple_bfts` | `false` | 默认。`proposal_router.*` 惰性；技能侧控制杆（`generate_idea` 阶段、`ARI_IDEA_VIRSCI_REAL`）是仅有的 VirSci 控制手段。 |
 | `simple_bfts` | `true` | 有效但惰性：`simple_bfts` 中没有任何东西构造路由器，因此该标志无效果。技能侧控制杆保持权威。 |
-| `ari_rqgm` | `false` | 路由器仅以 `cheap`/`mutation`/`prior_art` 运行。不触碰任何 VirSci 运行时、vendored 路径、提示词或快照语料库。 |
+| `ari_rqgm` | `false` | 在 typed contract 姿态保持默认时，路由器仅以 `cheap`/`mutation`/`prior_art` 运行：不触碰任何 VirSci 运行时、vendored 路径、提示词或快照语料库。 |
 | `ari_rqgm` | `true` | `VirSciAdapter` 加入路由表；在每纪元上限内通过 MCP 调用 `survey` + `generate_ideas`。 |
 
 ## Vendored 子模块与技能

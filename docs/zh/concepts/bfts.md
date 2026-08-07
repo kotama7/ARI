@@ -89,8 +89,10 @@ def bfts(experiment, config):
 驱动的扩展下，这些 claim 在结构上不可达 —— 从无数据父节点扩展出的
 子节点没有可供计算的输入，且在真实运行中观测到会退化为反复重跑同一
 探测。使能机制是**父 → 子 `work_dir` 继承**：每个子节点从其父节点
-工作目录的副本开始（代码、配置与 `results*.json` 测量文件被继承；
-日志、结果 CSV 等输出工件被列入黑名单），因此扩展正确的父节点会把
+工作目录的副本开始（代码、配置与谱系性的 `results*.json` 测量文件被继承；
+输出工件 —— 日志、结果 CSV，以及 `results.json` / `*_results.json` 本身 ——
+被 `_OUTPUT_BLACKLIST` 挡下，因此子节点无法把父节点的头条数字当作自己的
+读回来），因此扩展正确的父节点会把
 输入文件直接摆到子节点面前。两个转向信号利用了这一点
 （`ari/agent/metric_contract.py`）：
 
@@ -126,8 +128,8 @@ def bfts(experiment, config):
 
 ## `ari_rqgm` 下的受治 BFTS（可选启用）
 
-在可选启用的 `ari_rqgm` 执行模式中，上述算法不变 —— 治理在四个接缝
-处*包裹*它（全部 fail-open；在默认 `simple_bfts` 下这些代码一概不被
+在可选启用的 `ari_rqgm` 执行模式中，上述算法不变 —— 治理在五个接缝
+处*包裹*它（前四个 fail-open；在默认 `simple_bfts` 下这些代码一概不被
 导入）：
 
 - **`GovernedSearchStrategy` 接缝**（`ari/rqgm/runtime.py`）：
@@ -149,6 +151,15 @@ def bfts(experiment, config):
   `frontier`/`pending`/`all_nodes` 状态，使退役可以逻辑擦除过期
   记录并重建前沿；两次内核校验失败会设置 `expansion_halted`，循环
   排空挂起的工作且不再扩展。
+- **由保证门控的前沿准入** —— 这是在 `ari_rqgm` *之上*的又一层可选启用，
+  仅当 `knowledge.mode` / `capability_binding.mode` / `assurance.mode`
+  之一离开其 legacy-inert 默认值（`off` / `legacy` / `off`）时才生效。
+  此时每个已完成节点先经过 `RQGMRuntime.assure_node`，而前沿准入、
+  Rule A 与 Rule B 全都推迟到保证门控、sterile 判定、对抗回合与
+  类型化节点报告都完成之后。被门控归类为 `uncertified_frontier` 的节点
+  不会进入前沿；Rule A 还额外要求子节点是 `scientific_frontier`，而不只是
+  非 `_sterile`。与上面几个接缝不同，这一个是 fail-closed：没有
+  `assure_node` 桥的 RQGM 运行时会抛出异常，而不是回落到旧的顺序。
 
 各层、纪元算法与不变量记录在
 [Constitutional ARI-RQGM 架构](rqgm_architecture.md)中。

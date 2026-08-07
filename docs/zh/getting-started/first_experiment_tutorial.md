@@ -84,12 +84,12 @@ Overview、Trace（每一次工具调用）、Code 和 Output 标签页。
 
 1. **audit_node_provenance** 对 node_report 记录了 sha256 的每个节点产物重新哈希，并与磁盘上的实体比对——正好在节点输出不再是"实验结果"、而开始成为"论文证据"的那个边界上。它按产物报告 verified / mismatch / missing / unhashed 到 `node_provenance_audit.json`。这是信号，不是门。
 2. **transform_data** 读取整棵树，并将硬件、方法论和发现提取到 `science_data.json`。
-3. **generate_figures** 编写绘图代码；随后一个 **VLM** 评审主图，若得分低则循环回去重做。
+3. **generate_figures** 只让 LLM 选择每张图“展示什么”（指标、图表类型、x 轴），随后由固定渲染器依据 `science_data.json` 确定性地绘制。接着 **VLM** 评审**每一张**图，聚合分取各图的最小值，因此只要有一张弱图就会让该阶段循环回去重新生成（阈值 0.7，最多 2 次额外轮次）。
 4. **write_paper** 起草 LaTeX、修订它，并从调研结果中拉取 BibTeX → `full_paper.tex` / `.pdf`。
 5. **review_paper** 针对所选的 venue rubric 运行一个或多个评审代理（当评审多于一个时，会有一个 Area Chair 元评审进行汇总）。
 6. **generate_ear** 组装可复现性包 `ear/`（代码、输入数据、图表、`reproduce.sh`、LICENSE —— 但不含实验输出）。
 
-默认情况下，管线现在还会运行一个 **claim-evidence 验证回路**：一个确定性硬门重新推导所报告的数值，一个不阻断的 evidence-grounded 语义评审依据这些证据检查行文，随后一次保持锚点的修订与重新渲染闭合该回路。它默认以仅报告的（**warn**）模式运行 —— 它会暴露发现，但除非你设置 `ARI_CLAIM_GATE_MODE=strict`（或 `claim_gate_policy.mode: strict`），否则不会阻断 finalize。详情参见[发表生命周期](../concepts/publication-lifecycle.md)。
+默认情况下，管线现在还会运行一个 **claim-evidence 验证回路**：一个确定性硬门重新推导所报告的数值，一个不阻断的 evidence-grounded 语义评审依据这些证据检查行文，随后一次保持锚点的修订与重新渲染闭合该回路。它默认以 **warn** 模式运行，但这并不等于“仅报告”：warn 仍会因 objective-integrity 层（`always_block_on` —— 不变量违反、correctness 失败或未覆盖、占位分母、重算不一致、未绑定或摘要不符的产物……）而阻断最终门，因为这些发现是确定性为假的，而非评审口味问题。其余发现只被报告，直到你设置 `ARI_CLAIM_GATE_MODE=strict`（或 `claim_gate_policy.mode: strict`）才会阻断；strict 还会额外阻断已配置的 `block_on` 发现以及 strict 小节中未覆盖的结果数值。`mode: off` 从不阻断，draft 阶段的报告在两种模式下也都不阻断。详情参见[发表生命周期](../concepts/publication-lifecycle.md)。
 
 在 **Results** 页面上阅读全部内容：类 Overleaf 的编辑器、评审分数，以及 EAR 浏览器。
 
@@ -103,7 +103,7 @@ Overview、Trace（每一次工具调用）、Code 和 Output 标签页。
   docker / apptainer / local）并检查预期的产物是否出现。
 - **Phase 2** 针对该 rubric 对结果评分，其中包括一项 **negative control（阴性对照）**（一个空仓库必须得分接近零），使得无所作为无法赢得评分。
 
-裁决结果在 `reproducibility_report.json` 中。
+裁决结果在 `ors_grade.json` 中（评分状态、逐叶得分与 negative control 结果），Phase 1 的结果则在 `ors_phase1.json`。
 
 ## 7. 你现在拥有什么
 
@@ -117,7 +117,7 @@ Overview、Trace（每一次工具调用）、Code 和 Output 标签页。
 | `full_paper.tex` / `.pdf` | 生成的论文 |
 | `review_report.json` | 同行评审分数与反馈 |
 | `ear/` | 可复现性包 |
-| `reproducibility_report.json` | ORS 裁决 |
+| `ors_grade.json` | ORS 裁决 |
 
 ## 接下来去哪里
 

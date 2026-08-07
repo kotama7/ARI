@@ -18,6 +18,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/launch.py
     role: implementation
+  - path: ari-core/ari/cli/lineage.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
   - path: ari-core/tests/test_gui_baseline_settings_contract.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
@@ -40,7 +44,9 @@ ARI 的配置来自多个入口。存在**两条优先级链** —— 一个设�
   环境变量总是获胜，因为 `_apply_*_env_overrides` 系列函数*最后*运行
   （在 profile 合并之后）。`auto_config()` 是无文件时的回退（环境变量
   优先于硬编码值）。Profile（`--profile laptop|hpc|cloud`）在 YAML 与
-  环境变量之间进行深度合并。
+  环境变量之间被应用，但它**不是**深度合并 —— `_apply_profile`
+  （`ari/cli/run.py`）恰好只复制四个键，profile 文件中的其他每一个键都会
+  被静默忽略（见下文*解析模型*中的「4 键 profile 合并的注意事项」）。
 - **GUI 设置面板** —— `/api/settings` 展示的值。由
   `_api_get_settings()` 构建：**已保存的 `settings.json`（若为 truthy）>
   `ARI_*` 环境变量 > `workflow.yaml` > 硬编码默认值**，并带有一个
@@ -63,12 +69,69 @@ CLI —— 它把选项写入子进程的 `ARI_*` 环境变量，**并**快照�
 | GUI 端口 | `ARI_GUI_PORT`（经 `start.sh`）> `--port`（argparse 默认 **8765**）> `state.py` 的 `9886` 占位值 | `start.sh`、`viz/server.py:main` |
 | SLURM 分区 | 显式工具 `partition` kwarg（经 sinfo 校验）> `SLURM_DEFAULT_PARTITION` > sinfo 首个分区；该 kwarg 依次取自：experiment.md 的 `Partition:` > `ARI_SLURM_PARTITION` > sinfo | `ari-skill-hpc/slurm.py`、`ari/agent/workflow.py` |
 | checkpoint 目录 | `ARI_CHECKPOINT_DIR` > YAML `checkpoint.dir` > `workspace/checkpoints/{run_id}` | `config/__init__.py:_apply_checkpoint_env_overrides`、`PathManager` |
+| `bfts_pipeline[].enabled` | `{checkpoint}/workflow.yaml` > 包内自带的 `ari-core/config/workflow.yaml` > `true` | `cli/bfts_loop.py`（原始 YAML 读取） |
+| `lineage_decision.*` | 生效 rubric 的 `lineage_thresholds`（`ARI_RUBRIC`；仅四个阈值键，不含 `mode`）> 包内自带的 `ari-core/config/workflow.yaml` > `./config/workflow.yaml`（进程 cwd）> 调用点默认值 | `cli/lineage.py:_load_lineage_decision_config` |
+| `root_idea_selection.enabled` | **仅**包内自带的 `ari-core/config/workflow.yaml` > `false` | `cli/bfts_loop.py`（原始 YAML 读取） |
 
 **falsy 与缺失的区别：** core 侧的环境变量覆盖守卫（`if _m:` 等）把
 空环境变量当作缺失处理（保留 YAML/默认值；`base_url` 使用显式的
 `!= ""`）。GUI 的合并 `{**defaults, **saved}` 允许"存在但为空"的已保存
 键获胜，然后只对 `llm_model`/`llm_provider` 从 `workflow.yaml` 强制
 重填。
+
+**两个 `workflow.yaml` 块只会从包内自带的那份副本读取（反模式）。**
+`lineage_decision` 和 `root_idea_selection` 都不是 `ARIConfig` 的已声明
+字段，因此 `load_config` 的
+`{k: v for k, v in raw.items() if k in ARIConfig.model_fields}` 过滤器会把
+它们丢掉，两个块各自由专门的读取器重读原始 YAML。而这两个读取器在*读哪
+一份* `workflow.yaml` 上与其余读取器并不一致。`bfts_pipeline` 是 checkpoint
+优先读取的 —— 先看 `{checkpoint}/workflow.yaml`，包内副本只是回退；而
+`_load_lineage_decision_config`（`ari/cli/lineage.py`）读取包内自带的
+`ari-core/config/workflow.yaml`，只有当该文件缺失时才回退到相对进程工作
+目录的 `./config/workflow.yaml`；`root_idea_selection` 块更是只读包内副本。
+checkpoint 优先的读取与只读包内的读取共处于同一个文件
+`ari/cli/bfts_loop.py` 中。后果是：把这两个块写进
+`{checkpoint}/workflow.yaml` 不会生效，用 `--config` 传入同样不会生效
+（类型化加载器会丢弃它们，而这两个读取器都不看那条路径）。要为某次运行
+修改它们，请编辑包内自带的 `workflow.yaml`；就 `lineage_decision` 的四个
+阈值键而言，生效 rubric 的 `lineage_thresholds` 覆盖层才是按会场调参的
+正规手段。这是已知的不一致，而不是设计出来的分层；新的读取器不应沿用这种
+只读包内副本的模式。
+
+**未知的顶层键会被丢弃且没有任何运行时警告。** `load_config` 只用那些
+已声明为 pydantic 字段的顶层 YAML 键来构建 `ARIConfig` —— 即
+`ari/config/__init__.py` 中的
+`{k: v for k, v in raw.items() if k in ARIConfig.model_fields}` 过滤器。
+`ARIConfig` 设置了 `extra="allow"`，但在这里救不了任何东西：过滤发生在
+构造*之前*。有些未声明的块仍然生效，是因为有专门的读取器绕过类型化配置
+直接重读原始 YAML —— `memory` 走 `_apply_memory_section`，`container` 走
+`ari/cli/run.py`，`lineage_decision` 走
+`ari/cli/lineage.py:_load_lineage_decision_config`，此外还有
+`bfts_pipeline`、`pipeline` 和 `claim_gate_policy`。
+`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` 就是目前被认定拥有这类
+读取器的顶层键的枚举。*其余*所有顶层键都会被丢掉，且丢掉时不会记录任何
+日志；`ari.config` 中**不存在近似拼写（"你是不是想输入…"）检查**。因此把
+`rqgm:` 拼成 `rqmg:`，这次运行就会静默地停留在默认值上，没有任何错误可供
+察觉。有两件事可以部分弥补，但都不在加载时的 CLI 上：
+
+- **解析器会在其载荷中给出警告。** `_apply_workflow_layer`
+  （`ari/config/resolver.py`）会为每个既不在 `ARIConfig.model_fields`
+  也不在 `KNOWN_NON_CONFIG_TOP_KEYS` 中的键追加
+  `workflow.yaml top-level key '…' is not an ARIConfig field — load_config
+  silently drops it (no reader consumes it)`。它通过
+  `GET /api/v1/runs/{run_id}/resolved-config`（读取 checkpoint 中
+  `workflow.yaml` 的副本）以及新运行预览（读取内置的那份）的 `warnings`
+  数组传达给你。它只是一份列举，不是拼写建议；由于 `ari.viz.v1` 之外没有
+  任何代码调用解析器，手动运行的 CLI 永远看不到它。
+- **缺失在 checkpoint 中是可观测的。** 只有当 `ari.mode: ari_rqgm` 与
+  `rqgm.enabled: true` 同时成立时才会写出
+  `{checkpoint}/rqgm_state.json`（`ari/cli/run.py`），所以该文件不存在就
+  意味着这次运行是 `simple_bfts`。请用这个文件来确认非默认的执行模式是否
+  真的生效，而不是依据"没有报错"。
+
+同一个过滤器也让向后的方向是安全的：某个 `ari-core` 构建未声明为字段的
+块会被忽略而不是致命失败，所以把较新的 YAML 部署到较旧的 core 上，只会
+退化为该 core 的默认值，而不会加载失败。
 
 > ⚠ 这里的优先级是**按今天的实测行为记录**的，并非被改动过。在任何整合之前，
 > 该顺序由测试锁定（`test_config.py`、`test_default_provider.py`、
@@ -114,13 +177,14 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 | `source` | `pydantic` —— 遍历只覆盖已声明的模型字段。 |
 | `env_override` | 覆盖该叶子的 `ARI_*` 变量，或 `null`。 |
 
-**覆盖率不变式。** 注册表目前有 **144 个叶子且元数据覆盖率 100 %**：当任何
+**覆盖率不变式。** 注册表目前有 **204 个叶子且元数据覆盖率 100 %**：当任何
 被遍历到的叶子缺少 `FIELD_META` 前缀或精确条目时，`build_field_registry()`
 会抛出 `LookupError`，因此新增配置字段无法在没有 schema 元数据的情况下发布。
-当前分布：96 个 Governance / 14 个 Search (BFTS) / 14 个 Proposal routing /
-5 个 Models / 5 个 Infrastructure / 4 个 Evaluation / 4 个 Execution mode /
-2 个 Skills；119 个 expert、16 个 advanced、9 个 basic；143 个 `public` +
-1 个 `secret_reference`（`llm.api_key`）；114 个 `new_run_only` + 30 个
+当前分布：104 个 Governance / 32 个 Models / 24 个 Search (BFTS) /
+14 个 Proposal routing / 10 个 Manuscript completeness / 5 个 Infrastructure /
+5 个 Scientific assurance / 4 个 Evaluation / 4 个 Execution mode /
+2 个 Skills；150 个 expert、18 个 advanced、36 个 basic；203 个 `public` +
+1 个 `secret_reference`（`llm.api_key`）；146 个 `new_run_only` + 58 个
 `draft`；20 个叶子带有 `env_override`。
 
 有意为之的保真度限制（已记录在案，而非静默存在）：
@@ -150,8 +214,9 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 一个配对就是一个意图：若某个文档中只出现了一半而缺少与之一致的另一半，就会被
 以 `mode_interlock_mismatch` 拒绝（`validate_mode_interlocks`，作用于合并后的
 文档取值，而不是原始 patch）。自 ADR-09 起，这四个是 GUI 客户端唯一可写的
-模式/治理叶子，且仅限新建运行；`Execution mode` 分类与 `rqgm.*` 树中其余 96 条
-路径仍然仅限文件，并由 `POST /api/v1/runs` 以 `mode_locked` 拒绝。它们的
+模式/治理叶子，且仅限新建运行；`Execution mode` 分类与 `rqgm.*` 树中其余 104 条
+路径仍然仅限文件，并由 `POST /api/v1/runs` 以 `mode_locked` 拒绝
+（`viz/v1/launch.py:locked_launch_paths`）。它们的
 `applies_when` 元数据携带的是一条配对*说明*（"paired with `rqgm.enabled`
 (one intent — set both)"），而不是 `path=value` 门控，因为用其中一半去门控
 另一半会让互锁本身变成自我门控。
@@ -1098,8 +1163,8 @@ profile 之后应用，因此显式的环境变量选择优先于 YAML）：
 | `enabled` | `true` | `ari_rqgm` 内的纪元边界治理审计开/关（消融档位以治理关闭的方式运行 `ari_rqgm`）。 |
 | `default_level` | `1` | 盖印到报告中的默认每纪元治理级别。 |
 | `full_governance_only_on_top_k` | `3` | 仅对 top-k 节点投入完整的对抗者/辩护者/裁判注意力。 |
-| `judge_on_disputed_only` | `true` | 仅在有动议提出时才调用 GovernanceJudge。 |
-| `impeachment_only_at_epoch_boundary` | `true` | 动议只在 `audit_epoch` 内提出。 |
+| `judge_on_disputed_only` | `true` | **仅**作用于逐节点的对抗回合：当预算闸门拒绝 Defender 调用时，未被反驳的攻击不会到达逐节点的 `ArtifactJudge`，而是作为一条已记录的观测失效（`ari/rqgm/adversarial/round.py`）。它**不**约束纪元边界的 `GovernanceJudge` —— `audit_epoch` 的裁定步骤从不读取此键。 |
+| `impeachment_only_at_epoch_boundary` | `true` | 仅为声明 —— **没有任何代码路径读取此键**。动议只在 `audit_epoch` 内提出，是因为那是门面唯一的动议入口；这是结构性质而非开关。把它设为 `false` 也不会启用纪元中途的动议。 |
 | `max_llm_calls_per_audit` | `12` | 每次 `audit_epoch` 的硬上限；超过后每一步都降级到其确定性回退。 |
 | `max_defender_calls_per_epoch` | `12` | Defender 每纪元 LLM 调用上限（对抗者上限只存在于 `rqgm.adversarial.max_adversary_calls_per_epoch`）。 |
 | `max_judge_calls_per_epoch` | `8` | Judge 每纪元 LLM 调用上限。 |

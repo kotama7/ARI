@@ -2,8 +2,20 @@
 sources:
   - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/contracts.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/slurm.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/counters.py
+    role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
+  - path: ari-skill-hpc/skill.yaml
+    role: config
+  - path: ari-skill-hpc/tests/test_server.py
+    role: test
   - path: ari-skill-coding/src/server.py
     role: implementation
   - path: ari-skill-coding/mcp.json
@@ -23,75 +35,291 @@ last_verified: 2026-07-30
 
 ## ari-skill-hpc
 
-通过 SLURM 和 Singularity 进行 HPC 作业管理。**LLM：否**（完全确定性）。
+typed 的 SLURM 生命周期、严格的 SSH transport、能力探测，以及 digest 钉定的容器。
+**LLM：否**（完全确定性）。
+
+十个工具分三组：两个 typed 提交器（`job_submit`、`container_submit`）与保留下来的
+批处理脚本兼容桥（`slurm_submit`）；四个共用同一份句柄选择器的生命周期操作
+（`job_status`、`job_result`、`job_logs`、`job_cancel`）；以及三个探测器
+（`probe_platform_capabilities`、`counter_support`、`measure_counters`）。容器只经
+`container_submit` 及其携带的 digest 钉定 `ContainerRequestV1` 抵达——本包不提供
+任何镜像的构建、拉取或运行命令。
 
 ### 工具
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+#### `job_submit(request)`
+
+提交一份不可变的 `JobRequestV1`，并立即返回幂等的 `JobHandleV1`。命令是 `argv`
+数组，绝不经过登录节点的 shell。工具只接受一个 `request` 对象——`JobSubmitArgumentsV1`
+这层包装的存在，是为了把 JSON Schema 的全部 `$ref` 都收在输入 schema 的根上。
+必填项为 `request_id` / `job_name` / `work_dir`（已存在、且不是符号链接的绝对目录）/
+`argv` / `resources`，可选项为 `environment` / `container` /
+`accelerator_allocation` / `inputs` / `outputs` / `metadata`。
+
+`resources`（`ResourceRequestV1`）声明 `partition`、`nodes=1`、`tasks=1`、
+`tasks_per_node=None`、`cpus_per_task=1`、`walltime="01:00:00"`，以及与
+`slurm_submit` 同一套语义的 `launcher`（`auto` / `srun` / `none`，默认 `auto`）；
+`memory_mb_per_node` / `memory_mb_per_cpu` / `gpus_per_node` / `gpus_per_task` /
+`gpu_type` / `nodelist` / `exclude_nodes` / `exclusive` / `constraint` / `hint` /
+`account` / `qos` / `reservation` 也在这里给出。
+
+`environment`（`EnvironmentPolicyV1`）的 `export_mode` 固定为 `NIL`：作业环境
+只包含此处显式列出的非机密字面量与 `modules`，名字看起来像凭据的变量
+（`*_TOKEN`、`*_PASSWORD`、`*_API_KEY` 等）会被直接拒绝，无法藏进作业请求里。
+
+提交按请求 digest 幂等。请求由 `request_digest`（其正规化 JSON 的 sha256）标识，
+而这个 digest 在 `sbatch` 之前就已记进持久 ledger：同一份 `JobRequestV1` 再次提交
+拿回的是既有的 `JobHandleV1`，而不是第二个作业；transport 在结果未知时断掉，占位
+也照样留着，重试因此不会变成重复投入。`sbatch` 始终以 `--parsable --export=NIL`
+调用。
+
+`inputs` 的每一份 pin 都必须在提交时对上声明的 sha256 与字节数，并在负载启动前于
+节点上再核对一次；声明的 `outputs` 必须落在 `work_dir` 之下，符号链接一律拒绝。
+每个作业的产物放在 `{work_dir}/.ari-hpc/{去掉 sha256: 前缀的 request_digest}/`
+下，这就是句柄的 `artifact_scope`。
+
+core 智能体的批处理脚本工作流仍走下面的 `slurm_submit` 兼容桥；新的程序化
+调用方应使用 `job_submit`。
+
+```python
+result = job_submit(request={
+    "request_id": "bench_001",
+    "job_name": "bench_test",
+    "work_dir": "/abs/path/to/workdir",
+    "argv": ["./bench", "--threads", "32"],
+    "resources": {"partition": "your_partition", "cpus_per_task": 32},
+})
+# Returns: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#           "request_digest": "sha256:...", "job_id": "12345",
+#           "state": "submitted", ...}
+```
+
+#### `container_submit(request)`
+
+与 `job_submit` 完全相同的生命周期、完全相同的参数 schema，但请求必须自带
+`container` 声明，缺了就以 validation 错误拒绝提交。容器（`ContainerRequestV1`）的
+`runtime` 为 `apptainer`（默认）或 `singularity`，`image` 是一份 `ArtifactPinV1`
+——即 digest 钉定的镜像（绝对路径 + `sha256:…` + 字节数）。默认 `contain_all` 与
+`clean_environment` 为 `true`、`network` 为 `host`、`gpu` 为 `false`；`binds` 默认
+只读，且 target 不得重复。
+
+镜像按 digest 钉定，因此字节被换掉的镜像在作业开跑前会被核对拒绝，上了节点还会
+再核对一次。声明了容器时，`inputs` 的每一份 pin 还必须落在 `work_dir` 或某个已声明
+的 bind 之下；`work_dir` 本身若未被请求声明，会以读写方式 bind 挂载进去。
+
+#### `slurm_submit(script, job_name, partition, nodes=1, tasks=1, tasks_per_node=None, cpus_per_task=1, launcher="auto", walltime="01:00:00", work_dir, modules=[])`
 
 提交 SLURM 批处理作业。
+
+**仅仅申请多个节点，本身并不会用到多个节点。** 批处理主体只在第一个节点上运行；
+除非有什么东西启动并行步骤，其余节点都处于空闲。由谁来启动，由 `launcher` 决定：
+
+| `launcher` | 脚本的启动方式 | 适用场景 |
+|---|---|---|
+| `auto`（默认） | 形状为单节点单任务时绑定到其 CPU 启动，否则直接启动 | 脚本自己调用 `srun` / `mpirun`，或本身是串行的 |
+| `srun` | 按声明的 `nodes` / `tasks` / `cpus_per_task` 以 `srun` 启动 | 脚本本身就是并行程序（MPI / SPMD） |
+| `none` | 完全按写法原样启动 | 负载必须看到未经改动的批处理步骤 |
+
+`auto` 之所以绑定单任务情形，是因为批处理步骤会继承整个节点的 affinity mask：
+否则多线程负载会散布到整台机器上，甚至可能输给它自己的串行基线，读起来像是
+kernel 慢，而不是 allocation 未绑定。
+
+**不要**把 `launcher="srun"` 与你自己的 launcher 叠加：
+`srun --ntasks=8 mpirun -np 8 ./x` 是六十四个 rank，而下游没有任何环节能把它与
+一次正确的 run 区分开。这正是该选择必须显式声明、而不是从 `tasks > 1` 推断的
+原因——这两类多任务请求对 scheduler 来说无法区分。
+
+启动模式与 allocation 形状都属于请求 digest，因此同一个脚本在不同形状或不同
+launcher 下提交是另一个作业，而不是对第一次提交的 cache hit。
 
 ```python
 result = slurm_submit(
     script="""
 #!/bin/bash
-#SBATCH --cpus-per-task=32
 gcc -O3 -fopenmp -o ./bench ./bench.c
 OMP_NUM_THREADS=32 ./bench
 """,
     job_name="bench_test",
     partition="your_partition",
+    cpus_per_task=32,
     work_dir="/abs/path/to/workdir"
 )
-# Returns: {"job_id": "12345", "status": "submitted"}
+# Returns: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "state": "submitted", "status": "submitted",
+#           "message": "Job 12345 submitted successfully",
+#           "request_digest": "sha256:...", "submission_digest": "sha256:..."}
 ```
 
 **注意事项：**
-- `--account` 和 `-A` 头信息会被静默移除（在此集群上无效）
-- 空的 `job_id` 会立即返回错误
-- 脚本中不要使用 `~`（在 SBATCH 中不会展开）
+- 写在 `script` 里的 `#SBATCH` 指示行不起作用。生成的头部之后紧接着就是可执行
+  内容，`sbatch` 在读到脚本主体之前就已停止解析指示行——形状要用参数
+  （`nodes`、`tasks`、`cpus_per_task`、`walltime`）来声明
+- 被拒绝的提交不会抛异常，而是返回
+  `{"job_id": "", "status": "error", "message": ..., "partition": ...}`
+- 脚本主体在 `set -euo pipefail` 下运行，`PATH=/usr/local/bin:/usr/bin:/bin`、
+  `LANG` / `LC_ALL=C.UTF-8`，并 unset 掉 `BASH_ENV ENV CDPATH GLOBIGNORE
+  PYTHONHOME PYTHONPATH VIRTUAL_ENV`：提交端 shell 的任何东西都不会被继承，
+  所以请写绝对路径，并通过 `modules` 取用工具链
 
-#### `job_status(job_id)`
+#### `job_status(handle_id)`
 
-轮询 SLURM 作业状态。
+对一个 ARI 句柄或一个原始 SLURM 作业 ID，返回与供应商无关的 `JobStatusV1`。
+
+`job_status` / `job_result` / `job_logs` / `job_cancel` 共用同一份选择器 schema：
+`handle_id`（`JobHandleV1` 的句柄 ID，首选）与 `job_id`（原始 SLURM 作业 ID，
+遗留兼容）二选一。它是 `oneOf`，两个都给或都不给都会被拒绝；实现优先读 `handle_id`。
+既不是已知句柄、也不是纯数字 SLURM ID 的选择器是 validation 错误。
+
+状态取自 `sacct -j <id> --noheader --parsable2 --allocations
+--format=JobID,State,ExitCode,Start,End,Reason`；accounting 尚无记录时回退到
+`squeue -j <id> --noheader --format=%T|%R`。
 
 ```python
-result = job_status("12345")
-# Returns: {"status": "COMPLETED", "exit_code": 0, "stdout": "MFLOPS: 284172"}
-# 状态值：PENDING、RUNNING、COMPLETED、FAILED、ERROR
+result = job_status(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-status/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "state": "succeeded",
+#           "scheduler_state": "COMPLETED", "exit_code": 0,
+#           "start_time": ..., "end_time": ..., "reason": None}
 ```
 
-#### `job_cancel(job_id)`
+`state` 是归一化后、与供应商无关的值——`submitted` / `running` / `succeeded` /
+`failed` / `cancelled` / `unknown` 之一——而 `scheduler_state` 保留 SLURM 自己的
+措辞。`PENDING` / `CONFIGURING` / `REQUEUED` / `RESIZING` / `SPECIAL_EXIT` 归一
+为 `submitted`；`RUNNING` / `COMPLETING` / `SUSPENDED` / `STAGE_OUT` 归一为
+`running`；`COMPLETED` 归一为 `succeeded`；`CANCELLED`（两种拼法）/ `DEADLINE` /
+`REVOKED` 归一为 `cancelled`；`BOOT_FAIL` / `FAILED` / `NODE_FAIL` /
+`OUT_OF_MEMORY` / `PREEMPTED` / `TIMEOUT` 归一为 `failed`。scheduler 不肯作答的
+作业读作 `state: "unknown"`、`scheduler_state: "UNKNOWN"`——那是被记录下来的
+「没有证据」，不是错误。
 
-取消正在运行或等待的 SLURM 作业。
+没有 `ERROR` 这个状态。调用失败返回的是错误信封
+`{"error": {"kind": ..., "message": ..., "retryable": ...}}`，其中 `kind` 取
+`validation` / `transport` / `scheduler` / `unknown`；message 在离开工具前会先被
+清洗掉形似凭据的文本。
+
+#### `job_result(handle_id)`
+
+收集终态的 `JobResultV1`：重新哈希声明的 inputs / outputs 与日志，并把结果原子
+写入 `{artifact_scope}/result-v1.json`。选择器与 `job_status` 相同。
+
+作业必须是经 ARI 投入的（要有 ledger 记录和句柄），并且带 typed 请求：
+`slurm_submit` 兼容桥投入的作业能取到 status 与 logs，但取不到 typed 的
+`JobResultV1`。在作业进入终态（`succeeded` / `failed` / `cancelled`）之前调用是
+validation 错误。
+
+声明的每一份 input 按其 pin 重新验证，声明的每一份 output 从磁盘上的实际文件重新
+哈希成 `ArtifactPinV1`，日志与 provenance pin 一并附上——submission record、执行
+环境快照、module 清单、容器 runtime 版本、退出码，以及请求声明了独占分配时的
+exclusive-allocation 与 accelerator-inventory 见证。缺少 `required: true` 的 output
+不是异常，而是以 `error.kind = "artifact"` 落进结果里。以任何非 `succeeded` 终态
+结束的作业得到 `error.kind = "execution"`，其中 `NODE_FAIL` / `PREEMPTED` /
+`REQUEUED` 标记为 `retryable`。
+
+返回值带 `request_digest` / `environment_digest` / `module_digest`，以及存在时的
+`module_snapshot_digest` / `container_digest` / `accelerator_allocation_digest` /
+`accelerator_inventory_digest`，最后由覆盖其余部分的 `result_digest` 把整份结果
+封口。
+
+#### `job_logs(handle_id)`
+
+读取 ARI 作业句柄的有界、带 digest 的 stdout / stderr。选择器与 `job_status`
+相同，同样只对经 ARI 投入的作业可用。
+
+```python
+result = job_logs(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-logs/v1", "logs": [...]}
+```
+
+每条日志给出 `stream`（`stdout` / `stderr`）/ `path` / `digest` / `size_bytes` /
+`text` / `truncated`。`text` 在 1 MiB（1,048,576 字节）处打住并置
+`truncated: true`——截断是看得见的，不会被当成完整输出。`digest` 与 `size_bytes`
+在共享文件系统上直接读取日志时是对整个文件而言的；若走的是非共享的 transport，
+日志经该 transport 取回，`digest` 与 `size_bytes` 便也只覆盖同样这 1 MiB。
+日志从句柄 `artifact_scope` 下的 `slurm-{job_id}.out` / `.err` 读取；
+没有对应文件的那一路直接略去，而共享文件系统上日志必须是普通文件，符号链接会被
+拒绝。
+
+#### `job_cancel(handle_id)`
+
+请求取消一个 ARI 或 SLURM 作业。选择器与 `job_status` 相同，内部执行
+`scancel <job_id>`。
+
+```python
+result = job_cancel(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-cancel/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "status": "cancel_requested"}
+```
+
+名字是精确的：返回的是 `scancel` 受理了这个请求，而不是作业已经停下。作业本身的
+情况要靠轮询 `job_status` 去看——被取消的作业读作 `state: "cancelled"`。`scancel`
+自身被拒绝时，调用返回 `kind: "scheduler"` 的错误信封。
 
 #### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
 
 在**计算分区上**探测工具可用性（`command -v`），并将结果缓存到
-`{checkpoint_dir}/platform_capabilities.json`。设计上尽力而为：任何失败
-（无分区、缺少 `srun`、排队超时）都返回 `{"status": "skipped", ...}` 且不写
-任何文件；已有缓存则直接返回 `{"status": "cached", ...}`，不再重新探测。
-claims 抽取器会读取该缓存，从而不会声明依赖平台上确实缺失的工具的证据。
+`{checkpoint_dir}/platform_capabilities.json`。`tools` 是逗号分隔的清单，默认取
+`ARI_PROBE_TOOLS`，再没有则是 `perf,numactl,papi_avail,likwid-perfctr,valgrind`；
+`partition` 为空时回退到 `ARI_SLURM_PARTITION`。
 
-#### `singularity_build(definition_file, output_path, partition)`
+真正跑完的探测返回 `{"status": "probed", "partition": ..., "arch": ...,
+"available": {"perf": true, ...}}`，其中 `available` 把每个被探测的名字映到一个
+布尔值。探测跑了但缓存写不下去时，同一份记录以
+`{"status": "unsaved", "reason": ..., ...}` 返回；已有有效缓存则直接返回
+`{"status": "cached", ...}`，不再重新探测。设计上尽力而为：任何失败（无分区、
+缺少 `srun`、排队超时）都返回 `{"status": "skipped", "reason": ...}` 且不写任何
+文件。claims 抽取器会读取该缓存，从而不会声明依赖平台上确实缺失的工具的证据。
 
-从定义文件构建 Singularity 容器。
+#### `counter_support()`
 
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
+报告本节点是否授予硬件计数器——靠真的打开一个来确定，而不是去找 profiler
+二进制文件。无参数。`perf` 在某些允许计数的节点上并不存在，在某些拒绝计数的
+节点上反而装着，厂商 profiler 的路径又依站点而异；只有打开计数器，才能观察到
+真正会生效的 kernel 策略，而且是在该节点实际运行的容器内部观察到的。
 
-作为 SLURM 作业运行 Singularity 容器。
+```python
+result = counter_support()
+# Returns: {"schema_version": "ari.hpc.counter-support/v1", "architecture": "...",
+#           "perf_event_paranoid": ..., "reviewed_events": [...],
+#           "status": "ready", "detail": None}
+```
 
-#### `singularity_pull(source, output_path, partition)`
+`status` 取 `ready`；自探测被 `EACCES` 或 `EPERM` 拒绝时取 `denied`；该架构没有
+经审查的 `perf_event_open` 调用号、或自探测因其他原因失败时取 `unsupported`；
+非 Linux 主机上取 `unavailable`。
 
-从远程仓库拉取 Singularity 镜像。
+#### `measure_counters(pid, window_ms=1000, events=["cycles", "instructions"])`
 
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
+在有界窗口内，对一个**已经在运行的**进程计数经审查的硬件事件。这是 profiling
+而不是执行：不创建进程、不写任何文件、也不索取凭据。
 
-使用 fakeroot 模式构建 Singularity 容器。
+- `pid` 必填，必须指向一个在跑的进程。
+- `window_ms` 取 1 … 60000（`MAX_WINDOW_MS`），默认 1000。
+- `events` 只能取经审查集合中的名字：`branch-instructions`、`branch-misses`、
+  `cache-misses`、`cache-references`、`cycles`、`instructions`。集合之外的一律
+  拒绝，调用方无法借此触达任意 raw event 编码。默认
+  `["cycles", "instructions"]`。
 
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
+计数器以最小权限打开（`exclude_kernel` + `exclude_hv`），因此被拒绝时反映的是
+策略本身，而不是一个过宽的请求；返回值里的 `excluded: ["kernel", "hypervisor"]`
+把这一点记下来。
 
-使用 GPU 访问运行 Singularity 容器（`--nv` 标志）。
+```python
+result = measure_counters(pid=12345, window_ms=2000)
+# Returns: {"schema_version": "ari.hpc.counter-measurement/v1", "status": "measured",
+#           "support": {...}, "pid": 12345, "window_seconds": 2.000123,
+#           "counters": {"cycles": ..., "instructions": ...},
+#           "excluded": ["kernel", "hypervisor"]}
+```
+
+`counter_support()` 不是 `ready`，或者对目标 pid 打不开计数器时，`counters` 为空，
+`status` 带回 `denied` / `unavailable` / `unsupported`，并附上那份 support 记录。
+
+这是唯一在 `skill.yaml` 中声明 `context_requirement: node` 的 HPC 工具，因此它的
+输入 schema 必须声明一个 `ari_context` 对象属性：transport 会以这个名字为任何带
+context 要求的工具注入已授权的节点 context，而该 schema 又设了
+`additionalProperties: false`——不声明它，就会拒绝掉每一次已授权的调用。proxy 会
+在 `tools/list` 里把这个属性剥掉，并在 `tools/call` 时改写它，所以它绝不会是智能体
+自己传的参数。
 
 ---
 
@@ -367,7 +595,7 @@ v0.7.0 将 v0.6.0 的 LLM 驱动判定路径替换为以 PaperBench 为评分内
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
-ors_audit_rubric     (replicate-skill)    → ors_rubric.audit.json (flags leaves in ors_rubric.json in place)
+ors_audit_rubric     (replicate-skill)    → 一份独立的审计文档；ors_rubric.json 不会被改写
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (默认 local-tarball)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (确定性；fetch_code_bundle ← publish_record.json)
@@ -379,9 +607,11 @@ ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2：用 S
 
 `ors_audit_rubric` 检查下游一切评分所依据的 rubric 本身：为每个叶节点标记
 `vague_qualifier` / `no_paper_evidence` / `duplicate`（确定性）与
-`unverifiable`（每叶一次 LLM 调用），就地重写 `ors_rubric.json`，并在超过
-20% 叶节点被标记时返回 `regen_recommended`。它是信号而非闸门——评分照常进行，
-但标记会随 rubric 一起传递。可用 `ARI_MODEL_RUBRIC_AUDIT` 指向与生成方不同的模型。
+`unverifiable`（每叶一次 LLM 调用），并在超过 20% 叶节点被标记时返回
+`regen_recommended`。冻结后的 rubric **不会**被改写——结论写入一份独立的
+`ari.replication-rubric-audit/v2` 文档（默认路径 `<rubric_path>.audit.json`），
+其中绑定了 rubric 与 paper 的 digest，使两者无法各自漂移。它是信号而非闸门——
+评分照常进行。可用 `ARI_MODEL_RUBRIC_AUDIT` 指向与生成方不同的模型。
 
 EAR 开启的运行通过 `ors_seed_sandbox`（确定性）获取 reproduce.sh；LLM `ors_build_reproduce` 在 reproduce.sh 已存在时跳过，所以仅在 EAR 关闭（论文唯一复现）时触发。
 
@@ -421,11 +651,11 @@ v0.7.0 引入的 PaperBench 形式 **自动 rubric 生成与审计**。读取论
 
 ### 工具
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
+#### `generate_rubric(paper_path="", paper_text="", output_path="", target_leaf_count=0, model="", temperature=0.0, seed=0, paperbench_rubric_id="", max_model_calls=64, subtree_concurrency=4, provider="", model_revision="")`
 
 生成 PaperBench 兼容的 rubric。当 `target_leaf_count=0` 时按论文长度自动估算叶节点数（约 1 叶 / 75 词，限制在 [50, 400]）。
 
-`two_stage=True`（默认）使用 **两阶段生成**: ①骨架阶段定义根 + 直接子节点（每项贡献/实验一个）并分配各子树叶数预算 → ②子树阶段对每个直接子节点并行运行，递归展开 4–6 层。合并后，违反 schema `minLength=10` 的叶（`quote` / `requirements` 过短）会被自动剪除。在 PaperBench 参考论文上的实测：相比单次调用 **叶数约 4 倍、深度增加 1–2 层**，API token 消耗约 5 倍。`two_stage=False` 可回退到单次调用（`prompts/adversarial_reviewer.md`）。
+生成始终是分层的：单次调用路径已被移除，冻结后的 envelope 无条件记录 `strategy: "hierarchical-v2"` / `quality_profile: "calibrated"`。①骨架阶段（`prompts/skeleton.md`）定义根 + 直接子节点（每项贡献/实验一个）并分配各子树叶数预算 → ②子树阶段（`prompts/subtree.md`）以 `subtree_concurrency` 的并发度对每个直接子节点递归展开其子树。合并后，违反 schema `minLength=10` 的叶（`quote` / `requirements` 过短）会被自动剪除，无法绑定到论文精确 span 或显式 external prerequisite 的叶同样会被剪除。`max_model_calls` 限定整次运行的调用上限，每一对提示词/响应都保留在 `.ari-rubric/` 下并列入 `generator.calls`。
 
 `paperbench_rubric_id`（未发布）从
 `ari-core/config/paperbench_rubrics/<id>.yaml` 中选择一个 venue 条件化
@@ -435,13 +665,14 @@ YAML，并通过 `{VENUE_HINT}` 占位符把 `prompt_overrides.system_hint` /
 `ari-skill-paper` 在同行评审中已使用的 `reviewer_rubrics/` venue 模式
 一致，因此同样的 `venue → YAML → prompt` 流程现在也适用于 rubric
 生成器。附带模板：`generic`（向后兼容）、`sc`（HPC 论文审计，6 轴）、
-`neurips`（ML 可复现性，6 轴）、`nature`（湿实验，5 轴）。`paper_audit`
-模式要求 `two_stage=True`。YAML schema 见
+`neurips`（ML 可复现性，6 轴）、`nature`（湿实验，5 轴）。YAML schema 见
 [`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
 
-#### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
+#### `audit_rubric(rubric_path, paper_path="", paper_text="", auditor_model="", output_path="", max_model_calls=400)`
 
 独立审计步骤。将问题叶节点标记为 `vague_qualifier` / `no_paper_evidence` / `duplicate` / `unverifiable`；超过 20% 时建议重新生成。
+
+冻结后的 rubric 绝不会被改写：结论进入一份独立的 `ari.replication-rubric-audit/v2` 文档，写到 `output_path`，为空时则写在 rubric 旁边的 `<rubric_path>.audit.json`。审计开始前会重新校验 rubric 自身的 digest、它的 `paper_sha256` 与传入论文文本是否一致，以及生成方的 provenance artifact。当审计方的 model/provider/revision 身份与生成方相同时，报告记录 `independence_status: "not-independent"`。
 
 #### `suggest_target_leaf_count(paper_path, paper_text)`
 
@@ -721,34 +952,39 @@ AI Scientist v2 风格的迭代式引用收集。LLM 生成搜索查询并在多
 
 ### 工具
 
-#### `write_code(filename, code, work_dir="/tmp/ari_work")`
+#### `write_code(filename, code, work_dir="/workspace")`
 
 将源文件写入工作目录。
 
-#### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
+#### `run_code(filename, work_dir="/workspace", timeout=600)`
 
-执行源文件（根据扩展名自动检测语言）。输出会被截断，并附带显示省略字符数和重定向至文件的提示标记。
+用扩展名选定的解释器执行源文件（`.py` → `python3`、`.sh` → `bash`、`.js` → `node`、`.rb` → `ruby`、`.pl` → `perl`、`.lua` → `lua`）。它**不**编译，因此 C/C++/Fortran/Rust/Go 需走 `run_bash`。内联的 `stdout`/`stderr` 是有界预览（分别 4,000 与 2,000 字符），截断标记会给出省略的字符数并说明完整日志是一个 artifact；完整字节流始终以带 SHA-256 digest 的 content-addressed artifact 写出。
 
-#### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
+#### `run_bash(command, work_dir="/workspace", timeout=600)`
 
-在工作目录中运行 bash 命令。结果中带有 `truncated` 布尔标志的输出截断。
+在工作目录中运行 bash 命令。预览与完整日志的处理同 `run_code`，结果中带有 `truncated` 布尔标志。
 
-#### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
+#### `read_file(path, offset=0, limit=8000, work_dir="/workspace")`
 
-针对大文件支持分页读取文本。返回内容、用于继续的 `next_offset` 与总行数。
+针对大文件支持分页读取文本。`offset` 与 `limit` 是**字符**偏移而非行号。返回内容、用于继续的 `next_offset`（读到末尾为 `null`）与总字符数。
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# 返回值: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# 返回值: {"path": "...", "content": "...", "offset": 0, "returned_chars": 100,
+#          "total_chars": 5000, "truncated": True, "next_offset": 100}
 ```
 
-工作目录：`work_dir` 参数 > `ARI_WORK_DIR` 环境变量 > `/tmp/ari_work`。
+工作目录：workspace 根目录由 `ARI_WORK_DIR`（默认 `/tmp/ari_work`）固定。`work_dir` 参数并不替换该根目录，而是选定其**下**的一个目录并按需创建；解析后落在根目录之外的路径会被拒绝而不是被改写。智能体看到的根目录是固定的容器路径 `/workspace`，文件类工具在真正访问前把它映射回真实目录，并从每个结果中抹掉真实路径。
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=None, file="results.json", work_dir="/workspace")`
 
 写出一份将输入参数与测量输出分离的类型化 `results.json`，使下游（`transform → science_data`、论文撰写、summary stats）不会把「测量到的量」与「运行所用的条件」混淆，避免 best-of 归约把输入尺寸（`nnz`、`M`、`K`、`threads`）误选为真实指标（如 `GFlops_per_s`）。`params` 与 `measurements` 必须 disjoint。
 
-可选的 `provenance` 参数是一个 `{operand: source}` 映射，会被原样写入 `results.json` 的 `_provenance` 键，由 claim/指标正确性门消费。当某个操作数的值是经验**测量**得到的上限/峰值时，标注 `"microbench"` 或 `"benchmark"`（以免归一化指标被判定为依赖占位值）；当它是相对于**独立**参考计算出的残差时，标注 `"correctness"` 或 `"reference"`（以免输出被判定为未经验证）。尽力而为，为空时完全省略。
+文件形如 `{"schema_version": "1.0", "typed_schema_version": "ari.measurement-set/v1", "measurement_set": {...}}`，只包含规范的 `MeasurementSetV1` 对象，旁边不再写平铺投影（见[执行与测量契约](execution_contract.md)）。每个分组都必须是 finite JSON：不可序列化的值（如 `pathlib.Path`）、`NaN`/`Infinity`、以及非数值的 measurement 都会被拒绝并返回 `error`，而不是被强制转换。
+
+可选的 `units` 参数是 `{measurement: unit}` 映射；未声明单位的 measurement 记为 `unit_status: "missing"`，单位从不推断。可选的 `execution` 参数是从上一次 `run_code`/`run_bash` 响应中原样复制的 `measurement_execution` 块（execution identity/attempt、status、exit code、artifact digest 以及服务端签发的 receipt）；不提供时 measurement 会被标记为 `execution_status: "unreported"`，并且不具备 scientifically admissible 资格。`units` 或 `provenance` 中出现 `measurements` 里没有的名字会被拒绝。
+
+可选的 `provenance` 参数是一个 `{operand: source}` 映射，记录在对应的规范 measurement 记录上，由 claim/指标正确性门消费。当某个操作数的值是经验**测量**得到的上限/峰值时，标注 `"microbench"` 或 `"benchmark"`（以免归一化指标被判定为依赖占位值）；当它是相对于**独立**参考计算出的残差时，标注 `"correctness"` 或 `"reference"`（以免输出被判定为未经验证）。尽力而为，为空时完全省略。
 
 ---
 

@@ -86,6 +86,15 @@ version は `3` のまま)。
 }
 ```
 
+leaf のフィールドには別形がある。`rationale_from_paper` は代わりに
+`{"external_prerequisite": {"description", "source"}}` を、対応する
+`evidence_span` は `{"kind": "external-prerequisite", "description", "source"}`
+を取れる — schema は各 leaf を「paper 本文の厳密な evidence」か「明示された
+external prerequisite」のいずれかに束縛することを要求する。`verification` は
+`{"kind": "log-pattern", "relative_path": "reproduce.log", "pattern": "..."}` と
+`{"kind": "metric", "relative_path": "...", "metric": "...", "unit": "..."}` も
+受け付ける。
+
 ### カテゴリ (閉じた語彙)
 
 `task_category` — 必ず以下のいずれか:
@@ -146,7 +155,9 @@ validator.validate(rubric)  # スキーマ違反で例外
 ## sha256 検証
 
 ```python
-from ari_skill_replicate.manifest import verify
+# ari-skill-replicate/src/manifest.py — skill 側のモジュールはフラットなので、
+# skill 自身のコードもこの形で import している (src/migration.py 参照)。
+from manifest import verify
 verify(rubric)   # rubric_sha256 が再計算と一致なら True
 ```
 

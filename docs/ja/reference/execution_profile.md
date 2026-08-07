@@ -9,8 +9,9 @@ last_verified: 2026-08-02
 
 # `execution_profile` 仕様
 
-PaperBench ルーブリック (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
-v3) の `reproduce_contract` 配下にある `execution_profile` オブジェクトは、
+PaperBench ルーブリック (`ari-skill-replicate/schemas/replication_rubric.schema.json`
+— `schema_version: ari.replication-rubric/v2`、`version: "3"`) の
+`reproduce_contract` 配下にある `execution_profile` オブジェクトは、
 論文が要求する並列実行属性 (SLURM 配置、GPU 種、メモリ、NUMA バインド等)
 を表現する。`ari-skill-paper-re` が検証し、allocationフィールドを
 `ari.hpc.job-request/v1`へ変換する。job-stepフィールドはエージェントが
@@ -26,7 +27,7 @@ v3) の `reproduce_contract` 配下にある `execution_profile` オブジェク
 | `kind` | enum | (エージェントプロンプトのみ) | — | `cpu_single` \| `gpu_single` \| `gpu_multi` \| `mpi` \| `mpi_gpu` |
 | `paper_max_ranks` | int | — | — | 論文が報告した最大ランク数 |
 | `paper_max_nodes` | int | — | — | 論文が報告した最大ノード数 |
-| `min_ranks` | int | `--ntasks=N` | 1 | 部分点を許容する最小ランク数 |
+| `min_ranks` | int | `--ntasks=N` | 1 | 部分点を許容する最小ランク数。設定時はそのまま要求`--ntasks`になるため、`ntasks_per_node`がこれを超えてはならない (型付きrequestが`tasks_per_node cannot exceed total tasks`で拒否する) |
 | `min_nodes` | int | — | 1 | ノード版 |
 | `result_aggregation` | enum | — | `rank0_csv` | v0.7.2 は `rank0_csv` のみ |
 | `metric_columns` | list[str] | — | `[]` | CSV ヘッダ (例: `["nodes","ranks","runtime_sec","gflops"]`) |
@@ -44,7 +45,7 @@ v3) の `reproduce_contract` 配下にある `execution_profile` オブジェク
 | `constraint` | str | `--constraint=...` | `""` | 例: `"skylake"`, `"haswell|broadwell"` |
 | `cpu_bind` | str | `reproduce.sh`内の`srun --cpu-bind` | `""` | job-step設定。sbatch directiveではない |
 | `mem_bind` | str | `reproduce.sh`内の`srun --mem-bind` | `""` | job-step設定。sbatch directiveではない |
-| `hint` | str | `--hint=...` | `""` | 例: `"nomultithread"` |
+| `hint` | enum | `--hint=...` | `""` | `""` \| `compute_bound` \| `memory_bound` \| `multithread` \| `nomultithread` |
 | `module_loads` | list[str] | clean job prelude | `[]` | 明示loadしprovenanceに記録 |
 | `account` / `qos` / `reservation` | str | 各型付きselector | `""` | 任意フラグの代替 |
 | `extra_sbatch_args` | list[str] | deprecated readerのみ | `[]` | 新規生成禁止。限定4フィールドだけ互換変換 |
@@ -75,7 +76,7 @@ Skylake 限定) の忠実再現:
     "kind": "mpi_gpu",
     "paper_max_ranks": 32,
     "paper_max_nodes": 4,
-    "min_ranks": 4,
+    "min_ranks": 32,
     "result_aggregation": "rank0_csv",
     "metric_columns": ["nodes","ranks","runtime_sec","gflops"],
     "accepts_reduced_scale": true,

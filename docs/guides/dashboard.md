@@ -4,6 +4,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/server.py
     role: implementation
+  - path: ari-core/ari/viz/checkpoint_finder.py
+    role: implementation
+  - path: ari-core/ari/viz/checkpoint_lifecycle.py
+    role: implementation
   - path: ari-core/ari/viz/api_capabilities.py
     role: implementation
   - path: ari-core/ari/viz/frontend/src/App.tsx
@@ -30,11 +34,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
+  - path: ari-core/tests/test_launch_config.py
+    role: test
   - path: ari-core/ari/viz/frontend/scripts/capture_screenshots.mjs
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # Dashboard Guide
@@ -83,6 +89,57 @@ The React bundle is served from `ari-core/ari/viz/static/dist/`. If that
 directory is missing or stale, rebuild it from
 `ari-core/ari/viz/frontend/` with `npm ci && npm run build` (Vite writes
 straight into `../static/dist`).
+
+## Which checkpoint the server starts on
+
+The two entry points differ in more than ergonomics. `ari viz <dir>` takes
+the checkpoint directory as a **required** argument, so the active
+checkpoint is exactly the one you named. `python -m ari.viz.server` makes
+it optional — and started without one, the server does **not** stay empty.
+
+In that case it enumerates every checkpoint under the same search roots
+the checkpoint list uses, adopts the one with the newest directory mtime
+as the process-global active checkpoint, and seeds the launch-config state
+(model, provider, profile) from that checkpoint's `launch_config.json`,
+falling back to a `launch_config.json` in its parent directory.
+
+Only directories whose name matches the run-id shape — 8 to 14 digits then
+an underscore, e.g. `20260727120000_my_run` — are candidates, and
+`experiments`, `__pycache__` and `.git` are skipped. If nothing matches,
+nothing is selected and the endpoints that need a checkpoint refuse with a
+*"No active project"* error.
+
+Two properties of this adoption are worth knowing before you trust what
+you see:
+
+- **It is not announced.** The startup banner prints the argument you
+  passed — literally `Checkpoint: None` when you passed none — and is not
+  rewritten when a checkpoint is adopted afterwards.
+- **It is not per-tab.** There is one selection per server process. Every
+  browser tab talking to this server shares it, and using the sidebar's
+  project picker in one tab moves it for all of them.
+
+What moves the global selection after startup:
+
+| Action | Effect on the global selection |
+|---|---|
+| the sidebar's project picker (`POST /api/switch-checkpoint`) | sets it to the chosen checkpoint |
+| the legacy `POST /api/launch` | points it at the run directory the launch just pre-created |
+| deleting the active checkpoint | clears it — nothing is selected afterwards |
+| a wizard file upload with nothing selected | creates a staging directory and makes *that* the selection |
+| the Studio launch (`POST /api/v1/runs`) | **none** — deliberately, see [Configuration Studio](configuration_studio.md) |
+
+So the run the legacy screens describe after a bare restart is "whichever
+checkpoint was touched last", which is not necessarily the run you care
+about. The server's own HTTP access log follows the same selection: it is
+appended to `{active checkpoint}/viz_access.jsonl`, so with no checkpoint
+argument those request lines land in the auto-adopted run.
+
+The v2 workspaces are unaffected. A `/api/v1` read that concerns one run
+resolves its checkpoint from the request's own `run_id`, not from the
+global selection, so a `?run=` deep link renders the same thing whatever
+that selection happens to be. Pass an explicit checkpoint path, or use a
+v2 deep link, when you need determinism.
 
 ## The capability flag
 

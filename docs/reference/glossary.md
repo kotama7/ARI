@@ -140,9 +140,13 @@ unused alternative remains. See
 **claim-evidence gate**
 A deterministic, no-LLM gate (`claim_evidence_hard_gate`) that re-derives each
 reported paper number from recorded results within tolerance and checks numeric
-coverage / operand resolution / figure existence. Default-on in `warn`
-(report-only) mode; set `claim_gate_policy.mode: strict` (or
-`ARI_CLAIM_GATE_MODE=strict`) to block finalize on blocking errors. A
+coverage / operand resolution / figure existence. Default-on in `warn` mode,
+which blocks the FINAL phase on the objective-integrity `always_block_on` tier
+only (invariant violation, failed or uncovered correctness, unmeasured ceiling,
+non-reproducible recompute, cross-run or unbound evidence); set
+`claim_gate_policy.mode: strict` (or `ARI_CLAIM_GATE_MODE=strict`) to
+additionally block on the configured `block_on` findings and uncovered result
+numbers in strict sections. Draft-phase reports never block. A
 `comparison_scope` of `any` (default) treats a cross-environment comparison as a
 transparency warning, while `same_environment` makes it a blocking error. See
 [Configuration](configuration.md).

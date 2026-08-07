@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # ARI クイックスタートガイド
@@ -368,10 +368,10 @@ LLM プロバイダーとモデルを選択します：
 
 ## ダッシュボードのアーキテクチャと API
 
-ダッシュボードは Python asyncio HTTP サーバーによって配信される React/TypeScript SPA（Vite でビルド）です。以下の 2 つのコンポーネントで構成されています：
+ダッシュボードは Python 標準ライブラリの HTTP サーバーによって配信される React/TypeScript SPA（Vite でビルド）です。以下の 2 つのコンポーネントで構成されています：
 
-- **HTTP サーバー** (`ari/viz/server.py`): REST API + SSE ログストリーミング（メインポート上）
-- **WebSocket サーバー**: リアルタイムのツリー更新（ポート+1、例: ダッシュボードが 8765 の場合は 8766）
+- **HTTP サーバー** (`ari/viz/server.py`): スレッドベースの `http.server`（`ThreadingHTTPServer`）— REST API + SSE ログストリーミング（メインポート上）。長時間維持される SSE ストリームを含め、各リクエストはその存続期間中スレッドを 1 本占有します。処理が遅いハンドラが制御を譲るためのイベントループはありません。
+- **WebSocket サーバー**: リアルタイムのツリー更新（ポート+1、例: ダッシュボードが 8765 の場合は 8766）— asyncio 上で動作する唯一のリスナーです（`websockets` パッケージ経由）。
 
 ### API エンドポイント
 

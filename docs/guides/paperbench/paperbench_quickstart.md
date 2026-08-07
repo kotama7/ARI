@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate
     role: implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # PaperBench quickstart
@@ -51,7 +51,8 @@ From the registry page, tick one or more papers and click
 
 1. **Papers** — verify your selection.
 2. **Rubric** — pick the generator model (default `gemini-2.5-pro`,
-   two-stage on). See [Rubric schema](../../reference/execution_profile.md).
+   calibrated hierarchical strategy).
+   See [Rubric schema](../../reference/execution_profile.md).
 3. **Reproduce** — choose the replicator model + time budget +
    sandbox kind (`auto` / `local` / `apptainer` / `docker` / `slurm`) +
    `container_image` (a local non-symlink SIF, full Docker
@@ -149,7 +150,7 @@ the chosen sandbox and captures `reproduce.log` + an
 ```bash
 python scripts/sc_paper_dogfood.py \
     --pdf /path/to/paper.pdf \
-    --rubric-model gpt-5-mini --two-stage \
+    --rubric-model gpt-5-mini \
     --with-rollout \
         --rollout-model gpt-5-mini \
         --rollout-time-limit-sec 14400 \
@@ -181,8 +182,8 @@ to load. If you want deterministic toolchain availability, pre-load
 the modules in your sbatch wrapper BEFORE invoking ARI — this is the
 canonical HPC pattern.
 
-Example (R-CCS <partition> partition — **adjust the module / partition /
-GPU spec for YOUR cluster**):
+Example (a two-step-entry Env Modules site — **adjust the module /
+partition / GPU spec for YOUR cluster**):
 
 ```bash
 #!/bin/bash
@@ -195,9 +196,9 @@ GPU spec for YOUR cluster**):
 set -eu
 
 # Pre-load the toolchain modules your paper needs. The names below are
-# R-CCS specific — replace with your cluster's equivalents (use
+# site specific — replace with your cluster's equivalents (use
 # `module avail` on a login node to discover the catalog).
-module load system/<partition>        # cluster-specific entry module
+module load <site-entry-module>       # cluster-specific entry module
 module load nvhpc                  # if the paper needs CUDA / nvcc
 # module load openmpi              # if the paper needs MPI
 # module load fftw                 # if the paper needs FFTW
@@ -205,7 +206,7 @@ module load nvhpc                  # if the paper needs CUDA / nvcc
 cd /path/to/ARI
 python scripts/sc_paper_dogfood.py \
     --pdf /path/to/paper.pdf \
-    --rubric-model gpt-5-mini --two-stage \
+    --rubric-model gpt-5-mini \
     --with-rollout --rollout-model gpt-5-mini \
         --rollout-time-limit-sec 14400 --rollout-sandbox local \
     --with-reproduction --reproduce-sandbox local \

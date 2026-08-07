@@ -41,12 +41,20 @@ backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
         │        ▼ render_paper (重新编译 refine 后的 .tex ──▶ full_paper.pdf)
         │        ▼ link_paper_claims (final)          ──▶ paper_claim_links_final.json
         │        ▼ claim_evidence_hard_gate (FINAL)   ──▶ evaluation/claim_evidence_hard_gate_final.json
-        │        │   (strict 模式下阻塞 finalize)
+        │        │   (阻塞 finalize: 客观谬误始终阻塞,
+        │        │    配置的 block_on 在 strict 模式下阻塞)
         ▼        ▼
         └────────┴──▶ finalize_paper (paper-skill: inject_code_availability)
                        依赖 ear_publish 与 FINAL hard gate 两者
         ▼
 full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
+        │
+        ▼ link_paper_claims_locked                  ──▶ paper_claim_links_locked.json
+        ▼ claim_evidence_hard_gate_locked (final)   ──▶ evaluation/claim_evidence_hard_gate_locked.json
+        ▼ evidence_grounded_semantic_review_locked (advisory)
+        ▼ render_final_paper (编译注入后的 .tex ──▶ full_paper.pdf)
+        ▼ lock_paper_build (paper-skill: finalize_paper_build)
+        │                                            ──▶ paper_build.json (PaperBuildV1)
         │
         ▼ ari clone <ref> --expect-sha256 <baked digest>
         ▼
@@ -60,7 +68,8 @@ full_paper.tex 注入 \codeavailability{} \codedigest{} \coderef{}
 **保留 anchor 的 refine/render 回路**。该回路把论文的 `% CLAIM` anchor 关联到
 已记录的结果（`link_paper_claims`），并与实验数据比对校验
 （`claim_evidence_hard_gate`，在 draft 上运行一次、在 refine 后的论文上再运行
-一次），把 hard gate 与 semantic review 一并织入合并后的评审，在保留 claim
+一次，并在 `lock_paper_build` 所锁定的注入后 TeX 上运行第三次），把 hard gate
+与 semantic review 一并织入合并后的评审，在保留 claim
 anchor 的同时应用建议修订（`paper_refine`），并重新编译 refine 后的 `.tex`
 （`render_paper`）。其行为由 `ari-core/config/workflow.yaml` 中的
 `claim_gate_policy`块控制，默认使用`warn`。**FINAL** warn gate只阻断客观
@@ -104,8 +113,8 @@ integrity finding，其余仅报告；`strict`还会阻断数值不匹配、未�
   （无 claim）永不冻结。
 
 产物：`paper_claim_links.json`（draft）/
-`paper_claim_links_final.json`，以及
-`evaluation/claim_evidence_hard_gate_{draft,final}.json`。
+`paper_claim_links_final.json` / `paper_claim_links_locked.json`，以及
+`evaluation/claim_evidence_hard_gate_{draft,final,locked}.json`。
 
 信任模型：**信任锚是论文本身，而非 registry**。`ari clone` 会对任何重算 digest
 与 `--expect-sha256`（或 `manifest.lock` 声明）不匹配的 bundle 直接 hard-fail。

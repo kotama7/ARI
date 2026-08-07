@@ -6,9 +6,15 @@ sources:
     role: config
   - path: scripts/docs
     role: test
+  - path: scripts/check_dashboard_ux.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/i18n
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__
+    role: test
   - path: .github/workflows
     role: config
-last_verified: 2026-06-04
+last_verified: 2026-08-07
 ---
 
 # ARI コードのテスト方法
@@ -25,13 +31,20 @@ ari-skill-<name>/conftest.py    — スキルレベルのフィクスチャ
 pytest.ini                      — リポジトリ全体の設定
 ```
 
-リポジトリルートの `pytest.ini` によって、どこからでも `pytest` を実行すると
-すべてのテストディレクトリを走査します。
+リポジトリルートの `pytest.ini` は、素の `pytest` が走査する `testpaths` を
+定めます: `ari-core/tests` と `workspace/harnesses`（後者は workspace の無い
+チェックアウトでは存在せず、pytest はそれを許容します）。`ari-skill-*` の
+スイートは意図的に `testpaths` に**入れていません** — 各スキルが独自の
+`src/server.py` を持つため、2 つを同一プロセスで import すると曖昧になります。
+パッケージ単位で実行するか、フルスイートは `bash scripts/run_all_tests.sh`
+（パスごとに 1 つの pytest プロセス）を使ってください。
 
 ## スイートの実行
 
 ```bash
-pytest -q                                        # everything
+pytest -q                                        # 既定の testpaths のみ
+bash scripts/run_all_tests.sh                    # フルスイート（パス毎に別プロセス）
+pytest ari-skill-memory/tests -q                 # スキル 1 つ
 pytest ari-core/tests/test_react_driver.py -q    # one file
 pytest ari-core/tests/test_react_driver.py::test_runs_for_two_nodes  # one case
 pytest -k 'memory and not letta' -q              # by keyword
@@ -135,8 +148,8 @@ def ckpt(tmp_path, monkeypatch):
 - `readme-sync` — 各ディレクトリの `## Contents` 索引が配下のファイルを
   列挙していること (`scripts/readme_sync.py --check`)。
 - `docs-sync` — 全ツリー不変条件、すべてハードゲート: 宣言された `sources:`
-  パスが実在すること (`check_doc_sources.py`)、`docs/i18n/{en,ja,zh}.js` の
-  キー集合が一致すること (`check_i18n_js.py`)、ルート `README.{md,ja,zh}` の
+  パスが実在すること (`check_doc_sources.py`)、`docs/i18n/landing.{en,ja,zh}.js`
+  のキー集合が一致すること (`check_i18n_js.py`)、ルート `README.{md,ja,zh}` の
   見出し構造が一致すること (`check_readme_parity.py`)、`report/{en,ja,zh}` が
   構造的に並行であること (`report/scripts/check_i18n.py`、Gate 6)。翻訳鮮度
   (`check_translation_freshness.py`) と docs 内リンク (`check_doc_links.py`) は
@@ -149,6 +162,88 @@ def ckpt(tmp_path, monkeypatch):
 
 各 doc ゲートはリポジトリルートからローカル実行できます。例:
 `python scripts/docs/check_i18n_js.py`。
+
+**ダッシュボードの翻訳** — ダッシュボード UI は独自の 3 言語辞書
+`ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts` を持ちますが、上記のどの
+ワークフローもこれを対象にしていません: `check_i18n_js.py` が読むのは
+`docs/i18n/landing.{en,ja,zh}.js` のみで、そのキーパターンはシングルクォート
+されたキーしか一致しないため、キーが裸の識別子である辞書は解析できません。
+ルール自体は docs 側と同じです — 3 ロケールは**同一のキー集合**を宣言し、
+同一ファイル内でキーを重複させてはなりません。したがって新しい UI 文字列は
+同じ変更で 3 つすべてに追加する必要があります。あるロケールにあって別の
+ロケールに無いキーは英語の文字列にフォールバックし、`en` にも無ければ
+キー名がそのまま表示されます (`src/i18n/index.ts` の `t()`)。値は意図的に
+比較しません: 固有名詞は 3 言語で同一の表記になり得るためです。
+
+これを担保するチェックは 2 つあり、**どちらもワークフローに組み込まれて
+いません** — ダッシュボードの文字列に触れたら自分で実行してください:
+
+- `python scripts/check_dashboard_ux.py --fail-on-regression` — 3 つの `.ts`
+  ファイルに対するキー集合の一致検査と重複検出で、同スクリプトの他の
+  ダッシュボード UX 検査と同梱されています。`scripts/quality/check_dashboard_ux.allow.yaml`
+  に凍結されていない findings が 1 つでもあれば exit 1 になります。この
+  許可リストに i18n エントリは 1 件も無いため、一致が壊れれば最初の実行で
+  失敗します。フラグを付けない場合はレポートを出力して exit 0 です。
+- `ari-core/ari/viz/frontend` から
+  `npx vitest run src/i18n/__tests__/parity.test.tsx` — import した実際の辞書に
+  対して同じ不変条件を検証します。`KNOWN_DRIFT` 許可リストは現在空です。
+  重複キーの検査は Python 側より弱く、TypeScript のオブジェクトリテラルは
+  テストが読む時点で重複キーを既に畳み込んでいるためです。
+
+現在のツリーではどちらも green です: 3 つの辞書は重複なしで同一のキー集合を
+保持しています。
+
+**ダッシュボードのアクセシビリティ** — ダッシュボードは **WCAG の適合レベルを
+一切宣言していません**。この docs 群にも frontend のテスト群にも適合目標は
+存在せず、ここに書かれている内容を適合の主張として読んではいけません。存在
+するのは
+`ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx` にある
+凍結ベースラインの集合です。上記の i18n チェックと同様、これも**どのワーク
+フローにも組み込まれていません** — frontend のスイートを実行するワークフローは
+そもそも存在しません (CI にある Node のステップは VitePress の docs サイトを
+ビルドするものだけです)。代わりに、手動で実施する cutover 前チェックリストの
+ハード行になっています (`npm test`、
+`docs/guides/gui_cutover_runbook.md` §2)。このファイルだけを実行するには
+`ari-core/ari/viz/frontend` から:
+
+```bash
+npx vitest run src/__tests__/shellA11yBaseline.test.tsx
+```
+
+このファイルが固定しているのは 3 点です:
+
+- **既に成立している正の不変条件。** `navigation` ランドマークがちょうど 1 つ、
+  サイドバーの各エントリ (`gui_v2` 有効時は 15 個) が `tabindex="0"` を持つ
+  ネイティブ button であること、4 つの nav グループが `aria-labelledby` で
+  名前付けされていること、モバイルのハンバーガーが
+  `aria-label`/`aria-controls`/`aria-expanded` を持つこと、アクティブ
+  プロジェクトの `combobox` がアクセシブルな名前を持つこと。
+- **`#/home` で描画したシェルに対する axe-core の violation id ベースライン。**
+  現在は空リストです。アサーションは完全一致なので、新しい violation が出れば
+  失敗し、*さらに* 原因を修正した後にベースラインへ id を残したままでも失敗
+  します。jsdom は描画しないため `color-contrast` ルールはそこで**無効化**されて
+  います — このリポジトリには色コントラストを計算する自動チェックはありません。
+- **テストの `ROUTE_MARKERS` にある 18 ルートに対する `<h1>` 個数ベースライン。**
+  うち 4 つは非準拠と分かった上で固定されています: `#/paperbench`、`#/workflow`、
+  `#/settings` はページタイトルが `<h2>` で `<h1>` が無く、`#/idea` は見出し要素
+  自体がありません。残り 14 は `<h1>` をちょうど 1 つ描画します。ここも完全一致
+  なので、あるルートを修正したら同じ変更で凍結リテラルを縮める必要があります。
+
+何もカバーしていないもの: 主要な journey をマウス無しで完了できることを end-to-end
+で検証するアサーションは無く、スクリーンリーダーのチェックもありません。キーボードで
+*到達できる* ことが検証されているのはサイドバー (上記のフォーカス可能な
+ネイティブ button) までで、実際にキーボードで *操作する* ことが検証されているのは
+`#/tree2` のテーブル
+(`src/components/TreeV2/__tests__/TreeV2LargeTree.test.tsx` が roving tabindex 上で
+<kbd>↓</kbd>/<kbd>→</kbd>/<kbd>Enter</kbd> を歩きます。キー対応表は
+`docs/guides/dashboard.md`) だけです。モーション低減は全体で尊重されています —
+`src/styles/motion.css` が `prefers-reduced-motion: reduce` の下でモーション
+トークンを 0 にします — が、これはスタイルシートの性質であってテストの性質では
+ありません。
+
+WCAG 2.2 AA のゲートは、自動・手動のいずれであれ、ダッシュボード刷新の目標で
+あって、このスイートが確立している性質ではありません。green な実行を AA 適合の
+証拠として読まないでください。
 
 ## 回帰テストの書き方
 

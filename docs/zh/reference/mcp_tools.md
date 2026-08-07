@@ -55,19 +55,34 @@ ARI 附带 14 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。本页�
 
 ## ari-skill-hpc — SLURM + Singularity
 
-`mcp.json` 为空列表；工具来自 `src/server.py` 中的 `@server.list_tools()`。
+`mcp.json` 只记录工具*名称*，由 `skill.yaml` 生成；完整 schema 来自
+`ari_skill_hpc/server.py` 中的 `@server.list_tools()`。
 
 | 工具 | 用途 | LLM |
 |---|---|:---:|
-| `slurm_submit` | 带有显式分区 / 时间 / CPU / 节点 / GPU 的 sbatch | ✗ |
-| `job_status` | squeue + sacct 查询 | ✗ |
-| `job_cancel` | 取消运行中的作业（scancel） | ✗ |
+| `job_submit` | 提交不可变的 `JobRequestV1` 并立即返回幂等的 `JobHandleV1`；命令为 argv 数组，绝不使用登录节点的 shell | ✗ |
+| `container_submit` | 相同的生命周期，但请求必须带有 digest 钉定的 Apptainer/Singularity 容器声明 | ✗ |
+| `job_status` | 针对 ARI 句柄或原始 SLURM ID 的 provider 中立 `JobStatusV1`（squeue + sacct 查询） | ✗ |
+| `job_result` | 收集终态 `JobResultV1`，并重新哈希声明的输入 / 输出 / 日志 | ✗ |
+| `job_logs` | 返回 ARI 作业句柄的有界、带 digest 的 stdout / stderr | ✗ |
+| `job_cancel` | 请求取消 ARI 或 SLURM 作业 | ✗ |
+| `slurm_submit` | core 智能体批处理脚本工作流的兼容桥：带有显式分区 / 时间 / 节点 / 任务 / CPU / modules 以及显式 `launcher` 的 sbatch。新的程序化调用方应使用 `job_submit` | ✗ |
 | `probe_platform_capabilities` | 在**计算分区上**探测工具可用性（`command -v`）并缓存到 `{checkpoint}/platform_capabilities.json`；尽力而为（任何失败都报告为 skipped 且不写入） | ✗ |
-| `singularity_build` | 从定义文件构建 SIF | ✗ |
-| `singularity_run` | 在 SIF 内运行命令 | ✗ |
-| `singularity_pull` | 从远程 URI 拉取 SIF | ✗ |
-| `singularity_build_fakeroot` | Fakeroot 构建（无需特权守护进程） | ✗ |
-| `singularity_run_gpu` | `singularity_run` 的 GPU 变体 | ✗ |
+| `counter_support` | 报告该节点是否授予硬件计数器 —— 通过实际打开一个计数器来确定，而不是查找 profiler 二进制文件 | ✗ |
+| `measure_counters` | 在有界窗口内对已有进程计数经审查的硬件事件；不创建进程，也不写入任何内容 | ✗ |
+
+`launcher` 说明脚本在分配内如何启动，它是显式声明的，而不是从 `tasks > 1`
+推断出来的：`auto`（默认）用 `srun --ntasks=1` 绑定单任务单节点的负载，更大的
+形状则直接启动，把并行启动留给脚本自己；`srun` 按声明的
+`nodes` / `tasks` / `cpus_per_task` 启动脚本本身，这正是 MPI / SPMD 二进制所
+需要的；`none` 从不包装。启动模式是请求 digest 的一部分。完整参数列表见
+[skills.md](skills.md#ari-skill-hpc)。
+
+`measure_counters` 声明了 `context_requirement: node`，因此其输入 schema 声明了
+一个 `ari_context` 对象属性。transport 会为任何带 context 要求的工具以该名称注入
+已授权的 call context；若 schema 设置 `additionalProperties: false` 却不声明它，
+就会拒绝每一次已授权的调用。proxy 会在 `tools/list` 中重新去掉该属性，因此它绝不
+会成为智能体需要提供的参数。
 
 ## ari-skill-idea — 文献调研 + 创意生成
 

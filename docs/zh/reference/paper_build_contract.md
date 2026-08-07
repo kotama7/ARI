@@ -26,7 +26,9 @@ Python import。
 1. `write_paper_iterative` 验证同一 `WorkspaceRefV1` 下的原生证据，保存每次 authoring call，
    并写入 `.ari-paper/paper_build.draft.json`。
 2. 文本、视觉、语义与 hard-gate review 相互独立运行。
-3. `paper_refine` 仅应用唯一且 anchor-safe 的替换，并保存 digest-bound 的
+3. `paper_refine` 仅应用唯一的替换，且该替换必须原样保留每条 `% CLAIM:` 声明
+   （marker 及其 `metric=`、`formula=` 与 operand token），并使每个 renderer
+   所有的 figure environment 保持逐字节不变；随后保存 digest-bound 的
    `PaperModelCallBatchV1`。
 4. 以确定性方式注入代码可用性说明。
 5. 对注入后的确切 TeX 重新执行 claim link、semantic review、hard gate 与编译。
@@ -49,6 +51,16 @@ authoring input set 包含以下唯一角色：
 
 finalization 会重新读取每个输入，并将大小和 SHA-256 与 draft record 比较。因此 authoring 后
 更改输入属于 hard error。
+
+当 `ARI_MANUSCRIPT_RUNTIME_MODE=enforce` 时，还额外要求 `manuscript-profile`、
+`manuscript-context`、`manuscript-readiness`、`section-briefs` 与
+`manuscript-authoring-binding` 这几个角色，各自通过对应的
+`ARI_MANUSCRIPT_*_PATH` 提供。若 profile、context、readiness、brief-bundle 与
+binding 的 digest 不构成同一条 lineage，或 readiness 不是
+`ready`/`ready_with_disclosures`，authoring 会拒绝该 bundle；finalization 则针对
+draft 的 `build_id` 与 `run_id` 重新校验同一条 lineage，并在 readiness 的
+publication verdict 不为 `ready` 时 block 该构建。该模式默认为 `off`，默认
+pipeline 不提供上述任何输入。
 
 ## Revision 与模型 provenance
 
@@ -77,6 +89,10 @@ immutable revision、sampling 值、token count 和报告成本。multi-pass ref
 - writer 声明的 formula operand；
 - canonical figure reference；
 - 完整 document digest。
+
+位于与 FigureBatch 绑定的 figure environment 内的 numeric mention 会被归类为
+`figure_evidence`，不承担 anchor 义务：该 caption 文本已由 `FigureBatchV1`
+拥有并计入 digest。它们仍保留在 `numeric_mentions` 中以供审计。
 
 finalization 不信任该中间结果，而是从 locked ScienceData、FigureBatch 与 final TeX 重新计算完整
 document。finalized build 的 unresolved anchor 与 uncovered numeric result mention 均为零。

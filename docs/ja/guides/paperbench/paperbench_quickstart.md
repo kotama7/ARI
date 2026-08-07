@@ -125,7 +125,7 @@ dogfood スクリプトは PaperBench の Stage 1 → 2 → 3 を bridge surface
 ```bash
 python scripts/sc_paper_dogfood.py \
     --pdf /path/to/paper.pdf \
-    --rubric-model gpt-5-mini --two-stage \
+    --rubric-model gpt-5-mini \
     --with-rollout \
         --rollout-model gpt-5-mini \
         --rollout-time-limit-sec 14400 \
@@ -165,8 +165,8 @@ ARI bridge はクラスタの module を自動 load しません — これは u
 クラスタカタログを agent にデータとして渡し、 agent がどれを load するか
 判断します。 確実性が欲しい場合は sbatch wrapper で **事前 load** を:
 
-例(R-CCS <partition> — **あなたのクラスタの module / partition / GPU 仕様
-に合わせて調整**):
+例(2 段エントリ方式の Env Modules サイト — **あなたのクラスタの module /
+partition / GPU 仕様に合わせて調整**):
 
 ```bash
 #!/bin/bash
@@ -178,14 +178,14 @@ set -eu
 
 # 必要 toolchain の module を事前 load(クラスタによって名前が異なる、
 # `module avail` で確認)
-module load system/<partition>   # クラスタ固有のエントリ module
+module load <site-entry-module>  # クラスタ固有のエントリ module
 module load nvhpc             # paper が CUDA / nvcc を必要なら
 # module load openmpi         # paper が MPI を必要なら
 
 cd /path/to/ARI
 python scripts/sc_paper_dogfood.py \
     --pdf /path/to/paper.pdf \
-    --rubric-model gpt-5-mini --two-stage \
+    --rubric-model gpt-5-mini \
     --with-rollout --rollout-model gpt-5-mini \
         --rollout-time-limit-sec 14400 --rollout-sandbox local \
     --with-reproduction --reproduce-sandbox local \

@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # ARI QuickStart Guide
@@ -368,10 +368,10 @@ A React Flow visual DAG editor for the pipeline of the active checkpoint — the
 
 ## Dashboard Architecture & API
 
-The dashboard is a React/TypeScript SPA (built with Vite) served by a Python asyncio HTTP server. It consists of two components:
+The dashboard is a React/TypeScript SPA (built with Vite) served by a Python standard-library HTTP server. It consists of two components:
 
-- **HTTP server** (`ari/viz/server.py`): REST API + SSE log streaming on the main port
-- **WebSocket server**: Real-time tree updates on port+1 (e.g., 8766 if dashboard is on 8765)
+- **HTTP server** (`ari/viz/server.py`): a threaded `http.server` (`ThreadingHTTPServer`) — REST API + SSE log streaming on the main port. Every request, including a long-lived SSE stream, occupies one thread for its whole lifetime; there is no event loop for a slow handler to yield to.
+- **WebSocket server**: Real-time tree updates on port+1 (e.g., 8766 if dashboard is on 8765) — the only listener hosted on asyncio (via the `websockets` package).
 
 ### API Endpoints
 

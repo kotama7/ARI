@@ -226,7 +226,7 @@ governance machinery (all constructed lazily, all fail-open):
 | Facade | Module | Owns |
 |---|---|---|
 | `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0. The original twelve checks plus Knowledge integrity, Capability Binding integrity, and Harness integrity. It checks procedure, authority, identity, and monotonicity—not scientific correctness. Deterministic and non-evolving: zero LLM calls, zero network, zero wall-clock decisions. `rqgm.kernel.enforcement: audit_only` downgrades every context to warn-and-log. |
-| `GovernanceOrchestrator` | `ari/rqgm/governance/` | The epoch-boundary audit: `audit_epoch(...) -> GovernanceReport`, a nine-step pipeline (observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report). Every LLM decision (Auditor / Defender / GovernanceJudge, prompts under `ari/prompts/governance/`) has a total deterministic fallback, so `llm=None` still produces a complete audit. The report is *advisory input* to the transition engine — the orchestrator never mutates registries. |
+| `GovernanceOrchestrator` | `ari/rqgm/governance/` | The epoch-boundary audit: `audit_epoch(...) -> GovernanceReport`, a nine-step pipeline (observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report). Every LLM decision (Auditor / Defender / GovernanceJudge, prompts under `ari/prompts/governance/`) has a total deterministic fallback, so `llm=None` still produces a complete audit. The report is *advisory input* to the transition engine — the orchestrator never mutates registries. Construction makes that authority relationship non-optional: a missing `kernel` raises `ValueError` in `__init__`, because the kernel — not the orchestrator's own record builders — is the role-separation authority, and it is the kernel that re-validates the records the audit produced (evidence bundles, motions, defenses, outcomes) at step 8, via `validate_record_schema` and `validate_role_separation`. The other two seams are optional by design: `llm=None` is the guaranteed-degradation, CI-friendly deterministic floor, and `audit_writer=None` collects records in memory on `self.written` instead of writing them, which is how the tests observe the audit. Appending a record never raises — a writer failure is logged and the audit continues. |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | The **sole** registry status writer. Pure `resolve_transition(...)` against the fixed T1–T21 table, then a five-step boundary protocol: freeze → resolve → kernel-validate → prepare → apply/commit over the epoch transaction. A T16 `emergency_quarantine` force-closes the current epoch and opens a newly fingerprinted epoch in that same transaction. |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | After a committed transition with retirements: the pure `trace_dependents` staleness closure and `rebuild_frontier`, emitting `SelectiveErasureEvent` / `FrontierRebuildEvent` records. Failure ladder: kernel-validation failure → conservative re-repair (flagged nodes dropped) → drain-only degradation (`expansion_halted`: the run finishes pending work but expands no further). Never a crash. |
 
@@ -343,6 +343,28 @@ without an adopted successor to justify it):
   adopts, the demoted incumbent moves to a reinstatable `shadow` standby so
   exactly one active entry survives per paper role. Unlike T20 it is not a
   retirement — a later boundary can re-climb the standby.
+
+The boundary audit is not the only governed decision in the loop, and it does
+not subsume the other one. The **lineage-decision hook**
+(`lineage_decision:` in `config/workflow.yaml`, read once at loop start)
+governs *research direction* per node whenever its `mode` is not `off`:
+after a node is saved it may keep exploring, switch to a runner-up idea, fan
+out a child run, or terminate the lineage — capped by its own
+`rate_limit_per_run` (which counts the non-`continue` actions of a run) and
+appended to `lineage_decisions.jsonl`. `audit_epoch` governs *component trustworthiness*
+per epoch: it runs once per boundary inside the `ensure_epoch` tick above
+(the closing epoch is audited before the transaction), is capped by
+`rqgm.governance.max_llm_calls_per_audit`, and appends to `rqgm_audit.jsonl`.
+In v1 these are two mechanisms sharing one loop — separate config, separate
+caps, separate record streams — and neither gates the other: a boundary audit
+never waits on a lineage decision, and a lineage decision never reads a
+`GovernanceReport`. (The one thread between them is re-ideation: a stagnation
+or a pivot decision also pokes the `ProposalRouter`, which appends to that
+same `lineage_decisions.jsonl` with `trigger: "proposal_router"` — the
+governance audit is not on that path.) Unifying the two is deferred beyond
+v1: nothing in the design precludes it, but their rate-limiting interplay has
+not been designed, so read them as independent mechanisms that happen to
+share a loop.
 
 ---
 
@@ -580,6 +602,22 @@ Task-12 governance budget verbatim.
    implementation does not isolate roles with separate OS users, processes,
    keys, or file permissions; the Python process, checkpoint directory, and
    tool gateway are therefore part of the trusted computing base.
+   The same admission applies to capability enforcement. The pre-flight gate
+   (`CapabilityGatedMCPClient`) covers MCP tool dispatch and nothing else: it
+   maps a call to an `(actor, action, resource)` triple by matching substrings
+   of the tool *name* (`ari/rqgm/tool_policy.py`) and returns `None` — dispatch
+   untouched — for any tool it does not recognise, so an unmapped tool is never
+   checked against the matrix. `validate_capability` is additionally called at
+   two in-process seams (meta-output admission in `ari/rqgm/meta_evolution.py`,
+   retired-prompt-text reads in `ari/rqgm/clean_room.py`), but none of these is
+   a filesystem boundary: the checkpoint directory is an ordinary path resolved
+   from `checkpoint.dir` / `ARI_CHECKPOINT_DIR`, carries no access control of
+   its own, and a component that reads it directly produces no gateway record
+   for the kernel to check. The meta rollout's `sandbox` / `allow_paths` check
+   only inspects tool *arguments* for absolute paths outside the scratch dir,
+   and `ari/agent/react_driver.py` calls it a defense-in-depth check; it is not
+   OS-level isolation. `CK-ACC-*` therefore constrains what a cooperating
+   component reaches for through the gateway; it is not a containment boundary.
 6. **Selective erasure is logical-only.** Nothing is physically deleted.
    Staleness lives in audit-log events, the derived
    `rqgm_erasure_state.json` rollup, and additive `Node.metrics` sentinels

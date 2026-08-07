@@ -14,6 +14,14 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/services/api/client.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/services/api/v1.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/context/AppContext.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/main.tsx
+    role: implementation
   - path: ari-core/ari/viz/routes.py
     role: implementation
   - path: ari-core/ari/viz/auth.py
@@ -36,6 +44,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/store.py
     role: implementation
+  - path: ari-core/ari/viz/v1/config_api.py
+    role: implementation
+  - path: ari-core/ari/config/field_registry.py
+    role: implementation
   - path: ari-core/ari/viz/v1/challenges.py
     role: implementation
   - path: ari-core/ari/viz/v1/openapi.json
@@ -44,7 +56,19 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/ari/viz/frontend/src/__tests__/appContextScope.test.ts
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/v1TypesDrift.test.ts
+    role: test
+  - path: ari-core/ari/viz/frontend/src/services/__tests__/api.test.tsx
+    role: test
+  - path: ari-core/ari/viz/services/__init__.py
+    role: implementation
+  - path: ari-core/tests/test_gui_config_shadow_legacy.py
+    role: test
+  - path: ari-core/tests/test_gui_state_facade_freeze.py
+    role: test
+last_verified: 2026-08-07
 ---
 
 # Dashboard Architecture
@@ -132,10 +156,35 @@ Three mechanisms make the two generations coexist:
   keeps working; bookmarks never break.
 - **A single kill-switch.** With the v2 shell off, v2-only routes resolve to
   Home exactly like an unknown hash, and the sidebar hides their entries. No
-  rebuild, no redeploy — see §7.
+  rebuild, no redeploy — see §9.
 
 The migration therefore has no cutover moment to schedule. A workspace is
 promoted by giving it a nav slot; it is rolled back by taking the slot away.
+
+One thing this shape is **not**, and it is the tempting misreading: a thin
+legacy facade over a shared application service. `ari/viz/services/` holds
+three modules (`state_service`, `file_service`, `launch_service`), and the
+only thing `/api/v1` calls from it is `launch_service.load_dotenv_files`.
+Beyond a handful of low-level helpers — checkpoint-directory resolution, the
+pid probe, the byte-preserving tree adapter — the legacy handlers and the v1
+read modules are two independent implementations over the same artifacts, and
+the v1 modules decline the legacy builders deliberately (§7). Configuration
+reaches a run by two routes as well: the legacy Settings-save-and-launch chain
+maps selected keys into environment variables for the spawned CLI, while the
+`/api/v1` config endpoints go through the canonical resolver — and the two do
+not agree everywhere, which the dead and env-only Settings keys in
+[Configuration](../reference/configuration.md) enumerate.
+
+The two sides are therefore held in agreement by tests, not by construction.
+`ari-core/tests/test_gui_config_shadow_legacy.py` diffs the legacy launch's
+effective configuration against the canonical resolver's per leaf and permits
+a divergence only when an explicit allowlist names it — failing equally if a
+listed divergence quietly stops diverging.
+`ari-core/tests/test_gui_state_facade_freeze.py` pins the exact top-level key
+set of the frozen `/state` payload and rejects both additions and removals.
+The practical consequence for anyone changing behaviour: expect to change it
+twice, and expect one of those two suites to be what tells you that you
+changed it once.
 
 ---
 
@@ -165,7 +214,37 @@ out of this:
   still navigates to `#/new`) rather than tidying them.
 - **Reachable-but-unlisted is expressible.** `#/paperbench/import|run|results`
   exist as routes with no nav entry — they are opened from inside a page.
-- **Unknown hashes fall back to Home** rather than erroring.
+- **Unknown hashes fall back to Home** rather than erroring. That fallback is
+  load-bearing in one case and a known deficiency in another. It is deliberate
+  for the kill-switch: with the v2 shell off, a v2-only route must resolve
+  exactly like an unknown hash so the legacy surface stays whole (§9). For a
+  genuine typo it is a deficiency — the user gets Home with no explanation, and
+  an explicit "this route does not exist" resolution screen is still open work,
+  marked as a `TODO` in `App.tsx`. The *missing run* case is already handled the
+  intended way: a v2 workspace opened without `?run=` shows an explicit prompt
+  rather than silently adopting a global selection.
+
+**What the registry does not carry.** `RouteDefinition` declares two fields
+that nothing reads: `breadcrumbKey` and `requiredContext`. There is no
+breadcrumb component anywhere in the dashboard, and no route-level
+required-context guard — each v2 workspace enforces its own "no run selected"
+prompt instead. Two shell surfaces the GUI refresh specified are likewise
+unbuilt: there is no command palette and no notification center, so a run or
+governance alert is visible only on the page that renders it. Routes carry no
+permission predicate either, and will not need one while the server has no user
+model — a bearer token is all-or-nothing, and sessions and multi-user are out
+of scope. Capability gating is exactly one marker: `guiV2` on the registry
+entry, plus the `V2_ONLY_ROUTES` dispatch set in `App.tsx`.
+
+**One error boundary, at the root.** The dashboard has a single React error
+boundary, in `main.tsx`, outside the router and outside `Layout`. A render
+failure inside a route — including a lazy chunk that fails to load, since the
+`Suspense` in `App.tsx` supplies a fallback but no boundary — therefore
+replaces the whole shell, sidebar included, with the "ARI Dashboard Error"
+screen; the stack is shown only in developer mode, and the only recovery is
+reloading the page. Route-level boundaries with their own retry action were
+specified and are not implemented, and there is no test for a failed chunk
+load.
 
 ---
 
@@ -191,6 +270,17 @@ runs open in two tabs from stepping on each other — a v2 row links
 authoritative, keeping the `sessionStorage` key only as a fallback for older
 callers.
 
+That key has a name worth pinning, because it is a cross-page contract rather
+than a page's private storage: `ari_selected_checkpoint`. The legacy
+Experiments row writes it before navigating to `#/results`; the v2 Projects row
+still writes it alongside the explicit `#/results?run=<run_id>` link; the
+Results page reads it *only* when the hash carries no `?run=`, and clears it
+either way. A second key, `ari_tree_nodes`, is written by the legacy
+Experiments page before it navigates to `#/tree` and is read by nothing — the
+Tree page takes its nodes from the shared legacy context instead. It is dead
+state, and removing the write is part of legacy-page removal rather than a
+behaviour change.
+
 ---
 
 ## 4. Server state lives in a cache, keyed by run
@@ -211,15 +301,93 @@ That single decision buys three properties:
   5000 ms (matching the historical polling cadence, so a remount inside that
   window serves cache), one retry, and no refetch on window focus — a local
   dashboard must not turn focus flapping into request storms against the
-  checkpoint scanner.
+  checkpoint scanner. That single default is also the *whole* policy: no query
+  overrides it, so a nearly static schema read is treated exactly like a live
+  tree, and the freshness banner reports the last snapshot time rather than a
+  per-resource age. Per-entity stale times and per-entity freshness labels were
+  specified for the refreshed GUI and are not implemented.
 
 Client-only state (which tab is open, a filter box's text, sidebar width) is
 *not* in this cache. The split is: server state is cached and invalidated,
 view state is local and ephemeral, and navigation state is in the URL (§3).
 
+**Mutations are never optimistic.** No screen writes a predicted result into
+the cache. The write is sent, the server's answer — a new `revision`, or a
+`409 revision_conflict` — is what the UI adopts, and the affected query keys
+are invalidated so the next render comes from a refetched snapshot. That is why
+a conflicted save raises an explicit reload affordance and keeps the unsaved
+edits local instead of quietly winning, and why nothing on screen can be a
+state the server never accepted.
+
+**`AppContext` is legacy-scoped.** It is the remote-data store of the legacy
+screens only — the 5-second `/state` poll, the tree-WebSocket mirror, and the
+process-wide active checkpoint. A v2 workspace must not import it: it reads
+`/api/v1` through the `useV1` hooks and takes its run from `?run=`. The rule is
+enforced structurally rather than by review — a source scan under
+`src/__tests__/` loads every non-test file in the v2 component directories and
+fails on an `AppContext` import specifier. It carries exactly one pinned
+exception, the IdeasV2 research-goal card, which reads the goal from `/state`
+behind a run-identity check because no run-scoped v1 endpoint serves the goal
+yet. Shrinking that exception list is welcome; growing it is a regression,
+because `AppContext` cannot be deleted while a v2 screen depends on it.
+
+**Durable preferences have no store.** Locale (`ari_lang`, default `ja`),
+developer mode (`ari_dev_mode`) and the remote bearer token (`ari_gui_token`)
+are read from and written to `localStorage` directly at their use sites. There
+is no preference-store abstraction, no schema for these keys and no migration
+path, so renaming or re-typing one means editing every reader. A preference
+layer was specified for the refreshed shell and is not implemented; treat the
+three key names as the actual contract.
+
 ---
 
-## 5. Realtime is invalidation, not a source of truth
+## 5. The entity model is one level deep
+
+The v1 surface is shaped like a `project → run` hierarchy, but only the lower
+level is real. `GET /api/v1/projects` returns exactly one project — the
+virtual `default` one, whose `checkpoint_roots` are the checkpoint search
+bases that exist and whose run list is a checkpoint-directory scan over all of
+them, using the same name filter and skip set as the legacy listing.
+`GET /api/v1/projects/{project_id}/runs` answers a typed `404` for any other
+id, and the Projects workspace reads `projects[0]` without looking further.
+
+Three consequences to design against:
+
+- **There is no project lifecycle.** The `ROUTES` table has no create, rename
+  or delete for a project. The only other project-scoped endpoints are
+  `GET` / `PATCH` on `/api/v1/projects/{project_id}/config`, both of which
+  reject any id other than `default`; they read and write one singleton
+  document, `gui_store/project_config.json`.
+- **Runs are not scoped to a project.** Every run-scoped endpoint is
+  `/api/v1/runs/{run_id}/…` with no project segment, so the `project_id` in a
+  URL or in a cache key (§4) never narrows anything. Read `default` as a fixed
+  placeholder that keeps those shapes stable — never as evidence that runs are
+  isolated from one another.
+- **A run *is* a checkpoint.** `run_id` is literally the checkpoint
+  directory's name (`YYYYMMDDHHMMSS_<slug>`). A checkpoint is not modelled as
+  a save point that one run could have several of, and no v1 endpoint or DTO
+  expresses run-to-run lineage — `meta.json` records `parent_run_id`, but
+  nothing under `/api/v1` reads it.
+
+The field registry names levels *above* the project that do not exist either.
+Its `scope` vocabulary is `preference` / `installation` / `project` /
+`template` / `run` (see [Configuration](../reference/configuration.md)), but
+only three of the five are ever assigned: every leaf the registry builds today
+is `run` or `project` except a single `installation` one, `llm.api_key` — and
+because that leaf is a `secret_reference`, its value lives in the `.env` chain
+behind `/api/v1/secrets/*`, never in a GUI document. The document store has
+nowhere to put a preference or an installation setting in any case: it holds
+`project_config.json`, `run_templates/`, `run_drafts/` and `launches/`, and
+nothing else (§7).
+
+Separating real projects (owning reusable configuration) from runs (owning
+lifecycle) and checkpoints (owning save points) is reserved design. Nothing in
+the tree implements it, so no client should be written as though it were
+already there.
+
+---
+
+## 6. Realtime is invalidation, not a source of truth
 
 `GET /api/v1/events/stream` is a Server-Sent Events stream with server-side
 `run_id` / topic filtering. An event is a small notification —
@@ -247,12 +415,54 @@ Because events carry their own `run_id`, an event for run B can never touch
 run A's cache entries — the same isolation property as §4, enforced on the
 write side of the cache.
 
+**One owner, two honest exceptions.** Realtime over `/api/v1` has exactly one
+owner: `shared/realtime/eventStream.ts`. Pages call
+`subscribe(runId, topics, callbacks)` — normally through the `useRunEvents`
+hook — and do not construct an `EventSource` themselves, so the backoff
+schedule, the `last_event_id` cursor, the three-state connection machine and
+the offline poll tick exist once and are tested once. Two channels sit outside
+that ownership and predate it: the legacy tree WebSocket on HTTP port + 1, and
+the PaperBench job-log viewer, which opens its own `EventSource` on the
+PaperBench log stream while a job is in flight. Both are removal candidates,
+not patterns to copy.
+
+**Subscriptions follow the mounted route and its run**, so a page subscribes
+for its own lifetime and `run_id` / `topics` filtering happens server-side —
+a page never pays for events it would not render. Nothing throttles a hidden
+tab, though: the client does not listen for `visibilitychange`, so a
+backgrounded tab keeps its stream open, keeps reconnecting on backoff, and
+keeps its 10 s offline poll ticking. Background-tab load control was specified
+and is not implemented; several stale tabs each hold a stream.
+
 ---
 
-## 6. The backend seam
+## 7. The backend seam
 
 The server is four layers, and each one is allowed to know only about the
 layer below it.
+
+There is no web framework under this seam. The transport is the Python
+standard library: `server.py` binds one `ThreadingHTTPServer` per host — the
+loopback default asks for both families and tolerates one of them being
+unavailable, and every server after the first runs `serve_forever()` on a
+daemon thread — and requests are served by the single
+`BaseHTTPRequestHandler` subclass in `routes.py`, which dispatches the legacy
+surface through an explicit `if`/`elif` chain over the request path and hands
+anything under `/api/v1/` to the declarative `ROUTES` table
+(`/api/v1/events/stream` is intercepted one branch earlier, because the
+dispatcher returns a dict and SSE has to write a long-lived stream). Only the
+tree WebSocket is asyncio: `_main` is the sole asyncio entry point, and after
+starting the watcher and the HTTP server on daemon threads it hosts nothing
+but the `websockets` server on HTTP port + 1. Two consequences run through
+the rest of this section. The API layer owns its routing, its error envelope
+and its OpenAPI generation because there is no framework to inherit them
+from — they are built here, not configured. And a connection occupies a
+worker thread for as long as it is open: the handler sets
+`protocol_version = "HTTP/1.1"` so that short polls reuse one connection
+instead of draining the browser's per-origin pool, while the long-lived
+streaming endpoints answer `Connection: close` so they do not sit on a
+keep-alive slot. Blocking work inside a handler therefore costs a thread, not
+a coroutine.
 
 | Layer | Module | Responsibility |
 |---|---|---|
@@ -275,9 +485,53 @@ easy to erode:
   are a convenience layer: launch materializes every effective value into the
   checkpoint, so the CLI never has to read `gui_store/` to reproduce a run.
 
+**The browser side of the seam has three transport regimes, deliberately not
+unified.** `services/api/client.ts` is one `request` primitive behind three
+pairs of wrappers, and which pair a call uses is part of the contract:
+
+- `get` / `post` throw `Error('<METHOD> <path> failed: <status>')` on any
+  non-2xx. The legacy `useApi` hook and its callers depend on the throw.
+- `pbGet` / `pbPost` never throw. The PaperBench handlers answer HTTP 200 with
+  an `{error: …}` body, so the application error arrives in the body and the
+  caller handles it inline.
+- `v1Get` / `v1Send` resolve with the parsed body whatever the status, because
+  `/api/v1` returns real non-2xx statuses whose body *is* the typed error
+  envelope — a throwing client would discard exactly the payload the UI needs.
+  `services/api/v1.ts` then normalizes every failure (typed envelope, network
+  error, or unparseable body) into one thrown `ApiErrorV1`
+  `{code, message, details, request_id, retryable}`.
+
+The asymmetry is preserved rather than tidied: the first two regimes are pinned
+by a frozen-behaviour test, and unifying them would silently change what every
+legacy caller sees. New code uses the `/api/v1` regime.
+
+Two gaps in that client are worth naming, because their absence is easy to
+mistake for a policy:
+
+- **There is no client-side abort or timeout.** The shared `request` primitive
+  passes no `AbortSignal` and sets no deadline, so a hung request hangs until
+  the browser gives up, and navigating away from a page does not cancel its
+  in-flight fetches. Retry policy is the react-query default (one retry) plus
+  the server-declared `retryable` flag on the error envelope, which a caller
+  may inspect but which nothing consumes automatically. Idempotency is
+  per-endpoint rather than per-method metadata: only run launch carries an
+  `idempotency_key`, minted once per review approval so a double-click or a
+  retry replays the same run instead of spawning a second one. Per-method
+  abort/timeout/retry/idempotency metadata was specified and is not built.
+- **Schema drift is caught at build time, not at runtime.** The generated DTO
+  module `services/api/v1types.gen.ts` is produced from `ari/viz/v1/openapi.json`
+  and byte-compared by a drift test, so a contract change that was not
+  regenerated fails CI and never ships. At runtime there is no compatibility
+  check: a response that does not match the generated DTO is not detected, and
+  a body that cannot be parsed at all is normalized to `code: 'internal'` with
+  `retryable: true` — indistinguishable from a transport hiccup. A distinct
+  "this bundle does not match this server" compatibility error was specified
+  and is not implemented, so a bundle/server mismatch surfaces as an ordinary
+  internal error, or as a missing field rendering blank.
+
 ---
 
-## 7. Read models are disposable projections
+## 8. Read models are disposable projections
 
 A *read model* is a bounded projection computed on demand from committed
 artifacts. Delete every read model and no information is lost; delete an
@@ -309,7 +563,7 @@ recomputing a decision the kernel already committed.
 
 ---
 
-## 8. Capabilities and kill-switches
+## 9. Capabilities and kill-switches
 
 The dashboard distinguishes two kinds of "this is not available", and neither
 is an error.
@@ -347,6 +601,51 @@ a non-loopback bind *fails secure* by requiring a bearer token (generated and
 printed once at startup if none was configured); and the three destructive
 operations (delete checkpoint, stop, stop GPU monitor) require a server-issued
 single-use confirmation challenge, answering `428` without one.
+
+---
+
+## 10. Where frontend code lives
+
+The frontend is grouped by *screen*, and the route registry is the only
+composition layer above it. Under `ari-core/ari/viz/frontend/src/`:
+
+| Directory | Holds |
+|---|---|
+| `app/` | Shell wiring no screen owns: the route registry (§2) and the react-query client (§4). |
+| `components/<Screen>/` | One directory per screen, legacy and v2 side by side (`Tree/` and `TreeV2/`, `Results/` and `ResultsV2/`), each exporting the page components the registry lazy-loads — plus `common/` for presentational primitives and `Layout/` for the sidebar and header. |
+| `context/` | The legacy `AppContext` — the `/state` poll and the process-wide active checkpoint. |
+| `hooks/` | Cross-screen hooks: `useV1`, `useRunEvents`, `useApi`, `useWebSocket`, `useDevMode`. |
+| `services/api/` | One transport core (`client.ts`) plus one module per endpoint family, re-exported by the `services/api.ts` barrel so older import paths keep resolving. |
+| `shared/` | Cross-cutting platform code — today only `realtime/`, the SSE client. |
+| `i18n/`, `styles/`, `types/` | The three-language string tables, the CSS token and layout sheets, the shared DTO types. |
+| `__tests__/` | App-wide guard suites no screen owns: route↔nav parity, full-App route render, shell a11y, developer-mode gating, generated-type drift. |
+
+There is no `pages/` layer. A registry entry's `load` thunk imports the screen
+component directly, so route composition *is* the registry entry.
+
+**The feature/entity slicing was specified and not built.** The GUI refresh
+called for a further split into `features/` and `entities/` directories, under
+the rule that a feature may not import another feature's internal modules and
+must go through an entity or shared contract — or the page that composes
+them — instead. None of it exists: there
+are no `features/`, `entities/` or `pages/` directories, and the tree already
+reaches across screen boundaries where reuse was cheaper — `ConfigStudio`
+imports `ConfigBrowser`'s read-only config table (deliberately, so the two
+config surfaces cannot drift), and both `Monitor` and `TreeV2` import the
+legacy `Tree` visualization.
+
+Nothing enforces a layering boundary either. The frontend `package.json` has
+no lint step and no lint dependency, so the only structural import guard in the
+tree is a test — `src/__tests__/appContextScope.test.ts`, which scans every
+non-test file under the v2 screen directories for an `AppContext` import
+specifier and fails on any beyond one pinned exception. That guard protects the
+legacy-removal gate, not a feature/entity boundary; no scan of any kind
+constrains screen-to-screen imports.
+
+Read the slicing as a direction of travel, not as something the tree obeys.
+The placement rule that *is* honoured today is the shallower one: presentational
+primitives go in `components/common/`, cross-cutting platform code in `shared/`,
+shell wiring in `app/` — and a screen directory owns only its own screen.
 
 ---
 

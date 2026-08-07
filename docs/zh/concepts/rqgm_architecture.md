@@ -163,7 +163,7 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 | 门面 | 模块 | 职责 |
 |---|---|---|
 | `ConstitutionalKernel` | `ari/rqgm/kernel.py` | 第 0 层。十二个封闭的 `validate_*` 入口（记录 schema、哈希、能力、纪元不变性、转换、角色分离、选择性擦除、审计日志完整性、洁净室 bundle、污染、权限不扩张、上下文范围），加上执法适配器（`should_block`、fail-open 的 `per_node_warn_check`、预检的 `CapabilityGatedMCPClient`）。确定性且不可进化：零 LLM 调用、零网络、零挂钟决策。`rqgm.kernel.enforcement: audit_only` 将所有上下文降级为仅警告并记录。 |
-| `GovernanceOrchestrator` | `ari/rqgm/governance/` | 纪元边界审计：`audit_epoch(...) -> GovernanceReport`，一条九步流水线（观察 → 评估可靠性 → 汇集证据 → 检控 → 辩护 → 裁决 → 重放池更新 → 自我审计 → 报告）。每个 LLM 决策（Auditor / Defender / GovernanceJudge，提示词位于 `ari/prompts/governance/`）都有完整的确定性回退，因此 `llm=None` 仍能产出完整的审计。报告只是转换引擎的*咨询性输入* —— 编排器从不改动注册表。 |
+| `GovernanceOrchestrator` | `ari/rqgm/governance/` | 纪元边界审计：`audit_epoch(...) -> GovernanceReport`，一条九步流水线（观察 → 评估可靠性 → 汇集证据 → 检控 → 辩护 → 裁决 → 重放池更新 → 自我审计 → 报告）。每个 LLM 决策（Auditor / Defender / GovernanceJudge，提示词位于 `ari/prompts/governance/`）都有完整的确定性回退，因此 `llm=None` 仍能产出完整的审计。报告只是转换引擎的*咨询性输入* —— 编排器从不改动注册表。构造阶段就把这一权限关系设为不可选：缺少 `kernel` 时 `__init__` 会抛出 `ValueError`，因为角色分离的权威是内核，而非编排器自身的记录构建逻辑；并且正是内核在第 8 步通过 `validate_record_schema` 与 `validate_role_separation` 重新校验审计产出的记录（evidence bundle、motion、defense、outcome）。另外两个接缝在设计上是可选的：`llm=None` 是有保证的降级路径，也是适合 CI 的确定性下界；`audit_writer=None` 则不落盘，而是把记录收集到内存中的 `self.written`，测试正是据此观察审计过程。追加记录永不抛出异常 —— writer 失败只记录日志，审计继续。 |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | **唯一**的注册表状态写入方。先对固定 T1–T21 表做纯 `resolve_transition(...)`，再执行五步边界协议：冻结 → 解析 → 内核校验 → prepare → 在纪元事务上 apply/commit。T16 `emergency_quarantine` 强制关闭当前纪元，并在同一事务中开启具有新指纹的纪元。 |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 在一次带退役的已提交转换之后：纯函数 `trace_dependents` 的过期闭包与 `rebuild_frontier`，发出 `SelectiveErasureEvent` / `FrontierRebuildEvent` 记录。失败阶梯：内核校验失败 → 保守式再修复（被标记的节点被丢弃）→ 仅排空式降级（`expansion_halted`：运行完成挂起的工作但不再扩展）。绝不崩溃。 |
 
@@ -266,6 +266,24 @@ flowchart TB
   采纳时，被降级的在任者移入一个可复位的 `shadow` 待命位，使每个 paper
   角色恰好有一个活跃条目存活。与 T20 不同，它不是退役 —— 之后的边界可以
   重新爬升该待命位。
+
+边界审计不是循环里唯一被治理的决策，也并不吞并另一个。**lineage decision
+钩子**（`config/workflow.yaml` 中的 `lineage_decision:`，在循环开始时读取
+一次）在其 `mode` 不为 `off` 时按节点治理*研究方向*：一个节点保存之后，
+它可以继续探索、切换到次选想法、fanout 出一个子运行，或终止该系统谱系
+—— 由它自己的 `rate_limit_per_run`（统计一次运行中非 `continue` 的动作数）
+封顶，并追加写入 `lineage_decisions.jsonl`。
+`audit_epoch` 按纪元治理*组件可信度*：它在上文的 `ensure_epoch` tick 内、
+每个边界运行一次（正在关闭的纪元先于事务被审计），
+由 `rqgm.governance.max_llm_calls_per_audit` 封顶，并追加写入
+`rqgm_audit.jsonl`。在 v1 中，这是共享同一个循环的两套机制 —— 配置各自
+独立、上限各自独立、记录流各自独立 —— 且互不 gate：边界审计从不等待
+lineage decision，lineage decision 也从不读取 `GovernanceReport`。（两者
+之间唯一的联系是再构思：stagnation 或 pivot 决策还会触碰
+`ProposalRouter`，而该路由器以 `trigger: "proposal_router"` 追加写入同一个
+`lineage_decisions.jsonl` —— 治理审计不在这条路径上。）二者的统一被推迟到
+v1 之后：设计上并没有什么排除它，但它们各自限流之间的相互作用尚未设计，
+因此请把它们读作恰好共享一个循环的独立机制。
 
 ---
 
@@ -458,6 +476,19 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
    加盖。但这只是同一进程内的应用边界，并非数字签名、独立 OS 用户、
    独立进程或 IPC 沙箱隔离。运行时、检查点和工具调用边界属于当前可信
    计算基。
+   同样的保留也适用于能力强制。预检门（`CapabilityGatedMCPClient`）只覆盖
+   MCP 工具派发：它按工具*名称*的子串匹配把一次调用映射为
+   `(actor, action, resource)` 三元组（`ari/rqgm/tool_policy.py`），对无法
+   识别的工具返回 `None` 并原样放行，因此未被映射的工具从不与能力矩阵比对。
+   `validate_capability` 还在另外两个进程内接缝被调用（`ari/rqgm/meta_evolution.py`
+   的 meta 输出准入、`ari/rqgm/clean_room.py` 的退役提示词正文读取），
+   但它们都不是文件系统边界：检查点目录只是由 `checkpoint.dir` /
+   `ARI_CHECKPOINT_DIR` 解析出的普通路径，本身没有访问控制，直接读取它的组件
+   不会留下任何可供内核检查的网关记录。meta rollout 的 `sandbox` /
+   `allow_paths` 检查只审视工具*参数*中指向 scratch 目录之外的绝对路径，
+   `ari/agent/react_driver.py` 自己称之为纵深防御检查；它不是 OS 级隔离。
+   因此 `CK-ACC-*` 约束的是一个配合的组件通过网关能伸手拿到什么，
+   它不是一道封闭边界。
 6. **选择性擦除是仅逻辑的。**什么都不物理删除。过期状态存在于审计
    日志事件、派生的 `rqgm_erasure_state.json` 汇总，以及通过
    `tree.json` 持久化的增量 `Node.metrics` 哨兵键（`_stale`、

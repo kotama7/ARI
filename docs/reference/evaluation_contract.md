@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/calibration/evaluator_v1.json
     role: test
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # Scientific evaluation contract

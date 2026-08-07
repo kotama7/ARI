@@ -81,13 +81,27 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   セマンティックダンプを置き換え）。これは *継承* パスであり、下記の検証可能層とは独立。
 - **型付きインデックス／verified context**: 上記の検証可能層。`consolidation_enabled()`
   （デフォルト ON）でゲートされる。
+- **選択的消去（selective erasure）**: RQGM が論理消去したノードは、選択で勝つことも
+  主張を接地することもできない。コア側では `select_best_node` がそのノードを除外し、
+  `build_verified_context` が lineage から落とす（いずれも
+  `metrics['_valid_for_frontier'] is False` による）。スキル側の `context_builder` は
+  生き残った祖先だけから claim リストを構築する（`{checkpoint}/rqgm_erasure_state.json`
+  に対する `erasure.drop_erased`）。`failure_case` の limitations は祖先全体を保持し、
+  隠すのではなくラベル付けする。非 RQGM チェックポイントでは（rollup ファイルが無いため）
+  無効。
 
 ## コンポーネント
 
-- `ari-skill-memory`: `schemas.py`（型付きレコード）、`provenance.py`（node_report
-  からの sha256 参照）、`audit.py`（claim↔artifact 整合性）、`writer.py` /
+- `ari-skill-memory`: `schemas.py`（`MEMORY_KINDS` / `REPRO_STATUSES` の語彙と、
+  ハッシュ前の入力ヘルパ `ArtifactRef`。*保存される* 型付きレコードは
+  `ari.public.memory` が公開する `MemoryRecordV1` であり、content-addressed —
+  `record_id` と `record_digest` はいずれも自身のペイロードの正準ダイジェスト）、
+  `provenance.py`（node_report からの sha256 参照）、`audit.py`
+  （claim↔artifact 整合性）、`writer.py` /
   `retriever.py`（型付き書き込み＋kind/scope/artifact フィルタ読み取り＋再現性
-  畳み込み）、`consolidation.py`（node_report → specs）、`context_builder.py`
+  畳み込み）、`consolidation.py`（node_report → specs）、`erasure.py`
+  （公開された erasure rollup の読み取り: pull 経路ではラベル付け、接地経路では
+  ハード除外）、`context_builder.py`
   （verified context）。MCP ツール（`add_experiment_result`,
   `search_research_memory`, `get_verified_context`, `consolidate_node_memory`,
   `audit_memory`, …）として公開され、すべてフックから呼ばれる。

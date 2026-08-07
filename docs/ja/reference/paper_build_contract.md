@@ -26,8 +26,10 @@ last_verified: 2026-08-02
 1. `write_paper_iterative`は単一`WorkspaceRefV1`配下のnative evidenceを検証し、すべての
    authoring callを保存して`.ari-paper/paper_build.draft.json`を書きます。
 2. text、visual、semantic、hard-gate reviewを独立に実行します。
-3. `paper_refine`は一意でanchor-safeな置換だけを適用し、digest-boundな
-   `PaperModelCallBatchV1`を保存します。
+3. `paper_refine`は、markerとその`metric=`・`formula=`・operand tokenを含む
+   `% CLAIM:`宣言をそのまま保ち、renderer所有のfigure environmentをbyte単位で
+   変えない一意な置換だけを適用し、digest-boundな`PaperModelCallBatchV1`を
+   保存します。
 4. code availabilityをdeterministicに挿入します。
 5. 挿入後の正確なTeXに対してclaim link、semantic review、hard gate、compileを再実行します。
 6. `finalize_paper_build`はevidence graphを再計算・検証し、statusが`finalized`、`blocked`、
@@ -49,6 +51,16 @@ authoring input setは次の一意なroleを持ちます。
 
 finalizationでは各inputを読み直し、sizeとSHA-256をdraft recordと比較します。authoring後の
 input変更はhard errorです。
+
+`ARI_MANUSCRIPT_RUNTIME_MODE=enforce`のときは、`manuscript-profile`、
+`manuscript-context`、`manuscript-readiness`、`section-briefs`、
+`manuscript-authoring-binding`の各roleも必須になり、それぞれ対応する
+`ARI_MANUSCRIPT_*_PATH`から読み込みます。profile・context・readiness・
+brief-bundle・bindingのdigestが1本のlineageを成さない場合、またはreadinessが
+`ready`/`ready_with_disclosures`でない場合、authoringはbundleを拒否します。
+finalizationは同じlineageをdraftの`build_id`・`run_id`に対して再検証し、
+readinessのpublication verdictが`ready`でなければbuildをblockします。この
+modeのdefaultは`off`で、default pipelineはこれらのinputを一切供給しません。
 
 ## Revisionとmodel provenance
 
@@ -77,6 +89,11 @@ finalizerはfinalizeを拒否します。以前の単一refinement-call record�
 - writerが宣言したformula operand
 - canonical figure reference
 - document全体のdigest
+
+FigureBatchに紐づくfigure environment内の行にあるnumeric mentionは
+`figure_evidence`に分類され、anchor義務を負いません。そのcaption textは
+すでに`FigureBatchV1`が所有しdigestしているためです。auditのために
+`numeric_mentions`には残ります。
 
 finalizationはこのintermediaryを信用せず、locked ScienceData、FigureBatch、final TeXからdocument全体を
 再計算します。finalized buildではunresolved anchorもuncovered numeric result mentionも0です。

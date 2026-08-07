@@ -77,6 +77,29 @@ rqgm:
 即意味着这是一次纯 `simple_bfts` 运行** —— 默认检查点与 RQGM 之前的
 ARI 保持逐字节一致。
 
+`mode_source` 记录的是**启动时模式是怎么定下来的**，而决定它的只有一条
+规则：`ari run` 在启动时若进程环境中的 `ARI_MODE` 或 `ARI_RQGM_ENABLED`
+被设为非空值就记 `env`，否则记 `config`。这个判断发生在
+`export_resolved_config_to_skill_env` 把 `ARI_MODE` `setdefault` 为生效模式
+**之前**，因此纯粹通过 YAML 配置的运行绝不会被误标成来自环境变量。关键
+在于「是否存在」而不是「谁设置的」：从父进程继承来的值同样算作来自环境
+变量；从 Configuration Studio 以非默认模式启动的运行也会记 `env`，因为该
+启动路径除了把 `ari:`/`rqgm:` 块合并进检查点的 `workflow.yaml` 之外，还会把
+`ARI_MODE`/`ARI_RQGM_ENABLED` 导出到所派生 CLI 的环境中。其他任何字符串
+都会在告警后被归一为 `config`。
+
+第三个可接受值 `resume` 是**保留值，从不被写入**。`rqgm_state.json` 只在
+运行开始时由 `persist_run_start`（运行时中唯一调用 `write_rqgm_state`
+的地方）写入一次，而
+`ari resume` 只读取它（`reconcile_resume_mode`）。因此恢复的运行不会带有
+`mode_source: resume`；该字段永远描述**最初**那次启动，读者不应期待它会
+随恢复而改变。
+
+两个访问器按契约都是非致命的。文件缺失、不可读，或不是一个 JSON 对象时，
+`read_rqgm_state` 返回 `None` —— 缺失与损坏一样都被读作「没有 RQGM
+状态」，也就是一次 `simple_bfts` 运行。`write_rqgm_state` 会捕获所有异常
+并记录告警，因此溯源写入失败只会让记录退化，绝不会把异常抛进运行里。
+
 ## 模式切换时机策略
 
 允许：
@@ -176,6 +199,10 @@ rqgm:
 （`reconcile_paper_resume_mode`）：持久化的论文模式优先于配置和环境
 变量，不一致时产生警告，而没有该状态文件的检查点在该阶段保持
 `linear` —— 因此纯 linear 的重新调用绝不会加载任何 `ari.rqgm` 模块。
+`resume` 在这条轴上同样是保留值：只有当 `paper_archive_state.json` 已经
+存在时 `ari paper` 才会选择 `mode_source: resume`，而那恰恰就是仅写一次的
+守卫跳过写入的情形，因此已持久化的文件永远记录的是首次调用时的
+`config`/`env` 决定。
 
 ### agent-as-judge 草稿评分（可选启用）
 
@@ -325,6 +352,28 @@ T1–T21 转换表，与 RegistryTransitionEngine 共享 —— 单一事实来�
 哈希重钉。打包的 `constitution.yaml` 只是人类可读的声明 —— 编辑它不会
 改变任何东西。
 
+**为什么规则是代码。** 检查点目录是一个扁平的共享文件系统，任何一个 MCP
+技能都能写入它。把角色规则、能力矩阵、严重度映射或转换表放进检查点作用域
+的 YAML，等于把一条通往「审判自己的宪法」的进化 / 篡改通道交到任意组件
+手里。因此它们是冻结的 Python 常量，内核中唯一可配置的部分只有数值：
+`rqgm.kernel.enforcement`、`rqgm.kernel.audit_chain` 与
+`rqgm.kernel.float_tolerance`。
+
+`CAPABILITY_MATRIX` 中固化了三条常量，对每个层级的每个角色都成立：没有任何
+`(role, tier)` 行授予 `read: retired_prompt_text`（受认可的读取路径是
+`RetiredPromptAccessGuard`，其狭窄的 fixed 层豁免集合是绕过矩阵，而不是由
+矩阵授予）；只有 `fixed` 层的 `registry_transition_engine` 持有
+`write: registry` 与 `activate: candidates`；而每个可进化角色的 `meta`
+层行两者皆无，无论候选自己声明了什么。
+
+**被接受的代价。** 由于规则是被 `constitution_hash` 覆盖的代码，改动一条
+规则就等于一次代码评审加上对 `ari-core/tests/test_rqgm_kernel.py` 中期望
+哈希的手工重钉；并且有测试断言：编辑*被导入的*转换表同样会改变该哈希，
+所以无法通过改另一个模块来绕开这枚钉子。实验进行中给规则打补丁的手段是被
+刻意排除的 —— 紧急修复意味着一次新构建，而不是一次配置编辑。以这种方式
+做出的修正会作为注释就地记录在 `ari/rqgm/kernel_rules.py` 中，每一条都写明
+改了什么以及哈希钉已重新计算 —— 于是宪法的历史就是一份可评审的 diff。
+
 阻断矩阵概要（"阻断制度，而非研究"）：
 
 - **硬阻断集合**（否决 RQGM 状态变更 —— 纪元转换提交、注册表写入、
@@ -334,11 +383,41 @@ T1–T21 转换表，与 RegistryTransitionEngine 共享 —— 单一事实来�
   预检能力拒绝（包括对已退役提示词文本的访问，在 MCP 门处以标准
   `{"error": ...}` 信封拒绝）。
 - **警告并标记集合**（从不打断研究执行）：逐节点的记录 schema 与哈希
-  异常、事后访问发现、创建时的角色分离发现、上下文范围发现。被警告的
-  记录在边界处不可再作为治理证据。
+  异常、事后访问发现、创建时的角色分离发现、上下文范围发现。一条警告
+  发现会作为 `kernel_report` 条目追加到 `rqgm_audit.jsonl`，并且对治理
+  流水线自身产出的记录还会计入报告的 self-audit 块 —— 但它**不会**设置
+  任何让该记录事后变得不可采信的标志。证据包的可采信性由记录类型、
+  作者角色以及按类型的完整性检查（`ari/rqgm/governance/_evidence.py`）
+  独立决定。
 
-当一次转换被阻断时，上一纪元的活跃集合原样延续，运行继续（治理挂起
-式延续 —— 绝不中止运行）。`rqgm.kernel.enforcement: audit_only` 将
+**内核在哪里被调用。** 内核是被动的 —— 它只返回裁决，自身从不变更治理
+状态；所有写入与后果都归适配器所有。安装它的适配器共有六个，且全部只在
+`ari_rqgm` 下构造：
+
+| 执行点 | 运行的检查 | 阻断裁决的效果 |
+|---|---|---|
+| 纪元边界事务（`RegistryTransitionEngine.apply`） | `validate_transition` | 事务被标记为 `aborted`，任何已解析的状态变更（晋升、制裁、退役）都不会应用；上一纪元的活跃集合原样延续，运行继续 |
+| 前沿重建提交（`FrontierRepairEngine.repair`） | `validate_selective_erasure` | 引擎改为保守修复（把每个被标记的节点整个丢弃）并重新校验；若第二次仍被阻断，运行降级为 drain-only（`halted_expansion`：完成待办工作，不再扩展） |
+| MCP 工具派发（`CapabilityGatedMCPClient.call_tool`） | 对工具策略映射出的 `(actor, action, resource)` 三元组执行 `validate_capability` | 该调用不被派发，调用方收到标准的 `{"error": ...}` 信封。若违规码属于引擎的紧急触发集合，还会额外触发 T16 紧急隔离钩子 —— 这是运行中的 agent 唯一能在纪元中途触碰宪法的地方 |
+| 逐节点钩子（`RQGMRuntime.run_per_node_kernel_check`） | 对该节点产出的记录执行 `validate_record_schema` 与 `validate_hashes`，外加 K/C/A 完整性检查 | 记录类发现仅警告并写入审计日志。一条阻断性的 K/C/A 完整性发现会把节点标记为 `assurance_status: tampered`、`frontier_class: uncertified_frontier` 与 `_valid_for_frontier: false` —— 节点仍然运行过，只是被排除在前沿之外 |
+| 治理自审计（`GovernanceOrchestrator.audit_epoch`） | 对流水线自身产出的记录重跑 `validate_record_schema` 与 `validate_role_separation` | 此处不否决任何东西：发现被计入报告 self-audit 块的 `kernel_violations_found`、`escalations` 与 `ban_recommendations` |
+| 恢复完整性检查（`RQGMRuntime.resume_integrity_check`） | 对恢复出的检查点执行 `validate_audit_log_integrity` 与 `validate_selective_erasure` | 运行仍会恢复，但进入治理挂起式延续（这是拒绝恢复之外的降级方案）。在该状态持续期间，纪元审计被跳过，每个边界解析出空转换，元进化也被跳过 |
+
+每个适配器对自身的 bug 都是 fail-open 的：钩子内部的异常会被记录并吞掉，
+绝不抛进运行循环。唯一刻意的例外是前沿修复的校验器 —— 它把自身的异常当作
+失败裁决，因而在边界处以 fail-closed 的方向降级。
+
+**已知缺口 —— 纪元不变性只做检测。** `CK-EPO-002`（纪元中途的非紧急活跃
+集合变更）带有 block 严重度，但它唯一的生产调用点 —— 由运行循环驱动的
+`RQGMRuntime.check_epoch_invariance` —— 只是把该发现作为 `kernel_report`
+条目记入 `rqgm_audit.jsonl` 并告警。它从不查询 `should_block`，也不否决
+任何东西：不会因为一条纪元不变性发现而拒绝任何采纳，也不会拒绝任何注册表
+变更。`CK-EPO-002` 同时也被列在引擎的紧急触发集合中，但发出它的校验器只有
+纪元不变性那一个，而该路径并不经过升级钩子 —— 所以这项列举同样从不触发。
+请把 `CK-EPO-*` 读作该纪元治理审计的证据，而不是一道被执行的屏障。
+
+当一次转换被阻断时，上一纪元的活跃集合原样延续，运行继续（绝不中止
+运行）。`rqgm.kernel.enforcement: audit_only` 将
 所有上下文降级为仅警告并记录，用于分阶段上线和消融实验。
 
 ## 兼容性保证

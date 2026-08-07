@@ -16,10 +16,35 @@ last_verified: 2026-07-28
 # RQGM Schema Reference
 
 Formal JSON Schemas for every record the opt-in `ari_rqgm` execution mode
-persists.  All of them ship under `ari-core/ari/schemas/` and are loaded by
-basename via `ari.schemas.load(name)`.  None of these records exist on a
+persists.  All of them ship under `ari-core/ari/schemas/` and can be loaded
+by basename via `ari.schemas.load(name)`.  None of these records exist on a
 default `simple_bfts` checkpoint — every reader treats absence as "RQGM
 never ran".
+
+These schemas are a **reference contract, not a runtime validator.**  Nothing
+under `ari/rqgm/` opens one: `jsonschema` is not an `ari-core` dependency, and
+no RQGM writer checks a record against a `.schema.json` file before persisting
+it.  The record classes are plain dataclasses that *mirror* the schema files —
+`ari/rqgm/proposals/records.py` and `ari/rqgm/adversarial/records.py` use
+exactly that word in their module docstrings; no Pydantic model backs them, and
+no snapshot test asserts that a shipped schema equals a generated
+`model_json_schema()`.  Pydantic `model_validate` *is* used inside
+`ari/rqgm/`, but only for the separately gated Knowledge/Capability/Assurance
+admission, harness, capability-binding, and manuscript documents — never for
+the `rqgm_record_base` envelope or any record inventoried on this page.
+
+What the kernel enforces at write time is an envelope + shape check,
+`ConstitutionalKernel.validate_record_schema` (`ari/rqgm/kernel.py`): the eight
+`kernel_rules.ENVELOPE_FIELDS` must be present, `record_id` / `status` / `role`
+must be non-empty when present, and a `proposal_record` additionally runs the
+proposal-summary field budgets.  A failure is reported as `CK-SCH-G01` (block)
+on the governance record types `epoch_transition` / `governance_report`, as
+`CK-SCH-N01` (warn) on any other record type, and a budget overrun as
+`CK-SCH-N02` (warn).  The per-field types, formats, and closed enums documented
+below are therefore upheld by the writers and by the test suite — several
+`ari-core/tests/test_rqgm_*.py` modules validate real records against these
+schema files, though they reach for `jsonschema` through `pytest.importorskip`
+and skip when it is absent — and not by any validation at persist time.
 
 This page documents the **record shapes** (purpose, owning module, key
 fields, id/hash discipline).  For the checkpoint **files** those records
@@ -81,6 +106,66 @@ Id formats (all zero-padded, per-checkpoint counters):
 | `erase_` / `rebuild_%05d` | erasure / rebuild events | `erase_00007` |
 | `meta_out_` + hash12 | MetaAgentOutputRecord | `meta_out_a1b2c3d4e5f6` |
 | 16-hex `cache_key` | governance cache (see below) | `a3f19c02b7d4e881` |
+
+## Constitutional violation codes
+
+Every kernel finding carries a stable `CK-<FAMILY>-<NNN>` code, and its
+severity is part of the constitution rather than a caller choice.  Severity
+is fixed per code in `ari.rqgm.kernel_rules.SEVERITY` (the
+Knowledge/Capability/Harness families are merged in from
+`ari/rqgm/kca_kernel_rules.py`), resolved through that one map on **every**
+`Violation` construction (`ari/rqgm/kernel.py` `_v`,
+`ari/rqgm/kernel_kca_common.py` `violation` — an unknown code is a `KeyError`,
+never a defaulted severity), and carried inside `constitution_hash`, so
+editing a severity changes the pin.  Codes are frozen once implemented and
+never renumbered.
+
+| Family | Owning check | Severity |
+|---|---|---|
+| `CK-SCH-G01` | `validate_record_schema` — envelope/shape failure on a governance record type (`epoch_transition`, `governance_report`) | block |
+| `CK-SCH-N01`, `CK-SCH-N02` | `validate_record_schema` — the same failure on any other record type; proposal-summary field budget exceeded | warn |
+| `CK-HSH-001`, `CK-HSH-002`, `CK-HSH-003` | `validate_hashes` — record `prompt_hash` vs the role's registered active hash; `artifact_hashes` vs recomputed sha256; unresolvable artifact or `source_ref` | warn |
+| `CK-HSH-010` | `validate_hashes` — an **active** registry entry whose own `prompt_sha256[:12]` disagrees with its registered `prompt_hash` | block |
+| `CK-ACC-001`, `CK-ACC-002` | `validate_capability` — `CAPABILITY_MATRIX` miss or a denied Task-11 meta-action flag; retired-prompt-text access (unreadable for every role) | block |
+| `CK-EPO-001` | `validate_epoch_invariance` — a record whose `prompt_hash` lies outside the epoch's frozen active set | warn |
+| `CK-EPO-002` | `validate_epoch_invariance` — a non-emergency status-change event inside the epoch | block |
+| `CK-REG-001`…`CK-REG-007` | `validate_transition` — edge absent from the T1–T21 table, boundary-only edge stamped mid-epoch, declared `rule_id` contradicting the table, `produced_by` not the RegistryTransitionEngine, required supporting refs missing, invalid emergency shape, `from_status` contradicting the registry | block |
+| `CK-REG-101` | `validate_authority_non_expansion` — a candidate declaring more authority than its incumbent (invariant 18) | block |
+| `CK-ROL-001`, `CK-ROL-002`, `CK-ROL-003` | `validate_role_separation` — impeachment motion not authored by the Auditor, evidence bundle not by the EvidenceClerk, same-role accusation | warn |
+| `CK-ROL-901` | `validate_role_separation` / `validate_capability` — anyone but the RegistryTransitionEngine writing the registry or activating candidates (invariant 10) | block |
+| `CK-ERA-001`…`CK-ERA-006` | `validate_selective_erasure` — stale / frontier-invalid / retired-prompt-derived record present in the frontier, un-staled dependent of a retired prompt, physical deletion (invariant 13), `prompt_trace.jsonl` line with an unmapped retired hash | block |
+| `CK-AUD-001`, `CK-AUD-002`, `CK-AUD-003` | `validate_audit_log_integrity` — sequence regression, mutated check-pointed prefix, broken hash chain | block |
+| `CK-CLN-001`, `CK-CLN-002` | `validate_clean_room_bundle` / `validate_contamination_free` | block |
+| `CK-CTX-001` | `validate_context_scope` — a rendered role view exceeds its field whitelist | warn |
+| `CK-UTL-001`…`CK-UTL-008` | `validate_utility_policy` — all block **except** `CK-UTL-006` (an axis key outside the epoch's live axis set), which is warn | block / warn |
+| `CK-KNW-001`…`015`, `CK-CAP-001`…`018`, `CK-HAR-001`…`020` | `validate_knowledge_integrity` / `validate_capability_binding_integrity` / `validate_harness_integrity` | block |
+
+`severity: block` entitles a verdict to veto a state change wherever an
+enforcement path consults it — it does not mean every context acts on it, and
+the enforcement mode does not reach every context either.  The sites that
+honour [`rqgm.kernel.enforcement`](configuration.md#execution-mode-and-rqgm-governance-opt-in)
+route through the helper `ari.rqgm.kernel.should_block`
+(`ari/rqgm/runtime.py`, `transition_engine.py`, `frontier_repair.py`, and the
+capability-gated MCP wrapper in `kernel.py`); under `audit_only` that helper
+returns false for every report while leaving the recorded severities
+untouched, so the audit trail stays truthful.  Other sites read
+`report.blocking` directly and are therefore unaffected by the enforcement
+mode: the clean-room pre/post screens (`ari/rqgm/clean_room.py`), the
+meta-candidate admission gate (`ari/rqgm/meta_evolution.py`), and the
+governance self-audit escalation (`ari/rqgm/governance/_self_audit.py`).
+Deliberately warn-only contexts stay warn-only in either mode: the per-node
+hook (`per_node_warn_check`) runs the schema and hash checks without ever
+raising, and `validate_context_scope` never blocks node execution.
+
+One escalation is independent of `enforcement`.  A `block`-severity violation
+whose code is in `transition_engine.EMERGENCY_TRIGGER_CODES` — `CK-HSH-010`,
+`CK-EPO-002`, `CK-AUD-001/002/003`, `CK-ACC-001/002`, `CK-ROL-901` — is handed
+from the MCP wrapper to the T16 emergency-quarantine path whatever the mode:
+`audit_only` downgrades blocking, not the constitutional fact, and the
+emergency transition is itself kernel-validated before it commits.  That path
+can only quarantine a **registered component**; when the acting role has no
+registry entry (the research agent's `generator` is the usual case) the
+escalation is logged and no transition is composed.
 
 ## Shared envelope (`rqgm_defs.schema.json`)
 
@@ -237,6 +322,307 @@ line with that `epoch_id`.  **Owning module:** `ari/rqgm/governance/`
 | `candidate_evaluations` | Replay/anchor scores feeding the RegistryTransitionEngine |
 | `replay_pool_updates` / `self_audit` / `bond_accounting` / `budget_usage` | Boundary bookkeeping |
 | `recommendations[]` | `action` is the closed set `promote_candidate` \| `promote` \| `demote` \| `warn` \| `quarantine` \| `retire` \| `no_action`, consumed by Task 09 |
+
+### The motion-pipeline records
+
+Besides the report, `audit_epoch` appends four record types to
+`rqgm_audit.jsonl`, all carrying the shared envelope above.  **None of the
+four has a standalone schema file** — their shapes are the frozen
+dataclasses in `ari/rqgm/governance/_records.py`, and the audit's own
+self-audit step re-validates each through the kernel (envelope via
+`validate_record_schema`, author via `validate_role_separation`,
+CK-ROL-001/002/003).
+
+**`evidence_bundle`** — the EvidenceClerk is the only legal author
+(`build_evidence_bundle` raises `GovernanceRuleError` for anyone else), one
+bundle per threshold-flagged target, `prompt_hash` always `null` because
+the clerk is deterministic.  The clerk's candidate refs are the records naming
+the target — validated attacks, utility records, raw attacks, and the
+K/C/A provenance types — plus same-role `comparison_observation`s about the
+target, which enter only as *leads*: the observation's own `source_refs`
+are pulled in for independent verification while the observation ref itself
+is still listed, so its exclusion is recorded rather than silent.
+
+`items[]` entries are `{kind, ref, content_hash}`, where `content_hash` is
+`payload_hash(record)` — the same `hash12` scheme as everything else on
+this page, no second hash — and `kind` comes from a closed
+`record_type → kind` map:
+
+| Admissible `record_type` | Bundle `kind` |
+|---|---|
+| `validated_attack` | `validated_attack` |
+| `utility_record` | `utility_record` |
+| `judgment_record` | `judgment_record` |
+| `review_record` | `review_record` |
+| `node_report` | `execution_provenance` |
+| `harness_attestation` | `fixed_verifier_result` |
+| `knowledge_skill_use` | `instruction_provenance` |
+| `capability_binding` | `execution_authority` |
+
+Anything else is inadmissible.  Every rejection is recorded in
+`excluded_items[]` as `{ref, reason}`, so a bundle states what it declined
+as well as what it carries.  The checks run in a fixed order and the first
+match is the reason recorded:
+
+| Order | Reason | Meaning |
+|---|---|---|
+| 1 | `unresolvable_ref` | The ref does not resolve in the epoch's record slice.  This also flips `verification.all_refs_resolved` to `false` |
+| 2 | `unadjudicated_raw_attack` | The ref is a `raw_attack`.  A raw attack is never evidence; only the judge-authored `validated_attack` derived from one is (invariants 8-9) |
+| 3 | `same_role_source` | The item's author role equals the target's role.  Same-role output is an observation, never an accusation — this is what excludes a `comparison_observation` about the target, and the target's own review records |
+| 4 | `inadmissible_record_type` | The record type is outside the map above |
+| 5 | K/C/A integrity reasons | Provenance attachments that fail their own checks: artifact-level (`missing_artifact_reference`, `invalid_artifact_reference`, `unsafe_artifact_reference`, `unresolvable_artifact_reference`, `artifact_digest_mismatch`) plus the per-type checks on attestations, knowledge use, and capability bindings — the full set lives in `_evidence.py` |
+
+Assembly excludes rather than substitutes: it never pads and never raises.
+`verification` is `{checked_by: "evidence_audit_checker",
+all_refs_resolved}`.  Because a bundle never pads, an empty one cannot
+support a prosecution — a flagged target whose bundle has no `items` yields
+no motion and a `no_admissible_evidence` entry in `self_audit.findings`.
+
+**Same-role observations are reserved, and not yet produced.**  The design
+reserves a governance `comparison_observation` for the case where one
+component disagrees with a same-role peer — a reviewer scoring a node
+differently from the reviewer that may replace it, say.  Such a record names
+its `subject_component_id` and `subject_role`, and its builder sets
+`admissible_as_evidence: false` unconditionally: it is an observation, never
+an accusation.  That is the "lead, never evidence" rule the clerk implements
+above — the observation's own `source_refs` are followed to the primary
+artifacts and verified independently, while the observation ref itself lands
+in `excluded_items` (reason `same_role_source` when its author role equals
+the target's role, `inadmissible_record_type` otherwise), so the exclusion
+is recorded rather than silent.
+
+**This path is currently inert.**  The record type, its construction-time
+invariant, the lead-following in evidence assembly and the reliability
+aggregation over subjects are all implemented, but **no shipped component
+emits a governance `comparison_observation` into `rqgm_audit.jsonl`** — the
+builder has no production caller.  The report's `observations` array is
+therefore empty in every shipped run.  Treat it as reserved design, not as
+behaviour a run will exhibit.  The generic same-role exclusion, by contrast,
+is live: it applies to any bundle candidate whose author role equals the
+target's role, whatever its record type.
+
+The type name is shared with an unrelated shape.  The prompt-evolution
+shadow stage writes its own `comparison_observation` — candidate versus
+incumbent output hashes and a divergence summary — to
+`prompt_evolution.jsonl`, documented under
+`rqgm_prompt_evolution.schema.json` below.  The two are told apart by their
+file and their fields, not by their `record_type`.
+
+**`impeachment_motion`** — the Auditor is the only legal author, so
+Reviewer v4 cannot reach Reviewer v3 through this path at all.  Adds
+`target_component_id`, `target_role`, `charge`, `evidence_bundle_id`,
+`bond_units` and `requested_action`; `source_refs` is the bundle id alone.
+`requested_action` is a strict **subset** of the report's recommendation
+vocabulary — `demote` \| `warn` \| `quarantine` \| `retire` — because a
+motion never promotes; a value outside it is refused at construction, as is
+`target_role: auditor` (the Auditor never impeaches its own role).
+
+**`governance_defense`** — the Defender authors one per motion, carrying
+`motion_id`, `defense_text` and `procedural_default`.  On the fallback path
+`prompt_hash` is `null` and the text is the fixed procedural default quoted
+in the table below.
+
+**`impeachment_outcome`** — the GovernanceJudge authors one per adjudicated
+motion.  It exists as a standalone record so Task 09's transition engine
+can consume outcomes without parsing whole reports.  It mirrors the
+report's `adjudications[]` entry and additionally holds what that entry
+only points at: the `rationale` text (the report entry carries
+`rationale_ref`, which is this record's id) and `clamped_by_board`, set
+when the deterministic boards overrode the judge's verdict.  `outcome` is
+the closed set `upheld` \| `partially_upheld` \| `dismissed` \|
+`inconclusive`.
+
+**The bond ledger.**  Frivolous prosecution is discouraged without an LLM in
+the loop.  Each filed motion posts `rqgm.governance.bond_units_per_motion`
+against a per-epoch prosecution budget of
+`max_motions_per_epoch × bond_units_per_motion`.  Settlement is a pure
+function of the adjudication outcome: `upheld` and `partially_upheld` return
+the units, `dismissed` consumes them, and `inconclusive` leaves them posted
+— neither returned nor consumed.  The code calls that "carried to the next
+epoch", but **no carry mechanism ships**: step 1 reads only the current
+epoch's record slice, so an unresolved motion is never re-read, and the next
+epoch re-derives its motions from fresh reliability classification.  Once
+the budget is depleted, no further motion is filed that epoch whatever the
+thresholds say.
+Two properties are easy to misread.  `remaining_budget` counts only what
+*filing* consumed, so a refund does not restore filing capacity inside the
+epoch.  And the ledger is constructed fresh for each `audit_epoch`, so it
+resets at every boundary: it does not accumulate penalties across epochs,
+which means it under-deters a prosecutor that files frivolously epoch after
+epoch.  The result is the report's `bond_accounting` block — `posted`,
+`refunded`, `forfeited`, `remaining_budget`.  These are quota counters, not
+currency: nothing of value moves between components.
+
+**The `self_audit` block.**  Step 8 audits the judiciary by the yardstick it
+applies to everyone else, and it is where the kernel — not the orchestrator
+— has the last word.  Every `evidence_bundle`, `impeachment_motion`,
+`governance_defense` and `impeachment_outcome` the pipeline just produced is
+fed back through `ConstitutionalKernel.validate_record_schema` and
+`validate_role_separation`.  The record builders' own refusals are an early
+optimisation; this re-run is the guarantee, so a buggy or evolved governance
+component cannot smuggle a violating record into the report.  The block
+carries:
+
+| Key | Contents |
+|---|---|
+| `checked_components` | The sorted governance actors examined: auditor, evidence clerk, defender, governance judge |
+| `kernel_violations_found` | The violation count from the re-validation |
+| `findings` | The deterministic findings raised during the audit — `judge_clamped_by_board`, `no_admissible_evidence`, `same_role_prosecution_skipped`, `motion_refused`, … |
+| `escalations` | `{code}:{subject_ref}` for the violations of every **blocking** kernel report |
+| `ban_recommendations` | Subjects implicated by a contamination-class code — `CK-AUD-001` (audit-log append-only violation), `CK-AUD-002` (audit-log prefix tampering), `CK-AUD-003` (broken audit-log hash chain), `CK-ACC-002` (retired-prompt-text access), `CK-ROL-901` (forged registry-writer authority) — plus any `contamination` / `clean_room_lineage_failure` finding.  The RegistryTransitionEngine reads this key; it is still only advice, and a ban applies only where the component is actually retired |
+| `stats` | `auditor_motion_precision`, `judge_board_clamp_count`, `defender_substantive_rate`.  The two rates are `null` when no motion was filed — never imputed |
+
+Only the first four keys are declared in `governance_report.schema.json`;
+`ban_recommendations` and `stats` are additive and ride as undeclared
+properties.  If no kernel is available, or the re-validation itself raises,
+the block degrades and `self_audit_degraded` joins `degradation_reasons`.
+
+### The audit's determinism budget
+
+The audit has exactly three LLM seams — step 4 (prosecution), step 5
+(defense) and step 6 (adjudication) each take an optional renderer.  No
+model enters any other step; those run off the epoch's audit-log slice and
+the frozen registries alone.  At each seam the rule decides first, and the
+model is asked only at the margin.
+
+**Prosecution is rule-first, LLM-second.**  `classify_target`
+(`ari/rqgm/governance/_prosecution.py`) reads one ReliabilityMonitor entry
+and returns one of three answers.  A component is **filed against outright**
+when at least `ATTACK_THRESHOLD` (2) validated attacks are bound to it, or
+when its reliability score is below `RELIABILITY_FLOOR` (0.4).  It is
+**borderline** — and only then does the LLM Auditor prompt run — when
+exactly one validated attack is bound to it, or when its score sits in
+`[RELIABILITY_FLOOR, RELIABILITY_FLOOR + BORDERLINE_MARGIN)`, i.e.
+`[0.4, 0.5)`.  Everything else is left alone.  All three thresholds are
+module constants, fixed in code the way the kernel's rule tables are; only
+the budgets under `rqgm.governance` are configuration.  A borderline case
+whose auditor reply never arrives or does not parse files nothing at all —
+the incumbent presumption, the same shape as
+`LineageDecision.fallback_continue`.
+
+Two classes of subject are never prosecuted:
+
+- **`tier: fixed` components.**  The tier check is the classifier's first
+  statement and returns "no case" before any threshold is read, so a fixed
+  component is unprosecutable however many attacks name it.  Fixed
+  procedures are constitutional mechanisms, not institutional incumbents:
+  their integrity findings suspend or repair the affected artifact, they do
+  not enter impeachment competition.
+- **A target whose role is `auditor`.**  The sole Auditor cannot file
+  against its own role, so such a target is skipped and recorded as a
+  `same_role_prosecution_skipped` entry in `self_audit.findings` rather than
+  silently dropped.
+
+`audit_epoch` never aborts on a failing step.  Each of the nine steps has a
+total deterministic fallback; taking one flips `degraded` to `true` and
+appends a token to `degradation_reasons`.
+
+| Step | On failure |
+|---|---|
+| 1 collect observations | The epoch's record slice is empty, so steps 2-6 have nothing to work on |
+| 2 reliability assessment | No reliability entries.  Independently of step failure, a component that authored nothing this epoch gets `reliability_score: null` with `insufficient_data: true` — a score is never fabricated, and the component stays prosecutable through its validated-attack count |
+| 3 evidence assembly | No bundles, therefore no motions.  Per-item failures never reach this row: assembly does not raise, it excludes (above) |
+| 4 prosecution decision | No motions.  A *borderline* classification whose auditor call is unavailable or unparseable also files nothing — incumbent presumption; a clear-threshold classification is rule-based and needs no LLM at all |
+| 5 defense generation | The defense becomes the fixed procedural default *"no substantive defense generated; incumbent presumption applies"* with `procedural_default: true` |
+| 6 adjudication | An unavailable or unparseable judge yields `dismissed`, in favour of the incumbent — the board clamp described below still applies to that fallback.  A board-scoring failure yields `inconclusive`, whose bond is neither refunded nor forfeited but stays posted — the motion is left unresolved rather than decided.  A motion targeting the governance judge itself is recused, producing no outcome record.  A failure in the parallel candidate evaluation yields an empty `candidate_evaluations` |
+| 7 replay-pool update | The pool update is skipped and flagged |
+| 8 governance self-audit | Kernel re-validation is skipped: `kernel_violations_found` stays 0 and no escalation is raised.  If the whole step fails, the block falls back to a stub with empty `checked_components` and `stats` |
+| 9 produce report | The **only** step that may raise.  The caller's fail-open catch (`ari/rqgm/runtime.py`) logs and returns no report; because the facade appends the audit's records only after the pipeline returns, that epoch then contributes no governance records at all, and the run continues |
+
+The schema types `degradation_reasons` as a plain string array — the
+vocabulary is enforced by the emitters, not by an enum.  The shipped
+pipeline emits these forms and no others:
+
+| Token | Raised when |
+|---|---|
+| `step_failed:observe`, `step_failed:assess_reliability`, `step_failed:assemble_evidence`, `step_failed:prosecute`, `step_failed:defend`, `step_failed:adjudicate`, `step_failed:evaluate_candidates`, `step_failed:update_replay_pool` | The named step raised and took its fallback above |
+| `auditor_llm_fallback:{component_id}` | A borderline target's auditor call was unavailable or unparseable |
+| `defender_llm_fallback:{motion_id}` | The defense fell back to the procedural default |
+| `judge_llm_fallback:{motion_id}` | No usable judge sample; the motion was dismissed |
+| `board_failure:{motion_id}` | Board scoring raised; the motion is `inconclusive` |
+| `self_adjudication_recused:{judge_component_id}` | A motion targeted the governance judge, and was left unresolved for external adjudication |
+| `replay_pool_update_skipped` | There were upheld cases to add, but the pool exposes no `append_case` |
+| `llm_budget_exhausted` | The [`max_llm_calls_per_audit`](configuration.md#execution-mode-and-rqgm-governance-opt-in) cap was hit, or the Task-12 budget manager denied a call |
+| `self_audit_degraded` | The self-audit's kernel re-validation was unavailable or raised |
+
+There is no `step_failed:produce_report` token: step 9 is the one step that
+does not degrade.
+
+With `llm=None` the audit runs entirely on these rule-only paths, and two
+runs over the same inputs produce byte-identical records once `created_at`
+is stripped.
+
+**The judge is bounded even when the LLM works.**  The ReplayBoard and
+AnchorBoard scores are computed before the GovernanceJudge rules, and the
+verdict is bounded by them — the same precedence the evaluator applies when
+a node's `results.json` measurements override the LLM's reading of the
+truncated artifact text.  A board score is the mean of the subject's stored
+case results over at most `rqgm.replay.max_cases_per_epoch` cases, taken in
+case-id order; the cap rises to `rqgm.replay.max_cases_for_retirement` when
+the motion puts a retirement under consideration (it requests `retire`, or
+it targets an already quarantined component), and a present Task-12 budget
+manager may lower it further.  With no matching case the board score is
+`null` — *unavailable*, never a fabricated number.
+
+The verdict is then checked against the mean of the *available* board
+scores for the incumbent.  Both thresholds are module constants in
+`ari/rqgm/governance/_adjudication.py`, fixed in code, not configuration:
+
+| Incumbent board mean | Verdict the boards refuse | Clamped to |
+|---|---|---|
+| ≥ 0.8 (`BOARD_HIGH`) | anything other than `dismissed` | `dismissed` |
+| ≤ 0.2 (`BOARD_LOW`) | `dismissed` | `partially_upheld` |
+
+With neither board available there is no bound and the verdict stands.  The
+clamp is applied last, after the step-6 fallbacks above, so it bounds a
+fallback too: a judge-unavailable `dismissed` against a subject scoring
+≤ 0.2 still becomes `partially_upheld`.  A clamp sets
+`clamped_by_board: true` on the `impeachment_outcome` record and adds a
+`judge_clamped_by_board` finding to `self_audit.findings`, tallied as
+`self_audit.stats.judge_board_clamp_count` — a judge that systematically
+favours incumbents or challengers is visible in the audit rather than
+silently effective.
+
+Candidate prompts are scored on the same boards and **never** by the judge:
+a candidate is `pass` when the lowest available board score is at least 0.6
+(`CANDIDATE_PASS_THRESHOLD`), `fail` otherwise, and `inconclusive` when
+neither board produced a score.  With `rqgm.replay.use_cached_results`
+(default on) a wired Task 12 governance cache is consulted before the
+pool's stored case results and written back from them;
+`candidate_evaluations[].cached` reports that setting, not whether a cache
+was present or an individual lookup hit.
+
+With `rqgm.governance.jury_panel_enabled` the judge is sampled three times
+and a majority decides; ties break toward the incumbent in the fixed
+outcome order `dismissed` > `partially_upheld` > `upheld`.  The default is
+`false`, and a single sample decides.
+
+Two report fields are constrained by structure rather than by failure, so
+neither raises a degradation token.
+
+**The AnchorBoard needs a held-out corpus, and only the paper phase supplies
+one.**  Both boards read their cases off the pool handed to `audit_epoch`:
+the ReplayBoard off `pool.cases`, the AnchorBoard off `pool.anchor_cases`.
+`AdversarialReplayPool` — the pool an exploration run passes — defines no
+`anchor_cases` attribute, so on that path the AnchorBoard reports
+*unavailable* rather than a score: `anchor_score` is `null` on every
+adjudication and every candidate evaluation, `budget_usage.anchor_cases_used`
+stays 0, and both the incumbent board mean that clamps a judge verdict and
+the candidate pass rule are decided by the ReplayBoard alone.  A held-out anchor
+set reaches the audit only under the paper-archive phase, which swaps in a
+pool-shaped adapter carrying one (`ari/rqgm/paper_anchor.py`) — and that
+corpus is itself off by default (see the `paper_anchor_corpus.jsonl` entry
+below).  Read a `null` anchor score as "no held-out corpus was available",
+never as a low score.
+
+**`replay_pool_updates.retired` is inert.**  Only `added` is ever populated
+— by the replay cases this epoch's validated attacks are admitted as, plus
+the validated-attack refs behind any `upheld` / `partially_upheld` motion.
+The `retired` array is initialised empty and nothing appends to it: retiring
+a case is a pool-internal operation (`evict_to_cap` marks a case `evicted`
+in the snapshot while the JSONL keeps every line ever admitted), and the
+audit does not surface it here.  Staleness driven by a *retired prompt* is
+handled by frontier repair (Task 10), not reported through this field.
 
 ## Adversarial-loop schemas (Task 06)
 

@@ -83,7 +83,7 @@ flowchart TB
         transform["transform_data → science_data.json"]
         figures["generate_figures → VLM review"]
         paper["write_paper → review_paper<br/>(ensemble + Area Chair meta)"]
-        claimtail["claim-evidence tail (Story2Proposal):<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper"]
+        claimtail["claim-evidence tail (Story2Proposal):<br/>link_paper_claims → claim_evidence_hard_gate<br/>→ evidence_grounded_semantic_review → merge_reviews<br/>→ paper_refine → render_paper → finalize_paper<br/>→ locked re-check → render_final_paper → lock_paper_build"]
         ear["generate_ear → curate → publish (EAR)"]
         provenance --> transform
         transform --> figures
@@ -135,6 +135,24 @@ Architecture](rqgm_architecture.md) for the layers, epoch algorithm, and
 invariants, and [Execution Modes](../guides/execution_modes.md) for
 activation and the mode-switch policy.
 
+### The `manuscript` axis (opt-in, off by default)
+
+`workflow.yaml` carries a third top-level switch, `manuscript.mode`
+(`off` | `audit` | `enforce`, default `"off"`; alongside
+`profile: generic_empirical_v1`, `brief_character_budget: 24000` and a
+`repair:` block whose `policy` defaults to `disabled`). It is independent of
+both `ari.mode` and `paper.mode`. `off` is exact legacy identity — no
+manuscript imports, artifacts, gates or repair; `audit` records a shadow
+completeness assessment; `enforce` blocks authoring until the authoring
+requirements are resolved (and is required before `repair.policy: auto`).
+Every pipeline stage in `workflow.yaml` now declares
+`segment: evidence | authoring | verification`, which is what lets
+`generate_paper_section(..., include_segments=…)` run the paper pipeline one
+segment at a time when `ARI_MANUSCRIPT_RUNTIME_MODE` is not `off`: excluded
+segments are represented as disabled stages in a *derived* workflow, so
+cross-segment `depends_on` edges stay satisfied by durable outputs. With the
+default `include_segments=None` every enabled stage runs, exactly as before.
+
 ---
 
 ## System Overview
@@ -162,9 +180,9 @@ activation and the mode-switch policy.
      │                            │                              │
 ┌────▼──────────┐  ┌─────────────▼──────┐  ┌───────────────────▼──┐
 │ari-skill-hpc  │  │ari-skill-idea      │  │ari-skill-evaluator   │
-│ slurm_submit  │  │ survey             │  │ make_metric_spec     │
-│ job_status    │  │ generate_ideas     │  │ (scientific_score)   │
-│ run_bash      │  │ (VirSci MCP)       │  │                      │
+│ job_submit    │  │ survey             │  │ make_metric_spec     │
+│ job_status    │  │ generate_ideas     │  │ claim_evidence_      │
+│ slurm_submit  │  │ (VirSci MCP)       │  │   hard_gate          │
 └───────────────┘  └────────────────────┘  └──────────────────────┘
 
 Post-BFTS Pipeline (workflow.yaml):
@@ -341,21 +359,34 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
       implementation_overview (optional)
       report_driven    (true when node_report.json drove LLM input)
 
-  Stage 2: search_related_work  (ari-skill-web)  [parallel with stage 1]
-    LLM-generated keywords → pluggable retrieval (Semantic Scholar / AlphaXiv / both)
+  Stage 2: search_related_work  (ari-skill-web: search_papers)  [parallel with stage 1]
+    LLM-generated keywords → ONE pinned provider (workflow.yaml pins
+    provider: semantic-scholar, max_results: 15, mode: record). "record"
+    snapshots the response so a later "replay" needs no network; "record" and
+    "live" never switch provider. The stage carries
+    skip_if_exists: related_refs.json — a recorded retrieval is an immutable
+    experiment input, so a resume reuses it instead of re-querying.
     Output: related_refs.json
 
-  Stage 3: generate_figures  (ari-skill-plot)  [after stage 1]
-    Input: full science_data.json (including experiment_context) + {{vlm_feedback}}
-    LLM emits a JSON manifest where each figure has kind="plot" (matplotlib
-    Python, executed → PDF+PNG) or kind="svg" (SVG code → rasterised via
-    cairosvg/inkscape). Figure types and kinds chosen autonomously.
+  Stage 3: generate_figures  (ari-skill-plot: generate_figures_llm)  [after stage 1]
+    Input: science_data.json + {{experiment_summary}} + {{vlm_feedback}}
+    The LLM is a PLANNER only: it may emit metric_id, chart_type and
+    x_mode and nothing else. Numeric values, units, captions, paths and the
+    image bytes are produced deterministically by the fixed renderer from the
+    verified science record (execution_mode "declarative-fixed-renderer"), which
+    writes source_data.json / figure_spec.json / .png / .pdf per figure under
+    figures/revisions/{NN}/{figure_id}/. A revision > 0 requires VLM feedback
+    that binds the previous manifest digest; revision 0 refuses feedback.
     Output: figures_manifest.json  {figures, latex_snippets, figure_kinds}
+      (figure_kinds is the spec's chart_type)
 
-  Stage 3b: vlm_review_figures  (ari-skill-vlm)  [after stage 3]
-    VLM visually reviews primary figure (fig_1.png)
+  Stage 3b: vlm_review_figures  (ari-skill-vlm: review_figures_all)  [after stage 3]
+    VLM reviews EVERY figure in figures_manifest.json; the aggregate score is
+    the min across figures, so one weak figure trips the loop. issues and
+    suggestions are prefixed with [fig_id] so the regenerator knows which
+    figure to fix.
     If score < 0.7: loop back to generate_figures with VLM feedback (max 2 iterations)
-    Output: vlm_figure_review.json
+    Output: vlm_review.json
 
   Stage 4: generate_ear  (ari-skill-transform)  [after stage 1]
     Node_report-driven deterministic build of ear/.
@@ -396,9 +427,21 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
         → evidence_grounded_semantic_review_post_refine
         → claim_evidence_hard_gate_final   (FINAL gate; blocks finalize in strict mode)
         → finalize_paper            (Stage 8 below)
-    Governed by the top-level claim_gate_policy block in workflow.yaml
-      (mode: warn by default — the FINAL gate is non-blocking; mode: strict
-      blocks finalize_paper on the FINAL gate). Resolution precedence ends at
+        → link_paper_claims_locked  (re-reconcile after Code Availability injection)
+        → claim_evidence_hard_gate_locked        (phase: final, over the exact TeX
+                                                  that will be compiled and locked)
+        → evidence_grounded_semantic_review_locked   (phase: locked, advisory)
+        → render_final_paper        (compile the exact post-injection TeX)
+        → lock_paper_build          (fail-closed PaperBuildV1 lock over inputs,
+                                     calls, reviews, gate, compile logs, TeX,
+                                     BibTeX and PDF)
+    Governed by the top-level claim_gate_policy block in workflow.yaml.
+      Only the FINAL phase can block — draft-phase reports never do. mode: off
+      never blocks; mode: warn (the default) still blocks on the
+      objective-integrity always_block_on tier (invariant_violation,
+      correctness_failed, recompute_mismatch, …); mode: strict additionally
+      blocks the configured block_on findings and uncovered result numbers in
+      strict sections. Resolution precedence ends at
       env ARI_CLAIM_GATE_MODE (off | warn | strict) and ARI_COMPARISON_SCOPE.
     The heavy gate logic lives in the new ari/pipeline/claim_gate/ package
       (contract / gate / policy / numeric / latex / invariants / resolve);
@@ -431,8 +474,9 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
   Stage 9: ear_publish  (ari-skill-transform: publish_ear)  [after stage 7, optional]
     Builds a reproducible tarball from ear_published/ and ships it to
     backend = ari-registry | local-tarball | gh | zenodo. Always starts
-    at visibility=staged (FR-P5). Disabled by default; enable with
-    `enabled: true` in workflow.yaml or pass `publish=true`.
+    at visibility=staged (FR-P5). Enabled by default in `workflow.yaml`
+    with backend `local-tarball` and `dry_run: false`; `finalize_paper`
+    depends on it.
     Output: publish_record.json
 
   Stage 10: review_paper / merge_reviews  (ari-skill-paper)  [after stages 5+3b]
@@ -537,8 +581,10 @@ checkpoints/{run_id}/
 ├── .pipeline_started           # Marker: post-BFTS pipeline has begun
 ├── science_data.json           # Transform-skill output
 ├── related_refs.json           # Literature search results
-├── figures_manifest.json       # Generated figure metadata
-├── fig_*.{pdf,png,eps,svg}     # Generated figures
+├── figures_manifest.json       # Generated figure batch metadata
+├── figures/revisions/{NN}/{figure_id}/  # Per-figure render: source_data.json,
+│                               #   figure_spec.json, {figure_id}.png/.pdf,
+│                               #   figure_manifest.json
 ├── vlm_review.json             # VLM figure review output
 ├── full_paper.tex              # Generated LaTeX paper
 ├── refs.bib                    # BibTeX references
@@ -575,11 +621,17 @@ At node execution time, `_run_loop` copies user files into each node's work_dir:
 - **Checkpoint root**: non-meta files directly in the checkpoint dir
 - **Uploads subdir**: non-meta files in `checkpoint/uploads/`
 
-`PathManager.META_FILES` defines files that must never be copied to node work dirs
-(`experiment.md`, `tree.json`, `nodes_tree.json`, `launch_config.json`, `meta.json`,
-`results.json`, `idea.json`, `cost_trace.jsonl`, `cost_summary.json`, `workflow.yaml`,
-`ari.log`, `evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`). Any file with
-a `.log` extension is also treated as meta.
+`PathManager.META_FILES` defines files that must never be copied to node work dirs.
+It covers run-level metadata (`experiment.md`, `tree.json`, `nodes_tree.json`,
+`launch_config.json`, `meta.json`, `results.json`, `idea.json`, `cost_trace.jsonl`,
+`cost_summary.json`, `provenance.json`, `workflow.yaml`, `ari.log`,
+`evaluation_criteria.json`, `.ari_pid`, `.pipeline_started`), the per-node records
+each node must write for itself (`node_report.json`, `full_log.json`,
+`_run_env.json`, `_exec_env.json`), and the RQGM / paper-archive artifacts. The
+per-node entries carry real weight: `full_log.json`, `_run_env.json` and
+`_exec_env.json` are absent from `bfts_loop`'s `_OUTPUT_BLACKLIST`, so this set is
+the only thing keeping a parent's execution log, machine and loaded modules out of
+its children. Any file with a `.log` extension is also treated as meta.
 
 ### tree.json vs nodes_tree.json
 
@@ -588,7 +640,7 @@ Both files contain the BFTS node tree, but are written at different lifecycle st
 | File              | Writer                                                | Phase            | Schema                                                |
 |-------------------|-------------------------------------------------------|------------------|-------------------------------------------------------|
 | `tree.json`       | `_save_checkpoint()` in `cli/bfts_loop.py`            | During BFTS      | `{run_id, experiment_file, created_at, nodes}`        |
-| `nodes_tree.json` | `_save_checkpoint()` + `generate_paper_section()` (`core.py`) | BFTS + post-BFTS | `{experiment_goal, nodes}` (lightweight)              |
+| `nodes_tree.json` | `_save_checkpoint()` + `run_pipeline()` (`ari/pipeline/driver.py`, entered from `generate_paper_section()`) | BFTS + post-BFTS | `{experiment_goal, nodes}` (lightweight)              |
 
 **Reader convention**: All readers MUST prefer `tree.json` and fall back to
 `nodes_tree.json`. This ensures up-to-date data during BFTS while remaining
@@ -628,7 +680,7 @@ environment variables injected at launch.
 | `ari/orchestrator/node_report/` | Per-node self-report builder + legacy reconstruction (split into a package in v0.7.1) |
 | `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM hook (BFTS rewind / branch / continue) |
 | `ari/orchestrator/root_idea_selector.py` | VirSci pool → `ideas[0]` re-selector |
-| `ari/rqgm/` | Constitutional ARI-RQGM runtime (opt-in `ari_rqgm` mode): `RQGMRuntime` facade, constitutional kernel, governance orchestrator (the impeachment pipeline under `governance/`), registry transition engine, frontier repair, proposal/adversarial/prompt-evolution layers, and the paper-archive co-evolution runtime (`PaperArchiveStrategy` — a second best-first search over draft space). Never imported under `simple_bfts` — see [Constitutional ARI-RQGM Architecture](rqgm_architecture.md) |
+| `ari/rqgm/` | Constitutional ARI-RQGM runtime (opt-in `ari_rqgm` mode): `RQGMRuntime` facade, constitutional kernel, governance orchestrator (the impeachment pipeline under `governance/`), registry transition engine, frontier repair, proposal/adversarial/prompt-evolution layers, the paper-archive co-evolution runtime (`PaperArchiveStrategy` — a second best-first search over draft space), and the Knowledge–Capability–Assurance layer (`admission.py` publishes the atomic run-admission baseline; `kernel_knowledge_integrity` / `kernel_capability_integrity` / `kernel_harness_integrity` are its pure kernel checks). Never imported under `simple_bfts` — see [Constitutional ARI-RQGM Architecture](rqgm_architecture.md) |
 | `ari/agent/loop.py` | ReAct agent loop — LLM + tool calls per node; auto-polls SLURM jobs; injects ancestor memory |
 | `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | Helpers extracted from `agent/loop.py` (Phase 3D, v0.7.1) |
 | `ari/agent/workflow.py` | WorkflowHints — auto-extracted from experiment text (tool sequence, metric keyword, partition) |
@@ -649,7 +701,7 @@ environment variables injected at launch.
 | `ari/checkpoint.py` | Shared `tree.json` / `nodes_tree.json` I/O (Phase 2) |
 | `ari/_deprecation.py` | `warn_deprecated_path / _env / _field` helpers backing the DR1–DR4 warnings |
 | `ari/migrations/v05_to_v07/` | Isolated v0.5 → v0.7 migration shims (scheduled for removal in v1.0) |
-| `ari/public/` | Stable re-export layer skills are allowed to import (`container`, `cost_tracker`, `paths`, `llm`, `config_schema`); CI-enforced by `tests/test_public_api_boundary.py` |
+| `ari/public/` | Stable re-export layer skills are allowed to import (`container`, `cost_tracker`, `paths`, `llm`, `config_schema`, plus the typed contract modules skills actually build on — `execution`, `result`, `science_data`, `figures`, `visual_review`, `claim_gate`, `research_contract`, `manuscript`, …); CI-enforced by `tests/test_public_api_boundary.py` |
 | `ari/core.py` | Top-level runtime builder — composition root for Protocol-injected dependencies |
 | `ari/cli/` | Typer CLI split package: `__init__`, `run`, `projects`, `commands`, `bfts_loop`, `lineage`, `migrate` (Phase 3A, v0.7.1) + `paper_dispatch` (the paper-phase execution-mode dispatch shared by `ari run` / `ari resume` / `ari paper`) |
 | `ari/viz/routes.py` / `websocket.py` / `ui_helpers.py` / `checkpoint_*` / `state_sync.py` | HTTP + SSE GUI backend, split out of the legacy `viz/server.py` and `viz/api_state.py` (Phase 3B, v0.7.1) |
@@ -660,19 +712,19 @@ environment variables injected at launch.
 
 | Skill | Tools | Role | LLM? |
 |-------|-------|------|------|
-| `ari-skill-hpc` | `slurm_submit`, `job_status`, `job_cancel`, `singularity_build`, `singularity_run`, `singularity_pull`, `singularity_build_fakeroot`, `singularity_run_gpu` | HPC job management + Singularity containers | ✗ |
-| `ari-skill-memory` | `add_memory`, `search_memory`, `get_node_memory`, `clear_node_memory`, `get_experiment_context`, `audit_memory` | Ancestor-scoped node memory backed by Letta (Postgres / SQLite / Cloud); `audit_memory` drives the `audit_node_provenance` stage | △ |
+| `ari-skill-hpc` | `job_submit`, `container_submit`, `job_status`, `job_result`, `job_logs`, `job_cancel`, `probe_platform_capabilities`, `counter_support`, `measure_counters`, `slurm_submit` | Typed SLURM job lifecycle over digest-pinned requests; containers are reached through `container_submit`, not through per-command Singularity tools; `slurm_submit` remains as the batch-script bridge | ✗ |
+| `ari-skill-memory` | `add_memory`, `search_memory`, `search_research_memory`, `get_node_memory`, `get_experiment_context`, `get_verified_context`, `consolidate_node_memory`, `add_experiment_result`, `add_failure_case`, `add_procedure_memory`, `add_reflection`, `add_reproducibility_event`, `audit_memory` | Ancestor-scoped node memory backed by Letta (Postgres / SQLite / Cloud); `audit_memory` drives the `audit_node_provenance` stage | △ |
 | `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
-| `ari-skill-evaluator` | `make_metric_spec` | Metric spec extraction from experiment file | △ |
-| `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/publish lifecycle (v0.7.0) | ✓ |
-| `ari-skill-web` | `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `search_papers`, `set_retrieval_backend`, `collect_references_iterative`, `list_uploaded_files`, `read_uploaded_file` | Web search, arXiv, pluggable retrieval (Semantic Scholar / AlphaXiv), uploaded file access | △ |
-| `ari-skill-plot` | `generate_figures`, `generate_figures_llm` | Deterministic + LLM figure generation (matplotlib plots or SVG diagrams per-figure via `kind` field) | ✓ |
-| `ari-skill-paper` | `list_venues`, `get_template`, `generate_section`, `compile_paper`, `check_format`, `review_section`, `revise_section`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `inject_code_availability`, `merge_reviews` | LaTeX paper writing, compilation, rubric-driven peer review (AI Scientist v1/v2-compatible). v0.7.0: `inject_code_availability` injects `\codeavailability{}`/`\codedigest{}`/`\coderef{}` macros after `ear_curate`; `merge_reviews` post-hoc merges text-review + VLM-review JSON. | ✓ |
-| `ari-skill-paper-re` | `fetch_code_bundle`, `run_reproduce`, `grade_with_simplejudge` | PaperBench-format reproducibility (v0.7.0): pre-populate sandbox via `ari.clone`, Phase 1 sandbox runner (`reproduce.sh`), Phase 2 PaperBench SimpleJudge grader. PaperBench is vendored under `vendor/paperbench`. | ✓ |
-| `ari-skill-replicate` | `generate_rubric`, `audit_rubric` | PaperBench-format auto-rubric generator + auditor (v0.7.0). Drives the ORS reproducibility flow. | ✓ |
-| `ari-skill-benchmark` | `analyze_results`, `plot`, `statistical_test` | CSV/JSON/NPY analysis, plotting, scipy stats (used in BFTS analyze stage) | ✗ |
-| `ari-skill-vlm` | `review_figure`, `review_table` | VLM-based figure/table review (drives VLM review loop) | ✓ |
-| `ari-skill-coding` | `write_code`, `run_code`, `read_file`, `run_bash` | Code generation + execution + paginated file read | ✗ |
+| `ari-skill-evaluator` | `make_metric_spec`, `propose_metric_contract`, `claim_evidence_hard_gate`, `evidence_grounded_semantic_review` | Metric spec extraction from the experiment file + the thin MCP surface over `ari/pipeline/claim_gate/` | △ |
+| `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `promote_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/promote/publish lifecycle (v0.7.0) | ✓ |
+| `ari-skill-web` | `web_search`, `fetch_url`, `search_papers`, `rerank_retrieval_records`, `walk_citations`, `list_uploaded_files`, `read_uploaded_file` | Web search + ONE pinned academic provider per call (`semantic-scholar` / `arxiv` / `alphaxiv`; `both` is refused) with `record` / `live` / `replay` snapshot modes, citation walking, uploaded file access | △ |
+| `ari-skill-plot` | `render_figure`, `generate_figures`, `generate_figures_llm` | Declarative figure specs rendered by a fixed renderer: `generate_figures` uses deterministic default specs, `generate_figures_llm` lets the LLM pick only `metric_id` / `chart_type` / `x_mode` | ✓ |
+| `ari-skill-paper` | `list_venues`, `get_template`, `compile_paper`, `check_format`, `write_paper_iterative`, `review_compiled_paper`, `list_rubrics`, `link_paper_claims`, `paper_refine`, `inject_code_availability`, `merge_reviews`, `finalize_paper_build` | LaTeX paper writing, compilation, rubric-driven peer review (AI Scientist v1/v2-compatible). v0.7.0: `inject_code_availability` injects `\codeavailability{}`/`\codedigest{}`/`\coderef{}` macros after `ear_curate`; `merge_reviews` post-hoc merges text-review + VLM-review JSON; `finalize_paper_build` writes the fail-closed `PaperBuildV1` lock. | ✓ |
+| `ari-skill-paper-re` | `fetch_code_bundle`, `build_reproduce_sh`, `run_reproduce`, `grade_with_simplejudge` | PaperBench-format reproducibility (v0.7.0): pre-populate sandbox via `ari.clone`, LLM replicator, Phase 1 sandbox runner (`reproduce.sh`), Phase 2 PaperBench SimpleJudge grader. PaperBench is vendored under `vendor/paperbench`. | ✓ |
+| `ari-skill-replicate` | `generate_rubric`, `audit_rubric`, `suggest_target_leaf_count` | PaperBench-format auto-rubric generator + auditor (v0.7.0). Drives the ORS reproducibility flow. | ✓ |
+| `ari-skill-benchmark` | `analyze_results`, `statistical_test`, `compare_runs` | CSV/JSON/NPY analysis, scipy stats, cross-run comparison (used in BFTS analyze stage) | ✗ |
+| `ari-skill-vlm` | `review_figure`, `review_figures_all`, `review_table` | VLM-based figure/table review (`review_figures_all` drives the VLM review loop over the whole figure batch) | ✓ |
+| `ari-skill-coding` | `write_code`, `edit_code`, `run_code`, `run_bash`, `read_file`, `emit_results`, `describe_environment` | Code generation + editing + execution, paginated file read, typed result emission, environment description | ✗ |
 
 **Additional skills** (available, not in default workflow):
 
@@ -768,6 +820,8 @@ patterns explicitly skipped during the parent → child copy:
 | Data files under `data/`, `inputs/` | `run.log`, `run_*.log`, `*.run.log` |
 | Anything under nested source dirs (e.g. `src/lib.cpp`) | `slurm-*.out`, `slurm-*.err`, `stdout.txt`, `stderr.txt`, `out.txt`, `err.txt` |
 |  | `node_report.json` (each node rebuilds its own) |
+|  | `results.json`, `*_results.json`, `selftest_output.txt`, `*_output.txt` — the parent's NUMBERS, which must not ride the code channel |
+|  | `heterogeneous_env.json` (tooling output + probed machine info; the child re-probes) |
 
 After execution, `compute_files_changed(parent, child)` returns
 `{added, modified, deleted, inherited_unchanged}` based on a sha256

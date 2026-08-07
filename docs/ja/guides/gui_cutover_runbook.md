@@ -22,6 +22,8 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/appContextScope.test.ts
     role: test
+  - path: ari-core/tests/test_setup_env.py
+    role: test
   - path: scripts/check_viz_api_schema.py
     role: test
   - path: scripts/check_dashboard_ux.py
@@ -32,7 +34,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # GUI カットオーバーランブック
@@ -249,6 +251,26 @@ export ARI_GUI_V2=0
 
 ## 6. レガシーの撤去
 
+**フラグの衛生。** 展開フラグは予定表であって安住の地ではなく、この節がその予定表の
+終点です。`ARI_GUI_V2` はこのプログラム唯一の展開フラグ（§1）であり、それが生きて
+いる間、置き換え対象の画面は新旧両世代が同じバンドルに載ります — バグ面が二重、
+テスト面が二重、そして「利用者はどちらを見ていたのか？」という曖昧さがあらゆる報告に
+残ります。したがって展開フラグは、退役の条件を先に固めたうえで導入します — 名前の
+ある owner、ロールバックレバー、そして撤去を約束するゲートまたはリリース — そして
+それらをフラグを読む module の docstring に宣言します。`ARI_GUI_V2` は
+`ari-core/ari/viz/api_capabilities.py` でそれを行っています: owner、既定、
+ロールバックレバー、撤去ゲート。その期限は日付ではなくゲートです; 同 module と
+`docs/reference/environment_variables.md` はそのゲートを `G6` と呼びますが、これは
+レガシーの撤去 — つまりこの節のことです。それを越えて生き残る展開フラグはありません:
+下の表を終えたとき、フラグは守っていたシェルと一緒に削除され、ゲートを満たしたのに
+まだ出荷され続けているフラグは、設定項目ではなく分類すべき欠陥です。ここまでは機械
+検査されていません。自動化されているのはもっと狭い部分だけです: ファーストパーティの
+Python が読むすべての環境変数は `scripts/setup/setup_env.sh` に宣言されている必要が
+あり（`ari-core/tests/test_setup_env.py::test_setup_env_covers_all_source_env_vars`）、
+これは新しいフラグを可視にすることを強制しますが、その owner や期限については何も
+言いません。§1 の 7 つのセキュリティキルスイッチは別のルールに従う別の道具であり
+— インシデント用途のみ — 以下はそれらの撤去を予定していません。
+
 撤去は既定オンとは別の判断であり、一方向です。以下のすべてが成り立つまで、何も削除
 してはなりません:
 
@@ -270,7 +292,7 @@ export ARI_GUI_V2=0
 | 2 | **AppContext のリモート状態** — `context/AppContext.tsx`、すなわち 5 秒周期の `/state` ポーリング、ツリー WebSocket のミラー、グローバルなアクティブチェックポイント | 上記のレガシーページがすべて消えており、構造ガード `src/__tests__/appContextScope.test.ts` が例外エントリ**ゼロ**で通ること（文書化された唯一の例外である IdeasV2 の研究ゴールカードは、先に `/api/v1` から取り直す必要があります） |
 | 3 | **`/state` ファサード** — `routes.py` の `/state` 分岐と `services/state_service.build_app_state` | AppContext が消えていること; `test_gui_state_facade_freeze.py` は同じ変更で退役させ（その存在意義はこの削除*まで*の増加を禁じることです）、`viz` の契約スナップショットを再生成すること |
 | 4 | **ポート + 1 の WebSocket** — `ws_serve` サーバー、`websocket.py`、`hooks/useWebSocket.ts` | すべてのリアルタイム消費側が代わりに `GET /api/v1/events/stream` を読むこと; そのときはじめて CSP の `connect-src` から `ws://`/`wss://` のソースを落とせます。この許可はこのソケットのためだけに存在するからです |
-| 5 | **重複した定数と CSS** — レガシーのルート / ナビのリテラルと重複したデザイントークン | ルートレジストリがルート、ナビ、パンくず、エイリアスの単一のソースであること（パリティテストが緑）、およびレガシーページが重複物をインポートしていないこと |
+| 5 | **重複した定数と CSS** — レガシーのルート / ナビのリテラルと重複したデザイントークン | ルートレジストリがルート、ナビ、エイリアスの単一のソースであること（パリティテストが緑）、およびレガシーページが重複物をインポートしていないこと |
 
 各撤去の後に契約スナップショットを再生成し
 （`python scripts/snapshot_contracts.py --surface viz --update`）、§2 のチェックリスト

@@ -130,9 +130,14 @@ computed-evidence claim を到達可能にする BFTS の仕組み: 展開選択
 **claim-evidence gate（主張・根拠ゲート）**
 決定論的で LLM を使わないゲート（`claim_evidence_hard_gate`）。論文で報告された各数値を
 記録済みの結果から許容誤差内で再導出し、数値カバレッジ・オペランド解決・図の存在を
-チェックします。既定では `warn`（報告のみ）モードで有効です。ブロッキングエラーで
-finalize を止めるには `claim_gate_policy.mode: strict`（または
-`ARI_CLAIM_GATE_MODE=strict`）を設定します。`comparison_scope` が `any`（既定）の場合、
+チェックします。既定では `warn` モードで有効で、これは objective-integrity の
+`always_block_on` ティア（invariant 違反、correctness の失敗・未カバー、
+ceiling が未計測、recompute が再現しない、cross-run または未束縛の evidence）
+のみを FINAL フェーズでブロックします。設定済みの `block_on` 所見と strict
+セクションの未カバー数値も追加でブロックするには
+`claim_gate_policy.mode: strict`（または `ARI_CLAIM_GATE_MODE=strict`）を
+設定します。draft フェーズのレポートは決してブロックしません。
+`comparison_scope` が `any`（既定）の場合、
 環境をまたいだ比較は透明性のための警告として扱われ、`same_environment` の場合は
 ブロッキングエラーになります。[設定](configuration.md)を参照。
 

@@ -2,8 +2,20 @@
 sources:
   - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/contracts.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/slurm.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/counters.py
+    role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
+  - path: ari-skill-hpc/skill.yaml
+    role: config
+  - path: ari-skill-hpc/tests/test_server.py
+    role: test
   - path: ari-skill-coding/src/server.py
     role: implementation
   - path: ari-skill-coding/mcp.json
@@ -23,77 +35,319 @@ Skills は ARI エージェントにツールを提供する MCP サーバーで
 
 ## ari-skill-hpc
 
-SLURM と Singularity による HPC ジョブ管理。**LLM: No**（完全に決定論的）。
+型付きの SLURM ライフサイクル、厳格な SSH transport、能力プローブ、digest で固定
+したコンテナ。**LLM: No**（完全に決定論的）。
+
+ツールは 10 個で、3 つの系統に分かれます。型付きの投入 2 つ（`job_submit` /
+`container_submit`）と保持されているバッチスクリプトブリッジ（`slurm_submit`）、
+同じハンドルセレクタを共有するライフサイクル操作 4 つ（`job_status` /
+`job_result` / `job_logs` / `job_cancel`）、そしてプローブ 3 つ
+（`probe_platform_capabilities` / `counter_support` / `measure_counters`）です。
+コンテナに到達する経路は `container_submit` と、それが運ぶ digest 固定の
+`ContainerRequestV1` だけであり、イメージの build / pull / run コマンドはこの
+パッケージには存在しません。
 
 ### ツール
 
-#### `slurm_submit(script, job_name, partition, nodes=1, walltime="01:00:00", work_dir)`
+#### `job_submit(request)`
+
+不変の `JobRequestV1` を 1 件投入し、冪等な `JobHandleV1` を即座に返します。引数は
+リクエストを包んだ `request` ただ 1 つです（JSON Schema の参照をルートにまとめる
+ための入れ物）。コマンドは argv 配列で渡し、ログインノードのシェルは一切経由しま
+せん。バッチスクリプトを渡す経路はコアエージェント向けの互換ブリッジである下の
+`slurm_submit` で、新しくプログラムから呼ぶ側は `job_submit` を使います。
+
+`JobRequestV1` の必須項目は `request_id` / `job_name` / `work_dir`（実在する非
+シンボリックリンクの絶対ディレクトリ）/ `argv` / `resources` で、`environment`、
+`container`、`accelerator_allocation`、`inputs`、`outputs`、`metadata` は任意です。
+`resources`（`ResourceRequestV1`）は `slurm_submit` と同じ `partition` /
+`nodes=1` / `tasks=1` / `tasks_per_node=None` / `cpus_per_task=1` /
+`walltime="01:00:00"` / `launcher="auto"` の形状に加えて、`memory_mb_per_node` /
+`memory_mb_per_cpu` / `gpus_per_node` / `gpus_per_task` / `gpu_type` /
+`nodelist` / `exclude_nodes` / `exclusive` / `constraint` / `hint` / `account` /
+`qos` / `reservation` を宣言できます。
+
+`environment`（`EnvironmentPolicyV1`）は `export_mode` を `NIL` に固定します。
+ジョブから見えるのはここに明示した非機密のリテラルと `modules` だけで、名前が
+credential らしい変数（`*_TOKEN` / `*_PASSWORD` / `*_API_KEY` など）はリクエスト
+に埋め込まれるのではなく拒否されます。
+
+投入は `sbatch --parsable --export=NIL` で行われ、リクエストは正規化 JSON の
+sha256（`request_digest`）で同定されます。この digest は `sbatch` の前に ledger へ
+記録されるので、同じリクエストを送り直しても 2 つ目のジョブは作られず既存のハンド
+ルが返ります。投入結果が不明なまま transport が落ちた場合も claim は残るため、
+リトライが重複投入になりません。
+
+`inputs` の各ファイルは投入時点で宣言された sha256 とサイズに一致しなければならず、
+ペイロードが走り出す前にノード上でもう一度照合されます。`outputs`
+は `work_dir` の下に留まる必要があります（シンボリックリンクは拒否）。ジョブごとの
+成果物は `{work_dir}/.ari-hpc/` の下、`request_digest` から `sha256:` を外した 16 進
+を名前とするディレクトリ（ハンドルの `artifact_scope`）に置かれます。
+
+```python
+result = job_submit(request={
+    "request_id": "bench_001",
+    "job_name": "bench_test",
+    "work_dir": "/abs/path/to/workdir",
+    "argv": ["./bench", "--threads", "32"],
+    "resources": {"partition": "your_partition", "cpus_per_task": 32},
+})
+# 戻り値: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#          "request_digest": "sha256:...", "job_id": "12345",
+#          "state": "submitted", ...}
+```
+
+#### `container_submit(request)`
+
+`job_submit` と同じライフサイクル、同じ引数スキーマですが、`request.container` の
+宣言が必須です（無ければ validation エラー）。`ContainerRequestV1` は `runtime`
+（`apptainer` 既定 / `singularity`）、`image`（絶対パスと `sha256:…` digest・
+バイト数で固定した `ArtifactPinV1`）、`binds`（既定は読み取り専用、target の重複は
+不可）、`gpu`（既定 `false`）、`network`（`host` 既定 / `none`）、`contain_all`
+（既定 `true`）、`clean_environment`（既定 `true`）を取ります。イメージは digest で
+固定されるので、中身が入れ替わったイメージは投入前の照合でも、ノード上の再照合でも
+拒否されます。コンテナ実行では `inputs` も `work_dir` か宣言された bind の下に無け
+ればなりません。`work_dir` 自身は、リクエストが明示していなければ読み書き可能な
+bind として自動的に追加されます。
+
+#### `slurm_submit(script, job_name, partition, nodes=1, tasks=1, tasks_per_node=None, cpus_per_task=1, launcher="auto", walltime="01:00:00", work_dir, modules=[])`
 
 SLURM バッチジョブを投入します。
+
+**ノードを複数確保しただけでは複数ノードを使ったことになりません。** バッチ
+本体は最初のノードでのみ実行され、並列ステップを起動する何かがなければ残りは
+遊んだままです。それを誰が起動するかを決めるのが `launcher` です。
+
+| `launcher` | スクリプトの起動され方 | 使う場面 |
+|---|---|---|
+| `auto`（デフォルト） | 1 ノード 1 タスクの形状なら CPU に束縛して起動、それ以外はそのまま起動 | スクリプト自身が `srun` / `mpirun` を呼ぶ、または逐次実行 |
+| `srun` | 宣言された `nodes` / `tasks` / `cpus_per_task` で `srun` 起動 | スクリプト自体が並列プログラム（MPI / SPMD） |
+| `none` | 記述どおりそのまま | ペイロードにバッチステップを一切触らせない |
+
+`auto` が単一タスクの場合に束縛するのは、バッチステップがノード全体の affinity
+mask を継承するためです。そうしないとスレッド化されたペイロードがマシン全体へ
+広がり、自分自身の逐次ベースラインに負けることさえあります。これは束縛されて
+いない allocation ではなく遅い kernel として読めてしまいます。
+
+`launcher="srun"` を自前の launcher と併用しては**いけません**。
+`srun --ntasks=8 mpirun -np 8 ./x` は 64 ランクであり、下流の誰もそれを正しい
+run と区別できません。`tasks > 1` から推論せず明示的に宣言させるのはこのため
+です。2 種類のマルチタスク要求は scheduler からは区別できません。
+
+起動モードと allocation の形状はどちらもリクエスト digest の一部なので、同じ
+スクリプトでも形状や launcher が違えば最初の run への cache hit ではなく別の
+ジョブになります。
 
 ```python
 result = slurm_submit(
     script="""
 #!/bin/bash
-#SBATCH --cpus-per-task=32
-compiler -o ./bench ./bench.c
-NTHREADS=32 ./bench
+gcc -O3 -fopenmp -o ./bench ./bench.c
+OMP_NUM_THREADS=32 ./bench
 """,
     job_name="bench_test",
     partition="your_partition",
+    cpus_per_task=32,
     work_dir="/abs/path/to/workdir"
 )
-# 戻り値: {"job_id": "12345", "status": "submitted"}
+# 戻り値: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#          "job_id": "12345", "state": "submitted", "status": "submitted",
+#          "message": "Job 12345 submitted successfully",
+#          "request_digest": "sha256:...", "submission_digest": "sha256:..."}
 ```
 
 **注意事項:**
-- `--account` と `-A` ヘッダーは暗黙的に除去されます（このクラスターでは無効）
-- 空の `job_id` は即座に ERROR を返します
-- スクリプト内のパスに `~` を使用しないでください（SBATCH では展開されません）
+- `script` の中に書いた `#SBATCH` ディレクティブは効きません。生成されたヘッダーの
+  直後に実行可能な行が続くため、`sbatch` は本体を読む前にディレクティブの解釈を
+  打ち切ります。形状は引数（`nodes` / `tasks` / `cpus_per_task` / `walltime`）で
+  宣言してください
+- 投入が拒否された場合は例外ではなく
+  `{"job_id": "", "status": "error", "message": ..., "partition": ...}` が返ります
+- 本体は `set -euo pipefail`・`PATH=/usr/local/bin:/usr/bin:/bin`・
+  `LANG` / `LC_ALL=C.UTF-8` の下で、`BASH_ENV ENV CDPATH GLOBIGNORE PYTHONHOME
+  PYTHONPATH VIRTUAL_ENV` を unset した状態で走ります。投入元のシェルからは何も
+  引き継がれないので、パスは絶対パスで書き、ツールチェインは `modules` 経由で
+  取得してください
 
-#### `job_status(job_id)`
+#### `job_status(handle_id)`
 
-SLURM ジョブのステータスをポーリングします。
+ARI のハンドルまたは生の SLURM ジョブ ID について、provider 中立な `JobStatusV1`
+を返します。
+
+`job_status` / `job_result` / `job_logs` / `job_cancel` はいずれも同じセレクタ
+スキーマを取り、`handle_id`（`JobHandleV1` のハンドル ID、推奨）か `job_id`
+（生の SLURM ジョブ ID、レガシー互換）のどちらか一方だけを要求します（`oneOf`）。
+両方渡しても、どちらも渡さなくても拒否され、実装は `handle_id` を先に読みます。
+既知のハンドルでも数字だけの SLURM ジョブ ID でもないセレクタは validation
+エラーです。
+
+状態は `sacct -j <id> --noheader --parsable2 --allocations
+--format=JobID,State,ExitCode,Start,End,Reason` から読み、accounting にまだ記録が
+無い場合は `squeue -j <id> --noheader --format=%T|%R` にフォールバックします。
 
 ```python
-result = job_status("12345")
-# 戻り値: {"status": "COMPLETED", "exit_code": 0, "stdout": "score: 284172"}
-# ステータス値: PENDING, RUNNING, COMPLETED, FAILED, ERROR
+result = job_status(handle_id="hpc-...")
+# 戻り値: {"schema_version": "ari.hpc.job-status/v1", "handle_id": "hpc-...",
+#          "job_id": "12345", "state": "succeeded",
+#          "scheduler_state": "COMPLETED", "exit_code": 0,
+#          "start_time": ..., "end_time": ..., "reason": None}
 ```
 
-#### `job_cancel(job_id)`
+`state` は正規化された provider 中立の値で、`submitted` / `running` /
+`succeeded` / `failed` / `cancelled` / `unknown` のいずれかです。SLURM 自身の語は
+`scheduler_state` に残ります。`PENDING` / `CONFIGURING` / `REQUEUED` /
+`RESIZING` / `SPECIAL_EXIT` は `submitted` に、`RUNNING` / `COMPLETING` /
+`SUSPENDED` / `STAGE_OUT` は `running` に、`COMPLETED` は `succeeded` に、
+`CANCELLED`（`CANCELED` 綴りも）/ `DEADLINE` / `REVOKED` は `cancelled` に、
+`BOOT_FAIL` / `FAILED` / `NODE_FAIL` / `OUT_OF_MEMORY` / `PREEMPTED` /
+`TIMEOUT` は `failed` に正規化されます。scheduler がジョブについて何も答えない
+場合は `state: "unknown"` / `scheduler_state: "UNKNOWN"` になります。これは
+エラーではなく、証拠が無いことの記録です。
 
-実行中または待機中の SLURM ジョブをキャンセルします。
+`ERROR` という状態はありません。呼び出しが失敗したときは
+`{"error": {"kind": ..., "message": ..., "retryable": ...}}` というエラー封筒が
+返り、`kind` は `validation` / `transport` / `scheduler` / `unknown` のいずれか
+です。`message` は credential らしき文字列を伏せてから返されます。
+
+#### `job_result(handle_id)`
+
+終端状態に達したジョブから `JobResultV1` を収集し、宣言された inputs / outputs と
+ログを再ハッシュします。セレクタは `job_status` と同じです。
+
+対象のジョブは ARI 経由で投入されていて（ledger の記録とハンドルが要ります）、
+かつ typed なリクエストを伴っている必要があります。`slurm_submit` ブリッジで
+投入したジョブは status と logs は取れますが、typed な `JobResultV1` は返せません。
+終端状態（`succeeded` / `failed` / `cancelled`）に達する前に呼ぶのは validation
+エラーです。
+
+宣言された `inputs` を sha256 とサイズで再検証し、`outputs` を実ファイルから再
+ハッシュして `ArtifactPinV1` に固定し、ログと provenance（submission record、
+実行環境の記録、module snapshot、コンテナランタイムのバージョン、exit code、
+リクエストが宣言していれば exclusive allocation と accelerator inventory の
+witness）を添えます。`required: true` の output が欠けている場合は例外ではなく
+`error.kind = "artifact"` として結果に記録されます。`succeeded` 以外の終端状態で
+終わったジョブは `error.kind = "execution"` を持ち、`NODE_FAIL` / `PREEMPTED` /
+`REQUEUED` のときだけ `retryable` が立ちます。
+
+返る `JobResultV1` は `request_digest` / `environment_digest` / `module_digest` に
+加えて、該当する場合は `module_snapshot_digest` / `container_digest` /
+`accelerator_allocation_digest` / `accelerator_inventory_digest` を持ち、残り全体を
+封じる `result_digest` で締められます。同じ記録がハンドルの `artifact_scope` 直下の
+`result-v1.json` にもアトミックに書き出されます。
+
+#### `job_logs(handle_id)`
+
+ARI 経由で投入したジョブの stdout / stderr を、境界付き・digest 付きで返します。
+セレクタは `job_status` と同じで、こちらも ARI 経由で投入したジョブにしか使えま
+せん。
+
+```python
+result = job_logs(handle_id="hpc-...")
+# 戻り値: {"schema_version": "ari.hpc.job-logs/v1", "logs": [...]}
+```
+
+各エントリは `stream`（`stdout` / `stderr`）・`path`・`digest`・`size_bytes`・
+`text`・`truncated` を持ちます。`text` は 1 MiB（1,048,576 バイト）で打ち切られ、
+その場合 `truncated: true` になります。打ち切りが目に見えるので、途中までの出力が
+完全な出力として通ることはありません。`digest` と `size_bytes` は、共有ファイル
+システム上でログを直接読める場合はファイル全体に対する値です。共有でない transport
+越しに読む場合はログもその transport を通って返るため、`digest` と `size_bytes` も
+同じ 1 MiB の範囲を指します。ログはハンドルの `artifact_scope` にある
+`slurm-{job_id}.out` / `.err` から読み、存在しないストリームは省かれます。通常の
+ファイルでないログ（シンボリックリンクを含む）は拒否されます。
+
+#### `job_cancel(handle_id)`
+
+ARI または SLURM のジョブにキャンセルを要求します。セレクタは `job_status` と
+同じです。
+
+```python
+result = job_cancel(handle_id="hpc-...")
+# 戻り値: {"schema_version": "ari.hpc.job-cancel/v1", "handle_id": "hpc-...",
+#          "job_id": "12345", "status": "cancel_requested"}
+```
+
+名前のとおり、これは `scancel` が要求を受け付けたという事実であって、ジョブが
+止まったという事実ではありません。scheduler 自身の言い分は `job_status` を
+ポーリングして確かめます（キャンセルされたジョブは `state: "cancelled"` と
+読めます）。`scancel` 自体が拒否された場合は `kind: "scheduler"` のエラー封筒が
+返ります。
 
 #### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
 
 **計算パーティション上**でツールの有無（`command -v`）を調べ、結果を
-`{checkpoint_dir}/platform_capabilities.json` にキャッシュします。設計上
-ベストエフォート: 失敗（パーティション未指定、`srun` 不在、キュー待ちの
-タイムアウト）時は `{"status": "skipped", ...}` を返して何も書きません。
-既存キャッシュがあれば再プローブせず `{"status": "cached", ...}` を返します。
-claims 抽出器はこのキャッシュを読み、プラットフォームに実在しないツールに
-依存する証拠を宣言しないようにします。
+`{checkpoint_dir}/platform_capabilities.json` にキャッシュします。`tools` は
+カンマ区切りのリストで、既定は `ARI_PROBE_TOOLS`、それも無ければ
+`perf,numactl,papi_avail,likwid-perfctr,valgrind` です。`partition` が空の場合は
+`ARI_SLURM_PARTITION` にフォールバックします。
 
-#### `singularity_build(definition_file, output_path, partition)`
+プローブが走った場合は `{"status": "probed", "partition": ..., "arch": ...,
+"available": {"perf": true, ...}}` が返り、`available` は調べた各ツール名を真偽値に
+対応づけます。プローブは走ったがキャッシュを書けなかった場合は同じレコードが
+`{"status": "unsaved", "reason": ..., ...}` として返ります。有効な既存キャッシュが
+あれば再プローブせず `{"status": "cached", ...}` を返します。設計上ベストエフォート
+で、失敗（パーティション未指定、`srun` 不在、キュー待ちのタイムアウト）時は
+`{"status": "skipped", "reason": ...}` を返して何も書きません。claims 抽出器は
+このキャッシュを読み、プラットフォームに実在しないツールに依存する証拠を宣言
+しないようにします。
 
-定義ファイルから Singularity コンテナをビルドします。
+#### `counter_support()`
 
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
+このノードがハードウェアカウンタを許可するかを、プロファイラのバイナリを探すので
+はなく実際に 1 つ開いて確かめます。引数はありません。`perf` が無くてもカウンタを
+許すノードがあり、`perf` があっても拒むノードがあり、ベンダ製プロファイラの置き場
+はサイト依存です。`perf_event_open` を直接呼べば、そのノードが走っているコンテナ
+の中で実際に効く kernel のポリシーを観測できます。
 
-Singularity コンテナを SLURM ジョブとして実行します。
+```python
+result = counter_support()
+# 戻り値: {"schema_version": "ari.hpc.counter-support/v1", "architecture": "...",
+#          "perf_event_paranoid": ..., "reviewed_events": [...],
+#          "status": "ready", "detail": None}
+```
 
-#### `singularity_pull(source, output_path, partition)`
+`status` は、自己プローブが開けたときは `ready`、`EACCES` / `EPERM` で拒まれた
+ときは `denied`、そのアーキテクチャに審査済みの `perf_event_open` システムコール
+番号が無いか自己プローブがそれ以外の理由で失敗したときは `unsupported`、Linux
+以外のホストでは `unavailable` になります。
 
-リモートレジストリから Singularity イメージを取得します。
+#### `measure_counters(pid, window_ms=1000, events=["cycles", "instructions"])`
 
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
+既に走っているプロセスの審査済みハードウェアイベントを、境界付きウィンドウで計数
+します。これは実行ではなくプロファイリングで、プロセスを生成せず、何も書かず、
+credential も要求しません。
 
-fakeroot モードで Singularity コンテナをビルドします。
+- `pid` は必須で、実際に走っているプロセスを指す必要があります
+- `window_ms` は 1〜60000（`MAX_WINDOW_MS`）、既定は 1000 です
+- `events` は審査済み集合 `branch-instructions` / `branch-misses` /
+  `cache-misses` / `cache-references` / `cycles` / `instructions` からの選択で、
+  既定は `["cycles", "instructions"]` です。この集合の外にあるイベント名は素通し
+  されずに拒否されるため、呼び出し側が任意の raw event encoding に到達すること
+  はありません
 
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
+カウンタは考えうる最小の権限（`exclude_kernel` / `exclude_hv`）で開かれるので、
+拒否されたときに表れるのは過剰な要求ではなくポリシーそのものです。戻り値の
+`excluded: ["kernel", "hypervisor"]` がそのことを記録します。
 
-GPU アクセス付き（`--nv` フラグ）で Singularity コンテナを実行します。
+```python
+result = measure_counters(pid=12345, window_ms=2000)
+# 戻り値: {"schema_version": "ari.hpc.counter-measurement/v1", "status": "measured",
+#          "support": {...}, "pid": 12345, "window_seconds": 2.000123,
+#          "counters": {"cycles": ..., "instructions": ...},
+#          "excluded": ["kernel", "hypervisor"]}
+```
+
+`counter_support()` が `ready` でない場合、または対象の pid でカウンタを開けなかっ
+た場合は、`counters` が空のまま `status` に `denied` / `unavailable` /
+`unsupported` が入り、`support` の記録がそのまま添えられます。
+
+このツールは `skill.yaml` で `context_requirement: node` を宣言する唯一の HPC ツール
+なので、入力スキーマに `ari_context` オブジェクトプロパティを持ちます。context 要件
+を持つツールにはこの名前で認可済みのノードコンテキストが transport から注入される
+ため、`additionalProperties: false` でありながらこれを宣言しないスキーマは、認可さ
+れた呼び出しをすべて拒否してしまいます。proxy は `tools/list` からこのプロパティを
+取り除き、`tools/call` では上書きするので、エージェントが渡す引数になることは
+ありません。
 
 ---
 
@@ -372,7 +626,7 @@ v0.7.0 で v0.6.0 の LLM 駆動判定パスは、PaperBench をコアとする�
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
-ors_audit_rubric     (replicate-skill)    → ors_rubric.audit.json (flags leaves in ors_rubric.json in place)
+ors_audit_rubric     (replicate-skill)    → 独立した監査ドキュメント; ors_rubric.json は書き換えない
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (local-tarball デフォルト)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (決定論的; fetch_code_bundle ← publish_record.json)
@@ -384,10 +638,12 @@ ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: Simple
 
 `ors_audit_rubric` は、以降のすべての採点が依拠するルーブリック自体を検査します。
 各葉に `vague_qualifier` / `no_paper_evidence` / `duplicate`（決定論的）と
-`unverifiable`（葉ごとに LLM 1 回）のフラグを付け、`ors_rubric.json` を
-その場で書き換え、20% 超の葉にフラグが付くと `regen_recommended` を返します。
-ゲートではなくシグナルであり、採点はどちらでも進みますが、フラグはルーブリックに
-同行します。`ARI_MODEL_RUBRIC_AUDIT` で生成側と別モデルを指定できます。
+`unverifiable`（葉ごとに LLM 1 回）のフラグを付け、20% 超の葉にフラグが付くと
+`regen_recommended` を返します。frozen なルーブリックは **書き換えません** —
+所見は別ドキュメント `ari.replication-rubric-audit/v2`（既定パスは
+`<rubric_path>.audit.json`）に出力され、そこで rubric と paper の digest を
+束ねるので両者が乖離できません。ゲートではなくシグナルであり、採点はどちらでも
+進みます。`ARI_MODEL_RUBRIC_AUDIT` で生成側と別モデルを指定できます。
 
 EAR が ON の実行は `ors_seed_sandbox` 経由（決定論的）で reproduce.sh を取得します。LLM `ors_build_reproduce` は reproduce.sh が既存の場合スキップするので、EAR が OFF の実行（論文のみ再現）でのみ発火します。
 
@@ -427,11 +683,11 @@ v0.7.0 で追加された PaperBench 形式の **オートルーブリック生�
 
 ### ツール
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
+#### `generate_rubric(paper_path="", paper_text="", output_path="", target_leaf_count=0, model="", temperature=0.0, seed=0, paperbench_rubric_id="", max_model_calls=64, subtree_concurrency=4, provider="", model_revision="")`
 
 PaperBench 互換のルーブリックを生成。`target_leaf_count=0` の場合は論文長から自動算定（~1葉 / 75語、[50, 400] にクランプ）。
 
-`two_stage=True`（デフォルト）では **二段階生成** を行います: ①スケルトンパスでルート + 直接子（contribution/experiment ごとに1ノード）と各子の葉数バジェットを決定 → ②サブツリーパスを各直接子について並列に走らせ、4–6階層深く再帰的に展開。マージ後、スキーマの `minLength=10` を満たさない葉（quote / requirements が短すぎる葉）は自動で除去されます。PaperBench 参照論文での測定では、単一コール比 **葉数約 4 倍・深さ +1〜2 層**、API トークン消費は約 5 倍。`two_stage=False` で従来の単一コール（`prompts/adversarial_reviewer.md`）に戻せます。
+生成は常に階層的です。単一コール経路は廃止され、frozen な envelope には `strategy: "hierarchical-v2"` / `quality_profile: "calibrated"` が無条件で記録されます。①スケルトンパス（`prompts/skeleton.md`）でルート + 直接子（contribution/experiment ごとに1ノード）と各子の葉数バジェットを決定 → ②サブツリーパス（`prompts/subtree.md`）を `subtree_concurrency` 並列で走らせ、各直接子のサブツリーを再帰的に展開。マージ後、スキーマの `minLength=10` を満たさない葉（quote / requirements が短すぎる葉）は自動で除去され、論文の厳密な span にも明示された external prerequisite にも束縛できない葉も同様に除去されます。`max_model_calls` が実行全体の上限で、プロンプトと応答の組はすべて `.ari-rubric/` に保持され `generator.calls` に列挙されます。
 
 `paperbench_rubric_id`（未リリース）は
 `ari-core/config/paperbench_rubrics/<id>.yaml` から venue 条件付けテンプレートを
@@ -442,14 +698,15 @@ skeleton + subtree のプロンプトに注入します。これは `ari-skill-p
 レビューで既に使っている `reviewer_rubrics/` の venue パターンと同型であり、
 同じ `venue → YAML → prompt` の流れがルーブリック生成器でも使えるようになりました。
 同梱テンプレート: `generic`（後方互換）、`sc`（HPC 論文監査、6 軸）、
-`neurips`（ML 再現性、6 軸）、`nature`（ウェットラボ、5 軸）。`paper_audit`
-モードは `two_stage=True` が必須です。YAML スキーマは
+`neurips`（ML 再現性、6 軸）、`nature`（ウェットラボ、5 軸）。YAML スキーマは
 [`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
 を参照。
 
-#### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
+#### `audit_rubric(rubric_path, paper_path="", paper_text="", auditor_model="", output_path="", max_model_calls=400)`
 
 独立した監査パス。問題のある葉を `vague_qualifier` / `no_paper_evidence` / `duplicate` / `unverifiable` でフラグ付けし、20% 超なら再生成を推奨します。
+
+frozen なルーブリックは決して書き換えません。所見は別ドキュメント `ari.replication-rubric-audit/v2` に入り、`output_path`（空なら `<rubric_path>.audit.json`）へ書き出されます。監査の前に、ルーブリック自身の digest、与えられた論文テキストに対する `paper_sha256`、生成側の provenance artifact をすべて再検証します。監査側の model/provider/revision が生成側と一致する場合は `independence_status: "not-independent"` を記録します。
 
 #### `suggest_target_leaf_count(paper_path, paper_text)`
 
@@ -726,34 +983,39 @@ AI Scientist v2 スタイルの反復的引用収集。LLM が検索クエリを
 
 ### ツール
 
-#### `write_code(filename, code, work_dir="/tmp/ari_work")`
+#### `write_code(filename, code, work_dir="/workspace")`
 
 作業ディレクトリにソースファイルを書き込みます。
 
-#### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
+#### `run_code(filename, work_dir="/workspace", timeout=600)`
 
-ソースファイルを実行します（拡張子から言語を自動検出）。出力は省略文字数とファイル出力推奨ヒント付きのマーカー付きで切り詰められます。
+拡張子で選ばれたインタプリタ（`.py` → `python3`、`.sh` → `bash`、`.js` → `node`、`.rb` → `ruby`、`.pl` → `perl`、`.lua` → `lua`）でソースファイルを実行します。コンパイルはしないので、C/C++/Fortran/Rust/Go は `run_bash` 経由です。インラインの `stdout`/`stderr` は bounded preview（それぞれ 4,000 / 2,000 文字）で、省略文字数と「完全なログは artifact にある」旨を示すマーカーが入ります。完全なストリームは常に SHA-256 digest 付きの content-addressed artifact として書き出されます。
 
-#### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
+#### `run_bash(command, work_dir="/workspace", timeout=600)`
 
-作業ディレクトリで bash コマンドを実行します。結果に `truncated` ブールフラグ付きで出力切り詰めを行います。
+作業ディレクトリで bash コマンドを実行します。preview と完全ログの扱いは `run_code` と同じで、結果に `truncated` ブールフラグが付きます。
 
-#### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
+#### `read_file(path, offset=0, limit=8000, work_dir="/workspace")`
 
-大きなファイル向けにページング対応でテキストファイルを読み込みます。コンテンツ、継続用 `next_offset`、総行数を返します。
+大きなファイル向けにページング対応でテキストファイルを読み込みます。`offset` / `limit` は行ではなく **文字** 単位です。コンテンツ、継続用 `next_offset`（末尾では `null`）、総文字数を返します。
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# 戻り値: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# 戻り値: {"path": "...", "content": "...", "offset": 0, "returned_chars": 100,
+#          "total_chars": 5000, "truncated": True, "next_offset": 100}
 ```
 
-作業ディレクトリ: `work_dir` 引数 > `ARI_WORK_DIR` env > `/tmp/ari_work`。
+作業ディレクトリ: workspace root は `ARI_WORK_DIR`（既定 `/tmp/ari_work`）で固定されます。`work_dir` 引数はこの root を置き換えるものではなく、その **配下** のディレクトリを選ぶもので、必要なら作成されます。root の外に解決されるパスは書き換えではなく拒否されます。agent には root が固定のコンテナパス `/workspace` として見え、ファイル系ツールが実ディレクトリへ戻したうえで、結果からは必ずスクラブします。
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=None, file="results.json", work_dir="/workspace")`
 
 入力パラメタと測定された出力を分離した型付き `results.json` を書き出します。下流（`transform → science_data`、論文執筆、summary stats）が「測定したもの」と「実行した条件」を取り違えないようにするためのツールで、best-of 集約で入力サイズ（`nnz`、`M`、`K`、`threads`）を実メトリクス（`GFlops_per_s` 等）より優先してしまう事故を防ぎます。`params` と `measurements` は disjoint でなければなりません。
 
-オプションの `provenance` 引数は `{operand: source}` マップで、`results.json` に `_provenance` キーとしてそのまま書き出され、claim/メトリクス正当性ゲートが消費します。値が経験的に **測定された** 上限/ピークであるオペランドには `"microbench"` または `"benchmark"` を（正規化メトリクスが placeholder に依拠していると誤検出されないように）、**独立した** リファレンスに対して計算した残差には `"correctness"` または `"reference"` を（出力が未検証と誤検出されないように）タグ付けします。ベストエフォートで、空のときは完全に省略されます。
+ファイルは `{"schema_version": "1.0", "typed_schema_version": "ari.measurement-set/v1", "measurement_set": {...}}` で、正準の `MeasurementSetV1` オブジェクトだけを持ち、その横に flat な射影は置きません（[実行と測定の契約](execution_contract.md) を参照）。各グループは finite JSON でなければならず、シリアライズできない値（`pathlib.Path` 等）や `NaN`/`Infinity`、数値でない measurement は強制変換されず `error` として拒否されます。
+
+オプションの `units` 引数は `{measurement: unit}` マップで、unit のない measurement は `unit_status: "missing"` として記録されます（unit は推測されません）。オプションの `execution` 引数は直前の `run_code`/`run_bash` 応答の `measurement_execution` ブロックをそのまま渡すもので（execution identity/attempt、status、exit code、artifact digest、サーバ発行の receipt）、渡さない場合 measurement は `execution_status: "unreported"` となり scientifically admissible になりません。`measurements` に無い名前を指す `units` / `provenance` キーは拒否されます。
+
+オプションの `provenance` 引数は `{operand: source}` マップで、対応する正準 measurement レコードに記録され、claim/メトリクス正当性ゲートが消費します。値が経験的に **測定された** 上限/ピークであるオペランドには `"microbench"` または `"benchmark"` を（正規化メトリクスが placeholder に依拠していると誤検出されないように）、**独立した** リファレンスに対して計算した残差には `"correctness"` または `"reference"` を（出力が未検証と誤検出されないように）タグ付けします。ベストエフォートで、空のときは完全に省略されます。
 
 ---
 

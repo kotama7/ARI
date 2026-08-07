@@ -63,10 +63,10 @@ export ARI_SLURM_PARTITION=large
 }
 ```
 
-## 例: R-CCS Cloud (Web UI, 手動)
+## 例: notebook 経由の allocation (Web UI, 手動)
 
-R-CCS Cloud Jupyter は SLURM allocation を web notebook 経由で公開する。
-ARI run は notebook 内から直接 `sbatch` できないため:
+login shell ではなくホスト型 Jupyter notebook 経由で SLURM allocation を
+公開するサイトがある。ARI run は notebook 内から直接 `sbatch` できないため:
 
 1. Notebook から `python -m ari.viz.server --host 0.0.0.0`
 2. 別のターミナルセッション (同じ allocation 内) で

@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # Your First Experiment, End to End
@@ -108,8 +108,11 @@ paper (see [Publication lifecycle](../concepts/publication-lifecycle.md)):
    into `node_provenance_audit.json`. It is a signal, not a gate.
 2. **transform_data** reads the whole tree and extracts hardware, methodology,
    and findings into `science_data.json`.
-3. **generate_figures** writes the plotting code; a **VLM** then reviews the
-   main figure and loops back if it scores low.
+3. **generate_figures** has an LLM pick only *what* each figure shows (metric,
+   chart type, x axis); a fixed renderer then draws it deterministically from
+   `science_data.json`. A **VLM** reviews *every* figure, and because the
+   aggregate score is the minimum across them, one weak figure loops the stage
+   back for regeneration (threshold 0.7, at most 2 extra passes).
 4. **write_paper** drafts the LaTeX, revises it, and pulls BibTeX from the
    survey results → `full_paper.tex` / `.pdf`.
 5. **review_paper** runs one or more reviewer agents against the chosen venue
@@ -120,9 +123,16 @@ paper (see [Publication lifecycle](../concepts/publication-lifecycle.md)):
 By default the pipeline now also runs a **claim-evidence verification loop**: a
 deterministic hard gate re-derives the reported numbers, a non-blocking
 evidence-grounded semantic review checks the prose against that evidence, then an
-anchor-preserving refine and re-render close the loop. It runs in report-only
-(**warn**) mode by default — it surfaces findings but does not block finalize
-unless you set `ARI_CLAIM_GATE_MODE=strict` (or `claim_gate_policy.mode: strict`).
+anchor-preserving refine and re-render close the loop. It runs in **warn** mode
+by default, which is *not* the same as report-only: warn still blocks the final
+gate on the objective-integrity tier (`always_block_on` — invariant violations,
+failed or uncovered correctness checks, placeholder denominators, recompute
+mismatches, unbound or mismatched artifacts…), because those findings are
+deterministically false rather than a matter of reviewer taste. Everything else
+is reported and does not block until you set `ARI_CLAIM_GATE_MODE=strict` (or
+`claim_gate_policy.mode: strict`), which additionally blocks the configured
+`block_on` findings and uncovered result numbers in strict sections;
+`mode: off` never blocks, and a draft-phase report never blocks either way.
 See [Publication lifecycle](../concepts/publication-lifecycle.md) for the details.
 
 Read it all on the **Results** page: the Overleaf-like editor, the review score,
@@ -145,7 +155,8 @@ Finally ARI checks its own work the way an independent referee would
   control** (an empty repo must score near zero) so the grade can't be earned
   by doing nothing.
 
-The verdict is in `reproducibility_report.json`.
+The verdict is in `ors_grade.json` (grade status, per-leaf scores, and the
+negative-control result), with the phase-1 outcome in `ors_phase1.json`.
 
 ## 7. What you have now
 
@@ -159,7 +170,7 @@ In `workspace/checkpoints/<timestamp>_<slug>/`:
 | `full_paper.tex` / `.pdf` | The generated paper |
 | `review_report.json` | Peer-review score and feedback |
 | `ear/` | Reproducibility bundle |
-| `reproducibility_report.json` | The ORS verdict |
+| `ors_grade.json` | The ORS verdict |
 
 ## Where to go next
 

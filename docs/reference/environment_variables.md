@@ -10,7 +10,9 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/health.py
     role: implementation
-last_verified: 2026-08-06
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+last_verified: 2026-08-07
 ---
 
 # Environment Variable Reference
@@ -235,6 +237,17 @@ directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_op
 | Variable | Purpose |
 |---|---|
 | `ARI_RETRIEVAL_BACKEND` | `semantic_scholar` / `arxiv` / `alphaxiv` |
+
+### Federated tool registry skill
+
+The Skill flag and the catalog are two independent gates: enabling
+`ari-skill-tool-registry` enables no leaf, because only sources present in the
+selected lock can execute.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_TOOL_REGISTRY_LOCK` | Reviewed `CATALOG.lock` the broker loads at process startup. ARI's own provider-catalog loader reads the same variable, so the two cannot disagree about which leaf a composite provision describes. A materialized catalog carries absolute local paths and therefore cannot live in the repository, which is why the override is the only way to reach one | the `CATALOG.lock` packaged beside the Skill — checked in empty by design, because it is the portable default and a populated catalog is machine-specific evidence |
+| `ARI_TOOL_REGISTRY_INDEX` | Derived catalog index matching that lock | `catalog.index.json` beside the resolved lock; rebuilt from the lock when that file is absent |
 
 ### Publish + registry + clone
 

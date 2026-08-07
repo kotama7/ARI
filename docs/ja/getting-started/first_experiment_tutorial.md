@@ -102,8 +102,11 @@ Overview、Trace（すべてのツール呼び出し）、Code、Output の各�
    報告します。ゲートではなくシグナルです。
 2. **transform_data** がツリー全体を読み、ハードウェア、方法論、発見を
    `science_data.json` に抽出します。
-3. **generate_figures** が作図コードを書き、続いて **VLM** がメイン図をレビューし、
-   スコアが低ければループバックします。
+3. **generate_figures** では、LLM は各図が「何を」示すか（メトリクス、チャート種別、
+   x 軸）だけを選び、固定のレンダラが `science_data.json` から決定論的に描画します。
+   続いて **VLM** が**すべての**図をレビューし、集約スコアは図の最小値なので、
+   1 枚でも弱い図があればステージがループバックして再生成されます
+   （しきい値 0.7、追加パスは最大 2 回）。
 4. **write_paper** が LaTeX を起草し、推敲し、調査結果から BibTeX を取り込みます →
    `full_paper.tex` / `.pdf`。
 5. **review_paper** が選択されたベニュールーブリックに対して 1 名以上のレビュアーエージェントを
@@ -114,9 +117,15 @@ Overview、Trace（すべてのツール呼び出し）、Code、Output の各�
 デフォルトでは、パイプラインは現在 **claim-evidence 検証ループ** も実行します: 決定論的な
 ハードゲートが報告された数値を再導出し、ブロックしない evidence-grounded セマンティックレビューが
 その根拠に照らして本文を検査し、続いてアンカーを保持する推敲と再レンダリングがループを閉じます。
-これはデフォルトでは報告のみの（**warn**）モードで動作し — 発見を表に出しますが、
-`ARI_CLAIM_GATE_MODE=strict`（または `claim_gate_policy.mode: strict`）を設定しない限り
-finalize をブロックしません。詳細は[公開ライフサイクル](../concepts/publication-lifecycle.md)を参照してください。
+既定は **warn** モードですが、これは「報告のみ」ではありません: warn でも
+objective-integrity の階層（`always_block_on` — 不変条件違反、correctness の失敗や
+未カバー、プレースホルダの分母、再計算の不一致、未束縛・不一致の成果物…）は
+最終ゲートをブロックします。これらは査読者の主観ではなく決定論的に偽だからです。
+それ以外の指摘は報告されるだけで、`ARI_CLAIM_GATE_MODE=strict`（または
+`claim_gate_policy.mode: strict`）を設定して初めてブロックされます。strict は
+設定済みの `block_on` 指摘と、strict セクションの未カバーの結果数値も追加で
+ブロックします。`mode: off` は決してブロックせず、draft フェーズのレポートも
+どちらのモードでもブロックしません。詳細は[公開ライフサイクル](../concepts/publication-lifecycle.md)を参照してください。
 
 すべては **Results** ページで読めます: Overleaf 風エディタ、査読スコア、EAR ブラウザです。
 
@@ -137,7 +146,8 @@ finalize をブロックしません。詳細は[公開ライフサイクル](..
   **negative control**（空のリポジトリはゼロ近くのスコアにならなければならない）が含まれ、
   何もしないことで採点を得られないようにします。
 
-判定は `reproducibility_report.json` にあります。
+判定は `ors_grade.json`（採点ステータス、リーフごとのスコア、negative control の結果）に
+あり、Phase 1 の結果は `ors_phase1.json` にあります。
 
 ## 7. これで手元にあるもの
 
@@ -151,7 +161,7 @@ finalize をブロックしません。詳細は[公開ライフサイクル](..
 | `full_paper.tex` / `.pdf` | 生成された論文 |
 | `review_report.json` | ピアレビューのスコアとフィードバック |
 | `ear/` | 再現性バンドル |
-| `reproducibility_report.json` | ORS の判定 |
+| `ors_grade.json` | ORS の判定 |
 
 ## 次に進む先
 

@@ -115,7 +115,7 @@ RQGM は `idea.json` を置き換えません; 提案レコードストア
 （`ari/rqgm/proposals/store.py`）の**プロジェクション**へと格下げします:
 
 - **9 キー契約は保持されます。** 投影されるドキュメントは、既存のすべての
-  コンシューマが読むトップレベルキーをそのまま保ちます: `gap_analysis`、
+  コンシューマが読むトップレベルキーを常に保ちます: `gap_analysis`、
   `ideas`、`primary_metric`、`higher_is_better`、`metric_rationale`、
   `papers_analyzed`、`n_agents`、`discussion_rounds`、
   `virsci_integration_status`（`ari.rqgm.proposals.store.IDEA_JSON_KEYS`;
@@ -129,6 +129,15 @@ RQGM は `idea.json` を置き換えません; 提案レコードストア
 - **トレーサビリティ。** 投影された各 `ideas[i]` エントリはアンダースコア
   キー `_proposal_record_id` を持ち、`proposals/proposal_records.jsonl` へ
   リンクバックします（`_pinned` / `_inherited_from` と同じ規約）。
+- **型付きハンドオフはタイトル一致で通過します。** 選ばれたジェネレータが
+  型付き research-contract ドキュメントを出力していた場合、プロジェクションは
+  その 10 個の typed-handoff キー — `typed_schema_version`、
+  `contract_status`、`survey_snapshot`（`_digest`/`_ref`）、`idea_set`
+  （`_digest`）、`research_contract`（`_digest`）、`rejected_candidates` —
+  も併せて運びます。つまり上の 9 キーは下限であって上限ではありません。
+  コピーはコントラクトの `title` がディレクティブ `ideas[0].title` と一致
+  するときに**のみ**行われるため、型付きブロックが `idea.json` の指す方向とは
+  別の方向を記述してしまうことはありません。
 - **逆写像。** 既存の `idea.json` の内容（ピン留めされたシード、または上の
   ステージ 1 デュアルライト）は、レガシーチャネルに乗り続けられる程度に
   損失なくインポートされます: `summary_from_idea` は、レガシーパスが使うの
@@ -159,6 +168,7 @@ RQGM は `idea.json` を置き換えません; 提案レコードストア
 | `rqgm_erasure_state.json` | 選択的消去による stale/invalid 集合の導出ロールアップ |
 | `rqgm_meta_outputs.jsonl` | メタエージェント出力レコード |
 | `rqgm_governance_cache.jsonl` | ガバナンス結果キャッシュ |
+| `rqgm/kca/admission-v1/`（`run_admission.json` とピン留めされたコントラクト / カタログ / ロック一式） | Knowledge–Capability–Assurance のラン受理ベースライン。`knowledge` / `capability_binding` / `assurance` の各モードがレガシー不活性な既定値（`off` / `legacy` / `off`）から外れたときだけ書かれる。ディレクトリの rename で公開されるため、中断された受理が「権威ある状態」と誤認される部分集合を残すことはない |
 | `rqgm_eval_metrics.json`、`rqgm_injection_provenance.json` | 評価ハーネス専用 — 通常のランでは決して書かれない |
 
 ## ロールバック
@@ -182,7 +192,9 @@ RQGM は `idea.json` を置き換えません; 提案レコードストア
   `ari_rqgm` 下で消去されたノードはモードを戻した後も枝刈りされ、
   ベストノード選択からも除外されたままです —
   汚染はモード切替によって清浄にはなりません。このセンチネルキーを書くのは
-  RQGM の機構（`ari_rqgm` の `FrontierRepairEngine` または `rqgm_archive`
+  RQGM の機構（`ari_rqgm` の `FrontierRepairEngine`、`RQGMRuntime` の KCA
+  整合性チェック — こちらはノードに `assurance_status: tampered` /
+  `frontier_class: uncertified_frontier` も付けます —、または `rqgm_archive`
   の paper ランタイム）だけなので、RQGM を一度も走らせて
   いないチェックポイントではこの節は不活性なデッドコードです
   （`_sterile` パターン）。

@@ -181,7 +181,7 @@ BFTS 戦略を純粋委譲の `GovernedSearchStrategy` で包みます。ラン�
 | ファサード | モジュール | 所有するもの |
 |---|---|---|
 | `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0。12 個の閉じた `validate_*` エントリポイント（レコードスキーマ、ハッシュ、capability、エポック不変性、遷移、ロール分離、選択的消去、監査ログ完全性、クリーンルームバンドル、汚染、権限非拡大、コンテキストスコープ）と執行アダプタ（`should_block`、fail-open な `per_node_warn_check`、事前チェックの `CapabilityGatedMCPClient`）。決定論的かつ非進化的: LLM 呼び出しゼロ、ネットワークゼロ、壁時計判定ゼロ。`rqgm.kernel.enforcement: audit_only` はすべてのコンテキストを warn-and-log へ格下げ |
-| `GovernanceOrchestrator` | `ari/rqgm/governance/` | エポック境界の監査: `audit_epoch(...) -> GovernanceReport`。9 ステップのパイプライン（observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report）。すべての LLM 判定（Auditor / Defender / GovernanceJudge、プロンプトは `ari/prompts/governance/` 以下）には完全な決定論的フォールバックがあり、`llm=None` でも完全な監査が得られる。レポートは遷移エンジンへの*助言的入力*であり、オーケストレータがレジストリを変更することは決してない |
+| `GovernanceOrchestrator` | `ari/rqgm/governance/` | エポック境界の監査: `audit_epoch(...) -> GovernanceReport`。9 ステップのパイプライン（observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report）。すべての LLM 判定（Auditor / Defender / GovernanceJudge、プロンプトは `ari/prompts/governance/` 以下）には完全な決定論的フォールバックがあり、`llm=None` でも完全な監査が得られる。レポートは遷移エンジンへの*助言的入力*であり、オーケストレータがレジストリを変更することは決してない。構築時点でこの権限関係が必須化される: `kernel` が無ければ `__init__` が `ValueError` を送出する。役割分離の権限を持つのはオーケストレータ自身のレコード構築処理ではなくカーネルであり、監査が生成したレコード（evidence bundle、motion、defense、outcome）をステップ 8 で `validate_record_schema` と `validate_role_separation` により再検証するのもカーネルだからである。残り 2 つの seam は設計上オプショナル: `llm=None` は保証された劣化動作であり、CI 向けの決定論的な下限である。`audit_writer=None` はレコードを書き出さず `self.written` 上のメモリに収集し、テストはこれを通じて監査を観測する。レコードの追記が例外を送出することはない — writer の失敗はログに記録され、監査は続行する |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | レジストリステータスの**唯一の**書き込み手。固定の T1–T21 テーブルに対する純粋な `resolve_transition(...)` と、その後の 5 ステップ境界プロトコル: freeze → resolve → kernel-validate → prepare → apply/commit をエポックトランザクション上で実行。T16 の `emergency_quarantine` は現期を強制終了し、同じ取引で新しい指紋値を持つ期を開始する |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 退役を伴う遷移のコミット後: 純粋な `trace_dependents` による staleness 閉包と `rebuild_frontier`。`SelectiveErasureEvent` / `FrontierRebuildEvent` レコードを発行。失敗のはしご: カーネル検証失敗 → 保守的再修復（フラグ付きノードを除外）→ drain-only 縮退（`expansion_halted`: ランは残作業を完了するがそれ以上展開しない）。クラッシュは決して起こさない |
 
@@ -300,6 +300,28 @@ T6 採用の*内側*でのみ発火します（採用された後継なしに置
   paper ロールごとにアクティブエントリがちょうど 1 つ残ります。T20 と
   異なり退役ではありません — 後の境界がスタンバイを再び登らせることが
   できます。
+
+境界監査はループ内で統治される唯一の判断ではなく、もう一方を包含も
+しません。**lineage decision フック**（`config/workflow.yaml` の
+`lineage_decision:`、ループ開始時に一度読まれます）は `mode` が `off` で
+ない限りノード単位で*研究の方向*を統治します: ノード保存後に、探索の継続、
+次点アイデアへの切り替え、子ランへの fanout、系統の終了のいずれかを選び、
+自身の `rate_limit_per_run`（ランの `continue` 以外のアクション数を
+数えます）で上限が掛かり、`lineage_decisions.jsonl` に追記されます。
+`audit_epoch` はエポック単位で*コンポーネントの信頼性*を統治します:
+上記の `ensure_epoch` チックの内側で境界ごとに 1 回走り
+（閉じるエポックがトランザクションより先に監査されます）、
+`rqgm.governance.max_llm_calls_per_audit` で上限が掛かり、
+`rqgm_audit.jsonl` に追記されます。v1 ではこの 2 つは 1 つのループを
+共有する別々の機構であり — 設定も上限もレコードストリームも別 —
+どちらも他方を gate しません: 境界監査が lineage decision を待つことは
+なく、lineage decision が `GovernanceReport` を読むこともありません。
+（唯一の接点は再アイデア化です: stagnation や pivot の判断は
+`ProposalRouter` も突つき、ルータは同じ `lineage_decisions.jsonl` に
+`trigger: "proposal_router"` で追記します — ガバナンス監査はその経路上に
+ありません。）両者の統合は v1 より後に先送りされています: 設計上それを
+妨げるものはありませんが、レート制限どうしの相互作用が未設計なので、
+たまたまループを共有する独立した機構として読んでください。
 
 ---
 
@@ -536,6 +558,23 @@ Layer 0 のままです: RQGM はその所見を**読む**だけです
    アプリケーション境界であり、電子署名、別 OS 利用者、独立プロセス、
    IPC サンドボックスによる分離ではありません。実行時、保存点、道具の
    呼出し境界は現版の信頼基盤です。
+   同じ留保が capability の強制にも当てはまります。事前チェックの門
+   （`CapabilityGatedMCPClient`）が覆うのは MCP の道具呼出しだけです:
+   道具*名*の部分文字列一致で `(actor, action, resource)` の三つ組へ写像し
+   （`ari/rqgm/tool_policy.py`）、認識できない道具には `None` を返して
+   そのまま素通しするため、写像されない道具は行列と照合されません。
+   `validate_capability` はほかに 2 つのプロセス内接合点でも呼ばれますが
+   （`ari/rqgm/meta_evolution.py` の meta 出力受理、
+   `ari/rqgm/clean_room.py` の退役プロンプト本文読取り）、いずれも
+   ファイルシステム境界ではありません: 保存点ディレクトリは
+   `checkpoint.dir` / `ARI_CHECKPOINT_DIR` から解決される通常のパスに
+   すぎず、それ自体にアクセス制御はなく、直接読んだ構成要素はカーネルが
+   検査できる呼出し記録を何も残しません。meta ロールアウトの
+   `sandbox` / `allow_paths` 検査は、道具*引数*に現れる scratch ディレクトリ
+   外の絶対パスを見るだけで、`ari/agent/react_driver.py` 自身がこれを
+   多層防御の検査と呼んでいます。OS レベルの隔離ではありません。
+   したがって `CK-ACC-*` は、協力的な構成要素が呼出し境界を通して何に
+   手を伸ばせるかを制約するものであり、封じ込めの境界ではありません。
 6. **選択的消去は論理のみ。** 物理的には何も削除されません。staleness は
    監査ログイベント、導出された `rqgm_erasure_state.json` ロールアップ、
    および `tree.json` を通じて永続化される追加的な `Node.metrics`

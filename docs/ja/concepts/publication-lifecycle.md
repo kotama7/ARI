@@ -41,12 +41,20 @@ backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
         │        ▼ render_paper (refine 後の .tex を再コンパイル ──▶ full_paper.pdf)
         │        ▼ link_paper_claims (final)          ──▶ paper_claim_links_final.json
         │        ▼ claim_evidence_hard_gate (FINAL)   ──▶ evaluation/claim_evidence_hard_gate_final.json
-        │        │   (strict モードでは finalize をブロック)
+        │        │   (finalize をブロック: 客観的な虚偽は常に、
+        │        │    設定済み block_on は strict モードで)
         ▼        ▼
         └────────┴──▶ finalize_paper (paper-skill: inject_code_availability)
                        ear_publish と FINAL hard gate の両方に DEPENDS
         ▼
 full_paper.tex に \codeavailability{} \codedigest{} \coderef{}
+        │
+        ▼ link_paper_claims_locked                  ──▶ paper_claim_links_locked.json
+        ▼ claim_evidence_hard_gate_locked (final)   ──▶ evaluation/claim_evidence_hard_gate_locked.json
+        ▼ evidence_grounded_semantic_review_locked (advisory)
+        ▼ render_final_paper (injection 後の .tex をコンパイル ──▶ full_paper.pdf)
+        ▼ lock_paper_build (paper-skill: finalize_paper_build)
+        │                                            ──▶ paper_build.json (PaperBuildV1)
         │
         ▼ ari clone <ref> --expect-sha256 <baked digest>
         ▼
@@ -61,7 +69,8 @@ claim-evidence **hard gate**、非ブロッキングの
 **anchor 保持の refine/render ループ** が走るようになりました。本ループは
 論文の `% CLAIM` anchor を記録済み結果に紐付け (`link_paper_claims`)、
 実験データと突き合わせて検証し (`claim_evidence_hard_gate`。draft で 1 回、
-refine 後の論文で再度実行)、hard gate と semantic review の双方をマージ済み
+refine 後の論文で再度、さらに `lock_paper_build` が lock する injection 後の
+TeX そのものに対して 3 回目を実行)、hard gate と semantic review の双方をマージ済み
 レビューにスレッドし、claim anchor を保持したまま suggested revision を適用し
 (`paper_refine`)、refine 後の `.tex` を再コンパイルします (`render_paper`)。
 動作は `ari-core/config/workflow.yaml` の `claim_gate_policy` ブロックで制御され、
@@ -108,8 +117,8 @@ refine 後の論文で再度実行)、hard gate と semantic review の双方を
   無い scaffold-only contract は freeze しません。
 
 成果物: `paper_claim_links.json` (draft) /
-`paper_claim_links_final.json`、および
-`evaluation/claim_evidence_hard_gate_{draft,final}.json`。
+`paper_claim_links_final.json` / `paper_claim_links_locked.json`、および
+`evaluation/claim_evidence_hard_gate_{draft,final,locked}.json`。
 
 トラストモデル: **トラストアンカーは registry ではなく論文そのもの**です。
 `ari clone` は再計算した digest が `--expect-sha256` (または `manifest.lock` の

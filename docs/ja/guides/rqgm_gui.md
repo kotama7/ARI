@@ -40,7 +40,9 @@ last_verified: 2026-07-30
 
 **ガバナンスに関して GUI は読み取り専用です。** `/api/v1` の RQGM 面には変更用
 エンドポイントが一切存在せず、`/api/v1/runs/{run_id}/rqgm/*` 以下のルートはすべて
-GET です。このワークスペースでクリックできるものが、構成要素を登録したり、
+GET です。その面の外で提供される唯一のタブ（Knowledge · Capability · Assurance）も
+`GET /api/checkpoint/{run_id}/kca` を読むだけで、やはり GET です。
+このワークスペースでクリックできるものが、構成要素を登録したり、
 ポリシーを採用したり、エポックを開いたり、スコアを書き換えたりすることはありません。
 ガバナンスの変更はラン自身から生じます。（Studio は**新規**ランに対して
 `ari_rqgm` を選べますが、それが決めるのはランがどのアルゴリズムを実行するかで
@@ -50,7 +52,8 @@ GET です。このワークスペースでクリックできるものが、構�
 コミット済みのチェックポイント成果物（`rqgm_state.json`、
 `rqgm_transitions.jsonl`、`rqgm_audit.jsonl`、`rqgm_adversarial_cases.jsonl`、
 `rqgm_registry.json`、`prompt_evolution.jsonl`、`rqgm_meta_outputs.jsonl`、
-`paper_archive_state.json`、ノードメトリクスのセンチネル）を直接パースし、カーネル
+`paper_archive_state.json`、`rqgm/kca/admission-v1/` のスナップショット、
+ノードメトリクスのセンチネル）を直接パースし、カーネル
 コードをインポートしません。見えているのは replay であって再実行ではありません。
 
 ## たどり着き方と capability の状態
@@ -86,11 +89,12 @@ GET です。このワークスペースでクリックできるものが、構�
 
 ## タブごとの解説
 
-タブストリップ自体は **Overview · Epoch Timeline · Registry · Accountability ·
-Score Lineage · Evolution · Paper Archive · Audit** と並びます。以下の節は代わりに
+タブストリップ自体は 9 タブで、**Overview**、**Epoch Timeline**、**Registry**、
+**Accountability**、**Score Lineage**、**Evolution**、**Paper Archive**、
+**Knowledge · Capability · Assurance**、**Audit** と並びます。以下の節は代わりに
 読む順序に従います: まず現在状態、次にノードスコープの 2 タブ（Accountability と
 Score Lineage は 1 つのノードセレクタを共有）、続いてラン全体のタイムライン、
-最後に生ログです。
+次に凍結された knowledge / capability / assurance の記録、最後に生ログです。
 
 ### Overview — 「現在のガバナンス状態は？」
 
@@ -104,7 +108,8 @@ Score Lineage は 1 つのノードセレクタを共有）、続いてラン全
 （`20260727120000_rqgm_governance_demo`）です。このワークスペースを撮影する
 ためだけに生成されたもので、写っているハッシュ・エポック番号・件数はすべて
 その撮影用の小道具に属します。あなたの値とは異なりますし、突き合わせる対象
-でもありません。*
+でもありません。また Knowledge · Capability · Assurance タブが追加される前の
+ものなので、画像中のストリップは現在の 9 つではなく 8 つのタブを示しています。*
 
 三値は文字どおりに読んでください:
 
@@ -279,6 +284,30 @@ offset>` 付き）; そしてガバナンスレポートの有無。
 
 `anchor.enabled` が `false` のとき、タブはその帰結を逐語で伝えます: アーカイブは
 reviewed best-of-N であり、writer への制裁は発火できません。
+
+### Knowledge · Capability · Assurance — 「このランは何を知り、何を実行し、何で検証してよかったのか？」
+
+`GET /api/checkpoint/{run_id}/kca`（`ari.viz-kca/v1`）が提供します。これはランの
+コミット済み `rqgm/kca/admission-v1/` スナップショットを直接読むだけで、レジストリも
+リゾルバもインポートしません。3 つのカードは、ワイヤ形状の上でも UI の上でも
+分離されており、ある領域の権限が別の領域のものと読み違えられないようにしています:
+
+- **ARI Knowledge Skill Registry** — 実行不可能・content-addressed な手続き的知識で、
+  ツール権限は一切与えません。カタログスナップショットの digest、Knowledge Skill
+  Lock の digest、アクティブスキル数とノード利用記録数、そしてカタログ表。
+- **ARI Capability Provider Federation** — 実行可能な provider と、そのランに凍結
+  されたツールスキーマ（MCP はトランスポートであって Knowledge Skill ではありません）。
+  Provider Lock と Capability Binding Lock の digest、そして bind 済み /
+  未充足の capability 数。
+- **ARI Harness Registry / Scientific Assurance** — 独立した target-bound な検証。
+  provider の成功は Attestation ではありません。Verification Contract と Baseline
+  Harness Lock の digest、そして検証要件数と Attestation 数。
+
+`run_admission.json` が無いランには *"This run has no K/C/A admission snapshot."*
+と表示されます —— エラーではなく capability の状態です。読み取れない、サイズ超過、
+あるいはレコード上限で切り詰められたスナップショットファイルは、表を黙って縮める
+のではなく、ワークスペースの他の箇所と同じ degraded パネルに `degraded_reasons`
+として現れます。
 
 ### Audit — 「生ログを見せてほしい」
 

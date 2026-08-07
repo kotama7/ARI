@@ -74,7 +74,7 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 | シンボル | 用途 |
 |---|---|
-| `ContainerConfig` | データクラス: `mode`、`image`、`bind_paths`、`gpu` など |
+| `ContainerConfig` | データクラス: `image`、`mode`（`auto`/`docker`/`singularity`/`apptainer`/`none`）、`pull`（`always`/`on_start`/`never`）、`extra_args` |
 | `detect_runtime()` | `which` の検索結果に基づいて `"singularity"` / `"apptainer"` / `"docker"` / `"none"` を返す |
 | `config_from_env()` | `ARI_CONTAINER_*` 環境変数から `ContainerConfig` を構築（未設定の場合は `None`） |
 | `pull_image(cfg)` | `cfg` が参照するイメージを取得 / ビルド |
@@ -127,7 +127,8 @@ ARI のコストトラッカーとメタデータタグ付けを透過的に処�
 from ari.public.paths import PathManager
 
 paths = PathManager.from_env()        # honours ARI_CHECKPOINT_DIR
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 ```
 
 `PathManager` は中央リゾルバです — スキルから `ARI_CHECKPOINT_DIR` を
@@ -274,7 +275,8 @@ cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
 
 # 2. パスは PathManager 経由で解決 — ARI_CHECKPOINT_DIR を直接読まない。
 paths = PathManager.from_env()
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM 呼び出しは ARI のラッパー経由なので、コストは自動的に記録される。
 client = LLMClient(model="ollama/qwen3:32b")

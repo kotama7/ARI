@@ -455,6 +455,27 @@ RQGM の **ImmutableAuditLog**: 同じ追記専用ハッシュ連鎖の行エン
 "subject_ref": ..., "rule_id": ..., "detail": ...}]}` — すべての判定は
 リプレイ可能です。
 
+このリプレイ可能性は習慣ではなく契約です。`make_report`
+（`ari-core/ari/rqgm/kernel_types.py`）は構築時に違反を
+`(code, subject_ref, detail)` で整列させるため、同一入力は同一の
+`kernel_report` 行に直列化されます。この性質は
+`ari-core/tests/test_rqgm_kernel.py` が違反コードごとに固定しており、
+各フィクスチャを別々のカーネルインスタンス上で 2 回駆動して正規化 JSON
+を比較します。時計を読む検査はありません: どのカーネルモジュールも
+`time` や `datetime` を import せず、エンベロープの `created_at` は
+**存在**のみが検査され（`kernel_rules.ENVELOPE_FIELDS`）、その値が比較・
+`detail` 文字列・ハッシュに入ることはありません。severity も呼び出し側が
+選ぶことはなく、凍結された `kernel_rules.SEVERITY` マップで解決されます
+— つまり判定の severity はコードだけの関数です。数値的な緩みは 1 つの
+つまみだけ: 浮動小数点比較は `rqgm.kernel.float_tolerance`（既定 `1e-9`、
+[設定](configuration.md) 参照）を通ります。そして「カーネルは LLM 判事
+ではない」は主張ではなく強制されます — テストがすべての
+`ari/rqgm/kernel*.py` と `transition_rules.py` を `litellm`、`openai`、
+`anthropic`、`requests`、`httpx`、`aiohttp`、`socket` について grep し、
+import として現れれば失敗します。対象ファイル集合そのものも厳密に
+アサートされるため、新しい `kernel_*.py` がこのガードに加わらないまま
+カーネルに加わることはできません。
+
 各エポック境界で GovernanceOrchestrator の `audit_epoch` はレコードを
 ここに追記します（すべて共通の `rqgm_record_base` エンベロープを運び
 ます）: `evidence_bundle`（作者は EvidenceClerk のみ）、
@@ -468,6 +489,44 @@ no_action`）。あるエポックの最新レポートは、その `epoch_id` �
 最後の `governance_report` 行です（クラッシュした監査の再実行は新しい
 レコード id を追記し、以前の部分レコードは履歴として残ります）。
 ガバナンスのスナップショットファイルは存在しません; JSONL が真実です。
+
+`audit_epoch` は、コンポーネント / プロンプトレジストリ、フロンティア、
+`tree.json`、ノード状態に対して **読み取り専用**です。レジストリには
+読み取りアクセサ（`active_set` / `get`）経由でしか触れず、9 ステップの
+パイプラインはレコードを永続化せず *返す* だけで、追記はファサードが
+後から行います。推奨の適用も行いません: `governance_report` に基づいて
+動くのは RegistryTransitionEngine（Task 09）だけの仕事であり、レポート
+単体では状態は何も変わりません。書き込み集合は閉じています:
+
+- `rqgm_audit.jsonl` — 常に: 上記のガバナンスレコードと最終的な
+  `governance_report`。
+- `prompt_trace.jsonl` / `prompt_versions.json` — 共有のプロンプト
+  レンダリング経路が出す通常のプロヴェナンスレコードで、対象は
+  ガバナンスの LLM 呼び出しのみ。決定論的な監査（LLM シーム未配線）は
+  ガバナンスプロンプトを一切レンダリングせず、どちらのファイルも
+  書きません。
+- `rqgm_adversarial_cases.jsonl` と、そこから派生する
+  `rqgm/adversarial_replay_pool.json` — ステップ 7 のリプレイプール
+  更新で、プールが渡された場合のみ。承認 / 支持されたケースは真実で
+  ある JSONL に **追記**され、そのうえでスナップショットがメモリ上の
+  状態から書き直されます。つまりスナップショットは履歴のインプレース
+  編集ではなく射影です: 上限付きの追い出しはケースの `status` を
+  `evicted` にするだけで、JSONL は admit されたすべてのケース行を
+  保持します。
+- `rqgm_governance_cache.jsonl` — 候補評価の書き戻しで、Task 12 の
+  ガバナンスキャッシュが配線されている場合のみ（後述の
+  `rqgm_governance_cache.jsonl` を参照）。
+
+`rqgm_audit.jsonl` は `PathManager.META_FILES`（継承やチェックポイント
+コピーの経路がノード work_dir に持ち込まない）と、node_report の
+`files_changed` ブロックリスト
+（`ari-core/ari/orchestrator/node_report/builder.py`）の両方に登録されて
+います。したがってガバナンスの書き込みが、ノードが生成したファイル変更
+として表に出ることはありません。2 つの回帰テスト
+（`ari-core/tests/test_rqgm_governance.py`）がこの線を守っています:
+LLM もリプレイプールも無い `audit_epoch` は、チェックポイント
+ディレクトリに登録済み監査ログ *だけ* を残し、既定の `simple_bfts` 実行は
+`rqgm*` ファイルも `constitution.yaml` も一切書きません。
 
 RegistryTransitionEngine（RQGM Task 09）は加えて、すべての境界解決を
 `epoch_transition` レコードとしてここに監査します（スキーマ:

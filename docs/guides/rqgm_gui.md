@@ -41,8 +41,10 @@ and how that changed the scores.
 
 **The GUI is read-only for governance.** There is no mutation endpoint on
 the `/api/v1` RQGM surface at all — every route under
-`/api/v1/runs/{run_id}/rqgm/*` is a GET. Nothing you can click in this
-workspace registers a component, adopts a policy, opens an epoch, or
+`/api/v1/runs/{run_id}/rqgm/*` is a GET, and the one tab served outside that
+surface (Knowledge · Capability · Assurance) reads
+`GET /api/checkpoint/{run_id}/kca`, likewise a GET. Nothing you can click in
+this workspace registers a component, adopts a policy, opens an epoch, or
 rewrites a score. Governance changes come from the run itself. (The Studio
 can pick `ari_rqgm` for a **new** run — that decides which algorithm a run
 executes, not what the institutions do; see below.)
@@ -52,8 +54,9 @@ models parse committed checkpoint artifacts directly (`rqgm_state.json`,
 `rqgm_transitions.jsonl`, `rqgm_audit.jsonl`,
 `rqgm_adversarial_cases.jsonl`, `rqgm_registry.json`,
 `prompt_evolution.jsonl`, `rqgm_meta_outputs.jsonl`,
-`paper_archive_state.json`, the node metric sentinels) and import no
-kernel code. What you see is a replay, not a rerun.
+`paper_archive_state.json`, the `rqgm/kca/admission-v1/` snapshots, the node
+metric sentinels) and import no kernel code. What you see is a replay, not a
+rerun.
 
 ## Getting there, and the capability state
 
@@ -91,11 +94,13 @@ navigable.
 
 ## Tab by tab
 
-The tab strip itself reads **Overview · Epoch Timeline · Registry ·
-Accountability · Score Lineage · Evolution · Paper Archive · Audit**. The
+The tab strip itself has nine tabs, reading **Overview**, **Epoch Timeline**,
+**Registry**, **Accountability**, **Score Lineage**, **Evolution**, **Paper
+Archive**, **Knowledge · Capability · Assurance**, **Audit**. The
 sections below follow a reading order instead: current state first, then
 the two node-scoped tabs (Accountability and Score Lineage share one node
-selector), then the run-wide timelines, then the raw log.
+selector), then the run-wide timelines, then the frozen knowledge/capability/
+assurance record, then the raw log.
 
 ### Overview — "what is the current governed state?"
 
@@ -108,7 +113,8 @@ three **tri-state** integrity flags.
 *The screenshot is a **fixture** checkpoint (`20260727120000_rqgm_governance_demo`),
 generated purely to photograph this workspace. Every hash, epoch number and
 count in it belongs to that prop — yours will differ, and there is nothing
-to compare against.*
+to compare against. It also predates the Knowledge · Capability · Assurance
+tab, so the strip in the image shows eight tabs rather than the current nine.*
 
 Read the tri-state literally:
 
@@ -297,6 +303,32 @@ instead of a `draft_count` of 0; and `anchor.enabled = null` means
 When `anchor.enabled` is `false`, the tab carries the consequence
 verbatim: the archive is reviewed best-of-N and writer sanctions cannot
 fire.
+
+### Knowledge · Capability · Assurance — "what was this run allowed to know, run, and verify with?"
+
+Served by `GET /api/checkpoint/{run_id}/kca` (`ari.viz-kca/v1`), which reads
+the run's committed `rqgm/kca/admission-v1/` snapshots directly and imports no
+registry or resolver. Three cards, kept apart in both the wire shape and the
+UI so one domain's authority can never be read as another's:
+
+- **ARI Knowledge Skill Registry** — non-executable, content-addressed
+  procedural knowledge; it grants no tool authority. Catalog snapshot digest,
+  Knowledge Skill Lock digest, active-skill and node-use-record counts, and
+  the catalog table.
+- **ARI Capability Provider Federation** — executable providers and their
+  run-frozen tool schemas (MCP is transport, not a Knowledge Skill). Provider
+  Lock and Capability Binding Lock digests, plus the bound and unsatisfied
+  capability counts.
+- **ARI Harness Registry / Scientific Assurance** — independent, target-bound
+  verification; provider success is not an Attestation. Verification Contract
+  and Baseline Harness Lock digests, plus the requirement and Attestation
+  counts.
+
+A run with no `run_admission.json` gets *"This run has no K/C/A admission
+snapshot."* — a capability state, not an error. A snapshot file that is
+unreadable, oversized, or truncated at the record cap surfaces as a
+`degraded_reasons` entry in the same degraded panel the rest of the workspace
+uses, rather than silently shrinking a table.
 
 ### Audit — "show me the raw log"
 

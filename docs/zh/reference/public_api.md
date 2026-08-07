@@ -67,7 +67,7 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 | 符号 | 用途 |
 |---|---|
-| `ContainerConfig` | 数据类：`mode`、`image`、`bind_paths`、`gpu` 等 |
+| `ContainerConfig` | 数据类：`image`、`mode`（`auto`/`docker`/`singularity`/`apptainer`/`none`）、`pull`（`always`/`on_start`/`never`）、`extra_args` |
 | `detect_runtime()` | 基于 `which` 查找返回 `"singularity"` / `"apptainer"` / `"docker"` / `"none"` |
 | `config_from_env()` | 从 `ARI_CONTAINER_*` 环境变量构建 `ContainerConfig`（未设置时返回 `None`） |
 | `pull_image(cfg)` | 拉取 / 构建 `cfg` 引用的镜像 |
@@ -116,7 +116,8 @@ resp = await client.complete([{"role": "user", "content": "..."}])
 from ari.public.paths import PathManager
 
 paths = PathManager.from_env()        # honours ARI_CHECKPOINT_DIR
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 ```
 
 `PathManager` 是核心解析器 — 技能中绝不要直接读取 `ARI_CHECKPOINT_DIR`。来源：`ari-core/ari/paths.py` → `ari-core/ari/public/paths.py`。
@@ -241,7 +242,8 @@ cost_tracker.bootstrap_skill("ari-skill-example", phase="bfts")
 
 # 2. 通过 PathManager 解析路径 —— 切勿直接读取 ARI_CHECKPOINT_DIR。
 paths = PathManager.from_env()
-nodes_json = paths.checkpoint / "nodes_tree.json"
+run_id = PathManager.checkpoint_dir_from_env().name
+nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM 调用走 ARI 的封装，因此成本会被自动记录。
 client = LLMClient(model="ollama/qwen3:32b")

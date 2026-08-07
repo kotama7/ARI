@@ -4,6 +4,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/server.py
     role: implementation
+  - path: ari-core/ari/viz/checkpoint_finder.py
+    role: implementation
+  - path: ari-core/ari/viz/checkpoint_lifecycle.py
+    role: implementation
   - path: ari-core/ari/viz/api_capabilities.py
     role: implementation
   - path: ari-core/ari/viz/frontend/src/App.tsx
@@ -30,11 +34,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
+  - path: ari-core/tests/test_launch_config.py
+    role: test
   - path: ari-core/ari/viz/frontend/scripts/capture_screenshots.mjs
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # ダッシュボードガイド
@@ -81,6 +87,57 @@ WebSocket は常に **HTTP ポート + 1** で待ち受けます。そのポー�
 React バンドルは `ari-core/ari/viz/static/dist/` から配信されます。このディレクトリ
 が無い / 古い場合は、`ari-core/ari/viz/frontend/` で `npm ci && npm run build` に
 より再ビルドしてください（Vite は `../static/dist` へ直接書き込みます）。
+
+## サーバーがどのチェックポイントで起動するか
+
+2 つのエントリポイントの違いは使い勝手だけではありません。`ari viz <dir>` は
+チェックポイントディレクトリを**必須**引数として取るため、アクティブな
+チェックポイントは指定したものそのものです。`python -m ari.viz.server` では
+省略可能で、省略して起動した場合サーバーは空のままには**なりません**。
+
+その場合サーバーは、チェックポイント一覧が使うのと同じ検索ルート配下の
+すべてのチェックポイントを列挙し、ディレクトリの mtime が最も新しいものを
+プロセスグローバルなアクティブチェックポイントとして採用し、launch config
+の状態（モデル、プロバイダ、プロファイル）をそのチェックポイントの
+`launch_config.json` から復元します（無ければ親ディレクトリの
+`launch_config.json` へフォールバックします）。
+
+候補になるのは run id の形（数字 8〜14 桁の後にアンダースコア、例
+`20260727120000_my_run`）に一致する名前のディレクトリだけで、`experiments`、
+`__pycache__`、`.git` はスキップされます。一致するものが無ければ何も選択されず、
+チェックポイントを必要とするエンドポイントは *"No active project"* エラーで
+拒否します。
+
+この自動採用について、表示を信用する前に知っておくべき性質が 2 つあります:
+
+- **通知されない。** 起動バナーが表示するのは渡した引数であり、何も渡さな
+  ければ文字どおり `Checkpoint: None` と出ます。その後チェックポイントが
+  採用されてもバナーは書き換わりません。
+- **タブ単位ではない。** 選択はサーバープロセスに 1 つだけです。このサーバー
+  に接続しているすべてのブラウザタブがそれを共有し、あるタブでサイドバーの
+  プロジェクトピッカーを使うと全タブでそれが移動します。
+
+起動後にグローバル選択を動かすもの:
+
+| 操作 | グローバル選択への影響 |
+|---|---|
+| サイドバーのプロジェクトピッカー（`POST /api/switch-checkpoint`） | 選んだチェックポイントへ設定する |
+| レガシーの `POST /api/launch` | その起動が事前作成したランのディレクトリを指す |
+| アクティブなチェックポイントの削除 | クリアする — 以後は何も選択されていない |
+| 何も選択されていない状態でのウィザードのファイルアップロード | ステージングディレクトリを作成し、*それ*を選択にする |
+| Studio からの起動（`POST /api/v1/runs`） | **無し** — 意図的です。[Configuration Studio](configuration_studio.md) を参照 |
+
+したがって、素の再起動後にレガシー画面が説明するランは「最後に触られた
+チェックポイント」であり、あなたが見たいランとは限りません。サーバー自身の
+HTTP アクセスログも同じ選択に従います: `{アクティブなチェックポイント}/viz_access.jsonl`
+へ追記されるため、チェックポイント引数を渡していなければそれらのリクエスト行は
+自動採用されたランへ落ちます。
+
+v2 ワークスペースは影響を受けません。単一のランに関わる `/api/v1` の読み取りは
+グローバル選択ではなくリクエスト自身の `run_id` からチェックポイントを解決する
+ので、`?run=` のディープリンクはその選択が何であっても同じものを描画します。
+決定的に振る舞わせたいときは明示的なチェックポイントパスを渡すか、v2 の
+ディープリンクを使ってください。
 
 ## capability フラグ
 

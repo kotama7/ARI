@@ -82,6 +82,32 @@ appear before the first node completes (see the
 **Absence of `rqgm_state.json` means a pure `simple_bfts`
 run** — default checkpoints stay byte-identical to pre-RQGM ARI.
 
+`mode_source` records **how the launch decided the mode**, and it is decided
+by one rule: `ari run` records `env` when `ARI_MODE` or `ARI_RQGM_ENABLED` is
+set to a non-empty value in the process environment at launch, and `config`
+otherwise. The check is made *before* `export_resolved_config_to_skill_env`
+`setdefault`s `ARI_MODE` to the effective mode, so a YAML-configured run is never
+mislabelled as env-sourced. Presence is what counts, not who set it: a value
+inherited from a parent process is env-sourced, and a run started from the
+Configuration Studio with a non-default mode records `env`, because that
+launch path exports `ARI_MODE`/`ARI_RQGM_ENABLED` into the spawned CLI's
+environment in addition to merging the `ari:`/`rqgm:` blocks into the
+checkpoint's `workflow.yaml`. Any other string is coerced to `config` with a
+warning.
+
+The third accepted value, `resume`, is **reserved and never written**.
+`rqgm_state.json` is written exactly once, at run start, by
+`persist_run_start` — the only runtime caller of `write_rqgm_state` — and
+`ari resume` only reads it (`reconcile_resume_mode`). No resumed run
+therefore carries `mode_source: resume`; the field always describes the
+*original* launch, and a reader should not expect it to change across resumes.
+
+Both accessors are non-fatal by contract. `read_rqgm_state` returns `None`
+when the file is missing, unreadable, or not a JSON object — absence and
+corruption read alike as "no RQGM state", i.e. a `simple_bfts` run.
+`write_rqgm_state` catches every exception and logs a warning, so a failed
+provenance write degrades the record but never raises into the run.
+
 ## Mode-switch timing policy
 
 Allowed:
@@ -186,7 +212,11 @@ that computes a different seed appends a `seed_changed` entry to the file's
 reconciles checkpoint-first (`reconcile_paper_resume_mode`): the persisted
 paper mode wins over config and env, a disagreement warns, and a checkpoint
 without the state file stays `linear` for that phase — so no `ari.rqgm` module
-ever loads on a pure-linear re-invocation.
+ever loads on a pure-linear re-invocation. `resume` is reserved on this axis
+too: `ari paper` selects `mode_source: resume` only when
+`paper_archive_state.json` already exists, which is exactly the case in which
+the write-once guard skips the write, so a persisted file always records the
+`config`/`env` decision of the first invocation.
 
 ### Agent-as-judge draft scoring (opt-in)
 
@@ -354,6 +384,33 @@ so any rule edit is an explicit reviewed diff plus a hash re-pin. The bundled
 `constitution.yaml` is a human-readable statement only — editing it changes
 nothing.
 
+**Why the rules are code.** The checkpoint directory is a flat, shared
+filesystem that every MCP skill can write. Putting the role rules, the
+capability matrix, the severity map, or the transition table into a
+checkpoint-scoped YAML would hand any component an evolution/tampering
+channel into the constitution it is judged by. They are frozen Python
+constants instead, and the only configurable part of the kernel is numeric:
+`rqgm.kernel.enforcement`, `rqgm.kernel.audit_chain`, and
+`rqgm.kernel.float_tolerance`.
+
+Three constants are baked into `CAPABILITY_MATRIX` and hold for every role in
+every tier: no `(role, tier)` row grants `read: retired_prompt_text` (the
+sanctioned read path is `RetiredPromptAccessGuard`, whose narrow fixed-tier
+exemption set bypasses the matrix rather than being granted by it); only
+`registry_transition_engine` — at tier `fixed` — holds `write: registry` and
+`activate: candidates`; and the `meta`-tier row of every evolvable role holds
+neither, whatever a candidate declares.
+
+**The accepted cost.** Because the rules are code covered by
+`constitution_hash`, changing one is a code review plus a hand re-pin of the
+expected hash in `ari-core/tests/test_rqgm_kernel.py` — a test also asserts
+that editing the *imported* transition table moves the hash, so the pin
+cannot be dodged by amending the other module. There is deliberately no way
+to patch a rule mid-experiment: an emergency fix is a new build, not a config
+edit. Amendments made this way are recorded in place as comments in
+`ari/rqgm/kernel_rules.py`, each naming what it changed and confirming the
+pin was re-computed — so the constitution's history is a reviewable diff.
+
 Blocking matrix summary ("block the institution, not the research"):
 
 - **Hard-block set** (vetoes RQGM state changes — epoch-transition commit,
@@ -366,12 +423,48 @@ Blocking matrix summary ("block the institution, not the research"):
   at the MCP gate with the standard `{"error": ...}` envelope).
 - **Warn-and-flag set** (never interrupts research execution): per-node
   record schema and hash anomalies, post-hoc access findings,
-  role-separation findings at creation time, context-scope findings. Warned
-  records become inadmissible as governance evidence at the boundary.
+  role-separation findings at creation time, context-scope findings. A warn
+  finding is appended to `rqgm_audit.jsonl` as a `kernel_report` entry and,
+  for the records the governance pipeline itself produced, counted into the
+  report's self-audit block — it does **not** set any flag that makes the
+  record inadmissible later. Evidence-bundle admissibility is decided
+  independently, by record type, author role, and per-type integrity checks
+  (`ari/rqgm/governance/_evidence.py`).
+
+**Where the kernel is called.** The kernel is passive — it returns verdicts
+and never mutates governance state itself; the adapters own every write and
+every consequence. Six adapters install it, all of them constructed under
+`ari_rqgm` only:
+
+| Enforcement point | Checks run | Effect of a blocking verdict |
+|---|---|---|
+| Epoch-boundary transaction (`RegistryTransitionEngine.apply`) | `validate_transition` | the transaction is marked `aborted` and no resolved status change is applied — no promotion, sanction, or retirement; the previous epoch's active set carries over unchanged and the run continues |
+| Frontier rebuild commit (`FrontierRepairEngine.repair`) | `validate_selective_erasure` | the engine re-repairs conservatively — every flagged node dropped outright — and revalidates; a second blocking verdict degrades the run to drain-only (`halted_expansion`: pending work finishes, no further expansion) |
+| MCP tool dispatch (`CapabilityGatedMCPClient.call_tool`) | `validate_capability` on the `(actor, action, resource)` triple the tool policy maps to | the call is not dispatched; the caller gets the standard `{"error": ...}` envelope. A violation whose code is in the engine's emergency-trigger set additionally fires the T16 emergency-quarantine hook — the only place a running agent can trip the constitution mid-epoch |
+| Per-node hook (`RQGMRuntime.run_per_node_kernel_check`) | `validate_record_schema` and `validate_hashes` over the records the node produced, plus the K/C/A integrity checks | record findings are warn-only and audit-logged. A blocking K/C/A integrity finding marks the node `assurance_status: tampered`, `frontier_class: uncertified_frontier` and `_valid_for_frontier: false` — the node still ran; it is only excluded from the frontier |
+| Governance self-audit (`GovernanceOrchestrator.audit_epoch`) | `validate_record_schema` and `validate_role_separation` re-run over the records the pipeline itself produced | nothing is vetoed here: findings are counted into the report's self-audit block as `kernel_violations_found`, `escalations`, and `ban_recommendations` |
+| Resume integrity pass (`RQGMRuntime.resume_integrity_check`) | `validate_audit_log_integrity` and `validate_selective_erasure` over the restored checkpoint | the run still resumes, in governance-suspended carry-over — the degraded alternative to refusing to resume. While it holds, the epoch audit is skipped, every boundary resolves an empty transition, and meta-evolution is skipped |
+
+Every adapter is fail-open against its own bugs: an exception inside a hook
+is logged and swallowed, never raised into the run loop. The one deliberate
+exception is the frontier-repair validator, which treats its own exception as
+a failed verdict and so degrades fail-closed at the boundary.
+
+**Known gap — epoch invariance is detection-only.** `CK-EPO-002` (a
+non-emergency active-set change inside an epoch) carries block severity, but
+its single production call site — `RQGMRuntime.check_epoch_invariance`,
+driven from the run loop — records the finding as a `kernel_report` entry in
+`rqgm_audit.jsonl` and warns. It never consults `should_block` and vetoes
+nothing: no adoption is refused and no registry mutation is denied on the
+strength of an epoch-invariance finding. `CK-EPO-002` is also listed in the
+engine's emergency-trigger set, but the only validator that emits it is the
+epoch-invariance one, and that path is not routed through the escalation
+hook — so the listing never fires either. Read `CK-EPO-*` as evidence for the
+epoch's governance audit, not as an enforced barrier.
 
 On a blocked transition the previous epoch's active set carries over
-unchanged and the run continues (governance-suspended carry-over — never a
-run abort). `rqgm.kernel.enforcement: audit_only` downgrades every context to
+unchanged and the run continues — never a run abort.
+`rqgm.kernel.enforcement: audit_only` downgrades every context to
 warn-and-log for staged rollout and ablations.
 
 ## Knowledge, Capability Binding, and Assurance modes

@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # ARI 快速入门指南
@@ -376,10 +376,10 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ## 仪表盘架构与 API
 
-仪表盘是一个由 Python asyncio HTTP 服务器提供服务的 React/TypeScript SPA（使用 Vite 构建）。它由两个组件组成：
+仪表盘是一个由 Python 标准库 HTTP 服务器提供服务的 React/TypeScript SPA（使用 Vite 构建）。它由两个组件组成：
 
-- **HTTP 服务器** (`ari/viz/server.py`): REST API + SSE 日志流（在主端口上）
-- **WebSocket 服务器**: 实时树更新（端口+1，例如仪表盘在 8765 时为 8766）
+- **HTTP 服务器** (`ari/viz/server.py`): 基于线程的 `http.server`（`ThreadingHTTPServer`）—— REST API + SSE 日志流（在主端口上）。包括长时间保持的 SSE 流在内，每个请求在其整个生命周期内都会独占一个线程；不存在可供慢处理程序让出控制权的事件循环。
+- **WebSocket 服务器**: 实时树更新（端口+1，例如仪表盘在 8765 时为 8766）—— 唯一运行在 asyncio 上的监听器（通过 `websockets` 包）。
 
 ### API 端点
 

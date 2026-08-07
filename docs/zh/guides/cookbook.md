@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # Cookbook
@@ -176,8 +176,11 @@ export ARI_SLURM_PARTITION=gpu          # required when the sandbox is slurm
 export ARI_RUBRIC=sc                    # venue template: sc / neurips / nature
 ```
 
-切换 `ARI_RUBRIC` 会同时改变 BFTS 的评分轴与已发布的评审标准
-—— 参见 [术语表 → venue](../reference/glossary.md) 与
+`ARI_RUBRIC`（默认 `neurips`）选择 `ari-core/config/reviewer_rubrics/` 下的
+rubric YAML，BFTS 的评分轴由它派生。已发布的评审标准是**另一个旋钮**：
+`review_paper` 阶段把 rubric 作为显式的工作流输入接收，即 `workflow.yaml` 中的
+`paper_rubric`（默认 `generic_conference`）。若希望搜索与评审依据同一个 venue
+来判定，请同时设置两者 —— 参见 [术语表 → venue](../reference/glossary.md) 与
 [架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
 
 ---

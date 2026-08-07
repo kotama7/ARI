@@ -38,8 +38,7 @@ Minimize energy score of protein folding simulation using different force field 
 3. Poll until completion with `job_status`
 4. Read results with `run_bash`
 
-<!-- min_expected_metric: -500 -->
-<!-- metric_keyword: energy_score -->
+<!-- min_expected_metric: 500 -->
 ```
 
 2. Run:
@@ -54,14 +53,17 @@ That's it. ARI reads the goal, proposes hypotheses, and searches autonomously.
 
 ### Domain Customization via experiment.md
 
+The following is what `from_experiment_text` (`ari/agent/workflow.py`) actually
+parses; everything else is prose the LLM reads as its goal:
+
 | Section | Purpose | Impact |
 |---------|---------|--------|
 | `## Research Goal` | What to optimize | Drives LLM hypothesis generation |
-| `## Required Workflow` | Which tools, in what order | Sets `tool_sequence` in WorkflowHints |
-| `## Hardware Limits` | Hard constraints | Injected into every agent step as system hint |
-| `## SLURM Script Template` | Starting point for experiments | LLM modifies this for each hypothesis |
-| `<!-- metric_keyword: X -->` | What metric to extract | Used by evaluator and evaluator-skill |
-| `<!-- min_expected_metric: N -->` | Minimum acceptable value | Triggers validation check |
+| `## Required Workflow` | Which tools, in what order | Becomes `WorkflowHints.post_survey_hint` ("Follow this workflow from the experiment spec: …"). `tool_sequence` is built from the tools MCP actually exposes, not from this section |
+| `## Provided Files` (also `## 提供ファイル` / `## 提供文件` / `## Local Files`) | Local inputs | Absolute paths listed here are copied into each node's `work_dir` |
+| `Partition: <name>` / `Max CPUs: <n>` | HPC placement | Read only when HPC is enabled; otherwise `ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` or a detected up partition fills in |
+| A SLURM mention anywhere in the body (`slurm_submit`, `sbatch`, `srun`, …) | Picks the submit / poll / read trio | Switches to `slurm_submit` + `job_status` + `run_bash`; under the HPC profile, setting `ARI_SLURM_PARTITION` does the same without any keyword |
+| `<!-- min_expected_metric: N -->` | Minimum acceptable value | Parses into `WorkflowHints.min_expected_metric`; a node whose extracted values are all below it is marked failed. **Digits only** — a negative threshold does not parse |
 
 ---
 
@@ -77,10 +79,22 @@ ari-skill-yourskill/
 │   └── server.py          ← FastMCP server (required)
 ├── tests/
 │   └── test_server.py     ← Tests (minimum 3)
+├── skill.yaml             ← Canonical manifest (required; the reviewed source)
+├── mcp.json               ← Derived from skill.yaml. Never hand-edited
 ├── pyproject.toml         ← Package config
 ├── README.md              ← Tool descriptions and examples
 └── REQUIREMENTS.md        ← Design spec
 ```
+
+`skill.yaml` is the canonical manifest and `mcp.json` is its deterministic
+derivative: after changing the manifest, regenerate with
+`python3 scripts/sync_skill_metadata.py --write`.
+`scripts/check_skill_manifests.py` fails a missing `skill.yaml`
+(`manifest-missing`), an `mcp.json` that no longer matches
+(`compat-metadata-drift`), a `version` that disagrees with `pyproject.toml`
+(`version-drift`), and an `environment_policy` that is not `complete`
+(`environment-policy-incomplete`). Every tool the server exposes must be
+declared in `skill.yaml`.
 
 ### Server Template
 
@@ -192,6 +206,13 @@ Stage keys:
   declarations in dependency order; a stage whose dependency was skipped is
   skipped too (unless the dependency is explicitly `enabled: false`).
 - `phase:` — `bfts` / `paper` / `reproduce`; drives the GUI graph grouping.
+- `segment:` — `evidence` / `authoring` / `verification`. A default full run
+  ignores it, but segmented execution refuses to start when even one enabled
+  stage carries no valid segment, so declare it on every new `pipeline:` stage.
+- `skip_if_exists:` — a resolved path; the stage is skipped when it exists and
+  is non-empty (and, for `.json`, carries no top-level `error` key).
+  `skip_if_inputs_unchanged:` points at a sidecar contract that must still match
+  disk, which stops a reusable output being reused after its inputs changed.
 - `outputs.file` — where the driver persists the tool's return value.
 
 ---
@@ -300,7 +321,7 @@ bfts:
 
 ## 7. Exposing ARI to External Systems
 
-Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts. The orchestrator supports dual transport: **stdio** (MCP for Claude Desktop) + **HTTP** (REST + SSE on `ARI_ORCHESTRATOR_PORT`, default 9890).
+Use `ari-skill-orchestrator` to trigger ARI from other agents, IDEs, or scripts.
 
 ### From Claude Desktop
 
@@ -325,10 +346,14 @@ from mcp import ClientSession
 async with ClientSession(...) as session:
     result = await session.call_tool("run_experiment", {
         "experiment_md": open("experiment.md").read(),
+        "idempotency_key": "my-unique-key",   # required
         "max_nodes": 10
     })
     run_id = result["run_id"]
 ```
+
+`idempotency_key` is a required argument: the same key does not submit a second
+run, it replays the recorded handle.
 
 ### Recursive Sub-Experiments
 
@@ -344,37 +369,44 @@ result = await session.call_tool("run_experiment", {
 
 Use `list_children(run_id)` to retrieve child runs. The GUI Sub-Experiments page visualizes the hierarchy.
 
-### As a REST API (via HTTP transport)
+### Over HTTP (for CI/CD)
 
-When launched with HTTP transport enabled (`ARI_ORCHESTRATOR_PORT`), the orchestrator exposes REST endpoints and SSE for CI/CD integration:
-
-```bash
-# Launch an experiment
-curl -X POST http://localhost:9890/run -d '{"experiment_md": "...", "max_nodes": 10}'
-
-# Check status
-curl http://localhost:9890/status/{run_id}
-```
+The orchestrator is an MCP server with two transports selected by
+`--transport`: **stdio** (the default) and **streamable-http** (MCP at
+`http://{host}:{port}/mcp`, where host is `ARI_ORCHESTRATOR_HTTP_HOST` =
+`127.0.0.1` and port is `ARI_ORCHESTRATOR_HTTP_PORT` = 9890). There is no
+separate REST/SSE API with its own paths — HTTP calls the **same MCP tool
+surface**. `streamable-http` refuses to start without
+`ARI_ORCHESTRATOR_HTTP_TOKENS_FILE`; unauthenticated network control is not
+offered.
 
 ---
 
 ## 8. Changing the BFTS Selection Strategy
 
-The current strategy selects nodes with `has_real_data=True` and the highest metric values.
-To change this, modify `ari/orchestrator/bfts.py`:
+Selection is `BFTS.select_next_node` in `ari/orchestrator/bfts.py`, and by
+default it is an **LLM** decision over the candidate frontier. Two seams come
+before touching code:
+
+- `bfts.deterministic_selector: true` bypasses the LLM entirely and ranks with
+  `_select_fallback` (the same path that runs when the LLM fails to pick).
+  Preference order: nodes with `has_real_data=True` first, then the highest
+  `_fallback_score`.
+- `bfts.frontier_score` picks that fallback's scoring formula:
+  `scientific_plus_diversity` (default), `scientific_only`, `depth_penalized`
+  (subtracts `depth_penalty_lambda * depth`), and `ucb_like` (adds a UCB1-style
+  term scaled by `ucb_c`).
+
+For a genuinely new strategy — Pareto-optimal multi-objective selection, say —
+edit `_fallback_score` / `_select_fallback` in the same file:
 
 ```python
-def _select_best_node(self, nodes: list[Node]) -> Node:
-    """
-    Custom selection strategy.
-    Default: highest metric among nodes with real data.
-    """
-    candidates = [n for n in nodes if n.has_real_data]
-    if not candidates:
-        return nodes[0]
-
+def _select_fallback(self, candidates: list[Node]) -> Node:
+    """Custom deterministic selection over the candidate frontier."""
+    real = [n for n in candidates if n.has_real_data]
+    pool = real or candidates
     # Example: Pareto-optimal selection for multi-objective
-    return pareto_select(candidates, objectives=["MFLOPS", "energy"])
+    return pareto_select(pool, objectives=["score", "energy"])
 ```
 
 ---

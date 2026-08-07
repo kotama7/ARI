@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # Rubric schema reference
@@ -97,6 +97,14 @@ parallel-execution fields.
 }
 ```
 
+The leaf fields have alternative forms. `rationale_from_paper` may instead carry
+`{"external_prerequisite": {"description", "source"}}`, with the matching
+`evidence_span` `{"kind": "external-prerequisite", "description", "source"}` —
+the schema requires each leaf to be bound to *either* exact paper evidence or an
+explicit external prerequisite. `verification` also accepts
+`{"kind": "log-pattern", "relative_path": "reproduce.log", "pattern": "..."}` and
+`{"kind": "metric", "relative_path": "...", "metric": "...", "unit": "..."}`.
+
 ### Categories (closed vocabulary)
 
 `task_category` — exactly one of:
@@ -161,7 +169,9 @@ validator.validate(rubric)  # raises on schema violations
 ## sha256 verification
 
 ```python
-from ari_skill_replicate.manifest import verify
+# ari-skill-replicate/src/manifest.py — the skill's modules are flat, so this is
+# how the skill's own code imports it (see src/migration.py).
+from manifest import verify
 verify(rubric)   # True iff rubric_sha256 matches the recomputed canonical hash
 ```
 

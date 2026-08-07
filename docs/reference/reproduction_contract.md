@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/paperbench_patches.json
     role: config
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # Reproduction and grading contract

@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_paper_mode.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # Adopting `ari_rqgm` on an Existing Project
@@ -110,7 +110,7 @@ records at root ideation.
 RQGM does not replace `idea.json`; it demotes it to a **projection** of the
 proposal record store (`ari/rqgm/proposals/store.py`):
 
-- **The 9-key contract is preserved.** The projected document keeps exactly
+- **The 9-key contract is preserved.** The projected document always keeps
   the top-level keys every existing consumer reads: `gap_analysis`,
   `ideas`, `primary_metric`, `higher_is_better`, `metric_rationale`,
   `papers_analyzed`, `n_agents`, `discussion_rounds`,
@@ -126,6 +126,15 @@ proposal record store (`ari/rqgm/proposals/store.py`):
   underscore-key `_proposal_record_id` linking back to
   `proposals/proposal_records.jsonl` (same convention as `_pinned` /
   `_inherited_from`).
+- **Typed handoff passes through, title-bound.** When the selected generator
+  emitted a typed research-contract document, the projection additionally
+  carries its ten typed-handoff keys — `typed_schema_version`,
+  `contract_status`, `survey_snapshot`(`_digest`/`_ref`), `idea_set`
+  (`_digest`), `research_contract`(`_digest`), `rejected_candidates` — so the
+  9 keys above are a floor, not a ceiling. The copy happens **only** when the
+  contract's `title` equals the directive `ideas[0].title`, so a typed block
+  can never end up describing a direction other than the one `idea.json`
+  names.
 - **Inverse mapping.** Existing `idea.json` content (a pinned seed, or the
   stage-1 dual-write above) imports losslessly enough to keep riding the
   legacy channels: `summary_from_idea` splits the joined `experiment_plan`
@@ -156,6 +165,7 @@ of them** — the only exception is `proposals/`, which appears under
 | `rqgm_erasure_state.json` | Derived rollup of the stale/invalid sets from selective erasure. |
 | `rqgm_meta_outputs.jsonl` | Meta-agent output records. |
 | `rqgm_governance_cache.jsonl` | Governance result cache. |
+| `rqgm/kca/admission-v1/` (`run_admission.json` + the pinned contract / catalog / lock set) | The Knowledge–Capability–Assurance run-admission baseline. Written only when the `knowledge` / `capability_binding` / `assurance` modes are off their legacy-inert defaults (`off` / `legacy` / `off`); published by a directory rename, so an interrupted admission can never leave a partial set a resume mistakes for authoritative state. |
 | `rqgm_eval_metrics.json`, `rqgm_injection_provenance.json` | Evaluation harness only — never written by a normal run. |
 
 ## Rollback
@@ -179,9 +189,11 @@ switch, downgrade-only). Two properties make rollback safe:
   node erased under `ari_rqgm` remains pruned and unselectable after a
   switch back — contamination does not become clean by switching modes.
   The sentinel keys are only ever written by RQGM machinery (the
-  `ari_rqgm` `FrontierRepairEngine`, plus the `rqgm_archive` paper runtime
-  on draft nodes), so on a checkpoint that never ran RQGM the clauses are
-  inert dead code (the `_sterile` pattern).
+  `ari_rqgm` `FrontierRepairEngine`, the KCA integrity check in
+  `RQGMRuntime` — which also marks the node `assurance_status: tampered` /
+  `frontier_class: uncertified_frontier` — plus the `rqgm_archive` paper
+  runtime on draft nodes), so on a checkpoint that never ran RQGM the
+  clauses are inert dead code (the `_sterile` pattern).
 
 ## Adopting `paper.mode`
 

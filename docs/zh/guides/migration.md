@@ -72,18 +72,22 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
 2. **设置必要的环境变量。**
    ```bash
    export LETTA_BASE_URL=http://127.0.0.1:8283
-   export LETTA_EMBEDDING_CONFIG=/path/to/embedding.json
+   export LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small
    export ARI_MEMORY_BACKEND=letta
    ```
+   `LETTA_EMBEDDING_CONFIG` 是 embedding *handle*，而非文件路径；
+   默认值为 `letta-default`。
 3. **迁移现有内存。** 对每个 v0.5 检查点执行：
    ```bash
    ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory migrate
    ```
-   迁移工具读取 `memory_store.jsonl`（以及旧版全局 JSONL，如有），
-   写入 Letta 智能体，并将结果快照至 `memory_backup.jsonl.gz`。
-4. **删除旧版 JSONL 文件。** 验证迁移成功后执行：
+   迁移工具读取 `memory_store.jsonl`（加 `--react` 时同时读取
+   `memory.json`），将条目以 content-addressed 的 v1 记录导入所配置的
+   后端，并将结果快照至 `memory_backup.v1.json.gz`。旧版全局 JSONL
+   若存在会被报告，但刻意**不**导入。
+4. **删除旧版 JSONL 文件。** 迁移工具会把它消费过的每个源文件重命名为
+   `<name>.migrated-<纳秒>`，因此只剩全局文件需要手动删除：
    ```bash
-   rm /path/to/ckpt/memory_store.jsonl
    rm $HOME/.ari/global_memory.jsonl   # if it ever existed
    ```
 5. **选择 rubric。** 从
@@ -427,7 +431,7 @@ revert 该提交是唯一选项。MN-12（GUI 模式选择）同样没有手段�
   另有两条仅启动时的拒绝规则：没有 goal 的草稿返回 400 `missing_goal`，
   而含有 `ari.mode` 或任何 `rqgm.*` 字段的草稿返回 400 `mode_locked` ——
   在当时，从 GUI 选择治理/执行模式仍是一个悬而未决的决策。
-  *（已被 MN-12 取代：四个模式叶子现在对新运行是被接受的；其余 97 条
+  *（已被 MN-12 取代：四个模式叶子现在对新运行是被接受的；其余 104 条
   `rqgm.*` 路径仍然以 `mode_locked` 拒绝。）*
 - **原因** —— 一次运行在任何东西被写下之前就需要一个身份，而一次双击不应
   分叉出一个实验。
@@ -458,7 +462,7 @@ revert 该提交是唯一选项。MN-12（GUI 模式选择）同样没有手段�
 ### 执行模式与论文模式对新运行可选（MN-12）
 
 - **之前** —— `Execution mode` 类别中的每一个字段以及每一条 `rqgm.*` 路径
-  （共 101 条）都被挡在 GUI 之外：在 Studio 中是一个被禁用的分组，从
+  （目前共 108 条）都被挡在 GUI 之外：在 Studio 中是一个被禁用的分组，从
   `POST /api/v1/runs` 则返回 400 `mode_locked`。要选择 `ari_rqgm` 或
   `rqgm_archive`，就得手工编辑 `workflow.yaml` 中两个相互联锁的键。
 - **之后** —— 恰好四个叶子开放，构成两组正交的成对意图：
@@ -471,11 +475,12 @@ revert 该提交是唯一选项。MN-12（GUI 模式选择）同样没有手段�
   文档化的 `ARI_MODE` / `ARI_RQGM_ENABLED` / `ARI_PAPER_MODE` /
   `ARI_RQGM_PAPER_ENABLED` 环境变量。启动复核展示的是**已解析**的模式；
   未被采纳的请求会以 `requested → resolved` 的形式、连同解析器的原文警告
-  一起呈现，而不是悄悄地启动回退运行。其余 97 条 `rqgm.*` 治理与调参参数
+  一起呈现，而不是悄悄地启动回退运行。其余 104 条 `rqgm.*` 治理与调参参数
   仍然只能通过配置文件设置 —— 以只读方式连同其生效值可见，启动时依旧返回
   400 `mode_locked` —— RQGM 的 API 面也仍然是只读的。**恢复运行不受影响**：
-  持久化在 `{checkpoint}/rqgm_state.json` 中的模式依然胜出（仅允许降级），
-  且没有任何 GUI 路径会写这个文件。
+  持久化在 `{checkpoint}/rqgm_state.json` 中的模式依然胜出 —— 朝任一方向都
+  胜出，因此一次运行的模式在其整个生命周期内固定不变 —— 且没有任何 GUI
+  路径会写这个文件。
 - **原因** —— GUI 是被提供出来的启动界面，却无法陈述它正要开启的这次运行
   最为关键的性质；与此同时，一刀切的锁定把「跑哪个算法」和「对抗预算是
   多少」当成了同一个决策（ADR-09）。

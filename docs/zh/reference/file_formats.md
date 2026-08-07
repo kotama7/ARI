@@ -378,6 +378,24 @@ RQGM 的 **ImmutableAuditLog**：同样的追加式哈希链式行信封，带�
 "subject_ref": ..., "rule_id": ..., "detail": ...}]}` —— 每次裁定
 均可重放。
 
+这种可重放性是契约，不是习惯。`make_report`
+（`ari-core/ari/rqgm/kernel_types.py`）在构造时按
+`(code, subject_ref, detail)` 对违规排序，因此相同输入总是序列化为
+相同的 `kernel_report` 行；该性质由 `ari-core/tests/test_rqgm_kernel.py`
+按违规码逐一钉住：它在两个独立的内核实例上把每个夹具各驱动一次，
+再比较规范 JSON。没有任何检查读取时钟：所有内核模块都不 import
+`time` 或 `datetime`，信封中的 `created_at` 只检查**是否存在**
+（`kernel_rules.ENVELOPE_FIELDS`）——它的值绝不进入比较、`detail`
+字符串或哈希。严重度同样不由调用方选择，而是通过冻结的
+`kernel_rules.SEVERITY` 映射解析——裁定的严重度仅是其代码的函数。
+数值上的松弛只有一个旋钮：浮点比较走 `rqgm.kernel.float_tolerance`
+（默认 `1e-9`，见[配置](configuration.md)）。而「内核不是 LLM 法官」
+是被强制而非被宣称的——一个测试对全部 `ari/rqgm/kernel*.py` 以及
+`transition_rules.py` grep `litellm`、`openai`、`anthropic`、
+`requests`、`httpx`、`aiohttp`、`socket`，只要其中之一作为 import
+出现就失败；它还精确断言被覆盖的文件集合，因此新的 `kernel_*.py`
+无法在不加入该守卫的情况下加入内核。
+
 在每个纪元边界，GovernanceOrchestrator 的 `audit_epoch` 把它的
 记录追加到这里（全部携带共同的 `rqgm_record_base` 信封）：
 `evidence_bundle`（仅 EvidenceClerk 可撰写）、`impeachment_motion`
@@ -390,6 +408,38 @@ demote | warn | quarantine | retire | no_action`，由 Task 09
 消费）。一个纪元的最新报告是带该 `epoch_id` 的「最后」一条
 `governance_report` 行（审计崩溃后的重跑会追加新的记录 id；之前的
 部分记录作为历史保留）。不存在治理快照文件；JSONL 就是真相。
+
+`audit_epoch` 对组件/提示词注册表、前沿、`tree.json` 与节点状态是
+**只读**的。它只通过读取访问器（`active_set` / `get`）接触注册表，
+九步流水线只*返回*记录而不落盘，追加由外观层随后完成。它也不施加
+任何建议：依据 `governance_report` 采取行动只属于
+RegistryTransitionEngine（Task 09），因此报告本身不改变任何状态。
+它的写入集合是封闭的：
+
+- `rqgm_audit.jsonl` —— 始终：上述治理记录加上最终的
+  `governance_report`。
+- `prompt_trace.jsonl` / `prompt_versions.json` —— 共享提示词渲染
+  路径产出的普通溯源记录，仅覆盖治理的 LLM 调用。确定性审计
+  （未接入 LLM 接缝）不渲染任何治理提示词，两个文件都不写。
+- `rqgm_adversarial_cases.jsonl` 以及由其派生的
+  `rqgm/adversarial_replay_pool.json` —— 第 7 步的重放池更新，仅在
+  传入池时发生。被接纳/被支持的案例**追加**到作为真相的 JSONL，
+  随后快照由内存状态重写；因此快照是投影，而不是对历史的原地
+  修改：有界淘汰只把案例的 `status` 翻转为 `evicted`，JSONL 保留
+  曾经接纳过的每一行案例。
+- `rqgm_governance_cache.jsonl` —— 候选评估的回写，仅在接入
+  Task 12 治理缓存时发生（见下文
+  `rqgm_governance_cache.jsonl`）。
+
+`rqgm_audit.jsonl` 同时登记在 `PathManager.META_FILES`（因此没有任何
+继承或检查点拷贝路径会把它带进节点 work_dir）与 node_report 的
+`files_changed` 屏蔽列表
+（`ari-core/ari/orchestrator/node_report/builder.py`）中，所以治理写入
+绝不会以「节点产出的文件变更」形式浮现。两个回归测试
+（`ari-core/tests/test_rqgm_governance.py`）守住这条线：没有 LLM、
+没有重放池的 `audit_epoch` 在检查点目录中只留下已登记的审计日志，
+而默认的 `simple_bfts` 运行完全不写 `rqgm*` 文件，也不写
+`constitution.yaml`。
 
 RegistryTransitionEngine（RQGM Task 09）还会把每次边界决议作为
 `epoch_transition` 记录审计到这里（schema：

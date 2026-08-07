@@ -17,9 +17,38 @@ last_verified: 2026-07-28
 
 オプトインの `ari_rqgm` 実行モードが永続化するすべてのレコードの正式な
 JSON Schema です。すべて `ari-core/ari/schemas/` 以下に同梱され、
-`ari.schemas.load(name)` によりベース名でロードされます。これらのレコードは
+`ari.schemas.load(name)` によりベース名でロードできます。これらのレコードは
 デフォルトの `simple_bfts` チェックポイントには一切存在しません — すべての
 読み取り側は不在を「RQGM は一度も走っていない」として扱います。
+
+これらのスキーマは**リファレンス契約であって、ランタイムのバリデータでは
+ありません。** `ari/rqgm/` 配下のどのコードもこれらを開きません:
+`jsonschema` は `ari-core` の依存関係ではなく、RQGM のどの書き込み側も
+永続化の前にレコードを `.schema.json` と突き合わせて検査しません。
+レコードクラスはスキーマファイルを*ミラーする*ただの dataclass です
+（`ari/rqgm/proposals/records.py` と `ari/rqgm/adversarial/records.py` の
+モジュール docstring はまさにその語を使っています）。背後に Pydantic モデルは
+無く、同梱スキーマが生成された `model_json_schema()` と一致することを主張する
+スナップショットテストもありません。Pydantic の `model_validate` は
+`ari/rqgm/` 内でも*使われています*が、それは別途ゲートされた
+Knowledge/Capability/Assurance の admission、harness、capability-binding、
+manuscript の各ドキュメントに対してだけであり、`rqgm_record_base`
+エンベロープや本ページがインベントリするレコードに対しては使われません。
+
+書き込み時にカーネルが実際に強制するのはエンベロープ + 形状の検査、
+`ConstitutionalKernel.validate_record_schema`（`ari/rqgm/kernel.py`）です:
+`kernel_rules.ENVELOPE_FIELDS` の 8 フィールドが存在すること、
+`record_id` / `status` / `role` は存在する場合に空でないこと、そして
+`proposal_record` ではさらに proposal summary のフィールド予算検査が走ること。
+違反は、governance レコード型である `epoch_transition` / `governance_report`
+については `CK-SCH-G01`（block）として、それ以外のすべてのレコード型に
+ついては `CK-SCH-N01`（warn）として、予算超過は `CK-SCH-N02`（warn）として
+現れます。したがって以下に文書化する各フィールドの型・フォーマット・閉じた
+列挙は、書き込み側とテストスイートによって保たれています —
+`ari-core/tests/test_rqgm_*.py` のいくつかのモジュールが実レコードをこれらの
+スキーマファイルに対して検証します。ただし `jsonschema` は
+`pytest.importorskip` 経由で取得しており、無ければスキップされます — 永続化
+時点の検証によって保たれているのではありません。
 
 このページが文書化するのは**レコードの形**（目的、所有モジュール、主要
 フィールド、id / ハッシュの規律）です。これらのレコードが入るチェックポイント
@@ -77,6 +106,65 @@ Id 形式（すべてゼロ埋め、チェックポイントごとのカウン�
 | `erase_` / `rebuild_%05d` | 消去 / 再構築イベント | `erase_00007` |
 | `meta_out_` + hash12 | MetaAgentOutputRecord | `meta_out_a1b2c3d4e5f6` |
 | 16 桁 hex の `cache_key` | ガバナンスキャッシュ（下記参照） | `a3f19c02b7d4e881` |
+
+## 憲法違反コード
+
+カーネルの検出結果はすべて安定な `CK-<FAMILY>-<NNN>` コードを持ち、その
+重大度は呼び出し側の選択ではなく憲法の一部です。重大度はコードごとに
+`ari.rqgm.kernel_rules.SEVERITY` で固定され（Knowledge/Capability/Harness
+系列は `ari/rqgm/kca_kernel_rules.py` から併合）、**すべての** `Violation`
+生成がこの 1 つの表を経由して解決し（`ari/rqgm/kernel.py` の `_v`、
+`ari/rqgm/kernel_kca_common.py` の `violation` — 未知のコードは `KeyError`
+であり、既定値で重大度が埋まることはありません）、`constitution_hash` の
+内側に入ります。したがって重大度を書き換えるとピンが変わります。コードは
+実装された時点で凍結され、番号が振り直されることはありません。
+
+| 系列 | 所有する検査 | 重大度 |
+|---|---|---|
+| `CK-SCH-G01` | `validate_record_schema` — ガバナンスレコード種別（`epoch_transition`、`governance_report`）でのエンベロープ / 形状違反 | block |
+| `CK-SCH-N01`、`CK-SCH-N02` | `validate_record_schema` — その他のレコード種別での同じ違反; 提案サマリのフィールド予算超過 | warn |
+| `CK-HSH-001`、`CK-HSH-002`、`CK-HSH-003` | `validate_hashes` — レコードの `prompt_hash` とロールの登録済み active ハッシュの不一致; `artifact_hashes` と再計算 sha256 の不一致; 解決できない成果物または `source_ref` | warn |
+| `CK-HSH-010` | `validate_hashes` — **active** な台帳エントリ自身の `prompt_sha256[:12]` が登録済み `prompt_hash` と食い違う | block |
+| `CK-ACC-001`、`CK-ACC-002` | `validate_capability` — `CAPABILITY_MATRIX` に無い、または Task 11 のメタ操作フラグで拒否; 退役プロンプト本文へのアクセス（全ロールで読めません） | block |
+| `CK-EPO-001` | `validate_epoch_invariance` — `prompt_hash` がそのエポックの凍結 active set の外にあるレコード | warn |
+| `CK-EPO-002` | `validate_epoch_invariance` — エポック途中の非緊急のステータス変更イベント | block |
+| `CK-REG-001`…`CK-REG-007` | `validate_transition` — T1–T21 表に無い辺、境界限定の辺をエポック途中で打刻、宣言された `rule_id` が表と矛盾、`produced_by` が RegistryTransitionEngine でない、必要な裏付け参照の欠落、緊急遷移の形状不正、`from_status` が台帳と矛盾 | block |
+| `CK-REG-101` | `validate_authority_non_expansion` — 現職より広い権限を宣言する候補（不変条件 18） | block |
+| `CK-ROL-001`、`CK-ROL-002`、`CK-ROL-003` | `validate_role_separation` — 弾劾動議の著者が Auditor でない、証拠バンドルが EvidenceClerk でない、同一ロールによる告発 | warn |
+| `CK-ROL-901` | `validate_role_separation` / `validate_capability` — RegistryTransitionEngine 以外による台帳書き込みまたは候補の活性化（不変条件 10） | block |
+| `CK-ERA-001`…`CK-ERA-006` | `validate_selective_erasure` — stale / frontier 無効 / 退役プロンプト由来のレコードがフロンティアに存在、退役プロンプト依存レコードが stale 化されていない、物理削除（不変条件 13）、`prompt_trace.jsonl` の行が未対応の退役ハッシュを持つ | block |
+| `CK-AUD-001`、`CK-AUD-002`、`CK-AUD-003` | `validate_audit_log_integrity` — 連番の後退、チェックポイント済み前半部の改変、ハッシュ鎖の断裂 | block |
+| `CK-CLN-001`、`CK-CLN-002` | `validate_clean_room_bundle` / `validate_contamination_free` | block |
+| `CK-CTX-001` | `validate_context_scope` — 描画されたロールビューがフィールドホワイトリストを超過 | warn |
+| `CK-UTL-001`…`CK-UTL-008` | `validate_utility_policy` — `CK-UTL-006`（エポックの生きた軸集合の外にある軸キー）**のみ** warn、他はすべて block | block / warn |
+| `CK-KNW-001`…`015`、`CK-CAP-001`…`018`、`CK-HAR-001`…`020` | `validate_knowledge_integrity` / `validate_capability_binding_integrity` / `validate_harness_integrity` | block |
+
+`severity: block` は、強制経路がその判定を参照する場所で状態変更を拒否
+できる**資格**を与えるものであり、すべての文脈がそれに従うという意味でも、
+強制モードがすべての文脈に届くという意味でもありません。
+[`rqgm.kernel.enforcement`](configuration.md#execution-mode-and-rqgm-governance-opt-in)
+を尊重する地点はヘルパ `ari.rqgm.kernel.should_block` を経由します
+（`ari/rqgm/runtime.py`、`transition_engine.py`、`frontier_repair.py`、および
+`kernel.py` の capability ゲート付き MCP ラッパ）。`audit_only` ではこの
+ヘルパがすべてのレポートで false を返しますが、記録された重大度自体は
+書き換えないため、監査証跡は真実のまま残ります。一方、`report.blocking` を
+直接読む地点は強制モードの影響を受けません: クリーンルームの生成前後
+スクリーン（`ari/rqgm/clean_room.py`）、メタ候補の受理ゲート
+（`ari/rqgm/meta_evolution.py`）、ガバナンス自己監査のエスカレーション
+（`ari/rqgm/governance/_self_audit.py`）。意図的に warn 専用の文脈は
+どちらのモードでも warn 専用のままです: ノードごとのフック
+（`per_node_warn_check`）はスキーマ検査とハッシュ検査を例外を投げずに実行し、
+`validate_context_scope` はノード実行をブロックしません。
+
+1 つだけ `enforcement` から独立した経路があります。`transition_engine.EMERGENCY_TRIGGER_CODES`
+に含まれるコード（`CK-HSH-010`、`CK-EPO-002`、`CK-AUD-001/002/003`、
+`CK-ACC-001/002`、`CK-ROL-901`）を持つ block 重大度の違反は、モードに関わらず
+MCP ラッパから T16 緊急隔離経路へ渡されます: `audit_only` が下げるのは
+ブロッキングであって憲法上の事実ではなく、緊急遷移自体もコミット前に
+カーネル検証を受けます。ただしこの経路が隔離できるのは**登録済み
+コンポーネント**だけで、行為者のロールが台帳エントリを持たない場合
+（研究エージェントの `generator` が通常のケース）は escalation がログに
+残るだけで遷移は組み立てられません。
 
 ## 共有エンベロープ (`rqgm_defs.schema.json`)
 
@@ -231,6 +319,293 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
 | `candidate_evaluations` | RegistryTransitionEngine に供給されるリプレイ / アンカーのスコア |
 | `replay_pool_updates` / `self_audit` / `bond_accounting` / `budget_usage` | 境界の帳簿 |
 | `recommendations[]` | `action` は閉じた集合 `promote_candidate` \| `promote` \| `demote` \| `warn` \| `quarantine` \| `retire` \| `no_action`。Task 09 が消費 |
+
+### 動議パイプラインのレコード
+
+レポート本体に加えて、`audit_epoch` は 4 種のレコードを
+`rqgm_audit.jsonl` に追記する。いずれも上記の共有エンベロープを持つ。
+**この 4 種には独立したスキーマファイルが存在しない** —
+形状は `ari/rqgm/governance/_records.py` の frozen dataclass が定義し、
+監査自身の self-audit ステップがカーネル経由で再検証する
+（エンベロープは `validate_record_schema`、著者は
+`validate_role_separation`、CK-ROL-001/002/003）。
+
+**`evidence_bundle`** — 唯一の正当な著者は EvidenceClerk であり
+（`build_evidence_bundle` は他の著者に対して `GovernanceRuleError` を送出する）、
+閾値でフラグされた対象ごとに 1 束、`prompt_hash` は常に `null`
+（clerk は決定論的でプロンプトを持たないため）。clerk の候補 ref は対象を名指しするレコード —
+validated attack、utility record、raw attack、および K/C/A 由来の来歴型 —
+に加えて、対象についての同一ロールの `comparison_observation` である。
+ただし後者は**手がかり**としてのみ入る: 観測自身の `source_refs` が
+独立検証のために取り込まれ、観測の ref 自体も列挙されるので、その除外は
+黙って落とされるのではなく記録される。
+
+`items[]` の各要素は `{kind, ref, content_hash}` で、`content_hash` は
+`payload_hash(record)` — 本ページの他と同じ `hash12` 方式であり、第 2 の
+ハッシュ方式は存在しない。`kind` は閉じた `record_type → kind` マップから
+決まる:
+
+| 許容される `record_type` | bundle の `kind` |
+|---|---|
+| `validated_attack` | `validated_attack` |
+| `utility_record` | `utility_record` |
+| `judgment_record` | `judgment_record` |
+| `review_record` | `review_record` |
+| `node_report` | `execution_provenance` |
+| `harness_attestation` | `fixed_verifier_result` |
+| `knowledge_skill_use` | `instruction_provenance` |
+| `capability_binding` | `execution_authority` |
+
+それ以外はすべて不適格である。あらゆる却下は `excluded_items[]` に
+`{ref, reason}` として記録されるので、bundle は運んだものと同じくらい
+明確に、拒んだものを述べる。判定は固定順で走り、最初に一致した理由が
+記録される:
+
+| 順 | 理由 | 意味 |
+|---|---|---|
+| 1 | `unresolvable_ref` | その ref がエポックのレコードスライスで解決しない。同時に `verification.all_refs_resolved` が `false` に反転する |
+| 2 | `unadjudicated_raw_attack` | その ref が `raw_attack` である。raw attack は決して証拠にならず、証拠になるのはそこからジャッジが著した `validated_attack` だけである（不変条件 8-9） |
+| 3 | `same_role_source` | その項目の著者ロールが対象のロールと等しい。同一ロールの出力は観測であって告発ではない — 対象についての `comparison_observation` や、対象自身の review record を除外するのがこれである |
+| 4 | `inadmissible_record_type` | レコード型が上記マップの外 |
+| 5 | K/C/A 整合性の理由群 | 自身の検査に落ちた来歴添付: アーティファクト水準（`missing_artifact_reference`、`invalid_artifact_reference`、`unsafe_artifact_reference`、`unresolvable_artifact_reference`、`artifact_digest_mismatch`）に加え、attestation / knowledge use / capability binding それぞれの型別検査。全集合は `_evidence.py` にある |
+
+組み立ては代替ではなく除外を行う: 決して埋め合わせず、決して送出しない。
+`verification` は `{checked_by: "evidence_audit_checker",
+all_refs_resolved}` である。埋め合わせない以上、空の bundle は訴追を
+支えられない — フラグされた対象でも `items` が空なら動議は生まれず、
+`self_audit.findings` に `no_admissible_evidence` が 1 件残る。
+
+**同一ロールの観測は予約済みで、まだ生成されない。** 設計上、あるコンポーネント
+が同一ロールの同輩と食い違う場合 — たとえばあるレビュアが、自分を置き換え
+うるレビュアと異なる採点をノードに与えた場合 — のためにガバナンスの
+`comparison_observation` が予約されている。このレコードは
+`subject_component_id` と `subject_role` を名指しし、そのビルダは
+`admissible_as_evidence: false` を無条件に設定する: それは観測であって告発
+ではない。上で clerk が実装している「手がかりであって証拠ではない」規則が
+これであり、観測自身の `source_refs` を辿って一次アーティファクトを独立に
+検証する一方、観測の ref 自体は `excluded_items` に載る（著者ロールが対象の
+ロールと等しいときは理由 `same_role_source`、それ以外は
+`inadmissible_record_type`）ので、除外は黙って起きるのではなく記録される。
+
+**この経路は現状不活性である。** レコード型、その構築時不変条件、証拠組み立て
+での手がかり追跡、subject ごとの信頼性集約はいずれも実装済みだが、**出荷され
+ているコンポーネントでガバナンスの `comparison_observation` を
+`rqgm_audit.jsonl` に発行するものは存在しない** — ビルダに製品コードの
+呼び出し元が無い。したがってレポートの `observations` 配列は、出荷されるどの
+実行でも空である。実行が示す挙動ではなく、予約された設計として扱うこと。
+対照的に、一般の同一ロール除外は生きている: レコード型を問わず、著者ロールが
+対象のロールと等しい候補すべてに適用される。
+
+型名は無関係な別の形状と共有されている。プロンプト進化のシャドウ段は、候補と
+現職の出力ハッシュおよび乖離要約からなる独自の `comparison_observation` を
+`prompt_evolution.jsonl` に書き、これは後述の
+`rqgm_prompt_evolution.schema.json` に記載されている。両者は `record_type`
+ではなく、ファイルとフィールドで区別される。
+
+**`impeachment_motion`** — 唯一の正当な著者は Auditor であり、したがって
+Reviewer v4 がこの経路で Reviewer v3 に到達することはそもそもできない。
+`target_component_id`、`target_role`、`charge`、`evidence_bundle_id`、
+`bond_units`、`requested_action` を追加し、`source_refs` は bundle id
+のみである。`requested_action` はレポートの推奨語彙の厳密な**部分集合** —
+`demote` \| `warn` \| `quarantine` \| `retire` — であり、動議は決して昇格
+させない。この集合の外の値は構築時に拒否され、`target_role: auditor`
+（Auditor は自ロールを弾劾しない）も同様に拒否される。
+
+**`governance_defense`** — Defender が動議ごとに 1 件を著し、`motion_id`、
+`defense_text`、`procedural_default` を持つ。フォールバック経路では
+`prompt_hash` は `null` となり、本文は下表に引用した固定の手続的既定文になる。
+
+**`impeachment_outcome`** — GovernanceJudge が裁定済み動議ごとに 1 件を
+著す。Task 09 の transition engine がレポート全体を解析せずに結果を消費
+できるよう、独立レコードとして存在する。レポートの `adjudications[]`
+エントリを写しつつ、そのエントリが参照するだけの情報を保持する:
+`rationale` 本文（レポート側は `rationale_ref` を持ち、その値が本レコードの
+id）と、決定論的ボードがジャッジの判定を上書きしたときに立つ
+`clamped_by_board` である。`outcome` は閉じた集合 `upheld` \|
+`partially_upheld` \| `dismissed` \| `inconclusive`。
+
+**保証金台帳。** 濫訴の抑止は LLM を介さずに行われる。提起された動議ごとに
+`rqgm.governance.bond_units_per_motion` が、
+`max_motions_per_epoch × bond_units_per_motion` というエポック単位の訴追
+予算に対して預けられる。清算は裁定結果の純関数である: `upheld` と
+`partially_upheld` は単位を返還し、`dismissed` は没収し、`inconclusive` は
+預けたままにする — 返還も没収もされない。コード上はこれを「次エポックへ
+持ち越す」と述べているが、**持ち越しの機構は出荷されていない**: ステップ 1 は
+現エポックのレコードスライスしか読まないので、未解決の動議が読み直される
+ことはなく、次エポックは新たな信頼性分類から動議を導き直す。予算が尽きたら、
+閾値が何と言おうとそのエポックではそれ以上の動議は提起されない。誤読しやすい性質が
+2 つある。`remaining_budget` が数えるのは*提起*が消費した分だけなので、返還は
+そのエポック内の提起余力を回復しない。また台帳は `audit_epoch` ごとに新規
+構築されるので、境界のたびにリセットされる: エポックをまたいで罰を蓄積しない
+以上、エポックごとに濫訴を続ける訴追者への抑止は弱い。結果はレポートの
+`bond_accounting` ブロック — `posted`、`refunded`、`forfeited`、
+`remaining_budget` — になる。これらは通貨ではなく割当カウンタであり、
+コンポーネント間で価値が移動することはない。
+
+**`self_audit` ブロック。** ステップ 8 は、他の全員に当てる物差しで司法自身を
+監査する。そしてここでは orchestrator ではなく**カーネル**が最後の言葉を持つ。
+pipeline がたった今生成した `evidence_bundle`、`impeachment_motion`、
+`governance_defense`、`impeachment_outcome` のすべてが
+`ConstitutionalKernel.validate_record_schema` と `validate_role_separation`
+に差し戻される。レコードビルダ自身の拒否は早期の最適化にすぎず、保証はこの
+再実行の側にある。バグを含む、あるいは進化したガバナンスコンポーネントが違反
+レコードをレポートに紛れ込ませることはできない。ブロックの内容:
+
+| キー | 内容 |
+|---|---|
+| `checked_components` | 検査したガバナンス主体をソートしたもの: auditor、evidence clerk、defender、governance judge |
+| `kernel_violations_found` | 再検証で得た違反件数 |
+| `findings` | 監査中に立った決定論的な所見 — `judge_clamped_by_board`、`no_admissible_evidence`、`same_role_prosecution_skipped`、`motion_refused` など |
+| `escalations` | **ブロッキング**なカーネルレポートの各違反について `{code}:{subject_ref}` |
+| `ban_recommendations` | 汚染クラスのコード — `CK-AUD-001`（監査ログ追記専用違反）、`CK-AUD-002`（監査ログ先頭の改竄）、`CK-AUD-003`（監査ログのハッシュ鎖の断絶）、`CK-ACC-002`（引退プロンプト本文へのアクセス）、`CK-ROL-901`（レジストリ書き手権限の偽装） — に巻き込まれた主体、および `contamination` / `clean_room_lineage_failure` の所見。RegistryTransitionEngine がこのキーを読むが、あくまで助言であり、禁止が適用されるのは実際に retired のコンポーネントに対してのみである |
+| `stats` | `auditor_motion_precision`、`judge_board_clamp_count`、`defender_substantive_rate`。動議が 1 件も提起されなかったとき、2 つの比率は `null` になる — 決して補完されない |
+
+`governance_report.schema.json` が宣言しているのは最初の 4 キーだけで、
+`ban_recommendations` と `stats` は追加的であり、未宣言のプロパティとして
+運ばれる。カーネルが利用できないか、再検証自体が送出した場合、ブロックは
+縮退し `degradation_reasons` に `self_audit_degraded` が加わる。
+
+### 監査の決定論予算
+
+監査の LLM 継ぎ目はちょうど 3 か所である — ステップ 4（訴追）、ステップ 5
+（弁護）、ステップ 6（裁定）がそれぞれ省略可能なレンダラを取る。他の
+ステップにモデルは一切入らず、エポックの監査ログスライスと凍結レジストリ
+だけで走る。いずれの継ぎ目でも先に規則が決め、モデルは境界域でのみ問われる。
+
+**訴追は規則優先、LLM は次点。** `classify_target`
+（`ari/rqgm/governance/_prosecution.py`）は ReliabilityMonitor のエントリを
+1 件読み、3 つの答えのいずれかを返す。`ATTACK_THRESHOLD`（2）件以上の
+validated attack が束ねられているか、信頼性スコアが `RELIABILITY_FLOOR`
+（0.4）未満なら、そのコンポーネントは**無条件に提起対象**となる。
+validated attack がちょうど 1 件、またはスコアが
+`[RELIABILITY_FLOOR, RELIABILITY_FLOOR + BORDERLINE_MARGIN)` すなわち
+`[0.4, 0.5)` に入るときが**境界域**であり、このときに限って LLM Auditor の
+プロンプトが走る。それ以外は放置される。3 つの閾値はいずれもモジュール定数で、
+カーネルの規則表と同じくコードに固定されている。設定可能なのは
+`rqgm.governance` 配下の予算だけである。境界域で auditor の応答が得られない、
+あるいは解析できない場合は何も提起されない — 現職推定であり、
+`LineageDecision.fallback_continue` と同じ形である。
+
+決して訴追されない対象が 2 種ある:
+
+- **`tier: fixed` のコンポーネント。** tier 検査は分類器の最初の文であり、
+  閾値を 1 つも読む前に「訴えなし」を返す。したがって固定コンポーネントは、
+  いくつの攻撃に名指しされても訴追不能である。固定された手続は制度上の現職
+  ではなく憲法上の機構であり、その整合性の指摘は該当アーティファクトを停止・
+  修復するのであって、弾劾の競争には入らない。
+- **ロールが `auditor` の対象。** 唯一の Auditor は自ロールに対して提起でき
+  ないため、その対象はスキップされ、黙って落とされる代わりに
+  `self_audit.findings` に `same_role_prosecution_skipped` として記録される。
+
+`audit_epoch` はステップの失敗で中断することがない。9 ステップのそれぞれが
+全域的な決定論フォールバックを持ち、それを取ると `degraded` が `true` に
+反転し、`degradation_reasons` にトークンが 1 つ追加される。
+
+| ステップ | 失敗時 |
+|---|---|
+| 1 観測収集 | そのエポックのレコードスライスが空になるので、ステップ 2-6 は扱う対象を持たない |
+| 2 信頼性評価 | 信頼性エントリなし。ステップ失敗とは独立に、そのエポックに何も著さなかったコンポーネントは `reliability_score: null` と `insufficient_data: true` を得る — スコアは決して捏造されず、そのコンポーネントは validated attack の件数を通じて訴追可能なままである |
+| 3 証拠組み立て | bundle なし、したがって動議なし。項目単位の失敗はこの行に到達しない: 組み立ては送出せず、除外する（上記） |
+| 4 訴追判断 | 動議なし。**境界域**の分類で auditor 呼び出しが利用不可または解析不能なときも何も提起されない（現職推定）。閾値を明確に超えた分類は規則ベースで、LLM を一切必要としない |
+| 5 弁護生成 | 弁護は固定の手続的既定文 *"no substantive defense generated; incumbent presumption applies"* となり、`procedural_default: true` が立つ |
+| 6 裁定 | ジャッジが利用不可または解析不能なら `dismissed`、すなわち現職に有利に倒れる（このフォールバックにも後述のボードによるクランプが適用される）。ボード採点の失敗は `inconclusive` となり、その保証金は返還も没収もされず預けられたまま — 動議は決着させられるのではなく未解決のまま残る。governance judge 自身を対象とする動議は忌避され、outcome レコードを生まない。並行する候補評価の失敗は `candidate_evaluations` を空にする |
+| 7 リプレイプール更新 | プール更新はスキップされ、フラグされる |
+| 8 ガバナンス自己監査 | カーネル再検証がスキップされる: `kernel_violations_found` は 0 のままで、エスカレーションも上がらない。ステップ全体が失敗した場合、ブロックは `checked_components` と `stats` が空のスタブに退避する |
+| 9 レポート生成 | 送出しうる**唯一の**ステップ。呼び出し側の fail-open catch（`ari/rqgm/runtime.py`）がログを残してレポートなしで返る。ファサードは pipeline の復帰後にのみ監査レコードを追記するため、そのエポックはガバナンスレコードを 1 件も残さず、実行は継続する |
+
+スキーマ上 `degradation_reasons` は単なる文字列配列である — 語彙を強制する
+のは enum ではなく発行側である。出荷されている pipeline はこれら以外の形を
+発行しない:
+
+| トークン | 発行される条件 |
+|---|---|
+| `step_failed:observe`、`step_failed:assess_reliability`、`step_failed:assemble_evidence`、`step_failed:prosecute`、`step_failed:defend`、`step_failed:adjudicate`、`step_failed:evaluate_candidates`、`step_failed:update_replay_pool` | 該当ステップが送出し、上表のフォールバックを取った |
+| `auditor_llm_fallback:{component_id}` | 境界域の対象に対する auditor 呼び出しが利用不可または解析不能だった |
+| `defender_llm_fallback:{motion_id}` | 弁護が手続的既定にフォールバックした |
+| `judge_llm_fallback:{motion_id}` | 使えるジャッジ標本が得られず、動議は却下された |
+| `board_failure:{motion_id}` | ボード採点が送出し、動議が `inconclusive` になった |
+| `self_adjudication_recused:{judge_component_id}` | 動議が governance judge を対象としたため、外部裁定に委ねて未解決のまま残された |
+| `replay_pool_update_skipped` | 追加すべき upheld ケースがあったが、プールが `append_case` を公開していない |
+| `llm_budget_exhausted` | [`max_llm_calls_per_audit`](configuration.md#execution-mode-and-rqgm-governance-opt-in) の上限に達した、または Task 12 の予算マネージャが呼び出しを拒否した |
+| `self_audit_degraded` | 自己監査のカーネル再検証が利用不可、または送出した |
+
+`step_failed:produce_report` というトークンは存在しない: ステップ 9 は縮退
+しない唯一のステップである。
+
+`llm=None` のとき監査はこれら規則のみの経路で完全に走り、同じ入力に対する
+2 回の実行は `created_at` を除去すればバイト同一のレコードを生む。
+
+**ジャッジは LLM が正常に働いていても拘束される。** ReplayBoard と
+AnchorBoard のスコアは GovernanceJudge が裁定する前に計算され、評決は
+それらに拘束される — ノードの `results.json` の measurements が、切り詰め
+られた artifact テキストに対する LLM の読みを上書きするのと同じ優先関係
+である。ボードスコアは対象について蓄積されたケース結果の平均であり、用い
+るケースは case id 順で最大 `rqgm.replay.max_cases_per_epoch` 件。動議が
+retirement を俎上に載せる場合（`retire` を要求する、またはすでに
+quarantine 状態のコンポーネントを対象とする場合）、上限は
+`rqgm.replay.max_cases_for_retirement` に上がり、Task 12 の予算マネージャ
+が存在すればさらに引き下げうる。一致するケースが 1 件もなければボード
+スコアは `null` — *利用不可*であって、捏造された数値ではない。
+
+続いて評決は、現職に対する*利用可能な*ボードスコアの平均と突き合わされる。
+2 つの閾値は `ari/rqgm/governance/_adjudication.py` のモジュール定数であり、
+設定ではなくコードに固定されている:
+
+| 現職のボード平均 | ボードが拒む評決 | クランプ先 |
+|---|---|---|
+| ≥ 0.8 (`BOARD_HIGH`) | `dismissed` 以外のすべて | `dismissed` |
+| ≤ 0.2 (`BOARD_LOW`) | `dismissed` | `partially_upheld` |
+
+どちらのボードも利用できないときは拘束が働かず、評決はそのまま残る。
+クランプは上表のステップ 6 フォールバックの後、最後に適用されるので、
+フォールバックも拘束される: ジャッジ不在による `dismissed` も、対象の
+スコアが ≤ 0.2 なら `partially_upheld` になる。クランプは
+`impeachment_outcome` レコードに `clamped_by_board: true` を立て、
+`self_audit.findings` に `judge_clamped_by_board` の finding を追加し、
+`self_audit.stats.judge_board_clamp_count` に計上する — 現職側または挑戦
+側へ系統的に偏るジャッジは、静かに効いてしまうのではなく監査上に現れる。
+
+候補プロンプトは同じボードで採点され、ジャッジは**一切**関与しない:
+利用可能なボードスコアの最小値が 0.6 (`CANDIDATE_PASS_THRESHOLD`) 以上
+なら `pass`、そうでなければ `fail`、どちらのボードもスコアを出せなければ
+`inconclusive` となる。`rqgm.replay.use_cached_results`（既定で有効）の
+とき、配線されている Task 12 のガバナンスキャッシュがプールの蓄積ケース
+結果より先に参照され、そこから書き戻される。
+`candidate_evaluations[].cached` が報告するのはこの設定であって、
+キャッシュが存在したか、個々の参照がヒットしたかではない。
+
+`rqgm.governance.jury_panel_enabled` を有効にすると、ジャッジは 3 回
+サンプルされ多数決で決まる。同数のときは `dismissed` >
+`partially_upheld` > `upheld` という固定順で現職側に倒れる。既定は
+`false` で、1 標本で決まる。
+
+失敗ではなく構造によって制約されるレポートフィールドが 2 つあり、いずれも
+縮退トークンを立てない。
+
+**AnchorBoard には held-out コーパスが要り、それを供給するのは paper
+フェーズだけである。** 両ボードは `audit_epoch` に渡されたプールから
+ケースを読む: ReplayBoard は `pool.cases`、AnchorBoard は
+`pool.anchor_cases` である。探索実行が渡すプールである
+`AdversarialReplayPool` は `anchor_cases` 属性を定義していないので、その
+経路で AnchorBoard はスコアではなく*利用不可*を報告する: `anchor_score` は
+すべての裁定・候補評価で `null`、`budget_usage.anchor_cases_used` は 0 の
+ままで、ジャッジ判定をクランプしうる現職側のボード平均も候補の合格判定も
+ReplayBoard だけで決まる。held-out アンカー集合が監査に届くのは
+paper-archive フェーズだけで、そこではそれを担ぐプール形状のアダプタ
+（`ari/rqgm/paper_anchor.py`）に差し替えられる — そのコーパス自体も既定では
+無効である（後述の `paper_anchor_corpus.jsonl` の項を参照）。`null` の
+アンカースコアは「held-out コーパスが無かった」と読むべきで、低スコアと
+読んではならない。
+
+**`replay_pool_updates.retired` は不活性である。** 実際に埋まるのは `added`
+だけで、その中身はこのエポックの validated attack が採録されたリプレイ
+ケースと、`upheld` / `partially_upheld` になった動議の背後にある validated
+attack の ref である。`retired` 配列は空で初期化され、そこへ追記するコードは
+存在しない: ケースの引退はプール内部の操作であり（`evict_to_cap` は
+スナップショット上でケースを `evicted` に印付けるだけで、JSONL は採録された
+全行を保持する）、監査はそれをここに露出しない。*引退したプロンプト*に由来
+する陳腐化はフロンティア修復（Task 10）が扱い、このフィールドでは報告され
+ない。
 
 ## 敵対ループスキーマ (Task 06)
 

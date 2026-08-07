@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_virsci_adapter.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # VirSci Integration
@@ -109,7 +109,9 @@ re-ideation result is a governance decision.
 
 The adapter itself calls `survey` (topic → paper list; degrades to an empty
 list on failure) and then `generate_ideas` over MCP, and normalizes the
-9-key `generate_ideas` payload into one `ProposalDraft` per idea. Any tool
+`generate_ideas` payload into one `ProposalDraft` per idea — it reads only
+the nine legacy top-level keys (`virsci_adapter.GENERATE_IDEAS_KEYS`), which
+are now a subset of what the skill returns. Any tool
 failure degrades to zero drafts; content-key dedup at the store makes the
 whole path idempotent under retries.
 
@@ -117,8 +119,8 @@ whole path idempotent under retries.
 
 VirSci output is split on write ("store everything, show a summary"):
 
-- **Archived under the checkpoint** — the full 9-key payload (raw idea
-  list, `gap_analysis`, generator config) goes to
+- **Archived under the checkpoint** — the full `generate_ideas` payload (raw
+  idea list, `gap_analysis`, generator config) goes to
   `{checkpoint}/proposals/archive/<record_id>/` (`raw_output.json`,
   `generator_config.json`). The skill's on-disk transcript artifacts —
   `{checkpoint}/virsci_logs/virsci_stdout.log` and
@@ -132,15 +134,22 @@ VirSci output is split on write ("store everything, show a summary"):
   pinned by
   `test_rqgm_virsci_adapter.py::test_transcript_content_never_reaches_expand_context`.
 
-The shared 9-key extras (`gap_analysis`, `papers_analyzed`, `n_agents`,
-`discussion_rounds`, `virsci_integration_status`) additionally ride into the
-`idea.json` projection's top-level keys, preserving the pre-RQGM `idea.json`
-contract.
+The shared extras additionally ride into the `idea.json` projection's
+top-level keys, preserving the pre-RQGM `idea.json` contract:
+`ProposalRouter._projection_meta` re-reads the archived payload and copies
+whichever of the five legacy keys (`gap_analysis`, `papers_analyzed`,
+`n_agents`, `discussion_rounds`, `virsci_integration_status`) and the ten
+typed-contract keys the skill now also returns (`typed_schema_version`,
+`contract_status`, `survey_snapshot`, `survey_snapshot_digest`,
+`survey_snapshot_ref`, `idea_set`, `idea_set_digest`, `research_contract`,
+`research_contract_digest`, `rejected_candidates`) are present.
 
 ## Guarantees when `enabled: false`
 
-With the default `enabled: false` (all pinned by
-`ari-core/tests/test_rqgm_virsci_adapter.py`):
+With the default `enabled: false` **and** the default typed-contract
+postures (`knowledge.mode: off`, `capability_binding.mode: legacy`,
+`assurance.mode: off`), all pinned by
+`ari-core/tests/test_rqgm_virsci_adapter.py`:
 
 - **The adapter is never constructed.** `ProposalRouter._build_generators`
   only instantiates `VirSciAdapter` when the flag is true and an MCP client
@@ -158,6 +167,12 @@ With the default `enabled: false` (all pinned by
   VirSci prompts or transcript files — see
   [RQGM Evaluation](rqgm_evaluation.md).
 
+These guarantees cover the default postures only. Moving any of
+`knowledge.mode`, `capability_binding.mode`, or `assurance.mode` off its
+default makes `ProposalRouter._typed_contract_required()` true, and the
+router then constructs the adapter (whenever an MCP client exists) and
+reports `virsci` as enabled whatever `generators.virsci.enabled` says.
+
 ## The four mode × VirSci combinations
 
 `proposal_router.generators.virsci.enabled` is orthogonal to `ari.mode`:
@@ -169,7 +184,7 @@ reads `ari.mode`. All four combinations are valid config and boot cleanly
 |---|---|---|
 | `simple_bfts` | `false` | Default. `proposal_router.*` is inert; the skill-side levers (`generate_idea` stage, `ARI_IDEA_VIRSCI_REAL`) are the only VirSci controls. |
 | `simple_bfts` | `true` | Valid but inert: nothing constructs the router in `simple_bfts`, so the flag has no effect. Skill-side levers stay authoritative. |
-| `ari_rqgm` | `false` | Router runs with `cheap`/`mutation`/`prior_art` only. No VirSci runtime, vendored path, prompt, or snapshot corpus is touched. |
+| `ari_rqgm` | `false` | With the typed-contract postures at their defaults, the router runs with `cheap`/`mutation`/`prior_art` only: no VirSci runtime, vendored path, prompt, or snapshot corpus is touched. |
 | `ari_rqgm` | `true` | `VirSciAdapter` joins the routing table; MCP calls to `survey` + `generate_ideas` under the per-epoch cap. |
 
 ## The vendored submodule and the skill

@@ -78,6 +78,33 @@ rqgm:
 意味します** — デフォルトのチェックポイントは RQGM 以前の ARI とバイト単位で
 同一のままです。
 
+`mode_source` は**起動時にモードがどう決まったか**を記録するもので、決定規則は
+一つだけです: `ari run` は起動時のプロセス環境で `ARI_MODE` または
+`ARI_RQGM_ENABLED` が空でない値に設定されていれば `env`、そうでなければ
+`config` を記録します。
+この判定は `export_resolved_config_to_skill_env` が `ARI_MODE` を実効モードで
+`setdefault` する**前**に行われるため、YAML だけで設定されたランが env 由来と
+誤って記録されることはありません。重要なのは「誰が設定したか」ではなく「存在
+するか」です: 親プロセスから継承した値も env 由来として扱われ、Configuration
+Studio から非デフォルトのモードで起動したランは `env` を記録します（この起動
+経路は `ari:`/`rqgm:` ブロックをチェックポイントの `workflow.yaml` にマージする
+のに加えて、`ARI_MODE`/`ARI_RQGM_ENABLED` を起動する CLI の環境へエクスポート
+するためです）。これら以外の文字列は警告の上で `config` に丸められます。
+
+3 つ目の受理値 `resume` は**予約済みで、書き込まれることはありません**。
+`rqgm_state.json` はラン開始時に `persist_run_start`（ランタイムで唯一
+`write_rqgm_state` を呼ぶ箇所）が一度だけ書き込み、`ari resume` はそれを読む
+だけです（`reconcile_resume_mode`）。
+したがって resume したランが `mode_source: resume` を持つことはなく、この
+フィールドは常に**最初の**起動を表します。resume をまたいで値が変わることを
+期待してはいけません。
+
+2 つのアクセサはいずれも契約として非致命です。`read_rqgm_state` はファイルが
+無い・読めない・JSON オブジェクトでない場合に `None` を返します — 不在も破損も
+同じく「RQGM 状態なし」、すなわち `simple_bfts` ランとして読まれます。
+`write_rqgm_state` はあらゆる例外を捕捉して警告ログを出すため、来歴の書き込みに
+失敗しても記録が劣化するだけで、ランに例外が伝播することはありません。
+
 ## モード切替のタイミングポリシー
 
 許可されるもの:
@@ -183,7 +210,11 @@ paper` コマンドが明示的に呼び出します — 素の `load_config` �
 優先で突き合わせます（`reconcile_paper_resume_mode`）: 永続化された論文モードが
 設定と env に優先し、不一致は警告を生み、状態ファイルの無いチェックポイントは
 そのフェーズで `linear` のままです — つまり純粋な linear 再起動では `ari.rqgm`
-モジュールが決してロードされません。
+モジュールが決してロードされません。この軸でも `resume` は予約済みです:
+`ari paper` が `mode_source: resume` を選ぶのは `paper_archive_state.json` が
+既に存在する場合だけで、それはまさに write-once のガードが書き込みをスキップ
+する場合なので、永続化されたファイルは常に最初の呼び出しの `config`/`env` の
+決定を記録します。
 
 ### agent-as-judge によるドラフト採点（オプトイン）
 
@@ -349,6 +380,34 @@ capability matrix、severity map）と `ari/rqgm/transition_rules.py`
 ハッシュの再ピン留めになります。同梱の `constitution.yaml` は人間可読の
 声明にすぎず、編集しても何も変わりません。
 
+**なぜ規則がコードなのか。** チェックポイントディレクトリはフラットな共有
+ファイルシステムであり、あらゆる MCP スキルが書き込めます。ロール規則、
+capability matrix、severity map、遷移テーブルをチェックポイントスコープの
+YAML に置けば、自分を裁く憲法への進化 / 改竄チャネルを任意のコンポーネントに
+手渡すことになります。そのため、これらは凍結された Python 定数であり、
+カーネルで設定可能なのは数値だけです: `rqgm.kernel.enforcement`、
+`rqgm.kernel.audit_chain`、`rqgm.kernel.float_tolerance`。
+
+`CAPABILITY_MATRIX` には 3 つの定数が焼き込まれており、すべてのティアの
+すべてのロールで成立します: `read: retired_prompt_text` を付与する
+`(role, tier)` 行は 1 つも存在しません（正規の読み出し経路は
+`RetiredPromptAccessGuard` であり、その狭い fixed ティア免除集合は
+マトリクスによる付与ではなくマトリクスの迂回です）。`write: registry` と
+`activate: candidates` を持つのは `fixed` ティアの
+`registry_transition_engine` だけです。そして進化可能ロールの `meta`
+ティア行はそのどちらも持たず、候補が何を宣言していても変わりません。
+
+**受け入れているコスト。** 規則は `constitution_hash` に覆われたコードで
+あるため、規則を 1 つ変えることは、コードレビューと
+`ari-core/tests/test_rqgm_kernel.py` の期待ハッシュの手作業での再ピン留めを
+意味します。*インポートされた* 遷移テーブルを編集してもハッシュが動くことを
+テストが検証しているので、もう一方のモジュールを直すことでピンを回避する
+ことはできません。実験の途中で規則にパッチを当てる手段は意図的に存在せず、
+緊急の修正は設定編集ではなく新しいビルドです。この方法で行われた改正は
+`ari/rqgm/kernel_rules.py` にコメントとしてその場に記録され、それぞれが
+何を変えたかとピンを再計算したことを明記します — 憲法の履歴はレビュー可能な
+diff になります。
+
 ブロッキングマトリクスの要約（「制度をブロックし、研究はブロックしない」）:
 
 - **ハードブロック集合**（RQGM の状態変更 — エポック遷移コミット、レジストリ
@@ -361,12 +420,48 @@ capability matrix、severity map）と `ari/rqgm/transition_rules.py`
   `{"error": ...}` エンベロープにより拒否されます）。
 - **警告&フラグ集合**（研究の実行を決して中断しない）: ノード単位のレコード
   スキーマ / ハッシュ異常、事後アクセス検出、生成時のロール分離検出、
-  コンテキストスコープ検出。警告されたレコードは境界においてガバナンス証拠
-  として不許容になります。
+  コンテキストスコープ検出。警告検出は `kernel_report` エントリとして
+  `rqgm_audit.jsonl` に追記され、ガバナンスパイプライン自身が生成した
+  レコードについてはレポートの self-audit ブロックに計上されます — しかし
+  そのレコードを後から不許容にするようなフラグは一切設定**されません**。
+  証拠バンドルの許容性は独立に、レコード種別・著者ロール・種別ごとの
+  整合性チェック（`ari/rqgm/governance/_evidence.py`）によって決まります。
+
+**カーネルはどこから呼ばれるか。** カーネルは受動的です — 判定を返すだけで、
+自身がガバナンス状態を変更することはありません。書き込みと帰結はすべて
+アダプタ側が持ちます。カーネルを設置するアダプタは 6 つあり、いずれも
+`ari_rqgm` でのみ構築されます:
+
+| 執行ポイント | 実行されるチェック | ブロッキング判定の効果 |
+|---|---|---|
+| エポック境界トランザクション（`RegistryTransitionEngine.apply`） | `validate_transition` | トランザクションが `aborted` となり、解決済みのステータス変更（昇格・制裁・退役）は一切適用されない。前エポックのアクティブ集合がそのまま引き継がれ、ランは継続する |
+| フロンティア再構築コミット（`FrontierRepairEngine.repair`） | `validate_selective_erasure` | エンジンが保守的に再修復し（フラグの付いたノードをすべて丸ごと削除）、再検証する。2 度目もブロッキングなら、ランは drain-only へ縮退する（`halted_expansion`: 保留中の作業は完了させ、以後の展開はしない） |
+| MCP ツールディスパッチ（`CapabilityGatedMCPClient.call_tool`） | ツールポリシーが写す `(actor, action, resource)` の三つ組に対する `validate_capability` | 呼び出しはディスパッチされず、呼び出し側は標準の `{"error": ...}` エンベロープを受け取る。違反コードがエンジンの緊急トリガ集合に含まれる場合、加えて T16 緊急隔離フックが発火する — ここが、実行中のエージェントがエポック途中で憲法に触れられる唯一の場所 |
+| ノード単位フック（`RQGMRuntime.run_per_node_kernel_check`） | ノードが生成したレコードに対する `validate_record_schema` と `validate_hashes`、および K/C/A 整合性チェック | レコード検出は警告のみで監査ログに記録される。ブロッキングな K/C/A 整合性検出はノードに `assurance_status: tampered`、`frontier_class: uncertified_frontier`、`_valid_for_frontier: false` を付ける — ノード自体は実行済みであり、フロンティアから除外されるだけ |
+| ガバナンス自己監査（`GovernanceOrchestrator.audit_epoch`） | パイプライン自身が生成したレコードに対して再実行する `validate_record_schema` と `validate_role_separation` | ここでは何も拒否されない: 検出はレポートの self-audit ブロックに `kernel_violations_found`、`escalations`、`ban_recommendations` として計上される |
+| resume 整合性パス（`RQGMRuntime.resume_integrity_check`） | 復元されたチェックポイントに対する `validate_audit_log_integrity` と `validate_selective_erasure` | ランは resume されるが governance-suspended carry-over に入る（resume 自体を拒否する代わりの縮退動作）。この状態が続く間、エポック監査はスキップされ、すべての境界は空の遷移を解決し、メタ進化もスキップされる |
+
+各アダプタは自身のバグに対して fail-open です: フック内部の例外はログに
+記録されて握り潰され、ランループへ送出されることはありません。唯一の意図的な
+例外はフロンティア修復のバリデータで、自身の例外を失敗判定として扱い、
+境界では fail-closed に縮退します。
+
+**既知のギャップ — エポック不変性は検出のみです。** `CK-EPO-002`（エポック
+途中の非緊急な active set 変更）は block 重大度を持ちますが、その唯一の
+プロダクション呼び出し元 — ランループから駆動される
+`RQGMRuntime.check_epoch_invariance` — は検出を `rqgm_audit.jsonl` の
+`kernel_report` エントリとして記録し、警告するだけです。`should_block` を
+参照することはなく、何も拒否しません: エポック不変性の検出を根拠に採用が
+拒否されることも、レジストリ変更が拒否されることもありません。`CK-EPO-002`
+はエンジンの緊急トリガ集合にも列挙されていますが、これを発行するバリデータ
+はエポック不変性のものだけであり、その経路はエスカレーションフックを通り
+ません — したがってこの列挙も発火することはありません。`CK-EPO-*` は
+執行される障壁ではなく、そのエポックのガバナンス監査のための証拠として
+読んでください。
 
 遷移がブロックされた場合、前エポックのアクティブ集合が変更なしに引き継がれ、
-ランは継続します（governance-suspended carry-over — ランの中断は決して
-起こりません）。`rqgm.kernel.enforcement: audit_only` は段階的ロールアウトと
+ランは継続します（ランの中断は決して起こりません）。
+`rqgm.kernel.enforcement: audit_only` は段階的ロールアウトと
 アブレーションのために、すべてのコンテキストを warn-and-log へ格下げします。
 
 ## 互換性保証

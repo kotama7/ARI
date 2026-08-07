@@ -16,10 +16,33 @@ last_verified: 2026-07-28
 # RQGM Schema 参考
 
 可选启用的 `ari_rqgm` 执行模式所持久化的每种记录的正式 JSON
-Schema。它们全部随 `ari-core/ari/schemas/` 一起发布，并通过
+Schema。它们全部随 `ari-core/ari/schemas/` 一起发布，并可通过
 `ari.schemas.load(name)` 按 basename 加载。这些记录在默认的
 `simple_bfts` 检查点上一个也不存在 —— 每个读取方都把缺失视为
 「RQGM 从未运行」。
+
+这些 schema 是**参考契约，而不是运行时校验器。** `ari/rqgm/` 下没有任何
+代码会打开它们：`jsonschema` 不是 `ari-core` 的依赖，任何 RQGM 写入方在
+持久化之前都不会拿记录去比对 `.schema.json` 文件。记录类只是*镜像*这些
+schema 文件的普通 dataclass（`ari/rqgm/proposals/records.py` 与
+`ari/rqgm/adversarial/records.py` 的模块 docstring 正是这么写的）；它们背后
+没有 Pydantic 模型，也没有任何快照测试断言所发布的 schema 等于生成的
+`model_json_schema()`。Pydantic 的 `model_validate` 在 `ari/rqgm/` 内*确有*
+使用，但仅用于单独门控的 Knowledge/Capability/Assurance 准入、harness、
+capability-binding 与 manuscript 文档 —— 从不用于 `rqgm_record_base` 信封或
+本页清单内的任何记录。
+
+内核在写入时真正强制的是信封 + 形状检查，即
+`ConstitutionalKernel.validate_record_schema`（`ari/rqgm/kernel.py`）：
+`kernel_rules.ENVELOPE_FIELDS` 的八个字段必须存在，`record_id` /
+`status` / `role` 在存在时必须非空，而 `proposal_record` 还会额外运行
+proposal summary 的字段预算检查。违规对治理记录类型 `epoch_transition` /
+`governance_report` 表现为 `CK-SCH-G01`（block），对其余所有记录类型表现为
+`CK-SCH-N01`（warn），预算超限则为 `CK-SCH-N02`（warn）。因此下文所记录的
+各字段类型、格式与封闭枚举，是由写入方和测试套件来保证的 ——
+`ari-core/tests/test_rqgm_*.py` 中的若干模块会拿真实记录去校验这些 schema
+文件，不过它们通过 `pytest.importorskip` 获取 `jsonschema`，缺失时即跳过
+—— 而不是由持久化时刻的任何校验来保证。
 
 本页记录的是**记录形状**（用途、所属模块、关键字段、id/哈希
 纪律）。关于这些记录所在的检查点**文件** —— 创建条件、真相源 vs
@@ -76,6 +99,59 @@ Id 格式（全部零填充、按检查点计数）：
 | `erase_` / `rebuild_%05d` | 擦除 / 重建事件 | `erase_00007` |
 | `meta_out_` + hash12 | MetaAgentOutputRecord | `meta_out_a1b2c3d4e5f6` |
 | 16 位十六进制 `cache_key` | 治理缓存（见下） | `a3f19c02b7d4e881` |
+
+## 宪法违规码
+
+内核的每一条发现都带有稳定的 `CK-<FAMILY>-<NNN>` 码，其严重度属于宪法本身，
+而不是调用方的选择。严重度按码固定在 `ari.rqgm.kernel_rules.SEVERITY`
+中（Knowledge/Capability/Harness 系列自 `ari/rqgm/kca_kernel_rules.py`
+并入），**每一次** `Violation` 构造都经由这一张表解析
+（`ari/rqgm/kernel.py` 的 `_v`、`ari/rqgm/kernel_kca_common.py` 的
+`violation` —— 未知码抛 `KeyError`，绝不会以默认值补上严重度），并且整张表
+位于 `constitution_hash` 之内，因此改动任一严重度都会改变这枚钉。码一经实现
+即冻结，永不重新编号。
+
+| 系列 | 所属检查 | 严重度 |
+|---|---|---|
+| `CK-SCH-G01` | `validate_record_schema` —— 治理记录类型（`epoch_transition`、`governance_report`）的信封 / 形状违规 | block |
+| `CK-SCH-N01`、`CK-SCH-N02` | `validate_record_schema` —— 其他记录类型的同类违规；提案摘要超出字段预算 | warn |
+| `CK-HSH-001`、`CK-HSH-002`、`CK-HSH-003` | `validate_hashes` —— 记录 `prompt_hash` 与该角色已注册 active 哈希不符；`artifact_hashes` 与重算 sha256 不符；无法解析的产物或 `source_ref` | warn |
+| `CK-HSH-010` | `validate_hashes` —— 某个 **active** 注册表条目自身的 `prompt_sha256[:12]` 与其已注册 `prompt_hash` 不一致 | block |
+| `CK-ACC-001`、`CK-ACC-002` | `validate_capability` —— `CAPABILITY_MATRIX` 未授予或 Task 11 元动作标志拒绝；访问退役提示词正文（对任何角色都不可读） | block |
+| `CK-EPO-001` | `validate_epoch_invariance` —— `prompt_hash` 位于该纪元冻结 active set 之外的记录 | warn |
+| `CK-EPO-002` | `validate_epoch_invariance` —— 纪元中途的非紧急状态变更事件 | block |
+| `CK-REG-001`…`CK-REG-007` | `validate_transition` —— 边不在 T1–T21 表中、仅限边界的边在纪元中途打戳、声明的 `rule_id` 与表矛盾、`produced_by` 不是 RegistryTransitionEngine、缺少必需的佐证引用、紧急转换形状非法、`from_status` 与注册表矛盾 | block |
+| `CK-REG-101` | `validate_authority_non_expansion` —— 候选声明的权限超过其现任（不变式 18） | block |
+| `CK-ROL-001`、`CK-ROL-002`、`CK-ROL-003` | `validate_role_separation` —— 弹劾动议作者不是 Auditor、证据包作者不是 EvidenceClerk、同角色指控 | warn |
+| `CK-ROL-901` | `validate_role_separation` / `validate_capability` —— RegistryTransitionEngine 以外的任何主体写注册表或激活候选（不变式 10） | block |
+| `CK-ERA-001`…`CK-ERA-006` | `validate_selective_erasure` —— 前沿中出现 stale / 前沿无效 / 源自退役提示词的记录、退役提示词的依赖方未被置 stale、发生物理删除（不变式 13）、`prompt_trace.jsonl` 中带未映射退役哈希的行 | block |
+| `CK-AUD-001`、`CK-AUD-002`、`CK-AUD-003` | `validate_audit_log_integrity` —— 序号回退、已检查点前缀被篡改、哈希链断裂 | block |
+| `CK-CLN-001`、`CK-CLN-002` | `validate_clean_room_bundle` / `validate_contamination_free` | block |
+| `CK-CTX-001` | `validate_context_scope` —— 渲染出的角色视图超出其字段白名单 | warn |
+| `CK-UTL-001`…`CK-UTL-008` | `validate_utility_policy` —— 除 `CK-UTL-006`（轴键位于该纪元存活轴集合之外）为 warn 外，其余全部 block | block / warn |
+| `CK-KNW-001`…`015`、`CK-CAP-001`…`018`、`CK-HAR-001`…`020` | `validate_knowledge_integrity` / `validate_capability_binding_integrity` / `validate_harness_integrity` | block |
+
+`severity: block` 赋予判定在**执行路径查询它的地方**否决状态变更的资格；
+这既不意味着每个上下文都会照办，也不意味着执行模式能触及每个上下文。尊重
+[`rqgm.kernel.enforcement`](configuration.md#execution-mode-and-rqgm-governance-opt-in)
+的执行点都经由辅助函数 `ari.rqgm.kernel.should_block`
+（`ari/rqgm/runtime.py`、`transition_engine.py`、`frontier_repair.py`，以及
+`kernel.py` 中带能力门的 MCP 包装器）；在 `audit_only` 下该辅助函数对所有
+报告返回 false，同时不改动已记录的严重度，因此审计轨迹仍然如实。另一些
+执行点直接读取 `report.blocking`，因而不受执行模式影响：洁净室的生成前 /
+生成后筛查（`ari/rqgm/clean_room.py`）、元候选的准入门
+（`ari/rqgm/meta_evolution.py`），以及治理自审的升级判定
+（`ari/rqgm/governance/_self_audit.py`）。有意只做告警的上下文在两种模式下
+都只告警：逐节点钩子（`per_node_warn_check`）执行 schema 与哈希检查且从不
+抛出异常，`validate_context_scope` 也从不阻断节点执行。
+
+有一条升级路径刻意独立于 `enforcement`：凡是码位于
+`transition_engine.EMERGENCY_TRIGGER_CODES`（`CK-HSH-010`、`CK-EPO-002`、
+`CK-AUD-001/002/003`、`CK-ACC-001/002`、`CK-ROL-901`）的 block 级违规，无论
+处于哪种模式都会由 MCP 包装器交给 T16 紧急隔离路径 —— `audit_only` 降级的是
+阻断，而非宪法事实，且该紧急转换本身在提交前也要经过内核校验。但这条路径
+只能隔离**已注册的组件**：当行为角色没有注册表条目时（研究智能体的
+`generator` 就是常见情形），升级只会被记入日志，不会组装任何转换。
 
 ## 共享信封（`rqgm_defs.schema.json`）
 
@@ -227,6 +303,260 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 | `candidate_evaluations` | 馈入 RegistryTransitionEngine 的重放/锚定分数 |
 | `replay_pool_updates` / `self_audit` / `bond_accounting` / `budget_usage` | 边界簿记 |
 | `recommendations[]` | `action` 是封闭集合 `promote_candidate` \| `promote` \| `demote` \| `warn` \| `quarantine` \| `retire` \| `no_action`，由 Task 09 消费 |
+
+### 动议流水线的记录
+
+除报告本身外，`audit_epoch` 还会向 `rqgm_audit.jsonl` 追加四类记录，
+它们都携带上文的共享信封。**这四类没有独立的 schema 文件** ——
+其形状由 `ari/rqgm/governance/_records.py` 中的 frozen dataclass 定义，
+并由审计自身的自审步骤经内核重新校验（信封走
+`validate_record_schema`，作者走 `validate_role_separation`，
+即 CK-ROL-001/002/003）。
+
+**`evidence_bundle`** —— 唯一合法的撰写者是 EvidenceClerk
+（`build_evidence_bundle` 对其他作者抛出 `GovernanceRuleError`），
+每个被阈值标记的对象一束，`prompt_hash` 恒为 `null`，因为 clerk 是
+确定性的、不经提示词。clerk 的候选 ref 是点名该对象的记录 —— validated attack、
+utility record、raw attack 以及 K/C/A 来历类型 —— 外加关于该对象的
+同角色 `comparison_observation`；但后者只作为**线索**进入：观察自身的
+`source_refs` 被拉进来做独立验证，而观察的 ref 本身也照样列出，
+于是它的排除被记录下来，而不是被悄悄丢弃。
+
+`items[]` 的每一项是 `{kind, ref, content_hash}`，其中 `content_hash`
+是 `payload_hash(record)` —— 与本页其余部分同一套 `hash12` 方案，
+不存在第二套哈希；`kind` 来自一张封闭的 `record_type → kind` 映射：
+
+| 可采纳的 `record_type` | bundle 的 `kind` |
+|---|---|
+| `validated_attack` | `validated_attack` |
+| `utility_record` | `utility_record` |
+| `judgment_record` | `judgment_record` |
+| `review_record` | `review_record` |
+| `node_report` | `execution_provenance` |
+| `harness_attestation` | `fixed_verifier_result` |
+| `knowledge_skill_use` | `instruction_provenance` |
+| `capability_binding` | `execution_authority` |
+
+其余一律不可采纳。每一次拒收都以 `{ref, reason}` 记入
+`excluded_items[]`，因此一个 bundle 既说明它携带了什么，也同样清楚地
+说明它拒绝了什么。检查按固定顺序执行，记录的是第一个命中的理由：
+
+| 顺序 | 理由 | 含义 |
+|---|---|---|
+| 1 | `unresolvable_ref` | 该 ref 在本纪元的记录切片中无法解析；同时把 `verification.all_refs_resolved` 翻为 `false` |
+| 2 | `unadjudicated_raw_attack` | 该 ref 是一条 `raw_attack`。raw attack 永远不是证据，只有由它派生、并由裁决者撰写的 `validated_attack` 才是（不变式 8-9） |
+| 3 | `same_role_source` | 该项的作者角色等于目标的角色。同角色输出是观察，绝非指控 —— 关于目标的 `comparison_observation` 与目标自身的 review record 正是因此被排除 |
+| 4 | `inadmissible_record_type` | 记录类型不在上表映射内 |
+| 5 | K/C/A 完整性理由 | 未通过自身检查的来历附件：工件层面（`missing_artifact_reference`、`invalid_artifact_reference`、`unsafe_artifact_reference`、`unresolvable_artifact_reference`、`artifact_digest_mismatch`），以及针对 attestation、knowledge use、capability binding 的分类型检查；完整集合见 `_evidence.py` |
+
+组装只做排除、不做替换：既不填补，也不抛出。`verification` 为
+`{checked_by: "evidence_audit_checker", all_refs_resolved}`。既然从不
+填补，空 bundle 就无法支撑起诉 —— 被标记的对象若其 bundle 没有 `items`，
+便不产生动议，而在 `self_audit.findings` 中留下一条
+`no_admissible_evidence`。
+
+**同角色观察是预留的，且尚未被产生。**设计上为“某组件与同角色同侪产生分歧”
+的情形预留了一种治理 `comparison_observation` —— 例如某个 reviewer 给某节点
+的打分不同于可能取代它的 reviewer。这种记录点名自己的
+`subject_component_id` 与 `subject_role`，其构建器无条件设置
+`admissible_as_evidence: false`：它是观察，绝不是指控。上文中 clerk 实现的
+“只作线索、绝不作证据”规则正是它 —— 观察自身的 `source_refs` 被顺着追到一手
+产物并独立核验，而观察的 ref 本身仍落入 `excluded_items`（其撰写者角色等于
+目标角色时理由为 `same_role_source`，否则为 `inadmissible_record_type`），
+使排除被记录而非悄然发生。
+
+**这条路径目前是惰性的。**记录类型、其构造期不变量、证据组装中的线索追随、
+以及按 subject 的可靠性聚合都已实现，但**没有任何已发布组件会把治理
+`comparison_observation` 发射进 `rqgm_audit.jsonl`** —— 该构建器没有生产
+调用方。因此在任何已发布运行中，报告的 `observations` 数组都是空的。请把它
+当作预留设计，而不是运行会呈现的行为。相反，通用的同角色排除是活的：它适用
+于撰写者角色等于目标角色的任何 bundle 候选，与记录类型无关。
+
+该类型名与一个无关的形状同名。提示词进化的影子阶段会把它自己的
+`comparison_observation`（候选与现任的输出哈希及分歧摘要）写入
+`prompt_evolution.jsonl`，记载于下文的
+`rqgm_prompt_evolution.schema.json`。区分二者靠的是文件与字段，而不是
+`record_type`。
+
+**`impeachment_motion`** —— 唯一合法的撰写者是 Auditor，因此 Reviewer v4
+根本无法经由这条路径触及 Reviewer v3。它增加
+`target_component_id`、`target_role`、`charge`、`evidence_bundle_id`、
+`bond_units` 与 `requested_action`，而 `source_refs` 仅为该 bundle 的 id。
+`requested_action` 是报告推荐词汇的严格**子集** ——
+`demote` \| `warn` \| `quarantine` \| `retire` —— 因为动议从不提升；
+超出该集合的取值在构造时即被拒绝，`target_role: auditor` 同样被拒
+（Auditor 从不弹劾自己的角色）。
+
+**`governance_defense`** —— Defender 为每个动议撰写一条，携带
+`motion_id`、`defense_text` 与 `procedural_default`。走回退路径时
+`prompt_hash` 为 `null`，正文即下表所引的固定程序性默认文本。
+
+**`impeachment_outcome`** —— GovernanceJudge 为每个已裁决的动议撰写一条。
+它以独立记录的形式存在，好让 Task 09 的 transition engine 无需解析整份
+报告即可消费裁决结果。它镜像报告的 `adjudications[]` 条目，并额外持有
+该条目只是指向的东西：`rationale` 正文（报告侧携带 `rationale_ref`，
+其值正是本记录的 id），以及当确定性评分板推翻裁决者判断时置位的
+`clamped_by_board`。`outcome` 是封闭集合 `upheld` \|
+`partially_upheld` \| `dismissed` \| `inconclusive`。
+
+**保证金账本。**对滥诉的抑制不经过 LLM。每提起一个动议，就按
+`rqgm.governance.bond_units_per_motion` 向纪元级的起诉预算
+`max_motions_per_epoch × bond_units_per_motion` 押入保证金。结算是裁决结果的
+纯函数：`upheld` 与 `partially_upheld` 退还，`dismissed` 没收，
+`inconclusive` 则继续押着 —— 既不退还也不没收。代码把这称作"顺延到下一
+纪元"，但**并没有发布任何顺延机制**：步骤 1 只读取本纪元的记录切片，
+未决动议不会被再次读入，下一纪元是从新的可靠性分类重新导出动议的。
+预算一旦耗尽，无论阈值怎么说，本纪元都不再提起动议。有两点容易误读。`remaining_budget` 只计
+*提起*所消耗的部分，因此退还并不会在本纪元内恢复提起额度。而账本在每次
+`audit_epoch` 时新建，故每到边界即重置：它不跨纪元累积惩罚，这意味着对一个
+纪元接一个纪元地滥诉的起诉者，其威慑力不足。其结果就是报告的
+`bond_accounting` 块 —— `posted`、`refunded`、`forfeited`、
+`remaining_budget`。它们是配额计数器而非货币：组件之间并没有价值转移。
+
+**`self_audit` 块。**步骤 8 用衡量所有人的同一把尺去审计司法自身，而且在这里
+拥有最终发言权的是**内核**而不是编排器。流水线刚刚产出的每一条
+`evidence_bundle`、`impeachment_motion`、`governance_defense` 与
+`impeachment_outcome` 都被回送给 `ConstitutionalKernel.validate_record_schema`
+与 `validate_role_separation`。记录构建器自身的拒绝只是早期优化；保证在于
+这次重跑，从而使一个有缺陷或已进化的治理组件无法把违规记录夹带进报告。
+该块携带：
+
+| 键 | 内容 |
+|---|---|
+| `checked_components` | 受检治理主体的排序列表：auditor、evidence clerk、defender、governance judge |
+| `kernel_violations_found` | 重新校验得到的违规计数 |
+| `findings` | 审计过程中立起的确定性发现 —— `judge_clamped_by_board`、`no_admissible_evidence`、`same_role_prosecution_skipped`、`motion_refused` 等 |
+| `escalations` | 对每份**阻断性**内核报告中的各条违规给出 `{code}:{subject_ref}` |
+| `ban_recommendations` | 被污染类代码牵连的主体 —— `CK-AUD-001`（审计日志只追加违规）、`CK-AUD-002`（审计日志前缀篡改）、`CK-AUD-003`（审计日志哈希链断裂）、`CK-ACC-002`（访问已退役提示词正文）、`CK-ROL-901`（伪造注册表写入权限）—— 以及任何 `contamination` / `clean_room_lineage_failure` 发现。RegistryTransitionEngine 读取此键；它仍只是建议，且封禁只施加于确实处于 retired 的组件 |
+| `stats` | `auditor_motion_precision`、`judge_board_clamp_count`、`defender_substantive_rate`。若本纪元一个动议也没提起，这两个比率为 `null` —— 绝不插补 |
+
+`governance_report.schema.json` 只声明了前四个键；`ban_recommendations` 与
+`stats` 是增量的，作为未声明属性随记录一起传递。若没有可用的内核，或重新
+校验自身抛出，该块降级，并向 `degradation_reasons` 加入
+`self_audit_degraded`。
+
+### 审计的确定性预算
+
+审计恰好有三处 LLM 接缝 —— 步骤 4（起诉）、步骤 5（辩护）与步骤 6（裁决）
+各自接受一个可选的 renderer。其余步骤都没有模型介入，只依据本纪元审计日志
+切片与冻结注册表运行。每一处接缝都先由规则裁断，只有在边界处才去问模型。
+
+**起诉是规则优先、LLM 其次。**`classify_target`
+（`ari/rqgm/governance/_prosecution.py`）读入一条 ReliabilityMonitor 条目，
+返回三种答案之一。当至少有 `ATTACK_THRESHOLD`（2）条 validated attack 绑定
+到某组件，或其可靠性分数低于 `RELIABILITY_FLOOR`（0.4）时，该组件被**直接
+提起**。当恰好有一条 validated attack 绑定到它，或其分数落在
+`[RELIABILITY_FLOOR, RELIABILITY_FLOOR + BORDERLINE_MARGIN)` 即
+`[0.4, 0.5)` 时，它处于**边界**—— 也只有此时才会运行 LLM Auditor 提示词。
+其余一概不动。三个阈值都是模块常量，与内核的规则表一样固定在代码里；可配置
+的只有 `rqgm.governance` 之下的预算。边界情形下若 auditor 回复缺失或无法
+解析，则完全不提起动议 —— 这就是现任推定，与
+`LineageDecision.fallback_continue` 同形。
+
+有两类对象从不被起诉：
+
+- **`tier: fixed` 的组件。**tier 检查是分类器的第一条语句，在读取任何阈值
+  之前就返回“无案”，因此固定组件无论被多少攻击点名都不可起诉。固定程序是
+  宪法机制而非制度上的现任者：它们的完整性发现会暂停或修复受影响的产物，
+  而不进入弹劾竞争。
+- **角色为 `auditor` 的目标。**唯一的 Auditor 无法对自己的角色提起，因此
+  该目标被跳过，并作为 `same_role_prosecution_skipped` 记入
+  `self_audit.findings`，而不是被悄悄丢弃。
+
+`audit_epoch` 绝不因某一步失败而中止。九个步骤各有一个全域的确定性回退；
+一旦取用，`degraded` 翻为 `true`，并向 `degradation_reasons` 追加一个记号。
+
+| 步骤 | 失败时 |
+|---|---|
+| 1 收集观察 | 本纪元的记录切片为空，于是步骤 2-6 无事可做 |
+| 2 可靠性评估 | 没有可靠性条目。与步骤失败无关地，本纪元未撰写任何内容的组件会得到 `reliability_score: null` 与 `insufficient_data: true` —— 分数绝不被杜撰，而该组件仍可凭其 validated attack 计数被起诉 |
+| 3 证据组装 | 没有 bundle，因而没有动议。逐项失败到不了这一行：组装不抛出，只排除（见上） |
+| 4 起诉决定 | 没有动议。处于**边界**分类、其 auditor 调用不可用或无法解析时同样不提起（现任推定）；明确越过阈值的分类是规则驱动的，完全不需要 LLM |
+| 5 生成辩护 | 辩护变为固定的程序性默认文本 *"no substantive defense generated; incumbent presumption applies"*，并置 `procedural_default: true` |
+| 6 裁决 | 裁决者不可用或回复无法解析时判 `dismissed`，即有利于现任 —— 下文所述的评分板钳制同样作用于这一回退。评分板打分失败则判 `inconclusive`，其保证金既不退还也不没收而是继续押着 —— 动议被留作未决，而不是被作出结论。以 governance judge 自身为目标的动议将被回避，不产生 outcome 记录。并行的候选评估失败则使 `candidate_evaluations` 为空 |
+| 7 重放池更新 | 池更新被跳过并标记 |
+| 8 治理自审 | 内核重新校验被跳过：`kernel_violations_found` 保持为 0，也不上报升级。若整个步骤失败，该块回退为 `checked_components` 与 `stats` 均为空的桩 |
+| 9 产出报告 | **唯一**可能抛出的步骤。调用方的 fail-open 捕获（`ari/rqgm/runtime.py`）记录日志并返回空报告；由于外观层只在流水线返回之后才追加审计记录，该纪元便一条治理记录也不留下，而运行继续 |
+
+schema 把 `degradation_reasons` 声明为普通字符串数组 —— 约束词汇的是
+发射端而非枚举。已发布的流水线只发射以下形式：
+
+| 记号 | 发射条件 |
+|---|---|
+| `step_failed:observe`、`step_failed:assess_reliability`、`step_failed:assemble_evidence`、`step_failed:prosecute`、`step_failed:defend`、`step_failed:adjudicate`、`step_failed:evaluate_candidates`、`step_failed:update_replay_pool` | 该步骤抛出并取用了上表的回退 |
+| `auditor_llm_fallback:{component_id}` | 某个边界目标的 auditor 调用不可用或无法解析 |
+| `defender_llm_fallback:{motion_id}` | 辩护回退到程序性默认 |
+| `judge_llm_fallback:{motion_id}` | 没有可用的裁决样本，动议被驳回 |
+| `board_failure:{motion_id}` | 评分板打分抛出，动议成为 `inconclusive` |
+| `self_adjudication_recused:{judge_component_id}` | 动议以 governance judge 为目标，遂留作未决交由外部裁决 |
+| `replay_pool_update_skipped` | 有 upheld 案例待加入，但池未暴露 `append_case` |
+| `llm_budget_exhausted` | 触到 [`max_llm_calls_per_audit`](configuration.md#execution-mode-and-rqgm-governance-opt-in) 上限，或 Task 12 的预算管理器拒绝了调用 |
+| `self_audit_degraded` | 自审的内核重新校验不可用或抛出 |
+
+不存在 `step_failed:produce_report` 记号：步骤 9 是唯一不降级的步骤。
+
+当 `llm=None` 时，审计完全走这些纯规则路径；对同一输入运行两次，
+在剥离 `created_at` 后会产出逐字节相同的记录。
+
+**即使 LLM 正常工作，裁决者依然被约束。** ReplayBoard 与 AnchorBoard 的
+分数在 GovernanceJudge 裁决之前算出，裁决被它们约束 —— 这与节点
+`results.json` 的 measurements 覆盖 LLM 对截断后 artifact 文本的读取，
+是同一条优先关系。评分板分数是该对象已存案例结果的均值，按 case id 顺序
+最多取 `rqgm.replay.max_cases_per_epoch` 个案例；当动议把 retirement 摆上
+台面时（它请求 `retire`，或以已处于 quarantine 的组件为目标），上限升为
+`rqgm.replay.max_cases_for_retirement`，而存在的 Task 12 预算管理器还可能
+把它继续压低。没有任何匹配案例时分数为 `null` —— *不可用*，而绝不是编造
+的数字。
+
+随后裁决会与现任的*可用*评分板分数的均值比对。两个阈值是
+`ari/rqgm/governance/_adjudication.py` 中的模块常量，固定在代码里而非
+配置里：
+
+| 现任的评分板均值 | 评分板拒绝的裁决 | 钳制为 |
+|---|---|---|
+| ≥ 0.8 (`BOARD_HIGH`) | `dismissed` 之外的任何结论 | `dismissed` |
+| ≤ 0.2 (`BOARD_LOW`) | `dismissed` | `partially_upheld` |
+
+两个评分板都不可用时不存在约束，裁决按原样保留。钳制在上表的步骤 6 回退
+之后最后施加，因此回退同样被约束：裁决者不可用而判出的 `dismissed`，若
+对象分数 ≤ 0.2 仍会变成 `partially_upheld`。一次钳制会在
+`impeachment_outcome` 记录上置 `clamped_by_board: true`，并向
+`self_audit.findings` 添加一条 `judge_clamped_by_board`，计入
+`self_audit.stats.judge_board_clamp_count` —— 系统性偏袒现任或挑战者的
+裁决者会显现在审计里，而不是悄悄生效。
+
+候选提示词由同样的评分板打分，**绝不**经由裁决者：可用评分板分数的最小值
+达到 0.6 (`CANDIDATE_PASS_THRESHOLD`) 即 `pass`，否则 `fail`；两个评分板
+都没有分数时为 `inconclusive`。当 `rqgm.replay.use_cached_results`（默认
+开启）时，已接入的 Task 12 治理缓存会先于池中已存案例结果被查询，并由其
+回填；`candidate_evaluations[].cached` 报告的是该设置，而不是缓存是否存在
+或某次查询是否命中。
+
+启用 `rqgm.governance.jury_panel_enabled` 后，裁决者被采样三次并由多数
+决定；平票按固定顺序 `dismissed` > `partially_upheld` > `upheld` 倒向
+现任。默认为 `false`，由单次采样决定。
+
+有两个报告字段受结构约束而非受失败约束，二者都不会立起降级记号。
+
+**AnchorBoard 需要一份留出语料，而只有 paper 阶段提供它。**两块评分板都从
+传给 `audit_epoch` 的池中读取案例：ReplayBoard 读 `pool.cases`，AnchorBoard
+读 `pool.anchor_cases`。探索运行传入的池 `AdversarialReplayPool` 并未定义
+`anchor_cases` 属性，因此在该路径上 AnchorBoard 报告*不可用*而不是给出分数：
+`anchor_score` 在每一次裁决与每一次候选评估中都是 `null`，
+`budget_usage.anchor_cases_used` 始终为 0，而能够钳制裁决者判断的现任侧
+评分板均值与候选的通过判定都仅由 ReplayBoard 决定。留出锚定集合只在
+paper-archive 阶段才抵达审计 —— 该阶段换入一个携带它的、池形状的适配器
+（`ari/rqgm/paper_anchor.py`）—— 而那份语料本身默认也是关闭的（见下文
+`paper_anchor_corpus.jsonl` 条目）。`null` 的锚定分数应读作“没有可用的留出
+语料”，绝不可读作低分。
+
+**`replay_pool_updates.retired` 是惰性的。**真正被填充的只有 `added`：本纪元
+的 validated attack 被收录成的重放案例，加上任何 `upheld` /
+`partially_upheld` 动议背后的 validated attack ref。`retired` 数组以空值
+初始化，且没有任何代码向它追加：案例的退役是池内部的操作
+（`evict_to_cap` 只在快照中把案例标记为 `evicted`，而 JSONL 保留曾经收录的
+每一行），审计并不在此处将其暴露出来。由*已退役提示词*引发的陈旧化交由前沿
+修复（Task 10）处理，不通过本字段报告。
 
 ## 对抗循环 schema（Task 06）
 

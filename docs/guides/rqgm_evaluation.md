@@ -68,9 +68,9 @@ catalog snapshots, Research Contract, and Verification Contract fixed.
 
 The preset dictionaries live in separate `assurance_conditions` and
 `knowledge_capability_conditions` sections of `ablation_matrix.yaml`.
-`expand_kca_condition` composes them with one unchanged B overlay and writes
-the chosen B/H/K ids as evaluation metadata. Production Knowledge selection,
-binding, and verification remain in `ari.knowledge`,
+`factorial_condition_overlay` composes them with one unchanged B overlay and
+writes the chosen B/H/K ids as evaluation metadata. Production Knowledge
+selection, binding, and verification remain in `ari.knowledge`,
 `ari.capability_binding`, and `ari.assurance`; `ari.rqgm.evaluation` only
 measures and injects failures into those paths.
 
@@ -412,7 +412,8 @@ under `configs/`, and the campaign `ablation_report.json` +
 ## Test tiers
 
 - **Tier 1 (CI-hard)** — `ari-core/tests/test_rqgm_eval_{conditions,metrics,
-  injection,detection_fixture,doubles}.py`: pure fixtures, no LLM.
+  injection,detection_fixture,doubles}.py` plus the Task-20 pair
+  `test_rqgm_eval_kca_{conditions,injection}.py`: pure fixtures, no LLM.
 - **Tier 2 (CI-hard, offline smoke)** — `test_rqgm_eval_smoke.py`: synthetic
   stub-component runs per condition through the real Task 03/06/07 record
   paths, completing in seconds.

@@ -108,8 +108,11 @@ LLM 评判器（它从 `continue` / `switch_to_idea` / `fanout` / `terminate` �
 **claim-evidence gate (主张-证据门)**
 一个确定性的、不使用 LLM 的门（`claim_evidence_hard_gate`）。它在容差范围内从记录的结果
 重新推导论文中报告的每个数字，并检查数值覆盖率 / 操作数解析 / 图表存在性。默认在 `warn`
-（仅报告）模式下启用；设置 `claim_gate_policy.mode: strict`（或
-`ARI_CLAIM_GATE_MODE=strict`）即可在出现阻断性错误时阻止 finalize。当 `comparison_scope`
+模式下启用，该模式只在 FINAL 阶段阻断 objective-integrity 的 `always_block_on` 层
+（invariant 违反、correctness 失败或未覆盖、ceiling 未测量、recompute 不可复现、
+跨 run 或未绑定的 evidence）；设置 `claim_gate_policy.mode: strict`（或
+`ARI_CLAIM_GATE_MODE=strict`）可额外阻断配置的 `block_on` 所见以及 strict 小节中
+未覆盖的结果数字。draft 阶段的报告从不阻断。当 `comparison_scope`
 为 `any`（默认）时，跨环境比较被视为透明性警告；为 `same_environment` 时，它会成为阻断性
 错误。参见 [配置](configuration.md)。
 

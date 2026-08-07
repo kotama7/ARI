@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-evaluator/src/server.py
     role: implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # Research contracts

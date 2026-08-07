@@ -238,7 +238,12 @@ brokerを経由して届くdomain instrumentはARI Providerではなく、Provid
 Provider catalog entryは`brokered` blockを持てる。中身はfederated catalog lock、dispatch
 tool、leaf `tool_ref`からARI `capability_ref`へのreviewed tableである。reviewed leafは1件
 ずつ`CapabilityProvisionV1`になり、`tool_ref`と`dispatch_tool_ref`はbrokerのdispatch tool
-——run lockに存在する唯一のref——、`subject_tool_ref`がleafになる。
+——run lockに存在する唯一のref——、`subject_tool_ref`がleafになる。`subject_argument`は
+そのleafを運ぶdispatch引数の名前であり、実際のdispatch callがこのrunでbindしていないleafを
+引数で指した場合は拒否される。compositeは構造上すべて同じdispatch `tool_ref`を共有するため、
+この照合が無ければreviewed leaf 1件のauthorizationがfederated catalogの全leafを運んでしまう。
+可視性チェックは引数を渡さず、lifecycle refはleafではなくjob handleを運ぶので、どちらも
+subject gateの対象外である。
 `nested_source_lock_digests`はleafのsource digestを運び、federated lock自身の
 `catalog_digest`はProviderの`nested_source_lock_digests`に加わる。broker背後でleafを
 差し替えると、binding requestがpinするProvider catalog snapshotが動く。
@@ -343,6 +348,27 @@ deterministic generated case、独立reference、dtype/accumulation-aware error 
 metamorphic/shape/boundary/repeat coverage、negative controlを持つ。checked-in verified catalog
 へのpromotionはrelease admissionであり、commit済みsource revision、immutable container、
 license review、reference pass、negative-control fail、registration reportが必要である。
+
+この三つはそれぞれcorrectness familyであり、`ari.assurance.native_hpc_family`で一度だけ
+自己登録し、三つを供給する。`verify`(hidden caseとそれを判定するoracle)、`reference`
+(独立実装であり、parity probeのclean controlでもある)、`call_shared_library`(candidateを
+呼ぶctypes ABI)である。検証可能kernelのsetは以前は五箇所——`Literal`、facadeのdispatch
+dict、parity probeのreference table、ABI dispatch dict、二つのargparse `choices` tuple——に
+書かれていた。そのため四箇所にしか追加されなかったfamilyはdispatchされscoreされattestされる
+一方でprobeは一度も触れず、それでもprobeは`passed`と報告した。現在は全dispatch siteが
+registryへ問い合わせ、同名の再registerは拒否される。どのoracleがrunを判定したかをimport順序が
+決めることはない。registryはnative driver digestの内側にある。どのoracleがrunを判定するかを
+決めるからで、外側にあればattestationが検証を通したままjudging oracleを差し替えられる。
+digestはverifier fileが一つ欠けたとき、黙って対象から外さずraiseするようになった。以上は
+correctness familyをpinned problemのように自由にはしない。problemはdataのdirectoryだが、
+familyはoracleを持つ。family追加は今も他と同様にreviewされるARI変更である。callerが供給
+できるoracleはcallerが弱められるoracleだからである。変わったのは、setがsetごとに五箇所では
+なくfamilyごとに一箇所で宣言される点だけである。
+
+costは実在するので明記する。driver digestが変わったため、三つとも現在は
+`native Harness driver bytes drifted`で実行を拒否する。manifestは意図的に再pinしていない。
+signatureは署名した対象だけを覆うので、再pinすれば三つのhuman-maintainer attestationが
+誰も承認していないcodeを記述することになる。再び実行するにはre-registrationが必要である。
 
 Inspect、Harbor、KernelBench/ComputeEval/scBench、PaperBench adapterはupstream frameworkを
 forkしない。pinned official routeを検証してstrict result envelopeへ正規化する。digest-bound

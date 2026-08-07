@@ -4,14 +4,15 @@ sources:
     role: schema
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # `execution_profile` reference
 
 The `execution_profile` object sits under `reproduce_contract` in every
-PaperBench rubric (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
-v3). It captures the parallel-execution properties the paper requires:
+PaperBench rubric (`ari-skill-replicate/schemas/replication_rubric.schema.json`
+— `schema_version: ari.replication-rubric/v2`, `version: "3"`). It captures the
+parallel-execution properties the paper requires:
 SLURM allocation shape, GPU type, memory, job-step bindings, etc. The
 `ari-skill-paper-re` runner validates it and compiles allocation fields into
 `ari.hpc.job-request/v1`; the replicator consumes job-step fields while
@@ -27,7 +28,7 @@ uses the same typed request, clean environment, digest, and handle lifecycle.
 | `kind` | enum | (agent prompt only) | — | `cpu_single` \| `gpu_single` \| `gpu_multi` \| `mpi` \| `mpi_gpu` |
 | `paper_max_ranks` | int | — | — | Largest rank count the paper reports |
 | `paper_max_nodes` | int | — | — | Largest node count the paper reports |
-| `min_ranks` | int | `--ntasks=N` | 1 | Smallest rank count acceptable for partial credit |
+| `min_ranks` | int | `--ntasks=N` | 1 | Smallest rank count acceptable for partial credit. When set it *is* the requested `--ntasks`, so `ntasks_per_node` must not exceed it — the typed request rejects `tasks_per_node cannot exceed total tasks`. |
 | `min_nodes` | int | — | 1 | Mirror of `min_ranks` for nodes |
 | `result_aggregation` | enum | — | `rank0_csv` | Only `rank0_csv` is supported in v0.7.2 |
 | `metric_columns` | list[str] | — | `[]` | Required CSV header (e.g. `["nodes","ranks","runtime_sec","gflops"]`) |
@@ -45,7 +46,7 @@ uses the same typed request, clean environment, digest, and handle lifecycle.
 | `constraint` | str | `--constraint=...` | `""` | E.g. `"skylake"`, `"haswell|broadwell"` |
 | `cpu_bind` | str | `srun --cpu-bind=...` in `reproduce.sh` | `""` | Job-step setting, not an `sbatch` directive. |
 | `mem_bind` | str | `srun --mem-bind=...` in `reproduce.sh` | `""` | Job-step setting, not an `sbatch` directive. |
-| `hint` | str | `--hint=...` | `""` | E.g. `"nomultithread"`, `"compute_bound"` |
+| `hint` | enum | `--hint=...` | `""` | `""` \| `compute_bound` \| `memory_bound` \| `multithread` \| `nomultithread` |
 | `module_loads` | list[str] | generated clean job prelude | `[]` | Loaded explicitly and included in provenance. |
 | `account` | str | `--account=...` | `""` | Typed project/account selector. |
 | `qos` | str | `--qos=...` | `""` | Typed QoS selector. |
@@ -79,7 +80,7 @@ per task, exclusive, Skylake-only):
     "kind": "mpi_gpu",
     "paper_max_ranks": 32,
     "paper_max_nodes": 4,
-    "min_ranks": 4,
+    "min_ranks": 32,
     "result_aggregation": "rank0_csv",
     "metric_columns": ["nodes","ranks","runtime_sec","gflops"],
     "accepts_reduced_scale": true,

@@ -18,6 +18,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/launch.py
     role: implementation
+  - path: ari-core/ari/cli/lineage.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
   - path: ari-core/tests/test_gui_baseline_settings_contract.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
@@ -39,8 +43,11 @@ chains** — the value a setting resolves to depends on *who is asking*:
   **`ARI_*` env var > workflow.yaml/config YAML > Pydantic field default**.
   Env always wins because the `_apply_*_env_overrides` functions run *last*
   (after profile merge). `auto_config()` is the no-file fallback (env over
-  hardcoded). Profiles (`--profile laptop|hpc|cloud`) deep-merge between YAML
-  and env.
+  hardcoded). Profiles (`--profile laptop|hpc|cloud`) are applied between YAML
+  and env, but they are **not** a deep merge — `_apply_profile`
+  (`ari/cli/run.py`) copies exactly four keys and silently ignores every other
+  key in the profile file (see the 4-key profile merge caveat under
+  *Resolution model* below).
 - **GUI Settings panel** — what `/api/settings` shows. Built by
   `_api_get_settings()`: **saved `settings.json` (if truthy) > `ARI_*` env >
   `workflow.yaml` > hardcoded default**, with a falsy-re-force quirk (a
@@ -64,11 +71,71 @@ re-parsed by `ari.config`.
 | GUI port | `ARI_GUI_PORT` (via `start.sh`) > `--port` (argparse default **8765**) > `state.py` `9886` placeholder | `start.sh`, `viz/server.py:main` |
 | SLURM partition | explicit tool `partition` kwarg (sinfo-validated) > `SLURM_DEFAULT_PARTITION` > sinfo first; the kwarg is chosen from: experiment.md `Partition:` > `ARI_SLURM_PARTITION` > sinfo | `ari-skill-hpc/slurm.py`, `ari/agent/workflow.py` |
 | checkpoint dir | `ARI_CHECKPOINT_DIR` > YAML `checkpoint.dir` > `workspace/checkpoints/{run_id}` | `config/__init__.py:_apply_checkpoint_env_overrides`, `PathManager` |
+| `bfts_pipeline[].enabled` | `{checkpoint}/workflow.yaml` > package `ari-core/config/workflow.yaml` > `true` | `cli/bfts_loop.py` (raw YAML read) |
+| `lineage_decision.*` | active rubric's `lineage_thresholds` (`ARI_RUBRIC`; the four threshold keys only, not `mode`) > package `ari-core/config/workflow.yaml` > `./config/workflow.yaml` (process cwd) > call-site defaults | `cli/lineage.py:_load_lineage_decision_config` |
+| `root_idea_selection.enabled` | package `ari-core/config/workflow.yaml` **only** > `false` | `cli/bfts_loop.py` (raw YAML read) |
 
 **Falsy-vs-missing:** the core env-override guards (`if _m:` etc.) treat an
 empty env var as missing (YAML/default kept; `base_url` uses an explicit
 `!= ""`). The GUI merge `{**defaults, **saved}` lets a present-but-empty saved
 key win, then re-forces only `llm_model`/`llm_provider` from `workflow.yaml`.
+
+**Two `workflow.yaml` blocks are read from the package copy only
+(anti-pattern).** `lineage_decision` and `root_idea_selection` are not
+declared `ARIConfig` fields, so `load_config`'s
+`{k: v for k, v in raw.items() if k in ARIConfig.model_fields}` filter drops
+them and each block is re-read from raw YAML by its own reader. Those two
+readers do not agree with the rest on *which* `workflow.yaml` to read.
+`bfts_pipeline` is read checkpoint-first — `{checkpoint}/workflow.yaml`, with
+the package copy only as a fallback — but `_load_lineage_decision_config`
+(`ari/cli/lineage.py`) reads the package `ari-core/config/workflow.yaml`,
+falling back to `./config/workflow.yaml` relative to the process working
+directory only when the package file is missing, and the
+`root_idea_selection` block reads the package copy and nothing else; the
+checkpoint-first and the package-only read sit in the same file,
+`ari/cli/bfts_loop.py`. Consequences: writing either block into
+`{checkpoint}/workflow.yaml` has no effect, and `--config` cannot carry them
+either — the typed loader discards them and neither reader consults that
+path. To change them for a run, edit the package `workflow.yaml`; for the
+four `lineage_decision` threshold keys, the active rubric's
+`lineage_thresholds` overlay is the supported per-venue knob. This is a known
+inconsistency rather than a designed layering, and new readers should not
+extend the package-only pattern.
+
+**Unknown top-level keys are dropped without a runtime warning.**
+`load_config`'s `model_fields` filter has a second consequence, and this one
+has no reader to rescue it. `ARIConfig` sets `extra="allow"`, but that changes
+nothing here: the filter runs *before* construction, so an undeclared block
+never reaches the model. Blocks like `memory`, `container`, `lineage_decision`,
+`bfts_pipeline`, `pipeline` and `claim_gate_policy` survive only because
+something re-reads the raw YAML for them;
+`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` is the enumeration of the
+top-level keys currently credited with such a reader. Every *other* top-level
+key is discarded, and nothing is logged when it happens; there is **no
+near-miss ("did you mean") check** anywhere in `ari.config`. A misspelled
+block — `rqmg:` for `rqgm:` — therefore leaves the run silently on defaults,
+with no error to notice. Two things partly cover this, neither of them on the
+CLI at load time:
+
+- **The resolver warns, in its payload.** `_apply_workflow_layer`
+  (`ari/config/resolver.py`) appends `workflow.yaml top-level key '…' is not
+  an ARIConfig field — load_config silently drops it (no reader consumes it)`
+  for every key outside `ARIConfig.model_fields` ∪
+  `KNOWN_NON_CONFIG_TOP_KEYS`. It reaches you through the `warnings` array of
+  `GET /api/v1/runs/{run_id}/resolved-config` (which reads the checkpoint's
+  copy of `workflow.yaml`) and of the new-run preview (which reads the
+  bundled one). It is a listing, not a spelling suggestion, and since nothing
+  outside `ari.viz.v1` calls the resolver, a hand-run CLI never sees it.
+- **Absence is observable in the checkpoint.**
+  `{checkpoint}/rqgm_state.json` is written only when `ari.mode: ari_rqgm`
+  and `rqgm.enabled: true` both hold (`ari/cli/run.py`), so its absence means
+  the run was `simple_bfts`. Confirm that a non-default execution mode
+  actually took effect from that file, not from the lack of an error message.
+
+The same filter is what makes the backwards direction safe: a block an
+`ari-core` build does not declare as a field is ignored rather than fatal, so
+a newer YAML deployed onto an older core degrades to that core's defaults
+instead of failing to load.
 
 > ⚠ This precedence is **documented as observed today**, not changed. The
 > order is locked by tests (`test_config.py`, `test_default_provider.py`,
@@ -106,7 +173,7 @@ effective value**. Each entry describes one `ARIConfig` leaf:
 | `default` | The pydantic default (or the default factory's value). Forced to `null` for `secret_reference` leaves. |
 | `enum` | The `Literal` members when the annotation is a closed set, else `null`. |
 | `required` | Whether the field has no default. |
-| `category` | UI grouping: Models, Skills, Search (BFTS), Infrastructure, Evaluation, Execution mode, Governance, Proposal routing. |
+| `category` | UI grouping: Models, Skills, Search (BFTS), Infrastructure, Evaluation, Execution mode, Governance, Proposal routing, Manuscript completeness, Scientific assurance. |
 | `level` | `basic` / `advanced` / `expert` — progressive disclosure. |
 | `scope` | `preference` / `installation` / `project` / `template` / `run` — which document may own the value. |
 | `sensitivity` | `public` / `internal` / `secret_reference`. |
@@ -116,14 +183,15 @@ effective value**. Each entry describes one `ARIConfig` leaf:
 | `source` | `pydantic` — the walk covers declared model fields only. |
 | `env_override` | The `ARI_*` variable that overrides this leaf, or `null`. |
 
-**Coverage invariant.** The registry currently has **144 leaves and 100 %
+**Coverage invariant.** The registry currently has **204 leaves and 100 %
 metadata coverage**: `build_field_registry()` raises `LookupError` when any
 walked leaf lacks a `FIELD_META` prefix or exact entry, so a new config field
-cannot ship without schema metadata. Today's distribution: 96 Governance /
-14 Search (BFTS) / 14 Proposal routing / 5 Models / 5 Infrastructure /
-4 Evaluation / 4 Execution mode / 2 Skills; 119 expert, 16 advanced, 9 basic;
-143 `public` + 1 `secret_reference` (`llm.api_key`); 114 `new_run_only` +
-30 `draft`; 20 leaves carry an `env_override`.
+cannot ship without schema metadata. Today's distribution: 104 Governance /
+32 Models / 24 Search (BFTS) / 14 Proposal routing / 10 Manuscript
+completeness / 5 Infrastructure / 5 Scientific assurance / 4 Evaluation /
+4 Execution mode / 2 Skills; 150 expert, 18 advanced, 36 basic;
+203 `public` + 1 `secret_reference` (`llm.api_key`); 146 `new_run_only` +
+58 `draft`; 20 leaves carry an `env_override`.
 
 Deliberate fidelity limits (documented, not silent):
 
@@ -155,9 +223,9 @@ which one half appears without its agreeing twin is rejected with
 `mode_interlock_mismatch` (`validate_mode_interlocks`, evaluated on the
 merged document values, not the raw patch). Since ADR-09 these four are the
 only mode/governance leaves a GUI client may write, and only for a new run;
-the remaining 96 paths in the `Execution mode` category and the `rqgm.*`
+the remaining 104 paths in the `Execution mode` category and the `rqgm.*`
 tree stay file-only and are refused by `POST /api/v1/runs` with
-`mode_locked`. Their `applies_when` metadata carries a pairing *note*
+`mode_locked` (`viz/v1/launch.py:locked_launch_paths`). Their `applies_when` metadata carries a pairing *note*
 ("paired with `rqgm.enabled` (one intent — set both)") rather than a
 `path=value` gate, because gating either half on the other would make the
 interlock self-gating.
@@ -404,7 +472,9 @@ bfts_pipeline:
     phase: bfts
   - stage: evaluate
     skill: evaluator-skill
-    tool: evaluate_node
+    tool: ''                   # display-only row: evaluation is owned by
+                               # ari-core's in-process LLMEvaluator, not an
+                               # MCP tool
     phase: bfts
   - stage: frontier_expand
     skill: idea-skill
@@ -416,7 +486,11 @@ bfts_pipeline:
 pipeline:
   - stage: search_related_work
     skill: web-skill
-    tool: collect_references_iterative
+    tool: search_papers
+    params:
+      provider: semantic-scholar
+      max_results: 15
+      mode: record
     skip_if_exists: '{{ckpt}}/related_refs.json'
     # ...
   - stage: transform_data
@@ -424,11 +498,10 @@ pipeline:
     tool: nodes_to_science_data
     inputs:
       nodes_json_path: '{{ckpt}}/nodes_tree.json'
-      llm_model: '{{llm.model}}'
-      llm_base_url: '{{llm.base_url}}'
+      primary_metric: '{{primary_metric}}'
+      higher_is_better: '{{higher_is_better}}'
     outputs:
       file: '{{ckpt}}/science_data.json'
-    skip_if_exists: '{{ckpt}}/science_data.json'
   - stage: generate_figures
     skill: plot-skill
     tool: generate_figures_llm
@@ -437,7 +510,7 @@ pipeline:
   - stage: write_paper
     skill: paper-skill
     tool: write_paper_iterative
-    depends_on: [search_related_work, generate_figures]
+    depends_on: [search_related_work, generate_figures, generate_ear]
     # ...
   - stage: review_paper
     skill: paper-skill
@@ -456,22 +529,11 @@ pipeline:
   - stage: finalize_paper
     skill: paper-skill
     tool: inject_code_availability
-    depends_on: [write_paper, ear_curate]
+    depends_on: [write_paper, ear_curate, ear_publish,
+                 claim_evidence_hard_gate_final]
     # Auto-loads ref/sha/doi from ear_published/manifest.lock and
     # publish_record.json; injects \codeavailability/\codedigest/\coderef
     # macros into full_paper.tex. Skips silently when no curated bundle.
-  - stage: ear_publish
-    skill: transform-skill
-    tool: publish_ear
-    depends_on: [ear_curate]
-    enabled: false           # opt-in; set to true (or pass publish=true)
-    inputs:
-      checkpoint_dir: '{{checkpoint_dir}}'
-      backend: ari-registry
-      visibility: staged
-      dry_run: false
-    outputs:
-      file: '{{checkpoint_dir}}/publish_record.json'
   - stage: merge_reviews
     skill: paper-skill
     tool: merge_reviews
@@ -493,7 +555,7 @@ pipeline:
   - stage: ors_generate_rubric
     skill: replicate-skill
     tool: generate_rubric
-    depends_on: [write_paper]
+    depends_on: [lock_paper_build]
     inputs:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       output_path: '{{checkpoint_dir}}/ors_rubric.json'
@@ -523,7 +585,7 @@ pipeline:
   - stage: ors_build_reproduce  # v0.7.0+: LLM fallback (skips if seeded above)
     skill: paper-re-skill
     tool: build_reproduce_sh
-    depends_on: [ors_audit_rubric, ors_seed_sandbox, finalize_paper]
+    depends_on: [ors_audit_rubric, ors_seed_sandbox, lock_paper_build]
     inputs:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
@@ -549,21 +611,25 @@ pipeline:
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
       repo_dir: '{{checkpoint_dir}}/repro_sandbox'
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
-      n_runs: 3
-      judge_model: gpt-5-mini  # any LiteLLM-recognised model id
+      n_runs: 0                # 0 / '' defer to the MCP tool's own defaults
+      judge_model: ''          # (ARI_JUDGE_N_RUNS / ARI_MODEL_JUDGE)
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv (ONE
+                               # pinned provider per call; the composite
+                               # `both` value is now refused by the web
+                               # skill's `_provider_name`)
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── Paper review (rubric-driven, AI Scientist v1/v2-compatible) ────────
 # Override via CLI (--rubric, --fewshot-mode, --num-reviews-ensemble,
 # --num-reflections) or environment variables (ARI_RUBRIC,
 # ARI_FEWSHOT_MODE, ARI_NUM_REVIEWS_ENSEMBLE, ARI_NUM_REFLECTIONS).
-# Bundled rubrics (16 YAMLs in ari-core/config/reviewer_rubrics/):
+# Bundled rubrics (23 YAMLs in ari-core/config/reviewer_rubrics/):
 #   neurips (default, v2-compatible) | iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
 #   | journal_generic | workshop | generic_conference
+#   | aer | ahr | apsr | econometrica | philreview | pmla | qje
 # Plus the built-in `legacy` fallback (v0.5 schema). Add new venues by
 # dropping <id>.yaml into reviewer_rubrics/ — no code changes required.
 #
@@ -924,8 +990,8 @@ claim_gate_policy:
 | Mode | Behaviour |
 |---|---|
 | `off` | Never blocks. |
-| `warn` (default) | Reports errors/warnings but never blocks `finalize_paper`. |
-| `strict` | The **final** gate blocks (`finalize_paper` is skipped) when a `block_on` error exists, and uncovered result numbers in the strict sections become blocking. The draft gate never blocks. |
+| `warn` (default) | Blocks the **final** gate only on the objective-integrity `always_block_on` tier below; every other finding is reported and never blocks `finalize_paper`. |
+| `strict` | The **final** gate additionally blocks (`finalize_paper` is skipped) when a `block_on` error exists, and uncovered result numbers in the strict sections become blocking. The draft gate never blocks. |
 
 `comparison_scope` is the injected research intent (env
 `ARI_COMPARISON_SCOPE` overrides it):
@@ -946,9 +1012,13 @@ of finding types that block the final gate under `strict`:
 > A separate set of **objective-falsehood** finding types
 > (`invariant_violation`, `correctness_failed`, `correctness_uncovered`,
 > `placeholder_denominator`, `recompute_mismatch`, `claim_evidence_missing`,
-> `ceiling_unmeasured`) blocks the final paper **regardless** of
-> `mode`. These defaults live in `policy.py`'s `blocking.always_block_on`
-> and are not set in `workflow.yaml`.
+> `ceiling_unmeasured`, `contract_expr_unevaluable`, `cross_run_evidence`,
+> `cross_run_or_unknown_node`, `cross_run_artifact`,
+> `artifact_digest_mismatch`, `artifact_not_bound`,
+> `invalid_measurement_contract`) blocks the final paper **regardless** of
+> `mode`, except under `off`, which never blocks. These defaults live in
+> `policy.py`'s `blocking.always_block_on` and are not set in
+> `workflow.yaml`.
 
 ## BFTS Tuning
 
@@ -1171,8 +1241,8 @@ config.
 | `enabled` | `true` | Epoch-boundary governance audit on/off inside `ari_rqgm` (ablation rungs run `ari_rqgm` with governance off). |
 | `default_level` | `1` | Default per-epoch governance level stamped into the report. |
 | `full_governance_only_on_top_k` | `3` | Full adversary/defender/judge attention only for the top-k nodes. |
-| `judge_on_disputed_only` | `true` | Invoke the GovernanceJudge only on filed motions. |
-| `impeachment_only_at_epoch_boundary` | `true` | Motions are filed only inside `audit_epoch`. |
+| `judge_on_disputed_only` | `true` | Per-node adversarial round **only**: when the budget gate denies the Defender call, the uncontested attack lapses as a logged observation instead of reaching the per-node `ArtifactJudge` (`ari/rqgm/adversarial/round.py`). It does **not** gate the epoch-boundary `GovernanceJudge` — the `audit_epoch` adjudication step never reads this key. |
+| `impeachment_only_at_epoch_boundary` | `true` | Declarative only — **no code path reads this key**. Motions are filed only inside `audit_epoch` because that is the facade's only motion entry point, a structural property rather than a switch. Setting it `false` does not enable mid-epoch motions. |
 | `max_llm_calls_per_audit` | `12` | Hard cap per `audit_epoch`; past it every step degrades to its deterministic fallback. |
 | `max_defender_calls_per_epoch` | `12` | Per-epoch Defender LLM-call cap (the adversary cap lives only in `rqgm.adversarial.max_adversary_calls_per_epoch`). |
 | `max_judge_calls_per_epoch` | `8` | Per-epoch Judge LLM-call cap. |
@@ -1312,6 +1382,7 @@ launches itself.  See [RQGM Evaluation](../guides/rqgm_evaluation.md).
 | `scripted_components` | `{}` | `role -> double_name` substitutions (harness-only). |
 | `injection_specs` | `[]` | Active `eval_*` injection ids; recorded into `rqgm_injection_provenance.json`. |
 | `paper_ablation.condition_id` | `""` | Evaluation-only RQGM-paper arm (`P0_hgm_h_fixed_critic` through `P4_constitutional_rqgm`). Empty, or `eval.enabled: false`, preserves normal behavior; this is not a `paper.mode`. |
+| `kca_conditions` | `b`/`h`/`k` `""`, `reporting_alias` `null`, `verification_tiers` `[]`, `legacy_comparison_only` `false`, `publishable` `true` | Task-20 factorial comparison identity. Metadata only: it never grants authority or changes production selection/binding/resolution decisions. |
 
 ### `rqgm.paper.reviewer.agent_as_judge` — agent-as-judge draft scoring
 
@@ -1391,7 +1462,12 @@ compiles a shadow readiness attempt without changing writer inputs. `enforce`
 splits evidence, authoring, and verification into digest-bound transactions and
 blocks authoring when a critical requirement is unresolved. `repair.policy:
 auto` is rejected outside enforce; `explicit` runs only a named, pre-admitted
-request. See the [profile reference](manuscript_complete_profile.md),
+request. `repair.on_exhaustion` accepts only `block` and is read by no runtime
+branch: an automatic loop that ends without authoring readiness — budget
+exhausted, no-progress cycle, or an unavailable resolver — always leaves the
+attempt unresolved and the enforce gate stops the run before authoring, so the
+key records that single posture rather than selecting among alternatives.
+See the [profile reference](manuscript_complete_profile.md),
 [contract reference](manuscript_complete_contracts.md), and
 [operations guide](../guides/manuscript_complete_operations.md).
 

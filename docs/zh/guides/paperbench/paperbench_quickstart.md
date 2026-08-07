@@ -124,7 +124,7 @@ Stage 1 → 2 → 3:
 ```bash
 python scripts/sc_paper_dogfood.py \
     --pdf /path/to/paper.pdf \
-    --rubric-model gpt-5-mini --two-stage \
+    --rubric-model gpt-5-mini \
     --with-rollout \
         --rollout-model gpt-5-mini \
         --rollout-time-limit-sec 14400 \
@@ -163,7 +163,7 @@ bridge 在 rollout 开始时 probe `module avail` 并把目录作为数据交给
 agent,由 agent 决定要 load 哪个。如需确定性,在 sbatch 包装中
 **事前 load**:
 
-示例(R-CCS <partition> — **请根据您的集群 module/partition/GPU 调整**):
+示例(采用两级入口的 Env Modules 站点 — **请根据您的集群 module/partition/GPU 调整**):
 
 ```bash
 #!/bin/bash
@@ -174,14 +174,14 @@ agent,由 agent 决定要 load 哪个。如需确定性,在 sbatch 包装中
 set -eu
 
 # 预先加载论文所需的 module(集群命名各异,用 `module avail` 探索)
-module load system/<partition>   # 集群特定的入口 module
+module load <site-entry-module>  # 集群特定的入口 module
 module load nvhpc             # 若论文需要 CUDA / nvcc
 # module load openmpi         # 若论文需要 MPI
 
 cd /path/to/ARI
 python scripts/sc_paper_dogfood.py \
     --pdf /path/to/paper.pdf \
-    --rubric-model gpt-5-mini --two-stage \
+    --rubric-model gpt-5-mini \
     --with-rollout --rollout-model gpt-5-mini \
         --rollout-time-limit-sec 14400 --rollout-sandbox local \
     --with-reproduction --reproduce-sandbox local \

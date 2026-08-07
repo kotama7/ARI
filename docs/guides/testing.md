@@ -6,9 +6,15 @@ sources:
     role: config
   - path: scripts/docs
     role: test
+  - path: scripts/check_dashboard_ux.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/i18n
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__
+    role: test
   - path: .github/workflows
     role: config
-last_verified: 2026-08-02
+last_verified: 2026-08-07
 ---
 
 # How to Test ARI Code
@@ -26,13 +32,20 @@ ari-skill-<name>/conftest.py    — skill-level fixtures
 pytest.ini                      — repo-wide config
 ```
 
-`pytest.ini` at the repo root makes `pytest` from anywhere walk every
-test directory.
+`pytest.ini` at the repo root sets the `testpaths` a bare `pytest` walks:
+`ari-core/tests` and `workspace/harnesses` (the second is absent on a
+checkout without a workspace, which pytest tolerates). The `ari-skill-*`
+suites are deliberately **not** in `testpaths` — each ships its own
+`src/server.py`, so importing two of them in one process is ambiguous. Run
+them per-package, or run `bash scripts/run_all_tests.sh` for the full suite
+(one pytest process per path).
 
 ## Running the suite
 
 ```bash
-pytest -q                                        # everything
+pytest -q                                        # the default testpaths only
+bash scripts/run_all_tests.sh                    # full suite, process per path
+pytest ari-skill-memory/tests -q                 # one skill
 pytest ari-core/tests/test_react_driver.py -q    # one file
 pytest ari-core/tests/test_react_driver.py::test_runs_for_two_nodes  # one case
 pytest -k 'memory and not letta' -q              # by keyword
@@ -148,8 +161,8 @@ CLI tree, and dashboard endpoints.
 - `readme-sync` — every directory's `## Contents` index lists the files
   beneath it (`scripts/readme_sync.py --check`).
 - `docs-sync` — full-tree invariants, all hard gates: declared `sources:`
-  paths resolve (`check_doc_sources.py`), `docs/i18n/{en,ja,zh}.js` share one
-  key set (`check_i18n_js.py`), the root `README.{md,ja,zh}` share one heading
+  paths resolve (`check_doc_sources.py`), `docs/i18n/landing.{en,ja,zh}.js` share
+  one key set (`check_i18n_js.py`), the root `README.{md,ja,zh}` share one heading
   shape (`check_readme_parity.py`), and `report/{en,ja,zh}` are structurally
   parallel (`report/scripts/check_i18n.py`, Gate 6). Translation freshness
   (`check_translation_freshness.py`) and intra-doc links (`check_doc_links.py`)
@@ -162,6 +175,87 @@ CLI tree, and dashboard endpoints.
 
 Run any doc gate locally from the repo root, e.g.
 `python scripts/docs/check_i18n_js.py`.
+
+**Dashboard translations** — the dashboard UI ships its own trilingual
+dictionaries at `ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts`, and none of
+the workflows above cover them: `check_i18n_js.py` reads only
+`docs/i18n/landing.{en,ja,zh}.js`, and its key pattern matches single-quoted keys
+only, so it cannot parse dictionaries whose keys are bare identifiers. The rule
+is the same one the docs set follows — the three locales must declare an
+**identical key set**, with no key repeated inside a file — so a new UI string
+has to be added to all three in the same change. A key present in one locale but
+missing from another falls back to the English string, or renders as the raw key
+name when `en` lacks it too (`t()` in `src/i18n/index.ts`). Values are
+deliberately not compared: a proper noun may legitimately read the same in all
+three.
+
+Two checks enforce this, and **neither is wired into a workflow** — run them
+yourself when you touch dashboard strings:
+
+- `python scripts/check_dashboard_ux.py --fail-on-regression` — key-set parity
+  plus duplicate detection over the three `.ts` files, bundled with the same
+  script's other dashboard-UX checks. It exits 1 on any finding not frozen in
+  `scripts/quality/check_dashboard_ux.allow.yaml`, and that allowlist holds no
+  i18n entries, so a parity break fails on its first run. Without the flag the
+  script prints its report and exits 0.
+- `npx vitest run src/i18n/__tests__/parity.test.tsx`, from
+  `ari-core/ari/viz/frontend` — the same invariant asserted against the imported
+  dictionaries, with a `KNOWN_DRIFT` allowlist that is currently empty. Its
+  duplicate-key assertion is weaker than the Python one, because a TypeScript
+  object literal has already collapsed any repeated key by the time the test
+  reads it.
+
+Both pass on the current tree: the three dictionaries carry one identical key
+set, with no duplicates.
+
+**Dashboard accessibility** — the dashboard declares **no WCAG conformance
+level**. No conformance target exists in this documentation set or in the
+frontend suite, and nothing here should be read as one. What exists is a set of
+frozen baselines in
+`ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx`. Like the
+i18n checks above it is **not wired into any workflow** — no workflow runs the
+frontend suite at all (the only Node steps in CI build the VitePress docs site),
+so it is a hard row of the by-hand pre-cutover checklist instead (`npm test`,
+`docs/guides/gui_cutover_runbook.md` §2). Run just this file from
+`ari-core/ari/viz/frontend`:
+
+```bash
+npx vitest run src/__tests__/shellA11yBaseline.test.tsx
+```
+
+It pins three things:
+
+- **Positive invariants that already hold.** Exactly one `navigation` landmark;
+  every sidebar entry (15 of them with `gui_v2` on) is a native button carrying
+  `tabindex="0"`; the four nav groups are named through `aria-labelledby`; the
+  mobile hamburger carries `aria-label`/`aria-controls`/`aria-expanded`; the
+  active-project `combobox` has an accessible name.
+- **An axe-core violation-id baseline** for the shell rendered at `#/home`,
+  currently the empty list. The assertion is exact equality, so a new violation
+  fails *and* so does an id left in the baseline after the underlying problem is
+  fixed. The `color-contrast` rule is **disabled** there because jsdom does not
+  paint — no automated check in this repo computes colour contrast.
+- **An `<h1>`-count baseline over the 18 routes** in the test's `ROUTE_MARKERS`.
+  Four are knowingly non-compliant and pinned as such: `#/paperbench`,
+  `#/workflow` and `#/settings` title the page with an `<h2>` and no `<h1>`, and
+  `#/idea` renders no heading element at all. The other 14 render exactly one
+  `<h1>`. Exact equality again, so fixing a route means shrinking the frozen
+  literal in the same change.
+
+What nothing covers: there is no end-to-end assertion that a primary journey can
+be completed without a mouse, and no screen-reader check. Keyboard *reachability*
+is asserted for the sidebar (focusable native buttons, above); actually *driving*
+a surface from the keyboard is asserted only for the `#/tree2` table
+(`src/components/TreeV2/__tests__/TreeV2LargeTree.test.tsx` walks
+<kbd>↓</kbd>/<kbd>→</kbd>/<kbd>Enter</kbd> across the roving tabindex; the key map
+is in `docs/guides/dashboard.md`). Reduced motion is honoured globally —
+`src/styles/motion.css` zeroes the motion tokens under
+`prefers-reduced-motion: reduce` — but that is a property of the stylesheet, not
+of a test.
+
+A WCAG 2.2 AA gate, automated or manual, is a goal of the dashboard refresh, not
+a property this suite establishes. Do not read a green run as evidence of AA
+conformance.
 
 ## Writing a regression test
 

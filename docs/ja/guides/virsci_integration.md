@@ -109,17 +109,19 @@ v1 のランループ配線: ループはルートのアイデア生成時に
 ません — 再アイデア生成の結果を昇格させることはガバナンスの決定です。
 
 アダプタ自身は MCP 経由で `survey`（トピック → 論文リスト; 失敗時は空
-リストへ縮退）を呼び、続いて `generate_ideas` を呼び、9 キーの
+リストへ縮退）を呼び、続いて `generate_ideas` を呼び、
 `generate_ideas` ペイロードをアイデアごとに 1 つの `ProposalDraft` へ正規化
-します。いかなるツール失敗もドラフトゼロ件へ縮退します; ストアでの
+します — 読むのはレガシーな 9 つのトップレベルキー
+（`virsci_adapter.GENERATE_IDEAS_KEYS`）のみで、これは現在スキルが返す
+キー集合の部分集合です。いかなるツール失敗もドラフトゼロ件へ縮退します; ストアでの
 コンテンツキー dedup により、このパス全体がリトライの下で冪等です。
 
 ## アーカイブ vs サマリ
 
 VirSci の出力は書き込み時に分割されます（「すべて保存し、サマリを見せる」）:
 
-- **チェックポイント以下にアーカイブ** — 完全な 9 キーペイロード（生の
-  アイデアリスト、`gap_analysis`、ジェネレータ設定）は
+- **チェックポイント以下にアーカイブ** — 完全な `generate_ideas` ペイロード
+  （生のアイデアリスト、`gap_analysis`、ジェネレータ設定）は
   `{checkpoint}/proposals/archive/<record_id>/`（`raw_output.json`、
   `generator_config.json`）へ行きます。スキルのオンディスクな
   トランスクリプト成果物 — `{checkpoint}/virsci_logs/virsci_stdout.log` と
@@ -134,14 +136,22 @@ VirSci の出力は書き込み時に分割されます（「すべて保存し�
   `test_rqgm_virsci_adapter.py::test_transcript_content_never_reaches_expand_context`
   でピン留めされています。
 
-共有される 9 キーの付加情報（`gap_analysis`、`papers_analyzed`、
-`n_agents`、`discussion_rounds`、`virsci_integration_status`）は加えて
-`idea.json` プロジェクションのトップレベルキーにも乗り、RQGM 以前の
-`idea.json` 契約を保ちます。
+共有される付加情報は加えて `idea.json` プロジェクションのトップレベル
+キーにも乗り、RQGM 以前の `idea.json` 契約を保ちます:
+`ProposalRouter._projection_meta` がアーカイブ済みペイロードを読み直し、
+レガシーな 5 キー（`gap_analysis`、`papers_analyzed`、`n_agents`、
+`discussion_rounds`、`virsci_integration_status`）と、スキルが現在返す
+typed contract 系の 10 キー（`typed_schema_version`、`contract_status`、
+`survey_snapshot`、`survey_snapshot_digest`、`survey_snapshot_ref`、
+`idea_set`、`idea_set_digest`、`research_contract`、
+`research_contract_digest`、`rejected_candidates`）のうち、存在するものを
+コピーします。
 
 ## `enabled: false` のときの保証
 
-デフォルトの `enabled: false` では
+デフォルトの `enabled: false` **かつ** typed contract 系のポスチャが
+デフォルト（`knowledge.mode: off`、`capability_binding.mode: legacy`、
+`assurance.mode: off`）のとき
 （すべて `ari-core/tests/test_rqgm_virsci_adapter.py` でピン留め）:
 
 - **アダプタは決して構築されません。** `ProposalRouter._build_generators`
@@ -161,6 +171,12 @@ VirSci の出力は書き込み時に分割されます（「すべて保存し�
   `virsci_absence_violations` が fail させます —
   [RQGM 評価](rqgm_evaluation.md)を参照。
 
+これらの保証はデフォルトのポスチャに限られます。`knowledge.mode`、
+`capability_binding.mode`、`assurance.mode` のいずれかをデフォルトから
+外すと `ProposalRouter._typed_contract_required()` が true になり、ルータは
+（MCP クライアントが存在する限り）アダプタを構築し、
+`generators.virsci.enabled` が何であれ `virsci` を有効として扱います。
+
 ## モード × VirSci の 4 通りの組み合わせ
 
 `proposal_router.generators.virsci.enabled` は `ari.mode` と直交します:
@@ -172,7 +188,7 @@ VirSci の出力は書き込み時に分割されます（「すべて保存し�
 |---|---|---|
 | `simple_bfts` | `false` | デフォルト。`proposal_router.*` は不活性; スキル側レバー（`generate_idea` ステージ、`ARI_IDEA_VIRSCI_REAL`）が唯一の VirSci 制御 |
 | `simple_bfts` | `true` | 有効な設定だが不活性: `simple_bfts` ではルータが構築されないため、フラグに効果はない。スキル側レバーが引き続き権威 |
-| `ari_rqgm` | `false` | ルータは `cheap`/`mutation`/`prior_art` のみで走る。VirSci ランタイム、vendored パス、プロンプト、スナップショットコーパスには一切触れない |
+| `ari_rqgm` | `false` | typed contract 系のポスチャがデフォルトなら、ルータは `cheap`/`mutation`/`prior_art` のみで走る。VirSci ランタイム、vendored パス、プロンプト、スナップショットコーパスには一切触れない |
 | `ari_rqgm` | `true` | `VirSciAdapter` がルーティングテーブルに加わる; エポックごとのキャップの下で `survey` + `generate_ideas` への MCP 呼び出し |
 
 ## vendored サブモジュールとスキル

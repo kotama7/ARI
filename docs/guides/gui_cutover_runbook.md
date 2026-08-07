@@ -22,6 +22,8 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/appContextScope.test.ts
     role: test
+  - path: ari-core/tests/test_setup_env.py
+    role: test
   - path: scripts/check_viz_api_schema.py
     role: test
   - path: scripts/check_dashboard_ux.py
@@ -32,7 +34,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # GUI Cutover Runbook
@@ -257,6 +259,30 @@ views all survive the flag flip.
 
 ## 6. Legacy removal
 
+**Flag hygiene.**  A rollout flag is a schedule, not a resting place, and
+this section is where the schedule ends.  `ARI_GUI_V2` is the program's only
+rollout flag (§1), and while it is live both generations of every replaced
+screen ship in the same bundle — a doubled bug surface, a doubled test
+surface, and a standing "which one did the operator see?" ambiguity in any
+report.  A rollout flag is therefore introduced with its retirement already
+fixed — a named owner, the rollback lever, and the gate or release by which
+it is expected to be gone — declared in the docstring of the module that
+reads it.  `ARI_GUI_V2` does that in `ari-core/ari/viz/api_capabilities.py`:
+owner, default, rollback lever, removal gate.  Its deadline is a gate, not a
+date; that module and `docs/reference/environment_variables.md` name the
+gate `G6`, which is legacy removal — this section.  No rollout flag outlives
+it: when the table below is finished the flag is deleted with the shell it
+was guarding, and a flag still shipping after its gate has been met is a
+defect to triage, not a configuration option.  None of that is
+machine-checked.  The one automated part is narrower: every environment
+variable read by first-party Python must be declared in
+`scripts/setup/setup_env.sh`
+(`ari-core/tests/test_setup_env.py::test_setup_env_covers_all_source_env_vars`),
+which forces a new flag to be visible but says nothing about its owner or
+its expiry.  The seven security kill-switches in §1 are a different
+instrument under a different rule — incident use only — and nothing below
+schedules their removal.
+
 Removal is a separate decision from default-on, and it is one-way.  Nothing
 below may be deleted until **all** of these hold:
 
@@ -280,7 +306,7 @@ must be gone before it is.
 | 2 | **AppContext remote state** — `context/AppContext.tsx`, i.e. the 5-second `/state` poll, the tree WebSocket mirror, and the global active checkpoint | every legacy page above is gone and the structural guard `src/__tests__/appContextScope.test.ts` passes with **no** exception entries (its one documented exception, the IdeasV2 research-goal card, must be re-sourced from `/api/v1` first) |
 | 3 | **The `/state` facade** — the `/state` branch in `routes.py` and `services/state_service.build_app_state` | AppContext is gone; `test_gui_state_facade_freeze.py` is retired in the same change (its whole purpose is to forbid growth *until* this deletion), and the `viz` contract snapshot is regenerated |
 | 4 | **The port+1 WebSocket** — the `ws_serve` server, `websocket.py`, and `hooks/useWebSocket.ts` | every realtime consumer reads `GET /api/v1/events/stream` instead; only then may the `ws://`/`wss://` sources be dropped from the CSP `connect-src`, since that allowance exists solely for this socket |
-| 5 | **Duplicate constants and CSS** — legacy route/nav literals and duplicated design tokens | the route registry is the single source for routes, nav, breadcrumbs, and aliases (parity test green) and no legacy page imports the duplicates |
+| 5 | **Duplicate constants and CSS** — legacy route/nav literals and duplicated design tokens | the route registry is the single source for routes, nav, and aliases (parity test green) and no legacy page imports the duplicates |
 
 After each removal, regenerate the contract snapshots
 (`python scripts/snapshot_contracts.py --surface viz --update`) and re-run the

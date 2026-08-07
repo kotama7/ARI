@@ -22,6 +22,8 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/appContextScope.test.ts
     role: test
+  - path: ari-core/tests/test_setup_env.py
+    role: test
   - path: scripts/check_viz_api_schema.py
     role: test
   - path: scripts/check_dashboard_ux.py
@@ -32,7 +34,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # GUI 切换运行手册
@@ -234,6 +236,25 @@ hash URL 与每一个 `/api/*` 端点原本就在工作，因此别的什么都�
 
 ## 6. legacy 移除
 
+**标志卫生。** 推出标志是一张时间表，而不是一个安身之所，而本节就是这张
+时间表的终点。`ARI_GUI_V2` 是该计划唯一的推出标志（§1）；只要它还活着，
+每一个被替代页面的新旧两代就都装在同一个打包里 —— 双份的缺陷面、双份的
+测试面，以及任何报告里都挥之不去的「用户当时看到的是哪一个？」的歧义。
+因此，一个推出标志在被引入时就要把它的退役条件定下来 —— 一个具名 owner、
+回滚手段，以及承诺让它消失的关卡或版本 —— 并把这些声明在读取该标志的模块
+的 docstring 里。`ARI_GUI_V2` 在 `ari-core/ari/viz/api_capabilities.py` 中
+正是这么做的：owner、默认值、回滚手段、移除关卡。它的期限是一道关卡，而不是
+一个日期；该模块与 `docs/reference/environment_variables.md` 把这道关卡称为
+`G6`，它指的就是 legacy 移除 —— 也就是本节。没有任何推出标志能比它活得更久：
+当下面这张表走完时，标志会随它所守护的外壳一起被删除；而一个已经满足了关卡
+却仍在发布中的标志，是一个待分诊的缺陷，而不是一个配置项。以上这些都没有被
+机器检查。被自动化的只有更窄的一部分：第一方 Python 读取的每一个环境变量都
+必须声明在 `scripts/setup/setup_env.sh` 中
+（`ari-core/tests/test_setup_env.py::test_setup_env_covers_all_source_env_vars`），
+它强制一个新标志必须可见，但对它的 owner 或期限只字不提。§1 中的七个安全
+紧急开关是另一种工具、遵循另一条规则 —— 仅在事故中使用 —— 下面的内容并不
+安排它们的移除。
+
 移除是一个与「默认开启」分开的决策，而且是单向的。在**所有**下列条件成立
 之前，下面的任何东西都不得被删除：
 
@@ -254,7 +275,7 @@ hash URL 与每一个 `/api/*` 端点原本就在工作，因此别的什么都�
 | 2 | **AppContext 远程状态** —— `context/AppContext.tsx`，即 5 秒一次的 `/state` 轮询、树 WebSocket 镜像与全局活动检查点 | 上面每个 legacy 页面都已消失，且结构守卫 `src/__tests__/appContextScope.test.ts` 在**没有**任何例外条目的情况下通过（它唯一有文档记录的例外，即 IdeasV2 的研究目标卡片，必须先改为从 `/api/v1` 取数） |
 | 3 | **`/state` 外观** —— `routes.py` 中的 `/state` 分支与 `services/state_service.build_app_state` | AppContext 已消失；`test_gui_state_facade_freeze.py` 在同一次变更中退役（它存在的全部目的就是在这次删除*之前*禁止其增长），并重新生成 `viz` 契约快照 |
 | 4 | **端口 +1 的 WebSocket** —— `ws_serve` 服务器、`websocket.py` 与 `hooks/useWebSocket.ts` | 每一个实时消费者都改读 `GET /api/v1/events/stream`；只有到那时才可以从 CSP 的 `connect-src` 中去掉 `ws://`/`wss://` 来源，因为那条放行规则完全是为这个 socket 而存在的 |
-| 5 | **重复的常量与 CSS** —— legacy 路由/导航字面量与重复的设计 token | 路由注册表是路由、导航、面包屑与别名的唯一来源（一致性测试全绿），且没有任何 legacy 页面导入这些重复项 |
+| 5 | **重复的常量与 CSS** —— legacy 路由/导航字面量与重复的设计 token | 路由注册表是路由、导航与别名的唯一来源（一致性测试全绿），且没有任何 legacy 页面导入这些重复项 |
 
 每次移除之后，请重新生成契约快照
 （`python scripts/snapshot_contracts.py --surface viz --update`）并重跑完整的

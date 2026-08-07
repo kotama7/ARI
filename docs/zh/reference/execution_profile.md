@@ -9,8 +9,9 @@ last_verified: 2026-08-02
 
 # `execution_profile` 参考
 
-PaperBench 评分单 (`ari-skill-replicate/schemas/replication_rubric.schema.json`,
-v3) 中 `reproduce_contract` 下的 `execution_profile` 对象描述论文要求的
+PaperBench 评分单 (`ari-skill-replicate/schemas/replication_rubric.schema.json`
+— `schema_version: ari.replication-rubric/v2`、`version: "3"`) 中
+`reproduce_contract` 下的 `execution_profile` 对象描述论文要求的
 并行执行属性 (SLURM 分配形态、GPU 类型、内存、NUMA 绑定等)。
 `ari-skill-paper-re` 对其进行验证，将 allocation 字段编译为
 `ari.hpc.job-request/v1`；job-step 字段由代理在生成 `reproduce.sh` 时使用。
@@ -25,7 +26,7 @@ v3) 中 `reproduce_contract` 下的 `execution_profile` 对象描述论文要求
 | `kind` | enum | (仅 agent prompt) | — | `cpu_single` \| `gpu_single` \| `gpu_multi` \| `mpi` \| `mpi_gpu` |
 | `paper_max_ranks` | int | — | — | 论文报告的最大 rank 数 |
 | `paper_max_nodes` | int | — | — | 论文报告的最大节点数 |
-| `min_ranks` | int | `--ntasks=N` | 1 | 部分得分允许的最小 rank 数 |
+| `min_ranks` | int | `--ntasks=N` | 1 | 部分得分允许的最小 rank 数。设置后它就是请求的 `--ntasks`，因此 `ntasks_per_node` 不得超过它 (带类型 request 会以 `tasks_per_node cannot exceed total tasks` 拒绝) |
 | `min_nodes` | int | — | 1 | 节点版本 |
 | `result_aggregation` | enum | — | `rank0_csv` | v0.7.2 仅支持 `rank0_csv` |
 | `metric_columns` | list[str] | — | `[]` | CSV 表头 (如 `["nodes","ranks","runtime_sec","gflops"]`) |
@@ -43,7 +44,7 @@ v3) 中 `reproduce_contract` 下的 `execution_profile` 对象描述论文要求
 | `constraint` | str | `--constraint=...` | `""` | 例: `"skylake"`, `"haswell|broadwell"` |
 | `cpu_bind` | str | `reproduce.sh` 中的 `srun --cpu-bind` | `""` | job-step 设置，不是 sbatch directive |
 | `mem_bind` | str | `reproduce.sh` 中的 `srun --mem-bind` | `""` | job-step 设置，不是 sbatch directive |
-| `hint` | str | `--hint=...` | `""` | 例: `"nomultithread"` |
+| `hint` | enum | `--hint=...` | `""` | `""` \| `compute_bound` \| `memory_bound` \| `multithread` \| `nomultithread` |
 | `module_loads` | list[str] | 干净 job prelude | `[]` | 显式加载并记录 provenance |
 | `account` / `qos` / `reservation` | str | 各带类型 selector | `""` | 替代任意标志 |
 | `extra_sbatch_args` | list[str] | 仅 deprecated reader | `[]` | 新生产者禁止；仅兼容转换四个限定字段 |
@@ -73,7 +74,7 @@ TS-SpGEMM 扩展性 (4 节点 × 8 ranks × V100×1/task, 独占, 仅 Skylake)
     "kind": "mpi_gpu",
     "paper_max_ranks": 32,
     "paper_max_nodes": 4,
-    "min_ranks": 4,
+    "min_ranks": 32,
     "result_aggregation": "rank0_csv",
     "metric_columns": ["nodes","ranks","runtime_sec","gflops"],
     "accepts_reduced_scale": true,

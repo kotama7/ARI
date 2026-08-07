@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # クックブック
@@ -182,8 +182,12 @@ export ARI_SLURM_PARTITION=gpu          # required when the sandbox is slurm
 export ARI_RUBRIC=sc                    # venue template: sc / neurips / nature
 ```
 
-`ARI_RUBRIC` を切り替えると、BFTS のスコアリング軸と公開レビュー基準が
-同時に変わります — [用語集 → venue](../reference/glossary.md) と
+`ARI_RUBRIC`（既定は `neurips`）は、BFTS のスコアリング軸を導出する元となる
+`ari-core/config/reviewer_rubrics/` 配下の rubric YAML を選びます。公開レビュー
+基準は**別のつまみ**です: `review_paper` ステージは rubric をワークフローの明示的な
+入力、すなわち `workflow.yaml` の `paper_rubric`（既定は `generic_conference`）
+として受け取ります。探索とレビューを同じ venue で判定させたい場合は両方を設定して
+ください — [用語集 → venue](../reference/glossary.md) と
 [アーキテクチャ → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070)
 を参照してください。
 

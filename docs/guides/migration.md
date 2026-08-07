@@ -83,19 +83,24 @@ dashboard behaviour you may depend on.  Those changes are collected in
 2. **Set the required env vars.**
    ```bash
    export LETTA_BASE_URL=http://127.0.0.1:8283
-   export LETTA_EMBEDDING_CONFIG=/path/to/embedding.json
+   export LETTA_EMBEDDING_CONFIG=openai/text-embedding-3-small
    export ARI_MEMORY_BACKEND=letta
    ```
+   `LETTA_EMBEDDING_CONFIG` is an embedding *handle*, not a file path;
+   the default is `letta-default`.
 3. **Migrate existing memory.**  In each v0.5 checkpoint:
    ```bash
    ARI_CHECKPOINT_DIR=/path/to/ckpt ari memory migrate
    ```
-   The migrator reads `memory_store.jsonl` (and the legacy global
-   JSONL if any), writes to the Letta agent, and snapshots the
-   result into `memory_backup.jsonl.gz`.
-4. **Delete the legacy JSONLs.**  After verifying the migration:
+   The migrator reads `memory_store.jsonl` (and `memory.json` too with
+   `--react`), imports the entries into the configured backend as
+   content-addressed v1 records, and snapshots the result into
+   `memory_backup.v1.json.gz`.  A legacy global JSONL is reported if
+   present but deliberately not imported.
+4. **Delete the legacy JSONLs.**  The migrator renames each source it
+   imported to `<name>.migrated-<nanoseconds>`, so only the global file
+   is left to remove by hand:
    ```bash
-   rm /path/to/ckpt/memory_store.jsonl
    rm $HOME/.ari/global_memory.jsonl   # if it ever existed
    ```
 5. **Pick a rubric.**  Choose a YAML from
@@ -497,7 +502,7 @@ selection, which launches a byte-identical run.
   `missing_goal`, and a draft containing `ari.mode` or any `rqgm.*` field is
   400 `mode_locked` — selecting the governance/execution mode from the GUI
   was still an open decision at the time.  *(Superseded by MN-12: the four
-  mode leaves are now accepted for a new run; the other 97 `rqgm.*` paths
+  mode leaves are now accepted for a new run; the other 104 `rqgm.*` paths
   still refuse with `mode_locked`.)*
 - **Why** — a run needs an identity before anything is written, and a
   double-click must not fork an experiment.
@@ -534,7 +539,7 @@ selection, which launches a byte-identical run.
 ### Execution and paper mode are selectable for a new run (MN-12)
 
 - **Before** — every field in the `Execution mode` category and every
-  `rqgm.*` path (101 paths) was locked out of the GUI: one disabled group in
+  `rqgm.*` path (108 paths today) was locked out of the GUI: one disabled group in
   the Studio, and 400 `mode_locked` from `POST /api/v1/runs`.  Choosing
   `ari_rqgm` or `rqgm_archive` meant hand-editing two interlocked keys in
   `workflow.yaml`.
@@ -550,12 +555,13 @@ selection, which launches a byte-identical run.
   `ARI_RQGM_PAPER_ENABLED` environment variables.  The launch review shows
   the **resolved** mode, and an unhonoured request is shown as
   `requested → resolved` with the resolver's warning verbatim instead of
-  silently starting the fallback run.  The remaining 97 `rqgm.*` governance
+  silently starting the fallback run.  The remaining 104 `rqgm.*` governance
   and tuning parameters stay configuration-file only — visible read-only
   with their effective values, still 400 `mode_locked` at launch — and the
   RQGM API surface is still read-only.  **Resume is unaffected**: the mode
-  persisted in `{checkpoint}/rqgm_state.json` still wins (downgrade-only),
-  and no GUI path writes that file.
+  persisted in `{checkpoint}/rqgm_state.json` still wins — in either
+  direction, so a run's mode is fixed for its lifetime — and no GUI path
+  writes that file.
 - **Why** — the GUI is the offered launch surface but could not state the
   single most consequential property of the run it was starting, while the
   blanket lock treated "which algorithm runs" and "what the adversarial

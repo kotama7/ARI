@@ -22,6 +22,10 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.1/verified-lock-v1.json
     role: config
+  - path: ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.2/build-recipe-v1.json
+    role: config
+  - path: ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.2/provider-manifest-v1.json
+    role: config
   - path: ari-skill-tool-registry/src/openroad_adapter.py
     role: implementation
   - path: ari-skill-tool-registry/src/openroad_contracts.py
@@ -40,9 +44,13 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/openroad_worker.py
     role: implementation
+  - path: ari-skill-tool-registry/src/openroad_promotion.py
+    role: implementation
   - path: ari-skill-tool-registry/providers/openroad-support-v1.json
     role: config
   - path: ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/verified-lock-v1.json
+    role: config
+  - path: ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/verified-lock-v1.json
     role: config
   - path: ari-skill-tool-registry/src/qiskit_adapter.py
     role: implementation
@@ -54,15 +62,20 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
     role: config
-last_verified: 2026-08-05
+last_verified: 2026-08-07
 ---
 
 # 科学ツール連合レジストリ
 
 `ari-skill-tool-registry` は多数のMCP collectionを `discover`、`describe`、
-`invoke`、`get_status`、`get_result` の5操作の背後に統合する、デフォルトOFF
-のSkillです。leaf schemaをすべてモデルへ渡さず、collection追加時にもleaf
-ごとのファイル編集を要求しません。
+`invoke`、`get_status`、`get_result` の5操作の背後に統合するSkillです。Skill
+自体は既定で有効ですが、有効化してもleafは有効になりません。実行できるのは
+選択したcatalogに載るsourceだけで、Skill flagとcatalogは独立した2つのgate
+です。catalogはruntimeに `ARI_TOOL_REGISTRY_LOCK` と `ARI_TOOL_REGISTRY_INDEX`
+で選択します。checked-inの `CATALOG.lock` が空なのは設計どおりで、これは
+可搬なdefaultであり、中身の入ったcatalogは機械固有のevidenceだからです。
+leaf schemaをすべてモデルへ渡さず、collection追加時にもleafごとの
+ファイル編集を要求しません。
 
 ## 境界とライフサイクル
 
@@ -108,7 +121,7 @@ MCP bundleをpackage固有routingなしで共存させられます。direct stdi
 custom leaf code不要です。異なるtransportはcollection全体につき1個の
 `CatalogSource` と `ProviderAdapter`、およびconformance fixtureを追加します。
 
-## ToolUniverse 1.3.1 / 1.3.1+ari.1 adapter
+## ToolUniverse 1.3.1 / 1.3.1+ari.1 / 1.3.1+ari.2 adapter
 
 ToolUniverseは数千個のpublic MCP toolではなく、一つのcompact collectionとして
 統合します。registry processはToolUniverseをimportしません。operator syncだけが
@@ -125,6 +138,25 @@ wheel、完全runtime lock、package tree、license、Provider manifestを固定
 productionはoperator artifact storeのretained wheelをfull SHA-256で検査し、package
 registryから解決しません。
 
+さらに別identityの`1.3.1+ari.2`があります。`1.3.1+ari.1`の
+`fitz>=0.0.1.dev2` -> `PyMuPDF==1.26.4` metadata修正はそのまま引き継ぎ、加えて
+SMCPのresponse上限を引き上げます。`smcp.SMCP`のresponse `max_chars`を
+100_000から2_000_000へ、serialization箇所2つとも変更します。ari.1と違い、
+これはsource codeを変えるartifactです（`source_code_changes: true`）。upstreamは
+compact MCP responseを一律100,000文字で打ち切り、structural trimmingで収まらない
+ときはraw string truncationへfallbackして不正なJSONを出すため、collection全体の
+列挙が成立しません。`get_tool_info(detail_level=full)`はbatch size 1でも最大級の
+leafで上限を超えます。loadした2,601 leaf全体で実測すると単一responseの最大は
+510,904文字、100,000を超えるのは2件だけです。2,000,000は観測された最悪のbatchを
+約3倍の余裕で収めつつ、7,103,230文字のfull-collection dumpよりは十分小さい値です。
+
+leaf identityはinstall場所に依存しません。upstreamは`source_file`をabsolute
+install pathとして報告し、それがleaf metadataと`tool_spec_digest`の両方に入って
+いたため、同じreview済みwheelでも機械ごとに別のleaf identityになり、promotionを
+実行したhostのabsolute pathがpromotion evidenceへ書き込まれていました。adapterは
+両方の手前でreview済みpackage rootからの相対pathへ正規化し、package外のpathは
+開示せず`<outside-reviewed-package>`へ置き換えます。
+
 checked-in `verified-lock-v1.json`がpromoteするのは
 `tooluniverse-pubmed@1.3.1+ari.1`とexact leaf
 `PubMed_search_articles -> ari.literature.search/v1`だけです。Provider manifest、
@@ -135,6 +167,14 @@ Capability contract、evidence bundle、15個すべてのregistration gate、お
 lockとexact capability scopeに結合されます。`status`だけの書換え、承認の削除・
 変更、scope拡張、evidenceの1 byte変更はいずれも拒否されます。
 他のToolUniverse leafと未修正upstream releaseはpromoteしません。
+
+`ari-patched-wheel`のToolUniverse sourceは`verified_lock_path`を省略できます。
+そのsourceはcollection全体を対象としleaf promotionを持たないため、
+`evidence.replay_fixture_digest`と`evidence.scientific_validation_digest`を
+主張してはなりません。これらのlevelはverified lockに結合したleaf evidenceを
+要求するからです。lockのないsourceは`callable`までで、`reproducible`にも
+`scientifically_admitted`にも到達しません。retainedしたexact wheelはどの場合でも
+必須です。
 
 leafごとのwrapperではなくcategory/type profileでeffect、determinism、permission、
 limitation、lineageを割り当てます。upstream CLIが背景でより広い集合をloadしても
@@ -191,11 +231,27 @@ OpenROADが正常終了して`-metrics`をflushした後にartifactを収集し�
 output lullを完了判定に使いません。全terminal pathでsessionをcleanupします。
 `slurm` はclosed commandをdigest-pinned Tclにcompileし、固定worker/inputとともに
 C06 `JobRequestV1` へsubmitします。1 node/task、threads/CPU一致、shared
-work root、toolchainと同じdigestのclean/contained SIF、またはreview済みの
-PRoot/SIF/unsquashfs/worker-Python portable runtimeが必須です。
+work rootが必須です。execution substrateは、review済みの
+PRoot/SIF/unsquashfs/worker-Python portable runtimeか、toolchainと同じdigestの
+clean/contained containerかの、ちょうど1つだけをpinします。どちらになるかは
+siteの性質であり、契約が保証するのは「ちょうど1つである」という不変条件です。
+どちらのsubstrateもexecution contractがadmitします。
+`environment_requirements`は書き下すのではなくprofileから導出し、
+`cpu` / `exclusive-node` / `slurm` に`proot-sif`または
+`<runtime>-sif`を加えます。`runtime_target`の`worker_python` /
+`execution_substrate` / `network`も宣言したsubstrateに追従し、typed jobの
+`container_digest`はprofileがpinした値、すなわちcontainer runならimage digest、
+PRoot runならcontainerなし、と完全一致しなければなりません。
+
 scheduler handle/status/cancel、environment/module/container digest、logとprovenanceを
 result/EARに保存し、terminal状態を確認した場合だけworkspaceを削除します。
-transport結果が不明な場合はledger照合のためfail closedで保持します。
+transport結果が不明な場合はledger照合のためfail closedで保持します。terminal状態は、
+schedulerにaccounting storageがあるsiteではscheduler自身（`scheduler_state`
+COMPLETED、`exit_code` 0）から、無いsiteではnonce-boundのfixed-wrapper record
+（reason `fixed-wrapper-completion-v1`）から取ります。どちらでもjobが実際に成功して
+いることが条件です。scheduler handleの`workspace_scope` / `artifact_scope`は宣言した
+work rootからの相対で記録し、work rootの外へ出るscopeは拒否します。公開に値するのは
+digest由来のscope名だけで、prefixはpromotionを実行した機械を示すにすぎないためです。
 
 物理cluster名、partition名、node名はruntime-privateです。256-bit nonceを持つ
 Git-ignored site fileだけから読み、追跡対象のprofile、snapshot、fixture、evidence、
@@ -206,23 +262,51 @@ fileが追跡可能になった場合、またはclear identityが漏れた場�
 symlink targetも独立に検査し、private site fileが存在するcheckoutではrepositoryの
 pre-commit hookが必ずこれを実行します。
 
+scheduler snapshotの検証は、liveのcontrollerをreview済みsnapshotが宣言した値
+（slurm version、GRES type、partitionのMaxTime、nodeの
+architecture / CPUTot / Sockets / ThreadsPerCore）と突き合わせ、repositoryに
+入らないselectorであるcluster名とnode名はoperatorのprivate site configuration
+と突き合わせます。さらにsite特性
+ではないinvariant（`Arch=x86_64`、`Gres=(null)`、`OverSubscribe=EXCLUSIVE`）を
+確認します。GPU authorityを主張するsnapshotは拒否します。site特性をliteralで
+書かずsnapshotを唯一の宣言にしたので、同じpromotionを別のscheduler siteでも
+実行でき、snapshotとlive controllerのdriftは従来どおりfail closedです。
+
 正式にpromoteしたlocal OpenROAD identityは
 `openroad/0.6.1+orfs-26q3-gcd-nangate45`です。verified lock digestは
-`sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28`
+`sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`
 です。exact GCD placed database、Nangate45 PDK/library、x86_64 CPU、1 thread、
 local-MCP、live schema parity、DRC 0 metrics、golden/replay、公式ORFS参照run、
 15 registration gate、人間承認を固定します。固定binaryがSIGILLとなったため公式
 参照runではCTS timing repairを無効化しており、full default-flow parityではなく
 独立reference passとして記録します。1.54 GB SIF本体はGit外のretained artifactで、
-OCI manifest、SIF、inner OpenROADのfull digestと配置pathをlockします。
+OCI manifest、SIF、inner OpenROADのfull digestと配置pathをlockします。support
+recordのretained SIFは`singularity` 4.5.0-1.el9でlocalに再materializeしたもので、
+digestは`sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c`、
+size 1540308992 bytesです。SIF headerはhash対象のfile内部にrandom UUIDと
+wall-clockの作成時刻を持つため、`retained_sif_digest`はどのcontainer runtimeでも
+再現できません。pinしたOCI manifest digestとinner OpenROAD binary digestは完全に
+一致したので、封筒は再現できなくてもpayloadが同一であることは証明されています。
 
 独立した`openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identityも正式に
 promote済みです。lock
-`sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd`
-は匿名exclusive-node CPU site digest、scheduler client、PRoot/SIF/unsquashfs/
-worker Python、runtime-owned metrics lifecycle、nonce-bound fixed-wrapper
-completion、live DRC 0 result、fixture、gate、人間承認を固定します。GPU要求は0です。
-GPU実行、別design/PDK/corner/imageはいずれのlockにも含まれません。対応する
+`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`
+は匿名exclusive-node CPU site digest、scheduler client、scheduler snapshot digest、
+digest-pinnedのclean container（`singularity`、`network` none、`contain_all`、
+`clean_environment`、GPUなし）、runtime-owned metrics lifecycle、scheduler由来の
+terminal evidence、live DRC 0 result、fixture、gate、人間承認を固定します。
+`environment_requirements`は`cpu` / `exclusive-node` / `singularity-sif` /
+`slurm`、`runtime_target`は`execution_substrate` `singularity-sif`、
+`worker_python` `container-provided`、`network` `isolated`です。review済みの
+PRoot/unsquashfs/worker-Python buildが、promotionを実行するsiteの提供するhost
+glibcより新しいglibcへlinkしているため、同じprofileをdigest-pinnedのclean
+containerで実行しています。closureがSIF＋host binary 4本ではなくSIF単体になる
+ので、隔離はむしろ強くなります。
+GPUに関するlimitationはreview済みscheduler snapshotから読みます。schedulerが
+GRES typeを宣言しないならそもそもGPUを要求できず、宣言するなら根拠は割り当て
+られたnodeがacceleratorを露出しないことです。どちらの場合もprofileのGPU要求は0
+で、GPU capabilityは与えません。GPU実行、別design/PDK/corner/imageはいずれの
+lockにも含まれません。対応する
 human-admin entry pointは`scripts/promote_openroad_gcd_cpu.py`と
 `scripts/promote_openroad_gcd_slurm_cpu.py`であり、Agent MCPへは公開しません。
 
@@ -247,7 +331,7 @@ instance CRNも残しません。科学契約、運用、update/rollback、削�
 
 正式にpromoteしたQiskit identityは
 `qiskit/core-0.3.1+aer-0.17.2-local-ideal`だけです。verified lock digestは
-`sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`
+`sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`
 です。credential不要のseeded Bell-state local Aerと
 `ari.quantum.sample.local-ideal/v1`だけを対象に、QPY bytes/version、target、software、
 seed、count範囲、live MCP schema、golden/replay、15 Provider gate、人間承認を固定します。
@@ -260,6 +344,68 @@ Agent MCPへは公開しません。
 Provider promotionはgoverned eligibilityの変更でありactivationではありません。
 両identityともcommit済みの空の`CATALOG.lock`には追加せず、operatorがexact環境を
 materializeし、source sync/review後にrun用Provider/Capability Binding Lockを固定します。
+
+### ARI Capabilityへの到達
+
+このcatalogのleafはARI Providerではなく`SKILLS.lock`にも現れないので、Capability
+Binderが直接authorizeすることはできません。両者を橋渡しするのが
+`ari-core/config/providers/catalog.yaml`の`ari.provider.tool-registry` entryです。
+その`brokered` blockが、このcatalog lock、dispatch tool（`invoke`）、leaf `tool_ref`
+からARI `capability_ref`へのreviewed tableを指定します。reviewed leafは1件ずつ、
+呼び出しidentityが`invoke`、意味identityがleafであるcomposite
+`CapabilityProvisionV1`になります。descriptor自身の`capability_ref`はこのregistryの
+namespaceに属し、mappingとしては読みません。決めるのはchecked-inのreviewed tableだけです。
+
+ARIはbrokerと同じ`ARI_TOOL_REGISTRY_LOCK`でlockを解決し、未設定ならpackagedのpathへ
+fall backします。両者が同じ1つのlockに解決しなければ、ARIはbrokerがdispatchして
+いないleafを記述することになります。materialize済みのlockは絶対local pathを記録する
+ためrepositoryに置けません。commitするのはreviewed tableだけで、lockはcommitしないの
+はこのためです。
+
+authorityは2hopのenvelopeです。compositeのside-effect classはleafと`invoke`の宣言の
+うち重い方になり、contractのrequired permissionは両者が付与していなければなりません。
+`invoke`は`stateful`を宣言するので、この経路から`read-only`のcapabilityを供給する
+ことは現状できません。ただし`ari.literature.search/v1`がこの制約で止まっているわけ
+ではありません。`read-only`を宣言していたcontract側が誤りで（admitされたretrievalは
+自らをevidenceにするrecordを書きます）、現在は`workspace-write`へ修正済みです。
+reviewed PubMed leafはこのcontractに対してcompositeを構成します。
+
+descriptorがasynchronous lifecycleを宣言するleafは、`invoke`で投入し`get_status`と
+`get_result`で回収します。これらはentryの`lifecycle_tools`が名指しし、bindingに載って
+運ばれるので、authorization viewは同じbinding・phase・call contextの下でそれらを
+通します。別capabilityではありません。投入をauthorizeされたjobをpollしてもauthorityは
+増えないからです。これが無いと、bind済みのasync capabilityは仕事を開始できても
+回収できません。運ぶようにする前は実際にそうなっていました。
+
+compositeが運ぶcredential scopeは、Providerが宣言したもののうち値が実際に存在する
+ものだけです。宣言されていても値の無いcredentialはauthorityを与えません。子processは
+存在する値だけから組み立てられ、call contextも同じfilterをかけるからです。宣言集合を
+そのまま運んでいた頃は、multi-domain Providerのprovisionが使う可能性のある全scopeを
+要求し、OpenROAD leafのbindがどこにも設定されていない`quantum.ibm-runtime`を要求して
+いました。`QISKIT_IBM_TOKEN`が未設定のhost——出荷時の状態——では、brokerのIBM Quantum
+scopeは存在する値を記録せず、compositeはscopeを1つも運ばないので、OpenROAD leafのbindに
+credentialの付与は一切要りません。付与が必要になるのはtokenが設定されているとき、つまり
+authorityが実在するときちょうどです。存在有無はlock時に観測してProvider Lockへ凍結する
+ので、後から現れたtokenはlockを動かすだけで、検査をすり抜けません。これは直接Provider
+経路と同じ規則であり、fail closedです。
+
+call contextを運ぶbroker toolは`invoke`、`get_status`、`get_result`の3つで、いずれも
+input schemaに`ari_context`を宣言します。3つとも`context_requirement: run`なので、
+transportはauthorize済みのcall contextをこの名前で注入します。
+`additionalProperties: false`のschemaがこれを省くと、authorizeされた呼び出しがすべて
+拒否されます。
+
+result normalizerの欠陥ではない粗い箇所が1つ残っています。ARIはbroker自身の
+`ari.result-envelope/v1`をもう一枚のenvelopeで包むため、brokered asyncのsubmitは
+handleを`structured_content.structured_content`に置き、外側の`async_handle`はnullの
+ままになります。このfieldが運ぶのは`ari.async-tool-handle/v1`で、`get_async_status` /
+`get_async_result` / `cancel_async`を駆動し、manifestで宣言されたARI async tool向けに
+作られています。一方brokered leafのhandleはbroker自身のprotocolである
+`ari.registry-handle/v1`です。相互変換は機械的には可能ですが（bindingはlifecycle
+toolのrefを知り、brokerはstate mapを返します）、現状それを呼ぶ側はいません。
+呼ばれないconverterを足すことは、この作業がずっと取り消してきた失敗の繰り返しに
+なります。必要になるまで、brokered asyncのcallerはbind済みlifecycle toolを直接
+pollします。
 
 ## record/replayとEAR
 

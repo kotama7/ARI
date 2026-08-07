@@ -4,6 +4,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/server.py
     role: implementation
+  - path: ari-core/ari/viz/checkpoint_finder.py
+    role: implementation
+  - path: ari-core/ari/viz/checkpoint_lifecycle.py
+    role: implementation
   - path: ari-core/ari/viz/api_capabilities.py
     role: implementation
   - path: ari-core/ari/viz/frontend/src/App.tsx
@@ -30,11 +34,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
+  - path: ari-core/tests/test_launch_config.py
+    role: test
   - path: ari-core/ari/viz/frontend/scripts/capture_screenshots.mjs
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # 仪表盘指南
@@ -79,6 +85,49 @@ WebSocket 总是监听 **HTTP 端口 + 1**。如果该端口不可达（隧道�
 React 打包产物从 `ari-core/ari/viz/static/dist/` 提供。如果该目录缺失或过期，
 请在 `ari-core/ari/viz/frontend/` 下用 `npm ci && npm run build` 重新构建
 （Vite 会直接写入 `../static/dist`）。
+
+## 服务器启动时选中哪个检查点
+
+两个入口的差别不只是顺手与否。`ari viz <dir>` 把检查点目录作为**必填**参数，
+因此活动检查点就是你指定的那一个。`python -m ari.viz.server` 则让它可选 ——
+而在不带检查点启动时，服务器并**不会**保持为空。
+
+这种情况下，它会枚举检查点列表所用的同一批搜索根目录下的每一个检查点，
+采用目录 mtime 最新的那一个作为进程级全局活动检查点，然后从该检查点的
+`launch_config.json`（若不存在则回退到其父目录中的 `launch_config.json`）
+恢复 launch config 状态（模型、提供方、profile）。
+
+只有名字符合 run id 形状的目录才是候选 —— 8 到 14 位数字后跟一个下划线，
+例如 `20260727120000_my_run` —— 并且 `experiments`、`__pycache__` 和 `.git`
+会被跳过。如果没有任何匹配，则什么都不会被选中，需要检查点的端点会以
+*"No active project"* 错误拒绝。
+
+在信任屏幕上的内容之前，这个自动采用有两个性质值得知道：
+
+- **它不会被告知。** 启动横幅打印的是你传入的参数 —— 什么都没传时字面上就是
+  `Checkpoint: None` —— 并且在随后采用了某个检查点时也不会被改写。
+- **它不是按标签页的。** 每个服务器进程只有一个选择。连到这台服务器的所有
+  浏览器标签页共享它，在一个标签页里使用侧边栏的项目选择器，会对所有标签页
+  生效。
+
+启动之后哪些操作会移动这个全局选择：
+
+| 操作 | 对全局选择的影响 |
+|---|---|
+| 侧边栏的项目选择器（`POST /api/switch-checkpoint`） | 设为所选的检查点 |
+| legacy 的 `POST /api/launch` | 指向该次启动刚刚预创建的运行目录 |
+| 删除当前活动检查点 | 清空 —— 此后没有任何选中项 |
+| 在没有选中项时通过向导上传文件 | 创建一个 staging 目录，并把*它*作为选择 |
+| Studio 的启动（`POST /api/v1/runs`） | **无** —— 这是有意为之，见 [配置工作室](configuration_studio.md) |
+
+因此，裸重启之后 legacy 页面描述的运行是「最后被触碰过的那个检查点」，
+未必是你关心的那个。服务器自身的 HTTP 访问日志也遵循同一个选择：它被追加到
+`{活动检查点}/viz_access.jsonl`，所以在没有传检查点参数时，那些请求行会落到
+被自动采用的运行里。
+
+v2 工作区不受影响。涉及单个运行的 `/api/v1` 读取是从请求自身的 `run_id`
+解析检查点的，而不是从全局选择，因此 `?run=` 深链接无论那个选择是什么都
+渲染同样的内容。当你需要确定性时，请传入显式的检查点路径，或使用 v2 深链接。
 
 ## 能力标志
 

@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # Cookbook
@@ -182,8 +182,13 @@ be reproducible) — select an audit venue template via the rubric:
 export ARI_RUBRIC=sc                    # venue template: sc / neurips / nature
 ```
 
-Switching `ARI_RUBRIC` changes the BFTS scoring axes and the published review
-criteria together — see the [Glossary → venue](../reference/glossary.md) and
+`ARI_RUBRIC` (default `neurips`) picks the rubric YAML under
+`ari-core/config/reviewer_rubrics/` that the BFTS scoring axes are derived
+from. The published review criteria are a **separate** knob: the `review_paper`
+stage takes its rubric as an explicit workflow input, `paper_rubric` in
+`workflow.yaml` (default `generic_conference`). Set both when you want the
+search and the review judged against the same venue — see the
+[Glossary → venue](../reference/glossary.md) and
 [Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
 
 ---

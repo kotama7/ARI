@@ -2,8 +2,20 @@
 sources:
   - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/contracts.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/slurm.py
+    role: implementation
+  - path: ari-skill-hpc/ari_skill_hpc/counters.py
+    role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
+  - path: ari-skill-hpc/skill.yaml
+    role: config
+  - path: ari-skill-hpc/tests/test_server.py
+    role: test
   - path: ari-skill-coding/src/server.py
     role: implementation
   - path: ari-skill-coding/mcp.json
@@ -35,9 +47,86 @@ catalog administration or fixed resolution authority.
 
 ## ari-skill-hpc
 
-HPC job management via SLURM and Singularity. **LLM: No** (fully deterministic).
+Typed SLURM lifecycle, strict SSH transport, capability probes, and
+digest-pinned containers. **LLM: No** (fully deterministic).
+
+Ten tools in three groups: two typed submitters (`job_submit`,
+`container_submit`) plus the retained batch-script bridge (`slurm_submit`); four
+lifecycle operations that share one handle selector (`job_status`, `job_result`,
+`job_logs`, `job_cancel`); and three probes (`probe_platform_capabilities`,
+`counter_support`, `measure_counters`). Containers are reached only through
+`container_submit` and the digest-pinned `ContainerRequestV1` it carries — the
+package exposes no image build, pull or run commands.
 
 ### Tools
+
+#### `job_submit(request)`
+
+Submit an immutable `JobRequestV1` and immediately return an idempotent
+`JobHandleV1`. The tool takes exactly one argument, `request` — the
+`JobSubmitArgumentsV1` wrapper exists to keep every JSON Schema `$ref` at the
+root of the input schema. Commands are `argv` arrays; the login-node shell is
+never used. The core agent's batch-script workflow stays on the `slurm_submit`
+bridge below; new programmatic callers should prefer `job_submit`.
+
+`JobRequestV1` requires `request_id`, `job_name`, `work_dir` (an existing,
+non-symlink absolute directory), `argv` and `resources`. `environment`,
+`container`, `accelerator_allocation`, `inputs`, `outputs` and `metadata` are
+optional.
+
+`resources` (`ResourceRequestV1`) declares the same `partition` / `nodes=1` /
+`tasks=1` / `tasks_per_node=None` / `cpus_per_task=1` / `walltime="01:00:00"` /
+`launcher="auto"` shape as `slurm_submit`, and adds `memory_mb_per_node`,
+`memory_mb_per_cpu`, `gpus_per_node`, `gpus_per_task`, `gpu_type`, `nodelist`,
+`exclude_nodes`, `exclusive`, `constraint`, `hint`, `account`, `qos` and
+`reservation`.
+
+`environment` (`EnvironmentPolicyV1`) fixes `export_mode` to `NIL`: the job sees
+only the reviewed non-secret literals and `modules` declared here, and a
+variable whose name looks like a credential (`*_TOKEN`, `*_PASSWORD`,
+`*_API_KEY`, …) is refused rather than embedded in the request.
+
+Submission is always `sbatch --parsable --export=NIL`. The request is identified
+by `request_digest`, the sha256 of its canonical JSON, and that digest is
+claimed in a durable ledger *before* `sbatch` runs — so resubmitting the same
+request returns the existing handle instead of a second job, and a transport
+that dies with the outcome unknown leaves the claim standing rather than letting
+a retry duplicate the job.
+
+Every `inputs` pin must match its declared sha256 and size at submission time,
+and is checked again on the node before the payload starts; declared `outputs`
+must stay below `work_dir`, and symlinks are refused. Per-job artifacts live
+under `{work_dir}/.ari-hpc/{request_digest without its sha256: prefix}/`, which
+is the handle's `artifact_scope`.
+
+```python
+result = job_submit(request={
+    "request_id": "bench_001",
+    "job_name": "bench_test",
+    "work_dir": "/abs/path/to/workdir",
+    "argv": ["./bench", "--threads", "32"],
+    "resources": {"partition": "your_partition", "cpus_per_task": 32},
+})
+# Returns: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#           "request_digest": "sha256:...", "job_id": "12345",
+#           "state": "submitted", ...}
+```
+
+#### `container_submit(request)`
+
+The same lifecycle and the same argument schema as `job_submit`, except that
+`request.container` must be there: without it the call is refused as a
+validation error.
+
+`ContainerRequestV1` takes `runtime` (`apptainer` by default, or `singularity`),
+`image` (an `ArtifactPinV1` — absolute path, `sha256:…` digest and byte size),
+`binds` (read-only by default, targets must be unique), `gpu` (default `false`),
+`network` (`host` by default, or `none`), `contain_all` (default `true`) and
+`clean_environment` (default `true`). The image is pinned by digest, so an image
+whose bytes changed is refused before the job runs and again on the node. With a
+container declared, each `inputs` pin must also sit below `work_dir` or one of
+the declared binds; `work_dir` itself is bind-mounted read-write unless the
+request already declared it.
 
 #### `slurm_submit(script, job_name, partition, nodes=1, tasks=1, tasks_per_node=None, cpus_per_task=1, launcher="auto", walltime="01:00:00", work_dir, modules=[])`
 
@@ -72,65 +161,211 @@ different job rather than a cache hit on the first one.
 result = slurm_submit(
     script="""
 #!/bin/bash
-#SBATCH --cpus-per-task=32
 gcc -O3 -fopenmp -o ./bench ./bench.c
 OMP_NUM_THREADS=32 ./bench
 """,
     job_name="bench_test",
     partition="your_partition",
+    cpus_per_task=32,
     work_dir="/abs/path/to/workdir"
 )
-# Returns: {"job_id": "12345", "status": "submitted"}
+# Returns: {"schema_version": "ari.hpc.job-handle/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "state": "submitted", "status": "submitted",
+#           "message": "Job 12345 submitted successfully",
+#           "request_digest": "sha256:...", "submission_digest": "sha256:..."}
 ```
 
 **Notes:**
-- `--account` and `-A` headers are silently stripped
-- Empty `job_id` returns ERROR immediately
-- Never use `~` in paths inside scripts (not expanded in SBATCH)
+- `#SBATCH` directives written inside `script` have no effect. The generated
+  header is followed immediately by executable lines, so `sbatch` stops reading
+  directives before the body — declare the shape through the arguments
+  (`nodes`, `tasks`, `cpus_per_task`, `walltime`) instead
+- A refused submission comes back as `{"job_id": "", "status": "error",
+  "message": ..., "partition": ...}` rather than raising
+- The body runs under `set -euo pipefail` with `PATH=/usr/local/bin:/usr/bin:/bin`,
+  `LANG`/`LC_ALL=C.UTF-8`, and `BASH_ENV ENV CDPATH GLOBIGNORE PYTHONHOME
+  PYTHONPATH VIRTUAL_ENV` unset: nothing is inherited from the submitting shell,
+  so use absolute paths and reach the toolchain through `modules`
 
-#### `job_status(job_id)`
+#### `job_status(handle_id)`
 
-Poll SLURM job status.
+Return a provider-neutral `JobStatusV1` for an ARI handle or a raw SLURM ID.
+
+`job_status`, `job_result`, `job_logs` and `job_cancel` share one selector
+schema: exactly one of `handle_id` (the `JobHandleV1` handle ID, preferred) or
+`job_id` (raw SLURM job ID, legacy compatibility). It is a `oneOf`, so passing
+both or neither is refused, and the implementation reads `handle_id` first. A
+selector that is neither a known handle nor a bare numeric SLURM ID is a
+validation error.
+
+State comes from `sacct -j <id> --noheader --parsable2 --allocations
+--format=JobID,State,ExitCode,Start,End,Reason`, falling back to
+`squeue -j <id> --noheader --format=%T|%R` when accounting has no record yet.
 
 ```python
-result = job_status("12345")
-# Returns: {"status": "COMPLETED", "exit_code": 0, "stdout": "MFLOPS: 284172"}
-# Status values: PENDING, RUNNING, COMPLETED, FAILED, ERROR
+result = job_status(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-status/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "state": "succeeded",
+#           "scheduler_state": "COMPLETED", "exit_code": 0,
+#           "start_time": ..., "end_time": ..., "reason": None}
 ```
 
-#### `job_cancel(job_id)`
+`state` is the normalised, provider-neutral value — one of `submitted`,
+`running`, `succeeded`, `failed`, `cancelled`, `unknown` — while
+`scheduler_state` keeps SLURM's own word. `PENDING` / `CONFIGURING` /
+`REQUEUED` / `RESIZING` / `SPECIAL_EXIT` normalise to `submitted`; `RUNNING` /
+`COMPLETING` / `SUSPENDED` / `STAGE_OUT` to `running`; `COMPLETED` to
+`succeeded`; `CANCELLED` (either spelling) / `DEADLINE` / `REVOKED` to
+`cancelled`; `BOOT_FAIL` / `FAILED` / `NODE_FAIL` / `OUT_OF_MEMORY` /
+`PREEMPTED` / `TIMEOUT` to `failed`. A job the scheduler will not answer for
+reads `state: "unknown"`, `scheduler_state: "UNKNOWN"` — a recorded absence of
+evidence, not an error.
 
-Cancel a running or pending SLURM job.
+There is no `ERROR` state. A call that fails returns the error envelope
+`{"error": {"kind": ..., "message": ..., "retryable": ...}}`, where `kind` is
+`validation`, `transport`, `scheduler` or `unknown`; the message is scrubbed of
+credential-shaped text before it leaves the tool.
+
+#### `job_result(handle_id)`
+
+Collect a terminal `JobResultV1`, rehashing declared inputs, outputs and logs.
+Same selector as `job_status`.
+
+The job must have been submitted through ARI (there has to be a ledger record
+and a handle) and must carry a typed request: a `slurm_submit` bridge job
+exposes status and logs but not a typed `JobResultV1`. Calling before the job
+reaches a terminal state (`succeeded`, `failed`, `cancelled`) is a validation
+error.
+
+Each declared input is re-verified against its pin, each declared output is
+re-hashed from the file on disk into an `ArtifactPinV1`, and the logs are
+attached alongside provenance pins — the submission record, the
+execution-environment snapshot, the module list, the container runtime version,
+the exit code, and the exclusive-allocation and accelerator-inventory witnesses
+when the request declared one. A missing `required: true` output is not an
+exception: it lands in the result as `error.kind = "artifact"`. A job that ended
+in any non-`succeeded` terminal state gets `error.kind = "execution"`, marked
+`retryable` for `NODE_FAIL`, `PREEMPTED` and `REQUEUED`.
+
+The returned record carries `request_digest`, `environment_digest` and
+`module_digest`, plus `module_snapshot_digest`, `container_digest`,
+`accelerator_allocation_digest` and `accelerator_inventory_digest` where they
+apply, sealed by a `result_digest` taken over the rest of the record. The same
+record is written atomically to `{artifact_scope}/result-v1.json`.
+
+#### `job_logs(handle_id)`
+
+Read bounded, digest-bound stdout/stderr for an ARI job handle. Same selector as
+`job_status`, and likewise only for jobs submitted through ARI.
+
+```python
+result = job_logs(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-logs/v1", "logs": [...]}
+```
+
+Each entry gives `stream` (`stdout` or `stderr`), `path`, `digest`,
+`size_bytes`, `text` and `truncated`. `text` stops at 1 MiB (1,048,576 bytes)
+and sets `truncated: true` when it does — truncation is visible rather than
+passing as complete output. `digest` and `size_bytes` cover the whole file when
+the log is read directly on a shared filesystem; when the scheduler is reached
+over a non-shared transport the log comes back through that transport, and
+`digest` and `size_bytes` then describe the same 1 MiB-bounded text.
+Logs are read from `slurm-{job_id}.out` / `.err` in the handle's
+`artifact_scope`; a stream with no file is simply left out, and a log that is
+not a regular non-symlink file is refused.
+
+#### `job_cancel(handle_id)`
+
+Request cancellation of an ARI or SLURM job. Same selector as `job_status`.
+
+```python
+result = job_cancel(handle_id="hpc-...")
+# Returns: {"schema_version": "ari.hpc.job-cancel/v1", "handle_id": "hpc-...",
+#           "job_id": "12345", "status": "cancel_requested"}
+```
+
+The name is exact: this returns the fact that `scancel` accepted the request,
+not that the job has stopped. Poll `job_status` for the scheduler's own account
+of it — a cancelled job reads `state: "cancelled"`. If `scancel` itself is
+rejected, the call returns the error envelope with `kind: "scheduler"`.
 
 #### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
 
 Probe tool availability (`command -v`) **on the compute partition** and cache
-the result to `{checkpoint_dir}/platform_capabilities.json`. Best-effort by
-design: any failure (no partition, `srun` missing, queue wait beyond the
-timeout) returns `{"status": "skipped", ...}` and writes nothing; an existing
-cache is returned as `{"status": "cached", ...}` without re-probing. The claims
-extractor reads the cached note so it never declares evidence that depends on
-tools the platform verifiably lacks.
+the result to `{checkpoint_dir}/platform_capabilities.json`. `tools` is a
+comma-separated list, defaulting to `ARI_PROBE_TOOLS` and then to
+`perf,numactl,papi_avail,likwid-perfctr,valgrind`; an empty `partition` falls
+back to `ARI_SLURM_PARTITION`.
 
-#### `singularity_build(definition_file, output_path, partition)`
+A probe that ran returns `{"status": "probed", "partition": ..., "arch": ...,
+"available": {"perf": true, ...}}` — `available` maps each probed name to a
+boolean. The same record comes back as `{"status": "unsaved", "reason": ...,
+...}` when the probe ran but the cache could not be written, and as
+`{"status": "cached", ...}` when a valid cache is already there and nothing is
+re-probed. Best-effort by design: any failure (no partition, `srun` missing,
+queue wait beyond the timeout) returns `{"status": "skipped", "reason": ...}`
+and writes nothing. The claims extractor reads the cached note so it never
+declares evidence that depends on tools the platform verifiably lacks.
 
-Build a Singularity container from a definition file.
+#### `counter_support()`
 
-#### `singularity_run(image_path, command, work_dir, partition, nodes=1, walltime="01:00:00")`
+Report whether this node grants hardware counters, established by opening one
+rather than by looking for a profiler binary. Takes no arguments.
 
-Run a Singularity container as a SLURM job.
+A profiler binary proves nothing: `perf` is absent from some nodes that permit
+counters and present on some that deny them, and vendor profilers live at
+site-dependent paths. Calling `perf_event_open` observes the kernel policy that
+will actually apply, inside whatever container the node runs in.
 
-#### `singularity_pull(source, output_path, partition)`
+```python
+result = counter_support()
+# Returns: {"schema_version": "ari.hpc.counter-support/v1", "architecture": "...",
+#           "perf_event_paranoid": ..., "reviewed_events": [...],
+#           "status": "ready", "detail": None}
+```
 
-Pull a Singularity image from a remote registry.
+`status` is `ready`; `denied` when the self-probe is refused with `EACCES` or
+`EPERM`; `unsupported` when the architecture has no reviewed `perf_event_open`
+syscall number, or the self-probe failed for any other reason; `unavailable` on
+a non-Linux host.
 
-#### `singularity_build_fakeroot(definition_content, output_path, partition, walltime)`
+#### `measure_counters(pid, window_ms=1000, events=["cycles", "instructions"])`
 
-Build a Singularity container using fakeroot mode.
+Count reviewed hardware events on an existing process over a bounded window.
+This profiles rather than executes: it creates no process, writes nothing, and
+asks for no credential.
 
-#### `singularity_run_gpu(image_path, command, work_dir, partition, gres="gpu:1", cpus_per_task=8, walltime="01:00:00", bind_paths=[])`
+- `pid` is required and must name a running process
+- `window_ms` runs from 1 to 60000 (`MAX_WINDOW_MS`), default 1000
+- `events` is drawn from the reviewed set — `branch-instructions`,
+  `branch-misses`, `cache-misses`, `cache-references`, `cycles`,
+  `instructions` — defaulting to `["cycles", "instructions"]`. A name outside
+  that set is refused rather than passed through, so a caller cannot reach an
+  arbitrary raw event encoding
 
-Run a Singularity container with GPU access (`--nv` flag).
+Counters are opened with the least-privileged request there is
+(`exclude_kernel`, `exclude_hv`), so a denial reflects policy rather than an
+over-broad ask; the returned `excluded: ["kernel", "hypervisor"]` records that.
+
+```python
+result = measure_counters(pid=12345, window_ms=2000)
+# Returns: {"schema_version": "ari.hpc.counter-measurement/v1", "status": "measured",
+#           "support": {...}, "pid": 12345, "window_seconds": 2.000123,
+#           "counters": {"cycles": ..., "instructions": ...},
+#           "excluded": ["kernel", "hypervisor"]}
+```
+
+When `counter_support()` is not `ready`, or a counter cannot be opened against
+the target pid, `counters` comes back empty and `status` carries `denied`,
+`unavailable` or `unsupported` with the `support` record attached.
+
+This is the one HPC tool that declares `context_requirement: node` in
+`skill.yaml`, so its input schema declares an `ari_context` object property. The
+transport injects the authorised node context under that name for any tool with
+a context requirement, and the schema is `additionalProperties: false` — a
+schema that did not declare it would refuse every authorised call. The proxy
+strips the property out of `tools/list` and overwrites it on `tools/call`, so it
+is never an argument the agent supplies.
 
 ---
 
@@ -455,7 +690,7 @@ deterministic chain whose grading core is taken from PaperBench:
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
-ors_audit_rubric     (replicate-skill)    → ors_rubric.audit.json (flags leaves in ors_rubric.json in place)
+ors_audit_rubric     (replicate-skill)    → a separate audit document; ors_rubric.json is never mutated
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (local-tarball default)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (deterministic; fetch_code_bundle ← publish_record.json)
@@ -468,10 +703,13 @@ ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: Simple
 `ors_audit_rubric` checks the rubric everything downstream is graded
 against: it flags each leaf `vague_qualifier` / `no_paper_evidence` /
 `duplicate` (deterministic) and `unverifiable` (one LLM call per leaf),
-rewrites `ors_rubric.json` in place with those flags, and reports
-`regen_recommended` when >20% of leaves are flagged. It is a signal, not a
-gate — grading proceeds either way, but the flags travel with the rubric.
-Point it at a different model than the generator with `ARI_MODEL_RUBRIC_AUDIT`.
+and reports `regen_recommended` when >20% of leaves are flagged. The frozen
+rubric is **not** rewritten — the findings land in a separate
+`ari.replication-rubric-audit/v2` document (default path:
+`<rubric_path>.audit.json`), which binds the rubric and paper digests so the
+two cannot drift apart. It is a signal, not a gate — grading proceeds either
+way. Point it at a different model than the generator with
+`ARI_MODEL_RUBRIC_AUDIT`.
 
 EAR-on runs flow through `ors_seed_sandbox` (deterministic seed); the
 LLM `ors_build_reproduce` skips when reproduce.sh is already present,
@@ -647,24 +885,24 @@ v0.6.0 `react_driver`-based check.
 
 ### Tools
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
+#### `generate_rubric(paper_path="", paper_text="", output_path="", target_leaf_count=0, model="", temperature=0.0, seed=0, paperbench_rubric_id="", max_model_calls=64, subtree_concurrency=4, provider="", model_revision="")`
 
 Produces a PaperBench-compatible rubric. When `target_leaf_count=0`,
 the leaf count is auto-computed from paper length (~1 leaf / 75 words,
 clamped to [50, 400]).
 
-`two_stage=True` (default) generates the rubric in two passes — a
-**skeleton pass** that defines the root + direct children (one node per
-major contribution / experiment) with a per-child leaf budget, then
-**parallel subtree passes** that recursively populate each direct
-child's subtree with 4–6 additional levels. A merge step joins the
-populated subtrees back into the skeleton; leaves whose `quote` or
-`requirements` violate the schema's `minLength=10` are dropped (a
-handful per run is normal). Compared to a single LLM call this produces
-roughly 4× more leaves and 1–2 levels more depth on a representative
-PaperBench reference paper, at the cost of ~5× more API tokens. Set
-`two_stage=False` to use the legacy single-call path
-(`prompts/adversarial_reviewer.md`).
+Generation is always hierarchical: the single-call path is gone, and the frozen
+envelope records `strategy: "hierarchical-v2"` / `quality_profile: "calibrated"`
+unconditionally. A **skeleton pass** (`prompts/skeleton.md`) defines the root +
+direct children (one node per major contribution / experiment) with a per-child
+leaf budget, then **parallel subtree passes** (`prompts/subtree.md`,
+`subtree_concurrency` at a time) recursively populate each direct child's
+subtree. A merge step joins the populated subtrees back into the skeleton;
+leaves whose `quote` or `requirements` violate the schema's `minLength=10` are
+dropped (a handful per run is normal), as are leaves that cannot be bound to an
+exact paper span or a declared external prerequisite. `max_model_calls` bounds
+the whole run, and every prompt/response pair is retained under `.ari-rubric/`
+and listed in `generator.calls`.
 
 `paperbench_rubric_id` (unreleased) selects a venue-conditioned template
 from `ari-core/config/paperbench_rubrics/<id>.yaml`. Empty string =
@@ -675,12 +913,11 @@ This mirrors the `reviewer_rubrics/` venue pattern already used by
 `ari-skill-paper` for peer review, so the same `venue → YAML → prompt`
 flow is now available for the rubric generator. Shipped templates:
 `generic` (back-compat), `sc` (HPC paper-audit, 6 axes), `neurips`
-(ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). `paper_audit`
-mode requires `two_stage=True`. See
+(ML reproducibility, 6 axes), `nature` (wet-lab, 5 axes). See
 [`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
 for the YAML schema.
 
-#### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
+#### `audit_rubric(rubric_path, paper_path="", paper_text="", auditor_model="", output_path="", max_model_calls=400)`
 
 Independent auditor pass. Flags problematic leaves:
 - `vague_qualifier` (e.g. "should improve", "is reasonable")
@@ -688,7 +925,14 @@ Independent auditor pass. Flags problematic leaves:
 - `duplicate` (semantically equivalent to a sibling)
 - `unverifiable` (no decidable test)
 
-Recommends regeneration when more than 20% of leaves are flagged.
+The frozen rubric is never mutated: the findings go into a separate
+`ari.replication-rubric-audit/v2` document, written to `output_path` or, when
+that is empty, beside the rubric as `<rubric_path>.audit.json`. The rubric's own
+digest, its `paper_sha256` against the supplied paper text, and its generator
+provenance artifacts are all re-verified before the audit runs. The report
+records `independence_status: "not-independent"` when the auditor's
+model/provider/revision identity equals the generator's, and recommends
+regeneration when more than 20% of leaves are flagged.
 
 #### `suggest_target_leaf_count(paper_path, paper_text)`
 
@@ -1035,40 +1279,56 @@ Code generation, execution, and file reading. **LLM: No** (deterministic).
 
 ### Tools
 
-#### `write_code(filename, code, work_dir="/tmp/ari_work")`
+#### `write_code(filename, code, work_dir="/workspace")`
 
 Write a source file to the work directory.
 
-#### `edit_code(filename, old_string, new_string, replace_all=False, work_dir="/tmp/ari_work")`
+#### `edit_code(filename, old_string, new_string, replace_all=False, work_dir="/workspace")`
 
 Replace an exact snippet inside an existing file, leaving the rest untouched. Prefer this over `write_code` when the file already exists: re-emitting a whole kernel to change a few lines costs tokens and risks dropping code that was working. `old_string` must appear **exactly once** unless `replace_all` is set, so an ambiguous edit fails instead of silently changing the wrong place.
 
-#### `run_code(filename, work_dir="/tmp/ari_work", timeout=60)`
+#### `run_code(filename, work_dir="/workspace", timeout=600)`
 
-Execute a source file (auto-detects language from extension). Output is truncated with an informative marker showing omitted character count and a hint to redirect to a file.
+Execute a source file using an interpreter selected by its extension (`.py` →
+`python3`, `.sh` → `bash`, `.js` → `node`, `.rb` → `ruby`, `.pl` → `perl`,
+`.lua` → `lua`); it does **not** compile, so C/C++/Fortran/Rust/Go go through
+`run_bash`. The inline `stdout`/`stderr` are bounded previews (4,000 and 2,000
+characters) whose truncation marker states the omitted character count and says
+the full log is an artifact; the complete streams are always written as
+content-addressed artifacts with SHA-256 digests.
 
-#### `run_bash(command, work_dir="/tmp/ari_work", timeout=60)`
+#### `run_bash(command, work_dir="/workspace", timeout=600)`
 
-Run a bash command in the work directory. Output truncation with `truncated` boolean flag in result.
+Run a bash command in the work directory. Same bounded previews and
+content-addressed full logs as `run_code`, with a `truncated` boolean flag in
+the result.
 
-#### `read_file(path, offset=0, limit=8000, work_dir="/tmp/ari_work")`
+#### `read_file(path, offset=0, limit=8000, work_dir="/workspace")`
 
-Read a text file with paginated access for large files. Returns content, `next_offset` for continuation, and total line count.
+Read a text file with paginated access for large files. `offset` and `limit` are
+**character** offsets, not lines. Returns content, `next_offset` for
+continuation (`null` at the end), and the total character count.
 
 ```python
 result = read_file("results.csv", offset=0, limit=100)
-# Returns: {"content": "...", "next_offset": 100, "total_lines": 5000}
+# Returns: {"path": "...", "content": "...", "offset": 0, "returned_chars": 100,
+#           "total_chars": 5000, "truncated": True, "next_offset": 100}
 ```
 
 #### `describe_environment()`
 
 Report this cluster's environment catalog so the agent does not have to discover the toolchain by trial and error. Per node it lists arch, CPU, GPUs, compilers on PATH, the raw `module avail` catalog, and the NAMES of set toolchain env vars (values are never dumped — the agent echoes the ones it needs). On a **login** node it reports the login node itself plus one entry per configured compute partition; on a **compute** node, only that node.
 
-Work directory: `work_dir` arg > `ARI_WORK_DIR` env > `/tmp/ari_work`.
+Work directory: `ARI_WORK_DIR` (default `/tmp/ari_work`) fixes the workspace
+root. A `work_dir` argument does not replace that root — it selects a directory
+*beneath* it, created on demand, and a path that resolves outside it is refused
+rather than rewritten. The agent is shown the root as the fixed container path
+`/workspace`, which the filesystem tools map back to the real directory before
+touching it and scrub out of every result.
 
-Inside a BFTS run the first of those is not left to the model: `ari.agent.tool_manager` pins the node's real `work_dir` on every filesystem tool. The env fallback cannot serve that role because the MCP server snapshots `ARI_WORK_DIR` at fork time, so per-node updates never reach it — an unpinned call would land in a shared scratch dir the evaluator never reads, and the node would be scored on inherited code.
+Inside a BFTS run the `work_dir` argument is not left to the model: `ari.agent.tool_manager` pins the node's real `work_dir` on every filesystem tool. The env fallback cannot serve that role because the MCP server snapshots `ARI_WORK_DIR` at fork time, so per-node updates never reach it — an unpinned call would land in a shared scratch dir the evaluator never reads, and the node would be scored on inherited code.
 
-#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, file="results.json", work_dir="/tmp/ari_work")`
+#### `emit_results(params, measurements, predictions={}, scores={}, provenance={}, units={}, execution=None, file="results.json", work_dir="/workspace")`
 
 Write a typed `results.json` separating input parameters from measured outputs. Call this once at the **end** of an experiment run so downstream stages (`transform → science_data`, paper writing, summary stats) can tell apart "what we measured" from "what we ran on" — a best-of reduction never accidentally picks an input size (e.g. `nnz`, `M`, `K`, `threads`) over a real metric (e.g. `GFlops_per_s`).
 
@@ -1081,9 +1341,11 @@ emit_results(
 )
 ```
 
-The file uses schema `1.0` and is overwritten on repeat calls; pass a different `file` name to keep multiple result variants. `params` and `measurements` must be disjoint — do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`. Non-JSON-serializable values (e.g. `pathlib.Path`) are str-coerced rather than raising. `file` is normalised to `Path(file).name` so a malicious agent cannot escape `work_dir` via `../../...`.
+The file is `{"schema_version": "1.0", "typed_schema_version": "ari.measurement-set/v1", "measurement_set": {...}}` — only the canonical `MeasurementSetV1` object, with no flat projection beside it (see [Execution and measurement contracts](execution_contract.md)). It is overwritten on repeat calls; pass a different `file` name to keep multiple result variants. `params` and `measurements` must be disjoint — do NOT include input parameters in `measurements` and do NOT include measured outputs in `params`. Every group must be finite JSON: a non-serializable value (e.g. `pathlib.Path`), a `NaN`/`Infinity`, or a non-numeric measurement is refused with an `error` rather than coerced. `file` is written through the closed workspace, so a path escaping `work_dir` is refused.
 
-The optional `provenance` arg is an `{operand: source}` map written verbatim into `results.json` as the `_provenance` key and consumed by the claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"` when its value is an empirically **MEASURED** ceiling/peak (so a normalized metric is not flagged as resting on a placeholder), and `"correctness"` or `"reference"` when it is a residual computed against an **independent** reference (so the output is not flagged as unverified). Best-effort; omitted entirely when empty.
+The optional `units` arg is a `{measurement: unit}` map; a measurement with no declared unit is recorded as `unit_status: "missing"` and units are never inferred. The optional `execution` arg is the `measurement_execution` block copied verbatim from a prior `run_code`/`run_bash` response (execution identity/attempt, status, exit code, artifact digests, and the server-issued receipt); without it the measurements are marked `execution_status: "unreported"` and are not scientifically admissible. A `units` or `provenance` key naming something that is not in `measurements` is refused.
+
+The optional `provenance` arg is an `{operand: source}` map recorded on the corresponding canonical measurement record and consumed by the claim/metric-correctness gate. Tag an operand `"microbench"` or `"benchmark"` when its value is an empirically **MEASURED** ceiling/peak (so a normalized metric is not flagged as resting on a placeholder), and `"correctness"` or `"reference"` when it is a residual computed against an **independent** reference (so the output is not flagged as unverified). Best-effort; omitted entirely when empty.
 
 The downstream `transform-skill::nodes_to_science_data` populates `configurations[*].parameters` from this file when present (D contract). When `emit_results` is not called, the LLM evaluator's typed split (C contract — see `ari-skill-evaluator::make_metric_spec` below) supplies the same information from artifact analysis.
 

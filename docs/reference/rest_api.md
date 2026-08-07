@@ -26,9 +26,17 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/api_orchestrator.py
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/tests/test_workflow_editor.py
+    role: test
+  - path: ari-core/tests/test_orchestrator.py
+    role: test
+last_verified: 2026-08-07
 ---
 
 # REST API Reference
@@ -384,7 +392,11 @@ the typed 404).
 
 > **Frozen.** The unversioned surface below is kept for the legacy dashboard
 > pages and existing integrations. It is **not** extended: new data must be
-> served from a run-explicit `/api/v1` endpoint. `GET /state` in particular
+> served from a run-explicit `/api/v1` endpoint. One route landed here after
+> that rule was written — `GET /api/checkpoint/<id>/kca` (2026-08-05) — so it
+> has no OpenAPI entry, no typed error envelope and no `schema_version: 1`
+> DTO; it is documented below as it exists, not as a precedent.
+> `GET /state` in particular
 > is a frozen facade whose exact top-level key set is pinned by
 > `ari-core/tests/test_gui_state_facade_freeze.py` (7 keys with no active
 > checkpoint, 35 keys for a fully-populated checkpoint) — adding a key to it
@@ -539,6 +551,7 @@ The list is one portfolio across every checkpoint search base, ordered by
 |---|---|---|
 | GET | `/api/checkpoints` | List all checkpoints across the checkpoint search bases, newest first (`mtime` descending) |
 | GET | `/api/checkpoint/<id>/summary` | Run summary (goal, node count, status, top metric) |
+| GET | `/api/checkpoint/<id>/kca` | Read-only Knowledge / Provider / Assurance projection of the checkpoint's committed admission documents (`schema_version: "ari.viz-kca/v1"`; `present: false` when the run has no `run_admission.json`; unreadable inputs surface in `degraded_reasons` instead of failing) |
 | GET | `/api/checkpoint/<id>/memory` | Letta memory contents |
 | GET | `/api/checkpoint/<id>/memory_access` | Memory write/read telemetry |
 | GET | `/api/checkpoint/<id>/files` | File list with sizes + types |
@@ -570,6 +583,40 @@ The list is one portfolio across every checkpoint search base, ordered by
 | POST | `/api/sub-experiments/launch` | Launch a child run inheriting from a parent checkpoint |
 | GET | `/api/lineage-decisions/<run_id>` | Decisions emitted by the stagnation rule (v0.7.0) |
 
+#### Sub-experiment listing and launch guards
+
+`GET /api/sub-experiments` is **disk-authoritative**: every call rescans the
+orchestrator's sub-experiment checkpoint root (`api_orchestrator._logs_root()`,
+overridable with `ARI_ORCHESTRATOR_LOGS`) one directory level deep for
+`<checkpoint>/meta.json`, then *replaces* the server's
+in-memory record set with what it found — so a deleted checkpoint disappears
+from the listing instead of lingering as a stale cache entry
+(`ari-core/tests/test_orchestrator.py::test_gui_list_sub_experiments_prunes_deleted`).
+Each record is that checkpoint's `meta.json` plus an added `checkpoint_dir`,
+sorted newest-first on `(created_at, run_id)`. `GET /api/sub-experiments/<run_id>`
+reads disk first and falls back to the in-memory cache; an unknown id answers
+`{"error": "..."}` with HTTP `200`, not `404`.
+
+`POST /api/sub-experiments/launch` refuses a child run in two lineage cases.
+Both answer `{"ok": false, "error": ...}` with HTTP `200` — the legacy dispatcher
+only overrides the status when a handler sets `_status`, and neither guard does.
+
+| Condition | Why | Also echoed in the response |
+|---|---|---|
+| `recursion_depth >= max_recursion_depth` | bounds recursive self-launching; `max_recursion_depth` defaults to `3` (`api_orchestrator.DEFAULT_MAX_RECURSION_DEPTH`) and is overridable per request | `recursion_depth`, `max_recursion_depth`, `parent_run_id` |
+| the parent checkpoint's `meta.json` carries `parent_terminated` | an upstream lineage decision already ended that thread — `ari-core/ari/cli/lineage.py` writes the flag when the chosen action is `terminate`; without the gate a stale background caller could keep spawning children after the lineage was declared exhausted | `parent_run_id`, `parent_terminated_rationale` (truncated to 300 chars) |
+
+The depth check runs first, so a request that is both too deep *and* parented by
+a terminated lineage is reported as a depth refusal. The terminate check is
+deliberately best-effort: an unresolvable `parent_run_id`, or a missing or
+unreadable parent `meta.json`, lets the launch proceed rather than failing
+closed on a read error.
+
+`inherit_idea_index` adds refusals of its own (no `parent_run_id`, unresolvable
+parent, missing or malformed parent `idea.json`, non-integer or out-of-range
+index). It reads only the parent's `idea.json` catalog — never the parent's
+`plan.md` — so an inheriting child can still pivot.
+
 ### Memory backend
 
 | Method | Path | Purpose |
@@ -596,6 +643,39 @@ The list is one portfolio across every checkpoint search base, ordered by
 | POST | `/api/workflow/flow` | Save the DAG view (optional `base_revision` — MN-1/MN-3) |
 | POST | `/api/workflow/skills` | Toggle which skills are enabled (optional `base_revision` — MN-1/MN-3) |
 | POST | `/api/workflow/disabled-tools` | Per-skill tool whitelist / blacklist (optional `base_revision` — MN-1/MN-3) |
+
+All four writes edit the **active checkpoint's** `{ckpt}/workflow.yaml`; the
+bundled `config/workflow.yaml` is never written from the GUI (MN-1).
+`/api/workflow/flow`, `/api/workflow/skills` and `/api/workflow/disabled-tools`
+copy the bundled file into the checkpoint first when that copy does not exist
+yet (`_checkpoint_workflow_path` in `ari-core/ari/viz/api_workflow.py`).
+`POST /api/workflow` does not use that helper: it seeds the first write from
+the `path` the caller echoes back from `GET /api/workflow`, and if that field
+is absent or unreadable it writes a checkpoint copy containing only `pipeline`.
+
+**What a workflow write preserves.** Each write loads the whole YAML mapping it
+seeded from, mutates one section of it, and re-serialises the mapping with
+`sort_keys=False`. Top-level keys the GUI does not model therefore survive an
+edit round-trip with their values and their original key order intact —
+including the untyped `extra="allow"` sections of the bundled
+`config/workflow.yaml` (`memory:`, `lineage_decision:`, `claim_gate_policy:`,
+`container:`), which `ari-core/ari/config/field_registry.py` forward-declares
+as having no typed pydantic leaf today. Only
+`POST /api/workflow/flow` also merges at *stage* granularity: `_merge_stages`
+overwrites just the ten fields the DAG editor carries (`stage`, `skill`,
+`tool`, `description`, `depends_on`, `enabled`, `phase`, `loop_back_to`,
+`pre_tool`, `post_tool`) and keeps the rest of each stage — `inputs`,
+`outputs`, `skip_if_exists`, the `react:` block — from disk; a stage missing
+from the posted flow is dropped, a new one is appended verbatim.
+`POST /api/workflow` replaces the whole `pipeline` list with the posted one, so
+per-stage fields the caller did not send are **not** merged back.
+
+**What a workflow write does not preserve:** comments and layout. The file is
+re-emitted from the parsed mapping, so comments, blank-line grouping, quoting
+and flow style (`[a, b]`, `{a: 1}`) are normalised away on the first GUI save,
+scalars are re-spelled in their canonical form (`yes` → `true`, `"x"` → `x`),
+and YAML anchors are re-emitted under generated names (`&id001`). The bundled
+`config/workflow.yaml` keeps its comments because nothing writes it.
 
 ### Wizard / config gen
 

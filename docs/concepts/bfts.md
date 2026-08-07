@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-07
 ---
 
 # BFTS Algorithm
@@ -93,8 +93,10 @@ claims were structurally unreachable — a child expanded from a data-less paren
 had no inputs to compute from and, observed on a real run, regressed to
 re-running the same single probe. The enabling mechanism is **parent → child
 `work_dir` inheritance**: each child starts from a copy of its parent's working
-directory (code, configs, and `results*.json` measurement files inherit; output
-artifacts such as logs and result CSVs are blacklisted), so expanding the right
+directory (code, configs, and lineage `results*.json` measurement files inherit;
+`_OUTPUT_BLACKLIST` holds back the output artifacts — logs, result CSVs, and
+`results.json` / `*_results.json` themselves, so a child cannot re-read its
+parent's headline numbers as its own), so expanding the right
 parent puts the input files directly in front of the child. Two steering
 signals exploit this (`ari/agent/metric_contract.py`):
 
@@ -133,8 +135,8 @@ with the claim gate's evidence view.
 ## Governed BFTS under `ari_rqgm` (opt-in)
 
 In the opt-in `ari_rqgm` execution mode the algorithm above is unchanged —
-governance *wraps* it at four seams (all fail-open; under the default
-`simple_bfts` none of this code is imported):
+governance *wraps* it at five seams (the first four fail-open; under the
+default `simple_bfts` none of this code is imported):
 
 - **`GovernedSearchStrategy` seam** (`ari/rqgm/runtime.py`): `build_runtime`
   wraps the BFTS strategy in a pure-delegation wrapper implementing the same
@@ -156,6 +158,17 @@ governance *wraps* it at four seams (all fail-open; under the default
   stale records and rebuild the frontier; a double kernel-validation failure
   sets `expansion_halted` and the loop drains pending work without further
   expansion.
+- **Assurance-gated frontier admission** — a further opt-in *on top of*
+  `ari_rqgm`, active only when one of `knowledge.mode` / `capability_binding.mode`
+  / `assurance.mode` leaves its legacy-inert default (`off` / `legacy` / `off`).
+  Every completed node then goes through `RQGMRuntime.assure_node` first, and
+  frontier admission, Rule A and Rule B are all deferred until the assurance
+  gate, sterile detection, the adversarial round and the typed node report have
+  finished. A node the gate classifies `uncertified_frontier` is held out of the
+  frontier, and Rule A additionally requires the child to be
+  `scientific_frontier` rather than merely non-`_sterile`. Unlike the seams
+  above, this one is fail-closed: an RQGM runtime with no `assure_node` bridge
+  raises rather than falling through to the legacy ordering.
 
 The layers, epoch algorithm, and invariants are documented in
 [Constitutional ARI-RQGM Architecture](rqgm_architecture.md).

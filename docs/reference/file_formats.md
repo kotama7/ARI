@@ -512,6 +512,26 @@ Task 05); chain integrity verification is the ConstitutionalKernel's
 "subject_ref": ..., "rule_id": ..., "detail": ...}]}` — every verdict is
 replayable.
 
+That replayability is a contract, not a habit. `make_report`
+(`ari-core/ari/rqgm/kernel_types.py`) sorts violations by
+`(code, subject_ref, detail)` at construction, so identical inputs
+serialize to an identical `kernel_report` line; the property is pinned per
+violation code in `ari-core/tests/test_rqgm_kernel.py`, which drives each
+fixture twice on two separate kernel instances and compares the canonical
+JSON. No check reads a clock: no kernel module imports `time` or
+`datetime`, and the envelope's `created_at` is checked for **presence**
+only (`kernel_rules.ENVELOPE_FIELDS`) — its value never enters a
+comparison, a `detail` string, or a hash. Severity is never chosen by the
+caller either; it resolves through the frozen `kernel_rules.SEVERITY` map,
+so a verdict's severity is a function of its code alone. Numeric slack is
+one knob: float comparisons go through `rqgm.kernel.float_tolerance`
+(default `1e-9`, see [Configuration](configuration.md)). And "the kernel
+is not an LLM judge" is enforced rather than asserted — a test greps every
+`ari/rqgm/kernel*.py` plus `transition_rules.py` for `litellm`, `openai`,
+`anthropic`, `requests`, `httpx`, `aiohttp`, and `socket` and fails if any
+appears as an import; it also asserts the covered file set exactly, so a
+new `kernel_*.py` cannot join the kernel without joining the guard.
+
 At each epoch boundary the GovernanceOrchestrator's `audit_epoch` appends
 its records here (all carrying the common `rqgm_record_base` envelope):
 `evidence_bundle` (EvidenceClerk-only author), `impeachment_motion`
@@ -525,6 +545,41 @@ latest report for an epoch is the LAST `governance_report` line with that
 `epoch_id` (a re-run after a crashed audit appends fresh record ids; prior
 partial records remain as history). No governance snapshot file exists;
 the JSONL is the truth.
+
+`audit_epoch` is **read-only** with respect to the component and prompt
+registries, the frontier, `tree.json` and node state. It reaches the
+registries only through their read accessors (`active_set` / `get`), and the
+nine-step pipeline *returns* records rather than persisting them — the facade
+appends them afterwards. It applies no recommendation either: acting on a
+`governance_report` is the RegistryTransitionEngine's job alone (Task 09), so
+a report on its own changes no status. Its write set is closed:
+
+- `rqgm_audit.jsonl` — always: the governance records above plus the final
+  `governance_report`.
+- `prompt_trace.jsonl` / `prompt_versions.json` — the ordinary provenance
+  records of the shared prompt-render path, covering the governance LLM calls
+  only. A deterministic audit (no LLM seam wired) renders no governance
+  prompt and writes neither file.
+- `rqgm_adversarial_cases.jsonl` plus the derived
+  `rqgm/adversarial_replay_pool.json` — the step-7 replay-pool update, only
+  when a pool is passed. Admitted and upheld cases are **appended** to the
+  JSONL truth and the snapshot is then rewritten from in-memory state, which
+  makes it a projection rather than an in-place edit of history: bounded
+  eviction only flips a case's `status` to `evicted`, and the JSONL keeps
+  every case line ever admitted.
+- `rqgm_governance_cache.jsonl` — the candidate-evaluation write-back, only
+  when a Task 12 governance cache is wired (see `rqgm_governance_cache.jsonl`
+  below).
+
+`rqgm_audit.jsonl` is registered both in `PathManager.META_FILES` — so no
+inheritance or checkpoint-copy path carries it into a node work dir — and in
+the node-report `files_changed` blocklist
+(`ari-core/ari/orchestrator/node_report/builder.py`), so a governance write
+never surfaces as a node-produced file change. Two regression tests in
+`ari-core/tests/test_rqgm_governance.py` hold the line: an `audit_epoch` with
+no LLM and no replay pool leaves the registered audit log as the *only* file
+in the checkpoint directory, and a default `simple_bfts` run writes no
+`rqgm*` file and no `constitution.yaml` at all.
 
 The RegistryTransitionEngine (RQGM Task 09) additionally audits every
 boundary resolution here as an `epoch_transition` record (schema:

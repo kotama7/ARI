@@ -18,6 +18,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/launch.py
     role: implementation
+  - path: ari-core/ari/cli/lineage.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
   - path: ari-core/tests/test_gui_baseline_settings_contract.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
@@ -41,7 +45,10 @@ ARI の設定は複数の入口から入ってきます。**優先順位のチ�
   （プロファイルのマージ後に）*最後に*走るためです。`auto_config()` は
   ファイルが無い場合のフォールバック（環境変数がハードコード値に優先）。
   プロファイル (`--profile laptop|hpc|cloud`) は YAML と環境変数の間で
-  ディープマージされます。
+  適用されますが、ディープマージでは**ありません** — `_apply_profile`
+  (`ari/cli/run.py`) がコピーするのはちょうど 4 キーだけで、プロファイル
+  ファイル内のそれ以外のキーは黙って無視されます（後述の*解決モデル*にある
+  「プロファイルのマージは 4 キーだけ」の注意点を参照）。
 - **GUI 設定パネル** — `/api/settings` が表示する値。`_api_get_settings()` が
   構築します: **保存済み `settings.json`（truthy な場合）> `ARI_*` 環境変数 >
   `workflow.yaml` > ハードコードのデフォルト**。ただし falsy 再充填の癖が
@@ -65,12 +72,78 @@ ARI の設定は複数の入口から入ってきます。**優先順位のチ�
 | GUI ポート | `ARI_GUI_PORT`（`start.sh` 経由）> `--port`（argparse デフォルト **8765**）> `state.py` の `9886` プレースホルダ | `start.sh`、`viz/server.py:main` |
 | SLURM パーティション | 明示的なツール `partition` kwarg（sinfo 検証済み）> `SLURM_DEFAULT_PARTITION` > sinfo の先頭。kwarg 自体は experiment.md の `Partition:` > `ARI_SLURM_PARTITION` > sinfo から選ばれる | `ari-skill-hpc/slurm.py`、`ari/agent/workflow.py` |
 | checkpoint ディレクトリ | `ARI_CHECKPOINT_DIR` > YAML `checkpoint.dir` > `workspace/checkpoints/{run_id}` | `config/__init__.py:_apply_checkpoint_env_overrides`、`PathManager` |
+| `bfts_pipeline[].enabled` | `{checkpoint}/workflow.yaml` > パッケージ同梱の `ari-core/config/workflow.yaml` > `true` | `cli/bfts_loop.py`（生 YAML 読み） |
+| `lineage_decision.*` | 有効な rubric の `lineage_thresholds`（`ARI_RUBRIC`。4 つのしきい値キーのみで `mode` は対象外）> パッケージ同梱の `ari-core/config/workflow.yaml` > `./config/workflow.yaml`（プロセスの cwd）> 呼び出し側のデフォルト | `cli/lineage.py:_load_lineage_decision_config` |
+| `root_idea_selection.enabled` | パッケージ同梱の `ari-core/config/workflow.yaml` **のみ** > `false` | `cli/bfts_loop.py`（生 YAML 読み） |
 
 **falsy と欠損の違い:** core 側の環境変数オーバーライドのガード（`if _m:` など）は
 空の環境変数を欠損として扱います（YAML／デフォルトを保持。`base_url` だけは
 明示的に `!= ""` を使う）。GUI のマージ `{**defaults, **saved}` は「存在するが空」の
 保存済みキーを勝たせ、その後 `llm_model`/`llm_provider` だけを `workflow.yaml`
 から強制的に再充填します。
+
+**2 つの `workflow.yaml` ブロックはパッケージ同梱のコピーからしか読まれません
+（アンチパターン）。** `lineage_decision` と `root_idea_selection` は
+`ARIConfig` の宣言済みフィールドではないため、`load_config` の
+`{k: v for k, v in raw.items() if k in ARIConfig.model_fields}` フィルタで
+捨てられ、それぞれ専用のリーダが生の YAML から読み直しています。そしてこの
+2 つのリーダは、*どの* `workflow.yaml` を読むかについて他と揃っていません。
+`bfts_pipeline` は checkpoint 優先で読まれます — `{checkpoint}/workflow.yaml`
+を先に見て、パッケージ同梱のコピーはフォールバックにすぎません。一方
+`_load_lineage_decision_config`（`ari/cli/lineage.py`）はパッケージ同梱の
+`ari-core/config/workflow.yaml` を読み、そのファイルが存在しないときにだけ
+プロセスの作業ディレクトリ基準の `./config/workflow.yaml` にフォールバック
+します。`root_idea_selection` ブロックに至ってはパッケージ同梱のコピーしか
+読みません。checkpoint 優先の読みとパッケージのみの読みが、同じ
+`ari/cli/bfts_loop.py` の中に同居しています。帰結: どちらのブロックも
+`{checkpoint}/workflow.yaml` に書いても効かず、`--config` で渡しても効きません
+（型付きローダは捨て、どちらのリーダもそのパスを見ないため）。実行ごとに
+これらを変えるにはパッケージ同梱の `workflow.yaml` を編集してください。
+`lineage_decision` の 4 つのしきい値キーについては、有効な rubric の
+`lineage_thresholds` オーバーレイが会場ごとに調整するための正規の手段です。
+これは設計された階層ではなく既知の不整合であり、新しいリーダはこの
+パッケージのみのパターンを踏襲すべきではありません。
+
+**未知のトップレベルキーは警告なしに捨てられます。** `load_config` は
+`ARIConfig` を構築する際、宣言済みの pydantic フィールドに一致するトップ
+レベル YAML キーだけを使います — `ari/config/__init__.py` の
+`{k: v for k, v in raw.items() if k in ARIConfig.model_fields}` フィルタです。
+`ARIConfig` は `extra="allow"` を設定していますが、ここでは何も救いません。
+フィルタが構築の*前*に走るからです。宣言されていないブロックでも効くものが
+あるのは、専用のリーダが型付き設定を経由せず生の YAML を読み直している
+ためです — `memory` は `_apply_memory_section`、`container` は
+`ari/cli/run.py`、`lineage_decision` は
+`ari/cli/lineage.py:_load_lineage_decision_config`、加えて `bfts_pipeline`、
+`pipeline`、`claim_gate_policy`。そうしたリーダが現在認められている
+トップレベルキーの列挙が
+`ari.config.resolver.KNOWN_NON_CONFIG_TOP_KEYS` です。それ*以外*のトップ
+レベルキーは破棄され、その際に何もログされません。`ari.config` の中に
+**近似綴りの検出（「もしかして」チェック）は存在しません**。したがって
+`rqgm:` を `rqmg:` と綴り間違えると、エラーは一切出ないまま、その実行は
+黙ってデフォルトのままになります。これを部分的に補うものが 2 つありますが、
+どちらもロード時の CLI 上ではありません:
+
+- **リゾルバはペイロード内で警告します。** `_apply_workflow_layer`
+  (`ari/config/resolver.py`) は、`ARIConfig.model_fields` と
+  `KNOWN_NON_CONFIG_TOP_KEYS` のいずれにも属さないキーごとに
+  `workflow.yaml top-level key '…' is not an ARIConfig field — load_config
+  silently drops it (no reader consumes it)` を追加します。これは
+  `GET /api/v1/runs/{run_id}/resolved-config`（checkpoint 内の
+  `workflow.yaml` のコピーを読む）と新規実行プレビュー（バンドル版を読む）の
+  `warnings` 配列を通じて届きます。綴りの提案ではなく単なる列挙であり、
+  `ari.viz.v1` の外からリゾルバを呼ぶものは無いので、手動で回した CLI が
+  これを見ることはありません。
+- **不在は checkpoint 側で観測できます。** `{checkpoint}/rqgm_state.json` は
+  `ari.mode: ari_rqgm` と `rqgm.enabled: true` の両方が成り立つときだけ
+  書かれる（`ari/cli/run.py`）ので、ファイルが無いことはその実行が
+  `simple_bfts` だったことを意味します。デフォルト以外の実行モードが実際に
+  効いたかどうかは、エラーが出ないことではなく、このファイルで確認して
+  ください。
+
+同じフィルタが、後方互換の方向を安全にしています。ある `ari-core` ビルドが
+フィールドとして宣言していないブロックは、致命的エラーではなく無視される
+だけなので、新しい YAML を古い core に載せてもロード失敗にはならず、その
+core のデフォルトに縮退します。
 
 > ⚠ この優先順位は**今日の観測結果としてそのまま記述**したものであり、変更した
 > ものではありません。統合に先立ち、順序はテスト（`test_config.py`、
@@ -118,14 +191,15 @@ GUI の設定面は、機械的に検査される 3 つの部品の上に構築�
 | `source` | `pydantic` — 走査対象は宣言済みモデルフィールドのみです。 |
 | `env_override` | この葉を上書きする `ARI_*` 変数、または `null`。 |
 
-**被覆率の不変条件。** レジストリは現在**144 葉・メタデータ被覆率 100 %** です:
+**被覆率の不変条件。** レジストリは現在**204 葉・メタデータ被覆率 100 %** です:
 `build_field_registry()` は、走査した葉に `FIELD_META` の接頭辞または厳密な
 エントリが無い場合 `LookupError` を送出するため、新しい設定フィールドがスキーマ
-メタデータ無しに出荷されることはできません。現在の分布: Governance 96 /
-Search (BFTS) 14 / Proposal routing 14 / Models 5 / Infrastructure 5 /
-Evaluation 4 / Execution mode 4 / Skills 2; expert 119、advanced 16、basic 9;
-`public` 143 + `secret_reference` 1（`llm.api_key`）; `new_run_only` 114 +
-`draft` 30; 20 葉が `env_override` を持ちます。
+メタデータ無しに出荷されることはできません。現在の分布: Governance 104 /
+Models 32 / Search (BFTS) 24 / Proposal routing 14 /
+Manuscript completeness 10 / Infrastructure 5 / Scientific assurance 5 /
+Evaluation 4 / Execution mode 4 / Skills 2; expert 150、advanced 18、basic 36;
+`public` 203 + `secret_reference` 1（`llm.api_key`）; `new_run_only` 146 +
+`draft` 58; 20 葉が `env_override` を持ちます。
 
 意図的な忠実度の限界（黙ってではなく文書化されています）:
 
@@ -156,7 +230,8 @@ Evaluation 4 / Execution mode 4 / Skills 2; expert 119、advanced 16、basic 9;
 （`validate_mode_interlocks`。評価対象は生のパッチではなくマージ後の文書の値です）。
 ADR-09 以降、GUI クライアントが書けるモード / ガバナンスの葉はこの 4 つだけで、
 しかも新規ランに限られます; `Execution mode` カテゴリと `rqgm.*` ツリーの残り
-96 パスはファイル専用のままで、`POST /api/v1/runs` が `mode_locked` で拒否します。
+104 パスはファイル専用のままで、`POST /api/v1/runs` が `mode_locked` で拒否します
+（`viz/v1/launch.py:locked_launch_paths`）。
 それらの `applies_when` メタデータは `path=value` のゲートではなくペアリングの
 *注記*（"paired with `rqgm.enabled` (one intent — set both)"）を持ちます。
 どちらか片方をもう片方でゲートすると、インターロック自体が自己ゲートに
@@ -1133,8 +1208,8 @@ RQGM キーをマージしません。ダッシュボードの Configuration Stu
 | `enabled` | `true` | `ari_rqgm` 内でのエポック境界ガバナンス監査の on/off（アブレーションの段はガバナンスを off にして `ari_rqgm` を走らせる） |
 | `default_level` | `1` | レポートに刻印されるエポックごとのデフォルトガバナンスレベル |
 | `full_governance_only_on_top_k` | `3` | 完全な adversary/defender/judge の注意は top-k ノードのみ |
-| `judge_on_disputed_only` | `true` | GovernanceJudge は提出された動議に対してのみ呼び出す |
-| `impeachment_only_at_epoch_boundary` | `true` | 動議は `audit_epoch` の内側でのみ提出される |
+| `judge_on_disputed_only` | `true` | ノードごとの adversarial ラウンド**専用**。予算ゲートが Defender 呼び出しを拒否したとき、反論されなかった攻撃はノードごとの `ArtifactJudge` に到達せず、ログ上の観測として失効する（`ari/rqgm/adversarial/round.py`）。エポック境界の `GovernanceJudge` はゲートし**ない** — `audit_epoch` の裁定ステップはこのキーを読まない |
+| `impeachment_only_at_epoch_boundary` | `true` | 宣言のみ — **このキーを読むコードパスは存在しない**。動議が `audit_epoch` の内側でのみ提出されるのは、そこがファサード唯一の動議入口だからであり、スイッチではなく構造上の性質。`false` にしてもエポック途中の動議は有効にならない |
 | `max_llm_calls_per_audit` | `12` | `audit_epoch` ごとのハードキャップ; 超えると各ステップは決定論的フォールバックへ縮退 |
 | `max_defender_calls_per_epoch` | `12` | エポックごとの Defender LLM 呼び出しキャップ（adversary のキャップは `rqgm.adversarial.max_adversary_calls_per_epoch` のみに存在） |
 | `max_judge_calls_per_epoch` | `8` | エポックごとの Judge LLM 呼び出しキャップ |

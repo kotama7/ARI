@@ -26,9 +26,17 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_settings.py
     role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/api_orchestrator.py
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/tests/test_workflow_editor.py
+    role: test
+  - path: ari-core/tests/test_orchestrator.py
+    role: test
+last_verified: 2026-08-07
 ---
 
 # REST API リファレンス
@@ -375,7 +383,11 @@ ttl_seconds: 60}` です。破壊的エンドポイントは、ボディの `cha
 
 > **凍結。** 以下の非バージョン面は、レガシーのダッシュボードページと既存の統合の
 > ために維持されています。**拡張されません**: 新しいデータは run を明示する
-> `/api/v1` エンドポイントから配信しなければなりません。特に `GET /state` は
+> `/api/v1` エンドポイントから配信しなければなりません。このルールが書かれた後に
+> 1 本だけこの面に着地しました — `GET /api/checkpoint/<id>/kca`（2026-08-05）—
+> ゆえに OpenAPI 項目も型付きエラーエンベロープも `schema_version: 1` の DTO も
+> ありません。以下では前例としてではなく、現状として記載しています。
+> 特に `GET /state` は
 > `ari-core/tests/test_gui_state_facade_freeze.py` がトップレベルのキー集合を厳密に
 > ピン留めした凍結ファサードです（アクティブチェックポイント無しで 7 キー、完全に
 > 内容のあるチェックポイントで 35 キー）— キーを足せば設計上そのテストが落ち、
@@ -531,6 +543,7 @@ curl http://localhost:8765/api/checkpoints
 |---|---|---|
 | GET | `/api/checkpoints` | チェックポイント探索ベース全体のチェックポイントを新しい順（`mtime` 降順）で一覧 |
 | GET | `/api/checkpoint/<id>/summary` | 実行サマリ（目標、ノード数、ステータス、上位メトリクス） |
+| GET | `/api/checkpoint/<id>/kca` | チェックポイントにコミット済みの admission ドキュメントを、Knowledge / Provider / Assurance に分けて読み取り専用で射影（`schema_version: "ari.viz-kca/v1"`; `run_admission.json` を持たないランは `present: false`; 読めない入力は失敗させず `degraded_reasons` に現れる） |
 | GET | `/api/checkpoint/<id>/memory` | Letta メモリの内容 |
 | GET | `/api/checkpoint/<id>/memory_access` | メモリ書き込み / 読み取りのテレメトリ |
 | GET | `/api/checkpoint/<id>/files` | サイズ + タイプ付きのファイル一覧 |
@@ -562,6 +575,40 @@ curl http://localhost:8765/api/checkpoints
 | POST | `/api/sub-experiments/launch` | 親チェックポイントを継承する子実行を起動 |
 | GET | `/api/lineage-decisions/<run_id>` | 停滞ルールが出力した決定（v0.7.0） |
 
+#### サブ実験の一覧と起動ガード
+
+`GET /api/sub-experiments` は **ディスクが正** である。呼び出しのたびに
+オーケストレータのサブ実験チェックポイントルート（`api_orchestrator._logs_root()`。
+`ARI_ORCHESTRATOR_LOGS` で上書き可能）を 1 階層だけ走査して `<checkpoint>/meta.json` を収集し、サーバのインメモリ
+レコード集合をその結果で*置き換える*。したがって削除済みチェックポイントは
+古いキャッシュエントリとして残らず、一覧から消える
+（`ari-core/tests/test_orchestrator.py::test_gui_list_sub_experiments_prunes_deleted`）。
+各レコードはそのチェックポイントの `meta.json` に `checkpoint_dir` を加えたもので、
+`(created_at, run_id)` の降順（新しい順）に並ぶ。
+`GET /api/sub-experiments/<run_id>` はまずディスクを読み、無ければインメモリ
+キャッシュにフォールバックする。未知の id には `404` ではなく HTTP `200` で
+`{"error": "..."}` を返す。
+
+`POST /api/sub-experiments/launch` は lineage に関する 2 つのケースで子実行を
+拒否する。いずれも HTTP `200` で `{"ok": false, "error": ...}` を返す —
+レガシーのディスパッチャはハンドラが `_status` を設定したときだけステータスを
+上書きするが、この 2 つのガードはどちらも設定しないためである。
+
+| 条件 | 理由 | レスポンスに併せて返るもの |
+|---|---|---|
+| `recursion_depth >= max_recursion_depth` | 再帰的な自己起動に上限を設ける。`max_recursion_depth` の既定は `3`（`api_orchestrator.DEFAULT_MAX_RECURSION_DEPTH`）で、リクエストごとに上書き可能 | `recursion_depth`、`max_recursion_depth`、`parent_run_id` |
+| 親チェックポイントの `meta.json` が `parent_terminated` を持つ | 上流の lineage decision がその系統をすでに終了させている — `ari-core/ari/cli/lineage.py` が action `terminate` のときにこのフラグを書く。このゲートが無いと、系統が尽きたと宣言された後も古いバックグラウンド呼び出し元が子を生み続けうる | `parent_run_id`、`parent_terminated_rationale`（300 文字に切り詰め） |
+
+深さ判定が先に走るため、深さ超過と終了済み系統の*両方*に該当するリクエストは
+深さ超過として報告される。terminate 判定は意図的にベストエフォートであり、
+`parent_run_id` を解決できない場合や親の `meta.json` が無い・読めない場合は、
+読み取りエラーで閉じる（拒否する）のではなく起動を続行する。
+
+`inherit_idea_index` はさらに独自の拒否条件を持つ（`parent_run_id` が無い、親を
+解決できない、親の `idea.json` が無い・壊れている、index が整数でない・範囲外）。
+参照するのは親の `idea.json` カタログだけで、親の `plan.md` は読まない — 継承した
+子も方向転換できる。
+
 ### メモリバックエンド
 
 | メソッド | パス | 用途 |
@@ -588,6 +635,41 @@ curl http://localhost:8765/api/checkpoints
 | POST | `/api/workflow/flow` | DAG ビューを保存（任意の `base_revision` — MN-1/MN-3） |
 | POST | `/api/workflow/skills` | 有効なスキルを切り替え（任意の `base_revision` — MN-1/MN-3） |
 | POST | `/api/workflow/disabled-tools` | スキルごとのツールホワイトリスト / ブラックリスト（任意の `base_revision` — MN-1/MN-3） |
+
+4 つの書き込みはいずれも**アクティブなチェックポイント**の
+`{ckpt}/workflow.yaml` を編集します。同梱の `config/workflow.yaml` が GUI から
+書かれることはありません（MN-1）。`/api/workflow/flow`、`/api/workflow/skills`、
+`/api/workflow/disabled-tools` は、チェックポイント側にコピーがまだ無い場合、
+先に同梱ファイルをチェックポイントへコピーします
+（`ari-core/ari/viz/api_workflow.py` の `_checkpoint_workflow_path`）。
+`POST /api/workflow` はこのヘルパーを使わず、`GET /api/workflow` が返した
+`path` を呼び出し側がエコーバックしたものを初回書き込みの種にします。この
+フィールドが無い / 読めない場合は、`pipeline` のみを含むチェックポイントコピーを
+書き出します。
+
+**ワークフロー書き込みが保持するもの。** どの書き込みも、種にした YAML マッピング
+全体を読み込み、その 1 セクションだけを変更し、`sort_keys=False` でマッピングを
+再シリアライズします。したがって GUI がモデル化していないトップレベルキーは、値も
+元のキー順も保ったまま編集の round-trip を生き延びます — 同梱
+`config/workflow.yaml` の未型付け `extra="allow"` セクション（`memory:`、
+`lineage_decision:`、`claim_gate_policy:`、`container:`）も含みます。これらは
+`ari-core/ari/config/field_registry.py` が「現時点で型付き pydantic リーフを持たない」
+ものとして前方宣言しています。
+*ステージ*粒度でマージするのは `POST /api/workflow/flow` だけです:
+`_merge_stages` は DAG エディタが運ぶ 10 フィールド（`stage`、`skill`、`tool`、
+`description`、`depends_on`、`enabled`、`phase`、`loop_back_to`、`pre_tool`、
+`post_tool`）だけを上書きし、各ステージの残り — `inputs`、`outputs`、
+`skip_if_exists`、`react:` ブロック — はディスク上の値を維持します。投稿された
+flow に無いステージは削除され、新しいステージはそのまま追加されます。
+`POST /api/workflow` は `pipeline` リスト全体を投稿された内容で置き換えるため、
+呼び出し側が送らなかったステージ単位のフィールドはマージバック**されません**。
+
+**ワークフロー書き込みが保持しないもの: コメントとレイアウト。** ファイルは
+パース済みマッピングから再出力されるため、コメント、空行によるグルーピング、
+クォートやフロースタイル（`[a, b]`、`{a: 1}`）は最初の GUI 保存で正規化されて
+失われ、スカラーは正準形に書き直され（`yes` → `true`、`"x"` → `x`）、YAML
+アンカーは生成名（`&id001`）で再出力されます。同梱の `config/workflow.yaml` は
+誰も書き込まないためコメントを保ったままです。
 
 ### ウィザード / 設定生成
 

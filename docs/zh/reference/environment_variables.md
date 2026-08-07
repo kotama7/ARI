@@ -10,6 +10,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/health.py
     role: implementation
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
 last_verified: 2026-07-29
 ---
 
@@ -193,6 +195,16 @@ ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有
 | 变量 | 用途 |
 |---|---|
 | `ARI_RETRIEVAL_BACKEND` | `semantic_scholar` / `arxiv` / `alphaxiv` |
+
+### Federated tool registry 技能
+
+技能开关与目录是两道彼此独立的门：启用 `ari-skill-tool-registry` 不会启用任何
+叶子工具，因为只有出现在所选 lock 中的 source 才能执行。
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_TOOL_REGISTRY_LOCK` | broker 在进程启动时加载的、经评审的 `CATALOG.lock`。ARI 自身的 Provider 目录加载器读取同一个变量，因此两者不会对 composite provision 所描述的叶子工具产生分歧。已物化的目录包含绝对本地路径，无法放入仓库，该覆盖项是到达它的唯一方式 | 与技能一同打包的 `CATALOG.lock`；它是可移植的默认值，而已填充的目录属于机器特定证据，因此按设计签入时为空 |
+| `ARI_TOOL_REGISTRY_INDEX` | 与该 lock 对应的派生目录索引 | 已解析 lock 同目录下的 `catalog.index.json`；该文件不存在时从 lock 重新构建 |
 
 ### 发布 + registry + clone
 

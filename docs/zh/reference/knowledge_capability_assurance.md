@@ -233,7 +233,11 @@ minus user-disabled tools
 entry 可携带一个`brokered` block，内含 federated catalog lock、dispatch tool，以及从 leaf
 `tool_ref`到 ARI `capability_ref`的 reviewed table。每个 reviewed leaf 成为一条
 `CapabilityProvisionV1`，其`tool_ref`与`dispatch_tool_ref`是 broker 的 dispatch
-tool——run lock 中唯一存在的 ref——而`subject_tool_ref`是该 leaf。
+tool——run lock 中唯一存在的 ref——而`subject_tool_ref`是该 leaf。`subject_argument`给出
+承载该 leaf 的 dispatch 参数名；一次真实的 dispatch 调用若在参数中指向本次 run 未曾 bind 的
+leaf，则被拒绝：所有 composite 在构造上共享同一个 dispatch `tool_ref`，缺少这一比对时，
+单个 reviewed leaf 的 authorization 就会带上 federated catalog 中的每一个 leaf。可见性检查
+不提供参数，lifecycle ref 承载的是 job handle 而非 leaf，两者都不受 subject gate 约束。
 `nested_source_lock_digests`承载 leaf 的 source digest，federated lock 自身的
 `catalog_digest`并入该 Provider 的`nested_source_lock_digests`；因此在 broker 背后替换
 leaf 会改变 binding request 所 pin 的 Provider catalog snapshot。
@@ -334,6 +338,25 @@ deterministic generated case、独立 reference、dtype/accumulation-aware error
 metamorphic/shape/boundary/repeat coverage 与 negative control。promote 为 checked-in verified
 catalog entry 是 release admission 操作，要求 committed source revision、immutable container、
 license review、reference pass、negative-control fail 与 retained registration report。
+
+这三者各是一个 correctness family，在`ari.assurance.native_hpc_family`中一次性自我注册，
+并提供三样东西：`verify`（hidden case 与判定它们的 oracle）、`reference`（独立实现，也是
+parity probe 的 clean control）以及`call_shared_library`（candidate 被调用时经过的 ctypes
+ABI）。可验证 kernel 的集合过去写在五处——一个`Literal`、facade 的 dispatch dict、parity
+probe 的 reference table、ABI dispatch dict 和两个 argparse `choices` tuple——因此只加入其中
+四处的 family 仍可被 dispatch、被 score、被 attest，而 probe 从未触及它，probe 却依旧报告
+`passed`。现在每个 dispatch site 都向 registry 查询，重复注册同名会被拒绝，import 顺序
+无法决定由哪个 oracle 判定一次 run。registry 位于 native driver digest 之内，因为它决定
+由哪个 oracle 判定一次 run；若在其外，judging oracle 可在 attestation 依然通过验证的情况下
+被替换。digest 现在还会在其中某个 verifier 文件缺失时报错，而不是让该文件悄悄退出。以上
+并不使 correctness family 像 pinned problem 那样自由：problem 是一个 data 目录，而 family
+持有 oracle。新增一个仍是需要照常 review 的 ARI 变更，因为 caller 能提供的 oracle 就是
+caller 能削弱的 oracle。改变的只是集合按 family 声明一次，而不再是按集合声明五次。
+
+cost 是真实的，因此写在此处而不是留待发现：driver digest 已改变，所以三者目前都以
+`native Harness driver bytes drifted`拒绝运行。它们的 manifest 被刻意不重新 pin，因为
+signature 只覆盖被签署的内容，重新 pin 会让三份 human-maintainer attestation 描述无人
+批准的 code。它们需要 re-registration 才能再次运行。
 
 Inspect、Harbor、KernelBench/ComputeEval/scBench 和 PaperBench adapter 不 fork upstream
 framework。其 driver 验证 pinned official route 并规范化 strict result envelope。没有

@@ -104,7 +104,7 @@ RQGM 会在根构思阶段将其作为 `legacy_idea_json` 记录导入。
 RQGM 不替换 `idea.json`；它把它降级为提案记录存储的一个**投影**
 （`ari/rqgm/proposals/store.py`）：
 
-- **9 键契约得到保留。**投影出的文档恰好保留每个现有消费方读取的
+- **9 键契约得到保留。**投影出的文档始终保留每个现有消费方读取的
   顶层键：`gap_analysis`、`ideas`、`primary_metric`、
   `higher_is_better`、`metric_rationale`、`papers_analyzed`、
   `n_agents`、`discussion_rounds`、`virsci_integration_status`
@@ -118,6 +118,13 @@ RQGM 不替换 `idea.json`；它把它降级为提案记录存储的一个**投�
 - **可追溯性。**投影出的每个 `ideas[i]` 条目都带一个下划线键
   `_proposal_record_id`，链接回 `proposals/proposal_records.jsonl`
   （与 `_pinned` / `_inherited_from` 相同的约定）。
+- **类型化交接会透传，并绑定标题。**当被选中的生成器输出了类型化的
+  research-contract 文档时，投影还会一并携带它的 10 个 typed-handoff
+  键 —— `typed_schema_version`、`contract_status`、`survey_snapshot`
+  （`_digest`/`_ref`）、`idea_set`（`_digest`）、`research_contract`
+  （`_digest`）、`rejected_candidates` —— 因此上面的 9 个键是下限而非
+  上限。只有当契约的 `title` 等于指令 `ideas[0].title` 时才会复制，
+  所以类型化区块永远不可能描述一个不同于 `idea.json` 所指的方向。
 - **逆映射。**现有的 `idea.json` 内容（固定的种子，或上面第 1 阶段的
   双写）能足够无损地导入，从而继续走遗留通道：`summary_from_idea`
   使用与遗留路径相同的 `_extract_plan_sections` 解析器，把拼接的
@@ -147,6 +154,7 @@ RQGM 不替换 `idea.json`；它把它降级为提案记录存储的一个**投�
 | `rqgm_erasure_state.json` | 选择性擦除产生的过期/无效集合的派生汇总。 |
 | `rqgm_meta_outputs.jsonl` | 元 agent 输出记录。 |
 | `rqgm_governance_cache.jsonl` | 治理结果缓存。 |
+| `rqgm/kca/admission-v1/`（`run_admission.json` 以及被钉住的契约 / 目录 / 锁集合） | Knowledge–Capability–Assurance 的运行准入基线。只有当 `knowledge` / `capability_binding` / `assurance` 三个模式离开各自遗留惰性的默认值（`off` / `legacy` / `off`）时才会写入。通过目录改名一次性发布，因此被中断的准入绝不会留下让 resume 误认为权威状态的部分集合。 |
 | `rqgm_eval_metrics.json`、`rqgm_injection_provenance.json` | 仅评估工具链 —— 正常运行绝不写入。 |
 
 ## 回滚
@@ -167,8 +175,10 @@ RQGM 不替换 `idea.json`；它把它降级为提案记录存储的一个**投�
   `metrics['_valid_for_frontier'] is False`，因此在 `ari_rqgm` 下被
   擦除的节点在切回后依旧被剪枝、也依旧被排除在最佳节点选择之外 ——
   污染不会因为切换模式而变干净。
-  这些哨兵键只会由 RQGM 机制（`ari_rqgm` 的 `FrontierRepairEngine` 或
-  `rqgm_archive` 的 paper 运行时）写入，因此在
+  这些哨兵键只会由 RQGM 机制（`ari_rqgm` 的 `FrontierRepairEngine`、
+  `RQGMRuntime` 中的 KCA 完整性检查 —— 它同时把节点标记为
+  `assurance_status: tampered` / `frontier_class: uncertified_frontier` ——
+  或 `rqgm_archive` 的 paper 运行时）写入，因此在
   从未运行过 RQGM 的检查点上，该子句是惰性死代码（`_sterile`
   模式）。
 

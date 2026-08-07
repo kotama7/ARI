@@ -6,9 +6,15 @@ sources:
     role: config
   - path: scripts/docs
     role: test
+  - path: scripts/check_dashboard_ux.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/i18n
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__
+    role: test
   - path: .github/workflows
     role: config
-last_verified: 2026-06-04
+last_verified: 2026-08-07
 ---
 
 # 如何测试 ARI 代码
@@ -25,13 +31,19 @@ ari-skill-<name>/conftest.py    — skill-level fixtures
 pytest.ini                      — repo-wide config
 ```
 
-仓库根目录下的 `pytest.ini` 使 `pytest` 在任意位置运行时都能遍历
-所有测试目录。
+仓库根目录下的 `pytest.ini` 规定了裸 `pytest` 所遍历的 `testpaths`：
+`ari-core/tests` 与 `workspace/harnesses`（后者在没有 workspace 的检出中
+并不存在，pytest 会容忍这一点）。`ari-skill-*` 套件被有意排除在
+`testpaths` 之外——每个 skill 都自带 `src/server.py`，在同一进程中导入
+两个 skill 会产生歧义。请按包单独运行，或用
+`bash scripts/run_all_tests.sh` 运行完整套件（每条路径一个 pytest 进程）。
 
 ## 运行测试套件
 
 ```bash
-pytest -q                                        # everything
+pytest -q                                        # 仅默认的 testpaths
+bash scripts/run_all_tests.sh                    # 完整套件，每条路径一个进程
+pytest ari-skill-memory/tests -q                 # 单个 skill
 pytest ari-core/tests/test_react_driver.py -q    # one file
 pytest ari-core/tests/test_react_driver.py::test_runs_for_two_nodes  # one case
 pytest -k 'memory and not letta' -q              # by keyword
@@ -133,7 +145,7 @@ def ckpt(tmp_path, monkeypatch):
 - `readme-sync` — 每个目录的 `## Contents` 索引都列出其下的文件
   (`scripts/readme_sync.py --check`)。
 - `docs-sync` — 全树不变量，全部为硬关卡：声明的 `sources:` 路径存在
-  (`check_doc_sources.py`)、`docs/i18n/{en,ja,zh}.js` 的键集一致
+  (`check_doc_sources.py`)、`docs/i18n/landing.{en,ja,zh}.js` 的键集一致
   (`check_i18n_js.py`)、根 `README.{md,ja,zh}` 的标题结构一致
   (`check_readme_parity.py`)、`report/{en,ja,zh}` 在结构上并行
   (`report/scripts/check_i18n.py`，Gate 6)。翻译新鲜度
@@ -147,6 +159,73 @@ def ckpt(tmp_path, monkeypatch):
 
 任何 doc 关卡都可从仓库根目录本地运行，例如
 `python scripts/docs/check_i18n_js.py`。
+
+**仪表盘翻译** — 仪表盘 UI 自带三语词典
+`ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts`，而上述工作流均未覆盖它们：
+`check_i18n_js.py` 只读取 `docs/i18n/landing.{en,ja,zh}.js`，且其键模式仅匹配
+单引号键，因此无法解析以裸标识符作为键的词典。规则与 docs 侧相同 —— 三种
+语言必须声明**完全相同的键集**，且同一文件内不得重复键 —— 所以新增的 UI
+字符串必须在同一次变更中加入全部三个词典。某个语言有而另一个语言缺失的键
+会回退为英文字符串；若 `en` 中也不存在，则直接显示键名本身
+（`src/i18n/index.ts` 中的 `t()`）。值被有意排除在比较之外：专有名词在三种
+语言中读法相同是合理的。
+
+有两项检查负责保障这一点，且**两者都未接入任何工作流** —— 修改仪表盘字符串
+时请自行运行：
+
+- `python scripts/check_dashboard_ux.py --fail-on-regression` —— 对三个 `.ts`
+  文件做键集一致性与重复键检测，与该脚本的其他仪表盘 UX 检查打包在一起。
+  只要存在未冻结在 `scripts/quality/check_dashboard_ux.allow.yaml` 中的
+  finding，它就以 exit 1 退出；该允许列表中没有任何 i18n 条目，因此一致性
+  一旦被破坏，首次运行即失败。不加该标志时，脚本只打印报告并以 exit 0 退出。
+- 在 `ari-core/ari/viz/frontend` 下运行
+  `npx vitest run src/i18n/__tests__/parity.test.tsx` —— 针对实际导入的词典
+  断言同一不变量，其 `KNOWN_DRIFT` 允许列表目前为空。它的重复键断言弱于
+  Python 一侧，因为 TypeScript 对象字面量在测试读取之前就已折叠了重复键。
+
+在当前代码树上两者均为绿：三个词典持有完全相同的键集，且没有重复键。
+
+**仪表盘无障碍** — 仪表盘**未声明任何 WCAG 合规级别**。本文档集与前端测试套件
+中都不存在合规目标，此处的任何内容都不应被读作合规声明。真正存在的是
+`ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx` 中的一组
+冻结基线。与上面的 i18n 检查一样，它**未接入任何工作流** —— 根本没有工作流会
+运行前端测试套件（CI 中仅有的 Node 步骤是构建 VitePress 文档站点），因此它是
+人工执行的 cutover 前检查清单中的一条硬关卡 (`npm test`，
+`docs/guides/gui_cutover_runbook.md` §2)。若只想
+运行这个文件，在 `ari-core/ari/viz/frontend` 下执行：
+
+```bash
+npx vitest run src/__tests__/shellA11yBaseline.test.tsx
+```
+
+该文件固定了三样东西：
+
+- **已经成立的正向不变量。** 恰好一个 `navigation` 地标；每个侧边栏条目
+  （`gui_v2` 开启时为 15 个）都是带 `tabindex="0"` 的原生 button；四个导航分组
+  通过 `aria-labelledby` 命名；移动端汉堡按钮带有
+  `aria-label`/`aria-controls`/`aria-expanded`；活动项目 `combobox` 具有可访问
+  名称。
+- **针对在 `#/home` 渲染的外壳的 axe-core violation id 基线**，当前为空列表。
+  断言是完全相等，因此出现新的 violation 会失败，*并且* 在问题修复后仍把 id
+  留在基线里也会失败。由于 jsdom 不做绘制，`color-contrast` 规则在那里被
+  **禁用** —— 本仓库中没有任何自动检查会计算颜色对比度。
+- **覆盖测试中 `ROUTE_MARKERS` 内 18 条路由的 `<h1>` 计数基线。** 其中四条是
+  明知不合规而被固定下来的：`#/paperbench`、`#/workflow` 和 `#/settings` 用
+  `<h2>` 作页面标题且没有 `<h1>`，`#/idea` 则完全没有标题元素。其余 14 条各渲染
+  恰好一个 `<h1>`。同样是完全相等断言，所以修好一条路由就要在同一次变更中收缩
+  这个冻结字面量。
+
+没有任何检查覆盖的部分：不存在端到端断言来验证主要 journey 可以完全不用鼠标
+完成，也没有屏幕阅读器检查。键盘*可达性*只对侧边栏做了断言（见上，可聚焦的原生
+button）；真正用键盘*驱动*界面则只对 `#/tree2` 的表格做了断言
+（`src/components/TreeV2/__tests__/TreeV2LargeTree.test.tsx` 在
+roving tabindex 上走 <kbd>↓</kbd>/<kbd>→</kbd>/<kbd>Enter</kbd>；按键对照表见
+`docs/guides/dashboard.md`）。减弱动效是全局遵守的 —— `src/styles/motion.css`
+在 `prefers-reduced-motion: reduce` 下把动效 token 归零 —— 但这是样式表的性质，
+不是测试的性质。
+
+WCAG 2.2 AA 关卡——无论自动还是人工——是仪表盘改版的目标，而不是本测试套件已经
+确立的性质。不要把一次绿色运行读作 AA 合规的证据。
 
 ## 编写回归测试
 

@@ -9,7 +9,7 @@ behind the autonomous research system.
 - `architecture.md` — ARI Architecture: end-to-end system from research goal to output.
 - `bfts.md` — BFTS Algorithm: Best-First Tree Search with its two-pool design.
 - `gui_architecture.md` — Dashboard Architecture: the strangler shell, the route registry, run-scoped server-state caching, realtime as invalidation, and the seam from HTTP down to checkpoint artifacts.
-- `harness-pool.md` — TODO
+- `harness-pool.md` — Harness Pool: why a task gets several harnesses instead of inheriting the one it was born with — the five measurement choices each made invisibly and each found wrong, the `[declares]` block (a measured, dated `resolves` band; `blind_to`), symlinked variants, and why the selector may never rank on results.
 - `manuscript_complete_architecture.md` — Manuscript Complete: the digest-bound exploration-to-authoring compiler, repair authority, and publication interlock.
 - `memory.md` — Memory Architecture: how each node reads from its ancestor chain.
 - `PHILOSOPHY.md` — ARI Design Philosophy: the rationale behind ARI's approach to research automation.
