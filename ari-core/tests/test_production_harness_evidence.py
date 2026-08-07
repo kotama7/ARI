@@ -41,6 +41,11 @@ def test_production_native_harness_catalog_is_verified_and_closed() -> None:
         "hpc/gemm-correctness",
         "hpc/spmm-correctness",
         "hpc/stencil-correctness",
+        # hpc/gemm-performance joined the catalog when it earned a
+        # registration: 15/15 gates from a parity probe run three times
+        # on an exclusive aarch64 node. It is the first entry that is
+        # not an artifact_verifier.
+        "hpc/gemm-performance",
     }
     assert {item.status for item in by_id.values()} == {"verified"}
     assert set(catalog.promotion_approval_digests) == set(by_id)

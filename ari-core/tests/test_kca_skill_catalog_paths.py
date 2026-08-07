@@ -82,6 +82,11 @@ def test_the_harness_skill_actually_reads_the_registered_harnesses():
         "hpc/gemm-correctness",
         "hpc/spmm-correctness",
         "hpc/stencil-correctness",
+        # hpc/gemm-performance joined the catalog when it earned a
+        # registration: 15/15 gates from a parity probe run three times
+        # on an exclusive aarch64 node. It is the first entry that is
+        # not an artifact_verifier.
+        "hpc/gemm-performance",
     }, ids
 
 
@@ -119,7 +124,8 @@ def test_the_shipped_catalog_still_loads():
     snapshot = load_harness_catalog(
         ROOT / "ari-core" / "config" / "harnesses" / "catalog.yaml")
     assert {m.id for m in snapshot.manifests} == {
-        "hpc/gemm-correctness", "hpc/spmm-correctness", "hpc/stencil-correctness"}
+        "hpc/gemm-correctness", "hpc/spmm-correctness",
+        "hpc/stencil-correctness", "hpc/gemm-performance"}
 
 
 def test_a_row_whose_id_does_not_match_its_manifest_is_refused(tmp_path):

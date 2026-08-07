@@ -1,0 +1,28 @@
+{
+  "case_set": "native-perf-gemm-cases/v1@parity",
+  "driver_digest": "sha256:8b70e5138bd08fa95f2803646d0513f5548a1f8f864ff004dad41bb1e4f9fcba",
+  "passed": true,
+  "problem": "gemm-dense-fp64/v1@2026q3",
+  "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+  "reason": null,
+  "results": {
+    "clean_control": {
+      "median_speedup": 1.0059284805696866,
+      "relative_spread": 0.04112952242091331,
+      "report_digest": "sha256:64242986aa48d89ff6b70068b004d333f9b3b2e4d2bc69f471506726162d78f9",
+      "resolved": true,
+      "verdict": "pass"
+    },
+    "negative_control_slow": {
+      "detail": "0.001784x of the frozen reference, below the 0.95x threshold",
+      "report_digest": "sha256:af20a0233eb87fbd7cca6a644eb0b6202eab7d2a22de1c27f906c54903d0d663",
+      "verdict": "fail"
+    },
+    "negative_control_wrong": {
+      "detail": "candidate output failed the residual bound (2.79e+11x)",
+      "report_digest": "sha256:ce43f19123f942ed3a3ae89e3d6249def3b53a03591ff3de1eff54ee2df1e9ae",
+      "verdict": "fail"
+    }
+  },
+  "schema_version": "ari.native-perf-parity-report/v1"
+}

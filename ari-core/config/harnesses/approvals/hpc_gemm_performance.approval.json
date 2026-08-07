@@ -1,0 +1,15 @@
+{
+  "actor_id": "kotama",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:f816472f1c56eb0f04ed1bbbfcf6a32b02282f3f5e260684647dbc2431b4efaf",
+  "approved_date": "2026-08-08",
+  "authorization_basis": "Authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'), over registration report sha256:d240764e9a6b13478693e6135ef1be40b86b252fc030e17183280e5de5543aa9 minted from evidence produced by that same session: three parity-probe runs on an exclusive aarch64 compute node from a clean worktree at commit 8473e83f0595, 15/15 gates, clean-control spread 0.0411 and run-to-run spread 0.0141. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts; the artifacts are pinned in the bundle above so a later reader can check them independently. Recorded this way because a basis claiming an artifact review that did not happen is the same defect this registration path was rebuilt to remove.",
+  "evidence_bundle_digest": "sha256:98ea796a4b6c0d2e81eb433c2f1c6149e5226932ea8b43b89327668a36ca5efd",
+  "from_status": "candidate",
+  "harness_id": "hpc/gemm-performance",
+  "harness_manifest_digest": "sha256:50bf5555c6ad170e6a1d4d5be60cbe641b931697e7d23db8897fb041b3f0d696",
+  "harness_version": "1.0.0",
+  "registration_report_digest": "sha256:d240764e9a6b13478693e6135ef1be40b86b252fc030e17183280e5de5543aa9",
+  "schema_version": "ari.harness-promotion-approval/v1",
+  "to_status": "verified"
+}

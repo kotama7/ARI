@@ -41,6 +41,21 @@ from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
 SHA = "sha256:" + ("4" * 64)
 
 
+def _real_head() -> str | None:
+    """HEAD of the repository the gate will consult, or None outside one."""
+    import subprocess
+
+    from ari.assurance.registration_run import repository_root
+
+    try:
+        done = subprocess.run(["git", "-C", str(repository_root()), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+
 def _requirement(*, methods=("differential-testing",), tier="screen"):
     return VerificationRequirementV1.create(
         property_id="numerical-equivalence",
@@ -116,7 +131,9 @@ def _manifest(
         target_interface_contract="gemm-c-abi/v1",
         target_interface_digest=SHA,
         source_repository="https://example.invalid/harness",
-        source_full_commit_sha="4" * 40,
+        # A REAL commit: the source pin is checked for ancestry against the
+        # repository, so "4"*40 names nothing and the gate correctly fails.
+        source_full_commit_sha=_real_head() or "4" * 40,
         implementation_license="MIT",
         dataset=_asset("dataset-v1"),
         oracle=_asset("oracle-v1"),
@@ -280,7 +297,10 @@ def _passing_gate_evidence(manifest):
         manifest=manifest, parity=probe, driver_digest=manifest.driver.sha256,
         report_schema={"$id": "test", "properties": {"verdict": {}}},
         stability={"runs": 3, "relative_spread": 0.02},
-        repo_commit=manifest.source_full_commit_sha,
+        # The source pin is checked for ANCESTRY against a real repository now,
+        # so a synthetic sha names nothing and the gate fails. Registering "at
+        # the commit you pinned" is the case a fixture should model.
+        repo_commit=_real_head() or manifest.source_full_commit_sha,
     )
 
 
@@ -301,7 +321,9 @@ def _write_verified_catalog(tmp_path):
         harness_id=manifest.id,
         harness_version=manifest.version,
         manifest_digest=manifest.manifest_digest,
-        source_full_commit_sha="4" * 40,
+        # A REAL commit: the source pin is checked for ancestry against the
+        # repository, so "4"*40 names nothing and the gate correctly fails.
+        source_full_commit_sha=_real_head() or "4" * 40,
         environment_digest=evidence_digest,
         evidence_artifact_digests={"builtin/fixture.json": evidence_digest},
         attestation_digests=(evidence_digest,),

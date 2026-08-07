@@ -18,6 +18,7 @@ Shipped default config files (YAML) loaded by ari-core.
   - `property_vocabulary.yaml` — canonical scientific properties and their verification semantics.
   - `approvals/` — reviewed human promotion approvals for built-in native harnesses.
     - `hpc_gemm_correctness.approval.json` — promotion approval for the native GEMM correctness harness.
+    - `hpc_gemm_performance.approval.json` — TODO
     - `hpc_spmm_correctness.approval.json` — promotion approval for the native SpMM correctness harness.
     - `hpc_stencil_correctness.approval.json` — promotion approval for the native stencil correctness harness.
   - `builtin/` — built-in native harness manifests. All three currently refuse to run with `native Harness driver bytes drifted`: the correctness-family registry joined the native driver digest, and the manifests were deliberately not re-pinned, because re-pinning would make three human-maintainer attestations describe code nobody approved. They need re-attestation.
@@ -60,6 +61,13 @@ Shipped default config files (YAML) loaded by ari-core.
         - `clean-screen-stdout.log` — stdout from clean GEMM screening.
         - `negative-screen-stderr.log` — stderr from invalid GEMM screening.
         - `negative-screen-stdout.log` — stdout from invalid GEMM screening.
+    - `hpc_gemm_performance/` — TODO
+      - `gate_findings.json` — TODO
+      - `measurement_environment.json` — TODO
+      - `multiple_run_stability.json` — TODO
+      - `official_runner_parity.json` — TODO
+      - `registration_evidence.json` — TODO
+      - `registration_report.json` — TODO
     - `hpc_spmm_correctness/` — promotion evidence for the native SpMM correctness harness.
       - `clean-certify-repeat.attestation.json` — repeated clean certification proving deterministic SpMM results.
       - `clean-certify.attestation.json` — clean authoritative SpMM certification attestation.
@@ -143,6 +151,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `wrong_stencil.c` — parity-probe negative control: FAST but wrong. It applies zero sweeps and hands back the input, which writes every element and so clears the NaN poison and the size check; the nt-scaled residual bound is what refuses it. Every scored case has nt >= 1, so it is wrong by construction rather than by luck.
   - `reports/` — deterministic promotion gate reports for built-in harnesses.
     - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
+    - `hpc_gemm_performance.registration.json` — TODO
     - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.
     - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.
 - `knowledge_skills/` — built-in and imported knowledge skills, source profiles, and the admitted catalog.

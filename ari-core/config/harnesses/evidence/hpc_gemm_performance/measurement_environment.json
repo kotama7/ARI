@@ -1,0 +1,5 @@
+{
+  "node_class": "exclusive aarch64 compute node, 48 CPUs",
+  "note": "Recorded because a verdict is a statement about a machine: the same commit and the same clean worktree scored 15/15 here and 13/15 on an exclusive x86 64-core node, where the clean control did not resolve.",
+  "registration_commit": "8473e83f0595df6fb7a0cc11c981125bb5e2612b"
+}
