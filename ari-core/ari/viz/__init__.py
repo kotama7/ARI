@@ -1,7 +1,10 @@
 """ari.viz — HTTP + WebSocket dashboard server.
 
-A FastAPI-style HTTP server that exposes the BFTS state, per-checkpoint
-files, EAR bundles, and tooling endpoints to the bundled web frontend.
+A stdlib ``ThreadingHTTPServer`` that exposes the BFTS state, per-checkpoint
+files, EAR bundles, and tooling endpoints to the bundled web frontend. There
+is no FastAPI and no uvicorn anywhere under ``ari/viz`` — see
+``ari/viz/v1/__init__.py``, which states the same constraint for the v1
+surface.
 The server entry point is ``server.py``; HTTP routes live in
 ``routes.py`` and the per-domain handlers under ``api_*.py``
 (split out in Phase 3B).
@@ -11,7 +14,7 @@ Public symbols:
 - ``main`` — CLI entry point used by ``ari viz``.
 
 Module map (post-3B split):
-- ``server`` — uvicorn lifecycle + WebSocket pump.
+- ``server`` — ``ThreadingHTTPServer`` lifecycle + WebSocket pump.
 - ``routes`` — HTTP route table dispatching into handlers.
 - ``websocket`` — push-side state sync to the frontend.
 - ``state`` / ``state_sync`` — server-side state shared across handlers.
