@@ -327,7 +327,7 @@ MCP 包装器将 `should_block`（仅在 strict 策略下的 `phase: final`，�
 ## RQGM 纪元治理文件（可选启用的 `ari_rqgm` 模式）
 
 仅当 `ari.mode: ari_rqgm` **且** `rqgm.enabled: true` 一致时才写入
-（docs/plans/ari_rqgm Task 02）。在所有默认 `simple_bfts` 检查点上
+（参见[执行模式](../guides/execution_modes.md)）。在所有默认 `simple_bfts` 检查点上
 均不存在；每个读取方都把缺失视为「RQGM 从未运行」。来源：
 `ari-core/ari/rqgm/store.py`；JSON Schema：
 `ari-core/ari/schemas/{epoch_state,rqgm_registry,rqgm_transition_event,rqgm_defs}.schema.json`。

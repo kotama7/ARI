@@ -401,7 +401,7 @@ finalize がスキップされます。ソース:
 ## RQGM エポックガバナンスファイル（オプトイン `ari_rqgm` モード）
 
 `ari.mode: ari_rqgm` **と** `rqgm.enabled: true` が一致するときにのみ
-書かれます（docs/plans/ari_rqgm Task 02）。デフォルトの `simple_bfts`
+書かれます（[実行モード](../guides/execution_modes.md) 参照）。デフォルトの `simple_bfts`
 チェックポイントにはすべて不在です; すべての読み取り側は不在を
 「RQGM は一度も走っていない」として扱います。ソース:
 `ari-core/ari/rqgm/store.py`; JSON Schema:

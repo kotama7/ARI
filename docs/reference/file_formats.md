@@ -460,7 +460,7 @@ Source: `ari-core/ari/orchestrator/lineage_decision.py`.
 ## RQGM epoch-governance files (opt-in `ari_rqgm` mode)
 
 Written only when `ari.mode: ari_rqgm` **and** `rqgm.enabled: true` agree
-(docs/plans/ari_rqgm Task 02). Absent on every default `simple_bfts`
+(see [Execution Modes](../guides/execution_modes.md)). Absent on every default `simple_bfts`
 checkpoint; every reader treats absence as "RQGM never ran". Source:
 `ari-core/ari/rqgm/store.py`; JSON Schemas:
 `ari-core/ari/schemas/{epoch_state,rqgm_registry,rqgm_transition_event,rqgm_defs}.schema.json`.
