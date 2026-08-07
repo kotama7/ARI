@@ -1,0 +1,345 @@
+{
+  "$defs": {
+    "PerfCaseResultV1": {
+      "additionalProperties": false,
+      "description": "One scored problem shape, aggregated over its repetitions.",
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "relative_spread": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Spread"
+        },
+        "repetitions": {
+          "items": {
+            "$ref": "#/$defs/PerfRepetitionV1"
+          },
+          "title": "Repetitions",
+          "type": "array"
+        },
+        "repetitions_requested": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Repetitions Requested",
+          "type": "integer"
+        },
+        "speedup": {
+          "minimum": 0,
+          "title": "Speedup",
+          "type": "number"
+        },
+        "speedup_matched": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speedup Matched"
+        },
+        "toolchain_gain": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolchain Gain"
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail",
+            "inconclusive"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "case_id",
+        "verdict",
+        "detail",
+        "speedup",
+        "repetitions"
+      ],
+      "title": "PerfCaseResultV1",
+      "type": "object"
+    },
+    "PerfRepetitionV1": {
+      "additionalProperties": false,
+      "description": "One process launch: one cold timed call on one freshly generated problem.",
+      "properties": {
+        "correct": {
+          "title": "Correct",
+          "type": "boolean"
+        },
+        "credited_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Credited Seconds",
+          "type": "number"
+        },
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "input_seed": {
+          "title": "Input Seed",
+          "type": "integer"
+        },
+        "matched_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Matched Seconds"
+        },
+        "max_rel_error": {
+          "minimum": 0,
+          "title": "Max Rel Error",
+          "type": "number"
+        },
+        "reference_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Reference Seconds",
+          "type": "number"
+        },
+        "speedup": {
+          "exclusiveMinimum": 0,
+          "title": "Speedup",
+          "type": "number"
+        },
+        "speedup_matched": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speedup Matched"
+        },
+        "toolchain_gain": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolchain Gain"
+        }
+      },
+      "required": [
+        "index",
+        "input_seed",
+        "credited_seconds",
+        "reference_seconds",
+        "speedup",
+        "correct",
+        "max_rel_error"
+      ],
+      "title": "PerfRepetitionV1",
+      "type": "object"
+    }
+  },
+  "$id": "ari.native-perf-report/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The typed result the ARI-native performance worker prints and the driver normalizes. Generated from NativePerfReportV1 so it cannot drift from the model: a registration's result_schema_conformance gate resolves this file from the driver's declared report type, and there was no schema for this type at all, so that gate could never have passed.",
+  "properties": {
+    "accepted_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Accepted Flags",
+      "type": "array"
+    },
+    "base_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Base Flags",
+      "type": "array"
+    },
+    "build_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Build Error"
+    },
+    "candidate_toolchain": {
+      "additionalProperties": true,
+      "title": "Candidate Toolchain",
+      "type": "object"
+    },
+    "case_results": {
+      "items": {
+        "$ref": "#/$defs/PerfCaseResultV1"
+      },
+      "title": "Case Results",
+      "type": "array"
+    },
+    "crossed_compiler_boundary": {
+      "title": "Crossed Compiler Boundary",
+      "type": "boolean"
+    },
+    "dataset_revision": {
+      "title": "Dataset Revision",
+      "type": "string"
+    },
+    "dataset_sha256": {
+      "title": "Dataset Sha256",
+      "type": "string"
+    },
+    "default_toolchain": {
+      "additionalProperties": true,
+      "title": "Default Toolchain",
+      "type": "object"
+    },
+    "denominator": {
+      "const": "frozen-reference-anchor",
+      "default": "frozen-reference-anchor",
+      "title": "Denominator",
+      "type": "string"
+    },
+    "environment": {
+      "additionalProperties": true,
+      "title": "Environment",
+      "type": "object"
+    },
+    "family": {
+      "title": "Family",
+      "type": "string"
+    },
+    "negative_control": {
+      "default": false,
+      "title": "Negative Control",
+      "type": "boolean"
+    },
+    "placement": {
+      "additionalProperties": true,
+      "title": "Placement",
+      "type": "object"
+    },
+    "problem_digest": {
+      "title": "Problem Digest",
+      "type": "string"
+    },
+    "problem_id": {
+      "title": "Problem Id",
+      "type": "string"
+    },
+    "problem_revision": {
+      "title": "Problem Revision",
+      "type": "string"
+    },
+    "reference_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Reference Flags",
+      "type": "array"
+    },
+    "regression_threshold": {
+      "exclusiveMinimum": 0,
+      "title": "Regression Threshold",
+      "type": "number"
+    },
+    "rejected_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Rejected Flags",
+      "type": "array"
+    },
+    "report_digest": {
+      "default": "",
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.native-perf-report/v1",
+      "default": "ari.native-perf-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tier": {
+      "enum": [
+        "screen",
+        "validate",
+        "certify"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "problem_id",
+    "problem_revision",
+    "problem_digest",
+    "family",
+    "tier",
+    "verdict",
+    "case_results",
+    "regression_threshold",
+    "default_toolchain",
+    "candidate_toolchain",
+    "crossed_compiler_boundary",
+    "base_flags",
+    "reference_flags",
+    "accepted_flags",
+    "rejected_flags",
+    "environment",
+    "dataset_revision",
+    "dataset_sha256",
+    "placement"
+  ],
+  "title": "NativePerfReportV1",
+  "type": "object"
+}

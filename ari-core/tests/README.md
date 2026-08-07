@@ -205,6 +205,7 @@ targets the like-named module under `ari/`.
 - `test_publish_zenodo_gh.py` — publish to Zenodo/GitHub.
 - `test_react_driver.py` — ReAct driver.
 - `test_registration_gates.py` — TODO
+- `test_registration_run.py` — TODO
 - `test_research_contract.py` — hypothesis/metric admission, survey snapshot, citation graph, and research-contract digests.
 - `test_resolve_node_work_dir.py` — resolve node work dir.
 - `test_result_envelope.py` — typed MCP results, bounded inline payloads, artifacts, errors, and provenance normalization.

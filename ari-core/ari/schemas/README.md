@@ -63,6 +63,7 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
 - `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
 - `native_hpc_verification_report_v1.schema.json` — authoritative native HPC verifier outputs, tolerances, resources, and reproducibility evidence.
+- `native_perf_report_v1.schema.json` — TODO
 - `node_knowledge_skill_use_v1.schema.json` — per-node record of resolved knowledge-skill use and resulting artifact lineage.
 - `node_report.schema.json` — per-node report schema.
 - `paper_build_v1.schema.json` — immutable paper inputs, revisions, compile outcome, and publication readiness.

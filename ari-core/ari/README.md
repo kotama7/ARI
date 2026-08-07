@@ -83,6 +83,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `registration.py` — execute harness registration gates and catalog promotion.
   - `registration_gates.py` — TODO
   - `registration_models.py` — promotion approval, evidence, and registration report models.
+  - `registration_run.py` — TODO
   - `request.py` — validate and canonicalize screen and certify run requests.
   - `resolver.py` — select compatible harnesses and fail closed on missing or ambiguous coverage.
   - `runner.py` — coordinate locked harness execution and attestation persistence.
@@ -527,6 +528,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
   - `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
   - `native_hpc_verification_report_v1.schema.json` — authoritative native HPC verifier outputs, tolerances, resources, and reproducibility evidence.
+  - `native_perf_report_v1.schema.json` — TODO
   - `node_knowledge_skill_use_v1.schema.json` — per-node record of resolved knowledge-skill use and resulting artifact lineage.
   - `node_report.schema.json` — per-node report schema.
   - `paper_build_v1.schema.json` — immutable paper inputs, revisions, compile outcome, and publication readiness.

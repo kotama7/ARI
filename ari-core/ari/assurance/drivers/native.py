@@ -53,6 +53,9 @@ class NativeHPCDriver:
 
     revision = NATIVE_DRIVER_REVISION
 
+    #: The typed result this driver's worker emits. See NativePerfDriver.
+    report_schema_version = "ari.native-hpc-verification-report/v1"
+
     def identity(self) -> dict:
         return {
             "driver_revision": self.revision,

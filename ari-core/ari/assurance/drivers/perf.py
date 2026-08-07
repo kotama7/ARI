@@ -126,6 +126,11 @@ class NativePerfDriver:
 
     revision = PERF_DRIVER_REVISION
 
+    #: The typed result this driver's worker emits. Registration resolves the
+    #: JSON schema from it, so ``result_schema_conformance`` checks the type the
+    #: harness ACTUALLY produces rather than whichever schema was to hand.
+    report_schema_version = "ari.native-perf-report/v1"
+
     def identity(self) -> dict:
         return {"driver_revision": self.revision, "driver_digest": perf_driver_digest()}
 
