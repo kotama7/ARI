@@ -737,3 +737,34 @@ def test_record_provenance_off_leaves_no_dirs(tmp_path, monkeypatch):
     resp = provider.complete([{"role": "user", "content": "q"}])
     assert resp.provenance_path is None
     assert list(tmp_path.iterdir()) == []
+
+
+def test_llmclient_never_reaches_litellm_on_this_backend(tmp_path, monkeypatch):
+    """The claim `test_routing_maps_claude_code_to_anthropic_for_direct_litellm`
+    makes in a comment, asserted in code.
+
+    `complete()` used to route this backend around litellm, the branch was lost
+    in a merge, and only the streaming guard came back. Every symptom then
+    pointed at the environment -- litellm asked for an ANTHROPIC_API_KEY, so the
+    four tests that caught it read as "no key on this machine" rather than "the
+    configured backend was silently replaced". Failing on the dispatch itself is
+    what makes the next such loss say so.
+    """
+
+    import litellm
+
+    def explode(*args, **kwargs):  # pragma: no cover - the point is not calling it
+        raise AssertionError(
+            "backend=claude_code reached litellm.completion; the CLI provider "
+            "dispatch in LLMClient.complete() is gone again"
+        )
+
+    monkeypatch.setattr(litellm, "completion", explode)
+    calls = []
+    install_fake_claude(monkeypatch, [envelope("routed")], calls)
+    client = _client(monkeypatch, tmp_path)
+
+    resp = client.complete([{"role": "user", "content": "hi"}])
+
+    assert resp.provider == "claude_code"
+    assert len(calls) == 1

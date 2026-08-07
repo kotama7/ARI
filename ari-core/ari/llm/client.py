@@ -230,6 +230,19 @@ class LLMClient:
             if call_context is not None
             else getattr(self, "_call_context", None)
         )
+        # This backend routes around litellm entirely. The branch was dropped in
+        # a merge and only the streaming half came back, so `backend=claude_code`
+        # went to litellm as `anthropic` and asked for an ANTHROPIC_API_KEY the
+        # CLI provider does not need -- a configured backend silently replaced
+        # by a different one, which is worse than an outright failure.
+        if self._is_claude_code_target():
+            return self._claude_code_complete(
+                msgs,
+                tools,
+                str(_node_id or ""),
+                str(_phase or ""),
+                str(_skill or ""),
+            )
         _model = self._model_name()
         kwargs: dict = {
             "model": _model,
