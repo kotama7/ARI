@@ -90,18 +90,24 @@ pipeline:
 |---|---|
 | `paper-skill` | Full paper writing requires LLM reasoning (AI Scientist v2 loop) |
 | `plot-skill` | Figure code generation requires LLM (matplotlib code synthesis) |
-| `paper-re-skill` | ReAct reproducibility requires LLM: extract config from paper + write verdict |
+| `paper-re-skill` | Two LLM steps: the replicator agent in `build_reproduce_sh` and the SimpleJudge in `grade_with_simplejudge` |
 
-## Reproducibility Check (ReAct)
+## Reproducibility Check (ORS chain)
 
-`paper-re-skill → reproduce_from_paper` implements a ReAct loop:
+There is no single reproduce-from-paper tool. Reproducibility is a chain of
+`workflow.yaml` stages, each bound to one real MCP tool:
 
-1. **Reason** — LLM reads paper text, extracts claimed compiler flags / thread count / expected metric
-2. **Act** — Submits a new SLURM job with those exact settings (source_file from workflow.yaml)
-3. **Observe** — Parses actual metric from job output
-4. **Reason** — Compares actual vs. claimed → verdict (`REPRODUCED` / `PARTIAL` / `NOT_REPRODUCED`)
+| Stage | Skill → tool | Output |
+|---|---|---|
+| `ors_generate_rubric` | `replicate-skill → generate_rubric` | `ors_rubric.json` |
+| `ors_audit_rubric` | `replicate-skill → audit_rubric` | a separate audit document; the rubric is never mutated |
+| `ors_seed_sandbox` | `paper-re-skill → fetch_code_bundle` | `repro_sandbox/` seeded from the published EAR bundle (no LLM call) |
+| `ors_build_reproduce` | `paper-re-skill → build_reproduce_sh` | `repro_sandbox/reproduce.sh` (LLM replicator; skipped when the seed already produced one) |
+| `ors_run_reproduce` | `paper-re-skill → run_reproduce` | `ors_phase1.json` — sandboxed execution of `reproduce.sh`, network denied by default |
+| `ors_grade` | `paper-re-skill → grade_with_simplejudge` | `ors_grade.json` — PaperBench SimpleJudge over the rubric leaves |
 
-⚠️ **Must run on an Ollama-capable node**. The pipeline SLURM job handles this.
+The LLM appears in exactly two places in this chain: the replicator inside
+`build_reproduce_sh` and the judge inside `grade_with_simplejudge`.
 
 ## Common Operations
 
