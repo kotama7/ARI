@@ -1,8 +1,9 @@
 """Driver for the ARI-native performance harnesses.
 
-Fills the `performance-regression` slot that the property vocabulary reserved and
-three knowledge-skill import profiles already require, so that requirement stops
-resolving to ``no_candidate``.
+The measuring driver for the `performance-regression` slot that the property
+vocabulary reserved and six knowledge-skill import profiles require. It does not
+FILL that slot yet: no manifest names this driver revision, so nothing resolves
+to it and nothing it measures is attested.
 
 WHAT IT NORMALIZES INTO. A performance verdict is a COMPARISON against a pinned
 denominator, not an absolute number, so `pass` means "did not regress past the

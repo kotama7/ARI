@@ -1,10 +1,16 @@
 """Measurement machinery for the ARI-native performance harnesses.
 
 WHAT THIS IS FOR. The assurance catalog can express a ``benchmark`` harness
-declaring ``performance-regression`` via ``benchmark-comparison`` — the slot has
-been reserved and empty, while three knowledge-skill import profiles already
-REQUIRE that property, so the requirement resolves to ``no_candidate``. This
-module is the measuring half that fills it.
+declaring ``performance-regression`` via ``benchmark-comparison``. The slot is
+reserved and still empty: SIX knowledge-skill import profiles require that
+property (hpc_gemm/spmm/stencil_optimization, intel_linux_perf,
+intel_performance_patterns, intel_phoronix_test_suite) and nothing supplies it,
+so resolution raises ``HarnessResolutionError`` and records the atom as
+unsatisfied. (It does NOT resolve to ``no_candidate``; that token belongs to
+``ari.capability_binding``, a different subsystem.) This module is the measuring
+half. The governed half -- manifest, catalog row, registration report, evidence,
+approval -- does not exist yet, so nothing measured here carries an
+attestation.
 
 WHAT IT MEASURES, AND WHY IT IS SHAPED THIS WAY. Each of these decisions was
 paid for by a defect the prototype found; they are not stylistic.
@@ -33,8 +39,10 @@ size too — a reference that were wrong and fast would deflate every candidate.
 WHAT IT DOES NOT MEASURE. The scored arrays are allocated and first-touched by
 the driver OUTSIDE the timed window, serially, so their NUMA placement is the
 harness's and not the candidate's. Only scratch a candidate allocates itself is
-placed under measurement. This is declared, not implied: see the manifest's
-``blind_to``-equivalent scope.
+placed under measurement. Recorded rather than merely declared: the placement
+record every report carries reports ``numa_nodes_spanned`` and says outright
+that binding is set by the harness and memory policy is not. (There is no
+``blind_to`` field on ``HarnessManifestV1``; this used to point at one.)
 """
 
 from __future__ import annotations

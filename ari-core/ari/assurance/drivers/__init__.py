@@ -19,7 +19,7 @@ def builtin_driver_map() -> dict[str, object]:
     drivers = (
         NativeHPCDriver(),
         # Decides performance-regression, the property the vocabulary reserved
-        # and three knowledge-skill import profiles already require.
+        # and six knowledge-skill import profiles require. No manifest names it yet.
         NativePerfDriver(),
         InspectDriver(),
         HarborDriver(),

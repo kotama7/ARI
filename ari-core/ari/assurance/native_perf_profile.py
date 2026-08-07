@@ -264,7 +264,15 @@ def profile_problem(
                 try:
                     credited = run_timed(
                         exe, instance_path, output, timing, timeout=run_timeout,
-                        role="candidate", ld_library_path=candidate_libs,
+                        # NOT "candidate". The launcher here is the counter tool,
+                        # and ``_fault`` types a candidate-role failure as a
+                        # PerfBuildError -- documented as "a candidate fault, not
+                        # a substrate fault". The counter tool opens PERF_TYPE_RAW
+                        # with ARMv8 PMUv3 encodings, so on any other machine it
+                        # fails and the candidate was blamed for the host. A
+                        # profile is never scored; it must not be able to blame
+                        # the candidate for anything.
+                        role="profiled", ld_library_path=candidate_libs,
                         launcher=tuple(launcher), capture=captured)
                 except (PerfBuildError, PerfInfrastructureError) as exc:
                     error = f"{type(exc).__name__}: {exc}"
