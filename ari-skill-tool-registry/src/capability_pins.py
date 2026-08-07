@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ari.capability_binding.ontology import load_capability_ontology
+from ari.public.capability_binding import load_capability_ontology
 from providers import ProviderProtocolError
 
 
