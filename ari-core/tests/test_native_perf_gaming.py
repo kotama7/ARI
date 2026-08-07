@@ -104,11 +104,15 @@ def _score(problem, source_text: str, *, sandboxed: bool = True):
     """
     import ari.assurance.sandbox as sandbox_module
 
-    real = sandbox_module.restrict_to
+    # Simulate a kernel with no Landlock by changing what the PROBE reports.
+    # Breaking restrict_to instead would now fail the launch closed, which is
+    # the other behaviour and has its own test: the decision is taken from the
+    # probe, once, so that the record and the launch cannot disagree.
+    real = sandbox_module.sandbox_record
     if not sandboxed:
-        def _refuse(*_a, **_k):
-            raise SandboxUnavailable("sandbox disabled for this test")
-        sandbox_module.restrict_to = _refuse
+        sandbox_module.sandbox_record = lambda *_a, **_k: {
+            "filesystem_isolation": False, "mechanism": None,
+            "reason": "no Landlock (simulated)"}
     try:
         with tempfile.TemporaryDirectory() as raw:
             path = Path(raw, "candidate.c")
@@ -118,7 +122,7 @@ def _score(problem, source_text: str, *, sandboxed: bool = True):
                 candidate_flags=" ".join(reference_flags(problem)),
                 regression_threshold=0.95)
     finally:
-        sandbox_module.restrict_to = real
+        sandbox_module.sandbox_record = real
 
 
 def _build(problem, source_text: str, flags=()) -> bool:
@@ -285,3 +289,44 @@ def test_what_the_sandbox_does_not_claim():
         pytest.skip("no Landlock on this kernel")
     assert record["mechanism"] == "landlock"
     assert set(record["does_not_restrict"]) >= {"fork", "cpu", "memory"}
+
+
+def test_the_report_says_whether_the_run_was_sandboxed(problem):
+    """A record nobody writes is worse than none, and this one was not written.
+
+    The first version of the sandbox swallowed a failure inside preexec_fn under
+    a comment saying a record elsewhere would show it. There was no such record:
+    ``sandbox_record`` had no caller, so a child that failed to restrict itself
+    ran unprotected with nothing anywhere saying so -- the exact defect this
+    harness spends its length guarding against, written into the guard.
+    """
+    report = _score(problem, HONEST)
+    assert report.sandbox, "the report does not say whether it was sandboxed"
+    assert report.sandbox["filesystem_isolation"] is (
+        sandbox_record()["filesystem_isolation"])
+    if report.sandbox["filesystem_isolation"]:
+        assert report.sandbox["mechanism"] == "landlock"
+        assert set(report.sandbox["does_not_restrict"]) >= {"fork", "cpu", "memory"}
+
+
+def test_a_sandbox_that_cannot_be_applied_kills_the_launch(problem, monkeypatch):
+    """Fail closed. If this kernel CAN enforce isolation, a child that failed to
+    restrict itself must not be measured -- the alternative is a measurement
+    that looks protected and is not."""
+    import ari.assurance.sandbox as sandbox_module
+
+    if not sandbox_record()["filesystem_isolation"]:
+        pytest.skip("no Landlock here; there is nothing to fail closed on")
+
+    def _broken(*_a, **_k):
+        raise RuntimeError("ruleset could not be applied")
+
+    monkeypatch.setattr(sandbox_module, "restrict_to", _broken)
+    with pytest.raises(Exception) as caught:
+        _score(problem, HONEST)
+    # It must not come back as a quiet success or a candidate fault.
+    # Typed as a substrate failure, never as the candidate's: CPython replaces
+    # the preexec_fn exception with an opaque message, so an untyped one would
+    # be scored as a bad kernel.
+    assert isinstance(caught.value, PerfInfrastructureError), caught.value
+    assert "isolation" in str(caught.value)

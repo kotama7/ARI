@@ -236,6 +236,11 @@ class NativePerfReportV1(DigestBoundModel):
     #: Where it ran. Two allocations of different shape otherwise produce
     #: identical records, and placement is not neutral for a timed kernel.
     placement: dict[str, Any]
+    #: Whether the timed children ran under filesystem isolation, and what that
+    #: isolation does NOT restrict. Absent isolation is stated rather than left
+    #: to be inferred: a reader cannot otherwise tell a sandboxed measurement
+    #: from one on a kernel that has none.
+    sandbox: dict[str, Any] = Field(default_factory=dict)
     negative_control: bool = False
     #: Set when the CANDIDATE did not build. A build failure is a fact about the
     #: candidate, but it used to be reported as one thing by the evaluator
@@ -896,25 +901,37 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
     # found the timing path -- and denies the problem directory, which holds the
     # frozen reference a candidate would otherwise be able to read.
     #
-    # Best effort by default: on a kernel without Landlock the run proceeds
-    # UNSANDBOXED and says so in the record, because a developer measuring on a
-    # laptop should be told rather than blocked. A registered harness whose
-    # manifest demands isolation is a different question and is refused by the
-    # driver, not here.
-    def _restrict():                        # pragma: no cover - runs post-fork
-        try:
-            from ari.assurance.sandbox import restrict_to
+    # THE DECISION IS TAKEN ONCE, HERE, so the record cannot disagree with what
+    # happened. The first version swallowed a failure inside preexec_fn and
+    # carried a comment saying a record elsewhere would show it -- there was no
+    # such record, and a child that failed to restrict itself ran unsandboxed
+    # with nothing anywhere saying so. That is the exact defect this module
+    # spends its length guarding against, written into the guard.
+    #
+    # So: probe in the parent. If this kernel CAN enforce it, the child must --
+    # a failure in preexec_fn propagates and kills the launch. If it cannot, no
+    # attempt is made and ``sandbox_status`` says the run was unprotected.
+    from ari.assurance.sandbox import SandboxUnavailable, restrict_to, sandbox_record
 
-            restrict_to(out_path.parent)
-        except Exception:
-            # A failure here must not silently become an unsandboxed run that
-            # LOOKS sandboxed; the record above is what a reader consults, and
-            # it is computed from the same probe rather than from this call.
-            pass
+    status = sandbox_record(out_path.parent)
+    if status.get("filesystem_isolation"):
+        def _restrict():                    # pragma: no cover - runs post-fork
+            restrict_to(out_path.parent)    # no except: fail closed
+    else:
+        _restrict = None
 
-    child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, env=run_env, start_new_session=True,
-                             preexec_fn=_restrict)
+    try:
+        child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                 text=True, env=run_env, start_new_session=True,
+                                 preexec_fn=_restrict)
+    except subprocess.SubprocessError as exc:
+        # CPython replaces a preexec_fn exception with an opaque
+        # "Exception occurred in preexec_fn." A launch that could not be
+        # isolated is a SUBSTRATE failure, never the candidate's, and it has to
+        # arrive typed or the caller will score it as one.
+        raise PerfInfrastructureError(
+            f"{role} could not be launched under the isolation this kernel "
+            f"supports ({status.get('mechanism')}): {exc}") from exc
     try:
         stdout, stderr = child.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
@@ -979,6 +996,9 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
         observed["wall"] = wall
         observed["credited"] = float(seconds)
         observed["overhead"] = wall - float(seconds)
+        # WHAT ACTUALLY HAPPENED, not what this host is capable of. Reported
+        # from the same decision the launch was made on.
+        observed["sandbox"] = status
     return float(seconds)
 
 

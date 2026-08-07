@@ -125,6 +125,8 @@ def verify_performance(
     candidate_libs = runtime_libs_for(resolved) if boundary else None
     base = ("-O3", "-fopenmp", *isa_flags_for(resolved))
 
+    sandbox_seen: dict = {}
+
     def _report(*, verdict, results, build_error=None):
         """One shape for every way this function can end.
 
@@ -146,7 +148,8 @@ def verify_performance(
             accepted_flags=accepted, rejected_flags=rejected,
             environment=measurement_environment(),
             dataset_revision=case_set.revision, dataset_sha256=dataset_digest,
-            placement=measurement_placement(), negative_control=negative_control)
+            placement=measurement_placement(), sandbox=dict(sandbox_seen),
+            negative_control=negative_control)
 
     results: list[PerfCaseResultV1] = []
     with tempfile.TemporaryDirectory() as raw_td:
@@ -243,6 +246,10 @@ def verify_performance(
                     # the whole difference appears as excess overhead here.
                     # Measured: such a kernel scored 89.3x and passed under the
                     # wall bound alone.
+                    # Recorded from the launch that happened, not from a probe
+                    # taken separately: those are the two things that used to be
+                    # able to disagree.
+                    sandbox_seen.update(watched["candidate"].get("sandbox") or {})
                     over_cand = watched["candidate"].get("overhead", 0.0)
                     over_ref = watched["reference"].get("overhead", 0.0)
                     if over_ref > 0 and over_cand > over_ref * MAX_OVERHEAD_RATIO:
