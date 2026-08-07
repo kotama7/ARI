@@ -67,6 +67,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `models.py` — core assurance manifests, catalog, lock, and attestation models.
   - `native_hpc.py` — dispatch native HPC verification across supported kernel families.
   - `native_hpc_common.py` — shared native HPC case, tolerance, resource, and report helpers.
+  - `native_hpc_family.py` — TODO
   - `native_hpc_gemm.py` — authoritative native GEMM correctness verifier.
   - `native_hpc_spmm.py` — authoritative native sparse-matrix multiplication verifier.
   - `native_hpc_stencil.py` — authoritative native stencil correctness verifier.

@@ -7,6 +7,7 @@ import random
 from decimal import Decimal, localcontext
 from typing import Any, Literal
 
+from ari.assurance.native_hpc_family import register_native_family
 from ari.assurance.native_hpc_common import (
     NativeCandidate,
     NativeCaseResultV1,
@@ -202,4 +203,25 @@ def verify_gemm(
     )
 
 
-__all__ = ["gemm_reference", "verify_gemm"]
+class GemmFamily:
+    """The gemm correctness family: hidden cases, an independent oracle, and
+    the ABI its candidates are called through."""
+
+    name = "gemm"
+
+    def verify(self, candidate, **kwargs):
+        return verify_gemm(candidate, **kwargs)
+
+    def reference(self, case):
+        return gemm_reference(case)
+
+    def call_shared_library(self, path, case):
+        from ari.assurance.drivers.shared_library import run_gemm
+
+        return run_gemm(path, case)
+
+
+GEMM_FAMILY = register_native_family(GemmFamily())
+
+
+__all__ = ["GEMM_FAMILY", "GemmFamily", "gemm_reference", "verify_gemm"]

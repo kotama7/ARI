@@ -29,9 +29,8 @@ from ari.assurance.models import (
     VerificationScopeV1,
 )
 from ari.assurance.native_hpc import (
-    gemm_reference,
-    spmm_reference,
-    stencil_reference,
+    native_reference,
+    registered_native_families,
     verify_native_hpc,
 )
 from ari.assurance.request import build_native_harness_run_request
@@ -43,11 +42,11 @@ from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
 
 
 SHA = "sha256:" + "5" * 64
-REFERENCES = {
-    "gemm": gemm_reference,
-    "spmm": spmm_reference,
-    "stencil": stencil_reference,
-}
+# Built from the REGISTRY, not written out. A family added everywhere else but
+# missing here would have been dispatchable, scored and attested while nothing
+# in this file ever ran it -- and the suite would still have been green.
+REFERENCES = {kind: native_reference(kind)
+              for kind in registered_native_families()}
 
 
 @pytest.mark.parametrize("kind", tuple(REFERENCES))
@@ -79,9 +78,9 @@ def test_native_case_generation_and_reports_are_byte_deterministic(kind):
 
 
 def test_native_suite_covers_non_degenerate_case_families():
-    gemm = verify_native_hpc("gemm", gemm_reference)
-    spmm = verify_native_hpc("spmm", spmm_reference)
-    stencil = verify_native_hpc("stencil", stencil_reference)
+    gemm = verify_native_hpc("gemm", REFERENCES["gemm"])
+    spmm = verify_native_hpc("spmm", REFERENCES["spmm"])
+    stencil = verify_native_hpc("stencil", REFERENCES["stencil"])
     assert {"shape-transpose-leading-dimension", "nan-inf-policy"}.issubset(
         gemm.categories_covered
     )

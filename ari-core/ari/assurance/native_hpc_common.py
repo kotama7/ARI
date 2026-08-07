@@ -11,7 +11,17 @@ from pydantic import Field
 from ari.protocols.integrity import DigestBoundModel, StrictModel
 
 
-NativeKind = Literal["gemm", "spmm", "stencil"]
+#: WHICH FAMILY, by name. This was a ``Literal`` of the three ARI ships, which
+#: made the set of verifiable kernels a property of this file and a fourth thing
+#: to edit when one changed. A family registers itself now
+#: (``ari.assurance.native_hpc_family``) and every dispatch site asks the
+#: registry; the name still appears in a report because a verdict has to say
+#: what it verified.
+#:
+#: This does NOT make families free the way pinned problems are: adding one is
+#: still an ARI change, because an oracle a caller could supply is an oracle a
+#: caller could weaken.
+NativeKind = str
 NativeCandidate = Callable[[dict[str, Any]], Any]
 
 

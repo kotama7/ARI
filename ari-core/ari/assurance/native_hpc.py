@@ -15,9 +15,10 @@ from ari.assurance.native_hpc_common import (
     NativeHPCVerificationReportV1,
     NativeKind,
 )
-from ari.assurance.native_hpc_gemm import gemm_reference, verify_gemm
-from ari.assurance.native_hpc_spmm import spmm_reference, verify_spmm
-from ari.assurance.native_hpc_stencil import stencil_reference, verify_stencil
+from ari.assurance.native_hpc_family import (
+    get_native_family,
+    registered_native_families,
+)
 
 
 def verify_native_hpc(
@@ -28,28 +29,30 @@ def verify_native_hpc(
     seed: int | None = None,
     negative_control: bool = False,
 ) -> NativeHPCVerificationReportV1:
-    functions = {
-        "gemm": verify_gemm,
-        "spmm": verify_spmm,
-        "stencil": verify_stencil,
-    }
+    """Verify a candidate against the named family's hidden cases and oracle.
+
+    Dispatched through the registry rather than a table written here: the set
+    of families was previously spelled out in five places, so adding one meant
+    finding all five and a half-added family failed at whichever it missed.
+    """
     kwargs: dict[str, Any] = {
         "tier": tier,
         "negative_control": negative_control,
     }
     if seed is not None:
         kwargs["seed"] = seed
-    return functions[kind](candidate, **kwargs)
+    return get_native_family(kind).verify(candidate, **kwargs)
+
+
+def native_reference(kind: NativeKind):
+    """The family's independent implementation, which is also the clean control."""
+    return get_native_family(kind).reference
 
 
 __all__ = [
     "NativeCaseResultV1",
+    "native_reference",
+    "registered_native_families",
     "NativeHPCVerificationReportV1",
-    "gemm_reference",
-    "spmm_reference",
-    "stencil_reference",
-    "verify_gemm",
     "verify_native_hpc",
-    "verify_spmm",
-    "verify_stencil",
 ]

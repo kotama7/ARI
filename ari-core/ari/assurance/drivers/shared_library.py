@@ -1,14 +1,43 @@
-"""Exact C ABI adapters for native GEMM, SpMM, and Stencil libraries."""
+"""Exact C ABI adapters for the native correctness families.
+
+Each adapter marshals one kernel's exact signature, so this is per-family CODE
+and cannot be data. What it stopped being is a per-family TABLE: the dispatch
+dict at the bottom listed every kind, so the set of answerable questions was
+written out here as well as in a Literal, a second dispatch dict and two
+argparse ``choices`` tuples -- five places to find when one changed. Each
+adapter now declares its own name where it is defined, and dispatch asks.
+"""
 
 from __future__ import annotations
 
 import ctypes
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 class NativeABIError(RuntimeError):
     pass
+
+
+#: kind -> ABI adapter, populated by the decorator below at definition site.
+_ABI_ADAPTERS: dict[str, Callable[..., Any]] = {}
+
+
+def _abi_adapter(kind: str):
+    """Declare which family an adapter serves, beside the adapter."""
+
+    def register(function):
+        if kind in _ABI_ADAPTERS:
+            raise NativeABIError(f"two ABI adapters registered for {kind!r}")
+        _ABI_ADAPTERS[kind] = function
+        return function
+
+    return register
+
+
+def abi_adapter_kinds() -> tuple[str, ...]:
+    """Every kind that can be called through this module."""
+    return tuple(sorted(_ABI_ADAPTERS))
 
 
 def _library(path: str | Path) -> ctypes.CDLL:
@@ -41,6 +70,7 @@ def _output(storage, count: int, offset: int = 0) -> list[float]:
     return [float(storage[index + offset]) for index in range(count)]
 
 
+@_abi_adapter("gemm")
 def run_gemm(path: str | Path, case: dict[str, Any]) -> list[float]:
     scalar, suffix = _scalar(str(case["dtype"]))
     library = _library(path)
@@ -74,6 +104,7 @@ def run_gemm(path: str | Path, case: dict[str, Any]) -> list[float]:
     return _output(c_store, len(case["c"]), offset)
 
 
+@_abi_adapter("spmm")
 def run_spmm(path: str | Path, case: dict[str, Any]) -> list[float] | dict[str, str]:
     scalar, suffix = _scalar(str(case["dtype"]))
     library = _library(path)
@@ -110,6 +141,7 @@ def run_spmm(path: str | Path, case: dict[str, Any]) -> list[float] | dict[str, 
     return _output(c_store, len(case["c"]))
 
 
+@_abi_adapter("stencil")
 def run_stencil(path: str | Path, case: dict[str, Any]) -> list[float]:
     scalar, suffix = _scalar(str(case["dtype"]))
     library = _library(path)
@@ -139,12 +171,14 @@ def run_stencil(path: str | Path, case: dict[str, Any]) -> list[float]:
 def run_shared_library(
     kind: str, path: str | Path, case: dict[str, Any]
 ) -> list[float] | dict[str, str]:
-    functions = {"gemm": run_gemm, "spmm": run_spmm, "stencil": run_stencil}
     try:
-        function = functions[kind]
+        function = _ABI_ADAPTERS[kind]
     except KeyError as exc:
-        raise NativeABIError(f"unsupported native Harness kind: {kind}") from exc
+        raise NativeABIError(
+            f"unsupported native Harness kind: {kind!r}; known: "
+            f"{list(abi_adapter_kinds())}") from exc
     return function(path, case)
 
 
-__all__ = ["NativeABIError", "run_gemm", "run_shared_library", "run_spmm", "run_stencil"]
+__all__ = ["NativeABIError", "abi_adapter_kinds", "run_gemm",
+           "run_shared_library", "run_spmm", "run_stencil"]

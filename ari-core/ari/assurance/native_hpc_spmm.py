@@ -6,6 +6,7 @@ import random
 from decimal import Decimal, localcontext
 from typing import Any, Literal
 
+from ari.assurance.native_hpc_family import register_native_family
 from ari.assurance.native_hpc_common import (
     NativeCandidate,
     NativeCaseResultV1,
@@ -197,4 +198,25 @@ def verify_spmm(
     )
 
 
-__all__ = ["spmm_reference", "verify_spmm"]
+class SpmmFamily:
+    """The spmm correctness family: hidden cases, an independent oracle, and
+    the ABI its candidates are called through."""
+
+    name = "spmm"
+
+    def verify(self, candidate, **kwargs):
+        return verify_spmm(candidate, **kwargs)
+
+    def reference(self, case):
+        return spmm_reference(case)
+
+    def call_shared_library(self, path, case):
+        from ari.assurance.drivers.shared_library import run_spmm
+
+        return run_spmm(path, case)
+
+
+SPMM_FAMILY = register_native_family(SpmmFamily())
+
+
+__all__ = ["SPMM_FAMILY", "SpmmFamily", "spmm_reference", "verify_spmm"]

@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from typing import Any, Literal
 
+from ari.assurance.native_hpc_family import register_native_family
 from ari.assurance.native_hpc_common import (
     NativeCandidate,
     NativeCaseResultV1,
@@ -138,4 +139,25 @@ def verify_stencil(
     )
 
 
-__all__ = ["stencil_reference", "verify_stencil"]
+class StencilFamily:
+    """The stencil correctness family: hidden cases, an independent oracle, and
+    the ABI its candidates are called through."""
+
+    name = "stencil"
+
+    def verify(self, candidate, **kwargs):
+        return verify_stencil(candidate, **kwargs)
+
+    def reference(self, case):
+        return stencil_reference(case)
+
+    def call_shared_library(self, path, case):
+        from ari.assurance.drivers.shared_library import run_stencil
+
+        return run_stencil(path, case)
+
+
+STENCIL_FAMILY = register_native_family(StencilFamily())
+
+
+__all__ = ["STENCIL_FAMILY", "StencilFamily", "stencil_reference", "verify_stencil"]

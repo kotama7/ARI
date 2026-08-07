@@ -10,9 +10,8 @@ from ari.assurance.models import (
 )
 from ari.assurance.native_hpc import (
     NativeHPCVerificationReportV1,
-    gemm_reference,
-    spmm_reference,
-    stencil_reference,
+    native_reference,
+    registered_native_families,
     verify_native_hpc,
 )
 from ari.protocols.integrity import bytes_digest, canonical_digest
@@ -27,6 +26,9 @@ def native_driver_digest() -> str:
     files = (
         root.parent / "native_hpc.py",
         root.parent / "native_hpc_common.py",
+        # The registry decides WHICH ORACLE judges a run, so it is as much the
+        # instrument as any verifier it dispatches to.
+        root.parent / "native_hpc_family.py",
         root.parent / "native_hpc_gemm.py",
         root.parent / "native_hpc_spmm.py",
         root.parent / "native_hpc_stencil.py",
@@ -35,6 +37,12 @@ def native_driver_digest() -> str:
         root / "native_candidate_host.py",
         root / "shared_library.py",
     )
+    # No skip-if-absent: a missing verifier file must fail loudly here rather
+    # than drop out of the digest, which would make deleting one a change no
+    # pin could see.
+    missing = [path.name for path in files if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"verifier files missing from the digest: {missing}")
     return canonical_digest(
         tuple((path.name, bytes_digest(path.read_bytes())) for path in files)
     )
@@ -175,13 +183,16 @@ class NativeHPCDriver:
         )
 
     def parity_probe(self, manifest):
-        references = {
-            "gemm": gemm_reference,
-            "spmm": spmm_reference,
-            "stencil": stencil_reference,
-        }
+        """Every REGISTERED family, not a list written here.
+
+        The list was the fifth place the family set appeared, and it was the one
+        that decided what the probe certified: a family added everywhere else
+        would have been dispatchable, scored and attested while this probe never
+        touched it -- and the report would still have said ``passed``.
+        """
         results = {}
-        for kind, reference in references.items():
+        for kind in registered_native_families():
+            reference = native_reference(kind)
             clean = verify_native_hpc(kind, reference, tier="screen")
 
             def corrupted(case, _reference=reference):

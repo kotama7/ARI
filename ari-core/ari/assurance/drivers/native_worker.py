@@ -8,7 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ari.assurance.native_hpc import verify_native_hpc  # noqa: E402
+from ari.assurance.native_hpc import (  # noqa: E402
+    registered_native_families, verify_native_hpc)
 
 
 def _candidate(kind: str, library: str, timeout: float):
@@ -52,7 +53,9 @@ def _candidate(kind: str, library: str, timeout: float):
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kind", choices=("gemm", "spmm", "stencil"), required=True)
+    # Validated against what is REGISTERED, so the accepted set and the set the
+    # verifier can actually dispatch cannot drift apart.
+    parser.add_argument("--kind", choices=registered_native_families(), required=True)
     parser.add_argument("--library", required=True)
     parser.add_argument("--tier", choices=("screen", "validate", "certify"), required=True)
     parser.add_argument("--seed", type=int, required=True)

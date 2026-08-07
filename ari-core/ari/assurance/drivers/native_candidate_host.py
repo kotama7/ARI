@@ -14,7 +14,8 @@ import os
 import sys
 from pathlib import Path
 
-from ari.assurance.drivers.shared_library import run_shared_library  # noqa: E402
+from ari.assurance.drivers.shared_library import (  # noqa: E402
+    abi_adapter_kinds, run_shared_library)
 
 
 _SYS_LANDLOCK_CREATE_RULESET = 444
@@ -140,7 +141,11 @@ def _restrict_candidate_filesystem(library: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kind", choices=("gemm", "spmm", "stencil"), required=True)
+    # The ACCEPTED set is the DISPATCHABLE set. Written out here it was a
+    # fourth copy that could disagree with the other three: a kind this host
+    # refused was one the driver could still ask for, and the refusal arrived
+    # as a usage error rather than as anything a caller could act on.
+    parser.add_argument("--kind", choices=abi_adapter_kinds(), required=True)
     parser.add_argument("--library", required=True)
     args = parser.parse_args(argv)
     try:
