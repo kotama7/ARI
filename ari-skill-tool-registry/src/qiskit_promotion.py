@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
+from capability_pins import capability_contract_digest
 from models import sha256_digest
 import provider_promotion
 from provider_promotion import verify_provider_verified_lock
@@ -58,6 +59,9 @@ def qiskit_verified_scope(
                 "profile_id": profile.profile_id,
                 "leaf_name": tool.name,
                 "capability_ref": profile.capability_ref,
+                "capability_contract_digest": capability_contract_digest(
+                    profile.capability_ref
+                ),
                 "experiment_digest": profile.experiment_digest,
                 "method_digest": profile.method_digest,
                 "qpy_digest": profile.circuit.qpy_digest,

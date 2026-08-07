@@ -14,7 +14,25 @@ from ari.assurance.models import (
 from ari.protocols.integrity import canonical_digest
 
 
-def load_property_vocabulary(path: str | Path) -> tuple[dict[str, tuple[str, ...]], str]:
+class PropertyVocabulary(dict):
+    """The property->methods mapping, plus what each property is verified ON.
+
+    A ``dict`` subclass so every existing reader keeps working: membership, item
+    access and ``sorted()`` over the keys are unchanged. ``target_kinds`` is
+    additive and partial -- a property with no entry keeps the caller's
+    parameter, because only two of them are settled by evidence and this is not
+    a place to guess the rest.
+    """
+
+    def __init__(self, properties, target_kinds=None):
+        super().__init__(properties)
+        self.target_kinds: dict[str, str] = dict(target_kinds or {})
+
+    def target_kind_for(self, property_id: str, default: str) -> str:
+        return self.target_kinds.get(property_id, default)
+
+
+def load_property_vocabulary(path: str | Path) -> tuple[PropertyVocabulary, str]:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
     properties = {
         str(property_id): tuple(sorted(str(method) for method in methods))
@@ -22,7 +40,33 @@ def load_property_vocabulary(path: str | Path) -> tuple[dict[str, tuple[str, ...
     }
     if any(not methods for methods in properties.values()):
         raise ValueError("every assurance property requires a default method")
-    return properties, canonical_digest(raw)
+    target_kinds = {str(k): str(v)
+                    for k, v in dict(raw.get("target_kinds") or {}).items()}
+    unknown = sorted(set(target_kinds) - set(properties))
+    if unknown:
+        # A target kind for a property that does not exist is a typo that would
+        # otherwise sit inert and be read as a decision.
+        raise ValueError(
+            f"target_kinds names properties the vocabulary does not define: {unknown}")
+    return PropertyVocabulary(properties, target_kinds), canonical_digest(raw)
+
+
+def _target_kind_for(vocabulary, property_id: str, fallback: str) -> str:
+    """What this property is verified ON, or the caller's value.
+
+    THE DEFECT THIS FIXES. Every requirement in a run used to carry the caller's
+    one ``target_kind``. A run carries a correctness obligation over a compiled
+    library and a performance obligation over a kernel submitted to a benchmark;
+    those are different kinds of thing, and ``resolver`` requires the atom's kind
+    to be one the manifest declares. One value for all of them means at most one
+    can resolve -- and with the default of ``workspace-artifact``, none did: the
+    three registered correctness harnesses declare ``shared-library``.
+
+    Partial on purpose. Only the properties whose kind is settled by evidence
+    appear in the vocabulary; every other property behaves exactly as before.
+    """
+    getter = getattr(vocabulary, "target_kind_for", None)
+    return getter(property_id, fallback) if getter else fallback
 
 
 def build_verification_contract(
@@ -54,7 +98,8 @@ def build_verification_contract(
         requirements.append(
             VerificationRequirementV1.create(
                 property_id=property_id,
-                target_kind=target_kind,
+                target_kind=_target_kind_for(property_vocabulary, property_id,
+                                             target_kind),
                 required_methods=methods,
                 required_tier="screen",
                 failure_policy="exclude-from-scientific-frontier",
@@ -80,7 +125,8 @@ def build_verification_contract(
         requirements.append(
             VerificationRequirementV1.create(
                 property_id=obligation.property_id,
-                target_kind=target_kind,
+                target_kind=_target_kind_for(property_vocabulary,
+                                             obligation.property_id, target_kind),
                 required_methods=methods,
                 required_tier=obligation.required_tier,
                 failure_policy=(

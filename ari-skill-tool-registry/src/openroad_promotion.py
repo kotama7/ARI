@@ -7,6 +7,7 @@ import json
 from typing import Any, Iterable
 
 import provider_promotion
+from capability_pins import capability_contract_digest
 from models import sha256_digest
 from openroad_adapter import (
     OPENROAD_ADAPTER_ID,
@@ -25,6 +26,7 @@ from provider_promotion import verify_provider_verified_lock
 from providers import ProviderProtocolError
 
 
+OPENROAD_CAPABILITY_REF = "ari.eda.openroad.place-route/v1"
 OPENROAD_VERIFIED_PROVIDER_ID = "openroad-mcp"
 OPENROAD_VERIFIED_PROVIDER_VERSION = "0.6.1"
 OPENROAD_VERIFIED_PROFILE_ID = "gcd-nangate45-26q3"
@@ -218,7 +220,10 @@ def openroad_verified_scope(
             {
                 "profile_id": profile.profile_id,
                 "leaf_name": tool.name,
-                "capability_ref": "ari.eda.openroad.place-route/v1",
+                "capability_ref": OPENROAD_CAPABILITY_REF,
+                "capability_contract_digest": capability_contract_digest(
+                    OPENROAD_CAPABILITY_REF
+                ),
                 "experiment_digest": profile.experiment_digest,
                 "method_digest": profile.method_digest,
                 "workspace_input_digest": profile.workspace.input_digest,

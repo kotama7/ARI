@@ -13,3 +13,28 @@ properties:
   source-integrity: [digest-validation]
   structural-validity: [structural-validation]
   trajectory-equivalence: [differential-testing]
+
+# WHAT KIND OF THING EACH PROPERTY IS VERIFIED ON.
+#
+# ``build_verification_contract`` used to stamp ONE target kind onto every
+# requirement in a run -- the caller's parameter, defaulting to
+# ``workspace-artifact``. But a single run carries a correctness obligation over
+# a compiled library AND a performance obligation over a kernel submitted to a
+# benchmark, and those are not the same kind of thing. One value for all of them
+# means at most one can ever resolve: measured, the three registered correctness
+# harnesses declare ``shared-library`` and the default said
+# ``workspace-artifact``, so none of them resolved in the default path.
+#
+# Only the two that are settled by evidence appear here. A property with no
+# entry keeps the caller's parameter, so nothing else moves: this is not a place
+# to guess the other ten.
+target_kinds:
+  # What the three registered correctness harnesses declare they verify.
+  artifact-correctness: shared-library
+  # A benchmark scores a SUBMISSION. The resolver confines a non-external
+  # benchmark to {model, agent, benchmark-submission}, and the manifest model
+  # forbids a benchmark from claiming external target coverage -- both rules are
+  # coherent, and a candidate kernel handed to a benchmark IS a submission. This
+  # is the label that lets a performance harness resolve without relaxing
+  # either.
+  performance-regression: benchmark-submission
