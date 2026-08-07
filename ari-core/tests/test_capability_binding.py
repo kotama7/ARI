@@ -352,7 +352,9 @@ def test_the_shipped_ontology_names_only_reviewed_compatibility_rules():
         package_config_root() / "capabilities" / "ontology.yaml"
     )
     for item in ontology.snapshot.contracts:
-        assert item.compatibility_rules
+        # Legitimately empty for three contracts: their only named rule was
+        # json-schema-structural-conformance, retired because it named a
+        # relation to a capability-side structure no contract states.
         for rule in item.compatibility_rules:
             assert compatibility_rule_enforcement(rule) in {
                 "core",
@@ -394,7 +396,6 @@ def test_measurement_envelope_requires_the_conditions_it_promises(tmp_path):
                 "side_effect_class": "read-only",
                 "determinism_class": "conditional",
                 "compatibility_rules": [
-                    "json-schema-structural-conformance",
                     "measurement-envelope-v1",
                 ],
             }

@@ -1,5 +1,5 @@
 schema_version: 1
-source_revision: ari-capability-ontology/5
+source_revision: ari-capability-ontology/6
 property_vocabulary_version: ari.assurance-properties/v1
 contracts:
   - capability_ref: ari.eda.openroad.place-route/v1
@@ -19,7 +19,7 @@ contracts:
     # not a feature the prober emits. What the profile actually needs is a
     # runtime that executes its SIF -- see config/capabilities/resource_derivations.yaml.
     environment_requirements: [sif-container-runtime]
-    compatibility_rules: [json-schema-structural-conformance, openroad-profile-result-v1]
+    compatibility_rules: [openroad-profile-result-v1]
   - capability_ref: ari.code.inspect/v1
     contract_version: v1
     title: Inspect source code
@@ -30,7 +30,7 @@ contracts:
     required_permissions: [workspace-read]
     credential_scope_class: none
     resource_type: process
-    compatibility_rules: [json-schema-structural-conformance]
+    compatibility_rules: []
   - capability_ref: ari.code.edit/v1
     contract_version: v1
     title: Edit source code
@@ -41,7 +41,7 @@ contracts:
     required_permissions: [workspace-write]
     credential_scope_class: none
     resource_type: process
-    compatibility_rules: [json-schema-structural-conformance]
+    compatibility_rules: []
   - capability_ref: ari.data.read/v1
     contract_version: v1
     title: Read scientific data
@@ -52,7 +52,7 @@ contracts:
     required_permissions: [workspace-read]
     credential_scope_class: none
     resource_type: process
-    compatibility_rules: [json-schema-structural-conformance]
+    compatibility_rules: []
   - capability_ref: ari.execution.benchmark/v1
     contract_version: v1
     title: Benchmark an artifact
@@ -64,7 +64,7 @@ contracts:
     required_permissions: [workspace-read, workspace-write, process-execute]
     credential_scope_class: none
     resource_type: process
-    compatibility_rules: [json-schema-structural-conformance, measurement-envelope-v1]
+    compatibility_rules: [measurement-envelope-v1]
   - capability_ref: ari.execution.compile/v1
     contract_version: v1
     title: Compile source code
@@ -76,7 +76,7 @@ contracts:
     required_permissions: [workspace-read, workspace-write, process-execute]
     credential_scope_class: none
     resource_type: process
-    compatibility_rules: [json-schema-structural-conformance, artifact-result-v1]
+    compatibility_rules: [artifact-result-v1]
   - capability_ref: ari.execution.run/v1
     contract_version: v1
     title: Run a process
@@ -88,7 +88,7 @@ contracts:
     required_permissions: [workspace-read, workspace-write, process-execute]
     credential_scope_class: none
     resource_type: process
-    compatibility_rules: [json-schema-structural-conformance, result-envelope-v1]
+    compatibility_rules: [result-envelope-v1]
   - capability_ref: ari.execution.slurm-submit/v1
     contract_version: v1
     title: Submit a SLURM job
@@ -100,7 +100,7 @@ contracts:
     required_permissions: [scheduler-submit]
     credential_scope_class: hpc-scheduler
     resource_type: slurm
-    compatibility_rules: [json-schema-structural-conformance, async-handle-v1]
+    compatibility_rules: [async-handle-v1]
   - capability_ref: ari.environment.cuda.validate/v1
     contract_version: v1
     title: Validate an exact CUDA execution environment
@@ -125,7 +125,6 @@ contracts:
     # binding lock no longer pins it.
     environment_requirements: [cuda-12.9, nvidia-sm70, slurm-controller]
     compatibility_rules:
-      - json-schema-structural-conformance
       - cuda-self-test-v1
       - exclusive-allocation-witness-v1
   - capability_ref: ari.literature.search/v1
@@ -145,7 +144,7 @@ contracts:
     credential_scope_class: literature-provider
     resource_type: network
     environment_requirements: [network-read]  # observed; see resource_derivations.yaml
-    compatibility_rules: [json-schema-structural-conformance, retrieval-record-v1]
+    compatibility_rules: [retrieval-record-v1]
   - capability_ref: ari.profiling.hardware-counters/v1
     contract_version: v1
     title: Read hardware counters
@@ -158,7 +157,7 @@ contracts:
     credential_scope_class: none
     resource_type: hardware-counters
     environment_requirements: [hardware-counters]
-    compatibility_rules: [json-schema-structural-conformance, measurement-envelope-v1]
+    compatibility_rules: [measurement-envelope-v1]
   - capability_ref: ari.quantum.sample.local-ideal/v1
     contract_version: v1
     title: Sample a fixed ideal local quantum circuit
@@ -173,7 +172,7 @@ contracts:
     # `cpu` is a resource class, already required through resource_type; it was
     # never a feature the prober emits, so this list could not be satisfied.
     environment_requirements: []
-    compatibility_rules: [json-schema-structural-conformance, qiskit-sampling-result-v1]
+    compatibility_rules: [qiskit-sampling-result-v1]
   - capability_ref: ari.result.emit/v1
     contract_version: v1
     title: Emit a typed result
@@ -184,4 +183,4 @@ contracts:
     required_permissions: [result-write]
     credential_scope_class: none
     resource_type: process
-    compatibility_rules: [json-schema-structural-conformance, result-envelope-v1]
+    compatibility_rules: [result-envelope-v1]

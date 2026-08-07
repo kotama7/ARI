@@ -31,17 +31,6 @@ CatalogStatus = Literal["candidate", "verified", "deprecated", "revoked"]
 BindingMode = Literal["audit", "enforce"]
 
 
-class SemanticFieldV1(StrictModel):
-    name: str = Field(min_length=1, max_length=128)
-    value_type: Literal[
-        "string", "integer", "number", "boolean", "object", "array", "artifact-ref"
-    ]
-    required: bool = True
-    units: str = Field(default="none", min_length=1, max_length=128)
-    semantics: str = Field(min_length=1, max_length=2048)
-    constraints: dict[str, Any] = Field(default_factory=dict)
-
-
 class CapabilityContractV1(DigestBoundModel):
     """Versioned semantic meaning of one executable capability."""
 
@@ -54,8 +43,6 @@ class CapabilityContractV1(DigestBoundModel):
     contract_version: str = Field(pattern=r"^v[1-9][0-9]*$")
     title: str = Field(min_length=1, max_length=256)
     description: str = Field(min_length=1, max_length=4096)
-    semantic_inputs: tuple[SemanticFieldV1, ...] = Field(default_factory=tuple)
-    semantic_outputs: tuple[SemanticFieldV1, ...] = Field(default_factory=tuple)
     status_semantics: dict[str, str] = Field(default_factory=dict)
     artifact_rules: tuple[str, ...] = Field(default_factory=tuple)
     side_effect_class: CapabilitySideEffect
@@ -66,7 +53,11 @@ class CapabilityContractV1(DigestBoundModel):
     credential_scope_class: str = "none"
     resource_type: str = "process"
     environment_requirements: tuple[str, ...] = Field(default_factory=tuple)
-    compatibility_rules: tuple[str, ...] = Field(min_length=1)
+    # Required, but legitimately empty: a contract author must still state
+    # its rules, and `[]` is the true statement for a capability whose only
+    # named rule was retired. No default -- that would let the question
+    # vanish from the next contract without anyone deciding it.
+    compatibility_rules: tuple[str, ...]
     deprecated: bool = False
     replacement_ref: str | None = Field(default=None, pattern=CAPABILITY_REF_PATTERN)
     contract_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)

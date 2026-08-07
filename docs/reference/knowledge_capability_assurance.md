@@ -251,20 +251,31 @@ name states where it is checked: `measurement-envelope-v1` in core, four
 result-shape rules by the Provider that supplies the capability against its own
 golden and replay evidence, and the rest explicitly `unenforced`.
 
-`json-schema-structural-conformance` is in that last group, and reading the live
-surface shows it is not merely unimplemented but not implementable as the model
-stands. Every classified Provider tool publishes an **empty** MCP
-`outputSchema`, so each provision's `output_schema_digest` is the digest of `{}`
-and detects no drift for any Provider today — nothing can conform to nothing.
-The input side cannot be name-based either, and correctly so: three tools supply
-`ari.execution.slurm-submit/v1` with disjoint properties (`request` against
-`job_name`/`partition`/`script`), and two supply `ari.execution.run/v1` with
-`command` against `filename`. That difference is exactly what a semantic
-contract exists to span. Checking it needs a reviewed per-tool mapping from
-contract field to provider property, and the catalog has nowhere to put one:
-`declared_capability_refs_by_tool` maps tools to capabilities and stops.
-Closing this is a data-model change, not a missing function, so it is recorded
-rather than half-built.
+`json-schema-structural-conformance` was **retired** rather than implemented,
+and the distinction from the three that remain `unenforced` is what justifies
+keeping those. Each of those names a *payload shape* a Provider can be decided
+against — an envelope, an artifact, an async handle. They are unwritten. That
+one named a relation between a tool's schema and a capability-side structure
+that no contract states: all thirteen left `semantic_inputs` and
+`semantic_outputs` empty, and those fields plus `SemanticFieldV1` had no reader
+anywhere in the repository, so the rule was a predicate with an argument
+missing. It also sat on 13 of 13 contracts, and a property true of everything
+distinguishes nothing. The rule and the orphaned semantic surface are both gone;
+three contracts now legitimately declare no compatibility rules at all, which is
+the true statement rather than a placeholder.
+
+What people attribute to the rule is already enforced elsewhere: side-effect
+class equality and `required_permissions` coverage when the provision is built,
+whole-lock identity through the binder's `provider_lock_mismatch`, and the
+provision digest, which folds the tool's live `input_schema` in verbatim so a
+changed schema changes the provision whether or not anyone wrote a rule about
+it.
+
+A separate and genuine gap survives this: every classified Provider tool
+publishes an **empty** MCP `outputSchema`, so each provision's
+`output_schema_digest` is the digest of `{}` and detects no drift for anyone.
+That is Providers not declaring what they return, and fixing it needs no
+ontology change.
 
 `measurement-envelope-v1` says a measurement is only interpretable together with
 the conditions it was taken under, so a contract claiming it must declare the
@@ -464,6 +475,34 @@ metamorphic/shape/boundary/repeat coverage, and negative controls. Promotion
 to a checked-in verified catalog entry remains a release admission action: it
 requires a committed source revision, immutable container, license review,
 reference pass, negative-control fail, and retained registration report.
+
+Each of those three is a **correctness family** that declares itself once in
+`ari.assurance.native_hpc_family` and supplies three things: `verify` (the
+hidden cases and the oracle that judges them), `reference` (the independent
+implementation, which is also the parity probe's clean control), and
+`call_shared_library` (the ctypes ABI its candidates are called through). The
+set of verifiable kernels used to be written out in five places — a `Literal`,
+the facade's dispatch dict, the parity probe's reference table, the ABI dispatch
+dict, and two argparse `choices` tuples — so a family added to four of them was
+dispatchable, scored and attested while the probe never touched it, and the
+probe still reported `passed`. Every dispatch site now asks the registry, and
+re-registering a name is refused so an import order cannot decide which oracle
+judged a run. The registry is inside the native driver digest because it decides
+*which oracle* judges a run; outside it the judging oracle could be swapped under
+an attestation that still verified. The digest now also raises when one of its
+verifier files is absent instead of letting the file drop out silently. None of
+this makes a correctness family free the way a pinned problem is: a problem is a
+directory of data, whereas a family carries the oracle. Adding one is still an
+ARI change, reviewed like any other, because an oracle a caller could supply is
+an oracle a caller could weaken. What changed is that the set is declared in one
+place per family instead of five places per set.
+
+The cost is real and is stated rather than discovered: the driver digest
+changed, so all three currently **refuse to run** with `native Harness driver
+bytes drifted`. Their manifests were deliberately not re-pinned, because a
+signature covers what was signed and re-pinning would make three
+human-maintainer attestations describe code nobody approved. They need
+re-registration before they can be run again.
 
 Inspect, Harbor, KernelBench/ComputeEval/scBench, and PaperBench adapters do
 not fork their upstream frameworks. Their drivers validate a pinned official

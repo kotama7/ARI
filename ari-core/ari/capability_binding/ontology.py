@@ -133,24 +133,25 @@ def apply_resource_derivations(
 # below was inert. Closing the vocabulary means a contract can no longer invent a
 # rule, and each name now has to say where it is checked -- including the ones
 # that are not checked yet, which is at least visible instead of silent.
+#
+# `json-schema-structural-conformance` was retired rather than implemented, and
+# the distinction is what makes the three `unenforced` names below acceptable
+# while it was not. Each of those names a *payload shape* somebody can decide a
+# Provider against -- an envelope, an artifact, an async handle. They are
+# unwritten. That one named a relation between a tool's schema and a
+# capability-side structure that no contract states: all thirteen left
+# semantic_inputs/semantic_outputs empty, and those fields plus SemanticFieldV1
+# had no reader anywhere, so it was a predicate with an argument missing. It
+# also sat on 13 of 13 contracts, and a property true of everything
+# distinguishes nothing. Both the rule and the orphaned semantic surface are
+# gone; three contracts now legitimately declare no rules at all.
+#
+# What people attribute to it is already enforced elsewhere: side-effect-class
+# equality and required_permissions coverage in providers/catalog.py, whole-lock
+# identity via resolver.py's provider_lock_mismatch, and the provision digest
+# which folds the tool's live input_schema in verbatim.
 _COMPATIBILITY_RULES: dict[str, str] = {
     "measurement-envelope-v1": "core",
-    # Not merely unimplemented -- not implementable against the live surface as
-    # it stands, which was established by reading it rather than assumed.
-    #
-    # Every classified Provider tool publishes an empty MCP outputSchema, so
-    # each provision's output_schema_digest is the digest of {} and detects no
-    # drift for any Provider today. Nothing can conform to nothing.
-    #
-    # The input side cannot be name-based either, and correctly so: three tools
-    # supply ari.execution.slurm-submit/v1 with disjoint properties (`request`
-    # against `job_name`/`partition`/`script`), and two supply
-    # ari.execution.run/v1 with `command` against `filename`. That is what a
-    # semantic contract is for. Checking it needs a reviewed per-tool mapping
-    # from contract field to provider property, and the catalog has nowhere to
-    # put one -- declared_capability_refs_by_tool maps tools to capabilities and
-    # stops there. Closing this is a data-model change, not a missing function.
-    "json-schema-structural-conformance": "unenforced",
     "artifact-result-v1": "unenforced",
     "async-handle-v1": "unenforced",
     "result-envelope-v1": "unenforced",
