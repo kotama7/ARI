@@ -81,6 +81,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `native_perf_stencil.py` — the 3-D 7-point Jacobi family: field generator, the ping-pong fp64 reference sweep (bit-identical to the naive expression, without its 24 GB of temporaries), and an nt-scaled bound. Refuses an nt=0 case, where handing back the input would be a correct answer.
   - `problems.py` — the pinned problem asset: closed-schema `ProblemDefinitionV1` (no field for flags, timing or tolerances, so an unapproved problem cannot weaken the instrument), digest over the declaration and every file it names, and `materialize` as the seed_work_dir equivalent — which withholds the reference.
   - `registration.py` — execute harness registration gates and catalog promotion.
+  - `registration_gates.py` — TODO
   - `registration_models.py` — promotion approval, evidence, and registration report models.
   - `request.py` — validate and canonicalize screen and certify run requests.
   - `resolver.py` — select compatible harnesses and fail closed on missing or ambiguous coverage.

@@ -255,20 +255,47 @@ def test_verification_union_only_strengthens():
         assert_monotonic_requirement_revision((certify,), (screen,))
 
 
+def _passing_gate_evidence(manifest):
+    """Evidence a well-formed registration would have produced.
+
+    Synthetic on purpose: this file tests the RESOLVER, so it states what a
+    passing probe looks like rather than spending a real one. The gates that
+    read the manifest read the real manifest.
+    """
+    from ari.assurance.registration import GateEvidence
+
+    probe = {
+        "driver_digest": manifest.driver.sha256,
+        "passed": True,
+        "results": {
+            "clean_control": {"verdict": "pass", "relative_spread": 0.01,
+                              "resolved": True},
+            "negative_control_slow": {"verdict": "fail",
+                                      "detail": "below the threshold"},
+            "negative_control_wrong": {"verdict": "fail",
+                                       "detail": "failed the residual bound"},
+        },
+    }
+    return GateEvidence(
+        manifest=manifest, parity=probe, driver_digest=manifest.driver.sha256,
+        report_schema={"$id": "test", "properties": {"verdict": {}}},
+        stability={"runs": 3, "relative_spread": 0.02},
+        repo_commit=manifest.source_full_commit_sha,
+    )
+
+
 def _write_verified_catalog(tmp_path):
     manifest = _manifest()
     evidence_digest = canonical_digest("harness-registration-evidence")
+    # A registration is minted from EVIDENCE now; there is no way to hand it a
+    # pre-decided gate, which is what this fixture used to do and what let every
+    # shipped report carry fifteen gates nothing had evaluated. This resolver
+    # test needs a verified catalog, so it supplies evidence that satisfies the
+    # gates rather than asserting the answers.
     report = registration_report(
         harness_id=manifest.id,
         manifest_digest=manifest.manifest_digest,
-        gates=tuple(
-            HarnessRegistrationGateV1(
-                gate_id=gate_id,
-                passed=True,
-                evidence_digest=evidence_digest,
-            )
-            for gate_id in HARNESS_REGISTRATION_GATES
-        ),
+        evidence=_passing_gate_evidence(manifest),
     )
     evidence = HarnessRegistrationEvidenceV1.create(
         harness_id=manifest.id,

@@ -135,6 +135,17 @@ FLAG_DENY_SUBSTRINGS: tuple[str, ...] = (
 #: adjudicate close calls, which is the only thing a wall bound can honestly do.
 CREDIT_FLOOR_FRACTION = 1e-4
 
+#: How much more non-kernel overhead a candidate's process may show than the
+#: reference's before its credited time is refused.
+#:
+#: Both run the SAME frozen driver on the SAME problem in the same loop, so
+#: their work outside the timed call is the same work; ``wall - credited``
+#: should agree. A kernel that times itself and writes a fraction keeps its wall
+#: time and shrinks its credit, so the difference lands here and nowhere else.
+#: Loose enough to absorb scheduling noise on a shared node, which is the only
+#: thing a cross-role comparison can honestly claim.
+MAX_OVERHEAD_RATIO = 4.0
+
 #: A command line is not an essay. The cap also bounds what a malformed flag
 #: file can do to the argv.
 FLAG_MAX_TOKENS = 32
@@ -829,7 +840,8 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
               ld_library_path: str | None = None,
               launcher: tuple[str, ...] = (),
               capture: dict[str, str] | None = None,
-              env: dict[str, str] | None = None) -> float:
+              env: dict[str, str] | None = None,
+              observed: dict[str, float] | None = None) -> float:
     """One cold call in a fresh process; return the driver's own credited time.
 
     The time comes from the driver's private file rather than from the wall
@@ -932,6 +944,18 @@ def run_timed(exe: Path, problem: Path, out_path: Path, timing: Path,
             f"{role} credited {seconds:.6g}s against {wall:.6g}s of wall clock "
             f"({seconds / wall:.3g} of the process); a credit that small did not "
             f"come from timing this kernel")
+    # THE WALL, FOR THE CALLER. The bound above catches a forger that writes an
+    # absurd number; it does not catch one that times ITSELF and writes a
+    # plausible fraction -- measured, a kernel writing 2% of its own elapsed
+    # time scored 89.3x, pass. What separates the two is that forging shrinks
+    # the CREDIT without shrinking the WALL, so the child's non-kernel overhead
+    # (wall - credit) inflates by exactly what was hidden. The reference runs
+    # the same driver on the same problem in the same loop, so its overhead is
+    # a live calibration for the candidate's. Only the caller sees both.
+    if observed is not None:
+        observed["wall"] = wall
+        observed["credited"] = float(seconds)
+        observed["overhead"] = wall - float(seconds)
     return float(seconds)
 
 

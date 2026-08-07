@@ -179,3 +179,59 @@ def test_a_global_hidden_by_fcommon_is_still_refused(problem):
         with pytest.raises(PerfBuildError, match="exports symbols other than"):
             _build(problem, EXTRA_GLOBAL, flags)
     assert _build(problem, HONEST, ("-fcommon",))
+
+
+#: Times ITSELF and writes a plausible fraction, rather than an absurd 1e-9.
+#: This is what the wall bound alone does not catch: measured at 89.3x, pass.
+FORGES_ADAPTIVELY = f'''#include "gemm_kernel.h"
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+static double now(void) {{
+  struct timespec t;
+  clock_gettime(CLOCK_MONOTONIC, &t);
+  return t.tv_sec + 1e-9 * t.tv_nsec;
+}}
+void gemm(int n, int m, int p, const double *A, const double *B, double *C) {{
+  double t0 = now();
+{_NAIVE_BODY}
+  double mine = now() - t0;
+  FILE *cl = fopen("/proc/self/cmdline", "rb");
+  if (!cl) return;
+  char buf[8192];
+  size_t got = fread(buf, 1, sizeof(buf) - 1, cl);
+  fclose(cl);
+  buf[got] = 0;
+  char *args[8];
+  int k = 0;
+  for (size_t i = 0; i < got && k < 8;) {{ args[k++] = buf + i; i += strlen(buf + i) + 1; }}
+  if (k < 4) return;
+  if (fork() == 0) {{
+    usleep(200000);
+    FILE *t = fopen(args[3], "wb");
+    if (t) {{ double e = mine * 0.02; fwrite(&e, sizeof e, 1, t); fclose(t); }}
+    _exit(0);
+  }}
+}}
+'''
+
+
+def test_a_kernel_that_times_itself_cannot_write_a_fraction_of_it(problem):
+    """The wall bound is not enough on its own, and this is why.
+
+    Bounding the credit by the wall clock catches a forger that writes 1e-9. It
+    does not catch one that measures its OWN elapsed time and writes 2% of it --
+    measured at 89.3x, verdict pass, after the wall bound was in place.
+
+    What separates them: forging shrinks the CREDIT without shrinking the WALL,
+    so the process's non-kernel overhead inflates by exactly what was hidden.
+    The reference runs the same frozen driver on the same problem in the same
+    loop, so its overhead is a live calibration for the candidate's -- no
+    constant, no assumption about the host.
+    """
+    report = _score(problem, FORGES_ADAPTIVELY)
+    case = report.case_results[0]
+    assert case.verdict == "fail"
+    assert "does not account for what ran" in case.detail, case.detail
+    assert case.speedup == 0.0

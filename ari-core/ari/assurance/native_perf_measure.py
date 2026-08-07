@@ -34,6 +34,7 @@ from typing import Literal
 import numpy as np
 
 from ari.assurance.native_perf_common import (
+    MAX_OVERHEAD_RATIO,
     TIER_REPETITIONS,
     NativePerfReportV1,
     PerfBuildError,
@@ -212,10 +213,13 @@ def verify_performance(
                     else:
                         order = (("reference", anchor_exe), ("candidate", candidate_exe))
                     seconds: dict[str, float] = {}
+                    watched: dict[str, dict[str, float]] = {}
                     for role, exe in order:
+                        watched[role] = {}
                         seconds[role] = run_timed(
                             exe, instance_path, outputs[role], timing,
                             timeout=run_timeout, role=role,
+                            observed=watched[role],
                             ld_library_path=(candidate_libs
                                              if role != "reference" else None))
                     if matched_exe is not None:
@@ -231,6 +235,24 @@ def verify_performance(
                             pass
                     t_cand = seconds["candidate"]
                     t_ref = seconds["reference"]
+                    # THE OVERHEAD CHECK, which is what a self-timing forger
+                    # cannot satisfy. Both processes ran the same frozen driver
+                    # on the same problem, so their work outside the timed call
+                    # is the same work. A kernel that writes a fraction of its
+                    # own elapsed time keeps its wall and shrinks its credit, so
+                    # the whole difference appears as excess overhead here.
+                    # Measured: such a kernel scored 89.3x and passed under the
+                    # wall bound alone.
+                    over_cand = watched["candidate"].get("overhead", 0.0)
+                    over_ref = watched["reference"].get("overhead", 0.0)
+                    if over_ref > 0 and over_cand > over_ref * MAX_OVERHEAD_RATIO:
+                        verdict = "fail"
+                        detail = (
+                            f"the candidate process spent {over_cand:.4g}s outside "
+                            f"its credited {t_cand:.4g}s against the reference's "
+                            f"{over_ref:.4g}s on the same driver and problem; the "
+                            f"credited time does not account for what ran")
+                        break
                     c_out = np.fromfile(outputs["candidate"], dtype=np.float64)
                     r_out = np.fromfile(outputs["reference"], dtype=np.float64)
                 except PerfBuildError as exc:
