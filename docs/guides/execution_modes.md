@@ -88,10 +88,16 @@ Allowed:
 
 1. **Run start** — the only entry into `ari_rqgm`. The effective mode is
    resolved once and persisted before the first node runs.
-2. **Epoch boundary** (only within an `ari_rqgm` run) — the run may
-   **downgrade** `ari_rqgm → simple_bfts` inside the epoch-boundary
-   transaction (cost/emergency fallback). The downgrade is audited and
-   validated by the ConstitutionalKernel.
+2. **Epoch boundary** (only within an `ari_rqgm` run) — the design reserves an
+   `ari_rqgm → simple_bfts` **downgrade** inside the epoch-boundary transaction
+   (cost/emergency fallback). **This is not implemented.** No downgrade event is
+   ever emitted, `rqgm_state.json` is written once at run start and never
+   rewritten, and `ConstitutionalKernel.validate_epoch_invariance` does not
+   inspect the mode at all — it raises only `CK-EPO-001` (a record whose
+   `prompt_hash` is outside the frozen active set) and `CK-EPO-002` (a
+   non-emergency active-set change mid-epoch). In practice a run's mode is
+   therefore fixed from run start to run end; treat the downgrade as reserved
+   design, not as available behaviour.
 
 Forbidden / impossible:
 
@@ -103,8 +109,8 @@ Forbidden / impossible:
 
 Resume rule: `ari resume` reads `rqgm_state.json` checkpoint-first and the
 **persisted mode wins** over package config and env. A disagreement produces a
-warning, never a mid-run mode flip — a run's mode is immutable except at epoch
-boundaries, downgrade-only.
+warning, never a mid-run mode flip — a run's mode is immutable for the whole
+run (the epoch-boundary downgrade above is reserved design, not implemented).
 
 Read precedence for all RQGM mode readers:
 `{checkpoint}/rqgm_state.json` → typed config (`--config`/checkpoint/package
@@ -290,7 +296,7 @@ Four properties are worth knowing before you use it:
    selection applies to the run the Studio is about to launch. **Resume is
    unaffected**: `ari resume` still reads `{checkpoint}/rqgm_state.json`
    checkpoint-first, the persisted mode still wins over config and env, and a
-   run's mode stays immutable except at epoch boundaries (downgrade-only).
+   run's mode stays immutable for the whole run.
    No GUI path writes that file.
 3. **Project scope still refuses.** The mode paths are `scope: run`, so the
    project-defaults document rejects them (`not_project_scope`); the controls
@@ -439,5 +445,5 @@ activation matrix and resume behavior.
   only ([above](#selecting-the-mode-from-the-gui)); the remaining `rqgm.*`
   governance and tuning parameters are configuration-file only.
 - A run's mode cannot be changed after it starts, from any surface — resume
-  takes the persisted mode, and the only in-run transition is the
-  epoch-boundary downgrade.
+  takes the persisted mode, and there is no in-run transition at all (the
+  epoch-boundary downgrade is reserved design, not implemented).
