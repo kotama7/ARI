@@ -306,7 +306,7 @@ CRN。科学契约、运维、更新/回滚和删除 gate 见
 
 唯一正式 promote 的 Qiskit identity 是
 `qiskit/core-0.3.1+aer-0.17.2-local-ideal`。其 verified lock digest 为
-`sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`。
+`sha256:57b60bbdb84ba0364e038a6df51f3de2a48cdf8c776d31066efeec5ea68be195`。
 它只覆盖无需 credential 的 seeded Bell-state local Aer 与
 `ari.quantum.sample.local-ideal/v1`，并固定 QPY bytes/version、target、software、seed、
 count 范围、live MCP schema、golden/replay、十五项 Provider gate 与 human approval。

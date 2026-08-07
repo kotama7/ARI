@@ -40,7 +40,7 @@
       "version": "0.17.2"
     }
   },
-  "bundle_digest": "sha256:fc258ac965b82da0c43c6c08d3d20db17cb5ce2e5fc3f91fd03dc67afc76e005",
+  "bundle_digest": "sha256:2a5a414d56634ec4f8dc9678f3106062a4a5c1e5e8307e2c1fd4adc54aa2f12e",
   "capability_scope": {
     "credential_scope_ids": [],
     "determinism": "seeded",
@@ -54,6 +54,7 @@
     ],
     "profiles": [
       {
+        "capability_contract_digest": "sha256:0abe3edbbc386e0a67800d5e9d1707e52d629a82c09d8d53689acf9008718a8d",
         "capability_ref": "ari.quantum.sample.local-ideal/v1",
         "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
         "golden_fixture_digest": "sha256:2de6449f907bccd547a72ce05b577b633978ffe91d7f0fbb02fc8a8d0b01c93e",
@@ -71,7 +72,7 @@
     "resource_type": "quantum-simulator",
     "side_effects": "workspace-write"
   },
-  "captured_date": "2026-08-05",
+  "captured_date": "2026-08-08",
   "gate_evidence": {
     "capability_contract_conformance": {
       "capability_ref": "ari.quantum.sample.local-ideal/v1",
@@ -84,7 +85,7 @@
       "ibm_runtime_loaded": false
     },
     "environment_allowlist": {
-      "provider_digest": "sha256:2c56f56c15fdb0da2413c770c28edf40587030ac7b9014d2a7ad1b54125483bf",
+      "provider_digest": "sha256:1dc6dace5db4674906237e3ec11500167d5b0afc3c0a511bb8f31896c409df79",
       "runtime_target": {
         "architecture": "x86_64",
         "operating_system": "linux",
@@ -107,11 +108,11 @@
     },
     "malicious_description_boundary": {
       "authority_source": "immutable profile and active catalog lock",
-      "test_output_sha256": "sha256:9ea94445a93f9ec094a35a93095b8c555e136f37b284aa67d7aa4c6e66be2b6a"
+      "test_output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35"
     },
     "manifest_schema": {
       "schema": "ari.qiskit-capability-provider-manifest/v1",
-      "test_output_sha256": "sha256:9ea94445a93f9ec094a35a93095b8c555e136f37b284aa67d7aa4c6e66be2b6a"
+      "test_output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35"
     },
     "result_schema": {
       "counts": {
@@ -120,7 +121,7 @@
       },
       "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
       "method_digest": "sha256:f7d07fe08c89927826f69a4adc3038eb5dc02b5b1b953840784e7b2c172b04c6",
-      "result_digest": "sha256:536f630c51fdc0e9c8796fc7f341d33250405e49a18e025e1aaff90294247826",
+      "result_digest": "sha256:77b0c72151cd2dbb3c10e13a3dd77159219318683ae7e08046151a88521181a5",
       "shots": 4096
     },
     "revocation_behavior": {
@@ -196,7 +197,7 @@
         "ari-skill-tool-registry/tests/test_qiskit_worker.py",
         "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group"
       ],
-      "test_output_sha256": "sha256:9ea94445a93f9ec094a35a93095b8c555e136f37b284aa67d7aa4c6e66be2b6a"
+      "test_output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35"
     },
     "unbound_invocation_rejection": {
       "live_adapter_check": true
@@ -220,16 +221,16 @@
           "size": 542
         },
         {
-          "digest": "sha256:1e21768bacbc05851dc49185696ad5d2ab12b03190660b2c5c7430a5c77d3b79",
-          "logical_name": "qiskit/sha256/1e/1e21768bacbc05851dc49185696ad5d2ab12b03190660b2c5c7430a5c77d3b79--qiskit-raw-aer-result.json",
+          "digest": "sha256:fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1",
+          "logical_name": "qiskit/sha256/fd/fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1--qiskit-raw-aer-result.json",
           "logical_role": "qiskit-raw-aer-result",
           "media_type": "application/json",
           "schema_version": "ari.artifact-ref/v1",
           "size": 706
         },
         {
-          "digest": "sha256:b922f8fb0ff74d28c5f862d720a31b3e50da9f131f856c55d85d434bf94443ba",
-          "logical_name": "qiskit/sha256/b9/b922f8fb0ff74d28c5f862d720a31b3e50da9f131f856c55d85d434bf94443ba--qiskit-execution-transcript.json",
+          "digest": "sha256:1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929",
+          "logical_name": "qiskit/sha256/1b/1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929--qiskit-execution-transcript.json",
           "logical_role": "qiskit-execution-transcript",
           "media_type": "application/json",
           "schema_version": "ari.artifact-ref/v1",
@@ -258,16 +259,16 @@
         "size": 542
       },
       {
-        "digest": "sha256:1e21768bacbc05851dc49185696ad5d2ab12b03190660b2c5c7430a5c77d3b79",
-        "logical_name": "qiskit/sha256/1e/1e21768bacbc05851dc49185696ad5d2ab12b03190660b2c5c7430a5c77d3b79--qiskit-raw-aer-result.json",
+        "digest": "sha256:fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1",
+        "logical_name": "qiskit/sha256/fd/fd1aa4ca16d768ef61e340fd328bb688ba9a9ae0d0db8fe73e94e54f56115cc1--qiskit-raw-aer-result.json",
         "logical_role": "qiskit-raw-aer-result",
         "media_type": "application/json",
         "schema_version": "ari.artifact-ref/v1",
         "size": 706
       },
       {
-        "digest": "sha256:b922f8fb0ff74d28c5f862d720a31b3e50da9f131f856c55d85d434bf94443ba",
-        "logical_name": "qiskit/sha256/b9/b922f8fb0ff74d28c5f862d720a31b3e50da9f131f856c55d85d434bf94443ba--qiskit-execution-transcript.json",
+        "digest": "sha256:1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929",
+        "logical_name": "qiskit/sha256/1b/1bd290e31be2e71e044b1546f104a2365fd844aa66547baf3f9cc3e4203f5929--qiskit-execution-transcript.json",
         "logical_role": "qiskit-execution-transcript",
         "media_type": "application/json",
         "schema_version": "ari.artifact-ref/v1",
@@ -279,7 +280,7 @@
       "qpy_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
       "replay_digest": "sha256:9c64c5e7f8f099f3fad090e0ad4451cdf65af1b301f59b6a7a5af33629186b37"
     },
-    "provider_digest_in_validation_environment": "sha256:2c56f56c15fdb0da2413c770c28edf40587030ac7b9014d2a7ad1b54125483bf",
+    "provider_digest_in_validation_environment": "sha256:1dc6dace5db4674906237e3ec11500167d5b0afc3c0a511bb8f31896c409df79",
     "result": {
       "counts": {
         "00": 2046,
@@ -287,7 +288,7 @@
       },
       "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
       "method_digest": "sha256:f7d07fe08c89927826f69a4adc3038eb5dc02b5b1b953840784e7b2c172b04c6",
-      "result_digest": "sha256:536f630c51fdc0e9c8796fc7f341d33250405e49a18e025e1aaff90294247826",
+      "result_digest": "sha256:77b0c72151cd2dbb3c10e13a3dd77159219318683ae7e08046151a88521181a5",
       "shots": 4096
     },
     "unbound_invocation_rejected": true,
@@ -322,7 +323,7 @@
       "-q"
     ],
     "exit_code": 0,
-    "output_sha256": "sha256:9ea94445a93f9ec094a35a93095b8c555e136f37b284aa67d7aa4c6e66be2b6a",
+    "output_sha256": "sha256:dc2e126ed9de0136fa1a1d435942453b8b3ae06975156a94aedafd13fd54bc35",
     "test_ids": [
       "ari-skill-tool-registry/tests/test_qiskit_contracts.py",
       "ari-skill-tool-registry/tests/test_qiskit_adapter.py",

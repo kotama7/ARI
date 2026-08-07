@@ -37,7 +37,7 @@ domain reviewが別途必要である。
 
 正式にpromoteしたidentityは
 `qiskit/core-0.3.1+aer-0.17.2-local-ideal`だけであり、verified lock digestは
-`sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`
+`sha256:57b60bbdb84ba0364e038a6df51f3de2a48cdf8c776d31066efeec5ea68be195`
 である。scopeはcredential不要のseeded Bell-state Aer実行と
 `ari.quantum.sample.local-ideal/v1`だけであり、QPY、target、software、seed、count範囲、
 live MCP schema、golden/replay、15個のProvider gate、人間承認をdigestで固定する。

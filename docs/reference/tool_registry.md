@@ -411,7 +411,7 @@ gates.
 
 The only formally promoted Qiskit identity is the checked-in
 `qiskit/core-0.3.1+aer-0.17.2-local-ideal` bundle. Its verified lock digest is
-`sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`.
+`sha256:57b60bbdb84ba0364e038a6df51f3de2a48cdf8c776d31066efeec5ea68be195`.
 It covers the credential-free seeded Bell-state local-Aer profile and
 `ari.quantum.sample.local-ideal/v1` only. The lock binds the QPY bytes/version,
 target, software stack, seeds, counts bounds, live MCP schema, golden/replay

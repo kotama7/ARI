@@ -1,5 +1,5 @@
 {
-  "core_provider_digest": "sha256:2c56f56c15fdb0da2413c770c28edf40587030ac7b9014d2a7ad1b54125483bf",
+  "core_provider_digest": "sha256:1dc6dace5db4674906237e3ec11500167d5b0afc3c0a511bb8f31896c409df79",
   "profile": {
     "backend": {
       "backend_name": "aer_simulator",
@@ -37,7 +37,7 @@
       "parameter_bindings": {},
       "parameter_units": {},
       "qpy_digest": "sha256:761cf1eb8e386cf53900cd96a4bfac6e2d713a307f42b00ecbf5f05251c9699f",
-      "qpy_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/bell-phi-plus.qpy",
+      "qpy_path": "bell-phi-plus.qpy",
       "qpy_version": 17
     },
     "description": "Seeded Bell-state sampling on the digest-pinned local Qiskit Aer 2.5.1/0.17.2 CPU profile.",
@@ -70,7 +70,7 @@
       }
     ],
     "golden_fixture_digest": "sha256:2de6449f907bccd547a72ce05b577b633978ffe91d7f0fbb02fc8a8d0b01c93e",
-    "golden_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/local-ideal.golden.json",
+    "golden_fixture_path": "local-ideal.golden.json",
     "limitations": [
       "A seeded Aer pass is not evidence about an IBM Quantum hardware backend.",
       "The promotion applies only to this QPY, target, software stack, seeds, method, and shot count."
@@ -85,7 +85,7 @@
     "poll_interval_seconds": 0.1,
     "profile_id": "local-ideal",
     "replay_fixture_digest": "sha256:9c64c5e7f8f099f3fad090e0ad4451cdf65af1b301f59b6a7a5af33629186b37",
-    "replay_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/local-ideal.replay.json",
+    "replay_fixture_path": "local-ideal.replay.json",
     "schema_version": "ari.qiskit-experiment/v1",
     "seed_simulator": 20260802,
     "shots": 4096,
@@ -107,5 +107,5 @@
     }
   },
   "schema_version": "ari.qiskit-materialized-profile/v1",
-  "verified_lock_digest": "sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684"
+  "verified_lock_digest": "sha256:57b60bbdb84ba0364e038a6df51f3de2a48cdf8c776d31066efeec5ea68be195"
 }

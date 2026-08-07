@@ -34,7 +34,7 @@ profile，而模型仍只看到注册表的五个稳定操作。
 
 唯一正式 promote 的 identity 是
 `qiskit/core-0.3.1+aer-0.17.2-local-ideal`，verified lock digest 为
-`sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`。
+`sha256:57b60bbdb84ba0364e038a6df51f3de2a48cdf8c776d31066efeec5ea68be195`。
 其 scope 仅为无需 credential 的 seeded Bell-state Aer 执行和
 `ari.quantum.sample.local-ideal/v1`，并以 digest 固定 QPY、target、software、seed、count
 范围、live MCP schema、golden/replay、十五项 Provider gate 与 human approval。IBM Runtime、

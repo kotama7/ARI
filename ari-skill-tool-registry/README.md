@@ -263,7 +263,7 @@ python scripts/verify_qiskit.py \
 The checked-in promotion bundle
 `providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/` formally verifies exactly
 one credential-free, seeded Bell-state local-Aer profile. Lock
-`sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`
+`sha256:57b60bbdb84ba0364e038a6df51f3de2a48cdf8c776d31066efeec5ea68be195`
 binds Qiskit MCP 0.3.1, Qiskit 2.5.1, Aer 0.17.2, QPY bytes/version, target,
 seeds, counts bounds, golden/replay evidence, live schemas, fifteen Provider
 gates, and explicit human approval. It does not promote the IBM Runtime MCP,

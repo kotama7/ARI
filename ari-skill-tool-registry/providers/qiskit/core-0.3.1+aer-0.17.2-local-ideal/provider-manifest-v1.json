@@ -3,7 +3,7 @@
     "adapter_digest": "sha256:cf2df6fea8d8af7e416696057e1431fe69d20ecddaa72e5a73d853585b09ffaa",
     "adapter_id": "ari.qiskit-profile",
     "adapter_version": "1.0.0",
-    "promotion_verifier_digest": "sha256:c5e6b9ddd87570cff0e8d91b1b48b3f0992fec76d629184aebda16d64086e223"
+    "promotion_verifier_digest": "sha256:dc04205b0bea3c9996bf39d290813c9607a7b7ef5e3abf03e9aa5d314f3f250a"
   },
   "artifact": {
     "core_mcp": {
@@ -59,6 +59,7 @@
     ],
     "profiles": [
       {
+        "capability_contract_digest": "sha256:0abe3edbbc386e0a67800d5e9d1707e52d629a82c09d8d53689acf9008718a8d",
         "capability_ref": "ari.quantum.sample.local-ideal/v1",
         "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
         "golden_fixture_digest": "sha256:2de6449f907bccd547a72ce05b577b633978ffe91d7f0fbb02fc8a8d0b01c93e",

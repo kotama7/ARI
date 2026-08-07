@@ -135,7 +135,7 @@ def test_qiskit_local_aer_promotion_lock_is_exact_and_excludes_ibm_runtime():
 
     assert lock["status"] == "verified"
     assert lock["lock_digest"] == (
-        "sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684"
+        "sha256:57b60bbdb84ba0364e038a6df51f3de2a48cdf8c776d31066efeec5ea68be195"
     )
     assert lock["capability_scope"]["credential_scope_ids"] == []
     assert [item["profile_id"] for item in lock["capability_scope"]["profiles"]] == [
