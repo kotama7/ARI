@@ -22,6 +22,10 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.1/verified-lock-v1.json
     role: config
+  - path: ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.2/build-recipe-v1.json
+    role: config
+  - path: ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.2/provider-manifest-v1.json
+    role: config
   - path: ari-skill-tool-registry/src/openroad_adapter.py
     role: implementation
   - path: ari-skill-tool-registry/src/openroad_contracts.py
@@ -40,9 +44,13 @@ sources:
     role: implementation
   - path: ari-skill-tool-registry/src/openroad_worker.py
     role: implementation
+  - path: ari-skill-tool-registry/src/openroad_promotion.py
+    role: implementation
   - path: ari-skill-tool-registry/providers/openroad-support-v1.json
     role: config
   - path: ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/verified-lock-v1.json
+    role: config
+  - path: ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/verified-lock-v1.json
     role: config
   - path: ari-skill-tool-registry/src/qiskit_adapter.py
     role: implementation
@@ -54,15 +62,18 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
     role: config
-last_verified: 2026-08-05
+last_verified: 2026-08-07
 ---
 
 # Federated Scientific Tool Registry
 
 `ari-skill-tool-registry` imports large MCP collections behind five stable
 operations: `discover`, `describe`, `invoke`, `get_status`, and `get_result`.
-It is default-off. The model never receives every leaf schema, and adding a
-collection does not require editing one file per leaf.
+The Skill is enabled by default, but enabling it enables no leaf: only sources
+present in the selected catalog can execute, and the checked-in `CATALOG.lock`
+is empty by design, so the Skill flag and the catalog are two independent gates.
+The model never receives every leaf schema, and adding a collection does not
+require editing one file per leaf.
 
 ## Boundary and lifecycle
 
@@ -121,7 +132,7 @@ routing logic in the agent. A direct stdio MCP source needs no custom leaf code.
 A non-stdio collection needs one `CatalogSource` plus one `ProviderAdapter`, with
 contract, supply-chain, record/replay, and scientific conformance fixtures.
 
-## ToolUniverse 1.3.1 / 1.3.1+ari.1 adapter
+## ToolUniverse 1.3.1 / 1.3.1+ari.1 / 1.3.1+ari.2 adapter
 
 ToolUniverse is integrated as one compact collection, not thousands of public
 MCP tools. The registry itself does not import ToolUniverse. The isolated
@@ -139,6 +150,30 @@ deterministic build recipe, byte-identical two-build wheel, full runtime lock,
 package tree, license, and Provider manifest. The retained wheel is supplied
 from an operator artifact store and must match its full SHA-256;
 package-registry resolution is not a production path.
+
+A second patched artifact, `1.3.1+ari.2`, carries that metadata correction
+unchanged and additionally raises the compact response ceiling: `smcp.SMCP`
+response `max_chars` moves from 100,000 to 2,000,000 at both serialization
+sites. Unlike `ari.1` it does change source code. Upstream caps every compact
+MCP response at 100,000 characters and, when structural trimming cannot fit,
+falls back to raw string truncation that emits invalid JSON, which makes
+whole-collection enumeration impossible: `get_tool_info(detail_level=full)`
+exceeds the ceiling for the largest leaves even at batch size one. Measured over
+all 2,601 loaded leaves the largest single response is 510,904 characters and
+only two exceed 100,000, so 2,000,000 admits the worst observed batch with
+roughly threefold headroom while staying well under the 7,103,230-character
+full-collection dump. This record pins its own patch, deterministic build
+recipe, byte-identical two-build wheel
+`sha256:5c2e9a254e353e5941d59f8e279dd7c55777eb46c84457f1eefcaef7aa4a60c9`,
+runtime lock, package tree, and Provider manifest exactly as `ari.1` does.
+
+An ARI-patched-wheel ToolUniverse source may omit its verified lock. Such a
+source is collection-wide and carries no leaf promotion, so it must not assert
+`evidence.replay_fixture_digest` or `evidence.scientific_validation_digest`:
+those levels require leaf evidence bound to a verified lock. Without one the
+source stays `callable` and can reach neither `reproducible` nor
+`scientifically_admitted`. The retained exact wheel is still required in every
+case.
 
 The checked-in `verified-lock-v1.json` promotes only Provider identity
 `tooluniverse-pubmed@1.3.1+ari.1` and only exact leaf
@@ -162,6 +197,15 @@ invalid schemas are quarantined. ToolUniverse v1.3.1's known property-level
 `required: true` dialect is deterministically converted to the standard parent
 `required` array and recorded in provenance; other invalid schema forms are not
 repaired.
+
+A leaf's `source_file` is normalized relative to the reviewed package root
+before it reaches either the leaf metadata or `tool_spec_digest`, and a path
+outside that package becomes `<outside-reviewed-package>` rather than being
+disclosed. Upstream reports `source_file` as an absolute installation path, so
+digesting it verbatim pinned the install location instead of the leaf
+definition: the same reviewed wheel produced a different leaf identity on every
+machine, and the promoting host's absolute paths were written into promotion
+evidence.
 
 Capability substitution is an exact semantic projection, never a tool-name or
 description similarity decision. A profile names each admitted leaf, its exact
@@ -244,29 +288,79 @@ reference pass rather than full default-flow parity. The 1.54 GB SIF is an
 external retained artifact: Git ignores its bytes, while the lock fixes the OCI
 manifest, SIF, and inner OpenROAD full digests and runtime path.
 
+The retained SIF has since been re-materialized, so its digest is now
+`sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c`
+at 1,540,308,992 bytes under `singularity` 4.5.0-1.el9. The earlier record's
+digest could not be reproduced, and no container runtime reproduces one: a SIF
+header carries a random UUID and a wall-clock creation time inside the hashed
+file. The pinned OCI manifest digest and the inner OpenROAD binary digest did
+match exactly, so the payload was proven identical while the envelope could not
+be.
+
 The independent
 `openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identity is also formally
 promoted. Lock
-`sha256:dc4bc141aac48fae922bca6221e6fb151060fedbe66476139fe2e80548cc4223`
-binds the anonymous exclusive-node CPU site digest, scheduler clients,
-PRoot/SIF/unsquashfs/worker Python, runtime-owned metrics lifecycle,
-nonce-bound fixed-wrapper completion, live DRC-zero result, fixtures, gates,
-and human approval. It requests zero GPUs. GPU execution, another
-design/PDK/corner, or another image is not promoted by either lock. The
-corresponding human-admin entry points are
-`scripts/promote_openroad_gcd_cpu.py` and
+`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`
+binds the anonymous exclusive-node CPU site digest, scheduler clients, the
+digest-pinned container substrate, runtime-owned metrics lifecycle, terminal
+completion evidence, live DRC-zero result, fixtures, gates, and human approval.
+It requests zero GPUs. GPU execution, another design/PDK/corner, or another
+image is not promoted by either lock. The corresponding human-admin entry points
+are `scripts/promote_openroad_gcd_cpu.py` and
 `scripts/promote_openroad_gcd_slurm_cpu.py`; neither is exposed over Agent MCP.
+
+A SLURM profile pins exactly one execution substrate: either the reviewed
+PRoot/unsquashfs/worker-Python portable runtime, or a digest-pinned clean
+container. Which one a site uses is a site property; that there is exactly one
+is the invariant, and the execution contract admits both. The promoted profile
+pins the container, because the reviewed portable build links against a newer
+host glibc than the promoting site provides. Isolation is stronger for it rather
+than weaker: the closure is the SIF alone instead of the SIF plus four host
+binaries. Its `ContainerRequestV1` declares `runtime: singularity`, no GPU,
+`network: none`, `contain_all`, and a clean environment.
+
+What the lock then advertises is derived from that declaration instead of
+written out beside it. `environment_requirements` is `cpu`, `exclusive-node`,
+`slurm`, plus `proot-sif` or `<runtime>-sif`, so the promoted SLURM lock lists
+`cpu`, `exclusive-node`, `singularity-sif`, `slurm`. `runtime_target` follows
+the same declaration: `worker_python` is `container-provided` rather than a host
+`CPython-3.12`, `execution_substrate` is `singularity-sif`, and `network` is
+`isolated` because the container declares `network: none`. The typed job's
+`container_digest` must equal exactly what the profile pins — the image digest
+for a container run, and no container at all for the PRoot run.
 
 SLURM mode compiles the same reviewed closed commands to a digest-pinned Tcl
 program and runs a copied, digest-pinned standard-library worker through C06
 `JobRequestV1`. It requires one node/task, exact `cpus_per_task == threads`, a
-canonical shared work root, and a clean/contained SIF whose digest equals the
-toolchain image digest. The compute-node worker rechecks executable, Tcl, and
+canonical shared work root, and the one substrate the profile pins — for a
+container run, a clean/contained SIF whose digest equals the toolchain image
+digest. The compute-node worker rechecks executable, Tcl, and
 architecture identity before invoking OpenROAD without a shell. Scheduler handle,
 normalized status, environment/module/container digests, logs, and provenance are
-included in the result and EAR. Cancel waits for terminal scheduler state before
+included in the result and EAR. Terminal state comes from the scheduler wherever
+the scheduler can answer: with accounting storage present it is the scheduler's
+own state (`COMPLETED`, exit code 0), and only without it does the nonce-bound
+fixed-wrapper record (`fixed-wrapper-completion-v1`) stand in. Either way the job
+must have actually succeeded. Cancel waits for terminal scheduler state before
 workspace deletion; an ambiguous control/transport result preserves the workspace
 for ledger reconciliation.
+
+The GPU limitation is read from the reviewed scheduler snapshot rather than
+asserting one site's situation everywhere. A scheduler that declares no GRES
+types cannot express a GPU request at all; where it does declare GRES types, the
+guarantee instead rests on the allocated node exposing no accelerator. Either
+way the profile requests zero GPUs and grants no GPU capability.
+
+Snapshot verification compares the live controller against the values the
+reviewed snapshot declares — Slurm version, GRES types, partition `MaxTime`,
+node architecture, `CPUTot`, `Sockets`, and `ThreadsPerCore` — and against the
+operator's private site configuration for the selectors that never enter the
+repository, the cluster and node names. It then asserts a small set of
+invariants that are not site characteristics: `Arch=x86_64`,
+`Gres=(null)`, and `OverSubscribe=EXCLUSIVE`. A snapshot that claims GPU
+authority is refused outright. The same promotion can therefore run at another
+scheduler site, while drift between the snapshot and the live controller still
+fails closed.
 
 Physical scheduler names are runtime-private. The SLURM promotion command reads
 cluster, partition, and node selectors only from a Git-ignored site file with a
@@ -277,6 +371,11 @@ scan fails closed if the site file becomes trackable or a clear identity leaks.
 `scripts/check_site_privacy.py` independently scans both worktree candidates and
 staged blob bytes, including filenames and symlink targets; the repository
 pre-commit hook invokes it whenever the private site configuration exists.
+
+The scheduler handle's `workspace_scope` and `artifact_scope` are recorded
+relative to the declared work root before the evidence is written. The
+digest-derived scope names are the publishable part; the prefix only says which
+machine ran the promotion. A scope escaping the work root is refused.
 
 Completed outputs, scheduler logs/provenance, and success/failure/cancel transcripts are stored
 content-addressably. Provider-returned artifact references are an internal
@@ -362,12 +461,17 @@ authority. Without them a bound async capability starts work and cannot collect
 it, which is what happened before they were carried.
 
 Because the broker is one process with one credential surface, a composite
-carries every credential scope the Provider declares — binding the OpenROAD leaf
-therefore requires granting `quantum.ibm-runtime`, which has nothing to do with
-EDA. This is the same rule the direct Provider path already applies, and it
-fails closed: an operator must grant the scope explicitly or nothing binds.
+carries every credential scope the Provider declares **whose value is actually
+present**. On a host where `QISKIT_IBM_TOKEN` is unset — the shipped state — the
+broker's IBM Quantum scope records no present value, the composite carries no
+scopes, and binding the OpenROAD leaf requires no credential grant at all. An
+earlier version of this page said the opposite, that an explicit grant was
+required or nothing would bind; that was written before the presence filter and
+was wrong afterwards. The grant becomes required exactly when the token is set,
+which is the case where the authority is real.
 
-All five broker tools declare `ari_context` in their input schemas. They are
+The three broker tools that carry a call context — `invoke`, `get_status`, and
+`get_result` — declare `ari_context` in their input schemas. They are
 `context_requirement: run`, so the transport injects the authorized call context
 under that name; a schema with `additionalProperties: false` that omits it
 refuses every authorized call.

@@ -3970,7 +3970,11 @@ class RQGMRuntime:
                         "capability_binding_lock.json"
                     ]
                     lock = CapabilityBindingLockV1.model_validate(document)
-                    node.bound_tool_refs = sorted(item.tool_ref for item in lock.bindings)
+                    # Through the shared projection, so this cannot drift from
+                    # the authorization view that actually gates the calls.
+                    from ari.capability_binding.resolver import bound_tool_refs
+
+                    node.bound_tool_refs = sorted(bound_tool_refs(lock))
                 except Exception:
                     node.bound_tool_refs = []
             if admission.baseline_harness_lock_digest:

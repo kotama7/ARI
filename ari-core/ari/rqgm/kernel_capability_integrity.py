@@ -411,7 +411,15 @@ def validate_capability_binding_integrity(
         (
             item
             for item in bindings
-            if str(item.get("tool_ref", "")) == subject
+            # A binding authorizes its lifecycle tools under the same terms, so
+            # polling one is an invocation of that binding, not of an unbound
+            # tool. Matching tool_ref alone raised CK-CAP-001 on every legal
+            # poll of an asynchronous subject.
+            if subject
+            in {
+                str(item.get("tool_ref", "")),
+                *(str(ref) for ref in (item.get("lifecycle_tool_refs") or ())),
+            }
         ),
         None,
     )

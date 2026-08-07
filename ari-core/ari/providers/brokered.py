@@ -116,6 +116,10 @@ class BrokerDispatchV1:
     registration_report_digest: str
     policy: dict[str, Any]
     credential_scope_ids: tuple[str, ...] = ()
+    # The dispatch argument that names the leaf. The authorization view
+    # compares the call's value against the bound subject; without it a
+    # composite would be gated on the dispatch tool alone.
+    subject_argument: str = "tool_ref"
     # The broker's own lifecycle surface, in the run lock. A leaf's descriptor
     # names the *provider's* status/result tool names; the broker re-exposes
     # them as its own, and those are what the run can actually call.
@@ -310,6 +314,7 @@ def _composite_provision(
         tool_ref=dispatch.tool_ref,
         subject_tool_ref=leaf,
         dispatch_tool_ref=dispatch.tool_ref,
+        subject_argument=dispatch.subject_argument,
         # Only a leaf that says it is asynchronous gets the lifecycle surface.
         # A synchronous one has no job to poll, and handing it those tools would
         # widen the run's authority for nothing.

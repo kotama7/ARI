@@ -327,6 +327,24 @@ def _container_runtime_probe() -> dict:
     return record
 
 
+# linux/route.h. RTF_UP means the route is live; RTF_REJECT means the kernel
+# answers packets for it with an error, which is the opposite of a path.
+_RTF_UP = 0x0001
+_RTF_REJECT = 0x0200
+
+
+def _routes_off_host(*, interface: str, flags: str) -> bool:
+    """Decide whether a default-destination row is a path or a refusal."""
+
+    if interface == "lo":
+        return False
+    try:
+        value = int(flags, 16)
+    except ValueError:
+        return False
+    return bool(value & _RTF_UP) and not value & _RTF_REJECT
+
+
 def _network_route_probe() -> dict:
     """Observe whether the kernel has any path off this host.
 
@@ -347,7 +365,9 @@ def _network_route_probe() -> dict:
             next(handle, None)
             for line in handle:
                 fields = line.split()
-                if len(fields) > 1 and fields[1] == "0" * 8:
+                if len(fields) > 3 and fields[1] == "0" * 8 and _routes_off_host(
+                    interface=fields[0], flags=fields[3]
+                ):
                     families.append("ipv4")
                     break
     except (OSError, ValueError):
@@ -355,7 +375,18 @@ def _network_route_probe() -> dict:
     try:
         with open("/proc/net/ipv6_route", encoding="ascii") as handle:
             for line in handle:
-                if line.startswith("0" * 32):
+                fields = line.split()
+                # Destination ::/0 is not enough. The kernel always carries
+                # ip6_null_entry -- an unreachable ::/0 on loopback with
+                # RTF_REJECT -- so matching the destination alone reported a
+                # path off the host on a machine that has none, which is the
+                # opposite of what this probe is for.
+                if (
+                    len(fields) > 9
+                    and fields[0] == "0" * 32
+                    and fields[1] == "00"
+                    and _routes_off_host(interface=fields[9], flags=fields[8])
+                ):
                     families.append("ipv6")
                     break
     except (OSError, ValueError):

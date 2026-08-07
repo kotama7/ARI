@@ -413,3 +413,37 @@ def test_measurement_envelope_requires_the_conditions_it_promises(tmp_path):
         "hardware",
         "sampling",
     )
+
+
+def test_bound_tool_refs_includes_the_lifecycle_surface():
+    """The governance path and the authorization view must agree.
+
+    The view admits a binding's lifecycle tools; this projection is what the
+    run's audit, the adversarial engine, and the capability kernel compare
+    invocations against. Projecting tool_ref alone meant every legal poll of an
+    asynchronous subject was scored as an invocation of an unbound tool.
+    """
+
+    from ari.capability_binding.resolver import bound_tool_refs
+
+    contract = _contract()
+    provision = _provision(
+        contract,
+        lifecycle_tool_refs=("prov::get_result@1", "prov::get_status@1"),
+    )
+    lock, _ = bind_capabilities(_request(_requirement(contract), (provision,)))
+    assert bound_tool_refs(lock) == {
+        "provider-a::compile",
+        "prov::get_result@1",
+        "prov::get_status@1",
+    }
+
+
+def test_a_synchronous_binding_contributes_only_its_own_ref():
+    from ari.capability_binding.resolver import bound_tool_refs
+
+    contract = _contract()
+    lock, _ = bind_capabilities(
+        _request(_requirement(contract), (_provision(contract),))
+    )
+    assert bound_tool_refs(lock) == {"provider-a::compile"}

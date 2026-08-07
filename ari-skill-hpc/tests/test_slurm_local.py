@@ -901,14 +901,32 @@ def test_exclusive_allocation_witness_refuses_rather_than_guesses(
 def test_exclusive_allocation_witness_runs_before_the_device_probe(
     tmp_path: Path,
 ) -> None:
-    """Cheapest guard first: a shared grant is refused before nvidia-smi runs."""
+    """Cheapest guard first: a shared grant is refused before nvidia-smi runs.
 
-    request = _request(tmp_path)
+    Asserted on the generators directly. An earlier version of this test joined
+    _render_script's return value, which is a str, so the join interleaved a
+    newline between every character and no multi-character substring could ever
+    match -- it passed for every possible implementation, including one that
+    emitted the checks in the wrong order or not at all.
+    """
+
     scheduler = _scheduler(tmp_path, FakeRunner())
-    scope = scheduler._ensure_artifact_scope(str(tmp_path), request.request_digest)
-    rendered = "\n".join(scheduler._render_script(request, scope))
-    # This request carries no accelerator allocation, so neither check appears.
+    rendered = scheduler._render_script(_request(tmp_path), tmp_path)
+    assert isinstance(rendered, str)
+    # Without an accelerator allocation neither check is emitted at all.
     assert "exclusive-allocation-witness" not in rendered
+
+    witness = "\n".join(SlurmScheduler._exclusive_allocation_check(None, tmp_path))
+    inventory_marker = "accelerator-inventory.observed.csv"
+    assert inventory_marker not in witness
+    # _render_script emits the witness first, then the device probe; the order
+    # is asserted on the source of the branch that emits them.
+    import inspect
+
+    source = inspect.getsource(SlurmScheduler._render_script)
+    assert source.index("_exclusive_allocation_check") < source.index(
+        "_accelerator_inventory_check"
+    )
 
 
 def test_witness_is_retained_as_job_provenance() -> None:

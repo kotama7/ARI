@@ -176,6 +176,7 @@ def _binding(
         tool_ref=candidate.tool_ref,
         subject_tool_ref=candidate.subject_tool_ref,
         dispatch_tool_ref=candidate.dispatch_tool_ref,
+        subject_argument=candidate.subject_argument,
         lifecycle_tool_refs=candidate.lifecycle_tool_refs,
         provider_lock_digest=candidate.provider_lock_digest,
         manifest_digest=candidate.manifest_digest,
@@ -275,7 +276,21 @@ def bind_capabilities(
 
 
 def bound_tool_refs(lock: CapabilityBindingLockV1) -> frozenset[str]:
-    return frozenset(binding.tool_ref for binding in lock.bindings)
+    """Every tool_ref the lock authorizes, lifecycle refs included.
+
+    A binding for an asynchronous subject authorizes its lifecycle tools too --
+    the authorization view admits them under the same binding, phase, and call
+    context. Projecting ``tool_ref`` alone made this set disagree with the view
+    that gates the calls: the poll was allowed and then scored as an invocation
+    of an unbound tool, so the governance path reported a capability-authority
+    violation on exactly the sequence the binding exists to permit.
+    """
+
+    return frozenset(
+        ref
+        for binding in lock.bindings
+        for ref in (binding.tool_ref, *binding.lifecycle_tool_refs)
+    )
 
 
 def validate_binding_revision(

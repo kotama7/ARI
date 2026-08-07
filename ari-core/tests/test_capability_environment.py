@@ -13,6 +13,7 @@ from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
 
 _REAL_COUNTER_PROBE = environment_module._hardware_counter_probe
 _REAL_CONTAINER_PROBE = environment_module._container_runtime_probe
+_REAL_ROUTE_PROBE = environment_module._network_route_probe
 
 
 def _provider_lock():
@@ -595,3 +596,91 @@ def test_a_newer_device_does_not_claim_an_older_generation(monkeypatch):
     assert "nvidia-sm70" not in snapshot.features
     assert "cuda-12.0" in snapshot.features
     assert "cuda-12.9" not in snapshot.features
+
+
+def test_the_kernel_reject_route_is_not_a_path_off_the_host(tmp_path, monkeypatch):
+    """The kernel always carries an unreachable ::/0 on loopback.
+
+    Matching the destination alone reported a path off the host on a machine
+    that has none -- the opposite of what the probe exists to decide, and the
+    exact case its docstring claims fails closed. These are real rows: the
+    reject pair from a host with no IPv6 connectivity, and a live IPv4 default.
+    """
+
+    reject_v6 = (
+        "00000000000000000000000000000000 00 "
+        "00000000000000000000000000000000 00 "
+        "00000000000000000000000000000000 ffffffff 00000001 00000000 00200200       lo\n"
+    ) * 2
+    routes = tmp_path / "route"
+    routes_v6 = tmp_path / "ipv6_route"
+    routes.write_text("Iface\tDestination\tGateway\tFlags\n", encoding="ascii")
+    routes_v6.write_text(reject_v6, encoding="ascii")
+
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if str(path) == "/proc/net/route":
+            return real_open(routes, *args, **kwargs)
+        if str(path) == "/proc/net/ipv6_route":
+            return real_open(routes_v6, *args, **kwargs)
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        environment_module, "_network_route_probe", _REAL_ROUTE_PROBE
+    )
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert environment_module._network_route_probe() == {
+        "status": "unavailable",
+        "families": [],
+    }
+
+
+def test_a_live_default_route_still_counts(tmp_path, monkeypatch):
+    routes = tmp_path / "route"
+    routes.write_text(
+        "Iface\tDestination\tGateway\tFlags\tRefCnt\tUse\tMetric\tMask\n"
+        "eth0\t00000000\t0102030A\t0003\t0\t0\t100\t00000000\n",
+        encoding="ascii",
+    )
+    routes_v6 = tmp_path / "ipv6_route"
+    routes_v6.write_text("", encoding="ascii")
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if str(path) == "/proc/net/route":
+            return real_open(routes, *args, **kwargs)
+        if str(path) == "/proc/net/ipv6_route":
+            return real_open(routes_v6, *args, **kwargs)
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        environment_module, "_network_route_probe", _REAL_ROUTE_PROBE
+    )
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert environment_module._network_route_probe()["families"] == ["ipv4"]
+
+
+def test_a_default_route_that_is_down_does_not_count(tmp_path, monkeypatch):
+    routes = tmp_path / "route"
+    routes.write_text(
+        "Iface\tDestination\tGateway\tFlags\n"
+        "eth0\t00000000\t0102030A\t0002\n",  # gateway set, RTF_UP clear
+        encoding="ascii",
+    )
+    routes_v6 = tmp_path / "ipv6_route"
+    routes_v6.write_text("", encoding="ascii")
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if str(path) == "/proc/net/route":
+            return real_open(routes, *args, **kwargs)
+        if str(path) == "/proc/net/ipv6_route":
+            return real_open(routes_v6, *args, **kwargs)
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(
+        environment_module, "_network_route_probe", _REAL_ROUTE_PROBE
+    )
+    monkeypatch.setattr("builtins.open", fake_open)
+    assert environment_module._network_route_probe()["status"] == "unavailable"

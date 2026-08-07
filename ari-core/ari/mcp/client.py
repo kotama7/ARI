@@ -301,6 +301,7 @@ class MCPClient:
             context=effective_context,
             normalizer=normalizer,
             started_at=started_at,
+            arguments=args,
         )
         if admission_error is not None:
             return admission_error
@@ -312,6 +313,7 @@ class MCPClient:
                 tool_ref,
                 phase=effective_context.phase,
                 context=effective_context,
+                arguments=args,
             )
 
         return self._invoke_registered_tool(
@@ -448,6 +450,7 @@ class MCPClient:
         context: ToolCallContextV1,
         normalizer: ResultEnvelopeNormalizer,
         started_at: str,
+        arguments: dict | None = None,
     ) -> ResultEnvelopeV1 | None:
         """Return a typed policy rejection, or ``None`` when dispatch is admitted."""
 
@@ -469,6 +472,11 @@ class MCPClient:
                 tool_ref,
                 phase=context.phase,
                 context=context,
+                # A composite binding authorizes one dispatch tool for one
+                # reviewed leaf. Without the arguments the view can only see the
+                # dispatch tool, and every leaf in the federated catalog would
+                # ride in on the first leaf's authorization.
+                arguments=arguments,
             )
             if not decision.allowed:
                 message = (

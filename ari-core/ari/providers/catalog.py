@@ -394,6 +394,9 @@ def load_provider_catalog(
                         registration_report_digest=report.report_digest,
                         policy=dict(dispatch_tool.policy),
                         credential_scope_ids=scope_ids,
+                        subject_argument=str(
+                            brokered_config.get("subject_argument") or "tool_ref"
+                        ),
                         lifecycle_tool_refs=tuple(
                             sorted(
                                 locked_tools[item].tool_ref for item in lifecycle_names

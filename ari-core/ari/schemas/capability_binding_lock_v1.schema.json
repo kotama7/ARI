@@ -175,6 +175,18 @@
           "title": "Source Requirement Refs",
           "type": "array"
         },
+        "subject_argument": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subject Argument"
+        },
         "subject_tool_ref": {
           "anyOf": [
             {

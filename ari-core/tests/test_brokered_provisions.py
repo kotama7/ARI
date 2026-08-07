@@ -713,8 +713,9 @@ def test_the_authorization_view_admits_the_bound_lifecycle_tools():
     lock, _ = bind_capabilities(_request(_requirement(contract), (provision,)))
     view = BoundToolAuthorizationView(lock, mode="enforce")
     context = ToolCallContextV1.for_node(run_id="run-1", node_id="n1", phase="bfts")
+    args = {"tool_ref": LEAF}
     for ref in ("tool-registry-skill::invoke@1", *LIFECYCLE):
-        decision = view.decide(ref, phase="bfts", context=context)
+        decision = view.decide(ref, phase="bfts", context=context, arguments=args)
         assert decision.allowed, ref
         assert decision.reason_code == "bound"
     denied = view.decide(
@@ -722,6 +723,48 @@ def test_the_authorization_view_admits_the_bound_lifecycle_tools():
     )
     assert not denied.allowed
     assert denied.reason_code == "unbound_tool"
+
+
+def test_a_composite_does_not_authorize_a_leaf_it_did_not_bind():
+    """One reviewed leaf must not carry the whole federated catalog.
+
+    Every composite of a broker shares its dispatch tool_ref, so gating on that
+    alone let an authorization for one leaf admit an `invoke` naming any other
+    leaf in the lock -- including capabilities the run forbids and leaves nobody
+    reviewed. The leaf travels in the arguments, so the decision must see them.
+    """
+
+    from ari.call_context import ToolCallContextV1
+    from ari.capability_binding.validation import BoundToolAuthorizationView
+
+    contract = _contract()
+    (provision,) = _build(
+        _lock([_async_descriptor()]),
+        contract=contract,
+        dispatch=_dispatch(lifecycle_tool_refs=LIFECYCLE),
+    )
+    lock, _ = bind_capabilities(_request(_requirement(contract), (provision,)))
+    view = BoundToolAuthorizationView(lock, mode="enforce")
+    context = ToolCallContextV1.for_node(run_id="run-1", node_id="n1", phase="bfts")
+    dispatch_ref = "tool-registry-skill::invoke@1"
+
+    allowed = view.decide(
+        dispatch_ref, phase="bfts", context=context, arguments={"tool_ref": LEAF}
+    )
+    assert allowed.allowed and allowed.reason_code == "bound"
+
+    for other in ("tool:openroad::never_reviewed@1", "", "tool:other::leaf@9"):
+        denied = view.decide(
+            dispatch_ref, phase="bfts", context=context, arguments={"tool_ref": other}
+        )
+        assert not denied.allowed, other
+        assert denied.reason_code == "composite_subject_unbound"
+
+    # A decision made without the arguments cannot fall back on the dispatch
+    # tool's authority either.
+    blind = view.decide(dispatch_ref, phase="bfts", context=context)
+    assert not blind.allowed
+    assert blind.reason_code == "composite_subject_unknown"
 
 
 def test_lifecycle_tools_inherit_the_binding_phase_not_a_wider_one():
