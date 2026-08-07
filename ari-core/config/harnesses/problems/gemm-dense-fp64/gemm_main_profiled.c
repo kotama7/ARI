@@ -105,11 +105,14 @@ int main(int argc, char **argv) {
 
     /* v2: create the OpenMP thread team OUTSIDE the timed window.
      * This is NOT a warmup: the candidate kernel is not called here, so
-     * the candidate cannot precompute the answer. NOTE this is not a
-     * zero-surface region: the pragma lowers to an external GOMP_parallel
-     * call, which a candidate translation unit could define. Closing that
-     * needs a symbol allowlist on the candidate object (tracked
-     * separately). It
+     * the candidate cannot precompute the answer. The pragma lowers to an
+     * external GOMP_parallel call, which a candidate translation unit could
+     * define; that is closed now, not merely noted. The candidate object is
+     * audited before it is linked and may define no global symbol but the
+     * entry point, so a candidate defining GOMP_parallel is REFUSED rather
+     * than measured. Verified by compiling one: it is rejected, as is a
+     * candidate defining clock_gettime and one carrying an .init_array
+     * constructor, while an honest kernel builds. It
      * removes a fixed ~3.2 ms 48-thread team-creation cost that the
      * single-threaded frozen reference never paid, and it pins the master
      * thread under OMP_PROC_BIND, so reference and candidate are finally
