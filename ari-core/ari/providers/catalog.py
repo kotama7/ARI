@@ -370,6 +370,25 @@ def load_provider_catalog(
                     f"broker dispatch tool is absent from the run lock: "
                     f"{runtime_name}/{dispatch_name}"
                 )
+            # A composite binding is gated on which leaf the call names. That
+            # gate is defeated by a direct binding on the same tool_ref: the
+            # authorization view falls back to it, and a call naming a leaf
+            # nobody bound is admitted under the direct binding's authority.
+            # The combination is refused here rather than defended against
+            # later, because a broker's dispatch surface supplying an ontology
+            # capability in its own right is not a thing that should be
+            # expressible -- and a defence in the view would have to choose
+            # between honouring the direct binding and honouring the gate.
+            conflicting = sorted(
+                set(declared) & {dispatch_name, *(
+                    str(item) for item in (brokered_config.get("lifecycle_tools") or ())
+                )}
+            )
+            if conflicting:
+                raise ValueError(
+                    f"broker dispatch surface cannot also be classified directly: "
+                    f"{runtime_name}/{conflicting}"
+                )
             lifecycle_names = tuple(
                 str(item) for item in (brokered_config.get("lifecycle_tools") or ())
             )

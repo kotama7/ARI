@@ -25,6 +25,8 @@ from ari.providers.brokered import (
 
 
 SHA = "sha256:" + ("3" * 64)
+# read-only, workspace-read: what get_status actually declares, so a direct
+# classification into it is legal on every other axis.
 POLICY = "sha256:" + ("4" * 64)
 LEAF = "tool:openroad::place_route@1"
 
@@ -43,6 +45,16 @@ def _contract(**updates):
     )
     values.update(updates)
     return CapabilityContractV1.create(**values)
+
+
+def _read_only_contract():
+    return _contract(
+        capability_ref="ari.code.inspect/v1",
+        title="Inspect",
+        description="Read without modifying",
+        side_effect_class="read-only",
+        required_permissions=("workspace-read",),
+    )
 
 
 def _ontology(*contracts):
@@ -461,24 +473,30 @@ def _provider_lock(manifest, *, run_id="run-1"):
     from ari.skill_lock import LockedSkillV1, LockedToolV1, SkillsLockV1
     from ari.skill_manifest import manifest_digest
 
-    invoke = next(item for item in manifest.resolved_tools() if item.name == "invoke")
-    tool = LockedToolV1(
-        tool_ref="tool-registry-skill::invoke@1",
-        name="invoke",
-        skill_name="tool-registry-skill",
-        capability_ref=invoke.capability_ref,
-        input_schema={"type": "object"},
-        output_schema={"type": "object"},
-        input_schema_digest=canonical_digest({"type": "object"}),
-        output_schema_digest=canonical_digest({"type": "object"}),
-        policy={
-            "side_effects": invoke.side_effects,
-            "permissions": list(invoke.permissions),
-            "phases": list(invoke.phases),
-            "determinism": invoke.determinism,
-            "context_requirement": invoke.context_requirement,
-        },
-    )
+    resolved = {item.name: item for item in manifest.resolved_tools()}
+    # The dispatch tool and the broker's lifecycle surface, so a test can put a
+    # lifecycle ref in the reviewed table without tripping the earlier
+    # "classifies a tool outside the Provider Lock" refusal instead.
+    tools = [
+        LockedToolV1(
+            tool_ref=f"tool-registry-skill::{name}@1",
+            name=name,
+            skill_name="tool-registry-skill",
+            capability_ref=resolved[name].capability_ref,
+            input_schema={"type": "object"},
+            output_schema={"type": "object"},
+            input_schema_digest=canonical_digest({"type": "object"}),
+            output_schema_digest=canonical_digest({"type": "object"}),
+            policy={
+                "side_effects": resolved[name].side_effects,
+                "permissions": list(resolved[name].permissions),
+                "phases": list(resolved[name].phases),
+                "determinism": resolved[name].determinism,
+                "context_requirement": resolved[name].context_requirement,
+            },
+        )
+        for name in ("invoke", "get_status", "get_result")
+    ]
     # Scope identities the way the child-environment builder records them: a
     # declared credential is only "present" when its variable actually holds a
     # value, and that is what the lock freezes.
@@ -508,18 +526,18 @@ def _provider_lock(manifest, *, run_id="run-1"):
         configured_phases=["bfts"],
         environment_policy="complete",
         credential_scopes=scopes,
-        tool_refs=[tool.tool_ref],
+        tool_refs=sorted(item.tool_ref for item in tools),
     )
     return SkillsLockV1(
         run_id=run_id,
         registry_digest=canonical_digest({"registry": "test"}),
         skills=[skill],
-        tools=[tool],
-        phase_active_tools={"bfts": [tool.tool_ref]},
+        tools=tools,
+        phase_active_tools={"bfts": sorted(item.tool_ref for item in tools)},
     )
 
 
-def _catalog_yaml(tmp_path, manifest, *, brokered):
+def _catalog_yaml(tmp_path, manifest, *, brokered, declared_by_tool=None):
     import yaml
 
     from ari.skill_manifest import manifest_digest
@@ -542,7 +560,7 @@ def _catalog_yaml(tmp_path, manifest, *, brokered):
                     "license": "MIT",
                 },
                 "manifest_sha256": "sha256:" + manifest_digest(manifest),
-                "declared_capability_refs_by_tool": {},
+                "declared_capability_refs_by_tool": dict(declared_by_tool or {}),
                 "brokered": brokered,
             }
         ],
@@ -559,6 +577,7 @@ def _load(
     dispatch_tool="invoke",
     lock_name="CATALOG.lock",
     lifecycle_tools=(),
+    declared_by_tool=None,
 ):
     from ari.config import SkillConfig
     from ari.providers.catalog import load_provider_catalog
@@ -572,6 +591,7 @@ def _load(
     catalog = _catalog_yaml(
         tmp_path,
         manifest,
+        declared_by_tool=declared_by_tool,
         brokered={
             "catalog_lock": lock_name,
             "dispatch_tool": dispatch_tool,
@@ -582,7 +602,7 @@ def _load(
     return load_provider_catalog(
         catalog,
         provider_lock=_provider_lock(manifest),
-        ontology=_ontology(_contract()),
+        ontology=_ontology(_contract(), _read_only_contract()),
         configured_skills=(
             SkillConfig(
                 name="tool-registry-skill",
@@ -830,3 +850,37 @@ def test_a_credential_scope_that_is_present_is_still_carried(tmp_path, monkeypat
     loaded = _load(tmp_path, refs={LEAF: ["ari.eda.place-route/v1"]})
     (provision,) = loaded.provisions
     assert provision.credential_scope_ids == ("quantum.ibm-runtime",)
+
+
+def test_a_dispatch_tool_cannot_also_be_classified_directly(tmp_path):
+    """The subject gate is defeated by a direct binding on the same tool_ref.
+
+    The authorization view falls back to a direct binding when the named
+    subject is not bound, so a call reaching a leaf nobody reviewed would be
+    admitted under the direct binding's authority -- silently undoing the one
+    thing the gate exists to do. Refused where the combination is written,
+    rather than defended against later, because a defence would have to choose
+    between honouring the direct binding and honouring the gate.
+    """
+
+    _write(tmp_path, _lock([_descriptor()]))
+    with pytest.raises(ValueError, match="cannot also be classified directly"):
+        _load(
+            tmp_path,
+            refs={LEAF: ["ari.eda.place-route/v1"]},
+            declared_by_tool={"invoke": ["ari.eda.place-route/v1"]},
+        )
+
+
+def test_a_lifecycle_tool_cannot_be_classified_directly_either(tmp_path):
+    _write(tmp_path, _lock([_descriptor()]))
+    with pytest.raises(ValueError, match="cannot also be classified directly"):
+        _load(
+            tmp_path,
+            refs={LEAF: ["ari.eda.place-route/v1"]},
+            lifecycle_tools=["get_status"],
+            # Legal on every other axis: get_status is read-only and grants
+            # workspace-read, exactly what this contract requires. Only the
+            # backstop can refuse it.
+            declared_by_tool={"get_status": ["ari.code.inspect/v1"]},
+        )
