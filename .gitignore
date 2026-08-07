@@ -30,6 +30,9 @@ slurm-*.out
 # Checkpoint directories (generated at runtime)
 *_ckpt_*/
 checkpoints/
+# Versioned migration fixtures exercise legacy checkpoint readers in CI.
+!/ari-core/tests/fixtures/checkpoints/
+!/ari-core/tests/fixtures/checkpoints/**
 output*/
 results*/
 
@@ -41,6 +44,11 @@ benchmarks/
 *.f90
 *.def
 *.sbatch
+# Deterministic source/data fixtures exercised by assurance and RQGM CI.
+!/ari-core/tests/fixtures/assurance/native_reference_candidate.c
+!/ari-core/tests/fixtures/knowledge/intel_performance_patterns_clean_task.c
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/
+!/ari-core/tests/fixtures/rqgm_eval/metric_gaming/experiments/**
 
 # Dynamic YAML/scripts generated per-experiment
 *_paper.yaml
@@ -73,6 +81,11 @@ Thumbs.db
 !/containers/README.md
 /ari-core/containers/*
 !/ari-core/containers/README.md
+# Runtime workspaces also hold private scheduler site selectors. Physical
+# cluster/partition/node names stay here; tracked locks contain only a salted
+# site-identity digest. The repository pre-commit hook and promotion commands
+# scan both worktree candidates and staged Git blobs against the ignored site
+# configuration; never use `git add -f` for any file below this directory.
 workspace/
 *.sif
 
@@ -92,6 +105,8 @@ ari-core/checkpoints/
 # ── Runtime / temp files (generated at runtime, never track) ────
 experiment.md
 ari-core/experiment.md
+# The migration contract intentionally contains historical experiment.md.
+!/ari-core/tests/fixtures/checkpoints/v0_7_golden/experiment.md
 tmp*.md
 GUI_TASK.md
 *_TASK.md

@@ -1,0 +1,15 @@
+{
+  "actor_id": "user-authorized-maintainer",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:56739f92d63e37e00bfb9b9d53efd2930960ab1888a2d85bf205f0b72eb2dfc3",
+  "approved_date": "2026-08-05",
+  "authorization_basis": "User explicitly authorized production Harness promotion on 2026-08-05",
+  "evidence_bundle_digest": "sha256:c731da845fc6fa54cc53066fd6ecb3262f346cd29bc910b57c5e4ea10ac24609",
+  "from_status": "candidate",
+  "harness_id": "hpc/gemm-correctness",
+  "harness_manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+  "harness_version": "1.0.0",
+  "registration_report_digest": "sha256:dacca97c39987026b8efa071a531813a6259a5e23e3f3640bee2ad0e46b9b78c",
+  "schema_version": "ari.harness-promotion-approval/v1",
+  "to_status": "verified"
+}

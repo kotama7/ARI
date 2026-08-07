@@ -1,0 +1,15 @@
+schema_version: 1
+version: ari.assurance-properties/v1
+properties:
+  artifact-correctness: [contract-defined-check]
+  claim-evidence-consistency: [claim-gate]
+  interface-conformance: [interface-check]
+  memory-safety: [sanitizer]
+  numerical-equivalence: [differential-testing]
+  performance-regression: [benchmark-comparison]
+  reproduction: [isolated-rerun]
+  reproducibility: [repeated-execution]
+  retrieval-provenance: [snapshot-replay]
+  source-integrity: [digest-validation]
+  structural-validity: [structural-validation]
+  trajectory-equivalence: [differential-testing]

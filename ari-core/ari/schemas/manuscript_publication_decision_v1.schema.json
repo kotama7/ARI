@@ -1,0 +1,118 @@
+{
+  "$defs": {
+    "PublicationSubVerdictV1": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_digests": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Artifact Digests",
+          "type": "array"
+        },
+        "gate": {
+          "enum": [
+            "manuscript_readiness",
+            "claim_evidence",
+            "assurance",
+            "build_compile",
+            "reproduction",
+            "freshness"
+          ],
+          "title": "Gate",
+          "type": "string"
+        },
+        "reason_codes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "not_required"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "gate",
+        "status"
+      ],
+      "title": "PublicationSubVerdictV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attempt_id": {
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "authoring_binding_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authoring Binding Digest",
+      "type": "string"
+    },
+    "decision": {
+      "enum": [
+        "publishable",
+        "blocked"
+      ],
+      "title": "Decision",
+      "type": "string"
+    },
+    "decision_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Decision Digest",
+      "type": "string"
+    },
+    "paper_build_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Paper Build Digest",
+      "type": "string"
+    },
+    "readiness_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Readiness Digest",
+      "type": "string"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-publication-decision/v1",
+      "default": "ari.manuscript-publication-decision/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "subverdicts": {
+      "items": {
+        "$ref": "#/$defs/PublicationSubVerdictV1"
+      },
+      "maxItems": 6,
+      "minItems": 6,
+      "title": "Subverdicts",
+      "type": "array"
+    }
+  },
+  "required": [
+    "run_id",
+    "attempt_id",
+    "paper_build_digest",
+    "authoring_binding_digest",
+    "readiness_digest",
+    "subverdicts",
+    "decision",
+    "decision_digest"
+  ],
+  "title": "PublicationDecisionV1",
+  "type": "object"
+}

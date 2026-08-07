@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-06-10
+last_verified: 2026-07-30
 ---
 
 # 最初の実験を、はじめから終わりまで
@@ -95,15 +95,20 @@ Overview、Trace（すべてのツール呼び出し）、Code、Output の各�
 探索が終わると、`workflow.yaml` 駆動のパイプラインがツリーを論文に変換します
 （[公開ライフサイクル](../concepts/publication-lifecycle.md)を参照）:
 
-1. **transform_data** がツリー全体を読み、ハードウェア、方法論、発見を
+1. **audit_node_provenance** が、node_report に sha256 が記録されたノード成果物を
+   すべて再ハッシュしてディスク上の実体と照合します — ノード出力が「実験結果」で
+   あることをやめ「論文の証拠」になる、まさにその境界でです。成果物ごとに
+   verified / mismatch / missing / unhashed を `node_provenance_audit.json` に
+   報告します。ゲートではなくシグナルです。
+2. **transform_data** がツリー全体を読み、ハードウェア、方法論、発見を
    `science_data.json` に抽出します。
-2. **generate_figures** が作図コードを書き、続いて **VLM** がメイン図をレビューし、
+3. **generate_figures** が作図コードを書き、続いて **VLM** がメイン図をレビューし、
    スコアが低ければループバックします。
-3. **write_paper** が LaTeX を起草し、推敲し、調査結果から BibTeX を取り込みます →
+4. **write_paper** が LaTeX を起草し、推敲し、調査結果から BibTeX を取り込みます →
    `full_paper.tex` / `.pdf`。
-4. **review_paper** が選択されたベニュールーブリックに対して 1 名以上のレビュアーエージェントを
+5. **review_paper** が選択されたベニュールーブリックに対して 1 名以上のレビュアーエージェントを
    走らせます（2 名以上いる場合は Area Chair のメタ査読が集約します）。
-5. **generate_ear** が再現性バンドル `ear/` を組み立てます（コード、入力データ、図表、
+6. **generate_ear** が再現性バンドル `ear/` を組み立てます（コード、入力データ、図表、
    `reproduce.sh`、LICENSE — ただし実験の出力は含めません）。
 
 デフォルトでは、パイプラインは現在 **claim-evidence 検証ループ** も実行します: 決定論的な
@@ -120,9 +125,15 @@ finalize をブロックしません。詳細は[公開ライフサイクル](..
 最後に ARI は、独立した審査員がするやり方で自身の成果を検証します
 （[ORS](../guides/paperbench/paperbench_quickstart.md)）:
 
+- **Phase 0** が最終論文から PaperBench ルーブリックを生成し、続いて何かが採点される前に
+  **そのルーブリック自体を監査** します。各リーフに `vague_qualifier` /
+  `no_paper_evidence` / `duplicate` / `unverifiable` のフラグを立て、フラグを
+  `ors_rubric.json` に書き戻します（サマリは `ors_rubric.audit.json`）。採点自体は
+  そのまま続行されます — これは品質シグナルであり、どの基準が不健全だったかを
+  読み手が見られるようにするためです。
 - **Phase 1** がサンドボックス内で `reproduce.sh` を実行し（利用可能なら SLURM、なければ
   docker / apptainer / local）、期待される成果物が現れるかを確認します。
-- **Phase 2** が結果を自動生成された PaperBench ルーブリックに対して採点します。これには
+- **Phase 2** が結果をそのルーブリックに対して採点します。これには
   **negative control**（空のリポジトリはゼロ近くのスコアにならなければならない）が含まれ、
   何もしないことで採点を得られないようにします。
 

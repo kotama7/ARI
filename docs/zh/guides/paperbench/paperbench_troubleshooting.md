@@ -71,9 +71,8 @@ print(_format_hpc_appendix(
 
 ### Q. `sbatch: error: Invalid GRES gpu:v100:1`
 
-集群未配置 GRES。v0.7.2 通过 `_slurm_has_gres()` 自动剥离 flag — 如果
-你仍看到此错误,你在更旧的构建上,或 `sinfo` 不在 PATH 上。
-解决方法: 让向导的 *执行配置覆盖* 中的 `gpu_type` 留空。
+所选partition无法满足typed GPU请求。用`sinfo -o '%P %G'`检查，选择兼容
+partition或修复site GRES配置。ARI不会删除请求并改为CPU运行。
 
 ### Q. sbatch 通过了但 `reproduce.sh` 在单节点上运行
 
@@ -167,8 +166,8 @@ ja/zh 镜像需要 XeLaTeX + Noto CJK 字体。运行
 ### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
 
 docker daemon 未启动或不可达。bridge / `run_reproduce` 拒绝静默降级。
-解决方法: 启动 docker、切换到其他 `sandbox_kind`、或 opt-in legacy
-fallback: `export ARI_PHASE1_ALLOW_FALLBACK=1`。同样适用于
+解决方法: 启动 docker 或切换到另一个经过审查的 `sandbox_kind`。
+不存在 legacy host-local 回退。同样适用于
 `sandbox_kind=apptainer` 二进制缺失、`sandbox_kind=slurm` sbatch
 缺失 / partition 无法解析。
 
@@ -179,7 +178,8 @@ bridge 拒绝以避免 "排队 36 h 后全 CPU 执行" 这种最差失败模式�
 
 1. 修复集群 SLURM 的 GRES 配置
 2. 选择已配置 GRES 的 partition (`sinfo -o '%P %G'`)
-3. opt-in 静默丢弃: `export ARI_SLURM_ALLOW_NO_GRES=1`
+
+系统有意不提供把 GPU 请求改成 CPU 实验的静默丢弃。
 
 ### Q. agent 完成 Stage 1, 但 Stage 3 所有 leaf 评分为 0
 

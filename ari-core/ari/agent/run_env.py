@@ -5,7 +5,7 @@ hostname, SLURM job id/partition (when applicable), CPU model, thread count.
 Skills (hpc, coding) write it from inside the executing process so that the
 node_report builder can later attach this metadata to `node_report.json`,
 and downstream stages (paper writing, reproducibility check) can recover
-"this experiment ran on sx40 partition, hostnameX, Intel Xeon …" instead
+"this experiment ran on gpu-private partition, hostnameX, Intel Xeon …" instead
 of guessing from blank artifacts.
 
 Why a flat JSON file beside the work_dir, not an env var:

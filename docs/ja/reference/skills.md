@@ -1,6 +1,6 @@
 ---
 sources:
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
   - path: ari-skill-hpc/mcp.json
     role: config
@@ -12,7 +12,9 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/mcp.json
     role: config
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-07-30
 ---
 
 # MCP Skills リファレンス
@@ -63,6 +65,16 @@ result = job_status("12345")
 
 実行中または待機中の SLURM ジョブをキャンセルします。
 
+#### `probe_platform_capabilities(checkpoint_dir, partition="", tools="")`
+
+**計算パーティション上**でツールの有無（`command -v`）を調べ、結果を
+`{checkpoint_dir}/platform_capabilities.json` にキャッシュします。設計上
+ベストエフォート: 失敗（パーティション未指定、`srun` 不在、キュー待ちの
+タイムアウト）時は `{"status": "skipped", ...}` を返して何も書きません。
+既存キャッシュがあれば再プローブせず `{"status": "cached", ...}` を返します。
+claims 抽出器はこのキャッシュを読み、プラットフォームに実在しないツールに
+依存する証拠を宣言しないようにします。
+
 #### `singularity_build(definition_file, output_path, partition)`
 
 定義ファイルから Singularity コンテナをビルドします。
@@ -93,18 +105,31 @@ GPU アクセス付き（`--nv` フラグ）で Singularity コンテナを実�
 
 #### `survey(topic, max_papers=8)`
 
-Semantic Scholar で関連論文を検索します。決定論的（LLM なし）。
+先行研究調査。決定論的（LLM なし）。参照元は順に試されます: この run の
+トピックについてアイデア段階が既に構築した凍結 `virsci_snapshot` コーパス、
+次にライブの Semantic Scholar クエリ（HTTP、続けて `semanticscholar`
+クライアントによるリトライ）、最後に **arXiv フォールバック** — キー無しや
+レート制限の S2 が先行研究の裏付けを黙って消してしまわないようにするため
+です。得られた上位結果はその被引用論文で 2 ホップ分エンリッチされます。
+劣化はすべて（最終的に 0 件だった場合も含め）stderr に報告されます。
 
 ```python
 result = survey("OpenMP compiler optimization HPC benchmarks")
 # 戻り値: {"papers": [{"title": "...", "abstract": "...", "url": "..."}]}
 ```
 
-高レートリミットには `S2_API_KEY` 環境変数が必要です。
+高レートリミットには `S2_API_KEY` 環境変数を設定します。`max_papers` は
+15 が上限です。
+
+このスキルの登録済み MCP ツールは `survey` と `generate_ideas` の **2 つだけ**
+です。`_load_virsci_snapshot_papers` は `survey` が直接呼ぶただのヘルパーで、
+エージェントから見えてはなりません。`tests/test_server.py` が
+`mcp.list_tools()` 経由でこの両方をピン留めしています（`@mcp.tool()`
+デコレータの欠落・付け間違いが過去に出荷されたためです）。
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0)`
 
-VirSci マルチエージェント LLM 討論を使用して研究仮説を生成します。複数の AI ペルソナ（researcher、critic、expert、synthesizer）が研究課題について議論します。BFTS 開始前に**一度だけ**呼び出されます（pre-BFTS のみ）。
+VirSci マルチエージェント LLM 討論を使用して研究仮説を生成します。複数の AI ペルソナ（researcher、critic、expert、synthesizer）が研究課題について議論します。デフォルトの `simple_bfts` モードでは、BFTS 開始前に**一度だけ**呼び出されます（pre-BFTS のみ）。オプトインの `ari_rqgm` モードで `proposal_router.generators.virsci.enabled: true` のとき、コア側の `VirSciAdapter` が加えて、ProposalRouter のイベントトリガかつ予算上限付きのディスパッチを通じて `survey` + `generate_ideas` を呼びます — [VirSci 統合](../guides/virsci_integration.md)を参照。
 
 モデル: `ARI_LLM_MODEL` env > `LLM_MODEL` env > `ollama_chat/qwen3:32b`。
 
@@ -266,6 +291,20 @@ Appendix A.4 準拠)。`ari-core/config/reviewer_rubrics/<rubric_id>.yaml` を
 `neurips` → 内蔵 `legacy` フォールバック (v0.5 スキーマ、`rubric_id` も
 合致 YAML も解決できないときに使用)。
 
+#### 著者 / 査読者の対称な venue 条件付け (未リリース)
+
+`prompt_overrides` は 2 つの並行フィールドを持ちます:
+
+- `system_hint` — `review_engine` がピアレビューのプロンプトに注入します
+  (既存の挙動)。
+- `author_hint` — `generate_section` が論文執筆プロンプトに専用の
+  `══ VENUE-SPECIFIC AUTHOR GUIDANCE ══` ブロックとして注入します。査読者が
+  何を見るかを執筆側に伝え、その signal を出しやすい形で論文を書かせます。
+
+`author_hint` が空の場合は従来の弱い追記 (`Target venue: X. Page limit: N
+pages.` のみ) が維持されます。SC と NeurIPS は校正済みの `author_hint`
+ブロックを同梱しており、残りの venue は空のままコード変更なしで順次埋められます。
+
 Nature Ablation 由来の既定値:
 
 - `num_reflections: 5` — +2% balanced accuracy
@@ -333,6 +372,7 @@ v0.7.0 で v0.6.0 の LLM 駆動判定パスは、PaperBench をコアとする�
 
 ```
 ors_generate_rubric  (replicate-skill)    → ors_rubric.json + ors_rubric.meta.json
+ors_audit_rubric     (replicate-skill)    → ors_rubric.audit.json (flags leaves in ors_rubric.json in place)
 ear_publish          (transform-skill)    → bundle.tar.gz + publish_record.json (local-tarball デフォルト)
 ors_seed_sandbox     (paper-re-skill)     → repro_sandbox/{reproduce.sh, code/...}
                                               (決定論的; fetch_code_bundle ← publish_record.json)
@@ -341,6 +381,13 @@ ors_build_reproduce  (paper-re-skill)     → repro_sandbox/{reproduce.sh, sourc
 ors_run_reproduce    (paper-re-skill)     → ors_phase1.json   (Phase 1: reproduce.sh をサンドボックスで実行)
 ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: SimpleJudge で葉ノード採点)
 ```
+
+`ors_audit_rubric` は、以降のすべての採点が依拠するルーブリック自体を検査します。
+各葉に `vague_qualifier` / `no_paper_evidence` / `duplicate`（決定論的）と
+`unverifiable`（葉ごとに LLM 1 回）のフラグを付け、`ors_rubric.json` を
+その場で書き換え、20% 超の葉にフラグが付くと `regen_recommended` を返します。
+ゲートではなくシグナルであり、採点はどちらでも進みますが、フラグはルーブリックに
+同行します。`ARI_MODEL_RUBRIC_AUDIT` で生成側と別モデルを指定できます。
 
 EAR が ON の実行は `ors_seed_sandbox` 経由（決定論的）で reproduce.sh を取得します。LLM `ors_build_reproduce` は reproduce.sh が既存の場合スキップするので、EAR が OFF の実行（論文のみ再現）でのみ発火します。
 
@@ -380,11 +427,25 @@ v0.7.0 で追加された PaperBench 形式の **オートルーブリック生�
 
 ### ツール
 
-#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True)`
+#### `generate_rubric(paper_path, paper_text, output_path, target_leaf_count=0, model="", temperature=0.0, seed=0, two_stage=True, paperbench_rubric_id="")`
 
 PaperBench 互換のルーブリックを生成。`target_leaf_count=0` の場合は論文長から自動算定（~1葉 / 75語、[50, 400] にクランプ）。
 
 `two_stage=True`（デフォルト）では **二段階生成** を行います: ①スケルトンパスでルート + 直接子（contribution/experiment ごとに1ノード）と各子の葉数バジェットを決定 → ②サブツリーパスを各直接子について並列に走らせ、4–6階層深く再帰的に展開。マージ後、スキーマの `minLength=10` を満たさない葉（quote / requirements が短すぎる葉）は自動で除去されます。PaperBench 参照論文での測定では、単一コール比 **葉数約 4 倍・深さ +1〜2 層**、API トークン消費は約 5 倍。`two_stage=False` で従来の単一コール（`prompts/adversarial_reviewer.md`）に戻せます。
+
+`paperbench_rubric_id`（未リリース）は
+`ari-core/config/paperbench_rubrics/<id>.yaml` から venue 条件付けテンプレートを
+選択します。空文字列 = 同梱プロンプトをそのまま使用（後方互換）。非空の値では
+その YAML を読み込み、`{VENUE_HINT}` プレースホルダ経由で
+`prompt_overrides.system_hint` / `prompt_overrides.leaf_style` を
+skeleton + subtree のプロンプトに注入します。これは `ari-skill-paper` がピア
+レビューで既に使っている `reviewer_rubrics/` の venue パターンと同型であり、
+同じ `venue → YAML → prompt` の流れがルーブリック生成器でも使えるようになりました。
+同梱テンプレート: `generic`（後方互換）、`sc`（HPC 論文監査、6 軸）、
+`neurips`（ML 再現性、6 軸）、`nature`（ウェットラボ、5 軸）。`paper_audit`
+モードは `two_stage=True` が必須です。YAML スキーマは
+[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
+を参照。
 
 #### `audit_rubric(rubric_path, paper_path, paper_text, auditor_model="")`
 
@@ -393,6 +454,14 @@ PaperBench 互換のルーブリックを生成。`target_leaf_count=0` の場�
 #### `suggest_target_leaf_count(paper_path, paper_text)`
 
 論文長から自動算定した目標葉数と単語数を返します。GUI Wizard の "Target leaves" 欄の事前埋めに利用。
+
+### v0.7.2 — `reproduce_contract.execution_profile`
+
+論文が並列実行の性質 (MPI ランク数、GPU 種別、専有、メモリ、NUMA バインド)
+を明示している場合、skeleton + subtree のプロンプトは生成器に
+`reproduce_contract.execution_profile` を埋めるよう指示するようになりました。
+Schema: [`docs/reference/execution_profile.md`](execution_profile.md)。
+このフィールドは任意で後方互換です — 単一 CPU の論文では書かれません。
 
 ### 環境変数
 

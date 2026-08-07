@@ -1,0 +1,26 @@
+schema_version: 1
+catalog_source_revision: ari-knowledge-catalog/2
+importer_version: ari.knowledge.importer/v1
+entries:
+  - manifest: builtin/hpc_gemm_optimization.yaml
+    body: bodies/hpc_gemm_optimization/SKILL.md
+  - manifest: builtin/hpc_spmm_optimization.yaml
+    body: bodies/hpc_spmm_optimization/SKILL.md
+  - manifest: builtin/hpc_stencil_optimization.yaml
+    body: bodies/hpc_stencil_optimization/SKILL.md
+  - manifest: builtin/literature_systematic_review.yaml
+    body: bodies/literature_systematic_review/SKILL.md
+  - manifest: builtin/scientific_reproduction.yaml
+    body: bodies/scientific_reproduction/SKILL.md
+  - import_material: imports/intel_linux_perf.json
+    import_profile: import_profiles/intel_linux_perf.yaml
+    registration_evidence: evidence/intel_linux_perf.registration.json
+    registration_evidence_digest: sha256:165b9c8e702b613b0adfedb217dbf021899dd48e9cbe3f5d96069f1da6240067
+  - import_material: imports/intel_performance_patterns.json
+    import_profile: import_profiles/intel_performance_patterns.yaml
+    registration_evidence: evidence/intel_performance_patterns.registration.json
+    registration_evidence_digest: sha256:16bea84d31ee256b0eec27ae265050924f78715066369b48fa8a6da80742eb2a
+  - import_material: imports/intel_phoronix_test_suite.json
+    import_profile: import_profiles/intel_phoronix_test_suite.yaml
+    registration_evidence: evidence/intel_phoronix_test_suite.registration.json
+    registration_evidence_digest: sha256:6c6c02cda1c9d4b67b3bec81788a1e745709537479380ff2b02644bc25d6154d

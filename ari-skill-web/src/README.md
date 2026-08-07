@@ -1,14 +1,10 @@
 # ari-skill-web/src
 
-MCP server package for the web skill — web search, URL fetching, and
-citation-graph traversal (P2: no LLM, but search APIs are time-varying). No
-`__init__.py`; `server.py` is the entry point.
+- `server.py` exposes the MCP tools and provider adapters.
+- `retrieval.py` normalizes `RetrievalRecordV1` values and implements
+  content-addressed record/replay.
+- `network_policy.py` implements pinned-address HTTP fetching, redirect
+  revalidation, and response limits.
 
-## Contents
-
-- `README.md` — this file.
-- `server.py` — the only module; exposes `web_search`, `fetch_url`, `search_arxiv`, `search_semantic_scholar`, `collect_references_iterative`.
-
-## See also
-
-- The skill root `README.md` and the `server.py` module docstring for the tools & outward interface.
+Deterministic retrieval paths do not call a model. The explicit reranker and
+legacy iterative collector are declared stochastic in `skill.yaml`.

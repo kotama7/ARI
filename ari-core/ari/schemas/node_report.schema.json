@@ -15,32 +15,81 @@
     "artifacts"
   ],
   "properties": {
-    "schema_version": {"const": 1},
-    "node_id": {"type": "string"},
-    "parent_id": {"type": ["string", "null"]},
-    "ancestor_ids": {"type": "array", "items": {"type": "string"}},
+    "schema_version": {
+      "const": 1
+    },
+    "node_id": {
+      "type": "string"
+    },
+    "parent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ancestor_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "label": {
       "type": "string",
-      "enum": ["draft", "improve", "debug", "ablation", "validation", "other"]
+      "enum": [
+        "draft",
+        "improve",
+        "debug",
+        "ablation",
+        "validation",
+        "other"
+      ]
     },
-    "raw_label": {"type": "string"},
-    "depth": {"type": "integer", "minimum": 0},
-    "status": {"type": "string"},
-    "started_at": {"type": "string"},
-    "completed_at": {"type": "string"},
-    "original_direction": {"type": ["string", "null"]},
+    "raw_label": {
+      "type": "string"
+    },
+    "depth": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "status": {
+      "type": "string"
+    },
+    "started_at": {
+      "type": "string"
+    },
+    "completed_at": {
+      "type": "string"
+    },
+    "original_direction": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "files_changed": {
       "type": "object",
-      "required": ["added", "modified", "deleted", "inherited_unchanged"],
+      "required": [
+        "added",
+        "modified",
+        "deleted",
+        "inherited_unchanged"
+      ],
       "properties": {
         "added": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["path", "sha256"],
+            "required": [
+              "path",
+              "sha256"
+            ],
             "properties": {
-              "path": {"type": "string"},
-              "sha256": {"type": "string"}
+              "path": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
             }
           }
         },
@@ -48,78 +97,275 @@
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["path"],
+            "required": [
+              "path"
+            ],
             "properties": {
-              "path": {"type": "string"},
-              "sha256_before": {"type": "string"},
-              "sha256_after": {"type": "string"}
+              "path": {
+                "type": "string"
+              },
+              "sha256_before": {
+                "type": "string"
+              },
+              "sha256_after": {
+                "type": "string"
+              }
             }
           }
         },
-        "deleted": {"type": "array", "items": {"type": "string"}},
+        "deleted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "inherited_unchanged": {
           "type": "array",
           "items": {
             "type": "object",
-            "required": ["path"],
+            "required": [
+              "path"
+            ],
             "properties": {
-              "path": {"type": "string"},
-              "from_node_id": {"type": "string"},
-              "sha256": {"type": "string"}
+              "path": {
+                "type": "string"
+              },
+              "from_node_id": {
+                "type": "string"
+              },
+              "sha256": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "unhashable": {
+          "type": "array",
+          "description": "Files the node produced whose sha256 could not be read (e.g. foreign-uid container output). Present only when non-empty. A consumer deciding 'this node produced nothing' must treat a non-empty list as UNKNOWN, never as no changes.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
             }
           }
         }
       }
     },
-    "what_was_done": {"type": "string"},
-    "delta_vs_parent": {"type": "string"},
-    "metrics": {"type": "object"},
+    "what_was_done": {
+      "type": "string"
+    },
+    "delta_vs_parent": {
+      "type": "string"
+    },
+    "metrics": {
+      "type": "object"
+    },
+    "knowledge_skill_refs": {
+      "type": "array",
+      "items": {"type": "object"}
+    },
+    "knowledge_skill_use_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "instruction_identity_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "capability_binding_lock_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "bound_tool_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "assurance_status": {
+      "type": "string",
+      "enum": ["pass", "fail", "inconclusive", "infrastructure_error", "tampered"]
+    },
+    "assurance_tier": {
+      "type": "string",
+      "enum": ["screen", "validate", "certify"]
+    },
+    "baseline_harness_lock_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "active_harness_lock_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "attestation_refs": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "verified_target_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "property_verdicts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["pass", "fail", "inconclusive", "infrastructure_error", "tampered"]
+      }
+    },
+    "frontier_class": {
+      "type": "string",
+      "enum": ["scientific_frontier", "debug_frontier", "uncertified_frontier", "invalid"]
+    },
+    "repair_request_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,511}$"
+    },
+    "repair_requirement_ids": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
+    "repair_context_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "repair_allowed_changes": {
+      "type": "array",
+      "items": {"type": "string"},
+      "uniqueItems": true
+    },
     "self_assessment": {
       "type": "object",
       "properties": {
-        "succeeded": {"type": "boolean"},
-        "headline": {"type": "string"},
-        "concerns": {"type": "array", "items": {"type": "string"}}
+        "succeeded": {
+          "type": "boolean"
+        },
+        "headline": {
+          "type": "string"
+        },
+        "concerns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
-    "next_steps_hints": {"type": "array", "items": {"type": "string"}},
-    "build_command": {"type": "string"},
-    "run_command": {"type": "string"},
+    "next_steps_hints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "build_command": {
+      "type": "string"
+    },
+    "run_command": {
+      "type": "string"
+    },
     "artifacts": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["filename", "role"],
+        "required": [
+          "filename",
+          "role"
+        ],
         "properties": {
-          "filename": {"type": "string"},
+          "filename": {
+            "type": "string"
+          },
           "role": {
             "type": "string",
-            "enum": ["data_output", "log", "binary", "figure", "unknown"]
+            "enum": [
+              "data_output",
+              "log",
+              "binary",
+              "figure",
+              "unknown"
+            ]
           },
-          "sha256": {"type": "string"},
-          "size": {"type": "integer", "minimum": 0}
+          "sha256": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "inline": {
+            "type": "boolean",
+            "description": "True for an inline result blob (captured stdout) that has no file on disk; the provenance audit skips these so they are not reported as a phantom missing artifact."
+          }
         }
       }
     },
-    "evaluator_reason": {"type": "string"},
-    "trace_log_summary": {"type": "string"},
-    "migration_source": {"type": "string", "enum": ["fresh", "auto"]},
-    "executor": {"type": "string", "description": "How the node's tool calls executed: 'slurm' (via slurm_submit) | 'local' (run_bash on agent host) | 'singularity' | '' (unknown / no capture)"},
-    "hostname": {"type": "string", "description": "Hostname of the compute resource that produced the metrics (set by ari.agent.run_env from inside the executing process)"},
-    "slurm_job_id": {"type": "string"},
-    "slurm_partition": {"type": "string"},
-    "slurm_nodelist": {"type": "string"},
+    "evaluator_reason": {
+      "type": "string"
+    },
+    "trace_log_summary": {
+      "type": "string"
+    },
+    "migration_source": {
+      "type": "string",
+      "enum": [
+        "fresh",
+        "auto"
+      ]
+    },
+    "executor": {
+      "type": "string",
+      "description": "How the node's tool calls executed: 'slurm' (via slurm_submit) | 'local' (run_bash on agent host) | 'singularity' | '' (unknown / no capture)"
+    },
+    "hostname": {
+      "type": "string",
+      "description": "Hostname of the compute resource that produced the metrics (set by ari.agent.run_env from inside the executing process)"
+    },
+    "slurm_job_id": {
+      "type": "string"
+    },
+    "slurm_partition": {
+      "type": "string"
+    },
+    "slurm_nodelist": {
+      "type": "string"
+    },
     "cpu_info": {
       "type": "object",
       "properties": {
-        "model": {"type": "string"},
-        "threads": {"type": "integer", "minimum": 0},
-        "mhz": {"type": "number", "minimum": 0},
-        "arch": {"type": "string"},
-        "vendor": {"type": "string"}
+        "model": {
+          "type": "string"
+        },
+        "threads": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mhz": {
+          "type": "number",
+          "minimum": 0
+        },
+        "arch": {
+          "type": "string"
+        },
+        "vendor": {
+          "type": "string"
+        }
       }
     },
-    "mem_total_kb": {"type": "integer", "minimum": 0},
-    "compilers": {"type": "object", "additionalProperties": {"type": "string"}}
+    "mem_total_kb": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "compilers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
   }
 }

@@ -1,0 +1,75 @@
+% F23: the epoch-boundary governance pipeline, set in the ARI house design
+% language (_style.tex). Left column: the nine-step advisory audit
+% (observe .. self-audit, numbered badges; the dashed loop enclosure marks
+% it read-only w.r.t. registries). Right column: the report, the
+% transition engine's resolution, the constitutional kernel's validation
+% of every edge against the fixed T1-T21 table, the four-event boundary
+% transaction, and frontier repair. The single accent edge (the rationed
+% emphasis role of this figure) is the kernel's fail-closed block of an
+% illegal transition.
+%
+% style.tikzstyles is loaded by the preamble / the standalone wrapper;
+% the ari* house styles come from _style.tex. The build cwd differs per
+% entry point, so resolve _style.tex from each known prefix.
+\InputIfFileExists{../shared/figures/tikz/_style.tex}{}{%
+  \InputIfFileExists{shared/figures/tikz/_style.tex}{}{%
+    \InputIfFileExists{report/shared/figures/tikz/_style.tex}{}{%
+      \InputIfFileExists{_style.tex}{}{%
+        \errmessage{F23: cannot locate figures/tikz/_style.tex}}}}}
+\begin{tikzpicture}[aricanvas]
+
+  % --- column 1: the nine-step epoch audit (advisory) -------------------
+  \node[aribox exp]                        (observe)  {\figlabel{F23.observe}};
+  \node[aribox exp, below=of observe]      (reliab)   {\figlabel{F23.reliability}};
+  \node[aribox exp, below=of reliab]       (evidence) {\figlabel{F23.evidence}};
+  \node[aribox exp, below=of evidence]     (prosec)   {\figlabel{F23.prosecute}};
+  \node[aribox exp, below=of prosec]       (defense)  {\figlabel{F23.defense}};
+  \node[aribox exp, below=of defense]      (adjud)    {\figlabel{F23.adjudicate}};
+  \node[aribox exp, below=of adjud]        (pool)     {\figlabel{F23.replaypool}};
+  \node[aribox exp, below=of pool]         (selfaud)  {\figlabel{F23.selfaudit}};
+  \node[ariloop, fit=(observe)(reliab)(evidence)(prosec)(defense)(adjud)(pool)(selfaud)] (loopaud) {};
+  \node[ariphase, above=0.65cm of observe] (h1)       {\figlabel{F23.head.audit}};
+  \pic at ([xshift=-2.5mm]h1.west) {ariglyph flask};
+  \node[arinote, anchor=north] at ([yshift=-2.5mm]loopaud.south) (ttl) {\figlabel{F23.note.advisory}};
+  \draw[ariarrow] (observe)  -- (reliab);
+  \draw[ariarrow] (reliab)   -- (evidence);
+  \draw[ariarrow] (evidence) -- (prosec);
+  \draw[ariarrow] (prosec)   -- (defense);
+  \draw[ariarrow] (defense)  -- (adjud);
+  \draw[ariarrow] (adjud)    -- (pool);
+  \draw[ariarrow] (pool)     -- (selfaud);
+
+  % Step badges 1..8 (the report itself is step 9).
+  \node[aribadge] at (observe.north west)  {1};
+  \node[aribadge] at (reliab.north west)   {2};
+  \node[aribadge] at (evidence.north west) {3};
+  \node[aribadge] at (prosec.north west)   {4};
+  \node[aribadge] at (defense.north west)  {5};
+  \node[aribadge] at (adjud.north west)    {6};
+  \node[aribadge] at (pool.north west)     {7};
+  \node[aribadge] at (selfaud.north west)  {8};
+
+  % --- column 2: report -> transition -> kernel -> commit -> repair -----
+  \node[aribox paper, right=2.4cm of observe] (report) {\figlabel{F23.report}};
+  \node[aribox idea,  below=of report]        (resolve){\figlabel{F23.resolve}};
+  \node[aribox gate,  below=of resolve]       (kernel) {\figlabel{F23.kernel}};
+  \node[ariboxwide, fill=phasepaper, below=of kernel] (txn) {\figlabel{F23.txn}};
+  \node[aribox exp,   below=of txn]           (repair) {\figlabel{F23.repair}};
+  \node[arinote, below=0.2cm of repair]       (retn)   {\figlabel{F23.note.retire}};
+  \node[ariphase, above=0.4cm of report]      (h2)     {\figlabel{F23.head.transition}};
+  \pic at ([xshift=-2.5mm]h2.west) {ariglyph gate};
+  \node[aribadge] at (report.north west) {9};
+  \draw[ariarrow] (report)  -- (resolve);
+  \draw[ariarrow] (resolve) -- (kernel);
+  \draw[ariarrow] (kernel)  -- (txn);
+  \draw[ariarrow] (txn)     -- (repair);
+
+  % --- the audit hands its report across the column gap -----------------
+  \draw[ariarrow, rounded corners=5pt]
+    (selfaud.east) -- ([xshift=10mm]selfaud.east) |- (report.west);
+
+  % --- the one accent role: an illegal edge is blocked fail-closed ------
+  \node[ariboxwide, right=2.2cm of kernel] (blocked) {\figlabel{F23.blocked}};
+  \draw[ariarrow accent] (kernel) -- (blocked);
+
+\end{tikzpicture}

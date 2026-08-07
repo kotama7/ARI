@@ -15,7 +15,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { useI18n } from '../../i18n';
-import { ErrorState } from '../common';
+import { Button, ErrorState } from '../common';
 import {
   fetchWorkflowFlow,
   saveWorkflowFlow,
@@ -24,6 +24,7 @@ import {
   fetchWorkflow,
   saveSkillPhases,
   saveDisabledTools,
+  isWorkflowRevisionConflict,
 } from '../../services/api';
 import {
   skillColor,
@@ -34,6 +35,43 @@ import {
   SkillModal,
   type SkillMcpEntry,
 } from './workflowNodes';
+
+// ── Save state machine (gui_refresh Wave 4d, plan 07 §Workflow Studio) ──
+//
+// The old 2s timer saved BLINDLY: whatever was on disk was overwritten
+// without ever looking at it. Saves now carry the `base_revision` loaded
+// from GET /api/workflow; a 409 from the server means the file changed on
+// disk since load, and the page enters 'conflict': saving pauses entirely
+// until the user explicitly reloads (nothing is refetched-and-reapplied
+// silently — local unsaved edits are discarded on reload, and the banner
+// says so).
+type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'conflict';
+
+/** Serialize the editor state into the POST /api/workflow/flow payload. */
+function toFlowPayload(nodes: Node[], edges: Edge[]) {
+  return {
+    nodes: nodes.map((n) => ({
+      id: n.id,
+      type: n.type,
+      position: n.position,
+      data: {
+        label: n.data.label,
+        skill: n.data.skill,
+        enabled: n.data.enabled,
+        tool: n.data.tool,
+        phase: n.data.phase,
+        description: n.data.description,
+      },
+    })),
+    edges: edges.map((e) => ({
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      data: e.data,
+      animated: e.animated,
+    })),
+  };
+}
 
 // ── Main component ──────────────────────────────────
 
@@ -70,12 +108,45 @@ export default function WorkflowPage() {
   // Auto-save debounce
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Revision-aware save state (Wave 4d). The state is mirrored into a ref
+  // so the debounce timer callback and in-flight promise handlers read the
+  // CURRENT state (not the one captured when they were scheduled).
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const saveStateRef = useRef<SaveState>('idle');
+  const setSaveStateSync = useCallback((s: SaveState) => {
+    saveStateRef.current = s;
+    setSaveState(s);
+  }, []);
+  // Weak revision of the workflow.yaml this editor last loaded/wrote.
+  const revisionRef = useRef<string | null>(null);
+  // Latest editor state for the debounced save (replaces the old
+  // setNodes/setEdges read-latest trick).
+  const nodesRef = useRef<Node[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
   // ── Load ──────────────────────────────────
 
   const load = useCallback(() => {
+    // A (re)load supersedes any pending debounced save: the editor state it
+    // would push is about to be replaced by what is on disk.
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
     // Load both workflow flow and skill MCP metadata in parallel
     Promise.all([fetchWorkflowFlow(), fetchWorkflow()])
       .then(([flowRes, wfRes]: [any, any]) => {
+        // Track the revision of what we just loaded; saves echo it back as
+        // base_revision. Clears a previous conflict: the user now edits on
+        // top of the latest disk state.
+        revisionRef.current = (wfRes.ok && wfRes.revision) ? wfRes.revision : null;
+        setSaveStateSync('idle');
         // Extract skill MCP metadata
         const mcp: Record<string, SkillMcpEntry> = (wfRes.ok && wfRes.skill_mcp) ? wfRes.skill_mcp : {};
         setSkillMcp(mcp);
@@ -143,7 +214,7 @@ export default function WorkflowPage() {
         setError(null);
       })
       .catch((e) => setError(String(e)));
-  }, []);
+  }, [setSaveStateSync]);
 
   useEffect(() => {
     load();
@@ -161,43 +232,60 @@ export default function WorkflowPage() {
     );
   }, [disabledTools]);
 
-  // ── Auto-save (debounced 2s) ──────────────
+  // ── Save (revision-aware, Wave 4d) ────────
 
+  // One save path for both the debounced autosave and the Save button:
+  // sends base_revision, adopts the new revision from the response, and
+  // maps a 409 to the 'conflict' state (no retry until the user reloads).
+  const performSave = useCallback(() => {
+    if (saveStateRef.current === 'conflict') return;
+    setSaveStateSync('saving');
+    const payload: { flow: unknown; base_revision?: string } = {
+      flow: toFlowPayload(nodesRef.current, edgesRef.current),
+    };
+    if (revisionRef.current) payload.base_revision = revisionRef.current;
+    saveWorkflowFlow(payload)
+      .then((r) => {
+        if (r.ok) {
+          if (r.revision) revisionRef.current = r.revision;
+          setSaveMsg('');
+          setSaveStateSync('saved');
+        } else {
+          setSaveMsg('❌ ' + (r.error || 'save failed'));
+          setSaveStateSync('dirty');
+        }
+      })
+      .catch((e) => {
+        if (isWorkflowRevisionConflict(e)) {
+          setSaveMsg('');
+          setSaveStateSync('conflict');
+        } else {
+          setSaveMsg('❌ ' + String(e));
+          setSaveStateSync('dirty');
+        }
+      });
+  }, [setSaveStateSync]);
+
+  // 'saved' is a transient acknowledgement; settle back to 'idle'.
+  useEffect(() => {
+    if (saveState !== 'saved') return;
+    const id = setTimeout(() => {
+      if (saveStateRef.current === 'saved') setSaveStateSync('idle');
+    }, 3000);
+    return () => clearTimeout(id);
+  }, [saveState, setSaveStateSync]);
+
+  // Debounced autosave — same 2s cadence as before, but through the
+  // revision-aware performSave (the blind overwrite is retired). While in
+  // 'conflict' edits stay local: performSave refuses to run until reload.
   const triggerAutoSave = useCallback(() => {
+    if (saveStateRef.current !== 'conflict') setSaveStateSync('dirty');
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      // Read latest from state
-      setNodes((currentNodes) => {
-        setEdges((currentEdges) => {
-          const flow = {
-            nodes: currentNodes.map((n) => ({
-              id: n.id,
-              type: n.type,
-              position: n.position,
-              data: {
-                label: n.data.label,
-                skill: n.data.skill,
-                enabled: n.data.enabled,
-                tool: n.data.tool,
-                phase: n.data.phase,
-                description: n.data.description,
-              },
-            })),
-            edges: currentEdges.map((e) => ({
-              id: e.id,
-              source: e.source,
-              target: e.target,
-              data: e.data,
-              animated: e.animated,
-            })),
-          };
-          saveWorkflowFlow({ flow }).catch(() => {});
-          return currentEdges;
-        });
-        return currentNodes;
-      });
+      saveTimer.current = null;
+      performSave();
     }, 2000);
-  }, []);
+  }, [performSave, setSaveStateSync]);
 
   // ── Handlers ──────────────────────────────
 
@@ -243,39 +331,14 @@ export default function WorkflowPage() {
   );
 
   const handleSave = useCallback(() => {
-    setSaveMsg(t('saving'));
-    const flow = {
-      nodes: nodes.map((n) => ({
-        id: n.id,
-        type: n.type,
-        position: n.position,
-        data: {
-          label: n.data.label,
-          skill: n.data.skill,
-          enabled: n.data.enabled,
-          tool: n.data.tool,
-          phase: n.data.phase,
-          description: n.data.description,
-        },
-      })),
-      edges: edges.map((e) => ({
-        id: e.id,
-        source: e.source,
-        target: e.target,
-        data: e.data,
-        animated: e.animated,
-      })),
-    };
-    saveWorkflowFlow({ flow })
-      .then((r) => {
-        setSaveMsg(r.ok ? t('save_done') : '\u274c ' + r.error);
-        setTimeout(() => setSaveMsg(''), 3000);
-      })
-      .catch((e) => {
-        setSaveMsg('\u274c ' + String(e));
-        setTimeout(() => setSaveMsg(''), 3000);
-      });
-  }, [nodes, edges, t]);
+    // Immediate save through the same revision-aware path as the autosave
+    // (cancel a pending debounce so the two cannot race each other).
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+    performSave();
+  }, [performSave]);
 
   const handleReset = useCallback(() => {
     fetchWorkflowDefault()
@@ -424,9 +487,68 @@ export default function WorkflowPage() {
         <button className="btn btn-outline btn-sm" onClick={handleReset}>
           Reset to default
         </button>
+        {/* Save-state chip (dirty/saving/saved/conflict — plan 07) */}
+        {saveState !== 'idle' && (
+          <span
+            role="status"
+            style={{
+              fontSize: '.7rem',
+              padding: '2px 8px',
+              borderRadius: 6,
+              fontWeight: 600,
+              background:
+                saveState === 'conflict' ? '#ef444422'
+                : saveState === 'saved' ? '#10b98122'
+                : 'var(--card, #1e1e2e)',
+              color:
+                saveState === 'conflict' ? '#ef4444'
+                : saveState === 'saved' ? '#10b981'
+                : 'var(--muted)',
+            }}
+          >
+            {saveState === 'dirty' && 'Unsaved changes'}
+            {saveState === 'saving' && t('saving')}
+            {saveState === 'saved' && t('save_done')}
+            {saveState === 'conflict' && 'Conflict — reload required'}
+          </span>
+        )}
         <span style={{ fontSize: '.78rem', color: 'var(--muted)' }}>{saveMsg}</span>
         {wfPath && <span style={{ fontSize: '.68rem', color: 'var(--muted)' }}>{wfPath}</span>}
       </div>
+
+      {/* Conflict banner: the file changed on disk since it was loaded.
+          Saving is paused; the only way forward is an explicit reload
+          (which discards local unsaved edits — nothing is merged or
+          reapplied silently). */}
+      {saveState === 'conflict' && (
+        <div
+          role="alert"
+          className="card"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '10px 14px',
+            marginBottom: 12,
+            border: '1px solid #ef4444',
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <strong style={{ fontSize: '.82rem', color: '#ef4444' }}>
+              Workflow changed on disk
+            </strong>
+            <div style={{ fontSize: '.72rem', color: 'var(--muted)', marginTop: 2 }}>
+              This workflow was modified since you loaded it (by another tab,
+              user, or process). Saving is paused so those changes are not
+              overwritten. Reload to edit the latest version — your unsaved
+              local edits will be discarded.
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={load} style={{ flexShrink: 0 }}>
+            Reload
+          </Button>
+        </div>
+      )}
 
       {/* React Flow canvas */}
       <div
@@ -755,8 +877,19 @@ export default function WorkflowPage() {
             [skillName]: { ...prev[skillName], phase: newPhase },
           }));
 
-          // Persist to workflow.yaml
-          saveSkillPhases([{ name: skillName, phase: newPhase }]).catch(() => {});
+          // Persist to workflow.yaml (revision-aware, Wave 4d): echo the
+          // loaded revision, adopt the new one, and surface a 409 as the
+          // page-level conflict instead of silently overwriting.
+          saveSkillPhases(
+            [{ name: skillName, phase: newPhase }],
+            revisionRef.current ?? undefined,
+          )
+            .then((r) => {
+              if (r.ok && r.revision) revisionRef.current = r.revision;
+            })
+            .catch((e) => {
+              if (isWorkflowRevisionConflict(e)) setSaveStateSync('conflict');
+            });
         };
 
         return (
@@ -870,7 +1003,15 @@ export default function WorkflowPage() {
                                 const next = new Set(disabledTools);
                                 if (off) next.delete(t); else next.add(t);
                                 setDisabledTools(next);
-                                saveDisabledTools([...next]).catch(() => {});
+                                // Revision-aware persist (Wave 4d) — same
+                                // conflict semantics as the flow autosave.
+                                saveDisabledTools([...next], revisionRef.current ?? undefined)
+                                  .then((r) => {
+                                    if (r.ok && r.revision) revisionRef.current = r.revision;
+                                  })
+                                  .catch((e) => {
+                                    if (isWorkflowRevisionConflict(e)) setSaveStateSync('conflict');
+                                  });
                               }}
                               style={{
                                 fontSize: '.58rem', padding: '1px 4px', borderRadius: 4,

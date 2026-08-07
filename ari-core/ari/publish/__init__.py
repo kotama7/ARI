@@ -16,12 +16,12 @@ The publish flow is:
 The registered ref + bundle_sha256 are then pushed into the paper's
 Code Availability section by ``inject_code_availability``.
 """
+
 from __future__ import annotations
 
 import hashlib
 import json
 import os
-import shutil
 import tarfile
 import tempfile
 from dataclasses import dataclass, asdict
@@ -52,8 +52,100 @@ class PublishRecord:
 def _read_manifest(curated_dir: Path) -> dict:
     p = curated_dir / "manifest.lock"
     if not p.exists():
-        raise PublishError(f"manifest.lock not found in {curated_dir} — run `ari ear curate` first")
-    return json.loads(p.read_text(encoding="utf-8"))
+        raise PublishError(
+            f"manifest.lock not found in {curated_dir} — run `ari ear curate` first"
+        )
+    try:
+        manifest = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PublishError(f"manifest.lock is unreadable: {exc}") from exc
+    _verify_manifest(curated_dir, manifest)
+    return manifest
+
+
+def _canonical_digest(value: object, *, prefixed: bool = True) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    value = hashlib.sha256(payload).hexdigest()
+    return "sha256:" + value if prefixed else value
+
+
+def _verify_manifest(curated_dir: Path, manifest: dict) -> None:
+    """Fail closed before any backend observes a curated bundle."""
+
+    version = int(manifest.get("version") or 1)
+    if version not in {1, 2}:
+        raise PublishError(f"unsupported EAR manifest version: {version}")
+    files = manifest.get("files")
+    if not isinstance(files, list):
+        raise PublishError("manifest files must be a list")
+    root = curated_dir.resolve(strict=True)
+    rebuilt: list[dict] = []
+    declared_paths: set[str] = set()
+    for record in files:
+        if not isinstance(record, dict):
+            raise PublishError("manifest file record must be an object")
+        relative = str(record.get("path") or "")
+        candidate = curated_dir / relative
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+        except (OSError, ValueError) as exc:
+            raise PublishError(f"manifest path escapes bundle: {relative}") from exc
+        if (
+            relative in declared_paths
+            or candidate.is_symlink()
+            or not candidate.is_file()
+        ):
+            raise PublishError(
+                f"manifest path missing, duplicate, or symbolic: {relative}"
+            )
+        declared_paths.add(relative)
+        actual = hashlib.sha256(candidate.read_bytes()).hexdigest()
+        if actual != record.get("sha256") or candidate.stat().st_size != record.get(
+            "size"
+        ):
+            raise PublishError(f"manifest integrity mismatch: {relative}")
+        rebuilt_record = {
+            "path": relative,
+            "sha256": actual,
+            "size": candidate.stat().st_size,
+        }
+        if version == 2:
+            role = record.get("role")
+            if not isinstance(role, str) or not role:
+                raise PublishError(f"v2 manifest lacks role: {relative}")
+            rebuilt_record["role"] = role
+        rebuilt.append(rebuilt_record)
+    actual_paths = {
+        path.relative_to(curated_dir).as_posix()
+        for path in curated_dir.rglob("*")
+        if path.is_file() and path.name != "manifest.lock"
+    }
+    if actual_paths != declared_paths:
+        raise PublishError("curated bundle contains untracked or missing files")
+    canonical = {
+        "version": version,
+        "files": sorted(rebuilt, key=lambda item: item["path"]),
+    }
+    if _canonical_digest(canonical, prefixed=False) != manifest.get("bundle_sha256"):
+        raise PublishError("manifest bundle_sha256 mismatch")
+    if version == 2:
+        deterministic_lock = {
+            **canonical,
+            "bundle_sha256": manifest.get("bundle_sha256"),
+            "policy_digest": manifest.get("policy_digest"),
+            "evidence_index_digest": manifest.get("evidence_index_digest"),
+            "evidence": manifest.get("evidence"),
+            "admission_status": manifest.get("admission_status"),
+        }
+        if _canonical_digest(deterministic_lock) != manifest.get("lock_digest"):
+            raise PublishError("EAR lock digest mismatch")
 
 
 def _build_tarball(curated_dir: Path, dest_path: Path) -> str:
@@ -103,7 +195,7 @@ def publish(
     ckpt = Path(checkpoint).resolve()
     curated = ckpt / "ear_published"
     if not curated.is_dir():
-        raise PublishError(f"ear_published/ not found — run `ari ear curate` first")
+        raise PublishError("ear_published/ not found — run `ari ear curate` first")
 
     manifest = _read_manifest(curated)
     bundle_sha256 = manifest.get("bundle_sha256", "")
@@ -113,6 +205,16 @@ def publish(
     metadata = dict(metadata or {})
     metadata.setdefault("checkpoint_id", ckpt.name)
     metadata.setdefault("license", (manifest.get("publish") or {}).get("license"))
+    # The local backend is documented as placing the bundle next to the
+    # checkpoint.  Falling back to ``.`` made the destination depend on the
+    # caller's cwd (and left stray bundle.tar.gz files in the repository).
+    # Preserve the explicit metadata > environment > checkpoint precedence.
+    if (
+        backend == "local-tarball"
+        and not metadata.get("local_tarball_out")
+        and not os.environ.get("ARI_LOCAL_TARBALL_OUT")
+    ):
+        metadata["local_tarball_out"] = str(ckpt)
 
     backend_impl = _load_backend(backend)
     with tempfile.TemporaryDirectory(prefix="ari-publish-") as tmp:
@@ -160,7 +262,9 @@ def promote(
     ckpt = Path(checkpoint).resolve()
     record_path = ckpt / "publish_record.json"
     if not record_path.exists():
-        raise PublishError(f"publish_record.json not found — run `ari ear publish` first")
+        raise PublishError(
+            "publish_record.json not found — run `ari ear publish` first"
+        )
     data = json.loads(record_path.read_text(encoding="utf-8"))
     backend_name = data.get("backend", "ari-registry")
     backend_impl = _load_backend(backend_name)
@@ -178,12 +282,18 @@ def promote(
             {k: v for k, v in out.items() if k not in ("visibility",)}
         )
     except Exception as e:
-        data["promote_failed_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        data["promote_failed_at"] = datetime.now(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
         data.setdefault("extra", {})["promote_error"] = f"{type(e).__name__}: {e}"
-        record_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        record_path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         raise PublishError(f"promote failed: {e}") from e
 
-    record_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    record_path.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     return PublishRecord(
         backend=backend_name,
         ref=data.get("ref", ""),
@@ -213,11 +323,13 @@ def promote(
 
 def _load_ari_registry_backend():
     from .backends import ari_registry as backend
+
     return backend
 
 
 def _load_local_tarball_backend():
     from .backends import local_tarball as backend
+
     return backend
 
 
@@ -237,7 +349,9 @@ def _load_gh_backend():
     return backend
 
 
-_BACKEND_REGISTRY: "BaseRegistry" = BaseRegistry("publish backend", error_cls=PublishError)
+_BACKEND_REGISTRY: "BaseRegistry" = BaseRegistry(
+    "publish backend", error_cls=PublishError
+)
 _BACKEND_REGISTRY.register_lazy("ari-registry", _load_ari_registry_backend)
 _BACKEND_REGISTRY.register_lazy("local-tarball", _load_local_tarball_backend)
 _BACKEND_REGISTRY.register_lazy("zenodo", _load_zenodo_backend)

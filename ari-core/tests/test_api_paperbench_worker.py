@@ -83,7 +83,7 @@ def test_worker_drives_four_stages_and_marks_completed(tmp_path):
 
     r = P._api_launch_run({
         "paper_ids": ["wp1"],
-        "rubric_config": {"model": "gemini/gemini-2.5-pro", "two_stage": True,
+        "rubric_config": {"model": "gemini/gemini-2.5-pro",
                           "target_leaf_count": 200, "temperature": 0.1},
         "reproduce_config": {"model": "gpt-5-mini", "time_limit_sec": 7200,
                              "iterative_agent": True, "sandbox_kind": "slurm",
@@ -174,9 +174,10 @@ def test_worker_treats_phase1_failure_as_degraded_not_fatal(tmp_path):
 
     snap = P._api_run_status(jid)
     assert snap["status"] == "completed"
-    # All four tools were still invoked.
+    # Every tool was still invoked, audit included: the rubric is checked
+    # before anything downstream is graded against it.
     assert [c[0] for c in stub.calls] == [
-        "generate_rubric", "build_reproduce_sh",
+        "generate_rubric", "audit_rubric", "build_reproduce_sh",
         "run_reproduce", "grade_with_simplejudge",
     ]
 

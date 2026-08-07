@@ -1,322 +1,606 @@
-"""Tests for SlurmClient in local (subprocess) mode."""
+"""Conformance tests for the local, provider-neutral SLURM adapter."""
 
 from __future__ import annotations
 
-import asyncio
+import hashlib
+import json
+import re
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.slurm import SlurmClient
+from ari_skill_hpc.contracts import (
+    AcceleratorDeviceIdentityV1,
+    ArtifactPinV1,
+    ContainerRequestV1,
+    EnvironmentPolicyV1,
+    ExclusiveNodeAcceleratorV1,
+    JobRequestV1,
+    OutputDeclarationV1,
+    ResourceRequestV1,
+    file_digest,
+    sha256_digest,
+)
+from ari_skill_hpc.scheduler import (
+    CommandResult,
+    LocalCommandRunner,
+    SchedulerProtocolError,
+    SchedulerTransportError,
+    SchedulerValidationError,
+    SlurmScheduler,
+    SubmissionLedger,
+    SubmissionUncertainError,
+)
 
 
-@pytest.fixture
-def client() -> SlurmClient:
-    return SlurmClient(mode="local")
+class FakeRunner:
+    def __init__(self, *responses: CommandResult | Exception):
+        self.responses = list(responses)
+        self.calls: list[tuple[list[str], bytes | None]] = []
+        self.closed = False
+
+    @property
+    def identity(self):
+        return {"transport": "fake", "cluster": "test-cluster"}
+
+    async def run(self, argv, *, stdin=None, timeout=None):
+        self.calls.append((list(argv), stdin))
+        if not self.responses:
+            raise AssertionError(f"unexpected scheduler command: {argv}")
+        value = self.responses.pop(0)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    def close(self):
+        self.closed = True
 
 
-class TestSubmitLocal:
-    @pytest.mark.asyncio
-    async def test_submit_success(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (
-            b"Submitted batch job 12345\n",
-            b"",
+def _input_pin(path: Path, logical_name: str = "design-input") -> ArtifactPinV1:
+    return ArtifactPinV1(
+        logical_name=logical_name,
+        path=str(path),
+        digest=file_digest(path),
+        size_bytes=path.stat().st_size,
+        media_type="text/plain",
+    )
+
+
+def _request(work_dir: Path, *, modules: tuple[str, ...] = ()) -> JobRequestV1:
+    source = work_dir / "input.txt"
+    if not source.exists():
+        source.write_text("scientific input\n", encoding="utf-8")
+    return JobRequestV1(
+        request_id="experiment-001",
+        job_name="openroad-flow",
+        work_dir=str(work_dir),
+        argv=("python3", "worker.py", "argument;not-shell"),
+        resources=ResourceRequestV1(
+            partition="compute-a64fx",
+            nodes=2,
+            tasks=4,
+            cpus_per_task=8,
+            memory_mb_per_node=65536,
+            walltime="02:00:00",
+        ),
+        environment=EnvironmentPolicyV1(
+            variables={"OMP_NUM_THREADS": "8", "EXPERIMENT_MODE": "golden"},
+            modules=modules,
+        ),
+        inputs=(_input_pin(source),),
+        outputs=(
+            OutputDeclarationV1(
+                logical_name="metrics-json",
+                path=str(work_dir / "metrics.json"),
+                media_type="application/json",
+            ),
+        ),
+        metadata={"domain": "eda", "profile": "nangate45"},
+    )
+
+
+def _scheduler(tmp_path: Path, runner: FakeRunner) -> SlurmScheduler:
+    return SlurmScheduler(
+        runner=runner,
+        ledger=SubmissionLedger(tmp_path / "state" / "jobs.json"),
+    )
+
+
+def _write_wrapper_completion(
+    handle,
+    raw_script: bytes,
+    *,
+    exit_code: int = 0,
+    nonce: str | None = None,
+) -> str:
+    script = raw_script.decode("utf-8")
+    match = re.search(r'completion_nonce":"([0-9a-f]{64})', script)
+    assert match is not None
+    expected_nonce = match.group(1)
+    value = {
+        "schema_version": "ari.hpc.wrapper-completion/v1",
+        "request_digest": handle.request_digest,
+        "cluster_identity": handle.cluster_identity,
+        "job_id": handle.job_id,
+        "exit_code": exit_code,
+        "completion_nonce": nonce or expected_nonce,
+    }
+    (Path(handle.artifact_scope) / "wrapper-completion-v1.json").write_text(
+        json.dumps(value), encoding="utf-8"
+    )
+    return expected_nonce
+
+
+@pytest.mark.asyncio
+async def test_submit_is_prompt_clean_and_idempotent(tmp_path: Path) -> None:
+    runner = FakeRunner(CommandResult("12345;cluster\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    request = _request(tmp_path, modules=("gcc/13.2", "openroad/2.0"))
+
+    first = await scheduler.submit(request)
+    second = await scheduler.submit(request)
+
+    assert first == second
+    assert first.job_id == "12345"
+    assert first.request_digest == request.request_digest
+    assert len(runner.calls) == 1
+    argv, raw_script = runner.calls[0]
+    assert argv == ["sbatch", "--parsable", "--export=NIL"]
+    script = raw_script.decode()
+    assert "#SBATCH --export=NIL" in script
+    assert "#SBATCH --partition=compute-a64fx" in script
+    assert "#SBATCH --nodes=2" in script
+    assert "export SLURM_EXPORT_ENV=ALL" in script
+    assert "module load gcc/13.2" in script
+    assert "cpu_model=" in script
+    assert "cpu_logical_count=" in script
+    assert "gcc=" in script
+    assert "mpicc=" in script
+    assert "nvcc=" in script
+    assert "gpu=" in script
+    assert "source " not in script
+    assert ".env" not in script
+    assert "ARI_ENV_FILE" not in script
+    assert "'argument;not-shell'" in script
+    assert "worker.py argument;not-shell" not in script
+    assert request.inputs[0].digest.removeprefix("sha256:") in script
+    submission = Path(first.artifact_scope) / "submission-v1.json"
+    assert submission.is_file()
+    assert oct(submission.stat().st_mode & 0o777) == "0o600"
+
+
+@pytest.mark.asyncio
+async def test_container_can_enforce_network_none_without_shell(tmp_path: Path) -> None:
+    image = tmp_path / "openroad.sif"
+    image.write_bytes(b"pinned image\n")
+    runner = FakeRunner(CommandResult("12347\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    base = _request(tmp_path)
+    request = base.model_copy(
+        update={
+            "container": ContainerRequestV1(
+                image=ArtifactPinV1(
+                    logical_name="openroad-image",
+                    path=str(image),
+                    digest=file_digest(image),
+                    size_bytes=image.stat().st_size,
+                ),
+                network="none",
+            )
+        }
+    )
+
+    await scheduler.submit(request)
+
+    script = runner.calls[0][1].decode()
+    assert "apptainer exec --containall --cleanenv --net --network none" in script
+
+
+@pytest.mark.asyncio
+async def test_submit_renders_extended_resources_without_escape_hatch(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(CommandResult("12346\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    base = _request(tmp_path)
+    request = JobRequestV1.model_validate(
+        {
+            **base.model_dump(mode="json"),
+            "resources": {
+                "partition": "compute",
+                "nodes": 4,
+                "tasks": 32,
+                "tasks_per_node": 8,
+                "cpus_per_task": 2,
+                "memory_mb_per_cpu": 4096,
+                "gpus_per_task": 1,
+                "gpu_type": "v100",
+                "walltime": "02:00:00",
+                "nodelist": "node[01-04]",
+                "exclude_nodes": "node03",
+                "exclusive": True,
+                "constraint": "skylake|haswell",
+                "hint": "nomultithread",
+                "account": "projX",
+                "qos": "normal",
+                "reservation": "paperbench",
+            },
+        }
+    )
+
+    await scheduler.submit(request)
+
+    script = runner.calls[0][1].decode()
+    for directive in (
+        "#SBATCH --ntasks-per-node=8",
+        "#SBATCH --nodelist=node[01-04]",
+        "#SBATCH --exclude=node03",
+        "#SBATCH --mem-per-cpu=4096M",
+        "#SBATCH --gpus-per-task=v100:1",
+        "#SBATCH --constraint=skylake|haswell",
+        "#SBATCH --hint=nomultithread",
+        "#SBATCH --account=projX",
+        "#SBATCH --qos=normal",
+        "#SBATCH --reservation=paperbench",
+    ):
+        assert directive in script
+    assert "extra_sbatch_args" not in script
+
+
+@pytest.mark.asyncio
+async def test_no_gres_gpu_uses_exclusive_node_and_frozen_inventory(
+    tmp_path: Path,
+) -> None:
+    probe = tmp_path / "nvidia-smi"
+    probe.write_bytes(b"pinned nvidia-smi fixture\n")
+    base = _request(tmp_path)
+    request = base.model_copy(
+        update={
+            "resources": ResourceRequestV1(
+                partition="gpu-private",
+                nodes=1,
+                tasks=1,
+                cpus_per_task=1,
+                walltime="00:05:00",
+                nodelist="gpu-node-a",
+                exclusive=True,
+            ),
+            "accelerator_allocation": ExclusiveNodeAcceleratorV1(
+                partition="gpu-private",
+                node_name="gpu-node-a",
+                inventory_probe=ArtifactPinV1(
+                    logical_name="nvidia-smi-inventory-probe",
+                    path=str(probe),
+                    digest=file_digest(probe),
+                    size_bytes=probe.stat().st_size,
+                ),
+                devices=(
+                    AcceleratorDeviceIdentityV1(
+                        uuid="GPU-27714578-959a-9314-ad8a-21773f5e5649",
+                        name="Tesla V100-SXM2-16GB",
+                        driver_version="575.64.03",
+                        memory_mb=16384,
+                        compute_capability="7.0",
+                    ),
+                ),
+            ),
+        }
+    )
+    runner = FakeRunner(CommandResult("12348\n", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+
+    await scheduler.submit(request)
+
+    script = runner.calls[0][1].decode()
+    assert "#SBATCH --nodelist=gpu-node-a" in script
+    assert "#SBATCH --exclusive" in script
+    assert "#SBATCH --gres" not in script
+    assert "#SBATCH --gpus" not in script
+    assert "accelerator-inventory.expected.csv" in script
+    assert "accelerator-inventory.observed.csv" in script
+    assert "--query-gpu=uuid,name,driver_version,memory.total,compute_cap" in script
+    assert "exclusive-node accelerator inventory mismatch" in script
+    assert probe.as_posix() in script
+    assert file_digest(probe).removeprefix("sha256:") in script
+
+
+@pytest.mark.asyncio
+async def test_definite_rejection_releases_claim_for_retry(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        CommandResult("", "invalid partition", 1),
+        CommandResult("222", "", 0),
+    )
+    scheduler = _scheduler(tmp_path, runner)
+    request = _request(tmp_path)
+    with pytest.raises(SchedulerProtocolError, match="invalid partition"):
+        await scheduler.submit(request)
+    handle = await scheduler.submit(request)
+    assert handle.job_id == "222"
+    assert len(runner.calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_uncertain_transport_failure_never_duplicates_job(tmp_path: Path) -> None:
+    runner = FakeRunner(RuntimeError("connection dropped after stdin"))
+    scheduler = _scheduler(tmp_path, runner)
+    request = _request(tmp_path)
+    with pytest.raises(RuntimeError, match="connection dropped"):
+        await scheduler.submit(request)
+    with pytest.raises(SubmissionUncertainError, match="refusing to duplicate"):
+        await scheduler.submit(request)
+    assert len(runner.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_committed_handle_survives_scheduler_restart(tmp_path: Path) -> None:
+    ledger_path = tmp_path / "state" / "jobs.json"
+    first_runner = FakeRunner(CommandResult("333", "", 0))
+    first = SlurmScheduler(runner=first_runner, ledger=SubmissionLedger(ledger_path))
+    request = _request(tmp_path)
+    handle = await first.submit(request)
+
+    restarted_runner = FakeRunner()
+    restarted = SlurmScheduler(
+        runner=restarted_runner, ledger=SubmissionLedger(ledger_path)
+    )
+    recovered = await restarted.submit(request)
+
+    assert recovered == handle
+    assert restarted_runner.calls == []
+
+
+@pytest.mark.asyncio
+async def test_status_normalizes_sacct_and_squeue_states(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        CommandResult(
+            "91|COMPLETED|0:0|2026-08-02T01:00:00|2026-08-02T01:02:00|None\n",
+            "",
+            0,
+        ),
+        CommandResult("", "accounting delayed", 1),
+        CommandResult("PENDING|Resources\n", "", 0),
+    )
+    scheduler = _scheduler(tmp_path, runner)
+    completed = await scheduler.status("91")
+    pending = await scheduler.status("92")
+    assert completed.state == "succeeded"
+    assert completed.scheduler_state == "COMPLETED"
+    assert completed.exit_code == 0
+    assert pending.state == "submitted"
+    assert pending.reason == "Resources"
+
+
+@pytest.mark.asyncio
+async def test_fixed_wrapper_marker_closes_terminal_state_without_accounting(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(
+        CommandResult("7301", "", 0),
+        CommandResult("", "accounting storage is disabled", 1),
+        CommandResult("", "", 0),
+    )
+    scheduler = SlurmScheduler(
+        runner=runner,
+        ledger=SubmissionLedger(tmp_path / "state/jobs.json"),
+        terminal_evidence_policy="fixed-wrapper-marker",
+    )
+    handle = await scheduler.submit(_request(tmp_path))
+    raw_script = runner.calls[0][1]
+    assert raw_script is not None
+    nonce = _write_wrapper_completion(handle, raw_script)
+
+    status = await scheduler.status(handle.handle_id)
+
+    assert status.state == "succeeded"
+    assert status.scheduler_state == "COMPLETED"
+    assert status.exit_code == 0
+    assert status.reason == "fixed-wrapper-completion-v1"
+    submission = json.loads(
+        (Path(handle.artifact_scope) / "submission-v1.json").read_text(
+            encoding="utf-8"
         )
-        mock_proc.returncode = 0
+    )
+    assert submission["terminal_evidence_policy"] == "fixed-wrapper-marker"
+    assert submission["completion_nonce_sha256"] == hashlib.sha256(
+        nonce.encode("ascii")
+    ).hexdigest()
+    assert nonce not in json.dumps(submission)
 
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.submit(
-                script="echo hello",
-                job_name="test_job",
-                partition="gpu",
-                nodes=2,
-                walltime="02:00:00",
-            )
 
-        assert result["job_id"] == "12345"
-        assert result["status"] == "submitted"
-        assert "12345" in result["message"]
+@pytest.mark.asyncio
+async def test_fixed_wrapper_marker_with_wrong_nonce_remains_unknown(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(
+        CommandResult("7302", "", 0),
+        CommandResult("", "accounting storage is disabled", 1),
+        CommandResult("", "", 0),
+    )
+    scheduler = SlurmScheduler(
+        runner=runner,
+        ledger=SubmissionLedger(tmp_path / "state/jobs.json"),
+        terminal_evidence_policy="fixed-wrapper-marker",
+    )
+    handle = await scheduler.submit(_request(tmp_path))
+    raw_script = runner.calls[0][1]
+    assert raw_script is not None
+    _write_wrapper_completion(handle, raw_script, nonce="0" * 64)
 
-    @pytest.mark.asyncio
-    async def test_submit_with_account(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (
-            b"Submitted batch job 99999\n",
-            b"",
-        )
-        mock_proc.returncode = 0
+    status = await scheduler.status(handle.handle_id)
 
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc) as mock_shell:
-            result = await client.submit(
-                script="echo hello",
-                job_name="test_job",
-                partition="gpu",
-                account="myaccount",
-            )
+    assert status.state == "unknown"
+    assert status.scheduler_state == "UNKNOWN"
 
-        assert result["job_id"] == "99999"
-        assert result["status"] == "submitted"
 
-    @pytest.mark.asyncio
-    async def test_submit_failure(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b"", b"sbatch: error: invalid partition")
-        mock_proc.returncode = 1
-
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.submit(
-                script="echo hello",
-                job_name="test_job",
-                partition="nonexistent",
-            )
-
-        assert result["status"] == "error"
-        assert "sbatch failed" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_submit_failure_includes_partition_and_exit_code(self, client: SlurmClient) -> None:
-        """Error response must include partition name and exit code for diagnosis."""
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b"", b"sbatch: error: invalid partition specified: (null)")
-        mock_proc.returncode = 1
-
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.submit(
-                script="echo hello",
-                job_name="test_job",
-                partition="partA",
-            )
-
-        assert result["status"] == "error"
-        assert "exit=1" in result["message"]
-        assert "partition" in result  # partition key present for diagnosis
-
-    @pytest.mark.asyncio
-    async def test_submit_strips_partition_from_script_body(self, client: SlurmClient) -> None:
-        """LLM-generated #SBATCH --partition= in script body must be stripped.
-
-        The correct partition is set only via header_lines to avoid the bug
-        where _fix_partition wrote an empty partition when env vars were unset.
-        """
-        captured_script = None
-
-        async def mock_shell(cmd, **kwargs):
-            nonlocal captured_script
-            # cmd is "sbatch /tmp/xxx.sh" — read the temp file
-            import re
-            m = re.search(r"sbatch\s+(\S+)", cmd)
-            if m:
-                try:
-                    captured_script = open(m.group(1)).read()
-                except Exception:
-                    pass
-            mock = AsyncMock()
-            mock.communicate.return_value = (b"Submitted batch job 77777\n", b"")
-            mock.returncode = 0
-            return mock
-
-        script_with_partition = (
-            "#!/bin/bash\n"
-            "#SBATCH --partition=wrong_partition\n"
-            "#SBATCH --cpus-per-task=32\n"
-            "echo hello\n"
+def test_fixed_wrapper_marker_requires_shared_filesystem(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="requires a shared filesystem"):
+        SlurmScheduler(
+            runner=FakeRunner(),
+            ledger=SubmissionLedger(tmp_path / "state/jobs.json"),
+            shared_filesystem=False,
+            terminal_evidence_policy="fixed-wrapper-marker",
         )
 
-        # Mock sinfo to return empty so the real host's cluster doesn't pollute the test.
-        import subprocess as _sp
-        mock_sinfo = _sp.CompletedProcess(args=["sinfo"], returncode=0, stdout="", stderr="")
 
-        with patch("asyncio.create_subprocess_shell", side_effect=mock_shell), \
-             patch("subprocess.run", return_value=mock_sinfo), \
-             patch.dict("os.environ", {"SLURM_VALID_PARTITIONS": "", "SLURM_DEFAULT_PARTITION": ""}, clear=False):
-            result = await client.submit(
-                script=script_with_partition,
-                job_name="test_job",
-                partition="partA",
-            )
-
-        assert result["job_id"] == "77777"
-        # The final script must have exactly ONE --partition line, and it must be partA
-        if captured_script:
-            import re
-            partitions = re.findall(r"#SBATCH\s+--partition=(\S+)", captured_script)
-            assert len(partitions) == 1, f"Expected 1 partition directive, got {len(partitions)}: {partitions}"
-            assert partitions[0] == "partA", f"Expected partA, got {partitions[0]}"
-
-    @pytest.mark.asyncio
-    async def test_submit_no_empty_partition_when_env_unset(self, client: SlurmClient) -> None:
-        """Without SLURM_VALID_PARTITIONS / SLURM_DEFAULT_PARTITION, the kwarg
-        partition must be used as-is — never replaced with an empty string."""
-        captured_script = None
-
-        async def mock_shell(cmd, **kwargs):
-            nonlocal captured_script
-            import re
-            m = re.search(r"sbatch\s+(\S+)", cmd)
-            if m:
-                try:
-                    captured_script = open(m.group(1)).read()
-                except Exception:
-                    pass
-            mock = AsyncMock()
-            mock.communicate.return_value = (b"Submitted batch job 88888\n", b"")
-            mock.returncode = 0
-            return mock
-
-        # Mock sinfo to return empty so the real host's cluster doesn't pollute the test.
-        import subprocess as _sp
-        mock_sinfo = _sp.CompletedProcess(args=["sinfo"], returncode=0, stdout="", stderr="")
-
-        with patch("asyncio.create_subprocess_shell", side_effect=mock_shell), \
-             patch("subprocess.run", return_value=mock_sinfo), \
-             patch.dict("os.environ", {"SLURM_VALID_PARTITIONS": "", "SLURM_DEFAULT_PARTITION": ""}, clear=False):
-            result = await client.submit(
-                script="#!/bin/bash\n#SBATCH --partition=partA\necho hi",
-                job_name="test",
-                partition="partA",
-            )
-
-        assert result["status"] == "submitted"
-        if captured_script:
-            assert "#SBATCH --partition=\n" not in captured_script, \
-                "Script must NOT contain empty --partition= directive"
-            assert "#SBATCH --partition=partA" in captured_script
+@pytest.mark.asyncio
+async def test_cancel_rejects_job_id_injection_before_transport(tmp_path: Path) -> None:
+    runner = FakeRunner()
+    scheduler = _scheduler(tmp_path, runner)
+    with pytest.raises(SchedulerValidationError, match="invalid job handle"):
+        await scheduler.cancel("123; touch /tmp/pwn")
+    assert runner.calls == []
 
 
-class TestStatusLocal:
-    @pytest.mark.asyncio
-    async def test_status_running(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (
-            b"12345|RUNNING|0:0|2024-01-01T00:00:00|Unknown\n",
-            b"",
+@pytest.mark.asyncio
+async def test_output_cannot_escape_through_symlinked_parent(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    linked = tmp_path / "linked-output"
+    linked.symlink_to(outside, target_is_directory=True)
+    payload = _request(tmp_path).model_dump(mode="json")
+    payload["outputs"] = [
+        {
+            "logical_name": "escaped-output",
+            "path": str(linked / "result.json"),
+        }
+    ]
+    request = JobRequestV1.model_validate(payload)
+    runner = FakeRunner()
+    scheduler = _scheduler(tmp_path, runner)
+    with pytest.raises(SchedulerValidationError, match="parent is missing or unsafe"):
+        await scheduler.submit(request)
+    assert runner.calls == []
+
+
+@pytest.mark.asyncio
+async def test_terminal_result_rehashes_outputs_logs_and_provenance(
+    tmp_path: Path,
+) -> None:
+    runner = FakeRunner(
+        CommandResult("7001", "", 0),
+        CommandResult(
+            "7001|COMPLETED|0:0|2026-08-02T01:00:00|2026-08-02T01:02:00|None",
+            "",
+            0,
+        ),
+    )
+    scheduler = _scheduler(tmp_path, runner)
+    request = _request(tmp_path, modules=("openroad/2.0",))
+    handle = await scheduler.submit(request)
+    Path(request.outputs[0].path).write_text('{"wns": 0.1}\n', encoding="utf-8")
+    scope = Path(handle.artifact_scope)
+    (scope / "slurm-7001.out").write_text("flow complete\n", encoding="utf-8")
+    (scope / "slurm-7001.err").write_text("", encoding="utf-8")
+    (scope / "module-list.txt").write_text("openroad/2.0\n", encoding="utf-8")
+    (scope / "exit-code.txt").write_text("0\n", encoding="utf-8")
+
+    result = await scheduler.result(handle.handle_id)
+
+    assert result.status.state == "succeeded"
+    assert result.error is None
+    assert result.outputs[0].digest == file_digest(Path(request.outputs[0].path))
+    assert result.module_snapshot_digest == file_digest(scope / "module-list.txt")
+    assert {item.logical_name for item in result.provenance} == {
+        "submission-record",
+        "module-snapshot",
+        "exit-code",
+    }
+    assert result.logs[0].digest == file_digest(scope / "slurm-7001.out")
+    payload = result.model_dump(mode="json")
+    declared = payload.pop("result_digest")
+    assert declared == sha256_digest(payload)
+    assert (scope / "result-v1.json").is_file()
+
+
+@pytest.mark.asyncio
+async def test_result_detects_input_drift(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        CommandResult("8001", "", 0),
+        CommandResult(
+            "8001|COMPLETED|0:0|2026-08-02T01:00:00|2026-08-02T01:02:00|None",
+            "",
+            0,
+        ),
+    )
+    scheduler = _scheduler(tmp_path, runner)
+    request = _request(tmp_path)
+    handle = await scheduler.submit(request)
+    Path(request.inputs[0].path).write_text("mutated\n", encoding="utf-8")
+    Path(request.outputs[0].path).write_text("{}\n", encoding="utf-8")
+    result = await scheduler.result(handle.handle_id)
+    assert result.error is not None
+    assert result.error.kind == "artifact"
+    assert "drift" in result.error.message
+
+
+@pytest.mark.asyncio
+async def test_script_bridge_cannot_override_generated_directives(tmp_path: Path) -> None:
+    runner = FakeRunner(CommandResult("9001", "", 0))
+    scheduler = _scheduler(tmp_path, runner)
+    handle = await scheduler.submit_script_bridge(
+        script="#SBATCH --partition=wrong\necho explicit-compute-body",
+        job_name="bridge-job",
+        partition="right",
+        work_dir=str(tmp_path),
+    )
+    assert handle.job_id == "9001"
+    script = runner.calls[0][1].decode()
+    assert script.index("set -euo pipefail") < script.index("#SBATCH --partition=wrong")
+    assert script.count("#SBATCH --partition=right") == 1
+    assert "--export=NIL" in script
+    assert "ARI_ENV_FILE" not in script
+
+
+@pytest.mark.asyncio
+async def test_local_runner_uses_exec_with_minimal_environment() -> None:
+    process = AsyncMock()
+    process.communicate.return_value = (b"123\n", b"")
+    process.returncode = 0
+    with patch(
+        "asyncio.create_subprocess_exec", return_value=process
+    ) as create_process:
+        result = await LocalCommandRunner().run(
+            ["sbatch", "--parsable"], stdin=b"#!/bin/bash\n"
         )
-        mock_proc.returncode = 0
-
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.status("12345")
-
-        assert result["job_id"] == "12345"
-        assert result["status"] == "RUNNING"
-        assert result["exit_code"] == 0
-        assert result["start_time"] == "2024-01-01T00:00:00"
-        assert result["end_time"] is None
-
-    @pytest.mark.asyncio
-    async def test_status_completed_with_output(self, client: SlurmClient) -> None:
-        call_count = 0
-
-        async def mock_shell(cmd, **kwargs):
-            nonlocal call_count
-            mock = AsyncMock()
-            if "sacct" in cmd:
-                mock.communicate.return_value = (
-                    b"12345|COMPLETED|0:0|2024-01-01T00:00:00|2024-01-01T01:00:00\n",
-                    b"",
-                )
-                mock.returncode = 0
-            elif "slurm-12345.out" in cmd:
-                mock.communicate.return_value = (b"job output here", b"")
-                mock.returncode = 0
-            elif "slurm-12345.err" in cmd:
-                mock.communicate.return_value = (b"", b"")
-                mock.returncode = 1  # no stderr file
-            else:
-                mock.communicate.return_value = (b"", b"")
-                mock.returncode = 0
-            return mock
-
-        with patch("asyncio.create_subprocess_shell", side_effect=mock_shell):
-            result = await client.status("12345")
-
-        assert result["status"] == "COMPLETED"
-        assert result["exit_code"] == 0
-        assert result["stdout"] == "job output here"
-
-    @pytest.mark.asyncio
-    async def test_status_fallback_to_squeue(self, client: SlurmClient) -> None:
-        call_count = 0
-
-        async def mock_shell(cmd, **kwargs):
-            nonlocal call_count
-            mock = AsyncMock()
-            if "sacct" in cmd:
-                mock.communicate.return_value = (b"", b"")
-                mock.returncode = 1
-            elif "squeue" in cmd:
-                mock.communicate.return_value = (b"PENDING\n", b"")
-                mock.returncode = 0
-            else:
-                mock.communicate.return_value = (b"", b"")
-                mock.returncode = 0
-            return mock
-
-        with patch("asyncio.create_subprocess_shell", side_effect=mock_shell):
-            result = await client.status("12345")
-
-        assert result["status"] == "PENDING"
+    assert result.stdout == "123"
+    args, kwargs = create_process.call_args
+    assert args == ("sbatch", "--parsable")
+    assert kwargs["env"] == {
+        "PATH": "/usr/local/bin:/usr/bin:/bin",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+    }
+    process.communicate.assert_awaited_once_with(input=b"#!/bin/bash\n")
 
 
-class TestCancelLocal:
-    @pytest.mark.asyncio
-    async def test_cancel_success(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b"", b"")
-        mock_proc.returncode = 0
-
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.cancel("12345")
-
-        assert result["success"] is True
-        assert "12345" in result["message"]
-
-    @pytest.mark.asyncio
-    async def test_cancel_failure(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (
-            b"",
-            b"scancel: error: Invalid job id 99999",
-        )
-        mock_proc.returncode = 1
-
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.cancel("99999")
-
-        assert result["success"] is False
-        assert "scancel failed" in result["message"]
+@pytest.mark.asyncio
+async def test_local_runner_reaps_timed_out_control_process() -> None:
+    process = AsyncMock()
+    process.communicate.side_effect = TimeoutError
+    process.returncode = None
+    process.kill = MagicMock()
+    process.wait = AsyncMock()
+    with patch("asyncio.create_subprocess_exec", return_value=process):
+        with pytest.raises(SchedulerTransportError, match="timed out"):
+            await LocalCommandRunner(command_timeout=0.01).run(["sacct", "-j", "1"])
+    process.kill.assert_called_once()
+    process.wait.assert_awaited_once()
 
 
-class TestGetOutputLocal:
-    @pytest.mark.asyncio
-    async def test_get_stdout(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b"hello world\n", b"")
-        mock_proc.returncode = 0
+@pytest.mark.asyncio
+async def test_local_runner_reports_missing_scheduler_without_shell_fallback() -> None:
+    with patch("asyncio.create_subprocess_exec", side_effect=FileNotFoundError):
+        with pytest.raises(SchedulerTransportError, match="unavailable"):
+            await LocalCommandRunner().run(["sbatch", "--parsable"])
 
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.get_stdout("12345")
 
-        assert result == "hello world"
-
-    @pytest.mark.asyncio
-    async def test_get_stdout_no_file(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b"", b"cat: no such file")
-        mock_proc.returncode = 1
-
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.get_stdout("12345")
-
-        assert result is None
-
-    @pytest.mark.asyncio
-    async def test_get_stderr(self, client: SlurmClient) -> None:
-        mock_proc = AsyncMock()
-        mock_proc.communicate.return_value = (b"error output", b"")
-        mock_proc.returncode = 0
-
-        with patch("asyncio.create_subprocess_shell", return_value=mock_proc):
-            result = await client.get_stderr("12345")
-
-        assert result == "error output"
+def test_submission_script_changes_when_argv_changes(tmp_path: Path) -> None:
+    request = _request(tmp_path)
+    runner = FakeRunner()
+    scheduler = _scheduler(tmp_path, runner)
+    scope = scheduler._ensure_artifact_scope(str(tmp_path), request.request_digest)
+    first = scheduler._render_script(request, scope)
+    changed = request.model_copy(update={"argv": ("python3", "different.py")})
+    second = scheduler._render_script(changed, scope)
+    assert sha256_digest(first) != sha256_digest(second)

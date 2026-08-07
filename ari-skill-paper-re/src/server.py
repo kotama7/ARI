@@ -20,26 +20,65 @@ The legacy LLM-driven metric-verdict tools (``extract_repro_config``,
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import shutil
+import statistics
 import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
+
+from ari.public import cost_tracker as _ari_cost_tracker
+from ari.public.clone import CloneError, clone
+from ari_skill_hpc import (
+    EnvironmentPolicyV1,
+    LocalCommandRunner,
+    ResourceRequestV1,
+    SchedulerError,
+    SlurmScheduler,
+    SubmissionLedger,
+    handoff_execution_to_slurm,
+)
+from rubric_contract import (
+    RubricContractError,
+    load_rubric,
+    to_paperbench_format,
+)
+from contracts import (
+    FailureEvidenceV1,
+    GradeReportV1,
+    JudgeIdentityV1,
+    LeafGradeEvidenceV1,
+    NegativeControlV1,
+    ReproductionContractError,
+    artifact_from_path,
+    bytes_digest,
+    canonical_digest,
+)
+from sandbox import (
+    begin_attempt,
+    execute_container_attempt,
+    execute_local_attempt,
+    execution_request,
+    finalize_attempt,
+    load_run,
+    prepare_reproduction,
+    publish_latest_pointer,
+    resolve_latest_run,
+    tree_manifest,
+)
 
 log = logging.getLogger(__name__)
 
 mcp = FastMCP("paper-reproducibility-skill")
 
 try:
-    try:
-        from ari.public import cost_tracker as _ari_cost_tracker  # type: ignore
-    except ImportError:
-        from ari import cost_tracker as _ari_cost_tracker  # type: ignore
     _ari_cost_tracker.bootstrap_skill("paper-re")
 except Exception:
     pass
@@ -74,6 +113,32 @@ def _load_paper_text(paper_path: str, paper_text: str) -> str:
 # Used by the reproducibility pipeline as a `pre_tool` to populate the
 # sandbox before Phase 1 runs. The agent never has to clone — the working
 # tree is already there. This is defense-in-depth on top of the git shim.
+
+
+def _safe_bundle_destination(dest: str, checkpoint_dir: str) -> Path:
+    """Resolve a bundle destination and reject broad/symlinked targets."""
+
+    raw = Path(dest).expanduser()
+    absolute = raw if raw.is_absolute() else Path.cwd() / raw
+    current = Path(absolute.anchor)
+    for part in absolute.parts[1:]:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(f"bundle destination crosses a symlink: {current}")
+    resolved = absolute.resolve(strict=False)
+    repository_root = Path(__file__).resolve().parents[2]
+    protected = {
+        Path(absolute.anchor).resolve(),
+        Path.home().resolve(),
+        Path.cwd().resolve(),
+        repository_root,
+        Path(__file__).resolve().parents[1],
+    }
+    if checkpoint_dir:
+        protected.add(Path(checkpoint_dir).expanduser().resolve(strict=False))
+    if resolved in protected or len(resolved.parts) < 3:
+        raise ValueError(f"refusing broad bundle destination: {resolved}")
+    return resolved
 
 
 @mcp.tool()
@@ -120,7 +185,10 @@ async def fetch_code_bundle(
     if not dest:
         return {"populated": False, "skipped_reason": "no dest"}
 
-    dest_path = Path(dest)
+    try:
+        dest_path = _safe_bundle_destination(dest, checkpoint_dir)
+    except (OSError, ValueError) as exc:
+        return {"populated": False, "error": str(exc)}
     if (dest_path / "reproduce.sh").is_file() and not overwrite:
         return {
             "populated": False,
@@ -142,10 +210,6 @@ async def fetch_code_bundle(
                 "dest": str(dest_path),
             }
 
-    try:
-        from ari.clone import clone, CloneError
-    except Exception as e:
-        return {"populated": False, "error": f"ari.clone not importable: {e}"}
     try:
         result = clone(ref, dest=dest_path, expect_sha256=sha256 or None)
     except CloneError as e:
@@ -186,7 +250,6 @@ async def build_reproduce_sh(
     max_steps: int = 0,
     sandbox_kind: str = "auto",
     container_image: str = "",
-    apptainer_image: str = "",
     overwrite: bool = False,
 ) -> dict:
     """Replicator: drive a PaperBench-style ReAct agent against the workspace.
@@ -212,14 +275,9 @@ async def build_reproduce_sh(
         sandbox_kind: ``auto`` | ``local`` | ``apptainer`` | ``slurm``;
             see :func:`_compute.make_computer`.
         container_image: container image used by the agent rollout. For
-            ``sandbox_kind=apptainer`` this is the SIF path or
-            ``docker://...`` URI. For ``local`` / ``slurm`` the value is
-            ignored (the agent runs on the host filesystem). When empty,
-            the legacy ``apptainer_image`` arg is consulted, then
-            env ``ARI_PHASE1_APPTAINER_IMAGE`` /
-            ``ARI_PHASE1_SINGULARITY_IMAGE``.
-        apptainer_image: deprecated alias of ``container_image``; kept for
-            back-compat with workflow YAMLs that still set it.
+            ``sandbox_kind=apptainer`` this is an immutable local SIF or a
+            digest-pinned remote URI. For ``local`` / ``slurm`` the value is
+            ignored. When empty, ``ARI_PHASE1_APPTAINER_IMAGE`` is consulted.
         overwrite: when False (default) and ``output_dir/reproduce.sh`` is
             already present, no rollout is performed — returns
             ``populated=False, skipped_reason=...``.
@@ -231,6 +289,29 @@ async def build_reproduce_sh(
         return {"populated": False, "error": "output_dir is required"}
 
     out = Path(output_dir)
+    text = _load_paper_text(paper_path, paper_text)
+    if not text:
+        return {"populated": False, "error": "No paper text provided"}
+
+    expected_artifacts: list[str] = []
+    execution_profile: dict = {}
+    rubric_schema_version = ""
+    rubric_migration_required = False
+    if rubric_path:
+        try:
+            loaded_rubric = load_rubric(rubric_path, paper_text=text)
+            rubric = loaded_rubric.document
+            rc = rubric.get("reproduce_contract") or {}
+            expected_artifacts = list(rc.get("expected_artifacts") or [])
+            execution_profile = dict(rc.get("execution_profile") or {})
+            rubric_schema_version = loaded_rubric.schema_version
+            rubric_migration_required = loaded_rubric.migration_required
+        except RubricContractError as exc:
+            return {
+                "populated": False,
+                "error": f"rubric contract rejected: {exc}",
+            }
+
     if (out / "reproduce.sh").is_file() and not overwrite:
         return {
             "populated": False,
@@ -239,22 +320,9 @@ async def build_reproduce_sh(
                 f"pass overwrite=True to regenerate"
             ),
             "output_dir": str(out),
+            "rubric_schema_version": rubric_schema_version or None,
+            "rubric_migration_required": rubric_migration_required,
         }
-
-    text = _load_paper_text(paper_path, paper_text)
-    if not text:
-        return {"populated": False, "error": "No paper text provided"}
-
-    expected_artifacts: list[str] = []
-    execution_profile: dict = {}
-    if rubric_path:
-        try:
-            rubric = json.loads(Path(rubric_path).read_text())
-            rc = rubric.get("reproduce_contract") or {}
-            expected_artifacts = list(rc.get("expected_artifacts") or [])
-            execution_profile = dict(rc.get("execution_profile") or {})
-        except Exception as e:
-            log.warning("build_reproduce_sh: cannot read rubric %s: %s", rubric_path, e)
 
     out.mkdir(parents=True, exist_ok=True)
     paper_md = out / "_input_paper.md"
@@ -310,13 +378,29 @@ async def build_reproduce_sh(
         from _litellm_completer import get_litellm_basicagent_completer_config
         completer_config = get_litellm_basicagent_completer_config()(
             model=chosen_model,
+            api_base=os.environ.get("ARI_LLM_API_BASE") or None,
+            # LiteLLM's static provider table does not know shim-local model
+            # aliases such as ``openai/codex-cli:gpt-*`` and otherwise drops
+            # ``tool_choice`` as unsupported.  Explicitly allow the standard
+            # OpenAI parameter for OpenAI-routed aliases so required really
+            # reaches the CLI shim.
+            extra_kwargs=(
+                {"allowed_openai_params": ["tool_choice"]}
+                if chosen_model.startswith("openai/")
+                else None
+            ),
+            # BasicAgent completes by calling ``submit``; every preceding turn
+            # must likewise select one of its caller-owned bash/python/file
+            # tools.  Required tool choice prevents a prose-only response from
+            # consuming a ReAct step without changing the reproduction bundle.
+            tool_choice="required",
         )
 
-    # container_image (wizard) takes precedence over the deprecated
-    # apptainer_image alias.
-    resolved_image = container_image or apptainer_image or ""
+    resolved_image = container_image or os.environ.get(
+        "ARI_PHASE1_APPTAINER_IMAGE", ""
+    )
 
-    return await run_replicator_agent(
+    result = await run_replicator_agent(
         paper_md_path=str(paper_md),
         output_dir=str(out),
         expected_artifacts=expected_artifacts,
@@ -326,15 +410,18 @@ async def build_reproduce_sh(
         max_steps=int(max_steps) or None,
         completer_config=completer_config,
         sandbox_kind=sandbox_kind,
-        apptainer_image=resolved_image or None,
+        container_image=resolved_image or None,
     )
+    result["rubric_schema_version"] = rubric_schema_version or None
+    result["rubric_migration_required"] = rubric_migration_required
+    return result
 
 
 # ─── Phase 1 / Phase 2 (PaperBench-format) ─────────────────────────────
 
 
 def _has_bin(name: str) -> bool:
-    return subprocess.run(["which", name], capture_output=True).returncode == 0
+    return shutil.which(name) is not None
 
 
 def _docker_works() -> bool:
@@ -363,7 +450,7 @@ def _phase1_sandbox_kind(default: str = "auto") -> str:
     ``auto`` priority:
         1. ``slurm`` — when sbatch is available AND ARI_SLURM_PARTITION is
            set. The reproduce.sh from BFTS was almost certainly compiled with
-           ``-march=native`` on a partition CPU (e.g. AVX-512 on sx40), so
+           ``-march=native`` on a partition CPU (e.g. AVX-512 on a private node), so
            re-running on the login node usually fails. Submit back to the
            same partition.
         2. ``docker`` — when daemon is usable AND we're not inside SLURM.
@@ -411,106 +498,6 @@ def _read_log_tail(p: Path, max_bytes: int = 200_000) -> str:
     return data[-max_bytes:].decode("utf-8", errors="replace")
 
 
-def _run_reproduce_local(repo_dir: Path, log_path: Path, timeout: int) -> dict:
-    """Execute reproduce.sh in-place (no sandbox). Used as a fallback."""
-    script = repo_dir / "reproduce.sh"
-    if not script.is_file():
-        return {"executed": False, "exit_code": None, "error": "reproduce.sh missing"}
-    try:
-        script.chmod(script.stat().st_mode | 0o111)
-    except Exception:
-        pass
-    start = time.time()
-    with log_path.open("wb") as logf:
-        try:
-            proc = subprocess.run(
-                ["bash", str(script)],
-                cwd=str(repo_dir),
-                stdout=logf,
-                stderr=subprocess.STDOUT,
-                timeout=timeout,
-                check=False,
-            )
-            return {
-                "executed": True,
-                "exit_code": int(proc.returncode),
-                "elapsed_sec": round(time.time() - start, 2),
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "executed": True,
-                "exit_code": None,
-                "timed_out": True,
-                "elapsed_sec": round(time.time() - start, 2),
-            }
-
-
-def _run_reproduce_apptainer(
-    repo_dir: Path, log_path: Path, timeout: int, *,
-    runner: str = "apptainer", image: str = "",
-) -> dict:
-    """Execute reproduce.sh in an Apptainer/Singularity container.
-
-    Image resolution (priority order):
-      1. Explicit ``image`` arg (wizard ``container_image`` field).
-      2. ``ARI_PHASE1_APPTAINER_IMAGE`` / ``ARI_PHASE1_SINGULARITY_IMAGE``
-         (file:// path or library://, docker://, shub:// URI accepted by
-         ``apptainer exec``).
-      3. Default: ``docker://ubuntu:24.04`` — Apptainer/Singularity can pull
-         and execute a docker image directly without a Docker daemon.
-
-    Falls back to local if the binary is missing.
-    """
-    if not _has_bin(runner):
-        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
-            log.warning(
-                "%s not on PATH; ARI_PHASE1_ALLOW_FALLBACK=1 → falling back "
-                "to local reproduce",
-                runner,
-            )
-            return _run_reproduce_local(repo_dir, log_path, timeout)
-        raise RuntimeError(
-            f"sandbox_kind={runner!r} requested but {runner!r} is not on "
-            f"PATH. Refusing to silently fall back to local host execution. "
-            f"Either install {runner}, pick a different sandbox_kind, or "
-            f"set ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
-            f"silent-fallback behaviour."
-        )
-    image = (
-        image
-        or os.environ.get("ARI_PHASE1_APPTAINER_IMAGE")
-        or os.environ.get("ARI_PHASE1_SINGULARITY_IMAGE")
-        or "docker://ubuntu:24.04"
-    )
-    cmd = [
-        runner, "exec",
-        "--bind", f"{repo_dir}:{repo_dir}",
-        "--pwd", str(repo_dir),
-        "--no-home",
-        image,
-        "bash", "-c", "chmod +x reproduce.sh && ./reproduce.sh",
-    ]
-    start = time.time()
-    with log_path.open("wb") as logf:
-        try:
-            proc = subprocess.run(
-                cmd, stdout=logf, stderr=subprocess.STDOUT,
-                timeout=timeout, check=False,
-            )
-            return {
-                "executed": True,
-                "exit_code": int(proc.returncode),
-                "elapsed_sec": round(time.time() - start, 2),
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "executed": True,
-                "exit_code": None,
-                "timed_out": True,
-                "elapsed_sec": round(time.time() - start, 2),
-            }
-
-
 def _resolve_partition(partition: str = "") -> str:
     """Resolve target SLURM partition. Priority: explicit arg → env →
     launch_config.json (sibling of repo_dir's checkpoint dir, looked up by
@@ -550,99 +537,66 @@ def _walltime_str(timeout_sec: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-_SHARED_FS_PREFIXES = ("/work", "/scratch", "/lustre", "/home", "/nfs", "/data")
+_TERMINAL_JOB_STATES = {"succeeded", "failed", "cancelled"}
+_DEPRECATED_SBATCH_FIELDS = {
+    "--account=": "account",
+    "--qos=": "qos",
+    "--reservation=": "reservation",
+    "--hint=": "hint",
+}
 
 
-def _is_shared_fs(path: Path) -> bool:
-    """Heuristic: True iff ``path`` looks like it lives on a shared FS.
-
-    Compute nodes mount different node-local roots than the submit node, so
-    paths under ``/tmp``, ``/var/tmp``, or a per-node ``/local`` will be
-    invisible to the job. This is a best-effort check (no NFS probe) —
-    callers should only treat False as a warning, not a hard error.
-    """
-    try:
-        resolved = path.resolve()
-    except OSError:
-        return False
-    home = Path.home().resolve()
-    try:
-        if resolved.is_relative_to(home):
-            return True
-    except (AttributeError, ValueError):
-        # is_relative_to is 3.9+; fall through to the prefix scan
-        pass
-    s = str(resolved)
-    return any(s == p or s.startswith(p + "/") for p in _SHARED_FS_PREFIXES)
-
-
-def _slurm_has_gres() -> bool:
-    """True iff ``sinfo`` reports at least one configured GRES.
-
-    Clusters without GRES configured will REJECT every GPU-related sbatch
-    flag (``--gres=...``, ``--gpus-per-task``, ``--gpus-per-node``) with
-    ``Invalid generic resource (gres) specification``. We gate ALL of
-    them on this probe so a rubric that requests GPU resources can still
-    launch (the agent prompt's CLUSTER SHAPE still tells the agent which
-    physical GPUs are visible via nvidia-smi).
-    """
-    if not _has_bin("sinfo"):
-        return False
-    try:
-        r = subprocess.run(
-            ["sinfo", "-h", "-o", "%G"],
-            capture_output=True, text=True, timeout=5,
-        )
-    except subprocess.SubprocessError:
-        return False
-    out = (r.stdout or "").strip()
-    if not out:
-        return False
-    # "(null)" is sinfo's marker for "no GRES" on a partition.
-    for line in out.splitlines():
-        v = line.strip()
-        if v and v != "(null)":
-            return True
-    return False
-
-
-# Cache the help-probe result — sbatch's flag set doesn't change across a
-# server lifetime.
-_SBATCH_HELP_CACHE: str | None = None
-
-
-def _sbatch_supports(flag: str) -> bool:
-    """True iff the local ``sbatch`` accepts the given long flag.
-
-    ``--cpu-bind`` / ``--mem-bind`` are documented as ``srun``-only on
-    many SLURM versions; passing them to ``sbatch`` produces
-    ``unrecognized option '--cpu-bind=cores'``. We probe ``sbatch --help``
-    once per process and silently drop unsupported flags (a warning is
-    logged so operators can route them via ``extra_sbatch_args`` or
-    bake them into ``reproduce.sh`` as ``srun --cpu-bind=...`` calls
-    instead).
-    """
-    global _SBATCH_HELP_CACHE
-    if _SBATCH_HELP_CACHE is None:
-        if not _has_bin("sbatch"):
-            _SBATCH_HELP_CACHE = ""
-            return False
-        try:
-            r = subprocess.run(
-                ["sbatch", "--help"],
-                capture_output=True, text=True, timeout=5,
+def _parse_deprecated_sbatch_args(arguments: list[str] | None) -> dict[str, str]:
+    """Translate the former arbitrary flag escape hatch into typed fields."""
+    translated: dict[str, str] = {}
+    for argument in arguments or ():
+        if not isinstance(argument, str):
+            raise ValueError("extra_sbatch_args entries must be strings")
+        for prefix, field in _DEPRECATED_SBATCH_FIELDS.items():
+            if argument.startswith(prefix):
+                value = argument.removeprefix(prefix)
+                if not value or field in translated:
+                    raise ValueError(f"invalid or duplicate deprecated {prefix} value")
+                translated[field] = value
+                break
+        else:
+            raise ValueError(
+                f"unsupported extra_sbatch_args entry {argument!r}; use a typed "
+                "scheduler resource field"
             )
-            _SBATCH_HELP_CACHE = (r.stdout or "") + (r.stderr or "")
-        except (subprocess.SubprocessError, OSError):
-            _SBATCH_HELP_CACHE = ""
-            return False
-    return flag in _SBATCH_HELP_CACHE
+    return translated
 
 
-def _run_reproduce_slurm(
-    repo_dir: Path,
+def _paper_re_scheduler(repo_dir: Path) -> SlurmScheduler:
+    """Construct the local canonical scheduler used by paper reproduction."""
+    scheduler_path = os.environ.get(
+        "ARI_SCHEDULER_PATH", "/usr/local/bin:/usr/bin:/bin"
+    )
+    EnvironmentPolicyV1(path=scheduler_path)
+    return SlurmScheduler(
+        runner=LocalCommandRunner(scheduler_path=scheduler_path),
+        ledger=SubmissionLedger(
+            repo_dir.parent / ".ari-hpc" / "paper-re-jobs-v1.json"
+        ),
+    )
+
+
+def _materialize_scheduler_log(log_path: Path, job_logs: tuple) -> None:
+    """Atomically publish verified scheduler stdout/stderr for judging."""
+    text = "".join(
+        item.text or ""
+        for item in job_logs
+        if item.stream in {"stdout", "stderr"}
+    )
+    temporary = log_path.parent / f".{log_path.name}.tmp"
+    temporary.write_text(text, encoding="utf-8")
+    temporary.chmod(0o600)
+    os.replace(temporary, log_path)
+
+
+async def _execute_reproduction_slurm(
+    common_request,
     log_path: Path,
-    timeout: int,
     *,
     partition: str = "",
     cpus: int = 0,
@@ -662,331 +616,271 @@ def _run_reproduce_slurm(
     cpu_bind: str = "",
     mem_bind: str = "",
     hint: str = "",
+    account: str = "",
+    qos: str = "",
+    reservation: str = "",
+    module_loads: tuple[str, ...] = (),
     extra_sbatch_args: list[str] | None = None,
+    network_isolation_attested: bool = False,
 ) -> dict:
-    """Submit reproduce.sh to SLURM with ``sbatch --wait`` and capture output.
-
-    Restored from the v0.5.0 ``Executor`` abstraction that the §4.1 rewrite
-    accidentally dropped. Same place the BFTS executor sends jobs to —
-    closes the loop "BFTS ran on sx40 → reproduction also runs on sx40 →
-    AVX-512 etc. work because the build is on the same hardware".
-
-    v0.7.2 extends the previous 4-flag ``sbatch`` invocation to 15 + escape
-    hatch flags covering multi-node placement, exclusivity, GPU type, memory,
-    HW constraints, and NUMA bindings. All new args default to ``0 / "" /
-    False / None`` so legacy single-node call sites are byte-identical.
-
-    Runtime checks:
-      * ``_is_shared_fs(repo_dir)`` — warns when ``repo_dir`` looks node-
-        local (sbatch will fail under multi-node otherwise).
-      * ``_slurm_has_gres()`` — when ``gpu_type`` is requested but the
-        cluster has no GRES configured, ``--gres=gpu:...`` is dropped (but
-        ``--gpus-per-task`` is retained) so the submission is not rejected.
-
-    Falls back to ``_run_reproduce_local`` when sbatch is missing or no
-    partition can be resolved.
-    """
+    """Handoff a common execution request to the typed SLURM lifecycle."""
+    repo_dir = Path(common_request.workspace.root)
+    timeout = int(common_request.timeout_seconds)
     if not _has_bin("sbatch"):
-        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
-            log.warning(
-                "sbatch not on PATH; ARI_PHASE1_ALLOW_FALLBACK=1 → falling "
-                "back to local reproduce"
-            )
-            return _run_reproduce_local(repo_dir, log_path, timeout)
         raise RuntimeError(
-            "sandbox_kind=slurm requested but `sbatch` is not on PATH. "
-            "Refusing to silently fall back to local host execution. "
-            "Either install SLURM tooling, pick a different sandbox_kind, "
-            "or set ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
-            "silent-fallback behaviour."
+            "sandbox_kind=slurm requested but sbatch is not on PATH. "
+            "Refusing to silently fall back to local execution."
         )
+
     resolved_partition = _resolve_partition_for_repo(repo_dir, partition)
     if not resolved_partition:
-        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
-            log.warning(
-                "SLURM dispatch requested but no partition resolved "
-                "(arg/env/launch_config.json all empty); "
-                "ARI_PHASE1_ALLOW_FALLBACK=1 → falling back to local"
-            )
-            return _run_reproduce_local(repo_dir, log_path, timeout)
         raise RuntimeError(
-            "sandbox_kind=slurm requested but no partition could be "
-            "resolved (caller arg, ARI_SLURM_PARTITION env, and "
-            "launch_config.json all empty). Refusing to silently fall back "
-            "to local host execution. Provide a partition via the wizard / "
-            "ARI_SLURM_PARTITION / launch_config.json, or set "
-            "ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
-            "silent-fallback behaviour."
+            "sandbox_kind=slurm requested but no partition could be resolved"
         )
 
     script = repo_dir / "reproduce.sh"
     if not script.is_file():
         return {"executed": False, "exit_code": None, "error": "reproduce.sh missing"}
-    try:
-        script.chmod(script.stat().st_mode | 0o111)
-    except Exception:
-        pass
-
-    if not _is_shared_fs(repo_dir):
-        log.warning(
-            "repo_dir=%s appears node-local; sbatch will fail on multi-node "
-            "or when submit and compute nodes differ. Move to $HOME or a "
-            "shared mount (/work, /scratch, /lustre, /nfs).",
-            repo_dir,
+    if cpu_bind or mem_bind:
+        raise ValueError(
+            "cpu_bind and mem_bind are srun job-step settings; place them "
+            "explicitly in reproduce.sh"
         )
 
-    # Gate every GPU-related flag on cluster GRES configuration. Some sites
-    # (e.g. the sx40 sandbox partition) expose GPUs without configuring
-    # GRES; in that case sbatch rejects ANY ``--gres`` / ``--gpus-*`` flag
-    # with ``Invalid generic resource (gres) specification``.
-    #
-    # Default: fail loud. The user asked for GPUs; silently downgrading to
-    # CPU after a 36 h queue wait is far worse than failing fast at submit.
-    # The legacy silent-drop behaviour is opt-in via
-    # ``ARI_SLURM_ALLOW_NO_GRES=1`` for sites where the operator knows the
-    # partition has physical GPUs visible at runtime without GRES.
-    effective_gpu_type = gpu_type
-    effective_gpus_per_task = int(gpus_per_task or 0)
-    effective_gpus_per_node = int(gpus_per_node or 0)
-    if (gpu_type or effective_gpus_per_task or effective_gpus_per_node) and not _slurm_has_gres():
-        if os.environ.get("ARI_SLURM_ALLOW_NO_GRES", "") == "1":
-            log.warning(
-                "GPU resources requested (gpu_type=%r, gpus_per_task=%d, "
-                "gpus_per_node=%d) but cluster has no GRES configured; "
-                "ARI_SLURM_ALLOW_NO_GRES=1 → dropping --gres / --gpus-* flags "
-                "(physical GPU may still be visible via nvidia-smi at runtime).",
-                gpu_type, effective_gpus_per_task, effective_gpus_per_node,
-            )
-            effective_gpu_type = ""
-            effective_gpus_per_task = 0
-            effective_gpus_per_node = 0
-        else:
-            raise RuntimeError(
-                f"GPU resources requested "
-                f"(gpu_type={gpu_type!r}, gpus_per_task={effective_gpus_per_task}, "
-                f"gpus_per_node={effective_gpus_per_node}) but this cluster has "
-                f"no GRES configured — sbatch would reject any --gres / --gpus-* "
-                f"flag. Refusing to silently drop GPU flags and run on CPU. "
-                f"Set ARI_SLURM_ALLOW_NO_GRES=1 to opt in to the legacy "
-                f"silent-drop behaviour (only when you know the partition "
-                f"exposes physical GPUs without GRES)."
-            )
-
-    n_cpus = int(cpus) if cpus and int(cpus) > 0 else int(os.environ.get("ARI_SLURM_CPUS", "8"))
-    wt = walltime or os.environ.get("ARI_SLURM_WALLTIME", "") or _walltime_str(timeout)
-
-    # sbatch copies the submitted script to its spool dir and runs it from
-    # there, so ``$0`` inside the script resolves to the spool copy path.
-    # ``reproduce.sh`` typically uses ``cd "$(dirname "$0")/code"`` which
-    # would break under spool-relocation. Submit a tiny wrapper next to
-    # reproduce.sh that invokes it by ABSOLUTE path; ``$0`` inside
-    # reproduce.sh then resolves correctly to ``{repo_dir}/reproduce.sh``.
-    import shlex
-    wrapper = repo_dir / ".slurm_wrap.sh"
-    wrapper.write_text(
-        "#!/usr/bin/env bash\n"
-        f"exec bash {shlex.quote(str(script))}\n"
-    )
-    wrapper.chmod(0o755)
-
-    # ``sbatch --wait`` blocks until the job terminates, then exits with the
-    # job's exit code. ``--output`` writes both stdout AND stderr to the same
-    # file the local runner uses (job-internal).
-    cmd = [
-        "sbatch", "--wait",
-        "--partition", resolved_partition,
-        "--cpus-per-task", str(n_cpus),
-        "--time", wt,
-        "--job-name", "ari-ors",
-        "--chdir", str(repo_dir),
-        "--output", str(log_path),
-        "--export", "ALL",
-    ]
-    # ── 配置・並列度 ──
-    if nodes and int(nodes) > 0:
-        cmd += ["--nodes", str(int(nodes))]
-    if ntasks and int(ntasks) > 0:
-        cmd += ["--ntasks", str(int(ntasks))]
-    if ntasks_per_node and int(ntasks_per_node) > 0:
-        cmd += ["--ntasks-per-node", str(int(ntasks_per_node))]
-    if nodelist:
-        cmd += ["--nodelist", nodelist]
-    if exclude_nodes:
-        cmd += ["--exclude", exclude_nodes]
-    # ── 排他性 ──
-    if exclusive:
-        cmd.append("--exclusive")
-    # ── GPU ── (post-GRES-gating)
-    # SLURM requires --gpus-per-task be paired with --ntasks or --gpus
-    # (per `sbatch: error: --gpus-per-task or --tres-per-task used without
-    # either --gpus or -n/--ntasks is not allowed`). When the caller
-    # supplied only --gpus-per-task with no --ntasks, default ntasks to 1
-    # so the simple "I want one GPU" case works without forcing the
-    # operator to know SLURM's pairing rule.
-    if effective_gpus_per_task > 0 and not (
-        any(c == "--ntasks" for c in cmd)
-        or any(c == "--gpus" for c in cmd)
-    ):
-        cmd += ["--ntasks", "1"]
-    # SLURM rejects combining typed and untyped GPU requests with
-    # `Invalid GRES specification (with and without type identification)`
-    # when both ``--gpus-per-task=N`` and ``--gres=gpu:TYPE:N`` are
-    # present (verified on SLURM 24.05/qc-a100). When the caller
-    # specified a gpu_type, that is the more specific request → emit
-    # only ``--gres=gpu:TYPE:N`` and drop the untyped --gpus-per-task /
-    # --gpus-per-node companions. When no gpu_type is given, keep the
-    # untyped flags as-is for sites that don't care about GPU model.
-    if effective_gpu_type:
-        gres_count = effective_gpus_per_task or effective_gpus_per_node or 1
-        cmd += [f"--gres=gpu:{effective_gpu_type}:{gres_count}"]
-    else:
-        if effective_gpus_per_task > 0:
-            cmd += ["--gpus-per-task", str(effective_gpus_per_task)]
-        if effective_gpus_per_node > 0:
-            cmd += ["--gpus-per-node", str(effective_gpus_per_node)]
-    # ── メモリ ──
-    if memory_gb_per_node and int(memory_gb_per_node) > 0:
-        cmd += [f"--mem={int(memory_gb_per_node)}G"]
-    if memory_gb_per_cpu and int(memory_gb_per_cpu) > 0:
-        cmd += [f"--mem-per-cpu={int(memory_gb_per_cpu)}G"]
-    # ── HW 制約 / NUMA ──
-    if constraint:
-        cmd += [f"--constraint={constraint}"]
-    # ``--cpu-bind`` / ``--mem-bind`` are documented srun-only on many
-    # SLURM versions (incl. the local sx40 cluster). Probe sbatch --help
-    # at process start and silently drop unsupported flags so a rubric
-    # carrying them does not fail sbatch outright; the operator can route
-    # them via ``extra_sbatch_args`` when they have a local sbatch that
-    # accepts them, or bake them into reproduce.sh as ``srun --cpu-bind``
-    # calls inside the script.
-    if cpu_bind:
-        if _sbatch_supports("--cpu-bind"):
-            cmd += [f"--cpu-bind={cpu_bind}"]
-        else:
-            log.warning(
-                "cpu_bind=%r requested but local sbatch does not advertise "
-                "--cpu-bind; flag dropped. Use ``srun --cpu-bind=%s`` inside "
-                "reproduce.sh instead, or pass via extra_sbatch_args.",
-                cpu_bind, cpu_bind,
-            )
-    if mem_bind:
-        if _sbatch_supports("--mem-bind"):
-            cmd += [f"--mem-bind={mem_bind}"]
-        else:
-            log.warning(
-                "mem_bind=%r requested but local sbatch does not advertise "
-                "--mem-bind; flag dropped. Use ``srun --mem-bind=%s`` inside "
-                "reproduce.sh instead, or pass via extra_sbatch_args.",
-                mem_bind, mem_bind,
-            )
-    if hint:
-        cmd += [f"--hint={hint}"]
-    # ── escape hatch ──
-    if extra_sbatch_args:
-        cmd += [str(a) for a in extra_sbatch_args]
-    cmd.append(str(wrapper))
-    log.info("[ors] sbatch %s", " ".join(cmd[1:]))
-    start = time.time()
+    started = time.monotonic()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 60)
-    except subprocess.TimeoutExpired:
-        return {
-            "executed": True,
-            "exit_code": None,
-            "timed_out": True,
-            "elapsed_sec": round(time.time() - start, 2),
-            "partition": resolved_partition,
-        }
-    # sbatch --wait returns the job's exit code. Anything sbatch itself
-    # printed lands in proc.stdout/stderr (e.g. "Submitted batch job ...").
-    if proc.returncode != 0 and not log_path.is_file():
-        # sbatch itself failed (queue rejection, bad partition, etc.) —
-        # surface stderr so the caller can debug.
+        deprecated = _parse_deprecated_sbatch_args(extra_sbatch_args)
+        account = account or deprecated.get("account", "")
+        qos = qos or deprecated.get("qos", "")
+        reservation = reservation or deprecated.get("reservation", "")
+        hint = hint or deprecated.get("hint", "")
+        n_cpus = (
+            int(cpus)
+            if cpus and int(cpus) > 0
+            else int(os.environ.get("ARI_SLURM_CPUS", "8"))
+        )
+        resolved_walltime = (
+            walltime
+            or os.environ.get("ARI_SLURM_WALLTIME", "")
+            or _walltime_str(timeout)
+        )
+        effective_gpus_per_task = int(gpus_per_task or 0)
+        effective_gpus_per_node = int(gpus_per_node or 0)
+        if gpu_type and not (effective_gpus_per_task or effective_gpus_per_node):
+            effective_gpus_per_node = 1
+
+        resolved_tasks = int(
+            ntasks
+            or (int(ntasks_per_node) * int(nodes or 1) if ntasks_per_node else 1)
+        )
+        resources = ResourceRequestV1(
+            partition=resolved_partition,
+            nodes=int(nodes or 1),
+            tasks=resolved_tasks,
+            tasks_per_node=int(ntasks_per_node) if ntasks_per_node else None,
+            cpus_per_task=n_cpus,
+            memory_mb_per_node=(
+                int(memory_gb_per_node) * 1024 if memory_gb_per_node else None
+            ),
+            memory_mb_per_cpu=(
+                int(memory_gb_per_cpu) * 1024 if memory_gb_per_cpu else None
+            ),
+            gpus_per_task=effective_gpus_per_task,
+            gpus_per_node=effective_gpus_per_node,
+            gpu_type=gpu_type or None,
+            walltime=resolved_walltime,
+            nodelist=nodelist or None,
+            exclude_nodes=exclude_nodes or None,
+            exclusive=exclusive,
+            constraint=constraint or None,
+            hint=hint or None,
+            account=account or None,
+            qos=qos or None,
+            reservation=reservation or None,
+        )
+        handoff = handoff_execution_to_slurm(
+            common_request,
+            request_id=(
+                "paper-re-"
+                + common_request.execution_identity.removeprefix("sha256:")[:24]
+            ),
+            job_name="ari-ors",
+            resources=resources,
+            modules=module_loads,
+            network_isolation_attested=network_isolation_attested,
+        )
+        scheduler = _paper_re_scheduler(repo_dir)
+        handle = await scheduler.submit(handoff.job_request)
+        deadline = time.monotonic() + timeout + 60
+        while True:
+            status = await scheduler.status(handle.handle_id)
+            if status.state in _TERMINAL_JOB_STATES:
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                try:
+                    await scheduler.cancel(handle.handle_id)
+                except SchedulerError as exc:
+                    log.warning("failed to cancel timed-out job %s: %s", handle.job_id, exc)
+                job_logs = await scheduler.logs(handle.handle_id)
+                _materialize_scheduler_log(log_path, job_logs)
+                return {
+                    "executed": True,
+                    "exit_code": None,
+                    "timed_out": True,
+                    "elapsed_sec": round(time.monotonic() - started, 2),
+                    "partition": resolved_partition,
+                    "handle_id": handle.handle_id,
+                    "job_id": handle.job_id,
+                    "request_digest": handle.request_digest,
+                    "handoff_digest": handoff.handoff_digest,
+                    "execution_identity": handoff.execution_identity,
+                    "unmapped_policies": list(handoff.unmapped_policies),
+                }
+            await asyncio.sleep(min(5.0, remaining))
+        job_logs = await scheduler.logs(handle.handle_id)
+        _materialize_scheduler_log(log_path, job_logs)
+        scheduler_result = (
+            await scheduler.result(handle.handle_id)
+            if hasattr(scheduler, "result")
+            else None
+        )
+    except (SchedulerError, ValueError, OSError) as exc:
         return {
             "executed": False,
-            "exit_code": int(proc.returncode),
-            "error": (proc.stderr or proc.stdout or "sbatch failed").strip()[:1000],
-            "elapsed_sec": round(time.time() - start, 2),
+            "exit_code": None,
+            "error": str(exc)[:1000],
+            "elapsed_sec": round(time.monotonic() - started, 2),
             "partition": resolved_partition,
         }
+
     out: dict = {
         "executed": True,
-        "exit_code": int(proc.returncode),
-        "elapsed_sec": round(time.time() - start, 2),
+        "exit_code": status.exit_code if status.exit_code is not None else (
+            0 if status.state == "succeeded" else None
+        ),
+        "elapsed_sec": round(time.monotonic() - started, 2),
         "partition": resolved_partition,
         "cpus": n_cpus,
-        "walltime": wt,
+        "walltime": resolved_walltime,
+        "handle_id": handle.handle_id,
+        "job_id": handle.job_id,
+        "request_digest": handle.request_digest,
+        "handoff_digest": handoff.handoff_digest,
+        "execution_identity": handoff.execution_identity,
+        "unmapped_policies": list(handoff.unmapped_policies),
+        "policy_equivalent": handoff.policy_equivalent,
     }
+    if scheduler_result is not None:
+        out["scheduler_result_digest"] = scheduler_result.result_digest
+        out["environment_digest"] = scheduler_result.environment_digest
+        out["module_snapshot_digest"] = scheduler_result.module_snapshot_digest
+        out["provenance"] = [
+            artifact.model_dump(mode="json")
+            for artifact in scheduler_result.provenance
+        ]
     if nodes:
         out["nodes"] = int(nodes)
     if ntasks:
         out["ntasks"] = int(ntasks)
     if exclusive:
         out["exclusive"] = True
-    if effective_gpus_per_task or effective_gpus_per_node or effective_gpu_type:
+    if effective_gpus_per_task or effective_gpus_per_node or gpu_type:
         out["gpu"] = {
             "per_task": effective_gpus_per_task,
             "per_node": effective_gpus_per_node,
-            "type": effective_gpu_type,
+            "type": gpu_type,
         }
+    if status.state != "succeeded":
+        out["error"] = f"scheduler job ended in {status.scheduler_state}"
     return out
 
 
-def _run_reproduce_docker(
-    repo_dir: Path, log_path: Path, timeout: int, *, image: str = "",
+def _reproduction_response(
+    *,
+    prepared,
+    run,
+    attempt_id: str,
+    work_dir: Path,
+    rubric_schema_version: str,
+    rubric_migration_required: bool,
+    idempotent_replay: bool,
 ) -> dict:
-    """Execute reproduce.sh in a docker sandbox.
+    """Project the immutable run record into the stable MCP response shape."""
 
-    Image priority: explicit ``image`` arg (from wizard ``container_image``) →
-    env ``ARI_PHASE1_DOCKER_IMAGE`` → hardcoded ``ubuntu:24.04``.
-
-    When the docker daemon is unreachable, raises ``RuntimeError`` (the user
-    explicitly picked ``sandbox_kind=docker`` and a silent fallback to local
-    would defeat the isolation intent). Set ``ARI_PHASE1_ALLOW_FALLBACK=1``
-    to opt back into the legacy silent-fallback-to-local behaviour.
-    """
-    if not _docker_works():
-        if os.environ.get("ARI_PHASE1_ALLOW_FALLBACK", "") == "1":
-            log.warning(
-                "docker daemon not usable; ARI_PHASE1_ALLOW_FALLBACK=1 → "
-                "falling back to local reproduce"
-            )
-            return _run_reproduce_local(repo_dir, log_path, timeout)
-        raise RuntimeError(
-            "sandbox_kind=docker requested but docker daemon is not "
-            "reachable (`docker info` failed). Refusing to silently fall "
-            "back to local host execution. Either start the docker daemon, "
-            "pick a different sandbox_kind, or set "
-            "ARI_PHASE1_ALLOW_FALLBACK=1 to opt in to the legacy "
-            "silent-fallback behaviour."
-        )
-    image = image or os.environ.get("ARI_PHASE1_DOCKER_IMAGE", "ubuntu:24.04")
-    cmd = [
-        "docker", "run", "--rm",
-        "-v", f"{repo_dir}:/work",
-        "-w", "/work",
-        image,
-        "bash", "-c", "chmod +x reproduce.sh && ./reproduce.sh",
+    attempt = next(item for item in run.attempts if item.attempt_id == attempt_id)
+    artifacts = [
+        path.relative_to(work_dir).as_posix()
+        for path in sorted(work_dir.rglob("*"))
+        if path.is_file()
+        and path.relative_to(work_dir).parts[0] not in {".ari-execution", ".ari-hpc"}
     ]
-    start = time.time()
-    with log_path.open("wb") as logf:
-        try:
-            proc = subprocess.run(
-                cmd, stdout=logf, stderr=subprocess.STDOUT,
-                timeout=timeout, check=False,
-            )
-            return {
-                "executed": True,
-                "exit_code": int(proc.returncode),
-                "elapsed_sec": round(time.time() - start, 2),
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                "executed": True,
-                "exit_code": None,
-                "timed_out": True,
-                "elapsed_sec": round(time.time() - start, 2),
-            }
+    environment = dict(attempt.environment)
+    out = {
+        "executed": bool(environment.get("launched", True)),
+        "exit_code": attempt.exit_code,
+        "log_path": str(prepared.source / attempt.log_artifact.relative_path),
+        "artifacts": artifacts,
+        "missing": list(attempt.expected_missing),
+        "elapsed_sec": float(environment.get("elapsed_sec", 0.0)),
+        "sandbox_kind": prepared.plan.sandbox,
+        "rubric_schema_version": rubric_schema_version,
+        "rubric_migration_required": rubric_migration_required,
+        "plan_path": str(prepared.plan_path),
+        "plan_digest": prepared.plan.plan_digest,
+        "run_record_path": str(prepared.run_path),
+        "run_digest": run.run_digest,
+        "attempt_id": attempt.attempt_id,
+        "attempt_status": attempt.status,
+        "executed_repo_dir": str(work_dir),
+        "idempotent_replay": idempotent_replay,
+    }
+    scheduler = environment.get("scheduler")
+    if isinstance(scheduler, dict):
+        for key in (
+            "partition",
+            "cpus",
+            "walltime",
+            "nodes",
+            "ntasks",
+            "exclusive",
+            "gpu",
+            "handle_id",
+            "job_id",
+            "request_digest",
+            "timed_out",
+        ):
+            if key in scheduler:
+                out[key] = scheduler[key]
+    if attempt.status == "timed_out":
+        out["timed_out"] = True
+    if attempt.failure is not None:
+        out["error"] = attempt.failure.message
+        out["failure_kind"] = attempt.failure.kind
+    return out
+
+
+def _failed_execution(
+    prepared,
+    attempt,
+    *,
+    substrate: str,
+    message: str,
+    failure_kind: str,
+    launched: bool,
+    status: str = "failed",
+) -> dict:
+    message = message[:4096] or "reproduction failed without a diagnostic"
+    return {
+        "status": status,
+        "exit_code": None,
+        "stdout": b"",
+        "stderr": message.encode("utf-8", errors="replace"),
+        "execution_identity": execution_request(prepared, attempt).execution_identity,
+        "substrate_request_digest": None,
+        "environment": {"launched": launched, "substrate": substrate},
+        "failure": FailureEvidenceV1(kind=failure_kind, message=message),
+    }
 
 
 @mcp.tool()
@@ -996,84 +890,53 @@ async def run_reproduce(
     sandbox_kind: str = "",
     container_image: str = "",
     timeout_global_sec: int = 0,
+    network_policy: str = "deny",
+    network_isolation_attested: bool = False,
     partition: str = "",
     cpus: int = 0,
     walltime: str = "",
-    # ── 配置・並列度 (v0.7.2) ──
     nodes: int = 0,
     ntasks: int = 0,
     ntasks_per_node: int = 0,
     nodelist: str = "",
     exclude_nodes: str = "",
-    # ── 排他性 ──
     exclusive: bool = False,
-    # ── GPU ──
     gpus_per_task: int = 0,
     gpus_per_node: int = 0,
     gpu_type: str = "",
-    # ── メモリ ──
     memory_gb_per_node: int = 0,
     memory_gb_per_cpu: int = 0,
-    # ── HW / NUMA ──
     constraint: str = "",
     cpu_bind: str = "",
     mem_bind: str = "",
     hint: str = "",
-    # ── escape hatch ──
+    account: str = "",
+    qos: str = "",
+    reservation: str = "",
+    module_loads: list[str] | None = None,
     extra_sbatch_args: list[str] | None = None,
 ) -> dict:
-    """Phase 1: execute reproduce.sh in a sandbox; capture log + artifact list.
+    """Execute a content-bound reproduction attempt and retain its evidence.
 
-    v0.7.2 extends the SLURM dispatch path with 15 + escape-hatch flags
-    covering multi-node placement, exclusivity, GPU type, memory, HW
-    constraint, and NUMA bindings. All new args default to ``0 / "" / False
-    / None`` so legacy single-node call sites continue to emit the original
-    4-flag sbatch invocation. When the rubric carries
-    ``reproduce_contract.execution_profile``, that hint dict auto-resolves
-    into any caller arg left at its default — explicit caller args always
-    win over rubric hints.
-
-    Args:
-        rubric_path: path to the frozen rubric JSON envelope (provides
-            ``reproduce_contract.max_runtime_sec``,
-            ``reproduce_contract.expected_artifacts``, and the optional
-            ``reproduce_contract.execution_profile``).
-        repo_dir: candidate submission directory (must contain ``reproduce.sh``).
-        sandbox_kind: ``docker`` | ``apptainer`` | ``singularity`` | ``slurm``
-            | ``local`` | ``auto``. Default reads ``ARI_PHASE1_SANDBOX``
-            (then ``auto``). ``auto`` priority: slurm (when sbatch + partition
-            present) → docker (when daemon usable and not on HPC) → apptainer
-            → singularity → local.
-        timeout_global_sec: 0 → use the rubric's ``max_runtime_sec``.
-        partition: SLURM ``--partition``. Defaults to ``ARI_SLURM_PARTITION``
-            env then to ``{checkpoint_dir}/launch_config.json::partition``.
-        cpus: SLURM ``--cpus-per-task``. Defaults to ``ARI_SLURM_CPUS=8``.
-        walltime: SLURM ``--time`` (HH:MM:SS). Defaults to
-            ``ARI_SLURM_WALLTIME`` then to a value derived from
-            ``timeout_global_sec``.
-        nodes / ntasks / ntasks_per_node: ``--nodes`` / ``--ntasks`` /
-            ``--ntasks-per-node``. 0 = leave to SLURM.
-        nodelist / exclude_nodes: ``--nodelist=...`` / ``--exclude=...``.
-        exclusive: ``--exclusive`` (no other jobs share the allocated
-            nodes — essential for faithful performance reproduction).
-        gpus_per_task / gpus_per_node: ``--gpus-per-task=N`` /
-            ``--gpus-per-node=N``.
-        gpu_type: combined with ``gpus_per_task`` (or ``_per_node``) → emits
-            ``--gres=gpu:<type>:N``. Auto-downgraded to no-gres when the
-            cluster reports no GRES via ``sinfo``.
-        memory_gb_per_node / memory_gb_per_cpu: ``--mem=NG`` /
-            ``--mem-per-cpu=NG``.
-        constraint: ``--constraint=...`` (e.g. ``"skylake"``,
-            ``"haswell|broadwell"``).
-        cpu_bind / mem_bind / hint: ``--cpu-bind=...`` / ``--mem-bind=...``
-            / ``--hint=...`` for NUMA & CPU affinity control.
-        extra_sbatch_args: list of pass-through flags for anything not above
-            (e.g. ``["--account=projX"]``).
-
-    Returns the executed flag, exit code, log path, produced artifact list,
-    missing expected artifacts, elapsed time, and (when SLURM-dispatched)
-    a snapshot of the chosen partition / nodes / ntasks / gpu spec.
+    The source tree is snapshotted read-only and execution happens in a private
+    attempt tree. Network access is denied by default; an unisolated substrate
+    must be explicitly admitted with ``network_policy=inherit``. Successful
+    identical plans are replayed idempotently and failed plans gain a linked
+    retry attempt.
     """
+
+    rubric: dict = {}
+    rubric_schema_version = "ari.replication-rubric/explicit-input-v1"
+    rubric_migration_required = False
+    if rubric_path:
+        try:
+            loaded_rubric = load_rubric(rubric_path)
+            rubric = loaded_rubric.document
+            rubric_schema_version = loaded_rubric.schema_version
+            rubric_migration_required = loaded_rubric.migration_required
+        except RubricContractError as exc:
+            return {"executed": False, "error": f"rubric contract rejected: {exc}"}
+
     repo = Path(repo_dir)
     if not repo.is_dir():
         return {
@@ -1085,119 +948,265 @@ async def run_reproduce(
             "missing": [],
             "elapsed_sec": 0.0,
             "sandbox_kind": "",
+            "rubric_schema_version": rubric_schema_version,
+            "rubric_migration_required": rubric_migration_required,
         }
-    # rubric_path is the canonical source for ``max_runtime_sec`` /
-    # ``expected_artifacts`` / ``execution_profile``, but the public
-    # :func:`_paperbench_bridge.reproduce_submission` wrapper drives this
-    # tool without a rubric — explicit caller args supply the same info.
-    # Treat empty / missing rubric_path as "no hint dict; use caller args".
-    rubric: dict = {}
-    if rubric_path:
-        try:
-            rubric = json.loads(Path(rubric_path).read_text())
-        except Exception as e:
-            return {"executed": False, "error": f"cannot read rubric: {e}"}
 
     rc = rubric.get("reproduce_contract") or {}
     max_runtime = int(timeout_global_sec or rc.get("max_runtime_sec") or 21600)
     expected = list(rc.get("expected_artifacts") or [])
     exec_profile: dict = dict(rc.get("execution_profile") or {})
     requested = (sandbox_kind or _phase1_sandbox_kind()).lower()
-    if requested == "auto":
-        requested = _phase1_sandbox_kind()
-    kind = requested
-
-    # ── Auto-resolve SLURM args from execution_profile (rubric hint).
-    # Explicit caller args always win — these only fill in fields the
-    # caller left at the default zero/empty/False sentinel.
-    resolved_nodes              = int(nodes)            or int(exec_profile.get("requested_nodes", 0) or 0)
-    resolved_ntasks             = int(ntasks)           or int(exec_profile.get("min_ranks", 0) or 0)
-    resolved_ntasks_per_node    = int(ntasks_per_node)  or int(exec_profile.get("ntasks_per_node", 0) or 0)
-    resolved_nodelist           = nodelist              or (exec_profile.get("requested_nodelist") or "")
-    resolved_exclude_nodes      = exclude_nodes         or (exec_profile.get("exclude_nodes") or "")
-    resolved_exclusive          = bool(exclusive)       or bool(exec_profile.get("exclusive", False))
-    resolved_gpus_per_task      = int(gpus_per_task)    or int(exec_profile.get("requested_gpus_per_task", 0) or 0)
-    resolved_gpus_per_node      = int(gpus_per_node)    or int(exec_profile.get("requested_gpus_per_node", 0) or 0)
-    resolved_gpu_type           = gpu_type              or (exec_profile.get("gpu_type") or "")
-    resolved_mem_gb_node        = int(memory_gb_per_node) or int(exec_profile.get("memory_gb_per_node", 0) or 0)
-    resolved_mem_gb_cpu         = int(memory_gb_per_cpu)  or int(exec_profile.get("memory_gb_per_cpu", 0) or 0)
-    resolved_constraint         = constraint            or (exec_profile.get("constraint") or "")
-    resolved_cpu_bind           = cpu_bind              or (exec_profile.get("cpu_bind") or "")
-    resolved_mem_bind           = mem_bind              or (exec_profile.get("mem_bind") or "")
-    resolved_hint               = hint                  or (exec_profile.get("hint") or "")
-    resolved_extra              = list(extra_sbatch_args or exec_profile.get("extra_sbatch_args") or [])
-
-    log_path = repo / "reproduce.log"
-    if kind == "docker":
-        exec_res = _run_reproduce_docker(
-            repo, log_path, max_runtime, image=container_image,
-        )
-    elif kind in ("local", ""):
-        exec_res = _run_reproduce_local(repo, log_path, max_runtime)
-    elif kind == "apptainer":
-        exec_res = _run_reproduce_apptainer(
-            repo, log_path, max_runtime, runner="apptainer", image=container_image,
-        )
-    elif kind == "singularity":
-        exec_res = _run_reproduce_apptainer(
-            repo, log_path, max_runtime, runner="singularity", image=container_image,
-        )
-    elif kind == "slurm":
-        exec_res = _run_reproduce_slurm(
-            repo, log_path, max_runtime,
-            partition=partition, cpus=int(cpus or 0), walltime=walltime,
-            nodes=resolved_nodes,
-            ntasks=resolved_ntasks,
-            ntasks_per_node=resolved_ntasks_per_node,
-            nodelist=resolved_nodelist,
-            exclude_nodes=resolved_exclude_nodes,
-            exclusive=resolved_exclusive,
-            gpus_per_task=resolved_gpus_per_task,
-            gpus_per_node=resolved_gpus_per_node,
-            gpu_type=resolved_gpu_type,
-            memory_gb_per_node=resolved_mem_gb_node,
-            memory_gb_per_cpu=resolved_mem_gb_cpu,
-            constraint=resolved_constraint,
-            cpu_bind=resolved_cpu_bind,
-            mem_bind=resolved_mem_bind,
-            hint=resolved_hint,
-            extra_sbatch_args=resolved_extra,
-        )
-    else:
+    kind = _phase1_sandbox_kind() if requested == "auto" else requested
+    if kind not in {"local", "docker", "apptainer", "singularity", "slurm"}:
         return {"executed": False, "error": f"unknown sandbox_kind: {kind}"}
 
-    artifacts = []
-    for f in repo.rglob("*"):
-        if f.is_file():
-            artifacts.append(str(f.relative_to(repo)))
-    missing = [e for e in expected if e not in artifacts]
+    if not container_image:
+        if kind == "docker":
+            container_image = os.environ.get("ARI_PHASE1_DOCKER_IMAGE", "")
+        elif kind in {"apptainer", "singularity"}:
+            container_image = os.environ.get("ARI_PHASE1_APPTAINER_IMAGE", "")
 
-    out = {
-        "executed": exec_res.get("executed", False),
-        "exit_code": exec_res.get("exit_code"),
-        "log_path": str(log_path),
-        "artifacts": artifacts,
-        "missing": missing,
-        "elapsed_sec": exec_res.get("elapsed_sec", 0.0),
-        "sandbox_kind": kind,
+    resolved_nodes = int(nodes) or int(exec_profile.get("requested_nodes", 0) or 0)
+    resolved_ntasks = int(ntasks) or int(exec_profile.get("min_ranks", 0) or 0)
+    resolved_ntasks_per_node = int(ntasks_per_node) or int(
+        exec_profile.get("ntasks_per_node", 0) or 0
+    )
+    resolved_nodelist = nodelist or (exec_profile.get("requested_nodelist") or "")
+    resolved_exclude_nodes = exclude_nodes or (exec_profile.get("exclude_nodes") or "")
+    resolved_exclusive = bool(exclusive) or bool(exec_profile.get("exclusive", False))
+    resolved_gpus_per_task = int(gpus_per_task) or int(
+        exec_profile.get("requested_gpus_per_task", 0) or 0
+    )
+    resolved_gpus_per_node = int(gpus_per_node) or int(
+        exec_profile.get("requested_gpus_per_node", 0) or 0
+    )
+    resolved_gpu_type = gpu_type or (exec_profile.get("gpu_type") or "")
+    resolved_mem_gb_node = int(memory_gb_per_node) or int(
+        exec_profile.get("memory_gb_per_node", 0) or 0
+    )
+    resolved_mem_gb_cpu = int(memory_gb_per_cpu) or int(
+        exec_profile.get("memory_gb_per_cpu", 0) or 0
+    )
+    resolved_constraint = constraint or (exec_profile.get("constraint") or "")
+    resolved_hint = hint or (exec_profile.get("hint") or "")
+    resolved_account = account or (exec_profile.get("account") or "")
+    resolved_qos = qos or (exec_profile.get("qos") or "")
+    resolved_reservation = reservation or (exec_profile.get("reservation") or "")
+    resolved_modules = tuple(module_loads or exec_profile.get("module_loads") or ())
+    resolved_extra = list(
+        extra_sbatch_args or exec_profile.get("extra_sbatch_args") or []
+    )
+    try:
+        deprecated = _parse_deprecated_sbatch_args(resolved_extra)
+    except ValueError as exc:
+        return {"executed": False, "error": str(exc)}
+    resolved_account = resolved_account or deprecated.get("account", "")
+    resolved_qos = resolved_qos or deprecated.get("qos", "")
+    resolved_reservation = resolved_reservation or deprecated.get("reservation", "")
+    resolved_hint = resolved_hint or deprecated.get("hint", "")
+    resolved_partition = (
+        _resolve_partition_for_repo(repo, partition) if kind == "slurm" else ""
+    )
+    resolved_cpus = 0
+    resolved_walltime = ""
+    if kind == "slurm":
+        resolved_cpus = int(cpus or os.environ.get("ARI_SLURM_CPUS", "8"))
+        resolved_walltime = (
+            walltime
+            or os.environ.get("ARI_SLURM_WALLTIME", "")
+            or _walltime_str(max_runtime)
+        )
+    resources = {
+        "partition": resolved_partition,
+        "cpus_per_task": resolved_cpus,
+        "walltime": resolved_walltime,
+        "nodes": resolved_nodes,
+        "ntasks": resolved_ntasks,
+        "ntasks_per_node": resolved_ntasks_per_node,
+        "nodelist": resolved_nodelist,
+        "exclude_nodes": resolved_exclude_nodes,
+        "exclusive": resolved_exclusive,
+        "gpus_per_task": resolved_gpus_per_task,
+        "gpus_per_node": resolved_gpus_per_node,
+        "gpu_type": resolved_gpu_type,
+        "memory_gb_per_node": resolved_mem_gb_node,
+        "memory_gb_per_cpu": resolved_mem_gb_cpu,
+        "constraint": resolved_constraint,
+        "cpu_bind": cpu_bind,
+        "mem_bind": mem_bind,
+        "hint": resolved_hint,
+        "account": resolved_account,
+        "qos": resolved_qos,
+        "reservation": resolved_reservation,
+        "module_loads": list(resolved_modules),
     }
-    # SLURM-only metadata: partition / cpus / walltime / nodes / ntasks /
-    # exclusive / gpu spec actually used. Everything is optional — keys
-    # only present when the corresponding flag was emitted, which keeps the
-    # legacy single-node response shape unchanged.
-    for k in (
-        "partition", "cpus", "walltime",
-        "nodes", "ntasks", "exclusive", "gpu",
-    ):
-        if k in exec_res:
-            out[k] = exec_res[k]
-    if "error" in exec_res:
-        out["error"] = exec_res["error"]
-    if "timed_out" in exec_res:
-        out["timed_out"] = True
-    if "error" in exec_res:
-        out["error"] = exec_res["error"]
-    return out
+    rubric_sha256 = str(
+        rubric.get("rubric_sha256") or bytes_digest(b"").removeprefix("sha256:")
+    )
+    try:
+        prepared = prepare_reproduction(
+            source_workspace=str(repo),
+            rubric_schema_version=rubric_schema_version,
+            rubric_sha256=rubric_sha256,
+            sandbox_kind=kind,
+            container_image=container_image,
+            timeout_seconds=max_runtime,
+            expected_artifacts=expected,
+            network_policy=network_policy,
+            network_isolation_attested=network_isolation_attested,
+            resources=resources,
+        )
+        previous = load_run(prepared)
+    except (ReproductionContractError, ValueError, OSError) as exc:
+        return {
+            "executed": False,
+            "error": f"reproduction plan rejected: {exc}",
+            "sandbox_kind": kind,
+            "rubric_schema_version": rubric_schema_version,
+            "rubric_migration_required": rubric_migration_required,
+        }
+
+    if previous is not None and previous.status == "succeeded":
+        selected_id = previous.selected_attempt_id
+        assert selected_id is not None
+        selected = next(
+            item for item in previous.attempts if item.attempt_id == selected_id
+        )
+        work_dir = (prepared.source / selected.log_artifact.relative_path).parent
+        try:
+            publish_latest_pointer(
+                prepared, previous, attempt_id=selected_id, work_dir=work_dir
+            )
+        except ReproductionContractError as exc:
+            return {"executed": False, "error": f"stored run rejected: {exc}"}
+        return _reproduction_response(
+            prepared=prepared,
+            run=previous,
+            attempt_id=selected_id,
+            work_dir=work_dir,
+            rubric_schema_version=rubric_schema_version,
+            rubric_migration_required=rubric_migration_required,
+            idempotent_replay=True,
+        )
+
+    try:
+        attempt = begin_attempt(prepared, previous)
+    except (ReproductionContractError, OSError) as exc:
+        return {"executed": False, "error": f"cannot create attempt: {exc}"}
+
+    started = time.monotonic()
+    try:
+        if kind == "local":
+            execution = await execute_local_attempt(prepared, attempt)
+        elif kind in {"docker", "apptainer", "singularity"}:
+            execution = await execute_container_attempt(prepared, attempt)
+        else:
+            common_request = execution_request(prepared, attempt)
+            slurm_result = await _execute_reproduction_slurm(
+                common_request,
+                attempt.work_dir / "reproduce.log",
+                partition=resolved_partition,
+                cpus=resolved_cpus,
+                walltime=resolved_walltime,
+                nodes=resolved_nodes,
+                ntasks=resolved_ntasks,
+                ntasks_per_node=resolved_ntasks_per_node,
+                nodelist=resolved_nodelist,
+                exclude_nodes=resolved_exclude_nodes,
+                exclusive=resolved_exclusive,
+                gpus_per_task=resolved_gpus_per_task,
+                gpus_per_node=resolved_gpus_per_node,
+                gpu_type=resolved_gpu_type,
+                memory_gb_per_node=resolved_mem_gb_node,
+                memory_gb_per_cpu=resolved_mem_gb_cpu,
+                constraint=resolved_constraint,
+                cpu_bind=cpu_bind,
+                mem_bind=mem_bind,
+                hint=resolved_hint,
+                account=resolved_account,
+                qos=resolved_qos,
+                reservation=resolved_reservation,
+                module_loads=resolved_modules,
+                extra_sbatch_args=[],
+                network_isolation_attested=network_isolation_attested,
+            )
+            scheduler_log = attempt.work_dir / "reproduce.log"
+            combined = scheduler_log.read_bytes() if scheduler_log.is_file() else b""
+            status = (
+                "timed_out"
+                if slurm_result.get("timed_out")
+                else "succeeded"
+                if slurm_result.get("executed")
+                and slurm_result.get("exit_code") == 0
+                and "error" not in slurm_result
+                else "failed"
+            )
+            execution = {
+                "status": status,
+                "exit_code": slurm_result.get("exit_code"),
+                "stdout": combined,
+                "stderr": b"",
+                "execution_identity": slurm_result.get("execution_identity")
+                or common_request.execution_identity,
+                "substrate_request_digest": slurm_result.get("request_digest"),
+                "environment": {
+                    "launched": bool(slurm_result.get("executed")),
+                    "substrate": "slurm",
+                    "modules": list(resolved_modules),
+                    "network": prepared.plan.policy.network_enforcement,
+                    "scheduler": dict(slurm_result),
+                },
+            }
+            if status == "failed" and slurm_result.get("error"):
+                execution["failure"] = FailureEvidenceV1(
+                    kind="scheduler-failure",
+                    message=str(slurm_result["error"])[:4096],
+                )
+    except asyncio.CancelledError:
+        execution = _failed_execution(
+            prepared,
+            attempt,
+            substrate=kind,
+            message="reproduction request cancelled",
+            failure_kind="cancelled",
+            launched=True,
+            status="cancelled",
+        )
+    except Exception as exc:
+        message = str(exc) or exc.__class__.__name__
+        lowered = message.casefold()
+        failure_kind = (
+            "network-policy"
+            if "network" in lowered
+            else "scheduler-failure"
+            if kind == "slurm"
+            else "sandbox-unavailable"
+        )
+        execution = _failed_execution(
+            prepared,
+            attempt,
+            substrate=kind,
+            message=message,
+            failure_kind=failure_kind,
+            launched=False,
+        )
+    execution.setdefault("environment", {})["elapsed_sec"] = round(
+        time.monotonic() - started, 3
+    )
+    try:
+        run, _pointer = finalize_attempt(prepared, attempt, execution, previous)
+    except (ReproductionContractError, ValueError, OSError) as exc:
+        return {"executed": False, "error": f"cannot finalize attempt: {exc}"}
+    return _reproduction_response(
+        prepared=prepared,
+        run=run,
+        attempt_id=attempt.attempt_id,
+        work_dir=attempt.work_dir,
+        rubric_schema_version=rubric_schema_version,
+        rubric_migration_required=rubric_migration_required,
+        idempotent_replay=False,
+    )
 
 
 async def _grade_once(
@@ -1207,6 +1216,7 @@ async def _grade_once(
     reproduce_log: str,
     judge_model: str,
     code_only: bool = False,
+    trace_dir: Path | None = None,
 ):
     from _paperbench_bridge import judge_submission
 
@@ -1217,6 +1227,7 @@ async def _grade_once(
         reproduce_log=reproduce_log,
         judge_model=judge_model,
         code_only=code_only,
+        trace_dir=trace_dir,
     )
 
 
@@ -1225,6 +1236,7 @@ async def _negative_control_check(
     paper_md: str,
     judge_model: str,
     code_only: bool = False,
+    trace_dir: Path | None = None,
 ) -> dict:
     """Apply rubric to (a) empty repo and (b) trivial-reproduce.sh repo.
 
@@ -1242,6 +1254,7 @@ async def _negative_control_check(
         graded = await _grade_once(
             pb_taskroot, paper_md, Path(empty), "", judge_model,
             code_only=code_only,
+            trace_dir=trace_dir / "empty" if trace_dir else None,
         )
         results["empty"] = aggregate_graded_tree(graded)["ors_score"]
     with tempfile.TemporaryDirectory() as bp:
@@ -1252,10 +1265,253 @@ async def _negative_control_check(
         graded = await _grade_once(
             pb_taskroot, paper_md, bp_path, "", judge_model,
             code_only=code_only,
+            trace_dir=trace_dir / "boilerplate" if trace_dir else None,
         )
         results["boilerplate"] = aggregate_graded_tree(graded)["ors_score"]
     results["passed"] = (results["empty"] < 0.05 and results["boilerplate"] < 0.05)
     return results
+
+
+def _atomic_grade_json(path: Path, value: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        indent=2,
+        allow_nan=False,
+    ).encode("utf-8")
+    temporary = path.parent / f".{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    temporary.write_bytes(encoded)
+    temporary.chmod(0o600)
+    os.replace(temporary, path)
+
+
+def _allocate_grade_root(base: Path, *, reproduction_source: bool) -> Path:
+    parent = (
+        base / ".ari-reproduction" / "grades"
+        if reproduction_source
+        else base / ".ari-grades"
+    )
+    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    identity = canonical_digest(
+        {"pid": os.getpid(), "time_ns": time.time_ns(), "base": str(base)}
+    ).removeprefix("sha256:")[:32]
+    root = parent / identity
+    root.mkdir(mode=0o700)
+    return root
+
+
+def _resolve_grade_reproduction(repo: Path):
+    resolved_repo = repo.resolve(strict=True)
+    candidates = [resolved_repo, *list(resolved_repo.parents)[:12]]
+    for candidate in candidates:
+        if not (candidate / ".ari-reproduction" / "latest.json").is_file():
+            continue
+        resolved = resolve_latest_run(candidate)
+        if resolved is None:
+            continue
+        run, work_dir = resolved
+        if candidate != resolved_repo and not (
+            resolved_repo == work_dir or resolved_repo.is_relative_to(work_dir)
+        ):
+            continue
+        return candidate, run, work_dir
+    return None
+
+
+def _judge_identity(model: str) -> JudgeIdentityV1:
+    if "/" in model:
+        provider = model.split("/", 1)[0]
+    elif model.startswith(("gpt-", "o1", "o3", "o4", "o5")):
+        provider = "openai"
+    else:
+        provider = "litellm"
+    return JudgeIdentityV1(model=model, provider=provider)
+
+
+def _models_are_independent(rubric: dict, judge_model: str) -> bool:
+    generator = rubric.get("generator") or {}
+    generator_model = str(generator.get("model") or "").strip().casefold()
+    return bool(generator_model) and generator_model != judge_model.strip().casefold()
+
+
+def _walk_graded_leaves(root) -> list:
+    leaves: list = []
+
+    def visit(node) -> None:
+        children = list(node.sub_tasks) if node.sub_tasks else []
+        if not children:
+            leaves.append(node)
+            return
+        for child in children:
+            visit(child)
+
+    visit(root)
+    return leaves
+
+
+def _rubric_verification_map(rubric: dict) -> dict[str, dict[str, Any]]:
+    values: dict[str, dict[str, Any]] = {}
+
+    def visit(node: dict) -> None:
+        children = node.get("sub_tasks") or []
+        if not children and isinstance(node.get("verification"), dict):
+            values[str(node.get("id"))] = dict(node["verification"])
+        for child in children:
+            if isinstance(child, dict):
+                visit(child)
+
+    root = rubric.get("rubric")
+    if isinstance(root, dict):
+        visit(root)
+    return values
+
+
+def _persist_leaf_evidence(
+    *,
+    runs: list,
+    grade_root: Path,
+    artifact_base: Path,
+    verification: dict[str, dict[str, Any]],
+) -> tuple[LeafGradeEvidenceV1, ...]:
+    by_leaf: dict[str, list[tuple[int, Any, Any]]] = {}
+    for run_index, run in enumerate(runs, start=1):
+        run_dir = grade_root / "leaf-responses" / f"run-{run_index:04d}"
+        for leaf in _walk_graded_leaves(run):
+            leaf_id = str(leaf.id)
+            metadata = getattr(leaf, "judge_metadata", None)
+            payload = {
+                "schema_version": "ari.leaf-judge-evidence/v1",
+                "run_index": run_index,
+                "leaf_id": leaf_id,
+                "requirements": str(leaf.requirements),
+                "score": float(leaf.score),
+                "valid_score": bool(getattr(leaf, "valid_score", False)),
+                "explanation": str(getattr(leaf, "explanation", "")),
+                "full_judge_response": (
+                    metadata.get("full_judge_response")
+                    if isinstance(metadata, dict)
+                    else None
+                ),
+                "judge_metadata": metadata,
+            }
+            name = bytes_digest(leaf_id.encode("utf-8")).removeprefix("sha256:")
+            evidence_path = run_dir / f"{name}.json"
+            _atomic_grade_json(evidence_path, payload)
+            artifact = artifact_from_path(
+                evidence_path,
+                base=artifact_base,
+                role="leaf-judge-raw-response",
+            )
+            by_leaf.setdefault(leaf_id, []).append((run_index, leaf, artifact))
+
+    leaves: list[LeafGradeEvidenceV1] = []
+    for leaf_id, observations in sorted(by_leaf.items()):
+        scores = tuple(float(item[1].score) for item in observations)
+        first = observations[0][1]
+        leaves.append(
+            LeafGradeEvidenceV1(
+                leaf_id=leaf_id,
+                requirements=str(first.requirements),
+                score=sum(scores) / len(scores),
+                valid_score=all(
+                    bool(getattr(item[1], "valid_score", False))
+                    for item in observations
+                ),
+                explanation=str(getattr(first, "explanation", "")),
+                verification=verification.get(leaf_id),
+                run_scores=scores,
+                raw_response_artifacts=tuple(item[2] for item in observations),
+            )
+        )
+    return tuple(leaves)
+
+
+def _collect_call_artifacts(
+    calls_root: Path,
+    *,
+    artifact_base: Path,
+) -> tuple:
+    if not calls_root.is_dir():
+        return ()
+    return tuple(
+        artifact_from_path(
+            path,
+            base=artifact_base,
+            role="model-call-trace",
+        )
+        for path in sorted(calls_root.rglob("*.json"))
+        if path.is_file() and not path.is_symlink()
+    )
+
+
+def _save_grade_report(grade_root: Path, report: GradeReportV1) -> Path:
+    report_path = grade_root / "grade-report.json"
+    _atomic_grade_json(report_path, report.model_dump(mode="json"))
+    validated = GradeReportV1.model_validate_json(report_path.read_text())
+    if validated != report:
+        raise ReproductionContractError("stored grade report differs")
+    return report_path
+
+
+def _grade_response(
+    report: GradeReportV1,
+    report_path: Path,
+    *,
+    elapsed_sec: float,
+    code_only: bool,
+) -> dict:
+    out = {
+        "grade_status": report.status,
+        "grade_report_path": str(report_path),
+        "grade_report_digest": report.report_digest,
+        "rubric_sha256": report.rubric_digest.removeprefix("sha256:"),
+        "rubric_schema_version": report.rubric_schema_version,
+        "reproduction_run_digest": report.reproduction_run_digest,
+        "reproduction_status": report.reproduction_status,
+        "judge_model": report.judge.model,
+        "judge_provider": report.judge.provider,
+        "independence_status": report.independence_status,
+        "n_runs": report.n_runs_requested,
+        "n_runs_completed": report.n_runs_completed,
+        "code_only": code_only,
+        "elapsed_sec": elapsed_sec,
+        "leaf_grades": [
+            {
+                "id": leaf.leaf_id,
+                "requirements": leaf.requirements,
+                "mean_score": leaf.score,
+                "valid_score": leaf.valid_score,
+                "explanation": leaf.explanation,
+                "n_runs": len(leaf.run_scores),
+                "run_scores": list(leaf.run_scores),
+                "raw_response_artifacts": [
+                    artifact.model_dump(mode="json")
+                    for artifact in leaf.raw_response_artifacts
+                ],
+            }
+            for leaf in report.leaves
+        ],
+        "negative_control_check": {
+            "empty": report.negative_control.empty_score,
+            "boilerplate": report.negative_control.boilerplate_score,
+            "passed": report.negative_control.status == "passed",
+            "status": report.negative_control.status,
+            "error": report.negative_control.error,
+        },
+        "call_artifacts": [
+            artifact.model_dump(mode="json") for artifact in report.call_artifacts
+        ],
+    }
+    if report.status == "failed":
+        out["error"] = "; ".join(report.errors)
+        out["errors"] = list(report.errors)
+    else:
+        out["ors_score"] = report.ors_score
+        out["raw_score"] = report.raw_score
+        out["score_stddev"] = report.score_stddev
+    return out
 
 
 @mcp.tool()
@@ -1269,122 +1525,262 @@ async def grade_with_simplejudge(
     skip_negative_control: bool = False,
     code_only: bool = False,
 ) -> dict:
-    """Phase 2: run PaperBench SimpleJudge against the (post-Phase-1) repo.
+    """Grade one verified reproduction and persist all scientific evidence."""
 
-    ``n_runs=0`` (the workflow.yaml sentinel) resolves to
-    ``ARI_JUDGE_N_RUNS`` env var, defaulting to 1 (PaperBench paper §4.1
-    single-pass).
-    ``judge_model=""`` resolves to ``ARI_MODEL_JUDGE`` env or
-    :func:`_judge_model`.
-
-    Workflow:
-      1. Load rubric envelope, strip our metadata via ``to_paperbench_format``.
-      2. Construct ``TaskNode`` tree.
-      3. Run ``SimpleJudge.judge()`` for ``n_runs`` iterations.
-      4. Average per-leaf scores (PaperBench weighted aggregation).
-      5. Run a one-off negative control (empty + trivial reproduce.sh repo).
-      6. Return result envelope.
-    """
-    if not n_runs:
-        n_runs = int(os.environ.get("ARI_JUDGE_N_RUNS") or 1)
+    started = time.monotonic()
     if not judge_model:
         judge_model = _judge_model()
+    if not n_runs:
+        n_runs = int(os.environ.get("ARI_JUDGE_N_RUNS") or 1)
+    n_runs = int(n_runs)
+    paper_md = _load_paper_text(paper_path, paper_text)
+    try:
+        loaded_rubric = load_rubric(rubric_path, paper_text=paper_md)
+    except RubricContractError as exc:
+        return {"error": f"rubric contract rejected: {exc}"}
+    rubric = loaded_rubric.document
+    rubric_digest = "sha256:" + str(rubric["rubric_sha256"])
+    paper_digest = bytes_digest(paper_md.encode("utf-8"))
+    judge = _judge_identity(judge_model)
+    independence = (
+        "independent-model"
+        if _models_are_independent(rubric, judge_model)
+        else "not-independent"
+    )
+    fallback_base = Path(rubric_path).resolve(strict=True).parent
+    reproduction_source = False
+    run = None
+    executed_work = None
+    resolution_error = ""
+    repo = Path(repo_dir)
+    if not repo.is_dir():
+        resolution_error = f"repo_dir not present: {repo_dir}"
+    else:
+        try:
+            resolved = _resolve_grade_reproduction(repo)
+            if resolved is None:
+                resolution_error = "no verified ReproductionRunV1 is available"
+            else:
+                fallback_base, run, executed_work = resolved
+                reproduction_source = True
+        except (ReproductionContractError, ValueError, OSError) as exc:
+            resolution_error = f"reproduction record rejected: {exc}"
+    grade_root = _allocate_grade_root(
+        fallback_base, reproduction_source=reproduction_source
+    )
+    calls_root = grade_root / "calls"
+    calls_root.mkdir(mode=0o700)
+
+    def failed_report(
+        errors: list[str],
+        *,
+        completed_runs: list | None = None,
+        negative_control: NegativeControlV1 | None = None,
+    ) -> dict:
+        completed_runs = completed_runs or []
+        leaves = _persist_leaf_evidence(
+            runs=completed_runs,
+            grade_root=grade_root,
+            artifact_base=fallback_base,
+            verification=_rubric_verification_map(rubric),
+        )
+        report = GradeReportV1.create(
+            rubric_schema_version=loaded_rubric.schema_version,
+            rubric_digest=rubric_digest,
+            paper_digest=paper_digest,
+            reproduction_run_digest=run.run_digest if run is not None else None,
+            reproduction_status=run.status if run is not None else "unavailable",
+            judge=judge,
+            independence_status=independence,
+            n_runs_requested=max(1, min(100, n_runs)),
+            n_runs_completed=len(completed_runs),
+            status="failed",
+            ors_score=None,
+            raw_score=None,
+            score_stddev=None,
+            leaves=leaves,
+            negative_control=negative_control
+            or NegativeControlV1(
+                status="unavailable", error="grading did not reach controls"
+            ),
+            call_artifacts=_collect_call_artifacts(
+                calls_root, artifact_base=fallback_base
+            ),
+            errors=tuple(error[:4096] for error in errors),
+        )
+        report_path = _save_grade_report(grade_root, report)
+        return _grade_response(
+            report,
+            report_path,
+            elapsed_sec=round(time.monotonic() - started, 3),
+            code_only=code_only,
+        )
+
+    expected_paper_digest = "sha256:" + str(rubric["paper_sha256"])
+    if not paper_md or paper_digest != expected_paper_digest:
+        return failed_report(
+            ["paper text is required and must match the rubric paper digest"]
+        )
+    if n_runs < 1 or n_runs > 100:
+        return failed_report(["n_runs must be between 1 and 100"])
+    if resolution_error:
+        return failed_report([resolution_error])
+    assert run is not None and executed_work is not None
+    if run.status != "succeeded":
+        return failed_report(
+            [f"reproduction status is {run.status}; only succeeded runs are gradable"]
+        )
+
+    submission = grade_root / "submission"
+    try:
+        source_manifest = tree_manifest(executed_work)
+        if canonical_digest(source_manifest) != run.attempts[-1].output_tree_digest:
+            selected = next(
+                attempt
+                for attempt in run.attempts
+                if attempt.attempt_id == run.selected_attempt_id
+            )
+            if canonical_digest(source_manifest) != selected.output_tree_digest:
+                raise ReproductionContractError(
+                    "selected reproduction output digest differs"
+                )
+        shutil.copytree(executed_work, submission, symlinks=False)
+        copied_manifest = tree_manifest(submission)
+        if canonical_digest(copied_manifest) != canonical_digest(source_manifest):
+            raise ReproductionContractError("grading snapshot differs from execution")
+        _atomic_grade_json(
+            grade_root / "submission-manifest.json",
+            {
+                "schema_version": "ari.grading-submission-manifest/v1",
+                "reproduction_run_digest": run.run_digest,
+                "tree_digest": canonical_digest(copied_manifest),
+                "files": copied_manifest,
+            },
+        )
+    except (ReproductionContractError, OSError, ValueError) as exc:
+        return failed_report([f"cannot create grading snapshot: {exc}"])
+
     from _paperbench_bridge import (
         aggregate_graded_tree,
         average_graded_runs,
         task_node_from_dict,
     )
 
+    pb_taskroot = task_node_from_dict(_strip_to_paperbench_format(rubric))
+    reproduce_log_path = submission / "reproduce.log"
+    reproduce_log = (
+        _read_log_tail(reproduce_log_path) if reproduce_log_path.is_file() else ""
+    )
+    runs: list = []
     try:
-        rubric = json.loads(Path(rubric_path).read_text())
-    except Exception as e:
-        return {"error": f"cannot read rubric: {e}"}
-
-    pb_dict = _strip_to_paperbench_format(rubric)
-    pb_taskroot = task_node_from_dict(pb_dict)
-
-    paper_md = _load_paper_text(paper_path, paper_text)
-
-    # If repo_dir is missing, degrade to scoring against an effectively empty
-    # submission per workflow.yaml §"ORS auto-rubric reproducibility".
-    repo = Path(repo_dir)
-    _empty_submission_dir: tempfile.TemporaryDirectory | None = None
-    degraded_reason = ""
-    if not repo.is_dir():
-        _empty_submission_dir = tempfile.TemporaryDirectory()
-        repo = Path(_empty_submission_dir.name)
-        degraded_reason = f"repo_dir not present: {repo_dir}"
-    log_path = repo / "reproduce.log"
-    reproduce_log = _read_log_tail(log_path) if log_path.is_file() else ""
-
-    chosen_model = judge_model or _judge_model()
-    n_runs = max(1, int(n_runs))
-
-    # Auto-enable code_only when there is no reproduce.log to grade against
-    # — Stage 1 instruction defaults to code_only=True
-    # (`_compute/local_pbtask.py:166-175`), so the Stage 3 grader should
-    # match that scope rather than penalising the agent for Code Execution
-    # / Result Analysis leaves it was never asked to satisfy. Explicit
-    # caller-supplied code_only=True always wins.
-    if not code_only and not log_path.is_file():
-        code_only = True
-
-    try:
-        start = time.time()
-        runs = []
-        for _ in range(n_runs):
-            runs.append(await _grade_once(
-                pb_taskroot, paper_md, repo, reproduce_log, chosen_model,
-                code_only=code_only,
-            ))
-        if n_runs == 1:
-            agg = aggregate_graded_tree(runs[0])
-        else:
-            agg = average_graded_runs(runs)
-
-        out = {
-            "rubric_sha256": rubric.get("rubric_sha256"),
-            "ors_score": agg["ors_score"],
-            "raw_score": agg["raw_score"],
-            "leaf_grades": agg["leaf_grades"],
-            "judge_model": chosen_model,
-            "n_runs": n_runs,
-            "code_only": code_only,
-            "elapsed_sec": round(time.time() - start, 2),
-        }
-        if degraded_reason:
-            out["degraded"] = True
-            out["degraded_reason"] = degraded_reason
-        if not skip_negative_control:
-            out["negative_control_check"] = await _negative_control_check(
-                pb_taskroot, paper_md, chosen_model,
-                code_only=code_only,
+        for index in range(1, n_runs + 1):
+            runs.append(
+                await _grade_once(
+                    pb_taskroot,
+                    paper_md,
+                    submission,
+                    reproduce_log,
+                    judge_model,
+                    code_only=code_only,
+                    trace_dir=calls_root / f"main-run-{index:04d}",
+                )
             )
-        return out
-    finally:
-        if _empty_submission_dir is not None:
-            _empty_submission_dir.cleanup()
+    except Exception as exc:
+        return failed_report(
+            [f"judge run {len(runs) + 1} failed: {exc}"], completed_runs=runs
+        )
+
+    invalid_leaves = [
+        str(leaf.id)
+        for graded in runs
+        for leaf in _walk_graded_leaves(graded)
+        if not bool(getattr(leaf, "valid_score", False))
+    ]
+    if invalid_leaves:
+        return failed_report(
+            ["judge returned invalid scores for leaves: " + ", ".join(invalid_leaves)],
+            completed_runs=runs,
+        )
+
+    aggregate = (
+        aggregate_graded_tree(runs[0])
+        if n_runs == 1
+        else average_graded_runs(runs)
+    )
+    root_scores = [float(aggregate_graded_tree(item)["ors_score"]) for item in runs]
+    negative_control: NegativeControlV1
+    if skip_negative_control:
+        negative_control = NegativeControlV1(
+            status="unavailable",
+            error="negative controls were explicitly skipped",
+        )
+    else:
+        try:
+            control = await _negative_control_check(
+                pb_taskroot,
+                paper_md,
+                judge_model,
+                code_only=code_only,
+                trace_dir=calls_root / "negative-controls",
+            )
+            negative_control = NegativeControlV1(
+                status="passed" if control["passed"] else "failed",
+                empty_score=float(control["empty"]),
+                boilerplate_score=float(control["boilerplate"]),
+            )
+        except Exception as exc:
+            negative_control = NegativeControlV1(
+                status="unavailable", error=str(exc)[:4096]
+            )
+            return failed_report(
+                [f"negative-control grading failed: {exc}"],
+                completed_runs=runs,
+                negative_control=negative_control,
+            )
+
+    leaves = _persist_leaf_evidence(
+        runs=runs,
+        grade_root=grade_root,
+        artifact_base=fallback_base,
+        verification=_rubric_verification_map(rubric),
+    )
+    report_status = (
+        "valid" if negative_control.status == "passed" else "invalid-negative-control"
+    )
+    report = GradeReportV1.create(
+        rubric_schema_version=loaded_rubric.schema_version,
+        rubric_digest=rubric_digest,
+        paper_digest=paper_digest,
+        reproduction_run_digest=run.run_digest,
+        reproduction_status=run.status,
+        judge=judge,
+        independence_status=independence,
+        n_runs_requested=n_runs,
+        n_runs_completed=len(runs),
+        status=report_status,
+        ors_score=float(aggregate["ors_score"]),
+        raw_score=float(aggregate["raw_score"]),
+        score_stddev=statistics.pstdev(root_scores) if len(root_scores) > 1 else 0.0,
+        leaves=leaves,
+        negative_control=negative_control,
+        call_artifacts=_collect_call_artifacts(
+            calls_root, artifact_base=fallback_base
+        ),
+        errors=(),
+    )
+    report_path = _save_grade_report(grade_root, report)
+    return _grade_response(
+        report,
+        report_path,
+        elapsed_sec=round(time.monotonic() - started, 3),
+        code_only=code_only,
+    )
 
 
 def _strip_to_paperbench_format(rubric: dict) -> dict:
-    """Local copy of ari-skill-replicate.manifest.to_paperbench_format.
+    """Compatibility wrapper around the shared consumer-side conversion."""
 
-    Avoids a hard import from ari-skill-paper-re into ari-skill-replicate
-    (each skill ships independently). The two implementations MUST stay in sync.
-    """
-    KEEP = {"id", "requirements", "weight", "sub_tasks",
-            "task_category", "finegrained_task_category"}
-
-    def strip(node: dict) -> dict:
-        out: dict = {k: v for k, v in node.items() if k in KEEP}
-        out["weight"] = int(node.get("weight", 1))
-        out["sub_tasks"] = [strip(c) for c in (node.get("sub_tasks") or [])]
-        return out
-
-    root = rubric.get("rubric")
-    if not isinstance(root, dict):
-        raise ValueError("Rubric envelope missing 'rubric' root TaskNode")
-    return strip(root)
+    return to_paperbench_format(rubric)
 
 
 def main() -> None:

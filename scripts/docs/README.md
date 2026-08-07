@@ -5,6 +5,7 @@ Documentation lint/gate scripts run against the `docs/` tree.
 ## Contents
 
 - `README.md` — this file.
+- `__init__.py` — documentation-utility package marker.
 - `assemble_site.sh` — assemble the single Pages artifact `_site/` (L3): bespoke landing at the root, VitePress dist at `/docs/`, a noindex `docs.html` redirect stub, and `.nojekyll`. Run after `vitepress build`.
 - `check_doc_links.py` — verify intra-docs links and HTML hrefs resolve to real files.
 - `check_doc_sources.py` — validate the `sources` front-matter each doc declares against the tree.

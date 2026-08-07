@@ -1,0 +1,142 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_prompt_evolution.schema.json",
+  "title": "ARI-RQGM prompt-evolution records",
+  "description": "The three record shapes multiplexed into the append-only {ckpt}/prompt_evolution.jsonl (docs/plans/ari_rqgm/07 §6, owned by Task 07): PromptCandidate (emitted by the PromptMutator — candidates ONLY, never registry writes), PromptCandidateValidation (one per lifecycle stage execution; the record chain is what makes stage skipping kernel-detectable), and ComparisonObservation (shadow stage — observation-only, never an accusation, never a score input). prompt_hash is the hash of the candidate template the record is about; source_prompt_id is REQUIRED for generation_mode mutation and FORBIDDEN for clean_room (Task 08 contamination rule). created_at is wall-clock metadata, never hashed (P2). {ckpt}/prompt_specs.json is a derived rollup; the JSONL stays the source of truth. Additive-only evolution.",
+  "$defs": {
+    "hash12": {"type": "string", "pattern": "^[0-9a-f]{12}$"},
+    "epoch_id": {"type": "string", "pattern": "^epoch_[0-9]{3,}$"},
+    "lifecycle_stage": {
+      "type": "string",
+      "enum": [
+        "static_validation",
+        "constitutional_validation",
+        "schema_dry_run",
+        "replay_evaluation",
+        "anchor_evaluation",
+        "shadow"
+      ]
+    },
+    "mutation_kind": {
+      "type": "string",
+      "enum": [
+        "freeform_mutation",
+        "threshold_tuning",
+        "schema_tightening",
+        "specialization",
+        "distillation",
+        ""
+      ]
+    },
+    "envelope": {
+      "type": "object",
+      "required": [
+        "record_id",
+        "epoch_id",
+        "component_id",
+        "prompt_hash",
+        "role",
+        "created_at",
+        "source_refs",
+        "status"
+      ],
+      "properties": {
+        "record_id": {"type": "string"},
+        "epoch_id": {"$ref": "#/$defs/epoch_id"},
+        "component_id": {"type": "string"},
+        "prompt_hash": {"$ref": "#/$defs/hash12"},
+        "role": {"type": "string"},
+        "created_at": {"type": "string"},
+        "source_refs": {"type": "array", "items": {"type": "string"}},
+        "status": {"type": "string"}
+      }
+    },
+    "prompt_candidate": {
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "type": "object",
+      "required": ["candidate_id", "generation_mode", "prompt_spec"],
+      "properties": {
+        "record_type": {"const": "prompt_candidate"},
+        "record_id": {"type": "string", "pattern": "^pcand_[0-9]{5,}$"},
+        "candidate_id": {"type": "string", "minLength": 1},
+        "generated_by": {
+          "type": "object",
+          "properties": {
+            "component_id": {"type": "string"},
+            "prompt_hash": {"type": "string"}
+          }
+        },
+        "generation_mode": {
+          "type": "string",
+          "enum": ["mutation", "clean_room"]
+        },
+        "mutation_kind": {"$ref": "#/$defs/mutation_kind"},
+        "source_prompt_id": {"type": ["string", "null"]},
+        "failure_summary_refs": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "rationale": {"type": "string"},
+        "prompt_spec": {
+          "$comment": "Full PromptSpec — see rqgm_prompt_spec.schema.json.",
+          "type": "object"
+        },
+        "status": {"const": "candidate"}
+      }
+    },
+    "prompt_candidate_validation": {
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "type": "object",
+      "required": ["candidate_id", "stage", "passed"],
+      "properties": {
+        "record_type": {"const": "prompt_candidate_validation"},
+        "record_id": {"type": "string", "pattern": "^pval_[0-9]{5,}$"},
+        "candidate_id": {"type": "string", "minLength": 1},
+        "stage": {"$ref": "#/$defs/lifecycle_stage"},
+        "passed": {"type": "boolean"},
+        "evaluated_by": {"type": "string"},
+        "case_results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["case_id", "met"],
+            "properties": {
+              "case_id": {"type": "string"},
+              "expected": {"type": ["string", "object"]},
+              "met": {"type": "boolean"},
+              "cache_key": {"type": "string"},
+              "cached": {"type": "boolean"},
+              "incumbent_met": {"type": "boolean"},
+              "reply_hash": {"type": "string"}
+            }
+          }
+        },
+        "metrics": {"type": "object"},
+        "details": {"type": "string"},
+        "status": {"const": "final"}
+      }
+    },
+    "comparison_observation": {
+      "allOf": [{"$ref": "#/$defs/envelope"}],
+      "type": "object",
+      "required": ["candidate_id", "incumbent_id"],
+      "properties": {
+        "record_type": {"const": "comparison_observation"},
+        "record_id": {"type": "string", "pattern": "^cobs_[0-9]{5,}$"},
+        "candidate_id": {"type": "string", "minLength": 1},
+        "incumbent_id": {"type": "string", "minLength": 1},
+        "input_context_hash": {"type": "string"},
+        "node_id": {"type": "string"},
+        "candidate_output_hash": {"type": "string"},
+        "incumbent_output_hash": {"type": "string"},
+        "divergence": {"type": "object"},
+        "status": {"const": "recorded"}
+      }
+    }
+  },
+  "oneOf": [
+    {"$ref": "#/$defs/prompt_candidate"},
+    {"$ref": "#/$defs/prompt_candidate_validation"},
+    {"$ref": "#/$defs/comparison_observation"}
+  ]
+}

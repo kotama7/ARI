@@ -1,10 +1,23 @@
 """Cost tracker for ARI — writes per-call logs and per-experiment summaries."""
 
 from __future__ import annotations
-import json, os, threading, time
-from dataclasses import dataclass, asdict
+
+import json
+import logging
+import os
+import threading
+import time
+from dataclasses import asdict, dataclass
+from datetime import datetime as _datetime
 from pathlib import Path
 from typing import Optional
+
+# The whole module had no logger, so every swallowed failure below (the sole
+# recording path for every litellm call, and the pricing-table load) was
+# invisible: a run could report fewer calls / $0.00 with nothing explaining it.
+# Underscore-private: ``ari.public.cost_tracker`` re-exports every non-underscore
+# name via ``dir()``, so a bare ``log`` would leak into the frozen public API.
+_log = logging.getLogger(__name__)
 
 # Pricing per 1K tokens (input, output) in USD.
 #
@@ -14,14 +27,32 @@ from typing import Optional
 # call ``_estimate_cost`` (e.g. shallow CLI imports).
 
 
+#: True when the last _load_pricing() could not read the table at all. A run
+#: that prices every call at $0.00 because the table is gone must not look like
+#: a genuinely-free run.
+PRICING_TABLE_UNAVAILABLE = False
+
+
 def _load_pricing() -> dict[str, tuple[float, float]]:
+    global PRICING_TABLE_UNAVAILABLE
     try:
         from ari.configs import FilesystemConfigLoader
         raw = FilesystemConfigLoader().load("model_prices")
-    except Exception:
+    except Exception as exc:
+        # One malformed appended row (the file invites operators to add rows),
+        # or a missing PyYAML in a skill venv, discarded ALL 30 models and every
+        # call then priced at $0.00 — reported as `applicable: true`, i.e. "the
+        # run was free". Loud, and NOT memoised, so a transient failure does not
+        # freeze an empty table for the process lifetime.
+        _log.warning("model_prices table unavailable (%s); costs cannot be "
+                    "estimated this call", exc)
+        PRICING_TABLE_UNAVAILABLE = True
         return {}
     out: dict[str, tuple[float, float]] = {}
     if not isinstance(raw, dict):
+        _log.warning("model_prices table is not a mapping (%s); costs cannot be "
+                    "estimated", type(raw).__name__)
+        PRICING_TABLE_UNAVAILABLE = True
         return out
     for k, v in raw.items():
         if isinstance(v, (list, tuple)) and len(v) == 2:
@@ -29,6 +60,7 @@ def _load_pricing() -> dict[str, tuple[float, float]]:
                 out[str(k)] = (float(v[0]), float(v[1]))
             except (TypeError, ValueError):
                 continue
+    PRICING_TABLE_UNAVAILABLE = not out
     return out
 
 
@@ -37,7 +69,9 @@ _PRICING_CACHE: dict[str, tuple[float, float]] | None = None
 
 def _pricing() -> dict[str, tuple[float, float]]:
     global _PRICING_CACHE
-    if _PRICING_CACHE is None:
+    # Do NOT memoise an empty table: an empty result means the load failed, and
+    # freezing it would price the whole run at $0 even after the cause clears.
+    if not _PRICING_CACHE:
         _PRICING_CACHE = _load_pricing()
     return _PRICING_CACHE
 
@@ -73,6 +107,23 @@ class CallRecord:
     backend: str | None = None        # "letta" | None
     embedding_tokens: int = 0
     latency_ms: float | None = None
+    # RQGM Task 02: per-epoch cost attribution. Stamped process-wide via
+    # set_default_metadata(epoch=...) at epoch open; stays None on every
+    # simple_bfts run (readers must treat absence as "no epoch recorded").
+    epoch: str | None = None
+    # Scientific Assurance execution accounting.  These fields are omitted
+    # from ordinary LLM records, preserving the legacy JSONL bytes.
+    execution_identity: str | None = None
+    execution_attempt_id: str | None = None
+    attestation_digest: str | None = None
+    harness_id: str | None = None
+    execution_status: str | None = None
+    wall_time_ms: float | None = None
+    cpu_core_seconds: float | None = None
+    accelerator_seconds: float | None = None
+    memory_byte_seconds: float | None = None
+    resource_measurement_basis: str | None = None
+    cost_status: str | None = None
 
 class CostTracker:
     """Thread-safe per-experiment cost tracker."""
@@ -83,6 +134,10 @@ class CostTracker:
         self._summary_path = self._dir / "cost_summary.json"
         self._lock = threading.Lock()
         self._records: list[CallRecord] = []
+        # Calls whose usage was seen but whose recording raised. Stamped into
+        # cost_summary.json so a reader can reconcile call_count against reality
+        # instead of trusting a silently-undercounted total.
+        self._dropped_records = 0
         # Reload existing records from cost_trace.jsonl so that
         # re-initialisation (e.g. pipeline.py after cli.py) does not
         # discard costs already written to disk.
@@ -110,6 +165,27 @@ class CostTracker:
                             completion_tokens=d.get("completion_tokens", 0),
                             total_tokens=d.get("total_tokens", 0),
                             estimated_cost_usd=d.get("estimated_cost_usd", 0.0),
+                            component=d.get("component"),
+                            op=d.get("op"),
+                            backend=d.get("backend"),
+                            embedding_tokens=d.get("embedding_tokens", 0),
+                            latency_ms=d.get("latency_ms"),
+                            # Absent on pre-RQGM lines: absence == no data
+                            # recorded, never an error (RQGM Task 12 §6.4).
+                            epoch=d.get("epoch"),
+                            execution_identity=d.get("execution_identity"),
+                            execution_attempt_id=d.get("execution_attempt_id"),
+                            attestation_digest=d.get("attestation_digest"),
+                            harness_id=d.get("harness_id"),
+                            execution_status=d.get("execution_status"),
+                            wall_time_ms=d.get("wall_time_ms"),
+                            cpu_core_seconds=d.get("cpu_core_seconds"),
+                            accelerator_seconds=d.get("accelerator_seconds"),
+                            memory_byte_seconds=d.get("memory_byte_seconds"),
+                            resource_measurement_basis=d.get(
+                                "resource_measurement_basis"
+                            ),
+                            cost_status=d.get("cost_status"),
                         ))
                     except (json.JSONDecodeError, KeyError):
                         continue
@@ -121,7 +197,19 @@ class CostTracker:
                component: str | None = None, op: str | None = None,
                backend: str | None = None, embedding_tokens: int = 0,
                latency_ms: float | None = None,
-               cost_usd: float | None = None) -> None:
+               cost_usd: float | None = None,
+               epoch: str | None = None,
+               execution_identity: str | None = None,
+               execution_attempt_id: str | None = None,
+               attestation_digest: str | None = None,
+               harness_id: str | None = None,
+               execution_status: str | None = None,
+               wall_time_ms: float | None = None,
+               cpu_core_seconds: float | None = None,
+               accelerator_seconds: float | None = None,
+               memory_byte_seconds: float | None = None,
+               resource_measurement_basis: str | None = None,
+               cost_status: str | None = None) -> None:
         # Trust an authoritative upstream cost when provided (e.g. the CLI shim
         # forwards claude -p's ``total_cost_usd``). litellm's pricing table has
         # no entry for synthetic shim models like "claude-cli", so without this
@@ -139,12 +227,107 @@ class CostTracker:
             estimated_cost_usd=cost,
             component=component, op=op, backend=backend,
             embedding_tokens=embedding_tokens, latency_ms=latency_ms,
+            epoch=epoch,
+            execution_identity=execution_identity,
+            execution_attempt_id=execution_attempt_id,
+            attestation_digest=attestation_digest,
+            harness_id=harness_id,
+            execution_status=execution_status,
+            wall_time_ms=wall_time_ms,
+            cpu_core_seconds=cpu_core_seconds,
+            accelerator_seconds=accelerator_seconds,
+            memory_byte_seconds=memory_byte_seconds,
+            resource_measurement_basis=resource_measurement_basis,
+            cost_status=cost_status,
         )
         with self._lock:
             self._records.append(rec)
+            line = asdict(rec)
+            # RQGM Task 12 §8: byte-level cost_trace.jsonl compatibility —
+            # the additive `epoch` field is emitted only when non-None, so
+            # simple_bfts lines stay byte-identical to pre-RQGM output.
+            if line.get("epoch") is None:
+                line.pop("epoch", None)
+            for key in (
+                "execution_identity",
+                "execution_attempt_id",
+                "attestation_digest",
+                "harness_id",
+                "execution_status",
+                "wall_time_ms",
+                "cpu_core_seconds",
+                "accelerator_seconds",
+                "memory_byte_seconds",
+                "resource_measurement_basis",
+                "cost_status",
+            ):
+                if line.get(key) is None:
+                    line.pop(key, None)
             with open(self._trace_path, "a") as f:
-                f.write(json.dumps(asdict(rec)) + "\n")
+                f.write(json.dumps(line) + "\n")
         self._write_summary()
+
+    def record_verification(
+        self,
+        *,
+        node_id: str,
+        epoch: str,
+        tier: str,
+        harness_id: str,
+        execution_identity: str,
+        execution_attempt_id: str,
+        attestation_digest: str,
+        execution_status: str,
+        started_at: str,
+        completed_at: str,
+        cpu_cores: int,
+        accelerators: int,
+        memory_bytes: int,
+        backend: str,
+        cost_usd: float | None = None,
+    ) -> None:
+        """Append one verifier execution to the canonical cost trace.
+
+        CPU/GPU/memory quantities are declared allocation multiplied by the
+        executor-measured wall interval.  They are not represented as actual
+        utilization.  An absent authoritative dollar charge remains explicitly
+        ``unpriced`` instead of being reported as a free execution.
+        """
+
+        if tier not in {"screen", "validate", "certify"}:
+            raise ValueError("verification cost tier is invalid")
+        if min(cpu_cores, accelerators, memory_bytes) < 0:
+            raise ValueError("verification resources must be non-negative")
+        started = _datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+        completed = _datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+        duration = (completed - started).total_seconds()
+        if duration < 0:
+            raise ValueError("verification completion predates its start")
+        self.record(
+            model=f"harness:{harness_id}",
+            prompt_tokens=0,
+            completion_tokens=0,
+            node_id=node_id,
+            phase=tier,
+            skill="ari.assurance",
+            component="assurance",
+            op="verify",
+            backend=backend,
+            latency_ms=duration * 1_000,
+            cost_usd=0.0 if cost_usd is None else cost_usd,
+            epoch=epoch,
+            execution_identity=execution_identity,
+            execution_attempt_id=execution_attempt_id,
+            attestation_digest=attestation_digest,
+            harness_id=harness_id,
+            execution_status=execution_status,
+            wall_time_ms=duration * 1_000,
+            cpu_core_seconds=duration * cpu_cores,
+            accelerator_seconds=duration * accelerators,
+            memory_byte_seconds=duration * memory_bytes,
+            resource_measurement_basis="declared-allocation-x-executor-wall-time",
+            cost_status="unpriced" if cost_usd is None else "measured",
+        )
 
     def _write_summary(self) -> None:
         with self._lock:
@@ -167,11 +350,33 @@ class CostTracker:
             "total_cost_usd": round(total_cost, 6),
             "total_tokens": total_tokens,
             "call_count": len(records),
+            # Non-zero => call_count is an UNDERCOUNT: this many calls had usage
+            # but failed to record. Also flags when costs were unpriceable.
+            "dropped_records": self._dropped_records,
+            "pricing_table_unavailable": PRICING_TABLE_UNAVAILABLE,
             "by_phase": {k: {"cost_usd": round(v["cost_usd"], 6), "tokens": v["tokens"]}
                          for k, v in by_phase.items()},
             "by_model": {k: {"cost_usd": round(v["cost_usd"], 6), "tokens": v["tokens"]}
                          for k, v in by_model.items()},
         }
+        verification = [r for r in records if r.component == "assurance"]
+        if verification:
+            summary["verification_resources"] = {
+                "wall_time_seconds": round(
+                    sum((r.wall_time_ms or 0.0) / 1_000 for r in verification), 9
+                ),
+                "cpu_core_seconds": round(
+                    sum(r.cpu_core_seconds or 0.0 for r in verification), 9
+                ),
+                "accelerator_seconds": round(
+                    sum(r.accelerator_seconds or 0.0 for r in verification), 9
+                ),
+                "memory_byte_seconds": round(
+                    sum(r.memory_byte_seconds or 0.0 for r in verification), 3
+                ),
+                "priced_records": sum(r.cost_status == "measured" for r in verification),
+                "unpriced_records": sum(r.cost_status == "unpriced" for r in verification),
+            }
         with open(self._summary_path, "w") as f:
             json.dump(summary, f, indent=2)
 
@@ -343,6 +548,17 @@ def bootstrap_skill(skill: str, phase: str | None = None) -> Optional[CostTracke
     if phase:
         md["phase"] = phase
     set_default_metadata(**md)
+    # Every skill server calls litellm directly (NOT via ari.llm.client), and a
+    # gpt-5* model — e.g. the cli-shim alias codex-cli:gpt-5.6-sol — rejects
+    # temperature!=1 with UnsupportedParamsError, which killed a skill's LLM call
+    # outright (an e2e generate_ideas failed this way, failing the whole node).
+    # Enabling litellm's own drop-unsupported-params switch once per skill
+    # process makes such params silently dropped instead of raising.
+    try:
+        import litellm as _ll
+        _ll.drop_params = True
+    except Exception:
+        pass
     return init_from_env()
 
 def record(**kwargs) -> None:
@@ -431,9 +647,21 @@ def _litellm_success_handler(kwargs, response_obj, start_time, end_time):
             skill=metadata.get("skill", "") or "",
             node_id=metadata.get("node_id", "") or "",
             cost_usd=_extract_upstream_cost(usage),
+            epoch=metadata.get("epoch") or None,
         )
-    except Exception:
-        pass  # Never break the LLM call due to tracking errors
+    except Exception as exc:
+        # Never break the LLM call due to tracking errors — but do NOT do it
+        # silently. This is the SINGLE recording path for every litellm call in
+        # the process (ari.llm.client explicitly does not record), so a swallow
+        # here undercounts call_count and total_cost with nothing explaining the
+        # delta. A `str` metadata value used to mask an AttributeError and unbook
+        # the whole run.
+        try:
+            _tracker._dropped_records += 1
+        except Exception:
+            pass
+        _log.warning("cost record dropped (%s); cost_summary.call_count is now an "
+                    "undercount", exc)
 
 
 def _install_litellm_callback():

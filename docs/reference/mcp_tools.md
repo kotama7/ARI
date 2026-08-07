@@ -2,7 +2,7 @@
 sources:
   - path: ari-skill-hpc/mcp.json
     role: config
-  - path: ari-skill-hpc/src/server.py
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
   - path: ari-skill-coding/mcp.json
     role: config
@@ -12,20 +12,24 @@ sources:
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-08-03
 ---
 
 # MCP Tools Reference
 
-ARI ships 14 MCP servers (one per `ari-skill-*` package).  This page
-is a flat catalogue of every tool the agent can call.  The deep dive
-for each skill lives in its own `README.md`; the section
-[skills.md](skills.md) groups them by responsibility.
+ARI's `ari-skill-*` packages are executable **Capability Providers**, not
+Knowledge Skills. MCP is their transport/discovery protocol. This page is a
+flat catalogue of Provider operations; [skills.md](skills.md) groups the
+legacy-named packages by responsibility. Non-executable procedural knowledge,
+capability binding, and independent verification are separate contracts in
+[Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md).
 
-`mcp.json` (next to each skill's `pyproject.toml`) is the source of
-truth for tool *names*; the function decorated with `@mcp.tool()` (or
-the entry in `@server.list_tools()` for the older skills) defines the
-arguments and return shape.
+For v1 Provider packages, `skill.yaml` plus live `tools/list` is the locked
+source for tool identity/schema. Legacy `mcp.json` files remain package-local
+compatibility metadata. The function decorated with `@mcp.tool()` (or the
+entry in `@server.list_tools()`) defines the live arguments and result shape.
 
 The "LLM" column marks tools that are **P2 exceptions** — they call
 an LLM and therefore are not byte-deterministic.
@@ -69,7 +73,7 @@ in `src/server.py`.
 | `slurm_submit` | sbatch with explicit partition / time / cpus / nodes / GPUs | ✗ |
 | `job_status` | squeue + sacct lookup | ✗ |
 | `job_cancel` | scancel a running job | ✗ |
-| `run_bash` | Direct bash command (local or via SSH) | ✗ |
+| `probe_platform_capabilities` | Probe tool availability (`command -v`) **on the compute partition** and cache it to `{checkpoint}/platform_capabilities.json`; best-effort (any failure is reported as skipped and writes nothing) | ✗ |
 | `singularity_build` | Build a SIF from a definition file | ✗ |
 | `singularity_run` | Run a command inside a SIF | ✗ |
 | `singularity_pull` | Pull a SIF from a remote URI | ✗ |
@@ -80,8 +84,20 @@ in `src/server.py`.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `survey` | arXiv + Semantic Scholar search; pure HTTP | ✗ |
+| `survey` | Prior-work survey: reuses the frozen `virsci_snapshot` corpus when present, else live Semantic Scholar, else an arXiv fallback; pure HTTP | ✗ |
 | `generate_ideas` | LLM generates ranked idea candidates from survey + context | ✓ |
+
+These two are the skill's only registered tools — `_load_virsci_snapshot_papers`
+is a plain helper `survey` calls directly, never agent-visible, and
+`ari-skill-idea/tests/test_server.py` pins both facts via `mcp.list_tools()`.
+When the snapshot is absent and Semantic Scholar is unavailable (keyless or
+rate-limited), `survey` falls back to arXiv; a 0-paper result is reported on
+stderr rather than passing silently. They are also
+the MCP surface behind the RQGM `VirSciAdapter`: in the opt-in `ari_rqgm`
+mode with `proposal_router.generators.virsci.enabled: true`, the core-side
+ProposalRouter routes ideation events to `survey` + `generate_ideas` under a
+per-epoch call budget — see
+[VirSci Integration](../guides/virsci_integration.md).
 
 `generate_ideas` has two engines behind one stable output contract.
 The default is the lightweight re-implemented discussion loop; the
@@ -261,9 +277,44 @@ helpers only.
 | `search_semantic_scholar` | Semantic Scholar API | ✗ |
 | `collect_references_iterative` | Walk the citation graph from a seed paper | ✗ |
 
+## ari-skill-knowledge — read-only Knowledge surface
+
+This compatibility-named package is a Capability Provider exposing only
+queries and non-authoritative requests against the ARI Knowledge Skill
+Registry. It cannot register, promote, revoke, rewrite a lock, or activate a
+Knowledge Skill. The fixed `knowledge_binder_v1` remains authoritative.
+
+| Tool | Purpose | Authoritative |
+|---|---|:---:|
+| `search_knowledge_skills` | Search the frozen catalog projection | No |
+| `describe_knowledge_skill` | Read one manifest/body description | No |
+| `list_active_knowledge_skills` | Read the active epoch/node projection | No |
+| `request_knowledge_skill` | Emit a selection proposal for fixed admission | No |
+
+## ari-skill-harness — read-only Assurance surface
+
+This package exposes discovery, evidence reading, and auxiliary-verification
+requests. It is not the Harness Resolver or Fixed Verifier. Agent tool choice
+cannot select the authoritative suite or execute a locked verification run.
+
+| Tool | Purpose | Authoritative |
+|---|---|:---:|
+| `search_harnesses` | Search the frozen Harness catalog projection | No |
+| `describe_harness` | Read one Harness description | No |
+| `request_auxiliary_verification` | Propose an additive verification requirement | No |
+| `read_attestation` | Read a persisted attestation | No |
+| `list_verification_requirements` | Read admitted requirements | No |
+
+Neither package exposes registration, promotion, revocation, lock rewrite,
+tolerance/oracle replacement, or `force_pass`. Catalog administration is a
+human-authenticated CLI/PR workflow. See
+[Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md).
+
 ## See also
 
 - `docs/reference/skills.md` — narrative description of each skill (responsibility, env vars, examples).
+- `docs/reference/knowledge_capability_assurance.md` — normative three-layer
+  identities, admission, locks, security, and extension gates.
 - `docs/reference/environment_variables.md` — env-var-by-env-var reference.
 - The `mcp.json` in each skill for the canonical tool name list.
 - `@mcp.tool()` / `@server.list_tools()` in each skill's `src/server.py`

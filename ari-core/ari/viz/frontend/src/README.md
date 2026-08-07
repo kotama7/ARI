@@ -8,9 +8,19 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
 - `App.tsx` — root app, lazy-loads page components and wraps them in `AppProvider`/`Layout`.
 - `main.tsx` — ReactDOM entry point with a top-level error boundary.
 - `vite-env.d.ts` — Vite client type declarations.
-- `__tests__/` — TODO
-  - `devModeAndDangerousOps.test.tsx` — TODO
-  - `routeNavParity.test.tsx` — TODO
+- `__tests__/` — app-wide guard suites owned by no feature: route↔nav parity, full-App route render and shell a11y baselines, developer-mode/dangerous-ops gating, `AppContext` scope, the index.html supply-chain rule, and generated-v1-type drift.
+  - `appContextScope.test.ts` — structural guard: v2 component dirs stay free of `context/AppContext` imports (legacy remote-data store; pinned exception: IdeasV2Page research-goal card) and `AppContext.tsx` keeps its LEGACY-SCOPED header.
+  - `devModeAndDangerousOps.test.tsx` — Tier-2 gating invariants: developer mode OFF hides the raw node-JSON tab and the env-key readback (no secret probe on mount), destructive calls go only through the server-issued challenge two-step (MN-6), and the shared loading/empty/error kit renders; the ARIA-tabs invariant stays `it.todo` until 068/069/070 land.
+  - `indexHtmlNoExternalScripts.test.ts` — supply-chain guard: the SPA entry document may reference no external script/stylesheet, so every asset comes from the lockfile-pinned Vite bundle and the backend's `script-src 'self'` CSP stays honest.
+  - `routeNavParity.test.tsx` — Tier-1 route↔nav parity over the real `PAGE_MAP`/`NAV_ITEMS` tables: every route has a nav entry or is an explicit hidden route, and the 18-entry nav table (keys, icons, labels, order, `guiV2`/`navReplaces`) is frozen against the pre-registry literal.
+  - `routeRenderBaseline.test.tsx` — mounts the FULL registry-driven App at each nav route hash with all network I/O mocked and asserts each page's stable marker renders (no route may silently lose its mount path).
+  - `shellA11yBaseline.test.tsx` — axe + heading baseline for the shell: positive invariants must never regress and the frozen violation ids are a ratchet — a new violation fails, and a fixed one must be removed from the literal.
+  - `v1TypesDrift.test.ts` — regenerates `services/api/v1types.gen.ts` in memory from `ari/viz/v1/openapi.json` and asserts byte equality with the committed file.
+- `app/` — application shell wiring shared by every route (no feature owns it).
+  - `queryClient.ts` — shared react-query client factory + app singleton (staleTime 5s matching the legacy `/state` cadence, retry 1, no refetch-on-window-focus); tests build an isolated client per render.
+  - `routeRegistry.ts` — single source of truth for routes: hash paths, lazy page loaders, nav label/order/icon, legacy aliases and `gui_v2` gating/takeover; `App.tsx` and `Sidebar.tsx` both derive from it, and the `#/<path>` URLs are a frozen deployment contract.
+  - `__tests__/` — app-shell unit tests.
+    - `routeRegistry.test.tsx` — freezes the registry as literals against the deployed contract (id/path set, nav order + i18n keys, `new` → `wizard` alias, query-string stripping, unknown hash → undefined).
 - `components/` — page and UI components, grouped by feature.
   - `README.md` — components index.
   - `common/` — reusable presentational UI primitives shared across pages.
@@ -18,18 +28,46 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `Badge.tsx` — colored variant label span.
     - `Button.tsx` — styled button with variant/size props.
     - `Card.tsx` — bordered content container.
-    - `EmptyState.tsx` — TODO
-    - `ErrorState.tsx` — TODO
+    - `DegradedState.tsx` — canonical PARTIAL-data affordance (warning tokens, `role="status"`, surrounding content stays visible); deliberately distinct from `ErrorState`, which means total failure.
+    - `EmptyState.tsx` — canonical "no data yet" block on the `.empty-state`/`.empty-icon` CSS; caller passes an already-translated `message` plus optional emoji `icon` and `hint`.
+    - `ErrorState.tsx` — canonical total-failure affordance: `var(--red)` message plus optional Retry button, rendering a plain string from either api error regime (thrown message or `{error}` body).
     - `index.ts` — barrel re-exports.
-    - `LoadingState.tsx` — TODO
+    - `LoadingState.tsx` — canonical spinner + translated label replacing the ad-hoc `<span className="spinner" /> {t('loading')}` patterns; `inline` renders a row instead of a centered block.
+    - `NavRail.tsx` — vertical slice navigation: a real list with `aria-current` on the selected item, selected/unselected states from the `.nav-rail` tokens; navigation, so deliberately not `Button`.
+    - `StaleDataBanner.tsx` — freshness notice for live surfaces: keeps the last known snapshot visible and says how fresh it is (`aria-live="polite"`); a dropped stream is never presented as "run stopped".
     - `StatBox.tsx` — single value + label stat tile.
     - `StatusBadge.tsx` — maps run status to a colored `Badge`.
-    - `__tests__/` — TODO
-      - `StateComponents.test.tsx` — TODO
+    - `TabStrip.tsx` — the ONE v2 tablist look (`role=tablist/tab`, `aria-selected`/`aria-controls`); the owning page renders the matching `role="tabpanel"` using the `${idPrefix}-tab-<id>` / `${idPrefix}-panel-<id>` id convention.
+    - `__tests__/` — unit tests for the primitives in this directory.
+      - `asyncStates.test.tsx` — `DegradedState`/`StaleDataBanner` contract: status roles, default translated titles, and the retry/refresh callbacks.
+      - `StateComponents.test.tsx` — `LoadingState`/`EmptyState`/`ErrorState` kit contract: default vs overridden labels, icon/hint rendering, and the retry button existing only when `onRetry` is passed.
+  - `ConfigBrowser/` — read-only effective-config browser (`#/config?run=`).
+    - `README.md` — ConfigBrowser index.
+    - `ConfigBrowserPage.tsx` — schema/effective-config browser (category groups, search, provenance/mutability badges, secret-reference redaction, resolver warnings).
+    - `ConfigReadOnlyTable.tsx` — the ONE read-only config row/table renderer (value formatting, secret redaction, `SOURCE_VARIANT`/`MUTABILITY_VARIANT` badge maps); shared with the Configuration Studio's ADR-09 Execution section so the two config surfaces cannot drift.
+    - `index.ts` — barrel re-export.
+    - `__tests__/` — component tests for this directory.
+      - `ConfigBrowserPage.test.tsx` — tests for `ConfigBrowserPage.tsx` (144-field schema mode + search, run-mode provenance/warnings/secret redaction, error envelope with request_id).
+  - `ConfigStudio/` — schema-driven Configuration Studio (`#/studio`): edits the project/template/draft config documents and launches drafts.
+    - `README.md` — ConfigStudio index.
+    - `ConfigStudioPage.tsx` — schema-driven form over project/template/draft scopes.
+    - `ExecutionSection.tsx` — ADR-09 execution/paper mode selection + the read-only `rqgm.*` tree.
+    - `index.ts` — barrel re-exports.
+    - `LaunchPanel.tsx` — draft launch flow (resolve/validate → immutable review → idempotent launch).
+    - `modeIntents.ts` — the two ADR-09 mode intent pairs (frontend mirror of `field_registry.MODE_INTERLOCK_PAIRS`) + leaf readers.
+    - `SecretField.tsx` — write-only secret assignment + readiness display.
+    - `StudioPickers.tsx` — template select/create + draft create (incl. goal) controls.
+    - `ValidationSummary.tsx` — per-path `details.errors` renderer.
+    - `__tests__/` — component tests for this directory.
+      - `README.md` — __tests__ index.
+      - `ConfigStudioExecutionMode.test.tsx` — tests for `ExecutionSection.tsx` + the ADR-09 launch-review wiring (mode selection accepted 2026-07-27): one control writes BOTH pair keys in a single PATCH, the two intents are orthogonal, all four combinations render and round-trip, re-selecting the stored value writes nothing (default path byte-identical), an inconsistent stored pair is flagged, the `rqgm.*` tree renders values with no editable control, the launch review shows the RESOLVED mode (requested→resolved + resolver warning on a fallback), and `mode_interlock_mismatch` blocks the launch with its typed message.
+      - `ConfigStudioLaunch.test.tsx` — tests for the `LaunchPanel.tsx` launch flow (gui_refresh task 06 Wave 4e, plan 06 §Launch protocol / backend MN-10): resolve→validate→review→launch happy path with the canonical `#/overview?run=<run_id>` redirect from the server-issued run_id, validation failure (`mode_locked`) blocking the POST, double-click single-POST + same-idempotency-key retry, typed error envelope rendering (request_id + per-path `details.errors`).
+      - `ConfigStudioPage.test.tsx` — tests for `ConfigStudioPage.tsx` (gui_refresh task 06 Wave 4d): schema-driven control generation, If-Match PATCH + 409 reload banner + per-path 400 ValidationSummary, write-only secret flow, the ADR-09 Execution section refused in PROJECT scope.
   - `Experiments/` — experiments page (lists experiment/checkpoint runs).
     - `README.md` — Experiments index.
     - `ExperimentsPage.tsx` — experiments list view.
     - `index.ts` — barrel re-export.
+  - `Governance/` — Read-only RQGM Governance workspace (gui_refresh task 08 Wave 4a; plan 08
   - `Home/` — home/overview landing page.
     - `README.md` — Home index.
     - `HomePage.tsx` — home/overview view.
@@ -38,6 +76,12 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `README.md` — Idea index.
     - `IdeaPage.tsx` — idea view.
     - `index.ts` — barrel re-export.
+  - `IdeasV2/` — v2 Ideas workspace (`#/ideas2?run=`): run-explicit, read-only idea/hypothesis view that takes over the Idea nav slot while `gui_v2` is on.
+    - `README.md` — IdeasV2 index.
+    - `IdeasV2Page.tsx` — the page component plus exported pure helpers
+    - `index.ts` — barrel re-export.
+    - `__tests__/` — component tests for this directory.
+      - `IdeasV2Page.test.tsx` — page contract tests (happy/absent/degraded/
   - `Layout/` — app shell (page frame + nav sidebar).
     - `README.md` — Layout index.
     - `index.ts` — barrel re-export.
@@ -50,6 +94,16 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `MonitorPage.tsx` — monitor page container.
     - `monitorSections.tsx` — metric helper + Experiment-Configuration card (extracted from MonitorPage in req 15).
     - `PhaseStepper.tsx` — workflow phase progress bar (idea→bfts→paper→review).
+    - `__tests__/` — component tests for this directory.
+      - `MonitorPage.test.tsx` — RR-D-1 regression: partial `/api/resource-metrics` payload renders placeholders, never a TypeError crash.
+  - `Overview/` — v2 run Overview workspace (`#/overview?run=`): read-only lifecycle/phase/blocker summary plus the embedded log explorer.
+    - `README.md` — Overview index.
+    - `index.ts` — barrel re-export.
+    - `LogsPanel.tsx` — collapsible cursor log explorer (P4): [Load more]
+    - `OverviewPage.tsx` — the P1/P2 Overview workspace (typed `/api/v1`
+    - `__tests__/` — component tests for this directory.
+      - `LogsPanel.test.tsx` — tests for `LogsPanel.tsx` (lazy collapsed
+      - `OverviewPage.test.tsx` — tests for `OverviewPage.tsx` (P1/P2 render,
   - `PaperBench/` — register external papers, import them, launch/inspect PaperBench runs.
     - `README.md` — PaperBench index.
     - `index.ts` — barrel re-exports.
@@ -63,11 +117,18 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `results/` — rubric-scored results view.
       - `README.md` — results index.
       - `ResultsView.tsx` — leaf grades + rubric tree + negative-control display.
+  - `Projects/` — v2 run portfolio (`#/projects`), the first v2 vertical slice; read-only and built only on the typed `/api/v1` hooks.
+    - `README.md` — Projects index.
+    - `index.ts` — barrel re-export.
+    - `ProjectsPage.tsx` — v2 run-portfolio table (projects -> runs of the virtual `default` project).
+    - `__tests__/` — component tests for this directory.
+      - `ProjectsPage.test.tsx` — tests for `ProjectsPage.tsx` (rows, empty state, error envelope, two-run isolation, results handoff).
   - `Results/` — final run results and rubric scoring.
     - `README.md` — Results index.
     - `EarSection.tsx` — Experiment Artifact Repository section (curate/publish/publish.yaml editor); extracted from ResultsPage renderEAR in req 15.
     - `index.ts` — barrel re-export.
     - `PaperWorkspace.tsx` — Overleaf-like paper editor (file tree + PDF/editor views + compile log); extracted from ResultsPage renderPaper in req 15.
+    - `PdfPreview.tsx` — app-owned PDF.js canvas preview (page nav, zoom, loading/error states) so managed or Chromium browsers without an embedded viewer still show the compiled paper.
     - `PublishYamlEditor.tsx` — per-checkpoint publish.yaml (EAR allowlist) editor; extracted from ResultsPage in req 03.
     - `resultHelpers.ts` — pure helpers + string formatters (tryParseJson, buildGradeMap, aggregateScore, format*Stage, etc.); extracted from resultSections in req 15.
     - `resultSections.tsx` — presentational subcomponents and pure helpers for the results page; extracted from ResultsPage in req 03.
@@ -75,34 +136,40 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `resultTypes.ts` — Results-page shared types (OrsRenderInput, RubricNode, LeafGrade, StageState); extracted from resultSections in req 15.
     - `RubricTreeVisualization.tsx` — D3 rubric tree with aggregated leaf scores.
     - `useEAR.ts` — hook owning EarSection's curate/publish/publish.yaml-editor action state; extracted from ResultsPage in req 15.
-    - `sections/` — TODO
-      - `ContextSection.tsx` — TODO
-      - `FiguresSection.tsx` — TODO
-      - `OrsChainSection.tsx` — TODO
-      - `ReproSection.tsx` — TODO
-      - `ReviewScoresSection.tsx` — TODO
+    - `__tests__/` — unit tests for this directory.
+      - `ResultsPageRoute.test.ts` — `runFromResultsHash` route parsing: `#/results?run=<id>` yields the URL-decoded run id, a bare `#/results` yields an empty selection.
+    - `sections/` — the pure `render*` section functions split out of the ResultsPage container: context, figures, ORS chain, reproducibility, review scores.
+      - `ContextSection.tsx` — `renderContext` — experiment-context card over `summary.science_data.experiment_context`, values over 500 chars collapsed into `<details>`; null when absent.
+      - `FiguresSection.tsx` — `renderFigures` — figures grid normalizing `figures_manifest`'s dict and legacy-list shapes, with captions extracted from the stored LaTeX snippets.
+      - `OrsChainSection.tsx` — `renderOrsChain` — PaperBench-aware ORS chain: headline verdict plus per-stage status for `ors_rubric_meta` / `ors_replicator` / `ors_seed` / `ors_phase1` / `ors_grade` and the rubric tree.
+      - `ReproSection.tsx` — `renderRepro` — reproducibility section dispatching to the ORS chain or the legacy panel plus the repro-log toolbar; `renderLegacyRepro` handles the pre-§4.1 `reproducibility_report` shape.
+      - `ReviewScoresSection.tsx` — `renderReviewScores` — `summary.review_report` card mapping decision to badge variant and rendering rubric-driven or legacy dimensional scores.
+  - `ResultsV2/` — v2 Results/EAR workspace (`#/results2?run=`): read-only run-explicit result summary; every EAR mutation stays on the legacy Results page.
+    - `ResultsV2Page.tsx` — review/ORS summary plus the curate→preview→publish→promote EAR lineage as a read-only badge chain, with the exported `deriveEarLineage`/`shortDigest` helpers.
+    - `__tests__/` — component tests for this directory.
+      - `ResultsV2Page.test.tsx` — tests for `ResultsV2Page.tsx` (summary + lineage rendering, honest absence, error envelope, nav takeover of the Results slot).
   - `Settings/` — dashboard/run configuration page.
     - `README.md` — Settings index.
     - `index.ts` — barrel re-export.
     - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
-    - `SettingsGroup.tsx` — TODO
+    - `SettingsGroup.tsx` — progressive-disclosure wrapper grouping cards under a sensitivity tier; collapsing toggles CSS `display` only and never unmounts children, so all ten `.card-title`s stay in the DOM.
     - `SettingsPage.tsx` — settings view.
-    - `settingsStyles.ts` — TODO
-    - `settingsTypes.ts` — TODO
-    - `__tests__/` — TODO
-      - `SettingsContract.test.tsx` — TODO
-      - `SettingsDisclosure.test.tsx` — TODO
-    - `sections/` — TODO
-      - `ContainerSection.tsx` — TODO
-      - `LanguageSection.tsx` — TODO
-      - `LlmBackendSection.tsx` — TODO
-      - `MemorySection.tsx` — TODO
-      - `PaperRetrievalSection.tsx` — TODO
-      - `ProjectManagementSection.tsx` — TODO
-      - `SkillsSection.tsx` — TODO
-      - `SlurmSection.tsx` — TODO
-      - `SshSection.tsx` — TODO
-      - `VlmReviewSection.tsx` — TODO
+    - `settingsStyles.ts` — shared `inputStyle` / `labelStyle` field styles moved verbatim out of SettingsPage so every `sections/*` component consumes one definition.
+    - `settingsTypes.ts` — shared prop/data types for the decomposed sections: the threaded `TFn` translator, the `SkillInfo` row, and the `LettaDeployment` union.
+    - `__tests__/` — the frozen Settings contract tests (ten cards, 24-key save payload) plus the progressive-disclosure safety test.
+      - `SettingsContract.test.tsx` — Tier-1 frozen contract: all ten section `<Card>` titles render, and Save POSTs exactly the 24-key flat object to `/api/settings`.
+      - `SettingsDisclosure.test.tsx` — pins the 069 tiers: four `settings-group-header`s render and collapsing one keeps all ten cards mounted (CSS-only, no unmount).
+    - `sections/` — the ten presentational `<Card>` sections SettingsPage composes into its four sensitivity tiers; each takes state + setters as props.
+      - `ContainerSection.tsx` — container card — mode (auto/docker/singularity/apptainer/none), pull policy, image, and the Detect Runtime probe badge.
+      - `LanguageSection.tsx` — UI language card — en/ja/zh select wired to the orchestrator's `onLangChange`.
+      - `LlmBackendSection.tsx` — LLM backend card — provider select (openai/anthropic/gemini/ollama/cli-shim), model dropdown plus custom entry, temperature, API key, and the ollama/cli-shim base URL.
+      - `MemorySection.tsx` — Letta memory card — base URL, API key, embedding provider/handle picker, and the deployment-path Restart button calling `restartLetta` behind a confirm with status feedback.
+      - `PaperRetrievalSection.tsx` — paper retrieval card — backend radio (Semantic Scholar / AlphaXiv / both) and the optional Semantic Scholar API key.
+      - `ProjectManagementSection.tsx` — checkpoint roster card with running/active badges and the per-project Delete button that drives the challenge-gated `deleteCheckpoint` flow.
+      - `SkillsSection.tsx` — read-only table of the `GET /api/skills` rows — name, display name, description, and required env (or an `any` badge).
+      - `SlurmSection.tsx` — SLURM/HPC defaults card — partition multi-select with a Detect probe, CPUs, memory (GB), and walltime.
+      - `SshSection.tsx` — remote-host card — host/port/user/remote ARI path/key path plus the Test SSH probe and its ✓/✗ status badge.
+      - `VlmReviewSection.tsx` — VLM figure-review card — model picker drawn from `PROVIDER_MODELS` for the currently selected provider.
   - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
     - `README.md` — Tree index.
     - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
@@ -120,6 +187,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
       - `MemoryTab.tsx` — memory tab (own/inherited/global entry cards); extracted from DetailPanel in req 15.
       - `ReportTab.tsx` — node-report tab (node_report.json structured view); extracted from DetailPanel in req 15.
       - `TraceTab.tsx` — MCP-trace tab (tool pills + colored trace log); extracted from DetailPanel in req 15.
+  - `TreeV2/` — Run-explicit tree exploration route (`#/tree2?run=<id>&node=<id>`, route id
   - `Wizard/` — multi-step run-launch wizard.
     - `README.md` — Wizard index.
     - `index.ts` — barrel re-export.
@@ -132,10 +200,12 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Workflow/` — workflow stages/pipeline page.
     - `README.md` — Workflow index.
     - `index.ts` — barrel re-export.
-    - `workflowModals.tsx` — TODO
+    - `workflowModals.tsx` — edge-`ConditionModal`, skill-selector `SkillDrawer`, `NodeEditModal`, skill-detail `SkillModal` + the shared `inputStyle`/`SkillMcpEntry`; split verbatim out of `workflowNodes.tsx` in subtask-064 and re-exported from it.
     - `workflowNodes.tsx` — React Flow custom nodes + edit/skill/condition modals (extracted from WorkflowPage in req 15).
-    - `workflowNodeTypes.tsx` — TODO
+    - `workflowNodeTypes.tsx` — React Flow custom node renderers and the `phase`/`condition`/`parallel` `nodeTypes` map + deterministic `skillColor` hash; split verbatim out of `workflowNodes.tsx` in subtask-064 and re-exported from it.
     - `WorkflowPage.tsx` — workflow view.
+    - `__tests__/` — component tests for this directory.
+      - `WorkflowPage.revision.test.tsx` — revision-aware saving: every save sends the loaded `base_revision` and adopts the returned `revision`, the 2s debounce is unchanged, and a 409 pauses saving behind an explicit Reload instead of blindly overwriting.
 - `context/` — global React context (shared app state).
   - `README.md` — context index.
   - `AppContext.tsx` — `AppProvider`/`useAppContext`: shared app state, websocket tree nodes, current page, checkpoints.
@@ -143,46 +213,62 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `README.md` — hooks index.
   - `useApi.ts` — generic async data-fetch hook with loading/error/refetch.
   - `useDevMode.ts` — persisted developer-mode flag (localStorage `ari_dev_mode`, default OFF) with same-tab + cross-tab sync; gates raw/debug/dangerous UI surfaces.
+  - `useRunEvents.ts` — subscribes the shared SSE client for the caller's lifetime and maps each event to a react-query invalidation keyed by the EVENT's `run_id` (events are invalidations, never data — an event for run B can never touch run A's cache); exposes `connectionState`/`lastEventAt` for the `StaleDataBanner` and a bounded poll fallback once the stream is offline.
+  - `useV1.ts` — react-query hooks over the typed `/api/v1` client; query keys are `['v1', projectId?, runId?, resource]`, so run-scoped entries stay isolated per run and one run's server state can be dropped in a single `invalidateQueries`.
   - `useWebSocket.ts` — streams real-time tree updates with auto-reconnect.
   - `__tests__/` — hook unit tests.
     - `useDevMode.test.tsx` — default-OFF, persistence, and cross-instance sync for `useDevMode`.
+    - `useRunEvents.test.tsx` — event → invalidation glue against a fake `EventSource`: per-topic keys, two-run isolation, connection state and the offline poll tick.
 - `i18n/` — localization (en/ja/zh) helpers.
   - `en.ts` — English dictionary.
+  - `I18nProvider.tsx` — startup ready-gate for the lazily loaded locale dicts: holds the first render until the active locale (`ari_lang`, default `ja`) and the `en` fallback are in memory, so `t()` stays synchronous everywhere below and no raw key ever flashes.
   - `index.ts` — i18n entry / language selection.
   - `ja.ts` — Japanese dictionary.
   - `zh.ts` — Chinese dictionary.
-  - `__tests__/` — TODO
-    - `parity.test.tsx` — TODO
+  - `__tests__/` — locale-dictionary unit tests.
+    - `parity.test.tsx` — Tier-1 key-set parity over the REAL `en`/`ja`/`zh` dicts (imported directly, bypassing the lazy barrel): no key missing in any direction, no duplicate keys, `KNOWN_DRIFT` empty; values are deliberately not compared.
 - `services/` — typed API and websocket client modules.
   - `README.md` — services index.
   - `api.ts` — typed REST client (state, checkpoints, settings, GPU monitor, etc.).
   - `websocket.ts` — websocket helper stub (connections now handled by `useWebSocket`).
-  - `__tests__/` — TODO
-    - `api.test.tsx` — TODO
-    - `schema.test.tsx` — TODO
-  - `api/` — TODO
-    - `catalog.ts` — TODO
-    - `checkpoints.ts` — TODO
-    - `client.ts` — TODO
-    - `ear.ts` — TODO
-    - `experiment.ts` — TODO
-    - `files.ts` — TODO
-    - `memory.ts` — TODO
-    - `nodeReport.ts` — TODO
-    - `paperbench.ts` — TODO
-    - `publish.ts` — TODO
-    - `resources.ts` — TODO
-    - `settings.ts` — TODO
-    - `ssh.ts` — TODO
-    - `state.ts` — TODO
-    - `subExperiments.ts` — TODO
-    - `wizard.ts` — TODO
-    - `workflow.ts` — TODO
+  - `__tests__/` — service-layer contract tests: the frozen API wire contract and the FE schema round-trip mirror.
+    - `api.test.tsx` — pins the frozen wire contract — same-origin `API_BASE`, each wrapper's endpoint path, the throwing `get`/`post` vs swallowing `pbGet`/`pbPost` regimes, and the POST request-init shape.
+    - `schema.test.tsx` — FE mirror of `tests/test_api_schema_contract.py`: typed `AppState`/`Checkpoint`/`Settings`/`WorkflowData` fixtures round-trip through a mocked fetch, asserting the always-present keys survive (additive-subset doctrine, `types/index.ts` is the source of truth).
+  - `api/` — the domain-partitioned endpoint wrappers and DTOs split out of the old 863-line `api.ts` god-module, all riding one shared transport core (`client.ts`).
+    - `capabilities.ts` — `GET /api/capabilities` server feature flags (the `ARI_GUI_V2` shell kill-switch); callers must default `gui_v2` to ON when the fetch fails, so an API hiccup never bricks the dashboard into the fallback shell.
+    - `catalog.ts` — profiles / rubrics / few-shot catalog family — `fetchProfiles`, `fetchRubrics`, and the few-shot list/sync/upload/delete wrappers.
+    - `challenges.ts` — requests the server-issued confirmation challenge every dangerous operation (delete-checkpoint / stop-all / gpu-monitor stop) must carry: single-use, server-TTL-bounded, and bound to one action+target.
+    - `checkpoints.ts` — checkpoint list / summary / lifecycle family; `deleteCheckpoint` is two-step and must carry a `delete-checkpoint` challenge id or the server refuses with HTTP 428.
+    - `client.ts` — the shared same-origin transport (`API_BASE = ''`) behind one `request` primitive: throwing `get`/`post`, never-throwing `pbGet`/`pbPost`, envelope-preserving `v1Get`/`v1Send` (If-Match), plus the MN-8 bearer-token helpers.
+    - `ear.ts` — Experiment Artifact Repository family — browse a run's EAR, `curateEAR` bundling, the `publish.yaml` read/save editor, and `cloneVerifyBundle` sha256 verification.
+    - `experiment.ts` — experiment lifecycle family — `runStage`, `launchExperiment`, and `stopExperiment`, which needs a `stop-all` challenge id or the server refuses with HTTP 428.
+    - `files.ts` — Overleaf-like checkpoint file management — file list/filetree/content reads, save/delete, the bespoke octet-stream `uploadCheckpointFile` (`X-Filename`), and `compileCheckpointPaper`.
+    - `kca.ts` — typed client for knowledge, capability, and assurance dashboard endpoints.
+    - `memory.ts` — Letta memory family — per-checkpoint entries grouped `by_node`, the read/write access log, `/api/memory/health`, and `restartLetta`.
+    - `nodeReport.ts` — `fetchNodeReport` plus the v0.7.0 `NodeReport` DTO (files_changed, metrics, self_assessment, artifacts) served by `/api/nodes/{run}/{node}/report`.
+    - `paperbench.ts` — PaperBench family on the no-throw `pbGet`/`pbPost` regime (the backend answers 200 + `{error}`): paper registry list/import/delete, arXiv metadata, cost estimate, run launch, results, report export.
+    - `publish.ts` — publish family — registry settings, `previewPublish`, `runPublish` (dry-run/consent/visibility), `promotePublish`, and the stored `PublishRecord`.
+    - `resources.ts` — infra probes — scheduler detect, SLURM partitions, Ollama/GPU resources, container info/images/pull, and `gpuMonitorAction` whose `stop` requires a `gpu-monitor-stop` challenge.
+    - `settings.ts` — settings / env family — `/api/settings` read+write plus `fetchSecretsStatus`, which reports only WHETHER each allowlisted secret is configured, never its value.
+    - `ssh.ts` — SSH / HPC probe family — the single `testSSH` wrapper over `POST /api/ssh/test`.
+    - `state.ts` — state / tree / models family — the `/state` `AppState` poll, experiment-detail config, active checkpoint, resource metrics, and model list.
+    - `subExperiments.ts` — recursive-orchestration family — list/fetch/launch sub-experiments, with the `SubExperiment` DTO carrying lineage provenance (`inherit_idea_index`, parent-termination fields).
+    - `v1.ts` — typed read-only client for the versioned `/api/v1` API; every failure (typed `ErrorEnvelopeV1`, network error, malformed body) is normalized into a thrown `ApiErrorV1` `{code, message, details, request_id, retryable}`.
+    - `v1types.gen.ts` — DTO/path types generated from `ari/viz/v1/openapi.json` by `npm run gen:v1types`; committed to the tree and byte-compared by `src/__tests__/v1TypesDrift.test.ts` — never hand-edited.
+    - `wizard.ts` — wizard / chat / upload family — `chatGoal`, `generateConfig`, and the bespoke octet-stream `uploadFile` (`X-Filename` / `X-File-Type`) with its delete.
+    - `workflow.ts` — skills + `workflow.yaml` family; writes are revision-aware (`base_revision`), and `isWorkflowRevisionConflict` recognizes the HTTP 409 stale-revision refusal surfaced by the throwing `post`.
+- `shared/` — cross-feature platform code owned by no single page.
+  - `realtime/` — shared realtime (SSE) client; feature code never touches `EventSource` directly.
+    - `README.md` — realtime index.
+    - `eventStream.ts` — `subscribe(runId, topics, callbacks)` wrapper over SSE
+    - `__tests__/` — realtime client unit tests.
+      - `eventStream.test.ts` — FakeEventSource-driven: URL/filter
 - `styles/` — global CSS.
   - `README.md` — styles index.
   - `components.css` — component styles.
   - `dashboard.css` — top-level dashboard styles.
-  - `layout.css` — page/layout structure.
+  - `layout.css` — page/layout structure, plus the base element defaults for the app frame (`body`, `#root`, `a`, `button`, `::file-selector-button`). The element-level `button`/`a` rules are deliberately low specificity: any component class or inline style overrides them, so they only reach controls nothing else styles.
+  - `motion.css` — `prefers-reduced-motion: reduce` overrides: collapses the `--t-*` motion tokens to zero and disables animations/transitions globally (imported after `tokens.css` so the `:root` override wins).
   - `responsive.css` — responsive/media-query overrides.
   - `tokens.css` — design tokens (colors, spacing).
   - `widgets.css` — widget-specific styles.

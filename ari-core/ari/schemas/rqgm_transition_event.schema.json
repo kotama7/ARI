@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/rqgm_transition_event.schema.json",
+  "title": "ARI-RQGM transition event (one line of rqgm_transitions.jsonl)",
+  "description": "The hash-chained, append-only line envelope. Schema v2 uses full SHA-256 over schema_version, event_id, event_type, transaction_id, canonical payload, and prev_event_hash. Schema v1 is retained for legacy checkpoint reads and hashes only the canonical payload. ts/ts_iso are metadata outside both commitments.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "event_type",
+    "payload",
+    "event_hash",
+    "prev_event_hash"
+  ],
+  "properties": {
+    "schema_version": {"enum": [1, 2]},
+    "event_id": {"$ref": "#/$defs/event_id"},
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "epoch_transaction_prepare",
+        "component_registered",
+        "prompt_registered",
+        "component_status_change",
+        "prompt_status_change",
+        "epoch_close",
+        "epoch_open",
+        "epoch_transaction_commit",
+        "emergency_quarantine"
+      ]
+    },
+    "transaction_id": {"type": "string"},
+    "payload": {"type": "object"},
+    "event_hash": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{12}|[0-9a-f]{64})$"
+    },
+    "prev_event_hash": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{12}|[0-9a-f]{64})?$"
+    },
+    "ts": {"type": ["number", "null"]},
+    "ts_iso": {"type": "string"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"schema_version": {"const": 2}}
+      },
+      "then": {
+        "required": ["transaction_id"]
+      }
+    }
+  ],
+  "$defs": {
+    "hash12": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{12}$"
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^evt_[0-9]{6,}$"
+    }
+  }
+}

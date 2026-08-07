@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "authentication": {
+      "default": "local-stdio",
+      "enum": [
+        "local-stdio",
+        "bearer",
+        "test"
+      ],
+      "title": "Authentication",
+      "type": "string"
+    },
+    "principal_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Principal Id",
+      "type": "string"
+    },
+    "roles": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Roles",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "ari.orchestrator-principal/v1",
+      "default": "ari.orchestrator-principal/v1",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "principal_id"
+  ],
+  "title": "PrincipalV1",
+  "type": "object"
+}

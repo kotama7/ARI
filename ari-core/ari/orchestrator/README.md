@@ -8,7 +8,7 @@ LLM node scoring, lineage decisions, and root-idea selection.
 - `README.md` — this file.
 - `__init__.py` — package exports + authoritative module-map docstring.
 - `bfts.py` — `BFTS` loop and stage hooks (expand/select, pruning, frontier retire).
-- `bfts_prompt_builder.py` — TODO
+- `bfts_prompt_builder.py` — pure context builders for the expand/select prompts (`build_expand_context`, the candidate description lines) + the shared `_BUDGET` truncation limits.
 - `lineage_decision.py` — LLM lineage action + `lineage_decisions.jsonl` log.
 - `node.py` — `Node` data model + `NodeStatus` / `NodeLabel` enums.
 - `node_selection.py` — shared node-selection helpers + publication source-file selection.
@@ -19,6 +19,7 @@ LLM node scoring, lineage decisions, and root-idea selection.
   - `__init__.py` — re-exports the builder + legacy shim.
   - `builder.py` — v0.7+ `node_report.json` builder.
   - `legacy_reconstruct.py` — v0.5 → v0.7 reconstruct shim.
+  - `scientific_assurance.py` — project scientific assurance outcomes and evidence references into governed node reports.
 
 ## See also
 

@@ -1,264 +1,126 @@
-\section{System Overview}\label{sec:overview}
+\section{System and Threat Model}\label{sec:overview}
 
-\subsection{The full stack}\label{sec:overview:layout}
+\subsection{System boundary and actors}\label{sec:overview:layout}
 
-\begin{figure*}[t]
-  \centering
-  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F10_full_stack.tex}}
-  \caption{The full ARI stack at v0.9.0 as five layers: entry points;
-           the \texttt{ari-core} orchestrator (badge~1); the engine
-           layer, where BFTS engine and ReAct \texttt{AgentLoop} form
-           the iteration loop (badge~2) with the lineage walker
-           beside it; the MCP dispatch hub (badge~3) fanning into the
-           skill registry's four lifecycle columns; and checkpoint
-           persistence. Solid edges are control; dashed edges are
-           secondary flows (lineage lookup, persistence).}
-  \label{fig:fullstack}
-\end{figure*}
+Constitutional ARI-RQGM governs the institution surrounding an autonomous
+research executor. The executor produces typed research artefacts,
+measurements, review records, and manuscript candidates inside a
+checkpoint. The governance system observes those records and controls
+which prompt, component, and utility-policy versions may serve. It does
+not control the host operating system, model weights, or the human who can
+change the program.
 
-\Cref{fig:fullstack} draws the full ARI stack at v0.9.0 as five
-layers; this section walks them top to bottom. The system splits
-into one driver and many tool providers: the driver
-(\texttt{ari-core}) owns the orchestrator, the search and agent
-engines, the lineage walker, the checkpoint serialiser, the cost
-tracker, and the configuration loader, while every domain capability
---- writing code, running benchmarks, reviewing drafts --- lives in
-a skill.
+The actors divide into four groups. \emph{Research actors} propose,
+evaluate, defend, and write. \emph{Judiciary actors} collect evidence,
+prosecute, defend governance motions, and adjudicate them. \emph{Meta
+actors} generate candidate prompts and policies or select replay cases.
+\emph{Fixed actors} validate constitutional rules, apply registry
+transitions, repair affected records, and verify final claims. An actor
+may produce a hashed record only within its declared role. The current
+artifact does not implement digital signatures or role-key management.
+Producing a recommendation never implies authority to enact it.
 
-\paragraph{Entry points.}
-A run starts from the command-line interface (CLI), from the public
-Python interface (the software development kit, SDK), or from the
-visualisation server --- an HTTP dashboard exposing live search
-state, per-checkpoint files, and launch controls to a browser. All
-paths converge on the same orchestrator entry (badge~1); interactive
-use does not get a second code path.
+\subsection{Threat model}\label{sec:overview:pipeline}
 
-\paragraph{Engine layer.}
-The \term{best-first tree search} (BFTS) engine maintains the tree
-of research-step nodes and decides which node to run next and how
-to expand it (\cref{sec:exploration}) --- a
-search-over-candidate-solutions framing ARI shares with AIDE
-\cite{jiang2025aide}. Each expansion hands a node to the
-\texttt{AgentLoop}, a Reason-and-Act (ReAct) agent
-\cite{yao2023react} that interleaves free-text reasoning with tool
-calls until the node's work is done: the engine supplies direction,
-the agent execution --- one iteration loop (badge~2). The lineage
-walker beside the loop is consulted rather than driven: it climbs
-parent pointers across checkpoints so a derivative run can inherit
-its ancestors' idea pool and context
-(\cref{sec:exploration:lineage}).
+The primary adversary is reflexive institutional optimisation: an
+evolvable role may seek a change that makes its own outputs look better
+rather than making the research more reliable. Concrete threats include
+score inflation, metric gaming, evidence omission, prompt injection,
+collusion between proposer and evaluator, a meta agent requesting broader
+tools than its incumbent, a judge ruling on its own prosecution, and a
+retired prompt remaining influential through derived scores.
 
-\paragraph{MCP dispatch.}
-Every tool call crosses the dispatch layer (badge~3). The
-\term{Model Context Protocol} (MCP) is the JSON-RPC-over-stdio
-interface that Anthropic standardised for exposing tool-style
-capabilities to a language-model agent loop; ARI uses it as the
-universal seam between \texttt{ari-core} and every skill. Each skill
-is a separate Python package whose server runs as a pooled child
-process, under the skill's own interpreter when it ships one. A
-skill is wired in by a configuration entry naming its package path
-and the pipeline phases in which its tools are exposed; the tool
-manager filters tools by the active phase, so an exploration node
-cannot call the paper-writing tools (\cref{sec:exploration:react}).
+The model also includes accidental failures. A process may stop between
+registry events; a model may emit malformed output; an anchor corpus may
+be absent; a prompt candidate may fail its output schema; or stored
+evidence may lack the raw axes needed for re-scoring. These failures must
+not produce a half-applied institution.
 
-The fourteen skill packages currently in tree are:
-\texttt{benchmark}, \texttt{coding}, \texttt{evaluator},
-\texttt{hpc}, \texttt{idea}, \texttt{memory}, \texttt{orchestrator},
-\texttt{paper}, \texttt{paper-re}, \texttt{plot}, \texttt{replicate},
-\texttt{transform}, \texttt{vlm}, and \texttt{web}. The registry in
-\cref{fig:fullstack} groups their tool surfaces by lifecycle phase:
-generation (idea, coding), evaluation (evaluator, review), writing
-\& replication (paper, replicate, paper-re), and infrastructure and
-I-O --- where the \texttt{hpc} skill is the seam to a cluster batch
-scheduler, so experiments can run as dispatched jobs. Two boxes
-deserve a note: \emph{review} names a tool surface rather than a
-package (draft-review tools are hosted by the evaluator and paper
-skills; \cref{sec:paper:loop}), and the \texttt{orchestrator} skill
-exposes run management over MCP, so ARI itself can be driven as a
-tool by an external agent.
+The threat model excludes a malicious host administrator, arbitrary
+modification of the fixed program, compromise of the underlying hash
+function, rollback of both a checkpoint and its local pin to the same old
+prefix, secret modification of model weights by the provider, and
+irreversible external API, device, or production-data operations.
+Changing the constitutional program is treated as a human amendment, not
+an attack the running system can prevent.
 
-The orchestrator dispatches calls but performs no domain work
-itself. The separation matters because skills can be added or
-swapped without touching the search algorithm: the BFTS engine is
-unaware of which skills participate.
+\subsection{Authority and verification boundary}\label{sec:overview:verification}
 
-\begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F01_architecture.tex}}
-  \caption{Operational view. The orchestrator fans out over two
-           dispatch buses into three lifecycle columns (fill encodes
-           phase) plus the phase-free support skills. Dashed edges
-           are state: each producing group persists into the
-           checkpoint artefacts on the bottom row.}
-  \label{fig:architecture}
-\end{figure}
+Authority flows in one direction. Model-bearing roles may create
+proposals, attacks, defences, judgments, and candidates. The deterministic
+kernel converts none of these directly into registry state. Instead it
+checks the record, the acting role, the requested edge, epoch timing,
+capability subset, provenance, and audit continuity. A transition engine
+is the sole registry writer, and its output is checked again before
+commit.
 
-The bottom layer is persistence: every byte a run produces lands in
-a single checkpoint directory, alongside the serialised tree and the
-cost ledger (\cref{sec:overview:principles}). The smaller diagram in
-\cref{fig:architecture} is the ``operational'' view used in the rest
-of the report (control buses and state edges only);
-\cref{fig:fullstack} is the ``layered'' view (driver $\to$ engines
-$\to$ MCP $\to$ skills $\to$ persistence).
+Two asymmetric failure rules preserve useful work without allowing an
+uncertain institutional change. A governance hook on the research path is
+\emph{fail-open}: its failure is recorded and candidate generation or
+local computation may continue only in a side-effect-free sandbox. A
+state-changing governance operation is \emph{fail-closed}: if its evidence
+or legality cannot be established, the incumbent institution remains in
+service. External irreversible actions require a separate fixed gate that
+fails closed; the present kernel does not enforce that environmental
+condition.
 
-\subsection{Pipeline DAG}\label{sec:overview:pipeline}
+The final manuscript verifier is part of the fixed boundary. The
+manuscript forward-declares numeric claim identifiers, formulas, operand
+locations, units, and tolerances. The verifier recomputes this closed
+formula vocabulary from execution evidence. It does not infer arbitrary
+claims from natural language or establish the truth of non-numeric claims
+or execution records. Writer and reviewer roles cannot change the
+verifier, its inputs, or its verdict.
 
-\begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F05_pipeline_dag.tex}}
-  \caption{Pipeline DAG: four stations (badges 1--4) under two band
-           headings, \emph{search} and \emph{write \& review}. Each
-           station persists its artefact to the checkpoint (dashed).
-           The single accented edge is \term{refine}, the back edge
-           that rewrites the draft and re-runs the review.}
-  \label{fig:pipeline}
-\end{figure}
+\subsection{State, provenance, and replay}\label{sec:overview:checkpoint}
 
-A run reduces to a four-station pipeline (\cref{fig:pipeline}). The
-idea station selects or generates research questions; the
-exploration station spawns nodes under BFTS; the paper station
-compiles the best lineage into a draft; and the review station
-grades the draft against the rubric. The graph is a DAG plus one
-back edge from review to paper: only this edge can introduce
-non-monotonicity (refining can worsen an axis), and the
-\term{convergence criterion} (\cref{sec:paper:loop}) bounds the
-back-edge count. The pipeline is driven by a single runner in the
-orchestrator; a scientific-data assembler collates the per-node
-artefacts the writer needs (\cref{sec:paper:evidence}).
+The checkpoint is the unit of institutional identity. Its append-only
+events are authoritative; registry, epoch, and erasure snapshots are
+derived views that can be reconstructed by replay. Every governed record
+carries the epoch, serving component, prompt hash, and relevant policy
+hash. Audit events form a predecessor-linked hash chain. Consequently a
+reader can distinguish what happened, which institution produced it, and
+which later transition changed its eligibility. This local chain detects
+interior deletion or modification, and a surviving local boundary pin
+detects a shorter log. It cannot detect rollback of both log and pin to
+the same old valid prefix. There is no external signed head, witness
+checkpoint, or monotonic counter, and the hash is not an author signature.
 
-The write-and-review band hides a fixed \emph{gate chain} the draft
-must clear before finalisation. After writing, the draft's claims
-are linked to recorded evidence by stable identifiers; a
-deterministic claim--evidence gate (no language model) re-derives
-every reported number from the recorded results within a tolerance;
-a complementary semantic review flags overclaims and feeds the
-refine loop; and after refinement the linking, the review, and the
-gate run once more as a final check that, under the strict policy,
-blocks finalisation while any objective mismatch stands
-(\cref{sec:paper:contract}). The blocking gate is core-side code
-reached through a thin skill wrapper, so swapping a skill cannot
-weaken it; blocking is reserved for objective falsehoods, while
-subjective review findings steer the refiner but never gate
-publication. The chain realises Story2Proposal's contract-threaded
-generation in execution-grounded form \cite{qian2026story2proposal}.
+Epoch transactions use prepare, close, open, and commit events. Replay
+ignores an incomplete suffix and deterministically re-executes the
+boundary. Founding registration is similarly write-once: a committed
+founding transaction is replayed, never repeated. Logical erasure adds
+staleness and eligibility fields rather than deleting bytes, preserving
+the evidence needed to audit the retirement itself.
 
-\subsection{BFTS control flow}\label{sec:overview:bfts-flow}
+Epoch identity is split before it is composed. A policy fingerprint binds
+the serving institution and all resolved governance settings, including
+thresholds and budgets. An execution fingerprint binds the declared model,
+decoding, tools, environment, and data snapshot. Missing provider or
+environment revisions are explicitly marked unresolved. The former supports
+institutional comparisons; the latter exposes when an apparently unchanged
+policy ran on a different declared execution substrate. Neither turns an
+opaque model service into a reproducible binary.
 
-\begin{figure*}[t]
-  \centering
-  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F11_bfts_control.tex}}
-  \caption{BFTS control flow: one step as a spine of five numbered
-           stations. The two LLM-driven stations each consult their
-           own prompt file (dashed, above); when the parse gate
-           rejects the returned index, selection falls back to the
-           deterministic \texttt{\_fallback\_score} (scientific score
-           plus \texttt{diversity\_bonus}). Below the spine: the
-           v0.9.0 lineage-chaining hints into the expansion, and the
-           stagnation detector into the prune gate. The accented edge
-           appends the child to the frontier; the dotted margin path
-           continues to the next iteration.}
-  \label{fig:bftsflow}
-\end{figure*}
+\subsection{Design principles}\label{sec:overview:principles}
 
-\Cref{fig:bftsflow} traces a single BFTS step end-to-end. The
-implementation is laid out in \cref{sec:exploration}; the diagram
-fixes the vocabulary used by the rest of the report (frontier,
-selection, fallback, expand, prune, stagnation) and shows the prompt
-files behind the two LLM-driven stations (\texttt{bfts\_select.md},
-\texttt{bfts\_expand.md}); a third prompt,
-\texttt{bfts\_expand\_select.md}, drives the choice of \emph{which}
-completed node to expand in the full loop
-(\cref{sec:exploration:node-selection}). The two hint boxes below
-the spine are new at v0.9.0 and implement lineage chaining for
-computed evidence: the coverage hint steers the expansion target
-toward the node already holding the required measurements, and the
-lineage hint tells the new child which inherited measurement files
-it holds. The hints carry only names, never values, so branch
-isolation is preserved (\cref{sec:exploration:lineage-chaining}).
+Five principles organise the architecture.
 
-\subsection{paper-re component view}\label{sec:overview:paperre-component}
-
-\begin{figure*}[t]
-  \centering
-  \resizebox{0.95\textwidth}{!}{\input{../shared/figures/tikz/F12_paperre_components.tex}}
-  \caption{The \texttt{paper-re} skill's components in three layers.
-           The top row is ARI's adapter layer (replication driver,
-           solver adapter, output bounding, path adapter); the middle
-           row is the vendored PaperBench package (agent solver,
-           rubric leaves, judge); the bottom row is the bridge that
-           drives the three protocol stages and collapses a
-           per-submission graded tree --- averaging repeated runs ---
-           into a single \texttt{rubric.json} score plus an ARI-side
-           \texttt{reproduce.sh}. Detail in
-           \cref{sec:paper:paperbench}.}
-  \label{fig:paperre}
-\end{figure*}
-
-\Cref{fig:paperre} is the second-level view of \texttt{paper-re},
-the skill that carries the PaperBench-protocol reproduction path
-\cite{starace2025paperbench}. ARI's contribution at this layer is
-small but specific: a thin adapter wraps each agent tool so its
-output is size-bounded, and redirects the vendored solver's
-hard-coded paths to ARI's per-node workspace; everything else flows
-through the PaperBench upstream verbatim, which keeps ARI aligned
-with the upstream replication-task framing and grade semantics.
-\Cref{sec:paper:paperbench} develops the three-stage
-rollout--reproduce--grade contract the bridge drives.
-
-\subsection{Checkpoint scoping and the design principles}\label{sec:overview:principles}
-
-ARI is built around five \term{design principles} (P1--P5). The
-binding one is \textbf{P2: determinism}. Every randomised step
-records its seed; every LLM call records its model identity, prompt,
-and output; every tool call is tagged with its node identity (a
-copy-on-write guard) so its writes land inside the right node's
-working tree. Re-running a checkpoint must reproduce the same
-artefacts byte-for-byte, except for fields explicitly marked as
-wallclock or as model-side non-determinism.
-
-The other principles, in summary:
-
-\begin{itemize}
-  \item \textbf{P1 single artefact tree}: every output of a run lives
-        below \texttt{\$ARI\_CHECKPOINT\_DIR}. Nothing leaks to
-        \texttt{\$HOME} or \texttt{/tmp}.
-  \item \textbf{P3 small components}: each skill is a separate
-        package; replacing one skill does not require rebuilding
-        \texttt{ari-core}.
-  \item \textbf{P4 explicit lineage}: every node and every checkpoint
-        record their parent, so a derivative experiment can recompute
-        only its delta.
-  \item \textbf{P5 cost transparency}: the cost tracker attaches
-        dollar costs to every model call so the user can bound a run;
-        skill subprocesses append to the same run-level ledger.
-\end{itemize}
-
-The checkpoint serialiser writes three top-level files: the full
-search tree to \texttt{tree.json}, a lightweight per-node export
-consumed by the paper pipeline to \texttt{nodes\_tree.json}, and
-end-of-run aggregates to \texttt{results.json}. Lineage walks across
-checkpoints climb from a child to its ancestors through the parent
-pointer each checkpoint records in its run metadata.
-
-\begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{\input{../shared/figures/tikz/F13_checkpoint_layout.tex}}
-  \caption{Checkpoint directory layout. Run-level files (left band)
-           are written by the orchestrator; per-node working trees
-           (right band) hold the artefacts produced inside one
-           BFTS expansion, including the structured self-report each
-           node leaves behind. Reproducing a run is exactly
-           ``re-execute against this directory'', and the layout
-           guarantees that no other state is needed.}
-  \label{fig:checkpoint}
-\end{figure}
-
-\Cref{fig:checkpoint} draws the on-disk shape of a checkpoint:
-shared run-level files on the left, per-node working trees on the
-right. A node's working tree starts as a copy of its parent's, so
-each tree is a self-contained snapshot of the experiment at that
-step, and the self-report that grounds evidence assembly
-(\cref{sec:paper:evidence}) sits next to the artefacts it describes.
-The shape is the contract: any tool that takes ARI's output as input
---- a follow-up run, a regression check, a paper draft --- points at
-a single such directory.
+\begin{enumerate}
+  \item \textbf{Fixed law, evolvable institution.} The constitution,
+        transition topology, and final verification path are outside the
+        set of runtime-mutable artefacts.
+  \item \textbf{Frozen service epochs.} A serving version changes only at a
+        boundary. T16 emergency quarantine forms an immediate boundary and
+        opens a new epoch fingerprint, so its before/after nodes have
+        distinct institutional identities.
+  \item \textbf{Separation of recommendation and authority.} Proposers,
+        judges, and meta agents emit records. Only the transition engine
+        writes the registry, under kernel validation.
+  \item \textbf{History without inherited influence.} Retirement never
+        deletes evidence, but affected descendants become stale or are
+        re-scored before they may influence future selection.
+  \item \textbf{Claims proportional to evidence.} Structural guarantees
+        are stated as guarantees; mechanism demonstrations are not
+        presented as evidence of improved research quality.
+\end{enumerate}

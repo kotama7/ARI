@@ -1,24 +1,56 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "ari://schemas/replication_rubric.schema.json",
-  "title": "ORS Auto-Rubric (PaperBench TaskNode compatible)",
+  "title": "ARI ReplicationRubricV2 (PaperBench TaskNode compatible)",
   "type": "object",
-  "required": ["version", "paper_sha256", "generator", "reproduce_contract", "rubric"],
+  "required": ["schema_version", "version", "paper_sha256", "generator", "repair_ledger", "reproduce_contract", "rubric", "rubric_sha256"],
   "properties": {
+    "schema_version": { "const": "ari.replication-rubric/v2" },
     "version":        { "const": "3" },
     "paper_sha256":   { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "rubric_sha256":  { "type": "string", "pattern": "^[a-f0-9]{64}$" },
     "generator": {
       "type": "object",
-      "required": ["model", "prompt_sha256", "generated_at"],
+      "required": ["model", "provider", "prompt_sha256", "generated_at", "strategy", "quality_profile", "max_model_calls", "subtree_concurrency", "calls", "partial_failures"],
       "properties": {
         "model":          { "type": "string" },
+        "model_revision": { "type": ["string", "null"] },
+        "provider":       { "type": "string" },
         "prompt_sha256":  { "type": "string", "pattern": "^[a-f0-9]{64}$" },
         "generated_at":   { "type": "string", "format": "date-time" },
         "temperature":    { "type": "number" },
         "seed":           { "type": "integer" },
-        "snapshot":       { "type": "object" }
-      }
+        "snapshot":       { "type": "object" },
+        "strategy":       { "enum": ["hierarchical-v2", "legacy-v1-offline-migration"] },
+        "quality_profile": { "enum": ["calibrated", "requires-independent-audit"] },
+        "max_model_calls": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "subtree_concurrency": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "calls": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/model_call" }
+        },
+        "partial_failures": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "source_artifact": { "$ref": "#/$defs/artifact" }
+      },
+      "additionalProperties": false
+    },
+    "repair_ledger": {
+      "type": "object",
+      "required": ["actions", "dropped_artifacts"],
+      "properties": {
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/repair_action" }
+        },
+        "dropped_artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifact" }
+        }
+      },
+      "additionalProperties": false
     },
     "reproduce_contract": {
       "type": "object",
@@ -33,7 +65,8 @@
         },
         "execution_profile": {
           "type": "object",
-          "description": "Optional HPC/parallel-execution hints. Consumed by ari-skill-paper-re Phase 2 sbatch and BasicAgent prompt. Omit for legacy single-node papers (backward-compat).",
+          "description": "Optional HPC/parallel-execution hints. Compiled into ari.hpc.job-request/v1 and consumed by the BasicAgent prompt. Omit for single-node papers.",
+          "additionalProperties": false,
           "properties": {
             "kind": {
               "type": "string",
@@ -58,8 +91,8 @@
             },
             "requested_nodes":        { "type": "integer", "minimum": 1 },
             "ntasks_per_node":        { "type": "integer", "minimum": 0, "default": 0 },
-            "requested_nodelist":     { "type": ["string", "null"] },
-            "exclude_nodes":          { "type": "string", "default": "" },
+            "requested_nodelist":     { "type": ["string", "null"], "pattern": "^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$" },
+            "exclude_nodes":          { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$", "default": "" },
             "exclusive":              { "type": "boolean", "default": false },
             "requested_gpus_per_task":{ "type": "integer", "minimum": 0, "default": 0 },
             "requested_gpus_per_node":{ "type": "integer", "minimum": 0, "default": 0 },
@@ -69,7 +102,10 @@
             "constraint":             { "type": "string", "default": "" },
             "cpu_bind":               { "type": "string", "default": "" },
             "mem_bind":               { "type": "string", "default": "" },
-            "hint":                   { "type": "string", "default": "" },
+            "hint":                   { "enum": ["", "compute_bound", "memory_bound", "multithread", "nomultithread"], "default": "" },
+            "account":                { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$", "default": "" },
+            "qos":                    { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$", "default": "" },
+            "reservation":            { "type": "string", "pattern": "^$|^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$", "default": "" },
             "module_loads": {
               "type": "array",
               "items": { "type": "string" },
@@ -77,27 +113,153 @@
             },
             "extra_sbatch_args": {
               "type": "array",
-              "items": { "type": "string" },
+              "description": "Deprecated reader compatibility; new producers must use typed fields.",
+              "items": {
+                "type": "string",
+                "pattern": "^--(account|qos|reservation|hint)=[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$"
+              },
               "default": []
             }
-          }
+          },
+          "allOf": [
+            {
+              "not": {
+                "required": ["memory_gb_per_node", "memory_gb_per_cpu"],
+                "properties": {
+                  "memory_gb_per_node": { "minimum": 1 },
+                  "memory_gb_per_cpu": { "minimum": 1 }
+                }
+              }
+            },
+            {
+              "not": {
+                "required": ["requested_gpus_per_task", "requested_gpus_per_node"],
+                "properties": {
+                  "requested_gpus_per_task": { "minimum": 1 },
+                  "requested_gpus_per_node": { "minimum": 1 }
+                }
+              }
+            }
+          ]
         }
-      }
-    },
-    "audit": {
-      "type": "object",
-      "properties": {
-        "auditor_model":   { "type": "string" },
-        "audited_at":      { "type": "string", "format": "date-time" },
-        "flags_count":     { "type": "integer" }
-      }
+      },
+      "additionalProperties": false
     },
     "rubric": {
       "$ref": "#/$defs/task_node",
       "description": "Root TaskNode (PaperBench-compatible). Pass this directly to SimpleJudge."
     }
   },
+  "additionalProperties": false,
   "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["relative_path", "sha256", "size_bytes", "media_type"],
+      "properties": {
+        "relative_path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "size_bytes": { "type": "integer", "minimum": 0 },
+        "media_type": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "model_call": {
+      "type": "object",
+      "required": ["label", "status", "model", "provider", "prompt", "call_sha256"],
+      "properties": {
+        "label": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+        "status": { "enum": ["completed", "failed", "budget-exhausted"] },
+        "model": { "type": "string", "minLength": 1 },
+        "model_revision": { "type": ["string", "null"] },
+        "provider": { "type": "string", "minLength": 1 },
+        "prompt": { "$ref": "#/$defs/artifact" },
+        "raw_response": { "$ref": "#/$defs/artifact" },
+        "error": { "type": ["string", "null"] },
+        "call_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "completed" } } },
+          "then": { "required": ["raw_response"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "repair_action": {
+      "type": "object",
+      "required": ["sequence", "action", "target", "before_sha256", "after_sha256", "reason"],
+      "properties": {
+        "sequence": { "type": "integer", "minimum": 0 },
+        "action": { "enum": ["json-sanitize", "default-field", "identity-normalize", "category-normalize", "structure-collapse", "leaf-field-strip", "evidence-bind", "verification-bind", "invalid-prune", "partial-subtree", "legacy-migrate"] },
+        "target": { "type": "string", "minLength": 1 },
+        "before_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "after_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "reason": { "type": "string", "minLength": 1 },
+        "dropped_artifact": { "$ref": "#/$defs/artifact" }
+      },
+      "additionalProperties": false
+    },
+    "evidence_span": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "section", "quote", "start_char", "end_char", "paper_sha256"],
+          "properties": {
+            "kind": { "const": "paper-span" },
+            "section": { "type": "string", "minLength": 1 },
+            "quote": { "type": "string", "minLength": 10 },
+            "start_char": { "type": "integer", "minimum": 0 },
+            "end_char": { "type": "integer", "minimum": 1 },
+            "paper_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "description", "source"],
+          "properties": {
+            "kind": { "const": "external-prerequisite" },
+            "description": { "type": "string", "minLength": 10 },
+            "source": { "type": "string", "minLength": 3 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "verification_target": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "relative_path"],
+          "properties": {
+            "kind": { "const": "artifact" },
+            "relative_path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "relative_path", "pattern"],
+          "properties": {
+            "kind": { "const": "log-pattern" },
+            "relative_path": { "const": "reproduce.log" },
+            "pattern": { "type": "string", "minLength": 1, "maxLength": 512 }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": ["kind", "relative_path", "metric", "unit"],
+          "properties": {
+            "kind": { "const": "metric" },
+            "relative_path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$" },
+            "metric": { "type": "string", "minLength": 1 },
+            "unit": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "task_node": {
       "type": "object",
       "required": ["id", "requirements", "weight"],
@@ -126,21 +288,50 @@
           "description": "PaperBench closed vocabulary; mirrors VALID_FINEGRAINED_TASK_CATEGORIES in vendor/paperbench/.../tasks.py."
         },
         "rationale_from_paper": {
-          "type": "object",
-          "description": "Required at leaf nodes (sub_tasks empty). Optional at internal nodes.",
-          "required": ["section", "quote"],
-          "properties": {
-            "section": { "type": "string" },
-            "quote":   { "type": "string", "minLength": 10 }
-          }
+          "description": "Required at leaves: exact paper evidence or an explicit external prerequisite.",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["section", "quote"],
+              "properties": {
+                "section": { "type": "string", "minLength": 1 },
+                "quote":   { "type": "string", "minLength": 10 }
+              },
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "required": ["external_prerequisite"],
+              "properties": {
+                "external_prerequisite": {
+                  "type": "object",
+                  "required": ["description", "source"],
+                  "properties": {
+                    "description": { "type": "string", "minLength": 10 },
+                    "source": { "type": "string", "minLength": 3 }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
         },
-        "flags": {
-          "type": "array",
-          "items": {
-            "enum": ["unverifiable", "duplicate", "no_paper_evidence", "vague_qualifier"]
+        "evidence_span": { "$ref": "#/$defs/evidence_span" },
+        "verification": { "$ref": "#/$defs/verification_target" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "sub_tasks": { "maxItems": 0 } },
+            "required": ["sub_tasks"]
+          },
+          "then": {
+            "required": ["task_category", "finegrained_task_category", "rationale_from_paper", "evidence_span", "verification"]
           }
         }
-      }
+      ],
+      "additionalProperties": false
     }
   }
 }

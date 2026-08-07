@@ -243,7 +243,7 @@ def test_launch_dry_run_returns_cost_estimate():
     })
     res = P._api_launch_run({
         "paper_ids": ["p4"],
-        "rubric_config": {"two_stage": True},
+        "rubric_config": {},
         "reproduce_config": {"time_limit_sec": 3600},
         "judge_config": {"n_runs": 1},
         "dry_run": True,
@@ -285,6 +285,17 @@ def test_launch_rejects_empty_paper_ids():
     assert "error" in res
 
 
+def test_launch_rejects_removed_rubric_strategy_switch():
+    res = P._api_launch_run(
+        {
+            "paper_ids": ["not-reached"],
+            "rubric_config": {"two_stage": False},
+            "dry_run": True,
+        }
+    )
+    assert res == {"error": "unknown rubric_config fields: two_stage"}
+
+
 def test_run_results_unavailable_until_completed():
     P._api_import_paper({
         "source_type": "arxiv", "source": "p5", "title": "P5",
@@ -307,12 +318,12 @@ def test_run_results_unavailable_until_completed():
 
 def test_cost_estimate_scales_with_n_runs():
     base = P._api_cost_estimate({
-        "rubric_config": {"two_stage": True},
+        "rubric_config": {},
         "reproduce_config": {"time_limit_sec": 3600},
         "judge_config": {"n_runs": 1},
     })
     n5 = P._api_cost_estimate({
-        "rubric_config": {"two_stage": True},
+        "rubric_config": {},
         "reproduce_config": {"time_limit_sec": 3600},
         "judge_config": {"n_runs": 5},
     })
@@ -386,6 +397,148 @@ def test_job_logs_buffer_capped_at_2000():
     assert len(snap["logs"]) == 2000
     # Oldest entries dropped; tail is preserved
     assert snap["logs"][-1]["msg"] == "line 2499"
+
+
+# ── durable job records (gui_refresh Wave 4c) ────────────────────────────
+# Every _JOBS mutation mirrors the entry to {registry_root}/jobs/{id}.json
+# (tmp + os.replace, 0o600); GET readers fall back to disk when the id is
+# absent from memory (server restart), reporting a persisted live job as
+# the additive status "interrupted" without respawning its worker.
+
+
+def _launch_one_job(paper_id: str) -> str:
+    P._api_import_paper({
+        "source_type": "arxiv", "source": paper_id, "title": paper_id,
+        "license": "MIT", "paper_id": paper_id,
+    })
+    r = P._api_launch_run({"paper_ids": [paper_id], "reproduce_config": {}})
+    return r["job_ids"][0]
+
+
+def test_new_job_writes_durable_record():
+    jid = _launch_one_job("dj1")
+    rec_path = P._jobs_dir() / f"{jid}.json"
+    assert rec_path.is_file()
+    rec = json.loads(rec_path.read_text(encoding="utf-8"))
+    assert rec["job_id"] == jid
+    assert rec["paper_id"] == "dj1"
+    assert rec["status"] == "queued"
+    # 0o600 file inside a 0o700 jobs dir (owner-only, like gui_store).
+    assert (rec_path.stat().st_mode & 0o777) == 0o600
+    assert (P._jobs_dir().stat().st_mode & 0o777) == 0o700
+    # No orphan tmp file left behind.
+    assert not list(P._jobs_dir().glob("*.tmp"))
+
+
+def test_set_job_field_rewrites_durable_record():
+    jid = _launch_one_job("dj2")
+    P._set_job_field(jid, status="running", current_stage="rubric",
+                     progress=0.05)
+    rec = json.loads(
+        (P._jobs_dir() / f"{jid}.json").read_text(encoding="utf-8")
+    )
+    assert rec["status"] == "running"
+    assert rec["current_stage"] == "rubric"
+    assert rec["progress"] == 0.05
+    # Completion is mirrored too.
+    P._set_job_field(jid, status="completed", progress=1.0,
+                     results={"ors_score": 0.5})
+    rec2 = json.loads(
+        (P._jobs_dir() / f"{jid}.json").read_text(encoding="utf-8")
+    )
+    assert rec2["status"] == "completed"
+    assert rec2["results"] == {"ors_score": 0.5}
+
+
+def test_restart_running_job_reads_disk_as_interrupted():
+    """Restart simulation: clear _JOBS — the status GET must answer from
+    the durable record, reporting the dead-worker job as 'interrupted'."""
+    jid = _launch_one_job("dj3")
+    P._set_job_field(jid, status="running", current_stage="reproduce_run",
+                     progress=0.55)
+    P._JOBS.clear()  # the restart
+    snap = P._api_run_status(jid)
+    assert "error" in snap  # the additive interrupted explanation
+    assert snap["status"] == "interrupted"
+    assert snap["paper_id"] == "dj3"
+    assert snap["current_stage"] == "reproduce_run"
+    assert "restarted" in snap["error"]
+    # Read-only rehydration: no worker respawn, no re-insertion into _JOBS.
+    assert P._JOBS == {}
+    # The durable record itself is untouched (GETs never write).
+    rec = json.loads(
+        (P._jobs_dir() / f"{jid}.json").read_text(encoding="utf-8")
+    )
+    assert rec["status"] == "running"
+
+
+def test_restart_completed_job_serves_results_from_disk():
+    jid = _launch_one_job("dj4")
+    P._set_job_field(jid, status="completed", progress=1.0,
+                     results={"ors_score": 0.42})
+    P._JOBS.clear()  # the restart
+    snap = P._api_run_status(jid)
+    assert snap["status"] == "completed"  # terminal statuses stay as-is
+    assert P._api_run_results(jid) == {"ors_score": 0.42}
+
+
+def test_live_jobs_keep_legacy_shape_and_status():
+    """No behavior change for live jobs: while the entry is in memory the
+    snapshot is the in-memory dict — 'interrupted' never appears."""
+    jid = _launch_one_job("dj5")
+    snap = P._api_run_status(jid)
+    assert snap["status"] == "queued"
+    assert set(snap.keys()) == {
+        "job_id", "paper_id", "status", "current_stage", "progress",
+        "configs", "created_at", "results", "error", "logs",
+    }
+
+
+def test_persistence_failure_is_atomic_and_non_fatal(monkeypatch):
+    """A failing os.replace must neither corrupt the previous record nor
+    break the in-memory mutation (tmp + replace atomicity)."""
+    jid = _launch_one_job("dj6")
+    rec_path = P._jobs_dir() / f"{jid}.json"
+    before = rec_path.read_text(encoding="utf-8")
+    real_replace = P.os.replace
+
+    def _boom(src, dst):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(P.os, "replace", _boom)
+    P._set_job_field(jid, status="running", progress=0.25)
+    # In-memory hot path unaffected.
+    assert P._api_run_status(jid)["status"] == "running"
+    # Previous durable record byte-intact; orphan tmp cleaned up.
+    assert rec_path.read_text(encoding="utf-8") == before
+    assert not list(P._jobs_dir().glob("*.tmp"))
+    # Next successful mutation catches the record up.
+    monkeypatch.setattr(P.os, "replace", real_replace)
+    P._set_job_field(jid, progress=0.30)
+    rec = json.loads(rec_path.read_text(encoding="utf-8"))
+    assert rec["status"] == "running" and rec["progress"] == 0.30
+
+
+def test_disk_fallback_rejects_traversal_job_ids():
+    """Hostile ids never reach the filesystem: the fallback validates the
+    job_id grammar before building any path."""
+    # Plant the file "jobs/../evil.json" would resolve to if traversal worked.
+    P._registry_root().mkdir(parents=True, exist_ok=True)
+    (P._registry_root() / "evil.json").write_text(
+        json.dumps({"job_id": "evil", "status": "running"}), encoding="utf-8"
+    )
+    snap = P._api_run_status("../evil")
+    assert snap == {"error": "job not found", "job_id": "../evil"}
+    assert P._job_snapshot("a/b") == {}
+    assert P._job_snapshot("") == {}
+
+
+def test_load_job_record_ignores_corrupt_file():
+    jid = _launch_one_job("dj7")
+    (P._jobs_dir() / f"{jid}.json").write_text("{torn", encoding="utf-8")
+    P._JOBS.clear()
+    snap = P._api_run_status(jid)
+    assert snap == {"error": "job not found", "job_id": jid}
 
 
 # ── arXiv ID normalization + auto-fetch ──────────────────────────────────
@@ -512,6 +665,119 @@ def test_run_report_unknown_job():
     res = P._api_run_report("nope", {})
     assert "error" in res
     assert res["job_id"] == "nope"
+
+
+# ── /report HTTP dispatch (F6a, gui_refresh Wave 4a) ─────────────────────
+# The FE (services/api/paperbench.ts requestPaperbenchReport) POSTs
+# /api/paperbench/run/<id>/report with a JSON body; routes.py historically
+# matched /report only in do_GET, so the POST fell through to the 404
+# fallback (020/060 F6a). These tests drive the real do_POST/do_GET
+# dispatch chains (no socket) and pin both methods to _api_run_report.
+
+
+def _dispatch_report(method: str, path: str, body: bytes | None = None) -> dict:
+    """Run the real _Handler.do_GET/do_POST elif-chain on a socketless
+    stand-in and capture the _json payload."""
+    from io import BytesIO
+
+    from ari.viz.routes import _Handler
+
+    captured: dict = {}
+
+    class _Stub:
+        pass
+
+    h = _Stub()
+    h.path = path
+    h.headers = {"Content-Length": str(len(body or b""))}
+    h.rfile = BytesIO(body or b"")
+    # MN-8: run the real auth gate (a no-op without a remote bind, so the
+    # loopback test env passes straight through).
+    h._auth_gate = lambda: _Handler._auth_gate(h)
+    def _json(payload, status=200):
+        captured["payload"] = payload
+        captured["status"] = status
+    h._json = _json
+    if method == "POST":
+        _Handler.do_POST(h)
+    else:
+        _Handler.do_GET(h)
+    return captured
+
+
+def _completed_report_job(tmp_path) -> str:
+    """Import a paper, launch a run, and mark its job completed with a
+    real checkpoint_dir so _api_run_report reaches the renderer."""
+    P._api_import_paper({
+        "source_type": "arxiv", "source": "pd", "title": "PD",
+        "license": "MIT", "paper_id": "pd",
+    })
+    r = P._api_launch_run({"paper_ids": ["pd"], "reproduce_config": {"time_limit_sec": 60}})
+    jid = r["job_ids"][0]
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir(exist_ok=True)
+    P._set_job_field(jid, status="completed", checkpoint_dir=str(ckpt))
+    return jid
+
+
+def test_run_report_post_route_happy_path(tmp_path):
+    """POST /api/paperbench/run/<id>/report with the FE's JSON body
+    ({languages, formats}) must dispatch to _api_run_report — the F6a fix."""
+    jid = _completed_report_job(tmp_path)
+    out_root = tmp_path / "post-out"
+    body = json.dumps({
+        "languages": ["en"],
+        "formats": ["tex"],
+        "output_root": str(out_root),
+    }).encode("utf-8")
+    cap = _dispatch_report("POST", f"/api/paperbench/run/{jid}/report", body)
+    res = cap["payload"]
+    assert cap["status"] == 200
+    assert res.get("status") == "ok"
+    assert res["job_id"] == jid
+    assert (out_root / "en" / "main.tex").is_file()
+    assert "en/tex" in res["download_urls"]
+
+
+def test_run_report_post_rejects_invalid_json_body(tmp_path):
+    jid = _completed_report_job(tmp_path)
+    cap = _dispatch_report(
+        "POST", f"/api/paperbench/run/{jid}/report", b"{not json"
+    )
+    assert cap["status"] == 400
+    assert "invalid JSON body" in cap["payload"]["error"]
+
+
+def test_run_report_get_post_parity(tmp_path):
+    """The GET query-string variant stays served and yields the same
+    result shape as the POST body variant (same _api_run_report handler)."""
+    import urllib.parse
+
+    jid = _completed_report_job(tmp_path)
+    post_root = tmp_path / "parity-post"
+    get_root = tmp_path / "parity-get"
+
+    post_body = json.dumps({
+        "languages": ["en"], "formats": ["tex"], "output_root": str(post_root),
+    }).encode("utf-8")
+    res_post = _dispatch_report(
+        "POST", f"/api/paperbench/run/{jid}/report", post_body
+    )["payload"]
+
+    qs = urllib.parse.urlencode({
+        "languages": "en", "formats": "tex", "output_root": str(get_root),
+    })
+    res_get = _dispatch_report(
+        "GET", f"/api/paperbench/run/{jid}/report?{qs}"
+    )["payload"]
+
+    assert res_post.get("status") == "ok"
+    assert res_get.get("status") == "ok"
+    assert res_post["job_id"] == res_get["job_id"] == jid
+    assert res_post["languages"] == res_get["languages"]
+    assert set(res_post["download_urls"]) == set(res_get["download_urls"]) == {"en/tex"}
+    assert (post_root / "en" / "main.tex").is_file()
+    assert (get_root / "en" / "main.tex").is_file()
 
 
 def test_manifest_is_jsonl_one_object_per_line(tmp_path):

@@ -1,0 +1,76 @@
+{
+  "cluster": {
+    "gres_types": null,
+    "job_accounting": null,
+    "process_tracking": "proctrack/cgroup",
+    "scheduler": "sched/backfill",
+    "select_type": "select/cons_tres",
+    "select_type_parameters": "CR_CORE_MEMORY",
+    "slurm_version": "25.05.0",
+    "task_plugins": [
+      "task/cgroup",
+      "task/affinity"
+    ]
+  },
+  "controller_clients": {
+    "sacct": {
+      "path": "/usr/local/bin/sacct",
+      "sha256": "sha256:421b1e80ab3990b5c2f1fc8dc0712864b11db97560127da21da2886ee0f4b02a",
+      "size_bytes": 450560
+    },
+    "sbatch": {
+      "path": "/usr/local/bin/sbatch",
+      "sha256": "sha256:ed6083cd13cb10018a2bda8ba0155fe39f83ba8e3fc90acf317eefa2773d7c23",
+      "size_bytes": 456288
+    },
+    "scancel": {
+      "path": "/usr/local/bin/scancel",
+      "sha256": "sha256:e77a951507a23dc20a489f272522a52517308255a3001d5700323ef5a135e2a6",
+      "size_bytes": 351616
+    },
+    "scontrol": {
+      "path": "/usr/local/bin/scontrol",
+      "sha256": "sha256:d31ef8e7311d8711cdaecddc931b00ad4be7cbd6f4f3e00459fe8bc7500879a7",
+      "size_bytes": 869640
+    },
+    "sinfo": {
+      "path": "/usr/local/bin/sinfo",
+      "sha256": "sha256:01e123479f966f5b3bd99faa2aecd0193f070749cc8673be7d1ab984a9f0906c",
+      "size_bytes": 530800
+    },
+    "srun": {
+      "path": "/usr/local/bin/srun",
+      "sha256": "sha256:f53f8d9fba51e2babdf0a539cec6c3b1fcf997492b1659f3c6b6573e36dc215c",
+      "size_bytes": 897264
+    }
+  },
+  "node": {
+    "architecture": "x86_64",
+    "cpu_cores": 8,
+    "gpu_authority": false,
+    "gres": null,
+    "operating_system": "Linux 6.8.0-101-generic",
+    "sockets": 2,
+    "threads_per_core": 2
+  },
+  "partition": {
+    "accounts": "ALL",
+    "max_time": "20:00:00",
+    "node_count": 1,
+    "oversubscribe": "EXCLUSIVE",
+    "qos": "ALL",
+    "state": "UP"
+  },
+  "schema_version": "ari.openroad-scheduler-snapshot/v1",
+  "site_identity_digest": "sha256:573f81623cae9a9e8c5ec13b3622483961a98b768e0c4145ad543f54dec24b6a",
+  "worker": {
+    "python_path": "/usr/bin/python3",
+    "python_resolved_path": "/usr/bin/python3.12",
+    "python_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+    "python_size_bytes": 8020928,
+    "unsquashfs_path": "/usr/bin/unsquashfs",
+    "unsquashfs_sha256": "sha256:b305985eb764b6d0ef757571e3e44044ebf71c827c4263efe576e9e14b4abcfb",
+    "unsquashfs_size_bytes": 151448,
+    "unsquashfs_version": "4.6.1"
+  }
+}

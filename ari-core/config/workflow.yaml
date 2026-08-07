@@ -6,6 +6,8 @@ memory:
   backend: letta
   letta:
     base_url: http://localhost:8283
+    # NOT READ by any code path — Letta collections are not prefixed with
+    # this value today. Kept only as a record of the intended convention.
     collection_prefix: ari_
     embedding_config: letta-default
 resources:
@@ -13,6 +15,8 @@ resources:
   timeout_minutes: 60
   executor: slurm
 author_name: Autonomous Research Infrastructure
+paper_venue: arxiv
+paper_rubric: generic_conference
 plan_promote: index_only
 lineage_decision:
   mode: stagnation_rule
@@ -22,10 +26,26 @@ lineage_decision:
   rate_limit_per_run: 5
 root_idea_selection:
   enabled: true
+# Independent exploration-to-authoring completeness boundary.  The default is
+# exact legacy identity: no manuscript imports, artifacts, gates, or repair.
+manuscript:
+  # Quote YAML 1.1 boolean-like scalars (`off` would otherwise become false).
+  mode: "off"
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
 # Story2Proposal Phase B3: claim_evidence_hard_gate policy. Consumed by the claim
 # stages below (enabled by default in warn mode). mode controls blocking (off never
-# blocks; warn = default report-only; strict = blocks the FINAL gate on blocking
-# errors). env ARI_CLAIM_GATE_MODE overrides mode at runtime.
+# blocks; warn = objective-integrity findings only; strict = all configured
+# blocking findings). Only the FINAL phase can block. env ARI_CLAIM_GATE_MODE
+# overrides mode at runtime.
 claim_gate_policy:
   mode: warn
   # Injected research intent (env ARI_COMPARISON_SCOPE overrides): any (default;
@@ -61,9 +81,11 @@ bfts_pipeline:
   phase: bfts
 - stage: evaluate
   skill: evaluator-skill
-  tool: evaluate_node
+  # Evaluation is owned by ari-core's BFTS evaluator path. It is not an MCP
+  # tool; keeping a fabricated tool name here made workflow/manifest checks lie.
+  tool: ''
   description: LLM evaluator scores node, extracts metrics, determines scientific
-    contribution
+    contribution (in-process LLMEvaluator; this row is display-only)
   depends_on:
   - select_and_run
   enabled: true
@@ -87,31 +109,63 @@ bfts_pipeline:
   loop_back_to: select_and_run
 pipeline:
 - stage: search_related_work
+  segment: evidence
   skill: web-skill
-  tool: collect_references_iterative
-  description: AI Scientist v2-style iterative citation collection -> related_refs.json
+  tool: search_papers
+  description: Recorded deterministic literature retrieval -> related_refs.json
   depends_on: []
   enabled: true
   phase: paper
   inputs:
-    experiment_summary: '{{experiment_summary}}'
-    keywords: '{{keywords}}'
+    query: '{{keywords}}'
+  params:
+    provider: semantic-scholar
+    max_results: 15
+    mode: record
   outputs:
     file: '{{checkpoint_dir}}/related_refs.json'
+  # A recorded retrieval is an immutable experiment input. Resume from the
+  # checkpoint instead of issuing another provider request, which could change
+  # the evidence set or fail when the provider is offline/rate-limited.
+  skip_if_exists: '{{checkpoint_dir}}/related_refs.json'
+- stage: audit_node_provenance
+  segment: evidence
+  skill: memory-skill
+  tool: audit_memory
+  description: Re-hash every node artifact whose sha256 the node_report recorded and
+    compare against disk, at the boundary where node outputs stop being experiment
+    results and start being paper evidence. Reports per artifact verified / mismatch
+    (rewritten after its hash was recorded) / missing (deleted) / unhashed (declared
+    with no recorded baseline). Covers the source files in `files_changed`; ARI's own
+    metadata (results.json et al., excluded by PathManager.is_meta_file) and
+    `artifacts` entries carrying no recorded hash are reported `unhashed`, not
+    verified. A signal, not a gate. Without it the recorded hashes were written and
+    never once checked.
+  depends_on: []
+  enabled: true
+  phase: paper
+  inputs:
+    experiments_root: '{{experiments_root}}'
+    run_id: '{{run_id}}'
+  outputs:
+    file: '{{checkpoint_dir}}/node_provenance_audit.json'
 - stage: transform_data
+  segment: evidence
   skill: transform-skill
   tool: nodes_to_science_data
   description: LLM-powered experiment tree analysis -> science_data.json
-  depends_on: []
+  depends_on:
+  - audit_node_provenance
   enabled: true
   phase: paper
   inputs:
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
+    nodes_json_path: '{{checkpoint_dir}}/nodes_tree.json'
     primary_metric: '{{primary_metric}}'
     higher_is_better: '{{higher_is_better}}'
   outputs:
     file: '{{checkpoint_dir}}/science_data.json'
 - stage: generate_ear
+  segment: evidence
   skill: transform-skill
   tool: generate_ear
   description: Build the EAR
@@ -124,6 +178,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ear_manifest.json'
 - stage: ear_curate
+  segment: evidence
   skill: transform-skill
   tool: curate_ear
   description: Curate {checkpoint}/ear/ into {checkpoint}/ear_published/ via publish.yaml.
@@ -140,23 +195,26 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ear_curate.status.json'
 - stage: generate_figures
+  segment: evidence
   skill: plot-skill
   tool: generate_figures_llm
-  description: LLM generates matplotlib code -> PDF figures
+  description: LLM selects declarative specs; fixed renderer writes source-bound PDF/PNG figures
   depends_on:
   - transform_data
   enabled: true
   phase: paper
   inputs:
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
     science_data_path: '{{checkpoint_dir}}/science_data.json'
     n_figures: 3
     output_dir: '{{checkpoint_dir}}'
     experiment_summary: '{{experiment_summary}}'
     vlm_feedback: '{{vlm_feedback}}'
+    revision: '{{plot_revision}}'
+    previous_batch_path: '{{previous_figure_batch}}'
   outputs:
     file: '{{checkpoint_dir}}/figures_manifest.json'
 - stage: vlm_review_figures
+  segment: evidence
   skill: vlm-skill
   tool: review_figures_all
   description: VLM-based visual review of every figure in figures_manifest.json. Aggregate
@@ -176,6 +234,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/vlm_review.json'
 - stage: write_paper
+  segment: authoring
   skill: paper-skill
   tool: write_paper_iterative
   description: AI Scientist v2-style iterative paper writing with BibTeX
@@ -186,25 +245,20 @@ pipeline:
   enabled: true
   phase: paper
   inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    science_data_path: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    references_path: '{{checkpoint_dir}}/related_refs.json'
+    ear_manifest_path: '{{checkpoint_dir}}/ear_manifest.json'
+    rubric_id: '{{paper_rubric}}'
+    venue: '{{paper_venue}}'
     experiment_summary: '{{experiment_summary}}'
-    nodes_json_path: '{{checkpoint_dir}}/tree.json'
-    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
-    refs_json: '{{checkpoint_dir}}/related_refs.json'
-    science_data_json: '{{checkpoint_dir}}/science_data.json'
-    # Verified context is passed as a PATH and read inside write_paper_iterative.
-    # Deliberately NOT in load_inputs: keeping it out of the stage's loaded-content
-    # set means the write_paper stage-config / dependency resolution is unchanged,
-    # so the (separately-wired) claim stages' topology is not perturbed. Absent
-    # file (ARI_MEMORY_CONSOLIDATE off) => write_paper injects nothing.
-    verified_context_json: '{{checkpoint_dir}}/verified_context.json'
-  load_inputs:
-  - figures_manifest_json
-  - refs_json
-  - science_data_json
+    verified_context_path: '{{checkpoint_dir}}/verified_context.json'
   outputs:
     file: '{{checkpoint_dir}}/full_paper.tex'
     bib_file: '{{checkpoint_dir}}/refs.bib'
   skip_if_exists: '{{checkpoint_dir}}/full_paper.tex'
+  skip_if_inputs_unchanged: '{{checkpoint_dir}}/.ari-paper/paper_build.draft.json'
 # ─────────────────────────────────────────────────────────────────────────────
 # Story2Proposal contract-governed generation loop (Phases A2/B/D/E).
 # The topology below is back-ported from the validated checkpoint run: the stages
@@ -220,6 +274,7 @@ pipeline:
 # ARI_CLAIM_GATE_MODE=strict. To opt a single stage out, set its enabled: false.
 # ─────────────────────────────────────────────────────────────────────────────
 - stage: link_paper_claims_draft
+  segment: verification
   skill: paper-skill
   tool: link_paper_claims
   description: 'S2P Phase A2: reconcile % CLAIM:Cx:NCx anchors -> paper_claim_links.json.'
@@ -237,6 +292,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/paper_claim_links.json'
 - stage: claim_evidence_hard_gate_draft
+  segment: verification
   skill: evaluator-skill
   tool: claim_evidence_hard_gate
   description: 'S2P Phase B: deterministic claim/evidence hard gate (draft, non-blocking).'
@@ -259,6 +315,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_draft.json'
 - stage: review_paper
+  segment: verification
   skill: paper-skill
   tool: review_compiled_paper
   description: 'Rubric-driven paper review (AI Scientist v1/v2-compatible, NeurIPS
@@ -267,19 +324,20 @@ pipeline:
     reviewer. Reviewer independence contract: this stage evaluates paper text only
     (no VLM findings, no experiment brief, no figures manifest) to match AI Scientist
     v2''s perform_review. VLM review runs independently (vlm_review_figures) and is
-    combined post-hoc by merge_reviews. rubric_id, fewshot_mode, num_reflections,
-    num_reviews_ensemble are read from environment variables: ARI_RUBRIC, ARI_FEWSHOT_MODE,
-    ARI_NUM_REFLECTIONS, ARI_NUM_REVIEWS_ENSEMBLE.'
+    combined post-hoc by merge_reviews. The versioned rubric is an explicit workflow
+    input; optional reflection and ensemble counts may still be overridden per call.'
   depends_on:
   - write_paper
   enabled: true
   phase: paper
   inputs:
+    rubric_id: '{{paper_rubric}}'
     tex_path: '{{checkpoint_dir}}/full_paper.tex'
     pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
   outputs:
     file: '{{checkpoint_dir}}/review_report.json'
 - stage: evidence_grounded_semantic_review
+  segment: verification
   skill: evaluator-skill
   tool: evidence_grounded_semantic_review
   description: 'S2P Phase D: non-blocking evidence-grounded semantic review.'
@@ -299,6 +357,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review.json'
 - stage: merge_reviews
+  segment: verification
   skill: paper-skill
   tool: merge_reviews
   description: Post-hoc merge of the independent text reviewer output (review_report.json)
@@ -321,6 +380,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/review_merge_log.json'
 - stage: paper_refine
+  segment: verification
   skill: paper-skill
   tool: paper_refine
   description: 'S2P Phase E: apply suggested_revisions, preserving % CLAIM anchors.'
@@ -335,6 +395,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/full_paper.tex'
 - stage: render_paper
+  segment: verification
   skill: paper-skill
   tool: compile_paper
   description: 'S2P renderer (A_rend, eq.6 M=A_rend(M'',C)): recompile the refined
@@ -349,9 +410,11 @@ pipeline:
   inputs:
     tex_dir: '{{checkpoint_dir}}'
     main_file: full_paper.tex
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
   outputs:
     file: '{{checkpoint_dir}}/full_paper.pdf'
 - stage: link_paper_claims_final
+  segment: verification
   skill: paper-skill
   tool: link_paper_claims
   description: 'S2P Phase A2: re-run claim-id post-processing on the refined paper.'
@@ -369,6 +432,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/paper_claim_links_final.json'
 - stage: evidence_grounded_semantic_review_post_refine
+  segment: verification
   skill: evaluator-skill
   tool: evidence_grounded_semantic_review
   description: 'S2P Phase E: re-run semantic review on the refined paper (score_delta).'
@@ -388,6 +452,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_post_refine.json'
 - stage: claim_evidence_hard_gate_final
+  segment: verification
   skill: evaluator-skill
   tool: claim_evidence_hard_gate
   description: 'S2P Phase B: deterministic hard gate (FINAL, refined paper; blocks finalize in strict mode).'
@@ -409,6 +474,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_final.json'
 - stage: ear_publish
+  segment: verification
   description: Package the curated EAR into a local tarball + publish_record.json
     so the ORS sandbox can fetch it via fetch_code_bundle. Default backend is local-tarball
     (zero deps, lives next to the checkpoint); switch to ari-registry / zenodo / gh
@@ -427,6 +493,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/publish_record.json'
 - stage: finalize_paper
+  segment: verification
   skill: paper-skill
   tool: inject_code_availability
   description: Inject the Code Availability section + machine-readable \codeavailability/\codedigest/\coderef
@@ -446,14 +513,121 @@ pipeline:
     checkpoint_dir: '{{checkpoint_dir}}'
   outputs:
     file: '{{checkpoint_dir}}/finalize_paper.json'
+- stage: link_paper_claims_locked
+  segment: verification
+  skill: paper-skill
+  tool: link_paper_claims
+  description: Reconcile claims again after deterministic Code Availability injection.
+  depends_on:
+  - finalize_paper
+  enabled: true
+  phase: paper
+  inputs:
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+- stage: claim_evidence_hard_gate_locked
+  segment: verification
+  skill: evaluator-skill
+  tool: claim_evidence_hard_gate
+  description: Final deterministic gate over the exact TeX that will be compiled and locked.
+  depends_on:
+  - link_paper_claims_locked
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+    figures_manifest_json: '{{checkpoint_dir}}/figures_manifest.json'
+    policy: '{{claim_gate_policy}}'
+    phase: final
+  load_inputs:
+  - science_data_json
+  - figures_manifest_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_locked.json'
+- stage: evidence_grounded_semantic_review_locked
+  segment: verification
+  skill: evaluator-skill
+  tool: evidence_grounded_semantic_review
+  description: Independent advisory semantic review bound to the exact post-injection evidence set.
+  depends_on:
+  - claim_evidence_hard_gate_locked
+  enabled: true
+  phase: paper
+  inputs:
+    checkpoint_dir: '{{checkpoint_dir}}'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+    science_data_json: '{{checkpoint_dir}}/science_data.json'
+    hard_gate_path: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_locked.json'
+    paper_claim_links_path: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+    phase: locked
+  load_inputs:
+  - science_data_json
+  outputs:
+    file: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_locked.json'
+- stage: render_final_paper
+  segment: verification
+  skill: paper-skill
+  tool: compile_paper
+  description: Compile the exact post-injection TeX through the bounded common execution contract.
+  depends_on:
+  - evidence_grounded_semantic_review_locked
+  enabled: true
+  phase: paper
+  inputs:
+    tex_dir: '{{checkpoint_dir}}'
+    main_file: full_paper.tex
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+  outputs:
+    file: '{{checkpoint_dir}}/full_paper.pdf'
+- stage: lock_paper_build
+  segment: verification
+  skill: paper-skill
+  tool: finalize_paper_build
+  description: Fail-closed PaperBuildV1 lock over exact inputs, calls, reviews, gate, compile logs, TeX, BibTeX, and PDF.
+  depends_on:
+  - render_final_paper
+  - claim_evidence_hard_gate_locked
+  - evidence_grounded_semantic_review_locked
+  - review_paper
+  - vlm_review_figures
+  enabled: true
+  phase: paper
+  inputs:
+    workspace_root: '{{checkpoint_dir}}'
+    draft_build_path: '{{checkpoint_dir}}/.ari-paper/paper_build.draft.json'
+    tex_path: '{{checkpoint_dir}}/full_paper.tex'
+    bib_path: '{{checkpoint_dir}}/refs.bib'
+    pdf_path: '{{checkpoint_dir}}/full_paper.pdf'
+    compile_record_path: '{{checkpoint_dir}}/.ari-paper/compile/final.json'
+    figures_manifest_path: '{{checkpoint_dir}}/figures_manifest.json'
+    claim_links_path: '{{checkpoint_dir}}/paper_claim_links_locked.json'
+    hard_gate_path: '{{checkpoint_dir}}/evaluation/claim_evidence_hard_gate_locked.json'
+    text_review_path: '{{checkpoint_dir}}/review_report.json'
+    visual_review_path: '{{checkpoint_dir}}/vlm_review.json'
+    semantic_review_path: '{{checkpoint_dir}}/evaluation/evidence_grounded_semantic_review_locked.json'
+    refinement_call_path: '{{checkpoint_dir}}/.ari-paper/refinement/model_calls.json'
+    visual_passing_score: 0.7
+    output_path: '{{checkpoint_dir}}/paper_build.json'
+  outputs:
+    file: '{{checkpoint_dir}}/paper_build.json'
 - stage: ors_generate_rubric
+  segment: verification
   skill: replicate-skill
   tool: generate_rubric
   description: Auto-generate a PaperBench-format rubric from the final paper. The
     tool writes the full rubric envelope to `output_path` (ors_rubric.json); `outputs.file`
     records the metadata return dict separately so the envelope is not overwritten.
   depends_on:
-  - write_paper
+  - lock_paper_build
   enabled: true
   phase: paper
   inputs:
@@ -462,7 +636,29 @@ pipeline:
     target_leaf_count: 0
   outputs:
     file: '{{checkpoint_dir}}/ors_rubric.meta.json'
+- stage: ors_audit_rubric
+  segment: verification
+  skill: replicate-skill
+  tool: audit_rubric
+  description: Audit the auto-generated rubric before anything is graded against
+    it. Flags each leaf `vague_qualifier` / `no_paper_evidence` / `duplicate`
+    (deterministic) and `unverifiable` (one LLM call per leaf), rewrites
+    ors_rubric.json in place with the flags plus audit metadata, and reports
+    `regen_recommended` when >20% of leaves are flagged. This is a quality
+    signal, not a gate — grading still proceeds, and the flags travel with the
+    rubric so a reader can see which criteria were unsound. Without it the
+    grader's own rubric was the one artifact in the chain nobody checked.
+  depends_on:
+  - ors_generate_rubric
+  enabled: true
+  phase: paper
+  inputs:
+    rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
+    paper_path: '{{checkpoint_dir}}/full_paper.tex'
+  outputs:
+    file: '{{checkpoint_dir}}/ors_rubric.audit.json'
 - stage: ors_seed_sandbox
+  segment: verification
   skill: paper-re-skill
   tool: fetch_code_bundle
   description: Seed repro_sandbox/ from the curated EAR bundle published by ear_publish
@@ -479,6 +675,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_seed.json'
 - stage: ors_build_reproduce
+  segment: verification
   skill: paper-re-skill
   tool: build_reproduce_sh
   description: Replicator — drive PaperBench's BasicAgent / IterativeAgent (vendored
@@ -488,9 +685,9 @@ pipeline:
     submit (or time_limit_sec). v0.7+ replaced the v0.6 single-shot LLM replicator;
     see CHANGELOG. Skipped automatically when reproduce.sh is already present.
   depends_on:
-  - ors_generate_rubric
+  - ors_audit_rubric
   - ors_seed_sandbox
-  - finalize_paper
+  - lock_paper_build
   enabled: true
   phase: paper
   inputs:
@@ -511,6 +708,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_replicator.json'
 - stage: ors_run_reproduce
+  segment: verification
   skill: paper-re-skill
   tool: run_reproduce
   description: Phase 1 — execute reproduce.sh in the configured sandbox. Auto sandbox
@@ -519,7 +717,7 @@ pipeline:
     BFTS used). partition / cpus / walltime blank → run_reproduce resolves from ARI_SLURM_*
     env then from launch_config.json. ARI_PHASE1_SANDBOX overrides everything.
   depends_on:
-  - ors_generate_rubric
+  - ors_audit_rubric
   - ors_build_reproduce
   enabled: true
   phase: paper
@@ -535,6 +733,7 @@ pipeline:
   outputs:
     file: '{{checkpoint_dir}}/ors_phase1.json'
 - stage: ors_grade
+  segment: verification
   skill: paper-re-skill
   tool: grade_with_simplejudge
   description: Phase 2 — score the post-reproduce submission with PaperBench SimpleJudge.
@@ -619,6 +818,9 @@ skills:
   - paper
   - reproduce
 version: '1'
+# NOT READ by any code path: reference collection is hard-wired to Semantic
+# Scholar (ari-skill-web). Changing `backend` or `alphaxiv_endpoint` has no
+# effect — kept as a record of the intended pluggability, not a live switch.
 retrieval:
   backend: semantic_scholar
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1

@@ -16,6 +16,15 @@ from ari.viz import state as _st
 from ari.viz import api_process
 
 
+@pytest.fixture(autouse=True)
+def _legacy_direct_calls(monkeypatch):
+    """MN-6: these characterization tests pin the POST-challenge legacy
+    behavior of stop/gpu-monitor, so the confirmation-challenge gate is
+    disabled via its documented kill-switch. The gate itself is covered by
+    tests/test_gui_confirmation_challenges.py."""
+    monkeypatch.setenv("ARI_GUI_CHALLENGES", "0")
+
+
 @pytest.fixture
 def clean_state(monkeypatch):
     """Reset the ari.viz.state globals these functions touch."""

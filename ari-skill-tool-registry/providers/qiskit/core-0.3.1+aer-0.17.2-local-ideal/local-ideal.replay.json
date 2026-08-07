@@ -1,0 +1,17 @@
+{
+  "arguments": {
+    "request_id": "offline-fixture"
+  },
+  "profile_id": "local-ideal",
+  "result": {
+    "counts": {
+      "00": 2046,
+      "11": 2050
+    },
+    "experiment_digest": "sha256:68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b",
+    "method_digest": "sha256:f7d07fe08c89927826f69a4adc3038eb5dc02b5b1b953840784e7b2c172b04c6",
+    "shots": 4096,
+    "status": "completed"
+  },
+  "schema_version": "ari.qiskit-replay-fixture/v1"
+}

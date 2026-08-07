@@ -47,19 +47,11 @@ python -c "from mpi4py import MPI; ..."
 先に `which srun mpirun` でテストする。 エージェントプロンプトは
 レプリケータにこのチェックを emit するよう指示する。
 
-## L3 — GRES プローブ
+## L3 — GPU resource検証
 
-rubric の `execution_profile.gpu_type` が設定されている場合、 ARI は
-`sbatch` に `--gres=gpu:<type>:N` を加える前に `sinfo -o '%G'` を確認
-する。 GRES 未設定 (`(null)`) なら flag を落とし、 警告を log。
-`--gpus-per-task` は残る。
-
-対話的に確認:
-
-```python
-from ari_skill_paper_re.server import _slurm_has_gres
-_slurm_has_gres()    # True / False
-```
+ARIはGPU count/typeを一つの型付きscheduler requestへ変換し、削除しない。
+launch前に`sinfo -o '%P %G'`を確認する。partitionが満たせなければsubmitを
+失敗させ、cluster設定を直すか対応partitionを選ぶ。
 
 ## L4 — Conda / virtualenv activation
 

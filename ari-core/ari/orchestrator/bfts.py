@@ -489,6 +489,14 @@ class BFTS:
           depth limit (B-2).
         - ``metrics['_sterile'] is True`` retires nodes flagged sterile by
           the file-diff gate in the run loop (B-4).
+        - ``metrics['_valid_for_frontier'] is False`` retires nodes excluded
+          by RQGM selective erasure (docs/plans/ari_rqgm Task 10). The key is
+          only ever written by RQGM machinery (the FrontierRepairEngine on
+          the exploration tree; the paper-archive runtime on draft nodes), so
+          this clause is inert dead code under ``simple_bfts`` (the
+          ``_sterile`` pattern) — and deliberately read unconditionally, so a
+          node erased under ``ari_rqgm`` stays excluded after a mode switch
+          back (contamination does not become clean by switching modes).
         """
         cfg = self.config
         if current_total >= cfg.max_total_nodes:
@@ -497,6 +505,8 @@ class BFTS:
             return True
         metrics = node.metrics or {}
         if metrics.get("_sterile") is True:
+            return True
+        if metrics.get("_valid_for_frontier", True) is False:
             return True
         return False
 
@@ -604,13 +614,18 @@ class BFTS:
         )
 
         # Phase PC5: see ``ari/prompts/orchestrator/bfts_expand.md``.
+        # RQGM Task 07 §7: the key is config-swappable like the two selector
+        # prompts; the default preserves the previous hardcoded literal.
         from ari.prompts import FilesystemPromptLoader as _PL_be
         from ari.prompts import record_prompt_use as _record_prompt_use
-        _exp_text, _exp_hash = _PL_be().load_versioned("orchestrator/bfts_expand")
+        _expand_key = getattr(
+            self.config, "expand_prompt", "orchestrator/bfts_expand"
+        )
+        _exp_text, _exp_hash = _PL_be().load_versioned(_expand_key)
         prompt = _exp_text.format(**_ctx)
         # Subtask 044: prompt provenance (byte-identical rendered output).
         _record_prompt_use(
-            "orchestrator/bfts_expand", _exp_hash, rendered_text=prompt,
+            _expand_key, _exp_hash, rendered_text=prompt,
             model=getattr(getattr(self.llm, "config", None), "model", "") or "",
             node_id=node.id, phase="bfts",
         )

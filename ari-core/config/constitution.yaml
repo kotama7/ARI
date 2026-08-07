@@ -1,0 +1,67 @@
+# Constitutional ARI-RQGM — bundled constitution (RQGM Task 04).
+#
+# Distribution (docs/plans/ari_rqgm/01 §5.7): this file is copied ONCE into
+# `{checkpoint_dir}/constitution.yaml` at run start, only when the effective
+# mode is `ari_rqgm` (`ari.rqgm.state.copy_constitution_if_missing`, same
+# don't-clobber convention as the workflow.yaml copy). The constitutional
+# layer is non-evolving (global invariant 17): the checkpoint copy is
+# read-only for the lifetime of the run, and under `simple_bfts` no
+# constitution file is copied at all — its absence is normal.
+#
+# AUTHORITY NOTE (docs/plans/ari_rqgm/04 §5.1): this file is a human-readable
+# statement plus provenance marker. The AUTHORITATIVE rules are frozen Python
+# constants — editing this YAML changes nothing. Putting rules in a
+# checkpoint-scoped file would create an evolution/tampering channel (any
+# skill can write the flat checkpoint dir), so the rule tables live in code:
+#
+#   ari/rqgm/kernel_rules.py       role rules, capability matrix, severity map
+#   ari/rqgm/transition_rules.py   the T1-T21 transition table (Task 09 module,
+#                                  imported by both the engine and the kernel)
+#
+# The pinned `constitution_hash` — sha256(canonical_json(<all rule
+# tables>))[:12], computed at import over content only (no wall clock, git
+# SHA, or host; design principle P2) — covers every table above; any rule
+# edit is an explicit reviewed diff plus a hash re-pin in
+# `ari-core/tests/test_rqgm_kernel.py`.
+
+constitution_version: 1
+
+kernel:
+  # The ConstitutionalKernel is deterministic, non-evolving, and NOT an LLM
+  # judge: zero LLM calls, zero network calls, zero wall-clock-dependent
+  # decisions. It validates procedure only — never research correctness.
+  not_an_llm_judge: true
+  entry_points: 12   # closed set: 8 core checks + 4 downstream-specified
+
+never_evolving:
+  # Global invariant 17 + INDEX invariants: these are not evolution targets.
+  - constitutional_kernel
+  - knowledge_binder
+  - capability_binder
+  - harness_resolver
+  - schema_checker
+  - hash_checker
+  - access_control
+  - audit_log
+  - transition_rules
+  - selective_erasure_rule
+  - fixed_verifier
+  - metric_recomputer
+  - claim_evidence_gate
+
+principles:
+  # §5.1 "block the institution, not the research": a blocking violation
+  # freezes RQGM state changes (transition commit, registry write, frontier
+  # rebuild commit, candidate promotion); it never kills or halts BFTS node
+  # execution. On a blocked transition the previous epoch's active set
+  # carries over unchanged.
+  block_institution_not_research: true
+  # Invariant 10: registry status changes only through the
+  # RegistryTransitionEngine, at epoch boundaries, inside a committed
+  # transaction; the sole mid-epoch exception is emergency quarantine (T16).
+  registry_writer: registry_transition_engine
+  # Invariants 4-7: same-role outputs are observations, never accusations.
+  same_role_accusations_forbidden: true
+  # Invariants 12-13: selective erasure is logical-only; nothing is ever
+  # physically deleted.
+  erasure_logical_only: true

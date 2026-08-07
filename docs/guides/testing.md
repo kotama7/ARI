@@ -8,7 +8,7 @@ sources:
     role: test
   - path: .github/workflows
     role: config
-last_verified: 2026-06-04
+last_verified: 2026-08-02
 ---
 
 # How to Test ARI Code
@@ -88,7 +88,8 @@ When a determinism regression sneaks in:
 Each skill ships a `test_server.py` that:
 
 1. Starts the MCP server in-process (no subprocess).
-2. Calls `list_tools()` and asserts the tool list matches `mcp.json`.
+2. Calls `list_tools()` and asserts the tool list matches canonical
+   `skill.yaml`; generated `mcp.json` must match the same projection.
 3. Calls each tool with a fixture input and asserts the response
    shape.
 
@@ -134,6 +135,13 @@ Several GitHub Actions workflows gate every PR to `main`.
 It also runs `tests/test_no_user_home_writes.py` and
 `tests/test_public_api_boundary.py` (Phase 4, ensures skills only
 import from `ari.public.*`).
+
+**Contracts** — the `contracts` workflow runs
+`python scripts/check_skill_manifests.py` as a hard admission gate. It
+validates every canonical manifest, declared environment access, live tool
+surface, generated `mcp.json`, workflow reference, version, and default-on
+name collision. Contract JSON snapshots cover the public API, MCP inventory,
+CLI tree, and dashboard endpoints.
 
 **Docs & structure** — three workflows keep the documentation set in sync:
 

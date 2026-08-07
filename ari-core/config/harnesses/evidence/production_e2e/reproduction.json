@@ -1,0 +1,11 @@
+{
+  "command_identity": "sha256:2dfb47be7e7331e829fcc4ad26c15023492980b5ea7bd724bcf17a9c84d128c1",
+  "digest_match": true,
+  "error": "",
+  "executed": true,
+  "exit_code": 0,
+  "expected_pdf_digest": "sha256:5ea949a9da12f8242f2ae93c63bed152159360b4c1f823211afbda3b88bf320d",
+  "missing": [],
+  "reproduced_pdf_digest": "sha256:5ea949a9da12f8242f2ae93c63bed152159360b4c1f823211afbda3b88bf320d",
+  "schema_version": "ari.e2e-reproduction/v1"
+}

@@ -9,7 +9,6 @@ SHELL := /usr/bin/env bash
 PYTHON   ?= python3
 LATEXMK  ?= latexmk
 LUALATEX ?= lualatex
-XELATEX  ?= xelatex
 LATEXML  ?= latexml
 LATEXMLPOST ?= latexmlpost
 BIBER    ?= biber
@@ -21,7 +20,8 @@ SHARED    := shared
 
 LANGS := en ja zh
 PDF_TARGETS  := $(addsuffix /main.pdf,$(LANGS))
-HTML_TARGETS := $(addprefix html/,$(LANGS))
+HTML_TARGETS := $(addprefix html-,$(LANGS))
+SHARED_TEX_DEPS := $(wildcard $(SHARED)/*.tex $(SHARED)/figures/tikz/*.tex)
 
 VENV := scripts/.venv
 PIP  := $(VENV)/bin/pip
@@ -55,11 +55,12 @@ pdf-en: en/main.pdf
 pdf-ja: ja/main.pdf
 pdf-zh: zh/main.pdf
 
-en/main.pdf ja/main.pdf:
-	cd $(@D) && $(LATEXMK) -lualatex -interaction=nonstopmode -file-line-error main.tex
+en/main.pdf: en/main.tex $(wildcard en/chapters/*.tex) $(SHARED_TEX_DEPS) $(SHARED)/references.bib
+ja/main.pdf: ja/main.tex $(wildcard ja/chapters/*.tex) $(SHARED_TEX_DEPS) $(SHARED)/references.bib
+zh/main.pdf: zh/main.tex $(wildcard zh/chapters/*.tex) $(SHARED_TEX_DEPS) $(SHARED)/references.bib
 
-zh/main.pdf:
-	cd $(@D) && $(LATEXMK) -xelatex -interaction=nonstopmode -file-line-error main.tex
+en/main.pdf ja/main.pdf zh/main.pdf:
+	cd $(@D) && $(LATEXMK) -lualatex -interaction=nonstopmode -file-line-error main.tex
 
 # ------------------------------------------------------------------ PaperBench audit reports (v0.7.2)
 #
@@ -95,7 +96,7 @@ audit-summary:
 # ------------------------------------------------------------------ html (LaTeXML primary, make4ht fallback per-chapter)
 html-all: $(HTML_TARGETS)
 
-html-en html-ja html-zh: html/%: %/main.tex venv
+$(HTML_TARGETS): html-%: %/main.tex venv
 	mkdir -p html/$*
 	bash $(SCRIPTS)/build_html.sh $* || (echo "[html] LaTeXML failed for $*; consider make4ht fallback per chapter" && exit 1)
 	$(PY) $(SCRIPTS)/inject_langnav.py html/$*/index.html

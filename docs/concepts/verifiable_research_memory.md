@@ -4,9 +4,11 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/verified_context.py
     role: implementation
+  - path: ari-core/ari/memory
+    role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-06-04
+last_verified: 2026-07-10
 ---
 
 # ARI Verifiable Research Memory
@@ -93,7 +95,10 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   `consolidate_node_memory`, `audit_memory`, …) — all called by hooks.
 - `ari-core`: `pipeline/verified_context.py` (best-node lineage scoping +
   grounded-block render), the `bfts_loop` node-end consolidation hook, and the
-  write_paper consumption.
+  write_paper consumption. All core-side access to the skill's backend and
+  context builder goes through the `ari/memory/` funnel
+  (`ari.memory.get_backend` / `ari.memory.build_verified_context`) — the only
+  ari-core package allowed to import `ari_skill_memory`.
 
 ## Gating & cost
 

@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ari/schemas/clean_room_request.schema.json",
+  "title": "ARI-RQGM CleanRoomGenerationRequest",
+  "description": "One clean-room regeneration request (docs/plans/ari_rqgm/08 §6.1, owned by Task 08): produced from a RegistryTransitionEngine RetirementEvent (EpochTransition.clean_room_requests) and persisted to the append-only {ckpt}/rqgm_cleanroom.jsonl so pending requests survive resume. The five forbidden input flags are const-false — a request setting any of them true is schema-invalid and blocked by the ConstitutionalKernel before bundle assembly (contamination-free policy, plan 08 §5.2). created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
+  "type": "object",
+  "required": [
+    "record_id",
+    "epoch_id",
+    "component_id",
+    "prompt_hash",
+    "role",
+    "created_at",
+    "source_refs",
+    "status",
+    "trigger",
+    "retirement_event_id",
+    "target_role",
+    "allowed_inputs",
+    "budget_policy"
+  ],
+  "properties": {
+    "record_type": {
+      "const": "clean_room_generation_request"
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "epoch_id": {
+      "type": "string",
+      "pattern": "^epoch_[0-9]{3,}$"
+    },
+    "component_id": {
+      "const": "registry_transition_engine"
+    },
+    "prompt_hash": {
+      "type": "null"
+    },
+    "role": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "generating",
+        "generated",
+        "rejected_contaminated",
+        "failed",
+        "superseded"
+      ]
+    },
+    "trigger": {
+      "const": "retirement_event"
+    },
+    "retirement_event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target_role": {
+      "type": "string",
+      "enum": [
+        "generator",
+        "reviewer",
+        "adversary",
+        "defender",
+        "judge",
+        "router",
+        "prompt_mutator",
+        "clean_room_generator",
+        "replay_selector",
+        "failure_summary_compressor",
+        "policy_mutator",
+        "utility_policy",
+        "paper_writer",
+        "paper_reviewer"
+      ]
+    },
+    "allowed_inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role_spec",
+        "output_schema",
+        "constitutional_constraints",
+        "abstract_failure_summary",
+        "replay_requirements",
+        "cost_budget",
+        "retired_prompt_text",
+        "retired_fewshot_examples",
+        "retired_prompt_reasoning",
+        "raw_attack_text",
+        "target_defense_text"
+      ],
+      "properties": {
+        "role_spec": {
+          "type": "boolean"
+        },
+        "output_schema": {
+          "type": "boolean"
+        },
+        "constitutional_constraints": {
+          "type": "boolean"
+        },
+        "abstract_failure_summary": {
+          "type": "boolean"
+        },
+        "replay_requirements": {
+          "type": "boolean"
+        },
+        "cost_budget": {
+          "type": "boolean"
+        },
+        "retired_prompt_text": {
+          "const": false
+        },
+        "retired_fewshot_examples": {
+          "const": false
+        },
+        "retired_prompt_reasoning": {
+          "const": false
+        },
+        "raw_attack_text": {
+          "const": false
+        },
+        "target_defense_text": {
+          "const": false
+        }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "replay_case_ids": {
+      "$comment": "Evaluation-time only: the generator never sees case bodies (plan 08 §5.4 D5).",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "budget_policy": {
+      "type": "object",
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_attempts": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

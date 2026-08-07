@@ -34,16 +34,29 @@ and **Reference**. Plus `about/` for project meta.
 - [Philosophy](concepts/PHILOSOPHY.md)
 - [Architecture](concepts/architecture.md)
 - [BFTS algorithm](concepts/bfts.md)
+- [Dashboard architecture](concepts/gui_architecture.md)
 - [Memory architecture](concepts/memory.md)
 - [Verifiable research memory](concepts/verifiable_research_memory.md)
 - [Publication lifecycle](concepts/publication-lifecycle.md)
+- [Research and governance state](concepts/research_and_governance_state.md)
+- [Constitutional ARI-RQGM architecture](concepts/rqgm_architecture.md)
+- [RQGM runtime walkthrough](concepts/rqgm_runtime_walkthrough.md)
 
 ### Guides — *How-to*
 
 - [HPC setup](guides/hpc_setup.md)
+- [Dashboard](guides/dashboard.md)
+- [Configuration Studio](guides/configuration_studio.md)
+- [Execution modes](guides/execution_modes.md)
 - [Extension guide](guides/extension_guide.md)
 - [Experiment file](guides/experiment_file.md)
 - [Cookbook](guides/cookbook.md)
+- [Remote access and operations](guides/remote_access.md)
+- [RQGM GUI](guides/rqgm_gui.md)
+- [Adopting RQGM on an existing project](guides/rqgm_migration.md)
+- [RQGM evaluation and ablation](guides/rqgm_evaluation.md)
+- [VirSci integration](guides/virsci_integration.md)
+- [GUI cutover runbook](guides/gui_cutover_runbook.md)
 - [Migration](guides/migration.md)
 - [Testing](guides/testing.md)
 - [Troubleshooting](guides/troubleshooting.md)
@@ -62,6 +75,9 @@ and **Reference**. Plus `about/` for project meta.
 - [CLI reference](reference/cli_reference.md)
 - [Configuration](reference/configuration.md)
 - [MCP skills](reference/skills.md)
+- [Orchestrator control plane](reference/orchestrator.md)
+- [Federated tool registry](reference/tool_registry.md)
+- [Qiskit and IBM Quantum profiles](reference/qiskit_profiles.md)
 - [Registry](reference/registry.md)
 - [MCP tools](reference/mcp_tools.md)
 - [Environment variables](reference/environment_variables.md)
@@ -69,7 +85,12 @@ and **Reference**. Plus `about/` for project meta.
 - [Public API](reference/public_api.md)
 - [Internal boundaries](reference/internal_boundaries.md)
 - [REST API](reference/rest_api.md)
+- [RQGM GUI read models](reference/rqgm_gui_read_models.md)
+- [RQGM schemas](reference/rqgm_schemas.md)
 - [Execution profile](reference/execution_profile.md)
+- [Execution and measurement contracts](reference/execution_contract.md)
+- [Paper build contract](reference/paper_build_contract.md)
+- [Scientific figure and visual-review contract](reference/figure_visual_contract.md)
 - [Rubric schema](reference/rubric_schema.md)
 - [PaperBench API](reference/api_paperbench.md)
 - [Glossary](reference/glossary.md)
@@ -94,13 +115,26 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | concepts/PHILOSOPHY | [✓](concepts/PHILOSOPHY.md) | [✓](ja/concepts/PHILOSOPHY.md) | [✓](zh/concepts/PHILOSOPHY.md) |
 | concepts/architecture | [✓](concepts/architecture.md) | [✓](ja/concepts/architecture.md) | [✓](zh/concepts/architecture.md) |
 | concepts/bfts | [✓](concepts/bfts.md) | [✓](ja/concepts/bfts.md) | [✓](zh/concepts/bfts.md) |
+| concepts/gui_architecture | [✓](concepts/gui_architecture.md) | [✓](ja/concepts/gui_architecture.md) | [✓](zh/concepts/gui_architecture.md) |
 | concepts/memory | [✓](concepts/memory.md) | [✓](ja/concepts/memory.md) | [✓](zh/concepts/memory.md) |
 | concepts/verifiable_research_memory | [✓](concepts/verifiable_research_memory.md) | [✓](ja/concepts/verifiable_research_memory.md) | [✓](zh/concepts/verifiable_research_memory.md) |
 | concepts/publication-lifecycle | [✓](concepts/publication-lifecycle.md) | [✓](ja/concepts/publication-lifecycle.md) | [✓](zh/concepts/publication-lifecycle.md) |
+| concepts/research_and_governance_state | [✓](concepts/research_and_governance_state.md) | [✓](ja/concepts/research_and_governance_state.md) | [✓](zh/concepts/research_and_governance_state.md) |
+| concepts/rqgm_architecture | [✓](concepts/rqgm_architecture.md) | [✓](ja/concepts/rqgm_architecture.md) | [✓](zh/concepts/rqgm_architecture.md) |
+| concepts/rqgm_runtime_walkthrough | [✓](concepts/rqgm_runtime_walkthrough.md) | [✓](ja/concepts/rqgm_runtime_walkthrough.md) | [✓](zh/concepts/rqgm_runtime_walkthrough.md) |
 | guides/hpc_setup | [✓](guides/hpc_setup.md) | [✓](ja/guides/hpc_setup.md) | [✓](zh/guides/hpc_setup.md) |
+| guides/dashboard | [✓](guides/dashboard.md) | [✓](ja/guides/dashboard.md) | [✓](zh/guides/dashboard.md) |
+| guides/configuration_studio | [✓](guides/configuration_studio.md) | [✓](ja/guides/configuration_studio.md) | [✓](zh/guides/configuration_studio.md) |
+| guides/execution_modes | [✓](guides/execution_modes.md) | [✓](ja/guides/execution_modes.md) | [✓](zh/guides/execution_modes.md) |
 | guides/extension_guide | [✓](guides/extension_guide.md) | [✓](ja/guides/extension_guide.md) | [✓](zh/guides/extension_guide.md) |
 | guides/experiment_file | [✓](guides/experiment_file.md) | [✓](ja/guides/experiment_file.md) | [✓](zh/guides/experiment_file.md) |
 | guides/cookbook | [✓](guides/cookbook.md) | [✓](ja/guides/cookbook.md) | [✓](zh/guides/cookbook.md) |
+| guides/remote_access | [✓](guides/remote_access.md) | [✓](ja/guides/remote_access.md) | [✓](zh/guides/remote_access.md) |
+| guides/rqgm_gui | [✓](guides/rqgm_gui.md) | [✓](ja/guides/rqgm_gui.md) | [✓](zh/guides/rqgm_gui.md) |
+| guides/rqgm_migration | [✓](guides/rqgm_migration.md) | [✓](ja/guides/rqgm_migration.md) | [✓](zh/guides/rqgm_migration.md) |
+| guides/rqgm_evaluation | [✓](guides/rqgm_evaluation.md) | [✓](ja/guides/rqgm_evaluation.md) | [✓](zh/guides/rqgm_evaluation.md) |
+| guides/virsci_integration | [✓](guides/virsci_integration.md) | [✓](ja/guides/virsci_integration.md) | [✓](zh/guides/virsci_integration.md) |
+| guides/gui_cutover_runbook | [✓](guides/gui_cutover_runbook.md) | [✓](ja/guides/gui_cutover_runbook.md) | [✓](zh/guides/gui_cutover_runbook.md) |
 | guides/migration | [✓](guides/migration.md) | [✓](ja/guides/migration.md) | [✓](zh/guides/migration.md) |
 | guides/testing | [✓](guides/testing.md) | [✓](ja/guides/testing.md) | [✓](zh/guides/testing.md) |
 | guides/troubleshooting | [✓](guides/troubleshooting.md) | [✓](ja/guides/troubleshooting.md) | [✓](zh/guides/troubleshooting.md) |
@@ -113,6 +147,9 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/cli_reference | [✓](reference/cli_reference.md) | [✓](ja/reference/cli_reference.md) | [✓](zh/reference/cli_reference.md) |
 | reference/configuration | [✓](reference/configuration.md) | [✓](ja/reference/configuration.md) | [✓](zh/reference/configuration.md) |
 | reference/skills | [✓](reference/skills.md) | [✓](ja/reference/skills.md) | [✓](zh/reference/skills.md) |
+| reference/orchestrator | [✓](reference/orchestrator.md) | — | — |
+| reference/tool_registry | [✓](reference/tool_registry.md) | [✓](ja/reference/tool_registry.md) | [✓](zh/reference/tool_registry.md) |
+| reference/qiskit_profiles | [✓](reference/qiskit_profiles.md) | [✓](ja/reference/qiskit_profiles.md) | [✓](zh/reference/qiskit_profiles.md) |
 | reference/registry | [✓](reference/registry.md) | [✓](ja/reference/registry.md) | [✓](zh/reference/registry.md) |
 | reference/mcp_tools | [✓](reference/mcp_tools.md) | [✓](ja/reference/mcp_tools.md) | [✓](zh/reference/mcp_tools.md) |
 | reference/environment_variables | [✓](reference/environment_variables.md) | [✓](ja/reference/environment_variables.md) | [✓](zh/reference/environment_variables.md) |
@@ -120,7 +157,10 @@ release gate checks it against the tree (`docs/about/release_policy.md` §4).
 | reference/public_api | [✓](reference/public_api.md) | [✓](ja/reference/public_api.md) | [✓](zh/reference/public_api.md) |
 | reference/internal_boundaries | [✓](reference/internal_boundaries.md) | — | — |
 | reference/rest_api | [✓](reference/rest_api.md) | [✓](ja/reference/rest_api.md) | [✓](zh/reference/rest_api.md) |
+| reference/rqgm_gui_read_models | [✓](reference/rqgm_gui_read_models.md) | [✓](ja/reference/rqgm_gui_read_models.md) | [✓](zh/reference/rqgm_gui_read_models.md) |
+| reference/rqgm_schemas | [✓](reference/rqgm_schemas.md) | [✓](ja/reference/rqgm_schemas.md) | [✓](zh/reference/rqgm_schemas.md) |
 | reference/execution_profile | [✓](reference/execution_profile.md) | [✓](ja/reference/execution_profile.md) | [✓](zh/reference/execution_profile.md) |
+| reference/execution_contract | [✓](reference/execution_contract.md) | [✓](ja/reference/execution_contract.md) | [✓](zh/reference/execution_contract.md) |
 | reference/rubric_schema | [✓](reference/rubric_schema.md) | [✓](ja/reference/rubric_schema.md) | [✓](zh/reference/rubric_schema.md) |
 | reference/api_paperbench | [✓](reference/api_paperbench.md) | [✓](ja/reference/api_paperbench.md) | [✓](zh/reference/api_paperbench.md) |
 | reference/glossary | [✓](reference/glossary.md) | [✓](ja/reference/glossary.md) | [✓](zh/reference/glossary.md) |
@@ -167,6 +207,13 @@ Files:
 - **`assets/anim/*.js`** — dependency-free algorithm animations (BFTS / ReAct /
   6-step pipeline / VirSci) on the shared `anim-core.js` loader; reduced-motion
   renders a single static frame.
+- **`assets/images/rqgm/rqgm_audit_flow_{en,ja,zh}.svg`** — localized,
+  reusable map of the complete constitutional audit network. It enumerates all
+  sanctionable registered roles and links per-node adversarial review, the
+  evidence ledger, epoch-boundary prosecution/defense/adjudication, kernel
+  self-audit, registry enforcement, repair, final claim verification, and the
+  open adjudication paths. The landing swaps the asset with the language
+  selector; each RQGM architecture page embeds its matching locale directly.
 - **`sitemap.xml`** (landing) + VitePress-generated `/docs/sitemap.xml` (per-
   locale + hreflang); both submitted via Search Console. **`robots.txt`** is
   documentation-only (a project sub-path `robots.txt` is ignored by crawlers).

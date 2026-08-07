@@ -1,82 +1,53 @@
 # ari-skill-vlm
 
-Vision LLM (VLM) review of figures and tables in generated papers.
-Does **not** generate figures (`ari-skill-plot` does that) — it
-reads the rendered output and returns critique that the paper
-revision loop can act on.
+Artifact-bound multimodal review for scientific figures and tables. The skill
+does not generate or rewrite content. It verifies the target bytes against a
+canonical manifest, applies a versioned criterion profile, stores the raw model
+response, and returns `VisualReviewV1` or `VisualReviewBatchV1`.
 
-## Responsibilities
+## MCP tools
 
-- **Figure review**: load a PNG, base64-encode it, send it through
-  the VLM with the paper context, and return a structured critique
-  (axis labels, units, legend, readability, alignment with the
-  caption text).
-- **Table review**: send the rendered LaTeX / Markdown table to the
-  VLM as text and apply the same critique pass.
-- **Batch review**: walk a paper directory, find every figure /
-  table, run both passes, and return one consolidated report.
+- `review_figure(figures_manifest_path, figure_id, ...)` selects one figure
+  from a verified `FigureBatchV1`; arbitrary image paths are not accepted.
+- `review_figures_all(figures_manifest_path, ...)` reviews every manifest
+  entry with bounded bytes, calls, output tokens, and concurrency. Individual
+  failures remain in `reviews`; aggregate score is minimum/fail-closed.
+- `review_table(request)` reviews a digest-bound image or UTF-8 LaTeX/Markdown
+  artifact under a closed `WorkspaceRefV1`.
 
-## Internal API
+## Contract
 
-`mcp.json` does not list public tools yet — the skill is invoked
-from `ari-skill-paper.review_compiled_paper` and via the internal
-ARI loop.  The relevant entry points in `src/server.py`:
+`VisualReviewV1` records target/manifest/context/profile digests, stable figure
+ID and revision, issues with severity and optional normalized region, exact
+model/provider/revision, sampling, token/cost status, prompt digest, and a raw
+response artifact. Invalid JSON/schema is `status=schema-error`; it is never
+repaired or converted into an empty success.
 
-| Function | Purpose |
+Built-in profiles are immutable:
+
+- `figure-publication/v1`
+- `figure-domain-integrity/v1`
+- `table-publication/v1`
+
+PNG, JPEG, and WebP targets are limited to 20 MiB, 8192 pixels per dimension,
+40 million pixels, and 64 KiB metadata. Corrupt, unsupported, oversized,
+missing, or digest-mismatched targets return typed failures. Base64 image data
+is sent only in the model request and is never returned or written to logs.
+
+## Environment
+
+| Variable | Purpose |
 |---|---|
-| `review_figure(image_path, context)` | Single-figure critique |
-| `review_table(table_text, context)` | Single-table critique |
-| `review_paper_figures(paper_dir)` | Batch over a paper directory |
+| `ARI_VLM_MODEL` | Explicit LiteLLM visual-review model |
+| `ARI_MODEL_VLM_REVISION` | Provider/model revision recorded in reviews |
+| `ARI_MODEL_VLM_PROVIDER` | Optional provider identity override |
+| `ARI_LLM_API_BASE` / `LLM_API_BASE` | Optional provider endpoint |
 
-When external exposure is added, both `mcp.json` and this README
-should be updated together.
+The prompts live in `src/prompts/`. Review artifacts are content-addressed
+under `.ari-vlm/reviews/` inside the batch/table workspace.
 
-## VLM prompt strategy
-
-- **Figures**: image base64-encoded into the VLM message; prompt
-  asks for axis labels, units, legend completeness, readability of
-  small text, and consistency with the caption.
-- **Tables**: LaTeX / Markdown source sent as text; prompt focuses
-  on column alignment, missing units, decimal precision, and
-  agreement with the body text.
-- **Output**: structured JSON with `issues: [{kind, severity,
-  rationale, suggestion}]`.
-
-## Environment variables
-
-| Variable | Purpose | Default |
-|---|---|---|
-| `VLM_MODEL` | Vision LLM identifier (LiteLLM format) | `openai/gpt-4o` |
-| `OPENAI_API_KEY` | Required when the VLM is OpenAI-hosted | (none) |
-
-## Dependencies
-
-- `mcp >= 1.0`
-- `litellm >= 1.0` (VLM dispatch)
-- `pillow >= 10.0` (image encoding)
-
-## P2 exception
-
-The skill is a P2 exception — VLM output is non-deterministic, so
-the same image can produce different critiques on different runs.
-Down-stream consumers (`review_compiled_paper`) merge the VLM
-output with the rubric review to dampen the variance.
-
-## Development
+## Verification
 
 ```bash
-pytest tests/ -q
+PYTHONPATH=../ari-core pytest -q tests
 ```
-
-## Related skills
-
-- `ari-skill-paper.review_compiled_paper` — primary caller, merges
-  VLM output with rubric review (`merge_reviews` tool).
-- `ari-skill-plot` — generates the figures this skill reviews.
-- `ari-core/ari/pipeline/...` — `_format_vlm_feedback` integrates
-  VLM findings into the paper revision loop.
-
-## See also
-
-- `docs/reference/skills.md#ari-skill-vlm` — high-level summary.
-- `docs/reference/mcp_tools.md` — argument signatures.

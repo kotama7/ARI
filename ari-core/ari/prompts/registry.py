@@ -28,6 +28,12 @@ Tolerance policy (§7.2): ``get`` / ``get_versioned`` / ``placeholders`` do
 config-injected ``BFTSConfig.select_prompt`` / ``expand_select_prompt``) still
 delegates to the loader, so only the loader's own ``FileNotFoundError`` (a
 genuinely missing ``.md``) ever propagates.
+
+Not to be confused with :class:`ari.rqgm.registry.GovernedPromptRegistry`
+(RQGM Task 02): that class tracks prompt *identity + status + hash* for the
+opt-in ``ari_rqgm`` epoch governance and DELEGATES template loading/hashing
+to this catalogue's loader — this discovery catalogue stays the single owner
+of key enumeration and the ``sha256(text)[:12]`` hashing scheme.
 """
 
 from __future__ import annotations

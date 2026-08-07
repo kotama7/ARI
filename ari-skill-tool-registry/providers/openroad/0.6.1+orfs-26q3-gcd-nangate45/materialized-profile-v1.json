@@ -1,0 +1,334 @@
+{
+  "profile": {
+    "command_timeout_seconds": 3600.0,
+    "commands": [
+      {
+        "arguments": [
+          "1"
+        ],
+        "stage": "setup",
+        "verb": "set_thread_count"
+      },
+      {
+        "arguments": [
+          "inputs/NangateOpenCellLibrary_typical.lib"
+        ],
+        "stage": "setup",
+        "verb": "read_liberty"
+      },
+      {
+        "arguments": [
+          "inputs/3_place.odb"
+        ],
+        "stage": "setup",
+        "verb": "read_db"
+      },
+      {
+        "arguments": [
+          "inputs/3_place.sdc"
+        ],
+        "stage": "setup",
+        "verb": "read_sdc"
+      },
+      {
+        "arguments": [
+          "-signal",
+          "-layer",
+          "metal3"
+        ],
+        "stage": "cts",
+        "verb": "set_wire_rc"
+      },
+      {
+        "arguments": [
+          "-clock",
+          "-layer",
+          "metal5"
+        ],
+        "stage": "cts",
+        "verb": "set_wire_rc"
+      },
+      {
+        "arguments": [
+          "-sink_clustering_enable",
+          "-repair_clock_nets",
+          "-buf_list",
+          "{CLKBUF_X3}"
+        ],
+        "stage": "cts",
+        "verb": "clock_tree_synthesis"
+      },
+      {
+        "arguments": [
+          "-placement"
+        ],
+        "stage": "cts",
+        "verb": "estimate_parasitics"
+      },
+      {
+        "arguments": [],
+        "stage": "cts",
+        "verb": "detailed_placement"
+      },
+      {
+        "arguments": [
+          "-congestion_iterations",
+          "30"
+        ],
+        "stage": "routing",
+        "verb": "global_route"
+      },
+      {
+        "arguments": [
+          "-global_routing"
+        ],
+        "stage": "routing",
+        "verb": "estimate_parasitics"
+      },
+      {
+        "arguments": [
+          "-output_drc",
+          "reports/drc.rpt",
+          "-output_maze",
+          "results/maze.log",
+          "-droute_end_iter",
+          "64",
+          "-verbose",
+          "1",
+          "-drc_report_iter_step",
+          "5"
+        ],
+        "stage": "routing",
+        "verb": "detailed_route"
+      },
+      {
+        "arguments": [
+          "{FILLCELL_X1 FILLCELL_X2 FILLCELL_X4 FILLCELL_X8 FILLCELL_X16 FILLCELL_X32}"
+        ],
+        "stage": "finishing",
+        "verb": "filler_placement"
+      },
+      {
+        "arguments": [
+          "results/gcd.def"
+        ],
+        "stage": "finishing",
+        "verb": "write_def"
+      },
+      {
+        "arguments": [
+          "results/gcd.v"
+        ],
+        "stage": "finishing",
+        "verb": "write_verilog"
+      },
+      {
+        "arguments": [],
+        "stage": "report",
+        "verb": "report_worst_slack"
+      },
+      {
+        "arguments": [],
+        "stage": "report",
+        "verb": "report_design_area"
+      }
+    ],
+    "description": "Digest-pinned GCD Nangate45 post-placement CTS and routing through OpenROAD-MCP and the retained ORFS CPU image.",
+    "evidence": {
+      "architecture": "x86_64 / Apptainer 1.5.0-rc.1 / ORFS adeb389e7 / OpenROAD 7304ba78ad / one CPU thread",
+      "dependencies_pinned": true,
+      "launcher_verified": true,
+      "limitations_documented": true,
+      "method_identity_documented": true,
+      "notes": [
+        "SLURM and GPU are outside this verified identity.",
+        "The upstream reference disabled CTS timing repair after a pinned-image SIGILL."
+      ],
+      "protocol_conformance": true,
+      "provider_pinned": true,
+      "replay_fixture_digest": "sha256:caa3664eae35742e807e7eab5ff36ace8f036cb1ad5f15789adebb0dbfa2d68b",
+      "scientific_validation_digest": "sha256:f9244f6ac23906db167fc69c061fdd152bdce54e47e6d1d4c29afe74d2e522d1",
+      "semantics_documented": true,
+      "units_documented": true
+    },
+    "execution": {
+      "backend": "local-mcp",
+      "container": null,
+      "environment": {
+        "export_mode": "NIL",
+        "modules": [],
+        "path": "/usr/local/bin:/usr/bin:/bin",
+        "variables": {}
+      },
+      "portable_runtime": null,
+      "resources": null,
+      "site_identity_digest": null,
+      "terminal_evidence_policy": "scheduler-accounting",
+      "work_root": null,
+      "worker_python": "/usr/bin/python3",
+      "worker_python_pin": null
+    },
+    "golden_fixture_digest": "sha256:f9244f6ac23906db167fc69c061fdd152bdce54e47e6d1d4c29afe74d2e522d1",
+    "golden_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/gcd-nangate45-26q3.golden.json",
+    "limitations": [
+      "It does not promote GPU, SLURM, another design, another PDK, another corner, or another OpenROAD image.",
+      "The provider capability executes a routed-artifact contract; its verified status is not a general timing-closure guarantee.",
+      "The verified identity covers only the fixed GCD placed database, Nangate45 data, CPU image, commands, seed, and one-thread execution."
+    ],
+    "metrics": [
+      {
+        "corner": "typical",
+        "expected_max": 0.0,
+        "expected_min": 0.0,
+        "json_pointer": "/route__drc_errors",
+        "metric_id": "route-drc-errors",
+        "mode": "functional",
+        "source_artifact": "reports/metrics.json",
+        "stage": "routing",
+        "unit": "count"
+      },
+      {
+        "corner": "typical",
+        "expected_max": 3700.0,
+        "expected_min": 3500.0,
+        "json_pointer": "/route__wirelength",
+        "metric_id": "route-wirelength",
+        "mode": "functional",
+        "source_artifact": "reports/metrics.json",
+        "stage": "routing",
+        "unit": "um"
+      },
+      {
+        "corner": "typical",
+        "expected_max": 3500.0,
+        "expected_min": 3200.0,
+        "json_pointer": "/route__vias",
+        "metric_id": "route-vias",
+        "mode": "functional",
+        "source_artifact": "reports/metrics.json",
+        "stage": "routing",
+        "unit": "count"
+      }
+    ],
+    "output_artifacts": [
+      {
+        "capture": true,
+        "expected_digest": null,
+        "logical_role": "openroad-metrics",
+        "max_bytes": 100000000,
+        "media_type": "application/json",
+        "relative_path": "reports/metrics.json",
+        "required": true
+      },
+      {
+        "capture": true,
+        "expected_digest": null,
+        "logical_role": "openroad-drc-report",
+        "max_bytes": 100000000,
+        "media_type": "text/plain",
+        "relative_path": "reports/drc.rpt",
+        "required": false
+      },
+      {
+        "capture": true,
+        "expected_digest": null,
+        "logical_role": "openroad-route-log",
+        "max_bytes": 100000000,
+        "media_type": "text/plain",
+        "relative_path": "results/maze.log",
+        "required": false
+      },
+      {
+        "capture": true,
+        "expected_digest": null,
+        "logical_role": "openroad-def",
+        "max_bytes": 100000000,
+        "media_type": "text/plain",
+        "relative_path": "results/gcd.def",
+        "required": true
+      },
+      {
+        "capture": true,
+        "expected_digest": null,
+        "logical_role": "openroad-netlist",
+        "max_bytes": 100000000,
+        "media_type": "text/x-verilog",
+        "relative_path": "results/gcd.v",
+        "required": true
+      }
+    ],
+    "poll_interval_seconds": 0.1,
+    "profile_id": "gcd-nangate45-26q3",
+    "replay_fixture_digest": "sha256:caa3664eae35742e807e7eab5ff36ace8f036cb1ad5f15789adebb0dbfa2d68b",
+    "replay_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/gcd-nangate45-26q3.replay.json",
+    "schema_version": "ari.openroad-experiment/v1",
+    "technology": {
+      "corner": "typical",
+      "mode": "functional",
+      "pdk_digest": "sha256:6c500e236b98953bda22aa6dd939a5d46e9af2a57a6201232bdfe7e2349c5b1f",
+      "pdk_id": "nangate45",
+      "pdk_license_scope": "redistributable",
+      "pdk_version": "orfs-26q3-gadeb389e7",
+      "standard_cell_library_digest": "sha256:8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1",
+      "standard_cell_library_id": "nangate45",
+      "standard_cell_library_version": "orfs-26q3-gadeb389e7-typical"
+    },
+    "toolchain": {
+      "architecture": "x86_64",
+      "executable_digest": "sha256:3129da58b9d03fe5069ddfe02a032ef58a0458884d83467206537d255b717b12",
+      "executable_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/runtime/openroad",
+      "execution_image_digest": "sha256:d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39",
+      "openroad_commit": "7304ba78ade7cb9f78466c6d0231432d72dadd3b",
+      "openroad_version": "26Q2-2517-g7304ba78ad",
+      "orfs_commit": "adeb389e7fbf06ef6a939a895c014f69e6f7aa00",
+      "seed": 17,
+      "support_line": "orfs-26q3",
+      "threads": 1
+    },
+    "workspace": {
+      "input_artifacts": [
+        {
+          "digest": "sha256:3720f8fb5eddda71b37262c5c69b0e606f9f2f0e952aa985ff4ba7439670635f",
+          "media_type": "application/octet-stream",
+          "relative_path": "inputs/3_place.odb",
+          "role": "database"
+        },
+        {
+          "digest": "sha256:75b6724104d678f5e9c9c5897483f179496a86919555e480a0244f6f2bf174fe",
+          "media_type": "text/plain",
+          "relative_path": "inputs/3_place.sdc",
+          "role": "constraint"
+        },
+        {
+          "digest": "sha256:834a79295054cd4209178d1bade67c353863c47bb4b3c22ee38b862b7cec37f2",
+          "media_type": "text/plain",
+          "relative_path": "inputs/NangateOpenCellLibrary.tech.lef",
+          "role": "technology-lef"
+        },
+        {
+          "digest": "sha256:840b01e500826096d1edcc752350834da647fdbf360798f243f8122b52b357c3",
+          "media_type": "text/plain",
+          "relative_path": "inputs/NangateOpenCellLibrary.macro.lef",
+          "role": "library-lef"
+        },
+        {
+          "digest": "sha256:8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1",
+          "media_type": "text/plain",
+          "relative_path": "inputs/NangateOpenCellLibrary_typical.lib",
+          "role": "liberty"
+        },
+        {
+          "digest": "sha256:0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+          "media_type": "text/plain",
+          "relative_path": "inputs/Nangate45.LICENSE",
+          "role": "other"
+        }
+      ],
+      "input_digest": "sha256:9b34eb5ed61746d6577ba329c827a6c7578eb2d4ed4f2468755da235208be34f",
+      "source_root": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/workspace"
+    }
+  },
+  "provider_digest": "sha256:8d2ade5e29d12a13d08e4163424ee13d4d243128a55fc45b805e97f08ead2d19",
+  "schema_version": "ari.openroad-materialized-profile/v1",
+  "verified_lock_digest": "sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28"
+}

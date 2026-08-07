@@ -15,6 +15,15 @@ import pytest
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _legacy_direct_calls(monkeypatch):
+    """MN-6: this module's delete-checkpoint tests pin the POST-challenge
+    legacy behavior, so the confirmation-challenge gate is disabled via its
+    documented kill-switch. The gate itself is covered by
+    tests/test_gui_confirmation_challenges.py."""
+    monkeypatch.setenv("ARI_GUI_CHALLENGES", "0")
+
+
 @pytest.fixture
 def state():
     """Return the viz state module."""
@@ -471,12 +480,23 @@ def test_state_no_checkpoint(state, monkeypatch):
 
 
 def test_env_keys_structure(tmp_path, monkeypatch):
-    """_api_get_env_keys returns dict with 'keys' sub-dict."""
+    """_api_get_env_keys returns dict with 'keys' sub-dict — REDACTED.
+
+    RR-P0-2 / ADR-11 / MN-2: since gui_refresh Wave 3a the GET response
+    carries key NAMES and a `redacted: true` marker only; plaintext values
+    are replaced by '***configured***'.
+    """
+    import json as _json
     from ari.viz.api_settings import _api_get_env_keys
     monkeypatch.setenv("HOME", str(tmp_path))
     (tmp_path / ".env").write_text("OPENAI_API_KEY=test-key-123\nS2_API_KEY=abc\n")
     result = _api_get_env_keys()
     assert "keys" in result
+    assert result["redacted"] is True
+    # No plaintext value anywhere in the payload (RR-P0-2 / ADR-11 / MN-2).
+    wire = _json.dumps(result)
+    assert "test-key-123" not in wire
+    assert '"abc"' not in wire
 
 
 def test_settings_json_roundtrip(tmp_path):
@@ -1760,24 +1780,30 @@ def test_state_http_returns_launch_config_values(state, tmp_path, monkeypatch):
 # ══════════════════════════════════════════════
 
 def test_options_returns_cors_headers():
-    """do_OPTIONS must return CORS preflight headers so cross-origin
-    POST requests (common with SSH tunnels / HPC portals) are not blocked."""
+    """do_OPTIONS returns the CORS grant headers only for a same-origin
+    request (MN-4 / RR-P0-3: the Origin must match the server's own
+    origin; full matrix in test_gui_bind_cors.py)."""
     from ari.viz.server import _Handler
-    handler = mock.MagicMock(spec=_Handler)
-    handler.send_response = mock.MagicMock()
-    handler.send_header = mock.MagicMock()
-    handler.end_headers = mock.MagicMock()
-    # Call the real do_OPTIONS on the mock instance
+    handler = _Handler.__new__(_Handler)
+    handler.headers = {
+        "Origin": "http://127.0.0.1:8765",
+        "Host": "127.0.0.1:8765",
+    }
+    sent = []
+    handler.send_response = lambda code: sent.append(("status", code))
+    handler.send_header = lambda k, v: sent.append((k, v))
+    handler.end_headers = lambda: sent.append(("end", None))
     _Handler.do_OPTIONS(handler)
-    handler.send_response.assert_called_once_with(204)
-    headers = {call.args[0]: call.args[1] for call in handler.send_header.call_args_list}
-    assert headers["Access-Control-Allow-Origin"] == "*"
+    assert ("status", 204) in sent
+    headers = {k: v for k, v in sent if k not in ("status", "end")}
+    assert headers["Access-Control-Allow-Origin"] == "http://127.0.0.1:8765"
     assert "POST" in headers["Access-Control-Allow-Methods"]
     assert "Content-Type" in headers["Access-Control-Allow-Headers"]
 
 
 def test_options_preflight_live_server():
-    """OPTIONS request to a live server returns 204 with CORS headers."""
+    """OPTIONS on a live server: same-origin preflight gets the grant,
+    cross-origin gets a bare 204 without any CORS headers (MN-4)."""
     from ari.viz.server import _Handler
     from http.server import ThreadingHTTPServer
     srv = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
@@ -1786,6 +1812,7 @@ def test_options_preflight_live_server():
     t.start()
     try:
         conn = HTTPConnection("127.0.0.1", port, timeout=5)
+        # Cross-origin preflight: 204 but no Access-Control-* headers.
         conn.request("OPTIONS", "/api/launch", headers={
             "Origin": "http://other-host:8080",
             "Access-Control-Request-Method": "POST",
@@ -1793,7 +1820,19 @@ def test_options_preflight_live_server():
         })
         resp = conn.getresponse()
         assert resp.status == 204, f"Expected 204, got {resp.status}"
-        assert resp.getheader("Access-Control-Allow-Origin") == "*"
+        assert resp.getheader("Access-Control-Allow-Origin") is None
+        assert resp.getheader("Access-Control-Allow-Methods") is None
+        resp.read()
+        # Same-origin preflight (Origin matches the Host header): echoed.
+        own_origin = f"http://127.0.0.1:{port}"
+        conn.request("OPTIONS", "/api/launch", headers={
+            "Origin": own_origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "Content-Type",
+        })
+        resp = conn.getresponse()
+        assert resp.status == 204, f"Expected 204, got {resp.status}"
+        assert resp.getheader("Access-Control-Allow-Origin") == own_origin
         assert "POST" in resp.getheader("Access-Control-Allow-Methods", "")
         conn.close()
     finally:

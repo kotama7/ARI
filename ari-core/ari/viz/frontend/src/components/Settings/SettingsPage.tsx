@@ -9,6 +9,7 @@ import {
   fetchPartitions,
   fetchCheckpoints,
   deleteCheckpoint,
+  requestConfirmationChallenge,
   testSSH as apiTestSSH,
   generateConfig,
   fetchContainerInfo,
@@ -306,9 +307,18 @@ export default function SettingsPage() {
   // ── Delete project ─────────────────────
 
   async function handleDeleteProject(id: string, path: string) {
-    if (!confirm(`Delete project "${id}"? This cannot be undone.`)) return;
     try {
-      const r = await deleteCheckpoint(id, path);
+      // MN-6 two-step (RR-P0-6/RR-P0-9): fetch a server-issued challenge
+      // bound to this exact path first; the confirm dialog shows the
+      // server's target echo as the impact preview.
+      const ch = await requestConfirmationChallenge('delete-checkpoint', path);
+      if (
+        !confirm(
+          `Delete project "${id}"?\nServer will remove: ${ch.target}\nThis cannot be undone.`,
+        )
+      )
+        return;
+      const r = await deleteCheckpoint(id, path, ch.challenge_id);
       if (r.ok) {
         loadProjects();
         refreshCheckpoints();

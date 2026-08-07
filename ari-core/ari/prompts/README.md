@@ -9,8 +9,8 @@ prompts are editable without touching Python. Loaded via the package's
 - `README.md` — this file.
 - `__init__.py` — exports + `PromptLoader` plumbing.
 - `_loader.py` — `PromptLoader` Protocol + `FilesystemPromptLoader`.
-- `_provenance.py` — TODO
-- `registry.py` — TODO
+- `_provenance.py` — append-only `prompt_trace.jsonl` recorder + `prompt_versions.json` rollup (`record_prompt_use`, `hash12`); stdlib-only, no LLM calls.
+- `registry.py` — `PromptRegistry` — key enumeration, `str.format` placeholder introspection and `PromptEntry` describe, layered over the loader.
 - `agent/` — agent ReAct system prompt.
   - `README.md` — agent index.
   - `system.md` — the agent system prompt.
@@ -18,6 +18,9 @@ prompts are editable without touching Python. Loaded via the package's
   - `README.md` — evaluator index.
   - `extract_metrics.md` — numeric metric extraction.
   - `peer_review.md` — rubric-driven paper review.
+- `governance/` — Committed governance-actor prompt templates for the ARI-RQGM
+- `llm/` — prompt fragments for the LLM shim layer.
+  - `mcp_name_resolution.md` — bare → namespaced MCP tool-name translation note (`{rows}`) injected into CLI-shim system prompts.
 - `orchestrator/` — BFTS expand/select, lineage & root-idea decisions.
   - `README.md` — orchestrator index.
   - `bfts_expand.md` — leaf-expansion prompt.
@@ -28,6 +31,7 @@ prompts are editable without touching Python. Loaded via the package's
 - `pipeline/` — pipeline-stage prompts.
   - `README.md` — pipeline index.
   - `keyword_librarian.md` — keyword extraction for BFTS-context building.
+- `rqgm/` — Committed prompt templates for the ARI-RQGM prompt-defined actors (Tasks 03/06/07)
 - `viz/` — wizard chat prompts.
   - `README.md` — viz index.
   - `wizard_chat_goal.md` — chat that elicits the experiment goal.

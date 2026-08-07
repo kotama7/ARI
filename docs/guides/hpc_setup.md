@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: containers
     role: config
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # HPC Setup Guide
@@ -29,8 +29,11 @@ vars on every cluster:
 
 > v0.5.0 removed the global `$HOME/.ari/` directory — every state file
 > now lives under `ARI_CHECKPOINT_DIR` or under an explicit env var.
-> Set the env vars in your sbatch wrapper, *not* in shell rc files
-> (so a sub-experiment can override them).
+> Set the outer ARI process variables in its wrapper, not in shell rc files.
+> Canonical HPC sub-jobs do **not** inherit that parent environment: each
+> `JobRequestV1` declares reviewed non-secret variables and modules explicitly.
+> Credentials require a domain-specific staged artifact or credential provider;
+> the scheduler never sources `.env` on a compute node.
 
 ## 2. Available partitions (template)
 
@@ -102,6 +105,7 @@ done
 # Defaults inherited by sub-jobs that ARI launches via the hpc skill.
 export SLURM_DEFAULT_PARTITION=your_partition
 export SLURM_DEFAULT_WORK_DIR=/path/to/ari/
+export ARI_HPC_LEDGER_PATH=/abs/path/checkpoints/hpc-jobs-v1.json
 
 # Optional: choose a specific reviewer rubric (see docs/concepts/architecture.md).
 export ARI_RUBRIC=neurips2025
@@ -111,6 +115,24 @@ cd /path/to/ari/ari-core
 
 kill $OLLAMA_PID 2>/dev/null || true
 ```
+
+### Remote scheduler control
+
+Remote mode does not trust the operator's default SSH config, agent, user keys,
+or first-seen host keys. Provision a dedicated known-hosts file and credential:
+
+```bash
+export SLURM_MODE=remote
+export SLURM_SSH_HOST=login.cluster.example
+export SLURM_SSH_USER=ari-submit
+export SLURM_SSH_KNOWN_HOSTS=/etc/ari/cluster_known_hosts
+export SLURM_SSH_KEY=/run/secrets/ari_cluster_key
+export SLURM_SHARED_FILESYSTEM=true
+```
+
+Host-key mismatch, an absent known-host entry, or an unsafe/symlinked key file
+fails closed. Typed result collection currently requires a filesystem mounted
+at identical absolute paths on the MCP and compute hosts.
 
 ## 5. Container deployments (v0.7+)
 
@@ -129,10 +151,12 @@ apptainer exec --bind /scratch:/scratch ari.sif \
     ari run /abs/path/to/experiment.md
 ```
 
-`ari-skill-coding` and `ari-skill-hpc` honour
-`ARI_CONTAINER_IMAGE=/path/to/ari.sif` and
-`ARI_CONTAINER_MODE=singularity` to wrap the user code itself in the
-SIF — useful for reproducible benchmarks.
+`ari-skill-coding` honours `ARI_CONTAINER_IMAGE=/path/to/ari.sif` and
+`ARI_CONTAINER_MODE=singularity` for short interactive commands.
+`ari-skill-hpc` uses `container_submit`: its `JobRequestV1` carries the exact
+SIF SHA-256/size pin, typed read-only/read-write binds, clean-environment flag,
+GPU declaration, resources, and declared outputs. Container-specific public
+aliases were removed; all callers use this typed lifecycle.
 
 ### docker-compose (single host)
 
@@ -152,9 +176,9 @@ ari run experiment.md     # uses the host python directly
 
 ## 6. Letta memory backend deployment
 
-`ari-skill-memory` defaults to a Letta backend (v0.6+).  The skill
-talks to a Letta service via `LETTA_HOST` / `LETTA_PORT` (default
-`127.0.0.1:8283`).  Three deployment paths:
+`ari-skill-memory` defaults to a Letta backend (v0.6+). The skill talks
+to a Letta service via `LETTA_BASE_URL` (default
+`http://localhost:8283`). Three deployment paths:
 
 | Path | When to pick it |
 |---|---|
@@ -166,9 +190,9 @@ Required env vars regardless of deployment:
 
 | Variable | Purpose |
 |---|---|
-| `LETTA_HOST` / `LETTA_PORT` | Where the Letta API is listening |
-| `LETTA_EMBEDDING_CONFIG` | Path to the embedding configuration JSON (required) |
-| `OPENAI_API_KEY` etc. | Whatever the embedding model needs |
+| `LETTA_BASE_URL` | Letta API base URL |
+| `LETTA_API_KEY` | Credential for Letta Cloud; omit for an unauthenticated local service |
+| `LETTA_EMBEDDING_CONFIG` | Embedding configuration selector; defaults to `letta-default` |
 
 Each ARI checkpoint owns its own Letta agent (collections
 `ari_node_<ckpt_hash>` + `ari_react_<ckpt_hash>`).  Deleting the
@@ -179,12 +203,13 @@ Letta agent — see `ari-skill-memory/README.md` for the deletion path.
 
 | Rule | Detail |
 |------|--------|
-| Compiler | Use `gcc` only.  `mpicc` / `icc` / `aocc` produce `exit_code=127` on most clusters |
-| CPU limit | `--cpus-per-task` must respect the partition's per-node CPU count |
-| Path expansion | Never use `~` in `#SBATCH` lines — always absolute paths |
-| stdout redirect | Never redirect stdout in the job script — SLURM captures via `--output` |
-| Account header | `--account` / `-A` are rejected on most cluster configs — only add them if your site requires it |
-| Output filename | Match the pattern your skill expects (e.g. `slurm_job_{JOBID}.out`) |
+| Toolchain | Declare the exact site module/toolchain in `environment.modules`; do not assume one compiler is portable across clusters. |
+| CPU/GPU limits | The typed request must respect partition limits; scheduler rejection is returned without silently changing resources. |
+| Paths | `work_dir`, inputs, outputs, images, binds, known-hosts, and credentials use explicit absolute paths without traversal. |
+| Environment | Canonical jobs use `sbatch --export=NIL`; parent PATH, virtualenv, API keys, `.env`, and shell rc files are not inherited. |
+| Account/QoS | Add `account` or `qos` only when the target site requires it; they are validated inert identifiers and retained in provenance. |
+| Outputs | Declare output paths below `work_dir`; terminal collection rejects missing, symlinked, oversized, or drifted artifacts. |
+| Retry | Keep `ARI_HPC_LEDGER_PATH` on durable shared storage. An uncertain submission is intentionally blocked rather than duplicated. |
 
 ## 8. Ollama model recommendations
 

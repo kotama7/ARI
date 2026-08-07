@@ -4,7 +4,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-02
 ---
 
 # PaperBench troubleshooting
@@ -76,10 +76,9 @@ The output must contain `srun -n $SLURM_NTASKS`.
 
 ### Q. `sbatch: error: Invalid GRES gpu:v100:1`.
 
-The cluster has no GRES configured. v0.7.2 auto-drops the flag via
-`_slurm_has_gres()` — if you still see the error you are on an older
-build, or `sinfo` is not on PATH. Workaround: leave `gpu_type` empty
-in the wizard's *Execution profile override*.
+The selected partition cannot satisfy the typed GPU request. Check
+`sinfo -o '%P %G'`, select a compatible partition, or correct the site's GRES
+configuration. ARI intentionally does not drop the request or run on CPU.
 
 ### Q. sbatch went through but `reproduce.sh` ran on a single node.
 
@@ -183,45 +182,33 @@ The ja/zh mirrors require XeLaTeX + Noto CJK fonts. Run
 The bridge / `run_reproduce` refuses to silently fall back to
 host-local execution when the user explicitly picks a sandbox kind.
 Either start the docker daemon, switch to `sandbox_kind=local` /
-`apptainer` / `slurm`, or opt back into the legacy silent-fallback:
-
-```bash
-export ARI_PHASE1_ALLOW_FALLBACK=1
-```
-
-Same fix applies to `sandbox_kind=apptainer` (binary missing) and
+`apptainer` / `slurm`. A host-local fallback is intentionally unavailable.
+The same fail-closed rule applies to `sandbox_kind=apptainer` (binary missing) and
 `sandbox_kind=slurm` (sbatch missing OR partition not resolved).
 
 ### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
 
 The cluster's SLURM doesn't have GRES configured for GPUs, but the
 caller passed `gpus_per_task` / `gpu_type`. The bridge refuses
-because a 36 h queue wait followed by all-CPU execution is the worst
-possible failure mode for a GPU-tagged run. Either:
+because a queued GPU experiment must never silently become a CPU experiment.
+Either:
 
 1. Fix the SLURM GRES configuration on the cluster, or
-2. Pick a partition where GRES is configured (`sinfo -o '%P %G'` to
-   see which partitions advertise gpu GRES), or
-3. Opt back into silent drop:
-
-```bash
-export ARI_SLURM_ALLOW_NO_GRES=1
-```
+2. Pick a partition where GRES is configured (`sinfo -o '%P %G'` shows
+   advertised GPU resources). There is intentionally no silent-drop override.
 
 ### Q. `sbatch: error: --gpus-per-task ... used without either --gpus or -n/--ntasks is not allowed`
 
-This message shouldn't surface in v0.8.0 — the bridge auto-pairs
+This message should not surface through the typed scheduler — it always pairs
 `--gpus-per-task` with `--ntasks 1` when the caller didn't supply
 `ntasks` or `--gpus`. If you see it, the request is being routed
 through a non-bridge path or an older `server.py`.
 
 ### Q. `sbatch: error: Invalid GRES specification (with and without type identification)`
 
-Same era as above — caused by emitting both `--gres=gpu:TYPE:N` AND
-`--gpus-per-task N`. Modern SLURM rejects the mixed form. v0.8.0
-canonicalises to typed-only when `gpu_type` is set (untyped
-`--gpus-per-task` / `--gpus-per-node` are dropped). If you still see
-it on a fresh checkout, re-run the affected paper-re tests:
+This is caused by mixing typed and untyped GPU requests. The common scheduler
+emits one typed directive and rejects simultaneous per-task/per-node shapes.
+If you see it on a fresh checkout, re-run the affected tests:
 
 ```bash
 pytest ari-skill-paper-re/tests/test_run_reproduce_slurm.py -k gpu_type
@@ -303,9 +290,9 @@ Two distinct causes (v0.8.0 addresses both):
 1. **No `reproduce.log` in submission** — Stage 2 was skipped, so the
    vendor SimpleJudge safeguard "`reproduce.sh` failed to modify or
    create any files. All result analysis tasks will be graded as 0"
-   fires. v0.8.0 auto-enables `code_only=True` on the judge call in
-   this case (rubric is pruned to Code Development leaves only via
-   vendor `paperbench/rubric/tasks.py:338`).
+   would fire in upstream. ARI instead rejects the missing reproduction
+   record without publishing a score. Run Stage 2, or explicitly choose a
+   code-only study and still create a verified Stage 2 record.
 2. **`paper_audit_mode` accidentally on** — paper-audit mode flips
    the judge's prompt to grade the paper itself rather than a
    submission. Mutually exclusive with `code_only`; the bridge

@@ -1,0 +1,2553 @@
+{
+  "$defs": {
+    "AdmissionEvidenceV1": {
+      "additionalProperties": false,
+      "description": "Value-free evidence used to compute an admission level.",
+      "properties": {
+        "architecture": {
+          "default": "",
+          "title": "Architecture",
+          "type": "string"
+        },
+        "dependencies_pinned": {
+          "default": false,
+          "title": "Dependencies Pinned",
+          "type": "boolean"
+        },
+        "launcher_verified": {
+          "default": false,
+          "title": "Launcher Verified",
+          "type": "boolean"
+        },
+        "limitations_documented": {
+          "default": false,
+          "title": "Limitations Documented",
+          "type": "boolean"
+        },
+        "method_identity_documented": {
+          "default": false,
+          "title": "Method Identity Documented",
+          "type": "boolean"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "protocol_conformance": {
+          "default": false,
+          "title": "Protocol Conformance",
+          "type": "boolean"
+        },
+        "provider_pinned": {
+          "default": false,
+          "title": "Provider Pinned",
+          "type": "boolean"
+        },
+        "replay_fixture_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Digest"
+        },
+        "scientific_validation_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scientific Validation Digest"
+        },
+        "semantics_documented": {
+          "default": false,
+          "title": "Semantics Documented",
+          "type": "boolean"
+        },
+        "units_documented": {
+          "default": false,
+          "title": "Units Documented",
+          "type": "boolean"
+        }
+      },
+      "title": "AdmissionEvidenceV1",
+      "type": "object"
+    },
+    "ArtifactPinV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "logical_name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "media_type": {
+          "default": "application/octet-stream",
+          "maxLength": 255,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "path": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "size_bytes": {
+          "maximum": 1099511627776,
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "logical_name",
+        "path",
+        "digest",
+        "size_bytes"
+      ],
+      "title": "ArtifactPinV1",
+      "type": "object"
+    },
+    "BindMountV1": {
+      "additionalProperties": false,
+      "properties": {
+        "read_only": {
+          "default": true,
+          "title": "Read Only",
+          "type": "boolean"
+        },
+        "source": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "maxLength": 4096,
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "target"
+      ],
+      "title": "BindMountV1",
+      "type": "object"
+    },
+    "ContainerRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "binds": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/BindMountV1"
+          },
+          "title": "Binds",
+          "type": "array"
+        },
+        "clean_environment": {
+          "default": true,
+          "title": "Clean Environment",
+          "type": "boolean"
+        },
+        "contain_all": {
+          "default": true,
+          "title": "Contain All",
+          "type": "boolean"
+        },
+        "gpu": {
+          "default": false,
+          "title": "Gpu",
+          "type": "boolean"
+        },
+        "image": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        },
+        "network": {
+          "default": "host",
+          "enum": [
+            "host",
+            "none"
+          ],
+          "title": "Network",
+          "type": "string"
+        },
+        "runtime": {
+          "default": "apptainer",
+          "enum": [
+            "apptainer",
+            "singularity"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "image"
+      ],
+      "title": "ContainerRequestV1",
+      "type": "object"
+    },
+    "EnvironmentPolicyV1": {
+      "additionalProperties": false,
+      "description": "A clean job environment containing only reviewed non-secret literals.",
+      "properties": {
+        "export_mode": {
+          "const": "NIL",
+          "default": "NIL",
+          "title": "Export Mode",
+          "type": "string"
+        },
+        "modules": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Modules",
+          "type": "array"
+        },
+        "path": {
+          "default": "/usr/local/bin:/usr/bin:/bin",
+          "title": "Path",
+          "type": "string"
+        },
+        "variables": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Variables",
+          "type": "object"
+        }
+      },
+      "title": "EnvironmentPolicyV1",
+      "type": "object"
+    },
+    "OpenRoadArtifactPinV1": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "default": "application/octet-stream",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "rtl",
+            "netlist",
+            "constraint",
+            "technology-lef",
+            "library-lef",
+            "liberty",
+            "def",
+            "database",
+            "gds",
+            "spef",
+            "upf",
+            "flow-config",
+            "other"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relative_path",
+        "digest",
+        "role"
+      ],
+      "title": "OpenRoadArtifactPinV1",
+      "type": "object"
+    },
+    "OpenRoadCommandV1": {
+      "additionalProperties": false,
+      "description": "One Tcl command represented as a closed verb plus inert atoms.",
+      "properties": {
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Arguments",
+          "type": "array"
+        },
+        "stage": {
+          "enum": [
+            "setup",
+            "floorplan",
+            "placement",
+            "cts",
+            "routing",
+            "finishing",
+            "report"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "verb": {
+          "enum": [
+            "read_lef",
+            "read_liberty",
+            "read_verilog",
+            "read_def",
+            "read_db",
+            "link_design",
+            "read_sdc",
+            "read_spef",
+            "read_upf",
+            "set_thread_count",
+            "set_wire_rc",
+            "set_routing_layers",
+            "set_macro_extension",
+            "set_global_routing_layer_adjustment",
+            "set_placement_padding",
+            "set_propagated_clock",
+            "initialize_floorplan",
+            "make_tracks",
+            "tapcell",
+            "pdngen",
+            "place_pins",
+            "macro_placement",
+            "global_placement",
+            "detailed_placement",
+            "check_placement",
+            "clock_tree_synthesis",
+            "repair_clock_nets",
+            "repair_design",
+            "repair_timing",
+            "global_route",
+            "detailed_route",
+            "check_antennas",
+            "repair_antennas",
+            "filler_placement",
+            "estimate_parasitics",
+            "write_db",
+            "write_def",
+            "write_gds",
+            "write_verilog",
+            "write_sdc",
+            "write_spef",
+            "write_guides",
+            "report_design_area",
+            "report_checks",
+            "report_clock_skew",
+            "report_congestion",
+            "report_drc",
+            "report_floating_nets",
+            "report_wire_length",
+            "report_worst_slack",
+            "report_tns",
+            "report_power"
+          ],
+          "title": "Verb",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage",
+        "verb"
+      ],
+      "title": "OpenRoadCommandV1",
+      "type": "object"
+    },
+    "OpenRoadExecutionV1": {
+      "additionalProperties": false,
+      "description": "Closed local-MCP or scheduler/container execution policy.",
+      "properties": {
+        "backend": {
+          "default": "local-mcp",
+          "enum": [
+            "local-mcp",
+            "slurm"
+          ],
+          "title": "Backend",
+          "type": "string"
+        },
+        "container": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ContainerRequestV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "environment": {
+          "$ref": "#/$defs/EnvironmentPolicyV1"
+        },
+        "portable_runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenRoadPortableRuntimeV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceRequestV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "site_identity_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Site Identity Digest"
+        },
+        "terminal_evidence_policy": {
+          "default": "scheduler-accounting",
+          "enum": [
+            "scheduler-accounting",
+            "fixed-wrapper-marker"
+          ],
+          "title": "Terminal Evidence Policy",
+          "type": "string"
+        },
+        "work_root": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Root"
+        },
+        "worker_python": {
+          "default": "/usr/bin/python3",
+          "title": "Worker Python",
+          "type": "string"
+        },
+        "worker_python_pin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactPinV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "title": "OpenRoadExecutionV1",
+      "type": "object"
+    },
+    "OpenRoadExperimentV1": {
+      "additionalProperties": false,
+      "description": "Immutable scientific and execution contract for one EDA experiment.",
+      "properties": {
+        "command_timeout_seconds": {
+          "default": 3600.0,
+          "exclusiveMinimum": 0,
+          "maximum": 172800,
+          "title": "Command Timeout Seconds",
+          "type": "number"
+        },
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/OpenRoadCommandV1"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Commands",
+          "type": "array"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/AdmissionEvidenceV1"
+        },
+        "execution": {
+          "$ref": "#/$defs/OpenRoadExecutionV1"
+        },
+        "golden_fixture_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Golden Fixture Digest"
+        },
+        "golden_fixture_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Golden Fixture Path"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/OpenRoadMetricV1"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "title": "Metrics",
+          "type": "array"
+        },
+        "output_artifacts": {
+          "items": {
+            "$ref": "#/$defs/OpenRoadOutputArtifactV1"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Output Artifacts",
+          "type": "array"
+        },
+        "poll_interval_seconds": {
+          "default": 0.5,
+          "maximum": 10.0,
+          "minimum": 0.05,
+          "title": "Poll Interval Seconds",
+          "type": "number"
+        },
+        "profile_id": {
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "replay_fixture_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Digest"
+        },
+        "replay_fixture_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Path"
+        },
+        "schema_version": {
+          "const": "ari.openroad-experiment/v1",
+          "default": "ari.openroad-experiment/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "technology": {
+          "$ref": "#/$defs/OpenRoadTechnologyV1"
+        },
+        "toolchain": {
+          "$ref": "#/$defs/OpenRoadToolchainV1"
+        },
+        "workspace": {
+          "$ref": "#/$defs/OpenRoadWorkspaceV1"
+        }
+      },
+      "required": [
+        "profile_id",
+        "description",
+        "toolchain",
+        "technology",
+        "workspace",
+        "commands",
+        "output_artifacts",
+        "metrics",
+        "limitations"
+      ],
+      "title": "OpenRoadExperimentV1",
+      "type": "object"
+    },
+    "OpenRoadMetricV1": {
+      "additionalProperties": false,
+      "properties": {
+        "corner": {
+          "title": "Corner",
+          "type": "string"
+        },
+        "expected_max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Max"
+        },
+        "expected_min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Min"
+        },
+        "json_pointer": {
+          "title": "Json Pointer",
+          "type": "string"
+        },
+        "metric_id": {
+          "title": "Metric Id",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "source_artifact": {
+          "title": "Source Artifact",
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "setup",
+            "floorplan",
+            "placement",
+            "cts",
+            "routing",
+            "finishing",
+            "report"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "unit": {
+          "enum": [
+            "ns",
+            "ps",
+            "um",
+            "um^2",
+            "mm^2",
+            "mW",
+            "W",
+            "count",
+            "%",
+            "ratio"
+          ],
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "metric_id",
+        "source_artifact",
+        "json_pointer",
+        "unit",
+        "corner",
+        "mode",
+        "stage"
+      ],
+      "title": "OpenRoadMetricV1",
+      "type": "object"
+    },
+    "OpenRoadOutputArtifactV1": {
+      "additionalProperties": false,
+      "properties": {
+        "capture": {
+          "default": true,
+          "title": "Capture",
+          "type": "boolean"
+        },
+        "expected_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Digest"
+        },
+        "logical_role": {
+          "title": "Logical Role",
+          "type": "string"
+        },
+        "max_bytes": {
+          "default": 100000000,
+          "maximum": 2000000000,
+          "minimum": 1,
+          "title": "Max Bytes",
+          "type": "integer"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "relative_path",
+        "logical_role",
+        "media_type"
+      ],
+      "title": "OpenRoadOutputArtifactV1",
+      "type": "object"
+    },
+    "OpenRoadPortableRuntimeV1": {
+      "additionalProperties": false,
+      "description": "Digest-pinned SIF extraction and PRoot execution on a containerless node.\n\nThis is not represented as a native container allocation.  The scheduler\nverifies the SIF, extractor, and PRoot bytes before launch; the fixed batch\nworker extracts that exact SIF into its private workspace and exposes only\nthat workspace to the guest root.  Network namespaces are unavailable on\nthe observed no-GRES node, so the policy records the residual host-network\nvisibility instead of claiming `network: none`.",
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        },
+        "kind": {
+          "const": "proot-sif",
+          "default": "proot-sif",
+          "title": "Kind",
+          "type": "string"
+        },
+        "network_policy": {
+          "const": "host-uncredentialed",
+          "default": "host-uncredentialed",
+          "title": "Network Policy",
+          "type": "string"
+        },
+        "proot": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        },
+        "schema_version": {
+          "const": "ari.openroad-portable-runtime/v1",
+          "default": "ari.openroad-portable-runtime/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "squashfs_offset": {
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "Squashfs Offset",
+          "type": "integer"
+        },
+        "unsquashfs": {
+          "$ref": "#/$defs/ArtifactPinV1"
+        }
+      },
+      "required": [
+        "proot",
+        "image",
+        "unsquashfs",
+        "squashfs_offset"
+      ],
+      "title": "OpenRoadPortableRuntimeV1",
+      "type": "object"
+    },
+    "OpenRoadSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "Pinned OpenROAD MCP exposed only as immutable experiment leaves.",
+      "properties": {
+        "capability_ref": {
+          "default": "ari.eda.openroad.place-route/v1",
+          "title": "Capability Ref",
+          "type": "string"
+        },
+        "experiments": {
+          "items": {
+            "$ref": "#/$defs/OpenRoadExperimentV1"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Experiments",
+          "type": "array"
+        },
+        "kind": {
+          "const": "openroad",
+          "default": "openroad",
+          "title": "Kind",
+          "type": "string"
+        },
+        "launcher": {
+          "$ref": "#/$defs/PythonStdioLauncherV1"
+        },
+        "max_concurrent_jobs": {
+          "default": 4,
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Max Concurrent Jobs",
+          "type": "integer"
+        },
+        "max_retained_jobs": {
+          "default": 1024,
+          "maximum": 100000,
+          "minimum": 32,
+          "title": "Max Retained Jobs",
+          "type": "integer"
+        },
+        "provider_digest": {
+          "title": "Provider Digest",
+          "type": "string"
+        },
+        "provider_id": {
+          "const": "openroad-mcp",
+          "default": "openroad-mcp",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "support_release": {
+          "const": "0.6.1",
+          "default": "0.6.1",
+          "title": "Support Release",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "verified_lock_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Digest"
+        },
+        "verified_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Path"
+        }
+      },
+      "required": [
+        "source_id",
+        "provider_digest",
+        "launcher",
+        "experiments"
+      ],
+      "title": "OpenRoadSourceSpecV1",
+      "type": "object"
+    },
+    "OpenRoadTechnologyV1": {
+      "additionalProperties": false,
+      "properties": {
+        "corner": {
+          "title": "Corner",
+          "type": "string"
+        },
+        "mode": {
+          "title": "Mode",
+          "type": "string"
+        },
+        "pdk_digest": {
+          "title": "Pdk Digest",
+          "type": "string"
+        },
+        "pdk_id": {
+          "title": "Pdk Id",
+          "type": "string"
+        },
+        "pdk_license_scope": {
+          "enum": [
+            "redistributable",
+            "local-only",
+            "restricted"
+          ],
+          "title": "Pdk License Scope",
+          "type": "string"
+        },
+        "pdk_version": {
+          "title": "Pdk Version",
+          "type": "string"
+        },
+        "standard_cell_library_digest": {
+          "title": "Standard Cell Library Digest",
+          "type": "string"
+        },
+        "standard_cell_library_id": {
+          "title": "Standard Cell Library Id",
+          "type": "string"
+        },
+        "standard_cell_library_version": {
+          "title": "Standard Cell Library Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pdk_id",
+        "pdk_version",
+        "pdk_digest",
+        "pdk_license_scope",
+        "standard_cell_library_id",
+        "standard_cell_library_version",
+        "standard_cell_library_digest",
+        "corner",
+        "mode"
+      ],
+      "title": "OpenRoadTechnologyV1",
+      "type": "object"
+    },
+    "OpenRoadToolchainV1": {
+      "additionalProperties": false,
+      "properties": {
+        "architecture": {
+          "title": "Architecture",
+          "type": "string"
+        },
+        "executable_digest": {
+          "title": "Executable Digest",
+          "type": "string"
+        },
+        "executable_path": {
+          "title": "Executable Path",
+          "type": "string"
+        },
+        "execution_image_digest": {
+          "title": "Execution Image Digest",
+          "type": "string"
+        },
+        "openroad_commit": {
+          "title": "Openroad Commit",
+          "type": "string"
+        },
+        "openroad_version": {
+          "title": "Openroad Version",
+          "type": "string"
+        },
+        "orfs_commit": {
+          "title": "Orfs Commit",
+          "type": "string"
+        },
+        "seed": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "support_line": {
+          "title": "Support Line",
+          "type": "string"
+        },
+        "threads": {
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Threads",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "support_line",
+        "orfs_commit",
+        "openroad_commit",
+        "openroad_version",
+        "executable_path",
+        "executable_digest",
+        "execution_image_digest",
+        "architecture",
+        "threads",
+        "seed"
+      ],
+      "title": "OpenRoadToolchainV1",
+      "type": "object"
+    },
+    "OpenRoadWorkspaceV1": {
+      "additionalProperties": false,
+      "description": "Read-only source workspace copied into a fresh run directory.",
+      "properties": {
+        "input_artifacts": {
+          "items": {
+            "$ref": "#/$defs/OpenRoadArtifactPinV1"
+          },
+          "maxItems": 2000,
+          "minItems": 1,
+          "title": "Input Artifacts",
+          "type": "array"
+        },
+        "input_digest": {
+          "title": "Input Digest",
+          "type": "string"
+        },
+        "source_root": {
+          "title": "Source Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_root",
+        "input_artifacts",
+        "input_digest"
+      ],
+      "title": "OpenRoadWorkspaceV1",
+      "type": "object"
+    },
+    "OriginHopV1": {
+      "additionalProperties": false,
+      "description": "One visible step in the collection-to-leaf supply chain.",
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "source",
+            "collection",
+            "provider",
+            "tool"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id"
+      ],
+      "title": "OriginHopV1",
+      "type": "object"
+    },
+    "PythonStdioLauncherV1": {
+      "additionalProperties": false,
+      "description": "Shell-free, digest-bound Python MCP launcher.",
+      "properties": {
+        "arguments": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Arguments",
+          "type": "array"
+        },
+        "command_kind": {
+          "default": "python",
+          "title": "Command Kind",
+          "type": "string"
+        },
+        "entrypoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entrypoint"
+        },
+        "expected_architecture": {
+          "default": "",
+          "title": "Expected Architecture",
+          "type": "string"
+        },
+        "identity_globs": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Identity Globs",
+          "type": "array"
+        },
+        "literal_env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Literal Env",
+          "type": "object"
+        },
+        "package_root": {
+          "title": "Package Root",
+          "type": "string"
+        },
+        "python_callable": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Python Callable"
+        },
+        "python_executable": {
+          "title": "Python Executable",
+          "type": "string"
+        },
+        "python_module": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Python Module"
+        }
+      },
+      "required": [
+        "python_executable",
+        "package_root"
+      ],
+      "title": "PythonStdioLauncherV1",
+      "type": "object"
+    },
+    "QiskitCircuitV1": {
+      "additionalProperties": false,
+      "description": "One canonical, immutable QPY circuit plus closed parameter bindings.",
+      "properties": {
+        "num_clbits": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Num Clbits",
+          "type": "integer"
+        },
+        "num_qubits": {
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Num Qubits",
+          "type": "integer"
+        },
+        "parameter_bindings": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "maxProperties": 256,
+          "title": "Parameter Bindings",
+          "type": "object"
+        },
+        "parameter_units": {
+          "additionalProperties": {
+            "enum": [
+              "rad",
+              "1"
+            ],
+            "type": "string"
+          },
+          "maxProperties": 256,
+          "title": "Parameter Units",
+          "type": "object"
+        },
+        "qpy_digest": {
+          "title": "Qpy Digest",
+          "type": "string"
+        },
+        "qpy_path": {
+          "title": "Qpy Path",
+          "type": "string"
+        },
+        "qpy_version": {
+          "maximum": 255,
+          "minimum": 1,
+          "title": "Qpy Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "qpy_path",
+        "qpy_digest",
+        "qpy_version",
+        "num_qubits",
+        "num_clbits"
+      ],
+      "title": "QiskitCircuitV1",
+      "type": "object"
+    },
+    "QiskitExperimentV1": {
+      "additionalProperties": false,
+      "description": "One immutable simulator or IBM Runtime sampling experiment.",
+      "properties": {
+        "backend": {
+          "discriminator": {
+            "mapping": {
+              "ibm-hardware": "#/$defs/QiskitRemoteBackendV1",
+              "local-ideal": "#/$defs/QiskitLocalBackendV1",
+              "local-noisy": "#/$defs/QiskitLocalBackendV1",
+              "remote-simulator": "#/$defs/QiskitRemoteBackendV1"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/QiskitLocalBackendV1"
+            },
+            {
+              "$ref": "#/$defs/QiskitRemoteBackendV1"
+            }
+          ],
+          "title": "Backend"
+        },
+        "circuit": {
+          "$ref": "#/$defs/QiskitCircuitV1"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence": {
+          "$ref": "#/$defs/AdmissionEvidenceV1"
+        },
+        "expected_outcomes": {
+          "items": {
+            "$ref": "#/$defs/QiskitOutcomeExpectationV1"
+          },
+          "maxItems": 1024,
+          "minItems": 1,
+          "title": "Expected Outcomes",
+          "type": "array"
+        },
+        "golden_fixture_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Golden Fixture Digest"
+        },
+        "golden_fixture_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Golden Fixture Path"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "max_unlisted_probability": {
+          "default": 0.0,
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Max Unlisted Probability",
+          "type": "number"
+        },
+        "mitigation": {
+          "$ref": "#/$defs/QiskitMitigationV1"
+        },
+        "poll_interval_seconds": {
+          "default": 2,
+          "maximum": 60,
+          "minimum": 0.1,
+          "title": "Poll Interval Seconds",
+          "type": "number"
+        },
+        "profile_id": {
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "replay_fixture_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Digest"
+        },
+        "replay_fixture_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replay Fixture Path"
+        },
+        "schema_version": {
+          "const": "ari.qiskit-experiment/v1",
+          "default": "ari.qiskit-experiment/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "seed_simulator": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed Simulator"
+        },
+        "shots": {
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Shots",
+          "type": "integer"
+        },
+        "software": {
+          "$ref": "#/$defs/QiskitSoftwareV1"
+        },
+        "timeout_seconds": {
+          "default": 3600,
+          "exclusiveMinimum": 0,
+          "maximum": 172800,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "transpilation": {
+          "$ref": "#/$defs/QiskitTranspilationV1"
+        }
+      },
+      "required": [
+        "profile_id",
+        "description",
+        "software",
+        "circuit",
+        "transpilation",
+        "backend",
+        "shots",
+        "expected_outcomes",
+        "limitations"
+      ],
+      "title": "QiskitExperimentV1",
+      "type": "object"
+    },
+    "QiskitLocalBackendV1": {
+      "additionalProperties": false,
+      "properties": {
+        "backend_name": {
+          "const": "aer_simulator",
+          "default": "aer_simulator",
+          "title": "Backend Name",
+          "type": "string"
+        },
+        "device": {
+          "const": "CPU",
+          "default": "CPU",
+          "title": "Device",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "local-ideal",
+            "local-noisy"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "max_parallel_threads": {
+          "default": 1,
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Max Parallel Threads",
+          "type": "integer"
+        },
+        "noise_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/QiskitNoiseModelV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "precision": {
+          "default": "double",
+          "enum": [
+            "single",
+            "double"
+          ],
+          "title": "Precision",
+          "type": "string"
+        },
+        "simulator_method": {
+          "enum": [
+            "statevector",
+            "density_matrix",
+            "matrix_product_state",
+            "stabilizer"
+          ],
+          "title": "Simulator Method",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/QiskitTargetV1"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "simulator_method"
+      ],
+      "title": "QiskitLocalBackendV1",
+      "type": "object"
+    },
+    "QiskitMitigationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "dd_sequence": {
+          "default": "XY4",
+          "enum": [
+            "XX",
+            "XpXm",
+            "XY4"
+          ],
+          "title": "Dd Sequence",
+          "type": "string"
+        },
+        "dynamical_decoupling": {
+          "default": false,
+          "title": "Dynamical Decoupling",
+          "type": "boolean"
+        },
+        "gate_twirling": {
+          "default": false,
+          "title": "Gate Twirling",
+          "type": "boolean"
+        },
+        "measure_twirling": {
+          "default": false,
+          "title": "Measure Twirling",
+          "type": "boolean"
+        }
+      },
+      "title": "QiskitMitigationV1",
+      "type": "object"
+    },
+    "QiskitNoiseModelV1": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "depolarizing-readout",
+          "default": "depolarizing-readout",
+          "title": "Kind",
+          "type": "string"
+        },
+        "one_qubit_error": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "One Qubit Error",
+          "type": "number"
+        },
+        "one_qubit_gates": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "One Qubit Gates",
+          "type": "array"
+        },
+        "readout_p0_given_1": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Readout P0 Given 1",
+          "type": "number"
+        },
+        "readout_p1_given_0": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Readout P1 Given 0",
+          "type": "number"
+        },
+        "two_qubit_error": {
+          "exclusiveMaximum": 1,
+          "minimum": 0,
+          "title": "Two Qubit Error",
+          "type": "number"
+        },
+        "two_qubit_gates": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 100,
+          "minItems": 1,
+          "title": "Two Qubit Gates",
+          "type": "array"
+        }
+      },
+      "required": [
+        "one_qubit_error",
+        "two_qubit_error",
+        "readout_p0_given_1",
+        "readout_p1_given_0",
+        "one_qubit_gates",
+        "two_qubit_gates"
+      ],
+      "title": "QiskitNoiseModelV1",
+      "type": "object"
+    },
+    "QiskitOutcomeExpectationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "bitstring": {
+          "title": "Bitstring",
+          "type": "string"
+        },
+        "probability_max": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Probability Max",
+          "type": "number"
+        },
+        "probability_min": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Probability Min",
+          "type": "number"
+        }
+      },
+      "required": [
+        "bitstring",
+        "probability_min",
+        "probability_max"
+      ],
+      "title": "QiskitOutcomeExpectationV1",
+      "type": "object"
+    },
+    "QiskitRemoteBackendV1": {
+      "additionalProperties": false,
+      "properties": {
+        "access_tier_id": {
+          "title": "Access Tier Id",
+          "type": "string"
+        },
+        "backend_name": {
+          "title": "Backend Name",
+          "type": "string"
+        },
+        "backend_version": {
+          "title": "Backend Version",
+          "type": "string"
+        },
+        "calibration_required": {
+          "default": true,
+          "title": "Calibration Required",
+          "type": "boolean"
+        },
+        "channel": {
+          "const": "ibm_quantum_platform",
+          "default": "ibm_quantum_platform",
+          "title": "Channel",
+          "type": "string"
+        },
+        "instance_digest": {
+          "title": "Instance Digest",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "remote-simulator",
+            "ibm-hardware"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "target": {
+          "$ref": "#/$defs/QiskitTargetV1"
+        }
+      },
+      "required": [
+        "kind",
+        "backend_name",
+        "backend_version",
+        "target",
+        "instance_digest",
+        "access_tier_id"
+      ],
+      "title": "QiskitRemoteBackendV1",
+      "type": "object"
+    },
+    "QiskitSoftwareV1": {
+      "additionalProperties": false,
+      "description": "Scientific packages whose algorithms affect the result.",
+      "properties": {
+        "qiskit_aer_version": {
+          "anyOf": [
+            {
+              "const": "0.17.2",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qiskit Aer Version"
+        },
+        "qiskit_ibm_runtime_version": {
+          "anyOf": [
+            {
+              "const": "0.48.0",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qiskit Ibm Runtime Version"
+        },
+        "qiskit_version": {
+          "const": "2.5.1",
+          "default": "2.5.1",
+          "title": "Qiskit Version",
+          "type": "string"
+        },
+        "stack_digest": {
+          "title": "Stack Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stack_digest"
+      ],
+      "title": "QiskitSoftwareV1",
+      "type": "object"
+    },
+    "QiskitSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "Official Qiskit MCP providers exposed as reviewed sampling profiles.",
+      "properties": {
+        "core_launcher": {
+          "$ref": "#/$defs/PythonStdioLauncherV1"
+        },
+        "core_provider_digest": {
+          "title": "Core Provider Digest",
+          "type": "string"
+        },
+        "core_support_release": {
+          "const": "0.3.1",
+          "default": "0.3.1",
+          "title": "Core Support Release",
+          "type": "string"
+        },
+        "experiments": {
+          "items": {
+            "$ref": "#/$defs/QiskitExperimentV1"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Experiments",
+          "type": "array"
+        },
+        "kind": {
+          "const": "qiskit",
+          "default": "qiskit",
+          "title": "Kind",
+          "type": "string"
+        },
+        "max_concurrent_jobs": {
+          "default": 4,
+          "maximum": 32,
+          "minimum": 1,
+          "title": "Max Concurrent Jobs",
+          "type": "integer"
+        },
+        "max_retained_jobs": {
+          "default": 1024,
+          "maximum": 100000,
+          "minimum": 32,
+          "title": "Max Retained Jobs",
+          "type": "integer"
+        },
+        "provider_id": {
+          "const": "qiskit-mcp-servers",
+          "default": "qiskit-mcp-servers",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "runtime_launcher": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PythonStdioLauncherV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "runtime_provider_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Provider Digest"
+        },
+        "runtime_support_release": {
+          "const": "0.6.1",
+          "default": "0.6.1",
+          "title": "Runtime Support Release",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "verified_lock_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Digest"
+        },
+        "verified_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Path"
+        }
+      },
+      "required": [
+        "source_id",
+        "core_provider_digest",
+        "core_launcher",
+        "experiments"
+      ],
+      "title": "QiskitSourceSpecV1",
+      "type": "object"
+    },
+    "QiskitTargetV1": {
+      "additionalProperties": false,
+      "description": "Immutable compilation target; calibration remains per-run provenance.",
+      "properties": {
+        "basis_gates": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Basis Gates",
+          "type": "array"
+        },
+        "coupling_map": {
+          "items": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "maxItems": 100000,
+          "title": "Coupling Map",
+          "type": "array"
+        },
+        "num_qubits": {
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Num Qubits",
+          "type": "integer"
+        },
+        "target_digest": {
+          "title": "Target Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "num_qubits",
+        "basis_gates",
+        "target_digest"
+      ],
+      "title": "QiskitTargetV1",
+      "type": "object"
+    },
+    "QiskitTranspilationV1": {
+      "additionalProperties": false,
+      "properties": {
+        "initial_layout": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "integer"
+              },
+              "maxItems": 100,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Initial Layout"
+        },
+        "optimization_level": {
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Optimization Level",
+          "type": "integer"
+        },
+        "pass_manager": {
+          "const": "preset",
+          "default": "preset",
+          "title": "Pass Manager",
+          "type": "string"
+        },
+        "seed_transpiler": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "Seed Transpiler",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "optimization_level",
+        "seed_transpiler"
+      ],
+      "title": "QiskitTranspilationV1",
+      "type": "object"
+    },
+    "ResourceRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "account": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Account"
+        },
+        "constraint": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.@+&|*?\\[\\]-]{0,1023}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Constraint"
+        },
+        "cpus_per_task": {
+          "default": 1,
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Cpus Per Task",
+          "type": "integer"
+        },
+        "exclude_nodes": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exclude Nodes"
+        },
+        "exclusive": {
+          "default": false,
+          "title": "Exclusive",
+          "type": "boolean"
+        },
+        "gpu_type": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gpu Type"
+        },
+        "gpus_per_node": {
+          "default": 0,
+          "maximum": 1024,
+          "minimum": 0,
+          "title": "Gpus Per Node",
+          "type": "integer"
+        },
+        "gpus_per_task": {
+          "default": 0,
+          "maximum": 1024,
+          "minimum": 0,
+          "title": "Gpus Per Task",
+          "type": "integer"
+        },
+        "hint": {
+          "anyOf": [
+            {
+              "enum": [
+                "compute_bound",
+                "memory_bound",
+                "multithread",
+                "nomultithread"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hint"
+        },
+        "memory_mb_per_cpu": {
+          "anyOf": [
+            {
+              "maximum": 16777216,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Mb Per Cpu"
+        },
+        "memory_mb_per_node": {
+          "anyOf": [
+            {
+              "maximum": 16777216,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Mb Per Node"
+        },
+        "nodelist": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9,._+\\[\\]-]{0,1023}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nodelist"
+        },
+        "nodes": {
+          "default": 1,
+          "maximum": 4096,
+          "minimum": 1,
+          "title": "Nodes",
+          "type": "integer"
+        },
+        "partition": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+          "title": "Partition",
+          "type": "string"
+        },
+        "qos": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Qos"
+        },
+        "reservation": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reservation"
+        },
+        "tasks": {
+          "default": 1,
+          "maximum": 1048576,
+          "minimum": 1,
+          "title": "Tasks",
+          "type": "integer"
+        },
+        "tasks_per_node": {
+          "anyOf": [
+            {
+              "maximum": 1048576,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tasks Per Node"
+        },
+        "walltime": {
+          "default": "01:00:00",
+          "pattern": "^(?:[0-9]{1,3}-)?[0-9]{2}:[0-9]{2}:[0-9]{2}$",
+          "title": "Walltime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "partition"
+      ],
+      "title": "ResourceRequestV1",
+      "type": "object"
+    },
+    "StdioSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "Reviewed declaration for one direct stdio MCP provider.",
+      "properties": {
+        "capability_prefix": {
+          "default": "ari.federated",
+          "title": "Capability Prefix",
+          "type": "string"
+        },
+        "default_permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Default Permissions",
+          "type": "array"
+        },
+        "evidence": {
+          "$ref": "#/$defs/AdmissionEvidenceV1"
+        },
+        "kind": {
+          "const": "stdio-mcp",
+          "default": "stdio-mcp",
+          "title": "Kind",
+          "type": "string"
+        },
+        "launcher": {
+          "$ref": "#/$defs/PythonStdioLauncherV1"
+        },
+        "max_pages": {
+          "default": 1000,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        },
+        "max_tools": {
+          "default": 100000,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Tools",
+          "type": "integer"
+        },
+        "origin_prefix": {
+          "items": {
+            "$ref": "#/$defs/OriginHopV1"
+          },
+          "title": "Origin Prefix",
+          "type": "array"
+        },
+        "provider_digest": {
+          "title": "Provider Digest",
+          "type": "string"
+        },
+        "provider_id": {
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "provider_version": {
+          "title": "Provider Version",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 30.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_id",
+        "provider_id",
+        "provider_version",
+        "provider_digest",
+        "launcher"
+      ],
+      "title": "StdioSourceSpecV1",
+      "type": "object"
+    },
+    "ToolUniverseCategoryProfileV1": {
+      "additionalProperties": false,
+      "description": "Reviewed category/type policy shared by many collection leaves.",
+      "properties": {
+        "backend_lineage": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Backend Lineage",
+          "type": "array"
+        },
+        "capability_projections": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Capability Projections",
+          "type": "object"
+        },
+        "categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Categories",
+          "type": "array"
+        },
+        "data_lineage": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Data Lineage",
+          "type": "array"
+        },
+        "determinism": {
+          "default": "conditional",
+          "enum": [
+            "deterministic",
+            "seeded",
+            "conditional",
+            "stochastic",
+            "live-data"
+          ],
+          "title": "Determinism",
+          "type": "string"
+        },
+        "equivalence_keys": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Equivalence Keys",
+          "type": "object"
+        },
+        "independence_group": {
+          "default": "",
+          "title": "Independence Group",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "permissions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Permissions",
+          "type": "array"
+        },
+        "profile_id": {
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "result_normalizers": {
+          "additionalProperties": {
+            "const": "tooluniverse-pubmed-retrieval/v1",
+            "type": "string"
+          },
+          "title": "Result Normalizers",
+          "type": "object"
+        },
+        "semantics": {
+          "additionalProperties": true,
+          "title": "Semantics",
+          "type": "object"
+        },
+        "side_effects": {
+          "default": "stateful",
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "stateful",
+            "destructive"
+          ],
+          "title": "Side Effects",
+          "type": "string"
+        },
+        "tool_types": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tool Types",
+          "type": "array"
+        },
+        "units": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Units",
+          "type": "object"
+        }
+      },
+      "required": [
+        "profile_id"
+      ],
+      "title": "ToolUniverseCategoryProfileV1",
+      "type": "object"
+    },
+    "ToolUniverseSourceSpecV1": {
+      "additionalProperties": false,
+      "description": "One pinned ToolUniverse collection imported through compact MCP.",
+      "properties": {
+        "capability_prefix": {
+          "default": "ari.tooluniverse",
+          "title": "Capability Prefix",
+          "type": "string"
+        },
+        "dependency_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dependency Lock Path"
+        },
+        "evidence": {
+          "$ref": "#/$defs/AdmissionEvidenceV1"
+        },
+        "exclude_categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude Categories",
+          "type": "array"
+        },
+        "include_categories": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Include Categories",
+          "type": "array"
+        },
+        "include_tool_names": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Include Tool Names",
+          "type": "array"
+        },
+        "info_batch_size": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Info Batch Size",
+          "type": "integer"
+        },
+        "kind": {
+          "const": "tooluniverse",
+          "default": "tooluniverse",
+          "title": "Kind",
+          "type": "string"
+        },
+        "launcher": {
+          "$ref": "#/$defs/PythonStdioLauncherV1"
+        },
+        "max_pages": {
+          "default": 1000,
+          "maximum": 10000,
+          "minimum": 1,
+          "title": "Max Pages",
+          "type": "integer"
+        },
+        "max_tools": {
+          "default": 100000,
+          "maximum": 1000000,
+          "minimum": 1,
+          "title": "Max Tools",
+          "type": "integer"
+        },
+        "page_size": {
+          "default": 250,
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Page Size",
+          "type": "integer"
+        },
+        "profiles": {
+          "items": {
+            "$ref": "#/$defs/ToolUniverseCategoryProfileV1"
+          },
+          "minItems": 1,
+          "title": "Profiles",
+          "type": "array"
+        },
+        "provider_digest": {
+          "title": "Provider Digest",
+          "type": "string"
+        },
+        "provider_id": {
+          "default": "tooluniverse",
+          "title": "Provider Id",
+          "type": "string"
+        },
+        "source_id": {
+          "title": "Source Id",
+          "type": "string"
+        },
+        "support_release": {
+          "default": "1.3.1",
+          "title": "Support Release",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "default": 60.0,
+          "exclusiveMinimum": 0,
+          "maximum": 3600,
+          "title": "Timeout Seconds",
+          "type": "number"
+        },
+        "verified_lock_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Verified Lock Path"
+        },
+        "wheel_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wheel Path"
+        }
+      },
+      "required": [
+        "source_id",
+        "provider_digest",
+        "launcher",
+        "profiles"
+      ],
+      "title": "ToolUniverseSourceSpecV1",
+      "type": "object"
+    }
+  },
+  "$id": "https://ari.dev/schemas/tool-registry/catalog-sources-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "default": "ari.catalog-sources/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sources": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "openroad": "#/$defs/OpenRoadSourceSpecV1",
+            "qiskit": "#/$defs/QiskitSourceSpecV1",
+            "stdio-mcp": "#/$defs/StdioSourceSpecV1",
+            "tooluniverse": "#/$defs/ToolUniverseSourceSpecV1"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/StdioSourceSpecV1"
+          },
+          {
+            "$ref": "#/$defs/ToolUniverseSourceSpecV1"
+          },
+          {
+            "$ref": "#/$defs/OpenRoadSourceSpecV1"
+          },
+          {
+            "$ref": "#/$defs/QiskitSourceSpecV1"
+          }
+        ]
+      },
+      "title": "Sources",
+      "type": "array"
+    }
+  },
+  "title": "ARI Catalog Sources v1",
+  "type": "object"
+}

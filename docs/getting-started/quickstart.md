@@ -8,7 +8,9 @@ sources:
     role: implementation
   - path: ari-core/ari/viz
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
+    role: implementation
+last_verified: 2026-07-30
 ---
 
 # ARI QuickStart Guide
@@ -128,24 +130,46 @@ This restarts all three on every invocation (PIDs live under `~/.ari/`). Useful 
 
 Open your browser and go to: **http://localhost:8765**
 
+> **Why `localhost`?** The dashboard binds loopback only by default, so nothing is exposed to your network and no login is needed; binding it elsewhere with `ARI_GUI_BIND` switches on bearer-token authentication automatically.
+
 You will see the ARI home screen:
 
-![ARI Home](../assets/images/en/dashboard_home.png)
+![ARI home screen: the Total Projects, Best Review Score and Total Nodes Explored counters, a Quick actions card, and a Latest experiment card with View Results and View Tree buttons](../assets/images/en/dashboard_home.png)
+
+### Find your runs: Projects → Overview
+
+Two pages are the shortest path from "the dashboard is open" to "I can see what a run is doing":
+
+1. **Projects** (`#/projects` — the 📁 entry at the top of the sidebar) lists every run ARI found under your checkpoint roots, with its status, node count, review score and best metric. This is the run portfolio; nothing is selected implicitly.
+2. Click **Overview** on a run's row. That opens `#/overview?run=<run_id>`, a single page showing the run's lifecycle status, its research phase, how fresh the data is, the headline counters, and links into the Tree, Config and (for governed runs) Governance workspaces.
+
+![Projects page: one table row per run, with the run id, a status badge, node count, review score, best metric, last-updated time, and per-row Overview and Config links](../assets/images/en/dashboard_projects.png)
+
+![Run Overview page for a single run: a lifecycle badge, the research phase, the last-update time, the Nodes Explored / Review Score / Best Metric counters, the workspace links, and the collapsible logs panel](../assets/images/en/dashboard_overview.png)
+
+The run id is in the URL, so an Overview link is shareable and survives a reload — you can keep two runs open in two tabs without them interfering. On a fresh install the list is empty until you launch something; continue with Step 4 below.
+
+For the full page-by-page tour of the dashboard, see the [Dashboard Guide](../guides/dashboard.md).
 
 The left sidebar provides navigation to all dashboard pages:
 
 | Page | Description |
 |------|-------------|
+| **Projects** | Run portfolio across your checkpoint roots — start here |
 | **Home** | Overview with quick actions and recent experiments |
 | **Experiments** | List of all past experiment runs |
+| **Overview** | One run at a glance: lifecycle, research phase, counters, workspace links |
 | **Monitor** | Real-time pipeline progress with D3 tree visualization |
 | **Tree** | Full BFTS experiment tree — click nodes to inspect details |
-| **Results** | Overleaf-like LaTeX editor, paper PDF viewer, review report, EAR browser |
+| **Governance** | Read-only RQGM governance and score lineage (governed runs only) |
+| **Results** | Read-only run summary: review scores, reproducibility chain, publication lineage |
 | **New Experiment** | Wizard to create and launch a new experiment |
-| **Ideas** | VirSci-generated research hypotheses |
+| **PaperBench** | Import a paper, run a PaperBench replication job, read its grades |
+| **Idea** | Research goal, gap analysis, and the generated hypotheses for a run |
 | **Workflow** | React Flow visual DAG editor for pipeline stages |
+| **Config** | Read-only browser for a run's effective configuration |
+| **Studio** | Configuration Studio: build a draft config and launch from it |
 | **Settings** | Configure LLM, API keys, SLURM, container, VLM, retrieval backend |
-| **Sub-Experiments** | Recursive sub-experiment tree (via orchestrator skill) |
 
 ---
 
@@ -153,19 +177,22 @@ The left sidebar provides navigation to all dashboard pages:
 
 Click **"New Experiment"** in the sidebar (or the blue **"New Experiment"** button on the home page).
 
-![Experiment Wizard](../assets/images/en/dashboard_wizard.png)
+![New Experiment wizard on step 1: the Goal / Scope / Resources / Launch stepper, the Chat Mode and Write MD tabs, the chat prompt asking what to optimize, and the Upload files panel below it](../assets/images/en/dashboard_wizard.png)
 
-The wizard guides you through 4 steps:
+The wizard guides you through 4 steps — **Goal**, **Scope**, **Resources**, **Launch** — shown as the stepper across the top.
 
-### Step 1 of 4 — Choose Mode
+### Step 1 of 4 — Goal
+
+Two mode tabs decide how you describe the experiment:
 
 | Mode | Best for |
 |------|----------|
-| **Chat** | Beginners. Describe what you want in natural language. The AI helps you refine it into a proper experiment. |
+| **Chat Mode** | Beginners. Describe what you want in natural language. The AI helps you refine it into a proper experiment. |
 | **Write MD** | Write or paste your experiment description in Markdown directly. |
-| **Upload** | Upload an existing `experiment.md` file from your computer. |
 
-**Recommended for beginners: Chat mode.** Just type what you want to optimize or investigate, for example:
+Below either tab, the **Upload files** panel takes an existing `experiment.md` from your computer, plus any extra experiment files it needs.
+
+**Recommended for beginners: Chat Mode.** Just type what you want to optimize or investigate, for example:
 
 > "I want to find the best configuration for my experiment on this machine"
 
@@ -195,7 +222,7 @@ Select your LLM provider and model:
 
 **Paper Review (v0.6.0+)** — choose how the generated paper is reviewed:
 
-- **Rubric** — pick one of 16 bundled venues (`neurips` default and v2-compatible, plus `iclr`, `icml`, `cvpr`, `acl`, `sc`, `osdi`, `usenix_security`, `stoc`, `siggraph`, `chi`, `icra`, `nature`, `journal_generic`, `workshop`, `generic_conference`). Drop your own YAML into `ari-core/config/reviewer_rubrics/` to add a custom venue.
+- **Rubric** — pick one of 23 bundled venues (`neurips` default and v2-compatible, plus `iclr`, `icml`, `cvpr`, `acl`, `sc`, `chi`, `usenix_security`, `osdi`, `stoc`, `icra`, `siggraph`, `nature`, `aer`, `econometrica`, `qje`, `apsr`, `ahr`, `philreview`, `pmla`, `journal_generic`, `workshop`, `generic_conference`). Drop your own YAML into `ari-core/config/reviewer_rubrics/` to add a custom venue.
 - **Few-shot mode** — `static` (use the bundled examples) or `dynamic` (Phase 2 OpenReview retrieval; falls back to static for closed-review venues).
 - **Reviewer ensemble (N)** — number of independent reviewer agents. N>1 also runs an Area Chair meta-review.
 - **Reflection rounds** — self-reflection iterations per reviewer (Nature Ablation default: 5).
@@ -218,47 +245,50 @@ Review your settings and click **Launch**. ARI will:
 
 Once launched, the **Monitor** page shows real-time progress:
 
-![Monitor Page](../assets/images/en/dashboard_monitor.png)
+![Pipeline Monitor: the Starting, Idea, BFTS, Paper and Review stage strip with the current stage highlighted, the experiment control buttons, the experiment configuration card, the nodes and best-metric counters, and the system resources panel](../assets/images/en/dashboard_monitor.png)
 
-- **Pipeline stages** are shown at the top (Idea → BFTS → Paper → Review)
-- **Node tree** shows experiment progress with color-coded status
-- **Logs** stream in real time
+- **Pipeline stages** are shown at the top (Starting → Idea → BFTS → Paper → Review), with the current one highlighted
+- **Experiment control** starts and stops stages (resume, paper generation, review/verify, GPU monitor)
+- **Counters, system resources and logs** update in real time below
 
 ### Experiment Tree
 
-Click **Tree** in the sidebar for the full interactive experiment tree:
+Click **Tree** in the sidebar for the run-explicit experiment tree (`#/tree2?run=<run_id>`) — the D3 canvas on the left, a keyboard-navigable node table on the right:
 
-![Tree View](../assets/images/en/dashboard_tree.png)
+![Experiment Tree workspace: the D3 node graph with label-coloured node cards on the left, the expandable node table listing each node id and its status on the right, and the inspector column waiting for a node selection](../assets/images/en/dashboard_tree.png)
 
-- **Green** nodes = success
-- **Red** nodes = failed
-- **Blue** nodes = running
-- **Grey** nodes = pending
+Card colour encodes the node's **label**, not its status:
 
-Click any node to inspect:
+| Colour | Label |
+|--------|-------|
+| **Blue** | `draft` — the root attempt |
+| **Purple** | `improve` |
+| **Amber** | `ablation` |
+| **Red** | `debug` |
+| **Green** | `validation` |
 
-| Tab | What it shows |
-|-----|---------------|
-| **Overview** | Status, metrics, execution time, evaluation summary |
-| **Trace** | Every tool call the AI agent made (step by step) |
-| **Code** | Generated source code for this experiment |
-| **Output** | Job stdout, benchmark results |
+The status is a separate badge inside each card — green `success`, red `failed`, blue for anything still in flight — and the word next to every row in the side table.
+
+Selecting a node (click it, or press <kbd>Enter</kbd> in the table) writes `?node=` into the URL, so the address bar is a shareable link to exactly that node. The inspector on the right then shows the node's status, label and depth, its metrics with the utility policy hash they were scored under, the node report (what was done, delta vs parent, evaluator summary), and links into Config and Governance.
+
+For the step-by-step agent trace, the generated source code and the raw memory records, open the legacy tree page at `#/tree` — its detail panel keeps the **MCP Trace**, **Code**, **Memory**, **Access** and **Report** tabs.
 
 ---
 
 ## Step 6: View Results
 
-After the experiment completes, go to the **Results** page:
+After the experiment completes, click **Results** in the sidebar. The slot opens the read-only run summary (`#/results2?run=<run_id>`):
 
-![Results Page](../assets/images/en/dashboard_results.png)
+![Results workspace: the result summary card with the paper .tex and .pdf links, the accept decision, the rubric and the per-axis review scores; the reproducibility ORS chain card; and the EAR publication lineage and deep links cards on the right](../assets/images/en/dashboard_results.png)
 
 Here you can:
 
-- **Edit the paper** with the built-in Overleaf-like LaTeX editor (edit `.tex`/`.bib` files, compile, and preview PDF inline)
-- View the automated peer review score and feedback
-- Browse the Experiment Artifact Repository (EAR) with code, data, and reproducibility metadata
-- Check the reproducibility verification report
-- Download all artifacts
+- Read the automated peer review: the decision, the rubric it was graded against, and the score per axis
+- Check the reproducibility (ORS) chain — the pass ratio, the leaves that passed, and the judge model
+- Follow the EAR publication lineage as a badge chain
+- Jump straight to the Tree and Config workspaces for the same run
+
+**Editing the paper happens on the legacy Results page.** Follow the *Legacy Results (full editor / PDF workspace)* deep link (or open `#/results` directly) for the Overleaf-like LaTeX editor — edit `.tex`/`.bib`, compile, preview the PDF inline — for the full Experiment Artifact Repository (EAR) browser, and for every EAR mutation: curate, publish, promote. This workspace states the split on the page itself, so you never edit by accident.
 
 Output files are saved in `./checkpoints/<run_id>/`:
 
@@ -279,11 +309,13 @@ Output files are saved in `./checkpoints/<run_id>/`:
 
 Open the **Settings** page to customize ARI:
 
-![Settings Page](../assets/images/en/dashboard_settings.png)
+![Settings page: the Essentials group holding the dashboard language dropdown, the Developer Mode switch and the LLM backend fields, with the Project group below it holding paper retrieval and VLM figure review](../assets/images/en/dashboard_settings.png)
+
+The page is split into collapsible groups. **Essentials** holds the settings you need on day one; **Project** and the groups below it hold the per-project machinery.
 
 ### Dashboard Language
 
-Change the dashboard language (English, Japanese, Chinese) from the language dropdown at the top.
+Change the dashboard language (English, Japanese, Chinese) from the language dropdown at the top of **Essentials**. The **Developer Mode** switch sits directly under it: off by default, it reveals raw JSON, debug dumps and other developer-only tools.
 
 ### LLM Backend
 
@@ -291,8 +323,9 @@ Change the dashboard language (English, Japanese, Chinese) from the language dro
 - Set the default model and temperature
 - Enter your API key (stored locally, masked in the UI)
 
-### Paper Search
+### Paper Retrieval
 
+- Choose the paper search backend: Semantic Scholar (default), AlphaXiv, or both (parallel)
 - Optionally set a Semantic Scholar API key for higher rate limits
 
 ### SLURM / HPC
@@ -311,10 +344,6 @@ Change the dashboard language (English, Japanese, Chinese) from the language dro
 - Set the VLM model for figure quality review (default: `openai/gpt-4o`)
 - Configure review threshold and max iterations
 
-### Retrieval Backend
-
-- Choose paper search backend: Semantic Scholar (default), AlphaXiv, or both (parallel)
-
 ### Per-Phase Model Overrides
 
 Use different models for different pipeline phases (e.g., a cheaper model for idea generation, a better model for paper writing).
@@ -323,17 +352,17 @@ Use different models for different pipeline phases (e.g., a cheaper model for id
 
 ## Additional Dashboard Pages
 
-### Ideas Page
+### Idea Page
 
-![Ideas Page](../assets/images/en/dashboard_ideas.png)
+![Ideas workspace: the research goal, gap analysis and primary metric cards on the left, and the generated hypotheses on the right, each with novelty, feasibility and overall scores and a collapsible experiment plan](../assets/images/en/dashboard_ideas.png)
 
-View VirSci-generated research hypotheses with novelty and feasibility scores. See the experiment configuration, research goal, and BFTS node evaluations.
+The **Idea** slot opens the run-explicit ideas workspace (`#/ideas2?run=<run_id>`): the research goal, the gap analysis, the primary metric with the reason it was chosen, and every VirSci-generated hypothesis with its novelty, feasibility and overall scores plus a collapsible experiment plan. The research goal panel is served for the *active* checkpoint only, so activate the run in the sidebar if it says so.
 
 ### Workflow Editor
 
-![Workflow Page](../assets/images/en/dashboard_workflow.png)
+![Workflow editor: the Save, Reload, Add Node and Reset to default toolbar, the path of the workflow.yaml being edited, the React Flow canvas of phase-tagged stage nodes, and the per-stage list below with Source and Edit buttons](../assets/images/en/dashboard_workflow.png)
 
-A React Flow visual DAG editor for the post-BFTS pipeline. Drag nodes, draw edges, enable/disable stages, and assign skills. Swim-lane layout separates BFTS and Paper phases. Changes are saved as `workflow.yaml`.
+A React Flow visual DAG editor for the pipeline of the active checkpoint — the path to the `workflow.yaml` being edited is printed under the toolbar. Drag nodes, draw edges, enable/disable stages, and assign skills; each stage is also listed below the canvas with **Source** and **Edit** buttons. Nodes are tagged by phase (`bfts` / `paper`), and **Save** writes back to that same `workflow.yaml`.
 
 ---
 
@@ -504,7 +533,7 @@ ari settings --partition gpu --cpus 64 --mem 128
 
 | Problem | Solution |
 |---------|----------|
-| All nodes failed | Open Tree view, click a failed node, check the Trace tab |
+| All nodes failed | Open Tree view, click a failed node, then follow it to `#/tree` and read the MCP Trace tab |
 | No results | Check Monitor page — the experiment may still be running |
 | Interrupted run | Go to Experiments page, find the run, click Resume |
 

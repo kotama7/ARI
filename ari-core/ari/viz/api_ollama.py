@@ -1,5 +1,18 @@
 from __future__ import annotations
-"""ARI viz: api_ollama — GPU/model detection and Ollama proxy."""
+"""ARI viz: api_ollama — GPU/model detection and Ollama proxy.
+
+Proxy policy (gui_refresh task 09, RR-P0-7, MN-5)
+-------------------------------------------------
+``/api/ollama/<path>`` only relays the allowlisted Ollama API paths
+(:data:`OLLAMA_PROXY_ALLOWED_PATHS`) and only when a target is explicitly
+configured (settings ``ollama_host`` or the ``OLLAMA_HOST`` env var) or the
+effective llm backend is ``ollama`` (which keeps the legacy implicit
+``http://localhost:11434`` local dev default). Everything else is refused
+with 403 before any upstream connection is opened. There is deliberately no
+env kill-switch (ADR-07): the rollback for a refused-but-wanted relay is to
+configure the target (``ollama_host`` in Settings or ``OLLAMA_HOST``), which
+is itself the explicit opt-in the gate asks for. See migration note MN-5.
+"""
 
 import json
 import logging
@@ -40,6 +53,73 @@ def _api_ollama_resources() -> dict:
 
 
 
+# MN-5 (RR-P0-7): only the documented Ollama API endpoints are relayed.
+# The React frontend itself never calls the proxy (it uses
+# GET /api/ollama-resources, verified by grep — services/api/resources.ts is
+# the only /api/ollama* caller); this allowlist covers exactly the standard
+# Ollama surface the legacy dashboard/ops flows and tests exercised: model
+# list/metadata (tags/show), generation/chat, and loaded-model status (ps).
+# Anything else — pull/push/create/copy/delete, embeddings, arbitrary
+# paths — is refused with 403.
+OLLAMA_PROXY_ALLOWED_PATHS = frozenset({
+    "/api/tags",
+    "/api/show",
+    "/api/generate",
+    "/api/chat",
+    "/api/ps",
+})
+
+
+def _explicit_ollama_host() -> str:
+    """Explicitly configured Ollama target, or "" when none is configured.
+
+    Reads the *raw* project settings file (not ``_api_get_settings``, whose
+    defaults fold in an implicit ``http://localhost:11434``) plus the
+    ``OLLAMA_HOST`` env var, so "configured" genuinely means a user-supplied
+    value (settings card or env) — never the legacy implicit default.
+    """
+    host = ""
+    sp = _st._settings_path
+    if sp is not None:
+        try:
+            if sp.exists():
+                host = (json.loads(sp.read_text()).get("ollama_host") or "").strip()
+        except Exception:
+            host = ""
+    return host or os.environ.get("OLLAMA_HOST", "").strip()
+
+
+def _ollama_proxy_refusal(proxy_path: str) -> "str | None":
+    """Reason to refuse proxying *proxy_path* with 403, or None when allowed.
+
+    MN-5 (RR-P0-7) gate, checked before any upstream connection:
+
+    * the forwarded path (query string ignored) must be in
+      :data:`OLLAMA_PROXY_ALLOWED_PATHS`;
+    * a target must be *explicitly* configured — settings ``ollama_host`` or
+      the ``OLLAMA_HOST`` env var (covers cli-shim-with-ollama setups) — OR
+      the effective llm backend must be ``ollama``, in which case the legacy
+      implicit ``http://localhost:11434`` default still applies (preserves
+      the local dev flow where the backend *is* ollama). A non-ollama
+      backend with no configured host gets 403, never an implicit
+      localhost relay.
+
+    Pure function — unit-tested in ``tests/test_gui_path_proxy_hardening.py``.
+    """
+    import urllib.parse as _up
+    if _up.urlparse(proxy_path).path not in OLLAMA_PROXY_ALLOWED_PATHS:
+        return f"ollama proxy path not allowed: {proxy_path.split('?')[0]}"
+    if _explicit_ollama_host():
+        return None
+    provider = (_api_get_settings().get("llm_provider") or "").strip().lower()
+    if provider == "ollama":
+        return None
+    return (
+        "ollama proxy refused: no ollama_host configured (settings or "
+        "OLLAMA_HOST env) and the llm backend is not ollama"
+    )
+
+
 def _ollama_proxy(handler):
     """Forward /api/ollama/<path> to the configured ollama_host (streaming passthrough)."""
     import http.client as _hc
@@ -50,6 +130,19 @@ def _ollama_proxy(handler):
     length = int(handler.headers.get("Content-Length", 0) or 0)
     body = handler.rfile.read(length) if length > 0 else b""
     method = handler.command
+    refusal = _ollama_proxy_refusal(path)
+    if refusal is not None:
+        # MN-5 (RR-P0-7): refuse before opening any upstream connection.
+        # The request body was already drained above so HTTP/1.1 keep-alive
+        # connections stay parseable.
+        msg = json.dumps({"error": refusal}).encode()
+        handler.send_response(403)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(msg)))
+        handler._send_cors_headers()
+        handler.end_headers()
+        handler.wfile.write(msg)
+        return
     parsed = _up.urlparse(base)
     host = parsed.hostname or "localhost"
     port = parsed.port or 11434
@@ -64,7 +157,9 @@ def _ollama_proxy(handler):
         ct = resp.getheader("Content-Type", "application/json")
         handler.send_header("Content-Type", ct)
         handler.send_header("Transfer-Encoding", "chunked")
-        handler.send_header("Access-Control-Allow-Origin", "*")
+        # MN-4 (RR-P0-3): same-origin CORS via the shared handler helper
+        # (was an unconditional wildcard; see routes.py module docstring).
+        handler._send_cors_headers()
         handler.end_headers()
         while True:
             chunk = resp.read(4096)

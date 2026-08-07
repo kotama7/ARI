@@ -171,7 +171,7 @@ def test_checkpoint_summary_surfaces_raw_ors_payloads(tmp_path, monkeypatch):
     _write(ckpt, "ors_grade.json", grade)
     _write(ckpt, "ors_phase1.json", {
         "executed": True, "exit_code": 0, "sandbox_kind": "slurm",
-        "partition": "sx40", "missing": [],
+        "partition": "gpu-private", "missing": [],
     })
     _write(ckpt, "ors_replicator.json", {"populated": True, "model": "gpt-5-mini"})
     _write(ckpt, "ors_seed.json", {"populated": False, "skipped_reason": "no ref"})
@@ -207,7 +207,7 @@ def test_checkpoint_summary_surfaces_raw_ors_payloads(tmp_path, monkeypatch):
     assert out["reproducibility_report"]["verdict"] == "PARTIAL"
     # Raw ORS payloads surfaced for the rich GUI.
     assert out["ors_grade"]["ors_score"] == 0.5
-    assert out["ors_phase1"]["partition"] == "sx40"
+    assert out["ors_phase1"]["partition"] == "gpu-private"
     assert out["ors_replicator"]["populated"] is True
     assert out["ors_seed"]["populated"] is False
     assert out["ors_rubric_meta"]["leaves_count"] == 27

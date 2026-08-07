@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-06-10
+last_verified: 2026-07-10
 ---
 
 # ARI CLI 参考
@@ -34,6 +34,13 @@ ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [W
 | `ari clone <ref>` | 拉取策展过的 EAR bundle (file/https/ari/gh/doi)，按 digest 校验 (v0.7.0) | — |
 | `ari registry <subcmd>` | 自托管 EAR registry：`serve` / `token issue\|revoke\|list` (v0.7.0) | — |
 | `ari migrate node-reports <checkpoint>` | 为旧 (v0.6.0) checkpoint 补齐 `node_report.json` | — |
+
+> **执行模式。**可选启用的 `ari_rqgm` 模式在 v1 中**不新增任何 CLI
+> 标志** —— 它完全通过配置启用（workflow.yaml 中的
+> `ari.mode: ari_rqgm` + `rqgm.enabled: true`）或 `ARI_MODE` /
+> `ARI_RQGM_ENABLED` 环境变量覆盖。上表中的每个命令在默认的
+> `simple_bfts` 模式下行为完全相同。见
+> [执行模式](../guides/execution_modes.md)。
 
 ---
 
@@ -87,7 +94,7 @@ ari run experiment.md --virsci-live --virsci-k 7 --virsci-team-size 3
 **运行流程：**
 
 1. ARI 生成一个唯一的项目名称（由 LLM 生成的标题）
-2. 创建检查点目录：`./checkpoints/<run_id>/`
+2. 创建检查点目录：`./workspace/checkpoints/<run_id>/`
 3. 在 arXiv 和 Semantic Scholar 上搜索相关论文
 4. 通过 VirSci 多智能体讨论生成假说
 5. 运行 Best-First Tree Search（BFTS）实验
@@ -108,7 +115,7 @@ ari resume <checkpoint_dir> [--config <config.yaml>]
 **示例：**
 
 ```bash
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 加载已保存的树，识别待运行/失败的节点，并从中断处继续运行。
@@ -136,13 +143,13 @@ ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml
 **示例 — v2 兼容默认 (NeurIPS 形式、1-shot、5 reflections):**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 **示例 — Supercomputing (SC) 评审规范 + 5 名集成 + 元审稿:**
 
 ```bash
-ari paper ./checkpoints/20260328_matrix_opt/ \
+ari paper ./workspace/checkpoints/20260328_matrix_opt/ \
           --rubric sc --num-reviews-ensemble 5
 ```
 
@@ -166,7 +173,7 @@ ari status <checkpoint_dir>
 **示例：**
 
 ```bash
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # 输出：
 # ── Experiment Tree ──
@@ -198,10 +205,10 @@ ari viz <checkpoint_dir> [--port <port>]
 
 ```bash
 # 启动仪表盘
-ari viz ./checkpoints/ --port 8765
+ari viz ./workspace/checkpoints/ --port 8765
 
 # 监控特定运行
-ari viz ./checkpoints/20260328_matrix_opt/ --port 9878
+ari viz ./workspace/checkpoints/20260328_matrix_opt/ --port 9878
 ```
 
 在浏览器中打开 `http://localhost:<port>`。仪表盘的使用方法请参阅 [快速入门指南](../getting-started/quickstart.md)。
@@ -287,6 +294,27 @@ ari settings --model qwen3:32b --partition gpu --cpus 64 --mem 128
 
 ---
 
+## ari migrate node-reports
+
+v0.7.0（task2.md）引入了记录在 `experiments/{run_id}/{node_id}/` 中的
+每节点 `node_report.json` 基底。既有 checkpoint 没有这些报告，因此
+下游消费者（`generate_ear`、`nodes_to_science_data`、`bfts.expand`、
+GUI 的 Tree Report 标签页）会回退到旧的启发式。对每个旧 checkpoint
+运行一次本命令即可尽力回填报告：
+
+```bash
+ari migrate node-reports /path/to/checkpoint
+ari migrate node-reports /path/to/checkpoint --overwrite   # 同时重写已存在的报告
+```
+
+重建的报告带有 `migration_source: "auto"`，以便下游过滤器应用稍保守
+的规则（例如 `for_code` 即使恢复出的 `files_changed` 为空也保留自动
+重建的节点，因为 diff 可能已无法恢复）。无法推断的字段
+（`original_direction`、`delta_vs_parent`、`next_steps_hints`）置为
+null。
+
+---
+
 ## ari ear — v0.7.0
 
 针对单个 checkpoint 进行 **Experiment Artifact Repository** 的策展、发布、晋升生命周期管理。策展是确定性的（无 LLM）；发布把策展过的 tarball 送到后端，得到可验证的 ref。
@@ -312,19 +340,19 @@ ari ear promote  <checkpoint> [--target public|unlisted]
 
 ```bash
 # 1. 论文流水线之后由作者策展 bundle
-ari ear curate ./checkpoints/run_20260504_xy/
+ari ear curate ./workspace/checkpoints/run_20260504_xy/
 
 # 2. 查看通过 allow/deny 规则的内容
-ari ear status ./checkpoints/run_20260504_xy/
+ari ear status ./workspace/checkpoints/run_20260504_xy/
 # bundle_sha256: 0ccabb16...
 # files:         42
 # visibility:    staged
 
 # 3. 以 staged 推送到 registry
-ari ear publish ./checkpoints/run_20260504_xy/ --backend ari-registry
+ari ear publish ./workspace/checkpoints/run_20260504_xy/ --backend ari-registry
 
 # 4. 评审 + 可复现性检查通过后晋升为 public
-ari ear promote ./checkpoints/run_20260504_xy/ --target public
+ari ear promote ./workspace/checkpoints/run_20260504_xy/ --target public
 ```
 
 `bundle_sha256` 在 `finalize_paper` 阶段被烧入论文的 `\codedigest{...}` 宏。任何持有论文的人，即使 registry 已下线，也能通过 digest 校验任意未来的 bundle 副本。
@@ -393,6 +421,8 @@ ari skills-list [--config <config.yaml>]
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | — |
 | `OLLAMA_HOST` | Ollama 服务器 URL | `http://localhost:11434` |
 | `LLM_API_BASE` | 通用 API 基础 URL（回退） | — |
+| `ARI_MODE` | 执行模式覆盖：`simple_bfts` / `ari_rqgm`（见[执行模式](../guides/execution_modes.md)） | `simple_bfts` |
+| `ARI_RQGM_ENABLED` | RQGM 安全联锁覆盖（`0`/`1`/`true`/`false`；须与 `ARI_MODE=ari_rqgm` 一致） | 关 |
 
 ### BFTS 配置
 
@@ -435,15 +465,6 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MEMORY_ACCESS_LOG_MAX_MB` | 轮转阈值 | `100` |
 | `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 时自动恢复备份 | `true` |
 | `ARI_MEMORY_BACKUP_INTERVAL_S` | 运行期间机会性备份间隔（0 = 关闭） | `0` |
-
-### 论文评审 (Rubric)
-
-| 变量 | 描述 | 默认值 |
-|------|------|--------|
-| `ARI_RUBRIC` | 评审使用的 rubric_id（如 `neurips`、`sc`、`nature`、`generic_conference`） | `neurips` |
-| `ARI_FEWSHOT_MODE` | `static`（内置示例）/ `dynamic`（从 OpenReview 等动态获取） | `static` |
-| `ARI_NUM_REVIEWS_ENSEMBLE` | 独立审稿人数量（N>1 时启用 Area Chair 元审稿） | `1` |
-| `ARI_NUM_REFLECTIONS` | self-reflection 循环轮数 | `5` |
 
 ### 按阶段模型覆盖
 
@@ -528,7 +549,7 @@ EOF
 获取 + 验证 + 解压 精选的 EAR 包 (不执行代码)。
 为复现论文的读者提供「一行安装」入口。
 
-### 支持的引用方案 (按 PR 渐进发布)
+### 支持的引用方案
 
 | 方案 | 解析器 |
 |---|---|
@@ -560,6 +581,21 @@ EOF
    `manifest.lock.bundle_sha256` 对比
 5. 若指定了 `--expect-sha256`, 必须等于重算 digest, 否则硬失败
 6. 全部通过后才 rename 到 dest。失败不会留下半成品 (atomic)
+
+### 示例
+
+```bash
+# 第 1 步：作者策展 bundle。
+ari ear curate <checkpoint>
+
+# 第 2 步：读者带 digest 校验地获取。
+ari clone file:///path/to/bundle.tar.gz ./reproduce \
+  --expect-sha256 0ccabb16f05c0d3476f2f074fbd229469f11295cf928959526fc93f370c76edf
+```
+
+烧入论文的 digest（`\codedigest{...}`）与
+`manifest.lock.bundle_sha256` 是同一个值。读者在运行时无需信任
+registry；论文本身就是信任锚。
 
 ---
 

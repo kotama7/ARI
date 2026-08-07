@@ -116,7 +116,10 @@ the rubric defines fixed axes.
 | `ARI_RUBRIC` | Active rubric id |
 | `ARI_STRICT_DYNAMIC` | Force dynamic-axis generation |
 | `ARI_CHECKPOINT_DIR` | Where the few-shot cache (`.ari_fewshot_cache`) lives |
-| `ARI_LLM_MODEL` | Paper-generation LLM |
+| `ARI_MODEL_PAPER` | Paper writer/refiner model; falls through to `ARI_LLM_MODEL` |
+| `ARI_MODEL_RUBRIC` | Independent rubric-review/panel model; falls through to `ARI_LLM_MODEL` |
+| `ARI_PANEL_SEED` | Optional requested seed for rubric completions; enforcement is provider/backend dependent |
+| `ARI_LLM_MODEL` | Shared fallback model |
 
 ## settings.json fields
 

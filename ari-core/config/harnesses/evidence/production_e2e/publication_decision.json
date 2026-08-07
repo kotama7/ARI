@@ -1,0 +1,58 @@
+{
+  "attempt_id": "mca-dc17244d595f68db-6639e048",
+  "authoring_binding_digest": "sha256:97f32542c2b0135cc20d85b14d86dfc96b43db502e7a6171f9a1b2914fd10321",
+  "decision": "publishable",
+  "decision_digest": "sha256:cab0355aa441280ee86bc7fee749337c88273bd51f34475ec75ccd7ef6d95c1d",
+  "paper_build_digest": "sha256:6ef2900b86cfdfb30e749af048daf96d93d1817d51ec6d03fbdaa833b778dbc5",
+  "readiness_digest": "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330",
+  "run_id": "native-certify-publication-e2e",
+  "schema_version": "ari.manuscript-publication-decision/v1",
+  "subverdicts": [
+    {
+      "artifact_digests": [
+        "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330"
+      ],
+      "gate": "manuscript_readiness",
+      "reason_codes": [],
+      "status": "pass"
+    },
+    {
+      "artifact_digests": [
+        "sha256:f703bb7a0edcaf59bb93e3bdf997362efe4df4e93c47814dc4fa24af47568c7c"
+      ],
+      "gate": "claim_evidence",
+      "reason_codes": [],
+      "status": "pass"
+    },
+    {
+      "artifact_digests": [
+        "sha256:34b11128719d98c78c06ea9dd4793e69edab0869b367da7a6cc035d450ae6419"
+      ],
+      "gate": "assurance",
+      "reason_codes": [],
+      "status": "pass"
+    },
+    {
+      "artifact_digests": [
+        "sha256:fc948243714a1c1570bb20a409924adc55b42f5aec02329bc8477ca98bef55cd"
+      ],
+      "gate": "build_compile",
+      "reason_codes": [],
+      "status": "pass"
+    },
+    {
+      "artifact_digests": [
+        "sha256:8a87f79c600ff96e26565127af96a0eab16034c3e9fea16aadf74b08673e8ae9"
+      ],
+      "gate": "reproduction",
+      "reason_codes": [],
+      "status": "pass"
+    },
+    {
+      "artifact_digests": [],
+      "gate": "freshness",
+      "reason_codes": [],
+      "status": "pass"
+    }
+  ]
+}

@@ -16,7 +16,13 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/rqgm/runtime.py
+    role: implementation
+  - path: ari-core/tests/test_rqgm_mode.py
+    role: test
+last_verified: 2026-07-30
 ---
 
 # 内部境界
@@ -42,10 +48,14 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 2. **`ari.llm.routing.resolve_litellm_model(model, backend)`** は唯一の
    モデル正規化ヘルパーです。プロバイダプレフィックス（CLI シムの
    `openai/claude-cli` ルールを含む）を適用し、素のモデル名が正しく
-   ルーティングされるようにします。
+   ルーティングされるようにします。そのシグネチャと戻り値は**凍結**されて
+   います: オブジェクトを構築するのではなくモデル id を*変換*するため、
+   `ari._factory.BaseRegistry` の文字列ディスパッチャ統一からは意図的に
+   外されました（`routing.py` の定義直上にある決定ノートを参照）。
 3. **`ari.cost_tracker._install_litellm_metadata_injector()`** は
    `litellm.completion`/`acompletion` を**プロセス全体**にわたって
-   モンキーパッチし、(a) デフォルトのコストメタデータ（skill / phase / node）を
+   モンキーパッチし、(a) デフォルトのコストメタデータ（skill / phase / node、
+   および `ari_rqgm` がエポックを開いた後は `epoch`）を
    マージし、(b) 毎回の呼び出しに `_apply_ari_routing`（`resolve_litellm_model`
    ＋ CLI シムの `api_base` 補完）を適用します。一度インストールされれば、
    どのモジュールやスキルからのものであっても、*すべての* litellm 直接呼び出しが
@@ -76,7 +86,7 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 
 | モジュール | 担当 |
 |--------|------|
-| `ari/container.py` | コンテナ実行: `detect_runtime`、`build_run_cmd`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` による新しいプロセスグループ ＋ `ARI_MAX_CHILD_PROCS` 経由の任意の `RLIMIT_NPROC`）、`_run_with_timeout`（グループ SIGTERM→SIGKILL）、`pull_image`、`exec_in_container`。`ari.public.container` で再エクスポートされます。 |
+| `ari/container.py` | コンテナ実行: `detect_runtime`、`run_in_container`（Popen ＋ `_sandbox_preexec` ＝ `os.setsid` による新しいプロセスグループ ＋ `ARI_MAX_CHILD_PROCS` 経由の任意の `RLIMIT_NPROC`）、`_run_shell_sandboxed`（タイムアウト時にグループ SIGTERM→SIGKILL）、`run_shell_in_container`、`pull_image`。`ari.public.container` で再エクスポートされます。 |
 | `ari/env_detect.py` | スケジューラ / ランタイムのプローブ（`sinfo`、`qstat`、`docker info`、`lscpu`）—— 読み取り専用、ベストエフォート、ハードコードされたクラスタ知識を持ちません。 |
 | `ari/mcp/client.py` | MCP SDK の `stdio_client`（生のスポーンではなくラッパー）経由でスキルの stdio サーバをスポーンします。 |
 | `ari-skill-hpc/src/slurm.py` | 標準的な SLURM の submit/status/cancel（`SlurmClient`: `_run_local` は asyncio サブプロセス、`_run_remote` は paramiko）、`ARI_SBATCH_EXPORT_MODE` のクリーン環境ロジックを含みます。 |
@@ -107,10 +117,10 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
 | フェーズ | ドライバ |
 |-------|--------|
 | **BFTS** | `cli/bfts_loop.py:_run_loop` —— ハードコードされた `while pending or frontier` ループ（generate_idea → select_and_run → evaluate → frontier_expand）。`bfts_pipeline[]` は有効/無効フラグのためにのみ読まれます。 |
-| **post-BFTS パイプライン**（transform / figures / paper / review / ORS 再現 / publish） | `core.generate_paper_section` → `pipeline.orchestrator.run_pipeline` —— `pipeline[]` 上を走る単一の線形カーソルループ。すべてのサブフェーズは連続したステージです。 |
+| **post-BFTS パイプライン**（transform / figures / paper / review / ORS 再現 / publish） | `core.generate_paper_section` → `pipeline.orchestrator.run_pipeline`（`pipeline/driver.py:WorkflowDriver.run` への薄いラッパー）—— `pipeline[]` 上を走る単一の線形カーソルループ。すべてのサブフェーズは連続したステージです。 |
 
-`run.py` は `.pipeline_started` をクリアし、`orchestrator` はパイプライン開始時に
-それをタッチします（GUI のフェーズ検出）。BFTS サニティゲートは post-BFTS
+`run.py` は `.pipeline_started` をクリアし、`WorkflowDriver.run` はパイプライン
+開始時にそれをタッチします（GUI のフェーズ検出）。BFTS サニティゲートは post-BFTS
 パイプラインを早期に中断できます（`ARI_FORCE_PAPER` が上書きします）。
 `react:` 以外のステージは `stage_runner._run_stage_subprocess` 経由で実行され、
 これは Python スクリプト文字列を構築して
@@ -138,3 +148,57 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
    `ari.checkpoint.save_tree_incremental` にあります（ロック＋mtime
    スロットル）。ノードごとの work-dir は
    `PathManager.node_work_dir(run_id, node_id)` によって分離されます。
+
+## RQGM モード境界 (`ari.rqgm`)
+
+オプトインの `ari_rqgm` モード（[実行モード](../guides/execution_modes.md)を
+参照）は、もう 1 つの内部境界を追加します: **`ari.rqgm` パッケージは
+デフォルトのランからは不可視でなければなりません**。
+
+**強制される規則。** デフォルトの `simple_bfts` パスはいかなる `ari.rqgm`
+モジュールもインポートしません。コア側のすべてのインポート箇所は遅延で
+あり、インポートが起こる前に*生の*設定フラグでゲートされます:
+
+- `ari.core.build_runtime` — `ari.mode == "ari_rqgm"` または `rqgm.enabled`
+  が設定されているときにのみ `ari.rqgm.mode` / `ari.rqgm.runtime` を
+  インポートし、`resolve_effective_mode(cfg)` が `ari_rqgm` のときにのみ
+  戦略をラップします。同じ分岐の内側で `_install_capability_gate` が
+  `ari.rqgm.kernel` / `ari.rqgm.store` / `ari.rqgm.tool_policy` を
+  インポートし、`MCPClient` を `CapabilityGatedMCPClient` でラップして
+  返します（fail-open: インストールに失敗した場合は警告を出し、ゲート無しの
+  クライアントをそのまま返します）。
+- `ari/cli/run.py` — このモードの下でのみ `ari.rqgm.state` をインポートし、
+  起動時に `rqgm_state.json` を書き `constitution.yaml` をコピーします
+  （resume 時は `reconcile_resume_mode`: 永続化されたモードが勝ち、ランが
+  途中でアップグレードされることは決してありません）。
+- `ari/cli/bfts_loop.py` — オプトインの `proposal_router.record_only: true`
+  デュアルライトが設定されたときにのみ提案ストアをインポートします
+  （デフォルトの `false` では決してインポートせず、`ari_rqgm` ではルータが
+  ネイティブに記録するためそこでもインポートはスキップされます）。
+- `ari/cli/paper_dispatch.py` — `rqgm_archive` の paper モードのときにのみ
+  `ari.rqgm.paper_runtime` / `ari.rqgm.paper_judge` をインポートします;
+  resume 側のインポートはさらに `paper_archive_state.json` の存在で
+  ゲートされるため、線形のチェックポイントでは何もインポートされません。
+  モード文字列自体はインポート不要の
+  `ari.config._effective_paper_mode_str` から得ます。
+- `ari.config._effective_mode_str` は有効化テーブルを**インポートなしで**
+  ミラーするため、設定処理自体が `ari.rqgm` をロードすることはありません。
+
+**ラップする、決して置き換えない。** `ari_rqgm` の下で `build_runtime` は
+`GovernedSearchStrategy`（`ari/rqgm/runtime.py`）を返します。これは 7 つの
+`SearchStrategy` メソッドすべてを、手を加えられていない本物の
+`ari.orchestrator.bfts.BFTS` インスタンスへ委譲します; コントローラは
+`getattr(bfts, "rqgm", None)` で発見できるため、6-tuple の戻り形は保たれ
+ます。`ari.protocols` が RQGM のクラスに言及するのは docstring の中だけ
+です — Protocol は構造的（`runtime_checkable`）なので、`ari.protocols` を
+インポートしても `ari.rqgm` からは何も引き込まれません。
+
+**強制。**
+`ari-core/tests/test_rqgm_mode.py::test_build_runtime_default_is_identity`
+はデフォルトのランタイムを構築し、(a) `sys.modules` に `ari.rqgm*`
+エントリが無いこと、(b) 戦略が `.rqgm` 属性を持たない素の
+`ari.orchestrator.bfts` オブジェクトであること、(c) チェックポイントに
+`rqgm_state.json` / `constitution.yaml` が無いことをアサートします。
+スキル側では、`ari.rqgm` は `ari.public.*` を通じて再エクスポートされず、
+`scripts/quality/check_import_boundaries.allow.yaml` は `ari.rqgm` の例外を
+一切持ちません — いかなるスキルもそれをインポートできません。

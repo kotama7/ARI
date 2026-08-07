@@ -6,7 +6,7 @@ sources:
     role: doc
   - path: ari-core/ari/memory/letta_client.py
     role: implementation
-last_verified: 2026-05-26
+last_verified: 2026-08-02
 ---
 
 # 兼容性与支持
@@ -40,7 +40,7 @@ Docker → Singularity/Apptainer → pip（用 `SKIP_LETTA_SETUP=1` 可跳过）
 
 其实时行为针对 **Letta 0.16.7** 进行了验证（参见[记忆架构](../concepts/memory.md)中的
 实现说明）。可用 `ari memory health` 检查正在运行的后端。每个检查点还会携带一份
-`memory_backup.jsonl.gz` 快照，因此即便跨 Letta 版本，运行也能保持可移植。
+`memory_backup.v1.json.gz` 快照，因此即便跨 Letta 版本，运行也能保持可移植。
 
 ## LLM 后端
 

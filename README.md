@@ -39,6 +39,41 @@ The system scales across five axes:
 
 ---
 
+## What's new — Constitutional ARI-RQGM (unreleased)
+
+This branch adds an opt-in governance and co-evolution layer while preserving
+the existing execution path as the default.
+
+- **Constitutional `ari_rqgm` mode** — epoch-frozen prompts, components, and
+  utility policy evolve only through a deterministic kernel and the
+  T1–T21 registry lifecycle. `simple_bfts` remains the default and does not
+  construct RQGM state. Policy and declared execution identities have separate
+  fingerprints; unavailable provider/environment revisions are recorded as
+  unresolved.
+- **Provenance-bound accountability** — the research generator is a registered
+  founding component, and nodes carry write-once producer component, prompt,
+  and epoch provenance. Ambiguous legacy nodes remain targetless rather than
+  transferring blame to a successor.
+- **Governed paper archive** — the orthogonal
+  `paper.mode: rqgm_archive` path searches a draft tree with governed writer
+  and reviewer roles, then hands the winner to the existing compile and
+  claim-evidence gate.
+- **Dashboard v2** — run-scoped Overview, Projects, Ideas, Tree, Results,
+  Governance, Configuration Studio, logs, realtime invalidation, token auth,
+  and the canonical `/api/v1` read/write surface.
+- **Integrity and failure visibility** — rubric audit, node-provenance audit,
+  consolidated `run_integrity.json`, prior-art-grounded root ideation, and
+  fail-loud handling for previously swallowed artifact and paper-stage errors.
+
+The present security boundary is an application-level reference monitor on a
+trusted host. It does not claim OS isolation, digital signatures, external
+rollback anchoring, or a fail-closed gate for irreversible external actions.
+
+Start with [Execution Modes](docs/guides/execution_modes.md), the
+[RQGM Architecture](docs/concepts/rqgm_architecture.md), and the
+[Dashboard Guide](docs/guides/dashboard.md). See
+[CHANGELOG.md](CHANGELOG.md) for the full branch record.
+
 ## What's new in v0.9.0 (2026-06-12)
 
 **Verified claims, end to end.** The release theme: a paper ships only when
@@ -95,12 +130,12 @@ See [CHANGELOG.md](CHANGELOG.md#v081--structural-refactor-frontend-decomposition
   surface. Drives the dogfood CLI via
   `scripts/sc_paper_dogfood.py --with-rollout / --with-reproduction`.
 - **`container_image` end-to-end** — one field flows wizard → API worker →
-  MCP tool → sandbox runner, with `pb-env` / `pb-reproducer` aliases
-  resolved by `scripts/build_pb_images.sh`.
-- **Fail-loud preconditions** — sandbox / GPU mismatches now raise
-  actionable `RuntimeError`s by default (four silent-downgrade sites
-  fixed); legacy fallbacks behind `ARI_PHASE1_ALLOW_FALLBACK=1` and
-  `ARI_SLURM_ALLOW_NO_GRES=1`.
+  MCP tool → sandbox runner. v1.0 admits only a local immutable SIF, a full
+  Docker `sha256:<image-id>`, or a registry URI pinned by digest; mutable
+  `pb-env` / `pb-reproducer` aliases were removed.
+- **Fail-loud preconditions** — sandbox / GPU mismatches raise actionable
+  errors. The former host-local reproduction fallback was removed in v1.0;
+  GPU requests likewise cannot be silently downgraded.
 - **PaperBench env-truth** — Stage 1 prompts now probe-before-scaffold,
   counter-prime the language choice, and inject a host-truthful
   `ADDITIONAL NOTES` block (binaries / GPU / network / Phase-2 isolation).
@@ -166,6 +201,15 @@ experiment.md  ──►  ARI Core  ──►  results + paper + reproducibility
 2. **BFTS over hypothesis space.** Best-First Tree Search guides exploration — evidence-driven, not exhaustive.
 3. **Deterministic tools, reasoning LLM.** MCP skills are pure functions. The LLM reasons; skills act.
 4. **From paper to proof.** ARI writes the paper *and* verifies its own claims twice over: a deterministic claim-evidence / metric-correctness gate re-derives every reported number from the recorded results and blocks objectively-false or unverified metrics, *and* an independent reproducibility check re-runs the experiment.
+
+> **Execution modes.** Everything above is the default `simple_bfts` mode.
+> The opt-in `ari_rqgm` mode (configuration only:
+> `ari.mode: ari_rqgm` + `rqgm.enabled: true`) layers constitutional epoch
+> governance and prompt/component co-evolution over the same BFTS engine.
+> The paper phase has an orthogonal switch,
+> `paper.mode: linear | rqgm_archive`, with the
+> `rqgm.paper.enabled` interlock. See
+> [Execution Modes](docs/guides/execution_modes.md).
 
 ---
 
@@ -352,7 +396,9 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 
 ### Skills (MCP plugin servers)
 
-13 skills total. 12 are registered by default in `workflow.yaml`; 1 additional skill (orchestrator) can be enabled by adding it to the config.
+15 skills total. 13 are registered by default in `workflow.yaml`; 2 additional
+skills (orchestrator and the federated tool registry) are default-off and can be
+enabled explicitly.
 
 In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ari-skill-plot` (a single skill now owns both matplotlib plots and SVG architecture diagrams, both feeding the same VLM review loop), and `ari-skill-review` (rebuttal generation) was deleted — the rubric-driven review score is the final quality signal.
 
@@ -370,7 +416,9 @@ In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ar
 | `ari-skill-benchmark` | CSV/JSON analysis, plotting, statistical tests | ✗ | ✓ |
 | `ari-skill-vlm` | Vision-Language model figure/table review | ✓ | ✓ |
 | `ari-skill-coding` | Code generation + execution + file read + bash | ✗ | ✓ |
+| `ari-skill-replicate` | PaperBench-compatible rubric generation and audit | ✓ | ✓ |
 | `ari-skill-orchestrator` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ | — |
+| `ari-skill-tool-registry` | Immutable federation, scientific admission, and replay for large MCP collections | ✗ | — |
 
 ✗ = no LLM, △ = LLM used in some tools only, ✓ = primary tools use LLM.
 
@@ -425,4 +473,3 @@ What makes this paper different is not a headline number but a property: **every
 ## License
 
 MIT. See [LICENSE](LICENSE).
-

@@ -1,0 +1,13 @@
+{
+  "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+  "driver_digest": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f",
+  "driver_revision": "ari.assurance.native-hpc/v1",
+  "kind": "spmm",
+  "negative_control_report_digest": "sha256:42232cb803271db275e4d749fc3e9b39e120c98d9e7e23c4b9d4f884b1175463",
+  "negative_control_verdict": "fail",
+  "official_runner_parity": true,
+  "reference_report_digest": "sha256:a59beed7131b4d724d71e43c857ac8f6abc1c6c4ec8416141fea2c333fb8bb6e",
+  "reference_verdict": "pass",
+  "report_digest": "sha256:bbf7f021b4c3c58d19e930e894c14e307174cced87c17459397358c1cea591c4",
+  "schema_version": "ari.native-hpc-official-runner-parity/v1"
+}

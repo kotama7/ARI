@@ -6,4 +6,4 @@ Pytest suite for the benchmark skill's MCP server.
 
 - `README.md` — this file.
 - `conftest.py` — shared fixtures.
-- `test_server.py` — exercises `analyze_results`, `plot`, `statistical_test`.
+- `test_server.py` — reference, property, missing-data, source-integrity,

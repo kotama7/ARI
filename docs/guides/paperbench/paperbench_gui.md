@@ -79,10 +79,10 @@ Top form:
 - **Model** — replicator agent model (default `gpt-5-mini`).
 - **Time limit** — seconds; default 12 h (PaperBench paper §5.2).
 - **Sandbox** — `auto` / `slurm` / `local` / `apptainer` / `docker`.
-- **Container image** (v0.8.0) — SIF path, `docker://` / `library://`
-  URI, `image:tag`, or short alias `pb-env` / `pb-reproducer` (resolves
-  to vendor `image:latest` tags built by
-  `scripts/build_pb_images.sh`). Required for `sandbox=docker` /
+- **Container image** (v1.0) — local non-symlink SIF, full Docker
+  `sha256:<image-id>`, or a `docker://` / `library://` URI pinned with
+  `@sha256:<digest>`. Mutable tags and short aliases are rejected. Required
+  for `sandbox=docker` /
   `apptainer` / `singularity`; ignored by `local` / `slurm`.
 - **Partition** — only relevant for `slurm`.
 
@@ -101,13 +101,13 @@ at 0/"".
 | gpus_per_task | int | `--gpus-per-task` (auto-pairs with `--ntasks 1` when caller didn't set `ntasks`/`--gpus`; required by SLURM 24.05) |
 | memory_gb_per_node | int | `--mem` |
 | exclusive | bool | `--exclusive` |
-| gpu_type | str | `--gres=gpu:<type>:N` (canonical when set; the untyped `--gpus-per-task` is dropped to avoid SLURM "Invalid GRES specification" on the typed/untyped mix) |
+| gpu_type | str | typed GPU selector combined with exactly one count field |
 | constraint | str | `--constraint` |
-| cpu_bind | str | `--cpu-bind` |
-| mem_bind | str | `--mem-bind` |
+| cpu_bind | str | `srun --cpu-bind` inside `reproduce.sh` |
+| mem_bind | str | `srun --mem-bind` inside `reproduce.sh` |
 | hint | str | `--hint` |
 | nodelist | str | `--nodelist` |
-| extra_sbatch_args | str (space-sep) | pass-through |
+| account / qos / reservation | str | typed selectors; no arbitrary pass-through |
 
 See [Execution profile reference](../../reference/execution_profile.md)
 for full semantics.
@@ -119,11 +119,10 @@ rather than silently downgrading to local CPU:
 - `sandbox=docker` but daemon unreachable → `RuntimeError`
 - `sandbox=apptainer`/`singularity` but binary missing → `RuntimeError`
 - `sandbox=slurm` but `sbatch` missing or no partition resolved → `RuntimeError`
-- `gpus_per_task > 0` but the cluster has no GRES configured → `RuntimeError`
+- contradictory or unsupported typed GPU shape → validation/scheduler error
 
-Set `ARI_PHASE1_ALLOW_FALLBACK=1` (sandbox missing) or
-`ARI_SLURM_ALLOW_NO_GRES=1` (GPU GRES) in `.env` to opt back into
-legacy silent-fallback behaviour. See
+There is no missing-sandbox fallback. GPU requests likewise have no
+silent-drop override. See
 [environment variables](../../reference/environment_variables.md#paperbench-reproduction-phase-stage-2).
 
 ### Step 4 — Judge config
@@ -131,11 +130,10 @@ legacy silent-fallback behaviour. See
 - **Model** — `gpt-5-mini` (default), `claude-haiku-4-5-20251001`.
 - **n_runs** — 1 (PaperBench paper §4.1).
 - **Skip negative control** — leave off; it's a cheap sanity check.
-- **Code-only** (v0.8.0, auto) — when Stage 2 was skipped (no
-  `reproduce.log` present), `grade_with_simplejudge` auto-enables
-  `code_only` so the rubric is pruned to Code Development leaves
-  only. Mirrors vendor `paperbench/grade.py:109-112`; prevents
-  systematic 0s on Code Execution / Result Analysis leaves that the
+- **Code-only** — explicit opt-in that prunes a verified reproduction to Code
+  Development leaves. A missing Stage 2 record fails without a score; it does
+  not silently change grading scope. Mirrors vendor
+  `paperbench/grade.py:109-112`; prevents
   agent was never asked to execute. Explicit override via the
   wizard's hidden `judge_config.code_only` field always wins.
 

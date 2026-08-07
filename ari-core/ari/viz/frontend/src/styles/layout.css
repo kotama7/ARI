@@ -2,21 +2,75 @@
  * Phase B split from dashboard.css.
  */
 
-body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;height:100vh;overflow:hidden}
-#root{display:flex;width:100%;height:100%}
+body{background:var(--bg);color:var(--text);font-family:var(--font);display:flex;height:100vh;height:100dvh;overflow:hidden}
+#root{display:flex;width:100%;height:100%;min-width:0}
 
-/* Sidebar */
-#sidebar{width:220px;min-width:220px;background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0}
-.sidebar-logo{padding:12px 20px 20px;font-size:1.2rem;font-weight:800;letter-spacing:-0.5px;color:var(--blue-light)}
-.sidebar-logo span{color:var(--muted);font-weight:400;font-size:.75rem;display:block;margin-top:2px}
-.nav-item{display:flex;align-items:center;gap:10px;padding:10px 20px;cursor:pointer;color:var(--muted);font-size:.875rem;font-weight:500;transition:.15s;border-left:3px solid transparent}
-.nav-item:hover{color:var(--text);background:rgba(255,255,255,.04)}
-.nav-item.active{color:var(--blue-light);background:rgba(59,130,246,.1);border-left-color:var(--blue)}
-.nav-icon{font-size:1.1rem;width:20px;text-align:center}
+/* Base anchor defaults. Without this every raw <a> (Overview workspace
+ * links, TreeV2/ResultsV2 deep links, Projects quick actions) fell back
+ * to the UA `-webkit-link` blue, which is near-invisible on --bg.
+ * Underline is retained: colour alone must not carry the affordance.
+ * Components that render an anchor as a button/tab opt out via their
+ * own class (`.btn`, `.tab-strip-tab`, `.nav-item`, …). */
+a{color:var(--link);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--link) 45%,transparent);text-underline-offset:2px;transition:color var(--t-fast),text-decoration-color var(--t-fast)}
+a:visited{color:var(--link-visited)}
+a:hover{color:var(--link-hover);text-decoration-color:currentColor}
+a:focus-visible{outline:2px solid var(--border-focus);outline-offset:2px;border-radius:var(--radius-sm)}
+a.btn,a.nav-item,a.tab-strip-tab{text-decoration:none}
+
+/* Base button default — the neutral secondary look, matching `.btn.btn-outline`.
+ * This is an ELEMENT selector (specificity 0,0,1) on purpose: every existing
+ * class rule (`.btn-*`, `.tab-strip-tab`, `.settings-group-header`, …) and every
+ * inline `style` prop still wins, so this only reaches the buttons nothing else
+ * styles — which the UA was drawing as white boxes on the dark canvas (the
+ * PaperBench registry toolbar being the visible case in the docs screenshots).
+ *
+ * NOTE: deliberately no `font-weight` here. `.tab-strip-tab` and
+ * `.nav-rail-item` declare font-family/-size but NOT weight, so a base weight
+ * leaks into them and erases the `aria-current`/`aria-selected` weight cue. */
+button{font-family:inherit;font-size:var(--fs-base);color:var(--text);background:transparent;border:1px solid var(--border-default);border-radius:var(--radius-md);padding:6px 12px;cursor:pointer;transition:background var(--t-fast),border-color var(--t-fast),color var(--t-fast)}
+button:hover:not(:disabled){background:rgba(255,255,255,.06)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:focus-visible{outline:2px solid var(--border-focus);outline-offset:2px}
+
+/* Native file inputs: the UA "Choose File" chunk is a separate white button
+ * that no `input` rule can reach. Give it the same neutral treatment. */
+::file-selector-button{font:inherit;font-size:var(--fs-sm);font-weight:600;color:var(--text);background:transparent;border:1px solid var(--border-default);border-radius:var(--radius-sm);padding:4px 10px;margin-right:10px;cursor:pointer}
+::file-selector-button:hover{background:rgba(255,255,255,.06)}
+
+/* Sidebar shell + information hierarchy */
+#sidebar{position:relative;width:var(--sidebar-width,260px);min-width:var(--sidebar-width,260px);background:var(--sidebar);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0;overflow:hidden}
+#sidebar-overlay{display:none}
+.sidebar-logo{padding:20px 18px 14px}
+.sidebar-brand{display:flex;align-items:center;gap:10px;min-width:0}
+.sidebar-brand img{width:38px;height:38px;flex:0 0 auto;object-fit:contain;border-radius:8px}
+.sidebar-logo-text{min-width:0}
+.sidebar-product-name{color:var(--blue-light);font-size:1.18rem;font-weight:800;letter-spacing:-.5px;line-height:1}
+.sidebar-product-tagline{margin-top:4px;color:var(--muted);font-size:.64rem;font-weight:500;line-height:1.25;white-space:normal}
+
+#sidebar>nav{display:flex;min-height:0;flex:1;flex-direction:column;padding:12px 10px 16px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.nav-primary-action{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:40px;margin:0 0 12px;padding:9px 12px;color:#fff;background:var(--blue);border:1px solid color-mix(in srgb,var(--blue) 76%,white);border-radius:var(--radius-md);font-size:.84rem;font-weight:700;box-shadow:0 8px 20px rgba(59,130,246,.14)}
+#sidebar .nav-primary-action:hover:not(:disabled){background:color-mix(in srgb,var(--blue) 84%,white)}
+.nav-primary-action.active{box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 35%,transparent),0 8px 20px rgba(59,130,246,.18)}
+.nav-groups{display:flex;flex-direction:column;gap:13px}
+.nav-group{min-width:0}
+.nav-group-title{padding:0 10px 5px;color:color-mix(in srgb,var(--muted) 85%,var(--text));font-size:.64rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.nav-group-items{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:10px;width:100%;min-height:34px;padding:7px 10px;color:var(--muted);background:transparent;border:0;border-radius:7px;cursor:pointer;font-size:.82rem;font-weight:500;text-align:left;transition:color var(--t-fast),background var(--t-fast)}
+#sidebar .nav-item:hover:not(:disabled){color:var(--text);background:rgba(255,255,255,.045)}
+.nav-item.active{color:var(--text);background:color-mix(in srgb,var(--blue) 14%,transparent);font-weight:650}
+.nav-item.active::after{content:"";width:5px;height:5px;margin-left:auto;flex:0 0 auto;background:var(--blue-light);border-radius:50%;box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 16%,transparent)}
+.nav-icon{width:20px;flex:0 0 20px;font-size:1rem;text-align:center;filter:saturate(.78)}
+.nav-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sidebar-collapsed .sidebar-logo{padding-inline:11px}
+.sidebar-collapsed .sidebar-brand{justify-content:center}
+.sidebar-collapsed>nav{padding-inline:7px}
+.sidebar-collapsed .nav-primary-action,.sidebar-collapsed .nav-item{justify-content:center;padding-inline:0}
+.sidebar-collapsed .nav-item.active::after{display:none}
+.sidebar-collapsed .nav-groups{gap:8px}
 
 /* Main */
-#main{flex:1;overflow:auto;display:flex;flex-direction:column}
-.page{display:block;flex:1;padding:28px;overflow:auto}
+#main{flex:1;min-width:0;max-width:100%;overflow:auto;display:flex;flex-direction:column}
+.page{display:block;flex:1;min-width:0;max-width:100%;padding:28px;overflow:auto}
 
 /* Typography */
 h1{font-size:1.5rem;font-weight:700;margin-bottom:4px}

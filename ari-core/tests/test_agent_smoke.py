@@ -54,8 +54,6 @@ class _FakeLLM:
 class _FakeMCP:
     """Fake MCP client recording tool dispatch and returning canned results."""
 
-    _COW_TOOLS: frozenset = frozenset({"add_memory", "clear_node_memory"})
-
     def __init__(self, tools: list[dict], results: dict[str, Any] | None = None):
         self._tools = list(tools)
         self._results = dict(results or {})
@@ -129,6 +127,26 @@ class TestAgentLoopSingleNodeRoundtrip:
             last_tool="survey", job_ids=[], tool_outputs=[], messages=[],
         )
         assert out is not None and "step 1" in out
+
+    def test_node_tool_context_prefers_logical_run_over_checkpoint_basename(
+        self, tmp_path
+    ):
+        loop = AgentLoop.__new__(AgentLoop)
+        loop.checkpoint_dir = str(tmp_path / "custom-checkpoint-location")
+        node = Node(
+            id="child",
+            parent_id="root",
+            depth=1,
+            ancestor_ids=["root"],
+        )
+        context = loop._node_tool_context(
+            node,
+            phase="bfts",
+            run_id="logical-run-id",
+        )
+        assert context.run_id == "logical-run-id"
+        assert context.node_context is not None
+        assert context.node_context.parent_node_id == "root"
 
 
 # ─── Test 2: react_driver tool dispatch ─────────────────────────────────
@@ -239,3 +257,107 @@ def test_system_prompt_template_variables_intact():
     assert "{tool_desc}" in SYSTEM_PROMPT
     assert "{memory_rules}" in SYSTEM_PROMPT
     assert "{extra}" in SYSTEM_PROMPT
+
+
+class TestStepZeroForcingMatchesTheWorkflowOrder:
+    """The step-0 "no tool call" recovery must force the SAME tool the system
+    prompt already asked for.
+
+    Its fallback was a hardcoded ``"survey"`` — a leftover from when the survey
+    was the mandatory opening move. It is not: ``_PREFERRED_ORDER`` puts survey
+    THIRD ("survey stays last among setup tools — it is the pivot into the
+    implementation phase"), because ``generate_ideas`` establishes the
+    primary_metric that ``make_metric_spec`` consumes. Forcing survey first
+    contradicted the prompt the very same loop had just sent.
+    """
+
+    def _forcing_fallback_source(self):
+        from pathlib import Path
+
+        import ari.agent.loop as _loop
+        return Path(_loop.__file__).read_text(encoding="utf-8")
+
+    def test_step_zero_fallback_is_not_a_hardcoded_survey(self):
+        src = self._forcing_fallback_source()
+        assert 'else "survey")' not in src, (
+            "the step-0 forcing fallback still hardcodes survey; it must derive "
+            "the head of tool_sequence like the system prompt does"
+        )
+
+    def test_step_zero_fallback_mirrors_the_system_prompt_derivation(self):
+        src = self._forcing_fallback_source()
+        assert "else _opening_tool" in src
+        assert src.count("_opening_tool") >= 4
+        assert (
+            "name for name in self.hints.tool_sequence if name in tool_names"
+            in src
+        ), "the opening tool must be filtered against the tools actually offered"
+
+    def test_preferred_order_does_not_open_with_survey(self):
+        """The ordering this fix defers to."""
+        hints = WorkflowHints()
+        mcp_tools = [
+            {"name": "survey", "description": "literature survey"},
+            {"name": "generate_ideas", "description": "propose ideas"},
+            {"name": "make_metric_spec", "description": "decide metrics"},
+        ]
+        enrich_hints_from_mcp(hints, mcp_tools, hpc_enabled=False)
+        assert hints.tool_sequence[0] == "generate_ideas"
+        assert hints.tool_sequence.index("survey") > \
+            hints.tool_sequence.index("make_metric_spec")
+
+
+class TestRouterTakeoverDoesNotOrphanTheIdeaEffects:
+    """When the RQGM ProposalRouter takes over root ideation it SUPPRESSES the
+    agent's `generate_ideas`, so the tool-result handler never runs — and all of
+    its downstream effects were orphaned: the router wrote its `idea.json`
+    projection and nothing else (no EVALUATION_CRITERIA in memory, no
+    primary-metric extractor, no core-memory seed)."""
+
+    def _agent(self):
+        from types import SimpleNamespace as NS
+
+        from ari.agent.loop import AgentLoop
+
+        class _Mem:
+            def __init__(self):
+                self.added = []
+
+            def add(self, text, metadata=None):
+                self.added.append((text, (metadata or {}).get("type")))
+
+        a = AgentLoop.__new__(AgentLoop)
+        a.memory = _Mem()
+        a.hints = NS(metric_extractor=None)
+        a.checkpoint_dir = None
+        return a
+
+    def test_effects_apply_from_an_idea_projection(self, tmp_path):
+        a = self._agent()
+        a.apply_idea_effects(
+            {"primary_metric": "speedup", "higher_is_better": True,
+             "metric_rationale": "wall-clock ratio",
+             "ideas": [{"title": "T", "description": "D",
+                        "experiment_plan": ""}]},
+            node_id="node_root", checkpoint_dir=tmp_path,
+        )
+        kinds = [k for _, k in a.memory.added]
+        assert "evaluation_criteria" in kinds
+        assert callable(a.hints.metric_extractor)
+        assert a.hints.metric_extractor("speedup: 3.5") == [3.5]
+
+    def test_there_is_exactly_one_definition_of_the_effects(self):
+        """The tool path and the takeover must call the SAME method."""
+        from pathlib import Path
+
+        import ari.agent.loop as _loop
+
+        loop_src = Path(_loop.__file__).read_text(encoding="utf-8")
+        assert loop_src.count("def apply_idea_effects") == 1
+        assert "self.apply_idea_effects(" in loop_src        # tool path calls it
+        bfts = (Path(_loop.__file__).parents[1] / "cli" / "bfts_loop.py").read_text(
+            encoding="utf-8"
+        )
+        assert "apply_idea_effects" in bfts, (
+            "the router takeover does not apply the idea effects"
+        )

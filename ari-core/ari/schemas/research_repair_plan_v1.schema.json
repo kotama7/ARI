@@ -1,0 +1,266 @@
+{
+  "$defs": {
+    "RepairBudgetV1": {
+      "additionalProperties": false,
+      "properties": {
+        "max_experiment_runs": {
+          "default": 12,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Max Experiment Runs",
+          "type": "integer"
+        },
+        "max_llm_calls": {
+          "default": 8,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Max Llm Calls",
+          "type": "integer"
+        },
+        "max_new_nodes": {
+          "default": 8,
+          "maximum": 100000,
+          "minimum": 0,
+          "title": "Max New Nodes",
+          "type": "integer"
+        },
+        "max_resource_units": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Resource Units"
+        },
+        "max_rounds": {
+          "default": 2,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Max Rounds",
+          "type": "integer"
+        }
+      },
+      "title": "RepairBudgetV1",
+      "type": "object"
+    },
+    "ResearchRepairRequestV1": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_changes": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Allowed Changes",
+          "type": "array"
+        },
+        "authority_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Authority Digest",
+          "type": "string"
+        },
+        "budget": {
+          "$ref": "#/$defs/RepairBudgetV1"
+        },
+        "fixed_variables": {
+          "additionalProperties": true,
+          "maxProperties": 1000,
+          "title": "Fixed Variables",
+          "type": "object"
+        },
+        "kind": {
+          "enum": [
+            "artifact_recovery",
+            "projection_rebuild",
+            "literature_search",
+            "baseline_comparison",
+            "repetition_or_uncertainty",
+            "ablation",
+            "validation_experiment",
+            "assurance_certification",
+            "method_clarification",
+            "limitation_disclosure",
+            "human_decision"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "preconditions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Preconditions",
+          "type": "array"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        },
+        "request_id": {
+          "title": "Request Id",
+          "type": "string"
+        },
+        "required_capability_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Required Capability Ids",
+          "type": "array"
+        },
+        "required_harness_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Required Harness Ids",
+          "type": "array"
+        },
+        "requirement_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Requirement Ids",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": "ari.research-repair-request/v1",
+          "default": "ari.research-repair-request/v1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source_context_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Context Digest",
+          "type": "string"
+        },
+        "status": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "running",
+            "satisfied",
+            "failed",
+            "exhausted",
+            "cancelled"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "stop_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "title": "Stop Conditions",
+          "type": "array"
+        },
+        "success_predicate_id": {
+          "title": "Success Predicate Id",
+          "type": "string"
+        },
+        "target_claim_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Target Claim Ids",
+          "type": "array"
+        },
+        "target_node_ids": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 10000,
+          "title": "Target Node Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "request_id",
+        "source_context_digest",
+        "requirement_ids",
+        "kind",
+        "success_predicate_id",
+        "budget",
+        "authority_digest",
+        "request_digest"
+      ],
+      "title": "ResearchRepairRequestV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "authority_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authority Digest",
+      "type": "string"
+    },
+    "budget": {
+      "$ref": "#/$defs/RepairBudgetV1"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Plan Digest",
+      "type": "string"
+    },
+    "policy": {
+      "enum": [
+        "disabled",
+        "explicit",
+        "auto"
+      ],
+      "title": "Policy",
+      "type": "string"
+    },
+    "readiness_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Readiness Digest",
+      "type": "string"
+    },
+    "requests": {
+      "items": {
+        "$ref": "#/$defs/ResearchRepairRequestV1"
+      },
+      "maxItems": 10000,
+      "title": "Requests",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.research-repair-plan/v1",
+      "default": "ari.research-repair-plan/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Context Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "source_context_digest",
+    "readiness_digest",
+    "policy",
+    "budget",
+    "authority_digest",
+    "plan_digest"
+  ],
+  "title": "ResearchRepairPlanV1",
+  "type": "object"
+}

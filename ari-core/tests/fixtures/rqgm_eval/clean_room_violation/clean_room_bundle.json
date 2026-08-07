@@ -1,0 +1,18 @@
+{
+  "abstract_failure_summary": null,
+  "bundle_hash": "000000000000",
+  "bundle_id": "eval_clnbdl_0001",
+  "constitutional_constraints": [
+    "Do not override fixed verifier failures.",
+    "Do not directly modify frontier scores."
+  ],
+  "cost_budget": {
+    "max_tokens": 4000
+  },
+  "output_schema": {
+    "verdict": "string"
+  },
+  "replay_requirements": [],
+  "request_id": "eval_clnreq_0001",
+  "role_spec": "Review a research artifact against its recorded evidence."
+}

@@ -71,6 +71,20 @@ log = logging.getLogger(__name__)
 
 
 
+def _run_integrity_concerns(checkpoint_dir: "Path") -> list:
+    """The concerns list written by the run-integrity aggregator, or [] when the
+    report is absent/unreadable. Pure (no printing / no exit) so the run
+    command's failure-signal logic is testable in isolation."""
+    import json as _json_ri
+    try:
+        ri = Path(checkpoint_dir) / "run_integrity.json"
+        if ri.is_file():
+            return (_json_ri.loads(ri.read_text()) or {}).get("concerns") or []
+    except Exception:
+        pass
+    return []
+
+
 def _resolve_cfg(config: "Path | None"):
     """Load config from --config, else fall back to the package workflow.yaml.
 
@@ -92,6 +106,45 @@ def _resolve_cfg(config: "Path | None"):
     if _pkg_wf.exists():
         return load_config(str(_pkg_wf))
     return auto_config()
+
+
+def _build_manuscript_repair_executors(
+    cfg,
+    bfts,
+    agent,
+    all_nodes,
+    experiment_data,
+    checkpoint_dir,
+    run_id,
+):
+    """Construct research executors only for the opt-in automatic posture.
+
+    Keeping the condition here preserves the ``manuscript.mode=off`` import
+    boundary: ordinary runs never import ``ari.manuscript`` or its runtime
+    adapter.  ``ari paper`` intentionally does not use this helper.
+    """
+
+    from ari.config import apply_manuscript_env_overrides
+
+    apply_manuscript_env_overrides(cfg)
+    manuscript = getattr(cfg, "manuscript", None)
+    repair = getattr(manuscript, "repair", None)
+    if not (
+        getattr(manuscript, "mode", "off") == "enforce"
+        and getattr(repair, "policy", "disabled") == "auto"
+    ):
+        return None
+    from ari.cli.manuscript_repair_runtime import build_research_repair_executors
+
+    return build_research_repair_executors(
+        cfg,
+        bfts,
+        agent,
+        all_nodes,
+        experiment_data,
+        checkpoint_dir,
+        run_id,
+    )
 
 
 
@@ -225,10 +278,19 @@ def run(
     # GUI-supplied caps (ARI_MAX_NODES etc.) must win over profile defaults.
     from ari.config import (
         apply_bfts_env_overrides, apply_evaluator_env_overrides,
-        export_resolved_config_to_skill_env,
+        apply_rqgm_env_overrides, export_resolved_config_to_skill_env,
     )
     apply_bfts_env_overrides(cfg)
     apply_evaluator_env_overrides(cfg)
+    apply_rqgm_env_overrides(cfg)
+    # Mode-provenance source, captured BEFORE export_resolved_config_to_
+    # skill_env setdefaults ARI_MODE (which would make every run look
+    # env-sourced afterwards).
+    _rqgm_mode_source = (
+        "env"
+        if (os.environ.get("ARI_MODE") or os.environ.get("ARI_RQGM_ENABLED"))
+        else "config"
+    )
     # Bridge the resolved config (model / backend / base_url / partition) to the env
     # vars skill subprocesses read, so a bare CLI run configures skills like the GUI
     # does — without this the idea skill fell back to Ollama and the HPC skill to
@@ -293,13 +355,29 @@ def run(
         try:
             from ari.llm.client import LLMClient
             _title_llm = LLMClient(cfg.llm)
+            # No per-call temperature: `complete` takes it from cfg.llm, and
+            # passing it here raised TypeError on EVERY run — which the bare
+            # `except` below swallowed, so the heuristic fallback was silently
+            # the only path this code ever took. `.content` for the same
+            # reason: `complete` returns an LLMResponse, not a str.
             _title_resp = _title_llm.complete(
                 [{"role": "user", "content":
                   f"Generate a concise 3-5 word English title (snake_case, no special chars) for this research goal:\n{experiment_text[:500]}\nReply with ONLY the title."}],
-                max_tokens=20, temperature=0.3,
+                max_tokens=20,
             )
-            _raw_name = _title_resp.strip().splitlines()[0].strip()
-        except Exception:
+            _llm_title = (_title_resp.content or "").strip().splitlines()
+            _llm_title = _llm_title[0].strip() if _llm_title else ""
+            if not _llm_title:
+                raise ValueError("title model returned an empty reply")
+            _raw_name = _llm_title
+        except Exception as _title_err:
+            # Degrading here is fine; degrading SILENTLY is what hid the two
+            # bugs above, so say so.
+            logging.getLogger(__name__).warning(
+                "[cli.run] LLM run-title generation failed (%s: %s); "
+                "falling back to the first meaningful line of the experiment",
+                type(_title_err).__name__, _title_err,
+            )
             # Fallback: skip headings, use first meaningful content line
             _in_goal = False
             for _line in experiment_text.splitlines():
@@ -362,26 +440,37 @@ def run(
             "trajectory is NOT guaranteed reproducible "
             "(recorded in bfts_web_provenance.json).[/yellow]"
         )
-    # auto-migrate v0.5.x sources on first launch.
-    try:
-        from ari.memory.auto_migrate import maybe_auto_migrate
-        _am = maybe_auto_migrate(checkpoint_dir)
-        if _am.get("ran") and _am.get("imported"):
-            logging.getLogger(__name__).info(
-                "v0.5.x auto-migration: %s", _am["imported"]
-            )
-    except Exception as _amerr:
-        logging.getLogger(__name__).warning(
-            "auto-migrate skipped: %s", _amerr
+    # RQGM mode provenance (docs/plans/ari_rqgm Task 01): written only when
+    # the effective mode is ari_rqgm — absence of rqgm_state.json means a pure
+    # simple_bfts run (P5 absence-is-default, like bfts_web_provenance.json).
+    # Gated on both raw flags so a default run never imports any ari.rqgm
+    # module; disagreement warnings are handled inside build_runtime.
+    if getattr(getattr(cfg, "ari", None), "mode", "simple_bfts") == "ari_rqgm" \
+            and bool(getattr(getattr(cfg, "rqgm", None), "enabled", False)):
+        from ari.rqgm.state import (
+            copy_constitution_if_missing,
+            persist_run_start,
+            record_constitution_hash,
+        )
+        persist_run_start(
+            checkpoint_dir,
+            mode="ari_rqgm",
+            rqgm_enabled=True,
+            mode_source=_rqgm_mode_source,
+        )
+        copy_constitution_if_missing(checkpoint_dir)
+        record_constitution_hash(checkpoint_dir)
+        logging.getLogger(__name__).info(
+            "[cli.run] RQGM mode active (ari_rqgm, source=%s): recorded "
+            "rqgm_state.json", _rqgm_mode_source,
         )
     # — on-exit backup.
     try:
         import atexit as _atexit_bk
-        from ari.memory_cli import _do_backup as _do_bk
         _atexit_bk.register(lambda _p=checkpoint_dir: _safe_backup(_p))
     except Exception:
         pass
-    _, _, mcp, bfts, agent, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+    _paper_llm, _, mcp, bfts, agent, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
     root = Node(id=f"node_{run_id}_root", parent_id=None, depth=0)
     root.name = f"root: {_raw_name[:100]}"
     all_nodes = [root]
@@ -437,12 +526,50 @@ def run(
             _cfg_str = str(config)
         else:
             _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
+        _paper_raised = False
         try:
-            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str)
+            # The paper AXIS (paper.mode: linear | rqgm_archive) is resolved by
+            # the SAME dispatch `ari paper` uses — this one-pass entry used to
+            # call the linear pipeline unconditionally, silently dropping a
+            # configured/env-requested rqgm_archive.
+            from ari.cli.paper_dispatch import run_paper_phase
+            _repair_executors = _build_manuscript_repair_executors(
+                cfg,
+                bfts,
+                agent,
+                all_nodes,
+                experiment_data,
+                checkpoint_dir,
+                run_id,
+            )
+            run_paper_phase(
+                cfg, all_nodes, experiment_data, checkpoint_dir, mcp, _cfg_str,
+                linear_paper_fn=generate_paper_section, paper_llm=_paper_llm,
+                rqgm=getattr(bfts, "rqgm", None),
+                repair_executors=_repair_executors,
+            )
         except Exception as _paper_err:
+            _paper_raised = True
             console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
             import traceback
             traceback.print_exc()
+
+        # Run-level failure signal. The paper pipeline can complete with FAILED
+        # stages (skipping their dependents) or raise outright, yet the process
+        # still exited 0 — a caller / CI could not tell a degraded run from a
+        # clean one. Surface run_integrity's concerns LOUDLY here, and, opt-in
+        # via ARI_RUN_STRICT_EXIT=1, propagate a non-zero exit so automation can
+        # detect it WITHOUT breaking best-effort callers (e.g. the ablation
+        # harness) that expect rc=0 for a degraded-but-usable run.
+        _concerns = _run_integrity_concerns(checkpoint_dir)
+        if _concerns:
+            console.print(f"[bold yellow]⚠ Run integrity: {len(_concerns)} concern(s)[/bold yellow]")
+            for _c in _concerns:
+                console.print(f"  - {_c}")
+        if _paper_raised:
+            console.print("[bold red]⚠ Paper phase did not complete (pipeline raised).[/bold red]")
+        if os.environ.get("ARI_RUN_STRICT_EXIT", "0") == "1" and (_paper_raised or _concerns):
+            raise typer.Exit(1)
 
 
 
@@ -482,6 +609,18 @@ def resume(
     cfg.checkpoint.dir = str(checkpoint_dir)
     _setup_logging(cfg.logging, run_id)
 
+    # RQGM resume rule (docs/plans/ari_rqgm Task 01 §5.5): the persisted mode
+    # in rqgm_state.json wins over config and env — a run's mode never flips
+    # mid-run, and a simple_bfts checkpoint (no state file) never upgrades.
+    # Gated so a default resume imports no ari.rqgm module.
+    from ari.config import apply_rqgm_env_overrides
+    apply_rqgm_env_overrides(cfg)
+    if ((checkpoint_dir / "rqgm_state.json").exists()
+            or getattr(getattr(cfg, "ari", None), "mode", "simple_bfts") == "ari_rqgm"
+            or bool(getattr(getattr(cfg, "rqgm", None), "enabled", False))):
+        from ari.rqgm.state import reconcile_resume_mode
+        reconcile_resume_mode(cfg, checkpoint_dir)
+
     node_map: dict[str, Node] = {}
     for nd in tree_data["nodes"]:
         node = Node(
@@ -491,6 +630,26 @@ def resume(
             error_log=nd.get("error_log"), children=nd.get("children", []),
             created_at=nd.get("created_at", ""), completed_at=nd.get("completed_at", ""),
             ancestor_ids=nd.get("ancestor_ids") or [],
+            producer_component_id=nd.get("producer_component_id", ""),
+            producer_prompt_hash=nd.get("producer_prompt_hash", ""),
+            producer_epoch_id=nd.get("producer_epoch_id", ""),
+            knowledge_skill_refs=nd.get("knowledge_skill_refs") or [],
+            knowledge_skill_use_digest=nd.get("knowledge_skill_use_digest", ""),
+            instruction_identity_digest=nd.get("instruction_identity_digest", ""),
+            capability_binding_lock_digest=nd.get("capability_binding_lock_digest", ""),
+            bound_tool_refs=nd.get("bound_tool_refs") or [],
+            assurance_status=nd.get("assurance_status", ""),
+            assurance_tier=nd.get("assurance_tier", ""),
+            baseline_harness_lock_digest=nd.get("baseline_harness_lock_digest", ""),
+            active_harness_lock_digest=nd.get("active_harness_lock_digest", ""),
+            attestation_refs=nd.get("attestation_refs") or [],
+            verified_target_digest=nd.get("verified_target_digest", ""),
+            property_verdicts=nd.get("property_verdicts") or {},
+            frontier_class=nd.get("frontier_class", ""),
+            repair_request_id=nd.get("repair_request_id", ""),
+            repair_requirement_ids=nd.get("repair_requirement_ids") or [],
+            repair_context_digest=nd.get("repair_context_digest", ""),
+            repair_allowed_changes=nd.get("repair_allowed_changes") or [],
         )
         node.status = NodeStatus(nd["status"])
         # Restore label (default to DRAFT if missing from old checkpoints)
@@ -526,13 +685,7 @@ def resume(
         console.print("[yellow]No pending nodes.[/yellow]")
         raise typer.Exit(0)
 
-    #+ — auto-migrate v0.5.x sources
-    # and auto-restore from memory_backup.jsonl.gz when Letta is empty.
-    try:
-        from ari.memory.auto_migrate import maybe_auto_migrate
-        maybe_auto_migrate(checkpoint_dir)
-    except Exception as _amerr:
-        logging.getLogger(__name__).warning("auto-migrate skipped: %s", _amerr)
+    # Restore only the verified v1 portable backup when Letta is empty.
     if os.environ.get("ARI_MEMORY_AUTO_RESTORE", "true").lower() != "false":
         try:
             from ari.memory_cli import _do_restore, _backup_path
@@ -554,7 +707,7 @@ def resume(
     with pid_context(checkpoint_dir):
         total = _run_loop(cfg, bfts, agent, pending, all_nodes,
                           experiment_data, checkpoint_dir, run_id, total_processed=completed)
-        _, _, mcp_resume, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
+        _paper_llm_r, _, mcp_resume, _, _, _ = build_runtime(cfg, experiment_text, checkpoint_dir=checkpoint_dir)
         console.print(Panel(
             f"[bold green]Resume complete.[/bold green]  +{total - completed} nodes",
             title="Done",
@@ -571,9 +724,24 @@ def resume(
         else:
             _cfg_str_r = str(_pkg_wf_r) if _pkg_wf_r.exists() else ""
         try:
-            generate_paper_section(all_nodes, experiment_data, checkpoint_dir, mcp_resume, _cfg_str_r)
+            from ari.cli.paper_dispatch import run_paper_phase
+            _repair_executors_r = _build_manuscript_repair_executors(
+                cfg,
+                bfts,
+                agent,
+                all_nodes,
+                experiment_data,
+                checkpoint_dir,
+                run_id,
+            )
+            run_paper_phase(
+                cfg, all_nodes, experiment_data, checkpoint_dir, mcp_resume,
+                _cfg_str_r, linear_paper_fn=generate_paper_section,
+                paper_llm=_paper_llm_r,
+                rqgm=getattr(bfts, "rqgm", None),
+                repair_executors=_repair_executors_r,
+            )
         except Exception as _paper_err:
             console.print(f"[bold red]Paper pipeline failed:[/bold red] {_paper_err}")
             import traceback
             traceback.print_exc()
-
