@@ -195,11 +195,22 @@ def _license_completeness(evidence: GateEvidence):
 
 @gate("source_revision_digest_pin")
 def _source_revision_digest_pin(evidence: GateEvidence):
-    """The pinned commit must be a full sha AND be the one being registered.
+    """The pinned commit must be a real commit in the history being registered.
 
-    The shipped reports pin a commit that is not HEAD and is regex-checked only,
-    so the pin recorded which commit someone typed.
+    NOT equality with HEAD, which is what this demanded first and which is
+    circular: writing the pin changes the manifest, which changes the commit
+    that contains it, so no manifest could ever satisfy it. The byte-level
+    guarantee is not this field's job either -- ``prepare`` already refuses when
+    the driver digest does not match the code that will run, exactly.
+
+    What the commit pin is for is PROVENANCE: where to check out to obtain those
+    bytes. So the check is that it names a commit this repository actually has,
+    and one the registration descends from. A pin naming nothing, or naming a
+    commit off this history, records what somebody typed -- which is what the
+    shipped reports do, regex-checked and compared to nothing.
     """
+    import subprocess
+
     manifest = evidence.manifest
     pinned = getattr(manifest, "source_full_commit_sha", None) if manifest else None
     if not pinned:
@@ -207,10 +218,20 @@ def _source_revision_digest_pin(evidence: GateEvidence):
     if evidence.repo_commit is None:
         return False, ("no repository commit supplied to check the pin against; "
                        "a pin nothing compares is a record of what was typed"), None
-    if not evidence.repo_commit.startswith(pinned) and not pinned.startswith(evidence.repo_commit):
-        return False, (f"the manifest pins {pinned[:12]} but registration is "
-                       f"running at {evidence.repo_commit[:12]}"), None
-    return True, f"pinned at {pinned[:12]}", {"source_full_commit_sha": pinned}
+    try:
+        from ari.assurance.registration_run import repository_root
+
+        ancestor = subprocess.run(
+            ["git", "-C", str(repository_root()), "merge-base", "--is-ancestor",
+             pinned, evidence.repo_commit],
+            capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"could not check the pin against the repository: {exc}", None
+    if ancestor.returncode != 0:
+        return False, (f"the manifest pins {pinned[:12]}, which the registration "
+                       f"commit {evidence.repo_commit[:12]} does not descend from"), None
+    return True, (f"pinned at {pinned[:12]}, an ancestor of "
+                  f"{evidence.repo_commit[:12]}"), {"source_full_commit_sha": pinned}
 
 
 # --- the ones the artifacts settle ----------------------------------------------
