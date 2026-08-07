@@ -2,7 +2,8 @@
 
 Replay evaluation (``rqgm.replay.use_cached_results: true``) and repeated
 governance evaluations of the same artifact must not re-pay LLM cost
-(plan ``docs/plans/ari_rqgm/12`` §5.5/§6.2). Spec-fixed composition::
+(``docs/reference/rqgm_schemas.md``, "Governance-cache schema (Task 12)").
+Spec-fixed composition::
 
     cache_key = sha256("\\x1f".join(
         artifact_hash, prompt_hash, role, epoch_id,

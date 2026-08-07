@@ -1,4 +1,7 @@
-"""RQGM Task 13 — scripted component doubles (docs/plans/ari_rqgm/13 §5.3/§9).
+"""RQGM Task 13 — scripted component doubles
+(docs/guides/rqgm_evaluation.md §Failure injections — the
+"scripted_component" mechanism; docs/reference/configuration.md
+§``rqgm.eval`` — evaluation-harness posture).
 
 The eval-double registry carries exactly the documented key set; doubles are
 LLM-free and deterministic; ``resolve_double`` refuses any substitution

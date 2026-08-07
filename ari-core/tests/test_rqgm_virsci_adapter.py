@@ -1,4 +1,6 @@
-"""RQGM Task 03 — VirSciAdapter + VirSci optionality (docs/plans/ari_rqgm/03).
+"""RQGM Task 03 — VirSciAdapter + VirSci optionality
+(docs/guides/virsci_integration.md "Archive vs. summary", "Guarantees when
+enabled: false", "The four mode × VirSci combinations").
 
 Covers: normalization of the canned 9-key ``generate_ideas`` payload (both
 ``real_wrap`` and ``reimpl`` statuses), archive_refs population, the

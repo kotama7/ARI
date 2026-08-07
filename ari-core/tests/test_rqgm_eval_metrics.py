@@ -1,4 +1,5 @@
-"""RQGM Task 13 — the thirteen evaluation metrics (docs/plans/ari_rqgm/13 §5.4/§9).
+"""RQGM Task 13 — the thirteen evaluation metrics
+(docs/guides/rqgm_evaluation.md §Metrics).
 
 Each metric helper against hand-built fixtures with known answers;
 absence tolerance (missing RQGM records ⇒ ``applicable: false``, never an

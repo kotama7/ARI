@@ -6,7 +6,8 @@ co-evolution). Activation is config-only: ``ari.mode: ari_rqgm`` AND
 owns the interlock table); the default ``simple_bfts`` mode is byte-for-byte
 current ARI and never imports this package.
 
-Import rule (plan ``docs/plans/ari_rqgm/01`` §5.3): the composition root
+Import rule (``docs/reference/internal_boundaries.md``, "RQGM mode boundary
+(``ari.rqgm``)"): the composition root
 (``ari.core.build_runtime``) imports ``ari.rqgm.*`` lazily inside its
 ``ari_rqgm`` branch only. Keep this ``__init__`` free of submodule imports so
 merely importing ``ari.rqgm`` stays side-effect-free.

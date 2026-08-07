@@ -1,5 +1,7 @@
 """RQGM Task 07 — deterministic validation stages
-(docs/plans/ari_rqgm/07 §5.3 stages 1-3, §5.4, §9).
+(docs/concepts/rqgm_runtime_walkthrough.md "Prompt evolution — candidates
+crawl, the RTE adopts"; docs/reference/file_formats.md
+"prompt_evolution.jsonl (RQGM Task 07)").
 
 Covers: static validation (placeholder drift, forbidden placeholders,
 oversized templates, hash discipline, dead-parent lineage, in-place-mutation

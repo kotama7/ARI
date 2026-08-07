@@ -12,8 +12,8 @@ Pins the deterministic synthetic-checkpoint factory in
   (kept fast: no ``load_nodes_tree`` reload of the large tier, since the
   repo defines no ``slow`` pytest marker).
 
-Charter: docs/plans/gui_refresh/00_program_charter_and_baseline.md
-§Deliverables ("reference small/medium/large run fixture").
+Gate: docs/guides/gui_cutover_runbook.md §Compatibility matrix
+("small × medium × large × corrupt checkpoint").
 """
 
 from __future__ import annotations

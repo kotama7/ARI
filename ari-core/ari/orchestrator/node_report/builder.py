@@ -44,30 +44,40 @@ _FILES_CHANGED_BLOCKLIST_NAMES: frozenset[str] = frozenset({
     "eval_scores.json",
     ".DS_Store",
     "Thumbs.db",
-    # RQGM epoch-governance files (docs/plans/ari_rqgm Task 02) — ARI
-    # internal state, never a node-produced source file.
+    # RQGM epoch-governance files (docs/reference/file_formats.md, "RQGM
+    # epoch-governance files (opt-in `ari_rqgm` mode)") — ARI internal state,
+    # never a node-produced source file.
     "rqgm_transitions.jsonl",
     "rqgm_audit.jsonl",
     "epoch_state.json",
     "rqgm_registry.json",
-    # RQGM proposal store files (docs/plans/ari_rqgm Task 03).
+    # RQGM proposal store files (docs/reference/file_formats.md, the
+    # `proposals/` section).
     "proposal_records.jsonl",
     "proposal_index.json",
-    # RQGM adversarial-loop files (docs/plans/ari_rqgm Task 06).
+    # RQGM adversarial-loop files (docs/reference/file_formats.md, the
+    # `rqgm_adversarial_cases.jsonl` and `rqgm/adversarial_replay_pool.json`
+    # sections).
     "rqgm_adversarial_cases.jsonl",
     "adversarial_replay_pool.json",
-    # Paper-archive self-preference statistic (ari_rqgm_paper Task 05 §6).
+    # Paper-archive self-preference statistic (docs/reference/rqgm_schemas.md,
+    # the `rqgm/paper_self_preference_stat.json` section).
     "paper_self_preference_stat.json",
-    # Paper-archive P1 pinned-panel report (ari_rqgm_paper Task 07 §5.5).
+    # Paper-archive P1 pinned-panel report (docs/guides/rqgm_evaluation.md,
+    # "Paper metrics P1–P5").
     "panel_review_report.json",
-    # RQGM prompt-evolution files (docs/plans/ari_rqgm Task 07).
+    # RQGM prompt-evolution files (docs/reference/file_formats.md, the
+    # `prompt_evolution.jsonl` and `prompt_specs.json` sections).
     "prompt_evolution.jsonl",
     "prompt_specs.json",
-    # RQGM clean-room regeneration files (docs/plans/ari_rqgm Task 08).
+    # RQGM clean-room regeneration files (docs/reference/file_formats.md, the
+    # `rqgm_cleanroom.jsonl` section).
     "rqgm_cleanroom.jsonl",
-    # RQGM selective-erasure state (docs/plans/ari_rqgm Task 10).
+    # RQGM selective-erasure state (docs/reference/file_formats.md, the
+    # `rqgm_erasure_state.json` section).
     "rqgm_erasure_state.json",
-    # RQGM governance result cache (docs/plans/ari_rqgm Task 12).
+    # RQGM governance result cache (docs/reference/file_formats.md, the
+    # `rqgm_governance_cache.jsonl` section).
     "rqgm_governance_cache.jsonl",
 })
 
@@ -86,13 +96,14 @@ _FILES_CHANGED_BLOCKLIST_DIRS: frozenset[str] = frozenset({
     ".tox",
     ".mypy_cache",
     ".ruff_cache",
-    # RQGM proposal archive (docs/plans/ari_rqgm Task 03): checkpoint-scoped
-    # ARI state ({ckpt}/proposals/archive/<record_id>/…), never a
-    # node-produced source tree.
+    # RQGM proposal archive (docs/reference/file_formats.md, the `proposals/`
+    # section): checkpoint-scoped ARI state
+    # ({ckpt}/proposals/archive/<record_id>/…), never a node-produced source
+    # tree.
     "proposals",
-    # RQGM evolved prompt bodies (docs/plans/ari_rqgm Task 07):
-    # {ckpt}/rqgm_prompts/<prompt_id>.md — ARI prompt state, never a
-    # node-produced source tree.
+    # RQGM evolved prompt bodies (docs/reference/file_formats.md, the
+    # `rqgm_prompts/` section): {ckpt}/rqgm_prompts/<prompt_id>.md — ARI
+    # prompt state, never a node-produced source tree.
     "rqgm_prompts",
 })
 
@@ -421,11 +432,12 @@ _INTERNAL_JSON_NAMES = {
     "rqgm_injection_provenance.json",
     # Paper-archive mode provenance (paper-archive Task 01) — ARI internal.
     "paper_archive_state.json",
-    # Paper-archive self-preference statistic (paper-archive Task 05 §6) —
-    # ARI internal, not a data output.
+    # Paper-archive self-preference statistic (docs/reference/rqgm_schemas.md,
+    # the `rqgm/paper_self_preference_stat.json` section) — ARI internal, not
+    # a data output.
     "paper_self_preference_stat.json",
-    # Paper-archive P1 pinned-panel report (paper-archive Task 07 §5.5) —
-    # ARI internal eval artifact, not a data output.
+    # Paper-archive P1 pinned-panel report (docs/guides/rqgm_evaluation.md,
+    # "Paper metrics P1–P5") — ARI internal eval artifact, not a data output.
     "panel_review_report.json",
 }
 

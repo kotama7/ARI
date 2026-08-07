@@ -1,4 +1,8 @@
-"""RQGM Task 05 — GovernanceOrchestrator (docs/plans/ari_rqgm/05 §9).
+"""RQGM Task 05 — GovernanceOrchestrator
+(docs/reference/rqgm_schemas.md §Governance schemas (Task 05), incl.
+§The motion-pipeline records and §The audit's determinism budget;
+docs/concepts/rqgm_architecture.md §Key invariants, invariant 5
+"Same-role accusations are forbidden").
 
 Covers: the facade smoke over an empty audit log + JSON-Schema validation,
 exact ReliabilityMonitor aggregation (insufficient data never fabricated),

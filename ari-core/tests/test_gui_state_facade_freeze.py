@@ -1,9 +1,9 @@
 """``GET /state`` legacy-facade freeze — frozen top-level key set (gui_refresh G2 tail).
 
-Plan 04 §Caching and polling policy: "`/state` は legacy facade として凍結し、
-新 feature を追加して肥大化させない". This suite pins the EXACT top-level key
-set ``services.state_service.build_app_state`` emits, as frozen literals, for
-the two boundary scenarios:
+``/state`` is frozen as a legacy facade: it is deleted, never extended
+(docs/guides/gui_cutover_runbook.md §Legacy removal). This suite pins the
+EXACT top-level key set ``services.state_service.build_app_state`` emits, as
+frozen literals, for the two boundary scenarios:
 
 * no active checkpoint (minimal payload — process/status skeleton only), and
 * a fully-populated checkpoint fixture that trips every conditional injection
@@ -13,11 +13,12 @@ the two boundary scenarios:
 
 If either assertion fails with ADDED keys, someone grew the frozen facade —
 put the new data on a run-explicit ``/api/v1`` endpoint (``ari/viz/v1/``)
-instead (plan 04 §API principles; MN-10 run identity). REMOVED keys break the
-legacy dashboard pages still polling ``/state`` (parity invariant) — also
-forbidden until the facade itself is deleted at the G6 legacy-removal gate
-(plan 04 §Compatibility and migration step 7; RR-P0-8 disposition in
-docs/plans/gui_refresh/baseline/risk_register.md).
+instead (docs/concepts/gui_architecture.md §The backend seam — "New code uses
+the ``/api/v1`` regime"). REMOVED keys break the legacy dashboard pages still
+polling ``/state`` (parity invariant) — also forbidden until the facade itself
+is deleted at the G6 legacy-removal gate
+(docs/guides/gui_cutover_runbook.md §Legacy removal, whose removal order
+retires this suite in the same change that deletes the facade).
 
 Captured faithfully from the live builder on 2026-07-26 (35 keys maximal /
 7 keys minimal). The per-key VALUE contracts are covered elsewhere

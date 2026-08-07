@@ -1,5 +1,7 @@
-"""Paper-archive Task 06 — cost control and budget (wave 3d,
-docs/plans/ari_rqgm_paper/06 §9).
+"""Paper-archive Task 06 — cost control and budget (wave 3d;
+docs/guides/execution_modes.md §Cost bound and the degraded on-ramp;
+docs/reference/configuration.md §``rqgm.budgets`` — per-epoch governance
+spend caps).
 
 Covers the ONE additive budgeted-action kind (``PAPER_ANCHOR_SCORING`` cap =
 ``rqgm.paper.anchor.sample_size``, 0 when disabled — the SHADOW_CALL

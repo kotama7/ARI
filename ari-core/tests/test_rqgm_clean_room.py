@@ -1,4 +1,7 @@
-"""RQGM Task 08 — clean-room regeneration (docs/plans/ari_rqgm/08 §5-§9).
+"""RQGM Task 08 — clean-room regeneration
+(docs/reference/rqgm_schemas.md §Clean-room schemas (Task 08);
+docs/concepts/rqgm_architecture.md §Key invariants, invariant 7
+"Clean-room contamination rules").
 
 Covers: the CleanRoomGenerationRequest schema (const-false forbidden flags,
 envelope, status enum — dataclass mirror + jsonschema), the deterministic

@@ -266,10 +266,12 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
     llm.mcp_client = mcp
     bfts_llm.mcp_client = mcp
     bfts: SearchStrategy = BFTS(cfg.bfts, bfts_llm)
-    # RQGM execution-mode switch (docs/plans/ari_rqgm Task 01). Guarded on the
-    # raw config flags so the default simple_bfts path never imports any
-    # ari.rqgm module (identity-default guarantee); resolve_effective_mode
-    # owns the interlock table and the disagreement fallback warnings.
+    # RQGM execution-mode switch (docs/guides/execution_modes.md, "Turning RQGM
+    # on" and "Compatibility guarantees"). Guarded on the raw config flags so
+    # the default simple_bfts path never imports any ari.rqgm module
+    # (identity-default guarantee — this lazy-import branch is the single gate);
+    # resolve_effective_mode owns the interlock table and the disagreement
+    # fallback warnings.
     _ari_mode = getattr(getattr(cfg, "ari", None), "mode", "simple_bfts")
     _rqgm_enabled = bool(getattr(getattr(cfg, "rqgm", None), "enabled", False))
     if _ari_mode == "ari_rqgm" or _rqgm_enabled:
@@ -286,7 +288,10 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
             # positionally. The controller stays discoverable via
             #   getattr(bfts, "rqgm", None) -> RQGMRuntime | None
             bfts = rqgm.wrap_search_strategy(bfts)
-            # Install the constitutional choke point (plan 04 §5.6.4). It
+            # Install the constitutional choke point
+            # (docs/guides/execution_modes.md, "Constitutional kernel
+            # (Layer 0)" — the MCP
+            # tool dispatch row of "Where the kernel is called"). It
             # shipped complete but was NEVER constructed outside tests, so no
             # tool call was ever checked against CAPABILITY_MATRIX and the codes
             # that make the constitution enforceable at the one place a running
@@ -389,9 +394,10 @@ def build_runtime(cfg, experiment_text: str = "", checkpoint_dir: "str | Path | 
         timeout_per_node=cfg.bfts.timeout_per_node,
         handoff=getattr(cfg, "handoff", None),
     )
-    # RQGM Task 11 §5.8: under ari_rqgm the runtime attaches the
-    # metric-spec weight cap to the executor (additive attribute; identity
-    # otherwise). Duck-typed discovery — never isinstance.
+    # RQGM metric-spec weight cap (docs/reference/configuration.md,
+    # "`rqgm.meta_evolution` — meta-tier budgets and switches"): under ari_rqgm
+    # the runtime attaches the metric-spec weight cap to the executor (additive
+    # attribute; identity otherwise). Duck-typed discovery — never isinstance.
     _rqgm_runtime = getattr(bfts, "rqgm", None)
     if _rqgm_runtime is not None:
         agent = _rqgm_runtime.wrap_node_executor(agent)
@@ -416,11 +422,13 @@ def generate_paper_section(
 
     ``disable_stages`` lets a CALLER declare that it has already produced some
     stages' outputs itself, so those stages must not run. It exists for the
-    ``rqgm_archive`` handoff (docs/plans/ari_rqgm_paper/07 §5.1/§5.4/R5: "the
-    archive substitutes for `write_paper` + `paper_refine`"; "`full_paper.tex` is
-    overwritten in place exactly once, by `materialize_winner`"), which owns the
-    generation stages and needs the tail to run on ITS winner rather than refine
-    over it.
+    ``rqgm_archive`` handoff (docs/reference/manuscript_complete_contracts.md,
+    "RQGM archive provenance": ``materialize_winner`` is the only stage that
+    *generates* ``full_paper.tex`` on the archive path — ``write_paper`` no-ops
+    through its own ``skip_if_exists`` guard, and ``paper_refine``, which would
+    otherwise refine over the materialised bytes, is the one stage the handoff
+    names as disabled), which owns the generation stages and needs the tail to
+    run on ITS winner rather than refine over it.
 
     ``include_segments`` is the additive Manuscript Complete runner seam.  It
     selects ``evidence | authoring | verification`` metadata from the same
@@ -429,8 +437,9 @@ def generate_paper_section(
     so cross-segment ``depends_on`` edges remain satisfied by durable outputs.
 
     Deliberately plain, mode-agnostic parameters and NOT config reads: this
-    function never learns what `paper.mode` is, so §5.1's "no stage conditionals,
-    no dual code paths, no `paper.mode` reads in the pipeline" holds. It defaults
+    function never learns what `paper.mode` is, so the pipeline stays
+    mode-agnostic — no stage conditionals, no dual code paths, no `paper.mode`
+    reads in the pipeline. It defaults
     to empty, so the linear path is byte-identical by construction — the derived
     config is not even written unless a caller asks for a disable.
     """

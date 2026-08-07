@@ -1,14 +1,18 @@
 """Cost control: governance levels + per-epoch call budgets (RQGM Task 12).
 
 Read-side budget enforcement over the passive ``ari.cost_tracker``
-(plan ``docs/plans/ari_rqgm/12`` §5.1-§5.4, §7). Three concerns:
+(``docs/concepts/rqgm_architecture.md``, "Configuration surface";
+``docs/reference/configuration.md``, "``rqgm.budgets`` — per-epoch governance
+spend caps"). Three concerns:
 
-* **Governance level ladder** (§5.1/§5.2) — the pure, deterministic
-  ``assign_level`` trigger function (L0 fixed … L3 adjudicated). Sterile
+* **Governance level ladder** — the pure, deterministic ``assign_level``
+  trigger function (L0 fixed … L3 adjudicated; see
+  ``docs/concepts/rqgm_runtime_walkthrough.md``, "4. Per node — proposal,
+  execution, governance level"). Sterile
   nodes never exceed L0; raw adversary attacks never touch BFTS scores at
   any level (invariant 8) — the ladder only decides which *governance*
   actors may spend LLM calls on a node.
-* **BudgetedAction / BudgetVerdict / GovernanceBudgetManager** (§5.4) —
+* **BudgetedAction / BudgetVerdict / GovernanceBudgetManager** —
   decision-point gating (``allow | degrade | skip``), never mid-call
   interruption and never an exception into the run loop. Per-action caps
   are read from their single schema homes (``rqgm.adversarial`` — Task 06;
@@ -16,7 +20,8 @@ Read-side budget enforcement over the passive ``ari.cost_tracker``
   ``rqgm.prompt_evolution`` / ``rqgm.budgets``;
   ``proposal_router.generators.virsci`` — Task 03). The L0 fixed layer is
   deliberately NOT budgetable — the constitutional floor always runs.
-* **Deterministic shadow sampling** (§5.6) — the hash rule
+* **Deterministic shadow sampling** (``docs/reference/configuration.md``,
+  "``rqgm.shadow`` — shadow live-evaluation sampling") — the hash rule
   ``sha256(f"{run_id}:{epoch_id}:{node_id}:shadow") % 10_000 <
   sample_rate * 10_000``; no RNG state, reproducible from the checkpoint.
 
@@ -43,7 +48,9 @@ BUDGET_CONSUMED_EVENT = "budget_consumed"
 BUDGET_DEGRADED_EVENT = "budget_degraded"
 GOVERNANCE_LEVEL_EVENT = "governance_level"
 
-# ── budgeted-action kinds (closed v1 set, plan 12 §5.3 counters) ────────────
+# ── budgeted-action kinds (closed v1 set; one per-epoch counter each, whose
+# caps are documented in docs/reference/configuration.md, "Execution Mode and
+# RQGM Governance (opt-in)") ────────────────────────────────────────────────
 
 ADVERSARY_CALL = "adversary_call"
 DEFENDER_CALL = "defender_call"
@@ -77,7 +84,8 @@ ACTION_KINDS: tuple[str, ...] = (
     PAPER_ANCHOR_SCORING,
 )
 
-# ── governance level ladder (plan 12 §5.1) ──────────────────────────────────
+# ── governance level ladder (docs/concepts/rqgm_runtime_walkthrough.md,
+# "4. Per node — proposal, execution, governance level") ────────────────────
 
 LEVEL_FIXED = 0          # fixed verifier + cheap deterministic validation
 LEVEL_REVIEWED = 1       # + reviewer
@@ -108,7 +116,8 @@ class BudgetedAction:
 class BudgetVerdict:
     """``allow`` — proceed; ``degrade`` — run the deterministic fallback /
     cap the effective level; ``skip`` — drop the single action. Never an
-    exception (plan 12 §5.4 failure posture)."""
+    exception — never a crash (docs/reference/configuration.md,
+    "``rqgm.budgets`` — per-epoch governance spend caps")."""
 
     decision: str  # "allow" | "degrade" | "skip"
     action: BudgetedAction
@@ -135,7 +144,8 @@ def _get(obj, name, default=None):
 
 
 class GovernanceBudgetManager:
-    """Read-side budget enforcement (plan 12 §5.4/§7).
+    """Read-side budget enforcement (docs/concepts/rqgm_architecture.md,
+    "Configuration surface").
 
     Never raises; never blocks the run loop. *cfg* is the resolved
     :class:`ari.config.ARIConfig` (duck-typed reads — raw dicts and stub
@@ -174,7 +184,8 @@ class GovernanceBudgetManager:
         self._audit_log = audit_log
         self._proposal_store = proposal_store
         # (epoch_id, counter_key) -> consumed count; rebuilt from the audit
-        # log so budgets survive `ari resume` (plan 12 §5.3 counter homes).
+        # log so budgets survive `ari resume` (docs/reference/file_formats.md,
+        # "`rqgm_governance_cache.jsonl` (RQGM Task 12)").
         self._counters: dict[tuple[str, str], int] = {}
         self._spend_usd: dict[str, float] = {}
         self._spend_tokens: dict[str, int] = {}
@@ -240,7 +251,8 @@ class GovernanceBudgetManager:
     def _cap(self, action: BudgetedAction) -> int | None:
         """Per-action per-epoch cap; ``None`` == unlimited. Each knob has
         exactly one schema home (no ``rqgm.governance.*`` aliases for the
-        Task 06 adversary knobs — plan 12 §5.3 note)."""
+        Task 06 adversary knobs — docs/reference/configuration.md,
+        "``rqgm.adversarial`` — attack→defense→adjudication loop")."""
         r = self._rqgm()
         if action.kind == ADVERSARY_CALL:
             return _num(_get(_get(r, "adversarial"),

@@ -1,4 +1,6 @@
-"""RQGM Task 09 — RegistryTransitionEngine (docs/plans/ari_rqgm/09 §9).
+"""RQGM Task 09 — RegistryTransitionEngine
+(docs/reference/rqgm_schemas.md "Transition schema (Task 09)";
+docs/concepts/rqgm_architecture.md "The four facades").
 
 Covers: the exhaustive edge matrix through ``allowed_transitions`` + the
 kernel (§9.1), byte-identical determinism of ``resolve_transition`` (§9.2),

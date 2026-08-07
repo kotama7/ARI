@@ -1,5 +1,6 @@
 """RQGM Task 07 — GovernedPromptLoader + evolved prompt bodies
-(docs/plans/ari_rqgm/07 §5.5-§5.6, §9).
+(docs/reference/file_formats.md "rqgm_prompts/ (RQGM Task 07)";
+docs/reference/rqgm_schemas.md "Prompt-evolution schemas (Task 07)").
 
 Covers: Protocol conformance (``isinstance`` under ``runtime_checkable``),
 byte-identical delegation for ungoverned keys (compared against the raw

@@ -1,4 +1,6 @@
-"""RQGM Task 14 — THE P1 TEST (docs/plans/ari_rqgm/14 §9 integration).
+"""RQGM Task 14 — THE P1 TEST
+(docs/concepts/rqgm_runtime_walkthrough.md "A utility rewrite at a boundary
+(Task 14)").
 
 P1: the search is tree-structured **and at each epoch boundary the entire
 score — the utility function itself — is rewritten**.

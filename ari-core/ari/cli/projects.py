@@ -192,7 +192,8 @@ def paper(
         _cfg_str = str(config)
     else:
         _cfg_str = str(_pkg_wf) if _pkg_wf.exists() else ""
-    # Paper-archive execution-mode switch (docs/plans/ari_rqgm_paper Task 01).
+    # Paper-archive execution-mode switch (docs/guides/execution_modes.md,
+    # "The paper execution axis: `paper.mode`").
     # `_resolve_cfg` applies NO env overrides, so the paper entry owns the
     # override + dispatch. Guarded so the default `linear` path never imports
     # any ari.rqgm module on the paper path (identity-default guarantee):

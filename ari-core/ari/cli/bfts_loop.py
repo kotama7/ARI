@@ -508,8 +508,10 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
         pass
     _expand_enabled = "frontier_expand" not in _bfts_disabled_stages
 
-    # RQGM detection (docs/plans/ari_rqgm Task 01): duck-typed attribute read,
-    # once at loop start like _expand_enabled. Epoch hooks below gate on
+    # RQGM detection (docs/reference/internal_boundaries.md, "RQGM mode
+    # boundary (`ari.rqgm`)" — `rqgm` is a reserved attribute name and the
+    # probe is duck-typed, never `isinstance`): read once at loop start like
+    # _expand_enabled. Epoch hooks below gate on
     # `_rqgm is not None`, so under simple_bfts this is a single failed
     # getattr and nothing else.
     _rqgm = getattr(bfts, "rqgm", None)
@@ -519,8 +521,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
             getattr(_rqgm, "mode", None),
         )
 
-    # RQGM epoch hook (docs/plans/ari_rqgm Task 02 §5.6-§5.7): one duck-typed,
-    # best-effort call — opens epoch_000 (or replay-restores on resume) now,
+    # RQGM epoch hook (docs/concepts/rqgm_architecture.md, "The epoch
+    # cycle"): one duck-typed, best-effort call — opens epoch_000 (or
+    # replay-restores on resume) now,
     # and fires the node-count epoch-boundary transaction when called again
     # at the outer-loop head. Lineage-hook pattern: try/except + warn; a
     # state-layer failure degrades to "epoch continues", never crashes the run.
@@ -530,7 +533,8 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
             return
         try:
             if search_state is not None:
-                # RQGM Task 10 (docs/plans/ari_rqgm/10 §5.2): hand the live
+                # Frontier repair hook (docs/concepts/bfts.md, "Governed
+                # BFTS under `ari_rqgm` (opt-in)"): hand the live
                 # frontier/pending/all_nodes lists into the boundary window
                 # so FrontierRepairEngine can repair them in place (main
                 # thread, between batches — no node in flight).
@@ -542,7 +546,10 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
         except Exception:
             log.warning("RQGM epoch hook failed; epoch continues", exc_info=True)
         # Frozen-active-set invariance over the epoch just observed
-        # (plan 04 §5.4 item 4). Nothing called `validate_epoch_invariance`,
+        # (docs/guides/execution_modes.md, "Constitutional kernel (Layer 0)";
+        # code severities in docs/reference/rqgm_schemas.md, "Constitutional
+        # violation codes").
+        # Nothing called `validate_epoch_invariance`,
         # so CK-EPO-001 (a record scored under a prompt outside the frozen
         # active set) and CK-EPO-002 (an out-of-band status change inside an
         # epoch) were never evaluated. Warn-and-audit; never blocks.
@@ -555,9 +562,12 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
 
     if _rqgm is not None:
         _rqgm_epoch_tick()
-        # RQGM Task 03 (plan 03 §5.2): root ideation via the ProposalRouter on
-        # the main thread (marker-guarded), replacing the agent-initiated root
-        # generate_ideas call in ari_rqgm mode. Writes proposal records + the
+        # RQGM root ideation (docs/guides/virsci_integration.md,
+        # "Event-triggered routing and budgets": the loop dispatches
+        # `initial_exploration` at root ideation via `generate_root_proposals`,
+        # which supersedes the agent-initiated root `generate_ideas` call).
+        # Runs on the main thread (marker-guarded) in ari_rqgm mode. Writes
+        # proposal records + the
         # idea.json projection, then the run proceeds exactly as today. On any
         # failure the status-quo path (agent generate_ideas → idea.json)
         # continues untouched — warn-and-degrade, never crash the loop.
@@ -640,7 +650,10 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 run_id=run_id,
             )
 
-    # Stage-1 record-only dual-write (docs/plans/ari_rqgm Task 03 §8): with
+    # Record-only dual-write (docs/reference/configuration.md,
+    # "`proposal_router` — proposal generation routing"; the import gate is
+    # docs/reference/internal_boundaries.md, "RQGM mode boundary
+    # (`ari.rqgm`)"): with
     # proposal_router.record_only=true in simple_bfts, idea.json output is
     # additionally imported into proposals/proposal_records.jsonl as
     # legacy_idea_json records. Zero behavior change; default (false) never
@@ -731,8 +744,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
     _lineage_run_id = run_id  # captured for child launches
 
     while pending or (_expand_enabled and frontier and len(all_nodes) < cfg.bfts.max_total_nodes):
-        # RQGM Task 02: epoch-boundary check at the outer-loop head (the only
-        # natural single-writer hook site). No-op under simple_bfts.
+        # Epoch-boundary check at the outer-loop head — the only natural
+        # single-writer hook site (docs/concepts/rqgm_architecture.md, "The
+        # epoch cycle"). No-op under simple_bfts.
         if _rqgm is not None:
             _rqgm_epoch_tick({
                 "frontier": frontier,
@@ -740,7 +754,8 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                 "all_nodes": all_nodes,
                 "flush_tree": lambda: _flush_tree_progress(force=True),
             })
-            # RQGM Task 10 §5.6 drain-only degradation: after a double
+            # Drain-only degradation (docs/concepts/bfts.md, "Governed BFTS
+            # under `ari_rqgm` (opt-in)"): after a double
             # kernel-validation failure the repair engine halts expansion;
             # the run finishes pending work but expands no further (same
             # internal flag as the frontier_expand-disabled path). Strict
@@ -1560,8 +1575,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                 result.id, _ster_e,
                             )
 
-                    # RQGM adversarial round (docs/plans/ari_rqgm Task 06
-                    # §5.3): after evaluation + the sterile gate, before
+                    # RQGM adversarial round (docs/concepts/bfts.md,
+                    # "Governed BFTS under `ari_rqgm` (opt-in)"): after
+                    # evaluation + the sterile gate, before
                     # write_node_report so the report carries the governed
                     # score. Best-effort like the lineage hook; a dead
                     # branch under simple_bfts (_rqgm is None).
@@ -1585,7 +1601,13 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                     int(getattr(cfg.bfts, "max_total_nodes", 0) or 0)
                                     - len(all_nodes),
                                 )
-                                # LIVE shadow (plan 07 §5.3 stage 6): run each
+                                # LIVE shadow (record shape in
+                                # docs/reference/rqgm_schemas.md,
+                                # "`rqgm_prompt_evolution.schema.json`";
+                                # sampling in
+                                # docs/reference/configuration.md,
+                                # "`rqgm.shadow` — shadow live-evaluation
+                                # sampling"): run each
                                 # shadow-status candidate ALONGSIDE the
                                 # incumbent on this node's real context. The
                                 # candidate's output is recorded as hashes +
@@ -1630,7 +1652,9 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                 "rqgm adversarial round failed for %s: %s",
                                 result.id, _adv_e,
                             )
-                        # §5.6.5 per-node kernel warn hook: schema + hash
+                        # Per-node kernel warn hook
+                        # (docs/guides/execution_modes.md, "Constitutional
+                        # kernel (Layer 0)"): schema + hash
                         # provenance over the records this node just produced.
                         # Nothing called it, so CK-HSH-001/002/003/010 were
                         # never evaluated where a node's records exist.
@@ -1877,9 +1901,12 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                             window=_lineage_window,
                             threshold=_lineage_threshold,
                         )
-                        # RQGM re-ideation (plan 03 §5.2): `frontier_stagnation`
+                        # RQGM re-ideation (docs/guides/virsci_integration.md,
+                        # "Event-triggered routing and budgets"):
+                        # `frontier_stagnation`
                         # is one of the router's four declared trigger events and
-                        # this is the hook the plan names for it. Nothing called
+                        # `ProposalRouter.on_event` is the re-ideation surface
+                        # for it. Nothing called
                         # `on_event`, so the row was dead and the MutationGenerator
                         # it routes to was unreachable. Best-effort; the lineage
                         # decision below is unaffected either way.
@@ -1932,10 +1959,13 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
                                 _lineage_mode, _decision.action,
                                 _decision.rationale[:120],
                             )
-                            # RQGM re-ideation (plan 03 §5.2): `major_pivot` is
-                            # the third declared trigger event and the plan names
-                            # the switch_to_idea/fanout lineage decision as its
-                            # hook. Fired HERE rather than inside
+                            # RQGM re-ideation
+                            # (docs/guides/virsci_integration.md,
+                            # "Event-triggered routing and budgets"):
+                            # `major_pivot` is
+                            # the third declared trigger event; this loop
+                            # dispatches it on the switch_to_idea/fanout
+                            # lineage decision. Fired HERE rather than inside
                             # `_execute_lineage_decision` because the runtime is
                             # in scope here. Its priority row is
                             # (virsci, prior_art, cheap) — the only route to the
@@ -2035,8 +2065,8 @@ def _run_loop(cfg, bfts: SearchStrategy, agent: NodeExecutor, pending, all_nodes
     # observe nodes created in the final iteration (the while guard exits
     # on max_total_nodes / drained pending first), so run one last tick.
     # Main thread, no node in flight — the same single-writer boundary
-    # window as the loop-head site (plan 02 §5.6 names the loop head; this
-    # end-of-run position satisfies the same constraints — deviation noted).
+    # window as the loop-head site (docs/concepts/rqgm_architecture.md, "The
+    # epoch cycle", documents both the loop-head tick and this end-of-run one).
     # Fires only when the node-count trigger is actually met; partial
     # trailing epochs stay open, matching crash-recovery/resume semantics.
     if _rqgm is not None:

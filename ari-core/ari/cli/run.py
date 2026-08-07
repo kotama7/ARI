@@ -464,9 +464,10 @@ def run(
             "trajectory is NOT guaranteed reproducible "
             "(recorded in bfts_web_provenance.json).[/yellow]"
         )
-    # RQGM mode provenance (docs/plans/ari_rqgm Task 01): written only when
-    # the effective mode is ari_rqgm — absence of rqgm_state.json means a pure
-    # simple_bfts run (P5 absence-is-default, like bfts_web_provenance.json).
+    # RQGM mode provenance (docs/guides/execution_modes.md, "Turning RQGM on"):
+    # written only when the effective mode is ari_rqgm — absence of
+    # rqgm_state.json means a pure simple_bfts run (P5 absence-is-default, like
+    # bfts_web_provenance.json).
     # Gated on both raw flags so a default run never imports any ari.rqgm
     # module; disagreement warnings are handled inside build_runtime.
     if getattr(getattr(cfg, "ari", None), "mode", "simple_bfts") == "ari_rqgm" \
@@ -633,9 +634,10 @@ def resume(
     cfg.checkpoint.dir = str(checkpoint_dir)
     _setup_logging(cfg.logging, run_id)
 
-    # RQGM resume rule (docs/plans/ari_rqgm Task 01 §5.5): the persisted mode
-    # in rqgm_state.json wins over config and env — a run's mode never flips
-    # mid-run, and a simple_bfts checkpoint (no state file) never upgrades.
+    # RQGM resume rule (docs/guides/execution_modes.md, "Mode-switch timing
+    # policy"): the persisted mode in rqgm_state.json wins over config and env —
+    # a run's mode never flips mid-run, and a simple_bfts checkpoint (no state
+    # file) never upgrades.
     # Gated so a default resume imports no ari.rqgm module.
     from ari.config import apply_rqgm_env_overrides
     apply_rqgm_env_overrides(cfg)

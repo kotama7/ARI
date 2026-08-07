@@ -112,10 +112,11 @@ class RQGMRuntime:
     reserved for Tasks 05/06.
     """
 
-    # Paper-archive seam defaults (docs/plans/ari_rqgm_paper/03) as CLASS
-    # attributes so an instance built via ``RQGMRuntime.__new__`` (test
-    # harnesses that exercise a single method in isolation) still resolves
-    # them to the exploration defaults without an __init__ run.
+    # Paper-archive seam defaults (docs/concepts/rqgm_architecture.md,
+    # "The paper-archive layer") as CLASS attributes so an instance built
+    # via ``RQGMRuntime.__new__`` (test harnesses that exercise a single
+    # method in isolation) still resolves them to the exploration defaults
+    # without an __init__ run.
     _paper_phase = False
     _anchor_pool = None
     _paper_candidate_evaluator = None
@@ -132,7 +133,9 @@ class RQGMRuntime:
         paper_candidate_evaluator=None,
     ) -> None:
         self.cfg = cfg
-        # Paper-archive co-evolution seam (docs/plans/ari_rqgm_paper/03, /04).
+        # Paper-archive co-evolution seam (docs/concepts/rqgm_architecture.md,
+        # "The paper-archive layer"; the paper-mode-gated founding rows are
+        # in "The three layers").
         # ``paper_phase`` is set ONLY by ``PaperArchiveRuntime`` — an
         # exploration ``ari_rqgm`` boot never passes it (default False), so
         # its founding registration / incumbent rebuild / epoch sizing are
@@ -932,7 +935,8 @@ class RQGMRuntime:
     def _nodes_per_epoch(self) -> int:
         """``rqgm.epoch.nodes_per_epoch`` (typed model or raw dict), ≥ 0.
 
-        Paper phase (docs/plans/ari_rqgm_paper/01 §5.7, landed deviation
+        Paper phase (docs/concepts/rqgm_runtime_walkthrough.md,
+        "A paper-archive run (paper.mode: rqgm_archive)"; landed deviation
         2026-07-17): ONE archive round = ONE paper epoch, config-independently.
         The paper driver calls ``ensure_epoch`` once per round head with the
         ROUND INDEX (0, 1, …) — the archive round counter, NOT the archive's
@@ -1102,8 +1106,9 @@ class RQGMRuntime:
         try:
             from ari.rqgm.store import ImmutableAuditLog
 
-            # Paper phase (docs/plans/ari_rqgm_paper/04): the anchor pool (a
-            # PaperAnchorPool carrying held-out anchor_cases with per-reviewer
+            # Paper phase (docs/reference/rqgm_schemas.md, "The audit's
+            # determinism budget"): the anchor pool (a PaperAnchorPool
+            # carrying held-out anchor_cases with per-reviewer
             # results) feeds board/anchor scoring so the ReliabilityMonitor +
             # AnchorBoard can assess and — for a reviewer that disagrees with
             # ground truth — sanction the incumbent. Exploration is unchanged.
@@ -1155,8 +1160,9 @@ class RQGMRuntime:
         return pe
 
     def _prompt_evolution_enabled(self) -> bool:
-        # Paper phase (docs/plans/ari_rqgm_paper/03 §5.9): the on-ramp toggle
-        # is rqgm.paper.prompt_evolution.enabled — DISTINCT from the
+        # Paper phase (docs/guides/execution_modes.md, "Cost bound and the
+        # degraded on-ramp"): the on-ramp toggle is
+        # rqgm.paper.prompt_evolution.enabled — DISTINCT from the
         # exploration rqgm.prompt_evolution.enabled. false => the roles are
         # registered (scoring works) but never co-evolve.
         if self._paper_phase:
@@ -1674,10 +1680,12 @@ class RQGMRuntime:
             # utility policy is a score over axes, not scored over cases, so
             # its board is computed here and merged in (never inside the
             # governance judge, which keeps governance policy-agnostic).
-            # Paper phase (docs/plans/ari_rqgm_paper/03 §5.9, /04 §5.4): the
-            # pending paper_writer/paper_reviewer candidates' full-spine
-            # evaluations join the same candidate_evaluations the role-agnostic
-            # engine consumes, exactly as the utility_policy criterion does.
+            # Paper phase (docs/concepts/rqgm_architecture.md, "The
+            # paper-archive layer" — the ordinary governed path, no new
+            # transition edge): the pending paper_writer/paper_reviewer
+            # candidates' full-spine evaluations join the same
+            # candidate_evaluations the role-agnostic engine consumes,
+            # exactly as the utility_policy criterion does.
             # The reviewer is scored on held-out anchor agreement; the writer
             # (no anchor) is epoch-local. These lead the list so they WIN the
             # first-per-prompt dedup in resolve_transition over the governance
@@ -2023,9 +2031,12 @@ class RQGMRuntime:
         return out
 
     def _paper_candidate_evaluations(self, st, ckpt) -> list:
-        """Paper-archive candidate evaluations (docs/plans/ari_rqgm_paper/03
-        §5.9, /04 §5.4), merged into ``candidate_evaluations`` exactly like
-        the utility_policy criterion.
+        """Paper-archive candidate evaluations, merged into
+        ``candidate_evaluations`` exactly like the utility_policy criterion
+        (docs/concepts/rqgm_architecture.md, "The paper-archive layer"; the
+        role-scoped T3/T6 waiver behind ``no_replay_basis`` is in
+        docs/reference/configuration.md, "`rqgm.transition` —
+        RegistryTransitionEngine thresholds").
 
         Only fires in the paper phase with an injected evaluator. The
         evaluator (built by ``PaperArchiveRuntime``) scores each pending

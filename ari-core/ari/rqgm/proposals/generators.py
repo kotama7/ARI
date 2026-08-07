@@ -288,7 +288,8 @@ class AttackDrivenGenerator:
         self.llm = llm
 
     def generate(self, ctx: dict) -> list[ProposalDraft]:
-        # Requires the AdversarialReplayPool (docs/plans/ari_rqgm/06).
+        # Requires the AdversarialReplayPool (docs/reference/rqgm_schemas.md,
+        # the `rqgm_replay_pool.schema.json` section).
         return []
 
 

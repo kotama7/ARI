@@ -1,4 +1,5 @@
-"""Adversarial evolution loop (RQGM Task 06, docs/plans/ari_rqgm/06).
+"""Adversarial evolution loop (RQGM Task 06; docs/concepts/rqgm_architecture.md,
+"Key invariants" — raw attacks never touch scores).
 
 The attack → defense → adjudication loop for ``ari_rqgm`` mode: an
 AdversaryEngine that attacks research *artifacts* (never components), a

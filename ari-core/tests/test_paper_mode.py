@@ -1,5 +1,5 @@
 """Paper-archive Task 01 — paper execution-mode switch
-(docs/plans/ari_rqgm_paper/01, §9).
+(docs/guides/execution_modes.md §The paper execution axis: `paper.mode`).
 
 Covers: config parsing (`paper.mode` / `rqgm.paper.enabled` + archive/epoch/
 anchor/prompt_evolution skeletons), the four-cell `resolve_paper_mode` table

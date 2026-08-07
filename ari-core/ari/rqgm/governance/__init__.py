@@ -1,7 +1,8 @@
 """GovernanceOrchestrator — the epoch-boundary governance facade (RQGM Task 05).
 
 One public class, one public method, one public return type
-(plan ``docs/plans/ari_rqgm/05`` §5.1/§7):
+(``docs/reference/internal_boundaries.md``, "RQGM mode boundary
+(``ari.rqgm``)" — the governance facade is the only commitment):
 
     report = GovernanceOrchestrator(cfg, kernel=kernel).audit_epoch(
         epoch_state=..., audit_log=..., component_registry=...,

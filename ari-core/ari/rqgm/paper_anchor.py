@@ -1,5 +1,6 @@
-"""APReS-equivalent ground-truth anchor for the paper reviewer (paper-archive
-Task 04, docs/plans/ari_rqgm_paper/04).
+"""APReS-equivalent ground-truth anchor for the paper reviewer (the two anchors
+of docs/concepts/rqgm_architecture.md "The paper-archive layer"; corpus shape
+in docs/reference/rqgm_schemas.md "Paper-archive schemas").
 
 The co-evolving ``paper_reviewer`` (a governed EVALUATOR role, plan 03) earns
 trust the way the RQGM paper's APReS evaluator does: by AGREEING with a
@@ -8,12 +9,14 @@ ALSO anchored (§5.1, revised 2026-07-16) — but to a ground truth the RQGM
 paper's writer never had: ARI writes about REAL experiments, so the Layer-0
 claim-evidence hard gate scores a draft's faithfulness DETERMINISTICALLY
 (:func:`writer_faithfulness_score`). A writer whose drafts regress on that
-faithfulness is a real SANCTION SOURCE (over-accepted-AND-unfaithful drafts
-bind the writer, docs/plans/ari_rqgm_paper/05), its role OPENS, and its PROMPT
-co-evolves via the existing T6 — the coding-domain shape (a deterministic
-verifier + the co-evolving reviewer), not the paper's anchor-less writer. The
-curated human corpus is still the REVIEWER's anchor; the writer's anchor is the
-gate ARI already computes for free (zero extra data). This module owns:
+faithfulness is a real SANCTION SOURCE (the two culpable components of
+docs/concepts/rqgm_architecture.md "The paper-archive layer":
+over-accepted-AND-unfaithful drafts bind the writer), its role OPENS, and its
+PROMPT co-evolves via the existing T6 — the coding-domain shape (a
+deterministic verifier + the co-evolving reviewer), not the paper's
+anchor-less writer. The curated human corpus is still the REVIEWER's anchor;
+the writer's anchor is the gate ARI already computes for free (zero extra
+data). This module owns:
 
 * the ``paper_anchor_corpus.jsonl`` schema (accept/reject reference
   manuscripts, each declaring a REQUIRED ``label_source``);
@@ -94,9 +97,11 @@ WRITER_FAITHFULNESS_METRIC_ID = "claim_evidence_faithfulness_v1"
 
 #: A draft whose faithfulness score is strictly below this bar (or that carries
 #: any Layer-0 gate error finding) is UNFAITHFUL — the writer that produced it
-#: is a culpable component for the over-accepted-AND-unfaithful draft (§5.1 /
-#: docs/plans/ari_rqgm_paper/05 §5.4). A conservative bar: a faithful draft that
-#: grounds every claim and reproduces every number scores 1.0.
+#: is a culpable component for the over-accepted-AND-unfaithful draft
+#: (docs/concepts/rqgm_architecture.md "The paper-archive layer": the writer
+#: binding is gated per node on that draft's Layer-0 faithfulness). A
+#: conservative bar: a faithful draft that grounds every claim and reproduces
+#: every number scores 1.0.
 WRITER_FAITHFULNESS_THRESHOLD = 0.75
 
 #: The writer-anchor descriptor frozen into ``paper_utility_policy`` in place of

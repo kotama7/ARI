@@ -1,5 +1,6 @@
 """Legacy shadow diff: 24-key Settings save+launch vs the new-run resolver
-(gui_refresh task 05 Wave 3b; plan 06/10 'shadow serialization' parity gate).
+(docs/concepts/gui_architecture.md § 1. Strangler shape: one shell, two
+generations of screens — "the two sides are held in agreement by tests").
 
 For the overlapping leaf set — llm.model/backend/base_url, the 4 SLURM
 settings, the 2 container settings, the 3 Letta settings, the VLM review
@@ -19,14 +20,17 @@ model and the retrieval backend — this suite:
    injection) through ``resolve_new_run_config`` (same bundled workflow);
 5. asserts per-leaf equality of effective values — with an EXPLICIT
    allowlist of known divergences, each referencing the G0 known-mismatch
-   table (``docs/plans/gui_refresh/baseline/g0_review_record.md``) or the
-   untyped-block gap the field registry forward-declares.
+   table (``docs/reference/configuration.md`` § Legacy Settings keys: what
+   is actually wired) or the untyped-block gap the field registry
+   forward-declares.
 
 The allowlist is exact in both directions: a row may diverge only if listed,
 and every listed row must actually diverge — so closing a gap (e.g. typing
 the ``container`` block) fails this suite until the entry is removed.
-This is the parity gate plan 10 Wave 3 demands before the canonical
-resolver may replace the legacy launch mapping.
+This is the parity gate the cutover runbook enforces
+(``docs/guides/gui_cutover_runbook.md`` § 2. Pre-cutover checklist,
+§ 4. Stop and rollback conditions) before the canonical resolver may
+replace the legacy launch mapping.
 """
 
 from __future__ import annotations
@@ -149,9 +153,9 @@ OUT_OF_SCOPE: dict[str, str] = {
 }
 
 # The EXACT set of overlapping rows allowed to diverge, each referencing the
-# G0 known-mismatch table (docs/plans/gui_refresh/baseline/
-# g0_review_record.md §Known mismatch classification) or the untyped-block
-# gap ``ari.config.field_registry`` forward-declares.
+# G0 known-mismatch table (docs/reference/configuration.md § Legacy Settings
+# keys: what is actually wired — the dead / seed-only / env-only / frozen-defect
+# rows) or the untyped-block gap ``ari.config.field_registry`` forward-declares.
 KNOWN_DIVERGENCES: dict[str, str] = {
     "temperature": "G0 table: 'temperature/container_pull dead keys' — the "
                    "legacy launch never exports it, so the run keeps the "

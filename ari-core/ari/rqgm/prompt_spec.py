@@ -1,6 +1,7 @@
 """PromptSpec — prompts as versioned, role-scoped objects (RQGM Task 07).
 
-A :class:`PromptSpec` separates (plan ``docs/plans/ari_rqgm/07`` §5.1):
+A :class:`PromptSpec` separates (``docs/reference/rqgm_schemas.md``,
+"``rqgm_prompt_spec.schema.json``"):
 
 * **identity** — ``prompt_id`` / ``role`` / ``version`` / lineage
   (``parent_prompt_id``) / ``generation_mode``;
@@ -16,7 +17,9 @@ A :class:`PromptSpec` separates (plan ``docs/plans/ari_rqgm/07`` §5.1):
 The template bytes stay dumb ``str.format`` Markdown; the PromptSpec is
 metadata *about* the template and rendering is byte-identical to today.
 
-Founding bootstrap (§5.2): the committed ``ari-core/ari/prompts/**/*.md``
+Founding bootstrap (``docs/concepts/rqgm_runtime_walkthrough.md``,
+"2. Founding registration — one transaction, the whole institution"): the
+committed ``ari-core/ari/prompts/**/*.md``
 templates map to v1 founding specs whose ``prompt_hash`` equals
 ``load_versioned(key)[1]`` — verifiable against ``_EXPECTED_HASHES`` and the
 Gate 10 snapshots with zero new hashing. Founding specs are the SOLE
@@ -24,7 +27,8 @@ Gate 10 snapshots with zero new hashing. Founding specs are the SOLE
 
 Registry-version note: this module defines NO registry-version scheme. The
 value stamped into provenance comes from Task 02's
-``GovernedPromptRegistry.registry_version()`` (plan 02 §5.4 owns the formula).
+``GovernedPromptRegistry.registry_version()`` (the registry rollup owns it —
+``docs/reference/rqgm_schemas.md``, "``rqgm_registry.schema.json``").
 
 Deterministic, pure stdlib: no LLM calls, no network, no randomness (P2).
 """
@@ -50,14 +54,16 @@ PROMPT_SPEC_SCHEMA_VERSION = 1
 #: imports THIS module, so importing it back would be a cycle).
 RQGM_PROMPTS_DIRNAME = "rqgm_prompts"
 
-#: ``template_ref.kind`` values (plan 07 §6): ``package`` == committed loader
+#: ``template_ref.kind`` values (``docs/reference/rqgm_schemas.md``,
+#: "``rqgm_prompt_spec.schema.json``"): ``package`` == committed loader
 #: key; ``checkpoint`` == evolved body under ``{ckpt}/rqgm_prompts/``;
 #: ``policy`` == a Task-14 utility-policy body (canonical JSON) under the
 #: same directory.
 #:
-#: **Why a policy is a "prompt"** (plan 14 §5.3 decision; recorded here
-#: because a future reader must not have to re-derive it). The governed
-#: utility policy is registered as a PromptSpec / GovernedPromptEntry whose
+#: **Why a policy is a "prompt"** (``docs/reference/rqgm_schemas.md``,
+#: "``rqgm_utility_policy_candidate.schema.json``" — "one value, three names";
+#: recorded here because a future reader must not have to re-derive it). The
+#: governed utility policy is registered as a PromptSpec / GovernedPromptEntry whose
 #: ``prompt_hash`` IS ``utility_policy_hash``, rather than as a parallel
 #: ``UtilitySpec`` type, because:
 #:
@@ -84,17 +90,22 @@ TEMPLATE_REF_KINDS: tuple[str, ...] = ("package", "checkpoint", "policy")
 #: The ``template_ref.kind`` / ``source.kind`` marking a utility-policy body.
 POLICY_TEMPLATE_REF_KIND = "policy"
 
-#: The founding utility-policy identities (plan 14 §5.3). The component id is
+#: The founding utility-policy identities (``docs/concepts/rqgm_architecture.md``,
+#: "The epoch cycle" — ``utility_policy_prompt_v1`` is the one founding prompt
+#: row derived from the resolved config). The component id is
 #: exactly the one ``adversarial.records.UtilityRecord`` already stamps.
 UTILITY_POLICY_PROMPT_ID = "utility_policy_prompt_v1"
 UTILITY_POLICY_COMPONENT_ID = "utility_policy_v1"
 
-#: How a spec came to exist (plan 07 §5.1).
+#: How a spec came to exist (``docs/reference/rqgm_schemas.md``,
+#: "``rqgm_prompt_spec.schema.json``" — the ``generation_mode`` row).
 GENERATION_MODES: tuple[str, ...] = ("founding", "mutation", "clean_room")
 
-#: Machine-checkable constraint clauses each role's spec MUST carry verbatim
-#: (plan 07 §5.3 stage 2). Task 07 owns this table; the kernel's frozen rule
-#: tables (Task 04) stay untouched.
+#: Machine-checkable constraint clauses each role's spec MUST carry verbatim,
+#: checked at the ``constitutional_validation`` stage of the candidate
+#: lifecycle (``docs/concepts/rqgm_runtime_walkthrough.md``, "7. Prompt
+#: evolution — candidates crawl, the RTE adopts"). Task 07 owns this table;
+#: the kernel's frozen rule tables (Task 04) stay untouched.
 REQUIRED_CONSTRAINTS_BY_ROLE: dict[str, tuple[str, ...]] = {
     "reviewer": (
         "Do not override fixed verifier failures.",
@@ -106,7 +117,8 @@ REQUIRED_CONSTRAINTS_BY_ROLE: dict[str, tuple[str, ...]] = {
     "prompt_mutator": (
         "Emit candidates only; never write to the registry.",
     ),
-    # Task 14 (plan 14 §5.2): copied verbatim from ``prompt_mutator`` — the
+    # Task 14 (docs/concepts/rqgm_architecture.md, "Governed utility
+    # evolution"): copied verbatim from ``prompt_mutator`` — the
     # PolicyMutator has the identical candidates-only contract.
     #
     # ``utility_policy`` deliberately gets NO row: constraint clauses are
@@ -114,8 +126,10 @@ REQUIRED_CONSTRAINTS_BY_ROLE: dict[str, tuple[str, ...]] = {
     "policy_mutator": (
         "Emit candidates only; never write to the registry.",
     ),
-    # plan 11 §5.2 items 3-4. Both roles emit RECOMMENDATIONS, and the clause
-    # each carries is the exact property that makes the role safe to evolve.
+    # The two live meta actors (docs/concepts/rqgm_architecture.md, "The three
+    # layers" — Layer 2, "strictly narrower authority"). Both roles emit
+    # RECOMMENDATIONS, and the clause each carries is the exact property that
+    # makes the role safe to evolve.
     #
     # The replay selector's danger is suppression, not fabrication: a selector
     # that learned to omit the cases its own lineage keeps failing would erase
@@ -166,7 +180,8 @@ RAW_LOADED_KEYS: frozenset[str] = frozenset(
 
 @dataclass(frozen=True)
 class PromptSpec:
-    """One versioned prompt identity (plan 07 §6 schema). Immutable: any
+    """One versioned prompt identity (``docs/reference/rqgm_schemas.md``,
+    "``rqgm_prompt_spec.schema.json``"). Immutable: any
     change is a NEW ``prompt_id`` + ``prompt_hash`` — never an edit."""
 
     prompt_id: str
@@ -223,7 +238,8 @@ def prompt_spec_from_dict(d: dict) -> PromptSpec:
     )
 
 
-# ── founding bootstrap (plan 07 §5.2) ────────────────────────────────────────
+# ── founding bootstrap (docs/concepts/rqgm_runtime_walkthrough.md,
+# "2. Founding registration — one transaction, the whole institution") ───────
 
 #: The v1 founding mapping: ``(prompt_id, loader key, role, evolvable,
 #: output_schema)`` for every governed committed template. Order matters for
@@ -301,7 +317,10 @@ FOUNDING_PROMPT_TABLE: tuple[tuple[str, str, str, bool, dict], ...] = (
      True, {"__reply__": "json_object"}),
     ("clean_room_generator_prompt_v1", "rqgm/clean_room_generator",
      "clean_room_generator", True, {"__reply__": "freeform"}),
-    # plan 11 §5.2 items 3-4. Both roles were in the closed role vocabulary and
+    # The two live meta actors (docs/concepts/rqgm_runtime_walkthrough.md,
+    # "2. Founding registration — one transaction, the whole institution",
+    # which lists replay_selector_v1 / failure_summary_compressor_v1 among the
+    # founding components). Both roles were in the closed role vocabulary and
     # the capability matrix but had NO founding prompt, NO founding component
     # and NO invoker, so ``run_epoch_boundary_step`` never reached them: they
     # were governance vocabulary with nothing behind it. Each row's schema
@@ -393,9 +412,11 @@ FOUNDING_COMPONENT_TABLE: tuple[tuple[str, str, str, str, dict], ...] = (
     # prompt_id is None (schema-nullable). Registered so it is impeachable like
     # every other governance actor.
     ("evidence_clerk_v1", "evidence_clerk", "institutional", None, {}),
-    # plan 11 §5.2 items 3-4. Each declares ONLY the one action it performs:
-    # capability flags are deny-by-default (``meta_rules.meta_action_denials``),
-    # so neither can emit prompt candidates, and the five
+    # The two live meta actors. Each declares ONLY the one action it performs:
+    # capability flags are deny-by-default (``meta_rules.meta_action_denials``;
+    # docs/concepts/rqgm_runtime_walkthrough.md, "7. Prompt evolution —
+    # candidates crawl, the RTE adopts": the meta tier can propose, never
+    # appoint), so neither can emit prompt candidates, and the five
     # ``META_HARD_DENIED_FLAGS`` stay absent (a meta entry setting any of them
     # is a schema violation, not merely a denial). No ``forbidden_targets``:
     # that key bounds which ROLES a candidate-emitting mutator may target, and
@@ -419,7 +440,8 @@ FOUNDING_COMPONENT_TABLE: tuple[tuple[str, str, str, str, dict], ...] = (
     # reliability/impeachment path for the seven research adversaries.
     ("generator_v1", "generator", "institutional",
      "generator_prompt_v1", {}),
-    # Task 14 (plan 14 §5.3): the score's proposer. Same minimal meta grants
+    # Task 14 (docs/concepts/rqgm_architecture.md, "Governed utility
+    # evolution"): the score's proposer. Same minimal meta grants
     # as prompt_mutator_v1 — no authority the other meta agents lack, no
     # immunity they lack (P3: the thing that proposes the score is itself
     # governed, sanctionable and evolvable).
@@ -435,7 +457,9 @@ FOUNDING_COMPONENT_TABLE: tuple[tuple[str, str, str, str, dict], ...] = (
     ("replay_selector_v1", "replay_selector", "meta",
      "replay_selector_prompt_v1",
      {"can_emit_replay_recommendation": True}),
-    # Task 14 (plan 14 §5.3): the governed score itself. Declares NO
+    # Task 14 (docs/concepts/rqgm_architecture.md, "The epoch cycle" — the
+    # founding tables are frozen code constants and utility_policy_prompt_v1 is
+    # derived from the resolved config): the governed score itself. Declares NO
     # capabilities and may never acquire any — a policy that could
     # ``invoke`` or ``write registry`` is not a policy. Its prompt row is
     # NOT in FOUNDING_PROMPT_TABLE (the policy body is cfg-derived, not a
@@ -459,7 +483,10 @@ KCA_FIXED_COMPONENT_TABLE: tuple[tuple[str, str, str, None, dict], ...] = (
     ("knowledge_binder_v1", "knowledge_binder", "fixed", None, {}),
 )
 
-#: Paper-archive founding tables (plan ari_rqgm_paper/03 §5.5), kept SEPARATE
+#: Paper-archive founding tables (``docs/concepts/rqgm_architecture.md``,
+#: "The paper-archive layer" — the paper roles are "registered only under the
+#: effective ``rqgm_archive`` mode (so exploration boots stay byte-identical)"),
+#: kept SEPARATE
 #: from the exploration tables so they are PAPER-MODE-GATED: they enter the
 #: registry only when ``include_paper=True`` is threaded through
 #: :func:`build_founding_specs` / :func:`founding_registration_events` (which
@@ -474,7 +501,12 @@ KCA_FIXED_COMPONENT_TABLE: tuple[tuple[str, str, str, None, dict], ...] = (
 #: empty extra capability maps (the matrix grants are role-derived, §5.2).
 #: Single template per role, so the "primary last per role" rollup convention
 #: is satisfied trivially.
-#: Paper-archive Task 05 (docs/plans/ari_rqgm_paper/05 §5.6): the eighth
+#: Paper-archive Task 05 (``docs/concepts/rqgm_architecture.md``, "The epoch
+#: cycle" — "Paper-archive boot adds three gated prompts and components
+#: (``paper_writer``, ``paper_reviewer``, ``paper_self_preference``) for totals
+#: of 35 and 23"; and ``docs/reference/rqgm_schemas.md``, "``rqgm/
+#: paper_self_preference_stat.json`` — the self-preference statistic", under
+#: "The eighth adversary type"): the eighth
 #: adversary is a founding prompt AND a founding component, on exactly the
 #: seven's ``(role, tier, evolvable)`` terms, so it is registry-governed and
 #: SANCTIONABLE (P3) rather than resolving to an unregistered ad-hoc id that
@@ -502,7 +534,8 @@ PAPER_FOUNDING_PROMPT_TABLE: tuple[tuple[str, str, str, bool, dict], ...] = (
      {"__reply__": "freeform"}),
 )
 
-#: Paper-archive founding components (plan ari_rqgm_paper/03 §5.5), sorted by
+#: Paper-archive founding components (``docs/concepts/rqgm_architecture.md``,
+#: "The paper-archive layer"), sorted by
 #: ``component_id`` like :data:`FOUNDING_COMPONENT_TABLE`.
 PAPER_FOUNDING_COMPONENT_TABLE: tuple[tuple[str, str, str, str, dict], ...] = (
     # Task 05 §5.6: the id ``engine._component_id`` already stamps for a
@@ -534,7 +567,10 @@ def founding_spec_from_entry(
     Pure bytes → spec (P2): hashes are recomputed from the template text via
     the injectable *loader* so ``prompt_hash == load_versioned(key)[1]`` by
     construction. Founding specs are ``active`` on creation — the documented
-    sole lifecycle exception (they ARE the incumbents; plan 07 §5.2).
+    sole lifecycle exception (they ARE the incumbents — the founding
+    ``prompt_registered`` payloads carry ``status: "active"``:
+    ``docs/concepts/rqgm_runtime_walkthrough.md``, "2. Founding registration —
+    one transaction, the whole institution").
     """
     if loader is None:
         from ari.prompts import FilesystemPromptLoader
@@ -587,13 +623,16 @@ def build_founding_specs(
     registry=None, loader=None, *, include_paper: bool = False
 ) -> list[PromptSpec]:
     """Deterministic v1 bootstrap: one founding spec per governed committed
-    template, in :data:`FOUNDING_PROMPT_TABLE` order (plan 07 §5.2).
+    template, in :data:`FOUNDING_PROMPT_TABLE` order
+    (``docs/concepts/rqgm_runtime_walkthrough.md``, "2. Founding registration —
+    one transaction, the whole institution").
 
     *registry* is an injectable :class:`ari.prompts.PromptRegistry`
     (placeholder introspection); *loader* feeds
     :func:`founding_spec_from_entry`. Pure bytes → specs, no goldens needed.
 
-    *include_paper* (plan ari_rqgm_paper/03 §5.5) appends the paper-archive
+    *include_paper* (``docs/concepts/rqgm_architecture.md``, "The
+    paper-archive layer") appends the paper-archive
     founding specs (``paper_writer`` / ``paper_reviewer``). Default ``False``
     keeps the exploration boot byte-identical; the ``PaperArchiveRuntime`` is
     the only caller that sets it ``True`` (so its mutator can rebuild the
@@ -623,7 +662,11 @@ def build_founding_specs(
 
 
 def utility_policy_body_path(prompt_id: str) -> str:
-    """The checkpoint-relative path of a governed policy body (plan 14 §6.1):
+    """The checkpoint-relative path of a governed policy body
+    (``docs/reference/rqgm_schemas.md``,
+    "``rqgm_utility_policy_candidate.schema.json``" — the body is written
+    write-once to ``rqgm_prompts/<candidate_id>.json``, referenced by source,
+    never inlined):
     ``rqgm_prompts/<prompt_id>.json``. Stated here (not imported from
     ``prompt_loader``) so this pure module stays I/O-free."""
     return f"{RQGM_PROMPTS_DIRNAME}/{prompt_id}.json"
@@ -640,7 +683,8 @@ def utility_policy_spec(
     epoch_introduced: str = "epoch_000",
 ) -> PromptSpec:
     """A policy-backed :class:`PromptSpec` over a utility-policy *body*
-    (plan 14 §5.3). Pure: body → spec, no I/O.
+    (``docs/reference/rqgm_schemas.md``,
+    "``rqgm_utility_policy_candidate.schema.json``"). Pure: body → spec, no I/O.
 
     ``prompt_hash`` is ``hash12(canonical_json(body))``, which IS the body
     file's bytes' hash, which IS ``utility_policy_hash`` — one value, three
@@ -681,7 +725,10 @@ def utility_policy_spec(
 
 
 def founding_utility_policy_spec(cfg) -> PromptSpec:
-    """The epoch-0 utility policy as a founding spec (plan 14 §5.3).
+    """The epoch-0 utility policy as a founding spec
+    (``docs/concepts/rqgm_architecture.md``, "The epoch cycle" —
+    ``capture_utility_policy`` falls back to the resolved ``cfg`` only at
+    epoch 0 or when no policy has been adopted).
 
     It is ``cfg``-derived, so it is deliberately NOT a member of
     :data:`FOUNDING_PROMPT_TABLE` — that table's reproducibility claim is
@@ -744,7 +791,8 @@ def prompt_source(spec: PromptSpec) -> dict:
 
 
 def build_paper_founding_specs(loader=None) -> list[PromptSpec]:
-    """The paper-archive founding specs only (plan ari_rqgm_paper/03 §5.5).
+    """The paper-archive founding specs only
+    (``docs/concepts/rqgm_architecture.md``, "The paper-archive layer").
 
     Pure bytes → specs over :data:`PAPER_FOUNDING_PROMPT_TABLE`; used by the
     paper boundary to rebuild the ``paper_writer`` / ``paper_reviewer``
@@ -773,7 +821,8 @@ def founding_component_payloads(*, include_paper: bool = False) -> list[dict]:
     deterministic). Like the prompt payloads, registration stays the event
     log's job — this module never writes the registry.
 
-    *include_paper* (plan ari_rqgm_paper/03 §5.5) appends the paper-archive
+    *include_paper* (``docs/concepts/rqgm_architecture.md``, "The
+    paper-archive layer") appends the paper-archive
     founding components (paper-mode-gated; default ``False`` keeps
     exploration byte-identical)."""
     table = FOUNDING_COMPONENT_TABLE + (
@@ -828,12 +877,15 @@ def founding_registration_events(
     ``utility_policy`` row when a *cfg* is supplied, then every component in
     :data:`FOUNDING_COMPONENT_TABLE` order.
 
-    Reproducibility (amended by plan 14 §5.3): the tables are frozen code
+    Reproducibility (``docs/concepts/rqgm_architecture.md``, "The epoch cycle"
+    — the founding prompt/component rows are frozen code constants and
+    ``utility_policy_prompt_v1`` is derived from the resolved config): the
+    tables are frozen code
     constants, so with ``cfg=None`` the emitted sequence — and therefore
     ``registry_version()`` and the ``epoch_000`` fingerprint — is
     reproducible across boots and machines (P2). WITH a *cfg*, the sequence
     is reproducible **for a fixed resolved cfg**: the founding utility
-    policy's bytes are cfg-derived (§5.3), and ``registry_version()`` hashes
+    policy's bytes are cfg-derived, and ``registry_version()`` hashes
     ``prompt_sha256`` values.
 
     That honesty costs nothing new: ``epoch_fingerprint`` has ALWAYS
@@ -852,7 +904,8 @@ def founding_registration_events(
         prompt_payloads = prompt_payloads + founding_registration_payloads(
             [founding_utility_policy_spec(cfg)]
         )
-    # Paper-archive founding prompts (plan ari_rqgm_paper/03 §5.5) — appended
+    # Paper-archive founding prompts (docs/concepts/rqgm_architecture.md,
+    # "The paper-archive layer") — appended
     # AFTER the exploration + utility-policy prompts so the exploration
     # sequence (``include_paper=False``, the default) is byte-identical.
     if include_paper:

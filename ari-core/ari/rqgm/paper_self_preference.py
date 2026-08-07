@@ -1,5 +1,6 @@
 """Deterministic self-preference statistic for the paper reviewer
-(paper-archive Task 05, docs/plans/ari_rqgm_paper/05 §5.1/§5.3/§6).
+(paper-archive Task 05; docs/reference/rqgm_schemas.md, the
+``rqgm/paper_self_preference_stat.json`` section).
 
 The ``paper_self_preference`` adversary attacks a reviewer DECISION the
 artifact reveals: an AI-authored draft the incumbent ``paper_reviewer``

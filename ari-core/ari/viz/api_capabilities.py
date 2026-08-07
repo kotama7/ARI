@@ -3,9 +3,10 @@
 ``GET /api/capabilities`` lets the frontend discover which server-side
 feature flags are active before it decides what shell/chrome to render.
 
-``gui_v2`` is the ``ARI_GUI_V2`` server capability flag from the gui_refresh
-feature-flag policy (``docs/plans/gui_refresh/10_migration_testing_release_
-and_docs.md`` §Wave 1 / §Feature flag policy):
+``gui_v2`` is the ``ARI_GUI_V2`` server capability flag; the rollout-flag
+policy lives in ``docs/guides/gui_cutover_runbook.md`` ("1. Levers" for the
+flag's exact effect, "6. Legacy removal" for the flag-hygiene rule this
+docstring satisfies):
 
 * owner: gui_refresh task 03 (application shell, routing, frontend state);
 * default: ON — any value except ``'0'`` / ``'false'`` enables the v2 shell;

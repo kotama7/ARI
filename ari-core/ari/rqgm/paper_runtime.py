@@ -1,5 +1,7 @@
-"""Paper-archive runtime facade + mode provenance (paper-archive Task 01/02,
-docs/plans/ari_rqgm_paper/01, /02 §5.3).
+"""Paper-archive runtime facade + mode provenance
+(docs/concepts/rqgm_architecture.md, "The paper-archive layer";
+docs/reference/rqgm_schemas.md, "`paper_archive_state.json` — paper-phase mode
+provenance").
 
 :class:`PaperArchiveRuntime` is the single funnel for all paper-archive
 construction, the paper-phase analog of :class:`ari.rqgm.runtime.RQGMRuntime`.
@@ -383,8 +385,10 @@ def _sat(x: float) -> float:
 
 
 class GovernedPaperReviewer:
-    """The governed ``paper_reviewer`` oracle (docs/plans/ari_rqgm_paper/03
-    §5.8, /04 §5.4).
+    """The governed ``paper_reviewer`` oracle
+    (docs/concepts/rqgm_architecture.md, "The paper-archive layer";
+    docs/reference/rqgm_schemas.md, "`paper_anchor_corpus.jsonl` — the
+    read-only accept/reject anchor").
 
     Driven by the epoch's ACTIVE ``paper_reviewer`` prompt TEXT + hash (the
     evolving bytes live in ari-core, not the skill). ``review`` returns REAL
@@ -923,8 +927,9 @@ class PaperArchiveRuntime:
         self.checkpoint_dir = checkpoint_dir
         self.mcp = mcp
         self.memory = None
-        # docs/plans/ari_rqgm_paper/05: the paper_self_preference adversary's
-        # LLM seam (attack/defense/adjudication). Defaults to ``llm`` (the real
+        # The paper_self_preference adversary's LLM seam
+        # (attack/defense/adjudication; docs/concepts/rqgm_architecture.md,
+        # "The paper-archive layer"). Defaults to ``llm`` (the real
         # LLMClient in production, .complete-shaped); tests inject a scriptable
         # governance LLM. ``None`` on both => no attacks (AdversaryEngine's
         # no-LLM floor), which is the cheap on-ramp posture.
@@ -946,8 +951,11 @@ class PaperArchiveRuntime:
         self._reviewer_score_fn = reviewer_score_fn
         self._reviewer_revise_fn = reviewer_revise_fn
         self._reviewer_confidence_fn = reviewer_confidence_fn
-        # docs/plans/ari_rqgm_paper/03 §5.9 step 2: the schema_dry_run LLM reply
-        # seam. schema_dry_run renders a candidate prompt to a reply and checks
+        # The reply seam for the candidate-validation ladder's
+        # ``schema_dry_run`` stage — "one injected LLM call; failure is
+        # terminal" (docs/concepts/rqgm_runtime_walkthrough.md, "7. Prompt
+        # evolution — candidates crawl, the RTE adopts").
+        # schema_dry_run renders a candidate prompt to a reply and checks
         # it against the role's founding output_schema — a non-deterministic,
         # budgeted LLM call, so it is INCOMPATIBLE with this evaluator's default
         # deterministic (P2) path. It runs ONLY when this reply seam
@@ -975,11 +983,14 @@ class PaperArchiveRuntime:
         # The active writer's last-scored draft faithfulness (observability;
         # None until the first round's draft is gate-scored).
         self._last_writer_faithfulness = None
-        # Task 06 (docs/plans/ari_rqgm_paper/06 §5.1): the REUSED
-        # GovernanceBudgetManager (lazy, fail-open to None) + the current paper
-        # epoch it reads counters against. `current_paper_epoch` tracks the
-        # inner RQGM's frozen open epoch so the paper manager and the inner
-        # manager share one per-epoch counter home (rqgm_audit.jsonl).
+        # The REUSED GovernanceBudgetManager (lazy, fail-open to None) + the
+        # current paper epoch it reads counters against — the paper phase
+        # inherits the governance budget verbatim
+        # (docs/concepts/rqgm_architecture.md, "The paper-archive layer"; the
+        # manager itself is in "Configuration surface"). `current_paper_epoch`
+        # tracks the inner RQGM's frozen open epoch so the paper manager and
+        # the inner manager share one per-epoch counter home
+        # (rqgm_audit.jsonl).
         self._budget_manager = None
         self._current_epoch_obj = None
         self._compiles = 0                # lazy-compile audit (§6.3, bounded top-K)
@@ -1559,10 +1570,12 @@ class PaperArchiveRuntime:
         """Run ``rqgm.paper.epoch.rounds`` archive rounds. Round 0 opens
         ``epoch_000`` (registering the paper founding roles, paper-mode-gated);
         each later round head fires the INHERITED ensure_epoch boundary
-        (Propose -> Validate -> Audit -> Adopt, docs/plans/ari_rqgm_paper/03
-        §5.9) so the governed paper_reviewer bytes co-evolve. The active
-        reviewer prompt_hash observed at each round head is the co-evolution
-        witness (§11)."""
+        (Propose -> Validate -> Audit -> Adopt;
+        docs/concepts/rqgm_architecture.md, "The epoch cycle", and
+        docs/concepts/rqgm_runtime_walkthrough.md, "A paper-archive run
+        (paper.mode: rqgm_archive)") so the governed paper_reviewer bytes
+        co-evolve. The active reviewer prompt_hash observed at each round head
+        is the co-evolution witness."""
         from ari.rqgm.paper_anchor import load_anchor_corpus
 
         rqgm = self._build_inner_rqgm(ckpt, mcp)
@@ -2974,7 +2987,10 @@ class PaperArchiveRuntime:
     # ── Task 07 handoff: pure select-and-copy (§5.1/§5.2/§7) ─────────────
     def materialize_winner(self, winner, checkpoint_dir) -> Path:
         """Materialise the archive's best draft to the canonical linear-pipeline
-        input ``{ckpt}/full_paper.tex`` (docs/plans/ari_rqgm_paper/07 §5.1/§5.2).
+        input ``{ckpt}/full_paper.tex``
+        (docs/reference/manuscript_complete_contracts.md, "RQGM archive
+        provenance"; docs/concepts/rqgm_architecture.md, "The paper-archive
+        layer").
 
         PURE select-and-copy — no gate call, no kernel call, no LLM, no
         re-scoring (P2 determinism at the boundary). Idempotent and resume-safe:

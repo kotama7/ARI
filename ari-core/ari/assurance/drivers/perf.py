@@ -365,6 +365,20 @@ class NativePerfDriver:
             # driver could be read as evidence about a harness it never ran.
             "problem": definition.revision,
             "problem_digest": problem.digest,
+            # The common view the gates read; the detail below stays.
+            "controls": {
+                "clean": {"verdict": clean.verdict,
+                          "resolved": resolved,
+                          "relative_spread": clean_spread,
+                          "median_speedup": (clean.case_results[0].speedup
+                                             if clean.case_results else 0.0)},
+                "negatives": [
+                    {"name": "slow-but-correct", "verdict": slow.verdict,
+                     "detail": slow_detail},
+                    {"name": "fast-but-wrong", "verdict": wrong.verdict,
+                     "detail": wrong_detail},
+                ],
+            },
             "results": {
                 "clean_control": {
                     "verdict": clean.verdict,

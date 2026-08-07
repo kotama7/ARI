@@ -73,11 +73,6 @@
       "type": "string"
     },
     "kind": {
-      "enum": [
-        "gemm",
-        "spmm",
-        "stencil"
-      ],
       "title": "Kind",
       "type": "string"
     },

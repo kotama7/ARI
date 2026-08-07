@@ -1,9 +1,12 @@
 """Clean-room contamination policy tables + deterministic screen (RQGM Task 08).
 
-Layer-0 pure-data/pure-function module (plan ``docs/plans/ari_rqgm/08``
-§5.2/§5.5/§6): the closed allowed/forbidden input split of the clean-room
-regeneration path, the closed ``CleanRoomInputBundle`` field set, the closed
-FailureSummary class vocabulary, and the word-shingle contamination screen.
+Layer-0 pure-data/pure-function module (``docs/concepts/rqgm_architecture.md``,
+"Key invariants" — clean-room contamination rules;
+``docs/reference/rqgm_schemas.md``, "Clean-room schemas (Task 08)" for the
+const-false forbidden-input flags): the closed allowed/forbidden input split
+of the clean-room regeneration path, the closed ``CleanRoomInputBundle`` field
+set, the closed FailureSummary class vocabulary, and the word-shingle
+contamination screen.
 Imported by BOTH the ConstitutionalKernel (CK-CLN-001/CK-CLN-002, Task 04's
 entry points) and :mod:`ari.rqgm.clean_room` — single source of truth, the
 ``transition_rules`` layering precedent.

@@ -1,6 +1,8 @@
 """RQGM vocabulary, id/hash formats, and the transition-event envelope (Task 02).
 
-Single home (plan ``docs/plans/ari_rqgm/02`` §5.4–§5.5, §6) for:
+Single home (``docs/reference/rqgm_schemas.md`` — "Id and hash discipline",
+"Shared envelope (``rqgm_defs.schema.json``)", and the
+``rqgm_transition_event.schema.json`` section) for:
 
 * :func:`canonical_json` — the ONE canonicalisation every RQGM hash uses;
 * the id formats (``epoch_%03d``, ``transition_%03d_to_%03d``, ``evt_%06d``,

@@ -1,5 +1,6 @@
 """RQGM Task 02 — structures, vocabulary, and hash discipline
-(docs/plans/ari_rqgm/02 §5.3-§5.6, §9 tests 2-5).
+(docs/reference/rqgm_schemas.md §Id and hash discipline /
+§State and event-log schemas (Task 02)).
 
 Covers ``ari.rqgm.events`` (canonical_json byte-golden pins, hash12 reuse,
 id formats, closed vocabularies), ``ari.rqgm.registry`` (prompt-hash

@@ -1,4 +1,5 @@
-"""RQGM Task 01 — execution-mode switch (docs/plans/ari_rqgm/01, §9).
+"""RQGM Task 01 — execution-mode switch (docs/guides/execution_modes.md
+§Turning RQGM on / §Mode-switch timing policy).
 
 Covers: config parsing (`ari.mode` / `rqgm.enabled`), the four-cell
 `resolve_effective_mode` table with both warning paths,

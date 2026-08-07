@@ -2,8 +2,8 @@
 
 Direct handler tests for ``ari.viz.api_capabilities._api_capabilities`` (no
 live server; the route only ``_json``-serialises the returned dict). Pins the
-feature-flag policy from ``docs/plans/gui_refresh/10_migration_testing_
-release_and_docs.md`` §Wave 1 / §Feature flag policy:
+feature-flag policy from ``docs/concepts/gui_architecture.md``
+§Capabilities and kill-switches:
 
 * default ON (flag unset, or any value other than ``'0'`` / ``'false'``);
 * env kill-switch: ``ARI_GUI_V2=0`` and ``ARI_GUI_V2=false`` turn it off;

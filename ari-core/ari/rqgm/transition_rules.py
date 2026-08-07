@@ -1,14 +1,16 @@
 """Fixed component/prompt state-transition table (RQGM Task 09, Layer 0).
 
-Pure-data module (plan ``docs/plans/ari_rqgm/09`` §5.2/§7): the complete,
-non-evolving T1–T21 transition table for governed components and prompts
-(T20 is the Task 14 §5.5 ``utility_policy`` supersession edge; T21 is the
-paper-archive Task 05 / plan 03 §5.9 paper-role shadow-standby supersession
-edge — both amended in).
-Imported by BOTH the RegistryTransitionEngine (Task 09, engine logic lands
-there) and the ConstitutionalKernel's TransitionValidator (Task 04) — single
-source of truth, no duplication drift (plan 04 §5.2/§6). The table is covered
-by ``constitution_hash`` (plan 04 §5.7): any edit here re-pins the hash.
+Pure-data module (``docs/concepts/rqgm_architecture.md``, "The epoch cycle"):
+the complete, non-evolving T1–T21 transition table for governed components
+and prompts. T20 (``utility_policy``) and T21 (paper-role shadow standby) are
+the two role-scoped supersession edges, and are the sole exceptions to the
+one-active-entry rule — see ``docs/concepts/rqgm_architecture.md``, "The epoch
+cycle" (and "The four pillars" for why they are the only exceptions).
+Imported by BOTH the RegistryTransitionEngine (the engine logic) and the
+ConstitutionalKernel's TransitionValidator — single source of truth, no
+duplication drift. The table is covered by ``constitution_hash``
+(``docs/guides/execution_modes.md``, "Constitutional kernel (Layer 0)"): any
+edit here re-pins the hash, by hand, in ``tests/test_rqgm_kernel.py``.
 
 Encoding decision (documented for the |S|×|S| complement test): the table is
 keyed by ``(from_status, to_status)`` with exactly 21 entries, one per rule

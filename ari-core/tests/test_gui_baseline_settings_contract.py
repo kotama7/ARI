@@ -2,8 +2,10 @@
 
 This module freezes the CURRENT (legacy) behavior of the viz Settings
 handlers (``ari/viz/api_settings.py``: ``_api_get_settings`` /
-``_api_save_settings``) as golden, per the G0 contract-freeze gate of
-``/home/t-kotama/workplace/ARI/docs/plans/gui_refresh/05_configuration_control_plane.md``.
+``_api_save_settings``) as golden, per the G0 contract-freeze gate. The
+frozen surface — and this file's role as its pin — is documented in
+``docs/reference/configuration.md``, section "Legacy Settings keys: what
+is actually wired".
 
 The point is to pin behavior — INCLUDING known quirks/defects — so later
 refactors cannot silently drift:
@@ -34,8 +36,8 @@ called directly with a tmp_path active checkpoint, and all mutated global
 state (``ari.viz.state``) is restored on teardown.
 
 DO NOT "fix" any behavior asserted here as part of a refactor. Changing any
-of it is a Wave>0 decision that must update this file and the plan doc
-together.
+of it is a Wave>0 decision that must update this file and the configuration
+reference together.
 """
 from __future__ import annotations
 
@@ -188,8 +190,9 @@ def _post(body: dict) -> dict:
 
 class TestGetDefaultsShape:
     def test_default_payload_has_exactly_27_top_level_keys(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired"):
         GET /api/settings on a fresh checkpoint (no settings.json) returns
         exactly the 27 top-level default keys — asserted as a literal
         sorted list, so any key added/removed/renamed fails loudly."""
@@ -198,8 +201,9 @@ class TestGetDefaultsShape:
         assert len(out) == 27
 
     def test_ors_nested_object_has_exactly_10_keys(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired"):
         the nested 'ors' default object carries exactly 10 sub-keys."""
         out = api_settings._api_get_settings()
         assert sorted(out["ors"].keys()) == EXPECTED_ORS_KEYS
@@ -252,8 +256,10 @@ class TestGetDefaultsShape:
         assert ors["phase1_sandbox_kind"] == "auto"
 
     def test_no_checkpoint_get_returns_same_27_defaults(self, no_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — the 27-key GET payload; the read-side
+        fallback below is asserted here only):
         with NO active checkpoint, GET does not fail — it returns the same
         27-key built-in defaults (reads fall back, only writes refuse)."""
         out = api_settings._api_get_settings()
@@ -266,8 +272,9 @@ class TestGetDefaultsShape:
 
 class TestGetMergeSemantics:
     def test_unknown_saved_key_survives_merge(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/rest_api.md, section "Typed contracts (stable
+        endpoints)"):
         GET merges shallowly as {**defaults, **saved}: a key present in
         settings.json but unknown to the defaults dict is passed through
         to the client verbatim (no schema filtering)."""
@@ -283,8 +290,9 @@ class TestGetMergeSemantics:
         )
 
     def test_saved_known_key_overrides_default(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Configuration
+        Precedence (observed)"):
         a saved known key wins over the built-in default; untouched
         defaults remain visible alongside it."""
         (active_checkpoint / "settings.json").write_text(
@@ -297,8 +305,9 @@ class TestGetMergeSemantics:
         assert out["slurm_walltime"] == "04:00:00"
 
     def test_merge_is_shallow_for_ors(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Configuration
+        Precedence (observed)" — the {**defaults, **saved} GUI merge):
         the merge is SHALLOW — a saved partial 'ors' object REPLACES the
         whole 10-key default 'ors' (no deep merge). This is a quirk the
         GUI currently depends on defaults-resent-on-save to paper over."""
@@ -315,8 +324,9 @@ class TestGetMergeSemantics:
 
 class TestPostWholeFileReplace:
     def test_post_erases_keys_absent_from_body(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired"):
         POST /api/settings replaces settings.json wholesale — keys that
         were present on disk but absent from the body are ERASED (there
         is no read-modify-write)."""
@@ -334,8 +344,9 @@ class TestPostWholeFileReplace:
 
 class TestPostApiKeyHandling:
     def test_api_key_and_llm_api_key_never_persisted(self, active_checkpoint):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/file_formats.md, section "settings.json" — API
+        keys are never stored there, they live in .env):
         'api_key' and 'llm_api_key' are popped from the body and NEVER
         written to settings.json."""
         out = _post({
@@ -405,8 +416,9 @@ class TestPostApiKeyHandling:
     def test_letta_api_key_persisted_verbatim_frozen_defect(
         self, active_checkpoint,
     ):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — the letta_api_key "frozen defect" row):
         FROZEN DEFECT — 'letta_api_key' is NOT treated as a secret: it is
         persisted verbatim into plaintext settings.json (unlike
         api_key/llm_api_key which are popped). Do not fix in a refactor;
@@ -488,8 +500,9 @@ def _frontend_save_payload() -> dict:
 
 class TestFrontendSavePayload24Keys:
     def test_constant_matches_frontend_contract_tsx(self):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired" — the 24-key Save POST):
         FRONTEND_POST_KEYS_24 must stay byte-identical to EXPECTED_KEYS
         in SettingsContract.test.tsx — the two sides of the wire contract
         are pinned against each other."""
@@ -505,8 +518,9 @@ class TestFrontendSavePayload24Keys:
     def test_backend_accepts_24_key_body_and_persists_23(
         self, active_checkpoint,
     ):
-        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0, plan doc
-        docs/plans/gui_refresh/05_configuration_control_plane.md):
+        """FROZEN LEGACY contract (gui_refresh Wave 0 / G0; see
+        docs/reference/configuration.md, section "Legacy Settings keys:
+        what is actually wired"):
         _api_save_settings accepts the exact 24-key frontend Save body and
         persists exactly those keys MINUS the popped secret 'llm_api_key'
         (23 keys), with 'letta_api_key' kept verbatim (frozen defect) and

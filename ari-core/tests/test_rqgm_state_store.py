@@ -1,5 +1,6 @@
 """RQGM Task 02 — persistence, transactions, and compatibility
-(docs/plans/ari_rqgm/02 §5.1, §5.6-§5.9, §9 tests 1, 5-10 + smoke).
+(docs/reference/file_formats.md "rqgm_transitions.jsonl" / "rqgm_audit.jsonl";
+docs/reference/rqgm_schemas.md "State and event-log schemas (Task 02)").
 
 Covers ``ari.rqgm.store``: event append/replay round-trip, hash-chain
 discipline over canonical payloads, prepare-without-commit crash recovery,

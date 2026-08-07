@@ -1,8 +1,8 @@
 """ari.viz.v1 — versioned read-only ``/api/v1`` platform (gui_refresh Wave 2a).
 
-ADR-02 (``docs/plans/gui_refresh/baseline/adr/ADR-02.md``): the canonical
-dashboard API lives under ``/api/v1`` and is built ON TOP of the existing
-stdlib ``ThreadingHTTPServer`` — no FastAPI/uvicorn, no new runtime
+ADR-02 (``docs/concepts/gui_architecture.md``, "7. The backend seam"): the
+canonical dashboard API lives under ``/api/v1`` and is built ON TOP of the
+existing stdlib ``ThreadingHTTPServer`` — no FastAPI/uvicorn, no new runtime
 dependency. This package supplies the pieces the stdlib server lacks:
 
 - ``errors``  — typed error envelope ``{code, message, details, request_id,

@@ -1,4 +1,5 @@
-"""RQGM Task 13 — failure-injection machinery (docs/plans/ari_rqgm/13 §5.3/§9).
+"""RQGM Task 13 — failure-injection machinery
+(docs/guides/rqgm_evaluation.md §Failure injections).
 
 The ten shipped specs in ``scripts/rqgm_eval/failure_injections.yaml`` are
 valid, the ``eval_*`` namespace is disjoint from governance's ``adv_*`` /

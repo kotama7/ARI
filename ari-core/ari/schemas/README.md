@@ -39,7 +39,7 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `knowledge_skill_catalog_snapshot_v1.schema.json` — immutable catalog snapshot used for deterministic knowledge-skill resolution.
 - `knowledge_skill_manifest_v1.schema.json` — declared knowledge skill, source provenance, compatibility, and evidence policy.
 - `knowledge_skill_promotion_approval_v1.schema.json` — explicit human approval binding one knowledge-skill promotion to the exact manifest, body, and evidence reviewed.
-- `knowledge_skill_registration_evidence_v1.schema.json` — TODO
+- `knowledge_skill_registration_evidence_v1.schema.json` — closed clean-task and provider-portability evidence bound to one exact Skill, its source commit, and its environment digest. Portability must name its method, so the weaker `synthetic-substitution` — the incumbent withdrawn and identical contracts re-offered under a reserved stand-in — cannot be read as two independent Providers.
 - `manuscript_authoring_binding_v1.schema.json` — exact profile, context, readiness, brief, and source lineage admitted to authoring.
 - `manuscript_auto_repair_round_v1.schema.json` — one bounded repair attempt with findings, actions, progress, and stop state.
 - `manuscript_context_v1.schema.json` — evidence-grounded authoring context assembled for a manuscript profile and source snapshot.
@@ -63,7 +63,7 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `metric_contract_v1.schema.json` — immutable metric, unit, direction, comparison, and evidence vocabulary.
 - `metric_gate_contract_v1.schema.json` — evaluator projection of one admitted metric contract.
 - `native_hpc_verification_report_v1.schema.json` — authoritative native HPC verifier outputs, tolerances, resources, and reproducibility evidence.
-- `native_perf_report_v1.schema.json` — TODO
+- `native_perf_report_v1.schema.json` — the typed report the ARI-native performance worker prints and the driver normalizes: per-case verdicts over repetition records that each pin one process launch and one cold timed call, with `denominator` const-pinned to `frozen-reference-anchor`. Generated from `NativePerfReportV1`; until it existed, registration's result-schema-conformance gate had no schema for the driver's declared report type and could never have passed.
 - `node_knowledge_skill_use_v1.schema.json` — per-node record of resolved knowledge-skill use and resulting artifact lineage.
 - `node_report.schema.json` — per-node report schema.
 - `paper_build_v1.schema.json` — immutable paper inputs, revisions, compile outcome, and publication readiness.

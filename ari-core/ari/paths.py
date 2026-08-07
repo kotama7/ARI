@@ -73,27 +73,33 @@ _TRACE_FILES: frozenset[str] = frozenset({
     "memory_access.jsonl",
     "memory_access.summary.json",
     "lineage_decisions.jsonl",
-    # RQGM append-only logs (docs/plans/ari_rqgm Task 02).
+    # RQGM append-only logs (docs/reference/file_formats.md,
+    # "rqgm_transitions.jsonl" / "rqgm_audit.jsonl").
     "rqgm_transitions.jsonl",
     "rqgm_audit.jsonl",
-    # RQGM proposal-record truth (docs/plans/ari_rqgm Task 03; lives under
-    # {ckpt}/proposals/ in the flat layout).
+    # RQGM proposal-record truth (docs/reference/file_formats.md,
+    # "proposals/ (RQGM Task 03)"; lives under {ckpt}/proposals/ in the
+    # flat layout).
     "proposal_records.jsonl",
-    # RQGM adversarial-loop truth (docs/plans/ari_rqgm Task 06): raw/defense/
-    # judgment/validated/utility/case records + per-node round markers.
+    # RQGM adversarial-loop truth (docs/reference/file_formats.md,
+    # "rqgm_adversarial_cases.jsonl (RQGM Task 06)"): raw/defense/judgment/
+    # validated/utility/case records + per-node round markers.
     "rqgm_adversarial_cases.jsonl",
-    # RQGM prompt-evolution truth (docs/plans/ari_rqgm Task 07): candidate/
-    # validation/shadow-observation records.
+    # RQGM prompt-evolution truth (docs/reference/file_formats.md,
+    # "prompt_evolution.jsonl (RQGM Task 07)"): candidate/validation/
+    # shadow-observation records.
     "prompt_evolution.jsonl",
-    # RQGM clean-room regeneration truth (docs/plans/ari_rqgm Task 08):
-    # request/bundle/generation/screen/fallback events.
+    # RQGM clean-room regeneration truth (docs/reference/file_formats.md,
+    # "rqgm_cleanroom.jsonl (RQGM Task 08)"): request/bundle/generation/
+    # screen/fallback events.
     "rqgm_cleanroom.jsonl",
-    # RQGM meta-agent output truth (docs/plans/ari_rqgm Task 11):
-    # MetaAgentOutputRecord lines (candidates/recommendations/summaries,
-    # shadow included).
+    # RQGM meta-agent output truth (docs/reference/rqgm_schemas.md,
+    # "Meta-evolution schema (Task 11)"): MetaAgentOutputRecord lines
+    # (candidates/recommendations/summaries, shadow included).
     "rqgm_meta_outputs.jsonl",
-    # RQGM governance result cache (docs/plans/ari_rqgm Task 12): append-
-    # only cache_key -> result_ref lines; budget consumption/level lines
+    # RQGM governance result cache (docs/reference/file_formats.md,
+    # "rqgm_governance_cache.jsonl (RQGM Task 12)"): append-only
+    # cache_key -> result_ref lines; budget consumption/level lines
     # ride rqgm_audit.jsonl above.
     "rqgm_governance_cache.jsonl",
 })
@@ -467,84 +473,101 @@ class PathManager:
         # work_dir hands the parent's execution log to arms that are defined by
         # NOT receiving it (code_only), collapsing the factorial.
         "full_log.json",
-        # RQGM mode provenance + constitution copy (docs/plans/ari_rqgm Task
-        # 01): checkpoint-root metadata for the opt-in ari_rqgm mode, never
-        # copied into node work dirs. Absent on default simple_bfts runs.
+        # RQGM mode provenance + constitution copy
+        # (docs/guides/execution_modes.md, "Turning RQGM on"): checkpoint-root
+        # metadata for the opt-in ari_rqgm mode, never copied into node work
+        # dirs. Absent on default simple_bfts runs.
         "rqgm_state.json",
         "constitution.yaml",
-        # RQGM epoch-governance state layer (docs/plans/ari_rqgm Task 02):
-        # event-log truth + audit log + derived snapshots. Absent on default
+        # RQGM epoch-governance state layer (docs/reference/file_formats.md,
+        # "RQGM epoch-governance files (opt-in ari_rqgm mode)"): event-log
+        # truth + audit log + derived snapshots. Absent on default
         # simple_bfts runs; never copied into node work dirs.
         "rqgm_transitions.jsonl",
         "rqgm_audit.jsonl",
         "epoch_state.json",
         "rqgm_registry.json",
-        # RQGM proposal store (docs/plans/ari_rqgm Task 03): append-only
-        # record truth + derived index under {ckpt}/proposals/. Absent on
-        # default simple_bfts runs; never copied into node work dirs.
+        # RQGM proposal store (docs/reference/file_formats.md,
+        # "proposals/ (RQGM Task 03)"): append-only record truth + derived
+        # index under {ckpt}/proposals/. Absent on default simple_bfts runs;
+        # never copied into node work dirs.
         "proposal_records.jsonl",
         "proposal_index.json",
-        # RQGM adversarial loop (docs/plans/ari_rqgm Task 06): append-only
+        # RQGM adversarial loop (docs/reference/file_formats.md,
+        # "rqgm_adversarial_cases.jsonl (RQGM Task 06)" and
+        # "rqgm/adversarial_replay_pool.json (RQGM Task 06)"): append-only
         # record truth at the checkpoint root + derived replay-pool snapshot
         # under {ckpt}/rqgm/. Absent on default simple_bfts runs; never
         # copied into node work dirs.
         "rqgm_adversarial_cases.jsonl",
         "adversarial_replay_pool.json",
-        # Paper-archive self-preference statistic (docs/plans/ari_rqgm_paper
-        # Task 05 §6): the per-epoch deterministic AI-vs-human margin the
+        # Paper-archive self-preference statistic
+        # (docs/reference/rqgm_schemas.md,
+        # "rqgm/paper_self_preference_stat.json — the self-preference
+        # statistic"): the per-epoch deterministic AI-vs-human margin the
         # self-preference adversary cites as evidence, under {ckpt}/rqgm/.
         # Absent unless PAPER_RQGM_ARCHIVE; never copied into node work dirs.
         "paper_self_preference_stat.json",
-        # Paper-archive P1's pinned-panel report (Task 07 §5.5): the FIXED
+        # Paper-archive P1's pinned-panel report
+        # (docs/guides/rqgm_evaluation.md, "Paper metrics P1–P5"): the FIXED
         # external rubric ensemble's post-hoc decisions on the FINAL manuscript,
         # with the rubric ids / N / seed that ACTUALLY ran recorded as its own
         # provenance block. Distinct from the in-loop `review_report.json` by
         # construction — disjointness is the whole point. Absent until the
         # Tier-3 panel runner lands, and P1 reports `applicable: false` then.
         "panel_review_report.json",
-        # RQGM prompt evolution (docs/plans/ari_rqgm Task 07): append-only
-        # candidate/validation/shadow record truth + derived PromptSpec
-        # rollup at the checkpoint root; evolved template bodies live under
-        # {ckpt}/rqgm_prompts/. Absent on default simple_bfts runs; never
-        # copied into node work dirs.
+        # RQGM prompt evolution (docs/reference/file_formats.md,
+        # "prompt_evolution.jsonl (RQGM Task 07)" / "prompt_specs.json
+        # (RQGM Task 07)"): append-only candidate/validation/shadow record
+        # truth + derived PromptSpec rollup at the checkpoint root; evolved
+        # template bodies live under {ckpt}/rqgm_prompts/ (same doc,
+        # "rqgm_prompts/ (RQGM Task 07)"). Absent on default simple_bfts
+        # runs; never copied into node work dirs.
         "prompt_evolution.jsonl",
         "prompt_specs.json",
-        # RQGM clean-room regeneration (docs/plans/ari_rqgm Task 08):
-        # append-only request/screen/fallback event truth at the checkpoint
-        # root. Absent on default simple_bfts runs; never copied into node
-        # work dirs.
+        # RQGM clean-room regeneration (docs/reference/file_formats.md,
+        # "rqgm_cleanroom.jsonl (RQGM Task 08)"): append-only
+        # request/screen/fallback event truth at the checkpoint root. Absent
+        # on default simple_bfts runs; never copied into node work dirs.
         "rqgm_cleanroom.jsonl",
-        # RQGM selective erasure (docs/plans/ari_rqgm Task 10): derived
+        # RQGM selective erasure (docs/reference/file_formats.md,
+        # "rqgm_erasure_state.json (RQGM Task 10)"): derived
         # rewrite-snapshot of the stale/invalid sets; the erasure/rebuild
         # events live in rqgm_audit.jsonl. Absent on default simple_bfts
         # runs; never copied into node work dirs.
         "rqgm_erasure_state.json",
-        # RQGM meta-agent evolution (docs/plans/ari_rqgm Task 11):
-        # append-only MetaAgentOutputRecord truth at the checkpoint root.
-        # Absent on default simple_bfts runs; never copied into node work
-        # dirs.
-        "rqgm_meta_outputs.jsonl",
-        # RQGM governance result cache (docs/plans/ari_rqgm Task 12):
-        # append-only cache records at the checkpoint root. Absent on
+        # RQGM meta-agent evolution (docs/reference/rqgm_schemas.md,
+        # "Meta-evolution schema (Task 11)"): append-only
+        # MetaAgentOutputRecord truth at the checkpoint root. Absent on
         # default simple_bfts runs; never copied into node work dirs.
+        "rqgm_meta_outputs.jsonl",
+        # RQGM governance result cache (docs/reference/file_formats.md,
+        # "rqgm_governance_cache.jsonl (RQGM Task 12)"): append-only cache
+        # records at the checkpoint root. Absent on default simple_bfts
+        # runs; never copied into node work dirs.
         "rqgm_governance_cache.jsonl",
-        # RQGM evaluation harness (docs/plans/ari_rqgm Task 13): per-run
-        # metric report + the durable synthetic-trajectory marker written
-        # for any injected run. Absent on every non-harness run; never
-        # copied into node work dirs.
+        # RQGM evaluation harness (docs/reference/file_formats.md,
+        # "rqgm_eval_metrics.json / rqgm_injection_provenance.json (RQGM
+        # Task 13)"): per-run metric report + the durable
+        # synthetic-trajectory marker written for any injected run. Absent
+        # on every non-harness run; never copied into node work dirs.
         "rqgm_eval_metrics.json",
         "rqgm_injection_provenance.json",
-        # Paper-archive co-evolution (docs/plans/ari_rqgm_paper Tasks 01/02):
+        # Paper-archive co-evolution (docs/reference/rqgm_schemas.md,
+        # "paper_archive_state.json — paper-phase mode provenance" /
+        # "paper_draft_archive.jsonl — the scored draft population"):
         # paper-phase mode provenance + the scored draft population. Absent on
         # default linear paper runs; never copied into node work dirs. The
         # per-candidate .tex live under {ckpt}/archive/{node_id}/, not the
         # checkpoint root.
         "paper_archive_state.json",
         "paper_draft_archive.jsonl",
-        # Paper-archive Task 04: the read-only APReS-equivalent accept/reject
-        # anchor corpus (labelled reference manuscripts). Written once by
-        # curation/bootstrap tooling, never by a governed role; META so it is
-        # never copied into node work dirs. Absent on the on-ramp / linear.
+        # The read-only APReS-equivalent accept/reject anchor corpus
+        # (docs/reference/rqgm_schemas.md, "paper_anchor_corpus.jsonl — the
+        # read-only accept/reject anchor"): labelled reference manuscripts.
+        # Written once by curation/bootstrap tooling, never by a governed
+        # role; META so it is never copied into node work dirs. Absent on the
+        # on-ramp / linear.
         "paper_anchor_corpus.jsonl",
     })
 

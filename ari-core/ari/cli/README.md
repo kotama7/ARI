@@ -10,8 +10,8 @@ construction logic is delegated to `ari.core`.
 - `__main__.py` — `python -m ari.cli` entry.
 - `bfts_loop.py` — BFTS run-loop driver + checkpoint persistence.
 - `commands.py` — misc top-level commands + `_safe_backup`.
-- `doctor.py` — TODO
-- `harness.py` — TODO
+- `doctor.py` — `ari doctor claude-code`: an offline end-to-end check of the claude_code backend — binary and version, policy validation of the resolved config, the exact strict-mode command (session-reuse flags asserted absent), and per-flag support. A flag missing from `--help` is informational only, because the CLI hides flags it supports; only `--live`, which spends real tokens, tells a hidden flag from a rejected one.
+- `harness.py` — `ari harness list` prints what each registered harness declares it is for, including what it is blind to and whether its resolution band was ever measured; `ari harness select` ranks the pool against a requirement and exits 2 when nothing qualifies, because "no harness can answer this" is a result and running the closest one anyway produces a number rather than an answer.
 - `kca.py` — command handlers for knowledge, capability, and assurance inspection and registration.
 - `lineage.py` — end-of-phase lineage-decision helpers.
 - `manuscript.py` — Manuscript Complete preparation, evaluation, publication, and repair commands.
@@ -25,4 +25,3 @@ construction logic is delegated to `ari.core`.
 
 - **Command surface** → `docs/reference/cli_reference.md`.
 - **Per-command details** → the `__init__.py` module docstring + each `*.py` here.
-- `harness.py` — `ari harness list` prints what each registered harness declares it is for, including what it is blind to and whether its resolution band was ever measured; `ari harness select` ranks the pool against a requirement and exits 2 when nothing qualifies, because "no harness can answer this" is a result and running the closest one anyway produces a number rather than an answer.

@@ -1,5 +1,7 @@
-"""Paper-archive anchor utility + epoch winners (paper-archive Task 04,
-docs/plans/ari_rqgm_paper/04 §9).
+"""Paper-archive anchor utility + epoch winners (paper-archive Task 04;
+docs/concepts/rqgm_architecture.md §The paper-archive layer, "The two
+anchors"; docs/reference/rqgm_schemas.md §``paper_anchor_corpus.jsonl`` —
+the read-only accept/reject anchor).
 
 Unit coverage for ``ari.rqgm.paper_anchor``: the accept/reject binarization and
 agreement metric, the deterministic run-fixed held-out split, the

@@ -1,5 +1,8 @@
-"""Paper-archive Task 05 — the paper_self_preference adversary (wave 3c,
-docs/plans/ari_rqgm_paper/05 §9).
+"""Paper-archive Task 05 — the paper_self_preference adversary (wave 3c;
+docs/concepts/rqgm_architecture.md §The paper-archive layer, "Governed roles
+and the eighth adversary" / "The impeachment chain (Task 15)";
+docs/reference/rqgm_schemas.md §``rqgm/paper_self_preference_stat.json`` —
+the self-preference statistic).
 
 Covers the deterministic pre-signal, the AI-vs-human margin statistic + its
 audit artifact, the eighth adversary's record vocabulary + Task-15 target

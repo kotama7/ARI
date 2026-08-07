@@ -1,7 +1,8 @@
 """Frozen meta-tier authority tables + pure checks (RQGM Task 11).
 
-Layer-0 pure-data module for the meta-agent authority boundary (plan
-``docs/plans/ari_rqgm/11`` §5.1-§5.6, §6.1): the closed capability-flag
+Layer-0 pure-data module for the meta-agent authority boundary
+(``docs/concepts/rqgm_architecture.md``, "Key invariants" — meta-tier
+authority limits): the closed capability-flag
 vocabulary on ComponentRegistry entries, the closed meta action vocabulary,
 the v1 evolving/frozen meta role split, and the deterministic check bodies
 the ConstitutionalKernel applies (``validate_capability`` meta-action branch,

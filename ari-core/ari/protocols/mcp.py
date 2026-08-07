@@ -1,4 +1,7 @@
-"""MCPToolCaller Protocol (RQGM Task 11 §5.7, docs/plans/ari_rqgm/11).
+"""MCPToolCaller Protocol — the caller-facing ``MCPClient`` duck-type adopted
+by the RQGM tool proxies (docs/reference/internal_boundaries.md, "RQGM mode
+boundary (``ari.rqgm``)": the Protocols are structural, so ``ari.protocols``
+names RQGM classes in docstrings only).
 
 Fulfills the deferral noted in :mod:`ari.protocols` ("More Protocols
 (MCPClient, ...) land in subsequent phases when their adopters are ready"):

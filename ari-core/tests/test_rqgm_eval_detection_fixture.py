@@ -1,4 +1,6 @@
-"""RQGM Task 13 — Tier-1 fixture detection (docs/plans/ari_rqgm/13 §5.3/§9).
+"""RQGM Task 13 — Tier-1 fixture detection
+(docs/guides/rqgm_evaluation.md §Failure injections — the "fixture"
+mechanism; §Test tiers, Tier 1).
 
 The fixture-mechanism injections are caught by the EXISTING deterministic
 detectors, run directly against the committed checkpoint fragments:

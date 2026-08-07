@@ -6,7 +6,9 @@ Covers the three plan-specified paper-phase hooks:
   escalates the best node (verified_context ranking) through the EXISTING
   per-node machinery — one paper-candidate adversarial round + the L3
   ladder, with ValidatedAttackRecords flowing to the AdversarialReplayPool
-  (docs/plans/ari_rqgm 03 trigger table / 06 §5.5 / 12 §5.2).
+  (docs/concepts/rqgm_runtime_walkthrough.md §8. Run end — the
+  paper-candidate pre-flight; §5. Per node — the adversarial round
+  (event-driven); §4. Per node — proposal, execution, governance level).
 * ITEM 2 — ``build_artifact_bundle`` populated from real checkpoint
   artifacts (claim-gate findings, related_refs, verified_context) so the
   paper adversaries fire on real pre-signals (plan 06 §5.2).

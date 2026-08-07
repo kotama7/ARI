@@ -1,6 +1,6 @@
 """Deterministic synthetic RQGM-checkpoint factory for the GUI refresh
-program (Wave 4a — plan ``docs/plans/gui_refresh/08`` §Source artifacts /
-§Governance state model).
+program (Wave 4a — ``docs/reference/rqgm_gui_read_models.md``
+§Artifact → endpoint map / §Two vocabularies, two state machines).
 
 ``make_rqgm_checkpoint(dest, ...)`` first calls the Wave-0 base factory
 (:func:`run_fixture_factory.make_run_checkpoint`) and then layers a

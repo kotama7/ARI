@@ -156,9 +156,12 @@ class ArtifactBundle:
     plan_step_count: int = 0
     remaining_node_budget: int = -1  # -1 == unknown (never triggers)
     node_report_path: str = ""
-    # ── paper-archive self-preference fields (docs/plans/ari_rqgm_paper/05
-    # §6). Additive, fail-safe defaults: read ONLY in PAPER_RQGM_ARCHIVE, so
-    # the seven exploration adversaries and every existing bundle caller are
+    # ── paper-archive self-preference fields (docs/reference/rqgm_schemas.md
+    # "Paper-archive schemas": the eighth adversary type, inert off the paper
+    # phase; ``self_preference_margin`` is that section's
+    # ``paper_self_preference_stat.json`` AI-vs-human margin). Additive,
+    # fail-safe defaults: read ONLY in PAPER_RQGM_ARCHIVE, so the seven
+    # exploration adversaries and every existing bundle caller are
     # byte-identical. ``paper_candidate`` False and ``reviewer_accept_score``
     # None both make ``_pre_paper_self_preference`` return ``[]`` — off the
     # paper phase the eighth type never fires and costs zero LLM calls.
@@ -537,7 +540,8 @@ def build_artifact_bundle(
             log.debug("artifact bundle: pre-signal artifact read failed",
                       exc_info=True)
     plan_text = str(getattr(node, "plan", "") or "")
-    # Paper-archive self-preference fields (docs/plans/ari_rqgm_paper/05 §6).
+    # Paper-archive self-preference fields (docs/reference/rqgm_schemas.md
+    # "Paper-archive schemas").
     # Read ONLY from the node's reserved paper metrics keys — the paper
     # runtime stamps them on the synthetic over-accepted-draft node it drives
     # the round against. For every exploration/linear node these keys are
@@ -867,11 +871,14 @@ ADVERSARY_SPECS: dict[str, AdversarySpec] = {
         "prompt_injection", "rqgm/adversary_prompt_injection", "proposal",
         _pre_prompt_injection,
     ),
-    # docs/plans/ari_rqgm_paper/05 §5.1 — the eighth (paper-phase) adversary.
-    # Reuses the existing closed ``paper_claim`` target class (§5.2 decision):
-    # the attacked artifact is the over-accepted draft's manuscript; the
-    # implicated ROLE (paper_reviewer) is carried by the round's
-    # ``_AFFECTED_ROLES_BY_TYPE`` row, never by a component-shaped target here.
+    # The eighth (paper-phase) adversary — docs/reference/rqgm_schemas.md
+    # "Paper-archive schemas" ("The eighth adversary type"). Reuses the
+    # existing closed ``paper_claim`` target class (the ``raw_attack`` row of
+    # "Adversarial-loop schemas": a ``target_artifact.type`` is never a
+    # component): the attacked artifact is the over-accepted draft's
+    # manuscript; the implicated ROLE (paper_reviewer) is carried by the
+    # round's ``_AFFECTED_ROLES_BY_TYPE`` row, never by a component-shaped
+    # target here.
     "paper_self_preference": AdversarySpec(
         "paper_self_preference", "rqgm/adversary_paper_self_preference",
         "paper_claim", _pre_paper_self_preference,

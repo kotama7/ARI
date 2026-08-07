@@ -1,5 +1,5 @@
 """RQGM Task 07 — prompt-evolution persistence + filename hygiene
-(docs/plans/ari_rqgm/07 §5.6, §6, §9).
+(docs/reference/rqgm_schemas.md §Prompt-evolution schemas (Task 07)).
 
 Covers: the fail-open append-only writer (no checkpoint → no-op, never
 raises; env run-pin resolution), record schema round-trip + jsonschema

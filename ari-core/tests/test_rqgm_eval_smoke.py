@@ -1,4 +1,6 @@
-"""RQGM Task 13 — offline smoke runner + ablation report (docs/plans/ari_rqgm/13 §5.5/§9).
+"""RQGM Task 13 — offline smoke runner + ablation report
+(docs/guides/rqgm_evaluation.md §Test tiers, Tier 2 (CI-hard, offline
+smoke); §Running).
 
 ``run_smoke`` completes in seconds with stub components (no LLM, no network,
 no subprocess), writes per-run ``rqgm_eval_metrics.json`` and the campaign

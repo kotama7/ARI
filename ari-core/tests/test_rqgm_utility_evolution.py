@@ -1,4 +1,6 @@
-"""RQGM Task 14 — governed utility evolution (docs/plans/ari_rqgm/14 §9).
+"""RQGM Task 14 — governed utility evolution
+(docs/concepts/rqgm_architecture.md "Governed utility evolution";
+docs/reference/rqgm_schemas.md "Governed utility-evolution schema (Task 14)").
 
 The defining claim of Constitutional ARI-RQGM is that the search is
 tree-structured **and that at each epoch boundary the entire score — the

@@ -1,6 +1,7 @@
 """Erasure-state store — the derived staleness rollup (RQGM Task 10).
 
-``{ckpt}/rqgm_erasure_state.json`` (plan ``docs/plans/ari_rqgm/10`` §6) is the
+``{ckpt}/rqgm_erasure_state.json`` (``docs/reference/rqgm_schemas.md``, the
+``erasure_state.schema.json`` section) is the
 derived, rebuildable rollup of every SelectiveErasureEvent /
 FrontierRebuildEvent appended to the Task 02 audit log: "JSONL is truth,
 snapshot is derived" (the ``prompt_trace`` → ``prompt_versions`` precedent).

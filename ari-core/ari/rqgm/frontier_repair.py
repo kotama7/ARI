@@ -1,6 +1,7 @@
 """FrontierRepairEngine + selective erasure (RQGM Task 10).
 
-Implements plan ``docs/plans/ari_rqgm/10`` §5–§7: after Task 09's
+Implements the "selective erasure is logical-only" invariant
+(``docs/concepts/rqgm_architecture.md``, "Key invariants"): after Task 09's
 RegistryTransitionEngine commits an :class:`~ari.rqgm.transition_engine.
 EpochTransition` with a non-empty ``retirements`` list, every record produced
 by — or transitively, materially dependent on — a retired ``prompt_hash`` is

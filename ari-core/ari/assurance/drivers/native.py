@@ -213,9 +213,38 @@ class NativeHPCDriver:
                 "negative_control_verdict": negative.verdict,
                 "negative_control_report_digest": negative.report_digest,
             }
+        # THE COMMON VIEW the registration gates read. Each driver keeps its own
+        # detail; what a gate asks is "did the clean control pass" and "did the
+        # negatives fail", and that question should not need to know which
+        # driver answered it.
+        #
+        # A correctness verifier has ONE negative control per family -- a
+        # corrupted answer. It has no slow/wrong distinction, because that
+        # distinction asks whether an instrument can tell a wrong answer from a
+        # slow one, which is a question about a STOPWATCH. Demanding two here
+        # would be the same mistake as one target kind for every requirement.
+        controls = {
+            "clean": {
+                "verdict": ("pass" if all(item["reference_verdict"] == "pass"
+                                          for item in results.values())
+                            else "fail"),
+                # A correctness verdict is deterministic: there is no
+                # run-to-run spread for it to resolve.
+                "resolved": True,
+                "relative_spread": 0.0,
+                "note": "every registered family's reference passed its own oracle",
+            },
+            "negatives": [
+                {"name": f"{kind}-corrupted-output",
+                 "verdict": item["negative_control_verdict"],
+                 "detail": f"{kind}: corrupted reference output"}
+                for kind, item in sorted(results.items())
+            ],
+        }
         return {
             "schema_version": "ari.native-hpc-parity-report/v1",
             "driver_digest": native_driver_digest(),
+            "controls": controls,
             "results": results,
             "passed": all(
                 item["reference_verdict"] == "pass"

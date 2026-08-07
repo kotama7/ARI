@@ -1,9 +1,10 @@
 """RegistryTransitionEngine — the sole registry status writer (RQGM Task 09).
 
-Implements plan ``docs/plans/ari_rqgm/09`` §5.1–§5.4, §7: the single component
-allowed to change ``status`` fields in the Task 02 registries. It consumes the
-Task 05 ``GovernanceReport`` and Task 07 candidate evaluations, resolves them
-deterministically against the fixed Layer-0 table in
+Implements the sole-registry-writer facade
+(``docs/concepts/rqgm_architecture.md``, "The four facades"): the single
+component allowed to change ``status`` fields in the Task 02 registries. It
+consumes the Task 05 ``GovernanceReport`` and Task 07 candidate evaluations,
+resolves them deterministically against the fixed Layer-0 table in
 :mod:`ari.rqgm.transition_rules` (T1–T20), produces an :class:`EpochTransition`
 record, has it validated by the Task 04 ConstitutionalKernel, and commits it
 atomically through the Task 02 boundary transaction

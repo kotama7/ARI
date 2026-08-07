@@ -1,5 +1,7 @@
-"""Writer / Reviewer governed roles (paper-archive Task 03,
-docs/plans/ari_rqgm_paper/03 §9).
+"""Writer / Reviewer governed roles (paper-archive Task 03;
+docs/concepts/rqgm_architecture.md §The paper-archive layer, "Governed roles
+and the eighth adversary"; the paper-mode-gated founding rows in
+docs/guides/execution_modes.md §2×2 independence from `ari.mode`).
 
 Covers the constitutional amendment (paper_writer PROMOTED to a full evolvable
 role + paper_reviewer added), the capability-matrix / context-view / founding

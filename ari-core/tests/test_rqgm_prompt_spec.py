@@ -1,5 +1,7 @@
 """RQGM Task 07 — PromptSpec schema + founding bootstrap
-(docs/plans/ari_rqgm/07 §5.1-§5.2, §6, §9).
+(docs/reference/rqgm_schemas.md "rqgm_prompt_spec.schema.json";
+docs/concepts/rqgm_runtime_walkthrough.md "Founding registration — one
+transaction, the whole institution").
 
 Covers: schema round-trip + jsonschema validation, the founding bootstrap
 mapping every governed committed template to a spec whose ``prompt_hash``

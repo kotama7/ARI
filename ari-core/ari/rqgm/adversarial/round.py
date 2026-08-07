@@ -70,11 +70,11 @@ _EXPECTED_BEHAVIOR_BY_TYPE: dict[str, dict[str, str]] = {
 #: adversarial round. A legacy, ambiguous, or mismatched node remains
 #: targetless: no semantic guess is converted into a sanction.
 #:
-#: The paper set adds its one row (docs/plans/ari_rqgm_paper/05 §5.4): a
-#: ``paper_self_preference`` case implicates BOTH the ``paper_reviewer`` role
-#: (which ACCEPTED the draft) AND the ``paper_writer`` role (which PRODUCED it)
-#: — the over-accepted-AND-unfaithful draft has TWO culpable components (§5.1,
-#: revised 2026-07-16). Both — unlike the seven's ``generator`` — HAVE a
+#: The paper set adds its one row (docs/concepts/rqgm_architecture.md "The
+#: paper-archive layer"): a ``paper_self_preference`` case implicates BOTH the
+#: ``paper_reviewer`` role (which ACCEPTED the draft) AND the ``paper_writer``
+#: role (which PRODUCED it) — the over-accepted-AND-unfaithful draft has TWO
+#: culpable components. Both — unlike the seven's ``generator`` — HAVE a
 #: registered incumbent (``paper_reviewer_v1`` / ``paper_writer_v1`` under
 #: PAPER_RQGM_ARCHIVE), so the Task-15 resolution binds ``target_component_id``
 #: and the validated-attack -> impeachment chain fires in production for each.

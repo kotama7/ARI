@@ -1,5 +1,6 @@
 """Effective paper-mode resolution for the paper-archive execution switch
-(paper-archive Task 01, docs/plans/ari_rqgm_paper/01 §5.2).
+(paper-archive Task 01; docs/guides/execution_modes.md, "The paper execution
+axis: `paper.mode`").
 
 ``paper.mode`` is the master switch; ``rqgm.paper.enabled`` is a redundant
 safety interlock. Both must agree for the paper archive to activate; any

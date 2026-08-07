@@ -1,7 +1,8 @@
 """The paper-phase execution-mode dispatch, shared by every CLI entry point.
 
 `ari paper` owned this block privately, so the paper axis
-(`paper.mode: linear | rqgm_archive`, docs/plans/ari_rqgm_paper Task 01) was
+(`paper.mode: linear | rqgm_archive`, docs/guides/execution_modes.md, "The
+paper execution axis: `paper.mode`") was
 reachable ONLY by invoking `ari paper` on an already-finished checkpoint. The
 one-pass entries — `ari run` (exploration → paper) and `ari resume` — called
 ``generate_paper_section`` directly and unconditionally, so a config or env that

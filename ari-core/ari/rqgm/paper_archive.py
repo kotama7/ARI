@@ -1,5 +1,5 @@
-"""Paper draft-archive search substrate (paper-archive Task 02,
-docs/plans/ari_rqgm_paper/02).
+"""Paper draft-archive search substrate (paper-archive Task 02;
+docs/concepts/rqgm_architecture.md, "The paper-archive layer").
 
 The paper phase searches the SAME way the exploration phase searches: a
 best-first tree, expanded one child at a time, pruned by hard cutoffs, ranked

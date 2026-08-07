@@ -1,9 +1,10 @@
 """ConstitutionalKernel — Layer-0 deterministic procedure checks (RQGM Task 04).
 
 The kernel is **NOT an LLM judge**: it makes zero LLM calls, zero network
-calls, and zero wall-clock-dependent decisions (design principle P2, plan
-``docs/plans/ari_rqgm/04`` §1/§5.1). It never answers "is this research
-decision correct?" — only "does this event follow permitted procedure?".
+calls, and zero wall-clock-dependent decisions (design principle P2;
+``docs/concepts/rqgm_architecture.md``, "The four facades"). It never answers
+"is this research decision correct?" — only "does this event follow
+permitted procedure?".
 Every verdict is a pure function of the serialized inputs; the kernel writes
 nothing (callers persist :class:`~ari.rqgm.kernel_types.KernelReport` verdicts
 to Task 02's ``rqgm_audit.jsonl``).

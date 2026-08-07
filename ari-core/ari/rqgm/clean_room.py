@@ -2,7 +2,8 @@
 
 When a prompt is impeached and retired (Task 09), ARI-RQGM never patches the
 retired prompt: a successor for the same role is generated FROM SCRATCH out
-of abstract inputs only (plan ``docs/plans/ari_rqgm/08`` §5). This module
+of abstract inputs only (``docs/concepts/rqgm_architecture.md``, "Key
+invariants" — clean-room contamination rules). This module
 implements the whole sanctioned path:
 
 * :class:`CleanRoomGenerationRequest` / :class:`CleanRoomInputBundle` —

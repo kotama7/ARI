@@ -1,7 +1,8 @@
 """GUI refresh Wave 4a — deterministic RQGM checkpoint fixture tests.
 
-Pins ``tests/fixtures/gui_refresh/rqgm_fixture_factory.py`` (plan
-``docs/plans/gui_refresh/08`` §Source artifacts / §Governance state model):
+Pins ``tests/fixtures/gui_refresh/rqgm_fixture_factory.py``
+(``docs/reference/rqgm_gui_read_models.md`` §Artifact → endpoint map /
+§Two vocabularies, two state machines):
 
 - every written RQGM artifact validates against its ``ari/schemas/*.schema.json``
   (``jsonschema`` 4.x is a test dependency — verified importable here;

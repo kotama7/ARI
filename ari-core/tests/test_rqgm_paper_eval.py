@@ -1,5 +1,7 @@
-"""Paper-archive Task 07 — claim-gate handoff + evaluation (wave 3d,
-docs/plans/ari_rqgm_paper/07 §9).
+"""Paper-archive Task 07 — claim-gate handoff + evaluation (wave 3d;
+docs/concepts/rqgm_architecture.md §The paper-archive layer, "The best draft
+flows to the untouched gate"; docs/guides/rqgm_evaluation.md §Paper-archive
+evaluation (`paper.mode`), incl. §Paper conditions and §Paper metrics P1–P5).
 
 Covers the pure ``materialize_winner`` handoff (writes the winner ``tex_ref`` to
 the canonical ``{ckpt}/full_paper.tex`` ONCE, idempotent, no gate/kernel/LLM

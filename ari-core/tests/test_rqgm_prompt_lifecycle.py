@@ -1,5 +1,8 @@
 """RQGM Task 07 — candidate lifecycle, PromptMutator, budgets, shadow, smoke
-(docs/plans/ari_rqgm/07 §5.3-§5.5, §9).
+(docs/reference/rqgm_schemas.md §Prompt-evolution schemas (Task 07) — the
+monotonic stage ladder and the born-`candidate` / no-instant-activation rule;
+docs/reference/configuration.md §``rqgm.prompt_evolution`` — candidate caps /
+§``rqgm.shadow`` — shadow live-evaluation sampling).
 
 Covers: monotonic stage order (skipping rejected), terminal schema_dry_run
 failure, no adoption without all six stage records, the founding-spec

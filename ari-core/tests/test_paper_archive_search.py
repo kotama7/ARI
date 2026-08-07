@@ -1,5 +1,7 @@
 """Paper-archive Task 02 — draft archive search substrate
-(docs/plans/ari_rqgm_paper/02, §9).
+(docs/concepts/rqgm_architecture.md § The paper-archive layer;
+docs/reference/rqgm_schemas.md § Paper-archive schemas (paper `rqgm_archive`
+mode); docs/guides/execution_modes.md § Cost bound and the degraded on-ramp).
 
 Covers: the best-first draft-TREE topology and its `bfts.py` cutoff reuse
 (total cap before depth cap), the REAL deterministic `select_best_to_expand`
@@ -804,11 +806,13 @@ def test_cli_paper_entry_boots_archive(tmp_path, monkeypatch):
 
 
 def test_boundary_fires_once_at_stock_defaults(tmp_path, monkeypatch):
-    """docs/plans/ari_rqgm_paper/01 §9 (§5.7 falsifiable claim): a stock-default
+    """docs/concepts/rqgm_runtime_walkthrough.md § A paper-archive run
+    (paper.mode: rqgm_archive) — one archive round is one epoch: a stock-default
     `rqgm_archive` run closes `rounds - 1 == 1` epoch boundary — round 1 runs
     under `epoch_000`, `_run_epoch_boundary` is entered exactly once at round end,
     and round 2's drafts are built under `epoch_001`. Pins the boundary EVENT
-    (not a reviewer-hash change, which needs ~5 boundaries per doc 04) so a
+    (not a reviewer-hash change, which needs ~5 boundaries —
+    docs/guides/rqgm_migration.md § The default is a degraded on-ramp) so a
     regression to the E=1-style inert boundary ships red, not silent."""
     import ari.rqgm.paper_runtime as prt
     import ari.rqgm.runtime as rtm
@@ -846,11 +850,11 @@ def test_boundary_fires_once_at_stock_defaults(tmp_path, monkeypatch):
 @pytest.mark.parametrize("paper_mode,paper_en", [("linear", False), ("rqgm_archive", True)])
 def test_cli_2x2_matrix_no_cross_leak(tmp_path, monkeypatch, ari_mode, rqgm_en,
                                       paper_mode, paper_en):
-    """docs/plans/ari_rqgm_paper/01 §9 (§5.6 / R5): all four cells at the REAL
-    production entry — escalation fires iff exploration `ari_rqgm`, the archive
-    runtime is built iff paper `rqgm_archive`, and the two are orthogonal. The
-    (`ari_rqgm` × `rqgm_archive`) cell — R5's "two runtimes present at once" —
-    is exercised end-to-end for the first time here."""
+    """docs/guides/execution_modes.md § 2×2 independence from `ari.mode`: all
+    four cells at the REAL production entry — escalation fires iff exploration
+    `ari_rqgm`, the archive runtime is built iff paper `rqgm_archive`, and the
+    two are orthogonal. The (`ari_rqgm` × `rqgm_archive`) cell — "two runtimes
+    present at once" — is exercised end-to-end for the first time here."""
     import ari.cli as cli
     import ari.rqgm.paper_runtime as prt
 
@@ -909,7 +913,9 @@ def test_cli_2x2_matrix_no_cross_leak(tmp_path, monkeypatch, ari_mode, rqgm_en,
 
 
 def test_archive_output_invariant_to_exploration_mode(tmp_path, monkeypatch):
-    """docs/plans/ari_rqgm_paper/01 R5: the two state files stay owned by their
+    """docs/reference/rqgm_schemas.md § Checkpoint file inventory (one writer
+    per file) + docs/guides/execution_modes.md § 2×2 independence from
+    `ari.mode`: the two state files stay owned by their
     own writers and exploration mode does not perturb the archive. The same
     `rqgm_archive` cfg under both exploration rows produces the SAME paper draft
     archive, and the archive never emits `rqgm_state.json`."""

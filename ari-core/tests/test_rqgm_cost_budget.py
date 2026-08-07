@@ -1,4 +1,9 @@
-"""RQGM Task 12 — cost control and context budget (docs/plans/ari_rqgm/12 §9).
+"""RQGM Task 12 — cost control and context budget
+(docs/reference/rqgm_schemas.md §Governance-cache schema (Task 12) for the
+``cache_key``; docs/reference/configuration.md §``rqgm.budgets`` — per-epoch
+governance spend caps / §``rqgm.shadow`` — shadow live-evaluation sampling;
+docs/concepts/rqgm_runtime_walkthrough.md §4. Per node — proposal, execution,
+governance level for the L0-L3 trigger ladder).
 
 Covers: the golden ``cache_key`` (component order + separator pinned;
 timestamps provably excluded), canonical-JSON hashing (key order

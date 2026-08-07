@@ -54,11 +54,11 @@ so existing fixtures stay byte-identical):
   ``publish_record.json``, staged), ``"promoted"`` (+ ``promoted_at``,
   public visibility).
 
-Charter reference:
-``docs/plans/gui_refresh/00_program_charter_and_baseline.md`` §Deliverables
-("reference small/medium/large run fixture"). Fixture data is generated on
-demand into a caller-supplied directory (``tmp_path`` in tests) and is
-NEVER committed to the repository.
+Gate reference: ``docs/guides/gui_cutover_runbook.md`` §Compatibility matrix
+("small × medium × large × corrupt checkpoint" — the dimension the
+small/medium/large tiers and the corrupt modes below feed). Fixture data is
+generated on demand into a caller-supplied directory (``tmp_path`` in tests)
+and is NEVER committed to the repository.
 """
 
 from __future__ import annotations

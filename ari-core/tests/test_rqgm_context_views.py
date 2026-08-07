@@ -1,4 +1,7 @@
-"""RQGM Task 12 — role-specific context views (docs/plans/ari_rqgm/12 §5.7/§9.7).
+"""RQGM Task 12 — role-specific context views
+(docs/reference/rqgm_schemas.md §``proposal_summary_view.schema.json`` — the
+only proposal representation BFTS may consume; §Constitutional violation
+codes, CK-CTX-001 "a rendered role view exceeds its field whitelist").
 
 Covers the three-layer ProposalSummaryView-only enforcement for BFTS
 (typed renderer input → ``TypeError``; kernel ``validate_context_scope``

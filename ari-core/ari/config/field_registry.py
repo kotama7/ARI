@@ -3,8 +3,8 @@
 The single machine-readable inventory of every declared ``ARIConfig`` leaf,
 merged with a hand-authored metadata overlay (category / level / scope /
 sensitivity / mutability / applies_when), backing ``GET
-/api/v1/config/schema`` (plan ``docs/plans/gui_refresh/05`` §Canonical field
-metadata / §Configuration scopes).
+/api/v1/config/schema`` (``docs/reference/configuration.md``, "Field registry
+(canonical field metadata)").
 
 Design constraints (plan 05 + INDEX.md invariant):
 

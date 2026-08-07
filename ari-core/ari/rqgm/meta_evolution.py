@@ -2,8 +2,9 @@
 
 Layer 2 (the meta tier: PromptMutator, CleanRoomPromptGenerator, the replay
 selector and failure-summary compressor seams) becomes an evolution target
-under strictly narrower authority than the institutional layer (plan
-``docs/plans/ari_rqgm/11`` §5). The governing invariant (SPEC invariant 18):
+under strictly narrower authority than the institutional layer
+(``docs/concepts/rqgm_architecture.md``, "Key invariants" — meta-tier
+authority limits). The governing invariant (SPEC invariant 18):
 governance agents may evolve, but their authority cannot expand.
 
 This module implements:

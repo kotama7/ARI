@@ -1,6 +1,7 @@
 """ProposalRecord / ProposalRouter / VirSciAdapter (RQGM Task 03).
 
-Home of the governed proposal layer (plan ``docs/plans/ari_rqgm/03``):
+Home of the governed proposal layer (``docs/reference/rqgm_schemas.md``,
+"Proposal schemas (Task 03)"):
 "store everything; hand BFTS only the summary". Every generated proposal
 becomes an archival :class:`~ari.rqgm.proposals.records.ProposalRecord` in
 ``{ckpt}/proposals/``; BFTS only ever sees the bounded

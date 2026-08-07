@@ -1,4 +1,5 @@
-"""RQGM Task 13 — ablation-condition expansion (docs/plans/ari_rqgm/13 §5.1/§9).
+"""RQGM Task 13 — ablation-condition expansion
+(docs/guides/rqgm_evaluation.md §Ablation conditions B0–B8; §Test tiers).
 
 Pins each B0-B8 preset in ``scripts/rqgm_eval/ablation_matrix.yaml`` to its
 exact mode + feature-flag expansion AND to the EFFECTIVE config the spawned

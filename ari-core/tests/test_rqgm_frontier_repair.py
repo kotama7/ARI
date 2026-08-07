@@ -1,4 +1,7 @@
-"""RQGM Task 10 — FrontierRepair and selective erasure (docs/plans/ari_rqgm/10 §9).
+"""RQGM Task 10 — FrontierRepair and selective erasure
+(docs/reference/rqgm_schemas.md §Frontier-repair schemas (Task 10);
+docs/concepts/rqgm_architecture.md §Key invariants, invariant 6
+"Selective erasure is logical-only").
 
 Covers: the pure ``trace_dependents`` closure (direct hits, transitive
 propagation, materiality context pairs, cycle tolerance, idempotence, depth

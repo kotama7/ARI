@@ -1,4 +1,8 @@
-"""RQGM Task 06 — adversarial evolution loop (docs/plans/ari_rqgm/06 §9).
+"""RQGM Task 06 — adversarial evolution loop
+(docs/reference/rqgm_schemas.md § Adversarial-loop schemas (Task 06);
+docs/reference/file_formats.md § `rqgm_adversarial_cases.jsonl` (RQGM Task 06);
+docs/concepts/rqgm_runtime_walkthrough.md § 5. Per node — the adversarial round
+(event-driven)).
 
 Covers: schema round-trip + validation for all six record types (envelope
 required, component-target smuggling rejected, evidence-free attacks
@@ -1380,7 +1384,10 @@ def test_bundle_builder_is_total_over_bare_nodes(tmp_path):
     assert bundle.node_report == {}
 
 
-# ── one record PER resolvable role (docs/plans/ari_rqgm_paper/04 §5.1) ──────
+# ── one record PER resolvable role ──────────────────────────────────────────
+# docs/concepts/rqgm_architecture.md § The paper-archive layer, "Two culpable
+# components, one round": the round emits one validated attack per resolvable
+# role, each naming the single role it targets.
 
 
 def test_round_emits_one_record_per_resolvable_role(tmp_path, monkeypatch):

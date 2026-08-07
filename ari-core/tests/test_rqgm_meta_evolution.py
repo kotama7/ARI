@@ -1,4 +1,7 @@
-"""RQGM Task 11 — meta-agent evolution (docs/plans/ari_rqgm/11 §5-§9).
+"""RQGM Task 11 — meta-agent evolution
+(docs/reference/rqgm_schemas.md §Meta-evolution schema (Task 11);
+docs/concepts/rqgm_architecture.md §Key invariants, invariant 8
+"Meta-tier authority limits").
 
 Covers: the §6.1 tier + capability-flag schema (hard-denied flags const-false
 on meta entries via ``rqgm_meta.schema.json`` AND the deterministic

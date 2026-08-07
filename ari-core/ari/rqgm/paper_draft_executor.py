@@ -1,5 +1,5 @@
-"""The draft NodeExecutor over ``ari-skill-paper`` (paper-archive Task 02,
-docs/plans/ari_rqgm_paper/02 §5.4).
+"""The draft NodeExecutor over ``ari-skill-paper`` (paper-archive Task 02;
+docs/concepts/rqgm_architecture.md, "The paper-archive layer").
 
 :class:`PaperDraftExecutor` satisfies ``ari.protocols.search.NodeExecutor``
 (``run(node, experiment) -> Node``) and wraps the paper subprocess as the

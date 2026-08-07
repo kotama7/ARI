@@ -1,10 +1,10 @@
 """Precedence-matrix golden tests for the NEW-RUN resolver (gui_refresh
 task 05 Wave 3b) + the draft preview endpoints.
 
-Plan ``docs/plans/gui_refresh/05`` §Resolution model / §Validation and tests
-("default/profile/project/template/draft/env/resume の precedence matrix
-golden test"): a table-driven matrix over the plan-05 new-run chain
-implemented by ``ari.config.resolver.resolve_new_run_config``::
+``docs/reference/configuration.md`` §Resolution model (table "B) New run",
+plus "The 4-key profile merge caveat"): a table-driven matrix over that
+new-run chain, implemented by
+``ari.config.resolver.resolve_new_run_config``::
 
     defaults < bundled workflow.yaml < profile (EXACT 4-key _apply_profile
     merge) < project < template < draft < documented ARI_* env

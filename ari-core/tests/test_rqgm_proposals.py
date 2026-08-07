@@ -1,5 +1,6 @@
 """RQGM Task 03 — ProposalRecord / ProposalStore / ProposalRouter
-(docs/plans/ari_rqgm/03, §9).
+(docs/reference/file_formats.md "proposals/ (RQGM Task 03)";
+docs/guides/virsci_integration.md "Event-triggered routing and budgets").
 
 Covers: schema round-trip + jsonschema validation (over-budget rejection),
 ``render_summary_ctx`` purity and budget, the idea.json projection golden

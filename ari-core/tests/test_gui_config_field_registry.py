@@ -1,7 +1,7 @@
 """Tests for the canonical config field registry (gui_refresh task 05 Wave 3a).
 
-Plan ``docs/plans/gui_refresh/05`` §Canonical field metadata / §Configuration
-scopes / §Completion criteria:
+``docs/reference/configuration.md`` §Field registry (canonical field
+metadata):
 
 - coverage invariant — 100% of walked ``ARIConfig`` leaves carry FIELD_META
   (``get_uncovered() == []``) and ``build_field_registry`` raises otherwise;

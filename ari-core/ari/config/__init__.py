@@ -620,7 +620,8 @@ class EvaluatorConfig(BaseModel):
 
 
 class AriModeConfig(BaseModel):
-    """Top-level ``ari:`` block (RQGM Task 01, docs/plans/ari_rqgm/01)."""
+    """Top-level ``ari:`` block (docs/reference/configuration.md,
+    "Activation: ``ari.mode`` + ``rqgm.enabled``")."""
 
     mode: Literal["simple_bfts", "ari_rqgm"] = Field(
         "simple_bfts",
@@ -633,8 +634,8 @@ class AriModeConfig(BaseModel):
 
 
 class PaperConfig(BaseModel):
-    """Top-level ``paper:`` block (paper-archive Task 01,
-    docs/plans/ari_rqgm_paper/01 §5.1/§6.1).
+    """Top-level ``paper:`` block (docs/guides/execution_modes.md,
+    "The paper execution axis: ``paper.mode``").
 
     The paper-phase execution-mode switch, orthogonal to the exploration
     ``ari.mode``. ``linear`` (default) preserves the current paper pipeline
@@ -761,7 +762,8 @@ class AssuranceRuntimeConfig(BaseModel):
 
 
 class RQGMEpochConfig(BaseModel):
-    """``rqgm.epoch:`` block (RQGM Task 02, docs/plans/ari_rqgm/02 §6).
+    """``rqgm.epoch:`` block (docs/reference/configuration.md,
+    "``rqgm.epoch`` — epoch-boundary sizing").
 
     Sizing of the epoch-boundary trigger. v1 supports only the node-count
     boundary; richer trigger policy (stagnation events, ...) is Task 05's.
@@ -785,7 +787,8 @@ class RQGMEpochConfig(BaseModel):
 
 
 class RQGMKernelConfig(BaseModel):
-    """``rqgm.kernel:`` block (RQGM Task 04, docs/plans/ari_rqgm/04 §6).
+    """``rqgm.kernel:`` block (docs/reference/configuration.md,
+    "``rqgm.kernel`` — ConstitutionalKernel posture").
 
     Enforcement posture of the ConstitutionalKernel adapters. The rule
     tables themselves are frozen code (``ari/rqgm/kernel_rules.py`` +
@@ -812,12 +815,14 @@ class RQGMKernelConfig(BaseModel):
     float_tolerance: float = Field(
         1e-9,
         description="Single float-comparison tolerance used by kernel "
-                    "checks (docs/plans/ari_rqgm/04 §5.7).",
+                    "checks (docs/reference/configuration.md, "
+                    "`rqgm.kernel` — ConstitutionalKernel posture).",
     )
 
 
 class RQGMGovernanceConfig(BaseModel):
-    """``rqgm.governance:`` block (RQGM Task 05, docs/plans/ari_rqgm/05 §6.5).
+    """``rqgm.governance:`` block (docs/reference/configuration.md,
+    "``rqgm.governance`` — GovernanceOrchestrator budgets and posture").
 
     Budget knobs and posture of the epoch-boundary GovernanceOrchestrator
     (``audit_epoch``). Task 12 owns the budget *numbers*; this task owns the
@@ -934,7 +939,8 @@ class RQGMReplayConfig(BaseModel):
 
 
 class RQGMTransitionConfig(BaseModel):
-    """``rqgm.transition:`` block (RQGM Task 09, docs/plans/ari_rqgm/09 §6.3).
+    """``rqgm.transition:`` block (docs/reference/configuration.md,
+    "``rqgm.transition`` — RegistryTransitionEngine thresholds").
 
     Numeric thresholds of the RegistryTransitionEngine — the ONLY tunable
     part of the transition layer. The T1-T21 table topology is fixed code
@@ -1234,8 +1240,8 @@ class RQGMCleanRoomConfig(BaseModel):
 
 
 class RQGMFrontierRepairConfig(BaseModel):
-    """``rqgm.frontier_repair:`` block (RQGM Task 10, docs/plans/ari_rqgm/10
-    §6).
+    """``rqgm.frontier_repair:`` block (docs/reference/configuration.md,
+    "``rqgm.frontier_repair`` — selective erasure / frontier rebuild").
 
     Posture of the FrontierRepairEngine / selective erasure. All defaults
     inert: the engine exists only under ``ari.mode: ari_rqgm`` with
@@ -1311,8 +1317,8 @@ class RQGMMetaShadowConfig(BaseModel):
 
 
 class RQGMMetaEvolutionConfig(BaseModel):
-    """``rqgm.meta_evolution:`` block (RQGM Task 11, docs/plans/ari_rqgm/11
-    §6.4).
+    """``rqgm.meta_evolution:`` block (docs/reference/configuration.md,
+    "``rqgm.meta_evolution`` — meta-tier budgets and switches").
 
     Budgets/switches of the meta tier (Layer 2). All inert under
     ``simple_bfts``; the authority matrix itself is frozen code
@@ -1411,10 +1417,11 @@ class RQGMAdversarialConfig(BaseModel):
             "evidence_gap", "cost_explosion", "prompt_injection",
             "paper_self_preference",
         ],
-        description="Enabled adversary types (docs/plans/ari_rqgm/06 §5.2 "
-                    "seven + the paper-phase paper_self_preference eighth, "
-                    "docs/plans/ari_rqgm_paper/05; the eighth is inert off "
-                    "the paper phase).",
+        description="Enabled adversary types: the seven exploration types "
+                    "+ the paper-phase paper_self_preference eighth, which "
+                    "is inert off the paper phase "
+                    "(docs/reference/configuration.md, `rqgm.adversarial` "
+                    "— attack→defense→adjudication loop).",
     )
     max_attacks_per_node: int = Field(
         3,
@@ -1450,8 +1457,9 @@ class RQGMAdversarialConfig(BaseModel):
 
 
 class ProposalGeneratorConfig(BaseModel):
-    """One ``proposal_router.generators.*`` entry (RQGM Task 03,
-    docs/plans/ari_rqgm/03 §6.5)."""
+    """One ``proposal_router.generators.*`` entry
+    (docs/reference/configuration.md,
+    "``proposal_router`` — proposal generation routing")."""
 
     # Forward-compat for later-task keys (same posture as RQGMConfig).
     model_config = {"extra": "allow"}
@@ -1534,7 +1542,7 @@ class ProposalGeneratorsConfig(BaseModel):
     virsci: VirSciGeneratorConfig = Field(
         default_factory=VirSciGeneratorConfig,
         description="Optional high-cost deliberative generator "
-                    "(docs/plans/ari_rqgm/03 §5.4).",
+                    "(docs/guides/virsci_integration.md, Configuration).",
     )
 
 
@@ -1616,7 +1624,9 @@ class RQGMEvalKCAConditionsConfig(BaseModel):
 
 
 class RQGMEvalConfig(BaseModel):
-    """``rqgm.eval:`` block (RQGM Task 13 §7, docs/plans/ari_rqgm/13).
+    """``rqgm.eval:`` block (docs/reference/configuration.md,
+    "``rqgm.eval`` — evaluation-harness posture"; the harness itself is
+    docs/guides/rqgm_evaluation.md).
 
     Evaluation-harness posture: scripted deterministic component doubles and
     failure-injection activation. ALL defaults off — the harness only affects
@@ -1660,8 +1670,8 @@ class RQGMEvalConfig(BaseModel):
 
 
 class RQGMPaperArchiveConfig(BaseModel):
-    """``rqgm.paper.archive:`` block (paper-archive Task 01 skeleton /
-    Task 02 detail, docs/plans/ari_rqgm_paper/01 §6.1, /02 §6.2).
+    """``rqgm.paper.archive:`` block (docs/guides/execution_modes.md,
+    "Cost bound and the degraded on-ramp").
 
     The best-first draft-tree knobs. ``max_expansions`` is a PER-EPOCH
     budget (one archive round) mapped to BFTS ``max_total_nodes``; ``depth``
@@ -1718,13 +1728,16 @@ class RQGMPaperEpochConfig(BaseModel):
 
 class RQGMPaperAnchorConfig(BaseModel):
     """``rqgm.paper.anchor:`` — the APReS-equivalent ground-truth anchor
-    (paper-archive Task 04, docs/plans/ari_rqgm_paper/04 §6.4).
+    (docs/reference/rqgm_schemas.md, "``paper_anchor_corpus.jsonl`` — the
+    read-only accept/reject anchor").
 
     The reviewer's held-out accept/reject agreement corpus. Default off =
-    the degraded on-ramp (§5.9): no corpus is read, the ``anchor_evaluation``
+    the degraded on-ramp (docs/guides/rqgm_migration.md, "The default is a
+    degraded on-ramp"): no corpus is read, the ``anchor_evaluation``
     stage takes its zero-coverage pass, and reviewer candidates are not
     anchor-gated. This block is the ``paper_reviewer``'s anchor only:
-    ``paper_writer`` is ALSO anchored (§5.1, revised 2026-07-16), but to the
+    ``paper_writer`` is ALSO anchored (docs/concepts/rqgm_architecture.md,
+    "The paper-archive layer"), but to the
     Layer-0 claim-evidence gate — see ``paper_anchor.WRITER_ANCHOR_DESCRIPTOR``
     — which needs no curated corpus. The writer's faithfulness case still lands
     on this pool, so ``enabled: false`` gates the writer sanction too."""
@@ -1749,11 +1762,13 @@ class RQGMPaperAnchorConfig(BaseModel):
 
 class RQGMPaperSelfPreferenceConfig(BaseModel):
     """``rqgm.paper.self_preference:`` — the self-preference adversary knobs
-    (paper-archive Task 05, docs/plans/ari_rqgm_paper/05 §5.3).
+    (docs/reference/rqgm_schemas.md,
+    "``rqgm/paper_self_preference_stat.json`` — the self-preference
+    statistic").
 
     Meaningful only under the effective ``rqgm_archive`` paper mode. The
     authorship corpus is the anchor corpus with one extra ``authorship``
-    label dimension (``corpus_path: ""`` reuses Task 04's anchor); the margin
+    label dimension (``corpus_path: ""`` reuses the anchor corpus); the margin
     statistic and pre-signal degrade safely to gate-finding-only /
     anchor-disagreement attacks when no AI/human corpus is present."""
 
@@ -1835,8 +1850,8 @@ class RQGMPaperReviewerConfig(BaseModel):
 
 
 class RQGMPaperConfig(BaseModel):
-    """``rqgm.paper:`` subsection (paper-archive Task 01 skeleton,
-    docs/plans/ari_rqgm_paper/01 §6.1). The redundant interlock that mirrors
+    """``rqgm.paper:`` subsection (docs/guides/execution_modes.md,
+    "Turning the paper archive on"). The redundant interlock that mirrors
     ``rqgm.enabled`` for the paper phase, plus the archive/epoch/anchor/
     prompt_evolution skeletons. Inert unless the effective paper mode is
     ``rqgm_archive``."""

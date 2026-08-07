@@ -1,4 +1,6 @@
-"""RQGM Task 04 — ConstitutionalKernel (docs/plans/ari_rqgm/04 §9).
+"""RQGM Task 04 — ConstitutionalKernel
+(docs/guides/execution_modes.md §Constitutional kernel (Layer 0);
+docs/reference/rqgm_schemas.md §Constitutional violation codes).
 
 Covers: per-violation-code trigger/pass fixtures over all twelve entry
 points, the T1-T19 transition table (|S|x|S| complement enumeration,

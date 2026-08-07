@@ -1,7 +1,9 @@
 """Tests for the legacy-compatible resolved-config resolver (gui_refresh
 task 05 Wave 3a).
 
-Plan ``docs/plans/gui_refresh/05`` §Resolution model / §Resolved manifest:
+``docs/reference/configuration.md`` §Resolution model (table "A) Existing
+checkpoint") / §Provenance and confidence / §``resolved_config.json`` (the
+launch manifest):
 
 - layer order on an existing checkpoint — pydantic defaults < workflow.yaml
   (model_fields filter) < launch_config.json knobs < CURRENT env (documented
