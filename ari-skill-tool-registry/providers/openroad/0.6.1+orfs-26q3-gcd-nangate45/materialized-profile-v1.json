@@ -146,7 +146,7 @@
       ],
       "protocol_conformance": true,
       "provider_pinned": true,
-      "replay_fixture_digest": "sha256:caa3664eae35742e807e7eab5ff36ace8f036cb1ad5f15789adebb0dbfa2d68b",
+      "replay_fixture_digest": "sha256:f72fcec60e4f89c53f266524fcfd53b00f7c755d745cff01b719363fca46958e",
       "scientific_validation_digest": "sha256:f9244f6ac23906db167fc69c061fdd152bdce54e47e6d1d4c29afe74d2e522d1",
       "semantics_documented": true,
       "units_documented": true
@@ -169,7 +169,7 @@
       "worker_python_pin": null
     },
     "golden_fixture_digest": "sha256:f9244f6ac23906db167fc69c061fdd152bdce54e47e6d1d4c29afe74d2e522d1",
-    "golden_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/gcd-nangate45-26q3.golden.json",
+    "golden_fixture_path": "gcd-nangate45-26q3.golden.json",
     "limitations": [
       "It does not promote GPU, SLURM, another design, another PDK, another corner, or another OpenROAD image.",
       "The provider capability executes a routed-artifact contract; its verified status is not a general timing-closure guarantee.",
@@ -259,8 +259,8 @@
     ],
     "poll_interval_seconds": 0.1,
     "profile_id": "gcd-nangate45-26q3",
-    "replay_fixture_digest": "sha256:caa3664eae35742e807e7eab5ff36ace8f036cb1ad5f15789adebb0dbfa2d68b",
-    "replay_fixture_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/gcd-nangate45-26q3.replay.json",
+    "replay_fixture_digest": "sha256:f72fcec60e4f89c53f266524fcfd53b00f7c755d745cff01b719363fca46958e",
+    "replay_fixture_path": "gcd-nangate45-26q3.replay.json",
     "schema_version": "ari.openroad-experiment/v1",
     "technology": {
       "corner": "typical",
@@ -275,9 +275,9 @@
     },
     "toolchain": {
       "architecture": "x86_64",
-      "executable_digest": "sha256:3129da58b9d03fe5069ddfe02a032ef58a0458884d83467206537d255b717b12",
-      "executable_path": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/runtime/openroad",
-      "execution_image_digest": "sha256:d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39",
+      "executable_digest": "sha256:ead2ac3204b788c45e9869aced31a31e2bd2ffc39067b06eb3e0c3094880c93c",
+      "executable_path": "runtime/openroad",
+      "execution_image_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
       "openroad_commit": "7304ba78ade7cb9f78466c6d0231432d72dadd3b",
       "openroad_version": "26Q2-2517-g7304ba78ad",
       "orfs_commit": "adeb389e7fbf06ef6a939a895c014f69e6f7aa00",
@@ -325,10 +325,10 @@
         }
       ],
       "input_digest": "sha256:9b34eb5ed61746d6577ba329c827a6c7578eb2d4ed4f2468755da235208be34f",
-      "source_root": "/home/t-kotama/workplace/ARI/ari-skill-tool-registry/providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/workspace"
+      "source_root": "workspace"
     }
   },
-  "provider_digest": "sha256:8d2ade5e29d12a13d08e4163424ee13d4d243128a55fc45b805e97f08ead2d19",
+  "provider_digest": "sha256:03319cf8eec017e19d30afa4bb4bd727a4553387feaa080164deffc6edf5f759",
   "schema_version": "ari.openroad-materialized-profile/v1",
-  "verified_lock_digest": "sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28"
+  "verified_lock_digest": "sha256:fbc4be322a03aa50e666a0dcdb3b1afdfe60fa52bbc570e9cd8f1c800168825e"
 }

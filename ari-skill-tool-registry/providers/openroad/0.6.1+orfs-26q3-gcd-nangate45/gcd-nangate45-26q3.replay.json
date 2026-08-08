@@ -2,10 +2,10 @@
   "arguments": {
     "request_id": "offline-fixture"
   },
-  "experiment_digest": "sha256:cb3e20b6dc7f6abc78226acf90754189d66bd307e20f825dc7f8e3b05444f397",
+  "experiment_digest": "sha256:4a6478f89886d91f36a45622fba01d3bc5b66ce5a1ce7f180acffed8f4633577",
   "profile_id": "gcd-nangate45-26q3",
   "result": {
-    "experiment_digest": "sha256:cb3e20b6dc7f6abc78226acf90754189d66bd307e20f825dc7f8e3b05444f397",
+    "experiment_digest": "sha256:4a6478f89886d91f36a45622fba01d3bc5b66ce5a1ce7f180acffed8f4633577",
     "metrics": [
       {
         "corner": "typical",

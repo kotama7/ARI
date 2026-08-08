@@ -1,9 +1,9 @@
 {
   "adapter": {
-    "adapter_digest": "sha256:981a6edab50d0674d4ca7ccad008d8b18568c6d7e7bc0106a7c62ca0c52f2923",
+    "adapter_digest": "sha256:f59d6e2e223a40e7dfb510eba5285976cd319fc0a376b7c3f53d2a0ec46abccc",
     "adapter_id": "ari.openroad-profile",
     "adapter_version": "1.1.0",
-    "promotion_verifier_digest": "sha256:906d408612d3d8b2d19d5929e0a267e5531441a4afe6e144c5faafe7dd5851eb"
+    "promotion_verifier_digest": "sha256:ccba9f0c0cf79118aaea0baefabb81e1eb78c6d67aa65f68fc91cffa87d5b1fe"
   },
   "artifact": {
     "execution_image": {
@@ -13,10 +13,10 @@
       "inner_openroad_path": "/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad",
       "oci_manifest_digest": "sha256:46b03d30451b56dc20734d0f5ac51a8496e7139cda82a576d1915369bd0c68a7",
       "oci_reference": "docker.io/openroad/orfs:26Q2-565-gadeb389e7",
-      "retained_sif_digest": "sha256:d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39",
-      "retained_sif_size_bytes": 1540313088,
-      "runtime": "apptainer",
-      "runtime_version": "1.5.0-rc.1"
+      "retained_sif_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+      "retained_sif_size_bytes": 1540308992,
+      "runtime": "singularity",
+      "runtime_version": "4.5.0-1.el9"
     },
     "openroad_mcp": {
       "dependency_lock_digest": "sha256:0fd99caa99abe3c9f731e9aa7dd17076dd21e91826fc9bdd7f5dd86489bee950",
@@ -48,7 +48,7 @@
       "orfs_repository_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts",
       "orfs_tag": "26Q3"
     },
-    "wrapper_digest": "sha256:3129da58b9d03fe5069ddfe02a032ef58a0458884d83467206537d255b717b12"
+    "wrapper_digest": "sha256:ead2ac3204b788c45e9869aced31a31e2bd2ffc39067b06eb3e0c3094880c93c"
   },
   "capability_scope": {
     "credential_scope_ids": [],
@@ -64,18 +64,19 @@
     ],
     "profiles": [
       {
+        "capability_contract_digest": "sha256:7972e05332f4ee4749787986ff9d1119694a6ec4a7691dee6434b61ba7d7e490",
         "capability_ref": "ari.eda.openroad.place-route/v1",
-        "experiment_digest": "sha256:cb3e20b6dc7f6abc78226acf90754189d66bd307e20f825dc7f8e3b05444f397",
+        "experiment_digest": "sha256:4a6478f89886d91f36a45622fba01d3bc5b66ce5a1ce7f180acffed8f4633577",
         "golden_fixture_digest": "sha256:f9244f6ac23906db167fc69c061fdd152bdce54e47e6d1d4c29afe74d2e522d1",
         "input_schema_digest": "sha256:632835499c910364d6b6f3c393d9a726b3db62e0ebec8d7bf21506b736591e13",
         "leaf_name": "ari_openroad_run__gcd_nangate45_26q3",
         "library_digest": "sha256:8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1",
-        "method_digest": "sha256:8368c5e6fc9596d8b73eefaf29785fd3ee0d6a3d1c44f78fcde27167d17e9407",
+        "method_digest": "sha256:5a8eceee0e5f0886b9c59d1659b8cc06b169e8a8c446f427d6078c43168515bf",
         "output_contract_digest": "sha256:6d4c22b2066c6334ee2a0695c4ebdca197a9d28599dea86c8760500004f64b92",
         "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188",
         "pdk_digest": "sha256:6c500e236b98953bda22aa6dd939a5d46e9af2a57a6201232bdfe7e2349c5b1f",
         "profile_id": "gcd-nangate45-26q3",
-        "replay_fixture_digest": "sha256:caa3664eae35742e807e7eab5ff36ace8f036cb1ad5f15789adebb0dbfa2d68b",
+        "replay_fixture_digest": "sha256:f72fcec60e4f89c53f266524fcfd53b00f7c755d745cff01b719363fca46958e",
         "workspace_input_digest": "sha256:9b34eb5ed61746d6577ba329c827a6c7578eb2d4ed4f2468755da235208be34f"
       }
     ],

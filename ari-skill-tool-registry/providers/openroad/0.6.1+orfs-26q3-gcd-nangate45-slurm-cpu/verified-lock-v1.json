@@ -1,11 +1,20 @@
 {
   "adapter": {
-    "adapter_digest": "sha256:981a6edab50d0674d4ca7ccad008d8b18568c6d7e7bc0106a7c62ca0c52f2923",
+    "adapter_digest": "sha256:f59d6e2e223a40e7dfb510eba5285976cd319fc0a376b7c3f53d2a0ec46abccc",
     "adapter_id": "ari.openroad-profile",
     "adapter_version": "1.1.0",
-    "promotion_verifier_digest": "sha256:906d408612d3d8b2d19d5929e0a267e5531441a4afe6e144c5faafe7dd5851eb"
+    "promotion_verifier_digest": "sha256:ccba9f0c0cf79118aaea0baefabb81e1eb78c6d67aa65f68fc91cffa87d5b1fe"
   },
   "artifact": {
+    "container_runtime": {
+      "clean_environment": true,
+      "contain_all": true,
+      "gpu": false,
+      "image_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+      "image_size_bytes": 1540308992,
+      "network": "none",
+      "runtime": "singularity"
+    },
     "execution_image": {
       "architecture": "x86_64",
       "image_id": "orfs-26q3-openroad-7304ba78",
@@ -13,10 +22,10 @@
       "inner_openroad_path": "/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad",
       "oci_manifest_digest": "sha256:46b03d30451b56dc20734d0f5ac51a8496e7139cda82a576d1915369bd0c68a7",
       "oci_reference": "docker.io/openroad/orfs:26Q2-565-gadeb389e7",
-      "retained_sif_digest": "sha256:d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39",
-      "retained_sif_size_bytes": 1540313088,
-      "runtime": "apptainer",
-      "runtime_version": "1.5.0-rc.1"
+      "retained_sif_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+      "retained_sif_size_bytes": 1540308992,
+      "runtime": "singularity",
+      "runtime_version": "4.5.0-1.el9"
     },
     "openroad_mcp": {
       "dependency_lock_digest": "sha256:0fd99caa99abe3c9f731e9aa7dd17076dd21e91826fc9bdd7f5dd86489bee950",
@@ -41,25 +50,7 @@
       "source_archive_digest": "sha256:22a8f526c4f4b9d84e8a1ac5a2cfc42594867f6fd6e02f0984afa3f1c43eaade",
       "version": "0.6.1"
     },
-    "portable_runtime": {
-      "image_digest": "sha256:d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39",
-      "image_size_bytes": 1540313088,
-      "kind": "proot-sif",
-      "network_policy": "host-uncredentialed",
-      "proot_digest": "sha256:b7f2adf5a225000a164f4905aabefeebe11c4c1d5bedff5e1fe8866c48dd70d2",
-      "proot_license_digest": "sha256:8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
-      "proot_release": "v5.3.1",
-      "proot_size_bytes": 1948896,
-      "proot_source_commit": "99a8417521645c6d0b6d2b64a504bf27fea5d4da",
-      "proot_source_repository": "https://gitlab.com/proot/proot.git",
-      "squashfs_offset": 40960,
-      "unsquashfs_digest": "sha256:b305985eb764b6d0ef757571e3e44044ebf71c827c4263efe576e9e14b4abcfb",
-      "unsquashfs_size_bytes": 151448,
-      "unsquashfs_version": "4.6.1",
-      "worker_python_digest": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
-      "worker_python_size_bytes": 8020928
-    },
-    "scheduler_snapshot_digest": "sha256:e31fe08a9f0e47f0e57529f591a797aa1ddff0db931dc480d3817d23adbdbcc9",
+    "scheduler_snapshot_digest": "sha256:29dc13329e25e355dd6b225e9fc72a60e546203d61cb7dcc27e0f11734c3eddb",
     "toolchain_line": {
       "line_id": "orfs-26q3",
       "openroad_commit": "7304ba78ade7cb9f78466c6d0231432d72dadd3b",
@@ -74,7 +65,7 @@
     "environment_requirements": [
       "cpu",
       "exclusive-node",
-      "proot-sif",
+      "singularity-sif",
       "slurm"
     ],
     "permissions": [
@@ -85,48 +76,49 @@
     ],
     "profiles": [
       {
+        "capability_contract_digest": "sha256:7972e05332f4ee4749787986ff9d1119694a6ec4a7691dee6434b61ba7d7e490",
         "capability_ref": "ari.eda.openroad.place-route/v1",
-        "experiment_digest": "sha256:a8597b839599856a973fa484ca37f27ee453c0cc975dc584867bc35215653c6b",
+        "experiment_digest": "sha256:3c745c8db55bb9940536d40737e741a8c3db02bbcc562b29d5179f92a73a17bd",
         "golden_fixture_digest": "sha256:720d8a68ac70aab2dc170b0ade87d760fddc7384d38a873927275192518898ee",
         "input_schema_digest": "sha256:632835499c910364d6b6f3c393d9a726b3db62e0ebec8d7bf21506b736591e13",
         "leaf_name": "ari_openroad_run__gcd_nangate45_26q3_slurm_cpu",
         "library_digest": "sha256:8d540a4d4cf6d09d27c87ad067857a9c0c2eeb023ab7a56e058cd3113db4e9b1",
-        "method_digest": "sha256:ce97c34aa2d49a7b35d52bc2e09b3ab29cf25d3e9a89541afe988c3c360f8a61",
+        "method_digest": "sha256:ab4744242aab0f36529603754616ddb1b9157a155bbfbcfff98a9d7f7ccd6c1e",
         "output_contract_digest": "sha256:6d4c22b2066c6334ee2a0695c4ebdca197a9d28599dea86c8760500004f64b92",
         "output_schema_digest": "sha256:4f5c05c3413a658ff08571e36831465827020e114f05003f90121b909ad5f188",
         "pdk_digest": "sha256:6c500e236b98953bda22aa6dd939a5d46e9af2a57a6201232bdfe7e2349c5b1f",
         "profile_id": "gcd-nangate45-26q3-slurm-cpu",
-        "replay_fixture_digest": "sha256:8d27d18f39bdba40dfd07d130377c6a260eca9c2012735d4a74ce142d26fd8da",
+        "replay_fixture_digest": "sha256:ac81d2b552a15d73fc2b794b9228c43b3afbaafebe7480f9ae6c321871f6105f",
         "workspace_input_digest": "sha256:9b34eb5ed61746d6577ba329c827a6c7578eb2d4ed4f2468755da235208be34f"
       }
     ],
     "resource_type": "eda-cpu-slurm",
     "side_effects": "workspace-write"
   },
-  "lock_digest": "sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd",
+  "lock_digest": "sha256:def08a69e7c0c13e8e76e026163337f39667ee8467792c16cad91d96ee9bd203",
   "promotion": {
-    "approval_digest": "sha256:6718e181dad076475f80507b5ae73dab116863e35e939e06f679bd75bb57df57",
+    "approval_digest": "sha256:db6d0a28bd16493bc9f8a2e59f39858186382e3a2a3e5405171304e1a49624f7",
     "approval_path": "promotion-approval-v1.json"
   },
   "provider_id": "openroad-mcp",
   "provider_version": "0.6.1",
   "registration": {
-    "evidence_bundle_digest": "sha256:60305da519da5dc185415de6990b14612bde1e718f85511f9ac156e97db91b16",
+    "evidence_bundle_digest": "sha256:ec576caa764237e4923892cf1b3f46a497241aad23758a8743023e0b55d67be9",
     "evidence_path": "registration-evidence-v1.json",
-    "provider_manifest_digest": "sha256:f4afb6158c65f9f1475c95b9350674b0a2336d5295cf643d24e8c0fbe97c35d3",
+    "provider_manifest_digest": "sha256:bb681f157b6f07d17c66786a14de2f061fb723504612068a714101a85cd71008",
     "provider_manifest_path": "provider-manifest-v1.json",
-    "report_digest": "sha256:53b71cba26b77dacb6e6f98e620c94455fe897b50844aaf6c820dc468a9ba825",
+    "report_digest": "sha256:4c958a5c55d5b3dd1dd65b29f5b2be3597d6604347de2601638e48672e4f9614",
     "report_path": "registration-report-v1.json"
   },
   "runtime_target": {
     "architecture": "x86_64",
-    "execution_substrate": "proot-sif",
-    "network": "host-uncredentialed",
+    "execution_substrate": "singularity-sif",
+    "network": "isolated",
     "operating_system": "linux",
     "provider_python": "CPython-3.13",
-    "scheduler_snapshot_digest": "sha256:e31fe08a9f0e47f0e57529f591a797aa1ddff0db931dc480d3817d23adbdbcc9",
-    "site_identity_digest": "sha256:573f81623cae9a9e8c5ec13b3622483961a98b768e0c4145ad543f54dec24b6a",
-    "worker_python": "CPython-3.12"
+    "scheduler_snapshot_digest": "sha256:29dc13329e25e355dd6b225e9fc72a60e546203d61cb7dcc27e0f11734c3eddb",
+    "site_identity_digest": "sha256:de280f6b0489481d07f61773365a8ce87a11917267b2a736635b093c63842ad2",
+    "worker_python": "container-provided"
   },
   "schema_version": "ari.openroad-verified-lock/v1",
   "status": "verified"

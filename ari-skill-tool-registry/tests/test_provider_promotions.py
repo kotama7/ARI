@@ -43,7 +43,7 @@ OPENROAD_SLURM_BUNDLE = (
     / "providers/openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu"
 )
 OPENROAD_SLURM_LOCK_DIGEST = (
-    "sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd"
+    "sha256:def08a69e7c0c13e8e76e026163337f39667ee8467792c16cad91d96ee9bd203"
 )
 CUDA_LOCK_DIGEST = (
     "sha256:0d57e5c240cfb8cbf71a1f8ffb675764a8ca8600924fe122a0d7882b578caf7c"
@@ -156,7 +156,7 @@ def test_openroad_cpu_promotion_lock_is_exact_and_excludes_slurm_gpu():
 
     assert lock["status"] == "verified"
     assert lock["lock_digest"] == (
-        "sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28"
+        "sha256:fbc4be322a03aa50e666a0dcdb3b1afdfe60fa52bbc570e9cd8f1c800168825e"
     )
     assert lock["capability_scope"]["environment_requirements"] == [
         "cpu",
@@ -182,20 +182,33 @@ def test_openroad_slurm_cpu_promotion_lock_is_exact_and_site_anonymous():
     assert lock["status"] == "verified"
     assert lock["lock_digest"] == OPENROAD_SLURM_LOCK_DIGEST
     assert lock["runtime_target"]["site_identity_digest"].startswith("sha256:")
-    assert lock["runtime_target"]["execution_substrate"] == "proot-sif"
+    # This site cannot run the reviewed PRoot/unsquashfs/worker-Python build, so
+    # the promoted identity pins the clean container instead.  The substrate the
+    # scope advertises must be the one the profile actually pins.
+    assert lock["runtime_target"]["execution_substrate"] == "singularity-sif"
     assert lock["capability_scope"]["credential_scope_ids"] == []
     assert lock["capability_scope"]["environment_requirements"] == [
         "cpu",
         "exclusive-node",
-        "proot-sif",
+        "singularity-sif",
         "slurm",
     ]
     assert evidence["observations"]["scheduler"]["identity_disclosure"] == (
         "salted-digest-only"
     )
-    assert evidence["observations"]["result"]["hpc_job"]["status"][
-        "reason"
-    ] == "fixed-wrapper-completion-v1"
+    # Terminal state must come from the scheduler itself where accounting
+    # storage answers, and from the nonce-bound wrapper record only where it
+    # does not.  Either way the job must have actually succeeded.
+    status = evidence["observations"]["result"]["hpc_job"]["status"]
+    assert status["state"] == "succeeded"
+    accounting = _read(
+        OPENROAD_SLURM_BUNDLE / "scheduler-snapshot-v1.json"
+    )["cluster"]["job_accounting"]
+    if accounting is None:
+        assert status["reason"] == "fixed-wrapper-completion-v1"
+    else:
+        assert status["scheduler_state"] == "COMPLETED"
+        assert status["exit_code"] == 0
     for forbidden_key in ('"node_name"', '"nodelist"', '"cluster_name"', "NodeName="):
         assert forbidden_key not in serialized
 

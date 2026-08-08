@@ -1,16 +1,16 @@
 {
-  "actor_id": "kotama7",
+  "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:a9cc1c3cd0d4816d0d672e6726f81b4ae8a554069fa325e84aaf4ca1c10dde47",
-  "approved_date": "2026-08-05",
+  "approval_digest": "sha256:dc59f473d5500404ed4ad64b1ec80cdef1f7486e0b175354ead6428c31bed955",
+  "approved_date": "2026-08-09",
   "authorization_basis": "explicit-maintainer-approval",
-  "capability_scope_digest": "sha256:794ce82b840687d7813b257e211f52714dc94580fd434fd7d804cd34fae044ea",
-  "evidence_bundle_digest": "sha256:21196beed16f6333952c14fa6263ca973d37a16a3302df4b34540e24ae95ca02",
+  "capability_scope_digest": "sha256:1b13c69530864571ca84da053f4100ac3f07c026c55891a43a0df11bf1ff04b3",
+  "evidence_bundle_digest": "sha256:18b42309c4ce6044e01328536ff093f2940ed7460219a67d25a10689b4a666cb",
   "from_status": "candidate",
   "provider_id": "openroad-mcp",
-  "provider_manifest_digest": "sha256:f26a9d74ed7c20255795037b022cca9c1c7faf8e20ca02e603b85166a8a98975",
+  "provider_manifest_digest": "sha256:b0d06dc0b60237a36deca0fa97bcbf14ea2f98002cc1ce3511016d8fc11c0c51",
   "provider_version": "0.6.1",
-  "registration_report_digest": "sha256:d5451a9bfddc5f61980b3274d01fdb3f99930fbd48ef62108fd0f764870ed4cf",
+  "registration_report_digest": "sha256:d9c883f1cd4b0c1002f4e7c4cd20efbc27d78db00b458d63afe1e7aeda99e5e1",
   "schema_version": "ari.capability-provider-promotion-approval/v1",
   "to_status": "verified"
 }

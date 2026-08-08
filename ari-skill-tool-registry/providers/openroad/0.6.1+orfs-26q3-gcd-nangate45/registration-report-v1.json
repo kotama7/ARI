@@ -3,13 +3,13 @@
   "gates": [
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:1abe8f670d3474556a5ebb422ef6db94ebac9f16d9f6ecb03a523a5b8584791c",
+      "evidence_digest": "sha256:ffaa390c49f399f0cc51f993856c060552cff6499d9f7665c97a937ad9560f77",
       "gate_id": "manifest_schema",
       "passed": true
     },
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:20779a1889d4713ea9e346044c603ca863ae7ae93fa33e5cffce3c89859398a0",
+      "evidence_digest": "sha256:11e609d0c532adcfd42d0548e9386ed4e289482f38cd61f6ac4961c6f816a1f6",
       "gate_id": "source_package_digest_pin",
       "passed": true
     },
@@ -27,7 +27,7 @@
     },
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:4b740ea9f66a50bd2826b343828c44569ee24d54343976feb6730541788e7d95",
+      "evidence_digest": "sha256:a66065c87b34df04e7f15119587f3d3fa80173c8439cc8d4794996f17b858045",
       "gate_id": "capability_contract_conformance",
       "passed": true
     },
@@ -45,31 +45,31 @@
     },
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:6c5c7f476598d094949ac7875895723f8139fcfaa3b3394191558abc52eb9aef",
+      "evidence_digest": "sha256:131442b57c0bcc2c43e1845edb16e9dc7a44fc8157180286b3f389ec3820be99",
       "gate_id": "environment_allowlist",
       "passed": true
     },
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:a821552c78a7f740830392a241e071405eaacc2ffc3446cacbe16be9be94ed70",
+      "evidence_digest": "sha256:f90e777255e96f7486b8ccbd205433fe004fc68bc1320e62e32678b999592be3",
       "gate_id": "timeout_cancellation_process_group",
       "passed": true
     },
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:f7cc1414f4def71d09d5e7be97ed80a4280f3fc7c3a2124c31b46399c3063899",
+      "evidence_digest": "sha256:d9f105b1b5a33df6463e2a93a1bc659bef5b0c676ea9c887f5061ff69562c869",
       "gate_id": "result_schema",
       "passed": true
     },
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:fef337bc1542d8406180392e6d4c3bee7559b72bc526b5d1ba0ee26929258a71",
+      "evidence_digest": "sha256:314b13932ed43889fc957de0a3f4fa2896c6be82cc7e076d1e9bcebdda72dfb7",
       "gate_id": "malicious_description_boundary",
       "passed": true
     },
     {
       "detail": "closed OpenROAD GCD/Nangate45 CPU registration evidence passed",
-      "evidence_digest": "sha256:3886c8fc8a4cd18bd51ecf37019ac611fab50e95ae3384d37dafabb5810cf9d1",
+      "evidence_digest": "sha256:d1f41ebb2f1670b8068f13cff033ace25166ba15ab170dfa25be736d7dd2626b",
       "gate_id": "workspace_isolation",
       "passed": true
     },
@@ -92,8 +92,8 @@
       "passed": true
     }
   ],
-  "manifest_sha256": "sha256:f26a9d74ed7c20255795037b022cca9c1c7faf8e20ca02e603b85166a8a98975",
+  "manifest_sha256": "sha256:b0d06dc0b60237a36deca0fa97bcbf14ea2f98002cc1ce3511016d8fc11c0c51",
   "provider_id": "openroad-mcp",
-  "report_digest": "sha256:d5451a9bfddc5f61980b3274d01fdb3f99930fbd48ef62108fd0f764870ed4cf",
+  "report_digest": "sha256:d9c883f1cd4b0c1002f4e7c4cd20efbc27d78db00b458d63afe1e7aeda99e5e1",
   "schema_version": "ari.capability-provider-registration-report/v1"
 }

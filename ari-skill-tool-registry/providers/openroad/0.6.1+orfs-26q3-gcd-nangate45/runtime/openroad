@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly expected_image_sha256="d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39"
+readonly expected_image_sha256="b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
 readonly runtime_dir="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 readonly image_path="${runtime_dir}/openroad-orfs-26q3.sif"
 
@@ -20,7 +20,7 @@ if [[ "${PWD}" == *:* || "${PWD}" == *$'\n'* || "${PWD}" == *$'\r'* ]]; then
   exit 78
 fi
 
-exec /usr/bin/apptainer exec \
+exec /usr/bin/singularity exec \
   --containall \
   --cleanenv \
   --net \
