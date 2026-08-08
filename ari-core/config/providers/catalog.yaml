@@ -14,7 +14,7 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: e628448dfff6e1a65eaa8d59513d5a96d6d30308
+      full_commit_sha: 9a01dcc3d8b0473f715247a629cd824e0bd6f5e9
       package_sha256: sha256:3f05941c40043d0b9ecbf008fa436fb6ee058e59a119cfff4fb85a3f1dca5479
       license: MIT
     manifest_sha256: sha256:2f2cba035b0aa931ebd584b0de49e029340ac001919c0fea64e990adc0395fab
@@ -32,8 +32,8 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: e628448dfff6e1a65eaa8d59513d5a96d6d30308
-      package_sha256: sha256:d6b0bb1e753f49fe6c865120caecc9a9dfd3df81b95fae0f2b40601fbceb832a
+      full_commit_sha: 9a01dcc3d8b0473f715247a629cd824e0bd6f5e9
+      package_sha256: sha256:69343dded7ccad76663384659f0f675df9d4199fb04a53f9ef81a6bb4508461b
       license: MIT
     manifest_sha256: sha256:76fe7760e327d4bf2f20e9ae8dd026639d2d76fd14aa9a6803046bcdccdabf79
     declared_capability_refs_by_tool:
@@ -53,8 +53,8 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: 1a8a2cbca25d1250b6d7e9f6dd92b79fcab4ad72
-      package_sha256: sha256:a6774e763c27688b78073e57d69bd933467060d83355a8c25ad5fa777520e13c
+      full_commit_sha: 9a01dcc3d8b0473f715247a629cd824e0bd6f5e9
+      package_sha256: sha256:621a53e79f895c179810ff833fb3de72bba10fafcd402d50d45fbaa407c5829a
       license: MIT
     manifest_sha256: sha256:0cd43d39c2311def2f5d8016b20ae371128c7503c92b1070ea9c04417d138dc1
     # discover/describe/invoke are the broker's own surface, not ontology
