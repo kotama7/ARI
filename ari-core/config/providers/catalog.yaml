@@ -54,7 +54,7 @@ entries:
     source:
       repository: https://github.com/kotama7/ARI.git
       full_commit_sha: 929a682fa0f41a1b416f9615e35506b6538a54a4
-      package_sha256: sha256:6ee4a1e46e6d702d17cf8098243a15ab86d7e14c89c2602f0b4eed20281f239d
+      package_sha256: sha256:aca895f9a845be860d6f7686e59ef3eb9be8a5abb9a87691aeaaaa597e21a34a
       license: MIT
     manifest_sha256: sha256:0e774c87b740ce1107c5bbfb6599a9ce88e06aa8afa774c271cdede704db81f8
     # discover/describe/invoke are the broker's own surface, not ontology
