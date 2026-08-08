@@ -14,8 +14,8 @@
 # to any of them is a re-registration. The dataset slot pins WHICH SIZES.
 accepts_external_target: false
 container:
-  license: Composite OSS; inventory sha256:24ff08e519aaf93cc92a2aebb71d96e101ad44cccd147e73be963049fdfb4314
-  reference: apptainer:orfs-26q3-openroad-7304ba78.sif
+  license: Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088
+  reference: singularity:orfs-26q3-openroad-7304ba78.sif
   resolved_digest: sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c
 credential_policy: none
 credential_scope_ids: []
@@ -37,7 +37,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:6c3347faab2a7711fd8d336b3cff7677811375f2c93fb6c332d6e3e01598b7a3
+manifest_digest: sha256:240e329af19626c549b87b4ad3577e246fc502e10ce16047192f30d61b651f34
 model:
   license: not-applicable
   revision: not-applicable

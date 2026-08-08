@@ -1,7 +1,7 @@
 {
   "container_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
-  "container_reference": "apptainer:orfs-26q3-openroad-7304ba78.sif",
-  "inventory_digest": "sha256:24ff08e519aaf93cc92a2aebb71d96e101ad44cccd147e73be963049fdfb4314",
+  "container_reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
+  "inventory_digest": "sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088",
   "non_dpkg_license_evidence": [
     {
       "digest": "sha256:fae0db7a4c00c3125f037e5818e8cd0c8aa5c67fff2e8c558312068e9f2d1592",
