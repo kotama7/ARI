@@ -672,7 +672,8 @@ _env_append_if_absent "# ARI_AXIS_MODE=                 # evaluator axis-set sou
 _env_append_if_absent "# ARI_FRONTIER_SCORE=            # BFTS frontier_score override: scientific_plus_diversity|scientific_only|depth_penalized|ucb_like"
 _env_append_if_absent "# ARI_BFTS_ALLOW_WEB=            # opt-in web search during BFTS exploration: 1|true|yes|on (env wins over workflow.yaml; default off)"
 
-# --- RQGM execution mode (docs/plans/ari_rqgm Task 01) -----------------------
+# --- RQGM execution mode ----------------------------------------------------
+# (docs/reference/environment_variables.md, "Execution mode (RQGM)")
 _env_append_if_absent "# ARI_MODE=                      # execution mode override: simple_bfts|ari_rqgm (RQGM also needs ARI_RQGM_ENABLED=1; default simple_bfts)"
 _env_append_if_absent "# ARI_RQGM_ENABLED=              # RQGM master interlock override: 0|1|true|false (both must agree or ARI falls back to simple_bfts)"
 _env_append_if_absent "# ARI_MODEL_REVISION=            # exact provider/model revision for the RQGM execution fingerprint; unset is recorded as unresolved"
@@ -706,7 +707,8 @@ _env_append_if_absent "# ARI_MANUSCRIPT_READINESS_PATH="
 _env_append_if_absent "# ARI_MANUSCRIPT_BRIEFS_PATH="
 _env_append_if_absent "# ARI_MANUSCRIPT_BINDING_PATH="
 
-# --- Paper-archive execution mode (docs/plans/ari_rqgm_paper Task 01) --------
+# --- Paper-archive execution mode -------------------------------------------
+# (docs/reference/environment_variables.md, "Execution mode (RQGM)")
 _env_append_if_absent "# ARI_PAPER_MODE=                # paper-phase mode override: linear|rqgm_archive (archive also needs ARI_RQGM_PAPER_ENABLED=1; default linear)"
 _env_append_if_absent "# ARI_RQGM_PAPER_ENABLED=        # paper-archive interlock override: 0|1|true|false (both must agree or the paper phase falls back to linear)"
 _env_append_if_absent "# ARI_PAPER_AGENT_AS_JUDGE=      # agent-as-judge draft scoring: 0|1|true|false (default 0 = deterministic LLM-free rubric; 1 puts live LLM calls on the paper draft path)"

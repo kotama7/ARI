@@ -1,6 +1,6 @@
 # RQGM failure-injection specs — the ten deterministic injections
-# (docs/plans/ari_rqgm/13 §5.3) plus the clean control set for the
-# false-reject metric. Loaded/validated by
+# (docs/guides/rqgm_evaluation.md, "Failure injections") plus the clean
+# control set for the false-reject metric. Loaded/validated by
 # ari.rqgm.evaluation.injection.{load_injection_specs,spec_violations};
 # fixture payloads live under ari-core/tests/fixtures/rqgm_eval/.
 #
@@ -355,8 +355,9 @@ kca_injections:
     target_refs: [eval_har_publication]
     expected_detection: {channels: [kernel.CK-HAR-018], record_types: [kernel_report], max_latency_epochs: 0}
 
-# Paper-archive injections PI1-PI3 (docs/plans/ari_rqgm_paper/07 §5.8). A
-# SEPARATE block so the exploration `injections` list is unchanged; loaded via
+# Paper-archive injections PI1-PI3 (docs/guides/rqgm_evaluation.md, "Paper
+# failure injections PI1–PI3"). A SEPARATE block so the exploration
+# `injections` list is unchanged; loaded via
 # ari.rqgm.evaluation.injection.load_injection_specs (`paper_injections` key,
 # absence-tolerant). Same FailureInjectionSpec shape + `eval_*` namespace; the
 # additive `authorship` field marks AI-authored payloads (P3). Fixtures under

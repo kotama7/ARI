@@ -1,9 +1,12 @@
 # ari/prompts/rqgm
 
 Committed prompt templates for the ARI-RQGM prompt-defined actors (Tasks 03/06/07).
-ProposalRouter generators (docs/plans/ari_rqgm Task 03 §5.3 / §7), the
-adversarial evolution loop (Task 06 §5.2 / §7), and the PromptMutator
-meta-prompt (Task 07 §5.4 / §7). Loaded via
+ProposalRouter generators (`docs/reference/configuration.md`
+§"`proposal_router` — proposal generation routing"), the adversarial
+evolution loop (`docs/reference/rqgm_schemas.md` §"Adversarial-loop schemas
+(Task 06)"), and the PromptMutator meta-prompt
+(`docs/concepts/rqgm_runtime_walkthrough.md` §"7. Prompt evolution —
+candidates crawl, the RTE adopts"). Loaded via
 `FilesystemPromptLoader.load_versioned("rqgm/<name>")`; the returned
 `sha256[:12]` is stamped as the record `prompt_hash` and recorded via
 `record_prompt_use` (→ `prompt_trace.jsonl`).
@@ -26,7 +29,7 @@ templates instruct the closed target-type subset each type may use):
 - `adversary_overclaim.md`, `adversary_metric_gaming.md`,
   `adversary_prior_art.md`, `adversary_reproducibility.md`,
   `adversary_evidence_gap.md`, `adversary_cost_explosion.md`,
-  `adversary_prompt_injection.md` — the seven adversary types (§5.2).
+  `adversary_prompt_injection.md` — the seven adversary types.
   Placeholders: `{target_block}`, `{evidence_block}`. Reply: one
   RawAttackRecord JSON fragment (`ari/schemas/rqgm_attack_records.schema.json`);
   an empty `attack_claim` declines.
@@ -51,13 +54,15 @@ candidates only, never registry writes):
 - `clean_room_generator.md` — the clean-room regeneration meta-prompt: write
   a retired role's successor FROM SCRATCH out of the closed
   `CleanRoomInputBundle` only (retired prompt text / few-shots / reasoning
-  traces / raw attack text / defense text are forbidden inputs — plan 08
-  §5.2). Placeholders: `{target_role}`, `{bundle_json}` (the canonical
-  bundle JSON — the ENTIRE remaining context, plan 08 §5.3 Layer A). Reply:
+  traces / raw attack text / defense text are forbidden inputs —
+  `docs/reference/rqgm_schemas.md` §"Clean-room schemas (Task 08)").
+  Placeholders: `{target_role}`, `{bundle_json}` (the canonical
+  bundle JSON — the ENTIRE remaining context, same section). Reply:
   the full candidate template text only.
 
 Runtime-EVOLVED prompt bodies never live here: they are checkpoint-scoped
-(`{ckpt}/rqgm_prompts/<prompt_id>.md`, Task 07 §5.6 Gate 10 carve-out).
+(`{ckpt}/rqgm_prompts/<prompt_id>.md` — the Gate 10 carve-out,
+`docs/reference/file_formats.md` §"`rqgm_prompts/` (RQGM Task 07)").
 These committed files change only through the existing prompt-snapshot
 blessing flow (`test_prompt_snapshots.py`, `test_prompt_extraction.py`,
 Gate 10).

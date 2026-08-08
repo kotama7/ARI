@@ -438,8 +438,9 @@ def _load_virsci_snapshot_papers(max_papers: int) -> list[dict]:
     """Reuse the frozen VirSci snapshot corpus from the idea stage.
 
     Plain helper, NOT an MCP tool: it was never meant to be agent-visible
-    (``survey`` calls it directly). Stage-0 fix per docs/plans/ari_rqgm/03
-    §7/§8 — the ``@mcp.tool()`` decorator drifted here from
+    (``survey`` calls it directly). See docs/reference/mcp_tools.md
+    § "ari-skill-idea — literature survey + idea generation" — the
+    ``@mcp.tool()`` decorator once drifted here from
     ``survey``/``generate_ideas``; ``tests/test_server.py`` now pins the
     registered tool list via ``mcp.list_tools()``.
 

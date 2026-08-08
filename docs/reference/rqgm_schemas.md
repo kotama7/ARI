@@ -163,9 +163,10 @@ whose code is in `transition_engine.EMERGENCY_TRIGGER_CODES` — `CK-HSH-010`,
 from the MCP wrapper to the T16 emergency-quarantine path whatever the mode:
 `audit_only` downgrades blocking, not the constitutional fact, and the
 emergency transition is itself kernel-validated before it commits.  That path
-can only quarantine a **registered component**; when the acting role has no
-registry entry (the research agent's `generator` is the usual case) the
-escalation is logged and no transition is composed.
+can only quarantine a **registered component**: the acting component is taken
+from the violation, or else resolved from the acting role against the epoch's
+frozen `active_components`; when neither yields an id the escalation is logged
+and no transition is composed.
 
 ## Shared envelope (`rqgm_defs.schema.json`)
 
@@ -708,8 +709,8 @@ field when you meant the other is a real mistake, not a synonym swap.
 
 ### `rqgm_utility_record.schema.json`
 
-**Purpose:** one governed-utility audit record; the §5.4 penalty channel
-is its sole v1 emitter, and frontier repair (Task 10) re-emits recomputed
+**Purpose:** one governed-utility audit record; the adversarial penalty
+channel is its sole v1 emitter, and frontier repair (Task 10) re-emits recomputed
 records after erasure.  **Owning module:**
 `ari/rqgm/adversarial/records.py` (emit) + `ari/rqgm/frontier_repair.py`
 (recompute).
@@ -720,7 +721,7 @@ records after erasure.  **Owning module:**
 | `role` | const `utility_policy` |
 | `node_id` / `base_score` / `penalty` / `final_score` | The penalty arithmetic per node |
 | `input_refs` | `penalty > 0` **requires** ≥ 1 id in `input_refs.validated_attack_ids` (kernel check — raw attacks never score) |
-| `utility_policy_hash` / `frozen_policy` | The epoch-frozen policy, embedded **by value** so recompute under the original weights is possible |
+| `utility_policy_hash` / `frozen_policy` | The epoch-frozen policy, embedded **by value** so recompute under the original weights is possible. `frozen_policy` always carries the three penalty keys (`penalty_cap`, `severity_weights`, `verdict_factors`); `frozen_policy.utility_policy` is an **additive, optional** sub-object holding the epoch's scoring policy by value, so a record written after governed utility evolution landed carries BOTH policies and needs no registry lookup to be read after a rewrite. Records written before it exist without the sub-object and still validate. |
 | `supersedes` / `recomputed_in_epoch` | Set only on Task-10 recomputed records; the superseded record stays on disk, stale |
 
 Those fields describe recomputation after stale scored-evidence erasure.

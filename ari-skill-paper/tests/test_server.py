@@ -858,8 +858,8 @@ async def test_decode_seed_zero_leaves_the_payload_byte_identical(tmp_path):
 @pytest.mark.asyncio
 async def test_a_non_zero_decode_seed_reaches_the_payload(tmp_path):
     """Non-zero => the sample IS seeded, so distinct seeds give distinct drafts
-    (docs/plans/ari_rqgm_paper/02 §5.4 decision 5). Recording a seed the payload
-    never carried is what made 8 seeds collapse to 1 draft."""
+    (docs/reference/skills.md, the paper_refine entry). Recording a seed the
+    payload never carried is what made 8 seeds collapse to 1 draft."""
     p, revs, sent, _spy = _capture_payloads(tmp_path)
     with patch("src.server.litellm.acompletion", new=_spy):
         await paper_refine(tex_path=str(p), suggested_revisions_json=revs,

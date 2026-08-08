@@ -2,9 +2,9 @@
 
 Reference run fixtures for the **GUI refresh program, Wave 0 (G0)** — the
 deterministic synthetic checkpoints the program's performance and robustness
-gates measure against. Charter reference:
-`docs/plans/gui_refresh/00_program_charter_and_baseline.md` §Deliverables
-("reference small/medium/large run fixture").
+gates measure against. What the factories write, and how far the
+small/medium/large tier names actually bind, is documented in
+`docs/guides/testing.md` §"Synthetic checkpoint fixtures".
 
 ## Contents
 

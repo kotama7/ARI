@@ -4,8 +4,9 @@ import { AppProvider } from '../../../context/AppContext';
 import { MonitorPage } from '../MonitorPage';
 
 /**
- * MonitorPage partial /api/resource-metrics regression (RR-D-1, gui_refresh
- * Wave 4b; docs/plans/gui_refresh/baseline/risk_register.md).
+ * MonitorPage partial /api/resource-metrics regression. The client-side rule
+ * this pins — every numeric field of that payload is optional — is stated in
+ * docs/reference/rest_api.md §"State + dashboards".
  *
  * The legacy page used to call `.toFixed()` on resource-metrics fields
  * unconditionally, so a PARTIAL payload (sampler warm-up, scrape error,

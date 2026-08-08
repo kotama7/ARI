@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/epoch_transition.schema.json",
   "title": "ARI-RQGM EpochTransition",
-  "description": "The single output record of one RegistryTransitionEngine boundary resolution (docs/plans/ari_rqgm/09 §6.1, owned by Task 09). Every status change pins a rule_id row of the fixed T1-T21 transition table (ari/rqgm/transition_rules.py); produced_by must be the registry_transition_engine (global invariant 10, kernel CK-REG-004); emergency=true is the sole mid-epoch shape (single sanction to quarantine with an attached kernel violation). Statuses are Task 02's closed vocabulary; prompt_hash is the existing hash12=sha256(text)[:12]. created_at is wall-clock metadata stamped at apply time, never hashed and never read by decisions (P2). Additive-only evolution.",
+  "description": "The single output record of one RegistryTransitionEngine boundary resolution (see docs/reference/rqgm_schemas.md, section 'Transition schema (Task 09)'). Every status change pins a rule_id row of the fixed T1-T21 transition table (ari/rqgm/transition_rules.py); produced_by must be the registry_transition_engine (global invariant 10, kernel CK-REG-004); emergency=true is the sole mid-epoch shape (single sanction to quarantine with an attached kernel violation). Statuses are Task 02's closed vocabulary; prompt_hash is the existing hash12=sha256(text)[:12]. created_at is wall-clock metadata stamped at apply time, never hashed and never read by decisions (P2). Additive-only evolution.",
   "type": "object",
   "required": [
     "record_type",

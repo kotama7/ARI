@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/erasure_state.schema.json",
   "title": "ARI-RQGM erasure state ({ckpt}/rqgm_erasure_state.json)",
-  "description": "Derived, rebuildable rollup of every SelectiveErasureEvent / FrontierRebuildEvent in rqgm_audit.jsonl (docs/plans/ari_rqgm/10 §6). Staleness is logical-only: readers derive a record's stale flag as record_id ∈ stale_record_ids — no stored JSONL line is ever rewritten. Absence of the file means nothing stale, all valid. Rewrite-snapshot with indent=2, ensure_ascii=False (ari.checkpoint.save_erasure_state_json).",
+  "description": "Derived, rebuildable rollup of every SelectiveErasureEvent / FrontierRebuildEvent in rqgm_audit.jsonl (see docs/reference/rqgm_schemas.md, section 'Frontier-repair schemas (Task 10)'). Staleness is logical-only: readers derive a record's stale flag as record_id ∈ stale_record_ids — no stored JSONL line is ever rewritten. Absence of the file means nothing stale, all valid. Rewrite-snapshot with indent=2, ensure_ascii=False (ari.checkpoint.save_erasure_state_json).",
   "type": "object",
   "required": [
     "schema_version",

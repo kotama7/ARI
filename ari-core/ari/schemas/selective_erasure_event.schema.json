@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/selective_erasure_event.schema.json",
-  "title": "ARI-RQGM SelectiveErasureEvent (docs/plans/ari_rqgm/10 §6)",
+  "title": "ARI-RQGM SelectiveErasureEvent",
   "description": "One selective-erasure record appended (inside the Task 02 audit envelope) to rqgm_audit.jsonl when the FrontierRepairEngine stales the dependency closure of a retired prompt_hash. Kernel-authored: prompt_hash is null and component_id is 'frontier_repair_engine'. Erasure is logical-only (invariant 13): the listed record ids are flagged in rqgm_erasure_state.json, never rewritten or deleted.",
   "type": "object",
   "required": [

@@ -1,4 +1,5 @@
-# RQGM ablation matrix — the nine conditions B0-B8 (docs/plans/ari_rqgm/13 §5.1/§6).
+# RQGM ablation matrix — the nine conditions B0-B8
+# (docs/guides/rqgm_evaluation.md, "Ablation conditions B0–B8").
 #
 # Each preset expands (via ari.rqgm.evaluation.conditions.expand_condition) to a
 # concrete workflow.yaml overlay: `mode` maps to the `ari.mode` config path; the
@@ -125,7 +126,8 @@ knowledge_capability_conditions:
     knowledge: {mode: enforce}
     capability_binding: {mode: enforce}
 
-# Paper-archive B-baseline ladder (docs/plans/ari_rqgm_paper/07 §5.6).
+# Paper-archive B-baseline ladder — docs/guides/rqgm_evaluation.md,
+# "Paper conditions (B0_paper_linear / B_archive_no_coevo / B_full)".
 #
 # Three named presets that expand (via
 # ari.rqgm.evaluation.conditions.expand_paper_condition) to `paper.mode` +

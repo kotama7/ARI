@@ -689,7 +689,7 @@ attack の ref である。`retired` 配列は空で初期化され、そこへ�
 
 ### `rqgm_utility_record.schema.json`
 
-**目的:** governed-utility の監査レコード 1 件; §5.4 のペナルティチャネルが
+**目的:** governed-utility の監査レコード 1 件; 敵対的ペナルティチャネルが
 v1 における唯一の発行者で、frontier repair（Task 10）が消去後に再計算済み
 レコードを再発行します。**所有モジュール:**
 `ari/rqgm/adversarial/records.py`（発行）+ `ari/rqgm/frontier_repair.py`

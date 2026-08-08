@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/proposal_summary_view.schema.json",
   "title": "ARI-RQGM ProposalSummaryView",
-  "description": "The bounded proposal summary — the ONLY proposal representation BFTS may consume (docs/plans/ari_rqgm/03 §6.2, owned by Task 03). Eight spec-mandated fields with hard character budgets; full VirSci transcripts are archive-only and can never fit these limits. schema_version lives on the enclosing ProposalRecord; evolution is additive-only.",
+  "description": "The bounded proposal summary — the ONLY proposal representation BFTS may consume (docs/reference/rqgm_schemas.md, \"proposal_summary_view.schema.json\", owned by Task 03). Eight spec-mandated fields with hard character budgets; full VirSci transcripts are archive-only and can never fit these limits. schema_version lives on the enclosing ProposalRecord; evolution is additive-only.",
   "type": "object",
   "required": [
     "proposal_record_id",

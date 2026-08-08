@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/clean_room_bundle.schema.json",
   "title": "ARI-RQGM CleanRoomInputBundle",
-  "description": "The materialized, CLOSED input set handed to the CleanRoomPromptGenerator (docs/plans/ari_rqgm/08 §6.2, owned by Task 08). additionalProperties is false because the bundle is the ENTIRE generator context besides the committed meta-prompt — a closed field set is what makes the constructive-containment layer (plan 08 §5.3 Layer A) hold. bundle_hash = hash12(canonical JSON of every other field: sorted keys, no timestamps) and is logged with the generation event so the exact input surface is auditable. The abstract_failure_summary must satisfy the plan 08 §6.3 FailureSummary contract: closed class vocabulary, numeric aggregates, ids-only source_refs, no verbatim quotes, contamination_screen.passed true.",
+  "description": "The materialized, CLOSED input set handed to the CleanRoomPromptGenerator (see docs/reference/rqgm_schemas.md, section 'Clean-room schemas (Task 08)'). additionalProperties is false because the bundle is the ENTIRE generator context besides the committed meta-prompt — a closed field set assembled by the fixed tier is what keeps the clean room contained (see docs/concepts/rqgm_architecture.md, section 'Key invariants', invariant 7 'Clean-room contamination rules'). bundle_hash = hash12(canonical JSON of every other field: sorted keys, no timestamps) and is logged with the generation event so the exact input surface is auditable. The abstract_failure_summary must satisfy the FailureSummary contract: closed class vocabulary, numeric aggregates, ids-only source_refs, no verbatim quotes, contamination_screen.passed true.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -62,7 +62,7 @@
           "items": {"type": "string"}
         },
         "source_refs": {
-          "$comment": "Record IDS only — never quoted text (plan 08 §6.3).",
+          "$comment": "Record IDS only — never quoted text.",
           "type": "array",
           "items": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:\\-]*$"}
         },

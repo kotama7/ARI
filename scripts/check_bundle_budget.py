@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
-"""Bundle-weight budget gate for the dashboard SPA build (gui_refresh plan 09).
+"""Bundle-weight budget gate for the dashboard SPA build.
 
-Formalizes the CI-provable half of plan 09 "Performance budgets"
-(docs/plans/gui_refresh/09_security_performance_and_operations.md:98) per the
-Wave 5a exit decision (g0_review_record.md "残 G5 scope" item 2): bundle weight
-is measurable headless from the committed ``npm run build`` output, so it
-becomes a scripts checker; browser metrics (LCP/INP/CLS) stay deferred with
-rationale in docs/plans/gui_refresh/baseline/performance_budgets.md.
+Formalizes the CI-provable half of the dashboard performance budgets: bundle
+weight is measurable headless from the committed ``npm run build`` output, so it
+becomes a scripts checker; browser metrics (LCP/INP/CLS) stay deferred, and
+docs/guides/gui_cutover_runbook.md "2. Pre-cutover checklist" carries that split
+as a hand-signed gate. The budgets below and the reasoning behind each class are
+documented in docs/guides/testing.md "What gets tested at PR time".
 
 Measured surface: ``ari-core/ari/viz/static/dist/assets/*.js`` (the build Vite
 emits into the served static tree). Each chunk is gzip-compressed in-process
 and compared against its class budget:
 
   * **entry**  — the ``<script type="module">`` chunk(s) referenced by
-    ``dist/index.html`` — ≤ **100 KiB** gzip (plan 09 "Main JS chunk").
+    ``dist/index.html`` — ≤ **100 KiB** gzip.
   * **route**  — lazy route chunks, filename ``<Name>Page-<hash>.js`` — ≤
-    **150 KiB** gzip each (plan 09 "Individual route chunk", final budget);
-    ``SettingsPage``/``WizardPage`` are tightened to ≤ **50 KiB** each (plan 09
-    "Settings/Wizard route chunk").
+    **150 KiB** gzip each (final budget);
+    ``SettingsPage``/``WizardPage`` are tightened to ≤ **50 KiB** each.
   * **shared** — every other ``.js`` chunk (vendor splits, locale dictionaries,
-    shared components) — ≤ **150 KiB** gzip each. Plan 09 budgets only route
-    chunks individually; extending the same cap to shared chunks is a
+    shared components) — ≤ **150 KiB** gzip each. Only route chunks were ever
+    budgeted individually; extending the same cap to shared chunks is a
     deliberate conservative superset (largest shared chunk today: zoom at
     ~15 KiB) so a mis-split vendor bundle cannot hide outside the route class.
   * **total** — sum of all ``.js`` gzip sizes — ≤ **600 KiB**.
@@ -37,7 +36,8 @@ MEASUREMENT PROTOCOL: ``gzip.compress(data, compresslevel=6, mtime=0)`` —
 level 6 is the zlib default that Vite's build reporter uses, so numbers here
 stay comparable with the bundle baselines recorded in g0_review_record.md
 (index 69.91 → Wave 4d diet → 60.72 kB Vite-style decimal kB). Budgets are
-expressed in KiB (1024 bytes) matching the plan 09 table. ``mtime=0`` keeps
+expressed in KiB (1024 bytes), matching the budget table in
+docs/guides/testing.md "What gets tested at PR time". ``mtime=0`` keeps
 the output byte-identical across runs (P2 determinism).
 
 Finding ids are content-hash independent (``bundle:<class>:<stem>`` where
@@ -80,11 +80,11 @@ KIB = 1024
 
 # Default budgets (KiB gzip); scripts/quality/check_bundle_budget.yaml overrides.
 DEFAULT_BUDGETS = {
-    "entry_kib": 100,   # plan 09 "Main JS chunk"
-    "route_kib": 150,   # plan 09 "Individual route chunk" (final budget)
+    "entry_kib": 100,   # the index.html module chunk(s)
+    "route_kib": 150,   # each lazy route chunk (final budget)
     "shared_kib": 150,  # conservative superset (see module docstring)
     "total_kib": 600,   # derived aggregate ceiling (see rationale above)
-    # Per-route overrides keyed by hash-stripped stem (plan 09 tightened rows).
+    # Per-route overrides keyed by hash-stripped stem (the tightened rows).
     "route_overrides": {"SettingsPage": 50, "WizardPage": 50},
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RQGM ablation-run orchestrator (docs/plans/ari_rqgm/13 §5.5/§7).
+"""RQGM ablation-run orchestrator (docs/guides/rqgm_evaluation.md, "Running").
 
 Expands B0-B8 exploration presets, the legacy B paper ladder, or the
 RQGM-paper-aligned P0-P4 presets from ``ablation_matrix.yaml`` into per-run

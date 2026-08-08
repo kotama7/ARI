@@ -628,7 +628,7 @@ paper-archive 阶段才抵达审计 —— 该阶段换入一个携带它的、�
 
 ### `rqgm_utility_record.schema.json`
 
-**用途：**一条受治效用审计记录；§5.4 惩罚通道是其 v1 唯一发出方，
+**用途：**一条受治效用审计记录；对抗惩罚通道是其 v1 唯一发出方，
 前沿修复（Task 10）在擦除后重新发出重算记录。**所属模块：**
 `ari/rqgm/adversarial/records.py`（发出）+
 `ari/rqgm/frontier_repair.py`（重算）。

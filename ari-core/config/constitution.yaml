@@ -1,16 +1,18 @@
 # Constitutional ARI-RQGM — bundled constitution (RQGM Task 04).
 #
-# Distribution (docs/plans/ari_rqgm/01 §5.7): this file is copied ONCE into
-# `{checkpoint_dir}/constitution.yaml` at run start, only when the effective
-# mode is `ari_rqgm` (`ari.rqgm.state.copy_constitution_if_missing`, same
-# don't-clobber convention as the workflow.yaml copy). The constitutional
-# layer is non-evolving (global invariant 17): the checkpoint copy is
-# read-only for the lifetime of the run, and under `simple_bfts` no
-# constitution file is copied at all — its absence is normal.
+# Distribution (docs/reference/file_formats.md, "`constitution.yaml`"): this
+# file is copied ONCE into `{checkpoint_dir}/constitution.yaml` at run start,
+# only when the effective mode is `ari_rqgm`
+# (`ari.rqgm.state.copy_constitution_if_missing`, same don't-clobber
+# convention as the workflow.yaml copy). The constitutional layer is
+# non-evolving (global invariant 17): the checkpoint copy is read-only for
+# the lifetime of the run, and under `simple_bfts` no constitution file is
+# copied at all — its absence is normal.
 #
-# AUTHORITY NOTE (docs/plans/ari_rqgm/04 §5.1): this file is a human-readable
-# statement plus provenance marker. The AUTHORITATIVE rules are frozen Python
-# constants — editing this YAML changes nothing. Putting rules in a
+# AUTHORITY NOTE (docs/reference/file_formats.md, "`constitution.yaml`"):
+# this file is a human-readable statement plus provenance marker. The
+# AUTHORITATIVE rules are frozen Python constants — editing this YAML changes
+# nothing. Putting rules in a
 # checkpoint-scoped file would create an evolution/tampering channel (any
 # skill can write the flat checkpoint dir), so the rule tables live in code:
 #

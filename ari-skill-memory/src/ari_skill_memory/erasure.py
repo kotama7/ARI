@@ -48,7 +48,8 @@ from typing import Any, Iterable
 log = logging.getLogger(__name__)
 
 #: The derived rollup ARI publishes for cross-component consumers
-#: (docs/plans/ari_rqgm/10 §3/§6). Absence == nothing is stale.
+#: (docs/reference/file_formats.md, "rqgm_erasure_state.json (RQGM Task 10)").
+#: Absence == nothing is stale.
 ERASURE_STATE_FILENAME = "rqgm_erasure_state.json"
 
 #: Rollup field naming the logically erased nodes: ``{node_id: event_id}``.

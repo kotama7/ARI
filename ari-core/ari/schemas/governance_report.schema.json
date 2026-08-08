@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/governance_report.schema.json",
   "title": "ARI-RQGM GovernanceReport",
-  "description": "The single return type of GovernanceOrchestrator.audit_epoch (docs/plans/ari_rqgm/05 §6.1, owned by Task 05), appended to {ckpt}/rqgm_audit.jsonl as a governance_report record. Carries the mandatory rqgm_record_base envelope (record_id, epoch_id, component_id, prompt_hash, role, created_at, source_refs, status — plan 02 §6). recommendations[].action is a closed set reconciled with Task 09's transition table; unknown actions must be droppable by the engine. created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
+  "description": "The single return type of GovernanceOrchestrator.audit_epoch (see docs/reference/rqgm_schemas.md, section 'Governance schemas (Task 05)'), appended to {ckpt}/rqgm_audit.jsonl as a governance_report record. Carries the mandatory rqgm_record_base envelope (record_id, epoch_id, component_id, prompt_hash, role, created_at, source_refs, status — see docs/reference/rqgm_schemas.md, section 'Shared envelope (rqgm_defs.schema.json)'). recommendations[].action is a closed set reconciled with Task 09's transition table; unknown actions must be droppable by the engine. created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
   "type": "object",
   "required": [
     "record_type",

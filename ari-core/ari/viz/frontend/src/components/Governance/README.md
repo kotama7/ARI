@@ -1,7 +1,8 @@
 # components/Governance
 
-Read-only RQGM Governance workspace (gui_refresh task 08 Wave 4a; plan 08
-`docs/plans/gui_refresh/08_rqgm_governance_and_score_lineage.md`).
+Read-only RQGM Governance workspace (user-facing guide:
+`docs/guides/rqgm_gui.md`; the read-model contract this page renders:
+`docs/reference/rqgm_gui_read_models.md`).
 
 Route `#/governance?run=<run_id>` (gui_v2-gated). All data comes from the
 Wave-4a `/api/v1/runs/{run_id}/rqgm/*` read models via the typed react-query
@@ -18,7 +19,8 @@ RQGM mutation endpoint) and re-executes no kernel/score-policy decision.
 | `AuditTab.tsx` | Byte-offset cursor-paged audit table with record_type/epoch filters, "load more", raw-source offset per row. |
 | `shared.tsx` | The two disjoint badge vocabularies (registry lifecycle vs node score state), policy-hash label, score cell (missing ≠ 0), error text helper. |
 
-Truth rules enforced here (plan 08 §Truth and presentation rules): raw
+Truth rules enforced here (`docs/reference/rqgm_gui_read_models.md`
+§"Ground rules" and §"Presentation truth rules the API enforces"): raw
 attack ≠ validated penalty; registry lifecycle and node score states are
 separate state machines with separate token families; committed records
 only; cross-policy scores are faceted, never joined; missing sources render

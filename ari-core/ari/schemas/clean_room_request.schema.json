@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/clean_room_request.schema.json",
   "title": "ARI-RQGM CleanRoomGenerationRequest",
-  "description": "One clean-room regeneration request (docs/plans/ari_rqgm/08 §6.1, owned by Task 08): produced from a RegistryTransitionEngine RetirementEvent (EpochTransition.clean_room_requests) and persisted to the append-only {ckpt}/rqgm_cleanroom.jsonl so pending requests survive resume. The five forbidden input flags are const-false — a request setting any of them true is schema-invalid and blocked by the ConstitutionalKernel before bundle assembly (contamination-free policy, plan 08 §5.2). created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
+  "description": "One clean-room regeneration request (see docs/reference/rqgm_schemas.md, section 'Clean-room schemas (Task 08)'): produced from a RegistryTransitionEngine RetirementEvent (EpochTransition.clean_room_requests) and persisted to the append-only {ckpt}/rqgm_cleanroom.jsonl so pending requests survive resume. The five forbidden input flags are const-false — a request setting any of them true is schema-invalid and blocked by the ConstitutionalKernel before bundle assembly (contamination-free policy: see docs/concepts/rqgm_architecture.md, section 'Key invariants', invariant 7 'Clean-room contamination rules'). created_at is wall-clock metadata, never hashed (P2). Additive-only evolution.",
   "type": "object",
   "required": [
     "record_id",
@@ -145,7 +145,7 @@
       }
     },
     "replay_case_ids": {
-      "$comment": "Evaluation-time only: the generator never sees case bodies (plan 08 §5.4 D5).",
+      "$comment": "Evaluation-time only: the generator never sees case bodies.",
       "type": "array",
       "items": {
         "type": "string"

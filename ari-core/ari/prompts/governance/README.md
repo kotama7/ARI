@@ -1,7 +1,10 @@
 # ari/prompts/governance
 
 Committed governance-actor prompt templates for the ARI-RQGM
-GovernanceOrchestrator (docs/plans/ari_rqgm Task 05 §5.3 / §7). Loaded via
+GovernanceOrchestrator (`docs/concepts/rqgm_architecture.md` §"The four
+facades"; the three LLM seams and their deterministic fallbacks:
+`docs/reference/rqgm_schemas.md` §"The audit's determinism budget").
+Loaded via
 `FilesystemPromptLoader.load_versioned("governance/<name>")`; the returned
 `sha256[:12]` is stamped as the governance record `prompt_hash` and recorded
 via `record_prompt_use` (→ `prompt_trace.jsonl`, `phase="governance"`).

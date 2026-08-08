@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/rqgm_meta.schema.json",
   "title": "ARI-RQGM meta-agent evolution records",
-  "description": "RQGM Task 11 (docs/plans/ari_rqgm/11 §6): the tier + capability-flag extension of ComponentRegistry entries, the MetaAgentOutputRecord line shape of {ckpt}/rqgm_meta_outputs.jsonl, and the MetaCandidateEvaluation record consumed by the RegistryTransitionEngine. The deterministic Python mirror lives in ari/rqgm/meta_rules.py (capability_entry_failures) — the two must agree. Flags default to false: capability is opt-in, absence is denial.",
+  "description": "RQGM Task 11 (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): the tier + capability-flag extension of ComponentRegistry entries, the MetaAgentOutputRecord line shape of {ckpt}/rqgm_meta_outputs.jsonl, and the MetaCandidateEvaluation record consumed by the RegistryTransitionEngine. The deterministic Python mirror lives in ari/rqgm/meta_rules.py (capability_entry_failures) — the two must agree. Flags default to false: capability is opt-in, absence is denial.",
   "$defs": {
     "hash12": {
       "type": "string",
@@ -29,7 +29,7 @@
       }
     },
     "meta_component_entry": {
-      "description": "The §6.1 registry-entry extension: tier is mandatory and closed; for tier meta the five dangerous flags are schema-level const-false; fixed-tier entries carry no true flag at all.",
+      "description": "The registry-entry extension (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): tier is mandatory and closed; for tier meta the five dangerous flags are schema-level const-false; fixed-tier entries carry no true flag at all.",
       "type": "object",
       "required": ["component_id", "role", "tier"],
       "properties": {
@@ -80,7 +80,7 @@
       ]
     },
     "meta_agent_output_record": {
-      "description": "One {ckpt}/rqgm_meta_outputs.jsonl line (§6.2): the ONLY artifact a meta-agent produces. created_at is metadata and never enters any hash (P2).",
+      "description": "One {ckpt}/rqgm_meta_outputs.jsonl line (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): the ONLY artifact a meta-agent produces. created_at is metadata and never enters any hash (P2).",
       "type": "object",
       "required": [
         "record_type", "record_id", "epoch_id", "component_id",
@@ -115,7 +115,7 @@
       }
     },
     "meta_candidate_evaluation": {
-      "description": "The §6.3 record: deterministic aggregations only, consumed by the Task 09 RegistryTransitionEngine as candidate_evaluations input for meta roles.",
+      "description": "The meta_candidate_evaluation record (docs/reference/rqgm_schemas.md, \"Meta-evolution schema (Task 11)\"): deterministic aggregations only, consumed by the Task 09 RegistryTransitionEngine as candidate_evaluations input for meta roles.",
       "type": "object",
       "required": [
         "record_type", "record_id", "epoch_id",

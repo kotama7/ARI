@@ -1151,15 +1151,16 @@ async def write_paper_iterative(
     author_name: str = "",  # config-specified author; defaults to "Autonomous Research Infrastructure"
     writer_prompt_override: str = "",  # "" => load paper_writer.md (linear byte-identical);
                                        # non-empty => the governed paper_writer prompt DRIVES
-                                       # the reflection instruction (docs/plans/ari_rqgm_paper/03
-                                       # §5.8). The skill still evolves nothing and imports no
-                                       # ari.rqgm — a plain instruction string, not governance.
+                                       # the reflection instruction (docs/reference/skills.md,
+                                       # the write_paper_iterative entry). The skill still
+                                       # evolves nothing and imports no ari.rqgm — a plain
+                                       # instruction string, not governance.
     decode_seed: int = 0,  # 0 => no seed in the payload => byte-identical to today (linear);
                            # non-zero => sampled under that seed, so callers generating a
                            # POPULATION of drafts get distinct samples instead of K copies
-                           # (docs/plans/ari_rqgm_paper/02 §5.4 decision 5). Same additive
-                           # on-ramp shape as writer_prompt_override: a plain scalar, no
-                           # ari.rqgm import, no governance. NOTE: litellm `seed` is
+                           # (docs/reference/skills.md, the write_paper_iterative entry).
+                           # Same additive on-ramp shape as writer_prompt_override: a plain
+                           # scalar, no ari.rqgm import, no governance. NOTE: litellm `seed` is
                            # best-effort and provider-dependent — it delivers diversity
                            # (distinct seeds => distinct samples), not bit-exact replay.
 ) -> dict:
@@ -2628,12 +2629,14 @@ async def paper_refine(
     venue: str = "arxiv",
     writer_prompt_override: str = "",  # "" => byte-identical to today (linear); non-empty =>
                                        # the governed paper_writer prompt frames the refine
-                                       # (docs/plans/ari_rqgm_paper/03 §5.8). Additive, no
-                                       # ari.rqgm import — a plain instruction string.
+                                       # (docs/reference/skills.md, the paper_refine entry).
+                                       # Additive, no ari.rqgm import — a plain instruction
+                                       # string.
     decode_seed: int = 0,  # 0 => no seed in the payload => byte-identical to today (linear);
                            # non-zero => the refine is sampled under its draft's seed, so a
                            # refine child inherits its parent's decode identity
-                           # (docs/plans/ari_rqgm_paper/02 §5.4). Additive plain scalar.
+                           # (docs/reference/skills.md, the paper_refine entry). Additive
+                           # plain scalar.
 ) -> dict:
     """Apply suggested revisions to the paper while PRESERVING ``% CLAIM:Cx:NCx``
     anchors (Story2Proposal generate-evaluate-adapt loop).

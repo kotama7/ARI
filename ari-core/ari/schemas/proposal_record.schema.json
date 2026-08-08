@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/proposal_record.schema.json",
   "title": "ARI-RQGM ProposalRecord",
-  "description": "One line of {ckpt}/proposals/proposal_records.jsonl (docs/plans/ari_rqgm/03 §6.1, owned by Task 03). Carries the mandatory rqgm_record_base fields (record_id, epoch_id, component_id, prompt_hash, role, created_at, source_refs, status — plan 02 §6) with proposal-specific nullability: epoch_id is null in simple_bfts record-only mode; prompt_hash is null for legacy imports and expansion observations. stale/valid_for_frontier are logical-only Task-10 flags, written once at their defaults and never rewritten in stored JSONL. created_at is wall-clock metadata, never hashed (P2). Local $defs mirror rqgm_defs.schema.json. Additive-only evolution.",
+  "description": "One line of {ckpt}/proposals/proposal_records.jsonl (docs/reference/rqgm_schemas.md, \"proposal_record.schema.json\", owned by Task 03). Carries the mandatory rqgm_record_base fields (record_id, epoch_id, component_id, prompt_hash, role, created_at, source_refs, status — docs/reference/rqgm_schemas.md, \"Shared envelope (rqgm_defs.schema.json)\") with proposal-specific nullability: epoch_id is null in simple_bfts record-only mode; prompt_hash is null for legacy imports and expansion observations. stale/valid_for_frontier are logical-only Task-10 flags, written once at their defaults and never rewritten in stored JSONL. created_at is wall-clock metadata, never hashed (P2). Local $defs mirror rqgm_defs.schema.json. Additive-only evolution.",
   "type": "object",
   "required": [
     "record_id",

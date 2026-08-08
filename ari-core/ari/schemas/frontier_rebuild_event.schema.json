@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/frontier_rebuild_event.schema.json",
-  "title": "ARI-RQGM FrontierRebuildEvent (docs/plans/ari_rqgm/10 §6)",
-  "description": "One frontier-rebuild record appended (inside the Task 02 audit envelope) to rqgm_audit.jsonl after the FrontierRepairEngine recomputes the frontier declaratively (eligibility + Rule-A reinstatement over valid children + Rule B via len(children)). status 'conservative' means flagged nodes were dropped outright after a kernel-validation failure; 'halted_expansion' means the run degraded to drain-only (docs/plans/ari_rqgm/10 §5.6).",
+  "title": "ARI-RQGM FrontierRebuildEvent",
+  "description": "One frontier-rebuild record appended (inside the Task 02 audit envelope) to rqgm_audit.jsonl after the FrontierRepairEngine recomputes the frontier declaratively (eligibility + Rule-A reinstatement over valid children + Rule B via len(children)). status 'conservative' means flagged nodes were dropped outright after a kernel-validation failure; 'halted_expansion' means the run degraded to drain-only (see docs/reference/rqgm_schemas.md, section 'Frontier-repair schemas (Task 10)').",
   "type": "object",
   "required": [
     "record_id",

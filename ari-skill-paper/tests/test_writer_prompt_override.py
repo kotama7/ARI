@@ -1,5 +1,5 @@
 """Golden compare for the ``writer_prompt_override`` on-ramp seam
-(docs/plans/ari_rqgm_paper/03 §9 Regression + §12 deletion criterion + R3).
+(docs/reference/skills.md, the write_paper_iterative and paper_refine entries).
 
 The seam is additive: ``writer_prompt_override=""`` (the linear default, and any
 non-RQGM caller) MUST produce byte-identical behaviour to the pre-change tool —
@@ -8,8 +8,9 @@ exactly as before. A non-empty override is the epoch's ACTIVE governed
 ``paper_writer`` bytes DRIVING the reflection/refine instruction; the skill still
 evolves nothing and imports no ``ari.rqgm``.
 
-These are the tests R3's mitigation ("a skill test asserts ``""`` ⇒ byte-identical")
-rests on; before this file the argument had zero coverage in the skill suite.
+These are the tests the frozen-defaults compatibility contract ("a skill test
+asserts ``""`` ⇒ byte-identical") rests on; before this file the argument had
+zero coverage in the skill suite.
 """
 from __future__ import annotations
 

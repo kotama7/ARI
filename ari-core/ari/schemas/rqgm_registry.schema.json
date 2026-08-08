@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/rqgm_registry.schema.json",
   "title": "ARI-RQGM rqgm_registry.json",
-  "description": "Derived rollup of ComponentRegistry + PromptRegistry state in one file (docs/plans/ari_rqgm/02 §6) so the two registries stay transactionally consistent on disk. rqgm_transitions.jsonl is the source of truth. Prompt text is referenced by source, never inlined; spec_ref points at the Task-07 PromptSpec record (null in v1). Local $defs are byte-equal copies of rqgm_defs.schema.json (pinned by tests).",
+  "description": "Derived rollup of ComponentRegistry + PromptRegistry state in one file (docs/reference/rqgm_schemas.md, \"rqgm_registry.schema.json\" under \"State and event-log schemas (Task 02)\") so the two registries stay transactionally consistent on disk. rqgm_transitions.jsonl is the source of truth. Prompt text is referenced by source, never inlined; spec_ref points at the Task-07 PromptSpec record (null in v1). Local $defs are byte-equal copies of rqgm_defs.schema.json (pinned by tests).",
   "type": "object",
   "required": [
     "schema_version",

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://ari/schemas/epoch_state.schema.json",
   "title": "ARI-RQGM epoch_state.json",
-  "description": "Derived rollup of the currently open (or last closed) EpochState (docs/plans/ari_rqgm/02 \u00a76). rqgm_transitions.jsonl is the source of truth; this snapshot is disposable and rebuilt from replay on mismatch. created_at is metadata, excluded from epoch_fingerprint. Local $defs are byte-equal copies of rqgm_defs.schema.json (pinned by tests).",
+  "description": "Derived rollup of the currently open (or last closed) EpochState (see docs/reference/rqgm_schemas.md, section 'State and event-log schemas (Task 02)'). rqgm_transitions.jsonl is the source of truth; this snapshot is disposable and rebuilt from replay on mismatch. created_at is metadata, excluded from epoch_fingerprint. Local $defs are byte-equal copies of rqgm_defs.schema.json (pinned by tests).",
   "type": "object",
   "required": [
     "schema_version",

@@ -1,7 +1,7 @@
 # Config for scripts/check_bundle_budget.py — the SPA bundle-weight budget gate
-# (gui_refresh plan 09 "Performance budgets" formalization, Wave 5b; see
-# docs/plans/gui_refresh/baseline/performance_budgets.md for the enforcement
-# record and the deferred browser-metric half).
+# (see docs/guides/testing.md "What gets tested at PR time" for the enforcement
+# record, and docs/guides/gui_cutover_runbook.md "2. Pre-cutover checklist" for
+# the deferred browser-metric half).
 #
 # Budgets are KiB (1024 bytes) of gzip level 6 (Vite-reporter-comparable;
 # protocol in the checker docstring). All keys optional — the checker carries
@@ -9,18 +9,19 @@
 # a reviewable one-line diff, never a code edit (P2: stdlib + PyYAML only).
 #
 #   entry_kib   — the <script type="module"> chunk index.html references
-#                 (plan 09 "Main JS chunk" <= 100 KiB gzip).
-#   route_kib   — each lazy <Name>Page-<hash>.js chunk (plan 09 "Individual
-#                 route chunk", final budget <= 150 KiB gzip).
+#                 (<= 100 KiB gzip).
+#   route_kib   — each lazy <Name>Page-<hash>.js chunk (final budget
+#                 <= 150 KiB gzip).
 #   shared_kib  — every other .js chunk (vendor/locale/component splits);
-#                 plan 09 budgets only route chunks — extending the same cap
-#                 to shared chunks is a deliberate conservative superset.
+#                 only route chunks were ever budgeted individually —
+#                 extending the same cap to shared chunks is a deliberate
+#                 conservative superset.
 #   total_kib   — sum of all .js gzip. 600 = ~2.3x the 2026-07-26 actual
 #                 (~261 KiB / 46 chunks): headroom for G4-G6 feature growth
 #                 while catching cross-chunk dependency duplication that no
 #                 per-chunk budget can see. Ratchet ceiling — tighten at G6.
 #   route_overrides — per-route tightening keyed by hash-stripped stem
-#                 (plan 09 "Settings/Wizard route chunk" <= 50 KiB each).
+#                 (Settings/Wizard route chunks <= 50 KiB each).
 
 dist: ari-core/ari/viz/static/dist
 route_regex: "^[A-Z][A-Za-z0-9]*Page$"

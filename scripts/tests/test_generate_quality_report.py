@@ -310,8 +310,7 @@ def test_compute_areas_matches_001_baseline():
     # (api_paperbench_worker.py). This is a drift TRIPWIRE, not a budget — it
     # exists so an unnoticed bulk change to viz shows up in review, so update
     # it deliberately with the reason, never by pasting the new number.
-    # 8565 -> 14336: gui_refresh program Waves 1-4b (docs/plans/gui_refresh/,
-    # exit records in baseline/g0_review_record.md) added the /api/v1 platform
+    # 8565 -> 14336: the GUI refresh added the /api/v1 platform
     # under ari/viz/v1/ — router/errors/DTOs, RQGM read models (rqgm.py),
     # config schema/CRUD/store/secrets/events, deterministic OpenAPI — plus
     # api_capabilities.py. Each wave's growth was gate-reviewed and recorded.
