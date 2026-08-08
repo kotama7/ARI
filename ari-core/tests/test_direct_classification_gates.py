@@ -291,3 +291,46 @@ def test_the_checked_in_web_classification_matches_what_the_manifest_declares():
             f"{tool_name} declares {hints[tool_name]} which normalizes to "
             f"{canonical}, but the catalog binds it to {refs}"
         )
+
+
+# ── contracts nothing can supply ──────────────────────────────────────────
+# A capability with no possible supplier is not a binding failure anyone sees:
+# the requirement simply resolves `unsatisfied`, and the reason is a missing
+# table row somewhere else entirely. Pinning the set makes both directions
+# loud -- a new orphan appears, or an existing one is finally wired up.
+_UNSUPPLIED = {
+    # Two promoted Provider bundles exist for this, both gated and pinned to the
+    # ontology, and neither can be reached. No MCP server exposes the
+    # `ari_cuda_validate__exclusive_node_*` tool they name, the broker has no
+    # `cuda` source kind to register them as leaves, and no catalog entry
+    # classifies anything into the capability. The artifacts are built to be
+    # bound -- an operator-only qualification step would not need an ontology
+    # contract, a context requirement, or a permission set.
+    "ari.environment.cuda.validate/v1",
+}
+
+
+def test_every_contract_but_the_known_orphans_has_a_possible_supplier():
+    from ari.capability_binding.ontology import load_capability_ontology
+
+    root = _repo_root()
+    ontology = load_capability_ontology(
+        root / "ari-core" / "config" / "capabilities" / "ontology.yaml"
+    )
+    catalog = yaml.safe_load(
+        (root / "ari-core" / "config" / "providers" / "catalog.yaml").read_text()
+    )
+
+    suppliable: set[str] = set()
+    for entry in catalog["entries"]:
+        for refs in (entry.get("declared_capability_refs_by_tool") or {}).values():
+            suppliable.update(refs)
+        brokered = entry.get("brokered") or {}
+        for refs in (
+            brokered.get("declared_capability_refs_by_brokered_tool") or {}
+        ).values():
+            suppliable.update(refs)
+
+    declared = {item.capability_ref for item in ontology.snapshot.contracts}
+    assert suppliable <= declared, "a table names a capability the ontology does not"
+    assert declared - suppliable == _UNSUPPLIED
