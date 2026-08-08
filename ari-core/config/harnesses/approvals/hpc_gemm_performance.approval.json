@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:bc9be6c1cf4a42f71346b208eadef1b06aac3cbbd090196d3989dd3defb4b0fc",
+  "approval_digest": "sha256:69ef1e08cc9294b9e71d0ef7cb54631626b42c1580b0ef416f2bd929433c102a",
   "approved_date": "2026-08-08",
-  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'), who directed the container re-pin and signed for it by name. The image the manifest pinned no longer exists on this site and a SIF cannot be rebuilt to the same bytes, so the pin was unsatisfiable; the replacement is the upstream image the old one was built from, whose regenerated licence inventory matches the old one package for package. Over report sha256:3f6f9b08549d20e3c95e171c50c449a05b2caf4a83f3da70db8548cbee1ab8b9, three parity-probe runs at commit 929a682fa0f4 on a clean worktree, exclusive aarch64 node at 48 threads, clean-control spread 0.00598, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:70190310a045e42ca61398d4651919d87c1ec954b60fa8697e5f2561a8f8c8cb",
+  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-08 ('kotama'), who directed the container work and signed for it by name. The pinned image no longer exists here and a SIF cannot be rebuilt to the same bytes; the replacement is the upstream image it was built from, whose licence inventory matches package for package. Running it exposed two more pins no host here could satisfy: the apptainer runtime, installed nowhere on this site, and a memory requirement smaller than the container runtime's own address space. Each moved the manifest digest. Over report sha256:6d5f51f388b018e15d25e411d6dc18347795b43b28f459fc46614879eee3d1ca, three parity-probe runs at commit 6c7bf37f03ce on a clean worktree, exclusive aarch64 node at 48 threads, clean-control spread 0.02698, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:15fc51ad10543957bade322e8196b0776d019ba33e96496cbcb2df918d5001e1",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:6c3347faab2a7711fd8d336b3cff7677811375f2c93fb6c332d6e3e01598b7a3",
+  "harness_manifest_digest": "sha256:240e329af19626c549b87b4ad3577e246fc502e10ce16047192f30d61b651f34",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:3f6f9b08549d20e3c95e171c50c449a05b2caf4a83f3da70db8548cbee1ab8b9",
+  "registration_report_digest": "sha256:6d5f51f388b018e15d25e411d6dc18347795b43b28f459fc46614879eee3d1ca",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

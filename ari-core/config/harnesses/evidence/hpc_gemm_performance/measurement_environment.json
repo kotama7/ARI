@@ -4,5 +4,5 @@
     "machine": "aarch64",
     "thread_budget": "48"
   },
-  "registration_commit": "929a682fa0f41a1b416f9615e35506b6538a54a4"
+  "registration_commit": "6c7bf37f03ce6bde47e2a9fd3d27c94e29357f41"
 }

@@ -1,5 +1,5 @@
 {
   "note": "A deterministic verifier pins no placement: it does not depend on one, and pinning would claim something that cannot vary. Three probe runs gave identical clean-control answers, which is what repeating establishes here.",
   "registered_placement": null,
-  "registration_commit": "929a682fa0f41a1b416f9615e35506b6538a54a4"
+  "registration_commit": "6c7bf37f03ce6bde47e2a9fd3d27c94e29357f41"
 }

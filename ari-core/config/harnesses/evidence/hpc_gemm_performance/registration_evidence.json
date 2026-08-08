@@ -1,20 +1,20 @@
 {
   "attestation_digests": [
-    "sha256:3f6f9b08549d20e3c95e171c50c449a05b2caf4a83f3da70db8548cbee1ab8b9"
+    "sha256:6d5f51f388b018e15d25e411d6dc18347795b43b28f459fc46614879eee3d1ca"
   ],
   "clean_control_verdict": "pass",
-  "environment_digest": "sha256:ac46818681f061921ea425dea828675fa4f6662daeeebf280c0821b3818e3c7d",
+  "environment_digest": "sha256:bf7eabc1388965f5e26d2e5f31b055f71e07fe4a8ce97a688cbdd7a8f6a0fca4",
   "evidence_artifact_digests": {
-    "evidence/hpc_gemm_performance/gate_findings.json": "sha256:440b7c0b40ac3b2718fda59ca7a3cb4687ba0a48a280f68b284b8093e0efcd68",
-    "evidence/hpc_gemm_performance/measurement_environment.json": "sha256:ac46818681f061921ea425dea828675fa4f6662daeeebf280c0821b3818e3c7d",
-    "evidence/hpc_gemm_performance/multiple_run_stability.json": "sha256:42df6311419b3f9fc291bbc006ca8af2ac5f22e6be362201af357335c4fe5e05",
-    "evidence/hpc_gemm_performance/official_runner_parity.json": "sha256:81d9dd9d2b9ef304b1015c01abd0892fef612c97d3e2bd8671d8777778ed4380",
-    "evidence/hpc_gemm_performance/registration_report.json": "sha256:53d95a3a5b006f73ffa9c54779c2841fe33229c6f68e467a7fccd230b1d7a916"
+    "evidence/hpc_gemm_performance/gate_findings.json": "sha256:a01e47e9a307db6df8de3f8c88b55c75b6a564ddbfbeeca479427d854658984f",
+    "evidence/hpc_gemm_performance/measurement_environment.json": "sha256:bf7eabc1388965f5e26d2e5f31b055f71e07fe4a8ce97a688cbdd7a8f6a0fca4",
+    "evidence/hpc_gemm_performance/multiple_run_stability.json": "sha256:b7938e35050469962ce296ccd46db74f9da8d65a9e787cd3c0d3d729ecb58cef",
+    "evidence/hpc_gemm_performance/official_runner_parity.json": "sha256:8d8b43bd182e48ce2dfbb6f8c1c7b99c71a1d3adf62510b6d1c15094f415a975",
+    "evidence/hpc_gemm_performance/registration_report.json": "sha256:41435f3b22d642370386f1704ebe5426b288707a1eda4d009347cbbdbb703600"
   },
-  "evidence_digest": "sha256:70190310a045e42ca61398d4651919d87c1ec954b60fa8697e5f2561a8f8c8cb",
+  "evidence_digest": "sha256:15fc51ad10543957bade322e8196b0776d019ba33e96496cbcb2df918d5001e1",
   "harness_id": "hpc/gemm-performance",
   "harness_version": "1.0.0",
-  "manifest_digest": "sha256:6c3347faab2a7711fd8d336b3cff7677811375f2c93fb6c332d6e3e01598b7a3",
+  "manifest_digest": "sha256:240e329af19626c549b87b4ad3577e246fc502e10ce16047192f30d61b651f34",
   "negative_control_verdict": "fail",
   "network_isolation": "proved",
   "official_runner_parity": true,
@@ -22,6 +22,6 @@
   "result_schema_conformant": true,
   "run_count": 3,
   "schema_version": "ari.harness-registration-evidence/v1",
-  "source_full_commit_sha": "929a682fa0f41a1b416f9615e35506b6538a54a4",
+  "source_full_commit_sha": "6c7bf37f03ce6bde47e2a9fd3d27c94e29357f41",
   "target_write_isolation": "proved"
 }

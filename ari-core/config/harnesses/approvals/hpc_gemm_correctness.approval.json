@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:20499b4d853075474a24e3d5986fe33f44671a43de5f08aa6c30ebcc2c71442e",
+  "approval_digest": "sha256:362c04326dfdaf6975ca2dd73a87c59f8fce7abc4d823d389b2243a85af33919",
   "approved_date": "2026-08-08",
-  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'), who directed the container re-pin and signed for it by name. The image the manifest pinned no longer exists on this site and a SIF cannot be rebuilt to the same bytes, so the pin was unsatisfiable; the replacement is the upstream image the old one was built from, whose regenerated licence inventory matches the old one package for package. That moved the manifest digest. Over report sha256:258ce0dc867d44b5fa78c821f9a34ea33725298cca2602883d913098297087f2, three parity-probe runs at commit 929a682fa0f4 on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:bba4773da4a381a6ec48eea5503029c06bd5f544038fa14ae809f6ca48f5df43",
+  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-08 ('kotama'), who directed the container work and signed for it by name. The pinned image no longer exists here and a SIF cannot be rebuilt to the same bytes; the replacement is the upstream image it was built from, whose licence inventory matches package for package. Running it exposed two more pins no host here could satisfy: the apptainer runtime, installed nowhere on this site, and a memory requirement smaller than the container runtime's own address space. Each moved the manifest digest. Over report sha256:24faf4190b71a73ff8017fad7947e92f1e6c008190110d659ff0ce3215eafcc1, three parity-probe runs at commit 6c7bf37f03ce on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:d4f712ab5202edef31e3de9a96e0e84e42c51d3d7301624b5af3db5d12639928",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-correctness",
-  "harness_manifest_digest": "sha256:e8232edd1319d8c4543d8177ec10530464e5aefcbeaf5443e3a1a814cf16c5d1",
+  "harness_manifest_digest": "sha256:5fd7b99e85e301df69c5feacb4fbdc960b0f49bb3da5beea248e8b97f621d50c",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:258ce0dc867d44b5fa78c821f9a34ea33725298cca2602883d913098297087f2",
+  "registration_report_digest": "sha256:24faf4190b71a73ff8017fad7947e92f1e6c008190110d659ff0ce3215eafcc1",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }
