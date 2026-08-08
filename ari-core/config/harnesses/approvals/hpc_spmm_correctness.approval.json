@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:633257f1ff50f818c0e35407fa8a604c9c71e07f32a8374df52701e6d0ec9bb2",
+  "approval_digest": "sha256:50297f2b2adc3e9b96feca867cb95d6b3dc228e10192a0d2bb7e4d1816153892",
   "approved_date": "2026-08-08",
-  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'). Adding a placement pin to the frozen manifest moved every manifest digest, including these three which pin no placement. Over report sha256:dfcf5a31e2a65b230a83941d00b0e8a85700db040390adb27c6a870ea724d740, three parity-probe runs at commit f274841b1bd1 on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:2de1d4cee170e201cfb808dbdb33bbb0071c59f8b14f1cd41a97caa65846d9b5",
+  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'), who directed the container re-pin and signed for it by name. The image the manifest pinned no longer exists on this site and a SIF cannot be rebuilt to the same bytes, so the pin was unsatisfiable; the replacement is the upstream image the old one was built from, whose regenerated licence inventory matches the old one package for package. That moved the manifest digest. Over report sha256:7a06bb1028c781ad7b99bc35ad005d7ac19038d1dc34ac974d13b9f47a774dd7, three parity-probe runs at commit 929a682fa0f4 on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:eb1752735f4b07e132c21bd70064215c6d4526c25617768957e8e2d8b97a7498",
   "from_status": "candidate",
   "harness_id": "hpc/spmm-correctness",
-  "harness_manifest_digest": "sha256:43b21192db083c99f75d57477b78ab0cf223c1e982229771a0a596a18ad3588d",
+  "harness_manifest_digest": "sha256:4a888644615a6b7df332bc4a4c5d1e649653fe8f97aa697b8ea4681422b928cf",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:dfcf5a31e2a65b230a83941d00b0e8a85700db040390adb27c6a870ea724d740",
+  "registration_report_digest": "sha256:7a06bb1028c781ad7b99bc35ad005d7ac19038d1dc34ac974d13b9f47a774dd7",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

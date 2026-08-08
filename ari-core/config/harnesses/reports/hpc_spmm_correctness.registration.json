@@ -56,7 +56,7 @@
       "passed": true
     },
     {
-      "detail": "pinned at d303a4ca15ca, an ancestor of f274841b1bd1",
+      "detail": "pinned at d303a4ca15ca, an ancestor of 929a682fa0f4",
       "evidence_digest": "sha256:79f176be9013ed5bdfecb6238a9863f18c0a16813d6e0b398e1b73fcfa342d80",
       "gate_id": "source_revision_digest_pin",
       "passed": true
@@ -93,7 +93,7 @@
     }
   ],
   "harness_id": "hpc/spmm-correctness",
-  "manifest_digest": "sha256:43b21192db083c99f75d57477b78ab0cf223c1e982229771a0a596a18ad3588d",
-  "report_digest": "sha256:dfcf5a31e2a65b230a83941d00b0e8a85700db040390adb27c6a870ea724d740",
+  "manifest_digest": "sha256:4a888644615a6b7df332bc4a4c5d1e649653fe8f97aa697b8ea4681422b928cf",
+  "report_digest": "sha256:7a06bb1028c781ad7b99bc35ad005d7ac19038d1dc34ac974d13b9f47a774dd7",
   "schema_version": "ari.harness-registration-report/v1"
 }

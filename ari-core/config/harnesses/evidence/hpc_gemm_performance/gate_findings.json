@@ -10,7 +10,7 @@
     "passed": true
   },
   {
-    "detail": "passed at spread 0.030337044217270178",
+    "detail": "passed at spread 0.030741404029043642",
     "gate_id": "clean_control_pass",
     "passed": true
   },
@@ -45,7 +45,7 @@
     "passed": true
   },
   {
-    "detail": "pinned at a73a938e69aa, an ancestor of 0b8011969bf0",
+    "detail": "pinned at a73a938e69aa, an ancestor of 929a682fa0f4",
     "gate_id": "source_revision_digest_pin",
     "passed": true
   },
@@ -55,7 +55,7 @@
     "passed": true
   },
   {
-    "detail": "spread 0.02389 over 3 runs",
+    "detail": "spread 0.005978 over 3 runs",
     "gate_id": "multiple_run_stability",
     "passed": true
   },
