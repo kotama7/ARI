@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,27 @@ def package_pins(package: str) -> dict[str, str]:
     }
 
 
+def _entry_spans(text: str, packages: list[str]) -> dict[str, tuple[int, int]]:
+    """Character span of each catalog entry, keyed by its package name.
+
+    An entry starts at its own ``- provider_id:`` line and ends where the next
+    one starts, so a rewrite cannot reach a sibling that happens to record the
+    same digest.
+    """
+
+    starts = [match.start() for match in re.finditer(r"^  - provider_id:", text, re.M)]
+    if len(starts) != len(packages):
+        raise SystemExit("catalog entries could not be located for rewriting")
+    bounds = starts + [len(text)]
+    spans: dict[str, tuple[int, int]] = {}
+    for index, package in enumerate(packages):
+        block = text[bounds[index] : bounds[index + 1]]
+        if f"package: {package}\n" not in block:
+            raise SystemExit(f"catalog entry order does not match: {package}")
+        spans[package] = (bounds[index], bounds[index + 1])
+    return spans
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--update", action="store_true", help="rewrite the pins")
@@ -67,6 +89,13 @@ def main() -> int:
     text = CATALOG.read_text(encoding="utf-8")
     document = yaml.safe_load(text)
     drifted = []
+    # Rewrite inside each entry's own span. A whole-file replace looks right
+    # until two packages happen to share a value -- which they do whenever one
+    # commit touches both -- and then the first package's new commit is written
+    # over every occurrence, the later packages never match their own recorded
+    # value, and the pins oscillate forever between update and check.
+    spans = _entry_spans(text, [str(item["package"]) for item in document["entries"]])
+    edits: dict[str, str] = {}
     for entry in document["entries"]:
         package = str(entry["package"])
         observed = package_pins(package)
@@ -75,12 +104,19 @@ def main() -> int:
             "package_sha256": str(entry["source"]["package_sha256"]),
             "manifest_sha256": str(entry["manifest_sha256"]),
         }
+        block = edits.get(package, text[slice(*spans[package])])
         for field, value in observed.items():
             if recorded[field] == value:
                 continue
             drifted.append(f"{package}: {field}")
             print(f"{package:18s} {field:16s} {recorded[field][:18]}… -> {value[:18]}…")
-            text = text.replace(recorded[field], value)
+            block = block.replace(recorded[field], value)
+        edits[package] = block
+    for package, block in sorted(
+        edits.items(), key=lambda item: spans[item[0]][0], reverse=True
+    ):
+        start, stop = spans[package]
+        text = text[:start] + block + text[stop:]
 
     if not drifted:
         print("provider catalog pins match the tree")

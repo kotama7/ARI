@@ -14,7 +14,7 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: 929a682fa0f41a1b416f9615e35506b6538a54a4
+      full_commit_sha: e628448dfff6e1a65eaa8d59513d5a96d6d30308
       package_sha256: sha256:3f05941c40043d0b9ecbf008fa436fb6ee058e59a119cfff4fb85a3f1dca5479
       license: MIT
     manifest_sha256: sha256:2f2cba035b0aa931ebd584b0de49e029340ac001919c0fea64e990adc0395fab
@@ -53,7 +53,7 @@ entries:
     maintainer: ARI maintainers
     source:
       repository: https://github.com/kotama7/ARI.git
-      full_commit_sha: 929a682fa0f41a1b416f9615e35506b6538a54a4
+      full_commit_sha: d7e62cceac8379b63699061648abae61c440de5d
       package_sha256: sha256:aca895f9a845be860d6f7686e59ef3eb9be8a5abb9a87691aeaaaa597e21a34a
       license: MIT
     manifest_sha256: sha256:0e774c87b740ce1107c5bbfb6599a9ce88e06aa8afa774c271cdede704db81f8
