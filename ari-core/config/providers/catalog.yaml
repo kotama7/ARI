@@ -80,12 +80,6 @@ entries:
         ? >-
           ari-tool://qiskit-mcp-servers/qiskit-profile%3Alocal-ideal%3Asha256%3A68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b@sha256:5f4ec7861a2bf7a290831c295586559b08482e547a27a9e1f0246728cd8a1391
         : [ari.quantum.sample.local-ideal/v1]
-        # The CUDA environment validator. Its promoted bundles named a tool that
-        # existed nowhere but in the string that generated it; `cuda_mcp_server`
-        # is that tool, served over stdio-mcp so no new source kind was needed.
-        ? >-
-          ari-tool://ari-cuda-environment-validator/ari-cuda-environment-validator%3Aari_cuda_validate__exclusive_node_sm121@sha256:02a0432a3c2c724c86700ccbbd45deeec488d6e0d4fac36e3e21cc74c31a4ca2
-        : [ari.environment.cuda.validate/v1]
   - provider_id: ari.provider.web
     runtime_name: web-skill
     package: ari-skill-web
