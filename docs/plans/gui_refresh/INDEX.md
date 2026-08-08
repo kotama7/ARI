@@ -108,14 +108,12 @@ rollback 期間、telemetry 確認後の legacy 削除 — は所有者の判断
 | ファイル | 削除 | 理由 |
 |---|---|---|
 | `baseline/migration_notes.md` | 済 | MN-1〜MN-12 が `docs/guides/migration.md` に en/ja/zh で before/after/why/rollback 付きで再現済み。endpoint 影響表は `docs/reference/rest_api.md`。参照していた 4 箇所（`test_gui_confirmation_challenges.py`、`test_gui_csp_headers.py`、`test_gui_path_proxy_hardening.py`、`g0_review_record.md`）は同一変更で恒久文書へ張り替えた |
+| `baseline/adr/ADR-01`〜`ADR-13`（12 本） | 済 | `docs/adr/gui/` へ移管（`docs/adr/manuscript_complete/` の前例に倣う）。**ADR 番号を維持**したので、コード・テスト・スクリプトからの 283 箇所の引用は id で解決し続ける（引用はパスでなく `ADR-09` のような id 形式）。`adr_backlog.md` の相対リンク 12 本は移管先へ張り替え済み |
 
 免除後も削除できなかったものと、その理由:
 
 - **task plan 00–10** — 恒久文書に受け皿の無い内容が残る。00 は Compatibility register・成功指標・
   P0–P3 分類、03 は Target structure と query-key の `revision` 成分、04 と 08 は行番号で
   引用する兄弟が生存、09 は performance budget 10 行のうち 7 行が未移管
-- **ADR 12 本** — `docs/adr/` には `manuscript_complete/` しか無く、GUI の ADR に恒久的な置場が
-  存在しない。ADR は決定と**却下された代替案**の記録で、後者はコードに残らない。特に ADR-03 は
-  実コードとテストから 19 箇所参照されている
 - **`INDEX.md` 自身** — checklist 項目 7 が「全 task plan が deleted になった後」を要求
 
