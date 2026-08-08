@@ -3,10 +3,10 @@
     "landlock",
     "network-namespace"
   ],
-  "identity_digest": "sha256:5b7376e56ec60cf63c01c073ae4aa7f5b15f7574571a27ce3ed14f4ce24abb09",
+  "identity_digest": "sha256:d6f6d784b9c2fd48f30ff092d1261fbf46c4e322f438fb2ce13d3305c7d0295b",
   "metadata": {
     "architecture": "x86_64",
-    "container_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
+    "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57"
   },
   "network_classes": [
     "deny"

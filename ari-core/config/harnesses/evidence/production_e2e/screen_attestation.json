@@ -1,17 +1,17 @@
 {
-  "active_harness_lock_digest": "sha256:9e95785b1cf4f579f293e59f335cc6edb979185235505886e5f10262c70aec3b",
-  "attempt_id": "har-dc15d2bc62304598fbc651799f37b54e-0",
-  "attestation_digest": "sha256:1a09febe5676a61e48b9ad72e2d7f1dfffb040cab5d502c7c94562d64aa8e469",
-  "baseline_harness_lock_digest": "sha256:9e95785b1cf4f579f293e59f335cc6edb979185235505886e5f10262c70aec3b",
+  "active_harness_lock_digest": "sha256:a2b9a69ed2d7f3ac116545d56edd33d9481931031924ee616937a9be83575c23",
+  "attempt_id": "har-2f8bbc0ada648c9c0dd1075a2d3ae3f5-0",
+  "attestation_digest": "sha256:072ff18c16e9906e7edef04673ed71a47c4141de5eecc21652e982fa928de099",
+  "baseline_harness_lock_digest": "sha256:a2b9a69ed2d7f3ac116545d56edd33d9481931031924ee616937a9be83575c23",
   "capability_binding_lock_digest": "sha256:dfdb30c906a0d6b0fc62c471d3a47f3f9bc9ab80e5ea75b566f03aa3b9797705",
-  "container_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+  "container_digest": "sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57",
   "dataset_digest": "sha256:4de6269a07834c41910c2ad4f531ab4f455e9fe58003d3a01f9e16e17f74972f",
   "driver_digest": "sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948",
   "epoch_id": "epoch-000",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477",
-      "logical_name": ".ari-execution/cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477.stdout.log",
+      "digest": "sha256:32a26b4132b13427d14f58e7697b0fda968e6407fe9f50a607eb68d5ab57f0b0",
+      "logical_name": ".ari-execution/32a26b4132b13427d14f58e7697b0fda968e6407fe9f50a607eb68d5ab57f0b0.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
@@ -26,9 +26,9 @@
       "source_run_id": "native-certify-publication-e2e"
     }
   ],
-  "execution_identity": "sha256:f907d88b8cdaa79488cab0a826d4993b9f3390f9800df648437a84a315720d9a",
-  "execution_result_digest": "sha256:0f84421fdee375518c38af8d596d43fde61eee68066bde25ce4f4574ac3f91a4",
-  "harness_manifest_digest": "sha256:5fd7b99e85e301df69c5feacb4fbdc960b0f49bb3da5beea248e8b97f621d50c",
+  "execution_identity": "sha256:0664cd8a235e01504b7adeb6f922b10acecd3c9bcc97e0e48cf6a4f4e5090d95",
+  "execution_result_digest": "sha256:c31a6255b8046b575bfb498cb8f6c04dc51b24cc21fce4a85e14d4647240c360",
+  "harness_manifest_digest": "sha256:1d9b56281d8d6fd9ef227a88e9d8ff395c02bafeaf19ede16b6c2b298453c984",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:776ece0349d510a47eef59e95e6f0bac10c6037f50588f299893dd78968b403a",
   "node_id": "publication-candidate",
@@ -45,8 +45,8 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477",
-          "logical_name": ".ari-execution/cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477.stdout.log",
+          "digest": "sha256:32a26b4132b13427d14f58e7697b0fda968e6407fe9f50a607eb68d5ab57f0b0",
+          "logical_name": ".ari-execution/32a26b4132b13427d14f58e7697b0fda968e6407fe9f50a607eb68d5ab57f0b0.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -64,13 +64,13 @@
       "measurements": {
         "case_count": 33,
         "failed_case_count": 0,
-        "max_abs_error": 2.8678871899501246e-07,
-        "max_rel_error": 1.2849331793559878e-06
+        "max_abs_error": 2.5595335184647183e-07,
+        "max_rel_error": 3.1288084911422026e-07
       },
       "method": "differential-testing",
       "oracle_comparison": {
         "oracle": "decimal accumulation over an independently indexed row-major GEMM",
-        "report_digest": "sha256:e3148677d06afd2ba526898ddafca76b1b71411cf6a4d1d968e348ce1d4dc884"
+        "report_digest": "sha256:a59df127639825945dfda01c70651a0f08e9c19e86bbdafe4daaa33651f68fd4"
       },
       "property_id": "numerical-equivalence",
       "tested_scope": {

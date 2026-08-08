@@ -1,6 +1,6 @@
 {
   "blocking_reasons": [],
-  "build_digest": "sha256:7aa35f794d39df2a5e2e490280d6c44632413b05d46fe17007c50b2ac953bfe4",
+  "build_digest": "sha256:4d4deeaa87c5eead8d4d215e8505597a2a1f68db8895077c342345a09370179e",
   "build_id": "paper-native-certify-publication-e2e",
   "build_revision": 0,
   "compile": {
@@ -47,7 +47,7 @@
     "schema_version": "ari.paper-compile/v1",
     "status": "completed"
   },
-  "ear_digest": "sha256:4a34873e21d28937f6745c62575f9cfcd248e25bec383cfbf9d611e8ae0c812e",
+  "ear_digest": "sha256:cc497b961ae3232c1a30c6c36ad9381bd91b5668738460b94fb2f0d381cabfa0",
   "final_artifacts": [
     {
       "digest": "sha256:1f5684b455336fcfedb6b09e7dd74247a3612e302e3c859cc4a7a5bf51aa59d5",
@@ -77,12 +77,12 @@
   "gate": {
     "blocking_error_count": 0,
     "mode": "strict",
-    "report_digest": "sha256:82b9404eb3e5a4f1f819b41486595990c3d093d61630cab641f539cb1e2b2ed3",
+    "report_digest": "sha256:4af61767707c74c60f50c9dd520de57090fef4d946da712dfb84a6cdc95f8ffc",
     "status": "pass"
   },
   "input_artifacts": [
     {
-      "digest": "sha256:6fe48ad9f002b357a923d2af8c120f18057b6c3d943be64390b1692521c958a8",
+      "digest": "sha256:32f74af65bc1c56c0a67b0f20d26fd1fd65522189d8ddda630e18187e541fa95",
       "media_type": "application/json",
       "relative_path": "science_data.json",
       "role": "science-data",
@@ -106,7 +106,7 @@
       "size_bytes": 396
     },
     {
-      "digest": "sha256:4a34873e21d28937f6745c62575f9cfcd248e25bec383cfbf9d611e8ae0c812e",
+      "digest": "sha256:cc497b961ae3232c1a30c6c36ad9381bd91b5668738460b94fb2f0d381cabfa0",
       "media_type": "application/json",
       "relative_path": "ear_manifest.json",
       "role": "ear-manifest",
@@ -116,39 +116,39 @@
     {
       "digest": "sha256:dfc4e7fea1b1eb9c984ab64460eedbce612f4dfd0c44e53b4a9afd195fe79fb5",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/requirement_profile.json",
+      "relative_path": ".ari-manuscript/attempts/mca-67e5042a0db556d3-6639e048/requirement_profile.json",
       "role": "manuscript-profile",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 13071
     },
     {
-      "digest": "sha256:31088b609dbf549aba8cabb4daf496b48d6b0c86c236e0da452a6e62546ad230",
+      "digest": "sha256:13c99142e50ebc7297686234cd3a44eddd593934da9a7ef0720fef55d96d7eb8",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/context.json",
+      "relative_path": ".ari-manuscript/attempts/mca-67e5042a0db556d3-6639e048/context.json",
       "role": "manuscript-context",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 5341
     },
     {
-      "digest": "sha256:5c9a95cef56617686c689c1a9e5b38af824be913b713b3962cb82b1dcda053fb",
+      "digest": "sha256:3425b8bfd0a6efffc45e69a3d16af39ff9cb6b473a763414dcdd6782ab2b1226",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/readiness.json",
+      "relative_path": ".ari-manuscript/attempts/mca-67e5042a0db556d3-6639e048/readiness.json",
       "role": "manuscript-readiness",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 11770
     },
     {
-      "digest": "sha256:3502d109d24926e2cfebd1c83876b9ad528f991959deca60661020fb2a0c1763",
+      "digest": "sha256:680089fc5b2a4ddb4f43dc1c3c90c3d0a1ea0850761eb94a019ccdf28b224ef7",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/section_briefs.json",
+      "relative_path": ".ari-manuscript/attempts/mca-67e5042a0db556d3-6639e048/section_briefs.json",
       "role": "section-briefs",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 15534
     },
     {
-      "digest": "sha256:ffa74e6e9c2855788dd7c650ee2ff163ead1d2da7ec84a98d1d46029ff107866",
+      "digest": "sha256:ec1ab8a9cccab8846f890e00a2c3b9da96c35d06832ef171f932cf475a7e8b01",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/authoring_binding.json",
+      "relative_path": ".ari-manuscript/attempts/mca-67e5042a0db556d3-6639e048/authoring_binding.json",
       "role": "manuscript-authoring-binding",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 904
