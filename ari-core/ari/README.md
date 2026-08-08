@@ -61,7 +61,6 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public assurance package exports.
   - `attestation.py` — construct and validate digest-bound harness run attestations.
   - `catalog.py` — load, snapshot, and query the admitted harness catalog.
-  - `container_identity.py` — TODO
   - `contract.py` — verification-contract parsing and compatibility checks.
   - `executors.py` — bounded harness execution backends and result normalization.
   - `lock.py` — create and verify immutable harness selection locks and revisions.

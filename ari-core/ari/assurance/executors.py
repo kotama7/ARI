@@ -7,7 +7,9 @@ import os
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 
+from ari.assurance.container_identity import read_binding
 from ari.execution import ExecutionRequestV1, ExecutionResultV1, execute_local
 
 
@@ -15,9 +17,56 @@ class HarnessSubstrateError(RuntimeError):
     pass
 
 
+#: What the container RUNTIME needs of the address space, on top of whatever the
+#: verifier is given. RLIMIT_AS is set on the process the executor exec's, and
+#: for a containerised harness that process is the runtime, not the verifier.
+#:
+#: MEASURED, eight launches per bound, nothing inside the container: 4 GiB never
+#: started, 5 GiB started three times in eight, 6 GiB and 8 GiB started every
+#: time. The requirement is NOT a fixed number -- the runtime's arena and thread
+#: count vary per launch -- so this is set where it stopped varying rather than
+#: at the lowest value ever observed to work. A tight allowance here buys
+#: nothing and costs intermittent infrastructure failures.
+CONTAINER_LAUNCHER_ADDRESS_SPACE = 6 * 1024**3
+
+
 _LOGICAL_SIF_REFERENCE = re.compile(
     r"^(?P<runtime>apptainer|singularity):(?P<name>[A-Za-z0-9][A-Za-z0-9_.-]{0,255}\.sif)$"
 )
+
+
+def _require_pinned_content(image: Path, pinned_content_digest: str | None) -> None:
+    """Refuse an image that is not the CONTENT the manifest pinned.
+
+    The manifest pins what is in the image, because that is what a verdict
+    depends on and it is what survives the image being fetched again -- two
+    pulls of one tag differ byte for byte and agree on every one of the 109,596
+    filesystem entries that is not the runtime's own build-date metadata.
+
+    Reading the whole rootfs on every run would cost more than the verification
+    does, so the expensive comparison is made once by an operator and recorded
+    in a site-local binding beside the image. What happens here is the cheap
+    pair: the binding must vouch for the content the manifest names, and the
+    file on disk must be the one the binding vouched for. A missing binding is
+    refused rather than waved through -- an unbound image is one nobody has
+    checked.
+    """
+    if not pinned_content_digest:
+        raise HarnessSubstrateError(
+            "the Harness container pin carries no content digest, so nothing "
+            "identifies the image beyond the bytes it happened to arrive in")
+    binding = read_binding(image.parent, image.name)
+    if binding is None:
+        raise HarnessSubstrateError(
+            f"no site binding records what is inside {image.name}; run the "
+            f"container binding tool against it before verifying with it")
+    if binding.get("content_digest") != pinned_content_digest:
+        raise HarnessSubstrateError(
+            "the bound image is not the content this Harness pins")
+    if binding.get("file_digest") != _file_digest(image):
+        raise HarnessSubstrateError(
+            f"{image.name} has changed since its content was established; the "
+            f"binding no longer describes this file")
 
 
 def _file_digest(path: Path) -> str:
@@ -125,6 +174,24 @@ class PinnedContainerExecutor:
                 argv[index] = mapped[value]
             elif value in absolute_inputs:
                 argv[index] = absolute_inputs[value]
+        if request.limits.memory_bytes is not None:
+            # THE VERIFIER'S BOUND, ON THE VERIFIER.
+            #
+            # RLIMIT_AS is set on the process the executor exec's, which for a
+            # containerised harness is the container RUNTIME, and is inherited
+            # by whatever that runtime starts. One number was therefore bounding
+            # two very different things, and the launcher's own appetite decided
+            # it: at the 4 GiB a verifier was given, the runtime aborted in
+            # pthread_create and the verifier never ran at all.
+            #
+            # Lowering it again inside the container gives the manifest's number
+            # back its literal meaning. It is prepended AFTER the input mapping
+            # so it cannot be mistaken for a path, and it appears in the argv
+            # rather than being arranged out of band because the argv is what a
+            # reviewer reads to see what was enforced -- the same reason the
+            # network flags are there. A container without prlimit fails the
+            # exec loudly rather than running the verifier unbounded.
+            argv = ["prlimit", f"--as={request.limits.memory_bytes}", *argv]
         return argv
 
     def _container_argv(
@@ -172,8 +239,9 @@ class PinnedContainerExecutor:
             image = _resolve_sif_reference(reference)
             if executable is None:
                 raise HarnessSubstrateError(f"{container.runtime} executable is unavailable")
-            if image.is_symlink() or not image.is_file() or _file_digest(image) != container.digest:
-                raise HarnessSubstrateError("SIF Harness image differs from pinned digest")
+            if image.is_symlink() or not image.is_file():
+                raise HarnessSubstrateError("SIF Harness image is unavailable")
+            _require_pinned_content(image, container.digest)
             return [
                 executable,
                 "exec",
@@ -194,6 +262,20 @@ class PinnedContainerExecutor:
             ]
         raise HarnessSubstrateError("unsupported pinned Harness container runtime")
 
+    def _launcher_limits(self, limits):
+        """What the OUTER process is held to: the verifier's bound plus the
+        runtime's own allowance.
+
+        The verifier is held to the manifest's number inside the container, so
+        adding the launcher's allowance here does not loosen what the verifier
+        gets -- it stops the launcher's appetite from deciding it.
+        """
+        if limits.memory_bytes is None:
+            return limits
+        return limits.model_copy(
+            update={"memory_bytes": limits.memory_bytes + CONTAINER_LAUNCHER_ADDRESS_SPACE}
+        )
+
     def __call__(
         self,
         request: ExecutionRequestV1,
@@ -205,9 +287,12 @@ class PinnedContainerExecutor:
         snapshot_root, mapped = self._snapshot_inputs(request)
         inside = self._inside_argv(request, mapped)
         container_argv = self._container_argv(request, snapshot_root, inside)
-        outer = request.model_copy(
-            update={"argv": container_argv, "shell_command": None}
-        )
+        update: dict[str, Any] = {
+            "argv": container_argv,
+            "shell_command": None,
+            "limits": self._launcher_limits(request.limits),
+        }
+        outer = request.model_copy(update=update)
         # Network isolation is proven by the reviewed argv above, not by a
         # caller-provided boolean.  execute_local remains the sole process and
         # resource-control implementation.

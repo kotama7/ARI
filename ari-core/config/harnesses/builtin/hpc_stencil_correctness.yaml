@@ -2,7 +2,7 @@ accepts_external_target: true
 container:
   license: Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088
   reference: singularity:orfs-26q3-openroad-7304ba78.sif
-  resolved_digest: sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c
+  resolved_digest: sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57
 credential_policy: none
 credential_scope_ids: []
 dataset:
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:9de600d3c44a09075ae185d09305c19c4ca2ccd75be6041f0d325bbde931fd56
+manifest_digest: sha256:8af629d3d22282ac4e759c6a48f213d78083c4beed501b670089ee53aea4d728
 model:
   license: not-applicable
   revision: not-applicable
@@ -102,7 +102,7 @@ resources:
   features:
   - landlock
   - network-namespace
-  memory_bytes: 8589934592
+  memory_bytes: 4294967296
 retry_limit: 1
 schema_version: ari.harness-manifest/v1
 scorer_determinism: deterministic
