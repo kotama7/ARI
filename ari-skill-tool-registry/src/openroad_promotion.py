@@ -93,6 +93,39 @@ def openroad_verified_artifact(
 ) -> dict[str, Any]:
     profile = _one_profile(experiments)
     if profile is not None and profile.profile_id == OPENROAD_SLURM_VERIFIED_PROFILE_ID:
+        if not OPENROAD_SLURM_SCHEDULER_SNAPSHOT.is_file():
+            raise ProviderProtocolError("OpenROAD scheduler snapshot is missing")
+        container = profile.execution.container
+        if container is not None:
+            # A site whose host glibc cannot run the reviewed PRoot/unsquashfs/
+            # worker-Python build uses the digest-pinned clean container instead.
+            # Both substrates are admitted by the execution contract; only one
+            # may be present, and each pins its own closure.
+            expected_image = OPENROAD_SLURM_RUNTIME / "openroad-orfs-26q3.sif"
+            if (
+                Path(container.image.path).resolve() != expected_image.resolve()
+                or _file_sha256(expected_image) != container.image.digest
+            ):
+                raise ProviderProtocolError(
+                    "OpenROAD SLURM execution image is outside its canonical bundle"
+                )
+            return {
+                "openroad_mcp": pin.model_dump(mode="json"),
+                "toolchain_line": openroad_toolchain_line("orfs-26q3"),
+                "execution_image": openroad_execution_image(OPENROAD_IMAGE_ID),
+                "container_runtime": {
+                    "runtime": container.runtime,
+                    "image_digest": container.image.digest,
+                    "image_size_bytes": container.image.size_bytes,
+                    "network": container.network,
+                    "contain_all": container.contain_all,
+                    "clean_environment": container.clean_environment,
+                    "gpu": container.gpu,
+                },
+                "scheduler_snapshot_digest": _file_sha256(
+                    OPENROAD_SLURM_SCHEDULER_SNAPSHOT
+                ),
+            }
         portable = profile.execution.portable_runtime
         if portable is None:
             raise ProviderProtocolError("OpenROAD SLURM verified runtime is missing")
@@ -116,8 +149,6 @@ def openroad_verified_artifact(
         ):
             raise ProviderProtocolError("OpenROAD SLURM worker Python drifted")
         license_path = OPENROAD_SLURM_RUNTIME / "PROOT-COPYING"
-        if not OPENROAD_SLURM_SCHEDULER_SNAPSHOT.is_file():
-            raise ProviderProtocolError("OpenROAD scheduler snapshot is missing")
         return {
             "openroad_mcp": pin.model_dump(mode="json"),
             "toolchain_line": openroad_toolchain_line("orfs-26q3"),
@@ -183,12 +214,14 @@ def openroad_verified_scope(
     else:
         execution = profile.execution
         resources = execution.resources
-        portable = execution.portable_runtime
+        # Exactly one pinned execution substrate, either the reviewed PRoot/SIF
+        # portable runtime or the digest-pinned clean container.  Which one is a
+        # site property; that there is exactly one is the invariant.
+        substrates = (execution.portable_runtime, execution.container)
         if (
             execution.backend != "slurm"
             or resources is None
-            or portable is None
-            or execution.container is not None
+            or sum(item is not None for item in substrates) != 1
             or not resources.partition
             or not resources.nodelist
             or not resources.exclusive
@@ -254,12 +287,20 @@ def openroad_verified_scope(
                     "workspace-read",
                     "workspace-write",
                 ],
-                "environment_requirements": [
-                    "cpu",
-                    "exclusive-node",
-                    "proot-sif",
-                    "slurm",
-                ],
+                # The substrate a site requires is the one its profile pins, so
+                # a container run must not advertise a PRoot requirement.
+                "environment_requirements": sorted(
+                    {
+                        "cpu",
+                        "exclusive-node",
+                        "slurm",
+                        (
+                            f"{profile.execution.container.runtime}-sif"
+                            if profile.execution.container is not None
+                            else "proot-sif"
+                        ),
+                    }
+                ),
                 "resource_type": "eda-cpu-slurm",
             }
         )
@@ -285,13 +326,24 @@ def openroad_verified_runtime_target(
 ) -> dict[str, str]:
     profile = _one_profile(experiments)
     if profile is not None and profile.profile_id == OPENROAD_SLURM_VERIFIED_PROFILE_ID:
+        container = profile.execution.container
         return {
             "architecture": "x86_64",
             "operating_system": "linux",
             "provider_python": "CPython-3.13",
-            "worker_python": "CPython-3.12",
-            "execution_substrate": "proot-sif",
-            "network": "host-uncredentialed",
+            # The worker interpreter and the isolation boundary follow the
+            # substrate this profile actually declares, not one site's choice.
+            "worker_python": (
+                "container-provided" if container is not None else "CPython-3.12"
+            ),
+            "execution_substrate": (
+                f"{container.runtime}-sif" if container is not None else "proot-sif"
+            ),
+            "network": (
+                "isolated"
+                if container is not None and container.network == "none"
+                else "host-uncredentialed"
+            ),
             "site_identity_digest": str(
                 _scheduler_snapshot()["site_identity_digest"]
             ),

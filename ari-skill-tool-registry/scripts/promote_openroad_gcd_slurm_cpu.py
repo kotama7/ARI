@@ -26,6 +26,7 @@ for dependency in (
 
 from ari_skill_hpc import (  # noqa: E402
     ArtifactPinV1,
+    ContainerRequestV1,
     EnvironmentPolicyV1,
     ResourceRequestV1,
 )
@@ -33,7 +34,6 @@ from models import AdmissionEvidenceV1, sha256_digest  # noqa: E402
 from openroad_adapter import (  # noqa: E402
     OpenRoadExecutionV1,
     OpenRoadExperimentV1,
-    OpenRoadPortableRuntimeV1,
     OpenRoadProviderPinV1,
     openroad_effective_launcher,
     openroad_provider_release_pin,
@@ -70,15 +70,9 @@ from site_privacy import (  # noqa: E402
 
 
 EXPECTED_MCP_COMMIT = "39d78c091d9f41d217c8c28ddb20fa105942eba5"
-EXPECTED_PROOT_DIGEST = (
-    "sha256:b7f2adf5a225000a164f4905aabefeebe11c4c1d5bedff5e1fe8866c48dd70d2"
-)
-EXPECTED_UNSQUASHFS_DIGEST = (
-    "sha256:b305985eb764b6d0ef757571e3e44044ebf71c827c4263efe576e9e14b4abcfb"
-)
-EXPECTED_WORKER_PYTHON_DIGEST = (
-    "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118"
-)
+# The reviewed PRoot/unsquashfs/worker-Python closure is still an admitted
+# substrate — ``openroad_promotion`` verifies it — but this command promotes the
+# container substrate, so it pins no host binaries of its own.
 
 
 def _runtime_pin(path: Path, logical_name: str, media_type: str) -> ArtifactPinV1:
@@ -93,39 +87,44 @@ def _runtime_pin(path: Path, logical_name: str, media_type: str) -> ArtifactPinV
     )
 
 
+def _gpu_authority_limitation() -> str:
+    """State why this profile grants no GPU capability at the promoting site.
+
+    The reason is site-dependent: a scheduler without GRES cannot express a GPU
+    request at all, whereas a scheduler with GRES could, so the guarantee then
+    rests on the allocated node carrying no accelerator.  Read it from the
+    reviewed snapshot rather than asserting one site's situation at every site.
+    """
+
+    snapshot = json.loads(
+        OPENROAD_SLURM_SCHEDULER_SNAPSHOT.read_text(encoding="utf-8")
+    )
+    if snapshot["cluster"]["gres_types"] is None:
+        return (
+            "The scheduler declares no GRES types, so no GPU can be requested; "
+            "this OpenROAD profile also requests zero GPUs and grants no GPU "
+            "capability."
+        )
+    return (
+        "The scheduler declares GRES types, but the allocated node exposes no "
+        "accelerator and this OpenROAD profile requests zero GPUs, so it grants "
+        "no GPU capability."
+    )
+
+
 def _slurm_profile(
     base: OpenRoadExperimentV1,
     *,
     work_root: Path,
     site: dict[str, str],
 ) -> OpenRoadExperimentV1:
-    proot = _runtime_pin(
-        OPENROAD_SLURM_RUNTIME / "proot",
-        "openroad-proot-runtime",
-        "application/octet-stream",
-    )
     image = _runtime_pin(
         OPENROAD_SLURM_RUNTIME / "openroad-orfs-26q3.sif",
         "openroad-sif-image",
         "application/vnd.sylabs.sif",
     )
-    unsquashfs = _runtime_pin(
-        OPENROAD_SLURM_RUNTIME / "unsquashfs",
-        "openroad-unsquashfs-runtime",
-        "application/octet-stream",
-    )
-    worker_python = _runtime_pin(
-        OPENROAD_SLURM_RUNTIME / "python3.12",
-        "openroad-worker-python",
-        "application/x-executable",
-    )
-    if (
-        proot.digest != EXPECTED_PROOT_DIGEST
-        or image.digest != EXPECTED_IMAGE_DIGEST
-        or unsquashfs.digest != EXPECTED_UNSQUASHFS_DIGEST
-        or worker_python.digest != EXPECTED_WORKER_PYTHON_DIGEST
-    ):
-        raise ProviderProtocolError("OpenROAD portable runtime identity differs")
+    if image.digest != EXPECTED_IMAGE_DIGEST:
+        raise ProviderProtocolError("OpenROAD execution image identity differs")
     execution = OpenRoadExecutionV1(
         backend="slurm",
         site_identity_digest=sha256_digest(site),
@@ -143,14 +142,18 @@ def _slurm_profile(
         environment=EnvironmentPolicyV1(
             path="/usr/local/bin:/usr/bin:/bin"
         ),
-        portable_runtime=OpenRoadPortableRuntimeV1(
-            proot=proot,
+        # The reviewed PRoot/unsquashfs/worker-Python build links against a
+        # newer host glibc than this site provides, so the same profile runs on
+        # the digest-pinned clean container instead.  Isolation is stronger:
+        # the closure is the SIF rather than the SIF plus four host binaries.
+        container=ContainerRequestV1(
+            runtime="singularity",
             image=image,
-            unsquashfs=unsquashfs,
-            squashfs_offset=40960,
+            gpu=False,
+            network="none",
+            contain_all=True,
+            clean_environment=True,
         ),
-        worker_python=worker_python.path,
-        worker_python_pin=worker_python,
         terminal_evidence_policy="fixed-wrapper-marker",
     )
     payload = base.model_dump(mode="json")
@@ -185,7 +188,7 @@ def _slurm_profile(
             ).model_dump(mode="json"),
             "limitations": [
                 "The verified identity covers only the fixed GCD placed database, Nangate45 data, anonymous site identity, CPU-only commands, seed, and one-thread execution.",
-                "The allocated node exposes GPUs without GRES, but this OpenROAD profile requests zero GPUs and grants no GPU capability.",
+                _gpu_authority_limitation(),
                 "PRoot is a portability mechanism rather than a security boundary; the clean job receives no credentials and retains host-network visibility.",
                 "The provider capability executes a routed-artifact contract; its verified status is not a general timing-closure guarantee.",
             ],
@@ -235,18 +238,45 @@ def _verify_scheduler_snapshot(site: dict[str, str]) -> dict[str, Any]:
         ["scontrol", "show", "partition", site["partition"]]
     )
     node = observe(["scontrol", "show", "node", site["node_name"]])
-    required = (
-        (version, "slurm 25.05.0"),
+    def _scontrol_value(value: Any) -> str:
+        return "(null)" if value is None else str(value)
+
+    cluster = snapshot["cluster"]
+    node_snapshot = snapshot["node"]
+    partition_snapshot = snapshot["partition"]
+    # Site characteristics are compared against the reviewed snapshot instead of
+    # literals, so the same promotion can run at another scheduler site.  The
+    # snapshot is the single declaration of what this site is; drift between it
+    # and the live controller still fails closed.
+    declared = (
+        (version, f"slurm {cluster['slurm_version']}"),
         (config, f"ClusterName             = {site['cluster_name']}"),
-        (config, "GresTypes               = (null)"),
-        (partition, "OverSubscribe=EXCLUSIVE"),
-        (partition, "MaxTime=20:00:00"),
-        (node, f"NodeName={site['node_name']} Arch=x86_64"),
-        (node, "Gres=(null)"),
-        (node, "CPUTot=8"),
+        (
+            config,
+            "GresTypes               = "
+            + _scontrol_value(cluster["gres_types"]),
+        ),
+        (partition, f"MaxTime={partition_snapshot['max_time']}"),
+        (
+            node,
+            f"NodeName={site['node_name']} Arch={node_snapshot['architecture']}",
+        ),
+        (node, f"CPUTot={node_snapshot['cpu_cores']}"),
+        (node, f"Sockets={node_snapshot['sockets']}"),
+        (node, f"ThreadsPerCore={node_snapshot['threads_per_core']}"),
     )
-    if any(expected not in text for text, expected in required):
+    # These are not site characteristics.  The retained image is x86_64, this
+    # profile requests zero GPUs, and the allocation must be exclusive.  A site
+    # that cannot honour them is outside this identity whatever it declares.
+    invariant = (
+        (node, "Arch=x86_64"),
+        (node, "Gres=(null)"),
+        (partition, "OverSubscribe=EXCLUSIVE"),
+    )
+    if any(expected not in text for text, expected in declared + invariant):
         raise ProviderProtocolError("anonymous scheduler snapshot differs")
+    if node_snapshot.get("gres") is not None or node_snapshot.get("gpu_authority"):
+        raise ProviderProtocolError("scheduler snapshot claims GPU authority")
     if snapshot.get("site_identity_digest") != sha256_digest(site):
         raise ProviderProtocolError("scheduler site identity digest differs")
     return {
@@ -386,14 +416,41 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         Path(args.orfs_flow_root).resolve(strict=True)
     )
     hpc_job = observations["result"].get("hpc_job")
-    if (
-        not isinstance(hpc_job, dict)
-        or hpc_job.get("status", {}).get("state") != "succeeded"
-        or hpc_job.get("container_digest") is not None
-    ):
+    if not isinstance(hpc_job, dict):
         raise ProviderProtocolError(
             "OpenROAD exclusive-node typed-job evidence is incomplete"
         )
+    state = hpc_job.get("status", {}).get("state")
+    if state != "succeeded":
+        raise ProviderProtocolError(
+            f"OpenROAD exclusive-node typed job did not succeed: {state!r}"
+        )
+    # The job must record exactly the substrate the profile pinned: the image
+    # digest for a container run, and no container at all for the PRoot run.
+    container = profile.execution.container
+    expected_container_digest = None if container is None else container.image.digest
+    if hpc_job.get("container_digest") != expected_container_digest:
+        raise ProviderProtocolError(
+            "OpenROAD exclusive-node typed job ran on a different execution "
+            "substrate than the profile pins"
+        )
+    # The scheduler handle records where the job ran as absolute paths under the
+    # caller's work root.  The scope names are digest-derived and are the part
+    # worth publishing; the prefix only says which machine ran the promotion, so
+    # express them relative to the work root before the evidence is written.
+    handle = hpc_job.get("handle")
+    if isinstance(handle, dict):
+        root = Path(work_root).resolve()
+        for field in ("workspace_scope", "artifact_scope"):
+            value = handle.get(field)
+            if not isinstance(value, str) or not value:
+                continue
+            try:
+                handle[field] = Path(value).resolve().relative_to(root).as_posix()
+            except ValueError as exc:
+                raise ProviderProtocolError(
+                    f"OpenROAD scheduler {field} escapes the declared work root"
+                ) from exc
     profile = _attach_fixtures(profile, output=output, observations=observations)
     verify_openroad_experiment_files(profile)
     result = _bundle(
@@ -417,7 +474,7 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
     )
     assert_no_private_site_identity(publishable, site=site)
     _write_json(
-        output / "workspace" / "materialized-profile-v1.json",
+        output / "materialized" / "materialized-profile-v1.json",
         {
             "schema_version": "ari.openroad-materialized-profile/v1",
             "profile": profile.model_dump(mode="json"),
@@ -425,9 +482,11 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
             "verified_lock_digest": result["lock_digest"],
         },
     )
-    # The materialized profile intentionally retains runtime selectors and is
-    # valid only while the workspace ignore rule keeps it outside Git's
-    # candidate set.  This final scan fails if that protection is removed.
+    # The materialized profile intentionally retains runtime selectors, so it
+    # lives under its own bundle ignore rule rather than in the workspace: the
+    # workspace must stay byte-exactly the declared input set for source
+    # admission, and this file is not one of those inputs.  This final scan
+    # fails if the ignore protection is removed.
     assert_repository_site_anonymous(REPO_ROOT, site=site)
     return result
 

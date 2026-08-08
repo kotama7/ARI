@@ -76,7 +76,7 @@ TEST_IDS = (
 EXPECTED_ORFS_COMMIT = "adeb389e7fbf06ef6a939a895c014f69e6f7aa00"
 EXPECTED_OPENROAD_COMMIT = "7304ba78ade7cb9f78466c6d0231432d72dadd3b"
 EXPECTED_IMAGE_DIGEST = (
-    "sha256:d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39"
+    "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
 )
 
 
@@ -881,11 +881,31 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         observations=observations,
         tests=tests,
     )
+    materialized_profile = profile.model_dump(mode="json")
+    # These four fields only locate the bundle on the promoting host.  Portable
+    # experiment identity already excludes them, and the sole reader re-derives
+    # each one from the bundle directory, so record them relative instead of
+    # writing this checkout's absolute paths into a tracked artifact.
+    def _bundle_relative(value: str) -> str:
+        return Path(value).resolve().relative_to(output).as_posix()
+
+    materialized_profile["toolchain"]["executable_path"] = _bundle_relative(
+        profile.toolchain.executable_path
+    )
+    materialized_profile["workspace"]["source_root"] = _bundle_relative(
+        profile.workspace.source_root
+    )
+    materialized_profile["golden_fixture_path"] = _bundle_relative(
+        profile.golden_fixture_path
+    )
+    materialized_profile["replay_fixture_path"] = _bundle_relative(
+        profile.replay_fixture_path
+    )
     _write_json(
         output / "materialized-profile-v1.json",
         {
             "schema_version": "ari.openroad-materialized-profile/v1",
-            "profile": profile.model_dump(mode="json"),
+            "profile": materialized_profile,
             "provider_digest": provider_digest(openroad_effective_launcher(launcher)),
             "verified_lock_digest": result["lock_digest"],
         },
