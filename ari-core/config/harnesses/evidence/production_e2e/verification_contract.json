@@ -1,9 +1,9 @@
 {
   "admission_confidence": 1.0,
   "baseline_knowledge_obligation_refs": [],
-  "contract_digest": "sha256:542d4c2d84e4af7fcf9fb1490591347b98fa18262a68f48ad704c45a57235583",
+  "contract_digest": "sha256:d09b462099fcd6af455c1c9275c23a986f728eb61ef7ae7c6951bf886cfc69cc",
   "human_review_identity": "sha256:a3545ca35c2130014c7c7569d3f9514ce094685ef5d1a588552fceb0e803ecf8",
-  "property_vocabulary_digest": "sha256:4c8f62f5b78d3925ff017d19ede8e305c6b14b3c5684f01f6d6b3f2e54ac83a1",
+  "property_vocabulary_digest": "sha256:b59c07e3d63cd14eeb44e267e3df10d2d0ecd9c922109b968f2c1008b1e6e8fd",
   "requirements": [
     {
       "determinism_requirement": "deterministic",

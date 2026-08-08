@@ -1,34 +1,34 @@
 {
-  "active_harness_lock_digest": "sha256:0c9368e299e41d271649f715f8530108040be010784e47888f9e8459e0f244b5",
-  "attempt_id": "har-e50cf70e9e3099b699246ca3f2393ef8-0",
-  "attestation_digest": "sha256:3fc9701f8ba1779500e36df09b19c502c42b7dab08d9148d087f3c796290ed6e",
-  "baseline_harness_lock_digest": "sha256:0c9368e299e41d271649f715f8530108040be010784e47888f9e8459e0f244b5",
+  "active_harness_lock_digest": "sha256:9e95785b1cf4f579f293e59f335cc6edb979185235505886e5f10262c70aec3b",
+  "attempt_id": "har-dc15d2bc62304598fbc651799f37b54e-0",
+  "attestation_digest": "sha256:1a09febe5676a61e48b9ad72e2d7f1dfffb040cab5d502c7c94562d64aa8e469",
+  "baseline_harness_lock_digest": "sha256:9e95785b1cf4f579f293e59f335cc6edb979185235505886e5f10262c70aec3b",
   "capability_binding_lock_digest": "sha256:dfdb30c906a0d6b0fc62c471d3a47f3f9bc9ab80e5ea75b566f03aa3b9797705",
-  "container_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9",
+  "container_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
   "dataset_digest": "sha256:4de6269a07834c41910c2ad4f531ab4f455e9fe58003d3a01f9e16e17f74972f",
-  "driver_digest": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f",
+  "driver_digest": "sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948",
   "epoch_id": "epoch-000",
   "evidence_artifact_refs": [
     {
-      "digest": "sha256:b352763bb79e19b2c3877c103bbc0d10f73c26fe436b482c5649bc27a62ff244",
-      "logical_name": ".ari-execution/b352763bb79e19b2c3877c103bbc0d10f73c26fe436b482c5649bc27a62ff244.stdout.log",
+      "digest": "sha256:cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477",
+      "logical_name": ".ari-execution/cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477.stdout.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stdout",
       "schema_version": "ari.research-artifact-ref/v1",
       "source_run_id": "native-certify-publication-e2e"
     },
     {
-      "digest": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
-      "logical_name": ".ari-execution/9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084.stderr.log",
+      "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
       "media_type": "text/plain; charset=utf-8",
       "role": "harness-stderr",
       "schema_version": "ari.research-artifact-ref/v1",
       "source_run_id": "native-certify-publication-e2e"
     }
   ],
-  "execution_identity": "sha256:8b1fed5d78d817f5ef452ce8fdf9b872a96af9b0a1e938e8f88d2c28925effcc",
-  "execution_result_digest": "sha256:c6a2466a738f991e1e7148e61206574fbcb2a85318a357b6f5d7352bf530a54b",
-  "harness_manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+  "execution_identity": "sha256:f907d88b8cdaa79488cab0a826d4993b9f3390f9800df648437a84a315720d9a",
+  "execution_result_digest": "sha256:0f84421fdee375518c38af8d596d43fde61eee68066bde25ce4f4574ac3f91a4",
+  "harness_manifest_digest": "sha256:5fd7b99e85e301df69c5feacb4fbdc960b0f49bb3da5beea248e8b97f621d50c",
   "infrastructure_status": "ready",
   "knowledge_skill_use_digest": "sha256:776ece0349d510a47eef59e95e6f0bac10c6037f50588f299893dd78968b403a",
   "node_id": "publication-candidate",
@@ -45,16 +45,16 @@
       ],
       "evidence_artifact_refs": [
         {
-          "digest": "sha256:b352763bb79e19b2c3877c103bbc0d10f73c26fe436b482c5649bc27a62ff244",
-          "logical_name": ".ari-execution/b352763bb79e19b2c3877c103bbc0d10f73c26fe436b482c5649bc27a62ff244.stdout.log",
+          "digest": "sha256:cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477",
+          "logical_name": ".ari-execution/cc1425f89d0bd28a270306a71849df0e4e2a125045e5a14c08300644c30e8477.stdout.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stdout",
           "schema_version": "ari.research-artifact-ref/v1",
           "source_run_id": "native-certify-publication-e2e"
         },
         {
-          "digest": "sha256:9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084",
-          "logical_name": ".ari-execution/9fffaf4946e35d4504926312dba99b49d6060e48653df40eb63b166a6392c084.stderr.log",
+          "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "logical_name": ".ari-execution/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.stderr.log",
           "media_type": "text/plain; charset=utf-8",
           "role": "harness-stderr",
           "schema_version": "ari.research-artifact-ref/v1",
@@ -64,13 +64,13 @@
       "measurements": {
         "case_count": 33,
         "failed_case_count": 0,
-        "max_abs_error": 2.548435711346997e-07,
-        "max_rel_error": 3.6921913753241296e-06
+        "max_abs_error": 2.8678871899501246e-07,
+        "max_rel_error": 1.2849331793559878e-06
       },
       "method": "differential-testing",
       "oracle_comparison": {
         "oracle": "decimal accumulation over an independently indexed row-major GEMM",
-        "report_digest": "sha256:cf2b6107887e350671d575fa4671a334d28cb099e6bf99a4295875dbed0b98f8"
+        "report_digest": "sha256:e3148677d06afd2ba526898ddafca76b1b71411cf6a4d1d968e348ce1d4dc884"
       },
       "property_id": "numerical-equivalence",
       "tested_scope": {
@@ -101,9 +101,9 @@
   "retry_index": 0,
   "run_id": "native-certify-publication-e2e",
   "schema_version": "ari.harness-attestation/v1",
-  "target_digest": "sha256:5555181a93d1e7ab1d56866c825cad5475bd40a29f93fbccb2a0818fdcbd51c2",
+  "target_digest": "sha256:029a68ac6a3f2cae931d9b283f1f6ccfd2c56aa2fdd700f4f3b31cd5dfa87598",
   "target_kind": "shared-library",
   "target_logical_name": "candidate.so",
   "verdict": "pass",
-  "verification_contract_digest": "sha256:542d4c2d84e4af7fcf9fb1490591347b98fa18262a68f48ad704c45a57235583"
+  "verification_contract_digest": "sha256:d09b462099fcd6af455c1c9275c23a986f728eb61ef7ae7c6951bf886cfc69cc"
 }

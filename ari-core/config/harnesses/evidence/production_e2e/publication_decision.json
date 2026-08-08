@@ -1,16 +1,16 @@
 {
-  "attempt_id": "mca-dc17244d595f68db-6639e048",
-  "authoring_binding_digest": "sha256:97f32542c2b0135cc20d85b14d86dfc96b43db502e7a6171f9a1b2914fd10321",
+  "attempt_id": "mca-0076960d14bbeab4-6639e048",
+  "authoring_binding_digest": "sha256:c49bf026a2fc6429dde71fe9243fa078df7c4161efd20f0b2ef3b85d9956c91f",
   "decision": "publishable",
-  "decision_digest": "sha256:cab0355aa441280ee86bc7fee749337c88273bd51f34475ec75ccd7ef6d95c1d",
-  "paper_build_digest": "sha256:6ef2900b86cfdfb30e749af048daf96d93d1817d51ec6d03fbdaa833b778dbc5",
-  "readiness_digest": "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330",
+  "decision_digest": "sha256:139262896e266c7800ca80a83ee02614ba16aa268d60319c3eab8faa9bfc2723",
+  "paper_build_digest": "sha256:7aa35f794d39df2a5e2e490280d6c44632413b05d46fe17007c50b2ac953bfe4",
+  "readiness_digest": "sha256:b8d6811072af2abe59d7e7a704eb22c59c1b8a37e2154446913566d830a6a4c3",
   "run_id": "native-certify-publication-e2e",
   "schema_version": "ari.manuscript-publication-decision/v1",
   "subverdicts": [
     {
       "artifact_digests": [
-        "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330"
+        "sha256:b8d6811072af2abe59d7e7a704eb22c59c1b8a37e2154446913566d830a6a4c3"
       ],
       "gate": "manuscript_readiness",
       "reason_codes": [],
@@ -18,7 +18,7 @@
     },
     {
       "artifact_digests": [
-        "sha256:f703bb7a0edcaf59bb93e3bdf997362efe4df4e93c47814dc4fa24af47568c7c"
+        "sha256:82b9404eb3e5a4f1f819b41486595990c3d093d61630cab641f539cb1e2b2ed3"
       ],
       "gate": "claim_evidence",
       "reason_codes": [],
@@ -26,7 +26,7 @@
     },
     {
       "artifact_digests": [
-        "sha256:34b11128719d98c78c06ea9dd4793e69edab0869b367da7a6cc035d450ae6419"
+        "sha256:8169202002be16473581d84992275bec71c9e22181703302e208d4708669257a"
       ],
       "gate": "assurance",
       "reason_codes": [],
@@ -34,7 +34,7 @@
     },
     {
       "artifact_digests": [
-        "sha256:fc948243714a1c1570bb20a409924adc55b42f5aec02329bc8477ca98bef55cd"
+        "sha256:a9dbd9c6332d64bc3c688056d7367d49f5dddd655bdcb859841481a9d49fc326"
       ],
       "gate": "build_compile",
       "reason_codes": [],
@@ -42,7 +42,7 @@
     },
     {
       "artifact_digests": [
-        "sha256:8a87f79c600ff96e26565127af96a0eab16034c3e9fea16aadf74b08673e8ae9"
+        "sha256:1fac05875c0eed53bce59d3e69ab180667f3bc5ca2b87e57f10c142558b09d2a"
       ],
       "gate": "reproduction",
       "reason_codes": [],

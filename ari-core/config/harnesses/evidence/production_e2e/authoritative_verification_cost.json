@@ -1,5 +1,5 @@
 {
-  "measurement_digest": "sha256:6e82876107dcf9eb009a1a98b5eba7f2897c0abfffb85376342d1443f58d6257",
+  "measurement_digest": "sha256:c914469671b25180e81eec658a46b4113d560f103ad1df308b3f7054dfb540a7",
   "measurement_semantics": {
     "accelerator_seconds": "declared allocation multiplied by measured wall time",
     "cpu_core_seconds": "declared allocation multiplied by measured wall time",
@@ -11,41 +11,41 @@
   "records": [
     {
       "accelerator_seconds": 0.0,
-      "attestation_digest": "sha256:3d3e5200d82dc351a14ce169c1da397c325e0c5be8efcc32a7f649f318951539",
-      "cpu_core_seconds": 185.718714,
-      "execution_attempt_id": "26e9b21d516283c05585211bc1d9140b",
-      "execution_identity": "sha256:3d40b02cbf59ae31a8e046e0e2bf3a27fc2da61474f08d6a678ff5feb446bda8",
+      "attestation_digest": "sha256:06c55969191f0f148484ef4a247847e6413d36e0c0561240c1aafee611a27363",
+      "cpu_core_seconds": 121.231878,
+      "execution_attempt_id": "f64e60ce369ebf08f3788c0af5e0ff56",
+      "execution_identity": "sha256:0f64ecbc5ce339b795b26c5c7ee55ba1997a2254b958a7fcc597610b1a9ef669",
       "execution_status": "completed",
       "harness_id": "hpc/gemm-correctness",
       "measurement_basis": "declared-allocation-x-executor-wall-time",
-      "memory_byte_seconds": 398827901442.5887,
+      "memory_byte_seconds": 520686951242.66187,
       "pricing_status": "unpriced",
       "tier": "certify",
-      "wall_time_seconds": 92.859357
+      "wall_time_seconds": 60.615939
     },
     {
       "accelerator_seconds": 0.0,
-      "attestation_digest": "sha256:3fc9701f8ba1779500e36df09b19c502c42b7dab08d9148d087f3c796290ed6e",
-      "cpu_core_seconds": 58.585936,
-      "execution_attempt_id": "c6babb13fb4f88cc3858dd72d1caf277",
-      "execution_identity": "sha256:8b1fed5d78d817f5ef452ce8fdf9b872a96af9b0a1e938e8f88d2c28925effcc",
+      "attestation_digest": "sha256:1a09febe5676a61e48b9ad72e2d7f1dfffb040cab5d502c7c94562d64aa8e469",
+      "cpu_core_seconds": 37.596026,
+      "execution_attempt_id": "def9e3eee15dbfa2e32aecc14d941161",
+      "execution_identity": "sha256:f907d88b8cdaa79488cab0a826d4993b9f3390f9800df648437a84a315720d9a",
       "execution_status": "completed",
       "harness_id": "hpc/gemm-correctness",
       "measurement_basis": "declared-allocation-x-executor-wall-time",
-      "memory_byte_seconds": 125812339562.77452,
+      "memory_byte_seconds": 161473702129.5657,
       "pricing_status": "unpriced",
       "tier": "screen",
-      "wall_time_seconds": 29.292968
+      "wall_time_seconds": 18.798013
     }
   ],
   "run_id": "native-certify-publication-e2e",
   "schema_version": "ari.authoritative-verification-cost/v1",
   "totals": {
     "accelerator_seconds": 0.0,
-    "cpu_core_seconds": 244.30465,
-    "memory_byte_seconds": 524640241005.3632,
+    "cpu_core_seconds": 158.827904,
+    "memory_byte_seconds": 682160653372.2275,
     "monetary_cost_usd": null,
     "pricing_status": "unpriced",
-    "wall_time_seconds": 122.152325
+    "wall_time_seconds": 79.413952
   }
 }

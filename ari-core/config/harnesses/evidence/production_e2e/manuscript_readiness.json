@@ -1,6 +1,6 @@
 {
   "authoring_verdict": "ready",
-  "context_digest": "sha256:531589b9911695cc827b66976027c3e7ab2d80fe91f29534c9438182c6857acb",
+  "context_digest": "sha256:32845119da4cec815cd5d0df3fc9b34764888ccc091d86dd49f87cf9c3992642",
   "counts": {
     "missing": 0,
     "not_applicable": 5,
@@ -10,7 +10,7 @@
   "evaluator_version": "manuscript-evaluator-v1",
   "profile_digest": "sha256:6639e048128d9e78b5b7a0f67e3b149c826a51073f6f9c5c1f7f82244c217ba4",
   "publication_verdict": "ready",
-  "readiness_digest": "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330",
+  "readiness_digest": "sha256:b8d6811072af2abe59d7e7a704eb22c59c1b8a37e2154446913566d830a6a4c3",
   "requirement_results": [
     {
       "applicability_trace": [
@@ -370,7 +370,7 @@
       "authoring_blocking": false,
       "evaluator_version": "manuscript-evaluator-v1",
       "evidence_refs": [
-        "artifact-dcf5520f5c2d512d095e006d"
+        "artifact-042a8f86956c6d2030d04383"
       ],
       "explanation": "",
       "publication_blocking": true,
@@ -388,7 +388,7 @@
       "authoring_blocking": true,
       "evaluator_version": "manuscript-evaluator-v1",
       "evidence_refs": [
-        "sha256:1b01f388fc12f72f70ea92f707b06fb075cac411441bb32abdafe0af86c96047"
+        "sha256:cff42fcacc37637be47d40b7b66670ff8f6c1208f1eca1bcaf81d39d74b5e05e"
       ],
       "explanation": "",
       "publication_blocking": true,

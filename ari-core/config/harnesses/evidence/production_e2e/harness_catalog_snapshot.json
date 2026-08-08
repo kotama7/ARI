@@ -5,9 +5,9 @@
     {
       "accepts_external_target": true,
       "container": {
-        "license": "Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69",
-        "reference": "apptainer:ari-native-python310-openroad-2026q3.sif",
-        "resolved_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9"
+        "license": "Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088",
+        "reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
+        "resolved_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
       },
       "credential_policy": "none",
       "credential_scope_ids": [],
@@ -20,7 +20,7 @@
       "driver": {
         "license": "MIT",
         "revision": "ari.assurance.native-hpc/v1",
-        "sha256": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f"
+        "sha256": "sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948"
       },
       "expected_result_schema": "ari.native-hpc-verification-report/v1",
       "expected_result_schema_digest": "sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff",
@@ -31,7 +31,7 @@
       "infrastructure_failure_policy": "separate",
       "kind": "artifact_verifier",
       "maintainer": "ARI maintainers",
-      "manifest_digest": "sha256:cd5ab91ba93e8d023d1b79b5d6b287cb9664d03ba5766839b54df413ca8c5b9c",
+      "manifest_digest": "sha256:5fd7b99e85e301df69c5feacb4fbdc960b0f49bb3da5beea248e8b97f621d50c",
       "model": {
         "license": "not-applicable",
         "revision": "not-applicable",
@@ -135,6 +135,7 @@
           "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0"
         }
       ],
+      "registered_placement": {},
       "resources": {
         "accelerators": 0,
         "cpu_cores": 2,
@@ -143,7 +144,7 @@
           "landlock",
           "network-namespace"
         ],
-        "memory_bytes": 4294967296
+        "memory_bytes": 8589934592
       },
       "retry_limit": 1,
       "schema_version": "ari.harness-manifest/v1",
@@ -187,11 +188,142 @@
       "version": "1.0.0"
     },
     {
+      "accepts_external_target": false,
+      "container": {
+        "license": "Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088",
+        "reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
+        "resolved_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
+      },
+      "credential_policy": "none",
+      "credential_scope_ids": [],
+      "dataset": {
+        "license": "MIT",
+        "revision": "native-perf-gemm-cases/v1@scored-2026q3",
+        "sha256": "sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590"
+      },
+      "description": "ARI-native GEMM shared-library correctness verifier",
+      "driver": {
+        "license": "MIT",
+        "revision": "ari.assurance.native-perf/v1",
+        "sha256": "sha256:8b70e5138bd08fa95f2803646d0513f5548a1f8f864ff004dad41bb1e4f9fcba"
+      },
+      "expected_result_schema": "ari.native-hpc-verification-report/v1",
+      "expected_result_schema_digest": "sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff",
+      "filesystem_policy": "isolated-readonly-target",
+      "hidden_test_policy": "verifier-only",
+      "id": "hpc/gemm-performance",
+      "implementation_license": "MIT",
+      "infrastructure_failure_policy": "separate",
+      "kind": "benchmark",
+      "maintainer": "ARI maintainers",
+      "manifest_digest": "sha256:240e329af19626c549b87b4ad3577e246fc502e10ce16047192f30d61b651f34",
+      "model": {
+        "license": "not-applicable",
+        "revision": "not-applicable",
+        "sha256": "sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7"
+      },
+      "negative_control_report_digest": "sha256:f791131fe0ab8d4d0d7e0a88a1198bdea6fd1c05f46b44580ed6c9be2e20997b",
+      "network_allowlist": [],
+      "network_policy": "deny",
+      "nondeterminism_declaration": "none",
+      "oracle": {
+        "license": "MIT",
+        "revision": "gemm-dense-fp64/v1@2026q3",
+        "sha256": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633"
+      },
+      "oracle_independence": "independent",
+      "properties": [
+        {
+          "methods": [
+            "benchmark-comparison"
+          ],
+          "property_id": "performance-regression",
+          "scope": {
+            "values": {
+              "architecture": [
+                "aarch64",
+                "x86_64"
+              ],
+              "dtype": [
+                "float64"
+              ],
+              "hardware": [
+                "cpu"
+              ],
+              "language": [
+                "c"
+              ]
+            }
+          },
+          "tiers": [
+            "screen",
+            "validate",
+            "certify"
+          ],
+          "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0"
+        }
+      ],
+      "registered_placement": {
+        "machine": "aarch64",
+        "thread_budget": "48"
+      },
+      "resources": {
+        "accelerators": 0,
+        "cpu_cores": 2,
+        "disk_bytes": 268435456,
+        "features": [
+          "landlock",
+          "network-namespace"
+        ],
+        "memory_bytes": 4294967296
+      },
+      "retry_limit": 1,
+      "schema_version": "ari.harness-manifest/v1",
+      "scorer_determinism": "deterministic",
+      "source_full_commit_sha": "a73a938e69aa56c3ccfdaedbc5088e220a56492a",
+      "source_repository": "https://github.com/kotama7/ARI.git",
+      "status": "verified",
+      "subject_types": [
+        "program"
+      ],
+      "supported_architectures": [
+        "x86_64"
+      ],
+      "supported_domains": [
+        "gemm"
+      ],
+      "supported_dtypes": [
+        "float32",
+        "float64"
+      ],
+      "supported_hardware": [
+        "cpu"
+      ],
+      "supported_languages": [
+        "c"
+      ],
+      "tags": [
+        "ari-native",
+        "cpu",
+        "hpc",
+        "gemm"
+      ],
+      "target_interface_contract": "gemm-c-abi/v1",
+      "target_interface_digest": "sha256:478f6ea1cf9bd1ba188b6f964dbc5ca0c27cf3e43e728fcd102f58f996612f7e",
+      "target_kinds": [
+        "benchmark-submission"
+      ],
+      "timeout_seconds": 900,
+      "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0",
+      "upstream_parity_report_digest": "sha256:65ca767f7fac3a35c9b28025db22dd7d2d890839c77d155b756c9efb02386502",
+      "version": "1.0.0"
+    },
+    {
       "accepts_external_target": true,
       "container": {
-        "license": "Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69",
-        "reference": "apptainer:ari-native-python310-openroad-2026q3.sif",
-        "resolved_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9"
+        "license": "Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088",
+        "reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
+        "resolved_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
       },
       "credential_policy": "none",
       "credential_scope_ids": [],
@@ -204,7 +336,7 @@
       "driver": {
         "license": "MIT",
         "revision": "ari.assurance.native-hpc/v1",
-        "sha256": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f"
+        "sha256": "sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948"
       },
       "expected_result_schema": "ari.native-hpc-verification-report/v1",
       "expected_result_schema_digest": "sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff",
@@ -215,7 +347,7 @@
       "infrastructure_failure_policy": "separate",
       "kind": "artifact_verifier",
       "maintainer": "ARI maintainers",
-      "manifest_digest": "sha256:0c18c8fb82531fff98c4815c3f9ffdb904bff0f75cebad1dbf2b7cdd81cf0783",
+      "manifest_digest": "sha256:6db34ee4202d5fe8e4f5fc7fcc08d702a0f207122c37aa45827f11a4a756ccb5",
       "model": {
         "license": "not-applicable",
         "revision": "not-applicable",
@@ -319,6 +451,7 @@
           "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0"
         }
       ],
+      "registered_placement": {},
       "resources": {
         "accelerators": 0,
         "cpu_cores": 2,
@@ -327,7 +460,7 @@
           "landlock",
           "network-namespace"
         ],
-        "memory_bytes": 4294967296
+        "memory_bytes": 8589934592
       },
       "retry_limit": 1,
       "schema_version": "ari.harness-manifest/v1",
@@ -373,9 +506,9 @@
     {
       "accepts_external_target": true,
       "container": {
-        "license": "Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69",
-        "reference": "apptainer:ari-native-python310-openroad-2026q3.sif",
-        "resolved_digest": "sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9"
+        "license": "Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088",
+        "reference": "singularity:orfs-26q3-openroad-7304ba78.sif",
+        "resolved_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c"
       },
       "credential_policy": "none",
       "credential_scope_ids": [],
@@ -388,7 +521,7 @@
       "driver": {
         "license": "MIT",
         "revision": "ari.assurance.native-hpc/v1",
-        "sha256": "sha256:7b2b39744c95885762a82475713e5f613ce749e9ef4a5cf803b7128c5ae1610f"
+        "sha256": "sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948"
       },
       "expected_result_schema": "ari.native-hpc-verification-report/v1",
       "expected_result_schema_digest": "sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff",
@@ -399,7 +532,7 @@
       "infrastructure_failure_policy": "separate",
       "kind": "artifact_verifier",
       "maintainer": "ARI maintainers",
-      "manifest_digest": "sha256:8094399a6fd89f1510d00c627774509cd45a5096f4cc91253b1803d98637f051",
+      "manifest_digest": "sha256:9de600d3c44a09075ae185d09305c19c4ca2ccd75be6041f0d325bbde931fd56",
       "model": {
         "license": "not-applicable",
         "revision": "not-applicable",
@@ -503,6 +636,7 @@
           "tolerance_policy_digest": "sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0"
         }
       ],
+      "registered_placement": {},
       "resources": {
         "accelerators": 0,
         "cpu_cores": 2,
@@ -511,7 +645,7 @@
           "landlock",
           "network-namespace"
         ],
-        "memory_bytes": 4294967296
+        "memory_bytes": 8589934592
       },
       "retry_limit": 1,
       "schema_version": "ari.harness-manifest/v1",
@@ -556,21 +690,24 @@
     }
   ],
   "promotion_approval_digests": {
-    "hpc/gemm-correctness": "sha256:56739f92d63e37e00bfb9b9d53efd2930960ab1888a2d85bf205f0b72eb2dfc3",
-    "hpc/spmm-correctness": "sha256:4f1ac99729174486fcb3fbd770d823b846d8c3ce71cd69d37d86e8ebea8012e9",
-    "hpc/stencil-correctness": "sha256:e9fc8ee2894a0bdcfc9c2dcbd5ed9032ddeb90422f637d28d5e25968b9e8e76a"
+    "hpc/gemm-correctness": "sha256:362c04326dfdaf6975ca2dd73a87c59f8fce7abc4d823d389b2243a85af33919",
+    "hpc/gemm-performance": "sha256:69ef1e08cc9294b9e71d0ef7cb54631626b42c1580b0ef416f2bd929433c102a",
+    "hpc/spmm-correctness": "sha256:bb098f92619eae5a593569522ae2ac27f6a93fdbcf0a5dde9429e2403c7093e8",
+    "hpc/stencil-correctness": "sha256:fff3cde2a3fd74ae4c494186efc31538eb4dfc9ffbecb565ab6101bf59f8c84b"
   },
-  "property_vocabulary_digest": "sha256:4c8f62f5b78d3925ff017d19ede8e305c6b14b3c5684f01f6d6b3f2e54ac83a1",
+  "property_vocabulary_digest": "sha256:b59c07e3d63cd14eeb44e267e3df10d2d0ecd9c922109b968f2c1008b1e6e8fd",
   "registration_evidence_digests": {
-    "hpc/gemm-correctness": "sha256:c731da845fc6fa54cc53066fd6ecb3262f346cd29bc910b57c5e4ea10ac24609",
-    "hpc/spmm-correctness": "sha256:d0524100c2ea17e622b468f8bbd8935329ed25d40edf9b08e89617638b9555bb",
-    "hpc/stencil-correctness": "sha256:308521fbb16f9b72c83da538efb61bb969710d4ebe6c9ec5c9e0e8fdb86823ae"
+    "hpc/gemm-correctness": "sha256:d4f712ab5202edef31e3de9a96e0e84e42c51d3d7301624b5af3db5d12639928",
+    "hpc/gemm-performance": "sha256:15fc51ad10543957bade322e8196b0776d019ba33e96496cbcb2df918d5001e1",
+    "hpc/spmm-correctness": "sha256:c2f7ad27ca76dd5c2018471e4c9a34cf49131788cdde2f655ba77c20eaa25564",
+    "hpc/stencil-correctness": "sha256:be4793e4f3e613951ba607ce7838e7d48445ea27aed94f7a3e9c6fa32e0ef8ba"
   },
   "registration_report_digests": {
-    "hpc/gemm-correctness": "sha256:dacca97c39987026b8efa071a531813a6259a5e23e3f3640bee2ad0e46b9b78c",
-    "hpc/spmm-correctness": "sha256:cc7fdf932f836916594d38f7a2b72489836292c60f236a2db836e75400f68cbd",
-    "hpc/stencil-correctness": "sha256:0b6f233a1b8400382c38cf8ca43efb3551df5bd6269b32c78364413abe650627"
+    "hpc/gemm-correctness": "sha256:24faf4190b71a73ff8017fad7947e92f1e6c008190110d659ff0ce3215eafcc1",
+    "hpc/gemm-performance": "sha256:6d5f51f388b018e15d25e411d6dc18347795b43b28f459fc46614879eee3d1ca",
+    "hpc/spmm-correctness": "sha256:14f07b45b4c0fcb48f93d8fa80e7c235f70c4e4ccf02935e1a5a678cbb92fda9",
+    "hpc/stencil-correctness": "sha256:8f626778120d44d58619cf162b833a50e3a6fb61d15d7537e725da0e94d4fb01"
   },
   "schema_version": "ari.harness-catalog-snapshot/v1",
-  "snapshot_digest": "sha256:ea4347f5528798bcfb3e0f7ccc461d990e1c3f0d20b9825c246d8fee7c03e032"
+  "snapshot_digest": "sha256:ad803c4580176429536eede0d44d66b936aeca6b7111b8e43035458a65af3db6"
 }

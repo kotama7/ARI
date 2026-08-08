@@ -1,11 +1,11 @@
 {
-  "attempt_id": "mca-dc17244d595f68db-6639e048",
-  "authoring_binding_digest": "sha256:97f32542c2b0135cc20d85b14d86dfc96b43db502e7a6171f9a1b2914fd10321",
-  "decision_digest": "sha256:cab0355aa441280ee86bc7fee749337c88273bd51f34475ec75ccd7ef6d95c1d",
+  "attempt_id": "mca-0076960d14bbeab4-6639e048",
+  "authoring_binding_digest": "sha256:c49bf026a2fc6429dde71fe9243fa078df7c4161efd20f0b2ef3b85d9956c91f",
+  "decision_digest": "sha256:139262896e266c7800ca80a83ee02614ba16aa268d60319c3eab8faa9bfc2723",
   "freshness_verified": true,
-  "lock_digest": "sha256:ce510ed5961736ea2c39dbfdac23555a687cc68b9a3e82544625d4f550dae488",
-  "paper_build_digest": "sha256:6ef2900b86cfdfb30e749af048daf96d93d1817d51ec6d03fbdaa833b778dbc5",
-  "pdf_digest": "sha256:5ea949a9da12f8242f2ae93c63bed152159360b4c1f823211afbda3b88bf320d",
+  "lock_digest": "sha256:214040efade859773ffbe6e047992998024f631371368b38f5d490d3587d7cc8",
+  "paper_build_digest": "sha256:7aa35f794d39df2a5e2e490280d6c44632413b05d46fe17007c50b2ac953bfe4",
+  "pdf_digest": "sha256:8899dec630298e50a79514ed553d7c6b6812502e84e1ea9aab5015a9775d2fc1",
   "run_id": "native-certify-publication-e2e",
   "schema_version": "ari.manuscript-publication-lock/v1"
 }

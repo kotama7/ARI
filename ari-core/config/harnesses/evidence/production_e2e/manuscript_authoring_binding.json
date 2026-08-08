@@ -1,15 +1,15 @@
 {
-  "attempt_id": "mca-dc17244d595f68db-6639e048",
+  "attempt_id": "mca-0076960d14bbeab4-6639e048",
   "backend_version": "linear-manuscript-v1",
-  "binding_digest": "sha256:97f32542c2b0135cc20d85b14d86dfc96b43db502e7a6171f9a1b2914fd10321",
-  "brief_bundle_digest": "sha256:533fac21853f300c0fd209c738e7a8fa61f869168243696fd541571453523d88",
-  "context_digest": "sha256:531589b9911695cc827b66976027c3e7ab2d80fe91f29534c9438182c6857acb",
+  "binding_digest": "sha256:c49bf026a2fc6429dde71fe9243fa078df7c4161efd20f0b2ef3b85d9956c91f",
+  "brief_bundle_digest": "sha256:130dca15e015c3e2bfd5e3116fe70dea887712967127afa88302483583f55d30",
+  "context_digest": "sha256:32845119da4cec815cd5d0df3fc9b34764888ccc091d86dd49f87cf9c3992642",
   "paper_mode": "linear",
   "profile_digest": "sha256:6639e048128d9e78b5b7a0f67e3b149c826a51073f6f9c5c1f7f82244c217ba4",
-  "readiness_digest": "sha256:706fb714a19558069a28dba08d177593049f673acbea233a0b46908be914d330",
+  "readiness_digest": "sha256:b8d6811072af2abe59d7e7a704eb22c59c1b8a37e2154446913566d830a6a4c3",
   "run_id": "native-certify-publication-e2e",
   "schema_version": "ari.manuscript-authoring-binding/v1",
-  "source_snapshot_digest": "sha256:dc17244d595f68dbcccd2fb87294568e8aad4345da2111d962998172c9f3951e",
+  "source_snapshot_digest": "sha256:0076960d14bbeab4329bdc2d595622581062df54f686d3d633d30ad70048f6c8",
   "target_build_id": "paper-native-certify-publication-e2e",
   "target_build_revision": 0
 }

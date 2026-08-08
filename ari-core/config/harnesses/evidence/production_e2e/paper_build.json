@@ -1,6 +1,6 @@
 {
   "blocking_reasons": [],
-  "build_digest": "sha256:6ef2900b86cfdfb30e749af048daf96d93d1817d51ec6d03fbdaa833b778dbc5",
+  "build_digest": "sha256:7aa35f794d39df2a5e2e490280d6c44632413b05d46fe17007c50b2ac953bfe4",
   "build_id": "paper-native-certify-publication-e2e",
   "build_revision": 0,
   "compile": {
@@ -13,19 +13,19 @@
         "full_paper.tex"
       ]
     ],
-    "compile_digest": "sha256:fc948243714a1c1570bb20a409924adc55b42f5aec02329bc8477ca98bef55cd",
+    "compile_digest": "sha256:a9dbd9c6332d64bc3c688056d7367d49f5dddd655bdcb859841481a9d49fc326",
     "environment_digest": "sha256:95d9b52ffa4cfddaf09e354b82bb6b2ee521d154b5451dde074d2cfc065f6601",
     "execution_identities": [
-      "sha256:2348f6f384268cdf3b6ff68ed7fc276beff68d548e56d63427f5cae4eed0a516"
+      "sha256:add59efa202cea780e57e5ea000796b150a1c61d6dabc58696485ef7de6c7573"
     ],
     "log_artifacts": [
       {
-        "digest": "sha256:4342c2910ce33f586797bee2779d09c22b6beb14dbaf3251ce02a9c070f6fe31",
+        "digest": "sha256:14373d91f896a3fa069740ad412d6e3274b43d4732f2d42b43bd0fa45e27dff1",
         "media_type": "text/plain",
         "relative_path": "paper/compile.stdout.log",
         "role": "compile-stdout",
         "schema_version": "ari.paper-artifact/v1",
-        "size_bytes": 1126
+        "size_bytes": 1346
       },
       {
         "digest": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -37,25 +37,25 @@
       }
     ],
     "pdf_artifact": {
-      "digest": "sha256:5ea949a9da12f8242f2ae93c63bed152159360b4c1f823211afbda3b88bf320d",
+      "digest": "sha256:8899dec630298e50a79514ed553d7c6b6812502e84e1ea9aab5015a9775d2fc1",
       "media_type": "application/pdf",
       "relative_path": "paper/full_paper.pdf",
       "role": "pdf",
       "schema_version": "ari.paper-artifact/v1",
-      "size_bytes": 56962
+      "size_bytes": 58966
     },
     "schema_version": "ari.paper-compile/v1",
     "status": "completed"
   },
-  "ear_digest": "sha256:a6cd2acaff353385d8ea021a657071be052c1fdbeb5b2c501b40b6e8161a9da0",
+  "ear_digest": "sha256:4a34873e21d28937f6745c62575f9cfcd248e25bec383cfbf9d611e8ae0c812e",
   "final_artifacts": [
     {
-      "digest": "sha256:c9f73b58b21e051ff37eae6534df781dea20b4d2f901db4461b94f6a4c34a0f8",
+      "digest": "sha256:1f5684b455336fcfedb6b09e7dd74247a3612e302e3c859cc4a7a5bf51aa59d5",
       "media_type": "text/x-tex",
       "relative_path": "paper/full_paper.tex",
       "role": "final-tex",
       "schema_version": "ari.paper-artifact/v1",
-      "size_bytes": 382
+      "size_bytes": 612
     },
     {
       "digest": "sha256:ecbe653e3cde3c636e33b04a48b8c299d51cb98def6712d8570da64d7ba03dee",
@@ -66,28 +66,28 @@
       "size_bytes": 69
     },
     {
-      "digest": "sha256:5ea949a9da12f8242f2ae93c63bed152159360b4c1f823211afbda3b88bf320d",
+      "digest": "sha256:8899dec630298e50a79514ed553d7c6b6812502e84e1ea9aab5015a9775d2fc1",
       "media_type": "application/pdf",
       "relative_path": "paper/full_paper.pdf",
       "role": "pdf",
       "schema_version": "ari.paper-artifact/v1",
-      "size_bytes": 56962
+      "size_bytes": 58966
     }
   ],
   "gate": {
     "blocking_error_count": 0,
     "mode": "strict",
-    "report_digest": "sha256:f703bb7a0edcaf59bb93e3bdf997362efe4df4e93c47814dc4fa24af47568c7c",
+    "report_digest": "sha256:82b9404eb3e5a4f1f819b41486595990c3d093d61630cab641f539cb1e2b2ed3",
     "status": "pass"
   },
   "input_artifacts": [
     {
-      "digest": "sha256:c3fca811a582f12f6a09181628b941a22583eb2bc66d54c571846aa9b3c6044e",
+      "digest": "sha256:6fe48ad9f002b357a923d2af8c120f18057b6c3d943be64390b1692521c958a8",
       "media_type": "application/json",
       "relative_path": "science_data.json",
       "role": "science-data",
       "schema_version": "ari.paper-artifact/v1",
-      "size_bytes": 6018
+      "size_bytes": 6016
     },
     {
       "digest": "sha256:81a66cb91bbea57f1e5164b81dd3905e0b49fdd4ed2bb913335cff3e3add4375",
@@ -106,7 +106,7 @@
       "size_bytes": 396
     },
     {
-      "digest": "sha256:a6cd2acaff353385d8ea021a657071be052c1fdbeb5b2c501b40b6e8161a9da0",
+      "digest": "sha256:4a34873e21d28937f6745c62575f9cfcd248e25bec383cfbf9d611e8ae0c812e",
       "media_type": "application/json",
       "relative_path": "ear_manifest.json",
       "role": "ear-manifest",
@@ -116,39 +116,39 @@
     {
       "digest": "sha256:dfc4e7fea1b1eb9c984ab64460eedbce612f4dfd0c44e53b4a9afd195fe79fb5",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-dc17244d595f68db-6639e048/requirement_profile.json",
+      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/requirement_profile.json",
       "role": "manuscript-profile",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 13071
     },
     {
-      "digest": "sha256:afeed16ca6065e6351fe7337416ff28ee678fe6735fde3025bd97d68617c2523",
+      "digest": "sha256:31088b609dbf549aba8cabb4daf496b48d6b0c86c236e0da452a6e62546ad230",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-dc17244d595f68db-6639e048/context.json",
+      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/context.json",
       "role": "manuscript-context",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 5341
     },
     {
-      "digest": "sha256:0650bf02087a60f4af3b787b4e7d244216861ff1a989d1653e43551d31770b54",
+      "digest": "sha256:5c9a95cef56617686c689c1a9e5b38af824be913b713b3962cb82b1dcda053fb",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-dc17244d595f68db-6639e048/readiness.json",
+      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/readiness.json",
       "role": "manuscript-readiness",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 11770
     },
     {
-      "digest": "sha256:d6a82d45f7ed63a13fbee87247af8b0efebda467b88ec8a5a40bcafe4455b6fa",
+      "digest": "sha256:3502d109d24926e2cfebd1c83876b9ad528f991959deca60661020fb2a0c1763",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-dc17244d595f68db-6639e048/section_briefs.json",
+      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/section_briefs.json",
       "role": "section-briefs",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 15534
     },
     {
-      "digest": "sha256:9a37043550935e2d78c4dca726b972dad8ca540d08b80f7d7a61d1b0bf6eade4",
+      "digest": "sha256:ffa74e6e9c2855788dd7c650ee2ff163ead1d2da7ec84a98d1d46029ff107866",
       "media_type": "application/json",
-      "relative_path": ".ari-manuscript/attempts/mca-dc17244d595f68db-6639e048/authoring_binding.json",
+      "relative_path": ".ari-manuscript/attempts/mca-0076960d14bbeab4-6639e048/authoring_binding.json",
       "role": "manuscript-authoring-binding",
       "schema_version": "ari.paper-artifact/v1",
       "size_bytes": 904
@@ -197,15 +197,15 @@
       "parent_revision_digest": null,
       "reason": "initial",
       "revision": 0,
-      "revision_digest": "sha256:93219ee2295f1eaf5a5ea307d81db9699b8ffc873a37081cdaaf232b0297236f",
+      "revision_digest": "sha256:2cb6c55e6da959fbc641f3c802fbf88115aa9be20ae9213912525fa5fd404f9f",
       "schema_version": "ari.paper-revision/v1",
       "tex_artifact": {
-        "digest": "sha256:c9f73b58b21e051ff37eae6534df781dea20b4d2f901db4461b94f6a4c34a0f8",
+        "digest": "sha256:1f5684b455336fcfedb6b09e7dd74247a3612e302e3c859cc4a7a5bf51aa59d5",
         "media_type": "text/x-tex",
         "relative_path": "paper/full_paper.tex",
         "role": "final-tex",
         "schema_version": "ari.paper-artifact/v1",
-        "size_bytes": 382
+        "size_bytes": 612
       }
     }
   ],
@@ -215,7 +215,7 @@
   "run_id": "native-certify-publication-e2e",
   "schema_version": "ari.paper-build/v1",
   "status": "finalized",
-  "template_digest": "sha256:c9f73b58b21e051ff37eae6534df781dea20b4d2f901db4461b94f6a4c34a0f8",
+  "template_digest": "sha256:1f5684b455336fcfedb6b09e7dd74247a3612e302e3c859cc4a7a5bf51aa59d5",
   "venue_id": "internal-e2e",
   "venue_version": "1"
 }
