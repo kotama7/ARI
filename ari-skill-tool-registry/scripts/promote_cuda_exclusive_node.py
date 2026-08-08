@@ -13,7 +13,7 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 
@@ -571,8 +571,13 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
             nodelist=site["node_name"],
             exclusive=True,
         ),
+        # Same literal, same problem as the worker's: it named one install and
+        # existed nowhere else. The compiler that was pinned above decides.
         environment=EnvironmentPolicyV1(
-            path="/usr/local/cuda-12.9/bin:/usr/local/bin:/usr/bin:/bin"
+            path=(
+                f"{PurePosixPath(remote_tools['nvcc_path']).parent}"
+                ":/usr/local/bin:/usr/bin:/bin"
+            )
         ),
         accelerator_allocation=allocation,
         # The interpreter is not a local input: it lives on the node and is
