@@ -37,7 +37,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:50bf5555c6ad170e6a1d4d5be60cbe641b931697e7d23db8897fb041b3f0d696
+manifest_digest: sha256:d9e26a4013373846539267fa423e1a183b0b8502a4c53a21c29da5d6f5cc5786
 model:
   license: not-applicable
   revision: not-applicable
@@ -71,6 +71,9 @@ properties:
   - validate
   - certify
   tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+registered_placement:
+  machine: aarch64
+  thread_budget: '48'
 resources:
   accelerators: 0
   cpu_cores: 2

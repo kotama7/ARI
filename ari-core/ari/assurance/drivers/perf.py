@@ -30,7 +30,8 @@ from ari.assurance.models import (
     HarnessPropertyResultV1,
     NormalizedHarnessResultV1,
 )
-from ari.assurance.native_perf_common import load_case_set
+from ari.assurance.native_perf_common import (load_case_set,
+                                              measurement_placement)
 from ari.assurance.native_perf import (
     NativePerfReportV1,
     reference_flags,
@@ -175,6 +176,26 @@ class NativePerfDriver:
                 f"case set {manifest.dataset.revision!r} is for family "
                 f"{case_set.kind!r}, but the pinned problem is "
                 f"{problem.definition.family!r}")
+        # WHERE, as well as what and how big. A timed verdict is a statement
+        # about a machine: the same commit and the same clean worktree scored
+        # 15/15 on an exclusive aarch64 node at 48 threads and 13/15 on an
+        # exclusive x86 node at 64, where the clean control did not resolve.
+        # Without this the first attestation covered the second run.
+        pinned = dict(getattr(manifest, "registered_placement", None) or {})
+        if not pinned:
+            raise ValueError(
+                "a performance harness must pin the placement its evidence was "
+                "established on; a timed verdict does not transfer across "
+                "machines any more than it transfers across sizes")
+        here = measurement_placement()
+        differs = {key: (pinned[key], here.get(key))
+                   for key in sorted(pinned)
+                   if here.get(key) != pinned[key]}
+        if differs:
+            raise ValueError(
+                f"this host is not the placement {manifest.id} was registered "
+                f"on: {differs}. The evidence was established there and does "
+                f"not describe here")
         if not case_set.resolves:
             raise ValueError(
                 f"case set {manifest.dataset.revision!r} declares resolves=false, "

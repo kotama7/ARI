@@ -201,6 +201,22 @@ class HarnessManifestV1(DigestBoundModel):
     accepts_external_target: bool
     supported_languages: tuple[str, ...]
     supported_hardware: tuple[str, ...]
+    #: WHERE THE EVIDENCE WAS ESTABLISHED, for a harness whose verdict depends on
+    #: it. Registration evidence is established at a PLACEMENT and does not
+    #: transfer, exactly as it does not transfer across sizes -- and the size
+    #: case was already enforced by the dataset pin while this one was not.
+    #:
+    #: Measured, same commit and same clean worktree: an exclusive aarch64 node
+    #: at 48 threads scored 15/15 with a clean-control spread of 0.0411; an
+    #: exclusive x86 node at 64 threads scored 13/15 at 0.1648, where the
+    #: instrument does not resolve; a shared login node reached 0.589. Without
+    #: this, the first of those attestations covered all three.
+    #:
+    #: Empty means the harness does not depend on placement -- a deterministic
+    #: verifier does not, and pinning one for it would be a claim about
+    #: something that cannot vary. A driver that DOES depend on it refuses when
+    #: the pin is missing.
+    registered_placement: dict[str, Any] = Field(default_factory=dict)
     supported_architectures: tuple[str, ...]
     supported_dtypes: tuple[str, ...]
     supported_domains: tuple[str, ...]
