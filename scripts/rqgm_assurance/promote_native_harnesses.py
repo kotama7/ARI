@@ -77,7 +77,11 @@ VERSION = "1.0.0"
 #: itself: its rootfs is byte-identical to the vanished build -- all 653
 #: packages and all five non-dpkg licence files match -- and being upstream it
 #: can be fetched again.
-LOGICAL_CONTAINER = "apptainer:orfs-26q3-openroad-7304ba78.sif"
+#:
+#: The PREFIX selects the runtime binary, and it must name one that exists:
+#: apptainer is installed on no node here, so an apptainer reference is refused
+#: before the image is ever looked at.
+LOGICAL_CONTAINER = "singularity:orfs-26q3-openroad-7304ba78.sif"
 CONFIG_ROOT = ARI_CORE / "config" / "harnesses"
 RESULT_SCHEMA = ARI_CORE / "ari" / "schemas" / "native_hpc_verification_report_v1.schema.json"
 TOLERANCE = CONFIG_ROOT / "policies" / "hpc-floating-point-v1.yaml"
@@ -425,7 +429,17 @@ def _manifest(
         filesystem_policy="isolated-readonly-target",
         resources=HarnessResourceRequirementsV1(
             cpu_cores=2,
-            memory_bytes=4 * 1024**3,
+            # RLIMIT_AS is applied to the process that is exec'd, which for a
+            # containerised harness is the container runtime -- a Go program
+            # that reserves a large virtual arena before it can start a thread.
+            # At 4 GiB it aborted with "pthread_create failed: Resource
+            # temporarily unavailable" and the verifier never ran. Measured on a
+            # compute node: 4 GiB fails, 8 GiB succeeds, and the certify tier
+            # returns the same report digest at 8 and at 16, so the verdict does
+            # not depend on where above the floor this sits. It bounds the
+            # verifier AND its launcher, which is why it is not the verifier's
+            # own working set.
+            memory_bytes=8 * 1024**3,
             accelerators=0,
             disk_bytes=256 * 1024**2,
             features=("landlock", "network-namespace"),

@@ -299,13 +299,15 @@ def test_the_checked_in_web_classification_matches_what_the_manifest_declares():
 # table row somewhere else entirely. Pinning the set makes both directions
 # loud -- a new orphan appears, or an existing one is finally wired up.
 _UNSUPPLIED = {
-    # Two promoted Provider bundles exist for this, both gated and pinned to the
-    # ontology, and neither can be reached. No MCP server exposes the
-    # `ari_cuda_validate__exclusive_node_*` tool they name, the broker has no
-    # `cuda` source kind to register them as leaves, and no catalog entry
-    # classifies anything into the capability. The artifacts are built to be
-    # bound -- an operator-only qualification step would not need an ontology
-    # contract, a context requirement, or a permission set.
+    # The tool now exists and is invocable: `cuda_mcp_server` serves it, a real
+    # MCP client reaches it, and it runs the promoted job on the GPU and returns
+    # a pass. What is still missing is authority, not a tool. The broker's
+    # `invoke` declares [workspace-read, workspace-write, process, network], the
+    # composite route grants the intersection of leaf and dispatch permissions,
+    # and this contract requires scheduler-submit -- so the bridge refuses, and
+    # is right to: dispatching a job-submitting leaf through a surface that
+    # never claimed scheduler authority would launder exactly that authority.
+    # Granting it widens every brokered dispatch, which is a review decision.
     "ari.environment.cuda.validate/v1",
 }
 
