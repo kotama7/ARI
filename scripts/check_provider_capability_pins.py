@@ -48,7 +48,27 @@ def main() -> int:
         for item in load_capability_ontology(ONTOLOGY).snapshot.contracts
     }
 
+    # A Provider can hold more than one promoted bundle -- one per hardware
+    # generation, say -- and they are siblings rather than versions. When one of
+    # them already pins the capability correctly, a mismatch in another is not
+    # the same finding: the capability is supplied, and the mismatched bundle is
+    # an older promotion whose substrate may not exist any more. Reporting that
+    # as "re-promote against the current contract" asks for something that can
+    # be impossible, and hides it among the mismatches that are actionable.
+    correct_by_provider: dict[str, set[str]] = {}
+    for lock in sorted(BUNDLES.glob("*/*/verified-lock-v1.json")):
+        try:
+            document = json.loads(lock.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        provider = str(document.get("provider_id") or "")
+        text = json.dumps(document)
+        for ref in sorted(set(_REF.findall(text))):
+            if ref in live and live[ref] in set(_DIGEST.findall(text)):
+                correct_by_provider.setdefault(provider, set()).add(ref)
+
     stale: list[str] = []
+    superseded: list[str] = []
     unbound: list[str] = []
     checked = 0
     for lock in sorted(BUNDLES.glob("*/*/verified-lock-v1.json")):
@@ -83,6 +103,19 @@ def main() -> int:
             # value over {capability_ref, semantic} produces exactly this, and
             # such a lock can never match and never detect the contract moving).
             # Calling both "stale" would assert a history that was not checked.
+            provider = ""
+            try:
+                provider = str(json.loads(text).get("provider_id") or "")
+            except json.JSONDecodeError:  # pragma: no cover - read succeeded above
+                pass
+            if ref in correct_by_provider.get(provider, set()):
+                superseded.append(f"{bundle} -> {ref}")
+                print(f"superseded {bundle}")
+                print(
+                    f"          {ref}: another bundle of {provider} pins the "
+                    "current contract; this one is an earlier promotion"
+                )
+                continue
             stale.append(f"{bundle} -> {ref}")
             print(f"mismatch  {bundle}")
             print(f"          {ref}")
@@ -90,8 +123,21 @@ def main() -> int:
 
     if not stale and not unbound:
         print(f"all {checked} Provider capability pin(s) match the ontology")
+        if superseded:
+            print(
+                f"({len(superseded)} superseded by a sibling bundle of the same "
+                "Provider; nothing to do unless that substrate returns)"
+            )
         return 0
     print()
+    if superseded:
+        print(
+            f"{len(superseded)} superseded of {checked}: an earlier promotion of a "
+            "Provider whose capability another of its bundles already pins "
+            "correctly. Re-promoting these needs the substrate they were "
+            "promoted on, which may no longer exist; they are retained as the "
+            "exact evidence of the run that produced them."
+        )
     if stale:
         print(
             f"{len(stale)} mismatched of {checked}: the pinned digest is not the "
