@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:f816472f1c56eb0f04ed1bbbfcf6a32b02282f3f5e260684647dbc2431b4efaf",
+  "approval_digest": "sha256:2c5c8a6eb4f737d397a79ddfb858ba8f1072f0b3347949f146b40cd868e9a925",
   "approved_date": "2026-08-08",
-  "authorization_basis": "Authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'), over registration report sha256:d240764e9a6b13478693e6135ef1be40b86b252fc030e17183280e5de5543aa9 minted from evidence produced by that same session: three parity-probe runs on an exclusive aarch64 compute node from a clean worktree at commit 8473e83f0595, 15/15 gates, clean-control spread 0.0411 and run-to-run spread 0.0141. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts; the artifacts are pinned in the bundle above so a later reader can check them independently. Recorded this way because a basis claiming an artifact review that did not happen is the same defect this registration path was rebuilt to remove.",
-  "evidence_bundle_digest": "sha256:98ea796a4b6c0d2e81eb433c2f1c6149e5226932ea8b43b89327668a36ca5efd",
+  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'), after the manifest gained a placement pin: a timed verdict is a statement about a machine and the previous attestation covered runs it did not describe. Over report sha256:24b08f02b6033046823c7068b2a417d5f13de05cb5ddbf42a37fc3f3ca0bd95a, three parity-probe runs at commit 0b8011969bf0 on a clean worktree, exclusive aarch64 node at 48 threads, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:c9294c9b16ba4b4dfb30586f26033d6c21cfac612a13dae8917e5f8121290fa8",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:50bf5555c6ad170e6a1d4d5be60cbe641b931697e7d23db8897fb041b3f0d696",
+  "harness_manifest_digest": "sha256:d9e26a4013373846539267fa423e1a183b0b8502a4c53a21c29da5d6f5cc5786",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:d240764e9a6b13478693e6135ef1be40b86b252fc030e17183280e5de5543aa9",
+  "registration_report_digest": "sha256:24b08f02b6033046823c7068b2a417d5f13de05cb5ddbf42a37fc3f3ca0bd95a",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

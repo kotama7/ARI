@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:6051a38ee188b84589c1eb2b7fcc5f4f128ae3a79e67ec8ef2f12b7162caff10
+manifest_digest: sha256:0354e42f8a03377a355c65e33d9707c489ad79f33a7a7a5bfe3e38691c18849a
 model:
   license: not-applicable
   revision: not-applicable
@@ -94,6 +94,7 @@ properties:
   - validate
   - certify
   tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+registered_placement: {}
 resources:
   accelerators: 0
   cpu_cores: 2

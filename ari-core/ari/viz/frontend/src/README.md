@@ -67,7 +67,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `README.md` — Experiments index.
     - `ExperimentsPage.tsx` — experiments list view.
     - `index.ts` — barrel re-export.
-  - `Governance/` — Read-only RQGM Governance workspace (gui_refresh task 08 Wave 4a; plan 08
+  - `Governance/` — Read-only RQGM Governance workspace (user-facing guide:
   - `Home/` — home/overview landing page.
     - `README.md` — Home index.
     - `HomePage.tsx` — home/overview view.

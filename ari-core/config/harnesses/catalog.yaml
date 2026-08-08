@@ -14,11 +14,11 @@ entries:
 - id: hpc/gemm-performance
   manifest: builtin/hpc_gemm_performance.yaml
   registration_report: reports/hpc_gemm_performance.registration.json
-  registration_report_digest: sha256:d240764e9a6b13478693e6135ef1be40b86b252fc030e17183280e5de5543aa9
+  registration_report_digest: sha256:24b08f02b6033046823c7068b2a417d5f13de05cb5ddbf42a37fc3f3ca0bd95a
   registration_evidence: evidence/hpc_gemm_performance/registration_evidence.json
-  registration_evidence_digest: sha256:98ea796a4b6c0d2e81eb433c2f1c6149e5226932ea8b43b89327668a36ca5efd
+  registration_evidence_digest: sha256:c9294c9b16ba4b4dfb30586f26033d6c21cfac612a13dae8917e5f8121290fa8
   promotion_approval: approvals/hpc_gemm_performance.approval.json
-  promotion_approval_digest: sha256:f816472f1c56eb0f04ed1bbbfcf6a32b02282f3f5e260684647dbc2431b4efaf
+  promotion_approval_digest: sha256:2c5c8a6eb4f737d397a79ddfb858ba8f1072f0b3347949f146b40cd868e9a925
 - id: hpc/spmm-correctness
   manifest: builtin/hpc_spmm_correctness.yaml
   registration_report: reports/hpc_spmm_correctness.registration.json
