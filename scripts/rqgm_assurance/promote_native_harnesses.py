@@ -538,7 +538,10 @@ def _run_registration(
         metadata={
             "architecture": platform.machine(),
             "container_digest": manifest.container.resolved_digest,
-            "container_runtime": "apptainer",
+            # From the pin, not from a constant. Written as a constant it said
+            # apptainer while singularity was what ran, so the one field naming
+            # the runtime was the one field that could not be wrong about it.
+            "container_runtime": manifest.container.reference.split(":", 1)[0],
             "kernel_release": platform.release(),
         },
     )
