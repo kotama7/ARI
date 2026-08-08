@@ -41,7 +41,13 @@ tools:
   - name: invoke
     capability_ref: ari.registry.tool.invoke
     side_effects: stateful
-    permissions: [workspace-read, workspace-write, process, network]
+    # `scheduler` is here because this surface dispatches leaves that submit
+    # jobs. The composite route grants the intersection of the leaf's authority
+    # and this one's, so without it a scheduler-submitting leaf is refused -- a
+    # dispatch surface cannot pass on an authority it never claimed. Declaring
+    # it widens every brokered dispatch by exactly this permission, which is why
+    # it is a reviewed decision and not a side effect of adding a leaf.
+    permissions: [workspace-read, workspace-write, process, network, scheduler]
     context_requirement: run
     timeout_class: slow
   - name: get_status

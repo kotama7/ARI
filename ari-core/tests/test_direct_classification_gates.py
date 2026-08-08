@@ -298,18 +298,7 @@ def test_the_checked_in_web_classification_matches_what_the_manifest_declares():
 # the requirement simply resolves `unsatisfied`, and the reason is a missing
 # table row somewhere else entirely. Pinning the set makes both directions
 # loud -- a new orphan appears, or an existing one is finally wired up.
-_UNSUPPLIED = {
-    # The tool now exists and is invocable: `cuda_mcp_server` serves it, a real
-    # MCP client reaches it, and it runs the promoted job on the GPU and returns
-    # a pass. What is still missing is authority, not a tool. The broker's
-    # `invoke` declares [workspace-read, workspace-write, process, network], the
-    # composite route grants the intersection of leaf and dispatch permissions,
-    # and this contract requires scheduler-submit -- so the bridge refuses, and
-    # is right to: dispatching a job-submitting leaf through a surface that
-    # never claimed scheduler authority would launder exactly that authority.
-    # Granting it widens every brokered dispatch, which is a review decision.
-    "ari.environment.cuda.validate/v1",
-}
+_UNSUPPLIED: set[str] = set()
 
 
 def test_every_contract_but_the_known_orphans_has_a_possible_supplier():

@@ -103,6 +103,7 @@ Operational and utility scripts for building images, running services, and dev t
   - `start_local.sh` — uvicorn + sqlite single-process, for laptop/dev.
   - `start_singularity.sh` — HPC fallback running the registry inside an Apptainer SIF.
 - `rqgm_assurance/` — release utilities for promoting native scientific harnesses and exercising their publication path.
+  - `bind_container_image.py` — TODO
   - `promote_native_harnesses.py` — validate and promote the native HPC harness set with immutable registration evidence.
   - `run_certify_publication_e2e.py` — execute the authentic screen/certify-to-publication flow and retain its evidence bundle.
 - `rqgm_eval/` — the RQGM evaluation/ablation harness (RQGM Task 13): condition matrix, failure-injection specs, the `run_ablation.py` campaign driver, the post-hoc `run_paper_panel.py` rubric panel, and the shared benchmark experiment set; the unit-testable logic lives in `ari.rqgm.evaluation.*` — these files only wire processes.
