@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from cuda_promotion import CUDA_BUNDLE, verify_cuda_verified_lock
+from cuda_promotion import CUDA_BUNDLE, cuda_bundle, verify_cuda_verified_lock
 from models import sha256_digest
 from openroad_adapter import (
     OpenRoadExperimentV1,
@@ -200,29 +200,49 @@ def test_openroad_slurm_cpu_promotion_lock_is_exact_and_site_anonymous():
         assert forbidden_key not in serialized
 
 
+GB10_CUDA_BUNDLE = cuda_bundle("13.2", "12.1")
+GB10_CUDA_LOCK_DIGEST = (
+    "sha256:8a89916cfb10622c7799188c618fcfe7cd290630b729032aac17f5a737153d55"
+)
+
+
 def test_cuda_promotion_lock_is_exact_and_site_anonymous():
-    path = CUDA_BUNDLE / "verified-lock-v1.json"
-    lock = verify_cuda_verified_lock(path, expected_lock_digest=CUDA_LOCK_DIGEST)
-    evidence = _read(CUDA_BUNDLE / "registration-evidence-v1.json")
+    """The bundle promoted on the GPU this site actually has.
+
+    Its device generation is not the V100 one below, which is the point: the
+    capability contract no longer names a toolkit release or a compute
+    capability, so a second generation can be promoted at all.
+    """
+
+    path = GB10_CUDA_BUNDLE / "verified-lock-v1.json"
+    lock = verify_cuda_verified_lock(path, expected_lock_digest=GB10_CUDA_LOCK_DIGEST)
+    evidence = _read(GB10_CUDA_BUNDLE / "registration-evidence-v1.json")
     serialized = "\n".join(
         candidate.read_text(encoding="utf-8")
-        for candidate in CUDA_BUNDLE.glob("*.json")
+        for candidate in GB10_CUDA_BUNDLE.glob("*.json")
     )
 
     assert lock["status"] == "verified"
-    assert lock["lock_digest"] == CUDA_LOCK_DIGEST
-    assert lock["runtime_target"]["accelerator_count"] == 4
+    assert lock["lock_digest"] == GB10_CUDA_LOCK_DIGEST
+    assert lock["provider_version"] == "1.0.0+cuda13.2-sm121"
+    assert lock["capability_scope"]["tool_names"] == [
+        "ari_cuda_validate__exclusive_node_sm121"
+    ]
     assert lock["runtime_target"]["identity_disclosure"] == "salted-digest-only"
     assert lock["capability_scope"]["credential_scope_ids"] == []
+    # From the contract, so this cannot drift away from it unnoticed again.
     assert lock["capability_scope"]["environment_requirements"] == [
-        "cuda-12.9",
-        "exclusive-node",
-        "nvidia-sm70",
-        "slurm",
+        "cuda-toolkit",
+        "nvidia-gpu",
+        "slurm-controller",
     ]
+    # The memory figure nvidia-smi reports as `[N/A]` on this unified-memory
+    # device, read from the CUDA API instead. A zero here would mean the
+    # promotion had inherited the probe's blind spot.
+    assert lock["runtime_target"]["memory_bytes_per_device"] > 0
     validation = evidence["observations"]["cuda_self_test"]
     assert validation["verdict"] == "pass"
-    assert validation["device_count"] == 4
+    assert validation["device_count"] == lock["runtime_target"]["accelerator_count"]
     assert validation["all_negative_controls_detected"] is True
     assert validation["all_repeats_equal"] is True
     assert validation["maximum_absolute_error"] == 0.0
@@ -235,6 +255,34 @@ def test_cuda_promotion_lock_is_exact_and_site_anonymous():
         "MIG-",
     ):
         assert forbidden not in serialized
+
+
+def test_the_v100_cuda_bundle_is_retained_evidence_that_no_longer_verifies():
+    """Says out loud what the older bundle now is, rather than deleting it.
+
+    It records a real promotion on real Tesla V100 hardware, so it is kept. It
+    also predates two corrections it cannot be given retroactively: its scope
+    names `exclusive-node` and `slurm`, both retired from the contract, and its
+    capability_contract_digest was built locally and was never the ontology's.
+    Repairing either requires promoting it again on a V100-class node, which
+    this site has none of.
+
+    This asserts the refusal so the state stays visible. It fails the moment
+    someone re-promotes that bundle -- which is the correct time to revisit it.
+    """
+
+    path = CUDA_BUNDLE / "verified-lock-v1.json"
+    lock = _read(path)
+    assert lock["provider_version"] == "1.0.0+cuda12.9-sm70"
+    assert lock["runtime_target"]["compute_capability"] == "7.0"
+    assert lock["capability_scope"]["environment_requirements"] == [
+        "cuda-12.9",
+        "exclusive-node",
+        "nvidia-sm70",
+        "slurm",
+    ]
+    with pytest.raises(ProviderProtocolError):
+        verify_cuda_verified_lock(path, expected_lock_digest=CUDA_LOCK_DIGEST)
 
 
 def test_openroad_slurm_nonhuman_approval_is_rejected(tmp_path: Path):

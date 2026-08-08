@@ -31,6 +31,12 @@ from capability_pins import (  # noqa: E402
     capability_contract,
     capability_environment_requirements,
 )
+from cuda_promotion import (  # noqa: E402
+    cuda_architecture,
+    cuda_bundle,
+    cuda_provider_version,
+    cuda_tool_name,
+)
 from ari.providers.registration import (  # noqa: E402
     PROVIDER_REGISTRATION_GATES,
     ProviderRegistrationGateV1,
@@ -74,7 +80,6 @@ WORKER = PACKAGE_ROOT / "src/cuda_validation_worker.py"
 INVENTORY_PROBE = PACKAGE_ROOT / "src/nvidia_smi_inventory_probe.py"
 HPC_CONTRACT = REPO_ROOT / "ari-skill-hpc/ari_skill_hpc/contracts.py"
 HPC_SCHEDULER = REPO_ROOT / "ari-skill-hpc/ari_skill_hpc/scheduler.py"
-REMOTE_NVCC = "/usr/local/cuda-12.9/bin/nvcc"
 REMOTE_NVIDIA_SMI = "/usr/bin/nvidia-smi"
 
 
@@ -168,7 +173,10 @@ def _inventory(site: dict[str, str]) -> tuple[AcceleratorDeviceIdentityV1, ...]:
                 uuid=uuid,
                 name=name,
                 driver_version=driver,
-                memory_mb=int(memory),
+                # `[N/A]` on a unified-memory device. Refusing the row here
+                # would make the whole node unpromotable over a figure the
+                # self-test reads correctly from the CUDA API anyway.
+                memory_mb=None if memory == "[N/A]" else int(memory),
                 compute_capability=compute,
             )
         )
@@ -184,26 +192,36 @@ def _inventory(site: dict[str, str]) -> tuple[AcceleratorDeviceIdentityV1, ...]:
     return tuple(devices)
 
 
-def _remote_tool_identity(site: dict[str, str]) -> dict[str, Any]:
-    digest_output = _srun(
-        site,
-        ["/usr/bin/sha256sum", REMOTE_NVCC, REMOTE_NVIDIA_SMI],
-    )
+def _remote_tool_identity(
+    site: dict[str, str], *, nvcc_path: str, worker_python: str
+) -> dict[str, Any]:
+    # Every one of these is digested on the node that will run them. The worker
+    # interpreter used to be pinned from the submitting host instead, which is
+    # only ever right when both machines run the same binaries -- on a compute
+    # node of a different architecture the bundle would have recorded the
+    # submitting host's interpreter for a run that never used it.
+    REMOTE_NVCC = nvcc_path
+    remote = [REMOTE_NVCC, REMOTE_NVIDIA_SMI, worker_python]
+    digest_output = _srun(site, ["/usr/bin/sha256sum", *remote])
     digests: dict[str, str] = {}
     for line in digest_output.splitlines():
         digest, _, path = line.partition("  ")
-        if path not in {REMOTE_NVCC, REMOTE_NVIDIA_SMI} or not re.fullmatch(
-            r"[0-9a-f]{64}", digest
-        ):
+        if path not in set(remote) or not re.fullmatch(r"[0-9a-f]{64}", digest):
             raise ProviderProtocolError("remote CUDA tool digest output is invalid")
         digests[path] = "sha256:" + digest
-    if set(digests) != {REMOTE_NVCC, REMOTE_NVIDIA_SMI}:
+    if set(digests) != set(remote):
         raise ProviderProtocolError("remote CUDA tool identity is incomplete")
     version_output = _srun(site, [REMOTE_NVCC, "--version"])
     version = re.search(r"release\s+([^,\n]+),\s+V([^\s]+)", version_output)
-    if not version or version.group(1) != "12.9":
-        raise ProviderProtocolError("remote CUDA compiler release differs")
+    # The release is recorded, not required to be one particular value. Pinning
+    # "12.9" here meant the promotion could only ever run again on the machine
+    # it first ran on; the release it did find is bound into the identity below
+    # and into the Provider version, which is where a version belongs.
+    if not version:
+        raise ProviderProtocolError("remote CUDA compiler release is unreadable")
     return {
+        "worker_python_path": worker_python,
+        "worker_python_digest": digests[worker_python],
         "nvcc_path": REMOTE_NVCC,
         "nvcc_digest": digests[REMOTE_NVCC],
         "cuda_release": version.group(1),
@@ -359,6 +377,12 @@ def _bundle(
     observations: dict[str, Any],
     tests: dict[str, Any],
 ) -> dict[str, str]:
+    # The version comes from the hardware this run actually validated, which is
+    # already in runtime_target. Writing a fixed constant here is what made the
+    # lock claim a V100 identity for a run on a different device.
+    provider_version = cuda_provider_version(
+        runtime_target["cuda_compiler_version"], runtime_target["compute_capability"]
+    )
     adapter = {
         "kind": "ari-hpc-fixed-local-process",
         "revision": "ari.cuda-exclusive-node-provider/v1",
@@ -374,7 +398,7 @@ def _bundle(
     manifest = {
         "schema_version": CUDA_MANIFEST_SCHEMA,
         "provider_id": CUDA_PROVIDER_ID,
-        "provider_version": CUDA_PROVIDER_VERSION,
+        "provider_version": provider_version,
         "artifact": artifact,
         "adapter": adapter,
         "runtime_target": runtime_target,
@@ -395,7 +419,7 @@ def _bundle(
     evidence = {
         "schema_version": CUDA_EVIDENCE_SCHEMA,
         "provider_id": CUDA_PROVIDER_ID,
-        "provider_version": CUDA_PROVIDER_VERSION,
+        "provider_version": provider_version,
         "captured_date": captured_date,
         "artifact": artifact,
         "capability_scope": scope,
@@ -421,7 +445,7 @@ def _bundle(
     approval = {
         "schema_version": "ari.capability-provider-promotion-approval/v1",
         "provider_id": CUDA_PROVIDER_ID,
-        "provider_version": CUDA_PROVIDER_VERSION,
+        "provider_version": provider_version,
         "from_status": "candidate",
         "to_status": "verified",
         "actor_kind": "human-maintainer",
@@ -437,7 +461,7 @@ def _bundle(
     lock = {
         "schema_version": CUDA_LOCK_SCHEMA,
         "provider_id": CUDA_PROVIDER_ID,
-        "provider_version": CUDA_PROVIDER_VERSION,
+        "provider_version": provider_version,
         "status": "verified",
         "artifact": artifact,
         "adapter": adapter,
@@ -477,9 +501,6 @@ def _bundle(
 
 async def _run(args: argparse.Namespace) -> dict[str, str]:
     output = Path(args.output).resolve()
-    if output != CUDA_BUNDLE.resolve():
-        raise ValueError("CUDA Provider output must be its canonical bundle directory")
-    output.mkdir(parents=True, exist_ok=True)
     site = load_private_site_config(args.site_config, repository=REPO_ROOT)
     assert_repository_site_anonymous(REPO_ROOT, site=site)
     work_root = Path(args.slurm_work_root).resolve(strict=True)
@@ -487,13 +508,25 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
         raise ProviderProtocolError("CUDA SLURM work root is unsafe")
     tests = _tests(args.test_python)
     devices = _inventory(site)
-    remote_tools = _remote_tool_identity(site)
+    remote_tools = _remote_tool_identity(
+        site, nvcc_path=args.remote_nvcc, worker_python=args.worker_python
+    )
+    # The bundle a promotion writes is named by the hardware it validated, so
+    # the canonical directory can only be checked once that hardware is known.
+    compute_capability = devices[0].compute_capability
+    cuda_release = remote_tools["cuda_release"]
+    architecture = cuda_architecture(compute_capability)
+    tool_name = cuda_tool_name(compute_capability)
+    expected_bundle = cuda_bundle(cuda_release, compute_capability)
+    if output != expected_bundle.resolve():
+        raise ValueError(
+            "CUDA Provider output must be its canonical bundle directory: "
+            f"{expected_bundle.name}"
+        )
+    output.mkdir(parents=True, exist_ok=True)
     source = _pin(SOURCE, "cuda-self-test-source", "text/x-cuda")
     worker = _pin(WORKER, "cuda-self-test-worker", "text/x-python")
     probe = _pin(INVENTORY_PROBE, "nvidia-smi-inventory-probe", "text/x-python")
-    worker_python = _pin(
-        Path(args.worker_python), "cuda-self-test-python", "application/x-executable"
-    )
     allocation = ExclusiveNodeAcceleratorV1(
         partition=site["partition"],
         node_name=site["node_name"],
@@ -509,7 +542,7 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
         job_name="ari-cuda-self-test",
         work_dir=str(work_dir),
         argv=(
-            worker_python.path,
+            remote_tools["worker_python_path"],
             worker.path,
             "--source",
             source.path,
@@ -520,7 +553,7 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
             "--nvcc-digest",
             remote_tools["nvcc_digest"],
             "--architecture",
-            "sm_70",
+            architecture,
             "--work-dir",
             str(work_dir),
             "--result",
@@ -542,7 +575,9 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
             path="/usr/local/cuda-12.9/bin:/usr/local/bin:/usr/bin:/bin"
         ),
         accelerator_allocation=allocation,
-        inputs=(source, worker, probe, worker_python),
+        # The interpreter is not a local input: it lives on the node and is
+        # digested there, alongside nvcc and nvidia-smi.
+        inputs=(source, worker, probe),
         outputs=(
             OutputDeclarationV1(
                 logical_name="cuda-self-test-result",
@@ -582,7 +617,10 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
         "inventory_identity_digest": inventory_identity_digest,
         "accelerator_count": len(devices),
         "accelerator_model": device.name,
-        "memory_bytes_per_device": device.memory_mb * 1024 * 1024,
+        # From the self-test, which asks CUDA directly. nvidia-smi answers
+        # `[N/A]` on a unified-memory device, and deriving this from that answer
+        # is how the figure went missing in the first place.
+        "memory_bytes_per_device": public_result["device_classes"][0]["memory_bytes"],
         "compute_capability": device.compute_capability,
         "driver_version": device.driver_version,
         "cuda_compiler_version": remote_tools["cuda_compiler_version"],
@@ -619,7 +657,7 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
         "source_digest": source.digest,
         "worker_digest": worker.digest,
         "inventory_probe_digest": probe.digest,
-        "worker_python_digest": worker_python.digest,
+        "worker_python_digest": remote_tools["worker_python_digest"],
         "remote_nvcc_digest": remote_tools["nvcc_digest"],
         "remote_nvidia_smi_digest": remote_tools["nvidia_smi_digest"],
         "job_contract_digest": file_digest(HPC_CONTRACT),
@@ -635,7 +673,7 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
     scope = {
         "capability_ref": CUDA_CAPABILITY_REF,
         "capability_contract_digest": contract.contract_digest,
-        "tool_names": ["ari_cuda_validate__exclusive_node_sm70"],
+        "tool_names": [tool_name],
         "input_schema_digest": sha256_digest(input_schema),
         "output_schema_digest": sha256_digest(output_schema),
         "side_effects": "scheduler-submit",
@@ -706,6 +744,10 @@ async def _run(args: argparse.Namespace) -> dict[str, str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--site-config", required=True)
+    # Where the toolkit lives is a property of the node image, not of ARI. The
+    # literal /usr/local/cuda-12.9/bin/nvcc that used to be compiled in named
+    # one machine's install and existed on no other.
+    parser.add_argument("--remote-nvcc", required=True)
     parser.add_argument("--slurm-work-root", required=True)
     parser.add_argument("--worker-python", required=True)
     parser.add_argument("--output", required=True)

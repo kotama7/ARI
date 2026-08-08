@@ -15,10 +15,18 @@
           "type": "string"
         },
         "memory_mb": {
-          "maximum": 16777216,
-          "minimum": 1,
-          "title": "Memory Mb",
-          "type": "integer"
+          "anyOf": [
+            {
+              "maximum": 16777216,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Memory Mb"
         },
         "name": {
           "maxLength": 255,
@@ -36,7 +44,6 @@
         "uuid",
         "name",
         "driver_version",
-        "memory_mb",
         "compute_capability"
       ],
       "title": "AcceleratorDeviceIdentityV1",
@@ -391,6 +398,16 @@
           ],
           "default": null,
           "title": "Hint"
+        },
+        "launcher": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "srun",
+            "none"
+          ],
+          "title": "Launcher",
+          "type": "string"
         },
         "memory_mb_per_cpu": {
           "anyOf": [

@@ -1395,7 +1395,11 @@ class SlurmScheduler:
         expected_lines = [
             (
                 f"{item.uuid}, {item.name}, {item.driver_version}, "
-                f"{item.memory_mb}, {item.compute_capability}"
+                # `[N/A]` is what the probe prints for a device that declines to
+                # report its memory, so the expected line has to say the same
+                # thing or the comparison fails on every unified-memory node.
+                f"{'[N/A]' if item.memory_mb is None else item.memory_mb}, "
+                f"{item.compute_capability}"
             )
             for item in allocation.devices
         ]

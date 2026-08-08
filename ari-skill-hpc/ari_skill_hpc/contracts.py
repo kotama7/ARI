@@ -151,7 +151,14 @@ class AcceleratorDeviceIdentityV1(ContractModel):
     uuid: AcceleratorUuid
     name: str = Field(min_length=1, max_length=255)
     driver_version: str = Field(pattern=r"^[0-9]+(?:\.[0-9]+){1,3}$")
-    memory_mb: int = Field(ge=1, le=16_777_216)
+    # Optional because a real device can decline to report it: where the memory
+    # is unified with the host, `nvidia-smi --query-gpu=memory.total` answers
+    # `[N/A]`. Requiring an integer here made such a node impossible to describe
+    # at all, which is the identity-side twin of the prober bug that dropped the
+    # device entirely. A device whose memory figure will not parse is still a
+    # device, and `None` is recorded as the same `[N/A]` the probe will observe
+    # so the inventory comparison stays exact.
+    memory_mb: int | None = Field(default=None, ge=1, le=16_777_216)
     compute_capability: str = Field(pattern=r"^[0-9]+\.[0-9]+$")
 
     @model_validator(mode="after")
