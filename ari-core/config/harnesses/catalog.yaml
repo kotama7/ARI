@@ -6,11 +6,11 @@ entries:
 - id: hpc/gemm-correctness
   manifest: builtin/hpc_gemm_correctness.yaml
   registration_report: reports/hpc_gemm_correctness.registration.json
-  registration_report_digest: sha256:6700305662a354dd1eefca2680f15dcf7137b14acc2d0c7aec453853dc85c968
+  registration_report_digest: sha256:c27edff3d8512c0b3e5a00b2ec44acf100c080e5ba15a85d34772e5649948ecd
   registration_evidence: evidence/hpc_gemm_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:e6c1eb5a80bd34c5d9f150c13a39bb1d1cb9c17fecd548e081c62f20a3e5e909
+  registration_evidence_digest: sha256:58eb45b19f5002730f9e081758f17308678438a303a09220d58a02ea5b064cda
   promotion_approval: approvals/hpc_gemm_correctness.approval.json
-  promotion_approval_digest: sha256:c19bc11c47c3b2a20600a4d9fd40551286706c12d18ab6e5b2f7dabb667924c8
+  promotion_approval_digest: sha256:16294eda3ed6b067540859ae4d2a060c3d01e5437a8c6a762ade498f95cc05c9
 - id: hpc/gemm-performance
   manifest: builtin/hpc_gemm_performance.yaml
   registration_report: reports/hpc_gemm_performance.registration.json
@@ -22,16 +22,16 @@ entries:
 - id: hpc/spmm-correctness
   manifest: builtin/hpc_spmm_correctness.yaml
   registration_report: reports/hpc_spmm_correctness.registration.json
-  registration_report_digest: sha256:b9402822e993a7d06b5cb8792b223e910100a5131843253be8eaa5247708e7f7
+  registration_report_digest: sha256:dfcf5a31e2a65b230a83941d00b0e8a85700db040390adb27c6a870ea724d740
   registration_evidence: evidence/hpc_spmm_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:532113d0fb97a056b2da280ffe83b9a5d8a853b304b89a80030a8d282b1fa494
+  registration_evidence_digest: sha256:2de1d4cee170e201cfb808dbdb33bbb0071c59f8b14f1cd41a97caa65846d9b5
   promotion_approval: approvals/hpc_spmm_correctness.approval.json
-  promotion_approval_digest: sha256:855279a900681568b86dfecbe796ad4c4d294832f9af945a493136d51ec64a35
+  promotion_approval_digest: sha256:633257f1ff50f818c0e35407fa8a604c9c71e07f32a8374df52701e6d0ec9bb2
 - id: hpc/stencil-correctness
   manifest: builtin/hpc_stencil_correctness.yaml
   registration_report: reports/hpc_stencil_correctness.registration.json
-  registration_report_digest: sha256:9f1e68f06a68ddbc0de83bb7993affffecdae8d8eda9daca107d2deed80f1ddb
+  registration_report_digest: sha256:fe14d033d74947b9cae1b70508e2c4ec54923f9a0a26a076fe6d3708f025b7d4
   registration_evidence: evidence/hpc_stencil_correctness/registration_evidence.json
-  registration_evidence_digest: sha256:16c737b4d05583a932bda9de8417d2e637f6c5b8f30279a349e651e04eff807b
+  registration_evidence_digest: sha256:d33e122f39f84f4c8b53c30f9808ea7e0249e287097c0c6fdb52eaa4e4fd015e
   promotion_approval: approvals/hpc_stencil_correctness.approval.json
-  promotion_approval_digest: sha256:bc7e325c9cee2a96bf77e1f16589cb4e1d831f74f2f9353d55ec88cc876345fe
+  promotion_approval_digest: sha256:675cf484691a445d15791ab2fc31dc0abaa51e60bc3f19e68dbe1f335fb4dd66

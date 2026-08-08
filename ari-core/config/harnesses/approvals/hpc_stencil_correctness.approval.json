@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:bc7e325c9cee2a96bf77e1f16589cb4e1d831f74f2f9353d55ec88cc876345fe",
+  "approval_digest": "sha256:675cf484691a445d15791ab2fc31dc0abaa51e60bc3f19e68dbe1f335fb4dd66",
   "approved_date": "2026-08-08",
-  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'). The previous approval covered a driver digest that no longer exists: the verifier's family registry changed, so these harnesses had been REFUSED by prepare since. Over report sha256:9f1e68f06a68ddbc0de83bb7993affffecdae8d8eda9daca107d2deed80f1ddb, minted from three parity-probe runs at commit a72f22f27f30 on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:16c737b4d05583a932bda9de8417d2e637f6c5b8f30279a349e651e04eff807b",
+  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-08 ('kotama'). Adding a placement pin to the frozen manifest moved every manifest digest, including these three which pin no placement. Over report sha256:fe14d033d74947b9cae1b70508e2c4ec54923f9a0a26a076fe6d3708f025b7d4, three parity-probe runs at commit f274841b1bd1 on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:d33e122f39f84f4c8b53c30f9808ea7e0249e287097c0c6fdb52eaa4e4fd015e",
   "from_status": "candidate",
   "harness_id": "hpc/stencil-correctness",
-  "harness_manifest_digest": "sha256:6051a38ee188b84589c1eb2b7fcc5f4f128ae3a79e67ec8ef2f12b7162caff10",
+  "harness_manifest_digest": "sha256:0354e42f8a03377a355c65e33d9707c489ad79f33a7a7a5bfe3e38691c18849a",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:9f1e68f06a68ddbc0de83bb7993affffecdae8d8eda9daca107d2deed80f1ddb",
+  "registration_report_digest": "sha256:fe14d033d74947b9cae1b70508e2c4ec54923f9a0a26a076fe6d3708f025b7d4",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

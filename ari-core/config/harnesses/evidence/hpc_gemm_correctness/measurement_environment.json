@@ -1,4 +1,5 @@
 {
-  "note": "A deterministic verifier: the parity probe was run three times and every clean-control answer was identical, which is what repeating establishes when there is no spread.",
-  "registration_commit": "a72f22f27f30908498abc0e01f9f4900c6beff2b"
+  "note": "A deterministic verifier pins no placement: it does not depend on one, and pinning would claim something that cannot vary. Three probe runs gave identical clean-control answers, which is what repeating establishes here.",
+  "registered_placement": null,
+  "registration_commit": "f274841b1bd1e6b3fe00085f89e4cced74e8d5fa"
 }

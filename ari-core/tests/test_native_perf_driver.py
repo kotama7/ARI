@@ -158,6 +158,15 @@ class _Manifest:
         self.kind = kw.get("kind", "benchmark")
         self.network_policy = kw.get("network_policy", "deny")
         self.credential_policy = kw.get("credential_policy", "none")
+        self.id = kw.get("id", "hpc/gemm-performance")
+        # A performance manifest must pin the placement its evidence was taken
+        # on, and prepare() refuses a host whose placement differs. These
+        # pairings are about everything ELSE prepare checks, so the fixture
+        # pins THIS host; the two placement refusals below move the pin rather
+        # than the machine, which is the only way to test them anywhere.
+        here = measurement_placement()
+        self.registered_placement = kw.get("registered_placement", {
+            "machine": here["machine"], "thread_budget": here["thread_budget"]})
 
 
 class _Atom:
@@ -539,6 +548,23 @@ def test_prepare_refuses_a_dataset_pin_that_no_longer_matches():
     with pytest.raises(ValueError, match="registered problem set has changed"):
         NativePerfDriver().prepare(
             _Manifest(dataset_sha256="sha256:" + "9" * 64), _Request())
+
+
+def test_prepare_refuses_a_performance_harness_that_pins_no_placement():
+    """A timed verdict is a statement about a machine. The same commit and the
+    same clean worktree scored 15/15 on one exclusive node and 13/15 on another,
+    where the clean control did not resolve -- so an unplaced attestation would
+    have covered both."""
+    with pytest.raises(ValueError, match="must pin the placement"):
+        NativePerfDriver().prepare(_Manifest(registered_placement={}), _Request())
+
+
+def test_prepare_refuses_a_host_that_is_not_the_registered_placement(monkeypatch):
+    """The pin has to be checked, not merely carried."""
+    monkeypatch.setenv("ARI_PERF_THREADS", "2")
+    with pytest.raises(ValueError, match="not the placement"):
+        NativePerfDriver().prepare(
+            _Manifest(registered_placement={"thread_budget": "3"}), _Request())
 
 
 def test_prepare_refuses_a_case_set_that_cannot_support_a_verdict():
