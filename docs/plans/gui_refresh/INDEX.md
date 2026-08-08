@@ -97,3 +97,25 @@
 - [ ] `INDEX.md` の status を更新してから、完了した task plan を削除した。
 - [ ] 全 task plan が `deleted` になった後、この `INDEX.md` と `docs/plans/gui_refresh/` ディレクトリ自体を削除した。
 
+## 削除記録
+
+release 由来の 4 条件 — main への merge、default-on rollout と観測期間、最低 1 minor の
+rollback 期間、telemetry 確認後の legacy 削除 — は所有者の判断で免除された。G6 そのもの、
+および未達部分がこの 4 つだけの条件も同様に扱う。**それ以外の条件は免除していない**:
+設計判断が恒久文書に実在すること、削除で仕様が失われないこと、他ファイルが唯一の出典と
+していないこと、コードについての事実を主張する完了条件が実際に成立していること。
+
+| ファイル | 削除 | 理由 |
+|---|---|---|
+| `baseline/migration_notes.md` | 済 | MN-1〜MN-12 が `docs/guides/migration.md` に en/ja/zh で before/after/why/rollback 付きで再現済み。endpoint 影響表は `docs/reference/rest_api.md`。参照していた 4 箇所（`test_gui_confirmation_challenges.py`、`test_gui_csp_headers.py`、`test_gui_path_proxy_hardening.py`、`g0_review_record.md`）は同一変更で恒久文書へ張り替えた |
+
+免除後も削除できなかったものと、その理由:
+
+- **task plan 00–10** — 恒久文書に受け皿の無い内容が残る。00 は Compatibility register・成功指標・
+  P0–P3 分類、03 は Target structure と query-key の `revision` 成分、04 と 08 は行番号で
+  引用する兄弟が生存、09 は performance budget 10 行のうち 7 行が未移管
+- **ADR 12 本** — `docs/adr/` には `manuscript_complete/` しか無く、GUI の ADR に恒久的な置場が
+  存在しない。ADR は決定と**却下された代替案**の記録で、後者はコードに残らない。特に ADR-03 は
+  実コードとテストから 19 箇所参照されている
+- **`INDEX.md` 自身** — checklist 項目 7 が「全 task plan が deleted になった後」を要求
+

@@ -20,7 +20,7 @@ Covers:
   ``viz_access.jsonl``.
 
 Register/announcement: risk_register.md rows RR-P0-6/RR-P0-9 (closed Wave
-5a), migration_notes.md MN-6.
+5a), docs/guides/migration.md MN-6.
 """
 
 from __future__ import annotations

@@ -19,7 +19,7 @@ Covers:
   and the exact five-path allowlist (tags/show/generate/chat/ps).
 
 Register/announcement: risk_register.md rows RR-P0-5/RR-P0-7 (closed Wave
-5a), migration_notes.md MN-5.
+5a), docs/guides/migration.md MN-5.
 """
 
 from __future__ import annotations

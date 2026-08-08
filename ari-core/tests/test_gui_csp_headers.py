@@ -17,7 +17,7 @@ Covers:
 * the ``ARI_GUI_CSP=0`` kill-switch restoring the exact pre-MN-7 header set.
 
 Register/announcement: risk_register.md row RR-P0-10 (closed Wave 5a with
-the style-src residual noted), migration_notes.md MN-7. The companion
+the style-src residual noted), docs/guides/migration.md MN-7. The companion
 frontend guard (no external <script src> in index.html, so script-src
 'self' holds) is src/__tests__/indexHtmlNoExternalScripts.test.ts.
 """
