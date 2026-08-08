@@ -17,14 +17,14 @@
   },
   "capabilities": [
     {
-      "capability_contract_digest": "sha256:31c685a0bc9ab32c21875e54bbab09cc62a285d8968dc22d059c017a9a23e206",
+      "capability_contract_digest": "sha256:d2a6d9235a5f1ca4d121e4e8211ab58acaeabd7526c1362e3bd5b8e99ad2d90d",
       "capability_ref": "ari.literature.search/v1",
       "category": "pubmed",
       "context_requirement": "run",
       "credential_scope_ids": [],
       "determinism": "live-data",
       "input_schema_digest": "sha256:89b9b4fa2bf35b9d95cc61e6770071879bb5d885b1f941ee881606aa5935bd78",
-      "leaf_spec_digest": "sha256:2089ee6cd16f4ad5e009b1a17dd7abfe88b5acfb7fb849d8af2d614c1fa41e75",
+      "leaf_spec_digest": "sha256:2e418135915dcf042cdd3a9236cb63ea03ebcc72b109a7c8cb5b34928452b07c",
       "output_schema_digest": "sha256:12ae4b3a216d0a01aad762ff34f95ad4d2f879172d119e2702e7856fd72a8c81",
       "permissions": [
         "network-read"

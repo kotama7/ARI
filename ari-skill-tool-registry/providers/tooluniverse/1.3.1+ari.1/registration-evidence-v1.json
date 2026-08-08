@@ -9,9 +9,9 @@
     "upstream_wheel_digest": "sha256:a201a8793a0eaa30a085417b07ec4bffaccc4d955f9754dd122914991d0d59c0",
     "wheel_digest": "sha256:c976866f024d1c77ee476dc1855940949282ea19fd7227349061eaa0fe1d1b7d"
   },
-  "bundle_digest": "sha256:b002633b9e0c3a05f2a785a3c54b92485f4f01c4dd817cc8dd09317b0c752d50",
+  "bundle_digest": "sha256:8cdf2335131ccb3fb0f2ffc8868b1e6e5c14d5682837fe120343bc4f68500054",
   "capability_scope": {
-    "capability_contract_digest": "sha256:31c685a0bc9ab32c21875e54bbab09cc62a285d8968dc22d059c017a9a23e206",
+    "capability_contract_digest": "sha256:d2a6d9235a5f1ca4d121e4e8211ab58acaeabd7526c1362e3bd5b8e99ad2d90d",
     "capability_ref": "ari.literature.search/v1",
     "categories": [
       "pubmed"
@@ -23,7 +23,7 @@
       "network-read"
     ],
     "input_schema_digest": "sha256:89b9b4fa2bf35b9d95cc61e6770071879bb5d885b1f941ee881606aa5935bd78",
-    "leaf_spec_digest": "sha256:2089ee6cd16f4ad5e009b1a17dd7abfe88b5acfb7fb849d8af2d614c1fa41e75",
+    "leaf_spec_digest": "sha256:2e418135915dcf042cdd3a9236cb63ea03ebcc72b109a7c8cb5b34928452b07c",
     "output_schema_digest": "sha256:12ae4b3a216d0a01aad762ff34f95ad4d2f879172d119e2702e7856fd72a8c81",
     "permissions": [
       "network-read"
@@ -36,10 +36,10 @@
       "PubMed_search_articles"
     ]
   },
-  "captured_date": "2026-08-05",
+  "captured_date": "2026-08-09",
   "gate_evidence": {
     "capability_contract_conformance": {
-      "capability_contract_digest": "sha256:31c685a0bc9ab32c21875e54bbab09cc62a285d8968dc22d059c017a9a23e206",
+      "capability_contract_digest": "sha256:d2a6d9235a5f1ca4d121e4e8211ab58acaeabd7526c1362e3bd5b8e99ad2d90d",
       "capability_ref": "ari.literature.search/v1",
       "projected_output_schema_digest": "sha256:3d176c10690f801b07a3ae229207522ca2575b6fffba6d7b1ef227486ff8139e",
       "result_normalizer": "tooluniverse-pubmed-retrieval/v1"
@@ -50,13 +50,13 @@
       "test_ids": [
         "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_adapter_passes_only_named_credentials_and_redacts_response"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf",
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2",
       "upstream_optional_api_keys": [
         "NCBI_API_KEY"
       ]
     },
     "environment_allowlist": {
-      "environment_identity_digest": "sha256:aba4bbe851e69a23b1ce215a4e56138916603aac3d6b57ce0949e2f6de14725b",
+      "environment_identity_digest": "sha256:aa1f59f24a243486758fa7d5e083a66bd48213d50c9c28350a7597867d1fa30c",
       "pip_check_output_digest": "sha256:d205cc92f81f811f6ca0c9c2b1465d8e854a35410836181d4171964ef28af47c",
       "runtime_target": {
         "architecture": "x86_64",
@@ -68,7 +68,7 @@
         "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_adapter_initializes_paginates_and_calls_normal_error_large",
         "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_provider_and_architecture_drift_fail_before_execution"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf"
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2"
     },
     "live_tools_list_parity": {
       "admitted_leaf_tools": [
@@ -87,10 +87,10 @@
       "test_ids": [
         "ari-skill-tool-registry/tests/test_tooluniverse_adapter.py::test_exact_reviewed_capability_projection_never_uses_description_or_substring"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf"
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2"
     },
     "manifest_schema": {
-      "provider_manifest_digest": "sha256:5321d1357258f47c36ab5a734a5d15c225e5621b878d1ae5d1a5a5c3cf99f511",
+      "provider_manifest_digest": "sha256:9cb5c718941b4f746c285dd25e91297676ea540de877292801cd32bba3cf0008",
       "schema_version": "ari.tooluniverse-capability-provider-manifest/v1",
       "support_pin_model": "ToolUniversePinV1"
     },
@@ -127,7 +127,7 @@
           "output": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
         }
       },
-      "leaf_spec_digest": "sha256:2089ee6cd16f4ad5e009b1a17dd7abfe88b5acfb7fb849d8af2d614c1fa41e75",
+      "leaf_spec_digest": "sha256:2e418135915dcf042cdd3a9236cb63ea03ebcc72b109a7c8cb5b34928452b07c",
       "name": "PubMed_search_articles",
       "optional_api_keys": [
         "NCBI_API_KEY"
@@ -138,7 +138,7 @@
         "ari-skill-tool-registry/tests/test_tooluniverse_adapter.py::test_reviewed_capability_projection_fails_closed_on_missing_leaf",
         "ari-skill-tool-registry/tests/test_tooluniverse_adapter.py::test_schema_update_requires_separate_explicit_approval"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf",
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2",
       "type": "PubMedRESTTool"
     },
     "schema_drift_detection": {
@@ -150,7 +150,7 @@
         "ari-skill-tool-registry/tests/test_tooluniverse_adapter.py::test_reviewed_capability_projection_fails_closed_on_missing_leaf",
         "ari-skill-tool-registry/tests/test_tooluniverse_adapter.py::test_schema_update_requires_separate_explicit_approval"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf"
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2"
     },
     "side_effect_declaration": {
       "admitted_permission": "network-read",
@@ -163,7 +163,7 @@
       "patch_digest": "sha256:60405a50587c577a5ba22821baf28d98ce637650484209c250f15d84d1140c23",
       "repository_commit": "9b7ff91ddb45b567cac2fa8ea31b82851e877617",
       "reproducible_build_count": 2,
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf",
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2",
       "wheel_digest": "sha256:c976866f024d1c77ee476dc1855940949282ea19fd7227349061eaa0fe1d1b7d"
     },
     "timeout_cancellation_process_group": {
@@ -171,7 +171,7 @@
       "test_ids": [
         "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_timeout_reaps_the_provider_process_group"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf"
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2"
     },
     "unbound_invocation_rejection": {
       "live_adapter_check": true,
@@ -179,7 +179,7 @@
         "ari-skill-tool-registry/tests/test_tooluniverse_adapter.py::test_exact_include_filter_cannot_expand_verified_leaf_scope",
         "ari-skill-tool-registry/tests/test_tooluniverse_adapter.py::test_locked_runtime_is_strict_records_provenance_and_replays_offline"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf"
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2"
     },
     "workspace_isolation": {
       "parent_environment": "allowlisted",
@@ -187,7 +187,7 @@
       "test_ids": [
         "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_adapter_initializes_paginates_and_calls_normal_error_large"
       ],
-      "test_output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf"
+      "test_output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2"
     }
   },
   "observations": {
@@ -198,7 +198,7 @@
         "python": [
           3,
           13,
-          2
+          12
         ],
         "system": "linux",
         "versions": {
@@ -206,7 +206,7 @@
           "tooluniverse": "1.3.1+ari.1"
         }
       },
-      "environment_identity_digest": "sha256:aba4bbe851e69a23b1ce215a4e56138916603aac3d6b57ce0949e2f6de14725b",
+      "environment_identity_digest": "sha256:aa1f59f24a243486758fa7d5e083a66bd48213d50c9c28350a7597867d1fa30c",
       "exit_code": 0,
       "output_digest": "sha256:d205cc92f81f811f6ca0c9c2b1465d8e854a35410836181d4171964ef28af47c",
       "status": "passed"
@@ -239,7 +239,7 @@
     "leaf": {
       "category": "pubmed",
       "input_schema_digest": "sha256:89b9b4fa2bf35b9d95cc61e6770071879bb5d885b1f941ee881606aa5935bd78",
-      "leaf_spec_digest": "sha256:2089ee6cd16f4ad5e009b1a17dd7abfe88b5acfb7fb849d8af2d614c1fa41e75",
+      "leaf_spec_digest": "sha256:2e418135915dcf042cdd3a9236cb63ea03ebcc72b109a7c8cb5b34928452b07c",
       "name": "PubMed_search_articles",
       "optional_api_keys": [
         "NCBI_API_KEY"
@@ -255,7 +255,7 @@
       "record_count": 1,
       "upstream_status": "success"
     },
-    "provider_digest_in_validation_environment": "sha256:11fc244f743091bc112cc975552048170fbedf9bda7ac661ae00dc16ac48c8ef",
+    "provider_digest_in_validation_environment": "sha256:857c02641035c96b3e1faabf3704e3a8753d7ffeb774a667e511a963b894fefd",
     "unbound_invocation_rejected": true
   },
   "provider_id": "tooluniverse-pubmed",
@@ -279,7 +279,7 @@
       "-q"
     ],
     "exit_code": 0,
-    "output_sha256": "sha256:73171d5515710d7dfbe6e25c3e2f2ecb63ba82068e49639a0aaa64cb732f7bbf",
+    "output_sha256": "sha256:7c06a12dcd46b0203b04c791ebf0d70af67beb45eada14793c2e80d012fb81a2",
     "test_ids": [
       "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_adapter_initializes_paginates_and_calls_normal_error_large",
       "ari-skill-tool-registry/tests/test_stdio_adapter.py::test_stdio_adapter_passes_only_named_credentials_and_redacts_response",

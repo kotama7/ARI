@@ -3,13 +3,13 @@
   "gates": [
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:a9f33a82aa39e29ec4f53509a60f5e8e671b8d717bfc7610cdd7599f8aee0fe1",
+      "evidence_digest": "sha256:c90137a28c89f7a8240a493f36141498734fa352da6a981857f45f3db06a48a6",
       "gate_id": "manifest_schema",
       "passed": true
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:e1659a63b22b0f89fba01298f8367be427863baebe65df4ef8a6e835a84b1303",
+      "evidence_digest": "sha256:c208ec361281600a08777d72fa5feae91fdd82cad7a8809b16799bd51c35481b",
       "gate_id": "source_package_digest_pin",
       "passed": true
     },
@@ -21,13 +21,13 @@
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:3a980dcf6303bdb511b5bcc29dbe99d14c8db99c4840499a6434f77de0e58447",
+      "evidence_digest": "sha256:d55a2863dddf204b438886f8da3e15ec1fcd2f70fe2684f45355c77037cf5b21",
       "gate_id": "schema_digest_pin",
       "passed": true
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:5dc9fde77689174e172d055be512625eaa42a31605ef9a24b2af031189b466de",
+      "evidence_digest": "sha256:abef811133c8b017e5f49b822f5650d2d17af2645b5561381c63bb0a2ee34ca9",
       "gate_id": "capability_contract_conformance",
       "passed": true
     },
@@ -39,19 +39,19 @@
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:c2caf7a1925de2e5dca0aa9c91e7967c90f7eec40ebbffc152da36e7939cfc8f",
+      "evidence_digest": "sha256:8842e341859405b481a5e505270d4c96a9c99c9920287e33905cc5d95bc0dc3c",
       "gate_id": "credential_scope",
       "passed": true
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:ce2b3f3791cc91ec7640fedaa4894eeea81ef3d9d4d0dcad4e95c31e43780eef",
+      "evidence_digest": "sha256:4405ee90fc3897009d7aa8b92d05c4c3b8e1c57cfd8d290e87e514471f54ced2",
       "gate_id": "environment_allowlist",
       "passed": true
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:dacedf1046598b6e2eb61aa4af556c17584c92fa00c81cb92bc2810dda9682b2",
+      "evidence_digest": "sha256:600725510ec753a6e5c6c174a5df1fedb15465cf088df81f9b005fc9e7b1bc94",
       "gate_id": "timeout_cancellation_process_group",
       "passed": true
     },
@@ -63,13 +63,13 @@
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:72c767999da6f645ab0fc5c42cedbae9394c81a3df67cb529dbd5c8cb62ab3f7",
+      "evidence_digest": "sha256:147bd664ba3a411705de22ff6a67113c32ef39f65a59f8de5f1ba6a54bd352ee",
       "gate_id": "malicious_description_boundary",
       "passed": true
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:f36f3b1103bf51a8463a51c5b7130f04c9aa71a716b9860acef124ade520ab3e",
+      "evidence_digest": "sha256:25cfe133fa07c3463b057b01751e8910f7ab9750a9f9e33d546924360f776e8f",
       "gate_id": "workspace_isolation",
       "passed": true
     },
@@ -81,19 +81,19 @@
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:4bace2671cf5c893874ed7f56351903f74d106239ec102f9e7c2091d6b2bd0cf",
+      "evidence_digest": "sha256:2e9393a5588442439d9386bbdc26112c22f7ad764fe26626c07a1bd9eece3b07",
       "gate_id": "schema_drift_detection",
       "passed": true
     },
     {
       "detail": "closed registration evidence passed",
-      "evidence_digest": "sha256:5c7e277b029ce3f279cf4e5f864f7053da72d38736dbb89db45b9eca4235679a",
+      "evidence_digest": "sha256:4388ee67ba818bc02b3773fac2c6eae13f37b7261195040ba29c89f3929f8642",
       "gate_id": "unbound_invocation_rejection",
       "passed": true
     }
   ],
-  "manifest_sha256": "sha256:5321d1357258f47c36ab5a734a5d15c225e5621b878d1ae5d1a5a5c3cf99f511",
+  "manifest_sha256": "sha256:9cb5c718941b4f746c285dd25e91297676ea540de877292801cd32bba3cf0008",
   "provider_id": "tooluniverse-pubmed",
-  "report_digest": "sha256:c460908ca8bc2188e89b400e2c923f41e7628a64b1e09ec72c1862db0a965d3d",
+  "report_digest": "sha256:e33216d0d7b757e6c8096294cf6616a0b82ac52c7cced817c1a906959f42b3a1",
   "schema_version": "ari.capability-provider-registration-report/v1"
 }
