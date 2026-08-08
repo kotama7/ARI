@@ -1,4 +1,6 @@
-"""Frozen constitutional rule tables (RQGM Task 04, plan 04 §5.4–§5.7, §6).
+"""Frozen constitutional rule tables (RQGM Task 04): role separation, the
+capability matrix, the violation-severity map, the context-view whitelists,
+the utility-policy legality bounds, and the hash that pins them all.
 
 Rules live in code, not in mutable config: putting role rules or the
 capability matrix in a checkpoint-scoped YAML would create an
@@ -17,7 +19,8 @@ Any rule edit — including one to the imported ``transition_rules.py`` — is a
 explicit reviewed diff plus a hash re-pin.
 
 Deterministic, pure stdlib + ``ari.rqgm`` types: no LLM calls, no network,
-no randomness (enforced by the import-grep test, plan 04 §5.7/§9.7).
+no randomness — enforced by an import-grep test that asserts this source
+carries no HTTP client, no ``random`` import, and no LLM SDK import.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from ari.rqgm.events import canonical_json, hash12
 
 CONSTITUTION_VERSION: int = 1
 
-# ── role-separation rules (plan 04 §5.4 item 6, plan 05 §5.4) ───────────────
+# ── role-separation rules (who may author what, and who may accuse whom) ───
 
 #: The single component allowed to write registry status (invariant 10).
 REGISTRY_WRITER = "registry_transition_engine"
@@ -57,7 +60,9 @@ GOVERNANCE_RECORD_TYPES: tuple[str, ...] = (
     "governance_report",
 )
 
-#: Mandatory common record envelope (plan 02 §6 ``rqgm_record_base``).
+#: Mandatory common record envelope: every RQGM record carries these eight
+#: fields (``rqgm_record_base`` — ``docs/reference/rqgm_schemas.md``,
+#: "Shared envelope (`rqgm_defs.schema.json`)").
 ENVELOPE_FIELDS: tuple[str, ...] = (
     "record_id",
     "epoch_id",
@@ -69,7 +74,7 @@ ENVELOPE_FIELDS: tuple[str, ...] = (
     "status",
 )
 
-# ── capability matrix (plan 04 §5.4 item 3, §6) ─────────────────────────────
+# ── capability matrix: (role, tier) -> the closed set of (action, resource) ─
 
 #: Closed action / resource-class vocabularies for capability lookups.
 ACTIONS: tuple[str, ...] = ("read", "append", "write", "invoke", "activate")
@@ -134,7 +139,7 @@ _EVOLVABLE_ROLES: tuple[str, ...] = (
     # CONSTITUTION_HASH pin in tests/test_rqgm_kernel.py was re-pinned for
     # this amendment.
     "failure_summary_compressor",
-    # Constitutional amendment 2026-07-16 (plan 14 §5.2): ``policy_mutator``
+    # Constitutional amendment 2026-07-16: ``policy_mutator``
     # is a meta-tier proposer (``ari.rqgm.utility_evolution.PolicyMutator``)
     # with the same minimal grants as ``prompt_mutator``. Registered at
     # ``tier: meta``, where META_HARD_DENIED_FLAGS (meta_rules.py) already
@@ -142,7 +147,7 @@ _EVOLVABLE_ROLES: tuple[str, ...] = (
     # violation rather than a mere denial. The CONSTITUTION_HASH pin in
     # tests/test_rqgm_kernel.py was re-pinned for this amendment.
     "policy_mutator",
-    # Constitutional amendment 2026-07-16 (plan ari_rqgm_paper/03 §5.2):
+    # Constitutional amendment 2026-07-16:
     # ``paper_writer`` is PROMOTED from a context-scope-only whitelist entry
     # (the 2026-07-15 "deliberately NOT EVOLVABLE" note below is SUPERSEDED)
     # to a full evolvable writer role, and ``paper_reviewer`` is a new
@@ -173,7 +178,7 @@ _GOVERNANCE_ROLES: tuple[str, ...] = (
     "governance_judge",
 )
 
-#: Constitutional amendment 2026-07-16 (plan 14 §5.2): ``utility_policy`` is
+#: Constitutional amendment 2026-07-16: ``utility_policy`` is
 #: deliberately NOT in ``_EVOLVABLE_ROLES`` above. It is a passive policy
 #: DOCUMENT, not an actor: it gets ONE explicit institutional row, narrower
 #: than ``_INSTITUTIONAL_BASE`` — no ``invoke``, no ``read
@@ -222,11 +227,13 @@ CAPABILITY_MATRIX: dict[tuple[str, str], frozenset[_Cap]] = (
     _build_capability_matrix()
 )
 
-# ── the violation catalogue (stable codes; §5.4/§5.5) ───────────────────────
+# ── the violation catalogue (stable codes, never renumbered) ────────────────
 
-#: ``{violation_code: "block" | "warn"}`` — the normative severity map
-#: backing the §5.5 blocking matrix. Codes are frozen once implemented and
-#: never renumbered.
+#: ``{violation_code: "block" | "warn"}`` — the normative severity map: a
+#: ``block`` code aborts the act it was raised against, a ``warn`` code is
+#: recorded and flagged but never blocks. Codes are frozen once implemented
+#: and never renumbered; the catalogue is documented in
+#: ``docs/reference/rqgm_schemas.md``, "Constitutional violation codes".
 SEVERITY: dict[str, str] = {
     # schema (CK-SCH-*)
     "CK-SCH-G01": "block",  # governance record fails schema/envelope check
@@ -273,7 +280,7 @@ SEVERITY: dict[str, str] = {
     "CK-CLN-002": "block",  # contamination detected
     # context scope (CK-CTX-*, whitelist owner: Task 12)
     "CK-CTX-001": "warn",   # role view exceeds its whitelist
-    # governed utility policy (CK-UTL-*, Task 14 §5.6)
+    # governed utility policy (CK-UTL-*, Task 14)
     "CK-UTL-001": "block",  # required key missing / extra key present
     "CK-UTL-002": "block",  # composite outside allowed_composite
     "CK-UTL-003": "block",  # frontier_score outside allowed_frontier_score
@@ -287,17 +294,16 @@ SEVERITY: dict[str, str] = {
 
 # ── context-scope whitelists (v1; Task 12 owns extension) ──────────────────
 
-#: The BFTS-facing ProposalSummaryView field whitelist (Task 03 §6.2 — the
-#: ONLY proposal representation BFTS may consume). Roles absent from this
+#: The BFTS-facing ProposalSummaryView field whitelist — the ONLY proposal
+#: representation BFTS may consume. Roles absent from this
 #: map are unchecked until Task 12 defines their views.
 #:
-#: Constitutional amendment 2026-07-15: added the ``paper_writer`` role
-#: (plan 12 §5.4 / §5.7 visibility matrix row "Paper writer"). The paper
-#: writer's deterministic view exposes EXACTLY verified context +
+#: Constitutional amendment 2026-07-15: added the ``paper_writer`` role. The
+#: paper writer's deterministic view exposes EXACTLY verified context +
 #: ``science_data`` + the claim registry and nothing else (no raw
 #: transcripts, no governance internals).
 #:
-#: Constitutional amendment 2026-07-16 (plan ari_rqgm_paper/03 §5.2–§5.3):
+#: Constitutional amendment 2026-07-16:
 #: the 2026-07-15 note that ``paper_writer`` is "deliberately NOT an
 #: EVOLVABLE_ROLES member" is SUPERSEDED — the governed writer role now
 #: lives in ari-core (not the subprocess), so it is promoted to a full
@@ -306,8 +312,8 @@ SEVERITY: dict[str, str] = {
 #: presence, not context. The new ``paper_reviewer`` evaluator role gets a
 #: fresh minimal four-field view — the archive draft under review + the same
 #: Layer-0 verified evidence the writer saw + the metrics backing the claims
-#: + the anchor/reference-case projection (its content is owned by plan
-#: ari_rqgm_paper/04). Adding these rows changes ``CONSTITUTION_HASH``; the
+#: + the anchor/reference-case projection, and nothing else.
+#: Adding these rows changes ``CONSTITUTION_HASH``; the
 #: pin in ``tests/test_rqgm_kernel.py`` was re-pinned for this amendment.
 CONTEXT_VIEW_WHITELISTS: dict[str, frozenset[str]] = {
     "generator": frozenset({
@@ -335,7 +341,7 @@ CONTEXT_VIEW_WHITELISTS: dict[str, frozenset[str]] = {
     }),
 }
 
-# ── legal utility policies (plan 14 §5.6) ──────────────────────────────────
+# ── legal utility policies (the bounds an adopted policy must satisfy) ─────
 
 #: The closed value spaces a governed utility policy must live in. Mirrors
 #: the typed config Literals (``ari.config.BFTSConfig.frontier_score``,
@@ -370,7 +376,7 @@ UTILITY_POLICY_RULES: dict = {
 }
 
 
-# ── constitution hash (plan 04 §5.7) ────────────────────────────────────────
+# ── constitution hash (content-only pin over every table above) ─────────────
 
 
 def _canonical_rules_payload() -> dict:
@@ -405,7 +411,7 @@ def _canonical_rules_payload() -> dict:
             role: sorted(fields)
             for role, fields in CONTEXT_VIEW_WHITELISTS.items()
         },
-        # Task 14 §5.6: the legality bounds a governed utility policy must
+        # Task 14: the legality bounds a governed utility policy must
         # satisfy are constitutional, so they ride the pin (tuples are
         # serialized as lists — canonical_json's JSON shape).
         "utility_policy_rules": {

@@ -1,12 +1,14 @@
-"""GovernanceSelfAudit (Task 05 §5.3 step 8) — deterministic, kernel-backed.
+"""GovernanceSelfAudit — step 8 of the nine-step audit pipeline, deterministic
+and kernel-backed (docs/reference/rqgm_schemas.md, "The motion-pipeline
+records").
 
 MetaMonitor-style audit of the governance components' own outputs this
 epoch: auditor motion precision so far, judge consistency vs. the board
 scores (clamp count), defender participation rate — plus kernel
 re-validation of every record the pipeline produced in steps 3-6, so a buggy
 or evolved governance component cannot smuggle a violating record into the
-report (§5.4: the kernel is the authority; the orchestrator's constructive
-checks are an optimization).
+report (the kernel is the authority; the orchestrator's constructive checks
+are an early optimization, never the guarantee).
 """
 
 from __future__ import annotations
@@ -19,12 +21,12 @@ _ROUND = 6
 
 
 #: Codes the constitution treats as CONTAMINATION / critical findings for the
-#: purposes of T19 (``retired -> banned``, plan 09 §5.2: "prompt-injection
-#: content, audit-log tampering attribution, or repeated clean-room-descendant
-#: failure traced to its lineage"). A component implicated by one of these is
-#: recommended for a ban; the transition engine still applies T19 only where the
-#: component is actually ``retired``, so a recommendation is never a sanction on
-#: its own.
+#: purposes of T19 (``retired -> banned``, whose contamination class is
+#: prompt-injection content, audit-log tampering attribution, or repeated
+#: clean-room-descendant failure traced to a lineage). A component implicated
+#: by one of these is recommended for a ban; the transition engine still
+#: applies T19 only where the component is actually ``retired``, so a
+#: recommendation is never a sanction on its own.
 CONTAMINATION_CODES: frozenset[str] = frozenset({
     "CK-AUD-001",   # audit-log append-only violation
     "CK-AUD-002",   # audit-log prefix tampering
@@ -67,7 +69,8 @@ def run_self_audit(
     checked_components: list,
     degradations: list,
 ) -> dict:
-    """Build the §6.1 ``self_audit`` block (never raises; degrades)."""
+    """Build the governance report's ``self_audit`` block (never raises;
+    degrades into ``degradations`` instead)."""
     posted = len(motions)
     upheldish = sum(
         1

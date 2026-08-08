@@ -3,15 +3,15 @@
 docs/concepts/rqgm_architecture.md §Key invariants, invariant 6
 "Selective erasure is logical-only").
 
-Covers: the pure ``trace_dependents`` closure (direct hits, transitive
-propagation, materiality context pairs, cycle tolerance, idempotence, depth
-overflow, deterministic ordering — §9.1), the pure ``rebuild_frontier``
-(stale/invalid/sterile exclusion, Rule-A reinstatement, Rule B via
-``len(children)``, determinism, depth cutoff — §9.2), the per-role
-invalidate-vs-recompute policy (§9.3), the epoch-boundary smoke (§9.4), the
-no-physical-deletion byte-compare (§9.5), kernel detection + the
-conservative → drain-only failure ladder (§9.6), resume determinism (§9.7),
-and the ``simple_bfts`` regression / META_FILES hygiene (§9.8).
+Covers, in file order: the pure ``trace_dependents`` closure (direct hits,
+transitive propagation, materiality context pairs, cycle tolerance,
+idempotence, depth overflow, deterministic ordering), the pure
+``rebuild_frontier`` (stale/invalid/sterile exclusion, Rule-A reinstatement,
+Rule B via ``len(children)``, determinism, depth cutoff), the per-role
+invalidate-vs-recompute policy, the epoch-boundary smoke, the
+no-physical-deletion byte-compare, kernel detection + the
+conservative → drain-only failure ladder, resume determinism,
+and the ``simple_bfts`` regression / META_FILES hygiene.
 
 No test calls a real LLM; all inputs are deterministic fixtures (P2).
 """
@@ -152,7 +152,7 @@ def _utility(rid, node_id, *, vat_ids=(), extra_refs=(), base=0.8,
     )
 
 
-# ── §9.1 trace_dependents (pure, no I/O) ────────────────────────────────────
+# ── trace_dependents: the stale closure is pure, no I/O ─────────────────────
 
 
 def test_trace_direct_hits_by_retired_hash():
@@ -183,7 +183,8 @@ def test_trace_transitive_closure_through_source_refs():
 
 def test_trace_context_pair_not_staled():
     # A proposal citing an ancestor's proposal is inspiration, not evidence
-    # (P-B slot-scoping): the §5.3 materiality table exempts the pair.
+    # (P-B slot-scoping): the materiality table exempts that one type pair,
+    # and every unlisted pair stays load-bearing.
     records = [
         _rec("prop_001", "proposal_record", prompt_hash=_H, role="generator"),
         _rec("prop_002", "proposal_record", role="generator",
@@ -258,7 +259,7 @@ def test_trace_deterministic_output():
     assert sorted(a.all_stale()) == sorted(b.all_stale())
 
 
-# ── §9.2 rebuild_frontier (pure) ────────────────────────────────────────────
+# ── rebuild_frontier: eligibility recomputed from scratch, pure ─────────────
 
 
 def test_rebuild_excludes_stale_invalid_and_sterile():
@@ -315,7 +316,7 @@ def test_rebuild_honors_erasure_state_invalid_ids():
     assert [n.id for n in out] == ["n1"]
 
 
-# ── §9.3 per-role policy ────────────────────────────────────────────────────
+# ── per-role policy: which retirements invalidate vs recompute ──────────────
 
 
 def test_generator_retirement_invalidates_node_and_abandons_pending(tmp_path):
@@ -433,7 +434,8 @@ def test_utility_policy_retirement_invalidates_no_rescaling(tmp_path):
     )
     assert result.status == "applied"
     assert node.metrics["_valid_for_frontier"] is False
-    # Utility-policy retirement is NOT a generator retirement (§5.4 row 5).
+    # Utility-policy retirement is NOT a generator retirement: it invalidates
+    # the SCORE, not the node's direction, so the cause stamped differs.
     assert node.metrics["_stale_reason"] == "utility_invalidated"
     assert result.rebuild_event["recomputed_utility_node_ids"] == []
     assert result.rebuild_event["frontier_after"] == []
@@ -571,7 +573,7 @@ def test_recompute_utilities_false_invalidates_instead(tmp_path):
     assert node.metrics["_stale_reason"] == "utility_invalidated"
 
 
-# ── §9.4 epoch-boundary smoke ───────────────────────────────────────────────
+# ── epoch-boundary smoke: events, state and frontier end to end ─────────────
 
 
 def test_boundary_smoke_events_state_and_frontier(tmp_path):
@@ -651,7 +653,7 @@ def test_repair_second_run_is_idempotent(tmp_path):
     assert second.erasure_event["direct_stale_record_ids"] == []
 
 
-# ── §9.5 no physical deletion ───────────────────────────────────────────────
+# ── no physical deletion: every store is byte-identical after a repair ──────
 
 
 def test_no_physical_deletion_byte_compare(tmp_path):
@@ -669,7 +671,8 @@ def test_no_physical_deletion_byte_compare(tmp_path):
     )
     (tmp_path / "prompt_trace.jsonl").write_text('{"prompt_name": "x"}\n')
     (tmp_path / "memory_store.jsonl").write_text('{"kind": "memory"}\n')
-    # The paper anchor corpus (doc 04 §5.7 / §8.3): origin_epoch_id="anchor_static",
+    # The paper anchor corpus is human-curated and epoch-independent:
+    # origin_epoch_id="anchor_static",
     # outside every prompt-hash closure, so a retirement must NEVER rewrite it
     # (invariant 13 / physical-erasure-free — the deletion-criteria byte-compare).
     (tmp_path / "paper_anchor_corpus.jsonl").write_text(
@@ -725,7 +728,7 @@ def test_no_physical_deletion_byte_compare(tmp_path):
     assert "prop_001" in state["stale_record_ids"]
 
 
-# ── §9.6 kernel detection + failure ladder ──────────────────────────────────
+# ── kernel detection + the conservative → drain-only failure ladder ─────────
 
 
 def test_kernel_detects_stale_frontier_and_conservative_repair_clears(
@@ -790,7 +793,7 @@ def test_double_failure_degrades_to_halted_expansion(tmp_path):
 
 
 def test_prompt_trace_cross_check_detects_missing_producer(tmp_path):
-    # §5.3 secondary evidence: a prompt_trace line carries the retired hash
+    # Secondary evidence: a prompt_trace line carries the retired hash
     # but NO record was produced by that prompt — the producer index missed
     # an LLM output. The kernel flags CK-ERA-006; a conservative drop cannot
     # recreate the record, so the ladder degrades to drain-only.
@@ -836,7 +839,7 @@ def test_prompt_trace_cross_check_passes_when_mapped(tmp_path):
     assert "rev_001" in result.erasure_event["direct_stale_record_ids"]
 
 
-# ── §9.7 resume determinism ─────────────────────────────────────────────────
+# ── resume determinism: sentinels and state survive a round trip ────────────
 
 
 def _roundtrip_node(d: dict) -> Node:
@@ -903,7 +906,7 @@ def test_erasure_state_fold_roundtrip(tmp_path):
     assert empty.stale_ids() == frozenset()
 
 
-# ── §9.8 simple_bfts regression + hygiene ───────────────────────────────────
+# ── simple_bfts stays inert + META_FILES hygiene ────────────────────────────
 
 
 def test_should_prune_additive_clause_inert_without_key():
@@ -922,7 +925,8 @@ def test_flag_node_retains_score_and_selection_excludes_it():
     # invariant is that every best-node consumer reads the sentinel —
     # BFTS.should_prune for expansion (above) and
     # verified_context.select_best_node for the paper candidate/seed
-    # (plan 10 §1 "selected"; the §3 memory-consumer deferral, settled).
+    # (those two are the whole "selected" surface; memory consumers are a
+    # settled deferral and are NOT required to read it).
     from ari.pipeline.verified_context import select_best_node
 
     stale = _node("stale", score=0.9)
@@ -991,7 +995,7 @@ def test_defaults_yaml_parity_with_typed_model():
     assert block["abandon_stale_pending"] == model.abandon_stale_pending
 
 
-# ── runtime wiring (Task 10 §5.2 hook shape) ────────────────────────────────
+# ── runtime wiring: the boundary hook shape the runtime calls ───────────────
 
 
 class _StubRepairEngine:

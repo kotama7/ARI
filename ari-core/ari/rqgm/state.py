@@ -1,15 +1,17 @@
 """RQGM run-level state: mode provenance (Task 01) + EpochState (Task 02).
 
-Two concerns share this module (plan 02 §5.3 places ``EpochState`` here):
+Two concerns share this module — ``EpochState`` lives here, not in
+:mod:`ari.rqgm.store`, which owns only its persistence:
 
 1. **Mode provenance** — ``{ckpt}/rqgm_state.json``. Absence of the file ==
    pure ``simple_bfts`` run == a current-ARI trajectory (P5
    absence-is-default, mirrored from ``bfts_web_provenance.json``). Written
    only when the effective mode is ``ari_rqgm``. Read-precedence rule
-   (normative for Tasks 02-13, plan 01 §5.5): persisted state → typed ``cfg``
+   (normative for Tasks 02-13): persisted state → typed ``cfg``
    → defaults; no RQGM code re-reads the package workflow.yaml directly.
 2. **EpochState** — the immutable per-epoch freeze of the active component
-   set, prompt hashes, and utility policy (plan 02 §5.6, §6), plus its
+   set, prompt hashes, and utility policy (wire shape:
+   ``docs/reference/rqgm_schemas.md``, "`epoch_state.schema.json`"), plus its
    deterministic ``epoch_fingerprint``. Persistence lives in
    :mod:`ari.rqgm.store` (event-log truth + ``epoch_state.json`` rollup).
 
@@ -45,7 +47,9 @@ RQGM_STATE_FILENAME = "rqgm_state.json"
 CONSTITUTION_FILENAME = "constitution.yaml"
 RQGM_STATE_SCHEMA_VERSION = 1
 
-# mode_source vocabulary (plan 01 §6.2): how the persisted mode was decided.
+# mode_source vocabulary — how the persisted mode was decided: from the
+# config file, from an env override, or forced by an ``ari resume``. Closed
+# set; anything else is coerced to "config" with a warning.
 MODE_SOURCES = ("config", "env", "resume")
 
 
@@ -72,7 +76,8 @@ def write_rqgm_state(checkpoint_dir: str | Path, state: dict) -> None:
 def build_run_start_state(
     *, mode: str, rqgm_enabled: bool, mode_source: str = "config"
 ) -> dict:
-    """Schema-v1 run-start payload (plan 01 §6.2).
+    """Schema-v1 run-start payload: mode, ``rqgm_enabled``, ``mode_source``
+    and a one-entry ``switch_journal`` recording the run_start decision.
 
     ``created_at`` is metadata only — never hashed and never read by decision
     logic (P2 determinism holds for every consumer of this file).
@@ -118,9 +123,9 @@ def persist_run_start(
 def copy_constitution_if_missing(checkpoint_dir: str | Path) -> None:
     """Copy the bundled ``constitution.yaml`` into the checkpoint (copy-once).
 
-    Follows the workflow.yaml copy pattern with the same don't-clobber guard
-    (plan 01 §5.7): the constitutional layer is non-evolving, so the copy
-    happens at most once and the checkpoint copy is read-only thereafter.
+    Follows the workflow.yaml copy pattern with the same don't-clobber guard:
+    the constitutional layer is non-evolving, so the copy happens at most
+    once and the checkpoint copy is read-only thereafter.
     Task 04 ships the bundled file at ``ari-core/config/constitution.yaml``
     (a human-readable statement — the authoritative rules stay in code);
     under any packaging without it, absence is a silent no-op.
@@ -141,8 +146,8 @@ def copy_constitution_if_missing(checkpoint_dir: str | Path) -> None:
 
 
 def record_constitution_hash(checkpoint_dir: str | Path) -> None:
-    """Additively record ``constitution_hash`` in ``{ckpt}/meta.json``
-    (plan 04 §6): children of an RQGM run inherit it and the existing viz
+    """Additively record ``constitution_hash`` in ``{ckpt}/meta.json``:
+    children of an RQGM run inherit it and the existing viz
     launch gates can check it. Best-effort and additive-only — an existing
     key or an unreadable file is never clobbered, and failure never breaks
     the run. Never called under ``simple_bfts``.
@@ -176,7 +181,7 @@ def record_constitution_hash(checkpoint_dir: str | Path) -> None:
 
 
 def reconcile_resume_mode(cfg: "ARIConfig", checkpoint_dir: str | Path) -> None:
-    """Force *cfg* to the persisted mode on ``ari resume`` (plan 01 §5.5).
+    """Force *cfg* to the persisted mode on ``ari resume``.
 
     The persisted mode wins over package config and env; a disagreement
     produces a warning, never a mid-run mode flip. A checkpoint without
@@ -218,7 +223,7 @@ def reconcile_resume_mode(cfg: "ARIConfig", checkpoint_dir: str | Path) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# EpochState (RQGM Task 02, plan 02 §5.6 / §6)
+# EpochState (RQGM Task 02)
 # ─────────────────────────────────────────────────────────────────────────────
 
 EPOCH_STATE_SCHEMA_VERSION = 2
@@ -272,7 +277,8 @@ class EpochState:
 
 
 def epoch_state_payload(state: EpochState) -> dict:
-    """Deterministic EpochState fields, §6 key order, WITHOUT ``created_at``.
+    """Deterministic EpochState fields in schema key order, WITHOUT
+    ``created_at`` (P2: no wall clock inside a hashed body).
 
     This is both the hashed body carried inside ``epoch_open`` events and the
     snapshot body (the snapshot re-adds ``created_at`` last).
@@ -365,7 +371,7 @@ def epoch_fingerprint(state: EpochState) -> str:
 
 def epoch_state_from_payload(payload: dict, *, created_at: str = "") -> EpochState:
     """Rebuild an :class:`EpochState` from an ``epoch_open`` event payload
-    (replay path, plan 02 §5.7). ``created_at`` comes from the event's
+    (replay path). ``created_at`` comes from the event's
     ``ts_iso`` envelope metadata."""
     return EpochState(
         epoch_id=str(payload.get("epoch_id", "")),
@@ -499,13 +505,14 @@ def capture_execution_identity(cfg, scientific_identity: dict | None = None) -> 
 
 def utility_policy_body(cfg) -> dict:
     """The utility-policy BODY from the resolved config — the hashed keys
-    only, WITHOUT ``utility_policy_hash`` (plan 02 §5.6.2, plan 14 §6.1).
+    only, WITHOUT ``utility_policy_hash`` — the seal is never part of the
+    bytes it seals.
 
     Duck-typed ``getattr`` reads keep this total over pre-RQGM cfg objects
     and stub configs. ``canonical_json`` of this dict is exactly the bytes a
     governed utility-policy body file carries, so ``hash12`` of those bytes
     IS the entry's ``prompt_hash`` IS ``utility_policy_hash`` — one value,
-    three names, zero new hashing (plan 14 §5.3).
+    three names, zero new hashing.
     """
     ev = getattr(cfg, "evaluator", None)
     bf = getattr(cfg, "bfts", None)
@@ -533,7 +540,7 @@ def seal_utility_policy(body: dict) -> dict:
 
 
 def capture_utility_policy(cfg, registries=None, *, checkpoint_dir=None) -> dict:
-    """Freeze the utility policy for the epoch about to open (plan 14 §5.7).
+    """Freeze the utility policy for the epoch about to open.
 
     **Precedence**: the ADOPTED policy in *registries* (the active
     ``utility_policy`` entry, resolved through
@@ -543,7 +550,7 @@ def capture_utility_policy(cfg, registries=None, *, checkpoint_dir=None) -> dict
     adopts a policy — freezes exactly today's policy.
 
     This is the CAUSE half of the defining claim that at each epoch boundary
-    the entire score is rewritten (plan 14 §1). Before Task 14 this function
+    the entire score is rewritten. Before Task 14 this function
     read only the static resolved cfg, so ``utility_policy_hash`` was a
     permanent constant for a run and the retirement that
     ``ari.rqgm.frontier_repair`` waits for could never fire. It now changes
@@ -577,7 +584,8 @@ def _adopted_utility_policy_body(registries, *, checkpoint_dir=None) -> dict | N
     ``None`` covers every pre-Task-14 shape: no registry at all
     (``simple_bfts`` / stubs), a registry with no ``utility_policy`` entry
     (epoch 0 before founding registration; a resumed pre-14 checkpoint), and
-    any read/parse/verify failure (plan 14 §5.7 branches 1-3).
+    any read/parse/verify failure. Each of those falls back to the cfg
+    policy rather than raising.
     """
     try:
         prompts = getattr(registries, "prompts", None)
@@ -646,7 +654,7 @@ def freeze_epoch(
     utility_policy_override: dict | None = None,
     scientific_identity: dict | None = None,
 ) -> EpochState:
-    """Construct the frozen :class:`EpochState` at epoch open (plan 02 §5.6).
+    """Construct the frozen :class:`EpochState` at epoch open.
 
     *registries* is any object exposing ``components``
     (:class:`ari.rqgm.registry.ComponentRegistry`) and ``prompts``
@@ -654,7 +662,7 @@ def freeze_epoch(
     ``ari.rqgm.store.RqgmRuntimeState`` qualifies. The active maps are
     copied here, so the frozen state never tracks later registry objects.
 
-    *checkpoint_dir* (optional, plan 14 §5.7) roots the adopted
+    *checkpoint_dir* (optional) roots the adopted
     utility-policy body read; omitted, it falls back to the
     ``ARI_CHECKPOINT_DIR`` run pin.
     """
@@ -671,7 +679,8 @@ def freeze_epoch(
         active_prompt_hashes=dict(registries.prompts.active_prompt_hashes()),
         active_prompt_hash_set=sorted(
             registries.prompts.active_prompt_hash_set()),
-        # Plan 14 §5.7 — the entire cause-side wiring, in one argument. Both
+        # The entire cause-side wiring of the governed policy, in one
+        # argument. Both
         # call sites are correct for free: ``store.open_epoch`` passes the
         # base state (no utility_policy entry at epoch 0 ⇒ the cfg
         # fallback), and ``store.run_boundary`` passes the TENTATIVE state

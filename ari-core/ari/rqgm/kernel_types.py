@@ -1,4 +1,4 @@
-"""Verdict model of the ConstitutionalKernel (RQGM Task 04, plan 04 §5.3).
+"""Verdict model of the ConstitutionalKernel (RQGM Task 04).
 
 Pure frozen dataclasses — no I/O, no LLM, no wall clock (P2). The kernel
 *returns* :class:`KernelReport`; it never raises on rule violations (only on
@@ -9,15 +9,17 @@ Task 02 audit log (``rqgm_audit.jsonl``) via
 Severity is part of the constitution: it is fixed per violation code in
 ``ari.rqgm.kernel_rules.SEVERITY``, never chosen by callers. In mid-epoch
 contexts adapters downgrade *behavior* to warn-and-flag; the violation record
-itself keeps its severity so the boundary pass can act on it (plan 04 §5.5).
+itself keeps its severity so the boundary pass can act on it.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-#: Verdict contexts (plan 04 §5.3 plus the audit/clean-room/context-scope
-#: check families of §5.4; closed vocabulary).
+#: Verdict contexts: one per check family the kernel can be invoked for.
+#: Closed vocabulary — a report's ``context`` must be one of these, and the
+#: caller's context (not the report) decides whether a blocking verdict
+#: vetoes or only warns.
 KERNEL_CONTEXTS: tuple[str, ...] = (
     "epoch_transition",
     "frontier_rebuild",
@@ -38,7 +40,7 @@ SEVERITY_WARN = "warn"
 
 @dataclass(frozen=True)
 class Violation:
-    """One deterministic finding (plan 04 §5.3).
+    """One deterministic finding.
 
     ``code`` is a stable id (e.g. ``"CK-REG-001"``, never renumbered);
     ``detail`` is a deterministic message — no timestamps, no absolute paths.
@@ -64,7 +66,7 @@ class Violation:
 
 @dataclass(frozen=True)
 class KernelReport:
-    """The kernel's verdict over one check invocation (plan 04 §5.3).
+    """The kernel's verdict over one check invocation.
 
     ``violations`` are sorted by ``(code, subject_ref)`` at construction
     (see :func:`make_report`) so identical inputs yield byte-identical
@@ -77,8 +79,10 @@ class KernelReport:
     @property
     def blocking(self) -> bool:
         """True iff any violation carries block severity. Whether a blocking
-        report actually vetoes a state change is the caller's context per the
-        §5.5 blocking matrix (and ``enforcement: audit_only`` downgrades)."""
+        report actually vetoes a state change is decided by the caller, not
+        here: boundary passes veto, mid-epoch adapters warn-and-flag, and
+        ``rqgm.kernel.enforcement: audit_only`` downgrades every context to
+        warn-and-log."""
         return any(v.severity == SEVERITY_BLOCK for v in self.violations)
 
     @property
@@ -112,7 +116,7 @@ def merge_reports(context: str, reports: "list[KernelReport]") -> KernelReport:
 def kernel_report_audit_payload(
     report: KernelReport, constitution_hash: str
 ) -> dict:
-    """The ``kernel_report`` audit-log entry payload (plan 04 §6): every
+    """The ``kernel_report`` audit-log entry payload: every
     verdict is replayable — context, pinned constitution, sorted findings."""
     return {
         "context": report.context,

@@ -6,7 +6,7 @@ docs/concepts/rqgm_architecture.md §Key invariants, invariant 7
 Covers: the CleanRoomGenerationRequest schema (const-false forbidden flags,
 envelope, status enum — dataclass mirror + jsonschema), the deterministic
 closed-field bundle assembler (planted forbidden material never enters a
-bundle; byte-identical re-assembly, P2), the §5.5 contamination screen
+bundle; byte-identical re-assembly, P2), the contamination screen
 (planted shingle hit, allowlist subtraction, normalization, empty corpora,
 determinism), the Layer-B retired-text capability denial (violating read →
 kernel CK-ACC-002 + audit-log violation; kernel-checker actor exempt), the
@@ -17,7 +17,7 @@ filename registration, the retirement→request→generation→candidate
 integration chain (stub LLM; the provenance-logged context hash proves no
 extra context reached the stub), the LLMClient-shaped injection (``.complete``
 object, not callable — the production ``build_runtime`` shape) with the
-metadata-less TypeError fallback, the full-§5.5 forbidden corpus (attack and
+metadata-less TypeError fallback, the full forbidden corpus (attack and
 defense bodies from the case log, audit outputs under a retired prompt_hash)
 with the overfit-candidate rejection and the FailureSummary covert-channel
 pre-screen block, the contaminated-output fail-open path
@@ -189,7 +189,7 @@ def _plant_case_log(tmp_path, *records):
         assert case_log.append(record)
 
 
-# ── §9.1 request schema ──────────────────────────────────────────────────────
+# ── request schema: forbidden inputs const-false, status enum closed ─────────
 
 
 def test_clean_room_request_schema_valid_and_forbidden_flags():
@@ -230,7 +230,7 @@ def test_clean_room_request_jsonschema_round_trip():
         jsonschema.validate(dict(record, status="not-a-status"), schema)
 
 
-# ── §9.2 bundle assembler ────────────────────────────────────────────────────
+# ── bundle assembler: closed fields, byte-identical, no registry text ────────
 
 
 def test_bundle_assembler_closed_fields_and_determinism():
@@ -245,12 +245,13 @@ def test_bundle_assembler_closed_fields_and_determinism():
     }]
     one = assembler.assemble(request, failure_summaries=summaries)
     two = assembler.assemble(request, failure_summaries=summaries)
-    # Exactly the closed field set (plan 08 §6.2, additionalProperties=false).
+    # Exactly the closed field set (``clean_room_bundle.schema.json`` is
+    # additionalProperties=false).
     assert sorted(one.to_dict()) == sorted(rules.BUNDLE_FIELDS)
     # Byte-identical bundles and equal hashes for identical inputs (P2).
     assert canonical_json(one.to_dict()) == canonical_json(two.to_dict())
     assert one.bundle_hash == two.bundle_hash == compute_bundle_hash(one)
-    # The §6.3 summary shape: classes from the closed vocabulary, stamp set.
+    # The FailureSummary shape: classes from the closed vocabulary, stamp set.
     summary = one.abstract_failure_summary
     assert summary["failure_classes"] == ["metric_gaming"]
     assert summary["contamination_screen"]["passed"] is True
@@ -284,7 +285,7 @@ def test_bundle_jsonschema_round_trip():
         )
 
 
-# ── §9.3 contamination screen ────────────────────────────────────────────────
+# ── contamination screen: planted shingles hit, allowlist subtracts ──────────
 
 
 def test_contamination_screen_hit_allowlist_and_normalization():
@@ -347,7 +348,7 @@ def test_kernel_post_screen_fail_on_any_hit_and_allowlist():
     ).ok
 
 
-# ── §9.4 capability denial (Layer B) ─────────────────────────────────────────
+# ── capability denial (Layer B): retired text unreadable, denial logged ──────
 
 
 def test_retired_prompt_text_read_denied_and_logged(tmp_path):
@@ -386,7 +387,7 @@ def test_retired_prompt_text_read_denied_and_logged(tmp_path):
     assert [v.code for v in report.violations] == ["CK-ACC-002"]
 
 
-# ── §9.5 never instantly active ──────────────────────────────────────────────
+# ── never instantly active: a generated prompt enters as a candidate ─────────
 
 
 def test_clean_room_candidate_never_active(tmp_path):
@@ -445,7 +446,7 @@ def test_generator_exposes_no_registry_write_surface():
         assert forbidden not in text, forbidden
 
 
-# ── §9.6 budget ──────────────────────────────────────────────────────────────
+# ── budget: over-budget requests stay pending and retry next boundary ────────
 
 
 def test_clean_room_budget_second_request_stays_pending(tmp_path):
@@ -470,7 +471,7 @@ def test_clean_room_budget_second_request_stays_pending(tmp_path):
     assert pending_requests(tmp_path) == []
 
 
-# ── §9.7 FailureSummary admissibility ────────────────────────────────────────
+# ── FailureSummary admissibility: closed class vocabulary + screen stamp ─────
 
 
 def test_failure_summary_admissibility():
@@ -540,7 +541,7 @@ def test_kernel_blocks_out_of_contract_bundles():
     assert report.blocking
 
 
-# ── §9.8 filename registration ───────────────────────────────────────────────
+# ── filename registration: a meta file, never copied into a node ─────────────
 
 
 def test_cleanroom_files_are_meta_files():
@@ -555,7 +556,7 @@ def test_cleanroom_files_are_meta_files():
     assert CLEANROOM_FILENAME in _FILES_CHANGED_BLOCKLIST_NAMES
 
 
-# ── §9.9 integration: retirement → request → candidate ──────────────────────
+# ── integration: retirement → request → candidate ───────────────────────────
 
 
 def test_integration_full_chain_with_stub_llm(tmp_path):
@@ -697,11 +698,11 @@ def test_generator_accepts_metadata_less_complete_stub(tmp_path):
     assert candidate.status == "candidate"
 
 
-# ── §5.5 forbidden corpus width (attack/defense bodies, audit outputs) ──────
+# ── forbidden corpus width (attack/defense bodies, audit outputs) ────────────
 
 
 def test_forbidden_corpus_covers_case_bodies_and_audit_outputs(tmp_path):
-    """The production corpus is the full §5.5 set: retired prompt text,
+    """The production corpus is the full forbidden set: retired prompt text,
     RawAttackRecord bodies, DefenderResponse bodies, and audit-log outputs
     produced under a retired ``prompt_hash`` — never only prompt text."""
     from ari.rqgm.store import ImmutableAuditLog
@@ -848,9 +849,10 @@ def test_clean_room_candidate_id_dedups_against_the_shared_log(tmp_path):
 
 
 def test_integration_candidate_overfit_to_attack_text_rejected(tmp_path):
-    """Plan 08 §5.2 rationale (b): a candidate embedding verbatim attack
-    strings is blocked by the production post-screen because the forbidden
-    corpus includes RawAttackRecord bodies from the checkpoint case log."""
+    """A candidate that overfits by embedding verbatim attack strings is
+    blocked by the production post-screen, because the forbidden corpus
+    includes RawAttackRecord bodies from the checkpoint case log — not only
+    retired prompt text."""
     _plant_case_log(tmp_path, {
         "record_type": "raw_attack",
         "record_id": "atk_000001",
@@ -880,7 +882,7 @@ def test_integration_candidate_overfit_to_attack_text_rejected(tmp_path):
 def test_integration_summary_smuggling_attack_text_blocked_pre_screen(
     tmp_path,
 ):
-    """The §10 covert channel in production: a FailureSummary smuggling
+    """The FailureSummary covert channel in production: a summary smuggling
     recorded attack text into ``behavioral_requirements`` is blocked by the
     kernel's pre-generation screen — before any LLM call is spent."""
     _plant_case_log(tmp_path, {
@@ -912,7 +914,7 @@ def test_integration_summary_smuggling_attack_text_blocked_pre_screen(
     assert "generation_attempted" not in kinds
 
 
-# ── §9.10 resume safety ─────────────────────────────────────────────────────
+# ── resume safety: a pending request survives a fresh coordinator ────────────
 
 
 def test_pending_requests_survive_resume(tmp_path):
@@ -932,7 +934,7 @@ def test_pending_requests_survive_resume(tmp_path):
     assert outcomes[0]["status"] == "generated"
 
 
-# ── §9.11 config parity + simple_bfts regression ────────────────────────────
+# ── config parity + simple_bfts regression ───────────────────────────────────
 
 
 def test_clean_room_config_mirrors_defaults_yaml():
@@ -952,7 +954,7 @@ def test_clean_room_config_mirrors_defaults_yaml():
     assert screen["fail_on_any_hit"] == (
         typed.contamination_screen.fail_on_any_hit
     )
-    # The budget rides Task 07's prompt_evolution block (plan 08 §6.5).
+    # The budget rides Task 07's prompt_evolution block, not clean_room's.
     assert raw["rqgm"]["prompt_evolution"][
         "max_clean_room_generations_per_epoch"
     ] == ARIConfig().rqgm.prompt_evolution.max_clean_room_generations_per_epoch

@@ -2785,8 +2785,9 @@ async def paper_refine(
     # of regenerating the entire document, which (with the slow CLI shim) timed out.
     # writer_prompt_override == "" (linear default) => byte-identical to today.
     # Under rqgm_archive the governed paper_writer prompt is prepended so the
-    # refine is framed by the epoch's ACTIVE writer bytes (§5.8); the skill
-    # still evolves nothing.
+    # refine is framed by the epoch's ACTIVE writer bytes; the core owns the
+    # prompt-evolution lifecycle and this skill only receives the bytes for
+    # the epoch it was called in — it still evolves nothing.
     system_prompt = (
         ((writer_prompt_override + "\n\n") if writer_prompt_override else "")
         + _load_prompt("global_coherence")

@@ -1,9 +1,8 @@
 """Phase PC regression — extracted prompt files stay byte-identical.
 
-PROMPTS_AND_CONFIG.md §4 demands a sha256 hash check on every
-externalised prompt so a stray ``\\n`` change cannot silently shift
-LLM behaviour.  Add a row here for each new ``ari/prompts/<key>.md``
-that lands.
+Every externalised prompt carries a sha256 hash check here, so a stray
+``\\n`` change cannot silently shift LLM behaviour.  Add a row for each new
+``ari/prompts/<key>.md`` that lands.
 """
 from __future__ import annotations
 
@@ -156,10 +155,11 @@ _EXPECTED_HASHES: list[tuple[str, str]] = [
         "rqgm/clean_room_generator",
         "1def8e77f92fdd0e735708f6b2fa5fd5d878b9b297a84c68d2e266552e880550",
     ),
-    # Paper-archive co-evolution (plan ari_rqgm_paper/03 §5.5) — the governed
-    # manuscript writer/reviewer founding templates, LIFTED byte-identical
-    # from ari-skill-paper/src/prompts/{paper_writer,academic_reviewer}.md so
-    # the governed roles start from exactly today's proven behavior.
+    # Paper-archive co-evolution (docs/concepts/rqgm_architecture.md, "The
+    # paper-archive layer") — the governed manuscript writer/reviewer founding
+    # templates, LIFTED byte-identical from
+    # ari-skill-paper/src/prompts/{paper_writer,academic_reviewer}.md so the
+    # governed roles start from exactly today's proven behavior.
     (
         "rqgm/paper_writer",
         "f38a15f0f140912dcd7eb5df13ca4ff706f60c4731c3c9feea508c1fb21cba7c",

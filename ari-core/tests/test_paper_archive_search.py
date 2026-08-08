@@ -232,7 +232,7 @@ def test_diversity_bonus_is_real_not_zero():
     assert s2.select_best_to_expand([under, over], "g", None) is under
 
 
-# ── budget cap + depth-independence (§5.1 / §9) ─────────────────────────────
+# ── budget cap: the per-epoch total binds before the depth cap ──────────────
 
 def _run_full_archive(tmp_path, cfg, mcp=None, reviewer=None):
     (tmp_path / "tree.json").write_text(json.dumps({"run_id": "r", "nodes": []}))
@@ -243,8 +243,9 @@ def _run_full_archive(tmp_path, cfg, mcp=None, reviewer=None):
                   metrics={"_scientific_score": 0.9})]
     called = {}
     rt.run_archive(nodes, {"goal": "g"}, tmp_path, mcp, "wf.yaml",
-                   # **kw: the handoff passes `disable_stages` when a winner was
-                   # materialised (07 §5.4/R5 — see test_rqgm_paper_eval.py).
+                   # **kw: the handoff passes `disable_stages` when a winner
+                   # was materialised, so the linear fallback runs only the
+                   # verification tail (see test_rqgm_paper_eval.py).
                    linear_fallback=lambda *a, **kw: called.setdefault(
                        "linear", True))
     return mcp, called
@@ -401,7 +402,7 @@ def test_production_failure_envelopes_raise_instead_of_writing_empty_draft(
     assert not tex.exists() or tex.read_text(encoding="utf-8") == ""
 
 
-# ── §6.1 / Q-49: drafts are versioned across EPOCHS, never overwritten ──────
+# ── Q-49: drafts are versioned across EPOCHS, never overwritten ─────────────
 
 class VaryingPaperMCP(ScriptedPaperMCP):
     """Like ScriptedPaperMCP but every call yields DIFFERENT bytes — i.e. any
@@ -444,7 +445,7 @@ class VaryingPaperMCP(ScriptedPaperMCP):
 
 
 class InterruptingPaperMCP(VaryingPaperMCP):
-    """A writer that dies partway — the §9 "archive interrupted" condition. The
+    """A writer that dies partway — the "archive interrupted" condition. The
     records already appended survive; no winner is finalised, so nothing is
     materialised to the canonical path."""
 
@@ -462,9 +463,9 @@ class InterruptingPaperMCP(VaryingPaperMCP):
 
 
 def test_drafts_from_different_epochs_do_not_overwrite_each_other(tmp_path):
-    """§6.1: "every draft is a content-hashed record, never an in-place
-    overwrite of `full_paper.tex`"; `tex_sha256` = "drafts are versioned, not
-    overwritten".
+    """The archive-record rule: every draft is a content-hashed record, never
+    an in-place overwrite of `full_paper.tex`; `tex_sha256` is what makes
+    "drafts are versioned, not overwritten" checkable.
 
     Node ids are re-minted every round by a fresh `PaperArchiveStrategy`, and the
     tex path used to key off `node.id` alone — so epoch_001's `draft_0`
@@ -494,12 +495,13 @@ def test_drafts_from_different_epochs_do_not_overwrite_each_other(tmp_path):
             (tmp_path / r["tex_path"]).read_text(encoding="utf-8").encode("utf-8")
         ).hexdigest()
         assert got == r["tex_sha256"], f"stale hash for {r['node_id']}"
-    # (c) §6.1: exactly one record is the best belief, for exactly one compile
+    # (c) exactly one record is the best belief, for exactly one compile
     assert sum(1 for r in recs if r.get("is_best_belief")) == 1
     compiles = [c for c in mcp.calls if c[0] == "compile_paper"]
     assert sum(1 for r in recs if r.get("compiled")) == len(compiles)
     # node ids DO still repeat across epochs — the fix scopes the filesystem, not
-    # the ids (§6.1 pins draft_0 / draft_0.r1), so mark_paper_draft_flags'
+    # the ids (every round still mints draft_0 / draft_0.r1), so
+    # mark_paper_draft_flags'
     # clear-others rule stays load-bearing rather than degrading to a no-op.
     assert len({r["node_id"] for r in recs}) < len(recs)
 
@@ -559,7 +561,8 @@ def test_high_threshold_skips_compile_but_still_copies(tmp_path):
 
 
 def test_exactly_one_record_carries_a_flag_across_duplicate_node_ids(tmp_path):
-    """§6.1: exactly one record carries `is_best_belief` / `compiled`.
+    """Across the whole archive, exactly one record carries `is_best_belief` /
+    `compiled`.
 
     Node ids are re-minted every round by a fresh `PaperArchiveStrategy`, so
     several records share a `node_id`. `mark_paper_draft_flags` marked EVERY
@@ -744,7 +747,8 @@ def test_startup_smoke_seeds_and_reaches_depth(tmp_path):
 
 def test_degraded_on_ramp_single_framing(tmp_path):
     """prompt_evolution.enabled=false -> best-of-N, single framing across all
-    seed records; the strategy/executor code path is unchanged (§5.6)."""
+    seed records; the strategy/executor code path is unchanged — the on-ramp
+    removes framings, not machinery."""
     cfg = _archive_cfg()
     cfg.rqgm.paper.prompt_evolution.enabled = False
     _run_full_archive(tmp_path, cfg)
@@ -797,7 +801,7 @@ def test_cli_paper_entry_boots_archive(tmp_path, monkeypatch):
     assert state["paper_mode"] == "rqgm_archive"
     assert state["seed_node_id"] == "n1"
     recs = read_paper_draft_archive(tmp_path)
-    # Task 03 §5.9 makes run_archive multi-round (co-evolution): each round
+    # run_archive is multi-round (co-evolution — one round per epoch): each round
     # seeds `width` drafts, so the CLI-booted archive carries >= width seeds.
     assert len([r for r in recs if r["kind"] == "seed"]) >= cfg.rqgm.paper.archive.width
     assert sum(1 for r in recs if r["is_best_belief"]) >= 1  # a winner materialized
@@ -1049,9 +1053,8 @@ def _drive_archive(ck, mcp, cfg=None):
 
 
 def test_resume_rebuilds_an_interrupted_round_instead_of_re_running_it(tmp_path):
-    """§8.6 "Resume is content-hash safe" + §9 Resume ("producing the same node
-    set as the uninterrupted run (P2)"); Task 06 §8.5/§9.11 "a resume must not
-    re-fund the round".
+    """Resume is content-hash safe, must produce the same node set as the
+    uninterrupted run (P2), and must not re-fund the round.
 
     `_run_one_round` used to start from `archive = []` / `frontier = [root]`
     unconditionally and never read the persisted archive, so resuming an
@@ -1060,7 +1063,7 @@ def test_resume_rebuilds_an_interrupted_round_instead_of_re_running_it(tmp_path)
     never calls `run_archive`.
 
     The archive is INTERRUPTED (not completed) on purpose — a completed run is
-    short-circuited earlier by the 07 §8.6 already-materialised guard, which
+    short-circuited earlier by the already-materialised guard, which
     would never reach the restore path and would make this test vacuous.
     """
     # (1) uninterrupted reference run
@@ -1075,7 +1078,8 @@ def test_resume_rebuilds_an_interrupted_round_instead_of_re_running_it(tmp_path)
     partial = read_paper_draft_archive(ck)
     assert len(partial) == 3, "the completed nodes' records must survive"
     assert not (ck / "full_paper.tex").exists(), \
-        "an interrupted archive finalises no winner (else the §8.6 guard fires)"
+        "an interrupted archive finalises no winner (else the " \
+        "already-materialised guard fires)"
 
     # (3) resume: the 3 recorded nodes restore; only the REST is generated
     resumed_calls = _drive_archive(ck, VaryingPaperMCP())
@@ -1091,7 +1095,7 @@ def test_resume_rebuilds_an_interrupted_round_instead_of_re_running_it(tmp_path)
 
 
 def test_resume_regenerates_a_node_whose_bytes_no_longer_match(tmp_path):
-    """§8.6's content-hash gate: restore is keyed on `tex_sha256`, not on the
+    """The resume content-hash gate: restore is keyed on `tex_sha256`, not on the
     record existing. A record whose .tex is gone or edited is DROPPED so the node
     regenerates — otherwise resume would restore a node whose artifact is stale,
     silently scoring a draft nobody wrote."""
@@ -1140,7 +1144,7 @@ def test_restore_is_epoch_scoped_and_primes_the_next_index(tmp_path):
     assert {n.id for n in restored} == {r["node_id"] for r in recs0}
     # epoch_001's records are NOT in this round's restore
     assert strat._expansions == len(recs0)
-    # scores/framings restore from the records (§8.6 edge/score/framing restore)
+    # edges, scores and framings all restore from the records — never re-derived
     seed = next(n for n in restored if n.original_direction == "seed")
     rec = next(r for r in recs0 if r["node_id"] == seed.id)
     assert seed.metrics["_scientific_score"] == rec["review_score"]
@@ -1157,7 +1161,7 @@ def test_restore_is_epoch_scoped_and_primes_the_next_index(tmp_path):
     assert restore_archive_round(tmp_path, strat2, root2, "epoch_999") == []
 
 
-# ── §5.4 decision 5: the decode seed is SENT, not just recorded ──────────────
+# ── the decode seed is SENT to the writer, not merely recorded ───────────────
 
 class SeedHonouringPaperMCP(ScriptedPaperMCP):
     """A writer double that SAMPLES under the seed it is given — the stand-in

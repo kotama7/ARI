@@ -2,15 +2,15 @@
 (docs/reference/rqgm_schemas.md "Transition schema (Task 09)";
 docs/concepts/rqgm_architecture.md "The four facades").
 
-Covers: the exhaustive edge matrix through ``allowed_transitions`` + the
-kernel (§9.1), byte-identical determinism of ``resolve_transition`` (§9.2),
-per-rule trigger/guard fixtures T1–T19 (§9.3), boundary-only vs. the single
-emergency shape (§9.4), prepare-without-commit crash recovery / double-apply
-no-op / abort fail-safe (§9.5), the emergency fallback policy (§9.6), actor
-separation via the kernel epoch-invariance check (§9.7), the ``simple_bfts``
-zero-file regression (§9.8), the two-epoch ``ari_rqgm`` smoke with the
-prepare → per-change → commit event sequence (§9.9), META_FILES hygiene
-(§9.10), and the no-VirSci/no-LLM import guarantee (§9.11).
+Covers, in the order of the sections below: the exhaustive edge matrix
+through ``allowed_transitions`` + the kernel, byte-identical determinism of
+``resolve_transition``, per-rule trigger/guard fixtures T1–T19, boundary-only
+vs. the single emergency shape, prepare-without-commit crash recovery /
+double-apply no-op / abort fail-safe, the emergency fallback policy, actor
+separation via the kernel epoch-invariance check, the ``simple_bfts``
+zero-file regression, the two-epoch ``ari_rqgm`` smoke with the
+prepare → per-change → commit event sequence, META_FILES hygiene, and the
+no-VirSci/no-LLM import guarantee.
 
 No test calls a real LLM; all inputs are deterministic fixtures (P2).
 """
@@ -140,7 +140,7 @@ def _rules_of(t: EpochTransition) -> list:
     return sorted(e["rule_id"] for e in t.changes())
 
 
-# ── §9.1 table exhaustiveness through the engine surface ────────────────────
+# ── table exhaustiveness through the engine surface ─────────────────────────
 
 
 _STATUSES = [s.value for s in ComponentStatus]
@@ -153,10 +153,10 @@ def test_allowed_transitions_matches_the_21_row_table():
         for to in RegistryTransitionEngine.allowed_transitions(frm)
     }
     assert accepted == set(TRANSITION_TABLE)
-    # Task 14 (plan 14 §5.5): T20 (active -> retired) supersession joins the
-    # table (role-scoped to utility_policy in the kernel). Wave 3c (plan
-    # ari_rqgm_paper/05 / 03 §5.9): T21 (active -> shadow) paper-role
-    # shadow-standby supersession joins it too, so 21 rows.
+    # Task 14: T20 (active -> retired) supersession joins the table
+    # (role-scoped to utility_policy in the kernel). Wave 3c: T21
+    # (active -> shadow) paper-role shadow-standby supersession joins it
+    # too, so 21 rows.
     assert len(TRANSITION_TABLE) == 21
 
 
@@ -201,7 +201,7 @@ def test_unknown_status_is_ineligible_never_a_crash():
     assert any("unknown status" in n for n in t.notes)
 
 
-# ── §9.2 determinism (P2) ───────────────────────────────────────────────────
+# ── determinism (P2) ────────────────────────────────────────────────────────
 
 
 def test_resolve_transition_is_byte_deterministic():
@@ -228,7 +228,7 @@ def test_resolve_transition_is_byte_deterministic():
     assert run() == run()
 
 
-# ── §9.3 per-rule trigger + guard fixtures ──────────────────────────────────
+# ── per-rule trigger + guard fixtures ───────────────────────────────────────
 
 
 def test_t1_candidate_validated_and_cap_guard():
@@ -503,7 +503,7 @@ def test_governance_suspended_freezes_all_changes():
     assert any("no_governance_report" in n for n in t2.notes)
 
 
-# ── §9.4 boundary-only vs. the single emergency shape ───────────────────────
+# ── boundary-only vs. the single emergency shape ────────────────────────────
 
 
 def test_non_emergency_transition_is_rejected_mid_epoch():
@@ -554,13 +554,13 @@ def test_emergency_edges_are_exactly_the_four_t16_shapes():
         ("probation", "quarantine"),
     })
     # The closed trigger class is kernel-critical (block) only — performance
-    # signals can never qualify (plan 09 §5.4).
+    # signals can never qualify, however bad they get.
     from ari.rqgm.kernel_rules import SEVERITY
 
     assert all(SEVERITY[c] == "block" for c in EMERGENCY_TRIGGER_CODES)
 
 
-# ── §9.5 transaction, crash recovery, double-apply, abort ───────────────────
+# ── transaction, crash recovery, double-apply, abort ────────────────────────
 
 
 def _bootstrap(tmp_path, extra_events=()):
@@ -734,7 +734,7 @@ def test_adoption_and_warning_commit_with_prepare_change_commit_sequence(
     assert applied.state.prompts.get("generator_prompt_v2").status == \
         "probationary_active"
     assert applied.state.prompts.get("reviewer_prompt_v1").status == "active"
-    # §9.9 event sequence: prepare -> per-change -> epoch close/open -> commit.
+    # The boundary event sequence: prepare -> per-change -> close/open -> commit.
     lines = [json.loads(ln) for ln in
              (tmp_path / RQGM_TRANSITIONS_FILENAME).read_text().splitlines()]
     tail = [l["event_type"] for l in lines][-7:]
@@ -756,7 +756,8 @@ def test_adoption_and_warning_commit_with_prepare_change_commit_sequence(
     # epoch_state.json freeze: the adopted generator serves the next epoch.
     snap = json.loads((tmp_path / "epoch_state.json").read_text())
     assert snap["active_components"]["generator"] == "generator_v2"
-    # next_active_components keeps the warned reviewer serving (§5.2).
+    # next_active_components keeps the warned reviewer serving: warning and
+    # probation are serving postures, not removals from the role.
     assert t.next_active_components == {
         "generator": "generator_v2", "reviewer": "reviewer_v1"}
     # The committed transition + kernel verdict land in the audit log.
@@ -803,7 +804,7 @@ def test_double_apply_of_a_committed_transition_is_a_noop(tmp_path):
 
 
 def test_double_apply_with_stale_state_is_a_noop(tmp_path):
-    # The §5.3 literal rule: a transition_id whose commit event already
+    # The literal idempotence rule: a transition_id whose commit event already
     # exists in the log is a no-op EVEN when the caller re-presents the
     # stale pre-commit state (e.g. a buggy resume path).
     store, state = _bootstrap(tmp_path)
@@ -850,7 +851,7 @@ def test_kernel_blocked_transition_aborts_without_registry_change(tmp_path):
     assert "kernel_report" in audit_types
 
 
-# ── §9.6 emergency quarantine + fallback policy ─────────────────────────────
+# ── emergency quarantine + fallback policy ──────────────────────────────────
 
 
 def test_emergency_quarantine_forces_boundary_with_baseline_fallback(
@@ -920,7 +921,7 @@ def test_store_refuses_any_other_mid_epoch_event_type(tmp_path):
             payload={"component_id": "x", "to_status": "quarantine"}))
 
 
-# ── §9.6.1 emergency quarantine mirrors the linked prompt (T16 == T11) ──────
+# ── emergency quarantine mirrors the linked prompt (T16 == T11) ─────────────
 #
 # An emergency (T16) quarantine must remove the linked prompt from the serving
 # set exactly as the normal boundary (T11) quarantine does, so an emergency-
@@ -1072,7 +1073,7 @@ def test_emergency_shape_with_prompt_mirror_still_validates(tmp_path):
     assert "CK-REG-002" in [v.code for v in rep2.violations]
 
 
-# ── §9.7 actor separation ───────────────────────────────────────────────────
+# ── actor separation ────────────────────────────────────────────────────────
 
 
 def test_out_of_band_status_write_is_detected_by_epoch_invariance(tmp_path):
@@ -1090,7 +1091,7 @@ def test_out_of_band_status_write_is_detected_by_epoch_invariance(tmp_path):
     assert "CK-EPO-002" in [v.code for v in report.violations]
 
 
-# ── §9.8 simple_bfts regression (no rqgm files, engine never imported) ──────
+# ── simple_bfts regression (no rqgm files, engine never imported) ───────────
 
 
 def _make_agent():
@@ -1156,7 +1157,7 @@ def test_simple_bfts_never_constructs_the_engine(monkeypatch, tmp_path):
     assert "ari.rqgm.transition_engine" not in sys.modules
 
 
-# ── §9.9 ari_rqgm smoke through the runtime boundary hook ───────────────────
+# ── ari_rqgm smoke through the runtime boundary hook ────────────────────────
 
 
 def test_runtime_boundary_routes_through_the_engine(monkeypatch, tmp_path):
@@ -1210,7 +1211,7 @@ def test_committed_transition_validates_against_the_schema(tmp_path):
                         schemas.load("epoch_transition.schema"))
 
 
-# ── §9.10 META_FILES hygiene ────────────────────────────────────────────────
+# ── META_FILES hygiene ──────────────────────────────────────────────────────
 
 
 def test_engine_writes_only_task02_registered_filenames():
@@ -1227,7 +1228,7 @@ def test_engine_writes_only_task02_registered_filenames():
         assert name in registered, name
 
 
-# ── §9.11 parity + import guards (no VirSci, no LLM) ────────────────────────
+# ── parity + import guards (no VirSci, no LLM) ──────────────────────────────
 
 
 def test_known_actions_parity_with_task05_vocabulary():
@@ -1280,8 +1281,8 @@ def test_status_history_fold_is_deterministic_and_crash_filtered():
     assert build_status_history(events) == hist
 
 
-# ── the no_replay_basis waiver (Cluster C: plan 14 §5.5/§7, paper/03 §5.9,
-#    paper/04 §5.1/§5.9, paper/05 §5.5) ────────────────────────────────────
+# ── the no_replay_basis waiver: an honest all-absent board still traverses ──
+#    the spine, but a real board is held to the count floor ─────────────────
 
 def test_waiver_carries_a_declared_no_basis_role_through_T3_and_T6():
     """The waiver's REASON to exist: without it, deleting the fabricated
@@ -1414,7 +1415,8 @@ def test_a_paper_board_that_HAS_cases_is_counted_never_waived():
     assert _rules_of(t2) == ["T3"], t2.notes
 
     # ...and the genuine on-ramp (NO board at all) still passes on the waiver,
-    # which is the only thing §5.5 sanctions.
+    # which is the only thing the waiver sanctions: a real board, however
+    # small, is held to the floor rather than waived.
     t3 = _resolve(_engine(), *_registries(
         prompts=[_prompt("pr", "paper_reviewer", "validated")]), _report(),
         evaluations=[{

@@ -1,4 +1,5 @@
-"""Defender (Task 05 §5.3 step 5) — LLM with a total procedural fallback.
+"""Defender — step 5 (defend) of the epoch-boundary governance audit pipeline:
+an LLM with a total procedural fallback.
 
 The Defender writes a rebuttal for each motion, seeing the motion, the
 evidence bundle, and the target's own outputs. An LLM failure (or no LLM at

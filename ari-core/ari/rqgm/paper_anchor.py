@@ -5,7 +5,7 @@ in docs/reference/rqgm_schemas.md "Paper-archive schemas").
 The co-evolving ``paper_reviewer`` (a governed EVALUATOR role, plan 03) earns
 trust the way the RQGM paper's APReS evaluator does: by AGREEING with a
 held-out, human-labelled accept/reject anchor corpus. The manuscript WRITER is
-ALSO anchored (§5.1, revised 2026-07-16) — but to a ground truth the RQGM
+ALSO anchored (revised 2026-07-16) — but to a ground truth the RQGM
 paper's writer never had: ARI writes about REAL experiments, so the Layer-0
 claim-evidence hard gate scores a draft's faithfulness DETERMINISTICALLY
 (:func:`writer_faithfulness_score`). A writer whose drafts regress on that
@@ -23,7 +23,8 @@ data). This module owns:
 * the deterministic, run-fixed held-out split (:func:`assign_split`, P2-pure);
 * the machine-enforced ``max_bootstrap_label_fraction`` cap over the corpus
   AND the held-out subset — a breach REFUSES the corpus (returns ``None`` =>
-  the §5.9 degraded on-ramp), NEVER raises into the run;
+  the degraded on-ramp: the reviewer runs un-anchored rather than against a
+  ground truth it largely wrote itself), NEVER raises into the run;
 * the held-out agreement metric (:func:`paper_reviewer_agreement`) wired into
   the EXISTING ``anchor_evaluation`` stage / ``AnchorBoard.board_score``;
 * the ``paper_utility_policy`` freeze (:func:`capture_paper_utility_policy`),
@@ -33,7 +34,7 @@ data). This module owns:
 This module invents NO utility machinery of its own: the cross-epoch REWRITE
 of the utility policy rides parent Task 14 (governed utility evolution)
 topology-agnostically; ``capture_paper_utility_policy`` is the paper-phase
-INSTANCE of that governed capture (§5.5). Pure stdlib + ``ari.rqgm`` types:
+INSTANCE of that governed capture. Pure stdlib + ``ari.rqgm`` types:
 no LLM calls, no network, no randomness (P2). ``load_anchor_corpus`` NEVER
 raises into the run — every integrity failure degrades to ``None`` (no anchor
 gate), never a crash and never a silently weaker anchor.
@@ -53,7 +54,7 @@ log = logging.getLogger(__name__)
 PAPER_ANCHOR_CORPUS_FILENAME = "paper_anchor_corpus.jsonl"
 PAPER_ANCHOR_CASE_RECORD_TYPE = "PaperAnchorCase"
 
-#: The WRITER's anchor-board case type (§5.1, revised 2026-07-16). Distinct
+#: The WRITER's anchor-board case type (revised 2026-07-16). Distinct
 #: from :data:`PAPER_ANCHOR_CASE_RECORD_TYPE`: a ``PaperAnchorCase`` is a
 #: human-labelled REFERENCE manuscript (the reviewer's ground truth), whereas
 #: this case carries the Layer-0 claim gate's deterministic faithfulness score
@@ -72,11 +73,11 @@ ANCHOR_STATIC_ORIGIN = "anchor_static"
 
 #: The four-level ``accept_recommendation`` scale (academic_reviewer.md:7)
 #: binarized to accept/reject. weak_accept papers ARE accepted (conference
-#: semantics, §5.4).
+#: semantics).
 _ACCEPT: frozenset[str] = frozenset({"strong_accept", "accept", "weak_accept"})
 _REJECT: frozenset[str] = frozenset({"reject"})
 
-#: ``label_source`` records WHO authored the ground truth (§5.2). A case with a
+#: ``label_source`` records WHO authored the ground truth. A case with a
 #: missing/unknown value is an integrity error (there is no default: unlabelled
 #: provenance is exactly the state that lets a self-labelled corpus pass as
 #: ground truth).
@@ -88,7 +89,7 @@ VALID_LABEL_SOURCES: frozenset[str] = frozenset(
 #: (e.g. a three-way scale) is a versioned, fingerprint-visible policy change.
 AGREEMENT_METRIC_ID = "binary_accept_reject_v1"
 
-#: The writer's faithfulness-anchor metric id (§5.1, revised 2026-07-16). The
+#: The writer's faithfulness-anchor metric id (revised 2026-07-16). The
 #: writer IS anchored — to the deterministic claim-evidence hard gate the run
 #: already computes for free — so its role can be OPENED by a real sanction and
 #: its PROMPT co-evolves (the coding-domain shape: a deterministic verifier +
@@ -124,7 +125,7 @@ WRITER_ANCHOR_DESCRIPTOR: dict = {
 
 def writer_faithfulness_score(gate_report: "dict | None") -> float:
     """Deterministic faithfulness score ∈ [0,1] of a draft, folded from the
-    Layer-0 claim-evidence hard gate's three rates (§5.1). Pure — reads only the
+    Layer-0 claim-evidence hard gate's three rates. Pure — reads only the
     gate report ``run_hard_gate(write=False)`` already returns; no LLM, no wall
     clock, no gate re-run.
 
@@ -154,7 +155,7 @@ def draft_is_unfaithful(
     threshold: float = WRITER_FAITHFULNESS_THRESHOLD,
 ) -> bool:
     """``True`` iff the draft is unfaithful per the Layer-0 gate: any error
-    finding present OR the faithfulness score below *threshold* (§5.1). Pure —
+    finding present OR the faithfulness score below *threshold*. Pure —
     the writer-culpability signal is the writer's OWN drafts' claim-gate
     faithfulness, never the reviewer's leniency."""
     report = gate_report or {}
@@ -165,7 +166,7 @@ def draft_is_unfaithful(
     return writer_faithfulness_score(report) < float(threshold)
 
 
-# ── the agreement metric (§5.4) ─────────────────────────────────────────────
+# ── the agreement metric (binarized accept/reject) ──────────────────────────
 
 
 def binarize_recommendation(rec: str) -> "str | None":
@@ -197,7 +198,7 @@ def anchor_case_view(case: dict) -> dict:
     (§4, §10 R4).
 
     Structural, not advisory: the reviewer's utility IS its agreement with the
-    label (§5.1), so a judge that can read the label scores 1.0 by copying it
+    label, so a judge that can read the label scores 1.0 by copying it
     and the entire anchor measures nothing. Handing the judge a dict that has no
     label FIELD makes that unreachable for every verdict source — the founding
     heuristic, an injected test double, and an LLM render alike — rather than
@@ -227,13 +228,15 @@ def paper_reviewer_agreement(candidate_verdict: dict, case: dict) -> bool:
     return got is not None and got == want
 
 
-# ── corpus schema + digest (§5.2) ───────────────────────────────────────────
+# ── corpus schema + digest ──────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
 class PaperAnchorCase:
-    """One ``paper_anchor_corpus.jsonl`` line (§5.2). Frozen field set; the
-    read-only anchor is never authored/mutated by a governed role."""
+    """One ``paper_anchor_corpus.jsonl`` line (docs/reference/rqgm_schemas.md,
+    "``paper_anchor_corpus.jsonl`` — the read-only accept/reject anchor").
+    Frozen field set; the read-only anchor is never authored/mutated by a
+    governed role."""
 
     case_id: str
     ground_truth_label: str        # accept | reject
@@ -268,8 +271,10 @@ class PaperAnchorCase:
 
 
 def corpus_digest(cases: list[dict]) -> str:
-    """``hash12`` over the sorted ``(case_id, manuscript_sha256)`` pairs
-    (§5.5). Content-only, deterministic, no wall clock (P2)."""
+    """``hash12`` over the sorted ``(case_id, manuscript_sha256)`` pairs — the
+    corpus identity frozen into ``paper_utility_policy``, so a changed ground
+    truth changes the paper epoch fingerprint. Content-only, deterministic, no
+    wall clock (P2)."""
     pairs = sorted(
         (str(c.get("case_id", "")), str(c.get("manuscript_sha256", "")))
         for c in cases
@@ -278,7 +283,7 @@ def corpus_digest(cases: list[dict]) -> str:
 
 
 def _is_self_label(case: dict) -> bool:
-    """The acute self-labelling loop (§5.3): an ARI-authored draft that ARI's
+    """The acute self-labelling loop: an ARI-authored draft that ARI's
     own gate passed and ARI then labelled ``accept``. Pure — labels only."""
     return (
         str(case.get("label_source", "")) == "gate_bootstrap"
@@ -287,7 +292,7 @@ def _is_self_label(case: dict) -> bool:
     )
 
 
-# ── deterministic held-out split (§5.3) ─────────────────────────────────────
+# ── deterministic held-out split ────────────────────────────────────────────
 
 
 def _count_held(cases: list[dict]) -> int:
@@ -303,8 +308,9 @@ def assign_split(
     Pure (P2): the choice is a hash of ``(case_id, corpus_digest)`` — no wall
     clock, no RNG, no epoch input (epoch-independent so the held-out set is
     stable across the whole run). Cases with a pre-pinned ``split`` are honored
-    as-is; a case pinned ``train`` (e.g. an accept+ai self-label, §5.3) can
-    never be selected into ``held_out``."""
+    as-is; a case pinned ``train`` (e.g. an accept+ai self-label, which
+    :func:`load_anchor_corpus` pins) can never be selected into
+    ``held_out``."""
     pinned = [c for c in cases if c.get("split") in ("train", "held_out")]
     pinned_ids = {id(c) for c in pinned}
     free = [c for c in cases if id(c) not in pinned_ids]
@@ -355,7 +361,7 @@ class PaperAnchorPool:
         self, *, prompt_hash: str, score: float, epoch_id: str = ""
     ) -> "dict | None":
         """Land the ACTIVE writer's Layer-0 gate faithfulness on the anchor
-        board as its OWN case (§5.1, revised 2026-07-16) — the step that makes
+        board as its OWN case (revised 2026-07-16) — the step that makes
         the writer's anchor OPERATIVE rather than merely computed.
 
         Without this the writer's faithfulness was scored and thrown away:
@@ -412,8 +418,8 @@ class PaperAnchorPool:
 def reviewer_anchor_cases(pool) -> list[dict]:
     """The REVIEWER's held-out reference-manuscript cases off a pool.
 
-    The pool's ``anchor_cases`` carries two anchor sources since §5.1 (revised
-    2026-07-16): the human-labelled corpus (the reviewer's ground truth) and
+    The pool's ``anchor_cases`` carries two anchor sources: the human-labelled
+    corpus (the reviewer's ground truth) and
     the writer's claim-gate faithfulness cases. ``board_score`` separates them
     by subject key on its own, but the REVIEWER-side consumers (anchor scoring,
     the over-acceptance pre-signal, the candidate evaluator) iterate the cases
@@ -459,7 +465,8 @@ def _resolve_corpus_path(corpus_path: str, checkpoint_dir) -> "Path | None":
 
 
 def load_anchor_corpus(cfg, checkpoint_dir=None) -> "PaperAnchorPool | None":
-    """Load + validate the anchor corpus, or ``None`` for the §5.9 on-ramp.
+    """Load + validate the anchor corpus, or ``None`` for the degraded on-ramp
+    (the reviewer runs un-anchored).
 
     Absence-tolerant AND integrity-strict, but it NEVER raises into the run
     (§7). Returns ``None`` — the degraded on-ramp (reviewer not anchor-gated) —
@@ -467,11 +474,12 @@ def load_anchor_corpus(cfg, checkpoint_dir=None) -> "PaperAnchorPool | None":
     is dropped for a missing/unknown ``label_source``; an ``eval_*`` case
     leaks into the ``anchor_*`` namespace; OR the ``gate_bootstrap`` fraction
     EXCEEDS ``max_bootstrap_label_fraction`` over the corpus OR the held-out
-    subset (§5.3). Refusing to anchor is strictly safer than anchoring on
+    subset. Refusing to anchor is strictly safer than anchoring on
     self-labels: the on-ramp merely withholds a trust signal.
 
     Also returns (on the pool) the corpus digest, held-out ids, and the two
-    label-source mixes for :func:`capture_paper_utility_policy` (§5.5).
+    label-source mixes, which :func:`capture_paper_utility_policy` freezes into
+    the paper epoch fingerprint.
     """
     try:
         anchor = _anchor_cfg(cfg)
@@ -489,7 +497,7 @@ def load_anchor_corpus(cfg, checkpoint_dir=None) -> "PaperAnchorPool | None":
             log.info("paper anchor corpus empty; on-ramp (no anchor gate)")
             return None
 
-        # label_source is REQUIRED (§5.2): drop cases without a valid one.
+        # label_source is REQUIRED: drop cases without a valid one.
         cases: list[dict] = []
         dropped = 0
         for c in raw:
@@ -500,14 +508,16 @@ def load_anchor_corpus(cfg, checkpoint_dir=None) -> "PaperAnchorPool | None":
         if dropped:
             log.warning(
                 "paper anchor: dropped %d case(s) with missing/unknown "
-                "label_source (§5.2 required field)", dropped,
+                "label_source (a required field: unlabelled provenance is "
+                "exactly what lets a self-labelled corpus pass as ground "
+                "truth)", dropped,
             )
         if not cases:
             log.warning("paper anchor: no case has a valid label_source; "
                         "on-ramp (no anchor gate)")
             return None
 
-        # No-leakage guard (§5.3): the anchor namespace must be disjoint from
+        # No-leakage guard: the anchor namespace must be disjoint from
         # Task 13's eval_* injection set.
         if any(str(c.get("case_id", "")).startswith("eval_") for c in cases):
             log.warning("paper anchor: eval_* case in the anchor namespace; "
@@ -517,7 +527,7 @@ def load_anchor_corpus(cfg, checkpoint_dir=None) -> "PaperAnchorPool | None":
         cases = sorted(cases, key=lambda c: str(c.get("case_id", "")))
         digest = corpus_digest(cases)
 
-        # Self-label self-certification loop (§5.3): accept+ai+gate_bootstrap
+        # Self-label self-certification loop: accept+ai+gate_bootstrap
         # cases are barred from held_out (pin train) AND counted against the
         # corpus cap. Pure — labels only.
         prepared: list[dict] = []
@@ -538,7 +548,8 @@ def load_anchor_corpus(cfg, checkpoint_dir=None) -> "PaperAnchorPool | None":
         cap = float(getattr(anchor, "max_bootstrap_label_fraction", 0.5))
         corpus_frac = _bootstrap_fraction(corpus_mix)
         held_frac = _bootstrap_fraction(held_mix)
-        # Strict-exceed test (§5.3): exactly-at-cap loads.
+        # Strict-exceed test: exactly at the cap loads; only a fraction ABOVE
+        # it refuses the corpus.
         if corpus_frac > cap or held_frac > cap:
             log.warning(
                 "paper anchor: gate_bootstrap fraction exceeds cap %.3f "
@@ -583,7 +594,7 @@ def _read_jsonl(path: Path) -> list[dict]:
     return out
 
 
-# ── utility-policy freeze (§5.5) ────────────────────────────────────────────
+# ── utility-policy freeze ───────────────────────────────────────────────────
 
 
 def capture_paper_utility_policy(
@@ -594,16 +605,17 @@ def capture_paper_utility_policy(
     label_source_mix: dict,
     held_out_label_source_mix: dict,
 ) -> dict:
-    """The paper-phase ``paper_utility_policy`` (§5.5), mirroring
+    """The paper-phase ``paper_utility_policy``, mirroring
     ``state.capture_utility_policy``: content-only, ``canonical_json`` +
     ``hash12`` (P2, no wall clock). Frozen into the paper epoch fingerprint.
 
     The writer IS anchored (``writer_anchor`` = the claim-evidence faithfulness
-    descriptor, §5.1 revised 2026-07-16): ARI writes about REAL experiments, so
+    descriptor, no longer ``None``, revised 2026-07-16): ARI writes about
+    REAL experiments, so
     the Layer-0 hard gate scores a draft's faithfulness deterministically and
     the writer's role can be OPENED by a real sanction — its PROMPT co-evolves
     (the coding-domain shape), it no longer only improves via epoch-local draft
-    selection. Both label-source mixes ride the hash (§5.5): the fingerprint
+    selection. Both label-source mixes ride the hash: the fingerprint
     MOVES when the ground truth becomes more self-labelled, so a drift toward
     "ARI grading its own homework" cannot happen without a visible, diffable
     epoch-identity change. This doc invents NO utility machinery — the payload's
@@ -611,8 +623,8 @@ def capture_paper_utility_policy(
     a = _anchor_cfg(cfg)
     policy = {
         "reviewer_score_source": "paper_reviewer",   # who provides draft utility
-        # The writer's cross-epoch anchor: the deterministic claim-evidence gate
-        # (§5.1). No longer None — the writer co-evolves via a real sanction.
+        # The writer's cross-epoch anchor: the deterministic claim-evidence
+        # gate. No longer None — the writer co-evolves via a real sanction.
         "writer_anchor": dict(WRITER_ANCHOR_DESCRIPTOR),
         "anchor_enabled": bool(getattr(a, "enabled", False)),
         "anchor_corpus_digest": str(corpus_digest),
@@ -636,7 +648,7 @@ def capture_paper_utility_policy(
     return policy
 
 
-# ── held-out scoring helper (used by the paper boundary, §5.4) ──────────────
+# ── held-out scoring helper (used by the paper boundary) ────────────────────
 
 
 def score_reviewer_on_anchor(pool, verdict_fn) -> "tuple[float | None, list]":
@@ -644,7 +656,8 @@ def score_reviewer_on_anchor(pool, verdict_fn) -> "tuple[float | None, list]":
 
     *verdict_fn* maps an anchor case dict -> the reviewer's raw
     ``accept_recommendation`` string, or ``None`` meaning NO VERDICT SOURCE.
-    Agreement is the §5.4 binary metric.
+    Agreement is the binary accept/reject metric: strong_accept / accept /
+    weak_accept all count as ``accept``, and an unparseable verdict is a miss.
 
     Returns ``(accuracy | None, sorted_case_refs)`` — ``None`` when there are
     zero held-out cases OR no case could be judged (the on-ramp's zero-coverage

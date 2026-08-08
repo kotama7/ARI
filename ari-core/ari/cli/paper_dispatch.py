@@ -18,8 +18,10 @@ artifacts that round attacks (claim-gate findings, `verified_context.json`,
 related refs) are written by the paper stages, so before them the pre-signals are
 empty and the paper-claim adversaries sit on their no-attack floor.
 
-That same fact bounds WHEN the round is worth running, because its §5.3 marker is
-one-shot per node and epoch-agnostic: fired against an empty bundle it is spent
+That same fact bounds WHEN the round is worth running, because the round marker
+is one-shot per node and epoch-agnostic (the case log refuses a second
+``paper_candidate`` round for a node it has already marked, in any epoch and in
+any later process): fired against an empty bundle it is spent
 forever, permanently suppressing the artifact-grounded round a later invocation
 could run. So the pre-flight is gated on the evidence existing — it runs before
 the pipeline when a previous pass produced those artifacts (where a demotion can
@@ -123,8 +125,9 @@ def _manuscript_runtime_environment(cfg, *, paper_mode: str):
 
 
 def build_agent_as_judge(cfg, paper_llm, experiment_data, checkpoint_dir):
-    """The opt-in agent-as-judge ``reviewer_score_fn`` (paper-archive Task 03
-    §5.8 Residual), or ``None`` for the deterministic path.
+    """The opt-in agent-as-judge ``reviewer_score_fn``, or ``None`` for the
+    deterministic path (see ``docs/guides/execution_modes.md``,
+    "Agent-as-judge draft scoring (opt-in)").
 
     OFF => the deterministic venue rubric (P2) keeps the draft path LLM-free.
     ON => a real-``LLMClient``-backed scorer that reads the axes no
@@ -186,12 +189,13 @@ def _escalate_paper_candidate_to_fixpoint(rqgm, all_nodes):
     """Select → escalate → re-select until the winner is stable.
 
     A judge-validated attack in the escalation round applies the bounded
-    utility penalty (plan 06 §5.4), rewriting the candidate's
-    ``_scientific_score`` in place — so the post-round re-selection can
-    crown a different node. Looping guarantees the node the paper is
-    actually about never escapes its L3 paper-candidate round. Terminates:
-    each node is escalated at most once per pass (local set; the §5.3
-    round marker additionally makes repeat rounds no-ops across runs).
+    utility penalty — and only a judge-validated one does; raw attacks never
+    touch a score — rewriting the candidate's ``_scientific_score`` in place,
+    so the post-round re-selection can crown a different node. Looping
+    guarantees the node the paper is actually about never escapes its L3
+    paper-candidate round. Terminates: each node is escalated at most once
+    per pass (local set; the persisted round marker additionally makes
+    repeat rounds no-ops across runs).
     Returns the final (stable) winner, or ``None`` when every candidate
     is erased.
     """
@@ -209,8 +213,9 @@ def _escalate_paper_candidate_to_fixpoint(rqgm, all_nodes):
     return best
 
 
-#: The paper pre-signal artifacts ``build_artifact_bundle`` reads (plan 06
-#: §5.2). The §5.3 round marker is ONE-SHOT per node and epoch-agnostic, so a
+#: The paper pre-signal artifacts ``build_artifact_bundle`` reads — the only
+#: evidence the paper-claim adversaries have to attack.
+#: The round marker is ONE-SHOT per node and epoch-agnostic, so a
 #: round fired before any of these exist spends it on an empty bundle — only
 #: the node-text `overclaim` fallback can fire — and permanently suppresses the
 #: artifact-grounded round (prior_art / evidence_gap / metric_gaming) that a
@@ -235,22 +240,26 @@ def paper_presignal_artifacts_present(checkpoint_dir) -> bool:
 def run_paper_candidate_preflight(rqgm, all_nodes, experiment_data,
                                   checkpoint_dir, *,
                                   post_pipeline: bool = False) -> bool:
-    """RQGM paper-candidate pre-flight (plan 03 trigger table / 06 §5.5 /
-    12 §5.2), shared by every CLI entry.
+    """RQGM paper-candidate pre-flight, shared by every CLI entry.
+
+    ``paper_candidate`` is its own clause in the adversarial trigger
+    disjunction and forces the governance level to L3 (adjudicated), so the
+    round opens on the paper's own node however that node ranks on the
+    frontier.
 
     Escalates the best node (the verified_context ranking) through the
     EXISTING per-node RQGM machinery — one paper-candidate adversarial round
     + L3 governance, with the validated attacks flowing to the
     AdversarialReplayPool. The round is NOT merely observational: a
-    judge-validated attack applies the bounded utility penalty (plan 06
-    §5.4), rewriting ``_scientific_score`` in place, so the downstream
+    judge-validated attack applies the bounded utility penalty, rewriting
+    ``_scientific_score`` in place, so the downstream
     seed / verified-context re-selection can crown a DIFFERENT node. Two
     consequences handled here:
 
     1. persisted penalties are replayed onto the loaded nodes first
        (``replay_utility_penalties``) — a separate ``ari paper`` process
        never writes ``tree.json``, so without replay a re-run reverts the
-       ranking while the §5.3 round marker suppresses a second round (P2);
+       ranking while the persisted round marker suppresses a second round (P2);
     2. selection→escalation runs to a FIXPOINT, so a node crowned by a
        demotion still gets its own L3 round.
 
@@ -295,9 +304,10 @@ def run_paper_candidate_preflight(rqgm, all_nodes, experiment_data,
             replay(all_nodes)
         best = _escalate_paper_candidate_to_fixpoint(rqgm, all_nodes)
         if best is not None:
-            # RQGM re-ideation (plan 03 §5.2): `paper_candidate` is the
-            # fourth declared trigger event and the plan names paper
-            # pre-flight as its hook — keyed to the FINAL winner (the node
+            # RQGM re-ideation: `paper_candidate` is the fourth declared
+            # ProposalRouter trigger event (after initial_exploration,
+            # frontier_stagnation and major_pivot), and this pre-flight is
+            # its only production hook — keyed to the FINAL winner (the node
             # the paper is actually about).
             reideate = getattr(rqgm, "reideate", None)
             if callable(reideate):
@@ -354,7 +364,8 @@ def run_paper_phase(
     state_path = Path(checkpoint_dir) / PAPER_ARCHIVE_STATE_FILENAME
     state_existed = state_path.exists()
     if state_existed:
-        # Re-invocation: the persisted paper mode wins (Task 01 §5.5). Only
+        # Re-invocation: the mode recorded on the checkpoint wins over both
+        # package config and env, so a resumed run cannot switch axes. Only
         # reached when the provenance file exists — never on a pure linear
         # checkpoint, so no ari.rqgm module is imported on the linear path.
         from ari.rqgm.paper_runtime import reconcile_paper_resume_mode

@@ -7,15 +7,17 @@ governance level for the L0-L3 trigger ladder).
 
 Covers: the golden ``cache_key`` (component order + separator pinned;
 timestamps provably excluded), canonical-JSON hashing (key order
-independence), the ``assign_level`` §5.2 trigger table (sterile floor,
+independence), the ``assign_level`` trigger table (sterile floor,
 top-K id tie-break, score jump, novelty, low-confidence escalation),
 deterministic hash-based shadow sampling (cross-process stable, ±2%
 empirical rate, cap truncation), budget counter exhaustion + audit-log
 round-trip (resume-safety), the additive ``CallRecord.epoch`` field
-(old lines parse; simple_bfts lines byte-free of the key), the §6.2
-replay cache-lookup rule and its live wiring into the candidate
-evaluation path (cache consulted first, pool scores written back), the
-Task 07 shadow sampler's delegation to the single §5.6 hash rule, the
+(old lines parse; simple_bfts lines byte-free of the key), the replay
+cache-lookup rule (the key is built from the case's ORIGIN epoch, so a
+later epoch's replay of it still hits) and its live wiring into the
+candidate evaluation path (cache consulted first, pool scores written
+back), the Task 07 shadow sampler's delegation to the one shared hash
+rule rather than a second sampler of its own, the
 spec-required cost regression / budget check (stub LLM, tiny caps,
 degrade-never-block, real governance spend through ``_LLMBudget``), the
 ``simple_bfts`` no-op regression, and META_FILES hygiene for the new
@@ -99,7 +101,7 @@ def _node(node_id="node_a", score=0.5, sterile=False, axis=None):
     return SimpleNamespace(id=node_id, metrics=metrics)
 
 
-# ── §9.1 cache_key golden test ───────────────────────────────────────────────
+# ── cache_key golden test ────────────────────────────────────────────────────
 
 
 def test_cache_key_golden_composition_and_separator():
@@ -113,7 +115,7 @@ def test_cache_key_golden_composition_and_separator():
     )
     # Golden: fixed inputs -> fixed key (component order + separator pinned).
     assert key == "944ccdbbaa7205d5"
-    # The exact §5.5 recipe: "\x1f"-joined components, sha256, 16 hex chars.
+    # The exact recipe: "\x1f"-joined components, sha256, 16 hex chars.
     manual = hashlib.sha256(
         "\x1f".join([
             "sha256:aa", "9f2c01ab34de", "judge", "epoch_004",
@@ -155,7 +157,7 @@ def test_cache_key_excludes_timestamps(tmp_path):
     assert {l["cache_key"] for l in lines} == {k1}
 
 
-# ── §9.2 canonical-JSON hashing ─────────────────────────────────────────────
+# ── canonical-JSON hashing ──────────────────────────────────────────────────
 
 
 def test_canonical_hash_is_key_order_independent():
@@ -166,7 +168,7 @@ def test_canonical_hash_is_key_order_independent():
     assert canonical_hash({"a": 1}) != canonical_hash({"a": 2})
 
 
-# ── §9.8 replay cache-lookup rule ───────────────────────────────────────────
+# ── replay cache-lookup rule ────────────────────────────────────────────────
 
 
 def test_replay_lookup_uses_case_origin_epoch(tmp_path):
@@ -190,7 +192,7 @@ def test_replay_lookup_uses_case_origin_epoch(tmp_path):
 
 
 def test_candidate_evaluation_consults_and_fills_the_cache(tmp_path):
-    """§5.5 wiring: with ``use_cached_results`` the replay/candidate path
+    """Cache wiring: with ``use_cached_results`` the replay/candidate path
     consults the governance cache FIRST (a hit scores a case whose pool
     results are silent) and writes pool-derived scores back."""
     from ari.rqgm.governance._adjudication import evaluate_candidates
@@ -233,7 +235,8 @@ def test_candidate_evaluation_consults_and_fills_the_cache(tmp_path):
 
 def test_orchestrator_forwards_the_governance_cache(tmp_path):
     """The runtime-built GovernanceOrchestrator carries a cache exactly when
-    ``rqgm.replay.use_cached_results`` (the §5.5 construction seam)."""
+    ``rqgm.replay.use_cached_results`` is on — that config flag is the
+    construction seam at which the cache is attached."""
     from ari.rqgm.runtime import RQGMRuntime
 
     on = RQGMRuntime(_cfg(), checkpoint_dir=tmp_path)
@@ -274,12 +277,12 @@ def test_cache_absent_file_is_empty_and_index_restores(tmp_path):
     assert GovernanceCache(tmp_path).get("0" * 16) is None  # absence != error
     cache = GovernanceCache(tmp_path)
     cache.put("a" * 16, {"role": "judge", "result_ref": "r1"})
-    # A fresh instance rebuilds the index from the JSONL (resume, §8).
+    # Resume-safety: a fresh instance rebuilds the index from the JSONL.
     again = GovernanceCache(tmp_path)
     assert again.get("a" * 16)["result_ref"] == "r1"
 
 
-# ── §9.3 assign_level trigger table ─────────────────────────────────────────
+# ── assign_level trigger table ──────────────────────────────────────────────
 
 
 def test_assign_level_sterile_never_exceeds_l0():
@@ -359,7 +362,7 @@ def test_assign_level_is_logged_replayably(tmp_path):
     }
 
 
-# ── §9.4 shadow-sampling determinism ────────────────────────────────────────
+# ── shadow-sampling determinism ─────────────────────────────────────────────
 
 
 def test_shadow_sample_matches_the_spec_hash_rule():
@@ -395,7 +398,7 @@ def test_shadow_disabled_means_zero_budget():
 
 
 def test_pipeline_should_shadow_delegates_to_the_budget_rule():
-    """One §5.6 hash rule: the Task 07 live sampler delegates to
+    """One hash rule, not two: the Task 07 live sampler delegates to
     ``GovernanceBudgetManager.shadow_sample`` — same verdicts for the same
     ``(run_id, epoch_id, node_id)`` — and ``shadow.enabled: false`` zeroes
     the Task 07 path too."""
@@ -415,7 +418,7 @@ def test_pipeline_should_shadow_delegates_to_the_budget_rule():
     assert off.should_shadow("epoch_001", "node_001") is False
 
 
-# ── §9.5 budget counter exhaustion + resume round-trip ──────────────────────
+# ── budget counter exhaustion + resume round-trip ───────────────────────────
 
 
 def test_check_degrade_vs_skip_posture_and_consume_never_raises(tmp_path):
@@ -471,9 +474,9 @@ def test_replay_cap_switches_for_retirement():
 
 
 def test_pipeline_motion_replay_cap_gates_through_the_manager(tmp_path):
-    """The epoch-boundary replay-selection cap (plan 12 §5.4): the audit
-    pipeline picks ``max_cases_for_retirement`` for retirement-relevant
-    motions and honors booked REPLAY_CASE consumption via the manager."""
+    """The epoch-boundary replay-selection cap: the audit pipeline picks
+    ``max_cases_for_retirement`` for retirement-relevant motions and honors
+    booked REPLAY_CASE consumption via the manager."""
     from ari.rqgm.governance._pipeline import _motion_replay_cap
 
     m = _manager(tmp_path=tmp_path)
@@ -531,7 +534,7 @@ def test_virsci_budget_zero_cost_when_disabled_and_store_counted():
     assert not m.check(BudgetedAction(VIRSCI_CALL)).allowed
 
 
-# ── §9.6 CallRecord.epoch additive-field compatibility ──────────────────────
+# ── CallRecord.epoch additive-field compatibility ───────────────────────────
 
 
 def test_old_cost_trace_lines_parse_and_summary_unchanged(tmp_path):
@@ -562,7 +565,7 @@ def test_epoch_emitted_only_when_non_none(tmp_path):
     assert lines[1]["epoch"] == "epoch_003"
 
 
-# ── §9.9 cost regression / budget check (stub LLM, tiny caps) ───────────────
+# ── cost regression / budget check (stub LLM, tiny caps) ────────────────────
 
 
 class _FakeRec:
@@ -682,7 +685,7 @@ def test_governance_llm_budget_consults_manager():
 def test_ari_rqgm_smoke_run_with_stub_llm_and_tiny_caps(
     tmp_path, monkeypatch
 ):
-    """The spec-required budget check (§9.9): an ari_rqgm loop with a stub
+    """The spec-required budget check: an ari_rqgm loop with a stub
     LLM completes (degrade-never-block) while a seeded threshold-flagged
     audit target forces real governance spend through the ``_LLMBudget``
     seam — booked to cost_trace.jsonl (phase="governance", per epoch) and
@@ -763,7 +766,7 @@ def test_ari_rqgm_smoke_run_with_stub_llm_and_tiny_caps(
     )
 
 
-# ── §9.10 simple_bfts no-op regression ──────────────────────────────────────
+# ── simple_bfts no-op regression ────────────────────────────────────────────
 
 
 def _make_agent():
@@ -833,7 +836,7 @@ def test_simple_bfts_writes_no_cache_and_no_epoch_values(
     assert '"epoch"' not in raw  # no epoch values under simple_bfts
 
 
-# ── §9.11 META_FILES hygiene ────────────────────────────────────────────────
+# ── META_FILES hygiene ──────────────────────────────────────────────────────
 
 
 def test_cache_file_registered_in_paths_and_node_report_blocklists():

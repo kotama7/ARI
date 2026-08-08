@@ -1,4 +1,4 @@
-"""The nine-step ``audit_epoch`` pipeline (Task 05 §5.3).
+"""The nine-step ``audit_epoch`` pipeline (Task 05).
 
 observe → assess → assemble → prosecute → defend → adjudicate → update
 replay pool → self-audit → report. Every LLM decision has a *total*
@@ -74,9 +74,13 @@ def _cfg(obj, name, default):
 
 
 class _LLMBudget:
-    """Counting wrapper enforcing ``max_llm_calls_per_audit`` (§5.3/§9.9).
+    """Counting wrapper enforcing ``max_llm_calls_per_audit``: once the cap is
+    spent every further seam takes its deterministic fallback instead of
+    calling a model, so an audit's model spend is bounded per epoch and the
+    audit still completes (docs/reference/rqgm_schemas.md, "The audit's
+    determinism budget").
 
-    *manager* (RQGM Task 12 §7, optional GovernanceBudgetManager) is
+    *manager* (an optional ``GovernanceBudgetManager``) is
     consulted before every call — a non-allow verdict degrades to the
     deterministic fallback (spend caps / ``on_exhausted`` posture); a
     successful call is booked back for spend attribution.
@@ -295,8 +299,8 @@ def _epoch_field(epoch_state, name: str, default=""):
 
 
 def _retirement_pending(motion, component_registry) -> bool:
-    """True when *motion* puts a RetirementEvent under consideration
-    (Task 12 §5.4): it requests ``retire`` outright, or it targets a
+    """True when *motion* puts a RetirementEvent under consideration —
+    two cases: it requests ``retire`` outright, or it targets a
     quarantined component — the from-status of Task 09's T17
     ``adjudication_confirmed_retirement`` edge, so an upheld outcome here
     is what confirms the retirement. Deterministic; registry reads are
@@ -326,7 +330,7 @@ def _motion_replay_cap(
     budget_manager,
     motion_id: str,
 ) -> tuple[int, bool]:
-    """The §5.4 epoch-boundary replay-selection cap for one motion:
+    """The epoch-boundary replay-selection cap for one motion:
     ``rqgm.replay.max_cases_per_epoch``, or the higher
     ``max_cases_for_retirement`` when a RetirementEvent is under
     consideration. A present Task 12 budget manager is consulted read-only
@@ -576,7 +580,7 @@ def run_audit(
                 )
                 if k
             )
-            # Task 12 §5.4: a RetirementEvent under consideration lifts the
+            # A RetirementEvent under consideration lifts the
             # replay-selection cap to max_cases_for_retirement (T17's
             # coverage guard reads the resulting replay_cases_used).
             motion_cases, replay_exhausted = _motion_replay_cap(
@@ -646,8 +650,9 @@ def run_audit(
                 pool=adversarial_replay_pool,
                 max_cases=max_cases,
                 use_cached=use_cached,
-                # Task 12 §5.5: with use_cached_results the governance cache
-                # is consulted before the pool's stored case results.
+                # With use_cached_results the governance cache is consulted
+                # BEFORE the pool's stored case results — the cache is the
+                # first read, the pool the fallback, never the reverse.
                 cache=governance_cache,
             )
         )
@@ -661,7 +666,8 @@ def run_audit(
     # ── 7. update replay pool (append-only projection; Task 06 rules) ──
     pool_updates = {"added": [], "retired": []}
     try:
-        # Task 06 §5.8 admission (epoch boundary ONLY, never mid-epoch):
+        # Replay-pool admission happens at the epoch boundary ONLY, never
+        # mid-epoch — the pool a board scores against is frozen for the epoch:
         # this epoch's ValidatedAttackRecords become replay cases, then the
         # pool is bounded and its snapshot rewritten. Duck-typed so pre-06
         # pools (append_case-only test stubs) keep working unchanged.
@@ -781,7 +787,8 @@ def run_audit(
 def _build_recommendations(
     motions: list, outcomes: list, candidate_evaluations: list
 ) -> list:
-    """Deterministic advisory recommendations (§6.1 closed action set).
+    """Deterministic advisory recommendations. ``action`` comes from a closed
+    set (docs/reference/rqgm_schemas.md, "`governance_report.schema.json`").
 
     Applying them is Task 09's RegistryTransitionEngine; unknown actions must
     be droppable there the way ``_parse_decision`` drops unknown lineage

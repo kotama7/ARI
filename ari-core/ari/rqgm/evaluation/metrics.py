@@ -1,4 +1,4 @@
-"""The thirteen RQGM evaluation metrics (RQGM Task 13 §5.4/§7).
+"""The thirteen RQGM evaluation metrics (docs/guides/rqgm_evaluation.md, "Metrics").
 
 ``compute_metric_report`` is a pure post-hoc function over persisted
 checkpoint artifacts — no LLM, no network, no randomness, and no wall-clock
@@ -28,7 +28,8 @@ METRIC_REPORT_FILENAME = "rqgm_eval_metrics.json"
 METRIC_REPORT_SCHEMA_VERSION = 1
 COMPUTED_BY_VERSION = 1
 
-#: The closed metric-key vocabulary (plan 13 §5.4 order).
+#: The closed metric-key vocabulary. This tuple IS the report's key order: the
+#: `metrics` block emits exactly these keys, in the 1-13 order numbered below.
 METRIC_KEYS: tuple[str, ...] = (
     "best_valid_scientific_score",          # 1
     "proposal_to_executable_rate",          # 2
@@ -262,7 +263,8 @@ def best_valid_scientific_score(
 ) -> dict:
     """Max ``_scientific_score`` over SUCCESS, non-sterile nodes that are
     (B6+) not stale and still frontier-valid. The ``_sterile`` clamp is
-    authoritative (plan 13 §4)."""
+    authoritative: a sterile node is excluded no matter how high its
+    ``_scientific_score`` is."""
     best = None
     best_ref = ""
     scored = 0
@@ -372,7 +374,10 @@ def _matches(detection: dict, refs: frozenset) -> bool:
 def detection_rates(
     detections: list, injections: list, controls: list
 ) -> dict:
-    """Metrics 4-8 from ground-truth injection/control specs (plan 13 §5.4).
+    """Metrics 4-8 (detection quality) from ground-truth injection/control specs.
+
+    False accept, false reject, validated-attack precision, false impeachment,
+    and retirement precision — see docs/guides/rqgm_evaluation.md, "Metrics".
 
     *detections* are normalized dicts ``{channel, record_type, record_id,
     target_ref[, verdict]}`` assembled from ValidatedAttackRecords, audit-log
@@ -624,20 +629,22 @@ def wall_clock_metadata(meta: "dict | None") -> dict:
     )
 
 
-# ── paper-archive metrics P1-P5 (paper-archive Task 07 §5.7/§7) ──────────────
+# ── paper-archive metrics P1-P5 ──────────────────────────────────────────────
+# (docs/guides/rqgm_evaluation.md, "Paper metrics P1–P5")
 #
 # Pure post-hoc functions over checkpoint artifacts (no LLM, no network), added
 # ALONGSIDE the exploration metrics. They populate the `paper` sub-block of the
-# SAME rqgm_eval_metrics.json (§6) — no new file. Same `{value, numerator,
+# SAME rqgm_eval_metrics.json — no new file. Same `{value, numerator,
 # denominator, evidence_refs, applicable}` shape and absence tolerance.
 
-#: The default accept members of a review `decision` (rubric.decision.options
-#: accept side, §5.5); the panel spec may override.
+#: The default accept members of a review `decision` (the accept side of
+#: rubric.decision.options); a panel spec's `accept_set` may override.
 DEFAULT_ACCEPT_SET: frozenset = frozenset({"accept", "accept_oral", "accept_poster",
                                            "accept_spotlight", "weak_accept",
                                            "strong_accept", "borderline_accept"})
 
-#: The paper metric-key vocabulary (§5.7 P1-P5 order).
+#: The paper metric-key vocabulary. This tuple IS the `paper` sub-block's key
+#: order: it emits exactly these five keys, P1 through P5.
 PAPER_METRIC_KEYS: tuple[str, ...] = (
     "P1_paper_acceptance_rate",
     "P2_reviewer_anchor_agreement",
@@ -676,12 +683,13 @@ def _decisions_from_reviews(reviews) -> list:
     return out
 
 
-#: The dedicated artifact a REAL pinned-panel run writes (§5.5): the fixed
-#: external ensemble, invoked post-hoc on the FINAL manuscript. Deliberately NOT
+#: The dedicated artifact a REAL pinned-panel run writes: the fixed external
+#: ensemble, invoked post-hoc on the FINAL manuscript. Deliberately NOT
 #: `review_report.json`, which is the IN-LOOP `review_paper` stage's output —
 #: a review of the PRE-refine draft, fed to `merge_reviews` -> `paper_refine`
-#: inside the loop. Reading that for P1 collapsed §5.5's disjointness
-#: ("Disjointness is the whole point") into self-agreement: the exact R1 failure.
+#: inside the loop. Reading that for P1 collapsed the panel's required
+#: disjointness from the co-evolving `paper_reviewer` ("Disjointness is the
+#: whole point") into self-agreement: the exact R1 failure.
 PANEL_REVIEW_REPORT_FILENAME = "panel_review_report.json"
 
 
@@ -702,7 +710,7 @@ def _panel_provenance(reviews) -> "dict | None":
 
 
 def paper_acceptance_rate(reviews, accept_set=None, *, panel=None) -> dict:
-    """P1 (§5.5): proportion of panel decisions in ACCEPT_SET.
+    """P1: proportion of panel decisions in ACCEPT_SET.
 
     The panel is the FIXED external reviewer set (a pinned rubric ensemble,
     disjoint from the co-evolving `paper_reviewer`), run post-hoc on the FINAL
@@ -753,7 +761,7 @@ def paper_acceptance_rate(reviews, accept_set=None, *, panel=None) -> dict:
 
 
 def reviewer_anchor_agreement(reviewer_verdicts, anchor_labels) -> dict:
-    """P2 (§5.7): # held-out anchor papers where the governed `paper_reviewer`
+    """P2: # held-out anchor papers where the governed `paper_reviewer`
     accept/reject verdict == the anchor ground-truth label ÷ # held-out anchor
     papers.
 
@@ -761,7 +769,7 @@ def reviewer_anchor_agreement(reviewer_verdicts, anchor_labels) -> dict:
     reviewer ``review_record``s in ``rqgm_audit.jsonl``); *anchor_labels* is
     ``{case_id: 'accept'|'reject'}`` (Task 04 ``paper_anchor_corpus.jsonl``
     labels). Observability only — P2 is computed post-hoc and reads no run
-    state (§5.8: it can never file anything). Absence-tolerant."""
+    state, and can never file anything. Absence-tolerant."""
     labels = {str(k): _binarize(v) for k, v in (anchor_labels or {}).items()}
     verdicts = {str(k): _binarize(v) for k, v in (reviewer_verdicts or {}).items()}
     held = sorted(cid for cid in labels if cid in verdicts)
@@ -784,7 +792,7 @@ def _binarize(rec) -> str:
 
 
 def paper_detection_rates(records, injections) -> dict:
-    """P3 (§5.7): # injected AI-authored papers the reviewer rejects OR the
+    """P3: # injected AI-authored papers the reviewer rejects OR the
     `paper_self_preference` adversary flags (→ ValidatedAttackRecord) ÷ #
     injected AI-authored papers.
 
@@ -826,9 +834,10 @@ _GATE_NO_VERDICT_STATUSES: frozenset[str] = frozenset({"skipped", "error", ""})
 
 
 def paper_gate_pass_rate(gate_report) -> dict:
-    """P4 (§5.7): the Layer-0 gate's own verdict on the finalized draft. Reads
+    """P4: the Layer-0 gate's own verdict on the finalized draft. Reads
     `claim_evidence_hard_gate_final.json`'s `metrics`/`should_block` — recomputes
-    NOTHING (the gate is authoritative, §5.3). Absence-tolerant.
+    NOTHING (the gate is authoritative and is never kernel-wrapped).
+    Absence-tolerant.
 
     A gate that did not RUN has no verdict, and must not be scored as a pass.
     Before this guard, ``passed`` was ``status != "failed" and not should_block``,
@@ -871,7 +880,7 @@ def paper_gate_pass_rate(gate_report) -> dict:
 
 
 def paper_cost(cost_trace) -> dict:
-    """P5 (§5.7): total + per-epoch prompt+completion tokens/USD for the paper
+    """P5: total + per-epoch prompt+completion tokens/USD for the paper
     phase, from `cost_trace.jsonl`. Absence-tolerant."""
     trace = [dict(r) for r in cost_trace or ()]
     if not trace:
@@ -887,13 +896,13 @@ def paper_cost(cost_trace) -> dict:
         epoch = str(rec.get("epoch") or "")
         if epoch:
             by_epoch[epoch] = by_epoch.get(epoch, 0) + tokens
-    # §6 pins `tokens`/`usd`/`by_epoch` FLAT on the entry (as P1 does with
-    # `panel`); `value` mirrors the parent `token_cost` so the parent entry
-    # contract ({value, numerator, denominator, evidence_refs, applicable},
-    # ../ari_rqgm/13 §6) still holds — the §6 example omits `value`. A consumer
-    # reading `P5_paper_cost["usd"]` per §6 previously got a KeyError (nested
-    # one level down under `detail`). `_not_applicable()` P5 entries stay
-    # base-shaped, same as P1's panel-less absent case.
+    # `tokens`/`usd`/`by_epoch` are pinned FLAT on the entry (as P1 does with
+    # `panel`); `value` mirrors the parent `token_cost` so the shared entry
+    # contract ({value, numerator, denominator, evidence_refs, applicable})
+    # still holds — the published P5 example omits `value`, but consumers read
+    # `P5_paper_cost["usd"]` directly and previously got a KeyError, because
+    # these lived one level down under `detail`. `_not_applicable()` P5 entries
+    # stay base-shaped, same as P1's panel-less absent case.
     entry = _entry(
         value=total_tokens,
         evidence_refs=["cost_trace.jsonl"],
@@ -1512,7 +1521,8 @@ def compute_kca_metric_blocks(
 def _compute_paper_block(
     ckpt: Path, *, injections: "list[dict] | None", panel: "dict | None"
 ) -> dict:
-    """The `paper` sub-block P1-P5 (paper-archive Task 07 §5.7/§6).
+    """The `paper` sub-block P1-P5
+    (docs/guides/rqgm_evaluation.md, "Paper metrics P1–P5").
 
     Additive, absence-tolerant, deterministic. Reads the panel review, the
     anchor labels/verdicts, the paper self-preference validated attacks, the
@@ -1528,11 +1538,13 @@ def _compute_paper_block(
     accept_set = panel_spec.get("accept_set")
 
     # P1 reads ONLY a real pinned-panel run's artifact. Absent => the Tier-3
-    # panel did not run => `applicable: false` (§6's absence-tolerance
-    # contract), never the in-loop `review_report.json` silently substituted.
+    # panel did not run => `applicable: false` (the absence-tolerance rule: a
+    # missing source yields a non-applicable entry, never an exception and
+    # never the in-loop `review_report.json` silently substituted).
     reviews = _read_json(ckpt / PANEL_REVIEW_REPORT_FILENAME)
-    # P2 labels: Task 04's read-only anchor corpus — the landed artifact. There
-    # is no `anchor_labels.json` producer anywhere in the repo (§5.7).
+    # P2 labels: the read-only anchor corpus — the landed artifact. The metric
+    # signature names its argument `anchor_labels`, but no `anchor_labels.json`
+    # producer exists anywhere in the repo, so the corpus is the only source.
     anchor_labels = {
         str(c.get("case_id")): str(c.get("ground_truth_label"))
         for c in _read_jsonl(ckpt / "paper_anchor_corpus.jsonl")
@@ -1595,7 +1607,8 @@ def compute_metric_report(
     paper: bool = False,
     panel: "dict | None" = None,
 ) -> dict:
-    """Compute all thirteen metrics from one checkpoint (plan 13 §5.4/§7).
+    """Compute all thirteen metrics from one checkpoint
+    (docs/guides/rqgm_evaluation.md, "Metrics").
 
     Pure and deterministic given the checkpoint contents: two computations
     over the same checkpoint are byte-identical when serialized with
@@ -1604,8 +1617,8 @@ def compute_metric_report(
     non-injection run — detection metrics 4-8 and 11 report
     ``applicable: false``.
 
-    When *paper* is true, an additive ``paper`` sub-block (P1-P5, paper-archive
-    Task 07 §5.7/§6) is appended; the exploration metrics are UNCHANGED whether
+    When *paper* is true, an additive ``paper`` sub-block (P1-P5) is appended
+    to the same report file; the exploration metrics are UNCHANGED whether
     or not the paper records are present. *panel* is the fixed external
     reviewer-panel spec (``{rubrics, num_reviews_ensemble, seed, accept_set}``)
     for P1.

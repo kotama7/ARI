@@ -31,7 +31,7 @@ from ari.rqgm.prompt_spec import (
 )
 
 
-# ── constitutional tables (§5.2, §5.3, §5.7) ────────────────────────────────
+# ── constitutional tables: evolvable roles, capabilities, context views ─────
 
 def test_both_roles_in_evolvable_and_matrix():
     for role in ("paper_writer", "paper_reviewer"):
@@ -82,7 +82,7 @@ def test_constitution_hash_repinned():
     assert kernel_rules.CONSTITUTION_HASH != "951a294dc3c4"
 
 
-# ── founding tables + required constraints (§5.4, §5.5) ──────────────────────
+# ── founding tables + the constraints every paper prompt must carry ──────────
 
 def test_paper_founding_specs_active_on_creation():
     from ari.prompts import FilesystemPromptLoader
@@ -117,7 +117,7 @@ def test_required_constraints():
     assert REQUIRED_CONSTRAINTS_BY_ROLE["paper_writer"]  # anti-fabrication clause
 
 
-# ── paper-mode gating: exploration boot byte-identical (§5.5, §8) ────────────
+# ── paper-mode gating: an exploration boot registers no paper row at all ─────
 
 def test_founding_registration_gated():
     base = founding_registration_events()          # exploration default
@@ -153,7 +153,7 @@ def test_exploration_ari_rqgm_boot_unchanged(tmp_path):
     assert not any(str(r).startswith("paper_") for r in roles)
 
 
-# ── co-evolution smoke: the active reviewer hash ACTUALLY changes (§5.9) ─────
+# ── co-evolution smoke: the active reviewer hash ACTUALLY changes ────────────
 
 class _ScriptedMCP:
     def call_tool(self, name, args):
@@ -260,7 +260,8 @@ def _run_paper(ckpt, cfg, *, adversary_llm=None):
 
 
 def _mutator_llm(prompt):
-    # The successor carries the paper_reviewer §5.4 clauses VERBATIM, as the
+    # The successor carries the paper_reviewer's mandatory constitutional
+    # constraints (REQUIRED_CONSTRAINTS_BY_ROLE) VERBATIM, as the
     # real rqgm/prompt_mutator.md meta-prompt requires — otherwise the candidate
     # constitutional gate (_paper_candidate_evaluator) drops it before scoring.
     return ("You are a STRICT academic reviewer. REJECT weak papers. Return "
@@ -270,7 +271,8 @@ def _mutator_llm(prompt):
 
 
 def _verdict(prompt_text, case):
-    """A CONTENT-reading judge (plan 04 §4 / §10 R4): it receives
+    """A CONTENT-reading judge — the anchor only earns trust if agreement is
+    won on the manuscript, never on the answer key: it receives
     ``anchor_case_view``, which has NO ``ground_truth_label``, so its verdict is
     a judgement of the manuscript rather than a copy of the answer key. A STRICT
     reviewer rejects a manuscript that reads weak; the lenient founding reviewer
@@ -327,7 +329,8 @@ def test_reviewer_is_reliability_assessable(tmp_path):
 
 
 def test_reviewer_own_records_are_same_role_excluded(tmp_path):
-    """§9/§13: an evidence bundle built AGAINST `paper_reviewer_v1` drops that
+    """Same-role isolation: an evidence bundle built AGAINST
+    `paper_reviewer_v1` drops that
     component's OWN `review_record`s with reason `same_role_source` — the records
     inform reliability, never admissibility. Cross-role evidence still admits, so
     this is same-ROLE isolation, not blanket suppression."""
@@ -383,7 +386,8 @@ def test_reviewer_own_records_are_same_role_excluded(tmp_path):
 
 
 def test_miscalibrated_reviewer_is_prosecutable_via_the_calibration_channel():
-    """§9 (reviewer inside the audit network): a mis-calibrated `paper_reviewer`
+    """The reviewer is itself inside the audit network: a mis-calibrated
+    `paper_reviewer`
     — stated `confidence` far from the `outcome_score` it emits — drives
     `reliability_score` below `RELIABILITY_FLOOR` so `classify_target` returns
     `CLASSIFY_FILE`. This is the exact channel the confidence fabrication had
@@ -481,7 +485,7 @@ def test_on_ramp_no_coevolution(tmp_path):
     assert len(set(seq)) == 1  # frozen at founding v1, no candidate minted
 
 
-# ── the reviewer PROMPT drives the draft score (§5.8/§5.9) ───────────────────
+# ── the reviewer PROMPT drives the draft score ───────────────────────────────
 
 def _draft(tmp_path, name, body):
     p = tmp_path / name
@@ -490,7 +494,8 @@ def _draft(tmp_path, name, body):
 
 
 def test_two_different_reviewer_prompts_score_the_same_draft_differently(tmp_path):
-    """THE §9 co-evolution proof, and the one that could not pass before: the
+    """THE load-bearing co-evolution proof, and the one that could not pass
+    before: the
     draft score came from `_structural_score(text)`, a prompt-INDEPENDENT
     heuristic, so evolving the reviewer bytes could not move draft selection by
     ANY path — the reviewer half of co-evolution was inert by construction."""
@@ -516,7 +521,7 @@ def test_the_active_prompt_reorders_the_best_belief_winner(tmp_path):
     draft is best, so the archive's best-belief selection follows the evolving
     bytes rather than a fixed heuristic.
 
-    Re-pinned 2026-07-17 to the honest contract (plan 03 §4/§5.8): the score
+    Re-pinned 2026-07-17 to the honest contract: the score
     DIMENSIONS are the venue rubric's, so a prompt emphasises an axis by naming
     the axis the VENUE declared — it can no longer mint a dimension out of its
     own wording, nor zero out the ones it stays silent about. The reorder is
@@ -574,13 +579,13 @@ def test_a_rubricless_prompt_warns_that_scoring_is_prompt_independent(tmp_path, 
 
 
 def test_the_score_dimensions_come_from_the_venue_rubric():
-    """The score DIMENSIONS are the venue rubric's, derived with the machinery
-    plan 03 §4 names for the job — `GENERIC_AXES` + `rubric_to_axes`, composed
-    by `dynamic_axes`' own `build_axes_for_run`.
+    """The score DIMENSIONS are the venue rubric's, derived with the shared
+    evaluator machinery — `GENERIC_AXES` + `rubric_to_axes`, composed by
+    `dynamic_axes`' own `build_axes_for_run`.
 
-    Pinned 2026-07-17. Until then the axes came from a `_RUBRIC_AXES` table of
-    REVIEWER-PROMPT trigger words that no plan sanctioned (`grep dynamic_axes
-    paper_runtime.py` returned nothing while §4 named it), which put the axis
+    Pinned 2026-07-17. Until then the axes came from a local `_RUBRIC_AXES`
+    table of REVIEWER-PROMPT trigger words (`grep dynamic_axes
+    paper_runtime.py` returned nothing), which put the axis
     vocabulary inside the evolving bytes it was supposed to judge."""
     from ari.evaluator.dynamic_axes import GENERIC_AXIS_NAMES, rubric_to_axes
     from ari.rqgm.paper_runtime import _venue_rubric, draft_axes

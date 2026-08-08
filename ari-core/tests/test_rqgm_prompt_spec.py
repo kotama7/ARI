@@ -72,7 +72,10 @@ def _spec(**overrides) -> PromptSpec:
     return PromptSpec(**base)
 
 
-# ── schema round-trip (§9 test 1) ────────────────────────────────────────────
+# ── schema round-trip ────────────────────────────────────────────────────────
+# PromptSpec is frozen, survives a dict round-trip, and validates against
+# rqgm_prompt_spec.schema.json — which structurally rejects a second hash
+# scheme and any generation_mode outside the enum.
 
 
 def test_prompt_spec_round_trip():
@@ -107,7 +110,9 @@ def test_prompt_spec_schema_validates():
         )
 
 
-# ── founding bootstrap (§5.2 / §9 test 1) ────────────────────────────────────
+# ── founding bootstrap ───────────────────────────────────────────────────────
+# One founding spec per governed committed template, each carrying
+# prompt_hash == load_versioned(key)[1] — a single hash scheme, no migration.
 
 
 def test_founding_table_covers_exactly_the_committed_inventory():
@@ -146,15 +151,17 @@ def test_founding_table_covers_exactly_the_committed_inventory():
             "rqgm/adversary_reproducibility",
             "rqgm/clean_room_generator",
             "rqgm/defender",
-            # plan 11 §5.2 items 3-4: the recommendation roles' templates.
+            # The two live meta actors: both emit RECOMMENDATIONS the caller
+            # is free to widen, never decisions, which is what makes them safe
+            # to evolve.
             "rqgm/failure_summary_compressor",
             "rqgm/replay_selector",
             "rqgm/judge_adjudication",
-            # Task 14 (plan 14 §5.3): the PolicyMutator's meta template.
-            # Reviewed expectation update — the founding inventory genuinely
-            # gains one committed template. The utility POLICY itself has no
-            # row here: its body is cfg-derived, so it cannot live in a table
-            # whose contract is "frozen code constants" (§5.3).
+            # Task 14: the PolicyMutator's meta template. Reviewed expectation
+            # update — the founding inventory genuinely gains one committed
+            # template. The utility POLICY itself has no row here: its body is
+            # cfg-derived, so it cannot live in a table whose contract is
+            # "frozen code constants" (every row names a committed file).
             "rqgm/policy_mutator",
             "rqgm/prompt_mutator",
             # Proposal-router generator templates — governed so a proposal
@@ -181,7 +188,8 @@ def test_founding_specs_hash_identical_to_load_versioned():
         ).hexdigest()
         assert spec.full_sha256[:12] == spec.prompt_hash
         assert verify_spec_hash(spec, text)
-        # Founding identity invariants (§5.2).
+        # Founding identity invariants: every founding spec is generation_mode
+        # "founding", active, version 1, parentless, and package-backed.
         assert spec.generation_mode == "founding"
         assert spec.status == "active"
         assert spec.version == 1
@@ -226,7 +234,7 @@ def test_founding_role_and_evolvable_assignment():
     assert not by_key["governance/auditor"].evolvable
     evolvable = {k for k, s in by_key.items() if s.evolvable}
     assert evolvable == {
-        # plan 11 §5.2 items 3-4. Being evolvable is the point: their prompt
+        # The two live meta actors. Being evolvable is the point: their prompt
         # bytes are what the PromptMutator now mints successors for.
         "rqgm/replay_selector",
         "rqgm/failure_summary_compressor",
@@ -300,7 +308,10 @@ def test_founding_spec_rejects_divergent_loader_scheme():
         )
 
 
-# ── registration + provenance parity (§9 test 1) ─────────────────────────────
+# ── registration + provenance parity ─────────────────────────────────────────
+# The founding payloads replay through Task 02's event log to an identical
+# registry, and the version stamped into the prompt trace is that registry's
+# own registry_version().
 
 
 def _registry_from_founding():
@@ -335,8 +346,8 @@ def test_registration_payloads_round_trip_through_task02_replay():
 
 
 def test_record_prompt_use_stamps_task02_registry_version(tmp_path):
-    """§5.6: the reserved provenance fields are finally populated — and the
-    stamped value IS Task 02's ``registry_version()`` (parity only)."""
+    """Under RQGM the reserved provenance fields are finally populated — and
+    the stamped value IS Task 02's ``registry_version()`` (parity only)."""
     from ari.prompts import load_prompt_trace
 
     registry = _registry_from_founding()
@@ -352,7 +363,8 @@ def test_record_prompt_use_stamps_task02_registry_version(tmp_path):
 
 
 def test_simple_bfts_leaves_reserved_provenance_fields_none(tmp_path):
-    """§5.7 mode table: the default path never stamps the reserved fields."""
+    """simple_bfts never stamps the reserved fields: on the default path both
+    prompt_version and prompt_registry_version stay None."""
     from ari.prompts import load_prompt_trace, record_prompt_use
 
     record_prompt_use("agent/system", "0" * 12, checkpoint_dir=tmp_path)

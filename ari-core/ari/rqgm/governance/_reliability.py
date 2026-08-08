@@ -1,4 +1,6 @@
-"""ReliabilityMonitor + MetaReliabilityMonitor (Task 05 §5.3 step 2).
+"""ReliabilityMonitor + MetaReliabilityMonitor — step 2 of the Task 05 audit
+(the aggregation that runs over step 1's epoch record slice, before the
+motion pipeline reads its numbers).
 
 **Deterministic** aggregation per ``(component_id, prompt_hash)`` over the
 epoch's audit-log record slice: counts, validated-attack involvement,

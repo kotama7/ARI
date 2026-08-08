@@ -1,10 +1,12 @@
-"""GovernanceJudge + ReplayBoard + AnchorBoard + JuryPanel (Task 05 §5.3 step 6).
+"""GovernanceJudge + ReplayBoard + AnchorBoard + JuryPanel — the adjudication
+stage of the motion pipeline, the last stage before an ImpeachmentOutcome is
+written (``docs/reference/rqgm_schemas.md``, "The motion-pipeline records").
 
 **Bounded LLM.** The boards are deterministic given cached case results
 (Task 12 caching; case content is Task 06's): a board score is the mean of
 the subject's cached results over at most ``rqgm.replay.max_cases_per_epoch``
 cases (``max_cases_for_retirement`` when the motion puts a RetirementEvent
-under consideration — Task 12 §5.4; the caller picks the cap), sorted by
+under consideration; the caller picks the cap), sorted by
 case id. The GovernanceJudge (LLM) rules each motion
 ``upheld / partially_upheld / dismissed`` but **cannot contradict** the board
 scores — a contradicting verdict is clamped and flagged for the self-audit
@@ -34,7 +36,9 @@ _JUDGE_OUTCOMES = ("upheld", "partially_upheld", "dismissed")
 BOARD_HIGH = 0.8
 BOARD_LOW = 0.2
 
-#: Candidate pass floor over both boards (§6.1 ``candidate_evaluations``).
+#: Candidate pass floor: a candidate's verdict is ``pass`` only when the
+#: LOWER of its two board scores clears this — one weak board is enough to
+#: fail it.
 CANDIDATE_PASS_THRESHOLD = 0.6
 
 _ROUND = 6
@@ -143,8 +147,9 @@ def adjudicate_motion(
     degradations: list,
     findings: list,
 ) -> dict:
-    """Rule one motion; returns the §6.1 adjudication entry fields plus the
-    board scores (the caller builds the ImpeachmentOutcome record)."""
+    """Rule one motion; returns the adjudication fields (outcome, rationale,
+    board scores/refs, clamp flag) that the caller assembles into the
+    ImpeachmentOutcome record."""
     try:
         replay_score, replay_refs, replay_used = board_score(
             replay_cases(pool), subject_keys, max_cases=max_cases
@@ -153,7 +158,8 @@ def adjudicate_motion(
             anchor_cases(pool), subject_keys, max_cases=max_cases
         )
     except Exception:
-        # Board failure: inconclusive, motion carried to next epoch (§5.3).
+        # Board failure: inconclusive, motion carried to the next epoch —
+        # the bond stays posted, neither refunded nor forfeited.
         log.warning("board scoring failed for %s", motion.record_id,
                     exc_info=True)
         degradations.append(f"board_failure:{motion.record_id}")
@@ -222,9 +228,10 @@ def _cached_board_score(
     role: str,
 ) -> tuple[float | None, list, int]:
     """:func:`board_score` with the Task 12 governance cache consulted FIRST
-    (plan 12 §5.5 ``use_cached_results``): each ``(case, prompt)`` pair is
-    looked up under the case's origin epoch (§6.2 replay rule); pool-derived
-    scores are written back so replaying the same pair never re-pays."""
+    (the ``use_cached_results`` policy): each ``(case, prompt)`` pair is
+    looked up under the case's ORIGIN epoch, never the current one, so a
+    replayed case keeps the same key across epochs; pool-derived scores are
+    written back so replaying the same pair never re-pays."""
     from ari.rqgm.governance_cache import case_origin_epoch, replay_lookup_key
 
     scores: list[float] = []
@@ -272,11 +279,12 @@ def evaluate_candidates(
     use_cached: bool,
     cache=None,
 ) -> tuple[list, int, int]:
-    """§6.1 ``candidate_evaluations``: deterministic board scoring of the
-    Task 07/08 candidate PromptSpecs (this facade never creates candidates).
-    *cache* is the optional Task 12 :class:`GovernanceCache`; with
-    ``use_cached`` it is consulted before the pool's stored case results
-    (plan 12 §5.5) and filled from them. Returns
+    """Builds the governance report's ``candidate_evaluations``: deterministic
+    board scoring of the Task 07/08 candidate PromptSpecs, whose replay/anchor
+    scores feed the RegistryTransitionEngine (this facade never creates
+    candidates). *cache* is the optional Task 12 :class:`GovernanceCache`;
+    with ``use_cached`` it is consulted before the pool's stored case results
+    and filled from them. Returns
     ``(evaluations, replay_cases_used, anchor_cases_used)``."""
     evaluations = []
     replay_used_total = 0

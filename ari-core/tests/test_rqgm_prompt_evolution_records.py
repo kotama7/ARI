@@ -105,7 +105,7 @@ def _observation(**overrides):
     return ComparisonObservation(**base)
 
 
-# ── record shapes (§6) ───────────────────────────────────────────────────────
+# ── record shapes: round-trip + jsonschema validation ────────────────────────
 
 
 def test_candidate_round_trip():
@@ -132,7 +132,7 @@ def test_records_validate_against_schema():
         jsonschema.validate(_candidate(status="active").to_dict(), schema)
 
 
-# ── fail-open writer (§9 test 5) ─────────────────────────────────────────────
+# ── fail-open writer: a missing or unwritable checkpoint never raises ────────
 
 
 def test_writer_is_noop_without_checkpoint(tmp_path):
@@ -171,7 +171,7 @@ def test_writer_never_raises_on_io_failure(tmp_path):
     record_prompt_evolution_event(tmp_path, _candidate())  # must not raise
 
 
-# ── derived rollup (§9 test 5) ───────────────────────────────────────────────
+# ── derived rollup: JSONL is truth, prompt_specs.json is a pure fold ─────────
 
 
 def test_rollup_is_deterministic_and_derived_from_jsonl(tmp_path):

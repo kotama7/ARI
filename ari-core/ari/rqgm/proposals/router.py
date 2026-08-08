@@ -1,4 +1,4 @@
-"""ProposalRouter — budget-aware deterministic dispatcher (RQGM Task 03 §5.2).
+"""ProposalRouter — budget-aware deterministic dispatcher (RQGM Task 03).
 
 Active only in ``ari_rqgm`` mode. Routing is a **pure policy function**
 (:func:`route`, P2 — deterministic-rule-first precedent from
@@ -6,7 +6,8 @@ Active only in ``ari_rqgm`` mode. Routing is a **pure policy function**
 what evolves later (Task 07) are the generator *prompts*, not the routing
 rule.
 
-Trigger events map onto existing hooks (plan 03 §5.2):
+Trigger events map onto existing hooks — the router opens no new call
+site of its own:
 
 ===================== =====================================================
 ``initial_exploration`` run start / first proposal need in ``_run_loop``
@@ -42,7 +43,8 @@ log = logging.getLogger(__name__)
 
 ROUTER_COMPONENT_ID = "proposal_router_v1"
 
-#: Closed v1 trigger-event vocabulary (plan 03 §5.2).
+#: Closed v1 trigger-event vocabulary: an event outside this tuple routes
+#: nowhere.
 TRIGGER_EVENTS: tuple[str, ...] = (
     "initial_exploration",
     "frontier_stagnation",
@@ -95,8 +97,9 @@ class ProposalRouter:
     """Dispatches proposal generation over the five-generator registry.
 
     *cfg* is the resolved :class:`ari.config.ARIConfig` (only
-    ``proposal_router.*`` is read — never during mode resolution, plan 01
-    §5.6). *generators* is the injectable registry override used by tests
+    ``proposal_router.*`` is read, and never during mode resolution — the
+    mode is settled before any router config is consulted). *generators* is
+    the injectable registry override used by tests
     (deterministic fakes; never a real LLM). *epoch_state* is either an
     ``EpochState``-like object or a zero-arg callable returning one, so the
     router always stamps the CURRENT epoch after boundary transactions.
@@ -212,7 +215,7 @@ class ProposalRouter:
     def budgets_for(self, names) -> dict[str, int | None]:
         return {name: self._remaining_budget(name) for name in names}
 
-    # ── invocation surfaces (plan 03 §5.2) ────────────────────────────
+    # ── invocation surfaces: the hooks the trigger events arrive on ───
 
     def generate_root_proposals(self, ctx: dict | None = None) -> list[ProposalRecord]:
         """Root ideation on the ``_run_loop`` main thread (marker-guarded).
@@ -455,8 +458,9 @@ class ProposalRouter:
         self, event: str, records: list[ProposalRecord], *, imported: int = 0
     ) -> None:
         """Append to the shared ``lineage_decisions.jsonl`` audit log with
-        ``trigger: "proposal_router"`` (plan 03 §8 — decisions share the
-        existing log; the record store itself is data, not decisions)."""
+        ``trigger: "proposal_router"``. Decisions share the existing log
+        rather than opening a second one; the record store itself is data,
+        not decisions."""
         try:
             record = {
                 "ts": time.time(),

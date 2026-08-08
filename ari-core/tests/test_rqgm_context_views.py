@@ -7,9 +7,11 @@ Covers the three-layer ProposalSummaryView-only enforcement for BFTS
 (typed renderer input → ``TypeError``; kernel ``validate_context_scope``
 sharing the SAME whitelist constant; the leak-regression test asserting no
 archive-only field name ever appears in a rendered expand context for a
-fixture ProposalRecord carrying all of them), plus the §5.7 visibility
-matrix exclusions: the Judge never sees frontier scores, governance never
-sees retired prompt text, and same-role isolation is constructive.
+fixture ProposalRecord carrying all of them), plus the visibility-matrix
+exclusions: the Judge never sees frontier scores, governance never sees
+retired prompt text, and same-role isolation is constructive.  The full
+layer-by-layer rule set is docs/reference/internal_boundaries.md,
+"Governance context views (`ari.rqgm.context_views`)".
 
 All builders are pure and deterministic — no LLM, no I/O (P2).
 """
@@ -60,7 +62,7 @@ def _summary() -> ProposalSummaryView:
 
 def _record_with_archive_fields() -> ProposalRecord:
     """Fixture ProposalRecord populated with every archive-only field the
-    §9.7 leak test names (transcript / discussion_log / raw_proposals)."""
+    leak-regression test names: transcript / discussion_log / raw_proposals."""
     return ProposalRecord(
         record_id="prop_000001",
         generator="virsci",
@@ -94,7 +96,7 @@ def test_bfts_renderer_respects_the_cap():
     assert len(build_bfts_summary_context(_summary())) <= 6000
 
 
-# ── layer 3: leak-regression (§9.7) ─────────────────────────────────────────
+# ── layer 3: leak-regression — no archive-only name survives rendering ──────
 
 
 def test_no_archive_field_reaches_the_rendered_expand_context():
@@ -112,8 +114,8 @@ def test_no_archive_field_reaches_the_rendered_expand_context():
 
 
 def test_whitelist_constant_is_the_kernel_table_entry():
-    # One source (plan 12 §6.5): the module constant IS the pinned kernel
-    # rules entry — no copy that could drift.
+    # One source of truth: the module constant IS the pinned kernel rules
+    # entry (identity, not equality) — no second list that could drift.
     assert PROPOSAL_SUMMARY_FIELDS is CONTEXT_VIEW_WHITELISTS[BFTS_VIEW_ROLE]
     assert set(_summary().to_dict()) <= set(PROPOSAL_SUMMARY_FIELDS)
 
@@ -139,7 +141,7 @@ def test_live_expand_context_hook_warns_and_flags_out_of_scope_views(
     ``validate_context_scope`` on the live view — a whitelist violation is
     audit-flagged (``kernel_report``) and the leaky view is never rendered
     (the caller keeps its idea.json fallback); a clean summary renders with
-    no flag. Warn-and-flag only — the run never blocks (plan 12 §5.7)."""
+    no flag. Warn-and-flag only — the check never blocks node execution."""
     import json
     from types import SimpleNamespace
 
@@ -170,7 +172,7 @@ def test_live_expand_context_hook_warns_and_flags_out_of_scope_views(
     assert reports and "CK-CTX-001" in json.dumps(reports[-1])
 
 
-# ── §5.7 visibility matrix exclusions ───────────────────────────────────────
+# ── visibility-matrix exclusions (judge / governance / bounded projections) ─
 
 
 def test_judge_view_never_sees_frontier_scores():
@@ -261,8 +263,9 @@ def test_scope_check_flags_a_foreign_field(caplog):
 
 
 def test_a_role_without_a_whitelist_is_unchecked(caplog):
-    """v1 defines whitelists for three roles; the rest are unchecked by design
-    (§5.1) — the check must not invent violations for them."""
+    """v1 defines whitelists for three roles only (generator, paper_writer,
+    paper_reviewer); every other role is unchecked by design — the lookup
+    misses and the check must not invent violations for them."""
     import logging
 
     from ari.rqgm.context_views import _enforce_scope

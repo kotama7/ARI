@@ -6,19 +6,20 @@ authority limits): the closed capability-flag
 vocabulary on ComponentRegistry entries, the closed meta action vocabulary,
 the v1 evolving/frozen meta role split, and the deterministic check bodies
 the ConstitutionalKernel applies (``validate_capability`` meta-action branch,
-``validate_authority_non_expansion`` flag arithmetic, the §5.6.2
-cross-generation rule). Follows the :mod:`ari.rqgm.clean_room_rules` /
+``validate_authority_non_expansion`` flag arithmetic, and the
+cross-generation rule that bars a meta role from producing its own
+successor). Follows the :mod:`ari.rqgm.clean_room_rules` /
 :mod:`ari.rqgm.transition_rules` precedent: rules live in code, never in
 checkpoint-scoped config (an evolution/tampering channel), and are imported
 by the kernel — single source of truth, no duplication drift.
 
-The governing invariant (SPEC global invariant 18, plan 11 §1):
+The governing invariant (SPEC global invariant 18):
 
     Governance agents may evolve, but their authority cannot expand.
 
 Deny-by-default everywhere: a missing flag is ``False``, a missing tier is
-``institutional`` (plan 11 §8 — partially written registries fail closed on
-capability and open on nothing).
+``institutional`` — a partially written registry therefore fails closed on
+capability and open on nothing.
 
 Deterministic, pure stdlib + ``ari.rqgm.events``: no LLM calls, no network,
 no randomness, no wall clock (P2).
@@ -28,7 +29,7 @@ from __future__ import annotations
 
 from ari.rqgm.events import TIERS
 
-# ── capability flags (plan 11 §6.1; closed vocabulary) ──────────────────────
+# ── capability flags (closed vocabulary) ────────────────────────────────────
 
 #: Every per-entry capability flag. Absence is denial (deny-by-default).
 CAPABILITY_FLAGS: tuple[str, ...] = (
@@ -44,7 +45,8 @@ CAPABILITY_FLAGS: tuple[str, ...] = (
 
 #: Flags that MUST be ``False`` on every ``tier: meta`` entry — a meta entry
 #: with any of them ``True`` is a schema violation, not merely a capability
-#: denial (plan 11 §6.1 ``const: false`` rule; rows M1/M2/M7/M10).
+#: denial — ``rqgm_meta.schema.json`` pins each of them ``const: false``
+#: whenever ``tier`` is ``meta``.
 META_HARD_DENIED_FLAGS: tuple[str, ...] = (
     "can_modify_registry",
     "can_activate_candidates",
@@ -53,7 +55,7 @@ META_HARD_DENIED_FLAGS: tuple[str, ...] = (
     "can_author_evidence_bundle",
 )
 
-# ── meta action vocabulary (plan 11 §5.5; closed) ───────────────────────────
+# ── meta action vocabulary (closed) ─────────────────────────────────────────
 
 #: The ONLY actions the MetaEvolutionCoordinator may perform on behalf of a
 #: meta-agent. Anything else is denied by the kernel (closed vocabulary).
@@ -70,7 +72,7 @@ FLAG_BY_ACTION: dict[str, str] = {
     "emit_failure_summary": "can_emit_failure_summary",
 }
 
-#: MetaAgentOutputRecord ``output_kind`` values (plan 11 §6.2; closed) and
+#: MetaAgentOutputRecord ``output_kind`` values (closed vocabulary) and
 #: the capability action each one exercises.
 OUTPUT_KINDS: tuple[str, ...] = (
     "prompt_candidate",
@@ -85,7 +87,7 @@ ACTION_BY_OUTPUT_KIND: dict[str, str] = {
     "failure_summary": "emit_failure_summary",
 }
 
-# ── meta role split (plan 11 §2/§5.1) ───────────────────────────────────────
+# ── meta role split (v1 evolving vs reserved-but-frozen) ────────────────────
 
 #: The v1 evolving meta roles (the SPEC's set). Naming note: the plan says
 #: ``replay_case_selector``; the Task 02 vocabulary registered the role as
@@ -95,7 +97,7 @@ META_EVOLVING_ROLES: tuple[str, ...] = (
     "clean_room_generator",
     "replay_selector",
     "failure_summary_compressor",
-    # Task 14 (plan 14 §5.2): ``policy_mutator`` gained an implementation
+    # Task 14: ``policy_mutator`` gained an implementation
     # (``ari.rqgm.utility_evolution.PolicyMutator``), so it takes the exit
     # this module's own META_FROZEN_ROLES comment prescribes — Task 14 is
     # the "later task" that extended ``ari.rqgm.events.ROLES``.
@@ -114,8 +116,8 @@ META_FROZEN_ROLES: tuple[str, ...] = (
 
 META_ROLES: tuple[str, ...] = META_EVOLVING_ROLES + META_FROZEN_ROLES
 
-#: Default ``forbidden_targets`` on a meta entry (plan 11 §6.1 example):
-#: fixed-tier machinery a meta candidate may never target (rows M3-M5/M8).
+#: Default ``forbidden_targets`` on a meta entry: the fixed-tier machinery a
+#: meta candidate may never target.
 DEFAULT_FORBIDDEN_TARGETS: tuple[str, ...] = (
     "fixed_verifier",
     "audit_log",
@@ -144,7 +146,7 @@ def _entry_dict(entry) -> dict:
 def _entry_field(d: dict, name: str, default=None):
     """Read *name* from the entry's ``capabilities`` sub-dict first (the
     Task 02 ``ComponentEntry.capabilities`` carrier), then top-level (the
-    plan's flat §6.1 JSON shape)."""
+    flat JSON shape that carries the same fields directly on the entry)."""
     caps = d.get("capabilities")
     if isinstance(caps, dict) and name in caps:
         return caps[name]
@@ -152,7 +154,7 @@ def _entry_field(d: dict, name: str, default=None):
 
 
 def entry_tier(entry) -> str:
-    """``tier`` with the plan-§8 fallback: missing == ``institutional``."""
+    """``tier`` with the fail-closed fallback: missing == ``institutional``."""
     d = _entry_dict(entry)
     return str(d.get("tier") or "institutional")
 
@@ -168,7 +170,7 @@ def entry_targets(entry, name: str) -> frozenset:
 
 
 def has_capability_fields(entry) -> bool:
-    """True when the entry carries any §6.1 field (flags/targets) — the
+    """True when the entry carries any capability field (flags/targets) — the
     activation condition for the flag-arithmetic checks. Public so the
     RegistryTransitionEngine can decide which adoptions need an incumbent
     attached for the kernel's CK-REG-101 gate (#79)."""
@@ -192,7 +194,7 @@ _has_capability_fields = has_capability_fields
 
 
 def capability_entry_failures(entry) -> list[str]:
-    """Schema-level hard denials over one registry entry (plan 11 §6.1).
+    """Schema-level hard denials over one registry entry.
 
     Empty list == valid. Mirrors ``rqgm_meta.schema.json``'s conditional
     ``const: false`` rules so the deterministic Python check and the JSON
@@ -209,7 +211,7 @@ def capability_entry_failures(entry) -> list[str]:
             if flag_value(entry, flag):
                 failures.append(
                     f"meta-tier entry sets hard-denied flag {flag!r} "
-                    "(must be const-false, plan 11 §6.1)"
+                    "(must be const-false on a meta entry)"
                 )
     if effective_tier == "fixed":
         for flag in CAPABILITY_FLAGS:
@@ -232,7 +234,8 @@ def capability_entry_failures(entry) -> list[str]:
 def meta_action_denials(actor, action: str) -> list[str]:
     """Why *actor* may NOT perform the meta *action* (empty == allowed).
 
-    Deny-by-default per-entry flag lookup (plan 11 §5.5 layer 2): the actor
+    Deny-by-default per-entry flag lookup — the second gate, after the
+    closed action vocabulary above: the actor
     must be a schema-valid ``tier: meta`` entry carrying the action's flag.
     A bare ``(role, tier)`` actor has no flags and is therefore denied.
     """
@@ -261,7 +264,10 @@ def meta_action_denials(actor, action: str) -> list[str]:
 
 
 def authority_expansion_findings(candidate, incumbent) -> list[str]:
-    """Invariant-18 pure set arithmetic over §6.1 entries (plan 11 §5.6.1).
+    """Invariant-18 pure set arithmetic over capability-carrying entries: a
+    candidate may not raise a flag the incumbent lacks, add an
+    ``allowed_targets`` entry, drop a ``forbidden_targets`` entry the
+    incumbent held, or raise ``max_outputs_per_epoch``.
 
     Active only when *candidate* carries capability fields (older
     ``declared_capabilities``-only entries keep the Task 04 v1 path). With
@@ -309,7 +315,7 @@ def authority_expansion_findings(candidate, incumbent) -> list[str]:
 
 
 def cross_generation_failures(target_role: str, producer_role: str) -> list[str]:
-    """The §5.6.2 self-reference break: a meta-role candidate may not be
+    """The self-reference break: a meta-role candidate may not be
     produced by an incumbent of the SAME meta role (PromptMutator successors
     come from the clean-room generator or humans, and vice versa)."""
     target = str(target_role or "")
@@ -317,6 +323,6 @@ def cross_generation_failures(target_role: str, producer_role: str) -> list[str]
     if target in META_ROLES and producer and producer == target:
         return [
             f"meta candidate for role {target!r} produced by the same role "
-            "(self-modification; cross-generation rule, plan 11 §5.6.2)"
+            "(self-modification; a meta role may not author its successor)"
         ]
     return []

@@ -61,21 +61,22 @@ from ari.rqgm.transition_rules import (
 )
 from ari.protocols.integrity import bytes_digest, canonical_digest
 
-# Hand-pinned (plan 04 §5.7/§9.8): any rule-table edit — including one to the
-# imported transition_rules.py — must be an explicit reviewed diff + re-pin.
-# Re-pinned for CK-ERA-006 (Task 10 §5.3 prompt_trace cross-check).
+# Hand-pinned: any rule-table edit — including one to the imported
+# transition_rules.py — must be an explicit reviewed diff plus a re-pin here.
+# A rule table that could change without a reviewed diff is not a constitution.
+# Re-pinned for CK-ERA-006 (the erasure pass's prompt_trace cross-check).
 # Re-pinned 2026-07-14: constitutional amendment adding
 # ``failure_summary_compressor`` to the capability matrix with the same
 # minimal grants as ``replay_selector`` (the role was in
 # events.EVOLVABLE_ROLES but missing from the matrix, so every capability
 # was CK-ACC-001-blocked in every tier).
 # Re-pinned 2026-07-15: constitutional amendment adding the ``paper_writer``
-# context-scope whitelist (plan 12 §5.4/§5.7: verified_context + science_data
-# + claim_registry). Context-scope role only — deliberately NOT in
+# context-scope whitelist (verified_context + science_data + claim_registry,
+# and nothing else). Context-scope role only — deliberately NOT in
 # EVOLVABLE_ROLES / the capability matrix (the paper skill is a separate
 # ungoverned subprocess package in v1).
 # Re-pinned 2026-07-16: constitutional amendment for governed utility
-# evolution (plan 14 §5.2/§5.6). THREE table edits ride this one re-pin:
+# evolution. THREE table edits ride this one re-pin:
 #   1. ``policy_mutator`` joins the capability matrix (_EVOLVABLE_ROLES),
 #      receiving the same minimal meta grants as ``prompt_mutator``;
 #   2. ``("utility_policy", "institutional")`` gains ONE explicit row,
@@ -101,8 +102,8 @@ from ari.protocols.integrity import bytes_digest, canonical_digest
 # never governed cross-process). Two capability-matrix rows per role plus the
 # paper_reviewer whitelist row move the hash; the founding paper prompt/
 # component rows are paper-mode-gated and do NOT ride the constitution pin.
-# Re-pinned 2026-07-16: constitutional amendment (plan ari_rqgm_paper/05 /
-# 03 §5.9, wave 3c) adding TRANSITION_TABLE row T21 (``active -> shadow``),
+# Re-pinned 2026-07-16: constitutional amendment (wave 3c) adding
+# TRANSITION_TABLE row T21 (``active -> shadow``),
 # the paper-role SHADOW-STANDBY supersession edge. Paper-role co-evolution is
 # prompt-level, so on a successor's T6 adoption the incumbent active prompt is
 # demoted to a reinstatable ``shadow`` standby (kernel-guarded to the paper
@@ -629,12 +630,12 @@ def _harness_kernel_report(k, case: str = ""):
     )
 
 
-# ── §9.1 per-code fixtures: one trigger + one pass per violation code ──────
+# ── per-code fixtures: one trigger + one pass per violation code ──────────
 # Each entry: code -> (trigger(kernel) -> report, clean(kernel) -> report).
 
-#: A LEGAL governed utility policy (plan 14 §5.6): the canonical five axes at
-#: weights inside [0.05, 0.60] summing to 1.0, a composite and frontier_score
-#: from the closed sets, knobs in range.
+#: A LEGAL governed utility policy: the canonical five axes at weights inside
+#: [0.05, 0.60] summing to 1.0, a composite and frontier_score from the closed
+#: sets, knobs in range.
 _LEGAL_POLICY = {
     "composite": "harmonic_mean",
     "axis_weights": {
@@ -664,7 +665,7 @@ def _utl_policy(**overrides) -> dict:
 _DROP = object()
 
 _FIXTURES = {
-    # ── Task 14 §5.6: the governed utility policy (CK-UTL-*) ──────────
+    # ── the governed utility policy's legality rules (CK-UTL-*) ───────
     "CK-UTL-001": (
         # A required key missing is as illegal as an unknown key present:
         # the policy body's key set is closed.
@@ -685,7 +686,7 @@ _FIXTURES = {
         # THE axis-abolition candidate: {novelty: 1.0} is formally a policy
         # and substantively the deletion of measurement_validity and
         # reproducibility from the method. Blocked by the floor AND the
-        # ceiling (plan 14 §5.6).
+        # ceiling on any single axis weight.
         lambda k: k.validate_utility_policy(
             _utl_policy(axis_weights={"novelty": 1.0})),
         lambda k: k.validate_utility_policy(_utl_policy()),
@@ -937,7 +938,7 @@ _FIXTURES = {
     ),
     "CK-ERA-006": (
         # A prompt_trace line carries the retired hash but no record was
-        # produced by that prompt (producer index incomplete, plan 10 §5.3).
+        # produced by that prompt (producer index incomplete).
         lambda k: _era(k, prompt_trace=[
             {"prompt_name": "reviewer", "template_hash": _RETIRED,
              "node_id": "node_001"}]),
@@ -1030,7 +1031,8 @@ _FIXTURES.update({
 
 
 def test_every_severity_code_has_a_fixture():
-    """The violation catalogue is fully exercised (plan 04 §9.1)."""
+    """Every code in the severity catalogue has a fixture: no violation code
+    ships without a trigger and a pass case."""
     assert set(_FIXTURES) == set(kernel_rules.SEVERITY)
 
 
@@ -1050,8 +1052,8 @@ def test_violation_code_trigger_and_pass(code):
 
 @pytest.mark.parametrize("code", sorted(_FIXTURES))
 def test_double_invocation_byte_equality(code):
-    """P2: identical inputs => byte-identical reports (plan 04 §9.7),
-    across invocations AND kernel instances."""
+    """P2: identical inputs => byte-identical reports, across invocations
+    AND kernel instances."""
     trigger, _ = _FIXTURES[code]
     first = canonical_json(trigger(ConstitutionalKernel()).to_dict())
     second = canonical_json(trigger(ConstitutionalKernel()).to_dict())
@@ -1074,7 +1076,7 @@ def test_violations_sorted_deterministically():
     assert len(keys) >= 3
 
 
-# ── §9.2 transition table ───────────────────────────────────────────────────
+# ── transition table: exactly the declared rows are legal ─────────────────
 
 
 _STATUSES = [s.value for s in ComponentStatus]
@@ -1083,7 +1085,7 @@ _STATUSES = [s.value for s in ComponentStatus]
 def test_full_matrix_exactly_the_21_rows_accepted():
     """|S|x|S| enumeration: CK-REG-001 fires iff the pair is not a row.
 
-    Task 14 (plan 14 §5.5): T20 (active -> retired) is role-scoped to
+    Task 14: T20 (active -> retired) is role-scoped to
     ``utility_policy`` (supersession); wave 3c (plan ari_rqgm_paper/05) adds
     T21 (active -> shadow) role-scoped to the paper roles. Each pair is driven
     under EVERY candidate role and accepted iff legal for at least one — so all
@@ -1171,8 +1173,8 @@ def test_emergency_quarantine_passes_mid_epoch():
 
 
 def test_kernel_imports_the_engine_table_object():
-    """Single source of truth: no duplicated table in kernel_rules
-    (plan 04 §9.2 import-identity)."""
+    """Single source of truth: the kernel holds the engine's table OBJECT
+    itself, not a copy, so a second table cannot drift into existence."""
     import ari.rqgm.kernel as kernel_mod
 
     assert kernel_mod.transition_rules is transition_rules
@@ -1187,7 +1189,7 @@ def test_statuses_match_task02_vocabulary():
     assert tuple(s.value for s in ComponentStatus) == STATUS_VALUES
 
 
-# ── §9.3 role separation extras ─────────────────────────────────────────────
+# ── role separation: who may write the registry, who may activate ─────────
 
 
 def test_rte_authored_registry_write_passes_judge_blocked():
@@ -1207,7 +1209,7 @@ def test_meta_tier_cannot_activate_candidates():
     assert report.blocking
 
 
-# ── §9.5 hashes: the hash12 scheme is the loader's, never a second one ─────
+# ── hashes: the hash12 scheme is the loader's, never a second one ─────────
 
 
 def test_prompt_hash_scheme_cross_checked_against_loader(tmp_path):
@@ -1252,7 +1254,7 @@ def test_source_refs_resolution_through_injected_reader():
     assert [v.code for v in bad.violations] == ["CK-HSH-003"]
 
 
-# ── §9.6 audit-log integrity extras ─────────────────────────────────────────
+# ── audit-log integrity: an absent chain is not a chain violation ─────────
 
 
 def test_audit_chain_absent_auto_means_no_chain_violations():
@@ -1330,12 +1332,12 @@ def test_audit_log_verifies_real_immutable_audit_log_file(tmp_path):
     assert k.validate_audit_log_integrity(ImmutableAuditLog.read(tmp_path)).ok
 
 
-# ── §9.7 offline guarantee ──────────────────────────────────────────────────
+# ── offline guarantee: the kernel imports no LLM and no network client ────
 
 
 def test_kernel_modules_have_no_llm_or_network_imports():
-    """The kernel is NOT an LLM judge (plan 04 §5.7): grep-style guard over
-    kernel*.py + transition_rules.py, mirroring test_prompt_provenance."""
+    """The kernel is NOT an LLM judge: grep-style guard over kernel*.py +
+    transition_rules.py, mirroring test_prompt_provenance."""
     import ari.rqgm as rqgm_pkg
 
     pkg_dir = Path(rqgm_pkg.__file__).parent
@@ -1359,7 +1361,7 @@ def test_kernel_modules_have_no_llm_or_network_imports():
             assert f"from {name}" not in text, (path.name, name)
 
 
-# ── §9.8 constitution hash pin ──────────────────────────────────────────────
+# ── constitution hash pin: a rule-table edit has to be re-pinned by hand ──
 
 
 def test_constitution_hash_pinned():
@@ -1383,7 +1385,7 @@ def test_evolvable_roles_all_have_capability_matrix_rows():
     missing = set(events.EVOLVABLE_ROLES) - matrix_roles
     assert not missing, f"EVOLVABLE_ROLES missing from the matrix: {missing}"
     for role in events.EVOLVABLE_ROLES:
-        # Task 14 (plan 14 §5.2/§9): ``utility_policy`` is an ACTOR-less
+        # Task 14: ``utility_policy`` is an ACTOR-less
         # role — a policy document, not a component that acts — so it holds
         # exactly ONE institutional row, deliberately narrower than
         # _INSTITUTIONAL_BASE, and no meta row. The invariant this test
@@ -1427,7 +1429,7 @@ def test_constitution_hash_covers_the_imported_transition_table(monkeypatch):
     assert kernel_rules.constitution_hash() != original
 
 
-# ── §9.9 blocked transition => carry-over + audit entry (stub RTE) ─────────
+# ── blocked transition => carry-over + audit entry (stub RTE) ─────────────
 
 
 class _StubRTE:
@@ -1494,8 +1496,8 @@ def test_blocked_transition_carries_over_and_appends_audit(tmp_path):
 
 
 def test_audit_only_downgrade_commits_despite_blocking(tmp_path):
-    """§9.13: enforcement=audit_only => blocking codes become logged
-    warnings; the state change proceeds."""
+    """enforcement=audit_only => blocking codes become logged warnings; the
+    state change proceeds."""
     from ari.rqgm.store import ImmutableAuditLog
 
     store, state = _open_rqgm_state(tmp_path)
@@ -1509,7 +1511,7 @@ def test_audit_only_downgrade_commits_despite_blocking(tmp_path):
     assert lines[0]["payload"]["blocking"] is True
 
 
-# ── §9.10 blocked frontier rebuild => live frontier unchanged (stub) ───────
+# ── blocked frontier rebuild => live frontier unchanged (stub) ────────────
 
 
 class _StubFrontierRepair:
@@ -1547,7 +1549,7 @@ def test_blocked_frontier_rebuild_leaves_live_frontier_unchanged():
                          frozenset({_RETIRED})) is True
 
 
-# ── §9.11 MCP pre-flight gate: exact envelope, CoW untouched ───────────────
+# ── MCP pre-flight gate: exact envelope, CoW untouched ────────────────────
 
 
 class _MockMCP:
@@ -1610,7 +1612,7 @@ def test_mcp_preflight_audit_only_dispatches_denied_calls():
     assert len(inner.calls) == 1
 
 
-# ── §9.12 per-node warn hook is fail-open ───────────────────────────────────
+# ── the per-node warn hook is fail-open: a kernel bug never kills a run ───
 
 
 class _ExplodingKernel:
@@ -1644,7 +1646,7 @@ def test_per_node_warn_hook_logs_and_audits_findings(tmp_path, caplog):
     assert lines and lines[0]["event_type"] == "kernel_report"
 
 
-# ── §9.13 enforcement modes ─────────────────────────────────────────────────
+# ── enforcement modes: standard blocks, audit_only logs and proceeds ──────
 
 
 def test_should_block_matrix():
@@ -1677,7 +1679,7 @@ def test_authority_manifest_is_complete_and_matches_sparse_source():
         )
 
 
-# ── §9.14-15 regression / smoke ─────────────────────────────────────────────
+# ── regression / smoke: simple_bfts stays kernel-free, VirSci-off works ───
 
 
 def _stub_runtime_deps(monkeypatch):
@@ -1708,8 +1710,8 @@ def _stub_runtime_deps(monkeypatch):
 
 
 def test_simple_bfts_never_constructs_the_kernel(monkeypatch, tmp_path):
-    """§9.14 constructor spy: a default run constructs no kernel and writes
-    no constitution file."""
+    """Constructor spy: a default run constructs no kernel and writes no
+    constitution file."""
     import ari.rqgm.kernel as kernel_mod
     from ari.core import build_runtime
 
@@ -1743,8 +1745,8 @@ def test_ari_rqgm_build_attaches_kernel_to_runtime(monkeypatch, tmp_path):
 
 
 def test_ari_rqgm_virsci_off_kernel_validates_router_records(tmp_path):
-    """§9.15: with VirSci disabled the kernel operates identically on
-    router-only ProposalRecords."""
+    """With VirSci disabled the kernel operates identically on router-only
+    ProposalRecords."""
     from ari.rqgm.proposals.records import (
         ProposalRecord,
         ProposalSummaryView,
@@ -1768,8 +1770,8 @@ def test_ari_rqgm_virsci_off_kernel_validates_router_records(tmp_path):
 
 
 def test_resume_integrity_pass_suspends_on_tampered_audit_log(tmp_path):
-    """§5.6.6: blocking audit findings => governance-suspended carry-over,
-    never a refusal to resume."""
+    """The resume integrity pass: blocking audit findings => governance-
+    suspended carry-over, never a refusal to resume."""
     from ari.rqgm.runtime import RQGMRuntime
     from ari.rqgm.store import RQGM_AUDIT_FILENAME, ImmutableAuditLog
 
@@ -1803,7 +1805,8 @@ def _write_proposal_record(ckpt, record):
 
 
 def test_resume_integrity_pass_suspends_on_stale_frontier_record(tmp_path):
-    """§5.6.6 runs ``validate_selective_erasure`` too, not just the audit log.
+    """The resume integrity pass runs ``validate_selective_erasure`` too, not
+    just the audit log.
 
     A record left ``stale`` but still marked frontier-valid across a restart is
     exactly what the erasure half exists to catch (CK-ERA-001). The audit log

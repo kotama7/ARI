@@ -11,7 +11,7 @@ Imported by BOTH the ConstitutionalKernel (CK-CLN-001/CK-CLN-002, Task 04's
 entry points) and :mod:`ari.rqgm.clean_room` — single source of truth, the
 ``transition_rules`` layering precedent.
 
-The split's rationale (plan 08 §5.2): allowed inputs describe *what the role
+The split's rationale: allowed inputs describe *what the role
 must do*; forbidden inputs describe *how the failed incumbent did it* or
 *what specifically defeated it*. Excluding the latter prevents inheriting the
 retired prompt's blind spots and overfitting the successor to the exact
@@ -28,10 +28,13 @@ import re
 
 CLEAN_ROOM_SCHEMA_VERSION = 1
 
-#: Version stamp of the deterministic contamination screen (plan 08 §6.3).
+#: Version stamp of the deterministic contamination screen, recorded into
+#: every ``abstract_failure_summary.contamination_screen`` so a bundle always
+#: says which screen version cleared it.
 SCREEN_VERSION = 1
 
-#: Plan 08 §5.5 policy defaults (config-tunable via
+#: Screen policy defaults — 8-token shingles, and a single overlapping
+#: shingle fails the candidate (config-tunable via
 #: ``rqgm.clean_room.contamination_screen``; the kernel receives them as
 #: injected tolerances — the policy itself is code).
 DEFAULT_SHINGLE_K = 8
@@ -39,7 +42,9 @@ DEFAULT_FAIL_ON_ANY_HIT = True
 
 REQUEST_RECORD_TYPE = "clean_room_generation_request"
 
-#: ``CleanRoomGenerationRequest.status`` values (plan 08 §6.1).
+#: ``CleanRoomGenerationRequest.status`` values — the closed status enum of
+#: ``clean_room_request.schema.json`` (``docs/reference/rqgm_schemas.md``,
+#: "Clean-room schemas (Task 08)").
 REQUEST_STATUSES: tuple[str, ...] = (
     "pending",
     "generating",
@@ -49,11 +54,12 @@ REQUEST_STATUSES: tuple[str, ...] = (
     "superseded",
 )
 
-#: The sole v1 trigger (plan 08 §5.1: RetirementEvent → request).
+#: The sole v1 trigger: a RetirementEvent is the only thing that opens a
+#: clean-room regeneration request — nothing else may originate one.
 REQUEST_TRIGGERS: tuple[str, ...] = ("retirement_event",)
 
-#: The complete, closed allowed-input set (plan 08 §5.2) — nothing else may
-#: cross into the generator's context.
+#: The complete, closed allowed-input set — nothing else may cross into the
+#: generator's context.
 ALLOWED_INPUT_KEYS: tuple[str, ...] = (
     "role_spec",
     "output_schema",
@@ -63,9 +69,9 @@ ALLOWED_INPUT_KEYS: tuple[str, ...] = (
     "cost_budget",
 )
 
-#: The forbidden-input set (plan 08 §5.2): ``const: false`` flags in the
-#: request schema — a request setting any of them true is schema-invalid and
-#: blocked by the kernel before assembly.
+#: The forbidden-input set: ``const: false`` flags in the request schema — a
+#: request setting any of them true is schema-invalid and blocked by the
+#: kernel before assembly.
 FORBIDDEN_INPUT_KEYS: tuple[str, ...] = (
     "retired_prompt_text",
     "retired_fewshot_examples",
@@ -74,8 +80,8 @@ FORBIDDEN_INPUT_KEYS: tuple[str, ...] = (
     "target_defense_text",
 )
 
-#: The closed ``CleanRoomInputBundle`` field set (plan 08 §6.2,
-#: ``additionalProperties: false``): the bundle is the ENTIRE generator
+#: The closed ``CleanRoomInputBundle`` field set
+#: (``additionalProperties: false``): the bundle is the ENTIRE generator
 #: context besides the committed meta-prompt, so a closed field set is what
 #: makes the Layer-A constructive-containment argument hold.
 BUNDLE_FIELDS: tuple[str, ...] = (
@@ -90,7 +96,7 @@ BUNDLE_FIELDS: tuple[str, ...] = (
     "cost_budget",
 )
 
-#: Closed FailureSummary class vocabulary (plan 08 §6.3): the plan's named
+#: Closed FailureSummary class vocabulary: the five reviewer-failure
 #: classes plus Task 06's committed seven adversarial case types (the v1
 #: compressor folds ``abstract_view.case_type`` straight into a class).
 #: Extended ONLY by committing a new enum value here.
@@ -109,13 +115,14 @@ FAILURE_CLASSES: tuple[str, ...] = (
     "prompt_injection",
 )
 
-#: ``source_refs`` entries must be record IDS — never quoted text (§6.3).
+#: ``source_refs`` entries must be record IDS — never quoted text, since a
+#: quoted excerpt would smuggle the retired prompt's wording into the bundle.
 _ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:\-]*$")
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 
-# ── deterministic contamination screen (plan 08 §5.5) ───────────────────────
+# ── deterministic contamination screen (word-shingle overlap) ───────────────
 
 
 def normalize_text(text: str) -> str:
@@ -145,7 +152,7 @@ def contamination_hits(
 
     Returns ``{doc_id: [<= 5 evidence shingles, sorted]}``; the empty dict
     means clean. Text shared with the allowed inputs (*allowlist_docs*) is
-    legitimate and never triggers a hit (plan 08 §5.5).
+    legitimate and never triggers a hit.
     """
     cand = shingles(candidate_text, k)
     if not cand:
@@ -162,7 +169,7 @@ def contamination_hits(
     return hits
 
 
-# ── FailureSummary admissibility (plan 08 §6.3 contract) ────────────────────
+# ── FailureSummary admissibility (bundle-entry contract) ────────────────────
 
 
 def failure_summary_failures(summary) -> list[str]:

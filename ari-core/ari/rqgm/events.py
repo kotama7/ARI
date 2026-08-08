@@ -33,7 +33,8 @@ import time
 from dataclasses import dataclass, field, replace
 
 # The exact sha256(text)[:12] scheme used by FilesystemPromptLoader
-# .load_versioned — reused, never re-implemented (plan 02 §5.4).
+# .load_versioned — imported, never re-implemented, so no second short-hash
+# scheme can exist and a prompt keeps one identity everywhere it is hashed.
 from ari.prompts._provenance import hash12  # noqa: F401  (re-exported)
 
 RQGM_EVENT_SCHEMA_VERSION = 2
@@ -41,7 +42,8 @@ LEGACY_EVENT_SCHEMA_VERSION = 1
 
 # ── vocabulary (owned by Task 02; consumed by Tasks 03–13) ──────────────────
 
-#: Status lifecycle values shared by prompts and components (plan 02 §5.3).
+#: Status lifecycle values shared by prompts and components: this module owns
+#: the closed value SET and nothing else.
 #: Which transitions between them are legal is Task 09's transition table.
 STATUS_VALUES: tuple[str, ...] = (
     "candidate",
@@ -56,17 +58,20 @@ STATUS_VALUES: tuple[str, ...] = (
     "banned",
 )
 
-#: Statuses that place an entry in the frozen per-epoch active set (§5.6).
+#: Statuses that place an entry in the frozen per-epoch active set: a
+#: ``probationary_active`` incumbent serves its epoch exactly like an
+#: ``active`` one, so both count as serving for replay and fingerprinting.
 ACTIVE_STATUSES: tuple[str, ...] = ("active", "probationary_active")
 
 #: Governed roles whose incumbent may be REPLACED at an epoch boundary
 #: (Tasks 03/05/06/07/08/11/14). Prompt-defined, EXCEPT ``utility_policy``,
-#: whose incumbent is a policy document (plan 14 §5.3) — the role is
+#: whose incumbent is a policy document rather than a prompt — the role is
 #: evolvable in exactly the same sense: one incumbent, replaced only through
 #: the RegistryTransitionEngine at a boundary.
 #:
-#: ``replay_selector``: plan 11 §5.1 uses the name ``replay_case_selector``;
-#: registered here under the Task 05 name (the codebase name wins).
+#: ``replay_selector``: older design notes call this role
+#: ``replay_case_selector``; the registered name is ``replay_selector`` —
+#: where the two disagree the codebase name wins.
 EVOLVABLE_ROLES: tuple[str, ...] = (
     "generator",
     "reviewer",
@@ -78,14 +83,14 @@ EVOLVABLE_ROLES: tuple[str, ...] = (
     "clean_room_generator",
     "replay_selector",
     "failure_summary_compressor",
-    # Task 14 (plan 14 §5.2): the role limbo, resolved. Both roles were
+    # Task 14 — the role limbo, resolved. Both roles were
     # named by live code — ``frontier_repair.INVALIDATE_ROLES`` and
     # ``adversarial.records.UTILITY_POLICY_ROLE`` for ``utility_policy``,
     # ``meta_rules.META_FROZEN_ROLES`` for ``policy_mutator`` — while being
     # in NEITHER half of ``ROLES``, so neither could ever be registered.
     "policy_mutator",     # un-frozen from meta_rules.META_FROZEN_ROLES
     "utility_policy",     # the governed score itself
-    # Paper-archive co-evolution (plan ari_rqgm_paper/03 §5.2): promote the
+    # Paper-archive co-evolution: promote the
     # manuscript WRITER from a context-scope-only entry to a full evolvable
     # role, and add the manuscript REVIEWER as a new evaluable role. Both
     # DRIVE the ungoverned ari-skill-paper executor (the skill is the hands);
@@ -138,10 +143,15 @@ UTILITY_POLICY_ROLE = "utility_policy"
 POLICY_MUTATOR_ROLE = "policy_mutator"
 
 #: Component tiers (Task 11 consumes ``meta``; present from day one so adding
-#: it later is not a schema bump — plan 02 §5.3).
+#: it later is not a schema bump — the tier vocabulary is closed and versioned
+#: with the schema, not grown per consumer).
 TIERS: tuple[str, ...] = ("fixed", "institutional", "meta")
 
-#: Closed v1 event-type set for ``rqgm_transitions.jsonl`` (plan 02 §6).
+#: Closed v1 event-type set for ``rqgm_transitions.jsonl``: the schema's
+#: ``event_type`` enum IS this tuple, and an epoch-boundary transaction raises
+#: on any type outside it rather than accepting it (``store._TX_ADDABLE``).
+#: Mirrored in ``docs/reference/rqgm_schemas.md``,
+#: "`rqgm_transition_event.schema.json`".
 EVENT_TYPES: tuple[str, ...] = (
     "epoch_transaction_prepare",
     "component_registered",
@@ -165,8 +175,9 @@ EMERGENCY_EVENT_TYPE = "emergency_quarantine"
 def canonical_json(payload: object) -> str:
     """The single canonical JSON form every RQGM hash is computed over.
 
-    Byte-golden-pinned by tests before anything consumes it (plan 02 §10):
-    sorted keys, no whitespace, ``ensure_ascii=False``.
+    Byte-golden-pinned by tests before anything consumes it, so the form can
+    never drift under a hash: sorted keys, no whitespace,
+    ``ensure_ascii=False``.
     """
     return json.dumps(
         payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")
@@ -243,7 +254,8 @@ def expected_event_hash(event: "TransitionEvent | dict") -> str:
     )
 
 
-# ── id formats (plan 02 §5.5) ───────────────────────────────────────────────
+# ── id formats: zero-padded per-checkpoint counters, one producer each
+# (the table in docs/reference/rqgm_schemas.md, "Id and hash discipline") ────
 
 
 def format_epoch_id(epoch_seq: int) -> str:

@@ -1,5 +1,5 @@
 """Prompt evolution: candidates, validation pipeline, shadow, budgets
-(RQGM Task 07 §5.3-§5.6, §6-§7).
+(RQGM Task 07).
 
 The nine-state candidate lifecycle::
 
@@ -13,7 +13,7 @@ The nine-state candidate lifecycle::
       → probationary_active        (epoch-boundary adoption — Task 09 ONLY)
       → active
 
-Hard prohibitions structurally enforced here (plan 07 §1):
+Hard prohibitions structurally enforced here:
 
 * **PromptMutator never writes to the registry** — it emits
   :class:`PromptCandidate` records only; the sole public surface is
@@ -54,8 +54,8 @@ from ari.rqgm.prompt_loader import (
 )
 
 # Record shapes + persistence live in ari.rqgm.prompt_records; re-exported
-# here so Task 07 consumers keep a single import home (plan 07 §7 module
-# family). The split mirrors Task 06's adversarial/records.py layout.
+# here so Task 07 consumers keep a single import home. The split mirrors
+# Task 06's adversarial/records.py layout.
 from ari.rqgm.prompt_records import (  # noqa: F401  (re-exported)
     PROMPT_EVOLUTION_FILENAME,
     PROMPT_SPECS_FILENAME,
@@ -84,7 +84,7 @@ from ari.rqgm.prompt_spec import (
 log = logging.getLogger(__name__)
 
 #: The six validation stages between ``candidate`` and
-#: ``probationary_active`` (plan 07 §5.3). Order is monotonic; skipping is a
+#: ``probationary_active``. Order is monotonic; skipping is a
 #: constitutional violation detectable from the record chain.
 STAGES: tuple[str, ...] = (
     "static_validation",
@@ -95,7 +95,7 @@ STAGES: tuple[str, ...] = (
     "shadow",
 )
 
-#: Stages that are pure functions — no LLM, no budget (plan 07 §5.3).
+#: Stages that are pure functions — no LLM, no budget, so they are free.
 DETERMINISTIC_STAGES: tuple[str, ...] = (
     "static_validation",
     "constitutional_validation",
@@ -106,7 +106,8 @@ LIFECYCLE_STATES: tuple[str, ...] = (
     ("candidate",) + STAGES + ("probationary_active", "active")
 )
 
-#: The five bounded PromptMutator output modes (plan 07 §5.4).
+#: The five bounded PromptMutator output modes — a candidate declaring any
+#: other ``mutation_kind`` fails static validation.
 MUTATION_KINDS: tuple[str, ...] = (
     "freeform_mutation",
     "threshold_tuning",
@@ -120,7 +121,7 @@ MUTATION_KINDS: tuple[str, ...] = (
 _CONTAMINATED_REF_PREFIXES: tuple[str, ...] = ("atk_", "def_", "jdg_")
 
 
-# ── deterministic stage checks (pure functions; plan 07 §5.3 stages 1-2) ────
+# ── deterministic stage checks (pure functions; stages 1-2) ─────────────────
 
 
 def _template_fields(text: str) -> set[str]:
@@ -136,8 +137,8 @@ def _template_fields(text: str) -> set[str]:
 
 
 def _numeric(value) -> bool:
-    # bools count: the plan's threshold_tuning examples include the
-    # all-accept/all-reject guard toggles (§5.4).
+    # bools count: threshold_tuning covers the all-accept/all-reject guard
+    # toggles, which are booleans rather than thresholds.
     return isinstance(value, (int, float, bool))
 
 
@@ -167,7 +168,7 @@ def static_validation_failures(
     incumbent: PromptSpec | None = None,
     known_specs: dict | None = None,
 ) -> list[str]:
-    """Stage-1 deterministic checks (plan 07 §5.3 item 1). Empty == pass.
+    """Stage-1 deterministic checks (``static_validation``). Empty == pass.
 
     *known_specs* is a ``prompt_id -> PromptSpec-or-entry`` view (duck-typed
     ``status`` / ``prompt_hash`` attributes or keys) used for lineage and
@@ -276,11 +277,12 @@ def _mutation_family_failures(
     actual: set[str],
     incumbent: PromptSpec,
 ) -> list[str]:
-    """Incumbent-relative clauses of stage 1 (plan 07 §5.4-§5.5)."""
+    """Incumbent-relative clauses of stage 1: the per-``mutation_kind``
+    family rules, machine-checked against the incumbent's own spec."""
     failures: list[str] = []
     inc_body = dict(incumbent.spec or {})
-    # Key-swap safety (§5.5): a candidate must accept the incumbent's
-    # EXACT placeholder set for its key.
+    # Key-swap safety: a candidate must accept the incumbent's EXACT
+    # placeholder set, so swapping it in cannot break an existing caller.
     inc_contract = set(
         (inc_body.get("input_contract") or {}).get("required_fields") or ()
     )
@@ -329,7 +331,7 @@ def constitutional_validation_failures(
     *,
     component_roles: dict | None = None,
 ) -> list[str]:
-    """Stage-2 deterministic kernel-side checks (plan 07 §5.3 item 2).
+    """Stage-2 deterministic checks (``constitutional_validation``).
 
     Task 04's ConstitutionalKernel remains the authority for registry-level
     transitions; these are the candidate-side clauses this task owns.
@@ -409,7 +411,7 @@ def constitutional_validation_failures(
 def role_instruction_constraint_failures(
     role: str, role_instruction: str
 ) -> list[str]:
-    """The §5.4 constitutional clauses MISSING from a candidate's *resolved*
+    """The mandatory constitutional clauses MISSING from a candidate's *resolved*
     ``role_instruction`` bytes (empty list == conformant).
 
     This is the TEXT-side companion to
@@ -423,12 +425,11 @@ def role_instruction_constraint_failures(
     whose resolved ``role_instruction`` no longer carries, e.g., a
     ``paper_reviewer``'s "Do not override the claim-evidence hard gate." is
     behaviourally un-bound even while its metadata still nominally lists it —
-    the pillar-4 (constitutional binding) hole this closes (plan
-    ari_rqgm_paper/03 §5.9 step 2, /05 §5.5).
+    the pillar-4 (constitutional binding) hole this closes.
 
     The clause source is the SAME single authority the metadata check uses
     (:data:`REQUIRED_CONSTRAINTS_BY_ROLE`), so there is one definition of the
-    §5.4 clauses, never a divergent copy. Deterministic (P2): pure substring
+    mandatory clauses, never a divergent copy. Deterministic (P2): pure substring
     membership, no LLM, no I/O.
     """
     text = role_instruction or ""
@@ -441,7 +442,7 @@ def role_instruction_constraint_failures(
 
 def check_output_against_schema(reply_text: str, output_schema: dict) -> list[str]:
     """Deterministically check one LLM reply against an ``output_schema``
-    (plan 07 §5.3 stage 3). Empty == conforms.
+    (the ``schema_dry_run`` stage). Empty == conforms.
 
     ``__reply__`` selects the reply kind (``bare_index`` / ``json_array`` /
     ``json_object`` / ``freeform``); the remaining keys are required JSON
@@ -489,7 +490,7 @@ def check_output_against_schema(reply_text: str, output_schema: dict) -> list[st
     return failures
 
 
-# ── budgets (plan 07 §5.4 caps; numbers owned by Task 12) ────────────────────
+# ── budgets (per-epoch candidate caps; the numbers are owned by Task 12) ─────
 
 
 def _cfg_evolution(cfg):
@@ -499,8 +500,8 @@ def _cfg_evolution(cfg):
 #: The Task-14 policy-candidate record type and the role it targets. A
 #: ``prompt_candidate`` names its target role directly in ``role``; a
 #: ``utility_policy_candidate``'s ``role`` is its AUTHOR (``policy_mutator``
-#: — a candidate is a proposal BY a component, plan 14 §6.2), so its target
-#: role is fixed by its type.
+#: — a candidate is a proposal BY a component), so its target role is fixed
+#: by its record type instead.
 _UTILITY_CANDIDATE_TYPE = "utility_policy_candidate"
 _UTILITY_TARGET_ROLE = "utility_policy"
 
@@ -511,7 +512,7 @@ def candidate_budget_reason(
     """Why a new candidate may NOT be minted this epoch (``None`` == ok).
 
     Both caps come from ``rqgm.prompt_evolution`` for both candidate
-    channels — one schema home, no forked budget keys (plan 14 §5.4/§6.3).
+    channels — one schema home, no forked budget keys.
 
     **Scope** (Task 14): the caps bound each CHANNEL's own per-epoch
     candidate volume; the two channels do not share one pot. Asking for
@@ -559,7 +560,7 @@ def candidate_budget_reason(
     return None
 
 
-# ── PromptMutator (meta tier; candidates only — plan 07 §5.4/§7) ─────────────
+# ── PromptMutator (meta tier; emits candidates and nothing else) ─────────────
 
 
 class PromptMutator:
@@ -676,7 +677,7 @@ class PromptMutator:
         if mutation_kind not in ("threshold_tuning", "schema_tightening"):
             # Text-rewriting kinds refresh the instruction copy and the
             # declared contract; knob-only kinds must leave both untouched
-            # (static validation machine-checks the diff, §5.4).
+            # (static validation machine-checks the diff).
             body["role_instruction"] = new_text
             body["constitutional_constraints"] = list(
                 dict.fromkeys(
@@ -751,7 +752,7 @@ def resolve_candidate_text(candidate: PromptCandidate, checkpoint_dir=None) -> s
     )
 
 
-# ── validation pipeline (plan 07 §5.3/§7) ────────────────────────────────────
+# ── validation pipeline (the six stages, driven strictly in order) ───────────
 
 
 class CandidateValidationPipeline:
@@ -818,7 +819,8 @@ class CandidateValidationPipeline:
         return [s for s in STAGES if s in passed]
 
     def is_rejected(self, candidate_id: str) -> bool:
-        """Terminal rejection: a failed schema_dry_run (plan 07 §5.3)."""
+        """Terminal rejection: a failed ``schema_dry_run`` ends the candidate
+        for good — no later stage may run and no retry is minted."""
         return any(
             rec.get("stage") == "schema_dry_run" and not rec.get("passed")
             for rec in self.stage_records(candidate_id)
@@ -982,7 +984,7 @@ class CandidateValidationPipeline:
         incumbent_evaluator,
         pass_rate_key: str,
     ) -> tuple[list[str], list[dict], dict]:
-        """Shared replay/anchor mechanics (plan 07 §5.3 stages 4-5).
+        """Shared mechanics of stages 4-5 (replay and anchor evaluation).
 
         *case_evaluator* is the injected prompt-defined component:
         ``evaluator(candidate, case) -> bool`` ("did the candidate meet the
@@ -1050,7 +1052,7 @@ class CandidateValidationPipeline:
             )
         return failures, case_results, metrics
 
-    # ── shadow attachment point (run-loop hook; plan 07 §5.3 stage 6) ─
+    # ── shadow attachment point (run-loop hook; stage 6) ──────────────
 
     def shadow_budget_left(self, epoch_id: str) -> int:
         shadow_cfg = getattr(getattr(self._cfg, "rqgm", None), "shadow", None)
@@ -1069,8 +1071,8 @@ class CandidateValidationPipeline:
         """Deterministic sampling (P2: hash-based, no randomness).
 
         Delegates to ``GovernanceBudgetManager.shadow_sample`` — the single
-        §5.6 hash rule (plan 12) — so this live sampler and the budget
-        layer's ``select_shadow_nodes`` can never disagree, and
+        ``(run_id, epoch_id, node_id)`` hash rule — so this live sampler and
+        the budget layer's ``select_shadow_nodes`` can never disagree, and
         ``rqgm.shadow.enabled: false`` zeroes both.
         """
         if self.shadow_budget_left(epoch_id) <= 0:
@@ -1149,13 +1151,13 @@ def candidate_registration_payload(candidate) -> dict:
     """The Task 07 candidate-intake ``prompt_registered`` payload
     (``status="candidate"``) for a minted candidate — the storage face of
     intake so that the next boundary's ``resolve_transition`` can iterate the
-    entry through the T1–T6 spine (plan 07 §5.3, plan 09 T1). Accepts either
+    entry through the T1–T6 transition spine. Accepts either
     a :class:`~ari.rqgm.prompt_records.PromptCandidate` or its
     ``prompt_evolution.jsonl`` record dict.
 
     Byte-identical to the ``registration_payload`` :func:`build_adoption_request`
     produces (single source of truth): checkpoint-scoped body under the
-    write-once ``rqgm_prompts/<id>.md`` (plan 07 §5.6), ``prompt_hash`` /
+    write-once ``rqgm_prompts/<id>.md``, ``prompt_hash`` /
     ``prompt_sha256`` reusing the one ``hash12``/sha256 scheme, and the
     envelope ``epoch_id`` / ``source_refs`` of the candidate record.
     """

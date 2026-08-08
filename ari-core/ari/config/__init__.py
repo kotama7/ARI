@@ -495,7 +495,8 @@ class BFTSConfig(BaseModel):
                     "selector and rank candidates purely by the deterministic "
                     "frontier scorer (`frontier_score`), so node selection is "
                     "reproducible and the handoff arm is the only varying "
-                    "factor (PREREG §7.1). Requires a populated "
+                    "factor. This scorer choice is PRE-REGISTERED, not merely "
+                    "implemented. Requires a populated "
                     "`_scientific_score` (deterministic evaluator). Overridden "
                     "by `ARI_BFTS_DETERMINISTIC`.",
     )
@@ -801,7 +802,8 @@ class RQGMKernelConfig(BaseModel):
     model_config = {"extra": "allow"}
     enforcement: Literal["standard", "audit_only"] = Field(
         "standard",
-        description="`standard` applies the §5.5 blocking matrix; "
+        description="`standard` applies the kernel's per-context blocking "
+                    "matrix (frozen code in `ari/rqgm/kernel_rules.py`); "
                     "`audit_only` downgrades every context to warn-and-log "
                     "(ablation conditions B4-B6 / Stage-1 rollout). Read at "
                     "run start / epoch boundaries only, never hot-switched "
@@ -834,8 +836,8 @@ class RQGMGovernanceConfig(BaseModel):
     enabled: bool = Field(
         True,
         description="Epoch-boundary governance audit on/off inside "
-                    "`ari_rqgm` mode (RQGM Task 13 §5.1 requirement on Task "
-                    "05: ablation rungs B2-B4 run `ari_rqgm` with governance "
+                    "`ari_rqgm` mode (the evaluation ladder needs it off: "
+                    "ablation rungs B2-B4 run `ari_rqgm` with governance "
                     "off). Meaningful only when `ari.mode: ari_rqgm` and "
                     "`rqgm.enabled: true` agree.",
     )
@@ -870,26 +872,24 @@ class RQGMGovernanceConfig(BaseModel):
     )
     max_defender_calls_per_epoch: int = Field(
         12,
-        description="Hard per-epoch cap on Defender LLM calls (RQGM Task "
-                    "12 §5.3; the adversary cap lives in "
+        description="Hard per-epoch cap on Defender LLM calls (the adversary "
+                    "cap lives in "
                     "`rqgm.adversarial.max_adversary_calls_per_epoch` — "
                     "one schema home, no alias here).",
     )
     max_judge_calls_per_epoch: int = Field(
         8,
-        description="Hard per-epoch cap on Judge LLM calls (RQGM Task 12 "
-                    "§5.3).",
+        description="Hard per-epoch cap on Judge LLM calls.",
     )
     low_confidence_threshold: float = Field(
         0.4,
         description="Reviewer confidence below this marks the node "
-                    "disputed (L2→L3 escalation, RQGM Task 12 §5.2).",
+                    "disputed (L2→L3 escalation).",
     )
     novelty_claim_threshold: float = Field(
         0.8,
         description="Novelty axis at/above this (or non-empty "
-                    "novelty_risks) triggers the L2 contested tier (RQGM "
-                    "Task 12 §5.2).",
+                    "novelty_risks) triggers the L2 contested tier.",
     )
     max_motions_per_epoch: int = Field(
         2,
@@ -913,7 +913,9 @@ class RQGMGovernanceConfig(BaseModel):
 
 
 class RQGMReplayConfig(BaseModel):
-    """``rqgm.replay:`` block (RQGM Task 05 §6.5; cases owned by Task 06).
+    """``rqgm.replay:`` block (docs/reference/configuration.md,
+    "``rqgm.replay`` — replay/anchor case sizing"; the cases themselves are
+    Task 06's).
 
     Sizing of the ReplayBoard/AnchorBoard case sampling inside
     ``audit_epoch``. Defaults mirror ``ari/configs/defaults.yaml``."""
@@ -929,7 +931,7 @@ class RQGMReplayConfig(BaseModel):
         description="Higher replay-selection cap used inside `audit_epoch` "
                     "when a motion puts a RetirementEvent under "
                     "consideration (requests `retire` or targets a "
-                    "quarantined component; Task 12 §5.4).",
+                    "quarantined component).",
     )
     use_cached_results: bool = Field(
         True,
@@ -1015,7 +1017,8 @@ class RQGMTransitionConfig(BaseModel):
 
 
 class RQGMAdversarialPenaltyConfig(BaseModel):
-    """``rqgm.adversarial.penalty:`` block (RQGM Task 06 §5.4/§7).
+    """``rqgm.adversarial.penalty:`` block (docs/reference/configuration.md,
+    "``rqgm.adversarial`` — attack→defense→adjudication loop").
 
     The epoch-frozen UtilityPenaltyPolicy weights. Frozen at epoch open
     (global invariant 1) and embedded by value in every UtilityRecord for
@@ -1039,7 +1042,8 @@ class RQGMAdversarialPenaltyConfig(BaseModel):
 
 
 class RQGMAdversarialPoolConfig(BaseModel):
-    """``rqgm.adversarial.pool:`` block (RQGM Task 06 §5.8)."""
+    """``rqgm.adversarial.pool:`` block (docs/reference/configuration.md,
+    "``rqgm.adversarial`` — attack→defense→adjudication loop")."""
 
     # Forward-compat for later-task keys (same posture as RQGMConfig).
     model_config = {"extra": "allow"}
@@ -1062,7 +1066,8 @@ class RQGMAdversarialPoolConfig(BaseModel):
 
 
 class RQGMShadowConfig(BaseModel):
-    """``rqgm.shadow:`` block (RQGM Task 07 §5.3 stage 6).
+    """``rqgm.shadow:`` block (docs/reference/configuration.md,
+    "``rqgm.shadow`` — shadow live-evaluation sampling").
 
     Sampling posture of shadow live evaluation: for a deterministic
     hash-sampled fraction of live calls, a candidate prompt runs alongside
@@ -1077,7 +1082,7 @@ class RQGMShadowConfig(BaseModel):
     enabled: bool = Field(
         True,
         description="Shadow live-evaluation on/off inside `ari_rqgm` mode "
-                    "(RQGM Task 12 §6.1; off == a zero shadow budget).",
+                    "(off == a zero shadow budget).",
     )
     sample_rate: float = Field(
         0.2,
@@ -1091,7 +1096,8 @@ class RQGMShadowConfig(BaseModel):
 
 
 class RQGMPromptEvolutionConfig(BaseModel):
-    """``rqgm.prompt_evolution:`` block (RQGM Task 07 §6).
+    """``rqgm.prompt_evolution:`` block (docs/reference/configuration.md,
+    "``rqgm.prompt_evolution`` — candidate caps").
 
     Per-epoch caps on PromptMutator candidate generation. Only meaningful
     when the RQGM runtime is active; Task 12 owns final budget tuning.
@@ -1124,12 +1130,14 @@ class RQGMPromptEvolutionConfig(BaseModel):
             "freeform_mutation", "threshold_tuning", "schema_tightening",
             "specialization", "distillation",
         ],
-        description="Enabled PromptMutator mutation families (Task 07 §5.4).",
+        description="Enabled PromptMutator mutation families; the five "
+                    "defaults are the complete v1 vocabulary.",
     )
 
 
 class RQGMUtilityEvolutionConfig(BaseModel):
-    """``rqgm.utility_evolution:`` block (RQGM Task 14 §6.3).
+    """``rqgm.utility_evolution:`` block (docs/reference/configuration.md,
+    "``rqgm.utility_evolution`` — governed rewriting of the score itself").
 
     Governed rewriting of the utility function itself at epoch boundaries.
     Only meaningful when ``ari.mode: ari_rqgm`` and ``rqgm.enabled: true``
@@ -1167,7 +1175,7 @@ class RQGMUtilityEvolutionConfig(BaseModel):
             "axis_reweighting", "composite_swap", "frontier_score_swap",
             "exploration_tuning",
         ],
-        description="Enabled PolicyMutator mutation families (Task 14 §5.4). "
+        description="Enabled PolicyMutator mutation families. "
                     "The four defaults are pure arithmetic over the "
                     "boundary's abstract evidence — no LLM, no clock, no "
                     "randomness — so the default utility rewrite is fully "
@@ -1188,7 +1196,9 @@ class RQGMUtilityEvolutionConfig(BaseModel):
 
 
 class RQGMContaminationScreenConfig(BaseModel):
-    """``rqgm.clean_room.contamination_screen:`` block (RQGM Task 08 §5.5).
+    """``rqgm.clean_room.contamination_screen:`` block
+    (docs/reference/configuration.md,
+    "``rqgm.clean_room`` — clean-room regeneration posture").
 
     Tuning knobs of the deterministic word-shingle screen the kernel runs
     pre- and post-generation. Tuning is a config change; the screen policy
@@ -1204,12 +1214,13 @@ class RQGMContaminationScreenConfig(BaseModel):
     fail_on_any_hit: bool = Field(
         True,
         description="Any surviving k-shingle overlap with the forbidden "
-                    "corpus blocks candidate admission (plan 08 §5.5).",
+                    "corpus blocks candidate admission.",
     )
 
 
 class RQGMCleanRoomConfig(BaseModel):
-    """``rqgm.clean_room:`` block (RQGM Task 08 §6.5).
+    """``rqgm.clean_room:`` block (docs/reference/configuration.md,
+    "``rqgm.clean_room`` — clean-room regeneration posture").
 
     Clean-room regeneration posture; the per-epoch generation budget lives
     under ``rqgm.prompt_evolution.max_clean_room_generations_per_epoch``
@@ -1222,11 +1233,12 @@ class RQGMCleanRoomConfig(BaseModel):
         "one_shot",
         description="Generation harness. v1 supports only `one_shot` — a "
                     "single LLM completion with no tools/filesystem "
-                    "(plan 08 §5.4 decision D1).",
+                    "(decision D1: a tool-bearing loop could read the "
+                    "retired prompt text off the checkpoint).",
     )
     contamination_screen: RQGMContaminationScreenConfig = Field(
         default_factory=RQGMContaminationScreenConfig,
-        description="Deterministic shingle-screen knobs (plan 08 §5.5).",
+        description="Deterministic shingle-screen knobs.",
     )
     generator_prompt_key: str = Field(
         "rqgm/clean_room_generator",
@@ -1277,7 +1289,8 @@ class RQGMFrontierRepairConfig(BaseModel):
 
 
 class RQGMMetaSandboxConfig(BaseModel):
-    """``rqgm.meta_evolution.sandbox:`` block (RQGM Task 11 §5.7/§6.4).
+    """``rqgm.meta_evolution.sandbox:`` block (docs/reference/configuration.md,
+    "``rqgm.meta_evolution`` — meta-tier budgets and switches").
 
     Offline replay of frozen historical meta-task bundles through a meta
     candidate. Deterministic pass criteria are code
@@ -1299,7 +1312,8 @@ class RQGMMetaSandboxConfig(BaseModel):
 
 
 class RQGMMetaShadowConfig(BaseModel):
-    """``rqgm.meta_evolution.shadow:`` block (RQGM Task 11 §5.6/§5.7).
+    """``rqgm.meta_evolution.shadow:`` block (docs/reference/configuration.md,
+    "``rqgm.meta_evolution`` — meta-tier budgets and switches").
 
     Meta candidates shadow the incumbent at epoch boundaries; their outputs
     are recorded with ``shadow: true`` and routed nowhere."""
@@ -1339,27 +1353,27 @@ class RQGMMetaEvolutionConfig(BaseModel):
             "prompt_mutator", "clean_room_generator", "replay_selector",
             "failure_summary_compressor", "policy_mutator",
         ],
-        description="The v1 evolving meta roles (plan 11 §5.1; shrinkable "
+        description="The v1 evolving meta roles (shrinkable "
                     "to [] to freeze the whole layer without code changes). "
-                    "The plan's `replay_case_selector` is registered as "
-                    "`replay_selector` (Task 02 vocabulary).",
+                    "The role called `replay_case_selector` in the design is "
+                    "registered as `replay_selector` (Task 02 vocabulary).",
     )
     max_meta_candidates_per_epoch: int = Field(
         1,
         description="Hard cap on meta candidates per epoch, total across "
-                    "meta roles (plan 11 §5.6.3).",
+                    "meta roles.",
     )
     sandbox: RQGMMetaSandboxConfig = Field(
         default_factory=RQGMMetaSandboxConfig,
-        description="Offline sandbox-evaluation sizing (plan 11 §5.7).",
+        description="Offline sandbox-evaluation sizing.",
     )
     shadow: RQGMMetaShadowConfig = Field(
         default_factory=RQGMMetaShadowConfig,
-        description="Meta shadow-evaluation posture (plan 11 §5.7).",
+        description="Meta shadow-evaluation posture.",
     )
     metric_spec_weight_cap: bool = Field(
         True,
-        description="§5.8 constitutional cap: node-initiated MetricSpec "
+        description="Constitutional cap: node-initiated MetricSpec "
                     "axis_weights are suppressed in favor of the "
                     "epoch-frozen weight regime (ignored under "
                     "simple_bfts).",
@@ -1367,7 +1381,8 @@ class RQGMMetaEvolutionConfig(BaseModel):
 
 
 class RQGMSpendBudgetConfig(BaseModel):
-    """``rqgm.budgets:`` block (RQGM Task 12 §5.3/§6.1).
+    """``rqgm.budgets:`` block (docs/reference/configuration.md,
+    "``rqgm.budgets`` — per-epoch governance spend caps").
 
     Per-epoch governance SPEND caps read against the passive
     ``cost_tracker`` records (`epoch` + `phase="governance"`). ``0`` means
@@ -1396,7 +1411,8 @@ class RQGMSpendBudgetConfig(BaseModel):
 
 
 class RQGMAdversarialConfig(BaseModel):
-    """``rqgm.adversarial:`` block (RQGM Task 06 §7).
+    """``rqgm.adversarial:`` block (docs/reference/configuration.md,
+    "``rqgm.adversarial`` — attack→defense→adjudication loop").
 
     Trigger/budget knobs of the attack→defense→adjudication loop. Task 12
     owns final tuning; defaults mirror ``ari/configs/defaults.yaml`` (parity
@@ -1448,11 +1464,11 @@ class RQGMAdversarialConfig(BaseModel):
     )
     penalty: RQGMAdversarialPenaltyConfig = Field(
         default_factory=RQGMAdversarialPenaltyConfig,
-        description="Epoch-frozen utility-penalty weights (§5.4).",
+        description="Epoch-frozen utility-penalty weights.",
     )
     pool: RQGMAdversarialPoolConfig = Field(
         default_factory=RQGMAdversarialPoolConfig,
-        description="AdversarialReplayPool sizing (§5.8).",
+        description="AdversarialReplayPool sizing.",
     )
 
 
@@ -1477,11 +1493,13 @@ class ProposalGeneratorConfig(BaseModel):
 
 
 class VirSciGeneratorConfig(ProposalGeneratorConfig):
-    """``proposal_router.generators.virsci`` (RQGM Task 03 §5.4).
+    """``proposal_router.generators.virsci`` (docs/reference/configuration.md,
+    "``proposal_router`` — proposal generation routing").
 
     ``enabled: false`` (the default) guarantees the VirSciAdapter is never
     constructed, no VirSci runtime/vendored path is required, and tests pass
-    without VirSci installed. Orthogonal to ``ari.mode`` (plan 01 §5.6).
+    without VirSci installed. Orthogonal to ``ari.mode``: enabling VirSci
+    neither turns RQGM on nor requires it.
     """
 
     enabled: bool = Field(
@@ -1509,7 +1527,8 @@ class VirSciGeneratorConfig(ProposalGeneratorConfig):
 
 
 class ProposalGeneratorsConfig(BaseModel):
-    """``proposal_router.generators:`` block (RQGM Task 03 §6.5)."""
+    """``proposal_router.generators:`` block (docs/reference/configuration.md,
+    "``proposal_router`` — proposal generation routing")."""
 
     model_config = {"extra": "allow"}
     cheap: ProposalGeneratorConfig = Field(
@@ -1547,12 +1566,13 @@ class ProposalGeneratorsConfig(BaseModel):
 
 
 class ProposalRouterConfig(BaseModel):
-    """Top-level ``proposal_router:`` block (RQGM Task 03 §6.5).
+    """Top-level ``proposal_router:`` block (docs/reference/configuration.md,
+    "``proposal_router`` — proposal generation routing").
 
     Consumed ONLY when the effective mode is ``ari_rqgm`` — EXCEPT
     ``record_only``, which is honored in ``simple_bfts`` (record-only
     dual-write for ablation B1; zero behavior change). Deliberately NOT read
-    by mode resolution (plan 01 §5.6: VirSci is orthogonal to ``ari.mode``);
+    by mode resolution (VirSci is orthogonal to ``ari.mode``);
     in ``simple_bfts`` the existing VirSci levers
     (``bfts_pipeline.generate_idea.enabled`` / ``ARI_IDEA_VIRSCI_REAL``)
     remain authoritative.
@@ -1646,8 +1666,9 @@ class RQGMEvalConfig(BaseModel):
     scripted_components: dict[str, str] = Field(
         default_factory=dict,
         description="`role -> double_name` substitutions for the "
-                    "scripted-component failure injections (Task 13 §5.3 "
-                    "mechanism S). Keys of ari.rqgm.evaluation.doubles."
+                    "scripted-component failure injections (the "
+                    "`scripted_component` injection mechanism, smoke-tier "
+                    "only). Keys of ari.rqgm.evaluation.doubles."
                     "EVAL_DOUBLE_REGISTRY; ignored when `eval.enabled` is "
                     "false.",
     )
@@ -1711,7 +1732,7 @@ class RQGMPaperArchiveConfig(BaseModel):
 
 
 class RQGMPaperEpochConfig(BaseModel):
-    """``rqgm.paper.epoch:`` — SIZING ONLY (Task 01 §5.7).
+    """``rqgm.paper.epoch:`` — SIZING ONLY.
 
     The trigger KIND stays the inherited ``rqgm.epoch.boundary: node_count``;
     this knob only sizes it for the paper phase, exactly as
@@ -1751,7 +1772,7 @@ class RQGMPaperAnchorConfig(BaseModel):
     sample_size: int = Field(8, description="Held-out agreement sample size.")
     max_bootstrap_label_fraction: float = Field(
         0.5,
-        description="§5.3 machine-enforced cap: max share of "
+        description="Machine-enforced cap: max share of "
                     "label_source=gate_bootstrap cases, checked over the "
                     "corpus AND the held-out subset; a breach => the corpus "
                     "is REFUSED (load returns None => the on-ramp), never an "
@@ -1812,7 +1833,8 @@ class RQGMPaperPromptEvolutionConfig(BaseModel):
 
 class RQGMPaperAgentAsJudgeConfig(BaseModel):
     """``rqgm.paper.reviewer.agent_as_judge:`` — the agent-as-judge score seam
-    (paper-archive Task 03 §5.8 Residual).
+    (docs/reference/configuration.md,
+    "``rqgm.paper.reviewer.agent_as_judge`` — agent-as-judge draft scoring").
 
     OFF by default: the deterministic, LLM-free venue rubric is the on-ramp
     draft scorer (P2), so no run puts live LLM calls on the draft-scoring path
@@ -1829,7 +1851,7 @@ class RQGMPaperAgentAsJudgeConfig(BaseModel):
     model_config = {"extra": "allow"}
     enabled: bool = Field(
         False,
-        description="Agent-as-judge draft scoring on/off (Task 03 §5.8). OFF => "
+        description="Agent-as-judge draft scoring on/off. OFF => "
                     "deterministic rubric (P2, no LLM on the draft path). "
                     "Overridden by ARI_PAPER_AGENT_AS_JUDGE.",
     )
@@ -1845,7 +1867,8 @@ class RQGMPaperReviewerConfig(BaseModel):
     model_config = {"extra": "allow"}
     agent_as_judge: RQGMPaperAgentAsJudgeConfig = Field(
         default_factory=RQGMPaperAgentAsJudgeConfig,
-        description="Agent-as-judge score seam (Task 03 §5.8 Residual).",
+        description="Agent-as-judge score seam; OFF by default, so the "
+                    "deterministic venue rubric scores drafts.",
     )
 
 
@@ -1872,7 +1895,7 @@ class RQGMPaperConfig(BaseModel):
     )
     epoch: RQGMPaperEpochConfig = Field(
         default_factory=RQGMPaperEpochConfig,
-        description="Archive-round sizing (Task 01 §5.7).",
+        description="Archive-round sizing; one round == one paper epoch.",
     )
     anchor: RQGMPaperAnchorConfig = Field(
         default_factory=RQGMPaperAnchorConfig,
@@ -1888,7 +1911,7 @@ class RQGMPaperConfig(BaseModel):
     )
     reviewer: RQGMPaperReviewerConfig = Field(
         default_factory=RQGMPaperReviewerConfig,
-        description="Governed paper_reviewer scoring posture (Task 03 §5.8).",
+        description="Governed paper_reviewer scoring posture.",
     )
 
 
@@ -1898,7 +1921,8 @@ class RQGMConfig(BaseModel):
     prompt_evolution — later tasks)."""
 
     # Forward-compat: later-task subsections parse warn-free today and become
-    # typed fields when their owning task lands (plan 01 §6.1, risk R3).
+    # typed fields when their owning task lands. `extra: allow` is what keeps
+    # a not-yet-typed subsection from being dropped by field filtering.
     model_config = {"extra": "allow"}
     enabled: bool = Field(
         False,
@@ -2412,7 +2436,7 @@ def _effective_mode_str(cfg: "ARIConfig") -> str:
 
     Mirrors the activation cell of ari.rqgm.mode.resolve_effective_mode (both
     flags must agree; anything else is `simple_bfts`) WITHOUT importing
-    ari.rqgm — default runs must never load an RQGM module (plan 01 §8.1).
+    ari.rqgm — default runs must never load an RQGM module.
     Parity with the real resolver is pinned by tests/test_rqgm_mode.py.
     """
     _mode = getattr(getattr(cfg, "ari", None), "mode", "simple_bfts")
@@ -2421,8 +2445,7 @@ def _effective_mode_str(cfg: "ARIConfig") -> str:
 
 
 def apply_paper_env_overrides(cfg: "ARIConfig") -> None:
-    """Let ARI_PAPER_MODE / ARI_RQGM_PAPER_ENABLED override YAML (paper-archive
-    Task 01 §5.2).
+    """Let ARI_PAPER_MODE / ARI_RQGM_PAPER_ENABLED override YAML.
 
     Clones ``apply_rqgm_env_overrides``: Pydantic does not validate on
     assignment, so each value is checked against its allowed set before being
@@ -2455,7 +2478,7 @@ def apply_paper_env_overrides(cfg: "ARIConfig") -> None:
                 "ARI_RQGM_PAPER_ENABLED=%r is not a valid boolean "
                 "(0/1/true/false); ignored", _e,
             )
-    # Agent-as-judge draft scoring (paper-archive Task 03 §5.8 Residual): opt-in
+    # Agent-as-judge draft scoring: opt-in
     # real-LLM reviewer scoring. Same validate-before-assign posture.
     _j = os.environ.get("ARI_PAPER_AGENT_AS_JUDGE")
     if _j:
@@ -2477,8 +2500,9 @@ def _effective_paper_mode_str(cfg: "ARIConfig") -> str:
     Mirrors the activation cell of ari.rqgm.paper_mode.resolve_paper_mode
     (both flags must agree; anything else is `linear`) WITHOUT importing
     ari.rqgm — default paper runs must never load an RQGM module on the paper
-    path (paper Task 01 §5.2/§8.1). Reads ONLY `paper.mode` /
-    `rqgm.paper.enabled` — orthogonal to `ari.mode` (§5.6). Parity with the
+    path. Reads ONLY `paper.mode` /
+    `rqgm.paper.enabled` — orthogonal to `ari.mode`, so all four
+    combinations of the two axes are valid. Parity with the
     real resolver is pinned by tests/test_paper_mode.py.
     """
     _mode = getattr(getattr(cfg, "paper", None), "mode", "linear")

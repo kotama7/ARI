@@ -1,4 +1,7 @@
-"""PolicyMutator — the governed score's proposer (RQGM Task 14, plan 14 §5.4).
+"""PolicyMutator — the governed score's proposer (RQGM Task 14).
+
+Design context: docs/concepts/rqgm_architecture.md, "Governed utility
+evolution".
 
 The defining claim of Constitutional ARI-RQGM is that the search is
 tree-structured **and that at each epoch boundary the entire score — the
@@ -9,16 +12,17 @@ of the CAUSE half: something has to PROPOSE a successor policy.
 
 Three pieces, all Task 14:
 
-* :class:`UtilityPolicyCandidate` — the proposal record (plan 14 §6.2),
+* :class:`UtilityPolicyCandidate` — the proposal record (shape:
+  docs/reference/rqgm_schemas.md, "`rqgm_utility_policy_candidate.schema.json`"),
   riding the existing prompt-evolution log; no new store.
 * :class:`PolicyMutator` — the boundary proposer. A ``PromptMutator`` analog
   (``prompt_evolution.py``): it emits candidates ONLY and exposes no
   registry/store write surface. Status changes are Task 09's engine,
   kernel-validated.
-* :class:`UtilityPolicyStamp` — the node-side provenance stamp (plan 14 §5.8
-  delta 2) that lets a rewrite invalidate EVERY node scored under the old
-  policy, not just the attacked-and-penalised subset that carries a
-  UtilityRecord.
+* :class:`UtilityPolicyStamp` — the node-side half of the invalidation
+  design: a per-node provenance stamp that lets a rewrite invalidate EVERY
+  node scored under the old policy, not just the attacked-and-penalised
+  subset that carries a UtilityRecord.
 
 **No absolute ruler (P3).** The thing that proposes the score is itself a
 registered, sanctionable, evolvable component: ``policy_mutator_v1`` is a
@@ -59,8 +63,9 @@ log = logging.getLogger(__name__)
 UTILITY_POLICY_CANDIDATE_RECORD_TYPE = "utility_policy_candidate"
 UTILITY_POLICY_CANDIDATE_SCHEMA_VERSION = 1
 
-#: The closed mutation family (plan 14 §5.4). The first four are pure
-#: arithmetic; only ``freeform_policy_proposal`` consults an LLM.
+#: The closed mutation family: a proposer may emit no kind outside this
+#: tuple. The first four are pure arithmetic; only
+#: ``freeform_policy_proposal`` consults an LLM.
 MUTATION_KINDS: tuple[str, ...] = (
     "axis_reweighting",
     "composite_swap",
@@ -77,8 +82,9 @@ KNOB_MUTATION_KINDS: frozenset[str] = frozenset({
     "exploration_tuning",
 })
 
-#: ``Node.metrics`` sentinel key (plan 14 §5.8 delta 2): the epoch utility
-#: policy under which this node's score was formed. Additive, persisted
+#: ``Node.metrics`` sentinel key: the epoch utility policy under which this
+#: node's score was formed — the marker a retirement invalidates on.
+#: Additive, persisted
 #: through ``tree.json``, and NEVER written under ``simple_bfts`` — the
 #: ``frontier_repair`` convention (``_stale`` / ``_valid_for_frontier`` /
 #: ``_stale_reason`` / ``_erasure_event_id``) and the adversarial-engine
@@ -92,12 +98,14 @@ def _rounded(value: float) -> float:
     return round(float(value), 6)
 
 
-# ── the candidate record (plan 14 §6.2) ─────────────────────────────────────
+# ── the candidate record (rqgm_utility_policy_candidate.schema.json) ────────
 
 
 @dataclass(frozen=True)
 class UtilityPolicyCandidate:
-    """One proposed successor utility policy (plan 14 §6.2).
+    """One proposed successor utility policy. Record shape:
+    docs/reference/rqgm_schemas.md,
+    "`rqgm_utility_policy_candidate.schema.json`".
 
     The envelope is the mandatory common one
     (``kernel_rules.ENVELOPE_FIELDS``) and its author is the
@@ -167,7 +175,7 @@ def utility_policy_candidate_from_dict(d: dict) -> UtilityPolicyCandidate:
     )
 
 
-# ── the four deterministic knob kinds (plan 14 §5.4/§7) ─────────────────────
+# ── the four deterministic knob kinds: pure arithmetic, no LLM ──────────────
 
 
 def _evidence_axis_pressure(evidence) -> dict[str, int]:
@@ -364,7 +372,7 @@ def propose_utility_policy(
     incumbent_policy: dict, *, evidence=(), mutation_kind: str
 ) -> dict | None:
     """The four deterministic knob kinds as pure functions of
-    ``(incumbent_policy, evidence)`` (plan 14 §7).
+    ``(incumbent_policy, evidence)`` — same inputs, same proposal, always.
 
     Returns the proposed policy BODY (without the ``utility_policy_hash``
     seal), or ``None`` when the kind is unknown, is not a knob kind, or the
@@ -387,7 +395,7 @@ def propose_utility_policy(
         return None
 
 
-# ── the §5.5 dry-run evaluation (plan 14 §5.5 T1/T3, blocker 1) ─────────────
+# ── the boundary dry-run: T1 legality + T3 replay board, both LLM-free ──────
 
 
 def _axis_ranking_agreement(incumbent: dict, candidate: dict) -> float:
@@ -397,8 +405,9 @@ def _axis_ranking_agreement(incumbent: dict, candidate: dict) -> float:
     axis weights untouched (``composite_swap`` / ``frontier_score_swap`` /
     ``exploration_tuning``) scores a perfect 1.0; an ``axis_reweighting`` that
     only re-prioritises within the legal simplex preserves the ordering and so
-    scores high — which is exactly the §5.5 claim that a legal successor
-    "scores at least as well on the frozen replay board"."""
+    scores high — which is exactly the claim a candidate has to carry to be
+    adopted: a legal successor "scores at least as well on the frozen replay
+    board"."""
     axes = sorted(set(incumbent) & set(candidate))
     if len(axes) < 2:
         return 1.0
@@ -425,18 +434,18 @@ def evaluate_utility_policy_candidate(
     body: dict, *, prompt_id: str, registered_hash: str = "",
     incumbent_body: dict | None = None, kernel=None, live_axes=None,
 ) -> dict:
-    """The §5.5 deterministic dry-run evaluation of ONE pending utility_policy
-    candidate (plan 14 §5.5, blocker 1). Returns a ``candidate_evaluation``
+    """The deterministic dry-run evaluation of ONE pending utility_policy
+    candidate. Returns a ``candidate_evaluation``
     dict keyed on *prompt_id* that ``RegistryTransitionEngine.resolve_transition``
     consumes to iterate the policy up the T1 -> T3 -> T6 spine.
 
     Two components, both deterministic and LLM-free (P2):
 
-    * **T1 legality (§5.6).** Run the frozen kernel check
+    * **T1 legality (the CK-UTL rules).** Run the frozen kernel check
       ``validate_utility_policy``; a candidate that fails the constitution
       gets ``verdict="fail"`` (the engine's T1 guard rejects it into a T2
       retirement — an illegal policy never reaches shadow).
-    * **T3 replay (§5.5).** The policy's replay board is its re-scoring dry
+    * **T3 replay.** The policy's replay board is its re-scoring dry
       run. The evaluation basis is the axis set the policy re-weights (a
       policy is a score over axes); a legal, non-degenerate re-weighting
       preserves the incumbent's axis ordering, scoring ``_axis_ranking_agreement``.
@@ -445,7 +454,7 @@ def evaluate_utility_policy_candidate(
       Red-Queen posture P1 demands) — and when per-axis-scored replay cases do
       exist the ordering they induce is the same ordering this board reads.
 
-    * **T6 shadow (§5.5, amended 2026-07-17).** There is no third component:
+    * **T6 shadow (amended 2026-07-17).** There is no third component:
       a passive policy document is never shadow-EXECUTED, so its shadow stage
       is VACUOUS by construction. It is reported as absent
       (``shadow_samples``/``shadow_score`` ``None`` + ``shadow_basis:
@@ -461,7 +470,8 @@ def evaluate_utility_policy_candidate(
     gate on the live T6 adoption is the backstop).
     """
     # Local import: ``transition_engine`` is never imported under
-    # ``simple_bfts`` (plan 09 §5.5) and this module is.
+    # ``simple_bfts`` — no transition machinery runs there — and this module
+    # is.
     from ari.rqgm.transition_engine import (
         NO_REPLAY_BASIS_KEY,
         NO_SHADOW_BASIS_KEY,
@@ -507,25 +517,28 @@ def evaluate_utility_policy_candidate(
     # there is NO ordering to compare: the comparison never runs, and the board
     # is reported ABSENT (``None``) rather than as a ``1.0`` nobody computed.
     # The gate then reduces to legality (CK-UTL) + non-degeneracy, which is
-    # intended (plan 14 §5.5 "Honest scope of the gate"): with no ground-truth
+    # intended, and it is the gate's honest scope: with no ground-truth
     # anchor there is no "strictly better" to gate on, and a legality-bounded
     # criterion that keeps moving is the Red-Queen posture. A real quality gate
-    # needs an anchored per-axis basis — the paper phase's Task-04 anchor.
+    # needs an anchored per-axis basis — the paper phase's Task-04 anchor. See
+    # docs/concepts/rqgm_architecture.md, "Governed utility evolution".
     #
     # `None` costs the T3 pass nothing: the `no_replay_basis` sentinel below
     # already carries it (`scores_ok` treats an absent board as abstaining, and
     # the waiver covers the count floor). The 1.0 was load-bearing for nothing
-    # while contradicting §7's "No field carries a quantity nothing produced".
+    # while contradicting the reporting rule this module holds to: no field
+    # carries a quantity nothing produced.
     agreement = (
         _axis_ranking_agreement(inc_w, cand_w) if (inc_w and cand_w) else None
     )
-    # A passive policy DOCUMENT carries no ``invoke`` grant (§5.2), so it is
-    # never shadow-EXECUTED: there are zero live-shadow comparisons behind it
-    # by construction. Report that absence rather than borrow the T3 basis
-    # count — ``shadow_samples`` claims a sample count, and dict keys are not
-    # samples. The T6 ``shadow_min_samples`` floor is WAIVED by role, in the
-    # open, at the decision site (transition_engine.NO_REPLAY_BASIS_ROLES,
-    # plan 14 §5.5/§7), so T6 reduces to CK-UTL legality + non-degeneracy +
+    # A passive policy DOCUMENT carries no ``invoke`` grant — nothing ever
+    # calls it — so it is never shadow-EXECUTED: there are zero live-shadow
+    # comparisons behind it by construction. Report that absence rather than
+    # borrow the T3 basis count — ``shadow_samples`` claims a sample count,
+    # and dict keys are not samples. The T6 ``shadow_min_samples`` floor is
+    # WAIVED by role, in the open, at the decision site
+    # (transition_engine.NO_REPLAY_BASIS_ROLES), so T6 reduces to CK-UTL
+    # legality + non-degeneracy +
     # the supersession/adoption-cap guards. The same sentinel waives T3's
     # ``replay_min_cases`` floor: ``case_refs`` below are the policy's own
     # DIMENSIONS, not executed replay cases, so the floor has nothing honest
@@ -568,7 +581,7 @@ def evaluate_utility_policy_candidate(
     }
 
 
-# ── the proposer (plan 14 §5.4) ─────────────────────────────────────────────
+# ── the proposer: emits candidates only, never writes the registry ──────────
 
 
 class PolicyMutator:
@@ -664,8 +677,9 @@ class PolicyMutator:
                         mutation_kind)
             return None
         if existing_records is not None:
-            # Budget reuse, one schema home (plan 14 §5.4): the existing
-            # rqgm.prompt_evolution caps, keyed on the TARGET role.
+            # Budget reuse, one schema home: utility candidates are capped by
+            # the existing rqgm.prompt_evolution per-epoch caps rather than a
+            # second budget, keyed on the TARGET role.
             from ari.rqgm.prompt_evolution import candidate_budget_reason
 
             reason = candidate_budget_reason(
@@ -772,8 +786,9 @@ def utility_policy_registration_payload(candidate) -> dict:
 
     The storage face of intake: the NEXT boundary's ``resolve_transition``
     iterates the entry through the T1→T6 spine like any other governed
-    prompt (the T-table is role-agnostic — plan 14 §5.5 needs no new rule
-    ids). ``role`` is the TARGET role (``utility_policy``), not the
+    prompt (the T-table is role-agnostic — a utility policy rides the
+    existing T1-T6 rule ids and needs no new ones). ``role`` is the TARGET
+    role (``utility_policy``), not the
     proposer's: the registry entry IS the policy, whereas the candidate
     RECORD is a proposal by the policy_mutator.
     """
@@ -832,7 +847,7 @@ def _now_iso() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 
-# ── the node stamp (plan 14 §5.8 delta 2) ───────────────────────────────────
+# ── the node stamp: every scored node carries the policy that scored it ─────
 
 
 class UtilityPolicyStamp:
@@ -840,8 +855,8 @@ class UtilityPolicyStamp:
 
     **Why this exists.** ``apply_utility_penalty`` returns ``None`` when the
     penalty is 0, so ONLY attacked-and-penalised nodes carry a
-    ``UtilityRecord``. Under the record-side re-point alone (plan 14 §5.8
-    delta 1), a policy rewrite would invalidate the penalised subset and
+    ``UtilityRecord``. If invalidation re-pointed only those records, a
+    policy rewrite would invalidate the penalised subset and
     leave every unattacked node in the frontier holding an old-policy score —
     a RANDOM half-rewrite, which is worse than none: the frontier would then
     mix two incomparable score regimes with no marker saying which is which.

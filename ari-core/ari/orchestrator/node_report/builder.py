@@ -1057,8 +1057,9 @@ def write_node_report(
         return out_path
 
 
-# Phase 3E (REFACTORING.md §3 + orchestrator/REFACTORING.md §2 Step 1)
-# moved this module into a package; ``reconstruct_report_from_legacy``
-# is re-exported from ``ari.orchestrator.node_report.__init__`` and the
+# The refactor that turned this module into the
+# ``ari.orchestrator.node_report`` package left the legacy reader outside
+# it: ``reconstruct_report_from_legacy`` is re-exported from
+# ``ari.orchestrator.node_report.__init__`` and the
 # ``legacy_reconstruct`` shim sub-module — importing it here would
 # create a cycle (the migrations module pulls helpers from this file).

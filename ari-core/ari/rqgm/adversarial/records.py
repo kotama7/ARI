@@ -1,10 +1,10 @@
-"""Adversarial record schemas + constructive-prevention builders (Task 06 §6).
+"""Adversarial record schemas + constructive-prevention builders (Task 06).
 
 Six record shapes mirror ``ari/schemas/rqgm_attack_records.schema.json`` /
 ``rqgm_utility_record.schema.json`` / ``rqgm_replay_pool.schema.json``:
 
 * :class:`RawAttackRecord` — one adversary attack on a research artifact.
-  ``target_artifact.type`` is a **closed set** (§5.2); there is no field for a
+  ``target_artifact.type`` is a **closed set**; there is no field for a
   component id and :func:`raw_attack_violations` rejects any record that
   smuggles one in (kernel check 1). Evidence-free attacks are schema-invalid
   and never reach the Defender.
@@ -14,7 +14,7 @@ Six record shapes mirror ``ari/schemas/rqgm_attack_records.schema.json`` /
 * :class:`ValidatedAttackRecord` — exists ONLY for verdicts in
   ``{valid, partially_valid}`` (invariant 9): the builder refuses anything
   else (:class:`AdversarialRuleError`).
-* :class:`UtilityRecord` — the §5.4 penalty channel's audit record (schema
+* :class:`UtilityRecord` — the penalty channel's audit record (schema
   owned by this task). ``penalty > 0`` requires ≥ 1 referenced
   ValidatedAttackRecord (kernel check 4 — raw attacks never score). Input
   refs and the frozen policy weights are stored **by value** for Task 10's
@@ -37,9 +37,9 @@ from dataclasses import dataclass, field
 
 ADVERSARIAL_RECORD_SCHEMA_VERSION = 1
 
-# ── closed vocabularies (plan 06 §5.2 / §6) ─────────────────────────────────
+# ── closed vocabularies (mirrored by rqgm_attack_records.schema.json) ───────
 
-#: The adversary types (§5.2) — also the ``case_type`` vocabulary. The first
+#: The adversary types — also the ``case_type`` vocabulary. The first
 #: seven are the exploration set; ``paper_self_preference`` is the eighth,
 #: additive member (docs/reference/rqgm_schemas.md "Paper-archive schemas",
 #: "The eighth adversary type") — inert off the paper phase (its pre-signal
@@ -56,7 +56,7 @@ ADVERSARY_TYPES: tuple[str, ...] = (
     "paper_self_preference",
 )
 
-#: Closed target-artifact classes (§5.2). Component ids are NOT targets:
+#: Closed target-artifact classes. Component ids are NOT targets:
 #: the schema has no field for them and validation rejects smuggling.
 TARGET_ARTIFACT_TYPES: tuple[str, ...] = (
     "proposal",
@@ -74,7 +74,8 @@ SEVERITY_RANK: dict[str, int] = {s: i for i, s in enumerate(SEVERITIES)}
 
 VERDICTS: tuple[str, ...] = ("valid", "partially_valid", "invalid")
 
-#: Verdict weighting of the penalty arithmetic (§5.4) — epoch-frozen.
+#: Verdict weighting of the penalty arithmetic — epoch-frozen. ``invalid``
+#: is deliberately absent: an invalid verdict carries no weight at all.
 VERDICT_FACTOR: dict[str, float] = {"valid": 1.0, "partially_valid": 0.5}
 
 DEFENSE_STANCES: tuple[str, ...] = ("rebut", "concede", "propose_fix")
@@ -146,7 +147,7 @@ def format_case_id(seq: int) -> str:
 
 @dataclass(frozen=True)
 class TargetArtifact:
-    """The attacked artifact (§6). NO component-id field exists by design."""
+    """The attacked artifact. NO component-id field exists by design."""
 
     type: str = ""
     node_id: str = ""
@@ -173,7 +174,7 @@ def target_from_dict(d: dict) -> TargetArtifact:
 
 @dataclass(frozen=True)
 class EvidenceRef:
-    """One checkpoint-resolvable evidence pointer (§5.2)."""
+    """One checkpoint-resolvable evidence pointer."""
 
     path: str = ""
     pointer: str = ""
@@ -207,7 +208,7 @@ def _evidence_list(items) -> tuple[EvidenceRef, ...]:
 
 @dataclass(frozen=True)
 class RawAttackRecord:
-    """One adversary attack (§6). Audit-log material ONLY until adjudicated:
+    """One adversary attack. Audit-log material ONLY until adjudicated:
     per invariant 8 nothing reads this record into any score."""
 
     record_id: str
@@ -271,7 +272,7 @@ def raw_attack_from_dict(d: dict) -> RawAttackRecord:
 
 
 def raw_attack_violations(record) -> list[str]:
-    """Deterministic §5.7 checks 1-2 surface (kernel-style, P2).
+    """Deterministic kernel checks 1-2 over one raw attack (kernel-style, P2).
 
     Artifact-only targeting: the target type must be in the closed set and no
     component id may be smuggled anywhere into the target; every attack must
@@ -453,8 +454,8 @@ class ValidatedAttackRecord:
     Construct via :func:`make_validated_attack_record`, which refuses every
     other verdict — the constructive-prevention layer of invariant 9; the
     deterministic re-check is :func:`validated_attack_violations`.
-    ``target_artifact_hash`` is additive (absent from the plan's §6 example):
-    it carries the pool dedup key ``(case_type, artifact_hash)`` by value.
+    ``target_artifact_hash`` is additive to the base record shape: it carries
+    the pool dedup key ``(case_type, artifact_hash)`` by value.
 
     **The accountability binding (roles are observed, components are bound,
     and the binding is minted only after adjudication).** The two
@@ -685,13 +686,14 @@ def validated_attack_violations(record) -> list[str]:
 
 @dataclass(frozen=True)
 class UtilityRecord:
-    """One governed-utility audit record (§6; sole v1 emitter is §5.4).
+    """One governed-utility audit record; the penalty channel is its sole
+    v1 emitter.
 
     ``input_refs`` and ``frozen_policy`` are stored by value so Task 10's
     recompute under the original epoch's weights never needs a registry
     lookup. ``review_ids`` stays empty in this task's penalty-only loop.
 
-    **The two policies, and the version boundary** (RQGM Task 14 §5.8). Two
+    **The two policies, and the version boundary** (RQGM Task 14). Two
     DIFFERENT policies were historically both called ``utility_policy_hash``:
     the **penalty** policy (``{penalty_cap, severity_weights,
     verdict_factors}``, computed in ``adversarial.engine``) and the **epoch**
@@ -855,7 +857,7 @@ def utility_record_violations(record) -> list[str]:
     return out
 
 
-# ── AdversarialReplayCase + FailureSummary (§5.8) ───────────────────────────
+# ── AdversarialReplayCase + FailureSummary (the pool's two views) ───────────
 
 
 @dataclass(frozen=True)
@@ -924,7 +926,7 @@ _FAILURE_PATTERNS: dict[str, tuple[str, str]] = {
 
 
 def build_failure_summary(validated: ValidatedAttackRecord) -> FailureSummary:
-    """v1 FailureSummaryCompressor: deterministic template fill (§5.8).
+    """v1 FailureSummaryCompressor: deterministic template fill.
 
     Reads ONLY the case type and the expected-behavior role keys — never the
     attack/defense text — so the abstract view is contamination-safe by
@@ -943,7 +945,7 @@ def build_failure_summary(validated: ValidatedAttackRecord) -> FailureSummary:
 
 @dataclass(frozen=True)
 class AdversarialReplayCase:
-    """One pool entry (§5.8/§6): replay_view for boards/selectors only,
+    """One pool entry: replay_view for boards/selectors only,
     abstract_view for clean-room consumers."""
 
     case_id: str

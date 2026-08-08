@@ -82,7 +82,7 @@ def _registration_events() -> list[TransitionEvent]:
     ]
 
 
-# ── round-trip + crash recovery (§9 test 1) ──────────────────────────────────
+# ── round-trip + crash recovery ──────────────────────────────────────────────
 
 
 def test_open_boundary_replay_roundtrip(tmp_path):
@@ -167,7 +167,7 @@ def test_non_rqgm_checkpoint_loads_as_none(tmp_path):
     assert list(tmp_path.iterdir()) == []  # reading created nothing
 
 
-# ── hash-chain discipline (§9 test 2) ────────────────────────────────────────
+# ── hash-chain discipline ────────────────────────────────────────────────────
 
 
 def test_event_chain_hashes_and_ids(tmp_path):
@@ -237,7 +237,7 @@ def test_hashes_deterministic_across_two_processes(tmp_path):
     assert out == ["852526c4b2fa", "70b33a359957"]
 
 
-# ── write-path policy (§9 test 5) ────────────────────────────────────────────
+# ── write-path policy ────────────────────────────────────────────────────────
 
 
 def test_transaction_rejects_managed_and_unknown_event_types(tmp_path):
@@ -325,7 +325,7 @@ def test_audit_log_envelope_and_run_pin_noop(tmp_path):
     assert ImmutableAuditLog.read(tmp_path / "nowhere") == []
 
 
-# ── filename hygiene (§9 test 6) ─────────────────────────────────────────────
+# ── filename hygiene ─────────────────────────────────────────────────────────
 
 
 def test_rqgm_filenames_are_meta_and_trace_registered():
@@ -352,7 +352,7 @@ def test_rqgm_filenames_blocklisted_in_node_reports():
         assert classify_artifact_role(name) == "unknown"
 
 
-# ── rqgm.enabled=false regression (§9 test 7) ────────────────────────────────
+# ── rqgm.enabled=false regression ────────────────────────────────────────────
 
 
 def _stub_runtime_deps(monkeypatch):
@@ -384,7 +384,8 @@ def _stub_runtime_deps(monkeypatch):
 
 def test_disabled_mode_zero_files_zero_imports(monkeypatch, tmp_path):
     """simple_bfts / rqgm.enabled=false: no RQGM module import, no RQGM file,
-    reserved provenance fields stay None (plan 02 §5.8)."""
+    and the reserved provenance fields stay None — disabled mode leaves no
+    trace at all, rather than writing empty or default-valued RQGM state."""
     from ari.core import build_runtime
 
     _stub_runtime_deps(monkeypatch)
@@ -426,7 +427,7 @@ def test_disabled_short_loop_writes_no_rqgm_files(monkeypatch, tmp_path):
         assert not (tmp_path / name).exists(), name
 
 
-# ── resume (§9 test 8) ───────────────────────────────────────────────────────
+# ── resume ───────────────────────────────────────────────────────────────────
 
 
 def test_resume_replay_only_equals_snapshot_fast_path(tmp_path):
@@ -463,7 +464,7 @@ def test_runtime_ensure_epoch_resumes_and_opens_fresh(tmp_path):
     assert rt3.ensure_epoch(1) is None
 
 
-# ── stamping (§9 test 9) ─────────────────────────────────────────────────────
+# ── stamping ─────────────────────────────────────────────────────────────────
 
 
 def test_governed_prompt_use_fills_reserved_fields(tmp_path):
@@ -506,7 +507,7 @@ def test_cost_records_carry_epoch(tmp_path, monkeypatch):
     assert line["epoch"] == "epoch_007"
 
 
-# ── schemas (§9 test 10) ─────────────────────────────────────────────────────
+# ── schemas ──────────────────────────────────────────────────────────────────
 
 
 def test_schemas_load_and_validate_real_artifacts(tmp_path):
@@ -605,7 +606,7 @@ def test_store_satisfies_epoch_store_protocol():
     assert isinstance(RqgmStateStore(), EpochStore)
 
 
-# ── integration smoke: 2 epochs × 2 nodes (§9 smoke) ─────────────────────────
+# ── integration smoke: 2 epochs × 2 nodes ────────────────────────────────────
 
 
 def _make_agent():
@@ -687,10 +688,10 @@ def test_mini_run_crosses_epoch_boundary_transactionally(monkeypatch, tmp_path):
         FOUNDING_PROMPT_TABLE,
     )
 
-    # Task 14 (plan 14 §5.3): the runtime bootstrap passes the resolved cfg,
-    # so the founding prompt rows are the frozen table PLUS the one
-    # cfg-derived utility_policy row (appended after the table rows, before
-    # the component rows). Reviewed expectation update — §8.3.
+    # Task 14: the runtime bootstrap passes the resolved cfg, so the founding
+    # prompt rows are the frozen table PLUS the one cfg-derived utility_policy
+    # row (appended after the table rows, before the component rows). The +1
+    # below is that row — a deliberate expectation change, not drift.
     n_prompts = len(FOUNDING_PROMPT_TABLE) + 1
     n_components = len(FOUNDING_COMPONENT_TABLE)
     assert types[0] == "epoch_transaction_prepare"
@@ -704,11 +705,11 @@ def test_mini_run_crosses_epoch_boundary_transactionally(monkeypatch, tmp_path):
         types.count("epoch_transaction_commit")
     assert types.count("epoch_close") == types.count("epoch_open") - 1
     # Every boundary is transactional: prepare .. [intake ..] [status
-    # changes ..] close .. open .. commit. Task 07 candidate intake (plan 07
-    # §5.3 / plan 09 T1) registers this boundary's minted candidates (FIX-A +
-    # meta + Task 14 utility channels) at status=candidate, and the resolved
-    # transition's T-edge status changes (Task 14 §5.5: the utility_policy
-    # spine is now ALIVE, so a boundary carries real ``prompt_status_change``
+    # changes ..] close .. open .. commit. Task 07 candidate intake registers
+    # this boundary's minted candidates (FIX-A + meta + Task 14 utility
+    # channels) at status=candidate, and the resolved transition's T-edge
+    # status changes (Task 14 made the utility_policy spine ALIVE, so a
+    # boundary now carries real ``prompt_status_change``
     # / ``component_status_change`` events — pre-fix the dead spine produced
     # none in a short run) commit in the SAME boundary transaction. So between
     # the prepare and the close sit zero or more ``prompt_registered`` intake
@@ -794,14 +795,14 @@ def test_final_iteration_epoch_boundary_flushed_at_end_of_run(
         FOUNDING_PROMPT_TABLE,
     )
 
-    # Task 07 candidate intake (plan 07 §5.3 / plan 09 T1): with governance
+    # Task 07 candidate intake: with governance
     # off (FIX-A skipped) the meta channel still mints ONE boundary
     # candidate, now registered at status=candidate inside the SAME boundary
     # transaction — a ``prompt_registered`` between the boundary prepare and
     # close. Pre-fix this exact sequence encoded the bug where the minted
     # candidate was never registered (an empty boundary quadruple).
     #
-    # Task 14 (plan 14 §5.4): the PolicyMutator runs in the SAME
+    # Task 14: the PolicyMutator runs in the SAME
     # candidate-minting window and its utility-policy candidate rides the
     # SAME intake, so the boundary now registers TWO candidates — the meta
     # channel's prompt candidate and the boundary's policy candidate. That
@@ -809,7 +810,7 @@ def test_final_iteration_epoch_boundary_flushed_at_end_of_run(
     # nothing could ever propose a successor score.
     assert types == (
         ["epoch_transaction_prepare"]
-        # +1: the Task 14 cfg-derived utility_policy row (plan 14 §5.3).
+        # +1: the Task 14 cfg-derived utility_policy row.
         + ["prompt_registered"] * (len(FOUNDING_PROMPT_TABLE) + 1)
         + ["component_registered"] * len(FOUNDING_COMPONENT_TABLE)
         + [

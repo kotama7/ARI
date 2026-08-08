@@ -121,7 +121,9 @@ def _rqgm_cfg(**pr_kwargs) -> ARIConfig:
     )
 
 
-# ── schema round-trip + validation (§9 unit 1) ──────────────────────────────
+# ── schema round-trip + validation ───────────────────────────────────────────
+# Records survive dict round-trip byte-for-byte, and a summary over the
+# rendered-context budget is rejected rather than silently truncated.
 
 
 def test_record_dict_roundtrip():
@@ -239,7 +241,10 @@ def test_store_satisfies_protocol(tmp_path):
     assert isinstance(ProposalStore(tmp_path), ProposalStoreProtocol)
 
 
-# ── idea.json projection (§9 unit 2) ─────────────────────────────────────────
+# ── idea.json projection ─────────────────────────────────────────────────────
+# The store is the single writer of idea.json: it must emit the 9-key contract,
+# keep the score sort, pin the selected record in front, and preserve markers
+# a downstream reader depends on.
 
 
 def test_projection_nine_key_contract_and_plan_parse(tmp_path):
@@ -348,7 +353,10 @@ def test_projection_respects_root_choice_marker(tmp_path):
     assert doc2["_root_choice"]["rationale"] == "better fit"
 
 
-# ── routing policy (§9 unit 3) ───────────────────────────────────────────────
+# ── routing policy ───────────────────────────────────────────────────────────
+# `route` is deterministic and total: each event prefers its own generator,
+# falls back to `cheap` once that generator's per-epoch budget is spent or it
+# is disabled, and a raising generator degrades to the status quo, never out.
 
 
 @pytest.mark.parametrize(
@@ -436,7 +444,10 @@ def test_mutation_generator_sets_parent_ref(tmp_path):
     assert stored[root[0].record_id].summary.title == "Root"
 
 
-# ── Stage-1 record-only dual-write (§8 Stage 1) ──────────────────────────────
+# ── Stage-1 record-only dual-write ───────────────────────────────────────────
+# With `record_only`, legacy idea.json is imported into proposal records for
+# observability but idea.json's own bytes stay untouched — one writer, zero
+# behaviour change.
 
 
 def _legacy_idea_json() -> dict:
@@ -476,7 +487,10 @@ def test_import_idea_json_records_is_idempotent(tmp_path):
     assert (tmp_path / "idea.json").read_bytes() == before
 
 
-# ── simple_bfts identity + registration regressions (§9 regression) ──────────
+# ── simple_bfts identity + registration regressions ──────────────────────────
+# A default run creates no proposals/ directory and imports no ari.rqgm module;
+# the proposal filenames stay registered as meta/trace so they never surface as
+# node artifacts.
 
 
 def _forget_rqgm_modules(monkeypatch):
@@ -580,7 +594,9 @@ def test_simple_bfts_record_only_dual_writes(monkeypatch, tmp_path):
 
 
 def test_proposal_filenames_registered():
-    """META_FILES / _TRACE_FILES / node-report blocklists (§6.3)."""
+    """Proposal files are meta, not node output: registered in META_FILES, the
+    traces bucket, and the node-report blocklists so they never appear as a
+    node's changed files or artifacts."""
     from ari.orchestrator.node_report.builder import (
         _FILES_CHANGED_BLOCKLIST_DIRS,
         _FILES_CHANGED_BLOCKLIST_NAMES,
@@ -615,7 +631,9 @@ def test_proposals_never_in_files_changed(tmp_path):
     assert paths == ["result.csv"]
 
 
-# ── ari_rqgm boot integration (§9 integration) ───────────────────────────────
+# ── ari_rqgm boot integration ────────────────────────────────────────────────
+# Over a real short _run_loop: RQGM boots and routes proposals with
+# virsci.enabled=false, and the VirSci adapter module is never imported.
 
 
 def test_ari_rqgm_boot_virsci_off(monkeypatch, tmp_path):
@@ -686,7 +704,9 @@ def test_expansion_recording_never_breaks_expand(tmp_path):
     assert len(children) == 1
 
 
-# ── config (§6.5) ────────────────────────────────────────────────────────────
+# ── config: proposal_router ──────────────────────────────────────────────────
+# defaults.yaml and the pydantic defaults must agree exactly, and the typed
+# block must survive load_config's key filter.
 
 
 def test_defaults_yaml_matches_typed_proposal_router_defaults():

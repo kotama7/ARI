@@ -7,7 +7,8 @@ provenance").
 construction, the paper-phase analog of :class:`ari.rqgm.runtime.RQGMRuntime`.
 It is imported LAZILY inside the ``rqgm_archive`` branch of the paper entry —
 under ``linear`` no ``ari.rqgm`` module is imported on the paper path
-(identity-default guarantee, Task 01 §5.3/§8.1).
+(the identity-default guarantee: a ``linear`` paper run must be byte-identical
+to one built before the archive existed).
 
 Scope: the whole paper-archive plan set (Tasks 01-07) lands in this module.
 ``run_archive`` seeds ``width`` drafts, expands the tree to depth > 1 via
@@ -61,31 +62,32 @@ log = logging.getLogger(__name__)
 PAPER_ARCHIVE_STATE_FILENAME = "paper_archive_state.json"
 PAPER_ARCHIVE_STATE_SCHEMA_VERSION = 1
 
-# mode_source vocabulary (Task 01 §6.2): how the persisted paper mode was decided.
+# mode_source vocabulary: how the persisted paper mode was decided. Closed set —
+# an unrecognised value is recorded as "config" rather than persisted.
 PAPER_MODE_SOURCES = ("config", "env", "resume")
 
 #: Workflow stages the ARCHIVE owns, disabled in the Task 07 handoff config so
 #: the linear tail runs on the winner instead of regenerating over it
-#: (07 §5.1 "the archive substitutes for `write_paper` + `paper_refine`";
-#: §4 "those two are the archive's job in `rqgm_archive` mode";
-#: R5 "`materialize_winner` is the single writer").
+#: — in `rqgm_archive` mode the archive substitutes for `write_paper` +
+#: `paper_refine`, and `materialize_winner` is the SINGLE writer of
+#: `{ckpt}/full_paper.tex`.
 #:
 #: `write_paper` is NOT listed: it already no-ops via its own
-#: `skip_if_exists: {ckpt}/full_paper.tex` guard, which §5.4 explicitly relies on
-#: ("the `skip_if_exists` stage guards behave identically"). Disabling it too
-#: would be redundant and would break the §8.3 fail-open, where a winner-less
+#: `skip_if_exists: {ckpt}/full_paper.tex` guard, and the handoff relies on that
+#: guard behaving exactly as it does in a linear run. Disabling it too
+#: would be redundant and would break the fail-open, where a winner-less
 #: archive MUST let `write_paper` run.
 #:
-#: `review_paper` / `merge_reviews` are NOT listed either, though 02 R3 also
-#: names the review stages ("skips the linear write/review/refine stages"). Its
-#: cost half is deliberately left open and recorded as a residual: disabling
+#: `review_paper` / `merge_reviews` are NOT listed either, even though the
+#: archive also supersedes the linear review stages. That
+#: cost saving is deliberately left open and recorded as a residual: disabling
 #: `review_paper` would delete `review_report.json`, which has real consumers
 #: OUTSIDE the pipeline (`cli/projects.py:323,413`, `viz/checkpoint_api.py:177,270`,
-#: `viz/services/state_service.py:77` `has_review`). Removing it would violate 07
-#: §5.1's stronger, same-plan guarantee that "everything downstream is
-#: byte-identical". Closing R3's cost half needs those consumers handled first —
-#: see the 2026-07-17 residual in 07 §12. This set is exactly what §5.4/R5's
-#: single-writer invariant requires and nothing more.
+#: `viz/services/state_service.py:77` `has_review`). Removing it would violate the
+#: handoff's stronger guarantee that everything downstream of the winner is
+#: byte-identical to a linear run; closing the residual needs those consumers
+#: handled first. This set is exactly what the single-writer invariant
+#: requires and nothing more.
 HANDOFF_DISABLED_STAGES = frozenset({"paper_refine"})
 
 
@@ -94,13 +96,13 @@ class ManuscriptArchiveAuthoringError(RuntimeError):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Cost model — the per-epoch draft-population bound (paper-archive Task 06 §5.4.1
-# / §7). Pure; depth-independent (§5.6): raising `archive.depth` moves no term.
+# Cost model — the per-epoch draft-population bound (paper-archive Task 06).
+# Pure; depth-independent: raising `archive.depth` moves no term of the bound.
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def paper_expansion_budget(cfg) -> int:
-    """The §5.4.1 per-epoch draft-population bound:
+    """The per-epoch draft-population bound:
     ``min(width * (1 + refine_rounds), max_expansions)``.
 
     This is the SAME value ``PaperArchiveStrategy`` caps on (its
@@ -131,7 +133,7 @@ def _get_archive_dict(cfg):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# paper_archive_state.json — paper-phase mode provenance (§6.2)
+# paper_archive_state.json — paper-phase mode provenance
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -164,7 +166,9 @@ def build_paper_run_start_state(
     seed_node_id: str | None = None,
     evaluation_condition_id: str = "",
 ) -> dict:
-    """Schema-v1 paper-phase-start payload (Task 01 §6.2).
+    """Schema-v1 paper-phase-start payload (field list in
+    docs/reference/rqgm_schemas.md, "`paper_archive_state.json` — paper-phase
+    mode provenance").
 
     ``created_at`` is metadata only — never hashed and never read by decision
     logic (P2 holds for every consumer of this file)."""
@@ -260,7 +264,7 @@ def persist_paper_run_start(
     """Write ``paper_archive_state.json`` once at paper-phase start.
 
     Write-once: an existing file (re-invocation) is never clobbered — the
-    persisted mode wins on re-invocation (§5.5), and the epoch-boundary journal
+    persisted mode wins on re-invocation, and the epoch-boundary journal
     entries Task 03 appends go through their own transaction.
 
     ``seed_node_id`` is the one field write-once cannot keep true: it records
@@ -292,8 +296,7 @@ def persist_paper_run_start(
 def reconcile_paper_resume_mode(
     cfg: "ARIConfig", checkpoint_dir: str | Path
 ) -> None:
-    """Force *cfg* to the persisted paper mode on a re-invoked ``ari paper``
-    (Task 01 §5.5).
+    """Force *cfg* to the persisted paper mode on a re-invoked ``ari paper``.
 
     The persisted paper mode wins over config and env; a disagreement produces
     a warning, never a silent mode flip on re-invocation. A checkpoint WITHOUT
@@ -344,7 +347,8 @@ class _DefaultPaperReviewer:
     is the constructor default (no ``reviewer=`` injected), so every round
     before the first governed one scores through here.
 
-    ``score`` reads the ``.tex`` TEXT only (no compile, §5.5) and maps its
+    ``score`` reads the ``.tex`` TEXT only — never a compile, so scoring never
+    depends on a LaTeX toolchain — and maps its
     structural features to a bounded score in [0, 1]; ``review`` returns no
     actionable revisions (``paper_refine`` then keeps the paper unchanged per
     its non-destructive contract). Task 03/04 swap this for the governed
@@ -393,13 +397,13 @@ class GovernedPaperReviewer:
     Driven by the epoch's ACTIVE ``paper_reviewer`` prompt TEXT + hash (the
     evolving bytes live in ari-core, not the skill). ``review`` returns REAL
     suggested revisions so ``paper_refine`` actually refines and the draft tree
-    deepens past depth 2; ``score`` reads the ``.tex`` TEXT only (no compile,
-    §5.5) and — crucially — writes a ``review_record`` into ``rqgm_audit.jsonl``
+    deepens past depth 2; ``score`` reads the ``.tex`` TEXT only (never a
+    compile) and — crucially — writes a ``review_record`` into ``rqgm_audit.jsonl``
     per score so ``paper_reviewer_v1`` is reliability-assessable (its
     registration is operative, not nominal).
 
-    The ACTIVE prompt bytes are an input to BOTH judgements this class makes
-    (§5.8): ``score`` scores each draft on the rubric the prompt declares, and
+    The ACTIVE prompt bytes are an input to BOTH judgements this class makes:
+    ``score`` scores each draft on the rubric the prompt declares, and
     ``anchor_verdict`` judges each reference manuscript through the prompt. That
     is what makes the reviewer half of co-evolution live — evolved bytes move
     best-belief selection and anchor agreement.
@@ -412,7 +416,8 @@ class GovernedPaperReviewer:
     (used by the anchor scorer). Absent ``score_fn``/``revise_fn`` the defaults
     are deterministic and LLM-free so the substrate runs today. Absent
     ``verdict_fn`` there is NO verdict source and the anchor reports zero
-    coverage — never a forged verdict (plan 04 §4/§5.9, §10 R4).
+    coverage — an absent verdict source is reported as zero coverage, never
+    filled in with a synthesised verdict.
     """
 
     def __init__(
@@ -439,7 +444,7 @@ class GovernedPaperReviewer:
         self._revise_fn = revise_fn
         self._verdict_fn = verdict_fn
         # ``confidence_fn(prompt_text) -> float`` — the reviewer's STATED
-        # confidence (§5.8). A reviewer whose stated confidence drifts from
+        # confidence. A reviewer whose stated confidence drifts from
         # the scores it emits is mis-calibrated and falls below RELIABILITY_
         # FLOOR. Default: confidence == score (calibrated).
         self._confidence_fn = confidence_fn
@@ -452,7 +457,7 @@ class GovernedPaperReviewer:
         # runtime's anchor scorer before draft scoring. Stamped on every DRAFT
         # review_record's ``agreement`` so a reviewer that disagrees with the
         # ground truth is reliability-penalised regardless of draft count — the
-        # anchor (not per-draft self-scoring) is the trust signal (§5.1).
+        # anchor (not per-draft self-scoring) is the trust signal.
         self._anchor_agreement = None
 
     # ── the archive-scorer surface (injected into PaperDraftExecutor) ────
@@ -510,7 +515,7 @@ class GovernedPaperReviewer:
     @property
     def draft_axes(self) -> list:
         """The VENUE RUBRIC's score dimensions this reviewer scores drafts on
-        (``GENERIC_AXES`` + ``rubric_to_axes``, plan 03 §4). Resolved once per
+        (``GENERIC_AXES`` + ``rubric_to_axes``). Resolved once per
         reviewer; the venue owns them, so a co-evolved prompt cannot add or
         drop one — it can only emphasise (:func:`emphasised_axes`)."""
         if self._axes is None:
@@ -518,7 +523,7 @@ class GovernedPaperReviewer:
         return self._axes
 
     def score(self, tex_path: str) -> float:
-        """The draft score the archive best-belief-selects on (§5.8/§5.9).
+        """The draft score the archive best-belief-selects on.
 
         The SCORE DIMENSIONS are the venue rubric's (:attr:`draft_axes`); the
         ACTIVE prompt supplies this reviewer's EMPHASIS over them, so a
@@ -526,7 +531,7 @@ class GovernedPaperReviewer:
         mint or delete a dimension. The injected ``score_fn`` receives the
         prompt too — that is the seam an LLM-backed agent-as-judge plugs into,
         and the only path that can score an axis no deterministic reader can
-        read (§5.8 Residual)."""
+        read (an open residual, not a closed design)."""
         text = _read_text(tex_path)
         if self._score_fn is not None:
             score = float(self._score_fn(self.prompt_text, text))
@@ -535,12 +540,12 @@ class GovernedPaperReviewer:
             rubric_score = _rubric_draft_score(self.prompt_text, text, axes)
             # None => the venue rubric declares no axis this LLM-free scorer
             # can read at all. Reported, not hidden — a run scoring on the
-            # structural base is NOT governed scoring (§5.9 on-ramp).
+            # structural base is NOT governed scoring.
             score = (_structural_score(text) if rubric_score is None
                      else rubric_score)
             self._warn_if_prompt_independent(axes)
         # A DRAFT review_record carries the reviewer's held-out anchor
-        # agreement (its trust signal, §5.1), not a self-graded confidence:
+        # agreement (its trust signal), not a self-graded confidence:
         # a reviewer's per-draft self-confidence is only meaningfully
         # assessable against ground truth. When there is no anchor (on-ramp),
         # the record stays assessable via the stated confidence instead.
@@ -575,13 +580,14 @@ class GovernedPaperReviewer:
             "paper_reviewer %s (%s) names no venue-rubric axis: draft scores "
             "are the rubric's own weighting and PROMPT-INDEPENDENT — evolving "
             "these bytes cannot move best-belief selection "
-            "(plan ari_rqgm_paper/03 §5.8)",
+            "(the venue rubric owns the axes; a prompt that names none has no "
+            "emphasis to contribute)",
             self.component_id, self.prompt_hash[:8],
         )
 
     def stated_confidence(self) -> "float | None":
         """The reviewer's STATED confidence, or ``None`` when NO confidence
-        source is wired (§5.8).
+        source is wired.
 
         ``None`` is an ABSENCE, not a low confidence: callers MUST omit the
         field rather than substitute a number. This returned ``1.0`` until
@@ -607,7 +613,7 @@ class GovernedPaperReviewer:
             return None
         return float(self._confidence_fn(self.prompt_text))
 
-    # ── §5.8 review_record append (the reliability signal) ──────────────
+    # ── review_record append (the reliability signal) ───────────────────
     def _append_review_record(self, *, node_id, outcome_score, confidence,
                               agreement, source_refs=()):
         if self.ckpt is None:
@@ -659,13 +665,13 @@ class GovernedPaperReviewer:
         by the ACTIVE prompt text (so a co-evolved reviewer can agree better
         than its incumbent). Deterministic; scriptable via ``verdict_fn``.
 
-        ``None`` => NO VERDICT SOURCE is wired => ZERO COVERAGE (plan 04 §5.9's
-        on-ramp), never a forged verdict. Refusing to anchor is strictly safer
-        than anchoring on self-labels (§5.3); "the honest response is to have no
-        anchor rather than a captured one" (§5.9). Callers MUST skip a ``None``
+        ``None`` => NO VERDICT SOURCE is wired => ZERO COVERAGE, never a forged
+        verdict. Refusing to anchor is strictly safer
+        than anchoring on self-labels: the honest response is to have no
+        anchor rather than a captured one. Callers MUST skip a ``None``
         rather than score it — it is an absence, not a miss.
 
-        The case's LABEL is never an input (§4, §10 R4): the verdict source only
+        The case's LABEL is never an input: the verdict source only
         ever sees :func:`anchor_case_view`, which has no label field. A verdict
         derived from the label would make agreement 1.0 by construction and the
         anchor would measure nothing."""
@@ -683,11 +689,11 @@ def _read_text(path) -> str:
         return ""
 
 
-# ── the venue-rubric draft rubric (plan 03 §4 / §5.8) ───────────────────────
+# ── the venue-rubric draft rubric ───────────────────────────────────────────
 #
 # WHERE THE SCORE DIMENSIONS COME FROM (re-specified 2026-07-17). The draft's
 # scoring axes are the VENUE RUBRIC's score dimensions, derived with the
-# machinery plan 03 §4 names for exactly this job — `dynamic_axes.GENERIC_AXES`
+# machinery that already exists for exactly this job — `dynamic_axes.GENERIC_AXES`
 # (the domain-agnostic floor) + `dynamic_axes.rubric_to_axes` (venue rubric ->
 # score dimensions), composed by that module's own public composer
 # `build_axes_for_run`, and resolved from the same `ARI_RUBRIC` source the
@@ -699,9 +705,10 @@ def _read_text(path) -> str:
 # WHAT THIS REPLACED, AND WHY (the 2026-07-17 finding). The shipped scorer
 # derived the axes from the REVIEWER PROMPT instead: a `_RUBRIC_AXES` table of
 # prompt trigger words, clause-scoped by a `_CRITERION_MARKERS` list, weighted
-# by the share of "criterion clauses" each axis won. No plan sanctioned it —
+# by the share of "criterion clauses" each axis won. Nothing sanctioned it —
 # `grep dynamic_axes|rubric_to_axes|GENERIC_AXES paper_runtime.py` returned
-# NOTHING while §4 named all three — and it produced ZERO discrimination:
+# NOTHING, though all three were the designated machinery — and it produced
+# ZERO discrimination:
 # measured under the SHIPPED founding prompt, a 100-char stub (0 claims, 0
 # sections) and a rich 8000-char draft (8 claims, 6 sections) BOTH scored
 # exactly 1.0, because that prompt honestly declares ONE criterion
@@ -713,19 +720,19 @@ def _read_text(path) -> str:
 #
 # HOW AN AXIS IS READ, AND WHEN IT IS ABSENT. Absent an injected `score_fn`
 # there is no LLM on this path (P2: deterministic, no network, no wall clock),
-# so each axis is read by a bounded [0,1] read of the draft TEXT (§5.5: no
+# so each axis is read by a bounded [0,1] read of the draft TEXT (never a
 # compile). A reader declares the SUBJECT it measures — a property of the
 # MEASUREMENT itself — and reads an axis when the axis's own RUBRIC BYTES (its
 # name + description, venue-authored) name that subject. This binding rule is
-# the one rule plan 03 lacked; it is written down in §5.8 (amended 2026-07-17)
-# rather than assumed here.
+# the one rule the original design lacked; it is stated here explicitly
+# (amended 2026-07-17) rather than left implicit in the reader table.
 #
 # An axis NO reader can read (`novelty`: "Does the work advance beyond existing
 # approaches?") is ABSENT — it is excluded from the composite, never scored by
 # a constant. That is the same discipline `governance/_reliability.py:110-119`
 # applies to a missing calibration part: average the parts that exist, never
 # fabricate the ones that do not. A rubric axis is only scoreable in full by
-# the agent-as-judge path (an injected `score_fn`, §5.8's Residual); until that
+# the agent-as-judge path (an injected `score_fn` — an open residual); until that
 # lands the LLM-free composite honestly covers the readable subset and says so.
 
 
@@ -744,7 +751,8 @@ def _venue_rubric() -> "dict | None":
 
 def draft_axes(rubric=None) -> list:
     """The draft's score dimensions: ``GENERIC_AXES`` + the venue rubric's
-    ``score_dimensions``, via ``dynamic_axes``' own composer (plan 03 §4)."""
+    ``score_dimensions``, via ``dynamic_axes``' own public composer — never a
+    local re-derivation."""
     from ari.evaluator.dynamic_axes import build_axes_for_run
 
     return build_axes_for_run(rubric=rubric)
@@ -841,7 +849,7 @@ def axis_draft_score(axis, text: str) -> "float | None":
 
 
 def emphasised_axes(prompt_text: str, axes: list) -> set:
-    """The venue-rubric axes the reviewer PROMPT names (§5.8).
+    """The venue-rubric axes the reviewer PROMPT names.
 
     The vocabulary is the RUBRIC's — an axis is named when a word of its own
     name appears in the prompt — so the prompt can only ever re-weight
@@ -903,7 +911,8 @@ def _structural_score(text: str) -> float:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PaperArchiveRuntime — the single construction funnel (§5.3/§5.4)
+# PaperArchiveRuntime — the single construction funnel: everything
+# paper-archive is built HERE, never at the call site
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -944,7 +953,7 @@ class PaperArchiveRuntime:
         # Both reviewer judgement seams carry the ACTIVE prompt text as their
         # first argument — ``reviewer_score_fn(prompt_text, draft_text)`` and
         # ``reviewer_verdict_fn(prompt_text, anchor_case_view)`` — so an
-        # injected scorer/judge is never prompt-blind (§5.8).
+        # injected scorer/judge is never prompt-blind.
         self.llm = llm
         self._reviewer_override = reviewer
         self._reviewer_verdict_fn = reviewer_verdict_fn
@@ -976,7 +985,7 @@ class PaperArchiveRuntime:
         # The active paper_reviewer / paper_writer prompt_hash observed at each
         # round head — the co-evolution witnesses the §11/self-check prints. The
         # writer sequence changes iff the writer PROMPT genuinely co-evolves
-        # (§5.1, revised 2026-07-16): a real claim-gate-faithfulness sanction
+        # (revised 2026-07-16): a real claim-gate-faithfulness sanction
         # opens its role and a shadow successor adopts via the existing T6.
         self.reviewer_prompt_hash_sequence: list[str] = []
         self.writer_prompt_hash_sequence: list[str] = []
@@ -993,8 +1002,8 @@ class PaperArchiveRuntime:
         # (rqgm_audit.jsonl).
         self._budget_manager = None
         self._current_epoch_obj = None
-        self._compiles = 0                # lazy-compile audit (§6.3, bounded top-K)
-        self._last_expansions = 0         # last round's draft population (§6.3)
+        self._compiles = 0                # lazy-compile audit (bounded top-K)
+        self._last_expansions = 0         # last round's draft population
         # Opt-in Manuscript Complete binding.  Populated before any archive
         # resume check or model call; ``None`` keeps the historical off path
         # byte/import compatible.
@@ -1004,7 +1013,7 @@ class PaperArchiveRuntime:
     def paper_mode(self) -> PaperMode:
         return resolve_paper_mode(self.cfg)
 
-    # ── Task 06: the REUSED GovernanceBudgetManager (§5.1) ───────────────
+    # ── Task 06: the REUSED GovernanceBudgetManager ──────────────────────
     @property
     def current_paper_epoch(self):
         """The frozen open paper epoch the budget manager reads counters
@@ -1020,7 +1029,7 @@ class PaperArchiveRuntime:
     @property
     def budget_manager(self):
         """Reuses :class:`ari.rqgm.budget.GovernanceBudgetManager` UNCHANGED
-        (Task 12 / paper-archive Task 06 §5.1) — the paper path adds no
+        (Task 12 / paper-archive Task 06) — the paper path adds no
         budget-manager rewrite, only the additive PAPER_ANCHOR_SCORING kind.
         Lazy, fail-open to ``None``; every paper consumer tolerates absence
         (decision-point gating only, never mid-call, never a raise)."""
@@ -1386,7 +1395,7 @@ class PaperArchiveRuntime:
             require_round_trip=info.get("mode") == "enforce",
         )
 
-    # ── the runnable archive (Task 02 §5.3) ─────────────────────────────
+    # ── the runnable archive (Task 02) ──────────────────────────────────
     def run_archive(
         self,
         all_nodes,
@@ -1401,7 +1410,7 @@ class PaperArchiveRuntime:
         tree, best-belief select the winner, lazily compile it, copy it to the
         canonical ``{ckpt}/full_paper.tex``, then hand off to the EXISTING
         linear pipeline (claim-gate tail). Fail-open: any archive failure
-        degrades to the linear pipeline (§8.5)."""
+        degrades to the linear pipeline rather than failing the paper phase."""
         ckpt = Path(checkpoint_dir)
         manuscript = self._prepare_manuscript_archive_binding(ckpt)
         archive_error: Exception | None = None
@@ -1412,12 +1421,12 @@ class PaperArchiveRuntime:
             )
             log.warning("paper archive: %s", archive_error)
         elif self._winner_already_materialised(ckpt):
-            # 07 §8.6.6 / §9 Resume / R5: a resumed run whose winner is already
-            # on the canonical path skips straight to the unchanged tail — no
-            # re-spend of the archive's LLM budget, and no second materialise.
+            # A resumed run whose winner is already on the canonical path skips
+            # straight to the unchanged tail — no re-spend of the archive's LLM
+            # budget, and no second materialise.
             log.info(
                 "paper archive: winner already materialised at %s; skipping the "
-                "archive (resume, 07 §8.6)", ckpt / "full_paper.tex",
+                "archive (resume)", ckpt / "full_paper.tex",
             )
         else:
             try:
@@ -1485,7 +1494,7 @@ class PaperArchiveRuntime:
                     status="audit_legacy_linear_fallback",
                     failure_reason=str(archive_error),
                 )
-        # THE Task 07 handoff (07 §5.1/§5.4/R5). The archive substitutes for the
+        # THE Task 07 handoff. The archive substitutes for the
         # generation stages; the EXISTING tail (link_paper_claims_final ->
         # claim_evidence_hard_gate_final -> render_paper -> finalize_paper) runs
         # unchanged on the winner.
@@ -1495,16 +1504,16 @@ class PaperArchiveRuntime:
         # `outputs.file: {ckpt}/full_paper.tex` — it is the only OTHER stage that
         # writes the canonical path (verified by enumerating workflow.yaml). Left
         # enabled it refined over the materialised winner, so `full_paper.tex` was
-        # written TWICE and `materialize_winner` was not the single writer §5.4/R5
-        # promises. Disabling it at the handoff is what makes that promise true.
-        # See the 2026-07-17 amendment in 07 §5.1: the plan mandated the outcome
-        # but named no mechanism, and its own sketch (the original `_cfg_str`)
-        # cannot deliver it.
+        # written TWICE and `materialize_winner` was not the single writer the
+        # handoff promises. Disabling it at the handoff is what makes that
+        # promise true (amended 2026-07-17: the single-writer outcome was
+        # mandated but no mechanism was named, and the original `_cfg_str`
+        # sketch cannot deliver it).
         #
         # Gated on the DURABLE winner signal, not an in-memory flag, so a resumed
         # run that skipped the archive above still protects its winner. No winner
         # (archive failed / fail-open) => the ORIGINAL cfg, so `write_paper` runs
-        # and the run degrades to the linear result (§8.3).
+        # and the run degrades to the linear result.
         if linear_fallback is not None:
             try:
                 use_archive_winner = self._winner_already_materialised(ckpt) and not (
@@ -1536,7 +1545,7 @@ class PaperArchiveRuntime:
 
         BOTH durable signals are required: ``{ckpt}/full_paper.tex`` exists AND
         the archive recorded a best-belief winner. The record is what
-        distinguishes an archive winner from a §8.3 fail-open LINEAR degrade —
+        distinguishes an archive winner from a fail-open LINEAR degrade —
         where `write_paper` also wrote `full_paper.tex` but no draft was ever
         best-belief-marked. Keying on the file alone would pin such a checkpoint
         to linear forever (the archive could never re-attempt) AND would suppress
@@ -1544,8 +1553,8 @@ class PaperArchiveRuntime:
 
         Deliberately a read of durable state rather than an instance flag: it is
         equally true on the resume path, where the winner was materialised by an
-        earlier process. `materialize_winner` therefore stays the pure
-        select-and-copy 07 §7 pins (it gains no state read/write of its own).
+        earlier process. `materialize_winner` therefore stays a pure
+        select-and-copy (it gains no state read/write of its own).
         """
         if not (ckpt / "full_paper.tex").exists():
             return False
@@ -1562,7 +1571,7 @@ class PaperArchiveRuntime:
         NOT skip the loop: the roles are still registered and scored (the loop
         runs), only candidate minting is suppressed (enforced inside the inner
         RQGMRuntime), so the roles stay pinned at their founding v1 prompts —
-        best-of-N reviewed drafts with NO co-evolution (plan 03 §5.9)."""
+        best-of-N reviewed drafts with NO co-evolution."""
         return self._reviewer_override is None
 
     # ── Task 03/04 co-evolution loop (multi-round epoch boundary) ────────
@@ -1597,7 +1606,7 @@ class PaperArchiveRuntime:
             comparison_posture = None
         for round_idx in range(max(1, rounds)):
             rqgm.ensure_epoch(round_idx, checkpoint_dir=ckpt, run_id="paper")
-            # Task 06 §5.1: adopt the inner runtime's frozen open epoch as the
+            # Adopt the inner runtime's frozen open epoch as the
             # budget counter home for this round, so the paper manager's
             # per-epoch caps key off the SAME epoch_id the inner governance
             # uses (one counter home in rqgm_audit.jsonl).
@@ -1648,7 +1657,7 @@ class PaperArchiveRuntime:
             self.reviewer = self._build_reviewer(
                 reviewer_text, reviewer_hash, ckpt, epoch_id
             )
-            # Anchor signal FIRST (§5.8 / §5.4): score the ACTIVE reviewer on
+            # Anchor signal FIRST: score the ACTIVE reviewer on
             # the held-out anchor, writing per-case results into the pool
             # (board scoring), one review_record per case (reliability), and
             # setting the reviewer's agreement rate so its DRAFT review_records
@@ -1668,7 +1677,7 @@ class PaperArchiveRuntime:
             )
             if best is not None:
                 round_bests.append(best)
-            # Writer anchor (§5.1, revised 2026-07-16): score the ACTIVE
+            # Writer anchor (revised 2026-07-16): score the ACTIVE
             # writer's draft against the Layer-0 claim-evidence gate
             # (read-only). An UNFAITHFUL draft makes the writer a culpable
             # component for the over-accepted-AND-unfaithful draft — the round
@@ -1711,7 +1720,7 @@ class PaperArchiveRuntime:
         execu = PaperDraftExecutor(
             mcp, reviewer=self.reviewer, checkpoint_dir=ckpt, epoch_id=epoch_id
         )
-        # Resume (§8.6 / §9 Resume; Task 06 §8.5/§9.11): rebuild THIS epoch's
+        # Resume: rebuild THIS epoch's
         # already-recorded drafts from the durable archive instead of restarting
         # from an empty list. Content-hash safe — a record whose .tex no longer
         # matches its `tex_sha256` is dropped and regenerates. Pre-populating
@@ -1729,7 +1738,7 @@ class PaperArchiveRuntime:
         if archive:
             log.info(
                 "paper archive: restored %d recorded draft(s) for %s from %s "
-                "(resume, 02 §8.6) — not regenerating them",
+                "(resume) — not regenerating them",
                 len(archive), epoch_id, PAPER_DRAFT_ARCHIVE_FILENAME,
             )
         frontier: list = [root] + list(archive)
@@ -1744,7 +1753,7 @@ class PaperArchiveRuntime:
                 frontier.remove(parent)
                 continue
             cand = strat.select_next_node(children, goal, self.memory)
-            cand = execu.run(cand, experiment)              # ONE skill call (§5.4)
+            cand = execu.run(cand, experiment)              # ONE skill call per draft
             cand = self._evaluate_manuscript_candidate(cand, ckpt)
             strat.record_run(cand)
             archive.append(cand)
@@ -1756,7 +1765,7 @@ class PaperArchiveRuntime:
         self._last_expansions = len(archive)
         if best is not None and not self._coevolution_enabled():
             self._finalize_best(best, ckpt, mcp)
-        # Task 06 §6.3: mirror the per-epoch budget counters into
+        # Mirror the per-epoch budget counters into
         # paper_archive_state.json (the audit log stays the source of truth).
         # Persisted AFTER finalize so the winner's lazy compile is reflected.
         self._persist_budget_counters(ckpt)
@@ -1951,7 +1960,8 @@ class PaperArchiveRuntime:
     def _make_paper_root(self, best_node) -> "Node":
         """A synthetic depth-0 ``Node`` wrapping the exploration winner. It is
         NOT a draft and is never scored — ``select_best_to_expand`` ranks it by
-        the seeds-first rule (§5.2), not by a ``_scientific_score`` it lacks."""
+        the seeds-first rule (the root outranks every draft until ``width``
+        framings exist), not by a ``_scientific_score`` it lacks."""
         from ari.orchestrator.node import Node, NodeLabel
 
         root = Node(id="paper_root", parent_id=None, depth=0, label=NodeLabel.DRAFT)
@@ -1973,7 +1983,8 @@ class PaperArchiveRuntime:
         supplies the population; a single founding framing before co-evolution,
         so seed diversity is decode-seed only); ``writer_text`` is the governed
         paper_writer prompt bytes threaded to the skill as
-        ``writer_prompt_override`` (§5.8)."""
+        ``writer_prompt_override`` — the skill never re-derives the writer's
+        bytes, it renders the ones handed to it."""
         try:
             from ari.pipeline.verified_context import write_verified_context
 
@@ -2037,7 +2048,7 @@ class PaperArchiveRuntime:
             "venue": "arxiv",
             "author_name": "",
             "writer_prompt_hashes": [str(writer_hash or "founding")],
-            "writer_prompt_text": str(writer_text or ""),   # §5.8 override
+            "writer_prompt_text": str(writer_text or ""),   # governed override
             "prompt_evolution_enabled": pe_enabled,
             "manuscript_binding": manuscript_record,
             "manuscript_fixed_block": manuscript_fixed_block,
@@ -2053,17 +2064,18 @@ class PaperArchiveRuntime:
             return 2
 
     def _freeze_paper_utility_policy(self, ckpt) -> None:
-        """Freeze the ``paper_utility_policy`` (Task 04 §5.5) into
+        """Freeze the ``paper_utility_policy`` (Task 04) into
         ``paper_archive_state.json``. Content-only hash (P2): the
-        ``WRITER_ANCHOR_DESCRIPTOR`` (§5.1, revised 2026-07-16 — the writer IS
+        ``WRITER_ANCHOR_DESCRIPTOR`` (revised 2026-07-16 — the writer IS
         anchored, to the Layer-0 claim-evidence gate), the anchor identity, and
         BOTH label-source mixes, so a drift toward self-labelling moves the
         frozen epoch identity. ``paper_epoch_fingerprint`` is that policy hash
-        (``hash12(canonical_json(paper_utility_policy))``, Task 04 §6.3 as
-        landed): it changes iff the anchor identity changes, which is §5.5's
-        biconditional. Rides Task 14's governed capture; no paper-local utility
+        (``hash12(canonical_json(paper_utility_policy))`` as landed): it changes
+        if and only if the anchor identity changes — neither a re-freeze of the
+        same anchor nor a change elsewhere may move it. Rides Task 14's governed
+        capture; no paper-local utility
         machinery. A resume against a mutated corpus is DETECTED and warned, not
-        silently flipped (§8.5 / §9 Resume). Best-effort — never raises into the
+        silently flipped. Best-effort — never raises into the
         run."""
         try:
             from ari.rqgm.paper_anchor import capture_paper_utility_policy
@@ -2083,7 +2095,7 @@ class PaperArchiveRuntime:
             prior_hash = str(prior.get("paper_utility_policy_hash", "") or "")
             new_hash = str(policy["paper_utility_policy_hash"])
             if prior_hash and prior_hash != new_hash:
-                # §8.5 / §9 Resume: a corpus (or anchor-config) swap across a
+                # A corpus (or anchor-config) swap across a
                 # resume is DETECTED and announced — never a silent mid-run
                 # policy flip. Journal the superseded policy so the flip stays
                 # DIFFABLE; the bare overwrite alone would destroy the record.
@@ -2091,7 +2103,8 @@ class PaperArchiveRuntime:
                     "resume: paper utility policy digest mismatch — persisted "
                     "%s (corpus_digest=%s, held_out=%d) vs freshly captured %s "
                     "(corpus_digest=%s, held_out=%d); the anchor corpus or "
-                    "anchor config changed across invocations (plan 04 §8.5)",
+                    "anchor config changed across invocations (the persisted "
+                    "policy is journalled, not overwritten)",
                     prior_hash, prior.get("anchor_corpus_digest", ""),
                     len(prior.get("anchor_held_out_ids", []) or []),
                     new_hash, policy.get("anchor_corpus_digest", ""),
@@ -2183,7 +2196,7 @@ class PaperArchiveRuntime:
     def _score_reviewer_on_anchor(self, reviewer, *, rqgm=None, epoch_id="",
                                   checkpoint_dir=None):
         """Populate the anchor pool's per-case ``results`` for the ACTIVE
-        reviewer and emit one review_record per held-out case (§5.8 / §5.4).
+        reviewer and emit one review_record per held-out case.
 
         The anchor's job is (a) score the reviewer's utility (Task 04), (b) set
         the reviewer's agreement rate so its DRAFT review_records inherit the
@@ -2204,13 +2217,13 @@ class PaperArchiveRuntime:
         )
 
         # The REVIEWER's corpus cases only: the pool also carries the writer's
-        # claim-gate faithfulness cases (§5.1), which are a different subject's
+        # claim-gate faithfulness cases, which are a different subject's
         # anchor — scoring the reviewer against one would count as a miss and
         # dilute its agreement with evidence that is not its ground truth.
         corpus_cases = reviewer_anchor_cases(pool)
 
-        # Task 06 §5.3/§5.5: anchor-agreement utility is the ONE additive
-        # budgeted-action kind. Gate each held-out case scored against
+        # Anchor-agreement utility is the ONE additive budgeted-action kind the
+        # paper path adds. Gate each held-out case scored against
         # `rqgm.paper.anchor.sample_size` (per-candidate). Fail-open: budget
         # exhaustion DEGRADES (stops scoring further cases), never raises and
         # never blocks best-belief selection — the reviewer keeps whatever
@@ -2246,7 +2259,7 @@ class PaperArchiveRuntime:
                 # to a MISS and manufacture a 0.0 anchor board out of an absence
                 # — impeaching the reviewer on evidence nobody produced. With
                 # `total` left at 0 the guard below correctly leaves
-                # `_anchor_agreement` unset (zero coverage, §5.9 on-ramp).
+                # `_anchor_agreement` unset (zero coverage, not zero agreement).
                 continue
             agree = 1.0 if paper_reviewer_agreement(
                 {"accept_recommendation": rec}, case) else 0.0
@@ -2269,8 +2282,8 @@ class PaperArchiveRuntime:
                                  epoch_id="") -> bool:
         """Score the ACTIVE writer's best draft against the Layer-0 claim-
         evidence hard gate, LAND the score on the anchor board (keyed on
-        *writer_hash*), and return whether the draft is UNFAITHFUL (§5.1,
-        revised 2026-07-16).
+        *writer_hash*), and return whether the draft is UNFAITHFUL (revised
+        2026-07-16 — the writer is anchored too, not only the reviewer).
 
         The gate stays Layer-0: ``run_hard_gate(write=False)`` READS the draft
         against the run's ``science_data.json`` deterministically (no LLM, no
@@ -2317,7 +2330,7 @@ class PaperArchiveRuntime:
             score = writer_faithfulness_score(report)
             self._last_writer_faithfulness = score
             # Land the score on the ANCHOR BOARD keyed on the active writer's
-            # prompt_hash (§5.1). This is what makes the writer's anchor
+            # prompt_hash. This is what makes the writer's anchor
             # OPERATIVE: `adjudicate_motion` board-scores the writer's
             # impeachment motion off this case, so an unfaithful incumbent is
             # board-LOW and its motion is upheld instead of dismissed "in favor
@@ -2345,10 +2358,10 @@ class PaperArchiveRuntime:
     def _attack_over_accepted(self, reviewer, pool, *, rqgm, epoch_id,
                               checkpoint_dir, writer_unfaithful=False):
         """Fire a REAL paper_self_preference adversarial round per over-accepted
-        draft (plan 05 §5.2). Deterministic pre-signal, LLM attack/defense/
+        draft. Deterministic pre-signal, LLM attack/defense/
         adjudication, Task-15 target binding to ``paper_reviewer_v1`` — and,
         when *writer_unfaithful* (the active writer's draft failed the Layer-0
-        claim gate, §5.1), ALSO to ``paper_writer_v1`` (the over-accepted-AND-
+        claim gate), ALSO to ``paper_writer_v1`` (the over-accepted-AND-
         unfaithful draft has two culpable components). Best-effort: never raises
         into the paper phase."""
         try:
@@ -2374,7 +2387,7 @@ class PaperArchiveRuntime:
 
             # The over-acceptance pre-signal + the AI-vs-human population
             # margin are statistics over the REVIEWER's reference corpus; the
-            # pool's writer faithfulness cases (§5.1) are a different subject's
+            # pool's writer faithfulness cases are a different subject's
             # anchor and must not enter either sample.
             cases = reviewer_anchor_cases(pool)
             over = over_accepted_cases(reviewer, cases)
@@ -2392,7 +2405,7 @@ class PaperArchiveRuntime:
             adv_round = self._self_preference_round(rqgm, checkpoint_dir)
             if adv_round is None:
                 return
-            # Task 06 §5.3/§5.5: the paper_self_preference adversary is an
+            # The paper_self_preference adversary is an
             # ADVERSARY_CALL — REUSED verbatim, capped per epoch at
             # `rqgm.adversarial.max_adversary_calls_per_epoch` (24). Gate each
             # round so a runaway anchor never spends past the shared adversary
@@ -2400,9 +2413,9 @@ class PaperArchiveRuntime:
             from ari.rqgm.budget import ADVERSARY_CALL, BudgetedAction
 
             bm = self.budget_manager
-            # Task 06 §5.1/§5.6 / D1 (single schema home): the attacked
+            # Single schema home: the attacked
             # population is the held-out sample (`rqgm.paper.self_preference.
-            # sample_size`, plan 05 §5.3), and the dispatch count is bounded ONLY
+            # sample_size`), and the dispatch count is bounded ONLY
             # by the shared adversary cap in the gate below
             # (`rqgm.adversarial.max_adversary_calls_per_epoch`) — no un-homed
             # literal. Deterministic (`_held_out_sample` sorts by case_id).
@@ -2469,7 +2482,7 @@ class PaperArchiveRuntime:
         not to demote a real draft.
 
         ``_paper_writer_unfaithful`` carries the active writer's OWN draft
-        faithfulness (Layer-0 claim gate, §5.1): when set, the round ALSO binds
+        faithfulness (Layer-0 claim gate): when set, the round ALSO binds
         ``paper_writer`` to the validated attack (``round._roles_for_node``), so
         the writer's role opens for its shadow successor. A faithful draft binds
         the reviewer only."""
@@ -2496,7 +2509,8 @@ class PaperArchiveRuntime:
             # frozen incumbent accepted THIS anchor case whose human ground
             # truth is `reject` (`over_accepted_cases`), which is a real,
             # deterministic, per-draft fact that holds on an all-human corpus.
-            # Plan 05 §5.1 clause 3, third bullet (amended 2026-07-17).
+            # Amended 2026-07-17: the per-draft over-acceptance signal is its own
+            # attack trigger, independent of the population margin.
             "_paper_anchor_over_accepted_case": case_id,
         }
         if writer_unfaithful:
@@ -2504,7 +2518,7 @@ class PaperArchiveRuntime:
         node = SimpleNamespace(
             # The id `_selfpref_anchor_case` parses back when this draft's
             # validated attack is later replayed against a candidate reviewer
-            # (the §5.5 replay board) — keep the two halves on one constant.
+            # (the candidate replay board) — keep the two halves on one constant.
             id=f"{PaperArchiveRuntime._SELFPREF_NODE_PREFIX}{epoch_id}_{case_id}",
             work_dir="",
             metrics=metrics,
@@ -2513,11 +2527,11 @@ class PaperArchiveRuntime:
 
     def _paper_candidate_evaluator(self, st, ckpt, anchor_pool,
                                    replay_pool=None):
-        """Full-spine evaluations for the pending paper candidates (§5.4),
+        """Full-spine evaluations for the pending paper candidates,
         merged into ``resolve_transition``'s candidate_evaluations exactly like
         the utility_policy criterion.
 
-        The reviewer candidate is scored on the §5.4/§5.5 DUAL objective — two
+        The reviewer candidate is scored on a DUAL objective — two
         boards computed from two independent sources, never one number copied
         into both fields:
 
@@ -2556,8 +2570,8 @@ class PaperArchiveRuntime:
         # the append-only ``prompt_evolution.jsonl`` — a GovernedPromptEntry is
         # text-only (registry.py:80). Reconstruct them once, keyed by
         # ``candidate_id`` (== the registry ``prompt_id``, prompt_evolution.py:
-        # 1177/1186): this closes the plan 03 §5.9 step-2 residual verbatim
-        # ("reconstructing the candidate spec from the evolution log"). A pending
+        # 1177/1186): reconstructing the candidate spec from the evolution log is
+        # the only way the spec-dependent stages can run at all. A pending
         # entry with no matching record cannot be spec-checked, so those two
         # stages are then an explicit skip — never a fabricated pass.
         try:
@@ -2581,7 +2595,7 @@ class PaperArchiveRuntime:
                 text, phash = prompts.resolve_text(pid, checkpoint_dir=ckpt)
             except Exception:
                 continue
-            # ── deterministic candidate-validation stages (plan 03 §5.9 step 2)
+            # ── deterministic candidate-validation stages
             # Run monotonically BEFORE any board scores the candidate, in the
             # order the six-stage lifecycle states (static_validation ->
             # constitutional_validation -> schema_dry_run). A candidate that fails
@@ -2605,13 +2619,14 @@ class PaperArchiveRuntime:
                     log.warning(
                         "paper candidate %s (%s) DROPPED before scoring: "
                         "static_validation failed %s — never enters "
-                        "candidate_evaluations (plan 03 §5.9 step 2)",
+                        "candidate_evaluations",
                         pid, role, static_fail,
                     )
                     continue
                 # Stage 2 — constitutional_validation (deterministic, ALWAYS),
                 # METADATA side: the declared ``constitutional_constraints`` carry
-                # the §5.4 clauses, provenance legality, no-instant-activation,
+                # the role's mandatory clauses (``REQUIRED_CONSTRAINTS_BY_ROLE``),
+                # provenance legality, no-instant-activation,
                 # and same-role separation. The byte-side companion is the
                 # role_instruction check just below.
                 const_fail = constitutional_validation_failures(cand)
@@ -2619,25 +2634,25 @@ class PaperArchiveRuntime:
                     log.warning(
                         "paper candidate %s (%s) DROPPED before scoring: "
                         "constitutional_validation failed %s — never enters "
-                        "candidate_evaluations (plan 03 §5.9 step 2)",
+                        "candidate_evaluations",
                         pid, role, const_fail,
                     )
                     continue
             # Stage 2 (byte side) — constitutional binding on the RESOLVED
-            # role_instruction BYTES (plan 03 §5.9 step 2 / 05 §5.5). The
+            # role_instruction BYTES. The
             # metadata-side check above reads the declared constraint list, which
             # PromptMutator.propose force-injects (prompt_evolution.py:681-686),
             # so the LOAD-BEARING check is that the instruction bytes still carry
-            # each §5.4 clause verbatim; both share REQUIRED_CONSTRAINTS_BY_ROLE
+            # each mandatory clause verbatim; both share REQUIRED_CONSTRAINTS_BY_ROLE
             # (one authority). This runs even without a reconstructed spec, so it
             # is the pillar-4 gate on every pending paper candidate.
             missing = role_instruction_constraint_failures(role, text)
             if missing:
                 log.warning(
                     "paper candidate %s (%s) DROPPED before scoring: resolved "
-                    "role_instruction is missing mandatory §5.4 constitutional "
+                    "role_instruction is missing mandatory constitutional "
                     "clause(s) %s — never enters candidate_evaluations "
-                    "(pillar-4 constitutional binding; plan 03 §5.9 step 2)",
+                    "(pillar-4 constitutional binding)",
                     pid, role, missing,
                 )
                 continue
@@ -2653,8 +2668,7 @@ class PaperArchiveRuntime:
             if schema_fail:
                 log.warning(
                     "paper candidate %s (%s) DROPPED before scoring: "
-                    "schema_dry_run reply failed the founding output_schema %s "
-                    "(plan 03 §5.9 step 2)",
+                    "schema_dry_run reply failed the founding output_schema %s",
                     pid, role, schema_fail,
                 )
                 continue
@@ -2670,11 +2684,11 @@ class PaperArchiveRuntime:
                     cand_reviewer, replay_pool, anchor_pool
                 )
                 if acc is None and replay is None:
-                    # Genuine zero coverage on BOTH boards (§5.5's bootstrap
+                    # Genuine zero coverage on BOTH boards (the bootstrap
                     # on-ramp: no anchor corpus and no pooled case yet).
                     out.append(self._no_basis_eval(pid, role))
                     continue
-                # Both boards required (§5.4's dual constraint): the candidate
+                # Both boards required (the dual constraint): the candidate
                 # clears CANDIDATE_PASS_THRESHOLD on every board that HAS a
                 # basis. A board without one abstains — it never votes pass.
                 scored = [s for s in (acc, replay) if s is not None]
@@ -2702,21 +2716,21 @@ class PaperArchiveRuntime:
                     "shadow_samples": 0, "shadow_score": None,
                     NO_SHADOW_BASIS_KEY: True,
                     # The T3 replay COUNT floor is waived ONLY when the replay
-                    # board is honestly ABSENT (§5.5's on-ramp: "the first paper
+                    # board is honestly ABSENT (the on-ramp rule: the first paper
                     # reviewer is never blocked for lacking cases it could not
-                    # yet have"). `case_refs` above are the pool's REAL case_ids
+                    # yet have). `case_refs` above are the pool's REAL case_ids
                     # — when the board HAS cases the floor has something honest
                     # to count, so it counts them. Declaring the absence
                     # unconditionally let a genuine 1-case board clear
-                    # `replay_min_cases: 4`, which no plan sanctions.
+                    # `replay_min_cases: 4`, which nothing sanctions.
                     **({NO_REPLAY_BASIS_KEY: True} if replay is None else {}),
                     "cached": False,
                 })
             else:
                 # The writer is scored epoch-locally by the frozen reviewer
-                # (its DRAFT winners are epoch-local, §5.6), so its candidate
+                # (its DRAFT winners are epoch-local), so its candidate
                 # PROMPT passes the spine and climbs to `shadow`. It then WAITS
-                # for a role opening — which, since §5.1 (revised 2026-07-16),
+                # for a role opening — which, since 2026-07-16,
                 # the claim-gate faithfulness sanction DELIVERS: an unfaithful
                 # active writer is impeached, its role opens, and this waiting
                 # shadow adopts via the existing T6 (the writer PROMPT
@@ -2725,8 +2739,8 @@ class PaperArchiveRuntime:
         return out
 
     def _schema_dry_run_failures(self, role: str, prompt_text: str) -> list:
-        """The §5.9 step-2 ``schema_dry_run`` stage (plan 07 §5.3 stage 3),
-        behind the injected LLM reply seam. Returns:
+        """The ``schema_dry_run`` candidate-validation stage (stage 3 of the
+        six-stage lifecycle), behind the injected LLM reply seam. Returns:
 
         * ``[]`` — the stage PASSED, OR it is a documented SKIP because no LLM
           reply seam is wired (``schema_dry_run_fn is None`` — the production
@@ -2792,7 +2806,7 @@ class PaperArchiveRuntime:
         return best
 
     def _candidate_replay_board(self, cand_reviewer, replay_pool, anchor_pool):
-        """The REAL §5.4/§5.5 dual-objective replay board for a candidate
+        """The REAL replay half of the dual objective for a candidate
         ``paper_reviewer``: the pooled ``paper_self_preference`` cases — drafts
         the INCUMBENT reviewer over-accepted and the adversarial round then
         validated — re-judged by the CANDIDATE. A case PASSES iff the candidate
@@ -2864,7 +2878,7 @@ class PaperArchiveRuntime:
     def _no_basis_eval(self, pid, role):
         """The honest ZERO-COVERAGE evaluation for a paper candidate with no
         replay/anchor basis: a candidate PROMPT has authored no drafts and
-        scored no anchor case yet (plan 03 §5.9 step 2, plan 04 §5.1/§5.9).
+        scored no anchor case yet.
 
         Nothing is computed here, so nothing is reported: the boards are
         ``None`` and the counts are ``0``/empty — the same honest signal
@@ -2899,7 +2913,7 @@ class PaperArchiveRuntime:
         }
 
     def _persist_budget_counters(self, ckpt, *, expansions: int | None = None) -> None:
-        """Write the §6.3 per-epoch budget-counter mirror into
+        """Write the per-epoch budget-counter mirror into
         ``paper_archive_state.json``. Counters are DERIVED from the durable
         ``rqgm_audit.jsonl`` ``budget_consumed`` lines (the same
         derive-from-records discipline ``GovernanceBudgetManager._restore``
@@ -2951,8 +2965,9 @@ class PaperArchiveRuntime:
                       exc_info=True)
 
     def _finalize_best(self, best, ckpt, mcp) -> Path:
-        """Single lazy ``compile_paper`` gated by ``compile_threshold`` (§5.4.3
-        lazy-compile guard); marks ``is_best_belief`` / ``compiled``; then hands
+        """Single lazy ``compile_paper`` gated by ``compile_threshold`` — only
+        the winner is ever compiled, not every draft in the population;
+        marks ``is_best_belief`` / ``compiled``; then hands
         the winner to :meth:`materialize_winner` for the pure copy to the
         canonical ``{ckpt}/full_paper.tex`` (the Task 07 handoff surface)."""
         arts = best.artifacts or []
@@ -2984,7 +2999,7 @@ class PaperArchiveRuntime:
                             exc_info=True)
         return self.materialize_winner(best, ckpt)
 
-    # ── Task 07 handoff: pure select-and-copy (§5.1/§5.2/§7) ─────────────
+    # ── Task 07 handoff: pure select-and-copy ────────────────────────────
     def materialize_winner(self, winner, checkpoint_dir) -> Path:
         """Materialise the archive's best draft to the canonical linear-pipeline
         input ``{ckpt}/full_paper.tex``
@@ -2994,7 +3009,7 @@ class PaperArchiveRuntime:
 
         PURE select-and-copy — no gate call, no kernel call, no LLM, no
         re-scoring (P2 determinism at the boundary). Idempotent and resume-safe:
-        a second call copies the same bytes. Fail-open (§8.3): a winner without
+        a second call copies the same bytes. Fail-open: a winner without
         a materialisable ``tex_ref`` leaves ``{ckpt}/full_paper.tex`` untouched
         so the existing ``write_paper`` output (or a prior pass) stays the
         source of truth, degrading to the linear result rather than crashing.
@@ -3006,15 +3021,16 @@ class PaperArchiveRuntime:
         (workflow.yaml:207), and ``paper_refine`` — which has no such guard and
         would otherwise refine over these bytes — is disabled in the handoff
         config (:data:`HANDOFF_DISABLED_STAGES`, applied in :meth:`run_archive`).
-        Together those make this method the SINGLE writer of the canonical path
-        (§5.4/R5); the tail then runs byte-for-byte as in a linear run. This
-        method never touches the gate (the gate stays a Layer-0 sibling, §5.3)."""
+        Together those make this method the SINGLE writer of the canonical path;
+        the tail then runs byte-for-byte as in a linear run. This
+        method never touches the gate (the gate stays a Layer-0 sibling: the
+        archive is judged BY it and never wraps or evolves it)."""
         ckpt = Path(checkpoint_dir)
         dst = ckpt / "full_paper.tex"
         tex_ref = self._winner_tex_ref(winner)
         if not tex_ref:
             log.warning("materialize_winner: winner has no tex_ref; leaving "
-                        "%s untouched (fail-open to linear, §8.3)", dst)
+                        "%s untouched (fail-open to linear)", dst)
             return dst
         src = Path(tex_ref)
         try:
@@ -3028,7 +3044,7 @@ class PaperArchiveRuntime:
     @staticmethod
     def _winner_tex_ref(winner) -> str:
         """The winner draft's rendered ``.tex`` path (its ``artifacts[0]``, the
-        per-draft ``{ckpt}/archive/<draft_id>/full_paper.tex`` of §5.4).
+        per-draft ``{ckpt}/archive/<draft_id>/full_paper.tex``).
         Absence-tolerant: ``""`` when the winner is ``None`` / artifact-less."""
         if winner is None:
             return ""

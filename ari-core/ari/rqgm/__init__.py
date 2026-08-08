@@ -74,7 +74,9 @@ Modules
   input bundles, ``MetaSandboxMCPProxy``/``run_meta_sandboxed``,
   ``MetaEvolutionCoordinator`` (outputs are ALWAYS Task 07 candidates),
   deterministic sandbox/shadow evaluation → ``MetaCandidateEvaluation``,
-  and the §5.8 ``MetricSpecWeightCap`` (Task 11).
+  and ``MetricSpecWeightCap``, which makes the epoch-frozen weight regime
+  outrank any axis weights a node smuggles through ``make_metric_spec``
+  (Task 11).
 - ``budget`` — the Task 12 cost-control layer: governance level ladder
   (L0-L3) + deterministic escalation triggers, ``BudgetedAction`` /
   ``BudgetVerdict`` / ``GovernanceBudgetManager`` (decision-point gating
@@ -83,7 +85,8 @@ Modules
 - ``governance_cache`` — the spec-fixed ``cache_key`` composition and the
   append-only ``{ckpt}/rqgm_governance_cache.jsonl`` result cache
   (Task 12; ``rqgm.replay.use_cached_results`` depends on it).
-- ``context_views`` — role-specific context views (Task 12 §5.7): the
+- ``context_views`` — role-specific context views, each role seeing only
+  what its own scope whitelists (Task 12): the
   BFTS ProposalSummaryView-only renderer (typed layer-1 enforcement), the
   reviewer/adversary/judge/governance projections, and the whitelist
   constants shared with the kernel's ``validate_context_scope``.
@@ -94,6 +97,7 @@ Modules
   ``trace_dependents`` / ``rebuild_frontier`` helpers: selective erasure of
   retired-prompt-dependent records (logical-only, never physical),
   per-role invalidate-vs-recompute policy, declarative frontier rebuild
-  with Rule-A reinstatement, and the §5.6 conservative → drain-only
-  failure ladder (Task 10).
+  with Rule-A reinstatement, and the conservative → drain-only failure
+  ladder that degrades rather than raises when repair cannot complete
+  (Task 10).
 """

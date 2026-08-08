@@ -1,11 +1,11 @@
-"""AdversarialRound — the in-run attack→defense→adjudication loop (§5.3).
+"""AdversarialRound — the in-run attack→defense→adjudication loop.
 
 One coordinator per RQGMRuntime, invoked once per completed node by the
 ``_run_loop`` step-5 hook (after evaluation + the sterile gate, before
 ``write_node_report``). Loop invariant I-2 (failure isolation): every stage
 is best-effort — the coordinator NEVER raises into the run loop.
 
-Ordering + idempotency (§5.3): the per-node ``rqgm_adversarial_round``
+Ordering + idempotency: the per-node ``rqgm_adversarial_round``
 marker is appended first (at-most-once, resume-safe), then raw attacks are
 logged BEFORE defense/adjudication, so a crash mid-round leaves a
 consistent, replayable record trail. Every record also lands in Task 02's
@@ -38,7 +38,8 @@ from ari.rqgm.adversarial.records import (
 
 log = logging.getLogger(__name__)
 
-#: Deterministic v1 expected-behavior template per case (§6 example shape).
+#: Deterministic v1 expected-behavior template per case: fixed text per role,
+#: never LLM-authored, so a replay expectation is reproducible.
 _EXPECTED_BEHAVIOR = {
     "reviewer": "flag the validated defect class in review",
     "generator": "avoid reproducing the validated defect class",
@@ -122,9 +123,9 @@ class AdversarialRound:
         self.cfg = cfg
         self.checkpoint_dir = checkpoint_dir
         self._epoch_state = epoch_state
-        # RQGM Task 12 §5.4: optional read-side budget gates for the
-        # defender/judge stages (adversary calls stay capped inside the
-        # engine). ``None`` == ungated (status-quo Task 06 behavior).
+        # Optional read-side budget gates for the defender/judge stages
+        # (adversary calls stay capped inside the engine). ``None`` == ungated
+        # (status-quo Task 06 behavior).
         self._budget_manager = budget_manager
         self._governance_cfg = governance_cfg
         self.case_log = AdversarialCaseLog(checkpoint_dir)
@@ -146,7 +147,7 @@ class AdversarialRound:
             epoch_state,
             checkpoint_dir,
             next_attack_id=_seq_alloc("atk", atk_base),
-            # Resume seed for the per-epoch call cap (§5.5): raw-attack lines
+            # Resume seed for the per-epoch adversary call cap: raw-attack lines
             # keyed by epoch_id are the durable lower bound on calls already
             # spent, so a mid-epoch restart cannot restart the budget at 0.
             calls_by_epoch=self.case_log.count_records_by_epoch(
@@ -182,7 +183,7 @@ class AdversarialRound:
 
     def _epoch_utility_policy(self) -> dict:
         """The frozen epoch's utility policy (Task 02 ``EpochState``), or
-        ``{}`` while no epoch is open (plan 14 §5.8 delta 1).
+        ``{}`` while no epoch is open.
 
         Same ``_epoch_state`` handle ``epoch_id`` already resolves — the
         record's ``prompt_hash`` must name the EPOCH policy, not the penalty
@@ -230,7 +231,7 @@ class AdversarialRound:
 
     @staticmethod
     def _roles_for_node(roles, node) -> tuple[str, ...]:
-        """Per-node filter of the implicated roles (§5.1, revised 2026-07-16).
+        """Per-node filter of the implicated roles (revised 2026-07-16).
 
         ``paper_writer`` is a culpable component ONLY for a draft the Layer-0
         claim gate confirms UNFAITHFUL — the node carries
@@ -253,7 +254,7 @@ class AdversarialRound:
 
         One entry per RESOLVABLE role — the round emits one validated attack per
         entry (the over-accepted-AND-unfaithful draft implicates BOTH the
-        reviewer and the writer, §5.1). A role that resolves to ``""`` (off the
+        reviewer and the writer). A role that resolves to ``""`` (off the
         paper phase, or an unfiltered writer with no incumbent) contributes no
         entry, so ambiguous or legacy exploration yields ``[]`` and the caller
         emits exactly one targetless record. Role separation (a record may not
@@ -340,7 +341,7 @@ class AdversarialRound:
             return None
         _round_kind = "paper_candidate" if paper_candidate else "exploration"
         if self.case_log.has_round_marker(node_id, kind=_round_kind):
-            return None  # §5.3 no-re-runs: at most one round per node
+            return None  # no re-runs: at most one round per node
         bundle = build_artifact_bundle(
             node, self.checkpoint_dir,
             remaining_node_budget=remaining_node_budget,
@@ -369,12 +370,12 @@ class AdversarialRound:
             node_id, self.epoch_id, kind=_round_kind,
         )
         raw_attacks = self.engine.attack(bundle)
-        self._log_all(raw_attacks)  # logged BEFORE any effect (§5.3)
+        self._log_all(raw_attacks)  # logged BEFORE any effect
         self._budget_consume("adversary_call", len(raw_attacks))
         if not raw_attacks:
             return {"node_id": node_id, "attacks": 0, "validated": 0,
                     "penalty": 0.0}
-        # RQGM Task 12 §5.4 decision-point gates: a denied defender means
+        # Budget decision-point gates: a denied defender means
         # the attacks lapse as observations; a denied judge means no
         # validated records (raw attacks never touch scores — invariant 8).
         defenses = []
@@ -404,7 +405,7 @@ class AdversarialRound:
             # twin's binding.
             #
             # The over-accepted-AND-unfaithful draft implicates TWO components
-            # (§5.1, revised 2026-07-16): the reviewer that ACCEPTED it and the
+            # (revised 2026-07-16): the reviewer that ACCEPTED it and the
             # writer that PRODUCED it. The round emits ONE validated attack per
             # RESOLVABLE role — the writer binding gated per-node on the draft's
             # Layer-0 claim-gate faithfulness (``_roles_for_node``). Role
@@ -469,7 +470,7 @@ class AdversarialRound:
         }
 
     def _judge_on_disputed_only(self) -> bool:
-        """``rqgm.governance.judge_on_disputed_only`` (plan 12 §5.2): with
+        """``rqgm.governance.judge_on_disputed_only``: with
         a budget-skipped defender the attack is uncontested — it lapses as
         an observation instead of reaching the judge."""
         gc = self._governance_cfg
@@ -502,7 +503,8 @@ class AdversarialRound:
             log.warning("budget consume failed", exc_info=True)
 
     def _log_all(self, records) -> None:
-        """JSONL truth + Task 02 audit-log envelope, in §5.3 order."""
+        """JSONL truth first, then the Task 02 audit-log envelope — the
+        case log is written before its audit twin, never after."""
         self.case_log.append_all(records)
         if self.audit_writer is None:
             return

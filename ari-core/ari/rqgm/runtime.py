@@ -104,7 +104,8 @@ class GovernedSearchStrategy:
 
 
 class RQGMRuntime:
-    """Facade owning every RQGM component (construction sites: plan 01 §5.3).
+    """Facade owning every RQGM component — the ONLY construction site there
+    is, which is what keeps ``simple_bfts`` from importing one at all.
 
     Constructed by ``build_runtime`` only when the effective mode is
     ``ari_rqgm``; the Task-01 version holds just the config and checkpoint
@@ -230,8 +231,10 @@ class RQGMRuntime:
         # boundary that carries clean_room_requests.
         self._clean_room = None
         # Task 10 frontier repair — constructed lazily at the first committed
-        # boundary that carries retirements. `expansion_halted` is the §5.6
-        # drain-only degradation flag `_run_loop` reads after each tick.
+        # boundary that carries retirements. `expansion_halted` is the
+        # drain-only degradation flag `_run_loop` reads after each tick: a
+        # repair that reports `halted_expansion` stops NEW expansion while
+        # in-flight nodes drain — it never crashes the run.
         self._frontier_repair = None
         self.expansion_halted = False
         # Task 11 meta-evolution coordinator — constructed lazily at the
@@ -322,7 +325,8 @@ class RQGMRuntime:
 
     @property
     def kernel_enforcement(self) -> str:
-        """``rqgm.kernel.enforcement`` (plan 04 §6): ``standard`` applies
+        """``rqgm.kernel.enforcement`` (docs/reference/configuration.md,
+        "`rqgm.kernel` — ConstitutionalKernel posture"): ``standard`` applies
         the blocking matrix; ``audit_only`` downgrades everything to
         warn-and-log. Read at construction/boundaries, never hot-switched."""
         kernel_cfg = getattr(getattr(self.cfg, "rqgm", None), "kernel", None)
@@ -330,9 +334,9 @@ class RQGMRuntime:
         return value if value in ("standard", "audit_only") else "standard"
 
     def resume_integrity_check(self, checkpoint_dir) -> None:
-        """The §5.6.6 resume integrity pass (best-effort, never raises).
+        """The resume integrity pass (best-effort, never raises).
 
-        Runs BOTH checks the section names against the restored state:
+        Runs BOTH restored-state checks:
         ``validate_audit_log_integrity`` over the restored audit log and
         ``validate_selective_erasure`` over the restored records and prompt
         registry. Blocking findings from either put the run into
@@ -359,7 +363,7 @@ class RQGMRuntime:
         )
 
     def _resume_audit_log_pass(self, checkpoint_dir) -> None:
-        """§5.6.6 half 1: the restored audit log's append-only + hash chain."""
+        """Resume half 1: the restored audit log's append-only + hash chain."""
         try:
             from ari.rqgm.kernel import should_block
             from ari.rqgm.store import ImmutableAuditLog
@@ -375,7 +379,7 @@ class RQGMRuntime:
                         exc_info=True)
 
     def _resume_erasure_pass(self, checkpoint_dir) -> None:
-        """§5.6.6 half 2: the restored selective-erasure state.
+        """Resume half 2: the restored selective-erasure state.
 
         The frontier view is every record the checkpoint still marks
         frontier-valid, deliberately WITHOUT filtering on ``stale`` — that is
@@ -691,7 +695,8 @@ class RQGMRuntime:
 
     def _apply_epoch_policy_to_scoring(self, st) -> None:
         """Apply the epoch's FROZEN utility_policy to the live scoring targets
-        so the objective evolves per-epoch (plan 14 §5.6 / RQGM paper claim A).
+        so the objective evolves per-epoch (RQGM paper claim A: the criterion
+        itself co-evolves, it is not a fixed target).
 
         The frontier reads ``cfg.bfts`` live, so updating cfg suffices there;
         the LLMEvaluator caches its composite/axis-weights at construction, so
@@ -753,7 +758,8 @@ class RQGMRuntime:
         run_id: str = "",
         search_state: "dict | None" = None,
     ):
-        """Idempotent best-effort epoch hook (plan 02 §5.6-§5.7).
+        """Idempotent best-effort epoch hook — the active-set freeze and the
+        resume path, both driven from this one call.
 
         First call: replay-restore the checkpoint's RQGM state (resume) or
         open ``epoch_000`` fresh. Subsequent calls: fire the node-count
@@ -763,12 +769,12 @@ class RQGMRuntime:
         Returns the currently open :class:`~ari.rqgm.state.EpochState` or
         ``None``.
 
-        *search_state* (Task 10, plan 10 §5.2) is the run loop's live BFTS
-        state dict (``frontier`` / ``pending`` / ``all_nodes`` lists plus a
-        ``flush_tree`` callable) handed in at the outer-loop head so
-        FrontierRepairEngine.repair can run inside the boundary window —
-        main thread, no node in flight. ``None`` (any other caller) skips
-        repair.
+        *search_state* (the Task 10 frontier-repair seam) is the run loop's
+        live BFTS state dict (``frontier`` / ``pending`` / ``all_nodes``
+        lists plus a ``flush_tree`` callable) handed in at the outer-loop
+        head so FrontierRepairEngine.repair can run inside the boundary
+        window — main thread, no node in flight. ``None`` (any other caller)
+        skips repair.
         """
         ckpt = (
             Path(checkpoint_dir)
@@ -802,12 +808,13 @@ class RQGMRuntime:
                     )
                 st = self._store.load_state(ckpt)
                 if st is not None:
-                    # Restored state == resume: §5.6.6 integrity pass
+                    # Restored state == resume: run the integrity pass
                     # (best-effort; degrades to carry-over, never refusal).
                     self.resume_integrity_check(ckpt)
                 if st is None or st.epoch is None or st.epoch.status != "open":
-                    # Founding registration (plan 07 §5.2 bootstrap, wired
-                    # here): BEFORE ``epoch_000`` opens on a fresh RQGM
+                    # Founding registration (the Task 07 bootstrap that turns
+                    # the shipped prompts into v1 PromptSpecs, wired here):
+                    # BEFORE ``epoch_000`` opens on a fresh RQGM
                     # checkpoint, the founding prompt/component set is
                     # registered through the Task 02 transaction seam, so
                     # the first freeze carries a non-empty active set.
@@ -829,7 +836,7 @@ class RQGMRuntime:
                     nodes_per_epoch > 0
                     and node_count - ep.node_count_at_open >= nodes_per_epoch
                 ):
-                    # Task 05 (plan 05 §5.2): the closing epoch is audited
+                    # Task 05 call-site ordering: the closing epoch is audited
                     # BEFORE the boundary transaction so the GovernanceReport
                     # is available to Task 09's RegistryTransitionEngine.
                     # Best-effort: a failed audit never delays the boundary.
@@ -879,7 +886,8 @@ class RQGMRuntime:
             from ari.rqgm.events import TransitionEvent
             from ari.rqgm.prompt_spec import founding_registration_events
 
-            # Task 14 (plan 14 §5.3): the founding utility policy is
+            # Task 14 (the utility policy is a policy-backed PromptSpec, not
+            # a second spec type): the founding utility policy is
             # cfg-derived, so the bootstrap passes the resolved cfg and
             # writes the policy BODY before registering the entry that
             # references it (text is referenced by source, never inlined).
@@ -900,7 +908,7 @@ class RQGMRuntime:
             return prior
 
     def _write_founding_policy_body(self, ckpt) -> None:
-        """Write the epoch-0 utility-policy body (plan 14 §5.3/§6.1).
+        """Write the epoch-0 utility-policy body.
 
         Write-once canonical JSON under ``{ckpt}/rqgm_prompts/``: the
         registry entry references the path, this file carries the bytes, and
@@ -943,7 +951,7 @@ class RQGMRuntime:
         live draft population — so a per-epoch size of 1 fires the boundary at
         each round edge regardless of how many drafts a round built. The trigger
         KIND stays the inherited node-count trigger; this only SIZES it for the
-        paper phase. Tradeoff (doc 01 §5.7 residual): the hashed epoch payload
+        paper phase. Residual tradeoff: the hashed epoch payload
         records the round index as node_count_at_open, not the real draft count;
         no consumer reads it beyond the self-consistent trigger compare."""
         if self._paper_phase:
@@ -959,7 +967,7 @@ class RQGMRuntime:
             return 10
 
     def _stamp_cost_epoch(self) -> None:
-        """Per-epoch cost attribution (plan 02 §5.5): every litellm call in
+        """Per-epoch cost attribution: every litellm call in
         this process (skills included, via the metadata injector) now carries
         ``epoch=<epoch_id>`` and lands in ``CallRecord.epoch``."""
         ep = self.current_epoch
@@ -977,7 +985,9 @@ class RQGMRuntime:
     @property
     def budget_manager(self):
         """Lazily constructed
-        :class:`ari.rqgm.budget.GovernanceBudgetManager` (plan 12 §5.4/§7).
+        :class:`ari.rqgm.budget.GovernanceBudgetManager` — the enforcement
+        point for the per-epoch spend caps in docs/reference/configuration.md,
+        "`rqgm.budgets` — per-epoch governance spend caps".
 
         Decision-point gating only — the manager never raises and never
         blocks the loop; construction failure degrades to ``None`` (every
@@ -1008,14 +1018,16 @@ class RQGMRuntime:
     @property
     def governance(self):
         """Lazily constructed
-        :class:`ari.rqgm.governance.GovernanceOrchestrator` (plan 05 §5.1).
+        :class:`ari.rqgm.governance.GovernanceOrchestrator`.
 
-        The plan's ``build_runtime`` construction site is realised through
-        this facade: ``RQGMRuntime`` IS the wrapped object ``build_runtime``
-        hands to ``_run_loop`` (plan 05 §4), so constructing the orchestrator
-        here keeps the wiring config-conditional (``ari_rqgm`` only) without
-        touching the 6-tuple. ``None`` when the kernel is unavailable — the
-        kernel is the required role-separation authority (§7).
+        The orchestrator's nominal construction site is ``build_runtime``; it
+        is realised through this facade instead: ``RQGMRuntime`` IS the
+        wrapped object ``build_runtime`` hands to ``_run_loop``, so
+        constructing the orchestrator here keeps the wiring
+        config-conditional (``ari_rqgm`` only) without touching the 6-tuple.
+        ``None`` when the kernel is unavailable — the kernel is the required
+        role-separation authority, so an audit that cannot enforce the
+        same-role accusation prohibition must not run at all.
         """
         if self._governance is None and self.kernel is not None:
             try:
@@ -1027,8 +1039,8 @@ class RQGMRuntime:
                     kernel=self.kernel,
                     llm=self.llm,
                     audit_writer=ImmutableAuditLog(self.checkpoint_dir),
-                    # Task 12 §5.5: the replay/candidate evaluation path
-                    # consults the governance cache first when
+                    # Task 12 governance result cache: the replay/candidate
+                    # evaluation path consults the cache first when
                     # rqgm.replay.use_cached_results (default true).
                     governance_cache=self._build_governance_cache(),
                 )
@@ -1059,9 +1071,10 @@ class RQGMRuntime:
             return None
 
     def _governance_enabled(self) -> bool:
-        """``rqgm.governance.enabled`` (RQGM Task 13 §5.1 flag on Task 05's
-        block): ablation rungs B2-B4 run ``ari_rqgm`` with the epoch audit
-        off. Default true — the master interlock still gates everything."""
+        """``rqgm.governance.enabled`` (the Task 13 ablation flag over Task
+        05's block): ablation rungs B2-B4 run ``ari_rqgm`` with the epoch
+        audit off. Default true — the master interlock still gates
+        everything."""
         gov = getattr(getattr(self.cfg, "rqgm", None), "governance", None)
         if isinstance(gov, dict):
             return bool(gov.get("enabled", True))
@@ -1069,7 +1082,7 @@ class RQGMRuntime:
 
     def run_epoch_audit(self, checkpoint_dir: "str | Path | None" = None):
         """Best-effort ``audit_epoch`` invocation at the epoch boundary
-        (plan 05 §5.2 lineage-hook discipline: fail-open, never raises).
+        (the lineage-hook discipline: fail-open, never raises).
 
         Returns the GovernanceReport or ``None``. Under the Task 04 resume
         integrity carry-over (``governance_suspended``) the audit is skipped
@@ -1096,7 +1109,7 @@ class RQGMRuntime:
         )
         if ckpt is None:
             return None
-        # Task 07 (plan 07 §5.4): boundary candidate generation runs in the
+        # Task 07 boundary candidate generation runs in the
         # same window that assembles the audit inputs, BEFORE audit_epoch,
         # so this epoch's candidates ride the report's
         # candidate_evaluations into Task 09's adoption path. Fail-open:
@@ -1126,7 +1139,7 @@ class RQGMRuntime:
                 # Task 06: pool admission/eviction/snapshot is the audit's
                 # internal step 7 (epoch-boundary-only pool updates).
                 adversarial_replay_pool=audit_pool,
-                # Task 12 §7: every internal LLM step consults the budget
+                # Task 12 rule: every internal LLM step consults the budget
                 # manager (spend caps / degrade posture) before spending.
                 budget_manager=self.budget_manager,
             )
@@ -1144,8 +1157,8 @@ class RQGMRuntime:
     #: emitter every ``prompt_candidate`` record is attributed to).
     PROMPT_MUTATOR_ID = "prompt_mutator_v1"
 
-    #: LLM-less knob kinds (plan 07 §5.4): deterministic candidates a calm,
-    #: LLM-free boundary can still mint (bytes stay the incumbent's).
+    #: The mutation families that need no LLM: deterministic candidates a
+    #: calm, LLM-free boundary can still mint (bytes stay the incumbent's).
     _KNOB_MUTATION_KINDS: tuple[str, ...] = (
         "threshold_tuning", "schema_tightening",
     )
@@ -1222,8 +1235,9 @@ class RQGMRuntime:
     def _select_mutation_kind(self) -> "tuple[str | None, bool]":
         """``(kind, llm_backed)`` for this proposal — the first configured
         kind when an LLM is available and the governance call budget allows,
-        else the first configured LLM-less knob kind (plan 07 §5.4 gating:
-        budget degradation falls back, it never blocks the boundary).
+        else the first configured LLM-less knob kind — budget degradation
+        falls back to a cheaper mutation family, it never blocks the
+        boundary.
 
         The ``GOVERNANCE_LLM_CALL`` consult is READ-ONLY (the
         ``_motion_replay_cap`` precedent): ``max_llm_calls_per_audit`` is
@@ -1259,8 +1273,8 @@ class RQGMRuntime:
         latest ACTIVE registry entry resolves to an ``evolvable`` PromptSpec
         (founding specs rebuilt from the committed tables; evolved specs
         from the Task 07 candidate records). The mutator's own role is
-        excluded — same-role generation is a constitutional violation
-        (plan 07 §5.3 stage 2)."""
+        excluded — a component may never author a prompt for its own role,
+        and same-role generation is a constitutional violation."""
         from ari.rqgm.events import ACTIVE_STATUSES, UTILITY_POLICY_ROLE
         from ari.rqgm.prompt_evolution import PromptMutator
         from ari.rqgm.prompt_spec import (
@@ -1294,7 +1308,7 @@ class RQGMRuntime:
                     for role, entry in latest.items()
                     if posture.role_evolution_enabled(role)
                 }
-        # Task 14 (plan 14 §5.3): the utility policy is a policy DOCUMENT,
+        # Task 14: the utility policy is a policy DOCUMENT,
         # evolved by PolicyMutator — asking a template-rewriting LLM to
         # mutate canonical JSON as prose is exactly the confusion the
         # separate proposer exists to prevent. The role would be skipped
@@ -1351,7 +1365,7 @@ class RQGMRuntime:
             return []
 
     def _generate_prompt_candidates(self, ckpt) -> tuple:
-        """Mint this boundary's prompt candidates (plan 07 §5.4).
+        """Mint this boundary's prompt candidates.
 
         Governed, budgeted, epoch-boundary-only: one PromptMutator proposal
         per EVOLVABLE role with an ACTIVE incumbent, deterministic role
@@ -1543,16 +1557,16 @@ class RQGMRuntime:
             return None
 
     def _deterministic_candidate_failures(self, candidate, ckpt) -> list:
-        """Run the DETERMINISTIC candidate-validation stages (plan 07 §5.4
-        stages 1-3) and return the failures, or ``[]`` when the candidate is
-        clean. Never raises.
+        """Run the DETERMINISTIC candidate-validation stages 1-3 (static,
+        constitutional, role-instruction) and return the failures, or ``[]``
+        when the candidate is clean. Never raises.
 
         ``CandidateValidationPipeline`` — the documented six-stage validation —
         is never instantiated in production, so on the EXPLORATION path a minted
         candidate went straight into ``candidate_evaluations`` unvalidated: a
         candidate that violates the static/constitutional/role-instruction rules
         could be board-scored and adopted. The paper path already re-implements
-        these three stages inline (``paper_runtime`` §5.9 step 2); this is the
+        these three stages inline (:mod:`ari.rqgm.paper_runtime`); this is the
         exploration half, calling the SAME single definitions so there is
         exactly one implementation of each stage.
         """
@@ -1620,10 +1634,10 @@ class RQGMRuntime:
     @property
     def transition_engine(self):
         """Lazily constructed
-        :class:`ari.rqgm.transition_engine.RegistryTransitionEngine`
-        (plan 09 §5.5): the sole registry status writer, built only under
-        ``ari_rqgm``. ``None`` when the kernel is unavailable — every
-        transition must be kernel-validated (global invariant 11)."""
+        :class:`ari.rqgm.transition_engine.RegistryTransitionEngine` — the
+        sole registry status writer, built only under ``ari_rqgm``. ``None``
+        when the kernel is unavailable — every transition must be
+        kernel-validated (global invariant 11)."""
         if self._transition_engine is None and self.kernel is not None:
             try:
                 from ari.rqgm.store import ImmutableAuditLog, RqgmStateStore
@@ -1647,23 +1661,24 @@ class RQGMRuntime:
 
     def _run_epoch_boundary(self, ckpt, *, node_count: int, run_id: str,
                             search_state: "dict | None" = None):
-        """Plan 09 §5.3 at the ``ensure_epoch`` boundary: audit → resolve →
-        kernel-validate → apply/commit via the Task 02 transaction. Always
-        returns a state (the prior state on failure — epoch continues);
+        """The epoch-boundary transaction at the ``ensure_epoch`` boundary:
+        audit → resolve → kernel-validate → apply/commit via the Task 02
+        transaction. Always returns a state (the prior state on failure —
+        the epoch continues);
         without an engine it degrades to the plain Task 02 boundary."""
         report = self.run_epoch_audit(ckpt)
-        # Task 11 (plan 11 §5.4): the meta tier runs after audit_epoch and
+        # Task 11 ordering: the meta tier runs after audit_epoch and
         # before resolve_transition. Best-effort — a meta failure degrades
         # to "no candidates this epoch", never a delayed boundary.
         self._run_meta_evolution(report)
-        # Task 14 (plan 14 §5.4): the utility policy's proposer runs in the
+        # Task 14: the utility policy's proposer (PolicyMutator) runs in the
         # SAME candidate-minting window, with the same best-effort posture.
         # Its candidate is registered at status='candidate' through the
         # boundary transaction by the existing intake path, so the NEXT
         # boundary can iterate it up the T1->T6 spine.
         self._run_utility_evolution(report, ckpt)
         st = self._epoch_state
-        # Task 07 candidate intake (plan 07 §5.3, plan 09 T1): every
+        # Task 07 candidate intake at the T1 registry edge: every
         # candidate minted this boundary (the FIX-A + meta channels ran just
         # above) is registered into the GovernedPromptRegistry at
         # status='candidate' through the SAME boundary transaction, so the
@@ -1674,10 +1689,11 @@ class RQGMRuntime:
         engine = self.transition_engine
         if engine is not None:
             transition = None
-            # Task 14 (plan 14 §5.5, blocker 1): the pending utility_policy
-            # candidates' §5.5 deterministic dry-run evaluations join the
-            # candidate_evaluations resolve_transition consumes, so the policy
-            # iterates the T1->T3->T6 spine on the role-agnostic engine. The
+            # Task 14 (the utility_policy adopts by SUPERSESSION): the pending
+            # utility_policy candidates' deterministic dry-run evaluations
+            # join the candidate_evaluations resolve_transition consumes, so
+            # the policy iterates the T1->T3->T6 spine on the role-agnostic
+            # engine. The
             # governance report scores behavioral prompt candidates; the
             # utility policy is a score over axes, not scored over cases, so
             # its board is computed here and merged in (never inside the
@@ -1738,14 +1754,14 @@ class RQGMRuntime:
                         applied.state if applied.state is not None else st
                     )
                     if applied.committed:
-                        # Task 10 (plan 10 §5.2): repair strictly after the
+                        # Task 10 placement: repair strictly after the
                         # committed apply and strictly before the boundary
                         # window closes (main thread, no node in flight).
                         self._run_frontier_repair(
                             applied.transition, new_state, ckpt,
                             search_state,
                         )
-                        # Task 08 (plan 08 §5.1): pending clean-room
+                        # Task 08 clean-room trigger: pending clean-room
                         # requests execute inside the boundary window,
                         # right after the committed apply, on this thread.
                         self._process_clean_room(applied.transition,
@@ -1765,7 +1781,7 @@ class RQGMRuntime:
         )
 
     def _intake_registration_events(self, ckpt, st) -> list:
-        """Task 07 candidate-intake events (plan 07 §5.3, plan 09 T1).
+        """Task 07 candidate-intake events (the T1 registry edge).
 
         Reads ``prompt_evolution.jsonl`` and returns one ``prompt_registered``
         event (status=``candidate``) per minted candidate NOT already in the
@@ -1791,7 +1807,7 @@ class RQGMRuntime:
             # Task 14: the utility-policy candidate rides the SAME log and
             # the SAME intake, so a governed policy enters the registry at
             # status='candidate' exactly like a prompt candidate and iterates
-            # the same role-agnostic T-table (plan 14 §5.5).
+            # the same role-agnostic T-table.
             builders = {
                 "prompt_candidate": candidate_registration_payload,
                 UTILITY_POLICY_CANDIDATE_RECORD_TYPE: (
@@ -1821,7 +1837,7 @@ class RQGMRuntime:
 
     # ── Task 14: governed utility evolution (boundary window) ─────────
 
-    #: The one PolicyMutator component id (plan 14 §5.3 founding table).
+    #: The one PolicyMutator component id (its founding-table row).
     POLICY_MUTATOR_ID = "policy_mutator_v1"
 
     def _utility_evolution_cfg(self):
@@ -1849,9 +1865,9 @@ class RQGMRuntime:
         return [str(k) for k in (raw or [])]
 
     def _run_utility_evolution(self, report, ckpt) -> None:
-        """Mint at most one utility-policy candidate for this boundary
-        (plan 14 §5.4). Best-effort: a failure degrades to "no candidate
-        this epoch", never a delayed boundary and never a raise.
+        """Mint at most one utility-policy candidate for this boundary.
+        Best-effort: a failure degrades to "no candidate this epoch", never
+        a delayed boundary and never a raise.
 
         This is the CAUSE half of P1. The candidate is registered at
         ``status='candidate'`` through the boundary transaction by the
@@ -1970,8 +1986,8 @@ class RQGMRuntime:
                         "the incumbent policy)", exc_info=True)
 
     def _live_axis_set(self):
-        """The epoch's LIVE axis set for the CK-UTL-006 advisory (plan 14 §5.6):
-        the axes the evaluator will actually score, per
+        """The epoch's LIVE axis set for the CK-UTL-006 advisory (the kernel's
+        legal-utility-policy check): the axes the evaluator will score, per
         ``cfg.evaluator.axis_mode`` — NOT the incumbent policy's static
         ``axis_weights`` keys, which are empty under the default
         ``axis_mode: dynamic`` and made the advisory dead in the very mode its
@@ -1980,9 +1996,9 @@ class RQGMRuntime:
         return resolve_live_axis_set(self.cfg, self.checkpoint_dir)
 
     def _utility_policy_candidate_evaluations(self, st, ckpt) -> list:
-        """Plan 14 §5.5 (blocker 1): the §5.5 deterministic dry-run evaluation
-        for every pending utility_policy registry entry (status candidate /
-        validated / shadow), merged into the ``candidate_evaluations``
+        """The deterministic dry-run evaluation for every pending
+        utility_policy registry entry (status candidate / validated /
+        shadow), merged into the ``candidate_evaluations``
         ``resolve_transition`` consumes so the criterion iterates the
         T1 -> T3 -> T6 spine. Reads the successor body write-once from the
         checkpoint (apply happens later; resolve stays pure because this runs
@@ -2000,7 +2016,7 @@ class RQGMRuntime:
             )
 
             incumbent = dict(getattr(st.epoch, "utility_policy", None) or {})
-            # The epoch's LIVE axis set (plan 14 §5.6) — the axes the evaluator
+            # The epoch's LIVE axis set — the axes the evaluator
             # scores, per axis_mode — NOT the incumbent policy's static
             # axis_weights keys (empty under the default axis_mode: dynamic,
             # which made CK-UTL-006 dead on the live path).
@@ -2052,7 +2068,7 @@ class RQGMRuntime:
         zero-coverage candidate moving.
 
         Both pools are injected: the anchor pool for the held-out corpus board,
-        and the ``AdversarialReplayPool`` for the §5.5 self-preference replay
+        and the ``AdversarialReplayPool`` for the paper self-preference replay
         board (the pool's READ side; admission is
         ``_admit_paper_validated_attacks``). Fail-open: never raises."""
         if not self._paper_phase or self._paper_candidate_evaluator is None:
@@ -2091,9 +2107,12 @@ class RQGMRuntime:
         return pid, version
 
     def _utility_rewrite_too_recent(self, records, st) -> bool:
-        """``rqgm.utility_evolution.min_epochs_between_rewrites`` (plan 14
-        §6.3 / R1): bounds how often the frontier pays a rewrite's
-        invalidation cost."""
+        """``rqgm.utility_evolution.min_epochs_between_rewrites``
+        (docs/reference/configuration.md, "`rqgm.utility_evolution` —
+        governed rewriting of the score itself"): bounds how often the
+        frontier pays a rewrite's invalidation cost — a rewrite invalidates
+        every node scored under the old policy, so back-to-back rewrites
+        would empty the frontier."""
         ue = self._utility_evolution_cfg()
         raw = (
             ue.get("min_epochs_between_rewrites", 1) if isinstance(ue, dict)
@@ -2122,8 +2141,8 @@ class RQGMRuntime:
         return (int(st.epoch.epoch_seq) - max(seqs)) < gap
 
     def _utility_evidence(self, report) -> list:
-        """The boundary's ABSTRACT evidence for the PolicyMutator (plan 14
-        §5.4): Task 06 ``abstract_view`` dicts + the governance report's
+        """The boundary's ABSTRACT evidence for the PolicyMutator:
+        Task 06 ``abstract_view`` dicts + the governance report's
         reliability entries. Raw attack text never reaches it, and the
         frontier's current SCORES are deliberately not an input — a policy
         tuned to flatter the nodes it already produced is collusive
@@ -2146,10 +2165,11 @@ class RQGMRuntime:
     @property
     def frontier_repair(self):
         """Lazily constructed
-        :class:`ari.rqgm.frontier_repair.FrontierRepairEngine` (plan 10
-        §5.7): built only under ``ari_rqgm``, and only when
-        ``rqgm.frontier_repair.enabled`` (default true). ``None`` when
-        disabled or construction fails."""
+        :class:`ari.rqgm.frontier_repair.FrontierRepairEngine`: built only
+        under ``ari_rqgm``, and only when ``rqgm.frontier_repair.enabled``
+        (default true; docs/reference/configuration.md,
+        "`rqgm.frontier_repair` — selective erasure / frontier rebuild").
+        ``None`` when disabled or construction fails."""
         if self._frontier_repair is None:
             fr_cfg = getattr(getattr(self.cfg, "rqgm", None),
                              "frontier_repair", None)
@@ -2174,8 +2194,8 @@ class RQGMRuntime:
 
     def _run_frontier_repair(self, transition, state, ckpt,
                              search_state: "dict | None") -> None:
-        """Best-effort repair pass inside the boundary window (plan 10
-        §5.2/§5.6). No-op without retirements or without the run loop's
+        """Best-effort repair pass inside the boundary window.
+        No-op without retirements or without the run loop's
         search state. A ``halted_expansion`` outcome raises the
         ``expansion_halted`` flag the loop reads (drain-only degradation) —
         the run itself never crashes."""
@@ -2222,8 +2242,8 @@ class RQGMRuntime:
     @property
     def meta_evolution(self):
         """Lazily constructed
-        :class:`ari.rqgm.meta_evolution.MetaEvolutionCoordinator`
-        (plan 11 §5.4): non-evolving, fixed-tier trust, constructed only
+        :class:`ari.rqgm.meta_evolution.MetaEvolutionCoordinator` —
+        non-evolving, fixed-tier trust, constructed only
         under ``ari_rqgm``. ``None`` when the kernel is unavailable —
         every meta output must be kernel-gated (invariant 18).
 
@@ -2249,8 +2269,8 @@ class RQGMRuntime:
         return self._meta_evolution
 
     def _run_meta_evolution(self, report) -> None:
-        """Best-effort meta-tier step inside the boundary window (plan 11
-        §5.4). Skipped under the governance-suspended carry-over; a failure
+        """Best-effort meta-tier step inside the boundary window.
+        Skipped under the governance-suspended carry-over; a failure
         never delays the boundary or the run.
 
         Always audit-visible: every boundary leaves either the
@@ -2301,9 +2321,9 @@ class RQGMRuntime:
 
     def _meta_invokers(self) -> dict:
         """Deterministic invoker map for the registered+active meta roles
-        that have a LIVE actor today (plan 11 §5.4 — the final wiring gap
-        fix: without this map every boundary skipped every meta agent with
-        ``no invoker registered``).
+        that have a LIVE actor today (the final wiring gap fix: without this
+        map every boundary skipped every meta agent with ``no invoker
+        registered``).
 
         Shape: ``role -> callable(inputs, prompt_view=None) -> dict|None``
         (the coordinator's injectable-invoker seam; tests may still inject
@@ -2311,9 +2331,10 @@ class RQGMRuntime:
         with a real actor appear here — ``prompt_mutator`` (delegates to
         :class:`ari.rqgm.prompt_evolution.PromptMutator`),
         ``clean_room_generator`` (a reached deterministic no-op that
-        defers to the Task 08 boundary pass), and the plan-11 §5.2
-        recommendation roles ``replay_selector`` / ``failure_summary_``
-        ``compressor``, whose actors are pure functions of the epoch's
+        defers to the Task 08 boundary pass), and the meta-agent authority
+        matrix's two recommendation roles ``replay_selector`` /
+        ``failure_summary_compressor``, whose actors are pure functions of
+        the epoch's
         abstract inputs. Any other registered+active meta role keeps the
         coordinator's explicit ``no invoker`` skip line — actors are never
         faked.
@@ -2378,7 +2399,7 @@ class RQGMRuntime:
         return total, mutator_done
 
     def _invoke_prompt_mutator(self, inputs, prompt_view=None):
-        """Live ``prompt_mutator`` invoker (plan 11 §5.4).
+        """Live ``prompt_mutator`` invoker (the coordinator's invoker seam).
 
         One deterministic proposal per epoch: the first (sorted) evolvable
         role with an ACTIVE incumbent whose successor candidate id does
@@ -2490,7 +2511,7 @@ class RQGMRuntime:
 
     def _invoke_clean_room_generator(self, inputs, prompt_view=None):
         """Live ``clean_room_generator`` invoker: a REACHED deterministic
-        no-op (plan 11 §5.4).
+        no-op.
 
         The clean-room generator's live actor is the Task 08 boundary pass
         (:meth:`_process_clean_room`, right after the committed apply):
@@ -2506,7 +2527,7 @@ class RQGMRuntime:
         """
         return None
 
-    # ── plan 11 §5.2 items 3-4: the recommendation roles ─────────────
+    # ── The two recommendation meta roles (authority-matrix rows) ────
     #
     # Both were role-vocabulary entries with a capability-matrix row and
     # nothing behind them: no founding prompt, no founding component, no
@@ -2583,7 +2604,8 @@ class RQGMRuntime:
         return f"case_{index:04d}"
 
     def _invoke_replay_selector(self, inputs, prompt_view=None):
-        """Live ``replay_selector`` invoker (plan 11 §5.2 item 3).
+        """Live ``replay_selector`` invoker (an authority-matrix
+        recommendation role: it advises, it never binds).
 
         Recommends replay cases from the bundle's abstract failure
         summaries, breadth first: one case per distinct ``case_type`` in
@@ -2657,7 +2679,8 @@ class RQGMRuntime:
             return 3
 
     def _invoke_failure_summary_compressor(self, inputs, prompt_view=None):
-        """Live ``failure_summary_compressor`` invoker (plan 11 §5.2 item 4).
+        """Live ``failure_summary_compressor`` invoker (an authority-matrix
+        recommendation role: it advises, it never binds).
 
         Compresses the epoch's abstract failure summaries into ONE summary
         per invocation: the most frequent ``case_type`` in the bundle
@@ -2750,7 +2773,7 @@ class RQGMRuntime:
     # ── Task 08: clean-room regeneration (boundary window) ───────────
 
     def _process_clean_room(self, transition, state, ckpt) -> None:
-        """Best-effort clean-room pass (plan 08 §5.1/§5.3): persist the
+        """Best-effort clean-room pass: persist the
         transition's requests, execute up to the per-epoch budget with the
         kernel's pre/post screens, hand admissible candidates to the Task 07
         lifecycle at ``status=candidate``. Fail-open — a failure here never
@@ -2799,7 +2822,8 @@ class RQGMRuntime:
     @property
     def adversarial(self):
         """Lazily constructed
-        :class:`ari.rqgm.adversarial.AdversarialRound` (plan 06 §5.1/§7).
+        :class:`ari.rqgm.adversarial.AdversarialRound` — the attack →
+        defense → adjudication actors, placed per node.
 
         ``None`` without a checkpoint dir or with
         ``rqgm.adversarial.enabled: false`` (the adapter-never-initialized
@@ -2821,8 +2845,9 @@ class RQGMRuntime:
                     loader=self.governed_loader,
                     checkpoint_dir=self.checkpoint_dir,
                     epoch_state=lambda: self.current_epoch,
-                    # Task 12 §5.4: per-role epoch caps gate defender/judge
-                    # inside the round (decision-point, degrade-never-block).
+                    # Task 12 enforcement point: per-role epoch caps gate the
+                    # defender/judge inside the round (decision-point,
+                    # degrade-never-block).
                     budget_manager=self.budget_manager,
                     governance_cfg=getattr(getattr(self.cfg, "rqgm", None),
                                            "governance", None),
@@ -3059,8 +3084,9 @@ class RQGMRuntime:
             return 0
 
     def check_epoch_invariance(self) -> int:
-        """Run ``validate_epoch_invariance`` over the epoch's event log
-        (plan 04 §5.4 item 4). Returns the violation count; never raises.
+        """Run ``validate_epoch_invariance`` (the kernel's CK-EPO-* check)
+        over the epoch's event log. Returns the violation count; never
+        raises.
 
         CK-EPO-001/002 — a record scored under a prompt outside the frozen
         active set, and an out-of-band status change inside an epoch — were
@@ -3136,7 +3162,7 @@ class RQGMRuntime:
             # checkpoint_file, policy} while the loader reads
             # `template_ref.kind` in {package, checkpoint}. Bridge them here
             # rather than teaching either side the other's words. A `policy`
-            # body is never RENDERED, so it is filtered out (plan 14 §5.3).
+            # body is never RENDERED, so it is filtered out.
             _KIND = {"committed_template": "package",
                      "checkpoint_file": "checkpoint"}
             view: dict = {}
@@ -3171,7 +3197,8 @@ class RQGMRuntime:
 
     @property
     def validation_pipeline(self):
-        """The lazily-built :class:`CandidateValidationPipeline` (plan 07 §5.3).
+        """The lazily-built :class:`CandidateValidationPipeline` — the Task 07
+        candidate lifecycle.
 
         It carries the shadow budget, the deterministic sampler and the
         observation chain, and persists every record to the prompt-evolution
@@ -3195,7 +3222,8 @@ class RQGMRuntime:
 
     def shadow_evidence(self, prompt_hash: str, candidate_id: str = "") -> dict:
         """``{shadow_samples, shadow_score}`` for one candidate, aggregated from
-        its LIVE ``ComparisonObservation`` chain (plan 07 §5.3 stage 6).
+        its LIVE ``ComparisonObservation`` chain (the candidate lifecycle's
+        shadow stage).
 
         ``shadow_score`` is the AGREEMENT RATE with the incumbent across the
         sampled live invocations. It is consumed ONLY by the T6 adoption gate —
@@ -3329,12 +3357,14 @@ class RQGMRuntime:
         paper_candidate=False,
         remaining_node_budget: int = -1,
     ):
-        """Best-effort per-node round hook for ``_run_loop`` step 5
-        (plan 06 §5.3). Never raises; ``None`` when the round did not run.
+        """Best-effort per-node round hook for ``_run_loop`` step 5 — the
+        attack → defense → adjudication loop. Never raises; ``None`` when the
+        round did not run.
 
         Before the round, the Task 12 level ladder is evaluated and
-        audit-logged (plan 12 §5.2: ``{node_id, epoch_id, level,
-        triggers}`` — deterministic and replayable). Assignment is
+        audit-logged as ``{node_id, epoch_id, level, triggers}``; the
+        escalation triggers are a deterministic, replayable function of the
+        node, so the recorded level can be re-derived. Assignment is
         observational in v1; gating stays with the Task 06 trigger
         disjunction plus the per-role budget gates inside the round.
         """
@@ -3593,7 +3623,7 @@ class RQGMRuntime:
         phase (the loop's last flush precedes it). The durable truth is the ``UtilityRecord`` line
         in ``rqgm_adversarial_cases.jsonl`` (base/penalty/final stored by
         value — pure arithmetic, P2-safe). Replaying it on load makes the
-        ranking reproducible across re-invocations, which the §5.3 one-round
+        ranking reproducible across re-invocations, which the per-node round
         marker alone cannot (it suppresses the round but not the score
         reversion).
 
@@ -3677,10 +3707,12 @@ class RQGMRuntime:
         frontier_scores=None,
         parent_score=None,
     ):
-        """Paper pre-flight escalation of the chosen paper-candidate node
-        (plan 03 trigger table ``paper_candidate``; plan 06 §5.5 disjunction
-        "node is a paper candidate (best-node lineage at paper phase)";
-        plan 12 §5.2 "Paper candidates → L3").
+        """Paper pre-flight escalation of the chosen paper-candidate node.
+
+        Three rules meet here: the router's ``paper_candidate`` re-ideation
+        trigger fires; the Task 06 attack-trigger disjunction admits "node is
+        a paper candidate (best-node lineage at paper phase)"; and the Task 12
+        escalation table puts every paper candidate at L3.
 
         LIGHT-TOUCH, through EXISTING per-node machinery — no parallel
         governance loop, no wrapping of the claim gate:
@@ -3700,17 +3732,18 @@ class RQGMRuntime:
            → evict → snapshot), delivering paper → RQGM feedback.
 
         NOT merely observational: judge-validated attacks apply the bounded
-        utility penalty (plan 06 §5.4 — ``_scientific_score`` is rewritten in
-        place, and every downstream consumer incl. best-node selection sees
-        the governed value). A penalized candidate can therefore lose the
+        utility penalty — only judge-validated attacks feed that channel, and
+        it rewrites ``_scientific_score`` in place, so every downstream
+        consumer incl. best-node selection sees the governed value.
+        A penalized candidate can therefore lose the
         subsequent seed/verified-context re-selection. Callers must
         (a) re-select after escalating and escalate any NEW winner too (the
         fixpoint loop in ``ari.cli.paper_dispatch``, shared by all three CLI
         entries), and (b) replay persisted penalties when reloading nodes
         (:meth:`replay_utility_penalties`) — no entry writes ``tree.json``
         after the paper phase, so without replay a re-run would revert the
-        ranking while the §5.3 round marker suppresses a second round (a P2
-        determinism violation).
+        ranking while the per-node round marker suppresses a second round
+        (a P2 determinism violation).
 
         Gated on ``ari_rqgm`` (this runtime exists only then). Fail-open:
         every step is best-effort and the whole method never raises, so a
@@ -3841,8 +3874,10 @@ class RQGMRuntime:
         """Lazily constructed :class:`ari.rqgm.proposals.router.ProposalRouter`.
 
         The VirSciAdapter is only constructed inside the router when
-        ``proposal_router.generators.virsci.enabled`` is true (plan 03 §5.4
-        guarantee list). ``None`` when no checkpoint dir is available.
+        ``proposal_router.generators.virsci.enabled`` is true — the
+        conditional construction IS the ``virsci.enabled: false`` guarantee,
+        so with the flag off no VirSci module is imported at all. ``None``
+        when no checkpoint dir is available.
         """
         if self._router is None:
             store = self.proposal_store
@@ -3887,8 +3922,8 @@ class RQGMRuntime:
 
     def reideate(self, event: str, ctx: "dict | None" = None) -> list:
         """Best-effort RE-IDEATION hook for the three non-root trigger events
-        (plan 03 §5.2: ``frontier_stagnation`` / ``major_pivot`` /
-        ``paper_candidate``). Never raises; ``[]`` when nothing was produced.
+        (``frontier_stagnation`` / ``major_pivot`` / ``paper_candidate``).
+        Never raises; ``[]`` when nothing was produced.
 
         ``ProposalRouter.on_event`` — documented as "the re-ideation surface" —
         had NO production caller, so three of the four rows of the router's
@@ -3918,10 +3953,11 @@ class RQGMRuntime:
     def render_expand_context(self) -> str:
         """Render the expand ``idea_context`` from the selected summary.
 
-        The ``ari_rqgm`` summary-only channel (plan 03 §5.5 layer 2):
+        The ``ari_rqgm`` summary-only channel — BFTS never sees a full
+        transcript:
         ``""`` when no selected ProposalRecord exists yet, letting callers
-        keep their ``idea.json`` fallback. Enforcement is layered per
-        plan 12 §5.7: the kernel's ``validate_context_scope`` runs
+        keep their ``idea.json`` fallback. Enforcement of the role's context
+        view is layered: the kernel's ``validate_context_scope`` runs
         warn-and-flag on the live view (layer 2), then the typed renderer
         (layer 1) refuses anything but a ProposalSummaryView — an
         out-of-scope view falls back to the caller's ``idea.json`` context
@@ -3949,9 +3985,9 @@ class RQGMRuntime:
             return ""
 
     def _flag_bfts_view_scope(self, view) -> None:
-        """Layer-2 check-time enforcement on the live expand context
-        (plan 12 §5.7): warn and append a ``kernel_report`` audit line on
-        whitelist violations; never blocks node execution (fail-open)."""
+        """Layer-2 check-time enforcement of the role's context view on the
+        live expand context: warn and append a ``kernel_report`` audit line
+        on whitelist violations; never blocks node execution (fail-open)."""
         if self.kernel is None:
             return
         try:
@@ -3983,9 +4019,9 @@ class RQGMRuntime:
         return GovernedSearchStrategy(bfts, self)
 
     def wrap_node_executor(self, agent: "NodeExecutor") -> "NodeExecutor":
-        """Attach the Task 11 §5.8 metric-spec weight cap and the Task 14
-        §5.8 utility-policy stamp; otherwise identity (the seam stays
-        reserved for Tasks 05/06).
+        """Attach the Task 11 constitutional cap on ``make_metric_spec``
+        weights and the Task 14 utility-policy stamp; otherwise identity (the
+        seam stays reserved for Tasks 05/06).
 
         The cap is an additive attribute read by the single
         ``make_metric_spec`` handler site in ``ari/agent/loop.py``; under
@@ -4074,8 +4110,12 @@ class RQGMRuntime:
         return agent
 
     def _wrap_utility_policy_stamp(self, agent: "NodeExecutor"):
-        """Stamp every scored node with the epoch's utility-policy hash
-        (plan 14 §5.8 delta 2).
+        """Stamp EVERY scored node with the epoch's utility-policy hash — the
+        coverage half of the cause→consequence circuit. Only attacked-and-
+        penalised nodes carry a ``UtilityRecord``, so without this stamp a
+        policy rewrite would invalidate that subset and leave the rest of the
+        frontier holding old-policy scores with no marker saying which regime
+        each one belongs to.
 
         Wraps ``run`` rather than adding a call site in ``ari/agent/loop.py``:
         the stamp must cover EVERY node the executor scores (that is the

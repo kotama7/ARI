@@ -28,7 +28,7 @@ instant activation, invariant 15), any resurrection out of ``retired``, any
 edge out of ``banned`` (absorbing), and any edge written by an actor other
 than the RegistryTransitionEngine (invariant 10; validated by the kernel).
 ``active → retired`` (T20) is listed but role-scoped: legal ONLY for the
-``utility_policy`` criterion's supersession (Task 14 §5.5); for every
+``utility_policy`` criterion's supersession (T20 below); for every
 behavioral role the kernel still rejects it (retirement must stage via
 quarantine), so the sanction-only replacement model is intact for them.
 
@@ -44,7 +44,8 @@ from enum import Enum
 
 
 class ComponentStatus(str, Enum):
-    """The 10 governed statuses (Task 02's closed vocabulary, plan 09 §5.2).
+    """The 10 governed statuses — Task 02's closed vocabulary, member for
+    member identical to ``ari.rqgm.events.STATUS_VALUES``.
 
     Forward-compat rule (owned by the engine, restated here): an unknown
     status read from a registry file is treated as ineligible for the active
@@ -65,7 +66,7 @@ class ComponentStatus(str, Enum):
 
 @dataclass(frozen=True)
 class TransitionRule:
-    """One fixed table row (plan 09 §7). ``guards`` are deterministic guard
+    """One fixed table row. ``guards`` are deterministic guard
     predicate *names* — the engine (Task 09) evaluates them; the kernel only
     checks table membership, rule-id parity, and boundary/emergency shape."""
 
@@ -81,9 +82,10 @@ def _r(rule_id: str, trigger: str, guards: tuple[str, ...] = (),
                           boundary_only=boundary_only)
 
 
-#: Exactly T1..T20 (plan 09 §5.2 + plan 14 §5.5 — T20 supersession). Keys are
+#: Exactly T1..T21 — one entry per rule id, the two supersession edges (T20
+#: utility_policy, T21 paper-role standby) included. Keys are
 #: ``(from_status, to_status)`` value pairs; see the module docstring for the
-#: T16 encoding.
+#: T16 encoding. Anything absent from this dict is a forbidden transition.
 TRANSITION_TABLE: dict[tuple[str, str], TransitionRule] = {
     ("candidate", "validated"): _r(
         "T1", "candidate_validation_passed",
@@ -158,7 +160,7 @@ TRANSITION_TABLE: dict[tuple[str, str], TransitionRule] = {
         "T19", "contamination_or_critical_finding",
         ("absorbing",),
     ),
-    # Task 14 (plan 14 §5.5, amended 2026-07-16): the SUPERSESSION edge. The
+    # Task 14 (amended 2026-07-16): the SUPERSESSION edge. The
     # utility policy is the evaluation CRITERION, not a behavioral actor — it
     # is adopted by SUPERSESSION, so a validated, shadow-passed successor that
     # scores at least as well on the frozen replay board DISPLACES the healthy
@@ -175,7 +177,7 @@ TRANSITION_TABLE: dict[tuple[str, str], TransitionRule] = {
         ("supersession_successor_adopted", "utility_policy_role_only",
          "emits_retirement_event"),
     ),
-    # Paper-archive Task 05 / plan 03 §5.9 (wave 3c, amended 2026-07-16): the
+    # Paper-archive Task 05 (wave 3c, amended 2026-07-16): the
     # paper-role SHADOW-STANDBY supersession edge. Paper-role co-evolution is
     # PROMPT-level (the mutator mints unpaired prompt candidates); when a
     # shadow-passed successor prompt adopts (T6), the incumbent active prompt
@@ -202,7 +204,9 @@ PAPER_SUPERSESSION_ROLES: frozenset[str] = frozenset(
 )
 
 #: The four T16 shapes — the ONLY (from, to) pairs a mid-epoch emergency
-#: transition may take (plan 09 §5.4; target status always ``quarantine``).
+#: transition may take: the target status is always ``quarantine``, and the
+#: T16 guards (emergency flag set, kernel violation attached, single sanction)
+#: must all hold.
 EMERGENCY_EDGE: frozenset[tuple[str, str]] = frozenset({
     ("probationary_active", "quarantine"),
     ("active", "quarantine"),

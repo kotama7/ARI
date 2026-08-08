@@ -7,15 +7,16 @@ invariants" — clean-room contamination rules). This module
 implements the whole sanctioned path:
 
 * :class:`CleanRoomGenerationRequest` / :class:`CleanRoomInputBundle` —
-  the §6.1/§6.2 record shapes (JSON schemas beside
-  ``ari/schemas/node_report.schema.json``);
+  the request and closed-bundle record shapes (JSON schemas beside
+  ``ari/schemas/node_report.schema.json``; ``docs/reference/rqgm_schemas.md``,
+  "Clean-room schemas (Task 08)");
 * :class:`CleanRoomInputBundleAssembler` — deterministic, fixed tier, the
   ONLY writer of bundles: reads committed catalogs and abstract summaries,
   never registries' prompt text (Layer A, constructive containment);
 * :class:`CleanRoomPromptGenerator` — meta tier, ONE injectable LLM
   completion over the committed ``rqgm/clean_room_generator.md`` meta-prompt
   plus the canonical bundle serialization. No tool loop, no filesystem, no
-  MCP (§5.4 D1/D2: a ReAct rollout could read checkpoint files; MCP retries
+  MCP (D1/D2: a ReAct rollout could read checkpoint files; MCP retries
   re-execute non-idempotent generation). Emits candidates only — it cannot
   activate them (invariant 15);
 * :class:`RetiredPromptAccessGuard` — Layer B: the sanctioned read path for
@@ -30,10 +31,10 @@ implements the whole sanctioned path:
   after ``RegistryTransitionEngine.apply`` commits: budget-capped by
   ``rqgm.prompt_evolution.max_clean_room_generations_per_epoch``, pre/post
   kernel screens (Layer C, blocking at admission, fail-open for the run),
-  Task 07 lifecycle handoff at ``status: candidate``, and the §5.6
-  no-vacancy baseline fallback.
+  Task 07 lifecycle handoff at ``status: candidate``, and the no-vacancy
+  fallback to the role's committed baseline template.
 
-Honest limitation (§5.3): any process holding ``ARI_CHECKPOINT_DIR`` can
+Honest limitation: any process holding ``ARI_CHECKPOINT_DIR`` can
 read checkpoint files directly; Layers A and C make the *sanctioned* path
 structurally clean and contamination detectable/blocking before a candidate
 can be evaluated or activated.
@@ -83,7 +84,7 @@ log = logging.getLogger(__name__)
 
 CLEANROOM_FILENAME = "rqgm_cleanroom.jsonl"
 
-#: Read-only §5.5 forbidden-corpus sources. Filename literals (the same
+#: Read-only forbidden-corpus sources. Filename literals (the same
 #: frozen names ari/paths.py registers) because the write-surface audit
 #: test pins this module free of the ari.rqgm store/registry import
 #: surface — reading these logs must not drag in any registry writer.
@@ -93,7 +94,7 @@ _ADVERSARIAL_CASES_FILENAME = "rqgm_adversarial_cases.jsonl"
 #: Retired-side statuses whose prompt text forms the forbidden corpus.
 _RETIRED_STATUSES: tuple[str, ...] = ("retired", "banned")
 
-#: Layer-B exempt readers (plan 08 §5.3): the kernel's own contamination
+#: Layer-B exempt readers: the kernel's own contamination
 #: checker and the human-facing audit CLI — both fixed tier. Everyone else
 #: is denied at the sanctioned path.
 EXEMPT_RETIRED_READERS: frozenset = frozenset({
@@ -101,7 +102,7 @@ EXEMPT_RETIRED_READERS: frozenset = frozenset({
     ("audit_cli", "fixed"),
 })
 
-#: Committed role-spec catalog (plan 08 §5.2 allowed input 1): what each
+#: Committed role-spec catalog — the ``role_spec`` allowed input: what each
 #: evolvable role must DO, written from the role contract — never derived
 #: from any retired prompt text.
 ROLE_SPECS: dict[str, str] = {
@@ -142,11 +143,12 @@ ROLE_SPECS: dict[str, str] = {
         "Select regression replay cases for candidate evaluation from "
         "bounded case metadata."
     ),
-    # plan 11 §5.2 item 4. The role was in the vocabulary and the capability
-    # matrix but had no spec here, so ``assemble_filtered_inputs`` handed its
-    # invoker an empty ``role_spec`` — a meta agent told nothing about its own
-    # job. The wording mirrors the sibling specs: what it MAY produce, from
-    # WHICH inputs, and the non-binding qualifier that is its whole contract.
+    # The fourth evolving meta role. It was in the vocabulary and the
+    # capability matrix but had no spec here, so ``assemble_filtered_inputs``
+    # handed its invoker an empty ``role_spec`` — a meta agent told nothing
+    # about its own job. The wording mirrors the sibling specs: what it MAY
+    # produce, from WHICH inputs, and the non-binding qualifier that is its
+    # whole contract.
     "failure_summary_compressor": (
         "Compress validated failure evidence into abstract failure summaries "
         "from bounded case metadata; summaries only, never raw evidence."
@@ -158,8 +160,8 @@ _VERSION_RE = re.compile(r"_v(\d+)$")
 
 def role_output_schema(role: str) -> dict:
     """The role's output-schema contract from the committed founding table
-    (plan 07 §6; the role's PRIMARY template row wins — last in table
-    order). A committed catalog read, never a retired-prompt read."""
+    (the role's PRIMARY template row wins — last in table order). A
+    committed catalog read, never a retired-prompt read."""
     out: dict = {}
     for _, _, table_role, _, schema in FOUNDING_PROMPT_TABLE:
         if table_role == role:
@@ -167,11 +169,12 @@ def role_output_schema(role: str) -> dict:
     return out
 
 
-# ── CleanRoomGenerationRequest (plan 08 §6.1) ───────────────────────────────
+# ── CleanRoomGenerationRequest (the request record shape) ───────────────────
 
 
 def default_allowed_inputs() -> dict:
-    """The §6.1 flag block: six allowed trues + five const-false forbidden."""
+    """The ``allowed_inputs`` flag block: six allowed trues + five
+    const-false forbidden."""
     flags = {key: True for key in rules.ALLOWED_INPUT_KEYS}
     flags.update({key: False for key in rules.FORBIDDEN_INPUT_KEYS})
     return flags
@@ -179,7 +182,8 @@ def default_allowed_inputs() -> dict:
 
 @dataclass(frozen=True)
 class CleanRoomGenerationRequest:
-    """One clean-room regeneration request (envelope + §6.1 fields).
+    """One clean-room regeneration request (shared envelope + the
+    request-record fields).
 
     Produced from Task 09's ``EpochTransition.clean_room_requests`` entries;
     persisted to ``rqgm_cleanroom.jsonl`` so pending requests survive resume
@@ -254,7 +258,7 @@ def request_from_transition_entry(
     replay_case_ids=(),
     budget_policy: dict | None = None,
 ) -> CleanRoomGenerationRequest:
-    """Materialize the full §6.1 record from one Task 09
+    """Materialize the full request record from one Task 09
     ``clean_room_requests`` entry (``request_id`` / ``target_role`` /
     ``retirement_event_id``)."""
     role = str(entry.get("target_role", ""))
@@ -327,7 +331,7 @@ def request_schema_failures(request) -> list[str]:
     return out
 
 
-# ── CleanRoomInputBundle (plan 08 §6.2) ─────────────────────────────────────
+# ── CleanRoomInputBundle (the closed bundle record shape) ───────────────────
 
 
 @dataclass(frozen=True)
@@ -374,7 +378,8 @@ def compute_bundle_hash(bundle: CleanRoomInputBundle) -> str:
 
 
 def fold_failure_summaries(summaries, extra_source_refs=()) -> dict:
-    """Deterministic fold of abstract failure views into the §6.3 shape.
+    """Deterministic fold of abstract failure views into the bundle's
+    ``abstract_failure_summary`` shape.
 
     Accepts Task 06 ``abstract_view`` dicts (``case_type`` /
     ``violated_expectation``) and Task 11-shaped summaries
@@ -417,7 +422,7 @@ def fold_failure_summaries(summaries, extra_source_refs=()) -> dict:
 
 
 class CleanRoomInputBundleAssembler:
-    """Deterministic, fixed tier — the ONLY writer of bundles (plan 08 §7).
+    """Deterministic, fixed tier — the ONLY writer of bundles.
 
     Assembly reads exclusively the committed catalogs (role specs, founding
     output schemas, constitutional constraints) and the abstract failure
@@ -471,7 +476,7 @@ class CleanRoomInputBundleAssembler:
 
 
 def bundle_allowlist_corpus(bundle: CleanRoomInputBundle) -> list[str]:
-    """The §5.5 allowlist corpus: the allowed inputs themselves — text the
+    """The allowlist corpus: the allowed inputs themselves — text the
     candidate legitimately shares with them must never trigger a hit."""
     docs = [bundle.role_spec]
     docs.extend(bundle.constitutional_constraints)
@@ -486,7 +491,7 @@ def bundle_allowlist_corpus(bundle: CleanRoomInputBundle) -> list[str]:
     return [d for d in docs if d]
 
 
-# ── CleanRoomPromptGenerator (plan 08 §5.3 Layer A / §7) ────────────────────
+# ── CleanRoomPromptGenerator (Layer A: constructive containment) ────────────
 
 
 class CleanRoomPromptGenerator:
@@ -575,7 +580,8 @@ class CleanRoomPromptGenerator:
         """One LLM call → one ``status="candidate"`` record (never active).
 
         Returns ``None`` (never raises) when the LLM is unavailable, fails,
-        or returns empty text — the caller falls back per §5.6.
+        or returns empty text — the caller then falls the role back to its
+        committed baseline template, so the role is never left vacant.
         """
         if self._llm is None:
             return None
@@ -612,7 +618,7 @@ class CleanRoomPromptGenerator:
             status="candidate",
             generation_mode="clean_room",
             # No lineage on purpose: a clean-room successor has no parent
-            # (plan 08 §5.2 — the retired spec is a forbidden input).
+            # (the retired spec is a forbidden input).
             parent_prompt_id=None,
             template_ref={
                 "kind": "checkpoint",
@@ -675,7 +681,7 @@ class CleanRoomPromptGenerator:
 
 
 class RetiredPromptAccessGuard:
-    """Capability denial at the sanctioned registry read API (plan 08 §5.3).
+    """Capability denial at the sanctioned registry read API (Layer B).
 
     ``get_retired_text`` is the ONLY supported way to read retired prompt
     text. Non-exempt actors are denied via the kernel's pure capability
@@ -728,7 +734,7 @@ class RetiredPromptAccessGuard:
         )
 
 
-# ── {ckpt}/rqgm_cleanroom.jsonl (plan 08 §6.4) ──────────────────────────────
+# ── {ckpt}/rqgm_cleanroom.jsonl (the append-only event log) ─────────────────
 
 # Serialises appends (boundary thread + best-effort callers) — the
 # ``record_prompt_use`` lock discipline.
@@ -798,7 +804,7 @@ def read_cleanroom_log(checkpoint_dir) -> list[dict]:
 def pending_requests(checkpoint_dir) -> list[CleanRoomGenerationRequest]:
     """Replay the event log into the still-``pending`` request list
     (first-seen order). Resume-safe: a resumed run re-reads pending requests
-    from here, never from BFTS in-memory state (plan 08 §8)."""
+    from here, never from BFTS in-memory state."""
     requests: dict[str, dict] = {}
     status: dict[str, str] = {}
     for event in read_cleanroom_log(checkpoint_dir):
@@ -820,7 +826,7 @@ def pending_requests(checkpoint_dir) -> list[CleanRoomGenerationRequest]:
     ]
 
 
-# ── §5.5 forbidden-corpus resolution (kernel-checker exemption reads) ───────
+# ── forbidden-corpus resolution (kernel-checker exemption reads) ────────────
 
 
 def _collect_strings(node, sink: list) -> None:
@@ -838,8 +844,8 @@ def _collect_strings(node, sink: list) -> None:
 
 def _texts_under_prompt_hash(node, hashes: set, sink: list) -> None:
     """Strings of every record subtree stamped with a retired
-    ``prompt_hash`` — the §5.5 "audit-log outputs produced under the
-    retired prompt_hash" (forbidden input 3: the retired prompt's own
+    ``prompt_hash`` — the forbidden-corpus entry "audit-log outputs produced
+    under the retired prompt_hash" (forbidden input 3: the retired prompt's own
     reasoning/review/attack/defense text in the audit log)."""
     if isinstance(node, dict):
         if str(node.get("prompt_hash") or "") in hashes:
@@ -853,7 +859,7 @@ def _texts_under_prompt_hash(node, hashes: set, sink: list) -> None:
 
 
 def _case_record_body(record: dict) -> str:
-    """The §5.2 forbidden bodies out of one Task 06 case-log line:
+    """The forbidden bodies out of one Task 06 case-log line:
     ``RawAttackRecord.attack_claim`` (forbidden input 4) and
     ``DefenderResponse.rebuttal_text``/``proposed_fix`` (forbidden input 5).
     ``""`` for every other record type."""
@@ -870,18 +876,18 @@ def _case_record_body(record: dict) -> str:
     return "\n".join(p for p in parts if p)
 
 
-# ── epoch-boundary coordinator (plan 08 §5.1 timing / §5.6 fallback) ────────
+# ── epoch-boundary coordinator (post-apply timing / baseline fallback) ──────
 
 
 class CleanRoomCoordinator:
     """Processes clean-room requests inside the epoch-boundary window, on
     the main thread, right after ``RegistryTransitionEngine.apply`` commits
     (codebase reality: the store's boundary transaction closes AND opens the
-    epoch inside ``apply``, so "after apply" IS the §5.1 window).
+    epoch inside ``apply``, so "after apply" IS the boundary window).
 
     Fail-closed for candidate admission, fail-open for the run: any
     violation or failure records its event, the role falls back to its
-    committed baseline template (§5.6 — baselines are never ``banned``, so
+    committed baseline template (baselines are never ``banned``, so
     a retirement can never leave a role vacant), and the BFTS loop
     continues.
     """
@@ -924,19 +930,20 @@ class CleanRoomCoordinator:
     # ── forbidden / allowlist corpora (kernel-checker exemption read) ─
 
     def forbidden_corpus(self, request, prompts) -> dict:
-        """The full §5.5 forbidden corpus, resolved ON BEHALF OF the
-        kernel's contamination checker (the §5.3 exemption: fixed-tier
-        deterministic screen; only booleans/hashes flow onward, never the
-        text): retired/banned prompt texts for the target role (through
-        the governed registry), ``RawAttackRecord``/``DefenderResponse``
+        """The full forbidden corpus, resolved ON BEHALF OF the
+        kernel's contamination checker (the Layer-B reader exemption:
+        fixed-tier deterministic screen; only booleans/hashes flow onward,
+        never the text): retired/banned prompt texts for the target role
+        (through the governed registry),
+        ``RawAttackRecord``/``DefenderResponse``
         bodies from the checkpoint case log, and audit-log outputs
         produced under a retired ``prompt_hash``.
 
-        Deviation from §5.5 noted: case bodies are included for ALL
+        Deliberate over-screen, noted: case bodies are included for ALL
         recorded cases, not only the retirement's triggering cases — the
         triggering-case linkage is not resolvable from the transition
         entry alone, and over-screening is the safe direction (a blocked
-        clean candidate costs one epoch; the §5.6 fallback covers the
+        clean candidate costs one epoch; the baseline fallback covers the
         role, and the allowlist keeps legitimate overlap hit-free)."""
         out: dict = {}
         retired_hashes: set[str] = set()
@@ -1170,7 +1177,7 @@ class CleanRoomCoordinator:
         return finish("generated", candidate_id=candidate.candidate_id)
 
     def _fallback(self, request, prompts) -> None:
-        """§5.6 no-vacancy rule: when the role has no active prompt and no
+        """The no-vacancy rule: when the role has no active prompt and no
         admissible candidate, it reverts to its committed baseline template
         for the next epoch (recorded, never a crash)."""
         active = {}

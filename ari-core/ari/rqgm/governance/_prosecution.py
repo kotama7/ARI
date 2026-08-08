@@ -1,4 +1,4 @@
-"""Auditor + Prosecutor + BondAccounting (Task 05 §5.3 step 4, §5.5).
+"""Auditor + Prosecutor + BondAccounting — step 4 of the epoch self-audit.
 
 **Rule-first, LLM-second.** The Prosecutor applies deterministic thresholds
 (≥N validated attacks affecting a component; reliability below floor); only
@@ -7,7 +7,7 @@ malformed reply files NO motion (incumbent presumption — the lineage
 ``fallback_continue`` pattern). BondAccounting is pure arithmetic: a fixed
 bond per filed motion against the epoch's prosecution budget, refunded on
 ``upheld``/``partially_upheld``, forfeited on ``dismissed``, reset each epoch
-(v1; carry-over penalties are a plan-05 §10 refinement).
+(v1: nothing carries a forfeited bond into the next epoch's budget).
 
 Thresholds are module constants (deterministic, documented); the budget
 knobs come from ``rqgm.governance`` (Task 12 owns the numbers).
@@ -29,8 +29,8 @@ from ari.rqgm.governance._records import (
 
 log = logging.getLogger(__name__)
 
-#: Deterministic prosecution thresholds (§5.3 step 4). Fixed in code like the
-#: kernel's rule tables; only budgets are config.
+#: Deterministic prosecution thresholds. Fixed in code like the kernel's rule
+#: tables; only budgets are config.
 ATTACK_THRESHOLD = 2          # ≥ N validated attacks → clear-file
 RELIABILITY_FLOOR = 0.4       # score < floor → clear-file
 BORDERLINE_MARGIN = 0.1       # floor ≤ score < floor+margin → LLM Auditor
@@ -43,7 +43,9 @@ _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 @dataclass
 class BondLedger:
-    """§5.5 bond arithmetic — a pure function of adjudication outcomes."""
+    """Bond arithmetic — a pure function of adjudication outcomes: one fixed
+    bond per filed motion, refunded on ``upheld``/``partially_upheld``,
+    forfeited on ``dismissed``, left posted on ``inconclusive``."""
 
     bond_units_per_motion: int
     max_motions_per_epoch: int
@@ -164,14 +166,15 @@ def decide_prosecutions(
         cid = str(entry.get("component_id", ""))
         role = str(entry.get("role", "") or "")
         if role == AUDITOR_ROLE:
-            # Same-role prosecution is structurally impossible (§5.4 rule 1);
-            # surfaced as a self-audit finding, never silently dropped.
+            # Same-role prosecution is structurally impossible — a same-role
+            # output is an observation, never an accusation; surfaced as a
+            # self-audit finding rather than silently dropped.
             findings.append(
                 {"kind": "same_role_prosecution_skipped", "component_id": cid}
             )
             continue
         if not ledger.can_post():
-            break  # depleted budget: no further motions this epoch (§5.5)
+            break  # depleted bond budget: no further motions this epoch
         bundle = bundles_by_target.get(cid)
         if bundle is None or not bundle.items:
             # No independently verified evidence — no motion (a bundle never

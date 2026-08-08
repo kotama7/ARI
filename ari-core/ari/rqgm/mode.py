@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 
 class EffectiveMode(str, Enum):
-    """The two ARI execution modes (plan 01 §5.2)."""
+    """The two ARI execution modes — the table above is the whole switch."""
 
     SIMPLE_BFTS = "simple_bfts"
     ARI_RQGM = "ari_rqgm"
@@ -39,8 +39,9 @@ def resolve_effective_mode(cfg: "ARIConfig") -> EffectiveMode:
     upstream by ``apply_rqgm_env_overrides``), never raises.
 
     Deliberately reads ONLY ``cfg.ari.mode`` / ``cfg.rqgm.enabled`` — never
-    ``proposal_router.*`` (VirSci optionality is orthogonal to the mode,
-    plan 01 §5.6). ``getattr`` defaults keep pre-RQGM cfg objects resolving
+    ``proposal_router.*``: VirSci optionality is a separate axis, so
+    turning VirSci on or off must never move the effective
+    mode. ``getattr`` defaults keep pre-RQGM cfg objects resolving
     to ``simple_bfts``.
     """
     mode = getattr(getattr(cfg, "ari", None), "mode", "simple_bfts")

@@ -96,8 +96,8 @@ def _evidence(*axes) -> list[dict]:
 #: it returns None and the boundary falls through to the next configured
 #: kind (``composite_swap``), which is why a default run still rewrites.
 #: Materialising the five axes into the default body would change the
-#: epoch-0 policy hash, and the ``b192196ced57`` pin must stay green
-#: (plan 14 §8.3), so the empty default is deliberately preserved.
+#: epoch-0 policy hash, and the ``b192196ced57`` pin must stay green, so the
+#: empty default is deliberately preserved.
 _EQUAL_WEIGHTS = {
     "clarity_of_contribution": 0.2, "comparative_rigor": 0.2,
     "measurement_validity": 0.2, "novelty": 0.2, "reproducibility": 0.2,
@@ -113,12 +113,12 @@ def _body(**over) -> dict:
     return out
 
 
-# ── the role limbo, closed (§5.2 / §11.1) ───────────────────────────────────
+# ── the role limbo, closed ──────────────────────────────────────────────────
 
 
 def test_the_role_limbo_is_closed():
-    """THE DIAGNOSIS, EXECUTABLE (plan 14 §9): every role named by live code
-    must be a member of the role vocabulary.
+    """THE DIAGNOSIS, EXECUTABLE: every role named by live code must be a
+    member of the role vocabulary.
 
     This test FAILS on pre-Task-14 code. ``frontier_repair.INVALIDATE_ROLES``
     declared ``utility_policy`` unlaunderable, ``records.UtilityRecord``
@@ -164,7 +164,8 @@ def test_utility_policy_is_evolvable_not_fixed():
     """The score is EVOLVABLE, not FIXED. The fixed layer is "kernel / fixed
     verifier / audit log never evolve"; a score that never changes is
     precisely what P1 forbids. FIXED_ROLES was the other way out of the
-    limbo and is rejected explicitly (plan 14 §5.2)."""
+    limbo and is rejected explicitly: this pins the exact six members of
+    FIXED_ROLES so ``utility_policy`` can never be added to them."""
     assert "utility_policy" not in events.FIXED_ROLES
     assert set(events.FIXED_ROLES) == {
         "constitutional_kernel",
@@ -197,7 +198,7 @@ def test_meta_hard_denied_flags_make_registry_writes_a_schema_violation():
         assert flag in meta_rules.META_HARD_DENIED_FLAGS
 
 
-# ── capability parity (§5.2 / §9) ───────────────────────────────────────────
+# ── capability parity ───────────────────────────────────────────────────────
 
 
 def test_every_evolvable_role_has_at_least_one_capability_row():
@@ -212,7 +213,7 @@ def test_utility_policy_capability_row_is_a_document_not_an_actor():
     caps = kernel_rules.CAPABILITY_MATRIX[("utility_policy", "institutional")]
     assert caps == frozenset({("read", "records"), ("append", "records")})
     # No invoke, no write, no activate: a policy that could invoke or write
-    # the registry is not a policy (plan 14 §5.6).
+    # the registry is not a policy — it is a document, not an actor.
     assert not {a for a, _r in caps} & {"invoke", "write", "activate"}
     # Strictly narrower than _INSTITUTIONAL_BASE (no active_prompt_text, no
     # checkpoint_artifacts).
@@ -230,7 +231,8 @@ def test_policy_mutator_caps_mirror_prompt_mutator_exactly():
 
 def test_constitution_hash_covers_utility_policy_rules(monkeypatch):
     """UTILITY_POLICY_RULES is frozen code INSIDE the pin: a tunable weight
-    bound would be a tunable constitution (plan 14 §5.6)."""
+    bound would be a tunable constitution, so editing any of those rules must
+    move ``constitution_hash()``."""
     original = kernel_rules.constitution_hash()
     patched = dict(kernel_rules.UTILITY_POLICY_RULES)
     patched["axis_weight_min"] = 0.0  # would permit axis abolition
@@ -247,16 +249,15 @@ def test_constitution_hash_matches_the_module_constant():
     assert kernel_rules.CONSTITUTION_HASH == _EXPECTED_CONSTITUTION_HASH
 
 
-# ── capture_utility_policy precedence (§5.7 — THE CORE CHANGE) ──────────────
+# ── capture_utility_policy precedence — THE CORE CHANGE ─────────────────────
 
 
 def test_registries_none_is_byte_identical_to_today():
     """Branch 1 (simple_bfts / stub / pre-RQGM): the cfg branch, verbatim.
 
     Pinned against test_rqgm_epoch_state.py's frozen fixture cfg and its
-    ``b192196ced57`` golden — the epoch-0 pin the plan requires to stay green
-    BECAUSE the fallback is byte-identical to the pre-Task-14 function
-    (plan 14 §8.3).
+    ``b192196ced57`` golden — the epoch-0 pin that must stay green BECAUSE
+    the fallback is byte-identical to the pre-Task-14 function.
     """
     from types import SimpleNamespace
 
@@ -288,7 +289,7 @@ def test_registries_none_is_byte_identical_to_today():
 def test_registry_without_a_utility_policy_entry_falls_back_to_cfg():
     """Branch 2: epoch 0 before founding registration; a resumed pre-14
     checkpoint. The run continues with a constant policy, exactly as it was
-    launched (plan 14 §8.5)."""
+    launched — a missing entry degrades, it never raises."""
     cfg = ARIConfig()
     state = RqgmRuntimeState()
     assert capture_utility_policy(cfg, registries=state) == (
@@ -353,7 +354,7 @@ def test_probationary_active_policy_is_also_adopted(tmp_path):
 
 def test_tampered_body_falls_back_to_cfg_with_a_warning(tmp_path, caplog):
     """A tampered body degrades to the cfg branch (the incumbent regime,
-    always safe) — never a raise into the run (plan 14 §5.7)."""
+    always safe) — never a raise into the run, and always with a WARNING."""
     body = dict(utility_policy_body(ARIConfig()), ucb_c=1.75)
     state = _adopted_state(tmp_path, body)
     # In-place mutation of a governed body: the bytes no longer hash to the
@@ -388,7 +389,7 @@ def test_capture_is_deterministic_and_seal_is_over_the_body_alone():
     assert seal_utility_policy(body) == sealed
 
 
-# ── the identity bridge (§5.3): one value, three names ──────────────────────
+# ── the identity bridge: one value, three names ─────────────────────────────
 
 
 def test_identity_bridge_one_value_three_names():
@@ -431,8 +432,8 @@ def test_policy_kind_is_in_the_closed_template_ref_vocabulary():
 
 def test_active_prompt_view_never_serves_a_policy():
     """A utility policy is not a prompt to RENDER; it is a policy to freeze.
-    Filtering keeps the loader's unknown-kind raise unreachable rather than
-    merely unreached (plan 14 §5.3/R7)."""
+    Filtering on ``template_ref.kind == "policy"`` keeps the loader's
+    unknown-kind raise unreachable rather than merely unreached."""
     specs = build_founding_specs() + [founding_utility_policy_spec(ARIConfig())]
     view = active_prompt_view(specs)
     assert UTILITY_POLICY_PROMPT_ID not in view
@@ -444,8 +445,8 @@ def test_active_prompt_view_never_serves_a_policy():
 
 
 def test_founding_registration_events_cfg_none_is_the_pure_table_sequence():
-    """cfg=None keeps today's exact contract, so every existing caller and
-    test is unaffected (plan 14 §7)."""
+    """cfg=None keeps the pre-Task-14 contract — the pure table sequence with
+    no policy row — so every existing caller and test is unaffected."""
     events_none = founding_registration_events()
     ids = [p["prompt_id"] for t, p in events_none if t == "prompt_registered"]
     assert UTILITY_POLICY_PROMPT_ID not in ids
@@ -470,8 +471,9 @@ def test_founding_registration_events_with_cfg_appends_the_policy_row():
 
 
 def test_founding_events_are_reproducible_for_a_fixed_resolved_cfg():
-    """The amended reproducibility claim (plan 14 §5.3): reproducible FOR A
-    FIXED RESOLVED CFG — and genuinely cfg-dependent (R6)."""
+    """The amended reproducibility claim: the founding events are reproducible
+    FOR A FIXED RESOLVED CFG, not absolutely — a different ``axis_weights``
+    yields a different event list, because the policy row hashes the cfg."""
     a = founding_registration_events(ARIConfig())
     b = founding_registration_events(ARIConfig())
     assert a == b
@@ -481,7 +483,7 @@ def test_founding_events_are_reproducible_for_a_fixed_resolved_cfg():
     assert other != a
 
 
-# ── the write-once policy body store (§5.3 / §6.1) ──────────────────────────
+# ── the write-once policy body store ────────────────────────────────────────
 
 
 def test_policy_body_is_write_once(tmp_path):
@@ -501,7 +503,9 @@ def test_policy_body_is_write_once(tmp_path):
 
 
 def test_resolve_text_refuses_bytes_that_no_longer_match(tmp_path):
-    """The identical refusal ``checkpoint_file`` applies (plan 14 §5.3)."""
+    """A ``policy`` body gets the same in-place-mutation refusal a
+    ``checkpoint_file`` prompt gets: once the bytes stop hashing to the
+    registered ``prompt_hash``, ``resolve_text`` raises instead of serving."""
     body = utility_policy_body(ARIConfig())
     spec = utility_policy_spec(body, prompt_id="utility_policy_prompt_v2")
     write_evolved_policy_body(tmp_path, spec.prompt_id, canonical_json(body))
@@ -523,12 +527,13 @@ def test_resolve_text_refuses_bytes_that_no_longer_match(tmp_path):
         reg.resolve_text(spec.prompt_id, checkpoint_dir=tmp_path)
 
 
-# ── PolicyMutator (§5.4) ────────────────────────────────────────────────────
+# ── PolicyMutator ───────────────────────────────────────────────────────────
 
 
 def test_policy_mutator_exposes_no_registry_or_store_write_surface():
-    """The PromptMutator contract: status changes are Task 09's engine,
-    kernel-validated (plan 14 §7)."""
+    """The PromptMutator contract, unchanged: a mutator only EMITS
+    candidates. Status changes belong to Task 09's transition engine and are
+    kernel-validated, so no registry/store write surface may leak onto it."""
     mutator = PolicyMutator()
     for attr in (
         "registry", "store", "prompts", "components", "write", "append",
@@ -542,7 +547,8 @@ def test_policy_mutator_exposes_no_registry_or_store_write_surface():
 
 def test_default_mutation_kinds_are_all_deterministic():
     """The default utility rewrite is FULLY deterministic — the strongest
-    available posture for P2 (plan 14 §5.4)."""
+    available posture for P2: the configured kinds are exactly the pure-knob
+    ones, and ``freeform_policy_proposal`` stays opt-in."""
     typed = ARIConfig().rqgm.utility_evolution
     assert set(typed.mutation_kinds) == set(KNOB_MUTATION_KINDS)
     assert "freeform_policy_proposal" not in typed.mutation_kinds
@@ -624,7 +630,8 @@ def test_unknown_kind_returns_none_and_warns(caplog):
 
 
 def test_freeform_without_an_llm_returns_none():
-    """The exact PromptMutator posture (plan 14 §5.4/§7)."""
+    """The exact PromptMutator posture: without an injected LLM the freeform
+    kind proposes nothing rather than falling back to a synthetic policy."""
     assert PolicyMutator(llm=None).propose(
         utility_policy_body(ARIConfig()),
         evidence=_evidence("novelty"),
@@ -634,7 +641,8 @@ def test_freeform_without_an_llm_returns_none():
 
 def test_over_budget_returns_none():
     """Budget reuse, one schema home: the existing rqgm.prompt_evolution
-    caps, keyed on the TARGET role utility_policy (plan 14 §5.4)."""
+    caps, keyed on the TARGET role ``utility_policy`` (not the proposer's
+    ``policy_mutator``), and metered per epoch."""
     existing = [{
         "record_type": "utility_policy_candidate", "epoch_id": "epoch_000",
         "role": "policy_mutator", "candidate_id": "utility_policy_prompt_v2",
@@ -733,8 +741,8 @@ def test_prompt_channel_budget_is_byte_identical_to_pre_task_14():
 
 
 def test_mixed_record_type_log_partitions_the_two_channels(_cfg=_cfg):
-    """A single evolution log carrying BOTH channels' records (plan 14
-    §5.4/§6.3, the sanctioned per-channel budget deviation): each channel
+    """A single evolution log carrying BOTH channels' records — the
+    sanctioned per-channel budget deviation: each channel
     counts only its OWN record_type, so a utility_policy_candidate never
     consumes a prompt-channel slot and vice versa. The prompt channel's count
     is byte-identical to a log with the utility records deleted."""
@@ -765,7 +773,9 @@ def test_mixed_record_type_log_partitions_the_two_channels(_cfg=_cfg):
 
 
 def test_candidate_envelope_names_the_PROPOSER_not_the_policy():
-    """A candidate is a proposal BY a component (plan 14 §6.2)."""
+    """A candidate is a proposal BY a component: the envelope's
+    ``component_id``/``role`` name the PolicyMutator that authored it, while
+    the proposed policy itself rides ``policy`` + ``policy_hash``."""
     cand = PolicyMutator().propose(
         _body(),
         evidence=_evidence("novelty"),
@@ -833,8 +843,8 @@ def test_no_op_rewrite_is_not_a_rewrite():
 
 def test_proposer_cannot_see_scores():
     """P2 / no collusion: `propose` has no frontier/score parameter at all,
-    so a policy tuned to flatter the proposer's own tree is not expressible
-    (plan 14 §5.4/§9)."""
+    so a policy tuned to flatter the proposer's own tree is not
+    expressible."""
     import inspect
 
     params = set(inspect.signature(PolicyMutator.propose).parameters)
@@ -856,7 +866,7 @@ def test_policy_mutator_never_proposes_a_policy_for_its_own_role():
     assert PolicyMutator.ROLE != PolicyMutator.TARGET_ROLE
 
 
-# ── validate_utility_policy semantics (§5.6) ────────────────────────────────
+# ── validate_utility_policy semantics ───────────────────────────────────────
 
 
 def test_axis_abolition_is_blocked():
@@ -985,7 +995,7 @@ def test_validate_utility_policy_is_deterministic():
     )
 
 
-# ── UtilityPolicyStamp (§5.8 delta 2) ───────────────────────────────────────
+# ── UtilityPolicyStamp ──────────────────────────────────────────────────────
 
 
 class _Node:
@@ -1035,7 +1045,7 @@ def test_stamp_key_matches_the_frontier_repair_constant():
     assert UTILITY_POLICY_HASH_KEY == "_utility_policy_hash"
 
 
-# ── config parity (§6.3) ────────────────────────────────────────────────────
+# ── config parity ───────────────────────────────────────────────────────────
 
 
 def test_utility_evolution_config_mirrors_defaults_yaml():
@@ -1097,8 +1107,8 @@ def test_utility_evolution_module_makes_no_llm_or_network_calls():
         assert forbidden not in src, f"{forbidden!r} in utility_evolution.py"
 
 
-# ── the vacuous shadow board (plan 14 §5.5 "Honest scope of the SHADOW
-#    stage" / §7 contract row) ─────────────────────────────────────────────
+# ── the vacuous shadow board: a policy is dry-run, never shadow-EXECUTED,
+#    so its shadow stage reports ABSENT rather than a borrowed count ───────
 
 def test_the_dry_run_reports_its_vacuous_shadow_board_as_absent():
     """A passive policy document is never shadow-EXECUTED, so it must report
@@ -1134,8 +1144,9 @@ def test_the_dry_run_reports_its_vacuous_shadow_board_as_absent():
     # both static `axis_weights` maps empty) is ABSENT, not 1.0: the ranking
     # comparison never ran, so there is no agreement to report. This was the
     # fourth fabricated 1.0 — a hardcoded pass for a comparison that never
-    # happened, flatly contradicting §7's "No field carries a quantity nothing
-    # produced". The sentinel above already carries the T3 pass.
+    # happened, flatly contradicting the evaluation contract's rule that no
+    # field carries a quantity nothing produced. The sentinel above already
+    # carries the T3 pass.
     assert body.get("axis_weights") == {}, "premise: the default map is empty"
     assert ev["replay_score"] is None and ev["verdict"] == "pass"
 

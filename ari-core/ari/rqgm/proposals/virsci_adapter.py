@@ -1,4 +1,4 @@
-"""VirSciAdapter — MCP-only normalizer for the idea skill (RQGM Task 03 §5.4).
+"""VirSciAdapter — MCP-only normalizer for the idea skill (RQGM Task 03).
 
 Core-side adapter over the idea skill's ``generate_ideas`` (and optionally
 ``survey``) MCP tools. It imports NOTHING from ``ari-skill-idea`` and has
@@ -6,7 +6,7 @@ zero VirSci dependencies — heavy deps (torch/faiss/agentscope) stay inside
 the skill process, which keeps the skill's existing three degradation tiers
 and makes "tests pass without VirSci installed" structural.
 
-``virsci.enabled=false`` guarantees (plan 03 §5.4): this class is only ever
+``virsci.enabled=false`` guarantees: this class is only ever
 constructed by :class:`ari.rqgm.proposals.router.ProposalRouter` when
 ``proposal_router.generators.virsci.enabled`` is true; there is no
 module-level import side effect anywhere in this file, so merely importing
@@ -75,7 +75,8 @@ def normalize_generate_ideas_result(payload: dict) -> list[ProposalDraft]:
     """Normalize one 9-key ``generate_ideas`` payload → 1 draft per idea.
 
     Pure and deterministic (P2): same payload, same drafts. Summary fields
-    are clamped to the §6.2 budgets; NO transcript/discussion content enters
+    are clamped to the ``ProposalSummaryView`` character budgets by
+    ``clamp_summary``; NO transcript/discussion content enters
     any summary field — only the idea entries and the shared metric keys.
     Works identically for ``real_wrap`` and ``reimpl`` integration statuses.
     """

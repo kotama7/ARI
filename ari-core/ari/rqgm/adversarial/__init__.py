@@ -15,8 +15,10 @@ Two constitutional rules anchor the package (global invariants 8 and 9):
    RawAttackRecord/DefenderResponse/``invalid`` judgment has zero effect on
    ``_scientific_score``, frontier ranking, or pruning.
 2. **Adversaries attack artifacts, never components.**
-   ``target_artifact.type`` comes from the closed §5.2 set; component-target
-   smuggling is schema-invalid by construction.
+   ``target_artifact.type`` comes from the closed
+   :data:`~ari.rqgm.adversarial.records.TARGET_ARTIFACT_TYPES` set, which
+   carries no component-id field at all; component-target smuggling is
+   schema-invalid by construction.
 
 Internal package — never exported via ``ari.public.*``, never imported on the
 default ``simple_bfts`` path. Under ``simple_bfts`` (or

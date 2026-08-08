@@ -1,15 +1,16 @@
-"""Adversarial actors + trigger policy + utility-penalty channel (Task 06 §5).
+"""Adversarial actors + trigger policy + utility-penalty channel
+(``docs/reference/rqgm_schemas.md``, "Adversarial-loop schemas (Task 06)").
 
 Three prompt-defined institutional actors — :class:`AdversaryEngine`
-(dispatcher over the seven adversary types), :class:`Defender`,
+(dispatcher over the adversary types), :class:`Defender`,
 :class:`ArtifactJudge` — plus the deterministic pieces around them: the
-per-type pre-signal filters (§5.2, cheap and LLM-free), the per-node trigger
-predicate :func:`should_attack` (§5.5, P2-safe hash sampling), the
+per-type pre-signal filters (cheap and LLM-free), the per-node trigger
+predicate :func:`should_attack` (P2-safe hash sampling), the
 epoch-frozen :class:`UtilityPenaltyPolicy` and :func:`apply_utility_penalty`
-(§5.4, the sterile-gate precedent: ``_scientific_score`` is rewritten, the
+(the sterile-gate precedent: ``_scientific_score`` is rewritten, the
 pre-penalty value preserved in additive reserved keys).
 
-LLM posture (§5.6): all three actors run **in-process** through the
+LLM posture: all three actors run **in-process** through the
 injectable ``llm`` seam (``complete(messages, require_tool=False)`` with
 ``phase="governance", skill="rqgm_adversarial"`` metadata; duck-typed
 TypeError fallback for stubs) — never as MCP tools, so the 3-retry
@@ -52,7 +53,8 @@ JUDGE_PROMPT_KEY = "rqgm/judge_adjudication"
 
 _JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
-#: Deterministic prompt-injection pre-filter patterns (§5.2 row 7):
+#: Deterministic prompt-injection pre-filter patterns (the PromptInjection
+#: adversary's pre-signal):
 #: imperative-to-evaluator phrases and marker smuggling. Pure regex — the
 #: LLM confirmation call happens only after a hit.
 _INJECTION_PATTERNS: tuple[re.Pattern, ...] = (
@@ -64,7 +66,9 @@ _INJECTION_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"<\s*/?\s*(system|instruction)s?\s*>", re.I),
 )
 
-#: Strong-novelty-claim keywords (§5.5 deterministic novelty signal).
+#: Strong-novelty-claim keywords — the deterministic ``novelty`` clause of
+#: :func:`should_attack`, and the extra condition the PriorArt/Overclaim
+#: pre-signals require before they fall back to node text.
 _NOVELTY_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"first[-\s]ever", re.I),
     re.compile(r"\bnovel\b", re.I),
@@ -73,7 +77,8 @@ _NOVELTY_PATTERNS: tuple[re.Pattern, ...] = (
     re.compile(r"\bfirst\s+to\b", re.I),
 )
 
-#: Host-local path smell in build/run commands (§5.2 reproducibility row).
+#: Host-local path smell in build/run commands — the Reproducibility
+#: adversary's pre-signal.
 _HOST_LOCAL_RE = re.compile(r"(^|[\s='\"])/(home|tmp|Users|scratch)/")
 
 
@@ -123,7 +128,8 @@ def injection_pre_filter(text: str) -> list[str]:
 
 
 def novelty_signal(text: str) -> bool:
-    """Deterministic strong-novelty-claim keyword signal (§5.5)."""
+    """Deterministic strong-novelty-claim keyword signal (a trigger clause of
+    :func:`should_attack`)."""
     return any(pat.search(text or "") for pat in _NOVELTY_PATTERNS)
 
 
@@ -132,7 +138,7 @@ def novelty_signal(text: str) -> bool:
 
 @dataclass(frozen=True)
 class ArtifactBundle:
-    """The context-visibility slice the actors see (§5.3): claims + novelty
+    """The context-visibility slice the actors see: claims + novelty
     risks + metric details — never full VirSci transcripts."""
 
     node_id: str = ""
@@ -194,7 +200,7 @@ _GATE_PHASES: tuple[str, ...] = ("final", "draft")
 
 
 def _collect_gate_findings(ckpt) -> tuple:
-    """Paper-phase claim-gate + verified-context pre-signals (plan 06 §5.2),
+    """Paper-phase claim-gate + verified-context pre-signals,
     normalized to the bundle's ``{kind, path, pointer}`` shape the
     ``_pre_*`` filters consume. Absent artifacts → ``()`` (fail-open).
 
@@ -247,8 +253,9 @@ def _collect_gate_findings(ckpt) -> tuple:
 
 
 def _collect_related_refs(ckpt) -> tuple:
-    """Prior-art refs from ``related_refs.json`` (plan 06 §5.2 PriorArt
-    source). List, or a dict under any of the common ref keys; absent → ()."""
+    """Prior-art refs from ``related_refs.json`` — the PriorArt adversary's
+    only evidence source. List, or a dict under any of the common ref keys;
+    absent → ()."""
     data = _read_json_artifact(ckpt / "related_refs.json")
     if isinstance(data, list):
         refs = data
@@ -425,7 +432,7 @@ def _collect_kca_evidence(ckpt, node, report: dict) -> tuple:
 
 def _validate_metrics_flags_from_gate(gate_findings) -> tuple:
     """Deterministic metric-gaming flags derived from the gate findings
-    (plan 06 §5.2 MetricGaming source: ``validate_metrics`` flags + env
+    (the MetricGaming evidence source: ``validate_metrics`` flags + env
     mismatch). Numeric-mismatch / environment-mismatch gate findings are the
     persisted, checkpoint-resolvable form of those pre-checks."""
     kinds = {str(f.get("kind", "")) for f in gate_findings}
@@ -458,7 +465,8 @@ def build_artifact_bundle(
     given, the paper-phase pre-signal artifacts (claim-evidence hard-gate
     reports, ``verified_context.json``, ``related_refs.json``) so the paper
     adversaries fire on real signals instead of degrading to the node-text
-    fallback (plan 06 §5.2 evidence-source table). Absent artifacts →
+    fallback — each type's evidence source is the artifact its ``_pre_*``
+    filter reads. Absent artifacts →
     empty pre-signals (fail-open). No LLM, no network (P2).
     """
     from pathlib import Path
@@ -589,7 +597,7 @@ def _metric_float(metrics: dict, key: str, default: float) -> float:
     return float(raw) if isinstance(raw, (int, float)) else float(default)
 
 
-# ── trigger predicate (§5.5; pure, P2-safe) ─────────────────────────────────
+# ── trigger predicate (pure, P2-safe) ───────────────────────────────────────
 
 
 def deterministic_sample(node_id: str, epoch_id: str, sample_mod: int) -> bool:
@@ -613,7 +621,9 @@ def should_attack(
     jump_threshold: float = 0.25,
     sample_mod: int = 5,
 ) -> bool:
-    """The §5.5 trigger disjunction — deterministic per completed node.
+    """The trigger disjunction — deterministic per completed node: frontier
+    top-K membership, a score jump over the parent, a novelty/pre-signal/
+    paper-candidate flag, or the 1-in-N deterministic sample.
 
     Numbers are Task 12's to tune; the clause shape is fixed here.
     """
@@ -634,7 +644,7 @@ def should_attack(
     return deterministic_sample(node_id, epoch_id, sample_mod)
 
 
-# ── the seven adversary specs (§5.2) ────────────────────────────────────────
+# ── the adversary specs (target class + pre-signal per type) ────────────────
 
 
 def _gate_evidence(bundle: ArtifactBundle, kinds: tuple) -> list[EvidenceRef]:
@@ -750,8 +760,10 @@ def _pre_cost_explosion(bundle: ArtifactBundle) -> list[EvidenceRef]:
 
 
 def _pre_prompt_injection(bundle: ArtifactBundle) -> list[EvidenceRef]:
-    # Scans EVERY node's proposal + node_report text (§5.5 exception),
-    # including memory entries / tool outputs quoted into them.
+    # Scans EVERY node's proposal + node_report text — a firing pre-signal is
+    # itself a trigger clause, so injection is caught on nodes the top-K and
+    # 1-in-N sampling clauses would have skipped. Includes memory entries /
+    # tool outputs quoted into them.
     text = bundle.proposal_text + "\n" + json.dumps(
         bundle.node_report, ensure_ascii=False, sort_keys=True
     )
@@ -780,13 +792,13 @@ PAPER_ANCHOR_CORPUS_REF = "paper_anchor_corpus.jsonl"
 
 
 def _pre_paper_self_preference(bundle: ArtifactBundle) -> list[EvidenceRef]:
-    """Deterministic, LLM-free over-acceptance pre-signal (plan 05 §5.1).
+    """Deterministic, LLM-free over-acceptance pre-signal.
 
     Inert off the paper phase and for un-accepted drafts (fail-safe defaults):
     fires ONLY when the node is a paper candidate, the frozen incumbent
     ``paper_reviewer`` ACCEPTED the draft (``reviewer_accept_score >=
     accept_threshold``), AND at least one of the THREE over-acceptance signals
-    of §5.1 clause 3 is present. With no signal the type produces zero attacks
+    below is present. With no signal the type produces zero attacks
     and costs zero LLM calls (mirrors the web-less PriorArtAdversary
     degradation).
 
@@ -819,8 +831,8 @@ def _pre_paper_self_preference(bundle: ArtifactBundle) -> list[EvidenceRef]:
         getattr(bundle, "self_preference_threshold", 0.1)
     ):
         refs.append(EvidenceRef(path=PAPER_SELF_PREFERENCE_STAT_REF))
-    # Over-acceptance signal 3 (plan 05 §5.1 clause 3, third bullet, amended
-    # 2026-07-17): the DIRECT per-draft anchor over-acceptance — the incumbent
+    # Over-acceptance signal 3 (amended 2026-07-17): the DIRECT per-draft
+    # anchor over-acceptance — the incumbent
     # accepted this specific anchor case whose human ground truth is `reject`.
     # Real and deterministic per draft, and unlike signal 2 it does not need an
     # authorship split, so an all-human corpus still prosecutes over-acceptance
@@ -835,7 +847,7 @@ def _pre_paper_self_preference(bundle: ArtifactBundle) -> list[EvidenceRef]:
 
 @dataclass(frozen=True)
 class AdversarySpec:
-    """One §5.2 table row: target class, prompt, deterministic pre-signal."""
+    """One adversary type: target class, prompt, deterministic pre-signal."""
 
     adversary_type: str
     prompt_key: str
@@ -994,7 +1006,7 @@ class _PromptedActor:
 
 
 class AdversaryEngine(_PromptedActor):
-    """Dispatcher over the seven adversary types (§5.1/§5.2/§7).
+    """Dispatcher over the adversary types in :data:`ADVERSARY_SPECS`.
 
     Deterministic pre-signals run first; the LLM adversary call happens only
     for triggered types, under ``max_attacks_per_node`` and the per-epoch
@@ -1020,7 +1032,8 @@ class AdversaryEngine(_PromptedActor):
         self.cfg = cfg
         self.epoch_state = epoch_state
         self._next_attack_id = next_attack_id or _seq_alloc("atk")
-        # Per-epoch LLM call budget (§5.5): keyed by epoch_id so the count
+        # Per-epoch LLM call budget (`max_adversary_calls_per_epoch`): keyed
+        # by epoch_id so the count
         # resets at every epoch boundary instead of accumulating over the
         # process lifetime. *calls_by_epoch* seeds the spent budget on resume
         # (derived from the JSONL raw-attack lines keyed by epoch_id), so a
@@ -1060,7 +1073,7 @@ class AdversaryEngine(_PromptedActor):
             if not evidence:
                 continue  # event-driven: no pre-signal, no LLM cost
             if self.llm is None:
-                continue  # no adversary LLM → no attacks this node (§5.3)
+                continue  # no adversary LLM → no attacks this node
             calls += 1
             self._calls_by_epoch[epoch_id] = calls
             payload, prompt_hash = self._call(
@@ -1144,7 +1157,7 @@ class AdversaryEngine(_PromptedActor):
 
 
 class Defender(_PromptedActor):
-    """One DefenderResponse per attack (§5.1). A failed/absent defense is a
+    """One DefenderResponse per attack. A failed/absent defense is a
     MISSING response — the Judge then adjudicates with
     ``defense_status: absent_infrastructure`` (never auto-valid)."""
 
@@ -1199,7 +1212,7 @@ class Defender(_PromptedActor):
 
 
 class ArtifactJudge(_PromptedActor):
-    """Adjudicates (attack, defense) pairs (§5.1/§7).
+    """Adjudicates (attack, defense) pairs.
 
     Total deterministic fallback: on ANY failure the verdict is ``invalid``
     (fail-open — no ValidatedAttackRecord, no penalty; safe because of
@@ -1296,7 +1309,7 @@ class ArtifactJudge(_PromptedActor):
             return (*fallback, None)
 
 
-# ── UtilityPenaltyPolicy + apply_utility_penalty (§5.4) ─────────────────────
+# ── UtilityPenaltyPolicy + apply_utility_penalty (the penalty channel) ──────
 
 
 class UtilityPenaltyPolicy:
@@ -1380,7 +1393,7 @@ def apply_utility_penalty(
     next_utility_seq: int = 0,
     epoch_utility_policy: dict | None = None,
 ) -> UtilityRecord | None:
-    """The §5.4 penalty channel — sterile-gate precedent, invariant 8/16.
+    """The utility-penalty channel — sterile-gate precedent, invariant 8/16.
 
     Consumes ONLY ValidatedAttackRecords. Never resurrects a sterile node,
     never touches an unscored node, never raises a score; the pre-penalty
@@ -1388,7 +1401,7 @@ def apply_utility_penalty(
     UtilityRecord to append (caller logs it), or ``None`` when nothing
     changed.
 
-    *epoch_utility_policy* (plan 14 §5.8 delta 1, additive; ``None`` ⇒ this
+    *epoch_utility_policy* (additive; ``None`` ⇒ this
     function's exact pre-Task-14 record) is the EPOCH's frozen utility policy
     (``ari.rqgm.state.capture_utility_policy``). Two DIFFERENT policies were
     both called ``utility_policy_hash``:
@@ -1432,7 +1445,7 @@ def apply_utility_penalty(
     payload = policy.payload()
     policy_hash = policy.policy_hash
     if epoch_utility_policy:
-        # Plan 14 §5.8 delta 1. The three schema-required keys are untouched
+        # Additive only. The three schema-required keys are untouched
         # (MetricRecomputer reads only those and copies the record forward,
         # so the additive sub-object is invisible to it); the by-value
         # promise — "Task 10's recompute under the original epoch's weights
@@ -1479,7 +1492,9 @@ def _epoch_id(epoch_state) -> str:
 
 
 def _target_block(bundle: ArtifactBundle) -> str:
-    """The adversary-visible artifact slice (§5.3 context visibility)."""
+    """The adversary-visible artifact slice — the context-visibility
+    boundary: claims, metrics and the fixed K/C/A premises, never the full
+    VirSci transcript."""
     return canonical_json(
         {
             "node_id": bundle.node_id,

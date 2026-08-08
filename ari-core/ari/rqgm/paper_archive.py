@@ -47,11 +47,11 @@ _FRAMING_WINDOW = 20
 
 
 def archive_node_budget(knobs) -> int:
-    """The §5.4.1 per-epoch draft-population bound:
+    """The per-epoch draft-population bound:
     ``min(width * (1 + refine_rounds), max_expansions)``.
 
     This is the value :class:`PaperArchiveStrategy` uses as its effective BFTS
-    ``max_total_nodes`` (Task 06 §5.6): the tree is capped by the node budget at
+    ``max_total_nodes``: the tree is capped by the node budget at
     ANY depth, because ``should_prune`` retires a frontier node the moment the
     total-node cutoff binds (bfts.py:501-502) BEFORE the depth test. Independent
     of ``archive.depth`` — a deeper tree redistributes the same M nodes, it never
@@ -87,7 +87,7 @@ class PaperArchiveStrategy:
         self.refine_rounds = int(getattr(knobs, "refine_rounds", 2))   # draft branch factor
         self.max_expansions = int(getattr(knobs, "max_expansions", 12))  # raw config knob
         # The EFFECTIVE per-epoch node cap = min(width·(1+refine_rounds),
-        # max_expansions) (§5.6). Using the raw max_expansions alone would let
+        # max_expansions). Using the raw max_expansions alone would let
         # the cost model's formula diverge from the real bound; this is the
         # single source of truth both the strategy and paper_expansion_budget use.
         self.node_budget = archive_node_budget(knobs)          # -> BFTS max_total_nodes
@@ -100,16 +100,17 @@ class PaperArchiveStrategy:
     def _fanout_cap(self, node: Node) -> int:
         """The root fans out into ``width`` framings; a draft fans out into
         ``refine_rounds`` refinements/variants. Cost is capped by
-        ``max_expansions`` regardless (§5.1) — these only shape WHERE the
-        budget may land."""
+        ``max_expansions`` regardless — these only shape WHERE the
+        budget may land, never how much there is."""
         return self.width if node.depth == 0 else self.refine_rounds
 
     # ── reused BFTS logic (total/depth cutoff), specialized to the tree ──
     def should_prune(self, node: Node, *, current_total: int) -> bool:
         """BFTS.should_prune's clauses in BFTS's ORDER (bfts.py:481-514): the
         TOTAL cap (bfts.py:501) binds BEFORE the depth cap (bfts.py:503) —
-        exactly why depth costs nothing (§5.1) — plus one archive-specific
-        clause (the per-parent fan-out cap)."""
+        exactly why depth costs nothing (a deeper tree redistributes the same
+        capped node count) — plus one archive-specific clause (the per-parent
+        fan-out cap)."""
         if current_total >= 1 + self.node_budget:      # per-epoch budget = max_total_nodes
             return True
         if node.depth >= self.depth:                   # depth==3 -> refine chain ends
@@ -132,7 +133,7 @@ class PaperArchiveStrategy:
 
         1. Seeds first: the root outranks every draft until ``width`` framings
            exist — an unsampled framing beats a marginal refine of a sampled
-           one, and that is what ``width`` buys (§5.1).
+           one, and that is what ``width`` buys.
         2. Then rank every expandable DRAFT by the governed paper_reviewer
            composite in ``metrics["_scientific_score"]`` (Task 04) +
            ``diversity_bonus``.
@@ -194,7 +195,8 @@ class PaperArchiveStrategy:
 
     def record_run(self, node: Node) -> None:
         """Diversity accounting, mirroring ``BFTS.record_run`` (bfts.py:262)
-        but keyed on the draft's FRAMING (``writer_prompt_hash``, §5.4.5)
+        but keyed on the draft's FRAMING (``writer_prompt_hash`` — the framing
+        IS the writer prompt that produced the draft)
         instead of ``NodeLabel``: every draft is ``NodeLabel.DRAFT``, so the
         label carries no signal here."""
         if node is None:
@@ -222,13 +224,15 @@ class PaperArchiveStrategy:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# paper_draft_archive.jsonl — the scored draft population (§6.1)
+# paper_draft_archive.jsonl — the scored draft population; one line per draft
+# node (docs/reference/rqgm_schemas.md,
+# "`paper_draft_archive.jsonl` — the scored draft population")
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 def _warn_on_seed_collapse(checkpoint_dir, record: dict) -> None:
-    """R1's collapse detector (plan 02 §5.4/R1): warn when an incoming ``seed``
-    record's ``tex_sha256`` matches a seed already in the archive.
+    """R1's collapse detector: warn when an incoming ``seed`` record's
+    ``tex_sha256`` matches a seed already in the archive.
 
     ``(writer_prompt_hash, decode_seed)`` is R1's named mitigation against "K
     candidates are near-identical and the archive degrades to K copies". With
@@ -276,7 +280,7 @@ def write_paper_draft_record(checkpoint_dir: str | Path, record: dict) -> None:
 
     Append-only, byte-fixed (``ensure_ascii=False``, one compact object per
     line). Best-effort — a record-write failure must never break the paper
-    phase (fail-open, migration §8.5)."""
+    phase: on failure it logs and returns rather than raising."""
     _warn_on_seed_collapse(checkpoint_dir, record)
     try:
         path = Path(checkpoint_dir) / PAPER_DRAFT_ARCHIVE_FILENAME
@@ -295,10 +299,10 @@ def mark_paper_draft_flags(
     epoch_id: str | None = None, **flags: bool,
 ) -> None:
     """Best-effort update of a draft record's boolean flags (``is_best_belief``
-    / ``compiled``, §5.5). Reads the whole archive, marks the ONE record the
+    / ``compiled``). Reads the whole archive, marks the ONE record the
     flags describe, and rewrites the file byte-fixed. Never raises into the run.
 
-    **Exactly one record carries each flag (§6.1).** Node ids are re-minted every
+    **Exactly one record carries each flag.** Node ids are re-minted every
     round by a fresh ``PaperArchiveStrategy``, so several records can share a
     ``node_id``; this marked EVERY match and cleared nothing, so ONE compile
     stamped ``compiled: true`` on two records and a reader counting compiles or
@@ -465,7 +469,7 @@ def erase_paper_reviewer_utilities(
 def epoch_draft_records(
     checkpoint_dir: str | Path, epoch_id: str
 ) -> list[dict]:
-    """The persisted draft records for ONE epoch, content-hash verified (§8.6).
+    """The persisted draft records for ONE epoch, content-hash verified.
 
     Scoped to ``epoch_id`` because each round rebuilds under freshly adopted
     prompts — a prior epoch's records must never restore into this one. Last-wins
@@ -473,7 +477,7 @@ def epoch_draft_records(
     that node's current state; a pre-existing archive may hold duplicates from a
     re-invocation predating the resume path).
 
-    The content-hash gate is what makes resume "content-hash safe" (§8.6): a
+    The content-hash gate is what makes resume "content-hash safe": a
     record is kept only if the bytes at its own ``tex_path`` still hash to its
     recorded ``tex_sha256``. A missing or mismatched file DROPS the record so the
     node regenerates rather than restoring a node whose artifact is gone or
@@ -516,14 +520,15 @@ def restore_archive_round(
     epoch_id: str,
 ) -> list[Node]:
     """Rebuild one epoch's draft tree from ``paper_draft_archive.jsonl`` and
-    PRIME ``strat`` so the round continues rather than restarts (§8.6, §9 Resume;
-    Task 06 §8.5/§9.11 "a resume must not re-fund the round").
+    PRIME ``strat`` so the round continues rather than restarts — a resume must
+    not re-fund the round, i.e. it may not hand the round a second budget.
 
-    Every record is a node (§6.1), so the records rebuild the tree: ``node_id`` /
+    Every record is a node, so the records rebuild the tree: ``node_id`` /
     ``parent_draft_id`` restore the EDGES, ``review_score`` / ``writer_prompt_hash``
     restore ``_scientific_score`` / ``_framing_key``, and the restored frontier
     hands ``select_best_to_expand`` the same state it had before the interrupt —
-    a best-first continuation, not a positional cursor (§8.6 rejects those).
+    a best-first continuation, not a positional cursor (a cursor would resume at
+    an index, which says nothing about which draft is now worth expanding).
 
     Priming the strategy is what stops a re-fund AND a re-mint: ``_expansions``
     restores the epoch's spent budget, and ``_fanout`` restores the per-parent

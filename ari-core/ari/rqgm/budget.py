@@ -102,7 +102,7 @@ class BudgetedAction:
 
     *role* qualifies ``prompt_candidate`` (per-role caps);
     *retirement_pending* selects the higher ``max_cases_for_retirement``
-    replay cap when a RetirementEvent is under consideration (§5.3).
+    replay cap when a RetirementEvent is under consideration.
     """
 
     kind: str
@@ -193,7 +193,7 @@ class GovernanceBudgetManager:
         self._spend_tokens: dict[str, int] = {}
         self._restore()
 
-    # ── construction-time restore (resume-safety, §8) ─────────────────
+    # ── construction-time restore (resume-safety) ─────────────────────
 
     def _restore(self) -> None:
         if self._checkpoint_dir is None:
@@ -225,7 +225,7 @@ class GovernanceBudgetManager:
             log.warning("budget counter restore failed (starting empty)",
                         exc_info=True)
 
-    # ── config slices (single schema homes, §5.3) ─────────────────────
+    # ── config slices (single schema home per knob) ───────────────────
 
     def _rqgm(self):
         return _get(self.cfg, "rqgm")
@@ -279,7 +279,7 @@ class GovernanceBudgetManager:
             vcfg = _get(_get(_get(self.cfg, "proposal_router"), "generators"),
                         "virsci")
             if not bool(_get(vcfg, "enabled", False)):
-                return 0  # zero-cost guarantee when disabled (§8)
+                return 0  # zero-cost guarantee: disabled means cap 0
             cap = _num(_get(vcfg, "max_calls_per_epoch", 2), 2)
             return cap if cap > 0 else None  # router semantics: <=0 unlimited
         if action.kind == PROMPT_CANDIDATE:
@@ -292,7 +292,7 @@ class GovernanceBudgetManager:
             return _num(_get(_get(r, "governance"),
                              "max_llm_calls_per_audit", 12), 12)
         if action.kind == PAPER_ANCHOR_SCORING:
-            # Paper-archive Task 06 §6.2/D5: the reviewer candidate's
+            # Paper-archive reviewer evolution: the reviewer candidate's
             # anchor-agreement utility is measured on `sample_size` held-out
             # papers, so cost is O(candidates x sample_size). Disabled anchor
             # returns 0 (the SHADOW_CALL/VIRSCI_CALL disabled-returns-0 rule).
@@ -328,8 +328,8 @@ class GovernanceBudgetManager:
     def _spend_exhausted(self, epoch_id: str) -> str:
         """The ``rqgm.budgets`` spend caps (0 == unlimited, attribution
         only). Spend is read from the passive CostTracker records filtered
-        by ``epoch`` + ``phase="governance"`` (§5.4.2) when a tracker is
-        available, else from this manager's own ``consume`` totals."""
+        by ``epoch`` + ``phase="governance"`` when a tracker is available,
+        else from this manager's own ``consume`` totals."""
         budgets = _get(self._rqgm(), "budgets")
         max_usd = max(0.0, _num(_get(budgets, "max_governance_cost_usd_per_epoch",
                                      0.0), 0.0))
@@ -363,13 +363,13 @@ class GovernanceBudgetManager:
             return f"governance tokens {spent_tokens} >= cap {max_tokens}"
         return ""
 
-    # ── §7 API ────────────────────────────────────────────────────────
+    # ── public API ────────────────────────────────────────────────────
 
     def check(self, action: BudgetedAction) -> BudgetVerdict:
         """Decision-point verdict for one governance action (never raises).
 
-        L0 fixed checks never call this — they are exempt by construction
-        (§5.4.4); everything that does is degradable.
+        L0 fixed checks never call this — they are exempt by construction;
+        every action that does reach here is degradable.
         """
         try:
             epoch_id = self._epoch_id()
@@ -434,8 +434,9 @@ class GovernanceBudgetManager:
                         exc_info=True)
 
     def gate(self, action: BudgetedAction, *, node_id: str = "") -> BudgetVerdict:
-        """:meth:`check` + audit-log the degrade/skip outcome (§5.4.3:
-        both outcomes are audit-logged)."""
+        """:meth:`check` + audit-log the degrade/skip outcome — both
+        outcomes leave a durable line, so a budget-shaped run stays
+        replayable."""
         verdict = self.check(action)
         if not verdict.allowed:
             self._append_audit(BUDGET_DEGRADED_EVENT, {
@@ -448,7 +449,7 @@ class GovernanceBudgetManager:
             })
         return verdict
 
-    # ── level ladder (§5.1/§5.2; pure decision logic) ─────────────────
+    # ── level ladder (pure decision logic) ────────────────────────────
 
     def assign_level(
         self,
@@ -457,7 +458,7 @@ class GovernanceBudgetManager:
         epoch_state=None,
         **kwargs,
     ) -> int:
-        """Pure §5.2 trigger evaluation → level int (0..3)."""
+        """Pure trigger evaluation → level int (0..3)."""
         level, _ = self.level_with_triggers(
             node, frontier, epoch_state, **kwargs
         )
@@ -474,8 +475,11 @@ class GovernanceBudgetManager:
         paper_candidate: bool = False,
         novelty_risks=(),
     ) -> tuple[int, list[str]]:
-        """The §5.2 triggers, in fixed evaluation order (deterministic —
-        computable from ``node.metrics`` / frontier state, no LLM).
+        """The escalation triggers (``top_k``, ``paper_candidate``,
+        ``score_jump``, ``novelty_claim``, ``low_confidence``) in fixed
+        evaluation order — deterministic, computable from ``node.metrics`` /
+        frontier state, no LLM (docs/concepts/rqgm_runtime_walkthrough.md,
+        "4. Per node — proposal, execution, governance level").
 
         *frontier* accepts node objects (id tie-break applies) or bare
         scores (the run-loop hook passes ``frontier_scores`` floats).
@@ -521,8 +525,8 @@ class GovernanceBudgetManager:
             review_confidence is not None
             and _num(review_confidence, 1.0) < low_conf
         ):
-            # Disputed: L2→L3 escalation (§5.2); below L2 it raises the
-            # node into the contested tier first.
+            # Disputed: L2→L3 escalation; below L2 it raises the node into
+            # the contested tier first.
             level = (
                 LEVEL_ADJUDICATED if level >= LEVEL_CONTESTED
                 else LEVEL_CONTESTED
@@ -531,7 +535,7 @@ class GovernanceBudgetManager:
         return level, triggers
 
     def record_level(self, node_id: str, level: int, triggers) -> None:
-        """Audit-log one level assignment (§5.2: deterministic, replayable)."""
+        """Audit-log one level assignment (deterministic, replayable)."""
         self._append_audit(GOVERNANCE_LEVEL_EVENT, {
             "epoch_id": self._epoch_id(),
             "node_id": str(node_id or ""),
@@ -539,7 +543,7 @@ class GovernanceBudgetManager:
             "triggers": [str(t) for t in (triggers or ())],
         })
 
-    # ── deterministic shadow sampling (§5.6) ──────────────────────────
+    # ── deterministic shadow sampling (pure hash rule) ────────────────
 
     def shadow_sample(self, node_id: str) -> bool:
         """Pure hash rule; same ``(run_id, epoch_id, node_id)`` → same
@@ -556,7 +560,7 @@ class GovernanceBudgetManager:
 
     def select_shadow_nodes(self, node_ids) -> list[str]:
         """Hash-sample then truncate to ``max_shadow_calls_per_epoch`` in
-        node-id order (§5.6), net of shadow calls already consumed."""
+        node-id order, net of shadow calls already consumed."""
         cap = self._cap(BudgetedAction(SHADOW_CALL))
         if cap is not None:
             cap = max(
@@ -582,7 +586,7 @@ class GovernanceBudgetManager:
 
 def _in_top_k(node, frontier, k: int, score: float) -> bool:
     """Frontier top-K membership; node-object frontiers break ties by node
-    id (lexicographic — §5.2), bare-score frontiers use the score threshold
+    id (lexicographic), bare-score frontiers use the score threshold
     (parity with ``ari.rqgm.adversarial.engine.should_attack``)."""
     items = list(frontier or ())
     node_id = str(getattr(node, "id", "") or "")

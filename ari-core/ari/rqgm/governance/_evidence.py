@@ -1,9 +1,12 @@
-"""EvidenceClerk + EvidenceAuditChecker + SourceRefValidator (Task 05 §5.3 step 3).
+"""EvidenceClerk + EvidenceAuditChecker + SourceRefValidator — the evidence
+step of the epoch audit (RQGM Task 05), run between threshold flagging and
+motion drafting.
 
 **Deterministic** bundle assembly: the EvidenceClerk builds EvidenceBundles
 from record refs + content hashes, the SourceRefValidator resolves every ref
 against the epoch's record map, and the EvidenceAuditChecker enforces
-admissibility (plan 05 §5.4 / §6.3):
+admissibility — the full exclusion ladder is docs/reference/rqgm_schemas.md,
+"The motion-pipeline records":
 
 * same-role-authored items are excluded with reason ``same_role_source``
   (observations-not-accusations, invariants 4-7);
@@ -245,7 +248,7 @@ def candidate_refs_for_target(records_by_id: dict, target_cid: str) -> list:
     *leads*: their own ``source_refs`` (primary artifacts) are pulled in for
     independent verification while the observation ref itself is also listed
     — so its exclusion is recorded transparently in ``excluded_items``
-    (§5.4 rule 3, §6.3 example).
+    (reason ``same_role_source``) instead of being silently dropped here.
     """
     refs: set[str] = set()
     for rid, rec in records_by_id.items():
@@ -302,7 +305,7 @@ def assemble_evidence_bundle(
             continue
         if author_role and author_role == target_role:
             # Covers same-role ComparisonObservations too (their author role
-            # equals the subject's role by definition — §6.2 invariant).
+            # equals the subject's role by definition).
             excluded.append({"ref": ref, "reason": EXCLUDE_SAME_ROLE})
             continue
         kind = ADMISSIBLE_KIND_BY_TYPE.get(rtype)

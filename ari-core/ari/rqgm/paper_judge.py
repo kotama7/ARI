@@ -1,4 +1,4 @@
-"""Agent-as-judge draft scoring — paper-archive Task 03 §5.8 Residual.
+"""Agent-as-judge draft scoring — the LLM seam past the discrimination ceiling.
 
 The deterministic ``GovernedPaperReviewer`` scores each archive draft over the
 venue rubric axes a *deterministic reader* can read (structure, claim anchors,
@@ -7,7 +7,7 @@ so the LLM-free path leaves them ABSENT — and two mature drafts that both
 saturate the readable axes then TIE at the ceiling, giving best-belief selection
 nothing to choose on (the "discrimination ceiling").
 
-This module lands the seam plan 03 §5.8 named but left unlanded: a real
+This module lands the seam the deterministic path leaves open: a real
 ``LLMClient``-backed ``score_fn(prompt_text, draft_text) -> float`` that scores a
 draft over the SAME venue rubric axes, weighted by the ACTIVE governed reviewer
 prompt's emphasis — so evolving the reviewer's bytes still moves selection, and
@@ -100,7 +100,8 @@ def _paper_reviewer_string_view(
 ) -> dict:
     """The paper_reviewer context as CAPPED STRINGS, keyed by exactly the
     kernel-enforced whitelist (``PAPER_REVIEWER_FIELDS``) so same-role isolation
-    (plan 03 §5.3) still holds. ``build_paper_reviewer_context`` is the record
+    still holds — the view has no slot for another reviewer's output.
+    ``build_paper_reviewer_context`` is the record
     projection for structured inputs; it maps a raw string to ``{}`` (``_plain``
     keeps only dicts), which silently dropped the draft body — the judge scored
     an empty manuscript. The archive's inputs ARE strings (a ``.tex`` draft,
@@ -114,7 +115,7 @@ def _paper_reviewer_string_view(
         "science_data": str(science_data or "")[:_AUX_CAP],
         "reference_context": str(reference_context or "")[:_AUX_CAP],
     }
-    assert set(view) == set(PAPER_REVIEWER_FIELDS)   # same-role isolation (§5.3)
+    assert set(view) == set(PAPER_REVIEWER_FIELDS)   # same-role isolation
     return view
 
 
@@ -203,7 +204,7 @@ def _render_messages(prompt_text: str, context: dict, axes: list) -> list[dict]:
     axis_block = axes_to_prompt_section(axes)
     # The ACTIVE governed reviewer prompt bytes are the EMPHASIS instruction —
     # this is what makes an evolved reviewer score differently, so the reviewer
-    # role's co-evolution actually moves best-belief selection (§5.8).
+    # role's co-evolution actually moves best-belief selection.
     emphasis_note = (prompt_text or "").strip() or (
         "Apply the venue's standard weighting across the axes."
     )
@@ -278,7 +279,7 @@ def build_agent_as_judge_score_fn(
 
     The prompt text is the ACTIVE governed reviewer prompt: it is threaded into
     the judge as the emphasis instruction, so a co-evolved reviewer produces a
-    genuinely different score (§5.8), and the score reads axes — novelty,
+    genuinely different score, and the score reads axes — novelty,
     significance — that no deterministic reader can, breaking the ceiling."""
     exp = experiment_data or {}
     if axes is None:

@@ -38,7 +38,8 @@ log = logging.getLogger(__name__)
 
 
 class GovernanceOrchestrator:
-    """The single epoch-boundary governance entry point (plan 05 §7).
+    """The single epoch-boundary governance entry point — one public class,
+    one public method, one public return type.
 
     *cfg* is the ``rqgm`` config slice (``.governance`` + ``.replay`` —
     typed models, raw dicts, or absent all work); *kernel* is the Task 04
@@ -65,8 +66,10 @@ class GovernanceOrchestrator:
     ) -> None:
         if kernel is None:
             raise ValueError(
-                "GovernanceOrchestrator requires the ConstitutionalKernel "
-                "(plan 05 §7): the kernel is the role-separation authority"
+                "GovernanceOrchestrator requires the ConstitutionalKernel: "
+                "the kernel, not the orchestrator's own record builders, is "
+                "the role-separation authority, and it re-validates every "
+                "record the audit produced"
             )
         self.cfg = cfg
         self.kernel = kernel
@@ -94,13 +97,16 @@ class GovernanceOrchestrator:
         adversarial_replay_pool=None,
         budget_manager=None,
     ) -> GovernanceReport:
-        """Run the nine-step audit (plan 05 §5.3) and append its records.
+        """Run the nine-step audit and append its records.
 
-        Step failures degrade the report (``degradation_reasons``); only
-        report serialization may raise — the caller's fail-open catch
-        (§5.2) then applies. *budget_manager* (RQGM Task 12 §7, optional)
-        is consulted before every internal LLM step; a denial degrades
-        that step to its deterministic fallback.
+        The nine steps are: observe → assess reliability → assemble
+        evidence → prosecute → defend → adjudicate → replay-pool update →
+        self-audit → report. Step failures degrade the report
+        (``degradation_reasons``); only report serialization may raise, and
+        the caller wraps this call in a fail-open ``except`` so a governance
+        failure never aborts the epoch. *budget_manager* (the Task 12
+        cost-control seam, optional) is consulted before every internal LLM
+        step; a denial degrades that step to its deterministic fallback.
         """
         from ari.rqgm.governance._pipeline import run_audit
 

@@ -5,8 +5,8 @@
 derived, rebuildable rollup of every SelectiveErasureEvent /
 FrontierRebuildEvent appended to the Task 02 audit log: "JSONL is truth,
 snapshot is derived" (the ``prompt_trace`` → ``prompt_versions`` precedent).
-Staleness is **logical-only** (§5.1 P-A): no stored record line is ever
-rewritten — readers derive ``stale`` as ``record_id ∈ stale_record_ids``.
+Staleness is **logical-only**: no stored record line is ever rewritten in
+place — readers derive ``stale`` as ``record_id ∈ stale_record_ids``.
 
 The JSON write funnels through :func:`ari.checkpoint.save_erasure_state_json`
 (the ``save_prompt_versions_json`` shim pattern) so byte-fixed formatting
@@ -15,7 +15,8 @@ all valid" — the ``load_prompt_trace`` absence-is-no-data discipline, which is
 also how pre-feature checkpoints stay valid.
 
 Under ``simple_bfts`` nothing constructs this store and the file is never
-created (§5.7). Writer posture: best-effort, never raises into the run loop.
+created — the mode leaves no RQGM residue on the checkpoint. Writer posture:
+best-effort, never raises into the run loop.
 """
 
 from __future__ import annotations
@@ -32,7 +33,8 @@ ERASURE_STATE_SCHEMA_VERSION = 1
 
 @dataclass(frozen=True)
 class ErasureStateView:
-    """Immutable read view of the erasure state (plan 10 §6).
+    """Immutable read view of the erasure state; the stored shape is
+    docs/reference/rqgm_schemas.md, "`erasure_state.schema.json`".
 
     Mapping values record provenance: ``stale_record_ids[rid]`` /
     ``invalid_frontier_node_ids[nid]`` hold the erasure event id that flagged
@@ -58,7 +60,8 @@ class ErasureStateView:
         return frozenset(self.retired_prompt_hashes)
 
     def to_payload(self) -> dict:
-        """§6 snapshot layout (key order fixed to the plan example)."""
+        """The byte-fixed snapshot layout: key order is part of the format,
+        so the file is diffable and hash-stable across writes."""
         return {
             "schema_version": ERASURE_STATE_SCHEMA_VERSION,
             "retired_prompt_hashes": {

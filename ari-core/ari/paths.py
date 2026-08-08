@@ -823,7 +823,11 @@ class PathManager:
         ARI uses an env-var hand-off when spawning MCP skills, Letta and
         delete subprocesses so they bind to the same checkpoint as the
         parent.  Going through this helper keeps every writer routed
-        through PathManager (Phase 1 receiving-criterion §10).
+        through PathManager: ``RuntimePathResolver.set_checkpoint_dir_env``
+        is the one function that assigns ``os.environ["ARI_CHECKPOINT_DIR"]``,
+        so the run pin has a single owner.  Read that as a convention, not
+        an enforced rule: docs/reference/environment_variables.md,
+        "Checkpoint + paths", records what it does and does not guarantee.
         """
         RuntimePathResolver.set_checkpoint_dir_env(checkpoint_dir)
 

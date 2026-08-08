@@ -58,7 +58,7 @@ console = Console()
 # loop flush current state mid-run so the GUI (polling /state every 5 s) can
 # animate tree growth, RUNNING transitions, and trace_log accumulation.
 #
-# Phase 2 §6-1: throttling + JSON layout live in ``ari.checkpoint``;
+# Single-writer rule: throttling + JSON layout live in ``ari.checkpoint``;
 # this wrapper just feeds it the (run_id, experiment_file, nodes)
 # triple via ``_save_checkpoint``.
 
@@ -2112,7 +2112,8 @@ def _save_checkpoint(checkpoint_dir, run_id, experiment_file, nodes):
 
     JSON file names + key order are fixed by the GUI / paper pipeline
     contract; the actual write is delegated to ``ari.checkpoint`` so
-    only one place owns ``json.dumps(..., indent=2)`` (Phase 2 §6-1).
+    only one place owns ``json.dumps(..., indent=2)`` — the serialisation
+    format is never re-implemented at a call site.
     """
     from ari.checkpoint import (
         save_tree_json as _save_tree,

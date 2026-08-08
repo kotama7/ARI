@@ -26,8 +26,8 @@ dicts that hid the dead chain, plus the targetless negative control and the
 zero-authorship bound target.
 
 No test calls a real LLM: every governance actor is injected as a
-deterministic fake (plan 05 §5.3: prompt-defined components ride an
-injectable seam; the ``llm=None`` floor is fully deterministic).
+deterministic fake — prompt-defined components ride an injectable seam, and
+the ``llm=None`` floor is fully deterministic.
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ def _clear_case_log() -> list[dict]:
 def _real_validated(seq: int, *, target: str = "reviewer_v3",
                     roles: tuple = ("reviewer",)) -> dict:
     """A **real** ValidatedAttackRecord dict — the actual producer output,
-    never a ``_rec`` fixture (Task 15 §9).
+    never a ``_rec`` fixture.
 
     The dict fixtures above prove the consumer; only this proves the
     producer, and the two must name the SAME key or the whole
@@ -254,7 +254,7 @@ def _strip_volatile(obj):
     return obj
 
 
-# ── §9.1 facade smoke + schema validation ────────────────────────────────────
+# ── facade smoke: an empty epoch yields a valid, non-degraded report ─────────
 
 
 def test_empty_audit_log_yields_valid_empty_nondegraded_report():
@@ -296,7 +296,7 @@ def test_schema_rejects_unknown_recommendation_action():
         jsonschema.validate(doc, schemas.load("governance_report.schema"))
 
 
-# ── §9.2 ReliabilityMonitor exact aggregation ────────────────────────────────
+# ── ReliabilityMonitor: exact aggregation; missing data is never fabricated ──
 
 
 def test_reliability_exact_aggregation():
@@ -326,7 +326,7 @@ def test_reliability_exact_aggregation():
     assert [e["component_id"] for e in entries] == sorted(by_id)
 
 
-# ── §9.3 EvidenceAssembly ────────────────────────────────────────────────────
+# ── EvidenceAssembly: what is admissible, and why the rest is excluded ───────
 
 
 def test_evidence_bundle_admissibility_and_exclusions():
@@ -352,7 +352,7 @@ def test_evidence_bundle_admissibility_and_exclusions():
     assert all(i["content_hash"] for i in bundle.items)
     excluded = {i["ref"]: i["reason"] for i in bundle.excluded_items}
     assert excluded["raw_00001"] == "unadjudicated_raw_attack"
-    assert excluded["obs_00031"] == "same_role_source"   # §6.2 invariant
+    assert excluded["obs_00031"] == "same_role_source"   # same-role observer
     assert excluded["rev_00001"] == "same_role_source"   # target's own output
     assert excluded["missing_ref"] == "unresolvable_ref"
     assert bundle.all_refs_resolved is False
@@ -361,7 +361,7 @@ def test_evidence_bundle_admissibility_and_exclusions():
     }
 
 
-# ── §9.4 same-role prohibition (constructive) ────────────────────────────────
+# ── same-role prohibition, constructively: the builders refuse ───────────────
 
 
 def test_builders_refuse_same_role_and_wrong_author():
@@ -411,7 +411,7 @@ def test_comparison_observation_never_admissible():
     assert obs.to_dict()["admissible_as_evidence"] is False
 
 
-# ── §9.5 same-role prohibition (kernel authority) ────────────────────────────
+# ── same-role prohibition by kernel authority: hand-crafted records too ──────
 
 
 def test_kernel_rejects_hand_crafted_violating_records():
@@ -442,7 +442,7 @@ def test_pipeline_records_pass_kernel_revalidation():
     assert report.self_audit["escalations"] == []
 
 
-# ── §9.6 prosecution thresholds + bonds ──────────────────────────────────────
+# ── prosecution thresholds + bond-ledger arithmetic + motion caps ────────────
 
 
 def test_classify_thresholds_exact():
@@ -471,7 +471,7 @@ def test_clear_case_files_motion_and_bond_ledger_is_exact():
     assert motion["role"] == "auditor"
     assert motion["charge"] == "validated_attack_threshold_exceeded"
     assert motion["requested_action"] == "demote"
-    # llm=None → judge fallback dismissed → bond forfeited (§5.5).
+    # llm=None → judge fallback dismissed → the accuser's bond is forfeited.
     assert report.bond_accounting == {
         "posted": 1, "refunded": 0, "forfeited": 1, "remaining_budget": 1,
     }
@@ -508,7 +508,7 @@ def test_bond_ledger_arithmetic():
     }
 
 
-# ── Task 15 §9 integration: producer↔consumer parity (the real chain) ────────
+# ── Task 15 integration: producer↔consumer parity (the real chain) ───────────
 
 
 def test_real_producer_records_reach_the_counter_that_prosecutes():
@@ -624,7 +624,7 @@ def test_bound_attack_chain_ends_in_a_registry_sanction():
 def test_a_component_that_authored_nothing_is_still_prosecutable():
     """The binding alone reaches a motion: an attacked component gets an
     entry even at observation_count 0, and the attack branch fires without
-    any reliability_score at all (§5.7)."""
+    any reliability_score at all."""
     log = _reviewer_records() + [
         _real_validated(1, target="paper_reviewer_v1"),
         _real_validated(2, target="paper_reviewer_v1"),
@@ -639,7 +639,7 @@ def test_a_component_that_authored_nothing_is_still_prosecutable():
     assert classify_target(entry) == CLASSIFY_FILE
 
 
-# ── §9.7 fallback totality ───────────────────────────────────────────────────
+# ── fallback totality: every LLM failure mode still completes the audit ──────
 
 
 @pytest.mark.parametrize("llm", [
@@ -686,7 +686,7 @@ def test_borderline_with_auditor_llm_files_motion():
     assert motion["prompt_hash"]  # LLM path stamps the auditor template hash
 
 
-# ── §9.8 adjudication bounding ───────────────────────────────────────────────
+# ── adjudication bounding: the boards clamp a contradicting judge ────────────
 
 
 def test_judge_contradicting_boards_is_clamped_and_flagged():
@@ -770,7 +770,7 @@ def test_candidate_evaluations_deterministic_boards():
     }]
 
 
-# ── §9.9 budget caps ─────────────────────────────────────────────────────────
+# ── budget caps: LLM calls per audit, replay cases per epoch ─────────────────
 
 
 def test_max_llm_calls_per_audit_respected():
@@ -796,7 +796,7 @@ def test_replay_case_cap_respected():
 
 
 def test_quarantined_target_motion_uses_the_retirement_replay_cap():
-    """Task 12 §5.4: a motion against a quarantined component (T17's
+    """A motion against a quarantined component (T17's
     ``adjudication_confirmed_retirement`` from-status) puts a
     RetirementEvent under consideration, so its replay selection is
     truncated at ``max_cases_for_retirement``, not ``max_cases_per_epoch``."""
@@ -843,7 +843,7 @@ def test_retire_requesting_motion_uses_the_retirement_replay_cap():
     assert report.budget_usage["replay_cases_used"] == 7
 
 
-# ── §9.10 determinism ────────────────────────────────────────────────────────
+# ── determinism: an llm=None audit is byte-identical run to run ──────────────
 
 
 def test_llm_none_reports_are_byte_identical_after_stripping_volatiles():
@@ -858,7 +858,7 @@ def test_llm_none_reports_are_byte_identical_after_stripping_volatiles():
     assert run() == run()
 
 
-# ── §9.11 simple_bfts regression (zero governance files) ─────────────────────
+# ── simple_bfts regression: not one governance file is written ───────────────
 
 
 def _make_agent():
@@ -924,7 +924,7 @@ def test_simple_bfts_writes_no_governance_files(monkeypatch, tmp_path):
     assert "proposals" not in names
 
 
-# ── §9.12 ari_rqgm smoke: report lands in the audit log ─────────────────────
+# ── ari_rqgm smoke: the report lands in the audit log ───────────────────────
 
 
 def test_ari_rqgm_short_loop_appends_governance_report(monkeypatch, tmp_path):
@@ -967,7 +967,7 @@ def test_governance_suspended_skips_audit(tmp_path):
     assert not [l for l in lines if l.get("event_type") == "governance_report"]
 
 
-# ── §9.13 META_FILES hygiene: only the registered audit log is written ──────
+# ── META_FILES hygiene: only the registered audit log is written ────────────
 
 
 def test_audit_writes_only_the_registered_audit_log(tmp_path):
@@ -984,7 +984,7 @@ def test_audit_writes_only_the_registered_audit_log(tmp_path):
     assert "evidence_bundle" in types
 
 
-# ── §9.14 cost attribution at the LLM seam ──────────────────────────────────
+# ── cost attribution at the LLM seam (phase + skill on every call) ──────────
 
 
 def test_governance_llm_calls_carry_phase_and_skill_metadata():
@@ -1026,7 +1026,7 @@ def test_governance_config_defaults_match_defaults_yaml():
     gov = (data.get("rqgm") or {}).get("governance") or {}
     typed = RQGMGovernanceConfig()
     assert gov == {
-        # RQGM Task 13 §5.1: the governance enable flag (rungs B2-B4 run
+        # RQGM Task 13: the governance enable flag (rungs B2-B4 run
         # `ari_rqgm` with governance off; the master interlock still gates).
         "enabled": typed.enabled,
         "default_level": typed.default_level,
@@ -1035,7 +1035,7 @@ def test_governance_config_defaults_match_defaults_yaml():
         "impeachment_only_at_epoch_boundary":
             typed.impeachment_only_at_epoch_boundary,
         "max_llm_calls_per_audit": typed.max_llm_calls_per_audit,
-        # RQGM Task 12 §5.3: per-role governance call caps + escalation
+        # RQGM Task 12: per-role governance call caps + escalation
         # thresholds (the adversary cap lives in rqgm.adversarial only).
         "max_defender_calls_per_epoch": typed.max_defender_calls_per_epoch,
         "max_judge_calls_per_epoch": typed.max_judge_calls_per_epoch,
@@ -1145,7 +1145,7 @@ class _JudgeOnlyRegistry:
 
 
 def test_judge_self_adjudication_is_recused_not_self_dismissed():
-    # Two REAL validated attacks (the actual producer, Task 15 §9 discipline)
+    # Two REAL validated attacks (the actual producer, not a _rec fixture)
     # target the governance judge itself → a clear-file motion is filed
     # against it; the judge must RECUSE (motion left unresolved, loudly
     # flagged) instead of ruling on its own impeachment. This is the first

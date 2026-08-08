@@ -1,4 +1,5 @@
-"""AdversarialCaseLog + AdversarialReplayPool (Task 06 §5.8).
+"""AdversarialCaseLog + AdversarialReplayPool (RQGM Task 06; snapshot shape:
+docs/reference/rqgm_schemas.md, "`rqgm_replay_pool.schema.json`").
 
 Persistence (both names registered in ``ari.paths``):
 
@@ -10,13 +11,13 @@ Persistence (both names registered in ``ari.paths``):
   (rewritten at epoch boundaries) for fast load + resume; JSONL replay fills
   any tail the snapshot missed.
 
-Pool rules (§5.8): admission ONLY at epoch boundaries (GovernanceOrchestrator
+Pool rules: admission ONLY at epoch boundaries (GovernanceOrchestrator
 step 7) for verdicts ``valid|partially_valid`` with severity ≥
 ``pool.min_severity``; dedup by ``(case_type, target_artifact_hash)`` —
 re-validated attacks update ``last_confirmed_epoch``; bounded eviction keeps
 a per-type floor and only marks ``status: "evicted"`` (nothing is ever
 removed from the JSONL — selective-erasure philosophy); ``replay_view`` is
-capability-checked (role ``clean_room_generator`` is denied, §5.7 check 7)
+capability-checked (role ``clean_room_generator`` is denied, invariant 14)
 while ``abstract_view`` is the contamination-safe FailureSummary.
 
 Under ``simple_bfts`` nothing constructs these classes and neither file is
@@ -49,7 +50,8 @@ REPLAY_POOL_SCHEMA_VERSION = 1
 
 ROUND_MARKER_RECORD_TYPE = "rqgm_adversarial_round"
 
-#: The §5.7 check-7 capability rule: roles denied the replay_view.
+#: The invariant-14 capability rule: roles denied the replay_view outright,
+#: because a clean-room reader may see ``abstract_view`` only.
 _REPLAY_VIEW_DENIED_ROLES: frozenset = frozenset({"clean_room_generator"})
 
 # Serialises appends (single-writer main thread + best-effort callers),
@@ -62,8 +64,8 @@ class AdversarialCaseLog:
 
     Lock-guarded, absence-tolerant, never raises into the run loop
     (``append_decision_log`` posture). Raw attacks are appended BEFORE any
-    defense/adjudication effect (§5.3 ordering), so a crash mid-round leaves
-    a consistent, replayable trail.
+    defense/adjudication effect, so a crash mid-round leaves a consistent,
+    replayable trail.
     """
 
     def __init__(self, checkpoint_dir: str | Path | None = None) -> None:
@@ -122,7 +124,7 @@ class AdversarialCaseLog:
             pass
         return out
 
-    # ── §5.3 per-node round idempotency marker ────────────────────────
+    # ── round idempotency marker: one round per (node, kind) ──────────
 
     def has_round_marker(
         self, node_id: str, *, kind: str = "exploration", checkpoint_dir=None,
@@ -180,7 +182,7 @@ class AdversarialCaseLog:
         """Per-``epoch_id`` line counts for one record type.
 
         Seeds the engine's per-epoch call budget across a mid-epoch resume
-        (§5.5 ``max_adversary_calls_per_epoch``): the JSONL is the only
+        (the ``max_adversary_calls_per_epoch`` cap): the JSONL is the only
         durable record of budget already spent in the open epoch.
         """
         ckpt = checkpoint_dir if checkpoint_dir is not None else self._ckpt
@@ -196,7 +198,8 @@ class AdversarialCaseLog:
 
 
 class AdversarialReplayPool:
-    """The curated adjudicated-failure-case pool (§5.8 / §7).
+    """The curated adjudicated-failure-case pool (snapshot shape:
+    docs/reference/rqgm_schemas.md, "`rqgm_replay_pool.schema.json`").
 
     Consumers: Task 07's ReplayBoard (``cases()``/``select_for_replay``),
     Task 03's AttackDrivenGenerator, Task 08's clean-room summaries
@@ -229,7 +232,8 @@ class AdversarialReplayPool:
     # ── admission (epoch boundary ONLY — Task 05 step 7 calls this) ───
 
     def admit(self, validated, epoch_id: str = "") -> list[AdversarialReplayCase]:
-        """ValidatedAttackRecords → replay cases (§5.8 admission + dedup)."""
+        """ValidatedAttackRecords → replay cases: admitted at or above
+        ``min_severity``, deduped by ``(case_type, target_artifact_hash)``."""
         admitted: list[AdversarialReplayCase] = []
         floor = SEVERITY_RANK.get(self.min_severity, 1)
         for item in validated or ():
@@ -363,7 +367,7 @@ class AdversarialReplayPool:
                         break
         return out
 
-    # ── the two views (§5.8 contamination control) ────────────────────
+    # ── the two views: abstract for clean rooms, replay for the rest ──
 
     def abstract_view(self, case_id: str) -> dict:
         """FailureSummary fields only — the sole legal clean-room read."""
@@ -371,7 +375,7 @@ class AdversarialReplayPool:
         return dict(case.abstract_view)
 
     def replay_view(self, case_id: str, *, actor_role: str) -> dict:
-        """Full replay materials; capability-checked (§5.7 check 7)."""
+        """Full replay materials; capability-checked (invariant 14)."""
         if str(actor_role) in _REPLAY_VIEW_DENIED_ROLES:
             raise PermissionError(
                 f"role {actor_role!r} is denied replay_view access "
@@ -446,8 +450,9 @@ class AdversarialReplayPool:
 
     @classmethod
     def load(cls, checkpoint_dir, cfg=None) -> "AdversarialReplayPool":
-        """Snapshot + JSONL replay (§8 resume): snapshot statuses win; JSONL
-        case lines missing from the snapshot (crash tail) are re-added."""
+        """Resume path — snapshot plus JSONL replay: snapshot statuses win;
+        JSONL case lines missing from the snapshot (crash tail) are
+        re-added."""
         pool = cls(checkpoint_dir, cfg)
         try:
             from ari.checkpoint import load_adversarial_pool_json

@@ -51,7 +51,10 @@ def _write_yaml(tmp_path: Path, data: dict) -> str:
     return str(p)
 
 
-# ── config parsing (§6.1) ───────────────────────────────────────────────────
+# ── config parsing ───────────────────────────────────────────────────────────
+# Absent ari:/rqgm: blocks default to simple_bfts + disabled; unknown rqgm:
+# subsections are tolerated for forward-compat, an invalid ari.mode literal is
+# rejected.
 
 
 def test_absent_blocks_parse_to_defaults(tmp_path):
@@ -88,7 +91,9 @@ def test_rqgm_config_tolerates_unknown_subsections():
     assert cfg.enabled is False
 
 
-# ── resolve_effective_mode: the four-cell table (§5.2) ───────────────────────
+# ── resolve_effective_mode: the four-cell table ──────────────────────────────
+# ari_rqgm only when ari.mode == "ari_rqgm" AND rqgm.enabled is true; the two
+# disagreeing cells fall back to simple_bfts with a warning.
 
 
 @pytest.mark.parametrize(
@@ -121,7 +126,10 @@ def test_resolve_never_raises_on_pre_rqgm_cfg():
 
 
 def test_mode_resolution_never_reads_proposal_router():
-    """VirSci independence (§5.6): mode code must not touch proposal_router.*"""
+    """VirSci independence: mode resolution must not touch proposal_router.*
+    -- virsci.enabled is orthogonal to ari.mode (see
+    docs/guides/execution_modes.md, "VirSci independence").
+    """
     from ari.rqgm.mode import EffectiveMode, resolve_effective_mode
 
     class _Cfg:
@@ -149,7 +157,10 @@ def test_effective_mode_str_parity_with_resolver():
             assert _effective_mode_str(cfg) == resolve_effective_mode(cfg).value
 
 
-# ── apply_rqgm_env_overrides (§5.2) ─────────────────────────────────────────
+# ── apply_rqgm_env_overrides ─────────────────────────────────────────────────
+# ARI_MODE / ARI_RQGM_ENABLED apply after YAML and profiles, so an explicit env
+# value wins in both directions; unparseable values are ignored with a warning
+# instead of raising.
 
 
 def test_env_overrides_yaml(monkeypatch, tmp_path):
@@ -198,7 +209,10 @@ def test_export_resolved_config_bridges_effective_mode(monkeypatch):
     assert os.environ["ARI_MODE"] == "ari_rqgm"
 
 
-# ── rqgm_state.json round-trip + registration (§6.2) ─────────────────────────
+# ── rqgm_state.json round-trip + registration ────────────────────────────────
+# The state and constitution filenames must be registered as PathManager
+# META_FILES (and rqgm_state.json as an internal JSON name) so they never count
+# as node artifacts; writes are best-effort and run_start is write-once.
 
 
 def test_rqgm_state_roundtrip(tmp_path):
@@ -271,7 +285,10 @@ def test_rqgm_state_is_internal_json():
     assert classify_artifact_role("rqgm_state.json") == "unknown"
 
 
-# ── build_runtime wiring (§5.4) ──────────────────────────────────────────────
+# ── build_runtime wiring ─────────────────────────────────────────────────────
+# Wrap, never replace: a default config imports no ari.rqgm module and writes no
+# RQGM file, while ari_rqgm returns a Protocol-conformant wrapper that delegates
+# all seven strategy methods to the untouched inner BFTS.
 
 
 def _stub_runtime_deps(monkeypatch):
@@ -401,7 +418,9 @@ def test_governed_strategy_delegates_all_seven_methods():
     inner.diversity_bonus.assert_called_once_with(node)
 
 
-# ── short-loop smoke: ari_rqgm lifecycle parity (§9 smoke) ───────────────────
+# ── short-loop smoke: ari_rqgm lifecycle parity ──────────────────────────────
+# A governed run must produce the same node total and per-node lifecycle as
+# plain BFTS; the only difference is the rqgm_state.json provenance marker.
 
 
 def _make_agent():
@@ -534,7 +553,9 @@ def test_cli_run_ari_rqgm_writes_state(monkeypatch, tmp_path):
     assert state["switch_journal"][0]["event"] == "run_start"
 
 
-# ── resume semantics (§5.5) ──────────────────────────────────────────────────
+# ── resume semantics ─────────────────────────────────────────────────────────
+# The persisted mode wins over config/env, and a run started as simple_bfts is
+# never upgraded mid-run; both mismatches warn, a match is silent.
 
 
 def test_resume_persisted_mode_wins(tmp_path, caplog):

@@ -13,10 +13,12 @@ disagreement fails safe toward the current linear pipeline with a warning:
     rqgm_archive   true                 rqgm_archive
 
 This is the paper-phase analog of :mod:`ari.rqgm.mode`. It reads ONLY
-``paper.mode`` / ``rqgm.paper.enabled`` — never ``ari.mode`` / ``rqgm.enabled``
-(the exploration axis is orthogonal, §5.6). ``ari.config._effective_paper_mode_str``
-mirrors the activation cell import-free so default paper runs never load this
-module; parity is pinned by ``tests/test_paper_mode.py``.
+``paper.mode`` / ``rqgm.paper.enabled`` — never ``ari.mode`` /
+``rqgm.enabled``: the two axes are independent, so all four combinations are
+legal (``docs/guides/execution_modes.md``, "2×2 independence from
+`ari.mode`"). ``ari.config._effective_paper_mode_str`` mirrors the activation
+cell import-free so default paper runs never load this module; parity is
+pinned by ``tests/test_paper_mode.py``.
 """
 
 from __future__ import annotations
@@ -32,7 +34,8 @@ log = logging.getLogger(__name__)
 
 
 class PaperMode(str, Enum):
-    """The two paper-phase execution modes (paper Task 01 §5.2)."""
+    """The two paper-phase execution modes — the table above is the whole
+    switch."""
 
     LINEAR = "linear"
     RQGM_ARCHIVE = "rqgm_archive"
@@ -43,8 +46,9 @@ def resolve_paper_mode(cfg: "ARIConfig") -> PaperMode:
     upstream by ``apply_paper_env_overrides``), never raises.
 
     Deliberately reads ONLY ``cfg.paper.mode`` / ``cfg.rqgm.paper.enabled`` —
-    never ``ari.mode`` / ``rqgm.enabled`` (the exploration axis is orthogonal,
-    paper Task 01 §5.6). ``getattr`` defaults keep pre-feature cfg objects
+    never ``ari.mode`` / ``rqgm.enabled``: the exploration axis is
+    independent, so switching it must never move the paper
+    mode. ``getattr`` defaults keep pre-feature cfg objects
     resolving to ``linear``.
     """
     mode = getattr(getattr(cfg, "paper", None), "mode", "linear")

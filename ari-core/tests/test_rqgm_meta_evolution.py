@@ -3,12 +3,14 @@
 docs/concepts/rqgm_architecture.md §Key invariants, invariant 8
 "Meta-tier authority limits").
 
-Covers: the §6.1 tier + capability-flag schema (hard-denied flags const-false
-on meta entries via ``rqgm_meta.schema.json`` AND the deterministic
+Covers: the tier + capability-flag registry schema (hard-denied flags
+const-false on meta entries via ``rqgm_meta.schema.json`` AND the deterministic
 ``meta_rules`` mirror, closed tier vocabulary, deny-by-default flags), the
 ``MetaAgentOutputRecord`` round-trip + closed ``output_kind`` vocabulary, the
 invariant-18 authority non-expansion arithmetic (widen rejected / narrow and
-equal pass), the §5.6.2 cross-generation rule, per-entry capability
+equal pass), the cross-generation rule (the kernel rejects a meta candidate
+whose ``produced_by`` role equals its target role — no role authors its own
+successor), per-entry capability
 enforcement through ``ConstitutionalKernel.validate_capability`` (flag-false
 denial, fixed-tier denial, closed action vocabulary), no-handle containment
 (frozen views, retired stubs without text/path/hash, retired-byte-free input
@@ -17,7 +19,7 @@ bundles via the Task 08 contamination scan), the outputs-are-candidates rule
 Task 07 intake at ``status: candidate``; audit trail), the
 ``MetaSandboxMCPProxy`` duck-type + ``{"error"}`` envelope + ``run_react``
 path validation, deterministic + cached sandbox evaluation (P2), shadow
-no-effect recording, the §5.8 ``make_metric_spec`` weight cap (ari_rqgm
+no-effect recording, the ``make_metric_spec`` weight cap (ari_rqgm
 suppression + audit observation; simple_bfts precedence untouched — see
 ``test_llm_evaluator_axes.py``), the per-epoch meta-candidate budget, a
 two-epoch stub smoke (fake invokers; no activation after two epochs), the
@@ -167,7 +169,7 @@ def _registry_fingerprint(components, prompts) -> str:
     ])
 
 
-# ── §9.1 schema ─────────────────────────────────────────────────────────────
+# ── schema: hard-denied flags are const-false, tier vocabulary closed ───────
 
 
 def test_meta_entry_hard_denied_flag_fails_schema():
@@ -248,7 +250,7 @@ def test_meta_output_record_roundtrip_and_closed_kind():
     assert set(meta_rules.ACTION_BY_OUTPUT_KIND) == set(meta_rules.OUTPUT_KINDS)
 
 
-# ── §9.2 authority non-expansion ────────────────────────────────────────────
+# ── authority non-expansion: narrowing passes, widening is rejected ─────────
 
 
 def test_authority_non_expansion_widen_rejected_narrow_passes():
@@ -310,7 +312,7 @@ def test_authority_non_expansion_widen_rejected_narrow_passes():
     assert k.validate_authority_non_expansion(widen_flag, None).blocking
 
 
-# ── §9.3 cross-generation rule ──────────────────────────────────────────────
+# ── cross-generation rule: no meta role authors its own successor ───────────
 
 
 def test_cross_generation_self_reference_rejected():
@@ -339,7 +341,7 @@ def test_cross_generation_self_reference_rejected():
     ).blocking
 
 
-# ── §9.4 capability enforcement ─────────────────────────────────────────────
+# ── capability enforcement: flag-false / fixed tier / unknown action deny ───
 
 
 def test_capability_enforcement_flag_false_fixed_and_unknown_action():
@@ -372,7 +374,7 @@ def test_capability_enforcement_flag_false_fixed_and_unknown_action():
     ).blocking
 
 
-# ── §9.5 no-handle containment ──────────────────────────────────────────────
+# ── no-handle containment: frozen views, no retired prompt bytes reachable ──
 
 
 def test_views_are_frozen_and_retired_entries_are_stubs():
@@ -415,7 +417,7 @@ def test_filtered_inputs_contain_no_retired_prompt_bytes():
     assert bundle["replay_case_ids"] == ["case_0001"]
 
 
-# ── §9.6 outputs are candidates ─────────────────────────────────────────────
+# ── outputs are candidates: registries byte-identical after the step ────────
 
 
 def test_boundary_step_routes_candidates_without_registry_change(tmp_path):
@@ -509,7 +511,7 @@ def test_disabled_meta_evolution_noops_with_audit_line(tmp_path):
     assert not (tmp_path / META_OUTPUTS_FILENAME).exists()
 
 
-# ── §9.7 sandbox proxy ──────────────────────────────────────────────────────
+# ── sandbox proxy: write tools denied, no CoW surface, paths kept inside ────
 
 
 class _InnerMCP:
@@ -570,7 +572,7 @@ def test_sandbox_path_validation_rejects_escapes(tmp_path):
     assert outside is not None
 
 
-# ── §9.8 sandbox evaluation determinism + cache ─────────────────────────────
+# ── sandbox evaluation: same inputs, same verdict; the repeat is cached ─────
 
 
 def _fake_candidate_invoker(bundle):
@@ -661,7 +663,7 @@ def test_downstream_fate_and_evaluation_record():
     jsonschema.validate(evaluation.to_dict(), schema)
 
 
-# ── §9.9 shadow no-effect ───────────────────────────────────────────────────
+# ── shadow no-effect: shadow outputs are recorded and routed nowhere ────────
 
 
 def test_shadow_outputs_are_recorded_and_routed_nowhere(tmp_path):
@@ -697,8 +699,9 @@ def test_shadow_outputs_are_recorded_and_routed_nowhere(tmp_path):
 def test_shadow_stamped_invoker_output_not_trusted(tmp_path):
     """The invoker's ``shadow`` field is LLM-controlled and never trusted:
     a coordinator-invoked incumbent output is stamped shadow=False (it IS
-    routed), so the truth record agrees with the routing (§5.7) and the
-    resume-safe budget floor counts it after an in-epoch restart."""
+    routed), so the truth record agrees with the routing — ``shadow: true``
+    means recorded-and-routed-nowhere, and only the coordinator may set it —
+    and the resume-safe budget floor counts it after an in-epoch restart."""
     components, prompts = _registries()
     coordinator = _coordinator(
         tmp_path,
@@ -742,7 +745,7 @@ def test_shadow_stamped_invoker_output_not_trusted(tmp_path):
     assert len(load_prompt_evolution_log(tmp_path)) == 1  # still one entry
 
 
-# ── §9.10 make_metric_spec cap ──────────────────────────────────────────────
+# ── make_metric_spec cap: epoch-frozen weights win, the override is audited ─
 
 
 def test_metric_spec_weight_cap_suppresses_and_audits(tmp_path):
@@ -786,7 +789,7 @@ def test_simple_bfts_weight_precedence_unchanged():
     )  # attribute is attach-only (wrap_node_executor), never a default
 
 
-# ── §9.11 budget ────────────────────────────────────────────────────────────
+# ── budget: one meta candidate per epoch, and it survives a restart ─────────
 
 
 def test_meta_candidate_budget_enforced_with_audit_line(tmp_path):
@@ -826,7 +829,7 @@ def test_meta_candidate_budget_enforced_with_audit_line(tmp_path):
     assert again.candidates == ()
 
 
-# ── §9.13 two-epoch stub smoke ──────────────────────────────────────────────
+# ── two-epoch smoke: after two epochs the candidate is in neither registry ──
 
 
 def test_two_epoch_smoke_no_activation(tmp_path):
@@ -869,7 +872,7 @@ def test_two_epoch_smoke_no_activation(tmp_path):
     assert audit_types.count("meta_agent_output") >= 1
 
 
-# ── §9.14 hygiene + parity + inertness ──────────────────────────────────────
+# ── hygiene + parity + inertness: filenames, defaults.yaml, zero import ─────
 
 
 def test_meta_outputs_filename_registered():
@@ -892,8 +895,9 @@ def test_meta_evolution_config_mirrors_defaults_yaml():
     assert yaml_me.get("evolving_roles") == typed.evolving_roles == [
         "prompt_mutator", "clean_room_generator", "replay_selector",
         "failure_summary_compressor",
-        # Task 14 (plan 14 §5.2): un-frozen from META_FROZEN_ROLES now that
-        # it has an implementation (ari.rqgm.utility_evolution.PolicyMutator).
+        # Un-frozen from META_FROZEN_ROLES only once something could run it:
+        # a role stays frozen until it has an implementation, and this one now
+        # has ari.rqgm.utility_evolution.PolicyMutator.
         "policy_mutator",
     ]
     assert (
@@ -936,7 +940,7 @@ def test_simple_bfts_never_imports_meta_evolution(tmp_path):
     assert "clean" in proc.stdout
 
 
-# ── plan 11 §5.2 items 3-4: the recommendation roles ────────────────────────
+# ── the recommendation roles: replay_selector + failure_summary_compressor ──
 
 
 class TestRecommendationRoles:

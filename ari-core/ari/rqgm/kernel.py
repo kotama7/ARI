@@ -9,18 +9,20 @@ Every verdict is a pure function of the serialized inputs; the kernel writes
 nothing (callers persist :class:`~ari.rqgm.kernel_types.KernelReport` verdicts
 to Task 02's ``rqgm_audit.jsonl``).
 
-The API is closed at twelve entry points (plan 04 §5.4): eight core
-``validate_*`` checks plus four downstream-specified ones whose detailed
-input contracts are owned by Tasks 08 (clean room), 11 (authority
-non-expansion), and 12 (context scope) — implemented here minimally under
-this task's determinism/verdict/severity rules.
+The API is closed at twelve entry points: eight core ``validate_*`` checks
+plus four downstream-specified ones whose detailed input contracts are owned
+by Tasks 08 (clean room), 11 (authority non-expansion), and 12 (context
+scope) — implemented here minimally under this module's
+determinism/verdict/severity rules.
 
 Rules live in code (:mod:`ari.rqgm.kernel_rules`), the transition table in
 :mod:`ari.rqgm.transition_rules` (Task 09's Layer-0 module — imported, never
-duplicated). ``constitution_hash`` pins every table (§5.7): the kernel is
-non-evolving by construction.
+duplicated). ``constitution_hash`` pins every table, so editing one is a
+constitutional amendment and not a config change: the kernel is
+non-evolving by construction (``docs/concepts/rqgm_architecture.md``,
+"Key invariants", invariant 9).
 
-Enforcement principle — "block the institution, not the research" (§5.1):
+Enforcement principle — "block the institution, not the research":
 a blocking report vetoes RQGM *state changes* only; adapters in mid-epoch
 contexts (:func:`per_node_warn_check`) are fail-open like every existing
 ``_run_loop`` hook. The MCP pre-flight gate
@@ -45,11 +47,12 @@ from ari.rqgm.kernel_types import (
 
 log = logging.getLogger(__name__)
 
-#: Numeric tolerances (plan 04 §5.7/§6): the ONLY configurable part of the
-#: kernel; defaults mirror ``ari/configs/defaults.yaml`` ``rqgm.kernel.*``.
+#: Numeric tolerances: the ONLY configurable part of the kernel — every other
+#: rule is a pinned table; defaults mirror ``ari/configs/defaults.yaml``
+#: ``rqgm.kernel.*``.
 DEFAULT_TOLERANCES: dict = {
     "float_tolerance": 1e-9,
-    # CK-CLN-002 shingle screen (Task 08 §5.5). Bare-constructed kernels keep
+    # CK-CLN-002 shingle screen. Bare-constructed kernels keep
     # the Task 04 v1 ratio semantics (k=5, threshold); the ari_rqgm runtime
     # injects rqgm.clean_room.contamination_screen (k=8, fail-on-any-hit).
     "contamination_shingle_words": 5,
@@ -173,7 +176,7 @@ def _source_ref_ids(rec: dict) -> list:
 def _erasure_edge_material(consumer: dict, referenced: "dict | None") -> bool:
     """Task 10's fixed materiality table over one source_refs edge.
 
-    The table is owned by ``ari.rqgm.frontier_repair`` (plan 10 §5.3); the
+    The table is owned by ``ari.rqgm.frontier_repair``; the
     kernel applies the same pure (type, type) rule so CK-ERA-004 and the
     tracer agree on the closure. Unresolvable referenced records and any
     import failure default to load-bearing (conservative)."""
@@ -274,7 +277,7 @@ def _transition_changes(t: dict) -> list:
 
 
 class ConstitutionalKernel:
-    """The non-evolving Layer-0 checker (plan 04 §5.3–§5.5).
+    """The non-evolving Layer-0 checker.
 
     Pure-function core: reads the inputs passed to it (or resolved through
     the injected read-only loaders) and returns
@@ -284,8 +287,10 @@ class ConstitutionalKernel:
 
     Severity is constitutional (``kernel_rules.SEVERITY``), never
     caller-chosen; whether a blocking report actually vetoes a state change
-    is the calling context per the §5.5 blocking matrix and the
-    ``rqgm.kernel.enforcement`` mode (see :func:`should_block`).
+    is the calling context — an RQGM state change is vetoed, a mid-epoch
+    adapter hook is fail-open, and the MCP pre-flight gate is the one
+    mid-epoch DENY — plus the ``rqgm.kernel.enforcement`` mode (see
+    :func:`should_block`).
     """
 
     def __init__(
@@ -309,8 +314,9 @@ class ConstitutionalKernel:
 
     @property
     def constitution_hash(self) -> str:
-        """The §5.7 pin over every rule table (incl. the imported Task 09
-        transition tables)."""
+        """The pin over every rule table (incl. the imported Task 09
+        transition tables): any rule edit changes this hash, so a table
+        change is an explicit amendment rather than a silent one."""
         return self.rules.CONSTITUTION_HASH
 
     # ── internal ───────────────────────────────────────────────────────
@@ -332,7 +338,7 @@ class ConstitutionalKernel:
     # ── 1. schema (CK-SCH-*) ───────────────────────────────────────────
 
     def validate_record_schema(self, record) -> KernelReport:
-        """Envelope + shape check over one RQGM record (plan 04 §5.4 item 1).
+        """Envelope + shape check over one RQGM record — core check 1 of 8.
 
         Governance record types (``kernel_rules.GOVERNANCE_RECORD_TYPES``)
         violate as CK-SCH-G01 (block); every other record type as CK-SCH-N01
@@ -388,7 +394,7 @@ class ConstitutionalKernel:
     # ── 2. hashes (CK-HSH-*) ───────────────────────────────────────────
 
     def validate_hashes(self, record, registry, artifacts=None) -> KernelReport:
-        """Hash provenance over one record (plan 04 §5.4 item 2).
+        """Hash provenance over one record — core check 2 of 8.
 
         (a) ``prompt_hash`` vs the active registered hash for the record's
         role (scheme: the existing ``hash12 = sha256(text)[:12]``) —
@@ -489,14 +495,15 @@ class ConstitutionalKernel:
     # ── 3. capability (CK-ACC-* / CK-ROL-901) ─────────────────────────
 
     def validate_capability(self, actor, action, resource) -> KernelReport:
-        """Pure ``CAPABILITY_MATRIX`` lookup (plan 04 §5.4 item 3).
+        """Pure ``CAPABILITY_MATRIX`` lookup — core check 3 of 8.
 
         Used pre-flight (adapter denies before dispatch) and post-hoc
         (Task 05 self-audit replays logged events through the same table).
         Retired-prompt-text access is CK-ACC-002; a registry write / candidate
         activation by anyone but the RegistryTransitionEngine is CK-ROL-901;
         the Task 11 meta actions (``emit_*``) resolve against the actor
-        entry's §6.1 capability flags (deny-by-default) instead of the
+        entry's own declared capability flags (deny-by-default, hard-denied
+        flags const-false — :mod:`ari.rqgm.meta_rules`) instead of the
         matrix; every other miss is CK-ACC-001.
         """
         role, tier = _actor_role_tier(actor)
@@ -526,7 +533,8 @@ class ConstitutionalKernel:
                 )
             )
         elif action in meta_rules.META_ACTIONS:
-            # Task 11 §5.5: closed meta-action vocabulary, per-entry flags.
+            # Closed meta-action vocabulary (``meta_rules.META_ACTIONS``),
+            # resolved against the actor entry's per-entry capability flags.
             for detail in meta_rules.meta_action_denials(actor, action):
                 violations.append(
                     self._v(
@@ -549,7 +557,7 @@ class ConstitutionalKernel:
     # ── 4. epoch invariance (CK-EPO-*) ─────────────────────────────────
 
     def validate_epoch_invariance(self, epoch_state, event_log) -> KernelReport:
-        """Frozen-active-set invariance over one epoch (plan 04 §5.4 item 4).
+        """Frozen-active-set invariance over one epoch — core check 4 of 8.
 
         *event_log* mixes registry events (``event_type`` items) and records
         (``record_id`` items): a non-emergency status-change event inside the
@@ -607,12 +615,12 @@ class ConstitutionalKernel:
                 )
         return make_report("epoch_transition", violations)
 
-    # ── 4b. governed utility policy (CK-UTL-*, plan 14 §5.6) ───────────
+    # ── 4b. governed utility policy (CK-UTL-*) ─────────────────────────
 
     def validate_utility_policy(
         self, policy, *, registered_hash: str = "", live_axes=None
     ) -> KernelReport:
-        """Is *policy* a LEGAL governed utility policy (plan 14 §5.6)?
+        """Is *policy* a LEGAL governed utility policy?
 
         Pure and deterministic (no LLM, no network, no randomness): a policy
         is legal iff it lives inside the closed value spaces the constitution
@@ -626,7 +634,7 @@ class ConstitutionalKernel:
         must hash to. *live_axes*, when given, is the epoch's axis set for
         the CK-UTL-006 advisory.
 
-        One validator, two callers (§5.6): ``validate_transition`` for every
+        One validator, two callers: ``validate_transition`` for every
         adoption targeting the ``utility_policy`` role, and the candidate
         pipeline's constitutional stage — never a duplicate rule copy.
         """
@@ -762,7 +770,7 @@ class ConstitutionalKernel:
     def validate_transition(
         self, transition, registry, epoch_state, *, at_boundary: bool = True
     ) -> KernelReport:
-        """Validate one EpochTransition (plan 04 §5.4 item 5, plan 09 §5.2).
+        """Validate one EpochTransition — core check 5 of 8.
 
         Table membership, rule-id parity, boundary/emergency shape, RTE
         authorship, from-status agreement with the registry, required
@@ -820,7 +828,7 @@ class ConstitutionalKernel:
                     )
         # Required supporting refs (retirements + clean-room requests).
         # Scoped to T17 (quarantine -> retired): the never-served rejections
-        # T2/T5 are terminal without a RetirementEvent (plan 09 §5.2).
+        # T2/T5 are terminal without a RetirementEvent.
         retirement_ids = set()
         for _, entry in changes:
             if (
@@ -861,8 +869,9 @@ class ConstitutionalKernel:
         # role with no incumbent) it stays the conservative None baseline: the
         # fixed CAPABILITY_MATRIX cap plus the meta_rules deny-all flag
         # baseline. Also fires on flag/target-carrying entries, not only the
-        # v1 ``declared_capabilities`` shape, so a §6.1 successor that widens
-        # allowed_targets is caught even without a declared_capabilities list.
+        # v1 ``declared_capabilities`` shape, so a flag-carrying successor that
+        # widens allowed_targets is caught even without a
+        # declared_capabilities list.
         for group, entry in changes:
             if group != "adoptions":
                 continue
@@ -872,8 +881,8 @@ class ConstitutionalKernel:
             incumbent = entry.get("_incumbent_entry")
             sub = self.validate_authority_non_expansion(entry, incumbent)
             violations.extend(sub.violations)
-        # Task 14 §5.6: every adoption targeting the utility_policy role
-        # carries its policy body for legality checking. An illegal policy is
+        # Every adoption targeting the utility_policy role carries its policy
+        # body for legality checking. An illegal policy is
         # BLOCKED before it can ever score a node; the boundary then proceeds
         # with the incumbent policy, which is always safe because the
         # incumbent is what produced the current frontier. There is no path
@@ -921,8 +930,8 @@ class ConstitutionalKernel:
                     f"({rule.rule_id})",
                 )
             )
-        # Task 14 (plan 14 §5.5): T20 (active -> retired) is the utility_policy
-        # SUPERSESSION edge and is legal ONLY for that role. For every
+        # T20 (active -> retired) is the utility_policy SUPERSESSION edge and
+        # is legal ONLY for that role. For every
         # behavioral component active -> retired stays forbidden (retirement
         # must stage via quarantine), so the sanction-only replacement model is
         # constitutionally intact for them — the guard is here, not merely in
@@ -939,7 +948,7 @@ class ConstitutionalKernel:
                     "quarantine)",
                 )
             )
-        # Paper-archive Task 05 / plan 03 §5.9 (wave 3c): T21 (active ->
+        # T21 (active ->
         # shadow) is the paper-role shadow-standby supersession edge and is
         # legal ONLY for the paper roles. For every other role active ->
         # shadow stays forbidden, so their sanction-only replacement model is
@@ -971,7 +980,7 @@ class ConstitutionalKernel:
         return out
 
     def _emergency_shape(self, tid: str, t: dict, changes: list) -> list:
-        """T16 shape (plan 09 §5.4): single sanction, target quarantine over
+        """T16 shape: single sanction, target quarantine over
         an EMERGENCY_EDGE pair, kernel violation attached, rule_id T16."""
         out = []
         problems = []
@@ -1013,7 +1022,7 @@ class ConstitutionalKernel:
     # ── 6. role separation (CK-ROL-*) ──────────────────────────────────
 
     def validate_role_separation(self, record) -> KernelReport:
-        """Author-role and accusation rules (plan 04 §5.4 item 6).
+        """Author-role and accusation rules — core check 6 of 8.
 
         ImpeachmentMotion must be authored by the Auditor (CK-ROL-001),
         EvidenceBundle by the EvidenceClerk (CK-ROL-002); accuser role must
@@ -1075,7 +1084,7 @@ class ConstitutionalKernel:
         self, frontier, records, prompt_registry, *, known_record_ids=None,
         prompt_trace=None,
     ) -> KernelReport:
-        """The spec's kernel loop over a rebuilt frontier (§5.4 item 7).
+        """The kernel loop over a rebuilt frontier — core check 7 of 8.
 
         Every frontier record: ``stale is False`` (CK-ERA-001),
         ``valid_for_frontier is True`` (CK-ERA-002), ``prompt_hash`` not
@@ -1084,7 +1093,7 @@ class ConstitutionalKernel:
         (CK-ERA-004, invariant 12). Erasure is logical-only: any previously
         known record id that no longer resolves is CK-ERA-005 (invariant 13).
         *prompt_trace* (parsed ``prompt_trace.jsonl`` line dicts) is the
-        plan 10 §5.3 secondary-evidence cross-check: every trace line
+        secondary-evidence cross-check: every trace line
         carrying a retired ``template_hash`` must map to a record produced
         by that prompt (CK-ERA-006) — the trace never becomes a second
         source of truth, it only proves the producer index complete.
@@ -1139,8 +1148,8 @@ class ConstitutionalKernel:
                 )
         # Dependency closure (invariant 12): fixpoint over source_refs,
         # filtered by the Task 10 record-type-pair materiality table
-        # (plan 10 §5.3 — context-designated citations do not propagate
-        # staleness; unknown pairs stay load-bearing/conservative).
+        # (context-designated citations do not propagate staleness; unknown
+        # pairs stay load-bearing/conservative).
         tainted = {
             rid
             for rid, rec in recmap.items()
@@ -1175,7 +1184,7 @@ class ConstitutionalKernel:
                         "(physical deletion, invariant 13)",
                     )
                 )
-        # §5.3 prompt_trace cross-check (CK-ERA-006). Every trace line with
+        # prompt_trace cross-check (CK-ERA-006). Every trace line with
         # a retired template_hash sits inside that prompt's activation
         # window (governance forbids invoking a hash after retirement, and
         # repair runs at the retiring boundary), so each one must map to a
@@ -1203,7 +1212,7 @@ class ConstitutionalKernel:
                         f"prompt_trace[{idx}]", "prompt_trace_cross_check",
                         f"trace line (retired prompt {th}, node "
                         f"{node_id or '<unanchored>'}) maps to no record "
-                        "produced by that prompt (plan 10 §5.3 cross-check)",
+                        "produced by that prompt (producer index incomplete)",
                     )
                 )
         return make_report("frontier_rebuild", violations)
@@ -1213,7 +1222,7 @@ class ConstitutionalKernel:
     def validate_audit_log_integrity(
         self, audit_log, *, checkpointed=None, verify_chain: bool | None = None
     ) -> KernelReport:
-        """Append-only + hash-chain verification (plan 04 §5.4 item 8).
+        """Append-only + hash-chain verification — core check 8 of 8.
 
         *audit_log* is the parsed line-dict list (Task 02's
         ``ImmutableAuditLog.read`` shape). Sequence numbers must strictly
@@ -1298,9 +1307,11 @@ class ConstitutionalKernel:
         return make_report("audit_log", violations)
 
     # ── downstream-specified entry points (Tasks 08 / 11 / 12) ────────
-    # The kernel API is closed at these twelve checks (plan 04 §5.4);
-    # detailed input contracts / whitelists / thresholds belong to the
-    # owning plans, under this task's verdict + severity model.
+    # The kernel API is closed at these twelve checks; the detailed input
+    # contracts / whitelists / thresholds are owned by the downstream rule
+    # modules (``clean_room_rules``, ``meta_rules``,
+    # ``kernel_rules.CONTEXT_VIEW_WHITELISTS``) and applied here under this
+    # module's verdict + severity model.
 
     def validate_clean_room_bundle(self, bundle, request, registries) -> KernelReport:
         """Task 08's pre-generation bundle screen (codes CK-CLN-001).
@@ -1310,10 +1321,13 @@ class ConstitutionalKernel:
         ``forbidden_flags`` map must be all-false; when the request declares
         ``allowed_fields``, the bundle's key set must be inside it. When the
         request carries the Task 08 closed ``allowed_inputs`` contract
-        (plan 08 §6.1), additionally: forbidden input flags const-false,
-        the bundle's key set inside the closed ``BUNDLE_FIELDS`` whitelist,
-        flag↔field parity (a switched-off allowed input must not
-        materialize), FailureSummary admissibility (§6.3), and the
+        (``clean_room_request.schema.json``), additionally: forbidden input
+        flags const-false, the bundle's key set inside the closed
+        ``BUNDLE_FIELDS`` whitelist, flag↔field parity (a switched-off
+        allowed input must not materialize), FailureSummary admissibility
+        (``clean_room_rules.failure_summary_failures``: closed failure-class
+        vocabulary, numeric aggregates, ids-only ``source_refs``, screen
+        stamp present), and the
         pre-generation contamination screen over the bundle's text against
         the forbidden corpus in *registries* (``forbidden_texts`` /
         ``allowlist_texts``, resolved by the caller).
@@ -1360,8 +1374,9 @@ class ConstitutionalKernel:
         return make_report("clean_room", violations)
 
     def _clean_room_contract(self, b: dict, allowed_inputs: dict) -> list:
-        """The plan-08 closed-contract rules (active only for full Task 08
-        requests, so the Task 04 v1 duck-typed shapes stay valid)."""
+        """The closed-contract rules (active only for a request carrying the
+        full Task 08 ``allowed_inputs`` block, so the Task 04 v1 duck-typed
+        shapes stay valid)."""
         out = []
         for key in clean_room_rules.FORBIDDEN_INPUT_KEYS:
             if bool(allowed_inputs.get(key, False)):
@@ -1430,7 +1445,7 @@ class ConstitutionalKernel:
         return docs, [str(t) for t in allowlist or ()]
 
     def _clean_room_prescreen(self, b: dict, registries) -> list:
-        """Pre-generation screen (plan 08 §5.5): any surviving shingle
+        """Pre-generation screen: any surviving shingle
         overlap between the bundle's text surface and the forbidden corpus
         means the assembler (or an out-of-band edit) leaked forbidden
         material — always blocking, independent of the post-check policy."""
@@ -1468,12 +1483,13 @@ class ConstitutionalKernel:
         forbidden corpus (the retirement event's ``forbidden_texts`` plus any
         ``text``/``prompt_text`` fields on *records*), minus the allowlist
         corpus (``retirement_event["allowlist_texts"]`` — text shared with
-        allowed inputs is legitimate, plan 08 §5.5). Policy comes from the
+        allowed inputs is legitimate). Policy comes from the
         injected tolerances: with ``contamination_fail_on_any_hit`` any
-        surviving shingle blocks (the plan-08 default via
+        surviving shingle blocks (the runtime default, injected via
         ``rqgm.clean_room.contamination_screen``); otherwise the Task 04 v1
         ratio-vs-threshold semantics apply. Contamination blocks the
-        candidate from registration (§5.5).
+        candidate from registration — a contaminated replacement never
+        becomes a registry entry.
         """
         k = int(self.tolerances["contamination_shingle_words"])
         threshold = float(self.tolerances["contamination_threshold"])
@@ -1543,10 +1559,10 @@ class ConstitutionalKernel:
         Three deterministic clauses, all CK-REG-101: (a) the Task 04 v1
         ``declared_capabilities`` pair-set subset check against the
         incumbent's declaration (else the fixed ``CAPABILITY_MATRIX`` cap);
-        (b) the Task 11 §5.6.1 §6.1-flag arithmetic — per-flag implication,
+        (b) the capability-flag arithmetic — per-flag implication,
         ``allowed_targets`` ⊆, ``forbidden_targets`` ⊇ (narrowing passes,
         widening blocks; active only when the candidate carries flag
-        fields); (c) the §5.6.2 cross-generation rule — a meta-role
+        fields); (c) the cross-generation rule — a meta-role
         candidate produced by an incumbent of the same role is rejected
         (rule_id ``CROSS_GENERATION``).
         """
@@ -1608,7 +1624,8 @@ class ConstitutionalKernel:
         The rendered view's key set must be inside the role's whitelist
         (v1: the BFTS ``ProposalSummaryView`` whitelist for ``generator``;
         roles without a whitelist are unchecked until Task 12 defines their
-        views). Per §5.1 this never blocks node execution.
+        views). CK-CTX-001 is severity ``warn``: this records a whitelist
+        breach and never blocks node execution.
         """
         v = _as_dict(view)
         whitelist = self.rules.CONTEXT_VIEW_WHITELISTS.get(str(role))
@@ -1741,11 +1758,11 @@ class ConstitutionalKernel:
         )
 
 
-# ── enforcement helpers / adapters (plan 04 §5.5-§5.6) ─────────────────────
+# ── enforcement helpers / adapters ─────────────────────────────────────────
 
 
 def should_block(report: KernelReport, enforcement: str = "standard") -> bool:
-    """Apply the enforcement mode to a report (plan 04 §6 config sketch).
+    """Apply the ``rqgm.kernel.enforcement`` mode to a report.
 
     ``audit_only`` downgrades every context to warn-and-log (ablations
     B4-B6 / Stage-1 rollout); the report itself keeps its severities so the
@@ -1768,7 +1785,7 @@ def per_node_warn_check(
     registry=None,
     audit_log=None,
 ) -> "list[KernelReport] | None":
-    """The §5.6.5 per-node warn hook body: cheap checks, never raises.
+    """The per-node warn hook body: cheap checks, never raises.
 
     Runs ``validate_record_schema`` + ``validate_hashes`` over the node's
     new records, warns on findings, and best-effort appends ``kernel_report``
@@ -1808,7 +1825,7 @@ def per_node_warn_check(
 
 
 class CapabilityGatedMCPClient:
-    """Pre-flight capability gate at the MCP choke point (plan 04 §5.6.4).
+    """Pre-flight capability gate at the MCP choke point.
 
     A duck-typed wrapper — never an edit to ``MCPClient`` — preserving the
     caller surface (``list_tools`` / ``call_tool`` / ``_COW_TOOLS`` /

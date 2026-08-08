@@ -29,11 +29,11 @@ here as an explicit downstream-consequence unit
 (``test_downstream_consequence_of_a_hand_built_transition``), never as the P1
 proof.
 
-Adoption model (plan 14 §5.5, amended 2026-07-16): the utility policy is the
-evaluation CRITERION and is adopted by SUPERSESSION — a validated,
-shadow-passed successor displaces the healthy incumbent (T20, ``active ->
-retired``), retiring it with the old hash so ``frontier_repair`` fires.
-Behavioral roles keep the sanction-only replacement model, untouched.
+Adoption model (amended 2026-07-16, away from the sanction-only model): the
+utility policy is the evaluation CRITERION and is adopted by SUPERSESSION — a
+validated, shadow-passed successor displaces the healthy incumbent (T20,
+``active -> retired``), retiring it with the old hash so ``frontier_repair``
+fires. Behavioral roles keep the sanction-only replacement model, untouched.
 
 No test calls a real LLM (P2).
 """
@@ -137,7 +137,7 @@ def _quarantine_incumbent(tmp_path, store):
 def _rewrite_transition(old_hash, new_spec) -> EpochTransition:
     """A HAND-BUILT boundary transaction for the downstream-consequence unit
     ONLY (``test_downstream_consequence_of_a_hand_built_transition``) — NOT the
-    natural path (§5.5's adoption model is supersession/T20, driven end to end
+    natural path (the adoption model is supersession/T20, driven end to end
     by ``test_p1_epoch_boundary_rewrites_the_entire_score``). Here the incumbent
     was already sanctioned into quarantine, so T6 adopts the successor while
     T17 retires the incumbent from quarantine — the sanction path, exercised in
@@ -208,9 +208,9 @@ def test_p1_epoch_boundary_rewrites_the_entire_score(tmp_path):
     frontier. If this test fails, P1 is broken.
 
     NO hand-built transition: ``ensure_epoch`` fires ``_run_epoch_boundary``,
-    which mints the candidate, evaluates it (§5.5 dry-run), supersedes the
-    incumbent (T20) and retires it — the test only observes. Asserts, in the
-    plan's order (§9):
+    which mints the candidate, evaluates it (the deterministic, LLM-free
+    dry-run: T1 legality plus T3 replay), supersedes the incumbent (T20) and
+    retires it — the test only observes. Asserts, in order:
       1. the epoch's utility_policy_hash CHANGED — the score was rewritten;
       2. the epoch_fingerprint changed — the rewrite is inside the epoch
          identity, not beside it;
@@ -233,9 +233,9 @@ def test_p1_epoch_boundary_rewrites_the_entire_score(tmp_path):
     old_fp = epoch0.epoch_fingerprint
 
     # Three nodes scored under the incumbent policy, each stamped with its
-    # hash — the node's own provenance (plan 14 §5.8 delta 2), which is what
-    # makes the rewrite TOTAL rather than a random half-rewrite over the
-    # attacked-and-penalised subset that carries a UtilityRecord.
+    # hash — the node's own provenance, which is what makes the rewrite TOTAL
+    # rather than a random half-rewrite over the attacked-and-penalised subset
+    # that carries a UtilityRecord.
     nodes = [_Node(f"node_{i}", policy_hash=old_hash) for i in range(3)]
 
     # 6 (set up early): invalidate, never re-weight — no recompute may launder
@@ -278,7 +278,8 @@ def test_p1_epoch_boundary_rewrites_the_entire_score(tmp_path):
     assert rewrite_epoch.epoch_fingerprint != old_fp
 
     # 3. The committed transition retired the incumbent with the OLD hash and
-    #    role, and it was a T20 supersession (the amended §5.5 model).
+    #    role, and it was a T20 supersession — a HEALTHY incumbent displaced,
+    #    not a sanctioned one retired.
     audit = ImmutableAuditLog.read(tmp_path)
     util_retirements = [
         line["payload"] for line in audit
@@ -362,7 +363,7 @@ def test_kernel_blocks_an_illegal_candidate_on_the_live_adoption_path(tmp_path):
     hash is unchanged. This isolates the kernel gate from the T1 legality
     evaluation (which is the FIRST line of defense): here the candidate slips
     past a fabricated evaluation, and the constitution still refuses it before
-    it can score a node (§5.6 / §8.8)."""
+    it can score a node."""
     rt, epoch0 = _boot(tmp_path)
     store = RqgmStateStore()
     old_hash = epoch0.utility_policy["utility_policy_hash"]
@@ -433,8 +434,8 @@ def test_kernel_blocks_an_illegal_candidate_on_the_live_adoption_path(tmp_path):
 
 
 def test_ck_utl_006_gates_on_the_live_axis_set_not_incumbent_keys(tmp_path):
-    """[16] plan 14 §5.6: CK-UTL-006's live axis set is the epoch's ACTUAL
-    scored axes (resolved per ``cfg.evaluator.axis_mode``), NOT the incumbent
+    """CK-UTL-006's live axis set is the epoch's ACTUAL scored axes (resolved
+    per ``cfg.evaluator.axis_mode``), NOT the incumbent
     policy's static ``axis_weights`` keys — which are empty under the default
     ``axis_mode: dynamic`` and made the advisory dead on the live path
     (``live_axes=None`` => the check never ran in the very mode written for it).
@@ -614,12 +615,13 @@ def test_a_node_stamped_with_the_SURVIVING_policy_is_untouched(tmp_path):
     assert VALID_FOR_FRONTIER_KEY not in unstamped.metrics
 
 
-# ── the ablation rung (§8.2) ────────────────────────────────────────────────
+# ── the ablation rung: one flag returns the pre-Task-14 system ──────────────
 
 
 def test_utility_evolution_disabled_reproduces_todays_behavior(tmp_path):
     """``rqgm.utility_evolution.enabled: false`` IS the pre-Task-14 system,
-    reachable by one flag — the ablation rung plan 13 needs.
+    reachable by one flag — the off-switch an ablation ladder needs to isolate
+    what governed utility evolution contributes.
 
     The founding utility_policy entry still exists and still governs, so
     capture_utility_policy returns the founding policy (== the cfg policy) in
@@ -700,8 +702,9 @@ def test_enabled_boundary_mints_a_policy_candidate(tmp_path):
 
 
 def test_min_epochs_between_rewrites_bounds_the_invalidation_cost(tmp_path):
-    """R1: a rewrite invalidates every node scored under the old policy, so
-    the boundary rate is bounded (plan 14 §6.3)."""
+    """R1: a rewrite invalidates every node scored under the old policy, so the
+    rewrite rate is bounded — ``min_epochs_between_rewrites`` bars a second
+    proposal until that many epochs have passed, and the skip is audited."""
     rt, _ = _boot(tmp_path, _cfg(
         utility_evolution={"min_epochs_between_rewrites": 99}
     ))
@@ -723,12 +726,12 @@ def test_min_epochs_between_rewrites_bounds_the_invalidation_cost(tmp_path):
     assert skipped
 
 
-# ── §5.9: a governed rewrite does not open an ungoverned channel ────────────
+# ── a governed rewrite does not open an ungoverned channel ──────────────────
 
 
 def test_ungoverned_weight_smuggling_is_still_blocked(tmp_path):
-    """MetricSpecWeightCap stays verbatim (plan 14 §5.9). "Weights are
-    capped" and "weights are rewritten at boundaries" are not a
+    """MetricSpecWeightCap stays verbatim — Task 14 changed no line of it.
+    "Weights are capped" and "weights are rewritten at boundaries" are not a
     contradiction: the distinction is WHO and WHEN, not WHETHER. A node
     smuggling weights mid-epoch through make_metric_spec is still
     suppressed and audited."""
@@ -763,7 +766,7 @@ def test_ungoverned_weight_smuggling_is_still_blocked(tmp_path):
 def test_policy_mutator_is_a_registered_sanctionable_component(tmp_path):
     """The thing that proposes the score is itself governed: registered,
     sanctionable and evolvable, with no authority its meta siblings lack and
-    no immunity they lack (plan 14 §5.4/§9)."""
+    no immunity they lack."""
     rt, epoch0 = _boot(tmp_path)
     entry = rt.state.components.get("policy_mutator_v1")
     assert entry is not None
@@ -785,8 +788,8 @@ def test_a_sanctioned_policy_mutator_is_not_rejected_as_unknown(tmp_path):
     sanction rather than being silently dropped (P3)."""
     rt, _ = _boot(tmp_path)
     engine = rt.transition_engine
-    # NOTE the plan (§5.4/§9) names this ``resolve_emergency_quarantine``;
-    # the real Task 09 API is ``emergency_quarantine``.
+    # NOTE the sanction entry point is ``emergency_quarantine``; earlier
+    # drafts called it ``resolve_emergency_quarantine``, which never shipped.
     out = engine.emergency_quarantine(
         component_id="policy_mutator_v1",
         violation={"code": "CK-HSH-010", "subject_ref": "policy_mutator_v1"},
@@ -800,16 +803,16 @@ def test_a_sanctioned_policy_mutator_is_not_rejected_as_unknown(tmp_path):
     assert sanctioned == ["policy_mutator_v1"]
 
 
-# ── §8.1: simple_bfts is IDENTITY ──────────────────────────────────────────
+# ── simple_bfts is IDENTITY: Task 14 adds nothing to a default run ─────────
 
 
 def test_simple_bfts_writes_no_utility_policy_sentinel(monkeypatch, tmp_path):
-    """The §9 regression: a default (simple_bfts) run has no rqgm_prompts/,
-    no `_utility_policy_hash` on any node, and never imports the Task 14
-    module. The stamp is attached by ``wrap_node_executor``, which
+    """The identity regression: a default (simple_bfts) run has no
+    rqgm_prompts/, no `_utility_policy_hash` on any node, and never imports the
+    Task 14 module. The stamp is attached by ``wrap_node_executor``, which
     ``ari.core`` calls only when ``bfts.rqgm`` exists — so under simple_bfts
     the wrapper never runs, the sentinel is absent, and tree.json is
-    byte-identical to today (plan 14 §5.11/§8.1).
+    byte-identical to today.
     """
     import sys
     from types import SimpleNamespace
@@ -871,8 +874,8 @@ def test_simple_bfts_writes_no_utility_policy_sentinel(monkeypatch, tmp_path):
 
 
 def test_utility_policy_entry_is_inside_the_frozen_active_set(tmp_path):
-    """The forcing function behind §5.8 delta 1: once utility_policy is an
-    active registry entry, epoch.active_prompt_hashes carries the epoch
+    """Why utility_policy had to become a first-class registry entry: once it
+    is an active one, epoch.active_prompt_hashes carries the epoch
     policy hash, so every UtilityRecord must carry THAT hash or the kernel
     raises CK-EPO-001 on it."""
     rt, epoch0 = _boot(tmp_path)

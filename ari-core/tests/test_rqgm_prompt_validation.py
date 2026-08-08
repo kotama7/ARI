@@ -109,7 +109,7 @@ def _candidate(
     return PromptCandidate(**base)
 
 
-# ── static validation (§5.3 stage 1) ─────────────────────────────────────────
+# ── static_validation — first stage, a pure function (no LLM, no budget) ─────
 
 
 def test_clean_candidate_passes_static_validation():
@@ -250,7 +250,9 @@ def test_schema_tightening_never_widens():
 
 
 def test_candidate_must_accept_incumbent_placeholder_set():
-    # §5.5 key-swap safety: same declared contract, different actual fields.
+    # Key-swap safety: a candidate must accept the incumbent's EXACT
+    # placeholder set, so narrowing it is rejected even when the declared
+    # input_contract was narrowed to match.
     narrowed = "Review {proposal} only.\n"
     cand = _candidate(
         narrowed,
@@ -262,7 +264,7 @@ def test_candidate_must_accept_incumbent_placeholder_set():
     assert any("incumbent's exact placeholder set" in f for f in failures)
 
 
-# ── constitutional validation (§5.3 stage 2) ─────────────────────────────────
+# ── constitutional_validation — second stage, also a pure function ───────────
 
 
 def test_clean_candidate_passes_constitutional_validation():
@@ -329,7 +331,7 @@ def test_same_role_generation_is_rejected():
     assert any("same-role" in f or "prompt_mutator" in f for f in failures)
 
 
-# ── output-schema checker (§5.3 stage 3 primitive) ───────────────────────────
+# ── output-schema checker — the primitive the schema_dry_run stage uses ──────
 
 
 def test_check_output_bare_index():
@@ -359,7 +361,7 @@ def test_check_output_json_array_and_freeform():
     assert check_output_against_schema("", {"__reply__": "freeform"})
 
 
-# ── determinism guard (§9: deterministic stages are LLM-free) ────────────────
+# ── determinism guard: the deterministic stages import no LLM/network/random ─
 
 
 def test_prompt_modules_are_offline_and_random_free():

@@ -540,7 +540,7 @@ def test_ari_rqgm_prompt_evolution_smoke(tmp_path):
 
 def test_fail_open_writer_and_zero_files_without_checkpoint(tmp_path):
     """No checkpoint → no-op, never raises; simple_bfts never constructs
-    these classes, so no RQGM prompt file can appear (§5.7 mode table)."""
+    these classes, so no RQGM prompt file can appear in that mode."""
     record_prompt_evolution_event(None, {"record_type": "prompt_candidate"})
     save_prompt_specs_snapshot(None)
     assert load_prompt_evolution_log(None) == []
@@ -797,7 +797,8 @@ def test_ungoverned_keys_degrade_byte_identically(tmp_path):
 
 
 def test_a_policy_body_is_never_offered_for_rendering(tmp_path):
-    """A utility policy is frozen, not rendered (plan 14 §5.3)."""
+    """A utility policy is a frozen JSON body, not a prompt template, so the
+    governed loader never offers it for rendering."""
     from types import SimpleNamespace as NS
 
     rt = _rqgm(tmp_path)

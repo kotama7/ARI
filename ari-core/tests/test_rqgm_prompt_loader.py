@@ -67,7 +67,7 @@ def test_governed_loader_satisfies_prompt_loader_protocol():
     assert isinstance(FilesystemPromptLoader(), PromptLoader)
 
 
-# ── byte-identical delegation (§5.5 / §8) ────────────────────────────────────
+# ── byte-identical delegation: an empty view stays simple_bfts-identical ─────
 
 
 def test_ungoverned_keys_delegate_byte_identically_to_goldens():
@@ -98,7 +98,7 @@ def test_governed_package_ref_delegates_and_verifies_hash():
     )
 
 
-# ── checkpoint-scoped resolution (§5.6) ──────────────────────────────────────
+# ── checkpoint-scoped resolution: evolved bodies come from the run dir ───────
 
 
 def test_checkpoint_ref_resolves_under_env_pinned_checkpoint(

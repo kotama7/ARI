@@ -12,7 +12,7 @@ atomically through the Task 02 boundary transaction
 (:meth:`RegistryTransitionEngine.emergency_quarantine`) ends the current epoch
 immediately and rides the same atomic close/change/open transaction.
 
-Determinism stance (§5.1, P2): :meth:`resolve_transition` is a pure function
+Determinism stance (P2): :meth:`resolve_transition` is a pure function
 of ``(epoch_state, governance_report, candidate_evaluations, registries,
 status_history, config)`` — no LLM, no I/O, no randomness, no wall clock in
 decisions. ``created_at`` is stamped only at ``apply`` time (audit metadata,
@@ -39,8 +39,10 @@ v1 resolution notes (documented simplifications, deterministic by design):
   ``governance_suspended`` carry-over, the resolved transition is empty:
   promotions and retirements are frozen and the incumbent set keeps serving.
 
-Under ``simple_bfts`` this module is never imported (``build_runtime``
-conditional, plan 09 §5.5). VirSci-independent: no ``vendor/virsci`` import.
+Under ``simple_bfts`` this module is never imported: ``build_runtime``
+constructs the transition engine only on the ``ari_rqgm`` branch, so the
+simple mode carries no registry writer at all. VirSci-independent: no
+``vendor/virsci`` import.
 """
 
 from __future__ import annotations
@@ -91,7 +93,7 @@ _NEGATIVE_STRENGTH: dict[str, int] = {
     "retire": 4,
 }
 
-#: The §5.4 closed emergency trigger class: deterministic kernel critical
+#: The closed emergency-trigger class: deterministic kernel critical
 #: violation codes ONLY (never performance signals, reviewer opinions, raw
 #: attacks, or any LLM output).
 EMERGENCY_TRIGGER_CODES: frozenset[str] = frozenset({
@@ -105,8 +107,8 @@ EMERGENCY_TRIGGER_CODES: frozenset[str] = frozenset({
     "CK-ROL-901",   # forged registry-writer authority
 })
 
-#: Statuses that keep a component serving its role (plan 09 §5.2 semantics:
-#: warning/probation are serving postures; quarantine removes from serving).
+#: Statuses that keep a component serving its role: warning and probation are
+#: serving postures, quarantine is what removes a holder from serving.
 SERVING_STATUSES: tuple[str, ...] = (
     "active",
     "probationary_active",
@@ -114,7 +116,8 @@ SERVING_STATUSES: tuple[str, ...] = (
     "probation",
 )
 
-#: Statuses eligible as an emergency/quarantine fallback holder (§5.4).
+#: Statuses eligible as an emergency/quarantine fallback holder — a fallback
+#: must itself still be serving, so the eligible set IS the serving set.
 _FALLBACK_ELIGIBLE: tuple[str, ...] = SERVING_STATUSES
 
 #: Role-holder statuses that BLOCK a T6 adoption (no opening while the
@@ -141,12 +144,12 @@ NO_SHADOW_BASIS_KEY = "no_shadow_basis"
 #: * :data:`NO_REPLAY_BASIS_KEY` waives T3's ``replay_min_cases``. It means
 #:   "no executed replay case stands behind this board". ``utility_policy``
 #:   declares it always (its ``case_refs`` are the policy's own DIMENSIONS —
-#:   never executed cases, so the floor has nothing honest to count, plan 14
-#:   §5.5). ``paper_reviewer`` declares it ONLY when its replay board is
+#:   never executed cases, so the floor has nothing honest to count).
+#:   ``paper_reviewer`` declares it ONLY when its replay board is
 #:   genuinely ABSENT: its ``case_refs`` ARE real pool case_ids, so a board that
-#:   HAS cases must be COUNTED, not waived (ari_rqgm_paper/05 §5.5, amended
-#:   2026-07-17 — an unconditional declaration let a genuine 1-case board clear
-#:   a 4-case floor, which no plan sanctions).
+#:   HAS cases must be COUNTED, not waived (amended 2026-07-17 — an
+#:   unconditional declaration let a genuine 1-case board clear a 4-case floor,
+#:   which nothing sanctions).
 #: * :data:`NO_SHADOW_BASIS_KEY` waives T6's ``shadow_min_samples``. It means
 #:   "this candidate is never shadow-EXECUTED, so the stage is vacuous BY
 #:   CONSTRUCTION" — a structural fact independent of the replay board, true for
@@ -156,24 +159,24 @@ NO_SHADOW_BASIS_KEY = "no_shadow_basis"
 #:   candidate with NO board sailed through on the waiver — perverse, and the
 #:   Red Queen dies quietly.
 #:
-#: Both keys are gated by this ONE role allowlist, scoped hard and cited exactly
-#: like this module's other two role-scoped rules
+#: Both keys are gated by this ONE role allowlist, scoped exactly as hard as
+#: this module's other two role-scoped rules
 #: (:meth:`RegistryTransitionEngine._maybe_supersede_utility_policy`,
 #: :meth:`RegistryTransitionEngine._attach_utility_policy_bodies`):
 #:
-#: * ``utility_policy`` — plan 14 §5.5/§7: a passive policy DOCUMENT holds no
+#: * ``utility_policy`` — a passive policy DOCUMENT holds no
 #:   ``invoke`` grant, so it is never shadow-EXECUTED. Its shadow stage is
 #:   vacuous by construction, so T6 reduces to CK-UTL legality (the T1 dry-run
 #:   + the live kernel gate) + non-degeneracy + the supersession/adoption-cap
 #:   guards. Its T3 board (axis-ordering agreement) is real and pool-INdependent
 #:   — the sentinel waives the case COUNT, never the score.
-#: * ``paper_writer`` — plan ari_rqgm_paper/04 §5.1 + /03 §5.9 step 2 (amended
-#:   2026-07-17): a candidate writer PROMPT has authored no drafts yet, so no
+#: * ``paper_writer`` (amended 2026-07-17) — a candidate writer PROMPT has
+#:   authored no drafts yet, so no
 #:   replay or anchor case can exist for it. It climbs to ``shadow`` and WAITS
 #:   there; T6's ``_role_opening`` guard is untouched, so adoption still
 #:   requires a real claim-gate faithfulness sanction against the incumbent.
-#: * ``paper_reviewer`` — plan ari_rqgm_paper/04 §5.9 + /05 §5.5 (amended
-#:   2026-07-17): the zero-coverage on-ramp ("the first paper reviewer is never
+#: * ``paper_reviewer`` (amended 2026-07-17) — the zero-coverage on-ramp
+#:   ("the first paper reviewer is never
 #:   blocked for lacking cases it could not yet have"). A reviewer that HAS
 #:   coverage and merely scored badly emits real scores WITHOUT the replay
 #:   sentinel and keeps failing T3 on its merits — count floor included.
@@ -232,12 +235,14 @@ def _entries(registry) -> dict:
     return {}
 
 
-# ── EpochTransition (plan 09 §6.1) ──────────────────────────────────────────
+# ── EpochTransition (the boundary's one output record) ─────────────────────
 
 
 @dataclass
 class EpochTransition:
-    """The single output record of one boundary resolution (§6.1).
+    """The single output record of one boundary resolution; the persisted
+    field set is fixed by ``docs/reference/rqgm_schemas.md``,
+    "`epoch_transition.schema.json`".
 
     ``created_at`` stays empty until :meth:`RegistryTransitionEngine.apply`
     stamps it (P2: ``resolve_transition`` reads no clock), so two resolves
@@ -279,8 +284,9 @@ class EpochTransition:
                     or self.bans)
 
     def to_dict(self) -> dict:
-        """§6.1 layout with the ``rqgm_record_base`` envelope fields first
-        (governance record: the kernel schema check reads the envelope)."""
+        """Serialized layout with the ``rqgm_record_base`` envelope fields
+        first (governance record: the kernel schema check reads the
+        envelope)."""
         return {
             "record_type": "epoch_transition",
             "schema_version": self.schema_version,
@@ -382,7 +388,7 @@ def build_status_history(events) -> dict:
     return hist
 
 
-# ── config view (plan 09 §6.3 thresholds; the ONLY tunable part) ────────────
+# ── config view (the thresholds are the ONLY tunable part) ─────────────────
 
 
 class _Thresholds:
@@ -409,7 +415,9 @@ class _Thresholds:
         if block is None and isinstance(rqgm_cfg, dict):
             block = rqgm_cfg.get("transition")
         self._block = block
-        # T1 per-role candidate cap rides Task 07's key (plan 09 §5.2 T1).
+        # T1's per-role candidate cap has no key of its own: it rides Task
+        # 07's ``max_candidates_per_role_per_epoch``, so candidate intake and
+        # the T1 gate can never disagree about the cap.
         pe = getattr(rqgm_cfg, "prompt_evolution", None)
         if pe is None and isinstance(rqgm_cfg, dict):
             pe = rqgm_cfg.get("prompt_evolution")
@@ -440,7 +448,8 @@ class _Thresholds:
 
 
 class RegistryTransitionEngine:
-    """The single writer of registry status (global invariant 10; plan 09 §7).
+    """The single writer of registry status (global invariant 10 — see
+    ``docs/concepts/rqgm_architecture.md``, "Key invariants").
 
     Constructed only under ``ari_rqgm`` (``RQGMRuntime``); ``simple_bfts``
     never imports this module. All persistence goes through the injected
@@ -477,7 +486,7 @@ class RegistryTransitionEngine:
         statuses yield the empty set (ineligible, never a crash)."""
         return transition_rules.allowed_transitions(str(status))
 
-    # ── §5.3 step 1-2: freeze inputs + pure resolution ────────────────
+    # ── boundary steps 1-2: freeze inputs, then resolve purely ────────
 
     def resolve_transition(
         self,
@@ -490,7 +499,7 @@ class RegistryTransitionEngine:
         status_history=None,
         governance_suspended: bool = False,
     ) -> EpochTransition:
-        """Pure and deterministic (§5.1). No I/O, no LLM, no clock.
+        """Pure and deterministic: no I/O, no LLM, no randomness, no clock.
 
         *components*/*prompts* default to the constructor-held registries;
         *status_history* is the :func:`build_status_history` fold (an input,
@@ -565,7 +574,7 @@ class RegistryTransitionEngine:
         self._assign_fallbacks(t, comps, new_status)
         return t
 
-    # ── §5.3 steps 3-5: validate → prepare → apply → commit ───────────
+    # ── boundary steps 3-5: validate → prepare → apply → commit ───────
 
     def apply(
         self,
@@ -584,7 +593,8 @@ class RegistryTransitionEngine:
         the open epoch is a no-op (the deterministic re-run after a commit).
         A kernel-blocked transition is aborted fail-closed — NO resolved
         status change — while the boundary itself still advances fail-open
-        with the incumbent set serving unchanged (plan 09 §5.3 step 3 / §8).
+        with the incumbent set serving unchanged: a blocked transition must
+        never be able to stall the epoch clock.
 
         *intake_events* are Task 07 candidate-intake ``prompt_registered``
         events (status=``candidate``) supplied by the runtime boundary hook.
@@ -607,7 +617,7 @@ class RegistryTransitionEngine:
             return AppliedTransition(transition, noop=True, state=state)
         if self._commit_exists(checkpoint_dir,
                                transition.epoch_transition_id):
-            # §5.3 double-commit rule: a transition_id whose commit event
+            # Double-commit rule: a transition_id whose commit event
             # already exists in the log is a no-op even against stale state.
             transition.notes.append(
                 f"apply: commit event for {transition.epoch_transition_id} "
@@ -616,7 +626,7 @@ class RegistryTransitionEngine:
             return AppliedTransition(transition, noop=True, state=state)
         transition.created_at = self._now_iso()
         intake = list(intake_events or ())
-        # Task 14 (plan 14 §5.6, blocker 4): put the adopted utility_policy
+        # Task 14: put the adopted utility_policy
         # BODY on the adoption entry so the kernel legality gate fires on the
         # LIVE path (validate_transition -> validate_utility_policy). Done here
         # (apply-side I/O) so resolve_transition stays pure. An illegal policy
@@ -673,7 +683,7 @@ class RegistryTransitionEngine:
         )
 
     def decompose(self, transition: EpochTransition) -> list:
-        """§5.3 step 5(a): one ``component_status_change`` /
+        """Boundary step 5(a): one ``component_status_change`` /
         ``prompt_status_change`` event per change, payloads carrying
         ``transition_id``, ``rule_id``, from/to, ``evidence_refs``,
         ``produced_by`` and the frozen input hash."""
@@ -714,7 +724,7 @@ class RegistryTransitionEngine:
                 ))
         return events
 
-    # ── §5.4: emergency boundary ───────────────────────────────────────
+    # ── emergency boundary (one sanction, kernel-critical trigger only) ─
 
     def emergency_quarantine(
         self,
@@ -728,7 +738,7 @@ class RegistryTransitionEngine:
         node_count: int | None = None,
         run_id: str = "",
     ) -> EpochTransition:
-        """Single-sanction emergency boundary transition (plan 09 §5.4).
+        """Single-sanction emergency boundary transition.
 
         Only a deterministic kernel critical violation
         (:data:`EMERGENCY_TRIGGER_CODES`, block severity) qualifies —
@@ -941,8 +951,8 @@ class RegistryTransitionEngine:
     def _attach_utility_policy_bodies(
         self, transition: EpochTransition, state, checkpoint_dir, cfg=None,
     ) -> None:
-        """Plan 14 §5.6 / blocker 4: resolve each utility_policy adoption's
-        successor body and attach it as ``entry['policy']`` so the kernel's
+        """Resolve each utility_policy adoption's successor body and attach it
+        as ``entry['policy']`` so the kernel's
         legality gate (``validate_transition`` -> ``validate_utility_policy``,
         kernel.py) runs on the LIVE adoption path — an illegal candidate is
         BLOCKED before it can ever score a node. Apply-side I/O keeps
@@ -952,8 +962,9 @@ class RegistryTransitionEngine:
         candidates upstream, so this is defense in depth, never the sole
         gate).
 
-        Also attaches ``entry['live_axes']`` (plan 14 §5.6 "one validator, two
-        callers"): the epoch's live axis set, so CK-UTL-006 fires on THIS caller
+        Also attaches ``entry['live_axes']`` — one validator, two callers, and
+        BOTH must feed it the same evidence: the epoch's live axis set, so
+        CK-UTL-006 fires on THIS caller
         too. Without it the apply path validated against ``live_axes=None`` and
         the advisory was dead on the T6 adoption path even after the candidate
         hook was fixed."""
@@ -1116,7 +1127,7 @@ class RegistryTransitionEngine:
 
     def _freeze_inputs(self, report: dict, evaluations: list,
                        comps: dict, proms: dict) -> dict:
-        """§5.3 step 1: content hashes over the frozen inputs so the
+        """Boundary step 1: content hashes over the frozen inputs so the
         transition is auditable and deterministically replayable."""
         eval_refs = [str(_as_dict(e).get("prompt_id", "")) for e in evaluations]
         eval_hashes = [
@@ -1241,7 +1252,7 @@ class RegistryTransitionEngine:
         }
         # #79 producer half: a SUCCESSION entry (T6 adoption; T20/T21
         # supersession — the edges that displace a DISTINCT incumbent)
-        # carries the component's declared §6.1 capabilities, so a
+        # carries the component's declared registry capabilities, so a
         # capability-declaring successor actually reaches the kernel's
         # CK-REG-101 incumbent comparison — without this, no live adoption
         # ever had capability fields and the gate was structurally
@@ -1297,7 +1308,7 @@ class RegistryTransitionEngine:
                 # T10 "repeated warnings" trigger: once this component has
                 # accumulated warning_escalation_count warnings (prior T9
                 # applications in the committed history plus this one), the
-                # warning escalates straight to probation (plan 09 §5.2 T10).
+                # warning escalates straight to probation.
                 prior_warnings = self._rule_count(history, cid, "T9")
                 if (prior_warnings + 1
                         >= int(self.cfg.warning_escalation_count)):
@@ -1562,7 +1573,7 @@ class RegistryTransitionEngine:
                         opening = self._role_opening(
                             role, comps, new_status, exclude=key
                         )
-                        # Plan 14 §5.5 (amended 2026-07-16): the utility_policy
+                        # Amended 2026-07-16: the utility_policy
                         # criterion is adopted by SUPERSESSION. When no opening
                         # exists (the incumbent is healthy) a shadow-passed
                         # utility_policy successor still adopts — and DISPLACES
@@ -1583,7 +1594,7 @@ class RegistryTransitionEngine:
                             )
                             change("T6", "probationary_active",
                                    self._eval_refs(ev), "adoptions")
-                            # Paper-archive Task 05 / plan 03 §5.9 (wave 3c):
+                            # Paper-archive Task 05 (wave 3c):
                             # paper-role co-evolution is PROMPT-level, so on a
                             # successor's T6 adoption demote the incumbent
                             # active prompt to SHADOW STANDBY (T21) — exactly
@@ -1633,15 +1644,16 @@ class RegistryTransitionEngine:
         record: which gate, which role, which declaration, and that the basis is
         DECLARED absent rather than cleared by evidence.
 
-        The citations are checked against the plan text: each names a section
-        that records this sentinel for THIS role (paper 03 §5.9 / 04 §5.9 /
-        05 §5.5 amended 2026-07-17; plan 14 §5.5/§7 recorded 2026-07-16)."""
+        The reason clause states WHY the role can have no executed basis, so
+        the record explains its own waiver instead of deferring to a
+        cross-reference the reader may not have."""
         floor, declared = (
             ("replay_min_cases", NO_REPLAY_BASIS_KEY) if rule_id == "T3"
             else ("shadow_min_samples", NO_SHADOW_BASIS_KEY)
         )
-        cite = ("plan 14 §5.5/§7" if role == UTILITY_POLICY_ROLE
-                else "ari_rqgm_paper/03 §5.9, /04 §5.1/§5.9, /05 §5.5")
+        cite = ("a passive policy document is never shadow-executed"
+                if role == UTILITY_POLICY_ROLE
+                else "a candidate paper prompt has produced nothing to replay")
         return (
             f"{key}: {rule_id} {floor} floor WAIVED — role {role!r} declared "
             f"{declared} (no executed case stands behind this board; {cite}). "
@@ -1652,7 +1664,7 @@ class RegistryTransitionEngine:
         self, t: EpochTransition, *, role: str, proms: dict | None,
         new_status: dict, successor_key: str, component_level: bool,
     ) -> bool:
-        """Plan 14 §5.5 supersession (amended 2026-07-16). A shadow-passed
+        """Utility-policy supersession (amended 2026-07-16). A shadow-passed
         ``utility_policy`` successor DISPLACES the healthy incumbent policy:
         emit a T20 (``active -> retired``) retirement for the incumbent policy
         PROMPT carrying the OLD ``utility_policy_hash`` and ``role`` so
@@ -1665,8 +1677,8 @@ class RegistryTransitionEngine:
         this path, so they keep the conservative sanction-only replacement
         model unchanged. The displacement rides the SAME boundary transaction
         as the T6 adoption, so the swap and the invalidation are one committed
-        act (the within-epoch freeze §8.1 holds; repair runs strictly after
-        commit).
+        act (the within-epoch freeze holds — the policy changes AT a boundary,
+        never inside an epoch; repair runs strictly after commit).
         """
         if component_level or role != UTILITY_POLICY_ROLE or proms is None:
             return False
@@ -1706,7 +1718,7 @@ class RegistryTransitionEngine:
         self, t: EpochTransition, *, role: str, proms: dict | None,
         new_status: dict, successor_key: str, component_level: bool,
     ) -> None:
-        """Plan 03 §5.9 shadow-standby supersession (wave 3c). On a paper-role
+        """Shadow-standby supersession (wave 3c). On a paper-role
         PROMPT T6 adoption, move the role's incumbent active prompt(s) to
         ``shadow`` (T21) so exactly ONE prompt is active per paper role — the
         incumbent is never left co-active behind the latest-wins rollup.
@@ -1754,7 +1766,7 @@ class RegistryTransitionEngine:
         """T6 guard: the role has an opening iff no holder is healthy
         (active/probationary_active/warning) AFTER this boundary's
         sanctions — incumbent in probation/quarantine/retired, or role
-        unfilled (plan 09 §5.2 T6)."""
+        unfilled. A healthy holder blocks T6 outright."""
         for cid, entry in comps.items():
             if cid == exclude or str(getattr(entry, "role", "")) != role:
                 continue
@@ -1766,8 +1778,9 @@ class RegistryTransitionEngine:
     @staticmethod
     def _active_after(comps: dict, new_status: dict) -> dict:
         """``role -> component_id`` over the post-change serving statuses
-        (ACTIVE first; a warning/probation holder keeps the role — serving
-        semantics of §5.2). Insertion order = replay order, latest wins."""
+        (ACTIVE first; a warning/probation holder keeps the role — warning and
+        probation are serving postures). Insertion order = replay order,
+        latest wins."""
         primary: dict = {}
         secondary: dict = {}
         for cid, entry in comps.items():
@@ -1783,7 +1796,7 @@ class RegistryTransitionEngine:
 
     def _assign_fallbacks(self, t: EpochTransition, comps: dict,
                           new_status: dict) -> None:
-        """§5.4 fallback policy for every role whose serving holder was
+        """Fallback policy for every role whose serving holder was
         removed this transition: the most recent prior version of the role
         still in an eligible serving status, else the committed baseline
         ``.md`` prompt (which always exists). No role is ever left empty."""

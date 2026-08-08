@@ -46,7 +46,7 @@ def _reviewer_accepts(reviewer, case: dict) -> bool:
     round attacks — an attack on a decision the reviewer never made."""
     try:
         rec = reviewer.anchor_verdict(case)
-    except Exception:  # never raise into the paper phase (§7 contract)
+    except Exception:  # never raise into the paper phase: degrade to NO verdict
         rec = None
     if rec is None:
         return False
@@ -55,7 +55,9 @@ def _reviewer_accepts(reviewer, case: dict) -> bool:
 
 def over_accepted_cases(reviewer, cases) -> list[dict]:
     """The held-out anchor cases the reviewer ACCEPTED though their ground
-    truth is ``reject`` — the direct over-acceptance signal (§5.1). Sorted by
+    truth is ``reject`` — the direct over-acceptance signal, and the only
+    pre-signal the ``paper_self_preference`` adversary may attack (it attacks a
+    decision the reviewer actually made, never a synthesised one). Sorted by
     ``case_id`` (deterministic, no wall clock)."""
     out = []
     for case in sorted(cases or (), key=lambda c: str(c.get("case_id", ""))):
@@ -79,7 +81,9 @@ def compute_self_preference_margin(
     epoch_id: str = "",
     checkpoint_dir=None,
 ) -> float:
-    """The deterministic AI-vs-human self-preference margin (§5.3).
+    """The deterministic AI-vs-human self-preference margin — the population
+    statistic over the authorship corpus, as opposed to the per-case signal
+    :func:`over_accepted_cases` returns.
 
     ``mean(reviewer accepts | authorship == ai) - mean(reviewer accepts |
     authorship == human)`` over the held-out sample; ``0.0`` when either half

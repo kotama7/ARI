@@ -1,12 +1,13 @@
 """RqgmStateStore + EpochTransaction + ImmutableAuditLog (RQGM Task 02).
 
-Checkpoint-scoped persistence for the RQGM state layer (plan 02 §5.1):
+Checkpoint-scoped persistence for the RQGM state layer — four files, no
+others:
 
 * ``{ckpt}/rqgm_transitions.jsonl`` — **source of truth**: append-only,
   hash-chained event log of every epoch open/close, registration, and status
   change. Small by design (registry/epoch events only) so resume replay is
-  cheap (§5.7).
-* ``{ckpt}/rqgm_audit.jsonl`` — the **ImmutableAuditLog** (§5.9). This task
+  cheap.
+* ``{ckpt}/rqgm_audit.jsonl`` — the **ImmutableAuditLog**. This task
   owns the file: fixed name, identical append-only hash-chained envelope with
   an independent per-file chain. Task 05 writes the governance content;
   Task 04 verifies the chain and never writes.
@@ -15,7 +16,7 @@ Checkpoint-scoped persistence for the RQGM state layer (plan 02 §5.1):
   replay on load and rebuilt on mismatch, so a torn snapshot can never
   corrupt governance state.
 
-Transaction discipline (§5.6): status changes happen ONLY inside an
+Transaction discipline: status changes happen ONLY inside an
 epoch-boundary :class:`EpochTransaction` (prepare … commit), single-writer
 (the ``_run_loop`` main thread). Crash recovery: on replay, events after the
 last ``epoch_transaction_prepare`` without a matching commit are ignored.
@@ -29,7 +30,8 @@ run loop. Deterministic decision logic — timestamps are envelope metadata
 only, never hashed (P2).
 
 Under ``rqgm.enabled=false`` / ``simple_bfts`` nothing constructs this store
-and none of the four files is ever created (§5.8).
+and none of the four files is ever created — absence of ``rqgm_state.json``
+means a pure ``simple_bfts`` run.
 """
 
 from __future__ import annotations
@@ -70,8 +72,8 @@ RQGM_REGISTRY_FILENAME = "rqgm_registry.json"
 
 RQGM_REGISTRY_SCHEMA_VERSION = 1
 
-#: Reserved directory name for Task 07 evolved prompt text (§5.1); nothing
-#: writes it in Task 02.
+#: Reserved directory name for Task 07 evolved prompt text; nothing in this
+#: module ever writes it.
 RQGM_PROMPTS_DIRNAME = "rqgm_prompts"
 
 # Event types a transaction may add (prepare/commit are transaction-managed).
@@ -181,8 +183,8 @@ def _require_valid_chain(events: list[TransitionEvent], path: Path) -> None:
 def _append_chained(path: Path, events: list[TransitionEvent]) -> bool:
     """Finalize + append *events* to *path* under the module lock.
 
-    Returns True iff all lines were written; never raises (plan 02 §5.6:
-    a state-layer failure degrades to "epoch continues").
+    Returns True iff all lines were written; never raises — a state-layer
+    failure degrades to "epoch continues", never to a killed run.
     """
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -205,7 +207,7 @@ def _append_chained(path: Path, events: list[TransitionEvent]) -> bool:
 
 
 def committed_events(events: list[TransitionEvent]) -> list[TransitionEvent]:
-    """Crash-recovery filter (plan 02 §5.6): drop every event that belongs to
+    """Crash-recovery filter: drop every event that belongs to
     a prepare without a matching commit. Events outside any transaction
     (initial ``epoch_open`` and legacy ``emergency_quarantine``) are committed
     as-is."""
@@ -240,7 +242,7 @@ def committed_events(events: list[TransitionEvent]) -> list[TransitionEvent]:
 
 @dataclass
 class RqgmRuntimeState:
-    """In-memory rollup of the replayed event log (plan 02 §7).
+    """In-memory rollup of the replayed event log.
 
     ``last_event_hash`` / ``next_event_seq`` describe the PHYSICAL file tail
     (chain continuation), not the committed subset.
@@ -254,7 +256,7 @@ class RqgmRuntimeState:
 
 
 class EpochTransaction:
-    """Context manager over one epoch-boundary transaction (plan 02 §5.6).
+    """Context manager over one epoch-boundary transaction.
 
     ``__enter__`` appends ``epoch_transaction_prepare``; :meth:`add` appends
     validated events immediately (single-writer, so interleaving is
@@ -365,7 +367,8 @@ class RqgmStateStore:
         self, checkpoint_dir: str | Path
     ) -> RqgmRuntimeState | None:
         """Replay the event log, then validate the derived snapshots against
-        it and rebuild them on mismatch (plan 02 §5.1/§5.7). A checkpoint
+        it and rebuild them on mismatch — the snapshots are disposable, so a
+        torn one can never corrupt governance state. A checkpoint
         with no RQGM files returns ``None`` — "RQGM never ran", not an
         error."""
         state = self.replay(checkpoint_dir)
@@ -509,7 +512,8 @@ class RqgmStateStore:
         events: list[TransitionEvent],
     ) -> RqgmRuntimeState | None:
         """Convenience: run *events* through one prepare..commit transaction
-        and return the replayed state (plan 02 §5.3's sole mutation path)."""
+        and return the replayed state — the event log is the sole mutation
+        path, so nothing here writes a registry directly."""
         with self.begin_transaction(checkpoint_dir, transition_id) as tx:
             for ev in events:
                 tx.add(ev)
@@ -545,7 +549,7 @@ class RqgmStateStore:
         """Open the initial epoch (``epoch_000``, or the next sequence when a
         closed prior epoch exists). Appends one bare ``epoch_open`` event —
         committed-by-default under the recovery rule — then replays and
-        rewrites snapshots (plan 02 §5.6 freeze steps 3-4)."""
+        rewrites the derived snapshots from that replay."""
         base = prior if prior is not None else RqgmRuntimeState()
         if base.epoch is None:
             seq, prev_id = 0, None
@@ -590,7 +594,8 @@ class RqgmStateStore:
         utility_policy_override: dict | None = None,
         scientific_identity: dict | None = None,
     ) -> RqgmRuntimeState | None:
-        """Execute the §5.6 epoch-boundary transaction.
+        """Execute the epoch-boundary transaction — the one place a status
+        change may commit.
 
         *registry_events* are the adopt/sanction/retire events provided by
         Task 09's RegistryTransitionEngine and validated by Task 04's kernel
@@ -660,7 +665,7 @@ class RqgmStateStore:
 
 
 class ImmutableAuditLog:
-    """``{ckpt}/rqgm_audit.jsonl`` — the RQGM ImmutableAuditLog (§5.9).
+    """``{ckpt}/rqgm_audit.jsonl`` — the RQGM ImmutableAuditLog.
 
     This class owns the FILE: fixed name, append-only, the same hash-chained
     envelope as ``rqgm_transitions.jsonl`` with an independent per-file

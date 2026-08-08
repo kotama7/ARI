@@ -47,7 +47,8 @@ log = logging.getLogger(__name__)
 GOVERNANCE_CACHE_FILENAME = "rqgm_governance_cache.jsonl"
 GOVERNANCE_CACHE_SCHEMA_VERSION = 1
 
-#: Record-separator join of the six components (§5.5).
+#: Record-separator join of the six key components: an in-band separator no
+#: component can contain is what keeps the concatenation unambiguous.
 _KEY_SEPARATOR = "\x1f"
 
 _LOCK = threading.Lock()
@@ -55,8 +56,8 @@ _LOCK = threading.Lock()
 
 def canonical_hash(payload: object) -> str:
     """``sha256:<hex>`` over the canonical JSON of *payload* — the
-    ``input_context_hash`` / ``output_schema_hash`` builder (§5.5:
-    dict key order never changes the hash)."""
+    ``input_context_hash`` / ``output_schema_hash`` builder (canonical JSON,
+    so dict key order never changes the hash)."""
     return "sha256:" + hashlib.sha256(
         canonical_json(payload).encode("utf-8")
     ).hexdigest()
@@ -71,8 +72,9 @@ def make_cache_key(
     input_context_hash: str,
     output_schema_hash: str,
 ) -> str:
-    """The §5.5 composition — component order and separator are spec-fixed
-    (pinned by the golden-key test). Pure; P2-clean."""
+    """The spec-fixed composition (the formula in this module's docstring) —
+    component order and separator are fixed, never derived, and pinned by the
+    golden-key test. Pure; P2-clean."""
     joined = _KEY_SEPARATOR.join([
         str(artifact_hash),
         str(prompt_hash),
@@ -105,7 +107,7 @@ def replay_lookup_key(
     input_context_hash: str = "",
     output_schema_hash: str = "",
 ) -> str:
-    """The §6.2 replay rule: when replaying case *c* against prompt *p*,
+    """The replay rule: when replaying case *c* against prompt *p*,
     ``epoch_id`` is the case's ORIGIN epoch and ``prompt_hash`` is the
     candidate's own hash — a candidate re-run against old cases caches
     correctly across epochs."""
@@ -188,7 +190,8 @@ class GovernanceCache:
                 k: v for k, v in dict(record or {}).items()
                 if k not in ("schema_version", "cache_key")
             })
-            # Provenance only — NEVER part of cache_key (P2, §6.2).
+            # Provenance only — NEVER part of cache_key (P2: a wall clock in
+            # the key would make every lookup a miss).
             line.setdefault(
                 "created_at",
                 time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

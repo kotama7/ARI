@@ -9,17 +9,17 @@ executes ONE node with exactly ONE generative skill call:
 - a SEED (depth 1): ``write_paper_iterative`` into a per-node ``.tex`` path;
 - a REFINE child (depth >= 2): one ``paper_refine`` against the PARENT draft.
 
-The refine LOOP lives in the tree (the driver's frontier, §5.3), not inside
+The refine LOOP lives in the tree (the driver's frontier), not inside
 the executor. The reviewer is an INJECTED scoring oracle (its prompt/utility
 live in Tasks 03/04); the substrate is testable with a stub scorer. The
-executor never calls ``compile_paper`` (lazy compile is the runtime's,
-§5.5).
+executor never calls ``compile_paper``: the runtime compiles once, at the
+end, and only the best-belief draft — scoring here is TEXT-only.
 
 Plan-vs-code note: the plan sketch reads ``out["latex_path"]`` from the skill,
 but the shipped ``write_paper_iterative`` / ``paper_refine`` return the LaTeX
 CONTENT under ``latex`` (server.py:1124 / :2475). The executor therefore owns
 writing that content to the per-node ``.tex`` path (the archive versions
-drafts as content-hashed files, never overwrites — §6.1 / Q-49).
+drafts as content-hashed files, never overwrites — Q-49).
 """
 
 from __future__ import annotations
@@ -168,7 +168,8 @@ class PaperDraftExecutor:
 
     def restore(self, prior_nodes: list) -> None:
         """Prime the per-run seed indexing from a resumed round's restored nodes
-        (§8.6, §9 "producing the same node set as the uninterrupted run (P2)").
+        — a resumed round must produce the same node set as the uninterrupted
+        run (P2).
 
         ``_seed_index`` derives ``decode_seed`` and the writer framing from the
         per-run ``_seed_order``. Without this, a resume that restored ``draft_0``
@@ -192,8 +193,8 @@ class PaperDraftExecutor:
         """``archive/{epoch_id}/{node.id}/full_paper[.rN].tex`` — a
         node-work-dir-like subtree, EPOCH-SCOPED.
 
-        §6.1: "every draft is a content-hashed record, never an in-place
-        overwrite of `full_paper.tex`" — drafts are versioned, not overwritten.
+        Every draft is a content-hashed record, never an in-place overwrite
+        of ``full_paper.tex`` — drafts are versioned, not overwritten.
         The path used to key off ``node.id`` alone, but node ids are NOT unique
         across rounds: ``_run_one_round`` builds a fresh ``PaperArchiveStrategy``
         per round, so ``_fanout`` restarts and ``expand`` re-mints ``draft_0``,
@@ -202,9 +203,8 @@ class PaperDraftExecutor:
         ``tex_sha256`` went stale against the bytes at its OWN ``tex_path`` —
         breaking exactly the per-epoch draft-versioning half of Q-49 this schema
         exists to resolve. ``self.epoch_id`` is already in hand, so scoping the
-        FILESYSTEM by epoch restores the invariant while keeping the node ids the
-        plan's §6.1 example and §9 topology tests pin (``draft_0`` /
-        ``draft_0.r1``).
+        FILESYSTEM by epoch restores the invariant while keeping the node ids
+        the topology tests pin (``draft_0`` / ``draft_0.r1``).
         """
         if node.original_direction == "seed":
             return f"archive/{self.epoch_id}/{node.id}/full_paper.tex"
@@ -223,7 +223,7 @@ class PaperDraftExecutor:
         rec = self._records.get(node_id)
         if rec is not None:
             return rec
-        # Resume path (§8.6): rebuild from the persisted archive. Scoped to THIS
+        # Resume path: rebuild from the persisted archive. Scoped to THIS
         # epoch — node ids are re-minted every round, so an unscoped scan returns
         # a prior epoch's homonym and a refine would be built against the wrong
         # parent draft (its `tex_path` / `decode_seed` / framing). LAST match
@@ -253,7 +253,7 @@ class PaperDraftExecutor:
         if node.original_direction == "seed":
             i = self._seed_index(node)
             hashes = experiment.get("writer_prompt_hashes") or ["founding"]
-            framing = str(hashes[i % len(hashes)])           # -> _framing_key (§5.2)
+            framing = str(hashes[i % len(hashes)])           # -> _framing_key below
             decode_seed = self.base_seed + i
             out = self._call(
                 "write_paper_iterative",
@@ -266,13 +266,13 @@ class PaperDraftExecutor:
                     "nodes_json_path": experiment.get("nodes_json_path", ""),
                     "venue": experiment.get("venue", "arxiv"),
                     "author_name": experiment.get("author_name", ""),
-                    # §5.8: the epoch's ACTIVE governed paper_writer prompt bytes
+                    # The epoch's ACTIVE governed paper_writer prompt bytes
                     # DRIVE the skill's reflection instruction ("" => linear
                     # byte-identical). The evolving bytes live only in ari-core.
                     "writer_prompt_override": experiment.get(
                         "writer_prompt_text", ""
                     ) if not fixed_block else writer_prompt,
-                    # §5.4 decision 5: candidate i is SAMPLED under its own seed.
+                    # Candidate i is SAMPLED under its own decode seed.
                     # Recording the seed without sending it made every record
                     # advertise a decode identity nothing honoured — with n == 1
                     # writer prompt (the shipped default) this is the ONLY
@@ -318,7 +318,7 @@ class PaperDraftExecutor:
             framing = str(parent.get("writer_prompt_hash", ""))   # a refine keeps its framing
             refine_pass = node.depth - 1
             parent_draft_id = node.parent_id
-            # §6.1 provenance: persist the parent review that drove THIS refine
+            # Provenance: persist the parent review that drove THIS refine
             # and record its ref, so the draft archive is auditable. Content is
             # only as rich as the injected reviewer (empty under the default
             # LLM-free reviewer; populated once Task 03/04's governed
@@ -343,7 +343,7 @@ class PaperDraftExecutor:
         node.metrics = {
             **(node.metrics or {}),
             "_scientific_score": score,                        # frontier + best-belief key
-            "_framing_key": framing,                           # diversity_bonus key (§5.2)
+            "_framing_key": framing,                           # diversity_bonus key
             "_paper_epoch_id": self.epoch_id,
             "_reviewer_prompt_hash": getattr(
                 self.reviewer, "prompt_hash", ""
@@ -369,7 +369,7 @@ class PaperDraftExecutor:
                 self.reviewer, "prompt_hash", ""
             ),
             "review_score": score,
-            "suggested_revisions_ref": suggested_ref,          # §6.1
+            "suggested_revisions_ref": suggested_ref,          # refine provenance
             "anchors_preserved": anchors,
             "decode_seed": decode_seed,
             "epoch_id": self.epoch_id,

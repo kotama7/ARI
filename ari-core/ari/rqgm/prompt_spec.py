@@ -146,7 +146,7 @@ REQUIRED_CONSTRAINTS_BY_ROLE: dict[str, tuple[str, ...]] = {
         "Summarise failures abstractly; never reproduce raw attack, defense, "
         "or prompt text.",
     ),
-    # Paper-archive co-evolution (plan ari_rqgm_paper/03 §5.4). The writer's
+    # Paper-archive co-evolution. The writer's
     # anti-fabrication clause (lifted from ari-skill-paper/src/prompts/
     # paper_writer.md's "Do NOT hallucinate results, hardware specs, or
     # citations not present in the experiment data") is a hard candidate-
@@ -170,9 +170,9 @@ FORBIDDEN_PLACEHOLDERS: frozenset[str] = frozenset(
     {"raw_attack_text", "defense_text", "retired_prompt_text"}
 )
 
-#: Templates loaded raw and never ``.format``-ed (plan 07 §4 note): their
-#: literal JSON braces would register as pseudo-placeholders, so their
-#: founding specs record an EMPTY placeholder contract.
+#: Templates loaded raw and never ``.format``-ed: their literal JSON braces
+#: would register as pseudo-placeholders, so their founding specs record an
+#: EMPTY placeholder contract.
 RAW_LOADED_KEYS: frozenset[str] = frozenset(
     {"orchestrator/lineage_decision", "orchestrator/root_idea_selector"}
 )
@@ -246,13 +246,14 @@ def prompt_spec_from_dict(d: dict) -> PromptSpec:
 #: the registry's "latest active wins" role rollup, so each evolving role's
 #: PRIMARY template (the one named ``format_prompt_id(role, 1)``) comes last
 #: within its role. Roles come from Task 02's closed vocabulary; the five
-#: v1-out-of-scope templates are registered ``evolvable=False`` (plan 07
-#: §5.2) under the nearest vocabulary role (``generator`` for the four
-#: text-producing ones, ``router`` for the raw-loaded root-idea selector).
+#: v1-out-of-scope templates are registered ``evolvable=False`` under the
+#: nearest vocabulary role (``generator`` for the four text-producing ones,
+#: ``router`` for the raw-loaded root-idea selector): an out-of-scope template
+#: still gets a registry identity, it just never mints candidates.
 #:
 #: ``output_schema`` uses the reserved ``__reply__`` key for the reply KIND
 #: (``bare_index`` / ``json_array`` / ``json_object`` / ``freeform``); other
-#: keys are required JSON fields with type names (plan 07 §6 example).
+#: keys are required JSON fields carrying their type name as the value.
 FOUNDING_PROMPT_TABLE: tuple[tuple[str, str, str, bool, dict], ...] = (
     ("agent_system_prompt_v1", "agent/system", "generator", False,
      {"__reply__": "freeform"}),
@@ -271,8 +272,8 @@ FOUNDING_PROMPT_TABLE: tuple[tuple[str, str, str, bool, dict], ...] = (
     # stays ``reviewer_prompt_v1``) — moving it to an "auditor" prompt role
     # would add a key to ``active_prompt_hashes`` and change ``registry_version``
     # for no functional gain (the pipeline loads it by key, and impeachability
-    # comes from the COMPONENT, not the prompt's role). See the plan-07 §5.2
-    # precedent for out-of-scope templates.
+    # comes from the COMPONENT, not the prompt's role) — the same
+    # nearest-vocabulary-role treatment the other out-of-scope templates get.
     ("auditor_prompt_v1", "governance/auditor", "reviewer", False,
      {"__reply__": "json_object", "file_motion": "bool"}),
     ("reviewer_metrics_prompt_v1", "evaluator/extract_metrics", "reviewer",
@@ -498,7 +499,8 @@ KCA_FIXED_COMPONENT_TABLE: tuple[tuple[str, str, str, None, dict], ...] = (
 #: the reviewer returns the academic_reviewer.md JSON contract with the
 #: selection-bearing ``accept_recommendation`` field typed. Both are
 #: ``evolvable=True``, tier ``institutional`` (task agents, not meta), with
-#: empty extra capability maps (the matrix grants are role-derived, §5.2).
+#: empty extra capability maps: a component never carries grants of its own,
+#: every grant is derived from its ``(role, tier)`` row in the matrix.
 #: Single template per role, so the "primary last per role" rollup convention
 #: is satisfied trivially.
 #: Paper-archive Task 05 (``docs/concepts/rqgm_architecture.md``, "The epoch
@@ -512,13 +514,13 @@ KCA_FIXED_COMPONENT_TABLE: tuple[tuple[str, str, str, None, dict], ...] = (
 #: SANCTIONABLE (P3) rather than resolving to an unregistered ad-hoc id that
 #: ``resolve_transition`` drops as ``unknown component``. It lives in the
 #: PAPER-MODE-GATED table (NOT the shared FOUNDING_PROMPT_TABLE) so an
-#: exploration boot is byte-identical — this SUPERSEDES the plan's §5.6
-#: "insert alphabetically into the shared adversary block" sketch, exactly as
-#: plan 03 §6.1's "append to the shared FOUNDING_* table" was superseded by
-#: these gated tables. One consequence (recorded, not silent): because the
+#: exploration boot is byte-identical — this SUPERSEDES the earlier
+#: "insert alphabetically into the shared adversary block" and "append to the
+#: shared FOUNDING_* table" sketches, both of which would have perturbed the
+#: exploration fingerprint. One consequence (recorded, not silent): because the
 #: gated block is registered AFTER the seven, the adversary PROMPT/COMPONENT
 #: role rollup winner in paper mode becomes ``adversary_paper_self_preference``
-#: rather than ``adversary_reproducibility`` — a DEVIATION from §5.6/§9's
+#: rather than ``adversary_reproducibility`` — a DEVIATION from the
 #: "rollup unperturbed" claim. It is harmless: every adversary still stamps
 #: its own ``adversary_{type}_v1`` id (the family guard in
 #: ``engine._component_id`` falls the rollup winner back to each type's own
@@ -538,7 +540,7 @@ PAPER_FOUNDING_PROMPT_TABLE: tuple[tuple[str, str, str, bool, dict], ...] = (
 #: "The paper-archive layer"), sorted by
 #: ``component_id`` like :data:`FOUNDING_COMPONENT_TABLE`.
 PAPER_FOUNDING_COMPONENT_TABLE: tuple[tuple[str, str, str, str, dict], ...] = (
-    # Task 05 §5.6: the id ``engine._component_id`` already stamps for a
+    # Task 05: the id ``engine._component_id`` already stamps for a
     # paper_self_preference attack (engine.py:738-740 fallback), now
     # registry-resolvable so ``resolve_transition`` lands T9/T10/T11 on it
     # instead of ``unknown component``. Sorted by component_id like
@@ -603,7 +605,7 @@ def founding_spec_from_entry(
             ),
             # Raw-loaded templates (never ``.format``-ed) get an EMPTY
             # placeholder contract — their literal JSON braces are not
-            # placeholders (plan 07 §4).
+            # placeholders.
             "input_contract": {
                 "required_fields": (
                     []
@@ -708,7 +710,8 @@ def utility_policy_spec(
         epoch_introduced=epoch_introduced,
         spec={
             # A policy is a document, not an actor: no role_instruction, no
-            # constraint clauses (§5.2), no input/output contract, no
+            # constraint clauses (nothing is instructed), no input/output
+            # contract, no
             # rubric. The ONE Task-14 key names the body path — the body is
             # never inlined here, because two copies of a hashed object is
             # exactly the split-brain the registry refuses.

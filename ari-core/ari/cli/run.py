@@ -94,7 +94,7 @@ def _resolve_cfg(config: "Path | None"):
     GUI toggles in BFTS and paper phases alike.
 
     Package-yaml discovery is delegated to ``ari.config.finder`` so the
-    bundled-fallback path lives in one place (Phase 2 §6-2).  The CLI
+    bundled-fallback path has exactly one implementation.  The CLI
     only consults the package fallback (no checkpoint search) so the
     existing semantic — "explicit --config wins, then bundle, then
     auto_config()" — is preserved exactly.

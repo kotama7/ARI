@@ -99,7 +99,7 @@ def _virsci_cfg(**virsci) -> ARIConfig:
     )
 
 
-# ── normalization (§9 unit 4) ────────────────────────────────────────────────
+# ── normalization: the canned 9-key payload → bounded summary drafts ─────────
 
 
 @pytest.mark.parametrize("status", ["real_wrap", "reimpl: inline fallback"])
@@ -207,7 +207,7 @@ def test_virsci_projection_meta_reaches_idea_json(tmp_path):
     assert doc["ideas"][0]["_proposal_record_id"] == records[0].record_id
 
 
-# ── archive/summary split (§5.5 / §9 integration) ────────────────────────────
+# ── archive/summary split: transcripts are referenced, never rendered ────────
 
 
 def test_transcript_content_never_reaches_expand_context(tmp_path):
@@ -233,7 +233,7 @@ def test_transcript_content_never_reaches_expand_context(tmp_path):
     assert GAP_MARKER not in ctx
 
 
-# ── mode × VirSci four-combination matrix (§5.4 / §9 integration) ────────────
+# ── mode × VirSci four-combination matrix (config-validation + boot) ─────────
 
 
 @pytest.mark.parametrize("mode,virsci_on", [
@@ -244,8 +244,9 @@ def test_transcript_content_never_reaches_expand_context(tmp_path):
 ])
 def test_mode_virsci_matrix_config_and_boot(monkeypatch, tmp_path, mode,
                                             virsci_on):
-    """All four combinations are valid config and boot cleanly; VirSci
-    toggles independently of the mode (plan 01 §5.6 / plan 03 §5.4)."""
+    """All four combinations are valid config and boot cleanly; VirSci is an
+    independent toggle, not a mode (docs/guides/virsci_integration.md,
+    "The four mode × VirSci combinations")."""
     from ari.rqgm.mode import EffectiveMode, resolve_effective_mode
 
     cfg = ARIConfig(

@@ -7,7 +7,7 @@ style: LLM-free, byte-deterministic for identical inputs, unit-testable, no
 I/O.
 
 The BFTS row is the load-bearing one: **BFTS sees ProposalSummaryView
-only, never full transcripts**. Enforcement is layered (§5.7):
+only, never full transcripts**. Enforcement is layered:
 
 1. construction-time — :func:`build_bfts_summary_context` accepts a
    :class:`~ari.rqgm.proposals.records.ProposalSummaryView` dataclass, not
@@ -15,12 +15,12 @@ only, never full transcripts**. Enforcement is layered (§5.7):
 2. check-time — ``ConstitutionalKernel.validate_context_scope`` compares
    view keys against :data:`PROPOSAL_SUMMARY_FIELDS` (the SAME frozen
    constant, aliased from the constitution-pinned
-   ``kernel_rules.CONTEXT_VIEW_WHITELISTS`` — one source, no drift, §6.5);
+   ``kernel_rules.CONTEXT_VIEW_WHITELISTS`` — one source, no drift);
 3. test-time — the leak-regression test asserts no archive-only field name
    (:data:`ARCHIVE_ONLY_FIELDS`) ever appears in the rendered expand
    context.
 
-The other builders project only what the §5.7 matrix grants: the Judge
+The other builders project only what the visibility matrix grants: the Judge
 never sees frontier scores (:data:`JUDGE_EXCLUDED_KEYS` — it cannot be
 biased by utility), governance never sees retired prompt text
 (:data:`GOVERNANCE_EXCLUDED_KEYS`, the Task 08 rule), and same-role
@@ -39,31 +39,31 @@ from ari.rqgm.proposals.records import (
 )
 
 #: The BFTS whitelist — ALIASED from the constitution-pinned kernel table
-#: (plan 12 §6.5: kernel check and leak test share one source). BFTS rides
-#: the ``generator`` role in the Task 02 vocabulary.
+#: (the kernel check and the leak-regression test read one source, so they
+#: cannot drift). BFTS rides the ``generator`` role in the Task 02 vocabulary.
 BFTS_VIEW_ROLE = "generator"
 PROPOSAL_SUMMARY_FIELDS: frozenset[str] = CONTEXT_VIEW_WHITELISTS[BFTS_VIEW_ROLE]
 
 #: The paper-writer whitelist — ALIASED from the same constitution-pinned
-#: table (plan 12 §5.4/§5.7 row "Paper writer"): verified context +
-#: ``science_data`` + claim registry, and nothing else.
+#: table, "Paper writer" row: verified context + ``science_data`` +
+#: claim registry, and nothing else.
 PAPER_WRITER_VIEW_ROLE = "paper_writer"
 PAPER_WRITER_FIELDS: frozenset[str] = CONTEXT_VIEW_WHITELISTS[
     PAPER_WRITER_VIEW_ROLE
 ]
 
 #: The paper-reviewer whitelist — ALIASED from the same constitution-pinned
-#: table (plan ari_rqgm_paper/03 §5.3): the draft under review + the same
+#: table, "Paper reviewer" row: the draft under review + the same
 #: Layer-0 verified evidence the writer saw + the metrics backing the claims
-#: + the anchor/reference-case projection (whose content is plan
-#: ari_rqgm_paper/04's). One source, no drift.
+#: + the anchor/reference-case projection (whose content the paper anchor
+#: layer builds, not this module). One source, no drift.
 PAPER_REVIEWER_VIEW_ROLE = "paper_reviewer"
 PAPER_REVIEWER_FIELDS: frozenset[str] = CONTEXT_VIEW_WHITELISTS[
     PAPER_REVIEWER_VIEW_ROLE
 ]
 
 #: Archive-only field names that must NEVER reach a rendered BFTS context
-#: (§5.7 layer 3 — the leak-regression vocabulary).
+#: (enforcement layer 3 — the leak-regression vocabulary).
 ARCHIVE_ONLY_FIELDS: frozenset[str] = frozenset({
     "transcript",
     "discussion_log",
@@ -75,7 +75,7 @@ ARCHIVE_ONLY_FIELDS: frozenset[str] = frozenset({
     "evidence_bundles",
 })
 
-#: Utility/frontier signals the Judge view must exclude (§5.7: the Judge
+#: Utility/frontier signals the Judge view must exclude (so the Judge
 #: cannot be biased by utility).
 JUDGE_EXCLUDED_KEYS: frozenset[str] = frozenset({
     "frontier_scores",
@@ -96,7 +96,7 @@ GOVERNANCE_EXCLUDED_KEYS: frozenset[str] = frozenset({
     "body",
 })
 
-#: Per-node epoch-charter injection cap (§5.7: ≤ 1200 chars, in line with
+#: Per-node epoch-charter injection cap (≤ 1200 chars, in line with
 #: ``_IDEA_FIELD_CAP``) — the fixed budget for the Task 05 charter block
 #: riding ``build_working_context_messages``.
 CHARTER_BLOCK_CAP = 1200
@@ -135,7 +135,7 @@ def _scrub(value, excluded: frozenset):
     return value
 
 
-# ── the visibility-matrix builders (plan 12 §5.7/§7) ────────────────────────
+# ── the visibility-matrix builders ──────────────────────────────────────────
 
 
 log = logging.getLogger(__name__)
@@ -149,8 +149,9 @@ def _enforce_scope(role: str, view: dict) -> dict:
     it had NO production caller: the whitelists were declared and never
     enforced, so a builder that grew a foreign field would ship silently.
     Running it inside the builder makes every current AND future call site
-    checked without each having to remember. Warn-only by design (§5.1: this
-    never blocks node execution) — the violation is logged, never raised.
+    checked without each having to remember. Warn-only by design (CK-CTX-001
+    is severity ``warn``: this never blocks node execution) — the violation is
+    logged, never raised.
     """
     try:
         from ari.rqgm.kernel import ConstitutionalKernel
@@ -178,7 +179,7 @@ def build_bfts_summary_context(
         raise TypeError(
             "build_bfts_summary_context accepts a ProposalSummaryView only "
             f"(got {type(view).__name__}); BFTS never sees full proposal "
-            "records (plan 12 §5.7)"
+            "records — only the bounded summary"
         )
     _enforce_scope("generator", _plain(view))
     return render_summary_ctx(view, budget=int(cap))
@@ -246,7 +247,7 @@ def build_governance_context(prompt_hashes, bundles, replay_results) -> dict:
 def build_paper_writer_context(
     verified_context, science_data, claim_registry
 ) -> dict:
-    """Paper-writer row (plan 12 §5.4/§5.7): a deterministic projection
+    """Paper-writer row of the visibility matrix: a deterministic projection
     exposing EXACTLY verified context + ``science_data`` + the claim
     registry. Raw transcripts and governance internals have no parameter
     here (the exclusion is constructive, like the reviewer's same-role
@@ -267,11 +268,11 @@ def build_paper_writer_context(
 def build_paper_reviewer_context(
     draft_manuscript, verified_context, science_data, reference_context
 ) -> dict:
-    """Paper-reviewer row (plan ari_rqgm_paper/03 §5.3): a deterministic
+    """Paper-reviewer row of the visibility matrix: a deterministic
     projection exposing EXACTLY the four whitelisted fields — the archive
     draft under review, the same Layer-0 verified evidence the writer saw,
     the metrics backing the claims, and the anchor/reference-case projection
-    (whose content is plan ari_rqgm_paper/04's).
+    (whose content the paper anchor layer builds, not this module).
 
     Other drafts' reviews, the writer transcript, and every frontier/utility
     signal have NO parameter here — same-role isolation is constructive, like

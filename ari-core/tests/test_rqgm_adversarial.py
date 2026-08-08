@@ -13,9 +13,9 @@ untouched, additive keys, 0.0 floor), the AdversarialReplayPool (admission
 threshold, dedup, eviction order + per-type floor + logical-only status,
 deterministic ``select_for_replay``, contamination-safe ``abstract_view``,
 capability-checked ``replay_view``, snapshot byte-stability + reload), the
-ArtifactJudge total fallback, the §5.5 trigger predicate clause by clause,
-per-node/per-epoch caps, all seven adversary types dispatchable, the §5.3
-integration round (JSONL ordering raw→defense→judgment→validated→utility,
+ArtifactJudge total fallback, the ``should_attack`` trigger predicate clause
+by clause, per-node/per-epoch caps, all seven adversary types dispatchable,
+the end-to-end round (JSONL ordering raw→defense→judgment→validated→utility,
 exact policy penalty), the **raw-attacks-never-score regression** (judge
 invalid AND judge raising — node metrics byte-identical to a disabled run),
 round idempotency across a simulated resume, governance step-7 epoch-boundary
@@ -239,7 +239,7 @@ def _cfg(**over) -> RQGMAdversarialConfig:
     return RQGMAdversarialConfig(**over)
 
 
-# ── §9.1 schema round-trip + validation (six record types) ──────────────────
+# ── schema round-trip + validation (six record types) ───────────────────────
 
 
 def test_all_six_record_types_round_trip_and_carry_envelope():
@@ -324,7 +324,7 @@ def test_validated_attack_requires_adjudication():
     assert validated_attack_violations(_validated()) == []
 
 
-# ── Task 15 §9 unit: the target_component_id accountability binding ─────────
+# ── Task 15 unit: the target_component_id accountability binding ────────────
 
 #: The pre-change to_dict golden: the EXACT key list (and order) a targetless
 #: ValidatedAttackRecord has always emitted. A literal list, never a subset
@@ -470,7 +470,7 @@ def test_utility_record_with_penalty_requires_validated_refs():
     assert utility_record_violations(zero) == []
 
 
-# ── §9.2 UtilityPenaltyPolicy.compute ───────────────────────────────────────
+# ── UtilityPenaltyPolicy.compute arithmetic ─────────────────────────────────
 
 
 def test_penalty_arithmetic_weights_partial_factor_cap_and_empty():
@@ -496,7 +496,7 @@ def test_policy_payload_and_hash_are_deterministic():
     assert len(a.policy_hash) == 12
 
 
-# ── §9.3 apply_utility_penalty ──────────────────────────────────────────────
+# ── apply_utility_penalty guards ────────────────────────────────────────────
 
 
 def test_penalty_rewrites_score_with_additive_provenance_keys():
@@ -543,7 +543,7 @@ def test_penalty_floors_at_zero_and_empty_list_is_a_noop():
     assert untouched.metrics == {"_scientific_score": 0.5}
 
 
-# ── §9.4 AdversarialReplayPool ──────────────────────────────────────────────
+# ── AdversarialReplayPool ───────────────────────────────────────────────────
 
 
 def test_pool_admission_threshold_on_severity(tmp_path):
@@ -623,7 +623,8 @@ def test_abstract_view_is_contamination_free_and_replay_view_gated(tmp_path):
     assert "XATTACKTEXTX" not in dump  # no raw attack text
     assert "XDEFENSETEXTX" not in dump  # no defense text
     assert abstract["failure_pattern"]
-    # Capability check (§5.7 check 7): clean-room readers are denied.
+    # Capability check: ``replay_view`` is role-gated — the clean-room
+    # generator is denied it, the replay selector is granted it.
     with pytest.raises(PermissionError):
         pool.replay_view(case_id, actor_role="clean_room_generator")
     view = pool.replay_view(case_id, actor_role="replay_selector")
@@ -681,7 +682,7 @@ def test_pool_reload_flags_corrupt_snapshot_and_refuses_overwrite(tmp_path):
     assert snap.read_bytes() == corrupt_bytes  # preserved, not overwritten
 
 
-# ── §9.5 ArtifactJudge total fallback ───────────────────────────────────────
+# ── ArtifactJudge total fallback ────────────────────────────────────────────
 
 
 def test_judge_llm_exception_yields_invalid_verdicts_never_raises():
@@ -707,7 +708,7 @@ def test_judge_marks_absent_defense_as_infrastructure_not_valid():
     assert judgments[0].verdict == "invalid"
 
 
-# ── §9.6 trigger predicate + caps ───────────────────────────────────────────
+# ── trigger predicate + caps ────────────────────────────────────────────────
 
 
 def test_trigger_each_clause():
@@ -765,7 +766,9 @@ def _rigged_bundle(adversary_type: str) -> ArtifactBundle:
 
 @pytest.mark.parametrize("adversary_type", ADVERSARY_TYPES)
 def test_each_adversary_type_is_dispatchable(adversary_type):
-    """§5.2 coverage: pre-signal fires and the type emits a valid attack."""
+    """Per-type coverage: the pre-signal fires on a bundle rigged for this
+    adversary type, stays silent on an empty one, and the type then emits
+    exactly one schema-valid attack against its default target type."""
     spec = ADVERSARY_SPECS[adversary_type]
     assert spec.pre_signal(_rigged_bundle(adversary_type)), adversary_type
     assert not spec.pre_signal(ArtifactBundle(node_id="n")), adversary_type
@@ -802,7 +805,7 @@ def test_engine_caps_attacks_per_node_and_calls_per_epoch():
 
 
 def test_call_budget_is_per_epoch_and_resets_at_boundary():
-    """§5.5: ``max_adversary_calls_per_epoch`` meters ONE epoch, not the
+    """``max_adversary_calls_per_epoch`` meters ONE epoch, not the
     process lifetime — the count restarts at every epoch boundary."""
     state = SimpleNamespace(epoch_id="epoch_000")
     engine = AdversaryEngine(
@@ -847,7 +850,7 @@ def test_injection_prefilter_and_novelty_signals():
     assert not novelty_signal("a modest improvement")
 
 
-# ── §9.7 integration: the full §5.3 round on a fixture node ─────────────────
+# ── integration: attack→defense→judgment→validated→utility on a node ────────
 
 
 def _round(tmp_path, llm, **cfg_over) -> AdversarialRound:
@@ -895,7 +898,7 @@ def test_round_logs_records_in_order_and_applies_exact_penalty(tmp_path):
         assert call["kwargs"].get("skill") == "rqgm_adversarial"
 
 
-# ── Task 15 §9 producer: role → epoch-frozen component_id resolution ────────
+# ── Task 15 producer: role → epoch-frozen component_id resolution ───────────
 
 
 def _epoch(active=None, prompt_hashes=None):
@@ -953,7 +956,7 @@ def test_round_binds_the_frozen_incumbent_identically_in_both_sinks(
     truth = _validated_lines(tmp_path)
     assert [r["target_component_id"] for r in truth] == ["reviewer_v3"]
     assert [r["affected_components"] for r in truth] == [["reviewer"]]
-    # §5.3 no-divergence: the JSONL truth and its audit-log twin are the
+    # No-divergence: the JSONL truth and its audit-log twin are the
     # SAME bytes — the binding is minted at construction, not patched into
     # the type-agnostic _log_all mirror.
     assert _audit_payloads(tmp_path) == truth
@@ -1146,7 +1149,7 @@ def test_round_drops_a_self_bound_binding_instead_of_killing_the_round(
     assert list(record) == _VALIDATED_KEYS_TARGETLESS
 
 
-# ── §9.8 the load-bearing regression: raw attacks never score ───────────────
+# ── the load-bearing regression: raw attacks never score ────────────────────
 
 
 def _run_variant(tmp_path, judge_reply="", raise_judge=False, enabled=True):
@@ -1175,7 +1178,7 @@ def test_raw_attacks_never_score_judge_invalid_and_judge_failure(tmp_path):
     assert not (tmp_path / "off" / ADVERSARIAL_CASES_FILENAME).exists()
 
 
-# ── §9.9 round idempotency across a simulated resume ────────────────────────
+# ── round idempotency across a simulated resume ─────────────────────────────
 
 
 def test_round_runs_at_most_once_per_node_even_after_resume(tmp_path):
@@ -1192,7 +1195,7 @@ def test_round_runs_at_most_once_per_node_even_after_resume(tmp_path):
     assert len(AdversarialCaseLog.read(tmp_path)) == lines_after_first
 
 
-# ── §9.10 epoch-boundary admission via governance step 7 ────────────────────
+# ── epoch-boundary admission via governance step 7 ──────────────────────────
 
 
 def test_governance_step7_admits_validated_attacks_and_saves_snapshot(tmp_path):
@@ -1225,7 +1228,7 @@ def test_governance_step7_admits_validated_attacks_and_saves_snapshot(tmp_path):
     ]
 
 
-# ── §9.11 simple_bfts regression (zero adversarial side effects) ────────────
+# ── simple_bfts regression (zero adversarial side effects) ──────────────────
 
 
 def _make_agent():
@@ -1289,7 +1292,7 @@ def test_simple_bfts_writes_no_adversarial_files(monkeypatch, tmp_path):
         assert "rqgm/adversary" not in trace.read_text()
 
 
-# ── §9.12 wiring: RQGMRuntime construction gates ────────────────────────────
+# ── wiring: RQGMRuntime construction gates ──────────────────────────────────
 
 
 def test_runtime_adversarial_disabled_means_never_initialized(tmp_path):
@@ -1314,7 +1317,7 @@ def test_runtime_constructs_round_and_pool_when_enabled(tmp_path):
     assert isinstance(runtime.adversarial_pool, AdversarialReplayPool)
 
 
-# ── §9.13 registration + parity + package hygiene ───────────────────────────
+# ── registration + parity + package hygiene ─────────────────────────────────
 
 
 def test_new_checkpoint_filenames_are_registered():
@@ -1368,7 +1371,9 @@ def test_adversarial_config_defaults_match_defaults_yaml():
 
 
 def test_adversarial_package_never_imports_virsci():
-    """VirSci stays optional: no adversarial module imports it (§8)."""
+    """VirSci stays optional: no module in ``ari.rqgm.adversarial`` imports
+    it or mentions the vendored tree, so the loop runs without the vendor
+    checkout present."""
     import re
 
     pkg = Path(__file__).resolve().parents[1] / "ari" / "rqgm" / "adversarial"

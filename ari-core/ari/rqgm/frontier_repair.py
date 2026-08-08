@@ -7,7 +7,7 @@ EpochTransition` with a non-empty ``retirements`` list, every record produced
 by — or transitively, materially dependent on — a retired ``prompt_hash`` is
 contaminated evidence and must stop influencing BFTS frontier scoring.
 
-Design principles (§5.1):
+Design principles:
 
 * **P-A logical-only erasure** — nothing is physically deleted or rewritten.
   Staleness lives in (i) SelectiveErasureEvent / FrontierRebuildEvent lines
@@ -30,8 +30,8 @@ Design principles (§5.1):
   ``ari_rqgm`` runtime; under ``simple_bfts`` no sentinel key is ever
   written, so the additive ``should_prune`` clause can never fire.
 
-Failure posture (§5.6 — a documented deviation from fail-open hooks, scoped
-to the boundary where no node is in flight): kernel validation failure ⇒
+Failure posture (a documented deviation from the fail-open hook convention,
+scoped to the boundary where no node is in flight): kernel validation failure ⇒
 conservative re-repair (flagged nodes dropped outright), still failing ⇒
 drain-only degradation (``halted_expansion``; the run finishes pending work
 but expands no further). The run never crashes.
@@ -80,8 +80,8 @@ VALID_FOR_FRONTIER_KEY = "_valid_for_frontier"
 STALE_REASON_KEY = "_stale_reason"
 ERASURE_EVENT_KEY = "_erasure_event_id"
 
-#: The epoch utility policy a node's score was formed under (RQGM Task 14
-#: §5.8 delta 2; written by ``ari.rqgm.utility_evolution.UtilityPolicyStamp``
+#: The epoch utility policy a node's score was formed under (RQGM Task 14;
+#: written by ``ari.rqgm.utility_evolution.UtilityPolicyStamp``
 #: at the ``wrap_node_executor`` seam, never under ``simple_bfts``).
 #:
 #: Why the node and not just the record: ``apply_utility_penalty`` returns
@@ -93,9 +93,10 @@ ERASURE_EVENT_KEY = "_erasure_event_id"
 #: saying which is which. P1 says the ENTIRE score is rewritten.
 UTILITY_POLICY_HASH_KEY = "_utility_policy_hash"
 
-#: §6 ``_stale_reason`` vocabulary — diagnostic provenance only (no reader
-#: branches on it), differentiated per invalidation cause (§5.4 rows 1/5
-#: and the §5.3 depth-cap conservative sweep).
+#: ``_stale_reason`` vocabulary — diagnostic provenance only (no reader
+#: branches on it), one value per invalidation cause: a retired
+#: generator/router, a retired utility policy, or the conservative sweep of
+#: everything still reachable past the trace depth cap.
 GENERATOR_RETIRED_REASON = "generator_retired"
 UTILITY_INVALIDATED_REASON = "utility_invalidated"
 DEPTH_CAP_REASON = "trace_depth_exceeded"
@@ -107,7 +108,7 @@ _ROLE_STALE_REASONS: dict = {
     "utility_policy": UTILITY_INVALIDATED_REASON,
 }
 
-#: Roles whose stale records INVALIDATE the carrying node (§5.4): the node's
+#: Roles whose stale records INVALIDATE the carrying node: the node's
 #: very direction (generator/router) or its score's policy (utility_policy)
 #: came from the retired prompt — no recompute can launder that.
 INVALIDATE_ROLES: frozenset = frozenset(
@@ -115,12 +116,13 @@ INVALIDATE_ROLES: frozenset = frozenset(
 )
 
 #: Roles whose stale records trigger utility RECOMPUTE from surviving inputs
-#: under the original epoch's frozen weights (§5.4).
+#: under the original epoch's frozen weights — an evaluator's retirement
+#: changes what the evidence says, not what the node set out to do.
 RECOMPUTE_ROLES: frozenset = frozenset(
     {"reviewer", "adversary", "defender", "judge"}
 )
 
-#: §5.3 materiality table: *(consumer record type, referenced record type)*
+#: The materiality table: *(consumer record type, referenced record type)*
 #: pairs designated background CONTEXT — a citation that is not load-bearing
 #: for the consumer's conclusion, so staleness does NOT propagate through it
 #: (P-B slot-scoping). Every pair NOT listed here is load-bearing
@@ -184,12 +186,13 @@ def record_node_id(rec: dict) -> str:
     return ""
 
 
-# ── §5.3 dependency tracing (pure) ──────────────────────────────────────────
+# ── dependency tracing (pure) ───────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
 class DependencyClosure:
-    """Output of :func:`trace_dependents` (plan 10 §7)."""
+    """Output of :func:`trace_dependents` — the whole result of one trace, so
+    a caller never re-derives staleness from a partial view."""
 
     direct: frozenset = frozenset()
     transitive: frozenset = frozenset()
@@ -212,7 +215,7 @@ def trace_dependents(
     max_depth: int = 8,
     already_stale: frozenset = frozenset(),
 ) -> DependencyClosure:
-    """Pure, deterministic, cycle-safe stale closure (plan 10 §5.3).
+    """Pure, deterministic, cycle-safe stale closure.
 
     ``direct`` = records whose ``prompt_hash`` is retired; ``transitive`` =
     records reached by BFS over reverse ``source_refs`` edges, filtered by
@@ -296,13 +299,14 @@ def trace_dependents(
     )
 
 
-# ── §5.5 frontier rebuild (pure) ────────────────────────────────────────────
+# ── frontier rebuild (pure) ─────────────────────────────────────────────────
 
 
 def rebuild_frontier(
     all_nodes: Sequence, erasure_state, cfg
 ) -> list:
-    """Pure, declarative recomputation of the frontier (plan 10 §5.5).
+    """Pure, declarative recomputation of the frontier — the frontier is
+    recomputed from eligibility, never patched incrementally.
 
     Grounded in the actual representation: the frontier is the in-memory
     list in ``_run_loop`` whose durable form is ``tree.json``. Eligibility =
@@ -344,7 +348,7 @@ def rebuild_frontier(
             and m.get("_sterile") is not True
             and n.depth < max_depth
             and len(n.children or ()) < max_exp  # Rule B (len == expansions
-            # only while one-child-per-expand holds; see plan 10 §5.5)
+            # only while the one-child-per-expand invariant I-1 holds)
         )
 
     def score(n) -> float:
@@ -370,11 +374,11 @@ def rebuild_frontier(
     )
 
 
-# ── §5.4 MetricRecomputer (Layer 0, non-evolving) ───────────────────────────
+# ── MetricRecomputer (Layer 0, non-evolving) ────────────────────────────────
 
 
 class MetricRecomputer:
-    """Deterministic utility recomputation from surviving inputs (§5.4).
+    """Deterministic utility recomputation from surviving inputs.
 
     Never re-scores under a new policy: the penalty is recomputed with the
     ORIGINAL epoch's frozen weights stored by value in the UtilityRecord
@@ -447,7 +451,7 @@ class MetricRecomputer:
         return out
 
 
-# ── the engine (§5.2, §7) ───────────────────────────────────────────────────
+# ── the engine ──────────────────────────────────────────────────────────────
 
 
 @dataclass(frozen=True)
@@ -460,7 +464,8 @@ class RepairResult:
 
 
 def load_rqgm_records(checkpoint_dir: str | Path) -> list:
-    """Absence-tolerant aggregation of every RQGM record store (§5.3 input).
+    """Absence-tolerant aggregation of every RQGM record store — the input a
+    trace runs over, so a missing store narrows the trace, never fails it.
 
     Reads ``proposals/proposal_records.jsonl``,
     ``rqgm_adversarial_cases.jsonl``, and the record payloads inside
@@ -543,7 +548,8 @@ class FrontierRepairEngine:
         self.enforcement = enforcement
         self.expansion_halted = False
 
-    # ── config reads (duck-typed; plan 10 §6 defaults) ────────────────
+    # ── config reads (duck-typed; the default is used whenever the block
+    # is absent or the value will not coerce) ─────────────────────────
 
     def _cfg(self, name: str, default):
         block = self.cfg
@@ -572,7 +578,7 @@ class FrontierRepairEngine:
     def abandon_stale_pending(self) -> bool:
         return self._cfg("abandon_stale_pending", True)
 
-    # ── §5.2 the boundary entry point ─────────────────────────────────
+    # ── the boundary entry point ──────────────────────────────────────
 
     def repair(
         self,
@@ -586,7 +592,7 @@ class FrontierRepairEngine:
         epoch_id: str = "",
         new_utility_policy: dict | None = None,
     ) -> RepairResult:
-        """Run once per applied EpochTransition with retirements (§5.2).
+        """Run once per applied EpochTransition that carries retirements.
 
         Mutates *frontier* in place (``frontier[:] = rebuilt``), removes
         stale pending children, and writes node-metrics sentinels. Never
@@ -596,7 +602,7 @@ class FrontierRepairEngine:
         *new_utility_policy* is the NEWLY-FROZEN epoch's sealed utility policy
         (``EpochState.utility_policy``). When supplied, a node scored under a
         RETIRED utility policy is RE-WEIGHTED under the new criterion from its
-        stored per-axis raw scores instead of being dropped (Task 14 §5.4,
+        stored per-axis raw scores instead of being dropped (Task 14,
         amended #77). Absent/unusable ⇒ the pre-#77 total-invalidation
         behaviour, so no stale-criterion score ever survives either way.
         """
@@ -660,7 +666,8 @@ class FrontierRepairEngine:
         node_map = {n.id: n for n in (all_nodes or ())}
 
         # (a) invalidate nodes whose direction/policy came from a retired
-        # prompt (§5.4 rows 1 and 5), stamping the per-cause reason.
+        # prompt (the generator/router and utility_policy rows of the
+        # invalidate-vs-recompute policy), stamping the per-cause reason.
         for nid in sorted(closure.invalidated_node_ids):
             node = node_map.get(nid)
             if node is not None:
@@ -672,7 +679,7 @@ class FrontierRepairEngine:
                     erase_id,
                 )
 
-        # (a2) Task 14 (plan 14 §5.8 delta 2), amended #77: a ``utility_policy``
+        # (a2) Task 14, amended #77: a ``utility_policy``
         # retirement re-scores every node whose own provenance stamp names the
         # retired policy — reached by the node's stamp instead of by a record it
         # may not have. This is what makes the rewrite TOTAL rather than a random
@@ -745,7 +752,8 @@ class FrontierRepairEngine:
                 )
 
         # (b) abandon pending children authored by a retired generator
-        # BEFORE they ever run (§5.5).
+        # BEFORE they ever run — contaminated work is stopped, not finished
+        # and then discounted.
         abandoned: list = []
         if self.abandon_stale_pending:
             stale_all = closure.all_stale()
@@ -765,7 +773,7 @@ class FrontierRepairEngine:
                     abandoned.append(child.id)
 
         # (c) recompute utilities from surviving inputs under the original
-        # epoch's frozen weights (§5.4) — or invalidate when impossible.
+        # epoch's frozen weights — or invalidate when impossible.
         # Nodes whose scored evidence did NOT go stale (e.g. only a raw
         # attack targeting them was staled — never scored, invariant 8) are
         # left untouched.
@@ -781,8 +789,8 @@ class FrontierRepairEngine:
                 # (a2) — re-weighted under the NEW criterion (#77) or
                 # invalidated — and is NEVER also run through the
                 # surviving-inputs recompute below. That recompute re-derives
-                # the penalty under the node's ORIGINAL frozen weights (plan 10
-                # §5.4); running it after (a2) would overwrite the fresh
+                # the penalty under the node's ORIGINAL frozen weights;
+                # running it after (a2) would overwrite the fresh
                 # new-criterion score with old-weight arithmetic. The pre-#77
                 # invariant ("a rewrite INVALIDATES; it never re-weights an old
                 # score in place") is deliberately amended ONLY for the
@@ -838,14 +846,16 @@ class FrontierRepairEngine:
         }
         state = self._persist_state(ckpt, state, erasure_event, retirements)
 
-        # (d) declarative frontier rebuild + in-place replacement (§5.5).
+        # (d) declarative frontier rebuild + in-place replacement.
         before = sorted(n.id for n in (frontier or ()))
         rebuilt = rebuild_frontier(all_nodes, state, bfts_cfg)
         frontier[:] = rebuilt
         status = "applied"
 
-        # (e) kernel validation + the §5.6 degradation ladder. Trace lines
-        # feed the §5.3 CK-ERA-006 cross-check (secondary evidence only).
+        # (e) kernel validation + the degradation ladder: applied →
+        # conservative (drop the flagged nodes outright) → halted_expansion
+        # (drain-only). Trace lines feed the CK-ERA-006 cross-check, which is
+        # secondary evidence only — a missing trace never fails validation.
         trace_lines = _load_prompt_trace_lines(ckpt)
         if self.kernel is not None:
             if not self._validate(
@@ -1038,7 +1048,8 @@ class FrontierRepairEngine:
         self, node, base_rec: dict, recmap: dict, stale_ids: frozenset,
         epoch_id: str,
     ) -> dict | None:
-        """Stale utility record of *node* → superseding recompute (§5.4)."""
+        """Stale utility record of *node* → superseding recompute (the old
+        record is never edited; a new record supersedes it)."""
         new_id = "%s_r%03d" % (
             base_rec.get("record_id", "utl"),
             sum(1 for r in recmap.values() if r.get("supersedes")),
@@ -1054,7 +1065,8 @@ class FrontierRepairEngine:
         if new_rec is None:
             return None
         # Sentinel effects: metrics values are run state, not an append-only
-        # store — tree.json is a rewrite-snapshot by contract (§5.4).
+        # store — tree.json is a rewrite-snapshot by contract, so overwriting
+        # a node's metric values there is legal where record edits are not.
         metrics = node.metrics if isinstance(node.metrics, dict) else {}
         try:
             metrics["_pre_penalty_score"] = float(
@@ -1101,10 +1113,11 @@ class FrontierRepairEngine:
         self, frontier: list, records: list, state: ErasureStateView,
         retired_hashes: list, trace_lines: list,
     ) -> bool:
-        """§5.6 kernel assertions via Task 04's
-        ``validate_selective_erasure``. Records are handed over with the
+        """Kernel assertions via Task 04's
+        ``validate_selective_erasure``; a blocking report is what steps the
+        degradation ladder. Records are handed over with the
         LOGICAL staleness view materialised (read-time derivation);
-        *trace_lines* drive the §5.3 prompt_trace cross-check."""
+        *trace_lines* drive the CK-ERA-006 prompt_trace cross-check."""
         try:
             from ari.rqgm.kernel import should_block
 
@@ -1147,7 +1160,8 @@ class FrontierRepairEngine:
 
     @staticmethod
     def _conservative_drop(frontier: list, state: ErasureStateView) -> None:
-        """§5.6 step 1: drop every flagged node outright (no recompute)."""
+        """Ladder step 1 (conservative): drop every flagged node outright,
+        with no recompute — correctness over retained work."""
         invalid = state.invalid_node_ids()
         frontier[:] = [
             n
@@ -1160,7 +1174,7 @@ class FrontierRepairEngine:
 
 
 def _load_prompt_trace_lines(ckpt: Path) -> list:
-    """Read-only ``prompt_trace.jsonl`` lines for the §5.3 cross-check
+    """Read-only ``prompt_trace.jsonl`` lines for the CK-ERA-006 cross-check
     (absence = no data, never an error — the ``load_prompt_trace``
     discipline; a read failure only skips the secondary evidence)."""
     try:
@@ -1168,7 +1182,7 @@ def _load_prompt_trace_lines(ckpt: Path) -> list:
 
         return load_prompt_trace(ckpt)
     except Exception:
-        log.warning("prompt_trace read failed; §5.3 cross-check skipped",
+        log.warning("prompt_trace read failed; CK-ERA-006 cross-check skipped",
                     exc_info=True)
         return []
 

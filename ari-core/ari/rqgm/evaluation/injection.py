@@ -1,4 +1,7 @@
-"""Deterministic failure injection (RQGM Task 13 §5.3/§7).
+"""Deterministic failure injection for the RQGM evaluation harness.
+
+Spec catalogue and per-injection ground truth: see
+``docs/guides/rqgm_evaluation.md``, "Failure injections".
 
 Two mechanisms, no LLM in either (P2):
 
@@ -37,7 +40,8 @@ INJECTION_PROVENANCE_SCHEMA_VERSION = 1
 HARNESS_VERSION = 1
 
 #: The eval namespace and the case namespaces it must stay disjoint from
-#: (plan 13 §5.3: the eval set is held out from what governance trains on).
+#: (the eval set is held out from what governance trains on, so an eval id can
+#: never be replayed as a governance case).
 EVAL_ID_PREFIX = "eval_"
 RESERVED_CASE_PREFIXES: tuple[str, ...] = ("adv_", "anchor_")
 
@@ -69,9 +73,11 @@ def load_injection_specs(path: "str | Path | None" = None) -> dict:
     """Parse ``failure_injections.yaml`` into
     ``{"injections": [...], "controls": [...], "paper_injections": [...]}``.
 
-    ``paper_injections`` (paper-archive Task 07 §5.8, PI1-PI3) is additive and
-    absence-tolerant — an old specs file without the key yields ``[]`` and the
-    exploration ``injections``/``controls`` lists are byte-unchanged."""
+    ``paper_injections`` (the paper-archive cases PI1-PI3; see
+    ``docs/guides/rqgm_evaluation.md``, "Paper failure injections PI1–PI3")
+    is additive and absence-tolerant — an old specs file without the key
+    yields ``[]`` and the exploration ``injections``/``controls`` lists are
+    byte-unchanged."""
     p = Path(path) if path is not None else default_specs_path()
     data = yaml.safe_load(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or "injections" not in data:
@@ -163,8 +169,7 @@ def _expected_detection_violations(expected) -> list[str]:
 
 
 def smoke_only_spec_ids(specs: list) -> list[str]:
-    """Ids of ``scripted_component`` specs — smoke-tier only (plan 13 §5.3
-    mechanism S).
+    """Ids of ``scripted_component`` specs — smoke-tier only.
 
     No production code path consumes ``rqgm.eval.scripted_components`` (the
     doubles registry is engaged only by the Tier-2 smoke runner), so a
@@ -180,8 +185,9 @@ def smoke_only_spec_ids(specs: list) -> list[str]:
 
 
 def _payload_dir(spec: dict) -> Path:
-    """Resolve ``payload_ref`` against the committed fixture root. The
-    ``fixtures/rqgm_eval/`` prefix of the plan's §6 example is accepted."""
+    """Resolve ``payload_ref`` against the committed fixture root. A ref
+    written with the redundant ``fixtures/rqgm_eval/`` prefix resolves to the
+    same directory as one written without it."""
     ref = str(spec.get("payload_ref") or "").strip("/")
     prefix = "fixtures/rqgm_eval/"
     if ref.startswith(prefix):
@@ -255,7 +261,11 @@ def specs_digest(specs: list) -> str:
 
 
 def write_injection_provenance(checkpoint_dir: Path, specs: list) -> Path:
-    """The durable synthetic-trajectory marker (plan 13 §6)."""
+    """Write the durable synthetic-trajectory marker.
+
+    Every run with injections active carries this file, so an injected
+    trajectory can never later be mistaken for a real one.
+    """
     payload = {
         "schema_version": INJECTION_PROVENANCE_SCHEMA_VERSION,
         "injection_ids": sorted(
@@ -285,9 +295,10 @@ def read_injection_provenance(checkpoint_dir: Path) -> "dict | None":
 
 def gate_detection_report(checkpoint_dir: Path, *, phase: str = "final") -> dict:
     """Run the existing deterministic claim gate against an (injected)
-    checkpoint fragment without touching disk (plan 13 §4:
-    ``run_hard_gate(write=False)``) — the fixture-tier detection channel for
-    injections 1 (metric gaming) and 2 (overclaim).
+    checkpoint fragment without touching disk (the production gate, run as
+    ``run_hard_gate(write=False)`` so detection never mutates the fixture) —
+    the fixture-tier detection channel for injections 1 (metric gaming) and
+    2 (overclaim).
 
     Reads ``science_data.json`` / ``full_paper.tex`` /
     ``paper_claim_links.json`` from the checkpoint root; absence degrades to
