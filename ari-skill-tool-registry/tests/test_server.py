@@ -17,6 +17,11 @@ PUBLIC_OPERATIONS = [
     "discover",
     "describe",
     "invoke",
+    # The same dispatch operation carrying scheduler authority. It is a separate
+    # surface because a Provider's side-effect class follows its permissions, so
+    # putting `scheduler` on `invoke` would raise the composite envelope of every
+    # leaf behind it and stop the workspace-write capabilities matching.
+    "invoke_scheduled",
     "get_status",
     "get_result",
 ]
@@ -32,7 +37,7 @@ def _registry_launcher() -> PythonStdioLauncherV1:
 
 
 @pytest.mark.asyncio
-async def test_real_registry_server_exposes_exactly_five_broker_operations():
+async def test_real_registry_server_exposes_exactly_the_public_broker_operations():
     launcher = _registry_launcher()
     adapter = StdioMCPAdapter(
         launcher,

@@ -164,6 +164,36 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="invoke_scheduled",
+            description=(
+                "Invoke one admitted leaf that submits work to a scheduler. Same "
+                "operation as invoke; a separate surface because a Provider's "
+                "side-effect class follows its permissions, so carrying "
+                "scheduler authority on the shared surface would raise the "
+                "envelope of every leaf dispatched through it."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "tool_ref": {"type": "string"},
+                    "args": {"type": "object"},
+                    "mode": {
+                        "type": "string",
+                        "enum": ["live", "record", "replay"],
+                        "default": "live",
+                    },
+                    # The transport injects the call context under this name for
+                    # any tool declaring context_requirement: run. A schema that
+                    # refuses it refuses every authorized call -- which is what
+                    # this one did, so no bound Capability could ever be
+                    # dispatched through the broker.
+                    "ari_context": {"type": "object"},
+                },
+                "required": ["tool_ref", "args"],
+                "additionalProperties": False,
+            },
+        ),
+        Tool(
             name="get_status",
             description=(
                 "Poll an asynchronous registry handle using lifecycle operations "
@@ -223,7 +253,10 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 section=arguments.get("section", "summary"),
                 cursor=str(arguments.get("cursor") or ""),
             )
-        elif name == "invoke":
+        elif name in ("invoke", "invoke_scheduled"):
+            # Identical dispatch. The surfaces differ only in the authority they
+            # declare, which is the whole point: the split is about what a route
+            # may do, not about what it does differently.
             result = await broker.invoke(
                 tool_ref=str(arguments.get("tool_ref") or ""),
                 arguments=arguments.get("args") or {},

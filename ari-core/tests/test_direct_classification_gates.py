@@ -298,21 +298,7 @@ def test_the_checked_in_web_classification_matches_what_the_manifest_declares():
 # the requirement simply resolves `unsatisfied`, and the reason is a missing
 # table row somewhere else entirely. Pinning the set makes both directions
 # loud -- a new orphan appears, or an existing one is finally wired up.
-_UNSUPPLIED = {
-    # The tool exists and is invocable: `cuda_mcp_server` serves it, a real MCP
-    # client reaches it, and it runs the promoted job on the GPU and returns a
-    # pass. The composite also forms once the dispatch surface declares
-    # `scheduler`. What stops it is that the surface is shared: a Provider's
-    # side-effect class is derived from its permissions, so granting `scheduler`
-    # to `invoke` raises the envelope of every leaf dispatched through it to
-    # scheduler-submit -- and openroad, qiskit, and literature.search are all
-    # workspace-write contracts, which then no longer match. Enabling one
-    # capability that way disables three.
-    #
-    # Scoping the authority to its own dispatch surface is what this needs, so
-    # that an elevated route exists without elevating the ordinary one.
-    "ari.environment.cuda.validate/v1",
-}
+_UNSUPPLIED: set[str] = set()
 
 
 def test_every_contract_but_the_known_orphans_has_a_possible_supplier():

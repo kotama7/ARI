@@ -379,8 +379,25 @@ def load_provider_catalog(
             # capability in its own right is not a thing that should be
             # expressible -- and a defence in the view would have to choose
             # between honouring the direct binding and honouring the gate.
+            # A leaf may name its own dispatch surface. Every surface named
+            # here is subject to the same rules as the default one: present in
+            # the lock, and never classified directly.
+            routes = {
+                str(leaf): str(name)
+                for leaf, name in (
+                    brokered_config.get("dispatch_tool_by_leaf") or {}
+                ).items()
+            }
+            absent_routes = sorted(
+                {name for name in routes.values() if name not in locked_tools}
+            )
+            if absent_routes:
+                raise ValueError(
+                    f"broker dispatch tool is absent from the run lock: "
+                    f"{runtime_name}/{absent_routes}"
+                )
             conflicting = sorted(
-                set(declared) & {dispatch_name, *(
+                set(declared) & {dispatch_name, *routes.values(), *(
                     str(item) for item in (brokered_config.get("lifecycle_tools") or ())
                 )}
             )
@@ -400,9 +417,34 @@ def load_provider_catalog(
                     f"broker lifecycle tools are absent from the run lock: "
                     f"{runtime_name}/{absent_lifecycle}"
                 )
+            def _dispatch_for(tool) -> BrokerDispatchV1:
+                return BrokerDispatchV1(
+                    provider_id=entry.provider_id,
+                    provider_identity_digest=identity.identity_digest,
+                    provider_status=entry.status,
+                    tool_ref=tool.tool_ref,
+                    provider_lock_digest=lock_digest,
+                    manifest_digest=expected_manifest,
+                    registration_report_digest=report.report_digest,
+                    policy=dict(tool.policy),
+                    credential_scope_ids=scope_ids,
+                    subject_argument=str(
+                        brokered_config.get("subject_argument") or "tool_ref"
+                    ),
+                    lifecycle_tool_refs=tuple(
+                        sorted(
+                            locked_tools[name].tool_ref for name in lifecycle_names
+                        )
+                    ),
+                )
+
             provisions.extend(
                 build_brokered_provisions(
                     brokered_document,
+                    dispatch_by_leaf={
+                        leaf: _dispatch_for(locked_tools[name])
+                        for leaf, name in routes.items()
+                    },
                     dispatch=BrokerDispatchV1(
                         provider_id=entry.provider_id,
                         provider_identity_digest=identity.identity_digest,

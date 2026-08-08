@@ -895,6 +895,16 @@
         ],
         "idiom": "lowlevel",
         "name": "invoke"
+      },
+      {
+        "args": [
+          "args",
+          "ari_context",
+          "mode",
+          "tool_ref"
+        ],
+        "idiom": "lowlevel",
+        "name": "invoke_scheduled"
       }
     ],
     "ari-skill-transform": [

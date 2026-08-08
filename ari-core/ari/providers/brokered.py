@@ -374,6 +374,7 @@ def build_brokered_provisions(
     dispatch: BrokerDispatchV1,
     ontology: CapabilityOntologySnapshotV1,
     reviewed_capability_refs_by_leaf: dict[str, tuple[str, ...]],
+    dispatch_by_leaf: dict[str, BrokerDispatchV1] | None = None,
 ) -> tuple[CapabilityProvisionV1, ...]:
     """Emit one composite provision per reviewed brokered leaf.
 
@@ -381,8 +382,18 @@ def build_brokered_provisions(
     by the leaf's ``tool_ref``.  Every key must resolve: a table naming a leaf
     the catalog does not contain is stale review, and silently skipping it
     would leave a capability unsupplied for a reason nobody could see.
+
+    ``dispatch_by_leaf`` routes named leaves through a different surface than
+    the default.  A Provider's side-effect class is derived from its
+    permissions, so a surface that may submit jobs declares ``scheduler-submit``
+    and raises the envelope of *everything* dispatched through it.  With one
+    shared surface the only way to carry a scheduler-submitting leaf is to
+    elevate every other leaf with it, which stops the workspace-write contracts
+    matching their own capability.  Routing per leaf keeps the elevated
+    authority on the route that needs it.
     """
 
+    _default_dispatch = dispatch
     contracts = {item.capability_ref: item for item in ontology.contracts}
     descriptors = {
         str(item.get("tool_ref")): item for item in (document.get("tools") or ())
@@ -395,8 +406,10 @@ def build_brokered_provisions(
         for item in (document.get("quarantined") or ())
     }
 
+    routes = dict(dispatch_by_leaf or {})
     provisions: list[CapabilityProvisionV1] = []
     for leaf, refs in sorted(reviewed_capability_refs_by_leaf.items()):
+        dispatch = routes.get(leaf, _default_dispatch)
         descriptor = descriptors.get(leaf)
         if descriptor is None:
             raise BrokeredCatalogError(

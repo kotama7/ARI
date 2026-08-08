@@ -54,9 +54,9 @@ entries:
     source:
       repository: https://github.com/kotama7/ARI.git
       full_commit_sha: 929a682fa0f41a1b416f9615e35506b6538a54a4
-      package_sha256: sha256:6add47992f35d1c0c7b11ab71d514391ba81e5f84e13cade58ac066492b5deed
+      package_sha256: sha256:6ee4a1e46e6d702d17cf8098243a15ab86d7e14c89c2602f0b4eed20281f239d
       license: MIT
-    manifest_sha256: sha256:f614c45c507bf8a5d9206bca5e7464f828679d12fa98d782d16bac7d4d5369e1
+    manifest_sha256: sha256:0e774c87b740ce1107c5bbfb6599a9ce88e06aa8afa774c271cdede704db81f8
     # discover/describe/invoke are the broker's own surface, not ontology
     # capabilities; nothing here is classified.
     declared_capability_refs_by_tool: {}
@@ -66,6 +66,15 @@ entries:
       # absolute local paths and must never be committed.
       catalog_lock: ../../../ari-skill-tool-registry/CATALOG.lock
       dispatch_tool: invoke
+      # A leaf that submits work to a scheduler is dispatched through the
+      # surface that declares scheduler authority. Routing per leaf keeps
+      # that authority off every other leaf: a Provider's side-effect class
+      # follows its permissions, so one shared elevated surface would raise
+      # the envelope of the workspace-write capabilities behind it.
+      dispatch_tool_by_leaf:
+        ? >-
+          ari-tool://ari-cuda-environment-validator/ari-cuda-environment-validator%3Aari_cuda_validate__exclusive_node_sm121@sha256:02a0432a3c2c724c86700ccbbd45deeec488d6e0d4fac36e3e21cc74c31a4ca2
+        : invoke_scheduled
       # An asynchronous leaf is submitted through `invoke` and completed through
       # these. Without them a bound async Capability starts work whose result
       # the run is not authorized to collect.
@@ -80,6 +89,12 @@ entries:
         ? >-
           ari-tool://qiskit-mcp-servers/qiskit-profile%3Alocal-ideal%3Asha256%3A68256024487e836ccf088de0b9a13c86cd56ea1c5e38ca06ba45e4933c5b687b@sha256:5f4ec7861a2bf7a290831c295586559b08482e547a27a9e1f0246728cd8a1391
         : [ari.quantum.sample.local-ideal/v1]
+        # The CUDA environment validator. Its promoted bundles named a tool that
+        # existed nowhere but in the string that generated it; `cuda_mcp_server`
+        # is that tool, served over stdio-mcp so no new source kind was needed.
+        ? >-
+          ari-tool://ari-cuda-environment-validator/ari-cuda-environment-validator%3Aari_cuda_validate__exclusive_node_sm121@sha256:02a0432a3c2c724c86700ccbbd45deeec488d6e0d4fac36e3e21cc74c31a4ca2
+        : [ari.environment.cuda.validate/v1]
   - provider_id: ari.provider.web
     runtime_name: web-skill
     package: ari-skill-web

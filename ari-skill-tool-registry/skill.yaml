@@ -44,6 +44,19 @@ tools:
     permissions: [workspace-read, workspace-write, process, network]
     context_requirement: run
     timeout_class: slow
+  - name: invoke_scheduled
+    capability_ref: ari.registry.tool.invoke-scheduled
+    side_effects: stateful
+    # The same dispatch operation, carrying scheduler authority. It is a second
+    # surface rather than a wider permission on the first because a Provider's
+    # side-effect class is derived from its permissions: putting `scheduler` on
+    # the shared `invoke` raised the composite envelope of every leaf behind it
+    # to scheduler-submit, and the workspace-write contracts -- openroad,
+    # qiskit, literature.search -- then no longer matched their own capability.
+    # Only leaves the reviewed table routes here are dispatched through it.
+    permissions: [workspace-read, workspace-write, process, network, scheduler]
+    context_requirement: run
+    timeout_class: slow
   - name: get_status
     capability_ref: ari.registry.tool.status
     context_requirement: run
