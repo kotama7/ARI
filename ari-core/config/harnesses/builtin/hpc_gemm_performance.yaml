@@ -14,9 +14,9 @@
 # to any of them is a re-registration. The dataset slot pins WHICH SIZES.
 accepts_external_target: false
 container:
-  license: Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69
-  reference: apptainer:ari-native-python310-openroad-2026q3.sif
-  resolved_digest: sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9
+  license: Composite OSS; inventory sha256:24ff08e519aaf93cc92a2aebb71d96e101ad44cccd147e73be963049fdfb4314
+  reference: apptainer:orfs-26q3-openroad-7304ba78.sif
+  resolved_digest: sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c
 credential_policy: none
 credential_scope_ids: []
 dataset:
@@ -37,7 +37,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:d9e26a4013373846539267fa423e1a183b0b8502a4c53a21c29da5d6f5cc5786
+manifest_digest: sha256:6c3347faab2a7711fd8d336b3cff7677811375f2c93fb6c332d6e3e01598b7a3
 model:
   license: not-applicable
   revision: not-applicable

@@ -70,7 +70,14 @@ from ari.protocols.scientific_requirements import EnvironmentSnapshotV1  # noqa:
 
 
 VERSION = "1.0.0"
-LOGICAL_CONTAINER = "apptainer:ari-native-python310-openroad-2026q3.sif"
+#: The image the verifiers run inside, named logically so no site path is
+#: published. The image this originally named was a local build that no longer
+#: exists anywhere on this site, and a SIF cannot be rebuilt to the same bytes,
+#: so the pin it carried was unsatisfiable. This one is the upstream ORFS image
+#: itself: its rootfs is byte-identical to the vanished build -- all 653
+#: packages and all five non-dpkg licence files match -- and being upstream it
+#: can be fetched again.
+LOGICAL_CONTAINER = "apptainer:orfs-26q3-openroad-7304ba78.sif"
 CONFIG_ROOT = ARI_CORE / "config" / "harnesses"
 RESULT_SCHEMA = ARI_CORE / "ari" / "schemas" / "native_hpc_verification_report_v1.schema.json"
 TOLERANCE = CONFIG_ROOT / "policies" / "hpc-floating-point-v1.yaml"

@@ -1,8 +1,8 @@
 accepts_external_target: true
 container:
-  license: Composite OSS; inventory sha256:afbdaf3f13664eef2c17318fcb5b1146135e7de0d16e69e50c1a646f0bf28a69
-  reference: apptainer:ari-native-python310-openroad-2026q3.sif
-  resolved_digest: sha256:8a58660d3506fc01533a2784dc320dad47321b594569892ca3fb0004fe3840d9
+  license: Composite OSS; inventory sha256:24ff08e519aaf93cc92a2aebb71d96e101ad44cccd147e73be963049fdfb4314
+  reference: apptainer:orfs-26q3-openroad-7304ba78.sif
+  resolved_digest: sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c
 credential_policy: none
 credential_scope_ids: []
 dataset:
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:80d1bc13e01ea57039085b71e471b470c78622170b44ef64c38213c556392f7a
+manifest_digest: sha256:e8232edd1319d8c4543d8177ec10530464e5aefcbeaf5443e3a1a814cf16c5d1
 model:
   license: not-applicable
   revision: not-applicable

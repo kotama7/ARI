@@ -13,4 +13,3 @@ Pytest suite for the HPC skill (SLURM + Singularity).
 - `test_server.py` — runtime tool/schema and canonical MCP round-trip conformance.
 - `test_slurm_local.py` — submit/idempotency/status/result/cancel/clean-env conformance.
 - `test_slurm_remote.py` — strict host-key and explicit-credential SSH transport.
-- `test_submit_work_dir.py` — TODO
