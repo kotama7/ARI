@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:69ef1e08cc9294b9e71d0ef7cb54631626b42c1580b0ef416f2bd929433c102a",
-  "approved_date": "2026-08-08",
-  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-08 ('kotama'), who directed the container work and signed for it by name. The pinned image no longer exists here and a SIF cannot be rebuilt to the same bytes; the replacement is the upstream image it was built from, whose licence inventory matches package for package. Running it exposed two more pins no host here could satisfy: the apptainer runtime, installed nowhere on this site, and a memory requirement smaller than the container runtime's own address space. Each moved the manifest digest. Over report sha256:6d5f51f388b018e15d25e411d6dc18347795b43b28f459fc46614879eee3d1ca, three parity-probe runs at commit 6c7bf37f03ce on a clean worktree, exclusive aarch64 node at 48 threads, clean-control spread 0.02698, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:15fc51ad10543957bade322e8196b0776d019ba33e96496cbcb2df918d5001e1",
+  "approval_digest": "sha256:e3d0399a61b5b0c1f0dc6827ed5eb261eb96e7a407ab43ebb0c55f9bf8aa2d13",
+  "approved_date": "2026-08-09",
+  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-09 ('kotama'), who directed the change and signed for it by name. The container is now pinned by the digest of its rootfs rather than of the SIF file, because two pulls of one tag give different files and the same content -- 109,596 entries agreeing, only the runtime's build-date metadata differing -- so re-obtaining an image is a site binding rather than a re-registration. The verifier is also now bounded inside the container instead of through its launcher, returning its memory requirement to 4 GiB, and the manifests declare the commit whose code they pin. Over report sha256:d5f8a5de43a383b1bc95b44bb069372cecba2c9b8bab1818b04eb0a5e47b6bbd, three parity-probe runs at commit 6c1b8d3c838b on a clean worktree, exclusive aarch64 node at 48 threads, clean-control spread 0.01337, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:8ab84c9113106412a7a484f0785edbb4a11f5ef585e4ed8205e076835ae66e08",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:240e329af19626c549b87b4ad3577e246fc502e10ce16047192f30d61b651f34",
+  "harness_manifest_digest": "sha256:8505b8075fc77faf0150b6f2a0986c4d659183a1c0bb9441c63d0fe77477d831",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:6d5f51f388b018e15d25e411d6dc18347795b43b28f459fc46614879eee3d1ca",
+  "registration_report_digest": "sha256:d5f8a5de43a383b1bc95b44bb069372cecba2c9b8bab1818b04eb0a5e47b6bbd",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

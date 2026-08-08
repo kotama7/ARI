@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:bb098f92619eae5a593569522ae2ac27f6a93fdbcf0a5dde9429e2403c7093e8",
-  "approved_date": "2026-08-08",
-  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-08 ('kotama'), who directed the container work and signed for it by name. The pinned image no longer exists here and a SIF cannot be rebuilt to the same bytes; the replacement is the upstream image it was built from, whose licence inventory matches package for package. Running it exposed two more pins no host here could satisfy: the apptainer runtime, installed nowhere on this site, and a memory requirement smaller than the container runtime's own address space. Each moved the manifest digest. Over report sha256:14f07b45b4c0fcb48f93d8fa80e7c235f70c4e4ccf02935e1a5a678cbb92fda9, three parity-probe runs at commit 6c7bf37f03ce on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:c2f7ad27ca76dd5c2018471e4c9a34cf49131788cdde2f655ba77c20eaa25564",
+  "approval_digest": "sha256:da1d620cb9e17ad486eaf5543e59b1e6ad35409f514feb70e30bf57aa92d01ee",
+  "approved_date": "2026-08-09",
+  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-09 ('kotama'), who directed the change and signed for it by name. The container is now pinned by the digest of its rootfs rather than of the SIF file, because two pulls of one tag give different files and the same content -- 109,596 entries agreeing, only the runtime's build-date metadata differing -- so re-obtaining an image is a site binding rather than a re-registration. The verifier is also now bounded inside the container instead of through its launcher, returning its memory requirement to 4 GiB, and the manifests declare the commit whose code they pin. Over report sha256:8a2c73020d28724a3df3881f6e93622f42ef31eb8016d715e9979338d8b66a41, three parity-probe runs at commit 6c1b8d3c838b on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:9f17151c4ee8d6e3c6a48d1366bc7c4f1c713d240b3ac5cac25d171061414f54",
   "from_status": "candidate",
   "harness_id": "hpc/spmm-correctness",
-  "harness_manifest_digest": "sha256:6db34ee4202d5fe8e4f5fc7fcc08d702a0f207122c37aa45827f11a4a756ccb5",
+  "harness_manifest_digest": "sha256:e8c7d0184724c9ea49616275505a7b760fb9c4bec92a5667404f8ada28f81dd1",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:14f07b45b4c0fcb48f93d8fa80e7c235f70c4e4ccf02935e1a5a678cbb92fda9",
+  "registration_report_digest": "sha256:8a2c73020d28724a3df3881f6e93622f42ef31eb8016d715e9979338d8b66a41",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

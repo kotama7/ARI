@@ -1,20 +1,20 @@
 {
   "attestation_digests": [
-    "sha256:14f07b45b4c0fcb48f93d8fa80e7c235f70c4e4ccf02935e1a5a678cbb92fda9"
+    "sha256:8a2c73020d28724a3df3881f6e93622f42ef31eb8016d715e9979338d8b66a41"
   ],
   "clean_control_verdict": "pass",
-  "environment_digest": "sha256:17080063b5e9d4d9ed7f5f85f865c7ff7ccbc612975a64cbe06f153a9303d287",
+  "environment_digest": "sha256:966b05fd3afa428f6fc3629aa85331e4f3093a03c998ecffec7226006c161351",
   "evidence_artifact_digests": {
-    "evidence/hpc_spmm_correctness/gate_findings.json": "sha256:64be32ca40139740767df593da8f1c24b69f9babd86532b8c82972b52cbb4207",
-    "evidence/hpc_spmm_correctness/measurement_environment.json": "sha256:17080063b5e9d4d9ed7f5f85f865c7ff7ccbc612975a64cbe06f153a9303d287",
+    "evidence/hpc_spmm_correctness/gate_findings.json": "sha256:c685b6909de0aa36c47ad36e4f7ff3fdae992653c5f7904ffc2e00c8ed77a120",
+    "evidence/hpc_spmm_correctness/measurement_environment.json": "sha256:966b05fd3afa428f6fc3629aa85331e4f3093a03c998ecffec7226006c161351",
     "evidence/hpc_spmm_correctness/multiple_run_stability.json": "sha256:97fe49e20957f9cc1040217bd692f8f08c7e0ab70aadec275193f5f0e1fff926",
     "evidence/hpc_spmm_correctness/official_runner_parity.json": "sha256:35dabdb39535ce10e0ba8621bd65e65ce5f3f4e095ca0fbbd70b8947b6b8cdd1",
-    "evidence/hpc_spmm_correctness/registration_report.json": "sha256:7da0ac6be537d69d498946f8d7e40490c79fac605cfa70e971be1e957ba80415"
+    "evidence/hpc_spmm_correctness/registration_report.json": "sha256:cf65d582643af7c978a9c7572fa526c568e77cde08dc3f67fbd387390e58ac90"
   },
-  "evidence_digest": "sha256:c2f7ad27ca76dd5c2018471e4c9a34cf49131788cdde2f655ba77c20eaa25564",
+  "evidence_digest": "sha256:9f17151c4ee8d6e3c6a48d1366bc7c4f1c713d240b3ac5cac25d171061414f54",
   "harness_id": "hpc/spmm-correctness",
   "harness_version": "1.0.0",
-  "manifest_digest": "sha256:6db34ee4202d5fe8e4f5fc7fcc08d702a0f207122c37aa45827f11a4a756ccb5",
+  "manifest_digest": "sha256:e8c7d0184724c9ea49616275505a7b760fb9c4bec92a5667404f8ada28f81dd1",
   "negative_control_verdict": "fail",
   "network_isolation": "proved",
   "official_runner_parity": true,
@@ -22,6 +22,6 @@
   "result_schema_conformant": true,
   "run_count": 3,
   "schema_version": "ari.harness-registration-evidence/v1",
-  "source_full_commit_sha": "6c7bf37f03ce6bde47e2a9fd3d27c94e29357f41",
+  "source_full_commit_sha": "6c1b8d3c838b7bd807f16f0cdec4300d21ce4c2e",
   "target_write_isolation": "proved"
 }

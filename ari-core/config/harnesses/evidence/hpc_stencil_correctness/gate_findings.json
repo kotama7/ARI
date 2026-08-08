@@ -45,7 +45,7 @@
     "passed": true
   },
   {
-    "detail": "pinned at d303a4ca15ca, an ancestor of 6c7bf37f03ce",
+    "detail": "pinned at 361a85d7fde8, an ancestor of 6c1b8d3c838b",
     "gate_id": "source_revision_digest_pin",
     "passed": true
   },
