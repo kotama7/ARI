@@ -1,19 +1,75 @@
 ---
 sources:
-  - path: ari-skill-hpc/mcp.json
-    role: config
-  - path: ari-skill-hpc/ari_skill_hpc/server.py
+  - path: ari-skill-benchmark/src/server.py
     role: implementation
-  - path: ari-skill-coding/mcp.json
+  - path: ari-skill-benchmark/mcp.json
     role: config
   - path: ari-skill-coding/src/server.py
     role: implementation
-  - path: ari-skill-paper-re/mcp.json
+  - path: ari-skill-coding/mcp.json
+    role: config
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-skill-evaluator/mcp.json
+    role: config
+  - path: ari-skill-harness/src/server.py
+    role: implementation
+  - path: ari-skill-harness/mcp.json
+    role: config
+  - path: ari-skill-hpc/ari_skill_hpc/server.py
+    role: implementation
+  - path: ari-skill-hpc/mcp.json
+    role: config
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+  - path: ari-skill-idea/mcp.json
+    role: config
+  - path: ari-skill-knowledge/src/server.py
+    role: implementation
+  - path: ari-skill-knowledge/mcp.json
+    role: config
+  - path: ari-skill-memory/src/server.py
+    role: implementation
+  - path: ari-skill-memory/mcp.json
+    role: config
+  - path: ari-skill-orchestrator/src/server.py
+    role: implementation
+  - path: ari-skill-orchestrator/mcp.json
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-  - path: ari-skill-idea/src/server.py
+  - path: ari-skill-paper-re/mcp.json
+    role: config
+  - path: ari-skill-paper/src/server.py
     role: implementation
+  - path: ari-skill-paper/mcp.json
+    role: config
+  - path: ari-skill-plot/src/server.py
+    role: implementation
+  - path: ari-skill-plot/mcp.json
+    role: config
+  - path: ari-skill-replicate/src/server.py
+    role: implementation
+  - path: ari-skill-replicate/mcp.json
+    role: config
+  - path: ari-skill-tool-registry/src/server.py
+    role: implementation
+  - path: ari-skill-tool-registry/mcp.json
+    role: config
+  - path: ari-skill-transform/src/server.py
+    role: implementation
+  - path: ari-skill-transform/mcp.json
+    role: config
+  - path: ari-skill-vlm/src/server.py
+    role: implementation
+  - path: ari-skill-vlm/mcp.json
+    role: config
+  - path: ari-skill-web/src/server.py
+    role: implementation
+  - path: ari-skill-web/mcp.json
+    role: config
+  - path: ari-core/tests/fixtures/contracts/mcp_tools.json
+    role: test
 last_verified: 2026-08-07
 ---
 
@@ -60,7 +116,7 @@ renders them.
 | `run_code` | Execute a script with timeout + capture | ✗ |
 | `run_bash` | Ad-hoc bash command | ✗ |
 | `describe_environment` | Report this cluster's environment catalog (arch, CPU, GPUs, compilers on PATH, `module avail`, and the NAMES of set toolchain env vars). On a login node it also covers each configured compute partition; on a compute node, only that node | ✗ |
-| `emit_results` | Emit `metrics` + `has_real_data` for the evaluator (optional `provenance` arg → written verbatim as the `_provenance` key tagging how each value was measured, for the claim-evidence gate). The response's `contract_warnings` may include suggestion-only "POSSIBLE name matches" hints when an emitted key lexically resembles a required evidence name — advisory only: nothing is auto-bound and the gate never consumes them | ✗ |
+| `emit_results` | Write a typed `results.json` (`MeasurementSetV1`) that separates `params` from `measurements` (optional `provenance` arg → recorded on each measurement record, and surfaced to the claim-evidence gate as the `_provenance` map). The response's `contract_warnings` may include suggestion-only "POSSIBLE name matches" hints when an emitted key lexically resembles a required evidence name — advisory only: nothing is auto-bound and the gate never consumes them | ✗ |
 | `read_file` | Read a file the agent wrote earlier | ✗ |
 
 ## ari-skill-evaluator — metric contracts + claim gates
@@ -86,7 +142,7 @@ schemas come from `@server.list_tools()` in `ari_skill_hpc/server.py`.
 | `job_logs` | Bounded, digest-bound stdout / stderr for an ARI job handle | ✗ |
 | `job_cancel` | Request cancellation of an ARI or SLURM job | ✗ |
 | `slurm_submit` | Compatibility bridge for the core agent's batch-script workflow: sbatch with explicit partition / time / nodes / tasks / cpus / modules and an explicit `launcher`. New programmatic callers use `job_submit` | ✗ |
-| `probe_platform_capabilities` | Probe tool availability (`command -v`) **on the compute partition** and cache it to `{checkpoint}/platform_capabilities.json`; best-effort (any failure is reported as skipped and writes nothing) | ✗ |
+| `probe_platform_capabilities` | Probe tool availability (`command -v`) **on the compute partition** and cache it to `{checkpoint}/platform_capabilities.json`; best-effort (any probe failure is reported as skipped and writes nothing) | ✗ |
 | `counter_support` | Report whether this node grants hardware counters, established by opening one rather than by looking for a profiler binary | ✗ |
 | `measure_counters` | Count reviewed hardware events on an existing process over a bounded window; creates no process and writes nothing | ✗ |
 
@@ -156,8 +212,10 @@ This skill uses FastMCP `@mcp.tool()` decorators in `src/server.py`; its
 | `audit_memory` | Verify recorded provenance (sha256) against disk for a checkpoint | ✗ |
 | `consolidate_node_memory` | Derive + write typed memory from a node_report at node end (CoW: self) | ✗ |
 
-The skill explicitly declares "no LLM calls" in its design doc — see
-`ari-skill-memory/README.md`.
+No tool here calls an LLM. `ari-skill-memory/README.md` § Determinism (P2)
+records that v0.5.x's "no LLM calls, fully deterministic" claim was relaxed in
+v0.6.0 anyway: Letta embedding search is not bit-reproducible across versions,
+so stored `text` bytes are CoW-protected instead.
 
 There is no destructive clear. Entries are never dropped by an agent-visible
 operation, and `ari-skill-memory/tests/test_cow.py` pins the absence
@@ -189,7 +247,7 @@ digest-addressed references rather than filesystem paths.
 
 | Tool | Purpose | LLM |
 |---|---|:---:|
-| `list_venues` | Available LaTeX templates (ACM / NeurIPS / SC / ICPP / arXiv) | ✗ |
+| `list_venues` | Available LaTeX templates (ACM / NeurIPS / SC / ICPP / ISC / arXiv) | ✗ |
 | `get_template` | Fetch a venue's template | ✗ |
 | `compile_paper` | pdflatex compile | ✗ |
 | `check_format` | LaTeX format validation | ✗ |
@@ -221,23 +279,25 @@ digest-addressed references rather than filesystem paths.
 
 | Tool | New args |
 |---|---|
-| `run_reproduce` | `container_image` (honoured by docker / apptainer / singularity sandboxes; alias `pb-env` / `pb-reproducer` resolves to vendor `image:latest` tags built by `scripts/build_pb_images.sh`) |
+| `run_reproduce` | `container_image` (required by the docker / apptainer / singularity sandboxes, refused by the others). v1.0 admits only an immutable reference: a local non-symlink SIF, a full `sha256:<image-id>`, or a `name@sha256:<digest>` URI — the mutable `pb-env` / `pb-reproducer` `:latest` aliases were removed |
 
-Fail-loud preconditions: missing docker daemon / apptainer binary /
-sbatch / partition raise `RuntimeError` rather than silently falling
-back to local CPU. Opt back into legacy fallback via
-`ARI_PHASE1_ALLOW_FALLBACK=1`; opt back into silent GRES-flag drop via
-`ARI_SLURM_ALLOW_NO_GRES=1`. See
+Fail-loud preconditions: `sandbox_kind=slurm` without `sbatch` on PATH,
+or with no partition resolvable from the argument, `ARI_SLURM_PARTITION`
+or `launch_config.json`, raises `RuntimeError` rather than silently
+falling back to local execution; a container sandbox whose runtime
+binary is absent, or whose `container_image` is empty or mutable, raises
+`ReproductionContractError`. v1.0 removed the host-local fallback, so
+there is no opt-back-in switch. See
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2).
-Mixing typed (`gpu_type` / `--gres=gpu:TYPE:N`) with untyped
-(`--gpus-per-task`) GPU requests is automatically canonicalised to
-the typed form — SLURM 24.05 rejects the mixed form.
+A GPU request cannot mix its two shapes either: per-node and per-task GPU
+counts are mutually exclusive, and `gpu_type` requires an explicit GPU
+count.
 
 ### v0.8.0 new fields (Stage 3)
 
 | Tool | New args |
 |---|---|
-| `grade_with_simplejudge` | `code_only` (prune rubric to Code Development leaves only, mirrors vendor `paperbench/grade.py:109-112`; auto-enables when no `reproduce.log` is present so Stage 1-only runs aren't systematically zeroed) |
+| `grade_with_simplejudge` | `code_only` (prune rubric to Code Development leaves only, mirrors vendor `paperbench/grade.py:109-112`). It defaults to `False` and is never turned on for you — v1.0 removed the implicit `code_only` grading that used to switch itself on when no `reproduce.log` was present |
 
 For an in-process Python surface that chains all three stages with a
 single calling vocabulary, see
@@ -280,10 +340,11 @@ Shipped templates:
 | `neurips` | `paper_audit` | Six axes per NeurIPS Reproducibility Checklist (claims / setup / code+data / statistics / ethics / figures). |
 | `nature` | `paper_audit` | Five axes for wet-lab papers (materials / protocol / statistics / data / ethics). |
 
-`paper_audit` mode requires `two_stage=True`; the generator returns an
-error if the single-pass path is requested with a `paper_audit`
-template (the single-pass prompt cannot honour the fixed-axis
-constraint). See [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
+A `paper_audit` template must declare a non-empty `top_level_axes`;
+loading one that does not is refused. There is no single-pass path to
+opt out of — generation is always the two-stage skeleton + subtree walk,
+and `system_hint` frames the skeleton pass while `leaf_style` frames the
+subtree pass. See [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
 for the YAML schema and authoring guide.
 
 ## ari-skill-transform — tree walk + EAR pipeline

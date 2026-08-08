@@ -40,7 +40,7 @@ sources:
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # Dashboard Guide
@@ -219,7 +219,7 @@ clicking the row itself goes to the run-explicit `#/results?run=<run_id>`
 compatibility fallback for older callers). RQGM and paper capabilities are
 badges next to the run id rather than their own column.
 
-![The Projects workspace: one table row per run, carrying the run id, a status badge, node count, review score, best metric, last-updated time, a capabilities column, and per-row Overview and Config links](../assets/images/en/dashboard_projects.png)
+![The Projects workspace: one table row per run, carrying the run id with its RQGM and paper capability badges, a status badge, node count, review score, best metric, last-updated time, and a single Open column](../assets/images/en/dashboard_projects.png)
 
 **Overview** (`#/overview?run=`) is the per-run landing page: lifecycle
 badge, current *research* phase (`idle`/`starting`/`bfts`/`paper`/`review`),
@@ -263,8 +263,8 @@ parameters themselves stay configuration-file only, and no screen can
 change the mode of a run that already exists.
 
 **Operations** is not a single route today. Process control, resource and
-GPU monitoring live on the legacy `#/monitor` page; installation, secrets
-and env keys live on `#/settings`; the operator-facing probes are HTTP
+GPU monitoring live on the legacy `#/monitor` page; secrets, env keys and
+the SLURM/container/SSH settings live on `#/settings`; the operator-facing probes are HTTP
 endpoints (`/health/live`, `/health/ready`, `/api/v1/diagnostics`) rather
 than screens — see [Remote access](remote_access.md).
 
@@ -408,7 +408,7 @@ Reach for them when the v2 workspace is deliberately read-only:
 | `#/new` (`#/wizard`) | the original guided launch wizard |
 | `#/idea` | the `/state`-derived idea cards for the active checkpoint |
 | `#/workflow` | the React-Flow workflow editor, skill phases, disabled tools |
-| `#/settings` | installation, API keys, env keys, Developer Mode |
+| `#/settings` | the full `/api/settings` env-key surface and the Developer Mode toggle (the eight allowlisted secrets — six API keys plus `ZENODO_TOKEN` and `ARI_REGISTRY_TOKEN` — are also writable from the Config Studio secret field) |
 | `#/paperbench`, `#/paperbench/import`, `#/paperbench/run`, `#/paperbench/results` | the whole PaperBench surface (see [PaperBench GUI guide](paperbench/paperbench_gui.md)) |
 
 The v2 Results workspace links out to `#/results` for exactly this reason

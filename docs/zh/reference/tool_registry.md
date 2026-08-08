@@ -243,7 +243,8 @@ clean environment、`network: none`、无 GPU passthrough）、runtime-owned met
 lifecycle、来自 scheduler 的终态证据、live DRC-zero result、fixture、gate 与
 human approval，并请求零 GPU。已审查的 PRoot/unsquashfs/worker-Python 构建所链接
 的 host glibc 版本高于 promoting site 提供的版本，因此该 SLURM profile 改为固定这个 clean
-container；隔离反而更强：closure 只是 SIF 本身，而不是 SIF 加四个 host binary。
+container；隔离反而更强：closure 只是 SIF 本身，而不是 SIF 加上 portable runtime
+固定的三个 host binary（PRoot、`unsquashfs`、worker Python）。
 `environment_requirements` 现在由 profile 派生而不是写死，该 lock 列出
 `cpu`、`exclusive-node`、`singularity-sif`、`slurm`；`runtime_target` 随所声明的
 基底记为 `worker_python: container-provided`、
@@ -316,8 +317,8 @@ golden/replay evidence，不能继承 local Aer 的 promotion。
 对应的 human-admin entry point 是`scripts/promote_qiskit_local_aer.py`，不会通过 Agent
 MCP 暴露。
 
-Provider promotion 只改变 governed eligibility，并不自动 activation。两个 identity
-都不会加入 committed 的空 `CATALOG.lock`；operator 必须 materialize 精确环境，审核
+Provider promotion 只改变 governed eligibility，并不自动 activation。每一个已 promote
+的 identity 都不会加入 committed 的空 `CATALOG.lock`；operator 必须 materialize 精确环境，审核
 source sync，再为每个 run 固定 Provider Lock 与 Capability Binding Lock。
 
 ### 抵达 ARI Capability

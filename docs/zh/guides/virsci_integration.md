@@ -102,7 +102,7 @@ v1 中绝不移动 `ideas[0]` 指令 —— 晋升一个再构思结果属于治
 空列表），再调用 `generate_ideas`，并把 `generate_ideas`
 载荷归一化为每个想法一个 `ProposalDraft` —— 它只读取九个遗留顶层键
 （`virsci_adapter.GENERATE_IDEAS_KEYS`），而这些如今只是技能返回内容的
-一个子集。任何工具失败都降级为零
+一个子集。`generate_ideas` 失败会降级为零
 草稿；存储层的内容键去重使整条路径在重试下幂等。
 
 ## 归档 vs. 摘要
@@ -180,8 +180,12 @@ VirSci 输出在写入时即被拆分（"存储全部，只展示摘要"）：
 
 `ari-skill-idea/vendor/virsci` 是一个 git 子模块，存放**未经修改**的
 上游 VirSci 源码。只有技能中可选启用的 `real_wrap` 引擎
-（`ARI_IDEA_VIRSCI_REAL=1`）执行其中的代码；默认的 reimpl 引擎无需
-它即可运行，`ari-core` 也从不导入它。实际运行的是哪个引擎会在
+（`ARI_IDEA_VIRSCI_REAL=1`）会运行 vendored 的 VirSci 机制 —— 即在
+Semantic Scholar 快照上的 `select_coauthors` / `generate_idea` 路径。
+默认的 reimpl 引擎只借用 vendored 的讨论提示词模板
+（`sci_platform/utils/prompt.py`，在技能 import 时读取），子模块未检出
+时退回内联提示词，因此两种情况下都能运行；`ari-core` 也从不导入它。
+实际运行的是哪个引擎会在
 `generate_ideas` 载荷的 `virsci_integration_status` 键中报告
 （`"real_wrap"` vs 带原因的 `"reimpl: …"`）—— RQGM 适配器对两种
 状态一视同仁地归一化。

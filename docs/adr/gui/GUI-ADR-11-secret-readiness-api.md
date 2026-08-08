@@ -1,3 +1,24 @@
+---
+sources:
+  - path: ari-core/ari/viz/v1/secrets.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/dto.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/catalogs.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Wizard/StepResources.tsx
+    role: implementation
+  - path: ari-core/tests/test_gui_secret_readiness.py
+    role: test
+  - path: ari-core/tests/test_gui_v1_secret_put_and_catalogs.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/devModeAndDangerousOps.test.tsx
+    role: test
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-11: secret readiness replaces plaintext env-key reads
 
 Context: the security review of the GUI surface recorded that

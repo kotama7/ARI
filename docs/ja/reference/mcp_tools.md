@@ -1,73 +1,73 @@
 ---
 sources:
-  - path: ari-skill-benchmark/mcp.json
-    role: config
   - path: ari-skill-benchmark/src/server.py
     role: implementation
-  - path: ari-skill-coding/mcp.json
+  - path: ari-skill-benchmark/mcp.json
     role: config
   - path: ari-skill-coding/src/server.py
     role: implementation
-  - path: ari-skill-evaluator/mcp.json
+  - path: ari-skill-coding/mcp.json
     role: config
   - path: ari-skill-evaluator/src/server.py
     role: implementation
-  - path: ari-skill-harness/mcp.json
+  - path: ari-skill-evaluator/mcp.json
     role: config
   - path: ari-skill-harness/src/server.py
     role: implementation
-  - path: ari-skill-hpc/mcp.json
+  - path: ari-skill-harness/mcp.json
     role: config
   - path: ari-skill-hpc/ari_skill_hpc/server.py
     role: implementation
-  - path: ari-skill-idea/mcp.json
+  - path: ari-skill-hpc/mcp.json
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-  - path: ari-skill-knowledge/mcp.json
+  - path: ari-skill-idea/mcp.json
     role: config
   - path: ari-skill-knowledge/src/server.py
     role: implementation
-  - path: ari-skill-memory/mcp.json
+  - path: ari-skill-knowledge/mcp.json
     role: config
   - path: ari-skill-memory/src/server.py
     role: implementation
-  - path: ari-skill-orchestrator/mcp.json
+  - path: ari-skill-memory/mcp.json
     role: config
   - path: ari-skill-orchestrator/src/server.py
     role: implementation
-  - path: ari-skill-paper/mcp.json
-    role: config
-  - path: ari-skill-paper/src/server.py
-    role: implementation
-  - path: ari-skill-paper-re/mcp.json
+  - path: ari-skill-orchestrator/mcp.json
     role: config
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-  - path: ari-skill-plot/mcp.json
+  - path: ari-skill-paper-re/mcp.json
+    role: config
+  - path: ari-skill-paper/src/server.py
+    role: implementation
+  - path: ari-skill-paper/mcp.json
     role: config
   - path: ari-skill-plot/src/server.py
     role: implementation
-  - path: ari-skill-replicate/mcp.json
+  - path: ari-skill-plot/mcp.json
     role: config
   - path: ari-skill-replicate/src/server.py
     role: implementation
-  - path: ari-skill-tool-registry/mcp.json
+  - path: ari-skill-replicate/mcp.json
     role: config
   - path: ari-skill-tool-registry/src/server.py
     role: implementation
-  - path: ari-skill-transform/mcp.json
+  - path: ari-skill-tool-registry/mcp.json
     role: config
   - path: ari-skill-transform/src/server.py
     role: implementation
-  - path: ari-skill-vlm/mcp.json
+  - path: ari-skill-transform/mcp.json
     role: config
   - path: ari-skill-vlm/src/server.py
     role: implementation
-  - path: ari-skill-web/mcp.json
+  - path: ari-skill-vlm/mcp.json
     role: config
   - path: ari-skill-web/src/server.py
     role: implementation
+  - path: ari-skill-web/mcp.json
+    role: config
   - path: ari-core/tests/fixtures/contracts/mcp_tools.json
     role: test
 last_verified: 2026-07-30
@@ -127,7 +127,7 @@ source / data / spec / environment / PNG・PDF digest を持つマニフェス�
 | `run_code` | タイムアウト + キャプチャ付きでスクリプトを実行 | ✗ |
 | `run_bash` | アドホックな bash コマンド | ✗ |
 | `describe_environment` | このクラスタの環境カタログ（アーキテクチャ、CPU、GPU、PATH 上のコンパイラ、`module avail` の生カタログ、設定済みツールチェイン環境変数の**名前**）を返す。ログインノードではログインノード自身に加えて設定された各計算パーティションを、計算ノードではそのノードのみを報告。引数なし | ✗ |
-| `emit_results` | 評価器向けに `metrics` + `has_real_data` を出力（オプションの `provenance` 引数 → `_provenance` キーとしてそのまま書き込まれ、各値がどのように測定されたかをタグ付けし、claim-evidence ゲートで使用）。レスポンスの `contract_warnings` には、出力したキーが要求エビデンス名と字句的に類似する場合、提案のみの「POSSIBLE name matches」ヒントが含まれることがあります — あくまで助言であり、自動バインドは行われず、ゲートがこれを参照することもありません | ✗ |
+| `emit_results` | `params` と `measurements` を分離した型付き `results.json`（`MeasurementSetV1`）を書き出す（オプションの `provenance` 引数 → 各 measurement record に記録され、claim-evidence ゲートには `_provenance` マップとして届く）。レスポンスの `contract_warnings` には、出力したキーが要求エビデンス名と字句的に類似する場合、提案のみの「POSSIBLE name matches」ヒントが含まれることがあります — あくまで助言であり、自動バインドは行われず、ゲートがこれを参照することもありません | ✗ |
 | `read_file` | エージェントが以前に書いたファイルを読み込む | ✗ |
 
 ## ari-skill-evaluator — メトリクス契約 + 主張ゲート
@@ -153,7 +153,7 @@ source / data / spec / environment / PNG・PDF digest を持つマニフェス�
 | `job_logs` | ARI ジョブハンドルの stdout / stderr を境界付き・digest 付きで返す | ✗ |
 | `job_cancel` | ARI または SLURM のジョブのキャンセルを要求 | ✗ |
 | `slurm_submit` | コアエージェントのバッチスクリプト用互換ブリッジ：パーティション / 時間 / ノード数 / タスク数 / CPU 数 / modules と明示的な `launcher` を指定して sbatch。新しいプログラム的呼び出しは `job_submit` を使う | ✗ |
-| `probe_platform_capabilities` | **計算パーティション上**でツールの有無（`command -v`）を調べ、`{checkpoint}/platform_capabilities.json` にキャッシュ；ベストエフォート（失敗時は skipped を返し何も書かない） | ✗ |
+| `probe_platform_capabilities` | **計算パーティション上**でツールの有無（`command -v`）を調べ、`{checkpoint}/platform_capabilities.json` にキャッシュ；ベストエフォート（プローブ失敗時は skipped を返し何も書かない） | ✗ |
 | `counter_support` | このノードがハードウェアカウンタを許可するかを、プロファイラのバイナリを探すのではなく実際に 1 つ開いて確かめて報告 | ✗ |
 | `measure_counters` | 既存プロセスの審査済みハードウェアイベントを境界付きウィンドウで計数；プロセスを生成せず、何も書かない | ✗ |
 
@@ -224,8 +224,11 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 | `audit_memory` | 記録された来歴（sha256）をチェックポイントのディスク上と照合検証 | ✗ |
 | `consolidate_node_memory` | ノード終了時に node_report から型付きメモリを導出 + 書き込み（CoW：自ノード） | ✗ |
 
-このスキルは設計ドキュメントで「LLM 呼び出しなし」と明示しています —
-`ari-skill-memory/README.md` を参照してください。エントリを削除するツールは
+ここのツールは LLM を呼びません。ただし `ari-skill-memory/README.md` の
+§ Determinism (P2) が記録しているとおり、v0.5.x の「LLM 呼び出しなし・完全に
+決定的」という宣言は v0.6.0 で緩和されています：Letta の embedding search は
+バージョン間で bit-reproducible ではないため、代わりに保存された `text` の
+バイト列が CoW で保護されます。エントリを削除するツールは
 ありません。ARI の governance がノードを論理的に消去した場合も、記録は残った
 まま `erased` / `erasure_event_id` / `erasure_note` のラベルが付いて返ります
 （黙って落とされることはありません）。
@@ -290,23 +293,24 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 
 | ツール | 新しい引数 |
 |---|---|
-| `run_reproduce` | `container_image`（docker / apptainer / singularity サンドボックスで有効；エイリアス `pb-env` / `pb-reproducer` は `scripts/build_pb_images.sh` でビルドされた vendor の `image:latest` タグに解決） |
+| `run_reproduce` | `container_image`（docker / apptainer / singularity サンドボックスでは必須、それ以外では拒否）。v1.0 が受け付けるのは不変な参照のみ：ローカルの非シンボリックリンク SIF、完全な `sha256:<image-id>`、または `name@sha256:<digest>` URI — 可変な `pb-env` / `pb-reproducer` の `:latest` エイリアスは削除されました |
 
-フェイルラウド前提条件: docker デーモン / apptainer バイナリ /
-sbatch / パーティションが欠落している場合、ローカル CPU への黙った
-フォールバックではなく `RuntimeError` を発生させます。レガシーフォールバックに
-戻すには `ARI_PHASE1_ALLOW_FALLBACK=1`、GRES フラグの黙った削除に戻すには
-`ARI_SLURM_ALLOW_NO_GRES=1` を設定してください。
+フェイルラウド前提条件: `sandbox_kind=slurm` で `sbatch` が PATH に
+無い場合、あるいは引数・`ARI_SLURM_PARTITION`・`launch_config.json` の
+いずれからもパーティションを解決できない場合は、ローカル実行への黙った
+フォールバックではなく `RuntimeError` を発生させます。コンテナサンドボックスで
+ランタイムのバイナリが無い場合、または `container_image` が空か可変な場合は
+`ReproductionContractError` を発生させます。v1.0 で host-local フォールバックは
+削除されたため、元に戻すスイッチはありません。
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2) を参照。
-型付き（`gpu_type` / `--gres=gpu:TYPE:N`）と型なし
-（`--gpus-per-task`）の GPU リクエストの混在は自動的に型付き形式に
-正規化されます — SLURM 24.05 は混在形式を拒否します。
+GPU リクエストも 2 つの形を混ぜられません：per-node と per-task の GPU 数は
+排他で、`gpu_type` には明示的な GPU 数が必要です。
 
 ### v0.8.0 新フィールド（Stage 3）
 
 | ツール | 新しい引数 |
 |---|---|
-| `grade_with_simplejudge` | `code_only`（ルーブリックを Code Development 葉のみに限定。vendor の `paperbench/grade.py:109-112` を踏襲。`reproduce.log` が存在しない場合に自動有効化され、Stage 1 のみの実行が系統的にゼロにならないようにする） |
+| `grade_with_simplejudge` | `code_only`（ルーブリックを Code Development 葉のみに限定。vendor の `paperbench/grade.py:109-112` を踏襲）。既定は `False` で、勝手に有効化されることはありません — `reproduce.log` が無いときに自動で立っていた暗黙の `code_only` 採点は v1.0 で削除されました |
 
 3 つのステージすべてを単一の呼び出し語彙でチェーンするインプロセス Python
 サーフェスについては、
@@ -349,9 +353,10 @@ sbatch / パーティションが欠落している場合、ローカル CPU へ
 | `neurips` | `paper_audit` | NeurIPS 再現性チェックリストに基づく 6 軸（主張 / セットアップ / コード+データ / 統計 / 倫理 / 図）。 |
 | `nature` | `paper_audit` | 実験系論文用の 5 軸（材料 / プロトコル / 統計 / データ / 倫理）。 |
 
-`paper_audit` モードは `two_stage=True` が必要です。単一パスパスで
-`paper_audit` テンプレートがリクエストされた場合、ジェネレータはエラーを返します
-（単一パスプロンプトは固定軸制約を満たせないため）。YAML スキーマと
+`paper_audit` テンプレートは空でない `top_level_axes` を宣言する必要があり、
+宣言していないものの読み込みは拒否されます。単一パスの経路は存在しないため
+選択の余地はなく、生成は常に skeleton + subtree の 2 段階です。`system_hint` は
+skeleton パス、`leaf_style` は subtree パスに差し込まれます。YAML スキーマと
 オーサリングガイドは [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
 を参照してください。
 

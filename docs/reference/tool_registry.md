@@ -62,7 +62,7 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # Federated Scientific Tool Registry
@@ -315,8 +315,9 @@ container. Which one a site uses is a site property; that there is exactly one
 is the invariant, and the execution contract admits both. The promoted profile
 pins the container, because the reviewed portable build links against a newer
 host glibc than the promoting site provides. Isolation is stronger for it rather
-than weaker: the closure is the SIF alone instead of the SIF plus four host
-binaries. Its `ContainerRequestV1` declares `runtime: singularity`, no GPU,
+than weaker: the closure is the SIF alone instead of the SIF plus the three host
+binaries the portable runtime pins — PRoot, `unsquashfs`, and the worker
+Python. Its `ContainerRequestV1` declares `runtime: singularity`, no GPU,
 `network: none`, `contain_all`, and a clean environment.
 
 What the lock then advertises is derived from that declaration instead of
@@ -422,8 +423,8 @@ golden/replay evidence was available. Those cannot inherit local-Aer promotion.
 The corresponding human-admin entry point is
 `scripts/promote_qiskit_local_aer.py`; it is not exposed over Agent MCP.
 
-Provider promotion changes governed eligibility, not activation. Both promoted
-identities remain absent from the checked-in empty `CATALOG.lock`; an operator
+Provider promotion changes governed eligibility, not activation. Every promoted
+identity remains absent from the checked-in empty `CATALOG.lock`; an operator
 must materialize the exact environment, sync/review the source, and freeze a new
 Provider/Capability Binding Lock for a run.
 
@@ -448,9 +449,13 @@ repository, which is why the reviewed table is checked in and the lock is not.
 Authority is the envelope of both hops: the composite's side-effect class is the
 worse of the leaf's and `invoke`'s, and a contract's required permissions must be
 granted by both. `invoke` declares `stateful`, so no `read-only` capability can
-be supplied through it today — that is why `ari.literature.search/v1` stays
-unsupplied despite a reviewed PubMed leaf, and it needs a review decision rather
-than a weaker check.
+be supplied through it today. `ari.literature.search/v1` was once recorded under
+that rule, but what actually blocked it was its own contract: an admitted
+retrieval writes the record that makes it evidence, and the ladder grades a call
+by what it does to that substrate rather than by whether it mutates the remote
+index. The contract now reads `workspace-write`, so the reviewed PubMed leaf can
+compose against it; registering that mapping still needs a review decision and a
+site lock that carries the leaf.
 
 A leaf whose descriptor declares an asynchronous lifecycle is submitted through
 `invoke` and completed through `get_status` and `get_result`. Those are named in

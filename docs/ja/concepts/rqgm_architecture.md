@@ -34,7 +34,7 @@ sources:
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-07-29
+last_verified: 2026-08-08
 ---
 
 # Constitutional ARI-RQGM アーキテクチャ
@@ -302,7 +302,7 @@ T6 採用の*内側*でのみ発火します（採用された後継なしに置
   できます。
 
 境界監査はループ内で統治される唯一の判断ではなく、もう一方を包含も
-しません。**lineage decision フック**（`config/workflow.yaml` の
+しません。**lineage decision フック**（`ari-core/config/workflow.yaml` の
 `lineage_decision:`、ループ開始時に一度読まれます）は `mode` が `off` で
 ない限りノード単位で*研究の方向*を統治します: ノード保存後に、探索の継続、
 次点アイデアへの切り替え、子ランへの fanout、系統の終了のいずれかを選び、

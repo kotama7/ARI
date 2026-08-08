@@ -46,7 +46,7 @@ sources:
     role: test
   - path: ari-core/tests/test_contract_snapshots.py
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # 内部边界
@@ -59,13 +59,13 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 
 1. **`litellm`** 是提供方抽象层 —— 模块直接以模型 id 调用 `litellm.completion` / `acompletion`。
 2. **`ari.llm.routing.resolve_litellm_model(model, backend)`** 是唯一的模型规范化辅助函数。它应用提供方前缀（包括 CLI 垫片的 `openai/claude-cli` 规则），使一个裸模型名能正确路由。它的签名与返回值是**冻结的**：它*变换*一个模型 id 而不是构造对象，因此被有意保留在 `ari._factory.BaseRegistry` 字符串分发器统一化之外（见 `routing.py` 中其定义上方的决策注记）。
-3. **`ari.cost_tracker._install_litellm_metadata_injector()`** 在**整个进程范围**对 `litellm.completion`/`acompletion` 进行猴子补丁，以 (a) 合并默认成本元数据（skill / phase / node，以及 `ari_rqgm` 打开纪元后的 `epoch`），并 (b) 在每次调用上应用 `_apply_ari_routing`（`resolve_litellm_model` ＋ CLI 垫片的 `api_base` 补全）。一旦安装完成，*每一次* litellm 直接调用 —— 无论来自哪个模块或技能 —— 都会在同一个点上透明地获得 ARI 路由 ＋ 成本捕获。
+3. **`ari.cost_tracker._install_litellm_metadata_injector()`** 在**整个进程范围**对 `litellm.completion`/`acompletion` 进行猴子补丁，以 (a) 合并默认成本元数据（来自 `bootstrap_skill` 的 skill / phase，以及 `ari_rqgm` 打开纪元后的 `epoch`；`node_id` 不是进程级默认值 —— 它乘的是调用方自己的 `metadata=`，例如 `LLMClient.set_context`），并 (b) 在每次调用上应用 `_apply_ari_routing`（`resolve_litellm_model` ＋ CLI 垫片的 `api_base` 补全）。一旦安装完成，*每一次* litellm 直接调用 —— 无论来自哪个模块或技能 —— 都会在同一个点上透明地获得 ARI 路由 ＋ 成本捕获。
 
 `ari.llm.client.LLMClient` 是 ReAct 智能体循环所用的、对 `litellm.completion` 的**便捷封装**；它**不是**强制性的瓶颈点，代码库刻意没有将一切都汇集到它这里。
 
-注入器通过 `cost_tracker.set_default_metadata` / `init_from_env` 安装，这两者经由每个技能 `server.py` 顶部的 `bootstrap_skill("<name>")` 到达。
+注入器通过 `cost_tracker.set_default_metadata` / `init_from_env` 安装，这两者经由每个**会调用 LLM 的**技能 `server.py` 顶部的 `bootstrap_skill("<name>")` 到达 —— 从不导入 `litellm` 的技能（benchmark、coding、harness、hpc、knowledge、memory、orchestrator、tool-registry）并不安装它。
 
-**需要保持的脆弱性：** CLI 垫片路由和成本捕获依赖于注入器在一个进程中的**第一次 litellm 调用之前**被安装。技能通过 `bootstrap_skill` 在导入时保证这一点。核心 CLI / 流水线模块（`evaluator`、`orchestrator/lineage_decision`、`root_idea_selector`、`pipeline/context_builder`）直接调用 litellm 并自行传入 `api_base`/model，因此即便没有全局注入器它们也能正确路由 —— 但若注入器缺失，它们会漏掉成本捕获。`pipeline/context_builder` 是唯一一个进行自己的环境变量解析而非使用 `resolve_litellm_model` 的流水线包直接调用（一个已知的低价值接缝）。
+**需要保持的脆弱性：** CLI 垫片路由和成本*归属*依赖于注入器在一个进程中的**第一次 litellm 调用之前**被安装（记录本身乘的是 `cost_tracker.init` 与注入器一并注册的 success/failure 回调，因此单靠 `set_default_metadata` 只能得到路由而没有捕获）。会调用 LLM 的技能通过 `bootstrap_skill` 在导入时同时保证这两者。核心 CLI / 流水线模块（`evaluator`、`orchestrator/lineage_decision`、`root_idea_selector`、`pipeline/context_builder`）直接调用 litellm 并自行传入 `api_base`/model，因此即便没有全局注入器它们也能正确路由 —— 但若注入器缺失，它们会漏掉成本捕获。`pipeline/context_builder` 是唯一一个进行自己的环境变量解析而非使用 `resolve_litellm_model` 的流水线包直接调用（一个已知的低价值接缝）。
 
 ## 执行边界（操作系统 / 调度器 / 容器）
 
@@ -81,7 +81,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 
 应向这些归属者整合的已知重复（并非错误行为，但有漂移风险）：`viz/api_memory.py` 重新推导了容器运行时分派。`ari-skill-paper-re` 的 **reproduce 路径**已不再重新实现其中任何一半 —— 它经由 `ari_skill_hpc.SlurmScheduler`（`src/server.py`）提交，并经由 `ari.execution.execute_local`（`src/sandbox.py`）运行本地尝试。但它的 **PaperBench agent computer**（`src/_compute/computer.py`）仍是这两半各自的第二份实现：`ApptainerComputer.send_shell_command` 自行拼装 `apptainer exec` 的 argv，`LocalComputer.send_shell_command` 自行拼装裸的 `bash --noprofile --norc -c` argv，两者都走该模块自带的 `_run_subprocess`（`asyncio.create_subprocess_exec(..., start_new_session=True)` 加上 `killpg` 的 SIGTERM→SIGKILL 进程组拆除），而不是走 `ari.execution`；该模块从 core 引入的只有 `ari.public.execution.WorkspaceRefV1`。容器那一半已经相对 `container_shell_argv` 发生漂移：技能侧发出 `--cleanenv --containall --no-home`，配 `--bind {work_dir}:/work:rw --pwd /work` 且没有 `--writable-tmpfs`；core 侧发出 `--cleanenv --containall --writable-tmpfs`，配裸的 `--bind <workdir>`。这是生产代码而非死接缝（`src/server.py` → `_replicator_agent.run_replicator_agent` → `_compute.make_computer`），因此在审计容器执行或本地执行的重复时，正是应当阅读的那个文件。
 
-**`ari.viz.state` 的进程句柄耦合。** `ari/viz/state.py` 将活动的操作系统句柄作为模块全局变量（以 `_st` 导入）持有：`_last_proc`（最近一次实验的 Popen；由 `api_process._api_stop` 通过 `os.killpg(os.getpgid(pid))` 拆除）、`_running_procs`（checkpoint-path→Popen 映射，由两条启动路径写入），以及 `_gpu_monitor_proc`（其逻辑位于 `api_process.py`；服务器会跨重启回收一个陈旧的监视器）。这是"避免通过全局可变状态产生隐藏耦合"这一告诫的典范例子 —— 只在有意为之时才触碰它的生命周期。
+**`ari.viz.state` 的进程句柄耦合。** `ari/viz/state.py` 将活动的操作系统句柄作为模块全局变量（以 `_st` 导入）持有：`_last_proc`（最近一次实验的 Popen；由 `api_process._api_stop` 通过 `os.killpg(os.getpgid(pid))` 拆除）、`_running_procs`（checkpoint-path→Popen 映射，由三个处理器写入 —— `api_experiment.py` 的 `/api/launch` 与 `/api/run-stage`，以及 `viz/v1/launch.py` 中的 `/api/v1` 启动路径），以及 `_gpu_monitor_proc`（其逻辑位于 `api_process.py`；服务器会跨重启回收一个陈旧的监视器）。这是"避免通过全局可变状态产生隐藏耦合"这一告诫的典范例子 —— 只在有意为之时才触碰它的生命周期。
 
 ## 两个编排引擎
 
@@ -98,7 +98,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 
 1. **首次连接时刻的环境变量时序。** MCP 服务器已不再继承 `os.environ`。`mcp/child_environment.py:build_child_environment` 解析出一份 fail-closed 的允许清单 —— `SAFE_INHERITED_ENV_NAMES`（`PATH`、`LANG`、`LC_ALL`、`LC_CTYPE`、`TZ`、`TMPDIR` 以及 CA 证书包相关名称）加上该技能 `skill.yaml` 在 `required_env` / `optional_env` 中声明的名称 —— 而 `SkillConnection` 会把结果缓存在 `_server_parameters` 中，因此父环境只在首次连接时被读取一次。时序上的不变式因而未变：`ARI_WORK_DIR`（由 coding 与 hpc 技能声明为 `optional_env`）必须在该次首次连接**之前**设置，否则 work-dir 钉定会悄无声息地失效。复现沙箱变量（`ARI_REAL_GIT`、`ARI_REPRO_*`）没有任何技能清单声明它们，因此它们只抵达 react / stage-runner 的子进程路径，绝不会到达技能服务器。
 2. **并行工作者下的共享进程状态。** 所有节点线程共享同一个 `AgentLoop` 实例和同一个 `MCPClient`；`_run_loop` 将并发上限设为 `max_workers = min(cfg.bfts.max_parallel_nodes, 4)`，该上限由 `threading.Semaphore` 而非线程池大小强制执行（池大小为 `max_workers + 8`，好让一个正在等待调度器作业的节点驻留并交还其许可）。节点身份绝不承载于进程全局状态：安全路径是显式的 `ToolCallContextV1` —— 由 `AgentLoop._node_tool_context` 为每个节点构造一次，经 `_execute_tool_calls` 传递，并由 `SkillConnection.authorize_args` 按连接签名后写入 `ari_context` 工具参数。`work_dir` 出于同样的理由被显式传递 —— 在 `max_parallel_nodes > 1` 时读取环境变量会发生竞态。
-3. **对共享检查点树的写入。** **不存在 git worktree**：并发的提交者都经由同一个共享的 `agent._progress_cb` → `_save_tree_incremental` 写入同一份 `tree.json` / `nodes_tree.json` / `results.json`；线程安全 ＋ 限流位于 `ari.checkpoint.save_tree_incremental`（锁 ＋ mtime 限流）。每个节点的 work-dir 由 `PathManager.node_work_dir(run_id, node_id)` 隔离。
+3. **对共享检查点树的写入。** **不存在 git worktree**：并发的提交者都经由同一个共享的 `agent._progress_cb` → `_save_tree_incremental` 写入同一份 `tree.json` / `nodes_tree.json` / `results.json`；线程安全 ＋ 限流位于 `ari.checkpoint.save_tree_incremental`（锁 ＋ 基于 `time.monotonic()` 的最小间隔限流，默认 1.0 秒，`force=True` 可绕过）。每个节点的 work-dir 由 `PathManager.node_work_dir(run_id, node_id)` 隔离。
 
 ## RQGM 模式边界（`ari.rqgm`）
 
@@ -328,8 +328,10 @@ Judge、adversary、reviewer 与 governance 的视图只能依赖两种更弱的
 经由上述三条通道之一抵达，而不能以导入的方式抵达。
 
 **没有任何东西强制这个方向。** 既没有测试，也没有质量门规则：
-`scripts/quality/check_import_boundaries.yaml` 只约束 skill→core 与
-core→skill 两类边，没有点名任何 core 内部的包对。与之相邻的、*确实*被强制
+`scripts/quality/check_import_boundaries.yaml` 约束 skill→core 与
+core→skill 两类边，其唯一一个 core 内部的开关
+（`forbid_core_to_viz_from_cli`，默认关闭）也只覆盖
+`ari/cli/**` → `ari.viz.*`。与之相邻的、*确实*被强制
 的是另一条规则 ——
 `ari-core/tests/test_manuscript_complete.py::test_default_cli_import_does_not_load_manuscript_domain`
 断言导入 `ari.cli` 不会加载任何 `ari.manuscript*` 模块；它让编译器留在默认

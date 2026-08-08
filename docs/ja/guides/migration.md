@@ -105,7 +105,9 @@ ARI のチェックポイントフォーマットは 3 回のリリースを経�
 
 ### 確認
 
-- `ari memory health` が `ok` を返し、エージェント名を報告する。
+- `ari memory health` がバックエンドの health 辞書を表示する — `ok: true` に
+  加えて `backend` / `latency_ms` / `server_version` と checkpoint の
+  `namespace`。
 - エージェントループからの `search_memory` 呼び出しが埋め込みランクの結果を返す。
 - ダッシュボードの `/api/memory/health` エンドポイントが 200 を返す。
 
@@ -146,9 +148,13 @@ ARI のチェックポイントフォーマットは 3 回のリリースを経�
    ```bash
    ari ear curate <checkpoint>
    ari ear publish <checkpoint> --backend ari-registry
-   ari replicate generate-rubric <checkpoint>
-   ari paper-re grade <checkpoint>
+   ari paper <checkpoint>
    ```
+   `ari replicate` / `ari paper-re` というサブコマンドは存在しません。ORS の連鎖
+   (`ors_generate_rubric` → `ors_audit_rubric` → `ors_seed_sandbox` →
+   `ors_build_reproduce` → `ors_run_reproduce` → `ors_grade`) は
+   `workflow.yaml` の pipeline stage であり、`ari paper`（および
+   `ari run` / `ari resume`）が MCP skill 経由で駆動します。
 
 ### 確認
 
@@ -536,7 +542,6 @@ URL、レガシーの `/api/*` エンドポイントは並行して動作し続�
   すること、段階的展開、レガシー撤去の順序。
 - [RQGM 移行ガイド](rqgm_migration.md) — オプトインの `ari_rqgm` モードの
   有効化（設定のみ; フォーマット変更なし）。
-- `docs/_archive/refactor_audit.md` — マイグレーション負債の現状。
 - `CHANGELOG.md` — リリースごとのノート。
 - `ari memory migrate --help` — v0.5 → v0.6 マイグレーターの CLI オプション。
 - `docs/guides/troubleshooting.md` — マイグレーション失敗時の対処法。

@@ -1,3 +1,40 @@
+---
+sources:
+  - path: ari-core/ari/manuscript
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript_repair_runtime.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/cli/projects.py
+    role: implementation
+  - path: ari-core/ari/rqgm/paper_runtime.py
+    role: implementation
+  - path: ari-core/ari/rqgm/paper_archive.py
+    role: implementation
+  - path: ari-core/ari/rqgm/runtime.py
+    role: implementation
+  - path: ari-core/ari/rqgm/adversarial/round.py
+    role: implementation
+  - path: ari-core/ari/science_data_contract.py
+    role: schema
+  - path: ari-core/ari/viz/v1/openapi.json
+    role: schema
+  - path: docs/reference/rest_api.md
+    role: doc
+  - path: docs/concepts/gui_architecture.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # Manuscript Complete architecture
 
 Manuscript Complete is the fixed boundary between research exploration and

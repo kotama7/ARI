@@ -320,7 +320,10 @@ runtime 推导出`eda-cpu`。
 SLURM GPU visibility 与 scheduler authority 不同。在没有 advertised GPU GRES 的 node 上
 观察到 device 时，记录保留在`metadata.slurm_gpu`并增加
 `gpu-observed-on-slurm-node`，但不增加`gpu` resource type。只有观察到 GRES，或 operator
-明确启用现有 escape hatch `ARI_SLURM_ALLOW_NO_GRES=1`时才可调度。device UUID/model/
+在`resources`中 pin 一份 exclusive-node inventory 时才可调度 ——
+`gpu_allocation_mode: exclusive-node-inventory`、`exclusive: true`、一个`gpu_node`，
+以及必须与观察到的 inventory 一致的 full-SHA `gpu_inventory_digest`；不一致的 pin 记为
+`exclusive-node-inventory-mismatch`，仍不可调度。device UUID/model/
 compute capability/memory/driver 和 output digest 都进入 frozen environment identity；resume
 不会重新 probe 并替换。加载持久化数据时`EnvironmentSnapshotV1`重算 canonical full-SHA
 identity，添加虚假 resource 或修改事实会使 admission 失效。

@@ -64,7 +64,7 @@ from ari.public.config_schema import (
 cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 ```
 
-エクスポートされる名前は `ari/config.py` のシンボルと 1 対 1 対応しています。
+エクスポートされる名前は `ari/config/__init__.py` のシンボルと 1 対 1 対応しています。
 現在のフィールド形式はそのファイルを参照してください。ソース:
 `ari-core/ari/public/config_schema.py`。
 
@@ -75,13 +75,13 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 | シンボル | 用途 |
 |---|---|
 | `ContainerConfig` | データクラス: `image`、`mode`（`auto`/`docker`/`singularity`/`apptainer`/`none`）、`pull`（`always`/`on_start`/`never`）、`extra_args` |
-| `detect_runtime()` | `which` の検索結果に基づいて `"singularity"` / `"apptainer"` / `"docker"` / `"none"` を返す |
+| `detect_runtime()` | `"docker"` / `"apptainer"` / `"singularity"` / `"none"` を返す。候補は `PATH` にあるだけでなく probe（`docker info`、`<rt> --version`）にも応答する必要があり、`SLURM_JOB_ID` がある場合は Apptainer/Singularity が Docker より優先される |
 | `config_from_env()` | `ARI_CONTAINER_*` 環境変数から `ContainerConfig` を構築（未設定の場合は `None`） |
-| `pull_image(cfg)` | `cfg` が参照するイメージを取得 / ビルド |
-| `run_in_container(cfg, cmd, ...)` | コンテナ内でプロセスを実行し、終了コード + キャプチャストリームを返す |
-| `run_shell_in_container(cfg, script, ...)` | 同上。ただし bash スクリプト文字列を受け付ける |
+| `pull_image(cfg)` | `cfg` が参照するイメージを取得（`docker pull` / `<rt> pull`）。成功時に `True` を返す |
+| `run_in_container(cfg, cmd, ...)` | コンテナ内（image 未指定 / `mode: none` の場合は直接）で `cmd` を起動し、`subprocess.Popen` ハンドルを返す |
+| `run_shell_in_container(cfg, script, ...)` | shell コマンド文字列を受け取るブロッキング版。`subprocess.CompletedProcess` を返し、timeout 時はプロセスグループごと kill する |
 | `list_images()` | アクティブなランタイムで利用可能なイメージの一覧 |
-| `get_container_info()` | ランタイム + イメージのヘルスを含む診断辞書 |
+| `get_container_info()` | GUI 向け診断辞書: `runtime`、`version`、`available` |
 
 ソース: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`。
 
@@ -106,13 +106,15 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 ## `ari.public.llm`
 
-`ari.llm.client` から `LLMClient` を再エクスポートします:
+`ari.llm.client` から `LLMClient` を再エクスポートします。コンストラクタは
+`LLMConfig` を取り、`complete()` は同期メソッドです:
 
 ```python
+from ari.public.config_schema import LLMConfig
 from ari.public.llm import LLMClient
 
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "..."}])
 ```
 
 LiteLLM を直接呼び出すのではなく、こちらを使用してください — `LLMClient` は
@@ -267,6 +269,7 @@ from ari.public.verified_context import render_grounded_block
 
 ```python
 from ari.public import cost_tracker
+from ari.public.config_schema import LLMConfig
 from ari.public.paths import PathManager
 from ari.public.llm import LLMClient
 
@@ -279,8 +282,8 @@ run_id = PathManager.checkpoint_dir_from_env().name
 nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM 呼び出しは ARI のラッパー経由なので、コストは自動的に記録される。
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "Summarise: ..."}])
 ```
 
 呼び出しのトークン数と USD コストは、スキル名とフェーズのタグ付きで
@@ -306,4 +309,3 @@ resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
   書き方。
 - `CONTRIBUTING.md::Software-engineering discipline §3` — パブリック API
   ルール（スキルは `ari.public.*` のみを参照可能）。
-- `docs/_archive/refactor_audit.md`（§4）— 過去の Phase 4 インベントリ。

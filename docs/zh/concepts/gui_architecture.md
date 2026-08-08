@@ -50,7 +50,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-09
 ---
 
 # 仪表盘架构
@@ -115,7 +115,7 @@ ARI 仪表盘是一个由 `ari/viz/` 中的 Python HTTP 服务器提供的 React
 ## 1. 绞杀者形态：一个外壳，两代页面
 
 仪表盘不是原地重建的。legacy 页面与新的 v2 工作区并排注册在同一个路由器中，
-并渲染在同一个 `Layout`（侧边栏、页头、检查点选择器）内部。没有删除任何东西
+并渲染在同一个 `Layout`（侧边栏、检查点选择器）内部。没有删除任何东西
 来给新页面腾地方。
 
 | 世代 | Hash 路由 |
@@ -190,7 +190,9 @@ dead 与 env-only 的 Settings 键。
 - **Hash URL 是一份部署契约。** 它们是用户加进书签的东西，也是文档引用的
   东西；注册表保留历史写法（向导仍然导航到 `#/new`），而不是把它们整理掉。
 - **「可访问但不列出」是可表达的。** `#/paperbench/import|run|results` 作为
-  路由存在但没有导航条目 —— 它们从页面内部打开。
+  路由存在但没有导航条目。前两个由 PaperBench 注册页上的按钮打开；而
+  `#/paperbench/results?job=<job_id>` 在应用内没有任何链接指向它，只能通过
+  粘贴 URL 到达。
 - **未知的 hash 回退到 Home**，而不是报错。这条回退在一种情形下是承重的，在
   另一种情形下是已知缺陷。对紧急开关而言它是刻意的：在 v2 外壳关闭时，仅 v2
   的路由必须像未知 hash 一样解析，legacy 界面才保持完整（见*能力与紧急开关*
@@ -203,10 +205,31 @@ dead 与 env-only 的 Settings 键。
 `breadcrumbKey` 与 `requiredContext`。仪表盘中任何地方都没有面包屑组件，也没有
 路由级的必需上下文守卫 —— 取而代之的是每个 v2 工作区自己给出「未选择 run」的
 提示。GUI 刷新所规定的另外两个外壳界面同样没有建成：没有命令面板，也没有通知
-中心，因此一条运行或治理告警只在渲染它的那个页面上可见。路由也不携带权限
-谓词，而且只要服务器没有用户模型就不会需要 —— bearer token 是全有或全无的，
-会话与多用户都不在范围内。能力门控只有一个标记：注册表条目上的 `guiV2`，加上
-`App.tsx` 中的 `V2_ONLY_ROUTES` 分发集合。
+中心，因此一条运行或治理告警只在渲染它的那个页面上可见。命令面板被规定的检索
+范围值得在它消失之前记下来 —— 一个输入框同时搜索路由、运行、工件与动作，并按
+调用方被许可以及有能力看到的东西过滤 —— 因为这个过滤器有一半在这里本来就不可能
+照规定建成。路由不携带权限谓词，而且只要服务器没有用户模型就不会需要 ——
+bearer token 是全有或全无的，会话与多用户都不在范围内。能力门控只有一个标记：
+注册表条目上的 `guiV2`，加上 `App.tsx` 中的 `V2_ONLY_ROUTES` 分发集合。
+
+**没有哪个路由能说出自己的旗标名。** 刷新为一条路由记录规定的字段里，还有两个
+从未被声明：一个 `capability` 谓词，和一个具名的 `featureFlag`。替这两者顶班的
+是布尔值 `guiV2`，而它并不是某个路由自己挑的旗标名，而是对准同一个环境开关
+`ARI_GUI_V2`（§9）的固定标记 —— 因此路由无法被逐个翻转。把开关关掉，被标记的
+八条路由会一起解析到 Home，八个导航条目也一起消失，其中三个曾接管 legacy 位置
+的会把位置还回去。尽管如此，分阶段推出仍是按切片进行的：
+[GUI 切换运行手册](../guides/gui_cutover_runbook.md) 在「3. 分阶段推出」一节里
+一次只推进一个工作区，而某个切片若需要退回，是靠拿走它的导航位置来回滚的
+（§1）—— 但该手册「1. 手段」一节中的那根旗标手柄，是覆盖整个 v2 界面的这一个
+开关。
+
+缺席的 `capability` 字段还让注册表在这一个事实上失去了单一来源的性质。v2 门控的
+成员身份被写了两遍：一次是注册表条目上的 `guiV2: true`，那是侧边栏用来过滤的
+东西；另一次是这条路由的*路径*，写在 `App.tsx` 中手工维护的 `V2_ONLY_ROUTES`
+集合里，那是分发所依赖的回退。冻结字面量测试固定了注册表侧被标记的八个 id，
+而渲染整个 App 的那套测试以一次一个 hash 的方式检查了八条路径中五条的 Home
+回退；没有任何东西去比对这两份清单。把第九条 v2 路由只加进其中一份，就会出现
+导航条目消失而 URL 仍然活着（或者反过来）的情况，却没有任何测试会失败。
 
 **只有一个错误边界，位于根部。** 仪表盘只有一个 React 错误边界，在 `main.tsx`
 中，位于路由器之外、`Layout` 之外。一次路由内部的渲染失败 —— 包括一个加载失败
@@ -244,6 +267,30 @@ Results 页面，至今仍要经过一次*隐式*交接（一个 `sessionStorage
 之前写入，却没有任何地方读取 —— Tree 页面的节点来自共享的 legacy 上下文。它是
 死状态；删除这次写入属于 legacy 页面移除的一部分，而不是一次行为变更。
 
+**这个 hash 有两个所有者，也有两个不同的解析器。** `App.tsx` 通过
+`resolveRoute` 解析它：既去掉 `#/` 前缀*也*去掉查询串，并应用 legacy 别名。
+`context/AppContext.tsx` 则持有它自己的 `currentPage`，由它自己的 `hashchange`
+监听器初始化并更新，用的是一次两样都不做的裸前缀剥除。两者在一个朴素的 legacy
+hash 上一致，而恰恰在刷新引入的那些 URL 上不一致：在
+`#/tree2?run=R1&node=N7` 上，路由器分发的是 `tree2`，而上下文持有的是整串
+`tree2?run=R1&node=N7`。
+
+侧边栏据以渲染的正是后一个值。`Sidebar.tsx` 把一个导航条目的 hash 键与
+`currentPage` 相比较，用来同时决定 `active` 类与 `aria-current`，因此点击之后
+高亮是对的 —— 一次点击写入 `#/<key>` 并把 `currentPage` 设为那个裸键 ——
+但只要某个工作区把自己的选择写回 hash（`TreeV2Page.tsx`、`ConfigStudioPage.tsx`
+就会这么做），高亮就丢了；而对任何带着查询串抵达的深链，高亮从一开始就不存在。
+于是刷新的完成标准 —— 服务端、URL、表单、偏好与短暂状态各自恰好只有一个所有者
+且互不重复 —— 在导航状态上并不成立：一个 URL 有两个所有者，而第二个正是 §4
+本来限定为远端数据的那个 legacy 上下文。
+
+没有任何东西会抓到这次不一致，因为没有任何测试会对一个已挂载的外壳去改变
+hash。挂载整个 `App` 的那两套测试 —— `src/__tests__/routeRenderBaseline.test.tsx`
+与 `src/__tests__/shellA11yBaseline.test.tsx` —— 都是先给
+`window.location.hash` 赋值，*然后*才渲染，而且始终是裸的 `#/<route>`，因此只有
+首次绘制时的解析被覆盖到。没有任何东西去驱动浏览器的后退或前进，也没有任何测试
+断言过 `aria-current`。后退／前进的覆盖曾在刷新的测试清单上，如今是一个已知缺口。
+
 ---
 
 ## 4. 服务端状态存放在按 run 建键的缓存中
@@ -267,6 +314,17 @@ Results 页面，至今仍要经过一次*隐式*交接（一个 `sessionStorage
   一份快照的时间，而不是每个资源各自的年龄。按实体划分的 stale time 与按实体
   划分的新鲜度标签曾被规定，但并未实现。
 
+**运行隔离是在接缝处被证明的，而不是端到端。**
+`hooks/__tests__/useRunEvents.test.tsx` 证明：一个运行的事件只让该运行的键与
+运行列表失效；一条 `tree` 事件只触碰该运行的树键；离线轮询的滴答只留在被订阅
+的范围内；卸载之后失效随之停止。`shared/realtime/__tests__/eventStream.test.ts`
+则钉住了带过滤的流 URL、`Last-Event-ID` 游标、退避计划与连接状态机。没有任何
+测试做的事情是：在两个运行上挂载两个工作区，并证明它们彼此不混。
+[仪表盘指南](../guides/dashboard.md) 在「Run 显式的 URL 与深链」一节里告诉
+运维者，用两个不同的 `?run=` 打开两个浏览器标签页是安全的；这个承诺依托的是
+上面那套键的组成方式，加上服务端的 `run_id` 过滤（§6），而不是对两标签页这一
+场景本身的测试 —— 那项测试曾出现在刷新的清单上，如今是一个已知缺口。
+
 仅客户端的状态（哪个标签页打开着、过滤框中的文本、侧边栏宽度）*不在*这个
 缓存里。分工是：服务端状态被缓存并被失效，视图状态是本地且短暂的，导航状态
 在 URL 中（§3）。
@@ -278,6 +336,16 @@ Results 页面，至今仍要经过一次*隐式*交接（一个 `sessionStorage
 的编辑留在本地，而不是悄悄取胜；也正是为什么屏幕上不可能出现服务器从未接受过
 的状态。
 
+**刷新为这套键规定的组成部分里，唯独 revision 没有落地。** `v1Keys` 工厂
+（`hooks/useV1.ts`）里的任何一个键都不带它。一个键由字面量 `'v1'`、一个标识符
+或一个全局资源名、资源本身，以及任何用来收窄它的过滤条件构成 ——
+`rqgmAudit(runId, recordType, epoch)` 与 `rqgmNodeLineage(runId, nodeId)` 就是
+最后那种形状的例子 —— 词汇表就这么多。一份 `gui_store` 文档所携带的整型
+`revision` 只在写入侧被使用，充当 `PATCH` 回送的 `If-Match` 值（§7）；一次写入
+抵达缓存的方式是让受影响的键失效，而不是铸造一个新键。因此不存在按 revision
+划分的缓存条目，也没有办法把同一份资源的两个 revision 并排持有，保存也不会带来
+键的更替：下一次渲染来自同一个键的重新抓取。
+
 **`AppContext` 的作用域被限定在 legacy。** 它只是 legacy 页面的远端数据存储
 —— 5 秒一次的 `/state` 轮询、树 WebSocket 的镜像，以及进程级的活动检查点。
 一个 v2 工作区不得 import 它：它通过 `useV1` 钩子读取 `/api/v1`，并从 `?run=`
@@ -288,6 +356,17 @@ Results 页面，至今仍要经过一次*隐式*交接（一个 `sessionStorage
 v1 端点提供它。缩小这份例外清单是受欢迎的；扩大它则是退化，因为只要还有 v2
 页面依赖它，`AppContext` 就无法被删除。
 
+**外壳的 legacy 那一半会解析领域工件。** 刷新同样要求外壳自身绝不这么做，可是
+`AppProvider` 在 `App.tsx` 中被挂载在路由器与 `Layout` 之上，并对外发布
+`nodesData: TreeNode[]` —— 该运行的节点列表：只要树 WebSocket 送来过任何东西
+就取自它，否则取自 `/state` 负载里的 `nodes`。这条优先级规则就是住在路由器之上
+的领域逻辑，而两个 legacy 页面（`Tree/TreePage.tsx`、`Monitor/MonitorPage.tsx`）
+的节点也是从外壳拿的，而不是自己去抓。`Sidebar.tsx` 带着同一种耦合的缩小版：
+`checkpointLabel()` 用 `^(\d{8})(\d{6})_(.+)$` 去匹配一个检查点 id 来拼出选择器
+的标签，于是外壳把 §5 的 run id 约定硬编码了进去；它还直接从 `/state` 渲染该
+运行的状态标签与运行中标志。一个 v2 工作区完全没有这些。因此这条不变量在新界面
+上成立、在旧界面上失效，而让它处处为真的办法是移除 legacy，而不是改动外壳。
+
 **持久化偏好没有存储层。** 语言（`ari_lang`，默认 `ja`）、开发者模式
 （`ari_dev_mode`）与远程 bearer token（`ari_gui_token`）都直接落在
 `localStorage` 上，各自藏在一个只管一个键的访问器背后 —— `i18n.storedLang()`、
@@ -296,6 +375,21 @@ v1 端点提供它。缩小这份例外清单是受欢迎的；扩大它则是�
 schema，也没有迁移路径，因此重命名或改变其类型是逐键的改动，没有一个能一次改完
 的地方。刷新后的外壳曾规定过一个偏好层，但并未实现；请把这三个键名当作真正的
 契约。
+
+**表单草稿根本没有一个所有者层。** 前端的依赖里没有任何表单库
+（`@tanstack/react-query`、`d3`、`pdfjs-dist`、`react`、`react-dom`、`reactflow`），
+也没有共享的表单模块，因此每一个编辑界面都自己手搓草稿状态与冲突纪律。
+`ConfigStudio/ConfigStudioPage.tsx` 是值得照抄的那一种：一个只承载被改动值、
+叠在服务端文档之上的 `pending` 映射；把该文档的整型 `revision` 作为 `If-Match`
+发出；并把 `revision_conflict` 呈现为一次明确的重新加载，同时保留未保存的编辑。
+`Workflow/WorkflowPage.tsx` 走的是第二套纪律 —— `/api/workflow` 提供一个弱的内容
+`revision`，写入时作为可选的 `base_revision` 回送，而服务器的拒绝是靠匹配被抛出的
+legacy 传输错误的消息来识别的（§7）。`Settings/SettingsPage.tsx` 走的是第三套，
+而且根本没有冲突路径：一个容器里放了三十七个 `useState` 钩子，刻意集中在那里，
+好让它那份被冻结的保存负载不会漂移。它们不是同一套机制的变体；其中第一套与最后
+一套，是覆盖 §1 所述那片相互重叠的配置界面的两个各自独立的表单所有者 ——
+`ari-core/tests/test_gui_config_shadow_legacy.py` 对这片重叠是看管而不是消除。
+刷新后的 GUI 曾规定过单一的表单状态所有者；它是一个已知缺口。
 
 ---
 
@@ -335,6 +429,40 @@ v1 接口面的形状是 `project → run` 的层级，但只有下面那一层�
 把真正的项目（拥有可复用配置）、运行（拥有生命周期）和检查点（拥有保存点）分开，
 是预留的设计而非已实现的行为。代码树中没有任何东西实现它，因此不要把客户端写成
 它已经存在的样子。
+
+**还有两个实体，带版本的接口面从一开始就没有建模。** GUI 刷新的领域模型还列出了
+run 之下的 `Artifact` 与 project 之下的 `WorkflowDefinition`；两者都曾被规定，
+而都没有建成。各自缺口的形状决定了一个 v2 页面能提供什么。
+
+*不存在 artifact 资源。* `ROUTES` 表里既没有 run 之下的 `artifacts` 集合，也没有
+集合内可寻址的成员，已提交的 `openapi.json` 里没有任何一条路径提到 artifact。
+`/api/v1` 提供的是一组名字固定的投影 —— `idea`、`results`、`ear`、`logs` 以及
+RQGM 家族 —— 每一个都硬连线到它所知道的那些文件（§8）。其中唯一的*文件*列表接口
+`GET /api/v1/runs/{run_id}/ear` 只遍历一棵子树 `{ckpt}/ear/`，逐条返回
+`path` / `kind` / `size`，上限是前 500 条，超出部分置 `truncated: true`，而
+`file_count` 仍然统计每一个文件。因此不存在「这次运行的文件 X」的稳定 id，没有任何
+东西枚举一次运行实际写出了什么，而一种新的 artifact 类型也无法在不新增端点、不重新
+生成契约的情况下浮现出来。浏览任意文件留在了以检查点为键的 legacy 接口面上 ——
+`/api/checkpoint/<id>/files`、`/file`、`/file/raw`、`/filetree`、`/filecontent`
+这一家族以及 `GET /codefile?path=`（见 [REST API 参考](../reference/rest_api.md)
+的「检查点浏览」与「静态文件 + 前端」）。所以「artifact」保持的仍是
+[术语表](../reference/glossary.md)在「状态与发表」下给出的磁盘层面含义：在某个节点
+work_dir 内产生的、非元数据的文件。
+
+*也不存在 workflow 文档。* 流水线定义就是一个普通文件 `{ckpt}/workflow.yaml`，
+`/api/v1` 恰好以两种方式碰它，而且都不是把它当作资源：`POST /api/v1/runs` 以
+写时复制方式从随包的 `config/workflow.yaml` 播种，并把本次启动的 mode 块合并进那份
+副本；`GET /api/v1/runs/{run_id}/resolved-config` 背后的解析器把它当作 `workflow`
+provenance 层来读，并把它的 mtime 计入 `resolved_at`。没有任何路由把它当文档来寻址：
+它没有 id，不属于 `gui_store/` 的文档（§7），也不跨运行复用 —— 每个检查点都有自己
+的一份副本。编辑它靠的仍是四个 legacy 写入 —— `POST /api/workflow`、
+`/api/workflow/flow`、`/api/workflow/skills`、`/api/workflow/disabled-tools` ——
+而它们的并发保护与文档存储的是两套机制：MN-3 的 `revision` 是所返回字节的
+sha256 前缀，`base_revision`
+是*可选的*，因此省略它的调用方仍然是 last-write-wins；而 `gui_store/` 的文档带一个
+整型 `revision`，并拒绝任何不带 `If-Match` 到达的修改（见
+[Configuration Studio](../guides/configuration_studio.md) 的「If-Match 冲突」）。
+最接近的可复用文档是 run 模板，而模板携带的是配置的 `values`，不是一条流水线。
 
 ---
 
@@ -407,7 +535,26 @@ API 层之所以自己拥有路由、错误信封和 OpenAPI 生成，是因为�
 | 读模型 | `queries.py`、`results.py`、`rqgm.py`、`logs.py`、`catalogs.py` | 从检查点目录到 DTO 的纯函数。不修改 `viz.state`、不写 `os.environ`、不写文件 —— 一次 GET 没有副作用。 |
 | 真相 | `{checkpoint}/…`，加上存放仅 GUI 文档的 `{workspace_root}/gui_store/` | 已提交的工件。 |
 
-这条接缝有两个性质值得明确写出来，因为它们很容易被侵蚀：
+**这四层是一种描述，不是包结构。** `ari/viz/` 之下没有 `transport/`、
+`application/`、`domain/`、`infrastructure/` 或 `legacy/` 包，也没有任何意义上的
+领域层：读模块与线缆之间什么都没有，一个检查点 `Path` 直接变成一个 pydantic DTO。
+GUI 刷新规定的正是这样一次拆分 —— 包括把无版本的处理器移到一个适配器模块背后 ——
+但它并未建成；legacy 处理器仍留在原处，由 `routes.py` 里的 `if`/`elif` 链从各自的
+`api_*` 模块直接导入（见 [内部边界](../reference/internal_boundaries.md) 的
+「GUI 的 HTTP 分发边界」）。
+
+同一份提案里的进程 supervisor 也以同样的方式缺席。`POST /api/v1/runs` 用
+`subprocess.Popen(..., start_new_session=True)` 拉起 CLI，并把句柄记进
+`ari/viz/state.py` 中模块级全局的 `_running_procs` 映射，键是解析后的检查点路径 ——
+与 legacy 启动处理器写入的是同一个映射。没有任何东西监督、重启或回收这些子进程。
+一个条目只会机会性地离开这个映射：当 legacy 检查点列表下一次注意到子进程已退出时、
+当同一个列表清理掉检查点目录已不存在的条目时，或者当一个检查点被删除时。这个映射
+是进程本地的，因此服务器一重启就忘掉所有句柄；v1 读模型从不查询它，而是从文件
+系统推导运行状态（见下），而 `/api/v1/diagnostics` 只公布它的长度，即
+`process.tracked_runs`。请把这条接缝理解为由读模块自身的纪律和钉住它的测试维持的，
+而不是由某个任何东西都能强制的包边界维持的。
+
+这条接缝有三个性质值得明确写出来，因为它们很容易被侵蚀：
 
 - **`GET` 无副作用。** 读模块有意从文件系统重新推导运行状态（pid 探测 →
   树精化 → 评审报告），而不是去查询或修剪服务器的进程跟踪状态 —— 较旧的
@@ -417,6 +564,20 @@ API 层之所以自己拥有路由、错误信封和 OpenAPI 生成，是因为�
   home 目录，使用原子写入以及一个与 `ETag` / `If-Match` 一一对应的整型
   `revision`。它们是一个便利层：启动会把每个生效值物化进检查点，因此 CLI
   永远不必读取 `gui_store/` 就能复现一次运行。
+- **被铸造出来的时间戳来自文件系统，而不是时钟。** 服务器为一份读资源*推导*出来
+  的时间字段，都是取自某个源文件 mtime 的 UTC ISO 8601 字符串，绝不是
+  `datetime.now()`：run summary 上的 `mtime_utc` 是检查点目录的 mtime，run 模板或
+  run 草稿上的 `updated_at` 是该文档文件的 mtime，解析后配置上的 `resolved_at` 是
+  解析器那几个源文件里最新的 mtime（一个都不存在时退回检查点目录的 mtime）。正是
+  这一点让对同一个未变动的 run 连续两次 GET 的结果，除了路由器为每次分发铸造的
+  `request_id` 之外完全相同，因此两份抓取到的载荷之间的差异意味着「有东西变了」，
+  而不是「时间过去了」——
+  `ari-core/tests/test_gui_config_precedence_matrix.py` 用
+  `test_resolved_at_mtime_stable_and_deterministic` 为解析器钉住了这一点，它先去掉
+  `request_id`，再断言两次响应的其余部分相等。而从已提交工件里*照抄*出来的时间戳，保持的是
+  那份工件自己的取值（一次 RQGM 转换的 `committed_at`、一条发布记录的
+  `timestamp`）。只有在无文件可读的地方才会去读时钟：事件的 `occurred_at`（§6）
+  与一次挑战的 `expires_at`。
 
 **这条接缝的浏览器一侧有三种传输 regime，而且是刻意不统一的。**
 `services/api/client.ts` 暴露三对包装器，一次调用用哪一对，本身就是契约的
@@ -467,6 +628,18 @@ API 层之所以自己拥有路由、错误信封和 OpenAPI 生成，是因为�
 *读模型*是一份按需从已提交工件计算出来的有界投影。删掉所有读模型，不会丢失
 任何信息；删掉一个工件，它就没了。这种不对称正是要点。
 
+**「按需」是字面意思：每次重算，从不缓存。** 每一次 `/api/v1` 的 GET 都会重新读取
+它所投影的那些工件。`ari/viz/v1/` 之下任何地方都没有投影索引、没有 memoization、
+也没有失效表 —— 这个包里唯一的缓存是 `launch.py` 中的幂等重放映射，它服务的是重复
+的启动 POST，而不是读取。一个按文件 identity、大小、mtime 与内容摘要失效的持久化
+读模型索引，曾被 GUI 刷新规定，但并未建成；线缆并不掩饰这一点，反而直说：
+`GET /api/v1/diagnostics` 携带字面量字段 `cache: false`。真正把开销约束住的是逐端点
+的纪律 —— 字节偏移游标、有上限的页大小，以及日志读取器每次请求最多 1 MiB 的扫描
+窗口（见 [REST API 参考](../reference/rest_api.md) 的「游标约定」）—— 再加上 §4 的
+客户端缓存，那才是同一份快照不会被抓取两次的地方。没有这类边界的端点，每次请求
+都要付出全额开销；整份返回节点列表的 `GET /api/v1/runs/{run_id}/tree` 就是最清楚
+的例子。
+
 治理读模型是最严格的实例，它展示了「投影」在实践中意味着什么：
 
 - **它不重新执行任何决策。** `ari/viz/v1/rqgm.py` 从不导入 `ari.rqgm`。它
@@ -481,7 +654,9 @@ API 层之所以自己拥有路由、错误信封和 OpenAPI 生成，是因为�
   `degraded_reasons` 列表随载荷一同返回。缺失的来源绝不会被渲染为干净，也
   绝不会被渲染为零。
 - **在构造上就是有界的。** 摘要携带计数而不内嵌条目列表；长日志按稳定偏移
-  做游标分页；没有任何文件*内容*搭乘这些端点。
+  做游标分页；唯一被整体读出的文件是 `/rqgm/policies` 与
+  `/rqgm/epochs/{epoch_id}` 返回的受治理策略正文 —— 一旦其字节不再哈希为已注册的
+  `prompt_hash`，正文就会被扣下，并作为 degraded 原因说明。
 
 对于要扩展仪表盘的人，操作规则是：要改变 GUI 展示的内容，就改变投影 ——
 绝不要改工件，也绝不要通过重新计算内核已经提交过的决策来实现。
@@ -531,7 +706,7 @@ not an error」面板并说明原因，而不是一片空白页面或一个编�
 | 目录 | 存放什么 |
 |---|---|
 | `app/` | 不属于任何页面的外壳接线：路由注册表（§2）与 react-query 客户端（§4）。 |
-| `components/<Screen>/` | 每个页面一个目录，legacy 与 v2 并排存放（`Tree/` 与 `TreeV2/`、`Results/` 与 `ResultsV2/`），各自导出注册表所懒加载的页面组件；此外还有存放展示型原语的 `common/` 和存放侧边栏与页头的 `Layout/`。 |
+| `components/<Screen>/` | 每个页面一个目录，legacy 与 v2 并排存放（`Tree/` 与 `TreeV2/`、`Results/` 与 `ResultsV2/`），各自导出注册表所懒加载的页面组件；此外还有存放展示型原语的 `common/` 和存放侧边栏与包裹当前页面的页面框架的 `Layout/`。 |
 | `context/` | legacy 的 `AppContext` —— `/state` 轮询与进程级的活动检查点。 |
 | `hooks/` | 跨页面的 hook：`useV1`、`useRunEvents`、`useApi`、`useWebSocket`、`useDevMode`。 |
 | `services/api/` | 一个传输内核（`client.ts`）加上每个端点族一个模块，由 `services/api.ts` 这层 barrel 重新导出，因此旧的 import 路径依然可解析。 |

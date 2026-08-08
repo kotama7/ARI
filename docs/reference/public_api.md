@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/ari/skill_manifest.py
     role: implementation
-last_verified: 2026-08-04
+last_verified: 2026-08-08
 ---
 
 # `ari.public` — Stable API for skills
@@ -44,11 +44,13 @@ by `ari-core/tests/test_public_api_boundary.py`.
 | `ari.public.manuscript` | Immutable Manuscript Complete V1 read contracts, deterministic compiler/evaluator helpers, and publication decision builder | paper, evaluation, and read-only integrations |
 | `ari.public.paper` | `PaperBuildV1`, revision/model-call/compile/review records, parsers, and canonical digest | paper and publication consumers |
 | `ari.public.science_data` | Native raw/derived/interpreted science-data contract and explicit migration reader | transform, evaluator, plot, paper |
+| `ari.public.research_contract` | Immutable survey, idea, metric, retrieval, and evidence hand-off contracts | idea, evaluator, paper |
 | `ari.public.visual_review` | Criteria profiles and artifact-bound, failure-preserving visual review batches | VLM, plot, paper |
 | `ari.public.cost_tracker` | LLM cost recording (`bootstrap_skill`, `record`, ...) | `ari-skill-plot` (LLM call cost) |
 | `ari.public.llm` | `LLMClient` (LiteLLM wrapper with cost integration) | callers that prefer ARI's wrapper |
 | `ari.public.paths` | `PathManager` (checkpoint path resolver) | callers that need scoped paths |
 | `ari.public.node_selection` | deterministic downstream node and source selection | `ari-skill-transform` |
+| `ari.public.lineage` | read-only ancestor checkpoint / idea-pool traversal | `ari-skill-idea` |
 | `ari.public.publish` | staged EAR publish/promote contract | `ari-skill-transform` |
 | `ari.public.providers` | Capability Provider terminology, immutable identity, catalog, and existing Provider-lock facade | Provider read/diagnostic surfaces |
 | `ari.public.run_env` | run-environment capture and shell-export helpers | sandbox and executor Skills |
@@ -88,13 +90,13 @@ Re-exports the container runtime from `ari.container`:
 | Symbol | Purpose |
 |---|---|
 | `ContainerConfig` | Dataclass: `image`, `mode` (`auto`/`docker`/`singularity`/`apptainer`/`none`), `pull` (`always`/`on_start`/`never`), `extra_args` |
-| `detect_runtime()` | Returns `"singularity"` / `"apptainer"` / `"docker"` / `"none"` based on `which` lookups |
+| `detect_runtime()` | Returns `"docker"` / `"apptainer"` / `"singularity"` / `"none"`; each candidate must be on `PATH` *and* answer a probe (`docker info`, `<rt> --version`). Apptainer/Singularity are preferred over Docker when `SLURM_JOB_ID` is set |
 | `config_from_env()` | Builds a `ContainerConfig` from `ARI_CONTAINER_*` env vars (returns `None` when unset) |
-| `pull_image(cfg)` | Pulls / builds the image referenced by `cfg` |
-| `run_in_container(cfg, cmd, ...)` | Runs a process inside the container, returning exit code + captured streams |
-| `run_shell_in_container(cfg, script, ...)` | Same, but takes a bash script string |
+| `pull_image(cfg)` | Pulls the image referenced by `cfg` (`docker pull` / `<rt> pull`); returns `True` on success |
+| `run_in_container(cfg, cmd, ...)` | Starts `cmd` inside the container (or directly when no image / `mode: none`) and returns the `subprocess.Popen` handle |
+| `run_shell_in_container(cfg, script, ...)` | Blocking variant taking a shell command string; returns a `subprocess.CompletedProcess`, with process-group kill on timeout |
 | `list_images()` | Inventory of available images in the active runtime |
-| `get_container_info()` | Diagnostic dict with runtime + image health |
+| `get_container_info()` | Diagnostic dict for the GUI: `runtime`, `version`, `available` |
 
 Source: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`.
 
@@ -255,13 +257,15 @@ callback handles the rest.  Source:
 
 ## `ari.public.llm`
 
-Re-exports `LLMClient` from `ari.llm.client`:
+Re-exports `LLMClient` from `ari.llm.client`.  The constructor takes an
+`LLMConfig`, and `complete()` is synchronous:
 
 ```python
+from ari.public.config_schema import LLMConfig
 from ari.public.llm import LLMClient
 
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "..."}])
 ```
 
 Use this in preference to calling LiteLLM directly — `LLMClient`
@@ -339,6 +343,7 @@ checkpoint-scoped path, and make a cost-tracked LLM call.
 
 ```python
 from ari.public import cost_tracker
+from ari.public.config_schema import LLMConfig
 from ari.public.paths import PathManager
 from ari.public.llm import LLMClient
 
@@ -351,8 +356,8 @@ run_id = PathManager.checkpoint_dir_from_env().name
 nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM call goes through ARI's wrapper, so the cost is recorded automatically.
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "Summarise: ..."}])
 ```
 
 The call's tokens and USD cost land in the checkpoint's `cost_trace.jsonl`
@@ -378,4 +383,3 @@ internal-import boundaries through the public layer.
   only on `ari.public`.
 - `CONTRIBUTING.md::Software-engineering discipline §3` — public-API
   rule (skills only see `ari.public.*`).
-- `docs/_archive/refactor_audit.md` (§4) — historical Phase 4 inventory.

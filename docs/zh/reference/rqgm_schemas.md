@@ -150,8 +150,9 @@ Id 格式（全部零填充、按检查点计数）：
 `CK-AUD-001/002/003`、`CK-ACC-001/002`、`CK-ROL-901`）的 block 级违规，无论
 处于哪种模式都会由 MCP 包装器交给 T16 紧急隔离路径 —— `audit_only` 降级的是
 阻断，而非宪法事实，且该紧急转换本身在提交前也要经过内核校验。但这条路径
-只能隔离**已注册的组件**：当行为角色没有注册表条目时（研究智能体的
-`generator` 就是常见情形），升级只会被记入日志，不会组装任何转换。
+只能隔离**已注册的组件**：目标组件先取自该违规本身，取不到时再用行为角色
+去纪元冻结的 `active_components` 中解析；两者都得不到 id 时，升级只会被
+记入日志，不会组装任何转换。
 
 ## 共享信封（`rqgm_defs.schema.json`）
 
@@ -261,7 +262,7 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 | `registry_version` | `hash12` |
 | `as_of_event_hash` | 最后折叠事件的 `event_hash`（为空时 `""`） |
 | `components[]` | 组件条目（status、role、tier；meta 层条目附加 `rqgm_meta` 能力标志） |
-| `prompts[]` | 提示词条目：文本按来源引用（当前为 `committed_template` 键；`checkpoint_file` 用于进化提示词），同时携带 `prompt_hash`（`hash12`）**和**完整 `prompt_sha256`；v1 中 `spec_ref` 为 `null` |
+| `prompts[]` | 提示词条目：文本按来源引用（`kind` 为封闭集合 —— 随发布模板用 `committed_template`，进化提示词用 `checkpoint_file`，受治 utility-policy 正文用 `policy`），同时携带 `prompt_hash`（`hash12`）**和**完整 `prompt_sha256`；v1 中 `spec_ref` 为 `null` |
 
 ## 提案 schema（Task 03）
 
@@ -971,8 +972,9 @@ pin 了评估条件时才出现的 `evaluation_condition_id`。持久化的模�
 分配）、`origin_epoch_id`、`expected_behavior`、`results`。由 curation /
 bootstrap 工具**一次性**写入 —— **绝不**由受治角色写入（锚是固定的
 ground truth，不是可进化的工件）。对 `gate_bootstrap` 标签的
-`max_bootstrap_label_fraction` 上限由机器强制（降级为无 held-out
-split，绝不 raise）。**默认关闭**（`anchor.enabled: false`）：降级的
+`max_bootstrap_label_fraction` 上限由机器同时在整份语料库**与** held-out
+子集上强制；一旦越界，整份语料库会被拒绝并回退到无锚的 on-ramp，而不是
+raise。**默认关闭**（`anchor.enabled: false`）：降级的
 on-ramp 不留下语料库，因此默认的 `rqgm_archive` 运行在提供 curated
 语料库之前是 reviewed best-of-N。
 
@@ -1016,8 +1018,8 @@ authorship == human)`，**当语料库无 AI/人类划分时为 `0.0`**（语料
 inert；随发布的 `rqgm_attack_records.schema.json` 的 `adversary_type` /
 `case_type` enum 记录七个**探索**类型。`paper_self_preference` 案例牵涉
 `paper_reviewer` 角色 —— 若 Layer-0 声明门控确认该草稿不忠实，还会牵涉
-`paper_writer`。两者 —— 不同于七类的 `generator` —— 都**拥有**已注册在任者
-（paper 模式下的 `paper_reviewer_v1` / `paper_writer_v1`），因此 Task-15 的
+`paper_writer`。在 paper 模式下两者都**拥有**已注册在任者
+（`paper_reviewer_v1` / `paper_writer_v1`），因此 Task-15 的
 `target_component_id` 绑定发火，validated-attack → 弹劾链在生产中运行；
 在 paper 阶段之外，两个角色都解析为 `""`，探索保持字节一致。
 
@@ -1025,10 +1027,11 @@ inert；随发布的 `rqgm_attack_records.schema.json` 的 `adversary_type` /
 
 完整的按文件行为（创建条件、真相 vs 快照、resume 语义）记录在
 [文件格式参考](file_formats.md#rqgm-epoch-governance-files-opt-in-ari_rqgm-mode)；
-本表只把文件映射到 schema 和所有者。下表中的每个文件都在
-`PathManager.META_FILES` 中按名注册（JSONL 真相文件额外进入
-trace 文件集合），且 `proposals/` 和 `rqgm_prompts/` 目录位于
-节点报告目录黑名单（`ari/orchestrator/node_report/builder.py`）
+本表只把文件映射到 schema 和所有者。下表中每个固定名文件都在
+`PathManager.META_FILES` 中注册；其中的 JSONL 除 paper-archive 的两个
+（`paper_draft_archive.jsonl`、`paper_anchor_corpus.jsonl`）之外，还会进入
+`ari/paths.py` 的 trace 文件集合。此外 `proposals/` 和 `rqgm_prompts/` 目录
+位于节点报告目录黑名单（`ari/orchestrator/node_report/builder.py`）
 上，因此它们绝不会出现在任何节点的 `files_changed` 中。
 
 | 检查点路径 | 类型 | Schema | 写入方 |

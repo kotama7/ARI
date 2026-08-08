@@ -1,3 +1,22 @@
+---
+sources:
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
+  - path: ari-core/ari/manuscript/runtime.py
+    role: implementation
+  - path: ari-core/ari/manuscript/publication.py
+    role: implementation
+  - path: ari-core/ari/rqgm/paper_runtime.py
+    role: implementation
+  - path: ari-skill-paper/src/authoring.py
+    role: implementation
+  - path: ari-skill-paper/src/finalize.py
+    role: implementation
+  - path: ari-core/tests/test_manuscript_complete.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # MC-ADR-009: audit publication semantics
 
 Decision: audit emits the same shadow readiness and publication gate structure

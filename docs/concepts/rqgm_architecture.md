@@ -40,7 +40,7 @@ sources:
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-08-03
+last_verified: 2026-08-08
 ---
 
 # Constitutional ARI-RQGM Architecture
@@ -355,7 +355,7 @@ without an adopted successor to justify it):
 
 The boundary audit is not the only governed decision in the loop, and it does
 not subsume the other one. The **lineage-decision hook**
-(`lineage_decision:` in `config/workflow.yaml`, read once at loop start)
+(`lineage_decision:` in `ari-core/config/workflow.yaml`, read once at loop start)
 governs *research direction* per node whenever its `mode` is not `off`:
 after a node is saved it may keep exploring, switch to a runner-up idea, fan
 out a child run, or terminate the lineage — capped by its own

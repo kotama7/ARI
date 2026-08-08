@@ -711,7 +711,7 @@ ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2：用 S
 
 EAR 开启的运行通过 `ors_seed_sandbox`（确定性）获取 reproduce.sh；LLM `ors_build_reproduce` 在 reproduce.sh 已存在时跳过，所以仅在 EAR 关闭（论文唯一复现）时触发。
 
-PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperbench`。主要逐叶评分 completer 通过 LiteLLM (`_litellm_completer.py`) 路由，因此任意供应商可用（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）；分数解析的 structured completer 仍使用 `gpt-4o-2024-08-06`（在 PaperBench 允许列表内）。
+PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperbench`。主要逐叶评分 completer 通过 LiteLLM (`_litellm_completer.py`) 路由，因此任意供应商可用（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）；两个分数解析用 structured completer 也由同一个 `judge_model` 构建，与主 completer 的差别仅在于携带 `response_format`（`ParsedJudgeResponseInt` / `ParsedJudgeResponseFloat`）。
 
 ### 工具
 
@@ -721,7 +721,7 @@ PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperben
 
 #### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
-**v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。通过 LiteLLM 路由，任意供应商可用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
+**v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。通过 LiteLLM 路由，任意供应商可用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`。
 
 `sandbox_kind` 为 `auto` / `local` / `apptainer` / `slurm`，决定 agent rollout 本身在哪里跑。`container_image` 只被 `apptainer` rollout 采用，取值是不可变的本地 SIF 或摘要钉住的远端 URI（参数为空时读 `ARI_PHASE1_APPTAINER_IMAGE`）；`local` / `slurm` 会忽略它。**不存在**旧版的 `apptainer_image` 参数：该名字已从签名中删除，且在整个技能里再无出现，所以这里指定镜像的唯一方式就是 `container_image`。
 
@@ -729,13 +729,13 @@ PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperben
 
 **Phase 1**。在沙箱中执行 `repo_dir/reproduce.sh`，捕获 `reproduce.log` 与产物列表，并对照 rubric envelope 的 `expected_artifacts` 检查缺失项 `missing`。
 
-沙箱优先级（默认 `auto`）：`slurm`（sbatch + `ARI_SLURM_PARTITION` 存在，BFTS 同分区）→ `docker`（守护可用且非 HPC 时）→ `apptainer` → `singularity` → `local`。**SLURM dispatch** 在 v0.7.0 已从 v0.5.0 恢复：使用 `sbatch --wait` 同步执行，并生成 spool relocation 包装器以保护 `$0` 相对 cd。
+沙箱优先级（默认 `auto`）：`slurm`（sbatch + `ARI_SLURM_PARTITION` 存在，BFTS 同分区）→ `docker`（守护可用且非 HPC 时）→ `apptainer` → `singularity` → `local`。容器沙箱没有默认镜像：必须给出一个摘要钉住的不可变镜像 —— `container_image`，否则 `docker` 读 `ARI_PHASE1_DOCKER_IMAGE`、`apptainer` / `singularity` 读 `ARI_PHASE1_APPTAINER_IMAGE`；为空时会被拒绝而不是回落到默认值。**SLURM dispatch** 不再是自己的 `sbatch`，而是交接给类型化的调度器生命周期：执行请求变成一个带 `ResourceRequestV1` 的 `JobRequestV1`，提交给 `ari-skill-hpc` 所用的同一个 `SlurmScheduler`（账本在 `{repo_dir}/../.ari-hpc/paper-re-jobs-v1.json`）并轮询至终态，随后把已验证的调度器日志落到 `reproduce.log`。返回值携带 `handle_id` / `job_id` / `request_digest` / `handoff_digest` / `execution_identity` / `unmapped_policies`；超时的作业会被取消并以 `timed_out: true` 报告。partition 按 参数 > `ARI_SLURM_PARTITION` > `{checkpoint_dir}/launch_config.json` 解析，`cpus` 按 参数 > `ARI_SLURM_CPUS`（默认 `8`），`walltime` 按 参数 > `ARI_SLURM_WALLTIME` > 由超时推导出的 `HH:MM:SS`。
 
 **网络默认关闭**：`network_policy` 为 `deny`，只有在使用未隔离的基底时才需要以 `network_policy="inherit"` 显式准入；`network_isolation_attested` 记录该隔离是被证实的而非假定的。源码树以只读方式快照，执行发生在私有的 attempt 树中，因此同一份成功计划会幂等重放，失败计划则获得一次带链接的 retry attempt。
 
 #### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
-**Phase 2**。主评分 completer 通过 LiteLLM 运行 + 直连 OpenAI 的 structured score-parser。`n_runs`（默认 3）次按 PaperBench 加权叶节点聚合取均值，附负样本对照。
+**Phase 2**。主评分 completer 与 structured score-parser 都经 LiteLLM 使用同一个 `judge_model`。`n_runs`（参数，否则 `ARI_JUDGE_N_RUNS`，否则 1；范围 1–100）次按 PaperBench 加权叶节点聚合取均值，附负样本对照。
 
 返回值：`{ors_score, raw_score, leaf_grades, judge_model, n_runs, rubric_sha256, elapsed_sec, negative_control: {empty, boilerplate, passed}}`。
 
@@ -795,9 +795,8 @@ YAML，并通过 `{VENUE_HINT}` 占位符把 `prompt_overrides.system_hint` /
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | 审计 LLM（与生成器独立） |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (未设置) | 覆盖目标叶数。`0` / 未设置时按论文长度自动。GUI Wizard "Target leaves" 字段。 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (未设置) | 覆盖生成器 temperature。GUI Wizard "Temperature" 字段。 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (未设置) | 强制开/关两阶段生成（`1`/`true`/`on` vs `0`/`false`/`off`）。未设置时使用 kwarg 默认（当前 `True`）。GUI Wizard "两阶段生成" 切换。 |
 
-`server.py` 按 "显式 kwarg → 环境变量 → 默认值" 的顺序解析。`workflow.yaml` 的 `ors_generate_rubric` 阶段未显式传递这三个参数，因此 GUI Wizard 的值始终生效。
+`server.py` 按 "显式 kwarg → 环境变量 → 默认值" 的顺序解析。`workflow.yaml` 的 `ors_generate_rubric` 阶段未显式传递这两个参数，因此 GUI Wizard 的值始终生效。
 
 ---
 
@@ -869,7 +868,7 @@ YAML，并通过 `{VENUE_HINT}` 占位符把 `prompt_overrides.system_hint` /
 在节点结束时通过类型化写入器从 `node_report` 导出并写入类型化记忆（`experiment_result` /
 `failure_case` / `reflection`）（CoW：仅自身节点）。调用方是 ari-core 的节点结束钩子。
 
-存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL 存储（检查点级 `memory_store.jsonl` 以及曾经位于 `$HOME/.ari/` 下的遗留全局 JSONL）已在 v0.5.0 移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
+存储：每个检查点拥有一个 Letta 代理（两个集合 `ari_node_*` 与 `ari_react_*`）。可移植快照位于 `{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz`，写/读遥测位于 `{ARI_CHECKPOINT_DIR}/memory_access.jsonl`。v0.5.x 的 JSONL 存储（检查点级 `memory_store.jsonl` 以及曾经位于 `$HOME/.ari/` 下的遗留全局 JSONL）已在 v0.6.0 移除；使用 `ari memory migrate --react` 迁移。跨实验“全局记忆”已弃用。
 
 ---
 
@@ -983,7 +982,7 @@ correctness / `required_measured` / 声明的 invariant）——若没有此 gra
 
 **鲁棒性**：LLM 响应解析器剥离 `<think>` 块和 ` ```json ` 围栏，然后从每个候选 `{` 走匹配大括号，按长度降序尝试 `json.loads`。可以救援 `{...} prose {...}` 类型的形状。失败时将原始响应保存到 `{checkpoint_dir}/science_data.debug.txt` 以便事后审计。
 
-模型：`llm_model` 参数 > `LLM_MODEL` 环境变量 > `gpt-4o-mini`。
+模型：`llm_model` 参数 > `ARI_MODEL_TRANSFORM` 环境变量 > `ARI_LLM_MODEL` 环境变量 > `LLM_MODEL` 环境变量 > 与后端匹配的默认值（`ARI_BACKEND=cli-shim` 时为 `claude-cli`，否则为 `gpt-4o-mini`）。
 
 **存在意义：** 确保 BFTS 内部术语不会泄漏到生成的论文或图表中，并保证输入尺寸描述符（`nnz`、`M`、`K`）不会在 best-of 归约中与测量输出（`GFlops_per_s`、accuracy）混淆。
 

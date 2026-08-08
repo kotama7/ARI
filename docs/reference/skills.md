@@ -26,7 +26,7 @@ sources:
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-08-06
+last_verified: 2026-08-08
 ---
 
 # Capability Provider Packages (`ari-skill-*` compatibility names)
@@ -919,16 +919,17 @@ consume the optional `reproduce_contract.execution_profile` block
 - For `kind ∈ {mpi, mpi_gpu}` an MPI aggregation skeleton
   (`prompts/mpi_aggregate_skel.py`) is auto-copied into
   `submission/mpi_aggregate.py`.
-- `run_reproduce` exposes 15 new SLURM flags (`--nodes`, `--ntasks`,
-  `--ntasks-per-node`, `--nodelist`, `--exclude`, `--exclusive`,
-  `--gpus-per-task`, `--gpus-per-node`, `--gres=gpu:<type>:N`, `--mem`,
-  `--mem-per-cpu`, `--constraint`, `--cpu-bind`, `--mem-bind`,
-  `--hint`) plus an `extra_sbatch_args` escape hatch. Each caller arg
+- `run_reproduce` takes the allocation shape as typed arguments rather
+  than raw flags — `nodes`, `ntasks`, `ntasks_per_node`, `nodelist`,
+  `exclude_nodes`, `exclusive`, `gpus_per_task`, `gpus_per_node`,
+  `gpu_type`, `memory_gb_per_node`, `memory_gb_per_cpu`, `constraint`,
+  `hint`, `account`, `qos`, `reservation`, `module_loads` — each of which
   auto-resolves from `execution_profile` when left at its default.
-- Runtime probes: `_is_shared_fs(repo_dir)` warns on node-local paths,
-  `_slurm_has_gres()` silently drops `--gres` when the cluster has no
-  GRES configured (keeping `--gpus-per-task`) so the submission is not
-  rejected.
+  `cpu_bind` / `mem_bind` are refused with the instruction to place those
+  srun job-step settings in `reproduce.sh`. The former `extra_sbatch_args`
+  escape hatch is deprecated down to four translatable prefixes
+  (`--account=`, `--qos=`, `--reservation=`, `--hint=`); anything else
+  raises, pointing at the typed field.
 
 PaperBench is vendored as a git submodule under
 `ari-skill-paper-re/vendor/paperbench`; the bridge module
@@ -936,8 +937,9 @@ PaperBench is vendored as a git submodule under
 `SimpleJudge` API to ARI's rubric envelope. The main per-leaf grading
 completer routes through LiteLLM (`_litellm_completer.py`) so any
 provider works (`gpt-5-mini`, `anthropic/claude-...`, `gemini/...`,
-`ollama/...`); the score-parsing structured completer stays on
-`gpt-4o-2024-08-06` (within PaperBench's allow-list).
+`ollama/...`); the two structured score-parsing completers are built from
+the same `judge_model`, differing only in their `response_format`
+(`ParsedJudgeResponseInt` / `ParsedJudgeResponseFloat`).
 
 ### Tools
 
@@ -976,8 +978,8 @@ and writes a self-contained `reproduce.sh` + supporting source files
 into `output_dir`.
 
 Routes through LiteLLM, so any provider works. Model resolves
-`model` arg > `ARI_MODEL_REPLICATE` env > `ARI_LLM_MODEL` env >
-`claude-opus-4-7`. Output JSON is sanity-checked (every file path is
+`model` arg > `ARI_MODEL_REPLICATOR` env > `ARI_LLM_MODEL` env >
+`gpt-5-mini`. Output JSON is sanity-checked (every file path is
 filesystem-safe ASCII, no `..`, `reproduce.sh` is shebanged + has
 `set -euo pipefail`, total content < 200 KB).
 
@@ -1015,9 +1017,13 @@ Sandbox priority (`auto`, the default): `slurm` (when sbatch is on
 PATH AND `ARI_SLURM_PARTITION` is set — the same partition BFTS used)
 → `docker` (when daemon usable and not on HPC) → `apptainer` →
 `singularity` → `local`. Override with the `sandbox_kind` argument
-or `ARI_PHASE1_SANDBOX`. The container image is `docker://ubuntu:24.04`
-by default (`ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE` /
-`ARI_PHASE1_SINGULARITY_IMAGE` to customise).
+or `ARI_PHASE1_SANDBOX`. There is no default image: a container sandbox
+requires an immutable, digest-pinned one — `container_image`, else
+`ARI_PHASE1_DOCKER_IMAGE` for `docker` and `ARI_PHASE1_APPTAINER_IMAGE` for
+`apptainer` / `singularity`. A docker reference must be a full
+`sha256:<image-id>` or be pinned with `@sha256:<digest>`; an apptainer
+reference must be a local immutable SIF or be pinned the same way. An empty
+one is refused rather than defaulted.
 
 **Network** is denied by default: `network_policy` is `deny` unless the call
 explicitly admits an unisolated substrate with `network_policy="inherit"`, and
@@ -1026,15 +1032,18 @@ attested rather than assumed. The source tree is snapshotted read-only and the
 run happens in a private attempt tree, so an identical successful plan replays
 idempotently and a failed plan gains a linked retry attempt.
 
-**SLURM dispatch** (v0.7.0, restored from v0.5.0): submits via
-`sbatch --wait` so the call blocks until the job finishes and
-inherits the job's exit code. partition / cpus / walltime resolve
-arg > env (`ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` /
-`ARI_SLURM_WALLTIME`) > `{checkpoint_dir}/launch_config.json`. A tiny
-wrapper script (`{repo_dir}/.slurm_wrap.sh`) is generated to bypass
-sbatch's spool-relocation: it `exec bash`'s the user reproduce.sh by
-absolute path so `$0`-relative `cd "$(dirname "$0")/code"` still works
-inside the spooled job.
+**SLURM dispatch** is a handoff to the typed scheduler lifecycle rather than a
+private `sbatch` of its own: the execution request becomes a `JobRequestV1`
+with a `ResourceRequestV1` built from the resolved arguments, is submitted
+through the same `SlurmScheduler` `ari-skill-hpc` uses (its own ledger at
+`{repo_dir}/../.ari-hpc/paper-re-jobs-v1.json`), and is polled to a terminal
+state; the verified scheduler logs are then materialised into `reproduce.log`.
+The result carries `handle_id`, `job_id`, `request_digest`, `handoff_digest`,
+`execution_identity` and `unmapped_policies`, and a job that outlives the
+timeout is cancelled and reported with `timed_out: true`. Partition resolves
+arg > `ARI_SLURM_PARTITION` > `{checkpoint_dir}/launch_config.json`; `cpus`
+resolves arg > `ARI_SLURM_CPUS` (default `8`); `walltime` resolves arg >
+`ARI_SLURM_WALLTIME` > an `HH:MM:SS` string derived from the timeout.
 
 ```python
 result = run_reproduce(
@@ -1048,7 +1057,8 @@ result = run_reproduce(
 #### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
 **Phase 2**. Runs PaperBench `SimpleJudge` over the (post-Phase-1)
-repo + reproduce.log + paper. `n_runs` (default 3) iterations are
+repo + reproduce.log + paper. `n_runs` iterations (the argument, else
+`ARI_JUDGE_N_RUNS`, else 1; 1–100) are
 averaged using PaperBench's weighted leaf aggregation; a one-off
 **negative control** (empty repo + trivial `reproduce.sh`) verifies
 the rubric does not reward absence of work — both controls must
@@ -1071,9 +1081,10 @@ The main per-leaf grading completer routes through LiteLLM
 (`gpt-5-mini`, `anthropic/claude-opus-4-7`, `gemini/gemini-2.5-pro`,
 `ollama/llama3.1`, etc.) — PaperBench's hand-maintained
 `CONTEXT_WINDOW_LENGTHS` registry no longer constrains the choice.
-The structured int/float score-parsing completer remains on
-`gpt-4o-2024-08-06` (within the registry) since its task is small
-and the upstream pydantic-schema integration is OpenAI-shaped.
+The structured int/float score-parsing completers use that same
+`judge_model` through the same LiteLLM path — they differ from the main
+completer only in carrying a `response_format`
+(`ParsedJudgeResponseInt` / `ParsedJudgeResponseFloat`).
 
 ---
 
@@ -1163,12 +1174,11 @@ it absent.
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | Auditor LLM (independent of generator) |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (unset) | Override target leaf count (`0`/unset = auto). GUI Wizard "Target leaves" field. |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (unset) | Override generator temperature. GUI Wizard "Temperature" field. |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (unset) | Force two-stage on/off (`1`/`true`/`on` vs `0`/`false`/`off`). GUI Wizard "Two-stage generation" toggle. |
 
 Env vars are resolved in `server.py` before the generator runs and win
 over the kwarg defaults when the workflow stage doesn't pass an
 explicit value (the bundled `ors_generate_rubric` stage does not, so
-the GUI Wizard always controls these three knobs at runtime).
+the GUI Wizard always controls these two knobs at runtime).
 
 ---
 
@@ -1280,8 +1290,8 @@ node only). Caller is the ari-core node-end hook.
 
 Storage: per-checkpoint Letta agent with two archival collections
 (`ari_node_*`, `ari_react_*`). A snapshot at
-`{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` keeps checkpoints
-portable. The v0.5.x JSONL stores were removed in v0.5.0
+`{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz` keeps checkpoints
+portable. The v0.5.x JSONL stores were removed in v0.6.0
 (checkpoint-scoped `memory_store.jsonl` and the legacy global JSONL that
 once lived under `$HOME/.ari/`); use `ari memory migrate` to import
 legacy data. Cross-experiment "global memory" is no longer a feature —
@@ -1422,7 +1432,9 @@ It also reads back `{checkpoint}/metric_contract.json` (written by `evaluator-sk
 
 **Robustness**: the LLM response parser strips `<think>…</think>` blocks and `` ```json `` fences, then walks balanced braces from each candidate `{` (handles `{...} prose {...}` shapes that the legacy greedy `\{.*\}` regex would have collapsed). On any parse failure the raw response is saved to `{checkpoint_dir}/science_data.debug.txt` for post-hoc audit.
 
-Model: `llm_model` arg > `LLM_MODEL` env > `gpt-4o-mini`.
+Model: `llm_model` arg > `ARI_MODEL_TRANSFORM` env > `ARI_LLM_MODEL` env >
+`LLM_MODEL` env > a backend-matched default (`claude-cli` when
+`ARI_BACKEND=cli-shim`, otherwise `gpt-4o-mini`).
 
 **Why it exists:** Ensures BFTS-internal terminology never leaks into generated papers or figures, and that input-size descriptors (`nnz`, `M`, `K`) cannot be confused with measured outputs (`GFlops_per_s`, accuracy) when computing best-of statistics.
 

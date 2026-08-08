@@ -22,7 +22,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # 用語集
@@ -61,10 +61,15 @@ BFTS ノードが親に対して果たす役割: `draft`、`improve`、`debug`�
 [BFTS アルゴリズム](../concepts/bfts.md)を参照。
 
 **sterile（不毛なノード）**
-実行後の `work_dir` が親とバイト単位で同一になった子ノード
-（sha256 差分で `added = modified = deleted = 0`）。`_sterile = True` とマークされ、
-スコア `0.0` で剪定されます — これは、子が何も実行せずに親の結果を「継承」してしまうのを
-防ぐ仕組みです。
+実行後に親に対して何も変更しなかった子ノード。pin された problem が `score_inputs` を
+宣言している場合は、そのファイル群だけの sha256 を比較して不毛性を判定します。宣言が
+なければ `work_dir` 全体の差分（`added = modified = deleted = 0`。親の `work_dir` を
+コピーしない構成では `added = modified = 0`）にフォールバックします。いずれの経路でも
+`_sterile = True` とマークされて剪定され、不毛な子が親を退役させることはありません。
+`work_dir` 全体の経路ではさらに `_scientific_score` が `0.0`、`has_real_data` が
+`False` にクランプされますが、`score_inputs` の経路では測定済みスコア・
+`has_real_data`・`evaluation_status` はそのまま保持されます。これは、子が何も実行せずに
+親の結果を「継承」してしまうのを防ぐ仕組みです。
 [アーキテクチャ → work_dir 継承](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)を参照。
 
 **should_prune**
@@ -146,23 +151,29 @@ ceiling が未計測、recompute が再現しない、cross-run または未束�
 ブロッキングエラーになります。[設定](configuration.md)を参照。
 
 **mint-once（契約凍結）**
-実行レベルの `metric_contract.json` は一度だけ書き込まれるというルール: claims を
-含む契約が最初に永続化された後、`make_metric_spec` は再抽出せず、永続化された契約を
-そのまま返します（`contract_frozen: true`）。LLM の命名は参照的に安定しないため、
-実行途中の再生成はエビデンス語彙を変えてしまい、すでに出力済みのエビデンスが
-完全一致ゲートから見えなくなります。scaffold のみ（`claims` なし）の契約は凍結
-されません。[ファイル形式](file_formats.md#metric_contractjson)を参照。
+実行レベルの `metric_contract.json` は一度だけ書き込まれるというルール: idea 所有の
+Research Contract を解決した最初の `make_metric_spec` 呼び出し（あるいは人間がレビュー
+した `propose_metric_contract` の提案を admit した呼び出し）が projection を永続化し、
+以降の呼び出しは再抽出せずそのファイルを読み戻して返します（`contract_frozen: true`）。
+`projection_digest` が永続化済みのものと異なる再 mint は上書きではなく拒否されます。
+LLM の命名は参照的に安定しないため、実行途中の再生成はエビデンス語彙を変えてしまい、
+すでに出力済みのエビデンスが完全一致ゲートから見えなくなります。admit された契約が
+存在しない場合は何も凍結されず、応答は `contract_frozen: false` /
+`admission_status: human-review-required` となり、パーサ出力はエビデンス扱いに
+とどまります。[ファイル形式](file_formats.md#metric_contractjson)を参照。
 
 ## メモリ
 
 **ancestor scope（祖先スコープ）**
 ノードは自身の祖先チェーン（root → 親）からのみメモリを読み取れ、兄弟からは決して
-読み取れないというルール。`search_memory` のメタデータフィルタで強制されます。
+読み取れないというルール。`search_memory` は転送層で署名された系統の外にある id を
+拒否し、さらにバックエンドが `node_id ∈ ancestor_ids` のメタデータでフィルタします。
 [メモリアーキテクチャ](../concepts/memory.md)を参照。
 
 **CoW (Copy-on-Write)**
 兄弟間で祖先メモリをバイト単位で安定に保つための書き込みガード:
-書き込み側のツールは、アクティブな `$ARI_CURRENT_NODE_ID` 以外の `node_id` をすべて拒否します。
+書き込み側のツールは、呼び出しに付随する署名済み `NodeContextV1` の self ノード以外の
+`node_id` をすべて拒否します。環境変数 `$ARI_CURRENT_NODE_ID` は権限を持ちません。
 [メモリアーキテクチャ](../concepts/memory.md)を参照。
 
 **Letta**
@@ -188,7 +199,8 @@ LLM の推論と MCP ツール呼び出しを交互に行って 1 つの実験�
 
 **MCP skill（MCP スキル）**
 Model Context Protocol サーバーとしてパッケージ化された機能（例: `ari-skill-hpc`）。
-スキルは `ari.public.*` からのみ import できます。全部で 14 個あります（既定 13 個 + 追加 1 個）。
+スキルは `ari.public.*` からのみ import できます。`ari-skill-*` パッケージは 17 個あり、
+同梱の `workflow.yaml` はそのうち 13 個を明示的に列挙しています。
 [MCP スキル](skills.md)を参照。
 
 **VirSci**

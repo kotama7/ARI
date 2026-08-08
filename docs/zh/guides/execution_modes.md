@@ -140,6 +140,14 @@ YAML + profile + 环境变量，按标准优先级）→ 默认值。任何 RQGM
 两种模式下都不会触碰任何 VirSci 运行时、vendored 路径、提示词或快照
 语料库。
 
+最后这条保证仅在 K/C/A 处于**默认**姿态时成立；缺口在那条轴上而不在
+这条轴上：只要把 `knowledge.mode`、`capability_binding.mode` 或
+`assurance.mode` 中任意一个移离默认值，
+`ProposalRouter._typed_contract_required()` 即为 true，路由器便会
+（只要存在 MCP 客户端）构造 `VirSciAdapter`，并且无论
+`generators.virsci.enabled` 取何值都把 `virsci` 报告为已启用。参见
+[VirSci 集成](virsci_integration.md)。
+
 ## 论文执行轴：`paper.mode`
 
 论文写作阶段（`ari paper`）拥有自己的执行轴，与 `ari.mode` 完全

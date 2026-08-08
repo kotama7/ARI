@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # トラブルシューティング
@@ -34,8 +34,10 @@ ari run /abs/path/to/experiment.md
 
 ### `DeprecationWarning: $HOME/.ari/...`
 
-**原因:** レガシーフォールバックパスが参照されています。v1.0 ではハードエラーに
-なります。v0.5–v0.8 では警告を出します。
+**原因:** レガシーフォールバックパスが参照されています。v0.5 以降のすべての
+リリースが置き換え先を示す `DeprecationWarning` を出し
+(`ari/_deprecation.py`、`removal_version="v1.0"`)、v1.0 でフォールバック自体が
+削除されます。
 
 **修正:** 明示的な環境変数を設定してください。対応表:
 
@@ -77,12 +79,21 @@ sacct -j <jobid> --format=Reason # Sometimes more verbose
 
 ### ビルドステップで `exit_code=127`
 
-**原因:** ほぼ確実にコンパイラの欠如です。HPC スキルは `gcc` のみを許可しており、
-`mpicc` / `icc` / `aocc` はほとんどのクラスタのデフォルト PATH にありません。
+**原因:** コマンドが `PATH` にありません。`slurm_submit` の script bridge は
+`#SBATCH --export=NIL` で投入したうえで `PATH=/usr/local/bin:/usr/bin:/bin` を
+設定するため、到達できるのはベースのシステムツールチェーン (通常は `gcc`) だけです。
+サイトが environment module 経由で提供するコンパイラ (`mpicc` / `icc` / `aocc`)
+はここに入っていません。
 
-**修正:** `mpicc` を `gcc -fopenmp` に置き換えてください (必要であれば
-OpenMPI を明示的にリンク)。制約を事前に宣言するために experiment.md の
-`Hardware Limits` セクションを更新してください。
+**修正:** そのツールチェーンが入っている module を load してください。bridge は
+本体の実行前にノード上で module システム自身の init
+(`/etc/profile.d/modules.sh`、`/etc/profile.d/lmod.sh`、
+`$MODULESHOME/init/bash`) を source するので、スクリプト内に書いた
+`module load` は機能します。ツールに `modules=` を渡した場合は先に
+`module --force purge` が入り、module システムが無い環境では `86` で終了します。
+それ以外の場合は `mpicc` を `gcc -fopenmp` に置き換え (必要であれば OpenMPI を
+明示的にリンク)、experiment.md の `Hardware Limits` セクションに制約を
+宣言してください。
 
 ### `--account` が拒否される
 
@@ -106,9 +117,9 @@ OpenMPI を明示的にリンク)。制約を事前に宣言するために expe
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
 # If it fails, restart per docs/guides/hpc_setup.md#6
-docker compose -f containers/letta/docker-compose.yml up -d
+docker compose -f scripts/letta/docker-compose.yml up -d
 # or
-apptainer run containers/letta.sif &
+scripts/letta/start_singularity.sh
 ```
 
 ダッシュボードの `/api/memory/health` ルートは同じプローブですので、
@@ -283,7 +294,8 @@ ari viz /abs/path/to/checkpoints/<run_id>
   (集計は `cost_summary.json`)。
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` — 停滞判断の記録 (v0.7+)。
 - `docs/reference/file_formats.md` — チェックポイント内の各ファイルの意味。
-- `docs/_archive/refactor_audit.md` — 既知のマイグレーション負債。
+- `docs/guides/migration.md` — バージョン間のマイグレーション手順
+  (v0.5 → v0.6 以降) と GUI リフレッシュのノート。
 
 ## 関連
 

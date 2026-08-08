@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-08-03
+last_verified: 2026-08-08
 ---
 
 # RQGM Runtime Walkthrough
@@ -556,7 +556,7 @@ you will actually see:
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | one adversarial round, record by record | adversarial loop |
 | audit | `governance_report` (+ per-record motion/defense/adjudication lines) | the epoch audit and its outcome | `GovernanceOrchestrator` |
 | audit | `epoch_transition` | the committed transition, with report hash in `inputs` | `RegistryTransitionEngine` |
-| audit | `kernel_report` / `constitutional_violation` | warn-and-flag findings / rule violations (`CK-*` codes) | `ConstitutionalKernel` adapters |
+| audit | `kernel_report` / `constitutional_violation` | warn-and-flag findings / rule violations (`CK-*` codes) | `ConstitutionalKernel` adapters; `constitutional_violation` only from the B8 injection smoke harness (`ari/rqgm/evaluation/smoke.py`) |
 | audit | `selective_erasure` / `frontier_rebuild` | logical erasure + rebuild after retirements | `FrontierRepairEngine` |
 | audit | `prompt_candidate_rejected` | a candidate failed a lifecycle stage | prompt-evolution pipeline |
 | audit | `prompt_evolution_skipped` | boundary candidate minting disabled (`rqgm.prompt_evolution.enabled: false`) | `RQGMRuntime` boundary prompt evolution |

@@ -1,4 +1,40 @@
+---
+sources:
+  - path: ari-core/ari/harness_registry.py
+    role: implementation
+  - path: ari-core/ari/harness_select.py
+    role: implementation
+  - path: ari-core/ari/cli/harness.py
+    role: implementation
+  - path: ari-core/ari/cli/__init__.py
+    role: implementation
+  - path: ari-core/ari/evaluator/deterministic_evaluator.py
+    role: implementation
+  - path: ari-core/ari/assurance/problems.py
+    role: implementation
+  - path: ari-core/config/harnesses/problems
+    role: config
+  - path: ari-core/tests/test_harness_pool.py
+    role: test
+  - path: ari-core/tests/test_harness_select.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # Harness pool: choosing how to measure, instead of inheriting one way
+
+**Where this stands.** The pool described below is the *prototype* registry
+(`ari/harness_registry.py`), which resolves a harness from
+`$ARI_WORKSPACE/harnesses/<task>/`. ARI ships no such tree and the one this
+study used has been retired, so the registry now resolves nothing unless an
+operator points `ARI_WORKSPACE` at a harness tree of their own. Scored work runs
+through a **pinned problem** instead — a directory under
+`ari-core/config/harnesses/problems/` named by `ARI_PROBLEM`, carrying pinned
+scaffolding, a pinned case set and a registered oracle, with one shared
+instrument owning the flags and the timed window. The registry is reached only
+when `ARI_PROBLEM` is unset. What follows is therefore the design of the pool
+and the code that still implements it, not a description of a harness tree that
+exists in this repository.
 
 ## The problem with one harness per task
 
@@ -85,10 +121,14 @@ to check it against.
     ari harness select --resolve 0.002 --budget-s 120 --must-see large_page_policy
 
 prints every harness ranked, each with the declared properties that qualified or
-disqualified it, and the operator chooses. It exits 2 when nothing qualifies,
-because that is a result: the requirement is wrong, or the pool is missing a
-harness that does not exist yet. Running the closest one anyway produces a
-number, not an answer. The automatic mode would be the same ranking with a policy
+disqualified it, and the operator chooses. That command is defined in
+`ari/cli/harness.py` and unit-tested, but it is **not currently mounted on the
+`ari` CLI**: `ari harness` is taken by the assurance harness suite, and the
+pool's app was removed from the top level rather than shadow it, so today the
+ranking is reachable only through `ari.harness_select.rank`. It exits 2 when
+nothing qualifies, because that is a result: the requirement is wrong, or the
+pool is missing a harness that does not exist yet. Running the closest one anyway
+produces a number, not an answer. The automatic mode would be the same ranking with a policy
 applied and the outcome recorded identically; it does not exist yet.
 
 **The selector must never rank on results.** A selector that picks the harness
@@ -150,13 +190,16 @@ adding a variant to a live study is a decision, not a convenience.
 
 ## Still open
 
-- **Who measures `resolves`.** The band must be measured
-  (`tools/measure_resolution_band.py`), which costs node time per variant, and a
+- **Who measures `resolves`.** The band must be measured, which costs node time
+  per variant (the selector's refusal names `tools/measure_resolution_band.py`,
+  which is not a file in this repository), and a
   variant must not inherit the band of the configuration it was derived from —
   that number belongs to the other configuration. The manifest carries the
   measurement's date and repetition count, and the selector refuses a band with
-  no date, so an unmeasured variant is simply not selectable on resolution. Two
-  registered harnesses (`erfc`, `meshpart`) are in exactly that state today.
+  no date, so an unmeasured variant is simply not selectable on resolution. The
+  two harnesses the selector names as being in exactly that state (`erfc`,
+  `meshpart`) lived in the retired workspace tree, so no harness reachable from
+  this repository declares a band at all.
 - **Cross-harness agreement.** Reporting it needs a definition of "the same
   candidate under two harnesses", which is straightforward for a frozen reference
   and less so for agent-produced code that may not compile under both. Until this

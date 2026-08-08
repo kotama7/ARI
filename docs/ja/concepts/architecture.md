@@ -471,8 +471,13 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
     出力: ors_seed.json
 
   ステージ 15: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
-    LLM 駆動の replicator: 論文とルーブリックの expected_artifacts を読み、
-    自己完結の reproduce.sh + ソースファイルをサンドボックスに書き出す。
+    replicator: PaperBench 系の ReAct エージェント (BasicAgent、
+    `iterative_agent: true` なら IterativeAgent。ari-skill-paper-re/vendor/
+    paperbench に vendoring) をサンドボックスを workspace として駆動する。
+    エージェントは論文とルーブリックの expected_artifacts を読み、bash/python
+    ツールを繰り返し呼びながら reproduce.sh と補助ソースを書き出し、submit か
+    wall-clock 予算 (time_limit_sec、既定 12 時間) の尽きるまで続ける。
+    v0.6 の単発 LLM replicator を置き換えたもの。
     reproduce.sh が既存なら skip (ors_seed_sandbox の後ろに置けば EAR ON
     では発火しない)。LiteLLM 経由で provider neutral。
     出力: ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
@@ -482,19 +487,24 @@ nodes_tree.json  (全ノード: メトリクス、成果物、メモリ、親子
       slurm (sbatch + ARI_SLURM_PARTITION = BFTS と同じ partition)
       → docker (デーモン利用可かつ HPC 外) → apptainer → singularity →
       local。ARI_PHASE1_SANDBOX で上書き可。
-    SLURM 経路は sbatch --wait + spool relocation 対策 wrapper。
+    SLURM 経路は型付きスケジューラライフサイクルへの handoff。実行要求は
+    JobRequestV1 + ResourceRequestV1 になり、ari-skill-hpc と同じ
+    SlurmScheduler へ submit されて終端状態まで poll される
+    (_execute_reproduction_slurm)。
     出力: ors_phase1.json { executed, exit_code, log_path,
                               artifacts, missing, sandbox_kind,
                               [partition, cpus, walltime] }
 
   ステージ 17: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [v0.7.0]
     Phase 2。メイン採点 completer を LiteLLM 経由化 (任意 provider 対応)、
-    structured score-parser は gpt-4o-2024-08-06 のまま。N 回
+    structured score-parser 2 本も同じ judge_model から作られ、
+    response_format だけが異なる。N 回
     (デフォルト 1 — PaperBench §4.1 の single-pass 採点。増やすときは
     ARI_JUDGE_N_RUNS)、重み付き葉スコア集約 + 負例コントロール。
     出力: ors_grade.json { ors_score, raw_score, leaf_grades,
                            judge_model, n_runs, rubric_sha256,
-                           negative_control: {empty, boilerplate, passed} }
+                           negative_control_check: {empty, boilerplate,
+                                                    passed, status, error} }
 ```
 
 ---
@@ -602,12 +612,12 @@ ARI はグローバルな設定ディレクトリを持たない。設定ファ�
 すべてアクティブなチェックポイント配下に保存されるため、実験ごとに状態が分離される。
 v0.5.0 でグローバルな `$HOME/.ari/` ディレクトリは廃止された。残るファイルシステム
 フォールバックは `DeprecationWarning` を出し、v1.0 で完全削除される
-（詳細は `docs/_archive/refactor_audit.md` と `docs/guides/migration.md`）:
+（詳細は `docs/guides/migration.md`）:
 
 ```
 checkpoints/{run_id}/
 ├── settings.json        # GUI 設定 (LLM モデル、プロバイダ、HPC デフォルト)
-├── memory_backup.jsonl.gz   # Letta スナップショット (ステージ境界＋終了時に自動)
+├── memory_backup.v1.json.gz # Letta スナップショット (ステージ境界＋終了時に自動)
 ├── memory_access.jsonl       # write/read テレメトリ
 └── ...                  # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -731,9 +741,12 @@ v1 GUI ドキュメントストアと launch のパスである。
 
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
-| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `list_children`, `get_paper` | ARI を MCP サーバーとして公開、再帰的サブ実験、デュアル stdio+HTTP トランスポート | ✗ |
+| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `get_result`, `stop_experiment`, `list_runs`, `list_children`, `list_artifacts`, `read_artifact`, `get_paper`, `get_ear`, `list_skills`, `get_workflow` | ARI を MCP サーバーとして公開、再帰的サブ実験、デュアル stdio+HTTP トランスポート | ✗ |
+| `ari-skill-tool-registry` | `discover`, `describe`, `invoke`, `get_status`, `get_result` | 大規模な外部 MCP コレクションに対する provider 中立な discovery / admission / 不変な invoke / replay | ✗ |
+| `ari-skill-knowledge` | `search_knowledge_skills`, `describe_knowledge_skill`, `list_active_knowledge_skills`, `request_knowledge_skill` | content-addressed な手続き的知識への read-only クエリ + 非権威的リクエスト面 | ✗ |
+| `ari-skill-harness` | `search_harnesses`, `describe_harness`, `request_auxiliary_verification`, `read_attestation`, `list_verification_requirements` | Harness カタログ / 要件 / Attestation の read-only クエリと非権威的な補助リクエスト | ✗ |
 
-✗ = LLM なし、△ = 一部ツールのみ LLM、✓ = 主要ツールが LLM を使用。**全 14 skills**（13 デフォルト、1 追加）— v0.7.0 で `ari-skill-replicate` を追加。
+✗ = LLM なし、△ = 一部ツールのみ LLM、✓ = 主要ツールが LLM を使用。**skill パッケージは全 17**（デフォルト `workflow.yaml` に登録済み 13、追加 4）— v0.7.0 で `ari-skill-replicate` を追加。
 
 ---
 
@@ -849,13 +862,13 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
 
 ## ノードごとのプロンプト構築
 
-すべての BFTS ノードは `ari/agent/loop.py:370` の `AgentLoop.run(node, experiment)` という単一エントリポイントから実行されます。同じループが root ノードと子ノードの両方を処理し、構築されるプロンプトは `node.depth` と祖先から継承された状態によってのみ分岐します。本セクションは *エージェントがノード開始時に実際に何を見るか* の正典です。ここを変更する場合は慎重なレビューが必要です。
+すべての BFTS ノードは `ari/agent/loop.py:2063` の `AgentLoop.run(node, experiment)` という単一エントリポイントから実行されます。同じループが root ノードと子ノードの両方を処理し、構築されるプロンプトは `node.depth` と祖先から継承された状態によってのみ分岐します。本セクションは *エージェントがノード開始時に実際に何を見るか* の正典です。ここを変更する場合は慎重なレビューが必要です。
 
 ### `AgentLoop.run` への入力
 
 呼び出しごとに 2 つの引数が渡ります:
 
-1. **`node: Node`** — `BFTS.expand` (`ari/orchestrator/bfts.py:431-441`) で生成。プロンプトに影響するフィールド:
+1. **`node: Node`** — `BFTS.expand` (`ari/orchestrator/bfts.py:734-745`) で生成。プロンプトに影響するフィールド:
    - `id`、`depth`、`label`（`draft|improve|debug|ablation|validation|other`）、`raw_label`
    - `ancestor_ids` — root から親まで（親含む）の厳格な CoW チェーン。`search_memory` のフィルタに使われる。
    - `eval_summary` — 拡張直後の子ノードでは LLM が提案した方向性（1 文）を保持。実行後は評価器のサマリで上書きされる。
@@ -865,7 +878,9 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
    - `work_dir` — `PathManager` が作成するノード専用ディレクトリ
    - `slurm_partition`、`slurm_max_cpus` — SLURM 有効時に `env_detect` から取得
 
-### システムプロンプト — `ari/agent/loop.py:41-58`
+### システムプロンプト — `ari/prompts/agent/system.md`
+
+本体は外部化されたテンプレート（キー `agent/system`、`_system_prompt_versioned()` で読み込み `loop.py:2226` で `str.format`）です。`loop.py` 側が組み立てるのは `{tool_desc}` / `{memory_rules}` / `{extra}` の置換だけです:
 
 ```
 You are a research agent. You MUST use tools to execute experiments. ...
@@ -883,16 +898,16 @@ RULES:
 {memory_rules}{extra}
 ```
 
-`{extra}` ブロック（L448-453 で構築）は以下を追加します:
+`{extra}` ブロック（L2213-2219 で構築）は以下を追加します:
 
 | サブブロック | 出所 | 備考 |
 |-------------|------|------|
-| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | BFTS ラベルから引かれる 1 文の振る舞いキュー |
-| `EXPERIMENT ENVIRONMENT` | L433-442 | `work_dir` + 既存ファイル + SLURM partition/CPUs + コンテナイメージ（`ARI_CONTAINER_IMAGE`） |
-| `RESOURCE BUDGET` | L443-447 | `max_react_steps`、`timeout_per_node // 60` 分 |
+| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | BFTS ラベルから引かれる 1 文の振る舞いキュー。`ARI_BFTS_NO_LABEL`（`labels_disabled()`）を立てると全ノードが同じ中立ロールになる |
+| `EXPERIMENT ENVIRONMENT` | L2197-2207 | work directory（ノードの container root である `/workspace`）+ 既存ファイル + SLURM partition/CPUs（scheduler ツールが実際に利用可能なときのみ）+ コンテナイメージ（`ARI_CONTAINER_IMAGE`） |
+| `RESOURCE BUDGET` | L2208-2212 | `max_react_steps`、`timeout_per_node // 60` 分 |
 | `extra_system_prompt` | `WorkflowHints.extra_system_prompt` | `from_experiment_text` / pipeline 設定が任意で設定するエスケープハッチ |
 
-`{memory_rules}` ブロック（L454-456）は `add_memory` ツールが実際に利用可能なときのみ追加され、アクティブなノード ID をインライン展開して LLM が誤って別スコープに書けないようにします:
+`{memory_rules}` ブロック（L2220-2222）は `add_memory` ツールが実際に利用可能なときのみ追加され、アクティブなノード ID をインライン展開して LLM が誤って別スコープに書けないようにします:
 
 ```
 - When available, save decisive intermediate findings with
@@ -902,20 +917,20 @@ RULES:
 
 ### ツールカタログ（`tool_desc`）
 
-L389 の `tools = self._available_tools_openai(suppress=..., phase="bfts")` が `phase="bfts"` で MCP が公開する全ツールを列挙し、`_suppress_tools` に入っているものを除外します。可変な suppression セットは `AgentLoop` インスタンスに乗り、ループ進行に応じて更新されます:
+L2112 の `tools = self._available_tools_openai(suppress=..., phase="bfts")` が `phase="bfts"` で MCP が公開する全ツールを列挙し、`_suppress_tools` に入っているものを除外します。可変な suppression セットは `AgentLoop` インスタンスに乗り、ループ進行に応じて更新されます:
 
-- 最初の `generate_ideas` 成功呼び出しの後、`self._suppress_tools = {"generate_ideas"}`（L873-874）が設定され、後続ノードはアイデアを再生成しません。
+- 最初の `generate_ideas` 成功呼び出しの後、`self._suppress_tools = {"generate_ideas"}`（L2633）が設定され、後続ノードはアイデアを再生成しません。
 - `survey` は子ノードに対して **suppress されません**。下記「User message #1 — 子ノード」の通り、文章でのみ非推奨化されています。子が指示を無視すれば `survey()` を呼べてしまいます。
 
-`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L613）はメッセージウィンドウのトリマーが必ず保持するツール結果を表します。チャット履歴が圧縮されても、これらの結果は全 ReAct ラウンドで生き残ります。
+`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L2630）はメッセージウィンドウのトリマーが必ず保持するツール結果を表します。チャット履歴が圧縮されても、これらの結果は全 ReAct ラウンドで生き残ります。
 
 ### User message #1 — root ノード（`node.depth == 0`）
 
-`loop.py:501-511`:
+`loop.py:2430-2436`:
 
 ```
 Experiment goal:
-{goal_text(1500 文字に切り詰め)}
+{goal_text(ARI_GOAL_MAX_CHARS 文字で切り詰め、既定 8000)}
 
 Node: {node.id} depth={node.depth}
 
@@ -923,32 +938,44 @@ START NOW: call {first_tool}() immediately. Do NOT output any text or
 plan — your first response must be a {first_tool}() tool call.
 
 WORKFLOW ORDER: (1) generate_ideas() sets the research direction and
-primary_metric; (2) make_metric_spec() derives the success metrics from
-that primary_metric (NOT from a guessed list); (3) survey() gathers related
-literature. The survey results are used to generate citations — without
-survey, the paper will have no references.
+primary_metric; (2) make_metric_spec() derives success metrics from the
+established primary_metric; (3) survey() gathers related literature for
+grounded citations.
 ```
+
+`WORKFLOW ORDER` 行は、suppression を通過した setup ツール（`generate_ideas` → `make_metric_spec` → `survey`）に対して `_setup_descriptions` から組み立てられるので、suppress されたツールの名前は決して出ません。どれも利用できないときは「use only the available tools shown above.」に縮退します。
 
 `first_tool` は `WorkflowHints.tool_sequence[0]`。現在のデフォルトは `generate_ideas` です。`enrich_hints_from_mcp` は、対応スキルが存在するとき setup ツールを `generate_ideas` → `make_metric_spec` → `survey` → executor の順に並べます（idea の `primary_metric` が成功基準なので、`make_metric_spec` はそれを推測したリストから決めるのではなく、idea の後に続けて派生させる必要があります）。
 
 ### User message #1 — 子ノード（`node.depth > 0`）
 
-`loop.py:477-500`:
+`loop.py:2341-2379`:
 
 ```
 Experiment goal:
-{goal_text(1500 文字に切り詰め)}
+{goal_text(ARI_GOAL_MAX_CHARS 文字で切り詰め、既定 8000)}
 
 Node: {node.id} depth={node.depth} task={node.label}
 
 Task: {label-specific one-line description from _label_desc}
 The parent node already completed the survey and established a research
-direction. Prior results are provided below. Implement and run your
-specific experiment, then return JSON with measurements.
+direction. Prior results are provided below for context — but they belong
+to the parent, NOT to you.
+
+MANDATORY: You must produce NEW artifacts to count as having run an
+experiment.
+  • Inherited files: source code, scripts, configs, compiled binaries.
+  • NOT inherited: the parent's results.json/results.csv, ...（_OUTPUT_BLACKLIST を列挙）
+  ...（label に応じたコード変更、再ビルド・再実行・新しい結果ファイル。
+      差分ゼロのノードは STERILE 判定）
+Implement and run your specific experiment, then return JSON with
+measurements.
 
 Workflow:
 {WorkflowHints.post_survey_hint}        ← 例: slurm_submit / run_bash 手順
 ```
+
+「Prior results are provided below」の一文は条件付きです。handoff arm がサマリも親ログも注入しない子には、代わりに「親の *コード* は継承するが結果は渡されない」と伝えるので、届かないブロックを約束することはありません。
 
 `_label_desc`（L479-485）はノード単位プロンプトでラベル意味論が顔を出す唯一の場所です:
 
@@ -965,7 +992,7 @@ Workflow:
 
 ### User message #2 — ワーキングコンテキスト注入（全ノード）
 
-旧来の子ノード限定 `search_memory` ダンプ（`[Prior knowledge from ancestor nodes …]` を集約 800 文字に切り詰めた単一メッセージ）は、モジュールレベルの `build_working_context_messages()`（`loop.py:108-224`）に **置き換え** られました。これは `AgentLoop.run` から **全ノード** に対して呼ばれます。read-only で、メモリには一切書き込みません。最大 3 つの上限付きティアを組み立てます:
+旧来の子ノード限定 `search_memory` ダンプ（`[Prior knowledge from ancestor nodes …]` を集約 800 文字に切り詰めた単一メッセージ）は、モジュールレベルの `build_working_context_messages()`（`loop.py:561-789`）に **置き換え** られました。これは `AgentLoop.run` から **全ノード** に対して呼ばれます。read-only で、メモリには一切書き込みません。最大 3 つの上限付きティアを組み立てます:
 
 - **Tier 1a — 実験コア（全ノード）。** `get_experiment_context` を呼び、`primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec` に **加えて** `selected_idea` サマリを含む `[Experiment context (stable across all nodes):]` ブロックを注入します。root にも全ての子孫にも適用されるため、`generate_ideas` を再実行しないノードでも、指標だけでなく設計意図（計画された機構＋対象ワークロード）を継承できます。
 - **Tier 1b — 祖先コア（子ノードのみ）。** 各祖先について `get_node_memory(node_id=aid)` を呼び、`metadata.type == "result_summary"` のエントリだけを残して `[Established conclusions from ancestor nodes (N):]` ブロックを出力します。これは決定論的で完全な祖先ごとのハンドオフです。各結論は **エントリ単位** で cap され（集約カットではない）、木の深さで境界づけられるため丸ごと注入されます。順序は `ancestor_ids`（root → 親）に従います。
@@ -973,20 +1000,20 @@ Workflow:
 
 失敗（メモリバックエンド停止、結果が壊れている等）は `logger.debug` レベルで握り潰され、ノードは実行を継続します。
 
-レガシーな `search_global_memory` 注入ブロック（`loop.py:517-540`）は v0.6.0 ではデッドコードです。グローバルメモリツールは削除されており（`CHANGELOG.md` v0.6.0 §3）、条件分岐は発火しません。
+レガシーな `search_global_memory` 注入ブロック（`loop.py:2513-2535`）は v0.6.0 ではデッドコードです。グローバルメモリツールは削除されており（`CHANGELOG.md` v0.6.0 §3）、条件分岐は発火しません。
 
 ### 切り詰めの早見表
 
 | 項目 | 上限 | コード |
 |-----|-----|-------|
-| `goal_text` | 1500 文字 | `loop.py:434-438` |
-| Survey 結果メモリエントリ | 先頭 5 論文、各 abstract 200 文字 | `loop.py:794-799` |
-| Tier 1a — 実験コアの各フィールド | `_CORE_FIELD_CAP = 400` 文字／フィールド | `loop.py:94` |
-| Tier 1a — `selected_idea` サマリ | `_IDEA_FIELD_CAP = 1500` 文字 | `loop.py:95` |
-| Tier 1b — 祖先ごとの `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 文字／エントリ（集約カットではない） | `loop.py:98` |
-| Tier 2 — サプリメントクエリ | 200 文字 | `loop.py:201` |
-| Tier 2 — サプリメントエントリ | Letta `passages.search` 埋め込みランクで上位 5 件 | `loop.py:202-206` (Memory Architecture 節を参照) |
-| Tier 2 — サプリメントの各エントリ | `_SUPPLEMENT_CAP = 400` 文字／エントリ | `loop.py:99` |
+| `goal_text` | `ARI_GOAL_MAX_CHARS` 文字、既定 **8000**。`0` で上限を完全に無効化 | `loop.py:2274-2283` |
+| Survey 結果メモリエントリ | 先頭 5 論文、各 abstract 200 文字 | `loop.py:2939-2942` |
+| Tier 1a — 実験コアの各フィールド | `_CORE_FIELD_CAP = 400` 文字／フィールド | `loop.py:342` |
+| Tier 1a — `selected_idea` サマリ | `_IDEA_FIELD_CAP = 1500` 文字 | `loop.py:343` |
+| Tier 1b — 祖先ごとの `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 文字／エントリ（集約カットではない） | `loop.py:346` |
+| Tier 2 — サプリメントクエリ | 200 文字 | `loop.py:759` |
+| Tier 2 — サプリメントエントリ | Letta `passages.search` 埋め込みランクで上位 5 件 | `loop.py:760-764` (Memory Architecture 節を参照) |
+| Tier 2 — サプリメントの各エントリ | `_SUPPLEMENT_CAP = 400` 文字／エントリ | `loop.py:347` |
 
 ### 意図的に **注入されていない** 情報
 
@@ -1078,7 +1105,7 @@ pipeline:
 ## 階層アーキテクチャ（v0.7+ リファクタリング）
 
 リファクタリング後の `ari-core/ari/` パッケージは、結合を最小化するために
-5 つの層に整理されています。階層を保つための設計規律は `CONTRIBUTING.md`
+6 つの層 (0–5) に整理されています。階層を保つための設計規律は `CONTRIBUTING.md`
 を参照してください。
 
 | 層 | サブパッケージ | 担当 |
@@ -1086,9 +1113,9 @@ pipeline:
 | 0 — プリミティブ | `paths`、`checkpoint`、`_deprecation`、`cost_tracker`、`pidfile`、`lineage`、`env_detect`、`schemas`、`configs`、`prompts`、`protocols` | パス解決、非推奨警告、コスト追跡、プロンプト／設定ローダ、構造的プロトコル。ARI 内部への依存なし。 |
 | 1 — ドメインモデル | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/scheduler`、`orchestrator/node_selection` | データモデル + 上流ライブラリ（litellm、MCP、Letta）への薄いラッパ。 |
 | 2 — オーケストレータ | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS 探索、lineage-decision の LLM フック、ノードごとのレポート。 |
-| 3 — エージェント | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct 実行 + 実験固有の WorkflowHints 注入。 |
+| 3 — エージェント | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env, metric_contract, shims}` | ReAct 実行 + 実験固有の WorkflowHints 注入。 |
 | 4 — パイプライン | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML 駆動のステージランナー、論文パイプラインの接着層。 |
-| 5 — エントリポイント | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate}`、`cli_ear`、`viz/*`、`registry/*`、`public/*` | Typer CLI、viz HTTP サーバ、registry FastAPI、skill 向けの public 再エクスポート層。 |
+| 5 — エントリポイント | `cli/{__init__, __main__, run, projects, commands, bfts_loop, lineage, migrate, paper_dispatch, doctor, harness, kca, manuscript, manuscript_repair_runtime}`、`cli_ear`、`viz/*`、`registry/*`、`public/*` | Typer CLI、viz HTTP サーバ、registry FastAPI、skill 向けの public 再エクスポート層。 |
 
 マイグレーションコード（`migrations/v05_to_v07/*`）は層の外側にあり、v1.0 で
 削除されます。skill は `ari.public.*` からのみ import できます —

@@ -1,3 +1,42 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_capabilities.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/server.py
+    role: implementation
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
+  - path: ari-core/ari/viz/health.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/challenges.py
+    role: implementation
+  - path: ari-core/ari/viz/api_ollama.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/services/api/capabilities.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/App.tsx
+    role: implementation
+  - path: scripts/setup/setup_env.sh
+    role: config
+  - path: ari-core/tests/test_gui_capabilities.py
+    role: test
+  - path: ari-core/tests/test_setup_env.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/routeRenderBaseline.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
+    role: test
+  - path: docs/guides/gui_cutover_runbook.md
+    role: doc
+  - path: docs/concepts/gui_architecture.md
+    role: doc
+  - path: docs/reference/environment_variables.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-07: feature flag, rollback, and legacy removal policy
 
 Status: accepted (2026-07-23), decided at gate G2.

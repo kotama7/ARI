@@ -21,7 +21,7 @@ last_verified: 2026-08-08
 
 # 环境变量参考
 
-ARI 支持约 90 个环境变量，在此汇总以便查阅。大多数变量有合理的默认值；**Required?** 列标记了全新检出时不可缺少的变量。
+ARI 支持 150 多个环境变量，在此汇总以便查阅。大多数变量有合理的默认值；**Required?** 列标记了全新检出时不可缺少的变量。
 
 `docs/reference/configuration.md` 以教程形式介绍相同内容；本页为按字母顺序排列的查阅参考。
 
@@ -186,8 +186,16 @@ Harness 运行基座，而不属于模式选择：
 | `ARI_MEMORY_AUTO_RESTORE` | 恢复时自动从 `memory_backup.jsonl.gz` 还原 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` 路径 |
 | `ARI_MEMORY_CONSOLIDATE` | 类型化记忆整合 + 为论文论断提供基于工件支撑的 `verified_context.json`。**默认开启**；设为 `0`/`false`/`no`/`off` 以禁用 |
-| `ARI_CURRENT_NODE_ID` | 由智能体循环设置；技能读取但不设置 |
+| `ARI_CONTEXT_AUTHORITY_KEY` | core 为每条技能连接导出到技能子进程的 HMAC 密钥（`SkillConnection._server_params`）；记忆服务器在触及后端之前用它验证签名后的 `ari_context` 参数。由 core 注入并在结果中被脱敏，运维人员不应设置 |
 | `ARI_LETTA_VENV` | 捆绑 Letta 服务器的虚拟环境路径 |
+
+当前节点 ID **不是**环境变量，因此在环境中伪造该值无法改变记忆写入的目标。
+`AgentLoop._node_tool_context` 为每个节点构建一个 `ToolCallContextV1`，
+`SkillConnection.authorize_args` 将其签名后注入 `ari_context` 工具参数，
+写时复制（CoW）保护（`ari-skill-memory/src/server.py` 中的 `_require_self`）
+则把请求的 `node_id` 与该签名上下文的 `node_context.node_id` 做比对。参见
+[内部边界](internal_boundaries.md) 与
+[术语表 → CoW](glossary.md)。
 
 ### 评审规范 + 论文评审
 
@@ -213,7 +221,6 @@ Harness 运行基座，而不属于模式选择：
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` 的目标叶节点数 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature 覆盖 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 使用两阶段骨架 + 子树合成 |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | 覆盖 venue 条件化 PaperBench 规范模板的搜索根（未发布 — 见 `docs/reference/rubric_schema.md#venue-conditioned-templates`） |
 
 ### PaperBench 可重现性（v0.7.0）
@@ -290,10 +297,8 @@ Harness 运行基座，而不属于模式选择：
 | 变量 | 用途 |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。强制指定 `server.run_reproduce` 和 `bridge.reproduce_submission` 使用的沙箱运行器。 |
-| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` 且未显式提供 `container_image` 时的默认 docker 镜像。默认为 `ubuntu:24.04`。 |
+| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` 且未显式提供 `container_image` 时的默认 docker 镜像。没有内置默认值：未设置则镜像为空，run 会被拒绝而不是被悄悄补上一个。 |
 | `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` 且未显式提供 `container_image` 时的默认 SIF / docker URI。 |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | `ARI_PHASE1_APPTAINER_IMAGE` 的旧版别名。 |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ 当请求的沙箱工具缺失（docker daemon / apptainer / sbatch / partition）时，仅发出警告并回退到本地执行（旧版 v0.7.2 行为）。默认（未设置）⇒ 抛出 `RuntimeError`，防止用户的隔离意图被悄无声息地绕过。 |
 | `ARI_PAPERBENCH_PATH` | 覆盖 vendored PaperBench 源代码树路径（默认：`ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 调用者传入 `0` 时默认的 Stage 1 智能体展开时间预算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 展开默认使用 IterativeAgent 变体。 |

@@ -197,9 +197,11 @@ pipeline:
 - `skill` / `tool` — 登録スキル名と呼び出す MCP ツール。
 - `inputs:`（別名 `input:`）— ツールのキーワード引数。`{{var}}` テンプレート
   置換が効きます（`{{checkpoint_dir}}`、`{{run_id}}`、`{{ari_root}}` など）。
-  `params:` はそのまま渡され、`<key>_from:` ショートハンドはチェックポイント
-  相対のファイル名を解決した**うえで**その内容を読み込みます（`load_inputs:`
-  も参照）。`args:` というキーはありません。
+  `params:` は同じ呼び出し引数へマージされる別マッピングで、文字列値には同じ
+  `{{var}}` 置換が効きます。ただし `params:` のキーはファイル読み込みの対象外
+  で、同名の `inputs:` キーが優先されます。`<key>_from:` ショートハンドは
+  チェックポイント相対のファイル名を解決した**うえで**その内容を読み込みます
+  （`load_inputs:` も参照）。`args:` というキーはありません。
 - `depends_on:` — オーケストレータはトポロジカルソートを行わずファイル順に
   ステージを実行するため、宣言順を依存順に保ってください。依存がスキップ
   されたステージもスキップされます（依存が明示的に `enabled: false` の場合を除く）。
@@ -309,12 +311,13 @@ mpirun -np 128 ./my_parallel_program
 ```
 ```
 
-`ari-core/config/default.yaml`（同梱の BFTS デフォルト）でタイムアウトを増加
-— または実行ごとに `ARI_TIMEOUT_NODE` で上書き:
+`ari-core/config/default.yaml`（同梱の BFTS デフォルト）のノード単位タイム
+アウトは `timeout_per_node: 7200`（2 時間）です。長時間の MPI ジョブ向けには
+そこで引き上げる — または実行ごとに `ARI_TIMEOUT_NODE` で上書き:
 
 ```yaml
 bfts:
-  timeout_per_node: 3600   # 大規模 MPI ジョブ向けに 1 時間
+  timeout_per_node: 14400   # 大規模 MPI ジョブ向けに 4 時間
 ```
 
 ---

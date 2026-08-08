@@ -99,7 +99,8 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
 
 ### 验证
 
-- `ari memory health` 返回 `ok` 并报告智能体名称。
+- `ari memory health` 打印后端的 health 字典 —— `ok: true` 以及 `backend`、
+  `latency_ms`、`server_version` 和 checkpoint 的 `namespace`。
 - 来自智能体循环的 `search_memory` 调用返回基于嵌入的排名结果。
 - 仪表盘 `/api/memory/health` 端点返回 200。
 
@@ -137,9 +138,13 @@ ARI 的检查点格式经历了三个版本的演进。本指南介绍各升级�
    ```bash
    ari ear curate <checkpoint>
    ari ear publish <checkpoint> --backend ari-registry
-   ari replicate generate-rubric <checkpoint>
-   ari paper-re grade <checkpoint>
+   ari paper <checkpoint>
    ```
+   并不存在 `ari replicate` / `ari paper-re` 子命令：ORS 链
+   (`ors_generate_rubric` → `ors_audit_rubric` → `ors_seed_sandbox` →
+   `ors_build_reproduce` → `ors_run_reproduce` → `ors_grade`) 是
+   `workflow.yaml` 中的 pipeline stage，由 `ari paper`（以及 `ari run` /
+   `ari resume`）通过 MCP skill 驱动。
 
 ### 验证
 
@@ -496,7 +501,6 @@ revert 该提交是唯一选项。MN-12（GUI 模式选择）同样没有手段�
   分阶段推出，以及 legacy 移除顺序。
 - [RQGM 迁移指南](rqgm_migration.md) —— 开启可选的 `ari_rqgm` 模式
   （仅配置；无格式变更）。
-- `docs/_archive/refactor_audit.md` —— 迁移债务的当前状态。
 - `CHANGELOG.md` —— 各版本发布说明。
 - `ari memory migrate --help` —— v0.5 → v0.6 迁移工具的 CLI 选项。
 - `docs/guides/troubleshooting.md` —— 迁移失败时的处理方法。

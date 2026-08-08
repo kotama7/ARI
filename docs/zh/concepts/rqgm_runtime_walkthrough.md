@@ -505,7 +505,7 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | 一轮对抗回合，逐条记录 | 对抗循环 |
 | audit | `governance_report`（+ 逐记录的动议/辩护/裁决行） | 纪元审计及其结果 | `GovernanceOrchestrator` |
 | audit | `epoch_transition` | 已提交的转换，`inputs` 中含报告哈希 | `RegistryTransitionEngine` |
-| audit | `kernel_report` / `constitutional_violation` | 警告并标记的发现 / 规则违规（`CK-*` 码） | `ConstitutionalKernel` 适配器 |
+| audit | `kernel_report` / `constitutional_violation` | 警告并标记的发现 / 规则违规（`CK-*` 码） | `ConstitutionalKernel` 适配器；`constitutional_violation` 仅由 B8 注入冒烟工装（`ari/rqgm/evaluation/smoke.py`）写出 |
 | audit | `selective_erasure` / `frontier_rebuild` | 退役后的逻辑擦除 + 重建 | `FrontierRepairEngine` |
 | audit | `prompt_candidate_rejected` | 候选在某个生命周期阶段失败 | 提示词进化流水线 |
 | audit | `prompt_evolution_skipped` | 边界候选生成被禁用（`rqgm.prompt_evolution.enabled: false`） | `RQGMRuntime` 的边界提示词进化 |

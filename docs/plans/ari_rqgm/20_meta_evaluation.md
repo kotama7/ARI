@@ -447,6 +447,9 @@ completion claim.
   `sha256:c85e73726b1182c3fe88b682a8bcd0e0d7a57713f7ecb1818056886eaa5442bf`.
   The promotion approval digest is
   `sha256:9317c4ff7e15f488f758fc253b9afd96345abd6d3730405f5669c93a6eabc608`.
+  Both digests record this checkpoint and are superseded by the 2026-08-07
+  portability re-promotion recorded in Task 17 §14.6, which took the promoting
+  host's install path out of the leaf identity; the admitted scope is unchanged.
   The lock admits only anonymous `PubMed_search_articles` as
   `ari.literature.search/v1`, with no credential scope. Scope expansion,
   evidence mutation, schema drift, and revoked status fail closed.
@@ -459,7 +462,9 @@ completion claim.
   empty credential-scope list. After formal maintainer promotion, a fresh
   closed-environment sync produced verified one-leaf catalog digest
   `sha256:73e1225dc30b4cfc735858bad4615e08da6723a0f0ced6dd560897d7db3551ff`.
-  No current catalog or lock is automatically rewritten during resume.
+  That catalog also predates the leaf-identity normalization, so its digest
+  belongs to this checkpoint. No current catalog or lock is automatically
+  rewritten during resume.
 
 ## 12. Completion criteria
 

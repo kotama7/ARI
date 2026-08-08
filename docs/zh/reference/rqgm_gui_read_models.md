@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-08-09
 ---
 
 # RQGM GUI 读模型
@@ -24,7 +24,7 @@ last_verified: 2026-07-27
 
 ## 基本规则
 
-读取器（`ari-core/ari/viz/v1/rqgm.py`）受四条约束支配，本页每一个载荷的形态
+读取器（`ari-core/ari/viz/v1/rqgm.py`）受五条约束支配，本页每一个载荷的形态
 都源自它们：
 
 1. **从不导入 `ari.rqgm`。** 读模型直接解析已提交的检查点工件，不重新执行
@@ -45,6 +45,29 @@ last_verified: 2026-07-27
    500。缺失的来源是 `None`，绝不会被展示为干净或零。
 4. **只读。** 没有任何东西写文件、触碰 `viz.state` 或修改 `os.environ`，
    而且**不存在变更端点** —— GUI 无法执行治理动作，只能观察它们。
+5. **没有为 GUI 新增任何运行时埋点。** 这些读模型所需的每一个逻辑事件，都早已
+   以已提交记录的形式存在 —— 策略提案是 `UtilityPolicyCandidate`，策略采纳是
+   一次 T20 转换，得分观测是一条 `UtilityRecord`，得分改写是
+   `SelectiveErasureEvent` 加 `FrontierRebuildEvent`，注册表变更是
+   `rqgm_transitions.jsonl` 中一条已提交的转换事件 —— 因此读取器是对 run 本来
+   就会写出的工件的纯投影，没有为它引入任何新的事件类型。
+
+**已知缺口 —— 不存在实时的治理进度。** 九步纪元审计在运行期间不发出任何东西：
+流水线只是把记录**返回**出来，而编排器把它们全部追加进日志 —— 证据包、弹劾动议、
+辩护、裁决，最后才是 `governance_report` —— 是在整个审计返回之后才发生的。因此
+进行中的边界是不可见的，而不是被部分渲染出来。既没有阶段进度的事件类型，也没有
+重算开始的信号；一次重算只能通过它留下的记录才变得可见。治理工作区同样只订阅
+`run` 这一个主题，而 `run` 是在检查点切换时以及一次 v1 启动之后发布的 —— 纪元
+边界本身不会推送任何失效通知。请把每一个治理载荷都当作「你发起请求那一刻已提交
+内容的快照」，要推进就重新拉取。主题词汇表是冻结的，见
+[REST API 参考](rest_api.md)的「实时：`GET /api/v1/events/stream`（SSE）」一节。
+
+**已知缺口 —— 不做 schema 校验。** 读取器从不加载 `ari/schemas/` 下的 JSON
+Schema。它防御式地逐字段读取：类型符合预期就保留该值，否则给出 `None`。因此一条
+能作为 JSON 解析、但违反其 schema 的记录会在可读字段的范围内被投影出来，而不是
+被拒绝 —— 这正是让旧检查点还能渲染出来的同一种宽容。该模块确实会拒绝的东西列在
+下面「完整性标志与降级语义」一节中（链与哈希校验、闭合的 status 词汇表、
+一次性写入的策略正文校验），而 schema 合规并不在其中。
 
 ## 能力门控
 
@@ -57,6 +80,13 @@ last_verified: 2026-07-27
 | `mode` / `mode_source` | `rqgm_state.json` 中持久化的 `mode` 及其溯源。 |
 | `paper_mode` | `{ckpt}/paper_archive_state.json` 是否存在。执行模式与论文模式是**独立的两个轴**：四种组合都有效。 |
 | `reasons` | 该能力为何关闭 / 不可读 —— 绝不返回空洞的成功断言。 |
+
+`reasons` 是自由文本，而不是一套分类法。该端点只会给出三种字符串之一 —— 这是一次
+`simple_bfts` run、`rqgm_state.json` 不可读、或该文件记录了一个 `rqgm_enabled`
+为 false 的模式 —— 并且没有可供程序分支的机器可读理由码。**已知缺口：**
+`enabled: false` 从不区分「治理被配置为关闭」「治理预算已耗尽」与「该检查点早于
+这项功能」。唯一的信号是工件是否存在，因此这三者都读作「缺失」；需要把它们区分
+开的客户端必须去看 run 自身的配置。
 
 对于没有 `rqgm_state.json` 的 run，其余十一个端点返回类型化的
 `404 not_found` 信封（消息为「not an RQGM run … simple_bfts run」），这与
@@ -81,7 +111,7 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 | `…/evolution` | `prompt_evolution.jsonl`、`rqgm_meta_outputs.jsonl`，外加用于采纳连接的注册表重放 | — |
 | `…/paper-archive` | `paper_draft_archive.jsonl`、`paper_anchor_corpus.jsonl`、`rqgm/paper_self_preference_stat.json`、`full_paper.tex`（存在性） | `paper_archive_state.json`（持久化模式 + 冻结的论文策略） |
 
-有两个后果值得内化：
+有三个后果值得内化：
 
 - `rqgm_registry.json` 是一份 **rollup**，而不是注册表本身。`…/registry`
   通过重放已提交转换来重建组件与提示词，并且只通过 `verified` /
@@ -89,6 +119,18 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 - `epoch_state.json` 永远不设置 `current_epoch`。`…/overview` 从最后一条
   已提交的 `epoch_open` 推导当前纪元；如果快照与之不符，就追加一条降级理由
   （「snapshot ahead of the truth log」）。
+- **有若干治理工件完全没有读模型** —— 这是一个已知缺口。
+  `proposals/proposal_records.jsonl` 与 `proposals/proposal_index.json`、
+  `rqgm_cleanroom.jsonl`、`rqgm_erasure_state.json`、
+  `rqgm_governance_cache.jsonl`、`rqgm/adversarial_replay_pool.json` 以及
+  `prompt_specs.json`，在这个接口面上没有任何端点会打开它们；`rqgm_prompts/`
+  也只是被间接触及 —— 通过某个已注册 `utility_policy` 提示词所指明的
+  `source.path`，而且仅限该角色。因此提案路由、洁净室再生成、擦除台账、治理缓存
+  与重放池至今仍要手工从磁盘读取；它们的格式见
+  [文件格式参考](file_formats.md)的「RQGM 纪元治理文件（可选启用的
+  `ari_rqgm` 模式）」一节。检查点里的 `constitution.yaml` 副本同样不被读取，但
+  那一个是设计使然而非缺口：它是一个没有任何 ARI 代码会回读的溯源标记，而
+  `…/overview` 报告的是来自 `meta.json` 的 `constitution_hash`。
 
 ## 完整性标志与降级语义
 
@@ -157,6 +199,25 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 （`…/nodes/{node_id}/lineage` 并排返回 `penalty_channel` 与
 `policy_channel`）。
 
+两条通道都只报告源记录本身已经持有的内容，不多一分。`RqgmScoreObservationV1`
+携带的是 `source`、`record_id`、`epoch_id`、`policy_hash`、`state`、
+`validated_attack_ids`，以及一个把源字段逐字透传（哨兵键名也照搬）的 `values`
+映射 —— 而不是一个带类型的 base/penalty/final 三元组。由此引出三个已知缺口，
+期待看到排行榜的读者应当先知道它们：
+
+- **没有名次。** 没有任何 RQGM 载荷携带节点的名次、名次变动或任何前后排序，也没
+  有任何端点接受排序或比较参数（这个接口面的全部查询词汇就是 `cursor`、`limit`、
+  `expand`、`record_type` 与 `epoch`）。排序留给调用方 —— 而跨策略哈希去排序，会
+  破坏本页其余部分所强制的分面规则。
+- **没有计算版本。** 策略身份只有 `policy_hash` 一项。读模型没有「打分代码版本」
+  这个独立概念，因此无法把一次观测归属到产生它的那一次具体构建。
+- **两条通道都不给自己的行加时间戳。** `RqgmScoreObservationV1` 与
+  `RqgmScoreRewriteV1` 都没有时间字段，因此观测与改写是按它们在源日志中的位置
+  排序的，而不是按记录下来的时刻 —— 尽管磁盘上的 `UtilityRecord` 是带
+  `created_at` 的。这个接口面确实报告的时钟在别处：`…/transitions` 条目上的
+  `committed_at`（该事务最后一行的 `ts_iso`）、`…/audit` 条目上的 `ts_iso`，
+  以及 `…/overview` 上的 `last_committed_transition_at`。
+
 ### 通道 1 —— 对抗惩罚（纪元内部、节点作用域）
 
 | 方面 | 详情 |
@@ -165,6 +226,21 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 | 呈现的值 | `base_score`、`penalty`、`final_score`、`supersedes`、`recomputed_in_epoch` —— 逐字透传，绝不重新计算。 |
 | 归因 | 来自该记录 `input_refs` 的 `validated_attack_ids`。 |
 | 作用域 | 一个纪元内部，针对一个节点。 |
+
+**一个字段名，两套策略。** 在这个格式的历史上，`utility_policy_hash` 先后指过两
+样不同的东西：对抗引擎冻结的**惩罚**策略（`penalty_cap`、`severity_weights`、
+`verdict_factors`），以及边界所采纳的**纪元**策略（`composite`、`axis_weights`、
+`frontier_score`、`depth_penalty_lambda`、`ucb_c`）。两者的键集合互不相交，因此
+它们的哈希永远不可能相等。在受治理的效用演化落地之后写下的记录携带纪元策略的
+哈希；更早的记录携带惩罚策略的哈希。
+
+**把两者归一化是一个已知缺口** —— 读取器并不归一化。一条 `utility_record` 观测
+的 `policy_hash` 就是该记录 `utility_policy_hash` 的原样，而一条 `node_metrics`
+观测的 `policy_hash` 来自节点的 `_utility_policy_hash` 哨兵字段，那个始终是纪元
+策略。对旧检查点而言，这个后果值得直白说出来：一个旧的惩罚侧哈希会自成一个分面，
+其取值是任何纪元都不曾用过、也不会出现在任何 `…/policies` 或 `…/epochs` 行里的。
+那既不是数据错误，也不是这次运行采纳过的策略；它只是同一个字段名的旧含义。见
+[RQGM Schema 参考](rqgm_schemas.md)的「`rqgm_utility_record.schema.json`」一节。
 
 原始攻击与已验证惩罚的区分由类型而非约定强制：一条原始对抗断言（`atk_*`）
 只能被表示为 `RqgmRawAttackV1`，而该类型**根本没有得分、惩罚或置信度字段**
@@ -210,7 +286,7 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 | 只有字节仍能正确哈希的策略正文才会被提供。 | 当存储的文件不再与注册的 `prompt_hash` 匹配时，`…/policies` 返回 `body: null` 加一条降级理由（这是一次性写入规则在存储侧的体现）。 |
 | 论文的胜出者是一次经过评审的选择。 | `…/paper-archive` 在 `winner` 下报告 `is_best_belief` 草稿，它既不是治理胜出者也不是研究结果；`materialized` 表示 `full_paper.tex` 是否存在。 |
 | 缺失就报告为缺失。 | 每个可选来源都伴随存在性标志（`evolution_present`、`meta_outputs_present`、`state_present`、`archive_present`、`stat_present`、`corpus_present`），并且在工件缺失时计数保持为 `None` —— 绝不是 `0`。当没有冻结任何论文策略时，锚点的 `enabled` 为 `None`。 |
-| 载荷保持有界。 | overview 不内嵌任何列表；审计条目把数组概括为 `<key>_count` 并截断过长字符串，原始载荷仅在 `?expand=1` 时可得；转换条目携带计数，原始事件同样仅在 `?expand=1` 时提供。 |
+| 载荷保持有界。 | overview 不内嵌任何列表；审计条目把数组概括为 `<key>_count` 并截断过长字符串，原始载荷仅在 `?expand=1` 时可得；转换条目携带计数，原始事件同样仅在 `?expand=1` 时提供。唯一的例外是 `…/score-rewrites` 条目内部的节点 id 数组 —— 见下面的「分页」一节。 |
 
 ## 分页
 
@@ -219,6 +295,14 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 这两个日志分页上的 `source_revision` 是源文件已解析的字节长度（不含撕裂的
 尾部）。共享的游标契约只在
 [REST API → 游标约定](rest_api.md#游标约定)记录一次。
+
+有一处边界是缺失的，而它是这个接口面上唯一无界的载荷。一个 `…/score-rewrites`
+条目会把 `invalidated_node_ids`、`recompute_node_ids`、
+`frontier_removed_node_ids` 与 `frontier_reinstated_node_ids` 从事件字段整份复制
+进来并完整内嵌；`invalidated_node_count` 是额外添上的便利项，而不是这些列表的
+替代。`limit` 限制的是每页的条目数，而不是单个条目内的节点 id 数，因此一次让树
+中很大一部分失效的边界会产出一个很大的条目。用于单独分页这些 id 的、按改写维度
+的关联端点是一个**已知缺口** —— 需要它的客户端只能自己分页条目并处理这些数组。
 
 ## 另请参阅
 

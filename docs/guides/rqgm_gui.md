@@ -34,7 +34,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-09
 ---
 
 # RQGM Governance Workspace Guide
@@ -107,6 +107,17 @@ adopts no policy and rewrites no score, so this workspace stays read-only
 either way. The 104 `rqgm.*` governance and tuning parameters are still
 configuration-file only.
 
+**Known gap — no governance tab shows those parameters either.** There is
+no effective-configuration snapshot anywhere in this workspace: no
+Governance tab reads a configuration endpoint, and the Overview tab reports
+the current epoch, the policy and constitution hashes, the integrity flags,
+the registry summary and the last-commit timestamp — nothing about
+configuration. The one piece of configuration provenance on the page is the
+**Mode source** chip, and it names where the run's execution mode was
+recorded as coming from, not where any `rqgm.*` value came from. What the workspace
+shows you is what the run *did*, replayed from its artifacts; what it was
+*told to do* has to be read from the run's own configuration.
+
 The tab strip is a real `role="tablist"` composite with
 `aria-selected` / `aria-controls` wiring, so it is fully keyboard
 navigable.
@@ -172,6 +183,21 @@ Note that node score states (`computed`, `recomputed`, `stale`,
 different colour family. The two vocabularies are structurally kept apart
 so one can never borrow the other's meaning.
 
+**Known gap — there is no lifecycle graph.** The Registry tab is those two
+tables under a snapshot-verification badge, and nothing else. The workspace
+draws no node-and-edge view of the
+lifecycle, no accountability edges between components, and no per-entry
+transition history; the only provenance a row carries is its
+`source_event_ids`.
+
+The `rule_id` of the T1–T21 transition that moved an entry is not rendered
+anywhere either. The transitions read model does carry `rule_ids` per
+committed transaction, but no tab consumes it, so "why did this component
+become `quarantine`?" cannot be answered from the UI. Read
+`rqgm_transitions.jsonl` for that — see
+[File Formats Reference](../reference/file_formats.md), section
+"`rqgm_transitions.jsonl`".
+
 ### Accountability — "who attacked this node, and did it stick?"
 
 Pick a node from the selector; you get two clearly separated tables.
@@ -191,6 +217,23 @@ fields (`target_component_id`, `affected_components`) when present.
 long list of raw attacks is not evidence of a bad node; an empty
 validated-attack table is not proof of innocence. Only the adjudication
 chain converts a claim into a consequence.
+
+**Known gap — the chain shown here stops at the validated attack.**
+Adjudication continues past `vat_*` in the run itself: the epoch-boundary
+audit appends `evidence_bundle`, `impeachment_motion`, `governance_defense`
+and `impeachment_outcome` records to `rqgm_audit.jsonl`, and the epoch's
+`governance_report` carries the `bond_accounting` block (`posted`,
+`refunded`, `forfeited`, `remaining_budget`) and a `recommendations` list.
+None of that reaches this tab. The RQGM read models parse no motion,
+defense, outcome, bond or recommendation field, so the workspace can tell
+you that an attack was validated but not whether anyone was impeached for
+it, what action was requested, or how it was decided.
+
+To follow the rest of the chain, use the Audit tab's **Record type**
+filter — it is a free-text box, so you type the record type name yourself —
+or read the bytes at the offsets the Audit rows give you. The record shapes
+are in [RQGM artifact schemas](../reference/rqgm_schemas.md), under "The
+motion-pipeline records".
 
 ### What "zero attacks" does and does not mean
 
@@ -252,6 +295,15 @@ each utility-policy supersession with its consequences: from-policy →
 to-policy, invalidated nodes, recomputes, frontier removals and
 reinstatements. Those node sets come from the real event fields — they are
 not recomputed by the GUI.
+
+**Known gap — no policy diff is computed.** A score rewrite tells you
+`from_policy_hash` → `to_policy_hash` and which nodes the boundary touched;
+it does not tell you *what changed inside the policy*. Nothing in the read
+models or the UI diffs two policy bodies, and no rewrite carries a reason
+code for the change. The **Epoch utility policies** table renders each body
+as a one-line `key=value` summary with nested values elided, so to compare
+two policies you open their epochs on the Epoch Timeline tab — where the
+body is rendered in its five governed keys — and compare them yourself.
 
 Missing numbers render as `unknown`, never as `0`.
 
@@ -359,6 +411,18 @@ view can never inherit rows from a differently-filtered one.
 
 Every row names its raw source: `rqgm_audit.jsonl@<byte offset>` plus the
 event hash. The table ends with an explicit *"End of committed log"*.
+
+**Known gap — the transition log has no table of its own.**
+`GET /api/v1/runs/{run_id}/rqgm/transitions` is a published endpoint with
+the same byte-offset cursor contract, but nothing in this workspace calls
+it: the typed client exposes eleven RQGM fetchers and the transition page is
+not one of them. Transition evidence reaches the UI only indirectly — as the
+Overview tab's transitions-chain integrity flag, as an epoch's opening and
+closing boundary transactions on the Epoch Timeline detail, and as the
+`source_event_ids` on a Registry row. To walk the transition log itself,
+call the endpoint directly; it is listed in
+[REST API reference](../reference/rest_api.md) under "RQGM governance
+(read-only)".
 
 ## Drilling from an aggregate to the raw artifact
 

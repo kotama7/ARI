@@ -132,12 +132,14 @@ RQGM 不替换 `idea.json`；它把它降级为提案记录存储的一个**投�
 
 ## 新增的检查点文件
 
-一次 `ari_rqgm` 运行会新增以下文件。新文件名注册在
+一次 `ari_rqgm` 运行会新增以下文件。新增的检查点根目录文件名注册在
 `PathManager.META_FILES`（`ari/paths.py`）中，因此 ARI 将它们归类为
 运行元数据 —— 绝不复制到节点工作目录 —— 且 `proposals/` 子树额外被
 排除在节点文件报告之外（由
 `test_rqgm_proposals.py::test_proposal_filenames_registered` /
-`test_proposals_never_in_files_changed` 钉住）。**`simple_bfts`
+`test_proposals_never_in_files_changed` 钉住）。子目录内容
+（`proposals/archive/`、`rqgm_prompts/`、`rqgm/kca/admission-v1/`）并未按名
+注册，也无需注册：这次复制只遍历检查点根目录下的文件。**`simple_bfts`
 运行不写入其中任何文件** —— 唯一例外是 `proposals/`，仅当你按上文
 选择启用 `record_only` 时才会出现在 `simple_bfts` 下。
 

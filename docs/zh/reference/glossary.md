@@ -22,7 +22,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # 术语表
@@ -56,9 +56,13 @@ BFTS 节点相对于其父节点所扮演的角色：`draft`、`improve`、`debu
 [BFTS 算法](../concepts/bfts.md)。
 
 **sterile (不育节点)**
-执行后其 `work_dir` 与父节点字节完全一致的子节点
-（sha256 差异中 `added = modified = deleted = 0`）。它会被标记为
-`_sterile = True`，评分为 `0.0` 并被剪枝 —— 这正是阻止子节点在不实际运行任何东西的情况下"继承"父节点结果的机制。参见
+执行后相对父节点没有任何改动的子节点。当 pin 定的 problem 声明了 `score_inputs` 时，
+不育性由这些文件的 sha256 比较判定；否则回退到整个 `work_dir` 的差异
+（`added = modified = deleted = 0`；不复制父 `work_dir` 时为 `added = modified = 0`）。
+两条路径都会把节点标记为 `_sterile = True` 并剪枝，且不育的子节点绝不会让父节点退役；
+整个 `work_dir` 这条路径还会把 `_scientific_score` 钳制为 `0.0`、`has_real_data` 钳制为
+`False`，而 `score_inputs` 这条路径则保留已测得的分数、`has_real_data` 与
+`evaluation_status`。这正是阻止子节点在不实际运行任何东西的情况下"继承"父节点结果的机制。参见
 [架构 → work_dir 继承](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)。
 
 **should_prune**
@@ -121,13 +125,15 @@ LLM 评判器（它从 `continue` / `switch_to_idea` / `fanout` / `terminate` �
 ## 内存
 
 **ancestor scope (祖先范围)**
-节点只能从其祖先链（root → parent）读取内存、绝不能从兄弟节点读取的规则。由
-`search_memory` 上的元数据过滤器强制执行。参见
+节点只能从其祖先链（root → parent）读取内存、绝不能从兄弟节点读取的规则。
+`search_memory` 会拒绝签名谱系之外的任何 id，后端还会按 `node_id ∈ ancestor_ids`
+做元数据过滤。参见
 [内存架构](../concepts/memory.md)。
 
 **CoW (Copy-on-Write，写时复制)**
-使祖先内存在各兄弟节点间保持字节稳定的写入保护：写入侧工具会拒绝任何不等于当前活跃
-`$ARI_CURRENT_NODE_ID` 的 `node_id`。参见 [内存架构](../concepts/memory.md)。
+使祖先内存在各兄弟节点间保持字节稳定的写入保护：写入侧工具会拒绝任何不等于调用所携带的
+签名 `NodeContextV1` 自身节点的 `node_id`。环境变量 `$ARI_CURRENT_NODE_ID` 不具备任何权限。
+参见 [内存架构](../concepts/memory.md)。
 
 **Letta**
 自 v0.6.0 起使用的内存后端（前身为 MemGPT）。每个检查点都获得一个专属的代理，持有两个集合：`ari_node_<hash>`（祖先范围的归档）和 `ari_react_<hash>`（扁平 ReAct 轨迹）。参见
@@ -147,7 +153,7 @@ root→best 谱系），从而将论文主张接地到实际测量到的内容�
 [架构 → 每节点提示组合](../concepts/architecture.md#per-node-prompt-composition)。
 
 **MCP skill (MCP 技能)**
-打包为 Model Context Protocol 服务器的一项能力（例如 `ari-skill-hpc`）。技能只能从 `ari.public.*` 导入。共有 14 个（13 个默认 + 1 个额外）。参见 [MCP 技能](skills.md)。
+打包为 Model Context Protocol 服务器的一项能力（例如 `ari-skill-hpc`）。技能只能从 `ari.public.*` 导入。`ari-skill-*` 包共有 17 个，随附的 `workflow.yaml` 显式列出了其中 13 个。参见 [MCP 技能](skills.md)。
 
 **VirSci**
 将研究目标转化为假说和主要指标的多代理审议，在根节点通过 `generate_ideas` 运行一次。参见

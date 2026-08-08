@@ -1,3 +1,42 @@
+---
+sources:
+  - path: ari-core/ari/viz/v1/router.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/errors.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/dto.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/openapi.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/openapi.json
+    role: schema
+  - path: ari-core/ari/viz/v1/__init__.py
+    role: implementation
+  - path: ari-core/ari/viz/__init__.py
+    role: implementation
+  - path: ari-core/pyproject.toml
+    role: config
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
+  - path: scripts/snapshot_contracts.py
+    role: implementation
+  - path: .github/workflows/contracts.yml
+    role: config
+  - path: .github/workflows/refactor-guards.yml
+    role: config
+  - path: ari-core/tests/test_gui_v1_api.py
+    role: test
+  - path: ari-core/tests/test_contract_snapshots.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/v1TypesDrift.test.ts
+    role: test
+  - path: docs/concepts/gui_architecture.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-02: `/api/v1` transport and OpenAPI generation
 
 Status: accepted (2026-07-23).

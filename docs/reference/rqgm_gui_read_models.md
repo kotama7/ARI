@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-09
 ---
 
 # RQGM GUI Read Models
@@ -27,7 +27,7 @@ mechanism itself see [RQGM architecture](../concepts/rqgm_architecture.md).
 
 ## Ground rules
 
-The reader (`ari-core/ari/viz/v1/rqgm.py`) is bound by four constraints that
+The reader (`ari-core/ari/viz/v1/rqgm.py`) is bound by five constraints that
 shape every payload on this page:
 
 1. **`ari.rqgm` is never imported.** The read model parses the committed
@@ -54,6 +54,38 @@ shape every payload on this page:
 4. **Read-only.** Nothing writes a file, touches `viz.state` or mutates
    `os.environ`, and there is **no mutation endpoint** — the GUI cannot
    perform governance actions, only observe them.
+5. **No runtime instrumentation was added for the GUI.** Every logical event
+   these read models need already existed as a committed record — a policy
+   proposal is a `UtilityPolicyCandidate`, a policy adoption is a T20
+   transition, a score observation is a `UtilityRecord`, a score rewrite is a
+   `SelectiveErasureEvent` plus a `FrontierRebuildEvent`, a registry change is
+   a committed transition event in `rqgm_transitions.jsonl` — so the reader is
+   a pure projection over artifacts the run writes anyway, and no new event
+   type was introduced to serve it.
+
+**Known gap — no live governance progress.** The nine-step epoch audit emits
+nothing while it runs: the pipeline *returns* its records, and the orchestrator
+appends all of them — evidence bundles, motions, defenses, outcomes, and the
+`governance_report` last — only after the whole audit has returned. A boundary
+in flight is therefore invisible rather than partially rendered. There is no
+stage-progress event type and no recompute-started signal either; a recompute
+becomes visible only through the records it leaves behind. The governance
+workspace also subscribes to the `run` topic alone, and `run` is published on
+checkpoint switch and after a v1 launch — an epoch boundary pushes no
+invalidation of its own. Treat every governance payload as a snapshot of what
+was committed when you asked, and refetch to advance it. The topic vocabulary
+is frozen; see [REST API Reference](rest_api.md), section "Realtime:
+`GET /api/v1/events/stream` (SSE)".
+
+**Known gap — no schema validation.** The reader never loads the JSON Schemas
+under `ari/schemas/`. It reads each field defensively, keeping the value when
+it is of the expected type and answering `None` when it is not, so a record
+that parses as JSON but violates its schema is projected as far as its
+readable fields allow rather than rejected — the same tolerance that lets a
+legacy checkpoint render at all. What the module does refuse is listed under
+"Integrity flags and degraded semantics" below — chain and hash verification,
+the closed status vocabulary, the write-once policy-body check — and schema
+conformance is not among them.
 
 ## Capability gating
 
@@ -66,6 +98,15 @@ non-RQGM run. Capability detection is artifact presence, nothing else:
 | `mode` / `mode_source` | The persisted `mode` and its provenance in `rqgm_state.json`. |
 | `paper_mode` | `{ckpt}/paper_archive_state.json` exists. Execution mode and paper mode are **independent axes**: all four combinations are valid. |
 | `reasons` | Why the capability is off / unreadable — never an empty success claim. |
+
+`reasons` is free-form prose, not a taxonomy. The endpoint emits one of three
+strings — the run is a `simple_bfts` run, `rqgm_state.json` is unreadable, or
+the file records a mode with `rqgm_enabled` false — and there is no
+machine-readable reason code to switch on. **Known gap:** `enabled: false`
+never distinguishes "governance was configured off" from "a governance budget
+was exhausted" or "this checkpoint predates the feature". Artifact presence is
+the only signal, so all three read as absence; a client that needs them apart
+must consult the run's own configuration.
 
 The other eleven endpoints answer the typed `404 not_found` envelope for a
 run without `rqgm_state.json` (message: "not an RQGM run … simple_bfts
@@ -91,7 +132,7 @@ hash-chained log is the source of truth, and a rollup/snapshot file is read
 | `…/evolution` | `prompt_evolution.jsonl`, `rqgm_meta_outputs.jsonl`, plus registry replay for the adoption join | — |
 | `…/paper-archive` | `paper_draft_archive.jsonl`, `paper_anchor_corpus.jsonl`, `rqgm/paper_self_preference_stat.json`, `full_paper.tex` (presence) | `paper_archive_state.json` (persisted mode + frozen paper policy) |
 
-Two consequences worth internalising:
+Three consequences worth internalising:
 
 - `rqgm_registry.json` is a **rollup**, not the registry. `…/registry`
   rebuilds components and prompts by replaying committed transitions and
@@ -100,6 +141,20 @@ Two consequences worth internalising:
 - `epoch_state.json` never sets `current_epoch`. `…/overview` derives the
   current epoch from the last committed `epoch_open` and, if the snapshot
   disagrees, appends a degraded reason ("snapshot ahead of the truth log").
+- **Several governed artifacts have no read model at all** — a known gap.
+  `proposals/proposal_records.jsonl` and `proposals/proposal_index.json`,
+  `rqgm_cleanroom.jsonl`, `rqgm_erasure_state.json`,
+  `rqgm_governance_cache.jsonl`, `rqgm/adversarial_replay_pool.json` and
+  `prompt_specs.json` are opened by no endpoint on this surface, and
+  `rqgm_prompts/` is reached only indirectly — through the `source.path` that
+  a registered `utility_policy` prompt names, and only for that one role.
+  Proposal routing, clean-room regeneration, the erasure ledger, the
+  governance cache and the replay pool are therefore still read from disk by
+  hand; their formats are in [File Formats Reference](file_formats.md),
+  section "RQGM epoch-governance files (opt-in `ari_rqgm` mode)". The
+  checkpoint's `constitution.yaml` copy is likewise unread, but that one is by
+  design and not a gap: it is a provenance marker no ARI code reads back, and
+  `…/overview` reports `constitution_hash` from `meta.json` instead.
 
 ## Integrity flags and degraded semantics
 
@@ -173,6 +228,31 @@ keeps them in **separate lists that no consumer can accidentally merge into
 one series** (`…/nodes/{node_id}/lineage` returns `penalty_channel` and
 `policy_channel` side by side).
 
+Both channels report what the source records already hold, and nothing more.
+`RqgmScoreObservationV1` carries `source`, `record_id`, `epoch_id`,
+`policy_hash`, `state`, `validated_attack_ids` and a `values` map that passes
+the source fields through verbatim — sentinel key names included — rather than
+a typed base/penalty/final triple. Three known gaps follow from that, and a
+reader expecting a scoreboard should know them up front:
+
+- **There is no rank.** No RQGM payload carries a node's rank, its rank
+  movement, or any before/after ordering, and no endpoint takes a sort or
+  comparison parameter (the whole query vocabulary on this surface is
+  `cursor`, `limit`, `expand`, `record_type` and `epoch`). Ordering nodes is
+  left to the caller — and doing it across policy hashes would break the
+  faceting rule the rest of this page enforces.
+- **There is no calculation version.** Policy identity is the `policy_hash`
+  alone. The read models have no separate notion of a scoring-code version, so
+  an observation cannot be attributed to a particular build of the code that
+  produced it.
+- **Neither channel timestamps its rows.** `RqgmScoreObservationV1` and
+  `RqgmScoreRewriteV1` carry no time field, so observations and rewrites are
+  ordered by their position in the source log rather than by a recorded
+  instant — even though a `UtilityRecord` on disk carries `created_at`. The
+  clocks this surface does report sit elsewhere: `committed_at` on a
+  `…/transitions` entry (the transaction's last `ts_iso`), `ts_iso` on a
+  `…/audit` entry, and `last_committed_transition_at` on `…/overview`.
+
 ### Channel 1 — adversarial penalty (epoch-internal, node-scoped)
 
 | Aspect | Detail |
@@ -181,6 +261,26 @@ one series** (`…/nodes/{node_id}/lineage` returns `penalty_channel` and
 | Values surfaced | `base_score`, `penalty`, `final_score`, `supersedes`, `recomputed_in_epoch` — passed through verbatim, never recomputed. |
 | Attribution | `validated_attack_ids` from the record's `input_refs`. |
 | Scope | Inside one epoch, for one node. |
+
+**One field name, two policies.** `utility_policy_hash` has meant two
+different things over the life of the format: the **penalty** policy
+(`penalty_cap`, `severity_weights`, `verdict_factors`) that the adversarial
+engine froze, and the **epoch** policy (`composite`, `axis_weights`,
+`frontier_score`, `depth_penalty_lambda`, `ucb_c`) that the boundary adopts.
+Their key sets are disjoint, so their hashes can never be equal. Records
+written after governed utility evolution landed carry the epoch policy's hash;
+older records carry the penalty policy's.
+
+Normalising the two is a **known gap** — the reader does not. A
+`utility_record` observation's `policy_hash` is whatever the record's
+`utility_policy_hash` says, while a `node_metrics` observation's comes from the
+node's `_utility_policy_hash` sentinel, which is always the epoch policy. The
+consequence for a legacy checkpoint is worth stating plainly: an old
+penalty-side hash will facet on its own, under a value that no epoch ever used
+and that appears in no `…/policies` or `…/epochs` row. That is not a data
+error and it is not a policy the run adopted; it is the older meaning of the
+same field name. See [RQGM Schema Reference](rqgm_schemas.md), section
+"`rqgm_utility_record.schema.json`".
 
 Raw versus validated is enforced by type, not by convention: a raw
 adversarial claim (`atk_*`) can only be represented as `RqgmRawAttackV1`,
@@ -230,7 +330,7 @@ simply renders the payload cannot violate them.
 | A policy body is served only if its bytes still hash correctly. | `…/policies` returns `body: null` plus a degraded reason when the stored file no longer matches the registered `prompt_hash` (the storage face of the write-once rule). |
 | The paper winner is a reviewed selection. | `…/paper-archive` reports the `is_best_belief` draft under `winner`, which is neither the governance winner nor the research result; `materialized` is `full_paper.tex` presence. |
 | Absence is reported as absence. | Presence flags (`evolution_present`, `meta_outputs_present`, `state_present`, `archive_present`, `stat_present`, `corpus_present`) accompany every optional source, and counts stay `None` — never `0` — when their artifact is missing. Anchor `enabled` is `None` when no paper policy was frozen. |
-| Payloads stay bounded. | Overview embeds no lists; audit entries summarize arrays as `<key>_count` and truncate long strings, with the raw payload available only on `?expand=1`; transition entries carry counts, with raw events only on `?expand=1`. |
+| Payloads stay bounded. | Overview embeds no lists; audit entries summarize arrays as `<key>_count` and truncate long strings, with the raw payload available only on `?expand=1`; transition entries carry counts, with raw events only on `?expand=1`. The one exception is the node-id arrays inside a `…/score-rewrites` entry — see "Paging" below. |
 
 ## Paging
 
@@ -240,6 +340,16 @@ source with a no-gap/no-duplicate guarantee and committed-only reads;
 pages is the parsed byte length of the source (excluding a torn tail). The
 shared cursor contract is documented once in
 [REST API → Cursor conventions](rest_api.md#cursor-conventions).
+
+One bound is missing, and it is the only unbounded payload on this surface. A
+`…/score-rewrites` entry embeds `invalidated_node_ids`, `recompute_node_ids`,
+`frontier_removed_node_ids` and `frontier_reinstated_node_ids` in full, copied
+from the event fields; `invalidated_node_count` is an added convenience, not a
+replacement for the list. `limit` caps entries per page, not node ids per
+entry, so a boundary that invalidated a large fraction of the tree produces
+one large entry. A per-rewrite relation endpoint to page those ids separately
+is a **known gap** — a client that needs one must page the entries and handle
+the arrays itself.
 
 ## See also
 

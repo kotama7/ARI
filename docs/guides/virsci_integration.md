@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_virsci_adapter.py
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # VirSci Integration
@@ -111,7 +111,7 @@ The adapter itself calls `survey` (topic → paper list; degrades to an empty
 list on failure) and then `generate_ideas` over MCP, and normalizes the
 `generate_ideas` payload into one `ProposalDraft` per idea — it reads only
 the nine legacy top-level keys (`virsci_adapter.GENERATE_IDEAS_KEYS`), which
-are now a subset of what the skill returns. Any tool
+are now a subset of what the skill returns. A `generate_ideas`
 failure degrades to zero drafts; content-key dedup at the store makes the
 whole path idempotent under retries.
 
@@ -191,8 +191,12 @@ reads `ari.mode`. All four combinations are valid config and boot cleanly
 
 `ari-skill-idea/vendor/virsci` is a git submodule holding the **unedited**
 upstream VirSci sources. Only the skill's opt-in `real_wrap` engine
-(`ARI_IDEA_VIRSCI_REAL=1`) executes code from it; the default reimpl engine
-runs without it, and `ari-core` never imports it. Which engine actually ran
+(`ARI_IDEA_VIRSCI_REAL=1`) runs the vendored VirSci mechanism — the
+`select_coauthors` / `generate_idea` path over a Semantic Scholar snapshot.
+The default reimpl engine borrows only the vendored discussion prompt
+templates (`sci_platform/utils/prompt.py`, read at skill import) and falls
+back to inline prompts when the submodule is not checked out, so it runs
+either way; `ari-core` never imports it. Which engine actually ran
 is reported in the `virsci_integration_status` key of the `generate_ideas`
 payload (`"real_wrap"` vs `"reimpl: …"` with the reason) — the RQGM adapter
 normalizes both statuses identically.

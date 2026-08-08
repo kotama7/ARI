@@ -46,7 +46,7 @@ sources:
     role: test
   - path: ari-core/tests/test_contract_snapshots.py
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # Internal boundaries
@@ -77,7 +77,9 @@ three-part pattern, and direct `litellm.{completion,acompletion}` calls are the
    decision note above its definition in `routing.py`).
 3. **`ari.cost_tracker._install_litellm_metadata_injector()`** monkey-patches
    `litellm.completion`/`acompletion` **process-wide** to (a) merge default cost
-   metadata (skill / phase / node, plus `epoch` once `ari_rqgm` opens one) and
+   metadata (skill / phase from `bootstrap_skill`, plus `epoch` once `ari_rqgm`
+   opens one; `node_id` is not a process default — it rides the caller's own
+   `metadata=`, e.g. `LLMClient.set_context`) and
    (b) apply `_apply_ari_routing`
    (`resolve_litellm_model` + CLI-shim `api_base` fill-in) on every call. Once
    installed, *every* direct litellm call — from any module or skill — gets ARI
@@ -89,11 +91,16 @@ codebase deliberately does not funnel everything through it.
 
 The injector is installed via `cost_tracker.set_default_metadata` /
 `init_from_env`, reached through `bootstrap_skill("<name>")` at the top of every
-skill `server.py`.
+skill `server.py` **that calls an LLM** — the skills that never import `litellm`
+(benchmark, coding, harness, hpc, knowledge, memory, orchestrator,
+tool-registry) do not install it.
 
-**Fragility to preserve:** CLI-shim routing and cost capture depend on the
-injector being installed **before the first litellm call** in a process. Skills
-guarantee this at import via `bootstrap_skill`. Core CLI/pipeline modules
+**Fragility to preserve:** CLI-shim routing and cost *attribution* depend on the
+injector being installed **before the first litellm call** in a process (the
+recording itself rides the success/failure callbacks `cost_tracker.init`
+registers beside the injector, so `set_default_metadata` alone gives routing but
+no capture). LLM-calling skills guarantee both at import via
+`bootstrap_skill`. Core CLI/pipeline modules
 (`evaluator`, `orchestrator/lineage_decision`, `root_idea_selector`,
 `pipeline/context_builder`) call litellm directly and pass `api_base`/model
 themselves, so they route correctly even without the global injector — but they
@@ -138,7 +145,9 @@ container-exec or local-exec duplication.
 handles as module globals (imported as `_st`): `_last_proc` (most-recent
 experiment Popen; torn down by `api_process._api_stop` via
 `os.killpg(os.getpgid(pid))`), `_running_procs` (checkpoint-path→Popen map,
-written by the two launch paths), and `_gpu_monitor_proc` (its logic lives in
+written by three handlers — `api_experiment.py`'s `/api/launch` and
+`/api/run-stage` plus the `/api/v1` launch path in `viz/v1/launch.py`), and
+`_gpu_monitor_proc` (its logic lives in
 `api_process.py`; the server reaps a stale monitor across restarts). This is the
 canonical example of the "avoid hidden coupling through global mutable state"
 caution — touch its lifecycle only deliberately.
@@ -188,8 +197,9 @@ fork that constructs its own `MCPClient` in the child.
 3. **Shared checkpoint-tree writes.** There is **no git worktree**: concurrent
    committers all write the same `tree.json` / `nodes_tree.json` / `results.json`
    via one shared `agent._progress_cb` → `_save_tree_incremental`; thread-safety
-   + throttle live in `ari.checkpoint.save_tree_incremental` (lock + mtime
-   throttle). Per-node work-dirs are isolated by
+   + throttle live in `ari.checkpoint.save_tree_incremental` (a lock plus a
+   `time.monotonic()` minimum-interval throttle, 1.0 s by default, which
+   `force=True` bypasses). Per-node work-dirs are isolated by
    `PathManager.node_work_dir(run_id, node_id)`.
 
 ## RQGM mode boundary (`ari.rqgm`)
@@ -438,7 +448,9 @@ than as an import.
 
 **Nothing enforces this direction.** There is no test and no quality-gate rule
 for it: `scripts/quality/check_import_boundaries.yaml` constrains the skill→core
-and core→skill edges only and names no core-internal package pair. The adjacent
+and core→skill edges, and its one core-internal knob
+(`forbid_core_to_viz_from_cli`, off by default) covers only
+`ari/cli/**` → `ari.viz.*`. The adjacent
 rule that *is* enforced is a different one —
 `ari-core/tests/test_manuscript_complete.py::test_default_cli_import_does_not_load_manuscript_domain`
 asserts that importing `ari.cli` loads no `ari.manuscript*` module, which keeps

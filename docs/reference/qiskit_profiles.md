@@ -16,7 +16,7 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
     role: config
-last_verified: 2026-08-05
+last_verified: 2026-08-08
 ---
 
 # Qiskit and IBM Quantum experiment profiles
@@ -44,7 +44,7 @@ domain review. Relevant upstream primary sources are the
 [Qiskit MCP repository](https://github.com/Qiskit/mcp-servers),
 [IBM's MCP server guide](https://quantum.cloud.ibm.com/docs/en/guides/qiskit-mcp-servers),
 [Qiskit QPY API](https://quantum.cloud.ibm.com/docs/en/api/qiskit/qpy), and the
-official PyPI release pages linked from the support record.
+official PyPI release pages of the distributions the support record pins.
 
 The only formally promoted identity is
 `qiskit/core-0.3.1+aer-0.17.2-local-ideal`, with verified lock digest

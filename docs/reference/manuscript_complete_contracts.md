@@ -1,3 +1,98 @@
+---
+sources:
+  - path: ari-core/ari/manuscript/contracts.py
+    role: implementation
+  - path: ari-core/ari/manuscript/digest.py
+    role: implementation
+  - path: ari-core/ari/manuscript/snapshot.py
+    role: implementation
+  - path: ari-core/ari/manuscript/builder.py
+    role: implementation
+  - path: ari-core/ari/manuscript/profiles.py
+    role: implementation
+  - path: ari-core/ari/manuscript/readiness.py
+    role: implementation
+  - path: ari-core/ari/manuscript/briefs.py
+    role: implementation
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
+  - path: ari-core/ari/manuscript/state.py
+    role: implementation
+  - path: ari-core/ari/manuscript/repair.py
+    role: implementation
+  - path: ari-core/ari/manuscript/publication.py
+    role: implementation
+  - path: ari-core/ari/manuscript/runtime.py
+    role: implementation
+  - path: ari-core/ari/manuscript/evaluation.py
+    role: implementation
+  - path: ari-core/ari/public/manuscript.py
+    role: implementation
+  - path: ari-core/ari/paper_contract.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript_repair_runtime.py
+    role: implementation
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
+  - path: ari-core/ari/rqgm/paper_runtime.py
+    role: implementation
+  - path: ari-core/ari/rqgm/paper_draft_executor.py
+    role: implementation
+  - path: ari-core/ari/rqgm/kernel_harness_integrity.py
+    role: implementation
+  - path: ari-core/ari/rqgm/evaluation/kca_probe.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/pipeline/stages.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/ari/schemas/manuscript_requirement_profile_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_exploration_snapshot_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_omission_manifest_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_context_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_readiness_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_section_brief_bundle_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_authoring_binding_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_segment_record_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/research_repair_request_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/research_repair_plan_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_repair_transaction_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_auto_repair_round_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_publication_decision_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_publication_lock_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_evaluation_report_v1.schema.json
+    role: schema
+  - path: ari-core/ari/schemas/manuscript_transition_v1.schema.json
+    role: schema
+  - path: scripts/sync_manuscript_schemas.py
+    role: implementation
+  - path: scripts/evaluate_manuscript_complete.py
+    role: implementation
+  - path: scripts/run_manuscript_complete_release.py
+    role: implementation
+  - path: scripts/manuscript_complete_release_gates.json
+    role: config
+last_verified: 2026-08-09
+---
+
 # Manuscript Complete V1 contracts
 
 All normative documents reject unknown fields, use safe checkpoint-relative

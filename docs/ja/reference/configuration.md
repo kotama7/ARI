@@ -943,15 +943,14 @@ skills:
 | `ARI_MODEL_RUBRIC_AUDIT` | `audit_rubric` の監査 LLM (生成器とは独立) | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` の目標葉数の上書き。`0` / 未設定で論文長から自動 (~1葉/75語、[50,400] にクランプ)。GUI Wizard の "Target leaves" 欄。 | (未設定) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | 生成器 temperature の上書き。GUI Wizard の "Temperature" 欄。 | (未設定) |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 二段階生成（スケルトン + 並列サブツリー）の強制 ON/OFF (`1`/`true`/`on` vs `0`/`false`/`off`)。単一コール比で葉数約 4 倍・深さ +1〜2 層、API トークン消費約 5 倍。未設定時は kwarg デフォルト（現状 ON）。GUI Wizard の "二段階生成" トグル。 | (未設定、既定 ON) |
-| `ARI_MODEL_REPLICATE` | `build_reproduce_sh` (論文 → reproduce.sh, v0.7.0) のリプリケータ LLM | `claude-opus-4-7` |
+| `ARI_MODEL_REPLICATOR` | `build_reproduce_sh` (論文 → reproduce.sh, v0.7.0) のリプリケータ LLM。`ARI_MODEL_REPLICATE` は GUI 設定側のキーで、GUI がこの名前へ写す | `gpt-5-mini` |
 | `ARI_MODEL_JUDGE` | `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; LiteLLM 経由でプロバイダ自由) の判定 LLM | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | `decide_lineage_action` の判定 LLM (lineage decision, v0.7.0)。未指定時は `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` の順にフォールバック | (auto) |
 | `ARI_MODEL_ROOT_SELECT` | VirSci プールから `ideas[0]` を選び直す LLM (lineage decision, v0.7.0)。フォールバック順は `ARI_MODEL_LINEAGE` と同じ | (auto) |
 | `ARI_PHASE1_SANDBOX` | Phase 1 サンドボックス: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
 | `ARI_SLURM_WALLTIME` | SLURM Phase 1 の `--time` HH:MM:SS (v0.7.0, 復元)。空ならルーブリックの `max_runtime_sec` から算出。 | (auto) |
-| `ARI_PHASE1_DOCKER_IMAGE` | docker サンドボックスのコンテナイメージ | `ubuntu:24.04` |
-| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Apptainer/Singularity サンドボックスのイメージ | `docker://ubuntu:24.04` |
+| `ARI_PHASE1_DOCKER_IMAGE` | docker サンドボックスのコンテナイメージ | (なし — 未設定なら拒否) |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Apptainer/Singularity サンドボックスのイメージ | (なし — 未設定なら拒否) |
 | `ARI_PUBLISH_DRYRUN` | `ari ear publish --dry-run` を強制 (CI 安全, v0.7.0) | (off) |
 | `ARI_REGISTRY_DATA` | `ari registry serve` の sqlite + artifact 保管 root | (なし — 明示設定が必須。v0.5.0 以前の `$HOME/.ari/registry-data` フォールバックは DeprecationWarning を出し、v1.0 で削除) |
 | `ARI_REGISTRY_TOKEN` | `ari clone ari://...` / `ari ear publish --backend ari-registry` 用 bearer token | (なし) |

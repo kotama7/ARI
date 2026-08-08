@@ -1,3 +1,38 @@
+---
+sources:
+  - path: ari-core/ari/config/field_registry.py
+    role: implementation
+  - path: ari-core/ari/config/resolver.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/config_api.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/ari/rqgm/mode.py
+    role: implementation
+  - path: ari-core/ari/rqgm/paper_mode.py
+    role: implementation
+  - path: ari-core/ari/rqgm/state.py
+    role: implementation
+  - path: ari-core/ari/viz/api_capabilities.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/ConfigStudio/ExecutionSection.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/ConfigStudio/modeIntents.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/ConfigStudio/LaunchPanel.tsx
+    role: implementation
+  - path: ari-core/tests/test_gui_v1_mode_selection.py
+    role: test
+  - path: ari-core/tests/test_gui_v1_launch.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/ConfigStudio/__tests__/ConfigStudioExecutionMode.test.tsx
+    role: test
+  - path: docs/guides/execution_modes.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-09: GUI mode selection for a new run
 
 Decision (ADR-09, accepted 2026-07-27): exactly two orthogonal intents become

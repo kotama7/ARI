@@ -1,3 +1,26 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/config_api.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/ari/viz/frontend/src/services/api/client.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/i18n/en.ts
+    role: implementation
+  - path: ari-core/tests/test_gui_workflow_write_guard.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-10: bundled `workflow.yaml` write guard
 
 Cited in source and tests as `ADR-10`. Accepted 2026-07-23 for the GUI refresh

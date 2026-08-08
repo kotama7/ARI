@@ -1,3 +1,36 @@
+---
+sources:
+  - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/App.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Layout/Sidebar.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/app/queryClient.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/hooks/useApi.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/PaperBench/PaperRegistryPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
+  - path: scripts/check_bundle_budget.py
+    role: implementation
+  - path: scripts/quality/check_bundle_budget.yaml
+    role: config
+  - path: ari-core/ari/viz/frontend/src/app/__tests__/routeRegistry.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/routeRenderBaseline.test.tsx
+    role: test
+  - path: scripts/tests/test_check_bundle_budget.py
+    role: test
+  - path: docs/concepts/gui_architecture.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-01: router and server-state library
 
 Cited in source and tests as `ADR-01`. Accepted 2026-07-23 for the GUI refresh

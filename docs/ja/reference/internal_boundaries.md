@@ -46,7 +46,7 @@ sources:
     role: test
   - path: ari-core/tests/test_contract_snapshots.py
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # 内部境界
@@ -78,8 +78,10 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
    外されました（`routing.py` の定義直上にある決定ノートを参照）。
 3. **`ari.cost_tracker._install_litellm_metadata_injector()`** は
    `litellm.completion`/`acompletion` を**プロセス全体**にわたって
-   モンキーパッチし、(a) デフォルトのコストメタデータ（skill / phase / node、
-   および `ari_rqgm` がエポックを開いた後は `epoch`）を
+   モンキーパッチし、(a) デフォルトのコストメタデータ（`bootstrap_skill` 由来の
+   skill / phase、および `ari_rqgm` がエポックを開いた後は `epoch`。`node_id` は
+   プロセスのデフォルトではなく、呼び出し側自身の `metadata=`（例:
+   `LLMClient.set_context`）に乗ります）を
    マージし、(b) 毎回の呼び出しに `_apply_ari_routing`（`resolve_litellm_model`
    ＋ CLI シムの `api_base` 補完）を適用します。一度インストールされれば、
    どのモジュールやスキルからのものであっても、*すべての* litellm 直接呼び出しが
@@ -90,12 +92,17 @@ ARI の LLM 境界は「すべてが `LLMClient` を呼ばなければならな�
 **ではなく**、コードベースは意図的にすべてをここに集約していません。
 
 インジェクタは `cost_tracker.set_default_metadata` / `init_from_env` 経由で
-インストールされ、これらは各スキルの `server.py` 冒頭にある
-`bootstrap_skill("<name>")` を通じて到達されます。
+インストールされ、これらは **LLM を呼ぶ**各スキルの `server.py` 冒頭にある
+`bootstrap_skill("<name>")` を通じて到達されます —— `litellm` を一切
+インポートしないスキル（benchmark, coding, harness, hpc, knowledge, memory,
+orchestrator, tool-registry）はインストールしません。
 
-**保つべき脆弱性:** CLI シムのルーティングとコストキャプチャは、プロセス内で
+**保つべき脆弱性:** CLI シムのルーティングとコスト*帰属*は、プロセス内で
 **最初の litellm 呼び出しより前に**インジェクタがインストールされていることに
-依存します。スキルは `bootstrap_skill` によりインポート時にこれを保証します。
+依存します（記録そのものは `cost_tracker.init` がインジェクタと並べて登録する
+success/failure コールバックに乗るので、`set_default_metadata` 単独では
+ルーティングだけが効きキャプチャは効きません）。LLM を呼ぶスキルは
+`bootstrap_skill` によりインポート時にその両方を保証します。
 コアの CLI / パイプラインモジュール（`evaluator`、
 `orchestrator/lineage_decision`、`root_idea_selector`、
 `pipeline/context_builder`）は litellm を直接呼び出し、`api_base`/model を
@@ -141,7 +148,9 @@ import しているのは `ari.public.execution.WorkspaceRefV1` だけです。�
 OS ハンドルをモジュールグローバル（`_st` としてインポートされる）として
 保持します: `_last_proc`（直近の実験の Popen。`api_process._api_stop` が
 `os.killpg(os.getpgid(pid))` で破棄する）、`_running_procs`
-（checkpoint-path→Popen のマップ。2 つのローンチパスが書き込む）、そして
+（checkpoint-path→Popen のマップ。書き込むのは 3 つのハンドラ ——
+`api_experiment.py` の `/api/launch` と `/api/run-stage`、および
+`viz/v1/launch.py` の `/api/v1` ローンチパス）、そして
 `_gpu_monitor_proc`（そのロジックは `api_process.py` にある。サーバは再起動を
 またいで残留モニタを回収する）。これは「グローバルな可変状態を通じた隠れた
 結合を避ける」という戒めの典型例です —— そのライフサイクルには意図を持って
@@ -196,8 +205,9 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
    並行するコミッタはすべて、1 つの共有された `agent._progress_cb` →
    `_save_tree_incremental` を介して同一の `tree.json` / `nodes_tree.json` /
    `results.json` に書き込みます。スレッド安全性＋スロットルは
-   `ari.checkpoint.save_tree_incremental` にあります（ロック＋mtime
-   スロットル）。ノードごとの work-dir は
+   `ari.checkpoint.save_tree_incremental` にあります（ロック＋`time.monotonic()`
+   による最小間隔スロットル。既定 1.0 秒で、`force=True` は迂回します）。
+   ノードごとの work-dir は
    `PathManager.node_work_dir(run_id, node_id)` によって分離されます。
 
 ## RQGM モード境界 (`ari.rqgm`)
@@ -463,8 +473,10 @@ paper-reviewer のビューを自前で組み立てます —— 同じ 4 つの
 
 **この向きを強制するものは何もありません。** テストも品質ゲートの規則も
 ありません: `scripts/quality/check_import_boundaries.yaml` が制約するのは
-skill→core と core→skill の辺だけで、core 内部のパッケージ対は 1 つも
-名指ししていません。隣接する*強制されている*規則は別物です ——
+skill→core と core→skill の辺であり、core 内部のノブは 1 つだけ
+（`forbid_core_to_viz_from_cli`、既定はオフ）で、対象は
+`ari/cli/**` → `ari.viz.*` に限られます。隣接する*強制されている*規則は
+別物です ——
 `ari-core/tests/test_manuscript_complete.py::test_default_cli_import_does_not_load_manuscript_domain`
 は `ari.cli` のインポートが `ari.manuscript*` モジュールを 1 つも
 ロードしないことをアサートします。これはコンパイラをデフォルトの

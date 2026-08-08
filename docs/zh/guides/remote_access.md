@@ -28,7 +28,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-08-08
 ---
 
 # 远程访问与运维指南
@@ -71,8 +71,12 @@ last_verified: 2026-07-27
 | `ARI_GUI_CHALLENGES` | 开启 | `0` 关闭确认挑战 |
 | `ARI_GUI_HEALTH` | 开启 | `0` 关闭健康/诊断接口面 |
 
-每一个都是有意设置的回滚手段，并与其实现代码放在一起记录。把它们中的任何
-一个关掉，都只是恢复某个曾经发布过的行为 —— 它们都不会解锁任何新东西。
+除 `ARI_GUI_TOKEN` 之外，每一个都是有意设置的回滚手段，并作为 kill-switch
+register 与其实现代码放在一起记录：六个安全开关记在 ADR-07 register 中，
+`ARI_GUI_V2` 记在 gui_refresh 的 rollout-flag policy（owner / default /
+rollback / removal gate）中。把其中任何一个关掉，都只是恢复某个曾经发布过的
+行为，不会解锁任何新东西。`ARI_GUI_TOKEN` 不是开关，而是 token
+本身的取值 —— 不设置它并不会恢复什么，而是让服务器自行生成一个（见下文）。
 
 ## 选择加入非回环绑定
 
@@ -288,7 +292,7 @@ ssh -N -L 8765:localhost:8765 -L 8766:localhost:8766 user@remote-host
 ```
 
 请转发**两个**端口：`8765` 用于 HTTP，`8766`（HTTP + 1）用于树的 WebSocket。
-如果你只转发 HTTP 端口，一切照常工作 —— 只是 WebSocket 连不上，legacy 页面
+如果你只转发 HTTP 端口，一切照常工作 —— 只是 WebSocket 连不上，仪表盘
 回落到轮询。
 
 如果计算节点前面还有集群登录节点，请把跳板串起来：

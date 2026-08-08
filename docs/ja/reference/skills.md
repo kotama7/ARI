@@ -814,7 +814,7 @@ ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: Simple
 
 EAR が ON の実行は `ors_seed_sandbox` 経由（決定論的）で reproduce.sh を取得します。LLM `ors_build_reproduce` は reproduce.sh が既存の場合スキップするので、EAR が OFF の実行（論文のみ再現）でのみ発火します。
 
-PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採点 completer は LiteLLM (`_litellm_completer.py`) を経由するので、任意のプロバイダ（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）が使えます。スコアパース用 structured completer は `gpt-4o-2024-08-06` のまま（PaperBench 許可リスト内）。
+PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採点 completer は LiteLLM (`_litellm_completer.py`) を経由するので、任意のプロバイダ（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）が使えます。スコアパース用の structured completer 2 本も同じ `judge_model` から作られ、`response_format`（`ParsedJudgeResponseInt` / `ParsedJudgeResponseFloat`）だけがメインの completer と異なります。
 
 ### ツール
 
@@ -824,7 +824,7 @@ PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採�
 
 #### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
-**v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。LiteLLM 経由で任意プロバイダ対応。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATE` > `ARI_LLM_MODEL` > `claude-opus-4-7`。
+**v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。LiteLLM 経由で任意プロバイダ対応。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`。
 
 `sandbox_kind` は `auto` / `local` / `apptainer` / `slurm` で、エージェントの rollout 自体をどこで走らせるかを選びます。`container_image` を解釈するのは `apptainer` rollout だけで、値は不変のローカル SIF か digest pin されたリモート URI です（引数が空なら `ARI_PHASE1_APPTAINER_IMAGE` を参照）。`local` / `slurm` は無視します。レガシーの `apptainer_image` 引数は**ありません**。シグネチャから削除済みでスキル内のどこにも登場しないため、ここでイメージを指定する手段は `container_image` だけです。
 
@@ -832,13 +832,13 @@ PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採�
 
 **Phase 1**。`repo_dir/reproduce.sh` をサンドボックスで実行し、`reproduce.log` と成果物リストを取得。ルーブリック envelope の `expected_artifacts` と突き合わせ、未生成の成果物を `missing` として返します。
 
-サンドボックス優先順位（`auto` の場合）: `slurm`（sbatch + `ARI_SLURM_PARTITION` あり、BFTS と同じパーティション）→ `docker`（デーモン利用可かつ HPC 上ではない時）→ `apptainer` → `singularity` → `local`。**SLURM dispatch** は v0.5.0 から復元され、`sbatch --wait` で同期実行。spool relocation 対策 wrapper を生成して `$0` 相対 cd を保護します。
+サンドボックス優先順位（`auto` の場合）: `slurm`（sbatch + `ARI_SLURM_PARTITION` あり、BFTS と同じパーティション）→ `docker`（デーモン利用可かつ HPC 上ではない時）→ `apptainer` → `singularity` → `local`。コンテナサンドボックスに既定イメージはありません。`container_image`、なければ `docker` は `ARI_PHASE1_DOCKER_IMAGE`、`apptainer` / `singularity` は `ARI_PHASE1_APPTAINER_IMAGE` から、digest で pin された不変イメージを必ず与える必要があり、空なら既定へフォールバックせず拒否されます。**SLURM dispatch** は独自の `sbatch` ではなく型付きスケジューラライフサイクルへの handoff です。実行リクエストは `ResourceRequestV1` を持つ `JobRequestV1` になり、`ari-skill-hpc` と同じ `SlurmScheduler`（台帳は `{repo_dir}/../.ari-hpc/paper-re-jobs-v1.json`）へ submit されて終端状態まで poll され、検証済みのスケジューラログが `reproduce.log` に書き出されます。戻り値には `handle_id` / `job_id` / `request_digest` / `handoff_digest` / `execution_identity` / `unmapped_policies` が含まれ、タイムアウトを超えたジョブは cancel され `timed_out: true` として報告されます。partition は 引数 > `ARI_SLURM_PARTITION` > `{checkpoint_dir}/launch_config.json`、`cpus` は 引数 > `ARI_SLURM_CPUS`（既定 `8`）、`walltime` は 引数 > `ARI_SLURM_WALLTIME` > timeout から導出した `HH:MM:SS` の順で解決されます。
 
 **ネットワークは既定で遮断**されます。`network_policy` は `deny` で、隔離されていない基盤を使う場合のみ `network_policy="inherit"` として明示的に admit する必要があります。`network_isolation_attested` は、その隔離が仮定ではなく attest されたことを記録します。ソースツリーは read-only でスナップショットされ、実行はプライベートな attempt tree で行われるため、同一の成功プランは冪等に replay され、失敗プランには紐付いた retry attempt が追加されます。
 
 #### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
-**Phase 2**。LiteLLM 経由のメイン採点 completer + OpenAI 直叩きの structured score-parser で動作。`n_runs`（デフォルト 3）回の重み付き葉スコアを平均化。負例コントロール（空 repo + 自明な reproduce.sh）も実行。
+**Phase 2**。メイン採点 completer と structured score-parser はいずれも LiteLLM 経由で同じ `judge_model` を使います。`n_runs`（引数、なければ `ARI_JUDGE_N_RUNS`、なければ 1。範囲 1–100）回の重み付き葉スコアを平均化。負例コントロール（空 repo + 自明な reproduce.sh）も実行。
 
 戻り値: `{ors_score, raw_score, leaf_grades, judge_model, n_runs, rubric_sha256, elapsed_sec, negative_control: {empty, boilerplate, passed}}`。
 
@@ -902,9 +902,8 @@ Schema: [`docs/reference/execution_profile.md`](execution_profile.md)。
 | `ARI_MODEL_RUBRIC_AUDIT` | `anthropic/claude-opus-4-7` | 監査 LLM（生成器とは独立） |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (未設定) | 目標葉数の上書き。`0` / 未設定で論文長から自動。GUI Wizard の "Target leaves" 欄。 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (未設定) | 生成器 temperature の上書き。GUI Wizard の "Temperature" 欄。 |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | (未設定) | 二段階生成の強制 ON/OFF（`1`/`true`/`on` vs `0`/`false`/`off`）。未設定時は kwarg のデフォルト（現状 `True`）。GUI Wizard の "二段階生成" トグル。 |
 
-`server.py` で「明示 kwarg → 環境変数 → デフォルト」の順で解決されます。`workflow.yaml` の `ors_generate_rubric` ステージはこの3項目を明示しないため、GUI Wizard の値が常に効きます。
+`server.py` で「明示 kwarg → 環境変数 → デフォルト」の順で解決されます。`workflow.yaml` の `ors_generate_rubric` ステージはこの2項目を明示しないため、GUI Wizard の値が常に効きます。
 
 ---
 
@@ -981,7 +980,7 @@ Letta のコアメモリからシードされた実験ファクト（`experiment
 
 ノード終了時に `node_report` から型付きメモリ（`experiment_result` / `failure_case` / `reflection`）を導出して、型付きライタ経由で書き込みます（CoW: 自ノードのみ）。呼び出し元は ari-core のノード終了フックです。
 
-ストレージ: チェックポイントごとに Letta エージェント（`ari_node_*` と `ari_react_*` の 2 コレクション）。`{ARI_CHECKPOINT_DIR}/memory_backup.jsonl.gz` にポータブルスナップショット、`{ARI_CHECKPOINT_DIR}/memory_access.jsonl` に write/read テレメトリ。v0.5.x の JSONL ストア（チェックポイントスコープの `memory_store.jsonl` と、かつて `$HOME/.ari/` 配下にあったレガシーグローバル JSONL）は v0.5.0 で削除。移行は `ari memory migrate --react`。クロス実験の「グローバルメモリ」は廃止。
+ストレージ: チェックポイントごとに Letta エージェント（`ari_node_*` と `ari_react_*` の 2 コレクション）。`{ARI_CHECKPOINT_DIR}/memory_backup.v1.json.gz` にポータブルスナップショット、`{ARI_CHECKPOINT_DIR}/memory_access.jsonl` に write/read テレメトリ。v0.5.x の JSONL ストア（チェックポイントスコープの `memory_store.jsonl` と、かつて `$HOME/.ari/` 配下にあったレガシーグローバル JSONL）は v0.6.0 で削除。移行は `ari memory migrate --react`。クロス実験の「グローバルメモリ」は廃止。
 
 ---
 
@@ -1110,7 +1109,7 @@ experiment_context, implementation_overview, report_driven
 
 **頑健性**: LLM 応答パーサは `<think>` ブロックと ` ```json ` フェンスを除去し、各候補 `{` から balanced-brace を歩いて長さ降順で `json.loads` を試行します。`{...} prose {...}` のような shape も救えます。失敗時は raw 応答を `{checkpoint_dir}/science_data.debug.txt` に保存して事後監査可能にします。
 
-モデル: `llm_model` 引数 > `LLM_MODEL` env > `gpt-4o-mini`。
+モデル: `llm_model` 引数 > `ARI_MODEL_TRANSFORM` env > `ARI_LLM_MODEL` env > `LLM_MODEL` env > バックエンドに合わせた既定（`ARI_BACKEND=cli-shim` なら `claude-cli`、それ以外は `gpt-4o-mini`）。
 
 **存在理由:** BFTS 内部の用語が論文や図表に漏洩しないようにすること、および入力サイズ記述子（`nnz`、`M`、`K`）と測定された出力（`GFlops_per_s`、accuracy）を best-of 集約で混同しないことを保証します。
 

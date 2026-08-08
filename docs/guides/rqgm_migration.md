@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_paper_mode.py
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # Adopting `ari_rqgm` on an Existing Project
@@ -143,12 +143,15 @@ proposal record store (`ari/rqgm/proposals/store.py`):
 
 ## New checkpoint files
 
-An `ari_rqgm` run adds the following. The new file names are registered in
-`PathManager.META_FILES` (`ari/paths.py`), so ARI classifies them as run
-metadata — never copied into a node work dir — and the `proposals/` subtree
-is additionally blocklisted from node file reports (pinned by
-`test_rqgm_proposals.py::test_proposal_filenames_registered` /
-`test_proposals_never_in_files_changed`). **A `simple_bfts` run writes none
+An `ari_rqgm` run adds the following. The new checkpoint-root file names are
+registered in `PathManager.META_FILES` (`ari/paths.py`), so ARI classifies
+them as run metadata — never copied into a node work dir — and the
+`proposals/` subtree is additionally blocklisted from node file reports
+(pinned by `test_rqgm_proposals.py::test_proposal_filenames_registered` /
+`test_proposals_never_in_files_changed`). The subdirectory contents
+(`proposals/archive/`, `rqgm_prompts/`, `rqgm/kca/admission-v1/`) are not
+name-registered and do not need to be: that copy only iterates
+checkpoint-root files. **A `simple_bfts` run writes none
 of them** — the only exception is `proposals/`, which appears under
 `simple_bfts` iff you opted into `record_only` above.
 

@@ -328,8 +328,11 @@ container runtimeも実行して判定する。`shutil.which`がbinaryを見つ�
 
 SLURM GPU visibilityとscheduler authorityは別である。GPU GRESがadvertiseされないnodeで
 deviceを観測した場合、`metadata.slurm_gpu`と`gpu-observed-on-slurm-node`は残すが`gpu`
-resource typeを追加しない。GRES観測時、またはoperatorが既存escape hatch
-`ARI_SLURM_ALLOW_NO_GRES=1`を明示した場合だけschedulableになる。device UUID/model/
+resource typeを追加しない。schedulableになるのはGRES観測時か、operatorが`resources`で
+exclusive-node inventoryをpinした場合だけである — `gpu_allocation_mode:
+exclusive-node-inventory`、`exclusive: true`、`gpu_node`、そして観測inventoryと一致すべき
+full-SHAの`gpu_inventory_digest`。一致しないpinは`exclusive-node-inventory-mismatch`として
+記録され、schedulableにはならない。device UUID/model/
 compute capability/memory/driverとoutput digestを含む全観測はfrozen environment identityへ
 入る。resumeはreprobeで置換しない。persist済み`EnvironmentSnapshotV1`はcanonical full-SHA
 identityを再計算し、resourceや観測値の改竄を無効にする。

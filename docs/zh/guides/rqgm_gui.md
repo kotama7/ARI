@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-09
 ---
 
 # RQGM 治理工作区指南
@@ -91,6 +91,14 @@ kill-switch 时才会遇到它 —— 该标志默认开启，而且 `GET /api/c
 治理变更：它不注册组件、不采纳策略、也不改写得分，因此无论怎样这个工作区都保持
 只读。104 个 `rqgm.*` 治理与调优参数仍然仅限配置文件。
 
+**已知缺口 —— 也没有任何治理标签页展示这些参数。** 这个工作区里没有任何生效
+配置的快照：没有一个治理标签页读取配置端点，而 Overview 标签页报告的是当前
+纪元、策略哈希与宪法哈希、完整性标志、注册表汇总以及最后一次提交的时间戳 ——
+关于配置则只字未提。页面上唯一的一处配置来历是 **Mode source** chip，它写明的是
+这次运行的执行模式被记录为来自何处，而不是任何 `rqgm.*` 取值来自何处。这个工作区
+给你看的，是这次运行*做了什么*，从它的工件重放而来；而它*被要求做什么*，只能
+从运行自身的配置里去读。
+
 标签条是一个真正的 `role="tablist"` 复合控件，带 `aria-selected` /
 `aria-controls` 接线，因此完全可用键盘导航。
 
@@ -150,6 +158,17 @@ Knowledge · Capability · Assurance 标签页，因此图中的标签条显示�
 `removed`）是一台**不同的状态机**，使用不同的配色族。两套词汇表在结构上被
 分开，因此其中一套绝不可能借用另一套的含义。
 
+**已知缺口 —— 没有生命周期图。** Registry 标签页就是一枚快照校验徽章下面的这两
+张表，此外别无他物。
+这个工作区不画任何以节点与边呈现生命周期的视图，不画组件之间的问责边，也不给
+每个条目画转换历史；一行所携带的来历只有它的 `source_event_ids`。
+
+推动一个条目的那条 T1–T21 转换的 `rule_id` 同样没有在任何地方渲染。转换读模型
+确实按已提交事务携带 `rule_ids`，但没有任何标签页消费它，因此「这个组件为什么
+变成了 `quarantine`？」无法从 UI 得到回答。这要去读
+`rqgm_transitions.jsonl` —— 见[文件格式参考](../reference/file_formats.md)的
+「`rqgm_transitions.jsonl`」一节。
+
 ### Accountability —— 「谁攻击了这个节点，攻击成立了吗？」
 
 从选择器中选一个节点；你会得到两张清晰分开的表。
@@ -167,6 +186,20 @@ Knowledge · Capability · Assurance 标签页，因此图中的标签条显示�
 **在这里，区分原始攻击与已验证惩罚是最重要的一个习惯。** 一长串原始攻击
 并不能证明某个节点糟糕；一张空的已验证攻击表也不能证明它清白。只有裁决链
 才能把一项断言转化为一个后果。
+
+**已知缺口 —— 这里展示的链条止步于已验证攻击。** 在运行本身之中，裁决在
+`vat_*` 之后仍在继续：纪元边界的审计会把 `evidence_bundle`、
+`impeachment_motion`、`governance_defense` 与 `impeachment_outcome` 这几类
+记录追加进 `rqgm_audit.jsonl`，而该纪元的 `governance_report` 携带
+`bond_accounting` 块（`posted`、`refunded`、`forfeited`、`remaining_budget`）
+以及一份 `recommendations` 列表。这些统统没有抵达本标签页。RQGM 读模型不解析
+任何动议、辩护、结果、保证金或建议字段，因此这个工作区能告诉你某次攻击被验证
+了，却无法告诉你是否有谁因此被弹劾、请求了什么处分，以及它是怎样被裁决的。
+
+要沿着链条继续往下看，请使用 Audit 标签页的 **Record type** 过滤器 —— 它是一个
+自由输入的文本框，记录类型名要你自己敲进去 —— 或者按 Audit 行给出的偏移量直接
+读取字节。记录的形状见
+[RQGM 工件 schema](../reference/rqgm_schemas.md)的「动议流水线的记录」一节。
 
 ### 「零攻击」意味着什么，又不意味着什么
 
@@ -219,6 +252,14 @@ Knowledge · Capability · Assurance 标签页，因此图中的标签条显示�
 supersessions)** 表，它把每次效用策略取代与其后果连接起来：源策略 →
 目标策略、被失效的节点、需重算的节点、前沿移除与前沿恢复。这些节点集合来自
 真实的事件字段 —— 它们不是由 GUI 重新计算的。
+
+**已知缺口 —— 不计算策略差异。** 一次得分重写告诉你的是
+`from_policy_hash` → `to_policy_hash` 以及这次边界触及了哪些节点；它并不告诉你
+*策略内部改了什么*。读模型与 UI 都没有对两份策略正文做差异比较的处理，重写也
+不携带表示变更缘由的 reason code。**Epoch utility policies** 表把每份正文渲染成
+一行 `key=value` 摘要、并省略嵌套的值，所以要比较两份策略，你得在 Epoch
+Timeline 标签页分别打开它们所属的纪元（那里正文按 5 个受治理的键渲染），然后
+自己对照。
 
 缺失的数字渲染为 `unknown`，绝不渲染为 `0`。
 
@@ -310,6 +351,15 @@ degraded 面板里，而不是悄悄让表格变短。
 
 每一行都写明其原始来源：`rqgm_audit.jsonl@<byte offset>` 加上事件哈希。
 表格以一句明确的 *「End of committed log」* 结束。
+
+**已知缺口 —— 转换日志没有属于自己的表格。**
+`GET /api/v1/runs/{run_id}/rqgm/transitions` 是一个已发布的端点，带有同样的
+字节偏移游标契约，但这个工作区里没有任何东西调用它：类型化客户端暴露了 11 个
+RQGM fetcher，而转换分页不在其中。转换证据只以间接方式抵达 UI ——
+作为 Overview 标签页的转换链完整性标志、作为 Epoch Timeline 详情里某个纪元的
+开启与关闭边界事务，以及作为 Registry 行上的 `source_event_ids`。若要亲自走一遍
+转换日志，请直接调用该端点；它列在
+[REST API 参考](../reference/rest_api.md)的「RQGM 治理（只读）」一节中。
 
 ## 从聚合视图钻取到原始工件
 

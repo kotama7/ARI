@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # 故障排查
@@ -34,8 +34,9 @@ ari run /abs/path/to/experiment.md
 
 ### `DeprecationWarning: $HOME/.ari/...`
 
-**原因：** 触碰了旧版回退路径。v1.0 将在此处硬失败；v0.5–v0.8 发出
-警告。
+**原因：** 触碰了旧版回退路径。自 v0.5 起的每个版本都会发出指明替代项的
+`DeprecationWarning`（`ari/_deprecation.py`，`removal_version="v1.0"`）；
+v1.0 将移除该回退路径。
 
 **修复：** 设置显式环境变量。对照表如下：
 
@@ -76,11 +77,19 @@ sacct -j <jobid> --format=Reason # Sometimes more verbose
 
 ### 构建步骤返回 `exit_code=127`
 
-**原因：** 几乎总是缺少编译器。HPC skill 限制使用 `gcc`；
-在大多数集群上 `mpicc` / `icc` / `aocc` 不在默认 PATH 中。
+**原因：** 该命令不在 `PATH` 上。`slurm_submit` 的 script bridge 以
+`#SBATCH --export=NIL` 提交，并随后设置
+`PATH=/usr/local/bin:/usr/bin:/bin`，因此只有基础系统工具链（通常是
+`gcc`）可达；站点通过 environment module 提供的编译器（`mpicc` /
+`icc` / `aocc`）并不在其中。
 
-**修复：** 将 `mpicc` 替换为 `gcc -fopenmp`（如需要则显式链接 OpenMPI）。
-在 experiment.md 的 `Hardware Limits` 章节中声明该约束。
+**修复：** 加载该工具链所在的 module。bridge 会在你的脚本主体运行前，
+在节点上 source module 系统自身的 init（`/etc/profile.d/modules.sh`、
+`/etc/profile.d/lmod.sh`、`$MODULESHOME/init/bash`），所以写在脚本内的
+`module load` 是有效的；若改为向工具传入 `modules=`，则会先执行
+`module --force purge`，并在完全没有 module 系统时以 `86` 退出。否则
+将 `mpicc` 替换为 `gcc -fopenmp`（如需要则显式链接 OpenMPI），并在
+experiment.md 的 `Hardware Limits` 章节中声明该约束。
 
 ### `--account` 被拒绝
 
@@ -103,9 +112,9 @@ sacct -j <jobid> --format=Reason # Sometimes more verbose
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
 # If it fails, restart per docs/guides/hpc_setup.md#6
-docker compose -f containers/letta/docker-compose.yml up -d
+docker compose -f scripts/letta/docker-compose.yml up -d
 # or
-apptainer run containers/letta.sif &
+scripts/letta/start_singularity.sh
 ```
 
 仪表盘的 `/api/memory/health` 路由使用相同的探针，因此如果 UI 显示
@@ -273,7 +282,8 @@ ari viz /abs/path/to/checkpoints/<run_id>
 - `$ARI_CHECKPOINT_DIR/lineage_decisions.jsonl` —— stagnation
   决策（v0.7+）。
 - `docs/reference/file_formats.md` —— 检查点中每个文件的含义。
-- `docs/_archive/refactor_audit.md` —— 已知的迁移债务。
+- `docs/guides/migration.md` —— 版本间迁移步骤（v0.5 → v0.6 起）
+  与 GUI 刷新说明。
 
 ## 另请参阅
 

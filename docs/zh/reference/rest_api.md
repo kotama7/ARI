@@ -213,6 +213,20 @@ GUI 配置文档（project 配置、run 模板、run 草稿）由 `ari/viz/v1/st
 但它的游标是指向确定性合并后的改写列表的**整数下标**（它是跨两个日志的
 连接，而非单文件扫描）。
 
+**这四个端点就是分页接口面的全部 —— 树不在其中。**
+`GET /api/v1/runs/{run_id}/tree` 既不接受 `cursor` 也不接受 `limit`；它唯一的
+参数就是路径中的 `run_id`，在 `ROUTES` 表和 `openapi.json` 中都是如此。
+`queries.get_run_tree` 把检查点交给 `tree_view` 适配器，并把找到的每个节点放进
+一个 `TreeV1` 响应体一次性返回；该响应体携带的 `revision` 是解析出的树文件的
+`st_mtime_ns` —— 一个变更检测器，而不是分页令牌。因此一个有一万个节点的 run
+每次抓取都会传输一万个节点；又因为实时事件是失效通知而不是数据（见下文
+*实时：`GET /api/v1/events/stream`（SSE）*），只要树查询处于挂载状态，一条
+`tree` 事件就意味着一次完整的重新抓取。服务器端没有任何东西为此设界：v2 树界面
+的深度受限默认视图与窗口化侧表
+（`ari-core/ari/viz/frontend/src/components/TreeV2/treeLod.ts`）减少的是*渲染*量，
+而不是传输量。**对树的游标分页由 GUI 刷新计划规定过，但并未实现** —— 这是一个
+已知缺口。在它被补上之前，请按 run 而不是按请求来估算这个端点的开销。
+
 ### 实时：`GET /api/v1/events/stream`（SSE）
 
 单一的 Server-Sent Events 流只承载**失效通知，而非状态**：收到任何事件后，
@@ -241,6 +255,30 @@ data: {"event_id":"42","run_id":"20260726T101500_matmul","topic":"tree",
 | 重放 | 连接时服务器会重放缓冲区中 id 大于 `Last-Event-ID` 的事件（请求头优先；`?last_event_id=` 是回退方案，因为 `EventSource` 无法设置请求头）。缓冲区是一个 1000 事件的环形队列 —— 被挤出去的事件就是没了，而这之所以安全，恰恰是因为事件不是事实来源：重连后的重新抓取会覆盖这个空档。 |
 | 心跳 | 空闲每 15 秒发送一条 `: heartbeat` 注释，以免代理断开连接。流开启时发送 `: connected` + `retry: 5000`（浏览器的重连延迟）。 |
 | 重连 | 流窗口上限为 300 秒；到期时服务器写入 `: stream-timeout - reconnect` 并关闭，客户端携带其 `Last-Event-ID` 重连。客户端主动断开则静默结束流。 |
+
+**不存在事件历史资源。** 这条流是 `/api/v1` 拥有的唯一事件接口面 —— 它由 `routes.py`
+中自己的分支提供，而 `ROUTES` 表里没有任何按 run 划分的事件路径。**按 run 的事件历史
+（`GET /api/v1/runs/{run_id}/events`）由 GUI 刷新计划规定过，但并未实现** —— 这是一个
+已知缺口。被 1000 条事件的环形缓冲挤出去的内容，以及当前服务器进程启动之前发布的
+全部内容，都已丢失；这之所以可以接受，仅仅因为事件是失效通知，重连后的重新抓取会
+覆盖这个空档。
+
+按 run 持久化的唯一生命周期记录是 `{ckpt}/launch_events.jsonl`，由 v1 启动追加写入
+（`draft` → `validating` → `accepted` → `spawned`，若 spawn 本身抛错则为 `failed`）。
+没有任何端点提供它，因此只能直接从磁盘读取 —— 这正是
+[GUI 切换运行手册](../guides/gui_cutover_runbook.md)的*3. 分阶段推出*把它列为待观察
+信号之一的原因。
+
+**阶段（stage）转换同样不是事件。** 向总线发布的调用点共有三处 —— 状态监视器
+（`tree`）、检查点切换（`run`）以及 v1 启动（`run`，`payload.lifecycle` 为
+`spawned`）—— 没有任何东西发出按阶段划分的 `started` / `completed` / `failed` 事件。
+上面那个生命周期文件也止于 `spawned`：此后服务器与被启动的 CLI 都不会再向它追加。
+因此 spawn 之后 run 的状态是在每次读取时从工件重新推导出来的
+（`ari/viz/v1/queries.py` 中的 `_run_summary_from_dir`），分三层 —— pid 探测，然后是
+树中节点的状态，然后是可解析的 `review_report.json` —— 取值为 `unknown` / `running` /
+`stopped` / `completed` 之一。进程已经死亡、但树里仍有节点标记为 `running` 的 run，会
+被读成 `stopped`。这是从工件做出的推断，而不是被上报的结果：不要把 `status` 当作
+生命周期事件日志来读。
 
 ### 认证
 
@@ -525,6 +563,22 @@ curl http://localhost:8765/api/checkpoints
 | GET | `/api/gpu-monitor` | GPU 利用率轮询 | `routes.py` |
 | GET | `/api/resource-metrics` | CPU / 内存 / 磁盘指标 | `routes.py` |
 | GET | `/api/logs` | 当前运行的最近日志行 | `routes.py` |
+
+**`GET /state` 不是一次纯读取。** `services/state_service.build_app_state` 一开头就会
+在被跟踪的启动进程已经退出时，清掉服务器缓存的实验文本
+（`state._last_experiment_md`）—— 也就是说，读取这个端点会改写一个模块全局变量，
+而该变量由 legacy 的 `POST /api/launch` 处理器设置、并被之后的 `/state` 响应读回 ——
+而且它每次调用都会重新遍历检查点：加载树、用 glob 判断工件是否存在、检测阶段、
+读取 `cost_trace.jsonl` 的尾部。legacy 外壳只要处于挂载状态，就会以固定的五秒间隔
+无条件轮询它（`ari-core/ari/viz/frontend/src/context/AppContext.tsx` 中的
+`STATE_POLL_MS`）。这两点都不是要在原地修掉的缺陷：这次变异是从该函数被抽取出来之前的内联 `/state`
+构建器逐字保留下来的，而且两者都已排定删除 —— 轮询是
+[GUI 切换运行手册](../guides/gui_cutover_runbook.md)的*6. legacy 移除*中的移除项 2，
+`build_app_state` 本身则是移除项 3。把它们记在这里，是因为它们正是 `/api/v1`
+被设计成「不这么做」的那件事：v1 的读取模块不去查询或修剪服务器的进程跟踪状态，
+而是从文件系统重新推导 run 的状态 —— 这就是
+[仪表盘架构](../concepts/gui_architecture.md)的*7. 后端接缝*里那条「`GET` 无副作用」
+的性质。
 
 **`GET /api/resource-metrics` —— 载荷形状。** `_collect_resource_metrics()`
 （`ari-core/ari/viz/ui_helpers.py`）遍历 `/proc`，统计服务器自身 uid 所拥有的进程，

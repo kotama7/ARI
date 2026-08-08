@@ -23,15 +23,15 @@
 
 | ID | Plan | Status | Depends on | Primary gate |
 |---|---|---|---|---|
-| 00 | [Program charter and baseline](00_program_charter_and_baseline.md) | verified | — | G0 |
+| 00 | Program charter and baseline | `deleted` | — | G0 |
 | 01 | [Information architecture and user journeys](01_information_architecture_and_user_journeys.md) | implemented | 00 | G1 |
 | 02 | [Design system, accessibility, and i18n](02_design_system_accessibility_and_i18n.md) | implemented | 00 | G1 |
-| 03 | [Application shell, routing, and frontend state](03_application_shell_routing_and_frontend_state.md) | implemented | 01, 02 | G2 |
-| 04 | [Backend API, observability, and realtime](04_backend_api_observability_and_realtime.md) | implemented | 00 | G2 |
+| 03 | Application shell, routing, and frontend state | `deleted` | 01, 02 | G2 |
+| 04 | Backend API, observability, and realtime | `deleted` | 00 | G2 |
 | 05 | [Configuration control plane](05_configuration_control_plane.md) | implemented | 00, 04 | G3 |
 | 06 | [Configuration Studio and launch experience](06_configuration_studio_and_launch.md) | implemented | 01, 02, 03, 05 | G4 |
 | 07 | [Research workspaces and Workflow Studio](07_research_workspaces_and_workflow_studio.md) | implemented | 01, 02, 03, 04 | G4 |
-| 08 | [RQGM governance and score lineage](08_rqgm_governance_and_score_lineage.md) | implemented | 03, 04, 05 | G4 |
+| 08 | RQGM governance and score lineage | `deleted` | 03, 04, 05 | G4 |
 | 09 | [Security, performance, and operations](09_security_performance_and_operations.md) | implemented | 02, 03, 04, 05 | G5 |
 | 10 | [Migration, testing, release, and docs](10_migration_testing_release_and_docs.md) | implemented | 01–09 | G6 |
 
@@ -109,6 +109,10 @@ rollback 期間、telemetry 確認後の legacy 削除 — は所有者の判断
 |---|---|---|
 | `baseline/migration_notes.md` | 済 | MN-1〜MN-12 が `docs/guides/migration.md` に en/ja/zh で before/after/why/rollback 付きで再現済み。endpoint 影響表は `docs/reference/rest_api.md`。参照していた 4 箇所（`test_gui_confirmation_challenges.py`、`test_gui_csp_headers.py`、`test_gui_path_proxy_hardening.py`、`g0_review_record.md`）は同一変更で恒久文書へ張り替えた |
 | `baseline/adr/ADR-01`〜`ADR-13`（12 本） | 済 | `docs/adr/gui/` へ移管（`docs/adr/manuscript_complete/` の前例に倣う）。**ADR 番号を維持**したので、コード・テスト・スクリプトからの 283 箇所の引用は id で解決し続ける（引用はパスでなく `ADR-09` のような id 形式）。`adr_backlog.md` の相対リンク 12 本は移管先へ張り替え済み |
+| `00_program_charter_and_baseline.md` | 済 | Compatibility register、成功指標、P0–P3 分類、G0 Deliverables、目標ドメインモデルを恒久文書へ移管。`risk_register.md` が Source 列で参照していた 8 件の行番号引用は、当該行の**内容**に置き換えた |
+| `03_application_shell_routing_and_frontend_state.md` | 済 | Target structure、query-key の `revision` 成分、`RouteDefinition` の未使用フィールド、shell 不変条件、command palette の検索範囲を移管。未実装の項目は known gap として明記 |
+| `04_backend_api_observability_and_realtime.md` | 済 | 4 層 seam がパッケージ構成ではないこと、mtime 由来タイムスタンプの規則とその例外、read model の非キャッシュ性を移管 |
+| `08_rqgm_governance_and_score_lineage.md` | 済 | 移管済み。ADR 移管により行番号引用の依存が消滅し、被参照は本 INDEX の status 行のみになった |
 
 免除後も削除できなかったものと、その理由:
 

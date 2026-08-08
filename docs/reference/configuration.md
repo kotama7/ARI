@@ -934,21 +934,20 @@ skills:
 | `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Keep Letta self-edit off so CoW holds | `true` |
 | `ARI_MEMORY_ACCESS_LOG` | `on` / `off` — enable `{checkpoint}/memory_access.jsonl` | `on` |
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore `memory_backup.jsonl.gz` on `ari resume` | `true` |
-| `ARI_CURRENT_NODE_ID` | Runtime-only; set by ari-core per-node to enforce write-side CoW | (runtime) |
+| `ARI_CONTEXT_AUTHORITY_KEY` | Per-connection HMAC key core exports into each skill subprocess; the memory server verifies the signed `ari_context` argument against it, and that argument — not the environment — carries the node id write-side CoW pins to | (core-injected) |
 | `ARI_MODEL_RUBRIC_GEN` | Generator LLM for `ari-skill-replicate.generate_rubric` (v0.7.0) | `gemini/gemini-2.5-pro` |
 | `ARI_MODEL_RUBRIC_AUDIT` | Auditor LLM for `audit_rubric` (independent of generator) | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | Override per-paper target leaf count consumed by `generate_rubric`. `0`/unset → auto from paper length (~1 leaf / 75 words, clamped to [50, 400]). Set by the GUI Wizard's "Target leaves" field. | (unset) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | Override generator temperature. Set by the GUI Wizard's "Temperature" field. | (unset) |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | Force the rubric generator's two-stage path on/off (`1`/`true`/`on` vs `0`/`false`/`off`). Two-stage = skeleton + parallel subtree calls; produces ~4× more leaves and 1–2 levels more depth than a single call at ~5× more API tokens. Unset → kwarg default (currently on). Set by the GUI Wizard's "Two-stage generation" toggle. | (unset, default on) |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | Override the search root for venue-conditioned PaperBench rubric templates. The loader checks this dir first, then `<cwd>/ari-core/config/paperbench_rubrics/`, `<cwd>/config/paperbench_rubrics/`, and the repo-relative fallback. Unset → built-in defaults. | (unset) |
-| `ARI_MODEL_REPLICATE` | Replicator LLM for `build_reproduce_sh` (paper → reproduce.sh, v0.7.0) | `claude-opus-4-7` |
+| `ARI_MODEL_REPLICATOR` | Replicator LLM for `build_reproduce_sh` (paper → reproduce.sh, v0.7.0). `ARI_MODEL_REPLICATE` is the GUI settings key only; the GUI maps it onto this name | `gpt-5-mini` |
 | `ARI_MODEL_JUDGE` | Judge LLM for `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; routed via LiteLLM, any provider OK) | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | LLM judge for `decide_lineage_action` (lineage decision, v0.7.0). Falls through `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` | (auto) |
 | `ARI_MODEL_ROOT_SELECT` | LLM that picks `ideas[0]` from the VirSci pool (lineage decision, v0.7.0). Same fallback chain as `ARI_MODEL_LINEAGE` | (auto) |
 | `ARI_RUBRIC` | Rubric id read by the BFTS dynamic axis evaluator (Phase 3, v0.7.0) and by the lineage-decision thresholds. Reads `ari-core/config/reviewer_rubrics/<id>.yaml`. The paper review no longer reads it: `review_paper` takes an explicit `rubric_id` from `workflow.yaml`'s top-level `paper_rubric`, and `resolve_rubric` refuses an empty id rather than falling back to the environment | `neurips` |
 | `ARI_PHASE1_SANDBOX` | Phase 1 sandbox: `auto` / `slurm` / `docker` / `apptainer` / `singularity` / `local` | `auto` |
-| `ARI_PHASE1_DOCKER_IMAGE` | Container image for the docker sandbox runner | `ubuntu:24.04` |
-| `ARI_PHASE1_APPTAINER_IMAGE` / `ARI_PHASE1_SINGULARITY_IMAGE` | Image for the Apptainer/Singularity sandbox runner | `docker://ubuntu:24.04` |
+| `ARI_PHASE1_DOCKER_IMAGE` | Container image for the docker sandbox runner | (none — refused if unset) |
+| `ARI_PHASE1_APPTAINER_IMAGE` | Image for the Apptainer/Singularity sandbox runner | (none — refused if unset) |
 | `ARI_SLURM_WALLTIME` | `--time` HH:MM:SS for the SLURM Phase 1 sandbox (v0.7.0, restored). Falls back to a value derived from the rubric's `max_runtime_sec`. | (auto) |
 | `ARI_PUBLISH_DRYRUN` | Force `ari ear publish --dry-run` (CI safety, v0.7.0) | (off) |
 | `ARI_REGISTRY_DATA` | sqlite + artifact storage root for `ari registry serve` | (none — must be set explicitly; the pre-v0.5 `$HOME/.ari/registry-data` fallback emits a `DeprecationWarning` and is removed in v1.0) |

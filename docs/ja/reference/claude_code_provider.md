@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/llm/client.py
     role: implementation
-last_verified: 2026-07-03
+last_verified: 2026-08-08
 ---
 
 # Claude Code LLM プロバイダ（`backend: claude_code`）
@@ -64,7 +64,8 @@ CLI/SDK runner、provenance、provider）。Claude Code 2.1.198 で検証済み�
 判断を provenance に記録する（`bare_auto_resolved`）。鍵なしで明示的に
 `bare: true` とした場合はそのまま実行され、"Not logged in" で fail-loud
 する（黙って隔離を弱めることはない）。`home_mode: sandbox` は呼び出しごとに
-一時 `$HOME` を与える（OAuth クレデンシャルは実 `$HOME` 配下にあるため、
+使い捨ての `$HOME` を与える（その呼び出しの provenance ディレクトリ配下に
+`home/` として作られる。OAuth クレデンシャルは実 `$HOME` 配下にあるため、
 鍵認証が必須）。
 
 ### `low_overhead`

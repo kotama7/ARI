@@ -1,7 +1,7 @@
 # Task 17: Capability Provider Semantics and Binding
 
 > **Status**: in progress · **Depends on**: 01, 04, 12, 16 · **Implementation
-> checkpoint**: 2026-08-05 · **This is a temporary task plan** — see
+> checkpoint**: 2026-08-07 · **This is a temporary task plan** — see
 > [INDEX.md](INDEX.md). The semantic facade over `skill.yaml`/`SKILLS.lock`,
 > ontology, deterministic Binder, enforcement view, provenance, exact
 > ToolUniverse leaf projection/result normalization, frozen dependency-lock
@@ -604,6 +604,9 @@ APIs. Admin transitions are not public LLM tools.
   `sha256:c85e73726b1182c3fe88b682a8bcd0e0d7a57713f7ecb1818056886eaa5442bf`.
   The promotion approval digest is
   `sha256:9317c4ff7e15f488f758fc253b9afd96345abd6d3730405f5669c93a6eabc608`.
+  Both digests record this checkpoint and are superseded by the 2026-08-07
+  re-promotion in §14.6, which also normalized the leaf identity; the scope
+  statements here still hold.
   The lock binds the Provider artifact/manifest, adapter and result projection,
   leaf and schema digests, current Capability contract, runtime target, and
   credential-free scope. Status-only promotion, missing or mutated human
@@ -625,6 +628,8 @@ APIs. Admin transitions are not public LLM tools.
   `ari-tool://tooluniverse-pubmed/tooluniverse%3APubMed_search_articles@sha256:0d6249281717b3751c3410dda751bf3ab91ffd85a9117330174d8f1815f3676d`.
   This environment-specific catalog is evidence, not a portable repository
   default; activation still mints a run-specific lock and never mutates resume.
+  It was generated before the leaf-identity normalization in §14.6, so its
+  catalog and tool-ref digests also belong to this checkpoint.
 
 ### 14.3 Verified Qiskit local-Aer Provider checkpoint (2026-08-05)
 
@@ -638,10 +643,12 @@ APIs. Admin transitions are not public LLM tools.
   and execution transcript by full digest. All fifteen Provider registration
   gates passed.
 - Human approval digest
-  `sha256:c1565242f2c3ae8ee9718e97186261af2893451d99957bb1e3ac9d6cb88871cd`
+  `sha256:5128140e15e563ceb5827187a1a3ee1630bb0606594d2ae9a60abd1eb2b80a5c`
   authorizes only `ari.quantum.sample.local-ideal/v1`; the verified lock digest
   is
-  `sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684`.
+  `sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`.
+  Both digests are those of the 2026-08-07 re-promotion in §14.6; this exact
+  scope is unchanged.
   IBM Runtime, remote simulator, IBM hardware, credentials, and any other
   circuit/profile are outside the lock. They remain candidate until separately
   pinned backend/configuration/calibration identity and backend-bound live
@@ -665,6 +672,8 @@ APIs. Admin transitions are not public LLM tools.
   `sha256:a9cc1c3cd0d4816d0d672e6726f81b4ae8a554069fa325e84aaf4ca1c10dde47`
   authorizes only `ari.eda.openroad.place-route/v1`; the verified lock digest is
   `sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28`.
+  Both digests record this checkpoint and are superseded by the 2026-08-07
+  re-promotion in §14.6; the scope statements below still hold.
   The 1.54 GB SIF remains an external retained artifact, while its OCI, SIF,
   and inner-binary full digests are locked. SLURM, GPU, another design/PDK,
   corner, toolchain, full default-flow parity, or image is explicitly outside
@@ -691,21 +700,156 @@ APIs. Admin transitions are not public LLM tools.
 - The execution identity fixes SLURM controller-client digests, a
   PRoot 5.3.1 binary and source commit, unsquashfs 4.6.1, the retained ORFS
   SIF, its inner OpenROAD binary, and worker Python. The runtime-owned Tcl
-  explicitly opens and closes the metrics sink. On this site, where scheduler
-  accounting storage is disabled, terminal status additionally requires a
+  explicitly opens and closes the metrics sink. Where the scheduler has no
+  accounting storage, terminal status additionally requires a
   nonce-bound fixed-wrapper completion record; a missing or forged record
-  remains `unknown`.
+  remains `unknown`. That PRoot closure records this checkpoint; §14.7
+  re-promotes the same scientific scope on the digest-pinned container this
+  profile now declares.
 - The live run produced zero route DRC errors, 3,603 µm wirelength, and 3,361
   vias. Submission, wrapper completion, environment, exit code, scheduler
   stdout/stderr, DRC report, metrics, DEF, netlist, and transcript were captured
   by full digest. All fifteen Provider registration gates and the independent
   ORFS reference check passed.
 - Human approval digest
-  `sha256:6718e181dad076475f80507b5ae73dab116863e35e939e06f679bd75bb57df57`
+  `sha256:b7e25187d93861531311e79a3a1c06eb3905e82005634d75f89ff14ca5c95f97`
   authorizes only this exact CPU scope. The verified lock digest is
-  `sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd`.
+  `sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`.
+  Both digests are those of the 2026-08-07 re-promotion in §14.6.
   GPU use, another design/PDK/corner, another scheduler site, a changed runtime,
   or full default-flow parity requires a new candidate and independent lock.
+
+### 14.6 Portability re-promotion checkpoint (2026-08-07)
+
+Materializing §14.2–§14.5 in a second environment showed that several locked
+identities were bound to the promoting host rather than to the reviewed
+artifact, and that one reviewed execution substrate could not run there at all.
+All four bundles were re-promoted. The scientific scope of each is unchanged;
+the only capability-scope difference is the substrate the SLURM profile pins.
+
+- **Retained SIF digests are irreproducible by construction.** A SIF header
+  carries a random UUID and a wall-clock creation time inside the hashed file,
+  so no container runtime reproduces `retained_sif_digest`. The pinned OCI
+  manifest and inner OpenROAD binary digest did match exactly, so the payload
+  was proven identical while the envelope could not be. `openroad-support-v1.json`
+  now records the locally materialized SIF and its `singularity` runtime, and the
+  bundle was re-promoted: lock
+  `sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`,
+  approval `sha256:31175d3941ab7a3ad7eef6891fa378ee0cadf75830153a2d763be8ed56811498`.
+  All six workspace inputs, including the independently regenerated
+  `3_place.odb`, reproduced bit-for-bit, and `gcd-nangate45-26q3.golden.json`
+  was rewritten byte-identical.
+- **`tool_spec_digest` pinned the install path, not the leaf.** ToolUniverse
+  reports `source_file` as an absolute installation path; it reached both leaf
+  metadata and the digest, so the same reviewed wheel produced a different leaf
+  identity per machine and the promoting host's paths were written into
+  promotion evidence. `tooluniverse_adapter` now expresses `source_file`
+  relative to the reviewed package before digesting, and replaces paths outside
+  it rather than disclosing them. The PubMed bundle was re-promoted: lock
+  `sha256:33789b5a02f45bcdb925e8a2ff79a23866674561ad43b4ac51df5d1996f08f21`,
+  approval `sha256:cd25f1d282dede6a4273088370a8336be401ab09a1b4eda280d540b07a627f9d`.
+- **Verified locks are invalidated by unrelated in-repo change.**
+  `openroad_adapter_digest` binds the `ari-skill-hpc` job contract, and
+  `tooluniverse_adapter_digest` binds `sources.py` and the support matrix. A
+  concurrent `ari-skill-hpc` commit and an edit to either file are each enough
+  to make a checked-in lock fail closed, so both re-promotions were required
+  before the suite returned green.
+
+### 14.7 Exactly one pinned execution substrate (2026-08-07)
+
+- **The SLURM profile pins a container, not the PRoot closure.** The reviewed
+  PRoot/unsquashfs/worker-Python build links against a newer host glibc than the
+  promoting site provides, so the §14.5 profile now carries
+  `ContainerRequestV1(runtime="singularity", gpu=false, network="none",
+  contain_all=true, clean_environment=true)` instead of
+  `OpenRoadPortableRuntimeV1`. Isolation is stronger, not weaker: the closure is
+  the SIF alone rather than the SIF plus four host binaries. The re-materialized
+  image is `sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c`,
+  1,540,308,992 bytes, under `singularity` 4.5.0-1.el9.
+- **Both substrates stay admitted; exactly one may be present.** The execution
+  contract still accepts the reviewed PRoot/SIF portable runtime, and
+  `openroad_verified_artifact` still verifies its bytes. Which substrate a
+  profile pins is a site property; that a scheduler profile pins exactly one of
+  `portable_runtime` and `container` is the invariant, and a profile declaring
+  both or neither is rejected by the execution contract.
+- **Environment requirements and runtime target are derived from the profile.**
+  The SLURM `environment_requirements` are computed as `cpu`, `exclusive-node`,
+  `slurm`, plus `proot-sif` or `<runtime>-sif`, so a container run cannot
+  advertise a PRoot requirement; the promoted lock lists `cpu`,
+  `exclusive-node`, `singularity-sif`, `slurm`. `runtime_target` follows the same
+  declaration: `worker_python` is `container-provided` rather than
+  `CPython-3.12`, `execution_substrate` is `singularity-sif` rather than
+  `proot-sif`, and `network` is `isolated` rather than `host-uncredentialed`
+  because the container declares `network: none`.
+- **Scheduler-snapshot verification is site-portable.** The promotion compares
+  the live controller against the values *declared in the reviewed snapshot* —
+  SLURM version, GRES types, partition `MaxTime`, node architecture, `CPUTot`,
+  `Sockets`, `ThreadsPerCore` — and against the operator's private site
+  configuration for the selectors that never enter the repository, instead of
+  against literals. A short set of invariants that are not site characteristics
+  is asserted separately: `Arch=x86_64`, `Gres=(null)`, and
+  `OverSubscribe=EXCLUSIVE`. A snapshot claiming GPU authority is refused
+  outright. The same promotion can therefore run at another scheduler site, and
+  drift between the snapshot and the live controller still fails closed.
+- **The GPU limitation is read from the snapshot, not asserted everywhere.** A
+  scheduler that declares no GRES types cannot express a GPU request at all; a
+  scheduler that does declare them can, so the guarantee then rests on the
+  allocated node exposing no accelerator. The promoted limitation text is
+  selected from the reviewed snapshot. Either way the profile requests zero GPUs
+  and grants no GPU capability.
+- **Terminal state comes from whichever authority the site actually has.** Where
+  the scheduler has accounting storage, the state is the scheduler's own
+  (`scheduler_state` `COMPLETED`, `exit_code` 0); where it has none, it is the
+  nonce-bound fixed-wrapper record (`reason` `fixed-wrapper-completion-v1`).
+  Either way the job must have actually succeeded, and the typed job's
+  `container_digest` must equal exactly what the profile pins — the image digest
+  for a container run, and no container at all for the PRoot run.
+- **Remaining promoting-host paths were removed from the bundles.** The
+  scheduler handle's `workspace_scope` and `artifact_scope` are recorded relative
+  to the declared work root, because the digest-derived scope names are the
+  publishable part while the prefix only says which machine ran the promotion; a
+  scope escaping the work root is refused. The SLURM bundle's materialized
+  profile moved from `workspace/materialized-profile-v1.json` to
+  `materialized/materialized-profile-v1.json`: the workspace must stay
+  byte-exactly the declared input set for source admission and the materialized
+  profile is not one of those inputs, so it keeps its own bundle ignore rule and
+  still retains runtime selectors. The local-CPU OpenROAD and Qiskit materialized
+  profiles now record bundle-relative `toolchain.executable_path`,
+  `workspace.source_root`, `golden_fixture_path`, `replay_fixture_path`, and
+  `circuit.qpy_path`; portable experiment identity already excluded them and the
+  sole reader re-derives each from the bundle directory.
+
+### 14.8 ToolUniverse collection enumeration (2026-08-07)
+
+- **A second artifact `tooluniverse/1.3.1+ari.2` raises the SMCP response
+  ceiling.** It carries the `1.3.1+ari.1` `fitz>=0.0.1.dev2` →
+  `PyMuPDF==1.26.4` metadata fix unchanged and additionally replaces the
+  `smcp.SMCP` response `max_chars` of `100_000` with `2_000_000` at both
+  serialization sites. Unlike `ari.1` it therefore records
+  `source_code_changes: true`.
+- **Why the ceiling had to move.** Upstream caps every compact MCP response at
+  100,000 characters and, when structural trimming cannot fit, falls back to raw
+  string truncation that emits invalid JSON. That makes whole-collection
+  enumeration impossible: `get_tool_info(detail_level=full)` exceeds the ceiling
+  for the largest leaves even at batch size one. Measured over all 2,601 loaded
+  leaves the largest single response is 510,904 characters and only two exceed
+  100,000, so 2,000,000 admits the worst observed batch with roughly threefold
+  headroom while staying well under the 7,103,230-character full-collection
+  dump.
+- **It is a Provider artifact, not a promotion.** Two controlled builds produced
+  byte-identical wheel
+  `sha256:5c2e9a254e353e5941d59f8e279dd7c55777eb46c84457f1eefcaef7aa4a60c9`
+  from the same upstream commit `9b7ff91ddb45b567cac2fa8ea31b82851e877617`, and
+  its manifest declares `PubMed_search_articles` as `ari.literature.search/v1`.
+  The bundle carries a build recipe, patch, runtime lock, and manifest; it
+  carries no registration evidence, no human approval, and no verified lock.
+- **A collection-wide ToolUniverse source carries no leaf promotion.** An
+  `ari-patched-wheel` source may now omit `verified_lock_path`. Such a source
+  must not assert `evidence.replay_fixture_digest` or
+  `evidence.scientific_validation_digest`, because those levels require leaf
+  evidence bound to a verified lock; without one the source stays `callable` and
+  can reach neither `reproducible` nor `scientifically_admitted`. The retained
+  exact wheel is still required in every case.
 
 ## 15. Completion criteria
 

@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/llm/client.py
     role: implementation
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # Claude Code LLM Provider (`backend: claude_code`)
@@ -66,8 +66,9 @@ auto-resolves: `--bare` is used only when `ANTHROPIC_API_KEY` or
 isolation flags stay) and the decision is recorded in provenance
 (`bare_auto_resolved`). An explicit `bare: true` without a key is honoured
 and fails loudly ("Not logged in") rather than silently weakening isolation.
-`home_mode: sandbox` gives each call a temp `$HOME` (requires key auth,
-since OAuth credentials live under the real `$HOME`).
+`home_mode: sandbox` gives each call its own throwaway `$HOME`, created as
+`home/` inside that call's provenance directory (requires key auth, since
+OAuth credentials live under the real `$HOME`).
 
 ### `low_overhead`
 

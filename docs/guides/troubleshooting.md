@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # Troubleshooting
@@ -35,8 +35,10 @@ shell rc file — so sub-experiments can override it.
 
 ### `DeprecationWarning: $HOME/.ari/...`
 
-**Cause:** Legacy fallback path is being touched.  v1.0 will hard-
-fail on this; v0.5–v0.8 emit a warning.
+**Cause:** Legacy fallback path is being touched.  Every release
+from v0.5 onward emits a `DeprecationWarning` naming the replacement
+(`ari/_deprecation.py`, `removal_version="v1.0"`); v1.0 removes the
+fallback.
 
 **Fix:** Set the explicit env var.  Mapping table:
 
@@ -80,13 +82,21 @@ rejected.
 
 ### `exit_code=127` from a build step
 
-**Cause:** Almost always a missing compiler.  The HPC skill
-restricts you to `gcc`; `mpicc` / `icc` / `aocc` are not in the
-default PATH on most clusters.
+**Cause:** The command is not on `PATH`.  The `slurm_submit` script
+bridge submits with `#SBATCH --export=NIL` and then sets
+`PATH=/usr/local/bin:/usr/bin:/bin`, so only the base system toolchain
+(typically `gcc`) is reachable — a compiler your site publishes through
+environment modules (`mpicc` / `icc` / `aocc`) is not.
 
-**Fix:** Replace `mpicc` with `gcc -fopenmp` (and link OpenMPI
-explicitly if needed).  Update the experiment.md `Hardware Limits`
-section to declare the constraint upfront.
+**Fix:** Load the module the toolchain lives in.  The bridge sources
+the module system's own init on the node (`/etc/profile.d/modules.sh`,
+`/etc/profile.d/lmod.sh`, `$MODULESHOME/init/bash`) before your body
+runs, so a `module load` written inside the script works; passing
+`modules=` to the tool instead gets a `module --force purge` first, and
+exits `86` when no module system is present at all.  Otherwise replace
+`mpicc` with `gcc -fopenmp` (and link OpenMPI explicitly if needed),
+and declare the constraint in the experiment.md `Hardware Limits`
+section.
 
 ### `--account` rejected
 
@@ -110,9 +120,9 @@ the wrong endpoint.
 curl -fsS http://127.0.0.1:8283/healthz   # Should return 200
 
 # If it fails, restart per docs/guides/hpc_setup.md#6
-docker compose -f containers/letta/docker-compose.yml up -d
+docker compose -f scripts/letta/docker-compose.yml up -d
 # or
-apptainer run containers/letta.sif &
+scripts/letta/start_singularity.sh
 ```
 
 The dashboard `/api/memory/health` route is the same probe, so if
@@ -296,7 +306,8 @@ connect.
   decisions (v0.7+).
 - `docs/reference/file_formats.md` — what every file in a
   checkpoint means.
-- `docs/_archive/refactor_audit.md` — known migration debt.
+- `docs/guides/migration.md` — the version-to-version migration
+  recipes (v0.5 → v0.6 onward) and the GUI-refresh notes.
 
 ## See also
 

@@ -227,6 +227,23 @@ Rules that hold for all three:
 but its cursor is an **integer index** into the deterministic joined rewrite
 list (it is a join across two logs, not a single file scan).
 
+**Those four endpoints are the whole of the paged surface — the tree is not on
+it.** `GET /api/v1/runs/{run_id}/tree` accepts neither `cursor` nor `limit`; its
+only parameter is the path's `run_id`, in the `ROUTES` table and in
+`openapi.json` alike. `queries.get_run_tree` passes the checkpoint through the
+`tree_view` adapter and returns every node it finds in one `TreeV1` body, and
+the `revision` that body carries is the resolved tree file's `st_mtime_ns` — a
+change detector, not a paging token. A run with ten thousand nodes therefore
+ships ten thousand nodes on every fetch, and because a realtime event is an
+invalidation rather than data (see *Realtime: `GET /api/v1/events/stream` (SSE)*
+below), each `tree` event costs one whole refetch wherever the tree query is
+mounted. Nothing on the server bounds this: the depth-limited default and the
+windowed side table in the v2 tree screen
+(`ari-core/ari/viz/frontend/src/components/TreeV2/treeLod.ts`) reduce what is
+*rendered*, not what is transferred. **Cursor paging over the tree was specified
+by the GUI refresh program and is not built** — a known gap. Until it is, size
+this endpoint against the run, not against the request.
+
 ### Realtime: `GET /api/v1/events/stream` (SSE)
 
 A single Server-Sent Events stream carries **invalidations, never state**:
@@ -257,6 +274,34 @@ data: {"event_id":"42","run_id":"20260726T101500_matmul","topic":"tree",
 | Replay | On connect the server replays buffered events with id greater than `Last-Event-ID` (the header wins; `?last_event_id=` is the fallback because `EventSource` cannot set headers). The buffer is a 1000-event ring — anything evicted is simply gone, which is safe precisely because events are not a source of truth: the reconnect refetch covers the gap. |
 | Heartbeat | `: heartbeat` comment every 15 s of idleness, so proxies do not drop the connection. The stream opens with `: connected` + `retry: 5000` (the browser's reconnect delay). |
 | Reconnect | The stream window is bounded at 300 s; on expiry the server writes `: stream-timeout - reconnect` and closes, and the client reconnects with its `Last-Event-ID`. A client disconnect ends the stream silently. |
+
+**There is no event-history resource.** This stream is the only event surface
+`/api/v1` has — it is served from its own branch in `routes.py`, and the
+`ROUTES` table carries no per-run events path. **A per-run event history
+(`GET /api/v1/runs/{run_id}/events`) was specified by the GUI refresh program
+and is not built** — a known gap. Anything evicted from the 1000-event ring, and
+everything published before the current server process started, is gone, which
+is tolerable only because events are invalidations and the reconnect refetch
+covers the gap.
+
+The one durable per-run lifecycle record is `{ckpt}/launch_events.jsonl`,
+appended by the v1 launch (`draft` → `validating` → `accepted` → `spawned`, or
+`failed` when the spawn itself raises). No endpoint serves it, so it is read off
+disk — which is how [GUI Cutover Runbook](../guides/gui_cutover_runbook.md),
+*3. Staged rollout*, lists it among the signals to watch.
+
+**Stage transitions are not events either.** Three call sites publish onto the
+bus — the state watcher (`tree`), a checkpoint switch (`run`) and the v1 launch
+(`run`, with `payload.lifecycle` set to `spawned`) — and nothing emits a
+per-stage `started` / `completed` / `failed` event. The lifecycle file above
+stops at `spawned` too: neither the server nor the spawned CLI appends to it
+afterwards. A run's status after spawn is therefore re-derived from artifacts on
+every read (`_run_summary_from_dir` in `ari/viz/v1/queries.py`) in three tiers —
+the pid probe, then the tree's node statuses, then a parseable
+`review_report.json` — and is one of `unknown` / `running` / `stopped` /
+`completed`. A process that died leaving a node marked `running` in the tree
+reads as `stopped`. That is an inference from artifacts, not a reported outcome:
+do not read `status` as a lifecycle event log.
 
 ### Authentication
 
@@ -565,6 +610,26 @@ The list is one portfolio across every checkpoint search base, ordered by
 | GET | `/api/gpu-monitor` | GPU utilisation poll | `routes.py` |
 | GET | `/api/resource-metrics` | CPU / memory / disk metrics | `routes.py` |
 | GET | `/api/logs` | Recent log lines for the active run | `routes.py` |
+
+**`GET /state` is not a pure read.** `services/state_service.build_app_state`
+opens by clearing the server's cached experiment text
+(`state._last_experiment_md`) whenever the tracked launch process has exited —
+so reading this endpoint mutates a module global that the legacy
+`POST /api/launch` handler sets and that later `/state` responses read back —
+and it then re-walks the checkpoint on every call: tree load, artifact-presence
+globs, phase detection, the `cost_trace.jsonl` tail. The legacy shell polls it
+on a fixed five-second interval for as long as it is mounted (`STATE_POLL_MS`
+in `ari-core/ari/viz/frontend/src/context/AppContext.tsx`), unconditionally.
+Neither is a defect to fix in place: the mutation is preserved verbatim from the
+inline `/state` builder this function was extracted from, and both are scheduled
+for deletion — the poll as removal item 2 of
+[GUI Cutover Runbook](../guides/gui_cutover_runbook.md), *6. Legacy removal*,
+and `build_app_state` itself as removal item 3. They are documented because they
+are the concrete thing `/api/v1` was built not to do: the v1 read modules
+re-derive run status from the filesystem instead of consulting or pruning the
+server's process-tracking state — the "`GET` is side-effect free" property in
+[Dashboard Architecture](../concepts/gui_architecture.md), *7. The backend
+seam*.
 
 **`GET /api/resource-metrics` — payload shape.** `_collect_resource_metrics()`
 (`ari-core/ari/viz/ui_helpers.py`) walks `/proc` for the processes owned by the

@@ -28,7 +28,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # Remote Access and Operations Guide
@@ -75,9 +75,13 @@ All of them are pre-seeded, commented out, in `scripts/setup/setup_env.sh`.
 | `ARI_GUI_CHALLENGES` | on | `0` disables confirmation challenges |
 | `ARI_GUI_HEALTH` | on | `0` disables the health/diagnostics surfaces |
 
-Each one is an intentional rollback lever, documented next to its
-implementation. Turning any of them off restores a previously shipped
-behaviour — none of them unlocks anything new.
+Every one of them except `ARI_GUI_TOKEN` is an intentional rollback lever
+carrying a kill-switch register next to its implementation — an ADR-07
+register for the six security switches, and the gui_refresh rollout-flag
+policy (owner / default / rollback / removal gate) for `ARI_GUI_V2`: turning
+one off restores a previously shipped behaviour and unlocks nothing new.
+`ARI_GUI_TOKEN` is not a switch but the token value itself — leaving it unset
+does not restore anything, it makes the server mint one (see below).
 
 ## Opting in to a non-loopback bind
 
@@ -313,7 +317,7 @@ ssh -N -L 8765:localhost:8765 -L 8766:localhost:8766 user@remote-host
 
 Forward **both** ports: `8765` for HTTP and `8766` (HTTP + 1) for the tree
 WebSocket. If you forward only the HTTP port everything still works —
-the WebSocket simply fails to connect and the legacy pages fall back to
+the WebSocket simply fails to connect and the dashboard falls back to
 polling.
 
 For a cluster login node in front of a compute node, chain the hops:

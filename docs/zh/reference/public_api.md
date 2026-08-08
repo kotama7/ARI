@@ -59,7 +59,7 @@ from ari.public.config_schema import (
 cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 ```
 
-导出的名称与 `ari/config.py` 符号一一对应；当前字段结构请参阅该文件。来源：`ari-core/ari/public/config_schema.py`。
+导出的名称与 `ari/config/__init__.py` 符号一一对应；当前字段结构请参阅该文件。来源：`ari-core/ari/public/config_schema.py`。
 
 ## `ari.public.container`
 
@@ -68,13 +68,13 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 | 符号 | 用途 |
 |---|---|
 | `ContainerConfig` | 数据类：`image`、`mode`（`auto`/`docker`/`singularity`/`apptainer`/`none`）、`pull`（`always`/`on_start`/`never`）、`extra_args` |
-| `detect_runtime()` | 基于 `which` 查找返回 `"singularity"` / `"apptainer"` / `"docker"` / `"none"` |
+| `detect_runtime()` | 返回 `"docker"` / `"apptainer"` / `"singularity"` / `"none"`；候选者不仅要在 `PATH` 上，还须响应探测（`docker info`、`<rt> --version`）；设置了 `SLURM_JOB_ID` 时 Apptainer/Singularity 优先于 Docker |
 | `config_from_env()` | 从 `ARI_CONTAINER_*` 环境变量构建 `ContainerConfig`（未设置时返回 `None`） |
-| `pull_image(cfg)` | 拉取 / 构建 `cfg` 引用的镜像 |
-| `run_in_container(cfg, cmd, ...)` | 在容器内运行进程，返回退出码 + 捕获的流 |
-| `run_shell_in_container(cfg, script, ...)` | 同上，但接受 bash 脚本字符串 |
+| `pull_image(cfg)` | 拉取 `cfg` 引用的镜像（`docker pull` / `<rt> pull`）；成功时返回 `True` |
+| `run_in_container(cfg, cmd, ...)` | 在容器内（未配置镜像 / `mode: none` 时则直接）启动 `cmd`，返回 `subprocess.Popen` 句柄 |
+| `run_shell_in_container(cfg, script, ...)` | 接受 shell 命令字符串的阻塞版本；返回 `subprocess.CompletedProcess`，超时按进程组 kill |
 | `list_images()` | 当前运行时中可用镜像的清单 |
-| `get_container_info()` | 包含运行时 + 镜像健康状态的诊断字典 |
+| `get_container_info()` | 面向 GUI 的诊断字典：`runtime`、`version`、`available` |
 
 来源：`ari-core/ari/container.py` → `ari-core/ari/public/container.py`。
 
@@ -97,13 +97,15 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 
 ## `ari.public.llm`
 
-从 `ari.llm.client` 重导出 `LLMClient`：
+从 `ari.llm.client` 重导出 `LLMClient`。构造函数接受 `LLMConfig`，`complete()`
+是同步方法：
 
 ```python
+from ari.public.config_schema import LLMConfig
 from ari.public.llm import LLMClient
 
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "..."}])
 ```
 
 请优先使用此方式而非直接调用 LiteLLM — `LLMClient` 会透传 ARI 的成本追踪器和元数据标签。来源：`ari-core/ari/llm/client.py` → `ari-core/ari/public/llm.py`。
@@ -234,6 +236,7 @@ from ari.public.verified_context import render_grounded_block
 
 ```python
 from ari.public import cost_tracker
+from ari.public.config_schema import LLMConfig
 from ari.public.paths import PathManager
 from ari.public.llm import LLMClient
 
@@ -246,8 +249,8 @@ run_id = PathManager.checkpoint_dir_from_env().name
 nodes_json = paths.checkpoint_file(run_id, "nodes_tree.json")
 
 # 3. LLM 调用走 ARI 的封装，因此成本会被自动记录。
-client = LLMClient(model="ollama/qwen3:32b")
-resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
+client = LLMClient(LLMConfig(model="ollama/qwen3:32b"))
+resp = client.complete([{"role": "user", "content": "Summarise: ..."}])
 ```
 
 该调用的 token 数与美元成本会带着技能名和阶段标签写入检查点的 `cost_trace.jsonl` —— 无需手动调用 `record()`。
@@ -265,4 +268,3 @@ resp = await client.complete([{"role": "user", "content": "Summarise: ..."}])
 - `ari-core/ari/public/__init__.py` — 包含规范子模块列表的模块级文档字符串。
 - `docs/guides/extension_guide.md` — 如何编写仅依赖 `ari.public` 的新技能。
 - `CONTRIBUTING.md::Software-engineering discipline §3` — 公共 API 规则（技能只能访问 `ari.public.*`）。
-- `docs/_archive/refactor_audit.md`（§4）— 第 4 阶段的历史清单。

@@ -21,7 +21,7 @@ targets the like-named module under `ari/`.
 - `test_api_schema_contract.py` — stable viz endpoint response-shape contracts.
 - `test_architecture_boundary_index.py` — boundary coverage map (report `003` §16): every boundary B1-B11 must name a live guard file under `ari-core/tests/` or an explicit `waived:` reason, so a new or renamed boundary can never ship silently unguarded.
 - `test_artifact_store.py` — `CheckpointArtifactStore` by-logical-name artefact access over the flat checkpoint layout: `ArtifactStore` ABC non-instantiability + structural conformance, text/bytes/source-path `put` with subdir creation, `exists`/`get` on misses, prefix listing.
-- `test_assurance_failure_reason.py` — TODO
+- `test_assurance_failure_reason.py` — an infrastructure failure has to say which one it was. The bridge caught every exception from a locked verification with a bare `except Exception:` and returned the label `infrastructure_error` alone, dropping the cause the runner already had in hand. Two unrelated defects — a container runtime installed on no node, and a memory bound too small for that runtime to start — both surfaced as that one word, and telling them apart meant replaying the execution by hand. Pins the reason being captured, reaching the record, NOT changing the verdict, and being stripped of host identity, because the record is written into a checkpoint and can leave with a reproduction.
 - `test_assurance_measure.py` — the wrong-vs-slow distinction the wiring rests on, both error classes, seeding that never overwrites an inherited candidate, and the channel split: `evaluation_cases` is rendered verbatim into the child's prompt, so it is treatment text and must not gain fields, while the verdict/spread/absolute seconds and the measurement provenance live in the audit channel.
 - `test_assurance_resolver.py` — harness catalog resolution, compatibility filtering, lock creation, and fail-closed ambiguity coverage.
 - `test_async_tool_lifecycle.py` — asynchronous handle state transitions, polling budgets, cancellation, and expiry.
@@ -275,6 +275,7 @@ targets the like-named module under `ari/`.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_text_toolcall_recovery.py` — recovery of tool calls emitted as plain text by models that do not honour the tool-call protocol; keeps a weak model's turn usable instead of scoring it as a no-op.
+- `test_tolerance_policy_coverage.py` — TODO
 - `test_tool_manager_workdir.py` — tool dispatch pins filesystem tools (`write_code`/`run_bash`/`run_code`/`emit_results`/`read_file`) to the node's work_dir when the model omits `work_dir`, so per-node edits land in the evaluated dir instead of the shared `/tmp/ari_work` fallback (regression guard for the BFTS bug where omitted-work_dir edits were scored on inherited parent code); explicit work_dir is not overridden and memory-tool CoW routing is preserved.
 - `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
 - `test_trace_log_truncation.py` — trace-log truncation.

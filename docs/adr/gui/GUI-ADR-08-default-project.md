@@ -1,3 +1,28 @@
+---
+sources:
+  - path: ari-core/ari/viz/v1/queries.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/dto.py
+    role: implementation
+  - path: ari-core/ari/viz/checkpoint_finder.py
+    role: implementation
+  - path: ari-core/ari/viz/checkpoint_api.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/router.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/config_api.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/store.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Projects/ProjectsPage.tsx
+    role: implementation
+  - path: ari-core/tests/test_gui_v1_api.py
+    role: test
+  - path: ari-core/tests/test_gui_v1_config_crud.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-08: the implicit default project maps to the checkpoint search bases
 
 Context: accepted 2026-07-23. The charter's baseline recorded that in the

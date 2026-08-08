@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-10
+last_verified: 2026-08-08
 ---
 
 # BFTS アルゴリズム
@@ -32,7 +32,7 @@ stateDiagram-v2
     frontier --> frontier: 永続 — 再展開可能なまま残る
     frontier --> pending: 最良ノードを選択（スコア + 多様性ボーナス）→ 子を 1 つ展開
     frontier --> retired: ルール A（子が親を上回る）または ルール B（max_expansions_per_node 到達）
-    pending --> pruned: should_prune（total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false）
+    frontier --> pruned: 展開選択時の should_prune（total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false）
     retired --> [*]
     pruned --> [*]
 ```
@@ -61,10 +61,10 @@ def bfts(experiment, config):
 
         # --- BFTS ステップ 2: pending ノードのバッチを実行 ---
         batch = llm_select_next_nodes(pending, max_parallel)
-        record_run(batch)  # ラベルの多様性を追跡
         results = parallel_run(batch)
 
         for node in results:
+            record_run(node)                  # 完了後にラベルの多様性を追跡
             memory.write(node.eval_summary)   # 祖先チェーンメモリに保存
             frontier.append(node)             # 選択されたら展開
 

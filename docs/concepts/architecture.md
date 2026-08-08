@@ -18,7 +18,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # ARI Architecture
@@ -523,9 +523,15 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     Output: ors_seed.json
 
   Stage 15: ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
-    LLM-driven replicator: reads the paper + the rubric's expected_artifacts
-    and writes a self-contained reproduce.sh + source files into the
-    sandbox. Skips when reproduce.sh is already present (composes after
+    Replicator: drives a PaperBench-style ReAct agent (BasicAgent, or
+    IterativeAgent under `iterative_agent: true`) — vendored under
+    ari-skill-paper-re/vendor/paperbench — with the sandbox as its
+    workspace. The agent reads the paper + the rubric's expected_artifacts
+    and writes reproduce.sh + supporting source by repeatedly invoking
+    bash/python tools until submit or the wall-clock budget
+    (time_limit_sec, 12 h by default) runs out. This replaced the v0.6
+    single-shot LLM replicator.
+    Skips when reproduce.sh is already present (composes after
     ors_seed_sandbox), so it only fires on EAR-off runs (paper-only repro).
     Routed through LiteLLM; provider-neutral.
     Output: ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
@@ -535,8 +541,10 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
       slurm (when sbatch + ARI_SLURM_PARTITION are present — same partition
       BFTS used) → docker (when daemon usable & not on HPC) → apptainer →
       singularity → local. Override via ARI_PHASE1_SANDBOX.
-    SLURM dispatch uses sbatch --wait + a wrapper that exec's reproduce.sh
-    by absolute path so $(dirname "$0") survives spool relocation.
+    SLURM dispatch is a handoff to the typed scheduler lifecycle: the
+    request becomes a JobRequestV1 + ResourceRequestV1, is submitted
+    through the same SlurmScheduler ari-skill-hpc uses, and is polled
+    to a terminal state (_execute_reproduction_slurm).
     Captures reproduce.log; checks expected_artifacts from the rubric.
     Output: ors_phase1.json { executed, exit_code, log_path,
                               artifacts, missing, sandbox_kind,
@@ -545,15 +553,17 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
   Stage 17: ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [after stage 16, v0.7.0]
     Phase 2. Runs PaperBench SimpleJudge over the rubric leaves
     against (repo_dir + reproduce.log + paper). The main per-leaf
-    grading completer routes through LiteLLM (any provider works);
-    the score-parsing structured completer remains on gpt-4o-2024-08-06.
+    grading completer routes through LiteLLM (any provider works); the
+    two score-parsing structured completers are built from the same
+    judge_model and differ only in carrying a response_format.
     N runs (default 1 — PaperBench §4.1 single-pass judging; raise it
     with ARI_JUDGE_N_RUNS), weighted leaf aggregation. A negative-control
     pass (empty repo + trivial reproduce.sh) verifies the rubric does
     not reward absence-of-work — both controls must score < 5%.
     Output: ors_grade.json { ors_score, raw_score, leaf_grades,
                              judge_model, n_runs, rubric_sha256,
-                             negative_control: {empty, boilerplate, passed} }
+                             negative_control_check: {empty, boilerplate,
+                                                      passed, status, error} }
 ```
 
 ---
@@ -661,13 +671,13 @@ ARI no longer maintains a global config directory.  Every settings file and
 agent memory store lives under the active checkpoint, so each experiment
 gets its own isolated state.  v0.5.0 removed the global `$HOME/.ari/`
 directory; the few remaining filesystem fallbacks emit a
-`DeprecationWarning` and disappear in v1.0 (see `docs/_archive/refactor_audit.md`
-and `docs/guides/migration.md`):
+`DeprecationWarning` and disappear in v1.0 (see
+`docs/guides/migration.md`):
 
 ```
 checkpoints/{run_id}/
 ├── settings.json             # GUI settings (LLM model, provider, HPC defaults)
-├── memory_backup.jsonl.gz    # Letta snapshot (portable; auto on stage boundary + exit)
+├── memory_backup.v1.json.gz  # Letta snapshot (portable; auto on stage boundary + exit)
 ├── memory_access.jsonl       # Append-only memory write/read telemetry
 └── ...                       # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -809,9 +819,12 @@ would be misleading to describe as ARI's layout.
 
 | Skill | Tools | Role | LLM? |
 |-------|-------|------|------|
-| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `list_runs`, `list_children`, `get_paper` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ |
+| `ari-skill-orchestrator` | `run_experiment`, `get_status`, `get_result`, `stop_experiment`, `list_runs`, `list_children`, `list_artifacts`, `read_artifact`, `get_paper`, `get_ear`, `list_skills`, `get_workflow` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ |
+| `ari-skill-tool-registry` | `discover`, `describe`, `invoke`, `get_status`, `get_result` | Provider-neutral discovery, admission, immutable invocation and replay for large external MCP collections | ✗ |
+| `ari-skill-knowledge` | `search_knowledge_skills`, `describe_knowledge_skill`, `list_active_knowledge_skills`, `request_knowledge_skill` | Read-only query + non-authoritative request surface over content-addressed procedural knowledge | ✗ |
+| `ari-skill-harness` | `search_harnesses`, `describe_harness`, `request_auxiliary_verification`, `read_attestation`, `list_verification_requirements` | Read-only Harness catalog / requirement / Attestation queries plus non-authoritative auxiliary requests | ✗ |
 
-✗ = no LLM, △ = LLM in some tools only, ✓ = primary tools use LLM. **14 skills total** (13 default, 1 additional) — `ari-skill-replicate` added in v0.7.0.
+✗ = no LLM, △ = LLM in some tools only, ✓ = primary tools use LLM. **17 skill packages total** (13 registered in the default `workflow.yaml`, 4 additional) — `ari-skill-replicate` added in v0.7.0.
 
 ---
 
@@ -979,7 +992,7 @@ constraint auditable in YAML instead of buried in skill Python.
 ## Per-Node Prompt Composition
 
 Every BFTS node is executed by a single entry point, `AgentLoop.run(node,
-experiment)` in `ari/agent/loop.py:370`. The same loop handles root and
+experiment)` in `ari/agent/loop.py:2063`. The same loop handles root and
 child nodes; the prompt it builds differs by `node.depth` and by the
 state inherited from ancestors. This section is the source of truth for
 *what an agent sees the moment it starts a node* — so changes here
@@ -989,7 +1002,7 @@ require careful review.
 
 Two arguments arrive per call:
 
-1. **`node: Node`** — created by `BFTS.expand` (`ari/orchestrator/bfts.py:431-441`). The fields that influence the prompt:
+1. **`node: Node`** — created by `BFTS.expand` (`ari/orchestrator/bfts.py:734-745`). The fields that influence the prompt:
    - `id`, `depth`, `label` (`draft|improve|debug|ablation|validation|other`), `raw_label`
    - `ancestor_ids` — the strict CoW chain from root to parent (parent included), used as the `search_memory` filter
    - `eval_summary` — for a freshly-expanded child this holds the LLM-proposed direction (one sentence). After execution the same field is overwritten with the evaluator's summary.
@@ -999,7 +1012,12 @@ Two arguments arrive per call:
    - `work_dir` — node-private directory created by `PathManager`
    - `slurm_partition`, `slurm_max_cpus` — populated by `env_detect` when SLURM is enabled
 
-### System prompt — `ari/agent/loop.py:41-58`
+### System prompt — `ari/prompts/agent/system.md`
+
+The body is an externalised template (key `agent/system`, loaded via
+`_system_prompt_versioned()` and `str.format`-ed at `loop.py:2226`); only the
+`{tool_desc}` / `{memory_rules}` / `{extra}` substitutions are built in
+`loop.py`:
 
 ```
 You are a research agent. You MUST use tools to execute experiments. ...
@@ -1017,16 +1035,16 @@ RULES:
 {memory_rules}{extra}
 ```
 
-The `{extra}` block (built at L448-453) appends:
+The `{extra}` block (built at L2213-2219) appends:
 
 | Sub-block | Source | Notes |
 |-----------|--------|-------|
-| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | One-sentence behavioural cue keyed off the BFTS label |
-| `EXPERIMENT ENVIRONMENT` | L433-442 | `work_dir` + provided files + SLURM partition/CPUs + container image (`ARI_CONTAINER_IMAGE`) |
-| `RESOURCE BUDGET` | L443-447 | `max_react_steps`, `timeout_per_node // 60` minutes |
+| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | One-sentence behavioural cue keyed off the BFTS label; with `ARI_BFTS_NO_LABEL` set (`labels_disabled()`) every node gets the same neutral role instead |
+| `EXPERIMENT ENVIRONMENT` | L2197-2207 | work directory (`/workspace`, the node's container root) + provided files + SLURM partition/CPUs (only when a scheduler tool is actually available) + container image (`ARI_CONTAINER_IMAGE`) |
+| `RESOURCE BUDGET` | L2208-2212 | `max_react_steps`, `timeout_per_node // 60` minutes |
 | `extra_system_prompt` | `WorkflowHints.extra_system_prompt` | Optional escape hatch set by `from_experiment_text` / pipeline configs |
 
-The `{memory_rules}` block (L454-456) is appended only when the agent
+The `{memory_rules}` block (L2220-2222) is appended only when the agent
 actually has the `add_memory` tool available, and it inlines the active
 node id so the LLM cannot accidentally write under a different scope:
 
@@ -1039,29 +1057,29 @@ node id so the LLM cannot accidentally write under a different scope:
 ### Tool catalog (`tool_desc`)
 
 `tools = self._available_tools_openai(suppress=..., phase="bfts")` at
-L389 enumerates every tool MCP exposes for `phase="bfts"`, then drops
+L2112 enumerates every tool MCP exposes for `phase="bfts"`, then drops
 anything in `_suppress_tools`. The mutable suppression set lives on the
 `AgentLoop` instance and is updated as the run progresses:
 
 - After the first successful `generate_ideas` call, the loop sets
-  `self._suppress_tools = {"generate_ideas"}` (L873-874) so subsequent
+  `self._suppress_tools = {"generate_ideas"}` (L2633) so subsequent
   nodes do not regenerate ideas.
 - `survey` is **not** suppressed for child nodes; it is only discouraged
   in prose (see "User message #1 — child" below). A child that ignores
   the prose can still call `survey()`.
 
 `_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`
-(L613) marks tool results that the message-window trimmer must keep,
+(L2630) marks tool results that the message-window trimmer must keep,
 even when the chat history is compressed; their content survives every
 ReAct round.
 
 ### User message #1 — root node (`node.depth == 0`)
 
-`loop.py:501-511`:
+`loop.py:2430-2436`:
 
 ```
 Experiment goal:
-{goal_text(truncated to 1500 chars)}
+{goal_text(capped at ARI_GOAL_MAX_CHARS, default 8000)}
 
 Node: {node.id} depth={node.depth}
 
@@ -1069,11 +1087,15 @@ START NOW: call {first_tool}() immediately. Do NOT output any text or
 plan — your first response must be a {first_tool}() tool call.
 
 WORKFLOW ORDER: (1) generate_ideas() sets the research direction and
-primary_metric; (2) make_metric_spec() derives the success metrics from
-that primary_metric (NOT from a guessed list); (3) survey() gathers related
-literature. The survey results are used to generate citations — without
-survey, the paper will have no references.
+primary_metric; (2) make_metric_spec() derives success metrics from the
+established primary_metric; (3) survey() gathers related literature for
+grounded citations.
 ```
+
+The `WORKFLOW ORDER` line is assembled from `_setup_descriptions` over the
+setup tools that survived suppression (`generate_ideas` → `make_metric_spec`
+→ `survey`), so a suppressed tool is never named; with none of them
+available the line degrades to "use only the available tools shown above".
 
 `first_tool` is `WorkflowHints.tool_sequence[0]`, which now defaults to
 `generate_ideas`; `enrich_hints_from_mcp` orders the setup tools
@@ -1083,24 +1105,39 @@ criterion, so `make_metric_spec` must follow it rather than guess a list).
 
 ### User message #1 — child node (`node.depth > 0`)
 
-`loop.py:477-500`:
+`loop.py:2341-2379`:
 
 ```
 Experiment goal:
-{goal_text(truncated to 1500 chars)}
+{goal_text(capped at ARI_GOAL_MAX_CHARS, default 8000)}
 
 Node: {node.id} depth={node.depth} task={node.label}
 
 Task: {label-specific one-line description from _label_desc}
 The parent node already completed the survey and established a research
-direction. Prior results are provided below. Implement and run your
-specific experiment, then return JSON with measurements.
+direction. Prior results are provided below for context — but they belong
+to the parent, NOT to you.
+
+MANDATORY: You must produce NEW artifacts to count as having run an
+experiment.
+  • Inherited files: source code, scripts, configs, compiled binaries.
+  • NOT inherited: the parent's results.json/results.csv, ... (the
+    _OUTPUT_BLACKLIST, spelled out)
+  ... (modify the code for your label; re-build, re-run, write fresh
+      result files; a zero-diff node is flagged STERILE)
+Implement and run your specific experiment, then return JSON with
+measurements.
 
 Workflow:
 {WorkflowHints.post_survey_hint}        ← e.g. slurm_submit / run_bash steps
 ```
 
-`_label_desc` (L479-485) is the only place where label semantics enter
+The "Prior results are provided below" sentence is conditional: a child whose
+handoff arm injects neither the summary nor the parent log is told instead
+that it inherits the parent's *code* but not its results, so the prompt never
+promises a block that does not arrive.
+
+`_label_desc` (L2308-2318) is the only place where label semantics enter
 the per-node prompt:
 
 | Label | One-line task |
@@ -1123,7 +1160,7 @@ search below.
 The old inline child-only `search_memory` dump (a single
 `[Prior knowledge from ancestor nodes …]` message truncated to an aggregate
 800 chars) has been **replaced** by the module-level
-`build_working_context_messages()` (`loop.py:108-224`), called from
+`build_working_context_messages()` (`loop.py:561-789`), called from
 `AgentLoop.run` for **every** node. It is read-only — it never writes memory —
 and assembles up to three bounded tiers:
 
@@ -1150,7 +1187,7 @@ and assembles up to three bounded tiers:
 Failures (memory backend down, malformed result) are swallowed at
 `logger.debug` level so the node still runs.
 
-The legacy `search_global_memory` injection block (`loop.py:517-540`) is dead
+The legacy `search_global_memory` injection block (`loop.py:2513-2535`) is dead
 code in v0.6.0; the global-memory tool was removed (`CHANGELOG.md`
 v0.6.0 §3) and the conditional never fires.
 
@@ -1158,14 +1195,14 @@ v0.6.0 §3) and the conditional never fires.
 
 | Item | Limit | Code |
 |------|-------|------|
-| `goal_text` | 1500 chars | `loop.py:434-438` |
-| Survey-result memory entry | first 5 papers, 200-char abstract each | `loop.py:794-799` |
-| Tier 1a — experiment-core field | `_CORE_FIELD_CAP = 400` chars per field | `loop.py:94` |
-| Tier 1a — `selected_idea` summary | `_IDEA_FIELD_CAP = 1500` chars | `loop.py:95` |
-| Tier 1b — per-ancestor `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` chars per entry (not an aggregate cut) | `loop.py:98` |
-| Tier 2 — supplement query | 200 chars | `loop.py:201` |
-| Tier 2 — supplement entries | top 5 by Letta `passages.search` embedding rank | `loop.py:202-206` (see Memory Architecture) |
-| Tier 2 — per-supplement entry | `_SUPPLEMENT_CAP = 400` chars per entry | `loop.py:99` |
+| `goal_text` | `ARI_GOAL_MAX_CHARS` chars, default **8000**; `0` disables the cap entirely | `loop.py:2274-2283` |
+| Survey-result memory entry | first 5 papers, 200-char abstract each | `loop.py:2939-2942` |
+| Tier 1a — experiment-core field | `_CORE_FIELD_CAP = 400` chars per field | `loop.py:342` |
+| Tier 1a — `selected_idea` summary | `_IDEA_FIELD_CAP = 1500` chars | `loop.py:343` |
+| Tier 1b — per-ancestor `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` chars per entry (not an aggregate cut) | `loop.py:346` |
+| Tier 2 — supplement query | 200 chars | `loop.py:759` |
+| Tier 2 — supplement entries | top 5 by Letta `passages.search` embedding rank | `loop.py:760-764` (see Memory Architecture) |
+| Tier 2 — per-supplement entry | `_SUPPLEMENT_CAP = 400` chars per entry | `loop.py:347` |
 
 ### Information that is intentionally **not** injected
 
@@ -1282,18 +1319,18 @@ No changes to `ari-core` required.
 
 ## Layered architecture (v0.7+ refactor)
 
-The post-refactor `ari-core/ari/` package is organised in five layers
-to minimise coupling.  See `CONTRIBUTING.md` for the design discipline
-that keeps the layering intact.
+The post-refactor `ari-core/ari/` package is organised in six layers
+(0–5) to minimise coupling.  See `CONTRIBUTING.md` for the design
+discipline that keeps the layering intact.
 
 | Layer | Subpackage | Owns |
 |---|---|---|
 | 0 — primitives | `paths`, `checkpoint`, `_deprecation`, `cost_tracker`, `pidfile`, `lineage`, `env_detect`, `schemas`, `configs`, `prompts`, `protocols` | Path resolution, deprecation warnings, cost tracking, prompt/config loaders, structural protocols. No internal ARI deps. |
 | 1 — domain models | `llm`, `mcp`, `memory`, `clone`, `publish`, `evaluator`, `orchestrator/node`, `orchestrator/scheduler`, `orchestrator/node_selection` | Data models + thin wrappers over upstream libs (litellm, MCP, Letta). |
 | 2 — orchestrator | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS exploration, lineage-decision LLM hook, per-node reports. |
-| 3 — agent | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct execution + experiment-specific WorkflowHints injection. |
+| 3 — agent | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env, metric_contract, shims}` | ReAct execution + experiment-specific WorkflowHints injection. |
 | 4 — pipeline | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML-driven stage runner, paper-pipeline glue. |
-| 5 — entry points | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate, paper_dispatch}`, `cli_ear`, `viz/*`, `registry/*`, `public/*` | Typer CLI, viz HTTP server, registry FastAPI, public re-export layer for skills. |
+| 5 — entry points | `cli/{__init__, __main__, run, projects, commands, bfts_loop, lineage, migrate, paper_dispatch, doctor, harness, kca, manuscript, manuscript_repair_runtime}`, `cli_ear`, `viz/*`, `registry/*`, `public/*` | Typer CLI, viz HTTP server, registry FastAPI, public re-export layer for skills. |
 
 Migration code (`migrations/v05_to_v07/*`) lives outside the layers
 and will be deleted in v1.0.  Skills must only import from `ari.public.*`

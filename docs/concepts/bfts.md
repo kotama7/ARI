@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # BFTS Algorithm
@@ -32,7 +32,7 @@ stateDiagram-v2
     frontier --> frontier: persistent — stays re-expandable
     frontier --> pending: select best (score + diversity bonus) → expand one child
     frontier --> retired: Rule A (child outscores parent) OR Rule B (max_expansions_per_node reached)
-    pending --> pruned: should_prune (total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false)
+    frontier --> pruned: should_prune at expansion-selection time (total ≥ max_total_nodes / depth ≥ max_depth / _sterile / _valid_for_frontier=false)
     retired --> [*]
     pruned --> [*]
 ```
@@ -62,10 +62,10 @@ def bfts(experiment, config):
 
         # --- BFTS STEP 2: run a batch of pending nodes ---
         batch = llm_select_next_nodes(pending, max_parallel)
-        record_run(batch)  # track label diversity
         results = parallel_run(batch)
 
         for node in results:
+            record_run(node)                  # AFTER completion: label diversity
             memory.write(node.eval_summary)   # save to ancestor-chain memory
             frontier.append(node)             # will expand when selected
 

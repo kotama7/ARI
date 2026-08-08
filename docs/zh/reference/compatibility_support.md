@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/paperbench_patches.json
     role: config
-last_verified: 2026-08-02
+last_verified: 2026-08-08
 ---
 
 # Compatibility support policy
@@ -23,7 +23,7 @@ last_verified: 2026-08-02
 | Letta pip deployment | 支持无容器的本地安装，不是自动 backend fallback。 | ARI maintainers | v1.1 复审 usage 与 issue。 |
 | `slurm_submit` bridge | 仅用于 core agent batch-script workflow；新集成使用 `job_submit`/`container_submit`。 | core + HPC maintainers | v1.1：agent 直接生成 `JobRequestV1` 且 caller 为零。 |
 | Rubric V1 reader/offline migration | 校验 digest 并无损迁移到 V2；不存在 V1 runtime generator。 | replicate + paper-re maintainers | v1.1：workflow/artifact 使用为零。 |
-| PaperBench adaptation | 仅允许 exact pin 与 `paperbench_patches.json` 所列适配，并运行 conformance test。 | paper-re maintainers | 每次 pin 更新；obsolete probe 与目标 suite 通过后删除。 |
+| PaperBench adaptation | 仅允许 exact pin 与 `paperbench_patches.json` 所列适配，并运行 conformance test。 | paper-re maintainers | 每次 pin 更新；所声明的 `deletion_gate` 条件成立且目标 suite 通过后删除。 |
 | Orchestrator registry repair | 只显式导入明显终态的旧 run；禁止自动 discovery/state 推断。 | orchestrator maintainers | v1.1 支持 checkpoint 迁移完成后。 |
 | archived lock/cassette | published dispatch replay 所需；校验 digest，且不隐式 admission 到新 run。 | registry/provider maintainers | publication/replay 窗口结束后按格式删除。 |
 

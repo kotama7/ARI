@@ -300,8 +300,9 @@ terminal evidence、live DRC 0 result、fixture、gate、人間承認を固定�
 `worker_python` `container-provided`、`network` `isolated`です。review済みの
 PRoot/unsquashfs/worker-Python buildが、promotionを実行するsiteの提供するhost
 glibcより新しいglibcへlinkしているため、同じprofileをdigest-pinnedのclean
-containerで実行しています。closureがSIF＋host binary 4本ではなくSIF単体になる
-ので、隔離はむしろ強くなります。
+containerで実行しています。closureがSIFとportable runtimeが固定するhost binary
+3本（PRoot、`unsquashfs`、worker Python）ではなくSIF単体になるので、隔離はむしろ
+強くなります。
 GPUに関するlimitationはreview済みscheduler snapshotから読みます。schedulerが
 GRES typeを宣言しないならそもそもGPUを要求できず、宣言するなら根拠は割り当て
 られたnodeがacceleratorを露出しないことです。どちらの場合もprofileのGPU要求は0
@@ -342,8 +343,9 @@ golden/replay evidenceがなく、local Aerのpromotionを継承できません�
 Agent MCPへは公開しません。
 
 Provider promotionはgoverned eligibilityの変更でありactivationではありません。
-両identityともcommit済みの空の`CATALOG.lock`には追加せず、operatorがexact環境を
-materializeし、source sync/review後にrun用Provider/Capability Binding Lockを固定します。
+promote済みidentityはいずれもcommit済みの空の`CATALOG.lock`には追加せず、operatorが
+exact環境をmaterializeし、source sync/review後にrun用Provider/Capability Binding
+Lockを固定します。
 
 ### ARI Capabilityへの到達
 

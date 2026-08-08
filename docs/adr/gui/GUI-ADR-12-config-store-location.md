@@ -1,3 +1,30 @@
+---
+sources:
+  - path: ari-core/ari/viz/v1/store.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/config_api.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/router.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/openapi.json
+    role: schema
+  - path: .github/workflows/refactor-guards.yml
+    role: config
+  - path: scripts/check_directory_policy.py
+    role: implementation
+  - path: ari-core/tests/test_gui_v1_store.py
+    role: test
+  - path: ari-core/tests/test_gui_v1_config_crud.py
+    role: test
+  - path: ari-core/tests/test_gui_v1_launch.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-12: GUI config document store location
 
 Decision (ADR-12, accepted 2026-07-23): the GUI-only configuration documents live

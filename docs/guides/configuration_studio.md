@@ -36,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_secret_readiness.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # Configuration Studio Guide
@@ -233,8 +233,8 @@ win.
 
 ### Per-path validation errors
 
-A PATCH body is a flat `{"dotted.path": value}` partial update validated
-against the registry before anything is written. Rejections come back as
+A PATCH body's `values` map is a flat `{"dotted.path": value}` partial update
+validated against the registry before anything is written. Rejections come back as
 `400` with the offending paths in `details.errors`, which the UI renders
 as the **Validation errors** list. The `reason` vocabulary is closed:
 
@@ -280,7 +280,7 @@ Secrets are **write-only through the GUI, always**.
 precise:
 
 1. **The repo-root `.env`** (`{ARI}/.env`). That is a *fixed* write
-   target — the writer replaces the first matching `NAME=` line in place
+   target — the writer replaces the matching `NAME=` line in place
    and appends if absent. It does **not** follow the readiness chain and
    it does not write into the active checkpoint.
 2. **The running server's `os.environ`**, exported live.

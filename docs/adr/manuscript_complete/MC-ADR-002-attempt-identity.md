@@ -1,3 +1,18 @@
+---
+sources:
+  - path: ari-core/ari/manuscript/state.py
+    role: implementation
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
+  - path: ari-core/ari/manuscript/snapshot.py
+    role: implementation
+  - path: ari-core/ari/manuscript/contracts.py
+    role: implementation
+  - path: ari-core/tests/test_manuscript_complete.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # MC-ADR-002: attempt identity
 
 Decision: attempt ID is derived from the complete source-snapshot digest and

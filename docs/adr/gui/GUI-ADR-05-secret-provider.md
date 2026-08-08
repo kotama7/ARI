@@ -1,3 +1,26 @@
+---
+sources:
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/secrets.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/catalogs.py
+    role: implementation
+  - path: ari-core/ari/viz/state.py
+    role: implementation
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/ConfigStudio/SecretField.tsx
+    role: implementation
+  - path: ari-core/tests/test_gui_v1_secret_put_and_catalogs.py
+    role: test
+  - path: ari-core/tests/test_gui_secret_readiness.py
+    role: test
+  - path: docs/guides/configuration_studio.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-05: secret provider
 
 Status: accepted for the provider decision. The program charter listed "secret

@@ -98,7 +98,7 @@ admissible mechanism is flagging plus read-time exclusion.
 
 ## 4. Existing ARI touchpoints
 
-All paths repo-relative to `/home/t-kotama/workplace/ARI` (verified to exist on branch `RQGM`).
+All paths are repo-relative (verified to exist on branch `RQGM`).
 
 | Touchpoint | Why it matters here |
 |---|---|

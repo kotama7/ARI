@@ -1,3 +1,30 @@
+---
+sources:
+  - path: ari-core/ari/manuscript/profiles.py
+    role: implementation
+  - path: ari-core/ari/manuscript/builder.py
+    role: implementation
+  - path: ari-core/ari/manuscript/snapshot.py
+    role: implementation
+  - path: ari-core/ari/manuscript/readiness.py
+    role: implementation
+  - path: ari-core/ari/manuscript/briefs.py
+    role: implementation
+  - path: ari-core/ari/manuscript/publication.py
+    role: implementation
+  - path: ari-core/ari/manuscript/runtime.py
+    role: implementation
+  - path: ari-core/ari/manuscript/contracts.py
+    role: schema
+  - path: ari-core/ari/config/__init__.py
+    role: config
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: docs/adr/manuscript_complete/MC-ADR-007-runner-up.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # `generic_empirical_v1` profile
 
 The initial profile is for empirical papers. Applicability is derived from

@@ -34,7 +34,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # GUI Cutover Runbook

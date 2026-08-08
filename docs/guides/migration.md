@@ -32,7 +32,7 @@ sources:
     role: implementation
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # Migration Guide
@@ -112,7 +112,9 @@ dashboard behaviour you may depend on.  Those changes are collected in
 
 ### Verification
 
-- `ari memory health` returns `ok` and reports the agent name.
+- `ari memory health` prints the backend's health dict — `ok: true` plus
+  `backend`, `latency_ms`, `server_version`, and the checkpoint
+  `namespace`.
 - A `search_memory` call from the agent loop returns embedding-
   ranked results.
 - The dashboard `/api/memory/health` endpoint returns 200.
@@ -159,9 +161,13 @@ dashboard behaviour you may depend on.  Those changes are collected in
    ```bash
    ari ear curate <checkpoint>
    ari ear publish <checkpoint> --backend ari-registry
-   ari replicate generate-rubric <checkpoint>
-   ari paper-re grade <checkpoint>
+   ari paper <checkpoint>
    ```
+   There is no `ari replicate` / `ari paper-re` subcommand: the ORS
+   chain (`ors_generate_rubric` → `ors_audit_rubric` →
+   `ors_seed_sandbox` → `ors_build_reproduce` → `ors_run_reproduce` →
+   `ors_grade`) is `workflow.yaml` pipeline stages that `ari paper`
+   (and `ari run` / `ari resume`) drive through their MCP skills.
 
 ### Verification
 
@@ -580,7 +586,6 @@ selection, which launches a byte-identical run.
   the default, the staged rollout, and the legacy-removal order.
 - [RQGM migration guide](rqgm_migration.md) — turning on the opt-in
   `ari_rqgm` mode (no checkpoint-format change).
-- `docs/_archive/refactor_audit.md` — current state of the migration debt.
 - `CHANGELOG.md` — per-release notes.
 - `ari memory migrate --help` — CLI options for the v0.5 → v0.6
   migrator.

@@ -4,7 +4,7 @@ sources:
     role: prompt
   - path: ari-skill-paper-re/src/_replicator_agent.py
     role: implementation
-last_verified: 2026-05-25
+last_verified: 2026-08-08
 ---
 
 # 計算ノード安全規約 (L1–L7)
@@ -17,8 +17,11 @@ PaperBench レプリケータエージェントは、`_format_hpc_appendix`
 (`ari-skill-paper-re/src/_replicator_agent.py`) が vendor 版 PaperBench の
 instruction に付加する ARI 側 appendix の
 `COMPUTE-NODE EXECUTION CONVENTIONS` block 経由でこれらを指示される。
-この appendix は rubric の `reproduce_contract.execution_profile` が
-非空のときだけ出力されるため、非 HPC 論文のエージェントは受け取らない。
+この block は appendix 内の他の HPC 系 block (`EXECUTION PROFILE`,
+`CLUSTER SHAPE`, `CONVENTIONS`) と同様、rubric の
+`reproduce_contract.execution_profile` が非空のときだけ出力されるため、
+非 HPC 論文のエージェントは受け取らない。`expected_artifacts` だけが
+ある場合、appendix は `EXPECTED_ARTIFACTS` block のみに縮退する。
 `ari-skill-paper-re/src/prompts/replicator.md` は同じ block のより詳しい
 mirror を持つが、実行時に読み込まれることはない
 (本ドキュメントは reproduce.sh を手 audit するための reference)。
@@ -31,8 +34,13 @@ mirror を持つが、実行時に読み込まれることはない
 - ✅ `$HOME`, `/work/...`, `/scratch/...`, `/lustre/...`, `/nfs/...`
 - ❌ `/tmp`, `/var/tmp`, `/local`, container-local mount のみのパス
 
-ARI は checkpoint dir がノードローカル FS の場合に警告するが、 run
-は止めない — rank 1+ が rank 0 のファイルを見えず silent fail する。
+ARI は filesystem を probe しない。checkpoint dir がノードローカル FS で
+あっても検知せず、警告も出ない — rank 1+ が rank 0 のファイルを見えず
+silent fail する。共有かどうかは観測ではなく *宣言* で、`SLURM_MODE=remote`
+は `SLURM_SHARED_FILESYSTEM` (既定 `true`) を読み、local mode は無条件に
+`true` とみなす (`ari-skill-hpc/ari_skill_hpc/slurm.py`)。`false` と宣言した
+場合は警告ではなく *拒否* で、typed outputs と fixed-wrapper terminal
+evidence の双方が raise する。
 
 ## L2 — MPI 起動: `mpirun` より `srun` を優先
 
@@ -49,8 +57,9 @@ pip install --user mpi4py
 python -c "from mpi4py import MPI; ..."
 ```
 
-先に `which srun mpirun` でテストする。 エージェントプロンプトは
-レプリケータにこのチェックを emit するよう指示する。
+先に `which mpirun` でテストする。 エージェントプロンプトは
+レプリケータに `mpirun` が PATH にある前提を置かず、使う前に確認する
+よう指示する。
 
 ## L3 — GPU resource検証
 
@@ -105,7 +114,7 @@ srun -N $SLURM_JOB_NUM_NODES -n $SLURM_NTASKS ./my_program
 ```
 
 これがないと `sbatch --nodes=4` 成功でもスクリプトは 1 node しか使わ
-ない。 エージェントプロンプトの "MULTI-NODE FAN-OUT" 節がレプリケータ
+ない。 エージェントプロンプトの "Multi-node fan-out" 節がレプリケータ
 に念押しする。
 
 ## L7 — Timeout 包み

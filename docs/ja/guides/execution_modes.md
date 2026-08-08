@@ -149,6 +149,14 @@ resume の規則: `ari resume` は `rqgm_state.json` をチェックポイント
 読みません。VirSci がオフのとき、どちらのモードでも VirSci ランタイム、
 vendored パス、プロンプト、スナップショットコーパスには一切触れません。
 
+この最後の保証が成り立つのは K/C/A が**デフォルト**の姿勢のときだけで、
+抜け道はこの軸ではなくそちらの軸にあります: `knowledge.mode` /
+`capability_binding.mode` / `assurance.mode` のいずれかをデフォルトから
+外すと `ProposalRouter._typed_contract_required()` が true になり、ルータは
+（MCP クライアントがあれば）`VirSciAdapter` を構築し、
+`generators.virsci.enabled` の値にかかわらず `virsci` を有効として扱います。
+[VirSci 統合](virsci_integration.md) を参照してください。
+
 ## 論文実行軸: `paper.mode`
 
 論文執筆フェーズ（`ari paper`）は `ari.mode` と完全に**直交する**独自の実行軸を

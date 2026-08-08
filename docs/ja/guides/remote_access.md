@@ -28,7 +28,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-07-27
+last_verified: 2026-08-08
 ---
 
 # リモートアクセスと運用ガイド
@@ -73,9 +73,13 @@ GUI 関連の環境変数を何も設定しない場合:
 | `ARI_GUI_CHALLENGES` | オン | `0` で確認チャレンジを無効化 |
 | `ARI_GUI_HEALTH` | オン | `0` で health/diagnostics の面を無効化 |
 
-いずれも意図的なロールバックレバーであり、実装の隣に文書化されています。どれをオフに
-しても、以前に出荷されていた挙動へ戻るだけです — 新しい何かが解放されることは
-ありません。
+`ARI_GUI_TOKEN` を除くいずれも意図的なロールバックレバーであり、実装の隣に
+kill-switch register として文書化されています（6 つのセキュリティスイッチは
+ADR-07 register、`ARI_GUI_V2` は gui_refresh の rollout-flag policy: owner /
+default / rollback / removal gate）。オフにしても以前に出荷されていた挙動へ
+戻るだけで、新しい何かが解放されることはありません。
+`ARI_GUI_TOKEN` だけはスイッチではなくトークンの値そのもので、未設定にしても
+何かが戻るわけではなく、サーバが 1 つ生成します（後述）。
 
 ## 非ループバックバインドへのオプトイン
 
@@ -304,7 +308,7 @@ ssh -N -L 8765:localhost:8765 -L 8766:localhost:8766 user@remote-host
 
 **両方**のポートを転送してください: HTTP 用の `8765` と、ツリー WebSocket 用の
 `8766`（HTTP + 1）。HTTP ポートだけを転送しても全体は動きます — WebSocket が接続に
-失敗するだけで、レガシーページはポーリングへフォールバックします。
+失敗するだけで、ダッシュボードはポーリングへフォールバックします。
 
 計算ノードの手前にクラスタのログインノードがある場合は、ホップを連鎖させます:
 

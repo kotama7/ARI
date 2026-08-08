@@ -199,7 +199,7 @@ Studio (#/studio) ──► project defaults / run template / run draft ──�
 （旧的 `sessionStorage` 交接仍会一并写入，仅作为老调用方的兼容回退）。
 RQGM 与论文能力现在是 run id 旁边的徽章，而不再是独立的一列。
 
-![Projects 工作区：每个运行占一行的表格，列出 run id、状态徽章、节点数、评审分数、最优指标、最后更新时间、capabilities 列，以及每行的 Overview 与 Config 链接](../../assets/images/zh/dashboard_projects.png)
+![Projects 工作区：每个运行占一行的表格，列出 run id、状态徽章、节点数、评审分数、最优指标、最后更新时间、run id 旁的 RQGM / paper capability 徽章，以及单一的 Open 列](../../assets/images/zh/dashboard_projects.png)
 
 **Overview**（`#/overview?run=`）是每个运行的落地页：生命周期徽章、当前
 *研究阶段*（`idle`/`starting`/`bfts`/`paper`/`review`）、最后更新时间、
@@ -236,7 +236,7 @@ Studio 也是为**新建**运行选择执行模式（`simple_bfts` / `ari_rqgm`�
 文件，并且没有任何页面能更改一个已经存在的运行的模式。
 
 **运维**目前并不是单独一个路由。进程控制、资源与 GPU 监控位于 legacy 的
-`#/monitor` 页面；安装、secret 与环境变量键位于 `#/settings`；面向运维者的
+`#/monitor` 页面；secret、环境变量键与 SLURM / container / SSH 设置位于 `#/settings`；面向运维者的
 探针是 HTTP 端点（`/health/live`、`/health/ready`、`/api/v1/diagnostics`）
 而不是页面 —— 见[远程访问](remote_access.md)。
 
@@ -364,7 +364,7 @@ legacy 页面。
 | `#/new`（`#/wizard`） | 原始的引导式启动向导 |
 | `#/idea` | 当前检查点由 `/state` 推导出的 idea 卡片 |
 | `#/workflow` | React-Flow workflow 编辑器、技能阶段、被禁用的工具 |
-| `#/settings` | 安装、API key、环境变量键、开发者模式 |
+| `#/settings` | `/api/settings` 的完整环境变量键面与 Developer Mode 开关（8 个进入 allowlist 的 secret —— 6 个 API key 加上 `ZENODO_TOKEN` 与 `ARI_REGISTRY_TOKEN` —— 也可以从 Config Studio 的 secret field 写入） |
 | `#/paperbench`、`#/paperbench/import`、`#/paperbench/run`、`#/paperbench/results` | 整个 PaperBench 接口面（见 [PaperBench GUI 指南](paperbench/paperbench_gui.md)） |
 
 v2 的 Results 工作区正是出于这个原因链接到 `#/results`，并在页面上如实说明：

@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/admission_builder.py
     role: implementation
-last_verified: 2026-08-05
+last_verified: 2026-08-08
 ---
 
 # Knowledge, Capability, and Scientific Assurance
@@ -436,9 +436,12 @@ stays unsupplied.
 SLURM GPU visibility and scheduler authority are intentionally different. A
 device observed on a compute node without advertised GPU GRES is retained under
 `metadata.slurm_gpu` and adds `gpu-observed-on-slurm-node`, but it does not add
-the `gpu` resource type. It becomes schedulable only when GRES is observed or
-the operator explicitly enables the pre-existing
-`ARI_SLURM_ALLOW_NO_GRES=1` escape hatch. The complete observation, including
+the `gpu` resource type. It becomes schedulable only when GRES is observed, or
+when the operator pins an exclusive-node inventory in `resources` —
+`gpu_allocation_mode: exclusive-node-inventory`, `exclusive: true`, a
+`gpu_node`, and a full-SHA `gpu_inventory_digest` the observed inventory must
+match; a pin that does not match records `exclusive-node-inventory-mismatch`
+and stays unschedulable. The complete observation, including
 device UUID/model/compute capability/memory/driver and output digests, is part
 of the frozen environment identity; resume does not reprobe and silently
 replace it. `EnvironmentSnapshotV1` recomputes that canonical full-SHA identity

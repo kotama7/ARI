@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Overview/__tests__/OverviewPage.test.tsx
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # Research and Governance State
@@ -254,8 +254,10 @@ The practical consequences of the logical/physical split:
   modified to gain governance, and superseded records remain on disk rather
   than being overwritten. A live boundary may deliberately replace the
   in-memory frontier score by re-composing stored raw axes under the newly
-  adopted policy; the erasure event records that re-score and both policy
-  identities.
+  adopted policy; the erasure event lists the re-scored nodes and the
+  *retired* policy hash, the newly adopted hash is stamped onto each
+  re-scored node, and the read model recovers both identities by joining
+  that event with its boundary transition.
 
 ---
 

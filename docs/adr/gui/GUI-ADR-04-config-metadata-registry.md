@@ -1,3 +1,28 @@
+---
+sources:
+  - path: ari-core/ari/config/field_registry.py
+    role: implementation
+  - path: ari-core/ari/config/resolver.py
+    role: implementation
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/dto.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/router.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/services/api/v1types.gen.ts
+    role: implementation
+  - path: ari-core/ari/configs/defaults.yaml
+    role: config
+  - path: ari-core/tests/test_gui_config_field_registry.py
+    role: test
+  - path: ari-core/tests/test_gui_config_resolver.py
+    role: test
+  - path: docs/reference/configuration.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-04: config schema metadata storage and versioning
 
 Status: accepted (2026-07-23), gate G3. Recorded as a clerical backfill — the

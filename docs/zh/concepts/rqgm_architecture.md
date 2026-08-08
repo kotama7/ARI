@@ -34,7 +34,7 @@ sources:
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-07-29
+last_verified: 2026-08-08
 ---
 
 # Constitutional ARI-RQGM 架构
@@ -268,7 +268,7 @@ flowchart TB
   重新爬升该待命位。
 
 边界审计不是循环里唯一被治理的决策，也并不吞并另一个。**lineage decision
-钩子**（`config/workflow.yaml` 中的 `lineage_decision:`，在循环开始时读取
+钩子**（`ari-core/config/workflow.yaml` 中的 `lineage_decision:`，在循环开始时读取
 一次）在其 `mode` 不为 `off` 时按节点治理*研究方向*：一个节点保存之后，
 它可以继续探索、切换到次选想法、fanout 出一个子运行，或终止该系统谱系
 —— 由它自己的 `rate_limit_per_run`（统计一次运行中非 `continue` 的动作数）

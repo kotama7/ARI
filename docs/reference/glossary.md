@@ -26,7 +26,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # Glossary
@@ -67,10 +67,16 @@ last 20 runs) so the search does not collapse onto a single strategy. See
 [BFTS algorithm](../concepts/bfts.md).
 
 **sterile (node)**
-A child whose `work_dir` is byte-identical to its parent after execution
-(`added = modified = deleted = 0` in the sha256 diff). It is marked
-`_sterile = True`, scored `0.0`, and pruned — this is what stops a child from
-"inheriting" the parent's results without running anything. See
+A child that changed nothing relative to its parent after execution. When the
+pinned problem declares `score_inputs`, sterility is decided by comparing the
+sha256 of exactly those files; otherwise it falls back to a whole-`work_dir`
+diff (`added = modified = deleted = 0`, or `added = modified = 0` when the
+parent `work_dir` was not copied). Either way the node is marked
+`_sterile = True` and pruned, and a sterile child never retires its parent;
+the whole-`work_dir` path additionally clamps `_scientific_score` to `0.0` and
+`has_real_data` to `False`, while the `score_inputs` path leaves the measured
+score, `has_real_data` and `evaluation_status` untouched. This is what stops a
+child from "inheriting" the parent's results without running anything. See
 [Architecture → work_dir inheritance](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7).
 
 **should_prune**
@@ -154,25 +160,32 @@ transparency warning, while `same_environment` makes it a blocking error. See
 [Configuration](configuration.md).
 
 **mint-once (contract freeze)**
-The rule that the run-level `metric_contract.json` is written once: after the
-first claims-bearing mint, `make_metric_spec` returns the persisted contract
-verbatim (`contract_frozen: true`) instead of re-extracting. LLM naming is not
-referentially stable, so a mid-run regeneration would change the evidence
-vocabulary and hide already-emitted evidence from the exact-match gate.
-Scaffold-only contracts (no `claims`) do not freeze. See
+The rule that the run-level `metric_contract.json` is written once: the first
+`make_metric_spec` call that resolves an idea-owned Research Contract — or
+admits a human-reviewed `propose_metric_contract` proposal — persists the
+projection, and every later call reads that file back and returns it
+(`contract_frozen: true`) instead of re-extracting. A re-mint whose
+`projection_digest` differs from the persisted one is refused, not an
+overwrite. LLM naming is not referentially stable, so a mid-run regeneration
+would change the evidence vocabulary and hide already-emitted evidence from the
+exact-match gate. With no admitted contract nothing freezes: the response is
+`contract_frozen: false`, `admission_status: human-review-required`, and the
+parser output is evidence only. See
 [File formats](file_formats.md#metric_contractjson).
 
 ## Memory
 
 **ancestor scope**
 The rule that a node may read memory only from its ancestor chain (root → parent),
-never from siblings. Enforced by a metadata filter on `search_memory`. See
+never from siblings. `search_memory` refuses any id outside the transport-signed
+lineage, and the backend additionally filters on `node_id ∈ ancestor_ids`. See
 [Memory architecture](../concepts/memory.md).
 
 **CoW (Copy-on-Write)**
 The write guard that keeps ancestor memory byte-stable across siblings:
-write-side tools reject any `node_id` that is not the active
-`$ARI_CURRENT_NODE_ID`. See [Memory architecture](../concepts/memory.md).
+write-side tools reject any `node_id` that is not the self node of the
+transport-signed `NodeContextV1` on the call. A `$ARI_CURRENT_NODE_ID` in the
+environment carries no authority. See [Memory architecture](../concepts/memory.md).
 
 **Letta**
 The memory backend (formerly MemGPT) used since v0.6.0. Each checkpoint gets a
@@ -198,8 +211,9 @@ MCP tool calls to run one experiment. See
 
 **MCP skill**
 A capability packaged as a Model Context Protocol server (e.g. `ari-skill-hpc`).
-Skills may import only from `ari.public.*`. There are 14 (13 default + 1
-additional). See [MCP skills](skills.md).
+Skills may import only from `ari.public.*`. There are 17 `ari-skill-*` packages;
+the shipped `workflow.yaml` enumerates 13 of them explicitly. See
+[MCP skills](skills.md).
 
 **VirSci**
 The multi-agent deliberation that turns a research goal into a hypothesis and a
@@ -344,7 +358,10 @@ completion. A legacy layout placed each node's tree at
 A non-metadata file produced inside a node work_dir. Defined negatively by
 `PathManager.is_meta_file` / `META_FILES`: ARI metadata (`tree.json`, `*.log`,
 `node_report.json`, `*_access.jsonl`, …) is diagnostics, never copied into node
-work_dirs nor surfaced as an artifact. Cross-checkpoint paper artifacts live
+work_dirs. The check is scoped — `is_meta_file(name, scope="node")` un-claims
+the names a node legitimately owns (`results.json` and any `.log` other than
+`ari.log`), so those still surface as artifacts of that node. Cross-checkpoint
+paper artifacts live
 under `paper_registry/papers/<paper_id>/`. Publication-curated artifacts ship in
 the **EAR** bundle.
 

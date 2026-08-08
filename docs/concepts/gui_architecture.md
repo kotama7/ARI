@@ -20,6 +20,16 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/context/AppContext.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/hooks/useWebSocket.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/ConfigStudio/ConfigStudioPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Settings/SettingsPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/services/api/workflow.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
   - path: ari-core/ari/viz/frontend/src/main.tsx
     role: implementation
   - path: ari-core/ari/viz/routes.py
@@ -62,13 +72,21 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/services/__tests__/api.test.tsx
     role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/routeRenderBaseline.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/hooks/__tests__/useRunEvents.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/shared/realtime/__tests__/eventStream.test.ts
+    role: test
   - path: ari-core/ari/viz/services/__init__.py
     role: implementation
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
     role: test
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-09
 ---
 
 # Dashboard Architecture
@@ -136,7 +154,7 @@ be thrown away and recomputed.**
 
 The dashboard was not rebuilt in place. Legacy screens and new v2 workspaces
 are registered side by side in the same router and render inside the same
-`Layout` (sidebar, header, checkpoint picker). Nothing was deleted to make
+`Layout` (sidebar, checkpoint picker). Nothing was deleted to make
 room for a new screen.
 
 | Generation | Hash routes |
@@ -225,7 +243,9 @@ out of this:
   what the docs cite; the registry preserves historical spellings (the wizard
   still navigates to `#/new`) rather than tidying them.
 - **Reachable-but-unlisted is expressible.** `#/paperbench/import|run|results`
-  exist as routes with no nav entry — they are opened from inside a page.
+  exist as routes with no nav entry. The first two are opened by buttons on
+  the PaperBench registry page; `#/paperbench/results?job=<job_id>` is linked
+  from nowhere in the app and is reached only by pasting the URL.
 - **Unknown hashes fall back to Home** rather than erroring. That fallback is
   load-bearing in one case and a known deficiency in another. It is deliberate
   for the kill-switch: with the v2 shell off, a v2-only route must resolve
@@ -242,11 +262,39 @@ breadcrumb component anywhere in the dashboard, and no route-level
 required-context guard — each v2 workspace enforces its own "no run selected"
 prompt instead. Two shell surfaces the GUI refresh specified are likewise
 unbuilt: there is no command palette and no notification center, so a run or
-governance alert is visible only on the page that renders it. Routes carry no
-permission predicate either, and will not need one while the server has no user
-model — a bearer token is all-or-nothing, and sessions and multi-user are out
-of scope. Capability gating is exactly one marker: `guiV2` on the registry
-entry, plus the `V2_ONLY_ROUTES` dispatch set in `App.tsx`.
+governance alert is visible only on the page that renders it. The palette's
+specified scope is worth recording as it dies — one box searching routes, runs,
+artifacts and actions, filtered by what the caller is permitted and capable of
+seeing — because half of that filter could not have been built as specified
+here in any case. Routes carry no permission predicate, and will not need one
+while the server has no user model — a bearer token is all-or-nothing, and
+sessions and multi-user are out of scope. Capability gating is exactly one
+marker: `guiV2` on the registry entry, plus the `V2_ONLY_ROUTES` dispatch set
+in `App.tsx`.
+
+**No route names its own flag.** Two further fields the refresh specified for a
+route record were never declared: a `capability` predicate and a named
+`featureFlag`. The boolean `guiV2` stands in for both, and it is not a flag
+name a route chooses but a fixed marker for one environment switch,
+`ARI_GUI_V2` (§9) — so routes cannot be flipped individually. With the switch
+off, all eight marked routes resolve to Home together and all eight nav entries
+disappear together, the three that had taken over a legacy slot handing it
+back. Staging is nonetheless per slice: the
+[GUI Cutover Runbook](../guides/gui_cutover_runbook.md) walks one workspace at
+a time through its section "3. Staged rollout", and a slice that has to come
+back is rolled back by taking its nav slot away (§1) — but the flag lever in
+that document's section "1. Levers" is this one switch for the whole v2
+surface.
+
+The missing `capability` field also costs the registry its single-source
+property for this one fact. Membership of the v2 gate is written twice: as
+`guiV2: true` on the registry entry, which is what the sidebar filters on, and
+as the route's *path* in the hand-maintained `V2_ONLY_ROUTES` set in `App.tsx`,
+which is what dispatch falls back on. The frozen-literal test pins the
+registry's eight marked ids, and the full-App render suite checks the Home
+fallback one hash at a time for five of the eight paths; nothing compares the
+two lists. A ninth v2 route added to one list and not the other would keep its
+URL live while its nav entry vanished, or the reverse, with no test failing.
 
 **One error boundary, at the root.** The dashboard has a single React error
 boundary, in `main.tsx`, outside the router and outside `Layout`. A render
@@ -293,6 +341,35 @@ Tree page takes its nodes from the shared legacy context instead. It is dead
 state, and removing the write is part of legacy-page removal rather than a
 behaviour change.
 
+**The hash has two owners, and two different parsers.** `App.tsx` resolves it
+through `resolveRoute`, which strips the `#/` prefix *and* the query string and
+applies legacy aliases. `context/AppContext.tsx` keeps its own `currentPage`,
+initialised and updated from its own `hashchange` listener with a bare prefix
+strip that does neither. The two agree on a plain legacy hash and disagree on
+exactly the URLs the refresh introduced: at `#/tree2?run=R1&node=N7` the router
+dispatches `tree2` while the context holds the whole string
+`tree2?run=R1&node=N7`.
+
+That second value is the one the sidebar renders from. `Sidebar.tsx` compares a
+nav entry's hash key against `currentPage` to set both the `active` class and
+`aria-current`, so the highlight is right after a click — a click writes
+`#/<key>` and sets `currentPage` to that bare key — and is lost the moment a
+workspace writes its own selection back into the hash (`TreeV2Page.tsx`,
+`ConfigStudioPage.tsx` do), and is absent on any deep link that arrives with a
+query string already in it. So the refresh's completion criterion — that server,
+URL, form, preference and ephemeral state each have exactly one owner and do not
+duplicate — does not hold for navigation state: one URL has two owners, and the
+second is the legacy context that §4 otherwise scopes to remote data.
+
+Nothing catches the disagreement, because no test drives a hash change against a
+mounted shell. The two suites that mount the whole `App` —
+`src/__tests__/routeRenderBaseline.test.tsx` and
+`src/__tests__/shellA11yBaseline.test.tsx` — assign `window.location.hash` and
+*then* render, always at a bare `#/<route>`, so only first-paint resolution is
+exercised. Nothing exercises browser back or forward, and no test asserts
+`aria-current` anywhere. Back/forward coverage was on the refresh's test list
+and is a known gap.
+
 ---
 
 ## 4. Server state lives in a cache, keyed by run
@@ -319,6 +396,20 @@ That single decision buys three properties:
   per-resource age. Per-entity stale times and per-entity freshness labels were
   specified for the refreshed GUI and are not implemented.
 
+**Run isolation is proved at the seam, not end to end.**
+`hooks/__tests__/useRunEvents.test.tsx` shows that an event for one run
+invalidates only that run's keys plus the run lists, that a `tree` event touches
+only that run's tree key, that the offline poll tick stays inside the subscribed
+scope, and that unmounting stops the invalidation;
+`shared/realtime/__tests__/eventStream.test.ts` pins the filtered stream URL,
+the `Last-Event-ID` cursor, the backoff schedule and the connection state
+machine. What no test does is mount two workspaces on two runs and show that
+they stay apart. The [Dashboard Guide](../guides/dashboard.md), in its section
+"Run-explicit URLs and deep links", tells operators that opening two browser
+tabs on two different `?run=` values is safe; that promise rests on the key
+composition above plus the server-side `run_id` filter (§6), not on a test of
+the two-tab case, which the refresh listed and which is a known gap.
+
 Client-only state (which tab is open, a filter box's text, sidebar width) is
 *not* in this cache. The split is: server state is cached and invalidated,
 view state is local and ephemeral, and navigation state is in the URL (§3).
@@ -330,6 +421,18 @@ are invalidated so the next render comes from a refetched snapshot. That is why
 a conflicted save raises an explicit reload affordance and keeps the unsaved
 edits local instead of quietly winning, and why nothing on screen can be a
 state the server never accepted.
+
+**One component the refresh specified for the key never landed: a revision.**
+Nothing in the `v1Keys` factory (`hooks/useV1.ts`) carries one. A key is the
+literal `'v1'`, one identifier or a global resource name, the resource, and any
+filter that narrows it — `rqgmAudit(runId, recordType, epoch)` and
+`rqgmNodeLineage(runId, nodeId)` are examples of the last shape — and that is
+the whole vocabulary. The integer `revision` a `gui_store` document carries is
+used on the write side only, as the `If-Match` value a `PATCH` sends back (§7);
+a write reaches the cache by invalidating the affected keys, not by minting a
+new one. There is therefore no cache entry per revision and no way to hold two
+revisions of one resource side by side, and no key churn on save: the next
+render comes from a refetch of the same key.
 
 **`AppContext` is legacy-scoped.** It is the remote-data store of the legacy
 screens only — the 5-second `/state` poll, the tree-WebSocket mirror, and the
@@ -343,6 +446,21 @@ behind a run-identity check because no run-scoped v1 endpoint serves the goal
 yet. Shrinking that exception list is welcome; growing it is a regression,
 because `AppContext` cannot be deleted while a v2 screen depends on it.
 
+**The legacy half of the shell parses domain artifacts.** The refresh also asked
+that the shell itself never do so, and `AppProvider` — mounted in `App.tsx`
+above the router and `Layout` — publishes `nodesData: TreeNode[]`, the run's
+node list, taken from the tree WebSocket when that channel has delivered
+anything and from the `/state` payload's `nodes` otherwise. That precedence rule
+is domain logic living above the router, and two legacy screens
+(`Tree/TreePage.tsx`, `Monitor/MonitorPage.tsx`) take their nodes from the shell
+instead of fetching their own. `Sidebar.tsx` carries a smaller version of the
+same coupling: `checkpointLabel()` matches a checkpoint id against
+`^(\d{8})(\d{6})_(.+)$` to build the picker label, so the shell hard-codes the
+run-id convention of §5, and it renders the run's status label and running flag
+straight from `/state`. A v2 workspace has none of this. The invariant therefore
+holds for the new surface and fails for the old one, and what would make it true
+everywhere is legacy removal, not a change to the shell.
+
 **Durable preferences have no store.** Locale (`ari_lang`, default `ja`),
 developer mode (`ari_dev_mode`) and the remote bearer token (`ari_gui_token`)
 go straight to `localStorage`, each behind its own one-key accessor —
@@ -352,6 +470,25 @@ preference-store abstraction over the three, no schema for these keys and no
 migration path, so a rename or a re-type is a per-key edit with no single place
 to make it. A preference layer was specified for the refreshed shell and is not
 implemented; treat the three key names as the actual contract.
+
+**Form drafts have no owner layer at all.** There is no form library among the
+frontend's dependencies (`@tanstack/react-query`, `d3`, `pdfjs-dist`, `react`,
+`react-dom`, `reactflow`) and no shared form module, so every editing surface
+hand-rolls its own draft state and its own conflict discipline.
+`ConfigStudio/ConfigStudioPage.tsx` is the pattern worth copying: a `pending`
+map holding only the changed values over the server document, that document's
+integer `revision` sent as `If-Match`, and a `revision_conflict` surfaced as an
+explicit reload that keeps the unsaved edits. `Workflow/WorkflowPage.tsx` runs a
+second discipline — a weak content `revision` served by `/api/workflow`, echoed
+back as an optional `base_revision` on a write, with the server's refusal
+recognised by matching the message of the thrown legacy transport error (§7).
+`Settings/SettingsPage.tsx` runs a third and has no conflict path at all:
+thirty-seven `useState` hooks in one container, deliberately concentrated there
+so its frozen save payload cannot drift. These are not variants of one
+mechanism, and the first and the last are two independent form owners over the
+overlapping configuration surface §1 describes — the one
+`ari-core/tests/test_gui_config_shadow_legacy.py` polices rather than removes. A
+single form-state owner was specified for the refreshed GUI; it is a known gap.
 
 ---
 
@@ -398,6 +535,48 @@ Separating real projects (owning reusable configuration) from runs (owning
 lifecycle) and checkpoints (owning save points) is reserved design. Nothing in
 the tree implements it, so no client should be written as though it were
 already there.
+
+**Two entities the versioned surface never modelled at all.** The GUI refresh's
+domain model also named an `Artifact` under a run and a `WorkflowDefinition`
+under a project; both were specified and neither was built. The shape of each
+gap decides what a v2 screen can offer.
+
+*There is no artifact resource.* The `ROUTES` table has no `artifacts`
+collection under a run and no addressable member inside one, and the committed
+`openapi.json` has no path mentioning an artifact. What `/api/v1` offers instead
+is a fixed set of named projections — `idea`, `results`, `ear`, `logs` and the
+RQGM family — each hard-wired to the files it knows about (§8). The one *file*
+listing among them, `GET /api/v1/runs/{run_id}/ear`, walks a single subtree,
+`{ckpt}/ear/`, returning `path` / `kind` / `size` per entry, capped at the first
+500 entries with `truncated: true` beyond that while `file_count` still counts
+every file. So there is no stable id for "this run's file X", nothing enumerates
+what a run actually wrote, and a new kind of artifact cannot surface without a
+new endpoint and a regenerated contract. Browsing arbitrary files stayed on the
+legacy, checkpoint-keyed surface — the `/api/checkpoint/<id>/files`, `/file`,
+`/file/raw`, `/filetree`, `/filecontent` family and `GET /codefile?path=` (see
+[REST API Reference](../reference/rest_api.md), "Checkpoint browsing" and
+"Static + frontend"). "Artifact" therefore keeps the disk-level meaning the
+[Glossary](../reference/glossary.md) gives it under "State & publication": a
+non-metadata file produced inside a node work_dir.
+
+*There is no workflow document.* The pipeline definition is a plain file,
+`{ckpt}/workflow.yaml`, and `/api/v1` touches it in exactly two ways, neither of
+them as a resource: `POST /api/v1/runs` copy-on-write seeds it from the bundled
+`config/workflow.yaml` and merges the launch's mode blocks into that copy, and
+the resolver behind `GET /api/v1/runs/{run_id}/resolved-config` reads it as the
+`workflow` provenance layer and counts its mtime toward `resolved_at`. No route
+addresses it as a document: it has no id, it is not one of the `gui_store/`
+documents (§7), and it is not reusable across runs — every checkpoint gets its
+own copy. Editing it is still the four legacy writes — `POST /api/workflow`,
+`/api/workflow/flow`, `/api/workflow/skills`, `/api/workflow/disabled-tools` —
+and their concurrency guard is a different mechanism from the store's: MN-3's
+`revision` is a sha256 prefix of the
+served bytes with an *optional* `base_revision`, so a caller that omits it keeps
+last-write-wins, whereas a `gui_store/` document carries an integer `revision`
+and refuses a mutation that arrives without `If-Match` (see
+[Configuration Studio](../guides/configuration_studio.md), "If-Match
+conflicts"). The nearest reusable document is a run template, and a template
+carries config `values`, not a pipeline.
 
 ---
 
@@ -485,7 +664,33 @@ a coroutine.
 | Read models | `queries.py`, `results.py`, `rqgm.py`, `logs.py`, `catalogs.py` | Pure functions from a checkpoint directory to a DTO. No `viz.state` mutation, no `os.environ` writes, no file writes — a GET has no side effects. |
 | Truth | `{checkpoint}/…`, plus `{workspace_root}/gui_store/` for GUI-only documents | Committed artifacts. |
 
-Two properties of this seam are worth stating explicitly because they are
+**The four layers are a description, not a package layout.** `ari/viz/` has no
+`transport/`, `application/`, `domain/`, `infrastructure/` or `legacy/`
+package, and no domain layer of any kind: nothing sits between a read module and
+the wire, so a checkpoint `Path` becomes a pydantic DTO directly. The GUI
+refresh specified exactly that split — with the unversioned handlers moved
+behind an adapter module — and it was not built; the legacy handlers stayed
+where they were, imported directly from their `api_*` modules by the
+`if`/`elif` chain in `routes.py` (see
+[Internal Boundaries](../reference/internal_boundaries.md), "GUI HTTP dispatch
+boundary").
+
+The process supervisor from the same proposal is missing on the same terms.
+`POST /api/v1/runs` spawns the CLI with
+`subprocess.Popen(..., start_new_session=True)` and records the handle in the
+module-global `_running_procs` map in `ari/viz/state.py`, keyed by resolved
+checkpoint path — the same map the legacy launch handlers write to. Nothing
+supervises, restarts or reaps those children. An entry leaves the map only
+opportunistically: when the legacy checkpoint listing next notices that the
+child has exited, when that same listing prunes entries whose checkpoint
+directories no longer exist, or when a checkpoint is deleted. The map is
+process-local, so a server restart forgets every handle; the v1 read models
+never consult it, deriving run status from the filesystem instead (below), and
+`/api/v1/diagnostics` publishes only its length, as `process.tracked_runs`.
+Treat this seam as held by the read modules' own discipline and by the tests
+that pin it, not by a package boundary anything can enforce.
+
+Three properties of this seam are worth stating explicitly because they are
 easy to erode:
 
 - **`GET` is side-effect free.** The read modules deliberately re-derive
@@ -498,6 +703,24 @@ easy to erode:
   writes and an integer `revision` that maps 1:1 to `ETag` / `If-Match`. They
   are a convenience layer: launch materializes every effective value into the
   checkpoint, so the CLI never has to read `gui_store/` to reproduce a run.
+- **Minted timestamps come from the filesystem, not from the clock.** The time
+  fields the server *derives* for a read resource are UTC ISO 8601 strings taken
+  from a source file's mtime, never from `datetime.now()`: `mtime_utc` on a run
+  summary is the checkpoint directory's mtime, `updated_at` on a run template or
+  a run draft is that document file's mtime, and `resolved_at` on a resolved
+  config is the newest mtime among the resolver's source files, falling back to
+  the checkpoint directory's. That is what makes two consecutive GETs of an
+  unchanged run identical apart from the `request_id` the router mints per
+  dispatch, so a diff between two captured payloads means "something changed"
+  rather than "time passed" —
+  `ari-core/tests/test_gui_config_precedence_matrix.py` pins it for the resolver
+  with `test_resolved_at_mtime_stable_and_deterministic`, which drops the
+  `request_id` and asserts the two responses are otherwise equal. Timestamps
+  *copied* out of a
+  committed artifact stay that artifact's own values (an RQGM transition's
+  `committed_at`, a publish record's `timestamp`). The clock is read only where
+  there is no file to read from: an event's `occurred_at` (§6) and a challenge's
+  `expires_at`.
 
 **The browser side of the seam has three transport regimes, deliberately not
 unified.** `services/api/client.ts` exposes three pairs of wrappers, and which
@@ -555,6 +778,22 @@ A *read model* is a bounded projection computed on demand from committed
 artifacts. Delete every read model and no information is lost; delete an
 artifact and it is gone. That asymmetry is the point.
 
+**"On demand" is literal: recomputed, never cached.** Each `/api/v1` GET
+re-reads the artifacts it projects, every time. There is no projection index, no
+memoization and no invalidation table anywhere under `ari/viz/v1/` — the
+package's only cache is the idempotency replay map in `launch.py`, which serves
+duplicate launch POSTs rather than reads. A persisted read-model index,
+invalidated on file identity, size, mtime and content digest, was specified by
+the GUI refresh and is not built; the wire says so rather than hiding it, since
+`GET /api/v1/diagnostics` carries the literal field `cache: false`. What keeps
+the cost bounded is per-endpoint discipline instead — byte-offset cursors,
+capped page sizes and the log reader's 1 MiB per-request scan window (see
+[REST API Reference](../reference/rest_api.md), "Cursor conventions") — plus the
+client cache in §4, which is where an unchanged snapshot stops being fetched
+twice. An endpoint with no such bound pays its full cost on every request;
+`GET /api/v1/runs/{run_id}/tree`, which returns the whole node list, is the
+clearest case.
+
 The governance read model is the strictest instance, and it shows what
 "projection" means in practice:
 
@@ -572,8 +811,10 @@ The governance read model is the strictest instance, and it shows what
   / `null` source missing) and a `degraded_reasons` list travels with the
   payload. A missing source is never rendered as clean, and never as zero.
 - **Bounded by construction.** Summaries carry counts, not embedded entry
-  lists; long logs are cursor-paged over stable offsets; no file *content*
-  rides these endpoints.
+  lists; long logs are cursor-paged over stable offsets; and the only file
+  read out whole is the governed policy body served by `/rqgm/policies` and
+  `/rqgm/epochs/{epoch_id}` — withheld outright, as a degraded reason, when
+  its bytes no longer hash to the registered `prompt_hash`.
 
 For anyone extending the dashboard, the operational rule is: to change what
 the GUI shows, change the projection — never the artifact, and never by
@@ -630,7 +871,7 @@ composition layer above it. Under `ari-core/ari/viz/frontend/src/`:
 | Directory | Holds |
 |---|---|
 | `app/` | Shell wiring no screen owns: the route registry (§2) and the react-query client (§4). |
-| `components/<Screen>/` | One directory per screen, legacy and v2 side by side (`Tree/` and `TreeV2/`, `Results/` and `ResultsV2/`), each exporting the page components the registry lazy-loads — plus `common/` for presentational primitives and `Layout/` for the sidebar and header. |
+| `components/<Screen>/` | One directory per screen, legacy and v2 side by side (`Tree/` and `TreeV2/`, `Results/` and `ResultsV2/`), each exporting the page components the registry lazy-loads — plus `common/` for presentational primitives and `Layout/` for the sidebar and the page frame that wraps the active page. |
 | `context/` | The legacy `AppContext` — the `/state` poll and the process-wide active checkpoint. |
 | `hooks/` | Cross-screen hooks: `useV1`, `useRunEvents`, `useApi`, `useWebSocket`, `useDevMode`. |
 | `services/api/` | One transport core (`client.ts`) plus one module per endpoint family, re-exported by the `services/api.ts` barrel so older import paths keep resolving. |

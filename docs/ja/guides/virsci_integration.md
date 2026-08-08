@@ -113,7 +113,7 @@ v1 のランループ配線: ループはルートのアイデア生成時に
 `generate_ideas` ペイロードをアイデアごとに 1 つの `ProposalDraft` へ正規化
 します — 読むのはレガシーな 9 つのトップレベルキー
 （`virsci_adapter.GENERATE_IDEAS_KEYS`）のみで、これは現在スキルが返す
-キー集合の部分集合です。いかなるツール失敗もドラフトゼロ件へ縮退します; ストアでの
+キー集合の部分集合です。`generate_ideas` の失敗はドラフトゼロ件へ縮退します; ストアでの
 コンテンツキー dedup により、このパス全体がリトライの下で冪等です。
 
 ## アーカイブ vs サマリ
@@ -194,10 +194,15 @@ typed contract 系の 10 キー（`typed_schema_version`、`contract_status`、
 ## vendored サブモジュールとスキル
 
 `ari-skill-idea/vendor/virsci` は、**未編集の**アップストリーム VirSci
-ソースを保持する git サブモジュールです。そこからコードを実行するのは
-スキルのオプトイン `real_wrap` エンジン（`ARI_IDEA_VIRSCI_REAL=1`）のみ
-です; デフォルトの reimpl エンジンはそれ無しで走り、`ari-core` は決して
-それをインポートしません。実際にどちらのエンジンが走ったかは
+ソースを保持する git サブモジュールです。vendored された VirSci 機構
+（Semantic Scholar スナップショット上の `select_coauthors` /
+`generate_idea` 経路）を走らせるのは、スキルのオプトイン `real_wrap`
+エンジン（`ARI_IDEA_VIRSCI_REAL=1`）のみです。デフォルトの reimpl
+エンジンが借りるのは vendored された議論プロンプトのテンプレート
+（`sci_platform/utils/prompt.py`、スキル import 時に読み込み）だけで、
+サブモジュールが未チェックアウトならインラインのプロンプトに退避します
+— つまりどちらでも走ります; `ari-core` は決してそれをインポートしません。
+実際にどちらのエンジンが走ったかは
 `generate_ideas` ペイロードの `virsci_integration_status` キーで報告されます
 （`"real_wrap"` vs 理由付きの `"reimpl: …"`）— RQGM アダプタは両ステータス
 を同一に正規化します。

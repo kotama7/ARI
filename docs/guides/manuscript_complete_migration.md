@@ -1,3 +1,26 @@
+---
+sources:
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
+  - path: ari-core/ari/manuscript/runtime.py
+    role: implementation
+  - path: ari-core/ari/manuscript/state.py
+    role: implementation
+  - path: ari-core/ari/manuscript/builder.py
+    role: implementation
+  - path: ari-core/ari/manuscript/readiness.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript.py
+    role: implementation
+  - path: ari-core/tests/test_manuscript_complete.py
+    role: test
+  - path: scripts/manuscript_complete_release_gates.json
+    role: config
+  - path: scripts/run_manuscript_complete_release.py
+    role: implementation
+last_verified: 2026-08-09
+---
+
 # Manuscript Complete migration and rollback
 
 Legacy checkpoints are never retroactively declared complete.

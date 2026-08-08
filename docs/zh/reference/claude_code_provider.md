@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/llm/client.py
     role: implementation
-last_verified: 2026-07-03
+last_verified: 2026-08-08
 ---
 
 # Claude Code LLM 提供方（`backend: claude_code`）
@@ -57,8 +57,9 @@ CLI/SDK runner、provenance、provider）。已在 Claude Code 2.1.198 上验证
 `ANTHROPIC_AUTH_TOKEN` 时使用 `--bare`；否则仅去掉该 flag（其余隔离 flag
 保留），并把该决定记入 provenance（`bare_auto_resolved`）。无密钥却显式
 `bare: true` 会照常执行并以 "Not logged in" 立即失败（绝不静默降低隔离）。
-`home_mode: sandbox` 为每次调用提供临时 `$HOME`（要求密钥认证，因为 OAuth
-凭据位于真实 `$HOME` 下）。
+`home_mode: sandbox` 为每次调用提供一次性 `$HOME`，创建在该次调用的
+provenance 目录下的 `home/`（要求密钥认证，因为 OAuth 凭据位于真实
+`$HOME` 下）。
 
 ### `low_overhead`
 

@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-08
 ---
 
 # Extension Guide
@@ -199,8 +199,10 @@ Stage keys:
 - `skill` / `tool` — the registered skill name and the MCP tool it calls.
 - `inputs:` (alias `input:`) — the tool's keyword arguments, with `{{var}}`
   template substitution (`{{checkpoint_dir}}`, `{{run_id}}`, `{{ari_root}}`, …).
-  `params:` is passed through verbatim; a `<key>_from:` shorthand resolves a
-  checkpoint-relative filename **and** loads its content (see also
+  `params:` is a second mapping merged into the same call arguments — string
+  values are `{{var}}`-substituted too, but a `params:` key is never file-loaded
+  and an `inputs:` key of the same name wins. A `<key>_from:` shorthand resolves
+  a checkpoint-relative filename **and** loads its content (see also
   `load_inputs:`). There is no `args:` key.
 - `depends_on:` — stages run in file order with no topological sort, so keep
   declarations in dependency order; a stage whose dependency was skipped is
@@ -309,12 +311,13 @@ mpirun -np 128 ./my_parallel_program
 ```
 ```
 
-In `ari-core/config/default.yaml` (the shipped BFTS defaults), increase the
-timeout — or override it per run with `ARI_TIMEOUT_NODE`:
+In `ari-core/config/default.yaml` (the shipped BFTS defaults) the per-node
+timeout is `timeout_per_node: 7200` (2 hours). Raise it there for long MPI
+jobs — or override it per run with `ARI_TIMEOUT_NODE`:
 
 ```yaml
 bfts:
-  timeout_per_node: 3600   # 1 hour for large MPI jobs
+  timeout_per_node: 14400   # 4 hours for large MPI jobs
 ```
 
 ---
@@ -367,7 +370,7 @@ result = await session.call_tool("run_experiment", {
 })
 ```
 
-Use `list_children(run_id)` to retrieve child runs. The GUI Sub-Experiments page visualizes the hierarchy.
+Use `list_children(parent_run_id)` to retrieve child runs. The GUI Sub-Experiments page visualizes the hierarchy.
 
 ### Over HTTP (for CI/CD)
 

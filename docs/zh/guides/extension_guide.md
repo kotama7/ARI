@@ -192,9 +192,11 @@ pipeline:
 阶段的键：
 - `skill` / `tool` —— 注册技能名与它调用的 MCP 工具。
 - `inputs:`（别名 `input:`）—— 工具的关键字参数，支持 `{{var}}` 模板替换
-  （`{{checkpoint_dir}}`、`{{run_id}}`、`{{ari_root}}` 等）。`params:` 原样
-  传递；`<key>_from:` 简写会解析检查点相对文件名**并**读入其内容（另见
-  `load_inputs:`）。不存在 `args:` 键。
+  （`{{checkpoint_dir}}`、`{{run_id}}`、`{{ari_root}}` 等）。`params:` 是
+  合并进同一组调用参数的另一个映射，其字符串值同样会做 `{{var}}` 替换，但
+  `params:` 的键不会被读入文件内容，且同名的 `inputs:` 键优先。`<key>_from:`
+  简写会解析检查点相对文件名**并**读入其内容（另见 `load_inputs:`）。不存在
+  `args:` 键。
 - `depends_on:` —— 编排器按文件顺序执行阶段，不做拓扑排序，因此请让声明顺序
   与依赖顺序一致；依赖被跳过的阶段也会被跳过（依赖被显式 `enabled: false`
   的情况除外）。
@@ -300,12 +302,13 @@ mpirun -np 128 ./my_parallel_program
 ```
 ```
 
-在 `ari-core/config/default.yaml`（随包提供的 BFTS 默认值）中增加超时时间——
-也可以用 `ARI_TIMEOUT_NODE` 按次运行覆盖：
+`ari-core/config/default.yaml`（随包提供的 BFTS 默认值）中每个节点的超时是
+`timeout_per_node: 7200`（2 小时）。长时间的 MPI 作业可在此处调高——也可以用
+`ARI_TIMEOUT_NODE` 按次运行覆盖：
 
 ```yaml
 bfts:
-  timeout_per_node: 3600   # 大型 MPI 作业 1 小时
+  timeout_per_node: 14400   # 大型 MPI 作业 4 小时
 ```
 
 ---

@@ -1,3 +1,44 @@
+---
+sources:
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript_repair_runtime.py
+    role: implementation
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
+  - path: ari-core/ari/manuscript/runtime.py
+    role: implementation
+  - path: ari-core/ari/manuscript/state.py
+    role: implementation
+  - path: ari-core/ari/manuscript/repair.py
+    role: implementation
+  - path: ari-core/ari/manuscript/segments.py
+    role: implementation
+  - path: ari-core/ari/manuscript/evaluation.py
+    role: implementation
+  - path: ari-core/ari/manuscript/contracts.py
+    role: schema
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-core/ari/rqgm/paper_runtime.py
+    role: implementation
+  - path: scripts/evaluate_manuscript_complete.py
+    role: implementation
+  - path: scripts/run_manuscript_complete_release.py
+    role: implementation
+  - path: scripts/manuscript_complete_release_gates.json
+    role: config
+  - path: .github/workflows/manuscript-complete.yml
+    role: config
+  - path: ari-core/tests/test_manuscript_complete.py
+    role: test
+  - path: ari-core/tests/fixtures/manuscript_complete/factory.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # Manuscript Complete operator runbook
 
 ## Activation
@@ -96,8 +137,9 @@ stops from the loop's return value, or reconstruct them from the committed
 round records under `auto-rounds/` and the attempt's `readiness.json`.
 Persisting the reason for them is designed but not implemented:
 `ManuscriptAutoRepairRoundV1` carries the round, its plan and source context
-digests, its request and transaction IDs, its per-request results, and the used
-budget, but no termination-reason field, and no other artifact records one.
+digests, its request IDs and transaction digests, its per-request results, and
+the used budget, but no termination-reason field, and no other artifact records
+one.
 
 No progress is decided on the source context digest and the
 `(requirement_id, status)` vector alone. Reworded prose, a new draft, or a

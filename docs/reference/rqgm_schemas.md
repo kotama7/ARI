@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-07-28
+last_verified: 2026-08-08
 ---
 
 # RQGM Schema Reference
@@ -282,7 +282,7 @@ disk; the event log is the truth.  **Owning module:**
 | `registry_version` | `hash12` |
 | `as_of_event_hash` | `event_hash` of the last folded event (`""` when empty) |
 | `components[]` | Component entries (status, role, tier; meta-tier entries add the `rqgm_meta` capability flags) |
-| `prompts[]` | Prompt entries: text referenced by source (`committed_template` key today; `checkpoint_file` for evolved prompts), `prompt_hash` (`hash12`) **and** full `prompt_sha256`; `spec_ref` is `null` in v1 |
+| `prompts[]` | Prompt entries: text referenced by source (closed `kind` set — `committed_template` for a shipped template, `checkpoint_file` for an evolved prompt, `policy` for a governed utility-policy body), `prompt_hash` (`hash12`) **and** full `prompt_sha256`; `spec_ref` is `null` in v1 |
 
 ## Proposal schemas (Task 03)
 
@@ -1088,8 +1088,9 @@ Shape owned by `ari/rqgm/paper_anchor.py` (`PaperAnchorCase`): `case_id`,
 `expected_behavior`, `results`.  Written **once** by curation/bootstrap tooling
 — **never** by a governed role (the anchor is a fixed ground truth, not an
 evolvable artifact).  The `max_bootstrap_label_fraction` cap over
-`gate_bootstrap` labels is machine-enforced (it degrades to no held-out split,
-never raises).  **Default OFF** (`anchor.enabled: false`): the degraded on-ramp
+`gate_bootstrap` labels is machine-enforced over the corpus **and** the
+held-out subset; a breach refuses the whole corpus and falls back to the
+no-anchor on-ramp rather than raising.  **Default OFF** (`anchor.enabled: false`): the degraded on-ramp
 leaves no corpus, so the default `rqgm_archive` run is reviewed best-of-N until
 a curated corpus is supplied.
 
@@ -1140,9 +1141,9 @@ write-path validity check `validate_raw_attack` uses), added for the paper
 phase and inert off it; the shipped `rqgm_attack_records.schema.json`
 `adversary_type` / `case_type` enum documents the seven **exploration** types.
 A `paper_self_preference` case implicates the `paper_reviewer` role — and, on a
-draft the Layer-0 claim gate confirms unfaithful, also `paper_writer`.  Both,
-unlike the seven's `generator`, HAVE a registered incumbent (`paper_reviewer_v1`
-/ `paper_writer_v1` under the paper mode), so the Task-15 `target_component_id`
+draft the Layer-0 claim gate confirms unfaithful, also `paper_writer`.  Both
+HAVE a registered incumbent under the paper mode (`paper_reviewer_v1`
+/ `paper_writer_v1`), so the Task-15 `target_component_id`
 binding fires and the validated-attack → impeachment chain runs in production;
 off the paper phase both roles resolve to `""` and exploration stays
 byte-identical.
@@ -1152,12 +1153,13 @@ byte-identical.
 Full per-file behaviour (creation conditions, truth vs snapshot, resume
 semantics) is documented in
 [File Formats Reference](file_formats.md#rqgm-epoch-governance-files-opt-in-ari_rqgm-mode);
-this table only maps files to schemas and owners.  Every file below is
-registered by name in `PathManager.META_FILES` (the JSONL truths
-additionally in the trace-file set), and the `proposals/` and
-`rqgm_prompts/` directories sit on the node-report directory blocklist
-(`ari/orchestrator/node_report/builder.py`), so none of them ever appear
-in a node's `files_changed`.
+this table only maps files to schemas and owners.  Every fixed-name file
+below is registered in `PathManager.META_FILES`, and every JSONL among them
+except the two paper-archive ones (`paper_draft_archive.jsonl`,
+`paper_anchor_corpus.jsonl`) is additionally in the `ari/paths.py`
+trace-file set; the `proposals/` and `rqgm_prompts/` directories sit on the
+node-report directory blocklist (`ari/orchestrator/node_report/builder.py`),
+so none of them ever appear in a node's `files_changed`.
 
 | Checkpoint path | Kind | Schema | Writer |
 |---|---|---|---|

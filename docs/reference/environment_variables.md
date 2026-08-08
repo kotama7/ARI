@@ -21,7 +21,7 @@ last_verified: 2026-08-08
 
 # Environment Variable Reference
 
-ARI honours roughly 90 environment variables, drawn together here for
+ARI honours over 160 environment variables, drawn together here for
 convenience.  Most have sensible defaults; the **Required?** column
 flags the ones a fresh checkout cannot operate without.
 
@@ -238,8 +238,17 @@ directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_op
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore from `memory_backup.jsonl.gz` on resume |
 | `ARI_MEMORY_ACCESS_LOG` | Path to `memory_access.jsonl` |
 | `ARI_MEMORY_CONSOLIDATE` | Typed-memory consolidation + artifact-grounded `verified_context.json` for paper claims. **Default ON**; set `0`/`false`/`no`/`off` to disable |
-| `ARI_CURRENT_NODE_ID` | Set by the agent loop; skills read it but never set it |
+| `ARI_CONTEXT_AUTHORITY_KEY` | Per-connection HMAC key core exports into each skill subprocess (`SkillConnection._server_params`); the memory server verifies the signed `ari_context` argument against it before touching the backend. Core-injected and redacted from results — never operator-set |
 | `ARI_LETTA_VENV` | Virtualenv path for the bundled Letta server |
+
+The current node id is **not** an environment variable, so a spoofed value in the
+environment cannot redirect a memory write. `AgentLoop._node_tool_context` builds one
+`ToolCallContextV1` per node, `SkillConnection.authorize_args` signs it into the
+`ari_context` tool argument, and the Copy-on-Write guard (`_require_self` in
+`ari-skill-memory/src/server.py`) compares the requested `node_id` against
+`node_context.node_id` from that signed context. See
+[Internal boundaries](internal_boundaries.md) and
+[Glossary → CoW](glossary.md).
 
 ### Reviewer rubrics + paper review
 
@@ -265,7 +274,6 @@ directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_op
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | Target leaf count for `generate_rubric` |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature override |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | Use the two-stage skeleton + subtree synthesis |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | Override search root for venue-conditioned PaperBench rubric templates (unreleased — see `docs/reference/rubric_schema.md#venue-conditioned-templates`) |
 
 ### PaperBench reproducibility (v0.7.0)
@@ -344,10 +352,8 @@ selected lock can execute.
 | Variable | Purpose |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`. Forces the sandbox runner used by `server.run_reproduce` and `bridge.reproduce_submission`. |
-| `ARI_PHASE1_DOCKER_IMAGE` | Default docker image when `sandbox_kind=docker` and no explicit `container_image` is supplied. Defaults to `ubuntu:24.04`. |
+| `ARI_PHASE1_DOCKER_IMAGE` | Default docker image when `sandbox_kind=docker` and no explicit `container_image` is supplied. There is no built-in default: unset leaves the image empty and the run is refused rather than silently given one. |
 | `ARI_PHASE1_APPTAINER_IMAGE` | Default SIF / docker URI when `sandbox_kind=apptainer`/`singularity` and no explicit `container_image` is supplied. |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | Legacy alias for `ARI_PHASE1_APPTAINER_IMAGE`. |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ when a requested sandbox tool is missing (docker daemon / apptainer / sbatch / partition), fall back to host-local execution with only a warning (legacy v0.7.2 behaviour). Default (unset) ⇒ raise `RuntimeError` so the user's isolation intent isn't silently bypassed. |
 | `ARI_PAPERBENCH_PATH` | Override the vendored PaperBench source tree path (default: `ari-skill-paper-re/vendor/paperbench/project/paperbench`). |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Default Stage 1 agent rollout time budget when the caller passes `0`. |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ default to IterativeAgent variant for Stage 1 rollouts. |

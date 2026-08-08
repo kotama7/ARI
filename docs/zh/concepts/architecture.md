@@ -443,8 +443,12 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     输出：ors_seed.json
 
   阶段 14：ors_build_reproduce  (ari-skill-paper-re: build_reproduce_sh)  [v0.7.0]
-    LLM 驱动 replicator：读取论文 + rubric 的 expected_artifacts，
-    将自包含 reproduce.sh + 源文件写入沙箱。reproduce.sh 已存在则跳过
+    replicator：以沙箱为 workspace 驱动 PaperBench 式 ReAct 代理
+    (BasicAgent；`iterative_agent: true` 时为 IterativeAgent，vendoring 于
+    ari-skill-paper-re/vendor/paperbench)。该代理读取论文 + rubric 的
+    expected_artifacts，反复调用 bash/python 工具写出 reproduce.sh 与配套
+    源文件，直到 submit 或耗尽墙钟预算 (time_limit_sec，默认 12 小时)。
+    这取代了 v0.6 的单次 LLM replicator。reproduce.sh 已存在则跳过
     (放在 ors_seed_sandbox 之后即可在 EAR 开启时不触发)。LiteLLM 路由，
     供应商无关 (gpt-5-mini / anthropic/claude-... / gemini/... / ollama/...)。
     输出：ors_replicator.json + repro_sandbox/{reproduce.sh, source...}
@@ -454,8 +458,9 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
       slurm (sbatch + ARI_SLURM_PARTITION 存在 = BFTS 同 partition)
       → docker (守护可用且非 HPC) → apptainer → singularity → local。
       可用 ARI_PHASE1_SANDBOX 覆盖。
-    SLURM 路径使用 sbatch --wait 与 spool relocation 包装器
-    (.slurm_wrap.sh，通过绝对路径 exec reproduce.sh 以保护 $0 相对 cd)。
+    SLURM 路径是交接给类型化的调度器生命周期：执行请求变成
+    JobRequestV1 + ResourceRequestV1，提交给 ari-skill-hpc 所用的
+    同一个 SlurmScheduler 并轮询至终态 (_execute_reproduction_slurm)。
     捕获 reproduce.log，并对照 rubric 中的 expected_artifacts。
     输出：ors_phase1.json { executed, exit_code, log_path,
                              artifacts, missing, sandbox_kind,
@@ -464,12 +469,14 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
   阶段 16：ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [在阶段 15 之后, v0.7.0]
     Phase 2。主评分 completer 通过 LiteLLM 路由 (任意供应商；绕过
     PaperBench 原生 CONTEXT_WINDOW_LENGTHS 约束)，structured score-parser
-    仍使用 gpt-4o-2024-08-06。N 次 (默认 1 —— PaperBench §4.1 的单次评分；
+    也由同一个 judge_model 构建，仅在携带 response_format 上不同。
+    N 次 (默认 1 —— PaperBench §4.1 的单次评分；
     用 ARI_JUDGE_N_RUNS 调高) 加权聚合 + negative control
     (两者均需 < 5%)。
     输出：ors_grade.json { ors_score, raw_score, leaf_grades,
                           judge_model, n_runs, rubric_sha256,
-                          negative_control: {empty, boilerplate, passed} }
+                          negative_control_check: {empty, boilerplate,
+                                                   passed, status, error} }
 ```
 
 ---
@@ -572,12 +579,12 @@ checkpoints/{run_id}/
 ARI 不再维护全局配置目录。所有设置文件和代理记忆都存储在活动检查点目录下，
 因此每个实验拥有独立状态。v0.5.0 已经移除全局 `$HOME/.ari/` 目录；
 仅存的几个文件系统回退会发出 `DeprecationWarning`，并在 v1.0 中彻底移除
-（详见 `docs/_archive/refactor_audit.md` 与 `docs/guides/migration.md`）:
+（详见 `docs/guides/migration.md`）:
 
 ```
 checkpoints/{run_id}/
 ├── settings.json        # GUI 设置 (LLM 模型、提供者、HPC 默认值)
-├── memory_backup.jsonl.gz   # Letta 快照（流水线阶段结束和退出时自动）
+├── memory_backup.v1.json.gz # Letta 快照（流水线阶段结束和退出时自动）
 ├── memory_access.jsonl       # 写/读遥测
 └── ...                  # tree.json / launch_config.json / uploads / ari.log
 ```
@@ -695,9 +702,12 @@ ARI 实际产出的每条路径都是上文那种扁平布局。`ari/paths.py` �
 
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
-| `ari-skill-orchestrator` | `run_experiment`、`get_status`、`list_runs`、`list_children`、`get_paper` | 将 ARI 作为 MCP 服务器暴露，递归子实验，双 stdio+HTTP 传输 | ✗ |
+| `ari-skill-orchestrator` | `run_experiment`、`get_status`、`get_result`、`stop_experiment`、`list_runs`、`list_children`、`list_artifacts`、`read_artifact`、`get_paper`、`get_ear`、`list_skills`、`get_workflow` | 将 ARI 作为 MCP 服务器暴露，递归子实验，双 stdio+HTTP 传输 | ✗ |
+| `ari-skill-tool-registry` | `discover`、`describe`、`invoke`、`get_status`、`get_result` | 面向大型外部 MCP 集合的供应商中立发现、准入、不可变调用与重放 | ✗ |
+| `ari-skill-knowledge` | `search_knowledge_skills`、`describe_knowledge_skill`、`list_active_knowledge_skills`、`request_knowledge_skill` | 对内容寻址的过程性知识提供只读查询与非权威请求接口 | ✗ |
+| `ari-skill-harness` | `search_harnesses`、`describe_harness`、`request_auxiliary_verification`、`read_attestation`、`list_verification_requirements` | Harness 目录 / 需求 / Attestation 的只读查询与非权威的辅助请求 | ✗ |
 
-✗ = 无 LLM、△ = 仅部分工具使用 LLM、✓ = 主要工具使用 LLM。**共 14 个技能**（13 默认，1 附加）— v0.7.0 新增 `ari-skill-replicate`。
+✗ = 无 LLM、△ = 仅部分工具使用 LLM、✓ = 主要工具使用 LLM。**共 17 个技能包**（在默认 `workflow.yaml` 中注册 13 个，附加 4 个）— v0.7.0 新增 `ari-skill-replicate`。
 
 ---
 
@@ -825,13 +835,13 @@ pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
 
 ## 节点级提示构建
 
-每个 BFTS 节点都通过 `ari/agent/loop.py:370` 中的 `AgentLoop.run(node, experiment)` 这一单一入口执行。同一循环既处理根节点也处理子节点；它构建的提示仅根据 `node.depth` 和从祖先继承的状态分支。本节是 *代理在节点开始时实际看到什么* 的权威来源。在此处更改需要谨慎审查。
+每个 BFTS 节点都通过 `ari/agent/loop.py:2063` 中的 `AgentLoop.run(node, experiment)` 这一单一入口执行。同一循环既处理根节点也处理子节点；它构建的提示仅根据 `node.depth` 和从祖先继承的状态分支。本节是 *代理在节点开始时实际看到什么* 的权威来源。在此处更改需要谨慎审查。
 
 ### `AgentLoop.run` 的输入
 
 每次调用接收两个参数：
 
-1. **`node: Node`** — 由 `BFTS.expand`（`ari/orchestrator/bfts.py:431-441`）创建。影响提示的字段：
+1. **`node: Node`** — 由 `BFTS.expand`（`ari/orchestrator/bfts.py:734-745`）创建。影响提示的字段：
    - `id`、`depth`、`label`（`draft|improve|debug|ablation|validation|other`）、`raw_label`
    - `ancestor_ids` — 从根到父节点（含父节点）的严格 CoW 链，用作 `search_memory` 过滤器。
    - `eval_summary` — 对于刚扩展的子节点，此字段保存 LLM 提议的方向（一句话）。执行后该字段会被评估器摘要覆盖。
@@ -841,7 +851,9 @@ pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
    - `work_dir` — `PathManager` 创建的节点专属目录
    - `slurm_partition`、`slurm_max_cpus` — SLURM 启用时由 `env_detect` 填充
 
-### 系统提示 — `ari/agent/loop.py:41-58`
+### 系统提示 — `ari/prompts/agent/system.md`
+
+提示正文是外部化模板（键 `agent/system`，经 `_system_prompt_versioned()` 载入并在 `loop.py:2226` 做 `str.format`）；`loop.py` 只负责构建 `{tool_desc}` / `{memory_rules}` / `{extra}` 三处替换：
 
 ```
 You are a research agent. You MUST use tools to execute experiments. ...
@@ -859,16 +871,16 @@ RULES:
 {memory_rules}{extra}
 ```
 
-`{extra}` 块（在 L448-453 构建）追加：
+`{extra}` 块（在 L2213-2219 构建）追加：
 
 | 子块 | 来源 | 备注 |
 |------|------|------|
-| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | 由 BFTS 标签衍生的一句话行为提示 |
-| `EXPERIMENT ENVIRONMENT` | L433-442 | `work_dir` + 已有文件 + SLURM partition/CPUs + 容器镜像（`ARI_CONTAINER_IMAGE`） |
-| `RESOURCE BUDGET` | L443-447 | `max_react_steps`、`timeout_per_node // 60` 分钟 |
+| `NODE ROLE: {label_hint}` | `node.label.system_hint()` | 由 BFTS 标签衍生的一句话行为提示；设置 `ARI_BFTS_NO_LABEL`（`labels_disabled()`）后所有节点改用同一个中性角色 |
+| `EXPERIMENT ENVIRONMENT` | L2197-2207 | work directory（节点的 container root `/workspace`）+ 已有文件 + SLURM partition/CPUs（仅当 scheduler 工具确实可用时）+ 容器镜像（`ARI_CONTAINER_IMAGE`） |
+| `RESOURCE BUDGET` | L2208-2212 | `max_react_steps`、`timeout_per_node // 60` 分钟 |
 | `extra_system_prompt` | `WorkflowHints.extra_system_prompt` | 由 `from_experiment_text` / 流水线配置可选设置的逃生口 |
 
-`{memory_rules}` 块（L454-456）仅在代理实际拥有 `add_memory` 工具时附加，并将活跃节点 id 内联到提示中，使 LLM 无法意外写入其他作用域：
+`{memory_rules}` 块（L2220-2222）仅在代理实际拥有 `add_memory` 工具时附加，并将活跃节点 id 内联到提示中，使 LLM 无法意外写入其他作用域：
 
 ```
 - When available, save decisive intermediate findings with
@@ -878,20 +890,20 @@ RULES:
 
 ### 工具目录（`tool_desc`）
 
-L389 的 `tools = self._available_tools_openai(suppress=..., phase="bfts")` 枚举 MCP 为 `phase="bfts"` 暴露的所有工具，然后丢弃 `_suppress_tools` 中的任何工具。可变的 suppression 集合存在于 `AgentLoop` 实例上，并随运行进展更新：
+L2112 的 `tools = self._available_tools_openai(suppress=..., phase="bfts")` 枚举 MCP 为 `phase="bfts"` 暴露的所有工具，然后丢弃 `_suppress_tools` 中的任何工具。可变的 suppression 集合存在于 `AgentLoop` 实例上，并随运行进展更新：
 
-- 第一次成功的 `generate_ideas` 调用之后，循环设置 `self._suppress_tools = {"generate_ideas"}`（L873-874），后续节点不再重新生成 idea。
+- 第一次成功的 `generate_ideas` 调用之后，循环设置 `self._suppress_tools = {"generate_ideas"}`（L2633），后续节点不再重新生成 idea。
 - `survey` 对子节点 **不被 suppress**；仅在文字中被劝阻（见下文「User message #1 — 子节点」）。忽略文字劝阻的子仍然可以调用 `survey()`。
 
-`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L613）标记消息窗口修剪器必须保留的工具结果；即使聊天历史被压缩，它们的内容也会在每个 ReAct 轮次存活。
+`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L2630）标记消息窗口修剪器必须保留的工具结果；即使聊天历史被压缩，它们的内容也会在每个 ReAct 轮次存活。
 
 ### User message #1 — 根节点（`node.depth == 0`）
 
-`loop.py:501-511`:
+`loop.py:2430-2436`:
 
 ```
 Experiment goal:
-{goal_text(截断到 1500 字符)}
+{goal_text(按 ARI_GOAL_MAX_CHARS 截断，默认 8000)}
 
 Node: {node.id} depth={node.depth}
 
@@ -899,34 +911,46 @@ START NOW: call {first_tool}() immediately. Do NOT output any text or
 plan — your first response must be a {first_tool}() tool call.
 
 WORKFLOW ORDER: (1) generate_ideas() sets the research direction and
-primary_metric; (2) make_metric_spec() derives the success metrics from
-that primary_metric (NOT from a guessed list); (3) survey() gathers related
-literature. The survey results are used to generate citations — without
-survey, the paper will have no references.
+primary_metric; (2) make_metric_spec() derives success metrics from the
+established primary_metric; (3) survey() gathers related literature for
+grounded citations.
 ```
+
+`WORKFLOW ORDER` 一行由 `_setup_descriptions` 按通过 suppression 的 setup 工具（`generate_ideas` → `make_metric_spec` → `survey`）拼装，因此被 suppress 的工具绝不会被点名；三者都不可用时退化为「use only the available tools shown above.」。
 
 `first_tool` 是 `WorkflowHints.tool_sequence[0]`，现在默认为 `generate_ideas`；当对应技能存在时，`enrich_hints_from_mcp` 将 setup 工具排序为 `generate_ideas` → `make_metric_spec` → `survey` → executor（idea 的 `primary_metric` 即成功标准，因此 `make_metric_spec` 必须跟在 idea 之后派生，而不是猜测一份列表）。
 
 ### User message #1 — 子节点（`node.depth > 0`）
 
-`loop.py:477-500`:
+`loop.py:2341-2379`:
 
 ```
 Experiment goal:
-{goal_text(截断到 1500 字符)}
+{goal_text(按 ARI_GOAL_MAX_CHARS 截断，默认 8000)}
 
 Node: {node.id} depth={node.depth} task={node.label}
 
 Task: {label-specific one-line description from _label_desc}
 The parent node already completed the survey and established a research
-direction. Prior results are provided below. Implement and run your
-specific experiment, then return JSON with measurements.
+direction. Prior results are provided below for context — but they belong
+to the parent, NOT to you.
+
+MANDATORY: You must produce NEW artifacts to count as having run an
+experiment.
+  • Inherited files: source code, scripts, configs, compiled binaries.
+  • NOT inherited: the parent's results.json/results.csv, ...（逐条列出 _OUTPUT_BLACKLIST）
+  ...（按 label 修改代码；重新构建、重跑并写出新的结果文件；
+      零差异节点会被判定为 STERILE）
+Implement and run your specific experiment, then return JSON with
+measurements.
 
 Workflow:
 {WorkflowHints.post_survey_hint}        ← 例如：slurm_submit / run_bash 步骤
 ```
 
-`_label_desc`（L479-485）是节点级提示中标签语义出现的唯一位置：
+「Prior results are provided below」这句是有条件的：若某个子节点的 handoff arm 既不注入摘要也不注入父日志，提示会改为告诉它继承了父节点的 *代码* 但不会拿到其结果，从而不会承诺一段永远不会出现的内容。
+
+`_label_desc`（L2308-2318）是节点级提示中标签语义出现的唯一位置：
 
 | Label | 一行任务 |
 |-------|---------|
@@ -941,7 +965,7 @@ Workflow:
 
 ### User message #2 — 工作上下文注入（每个节点）
 
-旧的仅子节点 `search_memory` 转储（一条 `[Prior knowledge from ancestor nodes …]` 消息，截断到聚合 800 字符）已被模块级的 `build_working_context_messages()`（`loop.py:108-224`）**取代**，并由 `AgentLoop.run` 对 **每个** 节点调用。它是只读的 —— 从不写记忆 —— 并组装至多三个带上限的层级：
+旧的仅子节点 `search_memory` 转储（一条 `[Prior knowledge from ancestor nodes …]` 消息，截断到聚合 800 字符）已被模块级的 `build_working_context_messages()`（`loop.py:561-789`）**取代**，并由 `AgentLoop.run` 对 **每个** 节点调用。它是只读的 —— 从不写记忆 —— 并组装至多三个带上限的层级：
 
 - **Tier 1a —— 实验核心（每个节点）。** 调用 `get_experiment_context` 并注入一个 `[Experiment context (stable across all nodes):]` 块，携带 `primary_metric`、`higher_is_better`、`metric_rationale`、`hardware_spec`，**外加** 一个 `selected_idea` 摘要。它对根节点和每个后代都适用，因此从不重跑 `generate_ideas` 的节点也能继承设计意图（计划的机制 + 目标工作负载），而不仅仅是指标。
 - **Tier 1b —— 祖先核心（仅子节点）。** 对每个祖先调用 `get_node_memory(node_id=aid)`，只保留 `metadata.type == "result_summary"` 的条目，输出一个 `[Established conclusions from ancestor nodes (N):]` 块。这是确定性的、完整的逐祖先交接：每条结论 **按条目** 截断（而非聚合裁剪），并受树深度约束因此整条注入。顺序遵循 `ancestor_ids`（根 → 父）。
@@ -949,20 +973,20 @@ Workflow:
 
 失败（记忆后端宕机、结果格式异常等）在 `logger.debug` 级别被吞掉，节点仍然运行。
 
-遗留的 `search_global_memory` 注入块（`loop.py:517-540`）在 v0.6.0 中是死代码；全局记忆工具已被移除（`CHANGELOG.md` v0.6.0 §3），条件分支永不触发。
+遗留的 `search_global_memory` 注入块（`loop.py:2513-2535`）在 v0.6.0 中是死代码；全局记忆工具已被移除（`CHANGELOG.md` v0.6.0 §3），条件分支永不触发。
 
 ### 截断速查表
 
 | 项目 | 上限 | 代码 |
 |------|-----|------|
-| `goal_text` | 1500 字符 | `loop.py:434-438` |
-| Survey 结果记忆条目 | 前 5 篇论文，每篇 abstract 200 字符 | `loop.py:794-799` |
-| Tier 1a —— 实验核心字段 | `_CORE_FIELD_CAP = 400` 字符／字段 | `loop.py:94` |
-| Tier 1a —— `selected_idea` 摘要 | `_IDEA_FIELD_CAP = 1500` 字符 | `loop.py:95` |
-| Tier 1b —— 逐祖先 `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 字符／条目（非聚合裁剪） | `loop.py:98` |
-| Tier 2 —— 补充查询 | 200 字符 | `loop.py:201` |
-| Tier 2 —— 补充条目 | 按 Letta `passages.search` 嵌入排序前 5 条 | `loop.py:202-206`（见 Memory Architecture 节）|
-| Tier 2 —— 逐补充条目 | `_SUPPLEMENT_CAP = 400` 字符／条目 | `loop.py:99` |
+| `goal_text` | `ARI_GOAL_MAX_CHARS` 字符，默认 **8000**；`0` 表示完全关闭上限 | `loop.py:2274-2283` |
+| Survey 结果记忆条目 | 前 5 篇论文，每篇 abstract 200 字符 | `loop.py:2939-2942` |
+| Tier 1a —— 实验核心字段 | `_CORE_FIELD_CAP = 400` 字符／字段 | `loop.py:342` |
+| Tier 1a —— `selected_idea` 摘要 | `_IDEA_FIELD_CAP = 1500` 字符 | `loop.py:343` |
+| Tier 1b —— 逐祖先 `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 字符／条目（非聚合裁剪） | `loop.py:346` |
+| Tier 2 —— 补充查询 | 200 字符 | `loop.py:759` |
+| Tier 2 —— 补充条目 | 按 Letta `passages.search` 嵌入排序前 5 条 | `loop.py:760-764`（见 Memory Architecture 节）|
+| Tier 2 —— 逐补充条目 | `_SUPPLEMENT_CAP = 400` 字符／条目 | `loop.py:347` |
 
 ### 故意 **不注入** 的信息
 
@@ -1053,7 +1077,7 @@ pipeline:
 
 ## 分层架构（v0.7+ 重构）
 
-重构后的 `ari-core/ari/` 包组织为五个层以最小化耦合。保持分层完整
+重构后的 `ari-core/ari/` 包组织为六个层（0–5）以最小化耦合。保持分层完整
 的设计纪律见 `CONTRIBUTING.md`。
 
 | 层 | 子包 | 职责 |
@@ -1061,9 +1085,9 @@ pipeline:
 | 0 — 原语 | `paths`、`checkpoint`、`_deprecation`、`cost_tracker`、`pidfile`、`lineage`、`env_detect`、`schemas`、`configs`、`prompts`、`protocols` | 路径解析、弃用警告、成本跟踪、提示词/配置加载器、结构性协议。无 ARI 内部依赖。 |
 | 1 — 领域模型 | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/scheduler`、`orchestrator/node_selection` | 数据模型 + 对上游库（litellm、MCP、Letta）的薄封装。 |
 | 2 — 编排器 | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS 探索、lineage-decision LLM 钩子、每节点报告。 |
-| 3 — 智能体 | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env}` | ReAct 执行 + 实验特定的 WorkflowHints 注入。 |
+| 3 — 智能体 | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env, metric_contract, shims}` | ReAct 执行 + 实验特定的 WorkflowHints 注入。 |
 | 4 — 流水线 | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML 驱动的阶段运行器、论文流水线胶水。 |
-| 5 — 入口点 | `cli/{__init__, run, projects, commands, bfts_loop, lineage, migrate}`、`cli_ear`、`viz/*`、`registry/*`、`public/*` | Typer CLI、viz HTTP 服务器、registry FastAPI、面向技能的 public 再导出层。 |
+| 5 — 入口点 | `cli/{__init__, __main__, run, projects, commands, bfts_loop, lineage, migrate, paper_dispatch, doctor, harness, kca, manuscript, manuscript_repair_runtime}`、`cli_ear`、`viz/*`、`registry/*`、`public/*` | Typer CLI、viz HTTP 服务器、registry FastAPI、面向技能的 public 再导出层。 |
 
 迁移代码（`migrations/v05_to_v07/*`）位于分层之外，将在 v1.0 中
 删除。技能只能从 `ari.public.*` 导入 ——

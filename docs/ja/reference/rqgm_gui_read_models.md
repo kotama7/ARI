@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-08-09
 ---
 
 # RQGM GUI 読み取りモデル
@@ -26,7 +26,7 @@ last_verified: 2026-07-27
 
 ## 基本規則
 
-読み取り側（`ari-core/ari/viz/v1/rqgm.py`）は 4 つの制約に縛られており、
+読み取り側（`ari-core/ari/viz/v1/rqgm.py`）は 5 つの制約に縛られており、
 それがこのページのすべてのペイロードの形を決めています:
 
 1. **`ari.rqgm` を決してインポートしない。** 読み取りモデルはコミット済みの
@@ -52,6 +52,36 @@ last_verified: 2026-07-27
 4. **読み取り専用。** ファイル書き込み、`viz.state` への接触、`os.environ` の
    変更はいずれも行わず、**変更用エンドポイントは存在しません** — GUI は
    ガバナンス操作を実行できず、観測できるだけです。
+5. **GUI のための実行時計装は一切追加されていない。** これらの読み取りモデルが
+   必要とする論理イベントは、すべて既にコミット済みレコードとして存在していま
+   した — ポリシー提案は `UtilityPolicyCandidate`、ポリシー採用は T20 遷移、
+   スコア観測は `UtilityRecord`、スコア書き換えは `SelectiveErasureEvent` と
+   `FrontierRebuildEvent`、レジストリ変更は `rqgm_transitions.jsonl` の
+   コミット済み遷移イベントです。したがって読み取り側は、ランがいずれにせよ
+   書き出す成果物に対する純粋な射影であり、この目的のために新しいイベント型が
+   導入されたことはありません。
+
+**既知のギャップ — ライブなガバナンス進捗は存在しない。** 9 段階のエポック監査は
+実行中には何も出力しません: パイプラインはレコードを*返す*だけで、オーケストレータ
+がそれらすべて（証拠バンドル、動議、弁護、裁定、そして最後に
+`governance_report`）を追記するのは、監査全体が戻ってきた後です。したがって進行中の
+境界は部分描画されるのではなく不可視です。段階進捗のイベント型も、再計算開始の
+シグナルも存在しません; 再計算は、それが残したレコードを通じてのみ可視になります。
+ガバナンスのワークスペースが購読するのも `run` トピックのみで、`run` はチェック
+ポイント切り替え時と v1 起動後に発行されます — エポック境界がそれ自体で無効化を
+push することはありません。ガバナンスのペイロードは常に「問い合わせた時点で
+コミットされていた内容のスナップショット」として扱い、進めるには再取得して
+ください。トピック語彙は凍結されています。[REST API リファレンス](rest_api.md)の
+「リアルタイム: `GET /api/v1/events/stream`（SSE）」節を参照してください。
+
+**既知のギャップ — スキーマ検証は行われない。** 読み取り側は `ari/schemas/` 下の
+JSON Schema を一切ロードしません。各フィールドを防御的に読み、期待する型であれば
+その値を保持し、そうでなければ `None` を返します。したがって JSON としては
+パースできるがスキーマに違反しているレコードは、拒否されるのではなく読める
+フィールドの範囲で射影されます — レガシーなチェックポイントがそもそも描画できる
+のと同じ寛容さです。モジュールが実際に拒否するものは下の「整合性フラグと縮退の
+意味論」に挙げられており（チェーンとハッシュの検証、閉じた status 語彙、
+write-once のポリシー本体チェック）、スキーマ適合はその中に含まれません。
 
 ## capability ゲーティング
 
@@ -64,6 +94,15 @@ last_verified: 2026-07-27
 | `mode` / `mode_source` | `rqgm_state.json` に永続化された `mode` とその来歴。 |
 | `paper_mode` | `{ckpt}/paper_archive_state.json` の存在。実行モードと論文モードは**独立した軸**であり、4 通りの組み合わせすべてが有効です。 |
 | `reasons` | capability がオフ / 読めない理由 — 空の成功主張には決してなりません。 |
+
+`reasons` は分類語彙ではなく自由記述の文章です。このエンドポイントが出す文字列は
+3 種類 — `simple_bfts` ランである、`rqgm_state.json` が読めない、ファイルが
+`rqgm_enabled` false のモードを記録している — で、分岐に使える機械可読な理由
+コードはありません。**既知のギャップ:** `enabled: false` は「ガバナンスが設定で
+オフにされた」と「ガバナンス予算が尽きた」と「このチェックポイントが機能より
+古い」を区別しません。シグナルは成果物の存在だけなので、3 つとも「不在」として
+読まれます。これらを区別したいクライアントは、ラン自身の設定を見る必要が
+あります。
 
 残り 11 本のエンドポイントは、`rqgm_state.json` を持たないランに対して型付きの
 `404 not_found` エンベロープ（message: "not an RQGM run … simple_bfts run"）を
@@ -89,7 +128,7 @@ last_verified: 2026-07-27
 | `…/evolution` | `prompt_evolution.jsonl`、`rqgm_meta_outputs.jsonl`、および採用 join 用のレジストリ replay | — |
 | `…/paper-archive` | `paper_draft_archive.jsonl`、`paper_anchor_corpus.jsonl`、`rqgm/paper_self_preference_stat.json`、`full_paper.tex`（存在） | `paper_archive_state.json`（永続化モード + 凍結された論文ポリシー） |
 
-体得しておく価値のある帰結が 2 つあります:
+体得しておく価値のある帰結が 3 つあります:
 
 - `rqgm_registry.json` は**rollup** であり、レジストリそのものではありません。
   `…/registry` はコミット済み遷移を replay して構成要素とプロンプトを再構築し、
@@ -99,6 +138,22 @@ last_verified: 2026-07-27
   `…/overview` は最後にコミットされた `epoch_open` から現在エポックを導出し、
   スナップショットが食い違う場合は縮退理由（"snapshot ahead of the truth log"）
   を追加します。
+- **読み取りモデルをまったく持たないガバナンス成果物がいくつかある** — 既知の
+  ギャップです。`proposals/proposal_records.jsonl` と
+  `proposals/proposal_index.json`、`rqgm_cleanroom.jsonl`、
+  `rqgm_erasure_state.json`、`rqgm_governance_cache.jsonl`、
+  `rqgm/adversarial_replay_pool.json`、`prompt_specs.json` は、この面のどの
+  エンドポイントからも開かれません。`rqgm_prompts/` に届くのも間接的で、
+  登録済み `utility_policy` プロンプトが挙げる `source.path` を経由し、しかも
+  そのロールに限られます。したがって提案のルーティング、クリーンルーム再生成、
+  消去台帳、ガバナンスキャッシュ、リプレイプールは今も手作業でディスクから
+  読むことになります。形式は
+  [ファイルフォーマットリファレンス](file_formats.md)の
+  「RQGM エポックガバナンスファイル（オプトイン `ari_rqgm` モード）」節に
+  あります。チェックポイントの `constitution.yaml` コピーも同様に読まれません
+  が、こちらは設計どおりでありギャップではありません: これは ARI のどのコードも
+  読み返さない来歴マーカーであり、`…/overview` は代わりに `meta.json` の
+  `constitution_hash` を報告します。
 
 ## 整合性フラグと縮退の意味論
 
@@ -169,6 +224,30 @@ last_verified: 2026-07-27
 （`…/nodes/{node_id}/lineage` は `penalty_channel` と `policy_channel` を
 並置して返します）。
 
+どちらのチャネルも、元レコードが既に保持している内容だけを報告し、それ以上は
+何も報告しません。`RqgmScoreObservationV1` が持つのは `source`、`record_id`、
+`epoch_id`、`policy_hash`、`state`、`validated_attack_ids`、そして元フィールドを
+そのまま（センチネルのキー名も含めて）透過する `values` マップであり、型付きの
+base/penalty/final の三つ組ではありません。ここから 3 つの既知のギャップが
+導かれます。スコアボードを期待する読者は最初に知っておくべきものです:
+
+- **ランクは存在しません。** RQGM のどのペイロードもノードのランク、ランクの
+  変動、前後の順序を持たず、ソートや比較のパラメータを受け取るエンドポイントも
+  ありません（この面のクエリ語彙は `cursor`、`limit`、`expand`、`record_type`、
+  `epoch` がすべてです）。ノードの並べ替えは呼び出し側に委ねられます — そして
+  ポリシーハッシュをまたいで並べれば、このページの他の箇所が強制するファセット
+  規則を破ることになります。
+- **計算バージョンは存在しません。** ポリシーの同一性は `policy_hash` のみです。
+  読み取りモデルはスコアリングコードのバージョンという別概念を持たないため、
+  観測をそれを生成したコードの特定ビルドへ帰属させることはできません。
+- **どちらのチャネルも行にタイムスタンプを付けません。** `RqgmScoreObservationV1`
+  と `RqgmScoreRewriteV1` は時刻フィールドを持たないため、観測と書き換えは記録
+  された時点ではなく元ログ内の位置で順序づけられます — ディスク上の
+  `UtilityRecord` は `created_at` を持っているにもかかわらずです。この面が実際に
+  報告する時刻は別の場所にあります: `…/transitions` エントリの `committed_at`
+  （トランザクション最終行の `ts_iso`）、`…/audit` エントリの `ts_iso`、そして
+  `…/overview` の `last_committed_transition_at` です。
+
 ### チャネル 1 — 敵対的ペナルティ（エポック内部、ノードスコープ）
 
 | 観点 | 内容 |
@@ -177,6 +256,25 @@ last_verified: 2026-07-27
 | 提示される値 | `base_score`、`penalty`、`final_score`、`supersedes`、`recomputed_in_epoch` — そのまま透過し、再計算はしません。 |
 | 帰属 | レコードの `input_refs` からの `validated_attack_ids`。 |
 | スコープ | 1 エポック内、1 ノードについて。 |
+
+**1 つのフィールド名、2 つのポリシー。** `utility_policy_hash` はこの形式の歴史の
+中で 2 つの異なるものを意味してきました: 敵対的エンジンが凍結した**ペナルティ**
+ポリシー（`penalty_cap`、`severity_weights`、`verdict_factors`）と、境界が採用する
+**エポック**ポリシー（`composite`、`axis_weights`、`frontier_score`、
+`depth_penalty_lambda`、`ucb_c`）です。両者のキー集合は互いに素なので、ハッシュが
+一致することはあり得ません。統治された utility 進化が入った後に書かれたレコードは
+エポックポリシーのハッシュを、それより古いレコードはペナルティポリシーのハッシュ
+を持ちます。
+
+**この 2 つの正規化は既知のギャップです** — 読み取り側は正規化しません。
+`utility_record` 観測の `policy_hash` はレコードの `utility_policy_hash` そのもの
+であり、`node_metrics` 観測のそれはノードの `_utility_policy_hash` センチネル
+（常にエポックポリシー）から来ます。レガシーなチェックポイントでの帰結は率直に
+述べる価値があります: 古いペナルティ側のハッシュは、どのエポックも使わなかった
+値、`…/policies` や `…/epochs` のどの行にも現れない値の下で単独のファセットを
+作ります。これはデータ異常ではなく、ランが採用したポリシーでもありません。同じ
+フィールド名の古い方の意味です。[RQGM スキーマリファレンス](rqgm_schemas.md)の
+「`rqgm_utility_record.schema.json`」節を参照してください。
 
 生攻撃と検証済みペナルティの区別は慣習ではなく型で強制されます: 生の敵対的
 主張（`atk_*`）は `RqgmRawAttackV1` としてしか表現できず、この型は**スコア・
@@ -224,7 +322,7 @@ last_verified: 2026-07-27
 | ポリシー本体は、バイト列のハッシュが今も正しいときのみ配信される。 | 保存ファイルが登録済み `prompt_hash` と一致しなくなった場合、`…/policies` は `body: null` と縮退理由を返します（write-once 規則のストレージ側の顔）。 |
 | 論文の勝者はレビューによる選択である。 | `…/paper-archive` は `is_best_belief` のドラフトを `winner` として報告します。これはガバナンスの勝者でも研究結果でもありません; `materialized` は `full_paper.tex` の存在です。 |
 | 不在は不在として報告される。 | 存在フラグ（`evolution_present`、`meta_outputs_present`、`state_present`、`archive_present`、`stat_present`、`corpus_present`）が任意ソースごとに付随し、成果物が無いとき件数は `0` ではなく `None` のままです。凍結された論文ポリシーが無いときアンカーの `enabled` は `None` です。 |
-| ペイロードは有界に保たれる。 | overview はリストを埋め込みません; 監査エントリは配列を `<key>_count` に要約し長い文字列を切り詰め、生ペイロードは `?expand=1` でのみ得られます; 遷移エントリは件数を持ち、生イベントは `?expand=1` でのみ得られます。 |
+| ペイロードは有界に保たれる。 | overview はリストを埋め込みません; 監査エントリは配列を `<key>_count` に要約し長い文字列を切り詰め、生ペイロードは `?expand=1` でのみ得られます; 遷移エントリは件数を持ち、生イベントは `?expand=1` でのみ得られます。唯一の例外は `…/score-rewrites` エントリ内のノード id 配列です — 下の「ページング」を参照。 |
 
 ## ページング
 
@@ -235,6 +333,16 @@ last_verified: 2026-07-27
 共有カーソル契約は
 [REST API → カーソル規約](rest_api.md#カーソル規約)に一度だけ
 文書化されています。
+
+有界化が 1 つだけ欠けており、それがこの面で唯一の非有界ペイロードです。
+`…/score-rewrites` のエントリは `invalidated_node_ids`、`recompute_node_ids`、
+`frontier_removed_node_ids`、`frontier_reinstated_node_ids` をイベントフィールド
+からコピーしてそのまま丸ごと埋め込みます; `invalidated_node_count` は追加の
+利便であってリストの代替ではありません。`limit` が制限するのはページあたりの
+エントリ数であり、エントリ内のノード id 数ではないため、ツリーの大部分を無効化
+した境界は 1 つの巨大なエントリを生みます。これらの id を個別にページングする
+書き換え単位のリレーションエンドポイントは**既知のギャップ**です — それが必要な
+クライアントは、エントリをページングして配列を自分で扱う必要があります。
 
 ## 関連
 

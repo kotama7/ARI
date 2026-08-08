@@ -215,7 +215,7 @@ Overview、論文・成果ページ、実行設定へリンクします; 行そ�
 古い呼び出し元のための互換フォールバックとして併記されるだけです）。RQGM と論文の
 capability は専用の列ではなく run id の隣のバッジになりました。
 
-![Projects ワークスペース: ラン 1 件が 1 行のテーブル。run id、status バッジ、ノード数、レビュースコア、ベストメトリクス、最終更新時刻、capabilities 列、行ごとの Overview / Config リンクが並ぶ](../../assets/images/ja/dashboard_projects.png)
+![Projects ワークスペース: ラン 1 件が 1 行のテーブル。run id、status バッジ、ノード数、レビュースコア、ベストメトリクス、最終更新時刻、run id の横に付く RQGM / paper capability バッジ、単一の Open 列が並ぶ](../../assets/images/ja/dashboard_projects.png)
 
 **Overview**（`#/overview?run=`）はラン単位のランディングページです: ライフサイクル
 バッジ、現在の*研究*フェーズ（`idle`/`starting`/`bfts`/`paper`/`review`）、最終更新
@@ -234,7 +234,7 @@ capability は専用の列ではなく run id の隣のバッジになりまし�
 ワークスペース `#/results?run=`）と「元のPDFを開く」の 2 つのリンクも出ますが、
 この画面自体は何も編集しません。
 
-![Tree ワークスペース: 左に run id が上部に印字された D3 ノードグラフ、右にウィンドウ化された ARIA ツリーテーブル、さらに右のインスペクタ列に「Select a node in the tree to inspect it」の案内](../../assets/images/ja/dashboard_tree.png)
+![Tree ワークスペース: 左に run id が上部に印字された D3 ノードグラフ、右にウィンドウ化された ARIA ツリーテーブル、さらに右のインスペクタ列に「ツリー上のノードを選択すると詳細を確認できます。」の案内](../../assets/images/ja/dashboard_tree.png)
 
 ノードカードの色は BFTS の **label**（`draft` 青、`improve` 紫、`ablation` 橙、
 `debug` 赤、`validation` 緑）で決まります; 実行の status はカード内の別バッジと
@@ -254,8 +254,8 @@ Studio は**新規**ランの実行モード（`simple_bfts` / `ari_rqgm`）と�
 モードを変更できる画面はありません。
 
 **Operations** は現在 1 つのルートではありません。プロセス制御、リソースと GPU の
-監視はレガシーの `#/monitor` ページにあり、インストール・シークレット・env キーは
-`#/settings` にあり、運用者向けのプローブは画面ではなく HTTP エンドポイント
+監視はレガシーの `#/monitor` ページにあり、シークレット・env キー・SLURM /
+container / SSH の設定は `#/settings` にあり、運用者向けのプローブは画面ではなく HTTP エンドポイント
 （`/health/live`、`/health/ready`、`/api/v1/diagnostics`）です —
 [リモートアクセス](remote_access.md)を参照してください。
 
@@ -394,7 +394,7 @@ PaperBench のジョブログと、レガシーのファイル全体を流す `/
 | `#/new`（`#/wizard`） | 元のガイド付き起動ウィザード |
 | `#/idea` | アクティブチェックポイントの `/state` 由来アイデアカード |
 | `#/workflow` | React Flow のワークフローエディタ、スキルフェーズ、無効化ツール |
-| `#/settings` | インストール、API キー、env キー、開発者モード |
+| `#/settings` | `/api/settings` の env キー全面と Developer Mode トグル（allowlist された 8 個の secret — 6 個の API キーと `ZENODO_TOKEN` / `ARI_REGISTRY_TOKEN` — は Config Studio の secret field からも書けます） |
 | `#/paperbench`、`#/paperbench/import`、`#/paperbench/run`、`#/paperbench/results` | PaperBench の全面（[PaperBench GUI ガイド](paperbench/paperbench_gui.md)を参照） |
 
 v2 の Results ワークスペースがまさにこの理由で `#/results` へリンクし、ページ上でも

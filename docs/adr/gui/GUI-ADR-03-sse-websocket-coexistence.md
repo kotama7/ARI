@@ -1,3 +1,36 @@
+---
+sources:
+  - path: ari-core/ari/viz/v1/events.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/state_sync.py
+    role: implementation
+  - path: ari-core/ari/viz/websocket.py
+    role: implementation
+  - path: ari-core/ari/viz/server.py
+    role: implementation
+  - path: ari-core/ari/viz/health.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/hooks/useWebSocket.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/context/AppContext.tsx
+    role: implementation
+  - path: ari-core/tests/test_gui_v1_events.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/shared/realtime/__tests__/eventStream.test.ts
+    role: test
+  - path: ari-core/ari/viz/frontend/src/hooks/__tests__/useRunEvents.test.tsx
+    role: test
+  - path: docs/guides/gui_cutover_runbook.md
+    role: doc
+  - path: docs/guides/dashboard.md
+    role: doc
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-03: SSE and legacy WebSocket coexistence
 
 Status: accepted (2026-07-23), GUI refresh program, backend/realtime workstream.

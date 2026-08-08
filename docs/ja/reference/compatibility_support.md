@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-skill-paper-re/paperbench_patches.json
     role: config
-last_verified: 2026-08-02
+last_verified: 2026-08-08
 ---
 
 # Compatibility support policy
@@ -23,7 +23,7 @@ last_verified: 2026-08-02
 | Letta pip deployment | containerなしのlocal利用向け。自動backend fallbackではない。 | ARI maintainers | v1.1でusageとissueを再評価。 |
 | `slurm_submit` bridge | core agentのbatch-script workflow限定。新規integratorは`job_submit`/`container_submit`を使う。 | core + HPC maintainers | agentが`JobRequestV1`を直接生成しcaller 0となるv1.1以降。 |
 | Rubric V1 reader/offline migration | digest検証しV2へlossless移行。V1 runtime generatorは存在しない。 | replicate + paper-re maintainers | v1.1でworkflow/artifact利用0。 |
-| PaperBench adaptation | exact pinと`paperbench_patches.json`に限定しconformance testする。 | paper-re maintainers | pin更新ごと。obsolete probeとtarget suiteがgreenなら削除。 |
+| PaperBench adaptation | exact pinと`paperbench_patches.json`に限定しconformance testする。 | paper-re maintainers | pin更新ごと。宣言された`deletion_gate`条件が満たされ target suite が green なら削除。 |
 | Orchestrator registry repair | terminalに見える旧runの明示importだけ。自動discovery/state推測は禁止。 | orchestrator maintainers | v1.1でsupport対象checkpoint移行後。 |
 | archived lock/cassette | published dispatchのreplayに必要。digest検証し新runへ暗黙admissionしない。 | registry/provider maintainers | publication/replay window終了後にformat単位で削除。 |
 

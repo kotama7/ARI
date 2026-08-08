@@ -246,8 +246,10 @@ API では 2 つの別々の閉じた型なので、ノード状態のフィー�
 - **証拠を遡及的に書き換えることはありません。** 既存ランをガバナンス付きへ
   改変せず、supersede されたレコードは上書きせずディスクに残します。ライブな
   境界は、保存済み raw axis を新たに採用された policy で再構成してフロンティア
-  スコアを意図的に置き換えることがあります。その再スコアと両 policy identity は
-  erasure event に記録されます。
+  スコアを意図的に置き換えることがあります。erasure event が記録するのは
+  再スコアされたノード一覧と *retire された* policy hash で、新たに採用された
+  hash は再スコアされた各ノードに刻まれます。両 policy identity は、read model
+  がその event を境界 transition と join することで復元されます。
 
 ---
 

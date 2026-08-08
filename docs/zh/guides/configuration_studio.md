@@ -211,8 +211,8 @@ Content-Type: application/json
 
 ### 逐路径的校验错误
 
-PATCH 请求体是一个扁平的 `{"dotted.path": value}` 局部更新，在写入任何东西
-之前都会先按注册表校验。拒绝以 `400` 返回，违规路径放在 `details.errors` 中，
+PATCH 请求体的 `values` 映射是一个扁平的 `{"dotted.path": value}` 局部更新，在写入
+任何东西之前都会先按注册表校验。拒绝以 `400` 返回，违规路径放在 `details.errors` 中，
 UI 会把它渲染为 **Validation errors** 列表。`reason` 词汇表是闭合的：
 
 | `reason` | 含义 |
@@ -252,7 +252,7 @@ UI 会把它渲染为 **Validation errors** 列表。`reason` 词汇表是闭合
 **值实际去了哪里。** 两个地方，这里值得说精确：
 
 1. **仓库根目录的 `.env`**（`{ARI}/.env`）。那是一个*固定的*写入目标 ——
-   写入器就地替换第一条匹配的 `NAME=` 行，不存在时追加。它**不**遵循就绪
+   写入器就地替换匹配的 `NAME=` 行，不存在时追加。它**不**遵循就绪
    状态链，也不会写进当前检查点。
 2. **正在运行的服务器的 `os.environ`**，实时导出。
 

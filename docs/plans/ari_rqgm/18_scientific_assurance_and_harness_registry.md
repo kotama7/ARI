@@ -698,6 +698,41 @@ execution store and are referenced rather than copied.
   not a substitute for a pinned isolated Harness container and promotion
   report.
 
+### 15.2 Correctness-family registry checkpoint (2026-08-07)
+
+- A correctness family now declares itself once, in
+  `ari/assurance/native_hpc_family.py`, and supplies three things: the hidden
+  cases and the oracle that judges them (`verify`), the independent `reference`
+  implementation that is also the parity probe's clean control, and the ctypes
+  ABI its candidates are called through. The set of verifiable kernels used to
+  be written out in five places — a `Literal`, the facade's dispatch dict, the
+  parity probe's reference table, the ABI dispatch dict, and two argparse
+  `choices` tuples — so a family added to four of them was dispatchable, scored,
+  and attested while the probe never touched it, and the probe still reported
+  `passed`.
+- `NativeKind` is now `str` rather than a closed `Literal`; the name still
+  appears in a report because a verdict has to say what it verified. ABI
+  adapters self-register through a decorator and the candidate host accepts
+  `abi_adapter_kinds()`; the worker validates `--kind` against
+  `registered_native_families()`; the parity probe iterates the registry instead
+  of a table. Registering one name twice is refused, so no import order can
+  decide which oracle judged a run.
+- `native_hpc_family.py` joins the native driver digest, because the registry
+  decides which oracle judges a run. That digest now also raises when one of its
+  files is absent instead of letting it drop out silently.
+- This does not make correctness families free the way pinned problems are.
+  Adding one is still an ARI change, reviewed like any other, because an oracle
+  a caller could supply is an oracle a caller could weaken. What changed is that
+  the set is declared in one place per family instead of five places per set.
+- **The cost, and it is real.** The native driver digest changed, so all three
+  correctness harnesses — `hpc/gemm-correctness`, `hpc/spmm-correctness`, and
+  `hpc/stencil-correctness` — now refuse to run with `native Harness driver
+  bytes drifted`. Their manifests were **not** re-pinned: a signature covers
+  what was signed, and re-pinning would make three human-maintainer attestations
+  describe code nobody approved. They need re-attestation, and both the refusal
+  and the absence of a re-pin are asserted by a test so neither can be undone by
+  accident.
+
 ## 16. Completion criteria
 
 Task 18 is complete when:

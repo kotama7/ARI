@@ -146,12 +146,15 @@ RQGM は `idea.json` を置き換えません; 提案レコードストア
 
 ## 新しいチェックポイントファイル
 
-`ari_rqgm` ランは以下を追加します。新しいファイル名は
-`PathManager.META_FILES`（`ari/paths.py`）に登録されるため、ARI はそれらを
-ランメタデータとして分類し — ノード作業ディレクトリへ決してコピーせず —
-`proposals/` サブツリーはさらにノードファイルレポートからブロックリスト
-されます（`test_rqgm_proposals.py::test_proposal_filenames_registered` /
-`test_proposals_never_in_files_changed` でピン留め）。**`simple_bfts` ランは
+`ari_rqgm` ランは以下を追加します。新しいチェックポイントルート直下の
+ファイル名は `PathManager.META_FILES`（`ari/paths.py`）に登録されるため、
+ARI はそれらをランメタデータとして分類し — ノード作業ディレクトリへ決して
+コピーせず — `proposals/` サブツリーはさらにノードファイルレポートから
+ブロックリストされます（`test_rqgm_proposals.py::test_proposal_filenames_registered` /
+`test_proposals_never_in_files_changed` でピン留め）。サブディレクトリの中身
+（`proposals/archive/`、`rqgm_prompts/`、`rqgm/kca/admission-v1/`）は名前登録
+されていませんが、その必要もありません — このコピーはチェックポイント
+ルート直下のファイルしか走査しないためです。**`simple_bfts` ランは
 これらを一切書きません** — 唯一の例外は `proposals/` で、上の `record_only`
 にオプトインした場合に限り `simple_bfts` でも現れます。
 

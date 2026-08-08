@@ -563,7 +563,7 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | 1 回の敵対ラウンド、レコードごと | 敵対ループ |
 | audit | `governance_report`（+ レコード単位の motion/defense/adjudication 行） | エポック監査とその結果 | `GovernanceOrchestrator` |
 | audit | `epoch_transition` | コミットされた遷移。`inputs` にレポートハッシュを含む | `RegistryTransitionEngine` |
-| audit | `kernel_report` / `constitutional_violation` | warn-and-flag の検出 / 規則違反（`CK-*` コード） | `ConstitutionalKernel` アダプタ |
+| audit | `kernel_report` / `constitutional_violation` | warn-and-flag の検出 / 規則違反（`CK-*` コード） | `ConstitutionalKernel` アダプタ。`constitutional_violation` は B8 注入スモークハーネス（`ari/rqgm/evaluation/smoke.py`）のみが出力 |
 | audit | `selective_erasure` / `frontier_rebuild` | 退役後の論理消去 + 再構築 | `FrontierRepairEngine` |
 | audit | `prompt_candidate_rejected` | 候補がライフサイクル段階で失敗した | プロンプト進化パイプライン |
 | audit | `prompt_evolution_skipped` | 境界の候補生成が無効（`rqgm.prompt_evolution.enabled: false`） | `RQGMRuntime` の境界プロンプト進化 |

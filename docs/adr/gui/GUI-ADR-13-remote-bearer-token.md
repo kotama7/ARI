@@ -1,3 +1,20 @@
+---
+sources:
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
+  - path: ari-core/ari/viz/server.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/websocket.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/services/api/client.ts
+    role: implementation
+  - path: ari-core/tests/test_gui_remote_auth.py
+    role: test
+last_verified: 2026-08-09
+---
+
 # GUI-ADR-13 (ADR-13): remote-mode bearer-token authentication
 
 Decision: the authentication mode is defined by the bind alone. Local mode —

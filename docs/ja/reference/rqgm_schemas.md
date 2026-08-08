@@ -162,8 +162,9 @@ Id 形式（すべてゼロ埋め、チェックポイントごとのカウン�
 MCP ラッパから T16 緊急隔離経路へ渡されます: `audit_only` が下げるのは
 ブロッキングであって憲法上の事実ではなく、緊急遷移自体もコミット前に
 カーネル検証を受けます。ただしこの経路が隔離できるのは**登録済み
-コンポーネント**だけで、行為者のロールが台帳エントリを持たない場合
-（研究エージェントの `generator` が通常のケース）は escalation がログに
+コンポーネント**だけです。対象コンポーネントは violation から取り、
+無ければ行為者のロールをエポック凍結された `active_components` に照らして
+解決します。どちらでも id が得られない場合は escalation がログに
 残るだけで遷移は組み立てられません。
 
 ## 共有エンベロープ (`rqgm_defs.schema.json`)
@@ -278,7 +279,7 @@ v3 スナップショットは同梱スキーマでは検証を通りません�
 | `registry_version` | `hash12` |
 | `as_of_event_hash` | 最後に fold されたイベントの `event_hash`（空のときは `""`） |
 | `components[]` | コンポーネントエントリ（status、role、tier; メタティアのエントリは `rqgm_meta` capability フラグを追加） |
-| `prompts[]` | プロンプトエントリ: テキストはソース参照（現在は `committed_template` キー; 進化済みプロンプトは `checkpoint_file`）、`prompt_hash`（`hash12`）**と**完全な `prompt_sha256` の両方; `spec_ref` は v1 では `null` |
+| `prompts[]` | プロンプトエントリ: テキストはソース参照（`kind` は閉じた集合 — 同梱テンプレートは `committed_template`、進化済みプロンプトは `checkpoint_file`、governed な utility-policy 本体は `policy`）、`prompt_hash`（`hash12`）**と**完全な `prompt_sha256` の両方; `spec_ref` は v1 では `null` |
 
 ## 提案スキーマ (Task 03)
 
@@ -1054,8 +1055,9 @@ stale な行と同じくフロンティアから除外されます。
 bootstrap ツールが**一度だけ**書きます — governed なロールが書くことは
 **決してありません**（アンカーは固定の ground truth であり、進化する
 アーティファクトではない）。`gate_bootstrap` ラベルに対する
-`max_bootstrap_label_fraction` の上限は機械強制です（held-out split なしに
-縮退し、決して raise しない）。**デフォルト OFF**（`anchor.enabled: false`）:
+`max_bootstrap_label_fraction` の上限は、コーパス**と** held-out 部分集合の
+双方に対して機械強制されます。上限を超えるとコーパス全体が拒否され、
+raise せずアンカーなしの on-ramp に縮退します。**デフォルト OFF**（`anchor.enabled: false`）:
 縮退した on-ramp はコーパスを残さないため、デフォルトの `rqgm_archive` ランは
 curated コーパスが供給されるまで reviewed best-of-N です。
 
@@ -1107,8 +1109,8 @@ ground truth が `reject` のアンカーケースを現職が受理したとい
 `rqgm_attack_records.schema.json` の `adversary_type` / `case_type` enum は
 7 つの**探索**タイプを文書化します。`paper_self_preference` ケースは
 `paper_reviewer` ロールを関与させ、Layer-0 クレームゲートが不誠実と確認した
-ドラフトではさらに `paper_writer` も関与させます。どちらも — 7 つの
-`generator` と異なり — 登録済みの現職（paper モード下の `paper_reviewer_v1` /
+ドラフトではさらに `paper_writer` も関与させます。どちらも paper モード下では
+登録済みの現職（`paper_reviewer_v1` /
 `paper_writer_v1`）を**持つ**ため、Task-15 の `target_component_id`
 バインディングが発火し、validated-attack → 弾劾チェーンが本番で動きます;
 paper フェーズ以外では両ロールとも `""` に解決され、探索はバイト同一の
@@ -1120,9 +1122,11 @@ paper フェーズ以外では両ロールとも `""` に解決され、探索�
 意味論）は
 [ファイルフォーマットリファレンス](file_formats.md#rqgm-epoch-governance-files-opt-in-ari_rqgm-mode)
 に文書化されています; この表はファイルとスキーマ・所有者の対応のみを示し
-ます。以下のすべてのファイルは名前で `PathManager.META_FILES` に登録され
-（JSONL の真実群は加えてトレースファイル集合にも）、`proposals/` と
-`rqgm_prompts/` ディレクトリはノードレポートのディレクトリブロックリスト
+ます。以下の固定名ファイルはすべて `PathManager.META_FILES` に登録され、
+そのうち JSONL は paper-archive の 2 つ（`paper_draft_archive.jsonl`、
+`paper_anchor_corpus.jsonl`）を除いて `ari/paths.py` のトレースファイル
+集合にも入ります。また `proposals/` と `rqgm_prompts/` ディレクトリは
+ノードレポートのディレクトリブロックリスト
 （`ari/orchestrator/node_report/builder.py`）に載っているため、いずれも
 ノードの `files_changed` に現れることはありません。
 

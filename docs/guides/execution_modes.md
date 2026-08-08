@@ -28,7 +28,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
     role: test
-last_verified: 2026-08-03
+last_verified: 2026-08-08
 ---
 
 # Execution Modes: `simple_bfts` and `ari_rqgm`
@@ -150,6 +150,15 @@ re-reads the package workflow.yaml directly.
 reads `proposal_router.*`, and the VirSci gate never reads `ari.mode`. With
 VirSci off, no VirSci runtime, vendored path, prompt, or snapshot corpus is
 touched in either mode.
+
+That last guarantee holds for the **default** K/C/A postures only, and the
+escape is on that axis rather than this one: moving any of `knowledge.mode`,
+`capability_binding.mode` or `assurance.mode` off its default
+([below](#knowledge-capability-binding-and-assurance-modes)) makes
+`ProposalRouter._typed_contract_required()` true, and the router then
+constructs `VirSciAdapter` (whenever an MCP client exists) and reports
+`virsci` as enabled whatever `generators.virsci.enabled` says. See
+[VirSci integration](virsci_integration.md).
 
 ## The paper execution axis: `paper.mode`
 

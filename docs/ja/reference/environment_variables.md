@@ -21,7 +21,7 @@ last_verified: 2026-08-08
 
 # 環境変数リファレンス
 
-ARI は約 90 の環境変数を参照します。ここではそれらを一覧で確認できるよう
+ARI は 150 を超える環境変数を参照します。ここではそれらを一覧で確認できるよう
 まとめています。ほとんどは適切なデフォルト値を持っていますが、**Required?** 列は
 新規チェックアウト状態では動作しないものを示しています。
 
@@ -198,8 +198,17 @@ to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
 | `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.jsonl.gz` から自動復元 |
 | `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` へのパス |
 | `ARI_MEMORY_CONSOLIDATE` | 型付きメモリの統合 + 論文クレーム向けのアーティファクト裏付け済み `verified_context.json`。**デフォルト有効**；`0`/`false`/`no`/`off` で無効化 |
-| `ARI_CURRENT_NODE_ID` | エージェントループが設定；スキルは読み取るのみで設定しない |
+| `ARI_CONTEXT_AUTHORITY_KEY` | core が各スキルのサブプロセスへエクスポートする接続ごとの HMAC キー（`SkillConnection._server_params`）。メモリサーバはバックエンドに触れる前に、署名済み `ari_context` 引数をこのキーで検証します。core が注入し結果からは redact されるため、運用者が設定するものではありません |
 | `ARI_LETTA_VENV` | バンドル済み Letta サーバの仮想環境パス |
+
+現在のノード ID は環境変数**ではありません**。したがって環境側に偽の値を置いても
+メモリ書き込みの宛先を変えることはできません。`AgentLoop._node_tool_context` が
+ノードごとに 1 つの `ToolCallContextV1` を構築し、`SkillConnection.authorize_args` が
+それを署名して `ari_context` ツール引数へ注入します。Copy-on-Write ガード
+（`ari-skill-memory/src/server.py` の `_require_self`）は、要求された `node_id` を
+その署名済みコンテキストの `node_context.node_id` と突き合わせます。
+[内部境界](internal_boundaries.md) および
+[用語集 → CoW](glossary.md) を参照。
 
 ### 査読ルーブリック + 論文査読
 
@@ -225,7 +234,6 @@ to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
 |---|---|
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` の目標葉数 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | LLM temperature 上書き |
-| `ARI_RUBRIC_GEN_TWO_STAGE` | 二段階スケルトン + サブツリー合成を使用 |
 | `ARI_PAPERBENCH_RUBRIC_DIR` | venue 条件付き PaperBench ルーブリックテンプレートの検索ルート上書き（未リリース — `docs/reference/rubric_schema.md#venue-conditioned-templates` 参照） |
 
 ### PaperBench 再現性 (v0.7.0)
@@ -303,10 +311,8 @@ source だけが実行できるためです。
 | 変数 | 用途 |
 |---|---|
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。`server.run_reproduce` および `bridge.reproduce_submission` が使用するサンドボックスランナーを強制。 |
-| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` で明示的な `container_image` が指定されていない場合のデフォルト docker イメージ。デフォルトは `ubuntu:24.04`。 |
+| `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` で明示的な `container_image` が指定されていない場合のデフォルト docker イメージ。組み込みのデフォルトは無く、未設定ならイメージは空のままで、勝手に補われず run が拒否される。 |
 | `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` で明示的な `container_image` が指定されていない場合のデフォルト SIF / docker URI。 |
-| `ARI_PHASE1_SINGULARITY_IMAGE` | `ARI_PHASE1_APPTAINER_IMAGE` のレガシーエイリアス。 |
-| `ARI_PHASE1_ALLOW_FALLBACK` | `1` ⇒ 要求されたサンドボックスツール（docker デーモン / apptainer / sbatch / パーティション）が欠落している場合、警告のみでホストローカル実行にフォールバック（レガシー v0.7.2 の動作）。デフォルト（未設定）⇒ ユーザの隔離意図が黙って迂回されないよう `RuntimeError` を発生。 |
 | `ARI_PAPERBENCH_PATH` | vendor 化された PaperBench ソースツリーのパス上書き（デフォルト: `ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 呼び出し元が `0` を渡したときのデフォルト Stage 1 エージェントロールアウト時間予算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 ロールアウトのデフォルトを IterativeAgent バリアントに変更。 |
