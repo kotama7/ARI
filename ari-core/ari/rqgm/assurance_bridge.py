@@ -21,7 +21,24 @@ from ari.assurance.request import (
 )
 from ari.assurance.runner import FixedVerifier
 from ari.execution import WorkspaceRefV1
+from ari.orchestrator.node_summary_view import scrub_host_identity
 from ari.protocols.immutable_store import write_once_json
+
+#: A reason is a diagnostic, so it is bounded and stripped of host identity.
+#:
+#: It is written into the checkpoint and can leave with a reproduction bundle,
+#: and the messages that reach it quote absolute paths -- an unreadable image,
+#: a missing executable, a compiler invocation. The same four substitutions the
+#: agent-facing boundary makes, for the same reason.
+_MAX_REASON_CHARACTERS = 480
+
+
+def _failure_reason(exc: BaseException) -> str:
+    text = f"{type(exc).__name__}: {exc}".strip()
+    text = " ".join(scrub_host_identity(text).split())
+    if len(text) > _MAX_REASON_CHARACTERS:
+        text = text[: _MAX_REASON_CHARACTERS - 1] + "…"
+    return text
 
 
 _VERDICT_RANK = {
@@ -170,7 +187,7 @@ class RQGMAssuranceBridge:
             )
             return node.frontier_class
 
-        attestations, runtime_failure = self._run_tier_suite(
+        attestations, runtime_failure, failure_reason = self._run_tier_suite(
             node, workspace, declaration, required, tier="screen"
         )
 
@@ -204,7 +221,8 @@ class RQGMAssuranceBridge:
         )
         node.property_verdicts = property_verdicts
         node.verified_target_digest = declaration.target_digest
-        self._classify(node, status=status, frontier=self._frontier(status))
+        self._classify(node, status=status, frontier=self._frontier(status),
+                       reason=failure_reason)
         return node.frontier_class
 
     def certify(self, node) -> str:
@@ -252,7 +270,7 @@ class RQGMAssuranceBridge:
                 tier="certify",
             )
             return node.frontier_class
-        attestations, runtime_failure = self._run_tier_suite(
+        attestations, runtime_failure, failure_reason = self._run_tier_suite(
             node, workspace, declaration, required, tier="certify"
         )
         by_atom: dict[str, list[str]] = {}
@@ -284,6 +302,7 @@ class RQGMAssuranceBridge:
             status=status,
             frontier=self._frontier(status),
             tier="certify",
+            reason=failure_reason,
         )
         return node.frontier_class
 
@@ -310,11 +329,22 @@ class RQGMAssuranceBridge:
                         tier=tier,
                     )
                 )
-            except HarnessRequestError:
-                return attestations, "inconclusive"
-            except Exception:
-                return attestations, "infrastructure_error"
-        return attestations, ""
+            except HarnessRequestError as exc:
+                return attestations, "inconclusive", _failure_reason(exc)
+            except Exception as exc:
+                # THE REASON, NOT JUST THE LABEL. This used to be a bare
+                # `except Exception:`, so the one string that said WHY was
+                # discarded here and the record carried "infrastructure_error"
+                # and nothing else. Two unrelated defects -- a container runtime
+                # that is installed nowhere, and a memory bound too small for
+                # the launcher to start -- came out as that same word, and
+                # finding out which took replaying the execution by hand.
+                #
+                # The verdict is unchanged: this is still an infrastructure
+                # failure and still not a judgement about the candidate. Only
+                # the record gains what was already in hand.
+                return attestations, "infrastructure_error", _failure_reason(exc)
+        return attestations, "", ""
 
     def _candidate_target(self, node):
         work_dir = Path(str(getattr(node, "work_dir", "") or ""))
@@ -403,7 +433,8 @@ class RQGMAssuranceBridge:
         return self.checkpoint_dir / "rqgm" / "kca" / "nodes" / node_id
 
     def _classify(
-        self, node, *, status: str, frontier: str, tier: str = "screen"
+        self, node, *, status: str, frontier: str, tier: str = "screen",
+        reason: str = "",
     ) -> None:
         node.assurance_status = status
         node.assurance_tier = tier
@@ -428,6 +459,12 @@ class RQGMAssuranceBridge:
                 "frontier_class": node.frontier_class,
                 "attestation_refs": list(node.attestation_refs),
                 "verified_target_digest": str(node.verified_target_digest or ""),
+                # WHY, when the status alone does not say. Empty on every
+                # ordinary verdict: a pass or a fail is about the candidate and
+                # needs no excuse, while an infrastructure failure is about the
+                # machinery and used to be recorded as one indistinguishable
+                # word for every way the machinery can break.
+                "status_reason": reason,
             },
         )
 
