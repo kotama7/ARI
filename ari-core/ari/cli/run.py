@@ -57,6 +57,29 @@ from ari.cli.commands import _safe_backup
 def _run_loop(*args, **kwargs):
     from ari import cli as _cli
     return _cli._run_loop(*args, **kwargs)
+
+
+def _close_idle_default_event_loop() -> None:
+    """Close a dependency-created main-thread loop at the CLI boundary.
+
+    MCP connections own and close their dedicated thread loops.  Some optional
+    synchronous clients (LiteLLM/Letta dependencies) also install an idle
+    default loop in the main thread and never close it; on an early KCA failure
+    Python then reports an ``unclosed event loop`` ResourceWarning.  The run is
+    synchronous here, so an actually running loop is never ours to close.
+    """
+
+    import asyncio
+
+    try:
+        loop = asyncio.get_event_loop_policy().get_event_loop()
+    except RuntimeError:
+        return
+    if loop.is_running():
+        return
+    if not loop.is_closed():
+        loop.close()
+    asyncio.set_event_loop(None)
 from ari.cli.lineage import (
     _LINEAGE_LOG,
     _build_idea_ctx_for_expand,
@@ -217,6 +240,51 @@ def _apply_profile(cfg, profile_name: str) -> None:
         cfg.resources["scheduler"] = hpc_o["scheduler"]
 
 
+def _persist_effective_workflow(
+    source: Path,
+    destination: Path,
+    cfg,
+    *,
+    profile_name: str | None,
+    task_tags: tuple[str, ...] = (),
+) -> None:
+    """Persist the launch-effective settings used to construct the runtime.
+
+    The original implementation copied the source YAML byte-for-byte after
+    applying ``--profile`` and environment overrides only in memory.  Resume
+    and ``ari paper`` then reconstructed a different skill set (notably HPC on
+    a laptop) and rejected the checkpoint lock.  Preserve every unrelated YAML
+    section while replacing the resolved runtime sections that affect skill
+    admission and BFTS execution.
+    """
+
+    import yaml as _yaml
+
+    base = destination if destination.is_file() else source
+    raw = _yaml.safe_load(base.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"workflow top level must be an object: {base}")
+    raw["bfts"] = cfg.bfts.model_dump(mode="json")
+    raw["resources"] = dict(cfg.resources)
+    raw["ari"] = cfg.ari.model_dump(mode="json")
+    raw["rqgm"] = cfg.rqgm.model_dump(mode="json")
+    raw["knowledge"] = cfg.knowledge.model_dump(mode="json")
+    raw["capability_binding"] = cfg.capability_binding.model_dump(mode="json")
+    raw["assurance"] = cfg.assurance.model_dump(mode="json")
+    raw["skills"] = [skill.model_dump(mode="json") for skill in cfg.skills]
+    raw["resolved_launch"] = {
+        "profile": profile_name or "",
+        "effective_config": True,
+        "task_tags": list(task_tags),
+    }
+    temporary = destination.with_name(destination.name + ".tmp")
+    temporary.write_text(
+        _yaml.safe_dump(raw, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+    temporary.replace(destination)
+
+
 
 @app.command()
 def run(
@@ -231,6 +299,16 @@ def run(
     virsci_team_size: int | None = typer.Option(None, "--virsci-team-size", help="VirSci-live: max team members per team (default 3)."),
     virsci_n_authors: int | None = typer.Option(None, "--virsci-n-authors", help="VirSci-live: author pool size for select_coauthors (default 16)."),
     virsci_n_papers: int | None = typer.Option(None, "--virsci-n-papers", help="VirSci-live: SPECTER2 retrieval corpus size (default 800)."),
+    kca_audit: bool = typer.Option(
+        False,
+        "--kca-audit/--no-kca-audit",
+        help="Enable Knowledge, capability-binding, and Harness audit posture and their query Skills.",
+    ),
+    task_tag: list[str] | None = typer.Option(
+        None,
+        "--task-tag",
+        help="Deterministic Knowledge/Harness task tag; repeat for multiple tags.",
+    ),
 ) -> None:
     """Run an experiment. Only the .md file is required."""
     from ari.orchestrator.node import Node
@@ -284,6 +362,37 @@ def run(
     apply_bfts_env_overrides(cfg)
     apply_evaluator_env_overrides(cfg)
     apply_rqgm_env_overrides(cfg)
+    _task_tags = tuple(
+        sorted(
+            {
+                str(tag).strip().lower()
+                for tag in (task_tag if isinstance(task_tag, list) else [])
+                if str(tag).strip()
+            }
+        )
+    )
+    if kca_audit is True:
+        cfg.knowledge.mode = "audit"
+        cfg.capability_binding.mode = "audit"
+        cfg.assurance.mode = "audit"
+        if not cfg.assurance.tolerance_policy:
+            cfg.assurance.tolerance_policy = "hpc-floating-point/v1"
+    _kca_active = (
+        cfg.knowledge.mode != "off"
+        or cfg.capability_binding.mode != "legacy"
+        or cfg.assurance.mode != "off"
+    )
+    if _kca_active:
+        from ari.config import enable_manifest_skills
+
+        enable_manifest_skills(
+            cfg,
+            (
+                "tool-registry-skill",
+                "knowledge-skill",
+                "harness-query-skill",
+            ),
+        )
     # ARI_HANDOFF_* selects the arm and its per-channel ablations. Without this
     # the switches documented on HandoffConfig (and in setup_env.sh) are read by
     # nothing, so every arm would silently run with the YAML defaults.
@@ -436,6 +545,7 @@ def run(
         "goal": experiment_text,
         "topic": _tp2,
         "file": str(experiment),
+        "task_tags": list(_task_tags),
     }
     # ── Trace: log experiment_data["goal"] hash for propagation tracking ──
     logging.getLogger(__name__).info(
@@ -507,19 +617,27 @@ def run(
         _shutil_cp.copy2(str(experiment), checkpoint_dir / "experiment.md")
     except Exception:
         pass
-    # Copy workflow.yaml into checkpoint dir for reproducibility. Skip when
-    # the GUI launcher (api_experiment._api_launch) has already populated it,
-    # because that copy may carry per-launch rewrites (e.g. include_ear=False
-    # disabling EAR / ors_seed_sandbox stages) that an unconditional copy from
-    # source would silently undo.
+    # Persist the effective workflow for reproducibility, but only when the
+    # checkpoint has none. A launcher-written copy is authoritative: it carries
+    # rewrites this path cannot reconstruct (EAR / ors_seed_sandbox disabled for
+    # include_ear=False, say), and writing over it silently undoes them -- the
+    # incident test_cli_run_does_not_overwrite_checkpoint_workflow was written
+    # for. Recording profile/env-resolved settings into an existing launcher
+    # copy would be useful, but it is a different operation from creating one
+    # and needs that test's invariant restated rather than dropped.
     from ari.config.finder import package_config_root
     _wf_src = config if config and config.exists() else (package_config_root() / "workflow.yaml")
     _wf_dst = checkpoint_dir / "workflow.yaml"
     if _wf_src and Path(_wf_src).exists() and not _wf_dst.exists():
         try:
-            _shutil_cp.copy2(str(_wf_src), _wf_dst)
-        except Exception:
-            pass
+            _persist_effective_workflow(
+                Path(_wf_src), _wf_dst, cfg, profile_name=profile,
+                task_tags=_task_tags,
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).warning(
+                "could not persist effective workflow: %s", exc
+            )
     # Initialize cost tracker early so BFTS phase is also tracked
     try:
         from ari import cost_tracker as _ct_run
@@ -529,8 +647,18 @@ def run(
     # Clear stale pipeline marker from previous run (for resume correctness)
     (checkpoint_dir / ".pipeline_started").unlink(missing_ok=True)
 
+    from contextlib import ExitStack
     from ari.pidfile import pid_context
-    with pid_context(checkpoint_dir):
+    with ExitStack() as _run_stack:
+        # MCP connections own dedicated asyncio loops and subprocess pipes.
+        # Closing only on the happy paper path leaked every loop when root
+        # ideation/KCA raised (and normal ``ari run`` never closed them either).
+        # Registered first so ExitStack runs it after MCP shutdown (LIFO).
+        _run_stack.callback(_close_idle_default_event_loop)
+        _close_mcp = getattr(mcp, "close_all", None)
+        if callable(_close_mcp):
+            _run_stack.callback(_close_mcp)
+        _run_stack.enter_context(pid_context(checkpoint_dir))
         total = _run_loop(cfg, bfts, agent, pending, all_nodes,
                           experiment_data, checkpoint_dir, run_id)
         console.print(Panel(
@@ -625,7 +753,8 @@ def resume(
     _tp3 = _re_t3.sub(r"[^a-zA-Z0-9_-]", "_", (_tm3.group(1)[:80] if _tm3 else Path(experiment_file).stem))
     experiment_data = {"goal": experiment_text, "topic": _tp3, "file": experiment_file}
 
-    cfg = _resolve_cfg(config)
+    _resume_workflow = checkpoint_dir / "workflow.yaml"
+    cfg = _resolve_cfg(config or (_resume_workflow if _resume_workflow.exists() else None))
     # The explicit checkpoint_dir argument is the single source of truth for
     # both checkpoint files and logs; ignore stale CWD-relative defaults from
     # LoggingConfig/CheckpointConfig (which would otherwise write into

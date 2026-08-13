@@ -343,6 +343,10 @@ _env_append_if_absent "# ARI_RUN_STRICT_EXIT=       # set to 1 so \`ari run\` ex
 _env_append_if_absent "# ARI_IDEA_VIRSCI_MAX_TEAMS="
 _env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_MODEL="
 _env_append_if_absent "# ARI_IDEA_VIRSCI_SPECTER2_REVISION=3447645e1def9117997203454fa4495937bfbd83"
+_env_append_if_absent "# ARI_IDEA_N_IDEAS="
+_env_append_if_absent "# ARI_IDEA_LLM_TIMEOUT_S=120"
+_env_append_if_absent "# ARI_IDEA_N_AGENTS="
+_env_append_if_absent "# ARI_IDEA_DISCUSSION_ROUNDS="
 # Rubric generator knobs (consumed by ari-skill-replicate). All three fall
 # back to defaults baked into the generator when unset; the GUI wizard can
 # write these per-run.
@@ -764,6 +768,7 @@ _env_append_if_absent "# ARI_PROBLEM=                    # pinned problem revisi
 _env_append_if_absent "# ARI_PERF_TIER=                  # screen|validate|certify — repetitions per case (default validate)"
 _env_append_if_absent "# ARI_HARNESS_PROBLEMS=           # override the problem directory (default config/harnesses/problems)"
 _env_append_if_absent "# ARI_HARNESS_CASE_SETS=          # override the case-set directory (default config/harnesses/case_sets)"
+_env_append_if_absent "# ARI_TARGET_ABI_REGISTRY=        # override the candidate ABI identity directory (default config/harnesses/target_abis)"
 
 # --- Measurement instrument --------------------------------------------------
 # These belong to the INSTRUMENT, not to any problem: a problem definition has

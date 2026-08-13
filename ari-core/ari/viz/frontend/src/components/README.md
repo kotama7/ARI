@@ -139,6 +139,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
   - `settingsStyles.ts` — shared `inputStyle` / `labelStyle` field styles moved verbatim out of SettingsPage so every `sections/*` component consumes one definition.
   - `settingsTypes.ts` — shared prop/data types for the decomposed sections: the threaded `TFn` translator, the `SkillInfo` row, and the `LettaDeployment` union.
   - `__tests__/` — the frozen Settings contract tests (ten cards, 24-key save payload) plus the progressive-disclosure safety test.
+    - `SettingsCatalog.test.tsx` — TODO
     - `SettingsContract.test.tsx` — Tier-1 frozen contract: all ten section `<Card>` titles render, and Save POSTs exactly the 24-key flat object to `/api/settings`.
     - `SettingsDisclosure.test.tsx` — pins the 069 tiers: four `settings-group-header`s render and collapsing one keeps all ten cards mounted (CSS-only, no unmount).
   - `sections/` — the ten presentational `<Card>` sections SettingsPage composes into its four sensitivity tiers; each takes state + setters as props.
