@@ -133,7 +133,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
 - `Settings/` — dashboard/run configuration page.
   - `README.md` — Settings index.
   - `index.ts` — barrel re-export.
-  - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
+  - `settingsConstants.ts` — API-key placeholders + Letta embedding tables + _splitHandle helper (extracted from SettingsPage in req 15). The provider/model table that lived here is gone; models come from the server via `useModelCatalog`.
   - `SettingsGroup.tsx` — progressive-disclosure wrapper grouping cards under a sensitivity tier; collapsing toggles CSS `display` only and never unmounts children, so all ten `.card-title`s stay in the DOM.
   - `SettingsPage.tsx` — settings view.
   - `settingsStyles.ts` — shared `inputStyle` / `labelStyle` field styles moved verbatim out of SettingsPage so every `sections/*` component consumes one definition.
@@ -151,7 +151,7 @@ Feature-grouped React components — one subdirectory per dashboard page plus sh
     - `SkillsSection.tsx` — read-only table of the `GET /api/skills` rows — name, display name, description, and required env (or an `any` badge).
     - `SlurmSection.tsx` — SLURM/HPC defaults card — partition multi-select with a Detect probe, CPUs, memory (GB), and walltime.
     - `SshSection.tsx` — remote-host card — host/port/user/remote ARI path/key path plus the Test SSH probe and its ✓/✗ status badge.
-    - `VlmReviewSection.tsx` — VLM figure-review card — model picker drawn from `PROVIDER_MODELS` for the currently selected provider.
+    - `VlmReviewSection.tsx` — VLM figure-review card — model picker drawn from the served catalog (`useModelCatalog`) for the currently selected provider, falling back to `DEFAULT_PROVIDER`'s models.
 - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
   - `README.md` — Tree index.
   - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).

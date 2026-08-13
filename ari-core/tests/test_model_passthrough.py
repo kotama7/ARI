@@ -577,28 +577,27 @@ class TestSettingsModelListStatic:
     per provider, not hardcoded with a mixed list."""
 
     def test_provider_models_dict_has_no_cross_contamination(self):
-        """PROVIDER_MODELS in React must not have ollama models under openai, etc."""
-        src = _settings_src()
-        import re
-        m = re.search(r'const PROVIDER_MODELS.*?=\s*\{(.*?)\};', src, re.DOTALL)
-        assert m is not None, "PROVIDER_MODELS not found"
-        block = m.group(1)
+        """No provider's model list may carry another provider's models.
 
-        # Extract openai line
-        openai_m = re.search(r"openai:\s*\[([^\]]*)\]", block)
-        if openai_m:
-            openai_models = openai_m.group(1)
-            for bad in ["qwen", "llama", "gemma", "mistral"]:
-                assert bad not in openai_models.lower(), \
-                    f"'{bad}' found in PROVIDER_MODELS.openai: {openai_models}"
+        Checked on the served catalog, which the Settings page now renders --
+        the React table this used to scan is gone. `if openai_m:` also meant
+        the whole check evaporated the moment the regex stopped matching, so
+        the served lists are looked up by id and their absence is a failure.
+        """
+        from ari.viz.checkpoint_api import _api_models
 
-        # Extract anthropic line
-        anth_m = re.search(r"anthropic:\s*\[([^\]]*)\]", block)
-        if anth_m:
-            anth_models = anth_m.group(1)
-            for bad in ["gpt", "qwen", "llama", "gemma", "mistral"]:
-                assert bad not in anth_models.lower(), \
-                    f"'{bad}' found in PROVIDER_MODELS.anthropic: {anth_models}"
+        served = {p["id"]: p["models"] for p in _api_models()["providers"]}
+        foreign = {
+            "openai": ["qwen", "llama", "gemma", "mistral", "claude"],
+            "anthropic": ["gpt", "qwen", "llama", "gemma", "mistral"],
+            "claude_code": ["gpt", "qwen", "llama", "gemma", "mistral"],
+        }
+        for prov, bad_names in foreign.items():
+            assert prov in served, f"served catalog is missing {prov!r}"
+            blob = " ".join(served[prov]).lower()
+            for bad in bad_names:
+                assert bad not in blob, \
+                    f"{bad!r} found in the served {prov} models: {served[prov]}"
 
     def test_custom_entry_option_in_settings(self):
         """SettingsPage must include __custom__ option in dropdown."""

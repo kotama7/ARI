@@ -151,7 +151,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `Settings/` — dashboard/run configuration page.
     - `README.md` — Settings index.
     - `index.ts` — barrel re-export.
-    - `settingsConstants.ts` — provider/Letta model tables + _splitHandle helper (extracted from SettingsPage in req 15).
+    - `settingsConstants.ts` — API-key placeholders + Letta embedding tables + _splitHandle helper (extracted from SettingsPage in req 15). The provider/model table that lived here is gone; models come from the server via `useModelCatalog`.
     - `SettingsGroup.tsx` — progressive-disclosure wrapper grouping cards under a sensitivity tier; collapsing toggles CSS `display` only and never unmounts children, so all ten `.card-title`s stay in the DOM.
     - `SettingsPage.tsx` — settings view.
     - `settingsStyles.ts` — shared `inputStyle` / `labelStyle` field styles moved verbatim out of SettingsPage so every `sections/*` component consumes one definition.
@@ -169,7 +169,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
       - `SkillsSection.tsx` — read-only table of the `GET /api/skills` rows — name, display name, description, and required env (or an `any` badge).
       - `SlurmSection.tsx` — SLURM/HPC defaults card — partition multi-select with a Detect probe, CPUs, memory (GB), and walltime.
       - `SshSection.tsx` — remote-host card — host/port/user/remote ARI path/key path plus the Test SSH probe and its ✓/✗ status badge.
-      - `VlmReviewSection.tsx` — VLM figure-review card — model picker drawn from `PROVIDER_MODELS` for the currently selected provider.
+      - `VlmReviewSection.tsx` — VLM figure-review card — model picker drawn from the served catalog (`useModelCatalog`) for the currently selected provider, falling back to `DEFAULT_PROVIDER`'s models.
   - `Tree/` — BFTS tree page (search tree, detail panel, file browser).
     - `README.md` — Tree index.
     - `DetailPanel.tsx` — selected-node detail panel (tabs: memory, report, etc.).
@@ -213,6 +213,7 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
   - `README.md` — hooks index.
   - `useApi.ts` — generic async data-fetch hook with loading/error/refetch.
   - `useDevMode.ts` — persisted developer-mode flag (localStorage `ari_dev_mode`, default OFF) with same-tab + cross-tab sync; gates raw/debug/dangerous UI surfaces.
+  - `useModelCatalog.ts` — the served provider/model catalog, fetched once per page load and shared by every screen; exports the `__custom__` free-entry sentinel. Replaced the per-screen model tables, which had drifted apart unnoticed because each screen only read its own copy.
   - `useRunEvents.ts` — subscribes the shared SSE client for the caller's lifetime and maps each event to a react-query invalidation keyed by the EVENT's `run_id` (events are invalidations, never data — an event for run B can never touch run A's cache); exposes `connectionState`/`lastEventAt` for the `StaleDataBanner` and a bounded poll fallback once the stream is offline.
   - `useV1.ts` — react-query hooks over the typed `/api/v1` client; query keys are `['v1', projectId?, runId?, resource]`, so run-scoped entries stay isolated per run and one run's server state can be dropped in a single `invalidateQueries`.
   - `useWebSocket.ts` — streams real-time tree updates with auto-reconnect.

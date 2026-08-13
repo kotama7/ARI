@@ -3,7 +3,7 @@ import { useI18n } from '../../i18n';
 import * as api from '../../services/api';
 import { StepGoal } from './StepGoal';
 import { StepScope } from './StepScope';
-import { StepResources, PROVIDER_MODELS, ORS_DEFAULTS } from './StepResources';
+import { StepResources, ORS_DEFAULTS } from './StepResources';
 import type { OrsSettings } from './StepResources';
 import { StepLaunch } from './StepLaunch';
 
@@ -150,15 +150,14 @@ export function WizardPage() {
       .then((s: any) => {
         const prov = s.llm_provider || s.llm_backend || 'openai';
         setLlm(prov);
+        // The saved model is taken as-is. Deciding here whether it is a real
+        // model needed a local table, and when no row matched -- because the
+        // table had drifted from the server, not because the model was wrong --
+        // the saved value was quietly demoted to the custom field. Whether the
+        // catalog lists it is StepResources' question, asked against the
+        // catalog it actually loaded.
         const mdl = s.llm_model || '';
-        if (mdl) {
-          const models = PROVIDER_MODELS[prov] || [];
-          if (models.includes(mdl)) {
-            setModel(mdl);
-          } else {
-            setCustomModel(mdl);
-          }
-        }
+        if (mdl) setModel(mdl);
         if (prov === 'cli-shim' && s.llm_base_url) setBaseUrl(s.llm_base_url);
         else if (s.ollama_host) setBaseUrl(s.ollama_host);
         if (s.slurm_cpus) setHpcCpus(String(s.slurm_cpus));

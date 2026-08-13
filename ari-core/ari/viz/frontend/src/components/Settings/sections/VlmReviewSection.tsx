@@ -1,6 +1,7 @@
 import { Card } from '../../common';
 import { inputStyle, labelStyle } from '../settingsStyles';
-import { PROVIDER_MODELS, DEFAULT_PROVIDER } from '../settingsConstants';
+import { DEFAULT_PROVIDER } from '../settingsConstants';
+import { useModelCatalog } from '../../../hooks/useModelCatalog';
 
 interface VlmReviewSectionProps {
   provider: string;
@@ -13,6 +14,9 @@ export function VlmReviewSection({
   vlmReviewModel,
   setVlmReviewModel,
 }: VlmReviewSectionProps) {
+  const catalog = useModelCatalog();
+  const served = catalog.modelsFor(provider);
+  const models = served.length ? served : catalog.modelsFor(DEFAULT_PROVIDER);
   return (
     <Card title="VLM Figure Review">
       <label style={labelStyle}>VLM Model</label>
@@ -21,7 +25,7 @@ export function VlmReviewSection({
         onChange={(e) => setVlmReviewModel(e.target.value)}
         style={inputStyle}
       >
-        {(PROVIDER_MODELS[provider] || PROVIDER_MODELS[DEFAULT_PROVIDER]).map((m) => (
+        {models.map((m) => (
           <option key={m} value={m}>
             {m}
           </option>

@@ -4,16 +4,15 @@ import { useDevMode } from '../../hooks/useDevMode';
 import * as api from '../../services/api';
 import type { ContainerImage } from '../../services/api';
 import { OrsModelPicker, FewshotManager } from './stepResourcesSections';
+import { useModelCatalog, CUSTOM_MODEL_VALUE } from '../../hooks/useModelCatalog';
 
-export const PROVIDER_MODELS: Record<string, string[]> = {
-  openai: ['gpt-5.2', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-4o', 'gpt-4o-2024-08-06', 'gpt-4o-mini', 'o3', 'o1-mini'],
-  anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-haiku-3-5'],
-  // Local Claude Code as a hermetic LLM API (docs/reference/claude_code_provider.md).
-  claude_code: ['claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5'],
-  ollama: ['qwen3:8b', 'qwen3:32b', 'llama3.3', 'gemma3:27b', 'mistral'],
-  'cli-shim': ['claude-cli', 'claude-cli-agent', 'codex-cli', 'codex-cli-agent'],
-  custom: [],
-};
+export { CUSTOM_MODEL_VALUE };
+
+// The model lists live on the server (ari/viz/v1/catalogs.py) and arrive
+// through useModelCatalog. A table here was a second copy of them, and it had
+// already drifted: this file offered gpt-5.4-mini and o1-mini, the server
+// offered o4-mini and o3-mini, and the Settings screen held a third list that
+// agreed with neither.
 
 // Default API base URL per provider (used when switching providers). The CLI
 // shim (ari.llm.cli_server) listens on :8900 by default; see start.sh.
@@ -237,6 +236,7 @@ export function StepResources({
   const [cpuPlaceholder, setCpuPlaceholder] = useState('auto');
   const [memPlaceholder, setMemPlaceholder] = useState('auto');
   const [initialized, setInitialized] = useState(false);
+  const catalog = useModelCatalog();
   const [containerImages, setContainerImages] = useState<ContainerImage[]>([]);
   const [containerRuntime, setContainerRuntime] = useState('none');
   const [pullStatus, setPullStatus] = useState('');
@@ -246,10 +246,10 @@ export function StepResources({
   const handleSetLlm = useCallback(
     (provider: string) => {
       setLlm(provider);
-      const models = PROVIDER_MODELS[provider] || [];
-      if (models.length > 0) {
-        setModel(models[0]);
-      }
+      const models = catalog.modelsFor(provider);
+      // A provider the catalog serves no models for hands the operator the
+      // free-text field rather than the screen inventing a model for them.
+      setModel(models.length > 0 ? models[0] : CUSTOM_MODEL_VALUE);
       // Point the base URL at the new provider's default so a stale value
       // (e.g. the Ollama URL) isn't carried over to the CLI shim — but only
       // when the field still holds a known default, never a user-typed URL.
@@ -424,8 +424,24 @@ export function StepResources({
     }
   };
 
-  const currentModels = PROVIDER_MODELS[llm] || [];
-  const isFreeEntry = llm === 'ollama' || llm === 'custom';
+  const currentModels = catalog.modelsFor(llm);
+
+  // A model the catalog does not list -- one saved from a previous run, or one
+  // typed by hand -- moves into the free-text field instead of disappearing.
+  // Without this the <select> holds a value no <option> matches and the browser
+  // silently shows the first one, changing the operator's model for them.
+  useEffect(() => {
+    if (!catalog.loaded) return;
+    if (!model || model === CUSTOM_MODEL_VALUE) return;
+    if (currentModels.includes(model)) return;
+    setCustomModel(model);
+    setModel(CUSTOM_MODEL_VALUE);
+  }, [catalog.loaded, currentModels, model, setCustomModel, setModel]);
+
+  // The free-text field is offered for providers that never have a suggestion
+  // list, and whenever the current selection is the custom entry.
+  const isFreeEntry =
+    llm === 'ollama' || llm === 'custom' || model === CUSTOM_MODEL_VALUE;
 
   const handlePhaseModelChange = (phase: string, value: string) => {
     const pm = { ...phaseModels };
@@ -664,7 +680,7 @@ export function StepResources({
                 </option>
               ))}
               {isFreeEntry && (
-                <option value="__custom__">{t('custom_entry')}</option>
+                <option value={CUSTOM_MODEL_VALUE}>{t('custom_entry')}</option>
               )}
             </select>
             {isFreeEntry && (

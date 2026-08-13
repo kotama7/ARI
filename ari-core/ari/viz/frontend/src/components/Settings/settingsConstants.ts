@@ -6,16 +6,15 @@
 
 export const DEFAULT_PROVIDER = 'openai';
 
-export const PROVIDER_MODELS: Record<string, string[]> = {
-  openai: ['gpt-5.2', 'gpt-4o', 'gpt-4o-mini', 'o3', 'o1-mini'],
-  anthropic: ['claude-opus-4-5', 'claude-sonnet-4-5', 'claude-3-5-haiku-latest'],
-  // Local Claude Code as a hermetic LLM API (docs/reference/claude_code_provider.md).
-  claude_code: ['claude-sonnet-5', 'claude-opus-4-8', 'claude-haiku-4-5'],
-  gemini: ['gemini/gemini-2.5-pro', 'gemini/gemini-2.0-flash', 'gemini/gemini-1.5-pro'],
-  ollama: ['ollama_chat/llama3.3', 'ollama_chat/qwen3:8b', 'ollama_chat/gemma3:9b', 'ollama_chat/mistral'],
-  'cli-shim': ['claude-cli', 'claude-cli-agent', 'codex-cli', 'codex-cli-agent'],
-};
-
+// The provider/model table that used to live here is gone; the models come
+// from the server catalog through `hooks/useModelCatalog`. It was a third copy
+// of that list (the Wizard held the second), and the copies drifted where
+// nothing could see it: this one offered `claude-3-5-haiku-latest` and the
+// Wizard `claude-haiku-3-5`, both retired in February 2026, so the two screens
+// suggested model ids that no longer resolve.
+//
+// The key placeholders below stay local. They are UI copy about how an
+// operator recognises a well-formed key, not a fact the server publishes.
 export const PROVIDER_KEY_PLACEHOLDER: Record<string, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',

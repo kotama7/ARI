@@ -15,9 +15,9 @@ import {
   fetchContainerInfo,
 } from '../../services/api';
 import type { Checkpoint } from '../../types';
+import { useModelCatalog } from '../../hooks/useModelCatalog';
 import {
   DEFAULT_PROVIDER,
-  PROVIDER_MODELS,
   LETTA_EMBEDDING_BY_PROVIDER,
   CUSTOM_HANDLE_VALUE,
   _splitHandle,
@@ -55,6 +55,7 @@ export default function SettingsPage() {
   const { state: appState, refreshCheckpoints } = useAppContext();
 
   // LLM
+  const catalog = useModelCatalog();
   const [provider, setProvider] = useState(DEFAULT_PROVIDER);
   const [modelSelect, setModelSelect] = useState('');
   const [modelCustom, setModelCustom] = useState('');
@@ -194,11 +195,20 @@ export default function SettingsPage() {
     loadProjects();
   }, [loadSettings, loadSkills, loadProjects]);
 
+  // Fall back to the default provider's models for one the catalog does not
+  // describe — the same shape the local table had. An empty list before the
+  // fetch lands is not a missing provider, so it falls back too, and the
+  // options appear when the catalog arrives.
+  function modelsWithFallback(prov: string): string[] {
+    const models = catalog.modelsFor(prov);
+    return models.length ? models : catalog.modelsFor(DEFAULT_PROVIDER);
+  }
+
   // ── Provider change ────────────────────
 
   function handleProviderChange(newProv: string) {
     setProvider(newProv);
-    const models = PROVIDER_MODELS[newProv] || PROVIDER_MODELS[DEFAULT_PROVIDER];
+    const models = modelsWithFallback(newProv);
     if (models.length) {
       setModelSelect(models[0]);
       setModelCustom(models[0]);
@@ -215,7 +225,7 @@ export default function SettingsPage() {
   }
 
   // ── Available models for current provider
-  const currentModels = PROVIDER_MODELS[provider] || PROVIDER_MODELS[DEFAULT_PROVIDER];
+  const currentModels = modelsWithFallback(provider);
 
   // ── Partition detection ────────────────
 
