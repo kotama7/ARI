@@ -1,24 +1,34 @@
-// ARI Dashboard – Governance workspace (gui_refresh task 08 Wave 4a; plan
-// 08 §Workspace tabs / §Truth and presentation rules; plan 01 §Route model).
+// ARI Dashboard – Governance workspace (gui_refresh task 08 Wave 4a).
+//
+// The tab set and the truth rules the payloads already enforce are written
+// down in docs/guides/rqgm_gui.md, "Tab by tab" and in
+// docs/reference/rqgm_gui_read_models.md, "Presentation truth rules the API
+// enforces". The route itself exists in exactly one place — its
+// ROUTE_REGISTRY entry, which the router and the sidebar are both derived
+// from; nothing here declares a path.
 //
 // READ-ONLY. Nine tabs (Overview / Epoch Timeline / Registry /
 // Accountability / Score Lineage / Evolution / Paper Archive / Audit) over
 // the Wave-4a/4b `/api/v1/runs/{run_id}/rqgm/*` read models via the typed
 // react-query hooks (src/hooks/useV1.ts). The page never mutates governance
 // state — v1 exposes no RQGM mutation endpoint — and never re-executes
-// kernel/score-policy decisions (plan 08 §Non-goals).
+// kernel/score-policy decisions: the read models parse committed artifacts
+// and import no kernel code, so what renders here is a replay, not a rerun.
 //
 // Run scoping: reads `?run=` from the hash query (#/governance?run=<id>),
-// the ConfigBrowserPage pattern. Capability gating (plan 01: do not hide the
-// route, explain why instead): a run without RQGM artifacts renders a capability
-// state screen — an explanation of how governance is activated — NOT an
+// the ConfigBrowserPage pattern. Capability gating never hides the route and
+// never dresses an inactive capability as a failure — it names the reason
+// instead: a run without RQGM artifacts renders a capability state screen —
+// an explanation of how governance is activated — NOT an
 // error. Realtime: topic 'run' events invalidate this run's rqgm query
 // scope (events are invalidations, never data), and the connection state
 // drives the shared StaleDataBanner.
 //
-// A11y (plan 02): the tab strip is a real role=tablist/tab/tabpanel
-// composite with aria-selected/aria-controls wiring — rendered by the shared
-// TabStrip primitive (src/components/common/TabStrip.tsx), which owns the
+// A11y: a tab-like surface has to be a real ARIA composite, never styled
+// buttons — so the tab strip is a genuine role=tablist/tab/tabpanel
+// composite with aria-selected/aria-controls wiring, fully keyboard
+// navigable — rendered by the shared TabStrip primitive
+// (src/components/common/TabStrip.tsx), which owns the
 // `gov-tab-<id>` / `gov-panel-<id>` id convention this page's panel pairs with.
 
 import { useEffect, useMemo, useState } from 'react';
@@ -60,8 +70,10 @@ function runFromHash(): string {
   return new URLSearchParams(query).get('run') ?? '';
 }
 
-// Tab order follows plan 08 §Workspace tabs (Wave 4b adds Epoch Timeline,
-// Evolution and Paper Archive around the Wave-4a five).
+// Tab order is a documented contract, not a local preference — the strip has
+// to read in the order docs/guides/rqgm_gui.md, "Tab by tab" spells out,
+// because that guide is what a user follows on screen (Wave 4b adds Epoch
+// Timeline, Evolution and Paper Archive around the Wave-4a five).
 const TAB_IDS = [
   'overview',
   'epochs',
@@ -89,7 +101,7 @@ const TAB_LABEL_KEYS: Record<TabId, string> = {
 
 const RUN_TOPICS: readonly EventTopic[] = ['run'];
 
-// ── capability state screen (NOT an error — plan 01) ────────────────────
+// ── capability state screen (an explained state, never an error) ────────
 
 function CapabilityScreen({ caps }: { caps: RqgmCapabilitiesV1 }) {
   const t = useT();
@@ -111,7 +123,8 @@ function CapabilityScreen({ caps }: { caps: RqgmCapabilitiesV1 }) {
 }
 
 /** Execution mode and paper mode are independent axes — always shown as two
- * separate labelled chips (plan 08 §Paper Archive; glossary: the bare word
+ * separate labelled chips, never collapsed into one and never rendered
+ * apart, so neither is read as implying the other (glossary: the bare word
  * "Mode" alone is forbidden as a label). */
 function ModeStrip({ caps }: { caps: RqgmCapabilitiesV1 }) {
   const t = useT();
@@ -203,7 +216,9 @@ export function GovernancePage() {
     RUN_TOPICS,
   );
   // Realtime → cache glue for the rqgm scope: a 'run' event is an
-  // invalidation signal, never data (plan 04). Only mounted queries refetch.
+  // invalidation signal, never data — nothing on this page is rendered from
+  // an event body, so duplicate or reordered events are harmless. Only
+  // mounted queries refetch.
   useEffect(() => {
     if (lastEventAt !== null && runId !== '') {
       void queryClient.invalidateQueries({ queryKey: v1Keys.rqgm(runId) });
@@ -233,8 +248,9 @@ export function GovernancePage() {
       />
     );
   } else if (caps !== undefined && !caps.enabled) {
-    // Capability state, not an error (plan 01: explain activation instead
-    // of hiding the route).
+    // Capability state, not an error: name the reason and explain how
+    // governance is activated, rather than hiding the route, erroring, or
+    // fabricating an empty governed state.
     body = <CapabilityScreen caps={caps} />;
   } else if (caps !== undefined) {
     body = (

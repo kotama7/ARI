@@ -1,8 +1,9 @@
 """Server-side model/provider catalog for ``/api/v1/config/catalogs/models``
-(gui_refresh task 06 Wave 4d; plan 05 §Configuration API, ADR-05).
+(gui_refresh task 06 Wave 4d, ADR-05).
 
-Plan 06 §Schema-driven rendering: frontend model/provider constants are
-replaced by a server catalog.  The suggestion list itself stays single-source
+Schema-driven rendering: the frontend holds NO model/provider constants of
+its own — this server catalog is the only source.  The suggestion list itself
+stays single-source
 with the legacy ``GET /api/models`` endpoint — this module re-serves the
 exact ``ari.viz.checkpoint_api._api_models`` payload (never a fork) and adds
 one field the Studio needs: the provider's API-key env name, so the

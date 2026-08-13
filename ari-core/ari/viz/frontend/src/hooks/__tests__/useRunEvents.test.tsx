@@ -11,7 +11,11 @@ import {
 } from '../../shared/realtime/eventStream';
 
 /**
- * useRunEvents (gui_refresh Wave 2b, ADR-03 + plan 03 §Realtime integration).
+ * useRunEvents (gui_refresh Wave 2b, ADR-03): realtime is invalidation, not a
+ * source of truth. An SSE event for a run maps to a query-cache invalidation of
+ * that run's keys followed by a refetch of the HTTP snapshot — never to a
+ * direct state write — so duplicate or reordered events are harmless and
+ * nothing on screen is ever assembled from an event payload.
  *
  * Renders the hook against a seeded QueryClient and a controllable
  * FakeEventSource, pinning the event → invalidation glue:

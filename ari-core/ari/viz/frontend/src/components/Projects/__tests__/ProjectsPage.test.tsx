@@ -13,14 +13,17 @@ import {
 } from '../../../services/api/v1';
 
 /**
- * ProjectsPage (gui_refresh Wave 2b — the first v2 vertical slice; plans 01
- * §Route model, 07 §Projects and run portfolio).
+ * ProjectsPage (gui_refresh Wave 2b — the first v2 vertical slice: the run
+ * portfolio at '#/projects', a v2-only route that resolves to Home exactly
+ * like an unknown hash, and loses its nav entry, when the gui_v2 switch is
+ * off).
  *
  * The typed v1 fetchers are mocked at the module boundary (the react-query
  * hooks and the ApiErrorV1 normalization stay REAL), so these tests pin:
  *   - the run-portfolio table rendered from v1 payloads (status badge,
  *     counts, scores, freshness, RQGM capability chip);
- *   - the empty state with the plan-01 create/import/resume next actions;
+ *   - the empty state naming what to do next (create / import / resume)
+ *     instead of dead-ending on a bare "no data" message;
  *   - the typed error envelope surfacing as ErrorState WITH request_id;
  *   - two-run isolation: after the mocked backend switches from run A to
  *     run B, no run-A value remains (query keys carry projectId/runId);
@@ -29,11 +32,15 @@ import {
  *     run-explicit URL);
  *   - the run-explicit Overview link ('#/overview?run=<id>', Wave 4b) as the
  *     FIRST per-row action — the URL-shaped replacement direction for the
- *     sessionStorage handoff (plan 07 §Cross-workspace coordination);
+ *     sessionStorage handoff: coordination between workspaces travels in the
+ *     hash query string, not in a hidden session variable, so the link is
+ *     copyable and always lands on the run it names;
  *   - realtime adoption (Wave 2b, ADR-03): when the /api/v1/events/stream
  *     connection drops, the table stays up under a StaleDataBanner — a
- *     disconnect is NEVER presented as "run stopped" (plan 01 §Empty and
- *     degraded states).
+ *     disconnect is NEVER presented as "run stopped". A dropped stream is a
+ *     freshness problem, never a state change: the last snapshot stays on
+ *     screen under a staleness banner, and a degraded view says what is stale
+ *     rather than fabricating a run state.
  */
 
 vi.mock('../../../services/api/v1', async (importOriginal) => {
@@ -279,7 +286,9 @@ describe('ProjectsPage (gui_refresh Wave 2b v2 slice)', () => {
 
   it('two-run isolation: after switching to run B, no run-A value remains', async () => {
     // Shared client across both mounts — the run/project ids INSIDE the query
-    // keys (plan 03) are what keeps run A's cache from bleeding into run B.
+    // keys (['v1', <projectId | runId>, <resource>]) are what keeps run A's
+    // cache from bleeding into run B: run-scoped entries are separate cache
+    // entries, so switching runs cannot carry the previous run's data over.
     const client = makeClient();
 
     projectsMock.mockResolvedValue(makeProjects('proj-a'));

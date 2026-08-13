@@ -26,7 +26,7 @@
         "type": "object"
       },
       "ChallengeV1": {
-        "description": "One server-issued, single-use confirmation challenge (MN-6).\n\nThe echoed ``action``/``target`` are the UI's impact preview (plan 09\n§Dangerous operations); ``expires_at`` is display-only wall clock —\nexpiry is enforced server-side on a monotonic deadline\n(``ttl_seconds`` after issuance).",
+        "description": "One server-issued, single-use confirmation challenge (MN-6).\n\nThe echoed ``action``/``target`` are the UI's impact preview: a\ndestructive operation is confirmed against a server-issued challenge\nthat names what it destroys, never against a client-side dialog alone\n(docs/reference/rest_api.md, \"Confirmation challenges\").  ``expires_at``\nis display-only wall clock — expiry is enforced server-side on a\nmonotonic deadline (``ttl_seconds`` after issuance).",
         "properties": {
           "action": {
             "enum": [
@@ -71,7 +71,7 @@
         "type": "object"
       },
       "ConfigFieldV1": {
-        "description": "One canonical config field: an ``ARIConfig`` leaf merged with the\nhand-authored ``ari.config.field_registry.FIELD_META`` overlay (plan 05\n§Canonical field metadata).  Metadata only — never an effective value;\n``sensitivity == \"secret_reference\"`` fields additionally carry NO\ndefault (the registry redacts it before this DTO is built).",
+        "description": "One canonical config field: an ``ARIConfig`` leaf merged with the\nhand-authored ``ari.config.field_registry.FIELD_META`` overlay.  That\nregistry is the single source of field metadata: no GUI-side field\nlist, label map, level table or enum copy exists to drift from it\n(docs/guides/configuration_studio.md, \"The field registry\").  Metadata\nonly — never an effective value;\n``sensitivity == \"secret_reference\"`` fields additionally carry NO\ndefault (the registry redacts it before this DTO is built).",
         "properties": {
           "applies_when": {
             "anyOf": [
@@ -265,7 +265,7 @@
         "type": "object"
       },
       "DiagnosticsV1": {
-        "description": "GET /api/v1/diagnostics envelope (plan 09 §Operational visibility)\n— bounded scalars only: no secrets, no filesystem paths, nothing\nbeyond counts/ages/versions.  ``cache`` is the literal ``false`` —\nno cache subsystem exists yet, stated explicitly rather than omitted;\n``openapi_version`` mirrors the served OpenAPI ``info.version``.",
+        "description": "GET /api/v1/diagnostics envelope — operational visibility is bought\nwith bounded scalars only: no secrets, no filesystem paths, nothing\nbeyond counts/ages/versions.  ``cache`` is the literal ``false`` —\nno cache subsystem exists yet, stated explicitly rather than omitted;\n``openapi_version`` mirrors the served OpenAPI ``info.version``.",
         "properties": {
           "cache": {
             "const": false,
@@ -348,7 +348,7 @@
         "type": "object"
       },
       "DraftValidationErrorV1": {
-        "description": "One draft-validation error.  ``reason`` vocabulary: the\n``validate_patch`` closed set (``field_registry.PATCH_REASONS``,\nincluding the ADR-09 ``mode_interlock_mismatch`` a half-set/disagreeing\nmode pair raises) plus ``invalid_value`` and ``interlock_mismatch``\n(plan 05 §Interlocks: draft validation treats an inconsistent intent\npair as an ERROR even though the runtime resolves it warn+fallback).",
+        "description": "One draft-validation error.  ``reason`` vocabulary: the\n``validate_patch`` closed set (``field_registry.PATCH_REASONS``,\nincluding the ADR-09 ``mode_interlock_mismatch`` a half-set/disagreeing\nmode pair raises) plus ``invalid_value`` and ``interlock_mismatch``\n(draft validation treats an inconsistent intent pair as an ERROR even\nthough the runtime resolves it warn+fallback, so a launch refuses\nrather than quietly starting the fallback run).",
         "properties": {
           "expected": {
             "default": null,
@@ -688,7 +688,7 @@
         "type": "object"
       },
       "ModelCatalogV1": {
-        "description": "GET /api/v1/config/catalogs/models envelope (plan 05 §Configuration\nAPI; plan 06 §Schema-driven rendering: frontend model/provider constants\nare replaced by this server catalog).",
+        "description": "GET /api/v1/config/catalogs/models envelope: the server owns the\nmodel/provider catalog and the client renders whatever it serves — no\nfrontend constant duplicates the provider list, the model lists, or the\nprovider→env-key mapping, so the two cannot drift.",
         "properties": {
           "providers": {
             "items": {
@@ -746,7 +746,7 @@
         "type": "object"
       },
       "NewRunProvenanceV1": {
-        "description": "Provenance for one leaf of the NEW-RUN preview chain (plan 05\n§Resolution model / New run).  ``mutable`` is true for every\nnon-read_only field — before launch even ``new_run_only`` windows are\nopen.  ``confidence`` is ``low`` only for the env overlay (the\nlaunch-time environment may differ from the preview-time one).",
+        "description": "Provenance for one leaf of the NEW-RUN preview chain — the preview\nresolves the same layered chain a launched run resolves, over the\nlayers that exist before any checkpoint does, so the panel shows what\nthe run will actually get.  ``mutable`` is true for every\nnon-read_only field — before launch even ``new_run_only`` windows are\nopen.  ``confidence`` is ``low`` only for the env overlay (the\nlaunch-time environment may differ from the preview-time one).",
         "properties": {
           "confidence": {
             "enum": [
@@ -884,7 +884,7 @@
         "type": "object"
       },
       "ProvenanceEntryV1": {
-        "description": "Where one resolved leaf's effective value came from (plan 05\n§Resolved manifest).  ``confidence`` is ``high`` when the source file\nwas present, ``low`` for reconstructed/current-env layers.",
+        "description": "Where one resolved leaf's effective value came from: every leaf of a\nresolved manifest names the layer that won it, so an effective value is\nnever served without its provenance.  ``confidence`` is ``high`` when\nthe source file was present, ``low`` for reconstructed/current-env\nlayers.",
         "properties": {
           "confidence": {
             "enum": [
@@ -919,7 +919,7 @@
         "type": "object"
       },
       "RejectedOverrideV1": {
-        "description": "One rejected/ignored override kept as an explanation (plan 05\n§Resolution model: rejected overrides are returned, never silently\ndropped).  ``reason`` vocabulary: the ``validate_patch`` closed set\n(``invalid_enum``/``invalid_type``/``read_only``/``not_project_scope``)\nplus ``invalid_value`` (pydantic construction rejected it) and\n``interlock_mismatch`` (warn+fallback ``resolve_effective_mode``\nsemantics).  Secret values are structurally impossible here: secret\npaths never reach provenance.",
+        "description": "One rejected/ignored override kept as an explanation: a layer value\nthe resolver refused is returned with its reason while the resolver\nfalls back to the last valid layer — a rejected override is never\nsilently dropped (docs/guides/configuration_studio.md, \"1. Resolve and\nvalidate\").  ``reason`` vocabulary: the ``validate_patch`` closed set\n(``invalid_enum``/``invalid_type``/``read_only``/``not_project_scope``)\nplus ``invalid_value`` (pydantic construction rejected it) and\n``interlock_mismatch`` (warn+fallback ``resolve_effective_mode``\nsemantics).  Secret values are structurally impossible here: secret\npaths never reach provenance.",
         "properties": {
           "expected": {
             "default": null,
@@ -1124,7 +1124,7 @@
         "type": "object"
       },
       "ResultEarV1": {
-        "description": "EAR / publication lineage flags (plan 07 §Evidence, Results, and\nPaperBench: curate → preview → publish → promote as a traceability\nchain).  ``present`` = ``ear/`` directory, ``curated`` =\n``ear_published/manifest.lock`` presence, ``published`` =\n``publish_record.json`` presence.  ``visibility`` comes from the publish\nrecord when published, else from the curated manifest's declared\n``publish.visibility`` (``visibility_source`` says which); ``promoted_at``\n/ ``dry_run`` are publish-record scalars (``None`` until published).",
+        "description": "EAR / publication lineage flags — curate → preview → publish →\npromote is a traceability chain, so every step is reported from its own\nartifact and a later step is never taken as proof of an earlier one.\n``present`` = ``ear/`` directory, ``curated`` =\n``ear_published/manifest.lock`` presence, ``published`` =\n``publish_record.json`` presence.  ``visibility`` comes from the publish\nrecord when published, else from the curated manifest's declared\n``publish.visibility`` (``visibility_source`` says which); ``promoted_at``\n/ ``dry_run`` are publish-record scalars (``None`` until published).",
         "properties": {
           "curated": {
             "default": false,
@@ -1198,7 +1198,7 @@
         "type": "object"
       },
       "ResultOrsV1": {
-        "description": "ORS reproducibility-chain summary (plan 07: rubric → replicator →\nphase1 reproduce → judge grade, the ``OrsChainSection`` lineage).\n\nStage flags are per-artifact presence (``ors_rubric.meta.json`` /\n``ors_rubric.json``, ``ors_replicator.json``, ``ors_seed.json``,\n``ors_phase1.json``, ``ors_grade.json``); ``chain_present`` is their OR.\n``verdict``/``summary``/scores reuse the ``ari.viz.ear``\n``_synth_repro_report_from_ors`` synthesis READ-ONLY (the same verdict\nthe legacy Results page shows) — ``None`` when the synthesis has no\nusable grade, never guessed.",
+        "description": "ORS reproducibility-chain summary — rubric → replicator → phase1\nreproduce → judge grade is a lineage, and each stage is reported from\nits own artifact's presence, never inferred from a later stage (the\n``OrsChainSection`` lineage).\n\nStage flags are per-artifact presence (``ors_rubric.meta.json`` /\n``ors_rubric.json``, ``ors_replicator.json``, ``ors_seed.json``,\n``ors_phase1.json``, ``ors_grade.json``); ``chain_present`` is their OR.\n``verdict``/``summary``/scores reuse the ``ari.viz.ear``\n``_synth_repro_report_from_ors`` synthesis READ-ONLY (the same verdict\nthe legacy Results page shows) — ``None`` when the synthesis has no\nusable grade, never guessed.",
         "properties": {
           "chain_present": {
             "default": false,
@@ -1640,7 +1640,7 @@
         "type": "object"
       },
       "RqgmCapabilitiesV1": {
-        "description": "GET /api/v1/runs/{run_id}/rqgm/capabilities.\n\nCapability detection from artifact presence only: no ``rqgm_state.json``\n⇒ ``enabled=false`` with reason ``'simple_bfts run'``; ``paper_mode`` is\n``paper_archive_state.json`` presence (execution mode and paper mode are\nindependent axes — plan 08 §Paper Archive).",
+        "description": "GET /api/v1/runs/{run_id}/rqgm/capabilities.\n\nCapability detection from artifact presence only: no ``rqgm_state.json``\n⇒ ``enabled=false`` with reason ``'simple_bfts run'``; ``paper_mode`` is\n``paper_archive_state.json`` presence (execution mode and paper mode are\nindependent axes: all four combinations are valid, so neither may be\ninferred from the other).",
         "properties": {
           "enabled": {
             "title": "Enabled",
@@ -1952,7 +1952,7 @@
         "type": "object"
       },
       "RqgmEpochTransitionCountsV1": {
-        "description": "Status-change counts of the committed boundary transaction that\nCLOSED an epoch, counted from the real ``*_status_change`` /\n``emergency_quarantine`` events (registrations are not status changes\nand are never counted).  ``fallbacks`` has no event-level representation\nin the transitions log; it is joined from the ``epoch_transition`` audit\nrecord's real ``fallbacks`` array when present and stays ``None``\notherwise — an absent source is never displayed as zero (plan 08 §Truth\nrules).",
+        "description": "Status-change counts of the committed boundary transaction that\nCLOSED an epoch, counted from the real ``*_status_change`` /\n``emergency_quarantine`` events (registrations are not status changes\nand are never counted).  ``fallbacks`` has no event-level representation\nin the transitions log; it is joined from the ``epoch_transition`` audit\nrecord's real ``fallbacks`` array when present and stays ``None``\notherwise — an absent source is reported as absent, never as a zero\ncount.",
         "properties": {
           "adoptions": {
             "default": 0,
@@ -1991,7 +1991,7 @@
         "type": "object"
       },
       "RqgmEpochV1": {
-        "description": "One committed epoch from transitions replay (plan 08 §Epoch\nTimeline).\n\nEvery epoch carries its own ``utility_policy_hash`` so a consumer can\nrefuse naive cross-epoch comparison: scores under different policy\nhashes are never one continuous series (plan 08: epoch comparison only\nafter compatibility is confirmed).  ``boundary_committed`` is True when\na committed boundary transaction CLOSED this epoch (its terminal\nboundary exists in the truth log); the latest epoch of a live run is\nstill open, so its ``transition_counts`` is ``None`` — a boundary that\nhas not happened is never rendered as zero activity.",
+        "description": "One committed epoch from transitions replay: the entry is derived\nfrom the committed transition log, never from live registry state or\nfrom the ``epoch_state.json`` snapshot.\n\nEvery epoch carries its own ``utility_policy_hash`` so a consumer can\nrefuse naive cross-epoch comparison: scores under different policy\nhashes are never one continuous series, and two epochs may be compared\nonly once their policy compatibility is confirmed.\n``boundary_committed`` is True when a committed boundary transaction\nCLOSED this epoch (its terminal boundary exists in the truth log); the\nlatest epoch of a live run is still open, so its ``transition_counts``\nis ``None`` — a boundary that has not happened is never rendered as\nzero activity.",
         "properties": {
           "boundary_committed": {
             "default": false,
@@ -2108,7 +2108,7 @@
         "type": "object"
       },
       "RqgmEvolutionEntryV1": {
-        "description": "One evolution-lineage entry (plan 08 §Evolution and Frontier Repair).\n\nRaw candidate vs validated candidate vs adopted policy are structurally\nseparate here, never conflated:\n\n- the entry itself IS the raw proposal record (its own ``status`` is the\n  record's candidate-vocabulary status, and the proposed artifact hash\n  is normalized into ``proposed_prompt_hash`` / ``proposed_policy_hash``\n  — the plan-08 naming-subtlety rule);\n- ``validation_record_count`` / ``validation_passed_count`` count the\n  candidate's ``prompt_candidate_validation`` records (lifecycle stage\n  executions), which is evidence of validation, not adoption;\n- ``adopted`` is ONLY ever derived by joining the candidate's proposed\n  hash against the committed registry replay (a prompt of the same role\n  that reached the active set), with the citing transition in\n  ``adopted_via``.  It is ``None`` for ``meta`` entries: a meta-agent\n  output is inert provenance, not an adoptable candidate.",
+        "description": "One evolution-lineage entry — adoption is a join, never a self-claim\n(docs/reference/rqgm_gui_read_models.md, \"Presentation truth rules the\nAPI enforces\").\n\nRaw candidate vs validated candidate vs adopted policy are structurally\nseparate here, never conflated:\n\n- the entry itself IS the raw proposal record (its own ``status`` is the\n  record's candidate-vocabulary status, and the proposed artifact hash\n  is normalized into ``proposed_prompt_hash`` / ``proposed_policy_hash``\n  — the source records spell that hash under different key names per\n  candidate kind, so it is read into two typed fields and a prompt hash\n  can never be displayed as a policy hash);\n- ``validation_record_count`` / ``validation_passed_count`` count the\n  candidate's ``prompt_candidate_validation`` records (lifecycle stage\n  executions), which is evidence of validation, not adoption;\n- ``adopted`` is ONLY ever derived by joining the candidate's proposed\n  hash against the committed registry replay (a prompt of the same role\n  that reached the active set), with the citing transition in\n  ``adopted_via``.  It is ``None`` for ``meta`` entries: a meta-agent\n  output is inert provenance, not an adoptable candidate.",
         "properties": {
           "adopted": {
             "anyOf": [
@@ -2356,7 +2356,7 @@
         "type": "object"
       },
       "RqgmIntegrityV1": {
-        "description": "Tri-state integrity flags: ``True`` verified, ``False`` broken,\n``None`` source missing (a missing source is never displayed as clean —\nplan 08 §Truth rules).",
+        "description": "Tri-state integrity flags: ``True`` verified, ``False`` broken,\n``None`` source missing — a missing source is never displayed as clean,\nand a broken chain degrades the payload rather than failing the request\n(docs/reference/rqgm_gui_read_models.md, \"Integrity flags and degraded\nsemantics\").",
         "properties": {
           "audit_chain_ok": {
             "anyOf": [
@@ -2399,7 +2399,7 @@
         "type": "object"
       },
       "RqgmNodeLineageV1": {
-        "description": "GET /api/v1/runs/{run_id}/rqgm/nodes/{node_id}/lineage — the TWO\nindependent score channels (plan 08 §Score Lineage), never merged into\none series: ``penalty_channel`` (adversarial penalty inside an epoch)\nand ``policy_channel`` (epoch-boundary utility-policy rewrite /\ninvalidation).",
+        "description": "GET /api/v1/runs/{run_id}/rqgm/nodes/{node_id}/lineage — the TWO\nindependent score channels, kept as separate lists that no consumer can\naccidentally merge into one series\n(docs/reference/rqgm_gui_read_models.md, \"The two score-rewrite\nchannels\"): ``penalty_channel`` (adversarial penalty inside an epoch)\nand ``policy_channel`` (epoch-boundary utility-policy rewrite /\ninvalidation).",
         "properties": {
           "degraded_reasons": {
             "items": {
@@ -2542,7 +2542,7 @@
         "type": "object"
       },
       "RqgmPaperAnchorV1": {
-        "description": "Anchor capability state.  ``enabled`` comes only from the frozen\n``paper_utility_policy.anchor_enabled`` in ``paper_archive_state.json``;\nwhen no policy was frozen it is ``None`` (unknown), never guessed.\nWith the anchor disabled the archive is reviewed best-of-N and writer\nsanctions cannot fire (plan 08 §Paper Archive).",
+        "description": "Anchor capability state.  ``enabled`` comes only from the frozen\n``paper_utility_policy.anchor_enabled`` in ``paper_archive_state.json``;\nwhen no policy was frozen it is ``None`` (unknown), never guessed.\nWith the anchor disabled the archive is reviewed best-of-N and writer\nsanctions cannot fire — so an empty sanction record under a disabled\nanchor is a capability state, never evidence that nothing went\nwrong.",
         "properties": {
           "corpus_present": {
             "default": false,
@@ -2566,7 +2566,7 @@
         "type": "object"
       },
       "RqgmPaperArchiveV1": {
-        "description": "GET /api/v1/runs/{run_id}/rqgm/paper-archive — bounded scalars only.\n\n``paper_mode`` reports the persisted mode when\n``paper_archive_state.json`` exists; absence of that file MEANS mode\n``linear`` by the source contract (plan 08 §Source artifacts), which is\nwhy ``state_present=False`` rides along — the derivation is transparent,\nnot fabricated.  ``draft_count`` is ``None`` (not 0) when the draft\narchive file is absent.",
+        "description": "GET /api/v1/runs/{run_id}/rqgm/paper-archive — bounded scalars only.\n\n``paper_mode`` reports the persisted mode when\n``paper_archive_state.json`` exists; absence of that file MEANS mode\n``linear`` by the artifact contract — absence is DEFINED to mean linear\nrather than merely unread — which is why ``state_present=False`` rides\nalong: the derivation is transparent, not fabricated.  ``draft_count``\nis ``None`` (not 0) when the draft archive file is absent.",
         "properties": {
           "anchor": {
             "$ref": "#/components/schemas/RqgmPaperAnchorV1"
@@ -2751,7 +2751,7 @@
         "type": "object"
       },
       "RqgmPaperWinnerV1": {
-        "description": "The archive's best-belief draft.  ``node_id`` is the recorded\n``is_best_belief`` draft (a REVIEWED selection — never to be equated\nwith the governance winner or the research result, plan 08 §Paper\nArchive); ``materialized`` is ``full_paper.tex`` presence.",
+        "description": "The archive's best-belief draft.  ``node_id`` is the recorded\n``is_best_belief`` draft — a REVIEWED selection, which is neither the\ngovernance winner nor the research result and must never be labelled as\neither; ``materialized`` is ``full_paper.tex`` presence.",
         "properties": {
           "materialized": {
             "default": false,
@@ -2969,7 +2969,7 @@
         "type": "object"
       },
       "RqgmRawAttackV1": {
-        "description": "A RAW adversarial claim (``atk_*``): kind is pinned to ``'raw'`` and\nthe model has NO score/penalty/confidence field — a raw attack is\nstructurally incapable of carrying a score (plan 08: raw attacks never\nscore; severity_claimed is the attacker's CLAIM, not a penalty).",
+        "description": "A RAW adversarial claim (``atk_*``): kind is pinned to ``'raw'`` and\nthe model has NO score/penalty/confidence field — a raw attack is\nstructurally incapable of carrying a score (raw attacks never score;\n``severity_claimed`` is the attacker's CLAIM, not a penalty — only an\nadjudicated ``vat_*`` record may drive one, and only through a\n``UtilityRecord`` that references its id).",
         "properties": {
           "adversary_type": {
             "anyOf": [
@@ -3108,7 +3108,7 @@
         "type": "object"
       },
       "RqgmRegistryV1": {
-        "description": "GET /api/v1/runs/{run_id}/rqgm/registry.\n\nEntries come from committed replay of ``rqgm_transitions.jsonl`` (the\ntruth log); the ``rqgm_registry.json`` rollup is read only to compute\n``verified`` (rollup ``as_of_event_hash`` == replay tail — plan 08\n§Truth rules).",
+        "description": "GET /api/v1/runs/{run_id}/rqgm/registry.\n\nEntries come from committed replay of ``rqgm_transitions.jsonl`` (the\ntruth log); the ``rqgm_registry.json`` rollup is read only to compute\n``verified`` (rollup ``as_of_event_hash`` == replay tail).  A rollup or\nsnapshot verifies the truth log — it never becomes current state.",
         "properties": {
           "active_components": {
             "additionalProperties": {
@@ -3199,7 +3199,7 @@
         "type": "object"
       },
       "RqgmScoreObservationV1": {
-        "description": "One score-lineage observation (plan 08 §Score Lineage).\n\n``policy_hash`` is always the EPOCH utility-policy hash the observation\nwas made under (the penalty-side frozen weights live inside the source\nrecord, plan 08's naming-subtlety rule).  ``state`` is ``None`` when the\nsource asserts a frontier fact rather than a node score state (never\nguessed).  ``values`` carries the source fields verbatim (sentinel key\nnames included) — passthrough, no re-computation.",
+        "description": "One score-lineage observation — a score is never reported without\nthe policy identity it was computed under\n(docs/reference/rqgm_gui_read_models.md, \"The two score-rewrite\nchannels\").\n\n``policy_hash`` is always the EPOCH utility-policy hash the observation\nwas made under (the penalty-side frozen weights live inside the source\nrecord: the single field name ``utility_policy_hash`` has carried both\npolicies over the life of the format, and their key sets are disjoint\nso the two hashes can never be equal).  ``state`` is ``None`` when the\nsource asserts a frontier fact rather than a node score state (never\nguessed).  ``values`` carries the source fields verbatim (sentinel key\nnames included) — passthrough, no re-computation.",
         "properties": {
           "epoch_id": {
             "anyOf": [
@@ -4112,7 +4112,7 @@
         "type": "object"
       },
       "RunLaunchRequestV1": {
-        "description": "POST /api/v1/runs body (plan 06 §Launch protocol).\n\n``draft_id`` names the durable run draft to launch; ``display_name``\nonly seeds the human-readable slug half of the run id (never identity —\nplan 04 §Run identity); ``profile`` is the CLI ``--profile`` closed set;\n``idempotency_key`` makes the POST retriable — a duplicate key replays\nthe SAME ``run_id`` and spawns nothing (double-click safety).",
+        "description": "POST /api/v1/runs body — the launch protocol is validate-first and\nidempotent: a rejected body performs zero filesystem mutation, and the\nidempotency claim is written before any directory exists\n(docs/guides/configuration_studio.md, \"3. Launch, and what it\nguarantees\").\n\n``draft_id`` names the durable run draft to launch; ``display_name``\nonly seeds the human-readable slug half of the run id — the id is\nminted by the server and a display name is never identity; ``profile``\nis the CLI ``--profile`` closed set; ``idempotency_key`` makes the POST\nretriable — a duplicate key replays the SAME ``run_id`` and spawns\nnothing (double-click safety).",
         "properties": {
           "display_name": {
             "anyOf": [
@@ -4167,7 +4167,7 @@
         "type": "object"
       },
       "RunLaunchedV1": {
-        "description": "POST /api/v1/runs accepted envelope (plan 04 §Run identity and\nlifecycle: the collision-resistant ``run_id`` + status URL + checkpoint\npath/intent, returned before any slow work).  ``idempotent_replay`` is\nTrue when the response acknowledges an earlier launch for the same\nidempotency key (nothing was spawned by THIS request).",
+        "description": "POST /api/v1/runs accepted envelope: the server mints the\ncollision-resistant ``run_id`` and answers with it, the status URL and\nthe checkpoint path before any slow work, so a client follows the\nissued id and never guesses the newest checkpoint by mtime.\n``idempotent_replay`` is True when the response acknowledges an earlier\nlaunch for the same idempotency key (nothing was spawned by THIS\nrequest).",
         "properties": {
           "accepted": {
             "const": true,
@@ -4235,7 +4235,7 @@
         "type": "object"
       },
       "RunLogsV1": {
-        "description": "GET /api/v1/runs/{run_id}/logs — one bounded cursor page over the\nappend-only ``{ckpt}/ari.log``.\n\nHonest absence: a run whose log does not exist yet answers\n``present=false`` (200, never a 404 — only an unknown run 404s).\n``next_cursor`` is ALWAYS the byte offset where the next scan resumes\n(also at ``eof``, so a tail-follow client polls the same value until\nnew committed lines appear).  ``eof=true`` means no further committed\nline was known at scan time; a trailing partial line (no ``\\n``) is\nnever emitted — ``next_cursor`` parks at its first byte until the line\ncompletes (plan 04 committed-only reads).  Each request scans at most\n``logs.SCAN_WINDOW_BYTES``; when the window ends before ``limit``\nmatches were found the page returns early with ``eof=false`` and the\nadvanced cursor — the client continues, no request scans unboundedly.",
+        "description": "GET /api/v1/runs/{run_id}/logs — one bounded cursor page over the\nappend-only ``{ckpt}/ari.log``.\n\nHonest absence: a run whose log does not exist yet answers\n``present=false`` (200, never a 404 — only an unknown run 404s).\n``next_cursor`` is ALWAYS the byte offset where the next scan resumes\n(also at ``eof``, so a tail-follow client polls the same value until\nnew committed lines appear).  ``eof=true`` means no further committed\nline was known at scan time; a trailing partial line (no ``\\n``) is\nnever emitted — ``next_cursor`` parks at its first byte until the line\ncompletes, because every read on this surface is committed-only: a torn\nappend is served once it is whole, never before.  Each request scans at\nmost ``logs.SCAN_WINDOW_BYTES``; when the window ends before ``limit``\nmatches were found the page returns early with ``eof=false`` and the\nadvanced cursor — the client continues, no request scans unboundedly.",
         "properties": {
           "degraded_reasons": {
             "items": {
@@ -4664,7 +4664,7 @@
         "type": "object"
       },
       "SecretValueRequestV1": {
-        "description": "PUT /api/v1/secrets/{secret_id} body — the write-only value channel\n(plan 05 §Configuration API).  The value never appears in any response,\nmanifest, or log; the target name is the path's ``secret_id`` and must\nbe on the ``ari.viz.v1.secrets.SECRET_NAMES`` allowlist.",
+        "description": "PUT /api/v1/secrets/{secret_id} body — the write-only value channel:\na secret value travels browser → server only, and is never readable\nback through any endpoint (docs/guides/configuration_studio.md, \"How\nsecrets work\").  The value never appears in any response, manifest, or\nlog; the target name is the path's ``secret_id`` and must be on the\n``ari.viz.v1.secrets.SECRET_NAMES`` allowlist.",
         "properties": {
           "value": {
             "title": "Value",

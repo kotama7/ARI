@@ -1,13 +1,16 @@
-// ARI Dashboard – Governance Overview tab (gui_refresh task 08 Wave 4a;
-// plan 08 §Workspace tabs / Overview).
+// ARI Dashboard – Governance Overview tab (gui_refresh task 08 Wave 4a).
+// Answers "what is the current governed state?" — see
+// docs/guides/rqgm_gui.md, 'Overview — "what is the current governed
+// state?"'.
 //
 // Bounded committed-replay summary: current epoch, epoch utility policy
 // hash, constitution hash, by-status registry counts, and the tri-state
 // integrity flags (true = verified, false = broken, null = source missing —
 // a missing source is never shown as clean). A broken chain renders the
 // shared DegradedState with the backend's degraded_reasons; the wording
-// keeps governance degradation distinct from research failure (plan 08
-// §Truth rules: governance blocked ≠ research failed).
+// keeps governance degradation distinct from research failure: these
+// payloads describe the governance artifacts only, so governance blocked
+// never means the research run failed.
 
 import { useT } from '../../i18n';
 import { useRqgmOverviewV1 } from '../../hooks/useV1';

@@ -14,8 +14,9 @@ import {
 
 /**
  * ConfigBrowserPage (gui_refresh Wave 3b — read-only effective-config
- * browser; plans 05 §Purpose / §Resolved manifest, 06 §Effective
- * configuration).
+ * browser). Two sources, never blended: the field registry is metadata and
+ * carries no effective value, while a run's resolved manifest carries the
+ * values with the layer each one came from. Nothing here mutates anything.
  *
  * The typed v1 fetchers are mocked at the module boundary (the react-query
  * hooks and ApiErrorV1 normalization stay REAL), so these tests pin:
@@ -201,7 +202,8 @@ describe('ConfigBrowserPage (gui_refresh Wave 3b read-only config browser)', () 
     expect(screen.queryByText('governance.filler_0')).toBeNull();
     expect(screen.queryByText('search.num_workers')).toBeNull();
 
-    // Category filter (plan 06: fields stay discoverable via search).
+    // Category filter: the whole registry stays reachable from one search
+    // box, so no field is discoverable only by knowing its category.
     fireEvent.change(input, { target: { value: 'Search (BFTS)' } });
     expect(screen.getByText('1 / 144 fields')).toBeInTheDocument();
     expect(screen.getByText('search.num_workers')).toBeInTheDocument();
@@ -231,7 +233,8 @@ describe('ConfigBrowserPage (gui_refresh Wave 3b read-only config browser)', () 
     // Effective values override schema defaults.
     expect(screen.getByText('5')).toBeInTheDocument();
     expect(screen.queryByText('default-model')).toBeNull();
-    // Provenance source badges (plan 05 §Resolved manifest).
+    // Provenance source badges: every leaf of a resolved manifest names the
+    // layer it came from, so an effective value is never shown bare.
     expect(screen.getByText('workflow')).toBeInTheDocument();
     expect(screen.getByText('env')).toBeInTheDocument();
     // Exactly one low-confidence marker (the env-sourced leaf).

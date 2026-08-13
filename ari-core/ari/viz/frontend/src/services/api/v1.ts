@@ -4,10 +4,12 @@
 // src/services/api/v1types.gen.ts, generated from ari/viz/v1/openapi.json by
 // `npm run gen:v1types` (drift-guarded by src/__tests__/v1TypesDrift.test.ts).
 //
-// Error contract (plan 03 §API client contract): every failure — typed
-// ErrorEnvelopeV1 from the backend, network failure, or malformed body —
-// surfaces as a thrown ApiErrorV1 normalized to
-// {code, message, details, request_id, retryable}.
+// Error contract: every failure — typed ErrorEnvelopeV1 from the backend,
+// network failure, or malformed body — surfaces as a thrown ApiErrorV1
+// normalized to {code, message, details, request_id, retryable}. No caller
+// ever sees a raw fetch rejection, and callers branch on the frozen `code`
+// vocabulary, never on `message` (see docs/reference/rest_api.md,
+// "Error envelope").
 //
 // Transport: the shared client.ts core, via its v1Get regime. The backend
 // returns real non-2xx statuses whose body IS the typed envelope; the
@@ -25,11 +27,14 @@ export type RunSummaryV1 = components['schemas']['RunSummaryV1'];
 export type RunDetailV1 = components['schemas']['RunDetailV1'];
 export type RunListV1 = components['schemas']['RunListV1'];
 export type TreeV1 = components['schemas']['TreeV1'];
-// Ideas v2 workspace (gui_refresh Wave 4c — pure idea.json read, plan 07
-// §Ideas, claims, and evidence).
+// Ideas v2 workspace (gui_refresh Wave 4c — pure idea.json read): the
+// idea → claim → evidence relation is shown as it was recorded, and raw
+// generated text never carries the same status as validated evidence.
 export type RunIdeaV1 = components['schemas']['RunIdeaV1'];
 // Results v2 workspace (gui_refresh task 07 Wave 4d — bounded result/EAR
-// read models, plan 07 §Evidence, Results, and PaperBench).
+// read models): paper, review, ORS and publication lineage hang off one
+// result record as presence flags plus scalars, and a completed run is
+// never reported as a passed benchmark.
 export type ResultPaperV1 = components['schemas']['ResultPaperV1'];
 export type ReviewDimensionV1 = components['schemas']['ReviewDimensionV1'];
 export type ResultReviewV1 = components['schemas']['ResultReviewV1'];
@@ -40,8 +45,9 @@ export type EarFileV1 = components['schemas']['EarFileV1'];
 export type EarManifestV1 = components['schemas']['EarManifestV1'];
 export type EarPublishRecordV1 = components['schemas']['EarPublishRecordV1'];
 export type RunEarV1 = components['schemas']['RunEarV1'];
-// Cursor log explorer (gui_refresh task 07 tail — plan 07 §Artifacts, logs,
-// and diagnostics: bounded byte-offset pages over {ckpt}/ari.log).
+// Cursor log explorer (gui_refresh task 07 tail): bounded byte-offset pages
+// over {ckpt}/ari.log — a log is read by cursor, tail and filter, never as
+// one whole-file read.
 export type LogEntryV1 = components['schemas']['LogEntryV1'];
 export type RunLogsV1 = components['schemas']['RunLogsV1'];
 // Config browser (gui_refresh Wave 3b — read-only effective config).
@@ -51,7 +57,10 @@ export type ProvenanceEntryV1 = components['schemas']['ProvenanceEntryV1'];
 export type SecretReferenceV1 = components['schemas']['SecretReferenceV1'];
 export type ResolvedConfigV1 = components['schemas']['ResolvedConfigV1'];
 // Configuration Studio (gui_refresh task 06 Wave 4d — config documents,
-// secret readiness/assignment, server-side model catalog; plans 05/06).
+// secret readiness/assignment, server-side model catalog). The control plane
+// keeps three things apart: the field registry is metadata and never carries
+// an effective value, a resolved manifest carries values with their
+// provenance, and a secret has a readiness row but no value field.
 export type ProjectConfigV1 = components['schemas']['ProjectConfigV1'];
 export type RunTemplateSummaryV1 = components['schemas']['RunTemplateSummaryV1'];
 export type RunTemplateListV1 = components['schemas']['RunTemplateListV1'];
@@ -62,9 +71,10 @@ export type SecretStatusV1 = components['schemas']['SecretStatusV1'];
 export type SecretUpdatedV1 = components['schemas']['SecretUpdatedV1'];
 export type ModelProviderV1 = components['schemas']['ModelProviderV1'];
 export type ModelCatalogV1 = components['schemas']['ModelCatalogV1'];
-// Studio launch flow (gui_refresh task 06 Wave 4e — plan 06 §Launch
-// protocol: resolve-config -> validate -> immutable review -> idempotent
-// POST /api/v1/runs -> canonical #/overview?run=<run_id> redirect).
+// Studio launch flow (gui_refresh task 06 Wave 4e). The launch order is
+// fixed: resolve-config -> validate -> immutable review -> idempotent
+// POST /api/v1/runs -> canonical #/overview?run=<run_id> redirect. The UI
+// follows the server-issued run_id, never an mtime/latest-checkpoint probe.
 export type NewRunProvenanceV1 = components['schemas']['NewRunProvenanceV1'];
 export type ResolvedNewRunConfigV1 = components['schemas']['ResolvedNewRunConfigV1'];
 export type DraftValidationErrorV1 = components['schemas']['DraftValidationErrorV1'];
@@ -73,7 +83,7 @@ export type RunLaunchRequestV1 = components['schemas']['RunLaunchRequestV1'];
 export type RunLaunchedV1 = components['schemas']['RunLaunchedV1'];
 /** The CLI --profile closed set (shared by resolve/validate/launch). */
 export type LaunchProfileV1 = NonNullable<RunLaunchRequestV1['profile']>;
-// Governance workspace (gui_refresh Wave 4a — read-only RQGM, plan 08).
+// Governance workspace (gui_refresh Wave 4a — read-only RQGM read models).
 export type RqgmCapabilitiesV1 = components['schemas']['RqgmCapabilitiesV1'];
 export type RqgmIntegrityV1 = components['schemas']['RqgmIntegrityV1'];
 export type RqgmOverviewV1 = components['schemas']['RqgmOverviewV1'];
@@ -108,7 +118,7 @@ export type ErrorEnvelopeV1 = components['schemas']['ErrorEnvelopeV1'];
 /** Router-injected top-level request_id present on every 200 body. */
 export type RequestIdV1 = components['schemas']['RequestIdV1'];
 
-// ── normalized error (plan 03 §API client contract) ─────────────────────
+// ── normalized error: one ApiErrorV1 for every failure mode ─────────────
 
 /**
  * Normalized API error: {code, message, details, request_id, retryable}.
@@ -269,7 +279,7 @@ export function fetchConfigSchemaV1(): Promise<ConfigSchemaV1 & RequestIdV1> {
   return fetchV1<ConfigSchemaV1 & RequestIdV1>('/api/v1/config/schema');
 }
 
-// ── Configuration Studio (gui_refresh task 06 Wave 4d — plans 05/06) ────
+// ── Configuration Studio (gui_refresh task 06 Wave 4d) ──────────────────
 //
 // Config-document CRUD over the ADR-12 gui_store: every mutation resolves
 // the same envelope regime as the reads (a typed error body throws as
@@ -405,18 +415,21 @@ export function putSecretV1(
   );
 }
 
-/** Server-side model/provider catalog (plan 06: no frontend model constants). */
+/** Server-side model/provider catalog: provider and model choices live on the
+ * server, never as frontend constants, so adding one needs no frontend
+ * change and no screen can offer a model this build cannot run. */
 export function fetchModelCatalogV1(): Promise<ModelCatalogV1 & RequestIdV1> {
   return fetchV1<ModelCatalogV1 & RequestIdV1>('/api/v1/config/catalogs/models');
 }
 
-// ── launch protocol (gui_refresh task 06 Wave 4e — plan 06 §Launch
-// protocol, MN-10 backend) ──────────────────────────────────────────────
+// ── launch protocol (gui_refresh task 06 Wave 4e, MN-10 backend): resolve
+// -> validate -> immutable review -> idempotent create ──────────────────
 
 /**
- * New-run resolved-manifest preview for one draft (plan 05): the effective
- * config + digest a launch of this draft would materialize. `run_id`
- * carries the DRAFT id — no run exists yet.
+ * New-run resolved-manifest preview for one draft: the effective config +
+ * digest a launch of this draft would materialize, each leaf carrying the
+ * layer it came from, so a review shows resolved values rather than the
+ * draft's own overrides. `run_id` carries the DRAFT id — no run exists yet.
  */
 export function resolveDraftConfigV1(
   draftId: string,
@@ -466,7 +479,9 @@ export function launchRunV1(request: {
   });
 }
 
-/** Resolved effective-config manifest of an existing run (plan 05). */
+/** Resolved effective-config manifest of an existing run: post-hoc values
+ * with their provenance and digest, read from the checkpoint — never
+ * re-derived in the frontend from the field registry's defaults. */
 export function fetchRunResolvedConfigV1(
   runId: string,
 ): Promise<ResolvedConfigV1 & RequestIdV1> {
@@ -475,10 +490,13 @@ export function fetchRunResolvedConfigV1(
   );
 }
 
-// ── RQGM governance read models (gui_refresh Wave 4a, plan 08) ──────────
+// ── RQGM governance read models (gui_refresh Wave 4a) ───────────────────
 //
-// Read-only: the whole GUI v1 RQGM surface is GET-only (no governance
-// mutation endpoint exists in v1 — plan 08 §Non-goals).
+// Read-only by design: the whole GUI v1 RQGM surface is GET-only. No
+// governance mutation endpoint exists in v1 at all, so the dashboard can
+// observe governance but never perform it; the payloads are projections of
+// committed checkpoint artifacts and viz never imports ari.rqgm (see
+// docs/reference/rqgm_gui_read_models.md, "Ground rules").
 
 function rqgmPath(runId: string, tail: string): string {
   return `/api/v1/runs/${encodeURIComponent(runId)}/rqgm/${tail}`;
@@ -512,7 +530,15 @@ export interface RqgmAuditQuery {
   epoch?: string;
 }
 
-/** Cursor-paged audit log (stable byte-offset cursor — plan 08 §Audit). */
+/**
+ * Cursor-paged audit log. The cursor is a stable byte offset into the
+ * append-only `rqgm_audit.jsonl`, so following `next_cursor` walks the file
+ * exactly once — appended pages never gap or duplicate rows, and only
+ * committed lines are served. `record_type`/`epoch` select which scanned
+ * rows are returned and never move the cursor; callers still restart the
+ * chain on a filter change, so a filtered view never inherits rows from a
+ * differently-filtered one.
+ */
 export function fetchRqgmAuditV1(
   runId: string,
   query: RqgmAuditQuery = {},
@@ -559,8 +585,8 @@ export function fetchRqgmPoliciesV1(
   return fetchV1<RqgmPoliciesV1 & RequestIdV1>(rqgmPath(runId, 'policies'));
 }
 
-// ── RQGM Wave 4b read models (plan 08 §Epoch Timeline / §Evolution and
-// Frontier Repair / §Paper Archive — still GET-only) ────────────────────
+// ── RQGM Wave 4b read models: epoch timeline, evolution and frontier
+// repair, paper archive — still GET-only, still committed records only ──
 
 /** Committed epochs from transitions replay (each with its policy hash). */
 export function fetchRqgmEpochsV1(

@@ -33,7 +33,10 @@ import {
 
 /**
  * GovernancePage (gui_refresh task 08 Wave 4a — read-only RQGM governance
- * workspace; plan 08 §Workspace tabs / §Truth and presentation rules).
+ * workspace). The workspace is observation only — there is no mutation
+ * endpoint on this surface — and the presentation rules it must not blur are
+ * in docs/reference/rqgm_gui_read_models.md, "Presentation truth rules the
+ * API enforces".
  *
  * The typed v1 fetchers are mocked at the module boundary (react-query
  * hooks and page logic stay REAL). Pins:
@@ -43,7 +46,8 @@ import {
  *     tablist/tab/tabpanel roles (Wave 4b adds Epoch Timeline, Evolution
  *     and Paper Archive);
  *   - raw-vs-validated separation: a raw attack row can never show a
- *     penalty number (plan 08: raw attack ≠ validated penalty);
+ *     penalty number — a raw claim is not a validated penalty, and only an
+ *     adjudicated record may drive one;
  *   - the exhaustive 10-status registry lifecycle vocabulary render (each
  *     status its own badge class — never node-score classes);
  *   - channel-2 lineage FACETING by policy hash (two hashes ⇒ two facet
@@ -591,7 +595,8 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
         screen.getByText('Governance is not active for this run'),
       ).toBeInTheDocument(),
     );
-    // Explanation + activation path (plan 01: explain instead of hiding).
+    // Explanation + activation path: an unavailable surface explains itself
+    // and names how to turn it on, instead of hiding or showing an error.
     expect(
       screen.getByText(/simple_bfts execution mode/),
     ).toBeInTheDocument();
@@ -677,7 +682,8 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
       expect(badges.length).toBeGreaterThan(0);
       for (const badge of badges) {
         // Registry lifecycle badges use the reg-badge family and NEVER a
-        // node-score class (two separate state machines, plan 08).
+        // node-score class: registry standing and node score state are two
+        // different state machines and share no field or legend.
         expect(badge.className).toContain(`reg-badge--${status}`);
         expect(badge.className).not.toContain('nodestate-badge');
       }
@@ -737,7 +743,8 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
         screen.getByText('Impeachment chain structurally inert'),
       ).toBeInTheDocument(),
     );
-    // Honest framing: capability state, not health (plan 08) — the note
+    // Honest framing: zero recorded attacks is a data point, never evidence
+    // of health, and here nothing could have been filed at all — the note
     // explains WHY the chain cannot fire (design), and the zero-count hint
     // also refuses to equate zero with health.
     expect(screen.getByText(/cannot fire by design/)).toBeInTheDocument();
@@ -761,8 +768,9 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
     expect(within(penalty).getByText('vat_1')).toBeInTheDocument();
 
     // Channel 2: TWO facet containers — one per policy hash — and each hash
-    // confined to its own facet (cross-policy series ban, plan 08 §Direct
-    // answer).
+    // confined to its own facet: a utility policy defines what a score
+    // MEANS, so observations under different hashes are measurements on
+    // different instruments and are never one continuous series.
     const facets = screen.getAllByTestId(/^policy-facet-/);
     expect(facets).toHaveLength(2);
     const facetA = screen.getByTestId(`policy-facet-${POLICY_A}`);
@@ -824,8 +832,9 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
     expect(within(facet2).queryByText(POLICY_B)).toBeNull();
     expect(within(facet3).getByText(POLICY_B)).toBeInTheDocument();
     expect(within(facet3).queryByText(POLICY_A)).toBeNull();
-    // Explicit refusal of naive cross-epoch comparison (plan 08 truth rule)
-    // instead of a comparison widget.
+    // Explicit refusal of naive cross-epoch comparison instead of a
+    // comparison widget: epochs with different utility policy hashes are not
+    // directly comparable, so each renders as its own facet.
     expect(screen.getByText(/not directly comparable/)).toBeInTheDocument();
 
     // Committed boundary: real status-change counts, with the source-less
@@ -915,8 +924,10 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
     await waitFor(() => expect(screen.getByRole('tablist')).toBeInTheDocument());
     await openTab('Paper Archive');
 
-    // Both axes side by side in the tab (plan 08 §Paper Archive): the run
-    // executes under ari_rqgm while its paper mode is linear.
+    // Execution mode and paper mode are INDEPENDENT axes — all four
+    // combinations are valid — so both chips render side by side and the
+    // bare word "mode" is never used alone: the run executes under ari_rqgm
+    // while its paper mode is linear.
     const strip = await screen.findByTestId('paper-mode-strip');
     expect(within(strip).getByText('Execution mode:')).toBeInTheDocument();
     expect(within(strip).getByText('ari_rqgm')).toBeInTheDocument();
@@ -971,8 +982,8 @@ describe('GovernancePage (gui_refresh Wave 4a read-only RQGM workspace)', () => 
     expect(within(strip).getByText('rqgm_archive')).toBeInTheDocument();
     // Recorded state: no derived-from-absence warning.
     expect(within(strip).queryByText(/derived from that absence/)).toBeNull();
-    // anchor.enabled=false => the plan-08 note (reviewed best-of-N + writer
-    // sanctions cannot fire).
+    // anchor.enabled=false => the consequence is carried verbatim: the
+    // archive is reviewed best-of-N and writer sanctions cannot fire.
     const anchorCard = screen.getByTestId('paper-anchor-card');
     expect(within(anchorCard).getByText('anchor disabled')).toBeInTheDocument();
     expect(

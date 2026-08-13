@@ -1,6 +1,9 @@
-// ARI Dashboard – Configuration Studio (gui_refresh task 06 Wave 4d;
-// plans 06 §Workspace structure / §Interaction model / §Schema-driven
-// rendering, 05 §Configuration API).
+// ARI Dashboard – Configuration Studio (gui_refresh task 06 Wave 4d).
+// One generated form over the config API: the server's field registry — not
+// this page — decides which control every leaf gets, and each write is a
+// path-partial PATCH guarded by If-Match, so a stale write is refused rather
+// than allowed to win. The screen-level contract is in
+// docs/guides/configuration_studio.md, "Editing in the Studio (`#/studio`)".
 //
 // The EDITING extension of the read-only ConfigBrowser (Wave 3b): the same
 // canonical field registry (GET /api/v1/config/schema) now drives a
@@ -12,8 +15,9 @@
 //   - TEMPLATE / DRAFT scope (?template=<id> / ?draft=<id>): pick or create
 //     a run template / run draft and edit its values through the identical
 //     form (same registry validation server-side);
-//   - field controls are generated from metadata (plan 06 §Schema-driven
-//     rendering): enum -> select, bool -> switch, int/float -> number
+//   - field controls are generated from metadata, stopping at the first
+//     match — sensitivity outranks enum, and enum outranks the declared
+//     type: enum -> select, bool -> switch, int/float -> number
 //     input, str -> text input, secret_reference -> SecretField (wired to
 //     the write-only PUT /api/v1/secrets/{secret_id} + readiness display),
 //     composite types -> explicitly disabled with a reason (custom editors
@@ -31,15 +35,18 @@
 // tuning leaf stays read-only (collapsed, shared ConfigBrowser rows) with
 // its effective value visible.
 //
-// Presentation (plan 02: v2 workspaces are built from semantic tokens and
-// shared primitives only) — actions are the shared <Button> (primary for the
+// Presentation (v2 workspaces are built from semantic tokens and shared
+// primitives only) — actions are the shared <Button> (primary for the
 // affirmative one, outline for its secondary); the scope bar is the shared
 // <TabStrip> paired with this page's role="tabpanel"; the category rail is
 // the shared <NavRail> (a list with aria-current). Both composites are
 // NAVIGATION, so neither is given the .btn action treatment.
 //
-// Wave 4e adds the LAUNCH flow to the DRAFT scope (LaunchPanel.tsx —
-// plan 06 §Launch protocol): resolve-config -> validate -> immutable
+// Wave 4e adds the LAUNCH flow to the DRAFT scope (LaunchPanel.tsx). The
+// order is fixed and each step gates the next — a run launches only from a
+// draft that validated clean, carries a goal, and whose immutable summary
+// was confirmed (docs/guides/configuration_studio.md, "The launch flow"):
+// resolve-config -> validate -> immutable
 // review -> idempotent POST /api/v1/runs -> canonical
 // '#/overview?run=<run_id>' redirect. Drafts now carry an optional GOAL
 // (create-time document field the launch materializes as experiment.md).
@@ -114,7 +121,10 @@ type ScopeTabId = 'project' | 'template';
 /** DOM id namespace shared by the scope tabs and their panel. */
 const SCOPE_TABS_ID = 'studio-scope';
 
-// ── field classification (plan 06; ADR-09 Execution section) ────────────
+// ── field classification (ADR-09 Execution section) ─────────────────────
+// A field whose category is 'Execution mode', or whose path starts with
+// 'rqgm.', leaves the generic per-category table and is routed into the
+// Execution section before that table is built at all.
 
 /** Execution section: the 4 selectable mode leaves + the read-only rqgm.* tree. */
 function isExecutionField(field: ConfigFieldV1): boolean {
@@ -361,8 +371,9 @@ export function ConfigStudioPage() {
     } catch (err) {
       const e = toApiError(err);
       if (e.code === 'revision_conflict') {
-        // Stale If-Match (plan 06: revision conflict -> explicit reload,
-        // unsaved edits stay local so nothing is silently discarded).
+        // Stale If-Match (revision conflict -> explicit reload; unsaved
+        // edits stay in the local buffer, so a conflict discards nothing
+        // and overwrites nothing).
         setConflict(true);
       } else {
         const perPath = patchErrorsFromDetails(e.details);
@@ -374,7 +385,7 @@ export function ConfigStudioPage() {
     }
   };
 
-  // ── model suggestions from the server catalog (plan 06) ───────────────
+  // ── model suggestions from the server catalog — never a frontend list ──
 
   const providers = useMemo(() => catalogQ.data?.providers ?? [], [catalogQ.data]);
   const activeProvider = String(
@@ -493,7 +504,8 @@ export function ConfigStudioPage() {
       );
     }
     // Composite (list/dict/nested model): explicitly disabled with a reason
-    // (plan 06: unavailable controls show why — never silently hidden).
+    // (an unavailable control shows its value and names the reason it is
+    // not editable here — never silently hidden).
     return (
       <div>
         <input
@@ -544,7 +556,8 @@ export function ConfigStudioPage() {
   const activeFields = editableFields.filter((f) => f.category === activeCategory);
   const executionActive = activeCategory === EXECUTION_GROUP;
 
-  // ── navigation composites (shared primitives, plan 02) ────────────────
+  // ── navigation composites: shared primitives, and NAVIGATION never gets
+  //    the .btn action treatment ─────────────────────────────────────────
 
   // Scope tabs. The draft scope has no tab: a draft is entered from the draft
   // pickers below, exactly as before.
@@ -630,7 +643,9 @@ export function ConfigStudioPage() {
               onNavigate={setStudioHash}
             />
 
-            {/* Revision-conflict reload banner (plan 06 §Interaction model). */}
+            {/* Revision-conflict reload banner: a 409 neither overwrites nor
+                discards — it offers a reload to the current revision while
+                the pending edits stay in the local buffer. */}
             {conflict && (
               <Card>
                 <div role="alert" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -700,7 +715,9 @@ export function ConfigStudioPage() {
                   </Card>
                 )}
 
-                {/* Bottom save bar (plan 06 §Interaction model). */}
+                {/* Bottom save bar: edits stay pending until an explicit
+                    Save — there is no autosave — and the revision the next
+                    write will echo as If-Match stays on screen. */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
                   <Button
                     onClick={() => void save()}
@@ -730,9 +747,10 @@ export function ConfigStudioPage() {
                   </span>
                 </div>
 
-                {/* Launch flow — DRAFT scope only (Wave 4e, plan 06 §Launch
-                    protocol). Stepper goal -> review -> launch over the
-                    MN-10 idempotent POST /api/v1/runs. */}
+                {/* Launch flow — DRAFT scope only: a run is launched from a
+                    draft, never from the project or template scope. Stepper
+                    goal -> review -> launch over the MN-10 idempotent
+                    POST /api/v1/runs. */}
                 {scope === 'draft' && draftQ.data !== undefined && (
                   <LaunchPanel
                     draftId={params.draft}

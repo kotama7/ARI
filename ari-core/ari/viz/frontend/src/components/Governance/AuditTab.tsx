@@ -1,12 +1,15 @@
-// ARI Dashboard – Governance Audit tab (gui_refresh task 08 Wave 4a; plan
-// 08 §Audit and Raw Sources).
+// ARI Dashboard – Governance Audit tab (gui_refresh task 08 Wave 4a).
+// Answers "show me the raw log" — see docs/guides/rqgm_gui.md, 'Audit —
+// "show me the raw log"'.
 //
 // Cursor-paged table over `rqgm_audit.jsonl` with record_type/epoch filters
 // and a "load more" appender. The cursor is the backend's stable byte
 // offset, so appended pages never duplicate rows of the append-only log;
 // every row names its raw source (`rqgm_audit.jsonl` + byte offset) so the
-// UI aggregate stays traceable to the artifact (plan 08 §Truth rules: UI
-// aggregate views must always trace back to raw events/artifacts). A broken hash chain flips the
+// UI aggregate stays traceable to the artifact: every aggregate view must
+// carry a drill-down handle back to the raw bytes it summarizes, and a
+// filter change starts a fresh page chain so a filtered view can never
+// inherit rows from a differently-filtered one. A broken hash chain flips the
 // shared DegradedState — the rows still render, honestly flagged.
 
 import { useState } from 'react';

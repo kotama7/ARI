@@ -1,5 +1,8 @@
-// ARI Dashboard – Overview LogsPanel (gui_refresh task 07 tail; plan 07
-// §Artifacts, logs, and diagnostics + §Run Overview and Live Monitor P4).
+// ARI Dashboard – Overview LogsPanel (gui_refresh task 07 tail). The P4
+// disclosure rung of the run Overview: while the panel is collapsed nothing
+// is fetched at all — a rung that renders and then hides its content is not
+// a rung. See docs/concepts/gui_architecture.md, "11. Disclosure levels:
+// what a screen shows before you ask".
 //
 // Collapsible cursor-based log explorer over the run's append-only
 // `{ckpt}/ari.log`, embedded in the Overview page (P4 disclosure layer —
@@ -8,15 +11,17 @@
 // and no duplicate, and the server-side case-insensitive `grep` filter
 // never destabilizes cursors (it selects returned lines, not consumed
 // bytes). Committed lines only — a partial trailing line is served once
-// its newline lands. Nothing here ever reads the whole file (plan 07: a
-// 5 MB whole-file read must not be the primary UX).
+// its newline lands. Nothing here ever reads the whole file: the cost of
+// opening this panel is bounded by the page size and the reader's own scan
+// window, not by how long the run has been writing.
 //
 // Tail-follow: the toggle wires the panel to the run event stream the
 // OverviewPage already subscribes (topics run+tree) — each delivered event
 // (`lastEventAt` prop) triggers one `next_cursor` fetch, so following is
 // event-driven, not a timer. While following with the stream down the
-// panel shows its own StaleDataBanner (the log view may lag; plan 01:
-// never presented as "run stopped").
+// panel shows its own StaleDataBanner: a dropped stream is a freshness
+// problem, never a state change, so the last page stays on screen under a
+// staleness banner and a disconnect is never presented as "the run stopped".
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useT } from '../../i18n';
@@ -103,8 +108,10 @@ export function LogsPanel({ runId, lastEventAt, connectionState }: LogsPanelProp
     if (expanded && present === null && error === null) void fetchPage();
   }, [expanded, present, error, fetchPage]);
 
-  // Tail-follow: every delivered run event triggers one next_cursor fetch
-  // (events are invalidations, never data — plan 04).
+  // Tail-follow: every delivered run event triggers one next_cursor fetch.
+  // An event is an invalidation, never data: nothing is ever rendered FROM
+  // an event, so duplicates and reordering are harmless — the event only
+  // decides when to ask the snapshot endpoint again.
   useEffect(() => {
     if (!expanded || !follow || lastEventAt === null) return;
     void fetchPage();

@@ -3,8 +3,17 @@ import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import WorkflowPage from '../WorkflowPage';
 
 /**
- * Wave-4d revision-aware saving (gui_refresh task 07, plan 07 §Workflow
- * Studio — the 2s blind-overwrite autosave is retired):
+ * Revision-aware workflow saving (gui_refresh Wave 4d).
+ *
+ * The rule: a workflow save states which version it edits, so a save that was
+ * composed against stale bytes is REFUSED rather than applied on top of
+ * someone else's write. That retires the old autosave, whose 2s timer pushed
+ * the editor's buffer over whatever happened to be on disk. `revision` here is
+ * a digest of the bytes the GET served and `base_revision` echoes it back on
+ * the write (docs/reference/rest_api.md, "Behaviour changes on the legacy
+ * surface (MN notes)", MN-3) — a different mechanism from the `gui_store/`
+ * documents' integer revision + `If-Match`, but the same refusal semantics.
+ * What the tests pin:
  *
  * - every save POSTs the `base_revision` loaded from GET /api/workflow and
  *   adopts the `revision` returned by a successful write (chained saves);

@@ -1,6 +1,6 @@
-"""Idempotent launch — ``POST /api/v1/runs`` (gui_refresh tasks 04/06
-Wave 4e, MN-10; plan 04 §Run identity and lifecycle + plan 06 §Launch
-protocol — see the MN-10 migration note for the full before/after).
+"""Idempotent launch — ``POST /api/v1/runs`` (Wave 4e, MN-10): run identity
+is minted server-side and one idempotency key maps to exactly one run — see
+the MN-10 migration note for the full before/after.
 
 The canonical v1 launch path; the legacy ``POST /api/launch``
 (``api_experiment.py``, pinned by frozen source-inspection contract tests)
@@ -29,8 +29,8 @@ probe before the accepted response), the idempotency claim (create-only
 duplicate POST replays the SAME run_id, ``idempotent_replay: true``, and
 spawns nothing), materialization (``experiment.md`` from the draft goal,
 bundled ``workflow.yaml`` CoW seed, legacy-compatible
-``launch_config.json``, ``resolved_config.json`` — the plan-05 manifest
-becomes REAL at launch), then the SAME CLI subprocess as the legacy path
+``launch_config.json``, ``resolved_config.json`` — the resolved manifest
+stops being a preview and becomes the run's committed configuration), then the SAME CLI subprocess as the legacy path
 (``ARI_CHECKPOINT_DIR`` pinned; GUI-layer values translated via the
 documented ``ENV_OVERRIDES`` family only, locked paths structurally
 excluded).  Lifecycle rides run-scoped ``{ckpt}/launch_events.jsonl``
@@ -38,7 +38,8 @@ excluded).  Lifecycle rides run-scoped ``{ckpt}/launch_events.jsonl``
 claim release on spawn error) — chosen over ``viz_access.jsonl``, the
 ACTIVE checkpoint's HTTP access log.  A ``run`` bus event publishes after
 spawn; the response never waits on the subprocess (target < 1 s), and the
-GLOBAL active checkpoint is deliberately NOT switched (plan 04).
+GLOBAL active checkpoint is deliberately NOT switched — launching a run never
+changes which checkpoint the rest of the GUI is looking at.
 """
 
 from __future__ import annotations
@@ -461,8 +462,9 @@ def _materialize(
     profile, draft_id: str, display_name, key,
 ) -> tuple[Path, dict]:
     """Checkpoint dir + all launch artifacts (before spawn); returns
-    ``(ckpt, manifest)`` with the minted ``run_id`` filled in — plan 05:
-    the resolved manifest becomes REAL at launch."""
+    ``(ckpt, manifest)`` with the minted ``run_id`` filled in — the resolved
+    manifest stops being a preview here and becomes the run's committed
+    configuration."""
     ckpt = PathManager(workspace_root).ensure_checkpoint(run_id)
     (ckpt / "experiment.md").write_text(goal, encoding="utf-8")
 
@@ -536,7 +538,8 @@ def _spawn_failure(
     store: GuiStore, key, ckpt: Path, run_id: str, exc: OSError
 ) -> dict:
     """Failed lifecycle event + claim release (a retry may relaunch) +
-    the typed 500 — plan 04: record partial mutation and recovery."""
+    the typed 500 — a partial mutation is always RECORDED together with its
+    recovery step, never silently left behind."""
     _append_launch_events(
         ckpt,
         [{"state": "failed", "run_id": run_id, "error": str(exc),
@@ -582,7 +585,8 @@ def launch_run(body: dict) -> dict:
     if err is not None:
         return err
 
-    # Mint run identity (plan 04: collision-resistant, server-side).
+    # Mint run identity — server-side and collision-resistant; a client
+    # never supplies a run_id, and display_name only seeds the slug half.
     workspace_root = RuntimePathResolver.resolve_workspace_root()
     slug = PathManager.slugify(_slug_source(display_name, goal)) or "experiment"
     run_id = (

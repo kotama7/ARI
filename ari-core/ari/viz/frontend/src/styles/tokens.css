@@ -126,8 +126,9 @@
   /* RQGM registry lifecycle — ONE token per implementation
    * status (the closed 10-value STATUS_VALUES vocabulary).
    * A separate state machine from the node score states
-   * above: registry badges never consume a --state-* token
-   * (gui_refresh task 08 / plan 08 §Governance state model).
+   * above — the two must never be mixed in one field or one
+   * legend, so registry badges never consume a --state-*
+   * token (gui_refresh task 08).
    * Values compose existing primitives — no new hues. */
   --reg-candidate:var(--muted);
   --reg-validated:var(--blue);

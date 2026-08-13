@@ -15,8 +15,11 @@ export async function fetchWorkflow(): Promise<WorkflowData> {
   return get<WorkflowData>('/api/workflow');
 }
 
-// Workflow saves are revision-aware (gui_refresh Wave 4d, plan 07 §Workflow
-// Studio): GET /api/workflow serves a weak `revision` (sha256[:12] of the
+// Workflow saves are revision-aware (gui_refresh Wave 4d), because a write
+// here is never optimistic: nothing predicts the result into local state, the
+// server's answer is what the UI adopts, and a refused save keeps the unsaved
+// edits rather than quietly winning or discarding them.
+// GET /api/workflow serves a weak `revision` (sha256[:12] of the
 // served workflow.yaml bytes); write calls MAY echo it back as
 // `base_revision`. A stale base_revision is refused server-side with HTTP
 // 409 without writing — the throwing `post` regime surfaces that as

@@ -1,5 +1,6 @@
 """Cursor-based run-log read model for ``/api/v1`` (gui_refresh task 07
-tail — plan 07 §Artifacts, logs, and diagnostics).
+tail): the log is a bounded, cursor-paged diagnostic read, never a
+whole-file dump.
 
 ``GET /api/v1/runs/{run_id}/logs?cursor=&limit=&grep=`` pages over the
 append-only plain-text ``{ckpt}/ari.log`` (the FileHandler ``ari.cli.run``
@@ -18,11 +19,11 @@ Contract (documented here because it is deliberate, not incidental):
   chain never gaps or duplicates when the filter changes between requests.
   The filter is applied while scanning forward up to ``limit`` matches, not
   to a pre-sliced page.
-- **committed-only** (plan 04): a trailing line without ``\\n`` is never
-  emitted; ``next_cursor`` parks at its first byte so a later request
-  serves the line once its newline lands.
+- **committed-only**: a line is served only once its newline has landed, so
+  a trailing line without ``\\n`` is never emitted; ``next_cursor`` parks at
+  its first byte and a later request serves the line when it completes.
 - **bounded**: each request scans at most :data:`SCAN_WINDOW_BYTES` (1 MiB)
-  from the cursor — never the whole file (plan 07: a 5 MB whole-file read
+  from the cursor — never the whole file (a multi-megabyte whole-file read
   must not be the primary UX).  If the window ends before ``limit`` matches
   were found, the page returns what was found with ``eof=false`` and the
   advanced ``next_cursor`` so the client continues; no request ever scans
@@ -50,8 +51,9 @@ LOG_FILENAME = "ari.log"
 DEFAULT_LIMIT = 200
 MAX_LIMIT = 1000
 
-#: Per-request scan bound: at most this many bytes are read from the cursor
-#: (plan 07 bounded reads). 1 MiB comfortably holds thousands of log lines.
+#: Per-request scan bound: at most this many bytes are read from the cursor,
+#: so no request ever scans unboundedly. 1 MiB comfortably holds thousands
+#: of log lines.
 SCAN_WINDOW_BYTES = 1 << 20
 
 #: Sanity cap on the grep needle (it is a substring, not a regex).

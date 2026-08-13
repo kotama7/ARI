@@ -9,7 +9,8 @@ dependency. This package supplies the pieces the stdlib server lacks:
   retryable}`` transported via the existing ``routes.py`` ``_status`` pop
   convention;
 - ``dto``     — pydantic v2 response models, every one carrying
-  ``schema_version`` (additive-change policy, plan 04 §API principles);
+  ``schema_version`` (additive-change policy: a field is added, never
+  removed or retyped, so an older client keeps parsing);
 - ``queries`` — pure, filesystem-only read functions (no ``viz.state``
   globals, no ``os.environ`` writes — GETs have no side effects);
 - ``router``  — declarative ``(method, path_template, handler)`` route table

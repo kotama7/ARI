@@ -23,7 +23,10 @@ import {
 
 /**
  * ConfigStudioPage (gui_refresh task 06 Wave 4d — schema-driven
- * Configuration Studio, non-governance slice; plans 05/06).
+ * Configuration Studio, non-governance slice). Controls are generated from
+ * the server's field metadata rather than hand-placed, and writes are never
+ * optimistic: the server's answer (a new revision, or a 409) is what the UI
+ * adopts.
  *
  * The typed v1 fetchers are mocked at the module boundary (the react-query
  * hooks and ApiErrorV1 normalization stay REAL), pinning:
@@ -367,7 +370,9 @@ describe('ConfigStudioPage (gui_refresh task 06 Wave 4d)', () => {
     await waitFor(() =>
       expect(screen.getByText('Revision conflict')).toBeInTheDocument(),
     );
-    // Unsaved edits stay local (plan 06: nothing is silently discarded).
+    // Unsaved edits stay local: a conflicted save raises an explicit reload
+    // affordance and keeps the edits, rather than quietly winning over the
+    // newer document or discarding what the user typed.
     expect(screen.getByText('1 unsaved edit(s)')).toBeInTheDocument();
 
     const before = projectMock.mock.calls.length;

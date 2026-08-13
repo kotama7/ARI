@@ -1,6 +1,9 @@
 // ARI Dashboard – TreeV2 level-of-detail visible-set computation
-// (gui_refresh task 07 tail; plan 07 §Tree workspace: large trees use
-// level-of-detail, viewport culling, and a virtualized side table).
+// (gui_refresh task 07 tail). Large trees stay usable by reducing what is
+// RENDERED — level-of-detail, viewport culling, a virtualized side table —
+// and never by reducing what was fetched: the tree endpoint returns the whole
+// node list in one body, so the visible set is a view concern only and the
+// full tree is always in hand.
 //
 // Pure functions only — the page owns the expand state and calls
 // computeVisibleRows() to derive ONE visible set shared by BOTH views:
@@ -15,7 +18,9 @@
 // than LOD_DEPTH_LIMIT — i.e. render structural depth <= 3 — PLUS the
 // selected node's ancestor path and the selected node's children, so a
 // deep URL selection is always visible with its context. The reduction is
-// never silent (plan 02 truth rules): the page shows an explicit
+// never silent — a view that is showing less than it has must say so, so
+// absence on screen is never mistaken for absence in the data: the page
+// shows an explicit
 // "showing N of M nodes (depth-limited)" banner with an [expand all]
 // opt-in whenever rows.length < total.
 //

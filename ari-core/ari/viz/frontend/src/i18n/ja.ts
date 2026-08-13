@@ -18,7 +18,10 @@ const ja: Record<string, string> = {
   nav_group_research: '現在の実験',
   nav_group_quality: '評価・統治',
   nav_group_system: 'システム',
-  // Run Overview workspace (gui_refresh Wave 4b — plan 07 P1/P2 層)
+  // Run Overview workspace (gui_refresh Wave 4b)
+  // 開示レベル P1/P2 の文言。P1 = run の状態・現在フェーズ・詰まっている理由・
+  // 次のアクション、P2 = スコア要約とツリー/エポック/主要成果物への導線。
+  // どちらも操作なしで見える層なので、ここの文言は畳んだ先に隠さない。
   ov_title: 'Run 概要',
   ov_subtitle: '単一 run のライフサイクル・現在フェーズ・次のアクション',
   ov_no_run: 'run が未選択です — #/overview?run=<run_id> の形式で開いてください。',
@@ -35,7 +38,9 @@ const ja: Record<string, string> = {
     'ガバナンス記録が劣化または整合性エラーを報告しています。ガバナンスワークスペースで確認してください — これはガバナンス成果物の状態であり、研究の失敗を意味しません。',
   ov_phase_gov_separate_note:
     '研究フェーズとガバナンスステージは別々のタイムラインであり、一方が他方を意味することはありません。',
-  // Cursor log explorer (gui_refresh task 07 tail — plan 07 P4 層)
+  // Cursor log explorer (gui_refresh task 07 tail)
+  // 開示レベル P4（トレース・ログ・生イベントへの導線）は 1〜2 操作先に置く層。
+  // 畳んでいる間は取得そのものを行わない（隠すだけの層は P4 とは呼ばない）。
   ov_logs_title: 'ログ',
   ov_logs_show: 'ログを表示',
   ov_logs_hide: 'ログを隠す',
@@ -52,7 +57,9 @@ const ja: Record<string, string> = {
   projects_paper_badge: '論文あり',
   projects_paper_link: '論文・成果',
   projects_results_link: '成果',
-  // Tree v2 workspace (gui_refresh Wave 4c — plan 07 §Tree workspace)
+  // Tree v2 workspace (gui_refresh Wave 4c)
+  // run 明示・読み取り専用のツリー。選択（run/ノード）は URL のハッシュクエリが
+  // 唯一の真実で、run 未選択時はエラーではなく URL 形式を示す案内を出す。
   tree2_subtitle: 'Run 明示の BFTS ノードグラフ（ノード選択を URL で共有可能）',
   tree2_no_run: 'Run が未選択です — #/tree2?run=<run_id> の形式で開いてください。',
   tree2_no_run_hint: 'Projects ページから run を開くとツリーを探索できます。',
@@ -88,7 +95,9 @@ const ja: Record<string, string> = {
   tree2_lod_showing_all: '全 {total} ノードを表示中',
   tree2_lod_restore: '深さ制限に戻す',
   tree2_table_label: 'ツリーテーブル',
-  // Ideas v2 workspace (gui_refresh Wave 4c — plan 07 §Ideas, claims, and evidence)
+  // Ideas v2 workspace (gui_refresh Wave 4c)
+  // run 明示・読み取り専用。アイデアと仮説は、それを支える根拠（idea.json と
+  // 実際に探索されたツリーノード）と一緒に示し、裸の主張として出さない。
   ideas2_title: 'アイデア',
   ideas2_subtitle: 'run 明示のアイデア・仮説・戦略（読み取り専用）',
   ideas2_no_run: 'run が未選択です — #/ideas2?run=<run_id> の形式で開いてください。',
@@ -120,7 +129,10 @@ const ja: Record<string, string> = {
   ideas2_strategy_title: 'アイデア戦略の分布',
   ideas2_strategy_explored: 'ノードを探索済み',
   ideas2_tree_empty: 'この run のツリーノードはまだ記録されていません。',
-  // Results v2 workspace (gui_refresh Wave 4d — plan 07 §Evidence, Results, and PaperBench)
+  // Results v2 workspace (gui_refresh Wave 4d)
+  // run 明示の読み取り専用サマリ（レビュースコア・再現チェーン・公開系譜）。
+  // 論文の編集と公開操作は既存 Results ワークスペース側に残し、ここからは
+  // リンクで渡すだけで、何も書き換えない。
   results2_title: '論文・成果',
   results2_subtitle: 'この実験で生成した論文、評価結果、公開履歴',
   results2_no_run: 'run が未選択です — #/results2?run=<run_id> の形式で開いてください。',
@@ -264,7 +276,11 @@ const ja: Record<string, string> = {
   studio_none_option: '（なし）',
   studio_revision: 'リビジョン',
   studio_request_id: 'リクエストID',
-  // Studio launch flow (gui_refresh task 06 Wave 4e — plan 06 §Launch protocol)
+  // Studio launch flow (gui_refresh task 06 Wave 4e)
+  // 起動手順はゴール → レビュー → 起動の順に固定。検証がクリーンで、ドラフトに
+  // ゴールがあり、不変サマリのレビューが明示的に確認された時だけ起動でき、
+  // その承認は 1 つの idempotency key を発行する。ドラフト編集やプロファイル
+  // 変更など承認の前提が変われば、承認もキーも破棄して取り直す。
   studio_goal_placeholder: '研究ゴール（experiment.md になります）',
   studio_launch_title: '起動',
   studio_launch_step_goal: 'ゴール',
@@ -325,7 +341,10 @@ const ja: Record<string, string> = {
   projects_summary_attention: '要確認',
   projects_runs_heading: '研究実験',
   projects_actions: '開く',
-  // Governance workspace (gui_refresh Wave 4a — 読み取り専用 RQGM, plan 08)
+  // Governance workspace (gui_refresh Wave 4a — 読み取り専用 RQGM)
+  // コミット済みのガバナンス成果物だけを読む。GUI からガバナンス状態を書き換え
+  // ないこと、および RQGM 成果物を持たない run は「エラー」ではなく capability
+  // 状態として理由付きで示すことが、この画面の文言の前提。
   gov_title: 'ガバナンス',
   gov_subtitle: '読み取り専用の RQGM ガバナンスとスコア系譜',
   gov_no_run: 'run が未選択です — #/governance?run=<run_id> の形式で開いてください。',
@@ -461,7 +480,9 @@ const ja: Record<string, string> = {
   gov_audit_empty: '現在のフィルタに一致する監査イベントはありません。',
   gov_audit_total: '件',
   gov_audit_end: 'コミット済みログの末尾です。',
-  // Governance workspace Wave 4b (plan 08)
+  // Governance workspace Wave 4b — エポック・進化・論文アーカイブのタブ。
+  // スコアはポリシーアイデンティティと切り離さず、効用ポリシーハッシュが
+  // 異なるスコアを 1 本の系列にまとめない（別ファセットとして並べる）。
   gov_tab_epochs: 'エポックタイムライン',
   gov_tab_evolution: '進化',
   gov_tab_paper: '論文アーカイブ',

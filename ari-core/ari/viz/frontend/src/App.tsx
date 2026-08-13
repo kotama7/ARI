@@ -36,26 +36,38 @@ export const PAGE_MAP: Record<string, LazyExoticComponent<ComponentType>> = (() 
 // gui_v2: false (ARI_GUI_V2=0/false — the env kill-switch; owner: task 03,
 // removal gate: G6), these resolve to Home exactly like an unknown hash, so
 // the legacy surface stays fully reachable without a redeploy.
-// Wave 2b: 'projects' (the first v2 vertical slice, plan 07 §Projects and
-// run portfolio) hangs off this gate; its nav entry is filtered in Sidebar
+// Membership here is the ONLY capability gate a route gets: there is no
+// per-route capability predicate and no permission predicate, so this set
+// plus the registry's guiV2 marker is the whole mechanism. Which nav slot
+// each workspace occupies is listed in docs/guides/dashboard.md, "The
+// workspace map".
+// Wave 2b: 'projects' (the first v2 vertical slice — the run portfolio,
+// #/projects) hangs off this gate; its nav entry is filtered in Sidebar
 // via the registry's guiV2 marker.
-// Wave 3b: 'config' (read-only effective-config browser, plans 05/06) joins
-// the same gate.
+// Wave 3b: 'config' (read-only effective-config browser — it shows what one
+// run's configuration resolved to, every leaf beside the provenance of its
+// value, and offers no control that writes) joins the same gate.
 // Wave 4a: 'governance' (read-only RQGM governance & score lineage
-// workspace, plan 08) joins the same gate.
-// Wave 4b: 'overview' (v2 run Overview workspace, plan 07 §Run Overview and
-// Live Monitor) joins the same gate.
-// Wave 4c: 'tree2' (v2 Tree workspace, plan 07 §Tree workspace — route id
-// 'tree_v2') joins the same gate. The set holds DISPATCH KEYS (route paths,
+// workspace — every route under /api/v1/runs/{run_id}/rqgm/* is a GET, so
+// this shell can display governance but nothing in it can perform
+// governance) joins the same gate.
+// Wave 4b: 'overview' (v2 run Overview workspace — the per-run landing page
+// carrying lifecycle, research phase and, separately, governance stage)
+// joins the same gate.
+// Wave 4c: 'tree2' (v2 Tree workspace — route id 'tree_v2') joins the same
+// gate. The set holds DISPATCH KEYS (route paths,
 // which parseHash returns); for every earlier entry path === id, tree_v2 is
 // the first route where they differ.
-// Wave 4c (Ideas): 'ideas2' (v2 Ideas workspace, plan 07 §Ideas, claims,
-// and evidence — route id 'ideas_v2') joins the same gate.
-// Wave 4d (Results): 'results2' (v2 Results/EAR workspace, plan 07
-// §Evidence, Results, and PaperBench — route id 'results_v2') joins the
+// Wave 4c (Ideas): 'ideas2' (v2 Ideas workspace, read-only over idea.json
+// and the run tree — route id 'ideas_v2') joins the same gate.
+// Wave 4d (Results): 'results2' (v2 Results/EAR workspace, a read-only
+// summary of review scores, reproducibility chain and publication lineage —
+// route id 'results_v2') joins the
 // same gate.
-// Wave 4d (task 06): 'studio' (Configuration Studio non-governance slice,
-// plan 06) joins the same gate. It gets its OWN nav slot — the legacy
+// Wave 4d (task 06): 'studio' (Configuration Studio non-governance slice —
+// it edits config DOCUMENTS through the server's field registry, so the
+// governance registry and transition surfaces stay read-only) joins the
+// same gate. It gets its OWN nav slot — the legacy
 // 'settings' route is NOT replaced yet (cutover is a later slice).
 export const V2_ONLY_ROUTES: ReadonlySet<string> = new Set<string>([
   'projects',
@@ -121,7 +133,9 @@ function Router({ guiV2 }: { guiV2: boolean }) {
 export default function App() {
   // Fetched once on mount. Defaults ON, and STAYS on when the fetch fails:
   // this is a loopback tool, so an API hiccup must never drop the user into
-  // the fallback shell (gui_refresh feature-flag policy, plan 10 §Wave 1).
+  // the fallback shell. This is the ADR-07 fail-open rule: a flag governing
+  // READ-ONLY UI fails open, so a failed capability fetch must never hide
+  // the surface — and fail-open is never extended to write operations.
   const [guiV2, setGuiV2] = useState<boolean>(true);
 
   useEffect(() => {

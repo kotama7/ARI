@@ -1,5 +1,7 @@
-// ARI Dashboard – shared vertical navigation rail (gui_refresh plan 02: a v2
-// workspace is composed from semantic tokens + shared primitives only).
+// ARI Dashboard – shared vertical navigation rail. A v2 workspace is composed
+// from semantic tokens and shared primitives only: no screen defines its own
+// look for something another screen already has, which is why this lives here
+// rather than in the workspace that needed it first.
 //
 // A rail selects WHICH slice of a workspace is shown — navigation, not an
 // action — so it is deliberately NOT the shared <Button> (an action

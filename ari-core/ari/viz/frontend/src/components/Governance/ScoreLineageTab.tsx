@@ -1,5 +1,9 @@
 // ARI Dashboard – Governance Score Lineage tab (gui_refresh task 08 Wave
-// 4a; plan 08 §Score Lineage / §Direct answer).
+// 4a). The tab answers one question directly — "why is this node's score what
+// it is?" — and answers it only from what the source records already hold:
+// no score is recomputed here, and a missing number renders as `unknown`,
+// never as 0. Channel definitions:
+// docs/reference/rqgm_gui_read_models.md, "The two score-rewrite channels".
 //
 // The TWO independent score channels of one node, never merged:
 //   - Channel 1 (adversarial penalty, within an epoch): a waterfall table —

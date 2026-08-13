@@ -1,8 +1,11 @@
-// ARI Dashboard – Governance Evolution tab (gui_refresh task 08 Wave 4b;
-// plan 08 §Evolution and Frontier Repair).
+// ARI Dashboard – Governance Evolution tab (gui_refresh task 08 Wave 4b).
+// Answers "what was proposed, and what was actually adopted?" — see
+// docs/guides/rqgm_gui.md, 'Evolution — "what was proposed, and what was
+// actually adopted?"'.
 //
-// Evolution lineage grouped by kind (prompt / utility_policy / meta) with
-// the plan-08 separation kept visual and structural:
+// Evolution lineage grouped by kind (prompt / utility_policy / meta). A
+// proposal can never promote itself: adoption is a join, never a self-claim,
+// so the separation is kept visual and structural:
 //   - every row IS a raw candidate record (its own candidate-vocabulary
 //     status), labeled "candidate (not adopted)" unless the committed
 //     registry replay says otherwise;
@@ -14,7 +17,8 @@
 //   - meta outputs have adopted=null and render as inert provenance (an
 //     unadoptable observation), never as a failed candidate.
 // Presence flags are explicit: a missing log renders as "not present" —
-// never as an empty-but-healthy table (plan 08 §Truth rules).
+// never as an empty-but-healthy table, because "no candidates were proposed"
+// and "the log is not there" are different claims.
 
 import { useMemo } from 'react';
 import { useT } from '../../i18n';
@@ -53,8 +57,9 @@ function AdoptionCell({ entry }: { entry: RqgmEvolutionEntryV1 }) {
   }
   if (entry.adopted === false) {
     // Explicit label — a raw candidate is never displayed as an adopted
-    // policy, and never silently blank (plan 08: raw candidate, validated
-    // candidate and adopted policy must not be conflated).
+    // policy, and never silently blank: raw candidate, validation evidence
+    // and adopted policy are three separate claims and must not be
+    // conflated.
     return (
       <span style={{ color: 'var(--text-muted)' }}>
         {t('gov_evo_candidate_not_adopted')}
@@ -81,7 +86,9 @@ function EvolutionGroupCard({
     <Card title={t(KIND_TITLE_KEYS[kind])}>
       <div data-testid={`evo-group-${kind}`}>
         {!sourcePresent ? (
-          // Absent artifact, not an empty-but-healthy log (plan 08).
+          // Absent artifact, not an empty-but-healthy log: the source's
+          // presence flag drives this branch, so "not present" can never be
+          // read as "nothing was proposed".
           <EmptyState icon="🧬" message={absentMessage} />
         ) : entries.length === 0 ? (
           <EmptyState icon="🧬" message={t('gov_evo_group_empty')} />

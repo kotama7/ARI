@@ -1,8 +1,8 @@
 """Server-issued confirmation challenges for dangerous operations
 (gui_refresh task 09 Wave 5a — RR-P0-6 / RR-P0-9 / MN-6).
 
-Plan 09 §Dangerous operations: destructive endpoints must not fire on a
-client-side ``window.confirm`` (or a hardcoded ``confirmed: true``) alone.
+The rule: a destructive endpoint must never fire on a client-side
+``window.confirm`` (or a hardcoded ``confirmed: true``) alone.
 The server issues a short-lived challenge **bound to one action + target**;
 the destructive endpoint then requires that unexpired, unused challenge id
 back in its body. This turns "the client said it was sure" into "the server
@@ -64,8 +64,9 @@ from datetime import datetime, timedelta, timezone
 from .dto import ChallengeV1
 from .errors import error_response
 
-# The only actions a challenge can ever be minted for (plan 09 §Dangerous
-# operations: delete / stop are the risk-bearing legacy operations).
+# The only actions a challenge can ever be minted for — a CLOSED set of the
+# risk-bearing legacy operations (delete / stop); nothing else is
+# challengeable, and the set never grows implicitly.
 CHALLENGE_ACTIONS: tuple[str, ...] = (
     "delete-checkpoint",
     "stop-all",

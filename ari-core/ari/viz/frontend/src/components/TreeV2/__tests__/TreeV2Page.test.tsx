@@ -20,8 +20,11 @@ import { fetchNodeReport } from '../../../services/api/nodeReport';
 import type { TreeNode } from '../../../types';
 
 /**
- * TreeV2Page (gui_refresh task 07 Wave 4c — v2 Tree workspace; plan 07
- * §Tree workspace, plan 01 §Route model).
+ * TreeV2Page (gui_refresh task 07 Wave 4c — the v2 Tree workspace, reached at
+ * '#/tree2?run=<run_id>&node=<node_id>'. The URL is the navigation truth here:
+ * both run and node selection live in the hash query string, so the address bar
+ * is copyable state, and the legacy '#/tree' route stays registered beside it —
+ * the v2 route takes the sidebar slot, never the legacy hash).
  *
  * The typed v1 tree fetcher and the legacy node-report client are mocked at
  * the module boundary (react-query hooks and page logic stay REAL). The

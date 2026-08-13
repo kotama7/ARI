@@ -1,6 +1,9 @@
-// ARI Dashboard – Studio launch flow (gui_refresh task 06 Wave 4e;
-// plan 06 §Run draft state machine / §Validation and review / §Launch
-// protocol; backend MN-10 POST /api/v1/runs).
+// ARI Dashboard – Studio launch flow (gui_refresh task 06 Wave 4e; backend
+// MN-10 POST /api/v1/runs). The launch order is fixed and each step's output
+// is the next step's input: resolve -> validate -> immutable review ->
+// idempotent create -> canonical redirect. No step may be skipped, nothing
+// spawns before validation, and the run identity always comes back from the
+// server rather than being inferred on the client.
 //
 // The DRAFT-scope extension of the ConfigStudioPage: the full 9-state run
 // draft machine narrows to what exists in this slice — draft editing is
@@ -65,9 +68,11 @@ import {
 } from './modeIntents';
 import { ValidationSummary, patchErrorsFromDetails } from './ValidationSummary';
 
-// New-run provenance sources beyond the ConfigBrowser map (plan 05 §New
-// run): the ConfigBrowser exports stay the base so badge semantics for the
-// shared sources (default/workflow/env) cannot drift.
+// New-run provenance sources beyond the ConfigBrowser map. A new-run
+// resolution has more layers than a post-hoc one (profile/project/template/
+// draft on top of default/workflow/env), but every leaf still names the layer
+// it came from; the ConfigBrowser exports stay the base so badge semantics
+// for the shared sources cannot drift between the two screens.
 const NEW_RUN_SOURCE_VARIANT: Record<string, BadgeVariant> = {
   ...SOURCE_VARIANT,
   profile: 'blue',
@@ -122,8 +127,9 @@ export function LaunchPanel({ draftId, goal, revision, fields }: LaunchPanelProp
   const [confirmed, setConfirmed] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [launchError, setLaunchError] = useState<ApiErrorV1 | null>(null);
-  // ONE idempotency key per review approval (plan 06: double-click and
-  // retry-after-failure replay the same key — a single spawn).
+  // ONE idempotency key per review approval: one approval may spawn at most
+  // one run, so a double-click and a retry after a failure replay the same
+  // key and the server returns the same run_id instead of spawning again.
   const keyRef = useRef<string | null>(null);
   const inFlightRef = useRef(false);
 
@@ -174,8 +180,10 @@ export function LaunchPanel({ draftId, goal, revision, fields }: LaunchPanelProp
     }
   };
 
-  // Diff vs defaults: every leaf whose provenance is NOT the bundled
-  // default layer (plan 06 §Validation and review: changed fields).
+  // Diff vs defaults: every leaf whose provenance is NOT the bundled default
+  // layer. The review shows what this launch changes, derived from the
+  // server's provenance map — never from the draft's own override list, which
+  // would miss a value a profile or template supplied.
   const changedRows = useMemo(() => {
     if (!resolved) return [];
     const provenance = resolved.provenance ?? {};
@@ -268,8 +276,9 @@ export function LaunchPanel({ draftId, goal, revision, fields }: LaunchPanelProp
         profile: profile === '' ? undefined : profile,
         idempotencyKey: keyRef.current,
       });
-      // Canonical redirect (plan 06 §Launch protocol step 6): the
-      // server-issued run_id — NO mtime/latest-checkpoint polling.
+      // Canonical redirect, the last step of the launch order: the run_id the
+      // server issued in its response — NO mtime/latest-checkpoint polling,
+      // which would race a concurrent launch onto the wrong run.
       window.location.hash = `#/overview?run=${encodeURIComponent(res.run_id)}`;
     } catch (err) {
       // The key survives for an idempotent retry of the same approval.
@@ -289,7 +298,9 @@ export function LaunchPanel({ draftId, goal, revision, fields }: LaunchPanelProp
   return (
     <section aria-label={t('studio_launch_title')} style={{ marginTop: 20 }}>
       <Card title={`🚀 ${t('studio_launch_title')}`}>
-        {/* Stepper: the narrowed draft state machine (plan 06). */}
+        {/* Stepper: the narrowed draft state machine — the fixed launch
+            order made visible, so the user can see which step is
+            outstanding rather than a disabled button with no reason. */}
         <ol
           style={{
             display: 'flex',
@@ -533,7 +544,9 @@ export function LaunchPanel({ draftId, goal, revision, fields }: LaunchPanelProp
             </Card>
           )}
 
-          {/* Immutable launch summary (plan 06: explicit review approval). */}
+          {/* Immutable launch summary: a launch is approved explicitly, over
+              a read-only rendering of exactly what will be launched — the
+              review can never be a live editing surface. */}
           <Card title={t('studio_launch_review_title')}>
             <dl
               style={{

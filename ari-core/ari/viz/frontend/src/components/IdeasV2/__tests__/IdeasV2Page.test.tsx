@@ -15,8 +15,10 @@ import {
 import type { TreeNode } from '../../../types';
 
 /**
- * IdeasV2Page (gui_refresh task 07 Wave 4c — v2 Ideas workspace; plan 07
- * §Ideas, claims, and evidence, plan 01 §Route model).
+ * IdeasV2Page (gui_refresh task 07 Wave 4c — v2 Ideas workspace). Claims and
+ * their evidence are rendered verbatim from idea.json, never scored or
+ * inferred here, and the workspace is run-explicit: its content is a function
+ * of its `?run=` URL alone, never of a process-wide selection.
  *
  * The typed v1 idea and tree fetchers are mocked at the module boundary
  * (react-query hooks and page logic stay REAL); AppContext runs against a

@@ -1,5 +1,8 @@
 // ARI Dashboard – v2 Tree workspace (gui_refresh task 07 Wave 4c + task-07
-// tail large-tree work; plan 07 §Tree workspace, plan 01 §Route model).
+// tail large-tree work). The tree workspace is run-explicit and read-only,
+// and its rendered content is a function of its URL alone: the route exists
+// only as a ROUTE_REGISTRY entry, dispatch ignores the query string, and this
+// page owns `?run=` / `?node=` itself.
 //
 // READ-ONLY. Run-explicit tree exploration over the typed v1 tree endpoint
 // (`useRunTreeV1`), REUSING the legacy D3 `TreeVisualization` component —
@@ -14,8 +17,9 @@
 // is a shareable URL and BOTH views (canvas and table) re-render from the
 // same URL state; the hash is the single source of truth for the selection.
 //
-// Large trees (plan 07: level-of-detail + virtualized side table +
-// keyboard navigation / equivalent tabular hierarchy):
+// Large trees stay legible without hiding anything silently — level-of-detail
+// + virtualized side table + keyboard navigation, the table being the
+// equivalent tabular hierarchy for anyone not driving the canvas:
 //   - Above LOD_NODE_THRESHOLD nodes the view default-collapses to
 //     structural depth <= LOD_DEPTH_LIMIT plus the selected node's
 //     ancestor path and its children. The filtering happens BEFORE the
@@ -23,7 +27,9 @@
 //     in ./treeLod — a DFS that emits a node only when every ancestor is
 //     expanded, so parent links inside the visible set stay intact and the
 //     legacy component needs no changes).
-//   - The reduction is NEVER silent (plan 02 truth rules): an explicit
+//   - The reduction is NEVER silent — a subset is never presented as if it
+//     were the whole tree, and the reader is always told how to see the
+//     rest: an explicit
 //     "showing N of M nodes (depth-limited)" banner with an [expand all]
 //     opt-in appears whenever visible < total, and an expanded oversized
 //     tree states "showing all M" with a way back to the depth limit.
@@ -48,8 +54,9 @@
 // Realtime: topic 'tree' via useRunEvents — the shared hook already maps a
 // tree event to a runTree invalidation (events are invalidations, never
 // data); a dropped stream keeps the last snapshot under a StaleDataBanner
-// and is never presented as "run stopped" (plan 01 §Empty and degraded
-// states).
+// and is never presented as "run stopped" — a stalled stream and a stopped
+// run are different facts, and a degraded read says "this view may lag"
+// rather than changing the run's reported state.
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -65,7 +72,12 @@ import { TreeTablePanel } from './TreeTablePanel';
 import { Inspector } from './TreeV2Inspector';
 import type { ApiErrorV1 } from '../../services/api/v1';
 
-// ── frozen orchestrator vocabularies (plan 07 §Tree workspace) ──────────
+// ── frozen orchestrator vocabularies ────────────────────────────────────
+//
+// The workspace renders the orchestrator's own status/label words verbatim
+// and never invents a display vocabulary of its own: these lists mirror
+// `ari.orchestrator.node`, and a value outside them is shown as it arrived
+// rather than remapped into a known one.
 
 /** Node status vocabulary — verbatim `ari.orchestrator.node.NodeStatus`. */
 export const NODE_STATUSES = [
@@ -100,7 +112,9 @@ function selectionFromHash(): { runId: string; nodeId: string } {
   };
 }
 
-/** Write the selection back to the hash (shareable URL, plan 07). */
+/** Write the selection back to the hash: the URL is the only carrier of the
+ *  selection, so copying the address bar shares the exact node in view and
+ *  both the canvas and the table re-render from that one URL. */
 function writeSelectionToHash(runId: string, nodeId: string | null): void {
   const params = new URLSearchParams();
   if (runId !== '') params.set('run', runId);
@@ -119,7 +133,9 @@ function writeSelectionToHash(runId: string, nodeId: string | null): void {
 export { toTreeNodes, sentinelsOf };
 export type { ScoreSentinels } from './treeNodes';
 
-/** err.message plus the envelope's request_id (support handle, plan 04). */
+/** err.message plus the envelope's request_id. Every /api/v1 failure carries
+ *  a `req-<12 hex>` request_id minted per dispatch; surfacing it is what lets
+ *  a user quote one handle that matches the server log. */
 function errorText(err: ApiErrorV1, requestIdLabel: string): string {
   const rid = err.request_id ? ` (${requestIdLabel}: ${err.request_id})` : '';
   return `${err.message}${rid}`;

@@ -13,10 +13,11 @@ import { fetchNodeReport } from '../../../services/api/nodeReport';
 import type { TreeNode } from '../../../types';
 
 /**
- * TreeV2 large-tree behavior (gui_refresh task 07 tail; plan 07 §Tree
- * workspace: level-of-detail, virtualized side table, keyboard navigation /
- * equivalent tabular hierarchy; plan 02 truth rules: never silently
- * truncate).
+ * TreeV2 large-tree behavior (gui_refresh task 07 tail). Two rules under
+ * test: a large tree is reduced only in what it RENDERS (level-of-detail,
+ * windowed side table) while the full node list stays in hand, and the
+ * reduction is never silent — a view showing less than it has says so, with
+ * exact counts and an opt-in to expand.
  *
  * Synthetic 10k-node array (the backend 10k fixture is run_fixture_factory
  * territory — frontend perf tests use synthetic node arrays). The D3

@@ -5,8 +5,10 @@ import { DegradedState, StaleDataBanner } from '..';
 /**
  * Unit tests for the shared async-state banners (gui_refresh task 02):
  * DegradedState (partial data, warning semantics — distinct from ErrorState)
- * and StaleDataBanner (last known snapshot + freshness, per plan 01 §Empty
- * and degraded states: an SSE drop must not be presented as "run stopped").
+ * and StaleDataBanner (last known snapshot + freshness). A degraded surface
+ * explains its degradation rather than going blank, and a dropped stream is
+ * a freshness problem, never a state change — so an SSE drop must never be
+ * presented as "run stopped".
  *
  * jest-dom matchers are intentionally avoided: they are loaded at runtime
  * (vitest.setup.ts) but are NOT typed for `tsc --noEmit` in this project (see

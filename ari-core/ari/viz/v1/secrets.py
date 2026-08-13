@@ -1,8 +1,10 @@
 """Secret READINESS + write-only assignment for ``/api/v1/secrets/*``.
 
-ADR-11 / RR-P0-2 / plan 09 §Secret policy: the GUI may learn WHETHER a known
-secret is configured — never its value. This module answers, for a fixed
-allowlist of secret names, ``configured`` + ``source_class`` + ``last_updated``
+ADR-11 / RR-P0-2 — the secret-readiness rule: the GUI may learn WHETHER a
+known secret is configured, never its value, and no secret value may leave
+the server in any response, manifest, or log.  This module answers, for a
+fixed allowlist of secret names,
+``configured`` + ``source_class`` + ``last_updated``
 by walking the same .env chain as the legacy harvest
 (:func:`ari.viz.api_settings._env_chain` — shared so the two endpoints can
 never disagree about which file wins) plus the ``os.environ`` fallback.
@@ -153,7 +155,8 @@ def _bad_value(message: str) -> dict:
 def put_secret(secret_id: str, body: dict) -> dict:
     """PUT /api/v1/secrets/{secret_id} — assign one allowlisted secret.
 
-    Contract (plan 05 §Configuration API, ADR-05):
+    Contract (ADR-05 — a write-only channel: the value goes in and is never
+    readable back out):
 
     - ``secret_id`` must be a :data:`SECRET_NAMES` member — anything else is
       a 404 (the allowlist is the resource space; no probe can create names);

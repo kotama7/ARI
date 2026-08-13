@@ -36,15 +36,16 @@ import {
   type SkillMcpEntry,
 } from './workflowNodes';
 
-// ── Save state machine (gui_refresh Wave 4d, plan 07 §Workflow Studio) ──
+// ── Save state machine (gui_refresh Wave 4d; revision-guarded writes) ───
 //
 // The old 2s timer saved BLINDLY: whatever was on disk was overwritten
 // without ever looking at it. Saves now carry the `base_revision` loaded
-// from GET /api/workflow; a 409 from the server means the file changed on
-// disk since load, and the page enters 'conflict': saving pauses entirely
-// until the user explicitly reloads (nothing is refetched-and-reapplied
-// silently — local unsaved edits are discarded on reload, and the banner
-// says so).
+// from GET /api/workflow (docs/reference/rest_api.md, "Settings + workflow"
+// lists it on each of the four write endpoints); a 409 from the server means
+// the file changed on disk since load, and the page enters 'conflict':
+// saving pauses entirely until the user explicitly reloads (nothing is
+// refetched-and-reapplied silently — local unsaved edits are discarded on
+// reload, and the banner says so).
 type SaveState = 'idle' | 'dirty' | 'saving' | 'saved' | 'conflict';
 
 /** Serialize the editor state into the POST /api/workflow/flow payload. */
@@ -487,7 +488,8 @@ export default function WorkflowPage() {
         <button className="btn btn-outline btn-sm" onClick={handleReset}>
           Reset to default
         </button>
-        {/* Save-state chip (dirty/saving/saved/conflict — plan 07) */}
+        {/* Save-state chip — the machine above is never silent: every state
+            except 'idle' is on screen (dirty/saving/saved/conflict). */}
         {saveState !== 'idle' && (
           <span
             role="status"

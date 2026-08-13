@@ -9,8 +9,10 @@ import {
 } from '../../../services/api/v1';
 
 /**
- * LogsPanel (gui_refresh task 07 tail — plan 07 §Artifacts, logs, and
- * diagnostics; P4 layer of the Overview page).
+ * LogsPanel (gui_refresh task 07 tail) — the P4 disclosure rung of the
+ * Overview page. A collapsed rung fetches nothing at all, which is what the
+ * first case below asserts directly rather than checking that the markup is
+ * hidden: a rung that renders and then hides its content is not a rung.
  *
  * The typed v1 fetcher is mocked at the module boundary (panel logic stays
  * REAL). Pins:

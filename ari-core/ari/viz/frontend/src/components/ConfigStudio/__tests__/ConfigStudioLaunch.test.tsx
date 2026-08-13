@@ -27,9 +27,11 @@ import {
 } from '../../../services/api/v1';
 
 /**
- * Studio launch flow (gui_refresh task 06 Wave 4e — plan 06 §Run draft
- * state machine / §Validation and review / §Launch protocol; backend
- * MN-10 POST /api/v1/runs).
+ * Studio launch flow (gui_refresh task 06 Wave 4e; backend MN-10
+ * POST /api/v1/runs). The launch order is fixed — resolve -> validate ->
+ * immutable review -> idempotent create -> canonical redirect — and these
+ * cases pin that no step can be skipped and that one approval spawns at most
+ * one run.
  *
  * The typed v1 fetchers are mocked at the module boundary (react-query
  * hooks + ApiErrorV1 normalization stay REAL), pinning:
@@ -352,8 +354,9 @@ describe('ConfigStudioPage launch flow (gui_refresh task 06 Wave 4e)', () => {
       }),
     );
 
-    // Canonical redirect from the SERVER-issued run_id (plan 06 §Launch
-    // protocol step 6 — no mtime/latest-checkpoint polling).
+    // Canonical redirect from the SERVER-issued run_id, the last step of the
+    // launch order — no mtime/latest-checkpoint polling, which would race a
+    // concurrent launch onto the wrong run.
     await waitFor(() =>
       expect(window.location.hash).toBe(`#/overview?run=${RUN_ID}`),
     );
@@ -462,7 +465,8 @@ describe('ConfigStudioPage launch flow (gui_refresh task 06 Wave 4e)', () => {
     await waitFor(() =>
       expect(screen.getByText(/draft failed launch validation/)).toBeInTheDocument(),
     );
-    // request_id is the support handle (plan 04).
+    // request_id is the support handle: the envelope's per-dispatch id is
+    // rendered so a bug report can name one server-side dispatch.
     expect(screen.getByText(/req-launch-400/)).toBeInTheDocument();
     // Per-path envelope rows (missing_goal) via the shared summary.
     expect(screen.getByText('missing_goal')).toBeInTheDocument();

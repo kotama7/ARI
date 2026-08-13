@@ -1,7 +1,7 @@
 """Config CRUD handlers for ``/api/v1`` (gui_refresh task 05 Wave 3b).
 
 The write-side counterpart of :mod:`ari.viz.v1.queries` for the GUI-only
-configuration documents (plan 05 §Configuration API / §Configuration scopes):
+configuration documents — the three write scopes, narrowest last:
 
 - ``GET/PATCH /api/v1/projects/{project_id}/config`` — the single default
   project's config document (ADR-08: only ``default`` exists);
@@ -71,8 +71,9 @@ from .store import (
 TEMPLATE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 DRAFT_ID_RE = re.compile(r"^draft-[0-9a-f]{12}$")
 
-# The bundled execution profiles the CLI --profile flag accepts (plan 05
-# §Resolution model; DraftResolveRequestV1 mirrors this closed set).
+# The bundled execution profiles the CLI --profile flag accepts — a CLOSED
+# set shared with the CLI, never extended by the GUI (DraftResolveRequestV1
+# mirrors it, so the two can never drift).
 PROFILES = ("laptop", "hpc", "cloud")
 
 
@@ -595,8 +596,10 @@ def _resolve_draft_manifest(
 
 
 def resolve_run_draft_config(draft_id: str, body: dict) -> dict:
-    """POST /api/v1/run-drafts/{draft_id}/resolve-config — the plan-05
-    new-run chain previewed for one draft; returns the resolved manifest."""
+    """POST /api/v1/run-drafts/{draft_id}/resolve-config — the new-run
+    resolution chain previewed for one draft (narrowest layer wins, rejected
+    overrides returned rather than dropped); returns the resolved manifest.
+    A preview only: nothing is written until launch."""
     manifest, _dv, _rsv, err = _resolve_draft_manifest(draft_id, body)
     if err is not None:
         return err
@@ -608,8 +611,8 @@ def _draft_validation_errors(
 ) -> list[dict]:
     """The draft-attributable validation errors distilled from one resolved
     manifest (shared by ``validate_run_draft`` and the Wave 4e launch path —
-    ``POST /api/v1/runs`` rejects with exactly these errors, plan 06 §Launch
-    protocol validation-first):
+    ``POST /api/v1/runs`` rejects with exactly these errors, and rejects
+    BEFORE any filesystem mutation):
 
     - every ``validate_patch`` rejection of the draft's own values;
     - draft-sourced ``invalid_value`` rejections from ARIConfig validation;
@@ -693,8 +696,8 @@ def validate_run_draft(draft_id: str, body: dict) -> dict:
     """POST /api/v1/run-drafts/{draft_id}/validate — ``{valid, errors,
     warnings}`` distilled from the same resolution run as resolve-config.
 
-    Errors (strict — plan 05 §Interlocks: draft validation treats an
-    inconsistent intent pair as an error even though the runtime only warns)
+    Errors (strict — draft validation treats an inconsistent mode-intent
+    pair as an error even though the runtime only warns and falls back)
     are :func:`_draft_validation_errors`; other layers' rejections surface as
     warnings only (they are not the draft's fault) — ``warnings`` is the full
     manifest warning list."""

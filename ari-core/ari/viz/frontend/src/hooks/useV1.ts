@@ -1,8 +1,25 @@
 // ARI Dashboard – react-query hooks for the typed /api/v1 client
-// (gui_refresh Wave 2b, plan 03 §State ownership / §API client contract).
+// (gui_refresh Wave 2b). State ownership is split by kind: server state is
+// cached and invalidated here, view state is local and ephemeral, and
+// navigation state lives in the URL — no piece of state has two owners
+// (docs/concepts/gui_architecture.md, "4. Server state lives in a cache,
+// keyed by run").
 //
-// Query keys follow the plan-03 mandate exactly: ['v1', projectId?, runId?,
-// resource] — the project/run id sits INSIDE the key, so run-scoped entries
+// The client contract these hooks sit on: no hook calls fetch. Every read
+// goes through a fetcher in services/api/v1.ts over the shared v1Get/v1Send
+// transport, which resolves with the PARSED BODY even on a non-2xx status —
+// the throwing get/post regime would discard the body with the status, and
+// on /api/v1 that body IS the typed error envelope. The fetcher then
+// normalizes every failure — typed envelope, network rejection, malformed
+// body — into one ApiErrorV1 {code, message, details, request_id,
+// retryable}, which is why every hook below is typed on that single error
+// type and a caller can branch on the frozen `code` and quote `request_id`
+// instead of parsing `message`
+// (docs/reference/rest_api.md, "Error envelope").
+//
+// Query keys are ['v1', projectId?, runId?, resource] with any filter that
+// narrows the resource appended — the project/run id sits INSIDE the key, so
+// run-scoped entries
 // are isolated per run (switching runs can never bleed a previous run's
 // cached delta into the current UI) and `queryClient.invalidateQueries({
 // queryKey: ['v1', runId] })` drops exactly one run's server state.
@@ -283,7 +300,9 @@ export function useSecretsStatusV1(): UseQueryResult<
   });
 }
 
-/** Server-side model/provider catalog (plan 06 §Schema-driven rendering). */
+/** Server-side model/provider catalog: the choices a control offers come from
+ * the server's metadata, never from a frontend constant, so adding a model
+ * needs no frontend change. */
 export function useModelCatalogV1(): UseQueryResult<
   ModelCatalogV1 & RequestIdV1,
   ApiErrorV1
@@ -294,7 +313,9 @@ export function useModelCatalogV1(): UseQueryResult<
   });
 }
 
-// ── RQGM governance hooks (gui_refresh Wave 4a, plan 08 — read-only) ────
+// ── RQGM governance hooks (gui_refresh Wave 4a) — read-only by contract:
+//    there is NO mutation endpoint on this surface, so the GUI can observe
+//    governance but never perform it. ─────────────────────────────────────
 
 export function useRqgmCapabilitiesV1(
   runId: string,
@@ -361,7 +382,7 @@ export function useRqgmNodeLineageV1(
   });
 }
 
-// ── RQGM Wave 4b hooks (plan 08 — epochs / evolution / paper archive) ───
+// ── RQGM Wave 4b hooks — epochs / evolution / paper archive, read-only ──
 
 export function useRqgmEpochsV1(
   runId: string,
@@ -413,7 +434,7 @@ export type RqgmAuditInfiniteData = InfiniteData<
 >;
 
 /**
- * Cursor-paged audit log ("load more" appends — plan 08 §Audit).
+ * Cursor-paged audit log ("load more" appends).
  *
  * The page param is the backend's stable byte-offset cursor: page N+1 asks
  * for `next_cursor` of page N (entries with `byte_offset >= cursor`), so

@@ -121,7 +121,10 @@ export async function pbPost<T = any>(path: string, body?: unknown): Promise<T> 
 // get<T> regime above discards that body (it throws before reading it), so
 // the typed v1 client (services/api/v1.ts) uses this helper: the same shared
 // `request` primitive, resolving with the parsed body regardless of status,
-// so the envelope survives for normalization (plan 03 §API client contract).
+// so the envelope survives for normalization. The client contract is that a
+// caller switches on the envelope's frozen `code`, never on `message`, and
+// quotes `request_id` when reporting — which is only possible if the body
+// reaches the caller instead of being thrown away with the status.
 // get/post/pbGet/pbPost above are UNCHANGED (documented wire contract).
 
 export async function v1Get<T>(path: string): Promise<T> {

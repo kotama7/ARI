@@ -193,8 +193,11 @@ export function Inspector({
       <Card title={t('tree2_links_title')}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {/* GovernancePage reads only ?run= today — no node preselect is
-              passed on purpose, and the note below says so (plan 07 deep
-              links; revisit when task 08 adds ?node= support there). */}
+              passed on purpose. A workspace's content is a function of its
+              URL alone, so a link must not carry a parameter the target does
+              not read: that would make the link claim a selection the
+              destination silently drops. The note below says so; revisit when
+              Governance adds ?node= support. */}
           <a href={`#/governance?run=${encodeURIComponent(runId)}`}>
             {t('tree2_link_governance')}
           </a>

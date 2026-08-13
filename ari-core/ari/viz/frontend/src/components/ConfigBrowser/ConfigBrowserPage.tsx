@@ -1,16 +1,23 @@
-// ARI Dashboard – read-only effective-config browser (gui_refresh Wave 3b;
-// plans 05 §Purpose / §Resolved manifest, 06 §Effective configuration).
+// ARI Dashboard – read-only effective-config browser (gui_refresh Wave 3b).
+// Purpose: show what one run's configuration actually resolved to — every
+// leaf with its effective value and where that value came from — and offer no
+// way to change it. See docs/guides/configuration_studio.md, "Inspecting
+// effective configuration (`#/config?run=`)".
 //
 // READ-ONLY. Two typed /api/v1 data sources via the react-query hooks
 // (src/hooks/useV1.ts):
 //   - GET /api/v1/config/schema — the canonical field registry (metadata +
 //     defaults; never an effective value), always fetched;
-//   - GET /api/v1/runs/{run_id}/resolved-config — the plan-05 resolved
-//     manifest, fetched only when the hash query string carries ?run=<id>
+//   - GET /api/v1/runs/{run_id}/resolved-config — the resolved launch
+//     manifest (values + provenance + secret_references + warnings, with
+//     secret leaves structurally absent from values, so there is no value to
+//     print), fetched only when the hash query string carries ?run=<id>
 //     (#/config?run=<run_id>). With no run param this page is a SCHEMA
 //     browser only.
 //
-// Rendering contract (plan 06 §Effective configuration):
+// Rendering contract — an effective value is never shown without its
+// provenance, and a manifest leaf the registry does not know is still shown
+// (grouped under 'Other') rather than dropped:
 //   - fields grouped by registry category, collapsible per group;
 //   - per-leaf row: path (monospace), effective value (or schema default in
 //     schema-only mode), provenance source badge, low-confidence marker,
@@ -18,12 +25,13 @@
 //   - secret_reference rows show 'secret (reference only)' — NEVER a value
 //     (the backend redacts defaults/values structurally; this page must not
 //     invent a place to print one);
-//   - a search box filters by path/category (plan 06: every field is always
-//     discoverable via search);
+//   - a search box filters by path/category — every field stays discoverable
+//     via search, so none is reachable only by guessing its category;
 //   - resolver warnings are listed verbatim in a warnings panel;
 //   - freshness via StaleDataBanner when a refetch fails over cached data
-//     (never presented as an error while a snapshot exists — plan 01 §Empty
-//     and degraded states).
+//     (a stale snapshot is a freshness notice, never an error state: the
+//     error state is only for having nothing to show — see
+//     docs/guides/dashboard.md, "Live updates, staleness, and reconnection").
 //
 // Studio EDITING is Wave 4 — nothing here mutates anything.
 
@@ -50,7 +58,11 @@ function runFromHash(): string {
   return new URLSearchParams(query).get('run') ?? '';
 }
 
-/** err.message plus the envelope's request_id (support handle, plan 04). */
+/**
+ * err.message plus the envelope's request_id — the per-dispatch support handle
+ * a user can quote in a bug report, which is why it is surfaced rather than
+ * logged. See docs/reference/rest_api.md, "Error envelope".
+ */
 function errorText(err: ApiErrorV1, requestIdLabel: string): string {
   const rid = err.request_id ? ` (${requestIdLabel}: ${err.request_id})` : '';
   return `${err.message}${rid}`;
@@ -132,8 +144,8 @@ export function ConfigBrowserPage() {
     return out;
   }, [schema, resolved, runMode]);
 
-  // Search filter: path OR category substring, case-insensitive (plan 06:
-  // every field stays discoverable via search).
+  // Search filter: path OR category substring, case-insensitive — matching on
+  // both is what keeps every field discoverable without knowing its category.
   const needle = search.trim().toLowerCase();
   const visibleRows = useMemo(
     () =>
@@ -163,9 +175,9 @@ export function ConfigBrowserPage() {
     return ordered;
   }, [visibleRows]);
 
-  // Hard error only when there is no snapshot to show (plan 01 §Empty and
-  // degraded states); a refetch failure over cached data is a freshness
-  // notice, not an error.
+  // Hard error only when there is no snapshot to show; a refetch failure over
+  // cached data is a freshness notice, not an error — a degraded read never
+  // replaces data that is already on screen.
   const hardError: ApiErrorV1 | null =
     schemaQ.isError && schemaQ.data === undefined
       ? schemaQ.error
@@ -231,7 +243,8 @@ export function ConfigBrowserPage() {
             </p>
           )}
 
-          {/* Resolver warnings, verbatim (plan 05 §Resolved manifest). */}
+          {/* Resolver warnings, verbatim: the manifest's warnings are listed
+              as the resolver emitted them, never summarized or dropped. */}
           {warnings.length > 0 && (
             <Card title={`⚠️ ${t('config_warnings_title')}`}>
               <ul style={{ margin: 0, paddingLeft: 20 }}>
@@ -244,7 +257,8 @@ export function ConfigBrowserPage() {
             </Card>
           )}
 
-          {/* Search (plan 06: fields are always discoverable via search). */}
+          {/* Search: the filter is what keeps every field discoverable, so it
+              stays on the page rather than behind a disclosure. */}
           <div
             style={{
               display: 'flex',

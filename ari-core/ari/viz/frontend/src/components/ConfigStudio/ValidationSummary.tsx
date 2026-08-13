@@ -1,5 +1,8 @@
 // ARI Dashboard – per-path validation summary for the Configuration Studio
-// (gui_refresh task 06 Wave 4d; plan 06 §Validation and review).
+// (gui_refresh task 06 Wave 4d). A rejected write is reported per offending
+// path, never as one opaque failure banner: the server decides what is
+// invalid and this component only renders its verdict, so the frontend holds
+// no second copy of the validation rules to drift from.
 //
 // Renders the details.errors list of a 400 'invalid_request' PATCH envelope
 // (the ari.config.field_registry.validate_patch closed vocabulary:

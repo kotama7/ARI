@@ -1,13 +1,20 @@
 // ARI Dashboard – Governance Epoch Timeline tab (gui_refresh task 08 Wave
-// 4b; plan 08 §Epoch Timeline / §Truth and presentation rules).
+// 4b). Every number on this tab is rendered as the read model served it —
+// nothing here is recomputed, joined or defaulted, and a source that is
+// absent renders as absence. The full set of rules the API enforces (so a
+// client that just renders the payload cannot violate them) is in
+// docs/reference/rqgm_gui_read_models.md, "Presentation truth rules the
+// API enforces".
 //
 // Committed epochs from the transitions replay as a vertical timeline.
 // Each epoch renders as its OWN facet (the Score Lineage faceting pattern):
 // there is deliberately NO cross-epoch score comparison UI — every epoch
 // carries its own utility policy hash, and scores under different policy
-// hashes are never joined into one series (plan 08: epoch comparison only
-// after policy compatibility is confirmed; this v1 tab refuses it outright
-// and says so). Absence stays absence:
+// hashes are never joined into one series (a utility policy defines what a
+// score MEANS, so numbers written under two hashes are measurements on
+// different instruments; comparing them would first require a policy
+// compatibility check, and this v1 tab refuses the comparison outright and
+// says so to the reader). Absence stays absence:
 //   - a still-open epoch has transition_counts=null and renders an explicit
 //     "no committed boundary" note — never a row of zeros;
 //   - `fallbacks` is null unless the real epoch_transition audit record
@@ -29,9 +36,13 @@ import type {
 
 const TRANSITIONS_SOURCE_FILE = 'rqgm_transitions.jsonl';
 
-/** The 5 governed keys of a sealed utility policy body (plan 08 §Score
- * Lineage: `{composite, axis_weights, frontier_score, depth_penalty_lambda,
- * ucb_c}`). Rendered in this canonical order. */
+/** The 5 governed keys of a sealed EPOCH utility policy body:
+ * `{composite, axis_weights, frontier_score, depth_penalty_lambda, ucb_c}`.
+ * That key set is the epoch policy's identity — the adversarial PENALTY
+ * policy carried under the same `utility_policy_hash` field name has a
+ * disjoint key set (`penalty_cap`, `severity_weights`, `verdict_factors`),
+ * which is why the two hashes can never collide. Rendered in this
+ * canonical order. */
 const POLICY_BODY_KEYS = [
   'composite',
   'axis_weights',
@@ -43,7 +54,9 @@ const POLICY_BODY_KEYS = [
 // Structured rendering instead of a raw JSON dump (check_dashboard_ux
 // json_dump rule): axis_weights is a flat axis->weight map, so render it as
 // readable pairs. An EMPTY map is shown distinctly from an absent value
-// (plan 08 truth rule: missing / empty are different states).
+// (truth rule: missing and empty are different states — an absent key
+// renders '—' and an empty map renders its own label, never one as the
+// other).
 function bodyValueText(value: unknown, emptyLabel: string): string {
   if (value === undefined) return '—';
   if (typeof value === 'object' && value !== null) {
@@ -111,7 +124,9 @@ function TransactionRow({
             </code>
           </td>
           <td>
-            {/* Raw-source drill-down handle (plan 08 §Truth rules). */}
+            {/* Raw-source drill-down handle: every aggregate row must name
+                the bytes it came from — here `<source file>@<byte offset>`,
+                the 0-based line start in the append-only transitions log. */}
             <code style={{ fontSize: '.72rem' }}>
               {TRANSITIONS_SOURCE_FILE}@{tx.byte_offset}
             </code>
@@ -213,7 +228,9 @@ function EpochDetailCard({ runId, epochId }: { runId: string; epochId: string })
           </span>
         </p>
         {body === null || body === undefined ? (
-          // Unresolved body — refused, never guessed (plan 08 §Truth rules).
+          // Unresolved body — refused, never guessed: the API serves a
+          // policy body only while its stored bytes still hash to the
+          // registered prompt hash, so null here means WITHHELD, not empty.
           <p style={{ color: 'var(--status-warning)', fontSize: '.8rem' }}>
             {t('gov_epoch_policy_missing')}
           </p>
@@ -297,8 +314,10 @@ function EpochRow({
       >
         <span>{epoch.epoch_id}</span>
         {isCurrent && <Badge variant="blue">{t('gov_epoch_current')}</Badge>}
-        {/* Per-epoch policy identity: the reason cross-epoch comparison is
-            refused without a compatibility check (plan 08). */}
+        {/* Per-epoch policy identity: a score is never displayed without the
+            policy hash it was computed under, which is also the reason
+            cross-epoch comparison is refused without a compatibility
+            check. */}
         <span>
           {t('gov_lin_under_policy')}:{' '}
           <PolicyHashLabel hash={epoch.utility_policy_hash} />
@@ -315,7 +334,8 @@ function EpochRow({
       <div style={{ fontSize: '.8rem' }}>
         {epoch.transition_counts === null || epoch.transition_counts === undefined ? (
           // Boundary not committed — counts do not exist yet, and an absent
-          // source is never rendered as zero activity (plan 08 §Truth rules).
+          // source is never rendered as zero activity: transition_counts is
+          // null for the still-open epoch, and null renders as absence.
           <span style={{ color: 'var(--text-muted)' }}>
             {t('gov_epoch_counts_absent')}
           </span>
@@ -372,8 +392,10 @@ export function EpochTimelineTab({ runId }: { runId: string }) {
       )}
 
       <Card title={t('gov_epoch_title')}>
-        {/* Explicit refusal of naive cross-epoch score comparison — the
-            plan-08 truth rule, stated instead of a comparison widget. */}
+        {/* Explicit refusal of naive cross-epoch score comparison: the rule
+            (epochs under different utility policy hashes are not directly
+            comparable) is stated to the reader, rather than left implicit in
+            the absence of a widget they never see. */}
         <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginBottom: 8 }}>
           {t('gov_epoch_compare_note')}
         </p>

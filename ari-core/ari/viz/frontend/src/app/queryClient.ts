@@ -1,7 +1,17 @@
-// ARI Dashboard – shared react-query client (gui_refresh Wave 2b, plan 03
-// §State ownership: server state lives in the query cache).
+// ARI Dashboard – shared react-query client (gui_refresh Wave 2b).
 //
-// Defaults (task 03 Wave 2b):
+// State ownership: every `/api/v1` read goes through this ONE client, so all
+// server state lives in the query cache and nowhere else. Keys are
+// `['v1', <projectId | runId>, <resource>]` — the identifier sits INSIDE the
+// key, so two runs can never share an entry and dropping `['v1', runId]`
+// drops exactly one run's server state. View state (which tab is open, a
+// filter box's text) stays local and ephemeral; navigation state stays in the
+// URL. Mutations are never optimistic: the server's answer is what the UI
+// adopts, and the affected keys are invalidated instead of being written
+// through. See docs/concepts/gui_architecture.md, "4. Server state lives in a
+// cache, keyed by run".
+//
+// Defaults (gui_refresh Wave 2b):
 //   - staleTime 5000ms: matches the historical /state 5s polling cadence, so
 //     remounts within that window serve cache instead of refetching.
 //   - retry 1: one retry for transient loopback hiccups; typed 404s are not

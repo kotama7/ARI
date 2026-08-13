@@ -2,7 +2,9 @@
 //
 // Freshness notice for live surfaces: when a stream (SSE) drops we must NOT
 // claim "run stopped" — we keep showing the last known snapshot and say how
-// fresh it is (plan 01 §Empty and degraded states). Uses the `--status-info`
+// fresh it is. A dropped stream is a freshness problem, never a state change,
+// so a degraded surface explains its degradation instead of going blank or
+// inventing a run state. Uses the `--status-info`
 // token family (a freshness notice, not a warning/error). `aria-live="polite"`
 // so screen readers hear freshness changes without interruption spam. The
 // caller passes an already-formatted `lastUpdated` string (or null when the

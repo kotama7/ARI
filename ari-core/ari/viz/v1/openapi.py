@@ -36,8 +36,10 @@ _RESPONSE_MODELS: dict[str, str] = {
     "GET /api/v1/projects": "ProjectListV1",
     "GET /api/v1/projects/{project_id}/runs": "RunListV1",
     "GET /api/v1/runs/{run_id}": "RunDetailV1",
-    # Wave 4e (tasks 04/06): idempotent launch — accepted envelope with the
-    # server-minted run_id (idempotent_replay=true on a duplicate key).
+    # Wave 4e: idempotent launch — the accepted envelope carries the
+    # server-minted run_id (run identity is minted here, never supplied by
+    # the client), and a duplicate idempotency key answers
+    # idempotent_replay=true having spawned nothing.
     "POST /api/v1/runs": "RunLaunchedV1",
     "GET /api/v1/runs/{run_id}/summary": "RunSummaryV1",
     "GET /api/v1/runs/{run_id}/tree": "TreeV1",
@@ -74,7 +76,9 @@ _RESPONSE_MODELS: dict[str, str] = {
         "ResolvedNewRunConfigV1"
     ),
     "POST /api/v1/run-drafts/{draft_id}/validate": "DraftValidationV1",
-    # Wave 4a (task 08): RQGM governance read models (plan 08, read-only).
+    # Wave 4a: RQGM governance read models — GET-only by contract.  The GUI
+    # observes governance and never performs it, so these resources have no
+    # mutation route at all.
     "GET /api/v1/runs/{run_id}/rqgm/capabilities": "RqgmCapabilitiesV1",
     "GET /api/v1/runs/{run_id}/rqgm/overview": "RqgmOverviewV1",
     "GET /api/v1/runs/{run_id}/rqgm/registry": "RqgmRegistryV1",
@@ -87,7 +91,7 @@ _RESPONSE_MODELS: dict[str, str] = {
     "GET /api/v1/runs/{run_id}/rqgm/nodes/{node_id}/lineage": (
         "RqgmNodeLineageV1"
     ),
-    # Wave 4b (task 08): remaining RQGM read models (still GET-only).
+    # Wave 4b: remaining RQGM read models (still GET-only).
     "GET /api/v1/runs/{run_id}/rqgm/epochs": "RqgmEpochsV1",
     "GET /api/v1/runs/{run_id}/rqgm/epochs/{epoch_id}": "RqgmEpochDetailV1",
     "GET /api/v1/runs/{run_id}/rqgm/evolution": "RqgmEvolutionV1",
@@ -97,7 +101,7 @@ _RESPONSE_MODELS: dict[str, str] = {
     "GET /api/v1/diagnostics": "DiagnosticsV1",
 }
 
-# Wave 4a (task 08): documented query parameters for the paginated/filtered
+# Wave 4a: documented query parameters for the paginated/filtered
 # RQGM GETs (cursor = stable byte offset for the JSONL-backed pages, an
 # integer list index for the joined score-rewrites list).
 def _q(name: str, description: str) -> dict:
@@ -189,7 +193,8 @@ _REQUEST_MODELS: dict[str, str] = {
     "PUT /api/v1/secrets/{secret_id}": "SecretValueRequestV1",
     # Wave 5a (task 09, MN-6): confirmation challenge issuance.
     "POST /api/v1/challenges": "ChallengeRequestV1",
-    # Wave 4e (tasks 04/06): idempotent launch request.
+    # Wave 4e: idempotent launch request — one idempotency key maps to
+    # exactly one run.
     "POST /api/v1/runs": "RunLaunchRequestV1",
 }
 
@@ -253,7 +258,7 @@ _SCHEMA_MODELS = (
     dto.RunTemplateV1,
     dto.RunTemplateDeletedV1,
     dto.RunDraftV1,
-    # Wave 4e (tasks 04/06): idempotent launch.
+    # Wave 4e: idempotent launch — server-minted identity, replay-safe.
     dto.RunLaunchRequestV1,
     dto.RunLaunchedV1,
     dto.RejectedOverrideV1,
@@ -267,7 +272,8 @@ _SCHEMA_MODELS = (
     dto.RunDraftCreateRequestV1,
     dto.ProjectListV1,
     dto.RunListV1,
-    # Wave 4a (task 08): RQGM read models.
+    # Wave 4a: RQGM read models — a read-only projection of committed
+    # governance artifacts.
     dto.RqgmCapabilitiesV1,
     dto.RqgmIntegrityV1,
     dto.RqgmRegistrySummaryV1,
@@ -287,7 +293,7 @@ _SCHEMA_MODELS = (
     dto.RqgmScoreRewritesPageV1,
     dto.RqgmPolicyV1,
     dto.RqgmPoliciesV1,
-    # Wave 4b (task 08): epochs / evolution / paper-archive read models.
+    # Wave 4b: epochs / evolution / paper-archive read models.
     dto.RqgmEpochTransitionCountsV1,
     dto.RqgmEpochV1,
     dto.RqgmEpochsV1,

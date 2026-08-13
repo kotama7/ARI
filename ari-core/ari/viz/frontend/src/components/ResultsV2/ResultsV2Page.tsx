@@ -1,5 +1,9 @@
-// ARI Dashboard – v2 Results/EAR workspace (gui_refresh task 07 Wave 4d;
-// plan 07 §Evidence, Results, and PaperBench; plan 01 §Route model).
+// ARI Dashboard – v2 Results/EAR workspace (gui_refresh task 07 Wave 4d).
+// The route exists in exactly one place — its ROUTE_REGISTRY entry, which
+// the router and the sidebar are both derived from — and like every v2
+// workspace it is run-explicit: what it renders is a function of the URL
+// alone, never of a process-wide active checkpoint
+// (docs/guides/dashboard.md, "Run-explicit URLs and deep links").
 //
 // READ-ONLY. Run-explicit result summary over the typed v1 endpoints:
 // GET /api/v1/runs/{run_id}/results (bounded paper/review/ORS/EAR scalars)
@@ -8,8 +12,10 @@
 // (parity invariant) and REMAINS the full editor/PDF workspace and the only
 // place EAR mutations (curate / publish.yaml editing / publish / promote)
 // fire — this page renders the lineage as a read-only badge chain and sends
-// the user to the legacy page for any mutation (plan 07 migration sequence;
-// TODO Wave 5: embed the paper workspace here).
+// the user to the legacy page for any mutation. The migration runs
+// read-first: a v2 workspace ships read-only beside its legacy counterpart
+// and links out for writes until it can own them outright — it never forks
+// a write path (TODO Wave 5: embed the paper workspace here).
 //
 // Sections:
 //   - Result summary: review scores (rubric dimensions or the legacy
@@ -17,8 +23,9 @@
 //     with per-stage chain provenance (rubric → replicator → phase1 →
 //     judge grade — the OrsChainSection lineage, re-sourced run-explicitly).
 //   - EAR / publication lineage: curate → preview → publish → promote as a
-//     read-only badge chain (traceability terminus, plan 07: the published
-//     bundle digest vs checkpoint contents), bundle sha256 + visibility +
+//     read-only badge chain (traceability terminus: the chain ends at the
+//     published bundle's digest, which is what a reader checks the
+//     checkpoint contents against), bundle sha256 + visibility +
 //     bounded file listing from the /ear read model.
 //   - Deep links: Tree v2, Config, and (when the run's rqgm capability is
 //     on) Governance; legacy #/results for the full workspace.
@@ -170,7 +177,9 @@ export function shortDigest(sha256: string | null | undefined): string | null {
   return sha256.length > 12 ? sha256.slice(0, 12) : sha256;
 }
 
-/** err.message plus the envelope's request_id (support handle, plan 04). */
+/** err.message plus the envelope's request_id — every /api/v1 response
+ * carries that id precisely so a user can quote it in a bug report, so it is
+ * surfaced rather than swallowed. */
 function errorText(err: ApiErrorV1, requestIdLabel: string): string {
   const rid = err.request_id ? ` (${requestIdLabel}: ${err.request_id})` : '';
   return `${err.message}${rid}`;
@@ -207,8 +216,9 @@ function ChainStageBadge({
   return <Badge variant={present ? 'green' : 'muted'}>{label}</Badge>;
 }
 
-/** ORS provenance chips: verdict + score + per-stage presence (plan 07:
- * the reproducibility chain is lineage, rendered with its provenance). */
+/** ORS provenance chips: verdict + score + per-stage presence — a
+ * reproducibility verdict is lineage, so it never renders bare; the stages
+ * that produced it render beside it, and a missing stage shows as missing. */
 function OrsSummary({ ors }: { ors: ResultOrsV1 }) {
   const t = useT();
   if (!ors.chain_present) {
@@ -261,7 +271,7 @@ function OrsSummary({ ors }: { ors: ResultOrsV1 }) {
 
 /** EAR lineage badge chain + digest scalars — strictly read-only; every
  * mutation (curate/publish/promote/publish.yaml edit) lives on the legacy
- * page the link below opens (plan 07: v2 fires no mutation). */
+ * page the link below opens — this workspace fires no mutation at all. */
 function EarLineageSection({
   runId,
   ear,
@@ -392,7 +402,7 @@ function EarLineageSection({
           </>
         )}
 
-        {/* Mutations stay on the legacy page — v2 fires none (plan 07). */}
+        {/* Mutations stay on the legacy page — this workspace fires none. */}
         <div style={{ marginTop: 10 }}>
           <a href={`#/results${runId !== '' ? `?run=${encodeURIComponent(runId)}` : ''}`}>
             {t('results2_ear_manage_link')}

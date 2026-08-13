@@ -1,14 +1,17 @@
-// ARI Dashboard – Governance Registry tab (gui_refresh task 08 Wave 4a;
-// plan 08 §Institution / Registry).
+// ARI Dashboard – Governance Registry tab (gui_refresh task 08 Wave 4a).
+// Answers "which institutions exist, in what standing?" — see
+// docs/guides/rqgm_gui.md, 'Registry — "which institutions exist, in what
+// standing?"'.
 //
 // Committed-replay registry tables (components + prompts) with the closed
 // 10-status lifecycle vocabulary rendered via RegistryStatusBadge (one
 // `--reg-*` token per status — node score-state colors are a different
 // family and are never used here). The `verified` tri-state compares the
 // `rqgm_registry.json` rollup's `as_of_event_hash` against the replay tail:
-// the rollup verifies, it never becomes current state (plan 08 §Truth
-// rules). Active-set membership (active + probationary_active) carries an
-// explicit marker.
+// an append-only hash-chained log is the source of truth and a rollup
+// snapshot is read ONLY to verify it — the rollup verifies, it never becomes
+// current state. Active-set membership (active + probationary_active) carries
+// an explicit marker, so "registered" is never mistaken for "in force".
 
 import { useT } from '../../i18n';
 import { useRqgmRegistryV1 } from '../../hooks/useV1';

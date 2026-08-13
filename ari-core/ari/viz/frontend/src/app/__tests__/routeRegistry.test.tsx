@@ -2,33 +2,48 @@ import { describe, it, expect } from 'vitest';
 import { ROUTE_REGISTRY, resolveRoute, navItems } from '../routeRegistry';
 
 /**
- * gui_refresh Wave 1 route parity (plan 03).
+ * gui_refresh Wave 1 route parity: the registry is the ONLY place a route
+ * exists — App.tsx builds its dispatch from it and Sidebar.tsx builds its nav
+ * table from navItems(), so a route can never exist in the nav but not in the
+ * router (or the reverse).
  *
  * Freezes the route registry against the CURRENT router contract as literals:
  * the exact id/path set (15 routes, App.tsx PAGE_MAP), the exact nav order and
  * i18n keys (12 entries, Sidebar.tsx NAV_ITEMS), the new -> wizard legacy
  * alias, query-string stripping, and explicit undefined for unknown hashes.
  * Any registry drift from the deployed hash-URL contract must fail here.
- * Wave 2b adds the v2-only 'projects' route (guiV2 marker; plans 01/07).
- * Wave 3b adds the v2-only 'config' route (read-only effective-config
- * browser; plans 05/06).
- * Wave 4a adds the v2-only 'governance' route (read-only RQGM governance
- * workspace; plan 08).
- * Wave 4b adds the v2-only 'overview' route (v2 run Overview workspace;
- * plan 07 §Run Overview and Live Monitor).
+ * Wave 2b adds the v2-only 'projects' route. The guiV2 marker is not a
+ * per-route flag name: it is a fixed marker for the one ARI_GUI_V2 switch, so
+ * with that switch off every marked route resolves to Home exactly like an
+ * unknown hash and every marked nav entry disappears together.
+ * Wave 3b adds the v2-only 'config' route: a read-only effective-config
+ * browser ('#/config?run='). Every configuration WRITE lives on the separate
+ * '#/studio' route.
+ * Wave 4a adds the v2-only 'governance' route: a read-only RQGM governance
+ * workspace that renders the /api/v1 governance read models and never writes
+ * governance state; a run whose artifacts carry no governance gets an explicit
+ * capability panel rather than an empty screen or an error — see
+ * docs/guides/rqgm_gui.md, "Getting there, and the capability state".
+ * Wave 4b adds the v2-only 'overview' route: the v2 run Overview workspace,
+ * opened run-explicitly as '#/overview?run=<run_id>' rather than from a hidden
+ * session selection.
  * Wave 4c adds the v2-only 'tree_v2' route (path 'tree2' — the FIRST route
  * whose id and path differ) which REPLACES the legacy 'tree' nav slot while
- * gui_v2 is on (navReplaces; plan 07 §Tree workspace, plan 10 route-level
- * flag switching). The legacy 'tree' route/hash stays untouched.
+ * gui_v2 is on. That is the navReplaces rule: the v2 route occupies the legacy
+ * SIDEBAR SLOT and inherits its label, order and icon, so the sidebar looks
+ * identical and only the hash a click writes changes. The legacy 'tree'
+ * route/hash stays registered and untouched, so bookmarks never break; a slice
+ * is promoted by giving it a slot and rolled back by taking the slot away,
+ * never by flipping a flag of its own.
  * Wave 4c (Ideas) adds the v2-only 'ideas_v2' route (path 'ideas2') which
- * REPLACES the legacy 'idea' nav slot the same way (plan 07 §Ideas, claims,
- * and evidence). The legacy 'idea' route/hash stays untouched.
+ * REPLACES the legacy 'idea' nav slot the same way. The legacy 'idea'
+ * route/hash stays untouched.
  * Wave 4d (Results) adds the v2-only 'results_v2' route (path 'results2')
- * which REPLACES the legacy 'results' nav slot the same way (plan 07
- * §Evidence, Results, and PaperBench). The legacy 'results' route/hash —
- * the full editor/PDF/EAR-mutation workspace — stays untouched.
- * Wave 4d (task 06) adds the v2-only 'studio' route (Configuration Studio
- * non-governance slice, plan 06) with its OWN nav slot (navOrder 96) — it
+ * which REPLACES the legacy 'results' nav slot the same way. The legacy
+ * 'results' route/hash — the full editor/PDF/EAR-mutation workspace — stays
+ * untouched.
+ * Wave 4d (task 06) adds the v2-only 'studio' route (the configuration WRITE
+ * surface, non-governance slice) with its OWN nav slot (navOrder 96) — it
  * does NOT replace the legacy 'settings' route (cutover is a later slice).
  */
 

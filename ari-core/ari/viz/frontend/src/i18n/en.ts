@@ -18,7 +18,8 @@ const en: Record<string, string> = {
   nav_group_research: 'Current run',
   nav_group_quality: 'Review & governance',
   nav_group_system: 'System',
-  // Run Overview workspace (gui_refresh Wave 4b — plan 07 P1/P2 layers)
+  // Run Overview workspace (gui_refresh Wave 4b — the P1 "where is this run"
+  // and P2 "how is it scoring" disclosure rungs, both always visible)
   ov_title: 'Run Overview',
   ov_subtitle: 'Lifecycle, current phase, and next steps for one run',
   ov_no_run: 'No run selected — open this page as #/overview?run=<run_id>.',
@@ -35,7 +36,8 @@ const en: Record<string, string> = {
     'The governance record reports degraded or integrity-failing state. Inspect it in the Governance workspace — this describes the governance artifacts, not research failure.',
   ov_phase_gov_separate_note:
     'Research phase and governance stage are separate timelines — neither implies the other.',
-  // Cursor log explorer (gui_refresh task 07 tail — plan 07 P4 layer)
+  // Cursor log explorer (gui_refresh task 07 tail — the P4 rung: traces and
+  // raw log lines, one or two interactions away, fetched only once opened)
   ov_logs_title: 'Logs',
   ov_logs_show: 'Show logs',
   ov_logs_hide: 'Hide logs',
@@ -52,7 +54,10 @@ const en: Record<string, string> = {
   projects_paper_badge: 'Paper',
   projects_paper_link: 'Paper & results',
   projects_results_link: 'Results',
-  // Tree v2 workspace (gui_refresh Wave 4c — plan 07 §Tree workspace)
+  // Tree v2 workspace (gui_refresh Wave 4c): the run and the selected node
+  // live in the URL (#/tree2?run=<run_id>), never in session storage, so a
+  // view is shareable; node status/label wording is the orchestrator's own
+  // vocabulary, never a re-coined one.
   tree2_subtitle: 'Run-explicit BFTS node graph with shareable node selection',
   tree2_no_run: 'No run selected — open this page as #/tree2?run=<run_id>.',
   tree2_no_run_hint: 'Open a run from the Projects page to explore its tree.',
@@ -88,7 +93,10 @@ const en: Record<string, string> = {
   tree2_lod_showing_all: 'Showing all {total} nodes',
   tree2_lod_restore: 'Restore depth limit',
   tree2_table_label: 'Tree table',
-  // Ideas v2 workspace (gui_refresh Wave 4c — plan 07 §Ideas, claims, and evidence)
+  // Ideas v2 workspace (gui_refresh Wave 4c): read-only idea → claim →
+  // evidence relations; raw generated text is never given the same status
+  // as validated evidence, and a missing idea.json reads as absent rather
+  // than as an empty idea.
   ideas2_title: 'Ideas',
   ideas2_subtitle: 'Run-explicit ideas, hypotheses, and strategy (read-only)',
   ideas2_no_run: 'No run selected — open this page as #/ideas2?run=<run_id>.',
@@ -120,7 +128,10 @@ const en: Record<string, string> = {
   ideas2_strategy_title: 'Idea strategy distribution',
   ideas2_strategy_explored: 'nodes explored',
   ideas2_tree_empty: 'No tree nodes recorded for this run yet.',
-  // Results v2 workspace (gui_refresh Wave 4d — plan 07 §Evidence, Results, and PaperBench)
+  // Results v2 workspace (gui_refresh Wave 4d): the generated paper, its
+  // evaluation and the curate → publish → promote lineage all hang off one
+  // result record, and a completed run is never worded as a passed
+  // benchmark.
   results2_title: 'Paper & results',
   results2_subtitle: 'Generated paper, evaluation results, and publication lineage for this run',
   results2_no_run: 'No run selected — open this page as #/results2?run=<run_id>.',
@@ -264,7 +275,10 @@ const en: Record<string, string> = {
   studio_none_option: '(none)',
   studio_revision: 'Revision',
   studio_request_id: 'Request ID',
-  // Studio launch flow (gui_refresh task 06 Wave 4e — plan 06 §Launch protocol)
+  // Studio launch flow (gui_refresh task 06 Wave 4e): the steps are fixed —
+  // goal, then an immutable review of the resolved config, then an
+  // idempotent launch, so a second click replays the same run instead of
+  // starting a second one.
   studio_goal_placeholder: 'Research goal (becomes experiment.md)',
   studio_launch_title: 'Launch',
   studio_launch_step_goal: 'Goal',
@@ -323,7 +337,7 @@ const en: Record<string, string> = {
   projects_summary_attention: 'Needs attention',
   projects_runs_heading: 'Research runs',
   projects_actions: 'Open',
-  // Governance workspace (gui_refresh Wave 4a — read-only RQGM, plan 08)
+  // Governance workspace (gui_refresh Wave 4a — read-only RQGM read models)
   gov_title: 'Governance',
   gov_subtitle: 'Read-only RQGM governance and score lineage',
   gov_no_run: 'No run selected — open this page as #/governance?run=<run_id>.',
@@ -459,8 +473,12 @@ const en: Record<string, string> = {
   gov_audit_empty: 'No audit events match the current filters.',
   gov_audit_total: 'events',
   gov_audit_end: 'End of committed log.',
-  // Governance workspace Wave 4b (plan 08 §Epoch Timeline / §Evolution and
-  // Frontier Repair / §Paper Archive)
+  // Governance workspace Wave 4b — Epoch Timeline, Evolution (with frontier
+  // repair) and Paper Archive. Three wordings are load-bearing here: each
+  // epoch is its own facet because epochs under different utility policy
+  // hashes are not comparable; a proposal is a candidate until the committed
+  // registry replay says it was adopted; and absence is worded as absence,
+  // never as zero.
   gov_tab_epochs: 'Epoch Timeline',
   gov_tab_evolution: 'Evolution',
   gov_tab_paper: 'Paper Archive',

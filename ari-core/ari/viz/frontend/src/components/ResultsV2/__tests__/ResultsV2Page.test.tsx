@@ -17,8 +17,19 @@ import {
 } from '../../../services/api/v1';
 
 /**
- * ResultsV2Page (gui_refresh task 07 Wave 4d — v2 Results/EAR workspace;
- * plan 07 §Evidence, Results, and PaperBench, plan 01 §Route model).
+ * ResultsV2Page (gui_refresh Wave 4d — v2 Results/EAR workspace).
+ *
+ * The two rules this file pins:
+ *   - A result is a READ-ONLY projection of committed artifacts. Output,
+ *     metrics, rubric, artifacts and EAR/publication lineage all hang off one
+ *     result record, every stage shown derives from an artifact fact, and an
+ *     absent source renders as absence — never as a fabricated score, verdict
+ *     or lineage, and never as zero. Mutation belongs to the legacy page; this
+ *     one has no write path at all.
+ *   - The workspace is RUN-EXPLICIT: what it renders is a function of its URL
+ *     (`?run=<run_id>`), not of a process-wide "active checkpoint", which is
+ *     what keeps two runs open in two tabs from stepping on each other. See
+ *     docs/concepts/gui_architecture.md, "3. The URL is navigation truth".
  *
  * The typed v1 results/ear/run fetchers are mocked at the module boundary
  * (react-query hooks and page logic stay REAL). Pins over the four fixture

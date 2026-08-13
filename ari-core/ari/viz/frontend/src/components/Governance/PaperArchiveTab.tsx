@@ -1,5 +1,6 @@
 // ARI Dashboard – Governance Paper Archive tab (gui_refresh task 08 Wave
-// 4b; plan 08 §Paper Archive).
+// 4b). Answers "how was the paper selected?" — see docs/guides/rqgm_gui.md,
+// 'Paper Archive — "how was the paper selected?"'.
 //
 // Bounded paper-archive summary with the two independence rules enforced in
 // the UI:
@@ -8,15 +9,16 @@
 //     (the bare word "mode" is never used alone);
 //   - the best-belief draft is a REVIEWED selection — never equated with
 //     the governance winner or the research result.
-// Absence stays absence (plan 08 §Truth rules):
+// Absence stays absence — a presence flag accompanies every optional source
+// and a count stays null, never 0, when its artifact is missing:
 //   - paper_archive_state.json absent => the linear chip is shown WITH the
 //     "derived from absence" note (state_present=false is surfaced, the
 //     derivation is transparent);
 //   - an absent draft archive renders "not present" — draft_count=null is
 //     never rendered as 0;
-//   - anchor.enabled=null (no frozen paper utility policy) is unknown, and
-//     anchor.enabled=false carries the plan-08 note verbatim: the archive
-//     is reviewed best-of-N and writer sanctions cannot fire.
+//   - anchor.enabled=null (no frozen paper utility policy) is unknown — not
+//     disabled — and anchor.enabled=false carries its consequence verbatim:
+//     the archive is reviewed best-of-N and writer sanctions cannot fire.
 
 import { useT } from '../../i18n';
 import { useRqgmPaperArchiveV1 } from '../../hooks/useV1';
@@ -67,7 +69,8 @@ function ModeChips({
       {!archive.state_present && (
         // Transparent derivation: absence of the state file MEANS linear by
         // the source contract — but the absence itself is surfaced, never
-        // silently rendered as recorded state (plan 08 §Truth rules).
+        // silently rendered as recorded state. A derived value that came from
+        // absence must show that it did.
         <p style={{ color: 'var(--status-warning)', fontSize: '.78rem' }}>
           {t('gov_paper_state_absent')}
         </p>
@@ -145,8 +148,10 @@ function AnchorCard({ archive }: { archive: RqgmPaperArchiveV1 }) {
           </Badge>
         </p>
         {anchor.enabled === false && (
-          // The plan-08 §Paper Archive note: with the anchor disabled the
-          // archive is reviewed best-of-N and writer sanctions cannot fire.
+          // A disabled anchor carries its consequence verbatim: the archive
+          // is reviewed best-of-N and writer sanctions cannot fire. Only an
+          // explicit `false` says that — `null` is "no frozen paper utility
+          // policy" (unknown, handled above), never rendered as disabled.
           <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginTop: 6 }}>
             {t('gov_paper_anchor_disabled_note')}
           </p>
@@ -211,8 +216,10 @@ function WinnerCard({ archive }: { archive: RqgmPaperArchiveV1 }) {
   return (
     <Card title={t('gov_paper_winner_title')}>
       <div data-testid="paper-winner-card">
-        {/* Reviewed selection != governance winner != research result
-            (plan 08 §Paper Archive) — the note renders unconditionally. */}
+        {/* The winner is the is_best_belief draft: a reviewed selection,
+            which is neither the governance winner nor the research result —
+            the note renders unconditionally so it can never be read as
+            either. */}
         <p style={{ color: 'var(--text-muted)', fontSize: '.78rem', marginBottom: 6 }}>
           {t('gov_paper_winner_note')}
         </p>

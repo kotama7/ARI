@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from typing import Any
 
-# Frozen v1 error code vocabulary (plan 04 §API principles). Additive only.
+# Frozen v1 error code vocabulary: additive only — a code is never removed
+# or repurposed, so a client can switch on one forever.
 # Wave 3b (task 05 config CRUD) added the two optimistic-concurrency codes:
 # 'revision_conflict' (409, If-Match mismatch) and 'already_exists' (409,
 # create-only POST hit an existing document).

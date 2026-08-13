@@ -18,7 +18,10 @@ const zh: Record<string, string> = {
   nav_group_research: '当前实验',
   nav_group_quality: '评估与治理',
   nav_group_system: '系统',
-  // Run Overview workspace (gui_refresh Wave 4b — plan 07 P1/P2 层)
+  // Run Overview workspace (gui_refresh Wave 4b — P1 层 = 生命周期/阶段/阻塞项，
+  // 始终可见；P2 层 = 计数与工作区链接。层级阶梯的定义见
+  // docs/concepts/gui_architecture.md, "11. Disclosure levels: what a screen
+  // shows before you ask")
   ov_title: 'Run 概览',
   ov_subtitle: '单个 run 的生命周期、当前阶段与下一步',
   ov_no_run: '未选择 run — 请以 #/overview?run=<run_id> 形式打开本页。',
@@ -35,7 +38,8 @@ const zh: Record<string, string> = {
     '治理记录报告了降级或完整性校验失败的状态。请在治理工作区中检查 — 这描述的是治理产物的状态，不代表研究失败。',
   ov_phase_gov_separate_note:
     '研究阶段与治理阶段是相互独立的时间线，二者互不蕴含。',
-  // Cursor log explorer (gui_refresh task 07 tail — plan 07 P4 层)
+  // Cursor log explorer (gui_refresh task 07 tail — P4 层：折叠状态下不发起
+  // 任何请求，"惰性"指不取数，而不是取了再隐藏)
   ov_logs_title: '日志',
   ov_logs_show: '显示日志',
   ov_logs_hide: '隐藏日志',
@@ -52,7 +56,8 @@ const zh: Record<string, string> = {
   projects_paper_badge: '有论文',
   projects_paper_link: '论文与结果',
   projects_results_link: '结果',
-  // Tree v2 workspace (gui_refresh Wave 4c — plan 07 §Tree workspace)
+  // Tree v2 workspace (gui_refresh Wave 4c — run 由 ?run= 显式限定，节点选择
+  // 写入 URL，因此链接可分享；未带 run 时显示提示而不沿用全局选择)
   tree2_subtitle: '以 run 为单位的 BFTS 节点图（节点选择可通过 URL 分享）',
   tree2_no_run: '未选择 run — 请以 #/tree2?run=<run_id> 形式打开本页。',
   tree2_no_run_hint: '从 Projects 页面打开一个 run 即可浏览其节点树。',
@@ -88,7 +93,8 @@ const zh: Record<string, string> = {
   tree2_lod_showing_all: '正在显示全部 {total} 个节点',
   tree2_lod_restore: '恢复深度限制',
   tree2_table_label: '树表格',
-  // Ideas v2 workspace (gui_refresh Wave 4c — plan 07 §Ideas, claims, and evidence)
+  // Ideas v2 workspace (gui_refresh Wave 4c — 只读：idea.json 与 run 树中的
+  // BFTS 假设；缺失的产物显示为缺失，不以空值或 0 代替)
   ideas2_title: '想法',
   ideas2_subtitle: '按 run 明确的想法、假设与策略（只读）',
   ideas2_no_run: '未选择 run — 请以 #/ideas2?run=<run_id> 的形式打开本页。',
@@ -119,7 +125,8 @@ const zh: Record<string, string> = {
   ideas2_strategy_title: '想法策略分布',
   ideas2_strategy_explored: '个节点已探索',
   ideas2_tree_empty: '该 run 尚未记录树节点。',
-  // Results v2 workspace (gui_refresh Wave 4d — plan 07 §Evidence, Results, and PaperBench)
+  // Results v2 workspace (gui_refresh Wave 4d — 只读摘要：评审分数、ORS 复现链
+  // 与 EAR 发布谱系；论文编辑仍留在 legacy 页面，本页只提供链接)
   results2_title: '论文与结果',
   results2_subtitle: '本次实验生成的论文、评估结果与发布谱系',
   results2_no_run: '未选择 run — 请以 #/results2?run=<run_id> 形式打开本页。',
@@ -258,7 +265,9 @@ const zh: Record<string, string> = {
   studio_none_option: '（无）',
   studio_revision: '版本',
   studio_request_id: '请求ID',
-  // Studio launch flow (gui_refresh task 06 Wave 4e — plan 06 §Launch protocol)
+  // Studio launch flow (gui_refresh task 06 Wave 4e — 仅 draft scope；
+  // goal -> review -> launch，校验通过、有 goal、且确认过不可变摘要三者齐备
+  // 才允许启动)
   studio_goal_placeholder: '研究目标（将成为 experiment.md）',
   studio_launch_title: '启动',
   studio_launch_step_goal: '目标',
@@ -316,7 +325,8 @@ const zh: Record<string, string> = {
   projects_summary_attention: '需要关注',
   projects_runs_heading: '研究实验',
   projects_actions: '打开',
-  // Governance workspace (gui_refresh Wave 4a — 只读 RQGM, plan 08)
+  // Governance workspace (gui_refresh Wave 4a — 只读 RQGM：治理状态与研究状态
+  // 是两条独立时间线，互不蕴含；无治理产物属于能力状态，而非错误)
   gov_title: '治理',
   gov_subtitle: '只读的 RQGM 治理与得分谱系',
   gov_no_run: '未选择 run — 请以 #/governance?run=<run_id> 形式打开本页。',
@@ -452,7 +462,8 @@ const zh: Record<string, string> = {
   gov_audit_empty: '没有符合当前筛选的审计事件。',
   gov_audit_total: '条事件',
   gov_audit_end: '已到已提交日志末尾。',
-  // Governance workspace Wave 4b (plan 08)
+  // Governance workspace Wave 4b（纪元时间线 / 演化 / 论文归档三个只读标签页；
+  // 不同 utility policy hash 的纪元不做跨纪元比较）
   gov_tab_epochs: '纪元时间线',
   gov_tab_evolution: '演化',
   gov_tab_paper: '论文归档',

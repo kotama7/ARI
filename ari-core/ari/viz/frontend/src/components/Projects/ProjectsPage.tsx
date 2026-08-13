@@ -1,11 +1,19 @@
-// ARI Dashboard – Projects workspace (gui_refresh Wave 2b; plans 01 §Route
-// model, 07 §Projects and run portfolio).
+// ARI Dashboard – Projects workspace (gui_refresh Wave 2b). The run
+// portfolio: every run under the checkpoint search roots, listed as one
+// virtual 'default' project.
+//
+// Two structural rules this page obeys. (1) The route exists in exactly one
+// place — its ROUTE_REGISTRY entry; App.tsx dispatch and the Sidebar nav are
+// both DERIVED from that entry, so a route can never exist in the nav but not
+// the router. (2) Navigation state lives in the URL: every link out carries
+// its run in the hash query, so a view is reloadable and shareable and two
+// tabs on two runs cannot step on each other.
 //
 // The FIRST v2 vertical slice: built ONLY from the typed /api/v1 react-query
 // hooks (useV1: projects -> runs of the virtual 'default' project), the shared
 // common components, and semantic CSS tokens (no hex literals). Read-only —
-// NO governance data and NO run mutation live here (task 08 owns RQGM; launch
-// stays in the wizard).
+// NO governance data and NO run mutation live here (the Governance workspace
+// owns RQGM; launch stays in the wizard).
 //
 // Navigation handoff: every workspace link carries an explicit run query.
 // The paper/results action opens the complete PDF/editor workspace at
@@ -29,7 +37,9 @@ import type { ApiErrorV1, RunSummaryV1 } from '../../services/api/v1';
 
 // ── helpers ─────────────────────────────────────────────────────────────
 
-/** err.message plus the envelope's request_id (support handle, plan 04). */
+/** err.message plus the envelope's request_id. Every /api/v1 failure carries
+ *  a `req-<12 hex>` request_id minted per dispatch; surfacing it is what lets
+ *  a user quote one handle that matches the server log. */
 function errorText(err: ApiErrorV1, requestIdLabel: string): string {
   const rid = err.request_id ? ` (${requestIdLabel}: ${err.request_id})` : '';
   return `${err.message}${rid}`;
@@ -60,7 +70,8 @@ function readableRunName(run: RunSummaryV1): string {
  * capabilities map — only RunDetailV1 does — so read it defensively: the chip
  * renders as soon as the list payload carries `capabilities: {rqgm: true}`.
  * The chip is an execution-mode marker ONLY — RQGM accepted/rejected must
- * never be converted into an overall research success badge (plan 07).
+ * never be converted into an overall research success badge: governance
+ * standing is a capability state, not a verdict on the science.
  */
 function hasRqgm(run: RunSummaryV1): boolean {
   const caps = (run as { capabilities?: Record<string, boolean> }).capabilities;
@@ -79,7 +90,10 @@ export function ProjectsPage() {
   // Wave 2a serves exactly one project: the virtual 'default' one (ADR-08).
   const projectId = projectsQ.data?.projects[0]?.project_id ?? '';
   const runsQ = useRunsV1(projectId);
-  // Realtime invalidation + connection state (plan 03 §Realtime integration).
+  // Realtime invalidation + connection state: an SSE event for these runs maps
+  // to a query-cache invalidation and a refetch of the typed snapshot, never
+  // to a direct state write — nothing on screen is rendered from an event, so
+  // duplicate or out-of-order events are harmless.
   const { connectionState, lastEventAt } = useRunEvents(null, LIST_TOPICS);
 
   const openRun = (runId: string) => {
@@ -90,8 +104,9 @@ export function ProjectsPage() {
   };
 
   // Hard error only when there is no snapshot to show; with cached data we
-  // keep the table and show a freshness banner instead (plan 01 §Empty and
-  // degraded states: never claim "stopped" while a snapshot exists).
+  // keep the table and show a freshness banner instead — a degraded read is
+  // reported as "this view may lag", never as "the run stopped", so an error
+  // screen is reserved for the case where there is genuinely nothing to show.
   const hardError: ApiErrorV1 | null =
     projectsQ.isError && projectsQ.data === undefined
       ? projectsQ.error
@@ -100,9 +115,10 @@ export function ProjectsPage() {
         : null;
   // Data-freshness banner: a refetch failure over cached data OR a dropped
   // event stream. Either way we keep showing the snapshot and say how fresh
-  // it is — a disconnect is never presented as "run stopped" (plan 01
-  // §Empty and degraded states; plan 04: never misreport stale state as
-  // stopped/failed while SSE is down).
+  // it is — a stalled stream and a stopped run are different facts, and this
+  // page never converts one into the other. A dropped stream is a freshness
+  // problem, so the last snapshot stays on screen under the banner and no run
+  // is relabelled stopped/failed because the transport went away.
   const stale =
     (runsQ.data !== undefined && runsQ.isError) || connectionState !== 'live';
   const loading =
@@ -191,8 +207,10 @@ export function ProjectsPage() {
           {runs.length === 0 ? (
             <div>
               <EmptyState icon={'📁'} message={t('projects_empty')} />
-              {/* Next actions (plan 07 §Projects: create/import/resume).
-                  Plain links; all three land on the launch surface for now. */}
+              {/* Next actions: an empty portfolio names what to do next
+                  (create / import / resume) instead of dead-ending on an
+                  empty state. Plain links; all three land on the launch
+                  surface for now. */}
               <div
                 className="projects-empty-actions"
                 style={{
@@ -275,9 +293,10 @@ export function ProjectsPage() {
                     >
                       <div className="projects-action-links">
                       {/* FIRST action (Wave 4b): the run-explicit v2 Overview
-                          workspace — the URL shape replacing the sessionStorage
-                          handoff direction (plan 07 §Cross-workspace
-                          coordination). */}
+                          workspace. Cross-workspace handoff travels in the
+                          URL — one workspace hands another its run as `?run=`
+                          — replacing the implicit sessionStorage handoff the
+                          legacy pages use. */}
                       <a
                         href={`#/overview?run=${encodeURIComponent(run.run_id)}`}
                         onClick={(e) => e.stopPropagation()}

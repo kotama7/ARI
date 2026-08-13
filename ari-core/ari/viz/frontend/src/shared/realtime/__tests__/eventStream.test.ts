@@ -11,7 +11,11 @@ import {
 } from '../eventStream';
 
 /**
- * eventStream (gui_refresh Wave 2b, ADR-03 + plan 03 §Realtime integration).
+ * eventStream (gui_refresh Wave 2b, ADR-03): the single owner of realtime over
+ * /api/v1. Pages call subscribe(runId, topics, callbacks) — normally through
+ * the useRunEvents hook — and never construct an EventSource themselves, so the
+ * backoff schedule, the last_event_id cursor, the three-state connection
+ * machine and the offline poll tick exist once and are tested once, here.
  *
  * Drives the SSE wrapper through a controllable FakeEventSource (the global
  * one in vitest.setup.ts is a no-op — this one records instances and lets
@@ -24,8 +28,9 @@ import {
  *     param as a fallback);
  *   - connectionState live → reconnecting → offline (> 60s) → live again;
  *   - the bounded 10s polling fallback tick that engages ONLY after the
- *     60s persistent-failure window and stops on reconnect (plan 03:
- *     SSE 不可時だけ bounded polling fallback).
+ *     60s persistent-failure window and stops on reconnect: 'offline' is the
+ *     one connection state allowed to poll, and it polls only the
+ *     subscription's own scope.
  */
 
 class FakeES {
@@ -211,7 +216,8 @@ describe('eventStream.subscribe', () => {
     last().open();
     last().error();
 
-    // Within the 60s window: NO polling (plan 03: fallback only when SSE 不可).
+    // Within the 60s window: NO polling — 'reconnecting' is not 'offline', and
+    // only 'offline' may fall back to polling.
     vi.advanceTimersByTime(OFFLINE_AFTER_MS - 1);
     expect(onPollTick).not.toHaveBeenCalled();
 

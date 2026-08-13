@@ -1,16 +1,21 @@
 // @vitest-environment node
 /// <reference types="vite/client" />
 //
-// AppContext legacy-scoping guard (gui_refresh G2 tail; plan 03 §State
-// ownership — AppContext shrinks from remote-data store to shell-level UI
-// concern, with deletion decided last; RR-P0-8 disposition).
+// AppContext legacy-scoping guard (gui_refresh G2 tail; RR-P0-8 disposition).
+//
+// State-ownership rule: run-scoped server state lives in the react-query
+// cache under a ['v1', <runId>, <resource>] key, never in a process-global
+// context — so AppContext shrinks from remote-data store to shell-level UI
+// concern, and its deletion is decided last rather than first. See
+// docs/concepts/gui_architecture.md, "4. Server state lives in a cache, keyed
+// by run".
 //
 // The v2 workspaces source remote data run-explicitly from /api/v1 via
 // react-query (useV1 hooks) and scope themselves with ?run= URL state.
 // AppContext — the legacy /state poller + global-active-checkpoint store —
-// must not gain new v2 consumers, or the G6 legacy-removal gate (plan 03
-// §Migration sequence step 7: delete duplicate router / legacy remote state)
-// becomes un-executable.
+// must not gain new v2 consumers, or the G6 legacy-removal gate — the last
+// step of the migration sequence, which deletes the duplicate router and the
+// legacy remote-state store once nothing reads them — becomes un-executable.
 //
 // Structural source-scan (same spirit as indexHtmlNoExternalScripts.test.ts):
 // every non-test source file under the v2 component dirs is loaded raw via
@@ -51,7 +56,7 @@ const APP_CONTEXT_IMPORT = /['"][^'"]*context\/AppContext['"]/;
 // Pinned exception set — see header. Keys are the glob's relative paths.
 const ALLOWED = new Set(['../components/IdeasV2/IdeasV2Page.tsx']);
 
-describe('v2 workspaces stay AppContext-free (plan 03 G2 tail / RR-P0-8)', () => {
+describe('v2 workspaces stay AppContext-free (G2 tail / RR-P0-8)', () => {
   it('scans a non-vacuous v2 source set', () => {
     // Guards the glob itself: if the dirs move, this fails loudly instead of
     // the import scan passing on zero files.

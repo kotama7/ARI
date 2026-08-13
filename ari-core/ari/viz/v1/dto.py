@@ -1,9 +1,11 @@
 """Pydantic v2 DTOs for ``/api/v1`` (gui_refresh Wave 2a, ADR-02/ADR-08).
 
 Every resource model carries ``schema_version: Literal[1]`` so consumers can
-detect the contract revision; changes are additive by policy (plan 04 §API
-principles). pydantic v2 is already a core dependency (ADR-02: zero new
-runtime dependencies).
+detect the contract revision; changes are additive by policy — within ``v1``
+new optional fields may appear at any time, existing fields are never removed
+or retyped, and a breaking change takes a new path prefix instead
+(docs/reference/rest_api.md, "Versioning policy"). pydantic v2 is already a
+core dependency (ADR-02: zero new runtime dependencies).
 
 Conventions pinned here:
 
@@ -11,13 +13,16 @@ Conventions pinned here:
   compatible with the existing fixtures/contracts);
 - ``display_name`` is derived presentation only (timestamp prefix stripped),
   never an identity;
-- ``mtime_utc`` is an ISO 8601 UTC string (``YYYY-MM-DDTHH:MM:SSZ``) — plan
-  04 §API principles (timestamps are UTC ISO 8601);
+- ``mtime_utc`` is an ISO 8601 UTC string (``YYYY-MM-DDTHH:MM:SSZ``) — every
+  timestamp this surface serves is UTC ISO 8601, never local time and never
+  epoch seconds;
 - ``TreeV1.nodes`` passes the ``tree_view.build_tree_view`` node list through
   byte-preserving (no key added/removed/reordered — 024 §7 contract);
 - ``RunDetailV1.capabilities`` is a feature map derived from artifact
   existence only (``rqgm`` == ``rqgm_state.json`` present; ``ari.rqgm`` is
-  deliberately NOT imported — task 08 owns the RQGM domain DTOs).
+  deliberately NOT imported — the view layer never imports the governance
+  package, so a capability is answered from artifacts on disk and never by
+  asking the engine).
 """
 
 from __future__ import annotations
@@ -111,10 +116,12 @@ class SecretStatusV1(BaseModel):
 
 
 class SecretValueRequestV1(BaseModel):
-    """PUT /api/v1/secrets/{secret_id} body — the write-only value channel
-    (plan 05 §Configuration API).  The value never appears in any response,
-    manifest, or log; the target name is the path's ``secret_id`` and must
-    be on the ``ari.viz.v1.secrets.SECRET_NAMES`` allowlist."""
+    """PUT /api/v1/secrets/{secret_id} body — the write-only value channel:
+    a secret value travels browser → server only, and is never readable
+    back through any endpoint (docs/guides/configuration_studio.md, "How
+    secrets work").  The value never appears in any response, manifest, or
+    log; the target name is the path's ``secret_id`` and must be on the
+    ``ari.viz.v1.secrets.SECRET_NAMES`` allowlist."""
 
     value: str
 
@@ -146,9 +153,10 @@ class ModelProviderV1(BaseModel):
 
 
 class ModelCatalogV1(BaseModel):
-    """GET /api/v1/config/catalogs/models envelope (plan 05 §Configuration
-    API; plan 06 §Schema-driven rendering: frontend model/provider constants
-    are replaced by this server catalog)."""
+    """GET /api/v1/config/catalogs/models envelope: the server owns the
+    model/provider catalog and the client renders whatever it serves — no
+    frontend constant duplicates the provider list, the model lists, or the
+    provider→env-key mapping, so the two cannot drift."""
 
     schema_version: Literal[1] = 1
     providers: list[ModelProviderV1] = Field(default_factory=list)
@@ -173,8 +181,11 @@ class RunListV1(BaseModel):
 
 class ConfigFieldV1(BaseModel):
     """One canonical config field: an ``ARIConfig`` leaf merged with the
-    hand-authored ``ari.config.field_registry.FIELD_META`` overlay (plan 05
-    §Canonical field metadata).  Metadata only — never an effective value;
+    hand-authored ``ari.config.field_registry.FIELD_META`` overlay.  That
+    registry is the single source of field metadata: no GUI-side field
+    list, label map, level table or enum copy exists to drift from it
+    (docs/guides/configuration_studio.md, "The field registry").  Metadata
+    only — never an effective value;
     ``sensitivity == "secret_reference"`` fields additionally carry NO
     default (the registry redacts it before this DTO is built)."""
 
@@ -208,9 +219,11 @@ class ConfigSchemaV1(BaseModel):
 
 
 class ProvenanceEntryV1(BaseModel):
-    """Where one resolved leaf's effective value came from (plan 05
-    §Resolved manifest).  ``confidence`` is ``high`` when the source file
-    was present, ``low`` for reconstructed/current-env layers."""
+    """Where one resolved leaf's effective value came from: every leaf of a
+    resolved manifest names the layer that won it, so an effective value is
+    never served without its provenance.  ``confidence`` is ``high`` when
+    the source file was present, ``low`` for reconstructed/current-env
+    layers."""
 
     source: Literal[
         "default", "workflow", "launch_config", "env", "checkpoint_state"
@@ -255,9 +268,11 @@ class ResolvedConfigV1(BaseModel):
 
 
 class RejectedOverrideV1(BaseModel):
-    """One rejected/ignored override kept as an explanation (plan 05
-    §Resolution model: rejected overrides are returned, never silently
-    dropped).  ``reason`` vocabulary: the ``validate_patch`` closed set
+    """One rejected/ignored override kept as an explanation: a layer value
+    the resolver refused is returned with its reason while the resolver
+    falls back to the last valid layer — a rejected override is never
+    silently dropped (docs/guides/configuration_studio.md, "1. Resolve and
+    validate").  ``reason`` vocabulary: the ``validate_patch`` closed set
     (``invalid_enum``/``invalid_type``/``read_only``/``not_project_scope``)
     plus ``invalid_value`` (pydantic construction rejected it) and
     ``interlock_mismatch`` (warn+fallback ``resolve_effective_mode``
@@ -271,8 +286,10 @@ class RejectedOverrideV1(BaseModel):
 
 
 class NewRunProvenanceV1(BaseModel):
-    """Provenance for one leaf of the NEW-RUN preview chain (plan 05
-    §Resolution model / New run).  ``mutable`` is true for every
+    """Provenance for one leaf of the NEW-RUN preview chain — the preview
+    resolves the same layered chain a launched run resolves, over the
+    layers that exist before any checkpoint does, so the panel shows what
+    the run will actually get.  ``mutable`` is true for every
     non-read_only field — before launch even ``new_run_only`` windows are
     open.  ``confidence`` is ``low`` only for the env overlay (the
     launch-time environment may differ from the preview-time one)."""
@@ -323,8 +340,9 @@ class DraftValidationErrorV1(BaseModel):
     ``validate_patch`` closed set (``field_registry.PATCH_REASONS``,
     including the ADR-09 ``mode_interlock_mismatch`` a half-set/disagreeing
     mode pair raises) plus ``invalid_value`` and ``interlock_mismatch``
-    (plan 05 §Interlocks: draft validation treats an inconsistent intent
-    pair as an ERROR even though the runtime resolves it warn+fallback)."""
+    (draft validation treats an inconsistent intent pair as an ERROR even
+    though the runtime resolves it warn+fallback, so a launch refuses
+    rather than quietly starting the fallback run)."""
 
     path: str
     reason: str
@@ -449,17 +467,22 @@ class RunDraftCreateRequestV1(BaseModel):
     goal: str | None = None
 
 
-# ── idempotent launch (gui_refresh tasks 04/06 Wave 4e) ────────────────────
+# ── idempotent launch (Wave 4e): server-minted identity, replay-safe ───────
 
 
 class RunLaunchRequestV1(BaseModel):
-    """POST /api/v1/runs body (plan 06 §Launch protocol).
+    """POST /api/v1/runs body — the launch protocol is validate-first and
+    idempotent: a rejected body performs zero filesystem mutation, and the
+    idempotency claim is written before any directory exists
+    (docs/guides/configuration_studio.md, "3. Launch, and what it
+    guarantees").
 
     ``draft_id`` names the durable run draft to launch; ``display_name``
-    only seeds the human-readable slug half of the run id (never identity —
-    plan 04 §Run identity); ``profile`` is the CLI ``--profile`` closed set;
-    ``idempotency_key`` makes the POST retriable — a duplicate key replays
-    the SAME ``run_id`` and spawns nothing (double-click safety)."""
+    only seeds the human-readable slug half of the run id — the id is
+    minted by the server and a display name is never identity; ``profile``
+    is the CLI ``--profile`` closed set; ``idempotency_key`` makes the POST
+    retriable — a duplicate key replays the SAME ``run_id`` and spawns
+    nothing (double-click safety)."""
 
     draft_id: str
     display_name: str | None = None
@@ -468,11 +491,13 @@ class RunLaunchRequestV1(BaseModel):
 
 
 class RunLaunchedV1(BaseModel):
-    """POST /api/v1/runs accepted envelope (plan 04 §Run identity and
-    lifecycle: the collision-resistant ``run_id`` + status URL + checkpoint
-    path/intent, returned before any slow work).  ``idempotent_replay`` is
-    True when the response acknowledges an earlier launch for the same
-    idempotency key (nothing was spawned by THIS request)."""
+    """POST /api/v1/runs accepted envelope: the server mints the
+    collision-resistant ``run_id`` and answers with it, the status URL and
+    the checkpoint path before any slow work, so a client follows the
+    issued id and never guesses the newest checkpoint by mtime.
+    ``idempotent_replay`` is True when the response acknowledges an earlier
+    launch for the same idempotency key (nothing was spawned by THIS
+    request)."""
 
     schema_version: Literal[1] = 1
     run_id: str
@@ -482,7 +507,7 @@ class RunLaunchedV1(BaseModel):
     idempotent_replay: bool = False
 
 
-# ── RQGM read models (gui_refresh task 08 Wave 4a — plan 08) ───────────────
+# ── RQGM read models (Wave 4a): read-only, artifact-derived ────────────────
 #
 # Server-only read DTOs over committed RQGM checkpoint artifacts (readers in
 # ari/viz/v1/rqgm.py — ``ari.rqgm`` is never imported; the GUI re-executes no
@@ -495,10 +520,11 @@ class RunLaunchedV1(BaseModel):
 # - raw adversarial output is only representable as ``RqgmRawAttackV1``,
 #   which has NO numeric score/penalty field at all — a raw attack can never
 #   be displayed as a validated penalty;
-# - score observations always carry their ``policy_hash`` (plan 08: a score
-#   is never shown without policy identity) and the two lineage channels
-#   (penalty vs epoch-policy rewrite) are separate lists that no consumer
-#   can accidentally merge into one series.
+# - score observations always carry their ``policy_hash`` (a score is never
+#   shown without the policy identity it was computed under, so scores from
+#   different policy hashes are never one continuous series) and the two
+#   lineage channels (penalty vs epoch-policy rewrite) are separate lists
+#   that no consumer can accidentally merge into one series.
 
 #: Registry lifecycle vocabulary — verbatim ``ari.rqgm.events.STATUS_VALUES``
 #: (a frozen contract; parity is pinned by tests/test_gui_v1_rqgm.py).
@@ -515,9 +541,11 @@ RegistryStatusV1 = Literal[
     "banned",
 ]
 
-#: Node score-state vocabulary (plan 08 §Governance state model) — DISTINCT
-#: from the registry lifecycle; stale/invalidated/removed are logical states,
-#: never physical deletion.
+#: Node score-state vocabulary — a DIFFERENT state machine from the registry
+#: lifecycle above, never mixed into one field or one legend
+#: (docs/reference/rqgm_gui_read_models.md, "Two vocabularies, two state
+#: machines"); stale/invalidated/removed are logical states, never physical
+#: deletion.
 NodeScoreStateV1 = Literal[
     "computed", "recomputed", "stale", "invalidated", "removed"
 ]
@@ -529,7 +557,8 @@ class RqgmCapabilitiesV1(BaseModel):
     Capability detection from artifact presence only: no ``rqgm_state.json``
     ⇒ ``enabled=false`` with reason ``'simple_bfts run'``; ``paper_mode`` is
     ``paper_archive_state.json`` presence (execution mode and paper mode are
-    independent axes — plan 08 §Paper Archive)."""
+    independent axes: all four combinations are valid, so neither may be
+    inferred from the other)."""
 
     schema_version: Literal[1] = 1
     run_id: str
@@ -542,8 +571,10 @@ class RqgmCapabilitiesV1(BaseModel):
 
 class RqgmIntegrityV1(BaseModel):
     """Tri-state integrity flags: ``True`` verified, ``False`` broken,
-    ``None`` source missing (a missing source is never displayed as clean —
-    plan 08 §Truth rules)."""
+    ``None`` source missing — a missing source is never displayed as clean,
+    and a broken chain degrades the payload rather than failing the request
+    (docs/reference/rqgm_gui_read_models.md, "Integrity flags and degraded
+    semantics")."""
 
     transitions_chain_ok: bool | None = None
     registry_verified: bool | None = None
@@ -612,8 +643,8 @@ class RqgmRegistryV1(BaseModel):
 
     Entries come from committed replay of ``rqgm_transitions.jsonl`` (the
     truth log); the ``rqgm_registry.json`` rollup is read only to compute
-    ``verified`` (rollup ``as_of_event_hash`` == replay tail — plan 08
-    §Truth rules)."""
+    ``verified`` (rollup ``as_of_event_hash`` == replay tail).  A rollup or
+    snapshot verifies the truth log — it never becomes current state."""
 
     schema_version: Literal[1] = 1
     run_id: str
@@ -699,11 +730,16 @@ class RqgmAuditPageV1(BaseModel):
 
 
 class RqgmScoreObservationV1(BaseModel):
-    """One score-lineage observation (plan 08 §Score Lineage).
+    """One score-lineage observation — a score is never reported without
+    the policy identity it was computed under
+    (docs/reference/rqgm_gui_read_models.md, "The two score-rewrite
+    channels").
 
     ``policy_hash`` is always the EPOCH utility-policy hash the observation
     was made under (the penalty-side frozen weights live inside the source
-    record, plan 08's naming-subtlety rule).  ``state`` is ``None`` when the
+    record: the single field name ``utility_policy_hash`` has carried both
+    policies over the life of the format, and their key sets are disjoint
+    so the two hashes can never be equal).  ``state`` is ``None`` when the
     source asserts a frontier fact rather than a node score state (never
     guessed).  ``values`` carries the source fields verbatim (sentinel key
     names included) — passthrough, no re-computation."""
@@ -720,8 +756,10 @@ class RqgmScoreObservationV1(BaseModel):
 class RqgmRawAttackV1(BaseModel):
     """A RAW adversarial claim (``atk_*``): kind is pinned to ``'raw'`` and
     the model has NO score/penalty/confidence field — a raw attack is
-    structurally incapable of carrying a score (plan 08: raw attacks never
-    score; severity_claimed is the attacker's CLAIM, not a penalty)."""
+    structurally incapable of carrying a score (raw attacks never score;
+    ``severity_claimed`` is the attacker's CLAIM, not a penalty — only an
+    adjudicated ``vat_*`` record may drive one, and only through a
+    ``UtilityRecord`` that references its id)."""
 
     kind: Literal["raw"] = "raw"
     record_id: str
@@ -749,8 +787,10 @@ class RqgmValidatedAttackV1(BaseModel):
 
 class RqgmNodeLineageV1(BaseModel):
     """GET /api/v1/runs/{run_id}/rqgm/nodes/{node_id}/lineage — the TWO
-    independent score channels (plan 08 §Score Lineage), never merged into
-    one series: ``penalty_channel`` (adversarial penalty inside an epoch)
+    independent score channels, kept as separate lists that no consumer can
+    accidentally merge into one series
+    (docs/reference/rqgm_gui_read_models.md, "The two score-rewrite
+    channels"): ``penalty_channel`` (adversarial penalty inside an epoch)
     and ``policy_channel`` (epoch-boundary utility-policy rewrite /
     invalidation)."""
 
@@ -826,7 +866,7 @@ class RqgmPoliciesV1(BaseModel):
     degraded_reasons: list[str] = Field(default_factory=list)
 
 
-# ── RQGM Wave 4b (task 08): epochs / evolution / paper-archive read models ─
+# ── RQGM Wave 4b: epochs / evolution / paper-archive read models ───────────
 
 
 class RqgmEpochTransitionCountsV1(BaseModel):
@@ -836,8 +876,8 @@ class RqgmEpochTransitionCountsV1(BaseModel):
     and are never counted).  ``fallbacks`` has no event-level representation
     in the transitions log; it is joined from the ``epoch_transition`` audit
     record's real ``fallbacks`` array when present and stays ``None``
-    otherwise — an absent source is never displayed as zero (plan 08 §Truth
-    rules)."""
+    otherwise — an absent source is reported as absent, never as a zero
+    count."""
 
     adoptions: int = 0
     sanctions: int = 0
@@ -847,17 +887,19 @@ class RqgmEpochTransitionCountsV1(BaseModel):
 
 
 class RqgmEpochV1(BaseModel):
-    """One committed epoch from transitions replay (plan 08 §Epoch
-    Timeline).
+    """One committed epoch from transitions replay: the entry is derived
+    from the committed transition log, never from live registry state or
+    from the ``epoch_state.json`` snapshot.
 
     Every epoch carries its own ``utility_policy_hash`` so a consumer can
     refuse naive cross-epoch comparison: scores under different policy
-    hashes are never one continuous series (plan 08: epoch comparison only
-    after compatibility is confirmed).  ``boundary_committed`` is True when
-    a committed boundary transaction CLOSED this epoch (its terminal
-    boundary exists in the truth log); the latest epoch of a live run is
-    still open, so its ``transition_counts`` is ``None`` — a boundary that
-    has not happened is never rendered as zero activity."""
+    hashes are never one continuous series, and two epochs may be compared
+    only once their policy compatibility is confirmed.
+    ``boundary_committed`` is True when a committed boundary transaction
+    CLOSED this epoch (its terminal boundary exists in the truth log); the
+    latest epoch of a live run is still open, so its ``transition_counts``
+    is ``None`` — a boundary that has not happened is never rendered as
+    zero activity."""
 
     epoch_id: str
     opened_at_event: str = ""
@@ -923,7 +965,9 @@ class RqgmEpochDetailV1(BaseModel):
 
 
 class RqgmEvolutionEntryV1(BaseModel):
-    """One evolution-lineage entry (plan 08 §Evolution and Frontier Repair).
+    """One evolution-lineage entry — adoption is a join, never a self-claim
+    (docs/reference/rqgm_gui_read_models.md, "Presentation truth rules the
+    API enforces").
 
     Raw candidate vs validated candidate vs adopted policy are structurally
     separate here, never conflated:
@@ -931,7 +975,9 @@ class RqgmEvolutionEntryV1(BaseModel):
     - the entry itself IS the raw proposal record (its own ``status`` is the
       record's candidate-vocabulary status, and the proposed artifact hash
       is normalized into ``proposed_prompt_hash`` / ``proposed_policy_hash``
-      — the plan-08 naming-subtlety rule);
+      — the source records spell that hash under different key names per
+      candidate kind, so it is read into two typed fields and a prompt hash
+      can never be displayed as a policy hash);
     - ``validation_record_count`` / ``validation_passed_count`` count the
       candidate's ``prompt_candidate_validation`` records (lifecycle stage
       executions), which is evidence of validation, not adoption;
@@ -981,7 +1027,9 @@ class RqgmPaperAnchorV1(BaseModel):
     ``paper_utility_policy.anchor_enabled`` in ``paper_archive_state.json``;
     when no policy was frozen it is ``None`` (unknown), never guessed.
     With the anchor disabled the archive is reviewed best-of-N and writer
-    sanctions cannot fire (plan 08 §Paper Archive)."""
+    sanctions cannot fire — so an empty sanction record under a disabled
+    anchor is a capability state, never evidence that nothing went
+    wrong."""
 
     enabled: bool | None = None
     corpus_present: bool = False
@@ -1002,9 +1050,9 @@ class RqgmPaperSelfPreferenceV1(BaseModel):
 
 class RqgmPaperWinnerV1(BaseModel):
     """The archive's best-belief draft.  ``node_id`` is the recorded
-    ``is_best_belief`` draft (a REVIEWED selection — never to be equated
-    with the governance winner or the research result, plan 08 §Paper
-    Archive); ``materialized`` is ``full_paper.tex`` presence."""
+    ``is_best_belief`` draft — a REVIEWED selection, which is neither the
+    governance winner nor the research result and must never be labelled as
+    either; ``materialized`` is ``full_paper.tex`` presence."""
 
     node_id: str | None = None
     materialized: bool = False
@@ -1015,10 +1063,10 @@ class RqgmPaperArchiveV1(BaseModel):
 
     ``paper_mode`` reports the persisted mode when
     ``paper_archive_state.json`` exists; absence of that file MEANS mode
-    ``linear`` by the source contract (plan 08 §Source artifacts), which is
-    why ``state_present=False`` rides along — the derivation is transparent,
-    not fabricated.  ``draft_count`` is ``None`` (not 0) when the draft
-    archive file is absent."""
+    ``linear`` by the artifact contract — absence is DEFINED to mean linear
+    rather than merely unread — which is why ``state_present=False`` rides
+    along: the derivation is transparent, not fabricated.  ``draft_count``
+    is ``None`` (not 0) when the draft archive file is absent."""
 
     schema_version: Literal[1] = 1
     run_id: str
@@ -1112,8 +1160,10 @@ class ResultReviewV1(BaseModel):
 
 
 class ResultOrsV1(BaseModel):
-    """ORS reproducibility-chain summary (plan 07: rubric → replicator →
-    phase1 reproduce → judge grade, the ``OrsChainSection`` lineage).
+    """ORS reproducibility-chain summary — rubric → replicator → phase1
+    reproduce → judge grade is a lineage, and each stage is reported from
+    its own artifact's presence, never inferred from a later stage (the
+    ``OrsChainSection`` lineage).
 
     Stage flags are per-artifact presence (``ors_rubric.meta.json`` /
     ``ors_rubric.json``, ``ors_replicator.json``, ``ors_seed.json``,
@@ -1139,9 +1189,10 @@ class ResultOrsV1(BaseModel):
 
 
 class ResultEarV1(BaseModel):
-    """EAR / publication lineage flags (plan 07 §Evidence, Results, and
-    PaperBench: curate → preview → publish → promote as a traceability
-    chain).  ``present`` = ``ear/`` directory, ``curated`` =
+    """EAR / publication lineage flags — curate → preview → publish →
+    promote is a traceability chain, so every step is reported from its own
+    artifact and a later step is never taken as proof of an earlier one.
+    ``present`` = ``ear/`` directory, ``curated`` =
     ``ear_published/manifest.lock`` presence, ``published`` =
     ``publish_record.json`` presence.  ``visibility`` comes from the publish
     record when published, else from the curated manifest's declared
@@ -1231,10 +1282,11 @@ class RunEarV1(BaseModel):
 
 # ── run log read model (gui_refresh task 07 tail — cursor log explorer) ────
 #
-# Plan 07 §Artifacts, logs, and diagnostics: log reads use cursor/tail
-# semantics — a 5 MB whole-file read is never the primary UX.  Reader in
-# ari/viz/v1/logs.py; the cursor is a RAW byte offset into the append-only
-# plain-text ``{ckpt}/ari.log`` so pagination is stable under any filter.
+# Log reads use cursor/tail semantics — a bounded page from a cursor, never
+# a whole-file read as the primary path (docs/guides/dashboard.md, "The log
+# explorer").  Reader in ari/viz/v1/logs.py; the cursor is a RAW byte offset
+# into the append-only plain-text ``{ckpt}/ari.log`` so pagination is stable
+# under any filter.
 
 
 class LogEntryV1(BaseModel):
@@ -1257,8 +1309,9 @@ class RunLogsV1(BaseModel):
     new committed lines appear).  ``eof=true`` means no further committed
     line was known at scan time; a trailing partial line (no ``\\n``) is
     never emitted — ``next_cursor`` parks at its first byte until the line
-    completes (plan 04 committed-only reads).  Each request scans at most
-    ``logs.SCAN_WINDOW_BYTES``; when the window ends before ``limit``
+    completes, because every read on this surface is committed-only: a torn
+    append is served once it is whole, never before.  Each request scans at
+    most ``logs.SCAN_WINDOW_BYTES``; when the window ends before ``limit``
     matches were found the page returns early with ``eof=false`` and the
     advanced cursor — the client continues, no request scans unboundedly."""
 
@@ -1288,10 +1341,12 @@ class ChallengeRequestV1(BaseModel):
 class ChallengeV1(BaseModel):
     """One server-issued, single-use confirmation challenge (MN-6).
 
-    The echoed ``action``/``target`` are the UI's impact preview (plan 09
-    §Dangerous operations); ``expires_at`` is display-only wall clock —
-    expiry is enforced server-side on a monotonic deadline
-    (``ttl_seconds`` after issuance)."""
+    The echoed ``action``/``target`` are the UI's impact preview: a
+    destructive operation is confirmed against a server-issued challenge
+    that names what it destroys, never against a client-side dialog alone
+    (docs/reference/rest_api.md, "Confirmation challenges").  ``expires_at``
+    is display-only wall clock — expiry is enforced server-side on a
+    monotonic deadline (``ttl_seconds`` after issuance)."""
 
     schema_version: Literal[1] = 1
     challenge_id: str
@@ -1330,8 +1385,8 @@ class DiagnosticsProcessV1(BaseModel):
 
 
 class DiagnosticsV1(BaseModel):
-    """GET /api/v1/diagnostics envelope (plan 09 §Operational visibility)
-    — bounded scalars only: no secrets, no filesystem paths, nothing
+    """GET /api/v1/diagnostics envelope — operational visibility is bought
+    with bounded scalars only: no secrets, no filesystem paths, nothing
     beyond counts/ages/versions.  ``cache`` is the literal ``false`` —
     no cache subsystem exists yet, stated explicitly rather than omitted;
     ``openapi_version`` mirrors the served OpenAPI ``info.version``."""

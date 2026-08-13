@@ -19,16 +19,20 @@ import {
 } from '../../../services/api/v1';
 
 /**
- * OverviewPage (gui_refresh task 07 Wave 4b — v2 run Overview workspace;
- * plan 07 §Run Overview and Live Monitor, plan 01 §Global shell context).
+ * OverviewPage (gui_refresh task 07 Wave 4b — the v2 run Overview workspace:
+ * the P1/P2 disclosure surface for ONE run, opened run-explicitly as
+ * '#/overview?run=<run_id>'. It reads its run from the hash query string, never
+ * from a hidden global selection, so without ?run= it shows an explicit prompt
+ * instead of adopting somebody else's run).
  *
  * The typed v1 fetchers are mocked at the module boundary (react-query
  * hooks and page logic stay REAL). Pins:
  *   - the P1 row (lifecycle badge, research phase, last update) and P2
  *     StatBoxes/links rendered from the run detail + summary DTOs;
  *   - the RQGM variant: a governance stage row that is a SEPARATE labelled
- *     row from the research phase row (plan 07: research phase and
- *     governance stage are never mixed) plus the #/governance?run= link;
+ *     row from the research phase row (governance status and research status
+ *     are two different state machines and are never mixed into one field or
+ *     one legend) plus the #/governance?run= link;
  *   - the simple_bfts variant: NO governance stage row and NO governance
  *     link (capability-gated, not an error);
  *   - the research-phase vocabulary staying inside the frozen /state set
@@ -38,7 +42,9 @@ import {
  *     renders nothing;
  *   - realtime adoption: subscription on topics run+tree for the run, and
  *     a dropped stream keeping the snapshot under a StaleDataBanner — a
- *     disconnect is NEVER presented as "run stopped" (plan 01);
+ *     disconnect is NEVER presented as "run stopped" — a stalled stream and a
+ *     stopped run are different facts, and the banner claims staleness of the
+ *     view, never a change of run state;
  *   - the typed error envelope surfacing as ErrorState WITH request_id;
  *   - the no-run empty state (#/overview without ?run=).
  */
@@ -185,7 +191,8 @@ describe('OverviewPage (gui_refresh Wave 4b v2 slice)', () => {
     );
     await waitFor(() => expect(screen.getByText('epoch_2')).toBeInTheDocument());
 
-    // Two distinct labelled rows (plan 07 truth rule): the research-phase row
+    // Two distinct labelled rows — governance status and research status are
+    // separate state machines that never merge into one field: the phase row
     // holds the phase token and NOT the epoch; the governance-stage row holds
     // the epoch and NOT the phase token.
     const phaseRow = screen.getByText('Research phase').closest('div')!;

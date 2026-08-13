@@ -1,13 +1,15 @@
-// ARI Dashboard – realtime → query-cache glue (gui_refresh Wave 2b, ADR-03 +
-// plan 03 §Realtime integration).
+// ARI Dashboard – realtime → query-cache glue (gui_refresh Wave 2b, ADR-03;
+// docs/concepts/gui_architecture.md, "6. Realtime is invalidation, not a
+// source of truth").
 //
 // Subscribes the shared SSE client (shared/realtime/eventStream.ts) for the
-// lifetime of the calling component and maps each plan-04 event to a
+// lifetime of the calling component and maps each stream event to a
 // react-query invalidation. Events are invalidations, never data: the query
 // cache refetches the /api/v1 snapshot, so duplicate or out-of-order events
 // are harmless.
 //
-// Isolation (plan 03: run-scoped queries/events are isolated by run_id):
+// Isolation — run-scoped queries and events are keyed by run_id, never by
+// the mounted route, so two runs open in two tabs cannot step on each other:
 // every invalidation is keyed by the EVENT'S run_id —
 //   - topic 'tree' → ['v1', run_id, 'tree']
 //   - topic 'run'  → ['v1', run_id, 'run'] + ['v1', run_id, 'summary'], plus

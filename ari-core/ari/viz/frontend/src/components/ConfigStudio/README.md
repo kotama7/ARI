@@ -4,7 +4,8 @@ The EDITING extension of the read-only ConfigBrowser (Wave 3b), served at
 `#/studio` (v2-only route, `guiV2` gated; the legacy `#/settings` page stays
 untouched and fully functional in parallel).
 
-Sources of truth (plans 05/06):
+Sources of truth — the control plane keeps metadata, effective values and
+secrets apart, and the Studio never holds a second copy of any of them:
 
 - `GET /api/v1/config/schema` — the canonical field registry drives every
   control; nothing here hardcodes a field list.
@@ -20,12 +21,22 @@ Sources of truth (plans 05/06):
   (no frontend model constants; also supplies the per-provider env-key the
   SecretField preselects).
 
-Control generation from metadata (plan 06 §Schema-driven rendering):
-enum → select, bool → switch, int/float → number input, str → text input,
-secret_reference → SecretField, composite types → disabled with a reason.
+Control generation from metadata — `controlKind()` reads the registry entry
+and stops at the FIRST match, so `sensitivity` outranks `enum` and `enum`
+outranks the declared type (an enum-valued secret still gets the secret
+control; an int-valued enum still gets a select, not a number input):
+`sensitivity: secret_reference` → SecretField, non-empty `enum` → select,
+otherwise `value_type` is split on `|` with `None` dropped and exactly ONE
+remaining member decides — bool → switch, int/float → number input, str →
+text input; anything else (two or more members left, or a list/dict/nested
+model) → disabled with a reason. No control is written per field, so a new
+registry field needs no frontend change and no screen can offer an input the
+server would reject. The full precedence is in
+docs/guides/configuration_studio.md, "How a control is chosen".
 
-Launch flow (Wave 4e — `LaunchPanel.tsx`, plan 06 §Launch protocol, backend
-MN-10), DRAFT scope only:
+Launch flow (Wave 4e — `LaunchPanel.tsx`, backend MN-10), DRAFT scope only.
+The order is fixed and no step may be skipped — resolve → validate →
+immutable review → idempotent create → canonical redirect:
 
 - drafts carry an optional create-time `goal` (materialized as
   `{ckpt}/experiment.md` by the launch);
@@ -91,5 +102,5 @@ Invariants this surface must keep:
 - `__tests__/` — component tests for this directory.
   - `README.md` — __tests__ index.
   - `ConfigStudioExecutionMode.test.tsx` — tests for `ExecutionSection.tsx` + the ADR-09 launch-review wiring (mode selection accepted 2026-07-27): one control writes BOTH pair keys in a single PATCH, the two intents are orthogonal, all four combinations render and round-trip, re-selecting the stored value writes nothing (default path byte-identical), an inconsistent stored pair is flagged, the `rqgm.*` tree renders values with no editable control, the launch review shows the RESOLVED mode (requested→resolved + resolver warning on a fallback), and `mode_interlock_mismatch` blocks the launch with its typed message.
-  - `ConfigStudioLaunch.test.tsx` — tests for the `LaunchPanel.tsx` launch flow (gui_refresh task 06 Wave 4e, plan 06 §Launch protocol / backend MN-10): resolve→validate→review→launch happy path with the canonical `#/overview?run=<run_id>` redirect from the server-issued run_id, validation failure (`mode_locked`) blocking the POST, double-click single-POST + same-idempotency-key retry, typed error envelope rendering (request_id + per-path `details.errors`).
+  - `ConfigStudioLaunch.test.tsx` — tests for the `LaunchPanel.tsx` launch flow (gui_refresh task 06 Wave 4e, backend MN-10) — the launch order is fixed and no step may be skipped: resolve→validate→review→launch happy path with the canonical `#/overview?run=<run_id>` redirect from the server-issued run_id, validation failure (`mode_locked`) blocking the POST, double-click single-POST + same-idempotency-key retry, typed error envelope rendering (request_id + per-path `details.errors`).
   - `ConfigStudioPage.test.tsx` — tests for `ConfigStudioPage.tsx` (gui_refresh task 06 Wave 4d): schema-driven control generation, If-Match PATCH + 409 reload banner + per-path 400 ValidationSummary, write-only secret flow, the ADR-09 Execution section refused in PROJECT scope.

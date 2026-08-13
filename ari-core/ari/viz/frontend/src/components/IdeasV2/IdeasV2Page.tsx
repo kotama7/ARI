@@ -1,5 +1,9 @@
-// ARI Dashboard – v2 Ideas workspace (gui_refresh task 07 Wave 4c; plan 07
-// §Ideas, claims, and evidence; plan 01 §Route model).
+// ARI Dashboard – v2 Ideas workspace (gui_refresh task 07 Wave 4c).
+// The route exists in exactly one place — its ROUTE_REGISTRY entry, which
+// the router and the sidebar are both derived from — and like every v2
+// workspace it is run-explicit: what it renders is a function of the URL
+// alone, never of a process-wide active checkpoint
+// (docs/guides/dashboard.md, "Run-explicit URLs and deep links").
 //
 // READ-ONLY. Run-explicit idea/hypothesis exploration over the typed v1
 // endpoints: GET /api/v1/runs/{run_id}/idea (useRunIdeaV1 — a pure
@@ -23,8 +27,9 @@
 //     reasons renders the EmptyState ("run has not generated ideas yet");
 //     a malformed idea.json (present=false WITH degraded_reasons) renders
 //     DegradedState with the parser's reasons — absence and corruption are
-//     never conflated (plan 07: source-file vs parsed-representation
-//     diagnostics).
+//     never conflated: "no idea.json" and "an idea.json that would not
+//     parse" are different diagnostics and each is reported as itself,
+//     never as an empty result.
 //   - BFTS hypotheses + best hypothesis + strategy distribution: run tree
 //     nodes (same selection logic as the legacy page: eval_summary carriers;
 //     label counts over all nodes). Deep links: every listed node id — and
@@ -171,13 +176,17 @@ function labelCounts(nodes: TreeNode[]): Array<[string, number]> {
   return [...counts.entries()];
 }
 
-/** err.message plus the envelope's request_id (support handle, plan 04). */
+/** err.message plus the envelope's request_id — every /api/v1 response
+ * carries that id precisely so a user can quote it in a bug report, so it is
+ * surfaced rather than swallowed. */
 function errorText(err: ApiErrorV1, requestIdLabel: string): string {
   const rid = err.request_id ? ` (${requestIdLabel}: ${err.request_id})` : '';
   return `${err.message}${rid}`;
 }
 
-/** Deep link into the TreeV2 workspace at one node (plan 07 deep links). */
+/** Deep link into the TreeV2 workspace at one node — a node reference is
+ * always a URL, so "look at this node" survives copy/paste and reload
+ * instead of being a sequence of clicks. */
 function treeNodeHref(runId: string, nodeId: string): string {
   return `#/tree2?run=${encodeURIComponent(runId)}&node=${encodeURIComponent(nodeId)}`;
 }

@@ -1,9 +1,11 @@
 // ARI Dashboard – Governance Accountability tab (gui_refresh task 08 Wave
-// 4a; plan 08 §Accountability).
+// 4a). Answers "who attacked this node, and did it stick?" — see
+// docs/guides/rqgm_gui.md, 'Accountability — "who attacked this node, and did
+// it stick?"'.
 //
 // The adversarial chain of one selected node, with EXPLICIT raw-vs-validated
-// separation (plan 08 §Truth rules: raw attack severity is NOT a validated
-// penalty):
+// separation — a raw attack's claimed severity is NOT a validated penalty,
+// and only an adjudicated record may drive one:
 //   - "Raw attacks": `atk_*` claims. The DTO (`RqgmRawAttackV1`) carries no
 //     score/penalty field at all, and this table renders a fixed "no
 //     penalty (unadjudicated)" cell — a raw row can structurally never show
@@ -13,8 +15,10 @@
 //     fields when present (target_component_id / affected_components).
 // Zero attacks is NEVER presented as "healthy": with an exploration-only
 // adversary roster (no paper_* roles in the registry) the impeachment chain
-// is structurally inert and an explicit capability note says so (plan 08
-// truth rule: "zero attacks" must never be shown as "no issues").
+// is structurally inert and an explicit capability note says so. Zero
+// recorded attacks is a data point, not evidence of health: a long raw list
+// is not evidence of a bad node, and an empty validated table is not proof of
+// innocence.
 
 import { useT } from '../../i18n';
 import { useRqgmNodeLineageV1, useRqgmRegistryV1 } from '../../hooks/useV1';
@@ -22,8 +26,10 @@ import { Badge, Card, DegradedState, EmptyState, ErrorState, LoadingState } from
 import { errorText } from './shared';
 import type { RqgmNodeLineageV1 } from '../../services/api/v1';
 
-/** The only roles whose impeachment chain fires in production (plan 08
- * §Accountability: paper_self_preference → paper_reviewer/paper_writer). */
+/** The only roles whose impeachment chain fires in production
+ * (paper_self_preference → paper_reviewer/paper_writer). An exploration-only
+ * roster targets the ungoverned generator role, so no amount of adversarial
+ * activity there could produce a sanction. */
 function hasImpeachableRoles(roles: string[]): boolean {
   return roles.some((r) => r.startsWith('paper_'));
 }
@@ -69,7 +75,8 @@ function RawAttacksCard({ lineage }: { lineage: RqgmNodeLineageV1 }) {
                   </td>
                   <td>
                     {/* Structurally fixed: raw attacks never carry a
-                        penalty (plan 08 §Truth rules). */}
+                        penalty — the DTO has no numeric field, so the type
+                        makes a penalty number impossible here. */}
                     <span style={{ color: 'var(--text-muted)' }}>
                       {t('gov_acc_no_penalty')}
                     </span>
@@ -199,7 +206,8 @@ export function AccountabilityTab({
         </div>
       )}
       {chainInert && (
-        // A capability state, NOT a success/health claim (plan 08).
+        // A capability state, NOT a success/health claim: nothing could have
+        // been filed here, so zero is no evidence either way.
         <div className="stale-banner" role="note" style={{ marginBottom: 12 }}>
           <span className="stale-banner-msg">
             <strong>{t('gov_acc_inert_title')}</strong> — {t('gov_acc_inert_note')}

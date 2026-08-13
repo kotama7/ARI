@@ -1,8 +1,8 @@
-"""RQGM read models for ``/api/v1`` (gui_refresh task 08 Wave 4a, plan 08).
+"""RQGM read models for ``/api/v1`` (Wave 4a).
 
-Pure artifact readers over one checkpoint directory — the plan-08 offline
-projector.  Ground rules (plan 08 §Non-goals / §Truth and presentation
-rules, program invariants):
+Pure artifact readers over one checkpoint directory — an offline projector
+that re-executes no governance decision.  Ground rules
+(``docs/reference/rqgm_gui_read_models.md``, "Ground rules"):
 
 - ``ari.rqgm`` is NEVER imported.  The read model parses the committed
   checkpoint artifacts (``rqgm_state.json``, ``rqgm_transitions.jsonl``,
@@ -25,7 +25,7 @@ rules, program invariants):
   is ``None``, never displayed as clean/zero.
 - Read-only: nothing here writes a file, touches ``viz.state`` or
   ``os.environ`` (GET side-effect-freeness), and there is no mutation
-  endpoint (GUI v1 RQGM surface is read-only by plan).
+  endpoint at all — the GUI can observe governance, never perform it.
 """
 
 from __future__ import annotations
@@ -518,8 +518,9 @@ def _registry_verified(
     ckpt: Path, tail_hash: str | None
 ) -> tuple[bool | None, dict | None, list[str]]:
     """The rollup-vs-replay rule: ``rqgm_registry.json`` ``as_of_event_hash``
-    must equal the transitions replay tail (plan 08 §Truth rules — the
-    snapshot is used for verification only, never as current state)."""
+    must equal the transitions replay tail.  The append-only hash-chained log
+    is the source of truth; a rollup/snapshot file is read ONLY to verify it,
+    never to become current state."""
     rollup = _read_json(ckpt / RQGM_REGISTRY_FILENAME)
     if rollup is None:
         return None, None, [f"{RQGM_REGISTRY_FILENAME} is missing/unreadable"]
@@ -910,7 +911,9 @@ def list_audit(
 
 
 def _node_state(metrics: dict) -> str:
-    """Node score state from the sentinel set (plan 10/14 vocabulary):
+    """Node score state from the sentinel set.  This is its own vocabulary,
+    never mixed with registry lifecycle status, and every value is LOGICAL —
+    none of them means the node was physically deleted:
     ``utility_invalidated`` staleness is the policy-rewrite invalidation."""
     if metrics.get("_stale_reason") == "utility_invalidated":
         return "invalidated"
@@ -933,7 +936,9 @@ def get_node_lineage(
     run_id: str, node_id: str
 ) -> RqgmNodeLineageV1 | dict:
     """GET /api/v1/runs/{run_id}/rqgm/nodes/{node_id}/lineage — the two
-    independent channels (plan 08 §Score Lineage), never merged."""
+    independent channels (adversarial penalty inside an epoch; epoch-boundary
+    utility-policy rewrite) returned as separate lists, so no consumer can
+    accidentally merge them into one series."""
     d = _require_rqgm(run_id)
     if isinstance(d, dict):
         return d
@@ -1517,8 +1522,9 @@ def _epoch_dto(row: dict) -> RqgmEpochV1:
 def list_epochs(run_id: str) -> RqgmEpochsV1 | dict:
     """GET /api/v1/runs/{run_id}/rqgm/epochs — committed epochs from
     transitions replay, in truth-log order.  Every row carries its own
-    ``utility_policy_hash`` (cross-epoch comparability is a per-policy
-    question the payload makes checkable — plan 08 §Epoch Timeline)."""
+    ``utility_policy_hash``, so cross-epoch comparability stays a per-policy
+    question the payload makes checkable: rows under different policy hashes
+    are never one continuous series."""
     d = _require_rqgm(run_id)
     if isinstance(d, dict):
         return d
@@ -1636,9 +1642,9 @@ def get_evolution(run_id: str) -> RqgmEvolutionV1 | dict:
     """GET /api/v1/runs/{run_id}/rqgm/evolution — candidate lineage from
     ``prompt_evolution.jsonl`` plus meta outputs.  ``adopted`` comes ONLY
     from joining the proposed hash against committed registry replay; the
-    raw candidate record itself can never assert adoption (plan 08: raw
-    candidate, validated candidate and adopted policy are never
-    conflated)."""
+    raw candidate record itself can never assert adoption.  Raw candidate,
+    validated candidate and adopted policy are three distinct claims and are
+    never conflated — validation evidence is not adoption."""
     d = _require_rqgm(run_id)
     if isinstance(d, dict):
         return d
@@ -1682,7 +1688,8 @@ def get_evolution(run_id: str) -> RqgmEvolutionV1 | dict:
             elif rt in ("prompt_candidate", "utility_policy_candidate"):
                 candidates.append(ln)
             elif rt == "comparison_observation":
-                pass  # shadow observation: joins no lineage row (plan 07)
+                pass  # shadow observation: evidence, not a candidate — it
+                # proposes nothing, so it joins no lineage row
             elif len(reasons) < _MAX_REASONS_PER_SOURCE:
                 reasons.append(
                     f"{PROMPT_EVOLUTION_FILENAME}: unknown record_type "
@@ -1698,7 +1705,9 @@ def get_evolution(run_id: str) -> RqgmEvolutionV1 | dict:
         role = role if isinstance(role, str) else None
         if rt == "utility_policy_candidate":
             # The AUTHOR role is policy_mutator; the TARGET role — the one
-            # the adoption join must use — is utility_policy (plan 14).
+            # the adoption join must use — is utility_policy: adoption is
+            # matched against the role that was actually adopted, never the
+            # proposer's own role.
             proposed_policy = rec.get("policy_hash")
             proposed_policy = (
                 proposed_policy if isinstance(proposed_policy, str) else None
@@ -1875,8 +1884,9 @@ def get_paper_archive(run_id: str) -> RqgmPaperArchiveV1 | dict:
             anchor_enabled = policy["anchor_enabled"]
     else:
         # Absence of the state file IS paper mode 'linear' by the source
-        # contract (plan 08 §Source artifacts); state_present=False keeps
-        # the derivation transparent.
+        # contract — a missing artifact is read as its documented default,
+        # not as an error; state_present=False rides along so the derivation
+        # stays transparent rather than looking fabricated.
         paper_mode = "linear"
 
     archive_path = d / PAPER_DRAFT_ARCHIVE_FILENAME

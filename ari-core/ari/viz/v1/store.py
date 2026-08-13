@@ -1,8 +1,8 @@
 """GUI config document store (gui_refresh task 05 Wave 3b, ADR-12).
 
-Durable server-side storage for the GUI-only configuration documents plan 05
-§Configuration scopes calls for — project defaults, run templates, run
-drafts.  Documents live under ``{workspace_root}/gui_store/``, a sibling of
+Durable server-side storage for the three GUI-only configuration scopes —
+project defaults, run templates, run drafts.  Documents live under
+``{workspace_root}/gui_store/``, a sibling of
 ``checkpoints/`` (ADR-12)::
 
     {workspace_root}/gui_store/
@@ -31,14 +31,15 @@ Storage contract:
   ``k`` (``0`` == "document must not exist yet");
 - writes are atomic and durable: same-directory temp file + ``fsync`` +
   ``os.replace`` + best-effort directory fsync — a crash mid-write leaves
-  the previous document intact (plan 09 §Secret policy write discipline);
+  the previous document intact, so a torn write can never be observed (the
+  same write discipline the secret path uses);
 - owner-only permissions: files ``0o600``, directories ``0o700`` — same
   discipline as the secret write path even though these documents hold
   config, not secrets;
 - document IDs are supplied by the caller (deterministic — the store never
   invents IDs) and validated against ``^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$``,
-  which structurally excludes path traversal (no ``/``, no ``.``; plan 09
-  §Project, run, and filesystem isolation).
+  which structurally excludes path traversal (no ``/``, no ``.``) — a
+  document id can never escape the store root.
 """
 
 from __future__ import annotations
@@ -59,7 +60,7 @@ SCHEMA_VERSION = 1
 KIND_PROJECT_CONFIG = "project_config"  # singleton (ADR-08 default project)
 KIND_RUN_TEMPLATE = "run_template"
 KIND_RUN_DRAFT = "run_draft"
-# Wave 4e (tasks 04/06): idempotent-launch records — one document per
+# Wave 4e: idempotent-launch records — one document per
 # idempotency key mapping key -> {run_id, checkpoint_path, draft_id} so a
 # duplicate POST /api/v1/runs replays the SAME run instead of spawning a
 # second subprocess (double-click safety survives a server restart).

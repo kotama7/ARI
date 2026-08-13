@@ -1,5 +1,7 @@
 // ARI Dashboard – v1 tree pass-through -> TreeNode coercion (gui_refresh
-// task 07 Wave 4c; plan 07 §Tree workspace / §Ideas, claims, and evidence).
+// task 07 Wave 4c). One coercion shared by the Tree and Ideas workspaces:
+// both read the same run tree, so the shape they agree on is defined once
+// here rather than per screen.
 //
 // Extracted from TreeV2Page so the Ideas v2 workspace can reuse the SAME
 // typed coercion over `TreeV1.nodes` without importing the D3 visualization
@@ -23,8 +25,10 @@ export function num(v: unknown): number | null {
 
 // ── RQGM score-sentinel extraction (typed, shared with the inspector) ───
 
-/** RQGM score sentinels of one node's metrics dict (plan 07: score labels
- * carry the pre-penalty / validated-penalty / policy-hash / stale state).
+/** RQGM score sentinels of one node's metrics dict. A score is never shown
+ * without the state that qualifies it — pre-penalty, validated penalty,
+ * policy hash and staleness travel together, so a bare number can never be
+ * read as a clean current score.
  * Missing sentinels are null/false — never fabricated. Exported for tests
  * (historically via TreeV2Page, which re-exports it). */
 export interface ScoreSentinels {

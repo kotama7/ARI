@@ -99,7 +99,7 @@ def _handle_get_run_ear(run_id: str) -> dict:
 
 
 def _handle_get_run_logs(run_id: str, query: dict) -> dict:
-    # Task 07 tail (plan 07 §Artifacts, logs, and diagnostics): bounded
+    # Task 07 tail — logs are a bounded diagnostic read, never a file dump:
     # byte-offset cursor pagination over {ckpt}/ari.log — committed lines
     # only, <= 1 MiB scanned per request, absent file => present=false.
     # Local import keeps the reader module inert until dispatched.
@@ -128,9 +128,10 @@ def _handle_put_secret(secret_id: str, body: dict) -> dict:
 
 
 def _handle_get_model_catalog() -> dict:
-    # Wave 4d (task 06, plan 05 §Configuration API): the legacy /api/models
-    # static provider/model suggestions re-served (single source) plus each
-    # provider's API-key env name for the Studio SecretField.
+    # Wave 4d (task 06) — the catalog is server-side and single-source: the
+    # legacy /api/models static provider/model suggestions re-served (never
+    # forked) plus each provider's API-key env name, so the Studio
+    # SecretField needs no frontend provider->key constant.
     from .catalogs import get_model_catalog
 
     return get_model_catalog().model_dump()
@@ -220,9 +221,10 @@ def _handle_patch_run_draft(
 
 
 def _handle_resolve_run_draft_config(draft_id: str, body: dict) -> dict:
-    # Wave 3b (task 05): plan-05 new-run chain previewed for one draft —
-    # defaults < bundled workflow < profile < project < template < draft <
-    # documented env; rejected overrides annotated, never silently dropped.
+    # Wave 3b (task 05): the new-run resolution chain previewed for one
+    # draft — defaults < bundled workflow < profile < project < template <
+    # draft < documented env, narrowest layer wins; rejected overrides are
+    # annotated and returned, never silently dropped.
     from . import config_api
 
     return config_api.resolve_run_draft_config(draft_id, body)
@@ -230,15 +232,16 @@ def _handle_resolve_run_draft_config(draft_id: str, body: dict) -> dict:
 
 def _handle_validate_run_draft(draft_id: str, body: dict) -> dict:
     # Wave 3b (task 05): {valid, errors, warnings} distilled from the same
-    # resolution run (interlock mismatch is an ERROR here — plan 05
-    # §Interlocks — while resolve-config only warns and falls back).
+    # resolution run.  An inconsistent mode-intent pair is an ERROR here —
+    # draft validation is stricter than the runtime, which only warns and
+    # falls back — while resolve-config only warns.
     from . import config_api
 
     return config_api.validate_run_draft(draft_id, body)
 
 
 def _handle_launch_run(body: dict) -> dict:
-    # Wave 4e (tasks 04/06): idempotent launch — validation-first over the
+    # Wave 4e: idempotent launch — validation-first over the
     # draft (mode/governance fields locked per ADR-09-pending), server-minted
     # collision-resistant run_id, checkpoint materialized (experiment.md /
     # workflow.yaml seed / launch_config.json / resolved_config.json) before
@@ -250,11 +253,12 @@ def _handle_launch_run(body: dict) -> dict:
     return launch.launch_run(body)
 
 
-# ── Wave 4a (task 08): RQGM read models — thin wrappers over rqgm.py.
+# ── Wave 4a: RQGM read models — thin wrappers over rqgm.py.
 # Local imports keep the reader module inert until dispatched.  All eight
-# resources are GETs (plan 08: the v1 RQGM surface is read-only — no
-# mutation endpoint exists); handlers taking ``query`` receive the parsed
-# query-string dict from dispatch().
+# resources are GETs — the v1 RQGM surface is read-only and has no mutation
+# endpoint at all, so the GUI can observe governance but never perform it;
+# handlers taking ``query`` receive the parsed query-string dict from
+# dispatch().
 
 
 def _handle_rqgm_capabilities(run_id: str) -> dict:
@@ -313,7 +317,7 @@ def _handle_rqgm_policies(run_id: str) -> dict:
     return r if isinstance(r, dict) else r.model_dump()
 
 
-# ── Wave 4b (task 08): remaining RQGM read models — epochs / evolution /
+# ── Wave 4b: remaining RQGM read models — epochs / evolution /
 # paper-archive.  Same posture as Wave 4a: GET-only, committed-artifact
 # reads, local imports keep the reader module inert until dispatched.
 
@@ -357,9 +361,10 @@ def _handle_create_challenge(body: dict) -> dict:
     return challenges.issue_challenge(body)
 
 
-# ── Wave 5b (task 09, MN-9): bounded operational diagnostics (plan 09
-# §Operational visibility).  Local import keeps ari.viz.health inert until
-# dispatched; auth is the normal do_GET gate (REQUIRED in remote mode).
+# ── Wave 5b (task 09, MN-9): bounded operational diagnostics — scalars and
+# versions only, never secrets and never a filesystem path.  Local import
+# keeps ari.viz.health inert until dispatched; auth is the normal do_GET
+# gate (REQUIRED in remote mode).
 
 
 def _handle_diagnostics() -> dict:
@@ -389,17 +394,18 @@ ROUTES: list[tuple[str, str, Callable[..., dict]]] = [
     ("GET", "/api/v1/runs/{run_id}/tree", _handle_get_run_tree),
     # Wave 4c: idea read model (pure idea.json read, honest absence).
     ("GET", "/api/v1/runs/{run_id}/idea", _handle_get_run_idea),
-    # Wave 4d (task 07): results / EAR read models (plan 07 §Evidence,
-    # Results, and PaperBench — bounded scalars, honest absence flags).
+    # Wave 4d (task 07): results / EAR read models — bounded scalars plus
+    # honest absence flags; no file contents ever ride these endpoints.
     ("GET", "/api/v1/runs/{run_id}/results", _handle_get_run_results),
     ("GET", "/api/v1/runs/{run_id}/ear", _handle_get_run_ear),
-    # Task 07 tail: cursor-based log explorer over {ckpt}/ari.log (plan 07
-    # §Artifacts, logs, and diagnostics — bounded reads, committed-only).
+    # Task 07 tail: cursor-based log explorer over {ckpt}/ari.log — bounded
+    # reads (never a whole-file dump), committed lines only.
     ("GET", "/api/v1/runs/{run_id}/logs", _handle_get_run_logs),
     ("GET", "/api/v1/runs/{run_id}", _handle_get_run),
-    # ── Wave 4e (tasks 04/06): the canonical idempotent launch (plan 04
-    # §Run identity and lifecycle + plan 06 §Launch protocol); the legacy
-    # POST /api/launch keeps running unchanged in parallel.
+    # ── Wave 4e: the canonical idempotent launch — validation
+    # first with ZERO filesystem mutation on reject, a server-minted
+    # collision-resistant run_id, and one run per idempotency key; the
+    # legacy POST /api/launch keeps running unchanged in parallel.
     ("POST", "/api/v1/runs", _handle_launch_run),
     ("GET", "/api/v1/secrets/status", _handle_secrets_status),
     # ── Wave 5a (task 09, MN-6): single-use confirmation challenges that
@@ -410,7 +416,8 @@ ROUTES: list[tuple[str, str, Callable[..., dict]]] = [
     # 'status' is never a valid {secret_id} (not on the SECRET_NAMES
     # allowlist), so the GET above and this PUT cannot collide.
     ("PUT", "/api/v1/secrets/{secret_id}", _handle_put_secret),
-    # ── Wave 4d (task 06, plan 05): server-side model/provider catalog.
+    # ── Wave 4d (task 06): server-side model/provider catalog — the
+    # frontend holds no provider/model constants of its own.
     ("GET", "/api/v1/config/catalogs/models", _handle_get_model_catalog),
     # ── Wave 3b (task 05): config CRUD (ADR-12 store; If-Match concurrency) ─
     ("GET", "/api/v1/projects/{project_id}/config", _handle_get_project_config),
@@ -428,8 +435,9 @@ ROUTES: list[tuple[str, str, Callable[..., dict]]] = [
      _handle_resolve_run_draft_config),
     ("POST", "/api/v1/run-drafts/{draft_id}/validate",
      _handle_validate_run_draft),
-    # ── Wave 4a (task 08): RQGM governance read models (plan 08) — GET-only
-    # (read-only surface by plan; direct governance mutation is prohibited).
+    # ── Wave 4a: RQGM governance read models — GET-only; the
+    # surface is read-only by contract and direct governance mutation
+    # through the API is prohibited.
     ("GET", "/api/v1/runs/{run_id}/rqgm/capabilities",
      _handle_rqgm_capabilities),
     ("GET", "/api/v1/runs/{run_id}/rqgm/overview", _handle_rqgm_overview),
@@ -442,7 +450,7 @@ ROUTES: list[tuple[str, str, Callable[..., dict]]] = [
      _handle_rqgm_score_rewrites),
     ("GET", "/api/v1/runs/{run_id}/rqgm/nodes/{node_id}/lineage",
      _handle_rqgm_node_lineage),
-    # ── Wave 4b (task 08): remaining RQGM read models — still GET-only.
+    # ── Wave 4b: remaining RQGM read models — still GET-only.
     ("GET", "/api/v1/runs/{run_id}/rqgm/epochs", _handle_rqgm_epochs),
     ("GET", "/api/v1/runs/{run_id}/rqgm/epochs/{epoch_id}",
      _handle_rqgm_epoch_detail),
@@ -451,7 +459,7 @@ ROUTES: list[tuple[str, str, Callable[..., dict]]] = [
      _handle_rqgm_paper_archive),
     # ── Wave 5b (task 09, MN-9): bounded operational diagnostics — SSE bus /
     # watcher / tracked-process scalars + versions, no secrets or paths
-    # (plan 09 §Operational visibility; builder in ari/viz/health.py).
+    # (builder in ari/viz/health.py).
     ("GET", "/api/v1/diagnostics", _handle_diagnostics),
 ]
 

@@ -1,5 +1,8 @@
-// ARI Dashboard – shared realtime SSE client (gui_refresh Wave 2b, ADR-03 +
-// plan 03 §Realtime integration, plan 04 §Realtime event contract).
+// ARI Dashboard – shared realtime SSE client (gui_refresh Wave 2b, ADR-03).
+// Design rule: docs/concepts/gui_architecture.md, "6. Realtime is
+// invalidation, not a source of truth". Wire contract — event fields, topic
+// vocabulary, replay, heartbeat, cursor: docs/reference/rest_api.md,
+// "Realtime: `GET /api/v1/events/stream` (SSE)".
 //
 // Wraps a browser `EventSource` on `GET /api/v1/events/stream`. Events are
 // notifications/invalidations, NEVER a source of truth: the consumer maps
@@ -9,22 +12,25 @@
 // Contract implemented here:
 //   - subscribe(runId, topics, callbacks): one stream per subscription;
 //     topic/run filtering happens server-side via query params so background
-//     surfaces don't pay for events they never render (plan 03: topic
-//     subscription follows the active route/run).
+//     surfaces don't pay for events they never render — a subscription
+//     follows the mounted route and its run, and dies with it.
 //   - Last-Event-ID cursor: the browser only resends the `Last-Event-ID`
 //     HEADER on its own native auto-reconnect. Our manual backoff reconnect
 //     creates a NEW EventSource, so the cursor is carried as the
 //     `last_event_id` query param instead (routes.py accepts it as a header
-//     fallback). Combined with the consumer's snapshot refetch this is the
-//     plan-03 "Last-Event-ID + snapshot refetch" reconnect recipe.
+//     fallback). Combined with the consumer's snapshot refetch that is the
+//     whole reconnect recipe — resume from the cursor, then refetch the
+//     snapshot — which is why an event evicted from the server's ring
+//     buffer costs nothing: the refetch covers the gap.
 //   - Reconnect: exponential backoff 1s → 2s → 4s … capped at 30s,
 //     deliberately jitterless so tests can pin the exact sequence.
 //   - connectionState: 'live' | 'reconnecting' | 'offline'. Starts 'live'
 //     (optimistic: the page just fetched its HTTP snapshot, so nothing is
 //     stale yet and the banner must not flash on mount); first error flips
 //     to 'reconnecting'; errors persisting > 60s flip to 'offline'.
-//   - Polling fallback: ONLY once 'offline' (plan 03: SSE 不可時だけ bounded
-//     polling fallback) a bounded 10s tick fires `onPollTick` so the
+//   - Polling fallback: ONLY once 'offline' — polling is the bounded last
+//     resort for when SSE cannot hold, never a second channel running
+//     alongside a healthy stream. A bounded 10s tick fires `onPollTick` so the
 //     consumer can invalidate its subscribed scope; reconnect attempts keep
 //     running underneath and a successful open stops the polling again.
 
@@ -33,7 +39,8 @@ import { getGuiToken } from '../../services/api/client';
 export type EventTopic = 'run' | 'tree';
 export type ConnectionState = 'live' | 'reconnecting' | 'offline';
 
-/** Frozen plan-04 event contract shape (see ari/viz/v1/events.py). */
+/** Frozen wire shape of one stream event — the server is the authority for
+ * it, this is a mirror (see ari/viz/v1/events.py). */
 export interface StreamEvent {
   event_id: string;
   run_id: string;
@@ -46,7 +53,7 @@ export interface StreamEvent {
 }
 
 export interface EventStreamCallbacks {
-  /** One parsed plan-04 event. Unparseable frames are dropped silently. */
+  /** One parsed stream event. Unparseable frames are dropped silently. */
   onEvent: (event: StreamEvent) => void;
   /** Fired on every state CHANGE (never with the same state twice in a row). */
   onConnectionState?: (state: ConnectionState) => void;
@@ -68,7 +75,8 @@ export const MAX_BACKOFF_MS = 30_000;
 export const OFFLINE_AFTER_MS = 60_000;
 export const POLL_INTERVAL_MS = 10_000;
 
-/** SSE event name published by the backend (`event:` field, plan 04). */
+/** The one SSE event name the backend publishes (`event:` field); topic, not
+ * event name, is what distinguishes a frame. */
 const EVENT_NAME = 'resource.changed';
 
 function buildUrl(

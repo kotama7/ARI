@@ -170,10 +170,12 @@ pre.code{background:var(--bg);border:1px solid var(--border);border-radius:6px;p
 .stale-banner .stale-banner-time{font-family:var(--font-mono)}
 
 /* Governance workspace (gui_refresh task 08 Wave 4a — read-only RQGM).
- * Two SEPARATE state-machine badge families (plan 08 §Governance state
- * model): registry lifecycle (.reg-badge--*, --reg-* tokens) vs node score
- * state (.nodestate-badge--*, --state-* tokens). Classes are disjoint on
- * purpose so one vocabulary can never borrow the other's color. */
+ * Two SEPARATE state-machine badge families: registry lifecycle
+ * (.reg-badge--*, --reg-* tokens) vs node score state (.nodestate-badge--*,
+ * --state-* tokens). Registry standing and node score state are different
+ * state machines and must never be mixed in one field or one legend, so the
+ * classes are disjoint on purpose and one vocabulary can never borrow the
+ * other's color. */
 .reg-badge,.nodestate-badge{display:inline-block;padding:2px 8px;border-radius:var(--radius-pill);font-size:.7rem;font-family:var(--font-mono);border:1px solid;background:color-mix(in srgb,currentColor 12%,transparent)}
 .reg-badge--candidate{color:var(--reg-candidate)}
 .reg-badge--validated{color:var(--reg-validated)}
@@ -191,8 +193,10 @@ pre.code{background:var(--bg);border:1px solid var(--border);border-radius:6px;p
 .nodestate-badge--invalidated{color:var(--state-invalidated)}
 .nodestate-badge--removed{color:var(--state-removed)}
 
-/* Tab strip — the ONE v2 tablist look (shared TabStrip primitive, plan 02
- * tablist semantics). Governance shipped it first; the Configuration Studio
+/* Tab strip — the ONE v2 tablist look (shared TabStrip primitive). A v2
+ * workspace composes from semantic tokens and shared primitives only, so no
+ * screen defines a second look for something another screen already has.
+ * Governance shipped it first; the Configuration Studio
  * scope bar renders the same component, so no workspace grows a second look.
  * Navigation, never an action: no .btn treatment here. */
 .tab-strip{display:flex;gap:4px;border-bottom:1px solid var(--border-default);margin:16px 0 12px;flex-wrap:wrap}
@@ -202,7 +206,8 @@ pre.code{background:var(--bg);border:1px solid var(--border);border-radius:6px;p
 .tab-strip-tab:disabled{opacity:.45;cursor:not-allowed}
 .tab-strip-tab:focus-visible{outline:none;box-shadow:var(--focus-ring);border-radius:var(--radius-sm)}
 
-/* Nav rail — vertical slice navigation (shared NavRail primitive, plan 02).
+/* Nav rail — vertical slice navigation (shared NavRail primitive; one look,
+ * defined once, for every workspace that needs one).
  * A real list with aria-current on the selected item; selected/unselected
  * states are semantic tokens only. Navigation, never an action. */
 .nav-rail{flex:0 0 220px;min-width:0}
@@ -213,8 +218,10 @@ pre.code{background:var(--bg);border:1px solid var(--border);border-radius:6px;p
 .nav-rail-item:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 .nav-rail-item-label{min-width:0;overflow-wrap:anywhere}
 
-/* Governance policy facets (plan 08: cross-policy scores are faceted, never
- * one continuous series). */
+/* Governance policy facets: a utility policy defines what a score MEANS, so
+ * observations under different policy hashes are measurements on different
+ * instruments — each hash gets its own bordered facet and they are never
+ * plotted or listed as one continuous series. */
 .gov-facet{border:1px solid var(--border-default);border-radius:var(--radius-md);padding:10px 12px;margin-bottom:10px}
 .gov-facet+.gov-facet{border-top-style:dashed}
 .gov-facet-title{font-family:var(--font-mono);font-size:.8rem;margin-bottom:6px;color:var(--text-primary)}

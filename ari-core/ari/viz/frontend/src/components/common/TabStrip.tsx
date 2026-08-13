@@ -1,5 +1,6 @@
-// ARI Dashboard – shared tab strip primitive (gui_refresh plan 02: a v2
-// workspace is composed from semantic tokens + shared primitives only).
+// ARI Dashboard – shared tab strip primitive. A v2 workspace is composed from
+// semantic tokens and shared primitives only: no screen defines its own look
+// for something another screen already has.
 //
 // ONE tablist look for every v2 workspace. The Governance workspace shipped
 // the pattern first (role=tablist/tab + aria-selected/aria-controls over the

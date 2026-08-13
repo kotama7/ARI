@@ -1,8 +1,13 @@
 import type { ComponentType } from 'react';
 
 /**
- * Single-source route registry (gui_refresh Wave 1; plans 01 §Route model,
- * 03 §Route registry).
+ * Single-source route registry (gui_refresh Wave 1). A route exists in exactly
+ * one place — an entry in this array; both consumers are DERIVED from it, so a
+ * route can never exist in the nav without existing in the router, or the
+ * reverse. Each entry carries id, hash path, lazy loader, optional nav
+ * metadata, legacy aliases and the migration markers `guiV2` / `navReplaces`
+ * (docs/concepts/gui_architecture.md, "2. The route registry is the only place
+ * a route exists").
  *
  * Mirrors the CURRENT router exactly: the lazy page imports of
  * `App.tsx` (PAGE_MAP) and the nav metadata/order of
@@ -42,7 +47,11 @@ export type RouteDefinition = {
    */
   guiV2?: boolean;
   /**
-   * Nav takeover (gui_refresh Wave 4c; plan 10 route-level flag switching):
+   * Nav takeover (gui_refresh Wave 4c). Flag switching happens at the nav
+   * slot, not per route: a route names no flag of its own, the boolean
+   * `guiV2` marker stands for the one environment switch behind the whole v2
+   * surface, and promotion/rollback of a slice is granting or taking away its
+   * sidebar slot. The value is the
    * id of the route whose Sidebar slot this v2 route takes while the gui_v2
    * flag is on. `navItems()` materializes the target's navLabelKey /
    * navOrder / navIcon onto this entry (the sidebar slot looks identical —
@@ -111,7 +120,8 @@ export const ROUTE_REGISTRY: RouteDefinition[] = [
     navIcon: '🌳',
   },
   {
-    // v2 Tree workspace (gui_refresh Wave 4c, plan 07 §Tree workspace).
+    // v2 Tree workspace (gui_refresh Wave 4c): run-explicit, read-only node
+    // graph whose selection lives in the hash (`#/tree2?run=&node=`).
     // Takes over the legacy 'tree' Sidebar slot while gui_v2 is on
     // (navReplaces); the legacy '#/tree' URL and TreePage stay untouched
     // and reachable in both modes (parity invariant).
@@ -145,8 +155,10 @@ export const ROUTE_REGISTRY: RouteDefinition[] = [
     navIcon: '📊',
   },
   {
-    // v2 Results/EAR workspace (gui_refresh Wave 4d, plan 07 §Evidence,
-    // Results, and PaperBench). Takes over the legacy 'results' Sidebar
+    // v2 Results/EAR workspace (gui_refresh Wave 4d): a run-explicit,
+    // READ-ONLY view of evidence, review scores and publication lineage —
+    // every mutation and the paper editor stay on the legacy page it links
+    // out to. Takes over the legacy 'results' Sidebar
     // slot while gui_v2 is on (navReplaces); the legacy '#/results' URL and
     // ResultsPage (the full editor/PDF workspace and every EAR mutation)
     // stay untouched and reachable in both modes (parity invariant).
@@ -178,8 +190,10 @@ export const ROUTE_REGISTRY: RouteDefinition[] = [
     navIcon: '💡',
   },
   {
-    // v2 Ideas workspace (gui_refresh Wave 4c, plan 07 §Ideas, claims, and
-    // evidence). Takes over the legacy 'idea' Sidebar slot while gui_v2 is
+    // v2 Ideas workspace (gui_refresh Wave 4c): run-explicit, read-only view
+    // of this run's ideas and hypotheses shown with the evidence behind them
+    // (idea.json plus the nodes actually explored), never another run's.
+    // Takes over the legacy 'idea' Sidebar slot while gui_v2 is
     // on (navReplaces — the Tree stage's mechanism); the legacy '#/idea'
     // URL and IdeaPage stay untouched and reachable in both modes (parity
     // invariant).
@@ -213,8 +227,10 @@ export const ROUTE_REGISTRY: RouteDefinition[] = [
     guiV2: true,
   },
   {
-    // v2 Configuration Studio (gui_refresh task 06 Wave 4d, plan 06 —
-    // non-governance slice). Own nav slot right after the ConfigBrowser:
+    // v2 Configuration Studio (gui_refresh task 06 Wave 4d). Configuration
+    // editing only: RQGM governance and tuning parameters stay file-only, and
+    // no screen can change the mode of a run that already exists.
+    // Own nav slot right after the ConfigBrowser:
     // it does NOT replace the legacy 'settings' route yet (the Settings
     // page keeps working unchanged in parallel; cutover is a later slice).
     id: 'studio',

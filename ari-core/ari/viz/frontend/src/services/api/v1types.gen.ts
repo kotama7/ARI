@@ -604,10 +604,12 @@ export interface components {
          * ChallengeV1
          * @description One server-issued, single-use confirmation challenge (MN-6).
          *
-         *     The echoed ``action``/``target`` are the UI's impact preview (plan 09
-         *     §Dangerous operations); ``expires_at`` is display-only wall clock —
-         *     expiry is enforced server-side on a monotonic deadline
-         *     (``ttl_seconds`` after issuance).
+         *     The echoed ``action``/``target`` are the UI's impact preview: a
+         *     destructive operation is confirmed against a server-issued challenge
+         *     that names what it destroys, never against a client-side dialog alone
+         *     (docs/reference/rest_api.md, "Confirmation challenges").  ``expires_at``
+         *     is display-only wall clock — expiry is enforced server-side on a
+         *     monotonic deadline (``ttl_seconds`` after issuance).
          */
         ChallengeV1: {
             /**
@@ -633,8 +635,11 @@ export interface components {
         /**
          * ConfigFieldV1
          * @description One canonical config field: an ``ARIConfig`` leaf merged with the
-         *     hand-authored ``ari.config.field_registry.FIELD_META`` overlay (plan 05
-         *     §Canonical field metadata).  Metadata only — never an effective value;
+         *     hand-authored ``ari.config.field_registry.FIELD_META`` overlay.  That
+         *     registry is the single source of field metadata: no GUI-side field
+         *     list, label map, level table or enum copy exists to drift from it
+         *     (docs/guides/configuration_studio.md, "The field registry").  Metadata
+         *     only — never an effective value;
          *     ``sensitivity == "secret_reference"`` fields additionally carry NO
          *     default (the registry redacts it before this DTO is built).
          */
@@ -761,8 +766,8 @@ export interface components {
         };
         /**
          * DiagnosticsV1
-         * @description GET /api/v1/diagnostics envelope (plan 09 §Operational visibility)
-         *     — bounded scalars only: no secrets, no filesystem paths, nothing
+         * @description GET /api/v1/diagnostics envelope — operational visibility is bought
+         *     with bounded scalars only: no secrets, no filesystem paths, nothing
          *     beyond counts/ages/versions.  ``cache`` is the literal ``false`` —
          *     no cache subsystem exists yet, stated explicitly rather than omitted;
          *     ``openapi_version`` mirrors the served OpenAPI ``info.version``.
@@ -822,8 +827,9 @@ export interface components {
          *     ``validate_patch`` closed set (``field_registry.PATCH_REASONS``,
          *     including the ADR-09 ``mode_interlock_mismatch`` a half-set/disagreeing
          *     mode pair raises) plus ``invalid_value`` and ``interlock_mismatch``
-         *     (plan 05 §Interlocks: draft validation treats an inconsistent intent
-         *     pair as an ERROR even though the runtime resolves it warn+fallback).
+         *     (draft validation treats an inconsistent intent pair as an ERROR even
+         *     though the runtime resolves it warn+fallback, so a launch refuses
+         *     rather than quietly starting the fallback run).
          */
         DraftValidationErrorV1: {
             /**
@@ -1005,9 +1011,10 @@ export interface components {
         };
         /**
          * ModelCatalogV1
-         * @description GET /api/v1/config/catalogs/models envelope (plan 05 §Configuration
-         *     API; plan 06 §Schema-driven rendering: frontend model/provider constants
-         *     are replaced by this server catalog).
+         * @description GET /api/v1/config/catalogs/models envelope: the server owns the
+         *     model/provider catalog and the client renders whatever it serves — no
+         *     frontend constant duplicates the provider list, the model lists, or the
+         *     provider→env-key mapping, so the two cannot drift.
          */
         ModelCatalogV1: {
             /** Providers */
@@ -1042,8 +1049,10 @@ export interface components {
         };
         /**
          * NewRunProvenanceV1
-         * @description Provenance for one leaf of the NEW-RUN preview chain (plan 05
-         *     §Resolution model / New run).  ``mutable`` is true for every
+         * @description Provenance for one leaf of the NEW-RUN preview chain — the preview
+         *     resolves the same layered chain a launched run resolves, over the
+         *     layers that exist before any checkpoint does, so the panel shows what
+         *     the run will actually get.  ``mutable`` is true for every
          *     non-read_only field — before launch even ``new_run_only`` windows are
          *     open.  ``confidence`` is ``low`` only for the env overlay (the
          *     launch-time environment may differ from the preview-time one).
@@ -1123,9 +1132,11 @@ export interface components {
         };
         /**
          * ProvenanceEntryV1
-         * @description Where one resolved leaf's effective value came from (plan 05
-         *     §Resolved manifest).  ``confidence`` is ``high`` when the source file
-         *     was present, ``low`` for reconstructed/current-env layers.
+         * @description Where one resolved leaf's effective value came from: every leaf of a
+         *     resolved manifest names the layer that won it, so an effective value is
+         *     never served without its provenance.  ``confidence`` is ``high`` when
+         *     the source file was present, ``low`` for reconstructed/current-env
+         *     layers.
          */
         ProvenanceEntryV1: {
             /**
@@ -1143,9 +1154,11 @@ export interface components {
         };
         /**
          * RejectedOverrideV1
-         * @description One rejected/ignored override kept as an explanation (plan 05
-         *     §Resolution model: rejected overrides are returned, never silently
-         *     dropped).  ``reason`` vocabulary: the ``validate_patch`` closed set
+         * @description One rejected/ignored override kept as an explanation: a layer value
+         *     the resolver refused is returned with its reason while the resolver
+         *     falls back to the last valid layer — a rejected override is never
+         *     silently dropped (docs/guides/configuration_studio.md, "1. Resolve and
+         *     validate").  ``reason`` vocabulary: the ``validate_patch`` closed set
          *     (``invalid_enum``/``invalid_type``/``read_only``/``not_project_scope``)
          *     plus ``invalid_value`` (pydantic construction rejected it) and
          *     ``interlock_mismatch`` (warn+fallback ``resolve_effective_mode``
@@ -1277,9 +1290,10 @@ export interface components {
         };
         /**
          * ResultEarV1
-         * @description EAR / publication lineage flags (plan 07 §Evidence, Results, and
-         *     PaperBench: curate → preview → publish → promote as a traceability
-         *     chain).  ``present`` = ``ear/`` directory, ``curated`` =
+         * @description EAR / publication lineage flags — curate → preview → publish →
+         *     promote is a traceability chain, so every step is reported from its own
+         *     artifact and a later step is never taken as proof of an earlier one.
+         *     ``present`` = ``ear/`` directory, ``curated`` =
          *     ``ear_published/manifest.lock`` presence, ``published`` =
          *     ``publish_record.json`` presence.  ``visibility`` comes from the publish
          *     record when published, else from the curated manifest's declared
@@ -1325,8 +1339,10 @@ export interface components {
         };
         /**
          * ResultOrsV1
-         * @description ORS reproducibility-chain summary (plan 07: rubric → replicator →
-         *     phase1 reproduce → judge grade, the ``OrsChainSection`` lineage).
+         * @description ORS reproducibility-chain summary — rubric → replicator → phase1
+         *     reproduce → judge grade is a lineage, and each stage is reported from
+         *     its own artifact's presence, never inferred from a later stage (the
+         *     ``OrsChainSection`` lineage).
          *
          *     Stage flags are per-artifact presence (``ors_rubric.meta.json`` /
          *     ``ors_rubric.json``, ``ors_replicator.json``, ``ors_seed.json``,
@@ -1593,7 +1609,8 @@ export interface components {
          *     Capability detection from artifact presence only: no ``rqgm_state.json``
          *     ⇒ ``enabled=false`` with reason ``'simple_bfts run'``; ``paper_mode`` is
          *     ``paper_archive_state.json`` presence (execution mode and paper mode are
-         *     independent axes — plan 08 §Paper Archive).
+         *     independent axes: all four combinations are valid, so neither may be
+         *     inferred from the other).
          */
         RqgmCapabilitiesV1: {
             /** Enabled */
@@ -1753,8 +1770,8 @@ export interface components {
          *     and are never counted).  ``fallbacks`` has no event-level representation
          *     in the transitions log; it is joined from the ``epoch_transition`` audit
          *     record's real ``fallbacks`` array when present and stays ``None``
-         *     otherwise — an absent source is never displayed as zero (plan 08 §Truth
-         *     rules).
+         *     otherwise — an absent source is reported as absent, never as a zero
+         *     count.
          */
         RqgmEpochTransitionCountsV1: {
             /**
@@ -1785,17 +1802,19 @@ export interface components {
         };
         /**
          * RqgmEpochV1
-         * @description One committed epoch from transitions replay (plan 08 §Epoch
-         *     Timeline).
+         * @description One committed epoch from transitions replay: the entry is derived
+         *     from the committed transition log, never from live registry state or
+         *     from the ``epoch_state.json`` snapshot.
          *
          *     Every epoch carries its own ``utility_policy_hash`` so a consumer can
          *     refuse naive cross-epoch comparison: scores under different policy
-         *     hashes are never one continuous series (plan 08: epoch comparison only
-         *     after compatibility is confirmed).  ``boundary_committed`` is True when
-         *     a committed boundary transaction CLOSED this epoch (its terminal
-         *     boundary exists in the truth log); the latest epoch of a live run is
-         *     still open, so its ``transition_counts`` is ``None`` — a boundary that
-         *     has not happened is never rendered as zero activity.
+         *     hashes are never one continuous series, and two epochs may be compared
+         *     only once their policy compatibility is confirmed.
+         *     ``boundary_committed`` is True when a committed boundary transaction
+         *     CLOSED this epoch (its terminal boundary exists in the truth log); the
+         *     latest epoch of a live run is still open, so its ``transition_counts``
+         *     is ``None`` — a boundary that has not happened is never rendered as
+         *     zero activity.
          */
         RqgmEpochV1: {
             /**
@@ -1854,7 +1873,9 @@ export interface components {
         };
         /**
          * RqgmEvolutionEntryV1
-         * @description One evolution-lineage entry (plan 08 §Evolution and Frontier Repair).
+         * @description One evolution-lineage entry — adoption is a join, never a self-claim
+         *     (docs/reference/rqgm_gui_read_models.md, "Presentation truth rules the
+         *     API enforces").
          *
          *     Raw candidate vs validated candidate vs adopted policy are structurally
          *     separate here, never conflated:
@@ -1862,7 +1883,9 @@ export interface components {
          *     - the entry itself IS the raw proposal record (its own ``status`` is the
          *       record's candidate-vocabulary status, and the proposed artifact hash
          *       is normalized into ``proposed_prompt_hash`` / ``proposed_policy_hash``
-         *       — the plan-08 naming-subtlety rule);
+         *       — the source records spell that hash under different key names per
+         *       candidate kind, so it is read into two typed fields and a prompt hash
+         *       can never be displayed as a policy hash);
          *     - ``validation_record_count`` / ``validation_passed_count`` count the
          *       candidate's ``prompt_candidate_validation`` records (lifecycle stage
          *       executions), which is evidence of validation, not adoption;
@@ -1997,8 +2020,10 @@ export interface components {
         /**
          * RqgmIntegrityV1
          * @description Tri-state integrity flags: ``True`` verified, ``False`` broken,
-         *     ``None`` source missing (a missing source is never displayed as clean —
-         *     plan 08 §Truth rules).
+         *     ``None`` source missing — a missing source is never displayed as clean,
+         *     and a broken chain degrades the payload rather than failing the request
+         *     (docs/reference/rqgm_gui_read_models.md, "Integrity flags and degraded
+         *     semantics").
          */
         RqgmIntegrityV1: {
             /**
@@ -2020,8 +2045,10 @@ export interface components {
         /**
          * RqgmNodeLineageV1
          * @description GET /api/v1/runs/{run_id}/rqgm/nodes/{node_id}/lineage — the TWO
-         *     independent score channels (plan 08 §Score Lineage), never merged into
-         *     one series: ``penalty_channel`` (adversarial penalty inside an epoch)
+         *     independent score channels, kept as separate lists that no consumer can
+         *     accidentally merge into one series
+         *     (docs/reference/rqgm_gui_read_models.md, "The two score-rewrite
+         *     channels"): ``penalty_channel`` (adversarial penalty inside an epoch)
          *     and ``policy_channel`` (epoch-boundary utility-policy rewrite /
          *     invalidation).
          */
@@ -2093,7 +2120,9 @@ export interface components {
          *     ``paper_utility_policy.anchor_enabled`` in ``paper_archive_state.json``;
          *     when no policy was frozen it is ``None`` (unknown), never guessed.
          *     With the anchor disabled the archive is reviewed best-of-N and writer
-         *     sanctions cannot fire (plan 08 §Paper Archive).
+         *     sanctions cannot fire — so an empty sanction record under a disabled
+         *     anchor is a capability state, never evidence that nothing went
+         *     wrong.
          */
         RqgmPaperAnchorV1: {
             /**
@@ -2113,10 +2142,10 @@ export interface components {
          *
          *     ``paper_mode`` reports the persisted mode when
          *     ``paper_archive_state.json`` exists; absence of that file MEANS mode
-         *     ``linear`` by the source contract (plan 08 §Source artifacts), which is
-         *     why ``state_present=False`` rides along — the derivation is transparent,
-         *     not fabricated.  ``draft_count`` is ``None`` (not 0) when the draft
-         *     archive file is absent.
+         *     ``linear`` by the artifact contract — absence is DEFINED to mean linear
+         *     rather than merely unread — which is why ``state_present=False`` rides
+         *     along: the derivation is transparent, not fabricated.  ``draft_count``
+         *     is ``None`` (not 0) when the draft archive file is absent.
          */
         RqgmPaperArchiveV1: {
             anchor?: components["schemas"]["RqgmPaperAnchorV1"];
@@ -2211,9 +2240,9 @@ export interface components {
         /**
          * RqgmPaperWinnerV1
          * @description The archive's best-belief draft.  ``node_id`` is the recorded
-         *     ``is_best_belief`` draft (a REVIEWED selection — never to be equated
-         *     with the governance winner or the research result, plan 08 §Paper
-         *     Archive); ``materialized`` is ``full_paper.tex`` presence.
+         *     ``is_best_belief`` draft — a REVIEWED selection, which is neither the
+         *     governance winner nor the research result and must never be labelled as
+         *     either; ``materialized`` is ``full_paper.tex`` presence.
          */
         RqgmPaperWinnerV1: {
             /**
@@ -2330,8 +2359,10 @@ export interface components {
          * RqgmRawAttackV1
          * @description A RAW adversarial claim (``atk_*``): kind is pinned to ``'raw'`` and
          *     the model has NO score/penalty/confidence field — a raw attack is
-         *     structurally incapable of carrying a score (plan 08: raw attacks never
-         *     score; severity_claimed is the attacker's CLAIM, not a penalty).
+         *     structurally incapable of carrying a score (raw attacks never score;
+         *     ``severity_claimed`` is the attacker's CLAIM, not a penalty — only an
+         *     adjudicated ``vat_*`` record may drive one, and only through a
+         *     ``UtilityRecord`` that references its id).
          */
         RqgmRawAttackV1: {
             /**
@@ -2398,8 +2429,8 @@ export interface components {
          *
          *     Entries come from committed replay of ``rqgm_transitions.jsonl`` (the
          *     truth log); the ``rqgm_registry.json`` rollup is read only to compute
-         *     ``verified`` (rollup ``as_of_event_hash`` == replay tail — plan 08
-         *     §Truth rules).
+         *     ``verified`` (rollup ``as_of_event_hash`` == replay tail).  A rollup or
+         *     snapshot verifies the truth log — it never becomes current state.
          */
         RqgmRegistryV1: {
             /** Active Components */
@@ -2442,11 +2473,16 @@ export interface components {
         };
         /**
          * RqgmScoreObservationV1
-         * @description One score-lineage observation (plan 08 §Score Lineage).
+         * @description One score-lineage observation — a score is never reported without
+         *     the policy identity it was computed under
+         *     (docs/reference/rqgm_gui_read_models.md, "The two score-rewrite
+         *     channels").
          *
          *     ``policy_hash`` is always the EPOCH utility-policy hash the observation
          *     was made under (the penalty-side frozen weights live inside the source
-         *     record, plan 08's naming-subtlety rule).  ``state`` is ``None`` when the
+         *     record: the single field name ``utility_policy_hash`` has carried both
+         *     policies over the life of the format, and their key sets are disjoint
+         *     so the two hashes can never be equal).  ``state`` is ``None`` when the
          *     source asserts a frontier fact rather than a node score state (never
          *     guessed).  ``values`` carries the source fields verbatim (sentinel key
          *     names included) — passthrough, no re-computation.
@@ -2963,13 +2999,18 @@ export interface components {
         };
         /**
          * RunLaunchRequestV1
-         * @description POST /api/v1/runs body (plan 06 §Launch protocol).
+         * @description POST /api/v1/runs body — the launch protocol is validate-first and
+         *     idempotent: a rejected body performs zero filesystem mutation, and the
+         *     idempotency claim is written before any directory exists
+         *     (docs/guides/configuration_studio.md, "3. Launch, and what it
+         *     guarantees").
          *
          *     ``draft_id`` names the durable run draft to launch; ``display_name``
-         *     only seeds the human-readable slug half of the run id (never identity —
-         *     plan 04 §Run identity); ``profile`` is the CLI ``--profile`` closed set;
-         *     ``idempotency_key`` makes the POST retriable — a duplicate key replays
-         *     the SAME ``run_id`` and spawns nothing (double-click safety).
+         *     only seeds the human-readable slug half of the run id — the id is
+         *     minted by the server and a display name is never identity; ``profile``
+         *     is the CLI ``--profile`` closed set; ``idempotency_key`` makes the POST
+         *     retriable — a duplicate key replays the SAME ``run_id`` and spawns
+         *     nothing (double-click safety).
          */
         RunLaunchRequestV1: {
             /**
@@ -2992,11 +3033,13 @@ export interface components {
         };
         /**
          * RunLaunchedV1
-         * @description POST /api/v1/runs accepted envelope (plan 04 §Run identity and
-         *     lifecycle: the collision-resistant ``run_id`` + status URL + checkpoint
-         *     path/intent, returned before any slow work).  ``idempotent_replay`` is
-         *     True when the response acknowledges an earlier launch for the same
-         *     idempotency key (nothing was spawned by THIS request).
+         * @description POST /api/v1/runs accepted envelope: the server mints the
+         *     collision-resistant ``run_id`` and answers with it, the status URL and
+         *     the checkpoint path before any slow work, so a client follows the
+         *     issued id and never guesses the newest checkpoint by mtime.
+         *     ``idempotent_replay`` is True when the response acknowledges an earlier
+         *     launch for the same idempotency key (nothing was spawned by THIS
+         *     request).
          */
         RunLaunchedV1: {
             /**
@@ -3048,8 +3091,9 @@ export interface components {
          *     new committed lines appear).  ``eof=true`` means no further committed
          *     line was known at scan time; a trailing partial line (no ``\n``) is
          *     never emitted — ``next_cursor`` parks at its first byte until the line
-         *     completes (plan 04 committed-only reads).  Each request scans at most
-         *     ``logs.SCAN_WINDOW_BYTES``; when the window ends before ``limit``
+         *     completes, because every read on this surface is committed-only: a torn
+         *     append is served once it is whole, never before.  Each request scans at
+         *     most ``logs.SCAN_WINDOW_BYTES``; when the window ends before ``limit``
          *     matches were found the page returns early with ``eof=false`` and the
          *     advanced cursor — the client continues, no request scans unboundedly.
          */
@@ -3316,10 +3360,12 @@ export interface components {
         };
         /**
          * SecretValueRequestV1
-         * @description PUT /api/v1/secrets/{secret_id} body — the write-only value channel
-         *     (plan 05 §Configuration API).  The value never appears in any response,
-         *     manifest, or log; the target name is the path's ``secret_id`` and must
-         *     be on the ``ari.viz.v1.secrets.SECRET_NAMES`` allowlist.
+         * @description PUT /api/v1/secrets/{secret_id} body — the write-only value channel:
+         *     a secret value travels browser → server only, and is never readable
+         *     back through any endpoint (docs/guides/configuration_studio.md, "How
+         *     secrets work").  The value never appears in any response, manifest, or
+         *     log; the target name is the path's ``secret_id`` and must be on the
+         *     ``ari.viz.v1.secrets.SECRET_NAMES`` allowlist.
          */
         SecretValueRequestV1: {
             /** Value */

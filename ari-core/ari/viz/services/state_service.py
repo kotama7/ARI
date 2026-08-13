@@ -29,14 +29,14 @@ Behaviour preserved verbatim from the inline builder:
   ``ari.config.finder.package_config_root``) / ``cost_trace.jsonl`` tail / phase
   detection / process-liveness fields.
 
-FROZEN — legacy facade (gui_refresh G2 tail; plan 04 §Caching and polling
-policy: "`/state` は legacy facade として凍結し、新 feature を追加して肥大化
-させない"). The aggregate ``/state`` payload MUST NOT grow new top-level keys:
+FROZEN — legacy facade (gui_refresh G2 tail). The policy is that `/state`
+is frozen as a legacy facade and must not be grown with new features. The aggregate ``/state`` payload MUST NOT grow new top-level keys:
 new data belongs on run-explicit ``/api/v1`` endpoints (``ari/viz/v1/``), never
 here. Bug fixes that preserve the existing key set are fine. The exact
 top-level key set is pinned by ``tests/test_gui_state_facade_freeze.py``;
-removal of the whole facade is gated at G6 legacy removal (plan 04
-§Compatibility and migration step 7).
+removal of the whole facade is gated at the G6 legacy-removal step, which
+retires the legacy endpoints only after the v1 replacements carry their
+traffic.
 """
 from __future__ import annotations
 

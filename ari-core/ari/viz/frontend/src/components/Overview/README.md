@@ -1,14 +1,15 @@
 # frontend/src/components/Overview
 
-v2 run Overview workspace — gui_refresh task 07 Wave 4b (plan 07 §Run Overview
-and Live Monitor; plan 01 §Global shell context). Read-only; gated on the
-`gui_v2` capability.
+v2 run Overview workspace — gui_refresh task 07 Wave 4b. Read-only; gated on
+the `gui_v2` capability. This is the one screen built explicitly to the
+disclosure ladder, and it is run-explicit: its content is a function of its
+`?run=` URL alone, never of the shell's process-wide checkpoint selection.
 
-Route `#/overview?run=<run_id>`. The plan-07 P1/P2 disclosure layers only
-(P3+ land later): P1 = lifecycle badge, current research phase (frozen
+Route `#/overview?run=<run_id>`. The P1/P2 rungs only (P3+ land later): P1 =
+lifecycle badge, current research phase (frozen
 idle/starting/bfts/paper/review vocabulary), last-update freshness, and a
-blocker surface (governance record degraded/integrity-broken via the plan-08
-RQGM overview read model, RQGM runs only); P2 = node/review/best-metric
+blocker surface (governance record degraded/integrity-broken via the
+read-only RQGM overview read model, RQGM runs only); P2 = node/review/best-metric
 StatBoxes from the run summary DTO plus workspace deep links (Tree,
 Config browser `#/config?run=`, Governance `#/governance?run=` when
 `capabilities.rqgm`). Research phase and governance stage render as two
@@ -16,12 +17,15 @@ separate labelled rows and are never merged. Realtime: `useRunEvents`
 topics `run`+`tree`; a dropped stream shows a `StaleDataBanner`, never
 "run stopped".
 
-The task 07 tail adds the P4 disclosure layer: `LogsPanel`, a collapsible
-cursor-based explorer over the run's append-only `{ckpt}/ari.log`
+The task 07 tail adds the P4 rung: `LogsPanel`, a collapsible cursor-based
+explorer over the run's append-only `{ckpt}/ari.log`
 (`GET /api/v1/runs/{run_id}/logs` — raw byte-offset cursor, server-side
-case-insensitive `grep`, committed lines only, ≤1 MiB scanned per request;
-plan 07 §Artifacts, logs, and diagnostics). Collapsed = zero fetches;
-tail-follow is event-driven off the page's existing stream subscription.
+case-insensitive `grep`, committed lines only, ≤1 MiB scanned per request, so
+opening the panel never costs a whole-file read). Collapsed = zero fetches —
+a rung that renders and then hides its content is not a rung; tail-follow is
+event-driven off the page's existing stream subscription. See
+`docs/concepts/gui_architecture.md`, "11. Disclosure levels: what a screen
+shows before you ask".
 
 ## Contents
 

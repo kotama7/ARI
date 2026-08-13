@@ -1,9 +1,10 @@
 """In-process realtime event bus for ``GET /api/v1/events/stream``
-(gui_refresh Wave 2b, ADR-03 + plan 04 §Realtime event contract).
+(gui_refresh Wave 2b, ADR-03).
 
 Events are notifications/invalidations, never a source of truth: on
 reconnect a client replays via ``Last-Event-ID`` **and** refetches the
-snapshot resource. Each event carries the frozen plan-04 contract shape::
+snapshot resource. Each event carries the frozen wire shape (additive
+only — a field is never removed or retyped)::
 
     {"event_id": "<monotonic int as str>", "run_id": ..., "topic": "run"|"tree",
      "revision": <per-(topic, run_id) counter>, "occurred_at": "<UTC ISO>",
@@ -37,12 +38,13 @@ from typing import Iterator
 
 log = logging.getLogger(__name__)
 
-# Frozen Wave 2b topic vocabulary (plan 04 lists run/tree/logs/artifacts/
-# config/rqgm as the full starting set; this wave publishes the first two).
+# Frozen Wave 2b topic vocabulary.  The full starting set is
+# run/tree/logs/artifacts/config/rqgm and it is FROZEN — a topic is never
+# renamed or removed; this wave publishes the first two.
 TOPICS = ("run", "tree")
 
-# Default invalidated resource per topic (plan 04: `resource` names the
-# /api/v1 snapshot the client should refetch).
+# Default invalidated resource per topic — `resource` names the /api/v1
+# snapshot the client should REFETCH, never the changed data itself.
 _DEFAULT_RESOURCES = {
     "tree": "/api/v1/runs/{run_id}/tree",
     "run": "/api/v1/runs/{run_id}/summary",
@@ -136,8 +138,8 @@ def replay_since(last_event_id=None, *, run_id: str | None = None,
     """Buffered events with id > ``last_event_id``, oldest first, filtered.
 
     Events already evicted from the ring are silently gone — the client's
-    snapshot refetch covers the gap (plan 04: events are invalidations,
-    not a source of truth).
+    snapshot refetch covers the gap, because events are invalidations and
+    not a source of truth: a lost event costs a refetch and nothing else.
     """
     cursor = _parse_event_id(last_event_id)
     with _cond:

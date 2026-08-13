@@ -1,7 +1,14 @@
-// ARI Dashboard – v2 run Overview workspace (gui_refresh task 07 Wave 4b;
-// plan 07 §Run Overview and Live Monitor, plan 01 §Global shell context).
+// ARI Dashboard – v2 run Overview workspace (gui_refresh task 07 Wave 4b).
 //
-// READ-ONLY. The plan-07 P1/P2 disclosure layers ONLY (P3+ land later):
+// Shell context rule: a run-scoped screen answers "where am I and what is
+// wrong" without being asked — run identity, lifecycle, current research
+// phase, last update, connection state, and for a governed run its epoch
+// and utility policy hash are always on screen, never one interaction away.
+// This is also the one screen built explicitly to the P1..P5 disclosure
+// ladder — see docs/concepts/gui_architecture.md,
+// "11. Disclosure levels: what a screen shows before you ask".
+//
+// READ-ONLY. The P1/P2 disclosure layers ONLY (P3+ land later):
 //   P1 — lifecycle badge (run detail DTO `status`), current research phase
 //        (the frozen /state vocabulary idle/starting/bfts/paper/review —
 //        see RESEARCH_PHASES), last-update freshness, and a blocker surface
@@ -12,16 +19,18 @@
 //        (#/config?run=), Governance (#/governance?run=, only when the run
 //        detail DTO reports capabilities.rqgm).
 //
-// Truth rule (plan 07): research phase and governance stage are NEVER mixed —
-// when the run is RQGM they render as two separate labelled rows, and the
-// governance stage row never appears for a simple_bfts run. RQGM data is
-// read through the plan-08 read models only (viz never imports ari.rqgm).
+// Truth rule: research phase and governance stage are NEVER mixed — when the
+// run is RQGM they render as two separate labelled rows, and the governance
+// stage row never appears for a simple_bfts run. RQGM data is read through
+// the v1 governance read models only (viz never imports ari.rqgm).
 //
 // Run scoping: reads `?run=` from the hash query (#/overview?run=<id>) — the
 // ConfigBrowserPage pattern; no sessionStorage handoff. Realtime: topics
 // 'run' + 'tree' via useRunEvents (events are invalidations, never data);
-// a dropped stream keeps the last snapshot under a StaleDataBanner and is
-// never presented as "run stopped" (plan 01 §Empty and degraded states).
+// a dropped stream is a freshness problem and never a state change, so the
+// last snapshot stays on screen under a StaleDataBanner and is never
+// presented as "run stopped" (docs/concepts/gui_architecture.md,
+// "6. Realtime is invalidation, not a source of truth").
 
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -57,7 +66,11 @@ function runFromHash(): string {
   return new URLSearchParams(query).get('run') ?? '';
 }
 
-/** err.message plus the envelope's request_id (support handle, plan 04). */
+/**
+ * err.message plus the envelope's request_id. The backend mints one id per
+ * dispatch and echoes it on successes too, so it is shown rather than
+ * swallowed: it is the handle a reader quotes in a bug report.
+ */
 function errorText(err: ApiErrorV1, requestIdLabel: string): string {
   const rid = err.request_id ? ` (${requestIdLabel}: ${err.request_id})` : '';
   return `${err.message}${rid}`;
@@ -72,7 +85,8 @@ function formatFreshness(iso: string): string {
 /**
  * The frozen research-phase vocabulary: /state `current_phase` values
  * (idle/starting/bfts/paper/review) which the new phase model must contain
- * (plan 07 parity requirement). The run detail DTO's `phase` carries
+ * (a v2 screen must not lose a phase the legacy screen could show). The run
+ * detail DTO's `phase` carries
  * bfts/paper/review or null; null renders as 'idle' (nothing derived yet).
  * Exported for the OverviewPage vocabulary test.
  */
@@ -152,7 +166,9 @@ export function OverviewPage() {
 
   const detailQ = useRunV1(runId);
   const summaryQ = useRunSummaryV1(runId);
-  // capabilities.rqgm from the run detail DTO (artifact presence, plan 08).
+  // capabilities.rqgm from the run detail DTO. Capability is artifact
+  // presence and nothing else — no governance artifacts means a simple_bfts
+  // run, so the governance surfaces stay absent rather than empty.
   const rqgm = detailQ.data?.capabilities?.rqgm === true;
   const rqgmOverviewQ = useRqgmOverviewV1(runId, rqgm);
 
@@ -162,15 +178,20 @@ export function OverviewPage() {
     RUN_TOPICS,
   );
   // Realtime → rqgm cache glue (GovernancePage pattern): a delivered event is
-  // an invalidation signal for this run's rqgm scope, never data (plan 04).
+  // an invalidation signal for this run's rqgm scope, never data. Nothing is
+  // rendered from an event — the snapshot endpoint decides what is true, the
+  // event only decides when to ask again — so duplicates and reordering are
+  // harmless here.
   useEffect(() => {
     if (lastEventAt !== null && runId !== '') {
       void queryClient.invalidateQueries({ queryKey: v1Keys.rqgm(runId) });
     }
   }, [lastEventAt, runId, queryClient]);
 
-  // Hard error only when there is no snapshot to show; refetch failures over
-  // cached data are freshness notices (plan 01 §Empty and degraded states).
+  // Hard error only when there is no snapshot to show; a refetch failure over
+  // cached data is a freshness notice, never an error screen thrown over data
+  // we still hold. Degraded and empty are distinct states, and neither is
+  // reported as a failed run.
   const hardError: ApiErrorV1 | null =
     detailQ.isError && detailQ.data === undefined
       ? detailQ.error
@@ -242,7 +263,9 @@ export function OverviewPage() {
 
         {/* P1 — lifecycle / research phase / (separate) governance stage /
             freshness. Research phase and governance stage are two separate
-            labelled rows, never one merged row (plan 07). */}
+            labelled rows, never one merged row: governance status and
+            research status are different claims, and a blocked governance
+            record does not mean the research run failed. */}
         <Card>
           <LabeledRow label={t('ov_lifecycle')}>
             <StatusBadge status={detail.status} />
@@ -308,8 +331,10 @@ export function OverviewPage() {
         </Card>
 
         {/* P4 — collapsible cursor log explorer over {ckpt}/ari.log (task 07
-            tail; plan 07 §Artifacts, logs, and diagnostics). Shares this
-            page's single event-stream subscription for tail-follow. */}
+            tail): the log is paged by byte cursor with a server-side filter,
+            never read whole, and a collapsed panel fetches nothing at all.
+            Shares this page's single event-stream subscription for
+            tail-follow. */}
         <div style={{ marginTop: 16 }}>
           <LogsPanel
             runId={runId}

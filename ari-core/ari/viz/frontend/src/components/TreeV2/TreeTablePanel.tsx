@@ -1,6 +1,7 @@
-// ARI Dashboard – TreeV2 virtualized side table (gui_refresh task 07 tail;
-// plan 07 §Tree workspace: provide keyboard navigation and an equivalent
-// tabular hierarchy / "virtualized side table").
+// ARI Dashboard – TreeV2 virtualized side table (gui_refresh task 07 tail).
+// The canvas is not the only way in: the same tree is always reachable as a
+// keyboard-navigable tabular hierarchy, so nothing in the workspace is
+// available exclusively through pointer interaction with the D3 view.
 //
 // Renders the SAME visible set as the D3 canvas (the page computes it once
 // via computeVisibleRows and hands the flat DFS rows here) as a
