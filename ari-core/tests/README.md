@@ -25,6 +25,7 @@ targets the like-named module under `ari/`.
 - `test_assurance_measure.py` — the wrong-vs-slow distinction the wiring rests on, both error classes, seeding that never overwrites an inherited candidate, and the channel split: `evaluation_cases` is rendered verbatim into the child's prompt, so it is treatment text and must not gain fields, while the verdict/spread/absolute seconds and the measurement provenance live in the audit channel.
 - `test_assurance_resolver.py` — harness catalog resolution, compatibility filtering, lock creation, and fail-closed ambiguity coverage.
 - `test_assurance_target_declaration.py` — the scoring path must point the governed Harness at what it scored. The regression: nothing in the repository wrote `assurance_target.json`, so a governed run resolved its Harness, locked it, and recorded `tampered` with no verdicts on every node — the verifier had no target declaration to load.
+- `test_assurance_workspace_absolute.py` — TODO
 - `test_async_tool_lifecycle.py` — asynchronous handle state transitions, polling budgets, cancellation, and expiry.
 - `test_attestation_coverage_bounds.py` — an attestation may only report on the atoms it was handed. Only one direction was checked: every REQUESTED atom had to be covered. Nothing compared the other way, so a driver reporting on an atom the request never granted was accepted, and that digest went straight into the bridge's coverage map.
 - `test_bfts.py` — BFTS loop.

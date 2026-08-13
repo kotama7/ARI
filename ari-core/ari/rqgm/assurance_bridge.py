@@ -17,6 +17,7 @@ from ari.assurance.models import (
 from ari.assurance.request import (
     HarnessRequestError,
     build_native_harness_run_request,
+    harness_inapplicability,
     load_target_declaration,
 )
 from ari.assurance.runner import FixedVerifier
@@ -33,12 +34,38 @@ from ari.protocols.immutable_store import write_once_json
 _MAX_REASON_CHARACTERS = 480
 
 
-def _failure_reason(exc: BaseException) -> str:
-    text = f"{type(exc).__name__}: {exc}".strip()
+def _bounded(text: str) -> str:
     text = " ".join(scrub_host_identity(text).split())
     if len(text) > _MAX_REASON_CHARACTERS:
         text = text[: _MAX_REASON_CHARACTERS - 1] + "…"
     return text
+
+
+def _failure_reason(exc: BaseException) -> str:
+    return _bounded(f"{type(exc).__name__}: {exc}".strip())
+
+
+def _reason(primary: str, *, skipped: list[str]) -> str:
+    """One reason string for the record, however the tier ended.
+
+    EVERY exit carries the skips, not just the clean one. Accumulating them and
+    then emitting them only on the fall-through meant a tier that skipped one
+    Harness and then hit an error reported the error alone -- which is worse
+    than what it replaced, since abandoning the tier at the inapplicable Harness
+    had at least recorded that much.
+
+    Bounded and scrubbed like any other reason. The skip note interpolates a
+    manifest id out of catalog YAML anyone may extend, and an all-inapplicable
+    lock of forty Harnesses produced a 4,908-character note -- ten times the
+    cap -- written raw into a checkpoint that can leave with a reproduction
+    bundle.
+    """
+    notes = "; ".join(skipped)
+    if primary and notes:
+        return _bounded(f"{primary} | not applicable to this target: {notes}")
+    if notes:
+        return _bounded(f"not applicable to this target: {notes}")
+    return primary
 
 
 _VERDICT_RANK = {
@@ -63,7 +90,13 @@ class RQGMAssuranceBridge:
     ) -> None:
         self.admission = artifacts.admission
         self.documents = artifacts.documents
-        self.checkpoint_dir = Path(checkpoint_dir)
+        # Absolute at the boundary. Every verification path is derived from
+        # this one, and `WorkspaceRefV1` refuses a relative root -- so a run
+        # launched with a relative checkpoint dir reached the Harness, resolved
+        # it, locked it, declared its target, and then recorded
+        # `infrastructure_error` on both properties for a reason that had
+        # nothing to do with the candidate.
+        self.checkpoint_dir = Path(checkpoint_dir).resolve()
         self.contract = VerificationContractV1.model_validate(
             self.documents["verification_contract.json"]
         )
@@ -285,14 +318,41 @@ class RQGMAssuranceBridge:
         manifests = {item.manifest_digest: item for item in self.catalog.manifests}
         required_atoms = {item.atom_digest for item in required}
         attestations: list[HarnessAttestationV1] = []
+        not_applicable: list[str] = []
         for locked in self.baseline.harnesses:
             if not set(locked.covered_atom_digests) & required_atoms:
                 continue
             manifest = manifests.get(locked.manifest_digest)
             if manifest is None:
-                return attestations, "tampered", (
+                return attestations, "tampered", _reason(
                     "the active lock names a Harness manifest the catalog no "
-                    "longer holds")
+                    "longer holds", skipped=not_applicable)
+            # A LOCK IS RESOLVED FOR A CONTRACT; A NODE MAKES ONE ARTIFACT.
+            #
+            # So a lock holds Harnesses this candidate cannot be handed, and the
+            # shipped catalog is that shape: `hpc/gemm-performance` scores
+            # benchmark submissions, and every candidate ABI this system can
+            # produce declares a shared library, so it is inapplicable to all of
+            # them. Reaching for one anyway raised a request error, and a
+            # request error abandoned the TIER -- every Harness after it went
+            # unrun.
+            #
+            # MEASURED, so as not to overstate it: on the shipped catalog the
+            # verdict does not move. The lock sorts by harness id, which puts
+            # gemm-correctness before gemm-performance, so the inapplicable one
+            # is last and nothing follows it to be lost. The defect is real but
+            # latent, waiting on an id that sorts the other way, and what
+            # changes today is the record -- "this Harness cannot judge this
+            # artifact" is a fact about the pairing, not a request failure.
+            #
+            # Skipping cannot loosen anything: the skipped Harness's atoms stay
+            # uncovered, so they read inconclusive and the tier can be no better
+            # than that.
+            inapplicable = harness_inapplicability(
+                manifest=manifest, declaration=declaration)
+            if inapplicable:
+                not_applicable.append(f"{manifest.id}: {inapplicable}")
+                continue
             try:
                 attestations.append(
                     self._verify_locked(
@@ -305,7 +365,8 @@ class RQGMAssuranceBridge:
                     )
                 )
             except HarnessRequestError as exc:
-                return attestations, "inconclusive", _failure_reason(exc)
+                return attestations, "inconclusive", _reason(
+                    _failure_reason(exc), skipped=not_applicable)
             except Exception as exc:
                 # THE REASON, NOT JUST THE LABEL. This used to be a bare
                 # `except Exception:`, so the one string that said WHY was
@@ -318,8 +379,12 @@ class RQGMAssuranceBridge:
                 # The verdict is unchanged: this is still an infrastructure
                 # failure and still not a judgement about the candidate. Only
                 # the record gains what was already in hand.
-                return attestations, "infrastructure_error", _failure_reason(exc)
-        return attestations, "", ""
+                return attestations, "infrastructure_error", _reason(
+                    _failure_reason(exc), skipped=not_applicable)
+        # A skip is reported even when everything that DID run passed, because
+        # the tier covered less than the lock provides and the record should
+        # say so rather than reading as a clean sweep.
+        return attestations, "", _reason("", skipped=not_applicable)
 
     def _candidate_target(self, node):
         work_dir = Path(str(getattr(node, "work_dir", "") or ""))
@@ -434,11 +499,15 @@ class RQGMAssuranceBridge:
                 "frontier_class": node.frontier_class,
                 "attestation_refs": list(node.attestation_refs),
                 "verified_target_digest": str(node.verified_target_digest or ""),
-                # WHY, when the status alone does not say. Empty on every
-                # ordinary verdict: a pass or a fail is about the candidate and
-                # needs no excuse, while an infrastructure failure is about the
-                # machinery and used to be recorded as one indistinguishable
-                # word for every way the machinery can break.
+                # WHY, when the status alone does not say. An infrastructure
+                # failure is about the machinery, and used to be recorded as one
+                # indistinguishable word for every way the machinery can break.
+                #
+                # Usually empty on a pass or a fail, which are about the
+                # candidate and need no excuse -- but not always: a tier that
+                # skipped a Harness it could not apply carries that note even
+                # when everything which ran passed, because the tier covered
+                # less than the lock provides.
                 "status_reason": reason,
             },
         )

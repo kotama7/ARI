@@ -45,9 +45,23 @@ def _bridge(tmp_path: Path) -> RQGMAssuranceBridge:
         lock_digest="sha256:" + "3" * 64,
         harnesses=(SimpleNamespace(manifest_digest="sha256:" + "4" * 64,
                                    covered_atom_digests=("atom-1",)),))
-    bridge.catalog = SimpleNamespace(
-        manifests=(SimpleNamespace(manifest_digest="sha256:" + "4" * 64),))
+    bridge.catalog = SimpleNamespace(manifests=(SimpleNamespace(
+        manifest_digest="sha256:" + "4" * 64, id="hpc/example",
+        target_kinds=("shared-library",), subject_types=("program",),
+        supported_languages=("c",), supported_hardware=("cpu",),
+        supported_architectures=("x86_64",), supported_dtypes=("float64",),
+        target_interface_contract="gemm-c-abi/v1"),))
     return bridge
+
+
+def _declaration():
+    """A Harness is only reached for when it can judge THIS artifact, so the
+    suite tests need a declaration the stub manifest applies to."""
+    return SimpleNamespace(
+        target_kind="shared-library", subject_type="program", language="c",
+        hardware="cpu", architecture="x86_64", dtype="float64",
+        interface_contract="gemm-c-abi/v1",
+        target_digest="sha256:" + "6" * 64)
 
 
 def _node():
@@ -93,7 +107,8 @@ def test_a_failed_verification_returns_the_reason_with_the_label(tmp_path):
         _Boom("locked Harness execution failed: apptainer executable is unavailable"))
 
     attestations, status, reason = bridge._run_tier_suite(
-        _node(), None, None, (SimpleNamespace(atom_digest="atom-1"),), tier="screen")
+        _node(), None, _declaration(), (SimpleNamespace(atom_digest="atom-1"),),
+        tier="screen")
 
     assert attestations == []
     assert status == "infrastructure_error", (
@@ -109,7 +124,8 @@ def test_a_request_failure_is_still_inconclusive_and_now_says_why(tmp_path):
         HarnessRequestError("target declaration is absent"))
 
     _attestations, status, reason = bridge._run_tier_suite(
-        _node(), None, None, (SimpleNamespace(atom_digest="atom-1"),), tier="screen")
+        _node(), None, _declaration(), (SimpleNamespace(atom_digest="atom-1"),),
+        tier="screen")
 
     assert status == "inconclusive"
     assert "target declaration is absent" in reason
@@ -128,7 +144,8 @@ def test_a_lock_naming_a_missing_manifest_is_tampered_and_says_so(tmp_path):
     bridge.catalog = SimpleNamespace(manifests=())
 
     attestations, status, reason = bridge._run_tier_suite(
-        _node(), None, None, (SimpleNamespace(atom_digest="atom-1"),), tier="screen")
+        _node(), None, _declaration(), (SimpleNamespace(atom_digest="atom-1"),),
+        tier="screen")
 
     assert attestations == []
     assert status == "tampered"
@@ -140,7 +157,8 @@ def test_a_clean_suite_returns_no_reason(tmp_path):
     bridge._verify_locked = lambda *a, **k: SimpleNamespace(property_results=())
 
     _attestations, status, reason = bridge._run_tier_suite(
-        _node(), None, None, (SimpleNamespace(atom_digest="atom-1"),), tier="screen")
+        _node(), None, _declaration(), (SimpleNamespace(atom_digest="atom-1"),),
+        tier="screen")
 
     assert status == ""
     assert reason == ""

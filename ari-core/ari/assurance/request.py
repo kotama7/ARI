@@ -58,6 +58,43 @@ def load_target_declaration(
     return declaration
 
 
+def harness_inapplicability(
+    *,
+    manifest: HarnessManifestV1,
+    declaration: HarnessTargetDeclarationV1,
+) -> str:
+    """Why this Harness cannot judge this target, or "" when it can.
+
+    NOT an error in itself. A lock is resolved for a CONTRACT and a node
+    produces ONE artifact, so a lock can perfectly well hold a Harness that
+    scores benchmark submissions beside one that verifies shared libraries, and
+    the shipped catalog does exactly that -- three verifiers over three
+    different interface contracts and one benchmark over a fourth target kind.
+    Whichever does not match the artifact in hand cannot say anything about it.
+
+    Separated from the validator so the caller can decide what that means.
+    Reaching for the Harness anyway and treating the refusal as a request
+    failure abandoned the whole tier -- every Harness after it went unrun.
+    Measured on the shipped catalog that costs nothing today, because the lock
+    sorts by harness id and puts the inapplicable one last; the defect is latent
+    and waiting on an id that sorts the other way.
+    """
+    for actual, supported, label in (
+        (declaration.target_kind, manifest.target_kinds, "target kind"),
+        (declaration.subject_type, manifest.subject_types, "subject type"),
+        (declaration.language, manifest.supported_languages, "target language"),
+        (declaration.hardware, manifest.supported_hardware, "target hardware"),
+        (declaration.architecture, manifest.supported_architectures,
+         "target architecture"),
+        (declaration.dtype, manifest.supported_dtypes, "target dtype"),
+    ):
+        if actual not in supported:
+            return f"declared {label} is incompatible with Harness"
+    if declaration.interface_contract != manifest.target_interface_contract:
+        return "declared target interface differs from Harness contract"
+    return ""
+
+
 def _validate_native_inputs(
     *,
     node_id: str,
@@ -74,23 +111,9 @@ def _validate_native_inputs(
         raise HarnessRequestError("Harness manifest differs from lock")
     if locked not in baseline.harnesses:
         raise HarnessRequestError("Harness is absent from baseline lock")
-    compatibility = (
-        (declaration.target_kind, manifest.target_kinds, "target kind"),
-        (declaration.subject_type, manifest.subject_types, "subject type"),
-        (declaration.language, manifest.supported_languages, "target language"),
-        (declaration.hardware, manifest.supported_hardware, "target hardware"),
-        (
-            declaration.architecture,
-            manifest.supported_architectures,
-            "target architecture",
-        ),
-        (declaration.dtype, manifest.supported_dtypes, "target dtype"),
-    )
-    for actual, supported, label in compatibility:
-        if actual not in supported:
-            raise HarnessRequestError(f"declared {label} is incompatible with Harness")
-    if declaration.interface_contract != manifest.target_interface_contract:
-        raise HarnessRequestError("declared target interface differs from Harness contract")
+    inapplicable = harness_inapplicability(manifest=manifest, declaration=declaration)
+    if inapplicable:
+        raise HarnessRequestError(inapplicable)
     if workspace.file_digest(declaration.logical_name) != declaration.target_digest:
         raise HarnessRequestError("candidate target changed before request minting")
     if execution_workspace.root == workspace.root:
@@ -237,6 +260,7 @@ def build_native_harness_run_request(
 
 
 __all__ = [
+    "harness_inapplicability",
     "HarnessRequestError",
     "build_native_harness_run_request",
     "load_target_declaration",
