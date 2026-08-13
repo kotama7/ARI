@@ -153,14 +153,18 @@ ARI 附带 17 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。其中 
 |---|---|:---:|
 | `survey` | 针对**单个**钉住 provider（`semantic-scholar` 默认 / `virsci-snapshot`）的先前工作调研。`record` / `live` 不切换后端，`replay` 完全不访问网络，未支持的 provider 会被拒绝而不是被替换 | ✗ |
 | `generate_ideas` | LLM 根据调研 + 上下文生成排序的 idea 候选 | ✓ |
+| `mint_contract_for_proposal` | 为并非本技能生成的 proposal 铸造类型化的 `ari.research-contract/v1`——RQGM proposal router 的候选据此抵达 KCA 准入。宁可拒绝也不臆造：未设置 `ARI_CHECKPOINT_DIR`、调研快照不可用、或 proposal 没有标题，都会返回 `contract_status: "rejected"` | ✓ |
 
-这两个是该技能仅有的已注册工具——`_load_virsci_snapshot_papers` 只是
+`_load_virsci_snapshot_papers` 只是
 `survey` 直接调用的普通辅助函数，绝不对 agent 可见；
-`ari-skill-idea/tests/test_server.py` 通过 `mcp.list_tools()` 同时钉住
-这两点。provider 之间没有回退：`virsci-snapshot` 的调研在语料库缺失时抛出
+`ari-skill-idea/tests/test_server.py` 通过 `mcp.list_tools()` 钉住
+`survey` 与 `generate_ideas` 已注册、且该辅助函数未注册这两点。
+`mint_contract_for_proposal` 在运行时已注册，却既未写入 `skill.yaml` 也未写入
+`mcp.json`，因此 `scripts/check_skill_manifests.py` 目前会把该包报为
+`tool-drift`。provider 之间没有回退：`virsci-snapshot` 的调研在语料库缺失时抛出
 `FileNotFoundError`，Semantic Scholar 的调研遇到 HTTP 错误时直接抛出——故障
 时得到的是一次拒绝，而不是悄悄变成另一份语料库。
-它们也是 RQGM `VirSciAdapter` 背后的 MCP 表面：在可选启用的
+`survey` 与 `generate_ideas` 也是 RQGM `VirSciAdapter` 背后的 MCP 表面：在可选启用的
 `ari_rqgm` 模式下且 `proposal_router.generators.virsci.enabled: true`
 时，core 侧的 ProposalRouter 会在每纪元调用预算内把构思事件路由到
 `survey` + `generate_ideas` —— 见
@@ -254,7 +258,7 @@ embedding search 在版本之间不是 bit-reproducible，因此改为对存储�
 |---|---|
 | `run_reproduce` | `container_image`（docker / apptainer / singularity 沙箱必填，其余沙箱则拒收）。v1.0 只接受不可变引用：本地的非符号链接 SIF、完整的 `sha256:<image-id>`，或以 `name@sha256:<digest>` 固定的 URI —— 可变的 `pb-env` / `pb-reproducer` `:latest` 别名已被删除 |
 
-高声失败的前置条件：`sandbox_kind=slurm` 而 `sbatch` 不在 PATH 上，或无法从参数、`ARI_SLURM_PARTITION`、`launch_config.json` 中解析出分区时，抛出 `RuntimeError`，而不是静默回退到本地执行；容器沙箱缺少运行时二进制文件，或 `container_image` 为空或可变时，抛出 `ReproductionContractError`。v1.0 已删除 host-local 回退，因此没有恢复开关。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。GPU 请求同样不能混用两种形式：per-node 与 per-task 的 GPU 数互斥，且 `gpu_type` 需要显式的 GPU 数量。
+高声失败的前置条件：`sandbox_kind=slurm` 而 `sbatch` 不在 PATH 上，或无法从参数、`ARI_SLURM_PARTITION`、`launch_config.json` 中解析出分区时，抛出 `RuntimeError`，而不是静默回退到本地执行；容器沙箱缺少运行时二进制文件，或 `container_image` 为空或可变时，抛出 `ReproductionContractError`。v1.0 已删除 host-local 回退，因此没有恢复开关。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。GPU 请求同样不能混用两种形式：per-node 与 per-task 的 GPU 数互斥。但缺少数量的 `gpu_type` 在本表面上不会被拒绝——SLURM 执行路径在构造资源请求之前会补上 per-node 1 个 GPU，因此底层「`gpu_type` 需要显式 GPU 数量」的规则经由 `run_reproduce` 永远不会触发。
 
 ### v0.8.0 新增字段（Stage 3）
 
@@ -369,8 +373,8 @@ Resolver 也不是 Fixed Verifier，agent 的工具选择既选不出权威套�
 
 ## ari-skill-tool-registry — 大型 MCP collection 的经纪表面
 
-五个联邦操作代表整个上游 collection，因此哪怕 collection 有数千个 leaf，
-agent 付出的也只是五个工具位而非数千个。leaf provider 的 schema 绝不会经由
+六个联邦操作代表整个上游 collection，因此哪怕 collection 有数千个 leaf，
+agent 付出的也只是六个工具位而非数千个。leaf provider 的 schema 绝不会经由
 `tools/list` 暴露。
 
 | 工具 | 用途 | LLM |
@@ -378,18 +382,22 @@ agent 付出的也只是五个工具位而非数千个。leaf provider 的 schem
 | `discover` | 以 `lexical` / `exact` / `diverse` 策略检索不可变的联邦目录。返回有界摘要与不透明的 `tool_ref`，`top_k` 上限 25，翻页通过 `constraints.cursor`；它不执行任何候选 | ✗ |
 | `describe` | 对恰好一个 `tool_ref` 分页读取描述符的某个 `section`（`summary` 默认 / `schema` / `provenance` / `admission` / `limitations` / `all`）。provider 的文本与 schema 均按 untrusted 数据处理 | ✗ |
 | `invoke` | 以不可变的 `tool_ref` 在 `live`（默认）/ `record` / `replay` 模式调用一个已准入的 leaf；裸名或非限定名会被拒绝 | ✗ |
+| `invoke_scheduled` | 对向调度器提交作业的 leaf 执行同一操作。之所以单列一个表面：Provider 的副作用等级跟随其权限，若把调度器权限挂在共享表面上，经该表面派发的每个 leaf 权限包络都会被抬高 | ✗ |
 | `get_status` | 用绑定在不可变描述符中的生命周期操作轮询异步的 registry `handle` | ✗ |
 | `get_result` | 取回异步 registry `handle` 的最终规范化结果 | ✗ |
 
-`invoke` / `get_status` / `get_result` 声明了 run 作用域的 context 要求，因此
-它们的输入 schema 声明了 `ari_context`——与上文 `measure_counters` 相同的注入
-规则，由 transport 填入，并非 agent 需要提供的参数。目录 identity、准入级别与
+`invoke` / `invoke_scheduled` / `get_status` / `get_result` 声明了 run 作用域的
+context 要求，因此它们的输入 schema 声明了 `ari_context`——与上文
+`measure_counters` 相同的注入规则，由 transport 填入，并非 agent 需要提供的
+参数。此外，本包的 `mcp.json` 是唯一未从 skill.yaml 重新生成的遗留清单：它仍
+只列出五个名字，`scripts/check_skill_manifests.py` 会把缺失的
+`invoke_scheduled` 报为 `compat-metadata-drift`。目录 identity、准入级别与
 provider adapter 参见 [tool_registry.md](tool_registry.md)。
 
 ## 另请参阅
 
 - `docs/zh/reference/skills.md` — 每个技能的叙述说明（职责、环境变量、示例）。
-- `docs/zh/reference/tool_registry.md` — `ari-skill-tool-registry` 五个操作的目录 identity、准入与 provider adapter。
+- `docs/zh/reference/tool_registry.md` — `ari-skill-tool-registry` 六个操作的目录 identity、准入与 provider adapter。
 - `docs/zh/reference/knowledge_capability_assurance.md` — 三层 identity、准入、lock 与扩展门。
 - `docs/zh/reference/environment_variables.md` — 逐变量环境变量参考。
 - 各技能的 `mcp.json` — 规范工具名称列表。

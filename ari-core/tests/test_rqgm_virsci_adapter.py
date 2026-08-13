@@ -30,6 +30,7 @@ from ari.rqgm.proposals.store import ProposalStore
 from ari.rqgm.proposals.virsci_adapter import (
     VirSciAdapter,
     _mcp_payload,
+    literature_query,
     normalize_generate_ideas_result,
 )
 
@@ -139,6 +140,22 @@ def test_normalize_rejects_junk():
     assert len(normalize_generate_ideas_result(payload)) == 2
 
 
+def test_normalize_preserves_typed_contract_for_router_projection():
+    payload = _nine_key_payload()
+    payload.update(
+        {
+            "typed_schema_version": "ari.research-contract/v1",
+            "contract_status": "admitted",
+            "research_contract": {"title": "Idea One"},
+            "research_contract_digest": "a" * 64,
+            "idea_set_digest": "b" * 64,
+        }
+    )
+    draft = normalize_generate_ideas_result(payload)[0]
+    assert draft.projection_meta["contract_status"] == "admitted"
+    assert draft.projection_meta["research_contract"]["title"] == "Idea One"
+
+
 def test_mcp_payload_unwrapping():
     raw = _nine_key_payload()
     assert _mcp_payload(raw) == raw
@@ -166,6 +183,53 @@ def test_adapter_generates_and_references_existing_artifacts(tmp_path):
     # Existing artifacts are referenced, never copied (checkpoint-relative).
     assert refs["discussion_log"] == "virsci_logs/virsci_stdout.log"
     assert refs["retrieval_snapshot"] == "virsci_snapshot/"
+
+
+def test_adapter_uses_bounded_research_goal_for_literature_query(tmp_path):
+    mcp = FakeMCP()
+    topic = (
+        "# Run title\n\n## Research Goal\n"
+        "Compare cache-friendly GEMM loop ordering on an FP64 CPU.\n\n"
+        "## Scientific Contract\n" + ("irrelevant constraint " * 100)
+    )
+    adapter = VirSciAdapter(mcp, checkpoint_dir=tmp_path)
+    assert adapter.generate({"goal": topic})
+    survey_args = mcp.calls[0][1]
+    assert survey_args["topic"] == literature_query(topic)
+    assert "Scientific Contract" not in survey_args["topic"]
+    assert len(survey_args["topic"]) <= 240
+
+
+def test_adapter_prefers_deterministic_task_tags_for_literature_query(tmp_path):
+    mcp = FakeMCP()
+    adapter = VirSciAdapter(mcp, checkpoint_dir=tmp_path)
+    assert adapter.generate(
+        {"goal": "an excessively specific goal", "task_tags": ["hpc.gemm.optimization"]}
+    )
+    assert mcp.calls[0][1]["topic"] == "hpc gemm optimization"
+
+
+def test_adapter_preserves_typed_survey_snapshot_for_generation(tmp_path):
+    snapshot = {"schema_version": "ari.survey-snapshot/v1", "query": "GEMM"}
+
+    class SnapshotMCP(FakeMCP):
+        def call_tool(self, tool_name, args, **kw):
+            self.calls.append((tool_name, dict(args)))
+            if tool_name == "survey":
+                return {
+                    "result": json.dumps(
+                        {"papers": [{"title": "p"}], "survey_snapshot": snapshot}
+                    )
+                }
+            if tool_name == "generate_ideas":
+                return {"result": json.dumps(self.payload)}
+            raise KeyError(tool_name)
+
+    mcp = SnapshotMCP()
+    assert VirSciAdapter(mcp, checkpoint_dir=tmp_path).generate({"goal": "GEMM"})
+    generate_args = mcp.calls[1][1]
+    assert generate_args["survey_snapshot"] == snapshot
+    assert "papers" not in generate_args
 
 
 def test_adapter_failure_degrades_to_no_drafts(tmp_path):

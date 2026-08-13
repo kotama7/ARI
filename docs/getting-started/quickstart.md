@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-08-07
+last_verified: 2026-08-13
 ---
 
 # ARI QuickStart Guide
@@ -59,7 +59,7 @@ The setup script automatically detects your OS and installs everything needed. I
 
 In v0.6.0 the setup script also bootstraps **[Letta](https://docs.letta.com)** (the memory backend used by `ari-skill-memory`). It auto-detects the best deployment path: Docker → Singularity/Apptainer → pip. To skip the Letta bootstrap (for example in CI or container builds) export `SKIP_LETTA_SETUP=1` before running `bash setup.sh`. To run setup non-interactively, export `ARI_NONINTERACTIVE=1`.
 
-When setup finishes, you will see **"Setup Complete"** and next-step instructions. You can verify Letta later with `ari memory health`.
+When setup finishes, you will see **"All good! The ants are ready to work!"** and next-step instructions. You can verify Letta later with `ari memory health`.
 
 ---
 
@@ -120,13 +120,13 @@ export ANTHROPIC_API_KEY=sk-ant-...  # Get from https://console.anthropic.com/
 
 ## Step 3: Launch the Dashboard
 
-Start every long-running service (Letta memory backend, ari-registry, and the Viz GUI) with the one-shot launcher at the repo root:
+Start every long-running service (Letta memory backend on :8283, ari-registry on :8290, the Viz GUI on :8765, and the CLI shim on :8900) with the one-shot launcher at the repo root:
 
 ```bash
 ./start.sh
 ```
 
-This restarts all three on every invocation (PIDs live under `~/.ari/`). Useful subcommands: `./start.sh gui` (just the GUI), `./start.sh status` (health check), `./start.sh stop` or `./shutdown.sh` (tear everything down — `shutdown.sh` also reaps apptainer-orphaned postgres/redis).
+This restarts all four on every invocation (PIDs live under `~/.ari/`). Useful subcommands: `./start.sh gui` (just the GUI — `letta`, `registry` and `shim` work the same way), `./start.sh status` (health check), `./start.sh stop` or `./shutdown.sh` (tear everything down — `shutdown.sh` also reaps apptainer-orphaned postgres/redis).
 
 Open your browser and go to: **http://localhost:8765**
 
@@ -140,7 +140,7 @@ You will see the ARI home screen:
 
 Two pages are the shortest path from "the dashboard is open" to "I can see what a run is doing":
 
-1. **Projects** (`#/projects` — the 📁 entry at the top of the sidebar) lists every run ARI found under your checkpoint roots, with its status, node count, review score and best metric. This is the run portfolio; nothing is selected implicitly.
+1. **Projects** (`#/projects` — the 📁 entry that opens the sidebar's **Workspace** group) lists every run ARI found under your checkpoint roots, with its status, node count, review score and best metric. This is the run portfolio; nothing is selected implicitly.
 2. Click **Overview** on a run's row. That opens `#/overview?run=<run_id>`, a single page showing the run's lifecycle status, its research phase, how fresh the data is, the headline counters, and links into the Tree, Config and (for governed runs) Governance workspaces.
 
 ![Projects page: one table row per run, with the run id, a status badge, node count, review score, best metric, last-updated time, and per-row Overview and Config links](../assets/images/en/dashboard_projects.png)
@@ -151,25 +151,25 @@ The run id is in the URL, so an Overview link is shareable and survives a reload
 
 For the full page-by-page tour of the dashboard, see the [Dashboard Guide](../guides/dashboard.md).
 
-The left sidebar provides navigation to all dashboard pages:
+The left sidebar is tiered: one primary **New Experiment** action at the top, then four groups.
 
-| Page | Description |
-|------|-------------|
-| **Projects** | Run portfolio across your checkpoint roots — start here |
-| **Home** | Overview with quick actions and recent experiments |
-| **Experiments** | List of all past experiment runs |
-| **Overview** | One run at a glance: lifecycle, research phase, counters, workspace links |
-| **Monitor** | Real-time pipeline progress with D3 tree visualization |
-| **Tree** | Full BFTS experiment tree — click nodes to inspect details |
-| **Governance** | Read-only RQGM governance and score lineage (governed runs only) |
-| **Results** | Read-only run summary: review scores, reproducibility chain, publication lineage |
-| **New Experiment** | Wizard to create and launch a new experiment |
-| **PaperBench** | Import a paper, run a PaperBench replication job, read its grades |
-| **Idea** | Research goal, gap analysis, and the generated hypotheses for a run |
-| **Workflow** | React Flow visual DAG editor for pipeline stages |
-| **Config** | Read-only browser for a run's effective configuration |
-| **Studio** | Configuration Studio: build a draft config and launch from it |
-| **Settings** | Configure LLM, API keys, SLURM, container, VLM, retrieval backend |
+| Sidebar entry | Group | Description |
+|------|------|-------------|
+| **New Experiment** ✨ | (primary action) | Wizard to create and launch a new experiment |
+| **Projects** 📁 | Workspace | Run portfolio across your checkpoint roots — start here |
+| **Dashboard** 🏠 | Workspace | Overview with quick actions and recent experiments |
+| **Run archive** 🗂️ | Workspace | List of all past experiment runs |
+| **Overview** 🧭 | Current run | One run at a glance: lifecycle, research phase, counters, workspace links |
+| **Idea** 💡 | Current run | Research goal, gap analysis, and the generated hypotheses for a run |
+| **Research tree** 🌳 | Current run | Full BFTS experiment tree — click nodes to inspect details |
+| **Live monitor** 📡 | Current run | Real-time pipeline progress with D3 tree visualization |
+| **Paper & results** 📊 | Current run | Read-only run summary: review scores, reproducibility chain, publication lineage |
+| **Governance** 🏛️ | Review & governance | Read-only RQGM governance and score lineage (governed runs only) |
+| **PaperBench** 📚 | Review & governance | Import a paper, run a PaperBench replication job, read its grades |
+| **Workflow** ⚡ | System | React Flow visual DAG editor for pipeline stages |
+| **Run config** 🔧 | System | Read-only browser for a run's effective configuration |
+| **Config studio** 🎛️ | System | Configuration Studio: build a draft config and launch from it |
+| **Settings** ⚙️ | System | Configure LLM, API keys, SLURM, container, VLM, retrieval backend |
 
 ---
 
@@ -206,8 +206,8 @@ Configure how large the experiment should be:
 |---------|-----------------|--------------------------|
 | **Max Depth** | How deep the search tree goes | 3 |
 | **Max Nodes** | Total number of experiments to run | 5–10 |
-| **Max ReAct Steps** | Reasoning steps per experiment | 80 (default) |
-| **Timeout** | Seconds per experiment | 7200 (default) |
+| **Max ReAct Steps** | Reasoning steps per experiment | 20 (default) |
+| **Timeout (min)** | Minutes per experiment | 120 (default) |
 | **Parallel Workers** | Simultaneous experiments | 2–4 |
 
 > **Tip:** Start small (5–10 nodes, depth 3) for your first run. You can always increase later.
@@ -243,7 +243,7 @@ Review your settings and click **Launch**. ARI will:
 
 ## Step 5: Monitor the Experiment
 
-Once launched, the **Monitor** page shows real-time progress:
+Once launched, the **Live monitor** page shows real-time progress:
 
 ![Pipeline Monitor: the Starting, Idea, BFTS, Paper and Review stage strip with the current stage highlighted, the experiment control buttons, the experiment configuration card, the nodes and best-metric counters, and the system resources panel](../assets/images/en/dashboard_monitor.png)
 
@@ -253,7 +253,7 @@ Once launched, the **Monitor** page shows real-time progress:
 
 ### Experiment Tree
 
-Click **Tree** in the sidebar for the run-explicit experiment tree (`#/tree2?run=<run_id>`) — the D3 canvas on the left, a keyboard-navigable node table on the right:
+Click **Research tree** in the sidebar for the run-explicit experiment tree (`#/tree2?run=<run_id>`) — the D3 canvas on the left, a keyboard-navigable node table on the right:
 
 ![Experiment Tree workspace: the D3 node graph with label-coloured node cards on the left, the expandable node table listing each node id and its status on the right, and the inspector column waiting for a node selection](../assets/images/en/dashboard_tree.png)
 
@@ -277,7 +277,7 @@ For the step-by-step agent trace, the generated source code and the raw memory r
 
 ## Step 6: View Results
 
-After the experiment completes, click **Results** in the sidebar. The slot opens the read-only run summary (`#/results2?run=<run_id>`):
+After the experiment completes, click **Paper & results** in the sidebar. The slot opens the read-only run summary (`#/results2?run=<run_id>`):
 
 ![Results workspace: the result summary card with the paper .tex and .pdf links, the accept decision, the rubric and the per-axis review scores; the reproducibility ORS chain card; and the EAR publication lineage and deep links cards on the right](../assets/images/en/dashboard_results.png)
 
@@ -288,9 +288,9 @@ Here you can:
 - Follow the EAR publication lineage as a badge chain
 - Jump straight to the Tree and Config workspaces for the same run
 
-**Editing the paper happens on the legacy Results page.** Follow the *Legacy Results (full editor / PDF workspace)* deep link (or open `#/results` directly) for the Overleaf-like LaTeX editor — edit `.tex`/`.bib`, compile, preview the PDF inline — for the full Experiment Artifact Repository (EAR) browser, and for every EAR mutation: curate, publish, promote. This workspace states the split on the page itself, so you never edit by accident.
+**Editing the paper happens on the legacy Results page.** Follow the *Full paper workspace* deep link (or open `#/results` directly) for the Overleaf-like LaTeX editor — edit `.tex`/`.bib`, compile, preview the PDF inline — for the full Experiment Artifact Repository (EAR) browser, and for every EAR mutation: curate, publish, promote. This workspace states the split on the page itself, so you never edit by accident.
 
-Output files are saved in `./checkpoints/<run_id>/`:
+Output files are saved in `./workspace/checkpoints/<run_id>/`:
 
 | File | Description |
 |------|-------------|
@@ -325,7 +325,7 @@ Change the dashboard language (English, Japanese, Chinese) from the language dro
 
 ### Paper Retrieval
 
-- Choose the paper search backend: Semantic Scholar (default), AlphaXiv, or both (parallel)
+- Choose the paper search backend — exactly one of Semantic Scholar (default), arXiv, or AlphaXiv
 - Optionally set a Semantic Scholar API key for higher rate limits
 
 ### SLURM / HPC
@@ -384,7 +384,7 @@ All endpoints are accessible at `http://localhost:<port>/`.
 | `/state` | GET | Full application state: current phase (idle/idea/bfts/paper/review), node counts, experiment config, cost data, LLM model info |
 | `/api/logs` | GET (SSE) | Server-Sent Events stream of real-time logs from `ari.log` and `cost_trace.jsonl` |
 | `/memory/<node_id>` | GET | Memory store entries for a node (tool-call trace, metrics, parent chain) |
-| `/codefile?path=<path>` | GET | Read a file from the checkpoint directory (restricted to checkpoint bounds, max 2MB) |
+| `/codefile?path=<path>` | GET | Read a file from the checkpoint directory (restricted to checkpoint bounds, max 20MB) |
 
 #### Experiment Management
 
@@ -460,17 +460,17 @@ ari run experiment.md --profile hpc
 ari run experiment.md --config ari-core/config/workflow.yaml
 
 # Resume interrupted run
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 
 # Run paper pipeline only (experiments already done)
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 ### Monitoring & Results
 
 ```bash
 # Show node tree and status
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # List all projects
 ari projects
@@ -506,7 +506,7 @@ ari settings --partition gpu --cpus 64 --mem 128
 | `OLLAMA_HOST` | Ollama server URL | `http://localhost:11434` |
 | `ARI_MAX_NODES` | Maximum total experiments | `50` |
 | `ARI_PARALLEL` | Concurrent experiments | `4` |
-| `ARI_MAX_REACT` | Max ReAct steps per node | `80` |
+| `ARI_MAX_REACT` | Max ReAct steps per node | `20` |
 | `ARI_TIMEOUT_NODE` | Timeout per node (seconds) | `7200` |
 
 ---
@@ -533,9 +533,9 @@ ari settings --partition gpu --cpus 64 --mem 128
 
 | Problem | Solution |
 |---------|----------|
-| All nodes failed | Open Tree view, click a failed node, then follow it to `#/tree` and read the MCP Trace tab |
-| No results | Check Monitor page — the experiment may still be running |
-| Interrupted run | Go to Experiments page, find the run, click Resume |
+| All nodes failed | Open Research tree, click a failed node, then follow it to `#/tree` and read the MCP Trace tab |
+| No results | Check the Live monitor page — the experiment may still be running |
+| Interrupted run | Activate the run in the sidebar, open Live monitor, and click **Resume Experiment** (shown when nothing is running) |
 
 ### Paper Generation
 
@@ -556,7 +556,7 @@ git clone https://github.com/kotama7/ARI.git && cd ARI && bash setup.sh
 ollama pull qwen3:8b && ollama serve &
 export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
 
-# 3. Launch all services (Letta + registry + GUI on :8765)
+# 3. Launch all services (Letta + registry + CLI shim + GUI on :8765)
 ./start.sh
 # Open http://localhost:8765 and use the wizard to create your experiment!
 # Stop with: ./shutdown.sh

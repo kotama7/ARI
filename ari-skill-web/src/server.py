@@ -8,7 +8,9 @@ import logging
 import os as _os
 import re
 import urllib.parse as _parse
+import urllib.error as _urlerr
 import urllib.request as _req
+import time as _time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -100,7 +102,12 @@ async def _llm_call(
 
 
 def _search_s2_raw_sync(query: str, limit: int = 10) -> list[dict]:
-    """Strict Semantic Scholar adapter: provider errors are never converted to []."""
+    """Strict Semantic Scholar adapter with bounded transient retry.
+
+    Provider errors are never converted to an empty result.  Semantic Scholar
+    uses HTTP 429 for short quota windows, so respect ``Retry-After`` and retry
+    5xx transport failures with capped exponential backoff.
+    """
 
     fields = (
         "paperId,externalIds,url,title,authors,year,abstract,citationCount,"
@@ -114,8 +121,30 @@ def _search_s2_raw_sync(query: str, limit: int = 10) -> list[dict]:
         "S2_API_KEY", ""
     )
     req_obj = _req.Request(url, headers={"x-api-key": s2_key} if s2_key else {})
-    with _req.urlopen(req_obj, timeout=15) as resp:
-        data = _json.loads(resp.read())
+    max_attempts = 5
+    for attempt in range(max_attempts):
+        try:
+            with _req.urlopen(req_obj, timeout=15) as resp:
+                data = _json.loads(resp.read())
+            break
+        except _urlerr.HTTPError as exc:
+            retryable = exc.code == 429 or 500 <= exc.code <= 599
+            if not retryable or attempt == max_attempts - 1:
+                raise
+            retry_after = (exc.headers or {}).get("Retry-After", "")
+            try:
+                delay = float(retry_after)
+            except (TypeError, ValueError):
+                delay = float(2**attempt)
+            delay = max(0.0, min(delay, 30.0))
+            log.warning(
+                "Semantic Scholar HTTP %s (attempt %d/%d); retrying in %.1fs",
+                exc.code,
+                attempt + 1,
+                max_attempts,
+                delay,
+            )
+            _time.sleep(delay)
     rows = data.get("data")
     if not isinstance(rows, list):
         raise ValueError("Semantic Scholar response has no data list")

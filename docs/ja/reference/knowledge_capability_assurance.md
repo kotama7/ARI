@@ -301,8 +301,11 @@ lifecycle面を与えない。
   読まない。決めるのはcheck-in済みreviewed tableだけである。
 - reproducibilityはadmissionで上限が付く。`callable`止まりのleafはdeterminism fieldが
   何を主張しても`unknown`、`reproducible`は最良で`bounded`、`scientifically_admitted`は
-  最良で`exact`。自身の`required_level`未満のleaf、quarantined leaf、catalogに無い
-  reviewed leaf、run lockに無いdispatch toolはいずれも拒否である。
+  最良で`exact`。自身の`required_level`未満のleaf、quarantined leaf、run lockに無い
+  dispatch toolはいずれも拒否である。選択されたsite lockに含まれないreviewed leafは
+  拒否ではなくskipされる。選択されたlockはreviewed tableより意図的に狭くてよく、
+  存在しないleafは何の権限も与えず、それを供給できないrequired capabilityはbinderで
+  `unsatisfied`として可視のまま残る。
 
 ### environment evidenceとProvider substitution
 
@@ -317,7 +320,7 @@ container runtimeも実行して判定する。`shutil.which`がbinaryを見つ�
 記録する。executableのpathは意図的に保持しない。site依存であり、bindingはそれを必要としない。
 
 観測された事実をontologyのresource classへ変換するのは別の行為であり、
-`config/capabilities/resource_derivations.yaml`がその場所である。各rowは何をemitするか、
+`ari-core/config/capabilities/resource_derivations.yaml`がその場所である。各rowは何をemitするか、
 何が既に存在していなければならないか、そして理由を述べる。rationaleの無いrowはload時に拒否
 される——理由の無いderivationはaliasであり、aliasこそこのtableが防ぐために存在するものだから
 である。rowはfixpointまで適用されるので、あるrowが別のrowのemitを消費できる。proberが観測

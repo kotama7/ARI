@@ -197,9 +197,10 @@ prepare → … → commit トランザクションを通じて登録されま�
    更新）に供給され、後にプロンプト候補の回帰テストに使われます。
 
 すべては `rqgm_adversarial_cases.jsonl` にジャーナルされます。冪等性の
-ための**ラウンドマーカー**（`rqgm_adversarial_round`、キーは
-`node_id` + `epoch_id`）も含まれるため、resume されたランが同じノードを
-再攻撃することはありません。
+ための**ラウンドマーカー**（`rqgm_adversarial_round`、照合キーは
+`node_id` + `kind` — ここでは `exploration`、ステップ 8 の paper 事前確認
+ラウンドは `paper_candidate` で、両者は独立した冪等性ドメイン）も
+含まれるため、resume されたランが同じノードを再攻撃することはありません。
 
 ### 6. エポック境界 — 監査、遷移、修復
 

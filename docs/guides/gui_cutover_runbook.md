@@ -16,6 +16,16 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/context/AppContext.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Monitor/MonitorPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/config/field_registry.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
@@ -30,11 +40,19 @@ sources:
     role: test
   - path: scripts/check_bundle_budget.py
     role: test
+  - path: scripts/quality/check_bundle_budget.yaml
+    role: config
+  - path: ari-core/tests/fixtures/gui_refresh/run_fixture_factory.py
+    role: test
+  - path: ari-core/tests/test_gui_baseline_run_fixtures.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/TreeV2/__tests__/TreeV2LargeTree.test.tsx
+    role: test
   - path: scripts/snapshot_contracts.py
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # GUI Cutover Runbook
@@ -123,13 +141,145 @@ off by hand:
   The jsdom test harness cannot measure layout, paint, or input timing, and a
   shared CI runner is too noisy for a pass/fail budget.  Bundle weight *is*
   enforced (`check_bundle_budget.py`); the browser half is a manual profile
-  on a fixed machine, recorded in the release evidence.
+  on a fixed machine, recorded in the release evidence.  The numbers to sign
+  against are tabulated at the end of this section.
 - **Cross-browser critical journeys.**  The suites are vitest/jsdom; the only
   Playwright run in this repo is the documentation screenshot capture
   (`npm run capture:screenshots`, headless Chromium only), which asserts
-  nothing.  The critical journeys (Settings, new run, launch, resume, monitor,
-  tree/results, workflow, RQGM, security) are walked by hand before a
-  default-on change.
+  nothing.  There is no end-to-end suite of any kind — the tree carries no
+  browser-driver test at all — so the critical journeys (Settings, new run,
+  launch, resume, monitor, tree/results, workflow, RQGM, security) are walked
+  by hand before a default-on change.  What each walk has to cover is the
+  table below.
+
+**What each hand-walk covers.**  The journey names alone do not pin the
+exercise; these are the variants that make a walk worth the time.
+
+| Journey | Walk these |
+|---|---|
+| Settings | first load, save, and reload; the error text of a rejected value (an unpinned `retrieval_backend` refuses with a 400 and a message the page prints verbatim); and that nothing secret comes back — `GET /api/settings` returns `llm_api_key` empty by construction, so the key field is blank on every load |
+| New run | the wizard end to end: generate a goal, upload a file, an invalid draft, a browser reload part-way through, and both a successful and a failing launch.  The API-key readiness line in the wizard's resources step (`configured (<source class>)` / `not configured`) belongs to this walk, not to the Settings walk |
+| Launch | double-click and retry the same approval, two runs launched in parallel, the server-issued `run_id`, and the redirect to `#/overview?run=<run_id>` |
+| Resume | a pre-refresh checkpoint and one written by the current build, each resumed from the legacy Monitor screen and each opening unchanged |
+| Monitor | the phase stepper, the `/api/logs` stream, and a terminal (not-running) run on the legacy Monitor screen, which takes its state from the 5-second `/state` poll and subscribes to no event stream.  The realtime variants — reconnect, a blocked stream falling back to the bounded 10 s poll, the staleness banner — belong to the pages that do subscribe (Overview, Projects, Governance, Tree) and must be walked there instead |
+| Tree / results | a large tree; a deep link (`#/tree2?run=<id>&node=<id>`) opened cold in a fresh tab; the read-only curate → preview → publish → promote lineage chain on the v2 Results workspace; and the file links the legacy Results screen and the PaperBench results view still own — the compiled paper PDF, the EAR directory link, and the PaperBench report URLs |
+| Workflow | a valid and an invalid flow; an autosave conflict, produced by editing the workflow file on disk between load and save; and the refusal that arrives when no project is active |
+| RQGM | a run with no governance artifacts, which must render the capability screen rather than an error; an epoch boundary; a rewritten score; two different utility policy hashes; and a broken hash chain |
+
+The security journey is not in that table because it is not a browser
+exercise: the unauthenticated-remote, cross-origin, path-escape, secret-leak
+and challenge-replay refusals are the pytest suites named in the gate table
+above, and they run in CI.
+
+Four variants that belong on this matrix have nothing to walk today.  They are
+**known gaps**, not checklist rows:
+
+- **An offline Settings save and an offline Workflow save.**  No dashboard
+  code path reacts to losing the server.  `navigator.onLine` is read nowhere
+  in the frontend, and the only "offline" in the tree is the event stream's
+  connection state.
+- **A Settings save conflict.**  `POST /api/settings` is a blind
+  last-writer-wins overwrite: it takes no revision and can return no 409.  The
+  workflow editor is the only surface that carries a `base_revision`.
+- **Resuming with an overridden field.**  The field registry classifies every
+  leaf as `draft`, `new_run_only`, `resume_mutable`, or `read_only`, and the
+  Configuration Studio and the read-only config browser render that class as a
+  badge — but the GUI's Resume button posts to `/api/run-stage`, which spawns
+  the CLI resume stage with no configuration overrides at all.  There is
+  nothing for the walk to have accepted or refused.
+- **Cloning a run instead of resuming it.**  The dashboard offers no clone
+  action.  The one `clone` in the frontend is the EAR bundle reproduction
+  check (`POST /api/ear/clone-verify`), which is a different operation.  The
+  compatibility matrix in §7 still lists `new run × resume × clone`; the clone
+  column has no GUI path and is exercised outside the browser.
+
+Browser back and forward are a fifth gap, in the shell rather than in the
+walk — see *Dashboard Architecture* → "3. The URL is navigation truth", which
+records that the router and the legacy context parse the hash with two
+different parsers and that no test drives a hash change against a mounted
+shell.
+
+For the behaviour each row is checking, see *Migration Guide* → "Workflow
+editing requires an active project (MN-1)", "Secrets are never returned;
+readiness replaces auto-fill (MN-2)", "Workflow autosave detects conflicts
+instead of overwriting (MN-3)", "Canonical idempotent launch (MN-10)" and
+"Launching from the Configuration Studio (MN-11)"; *RQGM Governance Workspace
+Guide* → "Getting there, and the capability state", "Score Lineage", "Epoch
+Timeline" and "Degraded and broken chains"; and *Dashboard Architecture* →
+"6. Realtime is invalidation, not a source of truth".
+
+**The performance budgets nothing measures.**  The refresh set ten performance
+budgets.  Three of them — the entry chunk, each lazy route chunk, and the
+tightened `SettingsPage` / `WizardPage` chunks — are the ones
+`check_bundle_budget.py` enforces; their values, and the reasoning behind the
+shared cap and the total ceiling, are recorded with the checker in *How to Test
+ARI Code* → "What gets tested at PR time".  A fourth, zero in-flight duplicate
+reads for the same query key, is a caching property rather than a wall-clock
+target and is not signed off here.  The remaining six are **known gaps**:
+nothing in this repository measures them.  They are targets to sign off
+against, not gates anything can fail, and they are written down here so that
+the sign-off has a number to sign off against.
+
+| Budget | Target | Why nothing here measures it |
+|---|---|---|
+| Largest Contentful Paint, production build | <= 2.5 s | jsdom neither lays out nor paints |
+| Interaction to Next Paint | <= 200 ms | jsdom has no input timing |
+| Cumulative Layout Shift | <= 0.1 | jsdom has no layout |
+| Settings `GET` / `PATCH`, p95 | <= 200 ms | no test asserts request latency; the per-request `duration_ms` in `viz_access.jsonl` is the by-hand source (*Remote Access and Operations Guide* → "Access log") |
+| Legacy `GET /state`, p95 and payload | <= 250 ms, <= 2 MiB | the same for the p95; the access log records no response size, so the payload figure has to come from devtools or `curl` |
+| Run launch, accepted response p95 | <= 1 s, excluding the background start | no test asserts request latency; `duration_ms` again |
+
+Two rules travel with these numbers, and dropping either makes them worse than
+useless.  First, a budget only means something against a fixed machine and a
+fixed fixture: the rule the refresh set itself was to ratchet these on a
+pinned environment rather than turn them into unconditional CI wall-clock
+assertions, and a shared runner is precisely the environment that rule
+excludes — a red build there would say "the runner was busy" more often than it
+said anything about the dashboard.  Second, a remote link is a separate
+profile, not a worse sample of the same one: a high-latency connection with the
+SSE stream blocked is measured and recorded on its own, because folding it into
+the loopback numbers hides both.  That second profile is the tunnel and
+reverse-proxy row of the §7 matrix.
+
+What exists near these budgets does not close them.  The 10,000-node fixture
+the `/state` row names does exist as a generator —
+`ari-core/tests/fixtures/gui_refresh/run_fixture_factory.py` writes a
+deterministic synthetic checkpoint at that size, and
+`ari-core/tests/test_gui_baseline_run_fixtures.py` builds one — but only to
+assert the node count from the returned manifest and a raw text scan, never
+loading the tree through the reader and never serving it through `/state`, so
+no latency or payload figure has ever been taken against it.  The frontend has
+a separate 10,000-node fixture,
+`TreeV2/__tests__/TreeV2LargeTree.test.tsx`, which builds a synthetic node
+array in jsdom to pin the depth-limited banner counts and the bounded DOM row
+count.  That file carries the one wall-clock assertion in the dashboard suites
+— `computeVisibleRows` over 10,000 nodes returning in under 200 ms,
+deliberately loose — and it times a data-structure build on whatever machine
+happens to run the suite: it is neither INP nor an endpoint p95.  Treat every
+row above as unmeasured until a run on a fixed machine says otherwise, and file
+the figures with the release evidence when one does.
+
+**Two release gates that were specified and never built.**  The refresh put a
+dependency lockfile, a vulnerability scan, and a license policy in the release
+gate.  Only the lockfile exists, and only on one of the two sides; the scan and
+the policy are **known gaps**, and they belong with the hand-signed items
+rather than the table above because there is nothing to run:
+
+- **Dependency vulnerability scan.**  The lockfile that does exist is on the
+  JavaScript side — `ari-core/ari/viz/frontend/package-lock.json` is committed,
+  so the bundle's dependency set is reproducible.  The Python side has no
+  repository-wide lockfile: the root `requirements.txt` and the per-package
+  `pyproject.toml` files declare floating lower bounds (`>=`), so two installs
+  a month apart can resolve to different versions.  Neither side is scanned for
+  known vulnerabilities, by any workflow in `.github/workflows/` or by any row
+  of the gate table above.  A pinned dependency is a *known* dependency, not a
+  safe one.
+- **License policy.**  Nothing checks the licences of what ships in the
+  bundle.
+
+Until those exist, treat the supply chain as reviewed by hand at
+dependency-change time and say exactly that in the release evidence, rather
+than leaving a reader to infer that a scan ran.
 
 ## 3. Staged rollout
 

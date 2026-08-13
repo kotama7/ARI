@@ -18,9 +18,13 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__
     role: test
+  - path: ari-core/ari/viz/frontend/vitest.config.ts
+    role: config
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # ARI コードのテスト方法
@@ -359,6 +363,38 @@ chunk に重複した依存や、予算未満の新規 chunk が大量に増え�
 すべてのキーは省略可能で、チェッカーはコード内の既定値として同じ値を持っている
 ため、この YAML の存在意義は「予算の変更をコード編集ではなくレビュー可能な 1 行
 の diff にする」ことだけです。調整はスクリプトではなくこちらで行ってください。
+
+**テストカバレッジ — 既知のギャップ (known gap)。** このリポジトリには、
+コードベースのどちらの側についても「スイートが実際にどれだけ実行しているか」を
+計測する仕組みがありません。`ari-core/ari/viz/frontend/vitest.config.ts` に
+`coverage` ブロックはなく、`package.json` の `test` は素の `vitest run` で、
+カバレッジ用のスクリプトも devDependencies 内のカバレッジプロバイダも
+ありません — `@vitest/coverage-v8` は `package-lock.json` に vitest 自身の
+optional な peer dependency として現れるだけなので、`vitest run --coverage` は
+まずそれを導入しないと動きません。Python 側も同様に未計測です:
+`pytest.ini` は `--cov` を設定しておらず、ARI のどのパッケージも `pytest-cov` に
+依存していません。どちらについても、カバレッジのベースラインが記録されたことは
+一度もありません。
+
+ダッシュボード刷新の際に目標として 2 つの数値が設定されましたが、実装されません
+でした。ここではポリシーとしてではなく**既知のギャップ (known gap)** として
+記録します。green なスイートはそのどちらの証拠でもありません: 純ロジック層の
+frontend について line/branch カバレッジ 90%、そして全体のカバレッジは最初の
+計測でベースラインを取り、そこから 80% に向けてラチェットし、低下は回帰として
+扱う、というものです。
+
+どちらの数値も、意味を持つ前に 2 つのことを片付ける必要があります。第 1 に、
+90% の目標が挙げた層 — reducer、serializer、API wrapper、config resolver
+adapter — は、このコードには部分的にしか対応しません。`src/services/api/` は
+API wrapper の層として実在します。しかし frontend に reducer は 1 つもなく
+(`reducer` は大文字小文字を問わず `src/` 配下のどこにも現れません)、serializer
+モジュールもなく (`src/` 配下で `serializ` に一致するのは
+`services/api/client.ts` と `hooks/useRunEvents.ts` のコメント 2 箇所だけです)、
+config resolver は Python です — `ari-core/ari/config/resolver.py` で、frontend
+の adapter 経由ではなく HTTP 越しに到達します。第 2 に、ラチェットには走らせる
+場所が要りますが、frontend のスイートを実行するワークフローは存在しません —
+上のシェルのアクセシビリティベースラインと bundle budget が CI ゲートではなく
+手動の cutover 前チェックリストの行になっているのと同じ理由です。
 
 ## 回帰テストの書き方
 

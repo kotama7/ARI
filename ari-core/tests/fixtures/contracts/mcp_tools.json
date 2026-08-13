@@ -287,6 +287,16 @@
       },
       {
         "args": [
+          "experiment_context",
+          "proposal",
+          "survey_snapshot_ref",
+          "topic"
+        ],
+        "idiom": "fastmcp",
+        "name": "mint_contract_for_proposal"
+      },
+      {
+        "args": [
           "max_papers",
           "mode",
           "provider",

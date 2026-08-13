@@ -32,6 +32,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/ui_helpers.py
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_workflow_editor.py
@@ -42,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # REST API Reference
@@ -804,6 +806,57 @@ and flow style (`[a, b]`, `{a: 1}`) are normalised away on the first GUI save,
 scalars are re-spelled in their canonical form (`yes` → `true`, `"x"` → `x`),
 and YAML anchors are re-emitted under generated names (`&id001`). The bundled
 `config/workflow.yaml` keeps its comments because nothing writes it.
+
+**What a workflow write does not check.** Past the write guard (MN-1) and the
+optional revision guard (MN-3), the four writes inspect almost nothing.
+`POST /api/workflow` requires only a non-empty `pipeline` in the body;
+`POST /api/workflow/flow` only a non-empty `flow`; `POST /api/workflow/skills`
+only that at least one entry carries both `name` and `phase`; and
+`POST /api/workflow/disabled-tools` only that `disabled_tools` is a list.
+Nothing looks at the stage graph before writing.
+
+**Known gap — the workflow editor has no validation layer.** The GUI refresh
+program specified five checks for a workflow save: an unknown `phase`, a
+`depends_on` cycle, a `depends_on` naming a stage that does not exist, a
+required upstream turned off with `enabled: false`, and a stage referencing a
+configuration key that does not resolve. **None of the five is built** — a known
+gap, on either side of the wire. There is no validator in
+`ari-core/ari/viz/api_workflow.py` or `ari-core/ari/viz/api_settings.py`, and
+the editor's save-state chip
+(`ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx`) carries
+only `idle`, `dirty`, `saving`, `saved` and `conflict` — there is no `invalid`
+state for it to render. Three consequences are worth knowing before you POST:
+
+- **A `phase` the code does not recognise is silently a post-BFTS stage.**
+  `workflow_yaml_to_flow` and `flow_to_workflow_yaml` split stages by exact
+  string equality with `"bfts"`; every other value — a typo, a different case,
+  and the empty string included — goes into the `pipeline:` list. Saving the DAG
+  view of a stage whose `phase` was misspelled therefore moves it out of
+  `bfts_pipeline:` and into `pipeline:`, and the write reports success. The two
+  lists are read by different parts of the runtime — see
+  [Configuration reference](configuration.md), "workflow.yaml (Canonical
+  Developer Config)".
+- **A `depends_on` cycle is accepted on write and can break the next read.**
+  `flow_to_workflow_yaml` builds `depends_on` straight from the posted edges —
+  only edges whose `data.condition` is `loop` are diverted into `loop_back_to` —
+  so a cycle is persisted verbatim. The next `GET /api/workflow/flow` re-derives
+  the lane layout with `_compute_levels`, a recursive depth walk that keeps no
+  visited set; when both ends of the cycle sit in the same lane, the resulting
+  `RecursionError` is caught by the handler's blanket `except Exception` and
+  returned as `{"ok": false, "error": …}`. The editor then cannot re-open the
+  file it just wrote, and the error text names the recursion limit rather than
+  the cycle. A cycle whose two ends sit in different lanes survives the read,
+  because `_compute_levels` drops dependencies on stages outside the list it is
+  walking.
+- **A `depends_on` naming a stage that does not exist is not rejected either.**
+  `GET /api/workflow/flow` then returns an edge whose `source` is a node id that
+  no node in the same response carries.
+
+For what the *runtime* does with an unsatisfiable graph — stages run in file
+order with no topological sort, a stage whose dependency was skipped is skipped
+too, and a dependency explicitly set to `enabled: false` counts as resolved
+instead — see [Extension guide](../guides/extension_guide.md), "3. Adding a
+Post-BFTS Pipeline Stage".
 
 **`POST /api/settings` without an active checkpoint (frozen legacy).** Settings
 are project-scoped. When `_st._settings_path` is `None` there is nowhere to

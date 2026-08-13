@@ -2,11 +2,19 @@
 sources:
   - path: ari-core/config/workflow.yaml
     role: config
+  - path: ari-core/config/default.yaml
+    role: config
   - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/config/finder.py
     role: implementation
   - path: ari-core/ari/configs
     role: config
   - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/viz/ui_helpers.py
+    role: implementation
+  - path: ari-core/ari/viz/services/state_service.py
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
@@ -30,13 +38,19 @@ sources:
     role: implementation
   - path: ari-core/ari/cli/bfts_loop.py
     role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript.py
+    role: implementation
   - path: ari-core/tests/test_gui_baseline_settings_contract.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-08-08
+  - path: ari-core/ari/viz/frontend/src/components/Settings/__tests__/SettingsContract.test.tsx
+    role: test
+last_verified: 2026-08-13
 ---
 
 # 配置参考
@@ -103,6 +117,42 @@ CLI —— 它把选项写入子进程的 `ARI_*` 环境变量，**并**快照�
 `!= ""`）。GUI 的合并 `{**defaults, **saved}` 允许"存在但为空"的已保存
 键获胜，然后只对 `llm_model`/`llm_provider` 从 `workflow.yaml` 强制
 重填。
+
+**env 覆盖层是多个函数而不是一个，而且它不做重新校验。** 上面那句「env 总是
+获胜」背后有两个值得明说的细节：两者都很关键，而且都不会体现在表里。
+
+第一，覆盖*在哪里*执行。`load_config()` 在返回前恰好应用两个覆盖族 ——
+`_apply_llm_env_overrides`（其内部再调用 `_apply_claude_code_env_overrides`）
+与 `_apply_checkpoint_env_overrides` —— 外加 `allow_web` 的阶段改写。BFTS、
+evaluator、RQGM、handoff 与 paper 各族是独立的*公开*函数
+（`apply_bfts_env_overrides`、`apply_evaluator_env_overrides`、
+`apply_rqgm_env_overrides`、`apply_handoff_env_overrides`、
+`apply_paper_env_overrides`），需要调用方自己去调。`ari/cli/run.py` 在
+`_apply_profile` 之后立刻调用前四个 —— 这正是 env 能压过 profile 的原因 ——
+paper 那个则由 `ari/cli/paper_dispatch.py` 调用。因此只调用 `load_config()`
+的调用方会拿到 `ARI_MODEL`、`ARI_BACKEND`、`ARI_LLM_API_BASE`、
+`ARI_CHECKPOINT_DIR` 与 `ARI_LOG_DIR`，而**不会**拿到 `ARI_MAX_NODES`、
+`ARI_FRONTIER_SCORE`、`ARI_COMPOSITE`、`ARI_MODE`、`ARI_RQGM_ENABLED` 或
+`ARI_PAPER_MODE`；`ari/cli/manuscript.py` 之所以手工再调一次
+`apply_rqgm_env_overrides`，正是出于这个原因。优先级表里的 env 这一层是若干
+调用点拼起来的，而不是任何单个函数拥有的一层。
+
+第二，*由什么来检查值*。这些函数是往一个已构造好的模型上赋值，而 `ari/` 之下
+没有任何地方设置 pydantic 的 `validate_assignment`，所以模型不会重新校验写进去
+的东西 —— 代码里的注释也是这么说的（「Pydantic does not validate on
+assignment, so guard against unknown values from env」）。取而代之的是每个函数
+各自的手写守卫：`ARI_FRONTIER_SCORE` 会与一个复制自
+`BFTSConfig.frontier_score` 的 `Literal` 成员的四元组字面量比对，
+`ARI_COMPOSITE` 与 `ARI_AXIS_MODE` 各自与自己的字面量比对，而整数类旋钮是把
+`int()` 包在 `try/except ValueError: pass` 里。被拒绝的值会不会说点什么，取决于
+它归哪个函数管：`apply_rqgm_env_overrides` 与 `apply_paper_env_overrides` 会
+记录一条点名变量与取值的 `warning`，而 `apply_bfts_env_overrides` /
+`apply_evaluator_env_overrides` 的守卫以及所有 `int()` 回退都会静默丢弃 ——
+没有异常、没有日志行，任何响应里也没有。于是 `ARI_FRONTIER_SCORE=ucb` 会让这
+次运行停留在 YAML 或默认值上，且没有任何迹象表明该变量被读到过；而
+`ARI_MODE=rqgm` 至少还会留下日志。这些复制出来的枚举列表是手抄的，可能与它们
+所镜像的 `Literal` 发生漂移；给其中一处加成员时，请在同一次改动里给另一处也
+加上。
 
 **两个 `workflow.yaml` 块只会从包内自带的那份副本读取（反模式）。**
 `lineage_decision` 和 `root_idea_selection` 都不是 `ARIConfig` 的已声明
@@ -174,6 +224,47 @@ checkpoint 优先的读取与只读包内的读取共处于同一个文件
 块会被忽略而不是致命失败，所以把较新的 YAML 部署到较旧的 core 上，只会
 退化为该 core 的默认值，而不会加载失败。
 
+**两条链都不会读的第三个 YAML。** CLI 加载的是
+`ari-core/config/workflow.yaml`。与它相邻的 `ari-core/config/default.yaml`
+看起来像是属于同一条链，实际上两条链都不属于：它是一个旧 schema 的文件，
+任何运行时加载器都不会独自触达它。（第三个名字
+`ari-core/ari/configs/defaults.yaml` 又是另一回事 ——
+它是下文*执行模式与 RQGM 治理（可选启用）*中描述的 RQGM /
+proposal_router 平价镜像，另外还有一个活的键
+`models.lineage_decision_default`，由 `ari/orchestrator/lineage_decision.py`
+中的 `_config_default` 读取。）
+
+CLI 的加载阶梯是 `_resolve_cfg`（`ari-core/ari/cli/run.py`）：给了显式
+`--config` 就用它，否则用包内自带的 `ari-core/config/workflow.yaml`，再否则
+用 `auto_config()`。`default.yaml` 在其中根本没有出现。它确实出现在
+`find_workflow_yaml`（`ari-core/ari/config/finder.py`）四步搜索的第 3 步，
+但这个函数在整棵树里没有任何调用者 —— 同一模块的 `package_config_root`、
+`find_workflow_in_dir`、`find_profile_yaml` 和 `load_workflow_config` 被广泛
+调用，唯独 `find_workflow_yaml` 没有 —— 所以它 docstring 描述的那条阶梯
+从未运行过。
+
+确实存在三个读取器，而且三个都在 GUI 侧、只用于展示：
+
+| 读取器 | 它拿这个文件做什么 |
+|---|---|
+| `ari/viz/services/state_service.py` | `build_app_state()`（`/state` 载荷）把它深拷贝为合并后 `experiment_config` 块的底座，并把它的 `bfts` / `evaluator` 值当作 `{checkpoint}/workflow.yaml` 之下的逐键回退。还有一个分支只在上面没有构建出 `experiment_config` 时才会走到，那里的 BFTS/HPC 值只取自所选的 profile YAML 和 `default.yaml`。 |
+| `ari/viz/ui_helpers.py` | `_build_experiment_detail_config()` 为 `/api/experiment-detail` 的文本块再做一遍同样的合并。 |
+| `ari/viz/api_settings.py` | `_api_get_workflow()`（`GET /api/workflow`）只读它的 `skills` 条目，用来填充每个 `skill_mcp` 条目的 `phase` 字段。 |
+
+因此，编辑 `default.yaml` 改变的只是 legacy 仪表盘*显示*什么，而不会改变一次
+运行*做*什么 —— 除非你自己把这个文件交给 `--config`；CLI 接受这样做，但没有
+任何默认路径会这样做。
+
+它的内容也不是 `ARIConfig` 的形状，这是不该把它当作默认值文件来读的另一半
+原因。顶层的 `hpc:` 和 `output:` 不是 `ARIConfig` 字段，会被上文那个
+`model_fields` 过滤器移除；`bfts.score_threshold`、`checkpoint.trigger` 和
+`logging.output` 不是各自子模型的字段，在构造时被忽略；它的 `skills` 路径是
+`/path/to/ari/…` 占位符，所以 `_hydrate_skill_manifests` 在其中任何一个路径
+上都找不到 manifest，会跳过每一条；而它的 `llm.backend` / `llm.model`
+（`claude` / `claude-haiku-4-5`）与默认运行实际使用的 pydantic 默认值
+（`ollama` / `qwen3:8b`）相互矛盾。请把它当作历史示例，而不是优先级链条中的
+一层。
+
 > ⚠ 这里的优先级是**按今天的实测行为记录**的，并非被改动过。在任何整合之前，
 > 该顺序由测试锁定（`test_config.py`、`test_default_provider.py`、
 > `test_launch_config.py`、`test_settings_*`）。曾经作为后续提案的集中式配置
@@ -209,11 +300,11 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 | `enum` | 当注解是闭合集合时为其 `Literal` 成员，否则为 `null`。 |
 | `required` | 该字段是否没有默认值。 |
 | `category` | UI 分组：Models、Skills、Search (BFTS)、Infrastructure、Evaluation、Execution mode、Governance、Proposal routing。 |
-| `level` | `basic` / `advanced` / `expert` —— 渐进式披露。 |
+| `level` | `basic` / `advanced` / `expert` —— 供渐进式披露使用。**仅声明**：没有任何界面按它过滤（见下文*两个只声明、未强制的键*）。 |
 | `scope` | `preference` / `installation` / `project` / `template` / `run` —— 哪种文档可以拥有该值。 |
 | `sensitivity` | `public` / `internal` / `secret_reference`。 |
 | `mutability` | `draft` / `new_run_only` / `resume_mutable` / `read_only`。 |
-| `applies_when` | 依赖谓词（`bfts.frontier_score=depth_penalized`）或 `null`。 |
+| `applies_when` | 依赖谓词（`bfts.frontier_score=depth_penalized`）、配对说明，或 `null`。**仅声明**：只作为文本渲染，从不被解析（见下文*两个只声明、未强制的键*）。 |
 | `notes` | 手写的注意事项（例如「yaml_only: no GUI field or `ARI_*` hook」）。 |
 | `source` | `pydantic` —— 遍历只覆盖已声明的模型字段。 |
 | `env_override` | 覆盖该叶子的 `ARI_*` 变量，或 `null`。 |
@@ -239,6 +330,21 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
   稳定身份标识。
 - 该模块是纯函数式的：无文件系统、无时钟、不读环境变量、无 LLM 调用。两次
   构建的结果逐字节相同（P2）。
+- 这些元数据词汇表是**闭合并受校验的，但只被部分填充**。`_validate_meta` 会
+  拒绝 `level`、`scope`、`sensitivity` 或 `mutability` 落在允许集合之外的条目，
+  然而注册表实际产出的叶子在其中两个轴上只占了一个子集。在 mutability 轴上，
+  今天每个叶子不是 `draft` 就是 `new_run_only`；没有 `resume_mutable`，也没有
+  `read_only`。在 scope 轴上，除了 `llm.api_key`（唯一的 `installation` 叶子）
+  之外，每个叶子不是 `run` 就是 `project`；没有 `preference`，也没有
+  `template`。由此有两个后果。`validate_patch` 的 `read_only` 拒绝虽然属于那份
+  闭合的理由词汇表，但对当前注册表根本无法触发 —— 它只能经由 `mutability` 为
+  `read_only` 的叶子到达，因此今天一个 PATCH 被拒绝的理由只会是
+  `unknown_path`、`secret_reference`、`not_project_scope`、`invalid_enum`、
+  `invalid_type` 或 `mode_interlock_mismatch`。而 Studio 的 `resume_mutable`
+  与 `read_only` 徽章（见 [Configuration Studio](../guides/configuration_studio.md)
+  的 *Mutability badges*）描述的是当前没有任何字段处于的状态。这些未被使用的
+  取值是前置声明，为的是等 resume 切片或按用户的 preference 到来时不必再改动
+  词汇表本身；请把它们读作预留，而不是你能在某个字段上找到的状态。
 
 同一份注册表也驱动写入校验。`PATCH` 请求体是
 `{"values": {"dotted.path": value}}`，由 `validate_patch` 检查，其闭合的拒绝
@@ -261,6 +367,39 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 `applies_when` 元数据携带的是一条配对*说明*（"paired with `rqgm.enabled`
 (one intent — set both)"），而不是 `path=value` 门控，因为用其中一半去门控
 另一半会让互锁本身变成自我门控。
+
+**两个只声明、未强制的键。** `applies_when` 与 `level` 会随每个条目一起返回，
+但两者描述的都是尚无任何界面付诸实施的意图 —— 把它们当作实际行为来读是最容易
+犯的错误。
+
+- **`applies_when` 是说明，不是门控。** 它经由
+  `GET /api/v1/config/schema`（`ari/viz/v1/dto.py` 中的
+  `ConfigFieldV1.applies_when`）传出，并且恰好在三个地方以原文形式打印在字段
+  路径下方 —— Config browser 的只读表格
+  （`ConfigBrowser/ConfigReadOnlyTable.tsx`）、Studio 表单
+  （`ConfigStudio/ConfigStudioPage.tsx`）以及 Studio 启动面板的
+  *Changed vs defaults* 差异表（`ConfigStudio/LaunchPanel.tsx`），每处都是一行
+  `Applies when: …`。没有任何代码解析它：`validate_patch` 从不读取它，没有任何
+  控件因它而被禁用、标为必填或做冲突检查，`ari/config/resolver.py` 中甚至没有
+  提到它。今天真正带有 `path=value` / `path!=value` 谓词的叶子共 12 个 ——
+  `bfts.depth_penalty_lambda`、`bfts.ucb_c`、`evaluator.custom_axes`、
+  `manuscript.profile`、`manuscript.brief_character_budget` 以及 7 个
+  `manuscript.repair.*` 叶子 —— 而且在谓词为假时，每一个仍然可编辑、可 patch。
+  即使把 `bfts.frontier_score` 保持在默认值 `scientific_plus_diversity`，一个
+  设置 `bfts.depth_penalty_lambda` 的 patch 依然校验通过，也依然会被解析器合并。
+  GUI 计划所要求的统一依赖图 —— 用一套机制统管 enable/disable、required、
+  conflict 与 derived preview —— 是一个**已知缺口 (known gap)**。凡是依赖关系
+  确实被强制的地方，强制逻辑都在别处的代码里，而不在这个字符串里：模式互锁由
+  作用于合并后文档的 `validate_mode_interlocks` 检查（这正是那四个模式叶子在此
+  携带配对说明而非谓词的原因）；`rqgm.*` 树在 Studio 中只读，是因为 ADR-09 的
+  `mode_locked` 策略，而不是因为它的 `applies_when` 写着 `ari.mode=ari_rqgm`。
+- **`level` 没有消费者。** 它是必填元数据 —— `field_registry.py` 的
+  `_REQUIRED_META_KEYS` 中包含 `level`，因此任何条目都不能省略它 —— 但两个配置
+  界面都没有提供 Basic / Advanced / Expert 开关。Studio 会渲染左侧栏所选分类下
+  的全部字段；Config browser 把所有字段按分类分组，只用路径/分类的搜索字符串做
+  过滤。因此一个 `expert` 叶子与一个 `basic` 叶子在两个界面上同样可见。按 level
+  的渐进式披露是一个**已知缺口 (known gap)**；这个值今天只对自行按它过滤的
+  客户端有用。
 
 `env_override` 一列是 `ari/config/__init__.py` 中 `apply_*_env_overrides`
 系列函数的逐条转写：
@@ -333,6 +472,18 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
   （`simple_bfts` / `linear`），清单中展示的是**生效**模式。草稿校验
   （`POST /api/v1/run-drafts/{draft_id}/validate`）更严格：在那里不匹配是
   一个 `interlock_mismatch` **错误**，因此 GUI 会拒绝以不一致的意图启动。
+
+> **已知缺口 (known gap) —— 没有 installation policy 这一层。** 这套控制平面
+> 当初对标的解析链比上面的表多一步：在执行 profile 与 project 默认之间还有一层
+> *installation policy*，让运维可以设置一个 project 文档无法覆盖的整机取值。
+> 它没有被实现。`resolve_new_run_config` 恰好只走列出的那七层，`gui_store/`
+> 只存放 project 配置、run 模板、run 草稿与启动记录，也没有任何路由读写
+> installation 文档。`installation` 这个取值仍留在注册表的 `scope` 词汇表里，
+> 并且恰好由一个叶子 `llm.api_key` 承载 —— 在那里它标记的是「这属于机器，不属于
+> project」的 secret 路径语义，并不会选择某一个解析层。
+> [GUI-ADR-12](../../adr/gui/GUI-ADR-12-config-store-location.md) 在其
+> program-context 段落里引用了那条九步链；请把它读作计划的目标，而不是解析器的
+> 行为。
 
 > **4 键 profile 合并的注意事项。** `--profile` 并*不*对 profile YAML 做
 > 深度合并。`_apply_profile`（`ari/cli/run.py`）恰好只合并四个键：
@@ -422,6 +573,16 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 派生的运行，而启动会像以前一样把每个生效值物化进检查点。`ari.viz.v1` 之外的
 `ari/` 中没有任何东西导入该存储。
 
+**已知缺口 (known gap) —— 原子性不等于备份。** 这个存储给你的是一把锁、一个
+同目录临时文件、`fsync`、一次原子 rename 以及仅属主可读写的权限；它不给你备份。
+没有文档的第二份副本，没有可以逐步回退的修订历史（`revision` 是乐观并发的令牌，
+不是可以恢复的版本），也没有任何路由能把文档导出以作保全、或用于退回 legacy
+文件。确实成立的两条保证比备份要窄，值得精确陈述：由于 rename 是唯一的变更，
+写入中途崩溃会让*前一版*文档保持字节完整；以及 JSON 或 `revision` 不可读的文档
+会抛出 `CorruptDocument`，而不是被悄悄当作不存在，因此损坏的文件不会被误认成
+一个全新的文件。覆盖一个已损坏的文档需要一次无条件写入
+（`expected_revision=None`），此时它的 revision 会从 1 重新开始。
+
 ### legacy Settings 键：实际接线情况
 
 legacy 的 `GET/POST /api/settings` 接口面已冻结（其精确的键集合、默认值与
@@ -429,6 +590,18 @@ legacy 的 `GET/POST /api/settings` 接口面已冻结（其精确的键集合�
 固定），连同其怪癖一起冻结。下面的一切都是**实测到的冻结行为** —— 记录在
 这里是因为测试依赖它、运维会被它绊倒，而不是因为它值得效仿。阅读 Settings
 页面时有六点尤为重要：
+
+这份契约在线路的**两侧**都被钉住了，而且这两个钉子并不在同一个地方运行。服务端
+由 `ari-core/tests/test_gui_baseline_settings_contract.py` 冻结键集合、默认值与
+保存路径行为。客户端由
+`ari-core/ari/viz/frontend/src/components/Settings/__tests__/SettingsContract.test.tsx`
+断言 Save 会 POST 一个恰好带那 24 个键的扁平对象 —— 以及作为第二条、也弱得多的
+不变式，断言该页面渲染出十个 `<Card>` 区块。这个 DOM 计数是对当前 Settings 布局
+的结构性冻结，而不是线路契约：即便一次重新设计保住了 24 键的请求体，也仍然要去
+改这个数字。两个钉子的覆盖面也不同。Python 那一侧的钉子与其他测试跑在同一套
+pytest 里；前端那一侧的钉子不在任何 workflow 中运行（见
+[测试](../guides/testing.md) 的 *PR 时的测试内容*），因此只破坏契约客户端一半的
+改动，在有人手动跑前端测试套件之前不会让任何东西失败。
 
 **1. GET 与 POST 的键集合并不一致。** `GET /api/settings` 恰好返回 **27** 个
 顶层键（26 个标量/列表 + 嵌套的 `ors` 对象，后者含 10 个子键）；Save 按钮

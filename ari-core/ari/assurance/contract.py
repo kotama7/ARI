@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import yaml
@@ -34,6 +35,24 @@ class PropertyVocabulary(dict):
 
     def target_kind_for(self, property_id: str, default: str) -> str:
         return self.target_kinds.get(property_id, default)
+
+
+def load_tolerance_policy(path: str | Path) -> tuple[str, str]:
+    """Resolve a named tolerance policy file to ``(ref, digest)``.
+
+    The digest is sha256 over the file's BYTES, because that is what a Harness
+    manifest pins for the same policy. Hashing the parsed document instead
+    yields a different digest for the identical policy, and coverage compares
+    these two digests for equality -- so the mismatch would not be an error,
+    it would silently cover nothing.
+    """
+    file = Path(path)
+    raw = file.read_bytes()
+    document = yaml.safe_load(raw.decode("utf-8")) or {}
+    policy_id = str(document.get("id") or "").strip()
+    if not policy_id:
+        raise ValueError(f"tolerance policy {file.name} declares no id")
+    return policy_id, "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
 def load_property_vocabulary(path: str | Path) -> tuple[PropertyVocabulary, str]:
@@ -104,19 +123,35 @@ def build_verification_contract(
     property_vocabulary: dict[str, tuple[str, ...]],
     property_vocabulary_digest: str,
     target_kind: str = "workspace-artifact",
+    tolerance_policy: tuple[str, str] | None = None,
 ) -> VerificationContractV1:
     """Union Research Contract correctness and Knowledge obligations.
 
     Knowledge content supplies properties/methods only.  It cannot name a
     Harness, delete the Research Contract baseline, or relax its tolerance.
+
+    ``tolerance_policy`` is the ``(ref, digest)`` of a named policy, supplied by
+    the run the same way ``property_vocabulary`` is. Without it the correctness
+    requirements below are stamped with the digest of the Research Contract's
+    own ``{absolute, relative}`` pair, and that pair can never equal what a
+    Harness pins: a Harness names a symbolic policy whose limits depend on the
+    accumulation length and the unit roundoff, and pins the sha256 of that
+    policy FILE. Two different kinds of object were being compared for string
+    equality, so a governed run resolved zero Harness coverage no matter what
+    numbers the Research Contract carried. The fallback is kept so callers that
+    pass no policy behave exactly as before.
     """
 
-    tolerance_digest = canonical_digest(
+    metric_tolerance_digest = canonical_digest(
         research_contract.metric_contract.tolerance.model_dump(mode="json")
     )
-    tolerance_ref = (
+    metric_tolerance_ref = (
         "research-contract:" + research_contract.metric_contract.contract_digest
     )
+    if tolerance_policy is not None:
+        tolerance_ref, tolerance_digest = tolerance_policy
+    else:
+        tolerance_ref, tolerance_digest = metric_tolerance_ref, metric_tolerance_digest
     requirements: list[VerificationRequirementV1] = []
     metric = research_contract.metric_contract
     for property_id in _correctness_properties(property_vocabulary):

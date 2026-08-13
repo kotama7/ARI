@@ -8,10 +8,12 @@ capture, and typed scientific result emission for ARI agents.
 | Tool | Contract |
 |---|---|
 | `write_code` | Atomic text write below the configured workspace root; rejects traversal and symlinks |
+| `edit_code` | Exact-snippet replacement in an existing file; `old_string` must match exactly once unless `replace_all` is set, so an ambiguous edit fails instead of changing the wrong place |
 | `run_code` | Structured interpreter argv, source SHA-256 verification, immutable source snapshot, timeout/process limits, and complete log artifacts |
 | `run_bash` | Explicit shell permission for builds or compound commands; local or configured clean container execution |
 | `emit_results` | Canonical `ari.measurement-set/v1`; rejects non-finite or non-JSON values instead of coercing them |
 | `read_file` | Symlink-safe, bounded and paginated workspace read |
+| `describe_environment` | Node-aware environment catalog (arch, CPU, GPUs, compilers on PATH, raw `module avail`, and the names — never the values — of set toolchain env vars); no arguments |
 
 `run_code` and `run_bash` return a stable `execution_identity`, a per-attempt
 `attempt_id`, the exact enforcement report, input bindings, container identity,

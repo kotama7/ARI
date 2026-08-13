@@ -378,10 +378,11 @@ def build_brokered_provisions(
 ) -> tuple[CapabilityProvisionV1, ...]:
     """Emit one composite provision per reviewed brokered leaf.
 
-    ``reviewed_capability_refs_by_leaf`` is the checked-in reviewed table keyed
-    by the leaf's ``tool_ref``.  Every key must resolve: a table naming a leaf
-    the catalog does not contain is stale review, and silently skipping it
-    would leave a capability unsupplied for a reason nobody could see.
+    ``reviewed_capability_refs_by_leaf`` is the checked-in allowlist keyed by
+    the leaf's ``tool_ref``. A selected site lock may intentionally be narrower
+    than that allowlist; absent leaves grant no authority and any required
+    capability remains visibly unsatisfied at the fixed binder. Present leaves
+    still require an exact reviewed mapping and all normal admission evidence.
 
     ``dispatch_by_leaf`` routes named leaves through a different surface than
     the default.  A Provider's side-effect class is derived from its
@@ -409,12 +410,15 @@ def build_brokered_provisions(
     routes = dict(dispatch_by_leaf or {})
     provisions: list[CapabilityProvisionV1] = []
     for leaf, refs in sorted(reviewed_capability_refs_by_leaf.items()):
+        for ref in sorted(set(refs)):
+            if ref not in contracts:
+                raise BrokeredCatalogError(
+                    f"brokered classification uses unknown capability: {ref}"
+                )
         dispatch = routes.get(leaf, _default_dispatch)
         descriptor = descriptors.get(leaf)
         if descriptor is None:
-            raise BrokeredCatalogError(
-                f"reviewed brokered leaf is absent from the catalog: {leaf}"
-            )
+            continue
         if str(descriptor.get("name") or "") in quarantined:
             raise BrokeredCatalogError(f"brokered leaf is quarantined: {leaf}")
         decision, level = _admission(document, leaf)
@@ -430,11 +434,7 @@ def build_brokered_provisions(
         )
 
         for ref in sorted(set(refs)):
-            contract = contracts.get(ref)
-            if contract is None:
-                raise BrokeredCatalogError(
-                    f"brokered classification uses unknown capability: {ref}"
-                )
+            contract = contracts[ref]
             provisions.append(
                 _composite_provision(
                     descriptor,

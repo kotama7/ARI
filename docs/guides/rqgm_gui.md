@@ -34,7 +34,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # RQGM Governance Workspace Guide
@@ -378,9 +378,10 @@ fire.
 ### Knowledge · Capability · Assurance — "what was this run allowed to know, run, and verify with?"
 
 Served by `GET /api/checkpoint/{run_id}/kca` (`ari.viz-kca/v1`), which reads
-the run's committed `rqgm/kca/admission-v1/` snapshots directly and imports no
-registry or resolver. Three cards, kept apart in both the wire shape and the
-UI so one domain's authority can never be read as another's:
+the run's committed `rqgm/kca/admission-v1/` snapshots and its per-node
+`rqgm/kca/nodes/` records directly and imports no registry or resolver. Three
+cards, kept apart in both the wire shape and the UI so one domain's authority
+can never be read as another's:
 
 - **ARI Knowledge Skill Registry** — non-executable, content-addressed
   procedural knowledge; it grants no tool authority. Catalog snapshot digest,

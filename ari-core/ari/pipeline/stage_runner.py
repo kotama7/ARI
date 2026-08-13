@@ -418,6 +418,7 @@ def _run_stage_subprocess(tool: str, args: dict, config_path: str, skill_name: s
         "    result = json.loads(result_raw)\n"
         "else:\n"
         "    result = result_raw\n"
+        "mcp.close_all()\n"
         "print(json.dumps(result, ensure_ascii=False))\n"
     )
 

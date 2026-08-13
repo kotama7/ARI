@@ -2985,6 +2985,26 @@ class RQGMRuntime:
             *self._kca_harness_reports(kernel, admission, node, node_root),
         ]
 
+    @staticmethod
+    def _kca_report_mode(admission, report) -> str:
+        """Return the admission posture governing one K/C/A report.
+
+        KCA ``audit`` deliberately admits incomplete coverage and unbound tool
+        observations so they can be recorded without changing execution
+        eligibility.  Constitutional-kernel enforcement is a separate switch;
+        applying its blocking matrix to an audit-only KCA report turned those
+        expected observations into a false ``tampered`` verdict.
+        """
+
+        context = str(getattr(report, "context", "") or "")
+        field = {
+            "knowledge_integrity": "knowledge",
+            "capability_integrity": "capability_binding",
+            "harness_integrity": "assurance",
+        }.get(context)
+        modes = getattr(admission, "modes", None)
+        return str(getattr(modes, field, "") or "") if field else ""
+
     def run_per_node_kernel_check(self, node) -> int:
         """Run legacy record checks and K/C/A procedural integrity checks.
 
@@ -3065,7 +3085,13 @@ class RQGMRuntime:
                         "codes": codes,
                     },
                 )
-                if should_block(report, self.kernel_enforcement):
+                # An audit report is evidence, not an enforcement decision.
+                # Only the corresponding K/C/A ``enforce`` posture may turn a
+                # blocking integrity report into a tamper classification.
+                if (
+                    self._kca_report_mode(admission, report) == "enforce"
+                    and should_block(report, self.kernel_enforcement)
+                ):
                     blocking_codes.extend(codes)
             if blocking_codes:
                 node.assurance_status = "tampered"

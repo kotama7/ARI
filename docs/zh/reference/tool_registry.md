@@ -68,7 +68,10 @@ last_verified: 2026-08-07
 # 联邦科学工具注册表
 
 `ari-skill-tool-registry` 将大型 MCP 集合隐藏在五个稳定操作之后：
-`discover`、`describe`、`invoke`、`get_status` 和 `get_result`。Skill 默认启用，
+`discover`、`describe`、`invoke`、`get_status` 和 `get_result`。承载它们的是
+六个 MCP tool，因为 `invoke_scheduled` 是同一 dispatch 操作的第二个面：Provider
+的 side-effect class 由其 permission 导出，把 `scheduler` 放到共享的 `invoke`
+上会抬高其后每个 leaf 的 envelope。Skill 默认启用，
 但不会把全部叶工具 schema 放入模型上下文，也不要求为每个叶工具手写配置。启用
 Skill 不等于启用任何叶工具：只有所选 catalog 中的 source 才能执行，Skill flag
 与 catalog 是两道独立 gate。运行时用 `ARI_TOOL_REGISTRY_LOCK` 和
@@ -219,7 +222,7 @@ MCP 启动该文件，并通过只读 session 状态轮询完成情况。OpenROA
 
 正式 promote 的本地 OpenROAD identity 是 checked-in bundle
 `openroad/0.6.1+orfs-26q3-gcd-nangate45`。其 verified lock digest 为
-`sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`。
+`sha256:fbc4be322a03aa50e666a0dcdb3b1afdfe60fa52bbc570e9cd8f1c800168825e`。
 它只覆盖 x86_64、单线程、local-MCP CPU、固定 GCD placed database 和 Nangate45
 PDK/library，并绑定 live schema parity、DRC-zero metrics、golden/replay、独立 ORFS
 reference、十五项 registration gate 与 human approval。固定 binary 在默认 CTS timing
@@ -236,7 +239,7 @@ payload 由此被证明相同，只是 envelope 无法重现。support record �
 
 独立的`openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identity 也已正式
 promote。其 lock
-`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`
+`sha256:def08a69e7c0c13e8e76e026163337f39667ee8467792c16cad91d96ee9bd203`
 固定匿名 exclusive-node CPU site digest、scheduler client、scheduler snapshot
 digest、digest 固定的 clean container（`singularity` 4.5.0-1.el9、`contain_all`、
 clean environment、`network: none`、无 GPU passthrough）、runtime-owned metrics
@@ -326,9 +329,11 @@ source sync，再为每个 run 固定 Provider Lock 与 Capability Binding Lock�
 本 catalog 中的 leaf 不是 ARI Provider，也从不出现在 `SKILLS.lock` 中，因此
 Capability Binder 无法直接 authorize 它。`ari-core/config/providers/catalog.yaml`
 中的 `ari.provider.tool-registry` entry 把两者接起来：它的 `brokered` block 指名
-本 catalog lock、dispatch tool（`invoke`），以及一张从 leaf `tool_ref` 到 ARI
-`capability_ref` 的 reviewed table。每个 reviewed leaf 成为一条 composite
-`CapabilityProvisionV1`，其可调用身份是 `invoke`，语义身份是该 leaf。descriptor
+本 catalog lock、默认 dispatch tool（`invoke`）、把提交调度器的 leaf 路由到
+`invoke_scheduled` 的按 leaf 覆盖表 `dispatch_tool_by_leaf`，以及一张从 leaf
+`tool_ref` 到 ARI `capability_ref` 的 reviewed table。每个 reviewed leaf 成为一条
+composite `CapabilityProvisionV1`，其可调用身份是其路由指名的 dispatch 面，
+语义身份是该 leaf。descriptor
 自身的 `capability_ref` 属于本注册表的 namespace，绝不当作那张 mapping 读取；
 决定权只在已签入的 table。
 
@@ -364,7 +369,8 @@ credential。需要授予的时机恰好是 token 已设置之时，也即 autho
 存在性在 lock 时观测并冻结进 Provider Lock，因此之后才出现的 token 会改变 lock，
 而不是绕过这道检查。这与直连 Provider 路径适用的是同一条规则，并且 fail closed。
 
-携带 call context 的三个 broker tool——`invoke`、`get_status` 与 `get_result`——
+携带 call context 的四个 broker tool——`invoke`、`invoke_scheduled`、`get_status`
+与 `get_result`——
 在 input schema 中声明 `ari_context`。它们是 `context_requirement: run`，transport
 按该名称注入已授权的 call context；一个设了 `additionalProperties: false` 却省略
 它的 schema 会拒绝每一次已授权的调用。

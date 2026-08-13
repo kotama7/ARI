@@ -108,9 +108,15 @@ class SkillConnection:
         self.skill.credential_scope_identities = [
             dict(identity) for identity in resolved_scopes
         ]
+        provider_python = self._resolve_python(skill_path)
         self._server_parameters = StdioServerParameters(
-            command=self._resolve_python(skill_path),
-            args=[str(skill_path / self.skill.entrypoint)],
+            command=provider_python,
+            args=[
+                "-m",
+                "ari.mcp.stdio_guard",
+                "--",
+                str(skill_path / self.skill.entrypoint),
+            ],
             env=dict(child_environment.values),
         )
         return self._server_parameters

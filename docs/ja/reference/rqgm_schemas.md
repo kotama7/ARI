@@ -32,7 +32,8 @@ JSON Schema です。すべて `ari-core/ari/schemas/` 以下に同梱され、
 スナップショットテストもありません。Pydantic の `model_validate` は
 `ari/rqgm/` 内でも*使われています*が、それは別途ゲートされた
 Knowledge/Capability/Assurance の admission、harness、capability-binding、
-manuscript の各ドキュメントに対してだけであり、`rqgm_record_base`
+manuscript の各ドキュメント（および評価ハーネス自身の `ARIConfig` オーバレイ、
+`ari/rqgm/evaluation/smoke.py`）に対してだけであり、`rqgm_record_base`
 エンベロープや本ページがインベントリするレコードに対しては使われません。
 
 書き込み時にカーネルが実際に強制するのはエンベロープ + 形状の検査、

@@ -37,10 +37,13 @@ def _write_rollup(ckpt, invalid, *, schema_version=1):
     }))
 
 
-def _seed(backend, monkeypatch, node_id, text, metadata=None):
-    """Write one entry as *node_id* (the CoW guard pins writes to the node
-    named by ``ARI_CURRENT_NODE_ID``)."""
-    monkeypatch.setenv("ARI_CURRENT_NODE_ID", node_id)
+def _seed(backend, node_id, text, metadata=None):
+    """Write one entry as *node_id*, straight into the backend.
+
+    Below the tool surface, so no Copy-on-Write guard runs: ``_require_self``
+    checks the requested node against the signed call context, and there is no
+    call context here. These tests are about what the READ paths label, so
+    seeding must not depend on the write guard being satisfiable."""
     res = backend.add_memory(
         node_id, text, metadata or {"type": "result_summary"})
     assert res.get("ok"), res
@@ -126,9 +129,9 @@ def test_caller_cannot_poison_the_process_cache(ckpt_env):
 # ── PULL: annotate, never hide ─────────────────────────────────────────────
 
 def test_get_node_memory_labels_an_erased_node(
-    ckpt_env, backend, monkeypatch, authorized_context
+    ckpt_env, backend, authorized_context
 ):
-    _seed(backend, monkeypatch, "p1", "P1: tiling -> 140 GB/s")
+    _seed(backend, "p1", "P1: tiling -> 140 GB/s")
     _write_rollup(ckpt_env, {"p1": "erase_000001"})
 
     out = server.get_node_memory(
@@ -145,10 +148,9 @@ def test_get_node_memory_labels_an_erased_node(
 
 
 def test_search_memory_labels_only_the_erased_nodes(ckpt_env, backend,
-                                                    monkeypatch,
                                                     authorized_context):
-    _seed(backend, monkeypatch, "p1", "erased finding about tiling")
-    _seed(backend, monkeypatch, "p2", "valid finding about tiling")
+    _seed(backend, "p1", "erased finding about tiling")
+    _seed(backend, "p2", "valid finding about tiling")
     _write_rollup(ckpt_env, {"p1": "erase_000001"})
 
     results = server.search_memory(
@@ -167,7 +169,7 @@ def test_search_memory_labels_only_the_erased_nodes(ckpt_env, backend,
 
 
 def test_typed_search_labels_erased_entries(
-    ckpt_env, backend, monkeypatch, authorized_context
+    ckpt_env, backend, authorized_context
 ):
     result = server.add_experiment_result(
         "p1",
@@ -192,11 +194,10 @@ def test_typed_search_labels_erased_entries(
 
 
 def test_no_rollup_leaves_payloads_byte_identical(ckpt_env, backend,
-                                                  monkeypatch,
                                                   authorized_context):
     # Identity default: a non-RQGM checkpoint never carries the rollup, so no
     # response gains a key.
-    _seed(backend, monkeypatch, "p1", "a finding")
+    _seed(backend, "p1", "a finding")
     assert all(
         erasure.ERASED_KEY not in e
         for e in server.get_node_memory(
@@ -222,7 +223,6 @@ def test_no_rollup_leaves_payloads_byte_identical(ckpt_env, backend,
 # ── PUSH: grounded claims hard-exclude ─────────────────────────────────────
 
 def test_limitations_keep_the_erased_node_labelled(ckpt_env, backend,
-                                                   monkeypatch,
                                                    authorized_context):
     # The honest record of a direction that was later invalidated is exactly
     # what a limitations section is for — so limitations are built from the
@@ -247,7 +247,6 @@ def test_limitations_keep_the_erased_node_labelled(ckpt_env, backend,
 
 
 def test_verified_context_excludes_erased_ancestors(ckpt_env, backend,
-                                                    monkeypatch,
                                                     authorized_context):
     erased = server.add_experiment_result(
         "p1",

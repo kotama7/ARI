@@ -68,7 +68,10 @@ last_verified: 2026-08-07
 # 科学ツール連合レジストリ
 
 `ari-skill-tool-registry` は多数のMCP collectionを `discover`、`describe`、
-`invoke`、`get_status`、`get_result` の5操作の背後に統合するSkillです。Skill
+`invoke`、`get_status`、`get_result` の5操作の背後に統合するSkillです。これを
+担うMCP toolは6つで、`invoke_scheduled` が同じdispatch操作の第2面だからです。
+Providerのside-effect classはpermissionから導かれるため、共有の`invoke`に
+`scheduler`を載せると背後の全leafのenvelopeが上がってしまいます。Skill
 自体は既定で有効ですが、有効化してもleafは有効になりません。実行できるのは
 選択したcatalogに載るsourceだけで、Skill flagとcatalogは独立した2つのgate
 です。catalogはruntimeに `ARI_TOOL_REGISTRY_LOCK` と `ARI_TOOL_REGISTRY_INDEX`
@@ -274,7 +277,7 @@ architecture / CPUTot / Sockets / ThreadsPerCore）と突き合わせ、reposito
 
 正式にpromoteしたlocal OpenROAD identityは
 `openroad/0.6.1+orfs-26q3-gcd-nangate45`です。verified lock digestは
-`sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`
+`sha256:fbc4be322a03aa50e666a0dcdb3b1afdfe60fa52bbc570e9cd8f1c800168825e`
 です。exact GCD placed database、Nangate45 PDK/library、x86_64 CPU、1 thread、
 local-MCP、live schema parity、DRC 0 metrics、golden/replay、公式ORFS参照run、
 15 registration gate、人間承認を固定します。固定binaryがSIGILLとなったため公式
@@ -290,7 +293,7 @@ wall-clockの作成時刻を持つため、`retained_sif_digest`はどのcontain
 
 独立した`openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identityも正式に
 promote済みです。lock
-`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`
+`sha256:def08a69e7c0c13e8e76e026163337f39667ee8467792c16cad91d96ee9bd203`
 は匿名exclusive-node CPU site digest、scheduler client、scheduler snapshot digest、
 digest-pinnedのclean container（`singularity`、`network` none、`contain_all`、
 `clean_environment`、GPUなし）、runtime-owned metrics lifecycle、scheduler由来の
@@ -352,9 +355,11 @@ Lockを固定します。
 このcatalogのleafはARI Providerではなく`SKILLS.lock`にも現れないので、Capability
 Binderが直接authorizeすることはできません。両者を橋渡しするのが
 `ari-core/config/providers/catalog.yaml`の`ari.provider.tool-registry` entryです。
-その`brokered` blockが、このcatalog lock、dispatch tool（`invoke`）、leaf `tool_ref`
+その`brokered` blockが、このcatalog lock、既定のdispatch tool（`invoke`）、
+scheduler投入leafを`invoke_scheduled`へ振り分けるleaf単位の
+`dispatch_tool_by_leaf`、leaf `tool_ref`
 からARI `capability_ref`へのreviewed tableを指定します。reviewed leafは1件ずつ、
-呼び出しidentityが`invoke`、意味identityがleafであるcomposite
+呼び出しidentityがその経路が指すdispatch面、意味identityがleafであるcomposite
 `CapabilityProvisionV1`になります。descriptor自身の`capability_ref`はこのregistryの
 namespaceに属し、mappingとしては読みません。決めるのはchecked-inのreviewed tableだけです。
 
@@ -391,8 +396,9 @@ authorityが実在するときちょうどです。存在有無はlock時に観�
 ので、後から現れたtokenはlockを動かすだけで、検査をすり抜けません。これは直接Provider
 経路と同じ規則であり、fail closedです。
 
-call contextを運ぶbroker toolは`invoke`、`get_status`、`get_result`の3つで、いずれも
-input schemaに`ari_context`を宣言します。3つとも`context_requirement: run`なので、
+call contextを運ぶbroker toolは`invoke`、`invoke_scheduled`、`get_status`、
+`get_result`の4つで、いずれも
+input schemaに`ari_context`を宣言します。4つとも`context_requirement: run`なので、
 transportはauthorize済みのcall contextをこの名前で注入します。
 `additionalProperties: false`のschemaがこれを省くと、authorizeされた呼び出しがすべて
 拒否されます。

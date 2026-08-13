@@ -40,6 +40,24 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/openapi.json
     role: schema
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/ari/viz/api_experiment.py
+    role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Overview/OverviewPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Overview/LogsPanel.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/hooks/useDevMode.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Overview/__tests__/OverviewPage.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/Overview/__tests__/LogsPanel.test.tsx
+    role: test
   - path: ari-core/ari/viz/frontend/src/app/__tests__/routeRegistry.test.tsx
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
@@ -50,7 +68,13 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-08-09
+  - path: ari-core/ari/viz/frontend/src/styles/tokens.css
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/styles/motion.css
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/styles/components.css
+    role: implementation
+last_verified: 2026-08-13
 ---
 
 # 仪表盘架构
@@ -314,6 +338,26 @@ hash。挂载整个 `App` 的那两套测试 —— `src/__tests__/routeRenderBa
   一份快照的时间，而不是每个资源各自的年龄。按实体划分的 stale time 与按实体
   划分的新鲜度标签曾被规定，但并未实现。
 
+**去重预算成立的范围是 `/api/v1` 这一界面，而不是整个仪表盘。** 刷新为这套设计
+附上了一个数值：同一查询键的在途重复读取为 0。在 `/api/v1` 上，这个数值是结构性
+的而非测量出来的 —— 查询客户端会把同一个键的并发抓取合并为一次，因此挂载同一个
+查询的两个组件只产生一个请求 —— 而它的宽度恰好就是这个界面，不会更宽。树中没有
+任何东西去测量它。
+
+legacy 那一半从来都在这个客户端之外发出自己的流量。`context/AppContext.tsx` 以
+5 秒一次的 `setInterval`（`STATE_POLL_MS = 5000`）重新抓取 `/state` 与检查点
+列表，而由于 `AppProvider` 位于路由器之上，这会持续整个会话；
+`Monitor/MonitorPage.tsx` 则对 `/api/resource-metrics` 跑第二条独立的 5 秒周期，
+只要该页面处于挂载状态就一直跑。两者都不经过查询客户端，彼此看不见对方，并且
+在标签页被隐藏时都不会停下 —— 前端里没有任何东西监听 `visibilitychange`（§6），
+因此退到后台的仪表盘会以全速继续跑这两条周期。暂停隐藏标签页的轮询、并把这些
+读取迁移到流失效加快照查询上，曾被刷新规定过，但并未实现；它是一个已知缺口。
+请按这个范围来读这份预算：对 `/api/v1` 的读取它依构造成立，而在那些轮询器消失
+之前，它并不描述一个运行中的仪表盘整体 —— `AppContext` 的远程状态与它背后的
+`/state` 外观，是 [GUI 切换运行手册](../guides/gui_cutover_runbook.md)
+「6. legacy 移除」中移除顺序的第 2 项与第 3 项，而那份移除顺序根本没有点名
+Monitor 的那条周期。
+
 **运行隔离是在接缝处被证明的，而不是端到端。**
 `hooks/__tests__/useRunEvents.test.tsx` 证明：一个运行的事件只让该运行的键与
 运行列表失效；一条 `tree` 事件只触碰该运行的树键；离线轮询的滴答只留在被订阅
@@ -462,6 +506,29 @@ sha256 前缀，`base_revision`
 是*可选的*，因此省略它的调用方仍然是 last-write-wins；而 `gui_store/` 的文档带一个
 整型 `revision`，并拒绝任何不带 `If-Match` 到达的修改（见
 [Configuration Studio](../guides/configuration_studio.md) 的「If-Match 冲突」）。
+
+**一次 workflow 编辑的作用域只有一个检查点，而一次新的运行绝不会继承它。**
+每一次 workflow 写入都落在*活动*检查点的那份副本上：`api_workflow.py` 在没有可用的
+活动检查点时会直接拒绝写入，否则会在应用编辑之前以写时复制方式从随包文件播种出
+`{ckpt}/workflow.yaml`，因此随包的默认文件绝不会被 GUI 改写。而两条启动路径随后都
+只从那份*随包*文件为新检查点播种：`POST /api/v1/runs`（`ari/viz/v1/launch.py`）
+把 `config/workflow.yaml` 复制进新检查点，并把本次启动的 mode 块合并进那份副本；
+legacy 的向导启动 `POST /api/launch`（`ari/viz/api_experiment.py`）复制的是同一份
+随包文件 —— 或者在它的某个阶段开关关闭时，写出一份变体：被关掉的 stage 置为
+`enabled: false`，并从下游每一处 `depends_on` 中被剔除。两者都不会去读片刻之前还
+处于活动状态的那个检查点，因此不存在任何路径能让一份被编辑过的副本成为播种源。
+被编辑的副本只在*同一个*检查点再次运行时才被读回：BFTS 循环
+（`ari/cli/bfts_loop.py`）与论文流水线（`ari/core.py`）都会把
+`{ckpt}/workflow.yaml` 排在随包副本之前解析。
+
+**已知缺口 —— 界面上没有任何东西说明这个作用域。** 刷新曾规定：一次保存要声明该
+编辑将对哪一次运行生效。`Workflow/WorkflowPage.tsx` 在工具栏里渲染的只有所服务的
+文件路径 —— 那是唯一的作用域线索 —— 除此之外什么也没有：没有说明编辑影响哪次运行，
+保存时没有警告，也没有任何路由能把一条流水线应用到下一次运行。更进一步，两条启动
+路径之间的差异同样没有被呈现：legacy 的向导启动会把进程级的活动检查点切换到新的
+运行，于是编辑器悄悄改换了目标；而 `POST /api/v1/runs` 刻意不切换它，于是编辑器
+仍然指着上一次运行。请把一次 workflow 编辑当作某一个检查点的属性，而不是一项设置。
+
 最接近的可复用文档是 run 模板，而模板携带的是配置的 `values`，不是一条流水线。
 
 ---
@@ -736,6 +803,149 @@ import。
 请把这套切分读作行进方向，而不是代码树已经遵守的结构。今天真正被遵守的是那条
 更浅的放置规则：展示型原语放进 `components/common/`，跨切面的平台代码放进
 `shared/`，外壳接线放进 `app/` —— 而一个页面目录只拥有它自己的页面。
+
+**设计令牌是两层，不是三层。** 只有 `styles/tokens.css` 这一个文件*定义*自定义
+属性。`motion.css` 在 `prefers-reduced-motion: reduce` 下把其中三个 ——
+`--t-fast`、`--t-med`、`--t-slow` —— 重定义为零；`Layout/Sidebar.tsx` 内联写入的
+`--sidebar-width` 是布局样式表读取的一个尺寸，而不是令牌。其余全部落在一个
+`:root` 块里，分成两个具名层。**原语**层是原始刻度：色相（`--bg`、`--sidebar`、
+`--card`、`--border`、`--text`、`--muted`、`--blue`、`--blue-light`、`--green`、
+`--red`、`--yellow`、`--purple`，外加别名 `--primary`）、从 `--sp-1` 到 `--sp-8`
+的间距档（4px 到 32px，没有 `--sp-7`）、圆角与焦点阴影、字号刻度和动效时长。
+**语义**层为角色命名，并把每个角色解析到某个原语或原语的 `color-mix()` ——
+此处不引入任何新色相：`--surface-canvas` / `--surface-raised` /
+`--surface-overlay`、`--text-primary` / `--text-muted` / `--text-inverse`、
+`--border-default` / `--border-focus` / `--focus-ring`、三个链接色、四个
+`--status-*` 前景色及各自的 `-bg` 淡色（其中两个还有声明在原语旁边的 `-border`
+淡色）、`--score-penalty`、五个 `--state-*` 节点得分色，以及十个 `--reg-*`
+注册表生命周期色。
+
+第三层，即**组件**层，曾被规定在这两层之上 —— 一个为某个组件的某一个角色命名的
+令牌，例如主按钮的背景或被选中图节点的填充 —— 而它没有被建成。代码树里不存在
+任何位于语义层之上的角色令牌；*名字*来自组件的唯一自定义属性是原语面色
+`--sidebar`，它是最底层的原始值，而不是立在最顶层之上的角色。在组件层本该出现的
+位置，取而代之的是 CSS 类直接消费语义令牌：`components.css` 为十个注册表状态各
+定义一条 `.reg-badge--<status>` 规则，为五个节点得分状态各定义一条
+`.nodestate-badge--<state>` 规则，都从对应的 `--reg-*` 或 `--state-*` 令牌取
+`color`，而且两个类族有意互不相交。这确实交付了固定调色板的目的 —— 两套词汇谁
+也借不到对方的颜色，正如
+[研究状态与治理状态](research_and_governance_state.md) 的
+「4. 注册表生命周期 vs 节点得分状态」一节所要求的 —— 但它是通过类名交付的，而
+不是通过第三层令牌。
+
+**已知缺口 —— 「语义层之上的东西不越过它去够原语颜色」这条规则没有被强制，代码
+树也没有遵守。** 如上所述，`package.json` 没有 lint 步骤；没有任何测试、也没有
+`scripts/quality/` 下的任何检查器读取样式表（打包体积闸门只称量 `.js` 分块），
+因此没有任何东西能因违规而失败。对十三个原语颜色名的 `var(…)` 使用做统计：其中
+458 处位于 `components/` 下 53 个非测试 `.tsx` 文件中，另有 140 处在样式表自身
+（`components.css` 66、`widgets.css` 47、`layout.css` 21、`responsive.css` 6）
+—— 而在同一批文件里，整个语义层的使用只有 113 处。v2 工作区是这道分野里较好的
+一半，但也并不干净：`.tsx` 的使用中有 38 处在 v2 工作区、2 处在
+`components/common/`，且它们无一例外都是 `--muted`、`--border`、`--bg` 或
+`--red` —— 这四个各自都有本可胜任的语义等价物（`--text-muted`、
+`--border-default`、`--surface-canvas`、`--status-danger`）。请把语义层读作增量式
+且只被部分采用：正如上面的切分之于结构，它是颜色上应走的方向，而不是代码树已经
+遵守的边界。
+
+**已知缺口 —— 语义层不承载主题。** 它被写下来的目的，是成为 light、dark 或
+高对比度变体切换时唯一需要改动的地方，让原语和组件都不必被触碰。仪表盘只出货
+一个主题，`tokens.css` 在根上就把这点说明白了：它声明 `color-scheme: dark`，
+正是为了让用户代理把 CSS 够不到的控件 —— 复选框与单选框字形、滚动条、
+`<select>` 弹出框 —— 画成暗色，而不是在这些面上戳出亮色的洞，并用 `accent-color`
+钉住选中态。前端任何地方都不存在 `prefers-color-scheme` 块，也没有主题开关，
+因此第二套语义值从未被写出来。样式表真正尊重的唯一一项用户偏好，是 `motion.css`
+里的 `prefers-reduced-motion: reduce`。
+
+---
+
+## 11. 披露层级：一个页面在你开口之前展示什么
+
+仪表盘同时服务好几类读者 —— 启动第一次运行的人、读探索树的人、诊断卡住进程的人、
+审计一次治理决策的人、读原始工件的人。刷新给出的答案是：按主题给出一个页面，让它
+的*深度*可变，而不是按读者给出一个个应用。这个推论值得写下来，因为它正是整整一类
+设计缺席的原因：没有任何页面是角色感知的，没有任何路由携带权限谓词（§2），产品里
+也根本没有对读者的建模。深度是读者自己打开的东西，而绝不是被授予的东西。
+
+深度用一架五级的梯子来描述，从 P1 到 P5。这些层级名不是装饰 —— 它们是源码在决定
+一条信息该归属何处时所用的词汇，并且原样出现在组件注释与测试名里。
+
+| 层级 | 内容 | 规定的默认可见性 |
+|---|---|---|
+| P1 | 运行状态、当前 phase、被阻塞的原因、下一步操作 | 始终可见 |
+| P2 | 分数摘要、树、纪元、主要工件 | 始终可见 |
+| P3 | 证据、一次转换的原因、config 差分、资源细节 | 一次交互之外 |
+| P4 | 追踪、日志、逐节点谱系、原始事件的链接 | 一到两次交互之外 |
+| P5 | 原始 JSON 与 YAML、内部 id、调试载荷 | 仅开发者模式 |
+
+最后一列请读作意图。五级之中建成了三级，而代码树偏离这张表的地方，值得知道它偏向
+哪一边。
+
+**这架梯子实现在哪里。** 运行 Overview（`#/overview?run=`）是唯一明确按它建造的
+页面，而其中存在的也只有 P1、P2 与 P4 三级。P1 是那组带标签的行 —— 生命周期徽章、
+研究 phase、最后更新的新鲜度，以及对受治理的运行而言，一行单独的治理阶段行，承载
+当前纪元与效用策略哈希 —— 其上方还有一块 blocker 面板，它在受治理运行的读模型报告
+了 degraded 原因、或三个完整性标志（转换链、注册表快照、审计链）之一为假时出现。
+P2 是三个计数器（已探索节点数、评审分数、最佳指标）以及通向树、config 浏览器、
+（对受治理的运行）Governance 的工作区链接。P4 是可折叠的日志浏览器，也是最能说明
+「惰性」在这里必须意味着什么的一级：面板折叠期间根本不会抓取任何东西，而它的测试
+直接断言的正是这一点，而不是去检查标记是否被隐藏。一个先渲染再把内容藏起来的层级，
+不算一个层级。
+
+已建成的部分里有一处偏离：纪元与策略哈希在表中位于 P2，实际却渲染在 P1 的行块内 ——
+因为对受治理的运行来说，它们属于「这次运行在哪里」，而不属于「它得分如何」。
+
+**P3 从来没有作为一层被建成。** 没有任何页面有带标签的 P3 层级，这个层级名也不出现
+在任何源文件里。P3 所指的素材确实存在，但抵达它意味着去往另一个工作区，而不是就地
+展开某个东西：Governance 纪元时间线标签页上已提交纪元的详情（封存的策略正文，以及
+带原始来源偏移的开启与关闭边界事务）、config 浏览器里逐叶的 provenance、Studio 启动
+面板中与默认值的有效配置差分、legacy Monitor 页面上的资源与进程细节。请把 P3 读作
+对素材的描述，而不是关于点击几次就能到达的承诺。
+
+**P5 就是开发者模式，而且只在 legacy 页面上。** 这个标志是
+`localStorage['ari_dev_mode']`，经由一个 hook（`hooks/useDevMode.ts`）读取，而查询
+它的界面全都是 legacy 的：Monitor 的各个区块及其 GPU 监控、legacy Results 的
+`publish.yaml` 编辑器、向导的资源步骤、legacy Tree 的详情面板、拥有该开关的
+Settings 页面，以及根错误边界的堆栈跟踪（§2）。没有任何 v2 工作区 import 这个
+hook，因此在一个 v2 页面上根本没有可打开的 P5 层级。规范还把 P5 与一次权限检查配在
+一起；那一半在这里不可能存在，因为 bearer token 是全有或全无的，而且没有任何东西
+对用户建模（§2）。开发者模式只改变展示密度。它不是一条授权边界，它所展现的东西也
+并没有对一个直接询问 API 的未认证调用方隐藏 —— 见
+[仪表盘指南](../guides/dashboard.md) 的「legacy 页面，以及何时使用它们」。
+
+**不存在全局的 run 上下文元素。** 规范要求 P1 常驻于*每一个* run 范围的页面：作为
+一块持续存在的外壳，承载项目与 run 的身份、生命周期、phase 与新鲜度、执行模式与
+论文模式、带 epoch 和策略哈希的治理能力、带告警计数的资源与成本汇总，以及连接
+状态。这个元素并不存在。这是一处 known gap（已知缺口），而且并不均匀：P1 所列的
+大部分内容确实出现在某个页面上，只是从不集中在一处，也不是每个页面都有。
+
+外壳自身承载的，是导航之上那个 legacy 的活动检查点选择器 —— 检查点数量、绑定到
+进程级活动检查点的 `<select>`，以及直接取自 `/state` 的状态标签与运行圆点
+（§4）。没有任何 v2 工作区读取其中任何一项；维持这一点的是
+`src/__tests__/appContextScope.test.ts` 的结构扫描，而 v2 改从 `?run=` 取得自己的
+run。因此该选择器描述的是进程级选中的那个检查点，未必就是当前打开的工作区正在
+展示的 run。
+
+其余部分按页面散落。生命周期与研究 phase 只在 run Overview 上渲染。当前 epoch 与
+utility 策略哈希，在受治理的 run 上渲染于 Overview 的治理行，也渲染在 Governance
+工作区内 —— 那里同样是执行模式与论文模式唯一以词汇所要求的两枚独立标签形式出现的
+地方，其值读自 RQGM 能力模型（§9）。run 身份是逐页面的：每个 run 范围的 v2 工作区
+都会打印自己的 `?run=` 值。连接状态同样如此 —— run Overview、Tree 工作区、
+Governance 与 Projects 组合页在事件流不处于 live 时各自升起自己的新鲜度横幅，
+config 浏览器则在缓存数据之上重新取数失败时升起一条，而 Ideas 与 Results 工作区
+不订阅任何流，也完全不展示新鲜度。
+
+P1 清单上有两项根本没有 run 范围的落脚点。资源与成本汇总是一个 legacy 侧的数字：
+`/state` 把解析后的 `cost_summary.json` 作为 `cost` 一并送出（见
+[REST API 参考](../reference/rest_api.md) 的「类型化契约（稳定端点）」），legacy
+Monitor 页面把它渲染在资源卡片旁边；而 `/api/v1` 之下没有任何地方提到 cost ——
+因此即便外壳有位置可放，v2 工作区也没有数字可展示。最接近告警计数的，是 Projects
+组合页上的「Needs attention」磁贴，它统计状态为 `failed`、`stopped` 或 `unknown`
+的 run：这是组合层面的统计量，而不是单个 run 的徽标。P1 所承诺的「下一步操作」更
+单薄 —— 只有空的 Projects 页面上的创建、导入、恢复三条链接，而这三条都通向启动
+向导。一个被阻塞的 run 会列出它的 blocker，然后就停在那里。
+
+请把「P1 始终可见」当作一种逐页面的意图：run Overview 满足了它，而其他页面都不是
+照此建成的。
 
 ---
 

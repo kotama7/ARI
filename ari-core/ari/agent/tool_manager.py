@@ -60,18 +60,26 @@ def available_tools_openai(
     ]
 
 
-# Coding-skill filesystem tools that take a ``work_dir`` argument and, when the
-# model omits it, fall back to a SHARED default (``ARI_WORK_DIR`` snapshotted at
-# MCP fork time, else ``/tmp/ari_work``). In a multi-node BFTS run that default
-# is NOT the node's per-node work_dir, so an omitted ``work_dir`` silently routes
-# the agent's edits to a shared scratch dir that the evaluator never reads — the
-# node is then scored on its inherited (parent) code. We pin these calls to the
-# current node's work_dir whenever the model leaves it unset.
+# Tools that take a ``work_dir`` argument and, when the model omits it or gives
+# the virtual ``/workspace`` root, land somewhere that is NOT this node's
+# directory — the coding server falls back to ``ARI_WORK_DIR`` as snapshotted at
+# MCP fork time (else ``/tmp/ari_work``), and the scheduler falls back to the
+# submitting process's cwd. Either way the evaluator, which reads only this
+# node's dir, then scores the inherited (parent) code. We pin these calls to the
+# current node's work_dir.
+#
+# ``slurm_submit`` belongs here even though it is not a filesystem tool. It is
+# the one scheduler tool that takes a bare ``work_dir``, and ari-skill-hpc does
+# no devirtualization at all: a run was observed where every node dutifully
+# wrote its optimized kernel with `cat > candidate_gemm.c` inside a job
+# submitted with work_dir="/workspace", so all five jobs wrote into the
+# repository root and all five nodes were scored on the untouched seed. The
+# scores agreed to three digits and looked like a search that had converged.
 #
 # ari-skill-coding/src/server.py documents this pinning as the invariant it
 # relies on, so the two must not drift apart.
 _WORKDIR_TOOLS = frozenset({"write_code", "run_code", "run_bash", "emit_results",
-                            "read_file", "edit_code"})
+                            "read_file", "edit_code", "slurm_submit"})
 
 
 # ── Per-node wall-clock budget for command execution ────────────────────────

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 from mcp.server import Server
@@ -59,6 +60,14 @@ def _get_slurm_client() -> SlurmClient:
 
 
 def _handle_selector_schema() -> dict[str, Any]:
+    # "exactly one of handle_id / job_id" is stated in the description and
+    # enforced in _selector, NOT as a top-level `oneOf`. OpenAI's
+    # function-calling schema subset rejects a tool whose parameters carry
+    # oneOf/anyOf/allOf at the top level, which made every one of these four
+    # tools un-advertisable -- and therefore every node that loaded hpc-skill
+    # fail on its first LLM call -- whenever the backend was `openai`.
+    # A constraint the client may silently ignore was never the real guard
+    # anyway; the server-side check is.
     return {
         "type": "object",
         "properties": {
@@ -71,7 +80,7 @@ def _handle_selector_schema() -> dict[str, Any]:
                 "description": "Raw SLURM job ID (legacy compatibility)",
             },
         },
-        "oneOf": [{"required": ["handle_id"]}, {"required": ["job_id"]}],
+        "description": "Give exactly one of handle_id (preferred) or job_id.",
         "additionalProperties": False,
     }
 
@@ -397,8 +406,49 @@ def _result_or_error(success: dict) -> dict:
     }
 
 
+def _submit_work_dir(value: object) -> str:
+    """The directory a submitted job runs in, or "" for the scheduler default.
+
+    The schema calls this an existing absolute shared-filesystem directory but
+    nothing checked it, and an unusable value did not fail — it fell through to
+    the submitting process's cwd. That is the worst outcome for a scored run:
+    the job succeeds, writes its files somewhere real, and the evaluator reads
+    a different directory and scores the code the node inherited. This skill
+    does no ``/workspace`` devirtualization (that lives in ari-skill-coding),
+    so the virtual root in particular must be refused rather than guessed at.
+    """
+    work_dir = str(value or "").strip()
+    if not work_dir:
+        return ""
+    path = Path(work_dir)
+    if not path.is_absolute():
+        raise ValueError(
+            f"work_dir must be an absolute path on the shared filesystem, got "
+            f"{work_dir!r}; a relative path would resolve against whichever "
+            f"directory the submitting process happened to be in"
+        )
+    if not path.is_dir():
+        raise ValueError(
+            f"work_dir {work_dir!r} is not an existing directory on the "
+            f"submitting host. If this is the virtual container root, pass the "
+            f"real per-node directory instead: this skill does not translate "
+            f"it, and the job would otherwise run in the submitter's cwd and "
+            f"write where nothing reads."
+        )
+    return str(path)
+
+
 def _selector(arguments: dict[str, Any]) -> str:
-    return str(arguments.get("handle_id") or arguments.get("job_id") or "")
+    # The schema can only describe this; it cannot enforce it (see
+    # _handle_selector_schema). An empty selector used to travel on to the
+    # scheduler and fail there with a message about the wrong thing.
+    selector = str(arguments.get("handle_id") or arguments.get("job_id") or "")
+    if not selector:
+        raise ValueError(
+            "give exactly one of handle_id (preferred) or job_id; neither was "
+            "supplied, so there is no job to address"
+        )
+    return selector
 
 
 def _public_error_message(exc: Exception) -> str:
@@ -469,7 +519,7 @@ async def call_tool(
                     partition=arguments.get("partition", ""),
                     nodes=arguments.get("nodes", 1),
                     walltime=arguments.get("walltime", "01:00:00"),
-                    work_dir=arguments.get("work_dir", ""),
+                    work_dir=_submit_work_dir(arguments.get("work_dir", "")),
                     modules=arguments.get("modules") or (),
                     tasks=arguments.get("tasks"),
                     tasks_per_node=arguments.get("tasks_per_node"),

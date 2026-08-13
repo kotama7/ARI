@@ -835,7 +835,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
 
 ## 节点级提示构建
 
-每个 BFTS 节点都通过 `ari/agent/loop.py:2063` 中的 `AgentLoop.run(node, experiment)` 这一单一入口执行。同一循环既处理根节点也处理子节点；它构建的提示仅根据 `node.depth` 和从祖先继承的状态分支。本节是 *代理在节点开始时实际看到什么* 的权威来源。在此处更改需要谨慎审查。
+每个 BFTS 节点都通过 `ari/agent/loop.py:2067` 中的 `AgentLoop.run(node, experiment)` 这一单一入口执行。同一循环既处理根节点也处理子节点；它构建的提示仅根据 `node.depth` 和从祖先继承的状态分支。本节是 *代理在节点开始时实际看到什么* 的权威来源。在此处更改需要谨慎审查。
 
 ### `AgentLoop.run` 的输入
 
@@ -853,7 +853,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
 
 ### 系统提示 — `ari/prompts/agent/system.md`
 
-提示正文是外部化模板（键 `agent/system`，经 `_system_prompt_versioned()` 载入并在 `loop.py:2226` 做 `str.format`）；`loop.py` 只负责构建 `{tool_desc}` / `{memory_rules}` / `{extra}` 三处替换：
+提示正文是外部化模板（键 `agent/system`，经 `_system_prompt_versioned()` 载入并在 `loop.py:2230` 做 `str.format`）；`loop.py` 只负责构建 `{tool_desc}` / `{memory_rules}` / `{extra}` 三处替换：
 
 ```
 You are a research agent. You MUST use tools to execute experiments. ...
@@ -871,16 +871,16 @@ RULES:
 {memory_rules}{extra}
 ```
 
-`{extra}` 块（在 L2213-2219 构建）追加：
+`{extra}` 块（在 L2218-2223 构建）追加：
 
 | 子块 | 来源 | 备注 |
 |------|------|------|
 | `NODE ROLE: {label_hint}` | `node.label.system_hint()` | 由 BFTS 标签衍生的一句话行为提示；设置 `ARI_BFTS_NO_LABEL`（`labels_disabled()`）后所有节点改用同一个中性角色 |
-| `EXPERIMENT ENVIRONMENT` | L2197-2207 | work directory（节点的 container root `/workspace`）+ 已有文件 + SLURM partition/CPUs（仅当 scheduler 工具确实可用时）+ 容器镜像（`ARI_CONTAINER_IMAGE`） |
-| `RESOURCE BUDGET` | L2208-2212 | `max_react_steps`、`timeout_per_node // 60` 分钟 |
+| `EXPERIMENT ENVIRONMENT` | L2202-2211 | work directory（节点的 container root `/workspace`）+ 已有文件 + SLURM partition/CPUs（仅当 scheduler 工具确实可用时）+ 容器镜像（`ARI_CONTAINER_IMAGE`） |
+| `RESOURCE BUDGET` | L2213-2217 | `max_react_steps`、`timeout_per_node // 60` 分钟 |
 | `extra_system_prompt` | `WorkflowHints.extra_system_prompt` | 由 `from_experiment_text` / 流水线配置可选设置的逃生口 |
 
-`{memory_rules}` 块（L2220-2222）仅在代理实际拥有 `add_memory` 工具时附加，并将活跃节点 id 内联到提示中，使 LLM 无法意外写入其他作用域：
+`{memory_rules}` 块（L2224-2226）仅在代理实际拥有 `add_memory` 工具时附加，并将活跃节点 id 内联到提示中，使 LLM 无法意外写入其他作用域：
 
 ```
 - When available, save decisive intermediate findings with
@@ -890,16 +890,16 @@ RULES:
 
 ### 工具目录（`tool_desc`）
 
-L2112 的 `tools = self._available_tools_openai(suppress=..., phase="bfts")` 枚举 MCP 为 `phase="bfts"` 暴露的所有工具，然后丢弃 `_suppress_tools` 中的任何工具。可变的 suppression 集合存在于 `AgentLoop` 实例上，并随运行进展更新：
+L2116 的 `tools = self._available_tools_openai(suppress=..., phase="bfts")` 枚举 MCP 为 `phase="bfts"` 暴露的所有工具，然后丢弃 `_suppress_tools` 中的任何工具。suppression 集合通过 `AgentLoop._suppress_tools` 属性（L1489-1495）访问，其存储是每个 worker 线程各自独立的（`_NodeLocalState(threading.local)`，L1183-1194），并随运行进展更新：
 
-- 第一次成功的 `generate_ideas` 调用之后，循环设置 `self._suppress_tools = {"generate_ideas"}`（L2633），后续节点不再重新生成 idea。
+- 在 idea 被 admitted 的 `generate_ideas` 调用之后，循环设置 `self._suppress_tools = {"generate_ideas"}`（L3005-3007），后续节点不再重新生成 idea。
 - `survey` 对子节点 **不被 suppress**；仅在文字中被劝阻（见下文「User message #1 — 子节点」）。忽略文字劝阻的子仍然可以调用 `survey()`。
 
-`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L2630）标记消息窗口修剪器必须保留的工具结果；即使聊天历史被压缩，它们的内容也会在每个 ReAct 轮次存活。
+`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L2634）标记消息窗口修剪器必须保留的工具结果；即使聊天历史被压缩，它们的内容也会在每个 ReAct 轮次存活。
 
 ### User message #1 — 根节点（`node.depth == 0`）
 
-`loop.py:2430-2436`:
+`loop.py:2434-2440`:
 
 ```
 Experiment goal:
@@ -922,7 +922,7 @@ grounded citations.
 
 ### User message #1 — 子节点（`node.depth > 0`）
 
-`loop.py:2341-2379`:
+`loop.py:2345-2382`:
 
 ```
 Experiment goal:
@@ -950,7 +950,7 @@ Workflow:
 
 「Prior results are provided below」这句是有条件的：若某个子节点的 handoff arm 既不注入摘要也不注入父日志，提示会改为告诉它继承了父节点的 *代码* 但不会拿到其结果，从而不会承诺一段永远不会出现的内容。
 
-`_label_desc`（L2308-2318）是节点级提示中标签语义出现的唯一位置：
+`_label_desc`（L2311-2322）是节点级提示中标签语义出现的唯一位置：
 
 | Label | 一行任务 |
 |-------|---------|
@@ -973,14 +973,14 @@ Workflow:
 
 失败（记忆后端宕机、结果格式异常等）在 `logger.debug` 级别被吞掉，节点仍然运行。
 
-遗留的 `search_global_memory` 注入块（`loop.py:2513-2535`）在 v0.6.0 中是死代码；全局记忆工具已被移除（`CHANGELOG.md` v0.6.0 §3），条件分支永不触发。
+遗留的 `search_global_memory` 注入块（`loop.py:2517-2539`）在 v0.6.0 中是死代码；全局记忆工具已被移除（`CHANGELOG.md` v0.6.0 §3），条件分支永不触发。
 
 ### 截断速查表
 
 | 项目 | 上限 | 代码 |
 |------|-----|------|
 | `goal_text` | `ARI_GOAL_MAX_CHARS` 字符，默认 **8000**；`0` 表示完全关闭上限 | `loop.py:2274-2283` |
-| Survey 结果记忆条目 | 前 5 篇论文，每篇 abstract 200 字符 | `loop.py:2939-2942` |
+| Survey 结果记忆条目 | 前 5 篇论文，每篇 abstract 200 字符 | `loop.py:2943-2946` |
 | Tier 1a —— 实验核心字段 | `_CORE_FIELD_CAP = 400` 字符／字段 | `loop.py:342` |
 | Tier 1a —— `selected_idea` 摘要 | `_IDEA_FIELD_CAP = 1500` 字符 | `loop.py:343` |
 | Tier 1b —— 逐祖先 `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 字符／条目（非聚合裁剪） | `loop.py:346` |
@@ -1012,7 +1012,7 @@ ToolCallContextV1.for_node(
 )
 ```
 
-`MCPClient` 为每条技能连接生成一个 256-bit authority key（`new_context_authority_key()`，`mcp/client.py:76-77`），并作为 `ARI_CONTEXT_AUTHORITY_KEY` 导出到技能子进程。对于 `context_requirement` 不为 `none` 的工具，分发时会把 HMAC 签名后的上下文注入调用参数（`connection.authorize_args`，`mcp/client.py:540-545`），而 `ari-skill-memory` 在触及后端之前用 `verify_tool_context(...)` 验证签名（`ari-skill-memory/src/server.py:55-63`）。
+`MCPClient` 为每条技能连接生成一个 256-bit authority key（`new_context_authority_key()`，`mcp/client.py:76-77`），并作为 `ARI_CONTEXT_AUTHORITY_KEY` 导出到技能子进程。对于 `context_requirement` 不为 `none` 的工具，分发时会把 HMAC 签名后的上下文注入调用参数（`connection.authorize_args`，`mcp/client.py:540-545`），而 `ari-skill-memory` 在触及后端之前用 `verify_tool_context(...)` 验证签名（`ari-skill-memory/src/server.py:46-51`）。
 
 因此活跃节点是随 **每次签名调用本身** 传递的，而不是放在子进程环境里；这正是兄弟节点并发共享同一个池化子进程仍然安全的原因。
 

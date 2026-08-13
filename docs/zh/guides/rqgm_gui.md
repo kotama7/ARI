@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # RQGM 治理工作区指南
@@ -324,7 +324,8 @@ best-of-N，且写作者制裁无法触发。
 ### Knowledge · Capability · Assurance —— 「这次运行被允许知道什么、执行什么、用什么来验证？」
 
 由 `GET /api/checkpoint/{run_id}/kca`（`ari.viz-kca/v1`）提供：它直接读取该运行
-已提交的 `rqgm/kca/admission-v1/` 快照，不导入任何注册表或解析器。三张卡片在
+已提交的 `rqgm/kca/admission-v1/` 快照与逐节点的 `rqgm/kca/nodes/` 记录，
+不导入任何注册表或解析器。三张卡片在
 线格式与 UI 两侧都保持分离，使得一个领域的权威绝不会被读成另一个领域的：
 
 - **ARI Knowledge Skill Registry** —— 不可执行、内容寻址的过程性知识；它不授予

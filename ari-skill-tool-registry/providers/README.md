@@ -16,6 +16,28 @@ license, `uv.lock`, `pyproject.toml`, and compact-mode definition. It contains:
 - a canonical path/size/SHA-256 tree digest for every non-cache file below the
   installed `tooluniverse` package (3,542 files for `1.3.1`).
 
+The record additionally admits two ARI-patched wheels built from that commit.
+`tooluniverse/1.3.1+ari.1/` is metadata-only: it replaces `fitz>=0.0.1.dev2`
+with `PyMuPDF==1.26.4`. `tooluniverse/1.3.1+ari.2/` carries that metadata fix
+unchanged and additionally raises the compact response ceiling — `smcp.SMCP`
+`max_chars` from `100_000` to `2_000_000` at both serialization sites — so,
+unlike `ari.1`, it does change source code. Upstream caps every compact response
+at 100,000 characters and, when structural trimming cannot fit, falls back to
+raw string truncation that emits invalid JSON, which makes whole-collection
+enumeration impossible: `get_tool_info(detail_level=full)` exceeds that ceiling
+for the largest leaves even at batch size one. Measured over all 2,601 loaded
+leaves the largest single response is 510,904 characters and only two exceed
+100,000, so 2,000,000 admits the worst observed batch with roughly threefold
+headroom while staying well under the 7,103,230-character full-collection dump.
+
+Each patched version directory holds its own `build-recipe-v1.json`,
+`metadata.patch`, `provider-manifest-v1.json`, and `runtime.uv.lock`; only
+`1.3.1+ari.1` also holds the promotion evidence and `verified-lock-v1.json` of
+one leaf. A patched wheel declared as a source without a `verified_lock_path` is
+collection-wide: the retained exact wheel is still required, but the source
+carries no leaf promotion, so it stays `callable` and must not assert
+replay-fixture or scientific-validation evidence.
+
 The package license does not grant or validate the terms, availability, quality,
 or scientific correctness of every external API/data/model reached by a leaf.
 Those identities and limitations remain leaf provenance and admission concerns.
@@ -71,17 +93,31 @@ supply-chain and launcher admission, not an in-place edit of this record.
 local scope. It is local-MCP, x86_64 CPU, one thread, fixed GCD
 post-placement CTS/routing, Nangate45, and the retained ORFS SIF. The SIF itself
 is not committed because it is 1.54 GB; its full SHA-256, source OCI manifest,
-inner OpenROAD digest, and required materialization path are fixed.
+inner OpenROAD digest, and required materialization path are fixed. That file is
+retained rather than rebuilt: a SIF header carries a random UUID and a
+wall-clock creation time inside the hashed bytes, so no container runtime
+reproduces `retained_sif_digest`. The pinned OCI manifest digest and the inner
+OpenROAD binary digest are what prove a re-materialized payload identical.
 
 `openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/verified-lock-v1.json` is a
 second, independent promoted scope with lock
-`sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd`.
+`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`.
 It fixes an anonymous exclusive-node SLURM CPU allocation, zero requested GPUs,
-the same GCD/Nangate45 scientific inputs, exact scheduler-client snapshot,
-PRoot/SIF/unsquashfs/worker-Python identities, nonce-bound fixed-wrapper
-terminal evidence, live result, and human approval. GPU execution, another
-design/PDK/corner, and the npm MCP distribution remain separate identities and
-require their own promotion evidence.
+the same GCD/Nangate45 scientific inputs, exact scheduler-client snapshot, the
+digest-pinned clean `singularity` 4.5.0-1.el9 container the job runs in,
+terminal evidence, live result, and human approval. A profile pins exactly one
+execution substrate: either the reviewed PRoot/SIF portable runtime with its own
+unsquashfs and worker-Python identities, or a container. Which one a site needs
+is a site property; that there is exactly one is the invariant. This scope pins
+the container, so its `execution_substrate` is `singularity-sif`, its
+`worker_python` is `container-provided`, `network: none` makes its runtime
+target `isolated`, and its `environment_requirements` are `cpu`,
+`exclusive-node`, `singularity-sif`, and `slurm`. Terminal state comes from the
+scheduler where the cluster has accounting storage and from the nonce-bound
+fixed-wrapper record where it does not; either way the job must have actually
+succeeded. GPU execution, another design/PDK/corner, and the npm MCP
+distribution remain separate identities and require their own promotion
+evidence.
 The only promotion entry points are the human-admin commands
 `scripts/promote_openroad_gcd_cpu.py` and
 `scripts/promote_openroad_gcd_slurm_cpu.py`; Agent MCP surfaces cannot call
@@ -94,7 +130,24 @@ bind the salted full SHA-256 `site_identity_digest` and disclose no physical
 selector. Promotion fails if the site file is tracked, is not ignored, has a
 predictable nonce, or if any Git candidate file contains a clear site identity.
 The same fail-closed check covers staged blob bytes, filenames, and symlink
-targets and is installed for this checkout as `.githooks/pre-commit`.
+targets and is installed for this checkout as `.githooks/pre-commit`. The SLURM
+bundle's materialized profile keeps those runtime selectors, so it lives under
+its own ignore rule at
+`openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/materialized/materialized-profile-v1.json`,
+outside `workspace/`, which must stay byte-exactly the declared input set that
+source admission digests. The committed local-CPU and Qiskit materialized
+profiles hold no selector and record bundle-relative paths, never the promoting
+host's absolute ones.
+
+Promotion re-verifies the live controller against the values the reviewed
+snapshot declares — scheduler version, GRES types, partition `MaxTime`, node
+architecture, `CPUTot`, `Sockets`, and `ThreadsPerCore` — and against the
+operator's private site configuration for the cluster and node names, which
+never enter the repository, plus a
+small set of invariants that are not site characteristics (`Arch=x86_64`,
+`Gres=(null)`, `OverSubscribe=EXCLUSIVE`), and refuses a snapshot that claims
+GPU authority. The same promotion therefore runs at another scheduler site,
+while drift between the snapshot and the live controller still fails closed.
 
 ARI does not publish the upstream interactive session tools. Their generic exec
 surface accepts commands broader than a scientific flow profile should. Each

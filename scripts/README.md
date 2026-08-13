@@ -64,7 +64,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `letta/` — Letta memory-backend deployment helpers.
   - `README.md` — letta index.
   - `docker-compose.yml` — Letta + Postgres (laptop/workstation).
-  - `patch_091_missing_greenlet.py` — TODO
+  - `patch_091_missing_greenlet.py` — applies ARI's narrow Letta 0.9.1 SQLite/SQLAlchemy compatibility fixes. Agent creation flushes a row with server-default timestamps and immediately serializes it; current SQLAlchemy expires those defaults, so serialization performs forbidden implicit async IO and raises `MissingGreenlet`. An explicit async refresh keeps the exact transaction while loading the defaults through the supported awaitable path.
   - `start_pip.sh` — container-less single-user deployment with SQLite.
   - `start_singularity.sh` — Singularity/Apptainer deployment for HPC.
   - `pg-init/` — Postgres init SQL for the Letta store.

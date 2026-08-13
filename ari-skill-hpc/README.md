@@ -24,12 +24,34 @@ parity.
 | `job_logs` | Return bounded, digest-bound stdout and stderr. |
 | `job_cancel` | Request cancellation with an inert handle or numeric SLURM ID. |
 | `probe_platform_capabilities` | Probe a validated tool list on one compute partition and atomically cache the result. |
+| `counter_support` | Report whether this node grants hardware counters, established by opening one rather than by looking for a profiler binary. |
+| `measure_counters` | Count reviewed hardware events on an existing process over a bounded window. It creates no process and writes nothing. |
 
 The five container-specific aliases were removed after the P6 deprecation and
 caller-count gate. `slurm_submit` remains a scoped bridge for the core agent's
 batch-script workflow; new programmatic integrations use `job_submit`.
 `run_bash` is not an HPC tool; short interactive execution belongs to
 `ari-skill-coding`.
+
+`ResourceRequestV1` also says how the payload is started inside the allocation.
+`launcher` is `auto` (the default), `srun`, or `none`: `auto` binds a
+single-task, single-node payload with `srun --ntasks=1` so it gets the CPUs it
+asked for instead of the whole node, and starts any larger shape directly,
+leaving the parallel launch to the payload; `srun` starts the payload itself
+with the declared `nodes` / `tasks` / `cpus_per_task`, which is what an MPI or
+SPMD binary needs; `none` never wraps. It is declared rather than inferred from
+`tasks > 1`, because the two readings of a multi-task request are
+indistinguishable here and guessing wrong is silent — a payload that launches
+its own ranks, started under `srun --ntasks=N`, runs N times too many. The
+launcher is part of the request digest, so the same script under a different
+launch mode is a different job rather than an idempotent retry.
+
+`measure_counters` declares `context_requirement: node`, so its input schema
+declares an `ari_context` object property. The transport injects the authorized
+node context under that name for any tool with a context requirement, and a
+schema that sets `additionalProperties: false` without declaring it refuses
+every authorized call. The proxy strips the property back out of `tools/list`,
+so it is never an argument a caller supplies.
 
 Checked-in JSON Schemas live under [`schemas/`](schemas/). Regenerate or verify
 them with:

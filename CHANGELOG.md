@@ -4,6 +4,133 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **Provider promotions re-cut for portability (2026-08-07).** The reviewed
+  PRoot/unsquashfs/worker-Python build links against a newer host glibc than the
+  promoting site provides, so the OpenROAD SLURM CPU profile now pins a
+  digest-pinned clean container instead: `ContainerRequestV1` with
+  `runtime: singularity`, `gpu: false`, `network: none`, `contain_all: true`,
+  `clean_environment: true` replaces `OpenRoadPortableRuntimeV1`. Isolation is
+  stronger — the closure is the SIF alone rather than the SIF plus the host
+  `proot`, `unsquashfs` and worker-interpreter bytes it had to trust. Both
+  substrates remain admitted by the execution contract; which one a site pins is
+  a site property, and that exactly one is pinned is the invariant.
+  `environment_requirements` is now derived from the profile rather than written
+  out, so the promoted SLURM lock lists `cpu`, `exclusive-node`,
+  `singularity-sif`, `slurm`, and `runtime_target` follows the declared
+  substrate (`worker_python: container-provided`,
+  `execution_substrate: singularity-sif`, `network: isolated` because the
+  container declares `network: none`). The retained SIF was re-materialized
+  locally and its digest could not be reproduced: a SIF header carries a random
+  UUID and a wall-clock creation time inside the hashed file, so no container
+  runtime reproduces `retained_sif_digest`. The pinned OCI manifest digest and
+  the inner OpenROAD binary digest matched exactly, so the payload is proven
+  identical while the envelope is not, and the retained image stays the pinned
+  artifact
+  (`sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c`,
+  1,540,308,992 bytes, `singularity` 4.5.0-1.el9). The GPU limitation is now
+  read from the reviewed scheduler snapshot instead of asserting one site's
+  situation everywhere — with no declared GRES types no GPU can be requested at
+  all, and with them the guarantee rests on the allocated node exposing no
+  accelerator — while the profile requests zero GPUs and grants no GPU
+  capability either way. Snapshot verification compares the live controller
+  against the snapshot's *declared* values plus a small set of invariants that
+  are not site characteristics, and refuses a snapshot claiming GPU authority,
+  so the same promotion can run at another scheduler site while drift between
+  snapshot and controller still fails closed. Terminal state comes from the
+  scheduler where it has accounting storage and from the nonce-bound
+  fixed-wrapper record where it does not; either way the job must actually have
+  succeeded. A typed job's `container_digest` must equal exactly what the
+  profile pins, and scheduler handle scopes are recorded relative to the
+  declared work root — a scope escaping that root is refused. The SLURM
+  bundle's materialized profile moved out of `workspace/`, which must stay
+  byte-exactly the declared input set for source admission, and the local-CPU
+  OpenROAD and Qiskit materialized profiles now record bundle-relative paths
+  instead of the promoting host's absolute ones. ToolUniverse leaf identity
+  became install-path independent in the same pass (below). Re-promoted lock
+  digests: OpenROAD local CPU
+  `sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`,
+  OpenROAD SLURM CPU
+  `sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`,
+  Qiskit local-ideal
+  `sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220`,
+  ToolUniverse PubMed
+  `sha256:33789b5a02f45bcdb925e8a2ff79a23866674561ad43b4ac51df5d1996f08f21`.
+- **Leaf identity no longer depends on where the wheel is installed.** Upstream
+  ToolUniverse reports a leaf's `source_file` as an absolute installation path,
+  and that path reached `tool_spec_digest`, so the same reviewed wheel produced
+  a different leaf identity on every machine and the promoting host's absolute
+  paths were written into promotion evidence. The adapter now normalizes
+  `source_file` relative to the reviewed package root before both the leaf
+  metadata and the digest; a path outside the reviewed package is replaced with
+  `<outside-reviewed-package>` rather than disclosed. An `ari-patched-wheel`
+  ToolUniverse source may now omit `verified_lock_path`: such a source is
+  collection-wide, carries no leaf promotion, and therefore must not assert
+  `evidence.replay_fixture_digest` or `evidence.scientific_validation_digest`,
+  which require leaf evidence bound to a verified lock. Without a lock the
+  source stays `callable` but cannot reach `reproducible` or
+  `scientifically_admitted`. The retained exact wheel is still required in
+  every case.
+- **ToolUniverse `1.3.1+ari.2` raises the compact-MCP response ceiling.** A new
+  provider version carries the `1.3.1+ari.1` `fitz>=0.0.1.dev2` →
+  `PyMuPDF==1.26.4` metadata fix unchanged and additionally raises
+  `smcp.SMCP` response `max_chars` from 100,000 to 2,000,000 at both
+  serialization sites; unlike `ari.1` it does change source code
+  (`source_code_changes: true`). Upstream caps every compact MCP response at
+  100,000 characters and, when structural trimming cannot fit, falls back to
+  raw string truncation that emits invalid JSON, which makes whole-collection
+  enumeration impossible — `get_tool_info(detail_level=full)` exceeds the
+  ceiling for the largest leaves even at batch size one. Measured over all
+  2,601 loaded leaves the largest single response is 510,904 characters and
+  only two exceed 100,000, so 2,000,000 admits the worst observed batch with
+  roughly threefold headroom while staying well under the 7,103,230-character
+  full-collection dump. Two builds were byte-identical
+  (`sha256:5c2e9a254e353e5941d59f8e279dd7c55777eb46c84457f1eefcaef7aa4a60c9`).
+- **A correctness family declares itself once.** The set of verifiable native
+  HPC kernels used to be written out in five places — a `Literal`, the facade's
+  dispatch dict, the parity probe's reference table, the ABI dispatch dict, and
+  two `argparse` choices tuples — so a family added to four of them was
+  dispatchable, scored and attested while the probe never touched it, and the
+  probe still reported `passed`. New `ari-core/ari/assurance/native_hpc_family.py`
+  is a registry: each family declares itself once where it is defined and supplies
+  `verify` (hidden cases plus oracle), `reference` (the independent
+  implementation, which is also the parity probe's clean control), and
+  `call_shared_library` (the ctypes ABI its candidates are called through).
+  `NativeKind` relaxes from `Literal["gemm","spmm","stencil"]` to `str` — the
+  name still appears in a report because a verdict has to say what it verified;
+  ABI adapters self-register through an `@_abi_adapter` decorator and
+  `abi_adapter_kinds()` is the accepted set for `native_candidate_host --kind`,
+  while `native_worker --kind` validates against `registered_native_families()`;
+  and the parity probe iterates the registry instead of a table.
+  `native_hpc_family.py` joins the native driver digest, because the registry
+  decides which oracle judges a run, and the digest now raises when one of its
+  files is absent instead of letting it drop out silently. This does not make
+  correctness families free the way pinned problems are — adding one is still
+  an ARI change, reviewed like any other, because an oracle a caller could
+  supply is an oracle a caller could weaken; what changed is that the set is
+  declared in one place per family instead of five places per set. **The cost,
+  stated because it is real:** the native driver digest changed, so all three
+  correctness harnesses — `hpc_gemm`, `hpc_spmm`, `hpc_stencil` — now refuse to
+  run with `native Harness driver bytes drifted`. Their manifests were not
+  re-pinned, because a signature covers what was signed and re-pinning would
+  make three human-maintainer attestations describe code nobody approved. They
+  need re-attestation; the refusal and the absence of a re-pin are both asserted
+  by a test so neither can be undone by accident.
+- **The federated tool registry Skill is on by default; the catalog is not.**
+  `ari-skill-tool-registry/skill.yaml` flips `enabled_by_default` to `true`, so
+  the broker is no longer skipped by manifest auto-discovery when a
+  configuration omits its `skills:` section. Enabling the Skill still enables no
+  leaf: only sources present in the selected catalog can execute, and the
+  checked-in `CATALOG.lock` is empty by design because it is
+  the portable default while a populated catalog is machine-specific evidence.
+  A catalog is selected at runtime with `ARI_TOOL_REGISTRY_LOCK` and
+  `ARI_TOOL_REGISTRY_INDEX` (now in
+  `docs/reference/environment_variables.md`). New top-level `provider-artifacts/`
+  holds materialized Capability Provider runtimes and the environment-specific
+  catalogs built from them; it is gitignored except its README, mirroring
+  `containers/`, and nothing in it is portable. Reviewed evidence stays tracked
+  under `ari-skill-tool-registry/providers/<name>/<version>/`; the one exception
+  is the retained ORFS SIF, which the OpenROAD wrapper execs from
+  `${runtime_dir}` and so lives inside the bundle.
 - **Manuscript Complete exploration-to-publication boundary.** Added an
   independent, default-off `off|audit|enforce` compiler that inventories BFTS
   or RQGM evidence, preserves negative results, records every omission, builds
@@ -1875,7 +2002,7 @@ Highlights:
 - **Operational v0.8.0 dogfood pass (SC41406 cuSZ-i, lossy-compression
   kernel).** The deferred full-rollout PaperBench pass on a real
   Supercomputing-2024 target was run (Stage 1→2→3 against `gpt-5-mini` on
-  an R-CCS L40S node) and surfaced + validated four bridge corrections.
+  a single L40S GPU node) and surfaced + validated four bridge corrections.
   Mean replication score rose **1.2% → 11.1%** on the same target after
   the fixes.
     - **Reproduce / judge now run from the agent's real repository

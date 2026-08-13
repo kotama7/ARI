@@ -558,6 +558,29 @@ def test_sandbox_proxy_duck_type_and_denial_envelope():
     assert proxy.call_tool("submit_meta_output", {"x": 1}) == {"result": "ok"}
 
 
+def test_sandbox_proxy_forwards_current_signed_context_api():
+    class CanonicalInner:
+        _COW_TOOLS = frozenset()
+
+        def __init__(self):
+            self.context = None
+
+        def list_tools(self, phase=None):
+            return [{"name": "read_evidence", "inputSchema": {}}]
+
+        def call_tool(self, name, args, *, context=None):
+            self.context = context
+            return {"result": "inner"}
+
+    inner = CanonicalInner()
+    proxy = MetaSandboxMCPProxy(inner, allowed_tools=("read_evidence",))
+    context = object()
+    assert proxy.call_tool("read_evidence", {}, context=context) == {
+        "result": "inner"
+    }
+    assert inner.context is context
+
+
 def test_sandbox_path_validation_rejects_escapes(tmp_path):
     from ari.agent.react_driver import _validate_paths_in_args
 

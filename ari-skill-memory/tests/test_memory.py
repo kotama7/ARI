@@ -1,6 +1,25 @@
 """Tests for the node-scope MCP tool surface."""
 from __future__ import annotations
 
+import json
+
+
+def test_letta_core_context_stays_below_server_limit():
+    from ari_skill_memory.backends.letta_client import _bounded_core_context
+
+    rendered = _bounded_core_context(
+        {
+            "experiment_goal": "goal " * 900,
+            "hardware_spec": "hardware " * 600,
+            "selected_idea": "idea " * 300,
+            "primary_metric": "speedup_ratio",
+        }
+    )
+    assert len(rendered) <= 4_900
+    parsed = json.loads(rendered)
+    assert parsed["primary_metric"] == "speedup_ratio"
+    assert "truncated" in rendered
+
 def test_add_memory_returns_ok(backend):
     r = backend.add_memory("nX", "tool slurm_submit result=ok", {})
     assert r["ok"] is True

@@ -28,13 +28,14 @@ sources:
     role: test
   - path: docs/concepts/gui_architecture.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # GUI-ADR-01: router and server-state library
 
-Cited in source and tests as `ADR-01`. Accepted 2026-07-23 for the GUI refresh
-program; not superseded, and it supersedes nothing.
+Cited in source as `ADR-01` (one citation today: the typed `/api/v1` client
+`src/services/api/v1.ts`; no test names it). Accepted 2026-07-23 for the GUI
+refresh program; not superseded, and it supersedes nothing.
 
 Decision: keep the hand-rolled hash router and adopt `@tanstack/react-query`
 v5 for server state. `ari-core/ari/viz/frontend/src/app/routeRegistry.ts` is

@@ -1,7 +1,7 @@
 # ari-skill-tool-registry
 
 Provider-neutral federation for large scientific MCP collections. The Skill is
-default-off and exposes exactly five operations to the agent:
+enabled by default and exposes exactly five operations to the agent:
 
 | Operation | Purpose |
 |---|---|
@@ -32,20 +32,30 @@ requires one reviewed source declaration, not 1,000 hand-written records.
 5. Regenerate/check public contracts with
    `python scripts/sync_contracts.py --write` or, in CI, without `--write`.
 
-Runtime reads `CATALOG.lock` and `catalog.index.json` once. It never refreshes a
+Runtime reads `CATALOG.lock` and `catalog.index.json` once, or the pair selected
+by `ARI_TOOL_REGISTRY_LOCK` and `ARI_TOOL_REGISTRY_INDEX`. It never refreshes a
 source or auto-admits a new leaf during a run.
+
+The checked-in `CATALOG.lock` is empty by design: it is the portable default,
+and a populated catalog is machine-specific evidence. Materialized Capability
+Provider runtimes and the catalogs built from them therefore live in the
+top-level `provider-artifacts/` directory, which is ignored by Git except for
+its README; reviewed evidence stays tracked under `providers/<name>/<version>/`.
+Enabling the Skill enables no leaf: the Skill flag and the selected catalog
+remain two independent gates.
 
 ## ToolUniverse collection
 
 ToolUniverse is one optional collection source, not a dependency of the generic
 registry and not a public tool namespace. The support matrix retains upstream
-ToolUniverse `1.3.1` as a candidate and admits the separately identified
-`1.3.1+ari.1` patched wheel for one verified PubMed capability. Both records pin
-the upstream commit, license, compact contract, and canonical installed package
-tree. The patched record additionally pins the metadata-only patch, reproducible
-wheel recipe, complete runtime lock, Provider manifest, and exact wheel digest.
-Sync and runtime verify that closure before starting the exact
-`tooluniverse.smcp_server:run_stdio_server` entry point.
+ToolUniverse `1.3.1` as a candidate and admits two separately identified patched
+wheels: `1.3.1+ari.1`, which carries the one verified PubMed capability, and
+`1.3.1+ari.2`, which raises the compact response ceiling so a whole collection
+can be enumerated. Every record pins the upstream commit, license, compact
+contract, and canonical installed package tree. A patched record additionally
+pins its patch, reproducible wheel recipe, complete runtime lock, Provider
+manifest, and exact wheel digest. Sync and runtime verify that closure before
+starting the exact `tooluniverse.smcp_server:run_stdio_server` entry point.
 
 The adapter uses only `list_tools`, `get_tool_info`, and `execute_tool` from the
 four-tool compact surface. It applies its own category filter because an
@@ -78,12 +88,29 @@ evidence is capped below per-leaf replay/scientific validation, provider caches
 and update checks are disabled, and ARI cassette/EAR remains the replay
 authority. ToolUniverse is not installed through a registry package extra: the
 upstream `fitz` dependency resolves
-to an unrelated legacy distribution and breaks supported Python runtimes. The
-ARI artifact changes only package metadata (`fitz` to `PyMuPDF==1.26.4`) and its
-local version; two controlled builds produced the same wheel bytes. Production
+to an unrelated legacy distribution and breaks supported Python runtimes.
+`1.3.1+ari.1` changes only package metadata (`fitz` to `PyMuPDF==1.26.4`) and its
+local version; two controlled builds produced the same wheel bytes for each
+patched artifact. Production
 must install that retained wheel from `runtime.uv.lock`, never resolve mutable
 transitive versions. Verification checks wheel, raw lock, package tree,
 `pip check`, runtime target, compact MCP startup, and the evidence-bound lock.
+
+`1.3.1+ari.2` carries that metadata fix unchanged and, unlike `1.3.1+ari.1`,
+does change source code: it raises the `smcp.SMCP` response ceiling from
+`100_000` to `2_000_000` characters at both serialization sites. Upstream caps
+every compact MCP response at 100,000 characters and, when structural trimming
+cannot fit, falls back to raw string truncation that emits invalid JSON, which
+makes whole-collection enumeration impossible —
+`get_tool_info(detail_level=full)` exceeds the ceiling for the largest leaves
+even at batch size one. Measured over all 2,601 loaded leaves the largest single
+response is 510,904 characters and only two exceed 100,000, so 2,000,000 admits
+the worst observed batch with roughly threefold headroom while staying well
+under the 7,103,230-character full-collection dump. An ARI-patched source may
+omit `verified_lock_path`; it is then collection-wide, carries no leaf
+promotion, and is rejected if it asserts replay or scientific validation
+evidence, so it stays `callable` and reaches neither `reproducible` nor
+`scientifically_admitted`. The retained exact wheel is required either way.
 
 A profile may additionally project an exact reviewed leaf name to one canonical
 versioned `capability_ref`, equivalence key, and result normalizer. This is an
@@ -139,7 +166,10 @@ read-only session state and collects artifacts only after normal process exit;
 it does not use PTY input echo as a completion signal.
 `slurm` compiles the same closed commands into a digest-pinned Tcl program,
 copies a standard-library-only reviewed worker, and submits both through C06's
-typed `JobRequestV1` in a digest-pinned clean Apptainer/Singularity container.
+typed `JobRequestV1` on exactly one pinned execution substrate: a digest-pinned
+clean container, or the reviewed PRoot/SIF portable runtime where the node has
+no container runtime. Which one a profile pins is a site property; that it pins
+exactly one is the invariant.
 No caller-supplied command, scheduler flag, module, path, or environment crosses
 the virtual leaf boundary. Both backends capture only declared regular outputs, reject
 missing, unexpected, oversized, symlinked, or digest-mismatched files, and
@@ -172,23 +202,32 @@ python scripts/verify_openroad.py \
 The checked-in promotion bundle
 `providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/` formally verifies exactly
 one credential-free local-MCP CPU profile. Lock
-`sha256:ecd7cc79542acfcfa177186d3bbe154678f1a378454834b6276efb1383eeab28`
+`sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`
 binds OpenROAD-MCP 0.6.1, the retained ORFS image and inner OpenROAD binary,
 GCD placed database, Nangate45 PDK/library/license, typed command sequence,
 golden/replay fixtures, live MCP schemas, DRC-zero result, output contracts,
 all fifteen Provider gates, and explicit human promotion approval. The 1.54 GB
 SIF is a digest-pinned external retained artifact ignored by Git and must be
-materialized at the bundle's `runtime/openroad-orfs-26q3.sif` path.
+materialized at the bundle's `runtime/openroad-orfs-26q3.sif` path. It is
+retained rather than rebuilt because a SIF header carries a random UUID and a
+creation time inside the hashed file, so no runtime reproduces
+`retained_sif_digest`; the pinned OCI manifest digest and the inner OpenROAD
+binary digest are what prove the payload identical.
 The independent
 `providers/openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/` bundle formally
 verifies the same closed scientific profile on an anonymous exclusive-node
 SLURM CPU allocation. Its lock
-`sha256:d640dd226c101f9027e11f11c2201afd694b4914c11d7d45b458d142bc2971fd`
-binds the salted site identity, controller-client snapshot, PRoot 5.3.1,
-unsquashfs 4.6.1, retained SIF, worker Python, fixed-wrapper terminal evidence,
-live route result, and human approval. It requests zero GPUs and grants no GPU
-capability. GPU execution, other designs/PDKs/corners, and another image remain
-separate candidate identities.
+`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`
+binds the salted site identity, controller-client snapshot, the digest-pinned
+clean Singularity container over the retained SIF, scheduler-derived terminal
+evidence, live route result, and human approval. Its runtime target follows that
+declared substrate — `singularity-sif`, network `isolated`, container-provided
+worker Python — and its environment requirements are derived from the profile
+rather than written out: `cpu`, `exclusive-node`, `singularity-sif`, `slurm`.
+Promotion compares the live controller against the values the reviewed scheduler
+snapshot declares, and refuses a snapshot that claims GPU authority; the profile
+requests zero GPUs and grants no GPU capability. GPU execution, other
+designs/PDKs/corners, and another image remain separate candidate identities.
 Promotion does not add this leaf to the checked-in empty `CATALOG.lock`.
 `scripts/promote_openroad_gcd_cpu.py` and
 `scripts/promote_openroad_gcd_slurm_cpu.py` are the human-admin promotion

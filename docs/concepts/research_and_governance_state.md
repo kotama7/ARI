@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Overview/__tests__/OverviewPage.test.tsx
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # Research and Governance State
@@ -77,14 +77,20 @@ dashboard *records* a lifecycle or a phase.
 **Run lifecycle** is derived per checkpoint directory: a live process for the
 run means `running`; otherwise the node tree decides — a tree that still says
 `running` with no live process is an orphaned `stopped`, an otherwise
-populated tree is `completed`, and a present `review_report.json` also settles
-it as `completed`. With nothing to go on, the honest answer is `unknown`.
+populated tree is `completed`, and a present `review_report.json` also reads
+as `completed`. With nothing to go on, the honest answer is `unknown`. One
+tier outranks all of those: a terminal verdict derived from the durable
+build-lock and run-integrity artifacts is applied last, because a review can
+exist even when publication was subsequently blocked, and a strict claim gate
+can stop the pipeline before the build lock is minted at all.
 
 | Value | Means |
 |---|---|
 | `running` | A live process for this run was found |
 | `stopped` | The tree says a node was running, but no process is alive (orphaned) |
 | `completed` | The tree is populated with no running node, or a review report exists |
+| `blocked` | The paper build lock reports the publication blocked — a terminal verdict, overriding the tiers above |
+| `failed` | The build failed to compile or is unreadable, or the terminal run-integrity verdict failed |
 | `unknown` | Not enough evidence — deliberately not defaulted to "completed" |
 
 **Research phase** is a separate derivation from artifact presence: a review
@@ -268,6 +274,7 @@ The practical consequences of the logical/physical split:
 | Run lifecycle | Is a process alive / did it finish | Research quality |
 | Research phase | Position in the pipeline (bfts / paper / review) | Governance progress |
 | Governance stage | Current epoch + policy in force | Research success or failure |
+| Execution mode / Paper mode | The qualified axis — `ari.mode` is the execution mode, `paper.mode` is the paper mode | The bare word "Mode": the two are independent axes, and an unqualified label cannot say which one is meant |
 | Governance blocked | The governance artifacts are degraded or fail integrity | A failed experiment or a stopped run |
 | Registry status | A governed component's lifecycle (candidate … banned) | A node's score |
 | Node score state | One node's score (computed … removed) | A component's lifecycle |
@@ -275,6 +282,28 @@ The practical consequences of the logical/physical split:
 | Validated penalty | The adjudicated, score-affecting outcome | An attacker's claimed severity |
 | Stale / invalidated / removed | Logical states, fully auditable | "Deleted" |
 | Deleted | Physical removal of a checkpoint from disk | Any governance state |
+| Project defaults / Run template / Run draft / Effective config / Secret | The one configuration surface being read or written | "Settings" as a catch-all name for configuration |
+
+Two of these rows are naming rules rather than state vocabularies — the mode
+row and the configuration-surface row — and each holds only in part.
+
+The mode rule holds for the two run-level axes. The Configuration Studio's
+Execution section labels its two controls *Execution mode* and *Paper mode*,
+and the Governance workspace repeats those same two labels beside *Mode
+source*. A bare **Mode** label nonetheless survives in two legacy places —
+the wizard's resources step and the Container card of the legacy `#/settings`
+screen — where it names the container runtime (`container_mode`), a third
+axis the rule exists to keep separate. Qualifying those two labels is a
+**known gap**.
+
+The configuration rule holds for the Studio and the run-config browser, which
+name each document by its scope: project defaults, run template and run draft
+are three separate documents, the effective config is a read-only resolution
+of them, and a secret is only ever a reference with a readiness flag (see the
+[Configuration Studio Guide](../guides/configuration_studio.md), "Three
+scopes" and "Secrets in the browser"). "Settings" survives as the name of the
+legacy `#/settings` screen — there it is a screen name, not a scope, and it
+must not be read as covering any of the Studio's documents.
 
 ---
 

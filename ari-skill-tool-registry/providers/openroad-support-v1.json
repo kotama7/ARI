@@ -7,10 +7,10 @@
       "inner_openroad_path": "/OpenROAD-flow-scripts/tools/install/OpenROAD/bin/openroad",
       "oci_manifest_digest": "sha256:46b03d30451b56dc20734d0f5ac51a8496e7139cda82a576d1915369bd0c68a7",
       "oci_reference": "docker.io/openroad/orfs:26Q2-565-gadeb389e7",
-      "retained_sif_digest": "sha256:d8f4db657ce86e647a0ecd0d1c7197a7e9abdae8c5b365a3b2d0b243aeb85f39",
-      "retained_sif_size_bytes": 1540313088,
-      "runtime": "apptainer",
-      "runtime_version": "1.5.0-rc.1"
+      "retained_sif_digest": "sha256:b8af5db8db5feb98720faf0959f6d3d478aac89f41cc9ad9d385467800c6580c",
+      "retained_sif_size_bytes": 1540308992,
+      "runtime": "singularity",
+      "runtime_version": "4.5.0-1.el9"
     }
   ],
   "schema_version": "ari.openroad-support/v1",

@@ -20,7 +20,7 @@ sources:
     role: test
   - path: docs/reference/configuration.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # GUI-ADR-04: config schema metadata storage and versioning
@@ -51,10 +51,13 @@ ADR-12, `gui_store/`.
 
 Alternatives: an external YAML/JSON metadata file, rejected because it becomes a
 fourth configuration file and reproduces the parity risk the repo already
-carries with `ari-core/ari/configs/defaults.yaml`, which no loader reads: its
-RQGM and proposal-router values mirror the typed pydantic defaults, and parity
-between the two homes is held only by the `ari-core/tests/test_rqgm_*.py`
-suites. In code, the metadata is type-checked, reviewed as code, and lives in
+carries with `ari-core/ari/configs/defaults.yaml`, whose RQGM and
+proposal-router values no loader reads: they mirror the typed pydantic
+defaults, and parity between the two homes is held only by the
+`ari-core/tests/test_rqgm_*.py` suites. (That file is not wholly dead — its
+`models.lineage_decision_default` key is read by `_config_default` in
+`ari-core/ari/orchestrator/lineage_decision.py`; the parity-mirror blocks
+are.) In code, the metadata is type-checked, reviewed as code, and lives in
 the same commit as the pydantic model, so a model change and its metadata
 change appear in one diff. A single version number covering both the payload
 shape and the resolution rules was rejected: the initial resolver deliberately

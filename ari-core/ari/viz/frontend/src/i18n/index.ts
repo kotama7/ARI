@@ -2,7 +2,12 @@ import { useState, useCallback } from 'react';
 
 type Dict = Record<string, string>;
 
-// ── per-locale lazy loading (gui_refresh task 09 §Performance architecture) ──
+// ── per-locale lazy loading ─────────────────────────────────────────────────
+//
+// Performance rule: bytes a visitor will not use must not ride in the main
+// chunk. Anything selectable at runtime (a route's screen, a locale) is a
+// separate chunk fetched on demand, so the initial download scales with what
+// is actually shown rather than with everything the app can show.
 //
 // The three dictionaries (~118 KB of source, ~20 KB gzip) used to be imported
 // statically here, which pulled ALL of them into the main chunk for every

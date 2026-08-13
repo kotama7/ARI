@@ -514,3 +514,42 @@ def test_run_summary_best_metric_excludes_erased_nodes(tmp_path):
     ]}))
     from ari.viz.v1.queries import _run_summary_from_dir
     assert _run_summary_from_dir(tmp_path).best_metric == 0.7
+
+
+def test_blocked_paper_build_overrides_review_completion(ckpt_base):
+    run_dir = ckpt_base / RUN_ID
+    (run_dir / "review_report.json").write_text(
+        json.dumps({"overall_score": 9.0}), encoding="utf-8"
+    )
+    (run_dir / "paper_build.json").write_text(
+        json.dumps({
+            "status": "blocked",
+            "blocking_reasons": ["final revision changed mathematical content"],
+        }),
+        encoding="utf-8",
+    )
+
+    assert dispatch("GET", f"/api/v1/runs/{RUN_ID}/summary")["status"] == "blocked"
+    from ari.viz.checkpoint_api import _api_checkpoints
+
+    assert _api_checkpoints()[0]["status"] == "blocked"
+
+
+def test_failed_final_gate_before_build_lock_is_not_completed(ckpt_base):
+    run_dir = ckpt_base / RUN_ID
+    (run_dir / "review_report.json").write_text(
+        json.dumps({"overall_score": 9.0}), encoding="utf-8"
+    )
+    (run_dir / "run_integrity.json").write_text(
+        json.dumps({
+            "claim_gate": {"status": "failed", "should_block": True},
+            "ors": {"status": "incomplete"},
+            "concerns": ["enabled ORS stages did not complete"],
+        }),
+        encoding="utf-8",
+    )
+
+    assert dispatch("GET", f"/api/v1/runs/{RUN_ID}/summary")["status"] == "failed"
+    from ari.viz.checkpoint_api import _api_checkpoints
+
+    assert _api_checkpoints()[0]["status"] == "failed"

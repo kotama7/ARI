@@ -32,6 +32,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/ui_helpers.py
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_workflow_editor.py
@@ -42,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # REST API 参考
@@ -736,6 +738,44 @@ terminate 检查刻意是尽力而为的：`parent_run_id` 无法解析，或父
 被规范化掉，标量会以其规范形式重写（`yes` → `true`、`"x"` → `x`），YAML 锚点会
 以生成的名称（`&id001`）重新输出。捆绑的 `config/workflow.yaml` 因为无人写入，
 其注释得以保留。
+
+**workflow 写入不会检查什么。** 越过写入守卫（MN-1）与可选的修订守卫（MN-3）之后，
+这四个写入几乎什么都不检查。`POST /api/workflow` 只要求请求体里有非空的
+`pipeline`；`POST /api/workflow/flow` 只要求非空的 `flow`；`POST /api/workflow/skills`
+只要求至少一个条目同时带 `name` 与 `phase`；`POST /api/workflow/disabled-tools`
+只要求 `disabled_tools` 是一个列表。写入前没有任何代码去看阶段图。
+
+**已知缺口 —— workflow 编辑器没有校验层。** GUI 刷新计划为 workflow 保存指定了
+五项检查：未知的 `phase`、`depends_on` 成环、`depends_on` 指向不存在的阶段、被
+`enabled: false` 关掉的必需上游，以及引用了无法解析的配置键的阶段。**这五项一项
+都没有实现** —— 在连线的两侧都是已知缺口。`ari-core/ari/viz/api_workflow.py` 与
+`ari-core/ari/viz/api_settings.py` 里都没有校验器，而编辑器的保存状态标记
+（`ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx`）只有
+`idle`、`dirty`、`saving`、`saved` 和 `conflict` —— 根本没有可供渲染的 `invalid`
+状态。在 POST 之前，有三个后果值得知道：
+
+- **代码不认识的 `phase` 会悄悄变成 post-BFTS 阶段。** `workflow_yaml_to_flow` 与
+  `flow_to_workflow_yaml` 按与字符串 `"bfts"` 的精确相等来划分阶段；其他任何取值
+  —— 包括拼写错误、大小写不同以及空字符串 —— 都会进入 `pipeline:` 列表。因此把一个
+  `phase` 拼错的阶段从 DAG 视图保存下去，会把它从 `bfts_pipeline:` 挪进
+  `pipeline:`，而写入照样报告成功。这两个列表由运行时的不同部分读取 —— 见配置参考的
+  「workflow.yaml（权威开发者配置）」一节（[configuration.md](configuration.md)）。
+- **`depends_on` 成环在写入时会被接受，并可能弄坏下一次读取。**
+  `flow_to_workflow_yaml` 直接从提交的边构建 `depends_on` —— 只有 `data.condition`
+  为 `loop` 的边会被分流到 `loop_back_to` —— 所以环会被原样持久化。下一次
+  `GET /api/workflow/flow` 用 `_compute_levels` 重新推导泳道布局，而它是一个不保存
+  已访问集合的递归深度遍历；当环的两端位于同一条泳道时，产生的 `RecursionError`
+  会被处理函数那个笼统的 `except Exception` 捕获，并作为
+  `{"ok": false, "error": …}` 返回。于是编辑器打不开自己刚写下的文件，而错误文本
+  说的是递归上限而不是环。两端分属不同泳道的环则能挺过这次读取，因为
+  `_compute_levels` 会丢弃指向所遍历列表之外阶段的依赖。
+- **指向不存在阶段的 `depends_on` 同样不会被拒绝。** 此时
+  `GET /api/workflow/flow` 会返回一条边，其 `source` 是同一响应中没有任何节点携带的
+  节点 ID。
+
+至于*运行时*拿到一个无法满足的图会做什么 —— 阶段不做拓扑排序、按文件顺序执行，
+依赖被跳过的阶段也会被跳过，而被显式设为 `enabled: false` 的依赖反而算作已解决
+—— 见[扩展指南](../guides/extension_guide.md)的「3. 添加 Post-BFTS 流水线阶段」。
 
 **没有活动检查点时的 `POST /api/settings`（冻结的 legacy 行为）。** 设置是按项目
 作用域的。当 `_st._settings_path` 为 `None` 时无处可持久化，于是

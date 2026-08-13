@@ -22,6 +22,7 @@ analysis, generator config) is archived by the router via
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 
 from ari.rqgm.proposals.generators import ProposalDraft
@@ -44,6 +45,63 @@ GENERATE_IDEAS_KEYS: tuple[str, ...] = (
     "discussion_rounds",
     "virsci_integration_status",
 )
+
+
+def literature_query(
+    topic: str,
+    limit: int = 240,
+    *,
+    task_tags: tuple[str, ...] | list[str] = (),
+) -> str:
+    """Reduce an experiment Markdown document to one bounded S2 query.
+
+    Passing the complete goal file (contracts, interfaces, and execution
+    constraints included) produced valid HTTP responses with zero matches.
+    Prefer the prose immediately below ``Research Goal`` and strip Markdown
+    syntax while retaining domain tokens such as ``FP64`` and ``i-k-j``.
+    """
+
+    tag_words = re.sub(r"[^A-Za-z0-9_+-]+", " ", " ".join(task_tags)).strip()
+    if tag_words:
+        return tag_words[: max(1, int(limit))].rstrip()
+
+    source = str(topic or "")
+    text = source
+    match = re.search(
+        r"(?ims)^\s*#{1,6}\s*Research Goal\s*$\s*(.*?)(?=^\s*#{1,6}\s|\Z)",
+        text,
+    )
+    if match:
+        text = match.group(1)
+    text = re.sub(r"[`*_#]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    words = re.findall(r"[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9]+)*", text)
+    stop = {
+        "a", "an", "and", "are", "as", "at", "be", "by", "determine",
+        "for", "from", "in", "is", "it", "of", "on", "or", "over",
+        "preserving", "that", "the", "this", "to", "under", "whether",
+        "while", "with",
+    }
+    counts: dict[str, int] = {}
+    for word in re.findall(r"[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9]+)*", source):
+        key = word.lower()
+        counts[key] = counts.get(key, 0) + 1
+    candidates: dict[str, tuple[str, int]] = {}
+    for index, word in enumerate(words):
+        key = word.lower()
+        if key in stop or len(key) < 3:
+            continue
+        candidates.setdefault(key, (word, index))
+    ranked = sorted(
+        candidates.items(),
+        key=lambda item: (
+            -counts.get(item[0], 0),
+            -int(item[1][0].isupper()),
+            item[1][1],
+        ),
+    )[:10]
+    query = " ".join(item[1][0] for item in ranked) or text
+    return query[: max(1, int(limit))].rstrip()
 
 
 def _first_sentence(text: str, limit: int) -> str:
@@ -101,6 +159,19 @@ def normalize_generate_ideas_result(payload: dict) -> list[ProposalDraft]:
         )
         if k in payload
     }
+    for key in (
+        "typed_schema_version",
+        "contract_status",
+        "survey_snapshot_digest",
+        "survey_snapshot_ref",
+        "idea_set",
+        "idea_set_digest",
+        "research_contract",
+        "research_contract_digest",
+        "rejected_candidates",
+    ):
+        if key in payload:
+            projection_meta[key] = payload[key]
     drafts: list[ProposalDraft] = []
     for idea in ideas:
         if not isinstance(idea, dict) or not idea.get("title"):
@@ -196,30 +267,44 @@ class VirSciAdapter:
         """
         topic = str(ctx.get("goal", "") or "")
         papers: list = []
+        survey_snapshot: dict | None = None
         try:
             survey_res = self.mcp.call_tool(
                 "survey",
-                {"topic": topic, "max_papers": self.survey_max_papers},
+                {
+                    "topic": literature_query(
+                        topic,
+                        task_tags=list(ctx.get("task_tags") or ()),
+                    ),
+                    "max_papers": self.survey_max_papers,
+                },
             )
             survey_payload = _mcp_payload(survey_res)
             got = survey_payload.get("papers")
             if isinstance(got, list):
                 papers = got
+            typed = survey_payload.get("survey_snapshot")
+            if isinstance(typed, dict):
+                survey_snapshot = typed
         except Exception:
             log.warning("VirSciAdapter survey failed; continuing without "
                         "papers", exc_info=True)
         try:
-            res = self.mcp.call_tool(
-                "generate_ideas",
-                {
-                    "topic": topic,
-                    "papers": papers,
-                    "experiment_context": str(
-                        ctx.get("experiment_context", "") or ""
-                    ),
-                    "n_ideas": self.n_ideas,
-                },
-            )
+            arguments = {
+                "topic": topic,
+                "experiment_context": str(
+                    ctx.get("experiment_context", "") or ""
+                ),
+                "n_ideas": self.n_ideas,
+            }
+            if survey_snapshot is not None:
+                # Preserve the exact retrieval query/provider/digest. Passing
+                # only the legacy papers projection relabelled the records with
+                # the full experiment Markdown inside generate_ideas.
+                arguments["survey_snapshot"] = survey_snapshot
+            else:
+                arguments["papers"] = papers
+            res = self.mcp.call_tool("generate_ideas", arguments)
         except Exception:
             log.warning("VirSciAdapter generate_ideas failed", exc_info=True)
             return []

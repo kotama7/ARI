@@ -2044,6 +2044,16 @@
           "default": null,
           "title": "Hint"
         },
+        "launcher": {
+          "default": "auto",
+          "enum": [
+            "auto",
+            "srun",
+            "none"
+          ],
+          "title": "Launcher",
+          "type": "string"
+        },
         "memory_mb_per_cpu": {
           "anyOf": [
             {

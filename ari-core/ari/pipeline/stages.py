@@ -225,8 +225,17 @@ class BasePipelineStage:
     # Tools that accept a ``paper_text`` / ``actual_metrics`` fallback arg.
     # Shared across dispatch modes to preserve the historical behaviour where
     # the fallback injection ran before the react/subprocess fork.
-    _paper_tools = {"evaluate", "review_section", "reproducibility_report"}
-    _metrics_tools = {"evaluate", "compare_with_results", "reproducibility_report"}
+    #
+    # BOTH SETS ARE EMPTY, and that is the honest state rather than a removal.
+    # They named ``evaluate``, ``review_section``, ``reproducibility_report`` and
+    # ``compare_with_results`` -- four tools no skill registers and no shipped
+    # workflow stage dispatches, so the injection below could not fire for any
+    # call ARI can actually make. Every current tool that takes ``paper_text``
+    # also takes ``paper_path`` and loads the text itself, and no current tool
+    # takes ``actual_metrics`` at all; the seam is kept because a caller may
+    # register a tool that wants either, and naming it here is how it opts in.
+    _paper_tools: set[str] = set()
+    _metrics_tools: set[str] = set()
 
     def __init__(self, cfg: dict, wf_cfg: dict):
         self.cfg = cfg
@@ -442,7 +451,8 @@ class SubprocessMCPStage(BasePipelineStage):
             except Exception as _retry_exc:
                 _msg = str(_retry_exc).lower()
                 if any(x in _msg for x in ("connection error", "connection reset", "timeout",
-                                            "internalservererror", "mcp tool returned connection")):
+                                            "internalservererror", "mcp tool returned connection",
+                                            "http error 429", "too many requests", "rate limit")):
                     _last_exc = _retry_exc
                     if _attempt < _max_retries - 1:
                         _wait = 30 * (_attempt + 1)  # 30, 60, 90, 120s backoff

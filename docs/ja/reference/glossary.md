@@ -22,7 +22,17 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/queries.py
+    role: implementation
+  - path: ari-core/ari/viz/api_orchestrator.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/config/profiles
+    role: config
+last_verified: 2026-08-13
 ---
 
 # 用語集
@@ -235,6 +245,19 @@ Model Context Protocol サーバーとしてパッケージ化された機能（
 フィンガープリントされるため、後のレジストリ変更が閉じたエポックに漏れる
 ことは決してありません。
 
+**utility policy hash（ユーティリティポリシーハッシュ）**
+エポックの utility policy 本体 —
+`{composite, axis_weights, frontier_score, depth_penalty_lambda, ucb_c}` —
+に対する `hash12(canonical_json(body))`（`ari/rqgm/state.py` の
+`utility_policy_body` / `seal_utility_policy`）。封印は自身が封印する
+バイト列には決して含まれず、同じ値が登録済み `utility_policy` エントリの
+`prompt_hash` でもあります。もう 1 つの互いに素なポリシー —
+`ari/rqgm/adversarial/engine.py` が計算する penalty ポリシー
+`{penalty_cap, severity_weights, verdict_factors}` — は、governed utility
+以前に書かれたレコードでは同じキー名で運ばれます; 両者のキー集合は決して
+重ならないため、2 つのハッシュが等しくなることはありません。異なるハッシュ
+の下で形成されたスコアは 1 つの系列ではありません。
+
 **ConstitutionalKernel**
 進化しない Layer-0 チェッカ（`ari/rqgm/kernel.py`）: バイト安定な
 `KernelReport` 判定を返し、何も書かない、純粋で決定論的なバリデータです。
@@ -254,11 +277,39 @@ ConstitutionalKernel によって自己監査されます。予算と姿勢は
 `EpochTransition`（有効化 / 退役）へ変えます; 他のいかなるコンポーネントも
 プロンプトやコンポーネントのステータスを変更できません。
 
+**registry status（レジストリステータス）**
+プロンプトとコンポーネントが共有する 10 値のライフサイクル
+（`ari.rqgm.events.STATUS_VALUES`、閉じた集合）: `candidate`、`validated`、
+`shadow`、`probationary_active`、`active`、`warning`、`probation`、
+`quarantine`、`retired`、`banned`。`active` と `probationary_active` は
+あわせてエポックごとの凍結された active 集合を成します。
+[RQGM GUI 読み取りモデル](rqgm_gui_read_models.md)の「2 つの語彙、
+2 つの状態機械」節を参照。
+
+**transition rule id（遷移ルール ID、`T1`–`T21`）**
+レジストリのステータス変更はすべて `ari/rqgm/transition_rules.py` の遷移表の
+1 行を pin し、その行は `T1` から `T21` までの `rule_id` で名指しされます。
+表に存在しないエッジ、あるいは表と矛盾する `rule_id` の宣言は
+ConstitutionalKernel 違反です。緊急 quarantine のエッジは別集合の
+`EMERGENCY_EDGE` です。[RQGM スキーマ](rqgm_schemas.md)の
+「遷移スキーマ (Task 09)」節を参照。
+
 **FrontierRepairEngine**
 退役を伴う遷移の後、エポック境界で走ります
 （`ari/rqgm/frontier_repair.py`）: 退役した `prompt_hash` に実質的に依存
 するレコードをトレースし、stale とマークし（論理のみ — 何も削除されない）、
 生き残ったものを再計算し、BFTS フロンティアを決定論的に再構築します。
+
+**node score state（ノードスコア状態）**
+ノードのスコアに対する別立ての 5 値の語彙 — `computed`、`recomputed`、
+`stale`、`invalidated`、`removed` — で、**registry status** とは別の状態機械
+であり、1 つのフィールドや 1 つの凡例に混ぜてはなりません。5 つすべてが
+*論理* 状態です: どれもノードのファイルが物理削除されたことを意味せず、
+どれに対しても「Deleted」は正当なラベルではありません。裏付けはノードの
+メトリクスセンチネル `_stale`、`_stale_reason`、`_valid_for_frontier`、
+`_erasure_event_id`（`ari/rqgm/frontier_repair.py`）です。
+[RQGM GUI 読み取りモデル](rqgm_gui_read_models.md)の「2 つの語彙、
+2 つの状態機械」節を参照。
 
 **ProposalRecord / ProposalSummaryView**
 `ProposalRecord` はアーカイブされる提案 1 件です（append-only な
@@ -275,10 +326,26 @@ ConstitutionalKernel によって自己監査されます。予算と姿勢は
 ありません。進化済みテンプレート本文は `{checkpoint}/rqgm_prompts/` 以下に
 write-once で保存されます。
 
+**RawAttackRecord（生攻撃）**
+未裁定の adversary 攻撃 1 件、id は `atk_*`
+（`ari/rqgm/adversarial/records.py`）。監査ログ材料に留まり、いかなるスコアへも
+読み込まれません。裁定を経た子孫が下の ValidatedAttackRecord であるため、
+生攻撃の件数とペナルティは別々の量であり、同じラベルを共有してはなりません。
+
 **ValidatedAttackRecord**
 裁定を生き延びた敵対的発見 — 判定 `valid` / `partially_valid` に対してのみ
-存在し（`ari/rqgm/adversarial/records.py`）、リプレイプールに受け入れ可能な
-唯一の攻撃形です。
+存在し、`vat_*` の id を持ち（`ari/rqgm/adversarial/records.py`）、
+リプレイプールに受け入れ可能な唯一の攻撃形です。
+
+**UtilityRecord**
+governed utility の監査レコード 1 件、id は `utl_*` で、
+`rqgm_adversarial_cases.jsonl` へ追記されます
+（`ari/rqgm/adversarial/records.py`）: 1 ノード分の base / penalty / final の
+スコアを、それが形成されたポリシーごと *値で* 保持するため、後の再計算に
+レジストリ参照は不要です。ノード側は対応するメトリクスセンチネル
+`_pre_penalty_score` / `_validated_attack_penalty` を保持します。
+[RQGM GUI 読み取りモデル](rqgm_gui_read_models.md)の
+「2 つのスコア書き換えチャネル」節を参照。
 
 **AdversarialReplayPool**
 裁定済み失敗ケースのキュレートされたプール
@@ -307,7 +374,70 @@ write-once で保存されます。
 ません: capability フラグは deny-by-default で、`ari/rqgm/meta_rules.py` の
 凍結された権限テーブルに対してチェックされます。
 
+## 設定と起動
+
+**project（プロジェクト）**
+GUI の最上位エンティティであり、その種類のものは 1 つだけです:
+`GET /api/v1/projects` は id が `default` の仮想プロジェクトをちょうど 1 つ
+返し（`ari/viz/v1/queries.py` の `DEFAULT_PROJECT_ID`）、その run 一覧は
+チェックポイント探索ベースに対するディレクトリスキャンです。他の id は
+型付きの `404` を返します; 作成 / 改名 / 削除は存在せず、run スコープの
+エンドポイントはプロジェクトセグメントを持たないため、`project_id` が
+対象を絞ることはありません。
+[GUI アーキテクチャ](../concepts/gui_architecture.md)の
+「5. エンティティモデルは 1 階層しかない」節を参照。
+
+**environment profile（環境プロファイル、`--profile`）**
+同梱のデプロイ先オーバーレイ `laptop` / `hpc` / `cloud`
+（`ari-core/config/profiles/<name>.yaml`）のいずれかで、CLI の `--profile`
+フラグで選びます。ディープマージでは *ありません*: `_apply_profile`
+（`ari/cli/run.py`）が適用するのは `bfts.max_total_nodes`、
+`bfts.max_parallel_nodes`（歴史的表記 `bfts.parallel` は
+`max_parallel_nodes` が無いときのみ採用）、`hpc.enabled`、`hpc.scheduler`
+のちょうど 4 つで、ファイル内の他のキーはすべて無視され、リゾルバが
+落としたキーを列挙して警告します。**execution mode**（`ari.mode`）とも、
+PaperBench ルーブリックのフィールド `execution_profile` とも別概念です。
+[設定](configuration.md)の「解決モデル」節を参照。
+
+**`resolved_config.json`**
+`POST /api/v1/runs` がチェックポイントへ実体化する起動マニフェスト
+（`ari/viz/v1/launch.py`） — プレビューされた解決済み設定が起動時に実体に
+なったものです。additive で、レガシー表示経路のために
+`launch_config.json` も引き続き書かれます。シークレットは `values` にも
+`provenance` にも現れず `secret_references` のフラグとしてのみ現れ、
+`digest` は `values` のみの canonical JSON に対する `sha256:` なので、
+すでに redact 済みの文書に対して計算されます。読み戻しは
+`GET /api/v1/runs/{run_id}/resolved-config` です。
+[設定](configuration.md)の「`resolved_config.json`（起動マニフェスト）」節を参照。
+
+**paper mode（論文モード、`linear` / `rqgm_archive`）**
+`paper.mode` の 2 つの値 — 実行モードとは独立した軸であり、4 通りの組み合わせ
+すべてが有効です。`linear`（既定）は現行の論文パイプラインを保ち、
+`rqgm_archive` は paper-archive の共進化にオプトインし、*さらに*
+`rqgm.paper.enabled: true` のインターロックを必要とします（片方だけ設定された
+場合は `linear` に戻ります）。実効モードは論文フェーズごとに一度
+`{checkpoint}/paper_archive_state.json`（`ari/rqgm/paper_runtime.py`）へ
+`mode_source` と `switch_journal` とともに記録されます。
+
 ## 状態と公開
+
+**research phase（研究フェーズ）**
+1 回の実行が自身のライフサイクルのどこにいるか: `idle`、`starting`、`bfts`、
+`paper`、`review`。どのチェックポイント成果物が存在するかから導出されます
+（`ari/viz/services/state_service.py` の `current_phase`。GUI が
+`RESEARCH_PHASES` として持つのと同じ 5 トークンです）。run Overview は
+これを独立したラベル付き行として描画し、ガバナンスステージの行
+（RQGM ランでのみ現れます）と混ぜることはありません。
+
+**sub-experiment（サブ実験、子ラン）**
+親チェックポイントから起動されたラン。子は自身の `meta.json` に系譜を
+記録します: `parent_run_id`、`recursion_depth`、`max_recursion_depth`
+（既定 3、`api_orchestrator.DEFAULT_MAX_RECURSION_DEPTH`）、
+`inherit_idea_index`。起動は 2 つのガードで拒否されます — 深さが上限以上で
+あること、および親の `meta.json` が `parent_terminated` を持つこと
+（lineage decision が `terminate` を選んだときに `ari/cli/lineage.py` が
+書きます）。これはラン *間* の関係であり、1 つのラン内部の BFTS ノード木とは
+別物です。[REST API](rest_api.md)の「サブ実験 + lineage」節を参照。
 
 **checkpoint（チェックポイント）**
 1 回の実行に対応する自己完結型ディレクトリ `{workspace}/checkpoints/{run_id}/`。

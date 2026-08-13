@@ -21,6 +21,9 @@ optional_env:
   - ARI_IDEA_VIRSCI_SPECTER2_MODEL
   - ARI_IDEA_VIRSCI_SPECTER2_REVISION
   - ARI_IDEA_VIRSCI_TEAM_SIZE
+  - ARI_IDEA_N_IDEAS
+  - ARI_IDEA_N_AGENTS
+  - ARI_IDEA_DISCUSSION_ROUNDS
   - ARI_LLM_API_BASE
   - ARI_LLM_MODEL
   - ARI_MODEL_IDEA
@@ -80,3 +83,11 @@ tools:
   - name: generate_ideas
     capability_ref: ari.ideation.generate
     permissions: [workspace-read, workspace-write, network, model]
+  # Same work as generate_ideas' contract step -- one LLM call that a
+  # CLI-backed endpoint answers in minutes -- so it needs the same class.
+  # Undeclared, it inherited the default budget and the client gave up three
+  # times before the skill had answered.
+  - name: mint_contract_for_proposal
+    capability_ref: ari.ideation.generate
+    timeout_class: slow
+    permissions: [workspace-read, network, model]

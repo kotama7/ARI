@@ -16,6 +16,16 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/context/AppContext.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Monitor/MonitorPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/config/field_registry.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
@@ -30,11 +40,19 @@ sources:
     role: test
   - path: scripts/check_bundle_budget.py
     role: test
+  - path: scripts/quality/check_bundle_budget.yaml
+    role: config
+  - path: ari-core/tests/fixtures/gui_refresh/run_fixture_factory.py
+    role: test
+  - path: ari-core/tests/test_gui_baseline_run_fixtures.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/TreeV2/__tests__/TreeV2LargeTree.test.tsx
+    role: test
   - path: scripts/snapshot_contracts.py
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-13
 ---
 
 # GUI カットオーバーランブック
@@ -121,12 +139,145 @@ ss -ltnp | grep 8765                                      # bound to 127.0.0.1 /
   jsdom のテストハーネスではレイアウト・ペイント・入力タイミングを測れず、共有 CI
   ランナーは合否予算にはノイズが多すぎます。バンドル重量*は*強制されています
   （`check_bundle_budget.py`）; ブラウザ側の半分は固定マシン上での手動プロファイル
-  であり、リリースの証跡に記録します。
+  であり、リリースの証跡に記録します。サインオフの対象となる数値はこの節の
+  末尾に表としてあります。
 - **クロスブラウザのクリティカルジャーニー。** スイートは vitest/jsdom であり、
   このリポジトリにある Playwright の実行はドキュメント用スクリーンショット取得
   （`npm run capture:screenshots`、ヘッドレス Chromium のみ）だけで、何もアサート
-  しません。クリティカルジャーニー（Settings、新規ラン、起動、resume、モニタ、
-  ツリー / 結果、ワークフロー、RQGM、セキュリティ）は既定オン化の前に手で歩きます。
+  しません。E2E スイートはいかなる形でも存在せず — ツリーにブラウザドライバの
+  テストは 1 つもありません — したがってクリティカルジャーニー（Settings、
+  新規ラン、起動、resume、モニタ、ツリー / 結果、ワークフロー、RQGM、
+  セキュリティ）は既定オン化の前に手で歩きます。各歩行が何を覆わなければ
+  ならないかは下の表です。
+
+**各手動歩行が覆うもの。** ジャーニー名だけでは演習は定まりません; 歩行を
+時間に見合うものにするのは以下のバリアントです。
+
+| ジャーニー | 歩くもの |
+|---|---|
+| Settings | 初回ロード、保存、リロード; 拒否された値のエラーテキスト（ピン留めされていない `retrieval_backend` は 400 とメッセージで拒否され、ページはそれをそのまま表示する）; そしてシークレットが何も返らないこと — `GET /api/settings` は構造上 `llm_api_key` を空で返すので、キー欄は毎回のロードで空白 |
+| 新規ラン | ウィザードを端から端まで: ゴールの生成、ファイルのアップロード、不正なドラフト、途中でのブラウザリロード、成功する起動と失敗する起動の両方。ウィザードのリソースステップにある API キーの readiness 表示（`configured (<source class>)` / `not configured`）はこの歩行に属し、Settings の歩行ではありません |
+| 起動 | 同じ承認のダブルクリックと再試行、並行して起動する 2 つのラン、サーバー発行の `run_id`、そして `#/overview?run=<run_id>` へのリダイレクト |
+| Resume | リフレッシュ前のチェックポイントと現在のビルドが書いたチェックポイントを、それぞれレガシー Monitor 画面から resume し、それぞれが変わらず開くこと |
+| モニタ | フェーズステッパ、`/api/logs` のストリーム、そして終了状態（実行中でない）のランを、レガシー Monitor 画面で。この画面は 5 秒周期の `/state` ポーリングから状態を取り、イベントストリームを購読しません。リアルタイム側のバリアント — 再接続、ストリームが塞がれたときの上限つき 10 秒ポーリングへのフォールバック、陳腐化バナー — は購読している側のページ（Overview、Projects、Governance、Tree）に属し、そちらで歩く必要があります |
+| ツリー / 結果 | 大きなツリー; 新しいタブで冷えた状態から開くディープリンク（`#/tree2?run=<id>&node=<id>`）; v2 Results ワークスペース上の読み取り専用の curate → preview → publish → promote の系譜チェーン; そしてレガシー Results 画面と PaperBench の結果ビューが今も持つファイルリンク — コンパイル済み論文 PDF、EAR ディレクトリのリンク、PaperBench レポートの URL |
+| ワークフロー | 妥当なフローと不正なフロー; ロードと保存の間にディスク上のワークフローファイルを編集して作る autosave の衝突; そしてアクティブなプロジェクトが無いときに返る拒否 |
+| RQGM | ガバナンス成果物を持たないラン（エラーではなく capability 画面が出なければならない）; エポック境界; 書き換えられたスコア; 異なる 2 つの効用ポリシーハッシュ; 壊れたハッシュチェーン |
+
+セキュリティのジャーニーがこの表に無いのは、それがブラウザでの演習ではない
+からです: 未認証リモート、クロスオリジン、パス脱出、シークレット漏洩、
+チャレンジ再送の各拒否は上のゲート表に挙げた pytest スイートであり、CI で
+走ります。
+
+このマトリクスに属するべきバリアントのうち 4 つは、今日歩くものがありません。
+それらはチェックリストの行ではなく **既知のギャップ**です:
+
+- **オフラインでの Settings 保存とオフラインでの Workflow 保存。**
+  サーバーを失ったことに反応するコード経路がダッシュボードにありません。
+  `navigator.onLine` はフロントエンドのどこでも読まれておらず、ツリーにある
+  唯一の「offline」はイベントストリームの接続状態です。
+- **Settings の保存衝突。** `POST /api/settings` は盲目的な last-writer-wins の
+  上書きです: リビジョンを受け取らず、409 を返しようがありません。
+  `base_revision` を運ぶ面はワークフローエディタだけです。
+- **フィールドを上書きしての resume。** フィールドレジストリはすべての葉を
+  `draft`、`new_run_only`、`resume_mutable`、`read_only` のいずれかに分類し、
+  Configuration Studio と読み取り専用の設定ブラウザはその分類をバッジとして
+  描画します — しかし GUI の Resume ボタンは `/api/run-stage` へ POST し、これは
+  設定の上書きを一切伴わずに CLI の resume ステージを起動します。歩行が受理
+  したり拒否したりするものが存在しません。
+- **resume の代わりにランをクローンする。** ダッシュボードにクローン操作は
+  ありません。フロントエンドにある唯一の `clone` は EAR バンドルの再現検査
+  （`POST /api/ear/clone-verify`）で、別の操作です。§7 の互換性マトリクスは
+  今も `新規ラン × resume × クローン` を挙げていますが、クローンの列に GUI の
+  経路は無く、ブラウザの外で演習されます。
+
+ブラウザの戻る / 進むは 5 つ目のギャップで、歩行ではなくシェル側にあります —
+*ダッシュボードアーキテクチャ* → 「3. URL がナビゲーションの真実」を参照して
+ください。そこにはルーターとレガシーコンテキストが 2 つの異なるパーサでハッシュ
+を解釈すること、そしてマウント済みシェルに対してハッシュ変更を駆動するテストが
+無いことが記録されています。
+
+各行が何の挙動を確かめているかについては、*マイグレーションガイド* →
+「ワークフロー編集にはアクティブなプロジェクトが必要（MN-1）」
+「シークレットは返らない。auto-fill は readiness へ置き換え（MN-2）」
+「ワークフローの自動保存は上書きせず衝突を検出（MN-3）」
+「正準の冪等な起動（MN-10）」「Configuration Studio からの起動（MN-11）」;
+*RQGM ガバナンスワークスペースガイド* → 「たどり着き方と capability の状態」
+「Score Lineage」「Epoch Timeline」「縮退したチェーン、壊れたチェーン」;
+*ダッシュボードアーキテクチャ* → 「6. リアルタイムは無効化であって真実源では
+ない」を参照してください。
+
+**何も測っていない性能予算。** リフレッシュは 10 個の性能予算を定めました。
+そのうち 3 つ — エントリチャンク、遅延ロードされる各ルートチャンク、そして
+厳しくした `SettingsPage` / `WizardPage` のチャンク — が
+`check_bundle_budget.py` の強制するものです; その値と、shared の上限および
+total の天井の根拠は、チェッカと一緒に *ARI コードのテスト方法* →
+「PR 時にテストされる内容」に記録されています。4 つ目の「同一クエリキーに
+対する in-flight 重複読み取り 0」は wall-clock の目標ではなくキャッシュの
+性質であり、ここではサインオフしません。残る 6 つは**既知のギャップ**です:
+このリポジトリでそれらを測るものは何もありません。これらは何かが落ちうる
+ゲートではなくサインオフの対象であり、サインオフに数値の裏づけを与えるために
+ここへ書き留めます。
+
+| 予算 | 目標 | ここで何も測っていない理由 |
+|---|---|---|
+| Largest Contentful Paint（プロダクションビルド） | <= 2.5 s | jsdom はレイアウトもペイントもしない |
+| Interaction to Next Paint | <= 200 ms | jsdom に入力タイミングが無い |
+| Cumulative Layout Shift | <= 0.1 | jsdom にレイアウトが無い |
+| Settings の `GET` / `PATCH`、p95 | <= 200 ms | リクエストレイテンシをアサートするテストは無い; 手作業の材料は `viz_access.jsonl` のリクエストごとの `duration_ms`（*リモートアクセスと運用ガイド* → 「アクセスログ」） |
+| レガシー `GET /state`、p95 とペイロード | <= 250 ms、<= 2 MiB | p95 については同上; アクセスログはレスポンスサイズを記録しないので、ペイロードの値は devtools か `curl` から取る必要がある |
+| ランの起動、受理レスポンスの p95 | <= 1 s（バックグラウンドの開始を除く） | リクエストレイテンシをアサートするテストは無い; ここでも `duration_ms` |
+
+これらの数値には 2 つのルールが付いて回り、どちらを落としても数値は無用
+どころか有害になります。第 1 に、予算は固定されたマシンと固定されたフィクスチャ
+に対してのみ意味を持ちます: リフレッシュが自ら定めたルールは、これらを固定した
+環境で ratchet することであって、無条件の CI wall-clock アサーションに変える
+ことではありません。そして共有ランナーはそのルールが除外する当のものです —
+そこでの赤いビルドは、ダッシュボードについて何かを語るよりも「ランナーが
+混んでいた」と語ることの方が多くなります。第 2 に、リモート接続は同じものの
+質の悪いサンプルではなく別のプロファイルです: SSE ストリームが塞がれた高遅延
+接続は単独で測って記録します。ループバックの数値に混ぜると両方が見えなく
+なるからです。この 2 つ目のプロファイルは §7 マトリクスのトンネル / リバース
+プロキシの行にあたります。
+
+これらの予算の近くに存在するものは、予算を埋めてはくれません。`/state` の行が
+挙げる 10,000 ノードのフィクスチャは、生成器としては存在します —
+`ari-core/tests/fixtures/gui_refresh/run_fixture_factory.py` がそのサイズの
+決定的な合成チェックポイントを書き、`ari-core/tests/test_gui_baseline_run_fixtures.py`
+が 1 つ生成します — しかしそれは返却された manifest と生テキストの走査から
+ノード数をアサートするだけで、リーダ経由でツリーをロードすることも `/state`
+から配信することもありません。したがってレイテンシもペイロードの値も、
+これに対して測られたことはありません。フロントエンドには別の 10,000 ノードの
+フィクスチャ `TreeV2/__tests__/TreeV2LargeTree.test.tsx` があり、jsdom 上で
+合成ノード配列を作って depth-limited バナーの件数と DOM 行数の上限を
+ピン留めします。ダッシュボードのスイートで唯一の wall-clock アサーション —
+10,000 ノードに対する `computeVisibleRows` が 200 ms 未満で返ること、意図的に
+緩い値 — はこのファイルにありますが、それはたまたまスイートを走らせたマシン
+でのデータ構造構築時間を測るものであり、INP でもエンドポイントの p95 でも
+ありません。固定マシンでの計測がそう言うまで、上の表の各行は未計測として
+扱い、計測できたときにはその数値をリリースの証跡に綴じてください。
+
+**仕様化されたが作られなかった 2 つのリリースゲート。** リフレッシュは
+依存の lockfile、脆弱性スキャン、ライセンスポリシーをリリースゲートに置き
+ました。存在するのは lockfile だけで、しかも 2 つある側の片方だけです;
+スキャンとポリシーは**既知のギャップ**であり、走らせるものが無いので、上の表
+ではなく手作業でサインオフする項目の側に属します:
+
+- **依存の脆弱性スキャン。** 存在する lockfile は JavaScript 側です —
+  `ari-core/ari/viz/frontend/package-lock.json` はコミットされており、
+  バンドルの依存集合は再現可能です。Python 側にはリポジトリ全体の lockfile が
+  ありません: ルートの `requirements.txt` とパッケージごとの `pyproject.toml`
+  は下限（`>=`）だけを宣言するので、1 か月違いの 2 回のインストールは異なる
+  バージョンに解決されることがあります。既知の脆弱性については、`.github/workflows/`
+  のどのワークフローも上のゲート表のどの行も、どちらの側もスキャンして
+  いません。ピン留めされた依存は*既知の*依存であって、安全な依存では
+  ありません。
+- **ライセンスポリシー。** バンドルに載るもののライセンスを検査するものは
+  ありません。
+
+それらができるまでは、サプライチェーンは依存を変更する時点での手作業レビュー
+として扱い、スキャンが走ったと読者に推測させるのではなく、そのとおりに
+リリースの証跡へ書いてください。
 
 ## 3. 段階的展開
 

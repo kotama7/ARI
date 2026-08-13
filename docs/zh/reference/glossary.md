@@ -22,7 +22,17 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/queries.py
+    role: implementation
+  - path: ari-core/ari/viz/api_orchestrator.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/config/profiles
+    role: config
+last_verified: 2026-08-13
 ---
 
 # 术语表
@@ -185,6 +195,17 @@ root→best 谱系），从而将论文主张接地到实际测量到的内容�
 被冻结，指纹不含挂钟字段，因此之后的注册表变化绝不会泄漏进一个
 已关闭的纪元。
 
+**utility policy hash（效用策略哈希）**
+对纪元效用策略正文 —
+`{composite, axis_weights, frontier_score, depth_penalty_lambda, ucb_c}` —
+计算的 `hash12(canonical_json(body))`（`ari/rqgm/state.py` 的
+`utility_policy_body` / `seal_utility_policy`）。这枚封印从不属于它所封印的
+字节，同一个值也是已注册 `utility_policy` 条目的 `prompt_hash`。另有一份
+互不相交的策略 —— 由 `ari/rqgm/adversarial/engine.py` 计算的惩罚策略
+`{penalty_cap, severity_weights, verdict_factors}` —— 在受治效用工作之前
+写下的记录里使用同一个键名；两者的键集合从不重叠，因此两个哈希绝不会相等。
+在不同哈希下形成的分数不构成同一个序列。
+
 **ConstitutionalKernel（宪法内核）**
 不进化的第 0 层检查器（`ari/rqgm/kernel.py`）：一个纯粹、确定性的
 校验器，返回逐字节稳定的 `KernelReport` 裁定且不写任何东西。
@@ -202,11 +223,34 @@ root→best 谱系），从而将论文主张接地到实际测量到的内容�
 一个治理结果变成通过 RQGM 存储持久化的已提交 `EpochTransition`
 （激活 / 退役）；任何其他组件都不得更改提示词或组件的状态。
 
+**registry status（注册表状态）**
+提示词与组件共享的 10 值生命周期（`ari.rqgm.events.STATUS_VALUES`，
+一个封闭集合）：`candidate`、`validated`、`shadow`、`probationary_active`、
+`active`、`warning`、`probation`、`quarantine`、`retired`、`banned`。
+`active` 与 `probationary_active` 共同构成每纪元被冻结的活跃集合。参见
+[RQGM GUI 读模型](rqgm_gui_read_models.md)的「两套词汇表，两台状态机」一节。
+
+**transition rule id（转换规则 ID，`T1`–`T21`）**
+每一次注册表状态变更都会 pin 定 `ari/rqgm/transition_rules.py` 中转换表的
+一行，该行由 `T1` 到 `T21` 的 `rule_id` 命名。表中不存在的边，或与表相矛盾的
+`rule_id` 声明，都是 ConstitutionalKernel 违规。紧急 quarantine 的边是另一个
+集合 `EMERGENCY_EDGE`。参见 [RQGM schema](rqgm_schemas.md)的
+「转换 schema（Task 09）」一节。
+
 **FrontierRepairEngine（前沿修复引擎）**
 在带退役的转换之后于纪元边界运行
 （`ari/rqgm/frontier_repair.py`）：追踪实质依赖已退役
 `prompt_hash` 的记录，把它们标记为过期（仅逻辑 —— 什么都不
 删除），重算幸存者，并确定性地重建 BFTS 前沿。
+
+**node score state（节点分数状态）**
+针对节点分数的另一套 5 值词汇 —— `computed`、`recomputed`、`stale`、
+`invalidated`、`removed` —— 它与 **registry status** 是不同的状态机，绝不可
+混入同一个字段或同一个图例。这五个都是*逻辑*状态：没有任何一个意味着节点
+的文件被物理删除，「Deleted」对其中任何一个都不是合法标签。其依据是节点的
+指标哨兵 `_stale`、`_stale_reason`、`_valid_for_frontier` 与
+`_erasure_event_id`（`ari/rqgm/frontier_repair.py`）。参见
+[RQGM GUI 读模型](rqgm_gui_read_models.md)的「两套词汇表，两台状态机」一节。
 
 **ProposalRecord / ProposalSummaryView**
 `ProposalRecord` 是一条归档提案（追加式
@@ -221,10 +265,25 @@ root→best 谱系），从而将论文主张接地到实际测量到的内容�
 任何更改都是新的 `prompt_id` + `prompt_hash`，绝不是编辑。进化后
 的模板正文以一次写入方式存放在 `{checkpoint}/rqgm_prompts/` 下。
 
+**RawAttackRecord（原始攻击）**
+一次未经裁决的 adversary 攻击，id 为 `atk_*`
+（`ari/rqgm/adversarial/records.py`）。它只是审计日志素材：不会被读入任何
+分数。它经裁决后的后代就是下面的 ValidatedAttackRecord，因此原始攻击的
+计数与惩罚是两个不同的量，不得共用同一个标签。
+
 **ValidatedAttackRecord**
 一条在裁决中幸存的对抗发现 —— 只对裁定
-`valid` / `partially_valid` 存在（`ari/rqgm/adversarial/records.py`），
+`valid` / `partially_valid` 存在，带有 `vat_*` 的 id
+（`ari/rqgm/adversarial/records.py`），
 且是唯一可被重放池准入的攻击形状。
+
+**UtilityRecord**
+一条受治效用审计记录，id 为 `utl_*`，追加写入
+`rqgm_adversarial_cases.jsonl`（`ari/rqgm/adversarial/records.py`）：一个
+节点的 base / penalty / final 分数，并把它所依据的策略*按值*一并存下，
+因此日后的重算无需查询注册表。节点自身则保留对应的指标哨兵
+`_pre_penalty_score` / `_validated_attack_penalty`。参见
+[RQGM GUI 读模型](rqgm_gui_read_models.md)的「两条得分改写通道」一节。
 
 **AdversarialReplayPool（对抗重放池）**
 经裁决的失败案例的策展池
@@ -250,7 +309,61 @@ fail-closed，对运行 fail-open：任何违规时该角色回退到其已提�
 个。元层治理组件可以进化，但其权限不能扩张：能力标志默认拒绝，
 并对照 `ari/rqgm/meta_rules.py` 中冻结的权限表检查。
 
+## 配置与启动
+
+**project（项目）**
+GUI 的顶层实体，而且是同类中唯一的一个：`GET /api/v1/projects` 恰好返回
+一个 id 为 `default` 的虚拟项目（`ari/viz/v1/queries.py` 中的
+`DEFAULT_PROJECT_ID`），其 run 列表是对各检查点搜索基址的目录扫描。任何
+其他 id 都会得到一个类型化的 `404`；没有创建 / 重命名 / 删除，run 作用域的
+端点也不带项目段，因此 `project_id` 从不缩小任何范围。参见
+[GUI 架构](../concepts/gui_architecture.md)的「5. 实体模型只有一层」一节。
+
+**environment profile（环境配置档，`--profile`）**
+随附的部署叠加层 `laptop` / `hpc` / `cloud` 之一
+（`ari-core/config/profiles/<name>.yaml`），由 CLI 的 `--profile` 标志选择。
+它*不是*深度合并：`_apply_profile`（`ari/cli/run.py`）恰好应用
+`bfts.max_total_nodes`、`bfts.max_parallel_nodes`（历史拼写
+`bfts.parallel`，仅在 `max_parallel_nodes` 缺席时才被接受）、`hpc.enabled`
+与 `hpc.scheduler`；文件中其余的键一律被忽略，解析器会警告并列出它丢弃的
+键。它与 **execution mode**（`ari.mode`）是不同概念，与 PaperBench rubric
+的字段 `execution_profile` 也不同。参见[配置](configuration.md)的
+「解析模型」一节。
+
+**`resolved_config.json`**
+`POST /api/v1/runs` 物化进检查点的启动清单（`ari/viz/v1/launch.py`）——
+预览过的解析后配置在启动时成为现实。它是增量的：为兼容旧的展示路径，
+`launch_config.json` 仍会写出。密钥从不出现在 `values` 或 `provenance` 中，
+只作为 `secret_references` 标志出现；`digest` 是仅对 `values` 的规范 JSON
+计算的 `sha256:`，因此它是在已脱敏的文档上计算的。回读端点为
+`GET /api/v1/runs/{run_id}/resolved-config`。参见[配置](configuration.md)的
+「`resolved_config.json`（启动清单）」一节。
+
+**paper mode（论文模式，`linear` / `rqgm_archive`）**
+`paper.mode` 的两个取值 —— 一个与执行模式相互独立的轴，四种组合都有效。
+`linear`（默认）保持当前的论文流水线；`rqgm_archive` 选择启用 paper-archive
+协同进化，并且*还*需要 `rqgm.paper.enabled: true` 联锁（只设一半时回退为
+`linear`）。生效的模式在每个论文阶段被记录一次，写入
+`{checkpoint}/paper_archive_state.json`（`ari/rqgm/paper_runtime.py`），
+连同 `mode_source` 与 `switch_journal`。
+
 ## 状态与发表
+
+**research phase（研究阶段）**
+一次运行在自身生命周期中所处的位置：`idle`、`starting`、`bfts`、`paper`、
+`review`。它由存在哪些检查点产物推导而来（`ari/viz/services/state_service.py`
+中的 `current_phase`，与 GUI 里 `RESEARCH_PHASES` 所持的是同样五个 token）。
+run Overview 把它渲染为独立的带标签行，绝不与治理阶段行（只在 RQGM 运行上
+出现）合并。
+
+**sub-experiment（子实验，子运行）**
+从父检查点启动的一次运行。子运行在自己的 `meta.json` 中记录谱系：
+`parent_run_id`、`recursion_depth`、`max_recursion_depth`（默认 3，
+`api_orchestrator.DEFAULT_MAX_RECURSION_DEPTH`）与 `inherit_idea_index`。
+有两道守卫会拒绝启动 —— 深度达到或超过上限，以及父 `meta.json` 带有
+`parent_terminated`（当 lineage decision 选择 `terminate` 时由
+`ari/cli/lineage.py` 写入）。这是运行*之间*的关系，与一次运行内部的 BFTS
+节点树不同。参见 [REST API](rest_api.md)的「子实验 + 谱系」一节。
 
 **checkpoint (检查点)**
 一次运行的自包含目录，`{workspace}/checkpoints/{run_id}/`，其中 `run_id` 为

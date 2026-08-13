@@ -10,6 +10,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_capabilities.py
     role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/api_experiment.py
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/App.tsx
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
@@ -24,6 +28,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/components/TreeV2/TreeTablePanel.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
     role: implementation
   - path: ari-core/ari/viz/frontend/src/hooks/useRunEvents.ts
@@ -31,6 +37,8 @@ sources:
   - path: ari-core/ari/viz/v1/logs.py
     role: implementation
   - path: ari-core/ari/viz/v1/router.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/launch.py
     role: implementation
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
@@ -40,7 +48,7 @@ sources:
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-13
 ---
 
 # ダッシュボードガイド
@@ -411,6 +419,20 @@ v2 の Results ワークスペースがまさにこの理由で `#/results` へ�
   モニタの停止は、サーバー発行の単回使用確認チャレンジを要求するようになりました;
   ダイアログはサーバーがエコーバックした正確な対象を表示します。
   [リモートアクセス](remote_access.md)を参照してください。
+
+**ワークフローの編集は 1 つのチェックポイントに属します。** `#/workflow` が編集
+するのは、アクティブなチェックポイント自身の `workflow.yaml` です。そのチェック
+ポイントにまだコピーがなければ、最初の書き込みが同梱の
+`ari-core/config/workflow.yaml` をチェックポイントへコピーし、以後はそのコピーを
+編集します（同梱ファイルが書かれることはありません）。新しい実験を始めても、その
+編集は引き継がれません — `#/new` のウィザード（`POST /api/launch`）も `#/studio`
+の Config Studio（`POST /api/v1/runs`）も、新しいランを同梱ファイルから改めて
+seed し、その新しいコピーに起動時のトグルを適用します。あなたの変更が効くのは同じ
+チェックポイントがもう一度走るときだけで、それ以外の場所では効きません。しかも
+ウィザードは新しいランをアクティブチェックポイントにするため、戻ってきたエディタ
+はすでにその新しいコピーを指しています。ツールバーはエディタが読み込んだパスを
+表示しますが、そのパスが編集範囲のすべてであるとはページのどこにも書かれておらず、
+起動時の警告もありません — この説明の欠如は既知のギャップです。
 
 **開発者モード**はクライアント専用のトグル（`localStorage['ari_dev_mode']`）で、
 生の JSON タブ、生の YAML エディタ、完全なスタックトレースを表示します。変えるのは

@@ -16,6 +16,16 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/context/AppContext.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Monitor/MonitorPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/config/field_registry.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
@@ -30,11 +40,19 @@ sources:
     role: test
   - path: scripts/check_bundle_budget.py
     role: test
+  - path: scripts/quality/check_bundle_budget.yaml
+    role: config
+  - path: ari-core/tests/fixtures/gui_refresh/run_fixture_factory.py
+    role: test
+  - path: ari-core/tests/test_gui_baseline_run_fixtures.py
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/TreeV2/__tests__/TreeV2LargeTree.test.tsx
+    role: test
   - path: scripts/snapshot_contracts.py
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-13
 ---
 
 # GUI 切换运行手册
@@ -116,11 +134,120 @@ ss -ltnp | grep 8765                                      # bound to 127.0.0.1 /
 - **浏览器性能指标**（LCP/INP/CLS、路由交互延迟）。jsdom 测试装置无法测量
   布局、绘制或输入时序，而共享 CI runner 的噪声太大，撑不起一个通过/失败
   预算。打包体积*确实*被强制（`check_bundle_budget.py`）；浏览器那一半是在
-  一台固定机器上的人工 profile，并记录进发布证据。
+  一台固定机器上的人工 profile，并记录进发布证据。可供签字的数字列在本节
+  末尾的表里。
 - **跨浏览器关键路径。** 这些套件是 vitest/jsdom；本仓库中唯一的 Playwright
   运行是文档截图采集（`npm run capture:screenshots`，仅 headless Chromium），
-  它不做任何断言。关键路径（Settings、新建运行、启动、恢复、监控、树/结果、
-  workflow、RQGM、安全）在把某项改为默认开启之前需人工走一遍。
+  它不做任何断言。这里没有任何形式的端到端套件 —— 整棵树里没有任何一个浏览器
+  驱动测试 —— 因此关键路径（Settings、新建运行、启动、恢复、监控、树/结果、
+  workflow、RQGM、安全）在把某项改为默认开启之前需人工走一遍。每一遍人工走查
+  必须覆盖什么，见下表。
+
+**每一遍人工走查覆盖什么。** 光有路径名字并不能确定演练内容；让一次走查值回
+时间的是下面这些变体。
+
+| 路径 | 要走的变体 |
+|---|---|
+| Settings | 首次加载、保存、重新加载；一个被拒绝取值的错误文本（未被固定的 `retrieval_backend` 会以 400 与一条消息被拒绝，页面原样打印它）；以及不会有任何 secret 返回 —— `GET /api/settings` 在结构上返回空的 `llm_api_key`，因此每次加载时密钥输入框都是空的 |
+| 新建运行 | 把向导从头走到尾：生成研究目标、上传文件、一份无效草稿、中途的一次浏览器刷新，以及一次成功的启动和一次失败的启动。向导资源步骤里的 API key 就绪提示（`configured (<source class>)` / `not configured`）属于这一遍走查，而不属于 Settings 那一遍 |
+| 启动 | 对同一次审批双击并重试、并行启动两个运行、服务器签发的 `run_id`，以及跳转到 `#/overview?run=<run_id>` |
+| 恢复 | 一个刷新前的检查点与一个由当前构建写出的检查点，各自从 legacy Monitor 页面恢复，且各自都能原样打开 |
+| 监控 | 阶段步骤条、`/api/logs` 流，以及一个终态（非运行中）的运行，都在 legacy Monitor 页面上；该页面从 5 秒一次的 `/state` 轮询取状态，并不订阅事件流。实时相关的变体 —— 重连、流被阻断时回退到有上限的 10 秒轮询、陈旧数据横幅 —— 属于那些确实订阅了事件流的页面（Overview、Projects、Governance、树），必须在那里走 |
+| 树 / 结果 | 一棵大树；在新标签页中冷启动打开的深链接（`#/tree2?run=<id>&node=<id>`）；v2 Results 工作区上只读的 curate → preview → publish → promote 谱系链；以及 legacy Results 页面与 PaperBench 结果视图仍然拥有的文件链接 —— 编译好的论文 PDF、EAR 目录链接，以及 PaperBench 报告 URL |
+| workflow | 一份有效流程与一份无效流程；一次自动保存冲突，做法是在加载与保存之间在磁盘上编辑 workflow 文件；以及没有活动 project 时返回的拒绝 |
+| RQGM | 一个没有治理工件的运行（必须渲染能力状态页面而不是错误）；一次 epoch 边界；一次被改写的得分；两个不同的效用策略哈希；以及一条断裂的哈希链 |
+
+安全路径不在这张表里，因为它不是浏览器演练：未认证远程、跨源、路径逃逸、
+secret 泄漏与挑战重放这些拒绝行为，就是上面关卡表里点名的那些 pytest 套件，
+它们在 CI 中运行。
+
+本应属于这张矩阵的四个变体，今天没有任何东西可走。它们是**已知缺口**，
+而不是检查清单里的行：
+
+- **离线状态下的 Settings 保存与离线状态下的 workflow 保存。** 仪表盘中没有
+  任何代码路径会对失去服务器做出反应。前端任何地方都没有读取
+  `navigator.onLine`，整棵树里唯一的「offline」是事件流的连接状态。
+- **Settings 保存冲突。** `POST /api/settings` 是一次盲目的 last-writer-wins
+  覆盖：它不接收任何 revision，也就无从返回 409。携带 `base_revision` 的接口
+  面只有 workflow 编辑器。
+- **带字段覆盖的恢复。** 字段注册表把每个叶子分类为 `draft`、`new_run_only`、
+  `resume_mutable` 或 `read_only`，配置工作室与只读的配置浏览器会把这个分类
+  渲染成徽章 —— 但 GUI 的「恢复」按钮是向 `/api/run-stage` POST，它在完全不带
+  任何配置覆盖的情况下拉起 CLI 的 resume 阶段。走查没有任何可被接受或被拒绝
+  的东西。
+- **克隆一个运行而不是恢复它。** 仪表盘没有提供克隆操作。前端里唯一的
+  `clone` 是 EAR bundle 的复现检查（`POST /api/ear/clone-verify`），那是另一
+  回事。§7 的兼容性矩阵仍然列着 `新运行 × 恢复 × 克隆`；克隆那一列没有 GUI
+  路径，是在浏览器之外演练的。
+
+浏览器的后退与前进是第五个缺口，它位于外壳而不是走查里 —— 见
+*仪表盘架构* → 「3. URL 就是导航真相」，那里记录了路由器与 legacy 上下文用两个
+不同的解析器解释 hash，以及没有任何测试会针对一个已挂载的外壳驱动 hash 变化。
+
+每一行在验证什么行为，见*迁移指南* → 「编辑 workflow 需要一个活动的
+project（MN-1）」「secret 绝不返回；就绪状态取代自动填充（MN-2）」
+「workflow 自动保存改为检测冲突而非覆盖（MN-3）」「规范的幂等启动（MN-10）」
+「从配置工作室启动（MN-11）」；*RQGM 治理工作区指南* → 「如何进入，以及能力
+状态」「Score Lineage」「Epoch Timeline」「降级与断裂的链」；以及*仪表盘架构*
+→ 「6. 实时是失效通知，不是事实来源」。
+
+**没有任何东西在测量的性能预算。** 这次刷新一共设了十条性能预算。其中三条 ——
+entry chunk、每个懒加载的路由 chunk，以及被收紧的 `SettingsPage` /
+`WizardPage` chunk —— 正是 `check_bundle_budget.py` 强制的那些；它们的取值，
+以及 shared 上限与 total 天花板背后的理由，与检查器一起记录在*如何测试 ARI
+代码* → 「PR 时的测试内容」。第四条「同一 query key 的在途重复读取为 0」是一条
+缓存性质，而不是一个 wall-clock 目标，不在这里签字。剩下的六条是**已知缺口**：
+本仓库里没有任何东西测量它们。它们是用来签字对照的目标，而不是任何东西能够
+失败的关卡；把它们写在这里，是为了让签字有一个数字可以对照。
+
+| 预算 | 目标 | 为什么这里没有任何东西测量它 |
+|---|---|---|
+| Largest Contentful Paint（生产构建） | <= 2.5 s | jsdom 既不布局也不绘制 |
+| Interaction to Next Paint | <= 200 ms | jsdom 没有输入时序 |
+| Cumulative Layout Shift | <= 0.1 | jsdom 没有布局 |
+| Settings 的 `GET` / `PATCH`，p95 | <= 200 ms | 没有任何测试断言请求延迟；人工取数的来源是 `viz_access.jsonl` 中逐请求的 `duration_ms`（*远程访问与运维指南* → 「访问日志」） |
+| legacy `GET /state`，p95 与载荷 | <= 250 ms、<= 2 MiB | p95 同上；访问日志不记录响应大小，因此载荷这个数字只能从开发者工具或 `curl` 取 |
+| 运行启动，accepted 响应的 p95 | <= 1 s（不含后台启动） | 没有任何测试断言请求延迟；同样只有 `duration_ms` |
+
+有两条规则与这些数字同行，丢掉其中任何一条都会让它们比无用更糟。第一，预算
+只有对着一台固定的机器和一份固定的 fixture 才有意义：这次刷新给自己定的规则
+是在固定环境上 ratchet 这些数字，而不是把它们变成无条件的 CI wall-clock 断言，
+而共享 runner 恰恰就是这条规则要排除的环境 —— 那里的一次红色构建，说「runner
+当时很忙」的次数会多于说出任何关于仪表盘的事实。第二，远程链路是另一份
+profile，而不是同一份的较差样本：一条 SSE 流被拦截的高延迟连接要单独测量、
+单独记录，因为把它折进回环的数字里会同时遮住两者。第二份 profile 对应的是 §7
+矩阵中隧道与反向代理那一行。
+
+这些预算附近确实存在的东西并不能把它们补上。`/state` 那一行提到的 10,000 节点
+fixture 作为生成器是存在的 ——
+`ari-core/tests/fixtures/gui_refresh/run_fixture_factory.py` 会写出该规模的
+确定性合成检查点，`ari-core/tests/test_gui_baseline_run_fixtures.py` 也确实生成
+了一份 —— 但它只是从返回的 manifest 和一次原始文本扫描去断言节点数，既没有通过
+读取器加载这棵树，也没有经由 `/state` 提供出去，因此从来没有针对它取过任何延迟
+或载荷数字。前端另有一份 10,000 节点 fixture
+`TreeV2/__tests__/TreeV2LargeTree.test.tsx`，它在 jsdom 中构造一个合成节点数组，
+用来固定 depth-limited 横幅的计数与 DOM 行数的上界。仪表盘各套件中唯一的
+wall-clock 断言就在这个文件里 —— 对 10,000 个节点跑 `computeVisibleRows` 要在
+200 ms 内返回，这个界限是刻意放松的 —— 而它测的是碰巧运行该套件的那台机器上的
+数据结构构建时间，既不是 INP，也不是端点 p95。在一次固定机器上的测量给出结论
+之前，请把上表的每一行都当作未测量；测出来之后，把数字归入发布证据。
+
+**两条被写进规格却从未建成的发布关卡。** 这次刷新把依赖 lockfile、漏洞扫描与
+许可证策略都放进了发布关卡。只有 lockfile 存在，而且只存在于两侧中的一侧；
+扫描与策略都是**已知缺口**，由于没有任何东西可跑，它们属于人工签字的那一类，
+而不属于上面的表：
+
+- **依赖漏洞扫描。** 确实存在的那个 lockfile 在 JavaScript 这一侧 ——
+  `ari-core/ari/viz/frontend/package-lock.json` 已提交，因此打包产物的依赖集合
+  是可复现的。Python 这一侧没有仓库级的 lockfile：根目录的 `requirements.txt`
+  与各包的 `pyproject.toml` 声明的是浮动下界（`>=`），因此相隔一个月的两次安装
+  可能解析到不同的版本。至于已知漏洞，两侧都没有被扫描 —— `.github/workflows/`
+  中的任何工作流没有扫，上面关卡表中的任何一行也没有扫。一个被钉住的依赖是
+  *已知的*依赖，而不是安全的依赖。
+- **许可证策略。** 没有任何东西检查随打包产物一起发布的东西的许可证。
+
+在它们存在之前，请把供应链当作在依赖变更时点由人工评审的东西，并在发布证据里
+如实这么写，而不是留给读者去推断曾经跑过一次扫描。
 
 ## 3. 分阶段推出
 

@@ -12,6 +12,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/challenges.py
     role: implementation
+  - path: ari-core/ari/viz/v1/queries.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/services/api/client.ts
     role: implementation
   - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
@@ -55,6 +59,47 @@ last_verified: 2026-08-08
 
 如果你只是需要从另一台机器访问仪表盘，请优先使用 **SSH 隧道**（见下文）。
 隧道保持回环姿态不变，也不需要 token。
+
+### 这一姿态未覆盖的部分
+
+从另一侧来说：回环默认值，以及下文描述的远程模式，都是**主机之间**的边界。
+两者都不是权限系统，而它们止步于何处值得直说。
+
+**两种模式都没有授权层。** 本地模式根本没有凭据 —— 回环绑定下 `resolve_token`
+不返回任何东西，因此请求门放行一切。于是，本机上任何能向该端口打开套接字的进程
+都握有整个 API：通过 `POST /api/env-keys` 写入 secret、覆写 checkpoint 内的文件、
+重启 memory 后端，以及 —— 在给自己签发下文所述的授权之后 —— 删除 checkpoint 或
+停止每一个实验进程。回环绑定隔开的是主机，而不是共用同一台主机的用户或作业。
+
+远程模式加了一个凭据，然后就到此为止。bearer token 是单一的全能值：它不指名任何
+人，无法按项目或按 run 限定范围，除了与它自身之外不与任何东西比对。目前也还没有
+一个可以挂载权限检查的边界 —— `/api/v1` 面只暴露一个虚拟的 `default` 项目，对其他
+任何项目 id 都返回 404 信封。会话、登出、按会话吊销都不存在；吊销访问权意味着修改
+`ARI_GUI_TOKEN` 并重启服务器，而这会一次性吊销所有人的。这是决定而非疏漏：
+[GUI-ADR-13](../../adr/gui/GUI-ADR-13-remote-bearer-token.md) 把会话、登出、吊销与
+多用户永久推迟到未来的多租户记录，并在其 consequences 中写明：这个单一的全能 token
+不应被就地扩展。
+
+**确认挑战是防事故的控制，不是访问控制。** 能调用
+`POST /api/delete-checkpoint` 的人同样能调用 `POST /api/v1/challenges` 并签发它所
+要求的授权 —— 签发不需要请求已经携带之外的任何凭据。两步流程买到的是：由**服务器**
+指名目标，而客户端必须把那个一次性授权原样回送。这正是能拦住过期标签页、被重放的
+脚本，或指向错误路径的批量操作的东西。它不是第二因子。词汇表也是有意窄的 ——
+`delete-checkpoint`、`stop-all`、`gpu-monitor-stop`，仅此而已。保存、删除或上传
+checkpoint 内的文件（`POST /api/checkpoint/file/save`、
+`POST /api/checkpoint/file/delete`、`POST /api/checkpoint/{id}/file/upload`）以及
+重启 memory 后端（`POST /api/memory/restart`）都是一请求即执行。
+
+**`viz_access.jsonl` 是请求日志，不是审计轨迹。** 它的字段就是下文*访问日志*
+列出的六个，其中 `client` 是对端的网络地址 —— 因此没有任何一行指名某个人，而在
+回环默认下每一行指向的都是同一个回环地址。对事后重建更麻烦的是：没有活动
+checkpoint 时根本不写任何东西，而这一状态并不会阻止那些本该被记录的写入。
+`POST /api/env-keys` 编辑的是项目的 `.env` 文件，完全不碰 checkpoint，因此在没有
+选中 checkpoint 时写下的 secret 不会留下任何一行。没有行，并不能证明什么都没发生。
+
+以上都不会让仪表盘对「它本来是什么」而言变得不安全：一个单操作者的研究工具，由
+它所展示的那些 run 的主人来运行。但这确实意味着，「放到 token 后面再把 URL 分享
+出去」不是一种受支持的多用户部署，并且每一个拥有访问权的人都握有全部操作者权限。
 
 ## GUI 环境变量
 

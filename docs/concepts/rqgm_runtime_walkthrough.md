@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # RQGM Runtime Walkthrough
@@ -193,8 +193,10 @@ deterministic hash-based sample). When it does:
    boundaries only), which later regression-tests prompt candidates.
 
 Everything is journaled to `rqgm_adversarial_cases.jsonl`, including an
-idempotency **round marker** (`rqgm_adversarial_round`, keyed by
-`node_id` + `epoch_id`) so a resumed run never re-attacks a node.
+idempotency **round marker** (`rqgm_adversarial_round`, whose lookup key is
+`node_id` + `kind` — `exploration` here, `paper_candidate` for the paper
+pre-flight round of step 8, so the two are independent domains) so a resumed
+run never re-attacks a node.
 
 ### 6. The epoch boundary — audit, transition, repair
 

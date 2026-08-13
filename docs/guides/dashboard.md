@@ -10,6 +10,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_capabilities.py
     role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/api_experiment.py
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/App.tsx
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
@@ -24,6 +28,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/components/TreeV2/TreeTablePanel.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
     role: implementation
   - path: ari-core/ari/viz/frontend/src/hooks/useRunEvents.ts
@@ -31,6 +37,8 @@ sources:
   - path: ari-core/ari/viz/v1/logs.py
     role: implementation
   - path: ari-core/ari/viz/v1/router.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/launch.py
     role: implementation
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
@@ -40,7 +48,7 @@ sources:
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # Dashboard Guide
@@ -425,6 +433,20 @@ click:
   all processes, and stopping the GPU monitor now require a server-issued,
   single-use confirmation challenge; the dialog shows the exact target the
   server echoed back. See [Remote access](remote_access.md).
+
+**A workflow edit belongs to one checkpoint.** `#/workflow` edits the active
+checkpoint's own `workflow.yaml`; when that checkpoint has no copy yet, the
+first write copies the bundled `ari-core/config/workflow.yaml` into it and edits
+the copy, so the bundled file is never written. Starting a new experiment does
+not carry the edit forward — the wizard at `#/new` (`POST /api/launch`) and the
+Config Studio at `#/studio` (`POST /api/v1/runs`) each seed the new run from the
+bundled file again and then apply their own launch-time toggles to that fresh
+copy. Your change takes effect when the same checkpoint runs again, and nowhere
+else; and because the wizard makes the new run the active checkpoint, the editor
+you return to is already pointing at the new copy. The toolbar prints the path
+the editor loaded, but the page never says that this path is the entire scope of
+your edit, and no warning appears at launch — that missing statement is a known
+gap.
 
 **Developer Mode** is a client-only toggle (`localStorage['ari_dev_mode']`)
 that reveals raw JSON tabs, raw YAML editors and full stack traces. It

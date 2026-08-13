@@ -115,7 +115,10 @@ def paper(
     _tp_tp = _re_tp.sub(r"[^a-zA-Z0-9_-]", "_", (_tm_tp.group(1)[:80] if _tm_tp else Path(experiment_file).stem))
     experiment_data = {"goal": experiment_text, "topic": _tp_tp, "file": experiment_file}
 
-    cfg = _resolve_cfg(config)
+    # A checkpoint's effective workflow owns resume/paper reconstruction when
+    # the caller did not explicitly provide another config.
+    _paper_workflow = checkpoint_dir / "workflow.yaml"
+    cfg = _resolve_cfg(config or (_paper_workflow if _paper_workflow.exists() else None))
     # See the matching note in `resume`: when the checkpoint_dir argument is
     # explicit, it owns log/checkpoint paths regardless of YAML defaults.
     cfg.logging.dir = str(checkpoint_dir)
@@ -204,12 +207,20 @@ def paper(
     # agree (paper.mode: rqgm_archive AND rqgm.paper.enabled: true).
     from ari.cli.paper_dispatch import run_paper_phase
     from ari.pidfile import pid_context
-    with pid_context(checkpoint_dir):
-        run_paper_phase(
-            cfg, all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str,
-            linear_paper_fn=generate_paper_section, paper_llm=_runtime[0],
-            rqgm=_rqgm_paper,
-        )
+    try:
+        with pid_context(checkpoint_dir):
+            run_paper_phase(
+                cfg, all_nodes, experiment_data, checkpoint_dir, mcp_paper, _cfg_str,
+                linear_paper_fn=generate_paper_section, paper_llm=_runtime[0],
+                rqgm=_rqgm_paper,
+            )
+    except Exception as exc:
+        console.print(f"[bold red]Paper pipeline failed:[/bold red] {exc}")
+        raise typer.Exit(1) from exc
+    finally:
+        close_all = getattr(mcp_paper, "close_all", None)
+        if callable(close_all):
+            close_all()
     console.print("[bold green]Paper pipeline complete.[/bold green]")
 
 

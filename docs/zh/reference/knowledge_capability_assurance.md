@@ -293,8 +293,10 @@ phase 与 call context 下放行。否则一个已 bind 的异步 capability 会
   已签入的 reviewed table。
 - reproducibility 受 admission 封顶。仅达到`callable`的 leaf 无论 determinism 字段声称
   什么都记为`unknown`；`reproducible`最高`bounded`，`scientifically_admitted`最高
-  `exact`。低于自身`required_level`的 leaf、被 quarantine 的 leaf、catalog 中不存在的
-  reviewed leaf，以及 run lock 中不存在的 dispatch tool，一律拒绝。
+  `exact`。低于自身`required_level`的 leaf、被 quarantine 的 leaf，以及 run lock 中
+  不存在的 dispatch tool，一律拒绝。所选 site lock 中不存在的 reviewed leaf 则是跳过而
+  非拒绝：所选 lock 可以有意窄于 reviewed table，缺席的 leaf 不授予任何权限，而没有任何
+  leaf 能供给的 required capability 会在 binder 处保持可见的`unsatisfied`。
 
 ### environment evidence 与 Provider substitution
 
@@ -309,7 +311,7 @@ container runtime 同样以执行来判定。`shutil.which`找到二进制并不
 赖 site，而 binding 并不需要它。
 
 把观测到的事实变成 ontology 的 resource class 是另一件事，发生在
-`config/capabilities/resource_derivations.yaml`。每一行声明它 emit 什么、必须已存在什么，
+`ari-core/config/capabilities/resource_derivations.yaml`。每一行声明它 emit 什么、必须已存在什么，
 以及理由；没有 rationale 的行在 load 时被拒绝——没有理由的 derivation 就是 alias，而 alias
 正是这张表存在的目的所要防止的。行被应用到 fixpoint，因此一行可以消费另一行 emit 的结果；
 这里无法凭空造出 prober 未观测到的事实，而触发过的行记录在`metadata.derived_from_review`

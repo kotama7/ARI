@@ -30,7 +30,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Governance/__tests__/GovernancePage.test.tsx
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # RQGM ガバナンスワークスペースガイド
@@ -353,7 +353,8 @@ reviewed best-of-N であり、writer への制裁は発火できません。
 ### Knowledge · Capability · Assurance — 「このランは何を知り、何を実行し、何で検証してよかったのか？」
 
 `GET /api/checkpoint/{run_id}/kca`（`ari.viz-kca/v1`）が提供します。これはランの
-コミット済み `rqgm/kca/admission-v1/` スナップショットを直接読むだけで、レジストリも
+コミット済み `rqgm/kca/admission-v1/` スナップショットとノードごとの
+`rqgm/kca/nodes/` レコードを直接読むだけで、レジストリも
 リゾルバもインポートしません。3 つのカードは、ワイヤ形状の上でも UI の上でも
 分離されており、ある領域の権限が別の領域のものと読み違えられないようにしています:
 

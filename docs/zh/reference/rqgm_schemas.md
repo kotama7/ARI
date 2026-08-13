@@ -29,7 +29,8 @@ schema 文件的普通 dataclass（`ari/rqgm/proposals/records.py` 与
 没有 Pydantic 模型，也没有任何快照测试断言所发布的 schema 等于生成的
 `model_json_schema()`。Pydantic 的 `model_validate` 在 `ari/rqgm/` 内*确有*
 使用，但仅用于单独门控的 Knowledge/Capability/Assurance 准入、harness、
-capability-binding 与 manuscript 文档 —— 从不用于 `rqgm_record_base` 信封或
+capability-binding 与 manuscript 文档（外加评估 harness 自身的 `ARIConfig`
+覆盖层，位于 `ari/rqgm/evaluation/smoke.py`）—— 从不用于 `rqgm_record_base` 信封或
 本页清单内的任何记录。
 
 内核在写入时真正强制的是信封 + 形状检查，即

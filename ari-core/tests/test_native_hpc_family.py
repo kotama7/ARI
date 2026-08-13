@@ -127,3 +127,47 @@ def test_the_registered_harnesses_pin_the_driver_that_exists():
         assert manifest["driver"]["sha256"] == current, (
             f"hpc_{name}_correctness pins a driver digest that is not the driver "
             f"in this tree; prepare will refuse it")
+
+
+def test_target_abi_registry_agrees_with_correctness_harnesses():
+    """The declaration and verifier must meet at an independently stated ABI.
+
+    The registry is deliberately not derived from these manifests.  Comparing
+    the two here catches a renamed contract or dtype before every governed run
+    is rejected as incompatible.
+    """
+    import pathlib
+
+    import yaml
+
+    from ari.assurance.target_abi import abi_identity, target_abi_root
+
+    manifests_root = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "config" / "harnesses" / "builtin"
+    )
+    manifests = [
+        yaml.safe_load(path.read_text(encoding="utf-8"))
+        for path in sorted(manifests_root.glob("*.yaml"))
+    ]
+    identity_files = sorted(target_abi_root().glob("*.yaml"))
+    assert identity_files, "the target ABI registry must not be vacuous"
+    for path in identity_files:
+        record = yaml.safe_load(path.read_text(encoding="utf-8"))
+        family = record["family"]
+        identity = abi_identity(family)
+        assert identity is not None
+        compatible = [
+            manifest for manifest in manifests
+            if manifest.get("accepts_external_target")
+            and family in manifest.get("supported_domains", ())
+        ]
+        assert len(compatible) == 1, (
+            f"{family!r} must resolve to one external-target correctness Harness"
+        )
+        manifest = compatible[0]
+        assert identity.interface_contract == manifest["target_interface_contract"]
+        assert identity.dtype in manifest["supported_dtypes"]
+        assert identity.language in manifest["supported_languages"]
+        assert identity.subject_type in manifest["subject_types"]
+        assert identity.target_kind in manifest["target_kinds"]

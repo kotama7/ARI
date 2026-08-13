@@ -5,8 +5,8 @@
 - Python 3.13 or newer
 - `mcp`, `pydantic`, `jsonschema`, `pyyaml`, and `ari-skill-hpc>=0.3.0`
 - optional ToolUniverse only in a separate Provider environment; production
-  uses the exact `1.3.1+ari.1` wheel and checked-in runtime lock, never a package
-  registry extra, and the registry process never imports it
+  uses the exact `1.3.1+ari.1` or `1.3.1+ari.2` wheel and its checked-in runtime
+  lock, never a package registry extra, and the registry process never imports it
 - optional local Qiskit environment containing exactly Qiskit `2.5.1`, Aer
   `0.17.2`, and Qiskit MCP server `0.3.1`
 - optional IBM Runtime environment containing exactly Qiskit `2.5.1`, Qiskit
@@ -15,11 +15,14 @@
 - optional OpenROAD local environment materializing the exact x86_64 SIF and
   inner OpenROAD binary fixed by the selected verified profile; the retained
   SIF is external to Git and must pass full-digest verification before launch
-- an immutable reviewed `CATALOG.lock`; the committed default is empty
+- an immutable reviewed `CATALOG.lock`; the committed default is empty by
+  design, and a populated machine-specific catalog is selected at startup with
+  `ARI_TOOL_REGISTRY_LOCK`/`ARI_TOOL_REGISTRY_INDEX`
 - an optional ARI checkpoint for artifacts and record/replay evidence
 
-The component is default-off. Enabling it does not enable any leaf provider;
-only sources present in the reviewed lock can execute.
+The component is enabled by default. Enabling it does not enable any leaf
+provider; only sources present in the selected reviewed lock can execute, so the
+Skill flag and the catalog are two independent gates.
 
 ## Required invariants
 
@@ -28,8 +31,9 @@ only sources present in the reviewed lock can execute.
 - Runtime accepts only an exact opaque `tool_ref`; bare names never dispatch.
 - Runtime does not import `sources.yaml`, sync providers, alter admission, or
   replace its active snapshot.
-- Production configuration accepts generic direct `stdio-mcp` and the reviewed
-  `tooluniverse` collection source. `StaticCatalogSource`,
+- Production configuration accepts exactly four source kinds: generic direct
+  `stdio-mcp`, the reviewed `tooluniverse` collection, and the reviewed
+  `openroad` and `qiskit` experiment-profile sources. `StaticCatalogSource`,
   `StaticProviderAdapter`, and package-verification bypasses are injection seams
   for conformance tests, not selectable production kinds.
 - Launchers execute no shell string and forward no undeclared parent
@@ -45,9 +49,12 @@ only sources present in the reviewed lock can execute.
   distinct; scientific equivalence requires reviewed units, semantics, backend
   and data lineage, and method identity evidence.
 - An OpenROAD `slurm` profile requires a canonical shared `work_root`, one-node
-  typed resource request, exact thread/CPU agreement, and either a digest-pinned
-  clean container or the reviewed PRoot/SIF/unsquashfs/worker-Python portable
-  runtime. Caller arguments cannot override any of these fields.
+  typed resource request, exact thread/CPU agreement, and exactly one pinned
+  execution substrate: a digest-pinned clean container, or the reviewed
+  PRoot/SIF/unsquashfs/worker-Python portable runtime. Which one is a site
+  property; that there is exactly one is the invariant, and the lock's
+  environment requirements and runtime target are derived from whichever the
+  profile pins. Caller arguments cannot override any of these fields.
 - Physical cluster, partition, and node selectors are accepted only from a
   regular, Git-ignored site configuration containing a 256-bit random nonce.
   Tracked manifests, evidence, snapshots, locks, filenames, tests, and docs may
@@ -106,7 +113,10 @@ run.
   search are disabled. Explicit `null` is rejected because upstream removes it
   before execution.
 - Collection-level evidence cannot promote every leaf to `reproducible` or
-  `scientifically_admitted`; those levels require leaf evidence.
+  `scientifically_admitted`; those levels require leaf evidence. An ARI-patched
+  source may omit `verified_lock_path`; it is then collection-wide, carries no
+  leaf promotion, and fails closed if it asserts replay or scientific validation
+  evidence. The retained exact wheel is required in every case.
 - Changed leaf input/output/default schemas require the separate
   `--approve-schema-changes` operator flag.
 
@@ -151,7 +161,11 @@ run.
 - Its independent ORFS reference sets `SKIP_CTS_REPAIR_TIMING=1` because the
   pinned binary raises SIGILL in default CTS timing repair. It is not evidence
   of full default-flow parity.
-- The SLURM lock requests zero GPUs and discloses only a salted site digest.
+- The SLURM lock requests zero GPUs and discloses only a salted site digest. Why
+  no GPU can be granted is read from the reviewed scheduler snapshot rather than
+  asserted for every site: promotion compares the live controller against that
+  snapshot's declared values plus the invariants that are not site
+  characteristics, and refuses a snapshot claiming GPU authority.
   GPU use, another design/PDK/corner, another site/runtime identity, or another
   image is outside both verified scopes and requires an independently approved
   Provider identity.

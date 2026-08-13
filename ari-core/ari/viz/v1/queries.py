@@ -34,6 +34,7 @@ from pathlib import Path
 
 from ..checkpoint_api import _check_pid_alive
 from ..checkpoint_finder import _resolve_checkpoint_dir
+from ..run_health import run_terminal_health
 from ..tree_view import build_tree_view
 from .dto import (
     ConfigFieldV1,
@@ -104,7 +105,8 @@ def _display_name(run_id: str) -> str:
 
 
 def _mtime_utc(d: Path) -> str:
-    """Checkpoint-dir mtime as an ISO 8601 UTC string (plan 04 §API principles)."""
+    """Checkpoint-dir mtime as an ISO 8601 UTC string — every v1 timestamp is
+    UTC ISO 8601, never a local-time or epoch-seconds form."""
     return datetime.fromtimestamp(
         int(d.stat().st_mtime), tz=timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -168,6 +170,12 @@ def _run_summary_from_dir(d: Path) -> RunSummaryV1:
             status = "completed"
         except Exception:
             log.debug("v1 review_report parse error: %s", d.name, exc_info=True)
+
+    # A review is an intermediate artifact.  The immutable build lock is the
+    # terminal publication verdict and therefore has higher precedence.
+    terminal_status, _ = run_terminal_health(d)
+    if terminal_status is not None:
+        status = terminal_status
 
     return RunSummaryV1(
         run_id=d.name,
@@ -269,7 +277,8 @@ def get_run(run_id: str) -> RunDetailV1 | dict:
         **summary.model_dump(),
         phase=phase,
         # rqgm capability from artifact existence only — ari.rqgm is NOT
-        # imported (task 08 owns the RQGM domain DTOs).
+        # imported; the view layer never imports the governance package, so
+        # the flag is read off disk and never asked of the engine.
         capabilities={"rqgm": (d / "rqgm_state.json").exists()},
     )
 
@@ -384,8 +393,8 @@ _RESOLVER_SOURCE_FILES = (
 def _resolved_at_from_sources(d: Path) -> str:
     """Stable ``resolved_at``: the newest mtime of the resolver's source
     files (checkpoint-dir mtime when none exists) as UTC ISO 8601 — NEVER
-    ``now()``, so repeated GETs return byte-identical manifests (plan 05
-    determinism / P2)."""
+    ``now()``, so repeated GETs return byte-identical manifests
+    (determinism / P2)."""
     mtimes = [
         (d / name).stat().st_mtime
         for name in _RESOLVER_SOURCE_FILES
@@ -398,8 +407,9 @@ def _resolved_at_from_sources(d: Path) -> str:
 
 
 def get_resolved_config(run_id: str) -> ResolvedConfigV1 | dict:
-    """GET /api/v1/runs/{run_id}/resolved-config — the plan-05 resolved
-    manifest reconstructed post-hoc (gui_refresh task 05 Wave 3a).
+    """GET /api/v1/runs/{run_id}/resolved-config — the resolved manifest of
+    an EXISTING run, reconstructed post-hoc from its checkpoint files
+    (gui_refresh task 05 Wave 3a).
 
     Pure read: ``ari.config.resolver.resolve_run_config`` reads checkpoint
     files plus a read-only env snapshot and never writes anything; the

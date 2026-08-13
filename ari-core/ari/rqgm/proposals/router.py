@@ -191,7 +191,17 @@ class ProposalRouter:
         for name, gen in self._generators.items():
             if not self._enabled(name):
                 continue
-            if name == "virsci":
+            if name == "virsci" and not self._typed_contract_required():
+                # Two gates, and only one of them followed the governed
+                # requirement. `_enabled` turns virsci on unconditionally when a
+                # typed Research Contract is required -- and virsci is the only
+                # generator that mints one -- but this filter then dropped it
+                # again unless `trigger_on` happened to name the event. The
+                # default names none, so a governed run fell through the
+                # priority table to `cheap`, whose proposal carries no contract,
+                # and KCA admission refused the run it had just been configured
+                # for. When the contract is required the requirement decides;
+                # otherwise `trigger_on` still does.
                 trigger_on = list(
                     getattr(self._generator_cfg("virsci"), "trigger_on", [])
                     or []
@@ -241,7 +251,9 @@ class ProposalRouter:
                 "initial_exploration", ctx, select_directive=(imported == 0)
             )
             self.store.write_idea_projection(
-                meta=self._projection_meta(records)
+                meta=self._ensure_typed_contract(
+                    records, self._projection_meta(records), ctx
+                )
             )
             self._log_decision("initial_exploration", records, imported=imported)
             return records
@@ -411,6 +423,77 @@ class ProposalRouter:
         if model:
             snap["model"] = model
         return snap
+
+    def _ensure_typed_contract(
+        self, records: list[ProposalRecord], meta: dict | None, ctx: dict
+    ) -> dict | None:
+        """Give the selected proposal a typed Research Contract when one is due.
+
+        ``_projection_meta`` bubbles typed keys out of a virsci record only, so
+        the governed path had exactly one producer -- and virsci is opt-in and
+        default-OFF ("tests pass without VirSci installed"). Every other
+        generator, ``cheap`` above all, produced a proposal with no contract,
+        and KCA admission then refused the run it had just been configured for.
+
+        Minting is a separate step over the same proposal, so ANY generator
+        satisfies admission. It is best-effort: a run that does not require a
+        contract, or has no MCP handle, is left exactly as it was, and a
+        refusal to mint (an empty literature snapshot, say) stays a refusal
+        rather than becoming an invented contract.
+        """
+        if not self._typed_contract_required():
+            return meta
+        if isinstance(meta, dict) and isinstance(meta.get("research_contract"), dict):
+            return meta
+        if self.mcp is None or not records:
+            return meta
+        chosen = next(
+            (r for r in records if getattr(r, "status", "") == "selected"), records[0]
+        )
+        summary = getattr(chosen, "summary", None)
+        if summary is None:
+            return meta
+        try:
+            from ari.rqgm.proposals.virsci_adapter import _mcp_payload
+
+            payload = _mcp_payload(self.mcp.call_tool(
+                "mint_contract_for_proposal",
+                {
+                    "topic": str(ctx.get("goal", "") or ""),
+                    "proposal": {
+                        "title": summary.title,
+                        "short_description": summary.short_description,
+                        "hypothesis": summary.hypothesis,
+                        "experiment_plan": list(summary.experiment_plan or ()),
+                    },
+                },
+            ))
+        except Exception:
+            log.warning("minting a Research Contract for the router's proposal "
+                        "failed; the projection keeps whatever it had",
+                        exc_info=True)
+            return meta
+        if not isinstance(payload, dict) or not isinstance(
+            payload.get("research_contract"), dict
+        ):
+            # Name what came back. "no contract" alone cannot distinguish a
+            # principled refusal (empty literature snapshot) from a tool error
+            # wrapped in an envelope this reader does not recognise.
+            detail = (
+                {k: str(payload[k])[:160] for k in
+                 ("contract_status", "reason", "error", "status")
+                 if k in payload} or {"keys": sorted(payload)[:8]}
+            ) if isinstance(payload, dict) else {"type": type(payload).__name__}
+            log.warning("contract minting returned no contract (%s); a governed "
+                        "run will refuse this proposal", detail)
+            return meta
+        merged = dict(meta or {})
+        for key in ("typed_schema_version", "contract_status",
+                    "research_contract", "research_contract_digest",
+                    "idea_set_digest"):
+            if key in payload:
+                merged[key] = payload[key]
+        return merged
 
     def _projection_meta(self, records: list[ProposalRecord]) -> dict | None:
         """Bubble the generator's 9-key extras (VirSci gap analysis etc.)

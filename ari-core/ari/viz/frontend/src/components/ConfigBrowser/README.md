@@ -1,6 +1,6 @@
 # frontend/src/components/ConfigBrowser
 
-Read-only effective-config browser — gui_refresh Wave 3b (plans 05 §Purpose / §Resolved manifest, 06 §Effective configuration): the canonical config-field registry (`GET /api/v1/config/schema`) grouped by category, overlaid with a run's resolved manifest (`GET /api/v1/runs/{run_id}/resolved-config`) when the hash carries `?run=<run_id>`. Gated on the `gui_v2` capability. Studio editing is Wave 4 — nothing here mutates anything.
+Read-only effective-config browser — gui_refresh Wave 3b. Two sources, never blended: the field registry is metadata and carries no effective value, while a run's resolved manifest carries the values with the layer each one came from. Concretely, the canonical config-field registry (`GET /api/v1/config/schema`) grouped by category, overlaid with a run's resolved manifest (`GET /api/v1/runs/{run_id}/resolved-config`) when the hash carries `?run=<run_id>`. Gated on the `gui_v2` capability. Studio editing is Wave 4 — nothing here mutates anything.
 
 ## Contents
 

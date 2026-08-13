@@ -18,7 +18,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-07-30
 ---
 
 # ARI Architecture
@@ -992,7 +992,7 @@ constraint auditable in YAML instead of buried in skill Python.
 ## Per-Node Prompt Composition
 
 Every BFTS node is executed by a single entry point, `AgentLoop.run(node,
-experiment)` in `ari/agent/loop.py:2063`. The same loop handles root and
+experiment)` in `ari/agent/loop.py:2067`. The same loop handles root and
 child nodes; the prompt it builds differs by `node.depth` and by the
 state inherited from ancestors. This section is the source of truth for
 *what an agent sees the moment it starts a node* — so changes here
@@ -1015,7 +1015,7 @@ Two arguments arrive per call:
 ### System prompt — `ari/prompts/agent/system.md`
 
 The body is an externalised template (key `agent/system`, loaded via
-`_system_prompt_versioned()` and `str.format`-ed at `loop.py:2226`); only the
+`_system_prompt_versioned()` and `str.format`-ed at `loop.py:2230`); only the
 `{tool_desc}` / `{memory_rules}` / `{extra}` substitutions are built in
 `loop.py`:
 
@@ -1035,16 +1035,16 @@ RULES:
 {memory_rules}{extra}
 ```
 
-The `{extra}` block (built at L2213-2219) appends:
+The `{extra}` block (built at L2218-2223) appends:
 
 | Sub-block | Source | Notes |
 |-----------|--------|-------|
 | `NODE ROLE: {label_hint}` | `node.label.system_hint()` | One-sentence behavioural cue keyed off the BFTS label; with `ARI_BFTS_NO_LABEL` set (`labels_disabled()`) every node gets the same neutral role instead |
-| `EXPERIMENT ENVIRONMENT` | L2197-2207 | work directory (`/workspace`, the node's container root) + provided files + SLURM partition/CPUs (only when a scheduler tool is actually available) + container image (`ARI_CONTAINER_IMAGE`) |
-| `RESOURCE BUDGET` | L2208-2212 | `max_react_steps`, `timeout_per_node // 60` minutes |
+| `EXPERIMENT ENVIRONMENT` | L2202-2211 | work directory (`/workspace`, the node's container root) + provided files + SLURM partition/CPUs (only when a scheduler tool is actually available) + container image (`ARI_CONTAINER_IMAGE`) |
+| `RESOURCE BUDGET` | L2213-2217 | `max_react_steps`, `timeout_per_node // 60` minutes |
 | `extra_system_prompt` | `WorkflowHints.extra_system_prompt` | Optional escape hatch set by `from_experiment_text` / pipeline configs |
 
-The `{memory_rules}` block (L2220-2222) is appended only when the agent
+The `{memory_rules}` block (L2224-2226) is appended only when the agent
 actually has the `add_memory` tool available, and it inlines the active
 node id so the LLM cannot accidentally write under a different scope:
 
@@ -1057,25 +1057,27 @@ node id so the LLM cannot accidentally write under a different scope:
 ### Tool catalog (`tool_desc`)
 
 `tools = self._available_tools_openai(suppress=..., phase="bfts")` at
-L2112 enumerates every tool MCP exposes for `phase="bfts"`, then drops
-anything in `_suppress_tools`. The mutable suppression set lives on the
-`AgentLoop` instance and is updated as the run progresses:
+L2116 enumerates every tool MCP exposes for `phase="bfts"`, then drops
+anything in `_suppress_tools`. The suppression set is reached through the
+`AgentLoop._suppress_tools` property (L1489-1495), whose storage is
+per-worker-thread (`_NodeLocalState(threading.local)`, L1183-1194), and is
+updated as the run progresses:
 
-- After the first successful `generate_ideas` call, the loop sets
-  `self._suppress_tools = {"generate_ideas"}` (L2633) so subsequent
+- After a `generate_ideas` call whose idea was admitted, the loop sets
+  `self._suppress_tools = {"generate_ideas"}` (L3005-3007) so subsequent
   nodes do not regenerate ideas.
 - `survey` is **not** suppressed for child nodes; it is only discouraged
   in prose (see "User message #1 — child" below). A child that ignores
   the prose can still call `survey()`.
 
 `_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`
-(L2630) marks tool results that the message-window trimmer must keep,
+(L2634) marks tool results that the message-window trimmer must keep,
 even when the chat history is compressed; their content survives every
 ReAct round.
 
 ### User message #1 — root node (`node.depth == 0`)
 
-`loop.py:2430-2436`:
+`loop.py:2434-2440`:
 
 ```
 Experiment goal:
@@ -1105,7 +1107,7 @@ criterion, so `make_metric_spec` must follow it rather than guess a list).
 
 ### User message #1 — child node (`node.depth > 0`)
 
-`loop.py:2341-2379`:
+`loop.py:2345-2382`:
 
 ```
 Experiment goal:
@@ -1137,7 +1139,7 @@ handoff arm injects neither the summary nor the parent log is told instead
 that it inherits the parent's *code* but not its results, so the prompt never
 promises a block that does not arrive.
 
-`_label_desc` (L2308-2318) is the only place where label semantics enter
+`_label_desc` (L2311-2322) is the only place where label semantics enter
 the per-node prompt:
 
 | Label | One-line task |
@@ -1187,7 +1189,7 @@ and assembles up to three bounded tiers:
 Failures (memory backend down, malformed result) are swallowed at
 `logger.debug` level so the node still runs.
 
-The legacy `search_global_memory` injection block (`loop.py:2513-2535`) is dead
+The legacy `search_global_memory` injection block (`loop.py:2517-2539`) is dead
 code in v0.6.0; the global-memory tool was removed (`CHANGELOG.md`
 v0.6.0 §3) and the conditional never fires.
 
@@ -1196,7 +1198,7 @@ v0.6.0 §3) and the conditional never fires.
 | Item | Limit | Code |
 |------|-------|------|
 | `goal_text` | `ARI_GOAL_MAX_CHARS` chars, default **8000**; `0` disables the cap entirely | `loop.py:2274-2283` |
-| Survey-result memory entry | first 5 papers, 200-char abstract each | `loop.py:2939-2942` |
+| Survey-result memory entry | first 5 papers, 200-char abstract each | `loop.py:2943-2946` |
 | Tier 1a — experiment-core field | `_CORE_FIELD_CAP = 400` chars per field | `loop.py:342` |
 | Tier 1a — `selected_idea` summary | `_IDEA_FIELD_CAP = 1500` chars | `loop.py:343` |
 | Tier 1b — per-ancestor `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` chars per entry (not an aggregate cut) | `loop.py:346` |
@@ -1248,7 +1250,7 @@ skill subprocess as `ARI_CONTEXT_AUTHORITY_KEY`. For any tool whose
 context into the call arguments (`connection.authorize_args`,
 `mcp/client.py:540-545`), and `ari-skill-memory` verifies the signature with
 `verify_tool_context(...)` before touching the backend
-(`ari-skill-memory/src/server.py:55-63`).
+(`ari-skill-memory/src/server.py:46-51`).
 
 The active node is therefore carried *inside each signed call*, not in the
 subprocess environment, which is what makes concurrent sibling nodes sharing

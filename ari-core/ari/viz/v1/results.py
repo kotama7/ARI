@@ -28,6 +28,7 @@ import logging
 from pathlib import Path
 
 from ..checkpoint_finder import _resolve_checkpoint_dir
+from ..run_health import paper_build_health, run_terminal_health
 from .dto import (
     EarFileV1,
     EarManifestV1,
@@ -266,6 +267,13 @@ def get_run_results(run_id: str) -> RunResultsV1 | dict:
             "not_found", f"unknown run: {run_id}", request_id="", status=404
         )
     degraded: list[str] = []
+    paper_status, paper_reasons = paper_build_health(d)
+    if paper_status is not None:
+        degraded.extend(
+            f"paper build {paper_status}: {reason}" for reason in paper_reasons
+        )
+    _, terminal_reasons = run_terminal_health(d)
+    degraded.extend(reason for reason in terminal_reasons if reason not in paper_reasons)
     return RunResultsV1(
         run_id=run_id,
         paper=_paper_block(d),

@@ -549,11 +549,28 @@ async def _run(args: argparse.Namespace) -> dict[str, Any]:
         observations=observations,
         tests=tests,
     )
+    materialized_profile = profile.model_dump(mode="json")
+    # These three fields only locate the bundle on the promoting host.  Portable
+    # experiment identity already excludes them, and the sole reader re-derives
+    # each one from the bundle directory, so record them relative instead of
+    # writing this checkout's absolute paths into a tracked artifact.
+    def _bundle_relative(value: str) -> str:
+        return Path(value).resolve().relative_to(output).as_posix()
+
+    materialized_profile["circuit"]["qpy_path"] = _bundle_relative(
+        profile.circuit.qpy_path
+    )
+    materialized_profile["golden_fixture_path"] = _bundle_relative(
+        profile.golden_fixture_path
+    )
+    materialized_profile["replay_fixture_path"] = _bundle_relative(
+        profile.replay_fixture_path
+    )
     _write_json(
         output / "materialized-profile-v1.json",
         {
             "schema_version": "ari.qiskit-materialized-profile/v1",
-            "profile": profile.model_dump(mode="json"),
+            "profile": materialized_profile,
             "core_provider_digest": provider_digest(
                 qiskit_effective_launcher(launcher, "circuit")
             ),

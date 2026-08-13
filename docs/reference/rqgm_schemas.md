@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-07-28
 ---
 
 # RQGM Schema Reference
@@ -30,8 +30,10 @@ exactly that word in their module docstrings; no Pydantic model backs them, and
 no snapshot test asserts that a shipped schema equals a generated
 `model_json_schema()`.  Pydantic `model_validate` *is* used inside
 `ari/rqgm/`, but only for the separately gated Knowledge/Capability/Assurance
-admission, harness, capability-binding, and manuscript documents — never for
-the `rqgm_record_base` envelope or any record inventoried on this page.
+admission, harness, capability-binding, and manuscript documents (plus the
+evaluation harness's own `ARIConfig` overlay in `ari/rqgm/evaluation/smoke.py`)
+— never for the `rqgm_record_base` envelope or any record inventoried on this
+page.
 
 What the kernel enforces at write time is an envelope + shape check,
 `ConstitutionalKernel.validate_record_schema` (`ari/rqgm/kernel.py`): the eight

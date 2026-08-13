@@ -760,6 +760,16 @@ class AssuranceRuntimeConfig(BaseModel):
         description="off emits no assurance artifacts; audit verifies without gating; "
                     "enforce gates scientific frontier and publication certification.",
     )
+    tolerance_policy: str = Field(
+        "",
+        description="Named tolerance policy the run's correctness requirements "
+                    "carry, e.g. `hpc-floating-point/v1`, resolved from "
+                    "`config/harnesses/policies/`. A Harness pins the sha256 of "
+                    "that policy file, and coverage compares the two digests for "
+                    "equality; left empty the requirement carries the Research "
+                    "Contract's own absolute/relative pair instead, which no "
+                    "Harness can ever match. Empty preserves the old behaviour.",
+    )
 
 
 class RQGMEpochConfig(BaseModel):
@@ -2698,6 +2708,42 @@ def _discover_skills(base_dir: Path | None = None) -> list[SkillConfig]:
             continue
         skills.append(_skill_config_from_manifest(skill_dir, manifest_path, manifest))
     return skills
+
+
+def enable_manifest_skills(
+    cfg: "ARIConfig",
+    names: tuple[str, ...] | list[str],
+    *,
+    base_dir: Path | None = None,
+) -> None:
+    """Add explicitly requested canonical Skills, including default-off ones.
+
+    K/C/A's query Skills are intentionally default-off, but a governed run
+    needs a real operator path that both enables them and preserves their full
+    manifest metadata in ``SKILLS.lock``.  This helper is deterministic,
+    idempotent, and rejects misspelled names instead of silently degrading.
+    """
+
+    root = base_dir or Path(__file__).resolve().parents[3]
+    requested = tuple(dict.fromkeys(str(name).strip() for name in names if str(name).strip()))
+    existing = {skill.name for skill in cfg.skills}
+    missing = [name for name in requested if name not in existing]
+    if not missing:
+        return
+    found: dict[str, SkillConfig] = {}
+    for manifest_path in sorted(root.glob(f"ari-skill-*/{MANIFEST_FILENAME}")):
+        manifest = load_skill_manifest(manifest_path)
+        if manifest.name not in missing:
+            continue
+        skill_dir = manifest_path.parent
+        resolve_skill_entrypoint(skill_dir, manifest)
+        found[manifest.name] = _skill_config_from_manifest(
+            skill_dir, manifest_path, manifest
+        )
+    unknown = sorted(set(missing) - set(found))
+    if unknown:
+        raise ValueError(f"requested Skill manifest not found: {unknown}")
+    cfg.skills.extend(found[name] for name in missing)
 
 
 def _skill_config_from_manifest(

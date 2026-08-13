@@ -18,9 +18,13 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__
     role: test
+  - path: ari-core/ari/viz/frontend/vitest.config.ts
+    role: config
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # How to Test ARI Code
@@ -372,6 +376,38 @@ overrides. Every key is optional and the checker carries the same values as
 in-code defaults, so the YAML earns its place purely by making a budget change
 a one-line reviewable diff instead of a code edit. Retune it there, not in the
 script.
+
+**Test coverage — a known gap.** Nothing in this repository measures how much of
+either half of the codebase a suite actually executes.
+`ari-core/ari/viz/frontend/vitest.config.ts` declares no `coverage` block;
+`package.json` defines `test` as a bare `vitest run`, adds no coverage script,
+and lists no coverage provider among its devDependencies — `@vitest/coverage-v8`
+appears in `package-lock.json` only as one of vitest's own optional peer
+dependencies, so `vitest run --coverage` would have to install it first. The
+Python half is unmeasured in the same way: `pytest.ini` sets no `--cov`, and no
+ARI package depends on `pytest-cov`. No coverage baseline has ever been recorded
+for either.
+
+Two numbers were set as targets during the dashboard refresh and never
+implemented. They are recorded here as a **known gap** rather than as policy,
+and a green suite is evidence for neither: line and branch coverage of 90% for
+the pure-logic frontend layers, and an overall figure baselined on first
+measurement and then ratcheted upward toward 80%, with any drop treated as a
+regression.
+
+Two things would have to be settled before either number could mean anything.
+First, the layers the 90% target named — reducers, serializers, API wrappers and
+the config-resolver adapter — map onto this code only in part.
+`src/services/api/` is the API wrapper layer and does exist. But the frontend
+holds no reducers at all (a case-insensitive search for `reducer` under `src/`
+returns nothing), it has no serializer module (the only two matches for
+`serializ` under `src/` are comments, in `services/api/client.ts` and
+`hooks/useRunEvents.ts`), and the config resolver is Python —
+`ari-core/ari/config/resolver.py`, reached over HTTP
+rather than through a frontend adapter. Second, a ratchet needs somewhere to
+run, and no workflow runs the frontend suite — the same reason the shell
+accessibility baseline and the bundle budget above are hand-run rows of the
+pre-cutover checklist rather than CI gates.
 
 ## Writing a regression test
 

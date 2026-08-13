@@ -60,7 +60,12 @@ class MCPToolCaller(Protocol):
         ...
 
     def call_tool(
-        self, tool_name: str, args: dict, *, cow_node_id: "str | None" = None
+        self,
+        tool_name: str,
+        args: dict,
+        *,
+        context: "Any | None" = None,
+        cow_node_id: "str | None" = None,
     ) -> dict:
         """Dispatch one tool call; always the ``{"result"}|{"error"}``
         envelope, never an exception for a denied/unknown tool."""

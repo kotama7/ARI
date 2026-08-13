@@ -77,6 +77,36 @@ def test_cli_run_with_minimal_md(tmp_path):
     assert result.exit_code == 0
 
 
+def test_cli_run_closes_mcp_when_bfts_raises(tmp_path):
+    """A pre-paper failure must not leak MCP asyncio loops or subprocesses."""
+
+    exp = tmp_path / "experiment.md"
+    exp.write_text("## Research Goal\nExercise failure cleanup.\n")
+    cfg = tmp_path / "config.yaml"
+    checkpoint = str(tmp_path / "ckpts/{run_id}")
+    cfg.write_text(
+        "llm:\n  model: fake-model\n"
+        f"checkpoint:\n  dir: {checkpoint}\n"
+        f"logging:\n  dir: {checkpoint}\n"
+    )
+    mcp = mock.MagicMock()
+    with mock.patch("ari.cli.build_runtime") as mock_rt, mock.patch(
+        "ari.cli._run_loop", side_effect=RuntimeError("bfts failed")
+    ):
+        mock_rt.return_value = (
+            None,
+            None,
+            mcp,
+            mock.MagicMock(),
+            mock.MagicMock(),
+            None,
+        )
+        result = runner.invoke(app, ["run", str(exp), "--config", str(cfg)])
+
+    assert result.exit_code != 0
+    mcp.close_all.assert_called_once_with()
+
+
 def test_checkpoint_name_from_research_goal(tmp_path):
     """Checkpoint run_id must be a valid timestamp-prefixed slug (LLM or fallback from content)."""
     exp = tmp_path / "experiment.md"

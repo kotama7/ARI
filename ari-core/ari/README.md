@@ -228,7 +228,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `lock_runtime.py` — per-client exact/subset `SKILLS.lock` reconciliation state.
   - `registry_runtime.py` — live discovery, enrichment, and collision admission.
   - `secure_stdio_proxy.py` — exact-env/redacting boundary for direct MCP clients.
-  - `stdio_guard.py` — TODO
+  - `stdio_guard.py` — runs an MCP entrypoint while dropping whitespace-only stdout records. The MCP Python client decodes every newline-delimited stdout record as JSON-RPC, so a dependency that emits one empty record logs a parse traceback even when the following response is valid. The runner stays INSIDE the provider process, so stdio EOF and shutdown semantics are untouched, and it filters only unambiguous whitespace-only records.
 - `memory/` — backend abstraction for ancestor-scoped node memory.
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
@@ -601,7 +601,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `internal_adapters.py` — lazy wrappers over the last ari-core internals with no `ari.public.*` surface: `pid_status`/`read_pid` (`ari.pidfile`) plus `memory_backend` forwarding to the sanctioned `ari.memory.get_backend` funnel.
   - `node_work_api.py` — per-node work-dir filetree/filecontent/memory listing.
   - `routes.py` — `_Handler` dispatch + access log.
-  - `run_health.py` — TODO
+  - `run_health.py` — read-only derivation of terminal run health from durable artifacts. Tree and review artifacts describe work that happened, not whether the whole paper pipeline succeeded — a review can exist while the immutable paper-build lock subsequently blocks publication. This is the shared precedence rule both API generations use, so neither can report that terminal failure as a completed run.
   - `server.py` — HTTP/WebSocket server and `ari viz` main entry.
   - `state.py` — shared mutable server state.
   - `state_sync.py` — node-tree loading + broadcast + filesystem watcher.

@@ -32,6 +32,15 @@ _UNVERIFIED_TYPES = frozenset({
     "unknown_formula", "operand_unresolved", "claim_id_collision",
 })
 
+_ORS_OUTPUTS = {
+    "ors_generate_rubric": "ors_rubric.meta.json",
+    "ors_audit_rubric": "ors_rubric.audit.json",
+    "ors_seed_sandbox": "ors_seed.json",
+    "ors_build_reproduce": "ors_replicator.json",
+    "ors_run_reproduce": "ors_phase1.json",
+    "ors_grade": "ors_grade.json",
+}
+
 
 def _read(path: Path) -> Any:
     try:
@@ -48,6 +57,51 @@ def build_integrity_report(checkpoint_dir: str | Path) -> dict:
     ckpt = Path(checkpoint_dir)
     ev = ckpt / "evaluation"
     out: dict[str, Any] = {"stage": "run_integrity", "checkpoint_dir": str(ckpt)}
+
+    paper_build = _read(ckpt / "paper_build.json")
+    if paper_build is None:
+        out["paper_build"] = None
+    elif isinstance(paper_build, dict):
+        out["paper_build"] = {
+            "status": paper_build.get("status"),
+            "blocking_reasons": paper_build.get("blocking_reasons") or [],
+            "build_digest": paper_build.get("build_digest"),
+        }
+
+    # ORS is downstream of the paper-build lock.  Report expected enabled
+    # stages separately from observed files so "did not run" cannot look like
+    # a clean reproducibility verdict.  A missing/unreadable workflow remains
+    # unknown rather than inventing the package defaults.
+    workflow = ckpt / "workflow.yaml"
+    expected_ors: dict[str, str] = {}
+    if workflow.is_file():
+        try:
+            import yaml
+
+            raw_workflow = yaml.safe_load(workflow.read_text(encoding="utf-8")) or {}
+            for stage in raw_workflow.get("pipeline", []):
+                if not isinstance(stage, dict) or stage.get("enabled", True) is False:
+                    continue
+                name = str(stage.get("stage") or "")
+                if name in _ORS_OUTPUTS:
+                    expected_ors[name] = _ORS_OUTPUTS[name]
+        except Exception as exc:  # pragma: no cover - defensive
+            out["ors"] = {"status": "unknown", "error": str(exc)}
+    if "ors" not in out:
+        completed_ors = sorted(
+            name for name, filename in expected_ors.items() if (ckpt / filename).is_file()
+        )
+        missing_ors = sorted(set(expected_ors) - set(completed_ors))
+        out["ors"] = {
+            "status": (
+                "not_configured" if not expected_ors
+                else "completed" if not missing_ors
+                else "incomplete"
+            ),
+            "expected_stages": sorted(expected_ors),
+            "completed_stages": completed_ors,
+            "missing_stages": missing_ors,
+        }
 
     gate = _read(ev / "claim_evidence_hard_gate_locked.json") or _read(
         ev / "claim_evidence_hard_gate_final.json") or _read(
@@ -163,6 +217,20 @@ def build_integrity_report(checkpoint_dir: str | Path) -> dict:
 def _concerns(rep: dict) -> list[str]:
     """Human-facing lines for the things a reader must not miss."""
     c: list[str] = []
+    paper_build = rep.get("paper_build")
+    if isinstance(paper_build, dict) and paper_build.get("status") in {
+        "blocked", "compile-error"
+    }:
+        c.append(
+            f"paper build status is {paper_build.get('status')}: "
+            f"{paper_build.get('blocking_reasons') or ['no reason recorded']}"
+        )
+    ors = rep.get("ors")
+    if isinstance(ors, dict) and ors.get("status") == "incomplete":
+        c.append(
+            "enabled ORS stages did not complete: "
+            + ", ".join(ors.get("missing_stages") or [])
+        )
     gate = rep.get("claim_gate")
     if gate is None:
         c.append("claim-evidence gate produced NO report (not the same as clean)")

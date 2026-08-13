@@ -62,13 +62,17 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-07
 ---
 
 # Federated Scientific Tool Registry
 
 `ari-skill-tool-registry` imports large MCP collections behind five stable
 operations: `discover`, `describe`, `invoke`, `get_status`, and `get_result`.
+Six MCP tools carry them, because `invoke_scheduled` is the same dispatch
+operation on a second surface: a Provider's side-effect class follows its
+permissions, so putting `scheduler` on the shared `invoke` would raise the
+envelope of every leaf behind it.
 The Skill is enabled by default, but enabling it enables no leaf: only sources
 present in the selected catalog can execute, and the checked-in `CATALOG.lock`
 is empty by design, so the Skill flag and the catalog are two independent gates.
@@ -278,7 +282,7 @@ the session, and interruption cannot resume an ephemeral local run.
 
 The formally promoted local OpenROAD identity is the checked-in
 `openroad/0.6.1+orfs-26q3-gcd-nangate45` bundle. Its verified lock digest is
-`sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`.
+`sha256:fbc4be322a03aa50e666a0dcdb3b1afdfe60fa52bbc570e9cd8f1c800168825e`.
 It covers one x86_64, one-thread, local-MCP CPU run over the exact GCD placed
 database and Nangate45 PDK/library, with live schema parity, DRC-zero metrics,
 golden/replay evidence, an official ORFS reference run, fifteen registration
@@ -300,7 +304,7 @@ be.
 The independent
 `openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu` identity is also formally
 promoted. Lock
-`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`
+`sha256:def08a69e7c0c13e8e76e026163337f39667ee8467792c16cad91d96ee9bd203`
 binds the anonymous exclusive-node CPU site digest, scheduler clients, the
 digest-pinned container substrate, runtime-owned metrics lifecycle, terminal
 completion evidence, live DRC-zero result, fixtures, gates, and human approval.
@@ -433,10 +437,12 @@ Provider/Capability Binding Lock for a run.
 A leaf in this catalog is not an ARI Provider and never appears in
 `SKILLS.lock`, so the Capability Binder cannot authorize it directly. The
 `ari.provider.tool-registry` entry in `ari-core/config/providers/catalog.yaml`
-bridges the two: its `brokered` block names this catalog lock, the dispatch tool
-(`invoke`), and a reviewed table from leaf `tool_ref` to ARI `capability_ref`.
-Each reviewed leaf becomes a composite `CapabilityProvisionV1` whose callable
-identity is `invoke` and whose semantic identity is the leaf. A descriptor's own
+bridges the two: its `brokered` block names this catalog lock, the default
+dispatch tool (`invoke`), a per-leaf `dispatch_tool_by_leaf` override that routes
+a scheduler-submitting leaf to `invoke_scheduled`, and a reviewed table from leaf
+`tool_ref` to ARI `capability_ref`. Each reviewed leaf becomes a composite
+`CapabilityProvisionV1` whose callable identity is the dispatch surface its route
+names and whose semantic identity is the leaf. A descriptor's own
 `capability_ref` belongs to this registry's namespace and is never read as that
 mapping; only the checked-in table decides.
 
@@ -475,10 +481,10 @@ required or nothing would bind; that was written before the presence filter and
 was wrong afterwards. The grant becomes required exactly when the token is set,
 which is the case where the authority is real.
 
-The three broker tools that carry a call context — `invoke`, `get_status`, and
-`get_result` — declare `ari_context` in their input schemas. They are
-`context_requirement: run`, so the transport injects the authorized call context
-under that name; a schema with `additionalProperties: false` that omits it
+The four broker tools that carry a call context — `invoke`, `invoke_scheduled`,
+`get_status`, and `get_result` — declare `ari_context` in their input schemas.
+They are `context_requirement: run`, so the transport injects the authorized call
+context under that name; a schema with `additionalProperties: false` that omits it
 refuses every authorized call.
 
 One rough edge remains and is not a defect in the result normalizer. ARI wraps

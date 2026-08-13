@@ -1,6 +1,6 @@
 # frontend/src/components/Projects
 
-Projects workspace — the first gui_refresh v2 vertical slice (plans 01 §Route model, 07 §Projects and run portfolio): a read-only run portfolio built on the typed `/api/v1` react-query hooks, gated on the `gui_v2` capability.
+Projects workspace — the first gui_refresh v2 vertical slice: a read-only run portfolio built on the typed `/api/v1` react-query hooks, gated on the `gui_v2` capability. Its rows link run-explicitly (`#/results?run=<run_id>`) rather than handing a selection over implicitly, so opening two runs in two tabs cannot make them step on each other; the route itself exists only as an entry in `src/app/routeRegistry.ts`, which is the single place a route is declared.
 
 ## Contents
 

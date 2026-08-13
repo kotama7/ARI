@@ -390,8 +390,12 @@ Four properties are enforced rather than assumed:
 - Reproducibility is capped by admission. A leaf admitted only `callable` grades
   `unknown` whatever its determinism field claims; `reproducible` grades at best
   `bounded`, `scientifically_admitted` at best `exact`. A leaf admitted below its
-  own `required_level`, a quarantined leaf, a reviewed leaf absent from the
-  catalog, and a dispatch tool absent from the run lock are all refusals.
+  own `required_level`, a quarantined leaf, and a dispatch tool absent from the
+  run lock are all refusals. A reviewed leaf the selected site lock simply does
+  not contain is skipped instead: the selected lock may intentionally be
+  narrower than the reviewed table, absent leaves grant no authority, and a
+  required capability none of them supplies stays visibly `unsatisfied` at the
+  binder.
 
 ### Environment evidence and Provider substitution
 
@@ -410,7 +414,7 @@ recorded. The executable's path is deliberately not kept: it is site-dependent
 and binding needs none of it.
 
 Turning an observed fact into an ontology resource class is a separate act, and
-`config/capabilities/resource_derivations.yaml` is where it happens. Each row
+`ari-core/config/capabilities/resource_derivations.yaml` is where it happens. Each row
 names what it emits, what must already be present, and the reason; a row without
 a rationale is refused at load, because a derivation without a reason is an
 alias and an alias is what the table exists to prevent. Rows are applied to a

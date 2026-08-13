@@ -1707,7 +1707,11 @@ class AgentLoop:
                 "node_id": node.id,
                 "text": f"RESULT SUMMARY node={node.id} label={node.label}: metrics=[{_ms}] summary={summary[:300]}",
                 "metadata": {"type": "result_summary", "metrics": node.metrics},
-            }, cow_node_id=node.id)
+            }, context=self._node_tool_context(
+                node,
+                phase="bfts",
+                run_id=str(experiment.get("run_id") or ""),
+            ))
         except Exception:
             pass
         if hasattr(node, "trace_log"):

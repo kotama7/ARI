@@ -18,7 +18,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_workflow_write_guard.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # GUI-ADR-10: bundled `workflow.yaml` write guard
@@ -65,10 +65,13 @@ Verified against the tree. `_workflow_write_guard` in
 `ari-core/ari/viz/api_workflow.py` returns
 `{"ok": False, "error": _NO_ACTIVE_CHECKPOINT_ERROR, "_status": 400}` when
 `state._checkpoint_dir` is `None` or missing, and all four handlers call it
-first (`_api_save_workflow` in `api_settings.py`; `_api_save_workflow_flow`,
+before any write (`_api_save_workflow` in `api_settings.py`; `_api_save_workflow_flow`,
 `_api_save_skill_phases`, `_api_save_disabled_tools` in `api_workflow.py`);
-`routes.py` pops `_status` into the HTTP status. No `/api/v1` route writes a
-workflow, so the legacy four are the whole write surface. The Wave 2b
+`routes.py` pops `_status` into the HTTP status. No `/api/v1` route *edits* a
+workflow — the only v1 write is the launch materializer in
+`ari-core/ari/viz/v1/launch.py`, which copies the bundled file into the
+brand-new checkpoint it has just created and merges the ADR-09 mode blocks
+into that copy — so the legacy four are the whole editing surface. The Wave 2b
 follow-up closed the residual case where a checkpoint is active but holds no
 copy yet: `_checkpoint_workflow_path` copies the bundled file into the
 checkpoint first and the edit lands on that copy. `POST /api/workflow` does

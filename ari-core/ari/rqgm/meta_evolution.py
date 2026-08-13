@@ -489,7 +489,9 @@ class MetaSandboxMCPProxy:
             })
         return tools
 
-    def call_tool(self, tool_name, args, *, cow_node_id=None) -> dict:
+    def call_tool(
+        self, tool_name, args, *, context=None, cow_node_id=None
+    ) -> dict:
         name = str(tool_name)
         if name not in self._allowed:
             return {
@@ -502,10 +504,23 @@ class MetaSandboxMCPProxy:
             # The final tool is synthesized: run_react captures its args as
             # the rollout result; there is nothing to dispatch.
             return {"result": "ok"}
-        try:
-            return self.inner.call_tool(name, args, cow_node_id=cow_node_id)
-        except TypeError:
-            return self.inner.call_tool(name, args)
+        if context is not None:
+            try:
+                return self.inner.call_tool(name, args, context=context)
+            except TypeError as exc:
+                message = str(exc)
+                if "context" not in message or "unexpected keyword" not in message:
+                    raise
+        if cow_node_id is not None:
+            try:
+                return self.inner.call_tool(
+                    name, args, cow_node_id=cow_node_id
+                )
+            except TypeError as exc:
+                message = str(exc)
+                if "cow_node_id" not in message or "unexpected keyword" not in message:
+                    raise
+        return self.inner.call_tool(name, args)
 
     def to_claude_mcp_config(self, *args, **kwargs) -> dict:
         # No external server ever reaches a sandboxed meta rollout.

@@ -372,6 +372,21 @@ FIELD_META: dict[str, dict] = {
         "applies_when": "ari.mode=ari_rqgm",
         "notes": "off | audit | enforce; enforce gates the scientific frontier and publication.",
     },
+    "assurance.tolerance_policy": {
+        "category": "Scientific assurance",
+        "level": "expert",
+        "scope": "run",
+        "sensitivity": "public",
+        "mutability": "new_run_only",
+        "applies_when": "ari.mode=ari_rqgm",
+        "notes": (
+            "Named policy id from config/harnesses/policies/, e.g. "
+            "hpc-floating-point/v1. A Harness pins the sha256 of that policy "
+            "file and coverage compares the two digests for equality; empty "
+            "makes the requirement carry the Research Contract's own "
+            "absolute/relative pair, which no Harness can match."
+        ),
+    },
     # ── Governance (RQGM): expert, new-run-only, mode-gated ──
     "rqgm.": {
         "category": "Governance",

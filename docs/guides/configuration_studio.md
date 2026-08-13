@@ -36,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_secret_readiness.py
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # Configuration Studio Guide
@@ -58,14 +58,14 @@ rewritten.
 
 Everything on both screens is generated from one machine-readable
 inventory of the declared `ARIConfig` leaves merged with a hand-authored
-metadata overlay. Today that is **204 leaves with 100 % metadata
+metadata overlay. Today that is **205 leaves with 100 % metadata
 coverage** — the registry build raises rather than shipping a field with
 no metadata, so a new config field cannot silently appear without a
 category, level, scope, sensitivity and mutability.
 
 Current categories: Governance (104), Models (32), Search (BFTS) (24),
-Proposal routing (14), Manuscript completeness (10), Infrastructure (5),
-Scientific assurance (5), Evaluation (4), Execution mode (4), Skills (2).
+Proposal routing (14), Manuscript completeness (10), Scientific assurance
+(6), Infrastructure (5), Evaluation (4), Execution mode (4), Skills (2).
 
 The registry is served by `GET /api/v1/config/schema`. It carries
 **metadata only** — never an effective value — and `secret_reference`
@@ -81,13 +81,13 @@ configuration schema with default values").
 Each row shows the dotted path, the effective value, a **provenance
 source** badge, a **mutability** badge, the low-confidence marker when
 applicable, and any `applies_when` note. A search box filters by path or
-category, so every one of the 204 fields stays discoverable. Resolver
+category, so every one of the 205 fields stays discoverable. Resolver
 warnings are listed verbatim in their own panel — nothing is silently
 dropped.
 
 ![The Config browser for one run: a resolver-warnings panel, a filter box next to the field counter, and the per-category tables listing each dotted path with its effective value, a provenance source badge and a mutability badge; the llm.api_key row reads "secret (reference only)"](../assets/images/en/dashboard_config.png)
 
-The counter next to the filter box can read higher than 204. Any leaf the
+The counter next to the filter box can read higher than 205. Any leaf the
 resolved manifest carries that the registry does not know is still shown,
 grouped under **Other** — a manifest path is never dropped just because it
 has no registry metadata.
@@ -149,8 +149,9 @@ from metadata, not hand-written per field: `enum` → select, `bool` →
 switch, `int`/`float` → number input, `str` → text input,
 `secret_reference` → the write-only secret control, composite types
 (lists, dicts, nested models) → an explicitly **disabled** input with the
-reason shown ("Composite field — edit via workflow.yaml"). Unavailable
-controls always say why; they are never silently hidden.
+reason shown ("Composite field — edit via workflow.yaml (custom editor
+pending)."). Unavailable controls always say why; they are never silently
+hidden.
 
 ![The Studio: the scope tab strip across the top, the template and draft creation controls, the category list on the left, and the generated form on the right — a select, plain text inputs, and the write-only secret control with its name picker, "configured (repo_env)" badge and password field; the footer carries Save changes, Discard edits, the unsaved-edit state and the document revision](../assets/images/en/dashboard_studio.png)
 
@@ -161,6 +162,53 @@ the frontend.
 Each field row also carries a status badge: `edited` (unsaved local
 change), `saved` (present in the stored document), or `default` (nothing
 stored — the field falls through to the layer below).
+
+### How a control is chosen
+
+The page reads the registry entry and stops at the first match:
+
+1. `sensitivity` is `secret_reference` → the write-only secret control;
+2. a non-empty `enum` → a select;
+3. otherwise the `value_type` string is split on `|` and `None` is
+   dropped. If exactly **one** member is left: `bool` → switch,
+   `int`/`float` → number input, `str` → text input;
+4. anything else → composite — more than one member left after the split,
+   or a `list[…]` / `dict[…]` / nested-model annotation.
+
+So `sensitivity` outranks `enum`, and `enum` outranks the type. An
+enum-valued secret would still get the secret control, and an
+integer-valued enum would still get a select rather than a number input.
+
+**Known gap: there is no `field path/pattern → custom editor` registry.**
+The GUI plan for this workspace called for one, so that a domain-specific
+field could claim a richer control by declaring itself instead of by
+changing the page. That registry was never built. The two renderings that
+are *not* derived from `value_type` are structural special cases compiled
+into the page, not entries a field can register for:
+
+- `sensitivity: secret_reference` selects the secret control. This one is
+  keyed on metadata, so a future secret leaf would inherit it
+  automatically — today `llm.api_key` is the registry's only secret leaf.
+- A field whose `category` is `Execution mode`, or whose path starts with
+  `rqgm.`, is routed into the Execution section (below, *Execution mode:
+  selectable; governance tuning: still file-only*) before the generic
+  table is built at all.
+
+Inside the control renderer exactly one literal path is special-cased:
+`llm.model` is the field that gets the model-catalog datalist. Every other
+field renders from the rules above.
+
+The consequence for anyone adding a config field: you get a generated
+control for free, and there is nowhere to register a better one. The
+schema entry carries no per-field editor hint — its keys are `path`,
+`value_type`, `default`, `enum`, `required`, `category`, `level`, `scope`,
+`sensitivity`, `mutability`, `applies_when`, `notes`, `source` and
+`env_override` — so giving one path a bespoke editor today means editing
+the Studio page component itself. That is why every composite leaf —
+`skills`, `resources`, `evaluator.axis_weights`, `evaluator.custom_axes` —
+is rendered as a disabled input naming the reason rather than as an
+editor. The value is still displayed and is never hidden; it is simply not
+editable from this screen.
 
 ### Three scopes
 
@@ -246,6 +294,7 @@ as the **Validation errors** list. The `reason` vocabulary is closed:
 | `read_only` | rejected at every scope |
 | `secret_reference` | secrets never travel through the config API |
 | `not_project_scope` | a `new_run_only` field whose scope is not `project`, patched into the project config |
+| `mode_interlock_mismatch` | the cross-path pair check below — one half of a mode intent without its agreeing twin |
 
 `new_run_only` fields *are* accepted in templates and drafts — they
 configure future runs.

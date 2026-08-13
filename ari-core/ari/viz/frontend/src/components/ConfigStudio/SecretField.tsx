@@ -1,6 +1,8 @@
 // ARI Dashboard – write-only secret control for the Configuration Studio
-// (gui_refresh task 06 Wave 4d; plans 05 §Configuration API, 06 §Schema-
-// driven rendering; ADR-05/ADR-11).
+// (gui_refresh task 06 Wave 4d; ADR-05/ADR-11). Secrets are write-only on
+// this surface — the readiness endpoint has no value field at all — and the
+// control itself is generated from the field's declared metadata rather than
+// hand-placed, so a new secret field needs no frontend change.
 //
 // A secret_reference field NEVER carries a readable value: this control
 // renders readiness only (configured / not configured + source class from

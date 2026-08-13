@@ -1870,7 +1870,7 @@ class CapabilityGatedMCPClient:
     def list_tools(self, phase=None):
         return self.inner.list_tools(phase)
 
-    def call_tool(self, tool_name, args, *, cow_node_id=None):
+    def call_tool(self, tool_name, args, *, context=None, cow_node_id=None):
         mapping = None
         try:
             mapping = self._tool_policy(tool_name, args)
@@ -1902,7 +1902,32 @@ class CapabilityGatedMCPClient:
                         f"{resource!r} for tool {tool_name!r} ({codes})"
                     )
                 }
-        return self.inner.call_tool(tool_name, args, cow_node_id=cow_node_id)
+        # The canonical MCP client replaced the historical ``cow_node_id``
+        # keyword with a signed ToolCallContextV1.  This wrapper kept forcing
+        # the removed keyword (even when its value was None), so every real
+        # RQGM tool dispatch raised TypeError while the old mock-only tests
+        # continued to pass.  Forward the current authority object unchanged;
+        # retain the legacy keyword only for older injected clients.
+        if context is not None:
+            try:
+                return self.inner.call_tool(tool_name, args, context=context)
+            except TypeError as exc:
+                message = str(exc)
+                if "context" not in message or "unexpected keyword" not in message:
+                    raise
+                return self.inner.call_tool(
+                    tool_name, args, cow_node_id=cow_node_id
+                )
+        if cow_node_id is not None:
+            try:
+                return self.inner.call_tool(
+                    tool_name, args, cow_node_id=cow_node_id
+                )
+            except TypeError as exc:
+                message = str(exc)
+                if "cow_node_id" not in message or "unexpected keyword" not in message:
+                    raise
+        return self.inner.call_tool(tool_name, args)
 
     def _maybe_raise_emergency(self, report, tool_name: str, actor=None) -> None:
         """Escalate a constitutional violation to the emergency path (T16).

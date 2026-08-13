@@ -16,7 +16,7 @@ lifecycle of each `ari-skill-*` subprocess and routes tool calls + results.
 - `lock_runtime.py` — per-client exact/subset `SKILLS.lock` reconciliation state.
 - `registry_runtime.py` — live discovery, enrichment, and collision admission.
 - `secure_stdio_proxy.py` — exact-env/redacting boundary for direct MCP clients.
-- `stdio_guard.py` — TODO
+- `stdio_guard.py` — runs an MCP entrypoint while dropping whitespace-only stdout records. The MCP Python client decodes every newline-delimited stdout record as JSON-RPC, so a dependency that emits one empty record logs a parse traceback even when the following response is valid. The runner stays INSIDE the provider process, so stdio EOF and shutdown semantics are untouched, and it filters only unambiguous whitespace-only records.
 
 ## See also
 

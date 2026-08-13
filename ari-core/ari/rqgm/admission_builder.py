@@ -116,6 +116,7 @@ def build_kca_admission(
     from ari.assurance.catalog import load_harness_catalog
     from ari.assurance.contract import (
         build_verification_contract,
+        load_tolerance_policy,
         load_property_vocabulary,
     )
     from ari.assurance.resolver import (
@@ -309,12 +310,22 @@ def build_kca_admission(
         obligations = (
             knowledge_lock.evaluation_obligations if knowledge_lock is not None else ()
         )
+        policy_id = str(getattr(cfg.assurance, "tolerance_policy", "") or "").strip()
+        tolerance_policy = (
+            load_tolerance_policy(
+                root / "harnesses" / "policies"
+                / (policy_id.replace("/", "-") + ".yaml")
+            )
+            if policy_id
+            else None
+        )
         verification = build_verification_contract(
             run_id=run_id,
             research_contract=contract,
             knowledge_obligations=obligations,
             property_vocabulary=property_vocabulary,
             property_vocabulary_digest=property_vocabulary_digest,
+            tolerance_policy=tolerance_policy,
         )
         harness_catalog = load_harness_catalog(root / "harnesses" / "catalog.yaml")
         if environment is None:

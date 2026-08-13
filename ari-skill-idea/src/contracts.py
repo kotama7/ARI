@@ -433,6 +433,27 @@ def _resolve_citations(
     return tuple(resolved), tuple(unknown)
 
 
+def _exception_detail(exc: Exception, *, limit: int = 200) -> str:
+    """One line naming what a metric-contract construction actually failed on.
+
+    Pydantic renders a ValidationError over several lines with a URL; the part
+    worth keeping in a rejection record is the field and the message. Anything
+    else is reduced to its own first line so a reason stays greppable.
+    """
+    errors = getattr(exc, "errors", None)
+    if callable(errors):
+        try:
+            parts = [
+                ".".join(str(x) for x in (item.get("loc") or ())) + ": " + str(item.get("msg") or "")
+                for item in errors()
+            ]
+            if parts:
+                return "; ".join(parts)[:limit]
+        except Exception:  # a non-pydantic .errors attribute
+            pass
+    return " ".join(str(exc).split())[:limit]
+
+
 def _metric_contract(
     raw: dict[str, Any], generation_lock: IdeaGenerationLockV1
 ) -> MetricContractV1:
@@ -558,6 +579,12 @@ def preflight_candidates(
             if "required_evidence" in message:
                 reasons.append("missing_required_evidence")
             reasons.append("invalid_metric_contract")
+            # Keep the coarse reason above for anything matching on it, and add
+            # what actually failed. Without this the rejection record said only
+            # "invalid_metric_contract" for every cause the two substring tests
+            # miss, and a run whose candidates all died on one unstated schema
+            # invariant looked identical to one that produced nonsense.
+            reasons.append(f"metric_contract_error: {_exception_detail(exc)}")
         duplicate_key = "\x00".join(
             (" ".join(title.lower().split()), " ".join(hypothesis.lower().split()))
         )

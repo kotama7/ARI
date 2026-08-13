@@ -70,7 +70,7 @@ sources:
     role: config
   - path: ari-core/tests/fixtures/contracts/mcp_tools.json
     role: test
-last_verified: 2026-08-07
+last_verified: 2026-08-13
 ---
 
 # MCP Tools Reference
@@ -168,14 +168,18 @@ argument the agent supplies.
 |---|---|:---:|
 | `survey` | Prior-work survey against **one pinned** provider — `semantic-scholar` (the default) or `virsci-snapshot`; `record` / `live` never switch backends, `replay` performs no network access, and an unsupported provider is refused rather than substituted | ✗ |
 | `generate_ideas` | LLM generates ranked idea candidates from survey + context | ✓ |
+| `mint_contract_for_proposal` | Mint a typed `ari.research-contract/v1` contract for a proposal this skill did **not** generate — the path by which an RQGM proposal-router candidate reaches KCA admission. Refuses rather than inventing: no `ARI_CHECKPOINT_DIR`, an unavailable survey snapshot, or a proposal with no title each return `contract_status: "rejected"` | ✓ |
 
-These two are the skill's only registered tools — `_load_virsci_snapshot_papers`
-is a plain helper `survey` calls directly, never agent-visible, and
-`ari-skill-idea/tests/test_server.py` pins both facts via `mcp.list_tools()`.
+`_load_virsci_snapshot_papers` is a plain helper `survey` calls directly, never
+agent-visible; `ari-skill-idea/tests/test_server.py` pins via `mcp.list_tools()`
+that `survey` and `generate_ideas` are registered and that the helper is not.
+`mint_contract_for_proposal` is registered at runtime but declared in neither
+`skill.yaml` nor `mcp.json`, so `scripts/check_skill_manifests.py` currently
+reports it as `tool-drift` for this package.
 There is no cross-provider fallback: a `virsci-snapshot` survey whose corpus is
 absent raises `FileNotFoundError`, and a Semantic Scholar survey raises on the
 HTTP error, so an outage produces a refusal rather than a silently different
-corpus. They are also
+corpus. `survey` and `generate_ideas` are also
 the MCP surface behind the RQGM `VirSciAdapter`: in the opt-in `ari_rqgm`
 mode with `proposal_router.generators.virsci.enabled: true`, the core-side
 ProposalRouter routes ideation events to `survey` + `generate_ideas` under a
@@ -290,8 +294,10 @@ binary is absent, or whose `container_image` is empty or mutable, raises
 there is no opt-back-in switch. See
 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2).
 A GPU request cannot mix its two shapes either: per-node and per-task GPU
-counts are mutually exclusive, and `gpu_type` requires an explicit GPU
-count.
+counts are mutually exclusive. A `gpu_type` carrying no count is *not* refused
+on this surface, though — the SLURM execution path fills in one GPU per node
+before it builds the resource request, so the underlying "gpu_type requires an
+explicit GPU count" rule never fires through `run_reproduce`.
 
 ### v0.8.0 new fields (Stage 3)
 
@@ -429,8 +435,8 @@ human-authenticated CLI/PR workflow. See
 
 ## ari-skill-tool-registry — brokered access to large MCP collections
 
-Five federation operations stand in for an entire upstream collection, so a
-collection of thousands of leaves costs the agent five tool slots rather than
+Six federation operations stand in for an entire upstream collection, so a
+collection of thousands of leaves costs the agent six tool slots rather than
 thousands. Leaf provider schemas are never exposed through `tools/list`.
 
 | Tool | Purpose | LLM |
@@ -438,12 +444,16 @@ thousands. Leaf provider schemas are never exposed through `tools/list`.
 | `discover` | Search the immutable federated catalog under `lexical` / `exact` / `diverse` strategy. Returns bounded summaries and opaque `tool_ref` values, at most 25 per page; it executes nothing | ✗ |
 | `describe` | Read one paginated descriptor `section` (`summary`, `schema`, `provenance`, `admission`, `limitations`, `all`) for one exact `tool_ref`. Provider text and schemas are handled as untrusted data | ✗ |
 | `invoke` | Invoke one admitted leaf by immutable `tool_ref` in `live`, `record` or `replay` mode. A bare or unqualified name is refused | ✗ |
+| `invoke_scheduled` | The same operation for a leaf that submits work to a scheduler. It is a separate surface because a Provider's side-effect class follows its permissions, so carrying scheduler authority on the shared surface would raise the envelope of every leaf dispatched through it | ✗ |
 | `get_status` | Poll an asynchronous registry `handle` through the lifecycle operations bound into its immutable descriptor | ✗ |
 | `get_result` | Fetch the final normalized result for an asynchronous registry `handle` | ✗ |
 
-`invoke`, `get_status` and `get_result` declare a run-scope context
-requirement, so their input schemas declare `ari_context` for the transport to
-fill — the same injection rule as `measure_counters` above. For catalog
+`invoke`, `invoke_scheduled`, `get_status` and `get_result` declare a run-scope
+context requirement, so their input schemas declare `ari_context` for the
+transport to fill — the same injection rule as `measure_counters` above. This
+package's `mcp.json` is the one legacy manifest that has not been regenerated:
+it still lists five names, and `scripts/check_skill_manifests.py` reports the
+missing `invoke_scheduled` as `compat-metadata-drift`. For catalog
 identity, admission levels, and the provider adapters, see
 [Federated Scientific Tool Registry](tool_registry.md).
 

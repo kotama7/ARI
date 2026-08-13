@@ -586,8 +586,11 @@
         ],
         "options": [
           "--config",
+          "--kca-audit",
+          "--no-kca-audit",
           "--no-virsci-live",
           "--profile",
+          "--task-tag",
           "--virsci-k",
           "--virsci-live",
           "--virsci-n-authors",

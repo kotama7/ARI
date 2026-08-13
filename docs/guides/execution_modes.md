@@ -28,7 +28,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # Execution Modes: `simple_bfts` and `ari_rqgm`

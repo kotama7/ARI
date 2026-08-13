@@ -184,8 +184,9 @@ boot ──▶ mode resolution ──▶ RQGMRuntime ──▶ founding registra
    之后用于对提示词候选做回归测试。
 
 所有内容都记入 `rqgm_adversarial_cases.jsonl`，包括一个幂等的
-**回合标记**（`rqgm_adversarial_round`，以 `node_id` + `epoch_id`
-为键），因此被 resume 的运行绝不会重复攻击同一节点。
+**回合标记**（`rqgm_adversarial_round`，其查询键是 `node_id` + `kind` ——
+这里是 `exploration`，步骤 8 的 paper 预检回合则是 `paper_candidate`，
+两者是彼此独立的幂等域），因此被 resume 的运行绝不会重复攻击同一节点。
 
 ### 6. 纪元边界 —— 审计、转换、修复
 

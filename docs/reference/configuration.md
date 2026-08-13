@@ -2,11 +2,19 @@
 sources:
   - path: ari-core/config/workflow.yaml
     role: config
+  - path: ari-core/config/default.yaml
+    role: config
   - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/config/finder.py
     role: implementation
   - path: ari-core/ari/configs
     role: config
   - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/ari/viz/ui_helpers.py
+    role: implementation
+  - path: ari-core/ari/viz/services/state_service.py
     role: implementation
   - path: ari-core/ari/viz/state.py
     role: implementation
@@ -30,13 +38,19 @@ sources:
     role: implementation
   - path: ari-core/ari/cli/bfts_loop.py
     role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/cli/manuscript.py
+    role: implementation
   - path: ari-core/tests/test_gui_baseline_settings_contract.py
     role: test
   - path: ari-core/tests/test_gui_config_shadow_legacy.py
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-08-08
+  - path: ari-core/ari/viz/frontend/src/components/Settings/__tests__/SettingsContract.test.tsx
+    role: test
+last_verified: 2026-08-13
 ---
 
 # Configuration Reference
@@ -106,6 +120,47 @@ working directory and does not consult the ladder.
 empty env var as missing (YAML/default kept; `base_url` uses an explicit
 `!= ""`). The GUI merge `{**defaults, **saved}` lets a present-but-empty saved
 key win, then re-forces only `llm_model`/`llm_provider` from `workflow.yaml`.
+
+**The env overlay is several functions, not one, and it does not re-validate.**
+Two details behind the "env always wins" line above are worth stating outright,
+because both are load-bearing and neither is visible from the table.
+
+First, *where* the overlay runs. `load_config()` applies exactly two override
+families before it returns — `_apply_llm_env_overrides` (which chains
+`_apply_claude_code_env_overrides`) and `_apply_checkpoint_env_overrides` —
+plus the `allow_web` phase rewrite. The BFTS, evaluator, RQGM, handoff and
+paper families are separate *public* functions (`apply_bfts_env_overrides`,
+`apply_evaluator_env_overrides`, `apply_rqgm_env_overrides`,
+`apply_handoff_env_overrides`, `apply_paper_env_overrides`) that a caller has
+to invoke itself. `ari/cli/run.py` calls the first four, immediately after
+`_apply_profile` — which is precisely what makes env beat the profile — and
+`ari/cli/paper_dispatch.py` calls the paper one. A caller that only calls
+`load_config()` therefore picks up `ARI_MODEL`, `ARI_BACKEND`,
+`ARI_LLM_API_BASE`, `ARI_CHECKPOINT_DIR` and `ARI_LOG_DIR` and **not**
+`ARI_MAX_NODES`, `ARI_FRONTIER_SCORE`, `ARI_COMPOSITE`, `ARI_MODE`,
+`ARI_RQGM_ENABLED` or `ARI_PAPER_MODE`; `ari/cli/manuscript.py` re-adds
+`apply_rqgm_env_overrides` by hand for its own entry point for exactly that
+reason. The env tier of the precedence table is an assembly of call sites, not
+a layer any single function owns.
+
+Second, *what checks the value*. These functions assign onto an
+already-constructed model, and nothing under `ari/` sets pydantic's
+`validate_assignment`, so the model does not re-check what is written to it —
+the in-code comments say so ("Pydantic does not validate on assignment, so
+guard against unknown values from env"). Each function carries hand-written
+guards instead: `ARI_FRONTIER_SCORE` is tested against a four-member tuple
+literal that duplicates the `Literal` members of `BFTSConfig.frontier_score`,
+`ARI_COMPOSITE` and `ARI_AXIS_MODE` against their own literals, and the integer
+knobs are `int()` wrapped in `try/except ValueError: pass`. Whether a rejected
+value says anything depends on which function owns it: `apply_rqgm_env_overrides`
+and `apply_paper_env_overrides` log a `warning` naming the variable and the
+value, while the `apply_bfts_env_overrides` / `apply_evaluator_env_overrides`
+guards and every `int()` fallback drop the value in silence — no exception, no
+log line, nothing in any response. So `ARI_FRONTIER_SCORE=ucb` leaves the run on
+the YAML or default value with no signal that the variable was seen, whereas
+`ARI_MODE=rqgm` at least logs. The duplicated enum lists are hand-copied and can
+drift from the `Literal` they mirror; if you add a member to one, add it to the
+other in the same change.
 
 **Two `workflow.yaml` blocks are read from the package copy only
 (anti-pattern).** `lineage_decision` and `root_idea_selection` are not
@@ -183,6 +238,48 @@ The same filter is what makes the backwards direction safe: a block an
 a newer YAML deployed onto an older core degrades to that core's defaults
 instead of failing to load.
 
+**A third YAML that neither chain reads.** `ari-core/config/workflow.yaml` is
+what the CLI loads. Its neighbour `ari-core/config/default.yaml` looks like it
+belongs to the same chain and belongs to neither: it is a legacy-schema file
+that no runtime loader reaches on its own. (A third name,
+`ari-core/ari/configs/defaults.yaml`, is a different thing again — the
+RQGM / proposal-router parity mirror described under *Execution Mode and RQGM
+Governance (opt-in)* below, plus one live key, `models.lineage_decision_default`,
+read by `_config_default` in `ari/orchestrator/lineage_decision.py`.)
+
+The CLI's loader ladder is `_resolve_cfg` (`ari-core/ari/cli/run.py`): an
+explicit `--config` if one was given, otherwise the package
+`ari-core/config/workflow.yaml`, otherwise `auto_config()`. `default.yaml`
+appears nowhere in it. It does appear as step 3 of the four-step search in
+`find_workflow_yaml` (`ari-core/ari/config/finder.py`), but that function has
+no caller anywhere in the tree — `package_config_root`, `find_workflow_in_dir`,
+`find_profile_yaml` and `load_workflow_config` from the same module are called
+widely, `find_workflow_yaml` is not — so the ladder its docstring describes
+never runs.
+
+Three readers do exist, and all three are GUI-side and display-only:
+
+| Reader | What it does with the file |
+|---|---|
+| `ari/viz/services/state_service.py` | `build_app_state()` (the `/state` payload) deep-copies it as the base of the merged `experiment_config` block, and uses its `bfts` / `evaluator` values as per-key fallbacks under `{checkpoint}/workflow.yaml`. A second branch, reached only when `experiment_config` was not built above, takes its BFTS/HPC values from the selected profile YAML and `default.yaml` alone. |
+| `ari/viz/ui_helpers.py` | `_build_experiment_detail_config()` performs the same merge again, for the `/api/experiment-detail` text block. |
+| `ari/viz/api_settings.py` | `_api_get_workflow()` (`GET /api/workflow`) reads its `skills` entries only, to fill the `phase` field of each `skill_mcp` entry. |
+
+So editing `default.yaml` changes what the legacy dashboard *displays* and
+nothing about what a run *does* — unless you hand the file to `--config`
+yourself, which the CLI accepts but which no default path does.
+
+Its contents are not `ARIConfig`-shaped either, which is the other half of why
+it should not be read as a defaults file. Its top-level `hpc:` and `output:`
+blocks are not `ARIConfig` fields and are removed by the `model_fields` filter
+above; `bfts.score_threshold`, `checkpoint.trigger` and `logging.output` are
+not fields of their sub-models and are ignored at construction; its `skills`
+paths are `/path/to/ari/…` placeholders, so `_hydrate_skill_manifests` finds no
+manifest at any of them and skips every entry; and its `llm.backend` /
+`llm.model` (`claude` / `claude-haiku-4-5`) disagree with the pydantic defaults
+a default run actually uses (`ollama` / `qwen3:8b`). Treat it as a historical
+example, not as a tier of the precedence chain.
+
 > ⚠ This precedence is **documented as observed today**, not changed. The
 > order is locked by tests (`test_config.py`, `test_default_provider.py`,
 > `test_launch_config.py`, `test_settings_*`) before any consolidation. The
@@ -220,11 +317,11 @@ effective value**. Each entry describes one `ARIConfig` leaf:
 | `enum` | The `Literal` members when the annotation is a closed set, else `null`. |
 | `required` | Whether the field has no default. |
 | `category` | UI grouping: Models, Skills, Search (BFTS), Infrastructure, Evaluation, Execution mode, Governance, Proposal routing, Manuscript completeness, Scientific assurance. |
-| `level` | `basic` / `advanced` / `expert` — progressive disclosure. |
+| `level` | `basic` / `advanced` / `expert` — intended for progressive disclosure. **Declared only**: no surface filters on it (see *Two keys are declared, not enforced* below). |
 | `scope` | `preference` / `installation` / `project` / `template` / `run` — which document may own the value. |
 | `sensitivity` | `public` / `internal` / `secret_reference`. |
 | `mutability` | `draft` / `new_run_only` / `resume_mutable` / `read_only`. |
-| `applies_when` | Dependency predicate (`bfts.frontier_score=depth_penalized`) or `null`. |
+| `applies_when` | Dependency predicate (`bfts.frontier_score=depth_penalized`), a pairing note, or `null`. **Declared only**: rendered as text, never parsed (see *Two keys are declared, not enforced* below). |
 | `notes` | Hand-authored caveat (e.g. "yaml_only: no GUI field or `ARI_*` hook"). |
 | `source` | `pydantic` — the walk covers declared model fields only. |
 | `env_override` | The `ARI_*` variable that overrides this leaf, or `null`. |
@@ -250,6 +347,25 @@ Deliberate fidelity limits (documented, not silent):
   are index-dependent and would not be stable identities.
 - The module is pure: no filesystem, no clock, no environment read, no LLM.
   Two builds are byte-identical (P2).
+- The metadata vocabularies are **closed and validated, but only partly
+  populated**. `_validate_meta` rejects any entry whose `level`, `scope`,
+  `sensitivity` or `mutability` falls outside its allowed set, yet the leaves
+  the registry actually produces occupy a subset of two of those axes. On the
+  mutability axis every leaf today is `draft` or `new_run_only`; nothing is
+  `resume_mutable` or `read_only`. On the scope axis every leaf is `run` or
+  `project` except `llm.api_key`, which is the single `installation` leaf;
+  nothing is `preference` or `template`. Two consequences follow.
+  `validate_patch`'s `read_only` rejection is part of the closed reason
+  vocabulary but cannot fire against the current registry — it is reached only
+  through a leaf whose `mutability` is `read_only`, so a PATCH is refused today
+  by `unknown_path`, `secret_reference`, `not_project_scope`, `invalid_enum`,
+  `invalid_type` or `mode_interlock_mismatch`. And the Studio's
+  `resume_mutable` and `read_only` badges (see
+  [Configuration Studio](../guides/configuration_studio.md), *Mutability
+  badges*) describe states no field currently occupies. The unused values are
+  forward declarations, kept so the vocabulary does not have to change when a
+  resume slice or per-user preferences arrive; read them as reserved, not as
+  states you can find a field in.
 
 The same registry drives write validation. `PATCH` bodies are
 `{"values": {"dotted.path": value}}` and are checked by `validate_patch`,
@@ -275,6 +391,44 @@ tree stay file-only and are refused by `POST /api/v1/runs` with
 ("paired with `rqgm.enabled` (one intent — set both)") rather than a
 `path=value` gate, because gating either half on the other would make the
 interlock self-gating.
+
+**Two keys are declared, not enforced.** `applies_when` and `level` are served
+on every entry, and both describe intent that no surface acts on yet — reading
+either as behaviour is the easy mistake.
+
+- **`applies_when` is a note, not a gate.** It travels through
+  `GET /api/v1/config/schema` (`ConfigFieldV1.applies_when`,
+  `ari/viz/v1/dto.py`) and is printed verbatim under the field path in exactly
+  three places — the Config browser's read-only table
+  (`ConfigBrowser/ConfigReadOnlyTable.tsx`), the Studio form
+  (`ConfigStudio/ConfigStudioPage.tsx`) and the *Changed vs defaults* diff of
+  the Studio launch panel (`ConfigStudio/LaunchPanel.tsx`) — each as an
+  `Applies when: …` line. Nothing parses it: `validate_patch` never reads it,
+  no control is disabled, marked required or conflict-checked because of it,
+  and `ari/config/resolver.py` does not mention it at all. Twelve leaves carry
+  a real `path=value` / `path!=value` predicate today —
+  `bfts.depth_penalty_lambda`, `bfts.ucb_c`, `evaluator.custom_axes`,
+  `manuscript.profile`, `manuscript.brief_character_budget` and the seven
+  `manuscript.repair.*` leaves — and each is editable and patchable while its
+  predicate is false. With `bfts.frontier_score` left at its default
+  `scientific_plus_diversity`, a patch setting `bfts.depth_penalty_lambda`
+  still validates clean and is still merged by the resolver. The unified
+  dependency graph the GUI plan asked for — one mechanism covering
+  enable/disable, required, conflict and derived preview — is a **known gap**.
+  Where a dependency really *is* enforced, the enforcement lives in code
+  elsewhere and not in this string: the mode interlock is checked by
+  `validate_mode_interlocks` on the merged document (which is why the four mode
+  leaves carry a pairing note here instead of a predicate), and the `rqgm.*`
+  tree is read-only in the Studio because of the ADR-09 `mode_locked` policy,
+  not because its `applies_when` reads `ari.mode=ari_rqgm`.
+- **`level` has no consumer.** It is mandatory metadata — `level` is one of
+  `_REQUIRED_META_KEYS` in `field_registry.py`, so no entry can omit it — but
+  neither config surface offers a Basic / Advanced / Expert control. The Studio
+  renders every field of the category selected in its left rail; the Config
+  browser groups all fields by category and filters only on a path/category
+  search string. An `expert` leaf is therefore exactly as visible as a `basic`
+  one on both. Progressive disclosure by level is a **known gap**; the value is
+  useful today only to a client that filters on it itself.
 
 The `env_override` column is the literal transcription of the
 `apply_*_env_overrides` family in `ari/config/__init__.py`:
@@ -352,6 +506,21 @@ then two closing steps:
   (`POST /api/v1/run-drafts/{draft_id}/validate`) is stricter: there a
   mismatch is an `interlock_mismatch` **error**, so the GUI refuses to launch
   an inconsistent intent.
+
+> **KNOWN GAP — there is no installation-policy layer.** The chain this
+> control plane was specified against had one more step than the table above:
+> an *installation policy* layer between the execution profile and the project
+> default, so that an operator could set a machine-wide value a project
+> document could not override. It was not built. `resolve_new_run_config`
+> walks exactly the seven layers listed, `gui_store/` holds only project
+> config, run templates, run drafts and launch records, and no route reads or
+> writes an installation document. The `installation` value survives in the
+> registry's `scope` vocabulary and is carried by exactly one leaf,
+> `llm.api_key`, where it marks "this belongs to the machine, not the project"
+> for the secret path — it does not select a resolution layer.
+> [GUI-ADR-12](../adr/gui/GUI-ADR-12-config-store-location.md) quotes the
+> nine-step chain in its program-context paragraph; read that as the plan's
+> target, not as the resolver's behaviour.
 
 > **The 4-key profile merge caveat.** `--profile` does *not* deep-merge the
 > profile YAML. `_apply_profile` (`ari/cli/run.py`) merges exactly four keys:
@@ -449,6 +618,20 @@ templates outlive the runs they spawned, and launch materializes every
 effective value into the checkpoint exactly as before. Nothing in `ari/`
 outside `ari.viz.v1` imports the store.
 
+**KNOWN GAP — atomicity is not backup.** The store gives you a lock, a
+same-directory temp file, `fsync`, an atomic rename and owner-only
+permissions; it does not give you a backup. There is no second copy of a
+document, no revision history you can step back through — `revision` is an
+optimistic-concurrency token, not a version you can restore — and no route
+that exports a document for safekeeping or for a step back to the legacy
+files. Two guarantees that do hold are narrower than a backup and worth
+stating exactly: a crash mid-write leaves the *previous* document byte-intact,
+because the rename is the only mutation; and a document whose JSON or
+`revision` is unreadable raises `CorruptDocument` rather than being quietly
+treated as absent, so a damaged file cannot be mistaken for a fresh one.
+Overwriting a corrupt document requires an unconditional write
+(`expected_revision=None`), which restarts its revision at 1.
+
 ### Legacy Settings keys: what is actually wired
 
 The legacy `GET/POST /api/settings` surface is frozen (its exact key sets,
@@ -457,6 +640,21 @@ default values and save-path behaviour are pinned by
 Everything below is **observed, frozen behaviour** — recorded here because
 tests depend on it and operators trip over it, not because it is a pattern to
 copy. Six points matter when reading the Settings page:
+
+The contract is pinned on **both** sides of the wire, and the two pins do not
+run in the same place. Server-side,
+`ari-core/tests/test_gui_baseline_settings_contract.py` freezes the key sets,
+the default values and the save-path behaviour. Client-side,
+`ari-core/ari/viz/frontend/src/components/Settings/__tests__/SettingsContract.test.tsx`
+asserts that Save posts a flat object carrying exactly those 24 keys — and, as
+a second and much weaker invariant, that the page renders ten `<Card>`
+sections. That DOM count is a structural freeze on the current Settings
+layout, not a wire contract: a redesign that preserves the 24-key body still
+has to edit the number. The two pins also differ in coverage. The Python pin
+runs in the same pytest suite as everything else; the frontend pin runs in no
+workflow (see [Testing](../guides/testing.md), *What gets tested at PR time*),
+so a change that breaks only the client half of the contract fails nothing
+until someone runs the frontend suite by hand.
 
 **1. The GET/POST key sets do not match.** `GET /api/settings` returns
 exactly **27** top-level keys (26 scalar/list + the nested `ors` object with

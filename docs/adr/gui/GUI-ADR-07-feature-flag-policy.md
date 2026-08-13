@@ -34,7 +34,7 @@ sources:
     role: doc
   - path: docs/reference/environment_variables.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # GUI-ADR-07: feature flag, rollback, and legacy removal policy
@@ -128,11 +128,15 @@ specific than the record.
    states the split and says nothing schedules the kill-switches' removal.
 2. *Exact-literal off is not uniform.* `api_capabilities.py` compares the raw
    value, so `ARI_GUI_V2=FALSE` or a value with surrounding whitespace leaves
-   the flag on. Every later switch normalises first with `.strip().lower()`
-   before comparing against `("0", "false")`, and `ARI_GUI_CORS_ANY` inverts
-   polarity entirely — being default-off, it is read as an *on* literal,
-   `in ("1", "true")`. The rule as written is literally true only of
-   `ARI_GUI_V2`.
+   the flag on. Every later *boolean* switch — `ARI_GUI_CSP`,
+   `ARI_GUI_CHALLENGES`, `ARI_GUI_HEALTH`, `ARI_GUI_AUTH` — normalises first
+   with `.strip().lower()` before comparing against `("0", "false")`, and
+   `ARI_GUI_CORS_ANY` inverts polarity entirely — being default-off, it is
+   read as an *on* literal, `in ("1", "true")`. The remaining two are not
+   literal switches at all: `ARI_GUI_BIND` carries a bind address and
+   `ARI_GUI_TOKEN` a bearer token, and for both the safe state is *unset*
+   (`server.resolve_bind_hosts` returns the loopback default for an unset or
+   blank value). The rule as written is literally true only of `ARI_GUI_V2`.
 3. *The metrics limb is unimplemented.* The plan required each flag to carry
    metrics alongside owner, default, and rollback. ARI ships no telemetry
    pipeline; `api_capabilities.py` declares "metrics: none in Wave 1", and the

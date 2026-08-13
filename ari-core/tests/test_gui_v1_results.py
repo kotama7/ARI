@@ -323,3 +323,32 @@ def test_gets_are_side_effect_free_and_deterministic(ckpt_base):
         a, b = dict(a), dict(b)
         assert a.pop("request_id") != b.pop("request_id")
         assert a == b
+
+
+def test_blocked_paper_build_is_a_degraded_result(ckpt_base):
+    make_run_checkpoint(ckpt_base / RUN_ID, nodes=4, seed=0, paper=True, review=True)
+    (ckpt_base / RUN_ID / "paper_build.json").write_text(
+        json.dumps({"status": "blocked", "blocking_reasons": ["lock refused"]}),
+        encoding="utf-8",
+    )
+    result = _results()
+    assert result["degraded_reasons"] == [
+        "paper build blocked: lock refused"
+    ]
+
+
+def test_failed_final_gate_before_build_lock_has_degraded_reasons(ckpt_base):
+    make_run_checkpoint(ckpt_base / RUN_ID, nodes=4, seed=0, paper=True, review=True)
+    (ckpt_base / RUN_ID / "run_integrity.json").write_text(
+        json.dumps({
+            "claim_gate": {"status": "failed", "should_block": True},
+            "ors": {"status": "incomplete"},
+            "concerns": ["enabled ORS stages did not complete"],
+        }),
+        encoding="utf-8",
+    )
+
+    assert _results()["degraded_reasons"] == [
+        "claim-evidence hard gate failed",
+        "enabled ORS stages did not complete",
+    ]

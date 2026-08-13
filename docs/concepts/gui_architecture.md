@@ -62,6 +62,24 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/openapi.json
     role: schema
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/ari/viz/api_experiment.py
+    role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Overview/OverviewPage.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Overview/LogsPanel.tsx
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/hooks/useDevMode.ts
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Overview/__tests__/OverviewPage.test.tsx
+    role: test
+  - path: ari-core/ari/viz/frontend/src/components/Overview/__tests__/LogsPanel.test.tsx
+    role: test
   - path: ari-core/ari/viz/frontend/src/app/__tests__/routeRegistry.test.tsx
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
@@ -86,7 +104,13 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
-last_verified: 2026-08-09
+  - path: ari-core/ari/viz/frontend/src/styles/tokens.css
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/styles/motion.css
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/styles/components.css
+    role: implementation
+last_verified: 2026-08-13
 ---
 
 # Dashboard Architecture
@@ -396,6 +420,31 @@ That single decision buys three properties:
   per-resource age. Per-entity stale times and per-entity freshness labels were
   specified for the refreshed GUI and are not implemented.
 
+**The dedup budget holds over the `/api/v1` surface, not over the dashboard.**
+The refresh attached a number to this design: zero in-flight duplicate reads
+for the same query key. On `/api/v1` that number is structural rather than
+measured — the query client coalesces concurrent fetches of one key, so two
+components mounting the same query produce one request — and it is exactly as
+wide as that surface, no wider. Nothing in the tree measures it.
+
+The legacy half issues its own traffic outside the client, and always has.
+`context/AppContext.tsx` refetches `/state` and the checkpoint list on a
+5-second `setInterval` (`STATE_POLL_MS = 5000`) for the whole session, since
+`AppProvider` sits above the router; `Monitor/MonitorPage.tsx` runs a second,
+independent 5-second interval over `/api/resource-metrics` for as long as that
+screen is mounted. Neither goes through the query client, neither can see the
+other, and neither stops when the tab is hidden — nothing in the frontend
+listens for `visibilitychange` (§6), so a backgrounded dashboard keeps both
+intervals running at full rate. Pausing hidden-tab polling and moving those
+reads onto stream invalidation plus a snapshot query was specified by the
+refresh and is not implemented; it is a known gap. Read the budget as scoped
+accordingly: it holds for `/api/v1` reads by construction, and it does not
+describe a running dashboard as a whole until those pollers are gone —
+`AppContext`'s remote state and the `/state` facade behind it are items 2 and 3
+of the removal order in the
+[GUI Cutover Runbook](../guides/gui_cutover_runbook.md), section "6. Legacy
+removal", and that removal order does not name the Monitor interval at all.
+
 **Run isolation is proved at the seam, not end to end.**
 `hooks/__tests__/useRunEvents.test.tsx` shows that an event for one run
 invalidates only that run's keys plus the run lists, that a `tree` event touches
@@ -575,8 +624,39 @@ served bytes with an *optional* `base_revision`, so a caller that omits it keeps
 last-write-wins, whereas a `gui_store/` document carries an integer `revision`
 and refuses a mutation that arrives without `If-Match` (see
 [Configuration Studio](../guides/configuration_studio.md), "If-Match
-conflicts"). The nearest reusable document is a run template, and a template
-carries config `values`, not a pipeline.
+conflicts").
+
+**A workflow edit is scoped to one checkpoint, and a new run never inherits
+one.** Every workflow write lands on the *active* checkpoint's copy:
+`api_workflow.py` refuses the write outright when no usable checkpoint is
+active, and otherwise CoW-seeds `{ckpt}/workflow.yaml` from the bundled file
+before applying the edit, so the bundled default is never rewritten from the
+GUI. Both launch paths then seed the new checkpoint from that *bundled* file
+and only from it: `POST /api/v1/runs` (`ari/viz/v1/launch.py`) copies
+`config/workflow.yaml` into the new checkpoint and merges the launch's mode
+blocks into that copy, and the legacy wizard launch `POST /api/launch`
+(`ari/viz/api_experiment.py`) copies the same bundled file — or, when one of
+its phase toggles is off, writes a variant of it with the toggled-off stages
+set `enabled: false` and stripped from every downstream `depends_on`. Neither
+reads the checkpoint that was active a moment earlier, so there is no path by
+which an edited copy becomes the seed. The edited copy is read back only when
+the *same* checkpoint runs again: the BFTS loop (`ari/cli/bfts_loop.py`) and
+the paper pipeline (`ari/core.py`) both resolve `{ckpt}/workflow.yaml` ahead
+of the package copy.
+
+**Known gap — nothing on screen states that scope.** The refresh specified
+that a save declare which run the edit takes effect on.
+`Workflow/WorkflowPage.tsx` renders the served file path in its toolbar — the
+only hint of scope there is — and nothing more: no statement of which run the
+edit affects, no warning at save time, and no route that applies a pipeline to
+the next run. The two launch paths then differ in a way nothing surfaces
+either: the legacy wizard launch switches the process-wide active checkpoint
+to the new run, so the editor silently retargets, while `POST /api/v1/runs`
+deliberately leaves it alone, so the editor keeps pointing at the previous
+run. Treat a workflow edit as a property of one checkpoint, not as a setting.
+
+The nearest reusable document is a run template, and a template carries config
+`values`, not a pipeline.
 
 ---
 
@@ -905,6 +985,189 @@ Read the slicing as a direction of travel, not as something the tree obeys.
 The placement rule that *is* honoured today is the shallower one: presentational
 primitives go in `components/common/`, cross-cutting platform code in `shared/`,
 shell wiring in `app/` — and a screen directory owns only its own screen.
+
+**The design tokens are two tiers, not three.** `styles/tokens.css` is the only
+file that *defines* custom properties. `motion.css` redefines three of them —
+`--t-fast`, `--t-med`, `--t-slow` — to zero under `prefers-reduced-motion:
+reduce`, and `Layout/Sidebar.tsx` writes an inline `--sidebar-width` that is a
+measurement the layout sheets read, not a token. Everything else sits in one
+`:root` block, in two named layers. The **primitive** layer is the raw scale:
+the hues (`--bg`, `--sidebar`, `--card`, `--border`, `--text`, `--muted`,
+`--blue`, `--blue-light`, `--green`, `--red`, `--yellow`, `--purple`, plus the
+`--primary` alias), the spacing steps `--sp-1` through `--sp-8` (4px to 32px,
+with no `--sp-7`), the radii and the focus shadow, the type scale and the motion
+durations. The **semantic** layer names roles and resolves each one to a
+primitive or to a `color-mix()` of primitives, introducing no new hue:
+`--surface-canvas` / `--surface-raised` / `--surface-overlay`, `--text-primary` /
+`--text-muted` / `--text-inverse`, `--border-default` / `--border-focus` /
+`--focus-ring`, the three link colours, four `--status-*` foregrounds each with a
+`-bg` tint (two of them also with a `-border` tint, declared up beside the
+primitives), `--score-penalty`, the five `--state-*` node-score colours and the
+ten `--reg-*` registry-lifecycle colours.
+
+A third, **component** tier was specified above those two — a token named for one
+component's one role, such as a primary button's background or a selected graph
+node's fill — and it was not built. No role token above the semantic layer exists
+anywhere in the tree; the only custom property whose *name* comes from a
+component is the primitive surface hue `--sidebar`, which is a raw value in the
+bottom layer rather than a role above the top one. Where the component tier would
+have gone, a CSS class consumes a semantic token directly instead:
+`components.css` defines a `.reg-badge--<status>` rule for each of the ten
+registry statuses and a `.nodestate-badge--<state>` rule for each of the five
+node score states, each setting `color` from the matching `--reg-*` or
+`--state-*` token, and the two class families are disjoint on purpose. That does
+deliver what the fixed palettes were for — neither vocabulary can borrow the
+other's colour, as
+[Research and Governance State](research_and_governance_state.md), section
+"4. Registry lifecycle vs node score state", requires — but it delivers it
+through class names rather than a third layer of tokens.
+
+**Known gap — the rule that nothing above the semantic layer reaches past it to a
+primitive colour is unenforced, and the tree does not follow it.** The
+`package.json` has no lint step, as noted above; no test and no checker under
+`scripts/quality/` reads a stylesheet at all (the bundle-weight gate weighs
+`.js` chunks only), so nothing can fail on a violation. Counting `var(…)` uses of
+the thirteen primitive colour names: 458 of them sit in 53 non-test `.tsx` files
+under `components/`, and another 140 in the stylesheets themselves
+(`components.css` 66, `widgets.css` 47, `layout.css` 21, `responsive.css` 6) —
+against 113 uses of the entire semantic layer across the same files. The v2
+workspaces are the better half of that split but are not clean either: they
+account for 38 of the `.tsx` uses and `components/common/` for 2, and every one of
+those is a `--muted`, `--border`, `--bg` or `--red` that has a semantic
+equivalent — `--text-muted`, `--border-default`, `--surface-canvas`,
+`--status-danger` — which would have served. Read the semantic layer as additive
+and partly adopted: the intended direction of travel for colour, exactly as the
+slicing above is for structure, not a boundary the tree obeys.
+
+**Known gap — the semantic layer carries no themes.** Its stated purpose was to
+be the single place a light, dark or high-contrast variant swaps, leaving the
+primitives and the components untouched. The dashboard ships exactly one theme,
+and `tokens.css` says so at the root: it declares `color-scheme: dark` precisely
+so the user agent paints the controls CSS cannot reach — checkbox and radio
+glyphs, scrollbars, `<select>` popups — in dark instead of punching light holes
+through the surfaces, and pins the checked state with `accent-color`. No
+`prefers-color-scheme` block exists anywhere in the frontend and there is no
+theme switch, so a second set of semantic values has never been written. The one
+user preference the stylesheets do honour is `prefers-reduced-motion: reduce`, in
+`motion.css`.
+
+---
+
+## 11. Disclosure levels: what a screen shows before you ask
+
+The dashboard serves several kinds of reader at once — someone launching a
+first run, someone reading a search tree, someone diagnosing a stalled
+process, someone auditing a governance decision, someone reading raw
+artifacts. The refresh answered that with one screen per subject whose *depth*
+varies, not one application per reader. The consequence is worth stating
+because it is the reason a whole category of design is absent: no screen is
+role-aware, no route carries a permission predicate (§2), and nothing in the
+product models a reader at all. Depth is something the reader opens, never
+something they are granted.
+
+Depth is described on a five-level ladder, P1 to P5. The level names are not
+decoration — they are the vocabulary the source uses to decide where a piece
+of information belongs, and they appear verbatim in component comments and
+test names.
+
+| Level | Material | Intended default |
+|---|---|---|
+| P1 | Run state, current phase, the reason it is blocked, the next action | Always visible |
+| P2 | Score summary, tree, epoch, the main artifacts | Always visible |
+| P3 | Evidence, the reason for a transition, config diff, resource detail | One interaction away |
+| P4 | Traces, logs, per-node lineage, links to raw events | One or two interactions away |
+| P5 | Raw JSON and YAML, internal ids, debug payloads | Developer Mode only |
+
+Read the last column as intent. Three of the five rungs are built, and where
+the tree departs from the table it is worth knowing which way.
+
+**Where the ladder is implemented.** The run Overview (`#/overview?run=`) is
+the one screen built to it explicitly, and only its P1, P2 and P4 rungs exist.
+P1 is the labelled row block — lifecycle badge, research phase, last-update
+freshness, and for a governed run a separate governance-stage row carrying the
+current epoch and the utility policy hash — with a blockers panel above it
+that appears when a governed run's read model reports degraded reasons or one
+of its three integrity flags is false (transitions chain, registry snapshot,
+audit chain). P2 is the three counters (nodes explored, review score, best
+metric) and the workspace links out to the tree, the config browser and, for a
+governed run, Governance. P4 is the collapsible log explorer, and it is the
+rung that shows what "lazy" has to mean here: while the panel is collapsed
+nothing is fetched at all, which its test asserts directly rather than
+checking that the markup is hidden. A rung that renders and then hides its
+content is not a rung.
+
+One departure inside the built part: the epoch and the policy hash sit at P2
+in the table and render inside the P1 row block, because for a governed run
+they are part of "where is this run", not part of "how is it scoring".
+
+**P3 was never built as a layer.** No screen has a labelled P3 rung, and the
+level name appears in no source file. The material P3 names does exist, but
+reaching it means going to another workspace rather than opening something in
+place: the committed epoch detail on the Governance epoch-timeline tab (the
+sealed policy body, plus the opening and closing boundary transactions with
+their raw-source offsets), per-leaf provenance in the config browser, the
+effective-config diff against defaults in the Studio's launch panel, resource
+and process detail on the legacy Monitor page. Read P3 as a description of the
+material, not as a promise about how few clicks reach it.
+
+**P5 is Developer Mode, and only on legacy screens.** The flag is
+`localStorage['ari_dev_mode']`, read through one hook (`hooks/useDevMode.ts`),
+and the surfaces that consult it are all legacy: the Monitor sections and its
+GPU monitor, the legacy Results `publish.yaml` editor, the wizard's resource
+step, the legacy Tree detail panel, the Settings page that owns the toggle,
+and the root error boundary's stack trace (§2). No v2 workspace imports the
+hook, so on a v2 screen there is no P5 rung to open. The specification paired
+P5 with a permission check as well; that half cannot exist here, because a
+bearer token is all-or-nothing and nothing models a user (§2). Developer Mode
+changes display density only. It is not an authorization boundary, and nothing
+it reveals is withheld from an unauthenticated caller who asks the API
+directly — see the [Dashboard Guide](../guides/dashboard.md), "The legacy
+screens, and when to use them".
+
+**There is no global run-context element.** P1 was specified to be present on
+*every* run-scoped screen, as one persistent piece of shell carrying project and
+run identity, lifecycle, phase and freshness, the execution mode and the paper
+mode, the governance capability with its epoch and policy hash, a resource and
+cost summary with an alert count, and the connection state. That element does
+not exist. It is a known gap, and an uneven one: most of what P1 lists is on
+screen somewhere, just never in one place and never on every screen.
+
+What the shell itself carries is the legacy active-checkpoint picker above the
+nav — the checkpoint count, a `<select>` bound to the process-wide active
+checkpoint, and a status label with a running dot read straight from `/state`
+(§4). No v2 workspace reads any of it; the structural scan in
+`src/__tests__/appContextScope.test.ts` is what keeps it that way, and a v2
+workspace takes its run from `?run=` instead. So the picker describes whichever
+checkpoint is selected process-wide, which need not be the run the open
+workspace is showing.
+
+The rest is scattered by screen. Lifecycle and research phase render on the run
+Overview and nowhere else. The current epoch and the utility policy hash render
+on the Overview's governance row for a governed run, and again inside the
+Governance workspace — which is also the only place the execution mode and the
+paper mode appear as the two independent chips the vocabulary requires, read
+there from the RQGM capability model (§9). Run identity is per-screen: every
+run-scoped v2 workspace prints its own `?run=` value. So is connection state —
+the run Overview, the Tree workspace, Governance and the Projects portfolio each
+raise their own freshness banner when the event stream is not live, the config
+browser raises one when a refetch fails over cached data, and the Ideas and
+Results workspaces subscribe to no stream and show no freshness at all.
+
+Two items on P1's list have no run-scoped home at all. A resource-and-cost
+summary is a legacy figure: `/state` carries the parsed `cost_summary.json` as
+`cost` (see [REST API Reference](../reference/rest_api.md), "Typed contracts
+(stable endpoints)") and the legacy Monitor page renders it beside its resource
+cards, while nothing under `/api/v1` mentions cost — so a v2 workspace would
+have nothing to show even if the shell had a place to show it. And the nearest
+thing to an alert count is the "Needs attention" tile on the Projects portfolio,
+which counts runs whose status is `failed`, `stopped` or `unknown`: a portfolio
+statistic, not a per-run badge. The "next action" P1 promises is thinner still —
+the create, import and resume links on the empty Projects page, all three of
+which open the launch wizard. A run that is blocked names its blockers and stops
+there.
+
+Treat "P1 is always visible" as a per-screen intent that the run Overview meets
+and that no other screen was built to.
 
 ---
 

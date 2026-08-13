@@ -16,7 +16,7 @@ sources:
     role: implementation
   - path: ari-core/ari/assurance/executors.py
     role: implementation
-last_verified: 2026-08-08
+last_verified: 2026-08-07
 ---
 
 # Environment Variable Reference
@@ -130,7 +130,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_MAX_NODES` | Hard cap on BFTS nodes | (workflow-controlled) |
 | `ARI_MAX_DEPTH` | Hard cap on tree depth | (workflow-controlled) |
 | `ARI_MAX_REACT` | ReAct iteration cap per node | (workflow-controlled) |
-| `ARI_PARALLEL` | Concurrent node executors | `1` |
+| `ARI_PARALLEL` | Concurrent node executors | `4` |
 | `ARI_TIMEOUT_NODE` | Per-node wall-time cap (seconds) | (none) |
 | `ARI_BFTS_ALLOW_WEB` | Opt-in: expose `web-skill` (web_search / fetch_url / arXiv / Semantic Scholar) to the BFTS node agent **during exploration**. Default-off keeps the search loop reproducible (P5); when on, ARI records a non-reproducible-trajectory marker (`bfts_web_provenance.json`). `idea-skill`'s `survey` already does a bounded literature lookup regardless. `1`/`true`/`yes`/`on` to enable | `false` |
 | `ARI_RECURSION_DEPTH` | Current depth in nested ARI runs (auto-set) | (auto) |
@@ -225,9 +225,9 @@ directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_op
 | `ARI_BACKEND` | Backend selector for the agent runtime |
 | `ARI_EXECUTOR` | Executor backend (sync / async) |
 | `ARI_CONTAINER_IMAGE` | SIF / OCI image for sandboxed execution |
-| `ARI_CONTAINER_MODE` | `exec` / `shell` (singularity invocation style) |
+| `ARI_CONTAINER_MODE` | Container runtime: `auto` (default — probe, preferring Singularity/Apptainer inside a SLURM job) / `docker` / `singularity` / `apptainer` / `none`. An unsupported value raises rather than falling back to the host |
 | `ARI_CONTAINERS_DIR` | Container image cache root |
-| `ARI_MAX_CHILD_PROCS` | RLIMIT_NPROC cap inside the coding sandbox (default 1024) |
+| `ARI_MAX_CHILD_PROCS` | RLIMIT_NPROC cap inside the coding sandbox. Opt-in: unset ⇒ no extra cap. RLIMIT_NPROC counts every task of the real uid, not just descendants, so a fixed cap fired `fork` EAGAIN whenever the user already had that many threads anywhere |
 | `ARI_LOG_LEVEL` | Python `logging` level (`INFO` / `DEBUG` / ...) |
 
 ### Memory backend
@@ -236,7 +236,7 @@ directly. See the [Manuscript Complete runbook](../guides/manuscript_complete_op
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta` (default) or `in_memory` (no Letta required; ephemeral RAM-only backend for local smoke tests) |
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore from `memory_backup.jsonl.gz` on resume |
-| `ARI_MEMORY_ACCESS_LOG` | Path to `memory_access.jsonl` |
+| `ARI_MEMORY_ACCESS_LOG` | `on` (default) / `off` — whether the memory server records `memory_access.jsonl`. The path itself is not configurable; `ARI_MEMORY_ACCESS_LOG_MAX_MB` (default `100`) sets its rotation size |
 | `ARI_MEMORY_CONSOLIDATE` | Typed-memory consolidation + artifact-grounded `verified_context.json` for paper claims. **Default ON**; set `0`/`false`/`no`/`off` to disable |
 | `ARI_CONTEXT_AUTHORITY_KEY` | Per-connection HMAC key core exports into each skill subprocess (`SkillConnection._server_params`); the memory server verifies the signed `ari_context` argument against it before touching the backend. Core-injected and redacted from results — never operator-set |
 | `ARI_LETTA_VENV` | Virtualenv path for the bundled Letta server |
@@ -280,7 +280,8 @@ environment cannot redirect a memory write. `AgentLoop._node_tool_context` build
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | Override the bundled `vendor/paperbench/` path | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` | Override the reviewed vendored PaperBench project root. Admitted only when it is not a symlink and its Git identity matches an explicit `ARI_PAPERBENCH_COMMIT` claim — without that claim the override is refused | `ari-skill-paper-re/vendor/paperbench/project` |
+| `ARI_PAPERBENCH_COMMIT` | The commit an `ARI_PAPERBENCH_PATH` override claims; validated against the tree's real Git identity | (none — required with `ARI_PAPERBENCH_PATH`) |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Wall-time cap for `run_reproduce` | `43200` (12 h) |
 | `ARI_REPLICATOR_ITERATIVE` | Use the iterative replicator agent | – |
 | `ARI_REPLICATOR_MAX_STEPS` | Iteration cap when iterative is on | – |
@@ -289,11 +290,10 @@ environment cannot redirect a memory write. `AgentLoop._node_tool_context` build
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP server port | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | Log directory | `$ARI_WORKSPACE/orchestrator_logs` |
-| `ARI_ORCHESTRATOR_DRY_RUN` | Skip real `ari run` (smoke testing) | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | One-shot SSE response mode | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE timeout (seconds) | – |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | MCP server port (`streamable-http` transport) | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` | MCP server bind host; may not be empty | `127.0.0.1` |
+| `ARI_ORCHESTRATOR_LOGS` | Log directory | `$ARI_WORKSPACE/logs` |
+| `ARI_ORCHESTRATOR_DRY_RUN` | Skip real `ari run` (smoke testing); `1` to enable | – |
 
 ### Transform skill
 
@@ -332,7 +332,7 @@ selected lock can execute.
 | `ARI_REGISTRIES_FILE` | Override `registries.yaml` location (else looked up under the active checkpoint) |
 | `ARI_LOCAL_TARBALL_OUT` | Output path for the `local-tarball` publish backend |
 | `ARI_GH_REPO` | GitHub repo target for the `gh` backend |
-| `ARI_GH_MODE` | `release` / `repo` mode for the `gh` backend |
+| `ARI_GH_MODE` | `commit` (default — push bundle/manifest/README into the repo) or `releases` (create a tagged release and attach the tarball) for the `gh` backend |
 | `ARI_CLONE_HTTP_TIMEOUT` | HTTP timeout for `ari clone` |
 
 ### SLURM defaults
@@ -345,7 +345,7 @@ selected lock can execute.
 | `ARI_SLURM_GPUS` | Default `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | Default memory request |
 | `ARI_SLURM_WALLTIME` | Default `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ when the cluster has no GRES configured for GPUs, silently drop `--gres` / `--gpus-*` flags (legacy v0.7.2 behaviour). Default (unset) ⇒ raise `RuntimeError` with an actionable message so a GPU request never silently runs on CPU. |
+| `ARI_SLURM_ALLOW_NO_GRES` | **Inert — no code reads this name today.** It was the opt-in that silently dropped `--gres` / `--gpus-*` on a cluster with no GPU GRES configured; `scripts/setup/setup_env.sh` still pre-seeds it commented out. The no-GRES case is now decided in `ari/capability_binding/environment.py` instead: a device observed without GRES accounting is recorded as the feature `gpu-observed-on-slurm-node` with allocation mode `observation-only-no-gres` and is **not** a schedulable `gpu` resource unless GRES was observed or an exclusive-node-inventory pin matches, so the request fails to bind rather than falling back to CPU. Setting this variable changes nothing. |
 
 ### PaperBench reproduction phase (Stage 2)
 
@@ -354,7 +354,7 @@ selected lock can execute.
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`. Forces the sandbox runner used by `server.run_reproduce` and `bridge.reproduce_submission`. |
 | `ARI_PHASE1_DOCKER_IMAGE` | Default docker image when `sandbox_kind=docker` and no explicit `container_image` is supplied. There is no built-in default: unset leaves the image empty and the run is refused rather than silently given one. |
 | `ARI_PHASE1_APPTAINER_IMAGE` | Default SIF / docker URI when `sandbox_kind=apptainer`/`singularity` and no explicit `container_image` is supplied. |
-| `ARI_PAPERBENCH_PATH` | Override the vendored PaperBench source tree path (default: `ari-skill-paper-re/vendor/paperbench/project/paperbench`). |
+| `ARI_PAPERBENCH_PATH` | Override the vendored PaperBench project root (default: `ari-skill-paper-re/vendor/paperbench/project`; a value naming the inner `project/paperbench` directory is normalised up to `project`). Requires `ARI_PAPERBENCH_COMMIT` — see above. |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | Default Stage 1 agent rollout time budget when the caller passes `0`. |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ default to IterativeAgent variant for Stage 1 rollouts. |
 | `ARI_REPLICATOR_MAX_STEPS` | Default Stage 1 step cap. |
@@ -408,7 +408,7 @@ for the challenge protocol.
 
 | Variable | Purpose |
 |---|---|
-| `LETTA_BASE_URL` | Letta API base (default `http://127.0.0.1:8283`) |
+| `LETTA_BASE_URL` | Letta API base (default `http://localhost:8283`) |
 | `LETTA_API_KEY` | API key when Letta requires auth |
 | `LETTA_EMBEDDING_CONFIG` | Path to embedding config JSON (required) |
 
@@ -416,7 +416,7 @@ for the challenge protocol.
 
 | Variable | Purpose |
 |---|---|
-| `OLLAMA_HOST` | Ollama listen address (default `127.0.0.1:11434`) |
+| `OLLAMA_HOST` | Ollama address; ARI reads it as the Ollama api_base when the backend is `ollama` (default `http://localhost:11434`) |
 | `OLLAMA_BASE_URL` | LiteLLM-side base URL |
 | `OPENAI_API_KEY` | OpenAI / OpenAI-compatible API key |
 
@@ -424,12 +424,13 @@ for the challenge protocol.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `VLM_MODEL` | Vision LLM for figure / table review | `openai/gpt-4o` |
+| `ARI_VLM_MODEL` | Vision LLM for figure / table review; wins over `VLM_MODEL` | (none) |
+| `VLM_MODEL` | Fallback vision-LLM id read when `ARI_VLM_MODEL` is unset. There is no built-in default: with neither set the visual review refuses rather than picking a model | (none) |
 
 ## See also
 
 - `docs/reference/configuration.md` — narrative tour of the same env vars,
   grouped by use case.
-- `ari-core/ari/config.py` — Pydantic settings model that consumes
+- `ari-core/ari/config/__init__.py` — Pydantic settings model that consumes
   most of the `ARI_*` group.
 - Each skill's `README.md` — env vars specific to that skill.

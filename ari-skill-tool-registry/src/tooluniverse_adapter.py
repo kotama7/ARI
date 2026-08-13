@@ -867,6 +867,28 @@ def _normalize_property_required_markers(
     return output, notes
 
 
+def _package_relative_source_file(value: Any, package_root: Path) -> Any:
+    """Express a leaf's source file relative to the reviewed package.
+
+    Upstream reports ``source_file`` as an absolute installation path.  It
+    reaches both the leaf metadata and ``tool_spec_digest``, so digesting it
+    verbatim pins the install location rather than the leaf definition: the
+    same reviewed wheel yields a different leaf identity on every machine, and
+    the promoting host's absolute paths are written into promotion evidence.
+    Paths outside the reviewed package are replaced rather than disclosed.
+    """
+
+    if not isinstance(value, str) or not value:
+        return value
+    path = Path(value)
+    if not path.is_absolute():
+        return value
+    try:
+        return path.resolve().relative_to(package_root.resolve()).as_posix()
+    except (OSError, ValueError):
+        return "<outside-reviewed-package>"
+
+
 def _metadata(summary: dict[str, Any], spec: dict[str, Any]) -> dict[str, Any]:
     keys = (
         "category",
@@ -1086,6 +1108,24 @@ class ToolUniverseCompactAdapter:
                     )
                 returned.add(name)
                 summary = by_name[name]
+                # Normalize before both ``_metadata`` and ``tool_spec_digest``
+                # so a leaf's identity follows the reviewed package, not the
+                # directory this installation happens to live in.
+                package_root = Path(self.launcher.package_root)
+                if "source_file" in spec:
+                    spec = {
+                        **spec,
+                        "source_file": _package_relative_source_file(
+                            spec["source_file"], package_root
+                        ),
+                    }
+                if "source_file" in summary:
+                    summary = {
+                        **summary,
+                        "source_file": _package_relative_source_file(
+                            summary["source_file"], package_root
+                        ),
+                    }
                 for key in ("type", "category"):
                     if key in spec and key in summary and spec[key] != summary[key]:
                         raise ProviderProtocolError(

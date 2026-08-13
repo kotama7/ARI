@@ -12,6 +12,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/v1/challenges.py
     role: implementation
+  - path: ari-core/ari/viz/v1/queries.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/services/api/client.ts
     role: implementation
   - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
@@ -28,7 +32,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # Remote Access and Operations Guide
@@ -59,6 +63,66 @@ including delete, stop, and secret writes — to the whole cluster network.
 If you only need the dashboard from another machine, prefer an **SSH
 tunnel** (below). Tunnelling keeps the loopback posture intact and needs
 no token.
+
+### What the posture does not cover
+
+Stated from the other side: the loopback default, and the remote mode
+described below, are a boundary between **hosts**. Neither is a
+permission system, and it is worth being blunt about where they stop.
+
+**There is no authorization layer, in either mode.** Local mode has no
+credential at all — `resolve_token` returns nothing for a loopback bind,
+so the request gate passes everything through. Any process on the machine
+that can open a socket to the port therefore has the whole API: writing a
+secret through `POST /api/env-keys`, overwriting a file inside a
+checkpoint, restarting the memory backend, and — after minting itself the
+grant described below — deleting a checkpoint or stopping every
+experiment process. A loopback bind separates hosts; it does not separate
+the users or the jobs sharing one host.
+
+Remote mode adds a credential and stops there. The bearer token is a
+single all-powerful value: it names nobody, it cannot be scoped to a
+project or a run, and it is compared against nothing but itself. There is
+not yet a boundary a permission check could attach to — the `/api/v1`
+surface exposes one virtual `default` project and answers a 404 envelope
+for every other project id. Sessions, logout and per-session revocation
+do not exist; revoking access means changing `ARI_GUI_TOKEN` and
+restarting the server, which revokes it for everyone at once. That is a
+decision, not an oversight: [GUI-ADR-13](../adr/gui/GUI-ADR-13-remote-bearer-token.md)
+permanently defers sessions, logout, revocation and multi-user to a
+future multi-tenant record, and says in its consequences that the single
+all-powerful token is not to be extended in place.
+
+**Confirmation challenges are an anti-accident control, not access
+control.** Anyone who can call `POST /api/delete-checkpoint` can also
+call `POST /api/v1/challenges` and mint the grant it demands — issuance
+requires no credential beyond the one the request already carried. What
+the two-step buys is that the *server* names the target and the client
+must echo that exact single-use grant back, which is what catches a stale
+tab, a replayed script, or a bulk action aimed at the wrong path. It is
+not a second factor. The vocabulary is narrow by design —
+`delete-checkpoint`, `stop-all`, `gpu-monitor-stop`, and nothing else.
+Saving, deleting or uploading a file inside a checkpoint
+(`POST /api/checkpoint/file/save`, `POST /api/checkpoint/file/delete`,
+`POST /api/checkpoint/{id}/file/upload`) and restarting the memory
+backend (`POST /api/memory/restart`) execute directly on request.
+
+**`viz_access.jsonl` is a request log, not an audit trail.** Its fields
+are the six listed under *Access log* below, and `client` among them is
+the peer's network address — so no line names a person, and under the
+loopback default every line names the same loopback address. Worse for
+after-the-fact reconstruction: nothing is written at all while no
+checkpoint is active, and that state does not stop the writes it would
+otherwise record. `POST /api/env-keys` edits the project `.env` file and
+never touches the checkpoint, so a secret written with no checkpoint
+selected leaves no line behind. An absence of lines is not evidence that
+nothing happened.
+
+None of this makes the dashboard unsafe for what it is: a single-operator
+research tool, run by the person whose runs it displays. It does mean
+that "put it behind the token and share the URL" is not a supported
+multi-user deployment, and that everyone with access holds every
+operator's authority.
 
 ## The GUI environment variables
 

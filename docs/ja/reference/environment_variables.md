@@ -127,7 +127,7 @@ ARI は 150 を超える環境変数を参照します。ここではそれら�
 | `ARI_MAX_NODES` | BFTS ノードの上限 | (workflow 制御) |
 | `ARI_MAX_DEPTH` | ツリー深さの上限 | (workflow 制御) |
 | `ARI_MAX_REACT` | ノードごとの ReAct 反復上限 | (workflow 制御) |
-| `ARI_PARALLEL` | 並行ノード実行数 | `1` |
+| `ARI_PARALLEL` | 並行ノード実行数 | `4` |
 | `ARI_TIMEOUT_NODE` | ノードごとのウォールタイム上限（秒） | (なし) |
 | `ARI_BFTS_ALLOW_WEB` | オプトイン：BFTS ノードエージェントに**探索中**の `web-skill`（web_search / fetch_url / arXiv / Semantic Scholar）を公開。デフォルト無効では探索ループの再現性（P5）を維持；有効にすると ARI は非再現トラジェクトリのマーカ（`bfts_web_provenance.json`）を記録します。`idea-skill` の `survey` は、これとは無関係に常に範囲限定の文献検索を行います。`1`/`true`/`yes`/`on` で有効化 | `false` |
 | `ARI_RECURSION_DEPTH` | ネストされた ARI 実行の現在深さ（自動設定） | (自動) |
@@ -185,9 +185,9 @@ to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
 | `ARI_BACKEND` | エージェントランタイムのバックエンドセレクタ |
 | `ARI_EXECUTOR` | エグゼキュータバックエンド（sync / async） |
 | `ARI_CONTAINER_IMAGE` | サンドボックス実行用 SIF / OCI イメージ |
-| `ARI_CONTAINER_MODE` | `exec` / `shell`（singularity 呼び出しスタイル） |
+| `ARI_CONTAINER_MODE` | コンテナランタイム: `auto`（デフォルト — 実行環境を検出し、SLURM ジョブ内では Singularity / Apptainer を優先） / `docker` / `singularity` / `apptainer` / `none`。未対応の値はホスト実行へフォールバックせず例外になる |
 | `ARI_CONTAINERS_DIR` | コンテナイメージキャッシュルート |
-| `ARI_MAX_CHILD_PROCS` | コーディングサンドボックス内の RLIMIT_NPROC 上限（デフォルト 1024） |
+| `ARI_MAX_CHILD_PROCS` | コーディングサンドボックス内の RLIMIT_NPROC 上限。オプトイン方式で、未設定なら追加の上限は掛からない。RLIMIT_NPROC は子孫プロセスではなく real uid の全タスクを数えるため、固定上限はユーザが既にその数のスレッドを持っているだけで `fork` を EAGAIN で失敗させていた |
 | `ARI_LOG_LEVEL` | Python `logging` レベル（`INFO` / `DEBUG` / ...） |
 
 ### メモリバックエンド
@@ -196,7 +196,7 @@ to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta`（デフォルト）または `in_memory`（Letta 不要；ローカルスモークテスト用の一時 RAM バックエンド） |
 | `ARI_MEMORY_AUTO_RESTORE` | resume 時に `memory_backup.jsonl.gz` から自動復元 |
-| `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` へのパス |
+| `ARI_MEMORY_ACCESS_LOG` | `on`（デフォルト） / `off` — memory サーバが `memory_access.jsonl` を記録するか。パス自体は設定不可で、ローテーションサイズは `ARI_MEMORY_ACCESS_LOG_MAX_MB`（デフォルト `100`） |
 | `ARI_MEMORY_CONSOLIDATE` | 型付きメモリの統合 + 論文クレーム向けのアーティファクト裏付け済み `verified_context.json`。**デフォルト有効**；`0`/`false`/`no`/`off` で無効化 |
 | `ARI_CONTEXT_AUTHORITY_KEY` | core が各スキルのサブプロセスへエクスポートする接続ごとの HMAC キー（`SkillConnection._server_params`）。メモリサーバはバックエンドに触れる前に、署名済み `ari_context` 引数をこのキーで検証します。core が注入し結果からは redact されるため、運用者が設定するものではありません |
 | `ARI_LETTA_VENV` | バンドル済み Letta サーバの仮想環境パス |
@@ -240,7 +240,8 @@ to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | バンドル済み `vendor/paperbench/` パスの上書き | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` | レビュー済み vendor PaperBench project ルートの上書き。symlink でなく、かつ Git identity が明示の `ARI_PAPERBENCH_COMMIT` 申告と一致する場合のみ受理される — 申告が無ければ上書きは拒否される | `ari-skill-paper-re/vendor/paperbench/project` |
+| `ARI_PAPERBENCH_COMMIT` | `ARI_PAPERBENCH_PATH` 上書きが申告する commit。ツリーの実際の Git identity と照合される | (なし — `ARI_PAPERBENCH_PATH` と併用必須) |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | `run_reproduce` のウォールタイム上限 | `43200`（12 時間） |
 | `ARI_REPLICATOR_ITERATIVE` | 反復型レプリケータエージェントを使用 | – |
 | `ARI_REPLICATOR_MAX_STEPS` | 反復型が有効なときの反復上限 | – |
@@ -249,11 +250,10 @@ to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP サーバポート | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | ログディレクトリ | `$ARI_WORKSPACE/orchestrator_logs` |
-| `ARI_ORCHESTRATOR_DRY_RUN` | 実際の `ari run` をスキップ（スモークテスト用） | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | ワンショット SSE レスポンスモード | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE タイムアウト（秒） | – |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | MCP サーバポート（`streamable-http` トランスポート） | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` | MCP サーバの bind ホスト。空文字は不可 | `127.0.0.1` |
+| `ARI_ORCHESTRATOR_LOGS` | ログディレクトリ | `$ARI_WORKSPACE/logs` |
+| `ARI_ORCHESTRATOR_DRY_RUN` | 実際の `ari run` をスキップ（スモークテスト用）。有効化は `1` | – |
 
 ### Transform スキル
 
@@ -292,7 +292,7 @@ source だけが実行できるためです。
 | `ARI_REGISTRIES_FILE` | `registries.yaml` の場所を上書き（未指定時はアクティブなチェックポイント配下を参照） |
 | `ARI_LOCAL_TARBALL_OUT` | `local-tarball` 公開バックエンドの出力パス |
 | `ARI_GH_REPO` | `gh` バックエンド向けの GitHub リポジトリ |
-| `ARI_GH_MODE` | `gh` バックエンドの `release` / `repo` モード |
+| `ARI_GH_MODE` | `gh` バックエンドのモード: `commit`（デフォルト — bundle/manifest/README をリポジトリへ push）または `releases`（タグ付き release を作成し tarball を添付） |
 | `ARI_CLONE_HTTP_TIMEOUT` | `ari clone` の HTTP タイムアウト |
 
 ### SLURM デフォルト
@@ -304,7 +304,7 @@ source だけが実行できるためです。
 | `ARI_SLURM_GPUS` | デフォルト `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | デフォルトメモリリクエスト |
 | `ARI_SLURM_WALLTIME` | デフォルト `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ クラスタに GPU 用 GRES が設定されていない場合、`--gres` / `--gpus-*` フラグを黙って削除（レガシー v0.7.2 の動作）。デフォルト（未設定）⇒ GPU リクエストが黙って CPU で実行されないよう、対処可能なメッセージ付きで `RuntimeError` を発生。 |
+| `ARI_SLURM_ALLOW_NO_GRES` | **現在この名前を読むコードは存在せず、設定しても何も変わりません。** かつては GPU 用 GRES が設定されていないクラスタで `--gres` / `--gpus-*` を黙って削除する opt-in で、`scripts/setup/setup_env.sh` は今もコメントアウト状態で書き出します。GRES 無しの扱いは現在 `ari/capability_binding/environment.py` 側で決まります: GRES 会計を伴わずに観測されたデバイスは feature `gpu-observed-on-slurm-node`／allocation mode `observation-only-no-gres` として記録されるだけで、GRES が観測されたか exclusive-node-inventory の pin が一致しない限り schedulable な `gpu` リソースにはなりません。したがって CPU へ黙って落ちるのではなく binding が成立しません。 |
 
 ### PaperBench 再現フェーズ（Stage 2）
 
@@ -313,7 +313,7 @@ source だけが実行できるためです。
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。`server.run_reproduce` および `bridge.reproduce_submission` が使用するサンドボックスランナーを強制。 |
 | `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` で明示的な `container_image` が指定されていない場合のデフォルト docker イメージ。組み込みのデフォルトは無く、未設定ならイメージは空のままで、勝手に補われず run が拒否される。 |
 | `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` で明示的な `container_image` が指定されていない場合のデフォルト SIF / docker URI。 |
-| `ARI_PAPERBENCH_PATH` | vendor 化された PaperBench ソースツリーのパス上書き（デフォルト: `ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
+| `ARI_PAPERBENCH_PATH` | vendor 化された PaperBench project ルートのパス上書き（デフォルト: `ari-skill-paper-re/vendor/paperbench/project`。内側の `project/paperbench` を指す値は `project` へ正規化される）。`ARI_PAPERBENCH_COMMIT` が必須 — 上記参照。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 呼び出し元が `0` を渡したときのデフォルト Stage 1 エージェントロールアウト時間予算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 ロールアウトのデフォルトを IterativeAgent バリアントに変更。 |
 | `ARI_REPLICATOR_MAX_STEPS` | デフォルト Stage 1 ステップ上限。 |
@@ -366,7 +366,7 @@ source だけが実行できるためです。
 
 | 変数 | 用途 |
 |---|---|
-| `LETTA_BASE_URL` | Letta API ベース（デフォルト `http://127.0.0.1:8283`） |
+| `LETTA_BASE_URL` | Letta API ベース（デフォルト `http://localhost:8283`） |
 | `LETTA_API_KEY` | Letta が認証を要求する場合の API キー |
 | `LETTA_EMBEDDING_CONFIG` | 埋め込み設定 JSON へのパス（必須） |
 
@@ -374,7 +374,7 @@ source だけが実行できるためです。
 
 | 変数 | 用途 |
 |---|---|
-| `OLLAMA_HOST` | Ollama リッスンアドレス（デフォルト `127.0.0.1:11434`） |
+| `OLLAMA_HOST` | Ollama のアドレス。backend が `ollama` のとき ARI は Ollama の api_base として読む（デフォルト `http://localhost:11434`） |
 | `OLLAMA_BASE_URL` | LiteLLM 側ベース URL |
 | `OPENAI_API_KEY` | OpenAI / OpenAI 互換 API キー |
 
@@ -382,10 +382,11 @@ source だけが実行できるためです。
 
 | 変数 | 用途 | デフォルト |
 |---|---|---|
-| `VLM_MODEL` | 図 / 表の査読用ビジョン LLM | `openai/gpt-4o` |
+| `ARI_VLM_MODEL` | 図 / 表の査読用ビジョン LLM。`VLM_MODEL` より優先 | (なし) |
+| `VLM_MODEL` | `ARI_VLM_MODEL` 未設定時に読まれるフォールバックのビジョン LLM id。組み込みデフォルトは無く、どちらも未設定ならビジュアルレビューはモデルを勝手に選ばず拒否する | (なし) |
 
 ## 関連ドキュメント
 
 - `docs/reference/configuration.md` — 同じ環境変数をユースケース別にまとめたナラティブガイド。
-- `ari-core/ari/config.py` — `ARI_*` グループのほとんどを扱う Pydantic 設定モデル。
+- `ari-core/ari/config/__init__.py` — `ARI_*` グループのほとんどを扱う Pydantic 設定モデル。
 - 各スキルの `README.md` — そのスキル固有の環境変数。

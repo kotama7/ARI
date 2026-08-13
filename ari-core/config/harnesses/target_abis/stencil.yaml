@@ -1,0 +1,7 @@
+schema_version: ari.target-abi-identity/v1
+family: stencil
+interface_contract: stencil-7point-c-abi/v1
+dtype: float64
+language: c
+subject_type: program
+target_kind: shared-library

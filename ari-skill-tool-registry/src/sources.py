@@ -584,14 +584,29 @@ class ToolUniverseSourceSpecV1(BaseModel):
             self.pin.model_dump(mode="json"),
         )
         if self.pin.artifact_kind == "ari-patched-wheel":
-            if self.wheel_path is None or self.verified_lock_path is None:
+            if self.wheel_path is None:
                 raise CatalogSourceError(
-                    "ARI-patched ToolUniverse sources require the retained exact wheel "
-                    "and verified lock"
+                    "ARI-patched ToolUniverse sources require the retained exact wheel"
                 )
             verify_tooluniverse_wheel(
                 self.wheel_path, self.pin.model_dump(mode="json")
             )
+        if self.pin.artifact_kind == "ari-patched-wheel" and (
+            self.verified_lock_path is None
+        ):
+            # A collection-wide source carries no leaf promotion, so it may not
+            # assert the evidence that reaches ``reproducible`` or
+            # ``scientifically_admitted``.  Those levels require leaf evidence
+            # bound to a verified lock; without one the source stays callable.
+            if (
+                self.evidence.replay_fixture_digest is not None
+                or self.evidence.scientific_validation_digest is not None
+            ):
+                raise CatalogSourceError(
+                    "ToolUniverse sources without a verified lock cannot assert "
+                    "replay or scientific validation evidence"
+                )
+        elif self.pin.artifact_kind == "ari-patched-wheel":
             verified = verify_tooluniverse_verified_lock(
                 self.verified_lock_path, self.pin.model_dump(mode="json")
             )

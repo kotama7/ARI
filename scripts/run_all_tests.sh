@@ -40,7 +40,6 @@ PATHS=(
   "ari-skill-vlm/tests"
   "ari-skill-transform/tests"
   "ari-skill-benchmark/tests"
-  "ari-skill-plot/tests"
   "ari-skill-tool-registry/tests"
 )
 

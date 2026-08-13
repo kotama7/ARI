@@ -10,6 +10,10 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/api_capabilities.py
     role: implementation
+  - path: ari-core/ari/viz/api_workflow.py
+    role: implementation
+  - path: ari-core/ari/viz/api_experiment.py
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/App.tsx
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
@@ -24,6 +28,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/components/TreeV2/TreeTablePanel.tsx
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
   - path: ari-core/ari/viz/frontend/src/shared/realtime/eventStream.ts
     role: implementation
   - path: ari-core/ari/viz/frontend/src/hooks/useRunEvents.ts
@@ -31,6 +37,8 @@ sources:
   - path: ari-core/ari/viz/v1/logs.py
     role: implementation
   - path: ari-core/ari/viz/v1/router.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/launch.py
     role: implementation
   - path: ari-core/ari/viz/frontend/src/__tests__/routeNavParity.test.tsx
     role: test
@@ -40,7 +48,7 @@ sources:
     role: doc
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-13
 ---
 
 # 仪表盘指南
@@ -377,6 +385,17 @@ v2 的 Results 工作区正是出于这个原因链接到 `#/results`，并在�
 - **破坏性操作是两步的。** 删除检查点、停止全部进程以及停止 GPU 监控，现在
   都需要一个服务器签发的一次性确认挑战；对话框会展示服务器回显的确切目标。
   见[远程访问](remote_access.md)。
+
+**一次 workflow 编辑只属于一个检查点。** `#/workflow` 编辑的是当前活动检查点
+自己的 `workflow.yaml`；当该检查点还没有副本时，第一次写入会把捆绑的
+`ari-core/config/workflow.yaml` 复制进去并编辑那份副本 —— 捆绑文件永远不会
+被写入。开始一次新实验并不会把这次编辑带过去 —— `#/new` 的向导
+（`POST /api/launch`）与 `#/studio` 的 Config Studio（`POST /api/v1/runs`）
+都会重新从捆绑文件为新运行播种，再把各自启动期的开关应用到那份新副本上。你的
+改动只在同一个检查点再次运行时生效，别处都不生效；而且向导会把新运行设为活动
+检查点，所以你回到编辑器时，它已经指向那份新副本了。工具栏会打印编辑器加载的
+路径，但页面从未说明这条路径就是你这次编辑的全部作用域，启动时也不会出现任何
+警告 —— 这句缺失的说明是一个已知缺口。
 
 **开发者模式**是一个纯客户端开关（`localStorage['ari_dev_mode']`），它会
 展现原始 JSON 标签页、原始 YAML 编辑器与完整堆栈跟踪。它只改变展示密度 ——

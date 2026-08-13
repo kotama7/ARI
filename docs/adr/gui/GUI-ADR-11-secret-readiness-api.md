@@ -16,7 +16,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/devModeAndDangerousOps.test.tsx
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # GUI-ADR-11: secret readiness replaces plaintext env-key reads
@@ -64,8 +64,9 @@ decision or from the code.
 Consequences: reading a secret value back into the GUI is no longer possible, so
 the developer-mode "Auto-read" prefill in
 `ari-core/ari/viz/frontend/src/components/Wizard/StepResources.tsx` became a
-readiness display, and the guidance became "if it is configured, leave the field
-blank and the `.env` value is used at launch". Adding a secret name is an
+readiness display, and the guidance became "✓ `<NAME>` configured
+(`<source_class>`) — leave blank to use it" when the key is set and
+"`<NAME>` not configured — enter manually" when it is not. Adding a secret name is an
 additive allowlist change; adding any field that carries a value requires
 superseding this record. The behaviour change is announced as migration note
 MN-2.

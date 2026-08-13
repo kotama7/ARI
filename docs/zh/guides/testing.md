@@ -18,9 +18,13 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__
     role: test
+  - path: ari-core/ari/viz/frontend/vitest.config.ts
+    role: config
+  - path: ari-core/ari/viz/frontend/package.json
+    role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # 如何测试 ARI 代码
@@ -329,6 +333,32 @@ runner 对 pass/fail 预算而言噪声太大。因此一次绿色的打包检�
 chunk 的正则、四个类别预算以及按路由的覆盖值。所有键都可省略，且检查器在代码里
 携带着同样的默认值，因此这份 YAML 的全部价值就在于让预算变更成为一行可评审的
 diff，而不是一次代码编辑。请在那里调整，而不是改脚本。
+
+**测试覆盖率 —— 一处已知缺口 (known gap)。** 本仓库没有任何东西会测量测试套件
+实际执行了代码库中多少内容，两侧皆然。
+`ari-core/ari/viz/frontend/vitest.config.ts` 中没有声明 `coverage` 块；
+`package.json` 把 `test` 定义为裸的 `vitest run`，既没有覆盖率脚本，
+devDependencies 中也没有任何覆盖率 provider —— `@vitest/coverage-v8` 只是作为
+vitest 自身的可选 peer dependency 出现在 `package-lock.json` 里，因此
+`vitest run --coverage` 得先把它装上才能跑。Python 一侧同样未被测量：
+`pytest.ini` 没有设置 `--cov`，也没有任何 ARI 包依赖 `pytest-cov`。两侧都从未
+记录过覆盖率基线。
+
+在仪表盘改版期间曾设定过两个目标数字，但从未实现。这里把它们记录为
+**已知缺口 (known gap)** 而非策略，而且一次绿色的运行对二者都不构成证据：
+前端纯逻辑层的 line/branch 覆盖率 90%，以及整体覆盖率在首次测量时取基线、
+随后向 80% 棘轮式提升，任何下降都视为回归。
+
+在这两个数字能有意义之前，有两件事必须先解决。其一，90% 目标所点名的那些层
+—— reducer、serializer、API wrapper 与 config resolver adapter —— 只有一部分能
+对应到这份代码上。`src/services/api/` 确实存在，就是 API wrapper 层。但前端里
+根本没有 reducer（不论大小写，`reducer` 在 `src/` 下任何地方都不出现），也没有
+serializer 模块（`src/` 下 `serializ` 仅有的两处匹配是注释，位于
+`services/api/client.ts` 与 `hooks/useRunEvents.ts`），而 config resolver 是
+Python 的 —— `ari-core/ari/config/resolver.py`，经由 HTTP 访问，而不是通过某个
+前端 adapter。其二，棘轮需要有地方运行，而没有任何工作流会运行前端测试套件
+—— 这也正是上面的外壳无障碍基线与打包预算成为人工执行的 cutover 前检查清单
+条目、而非 CI 关卡的原因。
 
 ## 编写回归测试
 

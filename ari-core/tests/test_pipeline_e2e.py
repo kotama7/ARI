@@ -1025,6 +1025,22 @@ class TestBftsToPaperTransition:
             with pytest.raises(OSError, match="Disk quota exceeded"):
                 generate_paper_section([], {"goal": "test"}, tmp_path, None, "")
 
+    def test_recorded_stage_failure_propagates_and_is_not_complete(self, tmp_path, capsys):
+        from ari.core import PaperPipelineFailed, generate_paper_section
+
+        with mock.patch(
+            "ari.pipeline.run_pipeline",
+            return_value={"lock_paper_build": {"error": "stage failed"}},
+        ), mock.patch(
+            "ari.pipeline.load_pipeline", return_value=[{"stage": "lock_paper_build"}]
+        ):
+            with pytest.raises(PaperPipelineFailed, match="lock_paper_build"):
+                generate_paper_section([], {"goal": "test"}, tmp_path, None, "")
+
+        output = capsys.readouterr().out
+        assert "[Paper Pipeline] FAILED:" in output
+        assert "[Paper Pipeline] Complete:" not in output
+
     def test_no_pipeline_stages_logs_error(self, tmp_path, caplog):
         """Empty pipeline stages must log at ERROR level."""
         from ari.core import generate_paper_section

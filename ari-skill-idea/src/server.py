@@ -22,9 +22,11 @@ Integration:
 import asyncio
 import contextvars
 import json
+import logging
 import os
 import re
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -51,6 +53,8 @@ from contracts import (
     paper_projection,
     parse_metric_json,
 )
+
+log = logging.getLogger(__name__)
 
 # ── VirSci vendor import ──────────────────────────────────────────────────────
 _VIRSCI_PATH = Path(__file__).parent.parent / "vendor" / "virsci" / "sci_platform"
@@ -127,6 +131,18 @@ def _env_int(name: str, default: int) -> int:
     except (TypeError, ValueError):
         return default
 
+
+def _bounded_env_int(name: str, current: int, minimum: int, maximum: int) -> int:
+    """Apply an optional operational cap without changing MCP defaults."""
+
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return current
+    try:
+        return max(minimum, min(maximum, int(raw)))
+    except ValueError:
+        return current
+
 def _virsci_real() -> bool:
     return _env_flag("ARI_IDEA_VIRSCI_REAL")
 
@@ -186,6 +202,14 @@ _GENERATION_SEED: contextvars.ContextVar[int | None] = contextvars.ContextVar(
 )
 
 
+def _llm_timeout_s() -> float:
+    """Per-request LLM timeout, in seconds."""
+    try:
+        return float(os.environ.get("ARI_IDEA_LLM_TIMEOUT_S", "") or 120)
+    except ValueError:
+        return 120.0
+
+
 async def _llm(system: str, user: str, temperature: float = 0.7) -> str:
     trace = _PROMPT_TRACE.get()
     if trace is not None:
@@ -197,7 +221,11 @@ async def _llm(system: str, user: str, temperature: float = 0.7) -> str:
             {"role": "user",   "content": _sanitize(user)},
         ],
         "temperature": temperature,
-        "timeout": 120,
+        # 120 s suits a hosted API. A CLI-backed endpoint (ari.llm.cli_server,
+        # whose own per-request budget defaults to 600 s) spawns a `claude`
+        # subprocess per call and routinely exceeds it, so the client gave up
+        # before the backend had failed or answered. Overridable, same default.
+        "timeout": _llm_timeout_s(),
     }
     if (seed := _GENERATION_SEED.get()) is not None:
         kwargs["seed"] = seed
@@ -217,17 +245,60 @@ async def _llm(system: str, user: str, temperature: float = 0.7) -> str:
 
 # ── Semantic Scholar paper retrieval (replaces VirSci's paper_search) ─────────
 
-def _s2_search(query: str, limit: int = 8) -> list[dict]:
+def _s2_get(path: str, *, params: dict, timeout: int) -> requests.Response:
+    """GET one S2 endpoint with bounded retry for transient throttling."""
+
     headers = {}
     if key := _s2_api_key():
         headers["x-api-key"] = key
-    r = requests.get(
-        f"{S2_BASE}/paper/search",
+    attempts = 5
+    for attempt in range(attempts):
+        try:
+            response = requests.get(
+                f"{S2_BASE}/{path.lstrip('/')}",
+                params=params,
+                headers=headers,
+                timeout=timeout,
+            )
+        except (requests.ConnectionError, requests.Timeout):
+            if attempt == attempts - 1:
+                raise
+            delay = min(float(2**attempt), 30.0)
+            log.warning(
+                "Semantic Scholar transport failure (attempt %d/%d); "
+                "retrying in %.1fs",
+                attempt + 1,
+                attempts,
+                delay,
+            )
+            time.sleep(delay)
+            continue
+        retryable = response.status_code == 429 or 500 <= response.status_code <= 599
+        if retryable and attempt < attempts - 1:
+            try:
+                delay = float(response.headers.get("Retry-After", ""))
+            except (TypeError, ValueError):
+                delay = float(2**attempt)
+            delay = max(0.0, min(delay, 30.0))
+            log.warning(
+                "Semantic Scholar HTTP %s (attempt %d/%d); retrying in %.1fs",
+                response.status_code,
+                attempt + 1,
+                attempts,
+                delay,
+            )
+            time.sleep(delay)
+            continue
+        response.raise_for_status()
+        return response
+    raise RuntimeError("unreachable Semantic Scholar retry state")
+
+def _s2_search(query: str, limit: int = 8) -> list[dict]:
+    r = _s2_get(
+        "paper/search",
         params={"query": query, "limit": limit, "fields": S2_FIELDS},
-        headers=headers,
         timeout=15,
     )
-    r.raise_for_status()
     payload = r.json()
     data = payload.get("data", [])
     if not isinstance(data, list):
@@ -236,16 +307,11 @@ def _s2_search(query: str, limit: int = 8) -> list[dict]:
 
 def _s2_citations(paper_id: str, limit: int = 5) -> list[dict]:
     """Retrieve citing papers from Semantic Scholar citation graph (2-hop traversal)."""
-    headers = {}
-    if key := _s2_api_key():
-        headers["x-api-key"] = key
-    r = requests.get(
-        f"{S2_BASE}/paper/{paper_id}/citations",
+    r = _s2_get(
+        f"paper/{paper_id}/citations",
         params={"limit": limit, "fields": S2_FIELDS},
-        headers=headers,
         timeout=10,
     )
-    r.raise_for_status()
     items = r.json().get("data", [])
     if not isinstance(items, list):
         raise ValueError("Semantic Scholar citation response has no data list")
@@ -636,6 +702,169 @@ def _platform_constraint_note() -> str:
         return ""
 
 
+async def select_metric_contracts(
+    topic: str, raw_ideas: list[dict], snapshot
+) -> dict:
+    """Turn ideas into falsifiable contracts, or refuse.
+
+    Shared by ``generate_ideas`` and ``mint_contract_for_proposal`` so the two
+    cannot drift: the deterministic adapter downstream rejects anything
+    incomplete, and the invariants stated in this prompt are the ones it
+    enforces. A second copy of this prompt would be a second set of rules the
+    validator does not know about.
+    """
+    # Scientific contract selection by LLM. The deterministic adapter below
+    # validates every field and rejects incomplete output; it never guesses a
+    # unit, citation, falsification condition, or evidence vocabulary.
+    available_citations = [
+        {"id": record.canonical_id, "title": record.title}
+        for record in snapshot.records
+    ]
+    metric_raw = await _llm(
+        (
+            "Define falsifiable scientific contracts for the proposed ideas. "
+            "Use only the supplied citation IDs and artifact digests. Return ONLY "
+            "one valid JSON object; do not use markdown. Never write unknown/TBD units. "
+            # Both rules below are hard schema invariants in MetricContractV1.
+            # They used to be enforced but never stated, so a well-formed answer
+            # -- direction "higher" with a goal in target_value, confidence 0.74 --
+            # was rejected as invalid_metric_contract and every candidate died.
+            "required_evidence is the ONE vocabulary of measurement names: every "
+            "name appearing in operands values, in required_measured, and in "
+            "correctness.requires must also appear in required_evidence. "
+            "formula must be an arithmetic expression whose variables are "
+            "EXACTLY the keys of operands -- not the evidence names, which are "
+            "what those keys map to. "
+            "target_value MUST be null unless direction is exactly \"target\"; a "
+            "goal you merely hope to beat belongs in the rationale, not there. "
+            "confidence is your own calibrated probability that this contract "
+            "measures what it claims: below 0.8 the contract is held for human "
+            "review and the idea cannot be admitted, so do not inflate it -- if "
+            "you cannot honestly reach 0.8, simplify the contract until you can."
+        ),
+        (
+            f"Topic: {topic}\n"
+            f"Ideas: {json.dumps(raw_ideas, ensure_ascii=False)[:12000]}\n"
+            f"Available citations: {json.dumps(available_citations, ensure_ascii=False)}\n"
+            f"Available artifact digests: "
+            f"{json.dumps([a.digest for a in snapshot.artifacts])}\n"
+            "Return exactly this shape: "
+            '{"metric_contract":{"name":str,"unit":str,'
+            '"direction":"higher|lower|target|none",'
+            '"comparison_scope":"same-environment|cross-environment|within-subject|not-applicable",'
+            '"rationale":str,"required_evidence":[str,...],'
+            '"correctness_required":bool,'
+            '"normalization_ceiling":"measured|not-applicable",'
+            '"target_value":number|null,'
+            '"formula":"safe arithmetic expression over operand roles",'
+            '"operands":{"value|baseline|proposed":"required_evidence_name"},'
+            '"tolerance":{"absolute":number,"relative":number},'
+            '"required_measured":[str,...],"invariants":[str,...],'
+            '"correctness":{"expr":str,"requires":[str,...]}|null,'
+            '"confidence":number},"idea_contracts":['
+            '{"title":str,"hypothesis":str,'
+            '"falsification_conditions":[str,...],"citations":[str,...],'
+            '"artifact_references":[str,...],"limitations":[str,...]}]}'
+        ),
+        temperature=0.1,
+    )
+    return parse_metric_json(metric_raw)
+
+
+@mcp.tool()
+async def mint_contract_for_proposal(
+    topic: str,
+    proposal: dict,
+    survey_snapshot_ref: str = "survey_snapshot_v1.json",
+    experiment_context: str = "",
+) -> dict:
+    """Mint a typed Research Contract for a proposal this skill did not generate.
+
+    WHY THIS EXISTS. Under ``ari.mode: ari_rqgm`` the proposal router owns root
+    ideation and none of its generators mints a contract -- only this skill
+    does. KCA admission then requires one, so a governed run was refused unless
+    the router routed to the VirSci generator, which delegates here. VirSci is
+    opt-in and default-OFF by design ("tests pass without VirSci installed"), so
+    the governed path was effectively unreachable and the run fell through to
+    ``cheap``, whose proposal carries no contract.
+
+    Splitting minting from generation makes the two independent: any generator
+    may propose, and the contract is stated and validated in exactly one place.
+    The proposal supplies title/description/hypothesis/plan; this step supplies
+    the falsification conditions, limitations, citations and metric contract --
+    and refuses rather than inventing any of them, which is why an empty
+    literature snapshot yields a rejection and not a fabricated citation.
+    """
+    checkpoint = os.environ.get("ARI_CHECKPOINT_DIR", "")
+    if not checkpoint:
+        return {"contract_status": "rejected",
+                "reason": "ARI_CHECKPOINT_DIR is unset, so the run's literature "
+                          "snapshot cannot be located"}
+    try:
+        snapshot = load_survey_snapshot(checkpoint, survey_snapshot_ref)
+    except Exception as exc:
+        return {"contract_status": "rejected",
+                "reason": f"survey snapshot unavailable: {exc}"}
+
+    plan = proposal.get("experiment_plan") or ()
+    raw_idea = {
+        "title": str(proposal.get("title") or "").strip(),
+        "description": str(proposal.get("short_description")
+                           or proposal.get("description") or "").strip(),
+        "hypothesis": str(proposal.get("hypothesis") or "").strip(),
+        "experiment_plan": (
+            "\n".join(str(step) for step in plan)
+            if isinstance(plan, (list, tuple)) else str(plan)
+        ),
+        "novelty": "", "feasibility": "",
+        "novelty_score": 0.0, "feasibility_score": 0.0, "clarity_score": 0.0,
+    }
+    if not raw_idea["title"]:
+        return {"contract_status": "rejected", "reason": "proposal has no title"}
+
+    metric_data = await select_metric_contracts(topic, [raw_idea], snapshot)
+    lock = build_generation_lock(
+        adapter="router-proposal",
+        model=_model(),
+        api_base=_api_base(),
+        prompt_texts=[topic, json.dumps(raw_idea, ensure_ascii=False, sort_keys=True)],
+        temperatures=[0.1],
+        seed=_GENERATION_SEED.get(),
+        snapshot=snapshot,
+        topic=topic,
+        experiment_context=experiment_context,
+        generation_parameters={
+            # The proposal is the input, not something this step generated, so
+            # the only parameters that shaped the output are the contract call's.
+            "n_ideas": 1,
+            "source": "router-proposal",
+        },
+        model_revision=(
+            os.environ.get("ARI_MODEL_IDEA_REVISION", "").strip() or _model()
+        ),
+    )
+    idea_set, contract = build_idea_handoff(
+        topic=topic,
+        snapshot=snapshot,
+        raw_ideas=[raw_idea],
+        metric_data=metric_data,
+        generation_lock=lock,
+        generated_at=datetime.now(timezone.utc),
+        requested_adapter="router-proposal",
+        actual_adapter="router-proposal",
+        fallback_reason=None,
+    )
+    return {
+        "typed_schema_version": RESEARCH_CONTRACT_V1,
+        "contract_status": "admitted" if contract else "rejected",
+        "research_contract": (contract.model_dump(mode="json") if contract else None),
+        "research_contract_digest": (
+            contract.contract_digest if contract else None),
+        "idea_set_digest": idea_set.idea_set_digest,
+        "rejections": [item.model_dump(mode="json") for item in idea_set.rejections],
+    }
+
+
 @mcp.tool()
 async def generate_ideas(
     topic: str,
@@ -679,7 +908,12 @@ async def generate_ideas(
         raise ValueError("topic cannot be empty")
     if generation_mode not in {"auto", "default", "virsci"}:
         raise ValueError("generation_mode must be auto, default, or virsci")
-    n_ideas  = max(1, min(5, n_ideas))
+    n_ideas = _bounded_env_int("ARI_IDEA_N_IDEAS", n_ideas, 1, 5)
+    n_agents = _bounded_env_int("ARI_IDEA_N_AGENTS", n_agents, 2, 4)
+    max_discussion_rounds = _bounded_env_int(
+        "ARI_IDEA_DISCUSSION_ROUNDS", max_discussion_rounds, 0, 3
+    )
+    n_ideas = max(1, min(5, n_ideas))
     n_agents = max(2, min(4, n_agents))
     max_discussion_rounds = max(0, min(3, max_discussion_rounds))
     generated_at = datetime.now(timezone.utc)
@@ -819,46 +1053,7 @@ async def generate_ideas(
         reverse=True,
     )
 
-    # Scientific contract selection by LLM. The deterministic adapter below
-    # validates every field and rejects incomplete output; it never guesses a
-    # unit, citation, falsification condition, or evidence vocabulary.
-    available_citations = [
-        {"id": record.canonical_id, "title": record.title}
-        for record in snapshot.records
-    ]
-    metric_raw = await _llm(
-        (
-            "Define falsifiable scientific contracts for the proposed ideas. "
-            "Use only the supplied citation IDs and artifact digests. Return ONLY "
-            "one valid JSON object; do not use markdown. Never write unknown/TBD units."
-        ),
-        (
-            f"Topic: {topic}\n"
-            f"Ideas: {json.dumps(raw_ideas, ensure_ascii=False)[:12000]}\n"
-            f"Available citations: {json.dumps(available_citations, ensure_ascii=False)}\n"
-            f"Available artifact digests: "
-            f"{json.dumps([a.digest for a in snapshot.artifacts])}\n"
-            "Return exactly this shape: "
-            '{"metric_contract":{"name":str,"unit":str,'
-            '"direction":"higher|lower|target|none",'
-            '"comparison_scope":"same-environment|cross-environment|within-subject|not-applicable",'
-            '"rationale":str,"required_evidence":[str,...],'
-            '"correctness_required":bool,'
-            '"normalization_ceiling":"measured|not-applicable",'
-            '"target_value":number|null,'
-            '"formula":"safe arithmetic expression over operand roles",'
-            '"operands":{"value|baseline|proposed":"required_evidence_name"},'
-            '"tolerance":{"absolute":number,"relative":number},'
-            '"required_measured":[str,...],"invariants":[str,...],'
-            '"correctness":{"expr":str,"requires":[str,...]}|null,'
-            '"confidence":number},"idea_contracts":['
-            '{"title":str,"hypothesis":str,'
-            '"falsification_conditions":[str,...],"citations":[str,...],'
-            '"artifact_references":[str,...],"limitations":[str,...]}]}'
-        ),
-        temperature=0.1,
-    )
-    metric_data = parse_metric_json(metric_raw)
+    metric_data = await select_metric_contracts(topic, raw_ideas, snapshot)
 
     # Format ideas for ARI interface compatibility
     ideas_out = []

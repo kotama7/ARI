@@ -17,6 +17,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 log = logging.getLogger(__name__)
 
 
+class PaperPipelineFailed(RuntimeError):
+    """Raised when an enabled paper stage or terminal build lock fails."""
+
+
 # ---------------------------------------------------------------------------
 # Phase 3: rubric loader for dynamic-axis evaluator wiring
 # ---------------------------------------------------------------------------
@@ -593,9 +597,6 @@ def generate_paper_section(
                     else ""
                 ),
             )
-    log.info("Paper pipeline completed: %s", list(result.keys()) if result else "no result")
-    print(f"[Paper Pipeline] Complete: {list(result.keys()) if result else 'no result'}", flush=True)
-
     # Every integrity check already wrote a finding somewhere; nothing read them
     # together, so a run could ship a paper containing a fabricated verification
     # claim and print only DONE eighteen times. Collect them into one artifact
@@ -606,3 +607,43 @@ def generate_paper_section(
         write_integrity_report(checkpoint_dir)
     except Exception:  # pragma: no cover - defensive
         log.warning("run-integrity summary failed", exc_info=True)
+
+    failed_stages = sorted(
+        str(name)
+        for name, value in (result or {}).items()
+        if isinstance(value, dict) and value.get("error")
+    )
+    failure_reasons: list[str] = []
+    if isinstance(result, dict) and result.get("_aborted"):
+        aborted = result.get("_aborted") or {}
+        failure_reasons.append(str(aborted.get("reason") or "pipeline aborted"))
+    if failed_stages:
+        failure_reasons.append("failed stages: " + ", ".join(failed_stages))
+
+    # The stage driver deliberately records failures and continues so
+    # independent diagnostics can still run.  At the command boundary those
+    # recorded failures must become a non-zero result.  The immutable build
+    # contract is also authoritative even if a tool returned a normal envelope.
+    try:
+        import json as _json_paper_health
+
+        _build_path = Path(checkpoint_dir) / "paper_build.json"
+        if _build_path.is_file():
+            _build = _json_paper_health.loads(_build_path.read_text(encoding="utf-8"))
+            _build_status = str((_build or {}).get("status") or "")
+            if _build_status in {"blocked", "compile-error"}:
+                _why = (_build or {}).get("blocking_reasons") or []
+                failure_reasons.append(
+                    f"paper build {_build_status}: " + "; ".join(map(str, _why))
+                )
+    except Exception as exc:
+        failure_reasons.append(f"paper_build.json unreadable: {exc}")
+
+    if failure_reasons:
+        message = " | ".join(failure_reasons)
+        log.error("Paper pipeline failed: %s", message)
+        print(f"[Paper Pipeline] FAILED: {message}", flush=True)
+        raise PaperPipelineFailed(message)
+
+    log.info("Paper pipeline completed: %s", list(result.keys()) if result else "no result")
+    print(f"[Paper Pipeline] Complete: {list(result.keys()) if result else 'no result'}", flush=True)

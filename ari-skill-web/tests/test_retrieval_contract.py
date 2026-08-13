@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import os
 import sys
+from urllib.error import HTTPError
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -222,6 +224,43 @@ def test_pinned_provider_outage_is_explicit_and_never_falls_back():
                     mode="live",
                 )
             )
+
+
+def test_semantic_scholar_429_honors_retry_after(monkeypatch):
+    from server import _search_s2_raw_sync
+
+    rate_limited = HTTPError(
+        "https://api.semanticscholar.org/graph/v1/paper/search",
+        429,
+        "Too Many Requests",
+        {"Retry-After": "0.25"},
+        io.BytesIO(b""),
+    )
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b'{"data": [{"paperId": "recovered"}]}'
+
+    calls = iter((rate_limited, Response()))
+
+    def urlopen(*_args, **_kwargs):
+        value = next(calls)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    sleeps: list[float] = []
+    monkeypatch.setattr("server._req.urlopen", urlopen)
+    monkeypatch.setattr("server._time.sleep", sleeps.append)
+
+    assert _search_s2_raw_sync("retry", 1) == [{"paperId": "recovered"}]
+    assert sleeps == [0.25]
 
 
 def test_arxiv_provider_uses_supported_client_api(monkeypatch):

@@ -28,6 +28,10 @@ read as "every agent failed".
 from __future__ import annotations
 
 import os
+import json
+import platform
+import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +52,12 @@ CANDIDATE_COMPILER_FILE = "candidate_cc.txt"
 #: Which problem this run measures. No default: ``ARI_TASK`` unset used to fall
 #: through to SpMM, i.e. a typo scored a DIFFERENT benchmark and reported it
 #: under the requested name.
+from ari.assurance.models import HarnessTargetDeclarationV1
+
+from ari.public.execution import WorkspaceRefV1
+
+from ari.assurance.target_abi import abi_identity
+
 PROBLEM_ENV = "ARI_PROBLEM"
 
 #: Repetitions per case. ``validate`` is three, which is the smallest number
@@ -312,7 +322,23 @@ def measure(work_dir: str, *, seed: int = 0, tier: str | None = None,
             "problem_revision": definition.revision,
             "problem_digest": loaded.digest,
         }
-    return report_to_measurement(report)
+    measurement = report_to_measurement(report)
+    # The candidate built and was measured, so it is also the thing a governed
+    # Harness should judge. Declaring it here is what joins the two halves: the
+    # Harness reads assurance_target.json and, finding none, recorded every node
+    # as `tampered`. Best-effort on purpose -- a run whose assurance is off must
+    # not lose its score because a shared-library link failed.
+    try:
+        declaration = declare_target(root, loaded)
+    except PerfBuildError as exc:
+        measurement["assurance_target_error"] = f"candidate did not link: {exc}"
+    except Exception as exc:  # instrument-side; the score is still valid
+        measurement["assurance_target_error"] = f"{type(exc).__name__}: {exc}"
+    else:
+        if declaration is not None:
+            measurement["assurance_target"] = declaration["logical_name"]
+            measurement["assurance_target_digest"] = declaration["target_digest"]
+    return measurement
 
 
 __all__ = [
@@ -326,3 +352,75 @@ __all__ = [
     "resolve",
     "seed_work_dir",
 ]
+
+
+#: What the governed Harness reads to learn WHICH artifact it is judging.
+#: Nothing in the repository wrote this file, so a governed run resolved its
+#: Harness, locked it, and then recorded ``tampered`` on every node: the scoring
+#: path measures the candidate through a driver EXECUTABLE, while the Harness
+#: verifies a shared LIBRARY it is pointed at. The two halves were never joined.
+TARGET_DECLARATION_FILE = "assurance_target.json"
+
+#: The library the declaration points at. Named for the entry point rather than
+#: the candidate file so a problem whose scored input is not C still reads.
+_TARGET_LIBRARY = "assurance_target.so"
+
+
+def declare_target(work_dir: str | Path,
+                   problem: "LoadedProblemV1 | None" = None) -> dict[str, Any] | None:
+    """Build the scored candidate as a shared library and declare it.
+
+    Compiled with the candidate's OWN declared compiler and flags. Using the
+    instrument's defaults instead would verify a different program than the one
+    that was timed -- ``-ffast-math`` alone changes what the oracle sees.
+
+    Returns the declaration document, or ``None`` when this problem's family
+    declares no ABI identity (nothing to point a Harness at).
+    """
+    loaded = problem or resolve()
+    definition = loaded.definition
+    root = Path(work_dir)
+    abi = abi_identity(definition.family)
+    if abi is None:
+        return None
+
+    candidate = root / definition.score_inputs[0]
+    if not candidate.is_file():
+        raise PerfInfrastructureError(
+            f"cannot declare a Harness target: {candidate.name} is not in the "
+            f"work dir, so there is no candidate to build")
+    header = root / definition.scaffolding.contract_header
+    compiler = _declared_text(root, CANDIDATE_COMPILER_FILE) or os.environ.get(
+        "ARI_PERF_CC") or "cc"
+    flags = shlex.split(_declared_text(root, CANDIDATE_FLAGS_FILE) or "")
+    library = root / _TARGET_LIBRARY
+    argv = [compiler, "-shared", "-fPIC", *flags,
+            f"-I{header.parent}", str(candidate), "-o", str(library)]
+    completed = subprocess.run(argv, capture_output=True, text=True, timeout=300)
+    if completed.returncode != 0:
+        # The candidate's, not the instrument's: it compiled for the timed
+        # driver, so a failure here is about THIS link and is reported as the
+        # candidate's rather than raised as an outage.
+        raise PerfBuildError(
+            f"candidate did not link as a shared library: "
+            f"{completed.stderr.strip()[:2000]}")
+
+    workspace = WorkspaceRefV1(root=str(root))
+    declaration = HarnessTargetDeclarationV1.create(
+        logical_name=_TARGET_LIBRARY,
+        target_kind=abi.target_kind,
+        subject_type=abi.subject_type,
+        language=abi.language,
+        hardware="cpu",
+        architecture=platform.machine(),
+        dtype=abi.dtype,
+        interface_contract=abi.interface_contract,
+        target_digest=workspace.file_digest(_TARGET_LIBRARY),
+    )
+    document = declaration.model_dump(mode="json")
+    workspace.atomic_write_bytes(
+        TARGET_DECLARATION_FILE,
+        (json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2)
+         + "\n").encode("utf-8"),
+    )
+    return document

@@ -32,6 +32,8 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/ui_helpers.py
     role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx
+    role: implementation
   - path: ari-core/tests/test_gui_state_facade_freeze.py
     role: test
   - path: ari-core/tests/test_workflow_editor.py
@@ -42,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # REST API リファレンス
@@ -795,6 +797,54 @@ flow に無いステージは削除され、新しいステージはそのまま
 失われ、スカラーは正準形に書き直され（`yes` → `true`、`"x"` → `x`）、YAML
 アンカーは生成名（`&id001`）で再出力されます。同梱の `config/workflow.yaml` は
 誰も書き込まないためコメントを保ったままです。
+
+**ワークフロー書き込みが検査しないもの。** 書き込みガード（MN-1）と任意の
+リビジョンガード（MN-3）を通過した後、4 つの書き込みはほとんど何も検査しません。
+`POST /api/workflow` はボディに空でない `pipeline` があることだけを要求し、
+`POST /api/workflow/flow` は空でない `flow` だけを、`POST /api/workflow/skills` は
+少なくとも 1 エントリが `name` と `phase` の両方を持つことだけを、
+`POST /api/workflow/disabled-tools` は `disabled_tools` がリストであることだけを
+要求します。書き込み前にステージグラフを見るコードはありません。
+
+**既知のギャップ — ワークフローエディタに検証レイヤは存在しない。** GUI リフレッシュ
+計画は、ワークフロー保存に対して 5 つの検査を仕様化していました: 未知の `phase`、
+`depends_on` の循環、存在しないステージを指す `depends_on`、`enabled: false` で
+無効化された必須の上流、そして解決できない設定キーを参照するステージです。
+**この 5 つはいずれも実装されていません** — 通信路のどちら側でも、既知の
+ギャップです。`ari-core/ari/viz/api_workflow.py` にも
+`ari-core/ari/viz/api_settings.py` にもバリデータは無く、エディタの保存状態チップ
+（`ari-core/ari/viz/frontend/src/components/Workflow/WorkflowPage.tsx`）が持つのは
+`idle`、`dirty`、`saving`、`saved`、`conflict` だけで、表示すべき `invalid` 状態が
+そもそもありません。POST の前に知っておく価値のある帰結が 3 つあります:
+
+- **コードが認識しない `phase` は、黙って post-BFTS ステージになります。**
+  `workflow_yaml_to_flow` と `flow_to_workflow_yaml` は、文字列 `"bfts"` との完全一致
+  でステージを振り分けます。それ以外の値 — タイプミス、大文字小文字違い、空文字列を
+  含む — はすべて `pipeline:` リストへ入ります。したがって `phase` を打ち間違えた
+  ステージを DAG ビューから保存すると、そのステージは `bfts_pipeline:` から
+  `pipeline:` へ移動し、書き込みは成功として返ります。この 2 つのリストは
+  ランタイムの別々の箇所が読みます — 設定リファレンスの
+  「workflow.yaml（正規の開発者設定）」（[configuration.md](configuration.md)）を
+  参照してください。
+- **`depends_on` の循環は書き込み時に受理され、次の読み取りを壊し得ます。**
+  `flow_to_workflow_yaml` は投稿されたエッジからそのまま `depends_on` を組み立てます
+  — `data.condition` が `loop` のエッジだけが `loop_back_to` へ回されます — ので、
+  循環はそのまま永続化されます。次の `GET /api/workflow/flow` は `_compute_levels`
+  でレーンレイアウトを再導出しますが、これは訪問済み集合を持たない再帰的な深さ計算
+  です。循環の両端が同じレーンにある場合、生じた `RecursionError` はハンドラの
+  包括的な `except Exception` に捕まり、`{"ok": false, "error": …}` として返ります。
+  エディタは自分が今書いたファイルを開き直せず、エラーテキストは循環ではなく再帰
+  上限を示します。両端が別のレーンにある循環は読み取りを生き延びます —
+  `_compute_levels` は、走査中のリストの外にあるステージへの依存を捨てるためです。
+- **存在しないステージを指す `depends_on` も拒否されません。** その場合
+  `GET /api/workflow/flow` は、同じレスポンス内のどのノードも持たないノード ID を
+  `source` に持つエッジを返します。
+
+解決不能なグラフを*ランタイム*がどう扱うか — ステージはトポロジカルソート無しで
+ファイル順に実行され、依存がスキップされたステージもスキップされ、明示的に
+`enabled: false` にされた依存は逆に解決済みとして扱われる — については、
+[拡張ガイド](../guides/extension_guide.md)の
+「3. Post-BFTS パイプラインステージの追加」を参照してください。
 
 **アクティブなチェックポイントが無いときの `POST /api/settings`（凍結レガシー）。**
 設定はプロジェクトスコープです。`_st._settings_path` が `None` のときは永続化先が

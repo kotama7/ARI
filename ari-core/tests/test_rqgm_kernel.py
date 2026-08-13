@@ -1603,6 +1603,33 @@ def test_mcp_preflight_allows_and_preserves_cow_path():
     assert gated.to_claude_mcp_config() == {"mcpServers": {}}
 
 
+def test_mcp_preflight_forwards_current_signed_context_api():
+    """The production MCPClient no longer accepts the old cow_node_id kwarg."""
+
+    class CanonicalMCP:
+        _COW_TOOLS = frozenset()
+
+        def __init__(self):
+            self.observed = None
+
+        def call_tool(self, tool_name, args, *, context=None):
+            self.observed = (tool_name, dict(args), context)
+            return {"result": "ok"}
+
+    inner = CanonicalMCP()
+    gated = CapabilityGatedMCPClient(
+        inner, ConstitutionalKernel(), tool_policy=_policy
+    )
+    context = SimpleNamespace(node_id="node-1")
+
+    assert gated.call_tool("generate_ideas", {"n": 1}, context=context) == {
+        "result": "ok"
+    }
+    assert inner.observed == ("generate_ideas", {"n": 1}, context)
+    # No context means no removed keyword is forced into the canonical client.
+    assert gated.call_tool("some_unmapped_tool", {}) == {"result": "ok"}
+
+
 def test_mcp_preflight_audit_only_dispatches_denied_calls():
     inner = _MockMCP()
     gated = CapabilityGatedMCPClient(inner, ConstitutionalKernel(),
@@ -2070,6 +2097,74 @@ def test_per_node_kernel_check_is_reachable(tmp_path):
 
     cfg, rt = _rqgm_with_epoch(tmp_path)
     assert rt.run_per_node_kernel_check(NS(id="node_1")) >= 0
+
+
+def test_kca_audit_reports_do_not_become_tamper_enforcement():
+    """K/C/A audit posture records findings without changing eligibility."""
+    from types import SimpleNamespace as NS
+
+    from ari.rqgm.runtime import RQGMRuntime
+
+    admission = NS(modes=NS(
+        knowledge="audit", capability_binding="audit", assurance="audit"
+    ))
+    assert RQGMRuntime._kca_report_mode(
+        admission, NS(context="knowledge_integrity")
+    ) == "audit"
+    assert RQGMRuntime._kca_report_mode(
+        admission, NS(context="capability_integrity")
+    ) == "audit"
+    assert RQGMRuntime._kca_report_mode(
+        admission, NS(context="harness_integrity")
+    ) == "audit"
+
+    enforced = NS(modes=NS(
+        knowledge="enforce", capability_binding="enforce", assurance="enforce"
+    ))
+    assert RQGMRuntime._kca_report_mode(
+        enforced, NS(context="harness_integrity")
+    ) == "enforce"
+
+
+def test_per_node_kca_audit_finding_preserves_assurance_classification(tmp_path):
+    from types import SimpleNamespace as NS
+
+    from ari.rqgm.runtime import RQGMRuntime
+
+    report = NS(
+        context="capability_integrity",
+        violations=(NS(code="CK-CAP-001"),),
+        blocking=True,
+    )
+    runtime = RQGMRuntime.__new__(RQGMRuntime)
+    runtime.kernel = object()
+    runtime.cfg = NS(rqgm=NS(kernel=NS(enforcement="standard")))
+    runtime.checkpoint_dir = tmp_path
+    runtime._epoch_state = NS(prompts=None, epoch=NS(epoch_id="epoch_000"))
+    runtime._kca_feature_enabled = True
+    runtime._admission_artifacts = NS()
+    runtime._run_admission = NS(modes=NS(
+        knowledge="audit", capability_binding="audit", assurance="audit"
+    ))
+    runtime._kca_reports_for_node = lambda *_args: [report]
+    runtime._append_audit_event = lambda *_args: None
+    node = NS(
+        id="node-1",
+        assurance_status="inconclusive",
+        frontier_class="scientific_frontier",
+        metrics={"_valid_for_frontier": True},
+    )
+
+    assert runtime.run_per_node_kernel_check(node) == 1
+    assert node.assurance_status == "inconclusive"
+    assert node.frontier_class == "scientific_frontier"
+    assert node.metrics["_valid_for_frontier"] is True
+
+    runtime._run_admission.modes.capability_binding = "enforce"
+    assert runtime.run_per_node_kernel_check(node) == 1
+    assert node.assurance_status == "tampered"
+    assert node.frontier_class == "uncertified_frontier"
+    assert node.metrics["_valid_for_frontier"] is False
 
 
 def test_both_kernel_checks_are_wired_into_the_run_loop():

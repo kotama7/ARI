@@ -5,7 +5,8 @@ MCP skill for **AI Scientist v2-style iterative paper generation**.
 ## Design
 
 Implements `write_paper_iterative`: it fills the whole venue template in a single LLM call, then runs `max_revision_rounds` whole-document reflection rounds (compile + fix).  
-Accepts figures from `generate_figures` stage and embeds them with `\includegraphics`.
+Accepts figures from `generate_figures` stage and embeds them with `\includegraphics`.  
+Review-driven revision is `paper_refine`: it applies the `suggested_revisions` that `merge_reviews` emits as targeted, anchor-preserving replacements in the one manuscript — a revision entry may name a `section`, but nothing regenerates a section on its own.
 
 ## LLM Exception
 
@@ -18,18 +19,21 @@ This skill calls an LLM (P2 exception). Requires Ollama running on the same node
 Writes a full LaTeX paper from experiment results.
 
 **Key inputs:**
-- `experiment_summary` — BFTS experiment context (must contain `<!-- metric_keyword: X -->` comment)
-- `refs_json` — JSON string from `related_refs.json`
-- `figures_manifest_json` — JSON string from `figures_manifest.json`
-- `nodes_json_path` — path to `nodes_tree.json`
-- `venue` — `arxiv` / `neurips` / `icml`
+- `workspace_root` — closed checkpoint root that every other input path resolves under
+- `science_data_path` — native `ScienceDataV1` (`science_data.json`)
+- `figures_manifest_path` — native `FigureBatchV1` (`figures_manifest.json`)
+- `references_path` — recorded retrieval result (`related_refs.json`)
+- `ear_manifest_path` — EAR generation result (`ear_manifest.json`)
+- `rubric_id` — explicit rubric id; there is no environment fallback and no guessed default
+- `experiment_summary` — experiment context (`context` is accepted as an alias)
+- `venue` — `neurips` / `icpp` / `sc` / `isc` / `arxiv` / `acm` (default: `arxiv`)
 - `max_revision_rounds` — whole-document reflection rounds (default: 2)
 
 **Section layout:**  
 The section layout is defined by the venue template (`FILL_*_START`/`FILL_*_END` blocks) and filled in one pass; there is no per-section generation order.
 
 **Figure embedding:**  
-Figures from `figures_manifest_json` are injected into the template context. The LLM embeds them with `\includegraphics[width=0.85\linewidth]{path}`.
+Figures from `figures_manifest_path` are injected into the template context. The LLM embeds them with `\includegraphics[width=0.85\linewidth]{path}`.
 
 **Output:** `full_paper.tex` + `refs.bib`
 
@@ -72,18 +76,16 @@ reference carries `bibtex` + `cite_key`; otherwise it synthesizes an
 |---|---|
 | `list_venues` | Available LaTeX venues (`acm` / `neurips` / `sc` / `icpp` / `isc` / `arxiv`) |
 | `get_template` | Fetch the LaTeX template for a venue |
-| `generate_section` | LLM writes one section |
-| `compile_paper` | `pdflatex` compile |
-| `check_format` | LaTeX format validation |
-| `review_section` | LLM rubric review of one section |
-| `revise_section` | LLM rewrite from review feedback |
+| `compile_paper` | `pdflatex` (+ `bibtex`) compile of a tex directory |
+| `check_format` | Venue format validation of the compiled PDF (page limit, readable file) |
 | `write_paper_iterative` | One-pass template fill + whole-document reflection rounds |
-| `link_paper_claims` | Build `paper_claim_links.json` (anchors / writer_assertions / numeric_mentions consumed by the claim hard gate) |
-| `paper_refine` | Anchor-preserving revision pass with math-safe underscore escaping |
+| `link_paper_claims` | Build `paper_claim_links.json` (anchors / numeric_mentions / figure_refs consumed by the claim hard gate) |
+| `paper_refine` | Whole-document, anchor-preserving revision pass with math-safe underscore escaping |
 | `review_compiled_paper` | Final-pass review on the compiled PDF (delegates VLM-side checks to `ari-skill-vlm`) |
 | `list_rubrics` | Reviewer rubric catalogue |
 | `inject_code_availability` | v0.7.0 — append the `\codedigest{...}` block |
-| `merge_reviews` | v0.7.0 — combine rubric review + VLM review |
+| `merge_reviews` | v0.7.0 — combine rubric review + VLM review, and emit `suggested_revisions` for `paper_refine` |
+| `finalize_paper_build` | Lock the exact evidence, reviews, compile record and claim links into `paper_build.json` |
 
 ## Venue templates
 

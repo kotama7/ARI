@@ -26,7 +26,17 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/viz/v1/launch.py
+    role: implementation
+  - path: ari-core/ari/viz/v1/queries.py
+    role: implementation
+  - path: ari-core/ari/viz/api_orchestrator.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/config/profiles
+    role: config
+last_verified: 2026-08-13
 ---
 
 # Glossary
@@ -246,6 +256,18 @@ policy (`ari/rqgm/state.py`, snapshotted to `epoch_state.json`). Frozen for
 the epoch's duration and fingerprinted without wall-clock fields, so later
 registry changes never leak into a closed epoch.
 
+**utility policy hash**
+`hash12(canonical_json(body))` over the epoch utility-policy body —
+`{composite, axis_weights, frontier_score, depth_penalty_lambda, ucb_c}`
+(`utility_policy_body` / `seal_utility_policy` in `ari/rqgm/state.py`). The
+seal is never part of the bytes it seals, and the same value is the registered
+`utility_policy` entry's `prompt_hash`. A second, disjoint policy — the
+penalty policy `{penalty_cap, severity_weights, verdict_factors}` computed in
+`ari/rqgm/adversarial/engine.py` — is carried under the same key name on
+records written before the governed-utility work; the two key sets never
+overlap, so the two hashes are never equal. Scores formed under different
+hashes are not one series.
+
 **ConstitutionalKernel**
 The non-evolving Layer-0 checker (`ari/rqgm/kernel.py`): a pure, deterministic
 validator that returns byte-stable `KernelReport` verdicts and writes nothing.
@@ -265,11 +287,39 @@ turns a governance outcome into a committed `EpochTransition`
 (activations / retirements) persisted through the RQGM store; no other
 component may change a prompt's or component's status.
 
+**registry status**
+The ten-value lifecycle shared by prompts and components
+(`ari.rqgm.events.STATUS_VALUES`, a closed set): `candidate`, `validated`,
+`shadow`, `probationary_active`, `active`, `warning`, `probation`,
+`quarantine`, `retired`, `banned`. `active` and `probationary_active` together
+form the frozen per-epoch active set. See
+[RQGM GUI read models](rqgm_gui_read_models.md), section "Two vocabularies,
+two state machines".
+
+**transition rule id (`T1`–`T21`)**
+Every registry status change pins one row of the transition table in
+`ari/rqgm/transition_rules.py`, named by a `rule_id` from `T1` to `T21`. An
+edge absent from that table, or a declared `rule_id` that contradicts it, is a
+ConstitutionalKernel violation. Emergency quarantine edges are the separate
+`EMERGENCY_EDGE` set. See [RQGM schemas](rqgm_schemas.md), section "Transition
+schema (Task 09)".
+
 **FrontierRepairEngine**
 Runs at the epoch boundary after a transition with retirements
 (`ari/rqgm/frontier_repair.py`): traces records materially dependent on a
 retired `prompt_hash`, marks them stale (logical-only — nothing is deleted),
 recomputes what survives, and rebuilds the BFTS frontier deterministically.
+
+**node score state**
+The separate five-value vocabulary for a node's score — `computed`,
+`recomputed`, `stale`, `invalidated`, `removed` — a different state machine
+from **registry status**, never mixed into one field or one legend. All five
+are *logical* states: none of them means the node's files were deleted, and
+"Deleted" is not a valid label for any of them. Backed by the node metric
+sentinels `_stale`, `_stale_reason`, `_valid_for_frontier` and
+`_erasure_event_id` (`ari/rqgm/frontier_repair.py`). See
+[RQGM GUI read models](rqgm_gui_read_models.md), section "Two vocabularies,
+two state machines".
 
 **ProposalRecord / ProposalSummaryView**
 A `ProposalRecord` is one archival proposal (append-only
@@ -284,10 +334,28 @@ One versioned prompt identity (`ari/rqgm/prompt_spec.py`). Immutable: any
 change is a new `prompt_id` + `prompt_hash`, never an edit. Evolved template
 bodies are stored write-once under `{checkpoint}/rqgm_prompts/`.
 
+**RawAttackRecord (raw attack)**
+One unadjudicated adversary attack, id `atk_*`
+(`ari/rqgm/adversarial/records.py`). Audit-log material only: nothing reads it
+into any score. Its adjudicated descendant is the ValidatedAttackRecord below,
+so a raw-attack count and a penalty are separate quantities and must not share
+a label.
+
 **ValidatedAttackRecord**
 An adversarial finding that survived adjudication — it exists only for
-verdicts `valid` / `partially_valid` (`ari/rqgm/adversarial/records.py`) and
-is the only attack shape admissible to the replay pool.
+verdicts `valid` / `partially_valid`, carries a `vat_*` id
+(`ari/rqgm/adversarial/records.py`), and is the only attack shape admissible
+to the replay pool.
+
+**UtilityRecord**
+One governed-utility audit record, id `utl_*`, appended to
+`rqgm_adversarial_cases.jsonl` (`ari/rqgm/adversarial/records.py`): the base
+score, penalty and final score for one node, with the policy it was formed
+under stored *by value* so a later recompute needs no registry lookup. The
+node itself keeps the matching `_pre_penalty_score` /
+`_validated_attack_penalty` metric sentinels. See
+[RQGM GUI read models](rqgm_gui_read_models.md), section "The two score-rewrite
+channels".
 
 **AdversarialReplayPool**
 The curated pool of adjudicated failure cases
@@ -315,6 +383,50 @@ Meta-tier governance components may evolve, but their authority cannot
 expand: capability flags are deny-by-default and checked against frozen
 authority tables in `ari/rqgm/meta_rules.py`.
 
+## Configuration & launch
+
+**project**
+The GUI's top-level entity, and the only one of its kind:
+`GET /api/v1/projects` returns exactly one virtual project whose id is
+`default` (`DEFAULT_PROJECT_ID` in `ari/viz/v1/queries.py`) and whose run list
+is a checkpoint-directory scan over the checkpoint search bases. Any other id
+answers a typed `404`; there is no create / rename / delete, and no run-scoped
+endpoint carries a project segment, so a `project_id` never narrows anything.
+See [GUI architecture](../concepts/gui_architecture.md), section "The entity
+model is one level deep".
+
+**environment profile (`--profile`)**
+One of the bundled deployment overlays `laptop` / `hpc` / `cloud`
+(`ari-core/config/profiles/<name>.yaml`), selected by the CLI `--profile`
+flag. It is *not* a deep merge: `_apply_profile` (`ari/cli/run.py`) applies
+exactly `bfts.max_total_nodes`, `bfts.max_parallel_nodes` (historical spelling
+`bfts.parallel`, accepted only when `max_parallel_nodes` is absent),
+`hpc.enabled` and `hpc.scheduler`; every other key in the file is ignored, and
+the resolver warns listing what it dropped. A different concept from the
+execution mode (`ari.mode`), and from the PaperBench rubric field
+`execution_profile`. See [Configuration](configuration.md), section
+"Resolution model".
+
+**`resolved_config.json`**
+The launch manifest `POST /api/v1/runs` materializes into the checkpoint
+(`ari/viz/v1/launch.py`) — the previewed resolved configuration made real at
+launch. Additive: `launch_config.json` is still written for the legacy display
+path. Secrets never appear in `values` or `provenance`, only as
+`secret_references` flags, and `digest` is `sha256:` over the canonical JSON of
+`values` alone, so it is computed over the already-redacted document. Read back
+by `GET /api/v1/runs/{run_id}/resolved-config`. See
+[Configuration](configuration.md), section "`resolved_config.json` (the launch
+manifest)".
+
+**paper mode (`linear` / `rqgm_archive`)**
+The two values of `paper.mode` — an axis independent of the execution mode, so
+all four combinations are valid. `linear` (default) preserves the current paper
+pipeline; `rqgm_archive` opts in to paper-archive co-evolution and *also*
+requires the `rqgm.paper.enabled: true` interlock, a half-set pair resolving
+back to `linear`. The effective mode is recorded once per paper phase in
+`{checkpoint}/paper_archive_state.json` (`ari/rqgm/paper_runtime.py`) together
+with a `mode_source` and a `switch_journal`.
+
 ## State & publication
 
 **workspace (root)**
@@ -331,6 +443,23 @@ On disk a run spans two sibling trees keyed by that id: the **checkpoint**
 `checkpoints/{run_id}/` (run-level state) and the experiments bucket
 `experiments/{run_id}/` (per-node work dirs). "run" and "checkpoint" are often
 used interchangeably; precisely, the checkpoint is the run's state directory.
+
+**research phase**
+Where a run sits in its own lifecycle: `idle`, `starting`, `bfts`, `paper`,
+`review`. Derived from which checkpoint artifacts exist — `current_phase` in
+`ari/viz/services/state_service.py`, the same five tokens the GUI carries as
+`RESEARCH_PHASES`. The run Overview renders it as its own labelled row, never
+merged with the governance-stage row (which appears only for an RQGM run).
+
+**sub-experiment (child run)**
+A run launched from a parent checkpoint. The child records its lineage in its
+own `meta.json`: `parent_run_id`, `recursion_depth`, `max_recursion_depth`
+(default 3, `api_orchestrator.DEFAULT_MAX_RECURSION_DEPTH`) and
+`inherit_idea_index`. Two guards refuse the launch — depth at or above the
+ceiling, and a parent whose `meta.json` carries `parent_terminated` (written by
+`ari/cli/lineage.py` when a lineage decision chose `terminate`). This is a
+relation *between* runs, distinct from the BFTS node tree inside one run. See
+[REST API](rest_api.md), section "Sub-experiments + lineage".
 
 **checkpoint**
 The self-contained directory for one run, `{workspace}/checkpoints/{run_id}/`

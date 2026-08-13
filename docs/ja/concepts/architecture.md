@@ -862,7 +862,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
 
 ## ノードごとのプロンプト構築
 
-すべての BFTS ノードは `ari/agent/loop.py:2063` の `AgentLoop.run(node, experiment)` という単一エントリポイントから実行されます。同じループが root ノードと子ノードの両方を処理し、構築されるプロンプトは `node.depth` と祖先から継承された状態によってのみ分岐します。本セクションは *エージェントがノード開始時に実際に何を見るか* の正典です。ここを変更する場合は慎重なレビューが必要です。
+すべての BFTS ノードは `ari/agent/loop.py:2067` の `AgentLoop.run(node, experiment)` という単一エントリポイントから実行されます。同じループが root ノードと子ノードの両方を処理し、構築されるプロンプトは `node.depth` と祖先から継承された状態によってのみ分岐します。本セクションは *エージェントがノード開始時に実際に何を見るか* の正典です。ここを変更する場合は慎重なレビューが必要です。
 
 ### `AgentLoop.run` への入力
 
@@ -880,7 +880,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
 
 ### システムプロンプト — `ari/prompts/agent/system.md`
 
-本体は外部化されたテンプレート（キー `agent/system`、`_system_prompt_versioned()` で読み込み `loop.py:2226` で `str.format`）です。`loop.py` 側が組み立てるのは `{tool_desc}` / `{memory_rules}` / `{extra}` の置換だけです:
+本体は外部化されたテンプレート（キー `agent/system`、`_system_prompt_versioned()` で読み込み `loop.py:2230` で `str.format`）です。`loop.py` 側が組み立てるのは `{tool_desc}` / `{memory_rules}` / `{extra}` の置換だけです:
 
 ```
 You are a research agent. You MUST use tools to execute experiments. ...
@@ -898,16 +898,16 @@ RULES:
 {memory_rules}{extra}
 ```
 
-`{extra}` ブロック（L2213-2219 で構築）は以下を追加します:
+`{extra}` ブロック（L2218-2223 で構築）は以下を追加します:
 
 | サブブロック | 出所 | 備考 |
 |-------------|------|------|
 | `NODE ROLE: {label_hint}` | `node.label.system_hint()` | BFTS ラベルから引かれる 1 文の振る舞いキュー。`ARI_BFTS_NO_LABEL`（`labels_disabled()`）を立てると全ノードが同じ中立ロールになる |
-| `EXPERIMENT ENVIRONMENT` | L2197-2207 | work directory（ノードの container root である `/workspace`）+ 既存ファイル + SLURM partition/CPUs（scheduler ツールが実際に利用可能なときのみ）+ コンテナイメージ（`ARI_CONTAINER_IMAGE`） |
-| `RESOURCE BUDGET` | L2208-2212 | `max_react_steps`、`timeout_per_node // 60` 分 |
+| `EXPERIMENT ENVIRONMENT` | L2202-2211 | work directory（ノードの container root である `/workspace`）+ 既存ファイル + SLURM partition/CPUs（scheduler ツールが実際に利用可能なときのみ）+ コンテナイメージ（`ARI_CONTAINER_IMAGE`） |
+| `RESOURCE BUDGET` | L2213-2217 | `max_react_steps`、`timeout_per_node // 60` 分 |
 | `extra_system_prompt` | `WorkflowHints.extra_system_prompt` | `from_experiment_text` / pipeline 設定が任意で設定するエスケープハッチ |
 
-`{memory_rules}` ブロック（L2220-2222）は `add_memory` ツールが実際に利用可能なときのみ追加され、アクティブなノード ID をインライン展開して LLM が誤って別スコープに書けないようにします:
+`{memory_rules}` ブロック（L2224-2226）は `add_memory` ツールが実際に利用可能なときのみ追加され、アクティブなノード ID をインライン展開して LLM が誤って別スコープに書けないようにします:
 
 ```
 - When available, save decisive intermediate findings with
@@ -917,16 +917,16 @@ RULES:
 
 ### ツールカタログ（`tool_desc`）
 
-L2112 の `tools = self._available_tools_openai(suppress=..., phase="bfts")` が `phase="bfts"` で MCP が公開する全ツールを列挙し、`_suppress_tools` に入っているものを除外します。可変な suppression セットは `AgentLoop` インスタンスに乗り、ループ進行に応じて更新されます:
+L2116 の `tools = self._available_tools_openai(suppress=..., phase="bfts")` が `phase="bfts"` で MCP が公開する全ツールを列挙し、`_suppress_tools` に入っているものを除外します。suppression セットは `AgentLoop._suppress_tools` プロパティ（L1489-1495）経由で参照され、その実体は worker スレッドごとの状態（`_NodeLocalState(threading.local)`、L1183-1194）で、ループ進行に応じて更新されます:
 
-- 最初の `generate_ideas` 成功呼び出しの後、`self._suppress_tools = {"generate_ideas"}`（L2633）が設定され、後続ノードはアイデアを再生成しません。
+- idea が admitted となった `generate_ideas` 呼び出しの後、`self._suppress_tools = {"generate_ideas"}`（L3005-3007）が設定され、後続ノードはアイデアを再生成しません。
 - `survey` は子ノードに対して **suppress されません**。下記「User message #1 — 子ノード」の通り、文章でのみ非推奨化されています。子が指示を無視すれば `survey()` を呼べてしまいます。
 
-`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L2630）はメッセージウィンドウのトリマーが必ず保持するツール結果を表します。チャット履歴が圧縮されても、これらの結果は全 ReAct ラウンドで生き残ります。
+`_PINNED_TOOLS = {"survey", "generate_ideas", "make_metric_spec"}`（L2634）はメッセージウィンドウのトリマーが必ず保持するツール結果を表します。チャット履歴が圧縮されても、これらの結果は全 ReAct ラウンドで生き残ります。
 
 ### User message #1 — root ノード（`node.depth == 0`）
 
-`loop.py:2430-2436`:
+`loop.py:2434-2440`:
 
 ```
 Experiment goal:
@@ -949,7 +949,7 @@ grounded citations.
 
 ### User message #1 — 子ノード（`node.depth > 0`）
 
-`loop.py:2341-2379`:
+`loop.py:2345-2382`:
 
 ```
 Experiment goal:
@@ -977,7 +977,7 @@ Workflow:
 
 「Prior results are provided below」の一文は条件付きです。handoff arm がサマリも親ログも注入しない子には、代わりに「親の *コード* は継承するが結果は渡されない」と伝えるので、届かないブロックを約束することはありません。
 
-`_label_desc`（L479-485）はノード単位プロンプトでラベル意味論が顔を出す唯一の場所です:
+`_label_desc`（L2311-2322）はノード単位プロンプトでラベル意味論が顔を出す唯一の場所です:
 
 | Label | 1 行タスク |
 |-------|-----------|
@@ -1000,14 +1000,14 @@ Workflow:
 
 失敗（メモリバックエンド停止、結果が壊れている等）は `logger.debug` レベルで握り潰され、ノードは実行を継続します。
 
-レガシーな `search_global_memory` 注入ブロック（`loop.py:2513-2535`）は v0.6.0 ではデッドコードです。グローバルメモリツールは削除されており（`CHANGELOG.md` v0.6.0 §3）、条件分岐は発火しません。
+レガシーな `search_global_memory` 注入ブロック（`loop.py:2517-2539`）は v0.6.0 ではデッドコードです。グローバルメモリツールは削除されており（`CHANGELOG.md` v0.6.0 §3）、条件分岐は発火しません。
 
 ### 切り詰めの早見表
 
 | 項目 | 上限 | コード |
 |-----|-----|-------|
 | `goal_text` | `ARI_GOAL_MAX_CHARS` 文字、既定 **8000**。`0` で上限を完全に無効化 | `loop.py:2274-2283` |
-| Survey 結果メモリエントリ | 先頭 5 論文、各 abstract 200 文字 | `loop.py:2939-2942` |
+| Survey 結果メモリエントリ | 先頭 5 論文、各 abstract 200 文字 | `loop.py:2943-2946` |
 | Tier 1a — 実験コアの各フィールド | `_CORE_FIELD_CAP = 400` 文字／フィールド | `loop.py:342` |
 | Tier 1a — `selected_idea` サマリ | `_IDEA_FIELD_CAP = 1500` 文字 | `loop.py:343` |
 | Tier 1b — 祖先ごとの `result_summary` | `_ANCESTOR_SUMMARY_CAP = 600` 文字／エントリ（集約カットではない） | `loop.py:346` |
@@ -1039,7 +1039,7 @@ ToolCallContextV1.for_node(
 )
 ```
 
-`MCPClient` はスキル接続ごとに 256-bit の authority key を発行し（`new_context_authority_key()`、`mcp/client.py:76-77`）、スキルのサブプロセスへ `ARI_CONTEXT_AUTHORITY_KEY` としてエクスポートします。`context_requirement` が `none` でないツールでは、ディスパッチが HMAC 署名済みコンテキストを呼び出し引数へ注入し（`connection.authorize_args`、`mcp/client.py:540-545`）、`ari-skill-memory` はバックエンドに触れる前に `verify_tool_context(...)` で署名を検証します（`ari-skill-memory/src/server.py:55-63`）。
+`MCPClient` はスキル接続ごとに 256-bit の authority key を発行し（`new_context_authority_key()`、`mcp/client.py:76-77`）、スキルのサブプロセスへ `ARI_CONTEXT_AUTHORITY_KEY` としてエクスポートします。`context_requirement` が `none` でないツールでは、ディスパッチが HMAC 署名済みコンテキストを呼び出し引数へ注入し（`connection.authorize_args`、`mcp/client.py:540-545`）、`ari-skill-memory` はバックエンドに触れる前に `verify_tool_context(...)` で署名を検証します（`ari-skill-memory/src/server.py:46-51`）。
 
 つまりアクティブノードはサブプロセスの環境ではなく **署名された各呼び出しの中** で運ばれます。プールされた 1 つのサブプロセスを兄弟ノードが並行して共有しても安全なのはこのためです。
 

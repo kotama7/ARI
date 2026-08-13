@@ -173,3 +173,33 @@ def test_run_integrity_concerns_helper_reads_report(tmp_path):
         _j.dumps({"concerns": ["1 unresolved overclaim(s) remain in the finalized paper"]}))
     got = _run_integrity_concerns(ck)
     assert got == ["1 unresolved overclaim(s) remain in the finalized paper"]
+
+
+def test_blocked_build_and_unrun_ors_are_never_clean(tmp_path):
+    ck = _ck(
+        tmp_path,
+        paper_build={
+            "status": "blocked",
+            "blocking_reasons": ["final revision changed mathematical content"],
+        },
+    )
+    (ck / "workflow.yaml").write_text(
+        "pipeline:\n"
+        "- stage: ors_generate_rubric\n"
+        "  enabled: true\n"
+        "- stage: ors_grade\n"
+        "  enabled: true\n",
+        encoding="utf-8",
+    )
+
+    report = build_integrity_report(ck)
+
+    assert report["paper_build"]["status"] == "blocked"
+    assert report["ors"]["status"] == "incomplete"
+    assert report["ors"]["missing_stages"] == [
+        "ors_generate_rubric",
+        "ors_grade",
+    ]
+    concerns = " ".join(report["concerns"])
+    assert "paper build status is blocked" in concerns
+    assert "enabled ORS stages did not complete" in concerns

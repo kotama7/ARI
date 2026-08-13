@@ -54,14 +54,14 @@ last_verified: 2026-07-27
 ## 字段注册表
 
 两个页面上的一切，都由一份「已声明 `ARIConfig` 叶子的机器可读清单」与一份
-手写元数据叠加层合并生成。当前是 **204 个叶子、元数据覆盖率 100 %** ——
+手写元数据叠加层合并生成。当前是 **205 个叶子、元数据覆盖率 100 %** ——
 注册表构建过程宁可抛出异常，也不会放行一个没有元数据的字段，因此新的配置
 字段不可能在缺少 category、level、scope、sensitivity 与 mutability 的情况下
 悄悄出现。
 
 当前的分类：Governance（104）、Models（32）、Search (BFTS)（24）、
-Proposal routing（14）、Manuscript completeness（10）、Infrastructure（5）、
-Scientific assurance（5）、Evaluation（4）、Execution mode（4）、Skills（2）。
+Proposal routing（14）、Manuscript completeness（10）、Scientific assurance（6）、
+Infrastructure（5）、Evaluation（4）、Execution mode（4）、Skills（2）。
 
 该注册表由 `GET /api/v1/config/schema` 提供。它**只携带元数据** —— 绝不包含
 生效值 —— 而 `secret_reference` 字段根本不携带默认值。
@@ -74,12 +74,12 @@ showing the configuration schema with default values」）。
 
 每一行展示点分路径、生效值、一个**溯源来源**徽章、一个**可变性**徽章、
 适用时的低置信度标记，以及任何 `applies_when` 备注。搜索框可按路径或分类
-过滤，因此 204 个字段中的每一个都保持可被发现。解析器警告会在它们自己的
+过滤，因此 205 个字段中的每一个都保持可被发现。解析器警告会在它们自己的
 面板中逐字列出 —— 什么都不会被静默丢弃。
 
 ![单个运行的 Config 浏览器：解析器警告面板、字段计数旁的过滤框，以及按类别分组的表格，逐行列出点分路径、生效值、溯源来源徽章与可变性徽章；`llm.api_key` 一行显示为「secret (reference only)」](../../assets/images/zh/dashboard_config.png)
 
-过滤框旁边的计数可能大于 204。已解析清单里那些注册表并不认识的叶子仍会被
+过滤框旁边的计数可能大于 205。已解析清单里那些注册表并不认识的叶子仍会被
 展示，归到 **Other** 分组下 —— 一条清单路径绝不会仅仅因为缺少注册表元数据
 就被丢弃。
 
@@ -134,8 +134,9 @@ showing the configuration schema with default values」）。
 Studio 就是同一份注册表以表单形式渲染出来。控件由元数据推导，而不是逐字段
 手写：`enum` → 下拉选择，`bool` → 开关，`int`/`float` → 数字输入框，`str` →
 文本输入框，`secret_reference` → 只写的 secret 控件，复合类型（列表、字典、
-嵌套模型）→ 一个明确**禁用**的输入框并展示原因（「Composite field —— edit
-via workflow.yaml」）。不可用的控件总是说明原因；它们绝不会被静默隐藏。
+嵌套模型）→ 一个明确**禁用**的输入框并展示原因（「复合字段 — 请通过
+workflow.yaml 编辑（自定义编辑器待定）。」）。不可用的控件总是说明原因；
+它们绝不会被静默隐藏。
 
 ![Studio：顶部的 scope 标签条、模板与草稿的创建控件、左侧类别列表，右侧由注册表生成的表单（下拉选择、文本输入框，以及带名称选择器、「configured (repo_env)」徽章和密码输入框的只写 secret 控件）；页脚是 Save changes、Discard edits、未保存编辑状态与文档 revision](../../assets/images/zh/dashboard_studio.png)
 
@@ -144,6 +145,47 @@ via workflow.yaml」）。不可用的控件总是说明原因；它们绝不会
 
 每个字段行还带一个状态徽章：`edited`（有未保存的本地更改）、`saved`（已存在
 于所存储的文档中）或 `default`（没有存储任何值 —— 该字段穿透到下一层）。
+
+### 控件是如何被选出来的
+
+页面读取注册表条目，并在第一个匹配处停止：
+
+1. `sensitivity` 为 `secret_reference` → 只写的 secret 控件；
+2. 非空的 `enum` → 下拉选择；
+3. 否则把 `value_type` 字符串按 `|` 切分并丢弃 `None`。若恰好只剩**一个**
+   成员：`bool` → 开关，`int`/`float` → 数字输入框，`str` → 文本输入框；
+4. 其余一律为复合 —— 切分后剩下多于一个成员，或者是 `list[…]` /
+   `dict[…]` / 嵌套模型的注解。
+
+也就是说 `sensitivity` 优先于 `enum`，而 `enum` 优先于类型。取值为 enum 的
+secret 仍会得到 secret 控件；取值为整数的 enum 仍会得到下拉选择，而不是数字
+输入框。
+
+**已知缺口：不存在 `field path/pattern → custom editor` 注册表。**
+本工作区的 GUI 计划要求过这样一个注册表，好让领域特定的字段通过自我声明、
+而不是通过改动页面来取得更丰富的控件。该注册表从未被实现。两处*并非*由
+`value_type` 推导出来的渲染，是编进页面里的结构性特例，而不是字段可以注册的
+条目：
+
+- `sensitivity: secret_reference` 选出 secret 控件。这一条以元数据为键，因此
+  将来新增的 secret 叶子会自动继承它 —— 今天注册表里唯一的 secret 叶子是
+  `llm.api_key`。
+- `category` 为 `Execution mode` 的字段，或路径以 `rqgm.` 开头的字段，会在
+  通用表格被构建之前就被分流进 Execution 区块（见下文 *执行模式：可选择；
+  治理调优：仍仅限文件*）。
+
+在控件渲染处被特判的字面路径恰好只有一个：拿到模型目录 datalist 的
+`llm.model`。其余字段全部按上面的规则渲染。
+
+这对新增配置字段的人意味着：你免费获得一个生成出来的控件，却没有地方去注册
+一个更好的控件。schema 条目不携带任何逐字段的编辑器提示 —— 它的键是 `path`、
+`value_type`、`default`、`enum`、`required`、`category`、`level`、`scope`、
+`sensitivity`、`mutability`、`applies_when`、`notes`、`source` 与
+`env_override` —— 因此今天要给某个路径配上专用编辑器，只能去改 Studio 页面
+组件本身。这正是为什么每个复合叶子 —— `skills`、`resources`、
+`evaluator.axis_weights`、`evaluator.custom_axes` —— 都被渲染成一个说明原因的
+禁用输入框，而不是编辑器。值仍然会被展示，绝不会被隐藏；只是无法从这个界面
+编辑。
 
 ### 三种 scope
 
@@ -223,6 +265,7 @@ UI 会把它渲染为 **Validation errors** 列表。`reason` 词汇表是闭合
 | `read_only` | 在任何 scope 下都被拒绝 |
 | `secret_reference` | secret 绝不通过配置 API 传输 |
 | `not_project_scope` | 一个 scope 不是 `project` 的 `new_run_only` 字段被 patch 进了 project 配置 |
+| `mode_interlock_mismatch` | 下文的跨路径配对检查 —— 只写了模式意图的一半，缺少与之一致的孪生键 |
 
 `new_run_only` 字段在模板与草稿中*确实*会被接受 —— 它们配置的是未来的运行。
 

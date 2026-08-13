@@ -1,7 +1,7 @@
 # Candidate multi-backend template only. The formally promoted credential-free
 # local-Aer identity is the exact profile and lock under
 # providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/; its verified lock digest is
-# sha256:074755af42b998ca9e0369b156eb124bfa029e8a6c586cfe7dc4b239836c6684.
+# sha256:0407982946540409fc37193bd86130d72f86fc1c1447d581ee39dca1da19f220.
 # IBM Runtime and hardware remain outside that scope. Replace every absolute
 # path, backend identity, evidence file, and SHA-256 placeholder and complete a
 # separate credential/backend promotion before catalog sync.

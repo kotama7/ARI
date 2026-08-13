@@ -32,7 +32,7 @@ sources:
     role: implementation
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-13
 ---
 
 # Migration Guide

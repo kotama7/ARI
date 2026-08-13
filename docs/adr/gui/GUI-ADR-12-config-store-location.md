@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_launch.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-13
 ---
 
 # GUI-ADR-12: GUI config document store location

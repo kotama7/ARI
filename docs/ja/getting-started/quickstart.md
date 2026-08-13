@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-08-07
+last_verified: 2026-08-08
 ---
 
 # ARI クイックスタートガイド
@@ -59,7 +59,7 @@ bash setup.sh
 
 v0.6.0 では、セットアップスクリプトが **[Letta](https://docs.letta.com)** (`ari-skill-memory` のバックエンド) も併せて立ち上げます。Docker → Singularity/Apptainer → pip の順に最適な配置を自動選択します。CI やコンテナビルド時など Letta のブートストラップをスキップしたい場合は `SKIP_LETTA_SETUP=1` を、対話プロンプトを抑制したい場合は `ARI_NONINTERACTIVE=1` を `bash setup.sh` 実行前にエクスポートしてください。
 
-セットアップが完了すると、**「Setup Complete」** と次のステップの案内が表示されます。Letta の疎通確認は後から `ari memory health` で行えます。
+セットアップが完了すると、**「All good! The ants are ready to work!」** と次のステップの案内が表示されます。Letta の疎通確認は後から `ari memory health` で行えます。
 
 ---
 
@@ -120,13 +120,13 @@ export ANTHROPIC_API_KEY=sk-ant-...  # https://console.anthropic.com/ から取�
 
 ## ステップ 3: ダッシュボードの起動
 
-リポジトリ直下の一括ランチャで、長時間稼働する 3 サービス（Letta メモリバックエンド・ari-registry・Viz GUI）をまとめて起動します：
+リポジトリ直下の一括ランチャで、長時間稼働する 4 サービス（Letta メモリバックエンド :8283・ari-registry :8290・Viz GUI :8765・CLI shim :8900）をまとめて起動します：
 
 ```bash
 ./start.sh
 ```
 
-毎回呼ぶたびに 3 つすべてが clean restart されます（PID は `~/.ari/` 配下）。便利なサブコマンド: `./start.sh gui`（GUI だけ）、`./start.sh status`（ヘルス確認）、`./start.sh stop` または `./shutdown.sh`（全停止 — `shutdown.sh` は apptainer の孤児となった postgres/redis も回収）。
+毎回呼ぶたびに 4 つすべてが clean restart されます（PID は `~/.ari/` 配下）。便利なサブコマンド: `./start.sh gui`（GUI だけ。`letta` / `registry` / `shim` も同様）、`./start.sh status`（ヘルス確認）、`./start.sh stop` または `./shutdown.sh`（全停止 — `shutdown.sh` は apptainer の孤児となった postgres/redis も回収）。
 
 ブラウザを開いて以下にアクセスしてください: **http://localhost:8765**
 
@@ -140,7 +140,7 @@ ARI のホーム画面が表示されます：
 
 「ダッシュボードが開いた」から「ランが何をしているか見える」までの最短経路は 2 ページです:
 
-1. **Projects**（`#/projects` — サイドバー上部の 📁 エントリ）は、チェックポイントルート配下で ARI が見つけたすべてのランを、status、ノード数、レビュースコア、ベストメトリクスとともに一覧します。これがランのポートフォリオであり、暗黙に選択されるものはありません。
+1. **プロジェクト**（`#/projects` — サイドバーの **ワークスペース** グループ先頭の 📁 エントリ）は、チェックポイントルート配下で ARI が見つけたすべてのランを、status、ノード数、レビュースコア、ベストメトリクスとともに一覧します。これがランのポートフォリオであり、暗黙に選択されるものはありません。
 2. ランの行で **Overview** をクリックします。`#/overview?run=<run_id>` が開き、そのランのライフサイクル status、研究フェーズ、データの鮮度、主要カウンタ、そして Tree / Config /（ガバナンス下のランなら）Governance の各ワークスペースへのリンクが 1 ページに表示されます。
 
 ![Projects ページ: ラン 1 件が 1 行のテーブル。run id、status バッジ、ノード数、レビュースコア、ベストメトリクス、最終更新時刻、行ごとの Overview / Config リンクが並ぶ](../../assets/images/ja/dashboard_projects.png)
@@ -151,31 +151,31 @@ run id は URL に入っているので、Overview のリンクは共有可能�
 
 ダッシュボードのページごとの完全なツアーは[ダッシュボードガイド](../guides/dashboard.md)を参照してください。
 
-左側のサイドバーからすべてのダッシュボードページにアクセスできます：
+左側のサイドバーは段構成です。最上部にプライマリアクションの **新規実験** があり、その下に 4 つのグループが並びます。
 
-| ページ | 説明 |
-|--------|------|
-| **Projects** | チェックポイントルート横断のランポートフォリオ — ここから始める |
-| **Home** | クイックアクションと最近の実験の概要 |
-| **Experiments** | 過去のすべての実験一覧 |
-| **Overview** | 1 ランの全体像: ライフサイクル、研究フェーズ、カウンタ、ワークスペースリンク |
-| **Monitor** | D3 ツリー可視化によるリアルタイムのパイプライン進捗 |
-| **Tree** | BFTS 実験ツリーの全体表示 — ノードをクリックして詳細を確認 |
-| **Governance** | 読み取り専用の RQGM ガバナンスとスコア系譜（ガバナンス下のランのみ） |
-| **Results** | 読み取り専用のラン要約: レビュースコア、再現性チェーン、公開系譜 |
-| **New Experiment** | 新しい実験を作成・起動するウィザード |
-| **PaperBench** | 論文を取り込み、PaperBench 再現ジョブを実行し、採点結果を読む |
-| **Idea** | ランの研究目標、ギャップ分析、生成された仮説 |
-| **Workflow** | パイプライン用 React Flow ビジュアル DAG エディタ |
-| **Config** | ランの実効設定の読み取り専用ブラウザ |
-| **Studio** | Configuration Studio: ドラフト設定を組み立ててそこから起動する |
-| **Settings** | LLM、API キー、SLURM、コンテナ、VLM、検索バックエンドの設定 |
+| サイドバー項目 | グループ | 説明 |
+|--------|--------|------|
+| **新規実験** ✨ | （プライマリアクション） | 新しい実験を作成・起動するウィザード |
+| **プロジェクト** 📁 | ワークスペース | チェックポイントルート横断のランポートフォリオ — ここから始める |
+| **ダッシュボード** 🏠 | ワークスペース | クイックアクションと最近の実験の概要 |
+| **実験アーカイブ** 🗂️ | ワークスペース | 過去のすべての実験一覧 |
+| **概要** 🧭 | 現在の実験 | 1 ランの全体像: ライフサイクル、研究フェーズ、カウンタ、ワークスペースリンク |
+| **アイデア** 💡 | 現在の実験 | ランの研究目標、ギャップ分析、生成された仮説 |
+| **探索ツリー** 🌳 | 現在の実験 | BFTS 実験ツリーの全体表示 — ノードをクリックして詳細を確認 |
+| **実行モニター** 📡 | 現在の実験 | D3 ツリー可視化によるリアルタイムのパイプライン進捗 |
+| **論文・成果** 📊 | 現在の実験 | 読み取り専用のラン要約: レビュースコア、再現性チェーン、公開系譜 |
+| **ガバナンス** 🏛️ | 評価・統治 | 読み取り専用の RQGM ガバナンスとスコア系譜（ガバナンス下のランのみ） |
+| **PaperBench** 📚 | 評価・統治 | 論文を取り込み、PaperBench 再現ジョブを実行し、採点結果を読む |
+| **ワークフロー** ⚡ | システム | パイプライン用 React Flow ビジュアル DAG エディタ |
+| **実行設定** 🔧 | システム | ランの実効設定の読み取り専用ブラウザ |
+| **設定スタジオ** 🎛️ | システム | Configuration Studio: ドラフト設定を組み立ててそこから起動する |
+| **設定** ⚙️ | システム | LLM、API キー、SLURM、コンテナ、VLM、検索バックエンドの設定 |
 
 ---
 
 ## ステップ 4: 最初の実験を作成する（ウィザード）
 
-サイドバーの **「New Experiment」** をクリックしてください（またはホームページの青い **「New Experiment」** ボタン）。
+サイドバーの **「新規実験」** をクリックしてください（またはホームページの青い **「新規実験」** ボタン）。
 
 ![New Experiment ウィザードのステップ 1: Goal / Scope / Resources / Launch のステッパー、Chat Mode と Write MD のタブ、何を最適化したいか尋ねるチャットの導入文、その下の Upload files パネル](../../assets/images/ja/dashboard_wizard.png)
 
@@ -206,8 +206,8 @@ AI が確認の質問をして、実験ファイルを自動生成します。
 |------|---------|-----------------|
 | **Max Depth** | 探索ツリーの深さ | 3 |
 | **Max Nodes** | 実行する実験の総数 | 5〜10 |
-| **Max ReAct Steps** | 実験ごとの推論ステップ数 | 80（デフォルト） |
-| **Timeout** | 実験ごとのタイムアウト（秒） | 7200（デフォルト） |
+| **Max ReAct Steps** | 実験ごとの推論ステップ数 | 20（デフォルト） |
+| **Timeout (min)** | 実験ごとのタイムアウト（分） | 120（デフォルト） |
 | **Parallel Workers** | 同時実行する実験数 | 2〜4 |
 
 > **ヒント:** 最初は小さく（ノード 5〜10、深さ 3）始めましょう。後からいつでも増やせます。
@@ -243,7 +243,7 @@ LLM プロバイダーとモデルを選択します：
 
 ## ステップ 5: 実験のモニタリング
 
-実験を起動すると、**Monitor** ページにリアルタイムの進捗が表示されます：
+実験を起動すると、**実行モニター** ページにリアルタイムの進捗が表示されます：
 
 ![Pipeline Monitor: Starting・Idea・BFTS・Paper・Review のステージ列（現在のステージが強調表示）、実験コントロールのボタン、実験設定カード、ノード数とベストメトリクスのカウンタ、システムリソースのパネル](../../assets/images/ja/dashboard_monitor.png)
 
@@ -253,7 +253,7 @@ LLM プロバイダーとモデルを選択します：
 
 ### 実験ツリー
 
-サイドバーの **Tree** をクリックすると、ランを明示した実験ツリー（`#/tree2?run=<run_id>`）が開きます。左が D3 キャンバス、右がキーボード操作可能なノードテーブルです：
+サイドバーの **探索ツリー** をクリックすると、ランを明示した実験ツリー（`#/tree2?run=<run_id>`）が開きます。左が D3 キャンバス、右がキーボード操作可能なノードテーブルです：
 
 ![Experiment Tree ワークスペース: 左に label で色分けされたノードカードの D3 ノードグラフ、右にノード id と status を並べた展開可能なノードテーブル、さらに右にノード選択を待つインスペクタ列](../../assets/images/ja/dashboard_tree.png)
 
@@ -277,7 +277,7 @@ LLM プロバイダーとモデルを選択します：
 
 ## ステップ 6: 結果の確認
 
-実験が完了したら、サイドバーの **Results** をクリックします。このスロットは読み取り専用のラン要約（`#/results2?run=<run_id>`）を開きます：
+実験が完了したら、サイドバーの **論文・成果** をクリックします。このスロットは読み取り専用のラン要約（`#/results2?run=<run_id>`）を開きます：
 
 ![Results ワークスペース: paper .tex / .pdf のリンク、accept 判定、rubric、評価軸ごとのレビュースコアを載せた結果サマリーカード、再現性（ORS チェーン）カード、右側の EAR 公開系譜カードとディープリンクカード](../../assets/images/ja/dashboard_results.png)
 
@@ -288,9 +288,9 @@ LLM プロバイダーとモデルを選択します：
 - EAR の公開系譜（バッジチェーン）
 - 同じランの Tree / Config ワークスペースへの直行リンク
 
-**論文の編集はレガシーの Results ページで行います。** *Legacy Results (full editor / PDF workspace)* のディープリンク（または `#/results` を直接開く）から、Overleaf 風 LaTeX エディタ（`.tex` / `.bib` の編集、コンパイル、PDF のインラインプレビュー）、Experiment Artifact Repository (EAR) の完全なブラウザ、そして EAR に対するすべての変更操作（curate・publish・promote）にアクセスできます。この分担はワークスペース上にも明記されているので、誤って編集してしまうことはありません。
+**論文の編集はレガシーの Results ページで行います。** *論文の表示・編集* のディープリンク（または `#/results` を直接開く）から、Overleaf 風 LaTeX エディタ（`.tex` / `.bib` の編集、コンパイル、PDF のインラインプレビュー）、Experiment Artifact Repository (EAR) の完全なブラウザ、そして EAR に対するすべての変更操作（curate・publish・promote）にアクセスできます。この分担はワークスペース上にも明記されているので、誤って編集してしまうことはありません。
 
-出力ファイルは `./checkpoints/<run_id>/` に保存されます：
+出力ファイルは `./workspace/checkpoints/<run_id>/` に保存されます：
 
 | ファイル | 説明 |
 |---------|------|
@@ -325,7 +325,7 @@ LLM プロバイダーとモデルを選択します：
 
 ### 論文検索（Paper Retrieval）
 
-- 論文検索バックエンドを選択：Semantic Scholar（デフォルト）、AlphaXiv、または both（並列）
+- 論文検索バックエンドを選択：Semantic Scholar（デフォルト）・arXiv・AlphaXiv のいずれか 1 つ
 - より高いレート制限のため、必要に応じて Semantic Scholar API キーを設定
 
 ### SLURM / HPC
@@ -356,7 +356,7 @@ LLM プロバイダーとモデルを選択します：
 
 ![Ideas ワークスペース: 左に研究目標・ギャップ分析・主要メトリクスのカード、右に生成された各仮説（新規性・実現可能性・総合スコアと折りたたみ式の実験計画つき）](../../assets/images/ja/dashboard_ideas.png)
 
-**Idea** スロットはランを明示したアイデアワークスペース（`#/ideas2?run=<run_id>`）を開きます。研究目標、ギャップ分析、選定理由付きの主要メトリクス、そして VirSci が生成した各仮説を新規性・実現可能性・総合スコアと折りたたみ式の実験計画とともに表示します。研究目標のパネルは *アクティブ* なチェックポイントに対してのみ配信されるため、その旨が表示されたらサイドバーでそのランをアクティブにしてください。
+**アイデア** スロットはランを明示したアイデアワークスペース（`#/ideas2?run=<run_id>`）を開きます。研究目標、ギャップ分析、選定理由付きの主要メトリクス、そして VirSci が生成した各仮説を新規性・実現可能性・総合スコアと折りたたみ式の実験計画とともに表示します。研究目標のパネルは *アクティブ* なチェックポイントに対してのみ配信されるため、その旨が表示されたらサイドバーでそのランをアクティブにしてください。
 
 ### Workflow エディター
 
@@ -384,7 +384,7 @@ LLM プロバイダーとモデルを選択します：
 | `/state` | GET | アプリケーションの完全な状態: 現在のフェーズ（idle/idea/bfts/paper/review）、ノード数、実験設定、コストデータ、LLM モデル情報 |
 | `/api/logs` | GET (SSE) | `ari.log` と `cost_trace.jsonl` からのリアルタイムログの Server-Sent Events ストリーム |
 | `/memory/<node_id>` | GET | ノードのメモリストアエントリ（ツール呼び出しトレース、メトリクス、親チェーン） |
-| `/codefile?path=<path>` | GET | チェックポイントディレクトリ内のファイルを読み取り（チェックポイント範囲内に制限、最大 2MB） |
+| `/codefile?path=<path>` | GET | チェックポイントディレクトリ内のファイルを読み取り（チェックポイント範囲内に制限、最大 20MB） |
 
 #### Experiment Management
 
@@ -460,17 +460,17 @@ ari run experiment.md --profile hpc
 ari run experiment.md --config ari-core/config/workflow.yaml
 
 # 中断された実行を再開
-ari resume ./checkpoints/20260328_matrix_opt/
+ari resume ./workspace/checkpoints/20260328_matrix_opt/
 
 # 論文パイプラインのみ実行（実験は完了済み）
-ari paper ./checkpoints/20260328_matrix_opt/
+ari paper ./workspace/checkpoints/20260328_matrix_opt/
 ```
 
 ### モニタリングと結果
 
 ```bash
 # ノードツリーとステータスを表示
-ari status ./checkpoints/20260328_matrix_opt/
+ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # すべてのプロジェクトを一覧表示
 ari projects
@@ -506,7 +506,7 @@ ari settings --partition gpu --cpus 64 --mem 128
 | `OLLAMA_HOST` | Ollama サーバーの URL | `http://localhost:11434` |
 | `ARI_MAX_NODES` | 実験の最大総数 | `50` |
 | `ARI_PARALLEL` | 同時実行の実験数 | `4` |
-| `ARI_MAX_REACT` | ノードごとの最大 ReAct ステップ数 | `80` |
+| `ARI_MAX_REACT` | ノードごとの最大 ReAct ステップ数 | `20` |
 | `ARI_TIMEOUT_NODE` | ノードごとのタイムアウト（秒） | `7200` |
 
 ---
@@ -533,9 +533,9 @@ ari settings --partition gpu --cpus 64 --mem 128
 
 | 問題 | 解決策 |
 |------|--------|
-| すべてのノードが失敗した | Tree ビューを開き、失敗したノードをクリックしてから `#/tree` に移動し、MCP Trace タブを確認 |
-| 結果が表示されない | Monitor ページを確認 — 実験がまだ実行中の可能性があります |
-| 実行が中断された | Experiments ページで該当の実行を見つけ、Resume をクリック |
+| すべてのノードが失敗した | 探索ツリーを開き、失敗したノードをクリックしてから `#/tree` に移動し、MCP Trace タブを確認 |
+| 結果が表示されない | 実行モニターページを確認 — 実験がまだ実行中の可能性があります |
+| 実行が中断された | サイドバーで対象のランをアクティブにし、実行モニターを開いて **Resume Experiment**（実行中でないときに表示）をクリック |
 
 ### 論文生成
 
@@ -556,7 +556,7 @@ git clone https://github.com/kotama7/ARI.git && cd ARI && bash setup.sh
 ollama pull qwen3:8b && ollama serve &
 export ARI_BACKEND=ollama ARI_MODEL=qwen3:8b
 
-# 3. すべてのサービスを起動（Letta + registry + GUI を :8765 で）
+# 3. すべてのサービスを起動（Letta + registry + CLI shim + GUI を :8765 で）
 ./start.sh
 # http://localhost:8765 を開いて、ウィザードで実験を作成しましょう！
 # 停止: ./shutdown.sh

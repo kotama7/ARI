@@ -118,7 +118,7 @@ ARI 支持 150 多个环境变量，在此汇总以便查阅。大多数变量�
 | `ARI_MAX_NODES` | BFTS 节点硬性上限 | （由 workflow 控制） |
 | `ARI_MAX_DEPTH` | 树深度硬性上限 | （由 workflow 控制） |
 | `ARI_MAX_REACT` | 每节点 ReAct 迭代上限 | （由 workflow 控制） |
-| `ARI_PARALLEL` | 并发节点执行器数 | `1` |
+| `ARI_PARALLEL` | 并发节点执行器数 | `4` |
 | `ARI_TIMEOUT_NODE` | 每节点挂墙时间上限（秒） | （无） |
 | `ARI_BFTS_ALLOW_WEB` | 可选：在**探索期间**向 BFTS 节点智能体暴露 `web-skill`（web_search / fetch_url / arXiv / Semantic Scholar）。默认关闭以保持搜索循环可重现（P5）；开启后，ARI 会记录不可重现轨迹标记（`bfts_web_provenance.json`）。`idea-skill` 的 `survey` 无论如何都会进行有界的文献检索。`1`/`true`/`yes`/`on` 启用 | `false` |
 | `ARI_RECURSION_DEPTH` | 嵌套 ARI 运行中的当前深度（自动设置） | （自动） |
@@ -173,9 +173,9 @@ Harness 运行基座，而不属于模式选择：
 | `ARI_BACKEND` | 智能体运行时的后端选择器 |
 | `ARI_EXECUTOR` | 执行器后端（sync / async） |
 | `ARI_CONTAINER_IMAGE` | 沙箱执行用的 SIF / OCI 镜像 |
-| `ARI_CONTAINER_MODE` | `exec` / `shell`（singularity 调用方式） |
+| `ARI_CONTAINER_MODE` | 容器运行时：`auto`（默认 —— 探测可用运行时，在 SLURM 作业内优先 Singularity / Apptainer） / `docker` / `singularity` / `apptainer` / `none`。不支持的取值会直接报错，而不会回退到宿主机执行 |
 | `ARI_CONTAINERS_DIR` | 容器镜像缓存根目录 |
-| `ARI_MAX_CHILD_PROCS` | coding 沙箱内的 RLIMIT_NPROC 上限（默认 1024） |
+| `ARI_MAX_CHILD_PROCS` | coding 沙箱内的 RLIMIT_NPROC 上限。选择性启用：未设置即不额外设限。RLIMIT_NPROC 按 real uid 统计该用户的全部任务，而非仅本进程的后代，因此固定上限会在用户已有那么多线程时直接让 `fork` 以 EAGAIN 失败 |
 | `ARI_LOG_LEVEL` | Python `logging` 级别（`INFO` / `DEBUG` / ...） |
 
 ### 记忆后端
@@ -184,7 +184,7 @@ Harness 运行基座，而不属于模式选择：
 |---|---|
 | `ARI_MEMORY_BACKEND` | `letta`（默认）或 `in_memory`（无需 Letta；仅用于本地冒烟测试的短暂内存后端） |
 | `ARI_MEMORY_AUTO_RESTORE` | 恢复时自动从 `memory_backup.jsonl.gz` 还原 |
-| `ARI_MEMORY_ACCESS_LOG` | `memory_access.jsonl` 路径 |
+| `ARI_MEMORY_ACCESS_LOG` | `on`（默认） / `off` —— memory 服务是否记录 `memory_access.jsonl`。路径本身不可配置；轮转大小由 `ARI_MEMORY_ACCESS_LOG_MAX_MB`（默认 `100`）决定 |
 | `ARI_MEMORY_CONSOLIDATE` | 类型化记忆整合 + 为论文论断提供基于工件支撑的 `verified_context.json`。**默认开启**；设为 `0`/`false`/`no`/`off` 以禁用 |
 | `ARI_CONTEXT_AUTHORITY_KEY` | core 为每条技能连接导出到技能子进程的 HMAC 密钥（`SkillConnection._server_params`）；记忆服务器在触及后端之前用它验证签名后的 `ari_context` 参数。由 core 注入并在结果中被脱敏，运维人员不应设置 |
 | `ARI_LETTA_VENV` | 捆绑 Letta 服务器的虚拟环境路径 |
@@ -227,7 +227,8 @@ Harness 运行基座，而不属于模式选择：
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_PAPERBENCH_PATH` | 覆盖捆绑的 `vendor/paperbench/` 路径 | `vendor/paperbench/` |
+| `ARI_PAPERBENCH_PATH` | 覆盖已评审的 vendor PaperBench project 根目录。仅当它不是 symlink、且其 Git identity 与显式的 `ARI_PAPERBENCH_COMMIT` 声明相符时才被接受 —— 没有该声明则覆盖被拒绝 | `ari-skill-paper-re/vendor/paperbench/project` |
+| `ARI_PAPERBENCH_COMMIT` | `ARI_PAPERBENCH_PATH` 覆盖所声明的 commit，会与该树真实的 Git identity 校验 | （无 —— 与 `ARI_PAPERBENCH_PATH` 同时必填） |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | `run_reproduce` 的挂墙时间上限 | `43200`（12 小时） |
 | `ARI_REPLICATOR_ITERATIVE` | 使用迭代式复现器智能体 | – |
 | `ARI_REPLICATOR_MAX_STEPS` | 迭代开启时的迭代上限 | – |
@@ -236,11 +237,10 @@ Harness 运行基座，而不属于模式选择：
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `ARI_ORCHESTRATOR_PORT` | MCP 服务器端口 | `9890` |
-| `ARI_ORCHESTRATOR_LOGS` | 日志目录 | `$ARI_WORKSPACE/orchestrator_logs` |
-| `ARI_ORCHESTRATOR_DRY_RUN` | 跳过真实的 `ari run`（冒烟测试） | – |
-| `ARI_ORCHESTRATOR_SSE_ONESHOT` | 单次 SSE 响应模式 | – |
-| `ARI_ORCHESTRATOR_SSE_TIMEOUT` | SSE 超时（秒） | – |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | MCP 服务器端口（`streamable-http` 传输） | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_HOST` | MCP 服务器的 bind 主机；不可为空 | `127.0.0.1` |
+| `ARI_ORCHESTRATOR_LOGS` | 日志目录 | `$ARI_WORKSPACE/logs` |
+| `ARI_ORCHESTRATOR_DRY_RUN` | 跳过真实的 `ari run`（冒烟测试）；置 `1` 启用 | – |
 
 ### Transform 技能
 
@@ -278,7 +278,7 @@ Harness 运行基座，而不属于模式选择：
 | `ARI_REGISTRIES_FILE` | 覆盖 `registries.yaml` 位置（否则在当前检查点下查找） |
 | `ARI_LOCAL_TARBALL_OUT` | `local-tarball` 发布后端的输出路径 |
 | `ARI_GH_REPO` | `gh` 后端的 GitHub 仓库目标 |
-| `ARI_GH_MODE` | `gh` 后端的 `release` / `repo` 模式 |
+| `ARI_GH_MODE` | `gh` 后端的模式：`commit`（默认 —— 把 bundle/manifest/README 推入仓库）或 `releases`（创建带 tag 的 release 并附上 tarball） |
 | `ARI_CLONE_HTTP_TIMEOUT` | `ari clone` 的 HTTP 超时 |
 
 ### SLURM 默认值
@@ -290,7 +290,7 @@ Harness 运行基座，而不属于模式选择：
 | `ARI_SLURM_GPUS` | 默认 `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | 默认内存请求 |
 | `ARI_SLURM_WALLTIME` | 默认 `--time` |
-| `ARI_SLURM_ALLOW_NO_GRES` | `1` ⇒ 当集群未为 GPU 配置 GRES 时，静默丢弃 `--gres` / `--gpus-*` 标志（旧版 v0.7.2 行为）。默认（未设置）⇒ 抛出带有可操作信息的 `RuntimeError`，防止 GPU 请求悄无声息地在 CPU 上运行。 |
+| `ARI_SLURM_ALLOW_NO_GRES` | **当前没有任何代码读取该名称，设置它不会产生任何效果。** 它曾是一个 opt-in：当集群未为 GPU 配置 GRES 时静默丢弃 `--gres` / `--gpus-*`；`scripts/setup/setup_env.sh` 仍以注释形式预写该行。无 GRES 的情形现在改由 `ari/capability_binding/environment.py` 决定：未伴随 GRES 记账而被观测到的设备只会记录为 feature `gpu-observed-on-slurm-node`、allocation mode `observation-only-no-gres`，除非观测到 GRES 或 exclusive-node-inventory 的 pin 匹配，否则它不是可调度的 `gpu` 资源——因此请求会绑定失败，而不是悄无声息地退回 CPU。 |
 
 ### PaperBench 复现阶段（Stage 2）
 
@@ -299,7 +299,7 @@ Harness 运行基座，而不属于模式选择：
 | `ARI_PHASE1_SANDBOX` | `auto` / `local` / `docker` / `apptainer` / `singularity` / `slurm`。强制指定 `server.run_reproduce` 和 `bridge.reproduce_submission` 使用的沙箱运行器。 |
 | `ARI_PHASE1_DOCKER_IMAGE` | `sandbox_kind=docker` 且未显式提供 `container_image` 时的默认 docker 镜像。没有内置默认值：未设置则镜像为空，run 会被拒绝而不是被悄悄补上一个。 |
 | `ARI_PHASE1_APPTAINER_IMAGE` | `sandbox_kind=apptainer`/`singularity` 且未显式提供 `container_image` 时的默认 SIF / docker URI。 |
-| `ARI_PAPERBENCH_PATH` | 覆盖 vendored PaperBench 源代码树路径（默认：`ari-skill-paper-re/vendor/paperbench/project/paperbench`）。 |
+| `ARI_PAPERBENCH_PATH` | 覆盖 vendored PaperBench 的 project 根目录（默认：`ari-skill-paper-re/vendor/paperbench/project`；指向内层 `project/paperbench` 的取值会被归一化到 `project`）。需要 `ARI_PAPERBENCH_COMMIT` —— 见上。 |
 | `ARI_REPLICATOR_TIME_LIMIT_SEC` | 调用者传入 `0` 时默认的 Stage 1 智能体展开时间预算。 |
 | `ARI_REPLICATOR_ITERATIVE` | `1` ⇒ Stage 1 展开默认使用 IterativeAgent 变体。 |
 | `ARI_REPLICATOR_MAX_STEPS` | 默认 Stage 1 步数上限。 |
@@ -351,7 +351,7 @@ Harness 运行基座，而不属于模式选择：
 
 | 变量 | 用途 |
 |---|---|
-| `LETTA_BASE_URL` | Letta API base（默认 `http://127.0.0.1:8283`） |
+| `LETTA_BASE_URL` | Letta API base（默认 `http://localhost:8283`） |
 | `LETTA_API_KEY` | Letta 需要认证时的 API 密钥 |
 | `LETTA_EMBEDDING_CONFIG` | 嵌入配置 JSON 路径（必需） |
 
@@ -359,7 +359,7 @@ Harness 运行基座，而不属于模式选择：
 
 | 变量 | 用途 |
 |---|---|
-| `OLLAMA_HOST` | Ollama 监听地址（默认 `127.0.0.1:11434`） |
+| `OLLAMA_HOST` | Ollama 地址；当 backend 为 `ollama` 时 ARI 将其读作 Ollama 的 api_base（默认 `http://localhost:11434`） |
 | `OLLAMA_BASE_URL` | LiteLLM 侧的 base URL |
 | `OPENAI_API_KEY` | OpenAI / OpenAI 兼容 API 密钥 |
 
@@ -367,10 +367,11 @@ Harness 运行基座，而不属于模式选择：
 
 | 变量 | 用途 | 默认值 |
 |---|---|---|
-| `VLM_MODEL` | 图表 / 表格审阅用的视觉 LLM | `openai/gpt-4o` |
+| `ARI_VLM_MODEL` | 图表 / 表格审阅用的视觉 LLM；优先于 `VLM_MODEL` | （无） |
+| `VLM_MODEL` | `ARI_VLM_MODEL` 未设置时读取的回退视觉 LLM id。没有内置默认值：两者都未设置时，视觉审阅会拒绝执行而不是自行挑一个模型 | （无） |
 
 ## 另请参阅
 
 - `docs/reference/configuration.md` — 按用途分组的相同环境变量叙述导览。
-- `ari-core/ari/config.py` — 使用大部分 `ARI_*` 变量的 Pydantic 设置模型。
+- `ari-core/ari/config/__init__.py` — 使用大部分 `ARI_*` 变量的 Pydantic 设置模型。
 - 每个技能的 `README.md` — 该技能特有的环境变量。
