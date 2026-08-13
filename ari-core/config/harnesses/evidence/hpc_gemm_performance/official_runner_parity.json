@@ -2,14 +2,14 @@
   "case_set": "native-perf-gemm-cases/v1@parity",
   "controls": {
     "clean": {
-      "median_speedup": 1.0040947549482107,
-      "relative_spread": 0.0269785161771206,
+      "median_speedup": 0.9946155705852928,
+      "relative_spread": 0.03361982183804349,
       "resolved": true,
       "verdict": "pass"
     },
     "negatives": [
       {
-        "detail": "0.001767x of the frozen reference, below the 0.95x threshold",
+        "detail": "0.001743x of the frozen reference, below the 0.95x threshold",
         "name": "slow-but-correct",
         "verdict": "fail"
       },
@@ -27,20 +27,20 @@
   "reason": null,
   "results": {
     "clean_control": {
-      "median_speedup": 1.0040947549482107,
-      "relative_spread": 0.0269785161771206,
-      "report_digest": "sha256:4ea68c26a1b1196fa1299dd55e131b982de3af8970d6688e1734b4e54c89e4fa",
+      "median_speedup": 0.9946155705852928,
+      "relative_spread": 0.03361982183804349,
+      "report_digest": "sha256:4bbd42bd35cdf1d1c0115562f96ba3199ba7bf3cdf7463d7ac589f6839d1d209",
       "resolved": true,
       "verdict": "pass"
     },
     "negative_control_slow": {
-      "detail": "0.001767x of the frozen reference, below the 0.95x threshold",
-      "report_digest": "sha256:4459096d7e955811f323c5fc206deb39f263aeccf0a3c84e9b28d37fd3c660c2",
+      "detail": "0.001743x of the frozen reference, below the 0.95x threshold",
+      "report_digest": "sha256:70e502c45a2705fb7b093c586daed3c7613614f33d9fba90fa93bf363065c28f",
       "verdict": "fail"
     },
     "negative_control_wrong": {
       "detail": "candidate output failed the residual bound (2.79e+11x)",
-      "report_digest": "sha256:b390ecae9ab9b635ae5d095e94e23cf77ab6070a71a6931ab1fae3b113b22871",
+      "report_digest": "sha256:b60cea997c3ad4689be46c9d3b306efba497edef9a892b487bccca26375d9f04",
       "verdict": "fail"
     }
   },

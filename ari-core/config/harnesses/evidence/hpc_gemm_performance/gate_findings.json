@@ -1,76 +1,91 @@
 [
   {
     "detail": "clean control verdict 'pass'",
+    "evidence_digest": "sha256:ef6e868933d35e339e85d5997dd8a7e9bf98ac8d257fa906752747a5388f502c",
     "gate_id": "reference_oracle_pass",
     "passed": true
   },
   {
     "detail": "2 negative control(s) failed, for different reasons",
+    "evidence_digest": "sha256:4cd01abcffad6e6473cac1fb6659d52f217485210e5190152ad1d54e59693f7f",
     "gate_id": "negative_control_fail",
     "passed": true
   },
   {
-    "detail": "passed at spread 0.0269785161771206",
+    "detail": "passed at spread 0.03361982183804349",
+    "evidence_digest": "sha256:d7ebd9769ef7db12c062dcc576a38e67c93cae9a68d18d871ebccb7b91f618bb",
     "gate_id": "clean_control_pass",
     "passed": true
   },
   {
     "detail": "probe passed against this driver",
+    "evidence_digest": "sha256:c45fec21bea33a8f3adf1f28c464089df4680e41f1061cc054828550ffdda0a9",
     "gate_id": "official_runner_parity",
     "passed": true
   },
   {
     "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+    "evidence_digest": "sha256:f0be3986139d37616f43a219c44482b052656baa3130651f4fe49ae2cfba7f31",
     "gate_id": "target_oracle_test_isolation",
     "passed": true
   },
   {
     "detail": "scorer 'deterministic', nondeterminism 'none'",
+    "evidence_digest": "sha256:2f7d0ce7e5a435fccc633fc5bd3079807ce22e72b842923ab659f56118287651",
     "gate_id": "determinism_declaration",
     "passed": true
   },
   {
     "detail": "an outage produces no ranking metric",
+    "evidence_digest": "sha256:6cb41cd5e84724c69e363848ed0fd181bab555a8e1d56c96e384a7997d31c697",
     "gate_id": "infrastructure_failure_separation",
     "passed": true
   },
   {
     "detail": "timeout pinned at 900s",
+    "evidence_digest": "sha256:b29a5dd945180dad65e447fc4fdddff69e96b415804d45c0f1944695cc9a654a",
     "gate_id": "timeout_resource_enforcement",
     "passed": true
   },
   {
     "detail": "all four pinned assets licensed",
+    "evidence_digest": "sha256:85d89835bfbdfe304dd48e94af38059224f9f32cddaf189e3ac9730e54f4855e",
     "gate_id": "license_completeness",
     "passed": true
   },
   {
-    "detail": "pinned at 361a85d7fde8, an ancestor of 6c1b8d3c838b",
+    "detail": "pinned at 361a85d7fde8, an ancestor of b48f760cf4b0",
+    "evidence_digest": "sha256:d6b170f066dd2d092720bebcd736e8e796efa7a092a59af76c6b6730e3feaf99",
     "gate_id": "source_revision_digest_pin",
     "passed": true
   },
   {
     "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+    "evidence_digest": "sha256:6d871c8a460fbf934d37c46a7c671f2956e1e8f264178c63a78f938a802b25b0",
     "gate_id": "hidden_test_isolation",
     "passed": true
   },
   {
-    "detail": "spread 0.01337 over 3 runs",
+    "detail": "spread 0.0008966 over 3 runs",
+    "evidence_digest": "sha256:3091c1155d1a8e799e25f3bdac02682c5466278b601546006cac9803150a28e2",
     "gate_id": "multiple_run_stability",
     "passed": true
   },
   {
     "detail": "schema declares 24 properties",
+    "evidence_digest": "sha256:6607d0d88053329f364666cef1a639724543dd2f6bc7e5ea7c0106ad53a66348",
     "gate_id": "result_schema_conformance",
     "passed": true
   },
   {
     "detail": "4 pinned digests are full sha256",
+    "evidence_digest": "sha256:115377d18b67395417bdcb93e55297168396e9d342ef288e04e15cbed0d56b33",
     "gate_id": "full_sha256_integrity",
     "passed": true
   },
   {
     "detail": "network 'deny', credentials 'none' (structural check only; the answer is the approval)",
+    "evidence_digest": "sha256:d2f28b74aa8342f262781bffc145edf6ed8bbd35ddf980f5e427f018eff64f01",
     "gate_id": "malicious_harness_sandbox",
     "passed": true
   }

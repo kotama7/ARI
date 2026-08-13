@@ -1,8 +1,8 @@
 {
-  "note": "The manifest pins this placement and prepare compares it. The same commit and clean worktree scored 13/15 on an exclusive x86 node at 64 threads, where the clean control did not resolve, and 0.589 spread on a shared login node.",
+  "note": "The manifest pins this placement and prepare compares it. The same commit and clean worktree scored 13/15 on an exclusive x86 node at 64 threads, where the clean control did not resolve.",
   "registered_placement": {
     "machine": "aarch64",
     "thread_budget": "48"
   },
-  "registration_commit": "6c1b8d3c838b7bd807f16f0cdec4300d21ce4c2e"
+  "registration_commit": "b48f760cf4b069bc44a09d80cdac1651c0d01fbb"
 }
