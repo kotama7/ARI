@@ -167,6 +167,8 @@ targets the like-named module under `ari/`.
 - `test_loop_message_order.py` — `loop.repair_tool_message_order` defense-in-depth: restores contiguous tool-response blocks, moves interleaved user injections past them, and drops orphaned assistant/partial pairings the API would reject.
 - `test_manuscript_assurance_boundary.py` — manuscript-to-scientific-assurance binding and fail-closed publication-boundary coverage.
 - `test_manuscript_complete.py` — end-to-end Manuscript Complete topology, failure-injection, migration, repair, and publication-lock coverage.
+- `test_manuscript_venue_profile_composition.py` — parent-then-override merge order, explicit removal, and the moved-parent digest error.
+- `test_manuscript_venue_profile_registry.py` — venue profile declaration registry, digest pins, explicit removal, and consumption by readiness/briefs.
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
 - `test_mcp_stdio_guard.py` — pins that the guard drops ONLY whitespace-only stdout records, leaving the JSON-RPC line byte-exact and both stderr diagnostics intact, and that `SkillConnection` places `-m ari.mcp.stdio_guard --` before the provider entrypoint rather than wrapping it from outside.

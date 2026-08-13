@@ -18,6 +18,7 @@ from ari.manuscript.contracts import (
     ManuscriptRepairTransactionV1,
     ManuscriptSegmentRecordV1,
     ManuscriptTransitionV1,
+    ManuscriptVenueProfileV1,
     OmissionManifestV1,
     PublicationDecisionV1,
     PublicationLockV1,
@@ -31,6 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_ROOT = ROOT / "ari-core" / "ari" / "schemas"
 MODELS = {
     "manuscript_requirement_profile_v1.schema.json": ManuscriptRequirementProfileV1,
+    "manuscript_venue_profile_v1.schema.json": ManuscriptVenueProfileV1,
     "manuscript_exploration_snapshot_v1.schema.json": ExplorationSnapshotV1,
     "manuscript_context_v1.schema.json": ManuscriptContextV1,
     "manuscript_evaluation_report_v1.schema.json": ManuscriptEvaluationReportV1,

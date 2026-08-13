@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "ProfileParentRefV1": {
+      "additionalProperties": false,
+      "description": "Pinned identity of one parent profile a venue profile composes over.",
+      "properties": {
+        "profile_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        },
+        "profile_id": {
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "profile_version": {
+          "title": "Profile Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "profile_version",
+        "profile_digest"
+      ],
+      "title": "ProfileParentRefV1",
+      "type": "object"
+    },
+    "RequirementSpecV1": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_terminal_statuses": {
+          "default": [
+            "satisfied",
+            "not_applicable",
+            "unavailable",
+            "missing"
+          ],
+          "items": {
+            "enum": [
+              "satisfied",
+              "not_applicable",
+              "unavailable",
+              "missing"
+            ],
+            "type": "string"
+          },
+          "title": "Allowed Terminal Statuses",
+          "type": "array"
+        },
+        "applicability_rule_id": {
+          "title": "Applicability Rule Id",
+          "type": "string"
+        },
+        "authoring_blocking": {
+          "title": "Authoring Blocking",
+          "type": "boolean"
+        },
+        "description": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Evidence Kinds",
+          "type": "array"
+        },
+        "publication_blocking": {
+          "title": "Publication Blocking",
+          "type": "boolean"
+        },
+        "requirement_id": {
+          "title": "Requirement Id",
+          "type": "string"
+        },
+        "resolver_kinds": {
+          "items": {
+            "enum": [
+              "artifact_recovery",
+              "projection_rebuild",
+              "literature_search",
+              "baseline_comparison",
+              "repetition_or_uncertainty",
+              "ablation",
+              "validation_experiment",
+              "assurance_certification",
+              "method_clarification",
+              "limitation_disclosure",
+              "human_decision"
+            ],
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Resolver Kinds",
+          "type": "array"
+        },
+        "section_targets": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Section Targets",
+          "type": "array"
+        }
+      },
+      "required": [
+        "requirement_id",
+        "description",
+        "section_targets",
+        "applicability_rule_id",
+        "authoring_blocking",
+        "publication_blocking"
+      ],
+      "title": "RequirementSpecV1",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Venue or project profile declared by explicit composition over parents.\n\nA venue profile never mutates a parent.  It names every parent in\n``extends`` at the exact ``profile_digest`` it was written against and\nstates its own requirement overrides/additions and its explicit removals.\nBecause the resolved artifact is an ordinary requirement profile, every\nexisting consumer (context builder, readiness evaluator, brief builder) is\nunchanged.\n\nThis declaration is the durable lineage record: parents at their digests,\nthe deltas applied to them, and — for a declaration that ships as an\nartifact — ``resolved_profile_digest``, the ``profile_digest`` resolution\nmust reproduce.  The pin is optional on an in-memory declaration that has\nnot been composed yet; the registry loader requires it of every declaration\nread from disk, so no stored artifact loses the resolved identity.",
+  "properties": {
+    "evaluator_compatibility": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Evaluator Compatibility",
+      "type": "array"
+    },
+    "extends": {
+      "items": {
+        "$ref": "#/$defs/ProfileParentRefV1"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Extends",
+      "type": "array"
+    },
+    "paper_family": {
+      "title": "Paper Family",
+      "type": "string"
+    },
+    "policy_version": {
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "profile_id": {
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "profile_version": {
+      "title": "Profile Version",
+      "type": "string"
+    },
+    "removed_requirement_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Removed Requirement Ids",
+      "type": "array"
+    },
+    "requirements": {
+      "items": {
+        "$ref": "#/$defs/RequirementSpecV1"
+      },
+      "maxItems": 256,
+      "title": "Requirements",
+      "type": "array"
+    },
+    "resolved_profile_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resolved Profile Digest"
+    },
+    "schema_version": {
+      "const": "ari.manuscript-venue-profile/v1",
+      "default": "ari.manuscript-venue-profile/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "venue_profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Venue Profile Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "profile_version",
+    "paper_family",
+    "policy_version",
+    "evaluator_compatibility",
+    "extends",
+    "venue_profile_digest"
+  ],
+  "title": "ManuscriptVenueProfileV1",
+  "type": "object"
+}

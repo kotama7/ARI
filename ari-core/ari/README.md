@@ -216,6 +216,8 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `segments.py` — persist and validate immutable manuscript segment records.
   - `snapshot.py` — project exploration artifacts into a bounded authoring snapshot.
   - `state.py` — append-only manuscript transition log and resumable lifecycle state.
+  - `venue_profiles/` — venue and project requirement profile declarations, composed at resolution time.
+    - `README.md` — venue_profiles index.
 - `mcp/` — MCP client talking to `ari-skill-*` subprocesses.
   - `README.md` — mcp index.
   - `__init__.py` — public `MCPClient` + contract.
@@ -523,6 +525,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `manuscript_section_brief_bundle_v1.schema.json` — section-level authoring briefs with required claims, evidence, disclosures, and budgets.
   - `manuscript_segment_record_v1.schema.json` — immutable manuscript segment identity, provenance, and validation status.
   - `manuscript_transition_v1.schema.json` — append-only manuscript lifecycle transition with authority and digest lineage.
+  - `manuscript_venue_profile_v1.schema.json` — venue profile declared by explicit composition over pinned parent profile digests.
   - `measurement_set_v1.schema.json` — typed parameter, measurement, unit, execution, and artifact separation.
   - `memory_backup_v1.schema.json` — content-addressed memory backup with backend and retention provenance.
   - `memory_record_v1.schema.json` — immutable scoped memory record with lifecycle and evidence metadata.

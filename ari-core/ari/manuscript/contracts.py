@@ -30,6 +30,7 @@ from ari.manuscript.digest import (
 
 
 MANUSCRIPT_REQUIREMENT_PROFILE_V1 = "ari.manuscript-requirement-profile/v1"
+MANUSCRIPT_VENUE_PROFILE_V1 = "ari.manuscript-venue-profile/v1"
 MANUSCRIPT_ARTIFACT_REF_V1 = "ari.manuscript-artifact-ref/v1"
 MANUSCRIPT_NODE_SNAPSHOT_V1 = "ari.manuscript-node-snapshot/v1"
 MANUSCRIPT_EXPLORATION_SNAPSHOT_V1 = "ari.manuscript-exploration-snapshot/v1"
@@ -191,6 +192,90 @@ class ManuscriptRequirementProfileV1(DigestBoundModel):
         ids = [item.requirement_id for item in self.requirements]
         if len(ids) != len(set(ids)):
             raise ValueError("manuscript profile has duplicate requirement IDs")
+        return self
+
+
+class ProfileParentRefV1(StrictModel):
+    """Pinned identity of one parent profile a venue profile composes over."""
+
+    profile_id: str
+    profile_version: str
+    profile_digest: str = Field(pattern=SHA256_PATTERN)
+
+    @field_validator("profile_id", "profile_version")
+    @classmethod
+    def _ids(cls, value: str) -> str:
+        return _validate_id(value)
+
+
+class ManuscriptVenueProfileV1(DigestBoundModel):
+    """Venue or project profile declared by explicit composition over parents.
+
+    A venue profile never mutates a parent.  It names every parent in
+    ``extends`` at the exact ``profile_digest`` it was written against and
+    states its own requirement overrides/additions and its explicit removals.
+    Because the resolved artifact is an ordinary requirement profile, every
+    existing consumer (context builder, readiness evaluator, brief builder) is
+    unchanged.
+
+    This declaration is the durable lineage record: parents at their digests,
+    the deltas applied to them, and — for a declaration that ships as an
+    artifact — ``resolved_profile_digest``, the ``profile_digest`` resolution
+    must reproduce.  The pin is optional on an in-memory declaration that has
+    not been composed yet; the registry loader requires it of every declaration
+    read from disk, so no stored artifact loses the resolved identity.
+    """
+
+    digest_field = "venue_profile_digest"
+    schema_version: Literal["ari.manuscript-venue-profile/v1"] = (
+        MANUSCRIPT_VENUE_PROFILE_V1
+    )
+    profile_id: str
+    profile_version: str
+    paper_family: str
+    policy_version: str
+    evaluator_compatibility: tuple[str, ...] = Field(min_length=1, max_length=16)
+    extends: tuple[ProfileParentRefV1, ...] = Field(min_length=1, max_length=8)
+    removed_requirement_ids: tuple[str, ...] = Field(
+        default_factory=tuple, max_length=256
+    )
+    requirements: tuple[RequirementSpecV1, ...] = Field(
+        default_factory=tuple, max_length=256
+    )
+    resolved_profile_digest: str | None = Field(default=None, pattern=SHA256_PATTERN)
+    venue_profile_digest: str = Field(pattern=SHA256_PATTERN)
+
+    @field_validator("profile_id", "profile_version", "paper_family", "policy_version")
+    @classmethod
+    def _ids(cls, value: str) -> str:
+        return _validate_id(value)
+
+    @field_validator("removed_requirement_ids")
+    @classmethod
+    def _removed_ids(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(_validate_id(item) for item in value)
+
+    @model_validator(mode="after")
+    def _venue_profile_coherent(self) -> "ManuscriptVenueProfileV1":
+        parents = [item.profile_id for item in self.extends]
+        if len(parents) != len(set(parents)):
+            raise ValueError("manuscript venue profile names a parent twice")
+        if self.profile_id in parents:
+            raise ValueError("manuscript venue profile extends itself")
+        own = [item.requirement_id for item in self.requirements]
+        if len(own) != len(set(own)):
+            raise ValueError("manuscript venue profile has duplicate requirement IDs")
+        removed = list(self.removed_requirement_ids)
+        if len(removed) != len(set(removed)):
+            raise ValueError("manuscript venue profile removes a requirement twice")
+        collision = set(removed) & set(own)
+        if collision:
+            raise ValueError(
+                "manuscript venue profile both removes and declares: "
+                + ", ".join(sorted(collision))
+            )
+        if len(self.evaluator_compatibility) != len(set(self.evaluator_compatibility)):
+            raise ValueError("manuscript venue profile repeats an evaluator version")
         return self
 
 
@@ -1067,6 +1152,10 @@ def parse_publication_decision(value: Any) -> PublicationDecisionV1:
     return _parse(PublicationDecisionV1, value, "PublicationDecisionV1")
 
 
+def parse_venue_profile(value: Any) -> ManuscriptVenueProfileV1:
+    return _parse(ManuscriptVenueProfileV1, value, "ManuscriptVenueProfileV1")
+
+
 __all__ = [name for name in globals() if name.endswith("V1") or name in {
     "EvidenceLane",
     "ManuscriptContractError",
@@ -1078,4 +1167,5 @@ __all__ = [name for name in globals() if name.endswith("V1") or name in {
     "parse_manuscript_readiness",
     "parse_publication_decision",
     "parse_repair_plan",
+    "parse_venue_profile",
 }]

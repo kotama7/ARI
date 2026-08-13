@@ -54,6 +54,7 @@ JSON Schemas shipped with ari-core, loaded by basename via
 - `manuscript_section_brief_bundle_v1.schema.json` — section-level authoring briefs with required claims, evidence, disclosures, and budgets.
 - `manuscript_segment_record_v1.schema.json` — immutable manuscript segment identity, provenance, and validation status.
 - `manuscript_transition_v1.schema.json` — append-only manuscript lifecycle transition with authority and digest lineage.
+- `manuscript_venue_profile_v1.schema.json` — venue profile declared by explicit composition over pinned parent profile digests.
 - `measurement_set_v1.schema.json` — typed parameter, measurement, unit, execution, and artifact separation.
 - `memory_backup_v1.schema.json` — content-addressed memory backup with backend and retention provenance.
 - `memory_record_v1.schema.json` — immutable scoped memory record with lifecycle and evidence metadata.
