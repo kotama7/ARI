@@ -1452,8 +1452,16 @@ These questions do not change the ownership boundary but must be decided before 
 2. Whether workflow segmentation is represented by additive `segment` metadata or an equivalent
    driver range API; duplicate workflow files are not acceptable。
 3. Exact generic profile rule for stochasticity detection and minimum uncertainty evidence。
-4. Whether venue-specific profiles use explicit composition or a fully materialized resolved
-   profile artifact; the resolved digest is mandatory either way。
+4. CLOSED as explicit composition on 2026-08-14 (commit `a76ec75`), which is what §10.1 already
+   required。`ManuscriptVenueProfileV1` names each parent at its exact `profile_digest`, states
+   only its own overrides/additions and its explicit `removed_requirement_ids`, and resolution
+   runs at read time in `ari-core/ari/manuscript/profiles.py`; a parent whose digest moved is an
+   error, not a warning。The resolved artifact is an ordinary `ManuscriptRequirementProfileV1`, so
+   its `profile_digest` is the resolved digest, and every declaration stored on disk must pin
+   `resolved_profile_digest`。Contract tests:
+   `ari-core/tests/test_manuscript_venue_profile_composition.py`,
+   `ari-core/tests/test_manuscript_venue_profile_registry.py`。No venue declaration ships yet
+   (`ari-core/ari/manuscript/venue_profiles/` holds only its README)。
 5. Whether audit mode records a shadow publication decision when KCA providers are unavailable。
 6. Exact policy for certified runner-up fallback; default must be no silent fallback。
 7. Which projection/literature/certification repairs are allowed from `ari paper` only when explicitly

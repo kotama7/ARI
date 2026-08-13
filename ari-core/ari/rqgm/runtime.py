@@ -1561,11 +1561,13 @@ class RQGMRuntime:
         constitutional, role-instruction) and return the failures, or ``[]``
         when the candidate is clean. Never raises.
 
-        ``CandidateValidationPipeline`` — the documented six-stage validation —
-        is never instantiated in production, so on the EXPLORATION path a minted
-        candidate went straight into ``candidate_evaluations`` unvalidated: a
-        candidate that violates the static/constitutional/role-instruction rules
-        could be board-scored and adopted. The paper path already re-implements
+``CandidateValidationPipeline`` — the documented six-stage validation —
+        is built only for the SHADOW stage (see :meth:`validation_pipeline`), so
+        on the EXPLORATION path a minted candidate went straight into
+        ``candidate_evaluations`` unvalidated: a candidate that violates the
+        static/constitutional/role-instruction rules could be board-scored and
+        adopted. These three stages close that hole; they are called directly
+        rather than through the pipeline object. The paper path already re-implements
         these three stages inline (:mod:`ari.rqgm.paper_runtime`); this is the
         exploration half, calling the SAME single definitions so there is
         exactly one implementation of each stage.
@@ -3228,8 +3230,9 @@ class RQGMRuntime:
 
         It carries the shadow budget, the deterministic sampler and the
         observation chain, and persists every record to the prompt-evolution
-        log. Nothing constructed it in production, so the whole shadow stage was
-        unreachable.
+        log. It is constructed HERE and nowhere else, and only for the shadow
+        stage — the deterministic stages 1-3 are called as pure functions by
+        ``_deterministic_candidate_failures`` instead of through this object.
         """
         if getattr(self, "_validation_pipeline", None) is None:
             try:

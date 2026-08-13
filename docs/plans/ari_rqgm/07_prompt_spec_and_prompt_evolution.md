@@ -253,17 +253,26 @@ validation record chain. All stage evaluations happen at epoch boundaries except
 sampling, which runs during the epoch under its own budget.
 
 > **Implementation correction — the six-stage `CandidateValidationPipeline` is NOT the shipped
-> production path (recorded 2026-07-17).** The lifecycle above is the design target; it is
-> recorded here so no reader assumes the pipeline object runs. In branch `RQGM`,
-> `CandidateValidationPipeline` (`ari-core/ari/rqgm/prompt_evolution.py`) is **never instantiated
-> in production** — a repo-wide search finds construction sites only in tests — so it is dead for
-> **every** role, exploration and paper alike. What actually runs at the epoch boundary is:
+> production path (recorded 2026-07-17; superseded in part 2026-07-28).** The lifecycle above is
+> the design target; it is recorded here so no reader assumes the monotonic stage machine runs.
+> When this note was written the class had construction sites only in tests. **That half is no
+> longer true.** Since commit `c050ebf` (2026-07-28) `CandidateValidationPipeline`
+> (`ari-core/ari/rqgm/prompt_evolution.py:758`) is constructed in production by
+> `RQGMRuntime.validation_pipeline` (`ari-core/ari/rqgm/runtime.py:3224-3247`) and used for the
+> LIVE shadow stage and its record log: `run_shadow_comparison` (`runtime.py:3285-3361`), called
+> per node from `ari-core/ari/cli/bfts_loop.py:1618-1626`, and `shadow_evidence`
+> (`runtime.py:3249-3283`), whose `shadow_samples` / `shadow_score` are attached to every candidate
+> evaluation at the boundary (`runtime.py:1724-1732`) so the T6 adoption edge can open. Pinned by
+> `ari-core/tests/test_rqgm_prompt_lifecycle.py::test_live_shadow_records_a_side_by_side_observation`
+> and `::test_shadow_evidence_gives_T6_a_basis`. What remains dead is the STAGE MACHINE:
+> `run_stage` (`prompt_evolution.py:843`) is called from nowhere in `ari-core/ari/`, so stages 1-5
+> never run through the pipeline object. What actually runs at the epoch boundary is:
 >
-> - **Quality scoring: `evaluate_candidates`** (`ari-core/ari/rqgm/governance/_adjudication.py:267`)
+> - **Quality scoring: `evaluate_candidates`** (`ari-core/ari/rqgm/governance/_adjudication.py:274`)
 >   — deterministic board scoring of each candidate over `replay_cases(pool)` and
 >   `anchor_cases(pool)` via `board_score`, emitting `replay_score` / `anchor_score` / `case_refs`
 >   and `verdict = "pass"` iff `min(available scores) >= CANDIDATE_PASS_THRESHOLD`
->   (`_adjudication.py:312-322`). This is the live analogue of stages 4 (`replay_evaluation`) and
+>   (`_adjudication.py:322-330`). This is the live analogue of stages 4 (`replay_evaluation`) and
 >   5 (`anchor_evaluation`); the board reads *cached* per-case results, it is not the pipeline's
 >   monotonic stage machine.
 > - **Constitutional legality: the `ConstitutionalKernel`, wired inside `RegistryTransitionEngine`**
@@ -271,16 +280,30 @@ sampling, which runs during the epoch under its own budget.
 >   the Task 04 `ConstitutionalKernel`, and commits it"). This is the live analogue of stage 2
 >   (`constitutional_validation`) — enforced at the adoption transaction, not as a free-standing
 >   pipeline stage.
-> - **The `static_validation`, `schema_dry_run`, and `shadow` stages (1, 3, 6) are NOT exercised as
->   a production pipeline.** A candidate with no replay basis (e.g. a passive `utility_policy`
->   document, or a `paper_reviewer` on the bootstrap on-ramp with an empty pool) is admitted via
->   the role-scoped `no_replay_basis` waiver at the decision site
->   (`transition_engine.NO_REPLAY_BASIS_ROLES`), NOT by a synthesized board number.
+> - **Stages 1-2 run as pure functions, not as pipeline stages (landed 2026-07-28, `c050ebf`).**
+>   Before any board scores a candidate, `static_validation_failures` /
+>   `constitutional_validation_failures` / `role_instruction_constraint_failures` are called
+>   directly — exploration in `RQGMRuntime._deterministic_candidate_failures`
+>   (`ari-core/ari/rqgm/runtime.py:1559-1614`, reached from the mint path at `runtime.py:1481`,
+>   failing candidate dropped at `:1484-1492`), paper in
+>   `ari-core/ari/rqgm/paper_runtime.py:2617/2632/2649` — so a rejected candidate never enters
+>   `candidate_evaluations`. (The role-instruction check is an extra deterministic gate with no
+>   stage number in the lifecycle above; the code numbers it "stage 3" locally, which is NOT this
+>   section's stage 3.) Stage 6 (`shadow`) runs live per the paragraph above.
+>   **Stage 3 (`schema_dry_run`) is still NOT exercised in production**: the reply seam
+>   `schema_dry_run_fn` (`paper_runtime.py:934`, consumed at `:2741-2772`) is injected only by
+>   tests, and the skip is announced, never a fabricated pass. A candidate with no replay basis
+>   (e.g. a passive `utility_policy` document, or a `paper_reviewer` on the bootstrap on-ramp with
+>   an empty pool) is still admitted via the role-scoped `no_replay_basis` waiver at the decision
+>   site (`transition_engine.NO_REPLAY_BASIS_ROLES`, `transition_engine.py:188`, used at
+>   `:1629-1638`), NOT by a synthesized board number.
 >
-> Consequently §11.6's "co-evolution is expressed entirely via … `CandidateValidationPipeline`" and
-> the "1 cheap LLM call" cost of the `schema_dry_run` stage above do not describe shipped behaviour;
-> board scoring is deterministic and pool-fed. Do not cite the pipeline object as the live mechanism
-> in downstream docs or tests. (Confirmed against branch `RQGM`, ari-core v0.9.1.)
+> Consequently §11.6's "co-evolution is expressed entirely via … `CandidateValidationPipeline`"
+> still does not describe shipped behaviour — stages 1-5 do not run through the pipeline object —
+> and neither does the "1 cheap LLM call" cost of the `schema_dry_run` stage above; board scoring
+> is deterministic and pool-fed. Cite the pipeline object as the live mechanism ONLY for the shadow
+> stage and its record log — never for stages 1-5. (Recorded against branch `RQGM`, ari-core
+> v0.9.1; re-checked on the working branch after `c050ebf`.)
 
 ### 5.4 Mutation families (PromptMutator outputs)
 

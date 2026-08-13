@@ -2604,8 +2604,9 @@ class PaperArchiveRuntime:
             # role-agnostic T1/T3/T6 spine to ``active``. Every check REUSES the
             # parent set's pure-function stage (``prompt_evolution.py``), so there
             # is exactly one definition of each stage — never a paper-local copy.
-            # These stages are what the never-instantiated
-            # ``CandidateValidationPipeline`` was documented to run but never did.
+            # These stages are what ``CandidateValidationPipeline`` documents;
+            # that object is built only for the exploration shadow stage, so the
+            # deterministic checks are called as pure functions on both paths.
             cand_rec = cand_records.get(str(pid))
             cand = candidate_from_dict(cand_rec) if cand_rec else None
             if cand is not None:

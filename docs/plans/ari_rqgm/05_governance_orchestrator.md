@@ -553,10 +553,14 @@ Integration / regression:
 
 ## 10. Risks
 
-- **Epoch-boundary definition is upstream.** This plan depends on Task 02's boundary
-  predicate; if epochs end up event-driven (lineage events) rather than count-driven,
-  the §5.2 hook placement holds but rate-limiting interplay with the lineage hook needs
-  re-review. Mitigation: boundary is an opaque predicate here; no arithmetic assumed.
+- **Epoch-boundary definition settled count-driven (2026-07-28, commit `c050ebf`).**
+  Boundaries fire every `rqgm.epoch.nodes_per_epoch` new BFTS nodes
+  (`RqgmRuntime.ensure_epoch`, `ari-core/ari/rqgm/runtime.py`), so the event-driven
+  contingency never arose and the rate-limiting re-review it was conditioned on is not
+  owed: the epoch tick and the lineage hook coexist in `_run_loop`
+  (`ari-core/ari/cli/bfts_loop.py`) with separate rate limits and separate audit logs
+  (`rqgm_audit.jsonl` vs `lineage_decisions.jsonl`). The §5.2 placement held —
+  `audit_epoch` runs first inside `_run_epoch_boundary`, before the transaction.
 - **Recommendation-vocabulary drift vs. Task 09.** If the transition table and the
   `recommendations[].action` set diverge, reports become partially unusable. Mitigation:
   closed set, unknown-action-dropping required of Task 09, and a shared constant module

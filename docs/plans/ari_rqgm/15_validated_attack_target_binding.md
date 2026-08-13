@@ -614,15 +614,24 @@ regeneration (§6.3).
 > unfaithful draft, a second record with `target_component_id == "paper_writer_v1"` in production
 > (`paper_runtime.py::_score_reviewer_on_anchor`). So the chain this task designed fires end-to-end
 > for the first time in a live run — reliability → prosecution → impeachment → sanction → role
-> opening — not only in the §9 unit tests. The seven exploration types still bind nothing (R2 below).
+> opening — not only in the §9 unit tests. The seven exploration types bind `generator_v1` since
+> `fb7632d` (R2 below).
 
-- **R2 — The seven exploration adversaries still bind nothing** (§5.4), so P2/P3 accountability for
-  exploration components remains unreachable until an artifact-authoring role has a registered
-  incumbent. This task ships the mechanism and the precondition; registering `generator_v1` /
-  `reviewer_v1` is a Task 05/07 decision gated on the runtime actually stamping the id
-  (`prompt_spec.py:219-231`). Filed as an open question against [05](05_governance_orchestrator.md)
-  and [07](07_prompt_spec_and_prompt_evolution.md); do not close this plan's deletion criteria by
-  quietly adding a founding row here.
+- **R2 — CLOSED 2026-07-30 (`fb7632d`): the seven exploration adversaries now bind `generator_v1`.**
+  The precondition this risk named was met, not waived. `generator_v1` is a founding registered
+  component (`ari-core/ari/rqgm/prompt_spec.py:442-443`); all seven case types map to
+  `("generator",)` (`ari-core/ari/rqgm/adversarial/round.py:91-97`); and
+  `RQGMRuntime.stamp_node_producer` (`ari-core/ari/rqgm/runtime.py:263-295`) write-once-stamps the
+  epoch-frozen `producer_component_id` / `producer_prompt_hash` / `producer_epoch_id` on every
+  expanded child (`runtime.py:88`) and before the adversarial round (`runtime.py:3397`).
+  `_resolve_bindings` (`round.py:277-298`) binds only when all three match the frozen incumbent, so
+  legacy, missing or mismatched provenance stays targetless — the resolver never infers
+  responsibility from the case type alone. Proven end-to-end by
+  `ari-core/tests/test_rqgm_adversarial.py::test_exploration_attack_binds_epoch_stamped_generator`
+  (asserts `target_component_id == "generator_v1"`). What is NOT closed: there is still no
+  exploration `reviewer_v1` component in `FOUNDING_COMPONENT_TABLE`, so no reviewer binding exists;
+  that remains a Task 05/07 decision, filed against [05](05_governance_orchestrator.md) and
+  [07](07_prompt_spec_and_prompt_evolution.md).
 - **R3 — A role can roll up to the judgment's own author.** The registry rolls a role up to one
   winner (`prompt_spec.py:228-231`). For `judge` that winner is `artifact_judge_v1` —
   `FOUNDING_COMPONENT_TABLE` carries exactly one judge row, and no `lineage_judge` component id

@@ -79,8 +79,14 @@ Implement `ari.manuscript-requirement-profile/v1` with:
 - evidence kinds and target paper sections。
 - profile digest over the fully resolved profile。
 
-Profile composition must materialize one resolved profile artifact so downstream consumers never
-need to reinterpret inheritance order。
+Profile composition resolves at read time (`ari.manuscript.profiles`, landed 2026-08-14 in commit
+`a76ec75`): a `ManuscriptVenueProfileV1` declaration stores its parents at their pinned digests
+plus its own deltas, and resolution yields one ordinary `ManuscriptRequirementProfileV1` that
+carries no inheritance fields。`compile_manuscript` materializes exactly that resolved profile as
+the attempt artifact `requirement_profile.json` (`ari-core/ari/manuscript/coordinator.py`), which
+is the only profile artifact downstream consumers read — via `ARI_MANUSCRIPT_PROFILE_PATH` — so no
+consumer reinterprets inheritance order。Every declaration stored on disk must pin
+`resolved_profile_digest`。
 
 ### 5.2 Source snapshot
 
