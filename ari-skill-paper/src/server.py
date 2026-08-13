@@ -22,6 +22,7 @@ try:
         json_bytes as _paper_json_bytes,
         load_authoring_inputs,
         model_usage_from_response,
+        routed_provider,
     )
     from src.compiler import compile_project  # type: ignore
     from src.finalize import finalize_build  # type: ignore
@@ -49,6 +50,7 @@ except ImportError:  # running from within src/
         json_bytes as _paper_json_bytes,
         load_authoring_inputs,
         model_usage_from_response,
+        routed_provider,
     )
     from compiler import compile_project  # type: ignore
     from finalize import finalize_build  # type: ignore
@@ -2928,7 +2930,7 @@ async def paper_refine(
                 model=model,
                 model_revision=os.environ.get("ARI_MODEL_PAPER_REVISION") or None,
                 provider=(
-                    os.environ.get("ARI_MODEL_PAPER_PROVIDER") or model.split("/", 1)[0]
+                    os.environ.get("ARI_MODEL_PAPER_PROVIDER") or routed_provider(model)
                 ),
                 prompt_digest=prompt_artifact.digest,
                 prompt_artifact=prompt_artifact,

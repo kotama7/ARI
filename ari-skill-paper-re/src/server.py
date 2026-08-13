@@ -1321,12 +1321,31 @@ def _resolve_grade_reproduction(repo: Path):
 
 
 def _judge_identity(model: str) -> JudgeIdentityV1:
-    if "/" in model:
-        provider = model.split("/", 1)[0]
-    elif model.startswith(("gpt-", "o1", "o3", "o4", "o5")):
-        provider = "openai"
-    else:
-        provider = "litellm"
+    """Who served the judge, recorded on the judgement.
+
+    Asked of litellm, which performs the call. The hand-written ladder this
+    replaces knew about the `/` prefix and about OpenAI's bare ids, and sent
+    everything else to `provider: "litellm"` -- the name of the library doing
+    the routing, not of anyone who could have answered. Anthropic ids route
+    bare, so every Claude judge was recorded that way.
+    """
+    import contextlib
+    import io
+
+    provider = ""
+    try:
+        import litellm
+
+        # litellm prints its provider list while raising for an id it cannot
+        # place; that belongs in neither the log nor the record.
+        with contextlib.redirect_stdout(io.StringIO()):
+            provider = str(litellm.get_llm_provider(model=model)[1] or "")
+    except Exception:
+        # An id nothing can place must not fail the judgement: this value
+        # annotates the record, and cannot be worth refusing to produce it.
+        provider = ""
+    if not provider:
+        provider = model.split("/", 1)[0] if "/" in model else "unknown"
     return JudgeIdentityV1(model=model, provider=provider)
 
 

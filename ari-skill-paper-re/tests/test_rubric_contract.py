@@ -88,3 +88,43 @@ def test_unknown_schema_and_digest_tampering_fail_closed():
 def test_paper_digest_mismatch_fails_before_grading():
     with pytest.raises(RubricContractError, match="paper text does not match"):
         validate_rubric_document(_document(v2=True), paper_text="other paper")
+
+
+class TestJudgeIdentityProvider:
+    """The judge's recorded provider must name who served it.
+
+    The ladder this replaces knew the `/` prefix and OpenAI's bare ids, and
+    sent everything else to `provider: "litellm"` -- the routing library's own
+    name, not anyone who could have answered. Anthropic ids route bare, so
+    every Claude judge was recorded that way.
+    """
+
+    @staticmethod
+    def _provider(model: str) -> str:
+        # Loaded under a unique name, the convention this package already uses
+        # for server.py: a plain `src.server` import resolves to whichever
+        # ari-skill-*/src/server.py pytest imported first.
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "paper_re_server_judge", SRC / "server.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        sys.modules.setdefault("paper_re_server_judge", module)
+        spec.loader.exec_module(module)
+        return module._judge_identity(model).provider
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            ("claude-opus-4-7", "anthropic"),
+            ("claude-opus-5", "anthropic"),
+            ("gpt-4o", "openai"),
+            ("gemini/gemini-2.5-pro", "gemini"),
+        ],
+    )
+    def test_the_judge_records_a_real_provider(self, model, expected):
+        assert self._provider(model) == expected
+
+    def test_unplaceable_judge_id_degrades_instead_of_raising(self):
+        assert self._provider("totally-made-up-model-xyz") == "unknown"

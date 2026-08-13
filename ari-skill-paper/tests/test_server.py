@@ -964,3 +964,64 @@ async def test_link_paper_claims_projects_native_science_data_exactly_once(tmp_p
     assert out["paper_digest"]
     assert out["claim_links_digest"]
     assert "note" not in out
+
+
+def _resolve_provider(model: str) -> str:
+    from src.authoring import routed_provider as _fn
+
+    return _fn(model)
+
+
+class TestRoutedProviderProvenance:
+    """The provider recorded on a call must name who served it.
+
+    It was derived by splitting the model id on "/", which is not how these
+    ids work -- OpenAI and Anthropic models route bare. So the field held the
+    model's own name (`claude-opus-4-7` as its own provider): wrong, and
+    plausible enough in the record to be read straight past.
+    """
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            ("claude-opus-4-7", "anthropic"),
+            ("claude-opus-5", "anthropic"),
+            ("gpt-4o", "openai"),
+            ("o3", "openai"),
+            ("gemini/gemini-2.5-pro", "gemini"),
+        ],
+    )
+    def test_bare_and_prefixed_ids_both_name_a_real_provider(self, model, expected):
+        assert _resolve_provider(model) == expected
+
+    def test_unplaceable_id_degrades_instead_of_raising(self):
+        """This value annotates the artifact; it must not be able to stop it."""
+        assert _resolve_provider("totally-made-up-model-xyz") == "unknown"
+
+    def test_prefixed_private_gateway_keeps_its_own_prefix(self):
+        assert _resolve_provider("my-gateway/some-model") == "my-gateway"
+
+    # The checks above exercise the resolver. This one drives `record_call`,
+    # which is what stamps the provider onto PaperModelCallV1 -- without it
+    # the resolver could be correct and simply not wired to anything, which
+    # is the shape of the defect this change fixes.
+    def test_the_recorded_call_uses_the_resolver(self, tmp_path, monkeypatch):
+        from types import SimpleNamespace
+
+        from ari.public.execution import WorkspaceRefV1
+        from src.authoring import AuthoringRecorder
+
+        monkeypatch.delenv("ARI_MODEL_PAPER_PROVIDER", raising=False)
+        monkeypatch.delenv("ARI_MODEL_PAPER_REVISION", raising=False)
+        recorder = AuthoringRecorder(
+            SimpleNamespace(workspace=WorkspaceRefV1(root=str(tmp_path)))
+        )
+        call = recorder.record_call(
+            purpose="initial-authoring",
+            prompt=b"p",
+            raw_response=b"r",
+            response=SimpleNamespace(usage=None),
+            model="claude-opus-4-7",
+            sampling={"temperature": 0.0},
+        )
+        assert call.provider == "anthropic"

@@ -383,3 +383,59 @@ async def test_legacy_manifest_and_arbitrary_image_path_are_not_accepted(tmp_pat
         await review_figures_all(str(legacy))
     with pytest.raises(TypeError):
         await review_figure(str(image))  # figure_id is mandatory; no path fallback
+
+
+def _resolve_provider(model: str) -> str:
+    from src.review import _routed_provider as _fn
+
+    return _fn(model)
+
+
+class TestRoutedProviderProvenance:
+    """The provider recorded on a call must name who served it.
+
+    It was derived by splitting the model id on "/", which is not how these
+    ids work -- OpenAI and Anthropic models route bare. So the field held the
+    model's own name (`claude-opus-4-7` as its own provider): wrong, and
+    plausible enough in the record to be read straight past.
+    """
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            ("claude-opus-4-7", "anthropic"),
+            ("claude-opus-5", "anthropic"),
+            ("gpt-4o", "openai"),
+            ("o3", "openai"),
+            ("gemini/gemini-2.5-pro", "gemini"),
+        ],
+    )
+    def test_bare_and_prefixed_ids_both_name_a_real_provider(self, model, expected):
+        assert _resolve_provider(model) == expected
+
+    def test_unplaceable_id_degrades_instead_of_raising(self):
+        """This value annotates the artifact; it must not be able to stop it."""
+        assert _resolve_provider("totally-made-up-model-xyz") == "unknown"
+
+    def test_prefixed_private_gateway_keeps_its_own_prefix(self):
+        assert _resolve_provider("my-gateway/some-model") == "my-gateway"
+
+    # The checks above exercise the resolver. These drive `_model_identity`,
+    # the function that actually stamps the record -- without them the
+    # resolver could be correct and simply not wired to anything, which is
+    # the failure this whole change is about.
+    def test_the_recorded_identity_uses_the_resolver(self, monkeypatch):
+        from src.review import _model_identity
+
+        monkeypatch.setenv("ARI_VLM_MODEL", "claude-opus-4-7")
+        monkeypatch.delenv("ARI_MODEL_VLM_PROVIDER", raising=False)
+        _model, _revision, provider = _model_identity()
+        assert provider == "anthropic"
+
+    def test_an_explicit_provider_still_overrides_the_resolver(self, monkeypatch):
+        from src.review import _model_identity
+
+        monkeypatch.setenv("ARI_VLM_MODEL", "claude-opus-4-7")
+        monkeypatch.setenv("ARI_MODEL_VLM_PROVIDER", "internal-proxy")
+        _model, _revision, provider = _model_identity()
+        assert provider == "internal-proxy"
