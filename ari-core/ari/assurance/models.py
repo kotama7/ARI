@@ -334,6 +334,28 @@ class HarnessSuiteV1(DigestBoundModel):
     resolver_objective: tuple[Any, ...]
     suite_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
 
+    @model_validator(mode="after")
+    def _unsatisfied_is_not_also_covered(self):
+        """An atom cannot be both beyond every harness and covered by one.
+
+        The resolver builds these two sets as complements -- an uncovered atom
+        is one NO compatible manifest covers, so it appears in no coverage
+        record -- and everything downstream relies on it: a verdict for an
+        unsatisfied atom is only ever "inconclusive" because no harness is ever
+        handed it. That was a property of how the sets happen to be built, and
+        a suite minted with both claims at once was accepted, digest and all.
+        """
+        covered = set(self.covered_atom_digests)
+        for record in self.coverage:
+            covered.update(record.covered_atom_digests)
+        both = sorted(covered & set(self.unsatisfied_atom_digests))
+        if both:
+            raise ValueError(
+                "Harness suite declares atoms both unsatisfied and covered: "
+                + ", ".join(both)
+            )
+        return self
+
 
 class LockedHarnessV1(StrictModel):
     harness_id: str
@@ -369,6 +391,27 @@ class BaselineHarnessLockV1(DigestBoundModel):
     producer_component_id: Literal["harness_resolver_v1"] = "harness_resolver_v1"
     prompt_hash: None = None
     lock_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
+
+    @model_validator(mode="after")
+    def _unsatisfied_is_not_also_locked(self):
+        """The same complement, restated where the bridge reads it.
+
+        ``coverage_proof_digest`` is computed over the lock's own claims, so it
+        cannot notice the two disagreeing, and mint copies both straight from
+        the suite without comparing them. This is the one place between the
+        resolver's construction and the verdict where the disagreement is
+        visible.
+        """
+        locked = set()
+        for harness in self.harnesses:
+            locked.update(harness.covered_atom_digests)
+        both = sorted(locked & set(self.unsatisfied_atom_digests))
+        if both:
+            raise ValueError(
+                "Baseline Harness lock declares atoms both unsatisfied and "
+                "covered by a locked Harness: " + ", ".join(both)
+            )
+        return self
 
 
 class HarnessLockRevisionV1(DigestBoundModel):

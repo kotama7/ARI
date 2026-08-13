@@ -41,6 +41,20 @@ def validate_attestation(
     }
     if not required.issubset(covered):
         raise ValueError("Attestation does not cover every requested property atom")
+    # AND NOTHING BEYOND THEM. Only the first direction was checked, so a driver
+    # reporting on an atom it was never handed was accepted, and the digest went
+    # straight into the bridge's coverage map without anyone comparing it to the
+    # request.
+    #
+    # That matters because a request is built by filtering the requirements down
+    # to what the LOCK says this harness covers, which is how an atom the
+    # resolver could satisfy with no harness at all stays unsatisfiable. The
+    # verdict aggregation now relies on such an atom never appearing in the
+    # coverage map, so what used to be six drivers all happening to iterate
+    # request.property_atoms is stated here instead.
+    if not covered.issubset(required):
+        raise ValueError(
+            "Attestation covers property atoms the request did not grant it")
 
 
 __all__ = ["validate_attestation"]

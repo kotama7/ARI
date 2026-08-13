@@ -115,6 +115,26 @@ def test_a_request_failure_is_still_inconclusive_and_now_says_why(tmp_path):
     assert "target declaration is absent" in reason
 
 
+def test_a_lock_naming_a_missing_manifest_is_tampered_and_says_so(tmp_path):
+    """EVERY exit of the suite has to carry a reason, including this one.
+
+    Adding the reason to three of the four returns and not the fourth turned the
+    TAMPER path into `ValueError: not enough values to unpack`, which the runtime
+    swallows as a generic infrastructure error with no record written at all. A
+    lock naming a manifest the catalog no longer holds is the one finding that
+    must never be downgraded into "something went wrong".
+    """
+    bridge = _bridge(tmp_path)
+    bridge.catalog = SimpleNamespace(manifests=())
+
+    attestations, status, reason = bridge._run_tier_suite(
+        _node(), None, None, (SimpleNamespace(atom_digest="atom-1"),), tier="screen")
+
+    assert attestations == []
+    assert status == "tampered"
+    assert "no longer holds" in reason
+
+
 def test_a_clean_suite_returns_no_reason(tmp_path):
     bridge = _bridge(tmp_path)
     bridge._verify_locked = lambda *a, **k: SimpleNamespace(property_results=())
@@ -145,3 +165,111 @@ def test_an_ordinary_verdict_records_no_reason(tmp_path):
     bridge, node = _bridge(tmp_path), _node()
     bridge._classify(node, status="pass", frontier="scientific_frontier")
     assert _summary(tmp_path)["status_reason"] == ""
+
+
+def test_certify_records_the_worst_verdict_a_property_earned(tmp_path):
+    """One property_id carries one atom per required method, and certify wrote
+    them with plain assignment, so whichever came last decided.
+
+    A property with an uncovered method beside a covered one that passed came
+    out as "pass" -- the covered atom's verdict written after the uncovered
+    one's "inconclusive". The aggregate status was never wrong, so nothing was
+    admitted that should not have been; the per-property verdict the manuscript
+    and the GUI read was. The screen loop has always taken the worst; this makes
+    certify agree.
+    """
+    bridge, node = _bridge(tmp_path), _node()
+    node.status = "success"
+    node.assurance_status = "pass"
+    node.frontier_class = "scientific_frontier"
+    node.property_verdicts = {}
+    uncovered = SimpleNamespace(tier="certify", atom_digest="atom-uncovered",
+                                property_id="numerical-equivalence")
+    covered = SimpleNamespace(tier="certify", atom_digest="atom-covered",
+                              property_id="numerical-equivalence")
+    bridge.admission.modes = SimpleNamespace(assurance="audit")
+    # Uncovered FIRST, so a last-write-wins loop records the pass that follows.
+    bridge.baseline.requirements = (uncovered, covered)
+    bridge._candidate_target = lambda _n: (
+        object(), SimpleNamespace(target_digest="sha256:" + "6" * 64), "")
+    bridge._run_tier_suite = lambda *a, **k: (
+        [SimpleNamespace(property_results=(SimpleNamespace(
+            covered_atom_digests=("atom-covered",), verdict="pass"),))], "", "")
+
+    bridge.certify(node)
+
+    assert node.property_verdicts == {"numerical-equivalence": "inconclusive"}, (
+        "a property with an unverifiable method was recorded as passing")
+
+
+def test_a_covered_failure_is_no_longer_masked_by_an_unsatisfiable_neighbour(tmp_path):
+    """THE JUSTIFICATION for running the covered harnesses at all.
+
+    While any required atom was unsatisfiable, no harness ran and the node was
+    recorded ``inconclusive`` -- including when a harness that COULD run would
+    have failed it. The failure had no entry in property_verdicts at all, and
+    the manuscript classifier, which looks for "fail" or "tampered", saw nothing
+    and called the node exploratory rather than excluded.
+
+    This asserts the strict direction, in ENFORCE mode where the frontier
+    actually discriminates: audit returns scientific_frontier for every status,
+    so a test written there cannot tell a pass from a tampering.
+    """
+    bridge, node = _bridge(tmp_path), _node()
+    node.status = "success"
+    bridge.admission.modes = SimpleNamespace(assurance="enforce")
+    unsatisfiable = SimpleNamespace(tier="screen", atom_digest="atom-unsatisfiable",
+                                    property_id="memory-safety")
+    covered = SimpleNamespace(tier="screen", atom_digest="atom-covered",
+                              property_id="numerical-equivalence")
+    bridge.baseline.requirements = (unsatisfiable, covered)
+    bridge._candidate_target = lambda _n: (
+        object(), SimpleNamespace(target_digest="sha256:" + "6" * 64), "")
+    bridge._run_tier_suite = lambda *a, **k: (
+        [SimpleNamespace(property_results=(SimpleNamespace(
+            covered_atom_digests=("atom-covered",), verdict="fail"),))], "", "")
+
+    frontier = bridge.assure(node)
+
+    assert node.assurance_status == "fail", (
+        "a covered harness said fail and the node was not recorded as failing")
+    assert node.property_verdicts["numerical-equivalence"] == "fail"
+    assert node.property_verdicts["memory-safety"] == "inconclusive"
+    assert frontier == "debug_frontier", (
+        "enforce mode must route a failing candidate to debug, not hold it "
+        "uncertified as the masked verdict did")
+
+
+def test_audit_runs_covered_harnesses_when_other_atoms_are_unsatisfied(tmp_path):
+    """Partial audit coverage is recorded; uncovered atoms stay inconclusive."""
+    bridge, node = _bridge(tmp_path), _node()
+    node.status = "success"
+    covered = SimpleNamespace(
+        tier="screen", atom_digest="atom-1", property_id="numerical-equivalence"
+    )
+    uncovered = SimpleNamespace(
+        tier="screen", atom_digest="atom-2", property_id="memory-safety"
+    )
+    bridge.admission.modes = SimpleNamespace(assurance="audit")
+    bridge.baseline.requirements = (covered, uncovered)
+    bridge.baseline.unsatisfied_atom_digests = ("atom-2",)
+    declaration = SimpleNamespace(target_digest="sha256:" + "6" * 64)
+    bridge._candidate_target = lambda _node: (object(), declaration, "")
+    calls = []
+
+    def run_suite(_node, _workspace, _declaration, required, *, tier):
+        calls.append((tuple(required), tier))
+        result = SimpleNamespace(
+            covered_atom_digests=("atom-1",), verdict="pass"
+        )
+        return [SimpleNamespace(property_results=(result,))], "", ""
+
+    bridge._run_tier_suite = run_suite
+
+    assert bridge.assure(node) == "scientific_frontier"
+    assert calls == [((covered, uncovered), "screen")]
+    assert node.assurance_status == "inconclusive"
+    assert node.property_verdicts == {
+        "numerical-equivalence": "pass",
+        "memory-safety": "inconclusive",
+    }

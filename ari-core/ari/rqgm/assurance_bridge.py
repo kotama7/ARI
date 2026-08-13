@@ -160,23 +160,6 @@ class RQGMAssuranceBridge:
         if not required:
             self._classify(node, status="pass", frontier="scientific_frontier")
             return node.frontier_class
-        unsatisfied = {
-            item.atom_digest
-            for item in required
-            if item.atom_digest in set(self.baseline.unsatisfied_atom_digests)
-        }
-        if unsatisfied:
-            node.property_verdicts = {
-                item.property_id: "inconclusive"
-                for item in required
-                if item.atom_digest in unsatisfied
-            }
-            self._classify(
-                node,
-                status="inconclusive",
-                frontier=self._frontier("inconclusive"),
-            )
-            return node.frontier_class
 
         workspace, declaration, preflight_status = self._candidate_target(node)
         if preflight_status:
@@ -241,26 +224,6 @@ class RQGMAssuranceBridge:
         )
         if not required:
             return node.frontier_class
-        unsatisfied = {
-            item.atom_digest
-            for item in required
-            if item.atom_digest in set(self.baseline.unsatisfied_atom_digests)
-        }
-        if unsatisfied:
-            node.property_verdicts.update(
-                {
-                    item.property_id: "inconclusive"
-                    for item in required
-                    if item.atom_digest in unsatisfied
-                }
-            )
-            self._classify(
-                node,
-                status="inconclusive",
-                frontier=self._frontier("inconclusive"),
-                tier="certify",
-            )
-            return node.frontier_class
         workspace, declaration, preflight_status = self._candidate_target(node)
         if preflight_status:
             self._classify(
@@ -289,7 +252,17 @@ class RQGMAssuranceBridge:
                 if verdicts
                 else runtime_failure or "inconclusive"
             )
-            node.property_verdicts[requirement.property_id] = verdict
+            # WORST WINS, as in the screen loop above. One property_id can carry
+            # several atoms -- one per required method -- and plain assignment
+            # let whichever came last decide. A property with an uncovered
+            # method beside a covered one that passed was recorded as "pass",
+            # because the pass was written after the inconclusive. The aggregate
+            # status was never wrong, so nothing was admitted that should not
+            # have been; what was wrong is the per-property verdict that the
+            # manuscript and the GUI read.
+            previous = node.property_verdicts.get(requirement.property_id)
+            if previous is None or _VERDICT_RANK[verdict] > _VERDICT_RANK[previous]:
+                node.property_verdicts[requirement.property_id] = verdict
             aggregate.append(verdict)
         status = (
             max(aggregate, key=lambda item: _VERDICT_RANK[item])
@@ -317,7 +290,9 @@ class RQGMAssuranceBridge:
                 continue
             manifest = manifests.get(locked.manifest_digest)
             if manifest is None:
-                return attestations, "tampered"
+                return attestations, "tampered", (
+                    "the active lock names a Harness manifest the catalog no "
+                    "longer holds")
             try:
                 attestations.append(
                     self._verify_locked(
