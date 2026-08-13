@@ -24,6 +24,7 @@ targets the like-named module under `ari/`.
 - `test_assurance_failure_reason.py` — an infrastructure failure has to say which one it was. The bridge caught every exception from a locked verification with a bare `except Exception:` and returned the label `infrastructure_error` alone, dropping the cause the runner already had in hand. Two unrelated defects — a container runtime installed on no node, and a memory bound too small for that runtime to start — both surfaced as that one word, and telling them apart meant replaying the execution by hand. Pins the reason being captured, reaching the record, NOT changing the verdict, and being stripped of host identity, because the record is written into a checkpoint and can leave with a reproduction.
 - `test_assurance_measure.py` — the wrong-vs-slow distinction the wiring rests on, both error classes, seeding that never overwrites an inherited candidate, and the channel split: `evaluation_cases` is rendered verbatim into the child's prompt, so it is treatment text and must not gain fields, while the verdict/spread/absolute seconds and the measurement provenance live in the audit channel.
 - `test_assurance_resolver.py` — harness catalog resolution, compatibility filtering, lock creation, and fail-closed ambiguity coverage.
+- `test_assurance_target_declaration.py` — TODO
 - `test_async_tool_lifecycle.py` — asynchronous handle state transitions, polling budgets, cancellation, and expiry.
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.
@@ -55,6 +56,8 @@ targets the like-named module under `ari/`.
 - `test_claude_code_validation.py` — JSON extraction and schema checking over free-text model output: fenced and prose-embedded JSON is recovered, and the scanner does not give up on the first balanced-but-unparseable brace span, so prose like `{n>=1}` ahead of the answer no longer turns a valid reply into a parse failure. No JSON at all raises rather than returning a guess.
 - `test_cli.py` — CLI.
 - `test_cli_extended.py` — extended CLI cases.
+- `test_cli_paper_exit.py` — TODO
+- `test_cli_profile_persistence.py` — TODO
 - `test_cli_shim_toolcalls.py` — CLI shim (`ari.llm.cli_server`) function-calling: `extract_tool_calls`/`render_prompt`/`complete` turn text-only `claude -p`/`codex exec` into OpenAI `tool_calls`, plus cost passthrough and MCP-direct mode vs. text-catalog fallback.
 - `test_clone.py` — clone behaviour.
 - `test_compute_budget.py` — a search node's SCHEDULER reservations are budgeted, in node-seconds. `exec_budget` charged only `run_bash`/`run_code` — time on one machine — so a node could be refused after half an hour of local shell while a thousand-node two-hour submission cost it nothing. Pins walltime parsing for every accepted form, an unreadable walltime reserving zero rather than reading as unlimited, both argument shapes (flat and typed), refusal BEFORE the submission reaches MCP (once queued the reservation is held whatever happens next, so a later cancel gives nothing back), the typed and container paths budgeted too so the bridge is not the only policed route, per-node isolation, no cross-charging with the command budget, and the whole cap off by default because it is site policy.
@@ -162,6 +165,7 @@ targets the like-named module under `ari/`.
 - `test_manuscript_complete.py` — end-to-end Manuscript Complete topology, failure-injection, migration, repair, and publication-lock coverage.
 - `test_max_react_passthrough.py` — max-ReAct passthrough.
 - `test_mcp_cow_concurrency.py` — MCP copy-on-write concurrency.
+- `test_mcp_stdio_guard.py` — TODO
 - `test_memory.py` — memory backend.
 - `test_metric_contract_obligation.py` — `ari.agent.metric_contract` producer obligation: domain-neutral `build_contract_obligation`/`build_emission_nudge`, run-level claim coverage (`build_coverage_status`, `collect_run_measurement_names`), and lineage chaining (`collect_node_measurement_names`, `build_expand_coverage_hint`, `build_inherited_data_note`).
 - `test_migrate_science_data_cli.py` — explicit offline legacy science-data migration and loss-report CLI behavior.
@@ -215,6 +219,8 @@ targets the like-named module under `ari/`.
 - `test_result_envelope.py` — typed MCP results, bounded inline payloads, artifacts, errors, and provenance normalization.
 - `test_retrieval_backend.py` — retrieval backend.
 - `test_root_idea_selector.py` — root-idea selector.
+- `test_router_contract_handoff.py` — TODO
+- `test_router_typed_contract_availability.py` — TODO
 - `test_rqgm_adversarial.py` — RQGM Task 06 adversarial evolution loop: schema round-trip/validation for all six record types, `UtilityPenaltyPolicy.compute` arithmetic + `apply_utility_penalty` guards, the AdversarialReplayPool (admission/dedup/eviction, contamination-safe `abstract_view`, capability-checked `replay_view`), the §5.5 trigger predicate, the raw-attacks-never-score regression, resume idempotency, the `simple_bfts` zero-file regression, plus Task 15's `target_component_id` accountability binding (self-binding refusal, frozen-not-live resolution, fail-open matrix).
 - `test_rqgm_clean_room.py` — RQGM Task 08 clean-room regeneration: the `CleanRoomGenerationRequest` schema, deterministic closed-field bundle assembler (planted forbidden material never enters a bundle), the §5.5 contamination screen, Layer-B retired-text capability denial (kernel CK-ACC-002), the never-instantly-active rule, per-epoch generation budget, the retirement→request→generation→candidate chain over a deterministic fake generator, contaminated-output fail-open, and the `simple_bfts` zero-import/zero-file regression.
 - `test_rqgm_context_views.py` — RQGM Task 12 role-specific context views: three-layer ProposalSummaryView-only enforcement for BFTS (typed renderer input → `TypeError`, kernel `validate_context_scope` sharing the same whitelist constant, archive-only-field leak regression) plus the §5.7 visibility exclusions — the Judge never sees frontier scores, governance never sees retired prompt text, same-role isolation is constructive.
@@ -275,7 +281,7 @@ targets the like-named module under `ari/`.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
 - `test_text_toolcall_recovery.py` — recovery of tool calls emitted as plain text by models that do not honour the tool-call protocol; keeps a weak model's turn usable instead of scoring it as a no-op.
-- `test_tolerance_policy_coverage.py` — TODO
+- `test_tolerance_policy_coverage.py` — a governed run must be able to state the tolerance a Harness actually pins. The regression: `build_verification_contract` stamped every correctness requirement with the digest of the Research Contract's own {absolute, relative} pair, while a Harness pins the sha256 of a symbolic policy FILE. `resolver` compares those two for equality, so coverage resolved to nothing whatever numbers the contract carried — and the failure surfaced far away, as `unsatisfied Harness coverage`.
 - `test_tool_manager_workdir.py` — tool dispatch pins filesystem tools (`write_code`/`run_bash`/`run_code`/`emit_results`/`read_file`) to the node's work_dir when the model omits `work_dir`, so per-node edits land in the evaluated dir instead of the shared `/tmp/ari_work` fallback (regression guard for the BFTS bug where omitted-work_dir edits were scored on inherited parent code); explicit work_dir is not overridden and memory-tool CoW routing is preserved.
 - `test_tool_timeout_tier.py` — MCP `_resolve_tool_timeout` tiering: LLM/compile paper stages (incl. `paper_refine`, `compile_paper`) get the slow timeout, plain tools the 300s default (regression guard for the paper_refine shim-congestion timeout).
 - `test_trace_log_truncation.py` — trace-log truncation.

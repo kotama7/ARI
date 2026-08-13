@@ -350,16 +350,16 @@ def test_unknown_capability_in_the_reviewed_table_is_refused():
         _build(_lock([_descriptor()]), refs={LEAF: ("ari.eda.nonexistent/v1",)})
 
 
-def test_reviewed_leaf_absent_from_the_catalog_is_refused():
-    """Stale review must fail loudly, not silently unsupply a capability."""
+def test_reviewed_leaf_absent_from_a_narrow_site_catalog_grants_nothing():
+    """A reviewed superset remains safe with a deliberately narrow site lock."""
 
     contract = _contract()
-    with pytest.raises(BrokeredCatalogError, match="absent from the catalog"):
-        _build(
-            _lock([_descriptor()]),
-            contract=contract,
-            refs={"tool:openroad::gone@1": (contract.capability_ref,)},
-        )
+    provisions = _build(
+        _lock([_descriptor()]),
+        contract=contract,
+        refs={"tool:openroad::gone@1": (contract.capability_ref,)},
+    )
+    assert provisions == ()
 
 
 def test_quarantined_leaf_is_refused():
@@ -495,7 +495,7 @@ def _provider_lock(manifest, *, run_id="run-1"):
                 "context_requirement": resolved[name].context_requirement,
             },
         )
-        for name in ("invoke", "get_status", "get_result")
+        for name in ("invoke", "invoke_scheduled", "get_status", "get_result")
     ]
     # Scope identities the way the child-environment builder records them: a
     # declared credential is only "present" when its variable actually holds a
@@ -578,6 +578,8 @@ def _load(
     lock_name="CATALOG.lock",
     lifecycle_tools=(),
     declared_by_tool=None,
+    dispatch_tool_by_leaf=None,
+    ontology=None,
 ):
     from ari.config import SkillConfig
     from ari.providers.catalog import load_provider_catalog
@@ -597,12 +599,17 @@ def _load(
             "dispatch_tool": dispatch_tool,
             "lifecycle_tools": list(lifecycle_tools),
             "declared_capability_refs_by_brokered_tool": refs,
+            **(
+                {"dispatch_tool_by_leaf": dict(dispatch_tool_by_leaf)}
+                if dispatch_tool_by_leaf
+                else {}
+            ),
         },
     )
     return load_provider_catalog(
         catalog,
         provider_lock=_provider_lock(manifest),
-        ontology=_ontology(_contract(), _read_only_contract()),
+        ontology=ontology or _ontology(_contract(), _read_only_contract()),
         configured_skills=(
             SkillConfig(
                 name="tool-registry-skill",
@@ -883,4 +890,97 @@ def test_a_lifecycle_tool_cannot_be_classified_directly_either(tmp_path):
             # workspace-read, exactly what this contract requires. Only the
             # backstop can refuse it.
             declared_by_tool={"get_status": ["ari.code.inspect/v1"]},
+        )
+
+
+# ── per-leaf dispatch surfaces ────────────────────────────────────────────
+def _scheduler_contract():
+    return _contract(
+        capability_ref="ari.execution.submit/v1",
+        title="Submit",
+        description="Submit work to a scheduler",
+        side_effect_class="scheduler-submit",
+        required_permissions=("scheduler-submit",),
+    )
+
+
+def _scheduler_leaf(**updates):
+    return _descriptor(
+        side_effects="stateful",
+        permissions=["workspace-write", "workspace-read", "scheduler"],
+        **updates,
+    )
+
+
+def test_a_leaf_can_be_routed_through_its_own_dispatch_surface(tmp_path):
+    """Why routing exists at all.
+
+    A Provider's side-effect class follows its permissions and the composite
+    envelope is max(leaf, dispatch), so one shared surface cannot carry a
+    scheduler-submitting leaf without raising the envelope of every leaf behind
+    it -- which is how granting `scheduler` to `invoke` once disqualified three
+    workspace-write capabilities at a stroke.
+    """
+
+    _write(tmp_path, _lock([_scheduler_leaf()]))
+    loaded = _load(
+        tmp_path,
+        refs={LEAF: ["ari.execution.submit/v1"]},
+        dispatch_tool_by_leaf={LEAF: "invoke_scheduled"},
+        ontology=_ontology(_scheduler_contract()),
+    )
+    (provision,) = loaded.provisions
+    assert provision.tool_ref == "tool-registry-skill::invoke_scheduled@1"
+    assert provision.subject_tool_ref == LEAF
+    assert provision.side_effect_class == "scheduler-submit"
+
+
+def test_the_same_leaf_is_refused_through_the_ordinary_surface(tmp_path):
+    """The other half of the reason: `invoke` declares no scheduler authority,
+    and the route grants the intersection of leaf and dispatch permissions."""
+
+    _write(tmp_path, _lock([_scheduler_leaf()]))
+    with pytest.raises(BrokeredCatalogError, match="does not grant"):
+        _load(
+            tmp_path,
+            refs={LEAF: ["ari.execution.submit/v1"]},
+            ontology=_ontology(_scheduler_contract()),
+        )
+
+
+def test_leaves_not_routed_keep_the_default_surface(tmp_path):
+    _write(tmp_path, _lock([_descriptor()]))
+    loaded = _load(tmp_path, refs={LEAF: ["ari.eda.place-route/v1"]})
+    (provision,) = loaded.provisions
+    assert provision.tool_ref == "tool-registry-skill::invoke@1"
+
+
+def test_a_routed_surface_absent_from_the_run_lock_is_refused(tmp_path):
+    """Held to the same rule as the default surface, not a softer one."""
+
+    _write(tmp_path, _lock([_descriptor()]))
+    with pytest.raises(ValueError, match="dispatch tool is absent from the run lock"):
+        _load(
+            tmp_path,
+            refs={LEAF: ["ari.eda.place-route/v1"]},
+            dispatch_tool_by_leaf={LEAF: "invoke_nonexistent"},
+        )
+
+
+def test_a_routed_surface_cannot_also_be_classified_directly(tmp_path):
+    """The composite subject gate is defeated by a direct binding on the same
+    tool_ref, so every surface a leaf can be routed to is barred from carrying a
+    direct classification -- not only the default one."""
+
+    _write(tmp_path, _lock([_descriptor()]))
+    with pytest.raises(ValueError, match="cannot also be classified directly"):
+        _load(
+            tmp_path,
+            refs={LEAF: ["ari.eda.place-route/v1"]},
+            dispatch_tool_by_leaf={LEAF: "invoke_scheduled"},
+            # A classification the surface genuinely satisfies, so the refusal
+            # can only be the conflict rule and not a side-effect mismatch
+            # arriving first.
+            declared_by_tool={"invoke_scheduled": ["ari.execution.submit/v1"]},
+            ontology=_ontology(_scheduler_contract()),
         )

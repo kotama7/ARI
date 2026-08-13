@@ -115,22 +115,22 @@ Shipped default config files (YAML) loaded by ari-core.
         - `negative-screen-stderr.log` — stderr from invalid stencil screening.
         - `negative-screen-stdout.log` — stdout from invalid stencil screening.
     - `production_e2e/` — authentic screen/certify, manuscript build, reproduction, decision, and publication-lock evidence.
-      - `authoritative_verification_cost.json` — TODO
-      - `baseline_harness_lock.json` — TODO
-      - `certify_attestation.json` — TODO
-      - `e2e_report.json` — TODO
-      - `harness_catalog_snapshot.json` — TODO
-      - `manuscript_authoring_binding.json` — TODO
-      - `manuscript_readiness.json` — TODO
-      - `paper_build.json` — TODO
-      - `publication_decision.json` — TODO
-      - `publication_lock.json` — TODO
-      - `published_paper.pdf` — TODO
-      - `reproduced_paper.pdf` — TODO
-      - `reproduction.json` — TODO
-      - `screen_attestation.json` — TODO
-      - `verification_contract.json` — TODO
-      - `verification_environment.json` — TODO
+      - `authoritative_verification_cost.json` — the run's cost ledger, with `measurement_semantics` spelling out what each unit MEANS (accelerator- and cpu-core-seconds are the declared allocation multiplied by measured wall time, not a metered consumption), so a number cannot be read as more precise than the way it was obtained.
+      - `baseline_harness_lock.json` — the harness set this run was judged against, frozen before execution: the catalog snapshot, coverage proof, oracle bundle and research contract digests, and the producing component. Fixing it first is what stops a run from choosing its own judges.
+      - `certify_attestation.json` — the authoritative certify-tier attestation, binding attempt, epoch, both harness locks, capability-binding lock, container/dataset/driver digests and the evidence artifacts it rests on.
+      - `e2e_report.json` — the chain in one file: every digest from the baseline lock through certify, readiness, paper build, publication decision, lock and published PDF, plus whether physical node identity was persisted. A reader checks the links here and then the artifacts.
+      - `harness_catalog_snapshot.json` — the exact manifests, promotion approvals, registration evidence and reports the catalog held at run start, pinned by `snapshot_digest` and `catalog_source_revision`. It carries the manifests' own self-pins, so a manifest edit made afterwards makes this snapshot fail validation rather than silently describe a tree that moved.
+      - `manuscript_authoring_binding.json` — what the manuscript was authored FROM: profile, readiness, brief bundle and context digests bound to one attempt and backend version, so a paper cannot be attributed to evidence it did not read.
+      - `manuscript_readiness.json` — the per-requirement readiness evaluation with its counts (satisfied / missing / not-applicable / unavailable) and the separate authoring and publication verdicts. `not_applicable` is recorded rather than dropped, so a requirement that never applied cannot be mistaken for one that passed.
+      - `paper_build.json` — the immutable build record: input and final artifacts, the exact compile commands, the gate outcome and `blocking_reasons` (empty here), and the declared limitations.
+      - `publication_decision.json` — the `publishable` verdict with its subverdicts, bound to the readiness, authoring-binding and paper-build digests it was computed from.
+      - `publication_lock.json` — the immutable seal over the decision: the PDF digest, the decision and binding digests, and `freshness_verified`. Publication is the AND of the earlier gates plus this freshness check, and the lock is what records that it held.
+      - `published_paper.pdf` — the PDF the publication lock pins by digest.
+      - `reproduced_paper.pdf` — the PDF produced by re-running the recorded build, kept beside the published one so the digest comparison is checkable rather than asserted.
+      - `reproduction.json` — the reproduction attempt: command identity, exit code, expected and reproduced PDF digests, and `digest_match`. A byte-identical rebuild is the claim; this file is where it is either shown or refuted.
+      - `screen_attestation.json` — the bounded screen-tier attestation for the same candidate, binding the same locks and identities as the certify one. Keeping both is what lets a reader see that the cheap tier and the authoritative tier agreed.
+      - `verification_contract.json` — what the run was obliged to verify: requirements, property vocabulary and research contract digests, admission confidence, and the human review identity. Written before execution, so the obligations cannot be narrowed to fit the result.
+      - `verification_environment.json` — the substrate identity the verdict was established on: architecture, container digest, declared features (`landlock`, `network-namespace`), network classes, resource types and transports, sealed as `identity_digest`. A verdict is a statement about a machine, and this is the machine.
   - `policies/` — shared scientific verification and numerical tolerance policies.
     - `hpc-floating-point-v1.yaml` — floating-point comparison, NaN, overflow, and tolerance policy for HPC harnesses.
   - `problems/` — pinned research problems. One directory per problem: scaffolding, goal text, entry point, case set and axis under a single digest. Added freely — no ARI edit and no approval — because the schema cannot reach the instrument.
@@ -166,6 +166,10 @@ Shipped default config files (YAML) loaded by ari-core.
     - `hpc_gemm_performance.registration.json` — the retained registration record for the GEMM performance harness, binding its manifest, evidence bundle and approval into the catalog entry.
     - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.
     - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.
+  - `target_abis/` — candidate-side ABI identity registry, kept independent from the Harness manifests that judge compatibility.
+    - `gemm.yaml` — dense GEMM target identity (`gemm-c-abi/v1`, fp64 C shared library).
+    - `spmm.yaml` — CSR SpMM target identity (`spmm-csr-c-abi/v1`, fp64 C shared library).
+    - `stencil.yaml` — seven-point stencil target identity (`stencil-7point-c-abi/v1`, fp64 C shared library).
 - `knowledge_skills/` — built-in and imported knowledge skills, source profiles, and the admitted catalog.
   - `catalog.yaml` — canonical knowledge-skill catalog with source and compatibility references.
   - `bodies/` — the SKILL.md sources for the skills that originate in this repository rather than upstream. The importer treats them as an external source like any other — pinned to a commit, hashed, and copied byte-for-byte into `imports/` — so a run loads the bytes an approval was given over and not whatever happens to be on disk here.

@@ -61,6 +61,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `__init__.py` — public assurance package exports.
   - `attestation.py` — construct and validate digest-bound harness run attestations.
   - `catalog.py` — load, snapshot, and query the admitted harness catalog.
+  - `container_identity.py` — identifies a Harness container by what is IN it, not by the bytes it arrived in. A manifest used to pin the SHA-256 of the SIF file, which is not reproducible: two pulls of one tag give two different files, so an image that had to be re-obtained could not satisfy the pin naming it, and re-pinning meant re-registering every harness and collecting a human signature again — a large recurring cost for a change that alters nothing a verdict depends on. Measured across two independent pulls, the SIF and squashfs bytes differ while of 109,597 filesystem entries exactly ONE does: `.singularity.d/labels.json`, which the runtime writes at build time. So the rootfs is the stable identity, and this module digests it.
   - `contract.py` — verification-contract parsing and compatibility checks.
   - `executors.py` — bounded harness execution backends and result normalization.
   - `lock.py` — create and verify immutable harness selection locks and revisions.
@@ -89,6 +90,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `runner.py` — coordinate locked harness execution and attestation persistence.
   - `sandbox.py` — Landlocks the process that runs untrusted code, so a check is not the only defence. Every forgery demonstrated against the performance harness used the same two primitives: `fork()` and reading `/proc/self/cmdline` to find the file the credited time is written to. The harness catches those after the fact, but a check only refuses what someone thought to check for — a candidate that cannot READ the path cannot use it, and one that cannot read the problem directory cannot find the frozen reference that is its own denominator. Filesystem access control only: it does not stop `fork`, CPU spinning, or code that never touches the filesystem, so the after-the-fact checks stay for the family it does not cover. On a kernel without Landlock it RAISES rather than running unprotected, and the run records which it was.
   - `suite.py` — run multi-property assurance suites and aggregate their verdicts.
+  - `target_abi.py` — load independent, data-driven candidate ABI identities used to author Harness target declarations; adding a family adds a YAML record instead of extending a task-name table in core.
   - `drivers/` — isolated adapters for native, container, external, shared-library, upstream, and PaperBench harnesses.
     - `__init__.py` — assurance driver registry exports.
     - `external.py` — shell-free external verifier driver with bounded artifacts and diagnostics.
@@ -226,6 +228,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `lock_runtime.py` — per-client exact/subset `SKILLS.lock` reconciliation state.
   - `registry_runtime.py` — live discovery, enrichment, and collision admission.
   - `secure_stdio_proxy.py` — exact-env/redacting boundary for direct MCP clients.
+  - `stdio_guard.py` — TODO
 - `memory/` — backend abstraction for ancestor-scoped node memory.
   - `README.md` — memory index.
   - `__init__.py` — `MemoryClient` protocol, backends, migration map.
@@ -598,6 +601,7 @@ Core engine package for ARI. Each sub-package carries its own `README.md`
   - `internal_adapters.py` — lazy wrappers over the last ari-core internals with no `ari.public.*` surface: `pid_status`/`read_pid` (`ari.pidfile`) plus `memory_backend` forwarding to the sanctioned `ari.memory.get_backend` funnel.
   - `node_work_api.py` — per-node work-dir filetree/filecontent/memory listing.
   - `routes.py` — `_Handler` dispatch + access log.
+  - `run_health.py` — TODO
   - `server.py` — HTTP/WebSocket server and `ari viz` main entry.
   - `state.py` — shared mutable server state.
   - `state_sync.py` — node-tree loading + broadcast + filesystem watcher.

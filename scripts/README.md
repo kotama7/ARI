@@ -64,6 +64,7 @@ Operational and utility scripts for building images, running services, and dev t
 - `letta/` — Letta memory-backend deployment helpers.
   - `README.md` — letta index.
   - `docker-compose.yml` — Letta + Postgres (laptop/workstation).
+  - `patch_091_missing_greenlet.py` — TODO
   - `start_pip.sh` — container-less single-user deployment with SQLite.
   - `start_singularity.sh` — Singularity/Apptainer deployment for HPC.
   - `pg-init/` — Postgres init SQL for the Letta store.
@@ -103,6 +104,7 @@ Operational and utility scripts for building images, running services, and dev t
   - `start_local.sh` — uvicorn + sqlite single-process, for laptop/dev.
   - `start_singularity.sh` — HPC fallback running the registry inside an Apptainer SIF.
 - `rqgm_assurance/` — release utilities for promoting native scientific harnesses and exercising their publication path.
+  - `bind_container_image.py` — establish what is inside a Harness container image and bind it to the file. A manifest pins container CONTENT, because that is what a verdict depends on and what survives the image being fetched again. Reading the whole rootfs is far too slow to do per run, so it is done here once and recorded beside the image. Run it after obtaining or re-obtaining an image; it changes no manifest and needs no approval, because it asserts nothing about whether the content is the RIGHT content — only what the content is. The manifest's pin decides whether that content may verify anything, and the executor compares the two.
   - `promote_native_harnesses.py` — validate and promote the native HPC harness set with immutable registration evidence.
   - `run_certify_publication_e2e.py` — execute the authentic screen/certify-to-publication flow and retain its evidence bundle.
 - `rqgm_eval/` — the RQGM evaluation/ablation harness (RQGM Task 13): condition matrix, failure-injection specs, the `run_ablation.py` campaign driver, the post-hoc `run_paper_panel.py` rubric panel, and the shared benchmark experiment set; the unit-testable logic lives in `ari.rqgm.evaluation.*` — these files only wire processes.

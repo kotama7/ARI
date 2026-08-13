@@ -16,6 +16,7 @@ lifecycle of each `ari-skill-*` subprocess and routes tool calls + results.
 - `lock_runtime.py` — per-client exact/subset `SKILLS.lock` reconciliation state.
 - `registry_runtime.py` — live discovery, enrichment, and collision admission.
 - `secure_stdio_proxy.py` — exact-env/redacting boundary for direct MCP clients.
+- `stdio_guard.py` — TODO
 
 ## See also
 
