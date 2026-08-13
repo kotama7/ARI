@@ -220,7 +220,9 @@ def _api_get_settings() -> dict:
         # ORS (PaperBench-format auto rubric) defaults.
         "ors": {
             "replicator_model":   os.environ.get("ARI_MODEL_REPLICATE",   "claude-opus-4-7"),
-            "rubric_gen_model":   os.environ.get("ARI_MODEL_RUBRIC_GEN",  "gemini-2.5-pro"),
+            # Prefixed, matching ari-skill-replicate's DEFAULT_MODEL. The bare form
+            # routes to vertex_ai in litellm, not gemini.
+            "rubric_gen_model":   os.environ.get("ARI_MODEL_RUBRIC_GEN",  "gemini/gemini-2.5-pro"),
             "rubric_audit_model": os.environ.get("ARI_MODEL_RUBRIC_AUDIT","claude-opus-4-7"),
             "judge_model":        os.environ.get("ARI_MODEL_JUDGE",       "gpt-4o-2024-11-20"),
             "rubric_gen_temperature":   0.0,

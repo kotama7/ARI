@@ -62,7 +62,11 @@ export interface OrsSettings {
 
 export const ORS_DEFAULTS: OrsSettings = {
   replicator_model: 'claude-opus-4-7',
-  rubric_gen_model: 'gemini-2.5-pro',
+  // Prefixed, matching ari-skill-replicate's own DEFAULT_MODEL. Bare
+  // `gemini-2.5-pro` is not the same model to litellm -- it routes to
+  // vertex_ai, which needs GCP project credentials rather than the
+  // GOOGLE_API_KEY this provider is configured with.
+  rubric_gen_model: 'gemini/gemini-2.5-pro',
   rubric_audit_model: 'claude-opus-4-7',
   judge_model: 'gpt-4o-2024-11-20',
   rubric_gen_temperature: 0.0,

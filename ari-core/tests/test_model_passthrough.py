@@ -576,6 +576,51 @@ class TestSettingsModelListStatic:
     """Verify that the React Settings model dropdown is populated dynamically
     per provider, not hardcoded with a mixed list."""
 
+    def test_served_models_carry_the_prefix_their_provider_routes_on(self):
+        """Gemini and Ollama ids must be prefixed, because litellm routes on it.
+
+        These model strings are handed to litellm, which reads the provider off
+        the prefix. A bare `gemini-2.5-pro` is not "the same id, tidier": it
+        resolves to *vertex_ai*, a different backend needing GCP project
+        credentials instead of GOOGLE_API_KEY. A bare `qwen3:8b` resolves to no
+        provider at all and raises `LLM Provider NOT provided`. Both shipped in
+        the Wizard's ORS picker, labelled Google and Ollama, until this rule
+        existed. OpenAI and Anthropic ids route bare, so they are not covered.
+        """
+        from ari.viz.checkpoint_api import _api_models
+
+        served = {p["id"]: p["models"] for p in _api_models()["providers"]}
+        for prov in ("gemini", "ollama"):
+            assert prov in served, f"served catalog is missing {prov!r}"
+            unprefixed = [m for m in served[prov] if "/" not in m]
+            assert not unprefixed, (
+                f"{prov} models {unprefixed} carry no provider prefix; litellm "
+                f"would route them somewhere other than {prov}"
+            )
+
+    def test_ors_default_models_are_all_in_the_served_catalog(self):
+        """The ORS pickers render the catalog, so their defaults must be in it.
+
+        A default the catalog does not list drops its picker into free-text
+        mode on open -- the operator sees a text box where a chosen model was
+        supposed to be, and no dropdown entry matching what is configured.
+        """
+        from ari.viz.api_settings import _api_get_settings
+        from ari.viz.checkpoint_api import _api_models
+
+        served = {m for p in _api_models()["providers"] for m in p["models"]}
+        ors = _api_get_settings()["ors"]
+        for field in (
+            "replicator_model",
+            "rubric_gen_model",
+            "rubric_audit_model",
+            "judge_model",
+        ):
+            assert ors[field] in served, (
+                f"ORS default {field}={ors[field]!r} is not in the served "
+                f"catalog, so its picker opens in custom mode"
+            )
+
     def test_provider_models_dict_has_no_cross_contamination(self):
         """No provider's model list may carry another provider's models.
 

@@ -247,7 +247,13 @@ class TestGetDefaultsShape:
         assert isinstance(out["llm_model"], str)
         ors = out["ors"]
         assert ors["replicator_model"] == "claude-opus-4-7"
-        assert ors["rubric_gen_model"] == "gemini-2.5-pro"
+        # Prefixed. This assertion used to freeze the bare `gemini-2.5-pro`,
+        # which is a different model to litellm: it routes to vertex_ai, whose
+        # credentials are a GCP project rather than the GOOGLE_API_KEY this
+        # provider is set up with. ari-skill-replicate's own DEFAULT_MODEL has
+        # always been the prefixed form, so the default shipped here disagreed
+        # with the code that consumes it -- and the disagreement was pinned.
+        assert ors["rubric_gen_model"] == "gemini/gemini-2.5-pro"
         assert ors["rubric_audit_model"] == "claude-opus-4-7"
         assert ors["judge_model"] == "gpt-4o-2024-11-20"
         assert ors["rubric_gen_temperature"] == 0.0

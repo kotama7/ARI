@@ -284,6 +284,7 @@ targets the like-named module under `ari/`.
 - `test_skill_public_contract.py` — skills import core via the public contract.
 - `test_status_fallback.py` — status fallback.
 - `test_system_prompt_memory.py` — system-prompt memory.
+- `test_target_abi_conformance.py` — TODO
 - `test_text_toolcall_recovery.py` — recovery of tool calls emitted as plain text by models that do not honour the tool-call protocol; keeps a weak model's turn usable instead of scoring it as a no-op.
 - `test_tolerance_policy_coverage.py` — a governed run must be able to state the tolerance a Harness actually pins. The regression: `build_verification_contract` stamped every correctness requirement with the digest of the Research Contract's own {absolute, relative} pair, while a Harness pins the sha256 of a symbolic policy FILE. `resolver` compares those two for equality, so coverage resolved to nothing whatever numbers the contract carried — and the failure surfaced far away, as `unsatisfied Harness coverage`.
 - `test_tool_manager_workdir.py` — tool dispatch pins filesystem tools (`write_code`/`run_bash`/`run_code`/`emit_results`/`read_file`) to the node's work_dir when the model omits `work_dir`, so per-node edits land in the evaluated dir instead of the shared `/tmp/ari_work` fallback (regression guard for the BFTS bug where omitted-work_dir edits were scored on inherited parent code); explicit work_dir is not overridden and memory-tool CoW routing is preserved.

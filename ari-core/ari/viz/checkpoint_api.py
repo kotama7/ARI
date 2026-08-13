@@ -74,14 +74,14 @@ def _api_models() -> dict:
             # dated id is the fallback out of that, and it only helps if the
             # operator can see it: a free-text field they must already know to
             # type is not a fix for a surprise they cannot diagnose.
-            {"id": "openai",    "name": "OpenAI",     "models": ["gpt-5.4", "gpt-5.2", "gpt-4o", "gpt-4o-2024-08-06", "gpt-4o-mini", "o4-mini", "o3", "o3-mini"]},
+            {"id": "openai",    "name": "OpenAI",     "models": ["gpt-5.4", "gpt-5.2", "gpt-4o", "gpt-4o-2024-11-20", "gpt-4o-2024-08-06", "gpt-4o-mini", "o4-mini", "o3", "o3-mini"]},
             # Current Claude model ids, aliases rather than dated snapshots --
             # an alias is complete as written and never takes a date suffix.
             # This list is also the reason the frontend tables have to go: the
             # Wizard offered claude-haiku-3-5 and Settings claude-3-5-haiku-latest,
             # both retired in February 2026, so the two screens were handing the
             # operator model ids that 404 while this list was current.
-            {"id": "anthropic", "name": "Anthropic (Claude)", "models": ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"]},
+            {"id": "anthropic", "name": "Anthropic (Claude)", "models": ["claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5"]},
             # The Claude Code CLI as a hermetic LLM API
             # (docs/reference/claude_code_provider.md). Both frontends offered
             # this provider and the served catalog did not, so switching them to
