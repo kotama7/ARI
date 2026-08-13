@@ -330,6 +330,10 @@ def measure(work_dir: str, *, seed: int = 0, tier: str | None = None,
     # not lose its score because a shared-library link failed.
     try:
         declaration = declare_target(root, loaded)
+    except TargetABIMismatch as exc:
+        # Not the candidate's failure to build and not the instrument's: the
+        # artifact simply is not the kind of thing this Harness verifies.
+        measurement["assurance_target_error"] = f"ABI mismatch: {exc}"
     except PerfBuildError as exc:
         measurement["assurance_target_error"] = f"candidate did not link: {exc}"
     except Exception as exc:  # instrument-side; the score is still valid
@@ -364,6 +368,34 @@ TARGET_DECLARATION_FILE = "assurance_target.json"
 #: The library the declaration points at. Named for the entry point rather than
 #: the candidate file so a problem whose scored input is not C still reads.
 _TARGET_LIBRARY = "assurance_target.so"
+
+
+class TargetABIMismatch(RuntimeError):
+    """The built artifact does not implement the contract it would declare."""
+
+
+def _missing_abi_symbols(library: Path, required: tuple[str, ...]) -> list[str]:
+    """Which required symbols the built library does not resolve.
+
+    Resolved through ctypes, the same way the verifier resolves them, so this
+    check and the check that matters cannot disagree about what "exported"
+    means.
+    """
+    if not required:
+        return []
+    import ctypes
+
+    try:
+        handle = ctypes.CDLL(str(library))
+    except OSError as exc:
+        raise TargetABIMismatch(f"built library will not load: {exc}") from exc
+    missing = []
+    for name in required:
+        try:
+            getattr(handle, name)
+        except AttributeError:
+            missing.append(name)
+    return missing
 
 
 def declare_target(work_dir: str | Path,
@@ -404,6 +436,21 @@ def declare_target(work_dir: str | Path,
         raise PerfBuildError(
             f"candidate did not link as a shared library: "
             f"{completed.stderr.strip()[:2000]}")
+
+    missing = _missing_abi_symbols(library, abi.exported_symbols)
+    if missing:
+        # Declaring `interface_contract` asserts this artifact keeps that
+        # contract. Unchecked, the assertion was simply false: a candidate
+        # exporting only the problem's own entry point was declared conformant
+        # to gemm-c-abi/v1, and the verifier failed 33 of 33 cases with
+        # "missing ari_gemm_f32 symbol" -- every error exactly 0.0, because the
+        # kernel was never entered. Refusing to declare is the honest outcome:
+        # the node then has no verifiable target, which is true, instead of a
+        # conformance claim it does not meet.
+        raise TargetABIMismatch(
+            f"candidate does not implement {abi.interface_contract}: "
+            f"{library.name} exports none of {', '.join(missing)}"
+        )
 
     workspace = WorkspaceRefV1(root=str(root))
     declaration = HarnessTargetDeclarationV1.create(

@@ -74,6 +74,11 @@ benchmarks/
 
 # ── Setup artifacts (environment-specific) ─────────────────────
 .ari_python
+# Runtime job records written by the HPC skill at submission time. They
+# carry the things that must never be published: the compute node's fully
+# qualified hostname, the scheduler partition, and the absolute work_dir
+# with the account name in it.
+.ari-hpc/
 
 # ── Security ────────────────────────────────────────────────────
 .env

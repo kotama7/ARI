@@ -25,6 +25,14 @@ class NativeABIIdentityV1:
     language: str = "c"
     subject_type: str = "program"
     target_kind: str = "shared-library"
+    #: Symbols the verifier resolves by name. Declaring conformance to an
+    #: interface contract is a CLAIM about the artifact; unchecked, it is a
+    #: claim the declaring side has no basis for. Observed: a candidate built
+    #: from a problem whose scaffolding exports `gemm` was declared conformant
+    #: to `gemm-c-abi/v1`, whose verifier resolves `ari_gemm_f32`/`ari_gemm_f64`
+    #: -- 33 of 33 cases failed with "missing symbol" and every error was
+    #: exactly 0.0, because the kernel was never entered.
+    exported_symbols: tuple[str, ...] = ()
 
 
 class TargetABIRegistryError(RuntimeError):
@@ -46,6 +54,18 @@ def _required_text(raw: dict, key: str, source: Path) -> str:
     return value
 
 
+def _symbol_list(raw: object, source: Path) -> tuple[str, ...]:
+    """Symbols the verifier resolves by name, in declaration order."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple)):
+        raise TargetABIRegistryError(f"{source}: exported_symbols must be a list")
+    out = tuple(str(item).strip() for item in raw if str(item).strip())
+    if len(out) != len(set(out)):
+        raise TargetABIRegistryError(f"{source}: exported_symbols must be unique")
+    return out
+
+
 def _load_identities() -> dict[str, NativeABIIdentityV1]:
     root = target_abi_root()
     if not root.is_dir():
@@ -61,7 +81,7 @@ def _load_identities() -> dict[str, NativeABIIdentityV1]:
             raise TargetABIRegistryError(f"{source}: identity must be a mapping")
         allowed = {
             "schema_version", "family", "interface_contract", "dtype",
-            "language", "subject_type", "target_kind",
+            "language", "subject_type", "target_kind", "exported_symbols",
         }
         unknown = sorted(set(raw) - allowed)
         if unknown:
@@ -80,6 +100,7 @@ def _load_identities() -> dict[str, NativeABIIdentityV1]:
             language=_required_text(raw, "language", source),
             subject_type=_required_text(raw, "subject_type", source),
             target_kind=_required_text(raw, "target_kind", source),
+            exported_symbols=_symbol_list(raw.get("exported_symbols"), source),
         )
     return identities
 
