@@ -234,3 +234,35 @@ def test_the_skip_note_is_bounded_and_carries_no_host_identity(tmp_path, monkeyp
 
     assert len(reason) <= 480, f"the note ran to {len(reason)} characters"
     assert str(home) not in reason, "a checkpoint record must not carry host identity"
+
+
+# --- the pin that decides whether a Harness can run at all ---------------------
+
+def test_every_shipped_manifest_pins_the_driver_that_exists():
+    """A registered Harness that `prepare` refuses is registered in name only.
+
+    There was a test for this and it named the three correctness manifests one
+    by one, so the performance manifest -- added later, and the only one whose
+    driver changed afterwards -- was outside it. Its pin went stale when the
+    placement check was added to perf.py, and it was then re-registered four
+    times at 15/15 gates while `prepare` refused it with "driver bytes drifted".
+
+    Enumerating the directory instead of the names is the point: the next
+    manifest is covered without anyone remembering to add it.
+    """
+    from ari.assurance.drivers.native import native_driver_digest
+    from ari.assurance.drivers.perf import perf_driver_digest
+
+    expected = {"artifact_verifier": native_driver_digest(),
+                "benchmark": perf_driver_digest()}
+    checked = 0
+    for path in sorted(BUILTIN.glob("*.yaml")):
+        manifest = yaml.safe_load(path.read_text())
+        want = expected.get(manifest["kind"])
+        if want is None:
+            continue
+        checked += 1
+        assert manifest["driver"]["sha256"] == want, (
+            f"{path.name} pins a driver digest that is not the driver in this "
+            f"tree; prepare refuses it and no gate notices")
+    assert checked >= 4, f"only {checked} manifests were checked"

@@ -325,6 +325,25 @@ def _full_sha256_integrity(evidence: GateEvidence):
             checked[name] = value
     if bad:
         return False, f"not full sha256: {sorted(bad)}", checked
+    # AND THE DRIVER PIN NAMES THE DRIVER THAT WAS PROBED.
+    #
+    # Well-formedness was all this asked, so a manifest could pin a perfectly
+    # shaped digest of a driver that no longer exists and still be registered.
+    # Nothing else in the fifteen compares the manifest against the instrument:
+    # official_runner_parity checks the probe's driver digest against the
+    # driver's OWN reported identity, which is the running code compared with
+    # itself. The manifest was never in that comparison.
+    #
+    # It cost exactly what it looks like it would. hpc/gemm-performance kept a
+    # driver pin from before the placement check was added to perf.py, was
+    # re-registered four times at 15/15, and every one of those runs was of a
+    # Harness that `prepare` refuses with "driver bytes drifted" -- registered,
+    # signed, and unable to run.
+    if evidence.driver_digest and checked.get("driver") != evidence.driver_digest:
+        return False, (
+            "the manifest pins a driver digest that is not the driver being "
+            "registered; prepare will refuse this Harness"
+        ), {**checked, "probed_driver": evidence.driver_digest}
     return True, f"{len(checked)} pinned digests are full sha256", checked
 
 
