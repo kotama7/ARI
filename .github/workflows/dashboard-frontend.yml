@@ -1,0 +1,70 @@
+# Dashboard frontend gate — ari-core/ari/viz/frontend.
+#
+# WHY THIS EXISTS: the viz dashboard ships a real Vitest suite (36 test files,
+# 225 tests) and a strict `tsc --noEmit` config, and NO workflow ran either of
+# them. The only CI that touched the frontend at all was contracts.yml's
+# `viz-api-schema` job, which parses `src/services/api.ts` from Python and is
+# advisory (Stage 1) by that workflow's own staged-rollout policy — so before
+# this file, a PR could delete a component, break every test, and land green.
+#
+# This is a HARD gate: no `continue-on-error` anywhere. That is the point. It
+# is deliberately NOT part of contracts.yml, whose documented policy is that
+# every gate lands advisory and is promoted later; this suite is green on the
+# target branch today, so it lands blocking.
+#
+# WHAT IT COVERS
+#   * `npm ci`             — installs from the committed package-lock.json, so
+#                            a lock/package.json mismatch fails here, not in a
+#                            developer's tree.
+#   * `npm run typecheck`  — `tsc --noEmit` under the app tsconfig (strict,
+#                            noUnusedLocals, noUnusedParameters). Vitest
+#                            transpiles without type-checking, so the suite
+#                            alone would not catch a type regression.
+#   * `npm test`           — `vitest run`, one pass. This ALSO carries the
+#                            generated-types drift guard:
+#                            src/__tests__/v1TypesDrift.test.ts regenerates
+#                            src/services/api/v1types.gen.ts in-memory from
+#                            ari/viz/v1/openapi.json and asserts byte equality
+#                            with the committed file. It needs no separate step
+#                            — it is a normal test file picked up by
+#                            vitest.config.ts's `.test.ts` include — so editing
+#                            openapi.json without rerunning `npm run gen:v1types`
+#                            fails this job.
+#
+# NODE VERSION: `node-version: 20` matches docs-sync.yml / pages.yml. setup-node
+# resolves it to the newest 20.x, which satisfies the frontend's declared
+# engines (`^20.19.0 || >=22.12.0`, driven by Vite 8). Do not pin a lower 20.x.
+#
+# TO REPRODUCE LOCALLY, from the repo root:
+#   cd ari-core/ari/viz/frontend && npm ci && npm run typecheck && npm test
+#
+# NOT RUN HERE: `npm run build` (the gate is correctness, not bundling) and
+# `npm run capture:screenshots` (needs a Playwright browser download and a live
+# backend). Add either as its own step if that changes.
+
+name: dashboard-frontend
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  frontend-suite:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ari-core/ari/viz/frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ari-core/ari/viz/frontend/package-lock.json
+      - name: Install dashboard deps
+        run: npm ci
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+      - name: Vitest suite (includes the v1 generated-types drift guard)
+        run: npm test

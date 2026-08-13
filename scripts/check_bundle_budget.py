@@ -2,15 +2,34 @@
 """Bundle-weight budget gate for the dashboard SPA build.
 
 Formalizes the CI-provable half of the dashboard performance budgets: bundle
-weight is measurable headless from the committed ``npm run build`` output, so it
-becomes a scripts checker; browser metrics (LCP/INP/CLS) stay deferred, and
+weight is measurable headless from an ``npm run build`` output, so it becomes a
+scripts checker; browser metrics (LCP/INP/CLS) stay deferred, and
 docs/guides/gui_cutover_runbook.md "2. Pre-cutover checklist" carries that split
 as a hand-signed gate. The budgets below and the reasoning behind each class are
 documented in docs/guides/testing.md "What gets tested at PR time".
 
-Measured surface: ``ari-core/ari/viz/static/dist/assets/*.js`` (the build Vite
-emits into the served static tree). Each chunk is gzip-compressed in-process
-and compared against its class budget:
+INPUTS (this checker builds nothing and downloads nothing):
+
+  * **A built dist tree** — ``ari-core/ari/viz/static/dist`` by default,
+    ``--dist`` to override. ``dist/`` is gitignored (``ari-core/.gitignore``),
+    so it is NEVER present in a fresh checkout: build it first with
+    ``npm ci && npm run build`` in ``ari-core/ari/viz/frontend``, and in CI put
+    that build in the SAME job as this checker. A missing ``dist/assets`` is
+    exit 2 (an environment error), never a silent pass and never a regression.
+  * ``dist/index.html`` — read to resolve which chunk(s) are the entry. If it
+    carries no ``<script type="module">`` asset reference the run reports
+    ``bundle:entry:unresolved`` instead of quietly reclassifying the entry
+    chunk into the looser ``shared`` budget.
+  * ``--config`` budget YAML (default
+    ``scripts/quality/check_bundle_budget.yaml``). Every key is optional and
+    falls back to the in-code defaults below.
+  * ``--allow`` frozen-baseline YAML (default
+    ``scripts/quality/check_bundle_budget.allow.yaml``). A missing file means
+    an empty allowlist — i.e. every violation counts as net-new.
+
+Measured surface: ``<dist>/assets/*.js`` (the build Vite emits into the served
+static tree). Each chunk is gzip-compressed in-process and compared against its
+class budget:
 
   * **entry**  — the ``<script type="module">`` chunk(s) referenced by
     ``dist/index.html`` — ≤ **100 KiB** gzip.
@@ -23,6 +42,14 @@ and compared against its class budget:
     deliberate conservative superset (largest shared chunk today: zoom at
     ~15 KiB) so a mis-split vendor bundle cannot hide outside the route class.
   * **total** — sum of all ``.js`` gzip sizes — ≤ **600 KiB**.
+
+JS-like assets that are not ``.js`` (Vite emits worker/ESM payloads as
+``.mjs``) fall outside every budget above. They ship to the browser all the
+same, so they are measured and reported under ``summary.unmeasured_js_like``
+and named in the Markdown — the total line must never read as "all the JS in
+this build" when it is not. Widening the budgeted surface to cover them is a
+budget decision (config + docs + baseline), not something this checker does
+silently, so they produce no findings and do not move any exit code.
 
 TOTAL BUDGET RATIONALE (600 KiB): the 2026-07-26 build totals ~261 KiB gzip
 across 46 chunks (main 59.4 KiB). 600 KiB ≈ 2.3× headroom covers the planned
@@ -55,6 +82,12 @@ Exit convention (matches the scripts/quality family): ``0`` = clean, default /
 finding; ``1`` = net-new finding under ``--fail-on-regression``; ``2`` =
 usage/environment error (missing PyYAML, missing dist directory — an absent
 build is an environment problem, not a budget regression).
+
+Every violation is ALSO named on stderr (ASCII, one line each: class, chunk,
+measured KiB, the budget it broke). ``--output``/``--format json`` send the
+report to a file, so without that a gate run would exit 1 with an empty log and
+the reader could not tell which budget was exceeded. A clean run prints nothing
+to stderr.
 """
 from __future__ import annotations
 
@@ -98,6 +131,10 @@ _ENTRY_SCRIPT_RE = re.compile(
     r"<script[^>]*type=\"module\"[^>]*src=\"[^\"]*/assets/([^\"/]+\.js)\"")
 
 GZIP_LEVEL = 6  # zlib default == Vite reporter's level (see module docstring)
+
+# JS that ships but is not on the budgeted ``*.js`` surface (Vite emits worker
+# and ESM payloads as .mjs). Reported, never budgeted — see module docstring.
+JS_LIKE_UNMEASURED_SUFFIXES = (".mjs", ".cjs")
 
 
 def _import_common():
@@ -194,6 +231,27 @@ def measure_chunks(dist: Path, budgets: dict, route_re: re.Pattern) -> list[dict
     return rows
 
 
+def measure_unmeasured(dist: Path) -> list[dict]:
+    """JS-like assets outside the budgeted ``*.js`` surface (report-only rows).
+
+    These bytes reach the browser but no budget in this file covers them, so
+    reporting them is what keeps ``total_js_gzip_kib`` from being read as the
+    build's whole JS weight. Produces no findings by design (docstring).
+    """
+    rows: list[dict] = []
+    for path in sorted((dist / "assets").glob("*")):
+        if not path.is_file() or path.suffix not in JS_LIKE_UNMEASURED_SUFFIXES:
+            continue
+        gz = gzip_size(path)
+        rows.append({
+            "name": path.name,
+            "gzip_bytes": gz,
+            "gzip_kib": round(gz / KIB, 1),
+        })
+    rows.sort(key=lambda r: (-r["gzip_bytes"], r["name"]))
+    return rows
+
+
 def collect_findings(dist: Path, chunks: list[dict], budgets: dict) -> list[Finding]:
     findings: list[Finding] = []
     dist_rel = _rel(dist)
@@ -281,9 +339,11 @@ def apply_allowlist(findings: list[Finding], allow_ids: set[str]) -> list[Findin
     return findings
 
 
-def build_report(target_rel: str, chunks: list[dict],
-                 findings: list[Finding], budgets: dict) -> dict:
+def build_report(target_rel: str, chunks: list[dict], findings: list[Finding],
+                 budgets: dict, unmeasured: list[dict] | None = None) -> dict:
     total = sum(r["gzip_bytes"] for r in chunks)
+    unmeasured = unmeasured or []
+    unmeasured_total = sum(r["gzip_bytes"] for r in unmeasured)
     by_class: dict[str, int] = {}
     for r in chunks:
         by_class[r["class"]] = by_class.get(r["class"], 0) + 1
@@ -298,9 +358,27 @@ def build_report(target_rel: str, chunks: list[dict],
         "budgets_kib": {k: v for k, v in budgets.items() if k != "route_overrides"},
         "route_overrides_kib": dict(budgets.get("route_overrides") or {}),
         "chunks": chunks,
+        # Outside every budget above; measured so the total cannot be misread.
+        "unmeasured_js_like_gzip_bytes": unmeasured_total,
+        "unmeasured_js_like_gzip_kib": round(unmeasured_total / KIB, 1),
+        "unmeasured_js_like": unmeasured,
     }
     return json.loads(_common.emit_json(
         CHECKER_NAME, SCHEMA_VERSION, target_rel, summary, findings))
+
+
+def _render_unmeasured_line(summary: dict) -> str:
+    """One line accounting for JS that ships outside the budgeted surface."""
+    rows = summary.get("unmeasured_js_like") or []
+    suffixes = "/".join(f"`{s}`" for s in JS_LIKE_UNMEASURED_SUFFIXES)
+    if not rows:
+        return (f"- unbudgeted JS-like assets ({suffixes}, outside the `*.js` "
+                f"budget surface): none")
+    named = ", ".join(f"{r['name']} ({r['gzip_kib']} KiB)" for r in rows)
+    return (f"- unbudgeted JS-like assets ({suffixes}, outside the `*.js` budget "
+            f"surface — **not** counted in the total above): "
+            f"**{summary['unmeasured_js_like_gzip_kib']} KiB gzip** across "
+            f"{len(rows)} file(s) — {named}")
 
 
 def render_markdown(report: dict) -> str:
@@ -317,6 +395,7 @@ def render_markdown(report: dict) -> str:
          f"{s['budgets_kib']['route_kib']}, shared ≤ {s['budgets_kib']['shared_kib']}"
          + (f", overrides: {s['route_overrides_kib']}"
             if s["route_overrides_kib"] else "")),
+        _render_unmeasured_line(s),
         "",
     ]
     if not report["findings"]:
@@ -345,9 +424,57 @@ def _rel(path: Path) -> str:
         return str(path)
 
 
+def report_violations_to_stderr(target_rel: str, findings: list[Finding],
+                                enforcing: bool) -> None:
+    """Name every net-new violation on stderr (ASCII only; silent when clean).
+
+    Keeps an enforcing run from exiting 1 with an empty log when the report was
+    routed to a file by ``--output``/``--format json``.
+    """
+    new = [f for f in findings if not f.allowlisted]
+    if not new:
+        return
+    known = sum(1 for f in findings if f.allowlisted)
+    verdict = "FAIL" if enforcing else "advisory"
+    known_note = f" ({known} allowlisted, not counted)" if known else ""
+    lines = [f"check_bundle_budget: {verdict} - {len(new)} budget violation(s)"
+             f"{known_note} in {target_rel}"]
+    lines += [f"  [{f.kind}] {f.message} (id: {f.id})" for f in new]
+    if enforcing:
+        lines.append(
+            "check_bundle_budget: budgets are set in "
+            "scripts/quality/check_bundle_budget.yaml and accepted debt in "
+            "scripts/quality/check_bundle_budget.allow.yaml - relaxing either "
+            "to turn this green is a reviewed budget change, not a fix.")
+    else:
+        lines.append("check_bundle_budget: exit 0 (report-only posture); pass "
+                     "--fail-on-regression to enforce.")
+    sys.stderr.write("\n".join(lines) + "\n")
+
+
+EPILOG = """\
+Examples:
+  # Report only; exits 0 whatever it finds (the family's default posture).
+  python scripts/check_bundle_budget.py
+
+  # Enforce the ratchet: exit 1 on any violation not in the allowlist.
+  python scripts/check_bundle_budget.py --fail-on-regression
+
+  # CI shape: enforce, and leave the aggregator's JSON envelope behind under
+  # the name generate_quality_report.py looks for (<checker>.json). Violations
+  # still print to stderr, so the log names the budget that broke.
+  python scripts/check_bundle_budget.py --fail-on-regression \\
+      --format json --output check_bundle_budget.json
+
+The dist must already be built (dist/ is gitignored):
+  npm ci && npm run build   # in ari-core/ari/viz/frontend
+"""
+
+
 def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+        description=__doc__, epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dist", default=None,
                     help="built dist root (default: ari-core/ari/viz/static/dist)")
     ap.add_argument("--config", default=str(DEFAULT_CONFIG),
@@ -383,12 +510,19 @@ def main(argv: list[str] | None = None) -> int:
     chunks = measure_chunks(dist, cfg["budgets"], route_re)
     findings = apply_allowlist(
         collect_findings(dist, chunks, cfg["budgets"]), allow_ids)
-    report = build_report(_rel(dist), chunks, findings, cfg["budgets"])
+    target_rel = _rel(dist)
+    report = build_report(target_rel, chunks, findings, cfg["budgets"],
+                          measure_unmeasured(dist))
 
     fmt = "json" if args.json else args.format
     text = json.dumps(report, indent=2, ensure_ascii=False) if fmt == "json" \
         else render_markdown(report)
     _common.write_output(text.rstrip("\n"), args.output)
+
+    # A gate must never exit non-zero without saying which budget broke: the
+    # report may have gone to a file, so violations are always named on stderr.
+    enforcing = args.fail_on_regression and not args.warning_only
+    report_violations_to_stderr(target_rel, findings, enforcing)
 
     if args.warning_only:
         return 0

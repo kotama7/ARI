@@ -20,8 +20,24 @@
 #                 (~261 KiB / 46 chunks): headroom for G4-G6 feature growth
 #                 while catching cross-chunk dependency duplication that no
 #                 per-chunk budget can see. Ratchet ceiling — tighten at G6.
+#                 Re-measured 2026-08-13: 396.7 KiB across 41 chunks, i.e. 66%
+#                 of the ceiling already spent — the G6 tightening is a real
+#                 decision, not a formality.
 #   route_overrides — per-route tightening keyed by hash-stripped stem
 #                 (Settings/Wizard route chunks <= 50 KiB each).
+#
+# NOT covered by any budget here: assets/*.mjs — Vite emits worker payloads
+# with that extension and the measured surface is *.js. The checker measures
+# them anyway and reports them (summary.unmeasured_js_like / the Markdown
+# "unbudgeted JS-like assets" line) so total_kib is never misread as the whole
+# JS weight of the build. As of 2026-08-13 that is pdf.worker.min-*.mjs at
+# 359.9 KiB gzip — nearly as much as every budgeted chunk combined. Pulling it
+# inside the gate means either raising total_kib or giving workers their own
+# budget; both are reviewed budget changes, so the checker will not do it
+# silently.
+#
+# Run it (the dist must be built first — dist/ is gitignored):
+#   python scripts/check_bundle_budget.py --fail-on-regression
 
 dist: ari-core/ari/viz/static/dist
 route_regex: "^[A-Z][A-Za-z0-9]*Page$"

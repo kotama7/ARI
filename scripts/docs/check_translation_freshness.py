@@ -45,9 +45,19 @@ LANGS = ("ja", "zh")
 # with check_doc_sources.py's exemptions).  "plans" exempts docs/plans/**:
 # temporary English-only working documents with no ja/zh mirrors (the
 # _archive / refactoring precedent).
+#
+# "adr" is the same case, made explicit: an architecture decision record is a
+# record of what was decided, in the language it was decided in.  Neither
+# ``docs/ja/adr`` nor ``docs/zh/adr`` has ever existed, so demanding a mirror
+# of every ADR asked for 42 files nobody has ever wanted.  This does not exempt
+# them from ``check_doc_sources.py`` -- an ADR still declares its sources, which
+# is the part that decays.  Several GUI ADRs were exempt until recently only
+# because they still lived under ``docs/plans/``; moving them into the permanent
+# tree is what surfaced this, and the convention did not change with the move.
 EXEMPT_FILES = {"docs/README.md"}
 EXEMPT_DIR_SEGMENTS = (
     "_archive",
+    "adr",
     "plans",
     "node_modules",
     ".vitepress",

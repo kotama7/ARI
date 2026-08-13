@@ -157,7 +157,6 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `settingsStyles.ts` — shared `inputStyle` / `labelStyle` field styles moved verbatim out of SettingsPage so every `sections/*` component consumes one definition.
     - `settingsTypes.ts` — shared prop/data types for the decomposed sections: the threaded `TFn` translator, the `SkillInfo` row, and the `LettaDeployment` union.
     - `__tests__/` — the frozen Settings contract tests (ten cards, 24-key save payload) plus the progressive-disclosure safety test.
-      - `SettingsCatalog.test.tsx` — TODO
       - `SettingsContract.test.tsx` — Tier-1 frozen contract: all ten section `<Card>` titles render, and Save POSTs exactly the 24-key flat object to `/api/settings`.
       - `SettingsDisclosure.test.tsx` — pins the 069 tiers: four `settings-group-header`s render and collapsing one keeps all ten cards mounted (CSS-only, no unmount).
     - `sections/` — the ten presentational `<Card>` sections SettingsPage composes into its four sensitivity tiers; each takes state + setters as props.
@@ -198,9 +197,6 @@ React/TypeScript source for the ARI `ari.viz` web dashboard — app entry, pages
     - `stepResourcesSections.tsx` — ORS model tables + OrsModelPicker/FewshotManager (extracted from StepResources in req 15).
     - `StepScope.tsx` — search scope (max depth/nodes) step.
     - `WizardPage.tsx` — wizard container/step orchestration.
-    - `__tests__/` — Unit/component tests for the parent `Wizard/` directory
-      - `README.md` — __tests__ index.
-      - `StepResourcesCatalog.test.tsx` — step 3 renders the served model catalog (`GET /api/v1/config/catalogs/models`): providers, per-provider model lists and the provider→API-key-env mapping all come from the server, the endpoint-unavailable path invents nothing, and a source-level guard pins that no frontend copy of the catalog returns.
   - `Workflow/` — workflow stages/pipeline page.
     - `README.md` — Workflow index.
     - `index.ts` — barrel re-export.
