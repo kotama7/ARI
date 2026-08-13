@@ -62,9 +62,37 @@ def _api_base() -> str | None:
 
 
 def _provider(model: str) -> str:
+    """Which provider served this model, for the provenance record.
+
+    Asked of litellm, because litellm is what actually routes the call -- the
+    provenance should name the provider that answered, not one inferred beside
+    it. Reading the prefix alone was wrong for the common case: model ids route
+    bare for OpenAI and Anthropic, so `claude-opus-4-7` and `gpt-4o-2024-11-20`
+    -- the shipped defaults for the replicator, the audit and the judge -- each
+    recorded `provider: unknown`. A rubric whose provenance cannot say who
+    generated it is the part of the record that most needs to be true.
+    """
     explicit = os.environ.get("ARI_MODEL_RUBRIC_GEN_PROVIDER", "").strip()
     if explicit:
         return explicit
+    try:
+        import io
+        import contextlib
+
+        import litellm
+
+        # litellm prints its provider list to stdout while raising for an id it
+        # cannot place; that belongs in neither the log nor the record.
+        with contextlib.redirect_stdout(io.StringIO()):
+            resolved = litellm.get_llm_provider(model=model)[1]
+        if resolved:
+            return str(resolved)
+    except Exception:
+        # litellm absent, or a model it cannot place. Fall through rather than
+        # fail the run: this value is a record of what happened, and refusing to
+        # generate a rubric because its provenance label is uncertain would
+        # trade the artifact for the annotation.
+        pass
     return model.split("/", 1)[0] if "/" in model else "unknown"
 
 

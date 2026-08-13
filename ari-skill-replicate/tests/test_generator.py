@@ -752,3 +752,47 @@ def test_prompt_includes_expected_artifacts_discipline():
     assert "CSVs, JSONs" in rendered
     assert "paper figures" in rendered
     assert "Keep short (1–4 entries)" in rendered
+
+
+class TestProviderProvenance:
+    """`_provider` names who served the model, for the provenance record.
+
+    It used to read the prefix and nothing else, so an id that routes bare --
+    which is how OpenAI and Anthropic ids route -- recorded `unknown`. That
+    covered the shipped defaults for the replicator, the audit and the judge,
+    so a default run produced rubrics whose provenance could not say what
+    generated them.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_explicit_override(self, monkeypatch):
+        monkeypatch.delenv("ARI_MODEL_RUBRIC_GEN_PROVIDER", raising=False)
+
+    @pytest.mark.parametrize(
+        "model, expected",
+        [
+            # The three shipped ORS defaults. Each recorded "unknown" before.
+            ("claude-opus-4-7", "anthropic"),
+            ("gpt-4o-2024-11-20", "openai"),
+            ("gemini/gemini-2.5-pro", "gemini"),
+            ("o3", "openai"),
+            ("ollama_chat/qwen3:8b", "ollama_chat"),
+        ],
+    )
+    def test_routable_models_record_the_provider_that_serves_them(
+        self, model, expected
+    ):
+        assert G._provider(model) == expected
+
+    def test_unplaceable_model_still_degrades_to_unknown(self):
+        """An id nothing can place must not fail the run -- the record is an
+        annotation on the artifact, not a precondition for producing it."""
+        assert G._provider("totally-made-up-model-xyz") == "unknown"
+
+    def test_prefixed_private_model_falls_back_to_its_prefix(self):
+        """A gateway id litellm does not know still carries its own provider."""
+        assert G._provider("my-gateway/some-model") == "my-gateway"
+
+    def test_explicit_override_still_wins(self, monkeypatch):
+        monkeypatch.setenv("ARI_MODEL_RUBRIC_GEN_PROVIDER", "internal-proxy")
+        assert G._provider("gpt-4o") == "internal-proxy"
