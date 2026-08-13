@@ -590,10 +590,18 @@ Regression / smoke:
 - **Cross-task coupling.** The kernel validates schemas/logs owned by Task 02 and
   transitions owned by Task 09; interface drift between plans must be reconciled in
   INDEX.md before implementation starts.
-- **Epoch-boundary definition still open** (Task 01/05 decision: N outer iterations vs
-  N completed nodes vs lineage event). The kernel is agnostic (it takes `epoch_state`
-  as input), but `validate_epoch_invariance` fixtures cannot be finalized until that
-  lands.
+- **Epoch-boundary definition landed (2026-07-28, commit `c050ebf`).** The three-way
+  choice was decided as **N new BFTS nodes**: `RQGMEpochConfig` declares
+  `boundary: Literal["node_count"]` and `nodes_per_epoch` (default 10) in
+  `ari-core/ari/config/__init__.py`, and `RqgmRuntime.ensure_epoch`
+  (`ari-core/ari/rqgm/runtime.py`) fires `_run_epoch_boundary` once
+  `node_count - ep.node_count_at_open >= nodes_per_epoch`, counted from the outer-loop
+  head in `ari-core/ari/cli/bfts_loop.py`. The kernel stayed agnostic as planned, and
+  `validate_epoch_invariance` fixtures are finalized: the validator
+  (`ari-core/ari/rqgm/kernel.py`) is reached in production through
+  `RqgmRuntime.check_epoch_invariance`, called from the epoch tick, with CK-EPO-001/002
+  fixtures in `ari-core/tests/test_rqgm_kernel.py`. Only the *richer* trigger policy
+  (stagnation events) remains deferred to Task 05; it is not a kernel dependency.
 
 ## 11. Completion criteria
 

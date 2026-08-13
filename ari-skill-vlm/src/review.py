@@ -25,6 +25,33 @@ from ari.public.visual_review import (
 )
 
 
+def _routed_provider(model: str) -> str:
+    """The provider litellm will route this model to.
+
+    Asked of litellm because litellm is what performs the call, so the record
+    names who answered. Splitting the id on "/" was not a rougher version of
+    this -- it was wrong for every id that routes bare, which is how OpenAI and
+    Anthropic ids route: `claude-opus-4-7` recorded a provider of
+    `claude-opus-4-7`, a model name sitting in the provider field, plausible
+    enough in the record to survive being read.
+    """
+    import contextlib
+    import io
+
+    try:
+        # litellm prints its provider list while raising for an id it cannot
+        # place; that belongs in neither the log nor the record.
+        with contextlib.redirect_stdout(io.StringIO()):
+            resolved = litellm.get_llm_provider(model=model)[1]
+        if resolved:
+            return str(resolved)
+    except Exception:
+        # An id nothing can place must not fail the run: this value annotates
+        # the artifact and must not be able to prevent producing it.
+        pass
+    return model.split("/", 1)[0] if "/" in model else "unknown"
+
+
 _PROMPT_DIR = Path(__file__).with_name("prompts")
 _PLACEHOLDER = re.compile(r"\{\{[A-Z0-9_]+\}\}")
 
@@ -64,7 +91,7 @@ def _model_identity() -> tuple[str, str | None, str | None]:
     if not model:
         raise ValueError("ARI_VLM_MODEL must select a visual review model")
     revision = os.environ.get("ARI_MODEL_VLM_REVISION") or None
-    provider = os.environ.get("ARI_MODEL_VLM_PROVIDER") or model.split("/", 1)[0]
+    provider = os.environ.get("ARI_MODEL_VLM_PROVIDER") or _routed_provider(model)
     return model, revision, provider
 
 

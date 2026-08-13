@@ -1,0 +1,252 @@
+{
+  "$defs": {
+    "ProblemCorrectnessCaseResultV1": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "title": "Case Id",
+          "type": "string"
+        },
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "output_elements_expected": {
+          "minimum": 0,
+          "title": "Output Elements Expected",
+          "type": "integer"
+        },
+        "output_elements_written": {
+          "minimum": 0,
+          "title": "Output Elements Written",
+          "type": "integer"
+        },
+        "repeat_identical": {
+          "title": "Repeat Identical",
+          "type": "boolean"
+        },
+        "repetitions_completed": {
+          "minimum": 0,
+          "title": "Repetitions Completed",
+          "type": "integer"
+        },
+        "repetitions_requested": {
+          "minimum": 0,
+          "title": "Repetitions Requested",
+          "type": "integer"
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail",
+            "inconclusive"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "worst_residual_ratio": {
+          "minimum": 0,
+          "title": "Worst Residual Ratio",
+          "type": "number"
+        }
+      },
+      "required": [
+        "case_id",
+        "verdict",
+        "detail",
+        "worst_residual_ratio",
+        "output_elements_expected",
+        "output_elements_written",
+        "repetitions_requested",
+        "repetitions_completed",
+        "repeat_identical"
+      ],
+      "title": "ProblemCorrectnessCaseResultV1",
+      "type": "object"
+    }
+  },
+  "$id": "ari.native-problem-correctness-report/v1",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The typed result the problem-correctness worker prints and the driver normalizes. Generated from NativeProblemCorrectnessReportV1 so it cannot drift from the model: a registration resolves this file from the drivers declared report type, and result_schema_conformance fails outright when no schema exists for that type.",
+  "properties": {
+    "accepted_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Accepted Flags",
+      "type": "array"
+    },
+    "build_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Build Error"
+    },
+    "candidate_toolchain": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Candidate Toolchain",
+      "type": "object"
+    },
+    "case_results": {
+      "items": {
+        "$ref": "#/$defs/ProblemCorrectnessCaseResultV1"
+      },
+      "title": "Case Results",
+      "type": "array"
+    },
+    "crossed_compiler_boundary": {
+      "title": "Crossed Compiler Boundary",
+      "type": "boolean"
+    },
+    "dataset_revision": {
+      "title": "Dataset Revision",
+      "type": "string"
+    },
+    "dataset_sha256": {
+      "title": "Dataset Sha256",
+      "type": "string"
+    },
+    "deterministic": {
+      "title": "Deterministic",
+      "type": "boolean"
+    },
+    "entry_point": {
+      "title": "Entry Point",
+      "type": "string"
+    },
+    "environment": {
+      "additionalProperties": true,
+      "title": "Environment",
+      "type": "object"
+    },
+    "error_model": {
+      "title": "Error Model",
+      "type": "string"
+    },
+    "family": {
+      "title": "Family",
+      "type": "string"
+    },
+    "interface_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Interface Error"
+    },
+    "negative_control": {
+      "title": "Negative Control",
+      "type": "boolean"
+    },
+    "oracle": {
+      "title": "Oracle",
+      "type": "string"
+    },
+    "placement": {
+      "additionalProperties": true,
+      "title": "Placement",
+      "type": "object"
+    },
+    "problem_digest": {
+      "title": "Problem Digest",
+      "type": "string"
+    },
+    "problem_id": {
+      "title": "Problem Id",
+      "type": "string"
+    },
+    "problem_revision": {
+      "title": "Problem Revision",
+      "type": "string"
+    },
+    "property_verdicts": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Property Verdicts",
+      "type": "object"
+    },
+    "rejected_flags": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Rejected Flags",
+      "type": "array"
+    },
+    "report_digest": {
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "ari.native-problem-correctness-report/v1",
+      "default": "ari.native-problem-correctness-report/v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "tier": {
+      "enum": [
+        "screen",
+        "validate",
+        "certify"
+      ],
+      "title": "Tier",
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "inconclusive"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "problem_id",
+    "problem_revision",
+    "problem_digest",
+    "family",
+    "entry_point",
+    "tier",
+    "verdict",
+    "case_results",
+    "property_verdicts",
+    "deterministic",
+    "oracle",
+    "error_model",
+    "build_error",
+    "interface_error",
+    "accepted_flags",
+    "rejected_flags",
+    "candidate_toolchain",
+    "crossed_compiler_boundary",
+    "dataset_revision",
+    "dataset_sha256",
+    "environment",
+    "placement",
+    "negative_control",
+    "report_digest"
+  ],
+  "title": "NativeProblemCorrectnessReportV1",
+  "type": "object"
+}
