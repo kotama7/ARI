@@ -50,11 +50,7 @@ from ari.assurance.models import (  # noqa: E402
     VerificationRequirementV1,
     VerificationScopeV1,
 )
-from ari.assurance.registration import (  # noqa: E402
-    HARNESS_REGISTRATION_GATES,
-    registration_report,
-)
-from ari.assurance.registration_models import HarnessRegistrationGateV1  # noqa: E402
+from ari.assurance.registration_run import register_harness  # noqa: E402
 from ari.assurance.request import build_native_harness_run_request  # noqa: E402
 from ari.assurance.resolver import (  # noqa: E402
     mint_baseline_harness_lock,
@@ -742,7 +738,8 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
         container_digest=container_digest,
     )
     inventory_bytes = _json_bytes(inventory)
-    parity_all = NativeHPCDriver().parity_probe(
+    driver = NativeHPCDriver()
+    parity_all = driver.parity_probe(
         type("ManifestIdentity", (), {"id": "native-registration"})()
     )
     if not parity_all["passed"]:
@@ -826,59 +823,29 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
             )
             evidence_relative = f"{evidence_prefix}/registration_evidence.json"
             outputs[CONFIG_ROOT / evidence_relative] = _json_bytes(evidence)
-            gate_evidence = {
-                "reference_oracle_pass": artifact_digests[
-                    f"{evidence_prefix}/clean-screen.attestation.json"
-                ],
-                "negative_control_fail": artifact_digests[
-                    f"{evidence_prefix}/negative-screen.attestation.json"
-                ],
-                "clean_control_pass": artifact_digests[
-                    f"{evidence_prefix}/clean-certify.attestation.json"
-                ],
-                "official_runner_parity": artifact_digests[parity_relative],
-                "target_oracle_test_isolation": artifact_digests[
-                    f"{evidence_prefix}/clean-certify.attestation.json"
-                ],
-                "determinism_declaration": artifact_digests[
-                    f"{evidence_prefix}/clean-certify-repeat.attestation.json"
-                ],
-                "infrastructure_failure_separation": artifact_digests[
-                    f"{evidence_prefix}/resource_measurements.json"
-                ],
-                "timeout_resource_enforcement": artifact_digests[
-                    f"{evidence_prefix}/resource_measurements.json"
-                ],
-                "license_completeness": artifact_digests[inventory_relative],
-                "source_revision_digest_pin": artifact_digests[parity_relative],
-                "hidden_test_isolation": artifact_digests[
-                    f"{evidence_prefix}/clean-screen.attestation.json"
-                ],
-                "multiple_run_stability": artifact_digests[
-                    f"{evidence_prefix}/clean-certify-repeat.attestation.json"
-                ],
-                "result_schema_conformance": artifact_digests[
-                    f"{evidence_prefix}/clean-certify.attestation.json"
-                ],
-                "full_sha256_integrity": evidence.evidence_digest,
-                "malicious_harness_sandbox": artifact_digests[
-                    f"{evidence_prefix}/clean-screen.attestation.json"
-                ],
-            }
-            gates = tuple(
-                HarnessRegistrationGateV1(
-                    gate_id=gate_id,
-                    passed=True,
-                    evidence_digest=gate_evidence[gate_id],
-                    detail="passed by immutable native promotion evidence",
-                )
-                for gate_id in HARNESS_REGISTRATION_GATES
-            )
-            report = registration_report(
-                harness_id=manifest.id,
-                manifest_digest=manifest.manifest_digest,
-                gates=gates,
-            )
+            # THE GATES ARE EARNED, NOT ASSERTED. This block used to map each
+            # gate id to some artifact digest, stamp passed=True on all fifteen
+            # with the detail "passed by immutable native promotion evidence",
+            # and hand the set to registration_report. That is precisely the
+            # shape ccdedc9 removed -- its docstring says there is deliberately
+            # no way to hand this function a pre-decided gate -- and the call
+            # has raised TypeError ever since, so this promotion surface has
+            # been dead code rather than a checked one.
+            #
+            # The evidence above is not discarded: the container executions,
+            # the attestations, the licence inventory and the resource
+            # measurements are still written and still pinned by
+            # registration_evidence. What changed is that the VERDICT now comes
+            # from a probe this call ran, through the same driver-agnostic path
+            # every other harness uses. A promotion that cannot pass its own
+            # gates now fails here instead of recording that it passed.
+            report = register_harness(
+                manifest, driver, runs=args.probe_runs, allow_dirty=False)
+            if report.decision != "eligible-for-verified":
+                failed = [g.gate_id for g in report.gates if not g.passed]
+                raise RuntimeError(
+                    f"{manifest.id}: registration rejected on {failed}; nothing "
+                    f"is promoted. A rejected registration is a result.")
             approval = HarnessPromotionApprovalV1.create(
                 harness_id=manifest.id,
                 harness_version=manifest.version,
@@ -954,6 +921,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--actor-id", required=True)
     parser.add_argument("--authorization-basis", required=True)
     parser.add_argument("--approved-date", default="2026-08-05")
+    parser.add_argument("--probe-runs", type=int, default=3,
+                        help="how many times the parity probe runs to establish "
+                             "stability. Fewer than two cannot show it, and "
+                             "gather_evidence refuses.")
     args = parser.parse_args(argv)
     summary = promote(args)
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
