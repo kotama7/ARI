@@ -80,6 +80,11 @@ def test_the_harness_skill_actually_reads_the_registered_harnesses():
     ids = {item["id"] for item in manifests}
     assert ids == {
         "hpc/gemm-correctness",
+        # The problem-pinned correctness harness. It is the fifth entry and the
+        # first one a real target declaration can select: the three above verify
+        # the ARI-native shared-library ABI, which a candidate written against a
+        # problem's own header does not keep.
+        "hpc/gemm-dense-fp64-problem-correctness",
         "hpc/spmm-correctness",
         "hpc/stencil-correctness",
         # hpc/gemm-performance joined the catalog when it earned a
@@ -125,7 +130,8 @@ def test_the_shipped_catalog_still_loads():
         ROOT / "ari-core" / "config" / "harnesses" / "catalog.yaml")
     assert {m.id for m in snapshot.manifests} == {
         "hpc/gemm-correctness", "hpc/spmm-correctness",
-        "hpc/stencil-correctness", "hpc/gemm-performance"}
+        "hpc/stencil-correctness", "hpc/gemm-performance",
+        "hpc/gemm-dense-fp64-problem-correctness"}
 
 
 def test_a_row_whose_id_does_not_match_its_manifest_is_refused(tmp_path):

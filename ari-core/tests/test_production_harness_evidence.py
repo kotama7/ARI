@@ -39,6 +39,7 @@ def test_production_native_harness_catalog_is_verified_and_closed() -> None:
     by_id = {item.id: item for item in catalog.manifests}
     assert set(by_id) == {
         "hpc/gemm-correctness",
+        "hpc/gemm-dense-fp64-problem-correctness",
         "hpc/spmm-correctness",
         "hpc/stencil-correctness",
         # hpc/gemm-performance joined the catalog when it earned a
