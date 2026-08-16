@@ -316,13 +316,6 @@ def _shipped_problems() -> list[str]:
     return revisions
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN, UNFIXED, and narrower than it first looked. hpc/gemm-performance "
-    "pins target_interface_contract 'gemm-c-abi/v1', while a declaration for the "
-    "gemm problem carries 'problem:gemm-dense-fp64/v1@2026q3' -- the contract, "
-    "not the kind, is what makes it unreachable. Correcting the manifest moves "
-    "its digest, so it is a re-registration and a signature. strict=True: this "
-    "turns red the moment it is fixed."))
 def test_a_registered_harness_can_be_reached_by_some_shipped_problem():
     """A Harness no declaration can satisfy is certified and never chosen.
 
@@ -353,11 +346,6 @@ def test_a_registered_harness_can_be_reached_by_some_shipped_problem():
         "no shipped problem can be handed to these Harnesses: " + "; ".join(unreachable))
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN, UNFIXED. hpc/gemm-performance supports x86_64 and is registered on "
-    "aarch64, so it is refused on aarch64 for the architecture and on x86_64 for "
-    "the placement. The evidence says aarch64 -- that is where its clean control "
-    "resolves -- so supported_architectures is the half that is wrong. strict=True."))
 def test_a_registered_placement_is_one_of_the_architectures_it_supports():
     """Otherwise no host can satisfy both halves.
 

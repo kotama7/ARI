@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:df9517df2b62dff7c3280389d5f0b0b0c3a6d54ab0f9a8a4735f2c398441cfd5
+manifest_digest: sha256:c0a34270edeeab9b80981448607c5a45e93193524d84d57fb8606c7e6867a4f4
 model:
   license: not-applicable
   revision: not-applicable
@@ -58,8 +58,8 @@ properties:
   - certify
   tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
 registered_placement:
-  machine: aarch64
-  thread_budget: '48'
+  machine: x86_64
+  thread_budget: '96'
 resources:
   accelerators: 0
   cpu_cores: 2
@@ -92,7 +92,7 @@ tags:
 - cpu
 - hpc
 - gemm
-target_interface_contract: gemm-c-abi/v1
+target_interface_contract: problem:gemm-dense-fp64/v1@2026q3
 target_interface_digest: sha256:478f6ea1cf9bd1ba188b6f964dbc5ca0c27cf3e43e728fcd102f58f996612f7e
 target_kinds:
 - benchmark-submission
