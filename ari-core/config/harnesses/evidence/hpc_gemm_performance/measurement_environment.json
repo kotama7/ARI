@@ -12,11 +12,11 @@
       "VECLIB_MAXIMUM_THREADS": "1"
     }
   },
-  "environment_note": "variable VALUES are scrubbed of host identity at this publication boundary",
-  "note": "a timed verdict is a statement about a machine, so this bundle records the placement it was established on and the manifest pins it; prepare() refuses any other",
+  "environment_note": "variable VALUES are scrubbed of host identity here",
   "placement": {
     "machine": "aarch64",
     "thread_budget": "48"
   },
-  "registration_commit": "7bde063cbe940940a001cef812c9a2132bd51505"
+  "placement_note": "a timed verdict is a statement about a machine; the manifest pins this placement and prepare() refuses any other",
+  "registration_commit": "2f8c458e64605e53a679151b08633d24e4172c33"
 }

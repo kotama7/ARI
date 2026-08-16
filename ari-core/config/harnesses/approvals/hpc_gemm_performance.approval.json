@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:d27a94f43799476106a661c75bc3a443bcd42f8ee23360e10bc48fdcb49b5642",
-  "approved_date": "2026-08-16",
-  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the registration evidence -- 15/15 gates, re-run on the aarch64 placement the manifest pins after c82493e changed the driver without moving the pin -- not on independent inspection of the artifacts, which are pinned here for that purpose.",
-  "evidence_bundle_digest": "sha256:1ae31a89186fdf4166cb9fefc021faa664d4f0d00093275a2bd86f2f991cc425",
+  "approval_digest": "sha256:7e2aeec6c06f06cb9c3f342db9016c6f8714c0965f5e5c27722503926cf51107",
+  "approved_date": "2026-08-17",
+  "authorization_basis": "Re-registration authorized by the maintainer in an interactive session on 2026-08-17 ('kotama'). The instrument changed twice. The regression verdict no longer adjudicates inside the measurement's own spread: measured, the frozen reference built with its own flags and scored against ITSELF was returning 'fail' at 0.9942 / 0.9996 / 0.9994, because the comparison was strict against a threshold of exactly 1.0. And the governed path gained the worker argv it lacked, without which every request for this Harness died at minting and the bridge recorded only 'inconclusive'. Measured after the change: the clean control passes at validate, both negative controls still fail and for different reasons, the reference against itself is inconclusive at one repetition and passes at three, and the parity probe returns passed=True with the clean control resolved. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:323592c8e729d6f672af8212dc8d9d177bb6da24f07bfd302e7e28a46813b170",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:ac6afdfdabed0c9303585d6122b7b80a011ef1b396dbc868392d2f91f535b928",
+  "harness_manifest_digest": "sha256:df9517df2b62dff7c3280389d5f0b0b0c3a6d54ab0f9a8a4735f2c398441cfd5",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:309f0bf2d892136c6b66ab5dc47aa2f60e142817f8224cf0895857a04e6942c4",
+  "registration_report_digest": "sha256:f8b013741a957ce5628d23e44e4fd1d9af275899e48bd3030b5baf9b247b0d75",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

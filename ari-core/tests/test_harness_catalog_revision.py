@@ -54,9 +54,9 @@ LIVE_CATALOG = HARNESS_ROOT / "catalog.yaml"
 # `config/harnesses/catalog.yaml` to name the new catalog, then record the new
 # pairing here. Editing only this pair to make the test green re-uses one label
 # for two catalogs, which is the defect this file exists to catch.
-PINNED_REVISION = "ari-harness-catalog/1@d303a4ca15ca1c5b6df0993b6ec13cb02d3ca34b"
+PINNED_REVISION = "ari-harness-catalog/1@2f8c458e64605e53a679151b08633d24e4172c33"
 PINNED_SNAPSHOT_DIGEST = (
-    "sha256:6f44291e83005e6e70e807de591657877d10237d68a05be651b1f815d387ab25"
+    "sha256:720f6b95b982075156f7c5f431045ac8df9a613a0e9a608de622cd446819f5b2"
 )
 
 
@@ -216,21 +216,6 @@ def _recorded_catalogs() -> dict[str, dict[str, str]]:
     return recorded
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "KNOWN OPEN DEFECT, not a suppression. config/harnesses/catalog.yaml has "
-        "been changed by fifteen commits since its label was minted, and the label "
-        "has never moved, so the four-manifest catalog retained under "
-        "evidence/production_e2e/ and the five-manifest catalog live today both "
-        "answer to ari-harness-catalog/1@d303a4c. The one-line fix is to bump "
-        "catalog_source_revision, but that string is a source-commit provenance "
-        "claim minted by the human-authenticated promotion path "
-        "(scripts/rqgm_assurance/promote_native_harnesses.py), so it is not an "
-        "agent's to invent. strict=True means this flips to a FAILURE the moment "
-        "the revision is bumped without removing this marker."
-    ),
-)
 def test_a_revision_string_never_names_two_different_catalogs() -> None:
     """A label reused for two contents identifies neither.
 

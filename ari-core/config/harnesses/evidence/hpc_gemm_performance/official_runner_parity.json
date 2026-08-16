@@ -2,16 +2,16 @@
   "case_set": "native-perf-gemm-cases/v1@parity",
   "controls": {
     "clean": {
-      "median_seconds": 0.005187663249671459,
-      "median_speedup": 1.0080400904023206,
-      "relative_spread": 0.0037853003851729106,
+      "median_seconds": 0.005245194770395756,
+      "median_speedup": 0.9817451573468324,
+      "relative_spread": 0.041139271585057494,
       "resolution_note": "",
       "resolved": true,
       "verdict": "pass"
     },
     "negatives": [
       {
-        "detail": "0.001747x of the frozen reference, below the 0.95x threshold",
+        "detail": "0.001686x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
         "name": "slow-but-correct",
         "verdict": "fail"
       },
@@ -22,27 +22,27 @@
       }
     ]
   },
-  "driver_digest": "sha256:843f4c7b8a332a16a5c58763e1084cc1511e8bfbe0e43953308c1cf9527e2ff9",
+  "driver_digest": "sha256:24dee5758b4ec116ad4b891b5d72caa967437053deea4924cd4aa6d0eb251099",
   "passed": true,
   "problem": "gemm-dense-fp64/v1@2026q3",
   "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
   "reason": null,
   "results": {
     "clean_control": {
-      "median_speedup": 1.0080400904023206,
-      "relative_spread": 0.0037853003851729106,
-      "report_digest": "sha256:3b2dcf7c9826841340a4a6863ed0bd27b6d8d19b1bd387a7a20a1fc6625219b9",
+      "median_speedup": 0.9817451573468324,
+      "relative_spread": 0.041139271585057494,
+      "report_digest": "sha256:bd5761f834d05dd60a8cd2166ce74c03d4ca7781cd8687b9f972b57d4922d9c1",
       "resolved": true,
       "verdict": "pass"
     },
     "negative_control_slow": {
-      "detail": "0.001747x of the frozen reference, below the 0.95x threshold",
-      "report_digest": "sha256:461aead6e96c5fe2a4e85c8c441054fbb6bd41fd92aceb794fb67db47e025972",
+      "detail": "0.001686x of the frozen reference, below the 0.95x threshold by more than the 0.1 spread it is read at",
+      "report_digest": "sha256:e333877ea6216fcb5a703f0aa37d8d94d20a9daa21a0b1391c423680180238d3",
       "verdict": "fail"
     },
     "negative_control_wrong": {
       "detail": "candidate output failed the residual bound (2.79e+11x)",
-      "report_digest": "sha256:d3e950a59da426a66dd170111f49e1d13d5da132c0ac53d3b39b447a0abb504f",
+      "report_digest": "sha256:fa35573b21329bc66801fb62c5bf13f847a6cbf06030820fd60ba3c3ade0b8f8",
       "verdict": "fail"
     }
   },
