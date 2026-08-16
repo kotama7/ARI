@@ -100,11 +100,31 @@ When cutting a release:
 1. Update `CHANGELOG.md` with the new section.  Group entries under
    **Added** / **Changed** / **Fixed** / **Deprecated** /
    **Removed** / **Security**.
-2. Bump the version in `ari-core/pyproject.toml` and each
-   `ari-skill-*/pyproject.toml`.  That is the **package version**, and
-   everything derived from it follows automatically
+2. Bump the version in `ari-core/pyproject.toml`.  That is the **package
+   version**, and everything derived from it follows automatically
    (`_read_ari_core_version()` in `scripts/snapshot_contracts.py` stamps it
    into the four contract goldens' `_meta.ari_core_version`).
+
+   **Do not bump the `ari-skill-*` packages in lockstep.**  They are versioned
+   independently and today range from `0.1.0` to `2.0.0` — see
+   [Compatibility → Skills vs core](compatibility.md#skills-vs-core).  A skill's
+   version is not decoration: `LockedSkillV1` records it in the per-run skills
+   lock alongside the manifest and provider digests, and
+   `write_or_verify_skills_lock` requires exact equality once that lock exists.
+   Moving a skill's number therefore *asserts that skill changed*, and setting
+   all seventeen to one number would replace seventeen meaningful values with
+   seventeen copies of the same one — a replay could no longer tell from the
+   lock which skill actually moved.  `scripts/check_skill_manifests.py` would
+   propagate the claim into `skill.yaml` too, since it fails on any
+   manifest↔pyproject `version-drift`.
+
+   Bump a skill when *its own* surface changes, and raise its `ari-core>=` floor
+   only when it genuinely needs the newer core.  Those floors already carry the
+   coupling and are deliberately uneven (`>=0.8.0` for `harness` and
+   `knowledge`, `>=0.9.1` for seven others, absent for the rest); a lockstep
+   bump would force a skill that really does work against `0.8.0` to claim
+   otherwise.  What pairs a set of versions is the **coordinated release** — the
+   git tag — not matching numbers.
 
    Then decide, explicitly, whether the release also moves the
    **published version pin** — the number the project advertises to

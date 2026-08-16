@@ -93,11 +93,27 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
 1. 更新 `CHANGELOG.md`，添加新的版本章节。将条目分组归类至
    **Added** / **Changed** / **Fixed** / **Deprecated** /
    **Removed** / **Security**。
-2. 更新 `ari-core/pyproject.toml` 和各
-   `ari-skill-*/pyproject.toml` 中的版本号。这是**软件包版本**，
+2. 更新 `ari-core/pyproject.toml` 中的版本号。这是**软件包版本**，
    由它派生的取值会自动跟随（`scripts/snapshot_contracts.py` 中的
    `_read_ari_core_version()` 会把它写入四份 contract golden 的
    `_meta.ari_core_version`）。
+
+   **不要让 `ari-skill-*` 跟着一起升。** 它们是独立 versioning 的，目前从
+   `0.1.0` 一直散到 `2.0.0` —— 参见
+   [兼容性 → Skill 与 core](compatibility.md#skill-与-core)。技能的版本号不是装饰：
+   `LockedSkillV1` 会把它连同 manifest 与 provider 的 digest 一起记入每次运行的
+   skills lock，而 `write_or_verify_skills_lock` 在该 lock 已存在时要求完全相等。
+   因此挪动一个技能的版本号，就是在**断言这个技能变了**。把十七个技能设成同一个
+   数字，等于用同一个值的十七份副本替换掉十七个有意义的值 —— 重放时再也无法从
+   lock 里读出究竟是哪个技能动了。`scripts/check_skill_manifests.py` 会因
+   manifest↔pyproject 的 `version-drift` 而失败，所以这个断言还会原样传播进
+   `skill.yaml`。
+
+   只有当技能**自身**的表面发生变化时才升它的版本；只有当它确实需要更新的核心时，
+   才抬高它的 `ari-core>=` 下限。耦合关系已经由这些下限承担，并且是有意不齐的
+   （`harness` 与 `knowledge` 为 `>=0.8.0`，另外七个为 `>=0.9.1`，其余未声明）；
+   齐步升级会迫使一个真正能在 `0.8.0` 上工作的技能声称自己不能。真正把一组版本
+   绑在一起的是**协调发布** —— 也就是 git tag —— 而不是数字一致。
 
    随后，需要明确决定本次发布是否同时移动**对外版本 pin** —— 即项目
    对读者宣称的版本号。它是另一个独立的寄存器，拥有自己的唯一来源

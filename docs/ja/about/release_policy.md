@@ -93,11 +93,30 @@ DR1–DR5、および公認された **5 つ** の Tier-B `~/.ari/` フォール
 1. `CHANGELOG.md` に新しいセクションを追加する。エントリは
    **Added** / **Changed** / **Fixed** / **Deprecated** /
    **Removed** / **Security** に分類してまとめる。
-2. `ari-core/pyproject.toml` と各
-   `ari-skill-*/pyproject.toml` のバージョンをバンプする。これが
+2. `ari-core/pyproject.toml` のバージョンをバンプする。これが
    **パッケージバージョン**であり、そこから派生する値は自動的に追随します
    (`scripts/snapshot_contracts.py` の `_read_ari_core_version()` が、4 つの
    contract golden の `_meta.ari_core_version` に刻み込みます)。
+
+   **`ari-skill-*` を一斉にバンプしてはいけません。** これらは独立に versioning
+   されており、現在 `0.1.0` から `2.0.0` まで散っています —
+   [互換性 → Skills と core](compatibility.md#skills-と-core) を参照。skill の
+   バージョンは飾りではありません: `LockedSkillV1` が manifest / provider の
+   digest と並べて run ごとの skills lock に記録し、`write_or_verify_skills_lock`
+   はその lock が既に存在すれば厳密一致を要求します。したがって skill の番号を
+   動かすことは、**その skill が変わったと主張すること**です。17 個を 1 つの番号に
+   揃えれば、意味のある 17 個の値が同じ値の 17 個のコピーに置き換わり、replay 時に
+   lock からどの skill が動いたのかを読み取れなくなります。
+   `scripts/check_skill_manifests.py` は manifest↔pyproject の `version-drift` で
+   失敗するので、この主張は `skill.yaml` にもそのまま伝播します。
+
+   skill は**それ自身の**表面が変わったときにバンプし、`ari-core>=` の下限は
+   本当に新しいコアを必要とするときだけ引き上げます。結合はすでにその下限が
+   担っており、意図的に不揃いです（`harness` と `knowledge` は `>=0.8.0`、
+   他 7 つは `>=0.9.1`、残りは宣言なし）。一斉バンプは、実際に `0.8.0` で動く
+   skill にそうでないと名乗らせることになります。どのバージョン群が組み合わさるかを
+   決めるのは**協調リリース** — すなわち git タグ — であって、番号の一致では
+   ありません。
 
    その上で、このリリースが**公開バージョンピン** — 読者に対して掲げる番号 —
    も動かすのかどうかを、明示的に判断する。これはもう 1 つ別のレジスタであり、
