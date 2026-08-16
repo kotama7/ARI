@@ -497,8 +497,26 @@ assurance:
 `knowledge.audit` 在选择未被满足时也不阻断，只组织并记录已受理的过程性知识；
 `knowledge.enforce` 要求经过验证、以 digest 锁定的 Knowledge 及其溯源。Binding
 的 `audit` 在保留既有可见面的同时计算出 requirement 到工具的精确映射；`enforce`
-则只暴露并执行已绑定的工具。Assurance 的 `audit` 运行并记录固定套件但不设门；
-`enforce` 要求科学前沿通过 screen、发表通过 certify。
+则只暴露并执行已绑定的工具。Assurance 的 `audit` 运行并记录固定套件但不设门
+——只要节点执行过，无论套件返回什么，都归入 `scientific_frontier`；`enforce`
+则由 screen 判定推导出节点的 `frontier_class`（见下），并要求发表通过 certify。
+若节点自身执行失败，则两种模式下都是 `debug_frontier`：套件根本不会为它运行。
+
+**在 `enforce` 下，screen 门会按“是哪个 property 失败”来拆分 `fail`**
+（`ari/rqgm/assurance_bridge.py` 的 `_frontier`）。screen 的 `pass` 归入
+`scientific_frontier`，`inconclusive` / `infrastructure_error` / `tampered`
+归入 `uncertified_frontier`。而 `fail` 并非只有一种：当失败的 property 全部
+属于 *quality* property——即按名字列出的集合 `_QUALITY_PROPERTIES`，今天只有
+`performance-regression` 一个成员——该节点仍归入 `scientific_frontier`，因为
+一个算出了正确答案、只是比调优过的参考实现更慢的候选，是一次测量，而不是
+待修复的缺陷。任何其它 property 失败都会把节点送去 `debug_frontier`，包括它与
+quality property 同时失败的情况。这个集合列举的是豁免项，而不是从 vocabulary
+的 `correctness_properties`（`ari-core/config/harnesses/property_vocabulary.yaml`）
+推导而来——后者只列出 `numerical-equivalence` 与 `interface-conformance`，
+漏掉了 `trajectory-equivalence`，因此日后新增的 property 默认仍会失格。豁免
+只到前沿为止：`assurance_status` 仍是 `fail`，而 certify 层只对 status 为
+`pass` *且* 已经处于 `scientific_frontier` 的节点运行，所以因 quality 失败的
+节点会进入科学前沿，却永远不会被 certify。
 
 `resolve_kca_modes` 是唯一的联锁。明确的 Knowledge requirement 搭配
 `knowledge.off`、必需的 Capability 搭配 legacy binding，或必需的 Verification

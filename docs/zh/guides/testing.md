@@ -24,7 +24,7 @@ sources:
     role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # 如何测试 ARI 代码
@@ -38,7 +38,9 @@ last_verified: 2026-08-16
 ari-core/tests/                    — core regression tests
 ari-skill-<name>/tests/            — skill-local tests
 ari-skill-<name>/tests/conftest.py — skill-level fixtures（17 个 skill 中的 13 个；
-                                     只有 benchmark 与 plot 放在包根目录）
+                                     harness 与 knowledge 根本没有 tests/，
+                                     idea 与 paper-re 有 tests/ 但没有 conftest；
+                                     benchmark 与 plot 在包根目录另有第二个）
 pytest.ini                         — repo-wide config
 ```
 
@@ -169,29 +171,47 @@ it（每个读取端都必须加载）"的那一档 —— 但没有任何机制
 17 个 `ari-skill-*` 包中有 10 个带 `tests/test_server.py`（benchmark、coding、
 evaluator、hpc、idea、paper、tool-registry、transform、vlm、web）；其余要么把
 这类文件叫作别的名字，要么没有 —— `ari-skill-orchestrator/tests/test_mcp_surface.py`
-就是换了名字的同类文件。这十个的共同做法是：在进程内导入服务器模块（没有一个会
-启动子进程），以 fixture 输入直接调用工具函数，并断言响应结构。多数通过
+就是换了名字的同类文件。这十个里有九个的做法是：在进程内导入服务器模块，
+以 fixture 输入直接调用工具函数，并断言响应结构。多数通过
 `from src.server import …` 拿到它；已打包的 skill 改为导入已安装的模块
 （`ari_skill_hpc.server`），而 `ari-skill-coding` 还会用
-`importlib.util.spec_from_file_location` 按路径加载。
+`importlib.util.spec_from_file_location` 按路径加载。唯一的例外是
+`ari-skill-tool-registry`，而且是有意为之：它的对外面是一个 broker，所以它的
+`tests/test_server.py` 会把 `src/server.py` 作为真正的 stdio 子进程启动
+（`PythonStdioLauncherV1` + `StdioMCPAdapter`，落到
+`ari-skill-tool-registry/src/providers.py`:514 的 `stdio_client`），并通过 MCP
+会话驱动它。在这十个之外，那个换了名字的同类文件也一样：
+`ari-skill-orchestrator/tests/test_mcp_surface.py` 会把 `src/server.py` 作为子进程
+启动两次 —— 一次经 `streamable-http`（`subprocess.Popen`，:188），一次经 stdio
+（`stdio_client`，:282）。只有这两个套件才会有子进程。
 
-有两件事这一层**不做**，因为它们归 workflow 的关卡管。工具列表与 `skill.yaml`
+有两件事这一层原则上交给 workflow 的关卡管。工具列表与 `skill.yaml`
 是否一致、生成的 `mcp.json` 是否漂移，属于下文"PR 时的测试内容"里 `contracts`
-工作流的 `scripts/check_skill_manifests.py`，不是各 skill 的断言。此外并不存在
+工作流的 `scripts/check_skill_manifests.py`；不过恰好有一个套件自己也固定了它们，
+所以不要把某个 skill 套件变绿读作已覆盖这两项 ——
+`ari-skill-orchestrator/tests/test_mcp_surface.py`:38-43 断言运行时的工具名、
+`skill.yaml` 的 `tools:`、`mcp.json` 的 `tools`，以及一份含 12 项的字面量
+`EXPECTED` 集合完全相同。此外并不存在
 共用的 MCP 测试框架：没有 `mcp.testing` 这个模块（`mcp` 包提供的是 `cli`、
 `client`、`os`、`server`、`shared`、`types`），仓库里也没有任何代码导入它。每个
 套件都自建 fixture —— `ari-skill-memory/tests/conftest.py` 是这一模式易读的参考
 （限定在 `tmp_path` 的 `ARI_CHECKPOINT_DIR`、backend fixture、签名调用上下文的
 签发器，以及一个假的 Letta 客户端）。
 
-确实调用 `list_tools()` 的套件有三个，且都不用它跟清单比对：`ari-skill-coding`
-校验带 `outputSchema` 的那五个工具的 schema，`ari-skill-hpc` 与 `ari-skill-idea`
-则断言特定工具名已注册（hpc 还断言某些未注册）。
+确实调用 `list_tools()` 的套件有好几个，各自比对的对象并不相同：`ari-skill-coding`
+校验带 `outputSchema` 的那五个工具的 schema（`tests/test_server.py`:715-723）；
+`ari-skill-hpc`（`tests/test_server.py`:40-46）与 `ari-skill-idea`
+（`TestMcpToolRegistration`）断言特定工具名已注册（hpc 还断言某些未注册）；
+`ari-skill-tool-registry` 断言运行中的 broker 面恰好是它的六个公开操作
+（`tests/test_server.py`:48-50）；`ari-skill-transform` 则读取已注册的名字
+（`tests/test_metric_contract_seam.py`:22）。这些期望值都是写在测试里的字面量 ——
+只有 `ari-skill-orchestrator` 会拿它跟清单比对。
 
 ### LLM mock
 
 调用 LLM 的 skill（`evaluator`、`paper`、`paper-re`、`idea`、
-`replicate`、`transform`、`plot/_llm`、`vlm`）在单元测试中必须 mock LLM。
+`replicate`、`transform`、`plot` —— 调用点在带 `litellm.acompletion` 的
+`src/planning.py` —— 以及 `vlm`）在单元测试中必须 mock LLM。
 
 参考示例是 `ari-skill-paper-re/tests/test_litellm_completer.py`，其手法是模块注入
 而非 HTTP 拦截：`_install_fake_litellm` 构造一个带桩 `acompletion` 的
@@ -229,8 +249,9 @@ def ckpt(tmp_path, monkeypatch):
   skill 仅从 `ari.public.*` 导入）是随这一次调用一起跑的，并不是独立步骤。之后
   若 `$HOME/.ari/` 存在则该 job 失败；另一个 job 会在 PR 的 diff 中查找允许列表
   之外新增的 `~/.ari` 引用。另有五个 job（import boundaries、directory policy、
-  complexity、ruff lint、dead code）全部是**建议性**的 —— `continue-on-error: true`
-  配合 `--warning-only`，因此发现问题也不会让 PR 变红。它是同时在 `refactoring`
+  complexity、ruff lint、dead code）全部是**建议性**的 —— 每一个都带
+  `continue-on-error: true`，且除 ruff lint（裸的 `ruff check ari-core`）之外都还
+  传 `--warning-only`，因此发现问题也不会让 PR 变红。它是同时在 `refactoring`
   分支上触发的两个工作流之一（文件内的注释至今仍写着"唯一"，而 `skill-tests`
   是后来以相同触发条件加入的）。
 - `skill-tests` 以每条路径一个 pytest 进程的方式运行七个 skill 套件（`paper`、
@@ -251,13 +272,21 @@ def ckpt(tmp_path, monkeypatch):
 
 - `readme-sync` — 每个目录的 `## Contents` 索引都列出其下的文件
   (`scripts/readme_sync.py --check`)。
-- `docs-sync` — 全树不变量，全部为硬关卡：声明的 `sources:` 路径存在
+- `docs-sync` — 全树不变量。硬关卡共六道：声明的 `sources:` 路径存在
   (`check_doc_sources.py`)、`docs/i18n/landing.{en,ja,zh}.js` 的键集一致
-  (`check_i18n_js.py`)、根 `README.{md,ja,zh}` 的标题结构一致
+  (`check_i18n_js.py`)、HTML 站点的 i18n 完整性与对外版本 pin
+  (`check_site_i18n.py`)、手写 `docs/*.html` 中的每个 `href`/`src` 都能解析
+  (`check_doc_links.py --html-only`)、根 `README.{md,ja,zh}` 的标题结构一致
   (`check_readme_parity.py`)、`report/{en,ja,zh}` 在结构上并行
-  (`report/scripts/check_i18n.py`，Gate 6)。翻译新鲜度
-  (`check_translation_freshness.py`) 与 docs 内链接 (`check_doc_links.py`)
-  作为 advisory（非阻塞）步骤运行。
+  (`report/scripts/check_i18n.py`，Gate 6)。其后是三个 advisory（非阻塞）步骤：
+  翻译新鲜度 (`check_translation_freshness.py`)、Markdown 链接完整性
+  (`check_doc_links.py` —— 它检查链接的两半，因此会分别报告断裂文件数与断裂
+  *锚点*数)，以及主干状态的陈旧检查
+  (`check_docs_source_sync.py --warning-only`)。最后这一项覆盖了其余关卡看不见的
+  唯一维度：某个源在 `main` 上的最新提交比声明它的 doc 的 `last_verified` 更新。
+  它的冻结基线为空（`scripts/check_docs_source_sync.allow.yaml`:34，
+  `known-offenders: []`），因此它报告的每一条都是新增的。另一个 job 会检查
+  report PDF 是否同步 (`sync_report_pdf.sh --check`) 并构建 VitePress 站点。
 - `docs-change-coupling` — 基于差分：`report/{en,ja,zh}` 的语言配对文件
   （章节、`strings.tex`、`main.tex`）在一种语言中被编辑时，必须在同一 PR 中
   镜像到其他两种语言 (`check_report_cochange.py`，硬关卡)；并且当 doc 的

@@ -34,7 +34,7 @@ sources:
     role: doc
   - path: docs/reference/environment_variables.md
     role: doc
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # GUI-ADR-07: feature flag, rollback, and legacy removal policy

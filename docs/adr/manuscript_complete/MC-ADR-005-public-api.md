@@ -10,7 +10,7 @@ sources:
     role: test
   - path: ari-core/tests/fixtures/contracts/public_api.json
     role: test
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # MC-ADR-005: stable read API

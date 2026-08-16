@@ -312,8 +312,9 @@ by a word-shingle screen and the `RetiredPromptAccessGuard`). The meta tier
 can propose, never appoint (deny-by-default capability flags, authority
 non-expansion checked as subset arithmetic).
 
-What detection looks like in the audit log (from the B8 injection smoke
-harness, which plants scripted misbehaving components):
+What detection looks like in the audit log (from the injection smoke
+harness, which plants scripted misbehaving components under any `ari_rqgm`
+ablation rung — the scripted specs decide, not the rung):
 
 ```jsonc
 {"event_type": "validated_attack", "payload": {"case_type": "overclaim",
@@ -367,7 +368,7 @@ at runtime, by the fail-open readers — a schema-invalid attack is dropped
 before it becomes a record, and an unreadable judgment falls back to `invalid`
 with no penalty — so the adopted actor degrades quietly rather than raising an
 alarm. The `prompt_candidate_rejected` excerpt above is not a counter-example:
-only the B8 injection smoke harness emits that event, and it stamps the
+only the injection smoke harness emits that event, and it stamps the
 `schema_dry_run` stage label on a `static_validation` failure. Supplying a real
 reply source would put a budgeted, non-deterministic LLM call on the candidate
 path; that decision has not been taken.
@@ -601,9 +602,9 @@ you will actually see:
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | one adversarial round, record by record | adversarial loop |
 | audit | `governance_report` (+ per-record motion/defense/adjudication lines) | the epoch audit and its outcome | `GovernanceOrchestrator` |
 | audit | `epoch_transition` | the committed transition, with report hash in `inputs` | `RegistryTransitionEngine` |
-| audit | `kernel_report` / `constitutional_violation` | warn-and-flag findings / rule violations (`CK-*` codes) | `ConstitutionalKernel` adapters; `constitutional_violation` only from the B8 injection smoke harness (`ari/rqgm/evaluation/smoke.py`) |
+| audit | `kernel_report` / `constitutional_violation` | warn-and-flag findings / rule violations (`CK-*` codes) | `ConstitutionalKernel` adapters; `constitutional_violation` only from the injection smoke harness (`ari/rqgm/evaluation/smoke.py`) |
 | audit | `selective_erasure` / `frontier_rebuild` | logical erasure + rebuild after retirements | `FrontierRepairEngine` |
-| audit | `prompt_candidate_rejected` | a candidate failed a lifecycle stage | only the B8 injection smoke harness (`ari/rqgm/evaluation/smoke.py`); a boundary drop on a real run is announced in the `prompt_evolution` line's `skipped` list instead |
+| audit | `prompt_candidate_rejected` | a candidate failed a lifecycle stage | only the injection smoke harness (`ari/rqgm/evaluation/smoke.py`); a boundary drop on a real run is announced in the `prompt_evolution` line's `skipped` list instead |
 | audit | `prompt_evolution_skipped` | boundary candidate minting disabled (`rqgm.prompt_evolution.enabled: false`) | `RQGMRuntime` boundary prompt evolution |
 | audit | `clean_room_violation` | a contaminated clean-room bundle was blocked | `CleanRoomCoordinator` |
 | audit | `meta_evolution` | boundary meta-step summary: outcome `proposed`/`no_op` (or a skip/failure reason), counts, skipped invokers | `MetaEvolutionCoordinator` (skip/failure lines: `RQGMRuntime`) |

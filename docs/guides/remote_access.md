@@ -32,7 +32,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # Remote Access and Operations Guide

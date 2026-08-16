@@ -556,8 +556,31 @@ assurance:
 ロックされた Knowledge と来歴を要求します。Binding の `audit` はレガシーの
 見え方を保ったまま requirement からツールへの正確な対応を計算し、`enforce`
 はバインドされたツールだけを露出し実行します。Assurance の `audit` は固定
-スイートをゲートせずに実行して記録し、`enforce` は科学フロンティアには
-screen の合格を、公開には certify の合格を要求します。
+スイートをゲートせずに実行して記録します — 実行されたノードは、スイートが
+何を返しても `scientific_frontier` に分類されます; `enforce` はノードの
+`frontier_class` を screen の判定から導き（後述）、公開には certify の合格を
+要求します。ノード自身の実行が失敗した場合は、どちらのモードでも
+`debug_frontier` です: そのノードにスイートは走りません。
+
+**`enforce` では、screen ゲートは `fail` を「どの property が落ちたか」で
+分けます**（`ari/rqgm/assurance_bridge.py` の `_frontier`）。screen の `pass`
+は `scientific_frontier`、`inconclusive` / `infrastructure_error` / `tampered`
+は `uncertified_frontier` に分類されます。`fail` は一枚岩ではありません:
+落ちた property がすべて *quality* property — 名前で列挙された集合
+`_QUALITY_PROPERTIES`、現時点では `performance-regression` ただ 1 つ — で
+あるとき、そのノードは `scientific_frontier` のままです。正しい答えを出した
+うえでチューニング済みリファレンスより遅い候補は、修理すべき欠陥ではなく
+測定結果だからです。それ以外の property が落ちれば、quality property と
+同時に落ちた場合も含めて `debug_frontier` に送られます。この集合は
+vocabulary の `correctness_properties`
+(`ari-core/config/harnesses/property_vocabulary.yaml`) から導出するのではなく
+免除側を名指ししています — そちらは `numerical-equivalence` と
+`interface-conformance` しか挙げず `trajectory-equivalence` を欠くため、
+後から追加された property は既定で失格になります。免除が届くのは
+フロンティアまでです: `assurance_status` は `fail` のままであり、certify 段は
+status が `pass` で *かつ* すでに `scientific_frontier` のノードにしか
+走りません。つまり quality で落ちたノードは科学フロンティアには入りますが、
+certify されることはありません。
 
 `resolve_kca_modes` が唯一のインターロックです。明示的な Knowledge
 requirement と `knowledge.off`、必須の Capability と legacy な binding、

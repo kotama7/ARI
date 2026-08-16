@@ -525,6 +525,36 @@ are `pass`, `fail`, `inconclusive`, `infrastructure_error`, or `tampered`.
 Provider success is never an Attestation, and a candidate failure alone is not
 a constitutional violation.
 
+Which verifier process is launched is decided by the driver revision the
+manifest pins, never by the Harness id. Three revisions are registered —
+`ari.assurance.native-hpc/v1`, `ari.assurance.problem-correctness/v1`, and
+`ari.assurance.native-perf/v1` — and each builds its own argv. The two
+problem-based branches take the question and the candidate from the manifest's
+own `oracle` and `dataset` pins and from the target declaration, not from text
+parsed out of the id; the native-HPC branch still reads its family name out of
+the id (`hpc/gemm-correctness` → `gemm`), which is the one place that surgery
+yields a registered family. A revision no
+branch names is refused as unlaunchable, which is a different finding from
+failing to verify: without that refusal the request would launch the wrong
+verifier, and the mismatch would surface as an infrastructure outage one layer
+further down instead of as an error. The evidence reference's media type comes
+from the declared target kind for the same reason, so a C submission is not
+recorded as a shared library.
+
+A correctness requirement carries the kind of artifact the run's candidates
+actually are. The property vocabulary states one target kind per property, and
+the Resolver rejects an atom whose kind is absent from a manifest's
+`target_kinds` before it looks at properties at all — so a Harness that verifies
+a different kind is registered, promoted, and never selected. When a run names a
+pinned problem in `ARI_PROBLEM`, admission derives that problem's artifact kind
+and passes it into the Verification Contract, where only the correctness
+properties take it: the kind is the family ABI's own when the problem's declared
+entry point is one of that ABI's exported symbols, and `benchmark-submission`
+otherwise. A run that names no problem, or names one that cannot be loaded,
+passes nothing and every requirement is stamped exactly as before. The node's
+own target declaration derives its kind from the same function, so resolution
+and declaration cannot come to disagree about what was verified.
+
 The native `hpc/gemm-correctness`, `hpc/spmm-correctness`, and
 `hpc/stencil-correctness` implementations include deterministic generated
 cases, independent references, dtype/accumulation-aware error models,
@@ -532,6 +562,13 @@ metamorphic/shape/boundary/repeat coverage, and negative controls. Promotion
 to a checked-in verified catalog entry remains a release admission action: it
 requires a committed source revision, immutable container, license review,
 reference pass, negative-control fail, and retained registration report.
+Registration also holds a manifest to the driver it pins:
+`result_schema_conformance` refuses unless `expected_result_schema` is the
+report type that driver emits and `expected_result_schema_digest` is the byte
+digest of the schema file ARI ships for that type. Evidence that does not carry
+both fails the gate instead of skipping the comparison, and a pin whose schema
+has drifted underneath it is refused rather than corrected in place, because the
+pin records what was registered and only a re-registration may move it.
 
 Each of those three is a **correctness family** that declares itself once in
 `ari.assurance.native_hpc_family` and supplies three things: `verify` (the
@@ -562,6 +599,46 @@ describe code nobody approved. They were re-registered instead — three
 parity-probe runs each on a clean worktree, 15 of 15 gates,
 `eligible-for-verified`, with fresh registration reports, evidence bundles and
 maintainer approvals — and their pins now name the driver that exists.
+
+The checked-in catalog is no longer those three alone. It also carries a
+correctness Harness over a pinned problem — which verifies a candidate against
+the problem's own C contract instead of the family ABI, refuses to normalize a
+result describing a different problem, case set, or digest than the manifest
+pins, and takes its harness-level verdict over the properties the request
+actually declared rather than over both the report unions — and a performance
+Harness.
+
+A performance verdict is read against the spread the measurement actually
+showed. The ratio a candidate must reach is `DEFAULT_REGRESSION_THRESHOLD`, in
+one place, taken by the worker, the parity probe, and the measurement alike: the
+governed path passes no threshold, so a figure a verdict is read off cannot be a
+per-call-site default. The shortfall is that threshold minus the median ratio,
+and it is read against the band the run actually has: the repetitions' own
+max-minus-min, or the median times `MAX_TRUSTED_SPREAD` — the widest this
+instrument is read at — when there is no spread to measure, as with a single
+repetition. A
+shortfall past that band is `fail`, and that test is taken first, so a candidate
+far enough below the threshold is refused from a single repetition and refused
+on a machine too noisy to resolve anything, which is what keeps the slow
+negative control failing. Short of it, a measured spread wider than
+`MAX_TRUSTED_SPREAD` is `inconclusive` whichever side of the threshold the
+median sits on — noise widens "did not resolve" and never "pass" — and so is any
+remaining shortfall from a single repetition. The clean control's timed
+duration is recorded beside its spread, because a spread is a fraction of a
+duration, and a case too short to hold the instrument's own overhead is a
+different finding from a noisy machine.
+
+A measurement that was not taken is reported as absent, not as zero. A case
+whose launch never completed, or whose oracle answered a non-finite residual,
+carries no residual ratio, and a report's aggregate exists only when every case
+produced one: a maximum over the cases that happened to answer is a bound the
+evidence does not support, published beside the limit a reader would compare it
+to. A correctness report also binds the candidate's own digest, without which
+different candidates reaching the same verdict produce byte-identical reports
+and therefore one report digest. What a report keeps of the launch's sandbox is
+an allowlist — whether the untrusted candidate was isolated, by what, and what
+that does not cover — and never the per-run writable root, which is a host
+filesystem path and would also make the report digest differ on every run.
 
 Inspect, Harbor, KernelBench/ComputeEval/scBench, and PaperBench adapters do
 not fork their upstream frameworks. Their drivers validate a pinned official

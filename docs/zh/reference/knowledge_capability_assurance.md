@@ -426,11 +426,36 @@ verdict 与 evidence artifact。verdict 为`pass`、`fail`、`inconclusive`、
 `infrastructure_error`或`tampered`。Provider success 不是 Attestation；普通 candidate failure
 本身也不是 constitutional violation。
 
+启动哪一个 verifier 进程，由 manifest 所 pin 的 driver revision 决定，而不由 Harness id 决定。
+已注册的 revision 有三个——`ari.assurance.native-hpc/v1`、
+`ari.assurance.problem-correctness/v1`和`ari.assurance.native-perf/v1`——每一个都组装自己的
+argv。以 problem 为轴的两个分支，从 manifest 自身的`oracle`/`dataset` pin 与 target 声明取得
+问题与 candidate，而不是从 id 中截取的文本；只有 native-HPC 分支仍然从 id 读出 family 名
+(`hpc/gemm-correctness`→`gemm`)，那是唯一一处该截取能得到已注册 family 的地方。没有任何分支指名的 revision 会被拒绝为
+无法 launch，这与"验证失败"是不同的结论：没有这一拒绝，request 会启动错误的 verifier，
+不匹配将在更下一层表现为 infrastructure outage。evidence reference 的 media type 出于同样
+理由取自声明的 target kind，因此 C submission 不会被记为 shared library。
+
+correctness requirement 携带该 run 的 candidate 实际所是的 artifact kind。property vocabulary
+对每个 property 只陈述一个 target kind，而 Resolver 在查看 property 之前就会丢弃 kind 不在
+manifest `target_kinds` 中的 atom——因此验证另一种 kind 的 Harness 即使被 registration 与
+promote，也永远不会被选中。当一次 run 用`ARI_PROBLEM`指名 pinned problem 时，admission 推导出
+该 problem 的 artifact kind 并传入 Verification Contract，其中只有 correctness property 接受
+它：若 problem 声明的 entry point 是 family ABI 的 exported symbol 之一，则取该 ABI 自己的
+target kind，否则为`benchmark-submission`。不指名 problem、或指名了无法 load 的 problem 的
+run 不传任何值，每条 requirement 的标记与此前完全相同。node 侧的 target 声明从同一个函数
+推导 kind，因此 resolution 与 declaration 不会就"验证了什么"产生分歧。
+
 native `hpc/gemm-correctness`、`hpc/spmm-correctness`和`hpc/stencil-correctness`包含
 deterministic generated case、独立 reference、dtype/accumulation-aware error model、
 metamorphic/shape/boundary/repeat coverage 与 negative control。promote 为 checked-in verified
 catalog entry 是 release admission 操作，要求 committed source revision、immutable container、
 license review、reference pass、negative-control fail 与 retained registration report。
+registration 还会把 manifest 与它所 pin 的 driver 对照：`result_schema_conformance`只有在
+`expected_result_schema`正是该 driver 发出的 report type、且`expected_result_schema_digest`
+正是 ARI 为该 type 所提供的 schema 文件的 byte digest 时才通过。两者不齐全的 evidence 不会
+跳过比较，而是 gate 失败；schema 在 pin 之下发生 drift 的 pin 会被拒绝而不是就地更正，因为
+pin 记录的是被 registration 的内容，只有 re-registration 才可以移动它。
 
 这三者各是一个 correctness family，在`ari.assurance.native_hpc_family`中一次性自我注册，
 并提供三样东西：`verify`（hidden case 与判定它们的 oracle）、`reference`（独立实现，也是
@@ -452,6 +477,33 @@ signature 只覆盖被签署的内容，仅重新 pin 会让三份 human-maintai
 批准的 code。它们改为被重新 registration——在 clean worktree 上各跑三次 parity probe，
 15/15 gate，`eligible-for-verified`，registration report、evidence bundle 与 maintainer
 approval 全部重新签发——这些 pin 现在指向真实存在的 driver。
+
+checked-in catalog 已不止这三者。它还包含一个针对 pinned problem 的 correctness Harness——
+它以 problem 自身的 C contract 而非 family ABI 来验证 candidate，拒绝规范化描述了与 manifest
+所 pin 不同的 problem、case set 或 digest 的 result，并且其 harness 层 verdict 取自 request
+实际声明的 property，而不是 report 合并的两个 property——以及一个 performance Harness。
+
+performance verdict 是对照该次测量实际显示的 spread 来读的。candidate 必须达到的比值是
+`DEFAULT_REGRESSION_THRESHOLD`，只存在于一处，由 worker、parity probe 与 measurement 同样
+取用：governed path 不传 threshold，因此一个用来读出 verdict 的数值不能是各调用点各自的
+default。不足是该 threshold 减去 median 比值，并对照这次 run 实际拥有的 band 来读：band 即
+repetition 自身的 max 减 min，或者当没有可测 spread 时（典型是单次 repetition）取
+median×`MAX_TRUSTED_SPREAD`（这台仪器被读取的最大 spread）。超出该 band 的不足是`fail`，
+而且这一判定排在最前，因此足够低于 threshold 的 candidate 即使只有单次 repetition、即使在
+noisy 到什么都分辨不了的机器上也会被拒——slow 的 negative control 之所以持续失败正是如此。
+在此之下，宽于`MAX_TRUSTED_SPREAD`的实测 spread，无论 median 落在 threshold 哪一侧都是
+`inconclusive`：noise 扩大的是"未能分辨"，而绝不是"pass"；来自单次 repetition 的剩余不足
+同样是`inconclusive`。clean control 的 timed duration 与其 spread 并列记录，因为 spread 是相对
+duration 的比例，而短到承载不了仪器自身 overhead 的 case，与一台 noisy 的机器是不同的结论。
+
+未被取得的测量报告为 absent，而不是 zero。launch 未完成的 case、或 oracle 给出非有限
+residual 的 case 不携带 residual ratio；report 的 aggregate 只在每个 case 都给出数值时才存在：
+仅对给出答案的那些 case 取最大值，是 evidence 不支持的 bound，而且它就印在读者会拿来比较的
+limit 旁边。correctness report 还会绑定 candidate 自身的 digest，否则达成相同 verdict 的不同
+candidate 会产生 byte-identical 的 report，因而只有一个 report digest。report 从 launch 的
+sandbox 中保留的是一个 allowlist——untrusted candidate 是否被隔离、由什么隔离、以及它未覆盖
+什么——而绝不包含 per-run 的 writable root：那是一个 host 文件系统路径，并且会让 report
+digest 每次 run 都不同。
 
 Inspect、Harbor、KernelBench/ComputeEval/scBench 和 PaperBench adapter 不 fork upstream
 framework。其 driver 验证 pinned official route 并规范化 strict result envelope。没有

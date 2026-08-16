@@ -551,8 +551,30 @@ blocking on an unsatisfied selection; `knowledge.enforce` requires verified,
 digest-locked Knowledge and provenance. Binding `audit` computes the exact
 requirement-to-tool mapping while preserving the legacy surface; `enforce`
 exposes and executes bound tools only. Assurance `audit` runs and records the
-fixed suite without gating; `enforce` requires screen pass for the scientific
-frontier and certify pass for publication.
+fixed suite without gating — a node that executed classifies
+`scientific_frontier` whatever the suite returns; `enforce` derives the node's
+`frontier_class` from the screen verdict (below) and requires certify pass for
+publication. A node whose own execution failed is `debug_frontier` in both
+modes: the suite never runs for it.
+
+**Under `enforce` the screen gate splits `fail` by which property failed**
+(`ari/rqgm/assurance_bridge.py`, `_frontier`). A screen `pass` classifies
+`scientific_frontier`, and `inconclusive` / `infrastructure_error` / `tampered`
+classify `uncertified_frontier`. A `fail` is not one thing: when every property
+that failed is a *quality* property — the named set `_QUALITY_PROPERTIES`, today
+the single member `performance-regression` — the node still classifies
+`scientific_frontier`, because a candidate that computes the right answer more
+slowly than a tuned reference is a measurement, not a defect to repair. Any
+other failing property sends the node to `debug_frontier`, including when it
+fails beside a quality one. The set names the exemptions rather than deriving
+them from the vocabulary's `correctness_properties`
+(`ari-core/config/harnesses/property_vocabulary.yaml`), which lists only
+`numerical-equivalence` and `interface-conformance` and omits
+`trajectory-equivalence` — so a property added later disqualifies by default.
+The exemption reaches the frontier only: `assurance_status` stays `fail`, and
+the certify tier runs only for a node whose status is `pass` *and* whose class
+is already `scientific_frontier`, so a quality-failed node is admitted to the
+scientific frontier and never certified.
 
 `resolve_kca_modes` is the single interlock. An explicit Knowledge requirement
 with `knowledge.off`, a required Capability with legacy binding, or a required

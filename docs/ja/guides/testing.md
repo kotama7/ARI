@@ -24,7 +24,7 @@ sources:
     role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # ARI コードのテスト方法
@@ -38,8 +38,10 @@ last_verified: 2026-08-16
 ari-core/tests/                    — コアの回帰テスト
 ari-skill-<name>/tests/            — スキルローカルのテスト
 ari-skill-<name>/tests/conftest.py — スキルレベルのフィクスチャ（17 スキル中
-                                     13。benchmark と plot だけはパッケージ
-                                     ルートに置いている）
+                                     13。harness と knowledge は tests/ 自体を
+                                     持たず、idea と paper-re は tests/ はあるが
+                                     conftest が無い。benchmark と plot は
+                                     パッケージルートに 2 つ目を置いている）
 pytest.ini                         — リポジトリ全体の設定
 ```
 
@@ -185,18 +187,29 @@ it (すべてのリーダーがロードしなければならない)」と述べ
 (benchmark、coding、evaluator、hpc、idea、paper、tool-registry、transform、
 vlm、web)。残りはサーフェスのファイル名が異なるか、そもそも持ちません —
 `ari-skill-orchestrator/tests/test_mcp_surface.py` は名前が違うだけの同種の
-ファイルです。10 個すべてに共通するのは、サーバーモジュールをインプロセスで
-import し (サブプロセスを起こすものは 1 つもありません)、ツール関数を
-フィクスチャ入力で直接呼び、レスポンスの形状を検証する、という点です。多くは
+ファイルです。10 個のうち 9 個は、サーバーモジュールをインプロセスで import し、
+ツール関数をフィクスチャ入力で直接呼び、レスポンスの形状を検証します。多くは
 `from src.server import …` で辿りますが、パッケージ化済みのスキルは
 インストール済みモジュール (`ari_skill_hpc.server`) を import し、
 `ari-skill-coding` は `importlib.util.spec_from_file_location` でパスからも
-読み込みます。
+読み込みます。例外は `ari-skill-tool-registry` の 1 つだけで、これは意図的です:
+サーフェスがブローカーであるため、その `tests/test_server.py` は `src/server.py`
+を実際の stdio 子プロセスとして起動し (`PythonStdioLauncherV1` +
+`StdioMCPAdapter`、実体は `ari-skill-tool-registry/src/providers.py`:514 の
+`stdio_client`)、MCP セッション越しに駆動します。10 個の外側では、名前が違う
+だけの同種ファイルも同じことをします: `ari-skill-orchestrator/tests/test_mcp_surface.py`
+は `src/server.py` を子プロセスとして 2 回起動します — 1 回は `streamable-http`
+経由 (`subprocess.Popen`、:188)、もう 1 回は stdio 経由 (`stdio_client`、:282)。
+サブプロセスが起きるのはこの 2 スイートだけです。
 
-この層が**やらない**ことが 2 つあり、いずれも workflow のゲートが担当します。
+この層が原則として workflow のゲートに委ねていることが 2 つあります。
 ツールリストと `skill.yaml` の一致、および生成された `mcp.json` のドリフト検査は、
 後述の「PR 時にテストされる内容」にある `contracts` workflow の
-`scripts/check_skill_manifests.py` の仕事で、スキル側のアサーションではありません。
+`scripts/check_skill_manifests.py` の仕事です。ただしスキル側でも自分で固定して
+いるスイートがちょうど 1 つあるので、green なスキルスイートをこれらのカバーと
+読まないでください — `ari-skill-orchestrator/tests/test_mcp_surface.py`:38-43 が、
+ランタイムのツール名・`skill.yaml` の `tools:`・`mcp.json` の `tools`・そして
+12 個のリテラル `EXPECTED` 集合がすべて同一であることを検証しています。
 そして共通の MCP テストハーネスは存在しません: `mcp.testing` というモジュールは
 無く (`mcp` パッケージが持つのは `cli` / `client` / `os` / `server` / `shared` /
 `types`)、リポジトリ内にそれを import するコードもありません。各スイートが独自の
@@ -204,15 +217,21 @@ import し (サブプロセスを起こすものは 1 つもありません)、�
 リファレンスです (`tmp_path` スコープの `ARI_CHECKPOINT_DIR`、backend フィクスチャ、
 署名付き call-context の発行、fake Letta クライアント)。
 
-`list_tools()` を実際に呼ぶスイートは 3 つあり、どれもマニフェストとの照合には
-使っていません: `ari-skill-coding` は `outputSchema` を持つ 5 ツールのスキーマを
-検証し、`ari-skill-hpc` と `ari-skill-idea` は特定のツール名が登録されている
-(hpc は登録されていない) ことを検証します。
+`list_tools()` を実際に呼ぶスイートは複数あり、何と突き合わせるかはそれぞれ
+異なります。`ari-skill-coding` は `outputSchema` を持つ 5 ツールのスキーマを
+検証し (`tests/test_server.py`:715-723)、`ari-skill-hpc`
+(`tests/test_server.py`:40-46) と `ari-skill-idea` (`TestMcpToolRegistration`)
+は特定のツール名が登録されている (hpc は登録されていない) ことを検証し、
+`ari-skill-tool-registry` は稼働中のブローカー面が公開 6 操作ちょうどであること
+を検証し (`tests/test_server.py`:48-50)、`ari-skill-transform` は登録済みの名前を
+読みます (`tests/test_metric_contract_seam.py`:22)。いずれも期待値はテスト内の
+リテラルで、マニフェストと照合するのは `ari-skill-orchestrator` だけです。
 
 ### LLM モック
 
 LLM を呼び出すスキル (`evaluator`、`paper`、`paper-re`、`idea`、
-`replicate`、`transform`、`plot/_llm`、`vlm`) は、ユニットテストで
+`replicate`、`transform`、`plot` — 呼び出し元は `litellm.acompletion` を持つ
+`src/planning.py` です — そして `vlm`) は、ユニットテストで
 LLM をモックしなければなりません。
 
 リファレンス例は `ari-skill-paper-re/tests/test_litellm_completer.py` で、その
@@ -256,8 +275,9 @@ def ckpt(tmp_path, monkeypatch):
   独立したステップではありません。その後 `$HOME/.ari/` が存在すれば job を落とし、
   もう 1 つの job が PR の diff から許可リスト外の新しい `~/.ari` 参照を探します。
   さらに 5 つの job (import boundaries、directory policy、complexity、ruff lint、
-  dead code) はすべて**アドバイザリ**で、`continue-on-error: true` と
-  `--warning-only` が付くため、findings が PR を赤くすることはありません。
+  dead code) はすべて**アドバイザリ**です。全部に `continue-on-error: true` が
+  付き、ruff lint (素の `ruff check ari-core`) 以外は `--warning-only` も渡すため、
+  findings が PR を赤くすることはありません。
   `refactoring` ブランチでも走る 2 つのワークフローのうちの 1 つです
   (ファイル内のコメントは今も「唯一」と書いていますが、後から `skill-tests` が
   同じトリガーで追加されました)。
@@ -282,13 +302,24 @@ OpenAPI 文書を編集すると、ここで落ちます。
 
 - `readme-sync` — 各ディレクトリの `## Contents` 索引が配下のファイルを
   列挙していること (`scripts/readme_sync.py --check`)。
-- `docs-sync` — 全ツリー不変条件、すべてハードゲート: 宣言された `sources:`
+- `docs-sync` — 全ツリー不変条件。ハードゲートは 6 つ: 宣言された `sources:`
   パスが実在すること (`check_doc_sources.py`)、`docs/i18n/landing.{en,ja,zh}.js`
-  のキー集合が一致すること (`check_i18n_js.py`)、ルート `README.{md,ja,zh}` の
-  見出し構造が一致すること (`check_readme_parity.py`)、`report/{en,ja,zh}` が
-  構造的に並行であること (`report/scripts/check_i18n.py`、Gate 6)。翻訳鮮度
-  (`check_translation_freshness.py`) と docs 内リンク (`check_doc_links.py`) は
-  advisory (非ブロッキング) ステップとして実行します。
+  のキー集合が一致すること (`check_i18n_js.py`)、HTML サイトの i18n 整合性と
+  公開バージョンピン (`check_site_i18n.py`)、手書きの `docs/*.html` 内の
+  `href`/`src` がすべて解決すること (`check_doc_links.py --html-only`)、
+  ルート `README.{md,ja,zh}` の見出し構造が一致すること
+  (`check_readme_parity.py`)、`report/{en,ja,zh}` が構造的に並行であること
+  (`report/scripts/check_i18n.py`、Gate 6)。続いて advisory (非ブロッキング) が
+  3 つ: 翻訳鮮度 (`check_translation_freshness.py`)、Markdown リンク整合性
+  (`check_doc_links.py` — リンクの両半分を検査するので、壊れたファイル数と
+  壊れた*アンカー*数を別々に報告します)、そしてトランク状態の陳腐化
+  (`check_docs_source_sync.py --warning-only`)。最後の 1 つが他では見えない唯一の
+  次元をカバーします — `main` に既に入っているソースの最新コミットが、それを
+  宣言する doc の `last_verified` より新しい、という状態です。その凍結ベースライン
+  は空なので (`scripts/check_docs_source_sync.allow.yaml`:34、
+  `known-offenders: []`)、報告される findings はすべて新規です。もう 1 つの job
+  が report PDF の同期 (`sync_report_pdf.sh --check`) と VitePress サイトの
+  ビルドを行います。
 - `docs-change-coupling` — 差分ベース: `report/{en,ja,zh}` の言語ペアファイル
   (章・`strings.tex`・`main.tex`) を 1 言語で編集したら、同じ PR で他 2 言語にも
   反映すること (`check_report_cochange.py`、ハード)。また doc の `sources:` に

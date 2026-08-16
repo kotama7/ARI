@@ -36,7 +36,7 @@ sources:
     role: test
   - path: docs/concepts/gui_architecture.md
     role: doc
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # GUI-ADR-02: `/api/v1` transport and OpenAPI generation

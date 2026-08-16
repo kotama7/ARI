@@ -317,7 +317,8 @@ word-shingle スクリーンと `RetiredPromptAccessGuard` によって強制さ
 権限非拡大）。
 
 監査ログにおける検出の様子（スクリプト化された不正コンポーネントを
-仕込む B8 injection smoke ハーネスより）:
+仕込む injection smoke ハーネスより。どの `ari_rqgm` アブレーション段でも
+仕込めます — 決めるのはスクリプト仕様であって段ではありません）:
 
 ```jsonc
 {"event_type": "validated_attack", "payload": {"case_type": "overclaim",
@@ -372,7 +373,7 @@ attack を生み、不正な generator の替え玉はスキーマチェック�
 不正な攻撃はレコードになる前に捨てられ、読めない裁定はペナルティなしの
 `invalid` にフォールバックします — つまり採用されたアクターは警報を上げる
 のではなく静かに劣化します。上の `prompt_candidate_rejected` の抜粋は
-反例ではありません: このイベントを出すのは B8 injection smoke ハーネス
+反例ではありません: このイベントを出すのは injection smoke ハーネス
 だけで、しかも `static_validation` の失敗に `schema_dry_run` という段階
 ラベルを押しています。本物の返信元を供給することは、候補経路に予算付き
 で非決定論的な LLM 呼び出しを置くことを意味します; その決定は下されて
@@ -609,9 +610,9 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | 1 回の敵対ラウンド、レコードごと | 敵対ループ |
 | audit | `governance_report`（+ レコード単位の motion/defense/adjudication 行） | エポック監査とその結果 | `GovernanceOrchestrator` |
 | audit | `epoch_transition` | コミットされた遷移。`inputs` にレポートハッシュを含む | `RegistryTransitionEngine` |
-| audit | `kernel_report` / `constitutional_violation` | warn-and-flag の検出 / 規則違反（`CK-*` コード） | `ConstitutionalKernel` アダプタ。`constitutional_violation` は B8 注入スモークハーネス（`ari/rqgm/evaluation/smoke.py`）のみが出力 |
+| audit | `kernel_report` / `constitutional_violation` | warn-and-flag の検出 / 規則違反（`CK-*` コード） | `ConstitutionalKernel` アダプタ。`constitutional_violation` は注入スモークハーネス（`ari/rqgm/evaluation/smoke.py`）のみが出力 |
 | audit | `selective_erasure` / `frontier_rebuild` | 退役後の論理消去 + 再構築 | `FrontierRepairEngine` |
-| audit | `prompt_candidate_rejected` | 候補がライフサイクル段階で失敗した | B8 injection smoke ハーネス（`ari/rqgm/evaluation/smoke.py`）のみ; 実ランの境界でのドロップは代わりに `prompt_evolution` 行の `skipped` リストで告知される |
+| audit | `prompt_candidate_rejected` | 候補がライフサイクル段階で失敗した | injection smoke ハーネス（`ari/rqgm/evaluation/smoke.py`）のみ; 実ランの境界でのドロップは代わりに `prompt_evolution` 行の `skipped` リストで告知される |
 | audit | `prompt_evolution_skipped` | 境界の候補生成が無効（`rqgm.prompt_evolution.enabled: false`） | `RQGMRuntime` の境界プロンプト進化 |
 | audit | `clean_room_violation` | 汚染されたクリーンルームバンドルがブロックされた | `CleanRoomCoordinator` |
 | audit | `meta_evolution` | 境界メタステップのサマリ: outcome `proposed`/`no_op`（またはスキップ/失敗理由）、件数、スキップされた invoker | `MetaEvolutionCoordinator`（スキップ/失敗行: `RQGMRuntime`） |

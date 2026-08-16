@@ -24,7 +24,7 @@ sources:
     role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # How to Test ARI Code
@@ -39,8 +39,10 @@ expected, and how to keep determinism guarantees intact.
 ari-core/tests/                    — core regression tests
 ari-skill-<name>/tests/            — skill-local tests
 ari-skill-<name>/tests/conftest.py — skill-level fixtures (13 of 17 skills;
-                                     benchmark and plot put theirs at the
-                                     package root instead)
+                                     harness and knowledge ship no tests/ at
+                                     all, idea and paper-re ship tests without
+                                     one; benchmark and plot add a SECOND
+                                     conftest at the package root)
 pytest.ini                         — repo-wide config
 ```
 
@@ -188,17 +190,29 @@ Ten of the seventeen `ari-skill-*` packages ship a `tests/test_server.py`
 (benchmark, coding, evaluator, hpc, idea, paper, tool-registry, transform,
 vlm, web); the rest name their surface file differently or do not have one —
 `ari-skill-orchestrator/tests/test_mcp_surface.py` is the same kind of file
-under another name. What every one of them does is import the server module
-in-process — none of the ten spawns a subprocess — and call the tool
-functions directly with fixture inputs, asserting the response shape. Most
-reach it as `from src.server import …`; a packaged skill imports its
-installed module instead (`ari_skill_hpc.server`), and `ari-skill-coding`
+under another name. Nine of the ten import the server module in-process and
+call the tool functions directly with fixture inputs, asserting the response
+shape. Most reach it as `from src.server import …`; a packaged skill imports
+its installed module instead (`ari_skill_hpc.server`), and `ari-skill-coding`
 also loads it by path with `importlib.util.spec_from_file_location`.
+`ari-skill-tool-registry` is the one exception, and deliberately: its surface
+is a broker, so its `tests/test_server.py` launches `src/server.py` as a real
+stdio child process (`PythonStdioLauncherV1` + `StdioMCPAdapter`, which reaches
+`stdio_client` at `ari-skill-tool-registry/src/providers.py`:514) and drives it
+over an MCP session. Outside the ten, the surface file under another name does
+the same: `ari-skill-orchestrator/tests/test_mcp_surface.py` starts
+`src/server.py` as a child process twice — once over `streamable-http`
+(`subprocess.Popen`, :188) and once over stdio (`stdio_client`, :282). Those two
+suites are the only places a subprocess appears.
 
-Two things this layer does **not** do, because a workflow gate owns them
-instead. Tool-list-versus-`skill.yaml` parity and generated-`mcp.json` drift
-are the `contracts` workflow's `scripts/check_skill_manifests.py`, described
-under "What gets tested at PR time" below — not a per-skill assertion. And
+Two things this layer mostly leaves to a workflow gate. Tool-list-versus-
+`skill.yaml` parity and generated-`mcp.json` drift are the `contracts`
+workflow's `scripts/check_skill_manifests.py`, described under "What gets
+tested at PR time" below; exactly one suite also pins them for itself, so do
+not read a green skill suite as covering them —
+`ari-skill-orchestrator/tests/test_mcp_surface.py:38-43` asserts that the
+runtime tool names, `skill.yaml`'s `tools:`, `mcp.json`'s `tools` and a literal
+`EXPECTED` set of twelve are all one set. And
 there is no shared MCP test harness: no `mcp.testing` module exists (the
 `mcp` package ships `cli`, `client`, `os`, `server`, `shared` and `types`)
 and nothing in the repo imports one. Each suite builds its own fixtures —
@@ -206,15 +220,23 @@ and nothing in the repo imports one. Each suite builds its own fixtures —
 (a `tmp_path`-scoped `ARI_CHECKPOINT_DIR`, a backend fixture, a signed
 call-context issuer, and a fake Letta client).
 
-Three suites do call `list_tools()`, and none of them compares it against
-the manifest: `ari-skill-coding` validates the declared `outputSchema` of
-the five tools that carry one, while `ari-skill-hpc` and `ari-skill-idea`
-assert that specific tool names are (and, for hpc, are not) registered.
+Several suites do call `list_tools()`, and what each compares it against
+differs. `ari-skill-coding` validates the declared `outputSchema` of the five
+tools that carry one (`tests/test_server.py`:715-723); `ari-skill-hpc`
+(`tests/test_server.py`:40-46) and `ari-skill-idea`
+(`TestMcpToolRegistration`) assert that specific tool names are (and, for hpc,
+are not) registered; `ari-skill-tool-registry` asserts the live broker surface
+is exactly its six public operations (`tests/test_server.py`:48-50); and
+`ari-skill-transform` reads the registered names
+(`tests/test_metric_contract_seam.py`:22). In all of those the expected list is
+a literal written in the test — `ari-skill-orchestrator` is the only suite that
+compares it against the manifest.
 
 ### LLM mocks
 
 Skills that call an LLM (`evaluator`, `paper`, `paper-re`, `idea`,
-`replicate`, `transform`, `plot/_llm`, `vlm`) must mock the LLM in
+`replicate`, `transform`, `plot` — in `src/planning.py`, which is where its
+`litellm.acompletion` call lives — and `vlm`) must mock the LLM in
 unit tests.
 
 The reference example is
@@ -259,9 +281,9 @@ runs the other's paths.
   separate steps. The workflow then fails if `$HOME/.ari/` exists, and a
   second job diffs the PR for new `~/.ari` references outside an explicit
   allowlist. Five further jobs (import boundaries, directory policy,
-  complexity, ruff lint, dead code) are all **advisory** —
-  `continue-on-error: true` plus `--warning-only`, so a finding never turns
-  a PR red. It is one of the two workflows that also trigger on the
+  complexity, ruff lint, dead code) are all **advisory** — every one carries
+  `continue-on-error: true`, and all but ruff lint (a bare `ruff check
+  ari-core`) also pass `--warning-only`, so a finding never turns a PR red. It is one of the two workflows that also trigger on the
   `refactoring` branch (an in-file comment still claims it is the only one;
   `skill-tests` was added with the same trigger later).
 - `skill-tests` runs seven skill suites, one pytest process per path
@@ -292,13 +314,24 @@ CLI tree, and dashboard endpoints.
 
 - `readme-sync` — every directory's `## Contents` index lists the files
   beneath it (`scripts/readme_sync.py --check`).
-- `docs-sync` — full-tree invariants, all hard gates: declared `sources:`
+- `docs-sync` — full-tree invariants. Six hard gates: declared `sources:`
   paths resolve (`check_doc_sources.py`), `docs/i18n/landing.{en,ja,zh}.js` share
-  one key set (`check_i18n_js.py`), the root `README.{md,ja,zh}` share one heading
-  shape (`check_readme_parity.py`), and `report/{en,ja,zh}` are structurally
-  parallel (`report/scripts/check_i18n.py`, Gate 6). Translation freshness
-  (`check_translation_freshness.py`) and intra-doc links (`check_doc_links.py`)
-  run as advisory, non-blocking steps.
+  one key set (`check_i18n_js.py`), HTML-site i18n integrity and the public
+  version pin (`check_site_i18n.py`), every `href`/`src` in the hand-written
+  `docs/*.html` resolves (`check_doc_links.py --html-only`), the root
+  `README.{md,ja,zh}` share one heading shape (`check_readme_parity.py`), and
+  `report/{en,ja,zh}` are structurally parallel (`report/scripts/check_i18n.py`,
+  Gate 6). Then three advisory, non-blocking steps: translation freshness
+  (`check_translation_freshness.py`), Markdown link integrity
+  (`check_doc_links.py` — it checks both halves of a link, so it reports a
+  broken-file count and a broken-*anchor* count separately), and trunk-state
+  staleness (`check_docs_source_sync.py --warning-only`), which covers the one
+  dimension the others cannot see: a source whose newest commit already on
+  `main` is more recent than the `last_verified` of a doc that declares it. Its
+  frozen baseline is empty (`scripts/check_docs_source_sync.allow.yaml`:34,
+  `known-offenders: []`), so every finding it reports is net-new. A second job
+  checks the report PDFs are in sync (`sync_report_pdf.sh --check`) and builds
+  the VitePress site.
 - `docs-change-coupling` — diff-based: a `report/{en,ja,zh}` language-paired
   file (chapter, `strings.tex`, `main.tex`) edited in one language must be
   mirrored in the other two in the same PR (`check_report_cochange.py`, hard);

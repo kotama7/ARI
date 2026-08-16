@@ -18,7 +18,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_workflow_write_guard.py
     role: test
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # GUI-ADR-10: bundled `workflow.yaml` write guard

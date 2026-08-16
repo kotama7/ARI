@@ -18,7 +18,7 @@ sources:
     role: test
   - path: docs/guides/configuration_studio.md
     role: doc
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # GUI-ADR-05: secret provider

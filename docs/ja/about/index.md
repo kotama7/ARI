@@ -10,7 +10,7 @@ sources:
     role: doc
   - path: ari-skill-transform/src/server.py
     role: implementation
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # ARI について

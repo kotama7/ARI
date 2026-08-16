@@ -447,11 +447,40 @@ full-SHA `HarnessAttestationV1`を出す。verdictは`pass`、`fail`、`inconclu
 `infrastructure_error`、`tampered`である。Provider successはAttestationではなく、通常の
 candidate failureだけではconstitutional violationにならない。
 
+どのverifier processを起動するかは、manifestがpinしたdriver revisionが決める。Harness idでは
+決めない。登録済みrevisionは`ari.assurance.native-hpc/v1`、
+`ari.assurance.problem-correctness/v1`、`ari.assurance.native-perf/v1`の三つで、それぞれが
+自分のargvを組み立てる。problemを軸にする二つの分岐は、問いとcandidateをmanifest自身の
+`oracle`/`dataset` pinとtarget宣言から取り、idから切り出した文字列からは取らない。native-HPCの
+分岐だけは今もidからfamily名を読み出す(`hpc/gemm-correctness`→`gemm`)。そこだけは、その切り出し
+が登録済みfamilyを与えるからである。どの分岐も名指さないrevisionは
+launch不能として拒否される。これは「検証に失敗した」とは別の所見である。この拒否がなければ
+requestは誤ったverifierを起動し、不一致は一層下でinfrastructure outageとして現れる。evidence
+referenceのmedia typeも同じ理由で宣言されたtarget kindから決まり、C submissionがshared library
+として記録されることはない。
+
+correctness requirementは、そのrunのcandidateが実際に何であるかというartifact kindを持つ。
+property vocabularyはproperty毎にtarget kindを一つだけ述べ、Resolverはmanifestの
+`target_kinds`に無いkindのatomをproperty検査より前に落とす。別kindを検証するHarnessは、
+登録されpromotionされても選ばれない。runが`ARI_PROBLEM`でpinned problemを名指すと、admissionは
+そのproblemのartifact kindを導出してVerification Contractへ渡し、correctness propertyだけが
+それを受け取る。problemの宣言entry pointがfamily ABIのexported symbolの一つであればそのABIの
+target kind、そうでなければ`benchmark-submission`である。problemを名指さないrun、または
+load不能なproblemを名指すrunは何も渡さず、requirementの刻印は従来のままである。node側の
+target宣言も同じ関数からkindを導くので、resolutionとdeclarationが「何を検証したか」で
+食い違うことはない。
+
 native `hpc/gemm-correctness`、`hpc/spmm-correctness`、`hpc/stencil-correctness`は
 deterministic generated case、独立reference、dtype/accumulation-aware error model、
 metamorphic/shape/boundary/repeat coverage、negative controlを持つ。checked-in verified catalog
 へのpromotionはrelease admissionであり、commit済みsource revision、immutable container、
 license review、reference pass、negative-control fail、registration reportが必要である。
+registrationはmanifestをpin先のdriverにも突き合わせる。`result_schema_conformance`は、
+`expected_result_schema`がそのdriverの出すreport typeであり、
+`expected_result_schema_digest`がARIがそのtypeについて配布するschema fileのbyte digestである
+場合にのみ通る。両方を持たないevidenceは比較を省略せずgate失敗となり、schemaが下でdriftした
+pinは黙って直さず拒否する。pinはregistrationされた内容の記録であり、動かせるのは
+re-registrationだけだからである。
 
 この三つはそれぞれcorrectness familyであり、`ari.assurance.native_hpc_family`で一度だけ
 自己登録し、三つを供給する。`verify`(hidden caseとそれを判定するoracle)、`reference`
@@ -476,6 +505,36 @@ signatureは署名した対象だけを覆うので、再pinだけでは三つ�
 clean worktreeで各三回のparity probe run、15/15 gate、`eligible-for-verified`、
 registration report・evidence bundle・maintainer approvalはいずれも新規である。
 pinは現に存在するdriverを指している。
+
+checked-in catalogはもうこの三つだけではない。pinned problemに対するcorrectness Harness——
+family ABIではなくproblem自身のC contractに対してcandidateを検証し、manifestがpinするものと
+異なるproblem、case set、digestを記述するresultの正規化を拒否し、harness levelのverdictを、
+reportが合成する両propertyではなくrequestが実際に宣言したpropertyについて取る——と、
+performance Harnessも持つ。
+
+performance verdictは、その測定が実際に示したspreadに対して読む。candidateが到達すべき比は
+`DEFAULT_REGRESSION_THRESHOLD`一箇所であり、worker、parity probe、measurementが等しくそこから
+取る。governed pathはthresholdを渡さないので、verdictを読み取る数値がcall site毎のdefaultで
+あってはならない。不足とは、そのthresholdからmedian比を引いた差であり、そのrunが実際に
+持つbandに対して読む。bandとは、repetitionのmax−min、またはspreadが測れないとき(単一
+repetitionが典型)は median×`MAX_TRUSTED_SPREAD`(この計器が読まれる最大値)である。bandを超える不足は
+`fail`であり、この判定が先に置かれる。だからthresholdを十分に下回るcandidateは、単一
+repetitionからでも、何も解像できないほどnoisyなmachine上でも拒否される——slowなnegative
+controlが落ち続けるのはそのためである。それに達しない範囲では、`MAX_TRUSTED_SPREAD`より
+広い測定spreadは、medianがthresholdのどちら側にあっても`inconclusive`である——noiseが広げるの
+は「解像しなかった」であって「pass」ではない——単一repetitionから残る不足も同じく
+`inconclusive`である。clean controlのtimed durationはspreadの
+隣に記録される。spreadはdurationに対する割合であり、計器自身のoverheadを支えるには短すぎる
+caseは、noisyなmachineとは別の所見だからである。
+
+取られなかった測定はzeroではなくabsentとして報告する。launchが完了しなかったcase、または
+oracleが有限でないresidualを答えたcaseはresidual ratioを持たず、reportのaggregateは全caseが
+値を出したときだけ存在する。答えたcaseだけの最大値はevidenceが支持しないboundであり、しかも
+読者が比較するlimitの隣に載る。correctness reportはcandidate自身のdigestもbindする。これが
+無いと、同じverdictに達した別のcandidateがbyte-identicalなreport、したがって一つの
+report digestを生む。reportがlaunchのsandboxから保持するのはallowlistであり——untrusted
+candidateが隔離されたか、何によってか、それが覆わないものは何か——per-runのwritable rootは
+含めない。host filesystem pathであり、report digestを毎run変えてしまうからである。
 
 Inspect、Harbor、KernelBench/ComputeEval/scBench、PaperBench adapterはupstream frameworkを
 forkしない。pinned official routeを検証してstrict result envelopeへ正規化する。digest-bound

@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_remote_auth.py
     role: test
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # GUI-ADR-13 (ADR-13): remote-mode bearer-token authentication

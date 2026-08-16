@@ -40,7 +40,7 @@ sources:
     role: doc
   - path: docs/concepts/gui_architecture.md
     role: doc
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # Manuscript Complete architecture

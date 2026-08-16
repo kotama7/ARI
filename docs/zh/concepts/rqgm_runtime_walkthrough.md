@@ -285,8 +285,8 @@ open）。在边界窗口内：
 shingle 筛查和 `RetiredPromptAccessGuard` 强制执行）。元层可以
 提议，绝不能任命（能力标志默认拒绝，权限不扩张以子集运算检查）。
 
-审计日志中的检测长这样（来自 B8 注入冒烟工具链，它会植入脚本化的
-失当组件）：
+审计日志中的检测长这样（来自注入冒烟工具链，它会在任意 `ari_rqgm`
+消融梯级上植入脚本化的失当组件 —— 决定权在脚本规格，而非梯级）：
 
 ```jsonc
 {"event_type": "validated_attack", "payload": {"case_type": "overclaim",
@@ -332,7 +332,7 @@ shadow 阶段而建；它那个单调的阶段执行器 `run_stage` 根本没有
 提示词只能在采纳之后、于运行时被那些 fail-open 的读取方抓到 —— schema
 不合法的攻击在成为记录之前就被丢弃，读不懂的裁决回退为 `invalid` 且
 不施加惩罚 —— 也就是说被采纳的行动者是悄悄劣化，而不是发出警报。上面
-那段 `prompt_candidate_rejected` 摘录不是反例：只有 B8 注入冒烟工具链
+那段 `prompt_candidate_rejected` 摘录不是反例：只有注入冒烟工具链
 会发出该事件，而且它是把 `schema_dry_run` 这个阶段标签盖在一次
 `static_validation` 失败上。提供一个真正的回复来源，意味着要在候选路径
 上放一次带预算的、非确定性的 LLM 调用；这个决定尚未做出。
@@ -542,9 +542,9 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | audit | `raw_attack` / `defender_response` / `judgment_record` / `validated_attack` / `utility_record` | 一轮对抗回合，逐条记录 | 对抗循环 |
 | audit | `governance_report`（+ 逐记录的动议/辩护/裁决行） | 纪元审计及其结果 | `GovernanceOrchestrator` |
 | audit | `epoch_transition` | 已提交的转换，`inputs` 中含报告哈希 | `RegistryTransitionEngine` |
-| audit | `kernel_report` / `constitutional_violation` | 警告并标记的发现 / 规则违规（`CK-*` 码） | `ConstitutionalKernel` 适配器；`constitutional_violation` 仅由 B8 注入冒烟工装（`ari/rqgm/evaluation/smoke.py`）写出 |
+| audit | `kernel_report` / `constitutional_violation` | 警告并标记的发现 / 规则违规（`CK-*` 码） | `ConstitutionalKernel` 适配器；`constitutional_violation` 仅由注入冒烟工装（`ari/rqgm/evaluation/smoke.py`）写出 |
 | audit | `selective_erasure` / `frontier_rebuild` | 退役后的逻辑擦除 + 重建 | `FrontierRepairEngine` |
-| audit | `prompt_candidate_rejected` | 候选在某个生命周期阶段失败 | 只有 B8 注入冒烟工具链（`ari/rqgm/evaluation/smoke.py`）；真实运行中边界上的丢弃改为在 `prompt_evolution` 行的 `skipped` 列表里告知 |
+| audit | `prompt_candidate_rejected` | 候选在某个生命周期阶段失败 | 只有注入冒烟工具链（`ari/rqgm/evaluation/smoke.py`）；真实运行中边界上的丢弃改为在 `prompt_evolution` 行的 `skipped` 列表里告知 |
 | audit | `prompt_evolution_skipped` | 边界候选生成被禁用（`rqgm.prompt_evolution.enabled: false`） | `RQGMRuntime` 的边界提示词进化 |
 | audit | `clean_room_violation` | 被污染的洁净室 bundle 被阻断 | `CleanRoomCoordinator` |
 | audit | `meta_evolution` | 边界元步骤摘要：outcome 为 `proposed`/`no_op`（或跳过/失败原因）、计数、被跳过的 invoker | `MetaEvolutionCoordinator`（跳过/失败行：`RQGMRuntime`） |

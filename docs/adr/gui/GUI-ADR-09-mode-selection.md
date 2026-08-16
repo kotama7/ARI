@@ -30,7 +30,7 @@ sources:
     role: test
   - path: docs/guides/execution_modes.md
     role: doc
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # GUI-ADR-09: GUI mode selection for a new run
