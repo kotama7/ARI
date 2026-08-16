@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:a6ccf9f54fde9c92ff5e5f7ee5d3b91f5f1d13d55bbc03059fbd9b8d3e789484",
+  "approval_digest": "sha256:1da40dbcf0444f5421a646835b16bc00c99cad8fb534036d4e255405652e762b",
   "approved_date": "2026-08-17",
-  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-17 ('kotama'). Two leftover fields had made this Harness unreachable on every host: target_interface_contract named gemm-c-abi/v1 where declare_target and its own sibling over the identical problem both say problem:gemm-dense-fp64/v1@2026q3, and registered_placement named aarch64 while the pinned SIF is an x86_64 image. The placement is now {x86_64, 16 threads}, chosen by measurement on an exclusive node, three runs per budget: 8 gave a worst spread of 0.0057 at 20.8 ms, 16 gave 0.0252 at 10.8 ms, 32 gave 0.1311 at 5.7 ms. A first attempt at 96 was REJECTED at 12/15 for a spread of 0.237. The limit is the case size, not the hardware. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:d7c54076a6ee5a90d48ee8e0621b13180cadc0e57e91722a0d8e48685b85e025",
+  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-17 ('kotama'). The instrument moved again and the manifest's driver pin followed. The change being registered is NOT all mine: another author corrected the noise rule I had added, where a measured spread widened the PASS region -- measured, a candidate at 0.5x of the reference passed at a spread of 1.509, and a repeat put a candidate 3.6x slower than the denominator inside the pass band. Noise now widens 'inconclusive' only. The same commit gave the regression threshold one home at 0.95, the figure the registered evidence beside this manifest was earned at, instead of three call sites that disagreed between 0.95 and 1.0. Placement is unchanged at {x86_64, 16 threads}, where the clean control resolves. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
+  "evidence_bundle_digest": "sha256:9fc34a854392a97b91c5c04f3c753d66fef798300100a1ebc053a0da3e59cdee",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:3b9a0a1dfb72179d1158fcb52a90a3d81ff359eb198e184c1bc85e2f8f3e7797",
+  "harness_manifest_digest": "sha256:62b378844e33355d4285da3b05eeaa4bf10f328ced7c338d2fc98d2f53f8058e",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:564a9ea9a74e7ba26a235c91bbc6bab15e29814961b6948503e647fdb104b5ca",
+  "registration_report_digest": "sha256:990e6c521ff9df962dd41f4c1ace11102bbe57115087bcfc2a92110df3d7b920",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

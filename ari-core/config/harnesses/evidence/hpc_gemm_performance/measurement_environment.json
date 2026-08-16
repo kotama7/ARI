@@ -19,5 +19,5 @@
     "thread_budget": "16"
   },
   "placement_note": "a timed verdict is a statement about a machine; the manifest pins this placement and prepare() refuses any other",
-  "registration_commit": "12b727bf626634a2a3f5fdc8d33205ab8a70ad29"
+  "registration_commit": "b156092342aa9ddea81fa8578c1f8519c0f721cf"
 }
