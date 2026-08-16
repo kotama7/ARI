@@ -284,8 +284,10 @@ the log is read directly on a shared filesystem; when the scheduler is reached
 over a non-shared transport the log comes back through that transport, and
 `digest` and `size_bytes` then describe the same 1 MiB-bounded text.
 Logs are read from `slurm-{job_id}.out` / `.err` in the handle's
-`artifact_scope`; a stream with no file is simply left out, and a log that is
-not a regular non-symlink file is refused.
+`artifact_scope`; a stream with no file is simply left out. The regular-file
+check belongs to the shared-filesystem path: there the log is `lstat`ed and a
+non-regular or symlinked file is refused as unsafe, whereas the non-shared
+transport reads the path through the runner and cannot make that check.
 
 #### `job_cancel(handle_id)`
 
@@ -735,9 +737,11 @@ a runtime fallback.
   those signals easy to surface.
 
 Empty `author_hint` adds no block at all, leaving the drafting prompt's
-bare `Target venue: X.` line as the only venue signal. SC and NeurIPS
-ship calibrated `author_hint` blocks; remaining venues are empty and can
-be filled in incrementally without touching code.
+bare `Target venue: X.` line as the only venue signal. Nine of the 23
+bundled rubrics currently ship a calibrated `author_hint` — `sc`,
+`neurips`, and the seven economics/humanities journals (`aer`, `qje`,
+`econometrica`, `apsr`, `ahr`, `pmla`, `philreview`); the rest are empty
+and can be filled in incrementally without touching code.
 
 Nature Ablation defaults (best-config rationale):
 
@@ -1405,7 +1409,13 @@ Providers that run was actually locked to.
 Return the locked phase / tool membership for a run, without the raw workflow
 document or any secret config.
 
-Workspace: `ARI_WORKSPACE` env, defaulting to the resolved ARI repository root. Parent-child relationships persisted in `meta.json` per checkpoint.
+Workspace: `ARI_WORKSPACE` env, defaulting to the resolved ARI repository root.
+The run registry is a SQLite database at
+`{logs_root}/.ari-orchestrator/runs.sqlite3`, where `logs_root` is
+`ARI_ORCHESTRATOR_LOGS` or `{workspace}/logs`; parent/child links live there and
+SQLite remains the sole authority. Each checkpoint additionally receives a
+`meta.json` mirror (`ari.orchestrator-run-meta/v1`, carrying `parent_run_id` /
+`root_run_id` / `recursion_depth`) written for compatibility and indexing only.
 
 ---
 
@@ -1537,7 +1547,7 @@ retrieval tools — `web_search`, `fetch_url`, `search_papers` and
 |---|---|
 | `record` (default) | Fetch, then write a `SurveySnapshotV1` under the checkpoint. Requires `ARI_CHECKPOINT_DIR`; without it the call is refused up front |
 | `live` | Fetch without snapshotting |
-| `replay` | **No network access at all.** Replays the snapshot named by the checkpoint-relative `snapshot_ref` an earlier record returned |
+| `replay` | **No network access at all.** Replays the snapshot named by the checkpoint-relative `snapshot_ref` an earlier record returned. Also requires `ARI_CHECKPOINT_DIR` — the ref is resolved against it — and a `snapshot_ref` whose path does not match the snapshot's own digest is refused |
 
 Each of the four returns the same `ari.retrieval-result/v1` document —
 `provider`, `query`, `count`, normalised `records` (`RetrievalRecordV1`),
@@ -1821,8 +1831,10 @@ caption VLM here.
 
 ### ari-core boundary
 
-`src/server.py` reaches ari-core only through the public surface
-(`from ari.public import cost_tracker`, then `bootstrap_skill("plot")`).
+`src/server.py` reaches ari-core only through the public surface — three
+modules and nothing else: `ari.public.figures` (`FigureBatchV1` /
+`FigureSpecV1` / `parse_figure_batch`), `ari.public.cost_tracker` (then
+`bootstrap_skill("plot")`), and `ari.public.execution` (`WorkspaceRefV1`).
 
 ---
 

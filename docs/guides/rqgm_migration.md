@@ -173,9 +173,11 @@ of them** — the only exception is `proposals/`, which appears under
 
 ## Rollback
 
-Switching back means starting the next run as `simple_bfts` (or letting an
-`ari_rqgm` run downgrade itself at an epoch boundary — the only in-run
-switch, downgrade-only). Two properties make rollback safe:
+Switching back means starting the next run as `simple_bfts`. There is no
+in-run switch: `rqgm_state.json` is written once at run start
+(`persist_run_start`) and never rewritten, and the epoch-boundary
+`ari_rqgm → simple_bfts` downgrade is reserved design, not implemented (see
+[Execution Modes](execution_modes.md)). Two properties make rollback safe:
 
 - **Records are inert.** `simple_bfts` code never reads `proposals/` or any
   `rqgm_*` file, so leftover RQGM artifacts in old checkpoints need no

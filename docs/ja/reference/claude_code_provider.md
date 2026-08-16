@@ -6,7 +6,7 @@ sources:
     role: implementation
   - path: ari-core/ari/llm/client.py
     role: implementation
-last_verified: 2026-08-08
+last_verified: 2026-08-17
 ---
 
 # Claude Code LLM プロバイダ（`backend: claude_code`）

@@ -52,7 +52,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-13
+last_verified: 2026-08-17
 ---
 
 # GUI カットオーバーランブック

@@ -8,7 +8,11 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_paper_eval.py
     role: test
-last_verified: 2026-08-08
+  - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
+    role: test
+  - path: ari-core/tests/test_rqgm_eval_kca_injection.py
+    role: test
+last_verified: 2026-08-17
 ---
 
 # RQGM 评估与消融
@@ -85,6 +89,33 @@ founding 策略，于是 `utility_policy_hash` 成为整轮运行的常量，整
 `test_eval_defaults_declared` 钉住的是 ≥ 3 这个下限和预算数值，而不是
 具体的种子取值。
 
+## 正交的 Knowledge/Capability 轴与 Assurance 轴
+
+Task 20 在不改变任何 B0–B9 展开结果与含义的前提下新增两个命名空间。每一次比较
+都保持 B 条件、实验、节点预算、模型、种子、目录快照、Research Contract 与
+Verification Contract 固定不变。
+
+| K 条件 | 生效的生产姿态 |
+|---|---|
+| `K0_legacy_no_knowledge` | `knowledge.off` + legacy 工具发现 |
+| `K1_knowledge_injection_only` | Knowledge 审计/注入；binding 仍为 legacy；不可用于发表的比较 |
+| `K2_capability_binding_audit` | 记录 Knowledge 与确定性 binding；未 bind 的调用只被观测 |
+| `K3_capability_binding_enforced` | 强制已验证的 Knowledge 与已 bind 的 Provider 工具 |
+| `K4_full_knowledge_capability_assurance` | `K3 × H3` 的报告用别名，绝不是第二个配置来源 |
+
+| H 条件 | 生效的生产姿态 |
+|---|---|
+| `H0_assurance_off` | 没有 Harness 工件，也不影响前沿 |
+| `H1_assurance_audit` | screen/validate/certify 照常运行并记录，但不阻断 |
+| `H2_assurance_screen_enforced` | screen 为科学前沿把关 |
+| `H3_assurance_full_certification` | screen 为前沿把关，certify 为发布把关 |
+
+预设字典位于 `ablation_matrix.yaml` 中彼此独立的 `assurance_conditions` 与
+`knowledge_capability_conditions` 两节。`factorial_condition_overlay` 把它们与
+一个未经改动的 B 覆盖层组合起来，并把选定的 B/H/K id 写为评估元数据。生产侧的
+Knowledge 选择、binding 与验证仍留在 `ari.knowledge`、`ari.capability_binding`
+与 `ari.assurance` 中；`ari.rqgm.evaluation` 只是测量这些路径并向其中注入故障。
+
 由于各层标志（`rqgm.{adversarial,governance,frontier_repair,
 prompt_evolution,meta_evolution}.enabled`）在类型化配置中默认为
 **true**，且 `load_config` 会用这些默认值填充缺失的键，每个
@@ -154,6 +185,15 @@ B0 与 B8（以及每一档），固定模型、相同节点预算、≥ 3 个�
 学习的内容。fixture 载荷位于 `ari-core/tests/fixtures/rqgm_eval/`；每次被
 注入的运行都带有 `rqgm_injection_provenance.json`。
 
+Task 20 新增 38 个 `kca_mutation` 用例，以及 38 个形状相同的干净对照：11 个
+Knowledge 攻击（正文/来源/权限/组合）、12 个 Provider 与 binding 攻击（语义
+不匹配、schema/identity 漂移、凭据与副作用），以及 15 个 Harness 攻击（错误
+结果，lock/资产/target 篡改，基础设施分离，证据压制，未认证发布）。离线 smoke
+探针把每个变异及其干净对照提交给生产的 admission 路径或 Kernel 完整性路径，并
+记录观测到的通道 —— `CK-KNW-*`、`CK-CAP-*`、`CK-HAR-*`、admission 或
+attestation。`rqgm/kca/evaluation/injections/` 之下的标记只是溯源，生产运行时
+代码从不读取它。
+
 ## 指标
 
 十三个指标由
@@ -171,11 +211,35 @@ evidence_refs, applicable}`；数据源缺失时产出
 序数度量，绝不用挂钟时间）；11–12 成本（每检出一个故障的成本、
 分阶段 token 总量）；13 挂钟时间（仅元数据，从不参与哈希）。
 
+增量的 `knowledge_capability` 与 `assurance` 块度量能力覆盖率、binding 确定性、
+未 bind/幻觉调用、可移植性与 Provider 替换、提示词/描述注入、溯源、吊销、property
+覆盖率、Harness 误接受/误拒绝、attestation 完整性、科学前沿污染、未认证发布、
+普通失败的错误弹劾、恢复、按层级的成本、基础设施错误、lock 确定性，以及上游
+一致性。逐运行可直接得到的量，由持久化的 lock、记录、节点与成本轨迹导出。跨运行
+的量需要一份 digest 绑定的 matched-panel 工件；其缺席是 `applicable: false`，
+而不是捏造的 0 或 1。原有的十三个 `metrics` 条目保持不变。
+
+verifier 成本使用 executor 实际的开始/完成时间戳，以及被 lock 的 Harness 分配。
+每一条 Assurance 行都记录挂钟秒、CPU 核秒、加速器秒与内存字节秒，并按
+screen/validate/certify 分解。它们是分配时刻的量，而不是采样得到的利用率。
+调度器/云端的美元金额在权威计费被附上之前保持 `unpriced`；该指标作为资源报告仍
+applicable，但它的 USD 值是 `null` 而不是捏造的 0。一次没有有效 Attestation 的
+独立 verifier 核心计时，可以作为 Tier-3 诊断保留，但它不是权威成本 —— 而把它挡在
+外面靠的是活动纪律而不是代码：`compute_metric_report` 仅凭 `phase` / `component`
+标签（`screen` / `validate` / `certify` / `assurance`）从 `cost_trace.jsonl` 中挑
+出验证成本行，从不查阅 Attestation，也没有任何守护「每有效节点」指标的资格字段。
+
+外部官方 runner 一致性同样区分 `passed`、`failed` 与 `not_available`。兼容性
+import 与确定性的 scorer 单元对照是有用的诊断，但不进入 `upstream_parity_rate`。
+一个 passed 的格子要求：精确的官方调用/结果以及 ARI 归一化后的结果 digest、
+参照对照与负对照、结果 schema 一致性，以及全部 source、dataset、container 与
+driver 的钉定。
+
 ## 论文归档评估（`paper.mode`）
 
 论文写作轴有自己的、并行的评估轨道 —— 独立的 B 阶梯、独立的 P1–P5
 指标、独立的 PI1–PI3 注入 —— 用于 `paper.mode: rqgm_archive` 路径（见
-[执行模式](execution_modes.md)的「论文执行轴：`paper.mode`」一节）。
+[执行模式](execution_modes.md#论文执行轴-paper-mode)的「论文执行轴：`paper.mode`」一节）。
 它复用相同的工具链、`eval_*` 命名空间以及以节点预算为准的公平性。
 
 ### 论文条件（B0_paper_linear / B_archive_no_coevo / B_full）
@@ -385,6 +449,12 @@ P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm \
 # smoke campaign:
 python scripts/rqgm_eval/run_ablation.py --smoke --conditions B0,B3 --seeds 11
 
+# 正交的 K/C/A smoke。K4 只作为 K3×H3 的报告用别名书写：
+python scripts/rqgm_eval/run_ablation.py --smoke --conditions B8 \
+    --knowledge-capability-conditions K0_legacy_no_knowledge,K3_capability_binding_enforced \
+    --assurance-conditions H0_assurance_off,H3_assurance_full_certification \
+    --seeds 11
+
 # Tier-3 real campaign (LLM cost; never in CI). Runs every benchmark in
 # scripts/rqgm_eval/experiments/*.md per condition × seed; narrow the set
 # with repeatable --experiment flags. --inject accepts FIXTURE ids only
@@ -417,7 +487,9 @@ smoke 层是例外：它以 `exist_ok=True` 写入合成检查点，复用目录
 ## 测试层级
 
 - **Tier 1（CI 硬性）** —— `ari-core/tests/test_rqgm_eval_{conditions,metrics,
-  injection,detection_fixture,doubles}.py`：纯 fixture，无 LLM。
+  injection,detection_fixture,doubles}.py`，外加 Task-20 的五个模块
+  `test_rqgm_eval_kca_{conditions,injection,isolation,metrics,probe}.py`：
+  纯 fixture，无 LLM。
 - **Tier 2（CI 硬性，离线 smoke）** —— `test_rqgm_eval_smoke.py`：每个
   条件用合成的桩组件跑过真实的 Task 03/06/07 记录路径，数秒内完成。
 - **Tier 3（手动）** —— 真实的 B0–B9 × 种子活动；缩减后的完成集合为

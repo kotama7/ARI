@@ -341,9 +341,14 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     experiment results and start being paper evidence. Reports each artifact
     verified / mismatch (rewritten after its hash was recorded) / missing
     (deleted) / unhashed (declared with no recorded baseline). ARI's own
-    metadata (results.json et al., excluded by PathManager.is_meta_file) and
-    artifacts entries with no recorded hash are reported unhashed, not
-    verified. A signal, not a gate — transform_data depends_on it.
+    metadata never reaches the audit: `_FILES_CHANGED_BLOCKLIST_NAMES` plus
+    `PathManager.is_meta_file(scope="node")` keep it out of `files_changed` in
+    the first place — but a node's own `results.json` and `*.log` are
+    deliberately node-visible (`NODE_VISIBLE_NAMES` / `NODE_VISIBLE_EXTENSIONS`),
+    so they ARE hashed and do get verified. What is reported unhashed is an
+    `artifacts[]` entry that `files_changed` never covered: at audit time its
+    recorded hash is deliberately dropped rather than re-checked against
+    itself. A signal, not a gate — transform_data depends_on it.
     Output: node_provenance_audit.json
 
   Stage 1: transform_data  (ari-skill-transform)  [after stage 0]
@@ -356,11 +361,15 @@ nodes_tree.json  (all nodes: metrics, artifacts, memory, parent-child links)
     Output: science_data.json
       configurations[*]:
         rank, label, eval_summary
-        parameters / measurements / predictions / scores  ← typed split
-                                                             (D-from-results.json or
-                                                              C-from-_params_dict)
+        parameters / measurements / predictions / scores  ← typed split, adopted
+                                                             ONLY from a validated
+                                                             results.json; the
+                                                             evaluator's _params_dict
+                                                             / _measurements_dict are
+                                                             deliberately NOT adopted
+                                                             as facts
         metrics                                            ← back-compat flat union
-        _typed_source: "results.json" | "llm_evaluator" | (absent)
+        _typed_source: "results.json" | (absent)
       per_key_summary  (input-param keys & "_…" reserved keys excluded)
       summary_stats    { count, primary_metric, direction,
                          primary_metric_best, primary_metric_n,

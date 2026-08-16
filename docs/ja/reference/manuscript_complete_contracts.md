@@ -90,7 +90,7 @@ sources:
     role: implementation
   - path: scripts/manuscript_complete_release_gates.json
     role: config
-last_verified: 2026-08-09
+last_verified: 2026-08-17
 ---
 
 # Manuscript Complete V1 契約

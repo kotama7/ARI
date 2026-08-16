@@ -30,11 +30,17 @@ sources:
     role: implementation
   - path: ari-core/ari/schemas
     role: schema
+  - path: ari-core/ari/knowledge
+    role: implementation
+  - path: ari-core/ari/capability_binding
+    role: implementation
+  - path: ari-core/ari/assurance
+    role: implementation
   - path: ari-core/ari/prompts/rqgm
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-08-08
+last_verified: 2026-08-17
 ---
 
 # Constitutional ARI-RQGM アーキテクチャ
@@ -168,6 +174,50 @@ Constitutional ARI-RQGM は 4 つの定義的なコミットメントの上に�
 
 ---
 
+## Knowledge、Capability、Assurance の分離
+
+RQGM は、コンポーネントではない 3 つの registry を、それぞれの identity を
+混ぜずに統治します:
+
+```text
+Research Contract
+  -> Epoch Knowledge Skill Lock
+  -> Capability Binding Lock
+  -> Verification Contract
+  -> baseline/active Harness Lock
+  -> bind された Provider の実行
+  -> artifact に束縛された Harness Attestation
+  -> 科学フロンティアゲート
+  -> Evidence Clerk と敵対 / 統治レビュー
+  -> certification に束縛された公表
+```
+
+Knowledge Skill は不変の手続き知識テキストであり、プロセスを起動することも
+権限を与えることもできません。Capability Provider は MCP、ローカルプロセス、
+その他の admit された transport を通じて発見される実行主体で、Provider lock と
+Capability Binding Lock に載っている tool だけが可視です。Harness は
+`harness_resolver_v1` が選ぶ独立した検証器であり、Generator や Evaluator が
+選ぶことはありません。個々の Skill、Provider、Harness はカタログのエントリで
+あって、`ComponentRegistry` のアクタではありません。
+
+3 つのレイヤはいずれもオプトインで、出荷時のデフォルトでは不活性です
+（`ari-core/ari/configs/defaults.yaml` の `knowledge.mode: off`、
+`capability_binding.mode: legacy`、`assurance.mode: off`）。3 つともその値で
+あれば `RQGMRuntime` は `kca_feature_enabled: false` を報告します: `ari_rqgm`
+ランは `fixed` ティアのコンポーネントを登録せず、baseline バンドルを admit せず、
+従来の MCP discovery/visibility を保ちます。3 つのうちどれか 1 つでも別の値に
+なると機能が有効になり、ランループの admission 呼び出しはベストエフォートでは
+なく意図的に fail-closed になります。
+
+信頼されたコーディネータは、最初の実行エポックより前に、baseline のカタログ
+スナップショット、契約、lock をすべて凍結します。resume は現在のカタログを
+参照せず、永続化されたそのビューを再構成します。固定チェック `CK-KNW-*`、
+`CK-CAP-*`、`CK-HAR-*` は権限、binding、digest、単調性、attestation の scope を
+検証します; カーネルが科学的真理を再計算することはありません。
+[K/C/A の規範リファレンス](../reference/knowledge_capability_assurance.md)を参照。
+
+---
+
 ## 4 つのファサード
 
 `ari.core.build_runtime` は `ari.mode: ari_rqgm` と `rqgm.enabled: true` が
@@ -180,7 +230,7 @@ BFTS 戦略を純粋委譲の `GovernedSearchStrategy` で包みます。ラン�
 
 | ファサード | モジュール | 所有するもの |
 |---|---|---|
-| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0。16 個の閉じた `validate_*` エントリポイント: 当初の 12 個（レコードスキーマ、ハッシュ、capability、エポック不変性、遷移、ロール分離、選択的消去、監査ログ完全性、クリーンルームバンドル、汚染、権限非拡大、コンテキストスコープ）、Task 14 の `validate_utility_policy`、そして Knowledge 完全性、Capability Binding 完全性、Harness 完全性。加えて執行アダプタ（`should_block`、fail-open な `per_node_warn_check`、事前チェックの `CapabilityGatedMCPClient`）。決定論的かつ非進化的: LLM 呼び出しゼロ、ネットワークゼロ、壁時計判定ゼロ。`rqgm.kernel.enforcement: audit_only` はすべてのコンテキストを warn-and-log へ格下げ |
+| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | Layer 0。16 個の閉じた `validate_*` エントリポイント: 当初の 12 個（レコードスキーマ、ハッシュ、capability、エポック不変性、遷移、ロール分離、選択的消去、監査ログ完全性、クリーンルームバンドル、汚染、権限非拡大、コンテキストスコープ）、Task 14 の `validate_utility_policy`、そして Knowledge 完全性、Capability Binding 完全性、Harness 完全性。加えて執行アダプタ（`should_block`、fail-open な `per_node_warn_check`、事前チェックの `CapabilityGatedMCPClient`）。検査するのは手続き、権限、identity、単調性であって、科学的正しさではない。決定論的かつ非進化的: LLM 呼び出しゼロ、ネットワークゼロ、壁時計判定ゼロ。`rqgm.kernel.enforcement: audit_only` はすべてのコンテキストを warn-and-log へ格下げ |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | エポック境界の監査: `audit_epoch(...) -> GovernanceReport`。9 ステップのパイプライン（observe → assess reliability → assemble evidence → prosecute → defend → adjudicate → replay-pool update → self-audit → report）。すべての LLM 判定（Auditor / Defender / GovernanceJudge、プロンプトは `ari/prompts/governance/` 以下）には完全な決定論的フォールバックがあり、`llm=None` でも完全な監査が得られる。レポートは遷移エンジンへの*助言的入力*であり、オーケストレータがレジストリを変更することは決してない。構築時点でこの権限関係が必須化される: `kernel` が無ければ `__init__` が `ValueError` を送出する。役割分離の権限を持つのはオーケストレータ自身のレコード構築処理ではなくカーネルであり、監査が生成したレコード（evidence bundle、motion、defense、outcome）をステップ 8 で `validate_record_schema` と `validate_role_separation` により再検証するのもカーネルだからである。残り 2 つの seam は設計上オプショナル: `llm=None` は保証された劣化動作であり、CI 向けの決定論的な下限である。`audit_writer=None` はレコードを書き出さず `self.written` 上のメモリに収集し、テストはこれを通じて監査を観測する。レコードの追記が例外を送出することはない — writer の失敗はログに記録され、監査は続行する |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | レジストリステータスの**唯一の**書き込み手。固定の T1–T21 テーブルに対する純粋な `resolve_transition(...)` と、その後の 5 ステップ境界プロトコル: freeze → resolve → kernel-validate → prepare → apply/commit をエポックトランザクション上で実行。T16 の `emergency_quarantine` は現期を強制終了し、同じ取引で新しい指紋値を持つ期を開始する |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 退役を伴う遷移のコミット後: 純粋な `trace_dependents` による staleness 閉包と `rebuild_frontier`。`SelectiveErasureEvent` / `FrontierRebuildEvent` レコードを発行。失敗のはしご: カーネル検証失敗 → 保守的再修復（フラグ付きノードを除外）→ drain-only 縮退（`expansion_halted`: ランは残作業を完了するがそれ以上展開しない）。クラッシュは決して起こさない |
@@ -269,8 +319,9 @@ flowchart TB
    トランザクションは resume 時に破棄され決定論的に再実行されます。
 6. **Frontier repair。** コミットされた遷移がコンポーネントやプロンプトを
    退役させた場合、退役した `prompt_hash` に実質的に依存するすべての
-   レコードがフロンティアスコアリングから論理的に消去され、フロンティアが
-   再構築されます（不変条件 7 を参照）。
+   レコードが論理的に消去され — フロンティアスコアリング、展開、
+   ベストノード選択から除外され — フロンティアが再構築されます
+   （不変条件 6 を参照）。
 7. **Clean room。** 保留中のクリーンルーム要求は境界の窓の中で実行されます;
    許容可能な出力は*次の*サイクルの候補としてライフサイクルに入ります。
    退役したロールのスロットはその間ベースラインフォールバックが担うため、

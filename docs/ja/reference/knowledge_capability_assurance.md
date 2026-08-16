@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/admission_builder.py
     role: implementation
-last_verified: 2026-08-05
+last_verified: 2026-08-17
 ---
 
 # Knowledge、Capability、Scientific Assurance
@@ -256,10 +256,42 @@ compatibility ruleゼロを宣言する。placeholderではなく、それが真
 identity、そしてtoolのlive `input_schema`/`output_schema`をそのまま畳み込むprovision digest——
 schemaが変わればruleを誰が書いたかに関係なくprovisionが変わる。
 
+これと並んで別の穴があり、capabilityを担うtoolについては既に塞がれている。以前はどの
+Provider toolもMCPの`outputSchema`を**空**で公開しており、各provisionの
+`output_schema_digest`は`{}`のdigestであって、誰に対してもdriftを検出しなかった。当時分類
+されていた9つのtool——`ari-skill-coding`に5つ、`ari-skill-hpc`に4つ——は現在それを宣言して
+おり、宣言された各schemaはtoolの成功形とそれ自身の失敗形の`anyOf`である。成功だけを記述
+すると実際の実行失敗がoutput validation errorに化け、何が起きたかを述べるmessageを捨てて
+しまう。`oneOf`では、timeoutした実行——完全な結果でありながらerrorも運ぶ——のように正当に
+両方であるpayloadを拒否してしまう。schemaを宣言することは、handlerがtextと並べてstructured
+contentを返す義務も伴う。libraryが`structuredContent`を宣言内容に照らして検証するから
+である。schemaを宣言することとcapabilityへ分類されることは別の行為のままである:
+`counter_support`は一切分類されないままschemaを宣言し、web Providerのretrieval tool 4つは
+後から分類されschemaを宣言していないので、その`output_schema_digest`は今も`{}`のdigestで
+ある。
+
+`measurement-envelope-v1`は、測定はそれが取られた条件と一緒でなければ解釈できない、と述べる。
+したがってこのruleを主張する契約は、その条件である`nondeterminism_fields`を宣言しなければ
+ならない。ruleを主張しながら条件を一つも挙げない契約はload時に拒否される——それはenvelopeを
+述べていないからである。
+
 `declared_capability_refs_by_tool`だけがprovisionを作る。skill.yaml側の`capability_ref`は
 `declared_capability_ref`として運ばれるが、bindはしない。だからこのtableに載らないtoolは、
-どれだけ自分でcapabilityを名乗ってもCapability requirementの解決先にはならない——呼べなくなる
-わけではなく、bindの対象にならないという意味である。
+どれだけ自分でcapabilityを名乗ってもCapability requirementの解決先にはならない——legacy/audit
+modeで呼べなくなるわけではなく、bindの対象にならないという意味である（enforce modeでは、
+bindされていないtoolは`unbound_tool`として拒否される）。
+
+runのrequirementは二つのsourceから来る。admit済みKnowledge Skillは自分の指示が前提とする
+ものを宣言し、`capability_binding.required_capability_refs`はrun自身のtaskが必要とするものを
+operatorが宣言できるようにする。後者が存在するのは、前者しか無かったからである: どの
+Knowledge Skillも偶々言及しないdomain instrumentは、契約もreview済みsupplierもadmit済み
+evidenceも実証済みの呼び出し経路も持ちながら、一度も*要求されない*ため決してbindされ得な
+かった。この宣言はconfigであってmodel出力ではない。review済みontologyに無いrefは無視では
+なく拒否される。side-effect ceiling、resource、environmentを決めるのは宣言ではなく契約で
+ある。同じcapabilityに対するKnowledge Skillのrequirementがこれで置き換わることはない。
+required refを名指しながらbindingを`legacy` modeのままにすることは拒否される。さもなければ
+requirementが黙って落ちるからである。`optional_capability_refs`は供給されればbindし、runを
+失敗させることは決してない。
 
 prompt-free Capability Binderは既存Provider lockにあるverified Providerのexact capability
 refとcontract digestだけを候補にする。role、phase、call context、side-effect ceiling、
@@ -302,6 +334,14 @@ siteは`ARI_TOOL_REGISTRY_LOCK`でfederated lockを選び、ARIも同じ変数�
 `CATALOG.lock`が空なのは意図的で、materialize済みのものは絶対local pathを記録するため
 commitできない。reviewed leaf→capability tableだけがrepositoryに残り、それが指すlockは
 site側に留まる。
+
+provisionは、値が実際に存在するcredential scopeだけを運ぶ。宣言されていても存在しない
+credentialは何の権限も与えない——子processは存在する値だけから組み立てられ、call contextも
+同じようにfilterする——ので、宣言された集合をそのまま運ぶと、multi-domain Providerの
+すべてのprovisionが、使うかもしれないscopeを全部要求することになっていた。brokerを通して
+EDA toolをbindするのに、どこにも設定されていないIBM Quantumのcredentialを与える必要が
+あったのである。存在はlock時に観測されProvider Lockへ凍結されるので、後から現れたtokenは
+lockを変えるのであって、すり抜けるのではない。
 
 descriptorがasynchronous lifecycleを宣言するleafは、dispatch toolで投入し別のtoolで回収
 する。それらは別capabilityではない——投入をauthorizeされたjobをpollしてもauthorityは増えない
@@ -350,6 +390,16 @@ container runtimeも実行して判定する。`shutil.which`がbinaryを見つ�
 記録される——derivedなresource classに依存したbindingは、それを許した一文まで監査できる。
 同梱tableはApptainerとSingularityCEが共にSIFを実行すること、podman/dockerは実行しないことを
 記録し、そこからCPU + SIF runtimeで`eda-cpu`を導く。
+
+外向きの到達性は、何かに接続するのではなくroute tableから観測する。default routeは、この
+hostの外へ出る経路があるとkernelが述べている、ということである。それは必要条件であって
+十分条件ではない——proxyやfirewallが呼び出しを拒みうる——のは、`sinfo`が応答することが
+schedulerについて与えるのと同じ立場である。default宛先の行が数えられるのは、upであり、
+reject routeでなく、loopback上でもない場合だけである: kernelはどのhostでも到達不能な
+`::/0`を持つので、宛先だけを照合するとair-gapped nodeでもそれを経路として読んでしまった。
+より強い証拠——名前を解決する、接続を開く——は、自分のsubstrateを記述するためだけに他人の
+serviceへ外向きrequestを出すことになる。air-gapped nodeにはrouteが無く、retrieval
+capabilityは供給されないままになる。
 
 SLURM GPU visibilityとscheduler authorityは別である。GPU GRESがadvertiseされないnodeで
 deviceを観測した場合、`metadata.slurm_gpu`と`gpu-observed-on-slurm-node`は残すが`gpu`

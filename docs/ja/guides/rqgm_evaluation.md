@@ -8,7 +8,11 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_paper_eval.py
     role: test
-last_verified: 2026-08-08
+  - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
+    role: test
+  - path: ari-core/tests/test_rqgm_eval_kca_injection.py
+    role: test
+last_verified: 2026-08-17
 ---
 
 # RQGM 評価とアブレーション
@@ -95,6 +99,35 @@ B8 がこれについて黙っていれば governed rewriting を引き継ぎ、
 説明します。`test_eval_defaults_declared` がピン留めするのは 3 個以上という
 下限と予算の数値であって、個々のシード値ではありません。
 
+## 直交する Knowledge/Capability 軸と Assurance 軸
+
+Task 20 は、B0–B9 の展開結果も意味も一切変えずに 2 つの名前空間を追加します。
+どの比較でも、B 条件、実験、ノード予算、モデル、シード、カタログスナップショット、
+Research Contract、Verification Contract は固定したままです。
+
+| K 条件 | 実効的な本番姿勢 |
+|---|---|
+| `K0_legacy_no_knowledge` | `knowledge.off` + レガシーなツール探索 |
+| `K1_knowledge_injection_only` | Knowledge の監査 / 注入; binding はレガシー; 公開不可の比較 |
+| `K2_capability_binding_audit` | Knowledge と決定論的な binding を記録; 未 bind の呼び出しは観測する |
+| `K3_capability_binding_enforced` | 検証済みの Knowledge と bind 済みの Provider ツールを強制 |
+| `K4_full_knowledge_capability_assurance` | `K3 × H3` の報告用エイリアスであり、2 つ目の設定ソースには決してならない |
+
+| H 条件 | 実効的な本番姿勢 |
+|---|---|
+| `H0_assurance_off` | Harness の成果物もフロンティアへの影響も無し |
+| `H1_assurance_audit` | screen / validate / certify は走って記録するが、ブロックはしない |
+| `H2_assurance_screen_enforced` | screen が科学的フロンティアを gate する |
+| `H3_assurance_full_certification` | screen がフロンティアを、certify が公開を gate する |
+
+プリセットの辞書は `ablation_matrix.yaml` の `assurance_conditions` と
+`knowledge_capability_conditions` という別々のセクションにあります。
+`factorial_condition_overlay` はそれらを、変更していない B のオーバーレイ 1 つと
+合成し、選ばれた B/H/K の id を評価メタデータとして書き込みます。本番の
+Knowledge 選択、binding、検証は `ari.knowledge`、`ari.capability_binding`、
+`ari.assurance` に留まります; `ari.rqgm.evaluation` はそれらの経路を測定し、
+失敗を注入するだけです。
+
 レイヤ別フラグ（`rqgm.{adversarial,governance,frontier_repair,
 prompt_evolution,meta_evolution}.enabled`）は型付き設定でデフォルト **true**
 であり、`load_config` は欠けているキーをそのデフォルトで埋めるため、各
@@ -170,6 +203,17 @@ prompt_evolution,meta_evolution}.enabled`）は型付き設定でデフォルト
 `ari-core/tests/fixtures/rqgm_eval/` 以下にあり、注入されたすべてのランは
 `rqgm_injection_provenance.json` を持ちます。
 
+Task 20 は `kca_mutation` のケース 38 個と、同じ形の清浄コントロール 38 個を
+追加します: Knowledge への攻撃 11 個（本文 / 出所 / 権限 / 合成）、Provider と
+binding への攻撃 12 個（意味の不一致、スキーマ / identity のドリフト、資格情報と
+副作用）、Harness への攻撃 15 個（誤った結果、lock / アセット / target の改竄、
+インフラの分離、証拠の隠蔽、未認証の公開）です。オフラインの smoke プローブは、
+各ミューテーションとその清浄コントロールを本番の admission 経路または Kernel の
+整合性経路へ提出し、観測されたチャネル — `CK-KNW-*`、`CK-CAP-*`、`CK-HAR-*`、
+admission、attestation のいずれか — を記録します。
+`rqgm/kca/evaluation/injections/` 以下のマーカーは来歴のためだけのもので、本番の
+ランタイムコードがそれを読むことは決してありません。
+
 ## メトリクス
 
 `ari.rqgm.evaluation.metrics.compute_metric_report` が事後計算する 13 個の
@@ -189,11 +233,43 @@ retirement precision）; 9–10 は消去の健全性（frontier contamination�
 （検出された障害あたり、フェーズごとのトークン総量）; 13 は壁時計
 （メタデータのみ、決してハッシュされない）。
 
+追加的な `knowledge_capability` ブロックと `assurance` ブロックは、capability の
+被覆、binding の決定性、未 bind / 幻覚された呼び出し、可搬性と Provider の
+差し替え、プロンプト / 記述の注入、来歴、失効、property の被覆、Harness の
+false accept / reject、attestation の整合性、科学的フロンティアの汚染、未認証の
+公開、通常の失敗に対する誤弾劾、回復、ティアごとのコスト、インフラ起因のエラー、
+lock の決定性、上流とのパリティを測ります。ラン単位で直接得られる量は、永続化
+された lock、レコード、ノード、コストトレースから導かれます。ラン横断の量には
+digest で束縛された matched-panel の成果物が必要で、その不在は
+`applicable: false` であって、捏造された 0 や 1 ではありません。元の 13 個の
+`metrics` エントリは変わりません。
+
+verifier のコストは、executor の実際の開始 / 完了タイムスタンプと、lock された
+Harness の割り当てを使います。Assurance の各行は、壁時計秒、CPU コア秒、
+アクセラレータ秒、メモリバイト秒を、screen / validate / certify の内訳とともに
+記録します。これらはサンプリングされた利用率ではなく、割り当て時点の量です。
+スケジューラ / クラウドの金額は、権威ある課金が結び付けられるまで `unpriced` の
+ままです; メトリクスはリソース報告としては applicable のままですが、その USD 値は
+捏造された 0 ではなく `null` になります。有効な Attestation を伴わない単体の
+verifier コア計時は Tier-3 の診断として保持してよいものの、権威あるコストでは
+ありません — そしてそれを混ぜないでおくのはコードではなくキャンペーンの規律です:
+`compute_metric_report` は検証コストの行を `cost_trace.jsonl` から
+`phase` / `component` のラベル（`screen` / `validate` / `certify` /
+`assurance`）だけで選び、Attestation を参照することはなく、有効ノードあたりの
+メトリクスを守る適格性フィールドも持ちません。
+
+外部の公式ランナーとのパリティも同様に `passed`、`failed`、`not_available` を
+区別します。互換性のための import や決定論的な scorer 単体のコントロールは有用な
+診断ですが、`upstream_parity_rate` には入りません。passed のセルには、公式の
+呼び出し / 結果と ARI で正規化した結果の digest、リファレンスとネガティブの
+コントロール、結果スキーマのパリティ、そして source・dataset・container・driver の
+すべての pin が必要です。
+
 ## 論文アーカイブ評価（`paper.mode`）
 
 論文執筆軸には独自の並行評価トラックがあります — 別の B はしご、独自の
 P1–P5 メトリクス、独自の PI1–PI3 注入 — これは `paper.mode: rqgm_archive`
-パス用です（[実行モード](execution_modes.md)の「論文実行軸: `paper.mode`」
+パス用です（[実行モード](execution_modes.md#論文実行軸-paper-mode)の「論文実行軸: `paper.mode`」
 を参照）。同じハーネス、`eval_*` 名前空間、ノード予算による公平性を再利用
 します。
 
@@ -426,6 +502,12 @@ P0_hgm_h_fixed_critic,P3_rqgm_full,P4_constitutional_rqgm \
 # smoke campaign:
 python scripts/rqgm_eval/run_ablation.py --smoke --conditions B0,B3 --seeds 11
 
+# 直交する K/C/A の smoke。K4 は K3×H3 の報告用エイリアスとしてのみ書く:
+python scripts/rqgm_eval/run_ablation.py --smoke --conditions B8 \
+    --knowledge-capability-conditions K0_legacy_no_knowledge,K3_capability_binding_enforced \
+    --assurance-conditions H0_assurance_off,H3_assurance_full_certification \
+    --seeds 11
+
 # Tier-3 real campaign (LLM cost; never in CI). Runs every benchmark in
 # scripts/rqgm_eval/experiments/*.md per condition × seed; narrow the set
 # with repeatable --experiment flags. --inject accepts FIXTURE ids only
@@ -461,7 +543,9 @@ eval_inj_003_hallucinated_prior_art,eval_ctl_001_clean_baseline"
 ## テストティア
 
 - **Tier 1（CI-hard）** — `ari-core/tests/test_rqgm_eval_{conditions,metrics,
-  injection,detection_fixture,doubles}.py`: 純粋フィクスチャ、LLM なし。
+  injection,detection_fixture,doubles}.py` に、Task 20 の 5 モジュール
+  `test_rqgm_eval_kca_{conditions,injection,isolation,metrics,probe}.py` を
+  加えたもの: 純粋フィクスチャ、LLM なし。
 - **Tier 2（CI-hard、オフライン smoke）** — `test_rqgm_eval_smoke.py`: 条件
   ごとの合成スタブコンポーネントランを、実際の Task 03/06/07 レコードパスに
   通し、数秒で完了します。

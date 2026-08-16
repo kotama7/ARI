@@ -68,12 +68,32 @@ sources:
     role: config
   - path: ari-core/tests/fixtures/contracts/mcp_tools.json
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-17
 ---
 
-# MCP Skills リファレンス
+# Capability Provider パッケージ（`ari-skill-*` は互換名）
 
-Skills は ARI エージェントにツールを提供する MCP サーバーです。ツールは可能な限り決定論的であり、LLM を使用するツールは明示的に注記されています。このページが扱うのは **14 skill** — `ari-core/config/workflow.yaml` の `skills:` が既定で登録する 13 と、外部クライアント向けに別プロセスで起動する `ari-skill-orchestrator` です。既定の `skills:` に載らない `ari-skill-knowledge` / `ari-skill-harness` / `ari-skill-tool-registry` については [mcp_tools.md](mcp_tools.md) と [tool_registry.md](tool_registry.md) を参照してください。v0.7.0 で PaperBench 形式の再現性フロー用に `ari-skill-replicate` が追加されました。
+歴史的に「Skills」と呼ばれてきたパッケージは、MCP で接続される実行可能な
+**Capability Provider** です。Knowledge Skill ではありません。MCP は Provider の
+transport / discovery protocol であり、ここに列挙する各ツールは Provider の原子的
+operation です。ツールは可能な限り決定論的で、LLM を使う operation には明示的に
+注記があります。ディスク上の `skill.yaml`、`SkillManifestV1`、`SKILLS.lock` は
+Provider manifest と run snapshot の互換名のまま残ります。`provider.yaml` や
+`PROVIDERS.lock` は並行して存在しません。
+
+非実行の Knowledge Skill と独立した Harness は
+[Knowledge、Capability、Scientific Assurance](knowledge_capability_assurance.md)
+にまとめてあります。既定 OFF の `ari-skill-knowledge` / `ari-skill-harness` が公開
+するのは read / query と非権威的な request operation だけで、どちらもカタログの
+管理権限も固定解決の権限も与えません。この 2 つと `ari-skill-tool-registry` には
+このページに narrative セクションがありません — ツール一覧は
+[mcp_tools.md](mcp_tools.md)、registry のカタログ identity と provider adapter は
+[tool_registry.md](tool_registry.md) にあります。
+
+このページが扱うのは **14 パッケージ** — `ari-core/config/workflow.yaml` の
+`skills:` が既定で登録する 13 と、外部クライアント向けに別プロセスで起動する
+`ari-skill-orchestrator` です。v0.7.0 で PaperBench 形式の再現性フロー用に
+`ari-skill-replicate` が追加されました。
 
 各スキルの登録済みツール名は `mcp.json`（`skill.yaml` から生成）と
 `src/server.py` の `@mcp.tool()` / `@server.list_tools()` が正であり、両者の一致は
@@ -311,7 +331,9 @@ result = job_logs(handle_id="hpc-...")
 越しに読む場合はログもその transport を通って返るため、`digest` と `size_bytes` も
 同じ 1 MiB の範囲を指します。ログはハンドルの `artifact_scope` にある
 `slurm-{job_id}.out` / `.err` から読み、存在しないストリームは省かれます。通常の
-ファイルでないログ（シンボリックリンクを含む）は拒否されます。
+ファイルかどうかの検査は共有ファイルシステム経路のものです。そちらではログを
+`lstat` し、通常ファイルでないものやシンボリックリンクを安全でないとして拒否します。
+共有でない transport では runner 越しにパスを読むため、この検査は行えません。
 
 #### `job_cancel(handle_id)`
 
@@ -517,11 +539,26 @@ Semantic Scholar スナップショット（コーパス + SPECTER2 コサイン
 `ari run` の CLI フラグ: `--virsci-live` / `--no-virsci-live`、`--virsci-k`、
 `--virsci-team-size`、`--virsci-n-authors`、`--virsci-n-papers`。
 
+#### `mint_contract_for_proposal(topic, proposal, survey_snapshot_ref="survey_snapshot_v1.json", experiment_context="")`
+
+このスキルが**生成していない**提案に対して、型付きの Research Contract を mint
+します。mint を生成から切り離してあるのは、`ari.mode: ari_rqgm` では proposal
+router がルートの ideation を所有し、そのどの generator も契約を mint しない一方で、
+KCA の admission には契約が必要だからです。title / description / hypothesis / plan は
+提案側が与え、このステップが run の検証済み文献スナップショットから反証条件・
+limitations・引用・metric contract を与えます。それらを捏造せず拒否するので、
+`ARI_CHECKPOINT_DIR` が無い、スナップショットが利用できない、提案に title が無い
+場合は `{"contract_status": "rejected", "reason": ...}` が返ります。成功時は
+`typed_schema_version`、`contract_status: "admitted"`、`research_contract`、その
+`research_contract_digest`、`idea_set_digest`、および `rejections` を返します。
+
 ---
 
 ## ari-skill-evaluator
 
-メトリクス契約の materialize と主張ゲート。**LLM: Conditional**（明示的に呼んだ提案ステップと、非ブロッキングのセマンティック査読のみ）。
+メトリクス契約の materialize、決定論的な主張ゲート、証拠に基づくセマンティック
+査読。**LLM: Split** — 契約に関わる 2 ツールは、*決める*ほうが決定論的で、
+*推測する*ほうが自分の推測を admit できないように分離してあります。
 
 ### ツール
 
@@ -558,11 +595,22 @@ result = make_metric_spec(open("experiment.md").read())
 # }
 ```
 
+`parser_result` はどの経路でも併記されるので、テキストが何と言ったかと契約が何を
+admit したかを読み手が区別できます。契約が凍結された経路の `expected_metrics` は
+契約自身の `name` とその `required_evidence` を重複除去したもので、2 度目の抽出では
+ありません。`expected_params` は**どの経路でも `[]`** です。
+`transform-skill::nodes_to_science_data` に届く型付きの `params` / `measurements`
+分割は `coding-skill::emit_results`（D 契約）に由来します。
+
 構築された **run レベル `metric_contract`** は
 `{checkpoint}/metric_contract.json`（`idea.json` / `tree.json` の隣）に永続化されます。
-契約はアイデア所有なので、エージェントが claim や要件を削ってチェックを回避することは
-できません。これは `transform-skill::nodes_to_science_data` が読み戻して `science_data.metric_contract`
-に graft し、決定論的なハードゲートが強制します。
+永続化は mint-once で、既にそこにある投影と `projection_digest` が異なる投影を書こう
+とすると、上書きではなく raise します。契約はアイデアが所有する `metric_contract` と
+その `falsification_conditions`（各条件が `required_evidence` を伴う claim になります）、
+および `correctness_required` / `ceiling_must_be_measured` の要件フラグから組み立てられる
+ので、エージェントが claim や要件を削ってチェックを回避することはできません。
+これは `transform-skill::nodes_to_science_data` が読み戻して
+`science_data.metric_contract` に graft し、決定論的なハードゲートが強制します。
 
 #### `propose_metric_contract(idea_json=None, checkpoint_dir="", model="", model_revision="")`
 
@@ -609,13 +657,15 @@ LaTeX プロジェクトを PDF にコンパイルします。`tex_dir` を閉�
 与えた場合は `FigureBatchV1` として検証してからコンパイルに渡します（不正な
 マニフェストは例外ではなく `{"success": false, "log": "invalid FigureBatchV1: …"}`）。
 コンパイル記録は `.ari-paper/compile/final.json` に書き出され、戻り値は
-`{success, pdf_path, log, compile}` です。
+`{success, pdf_path, log, compile}` です。ディレクトリや main ファイルが無い場合も
+raise ではなく、理由を `log` に入れた `success: False` が返ります。
 
 #### `check_format(venue, pdf_path)`
 
-投稿先の要件に対して論文フォーマットを検証します（ページ数など）。ページ数が
-判定できなかった場合はスキップせず「上限が検証されなかった」という issue を
-立てるため、未検証が `ok: true` として通ることはありません。
+投稿先の要件に対して論文フォーマットを検証します（ページ数など）。未知の `venue`
+は有効な一覧を添えて raise します。ページ数が判定できなかった場合はスキップせず
+「上限が検証されなかった」という issue を立てるため、未検証が `ok: true` として
+通ることはありません。
 
 #### `write_paper_iterative(workspace_root, science_data_path, figures_manifest_path, references_path, ear_manifest_path, rubric_id, experiment_summary="", context="", verified_context_path="", venue="arxiv", max_revision_rounds=2, author_name="", writer_prompt_override="", decode_seed=0)`
 
@@ -626,7 +676,11 @@ LaTeX プロジェクトを PDF にコンパイルします。`tex_dir` を閉�
 FILL_*_END` ブロックを 1 回の LLM 呼び出しで埋め、bibliography を取得
 スナップショットが admit した範囲で構築し、図の環境は `FigureBatchV1` が
 所有する snippet で復元してから、AI Scientist v2 形式の reflection ラウンドを
-`max_revision_rounds` 回まわします（各ラウンドで実際にコンパイルします）。
+`max(1, max_revision_rounds)` 回まわします（各ラウンドで実際にコンパイルし、
+コンパイルエラー・BibTeX の状態・使われていない図・対応ファイルの無い図参照・
+chktex の出力を同じメッセージ履歴へ戻して、モデルが `I am done` と答えるまで
+続けます）。reflection ラウンドは必ず 1 回以上走り、`max_revision_rounds=0` でも
+スキップされません。
 `writer_prompt_override` と `decode_seed` は後付けの seam で、その既定値は
 推奨設定ではなく凍結された互換契約です。`""` と `0` は引数が存在しなかった
 時点のツールをバイト単位で再現しなければなりません（`paper_refine` も同じ
@@ -654,16 +708,29 @@ litellm に渡されるため、draft を*集団*として生成する呼び出�
 payload に届いて初めて意味を持ちます。このツールの seed 配線を検査するスキル
 テストは無く、payload の assertion は後述の `paper_refine` 側にあります。
 
-戻り値は `latex` / `sections` / `reviews` / `revision_counts` です
-（後 3 者は下流互換のために置かれた空の dict）。
+戻り値は `latex` / `sections` / `reviews` / `revision_counts` / `bib` /
+`key_list` と draft の `paper_build` です（`sections` / `reviews` /
+`revision_counts` は下流互換のために置かれた空の dict）。
 
 #### `finalize_paper_build(workspace_root, draft_build_path, tex_path, bib_path, pdf_path, compile_record_path, figures_manifest_path, claim_links_path, hard_gate_path, text_review_path, visual_review_path, semantic_review_path, refinement_call_path="", visual_passing_score=0.7, output_path="paper_build.json")`
 
-論文の証拠・査読・コンパイル記録・claim リンク・最終成果物を 1 つの
-`PaperBuildV1` に固定します。**決定論的、LLM なし**。`status` が `finalized`
-にならなければ、永続化された `PaperBuildV1` を指しつつ `blocking_reasons` を
-連ねた例外を送出するので、ブロックされたビルドが finalize 済みとして
-通過することはありません。
+論文フェーズの最終段。`write_paper_iterative` が返した draft の `PaperBuildV1` を
+不変の最終記録に変えます。**決定論的、LLM なし**。すべてのパスは閉じた
+`workspace_root` の内側で解決され、draft が宣言した成果物 — その入力、記録された
+各 revision の TeX と bibliography、記録された各モデル呼び出し — は、新しいものを
+読む前にすべて digest で再検証されます。そのうえで最終の tex / bib / PDF を
+ハッシュし、コンパイル記録を解析し、claim リンク文書が `link_paper_claims` 段の
+`ari.paper-claim-links/v1` であることを要求します。
+
+finalize は形式ではなく判断です。`blocking_reasons` には失敗が積み上がります —
+最終 revision が正準の図 ID を落とした / 数式の内容を変えた、ハードゲートが無効化
+されていた / ブロッキングな所見を報告した、未解決の claim アンカーがある、未カバーの
+数値結果への言及がある、コンパイルが完走しなかった、PDF の digest がコンパイル記録と
+異なる、視覚査読に失敗ターゲットがある / スコアが `visual_passing_score` を下回る。
+理由が 1 つでもあれば status は `finalized` ではなく `blocked`（コンパイル理由が
+含まれるときは `compile-error`）になり、MCP ツールは理由を連ねた例外を送出します。
+記録はどちらの場合も書き出されるので、ブロックされたビルドは失われるのではなく
+監査可能なまま残ります。
 
 #### `review_compiled_paper(rubric_id, tex_path="", pdf_path="", figures_manifest_json="", experiment_summary="", vlm_findings_json="", num_reflections=None, num_fs_examples=None, num_reviews_ensemble=None)`
 
@@ -689,12 +756,21 @@ Appendix A.4 準拠)。`ari-core/config/reviewer_rubrics/<rubric_id>.yaml` を
 (コード変更不要)。各ルーブリックは `score_dimensions` / `text_sections` /
 `decision` ルール、実行パラメータ、P2 決定論用の SHA256 ハッシュを宣言します。
 
-ルーブリック解決: `rubric_id` は必須で、環境変数フォールバックも既定 venue も
-内蔵 `legacy` フォールバックもありません — 空なら
-「`rubric_id` is required」として拒否されます。どの YAML を読むかだけが
+ルーブリック解決: `rubric_id` は第 1 引数かつ必須で、環境変数フォールバックも
+既定 venue も内蔵 `legacy` フォールバックもありません — `resolve_rubric` は空の
+`rubric_id` を「`rubric_id` is required; migrate legacy ARI_RUBRIC/default config
+to an explicit workflow input」として拒否します。どの YAML を読むかだけが
 探索対象で、`ARI_RUBRIC_DIR` → `./ari-core/config/reviewer_rubrics/` →
 `./config/reviewer_rubrics/` → リポジトリルート配下の同ディレクトリの順に
-最初に見つかったものが使われます。
+最初に見つかったものが使われます。したがって、ある論文をどの rubric が採点したかは
+常にその呼び出しに記録されます。
+
+このチェーンに依存していた旧 launch / workflow ドキュメントはオフラインで変換します。
+`src/rubric_migration.py::migrate_legacy_rubric_selection` が `paper_rubric` →
+`rubric_id` → `ARI_RUBRIC` → v1 以前の既定 `neurips` の順にたどり、結果を検証して、
+明示的な `paper_rubric` フィールドと、どの `source` が値を与えたかを記す記録
+（`ari.paper-rubric-migration/v1`）を返します。ランタイムのフォールバックではなく、
+一度きりの移行ヘルパです。
 
 #### 著者 / 査読者の対称な venue 条件付け
 
@@ -707,9 +783,11 @@ Appendix A.4 準拠)。`ari-core/config/reviewer_rubrics/<rubric_id>.yaml` を
   して注入します。査読者が何を見るかを執筆側に伝え、その signal を出しやすい
   形で論文を書かせます。
 
-`author_hint` が空の rubric ではこのブロックそのものが省かれます。SC や
-NeurIPS をはじめ校正済みの `author_hint` を同梱する rubric が複数あり、
-残りの venue は空のままコード変更なしで順次埋められます。
+`author_hint` が空の rubric ではこのブロックそのものが省かれ、執筆プロンプトに
+残る venue signal は `Target venue: X.` の一行だけになります。同梱 23 rubric の
+うち校正済みの `author_hint` を持つのは現在 9 つ — `sc` / `neurips` と、経済学・
+人文系ジャーナル 7 つ（`aer` / `qje` / `econometrica` / `apsr` / `ahr` / `pmla` /
+`philreview`）です。残りの venue は空のままコード変更なしで順次埋められます。
 
 Nature Ablation 由来の既定値:
 
@@ -820,17 +898,51 @@ ors_grade            (paper-re-skill)     → ors_grade.json    (Phase 2: Simple
 
 EAR が ON の実行は `ors_seed_sandbox` 経由（決定論的）で reproduce.sh を取得します。LLM `ors_build_reproduce` は reproduce.sh が既存の場合スキップするので、EAR が OFF の実行（論文のみ再現）でのみ発火します。
 
+**v0.7.2 の HPC 追加。** `build_reproduce_sh` と `run_reproduce` はどちらも任意の
+`reproduce_contract.execution_profile` ブロック（[リファレンス](execution_profile.md)）
+を消費します。
+
+- エージェントのプロンプトに `EXECUTION PROFILE` の JSON ブロックと、
+  `SLURM_JOB_NUM_NODES` / `SLURM_NTASKS` / `nvidia-smi` から取った実時点の
+  `CLUSTER SHAPE` スナップショット、さらに `COMPUTE-NODE EXECUTION CONVENTIONS`
+  のフッタ（共有 FS、srun 優先、conda の activate、マルチノードのファンアウト、
+  timeout での包み方）が加わります。付録の全文は
+  `ari-skill-paper-re/src/_replicator_agent.py::_format_hpc_appendix` にあります。
+- `kind ∈ {mpi, mpi_gpu}` のときは MPI 集約のスケルトン
+  （`prompts/mpi_aggregate_skel.py`）が `submission/mpi_aggregate.py` へ自動コピー
+  されます。
+- `run_reproduce` は allocation の形状を生のフラグではなく型付き引数で受け取ります
+  — `nodes` / `ntasks` / `ntasks_per_node` / `nodelist` / `exclude_nodes` /
+  `exclusive` / `gpus_per_task` / `gpus_per_node` / `gpu_type` /
+  `memory_gb_per_node` / `memory_gb_per_cpu` / `constraint` / `hint` / `account` /
+  `qos` / `reservation` / `module_loads`。いずれも既定のままなら
+  `execution_profile` から自動解決されます。`cpu_bind` / `mem_bind` は srun の
+  job-step 設定なので、`reproduce.sh` に書くよう指示して拒否されます。旧来の
+  `extra_sbatch_args` という抜け道は変換可能な 4 つの接頭辞（`--account=` /
+  `--qos=` / `--reservation=` / `--hint=`）にまで縮退し、それ以外は型付き
+  フィールドを指し示して raise します。
+
 PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採点 completer は LiteLLM (`_litellm_completer.py`) を経由するので、任意のプロバイダ（`gpt-5-mini` / `anthropic/claude-...` / `gemini/...` / `ollama/...`）が使えます。スコアパース用の structured completer 2 本も同じ `judge_model` から作られ、`response_format`（`ParsedJudgeResponseInt` / `ParsedJudgeResponseFloat`）だけがメインの completer と異なります。
 
 ### ツール
 
 #### `fetch_code_bundle(ref="", sha256="", dest="", checkpoint_dir="", overwrite=False)`
 
-決定論的にサンドボックスを populate（LLM なし）。**v0.7.0+**: `checkpoint_dir` を渡すと `{checkpoint_dir}/publish_record.json` から ref + sha256 を自動読込（`ari ear publish` が書き出すファイル）。`dest/reproduce.sh` 既存時は `populated=False, skipped_reason=...` を返してスキップ。
+キュレート済み EAR バンドルを `ari.clone` 経由で再現性サンドボックスへ事前展開します。決定論的、LLM なし。バンドルの指定方法は 2 つ:
+
+- **直接 ref**: `ref="file:///path/to/bundle.tar.gz"` / `ref="ari://0ccabb16…"` /
+  `ref="gh:owner/repo"` / `ref="https://…"`。
+- **publish_record.json からの自動読込**（v0.7.0+）: `checkpoint_dir={checkpoint}`
+  を渡すと `{checkpoint_dir}/publish_record.json`（`ari ear publish` が書き出す
+  ファイル）から ref + sha256 を読みます。`inject_code_availability` と同じ規約です。
+
+`dest/reproduce.sh` が既にあるときは `populated=False, skipped_reason=...` を返して
+スキップし（`ear` seed や先行バンドルの後ろに合成できます）、空でない dest は
+`overwrite=True` でない限り上書きを拒否します。
 
 #### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
-**v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。実体は PaperBench の `BasicAgent` / `IterativeAgent` ReAct rollout (`_replicator_agent.run_replicator_agent`) で、単発の JSON 生成呼び出しではありません。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`。OpenAI Responses 形式の id（`/` を含まない `gpt-` / `o1-` / `o3-` / `o4-` / `o5-`）は PaperBench 純正の Responses completer を、それ以外は LiteLLM を通るので任意プロバイダ対応です。
+**v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。実体は PaperBench の `BasicAgent` / `IterativeAgent` ReAct rollout (`_replicator_agent.run_replicator_agent`) で、単発の JSON 生成呼び出しではありません。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`。OpenAI Responses 形式の id（`/` を含まない `gpt-` / `o1-` / `o3-` / `o4-` / `o5-`）は PaperBench 純正の Responses completer を、それ以外は LiteLLM を通るので任意プロバイダ対応です。エージェントが書いたものは submission ツリーから `output_dir` へ 1 ファイルずつ昇格されますが、絶対パス、`..` や `.git` を含む要素、シンボリックリンクの要素、どちらのツリーの外へ解決されるものは、コピーされずに拒否されます。
 
 `sandbox_kind` は `auto` / `local` / `apptainer` / `slurm` で、エージェントの rollout 自体をどこで走らせるかを選びます。`container_image` を解釈するのは `apptainer` rollout だけで、値は不変のローカル SIF か digest pin されたリモート URI です（引数が空なら `ARI_PHASE1_APPTAINER_IMAGE` を参照）。`local` / `slurm` は無視します。レガシーの `apptainer_image` 引数は**ありません**。シグネチャから削除済みでスキル内のどこにも登場しないため、ここでイメージを指定する手段は `container_image` だけです。
 
@@ -844,7 +956,7 @@ PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採�
 
 #### `grade_with_simplejudge(rubric_path, repo_dir, paper_path="", paper_text="", judge_model="", n_runs=0, skip_negative_control=False, code_only=False)`
 
-**Phase 2**。メイン採点 completer と structured score-parser はいずれも LiteLLM 経由で同じ `judge_model` を使います。`n_runs`（引数、なければ `ARI_JUDGE_N_RUNS`、なければ 1。範囲 1–100）回の重み付き葉スコアを平均化。負例コントロール（空 repo + 自明な reproduce.sh）も実行。
+**Phase 2**。メイン採点 completer と structured score-parser はいずれも LiteLLM 経由で同じ `judge_model` を使います。`n_runs`（引数、なければ `ARI_JUDGE_N_RUNS`、なければ 1。範囲 1–100）回を PaperBench の重み付き葉集約で平均化します。加えて 1 回だけ**負例コントロール**（空 repo + 自明な `reproduce.sh`）を走らせ、ルーブリックが「何もしていないこと」に報酬を与えないことを確かめます — 2 つのコントロールがどちらも 5%（0.05）未満のときだけ `passed=true` です。
 
 戻り値: `{ors_score, raw_score, leaf_grades, judge_model, n_runs, rubric_sha256, elapsed_sec, negative_control: {empty, boilerplate, passed}}`。
 
@@ -909,7 +1021,10 @@ Schema: [`docs/reference/execution_profile.md`](execution_profile.md)。
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | (未設定) | 目標葉数の上書き。`0` / 未設定で論文長から自動。GUI Wizard の "Target leaves" 欄。 |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | (未設定) | 生成器 temperature の上書き。GUI Wizard の "Temperature" 欄。 |
 
-`server.py` で「明示 kwarg → 環境変数 → デフォルト」の順で解決されます。`workflow.yaml` の `ors_generate_rubric` ステージはこの2項目を明示しないため、GUI Wizard の値が常に効きます。
+この 2 つは generator が走る前に `server.py` の `_resolve_env_overrides` で解決され、
+**環境変数が設定されていればそれが勝ちます**（未設定のときだけ kwarg の値が使われる）。
+`workflow.yaml` の `ors_generate_rubric` ステージはこの 2 項目を明示しないため、
+GUI Wizard の値が常に実行時の値になります。
 
 ---
 
@@ -933,7 +1048,14 @@ Schema: [`docs/reference/execution_profile.md`](execution_profile.md)。
 
 特定ノードの全エントリを時系列で取得（スコアなし）。
 
-エントリを削除するツールはありません。ARI の governance がノードを論理的に
+ノードごとの clear は、デバッグ用も含めて存在しません。このスキルの 13 ツールの
+どれもエントリを削除しません。書き込みは append-only かつ CoW ガード付きで、
+`tests/test_cow.py::test_destructive_clear_is_not_publicly_exposed` が
+（`assert not hasattr(server, "clear_node_memory")` で）その不在を直接検査します。
+ノードの footprint を縮めたいときは元のエントリを消すのではなく、
+`consolidate_node_memory` で統合された型付きエントリを足します。
+
+ARI の governance がノードを論理的に
 消去した場合も、`search_memory` / `get_node_memory` はそのエントリを黙って
 落とさず、`erased` / `erasure_event_id` / `erasure_note` のラベルを付けて
 返します（ラベル付けはバックエンド側で行われるため、この MCP 面だけでなく
@@ -1000,6 +1122,9 @@ ARI を外部エージェントや IDE 向けの MCP サーバーとして公開
 HTTP は `ARI_ORCHESTRATOR_HTTP_TOKENS_FILE` が無いと起動を拒否します — 認証の
 無いネットワーク制御は許しません。
 
+どのツールも呼び出し元の principal に対して認可されるため、下の 12 ツールは
+汎用のリモート制御面ではなく、投入 1 / キャンセル 1 / 読み取り 10 です。
+
 12 ツールはいずれも例外を投げず、失敗は
 `{"error": {"code": ..., "message": ...}}` の封筒で返します。`code` は
 `invalid_request` / `forbidden` / `not_found` / `idempotency_conflict` /
@@ -1019,6 +1144,12 @@ quota で拘束された ARI 実行を 1 件冪等に投入し、永続ハンド
 なら `ARI_MAX_RECURSION_DEPTH`（未設定時は 3）を継承します。`model` /
 `llm_backend` / `executor` / `retrieval_backend` は空のとき `ARI_MODEL` /
 `ARI_BACKEND` / `ARI_EXECUTOR` / `ARI_RETRIEVAL_BACKEND` にフォールバックします。
+
+quota ブロックはリクエストの一部で、再帰は 3 つの軸で同時に縛られます — この run の
+`max_nodes`、ツリー全体の `max_total_nodes`、サブツリーが派生できる run 数の
+`max_descendant_runs` — さらにその上に `max_cost_usd` が乗ります。したがって子 run
+が引数を省くだけで親の予算から逃れることはできません。このツールに credential 引数は
+**ありません**。API キーも base URL も受け取りません。
 
 #### `get_status(run_id)`
 
@@ -1093,6 +1224,7 @@ configurations[*]:
                                                         C: _params_dict 経由)
   metrics                                            ← 互換性のための flat union
   _typed_source: "results.json" | "llm_evaluator" | (なし)
+  _typed_schema_version
   _provenance  ← ノードの results*.json 各バリアントにわたる
                   emit_results の _provenance の union（存在時）
 per_key_summary  (入力パラメタキー & 「_…」予約キーは除外)
@@ -1188,7 +1320,9 @@ DuckDuckGo Web 検索。API キー不要。決定論的。`n` は 1〜10 に丸�
 URL からテキストを取得・抽出します。決定論的。HTTP(S) の 80/443 のみを許可し、
 userinfo と非 global な DNS アドレスを拒否し、検証済み IP へ直接接続して TLS SNI
 を保持し、redirect のたびに再検証し、HTTPS downgrade / redirect 超過 / サイズ超過 /
-非テキスト media を拒否します。`text/html` は BeautifulSoup で本文を抽出します。
+非テキスト media を拒否します（2xx 以外のステータスは空の結果ではなく
+`NetworkPolicyError` です）。`text/html` は `script` / `style` / `nav` / `footer` /
+`header` を落としてから BeautifulSoup で本文を抽出します。
 返るテキストは untrusted external content として明示され、本文全体は raw artifact
 として記録されます。`max_chars` は 1〜100,000、`max_bytes` は 2 MiB が上限です。
 
@@ -1309,7 +1443,13 @@ result = read_file("results.csv", offset=0, limit=100)
 型付きの要約統計、統計検定、来歴を意識した run 比較。**LLM: No**（決定論的）。
 
 3 ツールとも引数は `request` ただ 1 つで、`ari.public.analysis` の型付き
-リクエストを包みます。全 metric は `unit` を明示しなければならず、
+リクエストを包み、`AnalysisResultV1` を 1 つ返します。結果は `kind`、完全に
+解決された入力に対する `input_digest`、呼び出し側の `analysis_plan_digest`、
+そして数値が算出された `library_versions`（python / numpy / scipy）を持ちます。
+`artifact_target` を与えると、結果と CSV 表を閉じた workspace の
+`{relative_directory}/{digest}/` 配下へ digest 束縛の `AnalysisArtifactV1`
+（`result.json` / `table.csv`）としてアトミックに書き出します。全 metric は
+`unit` を明示しなければならず、
 metric / unit の不一致、空サンプル、全欠損、paired の長さ不一致はすべて
 エラーです。欠損の扱いは `missing_policy`（`error` 既定 / `drop`）で宣言し、
 drop 件数も結果に残ります。CSV / JSON / npy を読む場合は閉じた
@@ -1326,9 +1466,12 @@ drop 件数も結果に残ります。CSV / JSON / npy を読む場合は閉じ�
 `AnalysisRequestV1` — `datasets`（`MetricSampleSetV1` の配列。各要素は
 `observations` か `source` の **どちらか一方**）、`missing_policy`、
 `confidence_level`（既定 0.95）、任意の `analysis_plan_digest` と
-`artifact_target` — を受け取り、metric ごとの要約（件数、平均の信頼区間、
-正規性診断、欠損数、解決済み source digest）を返します。`metric_id` の重複は
-拒否されます。
+`artifact_target` — を受け取り、metric ごとに `AnalysisSummaryV1`
+（`count` / `missing_count` / `mean` / `std` / `variance` / `minimum` / `q25` /
+`median` / `q75` / `maximum`、要求の `confidence_level` における
+`mean_confidence_interval`、`constant_data` フラグ、`verified` / `declared` /
+`not-established` の `independence_status`、値の出所である `source_digest`）を
+返します。正規性検定は行いません。`metric_id` の重複は拒否されます。
 
 #### `statistical_test(request)`
 
@@ -1418,7 +1561,16 @@ workspace の内側に解決できなければなりません。
 content-addressed な成果物参照で指定します。判定基準はバージョン付きの
 criteria profile（既定 `figure-publication/v1`）が持ち、結果は
 `VisualReviewV1` / `VisualReviewBatchV1` として返ります
-（[図の視覚契約](figure_visual_contract.md) を参照）。
+（[図の視覚契約](figure_visual_contract.md) を参照）。各 `VisualReviewV1` は
+`criteria_profile_id` **と** `criteria_profile_digest` を、model / model revision /
+provider / prompt digest / `sampling`（`temperature: 0.0`）と並べて記録するので、
+黙って書き換えられた基準どうしでスコアを比べることはできません。
+
+同梱プロファイル: `figure-publication/v1`（source integrity、単位/ラベル、可読性、
+比較可能性、アクセシビリティ。合格 0.7）、`figure-domain-integrity/v1`（source
+integrity、不確かさ、ドメイン意味論、可読性。合格 0.75）、`table-publication/v1`
+（source integrity、単位/ラベル、精度、可読性。合格 0.7）。未知のプロファイル ID、
+および `target_kind` が呼び出しに合わないプロファイルは拒否されます。
 
 ### ツール
 
@@ -1431,9 +1583,9 @@ criteria profile（既定 `figure-publication/v1`）が持ち、結果は
 #### `review_figures_all(figures_manifest_path, context="", criteria_profile_id="figure-publication/v1", budget=None)`
 
 バッチ内の全図を査読します。`budget`（`ReviewBudgetV1`）で
-`max_figures`（既定 20）/ `max_total_bytes`（既定 100 MiB）/
-`max_concurrency`（既定 2）/ `max_model_calls`（既定 20）/
-`max_output_tokens`（既定 2048）を宣言できます。上限に触れた図は結果から
+`max_figures`（既定 20、≤100）/ `max_total_bytes`（既定 100 MiB、≤512 MiB）/
+`max_concurrency`（既定 2、≤4）/ `max_model_calls`（既定 20、≤100）/
+`max_output_tokens`（既定 2,048、128〜8,192）を宣言できます。上限に触れた図は結果から
 消えるのではなく `limit-error` として個別に残るため、予算切れが「問題なし」と
 読めることはありません。集約は `minimum-fail-closed` — 1 枚でも失敗すれば
 スコアは 0.0、そうでなければ全図の最小値です。

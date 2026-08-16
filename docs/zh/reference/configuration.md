@@ -50,7 +50,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Settings/__tests__/SettingsContract.test.tsx
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-17
 ---
 
 # 配置参考
@@ -299,7 +299,7 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 | `default` | pydantic 默认值（或默认工厂产生的值）。对 `secret_reference` 叶子强制为 `null`。 |
 | `enum` | 当注解是闭合集合时为其 `Literal` 成员，否则为 `null`。 |
 | `required` | 该字段是否没有默认值。 |
-| `category` | UI 分组：Models、Skills、Search (BFTS)、Infrastructure、Evaluation、Execution mode、Governance、Proposal routing。 |
+| `category` | UI 分组：Models、Skills、Search (BFTS)、Infrastructure、Evaluation、Execution mode、Governance、Proposal routing、Manuscript completeness、Scientific assurance。 |
 | `level` | `basic` / `advanced` / `expert` —— 供渐进式披露使用。**仅声明**：没有任何界面按它过滤（见下文*两个只声明、未强制的键*）。 |
 | `scope` | `preference` / `installation` / `project` / `template` / `run` —— 哪种文档可以拥有该值。 |
 | `sensitivity` | `public` / `internal` / `secret_reference`。 |
@@ -342,7 +342,7 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
   `unknown_path`、`secret_reference`、`not_project_scope`、`invalid_enum`、
   `invalid_type` 或 `mode_interlock_mismatch`。而 Studio 的 `resume_mutable`
   与 `read_only` 徽章（见 [Configuration Studio](../guides/configuration_studio.md)
-  的 *Mutability badges*）描述的是当前没有任何字段处于的状态。这些未被使用的
+  的 *可变性徽章*）描述的是当前没有任何字段处于的状态。这些未被使用的
   取值是前置声明，为的是等 resume 切片或按用户的 preference 到来时不必再改动
   词汇表本身；请把它们读作预留，而不是你能在某个字段上找到的状态。
 
@@ -819,11 +819,10 @@ pipeline:
     tool: nodes_to_science_data
     inputs:
       nodes_json_path: '{{ckpt}}/nodes_tree.json'
-      llm_model: '{{llm.model}}'
-      llm_base_url: '{{llm.base_url}}'
+      primary_metric: '{{primary_metric}}'
+      higher_is_better: '{{higher_is_better}}'
     outputs:
       file: '{{ckpt}}/science_data.json'
-    skip_if_exists: '{{ckpt}}/science_data.json'
   - stage: generate_figures
     skill: plot-skill
     tool: generate_figures_llm
@@ -832,7 +831,7 @@ pipeline:
   - stage: write_paper
     skill: paper-skill
     tool: write_paper_iterative
-    depends_on: [search_related_work, generate_figures]
+    depends_on: [search_related_work, generate_figures, generate_ear]
     # ...
   - stage: review_paper
     skill: paper-skill
@@ -851,22 +850,11 @@ pipeline:
   - stage: finalize_paper
     skill: paper-skill
     tool: inject_code_availability
-    depends_on: [write_paper, ear_curate]
+    depends_on: [write_paper, ear_curate, ear_publish,
+                 claim_evidence_hard_gate_final]
     # 从 ear_published/manifest.lock 与 publish_record.json 自动加载
     # ref/sha/doi，将 \codeavailability/\codedigest/\coderef 宏注入
     # full_paper.tex；若无策展过的 bundle 则静默跳过。
-  - stage: ear_publish
-    skill: transform-skill
-    tool: publish_ear
-    depends_on: [ear_curate]
-    enabled: false           # 默认禁用；置 true 或传 publish=true
-    inputs:
-      checkpoint_dir: '{{checkpoint_dir}}'
-      backend: ari-registry
-      visibility: staged
-      dry_run: false
-    outputs:
-      file: '{{checkpoint_dir}}/publish_record.json'
   - stage: merge_reviews
     skill: paper-skill
     tool: merge_reviews
@@ -888,7 +876,7 @@ pipeline:
   - stage: ors_generate_rubric
     skill: replicate-skill
     tool: generate_rubric
-    depends_on: [write_paper]
+    depends_on: [lock_paper_build]
     inputs:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       output_path: '{{checkpoint_dir}}/ors_rubric.json'
@@ -918,7 +906,7 @@ pipeline:
   - stage: ors_build_reproduce  # v0.7.0+：LLM 回退（如已 seed 则跳过）
     skill: paper-re-skill
     tool: build_reproduce_sh
-    depends_on: [ors_audit_rubric, ors_seed_sandbox, finalize_paper]
+    depends_on: [ors_audit_rubric, ors_seed_sandbox, lock_paper_build]
     inputs:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
@@ -944,17 +932,24 @@ pipeline:
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
       repo_dir: '{{checkpoint_dir}}/repro_sandbox'
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
-      n_runs: 3
-      judge_model: gpt-5-mini  # 任意 LiteLLM 可识别的模型 ID
+      n_runs: 0                # 0 / '' 表示交给 MCP 工具自身的默认值
+      judge_model: ''          # (ARI_JUDGE_N_RUNS / ARI_MODEL_JUDGE)
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv
+                               # (每次调用只固定一个 provider；合成值
+                               # `both` 现在会被 web skill 的
+                               # `_provider_name` 拒绝)
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── 论文审阅 (基于评审规范，AI Scientist v1/v2 兼容) ─────────────────
-# 通过 CLI 标志（--rubric、--fewshot-mode、--num-reviews-ensemble、
-# --num-reflections）或环境变量（ARI_RUBRIC、ARI_FEWSHOT_MODE、
-# ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS）覆盖。
+# 通过 CLI 标志（--rubric、--num-reviews-ensemble、--num-reflections）
+# 或环境变量（ARI_RUBRIC、ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS）
+# 覆盖。`--fewshot-mode` / `ARI_FEWSHOT_MODE` 是空转的：该标志会校验取值
+# 并导出该环境变量，GUI 也只是让它在 launch_config.json 之间往返
+# （ari/viz/api_experiment.py），但没有任何消费方会读它来选择模式——
+# `fewshot_mode` 仅来自评审规范 YAML 的 `params` 块
+# （ari-skill-paper/src/rubric.py）。
 # ari-core/config/reviewer_rubrics/ 中内置 23 个 YAML 评审规范：
 #   neurips（默认，v2 兼容）| iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
@@ -962,6 +957,18 @@ retrieval:
 #   | aer | ahr | apsr | econometrica | philreview | pmla | qje
 # 加上内置的 `legacy` 回退（v0.5 schema）。新 venue 只需把 <id>.yaml
 # 放进 reviewer_rubrics/ 即可，无需修改代码。
+#
+# `prompt_overrides.author_hint` 是 system_hint 的反向对应：它由
+# `write_paper_iterative` 以 `VENUE RUBRIC AUTHOR GUIDANCE` 块注入
+# 论文撰写的系统提示词，因此写作与同行评审受到同等强度的 venue
+# 条件化。随附的评审规范中有 9 份带有非空 hint（aer、ahr、apsr、
+# econometrica、neurips、philreview、pmla、qje、sc）；hint 为空时
+# 该块直接省略。
+#
+# PaperBench 的评审规范模板（供规范生成器使用的、按 venue 划分的
+# YAML）位于 ari-core/config/paperbench_rubrics/。YAML schema 见
+# docs/reference/rubric_schema.md#venue-conditioned-templates；
+# 随附模板：generic | sc | neurips | nature。
 #
 # Few-shot 语料库管理
 # ------------------
@@ -973,6 +980,10 @@ retrieval:
 #   POST /api/fewshot/<rubric>/sync             从 manifest.yaml 拉取
 #   POST /api/fewshot/<rubric>/upload           上传一个示例
 #   POST /api/fewshot/<rubric>/<example>/delete 删除一个示例
+# /api/fewshot/* 的这四个端点都会先把 rubric id 削减为字母数字与
+# _ / -，因此 ../ 无法幸存；其中 sync / upload / delete 三个还会拒绝
+# 在 reviewer_rubrics/ 中没有 <id>.yaml 的 rubric（列表端点则改为
+# 返回一个空列表）。
 
 memory:
   # v0.6.0: Letta 是唯一的生产后端。这里的值会在加载时被注入到
@@ -994,9 +1005,10 @@ container:
 skills:
   # `phase` 控制 ReAct 智能体在哪些 pipeline-phase 下能看到该技能的
   # MCP 工具。字符串仅加入一个 phase，数组可加入多个 phase。标注
-  # `reproduce` 的技能会暴露给可复现性 ReAct(见上方 reproducibility_check
-  # stage)。`memory-skill` / `transform-skill` / `evaluator-skill`
-  # 被刻意排除在 reproduce 之外，以防止智能体访问 BFTS 阶段的产物。
+  # `reproduce` 的技能会暴露给任何将来通过 `react:` 块选择加入的
+  # stage。v0.7.0 的默认 workflow 不再让可复现性检查走 `react_driver`
+  # —— 它改用确定性的 PaperBench Phase 1 + Phase 2 链
+  # (`ors_run_reproduce` / `ors_grade`)。
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
     phase: [paper, reproduce]
@@ -1043,7 +1055,8 @@ skills:
 
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
-| `ARI_MAX_NODES` | BFTS 最大探索节点数 | `50` |
+| `ARI_MAX_NODES` | BFTS 探索节点数的硬性上限 | `50` |
+| `ARI_MAX_DEPTH` | BFTS 树深度的硬性上限（v0.7.2 起生效） | `5` |
 | `ARI_PARALLEL` | 并发节点执行数 | `1` |
 | `ARI_EXECUTOR` | 执行后端：`local`、`slurm`、`pbs`、`lsf` | `local` |
 | `ARI_SLURM_PARTITION` | SLURM 分区名称 | （无） |
@@ -1052,26 +1065,28 @@ skills:
 | `OLLAMA_HOST` | Ollama 服务器地址 | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | （无） |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | （无） |
-| `ARI_RETRIEVAL_BACKEND` | 论文搜索后端: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 论文搜索后端: `semantic_scholar` / `arxiv` / `alphaxiv`（每次调用只固定一个 provider；合成值 `both` 会被拒绝） | `semantic_scholar` |
 | `VLM_MODEL` | 图表审阅 VLM 模型 | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator 技能的 HTTP 端口 | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | orchestrator 技能的 HTTP 端口（`ari-skill-orchestrator/src/server.py`；必须能解析为 1–65535 的整数） | `9890` |
 | `LETTA_BASE_URL` | Letta 服务器端点 | `http://localhost:8283` |
-| `LETTA_API_KEY` | Letta Cloud 必需 | （无） |
+| `LETTA_API_KEY` | Letta Cloud 必需；自托管时可选 | （无） |
 | `LETTA_EMBEDDING_CONFIG` | 归档内存使用的嵌入句柄（智能体的聊天 LLM 不被 ARI 调用，已固定为 `letta/letta-free`） | `letta-default` |
-| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none` | `auto` |
-| `ARI_MEMORY_LETTA_TIMEOUT_S` | 单次调用超时 | `10` |
-| `ARI_MEMORY_LETTA_OVERFETCH` | 祖先后过滤的 over-fetch K 值 | `200` |
-| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | 禁用 Letta self-edit (CoW 安全) | `true` |
-| `ARI_MEMORY_ACCESS_LOG` | 启用 `{checkpoint}/memory_access.jsonl` | `on` |
-| `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 时自动恢复备份 | `true` |
+| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none`。**仅作记录**：`scripts/setup/install_letta.sh` 把它检测到的模式写进 `.env`，但 `ari-core/` 下与各技能都不会把这个变量读回来，因此手工设置它并不会选择任何东西 | `auto` |
+| `ARI_MEMORY_LETTA_TIMEOUT_S` | 单次调用超时（viz + skill） | `10` |
+| `ARI_MEMORY_LETTA_OVERFETCH` | 祖先作用域后过滤回退所用的 over-fetch 数量 | `200` |
+| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | 保持 Letta self-edit 关闭，以维持 CoW | `true` |
+| `ARI_MEMORY_ACCESS_LOG` | `on` / `off` —— 启用 `{checkpoint}/memory_access.jsonl` | `on` |
+| `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 时自动从 `memory_backup.jsonl.gz` 还原 | `true` |
+| `ARI_CONTEXT_AUTHORITY_KEY` | core 为每条连接导出到各技能子进程的 HMAC 密钥；记忆服务器用它校验签名后的 `ari_context` 参数，而写入侧 CoW 所固定的节点 id 由该参数携带，而不是由环境变量携带 | （core 注入） |
 | `ARI_RUBRIC` | BFTS 动态打分轴（Phase 3）与 lineage 判定阈值读取的 rubric_id（例 `neurips`、`sc`、`nature`）。论文评审不再读取它：`review_paper` 从 `workflow.yaml` 顶层的 `paper_rubric` 取得显式 `rubric_id`，而 `resolve_rubric` 对空 id 直接拒绝，不回退到环境变量 | `neurips` |
-| `ARI_FEWSHOT_MODE` | `static` / `dynamic` | `static` |
+| `ARI_FEWSHOT_MODE` | `static` / `dynamic`。**目前空转**：只有 `--fewshot-mode` 与 GUI 向导会写入它，GUI 也只是让它在 `launch_config.json` 之间往返（`ari/viz/api_experiment.py`），没有任何消费方会读它来选择模式。真正生效的 `fewshot_mode` 仅来自评审规范 YAML 的 `params` 块（`ari-skill-paper/src/rubric.py`） | `static` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | 独立审稿人数量 | `1` |
 | `ARI_NUM_REFLECTIONS` | self-reflection 循环轮数 | `5` |
 | `ARI_MODEL_RUBRIC_GEN` | `replicate-skill.generate_rubric` 的生成 LLM (v0.7.0) | `gemini/gemini-2.5-pro` |
 | `ARI_MODEL_RUBRIC_AUDIT` | `audit_rubric` 的审计 LLM（与生成器独立） | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | 覆盖 `generate_rubric` 的目标叶数。`0` / 未设置时按论文长度自动（约 1 叶 / 75 词，限制在 [50, 400]）。GUI Wizard "Target leaves" 字段。 | (未设置) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | 覆盖生成器 temperature。GUI Wizard "Temperature" 字段。 | (未设置) |
+| `ARI_PAPERBENCH_RUBRIC_DIR` | 覆盖 venue 条件化 PaperBench 规范模板的搜索根。加载器先看这个目录，然后依次是 `<cwd>/ari-core/config/paperbench_rubrics/`、`<cwd>/config/paperbench_rubrics/`，最后是仓库相对的回退路径。未设置则使用内置默认值。 | (未设置) |
 | `ARI_MODEL_REPLICATOR` | `build_reproduce_sh`（论文 → reproduce.sh，v0.7.0）的复现器 LLM。`ARI_MODEL_REPLICATE` 只是 GUI 设置键，由 GUI 映射到此名 | `gpt-5-mini` |
 | `ARI_MODEL_JUDGE` | `grade_with_simplejudge`（PaperBench Phase 2, v0.7.0；LiteLLM 路由，任意提供方均可）的裁判 LLM | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | `decide_lineage_action` 的判定 LLM（lineage decision, v0.7.0）。未设置时按 `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` 顺序回退 | (auto) |
@@ -1097,8 +1112,10 @@ v0.6.0 用 [Letta](https://docs.letta.com) 替换了原本的确定性 JSONL 记
 | pip（无容器） | Python 3.10+ | SQLite | 祖先作用域回落到 over-fetch + post-filter |
 | Letta Cloud | API key | 托管 | `LETTA_BASE_URL=https://api.letta.com` |
 
-`ari setup` 自动检测最佳模式。也可通过 `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`
-强制指定。start/stop/health/backup/restore 由 `ari memory` 子命令处理 —
+`ari setup` 自动检测最佳模式，并把结果作为
+`ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` 记录到 `.env`；该记录不会被读回，
+因此它是把选择写下来，而不是强制某个选择。
+start/stop/health/backup/restore 由 `ari memory` 子命令处理 —
 详情见 `docs/zh/reference/cli_reference.md`。
 
 一次性迁移 v0.5.x 检查点：
@@ -1294,7 +1311,7 @@ claim_gate_policy:
 | Mode | 行为 |
 |---|---|
 | `off` | 从不阻断。 |
-| `warn`（默认） | 报告错误/警告，但不阻断 `finalize_paper`。 |
+| `warn`（默认） | **最终** gate 只在下文客观完整性的 `always_block_on` 层上阻断；其余每一条 finding 都只报告，不阻断 `finalize_paper`。 |
 | `strict` | 存在 `block_on` 错误时**最终** gate 阻断（跳过 `finalize_paper`），strict 节中未覆盖的结果数值也会变为阻断项。draft gate 从不阻断。 |
 
 `comparison_scope` 是注入的研究意图（环境变量 `ARI_COMPARISON_SCOPE`
@@ -1315,7 +1332,11 @@ claim_gate_policy:
 > 另一组**客观虚假**的 finding type
 > （`invariant_violation`、`correctness_failed`、`correctness_uncovered`、
 > `placeholder_denominator`、`recompute_mismatch`、`claim_evidence_missing`、
-> `ceiling_unmeasured`）**无论** `mode` 为何都会阻断最终论文。
+> `ceiling_unmeasured`、`contract_expr_unevaluable`、`cross_run_evidence`、
+> `cross_run_or_unknown_node`、`cross_run_artifact`、
+> `artifact_digest_mismatch`、`artifact_not_bound`、
+> `invalid_measurement_contract`）**无论** `mode` 为何都会阻断最终论文；
+> 唯一的例外是 `off`，它从不阻断。
 > 这些默认值位于 `policy.py` 的 `blocking.always_block_on`，
 > 不在 `workflow.yaml` 中设置。
 
@@ -1324,12 +1345,29 @@ claim_gate_policy:
 通过环境变量控制 BFTS 行为：
 
 ```bash
-export ARI_MAX_NODES=12      # Explore up to 12 nodes (small run)
-export ARI_PARALLEL=4        # Run 4 nodes concurrently
-export ARI_EXECUTOR=slurm    # Submit each node as a SLURM job
+export ARI_MAX_NODES=12      # 最多探索 12 个节点（小规模运行）
+export ARI_MAX_DEPTH=5       # 深度硬性上限（v0.7.2 起真正强制）
+export ARI_PARALLEL=4        # 并发运行 4 个节点
+export ARI_EXECUTOR=slurm    # 每个节点作为一个 SLURM 作业提交
 ```
 
-或在 `workflow.yaml` 的 `bfts:` 部分设置默认值（如果您的版本支持）。
+`BFTSConfig`（定义在 `ari/config/__init__.py`）暴露了完整的旋钮集合：
+
+| 字段 | 默认值 | 说明 |
+|-------|---------|-------|
+| `max_depth` | 5 | 深度硬性上限（`ARI_MAX_DEPTH`）。v0.7.2 (B-2) 起生效。 |
+| `max_total_nodes` | 50 | 节点数硬性上限（`ARI_MAX_NODES`）。 |
+| `max_react_steps` | 20 | 单节点内 ReAct 迭代上限（`ARI_MAX_REACT`）。已从 80 下调；新取值背后的步数测量记录在 `ari/config/__init__.py` 中该字段自己的 description 里。 |
+| `timeout_per_node` | 7200 | 每节点的墙钟时间预算（秒）。 |
+| `max_parallel_nodes` | 4 | worker 并发度。 |
+| `max_expansions_per_node` | 4 | v0.7.2 (B-6) 新增。同一个前沿节点被展开 N 次之后，BFTS 让它退役。 |
+| `label_saturation_threshold` | 2 | v0.7.2 (L-6) 新增。当同一父节点的子节点中有 ≥ N 个共享同一标签时，下一次 expand 提示词会把该标签标记为已饱和。 |
+| `allow_web` | false | 可选启用：在**探索期间**把 `web-skill` 暴露给节点 agent（`ARI_BFTS_ALLOW_WEB`）。默认关闭以保持搜索循环可复现（P5）；开启时 ARI 会记录 `bfts_web_provenance.json`，标记该轨迹不可复现。无论此开关如何，`idea-skill` 的 `survey` 都已经做了一次有界的文献查找。 |
+
+审计前的 `max_retries_per_node` 字段已在 v0.7.2（B-3 / B-10）中
+**移除** —— ARI 从不重试；失败的节点改为产生 DEBUG 子节点。仍然设置
+`max_retries_per_node` 的 YAML 配置会被静默忽略（Pydantic
+`extra='ignore'`）。
 
 ---
 
@@ -1698,6 +1736,7 @@ paper-archive 阶段在原有九种之上新增的唯一一种；其上限背后
 | `scripted_components` | `{}` | `role -> double_name` 替换（仅限工具链）。 |
 | `injection_specs` | `[]` | 激活的 `eval_*` 注入 id；被记录进 `rqgm_injection_provenance.json`。 |
 | `paper_ablation.condition_id` | `""` | 与 RQGM 原论文对齐的评估专用条件（`P0_hgm_h_fixed_critic` 至 `P4_constitutional_rqgm`）。空值或 `eval.enabled: false` 保持正常行为；它不是 `paper.mode`。 |
+| `kca_conditions` | `b`/`h`/`k` 为 `""`、`reporting_alias` 为 `null`、`verification_tiers` 为 `[]`、`legacy_comparison_only` 为 `false`、`publishable` 为 `true` | Task-20 的因子比较身份。仅是元数据：它既不授予任何权限，也不改变生产环境中的选择/绑定/解析决策。 |
 
 ### `rqgm.paper` —— paper-archive 协同进化
 
@@ -1795,6 +1834,39 @@ accept/reject 语料库，其形状记录在
 | `virsci` | `false` | `2` | 可选启用的高成本审议式 VirSciAdapter；默认永不启用。额外键：`mode: event_triggered`（v1 唯一模式）和 `trigger_on: [initial_exploration, frontier_stagnation, major_pivot, paper_candidate]`。 |
 
 ---
+
+## Manuscript Complete（可选启用）
+
+`manuscript` 是一个独立于 `ari.mode`、`paper.mode` 以及 K/C/A 姿态的轴。
+把 `"off"` 加上引号是必需的，这样才能在各种 YAML 1.1 解析器之间保持
+可移植性。
+
+```yaml
+manuscript:
+  mode: "off"               # off | audit | enforce
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled         # disabled | explicit | auto
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
+```
+
+`off` 保留 legacy 路径，且不写出任何 `.ari-manuscript` 数据。`audit` 在不
+改变写作者输入的前提下编译一次影子 readiness 尝试。`enforce` 把证据、
+撰写与验证拆成以 digest 绑定的事务，并在关键要求未解决时阻断撰写。
+`repair.policy: auto` 在 enforce 之外会被拒绝；`explicit` 只运行一个具名
+且事先被准入的请求。`repair.on_exhaustion` 只接受 `block`，并且没有任何
+运行时分支读取它：自动循环若在未达到撰写 readiness 时结束 —— 预算耗尽、
+无进展循环，或所需解析器不可用 —— 该尝试始终保持未解决，enforce 门禁会
+在撰写之前停下这次运行；因此这个键记录的是那唯一一种姿态，而不是在若干
+备选之间做选择。参见[配置档参考](manuscript_complete_profile.md)、
+[契约参考](manuscript_complete_contracts.md)与
+[运维指南](../guides/manuscript_complete_operations.md)。
 
 ## EAR 精选 (`ear/publish.yaml`) — v0.7.0+
 

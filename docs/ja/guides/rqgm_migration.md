@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_paper_mode.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-17
 ---
 
 # 既存プロジェクトでの `ari_rqgm` 採用
@@ -176,10 +176,12 @@ ARI はそれらをランメタデータとして分類し — ノード作業�
 
 ## ロールバック
 
-戻すことは、次のランを `simple_bfts` として開始すること（または `ari_rqgm`
-ランにエポック境界で自らダウングレードさせること — 唯一のラン内切替で、
-ダウングレードのみ）を意味します。ロールバックを安全にする性質が 2 つ
-あります:
+戻すことは、次のランを `simple_bfts` として開始することを意味します。
+ラン内での切替は存在しません: `rqgm_state.json` はラン開始時に
+（`persist_run_start` が）一度だけ書き込み、以後書き換えられず、
+エポック境界での `ari_rqgm → simple_bfts` ダウングレードは予約された
+設計であって未実装です（[実行モード](execution_modes.md)を参照）。
+ロールバックを安全にする性質が 2 つあります:
 
 - **レコードは不活性です。** `simple_bfts` のコードは `proposals/` や
   いかなる `rqgm_*` ファイルも決して読まないため、古いチェックポイントに

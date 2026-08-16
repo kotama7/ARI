@@ -40,7 +40,7 @@ sources:
     role: doc
   - path: docs/concepts/gui_architecture.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-17
 ---
 
 # Manuscript Complete 架构

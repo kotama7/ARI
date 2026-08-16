@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/admission_builder.py
     role: implementation
-last_verified: 2026-08-05
+last_verified: 2026-08-17
 ---
 
 # Knowledge、Capability 与 Scientific Assurance
@@ -250,10 +250,37 @@ rule：这是真话，而不是占位符。
 以及把 tool 的 live `input_schema`与`output_schema`原样折入的 provision digest——schema 一变，
 provision 就变，与是否有人为它写过 rule 无关。
 
+与之并列还有另一个缺口，对承载 capability 的 tool 而言它已经被补上。以前每个 Provider tool
+发布的 MCP `outputSchema`都是**空**的，于是每条 provision 的`output_schema_digest`都是`{}`
+的 digest，对谁都检测不出 drift。当时被分类的九个 tool——`ari-skill-coding`五个、
+`ari-skill-hpc`四个——现在都声明了一份，而每份声明的 schema 都是该 tool 成功形状与它自身
+失败形状的`anyOf`: 只描述成功，会把一次真实的执行失败变成 output 校验错误，并丢掉那条说明
+出了什么事的 message；而`oneOf`会拒绝一个正当地同时属于两者的 payload，例如一次超时的
+执行——它既是完整结果又携带错误。声明 schema 同时使 handler 有义务在 text 之外返回
+structured content，因为 library 会拿`structuredContent`去校验所声明的内容。声明 schema
+与被分类进某个 capability 仍是两件事: `counter_support`根本没有被分类却声明了一份，而 web
+Provider 的四个 retrieval tool 是后来才被分类的、并未声明，因此它们的
+`output_schema_digest`至今仍是`{}`的 digest。
+
+`measurement-envelope-v1`说的是：一次测量只有连同它被取得时的条件才可解释，因此声称该 rule
+的契约必须声明作为这些条件的`nondeterminism_fields`。一份声称该 rule 却不指名任何条件的
+契约会在 load 时被拒绝——它根本没有在陈述一个 envelope。
+
 只有`declared_capability_refs_by_tool`会产生 provision。skill.yaml 一侧的`capability_ref`
 作为`declared_capability_ref`被携带，但不参与 bind。因此不在该表中的 tool，无论自称什么
-capability，都不会成为某个 Capability requirement 的解决对象——这不意味着它不能被调用，
-只意味着它不是 bind 的候选。
+capability，都不会成为某个 Capability requirement 的解决对象——在 legacy/audit mode 下这
+不意味着它不能被调用，只意味着它不是 bind 的候选；在 enforce mode 下，未被 bind 的 tool
+会以`unbound_tool`被拒绝。
+
+一次 run 的 requirement 来自两个 source。被 admit 的 Knowledge Skill 声明其指令所预设的
+东西，而`capability_binding.required_capability_refs`让 operator 声明这次 run 自己的任务
+需要什么。后者之所以存在，是因为先前只有前者: 一件没有任何 Knowledge Skill 恰好提到的
+domain instrument，可以拥有契约、经审阅的供给方、已 admit 的 evidence 和已验证的调用路径，
+却始终不会被*要求*，因此永远不会被 bind。该声明是 config，绝非模型输出；不在经审阅
+ontology 中的 ref 会被拒绝而不是被忽略；决定 side-effect ceiling、resource 与 environment
+的是契约而不是该声明；同一 capability 上 Knowledge Skill 的 requirement 也绝不会被它取代。
+指名了 required ref 却把 binding 留在`legacy` mode 会被拒绝，否则该 requirement 会被悄悄
+丢弃。`optional_capability_refs`在有供给时 bind，且永远不会让一次 run 失败。
 
 无 prompt 的 Capability Binder 只考虑现有 Provider lock 中 verified Provider 的 exact
 capability ref 与 contract digest。它按 role、phase、call context、side-effect ceiling、
@@ -294,6 +321,12 @@ site 用`ARI_TOOL_REGISTRY_LOCK`选择 federated lock，ARI 读取同一个变�
 provision 描述的都是并未被调用的 leaf。packaged 的`CATALOG.lock`为空是刻意的——materialize
 后的 lock 记录绝对本地路径，无法提交——因此仓库里只保留 reviewed leaf→capability 表，它所指
 向的 lock 留在 site。
+
+一条 provision 只携带那些取值确实存在的 credential scope。已声明却缺席的 credential 不授予
+任何权限——子进程只由存在的取值构建，call context 也按同样方式过滤——所以携带被声明的整个
+集合，曾让一个多领域 Provider 的每条 provision 都索取它可能用到的每一项 scope: 经 broker
+bind 一个 EDA tool，需要授予一份根本没有设置的 IBM Quantum credential。存在性在 lock 时被
+观测并冻结进 Provider Lock，因此后来才出现的 token 改变的是 lock，而不是溜过去。
 
 descriptor 声明异步 lifecycle 的 leaf，由 dispatch tool 提交、由另外的 tool 收取。它们不是
 独立的 capability——轮询一个你已被授权提交的 job 并不增加 authority——但它们是不同的
@@ -339,6 +372,14 @@ container runtime 同样以执行来判定。`shutil.which`找到二进制并不
 中——依赖 derived resource class 的 binding 可以一路审计到允许它的那句话。随包的表记录了
 Apptainer 与 SingularityCE 都执行 SIF、而 podman 与 docker 都不执行，并由 CPU 加 SIF
 runtime 推导出`eda-cpu`。
+
+向外的可达性是从路由表观测的，而不是靠联系任何人。一条 default route 是 kernel 在说它有
+一条离开本 host 的路径：它必要而不充分——proxy 或防火墙仍可能拒绝该调用——这与`sinfo`能
+应答给 scheduler 的地位相同。一条 default 目的地的行只有在它是 up、不是 reject route、
+且不在 loopback 上时才算数：kernel 在每台 host 上都带着一条不可达的`::/0`，所以只匹配
+目的地会把一台 air-gapped 机器读成有出口。更强的证据——解析一个名字或建立一次连接——
+则是为了描述我们自己的 substrate 而向别人的服务发出一次向外请求。在 air-gapped node 上
+没有 route，retrieval capability 保持未获供给。
 
 SLURM GPU visibility 与 scheduler authority 不同。在没有 advertised GPU GRES 的 node 上
 观察到 device 时，记录保留在`metadata.slurm_gpu`并增加

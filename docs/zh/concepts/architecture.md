@@ -24,7 +24,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-10
+last_verified: 2026-08-17
 ---
 
 # ARI 架构
@@ -160,7 +160,7 @@ gate 或修复；`audit` 记录一次影子完整性评估；`enforce` 在 autho
 ┌────────────────────────────────────────────────────────────────┐
 │                         User Interface                         │
 │                   experiment.md  /  CLI  /  API                │
-└────────────────────────────────┬───────────────────────────────┘
+└────────────────────────────┬───────────────────────────────────┘
                              │
 ┌────────────────────────────▼───────────────────────────────────┐
 │                          ari-core                              │
@@ -188,10 +188,28 @@ Post-BFTS Pipeline (workflow.yaml):
 ┌─────────────────┐  ┌──────────────────┐  ┌──────────────────┐
 │ari-skill-       │  │ari-skill-plot    │  │ari-skill-paper   │
 │transform        │  │ generate_figures │  │ write_paper      │
-│ nodes_to_       │  │ _llm (LLM writes │  │ review_compiled  │
-│ science_data    │  │  matplotlib)     │  │ reproduce_from   │
-│ (LLM analysis)  │  │                  │  │  _paper          │
+│ nodes_to_       │  │ _llm (matplotlib │  │ review_compiled  │
+│ science_data    │  │  plots + SVG     │  │  (rubric-driven, │
+│ (LLM analysis)  │  │  diagrams)       │  │   ensemble+meta) │
 └─────────────────┘  └──────────────────┘  └──────────────────┘
+                                            ┌──────────────────┐
+                                            │ari-skill-replicate│
+                                            │ generate_rubric  │
+                                            │ audit_rubric     │
+                                            │  (PaperBench fmt)│
+                                            └──────────────────┘
+                                            ┌──────────────────┐
+                                            │ari-skill-paper-re│
+                                            │ fetch_code_bundle│
+                                            │ build_reproduce_sh│
+                                            │ run_reproduce    │
+                                            │  (slurm/docker/  │
+                                            │   apptainer/local)│
+                                            │ grade_with_      │
+                                            │  simplejudge     │
+                                            │  (PaperBench via │
+                                            │   LiteLLM judge) │
+                                            └──────────────────┘
 ```
 
 ---
@@ -272,7 +290,8 @@ BFTS expand() (ari/orchestrator/bfts.py)
     - self_assessment.{headline, concerns} 与 next_steps_hints —
       智能体生成的 LLM 反思，与客观有效性判定分开保存
     - build_command / run_command — 从 work_dir 中的 run_job.sh / Makefile grep
-    - artifacts[].role — 按扩展名确定性分类
+    - artifacts[].role — 确定性的角色分类
+      (data_output / log / binary / figure / unknown)
   PathManager.META_FILES 包含 node_report.json，确保父→子物理 work_dir 复制
   不会让子节点继承父节点的报告。
 
@@ -282,7 +301,8 @@ BFTS expand() (ari/orchestrator/bfts.py)
       (for_synthesis / for_code / for_narrative)；always_include_node_ids 让
       best 节点必通过；丢弃成功节点 >50% 时输出 warning。
     - select_source_files_for_publication：纯元数据文件级选择（无 I/O）；
-      transform_data 与 generate_ear 共享同一 selection（FR-SS-5 契约测试固化）。
+      同一 rel_path 上最深的 contributor 胜出；transform_data 与 generate_ear
+      共享同一 selection（FR-SS-5 契约测试固化）。
     - load_selected_sources(size_budget)：负责文件 I/O；transform 用 16KB cap，
       generate_ear 不限。
     │
@@ -296,14 +316,40 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
     重新哈希 node_report 记录过 sha256 的每一个节点产物并与磁盘比对 —— 这是
     节点输出不再是实验结果、开始成为论文证据的边界。逐产物报告 verified /
     mismatch（记录哈希之后被改写）/ missing（已删除）/ unhashed（声明了但没有
-    记录基线）。它是信号而非闸门，transform_data 依赖（depends_on）它。
+    记录基线）。ARI 自己的元数据根本进不了审计：`_FILES_CHANGED_BLOCKLIST_NAMES`
+    加上 `PathManager.is_meta_file(scope="node")` 在 `files_changed` 阶段就把它
+    排除掉了；而节点自己的 `results.json` 与 `*.log` 是刻意 node-visible 的
+    （`NODE_VISIBLE_NAMES` / `NODE_VISIBLE_EXTENSIONS`），因此它们会被哈希、也
+    会拿到 verified。被报为 unhashed 的是 `files_changed` 从未覆盖的
+    `artifacts[]` 条目：审计时刻意丢弃它自带的记录哈希，而不是拿它跟自己对账。
+    它是信号而非闸门，transform_data 依赖（depends_on）它。
     输出：node_provenance_audit.json
 
   阶段 1：transform_data  (ari-skill-transform)  [在阶段 0 之后]
     对完整树进行 BFS 遍历（根 → 叶）
     LLM 读取所有节点产物（stdout、日志、生成的代码）
     LLM 提取：硬件规格、方法论、关键发现、比较结果
-    输出：science_data.json  { configurations, experiment_context, per_key_summary }
+    输入包含 primary_metric / higher_is_better（经 tpl_vars 取自
+      evaluation_criteria.json），使 summary_stats 无需在下游重新推导即可带方向。
+    输出：science_data.json
+      configurations[*]:
+        rank, label, eval_summary
+        parameters / measurements / predictions / scores  ← 类型化拆分，
+                                                             只从通过校验的
+                                                             results.json 采纳；
+                                                             evaluator 的
+                                                             _params_dict /
+                                                             _measurements_dict
+                                                             刻意不作为事实采纳
+        metrics                                            ← 向后兼容的扁平并集
+        _typed_source: "results.json" | （缺省）
+      per_key_summary  （排除输入参数键与 "_…" 保留键）
+      summary_stats    { count, primary_metric, direction,
+                         primary_metric_best, primary_metric_n,
+                         typed_split_coverage }
+      experiment_context  （LLM 提取的方法论 / 硬件 / 发现）
+      implementation_overview （可选）
+      report_driven    （node_report.json 驱动了 LLM 输入时为 true）
 
   阶段 2：search_related_work  (ari-skill-web: search_papers)  [与阶段 1 并行]
     LLM 生成的关键词 → 一个被钉住的提供方（workflow.yaml 钉住
@@ -429,8 +475,9 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
   阶段 11：ors_generate_rubric  (ari-skill-replicate)  [在 lock_paper_build 之后, v0.7.0]
     从最终论文自动生成 PaperBench 形式 (TaskNode 树) rubric。
     task_category 与 finegrained_task_category 锁定到 PaperBench 封闭
-    词汇 (LLM 越界由确定性归一化器纠正)；JSON 输出时清洗游离 LaTeX
-    backslash escape。
+    词汇 (freeze 之前由确定性归一化器把 LLM 的变体映射到 allow-list 条目)；
+    JSON 输出时清洗游离 LaTeX backslash escape。rubric 信封由「正规化 JSON +
+    论文摘要」上的 sha256 冻结。
     输出：ors_rubric.json + ors_rubric.meta.json
 
   阶段 12：ors_audit_rubric  (ari-skill-replicate: audit_rubric)  [在阶段 11 之后]
@@ -473,12 +520,14 @@ nodes_tree.json  (所有节点：指标、产物、记忆、父子关系)
                              [partition, cpus, walltime] }
 
   阶段 16：ors_grade  (ari-skill-paper-re: grade_with_simplejudge)  [在阶段 15 之后, v0.7.0]
-    Phase 2。主评分 completer 通过 LiteLLM 路由 (任意供应商；绕过
-    PaperBench 原生 CONTEXT_WINDOW_LENGTHS 约束)，structured score-parser
-    也由同一个 judge_model 构建，仅在携带 response_format 上不同。
+    Phase 2。对 (repo_dir + reproduce.log + 论文) 在 rubric 叶节点上运行
+    PaperBench SimpleJudge。主评分 completer 通过 LiteLLM 路由 (任意供应商；
+    绕过 PaperBench 原生 CONTEXT_WINDOW_LENGTHS 约束)，两个 structured
+    score-parser 也由同一个 judge_model 构建，仅在携带 response_format 上不同。
     N 次 (默认 1 —— PaperBench §4.1 的单次评分；
-    用 ARI_JUDGE_N_RUNS 调高) 加权聚合 + negative control
-    (两者均需 < 5%)。
+    用 ARI_JUDGE_N_RUNS 调高) 加权叶节点聚合。negative control
+    (空仓库 + 平凡的 reproduce.sh) 用于验证 rubric 不会奖励「什么都没做」
+    —— 两个对照都必须 < 5%。
     输出：ors_grade.json { ors_score, raw_score, leaf_grades,
                           judge_model, n_runs, rubric_sha256,
                           negative_control_check: {empty, boilerplate,
@@ -505,7 +554,8 @@ checkpoints/{run_id}/
 ├── tree.json                   # 完整 BFTS 树 (BFTS 阶段写入)
 ├── nodes_tree.json             # 轻量树导出 (流水线输入)
 ├── results.json                # 每节点 artifact + metrics 摘要
-├── idea.json                   # 生成的假设 (VirSci 输出)
+├── idea.json                   # 生成的假设 (VirSci 输出) —— 经 inherit_idea_index 启动时还会用父运行的 ideas[N] 预先 seed (v0.7.0)
+├── lineage_decisions.jsonl     # 谱系决策 LLM judge 日志 (每条触发的决策一条记录; v0.7.0)
 ├── evaluation_criteria.json    # 主要指标 + 方向
 ├── cost_trace.jsonl            # 每次 LLM 调用的成本/token 日志
 ├── cost_summary.json           # 成本汇总
@@ -665,7 +715,7 @@ ARI 实际产出的每条路径都是上文那种扁平布局。`ari/paths.py` �
 
 | 模块 | 描述 |
 |------|------|
-| `ari/orchestrator/bfts.py` | 最佳优先树搜索 — 节点扩展、选择、剪枝；回退排名策略可通过 `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) **配置** — 详见 [Configuration → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) |
+| `ari/orchestrator/bfts.py` | 最佳优先树搜索 — 节点扩展、选择、depth / sterile / total 剪枝、扩展计数跟踪；回退排名策略可通过 `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) **配置** — 详见 [Configuration → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) |
 | `ari/orchestrator/node.py` | Node 数据类 — id、parent_id、depth、label、metrics、artifacts、memory |
 | `ari/orchestrator/node_report/` | 每节点自报告构建器 + 旧版重建（v0.7.1 拆分为包） |
 | `ari/orchestrator/lineage_decision.py` | Lineage-decision LLM 钩子（BFTS rewind / branch / continue） |
@@ -674,15 +724,26 @@ ARI 实际产出的每条路径都是上文那种扁平布局。`ari/paths.py` �
 | `ari/agent/loop.py` | ReAct 智能体循环 — 每个节点的 LLM + 工具调用；自动轮询 SLURM 作业；注入祖先记忆 |
 | `ari/agent/message_utils.py` / `tool_manager.py` / `guidance.py` | 从 `agent/loop.py` 提取出的辅助模块（Phase 3D, v0.7.1） |
 | `ari/agent/workflow.py` | WorkflowHints — 从实验文本自动提取（工具序列、指标关键词、分区） |
-| `ari/pipeline.py` | Post-BFTS 流水线驱动器 — 模板解析、阶段执行、输出连接 |
+| `ari/agent/react_driver.py` | 论文流水线各阶段使用的、由流水线驱动的 ReAct 入口 |
+| `ari/pipeline/` | Post-BFTS 流水线驱动器，拆分为 `experiment_md`、`yaml_loader`、`stage_control`、`context_builder`、`stage_runner`、`orchestrator`（Phase 3C, v0.7.1） |
 | `ari/evaluator/llm_evaluator.py` | 指标提取 + 同行评审评分（`scientific_score`、`comparison_found`）。合成公式 (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) 与轴集 (`legacy` / `dynamic` / `custom`) 可通过 `EvaluatorConfig` **配置** — 详见 [Configuration → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) |
-| `ari/memory/file_client.py` | 基于文件的记忆客户端（祖先链作用域） |
+| `ari/memory/letta_client.py` | `LettaMemoryClient` —— 以 `ari_react_*` Letta 集合为后端的 ReAct 轨迹持久化 |
+| `ari/memory/file_client.py` | 已弃用的 v0.5.x 文件后端客户端；仅为 `ari memory migrate --react` 保留 |
+| `ari/memory_cli.py` | `ari memory …` 子命令（migrate / backup / restore / start-local / …） |
 | `ari/mcp/client.py` | 异步 MCP 客户端 — 线程安全，为并行执行创建新的事件循环 |
 | `ari/llm/client.py` | 通过 litellm 进行 LLM 路由（Ollama、OpenAI、Anthropic、任何 OpenAI 兼容接口） |
-| `ari/config.py` | 配置数据类（BFTSConfig、LLMConfig、PipelineConfig） |
+| `ari/config/` | 配置数据类（BFTSConfig、LLMConfig、PipelineConfig）+ workflow.yaml 查找器（Phase 2） |
+| `ari/configs/` | 经 `FilesystemConfigLoader` 加载的 YAML 查找表（`model_prices.yaml`、`defaults.yaml`） |
 | `ari/prompts/` | 通过 `FilesystemPromptLoader` 加载的外部化 LLM 提示词。已提交的模板目录包括 `agent/`、`orchestrator/`、`pipeline/`、`evaluator/`、`viz/`、`llm/`（注入到 CLI shim 系统提示中的 MCP 工具名解析片段），以及 RQGM 时期的两个目录 —— `governance/`（弹劾流水线的 `auditor` / `defender` / `governance_judge` 角色）与 `rqgm/`（ProposalRouter 的生成器、对抗 → 防御 → 裁决循环，以及 PromptMutator 与 clean-room 元提示）。所有目录都使用同一套带版本的方案：`load_versioned("<dir>/<name>")` 返回模板正文与 `sha256(text)[:12]`，该短哈希即记录中保存的 `prompt_hash` —— 见 [RQGM 模式 → Id 与哈希纪律](../reference/rqgm_schemas.md#id-与哈希纪律)。运行时 *进化出来的* 提示词正文绝不提交在此，它们按检查点存放。钉定由 `tests/test_prompt_extraction.py`（手工维护的 sha256 列表）与 `tests/test_prompt_snapshots.py`（自动发现目录下每个 `*.md`）完成 |
-| `ari/core.py` | 顶层运行时构建器 — 连接所有组件 |
-| `ari/cli/` | Typer CLI 拆分包：`__init__`、`run`、`projects`、`commands`、`bfts_loop`、`lineage`、`migrate` + `paper_dispatch`（`ari run` / `ari resume` / `ari paper` 共享的论文阶段执行模式分派） |
+| `ari/protocols/` | 跨层 Protocol —— `Evaluator`、`PromptLoader`、`ConfigLoader` |
+| `ari/paths.py` | `PathManager` —— `ARI_CHECKPOINT_DIR` 读写的唯一真实来源（Phase 1） |
+| `ari/checkpoint.py` | `tree.json` / `nodes_tree.json` 的共享 I/O（Phase 2） |
+| `ari/_deprecation.py` | 支撑 DR1–DR4 警告的 `warn_deprecated_path / _env / _field` 助手 |
+| `ari/migrations/v05_to_v07/` | 隔离的 v0.5 → v0.7 迁移垫片（计划在 v1.0 移除） |
+| `ari/public/` | 允许技能导入的稳定再导出层（`container`、`cost_tracker`、`paths`、`llm`、`config_schema`，以及技能真正依赖的类型化契约模块 —— `execution`、`result`、`science_data`、`figures`、`visual_review`、`claim_gate`、`research_contract`、`manuscript` 等）；由 `tests/test_public_api_boundary.py` 在 CI 中强制 |
+| `ari/core.py` | 顶层运行时构建器 —— Protocol 注入依赖的 composition root |
+| `ari/cli/` | Typer CLI 拆分包：`__init__`、`run`、`projects`、`commands`、`bfts_loop`、`lineage`、`migrate`（Phase 3A, v0.7.1）+ `paper_dispatch`（`ari run` / `ari resume` / `ari paper` 共享的论文阶段执行模式分派） |
+| `ari/viz/routes.py` / `websocket.py` / `ui_helpers.py` / `checkpoint_*` / `state_sync.py` | HTTP + SSE 的 GUI 后端，从旧的 `viz/server.py` 与 `viz/api_state.py` 拆分而来（Phase 3B, v0.7.1） |
 
 ### 技能（MCP 服务器）
 
@@ -873,7 +934,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
 
 ## 节点级提示构建
 
-每个 BFTS 节点都通过 `ari/agent/loop.py:2067` 中的 `AgentLoop.run(node, experiment)` 这一单一入口执行。同一循环既处理根节点也处理子节点；它构建的提示仅根据 `node.depth` 和从祖先继承的状态分支。本节是 *代理在节点开始时实际看到什么* 的权威来源。在此处更改需要谨慎审查。
+每个 BFTS 节点都通过 `ari/agent/loop.py:2067` 中的 `AgentLoop.run(node, experiment)` 这一单一入口执行。同一循环既处理根节点也处理子节点；它构建的提示会因 `node.depth` 和从祖先继承的状态而不同。本节是 *代理在节点开始时实际看到什么* 的权威来源。在此处更改需要谨慎审查。
 
 ### `AgentLoop.run` 的输入
 
@@ -1203,7 +1264,8 @@ BX-17 各自说明了变化。
   确定。任何哈希都不掺入墙钟时间、git SHA 或主机身份。`hash12`
   （`sha256(text)[:12]`，`ari-core/ari/prompts/_provenance.py`）是唯一的提示
   哈希方案，原始模板哈希与渲染后哈希都用它。唯一获准的放宽记载于
-  [哲学](PHILOSOPHY.md)。
+  [哲学](PHILOSOPHY.md)的 *记忆（v0.6.0）：P2 为单个技能放宽，P5 收窄作用域*
+  一节。
 - **BX-14 时变输入需要持久标记（P5）。** 默认运行不会留下
   `bfts_web_provenance.json` —— 缺席*就是*默认。任何取值依赖墙钟或网络的东西
   都需要类似的持久标记或确定性推导。RQGM 状态层遵循同一规则 ——
@@ -1287,6 +1349,8 @@ pipeline:
 ```
 
 无需修改 `ari-core`。
+
+---
 
 ## 分层架构（v0.7+ 重构）
 

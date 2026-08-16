@@ -478,8 +478,8 @@ create/PATCH, draft create/PATCH **and** launch. The check runs on the
 **New runs only.** Both leaves are `mutability: new_run_only` — the choice
 applies to the run you are about to launch. Resume is untouched: a resumed
 run takes the mode recorded in `{checkpoint}/rqgm_state.json`, which wins
-over config and env (downgrade-only). Nothing in the Studio can retarget a
-run that already exists.
+over config and env, and a run's mode stays immutable for the whole run.
+Nothing in the Studio can retarget a run that already exists.
 
 **Project scope still refuses them.** The four leaves are `scope: run`, so
 the project-defaults document rejects them with `not_project_scope`; in that

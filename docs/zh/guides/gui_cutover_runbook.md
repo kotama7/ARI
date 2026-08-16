@@ -52,7 +52,7 @@ sources:
     role: test
   - path: scripts/setup/setup_env.sh
     role: config
-last_verified: 2026-08-13
+last_verified: 2026-08-17
 ---
 
 # GUI 切换运行手册
@@ -129,7 +129,7 @@ curl -s 'http://127.0.0.1:8765/codefile?path=/etc/passwd' # 404
 ss -ltnp | grep 8765                                      # bound to 127.0.0.1 / ::1 only
 ```
 
-目前**没有**被机器强制的关卡，因此必须人工签字确认：
+以下这些关卡目前**没有**被机器强制，因此必须人工签字确认：
 
 - **浏览器性能指标**（LCP/INP/CLS、路由交互延迟）。jsdom 测试装置无法测量
   布局、绘制或输入时序，而共享 CI runner 的噪声太大，撑不起一个通过/失败

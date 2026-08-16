@@ -36,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_secret_readiness.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-08-17
 ---
 
 # Configuration Studio ガイド
@@ -452,8 +452,8 @@ create/PATCH、ドラフトの create/PATCH、**そして**起動時に、型付
 **新規ラン専用。** どちらの葉も `mutability: new_run_only` です — 選択はこれから
 起動しようとしているランに適用されます。resume には手を触れません: 再開されたラン
 は `{checkpoint}/rqgm_state.json` に記録されたモードを取り、それが設定と env に
-優先します（ダウングレードのみ）。Studio の中に、既に存在するランを狙い直せる
-ものは何もありません。
+優先し、ランのモードはラン全体を通じて不変のままです。Studio の中に、既に存在
+するランを狙い直せるものは何もありません。
 
 **プロジェクトスコープは今もそれらを拒否します。** この 4 葉は `scope: run` なので、
 プロジェクト既定値の文書は `not_project_scope` でそれらを拒否します; そのスコープ

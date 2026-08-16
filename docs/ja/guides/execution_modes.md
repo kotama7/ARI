@@ -24,7 +24,11 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/ari/config/kca_runtime.py
+    role: implementation
+  - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
+    role: test
+last_verified: 2026-08-17
 ---
 
 # 実行モード: `simple_bfts` と `ari_rqgm`
@@ -152,7 +156,8 @@ vendored パス、プロンプト、スナップショットコーパスには�
 この最後の保証が成り立つのは K/C/A が**デフォルト**の姿勢のときだけで、
 抜け道はこの軸ではなくそちらの軸にあります: `knowledge.mode` /
 `capability_binding.mode` / `assurance.mode` のいずれかをデフォルトから
-外すと `ProposalRouter._typed_contract_required()` が true になり、ルータは
+外すと（[後述](#knowledge-capability-binding-assurance-モード)）
+`ProposalRouter._typed_contract_required()` が true になり、ルータは
 （MCP クライアントがあれば）`VirSciAdapter` を構築し、
 `generators.virsci.enabled` の値にかかわらず `virsci` を有効として扱います。
 [VirSci 統合](virsci_integration.md) を参照してください。
@@ -531,6 +536,62 @@ diff になります。
 ランは継続します（ランの中断は決して起こりません）。
 `rqgm.kernel.enforcement: audit_only` は段階的ロールアウトと
 アブレーションのために、すべてのコンテキストを warn-and-log へ格下げします。
+
+## Knowledge / Capability Binding / Assurance モード
+
+この 3 つのスイッチは実行モードに従属し、デフォルトではレガシー互換の
+不活性状態です:
+
+```yaml
+knowledge:
+  mode: off                 # off | audit | enforce
+capability_binding:
+  mode: legacy              # legacy | audit | enforce
+assurance:
+  mode: off                 # off | audit | enforce
+```
+
+`knowledge.audit` は、選択が満たされないことでブロックせずに、受理された
+手続き知識を組み立てて記録します; `knowledge.enforce` は検証済みで digest
+ロックされた Knowledge と来歴を要求します。Binding の `audit` はレガシーの
+見え方を保ったまま requirement からツールへの正確な対応を計算し、`enforce`
+はバインドされたツールだけを露出し実行します。Assurance の `audit` は固定
+スイートをゲートせずに実行して記録し、`enforce` は科学フロンティアには
+screen の合格を、公開には certify の合格を要求します。
+
+`resolve_kca_modes` が唯一のインターロックです。明示的な Knowledge
+requirement と `knowledge.off`、必須の Capability と legacy な binding、
+必須の Verification requirement と `assurance.off` の組み合わせは、いずれも
+run-admission エラーです。アクティブな RQGM ランでは、Knowledge または
+Assurance の `enforce` は Capability Binding の `enforce` も要求します。
+暗黙のモード昇格はありません。3 つすべてをデフォルトのままにしたアクティブな
+RQGM ランは合法であり、admission も通りますが、`resolve_kca_modes` はその旨を
+警告としてログに出します — admission はランの identity を記録する一方で、
+Knowledge もツール権限も検証も統治しないからです。
+
+上記の 3 つのデフォルトでは、`simple_bfts` はランタイムゲートで K/C/A の
+インポートを一切行わず、カタログのスナップショット / ロック / レコードを
+書かず、プロンプトのバイト、メトリクス、予約フィールド、可視ツールを変えず、
+古いチェックポイントも従来どおり resume します。有効化された RQGM ランは
+受理されたスナップショットとロックを `rqgm/kca/admission-v1/` の下に永続化
+します; resume はそのバイト列を使い、新しいカタログの内容に対して解決を
+やり直すことは決してありません。
+[K/C/A リファレンス](../reference/knowledge_capability_assurance.md)を
+参照してください。
+
+## Manuscript Complete は独立した軸
+
+`manuscript.mode: "off"|audit|enforce` は RQGM も論文アーカイブも有効にせず、
+それらのモードが manuscript のゲートを有効にすることもありません。したがって
+同じコンパイラと readiness の契約が、`simple_bfts|ari_rqgm` と
+`linear|rqgm_archive` の 4 通りの組み合わせすべてで動作します。`audit` は
+ライタへの入力を変えずに観測し、`enforce` は執筆の前に新鮮な証拠と binding を
+要求します。自動の research repair はさらに `enforce` と
+`ari run` / `ari resume` の研究ランタイムに限定されます。
+
+有効化マトリクスと resume の挙動の全体は
+[アーキテクチャ](../concepts/manuscript_complete_architecture.md)と
+[運用ガイド](manuscript_complete_operations.md)を参照してください。
 
 ## 互換性保証
 

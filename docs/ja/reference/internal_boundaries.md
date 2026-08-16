@@ -46,7 +46,7 @@ sources:
     role: test
   - path: ari-core/tests/test_contract_snapshots.py
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-17
 ---
 
 # 内部境界

@@ -22,7 +22,7 @@ sources:
     role: test
   - path: ari-core/tests/test_paper_mode.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-17
 ---
 
 # 在现有项目上采用 `ari_rqgm`
@@ -161,9 +161,10 @@ RQGM 不替换 `idea.json`；它把它降级为提案记录存储的一个**投�
 
 ## 回滚
 
-切回去意味着以 `simple_bfts` 启动下一次运行（或让一次 `ari_rqgm`
-运行在纪元边界自我降级 —— 唯一的运行内切换，且只能降级）。两个性质
-使回滚安全：
+切回去意味着以 `simple_bfts` 启动下一次运行。不存在运行中途的切换：
+`rqgm_state.json` 只在运行开始时由 `persist_run_start` 写入一次，此后
+不再改写，而纪元边界的 `ari_rqgm → simple_bfts` 降级属于预留设计，
+尚未实现（见[执行模式](execution_modes.md)）。两个性质使回滚安全：
 
 - **记录是惰性的。**`simple_bfts` 代码从不读取 `proposals/` 或任何
   `rqgm_*` 文件，因此旧检查点中残留的 RQGM 工件无需清理，也不改变

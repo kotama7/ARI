@@ -24,7 +24,11 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_mode_selection.py
     role: test
-last_verified: 2026-07-30
+  - path: ari-core/ari/config/kca_runtime.py
+    role: implementation
+  - path: ari-core/tests/test_rqgm_eval_kca_conditions.py
+    role: test
+last_verified: 2026-08-17
 ---
 
 # 执行模式：`simple_bfts` 与 `ari_rqgm`
@@ -142,7 +146,8 @@ YAML + profile + 环境变量，按标准优先级）→ 默认值。任何 RQGM
 
 最后这条保证仅在 K/C/A 处于**默认**姿态时成立；缺口在那条轴上而不在
 这条轴上：只要把 `knowledge.mode`、`capability_binding.mode` 或
-`assurance.mode` 中任意一个移离默认值，
+`assurance.mode` 中任意一个移离默认值
+（[见下文](#knowledge、capability-binding-与-assurance-模式)），
 `ProposalRouter._typed_contract_required()` 即为 true，路由器便会
 （只要存在 MCP 客户端）构造 `VirSciAdapter`，并且无论
 `generators.virsci.enabled` 取何值都把 `virsci` 报告为已启用。参见
@@ -475,6 +480,53 @@ T1–T21 转换表，与 RegistryTransitionEngine 共享 —— 单一事实来�
 当一次转换被阻断时，上一纪元的活跃集合原样延续，运行继续（绝不中止
 运行）。`rqgm.kernel.enforcement: audit_only` 将
 所有上下文降级为仅警告并记录，用于分阶段上线和消融实验。
+
+## Knowledge、Capability Binding 与 Assurance 模式
+
+这三个开关从属于执行模式，默认处于与既有行为一致的惰性状态：
+
+```yaml
+knowledge:
+  mode: off                 # off | audit | enforce
+capability_binding:
+  mode: legacy              # legacy | audit | enforce
+assurance:
+  mode: off                 # off | audit | enforce
+```
+
+`knowledge.audit` 在选择未被满足时也不阻断，只组织并记录已受理的过程性知识；
+`knowledge.enforce` 要求经过验证、以 digest 锁定的 Knowledge 及其溯源。Binding
+的 `audit` 在保留既有可见面的同时计算出 requirement 到工具的精确映射；`enforce`
+则只暴露并执行已绑定的工具。Assurance 的 `audit` 运行并记录固定套件但不设门；
+`enforce` 要求科学前沿通过 screen、发表通过 certify。
+
+`resolve_kca_modes` 是唯一的联锁。明确的 Knowledge requirement 搭配
+`knowledge.off`、必需的 Capability 搭配 legacy binding，或必需的 Verification
+requirement 搭配 `assurance.off`，都是 run-admission 错误。在一次活跃的 RQGM
+运行中，Knowledge 或 Assurance 的 `enforce` 还要求 Capability Binding 同样为
+`enforce`。不存在隐式的模式升级。把三者都保持默认值的活跃 RQGM 运行是合法的，
+也仍会被受理，但 `resolve_kca_modes` 会为此记录一条告警 —— 此时 admission 只
+记录了这次运行的身份，却不治理任何 Knowledge、任何工具权限、任何验证。
+
+在上述三项默认值下，`simple_bfts` 在运行时门处不做任何 K/C/A 导入，不写入任何
+catalog snapshot/lock/记录，不改变提示词字节、指标、保留字段或可见工具，恢复旧
+检查点的方式也与从前一致。启用后的 RQGM 运行会把受理的 snapshot 与 lock 持久化
+到 `rqgm/kca/admission-v1/` 之下；恢复时使用这些字节，绝不会再对新的 catalog
+内容重新解析。参见
+[K/C/A 参考](../reference/knowledge_capability_assurance.md)。
+
+## Manuscript Complete 是一条独立的轴
+
+`manuscript.mode: "off"|audit|enforce` 既不启用 RQGM 也不启用论文归档，而这两种
+模式也都不会启用 manuscript 门控。因此同一套编译器与 readiness 契约在
+`simple_bfts|ari_rqgm` 与 `linear|rqgm_archive` 的四种组合下一致工作。`audit`
+只观测而不改变写作者的输入；`enforce` 要求在开始撰写之前具备新鲜的证据与
+binding。自动的 research repair 还进一步被限制在 `enforce`，以及
+`ari run`/`ari resume` 的研究运行时之内。
+
+完整的启用矩阵与恢复行为见
+[架构](../concepts/manuscript_complete_architecture.md)与
+[运维指南](manuscript_complete_operations.md)。
 
 ## 兼容性保证
 

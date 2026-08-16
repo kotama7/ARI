@@ -50,7 +50,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Settings/__tests__/SettingsContract.test.tsx
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-17
 ---
 
 # 設定リファレンス
@@ -334,7 +334,7 @@ GUI の設定面は、機械的に検査される 3 つの部品の上に構築�
 | `default` | pydantic のデフォルト（またはデフォルトファクトリの値）。`secret_reference` の葉では強制的に `null` になります。 |
 | `enum` | 注釈が閉じた集合であるときの `Literal` メンバ、そうでなければ `null`。 |
 | `required` | このフィールドにデフォルトが無いかどうか。 |
-| `category` | UI のグルーピング: Models、Skills、Search (BFTS)、Infrastructure、Evaluation、Execution mode、Governance、Proposal routing。 |
+| `category` | UI のグルーピング: Models、Skills、Search (BFTS)、Infrastructure、Evaluation、Execution mode、Governance、Proposal routing、Manuscript completeness、Scientific assurance。 |
 | `level` | `basic` / `advanced` / `expert` — 段階的開示のための値。**宣言のみ**: これで絞り込む面はありません（後述の *宣言されているが強制されない 2 つのキー* を参照）。 |
 | `scope` | `preference` / `installation` / `project` / `template` / `run` — どの文書がこの値を所有してよいか。 |
 | `sensitivity` | `public` / `internal` / `secret_reference`。 |
@@ -378,7 +378,7 @@ Evaluation 4 / Execution mode 4 / Skills 2; expert 151、advanced 18、basic 36;
   `unknown_path`、`secret_reference`、`not_project_scope`、`invalid_enum`、
   `invalid_type`、`mode_interlock_mismatch` のいずれかです。そして Studio の
   `resume_mutable` / `read_only` バッジ（[Configuration Studio](../guides/configuration_studio.md)
-  の *Mutability badges* を参照）は、現在どのフィールドも取っていない状態を
+  の *可変性バッジ* を参照）は、現在どのフィールドも取っていない状態を
   記述しています。使われていない値は先行宣言であり、resume スライスやユーザー
   ごとの preference が来たときに語彙自体を変えずに済ませるためのものです。
   フィールドが実際に取りうる状態ではなく、予約済みと読んでください。
@@ -895,11 +895,10 @@ pipeline:
     tool: nodes_to_science_data
     inputs:
       nodes_json_path: '{{ckpt}}/nodes_tree.json'
-      llm_model: '{{llm.model}}'
-      llm_base_url: '{{llm.base_url}}'
+      primary_metric: '{{primary_metric}}'
+      higher_is_better: '{{higher_is_better}}'
     outputs:
       file: '{{ckpt}}/science_data.json'
-    skip_if_exists: '{{ckpt}}/science_data.json'
   - stage: generate_figures
     skill: plot-skill
     tool: generate_figures_llm
@@ -908,7 +907,7 @@ pipeline:
   - stage: write_paper
     skill: paper-skill
     tool: write_paper_iterative
-    depends_on: [search_related_work, generate_figures]
+    depends_on: [search_related_work, generate_figures, generate_ear]
     # ...
   - stage: review_paper
     skill: paper-skill
@@ -927,22 +926,11 @@ pipeline:
   - stage: finalize_paper
     skill: paper-skill
     tool: inject_code_availability
-    depends_on: [write_paper, ear_curate]
+    depends_on: [write_paper, ear_curate, ear_publish,
+                 claim_evidence_hard_gate_final]
     # ear_published/manifest.lock と publish_record.json から ref/sha/doi
     # を自動ロードし、\codeavailability/\codedigest/\coderef マクロを
     # full_paper.tex に注入。バンドル無しなら静かにスキップ。
-  - stage: ear_publish
-    skill: transform-skill
-    tool: publish_ear
-    depends_on: [ear_curate]
-    enabled: false           # opt-in。true にするか publish=true を渡す
-    inputs:
-      checkpoint_dir: '{{checkpoint_dir}}'
-      backend: ari-registry
-      visibility: staged
-      dry_run: false
-    outputs:
-      file: '{{checkpoint_dir}}/publish_record.json'
   - stage: merge_reviews
     skill: paper-skill
     tool: merge_reviews
@@ -964,7 +952,7 @@ pipeline:
   - stage: ors_generate_rubric
     skill: replicate-skill
     tool: generate_rubric
-    depends_on: [write_paper]
+    depends_on: [lock_paper_build]
     inputs:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       output_path: '{{checkpoint_dir}}/ors_rubric.json'
@@ -994,7 +982,7 @@ pipeline:
   - stage: ors_build_reproduce  # v0.7.0+: LLM フォールバック (上で seed 済なら skip)
     skill: paper-re-skill
     tool: build_reproduce_sh
-    depends_on: [ors_audit_rubric, ors_seed_sandbox, finalize_paper]
+    depends_on: [ors_audit_rubric, ors_seed_sandbox, lock_paper_build]
     inputs:
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
@@ -1020,17 +1008,24 @@ pipeline:
       rubric_path: '{{checkpoint_dir}}/ors_rubric.json'
       repo_dir: '{{checkpoint_dir}}/repro_sandbox'
       paper_path: '{{checkpoint_dir}}/full_paper.tex'
-      n_runs: 3
-      judge_model: gpt-5-mini  # LiteLLM 認識可能な任意のモデル ID
+      n_runs: 0                # 0 / '' は MCP ツール側の既定に委ねる
+      judge_model: ''          # (ARI_JUDGE_N_RUNS / ARI_MODEL_JUDGE)
 
 retrieval:
-  backend: semantic_scholar    # semantic_scholar | alphaxiv | both
+  backend: semantic_scholar    # semantic_scholar | arxiv | alphaxiv
+                               # (1 回の呼び出しにつき固定 1 プロバイダ。
+                               # 合成値 `both` は web skill の
+                               # `_provider_name` が拒否する)
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── 論文査読 (ルーブリック駆動、AI Scientist v1/v2 互換) ─────────────
-# CLI フラグ (--rubric、--fewshot-mode、--num-reviews-ensemble、
-# --num-reflections) または環境変数 (ARI_RUBRIC、ARI_FEWSHOT_MODE、
-# ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS) で上書き可能。
+# CLI フラグ (--rubric、--num-reviews-ensemble、--num-reflections) または
+# 環境変数 (ARI_RUBRIC、ARI_NUM_REVIEWS_ENSEMBLE、ARI_NUM_REFLECTIONS)
+# で上書き可能。`--fewshot-mode` / `ARI_FEWSHOT_MODE` は inert です:
+# フラグは値を検証して環境変数を export し、GUI は launch_config.json
+# との間で往復させるだけ (ari/viz/api_experiment.py) で、モード選択のために
+# 読む消費側は存在しません。`fewshot_mode` は rubric YAML の `params`
+# ブロックだけから決まります (ari-skill-paper/src/rubric.py)。
 # ari-core/config/reviewer_rubrics/ に同梱されている 23 個の YAML ルーブリック:
 #   neurips (既定、v2 互換) | iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
@@ -1038,6 +1033,20 @@ retrieval:
 #   | aer | ahr | apsr | econometrica | philreview | pmla | qje
 # 加えて内蔵の `legacy` フォールバック (v0.5 スキーマ)。新しい venue は
 # <id>.yaml を reviewer_rubrics/ に追加するだけで対応 (コード変更不要)。
+#
+# `prompt_overrides.author_hint` は system_hint の逆向きです:
+# `write_paper_iterative` が論文執筆側のシステムプロンプトへ
+# `VENUE RUBRIC AUTHOR GUIDANCE` ブロックとして注入するので、執筆も
+# 査読と同じ強さで venue に条件づけられます。同梱ルーブリックのうち
+# 9 件が空でない hint を持ちます (aer, ahr, apsr, econometrica,
+# neurips, philreview, pmla, qje, sc)。hint が空ならブロック自体が
+# 出力されません。
+#
+# PaperBench のルーブリックテンプレート (ルーブリック生成器向けの
+# venue 別 YAML) は ari-core/config/paperbench_rubrics/ 配下にあります。
+# YAML スキーマは
+# docs/reference/rubric_schema.md#venue-conditioned-templates を参照。
+# 同梱テンプレート: generic | sc | neurips | nature。
 #
 # Few-shot コーパス管理
 # --------------------
@@ -1049,6 +1058,10 @@ retrieval:
 #   POST /api/fewshot/<rubric>/sync             manifest.yaml から取得
 #   POST /api/fewshot/<rubric>/upload           1 件アップロード
 #   POST /api/fewshot/<rubric>/<example>/delete 1 件削除
+# /api/fewshot/* の 4 つは rubric id をまず英数字と _ / - だけに
+# 削るので ../ は残りません。sync / upload / delete の 3 つはさらに、
+# reviewer_rubrics/ に <id>.yaml が無い rubric を拒否します
+# (一覧エンドポイントは代わりに空の一覧を返します)。
 
 memory:
   # v0.6.0: Letta が唯一の本番バックエンドです。ここでの値はスキル
@@ -1071,10 +1084,11 @@ skills:
   # `phase` は ReAct エージェントがどの pipeline-phase でそのスキルの
   # MCP ツールを見られるかを制御します。単一文字列なら一つの phase
   # のみ、配列なら複数の phase にオプトインします。`reproduce` に
-  # タグ付けされたスキルは再現性 ReAct (上の reproducibility_check
-  # ステージ参照) に露出します。`memory-skill` / `transform-skill` /
-  # `evaluator-skill` はエージェントが BFTS フェーズの成果物に
-  # 到達できないよう、意図的に reproduce から除外しています。
+  # タグ付けされたスキルは、`react:` ブロックでオプトインする将来の
+  # ステージに露出します。v0.7.0 の既定ワークフローは再現性チェックを
+  # もはや `react_driver` 経由では回さず、決定論的な PaperBench の
+  # Phase 1 + Phase 2 の連鎖 (`ors_run_reproduce` / `ors_grade`) を
+  # 使います。
   - name: web-skill
     path: "{{ari_root}}/ari-skill-web"
     phase: [paper, reproduce]
@@ -1121,7 +1135,8 @@ skills:
 
 | 変数 | 説明 | デフォルト |
 |----------|-------------|---------|
-| `ARI_MAX_NODES` | BFTS で探索するノードの最大数 | `50` |
+| `ARI_MAX_NODES` | BFTS で探索するノード数のハードキャップ | `50` |
+| `ARI_MAX_DEPTH` | BFTS ツリー深さのハードキャップ（v0.7.2 で有効化） | `5` |
 | `ARI_PARALLEL` | 同時実行ノード数 | `1` |
 | `ARI_EXECUTOR` | 実行バックエンド: `local`, `slurm`, `pbs`, `lsf` | `local` |
 | `ARI_SLURM_PARTITION` | SLURM パーティション名 | (なし) |
@@ -1130,26 +1145,28 @@ skills:
 | `OLLAMA_HOST` | Ollama サーバーアドレス | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API キー | (なし) |
 | `ANTHROPIC_API_KEY` | Anthropic API キー | (なし) |
-| `ARI_RETRIEVAL_BACKEND` | 論文検索バックエンド: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | 論文検索バックエンド: `semantic_scholar` / `arxiv` / `alphaxiv`（固定 1 プロバイダ。合成値 `both` は拒否される） | `semantic_scholar` |
 | `VLM_MODEL` | 図レビュー用 VLM モデル | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | orchestrator スキルの HTTP ポート | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | orchestrator スキルの HTTP ポート（`ari-skill-orchestrator/src/server.py`。1–65535 の整数としてパースできる必要がある） | `9890` |
 | `LETTA_BASE_URL` | Letta サーバエンドポイント | `http://localhost:8283` |
-| `LETTA_API_KEY` | Letta Cloud で必須 | (なし) |
+| `LETTA_API_KEY` | Letta Cloud では必須、self-hosted では任意 | (なし) |
 | `LETTA_EMBEDDING_CONFIG` | アーカイバルメモリ用の埋め込みハンドル（エージェントのチャット LLM は ARI から呼び出さないため `letta/letta-free` に固定） | `letta-default` |
-| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none` | `auto` |
-| `ARI_MEMORY_LETTA_TIMEOUT_S` | 呼び出しごとのタイムアウト | `10` |
-| `ARI_MEMORY_LETTA_OVERFETCH` | 祖先ポストフィルタ用のオーバーフェッチ K | `200` |
-| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Letta self-edit を無効化 (CoW セーフ) | `true` |
-| `ARI_MEMORY_ACCESS_LOG` | `{checkpoint}/memory_access.jsonl` を有効化 | `on` |
-| `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 時にバックアップを自動復元 | `true` |
+| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none`。**記録のみ**: `scripts/setup/install_letta.sh` が検出したモードを `.env` に書きますが、`ari-core/` 配下も各スキルもこの変数を読み戻さないため、手で設定しても何も選択されません | `auto` |
+| `ARI_MEMORY_LETTA_TIMEOUT_S` | 呼び出しごとのタイムアウト（viz + skill） | `10` |
+| `ARI_MEMORY_LETTA_OVERFETCH` | 祖先スコープのポストフィルタ用フォールバックのオーバーフェッチ数 | `200` |
+| `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | CoW が保たれるよう Letta self-edit を無効のままにする | `true` |
+| `ARI_MEMORY_ACCESS_LOG` | `on` / `off` — `{checkpoint}/memory_access.jsonl` を有効化 | `on` |
+| `ARI_MEMORY_AUTO_RESTORE` | `ari resume` 時に `memory_backup.jsonl.gz` から自動復元 | `true` |
+| `ARI_CONTEXT_AUTHORITY_KEY` | core が各スキルのサブプロセスへエクスポートする接続ごとの HMAC キー。メモリサーバは署名済みの `ari_context` 引数をこのキーで検証する。書き込み側の CoW が固定するノード id を運ぶのは環境変数ではなくその引数 | (core が注入) |
 | `ARI_RUBRIC` | BFTS の動的軸評価器 (Phase 3) と lineage 判定しきい値が読む rubric_id (例: `neurips`、`sc`、`nature`)。論文査読はこれを読まず、`review_paper` は `workflow.yaml` のトップレベル `paper_rubric` から明示的な `rubric_id` を受け取る (`resolve_rubric` は空の id を環境変数へフォールバックせず拒否) | `neurips` |
-| `ARI_FEWSHOT_MODE` | `static` / `dynamic` | `static` |
+| `ARI_FEWSHOT_MODE` | `static` / `dynamic`。**現在 inert**: `--fewshot-mode` と GUI ウィザードが書き込み、GUI が `launch_config.json` との間で往復させる (`ari/viz/api_experiment.py`) だけで、モード選択のために読む消費側は存在しない。実際の `fewshot_mode` は rubric YAML の `params` ブロックだけから決まる (`ari-skill-paper/src/rubric.py`) | `static` |
 | `ARI_NUM_REVIEWS_ENSEMBLE` | 独立査読者数 | `1` |
 | `ARI_NUM_REFLECTIONS` | self-reflection ループ回数 | `5` |
 | `ARI_MODEL_RUBRIC_GEN` | `replicate-skill.generate_rubric` の生成 LLM (v0.7.0) | `gemini/gemini-2.5-pro` |
 | `ARI_MODEL_RUBRIC_AUDIT` | `audit_rubric` の監査 LLM (生成器とは独立) | `anthropic/claude-opus-4-7` |
 | `ARI_RUBRIC_GEN_TARGET_LEAVES` | `generate_rubric` の目標葉数の上書き。`0` / 未設定で論文長から自動 (~1葉/75語、[50,400] にクランプ)。GUI Wizard の "Target leaves" 欄。 | (未設定) |
 | `ARI_RUBRIC_GEN_TEMPERATURE` | 生成器 temperature の上書き。GUI Wizard の "Temperature" 欄。 | (未設定) |
+| `ARI_PAPERBENCH_RUBRIC_DIR` | venue 条件付き PaperBench ルーブリックテンプレートの検索ルートを上書きする。ローダはこのディレクトリを最初に見て、次に `<cwd>/ari-core/config/paperbench_rubrics/`、`<cwd>/config/paperbench_rubrics/`、最後にリポジトリ相対のフォールバックを見る。未設定なら組み込みの既定。 | (未設定) |
 | `ARI_MODEL_REPLICATOR` | `build_reproduce_sh` (論文 → reproduce.sh, v0.7.0) のリプリケータ LLM。`ARI_MODEL_REPLICATE` は GUI 設定側のキーで、GUI がこの名前へ写す | `gpt-5-mini` |
 | `ARI_MODEL_JUDGE` | `grade_with_simplejudge` (PaperBench Phase 2, v0.7.0; LiteLLM 経由でプロバイダ自由) の判定 LLM | `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | `decide_lineage_action` の判定 LLM (lineage decision, v0.7.0)。未指定時は `ARI_MODEL_EVAL` → `ARI_MODEL` → `ARI_LLM_MODEL` → `gpt-4o-mini` の順にフォールバック | (auto) |
@@ -1175,8 +1192,10 @@ v0.6.0 で決定論的 JSONL メモリストアを [Letta](https://docs.letta.co
 | pip (コンテナレス) | Python 3.10+ | SQLite | ancestor スコープは over-fetch + post-filter にフォールバック |
 | Letta Cloud | API キー | マネージド | `LETTA_BASE_URL=https://api.letta.com` |
 
-`ari setup` が最適なモードを自動検出します。`ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`
-で強制指定も可能。start/stop/health/backup/restore は `ari memory` サブ
+`ari setup` が最適なモードを自動検出し、その結果を
+`ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` として `.env` に記録します。この記録は
+読み戻されないので、選択を強制するものではなく選択を書き残すものです。
+start/stop/health/backup/restore は `ari memory` サブ
 コマンドが扱います — 詳細は `docs/ja/reference/cli_reference.md` を参照。
 
 v0.5.x チェックポイントのワンショット移行:
@@ -1380,7 +1399,7 @@ claim_gate_policy:
 | Mode | 動作 |
 |---|---|
 | `off` | 決してブロックしない。 |
-| `warn`（既定） | エラー/警告を報告するが `finalize_paper` をブロックしない。 |
+| `warn`（既定） | **最終** gate をブロックするのは後述の客観的整合性 `always_block_on` の層だけ。それ以外の finding は報告されるだけで `finalize_paper` をブロックしない。 |
 | `strict` | `block_on` エラーが存在すると**最終** gate がブロックし（`finalize_paper` を skip）、strict セクション内の未カバーの結果数値もブロッキングになる。draft gate は決してブロックしない。 |
 
 `comparison_scope` は注入される研究意図です（環境変数
@@ -1402,7 +1421,11 @@ claim_gate_policy:
 > 別系統の**客観的虚偽**の finding type
 > （`invariant_violation`、`correctness_failed`、`correctness_uncovered`、
 > `placeholder_denominator`、`recompute_mismatch`、`claim_evidence_missing`、
-> `ceiling_unmeasured`）は `mode` に**かかわらず**最終論文をブロックします。
+> `ceiling_unmeasured`、`contract_expr_unevaluable`、`cross_run_evidence`、
+> `cross_run_or_unknown_node`、`cross_run_artifact`、
+> `artifact_digest_mismatch`、`artifact_not_bound`、
+> `invalid_measurement_contract`）は `mode` に**かかわらず**最終論文を
+> ブロックします。ただし `off` は例外で、決してブロックしません。
 > これらの既定値は `policy.py` の `blocking.always_block_on` にあり、
 > `workflow.yaml` には設定されていません。
 
@@ -1412,11 +1435,28 @@ claim_gate_policy:
 
 ```bash
 export ARI_MAX_NODES=12      # 最大 12 ノードを探索（小規模実行）
+export ARI_MAX_DEPTH=5       # 深さのハードキャップ（v0.7.2 で実際に強制）
 export ARI_PARALLEL=4        # 4 ノードを同時実行
 export ARI_EXECUTOR=slurm    # 各ノードを SLURM ジョブとして投入
 ```
 
-または `workflow.yaml` の `bfts:` セクションでデフォルト値を設定できます（バージョンがサポートしている場合）。
+`BFTSConfig`（`ari/config/__init__.py` で定義）はノブ一式を公開します:
+
+| フィールド | デフォルト | 備考 |
+|-------|---------|-------|
+| `max_depth` | 5 | 深さのハードキャップ（`ARI_MAX_DEPTH`）。v0.7.2 (B-2) で有効化。 |
+| `max_total_nodes` | 50 | ノード数のハードキャップ（`ARI_MAX_NODES`）。 |
+| `max_react_steps` | 20 | ノードごとの ReAct 反復上限（`ARI_MAX_REACT`）。80 から引き下げ。新しい値の根拠となるステップ数の計測は、`ari/config/__init__.py` のフィールド自身の description に記録されています。 |
+| `timeout_per_node` | 7200 | ノードごとの実時間予算（秒）。 |
+| `max_parallel_nodes` | 4 | ワーカーの同時実行数。 |
+| `max_expansions_per_node` | 4 | v0.7.2 (B-6) で新設。同じフロンティアノードを N 回展開したら BFTS はそれを退役させます。 |
+| `label_saturation_threshold` | 2 | v0.7.2 (L-6) で新設。1 つの親の子のうち N 個以上が同じラベルを共有すると、次の expand プロンプトがそのラベルを飽和として提示します。 |
+| `allow_web` | false | オプトイン: **探索中**のノードエージェントに `web-skill` を露出します（`ARI_BFTS_ALLOW_WEB`）。既定 off は探索ループを再現可能に保ちます（P5）。on にすると ARI は軌跡を再現不能と示す `bfts_web_provenance.json` を記録します。`idea-skill` の `survey` はこのフラグに関係なく、限定的な文献検索を既に行います。 |
+
+監査前にあった `max_retries_per_node` フィールドは v0.7.2（B-3 / B-10）で
+**削除**されました — ARI はリトライを行わず、失敗したノードは代わりに
+DEBUG の子を生みます。まだ `max_retries_per_node` を設定している YAML は
+黙って無視されます（Pydantic の `extra='ignore'`）。
 
 ---
 
@@ -1801,6 +1841,7 @@ paper-archive フェーズが元の 9 種に追加した唯一の種別です。
 | `scripted_components` | `{}` | `role -> double_name` の差し替え（ハーネス専用） |
 | `injection_specs` | `[]` | アクティブな `eval_*` 注入 id; `rqgm_injection_provenance.json` に記録される |
 | `paper_ablation.condition_id` | `""` | RQGM元論文に合わせた評価専用条件（`P0_hgm_h_fixed_critic`～`P4_constitutional_rqgm`）。空、または `eval.enabled: false` なら通常挙動を保つ。`paper.mode` ではない |
+| `kca_conditions` | `b`/`h`/`k` は `""`、`reporting_alias` は `null`、`verification_tiers` は `[]`、`legacy_comparison_only` は `false`、`publishable` は `true` | Task-20 の要因比較のアイデンティティ。メタデータのみで、権限を与えることも、本番の選択 / バインド / 解決の判断を変えることもない |
 
 ### `rqgm.paper` — paper-archive 共進化
 
@@ -1906,6 +1947,42 @@ paper-archive フェーズが元の 9 種に追加した唯一の種別です。
 | `virsci` | `false` | `2` | オプトインの高コスト熟議型 VirSciAdapter; デフォルトで有効になることは決してない。追加キー: `mode: event_triggered`（v1 唯一のモード）と `trigger_on: [initial_exploration, frontier_stagnation, major_pivot, paper_candidate]` |
 
 ---
+
+## Manuscript Complete（オプトイン）
+
+`manuscript` は `ari.mode`、`paper.mode`、および K/C/A の姿勢とは独立した軸
+です。`"off"` をクォートするのは、YAML 1.1 パーサ間での可搬性のために必要
+です。
+
+```yaml
+manuscript:
+  mode: "off"               # off | audit | enforce
+  profile: generic_empirical_v1
+  brief_character_budget: 24000
+  repair:
+    policy: disabled         # disabled | explicit | auto
+    max_rounds: 2
+    max_new_nodes: 8
+    max_experiment_runs: 12
+    max_llm_calls: 8
+    max_resource_units: null
+    on_exhaustion: block
+```
+
+`off` はレガシーの経路をそのまま保ち、`.ari-manuscript` のデータを一切
+書きません。`audit` はライタの入力を変えずに、影の readiness 試行を
+コンパイルします。`enforce` は証拠・執筆・検証を digest に束ねた
+トランザクションへ分割し、クリティカルな要件が未解決なら執筆を
+ブロックします。`repair.policy: auto` は enforce の外では拒否されます;
+`explicit` は名前付きで事前に承認されたリクエストだけを走らせます。
+`repair.on_exhaustion` は `block` しか受け付けず、どの実行時分岐からも
+読まれません: 自動ループが執筆 readiness に届かないまま終わった場合 —
+予算の枯渇、進捗のない循環、あるいは解決器が利用不能 — 試行は常に未解決の
+まま残り、enforce ゲートが執筆の前にランを止めます。したがってこのキーは
+選択肢から選ぶものではなく、その単一の姿勢を記録しているだけです。
+詳細は[プロファイルリファレンス](manuscript_complete_profile.md)、
+[契約リファレンス](manuscript_complete_contracts.md)、
+[運用ガイド](../guides/manuscript_complete_operations.md)を参照してください。
 
 ## EAR キュレーション (`ear/publish.yaml`) — v0.7.0+
 

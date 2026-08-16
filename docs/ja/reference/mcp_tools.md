@@ -70,7 +70,7 @@ sources:
     role: config
   - path: ari-core/tests/fixtures/contracts/mcp_tools.json
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-17
 ---
 
 # MCP ツールリファレンス
@@ -84,14 +84,23 @@ ARI には `ari-skill-*` パッケージごとに 1 つ、17 の MCP サーバ�
 本ページ末尾に、カタログ identity と provider adapter は
 [tool_registry.md](tool_registry.md) にあります）。
 
+これらの `ari-skill-*` パッケージは実行可能な **Capability Provider** であり、
+Knowledge Skill ではありません。MCP はその転送 / ディスカバリのプロトコルです。
+非実行の手続き知識、capability binding、独立検証はいずれも別の契約であり、
+[Knowledge, Capability, and Scientific Assurance](knowledge_capability_assurance.md)
+にあります。
+
 このページはエージェントが呼び出せるすべてのツールのフラットなカタログです。
 各スキルの詳細は個別の `README.md` を参照してください。セクション
 [skills.md](skills.md) では責務ごとにグループ分けされています。
 
-`mcp.json`（各スキルの `pyproject.toml` の隣に配置）はツール*名前*を運び、
-`skill.yaml` から `scripts/sync_skill_metadata.py --write` が生成します。
-`@mcp.tool()` で装飾された関数（または `@server.list_tools()` のエントリ）が
-引数と戻り値の形式を定義します。3 者がずれると
+v1 の Provider パッケージでは、ツールの identity / スキーマについてロックされた
+出所は `skill.yaml` とライブの `tools/list` です。`mcp.json`（各スキルの
+`pyproject.toml` の隣に配置）はレガシーな、パッケージローカルの互換メタデータ
+であり、`skill.yaml` から `scripts/sync_skill_metadata.py --write` が生成する
+読み取り専用ビュー（`ari.skill_manifest.legacy_mcp_document`）としてツール*名前*
+だけを運びます。`@mcp.tool()` で装飾された関数（または `@server.list_tools()` の
+エントリ）が引数と戻り値の形式を定義します。3 者がずれると
 `scripts/check_skill_manifests.py` が失敗し、スキルごとのツール名一覧は
 `ari-core/tests/fixtures/contracts/mcp_tools.json` にスナップショットとして
 固定されています。
@@ -103,13 +112,14 @@ ARI には `ari-skill-*` パッケージごとに 1 つ、17 の MCP サーバ�
 
 3 ツールとも引数は `request` ただ 1 つで、`ari.public.analysis` の型付き
 リクエスト（`AnalysisRequestV1` / `StatisticalTestRequestV1` /
-`RunComparisonRequestV1`）を包みます。全 metric が `unit` の明示を要求されます。
+`RunComparisonRequestV1`）を包み、いずれも `AnalysisResultV1` を返します。
+全 metric が `unit` の明示を要求されます。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `analyze_results` | unit 付きサンプル集合の要約統計（信頼区間、正規性診断、欠損数、解決済み input digest） | ✗ |
-| `statistical_test` | 事前宣言した比較族の検定（`welch_t` / `student_t` / `paired_t` / `mann_whitney` / `wilcoxon` / `auto`）。効果量と補正済み p 値を返し、2 件以上の比較では `bonferroni` / `holm` / `benjamini_hochberg` の明示が必須 | ✗ |
-| `compare_runs` | スカラー run のランキングと環境 / provenance の互換性報告。`require_compatible_environment=true`（既定）は環境の異なる run の順位付けを拒否し、同一 backend/environment を独立 replicate とは推論せず共有 substrate として記録 | ✗ |
+| `analyze_results` | unit 付き `MetricSampleSetV1` データセットの要約統計（信頼区間、正規性診断、欠損数、解決済み input digest）。観測値はインラインでも、閉じた workspace 内の digest 拘束された CSV / JSON / npy の 1 列でもよい | ✗ |
+| `statistical_test` | 事前宣言した比較族の検定（`auto` / `welch_t` / `student_t` / `paired_t` / `mann_whitney` / `wilcoxon`）。効果量と補正済み p 値を返し、比較が 2 件以上のときは `correction` が `none` のままだと拒否される（`bonferroni` / `holm` / `benjamini_hochberg` のいずれかの明示が必須） | ✗ |
+| `compare_runs` | スカラーの `RunRecordV1` を baseline に対してランク付けし、環境の互換性・provenance の差分・replicate 独立性が `declared` か `not-established` かを報告。`require_compatible_environment=true`（既定）は環境の異なる run の順位付けを拒否し、同一 backend/environment は独立 replicate とは推論せず共有 substrate として記録する | ✗ |
 
 旧 `plot` は v0.2 で削除されました。作図は `plot-skill` の `render_figure` が
 source / data / spec / environment / PNG・PDF digest を持つマニフェストとして
@@ -134,8 +144,8 @@ source / data / spec / environment / PNG・PDF digest を持つマニフェス�
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `make_metric_spec` | 不変の `ResearchContractV1` または人間が admit した提案から MetricSpec を決定論的に materialize；実行レベルの `metric_contract` も出力 → `{checkpoint}/metric_contract.json`。mint-once: claims を含む契約がすでに永続化されている場合、呼び出しは再抽出せず、その契約を `contract_frozen: true` 付きでそのまま返します（scoring guide などノードごとの spec フィールドは呼び出しごとに計算）。契約が 1 つも無い場合は LLM に落ちるのではなく `admission_status: "human-review-required"` と `proposal_tool: "propose_metric_contract"` を返します | ✗ |
-| `propose_metric_contract` | 明示的に要求されたときだけ走る LLM 提案ステップ。出力は `MetricContractProposalV1`（`requires_human_review: true`）で `{checkpoint}/metric_contract_proposal.json` に永続化され、それ自体では決して admit されません。アイデアが所有する型付き契約がある場合は拒否されます | ✓ |
+| `make_metric_spec` | 不変で idea が所有する `ResearchContractV1`、または名前付きの `reviewer` が admit した提案から、実行レベルのメトリクス契約を materialize し、その projection を `{checkpoint}/metric_contract.json` に永続化します。mint-once: すでに永続化された projection の `projection_digest` が新しいものと異なる場合、それは上書きではなく拒否です。どちらも与えられず正準の `metric_contract.json` がすでに存在する場合は、再抽出せずそれを `contract_frozen: true` で返します（scoring guide などノードごとの spec フィールドは呼び出しごとに計算）。admit された契約が 1 つも無い場合でも `experiment.md` のパーサ出力は返りますが、あくまで証拠としてであり、`contract_frozen: false` / `admission_status: "human-review-required"` / `proposal_tool: "propose_metric_contract"` が付きます | ✗ |
+| `propose_metric_contract` | 明示的に要求されたときだけ走る LLM 提案ステップ。アイデア（`idea_json`、または `{checkpoint}/idea.json`）を読み、`MetricContractProposalV1`（`requires_human_review: true`）を `{checkpoint}/metric_contract_proposal.json` に出力します。自らの出力を admit することは決してなく、すでに型付きの `ari.research-contract/v1` 契約を持つアイデアは拒否します | ✓ |
 | `claim_evidence_hard_gate` | 決定論的な主張/証拠ハードゲート（実行データの忠実性）；strict モードでは final フェーズで finalize をブロック | ✗ |
 | `evidence_grounded_semantic_review` | 非ブロッキングの証拠に基づくセマンティック査読；`paper_refine` 向けに `suggested_revisions` を出力 | ✓ |
 
@@ -232,13 +242,21 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 § Determinism (P2) が記録しているとおり、v0.5.x の「LLM 呼び出しなし・完全に
 決定的」という宣言は v0.6.0 で緩和されています：Letta の embedding search は
 バージョン間で bit-reproducible ではないため、代わりに保存された `text` の
-バイト列が CoW で保護されます。エントリを削除するツールは
-ありません。ARI の governance がノードを論理的に消去した場合も、記録は残った
-まま `erased` / `erasure_event_id` / `erasure_note` のラベルが付いて返ります
-（黙って落とされることはありません）。
+バイト列が CoW で保護されます。
+
+破壊的な clear はありません。エージェントから見える操作でエントリが落とされる
+ことはなく、`ari-skill-memory/tests/test_cow.py` がその不在を
+（`assert not hasattr(server, "clear_node_memory")`）固定しています。ノードの
+メモリを減らしたいときは `consolidate_node_memory` で統合済みの型付きエントリを
+書いてください —— これはノードの `node_report` から導出され、それ自体も現在の
+ノードへ CoW で拘束されています。ARI の governance がノードを論理的に消去した
+場合も、記録は残ったまま `erased` / `erasure_event_id` / `erasure_note` の
+ラベルが付いて返ります（黙って落とされることはありません）。
 
 ## ari-skill-orchestrator — 再帰的 ARI ランナー
 
+すべてのツールが呼び出し元の principal に対して認可され、読み取り系ツールが
+返すのはファイルシステムのパスではなく digest でアドレスされた参照です。
 12 ツールすべてがエラーを例外ではなく `{"error": {"code", "message"}}` の
 封筒で返し、`code` は `invalid_request` / `forbidden` / `not_found` /
 `idempotency_conflict` / `quota_exceeded` / `artifact_policy` /
@@ -248,7 +266,7 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `run_experiment` | quota で拘束された ARI 実行を冪等に投入し、永続ハンドルを返す（`idempotency_key` 必須） | ✗ |
+| `run_experiment` | 明示的な `idempotency_key` と quota ブロック（`max_nodes` / `max_total_nodes` / `max_descendant_runs` / `max_cost_usd` / `timeout_minutes`）の下で子の ARI 実行を冪等に投入し、永続ハンドルを返す | ✗ |
 | `get_status` | 実行の永続 state と上限付きの進捗 | ✗ |
 | `get_result` | 終端メタデータと digest でアドレスされた成果物 | ✗ |
 | `stop_experiment` | 実行をキャンセルし、終了を伝播して 1 つの終端状態に確定 | ✗ |
@@ -269,8 +287,8 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 | `get_template` | venue のテンプレートを取得 | ✗ |
 | `compile_paper` | LaTeX プロジェクトを PDF にコンパイルし、`.ari-paper/compile/final.json` に記録を残す | ✗ |
 | `check_format` | venue のフォーマット要件（ページ数など）に対する PDF 検証。ページ数が判定不能な場合も `ok: false` として記録し、未検証を合格と読ませない | ✗ |
-| `write_paper_iterative` | 論文全体の執筆 / 査読 / 修正ループをエンドツーエンドで駆動。セクション単位のツールは存在せず、テンプレートの `FILL_*` ブロックを 1 回の LLM 呼び出しで埋める | ✓ |
-| `finalize_paper_build` | 論文の証拠・査読・コンパイル記録・claim リンク・最終成果物を 1 つの `PaperBuildV1` に固定。`finalized` にならなければ blocking 理由を添えて例外を送出 | ✗ |
+| `write_paper_iterative` | venue テンプレートの `FILL_*` ブロックを 1 回の呼び出しで埋め、続いて同じメッセージ履歴の上で `max(1, max_revision_rounds)` 回のリフレクションラウンドを回す（0 や負値を指定してもリフレクションは飛ばされず 1 回走る）。セクション単位のツールは存在せず、起草も改稿もこのツールの内部ステージ。戻り値は `latex` / `sections` / `reviews` / `revision_counts` / `paper_build` | ✓ |
+| `finalize_paper_build` | 正確な証拠一式 —— tex / bib / PDF / コンパイル記録 / 図マニフェスト / claim リンク / ハードゲート / テキスト・ビジュアル・セマンティックの各査読 —— を 1 つの `PaperBuildV1` として `output_path` に固定。build が `finalized` にならない場合は `blocking_reasons` を列挙して例外を送出 | ✗ |
 | `review_compiled_paper` | コンパイル済み PDF に対する最終パス査読（図は VLM に委譲） | ✓ |
 | `link_paper_claims` | `% CLAIM:Cx:NCx` アンカーを science_data の主張と照合し、`paper_claim_links` を構築（決定論的） | ✗ |
 | `paper_refine` | `% CLAIM:Cx:NCx` アンカーを保持しつつ提案された修正を適用（決定論的置換 + 境界付き LLM の検索/置換） | ✓ |
@@ -291,7 +309,7 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 
 | ツール | 新しい引数 |
 |---|---|
-| `build_reproduce_sh` | `container_image`（レガシーの `apptainer_image` を置き換え。旧名はシグネチャから削除済み） |
+| `build_reproduce_sh` | `container_image`（レガシーの `apptainer_image` を置き換え。旧名はシグネチャから削除済みで、`container_image` が唯一のイメージ引数。値を解釈するのは `apptainer` ロールアウトだけで、`local` / `slurm` では無視される） |
 
 ### v0.8.0 新フィールド（Stage 2）
 
@@ -329,8 +347,8 @@ GPU リクエストも 2 つの形を混ぜられません：per-node と per-ta
 | ツール | 用途 | LLM |
 |---|---|:---:|
 | `render_figure` | 正準の `FigureSpecV1` を 1 枚レンダリングする固定レンダラ。引数は `spec` / `workspace` / `relative_directory` のちょうど 3 つで、呼び出し側のコードは実行されない | ✗ |
-| `generate_figures` | ネイティブの `ScienceDataV1` から決定論的な既定 spec を生成し、同じ固定レンダラで描画（`revision=0` のみ） | ✗ |
-| `generate_figures_llm` | LLM が選べるのは `metric_id` / `chart_type` / `x_mode` だけで、数値・単位・キャプション・パス・成果物バイト列は検証済みの科学レコードから決定論的に決まる。`revision>0` は VLM フィードバックと直前のバッチの両方を要求 | ✓ |
+| `generate_figures` | ネイティブの `ScienceDataV1` から決定論的な既定 spec を生成し、同じ固定レンダラで描画。`revision` は `0` でなければならない —— 決定論的な経路にフィードバックラウンドは無い | ✗ |
+| `generate_figures_llm` | LLM が選べるのは `metric_id` / `chart_type` / `x_mode` だけで、数値・単位・キャプション・パス・成果物バイト列は検証済みの科学レコードから同じ固定レンダラを通って決まる。`revision > 0` は `vlm_feedback` ドキュメントと、それが束縛する `previous_batch_path` の両方を要求する | ✓ |
 
 ## ari-skill-replicate — ルーブリック自動生成 (v0.7.0)
 
@@ -338,7 +356,7 @@ GPU リクエストも 2 つの形を混ぜられません：per-node と per-ta
 |---|---|:---:|
 | `generate_rubric` | 二段階（スケルトン + サブツリー）PaperBench ルーブリック合成 | ✓ |
 | `audit_rubric` | LLM が曖昧 / 検証不可能 / 重複した基準の葉を監査 | ✓ |
-| `suggest_target_leaf_count` | 論文長から目標葉数と単語数を算定して返す（GUI Wizard の "Target leaves" 欄の事前埋め用） | ✗ |
+| `suggest_target_leaf_count` | `{target, word_count}` を返す —— `generate_rubric` がその論文に対して自動計算する葉数なので、呼び出し側は当て推量せず事前に埋められる（GUI Wizard の "Target leaves" 欄の事前埋め用） | ✗ |
 
 ### `generate_rubric` — venue 条件付きテンプレート（未リリース）
 
@@ -383,36 +401,49 @@ skeleton パス、`leaf_style` は subtree パスに差し込まれます。YAML
 ## ari-skill-vlm — 図 / 表の査読（VLM）
 
 査読対象はディレクトリ走査ではなく、検証済みの `FigureBatchV1` マニフェストと
-content-addressed な成果物参照で指定します。
+content-addressed な成果物参照で指定します。判定基準のプロファイルはバージョン
+付きです（既定は `figure-publication/v1`）。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
-| `review_figure` | `FigureBatchV1` から `figure_id` で 1 枚を選んで査読 | ✓（ビジョン） |
-| `review_figures_all` | バッチ内の全図を査読。図数 / 総バイト数 / モデル呼び出し数 / 並列度の予算を宣言でき、上限に触れた図は握り潰されず `limit-error` として個別に記録される。集約は `minimum-fail-closed`（1 枚でも失敗すればスコアは 0.0） | ✓（ビジョン） |
-| `review_table` | 閉じた workspace 内の content-addressed な表成果物を 1 件査読。引数は閉じたスキーマの `request` 1 つ | ✓（ビジョン） |
+| `review_figure` | `FigureBatchV1` から `figure_id` で 1 枚を選んで査読。バッチが持たない ID は拒否される | ✓（ビジョン） |
+| `review_figures_all` | バッチ内の全図を `ReviewBudgetV1`（`max_figures` / `max_total_bytes` / `max_concurrency` / `max_model_calls` / `max_output_tokens`）の下で査読。上限に触れた図や成果物不正の図は握り潰されず `limit-error` / `artifact-error` として個別に記録される。集約は `minimum-fail-closed`（1 件でも失敗すればバッチの `score` は 0.0、全件完了なら各図の最小値） | ✓（ビジョン） |
+| `review_table` | 閉じた workspace 内の content-addressed な表成果物を 1 件査読。`request` のスキーマは厳密で、`workspace` / `target_id` / `artifact` / `context` / `criteria_profile_id` / `iteration`（0〜2）/ `max_output_tokens` ちょうど。未対応の media type は例外ではなく `artifact-error` の査読として返る | ✓（ビジョン） |
 
 ## ari-skill-web — 検索 + 取得
 
-決定論的な取得ツールは LLM を呼びません。`rerank_retrieval_records` だけが
-独立した stochastic ツールです。`search_papers` / `web_search` / `fetch_url` /
-`walk_citations` は `record`（既定）/ `live` / `replay` の実行モードを共有し、
-`record` と `replay` は `ARI_CHECKPOINT_DIR` を要求します
+取得は provider ごとに 1 ツールではなく、1 つの契約です。決定論的な取得ツールは
+LLM を呼びません。`rerank_retrieval_records` だけが独立した stochastic ツール
+です。`search_papers` / `web_search` / `fetch_url` / `walk_citations` は
+`mode` を共有します —— `record`（既定。取得してスナップショットを残す）/
+`live`（取得するがスナップショットを残さない）/ `replay`（ネットワークに一切
+アクセスせず、直前の record が返したチェックポイント相対の `snapshot_ref` を
+要求する）—— そして `RetrievalRecordV1` の行を返します。`record` と `replay` は
+`ARI_CHECKPOINT_DIR` を要求します
 （[検索契約とネットワークポリシー](retrieval_contract.md) を参照）。
 
 | ツール | 用途 | LLM |
 |---|---|:---:|
 | `web_search` | DuckDuckGo（API キー不要）。`n` は 1〜10 に丸められる | ✗ |
 | `fetch_url` | URL → 読み取り可能なテキスト。検証済み IP へ固定接続し、redirect ごとに再検証、HTTPS downgrade / サイズ超過を拒否し、返す本文は untrusted external data と明示する | ✗ |
-| `search_papers` | 固定した 1 つの provider（`semantic-scholar` 既定 / `arxiv` / `alphaxiv`）を検索し `RetrievalRecordV1` を返す。provider 障害は別 provider へのフォールバックではなく明示エラーになり、`both` のような合成指定は拒否される | ✗ |
-| `walk_citations` | Semantic Scholar の引用グラフを depth / node / request の予算とサイクル検出付きで辿る。上限到達時は保持済み record と `partial_reason` を返す | ✗ |
+| `search_papers` | 固定した **1 つ** の学術 provider —— `semantic-scholar`（既定）/ `arxiv` / `alphaxiv` —— を `provider` 引数または `ARI_RETRIEVAL_BACKEND` から選んで検索し `RetrievalRecordV1` を返す。provider ごとのツールも合成ツールも存在せず、`provider="both"` は拒否され、固定した 2 回の呼び出しを発行して alias でマージするよう指示される | ✗ |
+| `walk_citations` | Semantic Scholar の引用グラフをサイクル検出付きで辿る。`direction` は `references` または `citations`、上限は `max_depth`（≤5）/ `max_nodes`（≤500）/ `request_budget`。上限到達時は保持済み record と `partial_reason` を返す | ✗ |
 | `rerank_retrieval_records` | 取得済み `RetrievalRecordV1` を研究課題に対して LLM が並べ替える。model / API identity / temperature / prompt・input・output digest を provenance として記録 | ✓ |
-| `list_uploaded_files` | チェックポイントの `uploads/` にあるユーザアップロードファイルを一覧 | ✗ |
+| `list_uploaded_files` | チェックポイントの `uploads/` 配下を `{name, size_bytes}` で一覧 | ✗ |
 | `read_uploaded_file` | アップロードファイルをテキストとして読む（バイナリ検出付き） | ✗ |
+
+取得バックエンドは呼び出しごと、または環境変数で選ばれます。プロセス全体の
+バックエンドを書き換えるツールは存在しないため、並行する 2 つの呼び出し元が
+互いの provider を変えてしまうことはありません
+（`ari-core/tests/test_retrieval_backend.py::test_mutable_retrieval_backend_tool_is_removed`
+がその不在を固定しています）。
 
 ## ari-skill-knowledge — Knowledge の読み取り専用サーフェス
 
-非実行の手続き知識に対する問い合わせと、権威を持たない要求だけを公開します。
-Knowledge Skill の登録・昇格・失効・lock の書き換え・有効化はできません。
+互換のために旧名を保っているこのパッケージは Capability Provider であり、
+ARI Knowledge Skill Registry に対する問い合わせと、権威を持たない要求だけを
+公開します。Knowledge Skill の登録・昇格・失効・lock の書き換え・有効化は
+できません。固定の `knowledge_binder_v1` が権威であり続けます。
 
 | ツール | 用途 | 権威 |
 |---|---|:---:|

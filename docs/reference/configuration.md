@@ -1008,9 +1008,13 @@ retrieval:
   alphaxiv_endpoint: https://api.alphaxiv.org/mcp/v1
 
 # ── Paper review (rubric-driven, AI Scientist v1/v2-compatible) ────────
-# Override via CLI (--rubric, --fewshot-mode, --num-reviews-ensemble,
-# --num-reflections) or environment variables (ARI_RUBRIC,
-# ARI_FEWSHOT_MODE, ARI_NUM_REVIEWS_ENSEMBLE, ARI_NUM_REFLECTIONS).
+# Override via CLI (--rubric, --num-reviews-ensemble, --num-reflections)
+# or environment variables (ARI_RUBRIC, ARI_NUM_REVIEWS_ENSEMBLE,
+# ARI_NUM_REFLECTIONS). `--fewshot-mode` / `ARI_FEWSHOT_MODE` are inert:
+# the flag validates the value and exports the variable, and the GUI only
+# round-trips it through launch_config.json (ari/viz/api_experiment.py);
+# no consumer reads it to select the mode — `fewshot_mode` comes from the
+# rubric YAML's `params` block alone (ari-skill-paper/src/rubric.py).
 # Bundled rubrics (23 YAMLs in ari-core/config/reviewer_rubrics/):
 #   neurips (default, v2-compatible) | iclr | icml | cvpr | acl | sc | osdi
 #   | usenix_security | stoc | siggraph | chi | icra | nature
@@ -1023,8 +1027,9 @@ retrieval:
 # injected into the paper-drafting system prompt by
 # `write_paper_iterative`, as a `VENUE RUBRIC AUTHOR GUIDANCE` block,
 # so writing is venue-conditioned at the same strength as peer review.
-# SC and NeurIPS ship calibrated hints; when the hint is empty the
-# block is simply omitted.
+# Nine bundled rubrics ship a non-empty hint (aer, ahr, apsr,
+# econometrica, neurips, philreview, pmla, qje, sc); when the hint is
+# empty the block is simply omitted.
 #
 # PaperBench rubric templates (separate venue YAMLs for the rubric
 # generator) live under ari-core/config/paperbench_rubrics/. See
@@ -1041,7 +1046,11 @@ retrieval:
 #   POST /api/fewshot/<rubric>/sync           pull entries from manifest.yaml
 #   POST /api/fewshot/<rubric>/upload         upload one example (JSON body)
 #   POST /api/fewshot/<rubric>/<example>/delete  remove one example
-# All four endpoints reject unknown rubrics and strip ../ sequences.
+# All four /api/fewshot/* endpoints reduce the rubric id to
+# alphanumerics/_/- first, so a ../ sequence cannot survive; the three
+# that sync, upload or delete additionally refuse a rubric with no
+# <id>.yaml in reviewer_rubrics/ (the list endpoint returns an empty
+# listing instead).
 
 memory:
   # v0.6.0: Letta is the sole production backend; values here are
@@ -1124,13 +1133,13 @@ skills:
 | `OLLAMA_HOST` | Ollama server address | `127.0.0.1:11434` |
 | `OPENAI_API_KEY` | OpenAI API key | (none) |
 | `ANTHROPIC_API_KEY` | Anthropic API key | (none) |
-| `ARI_RETRIEVAL_BACKEND` | Paper search backend: `semantic_scholar`, `alphaxiv`, `both` | `semantic_scholar` |
+| `ARI_RETRIEVAL_BACKEND` | Paper search backend: `semantic_scholar`, `arxiv`, `alphaxiv` (one pinned provider; the composite `both` is refused) | `semantic_scholar` |
 | `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | HTTP port for the orchestrator skill (`ari-skill-orchestrator/src/server.py`; must parse as an integer in 1–65535) | `9890` |
 | `LETTA_BASE_URL` | Letta server endpoint | `http://localhost:8283` |
 | `LETTA_API_KEY` | Required for Letta Cloud; optional for self-hosted | (none) |
 | `LETTA_EMBEDDING_CONFIG` | Embedding handle Letta uses for archival memory (the agent's chat LLM is hardcoded to `letta/letta-free` since ARI never invokes it) | `letta-default` |
-| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none` | `auto` |
+| `ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA` | `auto` / `pip` / `docker` / `singularity` / `none`. **Record only**: `scripts/setup/install_letta.sh` writes the mode it detected into `.env`; nothing under `ari-core/` or the skills reads the variable back, so setting it by hand selects nothing | `auto` |
 | `ARI_MEMORY_LETTA_TIMEOUT_S` | Per-call timeout (viz + skill) | `10` |
 | `ARI_MEMORY_LETTA_OVERFETCH` | Over-fetch size for the post-filter ancestor-scope fallback | `200` |
 | `ARI_MEMORY_LETTA_DISABLE_SELF_EDIT` | Keep Letta self-edit off so CoW holds | `true` |
@@ -1168,9 +1177,11 @@ v0.6.0 replaces the deterministic JSONL memory store with
 | pip (container-less) | Python 3.10+ | SQLite | Falls back to over-fetch + post-filter ancestor scoping |
 | Letta Cloud | API key | Managed | `LETTA_BASE_URL=https://api.letta.com` |
 
-`ari setup` auto-detects the best mode; you can force one via
-`ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`. Start/stop/health/backup/restore
-are handled by the `ari memory` subcommand — see
+`ari setup` auto-detects the best mode and records it in `.env` as
+`ARI_MEMORY_BOOTSTRAP_LOCAL_LETTA`; that record is not read back, so it
+documents the choice rather than forcing it.
+Start/stop/health/backup/restore are handled by the `ari memory`
+subcommand — see
 `docs/reference/cli_reference.md`.
 
 One-shot migration for a v0.5.x checkpoint:

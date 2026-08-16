@@ -24,7 +24,7 @@ sources:
     role: config
   - path: ari-core/tests/test_rqgm_kernel.py
     role: test
-last_verified: 2026-08-03
+last_verified: 2026-08-17
 ---
 
 # RQGM ランタイムウォークスルー

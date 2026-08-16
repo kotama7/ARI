@@ -12,7 +12,7 @@ sources:
     role: schema
   - path: ari-core/ari/schemas/paper_model_call_batch_v1.schema.json
     role: schema
-last_verified: 2026-08-08
+last_verified: 2026-08-17
 ---
 
 # Paper build契約

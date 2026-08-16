@@ -36,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_secret_readiness.py
     role: test
-last_verified: 2026-07-27
+last_verified: 2026-08-17
 ---
 
 # 配置工作室指南
@@ -421,8 +421,8 @@ legacy 的 `POST /api/launch` 未作变更，仍并行运行；legacy 向导（`
 
 **仅限新建运行。** 两个叶子都是 `mutability: new_run_only` —— 该选择作用于你即将
 启动的那次运行。恢复不受影响：被恢复的运行采用 `{checkpoint}/rqgm_state.json`
-中记录的模式，它优先于配置与环境变量（且只能降级）。Studio 中没有任何东西可以
-改指一个已经存在的运行。
+中记录的模式，它优先于配置与环境变量，且运行的模式在整个运行期间保持不变。
+Studio 中没有任何东西可以改指一个已经存在的运行。
 
 **project 作用域依然拒绝它们。** 这四个叶子是 `scope: run`，因此项目默认值文档
 会以 `not_project_scope` 拒绝它们；在该作用域下这两个下拉被禁用并说明原因。请在

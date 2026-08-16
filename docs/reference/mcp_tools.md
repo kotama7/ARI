@@ -255,7 +255,7 @@ digest-addressed references rather than filesystem paths.
 | `get_template` | Fetch a venue's template | ✗ |
 | `compile_paper` | pdflatex compile | ✗ |
 | `check_format` | LaTeX format validation | ✗ |
-| `write_paper_iterative` | Fill the whole venue template in one call, then run `max_revision_rounds` reflection rounds over the same message history. There is no per-section tool: drafting and revision are stages inside this one, and it returns `latex` / `sections` / `reviews` / `revision_counts` / `paper_build` | ✓ |
+| `write_paper_iterative` | Fill the whole venue template in one call, then run `max(1, max_revision_rounds)` reflection rounds over the same message history — a zero or negative setting still gets one round, it does not skip reflection. There is no per-section tool: drafting and revision are stages inside this one, and it returns `latex` / `sections` / `reviews` / `revision_counts` / `paper_build` | ✓ |
 | `review_compiled_paper` | Final-pass review on compiled PDF (delegates to VLM for figures) | ✓ |
 | `finalize_paper_build` | Lock the exact evidence set — tex, bib, PDF, compile record, figures manifest, claim links, hard gate, text / visual / semantic reviews — into a `PaperBuildV1` at `output_path`. Raises when the build is not `finalized`, listing `blocking_reasons` | ✗ |
 | `link_paper_claims` | Reconcile `% CLAIM:Cx:NCx` anchors against science_data claims, build `paper_claim_links` (deterministic) | ✗ |
@@ -376,7 +376,7 @@ default).
 | Tool | Purpose | LLM |
 |---|---|:---:|
 | `review_figure` | Review one figure picked out of a `FigureBatchV1` by `figure_id`; an ID the batch does not carry is refused | ✓ (vision) |
-| `review_figures_all` | Review every figure in one batch under a `ReviewBudgetV1` (`max_figures`, `max_concurrency`, `max_output_tokens`); a figure that fails individually is recorded as a failed review rather than sinking the batch | ✓ (vision) |
+| `review_figures_all` | Review every figure in one batch under a `ReviewBudgetV1` (`max_figures`, `max_total_bytes`, `max_concurrency`, `max_model_calls`, `max_output_tokens`); a figure that fails is kept as its own `limit-error` / `artifact-error` review with the raw error rather than raising, but the batch aggregation is `minimum-fail-closed` — one failed review sets the batch `score` to `0.0`, and an all-completed batch scores the minimum of its figures | ✓ (vision) |
 | `review_table` | Review one content-addressed table artifact under a closed workspace. The request schema is exact — `workspace`, `target_id`, `artifact`, `context`, `criteria_profile_id`, `iteration` (0–2), `max_output_tokens` — and an unsupported media type comes back as an `artifact-error` review | ✓ (vision) |
 
 ## ari-skill-web — search + fetch

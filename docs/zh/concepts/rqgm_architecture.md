@@ -30,11 +30,17 @@ sources:
     role: implementation
   - path: ari-core/ari/schemas
     role: schema
+  - path: ari-core/ari/knowledge
+    role: implementation
+  - path: ari-core/ari/capability_binding
+    role: implementation
+  - path: ari-core/ari/assurance
+    role: implementation
   - path: ari-core/ari/prompts/rqgm
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-08-08
+last_verified: 2026-08-17
 ---
 
 # Constitutional ARI-RQGM 架构
@@ -150,6 +156,46 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 
 ---
 
+## Knowledge、Capability 与 Assurance 的分离
+
+RQGM 治理三个非组件的 registry，并且不合并它们的 identity：
+
+```text
+Research Contract
+  -> Epoch Knowledge Skill Lock
+  -> Capability Binding Lock
+  -> Verification Contract
+  -> baseline/active Harness Lock
+  -> 已绑定的 Provider 执行
+  -> 绑定到 artifact 的 Harness Attestation
+  -> 科学前沿门
+  -> Evidence Clerk 与对抗/治理审查
+  -> 绑定 certification 的发布
+```
+
+Knowledge Skill 是不可变的程序性文本，既不能启动进程，也不能授予权限。
+Capability Provider 是通过 MCP、本地进程或其他被准入的 transport 发现的可执行
+主体；只有位于 Provider lock 与 Capability Binding Lock 中的工具是可见的。
+Harness 是由 `harness_resolver_v1` 选定的独立 verifier，绝不由 Generator 或
+Evaluator 选定。单个的 Skill、Provider 和 Harness 都是目录条目，而不是
+`ComponentRegistry` 中的行动者。
+
+这三层都是可选启用的，并且在出厂默认值下是惰性的
+（`ari-core/ari/configs/defaults.yaml` 中的 `knowledge.mode: off`、
+`capability_binding.mode: legacy`、`assurance.mode: off`）。三者都取这些值时，
+`RQGMRuntime` 报告 `kca_feature_enabled: false`：一次 `ari_rqgm` 运行不注册任何
+`fixed` 层组件、不准入 baseline bundle，并保留旧的 MCP discovery/visibility。
+三者中任何一个取了别的值都会启用该特性，此时运行循环的 admission 调用是刻意
+fail-closed 的，而非尽力而为。
+
+可信协调方会在第一个执行纪元之前冻结每一份 baseline 目录快照、契约与 lock。
+resume 重建那份被持久化的视图，而不是去查阅当前目录。固定检查 `CK-KNW-*`、
+`CK-CAP-*` 与 `CK-HAR-*` 校验权限、绑定、摘要、单调性与 attestation 范围；
+内核不会重新计算科学真值。见
+[K/C/A 规范参考](../reference/knowledge_capability_assurance.md)。
+
+---
+
 ## 四个门面
 
 `ari.core.build_runtime` 仅在 `ari.mode: ari_rqgm` 与
@@ -162,7 +208,7 @@ Constitutional ARI-RQGM 建立在四项定义性承诺之上。本页的每个�
 
 | 门面 | 模块 | 职责 |
 |---|---|---|
-| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | 第 0 层。十六个封闭的 `validate_*` 入口：最初的十二个（记录 schema、哈希、能力、纪元不变性、转换、角色分离、选择性擦除、审计日志完整性、洁净室 bundle、污染、权限不扩张、上下文范围）、Task 14 的 `validate_utility_policy`，再加上 Knowledge 完整性、Capability Binding 完整性、Harness 完整性，以及执法适配器（`should_block`、fail-open 的 `per_node_warn_check`、预检的 `CapabilityGatedMCPClient`）。确定性且不可进化：零 LLM 调用、零网络、零挂钟决策。`rqgm.kernel.enforcement: audit_only` 将所有上下文降级为仅警告并记录。 |
+| `ConstitutionalKernel` | `ari/rqgm/kernel.py` | 第 0 层。十六个封闭的 `validate_*` 入口：最初的十二个（记录 schema、哈希、能力、纪元不变性、转换、角色分离、选择性擦除、审计日志完整性、洁净室 bundle、污染、权限不扩张、上下文范围）、Task 14 的 `validate_utility_policy`，再加上 Knowledge 完整性、Capability Binding 完整性、Harness 完整性，以及执法适配器（`should_block`、fail-open 的 `per_node_warn_check`、预检的 `CapabilityGatedMCPClient`）。它检查的是程序、权限、身份与单调性，而不是科学正确性。确定性且不可进化：零 LLM 调用、零网络、零挂钟决策。`rqgm.kernel.enforcement: audit_only` 将所有上下文降级为仅警告并记录。 |
 | `GovernanceOrchestrator` | `ari/rqgm/governance/` | 纪元边界审计：`audit_epoch(...) -> GovernanceReport`，一条九步流水线（观察 → 评估可靠性 → 汇集证据 → 检控 → 辩护 → 裁决 → 重放池更新 → 自我审计 → 报告）。每个 LLM 决策（Auditor / Defender / GovernanceJudge，提示词位于 `ari/prompts/governance/`）都有完整的确定性回退，因此 `llm=None` 仍能产出完整的审计。报告只是转换引擎的*咨询性输入* —— 编排器从不改动注册表。构造阶段就把这一权限关系设为不可选：缺少 `kernel` 时 `__init__` 会抛出 `ValueError`，因为角色分离的权威是内核，而非编排器自身的记录构建逻辑；并且正是内核在第 8 步通过 `validate_record_schema` 与 `validate_role_separation` 重新校验审计产出的记录（evidence bundle、motion、defense、outcome）。另外两个接缝在设计上是可选的：`llm=None` 是有保证的降级路径，也是适合 CI 的确定性下界；`audit_writer=None` 则不落盘，而是把记录收集到内存中的 `self.written`，测试正是据此观察审计过程。追加记录永不抛出异常 —— writer 失败只记录日志，审计继续。 |
 | `RegistryTransitionEngine` | `ari/rqgm/transition_engine.py` | **唯一**的注册表状态写入方。先对固定 T1–T21 表做纯 `resolve_transition(...)`，再执行五步边界协议：冻结 → 解析 → 内核校验 → prepare → 在纪元事务上 apply/commit。T16 `emergency_quarantine` 强制关闭当前纪元，并在同一事务中开启具有新指纹的纪元。 |
 | `FrontierRepairEngine` | `ari/rqgm/frontier_repair.py` | 在一次带退役的已提交转换之后：纯函数 `trace_dependents` 的过期闭包与 `rebuild_frontier`，发出 `SelectiveErasureEvent` / `FrontierRebuildEvent` 记录。失败阶梯：内核校验失败 → 保守式再修复（被标记的节点被丢弃）→ 仅排空式降级（`expansion_halted`：运行完成挂起的工作但不再扩展）。绝不崩溃。 |
@@ -240,8 +286,8 @@ flowchart TB
    提交是事务性的：同一 `transition_id` 的重复提交是受保护的
    no-op，被中断的事务在 resume 时被丢弃并确定性地重跑。
 6. **前沿修复。**如果已提交的转换退役了组件或提示词，所有实质依赖
-   已退役 `prompt_hash` 的记录都被从前沿评分中逻辑擦除，前沿被重建
-   （见不变量 7）。
+   已退役 `prompt_hash` 的记录都被逻辑擦除 —— 从前沿评分、扩展和最佳
+   节点选择中排除 —— 并重建前沿（见不变量 6）。
 7. **洁净室。**待处理的洁净室请求在边界窗口内执行；可采纳的输出以
    候选身份进入*下一*周期的生命周期。与此同时，已退役角色的槽位由
    基线回退提供服务，因此没有任何被治理的角色会空缺。
