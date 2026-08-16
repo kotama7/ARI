@@ -68,6 +68,35 @@ def _reason(primary: str, *, skipped: list[str]) -> str:
     return primary
 
 
+#: Properties whose failure is a MEASUREMENT, not a disqualification.
+#:
+#: A frontier class answers "may this node stand as a scientific result", and
+#: not every property failure answers no. A candidate that computes the wrong
+#: answer is not admissible; a candidate that computes the RIGHT answer more
+#: slowly than a tuned reference is a perfectly good result that happens to
+#: score low. Collapsing both into `fail -> debug_frontier` would send every
+#: early node to repair: the shipped denominator is a competent blocked kernel
+#: and the seed the agent starts from is measured at 0.008-0.02x of it, so a
+#: performance-regression verdict is "fail" for essentially every node in the
+#: first generations. The scoring path already draws this line -- its validity
+#: is correctness and its ranking is the speedup -- and the two must not
+#: disagree about what a node IS.
+#:
+#: FAIL-CLOSED, and named rather than derived. The vocabulary's own
+#: `correctness_properties` lists numerical-equivalence and
+#: interface-conformance and omits trajectory-equivalence, which IS the stencil
+#: verifier's primary property -- using it as the disqualifying set would have
+#: quietly stopped a wrong trajectory from disqualifying anything. So this names
+#: the exemptions instead, and anything not named here disqualifies when it
+#: fails.
+#:
+#: It lives here rather than in property_vocabulary.yaml because it is a
+#: statement about what the FRONTIER does with a verdict, not about what the
+#: property is or how it is verified. (It would also move the vocabulary digest,
+#: which is pinned by every registration -- true, and not the reason.)
+_QUALITY_PROPERTIES = frozenset({"performance-regression"})
+
+
 _VERDICT_RANK = {
     "pass": 0,
     "inconclusive": 1,
@@ -237,7 +266,8 @@ class RQGMAssuranceBridge:
         )
         node.property_verdicts = property_verdicts
         node.verified_target_digest = declaration.target_digest
-        self._classify(node, status=status, frontier=self._frontier(status),
+        self._classify(node, status=status,
+                       frontier=self._frontier(status, property_verdicts),
                        reason=failure_reason)
         return node.frontier_class
 
@@ -306,7 +336,7 @@ class RQGMAssuranceBridge:
         self._classify(
             node,
             status=status,
-            frontier=self._frontier(status),
+            frontier=self._frontier(status, node.property_verdicts),
             tier="certify",
             reason=failure_reason,
         )
@@ -455,12 +485,19 @@ class RQGMAssuranceBridge:
         node.attestation_refs.append(relative.as_posix())
         return attestation
 
-    def _frontier(self, status: str) -> str:
+    def _frontier(self, status: str, property_verdicts: dict | None = None) -> str:
         if self.admission.modes.assurance == "audit":
             return "scientific_frontier"
         if status == "pass":
             return "scientific_frontier"
         if status == "fail":
+            # WHICH property failed decides whether this is a repair or a
+            # result. A wrong answer is a defect to debug; a correct answer that
+            # is slower than the reference is the finding itself.
+            failed = {name for name, verdict in (property_verdicts or {}).items()
+                      if verdict == "fail"}
+            if failed and failed <= _QUALITY_PROPERTIES:
+                return "scientific_frontier"
             return "debug_frontier"
         return "uncertified_frontier"
 
