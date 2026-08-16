@@ -174,9 +174,26 @@ def test_repo_smoke_warning_only_exits_zero():
 def test_repo_shipped_allowlist_is_valid_and_covers_its_pairs():
     # Every pair the shipped baseline lists must actually suppress (round-trips
     # through load_allowlist and is recognised by partition_findings).
+    #
+    # The baseline may be EMPTY, and as of 2026-08-16 it is: the 82 pairs it
+    # carried were closed by re-reading each document against its declared
+    # sources, not by bumping dates. This assertion used to require a non-empty
+    # baseline, which would have made finishing that work fail the suite.
     allow = cdss.load_allowlist(cdss.DEFAULT_ALLOW)
-    assert allow, "shipped baseline should be non-empty"
-    findings = cdss.compute_findings(cdss.REPO_ROOT)
-    _new, known = cdss.partition_findings(findings, allow)
-    for f in known:
-        assert (f["doc"], f["source"]) in allow
+    assert isinstance(allow, set)
+    findings = cdss.compute_findings(cdss.REPO_ROOT)   # slow; run it once here
+    live = {(f["doc"], f["source"]) for f in findings}
+    new, known = cdss.partition_findings(findings, allow)
+
+    assert {(f["doc"], f["source"]) for f in known} == (allow & live)
+    assert not (allow & {(f["doc"], f["source"]) for f in new})
+
+    # And an entry that no longer corresponds to a stale pair must be REMOVED,
+    # not left lying around. While it sits here, that doc drifting from that
+    # source again reports as "known" instead of ratcheting as "new" -- which is
+    # precisely how the work that closed it would get silently undone.
+    earned_out = sorted(allow - live)
+    assert not earned_out, (
+        "allowlist entries no longer correspond to any stale pair; remove them "
+        f"rather than leaving the exemption in place: {earned_out}"
+    )

@@ -4,254 +4,31 @@
 # recent than the doc's last_verified at freeze time -- i.e. pre-existing,
 # already-merged trunk-state staleness. Listing a pair here reports it as
 # "known" (never fails a non-warning-only run); only NEW staleness ratchets.
-# These dates predate routine source commits; do NOT "fix" them by bumping
-# last_verified across docs (that is a content-review task, out of scope).
+# A suppression is NOT a fix: while a pair sits here, that doc going stale
+# against that source again is invisible to the ratchet.
 #
-# Frozen: 2026-07-02. Regenerate deliberately, never auto-bump.
-known-offenders:
-  - doc: docs/about/compatibility.md
-    source: ari-core/pyproject.toml
-    note: "baseline 2026-07-02: source 2026-06-12 > last_verified 2026-05-26"
-  - doc: docs/about/index.md
-    source: CHANGELOG.md
-    note: "baseline 2026-07-02: source 2026-06-12 > last_verified 2026-06-10"
-  - doc: docs/about/index.md
-    source: CONTRIBUTING.md
-    note: "baseline 2026-07-02: source 2026-07-01 > last_verified 2026-06-10"
-  - doc: docs/about/release_policy.md
-    source: CHANGELOG.md
-    note: "baseline 2026-07-02: source 2026-06-12 > last_verified 2026-06-04"
-  - doc: docs/about/release_policy.md
-    source: CONTRIBUTING.md
-    note: "baseline 2026-07-02: source 2026-07-01 > last_verified 2026-06-04"
-  - doc: docs/about/release_policy.md
-    source: ari-core/pyproject.toml
-    note: "baseline 2026-07-02: source 2026-06-12 > last_verified 2026-06-04"
-  - doc: docs/concepts/PHILOSOPHY.md
-    source: ari-core/ari/evaluator/llm_evaluator.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/concepts/PHILOSOPHY.md
-    source: ari-core/ari/orchestrator/bfts.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/concepts/PHILOSOPHY.md
-    source: ari-skill-memory
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/concepts/architecture.md
-    source: ari-core/ari/agent/loop.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/concepts/architecture.md
-    source: ari-core/ari/evaluator/llm_evaluator.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/concepts/architecture.md
-    source: ari-core/ari/orchestrator
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/concepts/architecture.md
-    source: ari-core/ari/paths.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/concepts/architecture.md
-    source: ari-core/ari/pipeline
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/concepts/bfts.md
-    source: ari-core/ari/orchestrator/bfts.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-12"
-  - doc: docs/concepts/memory.md
-    source: ari-skill-memory
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/concepts/publication-lifecycle.md
-    source: ari-core/ari/pipeline
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-12"
-  - doc: docs/concepts/publication-lifecycle.md
-    source: ari-skill-paper
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-12"
-  - doc: docs/concepts/verifiable_research_memory.md
-    source: ari-core/ari/config
-    note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-04"
-  - doc: docs/concepts/verifiable_research_memory.md
-    source: ari-skill-memory
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-04"
-  - doc: docs/getting-started/faq.md
-    source: ari-core/ari/cli
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/getting-started/faq.md
-    source: ari-core/ari/paths.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/getting-started/first_experiment_tutorial.md
-    source: ari-core/ari/agent/loop.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/getting-started/first_experiment_tutorial.md
-    source: ari-core/ari/cli
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/getting-started/index.md
-    source: ari-core/ari/cli
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/getting-started/quickstart.md
-    source: ari-core/ari/cli
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/getting-started/quickstart.md
-    source: ari-core/ari/viz
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/guides/cookbook.md
-    source: ari-core/ari/evaluator/llm_evaluator.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/guides/cookbook.md
-    source: ari-core/ari/orchestrator/bfts.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/guides/experiment_file.md
-    source: ari-skill-evaluator
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/guides/extension_guide.md
-    source: ari-core/ari/prompts
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/guides/extension_guide.md
-    source: ari-core/ari/public
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/guides/hpc_setup.md
-    source: ari-skill-hpc
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-05-25"
-  - doc: docs/guides/hpc_setup.md
-    source: containers
-    note: "baseline 2026-07-02: source 2026-05-29 > last_verified 2026-05-25"
-  - doc: docs/guides/paperbench/multi_node_setup.md
-    source: ari-skill-paper-re/src/server.py
-    note: "baseline 2026-07-02: source 2026-06-01 > last_verified 2026-05-25"
-  - doc: docs/guides/paperbench/paper_import.md
-    source: ari-core/ari/viz/api_paperbench.py
-    note: "baseline 2026-07-02: source 2026-05-29 > last_verified 2026-05-25"
-  - doc: docs/guides/paperbench/paperbench_gui.md
-    source: ari-core/ari/viz/api_paperbench.py
-    note: "baseline 2026-07-02: source 2026-05-29 > last_verified 2026-05-26"
-  - doc: docs/guides/paperbench/paperbench_quickstart.md
-    source: ari-skill-paper-re
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-05-25"
-  - doc: docs/guides/paperbench/paperbench_quickstart.md
-    source: ari-skill-replicate
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-05-25"
-  - doc: docs/guides/paperbench/paperbench_troubleshooting.md
-    source: ari-skill-paper-re
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-05-25"
-  - doc: docs/guides/paperbench/paperbench_troubleshooting.md
-    source: ari-skill-replicate
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-05-25"
-  - doc: docs/guides/testing.md
-    source: .github/workflows
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-04"
-  - doc: docs/guides/testing.md
-    source: ari-core/tests
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-04"
-  - doc: docs/guides/testing.md
-    source: scripts/docs
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-04"
-  - doc: docs/guides/troubleshooting.md
-    source: ari-core/ari/paths.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/api_paperbench.md
-    source: ari-core/ari/viz/api_paperbench.py
-    note: "baseline 2026-07-02: source 2026-05-29 > last_verified 2026-05-25"
-  - doc: docs/reference/api_paperbench.md
-    source: ari-skill-paper-re/src/_paperbench_bridge.py
-    note: "baseline 2026-07-02: source 2026-05-27 > last_verified 2026-05-25"
-  - doc: docs/reference/api_paperbench.md
-    source: ari-skill-paper-re/src/server.py
-    note: "baseline 2026-07-02: source 2026-06-01 > last_verified 2026-05-25"
-  - doc: docs/reference/cli_reference.md
-    source: ari-core/ari/cli
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/configuration.md
-    source: ari-core/ari/config/__init__.py
-    note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
-  - doc: docs/reference/configuration.md
-    source: ari-core/ari/viz/api_settings.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/environment_variables.md
-    source: ari-core/ari/config/__init__.py
-    note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
-  - doc: docs/reference/environment_variables.md
-    source: ari-core/ari/paths.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/execution_profile.md
-    source: ari-skill-paper-re/src/server.py
-    note: "baseline 2026-07-02: source 2026-06-01 > last_verified 2026-05-25"
-  - doc: docs/reference/file_formats.md
-    source: ari-core/ari/checkpoint.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/file_formats.md
-    source: ari-core/ari/paths.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/file_formats.md
-    source: ari-core/ari/pipeline/claim_gate
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/reference/file_formats.md
-    source: ari-core/ari/schemas
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-core/ari/checkpoint.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-core/ari/evaluator/llm_evaluator.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-core/ari/orchestrator/bfts.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-core/ari/paths.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-core/ari/pipeline/claim_gate
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-skill-memory
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-skill-paper-re
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/glossary.md
-    source: ari-skill-replicate
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/internal_boundaries.md
-    source: ari-core/ari/cli/bfts_loop.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/internal_boundaries.md
-    source: ari-core/ari/llm/client.py
-    note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
-  - doc: docs/reference/internal_boundaries.md
-    source: ari-core/ari/pipeline/orchestrator.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/mcp_tools.md
-    source: ari-skill-hpc/ari_skill_hpc/server.py
-    note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
-  - doc: docs/reference/public_api.md
-    source: ari-core/ari/public
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/reference/public_api.md
-    source: ari-core/tests/test_public_api_boundary.py
-    note: "baseline 2026-07-02: source 2026-06-13 > last_verified 2026-06-10"
-  - doc: docs/reference/registry.md
-    source: ari-core/ari/registry
-    note: "baseline 2026-07-02: source 2026-05-29 > last_verified 2026-05-26"
-  - doc: docs/reference/registry.md
-    source: scripts/registry
-    note: "baseline 2026-07-02: source 2026-05-29 > last_verified 2026-05-26"
-  - doc: docs/reference/rest_api.md
-    source: ari-core/ari/viz/api_experiment.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/rest_api.md
-    source: ari-core/ari/viz/api_settings.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/rest_api.md
-    source: ari-core/ari/viz/checkpoint_api.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/rest_api.md
-    source: ari-core/ari/viz/routes.py
-    note: "baseline 2026-07-02: source 2026-07-02 > last_verified 2026-06-10"
-  - doc: docs/reference/skills.md
-    source: ari-skill-hpc/ari_skill_hpc/server.py
-    note: "baseline 2026-07-02: source 2026-06-11 > last_verified 2026-06-10"
-  - doc: docs/getting-started/faq.md
-    source: ari-core/config/default.yaml
-    note: "post-freeze trunk baseline: source 2026-07-02 > last_verified 2026-06-10; predates skills branch"
-  - doc: docs/guides/migration.md
-    source: ari-core/ari/memory_cli.py
-    note: "post-freeze trunk baseline: source 2026-07-02 > last_verified 2026-06-10; predates skills branch"
-  - doc: docs/reference/cli_reference.md
-    source: ari-core/ari/memory_cli.py
-    note: "post-freeze trunk baseline: source 2026-07-02 > last_verified 2026-06-10; predates skills branch"
+# EMPTY, and that is the earned state rather than a disabled check.
+#
+# The 2026-07-02 baseline listed 82 pairs across 38 documents, with a standing
+# instruction not to clear them by bumping last_verified, because moving a date
+# without reading the source is how a freshness field stops meaning anything.
+# They were cleared the other way, on 2026-08-16: each of those documents was
+# read against every source it declares, statement by statement, and the
+# corrections that fell out were made before any date moved. 81 of the 38
+# documents' 82 pairs now carry `last_verified: 2026-08-16` and were closed by
+# that reading; the remaining one, docs/guides/troubleshooting.md against
+# ari-core/ari/paths.py, had already closed on 2026-08-08 -- and closed by a
+# single day, since the checker compares with a strict `>`.
+#
+# So `check_docs_source_sync.py` now reports {total: 0, new: 0, known: 0} on a
+# clean tree, and the whole surface -- not just the un-suppressed part of it --
+# is under the ratchet.
+#
+# ADDING AN ENTRY BACK is a deliberate act with a cost: it exempts one pair from
+# the only check that notices a doc drifting from its own declared sources. Do it
+# when a source is committed that a doc genuinely cannot be re-read against yet,
+# say why in `note`, and treat it as debt. Bumping `last_verified` instead is
+# worse: an entry here is at least visible.
+#
+# Cleared: 2026-08-16. Previously frozen: 2026-07-02.
+known-offenders: []
