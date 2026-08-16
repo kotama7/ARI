@@ -14,7 +14,7 @@ sources:
     role: config
   - path: scripts/docs
     role: implementation
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # リリース & バージョニングポリシー
@@ -94,7 +94,47 @@ DR1–DR5、および公認された **5 つ** の Tier-B `~/.ari/` フォール
    **Added** / **Changed** / **Fixed** / **Deprecated** /
    **Removed** / **Security** に分類してまとめる。
 2. `ari-core/pyproject.toml` と各
-   `ari-skill-*/pyproject.toml` のバージョンをバンプする。
+   `ari-skill-*/pyproject.toml` のバージョンをバンプする。これが
+   **パッケージバージョン**であり、そこから派生する値は自動的に追随します
+   (`scripts/snapshot_contracts.py` の `_read_ari_core_version()` が、4 つの
+   contract golden の `_meta.ari_core_version` に刻み込みます)。
+
+   その上で、このリリースが**公開バージョンピン** — 読者に対して掲げる番号 —
+   も動かすのかどうかを、明示的に判断する。これはもう 1 つ別のレジスタであり、
+   独自の単一ソース (`docs/version.json`。`docs/i18n/version.js` がページ
+   ロード時に取得する) を持ち、同一コミットで一緒に動かすべき 6 ファイルが
+   それを再掲しています:
+
+   - `README.md`、`README.ja.md`、`README.zh.md` — shields.io の
+     `version-vX.Y.Z` バッジ。
+   - `report/en/main.tex`、`report/ja/main.tex`、`report/zh/main.tex` —
+     `\date{vX.Y.Z, ...}` 行。
+
+   ピンを動かす場合は、3 つの `report/<lang>/main.pdf` を再ビルドし、
+   `scripts/docs/sync_report_pdf.sh` を再実行することまでが必要です
+   (このスクリプトは `docs/assets/report/` と `docs/public/report/` の
+   **両方**に書き込みます)。PDF は生成物なので、LaTeX を再ビルドせずに
+   `\date` だけを書き換えると、公開されている PDF はすべて古い番号のままに
+   なります。
+
+   さらに、3 つの README に新しい番号のリリースノート節
+   (`## What's new in vX.Y.Z`。`README.ja.md` / `README.zh.md` では
+   訳題) を追加することも必要です。v0.8.1 と v0.9.0 はそのように
+   リリースされました。`check_readme_parity.py` は見出し構造を比較するので
+   3 言語同時に追加することは強制されますが、その節が**存在すること自体**は
+   どのゲートも検査しません。つまりこのチェックリストだけが拠り所です。
+   README が記載していないバージョンをバッジが掲げるのは、それ自体が欠陥です。
+
+   **パッケージのみのバンプは許容されており**、その場合ピンは据え置きます:
+   contract を保存するリリースでユーザから見える変化が無いなら、掲げるものが
+   無いからです。v0.9.1 (2026-07-05) がまさにそれで (`CHANGELOG.md` の該当
+   エントリ参照)、`ari-core` が `0.9.1` でありながらピンが `v0.9.0` のままな
+   のはこのためです。したがってピンはパッケージバージョンより**遅れて**いて
+   構いませんが、**先行**してはなりません。パッケージ化されたことのない
+   バージョンを掲げることになるからです。
+   `python scripts/docs/check_site_i18n.py` がこの両面 — 上記 7 ファイルが
+   互いに一致していること、およびピンが `ari-core/pyproject.toml` を追い越して
+   いないこと — を検査します。
 3. フルテストスイートと `refactor-guards`・`docs-sync`・`docs-change-coupling`
    CI ワークフローを実行する。
 4. ドキュメントゲートを実行する。CI (`docs-sync.yml`、`refactor-guards.yml`) が

@@ -11,8 +11,12 @@
 #   * check_site_i18n.py      — HTML-site i18n integrity: surface parity (reuses
 #                               check_i18n_js), no orphan t-ids (every id="t-…"
 #                               resolves to a dict key), en→ja/zh co-change, and
-#                               version single-source (version.json == report
-#                               \date, no hard-coded footer version).
+#                               the public version pin. That last part used to be
+#                               version.json == report/en \date and nothing else;
+#                               it now also binds the three README badges and
+#                               report/{ja,zh}, and asserts the pin never LEADS
+#                               ari-core/pyproject.toml (lagging is legal — a
+#                               package-only bump ships no public change).
 #   * check_doc_links.py --html-only — every href/src in docs/*.html resolves.
 #   * check_readme_parity.py  — root README.{md,ja,zh} share one heading shape.
 #   * report/check_i18n.py    — report/{en,ja,zh} are structurally parallel
@@ -29,9 +33,10 @@
 # reproduce locally: run each script from the repo root (see scripts/docs/).
 #
 # Subtask 050 additions (all additive; no existing gate's behavior changed):
-#   * The docs/refactoring/** planning tree is exempted from check_doc_sources.py's
-#     coverage scan (EXEMPT_DIR_SEGMENTS "refactoring", set in the checker itself),
-#     so a future --require-all promotion stays safe (§7.1 Option A). The default
+#   * A "refactoring" path segment is exempted from check_doc_sources.py's
+#     coverage scan (EXEMPT_DIR_SEGMENTS, set in the checker itself) — added for
+#     the docs/refactoring/** planning tree, since retired — so a future
+#     --require-all promotion stays safe (§7.1 Option A). The default
 #     invocation below is byte-identical to before.
 #   * The two advisory steps carry their advisory->hard promotion triggers inline
 #     (owned by subtask 017); see §7.2 notes at those steps.
@@ -43,16 +48,23 @@
 #     only checks that declared source paths resolve; check_ref_coupling.py
 #     (reverse, PR-diff) only fires on same-PR co-changes, so neither sees drift
 #     that an earlier already-merged PR introduced. The checker fills exactly
-#     that gap. It is NOT currently wired as an active step in this workflow (it
-#     reads `git log` history and is run advisory / out-of-band via its
-#     `--warning-only` default posture); to promote it to an advisory gate here,
-#     add a `continue-on-error: true` step running
-#     `python scripts/check_docs_source_sync.py --warning-only` beside the two
-#     advisory steps below (§7.3).
-#   * REVIEW_REQUIRED (not changed here): pages.yml path filter names README.md
-#     only, not README.ja.md / README.zh.md, so a push editing only a translated
-#     README would not trigger a Pages rebuild. Left for a maintainer to confirm
-#     intent before any pages.yml change (§7.4).
+#     that gap. It IS wired now, as the third advisory step below (§7.3 done on
+#     2026-08-16, after the 82-pair frozen baseline was emptied by re-reading
+#     each of those documents against its declared sources). Until then it ran
+#     out-of-band, which meant the ratchet only turned when someone remembered
+#     to turn it.
+#   * §7.4 (pages.yml path filter names README.md but not README.ja.md /
+#     README.zh.md) was investigated on 2026-08-16 and needs NO change, for a
+#     reason the note did not anticipate: NO README reaches the published site
+#     at all. `docs/.vitepress/config.ts` srcExclude drops `**/README.md`, and
+#     assemble_site.sh copies only docs/index.html + tokens.css + site.css +
+#     version.json + sitemap.xml + robots.txt + docs/assets + docs/i18n + the
+#     VitePress dist. So editing a
+#     translated README cannot change the site — and `README.md` in that filter
+#     is itself vestigial, triggering a rebuild that reproduces the same bytes.
+#     Adding the two translated names would have copied the mistake, not fixed
+#     it. Left as-is; removing `README.md` from the filter would be the real
+#     tidy-up and is a maintainer's call, not a docs fix.
 
 name: docs-sync
 
@@ -78,7 +90,7 @@ jobs:
       # ── hard gates ──────────────────────────────────────────────────────
       # Default (coverage-not-enforced) mode: byte-identical to before. Do NOT
       # add --require-all until every non-exempt live doc declares `sources:`
-      # front-matter; the docs/refactoring/** planning tree is already exempt
+      # front-matter; a "refactoring" path segment is already exempt
       # (§7.1 Option A -- exemption lives in scripts/docs/check_doc_sources.py).
       - name: Declared source references resolve
         run: python scripts/docs/check_doc_sources.py
@@ -107,6 +119,23 @@ jobs:
       - name: Markdown link integrity (advisory)
         continue-on-error: true
         run: python scripts/docs/check_doc_links.py
+
+      # Trunk-state staleness — the one dimension the hard gates above miss (a
+      # source whose newest commit already on main is more recent than the
+      # referencing doc's `last_verified`). Needs the full history the
+      # fetch-depth: 0 above already provides.
+      #
+      # Advisory per §7.3, but the reason it was advisory is gone: it used to
+      # run against a frozen baseline of 82 known-stale pairs, and on
+      # 2026-08-16 that baseline was emptied by re-reading every one of those
+      # documents against its declared sources. `known-offenders` is now `[]`,
+      # so every finding this step reports is net-new. Promotion to a hard gate
+      # is dropping `--warning-only` and `continue-on-error` — which makes any
+      # PR that commits a source without re-verifying the docs that declare it
+      # fail. That is a real policy change; make it deliberately.
+      - name: Docs<->source trunk-state staleness (advisory)
+        continue-on-error: true
+        run: python scripts/check_docs_source_sync.py --warning-only
 
   # Hard gate: the VitePress docs build must succeed (L3). A broken build is
   # caught at PR time before it can break the build-type Pages deploy

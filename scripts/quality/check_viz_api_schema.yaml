@@ -1,8 +1,8 @@
 # Config for scripts/check_viz_api_schema.py — the dashboard route <-> api.ts
-# reconciliation checker (subtask 030; design docs/refactoring/009 §5.6, 030 §7).
+# reconciliation checker (subtask 030; design refactoring plan 009 §5.6, 030 §7).
 #
 # The checker guards the preserved dashboard API contract
-# (docs/refactoring/010_contract_preservation_policy.md §4/§5); it never edits an
+# (refactoring plan 010, contract preservation, §4/§5); it never edits an
 # endpoint. All keys below are overridable so the 015/021 route-registry refactor
 # can retarget extraction without a code change (P2: stdlib + PyYAML only).
 

@@ -1,5 +1,5 @@
 # Config for scripts/generate_quality_report.py — the quality-report aggregator
-# (subtask 031; design docs/refactoring/009_quality_scripts_plan.md §5.11).
+# (subtask 031; design refactoring plan 009, quality scripts, §5.11).
 #
 # The aggregator DETECTS NOTHING itself: it merges the §3 JSON envelope
 # ({checker, version, target, summary, findings}) emitted by the sibling
@@ -43,7 +43,7 @@ checkers:
     required: false
   # Subtask 058: the aggregator renders a dedicated dead-code section from this
   # checker's JSON — per-classification counts (013 §7 vocabulary) plus a
-  # before/after delta vs docs/refactoring/reports/dead_code_baseline.json.
+  # before/after delta vs scripts/quality/baselines/dead_code_baseline.json.
   - name: check_dead_code
     module_or_path: scripts/check_dead_code.py
     weight: 1.0
@@ -63,7 +63,7 @@ checkers:
 # Optional per-area LOC override. When omitted (the default) the aggregator
 # auto-discovers areas = each immediate subdir of ari-core/ari plus every
 # ari-skill-*/src, counting *.py newlines (excluding __pycache__/node_modules),
-# which reproduces docs/refactoring/reports/001_complexity_baseline.md
+# which reproduces the subtask 001 complexity baseline
 # (viz 8131, public 148, core 30277, skills-src 25495). To restrict, list
 # repo-relative directory paths, e.g.:
 # areas:

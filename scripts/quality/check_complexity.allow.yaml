@@ -1,6 +1,6 @@
 # check_complexity.allow.yaml -- frozen size/complexity baseline (subtask 025).
 # Regenerate: python scripts/check_complexity.py --update-baseline
-# Frozen against subtask 001: docs/refactoring/reports/001_complexity_baseline.md
+# Frozen against the subtask 001 complexity baseline (report since retired).
 # scope=census(core-prod + ari-skill-*/src + frontend); max_complexity=15
 # LOC keyed by path (regression = new path OR escalation to a higher tier);
 # complexity keyed by path::function (regression = a net-new over-complex function).

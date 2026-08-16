@@ -20,9 +20,10 @@ historical debt out of a future ratchet (``--fail-on-regression``).  This script
 only *reads*; it never edits code and never widens ``ari.public.*`` (that is the
 B1 ADAPT runtime work, later subtasks).
 
-Design: docs/refactoring/003_dependency_boundary_report.md §3 (B1) / §4 (B2) /
-§15 (enforcement roadmap); docs/refactoring/009_quality_scripts_plan.md §5.2
-(common script contract, warning-mode-first rollout).
+Design (retired planning documents; numbers kept as provenance): the subtask 003
+dependency-boundary report §3 (B1) / §4 (B2) / §15 (enforcement roadmap);
+refactoring plan 009 (quality scripts) §5.2 (common script contract,
+warning-mode-first rollout).
 
 AST, not grep: guarded (``try/except ImportError``) and in-function imports are
 the norm on the skill->core seam, and comments (e.g. the ``settingsConstants.ts``

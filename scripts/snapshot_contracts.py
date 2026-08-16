@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic generator/verifier for ARI contract snapshot fixtures.
 
-Subtask 034 (``docs/refactoring/subtasks/034_add_contract_snapshot_fixtures.md``);
-contract catalog: ``docs/refactoring/010_contract_preservation_policy.md``.
+Subtask 034 (add contract snapshot fixtures); contract catalog: refactoring plan
+010 (contract preservation). Both have been retired; the numbers are kept as
+provenance.
 
 This script freezes the four ARI stable contract surfaces as committed, machine
 diffable golden JSON fixtures under ``ari-core/tests/fixtures/contracts/`` and
@@ -409,8 +410,8 @@ def build_mcp_static() -> dict:
 # ---------------------------------------------------------------------------
 
 # Curated method+path+owner inventory, transcribed from the primary-source
-# backend inventory docs/refactoring/reports/viz_api_contract_inventory.md
-# (subtask 020, itself grounded in ari-core/ari/viz/routes.py + api_*.py).
+# backend inventory of subtask 020 (since retired; itself grounded in
+# ari-core/ari/viz/routes.py + api_*.py).
 _VIZ_ENDPOINTS = [
     # --- GET (do_GET) ---
     # Task 09 Wave 5b (MN-9, plan 09 §Operational visibility): liveness/

@@ -1,6 +1,6 @@
 """Golden-snapshot guards for the four ARI stable contract surfaces (subtask 034).
 
-Contract catalog: ``docs/refactoring/010_contract_preservation_policy.md``.
+Contract catalog: refactoring plan 010 (contract preservation policy), retired.
 
 These verify that the live tree still matches the committed goldens under
 ``ari-core/tests/fixtures/contracts/`` — the single reviewable "contract diff"

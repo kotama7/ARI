@@ -13,6 +13,6 @@ Documentation lint/gate scripts run against the `docs/` tree.
 - `check_readme_parity.py` — verify root `README.{md,ja,zh}` share one Markdown heading shape (fence-aware).
 - `check_ref_coupling.py` — diff gate (warn): a changed `sources:` file should bump its referencing doc's `last_verified`.
 - `check_report_cochange.py` — diff gate: `report/{en,ja,zh}` language-paired files (chapters, strings, main) must change together in a PR.
-- `check_site_i18n.py` — HTML-site i18n integrity: surface parity (reuses `check_i18n_js`), no orphan `t-` ids, en→ja/zh co-change, report-PDF sync, and version single-source.
+- `check_site_i18n.py` — HTML-site i18n integrity: surface parity (reuses `check_i18n_js`), no orphan `t-` ids, en→ja/zh co-change, report-PDF sync, and the public version pin — `docs/version.json` (its single source) equals the three README badges and each `report/{en,ja,zh}/main.tex` `\date`, and never runs ahead of the package version in `ari-core/pyproject.toml` (it may lag it; see `docs/about/release_policy.md` step 2).
 - `check_translation_freshness.py` — detect translation drift via `last_verified` front-matter.
 - `sync_report_pdf.sh` — mirror `report/{en,ja,zh}/main.pdf` into `docs/assets/report/<lang>.pdf` (landing) and `docs/public/report/<lang>.pdf` (VitePress); `--check` fails on drift.

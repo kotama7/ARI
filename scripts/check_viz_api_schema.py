@@ -22,7 +22,7 @@ server branch, exactly like the runtime ``if/elif``). It reports:
   * **matched** — present on both sides.
 
 It **guards** the dashboard API contract (a preserved external contract per
-``docs/refactoring/010_contract_preservation_policy.md`` §4/§5); it never
+refactoring plan 010, contract preservation, §4/§5); it never
 renames, adds, or removes any endpoint. Drift it surfaces is resolved by the
 owning viz subtask (015/021/023) or by an allowlist entry — never by "fixing" an
 endpoint here. The term "deprecated" is reserved for external contracts; a
@@ -41,12 +41,12 @@ principle P2 determinism). NOT wired into any workflow here (CI integration is t
 workflow-integration track's job); intended future job: a warning-first step in an
 additive source-hygiene workflow.
 
-Design: docs/refactoring/009_quality_scripts_plan.md §5.6 (this checker's spec) +
-§3 (common CLI/allowlist/exit contract) + §8 (placement, ``scripts/quality/``,
-``_common.py``); docs/refactoring/subtasks/030_add_viz_api_schema_checker_script.md
-(§7 design, §13 acceptance); consumes the frozen endpoint baseline in
-docs/refactoring/reports/viz_api_contract_inventory.md (020) and its FE twin
-dashboard_fe_api_contract_inventory.md (060).
+Design (retired planning documents; numbers kept as provenance): refactoring plan
+009 (quality scripts) §5.6 (this checker's spec) + §3 (common CLI/allowlist/exit
+contract) + §8 (placement, ``scripts/quality/``, ``_common.py``); subtask 030
+(add viz API schema checker script) §7 design, §13 acceptance; consumes the
+frozen endpoint baseline from the subtask 020 viz API contract inventory and its
+FE twin, the subtask 060 dashboard FE API contract inventory.
 
 Exit convention (matches ``scripts/docs/check_doc_sources.py``): ``0`` = clean,
 default/``--warning-only`` posture, or ``--fail-on-regression`` with no net-new

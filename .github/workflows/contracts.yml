@@ -1,7 +1,8 @@
 # External-contract regression gates — subtask 049 (add_contract_check_workflows).
 #
-# Design inputs (authoritative): docs/refactoring/reports/032_quality_script_ci_integration.md
-# and docs/refactoring/012_github_workflow_integration_plan.md (§7/§8/§15).
+# Design inputs (retired, kept as provenance): the subtask 032 quality-script CI
+# integration report and refactoring plan 012 (GitHub workflow integration,
+# §7/§8/§15).
 # This is a NEW, additive workflow; the five existing workflows are untouched.
 #
 # It hosts the external-contract regression gates that protect the surfaces most
@@ -45,7 +46,7 @@ jobs:
       - name: ari.public.* contract snapshot (advisory at Stage 1)
         continue-on-error: true
         # Advisory by default: without --strict the checker always exits 0, so it
-        # reports drift vs docs/refactoring/reports/public_api_snapshot.json without
+        # reports drift vs scripts/quality/baselines/public_api_snapshot.json without
         # blocking. Promotion = add --strict. Emit the shared JSON envelope to a file
         # named for the aggregator (generate_quality_report.yaml `check_public_api_contracts`).
         run: python scripts/check_public_api_contracts.py --json > check_public_api_contracts.json

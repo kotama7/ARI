@@ -4,9 +4,8 @@
 This is refactoring subtask **055** (``add_dead_code_candidate_checker``). It is
 a *pure classifier / reporter*: it consumes the ``reference_graph.json`` built by
 subtask 053 (static reference graph) + 054 (dynamic-edge overlay), applies the
-precedence rules of
-``docs/refactoring/013_reference_graph_and_dead_code_plan.md`` §7, and emits a
-ranked, human-reviewable ``dead_code_candidates.md`` (013 §6.2) plus a stable
+precedence rules of refactoring plan 013 (reference graph and dead code) §7, and
+emits a ranked, human-reviewable ``dead_code_candidates.md`` (013 §6.2) plus a stable
 JSON form for the 058 aggregator (009 §3). It **deletes, moves, quarantines, and
 renames nothing** -- quarantine is subtask 056, deletion is subtask 057, and
 this checker is the only class that ever *labels* ``SAFE_DELETE_CANDIDATE``.
@@ -46,8 +45,9 @@ default/``--warning-only`` posture, or ``--check`` within budget; ``1`` =
 net-new ``SAFE_DELETE_CANDIDATE`` over budget under ``--check``; ``2`` =
 usage/environment error (missing/malformed graph, ruff not on PATH).
 
-Design: docs/refactoring/013_reference_graph_and_dead_code_plan.md §7/§8.3;
-docs/refactoring/009_quality_scripts_plan.md §5.10.
+Design: refactoring plan 013 (reference graph and dead code) §7/§8.3;
+refactoring plan 009 (quality scripts) §5.10. Both plans have been retired; the
+numbers are kept as provenance.
 """
 from __future__ import annotations
 
@@ -593,7 +593,7 @@ def render_markdown(report: dict, cands: list[Candidate], config: dict) -> str:
         f"# {CHECKER_NAME} — dead-code candidates",
         "",
         "> Classifier over the 053/054 reference graph "
-        "(`docs/refactoring/013_reference_graph_and_dead_code_plan.md` §7). "
+        "(refactoring plan 013, reference graph and dead code, §7). "
         "Deletes nothing — quarantine is subtask 056, deletion is subtask 057.",
         "",
         f"- commit: `{report['commit']}`",
@@ -762,7 +762,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="frozen SAFE_DELETE allowlist YAML")
     ap.add_argument("--output", default=None,
                     help="write the report to a file instead of stdout "
-                         "(conventional target: docs/refactoring/reports/dead_code_candidates.md)")
+                         "(conventional target: scripts/quality/baselines/dead_code_candidates.md)")
     ap.add_argument("--format", choices=["markdown", "json"], default="markdown",
                     help="report format (default: markdown)")
     ap.add_argument("--json", action="store_true", help="alias for --format json")

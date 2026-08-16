@@ -14,7 +14,7 @@ sources:
     role: config
   - path: scripts/docs
     role: implementation
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # 发布与版本策略
@@ -94,7 +94,40 @@ ARI 遵循 [语义化版本 2.0](https://semver.org/spec/v2.0.0.html)。
    **Added** / **Changed** / **Fixed** / **Deprecated** /
    **Removed** / **Security**。
 2. 更新 `ari-core/pyproject.toml` 和各
-   `ari-skill-*/pyproject.toml` 中的版本号。
+   `ari-skill-*/pyproject.toml` 中的版本号。这是**软件包版本**，
+   由它派生的取值会自动跟随（`scripts/snapshot_contracts.py` 中的
+   `_read_ari_core_version()` 会把它写入四份 contract golden 的
+   `_meta.ari_core_version`）。
+
+   随后，需要明确决定本次发布是否同时移动**对外版本 pin** —— 即项目
+   对读者宣称的版本号。它是另一个独立的寄存器，拥有自己的唯一来源
+   （`docs/version.json`，由 `docs/i18n/version.js` 在页面加载时拉取），
+   并由另外六个文件复述，这些文件必须在同一次提交中一起移动：
+
+   - `README.md`、`README.ja.md`、`README.zh.md` —— shields.io 的
+     `version-vX.Y.Z` 徽章。
+   - `report/en/main.tex`、`report/ja/main.tex`、`report/zh/main.tex` ——
+     `\date{vX.Y.Z, ...}` 行。
+
+   移动 pin 还意味着重新构建三个 `report/<lang>/main.pdf` 并重新运行
+   `scripts/docs/sync_report_pdf.sh`（它会同时写入 `docs/assets/report/`
+   与 `docs/public/report/` **两个**目标）。PDF 是生成物：只改 `\date`
+   而不重新构建 LaTeX，会让所有已发布的 PDF 仍显示旧版本号。
+
+   移动 pin 还意味着在三个 README 中为新版本号新增一节发布说明
+   （`## What's new in vX.Y.Z`，在 `README.ja.md` / `README.zh.md`
+   中为对应译名）—— v0.8.1 与 v0.9.0 都是这样发布的。
+   `check_readme_parity.py` 比较标题结构，因此会强制三种语言同时新增，
+   但**没有任何门控**检查这一节是否存在，所以这份清单是该要求唯一的
+   落脚处。徽章宣称一个 README 并未记录的版本，本身就是一个缺陷。
+
+   **允许只提升软件包版本**而保持 pin 不动：一次保持 contract 不变、
+   对用户不可见的发布没有可宣称的内容。v0.9.1（2026-07-05）正是这种情况
+   （见 `CHANGELOG.md` 中对应条目），因此在 `ari-core` 为 `0.9.1` 时
+   pin 仍为 `v0.9.0`。也就是说，pin 可以**落后于**软件包版本，但绝不可
+   **领先于**它——那等于宣称一个从未打包过的版本。
+   `python scripts/docs/check_site_i18n.py` 会同时检查这两点：上述七个
+   文件彼此一致，且 pin 没有超过 `ari-core/pyproject.toml`。
 3. 运行完整测试套件 + `refactor-guards`、`docs-sync`、`docs-change-coupling`
    CI 工作流。
 4. 运行文档检查门控。CI（`docs-sync.yml`、`refactor-guards.yml`）实际阻断的是：

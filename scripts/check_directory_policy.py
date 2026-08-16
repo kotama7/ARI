@@ -4,8 +4,8 @@
 ARI's per-directory ``README.md`` gate (``scripts/readme_sync.py``) enforces that
 every managed directory *enumerates* its files. It says nothing about whether a
 file is in the *right place* or whether a directory has a policy-legal *name*.
-This checker owns exactly that orthogonal dimension (subtask 028;
-``docs/refactoring/009_quality_scripts_plan.md`` §5.4), and mutates nothing.
+This checker owns exactly that orthogonal dimension (subtask 028; refactoring
+plan 009, quality scripts, §5.4), and mutates nothing.
 
 It grounds three rules in the LIVE tree (verified 2026-07-02):
 
@@ -20,8 +20,8 @@ It grounds three rules in the LIVE tree (verified 2026-07-02):
     Rule A asserts each exists with its expected file *kind* and marker files, and
     that NO fourth config-family sibling (a ``config``/``configs`` collision) or a
     ``sonfig*`` directory is ever introduced. **``sonfigs/`` does not exist**
-    anywhere in the repo (``find -iname '*sonfig*'`` returns only the doc filename
-    ``docs/refactoring/subtasks/003_consolidate_config_configs_sonfigs.md``, never a
+    anywhere in the repo (when verified, ``find -iname '*sonfig*'`` returned only
+    the filename of the retired subtask 003 plan, never a
     directory); the recurring "config/configs/sonfigs" phrasing in upstream prompts
     is a typo. Rule A turns that myth into a machine-checked invariant.
 
@@ -56,12 +56,11 @@ debt; ``1`` = net-new (non-allowlisted) findings under ``--fail-on-regression`` 
 ``--strict``; ``2`` = usage/environment error (missing PyYAML, git unavailable on a
 git target).
 
-Design: docs/refactoring/009_quality_scripts_plan.md §5.4 (spec) + §3 (CLI/allowlist/
-exit contract) + §8 (placement, ``scripts/quality/``, ``_common.py``);
-docs/refactoring/005_directory_consolidation_plan.md §5.1/§8;
-docs/refactoring/000_master_refactoring_plan.md:140 (ST-3-1);
-docs/refactoring/subtasks/028_add_directory_policy_checker_script.md (§7 design,
-§13 acceptance).
+Design (planning documents since retired; numbers kept as provenance):
+refactoring plan 009 (quality scripts) §5.4 (spec) + §3 (CLI/allowlist/exit
+contract) + §8 (placement, ``scripts/quality/``, ``_common.py``); refactoring
+plan 005 (directory consolidation) §5.1/§8; master refactoring plan ST-3-1;
+subtask 028 (add directory policy checker script) §7 design, §13 acceptance.
 """
 from __future__ import annotations
 

@@ -1,6 +1,6 @@
 # Configuration for scripts/analyze_references.py (subtask 054).
 #
-# Realizes docs/refactoring/013_reference_graph_and_dead_code_plan.md §6/§8.
+# Realizes refactoring plan 013 (reference graph and dead code) §6/§8.
 # Every path below is repository-relative and resolved against `base_dir`
 # (default: repo root). Deterministic, no LLM, no network (ARI design P2).
 #

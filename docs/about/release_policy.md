@@ -14,7 +14,7 @@ sources:
     role: config
   - path: scripts/docs
     role: implementation
-last_verified: 2026-08-16
+last_verified: 2026-08-17
 ---
 
 # Release & Versioning Policy
@@ -101,7 +101,48 @@ When cutting a release:
    **Added** / **Changed** / **Fixed** / **Deprecated** /
    **Removed** / **Security**.
 2. Bump the version in `ari-core/pyproject.toml` and each
-   `ari-skill-*/pyproject.toml`.
+   `ari-skill-*/pyproject.toml`.  That is the **package version**, and
+   everything derived from it follows automatically
+   (`_read_ari_core_version()` in `scripts/snapshot_contracts.py` stamps it
+   into the four contract goldens' `_meta.ari_core_version`).
+
+   Then decide, explicitly, whether the release also moves the
+   **published version pin** — the number the project advertises to
+   readers.  It is a *second* register, with its own single source
+   (`docs/version.json`, which `docs/i18n/version.js` fetches at page
+   load) restated in six other files that must move in the same commit:
+
+   - `README.md`, `README.ja.md`, `README.zh.md` — the shields.io
+     `version-vX.Y.Z` badge.
+   - `report/en/main.tex`, `report/ja/main.tex`, `report/zh/main.tex` —
+     the `\date{vX.Y.Z, ...}` line.
+
+   Moving the pin also means rebuilding the three
+   `report/<lang>/main.pdf` and re-running
+   `scripts/docs/sync_report_pdf.sh` (it writes into **both**
+   `docs/assets/report/` and `docs/public/report/`).  The PDFs are
+   generated: editing `\date` without a LaTeX rebuild leaves every
+   published copy showing the old number.
+
+   Moving the pin also means giving the three READMEs a release-notes
+   section for the new number (`## What's new in vX.Y.Z`, localised in
+   `README.ja.md` / `README.zh.md`) — that is how v0.8.1 and v0.9.0
+   shipped.  `check_readme_parity.py` forces the section into all three
+   at once (it compares heading shape), but **nothing** checks that it
+   exists at all, so this checklist is the only place the requirement
+   lives.  A badge advertising a version the README does not document is
+   its own defect.
+
+   A **package-only bump is permitted** and leaves the pin untouched: a
+   contract-preserving release with nothing user-visible has nothing to
+   advertise.  v0.9.1 (2026-07-05) was exactly that — see its
+   `CHANGELOG.md` entry — which is why the pin reads `v0.9.0` while
+   `ari-core` is at `0.9.1`.  The pin may therefore **lag** the package
+   version; it must never **lead** it, because that would advertise a
+   version that was never packaged.
+   `python scripts/docs/check_site_i18n.py` enforces both halves: the
+   seven files above agree with each other, and the pin does not lead
+   `ari-core/pyproject.toml`.
 3. Run the full test suite + the `refactor-guards`, `docs-sync`, and
    `docs-change-coupling` CI workflows.
 4. Run the docs gate. What CI (`docs-sync.yml`, `refactor-guards.yml`)

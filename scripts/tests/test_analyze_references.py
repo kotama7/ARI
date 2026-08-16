@@ -1,7 +1,6 @@
 """Unit + smoke + determinism tests for ``scripts/analyze_references.py``.
 
-Covers subtask ``docs/refactoring/subtasks/054_add_reference_graph_analyzer.md``
-§8 item 10:
+Covers subtask 054 (add reference graph analyzer, since retired) §8 item 10:
 
   (a) a string-keyed factory fixture emits a ``dynamic.string_key`` edge with
       evidence, and the "orphan" target is NOT edge-less;

@@ -1,6 +1,6 @@
 # check_prompts.allow.yaml -- frozen inline-prompt baseline (subtask 043).
 # Regenerate: python scripts/check_prompts.py --update-baseline
-# Seeded from the Subtask 036 census (docs/refactoring/reports/hardcoded_prompt_inventory.{md,json}).
+# Seeded from the Subtask 036 census (scripts/quality/baselines/hardcoded_prompt_inventory.{md,json}).
 # Each entry is keyed by id '<file>::<name>' (or '<file>#L<line>' when the
 # prompt literal is anonymous). Findings on a known id are reported 'known'
 # and never fail --fail-on-regression; NET-NEW role-marked prompts do.

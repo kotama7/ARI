@@ -257,7 +257,11 @@ of gate scripts under `scripts/docs/` enforces the contract:
   its i18n via VitePress locales — see [Homepage static site](#homepage-static-site)).
 - `scripts/docs/check_site_i18n.py` — HTML-site i18n integrity: surface parity
   (reuses `check_i18n_js`), no orphan `t-` ids (every `id="t-…"` resolves to a
-  dict key), en→ja/zh co-change, report-PDF sync, and version single-source.
+  dict key), en→ja/zh co-change, report-PDF sync, and the public version pin —
+  `docs/version.json` (its single source) equals the three README badges and
+  each `report/{en,ja,zh}/main.tex` `\date`, and never runs ahead of the package
+  version in `ari-core/pyproject.toml` (it may lag it: see
+  [Release policy](about/release_policy.md) step 2).
 - `scripts/docs/check_readme_parity.py` — the root `README.{md,ja,zh}` share
   one Markdown heading shape (fence-aware).
 - `scripts/docs/check_ref_coupling.py` — the *reverse* of `check_doc_sources`:

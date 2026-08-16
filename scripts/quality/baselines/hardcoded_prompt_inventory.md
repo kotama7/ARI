@@ -11,6 +11,13 @@
 > A machine-readable twin lives at
 > `docs/refactoring/reports/hardcoded_prompt_inventory.json` (structured input
 > for subtask 043's `check_prompts.py`).
+>
+> **Where those paths are now (added 2026-08-17).** Everything above is the
+> record as written on 2026-07-01 and is left as written. But two of its
+> pointers no longer resolve: `docs/refactoring/` has since been retired and is
+> not in this repository, and the machine-readable twin moved with the rest of
+> the baselines to `scripts/quality/baselines/hardcoded_prompt_inventory.json`,
+> which is the path `check_prompts.py` actually reads.
 
 ## 0. How to read this
 

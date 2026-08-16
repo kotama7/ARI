@@ -1,4 +1,4 @@
-"""PromptRegistry — Phase 7 / subtask 038 (``docs/refactoring/subtasks/038_introduce_prompt_registry_and_loader.md``).
+"""PromptRegistry — Phase 7 / subtask 038 (introduce prompt registry and loader).
 
 A discoverable, self-validating catalogue of prompt-template keys layered
 **over** — and delegating every file read to — the already-shipped

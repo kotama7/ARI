@@ -2,8 +2,7 @@
 #
 # Scope: automated dependency-update PRs for the three real dependency
 # ecosystems in this repository (github-actions, pip, npm). Introduced by
-# refactoring subtask 052
-# (docs/refactoring/subtasks/052_add_dependabot_and_actions_policy.md). This
+# refactoring subtask 052 (add dependabot and actions policy, since retired). This
 # file is inert in a local checkout; it only drives GitHub's hosted Dependabot
 # service. The written policy (version-pinning strategy, grouping/cadence,
 # least-privilege permissions, review convention) lives in CONTRIBUTING.md

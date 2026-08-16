@@ -14,6 +14,7 @@ Unit and smoke tests for the top-level `scripts/` quality checkers.
 - `test_check_docs_source_sync.py` — unit + smoke + determinism tests for `check_docs_source_sync.py` over a temp git repo (stale vs fresh `last_verified`, allowlist suppression, docs missing `sources`/`last_verified` skipped, translations ignored, fail-open when git history is absent, byte-identical reruns, shipped-allowlist validity).
 - `test_check_import_boundaries.py` — unit + smoke tests for `check_import_boundaries.py` (B1/B2 fixtures + repo-level seed-edge smoke).
 - `test_check_prompts.py` — unit + smoke tests for `check_prompts.py` (synthetic new/allowlisted, user-message negative filter, `agent/loop.py` negative control, census-reproduction + unique-id repo smoke, Gate 10 delegation).
+- `test_check_site_i18n_version.py` — unit tests for `check_site_i18n.check_version_pin` — the public pin's six restatements and the ordering rule against the packaged version (the pin may lag, never lead), including pre-release package versions.
 - `test_check_skill_manifests.py` — manifest/package/runtime/workflow/schema conformance fixtures and repository smoke tests.
 - `test_check_translation_freshness.py` — translation source timestamps, front matter, missing locales, and drift detection.
 - `test_check_viz_api_schema.py` — unit + smoke tests for `check_viz_api_schema.py` (normalization + all-four-regime client extraction + server if/elif extraction fixtures + repo reconciliation smoke).

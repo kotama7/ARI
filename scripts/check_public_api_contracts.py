@@ -8,9 +8,10 @@ exact public surface (the 11 re-export submodules plus the docstring-only packag
 into a committed JSON snapshot so that a later refactor cannot silently remove,
 rename, or hollow out a symbol a skill depends on.
 
-Design: docs/refactoring/009_quality_scripts_plan.md §5.5 (this checker's spec).
-Policy: docs/refactoring/010_contract_preservation_policy.md §2 (Public Python API).
-Sequencing: docs/refactoring/subtasks/029_add_public_api_contract_checker_script.md.
+Design: refactoring plan 009 (quality scripts) §5.5 (this checker's spec).
+Policy: refactoring plan 010 (contract preservation) §2 (Public Python API).
+Sequencing: subtask 029 (add public API contract checker script).
+Those planning documents have been retired; the numbers are kept as provenance.
 
 What it records (deterministic, sorted JSON — byte-stable for ``git diff``):
   * the 11 public submodules under ``ari.public`` and the docstring-only

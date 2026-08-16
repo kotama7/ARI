@@ -3,8 +3,8 @@
 // All fetch calls target the same origin (API_BASE = '').
 //
 // Two error regimes are preserved BYTE-FOR-BYTE from the original api.ts and are
-// a documented wire contract (see src/services/__tests__/api.test.tsx and
-// docs/refactoring/010_contract_preservation_policy.md §5):
+// a documented wire contract (see src/services/__tests__/api.test.tsx; the
+// contract-preservation policy §5, refactoring plan 010, has since been retired):
 //
 //   - get<T> / post<T>  → THROW `new Error('<METHOD> <path> failed: <status>')`
 //                          on a non-2xx response (used by the app-wide `useApi`

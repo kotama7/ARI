@@ -1,6 +1,6 @@
 """Unit + smoke + determinism tests for ``scripts/check_docs_source_sync.py`` (027).
 
-Covers ``docs/refactoring/subtasks/027_add_docs_source_sync_checker_script.md`` §12
+Covers subtask 027 (add docs-source-sync checker script, since retired) §12
 via a temp git-repo fixture:
 
   * doc whose ``last_verified`` predates the source's newest commit -> STALE;
