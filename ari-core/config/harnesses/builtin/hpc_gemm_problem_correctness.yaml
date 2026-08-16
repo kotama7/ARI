@@ -1,0 +1,117 @@
+accepts_external_target: true
+container:
+  license: Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088
+  reference: singularity:orfs-26q3-openroad-7304ba78.sif
+  resolved_digest: sha256:91248e0711ec59e6ccc630d7e1c0efe75603fd79316a62fe33bc5c613a213f57
+credential_policy: none
+credential_scope_ids: []
+dataset:
+  license: MIT
+  revision: native-perf-gemm-cases/v1@scored-2026q3
+  sha256: sha256:17d6b66d3387670643f197c4e403816866fcfea208e886985bbe93f5b2fd0590
+description: Correctness of a candidate against the gemm-dense-fp64 problem's own
+  C contract
+driver:
+  license: MIT
+  revision: ari.assurance.problem-correctness/v1
+  sha256: sha256:80655f2dbfdb1df1ef96e1ae195028f227d30ce089806ebcce7937a9b63a91b6
+expected_result_schema: ari.native-problem-correctness-report/v1
+expected_result_schema_digest: sha256:d9c95b7389ba36356b4cfdc8e2bad160851000bcb21e64ef4a1c00a76afbe22e
+filesystem_policy: isolated-readonly-target
+hidden_test_policy: verifier-only
+id: hpc/gemm-dense-fp64-problem-correctness
+implementation_license: MIT
+infrastructure_failure_policy: separate
+kind: artifact_verifier
+maintainer: ARI maintainers
+manifest_digest: sha256:240ab768603eccf9b066b2bf9504b9c69bf92a561ff78fc49ba21a8a5c93214d
+model:
+  license: not-applicable
+  revision: not-applicable
+  sha256: sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7
+negative_control_report_digest: sha256:2aa02761b29a6b4112814c6d5fd3a3748eab489cc34bf4a41d2f3ba44e079764
+network_allowlist: []
+network_policy: deny
+nondeterminism_declaration: none
+oracle:
+  license: MIT
+  revision: gemm-dense-fp64/v1@2026q3
+  sha256: sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633
+oracle_independence: independent
+properties:
+- methods:
+  - differential-testing
+  property_id: numerical-equivalence
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tiers:
+  - screen
+  - validate
+  - certify
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+- methods:
+  - interface-check
+  property_id: interface-conformance
+  scope:
+    values:
+      architecture:
+      - x86_64
+      dtype:
+      - float64
+      hardware:
+      - cpu
+      language:
+      - c
+  tiers:
+  - screen
+  - validate
+  - certify
+  tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+registered_placement: {}
+resources:
+  accelerators: 0
+  cpu_cores: 2
+  disk_bytes: 268435456
+  features:
+  - landlock
+  - network-namespace
+  memory_bytes: 4294967296
+retry_limit: 1
+schema_version: ari.harness-manifest/v1
+scorer_determinism: deterministic
+source_full_commit_sha: 361a85d7fde8872f6f2299d31866915cc4333a89
+source_repository: https://github.com/kotama7/ARI.git
+status: candidate
+subject_types:
+- program
+supported_architectures:
+- x86_64
+supported_domains:
+- gemm
+supported_dtypes:
+- float64
+supported_hardware:
+- cpu
+supported_languages:
+- c
+tags:
+- cpu
+- gemm
+- hpc
+- problem-pinned
+target_interface_contract: problem:gemm-dense-fp64/v1@2026q3
+target_interface_digest: sha256:785b545b9538583970969734c1f758c2494279874e065a75ef4f2510d9d09405
+target_kinds:
+- benchmark-submission
+timeout_seconds: 900
+tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
+upstream_parity_report_digest: sha256:591898b875190822125c7ab1009968572142d6e6951b4fe2e2119411d0de89a6
+version: 1.0.0

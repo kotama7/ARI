@@ -157,16 +157,26 @@ def test_target_abi_registry_agrees_with_correctness_harnesses():
         family = record["family"]
         identity = abi_identity(family)
         assert identity is not None
+        # SELECTED BY THE CONTRACT THE IDENTITY NAMES, not by the domain. A
+        # domain filter asks "is this Harness about gemm", and more than one
+        # honestly is: the ARI-native verifier resolves ari_gemm_f32/f64 out of a
+        # shared library, and the problem-correctness verifier checks a
+        # submission against gemm-dense-fp64's own six-argument `gemm`. What this
+        # test is about is narrower -- the Harnesses a declaration built FROM
+        # this record could actually reach -- and there must still be exactly one
+        # of those, or a declaration would resolve to two verifiers that disagree
+        # about what the artifact is.
         compatible = [
             manifest for manifest in manifests
             if manifest.get("accepts_external_target")
             and family in manifest.get("supported_domains", ())
+            and manifest.get("target_interface_contract")
+            == identity.interface_contract
         ]
         assert len(compatible) == 1, (
             f"{family!r} must resolve to one external-target correctness Harness"
         )
         manifest = compatible[0]
-        assert identity.interface_contract == manifest["target_interface_contract"]
         assert identity.dtype in manifest["supported_dtypes"]
         assert identity.language in manifest["supported_languages"]
         assert identity.subject_type in manifest["subject_types"]

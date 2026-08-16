@@ -133,7 +133,7 @@ ARI は 150 を超える環境変数を参照します。ここではそれら�
 | `ARI_RECURSION_DEPTH` | ネストされた ARI 実行の現在深さ（自動設定） | (自動) |
 | `ARI_MAX_RECURSION_DEPTH` | orchestrator 再帰の上限 | `3` |
 | `ARI_PARENT_RUN_ID` | 再帰時の親 run ID（自動設定） | (自動) |
-| `ARI_DISABLED_TOOLS_FOR_CHILD` | 子実行で削減するツールセット | (なし) |
+| `ARI_DISABLED_TOOLS_FOR_CHILD` | **不活性 — 予約済みで読み手が無い。** `ari/cli/lineage.py` が lineage child に対して空文字を設定するだけで、ツリー内のどこもこれを読み返さないため、何も削減しない。`disabled_tools` は YAML からのみ設定される。依存しないこと。 | (なし) |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` の `top_k` 上限 | (スキルデフォルト) |
 
 ### 実行モード (RQGM)

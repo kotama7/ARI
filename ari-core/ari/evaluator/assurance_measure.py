@@ -437,32 +437,55 @@ def declare_target(work_dir: str | Path,
             f"candidate did not link as a shared library: "
             f"{completed.stderr.strip()[:2000]}")
 
+    workspace = WorkspaceRefV1(root=str(root))
     missing = _missing_abi_symbols(library, abi.exported_symbols)
-    if missing:
+    if not missing:
         # Declaring `interface_contract` asserts this artifact keeps that
         # contract. Unchecked, the assertion was simply false: a candidate
         # exporting only the problem's own entry point was declared conformant
         # to gemm-c-abi/v1, and the verifier failed 33 of 33 cases with
         # "missing ari_gemm_f32 symbol" -- every error exactly 0.0, because the
-        # kernel was never entered. Refusing to declare is the honest outcome:
-        # the node then has no verifiable target, which is true, instead of a
-        # conformance claim it does not meet.
+        # kernel was never entered.
+        logical_name, kind, contract = (
+            _TARGET_LIBRARY, abi.target_kind, abi.interface_contract)
+    elif not _missing_abi_symbols(library, (definition.entry_point,)):
+        # THE CONTRACT THE CANDIDATE ACTUALLY KEEPS. It was written against this
+        # problem's header, so the ARI-native ABI is the wrong thing to have
+        # asked it for, and refusing outright left the node with no verifiable
+        # target at all -- true, but only because the question had been put
+        # wrongly. The problem's own correctness Harness verifies the SOURCE
+        # against the SOURCE's contract, so that is what is declared, and the
+        # claim is checked the same way the other one is: the object built from
+        # this candidate exports the entry point the problem declares.
+        #
+        # Named after the pinned problem revision rather than the family, so it
+        # cannot collide with gemm-c-abi/v1, and so a Harness pinning this
+        # contract and pinning this problem cannot come to disagree.
+        logical_name = definition.score_inputs[0]
+        kind, contract = "benchmark-submission", f"problem:{definition.revision}"
+    else:
+        # Neither contract. Refusing is the honest outcome: the node then has no
+        # verifiable target, which is true, instead of a conformance claim it
+        # does not meet.
         raise TargetABIMismatch(
             f"candidate does not implement {abi.interface_contract}: "
-            f"{library.name} exports none of {', '.join(missing)}"
+            f"{library.name} exports none of {', '.join(missing)}, and does not "
+            f"export {definition.entry_point!r} either"
         )
 
-    workspace = WorkspaceRefV1(root=str(root))
     declaration = HarnessTargetDeclarationV1.create(
-        logical_name=_TARGET_LIBRARY,
-        target_kind=abi.target_kind,
+        logical_name=logical_name,
+        target_kind=kind,
         subject_type=abi.subject_type,
         language=abi.language,
         hardware="cpu",
         architecture=platform.machine(),
+        # From the family's ABI record, which is a statement about the family's
+        # numeric type and is true of both contracts. Inventing one here would
+        # be a third place dtype is decided.
         dtype=abi.dtype,
-        interface_contract=abi.interface_contract,
-        target_digest=workspace.file_digest(_TARGET_LIBRARY),
+        interface_contract=contract,
+        target_digest=workspace.file_digest(logical_name),
     )
     document = declaration.model_dump(mode="json")
     workspace.atomic_write_bytes(

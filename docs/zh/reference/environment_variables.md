@@ -124,7 +124,7 @@ ARI 支持 150 多个环境变量，在此汇总以便查阅。大多数变量�
 | `ARI_RECURSION_DEPTH` | 嵌套 ARI 运行中的当前深度（自动设置） | （自动） |
 | `ARI_MAX_RECURSION_DEPTH` | orchestrator 递归上限 | `3` |
 | `ARI_PARENT_RUN_ID` | 递归时父运行 id（自动设置） | （自动） |
-| `ARI_DISABLED_TOOLS_FOR_CHILD` | 子运行裁剪的工具集 | （无） |
+| `ARI_DISABLED_TOOLS_FOR_CHILD` | **惰性 —— 已预留，无读取方。** `ari/cli/lineage.py` 只为 lineage 子运行设置空字符串，树中没有任何代码回读它，因此不会裁剪任何工具。`disabled_tools` 仅从 YAML 填充。请勿依赖它。 | （无） |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` `top_k` 上限 | （技能默认值） |
 
 ### 执行模式（RQGM）

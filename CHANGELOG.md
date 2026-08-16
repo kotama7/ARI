@@ -4,6 +4,48 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **A correctness Harness that fits a pinned problem (2026-08-14).** Every
+  registered correctness Harness verified the ARI-native ABI out of a shared
+  library, and every pinned problem submits C source against its own header, so
+  nothing verified the second. A governed run over `gemm-dense-fp64` therefore
+  reached the one correctness Harness available to it, could not load its
+  target, and reported 33 failing cases with every error exactly 0.0 — a
+  mismatch dressed as a verdict about the candidate. The two contracts even
+  shared a name: `hpc/gemm-correctness` resolves `ari_gemm_f32`/`ari_gemm_f64`
+  over a 13-argument status-returning ABI in two dtypes, while a candidate
+  written against `gemm_kernel.h` exports `gemm` — six arguments, no status,
+  fp64 only. `hpc/gemm-dense-fp64-problem-correctness` verifies the second, over
+  driver revision `ari.assurance.problem-correctness/v1`, and its interface
+  contract is `problem:gemm-dense-fp64/v1@2026q3` rather than a reused
+  `gemm-c-abi/v1`, so the contract and the `oracle` pin name the same object and
+  cannot come to disagree. The driver carries its OWN content address: placing a
+  problem-shaped verifier inside `native_driver_digest` would have re-registered
+  the three ARI-native Harnesses for a file none of them read, which is the
+  reasoning the performance driver's digest already records. It reuses
+  `native_perf_common`'s build, flag screen, object audit and launch and the
+  FAMILY's oracle — the same residual bound the performance harness credits time
+  behind — so it is that opinion reported on its own rather than only as a
+  precondition for a stopwatch. It carries no anchor, no denominator and no
+  timing, and pins no placement: `NativePerfDriver.prepare` refuses to run off
+  the machine its evidence was taken on because a timed verdict does not
+  transfer, and a residual bound does not depend on the allocation's shape, so
+  this Harness can be registered where a performance Harness cannot. The parity
+  probe runs four controls from the problem's own scaffolding and the third is
+  the one that matters: the frozen reference passes; `wrong_gemm.c` fails on the
+  residual bound at 1.81e12x while still conforming, because it writes the right
+  element count and the wrong numbers; `slow_gemm.c` — the performance probe's
+  negative — must PASS, since an instrument that refused a correct-but-slow
+  kernel would be scoring speed while reporting correctness; and a candidate
+  carrying an extra exported symbol is refused by the object audit, which is what
+  certifies the second declared property rather than leaving
+  `interface-conformance` registered on no evidence. Registration ran 15/15 gates
+  in 18.6s. `declare_target` previously had one contract to offer and correctly
+  refused to declare it once the claim was checked, which left the node with no
+  verifiable target at all; it now falls back to the contract the candidate does
+  keep, checked the same way — the object built from that candidate must export
+  the entry point the problem declares — so a seed candidate declares
+  `benchmark-submission` and exactly one shipped Harness accepts it.
+
 - **Provider promotions re-cut for portability (2026-08-07).** The reviewed
   PRoot/unsquashfs/worker-Python build links against a newer host glibc than the
   promoting site provides, so the OpenROAD SLURM CPU profile now pins a

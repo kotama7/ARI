@@ -236,6 +236,12 @@ def verify_problem_correctness(
             negative_control=negative_control)
 
     results: list[ProblemCorrectnessCaseResultV1] = []
+    # WHICH CASES FAILED THE CONTRACT, recorded where the check happens rather
+    # than inferred afterwards from ``written != expected``. Inferring it read a
+    # candidate that CRASHED -- no output file, so nothing written -- as a
+    # candidate that wrote the wrong number of elements, which is a statement
+    # about its interface that nothing had established.
+    size_failures: set[str] = set()
     with tempfile.TemporaryDirectory() as raw_td:
         build = Path(raw_td)
         try:
@@ -305,6 +311,7 @@ def verify_problem_correctness(
                     verdict = "fail"
                     detail = (f"candidate wrote {written} values where {expected} "
                               f"were expected")
+                    size_failures.add(case_id)
                     break
                 correct, worst = family.check(output, case, instance)
                 worst_seen = max(worst_seen, float(worst))
@@ -332,9 +339,10 @@ def verify_problem_correctness(
     # either "wrote the wrong number of elements" -- the contract -- or "missed
     # the bound" -- the numbers. Splitting here rather than in the driver keeps
     # the classification with the code that knows which check produced it.
-    size_failed = any(item.verdict == "fail"
-                      and item.output_elements_written != item.output_elements_expected
-                      for item in results)
+    # A candidate that faulted is neither: it is a failure this verifier reports
+    # without claiming to have located, so it fails equivalence and leaves
+    # conformance where the build left it.
+    size_failed = bool(size_failures)
     properties = {
         "numerical-equivalence": overall,
         "interface-conformance": "fail" if size_failed else (

@@ -249,16 +249,24 @@ def test_every_shipped_manifest_pins_the_driver_that_exists():
 
     Enumerating the directory instead of the names is the point: the next
     manifest is covered without anyone remembering to add it.
-    """
-    from ari.assurance.drivers.native import native_driver_digest
-    from ari.assurance.drivers.perf import perf_driver_digest
 
-    expected = {"artifact_verifier": native_driver_digest(),
-                "benchmark": perf_driver_digest()}
+    Keyed on the manifest's DRIVER REVISION, not on its kind. Kind identified a
+    driver only while each kind had exactly one, and the second artifact_verifier
+    driver -- problem-correctness, which verifies a candidate against a pinned
+    problem's own header -- made that mapping wrong: it compared the new
+    manifest's pin against the ARI-native driver's digest and failed a manifest
+    that pins its own driver correctly. The revision is what `prepare` reads, so
+    it is what this should read.
+    """
+    from ari.assurance.drivers import builtin_driver_map
+
+    drivers = builtin_driver_map()
+    expected = {revision: driver.identity()["driver_digest"]
+                for revision, driver in drivers.items()}
     checked = 0
     for path in sorted(BUILTIN.glob("*.yaml")):
         manifest = yaml.safe_load(path.read_text())
-        want = expected.get(manifest["kind"])
+        want = expected.get(manifest["driver"]["revision"])
         if want is None:
             continue
         checked += 1

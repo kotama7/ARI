@@ -22,8 +22,11 @@ def test_external_driver_map_has_distinct_reviewed_identities():
     # The count is a canary for a driver added without review, not a magic
     # number. Six since NativePerfDriver was added to decide
     # performance-regression -- the property the vocabulary reserved and three
-    # knowledge-skill import profiles already require.
-    assert len(drivers) == 6
+    # knowledge-skill import profiles already require. Seven since
+    # ProblemCorrectnessDriver was added to decide numerical-equivalence and
+    # interface-conformance for a candidate submitted to a PINNED PROBLEM,
+    # against that problem's own header rather than the ARI-native ABI.
+    assert len(drivers) == 7
     for revision, driver in drivers.items():
         identity = driver.identity()
         assert identity["driver_revision"] == revision

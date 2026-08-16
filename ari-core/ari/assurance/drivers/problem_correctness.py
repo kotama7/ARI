@@ -272,7 +272,12 @@ class ProblemCorrectnessDriver:
         problem = load_problem(manifest.oracle.revision)
         definition = problem.definition
         scaffolding = definition.scaffolding
-        probe_set = manifest.dataset.revision
+        # WHERE the probe certifies is the PROBLEM's choice, as it is for the
+        # performance driver: a probe pinned to the manifest's scored set would
+        # compile and run the slow control at every scored shape to establish a
+        # property that does not depend on shape. What the registered set is
+        # still governs real runs -- ``prepare`` checks it.
+        probe_set = definition.parity_case_set or definition.case_set
 
         def _refused(reason: str) -> dict:
             return {
