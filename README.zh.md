@@ -378,7 +378,7 @@ gmx mdrun -v -deffnm simulation -ntmpi 32
 
 ### 技能（MCP 插件服务器）
 
-共 15 个技能。其中 13 个在 `workflow.yaml` 中默认注册。federated tool registry 在自身 manifest 中声明 `enabled_by_default: true`，因此只要配置省略 `skills:` 段，它就会被 manifest 自动发现拾取 —— 随附的 `workflow.yaml` 显式列举了那 13 个，所以要与它们一同注册需在其中添加。orchestrator 默认关闭，可显式启用。启用 tool registry 技能不会启用任何 leaf —— 只有所选 catalog 中的 source 才能执行，而签入的 `ari-skill-tool-registry/CATALOG.lock` 按设计为空。
+共 17 个技能。其中 13 个在 `workflow.yaml` 中默认注册。federated tool registry 在自身 manifest 中声明 `enabled_by_default: true`，因此只要配置省略 `skills:` 段，它就会被 manifest 自动发现拾取 —— 随附的 `workflow.yaml` 显式列举了那 13 个，所以要与它们一同注册需在其中添加。orchestrator 默认关闭，可显式启用。启用 tool registry 技能不会启用任何 leaf —— 只有所选 catalog 中的 source 才能执行，而签入的 `ari-skill-tool-registry/CATALOG.lock` 按设计为空。
 
 v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill-plot`（单个技能同时负责 matplotlib 绘图和 SVG 架构示意图，两者共用同一套 VLM 审阅回路）；`ari-skill-review`（反驳撰写）被删除 — 基于评审规范的审稿得分已是最终质量信号，对自己论文的反驳不会带来新的信息。
 
@@ -398,7 +398,9 @@ v0.6.0 移除了两个技能：`ari-skill-figure-router` 被合并进 `ari-skill
 | `ari-skill-coding` | 代码生成 + 执行 + 文件读取 + bash | ✗ | ✓ |
 | `ari-skill-replicate` | 兼容 PaperBench 的评分规范生成与审计 | ✓ | ✓ |
 | `ari-skill-orchestrator` | 将 ARI 作为 MCP 服务器暴露、递归子实验、stdio+HTTP 双传输 | ✗ | — |
-| `ari-skill-tool-registry` | 面向大型 MCP 集合的不可变联邦、科学 admission 与重放 | ✗ | ✓ |
+| `ari-skill-harness` | 对 Harness catalog / requirement / Attestation 的只读查询，以及非权威的辅助请求 | ✗ | — |
+| `ari-skill-knowledge` | 对内容寻址的过程性知识的只读查询与非权威请求面 | ✗ | — |
+| `ari-skill-tool-registry` | 面向大型 MCP 集合的不可变联邦、科学 admission 与重放 | ✗ | 仅自动发现 |
 
 ✗ = 不使用 LLM，△ = 仅部分工具使用 LLM，✓ = 主要工具使用 LLM。
 

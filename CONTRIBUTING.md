@@ -12,17 +12,21 @@ ARI/
 ├── pytest.ini
 │
 ├── docs/                            ← full documentation (en + ja/ + zh/)
-│   ├── PHILOSOPHY.md                ← design invariants (P1-P5)
-│   ├── architecture.md              ← system design and data flow
-│   ├── configuration.md             ← workflow.yaml reference
-│   ├── skills.md                    ← MCP skill API reference
-│   ├── cli_reference.md             ← `ari` CLI surface
-│   ├── experiment_file.md           ← how to write experiment .md files
-│   ├── extension_guide.md           ← adding skills / stages / phases
-│   ├── hpc_setup.md
-│   ├── quickstart.md
-│   ├── docs.html                    ← rendered homepage
+│   ├── getting-started/             ← quickstart, first experiment, FAQ
+│   ├── concepts/                    ← PHILOSOPHY.md (P1-P5), architecture, bfts, memory
+│   ├── guides/                      ← testing, extension_guide, hpc_setup, paperbench/
+│   ├── reference/                   ← configuration, skills, cli_reference,
+│   │                                   environment_variables, file_formats, rest_api
+│   ├── adr/                         ← accepted decision records (gui/, manuscript_complete/)
+│   ├── about/                       ← release policy, compatibility
+│   ├── plans/                       ← historical planning records — NOT current contract
 │   └── ja/, zh/                     ← translated mirrors (keep in sync)
+│
+│   Every page under docs/ declares the sources it rests on in YAML front matter
+│   (`sources:` + `last_verified:`). `last_verified` is a record of CHECKING the
+│   page against those files, not of editing it — do not advance it because you
+│   touched the page. `scripts/check_docs_source_sync.py` reports pages whose
+│   declared sources were committed after their date.
 │
 ├── ari-core/                        ← core engine (BFTS + ReAct + pipeline)
 │   ├── ari/
@@ -41,7 +45,7 @@ ARI/
 │   │   ├── checkpoint.py            ← shared tree.json I/O
 │   │   └── …
 │   ├── config/workflow.yaml         ← default workflow definition
-│   └── tests/                       ← 1,545 tests + boundary + prompt-extraction guards
+│   └── tests/                       ← ~6,300 tests + boundary + prompt-extraction guards
 │
 ├── ari-skill-hpc/                   ← SLURM / Singularity tools
 ├── ari-skill-idea/                  ← Survey + VirSci idea generation (LLM)
@@ -58,8 +62,15 @@ ARI/
 ├── ari-skill-benchmark/             ← Result analysis + scipy stats
 ├── ari-skill-vlm/                   ← Figure/table review via VLM (LLM)
 ├── ari-skill-orchestrator/          ← ARI as MCP server for external agents
+├── ari-skill-replicate/             ← PaperBench-compatible rubric generation + audit
+├── ari-skill-harness/               ← Read-only Harness catalog / requirement /
+│                                       Attestation queries (non-authoritative)
+├── ari-skill-knowledge/             ← Read-only query surface over content-addressed
+│                                       procedural knowledge
+├── ari-skill-tool-registry/         ← Provider-neutral discovery, admission, immutable
+│                                       invocation and replay for large MCP collections
 │
-├── ari-core/config/reviewer_rubrics/← 16 bundled review rubrics (NeurIPS, SC, …)
+├── ari-core/config/reviewer_rubrics/← 23 bundled review rubrics (NeurIPS, ICML, …)
 │                                       + fewshot_examples/ for static / dynamic
 ├── scripts/letta/                   ← Letta deployment recipes (compose / sif / pip)
 ├── scripts/fewshot/                 ← review fewshot corpus sync (manifest.yaml)
@@ -69,8 +80,15 @@ ARI/
 └── workspace/                       ← default experiment workspace
 ```
 
-As of v0.6.0 there are **13 skills** (12 wired into the default
-pipeline + `ari-skill-orchestrator` for external MCP integration).
+There are **17 skill packages**. Thirteen are registered in the default workflow
+(`ari-core/config/workflow.yaml`, `skills:` block): web, plot, paper, paper-re,
+replicate, memory, evaluator, idea, hpc, coding, transform, benchmark, vlm.
+The other four are not in the default pipeline and a workflow must name them:
+`ari-skill-orchestrator` (exposes ARI as an MCP server for external agents),
+`ari-skill-harness`, `ari-skill-knowledge` and `ari-skill-tool-registry`.
+`skill.yaml` is the authority for what each one offers —
+`scripts/check_skill_manifests.py` fails when a manifest and its server disagree.
+
 v0.6.0 retired two skills: `ari-skill-figure-router` was folded into
 `ari-skill-plot` (one skill now owns both matplotlib plots and SVG
 diagrams, both feeding the same VLM review loop), and

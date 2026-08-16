@@ -44,8 +44,12 @@ Controls tool sequence, metric extraction, and validation behavior.
 
 ## Post-BFTS Pipeline
 
-Configured via `config/pipeline.yaml`.
-Stages: `generate_paper` → `review` → `reproducibility_check`
+Configured via the `pipeline:` block of `config/workflow.yaml` — there is no
+`config/pipeline.yaml`. It carries 31 stages, not three: `search_related_work` and
+`audit_node_provenance`, then the data/figure stages, then paper writing interleaved
+with three rounds of `link_paper_claims` → `claim_evidence_hard_gate` →
+`evidence_grounded_semantic_review` (draft, final and locked), and finally the six
+`ors_*` reproduction stages.
 
 Adding a stage requires only a YAML change — no core code modification.
 
@@ -246,7 +250,7 @@ Negative: a reported number corrupted (20.91→99.99) and the paper relinked →
 `numeric_mismatch` (reported 99.99 vs recomputed 20.91) → `should_block=True`. The
 full chain is confirmed end-to-end: the evaluator wrapper converts `should_block`
 into exactly `{"error": ...}` (`ari-skill-evaluator` `_tool_claim_evidence_hard_gate`,
-regression-tested in `tests/test_s2p_tools.py`), `stage_runner` raises on an
+regression-tested in `ari-skill-evaluator/tests/test_s2p_tools.py`), `stage_runner` raises on an
 error-only MCP result, and the orchestrator records the stage error so a dependent
 `finalize_paper` is skipped (covered by `test_pipeline_e2e.py::test_mcp_error_dict_detected_as_failure`).
 

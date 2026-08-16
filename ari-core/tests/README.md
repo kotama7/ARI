@@ -397,9 +397,10 @@ targets the like-named module under `ari/`.
 
 ## Architecture-boundary guards
 
-These guards (subtask 018) keep the layering in
-`docs/refactoring/003_dependency_boundary_report.md` from silently eroding. That
-report's §16 status table enumerates eleven boundary rules **B1–B11**, and each
+These guards (subtask 018) keep the layering from silently eroding. The dependency
+boundary report that named the rules lived under `docs/refactoring/`, a tree that has
+since been retired; the rules themselves survive here, in the guards. That report's
+§16 status table enumerated eleven boundary rules **B1–B11**, and each
 is mapped to a live in-process `pytest` guard — or an explicit `waived:` reason
 for the boundaries that are CI/scripts or frontend concerns (not
 `pytest`-testable in-process) — by `test_architecture_boundary_index.py`, whose

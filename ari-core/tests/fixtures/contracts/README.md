@@ -53,5 +53,7 @@ python scripts/snapshot_contracts.py --surface public --update   # or cli / mcp 
 - `scripts/snapshot_contracts.py` — the deterministic generator/verifier for these goldens.
 - `ari-core/tests/test_contract_snapshots.py` — the pytest consumer (exact-set, structural, and additive/subset guards).
 - `ari-core/tests/test_api_schema_contract.py` — canonical viz response-shape guard mirrored by `viz_endpoints.json`.
-- `docs/refactoring/010_contract_preservation_policy.md` — the contract-preservation catalog/policy.
-- `docs/refactoring/subtasks/034_add_contract_snapshot_fixtures.md` — the originating subtask.
+- The contract-preservation policy (subtask 010) and the subtask that originated these
+  fixtures (034) lived under `docs/refactoring/`, a tree that has since been retired and
+  is not in this repository. What they specified is enforced by the generator and the
+  pytest consumer above, which are the authority now.

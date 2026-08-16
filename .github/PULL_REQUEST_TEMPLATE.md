@@ -5,8 +5,10 @@
   refactor-guards.yml / docs-sync.yml / readme-sync.yml, plus the contract-check
   workflows as they land). A PR template cannot fail CI — only workflows can.
 
-  See CONTRIBUTING.md and docs/refactoring/012_github_workflow_integration_plan.md §9
-  ("Pull Request Review Checklist Policy") for the rationale behind each item.
+  See CONTRIBUTING.md for the rationale behind each item. The workflow-integration
+  plan that first wrote this checklist lived under docs/refactoring/, a tree that has
+  since been retired; the rules it set are now carried by CONTRIBUTING.md and by the
+  workflows themselves, which are the versions to trust.
 -->
 
 ## Summary
@@ -17,7 +19,8 @@
 
 <!-- Delete this whole section if the PR is not part of the refactoring program. -->
 
-- Subtask: <!-- e.g. 047; see docs/refactoring/subtasks/ -->
+- Subtask: <!-- e.g. 047. The subtask notes are no longer in this repository; give the
+             number for provenance and say in the summary what it covered. -->
 - Classification: <!-- KEEP / ADAPT / MERGE / MOVE_TO_LEGACY / DELETE_CANDIDATE / REVIEW_REQUIRED -->
 
 ## Type of change
@@ -55,5 +58,4 @@
 - [ ] `ruff check .`
 - [ ] Frontend only: `npm test` + `npm run build` under `ari-core/ari/viz/frontend/`
 
-<!-- See also: CONTRIBUTING.md (engineering discipline) and
-     docs/refactoring/012_github_workflow_integration_plan.md §9. -->
+<!-- See also: CONTRIBUTING.md (engineering discipline). -->

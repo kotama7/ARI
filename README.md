@@ -396,7 +396,7 @@ After a run completes, outputs are saved in `./checkpoints/<run_id>/`:
 
 ### Skills (MCP plugin servers)
 
-15 skills total. 13 are registered by default in `workflow.yaml`; the federated
+17 skills total. 13 are registered by default in `workflow.yaml`; the federated
 tool registry declares `enabled_by_default: true` in its own manifest, so it is
 picked up by manifest auto-discovery whenever a configuration omits the
 `skills:` section — the shipped `workflow.yaml` enumerates its 13 explicitly, so
@@ -423,7 +423,9 @@ In v0.6.0 two skills were retired: `ari-skill-figure-router` was folded into `ar
 | `ari-skill-coding` | Code generation + execution + file read + bash | ✗ | ✓ |
 | `ari-skill-replicate` | PaperBench-compatible rubric generation and audit | ✓ | ✓ |
 | `ari-skill-orchestrator` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ | — |
-| `ari-skill-tool-registry` | Immutable federation, scientific admission, and replay for large MCP collections | ✗ | ✓ |
+| `ari-skill-harness` | Read-only Harness catalog / requirement / Attestation queries, plus non-authoritative auxiliary requests | ✗ | — |
+| `ari-skill-knowledge` | Read-only query and non-authoritative request surface over content-addressed procedural knowledge | ✗ | — |
+| `ari-skill-tool-registry` | Immutable federation, scientific admission, and replay for large MCP collections | ✗ | auto-discovery only |
 
 ✗ = no LLM, △ = LLM used in some tools only, ✓ = primary tools use LLM.
 

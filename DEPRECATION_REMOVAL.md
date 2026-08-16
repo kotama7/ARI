@@ -113,8 +113,15 @@ At **DR5 / v1.0** the following are dropped together: the five Tier-B `~/.ari/` 
 ## 6. External-contract deprecation ledger (Tier B, removal = v1.0)
 
 The sanctioned `~/.ari/` fallbacks. Each emits `warn_deprecated_path` before falling
-through to the checkpoint-scoped / env replacement. These five sites are the **only**
-ones allow-listed in `refactor-guards.yml` (§8.2).
+through to the checkpoint-scoped / env replacement. These five are the sites that still
+*touch* a legacy path, and each has a row below.
+
+They are **not** the whole exclude list. `refactor-guards.yml` (§8.2) excludes thirteen
+paths, and the other eight are there for a different reason: the guard matches added
+lines textually, and a docstring that explains why a `~/.ari/` default was removed reads
+the same to it as a line reintroducing one. Those eight hold no fallback and get no row
+here — read the exclude list as "lines this guard cannot judge", not as "sites this
+ledger sanctions".
 
 | # | Deprecated path | Replacement | Site | Tier / Phase |
 |---|-----------------|-------------|------|--------------|
@@ -167,12 +174,17 @@ The workflow runs on PRs to `main` and `refactoring` and hosts two hard guards:
 
 1. **`no-new-home-ari-refs`** — diffs the PR against the merge base and **fails** on any
    added `Path.home()/…/.ari` or `~/.ari` reference in `ari-core/ari/**.py`, *except* the
-   path-excluded sanctioned sites: `_deprecation.py`, the `migrations/` package, and the
-   §6 shim files (`core.py`, `paths.py`, `memory_cli.py`, `memory/auto_migrate.py`,
-   `memory/file_client.py`, `publish/backends/ari_registry.py`, `clone/resolvers/ari.py`,
-   `registry/__init__.py`, `viz/state.py`, `viz/api_settings.py`, `viz/api_publish.py`).
-   Docstring/comment-only lines are ignored. **To add a new sanctioned site you must add
-   it to the exclude list with a justification and a ledger row here.**
+   path-excluded files. Those are `_deprecation.py`, the `migrations/` package, the five
+   §6 fallback sites (`memory_cli.py`, `publish/backends/ari_registry.py`,
+   `clone/resolvers/ari.py`, `registry/__init__.py`, `viz/api_publish.py`), and six files
+   that only *describe* the retired directory in prose (`core.py`, `paths.py`,
+   `memory/auto_migrate.py`, `memory/file_client.py`, `viz/state.py`,
+   `viz/api_settings.py`). `memory/auto_migrate.py` no longer exists; the exclusion is
+   inert and kept only because removing it is a workflow change, not a doc one.
+   `#`-comment lines are ignored, **docstrings are not** — which is why a file that
+   merely explains the removal still needs an exclusion. **To add a new sanctioned
+   *fallback* you must add it to the exclude list with a justification and a §6 ledger
+   row; an exclusion added for a docstring gets neither.**
 2. **`no-home-ari-writes`** — runs the pytest suite under a redirected `HOME` and **fails**
    if `$HOME/.ari/` is created, proving no code path writes the retired global directory.
 
@@ -187,7 +199,11 @@ is a one-line flip, not a rewrite.
 
 - `ari-core/ari/_deprecation.py` — the warning helpers (contract; do not change signatures).
 - `ari-core/ari/migrations/README.md` — the migration-shim package layout.
-- `docs/refactoring/subtasks/016_clean_merge_or_quarantine_legacy_code.md` — the design of
-  this ledger (§7.1–§7.5) and the legacy-code quarantine plan.
-- `docs/refactoring/004_legacy_obsolete_inventory.md` — the inventory that first flagged
-  this doc as a dangling reference.
+- The refactoring subtask notes that designed this ledger (§7.1–§7.5) and the
+  legacy-code quarantine plan are **not in this repository**. `docs/refactoring/` was
+  never committed on any branch here, so the two links that used to sit in this list —
+  to `subtasks/016_clean_merge_or_quarantine_legacy_code.md` and to
+  `004_legacy_obsolete_inventory.md` — resolved to nothing. They went unnoticed because
+  `scripts/docs/check_doc_links.py` walks `docs/` only; no gate reads the `.md` files at
+  the repository root, this one included. The subtask numbers are kept here as
+  provenance for where the design came from, not as links you can follow.

@@ -389,7 +389,7 @@ WebSocket（ツリー変更）と SSE（ログ配信）でリアルタイム更�
 
 ### スキル（MCP プラグインサーバー）
 
-合計 15 スキル。13 個は `workflow.yaml` でデフォルト登録されます。federated tool registry は自身の manifest で `enabled_by_default: true` を宣言しており、設定が `skills:` セクションを省略した場合に manifest 自動検出で拾われます — 同梱の `workflow.yaml` は 13 個を明示列挙しているので、並べて登録するにはそこへ追加してください。orchestrator はデフォルト無効で、明示的に有効化できます。tool registry スキルを有効にしても leaf は 1 つも有効になりません — 実行できるのは選択した catalog に載る source だけで、チェックイン済みの `ari-skill-tool-registry/CATALOG.lock` は設計上空です。
+合計 17 スキル。13 個は `workflow.yaml` でデフォルト登録されます。federated tool registry は自身の manifest で `enabled_by_default: true` を宣言しており、設定が `skills:` セクションを省略した場合に manifest 自動検出で拾われます — 同梱の `workflow.yaml` は 13 個を明示列挙しているので、並べて登録するにはそこへ追加してください。orchestrator はデフォルト無効で、明示的に有効化できます。tool registry スキルを有効にしても leaf は 1 つも有効になりません — 実行できるのは選択した catalog に載る source だけで、チェックイン済みの `ari-skill-tool-registry/CATALOG.lock` は設計上空です。
 
 v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router` は `ari-skill-plot` に統合され（matplotlib プロットと SVG アーキテクチャ図を単一スキルで扱い、同じ VLM レビューループで両方を駆動）、`ari-skill-review`（リバッタル生成）は削除されました — ルーブリック駆動の査読スコアが最終的な品質シグナルであり、自前論文へのリバッタルは情報量を追加しないためです。
 
@@ -409,7 +409,9 @@ v0.6.0 では 2 つのスキルを廃止しました。`ari-skill-figure-router`
 | `ari-skill-coding` | コード生成 + 実行 + ファイル読取 + bash | ✗ | ✓ |
 | `ari-skill-replicate` | PaperBench 互換のルーブリック生成と監査 | ✓ | ✓ |
 | `ari-skill-orchestrator` | ARI を MCP サーバとして公開、再帰的サブ実験、stdio+HTTP デュアル転送 | ✗ | — |
-| `ari-skill-tool-registry` | 大規模 MCP コレクションの不変フェデレーション、科学的 admission、リプレイ | ✗ | ✓ |
+| `ari-skill-harness` | Harness の catalog / requirement / Attestation への読み取り専用クエリと、非権威的な補助リクエスト | ✗ | — |
+| `ari-skill-knowledge` | 内容アドレス指定された手続き的知識への読み取り専用クエリと、非権威的なリクエスト面 | ✗ | — |
+| `ari-skill-tool-registry` | 大規模 MCP コレクションの不変フェデレーション、科学的 admission、リプレイ | ✗ | 自動検出のみ |
 
 ✗ = LLM 不使用、△ = 一部ツールで LLM 使用、✓ = 主要ツールが LLM 使用。
 
