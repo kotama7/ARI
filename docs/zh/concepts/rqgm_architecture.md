@@ -499,6 +499,37 @@ max_expansions)` 在**任意**深度都成为 BFTS 的 `max_total_nodes`（更�
   的问责节点，而非一份真实的过度接受存档草稿（那个 in-phase 降级被
   推迟）。真正触发的通道是评审者的问责 / 协同进化通道，经由真实的
   已验证攻击记录。
+* **被退役的 paper 提示词不会让它打过分的草稿变为过期。**选择性擦除
+  （不变量 6）只为探索树接好了线。`FrontierRepairEngine` 只从一个地方
+  驱动 —— `RQGMRuntime` 里的纪元边界钩子 —— 而该钩子除非调用方交给它
+  存活的搜索状态（`frontier` / `pending` / `all_nodes`），否则立即返回；
+  交出它的是 BFTS 运行循环，而存档的回合头部调用 `ensure_epoch` 时并不
+  带上它。其余的接线也朝同一方向缺失：`INVALIDATE_ROLES`、
+  `RECOMPUTE_ROLES` 与 `_ROLE_STALE_REASONS`
+  （`ari/rqgm/frontier_repair.py`）只点名探索角色；没有任何地方写出
+  携带角色 `paper_writer` 的记录，本阶段唯一带角色的审计记录是评审者的
+  `review_record`；而组装追溯所遍历的记录全集的 `load_rqgm_records`
+  读取提案日志、对抗案例日志与审计日志，却从不读
+  `paper_draft_archive.jsonl`。因此在回合边界退役一个 paper 提示词，不会
+  把任何已存档草稿标记为 `_stale`、不会把任何草稿逐出前沿，也不会在
+  后继之下重新打分。
+
+  排序并不会因此被污染，因为存档本来就是逐纪元的：每一回合都新建一个
+  `PaperArchiveStrategy`，且只恢复它自己那一纪元的草稿，所以由被退役
+  提示词打分的草稿绝不会参与更晚回合的选择 —— 而且
+  `PaperArchiveStrategy.should_prune` 确实读取 `_valid_for_frontier`
+  哨兵，只要有谁去写，读取的那一半就能工作。缺的是那个明示的标记，以及
+  回来的路。每条草稿记录确实携带它被打分时的 `reviewer_prompt_hash` 与
+  `epoch_id`，因此把存档与 `rqgm_audit.jsonl` 中的 `retirement_event`
+  行做联接就能*还原*出退役事实（转换日志自身的 `prompt_status_change`
+  事件携带的是 `prompt_id` 而非哈希）—— 但记录本身对此只字不提，跨回合翻阅
+  `paper_draft_archive.jsonl` 而不做该联接的读者，会把由早已退役的评审者
+  打分的草稿当作现行的来读。另一个方向 —— 让更早的草稿在新任评审者之下
+  重新打分、正当地重新进入更晚的排序 —— 则根本不存在。接上其中任何一个
+  都不是加一行角色那么简单（把某个角色放进 `INVALIDATE_ROLES` 却没有
+  对应的 `_ROLE_STALE_REASONS` 条目，会在闭包内部抛错，而边界把这个失败
+  当作一条告警吞掉，于是整趟修复过程会悄无声息地什么都不做），而这项
+  决定尚未做出。
 
 ---
 
@@ -683,6 +714,43 @@ resume）。所有这些文件都在 `PathManager.META_FILES`
 
 这四个 `paper_*` 文件仅在生效的 `rqgm_archive` paper 模式下存在 ——
 它们的缺失，如同 `rqgm_state.json` 的缺失一样，标示一次 linear 论文运行。
+
+**「检查点范围」就是字面意思，跨谱系亦然。**`RqgmStateStore` 的每一次
+调用都要接收 `checkpoint_dir` —— `replay`、`append_events`、
+`save_snapshots`、`begin_transaction`、`apply_transition` —— 而
+`ari/rqgm/` 之下没有任何地方读取 `parent_run_id` 或
+`ARI_PARENT_RUN_ID`。指针本身是可用的，只是不被查阅：一个谱系子运行
+的环境里带着 `ARI_PARENT_RUN_ID`，其 `meta.json` 记录着
+`parent_run_id`、`recursion_depth` 与 `inherit_idea_index`。因此，从一个
+被治理的父运行启动的子实验不会继承该父运行的任何治理 —— 它经由
+`bootstrap_foundation` 从 `FOUNDING_COMPONENT_TABLE` 引导，其
+`constitution.yaml` 是它自己的运行开始所写的那份只复制一次的文件。唯一
+抵达 `meta.json` 的 RQGM 字段是 `constitution_hash`，由子运行自身的运行
+开始增量记录（`record_constitution_hash`），而它钉住的是冻结的代码表 ——
+同一修订版下每次运行共享的常量，而非任何进化出来的状态。纪元、注册表
+版本、可靠性分数、进化后的提示词，都不会从父传到子；为此设想过的
+`meta.json` 承载通道从未被实现。
+
+这种单检查点范围是刻意划下的边界，而非半成品；同时也并没有设计任何
+跨运行通道，所以没有任何待办会改变它。其后果关乎可比性而非正确性，
+因为所有 id 都是按检查点铸造的：`epoch_000` 在每次运行中都从零重新
+计数，而后继版本是*本*检查点的注册表与候选日志中该角色最大值 `+ 1`
+（`CleanRoomCoordinator._next_version`）。因此父运行的
+`reviewer_prompt_v3` 与子运行的 `reviewer_prompt_v3` 是共享同一名字的
+无关工件，而 `epoch_002` 指向两个不同的制度。请把一个父运行与它的谱系
+子运行读作共享一条研究线索的、彼此独立的治理史；任何把它们的纪元、
+id 或可靠性分数汇总在一起的仪表盘或分析，比较的是复用了同一批标签的
+不同宪法。
+
+**互斥只在进程内。**每一次追加 —— `rqgm_transitions.jsonl` 与
+`rqgm_audit.jsonl` 一视同仁 —— 都要穿过 `ari/rqgm/store.py` 中唯一的
+模块级 `threading.Lock`，各条链的尾部正是在那里被读取并延长；存储层
+中任何地方都没有文件锁。这与该锁被记录的用途一致（把单写者循环与
+best-effort 调用方串行化），崩溃恢复过滤器也仍会在 resume 时丢弃被
+杀死的进程留下的残缺事务。未被覆盖的是两个存活的操作系统进程向同一
+个检查点追加：它们会读到同一条链尾并各自延长，产生重复的序号，破坏
+resume 会重新校验的哈希链。「每个检查点只有一个写入进程」在这里是一个
+前提，而不是存储层强制的约束。
 
 精确的磁盘格式：[文件格式参考](../reference/file_formats.md)；
 JSON Schema（位于 `ari-core/ari/schemas/`，例如 `epoch_state`、

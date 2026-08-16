@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-07-28
+last_verified: 2026-08-16
 ---
 
 # RQGM Schema Reference
@@ -732,6 +732,34 @@ each node's stored `_axis_scores` under the new policy and records the node
 in the enclosing `SelectiveErasureEvent.policy_rescored_node_ids`; missing
 raw axes invalidate the node fail-closed.
 
+**No component target — by design, and what that costs downstream.**  The
+record names the penalised *node* (`node_id`) and the component that computed
+the penalty (`component_id`, which the record class defaults to
+`utility_policy_v1`).  It carries no
+`target_component_id`: a penalty lands on a node, not on an accused component,
+and `UtilityRecord.to_dict` emits neither that field nor `subject_component_id`.
+Nor does any sink add one — the audit-log twin is the same `to_dict()` payload
+the JSONL truth receives (`AdversarialRound._log_all`).
+
+This is worth stating outright, because the governance side reads as though the
+field were there.  `utility_record` is listed in the Evidence Clerk's
+admissible-kind map and among the record types `candidate_refs_for_target`
+admits (`ari/rqgm/governance/_evidence.py`) — but that selector keeps a record
+only when its `target_component_id` / `subject_component_id` equals the
+prosecution target's component id.  So a utility record, which has neither,
+matches no target: it is scanned into the epoch's record set, and then never
+selected.  The penalty channel therefore contributes nothing to any evidence
+bundle, and citing it as an evidence source is a mistake — the accountability
+that reaches prosecution comes from the `validated_attack` records that caused
+the penalty, which carry their own binding (above), not from the penalty.
+The Knowledge/Capability/Assurance records stamp `target_component_id` at
+construction (`ari/rqgm/runtime.py`) and do match.
+
+The by-value `frozen_policy` discipline keeps this shape additive, so a target
+could be added exactly the way `validated_attack` adds one — optional field,
+emitted only when non-empty, older records unmigrated — if some future consumer
+needs it.  Nothing today does.
+
 ### `rqgm_replay_pool.schema.json`
 
 **Purpose:** the derived byte-fixed `rqgm/adversarial_replay_pool.json`
@@ -1037,6 +1065,42 @@ line.  Only the ids are journaled: *why* the seed moved is already durable in
 `rqgm_audit.jsonl` (erasure events) and `rqgm_adversarial_cases.jsonl`
 (validated-attack penalties).
 
+**The `budget_counters` block, and the three keys that are not in it.**  The
+file is not only the write-once start record.  `_persist_budget_counters`
+(`ari/rqgm/paper_runtime.py`) re-reads it after each archive round — and once
+more after the winner's lazy compile — and replaces a `budget_counters` key on
+it: `paper_epoch_id`, `draft_expansions`, `adversary_calls`,
+`anchor_scoring_calls`, `prompt_candidates` (split per governed role,
+`paper_writer` / `paper_reviewer`), and `compiles`.  The three metered counts
+(`adversary_calls`, `anchor_scoring_calls`, `prompt_candidates`) are DERIVED
+from the current paper epoch's `budget_consumed` lines in
+`rqgm_audit.jsonl` — the audit log stays the source of truth, under the same
+derive-from-records discipline `GovernanceBudgetManager`'s own restore uses, so
+`ari paper` re-invocation never double-counts them.  The other two are
+in-process counters (`draft_expansions` is the last round's archive population,
+`compiles` the runtime's lazy-compile tally), so a resumed process restates
+those two from zero.  The whole write is best-effort and its failure is logged
+rather than raised, so an absent block means the mirror never landed — not that
+nothing was spent.
+
+Three keys a cost reader may expect are deliberately not there, for two
+different reasons.
+`governance_cost_usd` and `governance_tokens` are omitted rather than stamped
+zero: `GovernanceBudgetManager.consume` accumulates both when a caller supplies
+them, but neither paper-phase `consume` site passes a cost or a token count, so
+a zero written here would advertise a measured absence of spend that was never
+measured.  `draft_levels` is absent for a different reason — the archive
+constructs its `AdversarialRound` directly, while the governance level ladder
+(`level_with_triggers` / `record_level`) runs only inside
+`RQGMRuntime.run_adversarial_round`, so no per-draft level assignment exists to
+mirror.  (The one level assignment the paper phase does make belongs to an
+exploration node rather than a draft: the paper-candidate escalation runs the
+full round, and its assignment lands in `rqgm_audit.jsonl` as a
+`governance_level` line, not here.)  So read `budget_counters` as a per-epoch
+call tally, never as cost accounting, and do not code against
+`governance_cost_usd`, `governance_tokens`, or `draft_levels` — no writer
+emits them.
+
 ### `paper_draft_archive.jsonl` — the scored draft population
 
 Append-only, byte-fixed, best-effort (a record-write failure never breaks the
@@ -1183,7 +1247,7 @@ so none of them ever appear in a node's `files_changed`.
 | `rqgm_meta_outputs.jsonl` | Append-only truth | `rqgm_meta` (`meta_agent_output_record`) | `ari/rqgm/meta_evolution.py` |
 | `rqgm_governance_cache.jsonl` | Append-only cache | `rqgm_governance_cache` | `ari/rqgm/governance_cache.py` |
 | `rqgm_eval_metrics.json` / `rqgm_injection_provenance.json` | Evaluation-harness artifacts (harness-launched runs only) | none — shapes owned by `ari/rqgm/evaluation/{metrics,injection}.py` | evaluation harness |
-| `paper_archive_state.json` | Paper-phase mode-provenance snapshot (write-once, except the append-only `seed_journal[]`) | none — shape owned by `ari/rqgm/paper_runtime.py` | `ari.checkpoint.save_paper_archive_state_json` |
+| `paper_archive_state.json` | Paper-phase mode-provenance snapshot (write-once, except the append-only `seed_journal[]` and the per-round `budget_counters` mirror) | none — shape owned by `ari/rqgm/paper_runtime.py` | `ari.checkpoint.save_paper_archive_state_json` |
 | `paper_draft_archive.jsonl` | Append-only draft population (best-effort) | none — shape owned by `ari/rqgm/paper_archive.py` | `ari/rqgm/paper_draft_executor.py` |
 | `paper_anchor_corpus.jsonl` | Read-only anchor corpus (write-once) | none — shape owned by `ari/rqgm/paper_anchor.py` | curation / bootstrap tooling |
 | `rqgm/paper_self_preference_stat.json` | Derived per-epoch statistic (best-effort) | none — shape owned by `ari/rqgm/paper_self_preference.py` | `ari/rqgm/paper_self_preference.py` |

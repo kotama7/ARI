@@ -301,6 +301,42 @@ shingle 筛查和 `RetiredPromptAccessGuard` 强制执行）。元层可以
 坏 generator 替身触发 schema 检查；退化的变异器候选死在
 `schema_dry_run` —— 全程没有打断任何一个节点。
 
+**今天实际在跑的是什么。** 上面这条阶梯是候选必须遵守的契约，但端到端
+驱动它的那个对象并不是生产路径所使用的。`CandidateValidationPipeline`
+只在一个地方被构造 —— `RQGMRuntime.validation_pipeline` —— 而且只为
+shadow 阶段而建；它那个单调的阶段执行器 `run_stage` 根本没有任何生产
+调用方。各阶段改由别的代码承担：`static_validation`、
+`constitutional_validation` 以及 role_instruction 的字节检查，在铸出的
+候选被记录之前就以纯函数方式运行（探索路径上是
+`_deterministic_candidate_failures`，论文路径上是同样这三项内联）；
+`replay_evaluation` 与 `anchor_evaluation` 变成附在每份候选评估上的
+确定性 replay / anchor 记分板；而 `shadow` 是逐节点的实时并排比较 ——
+这一项在论文阶段结构性地不存在，报告为 `shadow_samples: 0` 并按角色
+豁免，因为没有任何论文角色会被 shadow 执行。
+
+`schema_dry_run` 是两条路径上唯一没有生产驱动方的阶段，而原因恰好
+相反。论文候选评估器确实会调用它，并丢弃回复不符合该角色创始
+`output_schema` 的候选 —— 但只在注入了回复接缝时才会；而
+`PaperArchiveRuntime` 唯一的生产构造（`ari/cli/paper_dispatch.py`）
+并不注入，于是该检查根本没发出调用就返回"没有失败"；何况
+`paper_writer` 的创始 schema 是 `freeform`，即便接上接缝也会接受任何
+非空回复。探索路径缺的是另一半：流水线是带着运行时的 LLM 客户端构造
+的，所以回复来源存在，但没有任何东西调用 `run_stage`，因此该阶段从不
+执行。真实运行中它两边都被跳过，而跳过就记为跳过 —— 绝不记为通过。
+
+对于把"一次注入的 LLM 调用；失败即终止"照字面理解的读者，后果是：在
+采纳之前，没有任何候选的**回复**被拿去对照其角色的 `output_schema`
+检查过。真正为采纳把关的那些记分板，只按提示词 id 或哈希去读已存的
+逐案结果，从不调用候选；实时 shadow 阶段确实会调用候选，但只记录其
+输出是否与在任者逐字节相同，而不记录它是否合规。因此，回复无法解析的
+提示词只能在采纳之后、于运行时被那些 fail-open 的读取方抓到 —— schema
+不合法的攻击在成为记录之前就被丢弃，读不懂的裁决回退为 `invalid` 且
+不施加惩罚 —— 也就是说被采纳的行动者是悄悄劣化，而不是发出警报。上面
+那段 `prompt_candidate_rejected` 摘录不是反例：只有 B8 注入冒烟工具链
+会发出该事件，而且它是把 `schema_dry_run` 这个阶段标签盖在一次
+`static_validation` 失败上。提供一个真正的回复来源，意味着要在候选路径
+上放一次带预算的、非确定性的 LLM 调用；这个决定尚未做出。
+
 ### 8. 运行结束
 
 运行结束时的 `ensure_epoch` 冲刷（第 6 步）在节点计数触发条件满足
@@ -508,7 +544,7 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | audit | `epoch_transition` | 已提交的转换，`inputs` 中含报告哈希 | `RegistryTransitionEngine` |
 | audit | `kernel_report` / `constitutional_violation` | 警告并标记的发现 / 规则违规（`CK-*` 码） | `ConstitutionalKernel` 适配器；`constitutional_violation` 仅由 B8 注入冒烟工装（`ari/rqgm/evaluation/smoke.py`）写出 |
 | audit | `selective_erasure` / `frontier_rebuild` | 退役后的逻辑擦除 + 重建 | `FrontierRepairEngine` |
-| audit | `prompt_candidate_rejected` | 候选在某个生命周期阶段失败 | 提示词进化流水线 |
+| audit | `prompt_candidate_rejected` | 候选在某个生命周期阶段失败 | 只有 B8 注入冒烟工具链（`ari/rqgm/evaluation/smoke.py`）；真实运行中边界上的丢弃改为在 `prompt_evolution` 行的 `skipped` 列表里告知 |
 | audit | `prompt_evolution_skipped` | 边界候选生成被禁用（`rqgm.prompt_evolution.enabled: false`） | `RQGMRuntime` 的边界提示词进化 |
 | audit | `clean_room_violation` | 被污染的洁净室 bundle 被阻断 | `CleanRoomCoordinator` |
 | audit | `meta_evolution` | 边界元步骤摘要：outcome 为 `proposed`/`no_op`（或跳过/失败原因）、计数、被跳过的 invoker | `MetaEvolutionCoordinator`（跳过/失败行：`RQGMRuntime`） |

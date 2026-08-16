@@ -329,6 +329,49 @@ reliability assessment flags; a bad generator double trips the schema
 check; a degenerate mutator candidate dies in `schema_dry_run` — all
 without interrupting a single node.
 
+**What actually runs today.** The ladder above is the contract a candidate is
+held to, but the object that drives it end to end is not the one production
+uses. `CandidateValidationPipeline` is constructed in exactly one place —
+`RQGMRuntime.validation_pipeline` — and only for the shadow stage; its
+monotonic stage runner `run_stage` has no production caller at all. The stages
+are served by separate code instead: `static_validation`,
+`constitutional_validation` and the role-instruction byte check run as plain
+functions before a minted candidate is recorded at all
+(`_deterministic_candidate_failures` on the exploration path, the same three
+inline on the paper path); `replay_evaluation` and `anchor_evaluation` become
+the deterministic replay/anchor board scores attached to each candidate
+evaluation; and `shadow` is the live per-node side-by-side comparison — which
+in the paper phase is structurally absent, reported as `shadow_samples: 0` and
+waived by role, because no paper role is ever shadow-executed.
+
+`schema_dry_run` is the one stage with no production driver on either path,
+for opposite reasons. The paper candidate evaluator does call it, and drops a
+candidate whose reply fails the role's founding `output_schema` — but only
+when a reply seam is injected, and the sole production construction of
+`PaperArchiveRuntime` (`ari/cli/paper_dispatch.py`) injects none, so the check
+returns "no failures" without making a call; for `paper_writer` the founding
+schema is `freeform` besides, so even a wired seam would accept any non-empty
+reply. The exploration path has the reverse half: the pipeline is built with
+the runtime's LLM client, so a reply source exists, but nothing invokes
+`run_stage`, so the stage never executes. On a real run it is skipped either
+way, and a skip is recorded as a skip — never as a pass.
+
+The consequence for a reader who took "one injected LLM call; failure is
+terminal" literally is that no candidate's *reply* is checked against its
+role's `output_schema` before adoption. The boards that do gate adoption read
+stored per-case results keyed by prompt id or hash and never invoke the
+candidate; the live shadow stage does invoke it, but records only whether its
+output matched the incumbent's byte for byte, not whether it conformed. A
+prompt whose replies would not parse is therefore caught only after adoption,
+at runtime, by the fail-open readers — a schema-invalid attack is dropped
+before it becomes a record, and an unreadable judgment falls back to `invalid`
+with no penalty — so the adopted actor degrades quietly rather than raising an
+alarm. The `prompt_candidate_rejected` excerpt above is not a counter-example:
+only the B8 injection smoke harness emits that event, and it stamps the
+`schema_dry_run` stage label on a `static_validation` failure. Supplying a real
+reply source would put a budgeted, non-deterministic LLM call on the candidate
+path; that decision has not been taken.
+
 ### 8. Run end
 
 The end-of-run `ensure_epoch` flush (step 6) fires a final boundary if the
@@ -560,7 +603,7 @@ you will actually see:
 | audit | `epoch_transition` | the committed transition, with report hash in `inputs` | `RegistryTransitionEngine` |
 | audit | `kernel_report` / `constitutional_violation` | warn-and-flag findings / rule violations (`CK-*` codes) | `ConstitutionalKernel` adapters; `constitutional_violation` only from the B8 injection smoke harness (`ari/rqgm/evaluation/smoke.py`) |
 | audit | `selective_erasure` / `frontier_rebuild` | logical erasure + rebuild after retirements | `FrontierRepairEngine` |
-| audit | `prompt_candidate_rejected` | a candidate failed a lifecycle stage | prompt-evolution pipeline |
+| audit | `prompt_candidate_rejected` | a candidate failed a lifecycle stage | only the B8 injection smoke harness (`ari/rqgm/evaluation/smoke.py`); a boundary drop on a real run is announced in the `prompt_evolution` line's `skipped` list instead |
 | audit | `prompt_evolution_skipped` | boundary candidate minting disabled (`rqgm.prompt_evolution.enabled: false`) | `RQGMRuntime` boundary prompt evolution |
 | audit | `clean_room_violation` | a contaminated clean-room bundle was blocked | `CleanRoomCoordinator` |
 | audit | `meta_evolution` | boundary meta-step summary: outcome `proposed`/`no_op` (or a skip/failure reason), counts, skipped invokers | `MetaEvolutionCoordinator` (skip/failure lines: `RQGMRuntime`) |

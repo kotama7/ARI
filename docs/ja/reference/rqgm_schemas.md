@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-07-28
+last_verified: 2026-08-16
 ---
 
 # RQGM スキーマリファレンス
@@ -712,6 +712,34 @@ utility-policy 退役は別の Task-10 経路を通り、各ノードに保存�
 `SelectiveErasureEvent.policy_rescored_node_ids` に記録します。生の軸が
 欠けるノードは fail-closed で無効化されます。
 
+**コンポーネントターゲットを持たない — 設計上そうであり、その下流コスト。**
+このレコードが名指すのはペナルティを受けた*ノード*（`node_id`）と、ペナルティを
+計算したコンポーネント（`component_id`、レコードクラスの既定値は
+`utility_policy_v1`）です。
+`target_component_id` は持ちません: ペナルティはノードに落ちるのであって告発された
+コンポーネントに落ちるのではなく、`UtilityRecord.to_dict` はこのフィールドも
+`subject_component_id` も出力しません。どのシンクも付け足しません — 監査ログ側の
+双子は JSONL の真実と同じ `to_dict()` ペイロード
+（`AdversarialRound._log_all`）だからです。
+
+これを明記するのは、ガバナンス側がまるでこのフィールドがあるかのように読めるから
+です。`utility_record` は Evidence Clerk の admissible-kind マップにも、
+`candidate_refs_for_target` が受理するレコード型
+（`ari/rqgm/governance/_evidence.py`）にも挙がっています — しかしそのセレクタは、
+レコードの `target_component_id` / `subject_component_id` が訴追対象の
+コンポーネント id と一致するときだけそれを残します。どちらも持たない
+ユーティリティレコードはどのターゲットにも一致せず、エポックのレコード集合には
+走査されて入るものの決して選ばれません。したがってペナルティチャネルはどの証拠
+バンドルにも何も寄与せず、これを証拠源として引くのは誤りです — 訴追に届く説明責任は、
+ペナルティを生んだ `validated_attack` レコード（上記のとおり自前のバインディングを
+持つ）から来るのであって、ペナルティ自体からではありません。
+Knowledge/Capability/Assurance のレコードは構築時に `target_component_id` を刻む
+（`ari/rqgm/runtime.py`）ので一致します。
+
+`frozen_policy` の値渡し設計により形は additive のままなので、将来の消費者が必要と
+すれば `validated_attack` と同じやり方（optional フィールド、非空のときだけ出力、
+旧レコードは移行不要）でターゲットを追加できます。現状そうする消費者はありません。
+
 ### `rqgm_replay_pool.schema.json`
 
 **目的:** AdversarialReplayPool の導出されたバイト固定の
@@ -1006,6 +1034,39 @@ paper フェーズ開始時に write-once。形は `ari/rqgm/paper_runtime.py`
 切り替えることはありません。書き込み手:
 `ari.checkpoint.save_paper_archive_state_json`。
 
+**`budget_counters` ブロックと、そこに無い 3 つのキー。** このファイルは
+write-once の開始レコードだけではありません。`_persist_budget_counters`
+（`ari/rqgm/paper_runtime.py`）はアーカイブラウンドごとに — さらに勝者の遅延
+コンパイル後にもう一度 — このファイルを読み直し、`budget_counters` キーを
+置き換えます: `paper_epoch_id`、`draft_expansions`、`adversary_calls`、
+`anchor_scoring_calls`、`prompt_candidates`（governed ロール `paper_writer` /
+`paper_reviewer` ごとに分割）、`compiles`。うち計測された 3 つ
+（`adversary_calls`、`anchor_scoring_calls`、`prompt_candidates`）は、現在の paper
+エポックの `rqgm_audit.jsonl` `budget_consumed` 行から**導出**されます — 真実の源は
+監査ログのままで、`GovernanceBudgetManager` 自身の restore と同じ「レコードから
+導出する」規律に従うため、`ari paper` の再呼び出しで二重計上されません。残る 2 つは
+プロセス内カウンタ（`draft_expansions` は直近ラウンドのアーカイブ母集団、`compiles`
+はランタイムの遅延コンパイル数）なので、resume したプロセスではこの 2 つが 0 から
+数え直されます。書き込み全体は best-effort で、失敗は raise されずログされるだけ
+です。したがってブロックが無いことは「ミラーが落ちなかった」ことを意味し、
+「何も消費されなかった」ことを意味しません。
+
+コスト読者が期待しがちな 3 つのキーが、2 つの異なる理由で意図的に欠けています。
+`governance_cost_usd` と `governance_tokens` は 0 を刻むのではなく省かれています:
+`GovernanceBudgetManager.consume` は呼び出し側が渡せば両方を積算しますが、paper
+フェーズの `consume` 呼び出しはどちらもコストもトークン数も渡していないため、ここに
+0 を書けば「測っていない消費ゼロ」を測定値として広告することになります。
+`draft_levels` が無い理由は別です — アーカイブは `AdversarialRound` を直接構築する
+一方、ガバナンスのレベル梯子（`level_with_triggers` / `record_level`）は
+`RQGMRuntime.run_adversarial_round` の中でしか走らないため、ミラーすべき
+ドラフト単位のレベル割り当てがそもそも存在しません。（paper フェーズが行う唯一の
+レベル割り当てはドラフトではなく探索ノードのものです: paper-candidate
+エスカレーションがフルラウンドを走らせ、その割り当ては `rqgm_audit.jsonl` の
+`governance_level` 行に落ちます — ここではありません。）`budget_counters` は
+「エポック単位の呼び出し回数」であってコスト会計ではないと読み、
+`governance_cost_usd` / `governance_tokens` / `draft_levels` に依存するコードを
+書かないでください — これらを出力する writer はありません。
+
 ### `paper_draft_archive.jsonl` — スコア付きドラフト母集団
 
 append-only、バイト固定、best-effort（レコード書き込み失敗が paper フェーズを
@@ -1151,7 +1212,7 @@ paper フェーズ以外では両ロールとも `""` に解決され、探索�
 | `rqgm_meta_outputs.jsonl` | append-only の真実 | `rqgm_meta`（`meta_agent_output_record`） | `ari/rqgm/meta_evolution.py` |
 | `rqgm_governance_cache.jsonl` | append-only のキャッシュ | `rqgm_governance_cache` | `ari/rqgm/governance_cache.py` |
 | `rqgm_eval_metrics.json` / `rqgm_injection_provenance.json` | 評価ハーネス成果物（ハーネスが起動したランのみ） | なし — 形は `ari/rqgm/evaluation/{metrics,injection}.py` が所有 | 評価ハーネス |
-| `paper_archive_state.json` | paper フェーズのモード来歴スナップショット (write-once) | なし — 形は `ari/rqgm/paper_runtime.py` が所有 | `ari.checkpoint.save_paper_archive_state_json` |
+| `paper_archive_state.json` | paper フェーズのモード来歴スナップショット (write-once。ただしラウンドごとに置き換えられる `budget_counters` ミラーを除く) | なし — 形は `ari/rqgm/paper_runtime.py` が所有 | `ari.checkpoint.save_paper_archive_state_json` |
 | `paper_draft_archive.jsonl` | append-only のドラフト母集団 (best-effort) | なし — 形は `ari/rqgm/paper_archive.py` が所有 | `ari/rqgm/paper_draft_executor.py` |
 | `paper_anchor_corpus.jsonl` | 読み取り専用のアンカーコーパス (write-once) | なし — 形は `ari/rqgm/paper_anchor.py` が所有 | curation / bootstrap ツール |
 | `rqgm/paper_self_preference_stat.json` | 導出されたエポックごとの統計 (best-effort) | なし — 形は `ari/rqgm/paper_self_preference.py` が所有 | `ari/rqgm/paper_self_preference.py` |

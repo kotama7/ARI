@@ -816,6 +816,43 @@ env にフォールバックせず拒否します。同じ venue でスコアリ
 — lineage walk は **catalog 経路** で、VirSci と sub-experiment launcher
 が明示的に呼ぶときだけ動きます。これにより子は自由に pivot できます。
 
+**既知のギャップ — 存在するように見えて存在しない第 5 のチャネル。**
+lineage hook が `switch_to_idea` を選ぶとき、同時に
+`disable_generate_ideas=True` を設定します。その意図は「子は選ばれた
+alternative をそのまま実行し、再サンプリングしない」ことであり、
+`ari/cli/lineage.py` は launch の直前に `ARI_DISABLED_TOOLS_FOR_CHILD`
+を設定することでその意図を運びます。しかしこの変数を読み返すコードは
+どこにもありません。`disabled_tools` は YAML から埋まる config フィールド
+（加えて `bfts_pipeline` stage が無効化されたツールを自動マージする経路）
+であって環境変数からは決して埋まらないため、子は `os.environ` の残りと
+一緒にこの変数を継承したうえで無視します。
+
+pin が排他的だと期待していた場合、実際に起きることは次のとおりです。
+どの lineage action で launch された子も `generate_ideas` を実行します
+— この stage は `skip_if_exists` を宣言していないので、seed 済みの
+`idea.json` があっても止まりません。`_pinned` マーカーが買うのは
+**順序であって抑制ではありません**: 継承されたエントリは `ideas[0]` に
+留まり、子が新しく生成した idea が（pinned とタイトルが一致するものを
+除いて）その後ろに追記されます（`ari_rqgm` の proposal router も同じ
+やり方でマーカーを保存します）。この追記分が `ideas[1:]` であり、これは
+`build_lineage_state` が **子自身の** stagnation pivot に渡す
+alternatives プールそのものです。つまり `switch_to_idea` は子の出発点を
+決めると同時に、その子が後で乗り換えられるプールを補充しています。
+
+このギャップは誰かが引いたスコープ境界ではなく、引き取り手のいない決定
+です。open item として提起され、sub-run spawning を統治するはずの層へ
+転送されましたが、その層は取り上げず、以後どのコンポーネントもこれを
+自分の担当だと主張していません。上の表は完全なものとして読んでください:
+lineage launch 経路では、親は子の spawn 自体を拒否できます
+（`terminate` が親自身の `meta.json` に `parent_terminated` を書き、
+`_api_launch_sub_experiment` が launch を拒否します）し、seed エントリを
+1 件 pin できます。その二つの間には何もありません。子の `meta.json` が
+記録するのは run id・親子関係・depth・作成時刻・checkpoint dir・
+`inherit_idea_index` だけで governance フィールドは無く、
+`parent_terminated` の 2 フィールドは子ではなく **親** のファイルに
+書かれます。親が子に対して他に何を制約できるべきかについて、立場は一切
+表明されていません。
+
 ### work_dir 継承 — 出力アーティファクト ブラックリスト (v0.7.0 / Phase 7)
 
 BFTS が子ノードを expand する際、子の `work_dir` は親をコピーして seed されます。フィルタなしだと子は親の `results.csv` / `slurm-*.out` / `run.log` をバイト単位で再利用できてしまい、run-`20260504120448` の post-mortem では 9 子全員が単一の SLURM job 結果を再報告していました — 結果ファイルが既に存在するため ReAct agent が「実験は完了済み」と判定したためです。

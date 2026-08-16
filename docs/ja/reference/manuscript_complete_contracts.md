@@ -545,6 +545,28 @@ input artifact集合にさらに`manuscript-profile`、`manuscript-context`、
 ます。`PaperBuildV1.status=finalized`だけでは、Manuscript Completeのpublicationが
 許可されたことにはなりません。`PublicationLockV1`が最終のinterlockです。
 
+この統合は2つ目の契約を作るのではなく、その契約の内側に留まりました。`PaperBuildV2`
+は存在しません。5つのmanuscript inputは`ari-core/ari/paper_contract.py`の
+`PaperArtifactRole`語彙に追加され、authoring skillによって通常のinput artifactとして
+束縛されます。これらはbuildの`required_inputs`には入っておらず、そこは今も
+`science-data`、`figure-batch`、`retrieval-records`、`ear-manifest`だけを挙げます。
+これらの存在と同一性を強制するのはbuild schemaではなく、`freshness` gateの
+enforce限定のbound-input条項です。5つを1つも持たないlegacyなbuildが今も変更なしに
+validateを通るのはそのためです。
+
+この語彙には、予約されたまま使われていないメンバーが1つあります。
+`publication-decision`は5つと並んで宣言され、生成される`paper_build_v1`と
+`paper_model_call_batch_v1`のrole enumにも現れますが、どのmodeでもこのroleを持つ
+artifactを構築するコードは存在しません。decisionはattempt directoryに
+`publication_decision.json`として書かれ、buildのartifact集合の完全に外側に置かれま
+す。つまりrole一覧は、buildが運べるものを実際より多く見せています。これをinventory
+として読む読者は`input_artifacts`や`final_artifacts`の中にdecisionを探して、どちらに
+も見つけられません。finalizedなbuildのartifactを辿って公開が許可されたかどうかを知ろ
+うとするconsumerは、明示的に失敗するのではなく何も分からないまま終わります。束縛は逆
+向きです。`PublicationDecisionV1.paper_build_digest`がbuildを名指し、`PaperBuildV1`
+にはdecisionを名指すfieldがありません。したがってこの辿り方はdecisionを起点にしたと
+きだけ成立します。
+
 安定したread typeと固定のcompiler helperは`ari.public.manuscript`からexportされ
 ます。可変なcoordinator内部はpublic APIではありません。
 

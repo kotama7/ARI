@@ -326,6 +326,36 @@ is mirrored best-effort into `budget_counters` (`anchor_scoring_calls`) in
 `budget_consumed` lines in `rqgm_audit.jsonl` so re-invocation never
 double-counts.
 
+**Known gap — the cap covers one of the two anchor passes.** Only the ACTIVE
+reviewer's pass is charged: it gates and then consumes one unit per held-out
+case, and that is the pass both `sample_size` and `anchor_scoring_calls`
+describe. The co-evolution candidate evaluator makes a *second* pass over the
+same held-out case list for every pending `paper_reviewer` candidate, by
+calling `score_reviewer_on_anchor` (`ari/rqgm/paper_anchor.py`) directly — and
+that function carries no budget manager, so it neither gates nor consumes.
+`rqgm.paper.anchor.sample_size` therefore bounds the active reviewer's case
+count per paper epoch, not the paper epoch's anchor evaluations: a reader who
+takes it for a cost model of the shape O(candidates × `sample_size`) should
+read it as bounding the active-reviewer half only, because with C pending
+reviewer candidates the corpus is walked C further times in full and uncapped.
+`anchor_scoring_calls`, being derived from the `budget_consumed` lines,
+under-reports the epoch's anchor work by exactly that amount. What is at stake
+is cost and observability, not governance — no candidate's verdict changes and
+no gate is softened by the omission.
+
+Two independent conditions keep both halves quiet on the shipped default.
+`rqgm.paper.anchor.enabled: false` makes `load_anchor_corpus` return no pool,
+and the candidate branch is guarded on that pool, so it never runs. And no
+`reviewer_verdict_fn` is wired anywhere in production — `ari paper` builds the
+paper-archive runtime without one — so even once a corpus is supplied,
+`anchor_verdict` returns `None` for every case and both passes abstain instead
+of scoring. The active pass still spends its budget in that state, for the
+reason above (the charge precedes the verdict); the ungated candidate pass
+spends nothing and does no scoring work. The undercount becomes real only in the
+configuration the cap exists for: with a corpus present and a verdict source
+wired, each pending reviewer candidate adds one further full corpus pass that
+no cap stops and no counter records.
+
 ## Selecting the mode from the GUI
 
 Everything above is the canonical description: a mode is a configuration

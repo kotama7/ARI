@@ -775,6 +775,35 @@ generate_ideas (idea-skill)
 `idea.json` —— 谱系遍历是 *catalog* 路径，由 VirSci 和子实验启动器显式
 调用。这让子节点可以自由 pivot。
 
+**已知缺口 —— 一条看起来存在、实则不存在的第五通道。** 当谱系钩子选择
+`switch_to_idea` 时，它同时会设置 `disable_generate_ideas=True`，其意图是
+"子运行逐字执行选中的 alternative，不再重新采样"；`ari/cli/lineage.py`
+则通过在 launch 之前设置 `ARI_DISABLED_TOOLS_FOR_CHILD` 来承载这个意图。
+但树中没有任何代码回读该变量。`disabled_tools` 是一个仅从 YAML 填充的
+config 字段（外加把已禁用 `bfts_pipeline` stage 的工具自动并入的那条
+路径），永远不会从环境变量填充，因此子运行会连同 `os.environ` 的其余部分
+一起继承这个变量，然后忽略它。
+
+如果你以为这个 pin 是排他的，实际发生的是这样。由任何谱系动作启动的子运行
+仍然会执行 `generate_ideas` —— 该 stage 没有声明 `skip_if_exists`，所以已被
+seed 的 `idea.json` 同样拦不住它。`_pinned` 标记买到的是**顺序而非抑制**：
+继承来的条目留在 `ideas[0]`，子运行新生成的 idea 追加在它后面（标题与 pinned
+条目重复的会被剔除；`ari_rqgm` 的 proposal router 以同样方式保留该标记）。
+这些追加的条目就是 `ideas[1:]`，也正是 `build_lineage_state` 交给该子运行
+**自己**的 stagnation pivot 的 alternatives 池。于是 `switch_to_idea` 在设定
+子运行起点方向的同一步里，也为它备好了日后可以转投的池子。
+
+这个缺口不是谁划下的范围边界，而是一个无人认领的决定。它曾作为 open item
+提出，并被转交给本应治理 sub-run spawning 的那一层；那一层从未接手，此后
+树中也没有任何组件认领它。请把上面的表当作完整的：在谱系启动路径上，父运行
+可以彻底拒绝 spawn 子运行（`terminate` 会把 `parent_terminated` 写入父运行
+自己的 `meta.json`，随后 `_api_launch_sub_experiment` 拒绝 launch），也可以
+pin 一条 seed 条目。这两者之间没有任何东西。子运行的 `meta.json` 只记录
+run id、父子关系、depth、创建时间、checkpoint dir 和 `inherit_idea_index`，
+没有治理字段；`parent_terminated` 那两个字段写在**父运行**的文件里而非
+子运行的。关于父运行还应当能约束子运行的哪些方面（如果有的话），至今没有
+表明任何立场。
+
 ### work_dir 继承 —— 输出产物黑名单 (v0.7.0 / Phase 7)
 
 当 BFTS 扩展一个子节点时，子节点的 `work_dir` 通过复制父节点的

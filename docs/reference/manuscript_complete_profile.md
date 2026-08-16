@@ -14,15 +14,19 @@ sources:
     role: implementation
   - path: ari-core/ari/manuscript/runtime.py
     role: implementation
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
   - path: ari-core/ari/manuscript/contracts.py
     role: schema
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
   - path: ari-core/ari/config/__init__.py
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
   - path: docs/adr/manuscript_complete/MC-ADR-007-runner-up.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # `generic_empirical_v1` profile
@@ -60,6 +64,71 @@ Characteristics such as `stochastic_claim`, `comparative_claim`, and
 metric vocabulary, contribution structure, and node labels. They are not
 inferred from reviewer prose. A future profile change requires a new profile
 ID/version and therefore a new attempt identity.
+
+## Profile resolution
+
+`generic_empirical_v1` is not merely the default profile; it is currently the
+only one that resolves. `manuscript.profile`
+(`ari-core/ari/config/__init__.py:687`) is exported at the pipeline boundary as
+`ARI_MANUSCRIPT_PROFILE` (`ari-core/ari/cli/paper_dispatch.py:97`), read back
+into the compile call (`ari-core/ari/manuscript/runtime.py:90`), and handed to
+`resolve_profile` before any snapshot is built
+(`ari-core/ari/manuscript/coordinator.py:152`). `resolve_profile` returns the
+built-in root for `generic_empirical_v1`
+(`ari-core/ari/manuscript/profiles.py:333`); any other ID is looked up among the
+venue-profile declarations under `ari-core/ari/manuscript/venue_profiles/`. That
+directory holds only its README, so every other value raises `unknown manuscript
+profile` (`ari-core/ari/manuscript/profiles.py:345`) before the snapshot, the
+context, or the readiness report exists. Under `manuscript.mode: off` the ID is
+never resolved at all — the dispatcher yields without exporting the variable and
+`compile_manuscript` returns `disabled` — so a mistyped or aspirational profile
+ID sits inert until the first `audit` or `enforce` run.
+
+The composition machinery behind that lookup is complete. A
+`ManuscriptVenueProfileV1` declaration names each parent at the exact
+`profile_digest` it was written against, states only its own requirement
+overrides, additions, and `removed_requirement_ids`, and resolves at read time
+into an ordinary `ManuscriptRequirementProfileV1` whose `profile_digest` is the
+resolved digest; a parent whose version or digest has moved is an error, not a
+warning, and a stored declaration must pin the `resolved_profile_digest` its
+composition reproduces. What is absent is any shipped instance of it. That is a
+scope line rather than an oversight — the venue vocabulary belongs to the
+deployment that needs it, and the module README under
+`ari-core/ari/manuscript/venue_profiles/` carries the authoring procedure. The
+consequence for a reader is narrow but sharp: naming a venue in
+`manuscript.profile` is not a configuration step. It fails the run until a
+declaration file for that ID exists in that directory.
+
+## Stochasticity and uncertainty evidence
+
+MC-RS-002 is judged against the same derived value that decides whether it
+applies at all. `build_manuscript_context` computes one `uncertainty_evidence`
+boolean (`ari-core/ari/manuscript/builder.py:392`): true when the recorded
+measurement records outnumber the recorded configurations and number at least
+two, or when any metric key on an evidence record — or any key at all on a
+measurement record — contains `std`, `variance`, `confidence`, `stderr`, or
+`error_bar`. That boolean is what makes the claim stochastic (`:407`), and it is
+also the value stored as `reproducibility.uncertainty_evidence` (`:461`), which
+is exactly what the evaluator reads to decide satisfaction
+(`ari-core/ari/manuscript/readiness.py:100`) while applicability reads
+`claim_characteristics.stochastic_claim`
+(`ari-core/ari/manuscript/readiness.py:20`).
+
+The profile states no minimum. The test is presence — not a repetition count,
+not a dispersion threshold, not a number of seeds — so the automatically
+detected half of the requirement cannot open a gap. With nothing declared,
+MC-RS-002 becomes applicable only in the runs where `uncertainty_evidence` is
+already true, and it is then satisfied by that same flag; such a run — one
+measurement per configuration, no dispersion key — is then recorded
+`not_applicable`, never `missing`. The requirement therefore bites only when a
+claim is *declared* stochastic — through a `claim_characteristics`
+`stochastic_claim`, or a `stochastic` or `aggregate` claim type on the idea
+record, the research contract, or a typed claim record
+(`ari-core/ari/manuscript/builder.py:166`, called at `:378`) — and the recorded
+evidence does not back it. When it does bite it blocks both authoring and
+publication, as the table above shows. Read a `not_applicable` MC-RS-002 as
+"nobody declared a stochastic claim and no dispersion was recorded", never as
+"repetition was checked and found adequate".
 
 ## Evidence lane assignment
 

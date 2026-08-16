@@ -641,6 +641,42 @@ Task-12 governance budget verbatim.
   draft (that in-phase demotion is deferred). The channel that actually fires
   is the reviewer's accountability / co-evolution one, through the genuine
   validated-attack record.
+* **A retired paper prompt does not stale the drafts it scored.** Selective
+  erasure (invariant 6) is wired for the exploration tree only.
+  `FrontierRepairEngine` runs from a single place — the epoch-boundary hook in
+  `RQGMRuntime` — and that hook returns immediately unless the caller hands it
+  the live search state (`frontier` / `pending` / `all_nodes`); the BFTS run
+  loop does, while the archive's round head calls `ensure_epoch` without one.
+  The rest of the wiring is absent in the same direction: `INVALIDATE_ROLES`,
+  `RECOMPUTE_ROLES`, and `_ROLE_STALE_REASONS` (`ari/rqgm/frontier_repair.py`)
+  name exploration roles only; no record carrying role `paper_writer` is
+  written anywhere, the phase's one role-bearing audit record being the
+  reviewer's `review_record`; and `load_rqgm_records`, which assembles the
+  record universe a trace runs over, reads the proposal, adversarial-case, and
+  audit logs but never `paper_draft_archive.jsonl`. So retiring a paper prompt
+  at a round boundary marks no archived draft `_stale`, drops none from a
+  frontier, and re-scores none under the successor.
+
+  A ranking is not corrupted by this, because the archive is already
+  epoch-local: each round builds a fresh `PaperArchiveStrategy` and restores
+  only its own epoch's drafts, so a draft scored by a retired prompt never
+  competes in a later round's selection — and `PaperArchiveStrategy.should_prune`
+  does read the `_valid_for_frontier` sentinel, so the reader half would work
+  if anything wrote it. What is missing is the affirmative mark and the way
+  back. Each draft record does carry the `reviewer_prompt_hash` and `epoch_id`
+  it was scored under, so a retirement is *recoverable* by joining the archive
+  against the `retirement_event` lines in `rqgm_audit.jsonl` (the transition
+  log's own `prompt_status_change` events carry the `prompt_id`, not the hash)
+  — but nothing on the record says so, and a reader mining
+  `paper_draft_archive.jsonl` across rounds without performing that join will
+  read drafts scored by a since-retired reviewer as current.
+  The other direction — letting an earlier draft legitimately re-enter a later
+  ranking, re-scored under the incoming reviewer — does not exist at all.
+  Wiring either is not a one-line role addition (a role placed in
+  `INVALIDATE_ROLES` without a matching `_ROLE_STALE_REASONS` entry raises
+  inside the closure, and the boundary swallows the failure as a warning, so
+  the whole repair pass would silently do nothing), and the decision has not
+  been taken.
 
 ---
 
@@ -869,6 +905,50 @@ resume). All of these files are in `PathManager.META_FILES`
 
 The four `paper_*` files exist only under the effective `rqgm_archive` paper
 mode — their absence, like `rqgm_state.json`'s, marks a linear paper run.
+
+**Checkpoint-scoped means exactly that, including across a lineage.**
+`RqgmStateStore` takes `checkpoint_dir` on every call — `replay`,
+`append_events`, `save_snapshots`, `begin_transaction`, `apply_transition` —
+and nothing under `ari/rqgm/` reads `parent_run_id` or `ARI_PARENT_RUN_ID`.
+The pointer is available and simply not consulted: a lineage child is launched
+with `ARI_PARENT_RUN_ID` in its environment and a `meta.json` recording
+`parent_run_id`, `recursion_depth` and `inherit_idea_index`. So a
+sub-experiment launched from a governed parent inherits none of that parent's
+governance — it bootstraps from `FOUNDING_COMPONENT_TABLE` through
+`bootstrap_foundation`, and its `constitution.yaml` is the copy-once file its
+own run start wrote. The one RQGM field that reaches `meta.json` is
+`constitution_hash`, recorded additively by the child's own run start
+(`record_constitution_hash`), and that pins the frozen code tables — a
+constant shared by every run at the same revision, not evolved state. No
+epoch, registry version, reliability score, or evolved prompt rides from
+parent to child; the `meta.json`-borne channel for that was sketched and never
+built.
+
+That single-checkpoint scope is a deliberate boundary rather than a
+half-finished feature, and no cross-run channel has been designed either, so
+nothing is pending that would change it. The consequence is about comparison,
+not correctness, because every id is minted per checkpoint: `epoch_000` counts
+from zero in every run, and a successor version is `1 +` the role's maximum
+across *this* checkpoint's registry and candidate log
+(`CleanRoomCoordinator._next_version`). `reviewer_prompt_v3` in a parent and
+`reviewer_prompt_v3` in its child are therefore unrelated artifacts that share
+a name, and `epoch_002` names two different institutions. Read a parent and
+its lineage children as independent governance histories that share a research
+thread; a dashboard or analysis that pools their epochs, ids, or reliability
+scores is comparing different constitutions that reused the same labels.
+
+**The mutual exclusion is in-process only.** Every append — to
+`rqgm_transitions.jsonl` and to `rqgm_audit.jsonl` alike — funnels through one
+module-level `threading.Lock` in `ari/rqgm/store.py`, which is where each
+chain's tail is read and extended; there is no file locking anywhere in the
+store. That matches what the lock is documented for (serialising the
+single-writer loop against best-effort callers), and the crash-recovery filter
+still discards a torn transaction left by a killed process on resume. What it
+does not cover is two live OS processes appending to the same checkpoint: they
+would read the same chain tail and both extend it, producing duplicate
+sequence numbers and breaking the hash chain that resume re-verifies. One
+writing process per checkpoint is an assumption here, not something the store
+enforces.
 
 Exact on-disk formats: [File Formats Reference](../reference/file_formats.md);
 JSON Schemas (in `ari-core/ari/schemas/`, e.g. `epoch_state`,

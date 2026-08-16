@@ -898,6 +898,44 @@ checkpoint's `idea.json` — the lineage walk is the *catalog* path,
 invoked explicitly by VirSci and the sub-experiment launcher. This
 keeps children free to pivot.
 
+**Known gap — a fifth channel that reads as though it exists, and does
+not.** When the lineage hook chooses `switch_to_idea` it also sets
+`disable_generate_ideas=True`, the intent being "the child runs the
+chosen alternative verbatim, no resampling", and `ari/cli/lineage.py`
+carries that intent forward by setting `ARI_DISABLED_TOOLS_FOR_CHILD`
+just before the launch. Nothing reads the variable back. `disabled_tools`
+is a config field filled from YAML (plus the auto-merge that disables a
+tool whose `bfts_pipeline` stage is switched off), never from the
+environment, so the child inherits the variable along with the rest of
+`os.environ` and ignores it.
+
+If you expected the pin to be exclusive, this is what actually happens.
+A child launched by any lineage action still runs `generate_ideas` — the
+stage declares no `skip_if_exists`, so the seeded `idea.json` does not
+stop it either. The `_pinned` marker buys ordering, not suppression: the
+inherited entry stays at `ideas[0]` and the child's freshly generated
+ideas are appended after it, minus any whose title matches the pinned one
+(the `ari_rqgm` proposal router preserves the marker the same way). Those
+appended entries are `ideas[1:]`, which is exactly the alternatives pool
+`build_lineage_state` hands to the child's *own* stagnation pivot. So a
+`switch_to_idea` sets the child's starting direction and, in the same
+step, stocks the pool that child can later pivot away to.
+
+The gap is an unclaimed decision rather than a scope line anyone drew. It
+was raised as an open item and forwarded to the layer that would have
+governed sub-run spawning; that layer never took it up, and no component
+in the tree has claimed it since. Read the table above as complete: along
+the lineage launch path a parent can refuse to spawn a child at all
+(`terminate` writes `parent_terminated` into the parent's own `meta.json`,
+and `_api_launch_sub_experiment` then declines the launch) and it can pin
+one seed entry. There is nothing between those two. The child's
+`meta.json` records only run id, parentage, depth, creation time,
+checkpoint dir and `inherit_idea_index` — no governance field — and the
+`parent_terminated` pair is written into the *parent's* file, not the
+child's. No position has been
+taken on what else, if anything, a parent ought to be able to constrain
+in a child.
+
 ### work_dir inheritance — output-artifact blacklist (v0.7.0 / Phase 7)
 
 When BFTS expands a child node, the child's `work_dir` is seeded by

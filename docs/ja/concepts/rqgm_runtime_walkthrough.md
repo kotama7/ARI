@@ -333,6 +333,51 @@ attack を生み、不正な generator の替え玉はスキーマチェック�
 退化した mutator 候補は `schema_dry_run` で死にます — いずれも 1 つの
 ノードも中断させることなく。
 
+**今日実際に動いているもの。** 上のはしごは候補が守らされる契約ですが、
+それを端から端まで駆動するオブジェクトは本番が使うものではありません。
+`CandidateValidationPipeline` はちょうど 1 箇所
+—`RQGMRuntime.validation_pipeline`— でのみ構築され、しかも shadow 段階の
+ためだけです; その単調な段階ランナー `run_stage` には本番の呼び出し元が
+まったくありません。各段階は代わりに別のコードが担っています:
+`static_validation`、`constitutional_validation`、および role_instruction
+のバイト検査は、鋳造された候補が記録されるより前に純関数として走り
+（探索経路では `_deterministic_candidate_failures`、paper 経路では同じ
+3 つがインライン）; `replay_evaluation` と `anchor_evaluation` は各候補
+評価に付く決定論的な replay / anchor のボードスコアになり; `shadow` は
+ノードごとのライブ並走比較です — これは paper フェーズでは構造的に
+存在せず、`shadow_samples: 0` として報告され、ロールにより免除されます
+（paper のロールは決して shadow 実行されないため）。
+
+`schema_dry_run` は、両経路とも本番のドライバを持たない唯一の段階で、
+理由は正反対です。paper の候補評価器はこれを実際に呼び、ロールの設立
+`output_schema` に返信が適合しない候補をドロップします — ただし返信の
+シームが注入されているときだけであり、`PaperArchiveRuntime` の唯一の
+本番構築（`ari/cli/paper_dispatch.py`）はそれを注入しないので、この検査
+は呼び出しを行わないまま「失敗なし」を返します; そのうえ `paper_writer`
+の設立スキーマは `freeform` なので、シームが配線されていても空でない
+返信はすべて通ります。探索経路は逆の半分です: パイプラインはランタイム
+の LLM クライアントを与えられて構築されるので返信元は存在しますが、
+`run_stage` を呼ぶものが無いため段階が実行されません。実ランではいずれに
+せよスキップされ、スキップはスキップとして記録されます — 決して合格
+としてではなく。
+
+「注入された LLM 呼び出し 1 回; 失敗は終了」を文字どおりに受け取った
+読者にとっての帰結は、採用前に候補の**返信**がそのロールの
+`output_schema` に照らして検査されることは無い、ということです。採用を
+実際にゲートするボードは prompt id またはハッシュをキーに保存済みの
+ケース結果を読むだけで、候補を起動しません; ライブの shadow 段階は候補を
+起動しますが、その出力が現職とバイト単位で一致したかだけを記録し、適合
+したかは記録しません。したがって返信がパースできないプロンプトは、採用
+後の実行時に、フェイルオープンな読み手によってようやく捕まります — スキーマ
+不正な攻撃はレコードになる前に捨てられ、読めない裁定はペナルティなしの
+`invalid` にフォールバックします — つまり採用されたアクターは警報を上げる
+のではなく静かに劣化します。上の `prompt_candidate_rejected` の抜粋は
+反例ではありません: このイベントを出すのは B8 injection smoke ハーネス
+だけで、しかも `static_validation` の失敗に `schema_dry_run` という段階
+ラベルを押しています。本物の返信元を供給することは、候補経路に予算付き
+で非決定論的な LLM 呼び出しを置くことを意味します; その決定は下されて
+いません。
+
 ### 8. ラン終了
 
 ラン終了時の `ensure_epoch` フラッシュ（ステップ 6）は、ノード数トリガが
@@ -566,7 +611,7 @@ tail -f {checkpoint}/rqgm_audit.jsonl | python3 -c \
 | audit | `epoch_transition` | コミットされた遷移。`inputs` にレポートハッシュを含む | `RegistryTransitionEngine` |
 | audit | `kernel_report` / `constitutional_violation` | warn-and-flag の検出 / 規則違反（`CK-*` コード） | `ConstitutionalKernel` アダプタ。`constitutional_violation` は B8 注入スモークハーネス（`ari/rqgm/evaluation/smoke.py`）のみが出力 |
 | audit | `selective_erasure` / `frontier_rebuild` | 退役後の論理消去 + 再構築 | `FrontierRepairEngine` |
-| audit | `prompt_candidate_rejected` | 候補がライフサイクル段階で失敗した | プロンプト進化パイプライン |
+| audit | `prompt_candidate_rejected` | 候補がライフサイクル段階で失敗した | B8 injection smoke ハーネス（`ari/rqgm/evaluation/smoke.py`）のみ; 実ランの境界でのドロップは代わりに `prompt_evolution` 行の `skipped` リストで告知される |
 | audit | `prompt_evolution_skipped` | 境界の候補生成が無効（`rqgm.prompt_evolution.enabled: false`） | `RQGMRuntime` の境界プロンプト進化 |
 | audit | `clean_room_violation` | 汚染されたクリーンルームバンドルがブロックされた | `CleanRoomCoordinator` |
 | audit | `meta_evolution` | 境界メタステップのサマリ: outcome `proposed`/`no_op`（またはスキップ/失敗理由）、件数、スキップされた invoker | `MetaEvolutionCoordinator`（スキップ/失敗行: `RQGMRuntime`） |

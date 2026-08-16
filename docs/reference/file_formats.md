@@ -450,12 +450,47 @@ Append-only log of stagnation-rule decisions.  One JSON record per
 line:
 
 ```json
-{"node_id": "...", "decision": "switch_to_idea", "rationale": "...", "ts": "..."}
-{"node_id": "...", "decision": "fanout",        "rationale": "...", "ts": "..."}
+{"ts": 1752143672.418, "ts_iso": "2026-07-10T10:34:32Z",
+ "trigger": "stagnation_rule", "executed": true,
+ "state": {"active_idea_index": 0, "budget_remaining": 2, "alternatives": []},
+ "decision": {"action": "switch_to_idea", "target_idea_index": 3,
+              "disable_generate_ideas": true, "rationale": "..."}}
 ```
 
 Decisions: `continue` / `switch_to_idea` / `fanout` / `terminate`.
-Source: `ari-core/ari/orchestrator/lineage_decision.py`.
+Source: `ari-core/ari/orchestrator/lineage_decision.py`. The `decision`
+value is an object — `LineageDecision.to_dict()`, i.e. `action`,
+`target_idea_index`, `disable_generate_ideas`, `rationale` — and
+`state` is the compact snapshot `_state_for_log` builds, with the long
+context blocks stripped.
+
+`disable_generate_ideas` is **recorded but inert**. On a
+`switch_to_idea` / `fanout` record, `ari-core/ari/cli/lineage.py`
+responds to a true value only by calling
+`os.environ.setdefault("ARI_DISABLED_TOOLS_FOR_CHILD", "")` — on the
+*parent's own* environment, and to the empty string. Nothing in
+`ari-core/`, `ari-skill-*/` or `scripts/` reads that variable back, and
+`disabled_tools` is populated from YAML alone, so the child inherits
+the variable through the launcher's `os.environ.copy()` and ignores
+it. On `continue` / `terminate` records the field is never consulted at
+all.
+
+The child therefore always runs `generate_ideas`. The launcher seeds
+the child's `idea.json` with the inherited entry marked `_pinned`, and
+`generate_ideas` keeps that entry at `ideas[0]`, drops newly generated
+ideas whose title matches it, and appends the rest after it. The pin
+holds; the suppression does not.
+
+So read a line carrying `"disable_generate_ideas": true` as what the
+judge *asked for* — run the chosen alternative verbatim — not as what
+the child did. The deterministic stagnation pivot hard-codes the field
+to `true`, so every pivot it produces carries it, and none of them mean
+a child's idea pool was frozen: the alternatives a later lineage
+decision inside that child chooses from are the child's own fresh
+samples, not the parent's pool. The comment at the call site states the
+intent ("child runs the inherited idea verbatim, no resampling"), so
+this is wiring that was never finished rather than a field reserved for
+future use.
 
 ## `prompt_trace.jsonl` / `prompt_versions.json`
 

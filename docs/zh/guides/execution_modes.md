@@ -305,6 +305,31 @@ BFTS 的 `max_total_nodes` —— 更深的树只是重新分配同一预算，�
 `budget_counters`（`anchor_scoring_calls`），它派生自 `rqgm_audit.jsonl` 中
 持久的 `budget_consumed` 行，因此重复调用绝不会重复计数。
 
+**已知缺口 —— 上限只覆盖两趟锚点评分中的一趟。**计入预算的只有当前生效
+审稿人的那一趟：它对每个 held-out 用例先把关、再消耗一个单位，`sample_size`
+与 `anchor_scoring_calls` 描述的正是这一趟。co-evolution 的候选评估器会为每个
+待定的 `paper_reviewer` 候选，对*同一份* held-out 用例列表再走*第二趟* ——
+它直接调用 `score_reviewer_on_anchor`（`ari/rqgm/paper_anchor.py`），而该函数
+不持有预算管理器，既不把关也不消耗。因此
+`rqgm.paper.anchor.sample_size` 界定的是每个论文纪元中当前生效审稿人的用例
+数，而不是该纪元的锚点评分次数：若读者把它当作 O(候选数 × `sample_size`)
+形状的成本模型，应当理解为它只界定了当前生效审稿人那一半 —— 因为有 C 个待定
+审稿人候选时，语料库还会被完整地、无上限地再走 C 遍。`anchor_scoring_calls`
+派生自 `budget_consumed` 行，因此正好少报了这一部分锚点工作量。这里关乎的是
+成本与可观测性，而非治理 —— 没有任何候选的判定因此改变，也没有任何把关因此
+放松。
+
+在出厂默认下，有两个彼此独立的条件让两趟都保持静默。
+`rqgm.paper.anchor.enabled: false` 时 `load_anchor_corpus` 不返回任何池，而
+候选分支正是以该池为守卫，所以根本不会执行。另外，生产路径中任何地方都没有
+接入 `reviewer_verdict_fn` —— `ari paper` 构建论文归档运行时时不传入它 ——
+因此即使提供了语料库，`anchor_verdict` 对每个用例都返回 `None`，两趟都会弃权
+而非评分。在该状态下当前生效的那一趟仍然消耗预算（原因同上：计入先于判定），
+而不受把关的候选那一趟既不消耗预算，也不做实际评分工作。少计只有在这个上限
+本来所针对的配置里才成为实际问题：一旦语料库就位且判定来源已接入，每个待定
+审稿人候选都会额外带来一次完整的语料库遍历，没有任何上限会拦下它，也没有
+任何计数器会记录它。
+
 ## 从 GUI 选择模式
 
 上文所述才是权威说明：模式是一项配置决策，按标准优先级从 `workflow.yaml` +

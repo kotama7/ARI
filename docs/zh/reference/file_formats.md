@@ -318,11 +318,20 @@ MCP 包装器将 `should_block`（仅在 strict 策略下的 `phase: final`，�
 停滞规则决策的仅追加日志。每行一条 JSON 记录：
 
 ```json
-{"node_id": "...", "decision": "switch_to_idea", "rationale": "...", "ts": "..."}
-{"node_id": "...", "decision": "fanout",        "rationale": "...", "ts": "..."}
+{"ts": 1752143672.418, "ts_iso": "2026-07-10T10:34:32Z",
+ "trigger": "stagnation_rule", "executed": true,
+ "state": {"active_idea_index": 0, "budget_remaining": 2, "alternatives": []},
+ "decision": {"action": "switch_to_idea", "target_idea_index": 3,
+              "disable_generate_ideas": true, "rationale": "..."}}
 ```
 
-决策类型：`continue` / `switch_to_idea` / `fanout` / `terminate`。来源：`ari-core/ari/orchestrator/lineage_decision.py`。
+决策类型：`continue` / `switch_to_idea` / `fanout` / `terminate`。来源：`ari-core/ari/orchestrator/lineage_decision.py`。`decision` 的值是一个对象，即 `LineageDecision.to_dict()` —— `action` / `target_idea_index` / `disable_generate_ideas` / `rationale`；`state` 是 `_state_for_log` 构建的紧凑快照，其中较长的上下文块已被剥离。
+
+`disable_generate_ideas` **只被记录，但不起作用**。在 `switch_to_idea` / `fanout` 记录上，`ari-core/ari/cli/lineage.py` 对该字段为真时所做的全部动作，只是调用 `os.environ.setdefault("ARI_DISABLED_TOOLS_FOR_CHILD", "")` —— 而且是设在*父运行自己的*环境上，值为空字符串。树中 `ari-core/`、`ari-skill-*/` 与 `scripts/` 都没有任何代码回读该变量，`disabled_tools` 仅从 YAML 填充，因此子运行通过启动器的 `os.environ.copy()` 继承了这个变量却将其忽略。在 `continue` / `terminate` 记录上，该字段甚至根本不会被读取。
+
+因此子运行始终会执行 `generate_ideas`。启动器在子运行的 `idea.json` 中写入标记为 `_pinned` 的继承条目，`generate_ideas` 将该条目保留在 `ideas[0]`，丢弃新生成的、标题与之相同的想法，并把其余的追加在其后。钉选生效了，抑制并没有。
+
+所以，带有 `"disable_generate_ideas": true` 的行记录的是评判者*要求*的事情 —— 原样运行所选的备选方案 —— 而不是子运行实际做了什么。确定性停滞转向（deterministic stagnation pivot）把该字段硬编码为 `true`，因此它产生的每一次转向都带着这个值，但它们都不意味着某个子运行的想法池被冻结：该子运行内后续 lineage decision 可选的备选方案，是子运行自己新采样的结果，而非父运行的池子。调用处的注释写明了本意（"child runs the inherited idea verbatim, no resampling"），所以这是一处未接完的接线，而不是为将来预留的字段。
 
 ## `prompt_trace.jsonl` / `prompt_versions.json`
 

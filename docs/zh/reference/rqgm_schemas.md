@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
-last_verified: 2026-07-28
+last_verified: 2026-08-16
 ---
 
 # RQGM Schema 参考
@@ -649,6 +649,27 @@ Task-10 路径：在新策略下重新组合每个节点保存的 `_axis_scores`
 记入外层 `SelectiveErasureEvent.policy_rescored_node_ids`；缺少原始轴的
 节点以 fail-closed 方式无效化。
 
+**没有组件目标 —— 这是设计如此，以及它在下游的代价。** 该记录指名的是被惩罚的
+*节点*（`node_id`）与计算该惩罚的组件（`component_id`，记录类的默认值为
+`utility_policy_v1`）。它不携带 `target_component_id`：惩罚落在节点上，而不是落在
+被指控的组件上，`UtilityRecord.to_dict` 既不发出该字段也不发出
+`subject_component_id`。也没有任何写入端补上它 —— 审计日志中的孪生体就是 JSONL
+真相所收到的同一份 `to_dict()` 载荷（`AdversarialRound._log_all`）。
+
+之所以要明说，是因为治理一侧读起来就像该字段存在一样。`utility_record` 既列在
+Evidence Clerk 的 admissible-kind 映射里，也列在 `candidate_refs_for_target`
+所受理的记录类型中（`ari/rqgm/governance/_evidence.py`）—— 但那个选择器只保留
+`target_component_id` / `subject_component_id` 等于被诉目标组件 id 的记录。二者
+皆无的效用记录因此匹配不上任何目标：它会被扫描进该纪元的记录集合，然后永远不被
+选中。于是惩罚通道对任何证据 bundle 都零贡献，把它当作证据来源来引用是错的 ——
+真正抵达弹劾的问责来自导致该惩罚的 `validated_attack` 记录（如上，它们自带绑定），
+而不是惩罚本身。Knowledge/Capability/Assurance 记录在构造时就刻上
+`target_component_id`（`ari/rqgm/runtime.py`），所以它们能匹配。
+
+`frozen_policy` 的按值设计让这个形状保持可加：若将来某个消费方需要，完全可以照
+`validated_attack` 的做法添加目标（可选字段、仅在非空时发出、旧记录无需迁移）。
+今天没有任何消费方需要。
+
 ### `rqgm_replay_pool.schema.json`
 
 **用途：**AdversarialReplayPool 的派生字节固定快照
@@ -927,6 +948,33 @@ pin 了评估条件时才出现的 `evaluation_condition_id`。持久化的模�
 再次调用时胜出 —— resume 绝不静默翻转 paper 模式。写入方：
 `ari.checkpoint.save_paper_archive_state_json`。
 
+**`budget_counters` 块，以及不在其中的三个键。** 该文件不只是那条一次写入的
+起始记录。`_persist_budget_counters`（`ari/rqgm/paper_runtime.py`）会在每个归档
+回合之后 —— 以及在赢家的惰性编译之后再来一次 —— 重新读取它，并替换其上的
+`budget_counters` 键：`paper_epoch_id`、`draft_expansions`、`adversary_calls`、
+`anchor_scoring_calls`、`prompt_candidates`（按受治角色 `paper_writer` /
+`paper_reviewer` 分列）与 `compiles`。其中被计量的三项（`adversary_calls`、
+`anchor_scoring_calls`、`prompt_candidates`）**派生自**当前 paper 纪元在
+`rqgm_audit.jsonl` 里的 `budget_consumed` 行 —— 审计日志仍是真相来源，遵循与
+`GovernanceBudgetManager` 自身 restore 相同的"从记录派生"纪律，因此 `ari paper`
+再次调用绝不会重复计数。另外两项是进程内计数器（`draft_expansions` 是上一回合的
+归档母体规模，`compiles` 是运行时的惰性编译次数），所以 resume 后的进程会把这两项
+从零重新计起。整个写入是尽力而为的，失败只记日志而不 raise：因此块缺失意味着镜像
+没有落盘，而不是意味着什么都没消耗。
+
+成本读者可能期待的三个键被刻意省去，原因分两类。`governance_cost_usd` 与
+`governance_tokens` 是被省略而不是被刻成零：`GovernanceBudgetManager.consume` 在
+调用方传入时会累加二者，但 paper 阶段的两个 `consume` 调用点都没有传入成本或
+token 数，所以在这里写下 0 等于把"从未测量的零消耗"当作测量值来宣告。
+`draft_levels` 缺席的理由不同 —— 归档路径直接构造 `AdversarialRound`，而治理的等级
+阶梯（`level_with_triggers` / `record_level`）只在 `RQGMRuntime.run_adversarial_round`
+内部运行，因此根本不存在可供镜像的逐草稿等级分配。（paper 阶段唯一会做的那次等级
+分配属于探索节点而非草稿：paper-candidate 升级会跑完整回合，其分配落在
+`rqgm_audit.jsonl` 的 `governance_level` 行上，而不是这里。）所以请把
+`budget_counters` 读作每纪元的调用次数统计，而绝非成本核算，并且不要编写依赖
+`governance_cost_usd`、`governance_tokens` 或 `draft_levels` 的代码 —— 没有任何
+writer 会发出它们。
+
 ### `paper_draft_archive.jsonl` —— 打分的草稿母体
 
 追加式、字节固定、尽力而为（记录写入失败绝不破坏 paper 阶段；缺失
@@ -1055,7 +1103,7 @@ inert；随发布的 `rqgm_attack_records.schema.json` 的 `adversary_type` /
 | `rqgm_meta_outputs.jsonl` | 追加式真相 | `rqgm_meta`（`meta_agent_output_record`） | `ari/rqgm/meta_evolution.py` |
 | `rqgm_governance_cache.jsonl` | 追加式缓存 | `rqgm_governance_cache` | `ari/rqgm/governance_cache.py` |
 | `rqgm_eval_metrics.json` / `rqgm_injection_provenance.json` | 评估工具链工件（仅工具链启动的运行） | 无 —— 形状由 `ari/rqgm/evaluation/{metrics,injection}.py` 拥有 | 评估工具链 |
-| `paper_archive_state.json` | paper 阶段模式溯源快照（一次写入） | 无 —— 形状由 `ari/rqgm/paper_runtime.py` 拥有 | `ari.checkpoint.save_paper_archive_state_json` |
+| `paper_archive_state.json` | paper 阶段模式溯源快照（一次写入，但每回合替换的 `budget_counters` 镜像除外） | 无 —— 形状由 `ari/rqgm/paper_runtime.py` 拥有 | `ari.checkpoint.save_paper_archive_state_json` |
 | `paper_draft_archive.jsonl` | 追加式草稿母体（尽力而为） | 无 —— 形状由 `ari/rqgm/paper_archive.py` 拥有 | `ari/rqgm/paper_draft_executor.py` |
 | `paper_anchor_corpus.jsonl` | 只读锚语料库（一次写入） | 无 —— 形状由 `ari/rqgm/paper_anchor.py` 拥有 | curation / bootstrap 工具 |
 | `rqgm/paper_self_preference_stat.json` | 派生的每纪元统计（尽力而为） | 无 —— 形状由 `ari/rqgm/paper_self_preference.py` 拥有 | `ari/rqgm/paper_self_preference.py` |

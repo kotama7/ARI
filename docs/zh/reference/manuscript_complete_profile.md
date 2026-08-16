@@ -14,15 +14,19 @@ sources:
     role: implementation
   - path: ari-core/ari/manuscript/runtime.py
     role: implementation
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
   - path: ari-core/ari/manuscript/contracts.py
     role: schema
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
   - path: ari-core/ari/config/__init__.py
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
   - path: docs/adr/manuscript_complete/MC-ADR-007-runner-up.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # `generic_empirical_v1` profile
@@ -59,6 +63,61 @@ last_verified: 2026-08-09
 已记录的测量、configuration、metric 词汇、contribution 结构与 node 标签，
 不会从 reviewer 的散文中推断。将来更改 profile 需要新的 profile ID/version，
 因此也需要新的 attempt identity。
+
+## Profile 的解析
+
+`generic_empirical_v1` 不只是默认的 profile，它是目前唯一能被解析出来的 profile。
+`manuscript.profile`（`ari-core/ari/config/__init__.py:687`）在 pipeline 边界上
+以 `ARI_MANUSCRIPT_PROFILE`（`ari-core/ari/cli/paper_dispatch.py:97`）导出，被
+读回到 compile 调用（`ari-core/ari/manuscript/runtime.py:90`），并在构建任何
+snapshot 之前交给 `resolve_profile`（`ari-core/ari/manuscript/coordinator.py:152`）。
+对 `generic_empirical_v1`，`resolve_profile` 返回内置的 root
+（`ari-core/ari/manuscript/profiles.py:333`）；其他任何 ID 都会到
+`ari-core/ari/manuscript/venue_profiles/` 下的 venue profile 声明中去查找。该目录
+只放着自己的 README，因此其余任何取值都会在 snapshot、context 与 readiness
+report 都尚不存在时抛出 `unknown manuscript profile`
+（`ari-core/ari/manuscript/profiles.py:345`）。在 `manuscript.mode: off` 下这个 ID
+根本不会被解析——dispatcher 不导出该变量就 yield，`compile_manuscript` 返回
+`disabled`——因此一个拼错的或出于期望而写下的 profile ID，会一直惰性地待到第一次
+`audit` 或 `enforce` 的 run。
+
+这套 lookup 背后的 composition 机制是完整的。一份 `ManuscriptVenueProfileV1`
+声明会以它被写就时所针对的那个确切 `profile_digest` 指名每个 parent，只陈述自身
+的 requirement 覆盖、新增与 `removed_requirement_ids`，并在读取时解析成一个普通
+的 `ManuscriptRequirementProfileV1`——其 `profile_digest` 就是解析后的 digest；
+version 或 digest 已经移动的 parent 是错误而非警告，而已存盘的声明必须 pin 住其
+composition 所能复现的 `resolved_profile_digest`。缺的只是：没有任何一份实例随
+代码一起发布。这是范围的划线而不是疏漏——venue 的词汇属于需要它的那个
+deployment，而 `ari-core/ari/manuscript/venue_profiles/` 下的模块 README 载有编写
+步骤。对读者而言，其后果范围很窄却很锋利：在 `manuscript.profile` 里写下一个
+venue 并不是一步配置。在该目录里出现对应 ID 的声明文件之前，它会让这次 run 失败。
+
+## 随机性与 uncertainty evidence
+
+MC-RS-002 被判定所依据的，正是决定它是否适用的那同一个派生值。
+`build_manuscript_context` 计算出单个 `uncertainty_evidence` 布尔值
+（`ari-core/ari/manuscript/builder.py:392`）：当已记录的 measurement record 多于
+已记录的 configuration 且不少于两条时，或者当 evidence record 上任一 metric
+key——抑或 measurement record 上任一 key——含有 `std`、`variance`、`confidence`、
+`stderr`、`error_bar` 时，为 true。正是这个布尔值使 claim 成为 stochastic
+（`:407`），同时它也是被存为 `reproducibility.uncertainty_evidence` 的那个值
+（`:461`），而评估器判定 satisfaction 时读的恰恰就是它
+（`ari-core/ari/manuscript/readiness.py:100`）；applicability 读的则是
+`claim_characteristics.stochastic_claim`
+（`ari-core/ari/manuscript/readiness.py:20`）。
+
+profile 没有规定任何最小值。检查的是有无，而不是重复次数、离散度阈值或 seed 的
+条数，因此该 requirement 中自动检测的那一半无法打开缺口。在没有任何声明时，
+MC-RS-002 只在 `uncertainty_evidence` 本就为 true 的 run 里才适用，而它随即就被
+同一个 flag 满足；这样的 run——每个 configuration 只有一条 measurement、且没有
+离散度 key——此时会被记为 `not_applicable` 而绝不会是 `missing`。
+因此这条 requirement 只有在
+claim 被*声明*为 stochastic 时才咬合——通过 `claim_characteristics` 的
+`stochastic_claim`，或 idea record、research contract、带类型的 claim record 上的
+`stochastic` / `aggregate` claim type（`ari-core/ari/manuscript/builder.py:166`，
+调用点在 `:378`）——并且已记录的证据并不支撑它。一旦咬合，如上表所示，它同时阻断
+authoring 与 publication。把 `not_applicable` 的 MC-RS-002 读作“没有人声明
+stochastic claim，也没有记录任何离散度”，绝不要读作“重复性已被检查并判定为充分”。
 
 ## Evidence lane 的分配
 

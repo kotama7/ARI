@@ -391,12 +391,47 @@ finalize がスキップされます。ソース:
 停滞ルールの決定を記録する追記専用ログ。1 行に 1 つの JSON レコード:
 
 ```json
-{"node_id": "...", "decision": "switch_to_idea", "rationale": "...", "ts": "..."}
-{"node_id": "...", "decision": "fanout",        "rationale": "...", "ts": "..."}
+{"ts": 1752143672.418, "ts_iso": "2026-07-10T10:34:32Z",
+ "trigger": "stagnation_rule", "executed": true,
+ "state": {"active_idea_index": 0, "budget_remaining": 2, "alternatives": []},
+ "decision": {"action": "switch_to_idea", "target_idea_index": 3,
+              "disable_generate_ideas": true, "rationale": "..."}}
 ```
 
 決定値: `continue` / `switch_to_idea` / `fanout` / `terminate`。
-ソース: `ari-core/ari/orchestrator/lineage_decision.py`。
+ソース: `ari-core/ari/orchestrator/lineage_decision.py`。`decision` の値は
+オブジェクトで、`LineageDecision.to_dict()` — すなわち `action` /
+`target_idea_index` / `disable_generate_ideas` / `rationale` — です。
+`state` は `_state_for_log` が組み立てる圧縮スナップショットで、長い
+コンテキストブロックは除去されています。
+
+`disable_generate_ideas` は**記録されるだけで不活性**です。
+`switch_to_idea` / `fanout` のレコードにおいて、true 値に対して
+`ari-core/ari/cli/lineage.py` が行うのは
+`os.environ.setdefault("ARI_DISABLED_TOOLS_FOR_CHILD", "")` の呼び出し
+だけ — しかも*親自身の*環境に対して、空文字を — です。
+`ari-core/`・`ari-skill-*/`・`scripts/` のどこもこの変数を読み返さず、
+`disabled_tools` は YAML からのみ設定されるため、子はランチャの
+`os.environ.copy()` 経由でこの変数を受け継いだうえで無視します。
+`continue` / `terminate` のレコードでは、このフィールドはそもそも
+参照すらされません。
+
+したがって子は常に `generate_ideas` を実行します。ランチャは子の
+`idea.json` に継承されたエントリを `_pinned` 付きで書き込み、
+`generate_ideas` はそのエントリを `ideas[0]` に保ったまま、新規生成
+アイデアのうちタイトルが一致するものを落とし、残りをその後ろに追記
+します。ピン留めは効いていますが、抑止は効いていません。
+
+つまり `"disable_generate_ideas": true` の行は、judge が*要求した*こと
+— 選ばれた代替案をそのまま実行せよ — の記録であって、子が実際に
+行ったことの記録ではありません。決定論的な停滞ピボットはこの
+フィールドを `true` にハードコードしているため、そこから生じる
+ピボットは必ずこの値を持ちますが、そのいずれも子のアイデアプールが
+凍結されたことを意味しません: その子の中で後続の lineage decision が
+選ぶ代替案は、親のプールではなく子自身が新たにサンプリングしたもの
+です。呼び出し箇所のコメントは意図（"child runs the inherited idea
+verbatim, no resampling"）を述べているので、これは将来のために予約
+されたフィールドではなく、配線が未完のまま残っているものです。
 
 ## `prompt_trace.jsonl` / `prompt_versions.json`
 

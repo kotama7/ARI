@@ -555,6 +555,29 @@ input artifact set additionally contains `manuscript-profile`,
 mean Manuscript Complete publication is permitted; `PublicationLockV1` is the
 final interlock.
 
+The integration stayed inside that contract rather than producing a second one:
+there is no `PaperBuildV2`. The five manuscript inputs were added to the
+`PaperArtifactRole` vocabulary in `ari-core/ari/paper_contract.py` and are bound
+as ordinary input artifacts by the authoring skill. They are not part of the
+build's `required_inputs`, which still names only `science-data`,
+`figure-batch`, `retrieval-records`, and `ear-manifest`; their presence and
+identity are enforced by the enforce-only bound-input clause of the `freshness`
+gate rather than by the build schema. That is why a legacy build carrying none
+of the five still validates unchanged.
+
+One member of that vocabulary is reserved and unused. `publication-decision` is
+declared alongside the five and reaches the generated `paper_build_v1` and
+`paper_model_call_batch_v1` role enums, but nothing constructs an artifact with
+that role in any mode: the decision is written to the attempt directory as
+`publication_decision.json`, outside the build's artifact sets entirely. So the
+role list overstates what a build can carry. A reader who takes it as an
+inventory will look for the decision among `input_artifacts` or
+`final_artifacts` and find neither, and a consumer that walks a finalized
+build's artifacts to discover whether publication was permitted will conclude
+nothing at all rather than fail loudly. The binding runs the other way —
+`PublicationDecisionV1.paper_build_digest` names the build, and `PaperBuildV1`
+has no field naming the decision, so the traversal only works decision-first.
+
 Stable read types and fixed compiler helpers are exported from
 `ari.public.manuscript`; mutable coordinator internals are not public API.
 

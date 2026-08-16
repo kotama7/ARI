@@ -586,6 +586,43 @@ Judge に `{"margin": 0.0}` と読めるファイルを「その攻撃自身の�
   格下げします（その in-phase 格下げは先送り）。実際に発火するのは、
   本物の validated-attack レコードを通じた reviewer のアカウンタビリティ /
   共進化チャネルです。
+* **退役した paper プロンプトは、それがスコアしたドラフトを stale に
+  しません。** 選択的消去（不変条件 6）が配線されているのは探索木だけです。
+  `FrontierRepairEngine` を駆動するのは 1 箇所 — `RQGMRuntime` の
+  エポック境界フック — だけで、そのフックは呼び出し側がライブの search state
+  （`frontier` / `pending` / `all_nodes`）を渡さない限り即座に return します;
+  渡すのは BFTS のランループであり、アーカイブのラウンド先頭は
+  `ensure_epoch` をそれ無しで呼びます。残りの配線も同じ方向に欠けています:
+  `INVALIDATE_ROLES`、`RECOMPUTE_ROLES`、`_ROLE_STALE_REASONS`
+  （`ari/rqgm/frontier_repair.py`）は探索ロールしか名指ししません;
+  ロール `paper_writer` を持つレコードはどこにも書かれず、このフェーズが出す
+  唯一のロール付き監査レコードは reviewer の `review_record` です; そして
+  トレースが走るレコード集合を組み立てる `load_rqgm_records` は、proposal・
+  adversarial-case・audit の各ログを読みますが
+  `paper_draft_archive.jsonl` は決して読みません。したがってラウンド境界で
+  paper プロンプトを退役させても、アーカイブされたどのドラフトも `_stale` に
+  マークされず、フロンティアから落とされず、後継の下で再スコアされません。
+
+  これでランキングが壊れないのは、アーカイブがすでにエポックローカルだから
+  です: 各ラウンドは新しい `PaperArchiveStrategy` を組み立て、自分のエポックの
+  ドラフトだけを復元するので、退役したプロンプトがスコアしたドラフトが後の
+  ラウンドの選択で競うことはありません — そして
+  `PaperArchiveStrategy.should_prune` は `_valid_for_frontier` センチネルを
+  実際に読むので、誰かが書きさえすれば読み手側は機能します。欠けているのは
+  明示的なマークと、戻り道です。各ドラフトレコードは、それがスコアされた
+  ときの `reviewer_prompt_hash` と `epoch_id` を持っているので、退役は
+  アーカイブを `rqgm_audit.jsonl` の `retirement_event` 行に join すれば
+  *復元可能*です（遷移ログ側の `prompt_status_change` イベントが持つのは
+  ハッシュではなく `prompt_id` です） — ただし
+  レコード自身は何も告げないので、その join をせずにラウンドを跨いで
+  `paper_draft_archive.jsonl` を読む者は、すでに退役した reviewer がスコアした
+  ドラフトを現行のものとして読みます。もう一方の向き — 過去のドラフトを、
+  着任した reviewer の下で再スコアして後のランキングへ正当に再参入させること —
+  はそもそも存在しません。どちらの配線も 1 行のロール追加では済みません
+  （`_ROLE_STALE_REASONS` に対応するエントリが無いまま
+  `INVALIDATE_ROLES` にロールを置くと closure の内側で例外になり、境界は
+  その失敗を警告として飲み込むので、修復パス全体が黙って何もしません）。
+  そしてこの判断はまだ下されていません。
 
 ---
 
@@ -809,6 +846,50 @@ carry-over へ縮退し、resume の拒否には決してなりません）。�
 4 つの `paper_*` ファイルは実効 `rqgm_archive` paper モードの下でのみ
 存在します — その不在は、`rqgm_state.json` の不在と同様に、linear な論文
 ランを表します。
+
+**「チェックポイントスコープ」は文字通りの意味であり、lineage を跨いでも
+そうです。** `RqgmStateStore` はすべての呼び出しで `checkpoint_dir` を
+受け取り（`replay`、`append_events`、`save_snapshots`、`begin_transaction`、
+`apply_transition`）、`ari/rqgm/` 配下のどこも `parent_run_id` や
+`ARI_PARENT_RUN_ID` を読みません。ポインタ自体は存在していて、単に参照されて
+いないだけです: lineage の子は環境に `ARI_PARENT_RUN_ID` を持ち、`meta.json`
+には `parent_run_id`、`recursion_depth`、`inherit_idea_index` が記録されて
+います。したがって統治された親から起動されたサブ実験は、その親の統治を
+何も継承しません — `bootstrap_foundation` を通じて
+`FOUNDING_COMPONENT_TABLE` から bootstrap し、その `constitution.yaml` は
+自分自身のラン開始が書いた copy-once のファイルです。`meta.json` に届く唯一の
+RQGM フィールドは `constitution_hash` で、子自身のラン開始が追加的に記録し
+（`record_constitution_hash`）、それが指すのは凍結されたコードテーブル —
+同一リビジョンのすべてのランが共有する定数であって、進化した状態では
+ありません。エポックも、レジストリバージョンも、信頼性スコアも、進化済み
+プロンプトも、親から子へは渡りません; そのための `meta.json` 経由チャネルは
+構想されましたが実装されませんでした。
+
+この単一チェックポイントスコープは、作りかけの機能ではなく意図的な境界で
+あり、かつクロスラン用のチャネルも設計されていないので、これを変える予定は
+何も控えていません。結果は正しさではなく比較可能性の話です。というのも
+id はすべてチェックポイントごとに採番されるからです: `epoch_000` はどのランでも
+0 から数え直され、後継のバージョンは*この*チェックポイントのレジストリと
+候補ログにおけるそのロールの最大値 `+ 1` です
+（`CleanRoomCoordinator._next_version`）。したがって親の
+`reviewer_prompt_v3` と子の `reviewer_prompt_v3` は名前を共有するだけの
+無関係な成果物であり、`epoch_002` は 2 つの異なる制度を指します。親とその
+lineage の子は、研究の筋を共有するだけの独立した統治史として読んでください;
+それらのエポック・id・信頼性スコアをプールするダッシュボードや解析は、
+同じラベルを再利用した別々の憲法を比較しています。
+
+**相互排除はプロセス内限定です。** すべての append は —
+`rqgm_transitions.jsonl` も `rqgm_audit.jsonl` も同様に —
+`ari/rqgm/store.py` のモジュールレベルの `threading.Lock` 1 つを通り、
+そこで各チェーンの末尾が読まれて延長されます; ストアのどこにもファイル
+ロックはありません。これはロックが文書化している目的（単一書き手のループと
+best-effort 呼び出し側との直列化）と一致していて、クラッシュ復旧フィルタも
+kill されたプロセスが残した破損したトランザクションを resume 時に破棄します。
+カバーされていないのは、同じチェックポイントへ 2 つの生きた OS プロセスが
+append する場合です: 双方が同じチェーン末尾を読んで延長し、重複した
+シーケンス番号を生んで、resume が再検証するハッシュ連鎖を壊します。
+「1 チェックポイントにつき書き込みプロセスは 1 つ」はここでの前提であって、
+ストアが強制しているものではありません。
 
 正確なオンディスク形式:
 [ファイルフォーマットリファレンス](../reference/file_formats.md);

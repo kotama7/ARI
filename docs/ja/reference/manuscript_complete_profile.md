@@ -14,15 +14,19 @@ sources:
     role: implementation
   - path: ari-core/ari/manuscript/runtime.py
     role: implementation
+  - path: ari-core/ari/manuscript/coordinator.py
+    role: implementation
   - path: ari-core/ari/manuscript/contracts.py
     role: schema
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
   - path: ari-core/ari/config/__init__.py
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
   - path: docs/adr/manuscript_complete/MC-ADR-007-runner-up.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # `generic_empirical_v1` profile
@@ -61,6 +65,72 @@ context 特性から導出され、書き手が requirement を適用対象か�
 から得られます。reviewer の散文から推論されることはありません。将来 profile を
 変更するには新しい profile ID / version が必要であり、したがって新しい attempt
 identity が必要になります。
+
+## Profile の解決
+
+`generic_empirical_v1` は単なる既定の profile ではありません。現時点で解決できる
+唯一の profile です。`manuscript.profile`
+（`ari-core/ari/config/__init__.py:687`）は pipeline の境界で
+`ARI_MANUSCRIPT_PROFILE`（`ari-core/ari/cli/paper_dispatch.py:97`）として
+export され、compile の呼び出しへ読み戻され
+（`ari-core/ari/manuscript/runtime.py:90`）、snapshot が構築されるより前に
+`resolve_profile` へ渡されます（`ari-core/ari/manuscript/coordinator.py:152`）。
+`resolve_profile` は `generic_empirical_v1` に対しては組み込みの root を返し
+（`ari-core/ari/manuscript/profiles.py:333`）、それ以外の ID は
+`ari-core/ari/manuscript/venue_profiles/` 配下の venue profile 宣言から引かれます。
+このディレクトリには README しか置かれていないため、それ以外のあらゆる値は
+snapshot も context も readiness report も存在しないうちに
+`unknown manuscript profile`（`ari-core/ari/manuscript/profiles.py:345`）を
+送出します。`manuscript.mode: off` では ID がそもそも解決されません ——
+dispatcher は変数を export せずに yield し、`compile_manuscript` は `disabled`
+を返します —— したがって打ち間違いや願望で書かれた profile ID は、最初の
+`audit` または `enforce` の run まで不活性なまま残ります。
+
+この lookup の背後にある composition の機構は完成しています。
+`ManuscriptVenueProfileV1` の宣言は、各 parent を、それに対して書かれた
+`profile_digest` そのもので名指し、自身の requirement の上書き・追加・
+`removed_requirement_ids` だけを述べ、読み込み時に、`profile_digest` が解決後の
+digest である通常の `ManuscriptRequirementProfileV1` へ解決されます。version や
+digest が動いた parent は警告ではなくエラーであり、保存された宣言は自身の
+composition が再現する `resolved_profile_digest` を pin しなければなりません。
+欠けているのは、その実体が 1 つも出荷されていないことです。これは見落としでは
+なく scope の線引きです —— venue の語彙は、それを必要とする deployment のもの
+であり、`ari-core/ari/manuscript/venue_profiles/` の module README が作成手順を
+持っています。読み手にとっての帰結は狭く、しかし鋭いものです: `manuscript.profile`
+に venue を書くことは設定作業ではありません。その ID の宣言ファイルが当該
+ディレクトリに存在するまで、run は失敗します。
+
+## 確率性と uncertainty evidence
+
+MC-RS-002 は、そもそも適用されるかどうかを決めるのと同じ導出値に対して判定され
+ます。`build_manuscript_context` は `uncertainty_evidence` という 1 つの boolean
+を計算します（`ari-core/ari/manuscript/builder.py:392`）: 記録された measurement
+record が記録された configuration より多く、かつ 2 つ以上あるとき、または
+evidence record のいずれかの metric key —— あるいは measurement record のいずれ
+かの key —— が `std`、`variance`、`confidence`、`stderr`、`error_bar` を含むとき
+に true です。この boolean が claim を stochastic にし（`:407`）、同時に
+`reproducibility.uncertainty_evidence` として格納される値でもあり（`:461`）、
+評価器が satisfaction を決めるために読むのはまさにそれです
+（`ari-core/ari/manuscript/readiness.py:100`）。一方 applicability が読むのは
+`claim_characteristics.stochastic_claim` です
+（`ari-core/ari/manuscript/readiness.py:20`）。
+
+profile は最小値を定めていません。検査は存在の有無であって、繰り返し回数でも、
+ばらつきの閾値でも、seed の本数でもありません。したがって、この requirement の
+うち自動検出される側は gap を開くことができません。何も宣言されていない場合、
+MC-RS-002 が適用されるのは `uncertainty_evidence` が既に true である run だけで
+あり、そのときはその同じ flag によって満たされます。そうした run ——
+configuration あたり measurement が 1 つで、ばらつきを表す key が無い run ——
+はこのとき `missing` ではなく `not_applicable` として記録されます。
+したがってこの requirement が効くのは、
+claim が *宣言によって* stochastic であるとき —— `claim_characteristics` の
+`stochastic_claim`、あるいは idea record、research contract、型付き claim record
+に付いた `stochastic` / `aggregate` の claim type を通じて
+（`ari-core/ari/manuscript/builder.py:166`、呼び出しは `:378`）—— かつ記録された
+証拠がそれを裏づけていないときだけです。効くときには、上の表のとおり authoring
+と publication の双方をブロックします。`not_applicable` の MC-RS-002 は、
+「stochastic な claim を誰も宣言せず、ばらつきも記録されなかった」と読むべきで
+あり、「繰り返しが検査され十分だと判定された」と読んではいけません。
 
 ## Evidence lane の割り当て
 

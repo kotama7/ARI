@@ -477,6 +477,23 @@ digest 寻址。governance 与 adversarial 的发现根本不是可采性的输�
 `section-briefs` 与 `manuscript-authoring-binding`。仅有 `PaperBuildV1.status=finalized`
 并不意味着 Manuscript Complete 的发布被允许；`PublicationLockV1` 才是最终联锁。
 
+这次整合留在了该契约内部，而不是产出第二个契约：不存在 `PaperBuildV2`。五个 manuscript
+输入被加进 `ari-core/ari/paper_contract.py` 的 `PaperArtifactRole` 词表，并由 authoring
+skill 作为普通的 input artifact 绑定进来。它们不属于 build 的 `required_inputs`，后者仍
+只列出 `science-data`、`figure-batch`、`retrieval-records` 与 `ear-manifest`；强制其存在
+与同一性的是 `freshness` gate 中仅在 enforce 下生效的 bound-input 条款，而不是 build
+schema。这正是一个五者皆无的历史遗留 build 至今仍能原样通过校验的原因。
+
+该词表中有一个成员是预留且未被使用的。`publication-decision` 与那五个并列声明，并出现在
+生成的 `paper_build_v1` 与 `paper_model_call_batch_v1` 的 role 枚举中，但在任何 mode 下都
+没有代码构造带该 role 的 artifact：decision 被写入 attempt 目录，名为
+`publication_decision.json`，完全位于 build 的 artifact 集合之外。因此这份 role 清单把
+build 能承载的东西说多了。把它当作清单来读的读者会到 `input_artifacts` 或
+`final_artifacts` 里找 decision，两处都找不到；而遍历某个 finalized build 的 artifact 来
+判断发布是否被允许的 consumer，不会明确失败，只会一无所获。绑定方向是反的——
+`PublicationDecisionV1.paper_build_digest` 指名 build，而 `PaperBuildV1` 没有任何指名
+decision 的字段，所以这条遍历只有从 decision 出发才成立。
+
 稳定的 read type 与固定的编译器 helper 从 `ari.public.manuscript` 导出；可变的 coordinator
 内部不是 public API。
 
