@@ -158,6 +158,53 @@ def check(args) -> int:
     return 1 if findings else 0
 
 
+def paths(args) -> int:
+    """Every repo-relative path a manifest's derived pins depend on.
+
+    DERIVED, not typed. A hook that carried its own list of instrument files
+    would drift from the digests exactly the way the manifests did -- and it
+    would drift silently, because a path missing from the list simply stops
+    triggering. The digest functions are the authority on what they cover, so
+    they are asked.
+
+    ``kernels/**`` reaches this through the glob perf_driver_digest walks, so a
+    new kernel source is covered without anyone remembering.
+    """
+    from ari.assurance.drivers.native import native_driver_digest
+    from ari.assurance.drivers.perf import perf_driver_digest
+    from ari.assurance.drivers.problem_correctness import (
+        problem_correctness_driver_digest)
+
+    covered: set[Path] = set()
+    for digest in (native_driver_digest, perf_driver_digest,
+                   problem_correctness_driver_digest):
+        # The functions do not expose their file list, so it is recovered the
+        # only way that cannot go stale: ask what they read, by watching them.
+        covered |= _files_read_by(digest)
+    covered |= set(BUILTIN.glob("*.yaml"))
+    covered |= set((ARI_CORE / "ari" / "schemas").glob("native_*report*.json"))
+    for path in sorted(covered):
+        print(path.relative_to(REPO_ROOT))
+    return 0
+
+
+def _files_read_by(digest_fn) -> set[Path]:
+    """Which files a digest function opened, observed rather than declared."""
+    opened: set[Path] = set()
+    real = Path.read_bytes
+
+    def watched(self, *a, **k):
+        opened.add(self.resolve())
+        return real(self, *a, **k)
+
+    Path.read_bytes = watched
+    try:
+        digest_fn()
+    finally:
+        Path.read_bytes = real
+    return {p for p in opened if p.is_relative_to(REPO_ROOT)}
+
+
 def promote(args) -> int:
     """Re-pin, register and sign every named harness.
 
@@ -325,6 +372,9 @@ def _write_promotion(manifest_name, manifest, driver, report, args,
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="mode", required=True)
+
+    lister = sub.add_parser("paths", help="repo-relative paths the derived pins depend on")
+    lister.set_defaults(func=paths)
 
     checker = sub.add_parser("check", help="report stale derived pins; writes nothing")
     checker.add_argument("--json", action="store_true")

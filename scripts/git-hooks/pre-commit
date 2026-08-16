@@ -42,4 +42,56 @@ if git -C "$root" grep -lI -e '— TODO' -- '*README.md' >/dev/null 2>&1; then
   echo "readme_sync: NOTE — some READMEs still have '— TODO' descriptions to fill in by hand." >&2
 fi
 
+
+# --- Harness pin drift -----------------------------------------------------
+#
+# A manifest pins the driver's content digest and the digest of the result
+# schema ARI ships for that driver's report type. Both are computable, neither
+# was computed by anything that wrote a manifest, so an edit to instrument code
+# silently invalidated the pin and prepare() then refused the harness as
+# "driver bytes drifted": registered, signed, and unable to run. That has
+# happened three times in distinct episodes.
+#
+# Nothing occupied the pre-commit slot for it. The tests catch it, and CI runs
+# them, but only after the commit exists -- and on a branch that is never
+# pushed, never at all.
+#
+# BLOCKING, and only when the commit touches something a pin depends on. The
+# trigger set is asked of the digest functions rather than listed here: a
+# hand-list would drift from the digests the same way the manifests did, and it
+# would drift silently, because a path missing from it just stops firing.
+#
+# It reads the WORKING TREE, not the index. A commit that stages a subset of
+# its edits can therefore be judged on files it is not committing; the check
+# says what it compared so that is visible rather than assumed.
+if [ -z "${ARI_SKIP_PIN_CHECK:-}" ]; then
+  repin="$root/scripts/rqgm_assurance/repin_and_promote_harness.py"
+  python="${ARI_PYTHON:-$root/.venv/bin/python}"
+  if [ -x "$python" ] && [ -f "$repin" ]; then
+    staged_paths=$(git -C "$root" diff --cached --name-only)
+    if [ -n "$staged_paths" ]; then
+      watched=$("$python" "$repin" paths 2>/dev/null)
+      if [ -n "$watched" ] \
+         && printf '%s\n' "$staged_paths" | grep -qxF -f <(printf '%s\n' "$watched"); then
+        if ! out=$("$python" "$repin" check 2>&1); then
+          echo "" >&2
+          echo "pin check: this commit touches code a Harness manifest pins, and a pin is stale:" >&2
+          printf '%s\n' "$out" | sed 's/^/  /' >&2
+          echo "" >&2
+          echo "  A stale pin does not fail loudly. prepare() refuses the harness at run time" >&2
+          echo "  with \"driver bytes drifted\", so it stays registered and signed and cannot run." >&2
+          echo "" >&2
+          echo "  Re-pin and re-register:" >&2
+          echo "    scripts/rqgm_assurance/repin_and_promote_harness.py promote <manifest>.yaml \\" >&2
+          echo "      --actor-id <maintainer> --authorization-basis '<what you actually saw>'" >&2
+          echo "" >&2
+          echo "  To commit anyway (the re-registration is a separate commit):" >&2
+          echo "    ARI_SKIP_PIN_CHECK=1 git commit ..." >&2
+          exit 1
+        fi
+      fi
+    fi
+  fi
+fi
+
 exit 0
