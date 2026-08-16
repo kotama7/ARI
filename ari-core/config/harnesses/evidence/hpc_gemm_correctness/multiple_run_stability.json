@@ -1,6 +1,9 @@
 {
-  "distinct_clean_control_answers": 1,
-  "kind": "deterministic",
-  "relative_spread": 0.0,
+  "clean_control": {
+    "note": "every registered family's reference passed its own oracle",
+    "relative_spread": 0.0,
+    "resolved": true,
+    "verdict": "pass"
+  },
   "runs": 3
 }

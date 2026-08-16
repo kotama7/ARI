@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:17671d7e59b8895337d41bdbdad72e5b9fafd42087958167bf2f0427a534b86b",
-  "approved_date": "2026-08-09",
-  "authorization_basis": "Re-registration authorized by the maintainer on 2026-08-09 ('kotama'), who directed the change and signed for it by name. The container is now pinned by the digest of its rootfs rather than of the SIF file, because two pulls of one tag give different files and the same content -- 109,596 entries agreeing, only the runtime's build-date metadata differing -- so re-obtaining an image is a site binding rather than a re-registration. The verifier is also now bounded inside the container instead of through its launcher, returning its memory requirement to 4 GiB, and the manifests declare the commit whose code they pin. Over report sha256:cd86b35da5b3107e223e7ddb96003f07df875364ef33454345c01ebf13cc1fe6, three parity-probe runs at commit 6c1b8d3c838b on a clean worktree, 15/15 gates. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts, which are pinned in the bundle.",
-  "evidence_bundle_digest": "sha256:09ee8940f0e2a38a3199ec498c23f88539c1db0de5af5113a27e083ab72a0064",
+  "approval_digest": "sha256:25859c13496247ee8b9c56eb1a4a11429338c99404228bfc2b57ad6d40fff31d",
+  "approved_date": "2026-08-16",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the registration evidence -- 15/15 gates each, clean and negative controls from the registered families -- not on independent inspection of the artifacts, which are pinned here for that purpose. Re-run after the result schema drifted under the pin taken at d303a4c.",
+  "evidence_bundle_digest": "sha256:f0ec68c08a86d8b1f30029548c1c51493cf4a3178b09504c4c489e4c641d905a",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-correctness",
-  "harness_manifest_digest": "sha256:1d9b56281d8d6fd9ef227a88e9d8ff395c02bafeaf19ede16b6c2b298453c984",
+  "harness_manifest_digest": "sha256:d3261387aeb61d0617ba9b5a8c3a97e11a8841b312119bcb5c8b3ee9af774736",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:cd86b35da5b3107e223e7ddb96003f07df875364ef33454345c01ebf13cc1fe6",
+  "registration_report_digest": "sha256:e63995a817b568a8df9f7c87b9936b1a1636b5f971759f5fb1e218feebd88855",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

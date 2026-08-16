@@ -1,20 +1,25 @@
 {
   "attestation_digests": [
-    "sha256:0e58091fd33606cddd1e08c708676fd0612074d63e85b9373f441fcdf9c2cc14"
+    "sha256:5fa56d50d26ac4bc485cef485cbdba73f6349631ebecf738e8b956ed88f0ad52"
   ],
   "clean_control_verdict": "pass",
-  "environment_digest": "sha256:966b05fd3afa428f6fc3629aa85331e4f3093a03c998ecffec7226006c161351",
+  "environment_digest": "sha256:5b211f5e44f185749bcdd244f09444ba5bfb657ec99e333716fd8e5d90846945",
   "evidence_artifact_digests": {
-    "evidence/hpc_stencil_correctness/gate_findings.json": "sha256:c685b6909de0aa36c47ad36e4f7ff3fdae992653c5f7904ffc2e00c8ed77a120",
-    "evidence/hpc_stencil_correctness/measurement_environment.json": "sha256:966b05fd3afa428f6fc3629aa85331e4f3093a03c998ecffec7226006c161351",
-    "evidence/hpc_stencil_correctness/multiple_run_stability.json": "sha256:97fe49e20957f9cc1040217bd692f8f08c7e0ab70aadec275193f5f0e1fff926",
-    "evidence/hpc_stencil_correctness/official_runner_parity.json": "sha256:35dabdb39535ce10e0ba8621bd65e65ce5f3f4e095ca0fbbd70b8947b6b8cdd1",
-    "evidence/hpc_stencil_correctness/registration_report.json": "sha256:521f47dcc263780fc14dc64cf68dbc488f10e228acfd37a508cf3064e85ce169"
+    "evidence/hpc_stencil_correctness/clean-certify-repeat.attestation.json": "sha256:e81197e47a93b67cc834592bcb069ac2e896cce136a32de3285eb79da4520c81",
+    "evidence/hpc_stencil_correctness/clean-certify.attestation.json": "sha256:a3eafbd01c0a9db81723868de82d6b8e18ec75d5c5fa43901576d0b842d1b68d",
+    "evidence/hpc_stencil_correctness/clean-screen.attestation.json": "sha256:873b717dae301f97d7821aea77d965cf659afb6b37a906d886406332b4a4b6eb",
+    "evidence/hpc_stencil_correctness/gate_findings.json": "sha256:d6320fa01fff99006bad0315d74bd741c07cf670ce48c057e414b65d84257531",
+    "evidence/hpc_stencil_correctness/measurement_environment.json": "sha256:9a7bfc530bed38ebca4fe4f4fcf04885af964575879ac5f2298fbbc99f1ce1ed",
+    "evidence/hpc_stencil_correctness/multiple_run_stability.json": "sha256:ac7c523e0ba4bf1e7912b4c71b139ccbb909910a852a9fdf407fd80604301d72",
+    "evidence/hpc_stencil_correctness/negative-screen.attestation.json": "sha256:e4681df17bb61ad92328319c6b84a2165ca54fbf5f7ea7e3b1ab89d909a80c66",
+    "evidence/hpc_stencil_correctness/official_runner_parity.json": "sha256:e6468dcb559a21117218cdf6234217d9682b6c43dccb5fbcd34c5e97afcf92f3",
+    "evidence/hpc_stencil_correctness/registration_report.json": "sha256:0ca45575eca99b6816532051388a3c944dfa8489cf939624d94123d85a4be1fe",
+    "evidence/hpc_stencil_correctness/resource_measurements.json": "sha256:d69f2c4223535b7ace78eb9a19306857e63c1f40c2df62d305d70f14f5d59e78"
   },
-  "evidence_digest": "sha256:f78b8937e42d45da039caf123b2914aa9ee6829591e57b2726478686ff181efa",
+  "evidence_digest": "sha256:cc33a46556473caef51198e3ad1b1e63990fbff47480a4740f97e3140e29ae1a",
   "harness_id": "hpc/stencil-correctness",
   "harness_version": "1.0.0",
-  "manifest_digest": "sha256:11104a7158446c1183d5e0a2903c0613fd6d6f50fa2394398c963ab7878973ce",
+  "manifest_digest": "sha256:8c437f63863a1266834fe6fd3ae1fd8828d0407120396c5f64bf3ea6562b87ff",
   "negative_control_verdict": "fail",
   "network_isolation": "proved",
   "official_runner_parity": true,
@@ -22,6 +27,6 @@
   "result_schema_conformant": true,
   "run_count": 3,
   "schema_version": "ari.harness-registration-evidence/v1",
-  "source_full_commit_sha": "6c1b8d3c838b7bd807f16f0cdec4300d21ce4c2e",
+  "source_full_commit_sha": "46382841af70e1f6c9adc81d604caeeb6674d76f",
   "target_write_isolation": "proved"
 }

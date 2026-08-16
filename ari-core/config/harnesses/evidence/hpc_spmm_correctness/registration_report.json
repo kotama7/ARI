@@ -21,7 +21,7 @@
     },
     {
       "detail": "probe passed against this driver",
-      "evidence_digest": "sha256:b02ef113861a43d248d648d2c03783e4b88ea60b76b7f61a19a734a09a151e12",
+      "evidence_digest": "sha256:041dc12e8c0cb8b106f4e8bda6fb60b0538c1a56de33bbc014f4c27ae03966bc",
       "gate_id": "official_runner_parity",
       "passed": true
     },
@@ -56,7 +56,7 @@
       "passed": true
     },
     {
-      "detail": "pinned at 361a85d7fde8, an ancestor of 6c1b8d3c838b",
+      "detail": "pinned at 361a85d7fde8, an ancestor of 46382841af70",
       "evidence_digest": "sha256:d6b170f066dd2d092720bebcd736e8e796efa7a092a59af76c6b6730e3feaf99",
       "gate_id": "source_revision_digest_pin",
       "passed": true
@@ -74,8 +74,8 @@
       "passed": true
     },
     {
-      "detail": "schema declares 11 properties",
-      "evidence_digest": "sha256:7123dd25fbe1b259b28a3e5bea9ddb9c5a8624937c836cf8e5faccb57bf52c0e",
+      "detail": "schema declares 11 properties, named and pinned by the manifest",
+      "evidence_digest": "sha256:73ad8b7d7a4f11ef285f933350f711c70621e619a1e75697f5b6ab39352803fc",
       "gate_id": "result_schema_conformance",
       "passed": true
     },
@@ -93,7 +93,7 @@
     }
   ],
   "harness_id": "hpc/spmm-correctness",
-  "manifest_digest": "sha256:e8c7d0184724c9ea49616275505a7b760fb9c4bec92a5667404f8ada28f81dd1",
-  "report_digest": "sha256:8a2c73020d28724a3df3881f6e93622f42ef31eb8016d715e9979338d8b66a41",
+  "manifest_digest": "sha256:d33dfdc3b58d11024d0b1c6673b8d71113882adb6073cd5bcbca62c1a8cdd3d2",
+  "report_digest": "sha256:c466de267e4ceda43dcd762c1966e63d23d1fb413277f7fabdb0f02bc7ac5b33",
   "schema_version": "ari.harness-registration-report/v1"
 }

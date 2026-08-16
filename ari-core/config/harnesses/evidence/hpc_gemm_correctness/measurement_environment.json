@@ -1,5 +1,19 @@
 {
-  "note": "A deterministic verifier pins no placement: it does not depend on one, and pinning would claim something that cannot vary. Three probe runs gave identical clean-control answers, which is what repeating establishes here.",
-  "registered_placement": null,
-  "registration_commit": "6c1b8d3c838b7bd807f16f0cdec4300d21ce4c2e"
+  "environment": {
+    "note": "recorded, not restricted; a variable outside this prefix set is neither captured nor known to be harmless",
+    "sha256": "sha256:5b211f5e44f185749bcdd244f09444ba5bfb657ec99e333716fd8e5d90846945",
+    "variables": {
+      "ARI_LETTA_SIF": "~/ARI/scripts/letta/letta.sif",
+      "BLIS_NUM_THREADS": "1",
+      "GOTO_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    }
+  },
+  "environment_note": "variable VALUES are scrubbed of host identity here",
+  "placement": null,
+  "placement_note": "this harness pins no placement, so its evidence does not describe a machine",
+  "registration_commit": "46382841af70e1f6c9adc81d604caeeb6674d76f"
 }

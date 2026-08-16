@@ -40,7 +40,7 @@
       "reference_verdict": "pass"
     },
     "stencil": {
-      "negative_control_report_digest": "sha256:7d5fc1b300745c825613b964f3143728e7422e997957043f0b2fb8bae9fff033",
+      "negative_control_report_digest": "sha256:92ce4d8b2911e76606fef1b43015eeabed977b6271dc777c8e733088e00ebf61",
       "negative_control_verdict": "fail",
       "reference_report_digest": "sha256:15a7b28a9e223d7e3fe8d61b5a3beb89d0e6f7236d184961a184208e219755f4",
       "reference_verdict": "pass"
