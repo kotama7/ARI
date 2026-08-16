@@ -1,8 +1,22 @@
 {
-  "note": "The manifest pins this placement and prepare compares it. The same commit and clean worktree scored 13/15 on an exclusive x86 node at 64 threads, where the clean control did not resolve.",
-  "registered_placement": {
+  "environment": {
+    "note": "recorded, not restricted; a variable outside this prefix set is neither captured nor known to be harmless",
+    "sha256": "sha256:5b211f5e44f185749bcdd244f09444ba5bfb657ec99e333716fd8e5d90846945",
+    "variables": {
+      "ARI_LETTA_SIF": "~/ARI/scripts/letta/letta.sif",
+      "BLIS_NUM_THREADS": "1",
+      "GOTO_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    }
+  },
+  "environment_note": "variable VALUES are scrubbed of host identity at this publication boundary",
+  "note": "a timed verdict is a statement about a machine, so this bundle records the placement it was established on and the manifest pins it; prepare() refuses any other",
+  "placement": {
     "machine": "aarch64",
     "thread_budget": "48"
   },
-  "registration_commit": "5e30854fa9a3ba0d640362be9476e6e50aa08e64"
+  "registration_commit": "7bde063cbe940940a001cef812c9a2132bd51505"
 }

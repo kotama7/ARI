@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:76e35b4d0f801baf8ece60a3878e1856a24f4aeeecc4b1b20fa5437994bc70d8",
+  "approval_digest": "sha256:d27a94f43799476106a661c75bc3a443bcd42f8ee23360e10bc48fdcb49b5642",
   "approved_date": "2026-08-16",
-  "authorization_basis": "Authorized by the maintainer ('kotama') in an interactive session on 2026-08-16, over registration report sha256:f31d8607ab15bf9f55e23aec4733fe112f410a6c64ea3e0c360d8f0185ae2399 minted from evidence produced by that same session: three parity-probe runs on an exclusive aarch64 compute node at the manifest's pinned 48 threads, from a clean worktree at commit 5e30854fa9a3, 15/15 gates, run-to-run clean-control spread 0.021851. This registration is the first where the pinned driver digest was compared against the driver actually probed (both sha256:532b6cce1bef): the four before it passed 15/15 over a pin `prepare` refuses, so they certified a Harness that could not run. WHAT THE MAINTAINER SAW was the assistant's report of that evidence, not the raw artifacts; the artifacts are pinned above so a later reader can check them independently.",
-  "evidence_bundle_digest": "sha256:6812335b2c2d79fd369035018d79d2f25e96ccd300c681aa1d9a290592014550",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the registration evidence -- 15/15 gates, re-run on the aarch64 placement the manifest pins after c82493e changed the driver without moving the pin -- not on independent inspection of the artifacts, which are pinned here for that purpose.",
+  "evidence_bundle_digest": "sha256:1ae31a89186fdf4166cb9fefc021faa664d4f0d00093275a2bd86f2f991cc425",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-performance",
-  "harness_manifest_digest": "sha256:b5ae6ceb632b3f1dfbe702b49885bb195998f6381bbbbf288f37cc7765add290",
+  "harness_manifest_digest": "sha256:ac6afdfdabed0c9303585d6122b7b80a011ef1b396dbc868392d2f91f535b928",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:f31d8607ab15bf9f55e23aec4733fe112f410a6c64ea3e0c360d8f0185ae2399",
+  "registration_report_digest": "sha256:309f0bf2d892136c6b66ab5dc47aa2f60e142817f8224cf0895857a04e6942c4",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

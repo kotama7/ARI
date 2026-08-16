@@ -1,9 +1,12 @@
 {
-  "clean_control_speedups": [
-    0.9918683672081838,
-    1.0137951629284054,
-    1.0034477651505802
-  ],
-  "relative_spread": 0.021851457028190406,
+  "clean_control": {
+    "median_seconds": 0.005187663249671459,
+    "median_speedup": 1.0080400904023206,
+    "relative_spread": 0.0037853003851729106,
+    "resolution_note": "",
+    "resolved": true,
+    "verdict": "pass"
+  },
+  "note": "the clean control is the frozen reference scored as a candidate; its spread across runs is what says whether this instrument resolves the difference a regression verdict is quoted to",
   "runs": 3
 }
