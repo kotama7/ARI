@@ -318,9 +318,30 @@ def test_a_problem_candidate_declares_a_contract_it_keeps_and_reaches_this_harne
                 yaml.safe_load(path.read_text(encoding="utf-8"))),
             declaration=declaration)
     )
-    assert applicable == ["hpc_gemm_problem_correctness.yaml"], (
-        "a problem candidate must reach the Harness written for its contract, "
-        "and only that one")
+    # EVERY Harness written for this problem's contract, which is more than one
+    # and is meant to be. A lock is resolved for a CONTRACT and a node produces
+    # ONE artifact, so several Harnesses legitimately apply to the same
+    # candidate as long as each decides a different property: this one checks
+    # the numbers and the interface, the performance Harness times it. The
+    # assertion here used to demand exactly one, which was true only while the
+    # performance Harness still named the ARI-native ABI it could not verify.
+    #
+    # What must hold is that NOTHING WHICH CANNOT LOAD THE CANDIDATE is
+    # reached -- the three ARI-native verifiers resolve
+    # ari_gemm_f32/ari_gemm_f64 out of a shared library and would report 33
+    # missing-symbol failures as a verdict about it.
+    assert applicable == ["hpc_gemm_performance.yaml",
+                          "hpc_gemm_problem_correctness.yaml"], (
+        "a problem candidate must reach exactly the Harnesses written for its "
+        "contract")
+    decided = set()
+    for name in applicable:
+        manifest = yaml.safe_load((BUILTIN / name).read_text(encoding="utf-8"))
+        properties = {p["property_id"] for p in manifest["properties"]}
+        assert not (decided & properties), (
+            f"{name} decides a property another applicable Harness already "
+            f"decides: {sorted(decided & properties)}")
+        decided |= properties
 
 
 # --- the resolver must actually SELECT it ---------------------------------------
