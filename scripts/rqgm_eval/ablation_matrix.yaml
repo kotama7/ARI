@@ -1,5 +1,5 @@
-# RQGM ablation matrix — the nine conditions B0-B8
-# (docs/guides/rqgm_evaluation.md, "Ablation conditions B0–B8").
+# RQGM ablation matrix — the ten conditions B0-B9
+# (plan 13 §5.1; docs/guides/rqgm_evaluation.md, "Ablation conditions").
 #
 # Each preset expands (via ari.rqgm.evaluation.conditions.expand_condition) to a
 # concrete workflow.yaml overlay: `mode` maps to the `ari.mode` config path; the
@@ -76,11 +76,19 @@ conditions:
   B6: {inherits: B5, rqgm: {frontier_repair: {enabled: true}}}
   # + prompt evolution incl. clean-room regeneration (Task 07).
   B7: {inherits: B6, rqgm: {prompt_evolution: {enabled: true}}}
-  # + meta-agent evolution (Task 11) == the full ari_rqgm mode.
-  B8: {inherits: B7, rqgm: {meta_evolution: {enabled: true}}}
+  # + meta-agent evolution (Task 11). Also PINS Task 14's
+  # rqgm.utility_evolution.enabled to false (it defaults TRUE, like the five
+  # layer flags above): the utility policy is frozen for the whole run, i.e.
+  # the pre-Task-14 system exactly. Without that pin B8 == B9 and the
+  # B9−B8 contrast — the only empirical defense of P1 — measures nothing.
+  B8: {inherits: B7, rqgm: {meta_evolution: {enabled: true},
+                            utility_evolution: {enabled: false}}}
+  # + governed utility evolution (Task 14) == the full ari_rqgm mode: the
+  # score itself is rewritten at epoch boundaries through the governed path.
+  B9: {inherits: B8, rqgm: {utility_evolution: {enabled: true}}}
 
 # Task-20 scientific-assurance axis.  These presets are intentionally outside
-# `conditions:` so the B0-B8 vocabulary and every historical expansion remain
+# `conditions:` so the B0-B9 vocabulary and every historical expansion remain
 # byte-for-byte unchanged.  `rqgm.eval.kca_conditions.verification_tiers` is
 # comparison metadata consumed only by the evaluation harness; production
 # admission still derives mandatory requirements from Research Contract and

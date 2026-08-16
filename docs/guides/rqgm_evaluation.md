@@ -22,7 +22,7 @@ the evaluation harness shipped with the codebase. The machinery is internal
 (`ari.rqgm.evaluation.*`, not `ari.public.*`) and driven by a standalone
 script — no CLI command, no MCP tool, zero contract-surface change.
 
-## Ablation conditions B0–B8
+## Ablation conditions B0–B9
 
 Nine named presets in `scripts/rqgm_eval/ablation_matrix.yaml`, switchable
 via config alone. `ari.rqgm.evaluation.conditions.expand_condition` folds each
@@ -32,7 +32,7 @@ ever reaches a workflow overlay — and `condition_overlay` maps the resolved
 `mode` key onto the `ari.mode` config path and passes the `rqgm` /
 `proposal_router` / `bfts` blocks through under the owning features' own
 config paths. Every key a preset sets belongs to the feature it measures: no
-B0–B8 preset engages the evaluation harness's own `rqgm.eval.*` block — every
+B0–B9 preset engages the evaluation harness's own `rqgm.eval.*` block — every
 rung's effective `rqgm.eval.enabled` stays `false` with an empty
 `scripted_components` (`test_no_preset_engages_the_eval_harness`). The exact
 expansions are pinned id by id by
@@ -49,11 +49,12 @@ expansions are pinned id by id by
 | B5 | `ari_rqgm` | + governance epoch audits (`rqgm.governance.enabled`). |
 | B6 | `ari_rqgm` | + retirement + selective erasure (`rqgm.frontier_repair.enabled`). |
 | B7 | `ari_rqgm` | + prompt evolution incl. clean room (`rqgm.prompt_evolution.enabled`). |
-| B8 | `ari_rqgm` | + meta-agent evolution (`rqgm.meta_evolution.enabled`) — full mode. |
+| B8 | `ari_rqgm` | + meta-agent evolution (`rqgm.meta_evolution.enabled`), and it PINS `rqgm.utility_evolution.enabled: false` (which defaults true) so the score is frozen for the whole run. This is the control B9 is measured against. |
+| B9 | `ari_rqgm` (full) | B8 + governed utility evolution (`rqgm.utility_evolution.enabled: true`) — the score itself is rewritten at epoch boundaries. Equals the full `ari_rqgm` mode. |
 
 The marginal value of each layer is the paired difference: adversarial =
 B4−B3, governance = B5−B4, retirement/erasure = B6−B5, evolution = B7−B6,
-meta = B8−B7; VirSci = B2−B3.
+meta = B8−B7; governed score rewriting = B9−B8; VirSci = B2−B3.
 
 The same file carries the campaign defaults every condition inherits.
 `eval_defaults.seeds` ships `[11, 12, 13]` — the ≥ 3 paired seeds a campaign
@@ -65,7 +66,7 @@ particular seed values are not pinned.
 
 ## Orthogonal Knowledge/Capability and Assurance axes
 
-Task 20 adds two namespaces without changing any B0–B8 expansion or meaning.
+Task 20 adds two namespaces without changing any B0–B9 expansion or meaning.
 Every comparison keeps the B condition, experiment, node budget, model, seed,
 catalog snapshots, Research Contract, and Verification Contract fixed.
 

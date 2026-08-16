@@ -19,7 +19,7 @@ last_verified: 2026-08-08
 スクリプトから駆動されます — CLI コマンドなし、MCP ツールなし、契約面の変更
 ゼロです。
 
-## アブレーション条件 B0–B8
+## アブレーション条件 B0–B9
 
 `scripts/rqgm_eval/ablation_matrix.yaml` の名前付きプリセット 9 個で、設定
 だけで切り替えられます。`ari.rqgm.evaluation.conditions.expand_condition` が
@@ -28,7 +28,7 @@ last_verified: 2026-08-08
 workflow オーバーレイに届くことはありません）、`condition_overlay` が解決後の
 `mode` キーを `ari.mode` の設定パスへ写し、`rqgm` / `proposal_router` /
 `bfts` ブロックを所有機能自身の設定パスの下へそのまま通します。プリセットが
-設定するキーはすべて測定対象の機能のものです: B0–B8 のどのプリセットも評価
+設定するキーはすべて測定対象の機能のものです: B0–B9 のどのプリセットも評価
 ハーネス自身の `rqgm.eval.*` ブロックには関与せず、各段の実効
 `rqgm.eval.enabled` は `false` のまま、`scripted_components` も空です
 （`test_no_preset_engages_the_eval_harness`）。正確な展開結果は
@@ -45,10 +45,11 @@ workflow オーバーレイに届くことはありません）、`condition_ove
 | B5 | `ari_rqgm` | + ガバナンスのエポック監査（`rqgm.governance.enabled`） |
 | B6 | `ari_rqgm` | + 退役 + 選択的消去（`rqgm.frontier_repair.enabled`） |
 | B7 | `ari_rqgm` | + クリーンルームを含むプロンプト進化（`rqgm.prompt_evolution.enabled`） |
-| B8 | `ari_rqgm` | + メタエージェント進化（`rqgm.meta_evolution.enabled`）— フルモード |
+| B8 | `ari_rqgm` | + メタエージェント進化（`rqgm.meta_evolution.enabled`）。さらに `rqgm.utility_evolution.enabled: false` を **pin** する（既定は true）ため、スコアはラン全体で凍結される。B9 はこれを対照として測る |
+| B9 | `ari_rqgm`（フル） | B8 + governed utility evolution（`rqgm.utility_evolution.enabled: true`）— エポック境界でスコア自体が書き換わる。フル `ari_rqgm` モードと等価 |
 
 各レイヤの限界価値はペア差分で得られます: adversarial = B4−B3、governance =
-B5−B4、retirement/erasure = B6−B5、evolution = B7−B6、meta = B8−B7;
+B5−B4、retirement/erasure = B6−B5、evolution = B7−B6、meta = B8−B7、governed score rewriting = B9−B8;
 VirSci = B2−B3。
 
 同じファイルには、全条件が引き継ぐキャンペーン既定値も入っています。

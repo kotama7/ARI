@@ -60,6 +60,9 @@ _DELTA_PAIRS: tuple[tuple[str, str], ...] = (
     ("B6", "B5"),
     ("B7", "B6"),
     ("B8", "B7"),
+    # B9-B8 is the only defined measurement of whether governed score
+    # rewriting earns its cost: B8 pins utility_evolution off, B9 turns it on.
+    ("B9", "B8"),
     # RQGM-paper-aligned headline and mechanism-isolation contrasts.
     ("P1_rqgm_replacement_only", "P0_hgm_h_fixed_critic"),
     ("P2_rqgm_no_erasure", "P1_rqgm_replacement_only"),

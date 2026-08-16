@@ -1,7 +1,7 @@
 """RQGM Task 13 — ablation-condition expansion
 (docs/guides/rqgm_evaluation.md §Ablation conditions B0–B8; §Test tiers).
 
-Pins each B0-B8 preset in ``scripts/rqgm_eval/ablation_matrix.yaml`` to its
+Pins each B0-B9 preset in ``scripts/rqgm_eval/ablation_matrix.yaml`` to its
 exact mode + feature-flag expansion AND to the EFFECTIVE config the spawned
 ``ari run --config`` resolves (the layer flags default TRUE, so the ladder
 only exists because every rung explicitly disables the layers above it),
@@ -53,10 +53,10 @@ def test_default_matrix_path_exists():
     assert path.is_file()
 
 
-def test_all_nine_conditions_defined():
+def test_all_ten_conditions_defined():
     assert set(MATRIX["conditions"]) == set(CONDITION_IDS)
     assert CONDITION_IDS == (
-        "B0", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8",
+        "B0", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
     )
 
 
@@ -116,7 +116,9 @@ def test_resolve_models_unknown_role_raises():
 def _rqgm_layers(**overrides: bool) -> dict:
     """The `rqgm:` block shared by every ari_rqgm rung: each preset sets
     ALL five layer flags explicitly (they default TRUE in the typed config,
-    so an absent key would silently run the layer — plan 13 §5.1 †)."""
+    so an absent key would silently run the layer — plan 13 §5.1 †).
+    Task 14's ``utility_evolution`` defaults TRUE for the same reason and is
+    passed explicitly by the two rungs that contrast on it (B8/B9)."""
     block: dict = {
         "enabled": True,
         "adversarial": {"enabled": False},
@@ -159,7 +161,12 @@ _EXPECTED = {
     "B8": {"mode": "ari_rqgm",
            "rqgm": _rqgm_layers(adversarial=True, governance=True,
                                 frontier_repair=True, prompt_evolution=True,
-                                meta_evolution=True),
+                                meta_evolution=True, utility_evolution=False),
+           "proposal_router": _NO_VIRSCI},
+    "B9": {"mode": "ari_rqgm",
+           "rqgm": _rqgm_layers(adversarial=True, governance=True,
+                                frontier_repair=True, prompt_evolution=True,
+                                meta_evolution=True, utility_evolution=True),
            "proposal_router": _NO_VIRSCI},
 }
 
@@ -252,6 +259,7 @@ _EFFECTIVE_LAYERS = {
     "B6": (True, True, True, False, False),
     "B7": (True, True, True, True, False),
     "B8": (True, True, True, True, True),
+    "B9": (True, True, True, True, True),
 }
 
 
@@ -287,6 +295,26 @@ def test_effective_rungs_do_not_collapse_into_b8():
     for cid in ("B2", "B3", "B4", "B5", "B6", "B7"):
         cfg = ARIConfig.model_validate(condition_overlay(MATRIX, cid))
         assert cfg.rqgm != b8, cid
+
+
+def test_b8_freezes_and_b9_evolves_the_utility_policy():
+    """The B9−B8 rung (plan 13 §5.1, the only empirical defense of P1).
+
+    ``rqgm.utility_evolution.enabled`` defaults TRUE, so B8 only holds the
+    score fixed if it pins the flag FALSE explicitly. Without the pin B8's
+    effective config equals B9's and the contrast measures nothing.
+    """
+    b8 = ARIConfig.model_validate(condition_overlay(MATRIX, "B8")).rqgm
+    b9 = ARIConfig.model_validate(condition_overlay(MATRIX, "B9")).rqgm
+    assert ARIConfig().rqgm.utility_evolution.enabled is True   # the default
+    assert b8.utility_evolution.enabled is False
+    assert b9.utility_evolution.enabled is True
+    assert b8 != b9
+    # ... and nothing ELSE differs: the rung is a one-flag contrast.
+    assert b8.model_dump(exclude={"utility_evolution"}) == \
+        b9.model_dump(exclude={"utility_evolution"})
+    assert b8.utility_evolution.model_dump(exclude={"enabled"}) == \
+        b9.utility_evolution.model_dump(exclude={"enabled"})
 
 
 def test_effective_marginals_flip_exactly_one_layer():

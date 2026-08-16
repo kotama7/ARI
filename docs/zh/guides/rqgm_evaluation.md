@@ -18,7 +18,7 @@ last_verified: 2026-08-08
 `ari.public.*` 中），由一个独立脚本驱动 —— 没有 CLI 命令、没有 MCP
 工具、零契约表面变化。
 
-## 消融条件 B0–B8
+## 消融条件 B0–B9
 
 `scripts/rqgm_eval/ablation_matrix.yaml` 中的九个具名预设，仅靠
 配置即可切换。`ari.rqgm.evaluation.conditions.expand_condition` 折叠每个
@@ -26,7 +26,7 @@ last_verified: 2026-08-08
 并会从展开结果中剔除，因此 `inherits` 键永远不会进入 workflow 覆盖层），
 `condition_overlay` 再把解析后的 `mode` 键映射到 `ari.mode` 配置路径，并把
 `rqgm` / `proposal_router` / `bfts` 块按各自所属功能的配置路径原样透传。
-预设设置的每一个键都属于它所测量的功能：没有任何 B0–B8 预设会启用评估
+预设设置的每一个键都属于它所测量的功能：没有任何 B0–B9 预设会启用评估
 工具链自己的 `rqgm.eval.*` 块 —— 每一档的生效 `rqgm.eval.enabled` 都保持
 `false`，`scripted_components` 保持为空
 （`test_no_preset_engages_the_eval_harness`）。精确的展开结果由
@@ -43,10 +43,11 @@ last_verified: 2026-08-08
 | B5 | `ari_rqgm` | + 治理纪元审计（`rqgm.governance.enabled`）。 |
 | B6 | `ari_rqgm` | + 退役 + 选择性擦除（`rqgm.frontier_repair.enabled`）。 |
 | B7 | `ari_rqgm` | + 提示词进化，含洁净室（`rqgm.prompt_evolution.enabled`）。 |
-| B8 | `ari_rqgm` | + 元 agent 进化（`rqgm.meta_evolution.enabled`）—— 完整模式。 |
+| B8 | `ari_rqgm` | + 元 agent 进化（`rqgm.meta_evolution.enabled`），并**固定** `rqgm.utility_evolution.enabled: false`（默认为 true），因此分数在整个运行期间冻结。这是 B9 的对照。 |
+| B9 | `ari_rqgm`（完整） | B8 + governed utility evolution（`rqgm.utility_evolution.enabled: true`）—— 分数本身在纪元边界被重写。等价于完整 `ari_rqgm` 模式。 |
 
 每一层的边际价值是配对差值：对抗 = B4−B3，治理 = B5−B4，
-退役/擦除 = B6−B5，进化 = B7−B6，元层 = B8−B7；VirSci = B2−B3。
+退役/擦除 = B6−B5，进化 = B7−B6，元层 = B8−B7、受治分数重写 = B9−B8；VirSci = B2−B3。
 
 同一个文件还带着每个条件都会继承的活动默认值。`eval_defaults.seeds`
 出厂值为 `[11, 12, 13]` —— 除非用 `--seeds` 覆盖，这就是一次活动实际

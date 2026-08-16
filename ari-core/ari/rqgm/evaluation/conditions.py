@@ -1,8 +1,8 @@
 """Ablation-condition expansion (RQGM Task 13 §5.1/§6).
 
-The nine conditions B0-B8 are named presets in
+The ten conditions B0-B9 are named presets in
 ``scripts/rqgm_eval/ablation_matrix.yaml``. A preset only sets ``ari.mode``,
-``rqgm.*`` and ``proposal_router.*`` feature flags defined by Tasks 01-11
+``rqgm.*`` and ``proposal_router.*`` feature flags defined by Tasks 01-14
 under their own names — Task 13 invents no runtime switch. ``inherits`` is
 harness-side deep-merge sugar making the additive ladder explicit.
 
@@ -21,7 +21,7 @@ import yaml
 
 #: The closed condition vocabulary (plan 13 §5.1).
 CONDITION_IDS: tuple[str, ...] = (
-    "B0", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8",
+    "B0", "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9",
 )
 
 #: The paper-archive B-baseline ladder (paper-archive Task 07 §5.6). Named
@@ -65,6 +65,7 @@ ADDITIVE_PAIRS: tuple[tuple[str, str], ...] = (
     ("B5", "B6"),
     ("B6", "B7"),
     ("B7", "B8"),
+    ("B8", "B9"),
 )
 
 
@@ -282,7 +283,7 @@ def eval_defaults_overlay(matrix: dict) -> dict:
     matrix declares none). The harness merges it UNDER each condition
     overlay, so a preset could still override it explicitly — no shipped
     preset does, which is what makes ``max_total_nodes`` / ``max_depth``
-    identical across the whole B0-B8 ladder.
+    identical across the whole B0-B9 ladder.
     """
     defaults = (matrix.get("eval_defaults") or {}).get("bfts")
     if not isinstance(defaults, dict) or not defaults:
