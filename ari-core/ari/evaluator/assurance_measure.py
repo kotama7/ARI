@@ -524,6 +524,14 @@ def declare_target(work_dir: str | Path,
         # be a third place dtype is decided.
         dtype=abi.dtype,
         interface_contract=contract,
+        # THE TOOLCHAIN THIS DECLARATION'S TARGET WAS BUILT WITH. Already read
+        # above to build the library; carried into the declaration because a
+        # SOURCE target is compiled again by the Harness, which otherwise uses
+        # the instrument's defaults and judges a different binary from the one
+        # that was scored. Both are re-screened by the worker, so this asks for
+        # nothing a scored run could not already ask for.
+        declared_compiler=_declared_text(root, CANDIDATE_COMPILER_FILE),
+        declared_flags=_declared_text(root, CANDIDATE_FLAGS_FILE),
         target_digest=workspace.file_digest(logical_name),
     )
     document = declaration.model_dump(mode="json")

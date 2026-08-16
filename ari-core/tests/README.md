@@ -27,6 +27,7 @@ targets the like-named module under `ari/`.
 - `test_assurance_target_declaration.py` — the scoring path must point the governed Harness at what it scored. The regression: nothing in the repository wrote `assurance_target.json`, so a governed run resolved its Harness, locked it, and recorded `tampered` with no verdicts on every node — the verifier had no target declaration to load.
 - `test_assurance_workspace_absolute.py` — verification paths must be absolute however the run was launched. Regression: a run started with a relative checkpoint dir produced a relative verification-workspace root, `WorkspaceRefV1` refuses that, and both properties came back `infrastructure_error` — a verdict about the launcher, recorded as if it were about the candidate.
 - `test_async_tool_lifecycle.py` — asynchronous handle state transitions, polling budgets, cancellation, and expiry.
+- `test_attestation_carries_validity.py` — TODO
 - `test_attestation_coverage_bounds.py` — an attestation may only report on the atoms it was handed. Only one direction was checked: every REQUESTED atom had to be covered. Nothing compared the other way, so a driver reporting on an atom the request never granted was accepted, and that digest went straight into the bridge's coverage map.
 - `test_bfts.py` — BFTS loop.
 - `test_bfts_allow_web.py` — `bfts.allow_web` / `ARI_BFTS_ALLOW_WEB` toggle: web-skill phase gating in/out of bfts + the `bfts_web_provenance.json` marker roundtrip.

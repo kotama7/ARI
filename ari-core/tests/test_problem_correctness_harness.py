@@ -552,6 +552,72 @@ def test_the_request_launches_the_worker_the_pinned_driver_can_parse():
     assert "--library" not in argv and "--kind" not in argv
 
 
+def test_the_request_carries_the_toolchain_the_candidate_declared(tmp_path, problem):
+    """A SOURCE target is compiled again by the Harness, so it must be told how.
+
+    Both source-compiling workers take `--compiler` and `--flags` and hand them
+    to `resolve_compiler`/`screen_flags` and thence to `compile_binary`; neither
+    branch passed either, so the Harness rebuilt the candidate with the
+    instrument's defaults and every governed verdict was about a different
+    binary from the one that was scored. Measured on this problem: the same
+    source with and without its declared `-Ofast -funroll-loops -march=native`
+    produced kernel objects of 2080 and 1504 bytes.
+
+    They cannot be read from the workspace -- `input_digests` admits exactly one
+    file, the declared target -- so they travel on the declaration, where
+    `declaration_digest` binds them.
+    """
+    import shutil
+
+    from ari.assurance.models import HarnessTargetDeclarationV1
+    from ari.assurance.request import _worker_argv
+    from ari.evaluator.assurance_measure import declare_target
+
+    definition = problem.definition
+    shutil.copy2(problem.path(definition.scaffolding.contract_header),
+                 tmp_path / definition.scaffolding.contract_header)
+    shutil.copy2(problem.path(definition.scaffolding.seed_candidate),
+                 tmp_path / definition.score_inputs[0])
+    (tmp_path / "candidate_cc.txt").write_text("gcc\n", encoding="utf-8")
+    (tmp_path / "candidate_flags.txt").write_text("-Ofast -funroll-loops\n",
+                                                  encoding="utf-8")
+
+    declaration = HarnessTargetDeclarationV1.model_validate(
+        declare_target(tmp_path, problem))
+    assert declaration.declared_compiler == "gcc"
+    assert declaration.declared_flags == "-Ofast -funroll-loops"
+
+    for name in ("hpc_gemm_problem_correctness.yaml", "hpc_gemm_performance.yaml"):
+        argv = _worker_argv(_shipped(name), declaration, tier="screen", seed=1)
+        assert argv[argv.index("--compiler") + 1] == "gcc", name
+        # ONE argument, joined. `['--flags', '-O3']` is read by argparse as an
+        # option, so a candidate declaring exactly one flag would fail as a
+        # verifier crash rather than as a candidate.
+        assert "--flags=-Ofast -funroll-loops" in argv, name
+        assert not any(a == "--flags" for a in argv), name
+
+
+def test_a_candidate_that_declared_no_toolchain_asks_for_none(tmp_path, problem):
+    """"Declared no compiler" and "declared the default" are different claims."""
+    import shutil
+
+    from ari.assurance.models import HarnessTargetDeclarationV1
+    from ari.assurance.request import _worker_argv
+    from ari.evaluator.assurance_measure import declare_target
+
+    definition = problem.definition
+    shutil.copy2(problem.path(definition.scaffolding.contract_header),
+                 tmp_path / definition.scaffolding.contract_header)
+    shutil.copy2(problem.path(definition.scaffolding.seed_candidate),
+                 tmp_path / definition.score_inputs[0])
+    declaration = HarnessTargetDeclarationV1.model_validate(
+        declare_target(tmp_path, problem))
+    assert declaration.declared_compiler is None
+    assert declaration.declared_flags is None
+    argv = _worker_argv(_shipped(MANIFEST.name), declaration, tier="screen", seed=1)
+    assert not [a for a in argv if a == "--compiler" or a.startswith("--flags")]
+
+
 def test_the_ari_native_request_is_unchanged():
     """The three registered harnesses must launch exactly what they always did."""
     from ari.assurance.request import _worker_argv

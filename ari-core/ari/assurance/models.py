@@ -481,6 +481,29 @@ class HarnessTargetDeclarationV1(DigestBoundModel):
     architecture: str
     dtype: str
     interface_contract: str
+    #: THE TOOLCHAIN THE TARGET WAS BUILT WITH, for a target that is SOURCE.
+    #:
+    #: A shared library is already built when it is declared, so what compiled it
+    #: does not change what a verifier loads. A submission is not: the Harness
+    #: compiles it again, and without these it compiles with the instrument's
+    #: defaults -- so the governed verdict is about a different binary from the
+    #: one that was scored. Measured on the pinned gemm problem, the same source
+    #: with and without its declared ``-Ofast -funroll-loops -march=native``
+    #: produced kernel objects of 2080 and 1504 bytes.
+    #:
+    #: They travel HERE rather than in the workspace because the execution
+    #: workspace admits exactly one file, the declared target, through
+    #: ``input_digests`` -- ``candidate_cc.txt`` and ``candidate_flags.txt`` are
+    #: not there to be read. Being fields of this model makes them part of
+    #: ``declaration_digest``, so a node cannot claim one toolchain to the
+    #: scorer and another to the Harness without the declaration saying so.
+    #:
+    #: A CLAIM, not an authority: the worker still screens the flags and
+    #: resolves the compiler against the allowlist, so this widens what a node
+    #: may ask for by exactly nothing. ``None`` means the node declared none,
+    #: which is different from declaring the default.
+    declared_compiler: str | None = None
+    declared_flags: str | None = None
     target_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
     declaration_digest: str = Field(pattern=SHA256_DIGEST_PATTERN)
 

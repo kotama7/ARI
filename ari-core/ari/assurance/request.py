@@ -121,6 +121,40 @@ _TARGET_MEDIA_TYPES = {
 #: Keyed on ``driver.revision`` because that is what ``resolver`` locks and what
 #: ``prepare`` re-checks; deriving the worker from the harness ID means the ID
 #: is load-bearing text, which is how the string surgery above happened.
+def _declared_toolchain(declaration) -> list[str]:
+    """The compiler and flags the node declared, in the form the workers accept.
+
+    THE DEFECT THIS FIXES. Both source-compiling workers take ``--compiler`` and
+    ``--flags`` and hand them to ``resolve_compiler``/``screen_flags`` and thence
+    to ``compile_binary``; neither branch here passed either, so the Harness
+    rebuilt the candidate with the instrument's defaults and every governed
+    verdict was about a different binary from the one that was scored. Measured
+    on the pinned gemm problem: the same source with and without its declared
+    ``-Ofast -funroll-loops -march=native`` produced kernel objects of 2080 and
+    1504 bytes. ``declare_target``'s own docstring had already said why this
+    matters for the library it builds -- "Using the instrument's defaults
+    instead would verify a different program than the one that was timed" --
+    while the request dropped both.
+
+    ``--flags=<value>`` in ONE argument, never ``--flags <value>``: a value that
+    starts with '-' and contains no space is read by argparse as an option, so a
+    candidate declaring exactly one flag would fail as a verifier crash rather
+    than as a candidate. Both workers say so in their own help text.
+
+    Omitted entirely when the node declared nothing, because "declared no
+    compiler" and "declared the default" are different claims and the report
+    records which was made.
+    """
+    argv: list[str] = []
+    compiler = (getattr(declaration, "declared_compiler", None) or "").strip()
+    flags = (getattr(declaration, "declared_flags", None) or "").strip()
+    if compiler:
+        argv += ["--compiler", compiler]
+    if flags:
+        argv.append(f"--flags={flags}")
+    return argv
+
+
 def _worker_argv(manifest, declaration, *, tier: str, seed: int) -> list[str]:
     revision = manifest.driver.revision
     if revision == "ari.assurance.problem-correctness/v1":
@@ -135,6 +169,7 @@ def _worker_argv(manifest, declaration, *, tier: str, seed: int) -> list[str]:
             "--tier", tier,
             "--seed", str(seed),
             "--dataset-revision", manifest.dataset.revision,
+            *_declared_toolchain(declaration),
         ]
     if revision == "ari.assurance.native-perf/v1":
         # THE GOVERNED PATH COULD NOT LAUNCH THIS HARNESS AT ALL. The driver is
@@ -154,6 +189,13 @@ def _worker_argv(manifest, declaration, *, tier: str, seed: int) -> list[str]:
             "--tier", tier,
             "--seed", str(seed),
             "--dataset-revision", manifest.dataset.revision,
+            # Doubly load-bearing here. Without the declared compiler this path
+            # can never cross a compiler boundary, so the MATCHED reference --
+            # the second denominator built the candidate's way, which exists so
+            # a candidate on another toolchain is not compared against an anchor
+            # on the default one -- is unreachable from the governed path
+            # entirely, and its absence reads as "no boundary was crossed".
+            *_declared_toolchain(declaration),
         ]
     if revision == "ari.assurance.native-hpc/v1":
         return [
