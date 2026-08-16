@@ -15,7 +15,7 @@ driver:
   revision: ari.assurance.native-hpc/v1
   sha256: sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948
 expected_result_schema: ari.native-hpc-verification-report/v1
-expected_result_schema_digest: sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff
+expected_result_schema_digest: sha256:f232e5b1df130cc70b1d905eedadde0b3f60cb5dd05e5868cf90baff3912346c
 filesystem_policy: isolated-readonly-target
 hidden_test_policy: verifier-only
 id: hpc/gemm-correctness
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:1d9b56281d8d6fd9ef227a88e9d8ff395c02bafeaf19ede16b6c2b298453c984
+manifest_digest: sha256:d3261387aeb61d0617ba9b5a8c3a97e11a8841b312119bcb5c8b3ee9af774736
 model:
   license: not-applicable
   revision: not-applicable

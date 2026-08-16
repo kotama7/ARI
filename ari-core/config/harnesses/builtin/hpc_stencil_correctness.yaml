@@ -15,7 +15,7 @@ driver:
   revision: ari.assurance.native-hpc/v1
   sha256: sha256:ffa7b163f41254ec289529b02300a3953ddba7330bf02b71c59d5983edd08948
 expected_result_schema: ari.native-hpc-verification-report/v1
-expected_result_schema_digest: sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff
+expected_result_schema_digest: sha256:f232e5b1df130cc70b1d905eedadde0b3f60cb5dd05e5868cf90baff3912346c
 filesystem_policy: isolated-readonly-target
 hidden_test_policy: verifier-only
 id: hpc/stencil-correctness
@@ -23,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:11104a7158446c1183d5e0a2903c0613fd6d6f50fa2394398c963ab7878973ce
+manifest_digest: sha256:8c437f63863a1266834fe6fd3ae1fd8828d0407120396c5f64bf3ea6562b87ff
 model:
   license: not-applicable
   revision: not-applicable
