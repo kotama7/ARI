@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-08-13T13:13:44.004614+00:00",
-  "commit": "b027098471569b008fc086590a6ee04440d7b80a",
+  "generated_at": "2026-08-16T09:23:41.869960+00:00",
+  "commit": "1e856daaaae3c3a8f8a857a963426f2cdc044bd2",
   "roots": [
     {
       "id": "R1",
@@ -69,7 +69,7 @@
       "id": "data.file:ari-core/ari/configs/defaults.yaml",
       "kind": "data.file",
       "file": "ari-core/ari/configs/defaults.yaml",
-      "loc": 331,
+      "loc": 335,
       "reachable_from": [
         "R1",
         "R2",
@@ -1194,6 +1194,16 @@
       ]
     },
     {
+      "id": "data.file:ari-core/ari/schemas/manuscript_venue_profile_v1.schema.json",
+      "kind": "data.file",
+      "file": "ari-core/ari/schemas/manuscript_venue_profile_v1.schema.json",
+      "loc": 214,
+      "reachable_from": [],
+      "edges_in": [
+        "dynamic.path"
+      ]
+    },
+    {
       "id": "data.file:ari-core/ari/schemas/measurement_set_v1.schema.json",
       "kind": "data.file",
       "file": "ari-core/ari/schemas/measurement_set_v1.schema.json",
@@ -1288,6 +1298,16 @@
       "kind": "data.file",
       "file": "ari-core/ari/schemas/native_perf_report_v1.schema.json",
       "loc": 346,
+      "reachable_from": [],
+      "edges_in": [
+        "dynamic.path"
+      ]
+    },
+    {
+      "id": "data.file:ari-core/ari/schemas/native_problem_correctness_report_v1.schema.json",
+      "kind": "data.file",
+      "file": "ari-core/ari/schemas/native_problem_correctness_report_v1.schema.json",
+      "loc": 286,
       "reachable_from": [],
       "edges_in": [
         "dynamic.path"
@@ -4495,7 +4515,7 @@
       "id": "py.module:ari-core/ari/assurance/contract.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/contract.py",
-      "loc": 263,
+      "loc": 296,
       "reachable_from": [
         "R1",
         "R2",
@@ -4513,7 +4533,7 @@
       "id": "py.module:ari-core/ari/assurance/drivers/__init__.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/drivers/__init__.py",
-      "loc": 35,
+      "loc": 43,
       "reachable_from": [
         "R1",
         "R2",
@@ -4664,6 +4684,32 @@
       "kind": "py.module",
       "file": "ari-core/ari/assurance/drivers/perf_worker.py",
       "loc": 62,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness.py",
+      "loc": 447,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
+      "id": "py.module:ari-core/ari/assurance/drivers/problem_correctness_worker.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness_worker.py",
+      "loc": 59,
       "reachable_from": [],
       "edges_in": []
     },
@@ -4849,7 +4895,7 @@
       "id": "py.module:ari-core/ari/assurance/native_perf_common.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/native_perf_common.py",
-      "loc": 1088,
+      "loc": 1189,
       "reachable_from": [
         "R1",
         "R2",
@@ -4893,7 +4939,7 @@
       "id": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/native_perf_measure.py",
-      "loc": 360,
+      "loc": 370,
       "reachable_from": [
         "R1",
         "R2",
@@ -4934,6 +4980,24 @@
       "edges_in": []
     },
     {
+      "id": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "kind": "py.module",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 470,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.import"
+      ]
+    },
+    {
       "id": "py.module:ari-core/ari/assurance/problems.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/problems.py",
@@ -4965,7 +5029,7 @@
       "id": "py.module:ari-core/ari/assurance/registration_gates.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/registration_gates.py",
-      "loc": 401,
+      "loc": 473,
       "reachable_from": [],
       "edges_in": [
         "static.import"
@@ -4993,7 +5057,7 @@
       "id": "py.module:ari-core/ari/assurance/registration_run.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/registration_run.py",
-      "loc": 190,
+      "loc": 230,
       "reachable_from": [],
       "edges_in": [
         "static.import"
@@ -5003,7 +5067,7 @@
       "id": "py.module:ari-core/ari/assurance/request.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/request.py",
-      "loc": 244,
+      "loc": 317,
       "reachable_from": [
         "R1",
         "R2",
@@ -5093,7 +5157,7 @@
       "id": "py.module:ari-core/ari/assurance/target_abi.py",
       "kind": "py.module",
       "file": "ari-core/ari/assurance/target_abi.py",
-      "loc": 97,
+      "loc": 153,
       "reachable_from": [
         "R1",
         "R2",
@@ -5354,7 +5418,7 @@
       "id": "py.module:ari-core/ari/cli/bfts_loop.py",
       "kind": "py.module",
       "file": "ari-core/ari/cli/bfts_loop.py",
-      "loc": 2314,
+      "loc": 2165,
       "reachable_from": [
         "R1",
         "R2",
@@ -5544,7 +5608,7 @@
       "id": "py.module:ari-core/ari/cli/run.py",
       "kind": "py.module",
       "file": "ari-core/ari/cli/run.py",
-      "loc": 900,
+      "loc": 904,
       "reachable_from": [
         "R1",
         "R2",
@@ -5962,7 +6026,7 @@
       "id": "py.module:ari-core/ari/evaluator/assurance_measure.py",
       "kind": "py.module",
       "file": "ari-core/ari/evaluator/assurance_measure.py",
-      "loc": 427,
+      "loc": 513,
       "reachable_from": [
         "R1",
         "R2",
@@ -6625,7 +6689,7 @@
       "id": "py.module:ari-core/ari/manuscript/contracts.py",
       "kind": "py.module",
       "file": "ari-core/ari/manuscript/contracts.py",
-      "loc": 1082,
+      "loc": 1172,
       "reachable_from": [
         "R1",
         "R2",
@@ -6697,7 +6761,7 @@
       "id": "py.module:ari-core/ari/manuscript/profiles.py",
       "kind": "py.module",
       "file": "ari-core/ari/manuscript/profiles.py",
-      "loc": 88,
+      "loc": 504,
       "reachable_from": [
         "R1",
         "R2",
@@ -8988,7 +9052,7 @@
       "id": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "kind": "py.module",
       "file": "ari-core/ari/rqgm/admission_builder.py",
-      "loc": 395,
+      "loc": 422,
       "reachable_from": [
         "R1",
         "R2",
@@ -9096,7 +9160,7 @@
       "id": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "kind": "py.module",
       "file": "ari-core/ari/rqgm/assurance_bridge.py",
-      "loc": 448,
+      "loc": 517,
       "reachable_from": [
         "R1",
         "R2",
@@ -9220,7 +9284,7 @@
       "id": "py.module:ari-core/ari/rqgm/evaluation/conditions.py",
       "kind": "py.module",
       "file": "ari-core/ari/rqgm/evaluation/conditions.py",
-      "loc": 417,
+      "loc": 418,
       "reachable_from": [],
       "edges_in": [
         "static.import"
@@ -9318,7 +9382,7 @@
       "id": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "kind": "py.module",
       "file": "ari-core/ari/rqgm/evaluation/smoke.py",
-      "loc": 499,
+      "loc": 502,
       "reachable_from": [],
       "edges_in": []
     },
@@ -9848,7 +9912,7 @@
       "id": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "kind": "py.module",
       "file": "ari-core/ari/rqgm/paper_runtime.py",
-      "loc": 3053,
+      "loc": 3054,
       "reachable_from": [
         "R1",
         "R2",
@@ -10000,7 +10064,7 @@
       "id": "py.module:ari-core/ari/rqgm/proposals/router.py",
       "kind": "py.module",
       "file": "ari-core/ari/rqgm/proposals/router.py",
-      "loc": 561,
+      "loc": 567,
       "reachable_from": [
         "R1",
         "R2",
@@ -10072,7 +10136,7 @@
       "id": "py.module:ari-core/ari/rqgm/runtime.py",
       "kind": "py.module",
       "file": "ari-core/ari/rqgm/runtime.py",
-      "loc": 4194,
+      "loc": 4197,
       "reachable_from": [
         "R1",
         "R2",
@@ -10564,7 +10628,7 @@
       "id": "py.module:ari-core/ari/viz/api_settings.py",
       "kind": "py.module",
       "file": "ari-core/ari/viz/api_settings.py",
-      "loc": 616,
+      "loc": 618,
       "reachable_from": [
         "R1",
         "R2",
@@ -10666,7 +10730,7 @@
       "id": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "kind": "py.module",
       "file": "ari-core/ari/viz/checkpoint_api.py",
-      "loc": 344,
+      "loc": 373,
       "reachable_from": [
         "R1",
         "R2",
@@ -11956,7 +12020,7 @@
       "id": "py.module:ari-skill-paper-re/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-paper-re/src/server.py",
-      "loc": 1792,
+      "loc": 1811,
       "reachable_from": [
         "R1",
         "R2",
@@ -11982,7 +12046,7 @@
       "id": "py.module:ari-skill-paper/src/authoring.py",
       "kind": "py.module",
       "file": "ari-skill-paper/src/authoring.py",
-      "loc": 511,
+      "loc": 540,
       "reachable_from": [],
       "edges_in": []
     },
@@ -12048,7 +12112,7 @@
       "id": "py.module:ari-skill-paper/src/server.py",
       "kind": "py.module",
       "file": "ari-skill-paper/src/server.py",
-      "loc": 3356,
+      "loc": 3358,
       "reachable_from": [
         "R1",
         "R2",
@@ -12136,7 +12200,7 @@
       "id": "py.module:ari-skill-replicate/src/generator.py",
       "kind": "py.module",
       "file": "ari-skill-replicate/src/generator.py",
-      "loc": 1058,
+      "loc": 1086,
       "reachable_from": [
         "R1",
         "R2",
@@ -12642,7 +12706,7 @@
       "id": "py.module:ari-skill-vlm/src/review.py",
       "kind": "py.module",
       "file": "ari-skill-vlm/src/review.py",
-      "loc": 363,
+      "loc": 390,
       "reachable_from": [
         "R1",
         "R2",
@@ -14380,6 +14444,14 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/assurance/contract.py:_artifact_kind_for",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/contract.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/assurance/contract.py:_correctness_properties",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/contract.py",
@@ -14399,7 +14471,7 @@
       "id": "py.symbol:ari-core/ari/assurance/contract.py:build_verification_contract",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/contract.py",
-      "loc": 142,
+      "loc": 152,
       "reachable_from": [
         "R1",
         "R2",
@@ -14461,7 +14533,7 @@
       "id": "py.symbol:ari-core/ari/assurance/drivers/__init__.py:builtin_driver_map",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/drivers/__init__.py",
-      "loc": 21,
+      "loc": 29,
       "reachable_from": [
         "R1",
         "R2",
@@ -15012,6 +15084,72 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/drivers/perf_worker.py",
       "loc": 41,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness.py:PROBLEM_CORRECTNESS_DRIVER_REVISION",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness.py:ProblemCorrectnessDriver",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness.py",
+      "loc": 353,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness.py:_EXTRA_SYMBOL",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness.py:_MISSING_CONTROLS",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness.py:problem_correctness_driver_digest",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness.py",
+      "loc": 35,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness_worker.py:main",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/drivers/problem_correctness_worker.py",
+      "loc": 38,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16305,7 +16443,7 @@
       "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:PerfRepetitionV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_common.py",
-      "loc": 13,
+      "loc": 19,
       "reachable_from": [
         "R1",
         "R2",
@@ -16336,6 +16474,14 @@
       "edges_in": [
         "static.call"
       ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:SANDBOX_RECORD_KEYS",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_perf_common.py",
+      "loc": 3,
+      "reachable_from": [],
+      "edges_in": []
     },
     {
       "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:TIER_REPETITIONS",
@@ -16383,7 +16529,7 @@
       "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_common.py",
-      "loc": 34,
+      "loc": 37,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16408,6 +16554,14 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_common.py",
       "loc": 17,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:allowed_cpus",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_perf_common.py",
+      "loc": 6,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16468,6 +16622,24 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_common.py",
       "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:finite_ratio",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_perf_common.py",
+      "loc": 16,
       "reachable_from": [
         "R1",
         "R2",
@@ -16549,7 +16721,7 @@
       "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:measurement_placement",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_common.py",
-      "loc": 67,
+      "loc": 77,
       "reachable_from": [
         "R1",
         "R2",
@@ -16567,7 +16739,7 @@
       "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:measurement_thread_regime",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_common.py",
-      "loc": 23,
+      "loc": 36,
       "reachable_from": [],
       "edges_in": []
     },
@@ -16588,6 +16760,14 @@
       "edges_in": [
         "static.call"
       ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:physical_cores",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_perf_common.py",
+      "loc": 22,
+      "reachable_from": [],
+      "edges_in": []
     },
     {
       "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:relative_spread",
@@ -16648,6 +16828,24 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_common.py",
       "loc": 13,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_perf_common.py:sandbox_record",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_perf_common.py",
+      "loc": 3,
       "reachable_from": [
         "R1",
         "R2",
@@ -16891,7 +17089,7 @@
       "id": "py.symbol:ari-core/ari/assurance/native_perf_measure.py:verify_performance",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/native_perf_measure.py",
-      "loc": 289,
+      "loc": 297,
       "reachable_from": [
         "R1",
         "R2",
@@ -17164,6 +17362,108 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:CORRECTNESS_PROPERTIES",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 4,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:NativeProblemCorrectnessReportV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 64,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:ProblemCorrectnessCaseResultV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 41,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:_CANDIDATE_ROLE",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:_INTERFACE_FAULTS",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:__all__",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 6,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:_classify_build_failure",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:resolve_problem",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:verify_problem_correctness",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/native_problem_correctness.py",
+      "loc": 223,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
       "id": "py.symbol:ari-core/ari/assurance/problems.py:LoadedProblemV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/problems.py",
@@ -17371,7 +17671,7 @@
       "id": "py.symbol:ari-core/ari/assurance/registration_gates.py:GateEvidence",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/registration_gates.py",
-      "loc": 12,
+      "loc": 19,
       "reachable_from": [],
       "edges_in": [
         "static.call"
@@ -17429,7 +17729,7 @@
       "id": "py.symbol:ari-core/ari/assurance/registration_gates.py:_full_sha256_integrity",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/registration_gates.py",
-      "loc": 18,
+      "loc": 37,
       "reachable_from": [],
       "edges_in": []
     },
@@ -17501,7 +17801,7 @@
       "id": "py.symbol:ari-core/ari/assurance/registration_gates.py:_result_schema_conformance",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/registration_gates.py",
-      "loc": 10,
+      "loc": 56,
       "reachable_from": [],
       "edges_in": []
     },
@@ -17639,7 +17939,7 @@
       "id": "py.symbol:ari-core/ari/assurance/registration_run.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/registration_run.py",
-      "loc": 9,
+      "loc": 11,
       "reachable_from": [],
       "edges_in": []
     },
@@ -17663,7 +17963,7 @@
       "id": "py.symbol:ari-core/ari/assurance/registration_run.py:gather_evidence",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/registration_run.py",
-      "loc": 18,
+      "loc": 25,
       "reachable_from": [],
       "edges_in": []
     },
@@ -17702,10 +18002,26 @@
       ]
     },
     {
+      "id": "py.symbol:ari-core/ari/assurance/registration_run.py:result_schema_digest",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/registration_run.py",
+      "loc": 20,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/assurance/registration_run.py:result_schema_for",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/registration_run.py",
-      "loc": 14,
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/registration_run.py:result_schema_path",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/registration_run.py",
+      "loc": 10,
       "reachable_from": [],
       "edges_in": []
     },
@@ -17736,10 +18052,18 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/assurance/request.py:_TARGET_MEDIA_TYPES",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/request.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/assurance/request.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/request.py",
-      "loc": 5,
+      "loc": 6,
       "reachable_from": [],
       "edges_in": []
     },
@@ -17763,7 +18087,15 @@
       "id": "py.symbol:ari-core/ari/assurance/request.py:_validate_native_inputs",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/request.py",
-      "loc": 39,
+      "loc": 25,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/request.py:_worker_argv",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/request.py",
+      "loc": 29,
       "reachable_from": [],
       "edges_in": []
     },
@@ -17771,7 +18103,25 @@
       "id": "py.symbol:ari-core/ari/assurance/request.py:build_native_harness_run_request",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/request.py",
-      "loc": 114,
+      "loc": 106,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/request.py:harness_inapplicability",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/request.py",
+      "loc": 35,
       "reachable_from": [
         "R1",
         "R2",
@@ -18209,7 +18559,15 @@
       "id": "py.symbol:ari-core/ari/assurance/target_abi.py:NativeABIIdentityV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/target_abi.py",
-      "loc": 8,
+      "loc": 16,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/target_abi.py:PROBLEM_SUBMISSION_TARGET_KIND",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/target_abi.py",
+      "loc": 1,
       "reachable_from": [],
       "edges_in": []
     },
@@ -18225,7 +18583,7 @@
       "id": "py.symbol:ari-core/ari/assurance/target_abi.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/target_abi.py",
-      "loc": 6,
+      "loc": 8,
       "reachable_from": [],
       "edges_in": []
     },
@@ -18233,7 +18591,7 @@
       "id": "py.symbol:ari-core/ari/assurance/target_abi.py:_load_identities",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/target_abi.py",
-      "loc": 36,
+      "loc": 37,
       "reachable_from": [],
       "edges_in": []
     },
@@ -18246,10 +18604,36 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/assurance/target_abi.py:_symbol_list",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/target_abi.py",
+      "loc": 10,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/assurance/target_abi.py:abi_identity",
       "kind": "py.symbol",
       "file": "ari-core/ari/assurance/target_abi.py",
       "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/assurance/target_abi.py:problem_target_kind",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/assurance/target_abi.py",
+      "loc": 25,
       "reachable_from": [
         "R1",
         "R2",
@@ -20405,7 +20789,7 @@
       "id": "py.symbol:ari-core/ari/cli/bfts_loop.py:_root_survey_refs",
       "kind": "py.symbol",
       "file": "ari-core/ari/cli/bfts_loop.py",
-      "loc": 54,
+      "loc": 45,
       "reachable_from": [],
       "edges_in": []
     },
@@ -20413,7 +20797,7 @@
       "id": "py.symbol:ari-core/ari/cli/bfts_loop.py:_run_loop",
       "kind": "py.symbol",
       "file": "ari-core/ari/cli/bfts_loop.py",
-      "loc": 1657,
+      "loc": 1617,
       "reachable_from": [
         "R1",
         "R2",
@@ -20498,22 +20882,6 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/cli/bfts_loop.py",
       "loc": 1,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-core/ari/cli/bfts_loop.py:mint_router_research_contract",
-      "kind": "py.symbol",
-      "file": "ari-core/ari/cli/bfts_loop.py",
-      "loc": 77,
-      "reachable_from": [],
-      "edges_in": []
-    },
-    {
-      "id": "py.symbol:ari-core/ari/cli/bfts_loop.py:router_projection_carries_contract",
-      "kind": "py.symbol",
-      "file": "ari-core/ari/cli/bfts_loop.py",
-      "loc": 19,
       "reachable_from": [],
       "edges_in": []
     },
@@ -21685,7 +22053,7 @@
       "id": "py.symbol:ari-core/ari/cli/run.py:run",
       "kind": "py.symbol",
       "file": "ari-core/ari/cli/run.py",
-      "loc": 432,
+      "loc": 436,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24156,14 +24524,32 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/evaluator/assurance_measure.py",
       "loc": 1,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/evaluator/assurance_measure.py:TARGET_DECLARATION_FILE",
       "kind": "py.symbol",
       "file": "ari-core/ari/evaluator/assurance_measure.py",
       "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/evaluator/assurance_measure.py:TargetABIMismatch",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/evaluator/assurance_measure.py",
+      "loc": 2,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24192,10 +24578,18 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/evaluator/assurance_measure.py:_missing_abi_symbols",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/evaluator/assurance_measure.py",
+      "loc": 22,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/evaluator/assurance_measure.py:declare_target",
       "kind": "py.symbol",
       "file": "ari-core/ari/evaluator/assurance_measure.py",
-      "loc": 58,
+      "loc": 112,
       "reachable_from": [],
       "edges_in": []
     },
@@ -24203,7 +24597,7 @@
       "id": "py.symbol:ari-core/ari/evaluator/assurance_measure.py:measure",
       "kind": "py.symbol",
       "file": "ari-core/ari/evaluator/assurance_measure.py",
-      "loc": 63,
+      "loc": 67,
       "reachable_from": [
         "R1",
         "R2",
@@ -29282,6 +29676,14 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/manuscript/contracts.py:MANUSCRIPT_VENUE_PROFILE_V1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/contracts.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/manuscript/contracts.py:ManuscriptAnnotationV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/contracts.py",
@@ -29366,8 +29768,18 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/contracts.py",
       "loc": 2,
-      "reachable_from": [],
-      "edges_in": []
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/manuscript/contracts.py:ManuscriptEvaluationMetricV1",
@@ -29514,6 +29926,24 @@
       ]
     },
     {
+      "id": "py.symbol:ari-core/ari/manuscript/contracts.py:ManuscriptVenueProfileV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/contracts.py",
+      "loc": 69,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
       "id": "py.symbol:ari-core/ari/manuscript/contracts.py:OmissionManifestV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/contracts.py",
@@ -29541,6 +29971,24 @@
     },
     {
       "id": "py.symbol:ari-core/ari/manuscript/contracts.py:OmissionV1",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/contracts.py",
+      "loc": 11,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/contracts.py:ProfileParentRefV1",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/contracts.py",
       "loc": 11,
@@ -29815,7 +30263,7 @@
       "id": "py.symbol:ari-core/ari/manuscript/contracts.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/contracts.py",
-      "loc": 12,
+      "loc": 13,
       "reachable_from": [],
       "edges_in": []
     },
@@ -29874,6 +30322,24 @@
       "loc": 2,
       "reachable_from": [],
       "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/contracts.py:parse_venue_profile",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/contracts.py",
+      "loc": 2,
+      "reachable_from": [
+        "R1",
+        "R2",
+        "R3",
+        "R4",
+        "R5",
+        "R6",
+        "R7"
+      ],
+      "edges_in": [
+        "static.call"
+      ]
     },
     {
       "id": "py.symbol:ari-core/ari/manuscript/coordinator.py:ManuscriptAuthoringBlocked",
@@ -30180,6 +30646,14 @@
       ]
     },
     {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:MAX_VENUE_PROFILE_DECLARATIONS",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/manuscript/profiles.py:PROFILE_ID",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/profiles.py",
@@ -30188,10 +30662,42 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:VENUE_PROFILE_DIR",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 1,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:VenueProfileRegistry",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 73,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/manuscript/profiles.py:__all__",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/profiles.py",
-      "loc": 6,
+      "loc": 14,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:_compose",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 61,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:_parent_table",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 23,
       "reachable_from": [],
       "edges_in": []
     },
@@ -30204,6 +30710,38 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:_resolve",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:_resolve_declaration",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 27,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:build_venue_declaration",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 46,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:default_venue_registry",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 4,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/manuscript/profiles.py:generic_empirical_profile",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/profiles.py",
@@ -30212,10 +30750,18 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:parent_ref",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 8,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/manuscript/profiles.py:resolve_profile",
       "kind": "py.symbol",
       "file": "ari-core/ari/manuscript/profiles.py",
-      "loc": 4,
+      "loc": 21,
       "reachable_from": [
         "R1",
         "R2",
@@ -30228,6 +30774,22 @@
       "edges_in": [
         "static.call"
       ]
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:resolve_venue_profile",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/manuscript/profiles.py:write_venue_declaration",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/manuscript/profiles.py",
+      "loc": 35,
+      "reachable_from": [],
+      "edges_in": []
     },
     {
       "id": "py.symbol:ari-core/ari/manuscript/publication.py:__all__",
@@ -38151,6 +38713,14 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/rqgm/admission_builder.py:_pinned_problem_target_kind",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/rqgm/admission_builder.py",
+      "loc": 23,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/rqgm/admission_builder.py:_research_contract",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/admission_builder.py",
@@ -38178,7 +38748,7 @@
       "id": "py.symbol:ari-core/ari/rqgm/admission_builder.py:build_kca_admission",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/admission_builder.py",
-      "loc": 291,
+      "loc": 292,
       "reachable_from": [
         "R1",
         "R2",
@@ -39586,7 +40156,7 @@
       "id": "py.symbol:ari-core/ari/rqgm/assurance_bridge.py:RQGMAssuranceBridge",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/assurance_bridge.py",
-      "loc": 392,
+      "loc": 434,
       "reachable_from": [
         "R1",
         "R2",
@@ -39625,10 +40195,26 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-core/ari/rqgm/assurance_bridge.py:_bounded",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/rqgm/assurance_bridge.py",
+      "loc": 5,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-core/ari/rqgm/assurance_bridge.py:_failure_reason",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/assurance_bridge.py",
-      "loc": 6,
+      "loc": 2,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-core/ari/rqgm/assurance_bridge.py:_reason",
+      "kind": "py.symbol",
+      "file": "ari-core/ari/rqgm/assurance_bridge.py",
+      "loc": 21,
       "reachable_from": [],
       "edges_in": []
     },
@@ -40662,7 +41248,7 @@
       "id": "py.symbol:ari-core/ari/rqgm/evaluation/conditions.py:ADDITIVE_PAIRS",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/evaluation/conditions.py",
-      "loc": 8,
+      "loc": 9,
       "reachable_from": [],
       "edges_in": []
     },
@@ -41984,7 +42570,7 @@
       "id": "py.symbol:ari-core/ari/rqgm/evaluation/smoke.py:_DELTA_PAIRS",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/evaluation/smoke.py",
-      "loc": 15,
+      "loc": 18,
       "reachable_from": [],
       "edges_in": []
     },
@@ -46518,7 +47104,7 @@
       "id": "py.symbol:ari-core/ari/rqgm/paper_runtime.py:PaperArchiveRuntime",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/paper_runtime.py",
-      "loc": 2134,
+      "loc": 2135,
       "reachable_from": [
         "R1",
         "R2",
@@ -48538,7 +49124,7 @@
       "id": "py.symbol:ari-core/ari/rqgm/proposals/router.py:ProposalRouter",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/proposals/router.py",
-      "loc": 465,
+      "loc": 471,
       "reachable_from": [
         "R1",
         "R2",
@@ -48781,18 +49367,8 @@
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/proposals/virsci_adapter.py",
       "loc": 55,
-      "reachable_from": [
-        "R1",
-        "R2",
-        "R3",
-        "R4",
-        "R5",
-        "R6",
-        "R7"
-      ],
-      "edges_in": [
-        "static.call"
-      ]
+      "reachable_from": [],
+      "edges_in": []
     },
     {
       "id": "py.symbol:ari-core/ari/rqgm/proposals/virsci_adapter.py:log",
@@ -48908,7 +49484,7 @@
       "id": "py.symbol:ari-core/ari/rqgm/runtime.py:RQGMRuntime",
       "kind": "py.symbol",
       "file": "ari-core/ari/rqgm/runtime.py",
-      "loc": 4088,
+      "loc": 4091,
       "reachable_from": [
         "R1",
         "R2",
@@ -52848,7 +53424,7 @@
       "id": "py.symbol:ari-core/ari/viz/api_settings.py:_api_get_settings",
       "kind": "py.symbol",
       "file": "ari-core/ari/viz/api_settings.py",
-      "loc": 78,
+      "loc": 80,
       "reachable_from": [
         "R1",
         "R2",
@@ -53496,7 +54072,7 @@
       "id": "py.symbol:ari-core/ari/viz/checkpoint_api.py:_api_checkpoints",
       "kind": "py.symbol",
       "file": "ari-core/ari/viz/checkpoint_api.py",
-      "loc": 127,
+      "loc": 139,
       "reachable_from": [],
       "edges_in": []
     },
@@ -53512,7 +54088,7 @@
       "id": "py.symbol:ari-core/ari/viz/checkpoint_api.py:_api_models",
       "kind": "py.symbol",
       "file": "ari-core/ari/viz/checkpoint_api.py",
-      "loc": 11,
+      "loc": 29,
       "reachable_from": [
         "R1",
         "R2",
@@ -65388,7 +65964,7 @@
       "id": "py.symbol:ari-skill-paper-re/src/server.py:_judge_identity",
       "kind": "py.symbol",
       "file": "ari-skill-paper-re/src/server.py",
-      "loc": 8,
+      "loc": 27,
       "reachable_from": [],
       "edges_in": []
     },
@@ -65749,6 +66325,14 @@
       "kind": "py.symbol",
       "file": "ari-skill-paper/src/authoring.py",
       "loc": 21,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
+      "id": "py.symbol:ari-skill-paper/src/authoring.py:routed_provider",
+      "kind": "py.symbol",
+      "file": "ari-skill-paper/src/authoring.py",
+      "loc": 27,
       "reachable_from": [],
       "edges_in": []
     },
@@ -67684,7 +68268,7 @@
       "id": "py.symbol:ari-skill-replicate/src/generator.py:_provider",
       "kind": "py.symbol",
       "file": "ari-skill-replicate/src/generator.py",
-      "loc": 5,
+      "loc": 33,
       "reachable_from": [],
       "edges_in": []
     },
@@ -73241,6 +73825,14 @@
       "edges_in": []
     },
     {
+      "id": "py.symbol:ari-skill-vlm/src/review.py:_routed_provider",
+      "kind": "py.symbol",
+      "file": "ari-skill-vlm/src/review.py",
+      "loc": 25,
+      "reachable_from": [],
+      "edges_in": []
+    },
+    {
       "id": "py.symbol:ari-skill-vlm/src/review.py:_usage",
       "kind": "py.symbol",
       "file": "ari-skill-vlm/src/review.py",
@@ -75466,9 +76058,15 @@
     },
     {
       "from": "py.module:ari-core/ari/assurance/drivers/__init__.py",
+      "to": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/__init__.py:17 import ari.assurance.drivers.problem_correctness"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/__init__.py",
       "to": "py.module:ari-core/ari/assurance/drivers/upstream.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/drivers/__init__.py:17 import ari.assurance.drivers.upstream"
+      "evidence": "ari-core/ari/assurance/drivers/__init__.py:18 import ari.assurance.drivers.upstream"
     },
     {
       "from": "py.module:ari-core/ari/assurance/drivers/__init__.py",
@@ -75502,9 +76100,15 @@
     },
     {
       "from": "py.module:ari-core/ari/assurance/drivers/__init__.py",
+      "to": "py.symbol:ari-core/ari/assurance/drivers/problem_correctness.py:ProblemCorrectnessDriver",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/__init__.py:17 use ProblemCorrectnessDriver"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/__init__.py",
       "to": "py.symbol:ari-core/ari/assurance/drivers/upstream.py:UpstreamCLIDriver",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/drivers/__init__.py:17 use UpstreamCLIDriver"
+      "evidence": "ari-core/ari/assurance/drivers/__init__.py:18 use UpstreamCLIDriver"
     },
     {
       "from": "py.module:ari-core/ari/assurance/drivers/external.py",
@@ -75841,6 +76445,114 @@
       "to": "py.symbol:ari-core/ari/assurance/native_perf.py:verify_native_perf",
       "kind": "static.call",
       "evidence": "ari-core/ari/assurance/drivers/perf_worker.py:14 use verify_native_perf"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.module:ari-core/ari/assurance/models.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:20 import ari.assurance.models"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.module:ari-core/ari/assurance/native_perf_common.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:24 import ari.assurance.native_perf_common"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:25 import ari.assurance.native_problem_correctness"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.module:ari-core/ari/assurance/problems.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:30 import ari.assurance.problems"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.module:ari-core/ari/protocols/integrity.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:31 import ari.protocols.integrity"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.module:ari-core/ari/research_contract.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:32 import ari.research_contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/models.py:HarnessPropertyResultV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:20 use HarnessPropertyResultV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/models.py:NormalizedHarnessResultV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:20 use NormalizedHarnessResultV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:load_case_set",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:24 use load_case_set"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:CORRECTNESS_PROPERTIES",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:25 use CORRECTNESS_PROPERTIES"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:NativeProblemCorrectnessReportV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:25 use NativeProblemCorrectnessReportV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:verify_problem_correctness",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:25 use verify_problem_correctness"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/problems.py:load_problem",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:30 use load_problem"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/protocols/integrity.py:bytes_digest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:31 use bytes_digest"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/protocols/integrity.py:canonical_digest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:31 use canonical_digest"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/research_contract.py:ResearchArtifactRefV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness.py:32 use ResearchArtifactRefV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness_worker.py",
+      "to": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness_worker.py:14 import ari.assurance.native_problem_correctness"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/drivers/problem_correctness_worker.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_problem_correctness.py:verify_problem_correctness",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/drivers/problem_correctness_worker.py:14 use verify_problem_correctness"
     },
     {
       "from": "py.module:ari-core/ari/assurance/drivers/upstream.py",
@@ -76296,7 +77008,7 @@
       "from": "py.module:ari-core/ari/assurance/native_perf_common.py",
       "to": "py.module:ari-core/ari/assurance/sandbox.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/native_perf_common.py:914 import ari.assurance.sandbox"
+      "evidence": "ari-core/ari/assurance/native_perf_common.py:1012 import ari.assurance.sandbox"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_common.py",
@@ -76308,13 +77020,13 @@
       "from": "py.module:ari-core/ari/assurance/native_perf_common.py",
       "to": "py.symbol:ari-core/ari/assurance/sandbox.py:restrict_to",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/native_perf_common.py:914 use restrict_to"
+      "evidence": "ari-core/ari/assurance/native_perf_common.py:1012 use restrict_to"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_common.py",
       "to": "py.symbol:ari-core/ari/assurance/sandbox.py:sandbox_record",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/native_perf_common.py:914 use sandbox_record"
+      "evidence": "ari-core/ari/assurance/native_perf_common.py:1012 use sandbox_record"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_common.py",
@@ -76362,13 +77074,13 @@
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "to": "py.module:ari-core/ari/assurance/native_perf_family.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/native_perf_measure.py:60 import ari.assurance.native_perf_family"
+      "evidence": "ari-core/ari/assurance/native_perf_measure.py:62 import ari.assurance.native_perf_family"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "to": "py.module:ari-core/ari/assurance/problems.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/native_perf_measure.py:61 import ari.assurance.problems"
+      "evidence": "ari-core/ari/assurance/native_perf_measure.py:63 import ari.assurance.problems"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
@@ -76432,6 +77144,12 @@
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:finite_ratio",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_perf_measure.py:36 use finite_ratio"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:isa_flags_for",
       "kind": "static.call",
       "evidence": "ari-core/ari/assurance/native_perf_measure.py:36 use isa_flags_for"
@@ -76486,6 +77204,12 @@
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:sandbox_record",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_perf_measure.py:36 use sandbox_record"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:screen_flags",
       "kind": "static.call",
       "evidence": "ari-core/ari/assurance/native_perf_measure.py:36 use screen_flags"
@@ -76500,19 +77224,19 @@
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "to": "py.symbol:ari-core/ari/assurance/native_perf_family.py:get_family",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/native_perf_measure.py:60 use get_family"
+      "evidence": "ari-core/ari/assurance/native_perf_measure.py:62 use get_family"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "to": "py.symbol:ari-core/ari/assurance/problems.py:LoadedProblemV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/native_perf_measure.py:61 use LoadedProblemV1"
+      "evidence": "ari-core/ari/assurance/native_perf_measure.py:63 use LoadedProblemV1"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_measure.py",
       "to": "py.symbol:ari-core/ari/assurance/problems.py:load_problem",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/native_perf_measure.py:61 use load_problem"
+      "evidence": "ari-core/ari/assurance/native_perf_measure.py:63 use load_problem"
     },
     {
       "from": "py.module:ari-core/ari/assurance/native_perf_profile.py",
@@ -76719,6 +77443,162 @@
       "evidence": "ari-core/ari/assurance/native_perf_stencil.py:31 use register_family"
     },
     {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.module:ari-core/ari/assurance/native_perf_common.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 import ari.assurance.native_perf_common"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.module:ari-core/ari/assurance/native_perf_family.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:75 import ari.assurance.native_perf_family"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.module:ari-core/ari/assurance/problems.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:76 import ari.assurance.problems"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.module:ari-core/ari/protocols/integrity.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:77 import ari.protocols.integrity"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:PerfBuildError",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use PerfBuildError"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:PerfInfrastructureError",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use PerfInfrastructureError"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:PerfTier",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use PerfTier"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:TIER_REPETITIONS",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use TIER_REPETITIONS"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:compile_binary",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use compile_binary"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:crosses_compiler_boundary",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use crosses_compiler_boundary"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:finite_ratio",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use finite_ratio"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:load_case_set",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use load_case_set"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:measurement_environment",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use measurement_environment"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:measurement_placement",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use measurement_placement"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:resolve_compiler",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use resolve_compiler"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:run_timed",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use run_timed"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:runtime_libs_for",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use runtime_libs_for"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:sandbox_record",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use sandbox_record"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:screen_flags",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use screen_flags"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_common.py:toolchain_identity",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:57 use toolchain_identity"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/native_perf_family.py:get_family",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:75 use get_family"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/problems.py:LoadedProblemV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:76 use LoadedProblemV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/assurance/problems.py:load_problem",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:76 use load_problem"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/protocols/integrity.py:DigestBoundModel",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:77 use DigestBoundModel"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/protocols/integrity.py:StrictModel",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:77 use StrictModel"
+    },
+    {
+      "from": "py.module:ari-core/ari/assurance/native_problem_correctness.py",
+      "to": "py.symbol:ari-core/ari/protocols/integrity.py:bytes_digest",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/assurance/native_problem_correctness.py:77 use bytes_digest"
+    },
+    {
       "from": "py.module:ari-core/ari/assurance/problems.py",
       "to": "py.module:ari-core/ari/protocols/integrity.py",
       "kind": "static.import",
@@ -76776,13 +77656,13 @@
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.module:ari-core/ari/assurance/registration.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:368 import ari.assurance.registration"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:440 import ari.assurance.registration"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.module:ari-core/ari/assurance/registration.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:394 import ari.assurance.registration"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:466 import ari.assurance.registration"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
@@ -76794,13 +77674,13 @@
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.module:ari-core/ari/assurance/registration_run.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:237 import ari.assurance.registration_run"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:244 import ari.assurance.registration_run"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.module:ari-core/ari/evaluator/deterministic_evaluator.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:261 import ari.evaluator.deterministic_evaluator"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:268 import ari.evaluator.deterministic_evaluator"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
@@ -76812,13 +77692,13 @@
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.symbol:ari-core/ari/assurance/registration.py:HARNESS_REGISTRATION_GATES",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:368 use HARNESS_REGISTRATION_GATES"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:440 use HARNESS_REGISTRATION_GATES"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.symbol:ari-core/ari/assurance/registration.py:HARNESS_REGISTRATION_GATES",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:394 use HARNESS_REGISTRATION_GATES"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:466 use HARNESS_REGISTRATION_GATES"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
@@ -76830,13 +77710,13 @@
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.symbol:ari-core/ari/assurance/registration_run.py:repository_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:237 use repository_root"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:244 use repository_root"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
       "to": "py.symbol:ari-core/ari/evaluator/deterministic_evaluator.py:DeterministicEvaluator",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/registration_gates.py:261 use DeterministicEvaluator"
+      "evidence": "ari-core/ari/assurance/registration_gates.py:268 use DeterministicEvaluator"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_gates.py",
@@ -76884,37 +77764,37 @@
       "from": "py.module:ari-core/ari/assurance/registration_run.py",
       "to": "py.module:ari-core/ari/assurance/registration.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/registration_run.py:34 import ari.assurance.registration"
+      "evidence": "ari-core/ari/assurance/registration_run.py:35 import ari.assurance.registration"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_run.py",
       "to": "py.module:ari-core/ari/assurance/registration_gates.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/registration_run.py:35 import ari.assurance.registration_gates"
+      "evidence": "ari-core/ari/assurance/registration_run.py:36 import ari.assurance.registration_gates"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_run.py",
       "to": "py.module:ari-core/ari/protocols/integrity.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/assurance/registration_run.py:36 import ari.protocols.integrity"
+      "evidence": "ari-core/ari/assurance/registration_run.py:37 import ari.protocols.integrity"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_run.py",
       "to": "py.symbol:ari-core/ari/assurance/registration.py:registration_report",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/registration_run.py:34 use registration_report"
+      "evidence": "ari-core/ari/assurance/registration_run.py:35 use registration_report"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_run.py",
       "to": "py.symbol:ari-core/ari/assurance/registration_gates.py:GateEvidence",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/registration_run.py:35 use GateEvidence"
+      "evidence": "ari-core/ari/assurance/registration_run.py:36 use GateEvidence"
     },
     {
       "from": "py.module:ari-core/ari/assurance/registration_run.py",
       "to": "py.symbol:ari-core/ari/protocols/integrity.py:canonical_digest",
       "kind": "static.call",
-      "evidence": "ari-core/ari/assurance/registration_run.py:36 use canonical_digest"
+      "evidence": "ari-core/ari/assurance/registration_run.py:37 use canonical_digest"
     },
     {
       "from": "py.module:ari-core/ari/assurance/request.py",
@@ -77754,31 +78634,31 @@
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/agent/loop.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1854 import ari.agent.loop"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1705 import ari.agent.loop"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/agent/loop.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:586 import ari.agent.loop"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:477 import ari.agent.loop"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/agent/metric_contract.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:957 import ari.agent.metric_contract"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:808 import ari.agent.metric_contract"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/assurance/problems.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1344 import ari.assurance.problems"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1195 import ari.assurance.problems"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/assurance/problems.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:225 import ari.assurance.problems"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:125 import ari.assurance.problems"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
@@ -77790,19 +78670,19 @@
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/checkpoint.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2267 import ari.checkpoint"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:2118 import ari.checkpoint"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/checkpoint.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2310 import ari.checkpoint"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:2161 import ari.checkpoint"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/checkpoint.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:482 import ari.checkpoint"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:382 import ari.checkpoint"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
@@ -77814,67 +78694,67 @@
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/config/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1990 import ari.config"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1841 import ari.config"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/config/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:594 import ari.config"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:485 import ari.config"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:609 import ari.config.finder"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:500 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:987 import ari.config.finder"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:838 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/harness_registry.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1287 import ari.harness_registry"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1138 import ari.harness_registry"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/harness_registry.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:246 import ari.harness_registry"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:146 import ari.harness_registry"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/orchestrator/lineage_decision.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2039 import ari.orchestrator.lineage_decision"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1890 import ari.orchestrator.lineage_decision"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/orchestrator/node.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:575 import ari.orchestrator.node"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:466 import ari.orchestrator.node"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/orchestrator/node_report/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1666 import ari.orchestrator.node_report"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1517 import ari.orchestrator.node_report"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/orchestrator/node_report/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:285 import ari.orchestrator.node_report"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:185 import ari.orchestrator.node_report"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/orchestrator/root_idea_selector.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1021 import ari.orchestrator.root_idea_selector"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:872 import ari.orchestrator.root_idea_selector"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
@@ -77886,7 +78766,7 @@
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/prompts/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2309 import ari.prompts"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:2160 import ari.prompts"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
@@ -77896,33 +78776,21 @@
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
-      "to": "py.module:ari-core/ari/public/research_contract.py",
-      "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:149 import ari.public.research_contract"
-    },
-    {
-      "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.module:ari-core/ari/rqgm/proposals/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:819 import ari.rqgm.proposals.store"
-    },
-    {
-      "from": "py.module:ari-core/ari/cli/bfts_loop.py",
-      "to": "py.module:ari-core/ari/rqgm/proposals/virsci_adapter.py",
-      "kind": "static.import",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:522 import ari.rqgm.proposals.virsci_adapter"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:670 import ari.rqgm.proposals.store"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/agent/metric_contract.py:build_expand_coverage_hint",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:957 use build_expand_coverage_hint"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:808 use build_expand_coverage_hint"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/agent/metric_contract.py:contract_frozen",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:957 use contract_frozen"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:808 use contract_frozen"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
@@ -77958,79 +78826,79 @@
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/config/__init__.py:HandoffConfig",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:594 use HandoffConfig"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:485 use HandoffConfig"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:609 use package_config_root"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:500 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:987 use package_config_root"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:838 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/lineage_decision.py:append_decision_log",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2039 use append_decision_log"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1890 use append_decision_log"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/lineage_decision.py:build_lineage_state",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2039 use build_lineage_state"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1890 use build_lineage_state"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/lineage_decision.py:decide_lineage_action",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2039 use decide_lineage_action"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1890 use decide_lineage_action"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/lineage_decision.py:detect_stagnation",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2039 use detect_stagnation"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1890 use detect_stagnation"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/lineage_decision.py:deterministic_stagnation_pivot",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:2039 use deterministic_stagnation_pivot"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:1890 use deterministic_stagnation_pivot"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/node.py:Node",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:575 use Node"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:466 use Node"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/node.py:NodeStatus",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:575 use NodeStatus"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:466 use NodeStatus"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/root_idea_selector.py:append_root_selection_log",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1021 use append_root_selection_log"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:872 use append_root_selection_log"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/root_idea_selector.py:apply_root_choice",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1021 use apply_root_choice"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:872 use apply_root_choice"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/orchestrator/root_idea_selector.py:select_root_idea",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:1021 use select_root_idea"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:872 use select_root_idea"
     },
     {
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
@@ -78042,13 +78910,7 @@
       "from": "py.module:ari-core/ari/cli/bfts_loop.py",
       "to": "py.symbol:ari-core/ari/rqgm/proposals/store.py:import_idea_json_records",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:819 use import_idea_json_records"
-    },
-    {
-      "from": "py.module:ari-core/ari/cli/bfts_loop.py",
-      "to": "py.symbol:ari-core/ari/rqgm/proposals/virsci_adapter.py:literature_query",
-      "kind": "static.call",
-      "evidence": "ari-core/ari/cli/bfts_loop.py:522 use literature_query"
+      "evidence": "ari-core/ari/cli/bfts_loop.py:670 use import_idea_json_records"
     },
     {
       "from": "py.module:ari-core/ari/cli/commands.py",
@@ -79824,13 +80686,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/cli/paper_dispatch.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:684 import ari.cli.paper_dispatch"
+      "evidence": "ari-core/ari/cli/run.py:688 import ari.cli.paper_dispatch"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/cli/paper_dispatch.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:879 import ari.cli.paper_dispatch"
+      "evidence": "ari-core/ari/cli/run.py:883 import ari.cli.paper_dispatch"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -79860,7 +80722,7 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/config/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:767 import ari.config"
+      "evidence": "ari-core/ari/cli/run.py:771 import ari.config"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -79884,19 +80746,19 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:624 import ari.config.finder"
+      "evidence": "ari-core/ari/cli/run.py:628 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:669 import ari.config.finder"
+      "evidence": "ari-core/ari/cli/run.py:673 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:869 import ari.config.finder"
+      "evidence": "ari-core/ari/cli/run.py:873 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -79926,7 +80788,7 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/cost_tracker.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:639 import ari.cost_tracker"
+      "evidence": "ari-core/ari/cli/run.py:643 import ari.cost_tracker"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -79938,13 +80800,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/memory/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:845 import ari.memory"
+      "evidence": "ari-core/ari/cli/run.py:849 import ari.memory"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/memory_cli.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:843 import ari.memory_cli"
+      "evidence": "ari-core/ari/cli/run.py:847 import ari.memory_cli"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -79956,13 +80818,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/orchestrator/node.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:731 import ari.orchestrator.node"
+      "evidence": "ari-core/ari/cli/run.py:735 import ari.orchestrator.node"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/orchestrator/node.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:809 import ari.orchestrator.node"
+      "evidence": "ari-core/ari/cli/run.py:813 import ari.orchestrator.node"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -79980,13 +80842,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/pidfile.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:647 import ari.pidfile"
+      "evidence": "ari-core/ari/cli/run.py:651 import ari.pidfile"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/pidfile.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:858 import ari.pidfile"
+      "evidence": "ari-core/ari/cli/run.py:862 import ari.pidfile"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80004,7 +80866,7 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.module:ari-core/ari/rqgm/state.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/cli/run.py:772 import ari.rqgm.state"
+      "evidence": "ari-core/ari/cli/run.py:776 import ari.rqgm.state"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80034,13 +80896,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/cli/paper_dispatch.py:run_paper_phase",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:684 use run_paper_phase"
+      "evidence": "ari-core/ari/cli/run.py:688 use run_paper_phase"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/cli/paper_dispatch.py:run_paper_phase",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:879 use run_paper_phase"
+      "evidence": "ari-core/ari/cli/run.py:883 use run_paper_phase"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80076,7 +80938,7 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/config/__init__.py:apply_rqgm_env_overrides",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:767 use apply_rqgm_env_overrides"
+      "evidence": "ari-core/ari/cli/run.py:771 use apply_rqgm_env_overrides"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80124,19 +80986,19 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:624 use package_config_root"
+      "evidence": "ari-core/ari/cli/run.py:628 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:669 use package_config_root"
+      "evidence": "ari-core/ari/cli/run.py:673 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:869 use package_config_root"
+      "evidence": "ari-core/ari/cli/run.py:873 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80178,13 +81040,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/memory_cli.py:_backup_path",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:843 use _backup_path"
+      "evidence": "ari-core/ari/cli/run.py:847 use _backup_path"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/memory_cli.py:_do_restore",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:843 use _do_restore"
+      "evidence": "ari-core/ari/cli/run.py:847 use _do_restore"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80196,13 +81058,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/orchestrator/node.py:Node",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:731 use Node"
+      "evidence": "ari-core/ari/cli/run.py:735 use Node"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/orchestrator/node.py:NodeStatus",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:731 use NodeStatus"
+      "evidence": "ari-core/ari/cli/run.py:735 use NodeStatus"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80220,13 +81082,13 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/pidfile.py:pid_context",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:647 use pid_context"
+      "evidence": "ari-core/ari/cli/run.py:651 use pid_context"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/pidfile.py:pid_context",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:858 use pid_context"
+      "evidence": "ari-core/ari/cli/run.py:862 use pid_context"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -80244,7 +81106,7 @@
       "from": "py.module:ari-core/ari/cli/run.py",
       "to": "py.symbol:ari-core/ari/rqgm/state.py:reconcile_resume_mode",
       "kind": "static.call",
-      "evidence": "ari-core/ari/cli/run.py:772 use reconcile_resume_mode"
+      "evidence": "ari-core/ari/cli/run.py:776 use reconcile_resume_mode"
     },
     {
       "from": "py.module:ari-core/ari/cli/run.py",
@@ -81139,6 +82001,12 @@
       "to": "py.symbol:ari-core/ari/assurance/target_abi.py:abi_identity",
       "kind": "static.call",
       "evidence": "ari-core/ari/evaluator/assurance_measure.py:59 use abi_identity"
+    },
+    {
+      "from": "py.module:ari-core/ari/evaluator/assurance_measure.py",
+      "to": "py.symbol:ari-core/ari/assurance/target_abi.py:problem_target_kind",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/evaluator/assurance_measure.py:59 use problem_target_kind"
     },
     {
       "from": "py.module:ari-core/ari/evaluator/deterministic_evaluator.py",
@@ -82980,19 +83848,43 @@
       "from": "py.module:ari-core/ari/manuscript/profiles.py",
       "to": "py.module:ari-core/ari/manuscript/contracts.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/manuscript/profiles.py:7 import ari.manuscript.contracts"
+      "evidence": "ari-core/ari/manuscript/profiles.py:51 import ari.manuscript.contracts"
+    },
+    {
+      "from": "py.module:ari-core/ari/manuscript/profiles.py",
+      "to": "py.symbol:ari-core/ari/manuscript/contracts.py:ManuscriptContractError",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/manuscript/profiles.py:51 use ManuscriptContractError"
     },
     {
       "from": "py.module:ari-core/ari/manuscript/profiles.py",
       "to": "py.symbol:ari-core/ari/manuscript/contracts.py:ManuscriptRequirementProfileV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/manuscript/profiles.py:7 use ManuscriptRequirementProfileV1"
+      "evidence": "ari-core/ari/manuscript/profiles.py:51 use ManuscriptRequirementProfileV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/manuscript/profiles.py",
+      "to": "py.symbol:ari-core/ari/manuscript/contracts.py:ManuscriptVenueProfileV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/manuscript/profiles.py:51 use ManuscriptVenueProfileV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/manuscript/profiles.py",
+      "to": "py.symbol:ari-core/ari/manuscript/contracts.py:ProfileParentRefV1",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/manuscript/profiles.py:51 use ProfileParentRefV1"
     },
     {
       "from": "py.module:ari-core/ari/manuscript/profiles.py",
       "to": "py.symbol:ari-core/ari/manuscript/contracts.py:RequirementSpecV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/manuscript/profiles.py:7 use RequirementSpecV1"
+      "evidence": "ari-core/ari/manuscript/profiles.py:51 use RequirementSpecV1"
+    },
+    {
+      "from": "py.module:ari-core/ari/manuscript/profiles.py",
+      "to": "py.symbol:ari-core/ari/manuscript/contracts.py:parse_venue_profile",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/manuscript/profiles.py:51 use parse_venue_profile"
     },
     {
       "from": "py.module:ari-core/ari/manuscript/publication.py",
@@ -84108,7 +85000,7 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper-re:grade_with_simplejudge",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('grade_with_simplejudge') <- ari-skill-paper-re/src/server.py:1518"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('grade_with_simplejudge') <- ari-skill-paper-re/src/server.py:1537"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -84120,73 +85012,73 @@
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:check_format",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('check_format') <- ari-skill-paper/src/server.py:384"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('check_format') <- ari-skill-paper/src/server.py:386"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:compile_paper",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('compile_paper') <- ari-skill-paper/src/server.py:264"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('compile_paper') <- ari-skill-paper/src/server.py:266"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:finalize_paper_build",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('finalize_paper_build') <- ari-skill-paper/src/server.py:338"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('finalize_paper_build') <- ari-skill-paper/src/server.py:340"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:get_template",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_template') <- ari-skill-paper/src/server.py:244"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('get_template') <- ari-skill-paper/src/server.py:246"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:inject_code_availability",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('inject_code_availability') <- ari-skill-paper/src/server.py:3231"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('inject_code_availability') <- ari-skill-paper/src/server.py:3233"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:link_paper_claims",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('link_paper_claims') <- ari-skill-paper/src/server.py:2518"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('link_paper_claims') <- ari-skill-paper/src/server.py:2520"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:list_rubrics",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_rubrics') <- ari-skill-paper/src/server.py:3090"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_rubrics') <- ari-skill-paper/src/server.py:3092"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:list_venues",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_venues') <- ari-skill-paper/src/server.py:238"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('list_venues') <- ari-skill-paper/src/server.py:240"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:merge_reviews",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('merge_reviews') <- ari-skill-paper/src/server.py:2375"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('merge_reviews') <- ari-skill-paper/src/server.py:2377"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:paper_refine",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('paper_refine') <- ari-skill-paper/src/server.py:2624"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('paper_refine') <- ari-skill-paper/src/server.py:2626"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:review_compiled_paper",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('review_compiled_paper') <- ari-skill-paper/src/server.py:2135"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('review_compiled_paper') <- ari-skill-paper/src/server.py:2137"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
       "to": "mcp.tool:paper:write_paper_iterative",
       "kind": "dynamic.mcp",
-      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('write_paper_iterative') <- ari-skill-paper/src/server.py:1139"
+      "evidence": "ari-core/ari/mcp/client.py:336 call_tool('write_paper_iterative') <- ari-skill-paper/src/server.py:1141"
     },
     {
       "from": "py.module:ari-core/ari/mcp/client.py",
@@ -87432,247 +88324,283 @@
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/assurance/catalog.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:116 import ari.assurance.catalog"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:142 import ari.assurance.catalog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/assurance/contract.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:117 import ari.assurance.contract"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:143 import ari.assurance.contract"
+    },
+    {
+      "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
+      "to": "py.module:ari-core/ari/assurance/problems.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:108 import ari.assurance.problems"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/assurance/resolver.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:122 import ari.assurance.resolver"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:148 import ari.assurance.resolver"
+    },
+    {
+      "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
+      "to": "py.module:ari-core/ari/assurance/target_abi.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:109 import ari.assurance.target_abi"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/capability_binding/authority.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:126 import ari.capability_binding.authority"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:152 import ari.capability_binding.authority"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/capability_binding/environment.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:127 import ari.capability_binding.environment"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:153 import ari.capability_binding.environment"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/capability_binding/models.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:128 import ari.capability_binding.models"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:154 import ari.capability_binding.models"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/capability_binding/models.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:44 import ari.capability_binding.models"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:45 import ari.capability_binding.models"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/capability_binding/ontology.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:129 import ari.capability_binding.ontology"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:155 import ari.capability_binding.ontology"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/capability_binding/resolver.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:130 import ari.capability_binding.resolver"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:156 import ari.capability_binding.resolver"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:131 import ari.config.finder"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:157 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/config/kca_runtime.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:132 import ari.config.kca_runtime"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:158 import ari.config.kca_runtime"
+    },
+    {
+      "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
+      "to": "py.module:ari-core/ari/evaluator/assurance_measure.py",
+      "kind": "static.import",
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:102 import ari.evaluator.assurance_measure"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/knowledge/catalog.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:133 import ari.knowledge.catalog"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:159 import ari.knowledge.catalog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/knowledge/models.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:134 import ari.knowledge.models"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:160 import ari.knowledge.models"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/protocols/integrity.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:12 import ari.protocols.integrity"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:13 import ari.protocols.integrity"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/providers/catalog.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:135 import ari.providers.catalog"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:161 import ari.providers.catalog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/research_contract.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:16 import ari.research_contract"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:17 import ari.research_contract"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/rqgm/admission.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:136 import ari.rqgm.admission"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:162 import ari.rqgm.admission"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.module:ari-core/ari/rqgm/knowledge_bridge.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:140 import ari.rqgm.knowledge_bridge"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:166 import ari.rqgm.knowledge_bridge"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/assurance/catalog.py:load_harness_catalog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:116 use load_harness_catalog"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:142 use load_harness_catalog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/assurance/contract.py:build_verification_contract",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:117 use build_verification_contract"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:143 use build_verification_contract"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/assurance/contract.py:load_property_vocabulary",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:117 use load_property_vocabulary"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:143 use load_property_vocabulary"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/assurance/contract.py:load_tolerance_policy",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:117 use load_tolerance_policy"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:143 use load_tolerance_policy"
+    },
+    {
+      "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
+      "to": "py.symbol:ari-core/ari/assurance/problems.py:load_problem",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:108 use load_problem"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/assurance/resolver.py:mint_baseline_harness_lock",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:122 use mint_baseline_harness_lock"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:148 use mint_baseline_harness_lock"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/assurance/resolver.py:resolve_harness_suite",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:122 use resolve_harness_suite"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:148 use resolve_harness_suite"
+    },
+    {
+      "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
+      "to": "py.symbol:ari-core/ari/assurance/target_abi.py:problem_target_kind",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:109 use problem_target_kind"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/capability_binding/authority.py:load_role_capability_authority",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:126 use load_role_capability_authority"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:152 use load_role_capability_authority"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/capability_binding/environment.py:build_environment_snapshot",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:127 use build_environment_snapshot"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:153 use build_environment_snapshot"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/capability_binding/models.py:CapabilityBindingRequestV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:128 use CapabilityBindingRequestV1"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:154 use CapabilityBindingRequestV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/capability_binding/models.py:CapabilityRequirementV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:44 use CapabilityRequirementV1"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:45 use CapabilityRequirementV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/capability_binding/ontology.py:load_capability_ontology",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:129 use load_capability_ontology"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:155 use load_capability_ontology"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/capability_binding/resolver.py:bind_capabilities",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:130 use bind_capabilities"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:156 use bind_capabilities"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:131 use package_config_root"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:157 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/config/kca_runtime.py:resolve_kca_modes",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:132 use resolve_kca_modes"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:158 use resolve_kca_modes"
+    },
+    {
+      "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
+      "to": "py.symbol:ari-core/ari/evaluator/assurance_measure.py:PROBLEM_ENV",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:102 use PROBLEM_ENV"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/knowledge/catalog.py:load_knowledge_catalog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:133 use load_knowledge_catalog"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:159 use load_knowledge_catalog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/knowledge/models.py:KnowledgeAdmissionContextV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:134 use KnowledgeAdmissionContextV1"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:160 use KnowledgeAdmissionContextV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/protocols/integrity.py:ZERO_SHA256",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:12 use ZERO_SHA256"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:13 use ZERO_SHA256"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/protocols/integrity.py:canonical_digest",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:12 use canonical_digest"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:13 use canonical_digest"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/providers/catalog.py:load_provider_catalog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:135 use load_provider_catalog"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:161 use load_provider_catalog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/research_contract.py:parse_research_contract_document",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:16 use parse_research_contract_document"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:17 use parse_research_contract_document"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/rqgm/admission.py:KCAModeSnapshotV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:136 use KCAModeSnapshotV1"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:162 use KCAModeSnapshotV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/rqgm/admission.py:build_run_admission",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:136 use build_run_admission"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:162 use build_run_admission"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/admission_builder.py",
       "to": "py.symbol:ari-core/ari/rqgm/knowledge_bridge.py:RQGMKnowledgeBridge",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/admission_builder.py:140 use RQGMKnowledgeBridge"
+      "evidence": "ari-core/ari/rqgm/admission_builder.py:166 use RQGMKnowledgeBridge"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/adversarial/__init__.py",
@@ -88140,7 +89068,7 @@
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.module:ari-core/ari/assurance/runner.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:22 import ari.assurance.runner"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:23 import ari.assurance.runner"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
@@ -88152,19 +89080,19 @@
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.module:ari-core/ari/execution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:23 import ari.execution"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:24 import ari.execution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.module:ari-core/ari/orchestrator/node_summary_view.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:24 import ari.orchestrator.node_summary_view"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:25 import ari.orchestrator.node_summary_view"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.module:ari-core/ari/protocols/immutable_store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:25 import ari.protocols.immutable_store"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:26 import ari.protocols.immutable_store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
@@ -88216,6 +89144,12 @@
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
+      "to": "py.symbol:ari-core/ari/assurance/request.py:harness_inapplicability",
+      "kind": "static.call",
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:17 use harness_inapplicability"
+    },
+    {
+      "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.symbol:ari-core/ari/assurance/request.py:load_target_declaration",
       "kind": "static.call",
       "evidence": "ari-core/ari/rqgm/assurance_bridge.py:17 use load_target_declaration"
@@ -88224,25 +89158,25 @@
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.symbol:ari-core/ari/assurance/runner.py:FixedVerifier",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:22 use FixedVerifier"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:23 use FixedVerifier"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.symbol:ari-core/ari/execution.py:WorkspaceRefV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:23 use WorkspaceRefV1"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:24 use WorkspaceRefV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.symbol:ari-core/ari/orchestrator/node_summary_view.py:scrub_host_identity",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:24 use scrub_host_identity"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:25 use scrub_host_identity"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/assurance_bridge.py",
       "to": "py.symbol:ari-core/ari/protocols/immutable_store.py:write_once_json",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:25 use write_once_json"
+      "evidence": "ari-core/ari/rqgm/assurance_bridge.py:26 use write_once_json"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/authority_manifest.py",
@@ -88506,7 +89440,7 @@
       "from": "py.module:ari-core/ari/rqgm/evaluation/conditions.py",
       "to": "py.module:ari-core/ari/rqgm/evaluation/kca_conditions.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/conditions.py:404 import ari.rqgm.evaluation.kca_conditions"
+      "evidence": "ari-core/ari/rqgm/evaluation/conditions.py:405 import ari.rqgm.evaluation.kca_conditions"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/doubles.py",
@@ -88896,19 +89830,19 @@
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/config/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:89 import ari.config"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:92 import ari.config"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/pool.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:185 import ari.rqgm.adversarial.pool"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:188 import ari.rqgm.adversarial.pool"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:186 import ari.rqgm.adversarial.records"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:189 import ari.rqgm.adversarial.records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
@@ -88932,7 +89866,7 @@
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/evaluation/kca_probe.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:333 import ari.rqgm.evaluation.kca_probe"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:336 import ari.rqgm.evaluation.kca_probe"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
@@ -88944,67 +89878,67 @@
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/kernel.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:226 import ari.rqgm.kernel"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:229 import ari.rqgm.kernel"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:254 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:257 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:255 import ari.rqgm.prompt_records"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:258 import ari.rqgm.prompt_records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/proposals/records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:156 import ari.rqgm.proposals.records"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:159 import ari.rqgm.proposals.records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:188 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:191 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:227 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:230 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:256 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:259 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/config/__init__.py:ARIConfig",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:89 use ARIConfig"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:92 use ARIConfig"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/pool.py:AdversarialCaseLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:185 use AdversarialCaseLog"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:188 use AdversarialCaseLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/records.py:format_validated_id",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:186 use format_validated_id"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:189 use format_validated_id"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/records.py:make_validated_attack_record",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:186 use make_validated_attack_record"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:189 use make_validated_attack_record"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
@@ -89016,55 +89950,55 @@
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/evaluation/kca_probe.py:run_and_persist_kca_probes",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:333 use run_and_persist_kca_probes"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:336 use run_and_persist_kca_probes"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/kernel.py:ConstitutionalKernel",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:226 use ConstitutionalKernel"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:229 use ConstitutionalKernel"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:static_validation_failures",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:254 use static_validation_failures"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:257 use static_validation_failures"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_records.py:candidate_from_dict",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:255 use candidate_from_dict"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:258 use candidate_from_dict"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/proposals/records.py:ProposalRecord",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:156 use ProposalRecord"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:159 use ProposalRecord"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/proposals/records.py:ProposalSummaryView",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:156 use ProposalSummaryView"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:159 use ProposalSummaryView"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:188 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:191 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:227 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:230 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/evaluation/smoke.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:256 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/evaluation/smoke.py:259 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/events.py",
@@ -90654,7 +91588,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.module:ari-core/ari/rqgm/budget.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2925 import ari.rqgm.budget"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2926 import ari.rqgm.budget"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -90726,7 +91660,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.module:ari-core/ari/rqgm/paper_anchor.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2836 import ari.rqgm.paper_anchor"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2837 import ari.rqgm.paper_anchor"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -90768,7 +91702,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2767 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2768 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -90798,7 +91732,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2931 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2932 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -90816,7 +91750,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.module:ari-core/ari/rqgm/transition_engine.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2901 import ari.rqgm.transition_engine"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2902 import ari.rqgm.transition_engine"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -90912,13 +91846,13 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/budget.py:ADVERSARY_CALL",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2925 use ADVERSARY_CALL"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2926 use ADVERSARY_CALL"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/budget.py:BUDGET_CONSUMED_EVENT",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2925 use BUDGET_CONSUMED_EVENT"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2926 use BUDGET_CONSUMED_EVENT"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -90948,13 +91882,13 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/budget.py:PAPER_ANCHOR_SCORING",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2925 use PAPER_ANCHOR_SCORING"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2926 use PAPER_ANCHOR_SCORING"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/budget.py:PROMPT_CANDIDATE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2925 use PROMPT_CANDIDATE"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2926 use PROMPT_CANDIDATE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -91002,7 +91936,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/paper_anchor.py:binarize_recommendation",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2836 use binarize_recommendation"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2837 use binarize_recommendation"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -91044,7 +91978,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/paper_anchor.py:reviewer_anchor_cases",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2836 use reviewer_anchor_cases"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2837 use reviewer_anchor_cases"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -91146,7 +92080,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:check_output_against_schema",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2767 use check_output_against_schema"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2768 use check_output_against_schema"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -91200,7 +92134,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2931 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2932 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -91218,7 +92152,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/transition_engine.py:NO_REPLAY_BASIS_KEY",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2901 use NO_REPLAY_BASIS_KEY"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2902 use NO_REPLAY_BASIS_KEY"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
@@ -91230,7 +92164,7 @@
       "from": "py.module:ari-core/ari/rqgm/paper_runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/transition_engine.py:NO_SHADOW_BASIS_KEY",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2901 use NO_SHADOW_BASIS_KEY"
+      "evidence": "ari-core/ari/rqgm/paper_runtime.py:2902 use NO_SHADOW_BASIS_KEY"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/paper_self_preference.py",
@@ -91914,19 +92848,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/agent/loop.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4113 import ari.agent.loop"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4116 import ari.agent.loop"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/assurance/models.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3597 import ari.assurance.models"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3600 import ari.assurance.models"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/capability_binding/models.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4096 import ari.capability_binding.models"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4099 import ari.capability_binding.models"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -91938,7 +92872,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/capability_binding/resolver.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4104 import ari.capability_binding.resolver"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4107 import ari.capability_binding.resolver"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -91974,7 +92908,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/evaluator/dynamic_axes.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1995 import ari.evaluator.dynamic_axes"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1997 import ari.evaluator.dynamic_axes"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -91986,7 +92920,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/knowledge/models.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3454 import ari.knowledge.models"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3457 import ari.knowledge.models"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92004,7 +92938,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/prompts/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2567 import ari.prompts"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2569 import ari.prompts"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92016,13 +92950,13 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/protocols/integrity.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3437 import ari.protocols.integrity"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3440 import ari.protocols.integrity"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/protocols/integrity.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4091 import ari.protocols.integrity"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4094 import ari.protocols.integrity"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92064,37 +92998,37 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2837 import ari.rqgm.adversarial"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2839 import ari.rqgm.adversarial"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/__init__.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2868 import ari.rqgm.adversarial"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2870 import ari.rqgm.adversarial"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/pool.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3026 import ari.rqgm.adversarial.pool"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3028 import ari.rqgm.adversarial.pool"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/pool.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3664 import ari.rqgm.adversarial.pool"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3667 import ari.rqgm.adversarial.pool"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/pool.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3863 import ari.rqgm.adversarial.pool"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3866 import ari.rqgm.adversarial.pool"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/adversarial/records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3665 import ari.rqgm.adversarial.records"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3668 import ari.rqgm.adversarial.records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92130,25 +93064,25 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/clean_room.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2568 import ari.rqgm.clean_room"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2570 import ari.rqgm.clean_room"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/clean_room.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2786 import ari.rqgm.clean_room"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2788 import ari.rqgm.clean_room"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/context_views.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3999 import ari.rqgm.context_views"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4002 import ari.rqgm.context_views"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/context_views.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4020 import ari.rqgm.context_views"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4023 import ari.rqgm.context_views"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92178,43 +93112,43 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/events.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1799 import ari.rqgm.events"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1801 import ari.rqgm.events"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/events.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1968 import ari.rqgm.events"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1970 import ari.rqgm.events"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/events.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2013 import ari.rqgm.events"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2015 import ari.rqgm.events"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/events.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2093 import ari.rqgm.events"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2095 import ari.rqgm.events"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/events.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2433 import ari.rqgm.events"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2435 import ari.rqgm.events"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/events.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2569 import ari.rqgm.events"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2571 import ari.rqgm.events"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/events.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3438 import ari.rqgm.events"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3441 import ari.rqgm.events"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92238,13 +93172,13 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/frontier_repair.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2181 import ari.rqgm.frontier_repair"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2183 import ari.rqgm.frontier_repair"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/frontier_repair.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3135 import ari.rqgm.frontier_repair"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3137 import ari.rqgm.frontier_repair"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92262,7 +93196,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/governance/_records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3439 import ari.rqgm.governance._records"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3442 import ari.rqgm.governance._records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92280,7 +93214,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/kernel.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3030 import ari.rqgm.kernel"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3032 import ari.rqgm.kernel"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92298,7 +93232,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/kernel.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4030 import ari.rqgm.kernel"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4033 import ari.rqgm.kernel"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92310,19 +93244,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/meta_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2256 import ari.rqgm.meta_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2258 import ari.rqgm.meta_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/meta_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2382 import ari.rqgm.meta_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2384 import ari.rqgm.meta_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/meta_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4063 import ari.rqgm.meta_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4066 import ari.rqgm.meta_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92352,49 +93286,49 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1573 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1575 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1800 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1802 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2434 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2436 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2570 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2572 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3236 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3239 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3313 import ari.rqgm.prompt_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3316 import ari.rqgm.prompt_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_loader.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1969 import ari.rqgm.prompt_loader"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1971 import ari.rqgm.prompt_loader"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_loader.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3180 import ari.rqgm.prompt_loader"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3182 import ari.rqgm.prompt_loader"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92412,19 +93346,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1801 import ari.rqgm.prompt_records"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1803 import ari.rqgm.prompt_records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1899 import ari.rqgm.prompt_records"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1901 import ari.rqgm.prompt_records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_records.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2435 import ari.rqgm.prompt_records"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2437 import ari.rqgm.prompt_records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92436,7 +93370,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/prompt_spec.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2094 import ari.rqgm.prompt_spec"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2096 import ari.rqgm.prompt_spec"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92460,19 +93394,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/proposals/router.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3913 import ari.rqgm.proposals.router"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3916 import ari.rqgm.proposals.router"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/proposals/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3893 import ari.rqgm.proposals.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3896 import ari.rqgm.proposals.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/state.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4182 import ari.rqgm.state"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4185 import ari.rqgm.state"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92502,43 +93436,43 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1625 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1627 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1643 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1645 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2182 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2184 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2257 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2259 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3031 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3033 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3126 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3128 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3440 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3443 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92550,13 +93484,13 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4031 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4034 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/store.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4064 import ari.rqgm.store"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4067 import ari.rqgm.store"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92574,55 +93508,55 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/transition_engine.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1644 import ari.rqgm.transition_engine"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1646 import ari.rqgm.transition_engine"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/utility_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1802 import ari.rqgm.utility_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1804 import ari.rqgm.utility_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/utility_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1903 import ari.rqgm.utility_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1905 import ari.rqgm.utility_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/utility_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2014 import ari.rqgm.utility_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2016 import ari.rqgm.utility_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/utility_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2127 import ari.rqgm.utility_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2129 import ari.rqgm.utility_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.module:ari-core/ari/rqgm/utility_evolution.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4159 import ari.rqgm.utility_evolution"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4162 import ari.rqgm.utility_evolution"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/agent/loop.py:_system_prompt_versioned",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4113 use _system_prompt_versioned"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4116 use _system_prompt_versioned"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/assurance/models.py:HarnessAttestationV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3597 use HarnessAttestationV1"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3600 use HarnessAttestationV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/capability_binding/models.py:CapabilityBindingLockV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4096 use CapabilityBindingLockV1"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4099 use CapabilityBindingLockV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92634,7 +93568,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/capability_binding/resolver.py:bound_tool_refs",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4104 use bound_tool_refs"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4107 use bound_tool_refs"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92652,31 +93586,31 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/evaluator/dynamic_axes.py:resolve_live_axis_set",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1995 use resolve_live_axis_set"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1997 use resolve_live_axis_set"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/knowledge/models.py:KnowledgeSkillUseRecordV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3454 use KnowledgeSkillUseRecordV1"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3457 use KnowledgeSkillUseRecordV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/knowledge/models.py:NodeKnowledgeSkillUseV1",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3454 use NodeKnowledgeSkillUseV1"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3457 use NodeKnowledgeSkillUseV1"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/protocols/integrity.py:ZERO_SHA256",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4091 use ZERO_SHA256"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4094 use ZERO_SHA256"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/protocols/integrity.py:canonical_digest",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3437 use canonical_digest"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3440 use canonical_digest"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92718,31 +93652,31 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/pool.py:AdversarialCaseLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3026 use AdversarialCaseLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3028 use AdversarialCaseLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/pool.py:AdversarialCaseLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3664 use AdversarialCaseLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3667 use AdversarialCaseLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/pool.py:AdversarialCaseLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3863 use AdversarialCaseLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3866 use AdversarialCaseLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/pool.py:ROUND_MARKER_RECORD_TYPE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3026 use ROUND_MARKER_RECORD_TYPE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3028 use ROUND_MARKER_RECORD_TYPE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/adversarial/records.py:UTILITY_RECORD_TYPE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3665 use UTILITY_RECORD_TYPE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3668 use UTILITY_RECORD_TYPE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92796,25 +93730,25 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/clean_room.py:CleanRoomCoordinator",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2786 use CleanRoomCoordinator"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2788 use CleanRoomCoordinator"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/clean_room.py:role_output_schema",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2568 use role_output_schema"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2570 use role_output_schema"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/context_views.py:BFTS_VIEW_ROLE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4020 use BFTS_VIEW_ROLE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4023 use BFTS_VIEW_ROLE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/context_views.py:build_bfts_summary_context",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3999 use build_bfts_summary_context"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4002 use build_bfts_summary_context"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92838,19 +93772,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:ACTIVE_STATUSES",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2093 use ACTIVE_STATUSES"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2095 use ACTIVE_STATUSES"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:ACTIVE_STATUSES",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2433 use ACTIVE_STATUSES"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2435 use ACTIVE_STATUSES"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:TransitionEvent",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1799 use TransitionEvent"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1801 use TransitionEvent"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92874,25 +93808,25 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:UTILITY_POLICY_ROLE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2013 use UTILITY_POLICY_ROLE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2015 use UTILITY_POLICY_ROLE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:UTILITY_POLICY_ROLE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2093 use UTILITY_POLICY_ROLE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2095 use UTILITY_POLICY_ROLE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:canonical_json",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1968 use canonical_json"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1970 use canonical_json"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:canonical_json",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2569 use canonical_json"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2571 use canonical_json"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92910,13 +93844,13 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/events.py:format_prompt_id",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2433 use format_prompt_id"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2435 use format_prompt_id"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/frontier_repair.py:FrontierRepairEngine",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2181 use FrontierRepairEngine"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2183 use FrontierRepairEngine"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92928,7 +93862,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/frontier_repair.py:load_rqgm_records",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3135 use load_rqgm_records"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3137 use load_rqgm_records"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92946,7 +93880,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/governance/_records.py:created_at_now",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3439 use created_at_now"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3442 use created_at_now"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92964,13 +93898,13 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/kernel.py:per_node_warn_check",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3030 use per_node_warn_check"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3032 use per_node_warn_check"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/kernel.py:should_block",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3030 use should_block"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3032 use should_block"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -92994,19 +93928,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/meta_evolution.py:MetaEvolutionCoordinator",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2256 use MetaEvolutionCoordinator"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2258 use MetaEvolutionCoordinator"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/meta_evolution.py:MetricSpecWeightCap",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4063 use MetricSpecWeightCap"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4066 use MetricSpecWeightCap"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/meta_evolution.py:load_meta_outputs_log",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2382 use load_meta_outputs_log"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2384 use load_meta_outputs_log"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93018,7 +93952,7 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:CandidateValidationPipeline",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3236 use CandidateValidationPipeline"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3239 use CandidateValidationPipeline"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93042,49 +93976,49 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:PromptMutator",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2434 use PromptMutator"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2436 use PromptMutator"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:candidate_registration_payload",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1800 use candidate_registration_payload"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1802 use candidate_registration_payload"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:check_output_against_schema",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2570 use check_output_against_schema"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2572 use check_output_against_schema"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:constitutional_validation_failures",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1573 use constitutional_validation_failures"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1575 use constitutional_validation_failures"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:role_instruction_constraint_failures",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1573 use role_instruction_constraint_failures"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1575 use role_instruction_constraint_failures"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_evolution.py:static_validation_failures",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1573 use static_validation_failures"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1575 use static_validation_failures"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_loader.py:GovernedPromptLoader",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3180 use GovernedPromptLoader"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3182 use GovernedPromptLoader"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_loader.py:write_evolved_policy_body",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1969 use write_evolved_policy_body"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1971 use write_evolved_policy_body"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93102,19 +94036,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_records.py:load_prompt_evolution_log",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1801 use load_prompt_evolution_log"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1803 use load_prompt_evolution_log"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_records.py:load_prompt_evolution_log",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1899 use load_prompt_evolution_log"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1901 use load_prompt_evolution_log"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_records.py:load_prompt_evolution_log",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2435 use load_prompt_evolution_log"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2437 use load_prompt_evolution_log"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93126,13 +94060,13 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_records.py:record_prompt_evolution_event",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1899 use record_prompt_evolution_event"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1901 use record_prompt_evolution_event"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/prompt_spec.py:UTILITY_POLICY_PROMPT_ID",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2094 use UTILITY_POLICY_PROMPT_ID"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2096 use UTILITY_POLICY_PROMPT_ID"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93168,19 +94102,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/proposals/router.py:ProposalRouter",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3913 use ProposalRouter"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3916 use ProposalRouter"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/proposals/store.py:ProposalStore",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3893 use ProposalStore"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3896 use ProposalStore"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/state.py:persist_run_start",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4182 use persist_run_start"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4185 use persist_run_start"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93210,43 +94144,43 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1625 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1627 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1643 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1645 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2182 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2184 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2257 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2259 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3031 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3033 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3126 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3128 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:3440 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:3443 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93258,19 +94192,19 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4031 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4034 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:ImmutableAuditLog",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4064 use ImmutableAuditLog"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4067 use ImmutableAuditLog"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/store.py:RqgmStateStore",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1643 use RqgmStateStore"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1645 use RqgmStateStore"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
@@ -93288,49 +94222,49 @@
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/transition_engine.py:RegistryTransitionEngine",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1644 use RegistryTransitionEngine"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1646 use RegistryTransitionEngine"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/utility_evolution.py:PolicyMutator",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1903 use PolicyMutator"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1905 use PolicyMutator"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/utility_evolution.py:UTILITY_POLICY_CANDIDATE_RECORD_TYPE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1802 use UTILITY_POLICY_CANDIDATE_RECORD_TYPE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1804 use UTILITY_POLICY_CANDIDATE_RECORD_TYPE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/utility_evolution.py:UTILITY_POLICY_CANDIDATE_RECORD_TYPE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1903 use UTILITY_POLICY_CANDIDATE_RECORD_TYPE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1905 use UTILITY_POLICY_CANDIDATE_RECORD_TYPE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/utility_evolution.py:UTILITY_POLICY_CANDIDATE_RECORD_TYPE",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2127 use UTILITY_POLICY_CANDIDATE_RECORD_TYPE"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2129 use UTILITY_POLICY_CANDIDATE_RECORD_TYPE"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/utility_evolution.py:UtilityPolicyStamp",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:4159 use UtilityPolicyStamp"
+      "evidence": "ari-core/ari/rqgm/runtime.py:4162 use UtilityPolicyStamp"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/utility_evolution.py:evaluate_utility_policy_candidate",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:2014 use evaluate_utility_policy_candidate"
+      "evidence": "ari-core/ari/rqgm/runtime.py:2016 use evaluate_utility_policy_candidate"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/runtime.py",
       "to": "py.symbol:ari-core/ari/rqgm/utility_evolution.py:utility_policy_registration_payload",
       "kind": "static.call",
-      "evidence": "ari-core/ari/rqgm/runtime.py:1802 use utility_policy_registration_payload"
+      "evidence": "ari-core/ari/rqgm/runtime.py:1804 use utility_policy_registration_payload"
     },
     {
       "from": "py.module:ari-core/ari/rqgm/state.py",
@@ -94138,6 +95072,12 @@
     },
     {
       "from": "py.module:ari-core/ari/schemas/__init__.py",
+      "to": "data.file:ari-core/ari/schemas/manuscript_venue_profile_v1.schema.json",
+      "kind": "dynamic.path",
+      "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> manuscript_venue_profile_v1.schema.json"
+    },
+    {
+      "from": "py.module:ari-core/ari/schemas/__init__.py",
       "to": "data.file:ari-core/ari/schemas/measurement_set_v1.schema.json",
       "kind": "dynamic.path",
       "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> measurement_set_v1.schema.json"
@@ -94195,6 +95135,12 @@
       "to": "data.file:ari-core/ari/schemas/native_perf_report_v1.schema.json",
       "kind": "dynamic.path",
       "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> native_perf_report_v1.schema.json"
+    },
+    {
+      "from": "py.module:ari-core/ari/schemas/__init__.py",
+      "to": "data.file:ari-core/ari/schemas/native_problem_correctness_report_v1.schema.json",
+      "kind": "dynamic.path",
+      "evidence": "ari-core/ari/schemas/__init__.py:11 load(name) -> native_problem_correctness_report_v1.schema.json"
     },
     {
       "from": "py.module:ari-core/ari/schemas/__init__.py",
@@ -95148,31 +96094,31 @@
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/config/finder.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:303 import ari.config.finder"
+      "evidence": "ari-core/ari/viz/api_settings.py:305 import ari.config.finder"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/env_detect.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:581 import ari.env_detect"
+      "evidence": "ari-core/ari/viz/api_settings.py:583 import ari.env_detect"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/skill_manifest.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:317 import ari.skill_manifest"
+      "evidence": "ari-core/ari/viz/api_settings.py:319 import ari.skill_manifest"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/viz/api_workflow.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:438 import ari.viz.api_workflow"
+      "evidence": "ari-core/ari/viz/api_settings.py:440 import ari.viz.api_workflow"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.module:ari-core/ari/viz/api_workflow.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/api_settings.py:454 import ari.viz.api_workflow"
+      "evidence": "ari-core/ari/viz/api_settings.py:456 import ari.viz.api_workflow"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
@@ -95190,49 +96136,49 @@
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/config/finder.py:package_config_root",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:303 use package_config_root"
+      "evidence": "ari-core/ari/viz/api_settings.py:305 use package_config_root"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/env_detect.py:get_environment_summary",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:581 use get_environment_summary"
+      "evidence": "ari-core/ari/viz/api_settings.py:583 use get_environment_summary"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/skill_manifest.py:load_skill_manifest",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:317 use load_skill_manifest"
+      "evidence": "ari-core/ari/viz/api_settings.py:319 use load_skill_manifest"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/skill_manifest.py:manifest_digest",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:317 use manifest_digest"
+      "evidence": "ari-core/ari/viz/api_settings.py:319 use manifest_digest"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/viz/api_workflow.py:_workflow_revision_guard",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:454 use _workflow_revision_guard"
+      "evidence": "ari-core/ari/viz/api_settings.py:456 use _workflow_revision_guard"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/viz/api_workflow.py:_workflow_write_guard",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:454 use _workflow_write_guard"
+      "evidence": "ari-core/ari/viz/api_settings.py:456 use _workflow_write_guard"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/viz/api_workflow.py:workflow_revision",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:438 use workflow_revision"
+      "evidence": "ari-core/ari/viz/api_settings.py:440 use workflow_revision"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_settings.py",
       "to": "py.symbol:ari-core/ari/viz/api_workflow.py:workflow_revision",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/api_settings.py:454 use workflow_revision"
+      "evidence": "ari-core/ari/viz/api_settings.py:456 use workflow_revision"
     },
     {
       "from": "py.module:ari-core/ari/viz/api_state.py",
@@ -95484,31 +96430,31 @@
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.module:ari-core/ari/viz/api_state.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:30 import ari.viz.api_state"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:29 import ari.viz.api_state"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.module:ari-core/ari/viz/api_state.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:34 import ari.viz.api_state"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:33 import ari.viz.api_state"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.module:ari-core/ari/viz/api_state.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:38 import ari.viz.api_state"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:37 import ari.viz.api_state"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.module:ari-core/ari/viz/api_state.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:42 import ari.viz.api_state"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:41 import ari.viz.api_state"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.module:ari-core/ari/viz/run_health.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:21 import ari.viz.run_health"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:219 import ari.viz.run_health"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
@@ -95520,19 +96466,19 @@
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.module:ari-core/ari/viz/tree_view.py",
       "kind": "static.import",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:56 import ari.viz.tree_view"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:55 import ari.viz.tree_view"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.symbol:ari-core/ari/viz/run_health.py:run_terminal_health",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:21 use run_terminal_health"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:219 use run_terminal_health"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_api.py",
       "to": "py.symbol:ari-core/ari/viz/tree_view.py:build_tree_view",
       "kind": "static.call",
-      "evidence": "ari-core/ari/viz/checkpoint_api.py:56 use build_tree_view"
+      "evidence": "ari-core/ari/viz/checkpoint_api.py:55 use build_tree_view"
     },
     {
       "from": "py.module:ari-core/ari/viz/checkpoint_finder.py",
@@ -98778,7 +99724,7 @@
       "from": "py.module:ari-skill-paper/src/authoring.py",
       "to": "py.module:ari-core/ari/public/manuscript.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/authoring.py:165 import ari.public.manuscript"
+      "evidence": "ari-skill-paper/src/authoring.py:194 import ari.public.manuscript"
     },
     {
       "from": "py.module:ari-skill-paper/src/authoring.py",
@@ -98898,43 +99844,43 @@
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/cost_tracker.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:28 import ari.public.cost_tracker"
+      "evidence": "ari-skill-paper/src/server.py:29 import ari.public.cost_tracker"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/execution.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:2273 import ari.public.execution"
+      "evidence": "ari-skill-paper/src/server.py:2275 import ari.public.execution"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/execution.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:2671 import ari.public.execution"
+      "evidence": "ari-skill-paper/src/server.py:2673 import ari.public.execution"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/execution.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:287 import ari.public.execution"
+      "evidence": "ari-skill-paper/src/server.py:289 import ari.public.execution"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/figures.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:293 import ari.public.figures"
+      "evidence": "ari-skill-paper/src/server.py:295 import ari.public.figures"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/paper.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:2274 import ari.public.paper"
+      "evidence": "ari-skill-paper/src/server.py:2276 import ari.public.paper"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/paper.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:2672 import ari.public.paper"
+      "evidence": "ari-skill-paper/src/server.py:2674 import ari.public.paper"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
@@ -98946,13 +99892,13 @@
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/science_data.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:1225 import ari.public.science_data"
+      "evidence": "ari-skill-paper/src/server.py:1227 import ari.public.science_data"
     },
     {
       "from": "py.module:ari-skill-paper/src/server.py",
       "to": "py.module:ari-core/ari/public/verified_context.py",
       "kind": "static.import",
-      "evidence": "ari-skill-paper/src/server.py:1593 import ari.public.verified_context"
+      "evidence": "ari-skill-paper/src/server.py:1595 import ari.public.verified_context"
     },
     {
       "from": "py.module:ari-skill-plot/src/planning.py",
