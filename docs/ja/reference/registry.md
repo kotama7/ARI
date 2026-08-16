@@ -53,6 +53,23 @@ EOF
 export ARI_REGISTRY_TOKEN=ari_<step-4-からコピー>
 ```
 
+## 設定ファイルの解決（v0.7+）
+
+`ari ear publish --backend ari-registry` と `ari clone ari://` は、どちらも同じ 4 段のチェーンで `registries.yaml` を探します。
+
+1. `$ARI_REGISTRIES_FILE` — 明示的な env override。
+2. `{checkpoint_dir}/.ari/registries.yaml` — 実行ごとに registry 設定を checkpoint に固定できるようにする意図の段。
+3. `$(pwd)/.ari/registries.yaml` — プロジェクトディレクトリの中から実行するときに便利。
+4. `$HOME/.ari/registries.yaml` — **非推奨**。ファイルが存在する場合にのみ、しかも `DeprecationWarning` を出したうえで参照されます。v1.0 で削除。
+
+> **第 2 段は現状発火しません。** どちらの lookup も `checkpoint_dir` を省略可能な引数として取りますが、呼び出し側はどちらもそれを渡していません — publish バックエンドの `_select_registry()` も `ari://` resolver の `resolve()` も、引数なしで呼んでいます。したがって checkpoint の中に置いた `.ari/registries.yaml` は、`$ARI_REGISTRIES_FILE` でそのファイルを指すか、そのディレクトリから実行しない限り見えません。
+
+チェーン上のどのファイルも存在しない場合、どちらの経路も `$ARI_REGISTRY_URL`（と `$ARI_REGISTRY_TOKEN`）から組み立てた単一の合成 registry にフォールバックします。どちらも無ければ、コマンドは `no ari-registry configured` で失敗します。ファイルは*存在する*が registry が 1 件も書かれていない場合、2 つの実装は挙動が分かれます: `ari://` resolver はチェーンを歩き続けて `$ARI_REGISTRY_URL` フォールバックまで到達しますが、publish バックエンドは最初に読めたファイルの空リストをそのまま返すため、`$ARI_REGISTRY_URL` が設定されていても失敗します。publish バックエンドはさらに `$ARI_REGISTRY_NAME` を受け取り、名前でエントリを選べます。
+
+ファイル中の token は、リテラルか `$VAR` の形式で書いてください。resolver の docstring に載っている `${VAR}` の形式は **動作しません**: どちらの `_expand_token` 実装でも `$` 始まりの分岐が先に判定されるため、`${ARI_REGISTRY_TOKEN}` は文字どおり `{ARI_REGISTRY_TOKEN}` という名前の環境変数として引かれ、黙って空文字列に展開されます。
+
+サーバ側の状態（`ari registry serve`）は `$ARI_REGISTRY_DATA/` に置かれます。レガシーの `$HOME/.ari/registry-data` フォールバックも同じ v1.0 非推奨ポリシーの対象です — 警告を避けるには env var を明示的に設定してください。
+
 ## エンドポイント
 
 | Method | Path                                    | 認証   | 備考 |

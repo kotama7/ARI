@@ -50,6 +50,7 @@ ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [W
 | `ari run` | 运行新实验 | New Experiment 向导 → Launch |
 | `ari resume` | 恢复中断的实验 | Experiments 页面 → Resume 按钮 |
 | `ari paper` | 仅生成论文（跳过实验） | `POST /api/run-stage {stage: "paper"}` |
+| `ari manuscript <subcmd>` | 对 Manuscript Complete attempt 进行 compile / 检查 / repair / lock | — |
 | `ari status` | 显示实验树和摘要 | Monitor / Tree 页面 |
 | `ari viz` | 启动 Web 仪表盘 | -- |
 | `ari projects` | 列出所有过去的实验 | Experiments 页面 |
@@ -73,6 +74,31 @@ ARI 命令行操作的完整参考。CLI 为基于终端的工作流提供与 [W
 > `ARI_RQGM_ENABLED` 环境变量覆盖。上表中的每个命令在默认的
 > `simple_bfts` 模式下行为完全相同。见
 > [执行模式](../guides/execution_modes.md)。
+
+## `ari manuscript` — 完备性与 publication 操作
+
+这组命令是可选启用的 exploration-to-authoring 编译器的机器可读操作面。它不会在
+默认的 `manuscript.mode: "off"` 路径上运行。
+
+```bash
+ari manuscript compile CHECKPOINT [--mode audit|enforce] \
+  [--profile generic_empirical_v1] [--repair-policy disabled|explicit|auto] \
+  [--config WORKFLOW]
+ari manuscript status CHECKPOINT [--fail-if-blocked]
+ari manuscript inspect CHECKPOINT [--requirement ID] [--lane LANE] [--node ID]
+ari manuscript plan-repair CHECKPOINT [--config WORKFLOW]
+ari manuscript repair CHECKPOINT [--request REQUEST_ID]... [--config WORKFLOW]
+ari manuscript explain-publication CHECKPOINT
+ari manuscript lock-publication CHECKPOINT
+```
+
+`plan-repair` 对外部系统而言是只读的。`repair` 先把被 admit 的 request 与预算
+持久化，再走常规的 bounded research runtime；`ari paper` 从不启动 research
+repair。`--mode` 默认为 `audit`；除非同时给出 `--mode enforce`，否则
+`--repair-policy auto` 会被拒绝。`--request` 可重复指定，**省略它即选中 plan 中
+的每一个 request**——未知的 id 会以 `unknown request IDs: ...` 被拒绝。
+`lock-publication` 只有在 decision 是 fresh 且 publishable、并绑定到确切的最终
+构建与 PDF 时才会成功。参见[操作员运行手册](../guides/manuscript_complete_operations.md)。
 
 ---
 
@@ -392,6 +418,21 @@ ari migrate node-reports /path/to/checkpoint --overwrite   # 同时重写已存�
 ```
 
 无法推断的字段（`original_direction`、`next_steps_hints`）置为 null。
+
+---
+
+## ari doctor claude-code
+
+对 `claude_code` LLM 后端做健康检查（参见
+[claude_code_provider.md](./claude_code_provider.md)）：claude 可执行文件与版本、
+对解析后配置做 fail-loud 校验、打印 strict 模式下将要执行的确切命令，以及一份静态的
+flag 支持报告（`--max-turns` / `--system-prompt-file` 是受支持但隐藏的 flag，
+`claude --help` 并不列出它们）。
+
+```bash
+ari doctor claude-code           # 仅离线检查
+ari doctor claude-code --live    # + 一次真实的 hermetic 调用并做 schema 校验（会消耗 token）
+```
 
 ---
 

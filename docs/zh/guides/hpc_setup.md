@@ -142,6 +142,24 @@ cd /path/to/ari/ari-core
 kill $OLLAMA_PID 2>/dev/null || true
 ```
 
+### 远程调度器控制
+
+remote 模式不信任操作者默认的 SSH config、SSH agent、用户密钥，也不信任
+首次连接时看到的 host key。请单独准备一份 known-hosts 文件与凭据：
+
+```bash
+export SLURM_MODE=remote
+export SLURM_SSH_HOST=login.cluster.example
+export SLURM_SSH_USER=ari-submit
+export SLURM_SSH_KNOWN_HOSTS=/etc/ari/cluster_known_hosts
+export SLURM_SSH_KEY=/run/secrets/ari_cluster_key
+export SLURM_SHARED_FILESYSTEM=true
+```
+
+host key 不匹配、known-hosts 中没有对应条目、密钥文件不安全或是 symlink，
+都会 fail closed。typed 结果收集目前要求 MCP 主机与计算主机上以完全相同的
+绝对路径挂载同一个文件系统。
+
 ## 5. 容器部署（v0.7+）
 
 **ARI 自身没有打包好的镜像 recipe** — 既没有 `containers/ari.def`，也没有

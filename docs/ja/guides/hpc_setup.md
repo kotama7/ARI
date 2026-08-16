@@ -150,6 +150,26 @@ cd /path/to/ari/ari-core
 kill $OLLAMA_PID 2>/dev/null || true
 ```
 
+### リモートスケジューラ制御
+
+remote モードは、オペレータ既定の SSH config、SSH agent、ユーザ鍵、初回
+接続時に提示された host key のいずれも信頼しません。専用の known-hosts
+ファイルと資格情報を用意してください:
+
+```bash
+export SLURM_MODE=remote
+export SLURM_SSH_HOST=login.cluster.example
+export SLURM_SSH_USER=ari-submit
+export SLURM_SSH_KNOWN_HOSTS=/etc/ari/cluster_known_hosts
+export SLURM_SSH_KEY=/run/secrets/ari_cluster_key
+export SLURM_SHARED_FILESYSTEM=true
+```
+
+host key の不一致、known-hosts エントリの欠落、安全でない鍵ファイルや
+symlink の鍵ファイルは、いずれも fail closed になります。型付きの結果収集は
+現状、MCP ホストと計算ホストの双方で同一の絶対パスにマウントされた
+ファイルシステムを要求します。
+
 ## 5. コンテナデプロイ（v0.7+）
 
 **ARI 自体をパッケージするイメージレシピはありません** — `containers/ari.def`

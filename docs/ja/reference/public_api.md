@@ -44,16 +44,30 @@ last_verified: 2026-08-16
 
 | サブモジュール | 再エクスポートする内容 | 使用しているスキル |
 |---|---|---|
+| `ari.public.analysis` | versioned な summary、statistical test、run comparison、analysis result の契約 | analysis provider と科学的 consumer |
+| `ari.public.assurance` | Verification Contract、Harness catalog/lock、fixed verification、Attestation、digest 束縛の external parity report | read-only な Harness/Assurance サーフェス |
+| `ari.public.capability_binding` | Capability ontology、決定論的な binding/lock、validation、Provider substitution の診断 | ガバナンス下の Provider dispatch と診断 |
 | `ari.public.clone` | digest 検証付き EAR bundle の取得と安全な展開（`clone`、`CloneResult`、`CloneError`） | reproduction / bundle consumer Skill |
 | `ari.public.config_schema` | Pydantic 設定モデル（`ARIConfig`、`LLMConfig` など） | 型付き設定が必要な呼び出し元 |
 | `ari.public.container` | コンテナランタイムヘルパー（`ContainerConfig`、`run_in_container` など） | `ari-skill-coding`（テスト） |
 | `ari.public.execution` | 閉じた workspace、bounded execution/result、完全 log artifact、`MeasurementSetV1` | 実行 producer と測定 consumer Skill |
 | `ari.public.evaluation` | immutable metric admission、`GateReportV1`、semantic review、保守的migration reader | idea、transform、evaluator、paper、offline reader |
+| `ari.public.figures` | digest 束縛の figure spec、render manifest、batch、feedback lineage | plot、VLM、paper |
+| `ari.public.latex_claims` | LaTeX の claim anchor、数値、citation、図参照を字句解析する canonical parser | evaluator と paper |
+| `ari.public.knowledge` | 実行不可能な Knowledge Skill の import、catalog、admission、composition、provenance | Knowledge の read/request サーフェス |
+| `ari.public.memory` | content-addressed な memory record、retrieval、event、backup 契約 | memory と verified-context の consumer |
+| `ari.public.manuscript` | immutable な Manuscript Complete V1 read 契約、決定論的な compiler/evaluator ヘルパー、publication decision builder | paper、evaluation、read-only な統合 |
+| `ari.public.paper` | `PaperBuildV1`、revision/model-call/compile/review record、parser、canonical digest | paper と publication の consumer |
+| `ari.public.science_data` | native な raw/derived/interpreted science-data 契約と明示的な migration reader | transform、evaluator、plot、paper |
+| `ari.public.research_contract` | immutable な survey、idea、metric、retrieval、evidence hand-off 契約 | idea、evaluator、paper |
+| `ari.public.visual_review` | criteria profile と、artifact 束縛で失敗を保存する visual review batch | VLM、plot、paper |
 | `ari.public.cost_tracker` | LLM コスト記録（`bootstrap_skill`、`record` など） | `ari-skill-plot`（LLM 呼び出しコスト） |
 | `ari.public.llm` | `LLMClient`（コスト統合付き LiteLLM ラッパー） | ARI のラッパーを使いたい呼び出し元 |
 | `ari.public.paths` | `PathManager`（チェックポイントパスリゾルバ） | スコープ付きパスが必要な呼び出し元 |
 | `ari.public.node_selection` | 決定論的な downstream node/source 選択 | `ari-skill-transform` |
+| `ari.public.lineage` | read-only な ancestor checkpoint / idea pool の走査 | `ari-skill-idea` |
 | `ari.public.publish` | staged EAR publish/promote 契約 | `ari-skill-transform` |
+| `ari.public.providers` | Capability Provider の用語、immutable な identity、catalog、既存の Provider lock facade | Provider の read/診断サーフェス |
 | `ari.public.run_env` | run 環境の capture と shell export ヘルパー | sandbox / executor Skill |
 | `ari.public.call_context` | `RunContextV1`、`NodeContextV1`、署名付き tool-context 検証ヘルパー | control plane と context-aware Skill |
 | `ari.public.result` | `ResultEnvelopeV1`、content-addressed artifact reference、型付き error、呼び出し provenance | Skill adapter と federated dispatch 呼び出し元 |
@@ -100,6 +114,43 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 | `get_container_info()` | GUI 向け診断辞書: `runtime`、`version`、`available` |
 
 ソース: `ari-core/ari/container.py` → `ari-core/ari/public/container.py`。
+
+## `ari.public.execution`
+
+このモジュールは、閉じた workspace の path 処理、正確な execution identity、
+プロセスグループ単位の timeout/cancel、最小 environment、kernel limit の
+強制状況の report、完全な content-addressed log、型付き measurement record を
+所有します。migration parser は canonical document を検証し、旧来の flat file は
+read-only な migration 入力として扱います。
+規範的な挙動と schema 一覧は[実行・測定契約](execution_contract.md)を参照して
+ください。
+
+## `ari.public.analysis`
+
+このモジュールは provider 非依存の `AnalysisRequestV1`、
+`StatisticalTestRequestV1`、`RunComparisonRequestV1`、`AnalysisResultV1` の
+境界を固定します。これらの契約は、unit の明示、pairing/missing/multiplicity の
+policy、immutable な source と environment の digest、effect size、
+confidence interval、assumption diagnostics、library version を要求します。
+規範的な挙動と schema 一覧は[決定論的解析契約](analysis_contract.md)を
+参照してください。
+
+## 科学出版の契約
+
+`ari.public.science_data`、`ari.public.figures`、`ari.public.visual_review`、
+`ari.public.latex_claims`、`ari.public.paper` は、transform → 図 → レビュー →
+出版という安定した境界を形成します。producer と consumer は schema のない
+辞書ではなく、厳密で digest に束縛されたモデルをやり取りします。規範なのは
+[Science data と EAR の完全性](science_data_contract.md)、
+[科学図と視覚レビューの契約](figure_visual_contract.md)、
+[Paper build契約](paper_build_contract.md) です。
+
+`ari.public.manuscript` は探索から執筆への完全性レイヤーを追加します:
+profile、snapshot、context、omission、readiness、brief、binding、repair plan、
+publication decision/lock、label 付き program の evaluation です。可変な state と
+coordinator の内部は private のままです。
+[Manuscript Complete V1 契約](manuscript_complete_contracts.md)を参照して
+ください。
 
 ## `ari.public.cost_tracker`
 
@@ -239,14 +290,20 @@ byte-equivalent な semantics を要求します。drift と corruption は
 `LockedCredentialScopeV1` には scope identity と宣言/存在する環境名だけが
 記録され、credential 値は含まれません。
 
-## `ari.public.claim_gate`
+## `ari.public.evaluation` と `ari.public.claim_gate`
 
+`ari.public.evaluation` は canonical な `MetricGateContractV1`、
+`MetricContractProposalV1`、`MetricAdmissionDecisionV1`、`GateReportV1`、
+`SemanticReviewV1` モデルと、それらの digest を検証する parser、および保守的な
+pre-v1 reader を公開します。`ari.public.claim_gate` はこれに加えて、
 `ari.pipeline.claim_gate` から決定論的な主張-証拠ハードゲートと、その
 概念→不変条件レジストリを再エクスポートします:
 
 | シンボル | 用途 |
 |---|---|
 | `run_hard_gate` | ゲートのエントリポイント — 証拠が決定論的チェックに合格しない主張をブロックする |
+| `parse_gate_report` | canonical な gate report とその payload digest を検証する |
+| `migrate_legacy_gate_report` | 欠けている provenance を捏造せずに pre-v1 の report を読む |
 | `classify_concept` | 概念をその普遍的不変条件のファミリにマッピングする |
 | `scan_science_data` | 登録された不変条件に照らしてサイエンスデータをスキャンする |
 | `CONCEPT_INVARIANTS` | ドメイン一般の概念→不変条件レジストリ（単一の信頼できる情報源） |

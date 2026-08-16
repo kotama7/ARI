@@ -51,6 +51,23 @@ EOF
 export ARI_REGISTRY_TOKEN=ari_<步骤 3 的值>
 ```
 
+## 设置文件解析（v0.7+）
+
+`ari ear publish --backend ari-registry` 与 `ari clone ari://` 都通过同一条四步链查找 `registries.yaml`：
+
+1. `$ARI_REGISTRIES_FILE` —— 显式的 env override。
+2. `{checkpoint_dir}/.ari/registries.yaml` —— 本意是让一次运行把自己的 registry 配置固定到检查点上。
+3. `$(pwd)/.ari/registries.yaml` —— 在项目目录里运行时比较方便。
+4. `$HOME/.ari/registries.yaml` —— **已废弃**；仅当该文件存在时才会被采用，而且要先发出 `DeprecationWarning`。v1.0 中移除。
+
+> **第 2 步今天永远不会触发。** 两处查找都把 `checkpoint_dir` 作为可选参数，而没有任何调用点传入它——发布后端的 `_select_registry()` 与 `ari://` 解析器的 `resolve()` 都是不带该参数地调用它。因此放在检查点里的 `.ari/registries.yaml` 是不可见的，除非你用 `$ARI_REGISTRIES_FILE` 指向它，或者干脆从那个目录运行。
+
+若链上没有任何文件存在，两条路径都会回退到由 `$ARI_REGISTRY_URL`（加上 `$ARI_REGISTRY_TOKEN`）构成的单个合成 registry；两者都没有时，命令以 `no ari-registry configured` 失败。当文件*存在*但没有列出任何 registry 时，两个实现就分道扬镳了：`ari://` 解析器会继续沿链往下走，仍能到达 `$ARI_REGISTRY_URL` 回退；而发布后端会把第一个可读文件里的空列表原样返回，即使设置了 `$ARI_REGISTRY_URL` 也会失败。发布后端还额外接受 `$ARI_REGISTRY_NAME`，用于按名字挑选条目。
+
+文件中的 token 写成字面量或 `$VAR` 形式。解析器 docstring 里展示的 `${VAR}` 形式**并不生效**：两处 `_expand_token` 实现都先判断 `$` 前缀那一支，于是 `${ARI_REGISTRY_TOKEN}` 会被当作一个字面名为 `{ARI_REGISTRY_TOKEN}` 的环境变量去查，并静默展开为空字符串。
+
+服务端状态（`ari registry serve`）位于 `$ARI_REGISTRY_DATA/`。遗留的 `$HOME/.ari/registry-data` 回退适用同一条 v1.0 废弃策略——显式设置该 env var 才能避免警告。
+
 ## 端点
 
 | Method | Path                                    | 认证   | 备注 |

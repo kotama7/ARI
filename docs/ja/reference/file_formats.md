@@ -346,6 +346,45 @@ manuscript-repair 系の系譜フィールド）は
 — 追跡対象のソース・テスト・ドキュメントにクラスタ名 / パーティション名 /
 ホスト名を書かないという規則は変わりません。
 
+上記の `compilers` は**モジュールをロードする前**のビューです: ARI プロセス内で
+捕捉されたものであり、そのプロセスは何もロードしていません。`execution_env` は
+実行したシェルが*自分自身*について書いた記録であり、ある測定がどのモジュールの
+下で得られたのかを述べる唯一の場所です — これが無いと、モジュールをロードして
+比較したかった当の 2 つのモジュール構成が、比較のためのレポートの上で同一に
+見えてしまいます。
+
+| キー | 意味 |
+|---|---|
+| `loaded_modules` | コマンド終了時点の `$LOADEDMODULES` を、その順序のまま分割したもの。順序には意味があり（後のモジュールが先のモジュールのパスを上書きしうる）、ソートも重複除去もしない。`[]` は「何もロードされていない状態でコマンドが走った」であり、キー自体が無い（シェル系ツールが 1 度も走らなかった）のとは区別される |
+| `module_path` | コマンドから見えた `$MODULEPATH` |
+| `path` | モジュールロード後の `$PATH` — ツール解決順序そのものなので、ARI がコンパイラ名を 1 つも名指ししなくても「どのバイナリを使ったのか」に答えられる |
+| `recorded_at` | シェルがこの記録を書いた時刻 |
+
+書き込みは `EXIT` トラップで行われるので、コマンドが失敗しても記録は残り
+（失敗した測定の環境は、成功した測定の環境と同じくらい興味深いものです）、
+コマンドの終了ステータスも保たれます。`_exec_env.json` は
+`PathManager.META_FILES` に含まれます: これは 1 ノードの実行を記述するもので
+あり、継承コピーができてしまうと、親のモジュールを、それをロードしていない子に
+帰属させることになるからです。
+
+`partitions_used` はこの視野を*このノード*から*実験全体*へ広げます。異種混在
+クラスタにまたがって走ったランは、実際にどこで実行されたのかという単一の記録を
+残さず、ノードをまたいだメトリクス比較をその背後のハードウェアと突き合わせて
+検証できなくなるからです:
+
+| キー | 意味 |
+|---|---|
+| `this_node` | このノード自身の割り当てのパーティション |
+| `used` | そのランが触れた相異なるパーティションすべて。同じランの各兄弟ノードの `_run_env.json` から走査する — 設定値ではなく観測値 |
+| `by_partition` | パーティションごとの `node_count` と、そこで観測された相異なる `nodelists` / `hostnames` |
+| `catalog` | `heterogeneous_env.json` によるパーティションごとのプローブ — 各パーティションが*何であるか*。プローブされたがノードを 1 つも走らせなかったパーティションも含み、それが「X を使えたのに使わなかった」に答えられる理由である。`arch` / `cpu_model` / `threads` / `mem_total_kb` / `gpus` / `compilers` / `cache_measured` に圧縮される |
+| `catalog_path` | 完全なカタログへのパス。生の `module avail` / `lscpu` ダンプはパーティションあたり約 30 KB になり、チェックポイント直下に既に 1 部あるので、各ノードのレポートに複写せず、そこを指すだけにする |
+
+兄弟走査が実行されるのは、ノードの `work_dir` が本当に
+`experiments/{run_id}/{node_id}` である場合だけです。そうでない場合、無関係な
+ディレクトリのファイルをこの実験の一部として数えるのではなく、`used` は空の
+ままになります。
+
 ```json
 {
   "schema_version": 1,
@@ -1335,6 +1374,39 @@ input_context_hash ␟ output_schema_hash)[:16]`（`␟` = `\x1f`）; 2 つの
 キャンペーンレベルの出力（`ablation_report.{json,md}`、展開済み条件
 設定）はチェックポイントの外、`workspace/rqgm_eval/<eval_id>/` 以下に
 置かれます — `docs/guides/rqgm_evaluation.md` を参照。
+
+## `.ari-manuscript/`（オプトインの Manuscript Complete）
+
+`manuscript.mode: "off"` のときこの名前空間は存在しません。audit / enforce の
+attempt は、不変でダイジェストに束縛された JSON ドキュメントを使います:
+
+```text
+.ari-manuscript/
+├── state.json
+├── transitions.jsonl
+├── attempts/<attempt-id>/
+│   ├── source_snapshot.json
+│   ├── requirement_profile.json
+│   ├── context.json
+│   ├── omission_manifest.json
+│   ├── readiness.json
+│   ├── section_briefs.json
+│   ├── authoring_binding.json        # authoring-ready 判定時、または audit モード
+│   └── publication_decision.json     # 検証／ファイナライズ後
+├── segments/*.json
+├── repair-transactions/*.json
+├── auto-rounds/*.json
+└── attempts/<attempt-id>/publication_lock.json
+                                        # 鮮度が確認された publishable 判定の後のみ
+```
+
+attempt の同一性はソーススナップショットとプロファイルのダイジェストから
+導出されます。ソースが変われば、古い attempt を書き換えるのではなく新しい
+attempt が生まれます。スキーマは `ari-core/ari/schemas/` 配下に
+`manuscript_*_v1.schema.json` / `research_repair_*_v1.schema.json` という名前で
+置かれています。系譜とステータスの完全な規則は
+[Manuscript Complete 契約リファレンス](manuscript_complete_contracts.md)に
+あります。
 
 ## `settings.json`
 

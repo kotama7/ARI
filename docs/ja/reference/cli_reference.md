@@ -75,6 +75,35 @@ ARI のコマンドライン操作の完全なリファレンスです。CLI は
 > コマンドはデフォルトの `simple_bfts` モードで従来と同一に動作します。
 > [実行モード](../guides/execution_modes.md)を参照。
 
+## `ari manuscript` — 完全性と publication の操作
+
+このコマンド群は、オプトインの exploration-to-authoring コンパイラに対する
+機械可読なオペレータ面です。既定の `manuscript.mode: "off"` 経路では動作
+しません。
+
+```bash
+ari manuscript compile CHECKPOINT [--mode audit|enforce] \
+  [--profile generic_empirical_v1] [--repair-policy disabled|explicit|auto] \
+  [--config WORKFLOW]
+ari manuscript status CHECKPOINT [--fail-if-blocked]
+ari manuscript inspect CHECKPOINT [--requirement ID] [--lane LANE] [--node ID]
+ari manuscript plan-repair CHECKPOINT [--config WORKFLOW]
+ari manuscript repair CHECKPOINT [--request REQUEST_ID]... [--config WORKFLOW]
+ari manuscript explain-publication CHECKPOINT
+ari manuscript lock-publication CHECKPOINT
+```
+
+`plan-repair` は外部システムに対して read-only です。`repair` はまず admit
+された request と budget を永続化し、そのうえで通常の bounded research runtime
+を使います。`ari paper` が research repair を開始することはありません。
+`--mode` の既定は `audit` です。`--repair-policy auto` は `--mode enforce` を
+併せて指定しない限り拒否されます。`--request` は繰り返し指定でき、**省略すると
+plan 内のすべての request が選択されます** — 未知の id は
+`unknown request IDs: ...` で拒否されます。`lock-publication` が成功するのは、
+最終ビルドと PDF そのものに束縛された fresh で publishable な decision に
+対してだけです。
+[オペレータランブック](../guides/manuscript_complete_operations.md)を参照。
+
 ---
 
 ## ari migrate node-reports

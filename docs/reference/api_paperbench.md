@@ -50,6 +50,41 @@ List every paper in the registry.
 }
 ```
 
+### `GET /api/paperbench/arxiv/<id>`
+
+Fetch one paper's metadata from the public arXiv Atom API (6 s timeout)
+so the import form can be pre-filled — the import dialog's "fetch
+metadata" button is the in-tree caller.
+
+```json
+{
+  "arxiv_id": "2404.14193",
+  "title": "LLAMP: assessing latency tolerance",
+  "authors": ["Alice", "Bob"],
+  "year": 2024,
+  "license": "arXiv non-exclusive",
+  "license_assessment": {"usable": true, "note": "..."},
+  "summary": "...",
+  "pdf_url": "https://arxiv.org/pdf/2404.14193v1.pdf",
+  "abs_url": "https://arxiv.org/abs/2404.14193"
+}
+```
+
+Both new-style (`2404.14193`, `2404.14193v2`) and legacy
+(`cs.LG/0102030`) identifiers are accepted, as is a leading `arxiv:`
+scheme; the version suffix is stripped before the query and the
+canonical form comes back as `arxiv_id`. `year` is the year of the
+entry's `published` date and is `null` when that cannot be parsed;
+`summary` is truncated to 1000 characters. `license` is *not* read from
+the response — every arXiv entry is reported as `"arXiv non-exclusive"`
+and run through the same classifier `POST .../papers/import` uses.
+
+Failures answer HTTP 200 with an `error` key: an id the pattern rejects
+(`not a valid arXiv id: '<id>'` — a DOI lands here), a non-200 or
+unreachable API (`arXiv API returned HTTP <code>`, `arXiv fetch failed:
+...`), a response that is not valid XML, or an id the API has no entry
+for (`no arXiv entry for id <id>`).
+
 ### `POST /api/paperbench/papers/import`
 
 Register a new paper. Body fields:
@@ -199,6 +234,104 @@ are never respawned.
 Returns the grader output when the job's status is `completed`;
 `{error: "results not available", status: "<state>"}` otherwise.
 
+### `GET /api/paperbench/run/<job_id>/logs` (SSE)
+
+A Server-Sent Events stream of the job's log buffer, served as
+`Content-Type: text/event-stream` with `Cache-Control: no-cache` and
+`Connection: close`. It is the only PaperBench GET route whose *handler*
+answers a non-200 status: an unknown `job_id` is a real HTTP 404 with
+`{"error": "job not found"}`, not the 200-plus-`error`-key body the
+other GETs use. That is a statement about the handlers only — every
+route, this one included, can still answer 401, because `_auth_gate()`
+runs at the top of `do_GET` before any dispatch.
+
+Each buffered line is one `log` event whose `id` is its index in the
+buffer; the stream ends with a `done` event carrying the terminal
+status.
+
+```
+id: 0
+event: log
+data: {"ts": "2026-05-13T05:57:00.512Z", "level": "info", "msg": "rubric starting"}
+
+id: 1
+event: log
+data: {"ts": "2026-05-13T05:57:01.024Z", "level": "success", "msg": "pipeline complete"}
+
+: heartbeat
+
+event: done
+data: {"status": "completed"}
+```
+
+Resume after a disconnect with `?since=<index>` or the `Last-Event-ID`
+header; when both are present the larger index wins. The handler polls
+once a second and writes a `: heartbeat` SSE comment on every poll that
+does not end the stream, so a proxy does not drop the idle connection.
+One stream lives at most five minutes — at the cap it writes
+`: stream-timeout — reconnect` and closes, and `EventSource` reconnects
+by itself. `completed`, `failed` and `interrupted` are all terminal: each
+sends `done` and closes. On a token-protected bind the token rides in a
+`token=` query parameter (see CORS / authentication below).
+
+The buffer is in-memory, capped at the most recent 2000 entries per job,
+and is *not* re-read from `{registry_root}/jobs/{job_id}.json`. A job
+that survives only on disk therefore streams no `log` events and gets a
+`done` immediately — `{"status": "interrupted"}` for a record the
+restart left reading `queued`/`running`.
+
+### `GET /api/paperbench/run/<job_id>/report`
+
+Render (or re-render) the audit report for a completed job. All query
+parameters are optional:
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `languages` | `en` | comma-separated on the query string: `languages=en,ja,zh` |
+| `formats` | `pdf,html,md` | comma-separated: `formats=pdf,html` |
+| `output_root` | `{registry_root}/reports/<job_id>` | destination directory |
+
+Rendering is done by `report/scripts/paperbench_report.py`, imported
+lazily from the repository tree so a viz server without a `report/`
+directory still starts. Do not expect
+`{"error": "report/scripts/paperbench_report.py not found"}` from a
+missing file: that body is guarded on
+`importlib.util.spec_from_file_location` returning no spec or no loader,
+which it does not do for an absent `.py` path — the load then raises an
+uncaught `FileNotFoundError` out of the request handler instead. The
+renderer's own result — `{status, languages, paths, harvest}`, where
+`harvest` carries `ors_score`, `leaves_total`, `leaves_passed` — is
+returned verbatim when its `status` is not `ok`; otherwise the endpoint
+adds `job_id` and a `download_urls` map from `<lang>/<fmt>` to an
+on-disk path: `pdf` → `<output_root>/<lang>/build/main.pdf`, and
+`html` / `md` / `tex` → `<output_root>/<lang>/main.<ext>`. Only files
+that exist are listed, so `tex` shows up whenever the renderer left a
+`main.tex` behind even though nothing requested that format.
+
+Refusals are HTTP 200 bodies with an `error` key: `job not found` for an
+unknown id, and `report not available until job completes` (with the
+current `status`) for a job in any other state. A completed job whose
+record carries no top-level `checkpoint_dir` or `repo_dir` answers `job
+snapshot lacks checkpoint_dir; cannot render report` — the bundled
+worker records the reproduction directory as `results.repo_dir`, not at
+the top level, so a job launched through `POST /api/paperbench/run` gets
+this unless something else filled the field in.
+
+### `POST /api/paperbench/run/<job_id>/report`
+
+The same handler for callers that would rather send a body than a query
+string; the dashboard's results view uses it for the EN / JA / ZH report
+buttons.
+
+```json
+{"languages": ["en"], "formats": ["pdf", "html", "md"]}
+```
+
+Here `languages` and `formats` are real JSON arrays — the
+comma-splitting is a property of the GET query string only.
+`output_root` is read the same way, and a well-formed body returns
+exactly what the GET form returns.
+
 ## Cost estimate
 
 ### `POST /api/paperbench/cost-estimate`
@@ -293,7 +426,7 @@ Vendor-fidelity behaviour built into the bridge:
   `salvage_retries` / `retry_threshold_sec` are not parameters of
   `reproduce_submission`, and
   `test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage`
-  asserts their absence. A failed reproduction is retried by calling
+  asserts `salvage_retries`'s absence. A failed reproduction is retried by calling
   `reproduce_submission` again with the same plan, which appends an
   immutable linked attempt rather than mutating `reproduce.sh`.
 - **capture_tarball** (default True) — writes a timestamped

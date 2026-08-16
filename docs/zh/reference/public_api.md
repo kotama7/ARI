@@ -35,16 +35,30 @@ last_verified: 2026-08-16
 
 | 子模块 | 重导出内容 | 使用它的技能 |
 |---|---|---|
+| `ari.public.analysis` | 版本化的 summary、statistical test、run comparison 与 analysis result 契约 | analysis provider 与科学 consumer |
+| `ari.public.assurance` | Verification Contract、Harness catalog/lock、fixed verification、Attestation 与 digest 绑定的 external parity report | 只读的 Harness/Assurance 接口 |
+| `ari.public.capability_binding` | Capability ontology、确定性 binding/lock、validation 与 Provider substitution 诊断 | 受治理的 Provider dispatch 与诊断 |
 | `ari.public.clone` | 经 digest 验证的 EAR bundle 获取与安全解包（`clone`、`CloneResult`、`CloneError`） | reproduction / bundle consumer 技能 |
 | `ari.public.config_schema` | Pydantic 配置模型（`ARIConfig`、`LLMConfig` 等） | 需要类型化设置的调用方 |
 | `ari.public.container` | 容器运行时辅助函数（`ContainerConfig`、`run_in_container` 等） | `ari-skill-coding`（测试） |
 | `ari.public.execution` | 封闭 workspace、有界 execution/result、完整日志 artifact、`MeasurementSetV1` | 执行 producer 与测量 consumer 技能 |
 | `ari.public.evaluation` | 不可变指标准入、`GateReportV1`、语义评审及保守迁移读取器 | idea、transform、evaluator、paper及离线读取器 |
+| `ari.public.figures` | digest 绑定的图表规格、render manifest、batch 与 feedback lineage | plot、VLM、paper |
+| `ari.public.latex_claims` | 规范的 LaTeX claim anchor、数值、citation 与图表引用词法解析器 | evaluator 与 paper |
+| `ari.public.knowledge` | 不可执行 Knowledge Skill 的 import、catalog、admission、composition 与 provenance | Knowledge 读取/请求接口 |
+| `ari.public.memory` | 内容寻址的 memory record、retrieval、event 与 backup 契约 | memory 与 verified-context 消费方 |
+| `ari.public.manuscript` | 不可变的 Manuscript Complete V1 读取契约、确定性 compiler/evaluator 辅助函数与 publication decision builder | paper、evaluation 与只读集成 |
+| `ari.public.paper` | `PaperBuildV1`、revision/model-call/compile/review 记录、parser 与 canonical digest | paper 与 publication 消费方 |
+| `ari.public.science_data` | 原生 raw/derived/interpreted science-data 契约与显式 migration reader | transform、evaluator、plot、paper |
+| `ari.public.research_contract` | 不可变的 survey、idea、metric、retrieval 与 evidence 交接契约 | idea、evaluator、paper |
+| `ari.public.visual_review` | criteria profile 以及工件绑定、保留失败的 visual review batch | VLM、plot、paper |
 | `ari.public.cost_tracker` | LLM 成本记录（`bootstrap_skill`、`record` 等） | `ari-skill-plot`（LLM 调用成本） |
 | `ari.public.llm` | `LLMClient`（带成本集成的 LiteLLM 封装） | 偏好使用 ARI 封装的调用方 |
 | `ari.public.paths` | `PathManager`（检查点路径解析器） | 需要作用域路径的调用方 |
 | `ari.public.node_selection` | 确定性的 downstream node/source 选择 | `ari-skill-transform` |
+| `ari.public.lineage` | 只读的 ancestor checkpoint / idea pool 遍历 | `ari-skill-idea` |
 | `ari.public.publish` | staged EAR publish/promote 契约 | `ari-skill-transform` |
+| `ari.public.providers` | Capability Provider 术语、不可变 identity、catalog 与既有 Provider lock 门面 | Provider 读取/诊断接口 |
 | `ari.public.run_env` | run 环境捕获与 shell export 辅助函数 | sandbox / executor 技能 |
 | `ari.public.call_context` | `RunContextV1`、`NodeContextV1`、签名 tool-context 验证辅助函数 | 控制平面与 context-aware 技能 |
 | `ari.public.result` | `ResultEnvelopeV1`、内容寻址工件引用、类型化错误、调用来源 | 技能适配器与联邦 dispatch 调用方 |
@@ -89,6 +103,38 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 | `get_container_info()` | 面向 GUI 的诊断字典：`runtime`、`version`、`available` |
 
 来源：`ari-core/ari/container.py` → `ari-core/ari/public/container.py`。
+
+## `ari.public.execution`
+
+该模块负责封闭 workspace 的路径处理、精确的 execution identity、按进程组的
+timeout/cancel、最小 environment、kernel limit 实际强制情况的 report、完整的内容寻址
+日志，以及类型化的 measurement 记录。其 migration parser 校验规范文档，并把旧的
+扁平文件当作只读的迁移输入。规范行为与 schema 清单见
+[执行与测量契约](execution_contract.md)。
+
+## `ari.public.analysis`
+
+该模块固定与 provider 无关的 `AnalysisRequestV1`、`StatisticalTestRequestV1`、
+`RunComparisonRequestV1` 与 `AnalysisResultV1` 边界。这些契约要求显式单位、
+pairing/missing/multiplicity 策略、不可变的 source 与 environment digest、
+effect size、confidence interval、assumption diagnostics 以及库版本。规范行为与
+schema 清单见[确定性分析契约](analysis_contract.md)。
+
+## 科学出版契约
+
+`ari.public.science_data`、`ari.public.figures`、`ari.public.visual_review`、
+`ari.public.latex_claims` 与 `ari.public.paper` 构成 transform → 图表 → 审查 →
+出版这条稳定边界。生产方与消费方交换的是严格且 digest 绑定的模型，而不是
+无 schema 的字典。规范文档为
+[Science data 与 EAR 完整性](science_data_contract.md)、
+[科学图表与视觉审查契约](figure_visual_contract.md)与
+[论文构建契约](paper_build_contract.md)。
+
+`ari.public.manuscript` 增加了从探索到撰写的完备性层：profile、snapshot、
+context、omission、readiness、brief、binding、repair plan、publication
+decision/lock，以及带标签的 program evaluation。可变 state 与 coordinator 内部
+仍为私有。参见
+[Manuscript Complete V1 契约](manuscript_complete_contracts.md)。
 
 ## `ari.public.cost_tracker`
 
@@ -214,13 +260,19 @@ admitted `tool_ref` 集合绑定。`write_or_verify_skills_lock()` 原子创建�
 `SkillLockMismatchError` / `SkillLockCorruptError` 报告。`LockedCredentialScopeV1`
 只记录 scope identity 与已声明/存在的环境名，不包含 credential 值。
 
-## `ari.public.claim_gate`
+## `ari.public.evaluation` 与 `ari.public.claim_gate`
 
-从 `ari.pipeline.claim_gate` 重导出确定性主张-证据硬门控及其概念→不变量注册表：
+`ari.public.evaluation` 导出规范的 `MetricGateContractV1`、
+`MetricContractProposalV1`、`MetricAdmissionDecisionV1`、`GateReportV1` 与
+`SemanticReviewV1` 模型、校验其 digest 的 parser，以及保守的 pre-v1 读取器。
+`ari.public.claim_gate` 还从 `ari.pipeline.claim_gate` 重导出确定性主张-证据硬门控
+及其概念→不变量注册表：
 
 | 符号 | 用途 |
 |---|---|
 | `run_hard_gate` | 门控入口点 —— 阻止其证据未通过确定性检查的主张 |
+| `parse_gate_report` | 校验规范 gate report 及其 payload digest |
+| `migrate_legacy_gate_report` | 读取 pre-v1 报告，且不臆造缺失的 provenance |
 | `classify_concept` | 将概念映射到其通用不变量族 |
 | `scan_science_data` | 对照已注册的不变量扫描科学数据 |
 | `CONCEPT_INVARIANTS` | 领域通用的概念→不变量注册表（单一可信来源） |

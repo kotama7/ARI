@@ -83,10 +83,15 @@ Both `ari ear publish --backend ari-registry` and `ari clone ari://` look up
 > invisible unless you point `$ARI_REGISTRIES_FILE` at it or run from that
 > directory.
 
-If no file yields any registries, both paths fall back to a single synthetic
+If no file in the chain exists, both paths fall back to a single synthetic
 registry built from `$ARI_REGISTRY_URL` (plus `$ARI_REGISTRY_TOKEN`); with
-neither, the command fails with `no ari-registry configured`. The publish
-backend additionally accepts `$ARI_REGISTRY_NAME` to pick an entry by name.
+neither, the command fails with `no ari-registry configured`. The two
+implementations part ways on a file that *exists* but lists no registries: the
+`ari://` resolver keeps walking the chain and still reaches the
+`$ARI_REGISTRY_URL` fallback, while the publish backend returns that empty list
+from the first readable file and fails even with `$ARI_REGISTRY_URL` set. The
+publish backend additionally accepts `$ARI_REGISTRY_NAME` to pick an entry by
+name.
 
 Write tokens in the file as a literal or as `$VAR`. The `${VAR}` form shown in
 the resolver docstring does **not** work: the `$`-prefix branch is tested first

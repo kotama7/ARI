@@ -184,10 +184,13 @@ are bounded and documented.
   (`ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true`).
 - **What may differ.** Because retrieval depends on embedding FP
   arithmetic and vector-index state, the BFTS *trajectory* (which nodes
-  are explored, in which order) may diverge across re-runs. The
-  reproducibility verifier records the memory backend in
-  `reproducibility_report.json` so readers can interpret trajectory
-  divergence correctly.
+  are explored, in which order) may diverge across re-runs. Each search
+  carries that fact with it: `MemoryRetrievalV1.provenance` records the
+  `backend` (`"letta"`), its `backend_version` / `server_version`, the
+  embedding `model` / `model_version`, the `ranking` rule, and
+  `deterministic: false`. Every memory read and write is additionally
+  appended to `{checkpoint}/memory_access.jsonl`, so trajectory
+  divergence can be traced back to the retrieval that produced it.
 - **Why this trade.** The deterministic keyword scorer worked but
   did not scale to cross-experiment reasoning. Letta brings structured
   core memory, vector retrieval, and a uniform agent/collection model

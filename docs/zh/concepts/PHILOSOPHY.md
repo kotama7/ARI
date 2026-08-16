@@ -158,6 +158,30 @@ ARI 明确不以以下为设计目标：
 
 ARI 的智能体系统提示包含若干条通用科学原则 —— *确保你的实验是可复现的*、*绝不编造数值*，以及上文那条带类型的 `emit_results` 划分。它们都不是领域规则 — 它们同样适用于化学、HPC 和机器学习。智能体自主决定需要捕获什么信息。论文审稿人随后独立评估论文是否可复现，从而形成闭环，不依赖任何硬编码的标准。
 
+## 记忆（v0.6.0）：P2 为单个技能放宽，P5 收窄作用域
+
+ARI 最初的设计声明了 **P2 —— 尽可能确定性** 与 **P5 —— 可复现性优先**。
+v0.6.0 用 [Letta](https://docs.letta.com) 取代了确定性的 JSONL 记忆存储，
+使 ARI 能够使用基于嵌入的检索和完整的智能体记忆管理。这是系统中唯一放宽
+P2 的地方，其后果是有界且有文档记录的。
+
+- **仍然成立的部分。** 数值实验结果在相同随机种子下仍可复现。存储的记忆*文本*
+  逐字节稳定：祖先条目在写入时受 Copy-on-Write 保护，Letta 的自编辑（self-edit）
+  默认关闭（`ARI_MEMORY_LETTA_DISABLE_SELF_EDIT=true`）。
+- **可能不同的部分。** 由于检索依赖嵌入的浮点运算和向量索引状态，BFTS *轨迹*
+  （探索哪些节点、以什么顺序）可能在多次重跑之间分叉。每次检索都自带这一事实：
+  `MemoryRetrievalV1.provenance` 记录 `backend`（`"letta"`）、`backend_version` /
+  `server_version`、嵌入的 `model` / `model_version`、`ranking` 规则以及
+  `deterministic: false`。此外每一次记忆读写都会追加到
+  `{checkpoint}/memory_access.jsonl`，因此轨迹分叉可以回溯到产生它的那次检索。
+- **为什么做这个取舍。** 确定性的关键词打分器能工作，但无法扩展到跨实验推理。
+  Letta 带来了结构化的核心记忆、向量检索，以及统一的智能体/集合模型，让每个
+  技能都能使用同一个记忆界面，而不必各自重新实现检索。
+
+在运维上，Letta 是一个依赖组件，可在本地运行（Docker / Singularity / pip），
+也可使用 Letta Cloud。安装配置见 `docs/reference/configuration.md` 与
+`ari memory` CLI。
+
 ## 另请参阅
 
 [架构](architecture.md) · [BFTS 算法](bfts.md)

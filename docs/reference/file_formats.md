@@ -1358,7 +1358,7 @@ attempts use immutable, digest-bound JSON documents:
 │   ├── omission_manifest.json
 │   ├── readiness.json
 │   ├── section_briefs.json
-│   ├── authoring_binding.json        # only when authoring-ready
+│   ├── authoring_binding.json        # authoring-ready verdict, or audit mode
 │   └── publication_decision.json     # after verification/finalization
 ├── segments/*.json
 ├── repair-transactions/*.json

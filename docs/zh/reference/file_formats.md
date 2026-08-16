@@ -310,6 +310,37 @@ run_env 技能什么都没捕获到时（遗留运行、dry run、仅评估）�
 这里是**有意**采集机器身份的。`node_report.json` 是 `workspace/checkpoints/` 下的运行产物，
 不是仓库内容——禁止把集群/分区/主机名写进被跟踪的源码、测试和文档的规则并未改变。
 
+上面的 `compilers` 是**加载 module 之前**的视图：它是在 ARI 进程内采集的，而该进程从未加载过
+任何东西。`execution_env` 则是执行的 shell 关于*它自己*写下的记录，也是唯一说明某次测量由哪些
+module 产生的地方——没有它，两套 module 配置（加载 module 本就是为了比较它们）在这份用于比较
+的报告里看起来完全一样。
+
+| 键 | 含义 |
+|---|---|
+| `loaded_modules` | 命令结束时的 `$LOADEDMODULES`，按原顺序切分。顺序是有意义的：靠后的 module 可以覆盖靠前 module 的路径，因此既不排序也不去重。`[]` 表示命令是在什么都没加载的情况下运行的，这与该键根本不存在（没有任何 shell 工具运行过）是两回事 |
+| `module_path` | 命令所看到的 `$MODULEPATH` |
+| `path` | 加载 module 之后的 `$PATH`——完整的工具解析顺序，因此即便 ARI 从不指名任何一个编译器，“这次用的是哪个二进制”依然可以回答 |
+| `recorded_at` | shell 写下该记录的时刻 |
+
+它由 `EXIT` trap 写出，因此命令失败时记录仍然留存（一次失败测量的环境与一次成功测量的同样值得
+关注），且命令的退出状态被保留。`_exec_env.json` 位于 `PathManager.META_FILES` 中：它描述的是
+单个节点的执行，因此一份继承来的副本会把父节点的 module 归到一个从未加载过它们的子节点头上。
+
+`partitions_used` 把这一视角从*本节点*扩展到*整个实验*：一次散布在异构集群上的运行，否则不会
+留下任何一份关于它究竟在哪里执行过的单一记录，跨节点的指标比较也就无法与其背后的硬件对照
+检查：
+
+| 键 | 含义 |
+|---|---|
+| `this_node` | 本节点自身分配所在的分区 |
+| `used` | 该次运行触及过的所有不同分区，从同一次运行中每个兄弟节点的 `_run_env.json` 扫描得到——是观测值，而非配置值 |
+| `by_partition` | 每个分区的 `node_count`，以及在其上观测到的各不相同的 `nodelists` / `hostnames` |
+| `catalog` | 来自 `heterogeneous_env.json` 的逐分区探测——每个分区*是什么*。其中也包含被探测过、却从未运行过任何节点的分区，这正是“我们本可以用 X 却没有用”得以回答的原因。压缩为 `arch` / `cpu_model` / `threads` / `mem_total_kb` / `gpus` / `compilers` / `cache_measured` |
+| `catalog_path` | 指向完整目录的路径。原始的 `module avail` / `lscpu` 转储每个分区约 30 KB，且在检查点根目录下已经有一份，因此只做指向，而不复制进每个节点的报告 |
+
+只有当该节点的 `work_dir` 确实是 `experiments/{run_id}/{node_id}` 时，兄弟扫描才会运行；否则
+`used` 保持为空，而不会把某个无关目录下的文件算作本实验的一部分。
+
 ```json
 {
   "schema_version": 1,
@@ -1143,6 +1174,36 @@ input_context_hash ␟ output_schema_hash)[:16]`（`␟` = `\x1f`）；
 活动级输出（`ablation_report.{json,md}`、展开后的条件配置）位于
 检查点之外的 `workspace/rqgm_eval/<eval_id>/` 下 —— 见
 `docs/guides/rqgm_evaluation.md`。
+
+## `.ari-manuscript/`（可选启用的 Manuscript Complete）
+
+当 `manuscript.mode: "off"` 时该命名空间不存在。audit 与 enforce 的 attempt 使用不可变、
+以 digest 绑定的 JSON 文档：
+
+```text
+.ari-manuscript/
+├── state.json
+├── transitions.jsonl
+├── attempts/<attempt-id>/
+│   ├── source_snapshot.json
+│   ├── requirement_profile.json
+│   ├── context.json
+│   ├── omission_manifest.json
+│   ├── readiness.json
+│   ├── section_briefs.json
+│   ├── authoring_binding.json        # authoring-ready 结论时，或 audit 模式下
+│   └── publication_decision.json     # 验证／定稿之后
+├── segments/*.json
+├── repair-transactions/*.json
+├── auto-rounds/*.json
+└── attempts/<attempt-id>/publication_lock.json
+                                        # 仅在一次新鲜的 publishable 结论之后
+```
+
+attempt 的身份由源快照与 profile 的 digest 推导而来；源发生变更会产生一个新的 attempt，
+而不是改写旧的。Schema 位于 `ari-core/ari/schemas/` 下，命名为
+`manuscript_*_v1.schema.json` 与 `research_repair_*_v1.schema.json`。完整的谱系与状态
+规则见 [Manuscript Complete 契约参考](manuscript_complete_contracts.md)。
 
 ## `settings.json`
 
