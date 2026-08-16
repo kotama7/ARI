@@ -52,6 +52,7 @@ from ari.assurance.native_perf_common import (
     measurement_environment,
     measurement_placement,
     median,
+    MAX_TRUSTED_SPREAD,
     relative_spread,
     resolve_compiler,
     run_timed,
@@ -330,10 +331,53 @@ def verify_performance(
                     centre = 0.0
                 else:
                     centre = median(ratios)
-                    if centre < regression_threshold:
-                        verdict = "fail"
-                        detail = (f"{centre:.4g}x of the frozen reference, below the "
-                                  f"{regression_threshold:g}x threshold")
+                    # A VERDICT INSIDE THE MEASUREMENT'S OWN NOISE IS NOT A
+                    # FINDING. This was a strict `centre < threshold`, and the
+                    # default threshold is 1.0 -- exactly the value a candidate
+                    # equal to the reference is trying to measure. So the
+                    # comparison was a coin flip for the one candidate we know
+                    # the right answer for.
+                    #
+                    # MEASURED, the frozen reference built with its own flags,
+                    # scored against itself: 0.9942 / 0.9996 / 0.9994 and
+                    # 0.9997 / 0.9954 / 1.0000, every one of them "fail". The
+                    # instrument called its own denominator a regression.
+                    #
+                    # A shortfall smaller than the run-to-run spread is not
+                    # something this instrument resolved, so it is not called a
+                    # regression. With one repetition there is no spread and
+                    # nothing to compare against, which is the same situation a
+                    # `resolves: false` case set is in: it can say a candidate
+                    # built and was right, and it cannot say it regressed.
+                    shortfall = regression_threshold - centre
+                    if shortfall > 0:
+                        spread = relative_spread(ratios)
+                        # With one repetition there is no measured spread, but
+                        # the noise is not unbounded: fall back to the widest
+                        # this instrument is trusted at anywhere else. A
+                        # shortfall beyond THAT is resolvable by any reading of
+                        # the measurement -- the slow negative control is 0.009x
+                        # of the reference, which no spread explains -- while a
+                        # shortfall inside it is a verdict the single
+                        # measurement cannot support.
+                        resolution = spread if spread is not None else MAX_TRUSTED_SPREAD
+                        if shortfall <= centre * resolution and spread is None:
+                            verdict = "inconclusive"
+                            detail = (
+                                f"{centre:.4g}x of the frozen reference against a "
+                                f"{regression_threshold:g}x threshold, from a single "
+                                f"repetition; the shortfall is inside the "
+                                f"{MAX_TRUSTED_SPREAD:g} spread this instrument is read "
+                                f"at, so one measurement cannot support a verdict")
+                        elif shortfall > centre * resolution:
+                            verdict = "fail"
+                            detail = (f"{centre:.4g}x of the frozen reference, below the "
+                                      f"{regression_threshold:g}x threshold by more than "
+                                      f"the {resolution:.4g} spread it is read at")
+                        else:
+                            detail = (f"{centre:.4g}x of the frozen reference, within "
+                                      f"the {resolution:.4g} spread it is read at of the "
+                                      f"{regression_threshold:g}x threshold")
             else:
                 centre = median(ratios) if ratios else 0.0
             matched_values = [r.speedup_matched for r in repetitions

@@ -30,7 +30,7 @@ from ari.assurance.models import (
     HarnessPropertyResultV1,
     NormalizedHarnessResultV1,
 )
-from ari.assurance.native_perf_common import (load_case_set,
+from ari.assurance.native_perf_common import (MAX_TRUSTED_SPREAD, load_case_set,
                                               measurement_placement)
 from ari.assurance.native_perf import (
     NativePerfReportV1,
@@ -56,7 +56,7 @@ PERF_DRIVER_REVISION = "ari.assurance.native-perf/v1"
 #: The most run-to-run spread a clean control may show and still certify. Same
 #: figure ``normalize_result`` reports an ordinary run at, because an instrument
 #: cannot be certified to a looser standard than it is read at.
-_MAX_CLEAN_SPREAD = 0.1
+_MAX_CLEAN_SPREAD = MAX_TRUSTED_SPREAD
 
 #: How short a timed region may be before the spread above stops being a
 #: statement about the candidate.

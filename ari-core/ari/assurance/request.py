@@ -136,6 +136,25 @@ def _worker_argv(manifest, declaration, *, tier: str, seed: int) -> list[str]:
             "--seed", str(seed),
             "--dataset-revision", manifest.dataset.revision,
         ]
+    if revision == "ari.assurance.native-perf/v1":
+        # THE GOVERNED PATH COULD NOT LAUNCH THIS HARNESS AT ALL. The driver is
+        # wired, undrifted and registered; every request for it died here, at
+        # the fail-closed raise below, because no branch named its revision. The
+        # bridge turns that into "inconclusive", so a Harness that had been
+        # measured, gated 15/15 and signed produced nothing on every node and
+        # said nothing about why.
+        #
+        # Same shape as the problem-correctness branch: the PROBLEM is what the
+        # manifest pins in ``oracle`` and the candidate is the declared
+        # artifact, so neither is derived from the harness id.
+        return [
+            sys.executable, "-m", "ari.assurance.drivers.perf_worker",
+            "--problem", manifest.oracle.revision,
+            "--candidate", declaration.logical_name,
+            "--tier", tier,
+            "--seed", str(seed),
+            "--dataset-revision", manifest.dataset.revision,
+        ]
     if revision == "ari.assurance.native-hpc/v1":
         return [
             sys.executable, "-m", "ari.assurance.drivers.native_worker",

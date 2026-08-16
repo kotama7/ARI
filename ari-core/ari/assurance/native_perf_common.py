@@ -146,6 +146,16 @@ CREDIT_FLOOR_FRACTION = 1e-4
 #: thing a cross-role comparison can honestly claim.
 MAX_OVERHEAD_RATIO = 4.0
 
+#: The most run-to-run spread this instrument may show and still be read.
+#:
+#: One figure, because it answers one question in three places: what a clean
+#: control may show and still certify, what an ordinary run is reported at, and
+#: -- where a tier ran a single repetition and there is no measured spread --
+#: how large a shortfall has to be before it is a finding rather than noise.
+#: A single measurement does not know its own spread, but it is not unbounded:
+#: this is the widest the instrument is trusted at anywhere else.
+MAX_TRUSTED_SPREAD = 0.1
+
 #: A command line is not an essay. The cap also bounds what a malformed flag
 #: file can do to the argv.
 FLAG_MAX_TOKENS = 32
