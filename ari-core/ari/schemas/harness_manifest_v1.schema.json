@@ -303,6 +303,11 @@
       "title": "Properties",
       "type": "array"
     },
+    "registered_placement": {
+      "additionalProperties": true,
+      "title": "Registered Placement",
+      "type": "object"
+    },
     "resources": {
       "$ref": "#/$defs/HarnessResourceRequirementsV1"
     },

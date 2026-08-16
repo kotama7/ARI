@@ -246,12 +246,12 @@ def test_repo_dynamic_overlay_no_orphans() -> None:
 def test_repo_mcp_tools_and_collision() -> None:
     graph = _repo_graph()
     tools = [n for n in graph["nodes"] if n["kind"] == "mcp.tool"]
-    # 102 provider-qualified nodes, representing 100 unique bare names because
+    # 104 provider-qualified nodes, representing 102 unique bare names because
     # ``get_result`` and ``get_status`` each have two explicit providers. The
     # count is what keeps a skill from dropping out of the overlay unnoticed,
     # so it is re-derived from the tree, never copied from a frozen census.
     bare = {n["id"].split(":")[-1] for n in tools}
-    assert (len(tools), len(bare)) == (102, 100)
+    assert (len(tools), len(bare)) == (104, 102)
     collisions = {c["tool_name"]: set(c["skills"]) for c in graph["collisions"]}
     assert collisions == {
         "get_result": {"orchestrator", "tool-registry"},

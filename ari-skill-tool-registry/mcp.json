@@ -10,6 +10,7 @@
     "discover",
     "describe",
     "invoke",
+    "invoke_scheduled",
     "get_status",
     "get_result"
   ],
