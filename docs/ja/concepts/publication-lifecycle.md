@@ -4,14 +4,32 @@ sources:
     role: implementation
   - path: ari-skill-paper
     role: implementation
+  - path: ari-skill-transform/src/curate.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-core/ari/latex_claims.py
+    role: implementation
+  - path: ari-core/ari/clone
+    role: implementation
+  - path: ari-core/ari/publish
+    role: implementation
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/run_env.py
+    role: implementation
+  - path: ari-core/ari/agent/shims/git.sh
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # 公開ライフサイクル (v0.7.0)
 
-ARI v0.7.0 は EAR を「checkpoint をまるごと ear/ に放り込む」方式から、**digest 固定の公開チェーン** に進化させました。著者は小さな `ear/publish.yaml` を書くだけで、digest 計算と転送は ari-core が引き受けます。digest は論文に焼き付けられ (`\codedigest{...}`)、registry が無くなっても任意の場所で検証可能です。
+ARI v0.7.0 は EAR を「checkpoint をまるごと ear/ に放り込む」方式から、**digest 固定の公開チェーン** に進化させました。著者は小さな `ear/publish.yaml` の allowlist を書くだけで、transform-skill の `curate.py` が組み込みの deny リスト (`BUILTIN_DENY`: `.env*`、`secrets/**`、`*.pem`、`*.key`、`id_rsa`、`id_ed25519`) を強制し、決定的な bundle digest を計算します。digest は論文に焼き付けられ (`\codedigest{...}`)、registry が無くなっても任意の場所で検証可能です。
 
 ```
 generate_ear ──▶ {checkpoint}/ear/                 (著者のフルレポ)
@@ -21,9 +39,10 @@ generate_ear ──▶ {checkpoint}/ear/                 (著者のフルレポ)
         ▼
 {checkpoint}/ear_published/  +  manifest.lock      (正規化 v2 JSON: {path,sha256,size,role} の sha256)
         │
-        ▼ ear_publish (transform-skill, 任意)
+        ▼ ear_publish (transform-skill、既定で有効)
         ▼
-backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
+backend.publish ──▶ local-tarball (workflow の既定) / ari-registry / gh / zenodo
+                     常に visibility=staged
         │
         ▼ publish_record.json を書き出す
         │
@@ -129,7 +148,9 @@ TeX そのものに対して 3 回目を実行)、hard gate と semantic review 
 
 トラストモデル: **トラストアンカーは registry ではなく論文そのもの**です。
 `ari clone` は再計算した digest が `--expect-sha256` (または `manifest.lock` の
-宣言) と一致しないバンドルを hard-fail させます。registry が消えても、別の場所
+宣言) と一致しないバンドルを hard-fail させます — ただしこれは展開経路に限られます。
+`--no-extract` ではバンドルは開かれずにコピーされるだけなので、`--expect-sha256` は
+受理されるものの一度も検査されません。registry が消えても、別の場所
 (S3・Zenodo・gh release・ローカルミラー) に pin された同じバンドルなら検証できます。
 これは **バンドル完全性** (digest 一致) です。FINAL hard gate はさらに
 **クレーム完全性** を加えます — 論文が報告する数値を記録済み結果から再導出し、
@@ -141,7 +162,7 @@ TeX そのものに対して 3 回目を実行)、hard gate と semantic review 
 |--------|--------|------|
 | `file://<path>` | ローカルファイル/ディレクトリ | オフライン・ミラー |
 | `https://<url>` / `http://<url>` | tarball ダウンロード | 任意の HTTPS ホスト |
-| `ari://<id>` | ari-registry クライアント | `registries.yaml` から endpoint/token を取得。解決順: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`。`$HOME/.ari/` 配下のレガシー設定は v0.5.0 で廃止され、`DeprecationWarning` を経て v1.0 で削除予定。 |
+| `ari://<id>` | ari-registry クライアント | `registries.yaml` から endpoint/token を取得。解決順: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml` → `$HOME/.ari/registries.yaml` (v0.5.0 で非推奨。最後に参照されるものとして残っており、`DeprecationWarning` を出す。v1.0 で削除)。どこにもファイルが無い場合は `$ARI_REGISTRY_URL` / `$ARI_REGISTRY_TOKEN` から `default` という単一の registry が合成されます。 |
 | `gh:<user>/<repo>` | GitHub repo / release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → ファイル一覧 → bundle |
 
@@ -151,7 +172,7 @@ TeX そのものに対して 3 回目を実行)、hard gate と semantic review 
 
 ### 再現性サンドボックス補強
 
-- **`_run_env.json`** — `ari/agent/run_env.py` が work_dir ごとに hostname / SLURM job/partition/nodelist / CPU model/threads/MHz/arch / mem_total / コンパイラバージョンを *実行プロセス内で* 書き出し、SLURM ジョブ (エージェントとは別ノードで動く) でも正確なハードウェア情報を残します。`node_report` ビルダは reports にこのデータを付与し、論文・再現性ステージは「実行 partition、hostname X、CPU model …で実行」のような事実を blank artefact から推測することなく取り戻せます。
+- **`_run_env.json`** — `ari/agent/run_env.py` が work_dir ごとに hostname / SLURM job/partition/nodelist / CPU model/threads/MHz/arch / mem_total / コンパイラバージョン、加えて `module avail` が列挙しないベンダ製 `toolchain_dirs` とページ/NUMA の `memory_system` 状態を *実行プロセス内で* 書き出し、SLURM ジョブ (エージェントとは別ノードで動く) でも正確なハードウェア情報を残します。呼び出しのたびにファイルは上書きされます: 最後のツール呼び出しの環境が残ります。ここの `compilers` は module ロード前のビューです — 計測が実際に何の下で走ったか (ロード済み module、解決された PATH) の記録は `_exec_env.json` で、実行シェル自身が書き出し、`read_run_env` が `execution` の下にマージします。`node_report` ビルダは reports にこのデータを付与し、論文・再現性ステージは「実行 partition、hostname X、CPU model …で実行」のような事実を blank artefact から推測することなく取り戻せます。
 - **Git shim** (`ari/agent/shims/git.sh`) — 再現性サンドボックスに `PATH=<sandbox>/.shims:<orig_path>` で組み込まれます。論文の `code_availability_ref` に一致する URL の `git clone` だけをインターセプトし、それ以外は本物の git に素通し。すべての clone 試行を `<sandbox>/repro_clone_log.jsonl` に記録します。`ARI_REPRO_CLONE_POLICY=passthrough|deny|warn` で動作切替。
 
 ---

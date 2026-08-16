@@ -10,7 +10,11 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-08-16
 ---
 
 # ARI 快速入门指南
@@ -208,14 +212,16 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ### 步骤 2/4 — 范围
 
-配置实验的规模：
+配置实验的规模。这一步由预设驱动 —— 共五个预设（Quick / Standard / Thorough / Deep / Exhaustive）——
+打开时停在 **Standard**：深度 5、30 个节点、80 步 ReAct、4 个 worker、120 分钟。一旦编辑任意字段，
+该步骤就切换为手动。下表的首次运行建议值即 **Quick** 预设的取值。
 
 | 设置 | 控制内容 | 首次运行建议值 |
 |------|----------|----------------|
 | **Max Depth** | 搜索树的最大深度 | 3 |
 | **Max Nodes** | 运行的总实验数 | 5–10 |
-| **Max ReAct Steps** | 每个实验的推理步数 | 20（默认值） |
-| **Timeout (min)** | 每个实验的超时时间（分钟） | 120（默认值） |
+| **Max ReAct Steps** | 每个实验的推理步数 | 20 |
+| **Timeout (min)** | 每个实验的超时时间（分钟） | 30 |
 | **Parallel Workers** | 同时运行的实验数 | 2–4 |
 
 > **提示：** 首次运行建议从小规模开始（5–10 个节点，深度 3）。之后可以随时增加。
@@ -309,7 +315,9 @@ AI 会提出澄清性问题，并自动生成实验文件。
 | `science_data.json` | 清洗后的数据（无内部术语） |
 | `figures_manifest.json` | 生成的图表 |
 | `ear/` | Experiment Artifact Repository（代码、数据、日志、可重现性元数据） |
-| `experiments/` | 各节点的源代码和输出 |
+
+各节点的工作目录**不在**检查点里面。每个节点的临时目录、生成的源代码与输出位于
+`./workspace/experiments/<run_id>/<node_id>/` —— 与 `checkpoints/` 平级，因此只复制检查点目录会把它们落下。
 
 ---
 
@@ -349,12 +357,15 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ### VLM 图表审阅
 
-- 设置图表质量审阅的 VLM 模型（默认：`openai/gpt-4o`）
-- 配置审阅阈值和最大迭代次数
+- 设置图表质量审阅的 VLM 模型（默认：`openai/gpt-4o`）—— 这张卡片里只有这个模型下拉菜单，别无他物
+
+审阅阈值和最大迭代次数**不在**本页：它们是向导中的字段（步骤 3 —— 资源）。而管线自身的图表回路
+则固定写在 `workflow.yaml` 中：阈值 0.7，最多 2 次重新生成轮次。
 
 ### 按阶段模型覆盖
 
-为不同的管线阶段使用不同的模型（例如，用较便宜的模型进行创意生成，用更好的模型撰写论文）。
+为不同的管线阶段使用不同的模型（例如，用较便宜的模型进行创意生成，用更好的模型撰写论文）。这些设置位于
+**新建实验** 向导中（步骤 3 —— 资源），而不在 Settings 页面上。
 
 ---
 
@@ -370,7 +381,9 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 ![Workflow 编辑器：Save、Reload、Add Node 与 Reset to default 工具栏，正在编辑的 workflow.yaml 路径，由带阶段标签的阶段节点组成的 React Flow 画布，以及下方带 Source 与 Edit 按钮的阶段列表](../../assets/images/zh/dashboard_workflow.png)
 
-用于编辑活动检查点管线的 React Flow 可视化 DAG 编辑器 —— 正在编辑的 `workflow.yaml` 路径显示在工具栏下方。可拖动节点、绘制连线、启用/禁用阶段并分配技能；每个阶段也在画布下方列出，带 **Source** 与 **Edit** 按钮。节点按阶段（`bfts` / `paper`）打标签，**Save** 会写回同一个 `workflow.yaml`。
+用于编辑活动检查点管线的 React Flow 可视化 DAG 编辑器 —— 工具栏下方打印的路径是被*读取*的那个 `workflow.yaml`。可拖动节点、绘制连线、启用/禁用阶段并分配技能；每个阶段也在画布下方列出，带 **Source** 与 **Edit** 按钮。节点按阶段（`bfts` / `paper`）打标签。
+
+**Save 绝不会写入所显示的那个路径。** 每一次工作流写入都是向活动检查点的写时复制（copy-on-write）：若 `{checkpoint}/workflow.yaml` 尚不存在，会先把内置的 `ari-core/config/workflow.yaml` 复制过去，你的修改落在那份副本上。内置文件永远不会被写入；而在没有活动检查点时，写入会被直接拒绝。
 
 ---
 
@@ -389,8 +402,8 @@ AI 会提出澄清性问题，并自动生成实验文件。
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
-| `/state` | GET | 完整的应用状态：当前阶段（idle/idea/bfts/paper/review）、节点数、实验配置、成本数据、LLM 模型信息 |
-| `/api/logs` | GET (SSE) | 来自 `ari.log` 和 `cost_trace.jsonl` 的实时日志 Server-Sent Events 流 |
+| `/state` | GET | 完整的应用状态：当前阶段（`idle`/`starting`/`bfts`/`paper`/`review` —— 没有 `idea` 这个取值；阶段由标记文件推导，因此只要 `idea.json` 存在就已报告为 `bfts`）、节点数、实验配置、成本数据、LLM 模型信息 |
+| `/api/logs` | GET (SSE) | 来自本次运行的 `ari_run_*.log` 和 `cost_trace.jsonl` 的实时日志 Server-Sent Events 流。一个处理程序 tail 约 10 分钟后结束该流 —— 由客户端重新连接 |
 | `/memory/<node_id>` | GET | 节点的内存存储条目（工具调用追踪、指标、父链） |
 | `/codefile?path=<path>` | GET | 读取检查点目录中的文件（限制在检查点范围内，最大 20MB） |
 
@@ -416,12 +429,12 @@ AI 会提出澄清性问题，并自动生成实验文件。
 |------|------|------|
 | `/api/settings` | GET | 当前设置：LLM 提供商/模型、Ollama 主机、SLURM 配置、MCP 技能 |
 | `/api/settings` | POST | 将设置保存到 `{checkpoint}/settings.json` 和 `.env`（需要选中项目）。请求体：`{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
-| `/api/env-keys` | GET | 来自 `.env` 文件的所有 API 密钥及来源信息 |
+| `/api/env-keys` | GET | 在 `.env` 链中找到的密钥*名称*，以及各自来自哪个文件。每个非空值都会被替换为 `***configured***`，返回体带有 `redacted: true` —— 密钥值绝不通过 HTTP 提供 |
 | `/api/env-keys` | POST | 保存单个 API 密钥：`{key, value}` |
 | `/api/profiles` | GET | 可用的环境配置文件（laptop, hpc, cloud） |
 | `/api/models` | GET | 可用的 LLM 提供商和模型 |
 | `/api/workflow` | GET | 包含管线阶段和技能元数据的完整 workflow.yaml |
-| `/api/workflow` | POST | 保存修改后的 workflow.yaml：`{path, pipeline}` |
+| `/api/workflow` | POST | 保存修改后的工作流：`{path, pipeline}`。`path` 指的是作为基底被读取的文件；写入始终落到 `{checkpoint}/workflow.yaml`，没有活动检查点时以 400 拒绝 |
 | `/api/skills` | GET | 列出可用的 MCP 技能及其描述 |
 | `/api/skill/<name>` | GET | 技能详情：README、SKILL.md、server.py 源码 |
 
@@ -432,7 +445,7 @@ AI 会提出澄清性问题，并自动生成实验文件。
 | `/api/chat-goal` | POST | 用于实验目标细化的多轮 LLM 对话：`{messages, context_md}` |
 | `/api/config/generate` | POST | 从自然语言目标生成 experiment.md：`{goal}` |
 | `/api/ssh/test` | POST | 测试 SSH 连接：`{ssh_host, ssh_port, ssh_user, ssh_key, ssh_path}` |
-| `/api/scheduler/detect` | GET | 自动检测计算环境（SLURM, PBS, LSF, Kubernetes） |
+| `/api/scheduler/detect` | GET | 自动检测计算环境（SLURM, PBS, LSF, SGE, Kubernetes） |
 | `/api/slurm/partitions` | GET | 可用的 SLURM 分区 |
 | `/api/ollama-resources` | GET | GPU 信息（nvidia-smi）、可用的 Ollama 模型 |
 | `/api/gpu-monitor` | GET/POST | 启动/停止 GPU 监控守护进程 |
@@ -480,11 +493,12 @@ ari paper ./workspace/checkpoints/20260328_matrix_opt/
 # 显示节点树和状态
 ari status ./workspace/checkpoints/20260328_matrix_opt/
 
-# 列出所有项目
-ari projects
+# 列出所有项目。以下两条命令都默认使用 ./checkpoints 而非
+# ./workspace/checkpoints，因此请显式传入基准目录。
+ari projects --checkpoints ./workspace/checkpoints
 
 # 显示详细结果（树 + 评审）
-ari show 20260328_matrix_opt
+ari show 20260328_matrix_opt --checkpoints-dir ./workspace/checkpoints
 
 # 列出可用工具
 ari skills-list
@@ -492,22 +506,24 @@ ari skills-list
 
 ### 配置
 
+`ari settings` 读取并重写一份配置 YAML —— 未传 `--config` 时即 `./config.yaml`。若该文件不存在，它会以退出码 1 结束；它绝不会创建配置文件。
+
 ```bash
 # 查看当前设置
-ari settings
+ari settings --config ./config.yaml
 
 # 更改模型
-ari settings --model openai/gpt-4o
+ari settings --config ./config.yaml --model openai/gpt-4o
 
-# 设置 SLURM 选项
-ari settings --partition gpu --cpus 64 --mem 128
+# 设置 SLURM 选项（写在 `resources:` 之下）
+ari settings --config ./config.yaml --partition gpu --cpus 64 --mem 128
 ```
 
 ### 环境变量
 
 | 变量 | 描述 | 默认值 |
 |------|------|--------|
-| `ARI_BACKEND` | LLM 后端：`ollama` / `openai` / `anthropic` | `ollama` |
+| `ARI_BACKEND` | LLM 后端：`ollama` / `openai` / `anthropic`（别名 `claude`） / `claude_code` / `cli-shim` | `ollama` |
 | `ARI_MODEL` | 模型名称（例如 `qwen3:8b`、`openai/gpt-4o`） | `qwen3:8b` |
 | `OPENAI_API_KEY` | OpenAI API 密钥 | -- |
 | `ANTHROPIC_API_KEY` | Anthropic API 密钥 | -- |

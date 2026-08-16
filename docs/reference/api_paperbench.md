@@ -2,11 +2,21 @@
 sources:
   - path: ari-core/ari/viz/api_paperbench.py
     role: implementation
+  - path: ari-core/ari/viz/api_paperbench_worker.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
   - path: ari-skill-paper-re/src/_paperbench_bridge.py
     role: implementation
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-05-25
+  - path: ari-skill-paper-re/src/sandbox.py
+    role: implementation
+  - path: ari-skill-paper-re/src/_compute/computer.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # PaperBench API reference
@@ -34,7 +44,7 @@ List every paper in the registry.
       "source_type": "arxiv",
       "source": "2404.14193",
       "imported_at": "2026-05-13T...",
-      "registry_dir": "/home/.../paper_registry/papers/2404.14193"
+      "registry_dir": "<registry_root>/papers/2404.14193"
     }
   ]
 }
@@ -49,7 +59,7 @@ Register a new paper. Body fields:
 | `source_type` | yes | `arxiv` \| `doi` \| `upload` \| `local` |
 | `source` | yes | identifier or path |
 | `title` | yes | free-form |
-| `license` | recommended | classified server-side; missing ⇒ "unknown" |
+| `license` | recommended | classified server-side; missing ⇒ `license: ""` with `usable: false` and the note "license unknown — manual review required" |
 | `authors` | no | list of strings |
 | `venue` / `year` / `artifact_url` | no | optional metadata |
 | `paper_id` | no | defaults to sanitized `source`; sanitized to `[A-Za-z0-9._-]{1,64}` |
@@ -67,6 +77,9 @@ Remove the manifest line + the on-disk paper directory. Idempotent.
 ```json
 {"deleted": true, "paper_id": "2404.14193"}
 ```
+
+An unknown id is not an error: the call still answers HTTP 200 with
+`{"deleted": false, "reason": "not found", "paper_id": "<id>"}`.
 
 ### `POST /api/paperbench/papers/<paper_id>/metadata`
 
@@ -112,14 +125,42 @@ Enqueue PaperBench runs.
     "gpus_per_task": 1,
     "gpu_type": "v100",
     "memory_gb_per_node": 256,
-    "constraint": "skylake",
-    "cpu_bind": "cores",
-    "account": "projX"
+    "constraint": "skylake"
   },
   "judge_config":     {"model": "gpt-5-mini", "n_runs": 1, "code_only": false},
   "dry_run": false
 }
 ```
+
+`rubric_config` is the only block that is validated: an unrecognised key
+fails the whole request with
+`{"error": "unknown rubric_config fields: ..."}`. The accepted keys are
+`model`, `target_leaf_count`, `temperature`, `seed`,
+`paperbench_rubric_id`, `max_model_calls`, `subtree_concurrency`,
+`provider`, `model_revision`.
+
+`reproduce_config` and `judge_config` are *not* validated, and the viz
+worker forwards only the keys it knows. For `reproduce_config` those are
+`model`, `time_limit_sec`, `iterative_agent`, `sandbox_kind`,
+`container_image`, `max_steps` (Stage 1) plus `partition`, `nodes`,
+`ntasks`, `ntasks_per_node`, `exclusive`, `gpus_per_task`, `gpu_type`,
+`memory_gb_per_node`, `constraint`, `cpu_bind`, `mem_bind`, `hint`,
+`nodelist`, `extra_sbatch_args` (Stage 2). Anything else — `account`,
+`qos`, `reservation`, `walltime`, `gpus_per_node` — is accepted by the
+endpoint and then silently dropped on the way to the skill, even though
+`run_reproduce` itself takes those arguments; supply them through the
+rubric's `execution_profile` instead. `judge_config` forwards `model`
+(renamed to `judge_model`), `n_runs`, `skip_negative_control` and
+`code_only`.
+
+Do not put `cpu_bind` or `mem_bind` in `reproduce_config`: the worker
+forwards them, and the SLURM path then refuses the run with "cpu_bind and
+mem_bind are srun job-step settings; place them explicitly in
+reproduce.sh".
+
+A `paper_id` that is not in the registry aborts the whole launch with
+`{"error": "paper not in registry: <paper_id>"}` — jobs already created
+for earlier ids in the same request are left running.
 
 Response (real launch):
 
@@ -140,9 +181,18 @@ returned alongside `papers` (count) and totals.
 
 ### `GET /api/paperbench/run/<job_id>`
 
-Status snapshot. Fields: `status` (`queued` / `running` / `completed`
-/ `failed`), `current_stage`, `progress`, `created_at`, plus the
-original `configs`.
+Status snapshot. Fields: `status`, `current_stage`, `progress`,
+`created_at`, `paper_id`, `results`, `error`, `logs`, plus the original
+`configs`. An unknown id answers `{"error": "job not found", "job_id":
+"<id>"}`.
+
+`status` is one of `queued`, `running`, `completed`, `failed` — or
+`interrupted`. Every job mutation is mirrored to
+`{registry_root}/jobs/{job_id}.json`, so jobs survive a viz-server
+restart; a persisted record still reading `queued`/`running` after the
+restart means its worker thread died with the process, and the disk
+reader reports it as `interrupted` with an explanatory `error`. Workers
+are never respawned.
 
 ### `GET /api/paperbench/run/<job_id>/results`
 
@@ -170,10 +220,25 @@ Same body shape as `/api/paperbench/run` minus `paper_ids` and
 
 ## CORS / authentication
 
-The viz server allows all origins (`*`) on the dashboard endpoints and
-performs no authentication — it is expected to be bound to localhost
-or behind an SSH tunnel. Do **not** expose it on a public interface
-without an upstream reverse proxy.
+The viz server is **same-origin only**: the request `Origin` is echoed
+back in `Access-Control-Allow-Origin` only when it matches the server's
+own origin (the `Host` header, or a loopback form on the server port).
+A cross-origin request gets no ACAO header at all, so the browser
+refuses the response. `ARI_GUI_CORS_ANY=1` restores the historical
+unconditional `*` for tunnel/portal topologies where the page origin
+cannot match the API origin.
+
+Authentication depends on the bind. A loopback bind (the default)
+resolves to no token and behaves as before. When `ARI_GUI_BIND` names a
+non-loopback host, a single gate ahead of every `do_GET` / `do_POST` /
+`do_PUT` / `do_PATCH` / `do_DELETE` requires
+`Authorization: Bearer <ARI_GUI_TOKEN>` and answers 401 with a typed
+JSON body otherwise; `/health*` is exempt, and the SSE job-log stream
+accepts the same token as a `token=` query parameter because
+`EventSource` cannot set headers. A remote bind with `ARI_GUI_TOKEN`
+unset generates and prints a token rather than starting
+unauthenticated; `ARI_GUI_AUTH=0` disables the gate. Do **not** expose
+the server on a public interface without an upstream reverse proxy.
 
 ## Bridge contract (in-process Python surface)
 
@@ -187,7 +252,7 @@ can be chained:
 | Stage | Function | Wraps |
 |---|---|---|
 | 1 — Agent rollout | `rollout_submission(paper_md, work_dir, agent_model, sandbox_kind, container_image, iterative_agent, env, agent_env_path, forbid_host_filesystem, blacklist_urls, time_limit_sec, …)` | `_replicator_agent.run_replicator_agent` (vendor BasicAgent / IterativeAgent) |
-| 2 — Reproduction | `reproduce_submission(submission_dir, sandbox_kind, container_image, partition, gpus_per_task, gpu_type, memory_gb_per_node, exclusive, capture_tarball, tarball_dir, salvage_retries, retry_threshold_sec, time_limit_sec)` | `server.run_reproduce` (typed HPC handle or host sandbox dispatch; deprecated `extra_sbatch_args` reader retained temporarily) |
+| 2 — Reproduction | `reproduce_submission(submission_dir, sandbox_kind, container_image, time_limit_sec, network_policy, network_isolation_attested, partition, gpus_per_task, gpu_type, memory_gb_per_node, exclusive, extra_sbatch_args, capture_tarball, tarball_dir)` | `server.run_reproduce` (typed HPC handle or host sandbox dispatch; the deprecated `extra_sbatch_args` reader now accepts only `--account=`, `--qos=`, `--reservation=` and `--hint=` and raises on anything else) |
 | 3 — Grading | `judge_submission(paper_md, rubric, submission_dir, reproduce_log, judge_model, paper_audit_mode, code_only, …)` | vendor `SimpleJudge` direct |
 
 Vendor-fidelity behaviour built into the bridge:
@@ -222,27 +287,49 @@ Vendor-fidelity behaviour built into the bridge:
 - **blacklist_urls** — prepends a `FORBIDDEN URLS` block to the
   agent's instruction prompt AND exports `ARI_BLACKLIST_URLS` env var
   so downstream tool wrappers can refuse.
-- **salvage_retries** — opt-in vendor-style retry on
-  early-failure runs (per
-  `vendor/.../reproduce.py:252 reproduce_on_computer_with_salvaging`).
-  Tracks wall-clock across attempts so the total budget is honoured.
-- **capture_tarball** — writes per-attempt
-  `submission_executed_<UTC>.tar.gz` next to the submission so a run
-  is re-gradable.
-- **code_only** — when True, explicitly prunes a verified successful
-  reproduction to Code Development leaves (vendor
-  `paperbench/grade.py:109-112`). Missing reproduction records fail without a
-  scientific score.
+- **no source-mutating salvage** — the vendor's
+  `reproduce_on_computer_with_salvaging` retry (which rewrites the
+  submission's environment before re-running) has no bridge equivalent;
+  `salvage_retries` / `retry_threshold_sec` are not parameters of
+  `reproduce_submission`, and
+  `test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage`
+  asserts their absence. A failed reproduction is retried by calling
+  `reproduce_submission` again with the same plan, which appends an
+  immutable linked attempt rather than mutating `reproduce.sh`.
+- **capture_tarball** (default True) — writes a timestamped
+  `submission_executed_<UTC>.tar.gz` beside the *executed* submission
+  inside the private attempt tree (not beside the caller's
+  `submission_dir`) unless `tarball_dir` overrides the destination, and
+  returns `executed_tarball`, `executed_tarball_digest` and
+  `executed_tarball_size_bytes`. A capture failure is non-fatal: it is
+  logged and appended to the result's `warnings` list.
+- **code_only** — when True, prunes the *rubric tree* to `Code
+  Development` leaves via the vendor `TaskNode.code_only` reduction
+  (vendor `paperbench/grade.py:109-112`). It is for the case where Stage 2
+  was deliberately skipped, so Code Execution / Result Analysis leaves are
+  not graded against an empty submission. It does not substitute for a
+  reproduction record: `grade_with_simplejudge` still requires a verified
+  `ReproductionRunV1` with `status == "succeeded"` and otherwise returns a
+  report with `status: "failed"` and `ors_score: null`.
 - **paper_audit_mode** — patches vendor `TASK_CATEGORY_QUESTIONS` to
   paper-audit phrasing. Mutually exclusive with `code_only`.
 
-Fail-loud preconditions (there is no host-local downgrade):
+Fail-loud preconditions (there is no host-local downgrade). None of
+these reach the caller as an exception: `run_reproduce` catches the
+failure, records it as an immutable failed attempt, and returns a dict
+carrying `executed: false`, `error` and a `failure_kind`
+(`sandbox-unavailable`, `scheduler-failure`, `network-policy`) — or, when
+the plan is rejected before an attempt exists,
+`{"executed": false, "error": "reproduction plan rejected: ..."}`.
 
-| Condition | Env override |
+| Condition | Remedy |
 |---|---|
-| `sandbox_kind=docker` but daemon unreachable | start Docker or select an available reviewed sandbox |
-| `sandbox_kind=apptainer/singularity` but binary missing | install the runtime or select another reviewed sandbox |
-| `sandbox_kind=slurm` but `sbatch` missing or no partition | configure the scheduler/partition |
+| `sandbox_kind=docker/apptainer/singularity` but the runtime binary is not on `PATH` (checked with `which` at launch — the daemon itself is never probed for an explicit `docker` request) | install the runtime or select another reviewed sandbox |
+| `sandbox_kind=docker/apptainer/singularity` with no `container_image` and no `ARI_PHASE1_DOCKER_IMAGE` / `ARI_PHASE1_APPTAINER_IMAGE` | supply an immutable image; the plan is rejected with "requires an immutable container image" |
+| Container image that is not immutably pinned (mutable Docker tag, remote Apptainer ref without `@sha256:`, symlinked SIF) | pin it; see "immutable container identity" above |
+| `sandbox_kind=slurm` but `sbatch` missing or no partition resolved | configure the scheduler/partition |
+| `sandbox_kind=local`/`slurm` under the default `network_policy="deny"` | a non-container substrate cannot prove network denial: pass `network_policy="inherit"` explicitly, supply `network_isolation_attested=True`, or run in a container |
+| `cpu_bind` / `mem_bind` passed to a SLURM reproduction | put the binding in `reproduce.sh`; the scheduler path refuses these as srun job-step settings |
 | GPU request unsupported by the selected partition | fix GRES/select a compatible partition; no silent downgrade |
 
 ## See also

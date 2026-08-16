@@ -4,15 +4,27 @@ sources:
     role: implementation
   - path: containers
     role: config
-last_verified: 2026-08-02
+  - path: scripts/letta
+    role: config
+  - path: scripts/registry
+    role: config
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-skill-memory/src/ari_skill_memory/config.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # HPC Setup Guide
 
-This guide covers running ARI on a SLURM cluster, deploying ARI inside
-Apptainer / Singularity / Docker, and pointing the memory backend at a
-shared Letta service.  Replace cluster-specific names (partition,
-login node, paths) with your own.
+This guide covers running ARI on a SLURM cluster, running ARI's tools
+against Apptainer / Singularity / Docker sandboxes, and pointing the
+memory backend at a shared Letta service.  Replace cluster-specific
+names (partition, login node, paths) with your own.
 
 ## 1. Environment
 
@@ -23,12 +35,17 @@ vars on every cluster:
 | Variable | Purpose |
 |---|---|
 | `ARI_CHECKPOINT_DIR` | Active checkpoint root (every input/output is scoped here) |
-| `ARI_LLM_MODEL` | LiteLLM model id (e.g. `ollama/qwen3:32b`, `openai/gpt-4o`) |
+| `ARI_MODEL` | LiteLLM model id (e.g. `ollama/qwen3:32b`, `openai/gpt-4o`). `ARI_LLM_MODEL` is honoured as an alias, but `ARI_MODEL` wins when both are set |
 | `ARI_LLM_API_BASE` | Optional — pin the LLM endpoint if not the LiteLLM default |
 | `OLLAMA_HOST` / `OLLAMA_MODELS` | Required if the LLM is local Ollama |
 
-> v0.5.0 removed the global `$HOME/.ari/` directory — every state file
-> now lives under `ARI_CHECKPOINT_DIR` or under an explicit env var.
+> v0.5.0 removed the global `$HOME/.ari/` directory as a *state* root —
+> every state file now lives under `ARI_CHECKPOINT_DIR` or under an
+> explicit env var. Three read-only legacy *config* fallbacks survive
+> and still fire if the files happen to exist:
+> `~/.ari/registries.yaml`, `~/.ari/publish.yaml`, and
+> `~/.ari/registry-data`. Each emits a `DeprecationWarning` when
+> honoured; move them to the checkpoint or to the named env var.
 > Set the outer ARI process variables in its wrapper, not in shell rc files.
 > Canonical HPC sub-jobs do **not** inherit that parent environment: each
 > `JobRequestV1` declares reviewed non-secret variables and modules explicitly.
@@ -45,14 +62,20 @@ vars on every cluster:
 | `your_gpu_partition` | GPU nodes | GPU-bound experiments |
 
 Pick partitions with the `--partition=` field of your `sbatch`
-wrapper.  ARI picks up `SLURM_DEFAULT_PARTITION` for sub-jobs.
+wrapper.  For sub-jobs the hpc skill resolves the partition as
+explicit caller argument → `SLURM_DEFAULT_PARTITION` →
+`ARI_SLURM_PARTITION`, and the work dir as explicit argument →
+`SLURM_DEFAULT_WORK_DIR` → `ARI_WORK_DIR` → cwd.
 
 ## 3. Run ARI on the cluster
 
 ### Submit a BFTS run
 
+The repo ships no submission wrapper — write your own from the template
+in §4 and submit that:
+
 ```bash
-sbatch ~/ARI/scripts/run_ari.sh
+sbatch /abs/path/to/your/run_ari.sh
 ```
 
 ### Monitor
@@ -64,14 +87,20 @@ tail -f $ARI_CHECKPOINT_DIR/ari.log
 
 ### Inspect results
 
+The checkpoint-level tree is `nodes_tree.json`
+(`{"experiment_goal": …, "nodes": [ … ]}` — a **list**, not a mapping).
+`results.json` is a per-node file under
+`{workspace}/experiments/{run_id}/{node_id}/`, not a checkpoint-level
+summary.
+
 ```bash
 # Best metric from a completed run.
 python - <<'PY'
 import json, os
-r = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/results.json"))
-for nid, n in r["nodes"].items():
+r = json.load(open(f"{os.environ['ARI_CHECKPOINT_DIR']}/nodes_tree.json"))
+for n in r["nodes"]:
     if n.get("has_real_data"):
-        print(nid[:12], n["metrics"])
+        print(n["id"][:12], n["metrics"])
 PY
 ```
 
@@ -107,8 +136,11 @@ export SLURM_DEFAULT_PARTITION=your_partition
 export SLURM_DEFAULT_WORK_DIR=/path/to/ari/
 export ARI_HPC_LEDGER_PATH=/abs/path/checkpoints/hpc-jobs-v1.json
 
-# Optional: choose a specific reviewer rubric (see docs/concepts/architecture.md).
-export ARI_RUBRIC=neurips2025
+# Optional: choose a specific reviewer rubric — the value is the stem of a
+# file under ari-core/config/reviewer_rubrics/ (neurips, icml, iclr, cvpr,
+# acl, osdi, nature, generic_conference, …). Default: neurips. An unknown
+# id does NOT error: it silently falls back to neurips.yaml.
+export ARI_RUBRIC=neurips
 
 cd /path/to/ari/ari-core
 /home/youruser/miniconda3/bin/ari run /abs/path/to/experiment.md
@@ -136,23 +168,24 @@ at identical absolute paths on the MCP and compute hosts.
 
 ## 5. Container deployments (v0.7+)
 
-ARI ships three deployment recipes for environments that prohibit
-running tools directly on a login node.  They are equivalent — pick
-whichever your site supports.
+There is **no packaged image recipe for ARI itself** — no
+`containers/ari.def`, no `containers/ari/docker-compose.yml`. The
+`containers/` directory holds prebuilt `.sif` images used as *sandboxes
+for builds and runs* (a toolchain image, a python image, a tool-specific
+image), not an ARI runtime. `scripts/registry/` ships the two recipes
+that do exist, and they package the **registry service**, not the agent
+loop.
 
 ### Apptainer / Singularity
 
-`scripts/registry/start_singularity.sh` is the reference launcher; the
-same recipe works for the agent loop:
+`scripts/registry/start_singularity.sh` builds and runs the registry
+inside a SIF (`$ARI_REGISTRY_SIF`, default `$HOME/.ari/ari-registry.sif`)
+on clusters that ban docker/podman. To sandbox ARI's own work, point the
+skills at a prebuilt image instead of building an ARI image:
 
-```bash
-apptainer build ari.sif containers/ari.def
-apptainer exec --bind /scratch:/scratch ari.sif \
-    ari run /abs/path/to/experiment.md
-```
-
-`ari-skill-coding` honours `ARI_CONTAINER_IMAGE=/path/to/ari.sif` and
-`ARI_CONTAINER_MODE=singularity` for short interactive commands.
+`ari-skill-coding` honours `ARI_CONTAINER_IMAGE=/abs/path/to/image.sif`
+and `ARI_CONTAINER_MODE` (`auto` — the default — `docker`, `singularity`
+or `apptainer`) for short interactive commands.
 `ari-skill-hpc` uses `container_submit`: its `JobRequestV1` carries the exact
 SIF SHA-256/size pin, typed read-only/read-write binds, clean-environment flag,
 GPU declaration, resources, and declared outputs. Container-specific public
@@ -161,10 +194,12 @@ aliases were removed; all callers use this typed lifecycle.
 ### docker-compose (single host)
 
 `scripts/registry/docker-compose.yml` is the production recipe for the
-registry; an analogue exists for the full stack:
+registry (nginx ↔ uvicorn ↔ sqlite); it mounts the repo read-only rather
+than building an ARI image:
 
 ```bash
-docker compose -f containers/ari/docker-compose.yml up -d
+cd scripts/registry
+ARI_REGISTRY_TOKEN_USER=admin docker compose up -d
 ```
 
 ### Pip (development, no container)
@@ -182,9 +217,11 @@ to a Letta service via `LETTA_BASE_URL` (default
 
 | Path | When to pick it |
 |---|---|
-| Apptainer SIF (`containers/letta.sif`) | HPC where Docker is unavailable |
-| docker-compose (`containers/letta/docker-compose.yml`) | Dev workstation, single-node prod |
-| Pip (`pip install letta && letta server`) | Quick smoke tests; not for shared clusters |
+| Apptainer SIF (`scripts/letta/start_singularity.sh`, image `scripts/letta/letta.sif`) | HPC where Docker is unavailable |
+| docker-compose (`scripts/letta/docker-compose.yml` — Letta + a pgvector-capable Postgres) | Dev workstation, single-node prod |
+| Pip (`scripts/letta/start_pip.sh` — dedicated venv + SQLite) | Quick smoke tests; not for shared clusters |
+
+All three are driven by `ari memory start-local` / `ari memory stop-local`.
 
 Required env vars regardless of deployment:
 
@@ -196,8 +233,17 @@ Required env vars regardless of deployment:
 
 Each ARI checkpoint owns its own Letta agent (collections
 `ari_node_<ckpt_hash>` + `ari_react_<ckpt_hash>`).  Deleting the
-checkpoint via `ari ckpt delete` automatically deletes the matching
-Letta agent — see `ari-skill-memory/README.md` for the deletion path.
+checkpoint via `ari delete <checkpoint>` (there is no `ari ckpt`
+sub-group) purges the matching Letta namespace first — but the purge is
+best-effort: a failure is logged and the local `rmtree` proceeds anyway,
+leaving an orphaned Letta agent behind. Sweep those with
+`ari memory prune-local`. See `ari-skill-memory/README.md` for the
+deletion path.
+
+`ARI_MEMORY_BACKEND` selects the backend and accepts only `letta`
+(default) or `in_memory`; `in_memory` additionally requires a
+`.ari-test-memory-backend` marker file in the checkpoint, so it cannot
+be selected for a production run.
 
 ## 7. Critical SLURM constraints
 
@@ -209,7 +255,7 @@ Letta agent — see `ari-skill-memory/README.md` for the deletion path.
 | Environment | Canonical jobs use `sbatch --export=NIL`; parent PATH, virtualenv, API keys, `.env`, and shell rc files are not inherited. |
 | Account/QoS | Add `account` or `qos` only when the target site requires it; they are validated inert identifiers and retained in provenance. |
 | Outputs | Declare output paths below `work_dir`; terminal collection rejects missing, symlinked, oversized, or drifted artifacts. |
-| Retry | Keep `ARI_HPC_LEDGER_PATH` on durable shared storage. An uncertain submission is intentionally blocked rather than duplicated. |
+| Retry | Keep `ARI_HPC_LEDGER_PATH` on durable shared storage. Unset, it falls back to `{ARI_CHECKPOINT_DIR}/hpc-jobs-v1.json`, then `{ARI_WORK_DIR}/.ari/hpc-jobs-v1.json`, then a per-uid directory under the system temp dir — the last of which is node-local and defeats the guard. An uncertain submission is intentionally blocked rather than duplicated. |
 
 ## 8. Ollama model recommendations
 

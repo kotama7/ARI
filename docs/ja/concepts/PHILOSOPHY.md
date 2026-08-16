@@ -6,7 +6,19 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/prompts/agent/system.md
+    role: implementation
+  - path: ari-core/ari/prompts/orchestrator/bfts_expand.md
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI 設計哲学
@@ -24,26 +36,30 @@ ARI は、**「アイデアがある」から「結果がある」までのギ�
 
 ### 1. コンピュート: ラップトップからスーパーコンピューターまで
 
-ARI はラップトップ（`mode: local`）でも SLURM クラスターでも同一に動作します。同じ実験ファイル、同じ設定形式、同じ出力構造です。切り替えは `workflow.yaml` の 1 行だけです。
+ARI はラップトップでも SLURM クラスターでも同一に動作します。同じ実験ファイル、同じ設定形式、同じ出力構造です。切り替えは `workflow.yaml` の 1 行、あるいは `--profile laptop` / `--profile hpc` だけです。
 
 ```yaml
-hpc:
-  mode: local      # ラップトップ
-  mode: slurm      # HPC クラスター
+resources:
+  hpc_enabled: false      # ラップトップ（true → HPC クラスター）
   partition: your_partition
 ```
 
+`core.py` が読むのは `resources.hpc_enabled` で、プロファイルの `hpc.enabled` はここにマージされます。ただし `--profile` がマージするのは 4 キー（`bfts.max_total_nodes`、`bfts.max_parallel_nodes`/`parallel`、`hpc.enabled`、`hpc.scheduler`）だけで、プロファイル YAML のそれ以外のキーは `partition` を含めて黙って無視される点に注意してください。
+
 ### 2. LLM: ローカルからクラウドまで
 
-ARI はすべての LLM 呼び出しを litellm 経由で委譲します。モデルは設定であり、コードではありません。
+ARI は LLM 呼び出しを litellm 経由で委譲します。モデルは設定であり、コードではありません。
 
 ```yaml
 llm:
+  backend: openai           # ollama | openai | claude_code | litellm | cli-shim
   model: qwen3:8b           # Ollama、API キー不要、オフライン実行
   model: gpt-5.2            # OpenAI API
   model: claude-sonnet-4-5    # Anthropic API
   base_url: http://...      # 任意の OpenAI 互換 API
 ```
+
+1 つだけ litellm を経由しないバックエンドがあります: `backend: claude_code` は Claude Code CLI プロバイダ（`ari/llm/claude_code/`）へ直接ルーティングされ、そこではツール呼び出しがサポートされません — ツールを黙って落とすのではなく、明示的に失敗します。
 
 ### 3. 専門性: 初心者からエキスパートまで
 
@@ -89,6 +105,7 @@ ARI のコアが規定するのは以下のみ:
 - **フォーマット**: ツール呼び出しに JSON、実験に Markdown
 - **プロトコル**: skill 通信に MCP
 - **シグナル**: `scientific_score`（LLM が 0.0-1.0 を付与）が BFTS を駆動
+- **結果の契約**: `emit_results` は INPUT パラメータと MEASUREMENTS の型付き分離を要求し、それを実行レシートに紐付けます — そしてエージェントには `scientifically_admissible=true` になるまで終了しないよう指示されます。これは形式（shape）の要求であってドメインの要求ではありません: どちらのバケットに何を入れるかは依然として LLM の判断です。
 
 その他すべて — 何を測定するか、どう比較するか、どのハードウェア詳細が重要か、どの図表を描くか、どの引用を含めるか — は実行時に LLM が自律的に決定します。
 
@@ -135,11 +152,11 @@ ARI は以下を明示的に意図していません:
 
 ## 系論: 失敗した実験は情報である
 
-ノードが失敗した場合、ARI は同じアプローチをリトライしません。代わりに、失敗したノードはフロンティアに入り、`expand()` が失敗のコンテキストを引き継ぐ `debug` 子ノードを生成します。次の世代は失敗から学びます — これは失敗をシグナルではなくノイズとして扱うリトライロジックとは質的に異なります。
+ノードが失敗した場合、ARI は同じアプローチをリトライしません。代わりに、失敗したノードはフロンティアに入り、`expand()` が親のステータス（`failed/no-real-data`）を、`debug` とは「親が FAILED か実データを持たない — 診断して直す」ことだという指示とともにプランナへ渡します。ラベルはハードコードされた分岐ではなくプランナの選択です: プロンプトは 5 つの正規ラベルを強く推奨しますが、独自ラベルは `raw_label` として保持されます。次の世代は失敗から学びます — これは失敗をシグナルではなくノイズとして扱うリトライロジックとは質的に異なります。
 
 ## 系論: 再現性はファーストクラスの原則である
 
-ARI のエージェントシステムプロンプトには、一つの一般的な科学的原則が含まれています: *実験が再現可能であることを確認すること*。これはドメインルールではなく、化学、HPC、機械学習に等しく適用されます。どの情報を記録する必要があるかはエージェントが自律的に決定します。論文査読者は、論文が再現可能かどうかを独立に評価し、ハードコードされた基準なしでループを閉じます。
+ARI のエージェントシステムプロンプトには、いくつかの一般的な科学的原則が含まれています — *実験が再現可能であることを確認すること*、*数値を決して捏造しないこと*、そして上記の型付き `emit_results` の分離です。いずれもドメインルールではなく、化学、HPC、機械学習に等しく適用されます。どの情報を記録する必要があるかはエージェントが自律的に決定します。論文査読者は、論文が再現可能かどうかを独立に評価し、ハードコードされた基準なしでループを閉じます。
 
 ## 関連
 

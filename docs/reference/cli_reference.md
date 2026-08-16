@@ -6,7 +6,35 @@ sources:
     role: implementation
   - path: ari-core/ari/cli_ear.py
     role: implementation
-last_verified: 2026-07-10
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/clone
+    role: implementation
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: ari-core/ari/publish
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-core/config/reviewer_rubrics
+    role: config
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-skill-paper/src
+    role: implementation
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+  - path: ari-skill-vlm/src/review.py
+    role: implementation
+  - path: ari-skill-web/src/server.py
+    role: implementation
+  - path: ari-skill-orchestrator/src/server.py
+    role: implementation
+  - path: ari-skill-memory/src/ari_skill_memory/config.py
+    role: implementation
+  - path: scripts/setup/install_deps.sh
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI CLI Reference
@@ -30,6 +58,9 @@ Complete reference for ARI command-line operations. The CLI provides the same fu
 | `ari delete` | Delete a checkpoint | Experiments page → Delete button |
 | `ari settings` | View or modify configuration | Settings page |
 | `ari skills-list` | List available tools | Settings → MCP Skills |
+| `ari knowledge <subcmd>` | Inspect non-executable Knowledge Skills (`search` / `show` / `import` / `validate-manifest` / `validate-registration`, plus `lock` and `use`) | — |
+| `ari provider <subcmd>` | Inspect executable Capability Providers (`search` / `show` / `probe` / `validate-manifest`, plus `lock` and `bindings`) | — |
+| `ari harness <subcmd>` | Inspect Harnesses and assurance evidence (`search` / `show` / `resolve` / `verify` / `validate-manifest` / `validate-registration`, plus `lock`, `attestation`, `suite`) | — |
 | `ari memory ...` | Manage the Letta memory backend | Settings → Memory (Letta) |
 | `ari ear <subcmd>` | EAR curation/publishing/promotion lifecycle (v0.7.0) | — |
 | `ari clone <ref>` | Fetch a curated EAR bundle (file/https/ari/gh/doi); verify by digest (v0.7.0) | — |
@@ -51,19 +82,24 @@ exploration-to-authoring compiler. It does not run on the default
 `manuscript.mode: "off"` path.
 
 ```bash
-ari manuscript compile CHECKPOINT --mode audit|enforce \
-  [--profile generic_empirical_v1] [--repair-policy disabled|explicit|auto]
+ari manuscript compile CHECKPOINT [--mode audit|enforce] \
+  [--profile generic_empirical_v1] [--repair-policy disabled|explicit|auto] \
+  [--config WORKFLOW]
 ari manuscript status CHECKPOINT [--fail-if-blocked]
 ari manuscript inspect CHECKPOINT [--requirement ID] [--lane LANE] [--node ID]
 ari manuscript plan-repair CHECKPOINT [--config WORKFLOW]
-ari manuscript repair CHECKPOINT --request REQUEST_ID [--config WORKFLOW]
+ari manuscript repair CHECKPOINT [--request REQUEST_ID]... [--config WORKFLOW]
 ari manuscript explain-publication CHECKPOINT
 ari manuscript lock-publication CHECKPOINT
 ```
 
 `plan-repair` is read-only with respect to external systems. `repair` first
 persists the admitted request and budget, then uses the normal bounded research
-runtime; `ari paper` never starts research repair. `lock-publication` succeeds
+runtime; `ari paper` never starts research repair. `--mode` defaults to `audit`;
+`--repair-policy auto` is rejected unless `--mode enforce` is also given.
+`--request` is repeatable, and **omitting it selects every request in the
+plan** — an unknown id is rejected with `unknown request IDs: ...`.
+`lock-publication` succeeds
 only for a fresh, publishable decision bound to the exact final build and PDF.
 See the [operator runbook](../guides/manuscript_complete_operations.md).
 
@@ -77,7 +113,8 @@ Run a new experiment from an experiment Markdown file.
 ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
                         [--virsci-live/--no-virsci-live] \
                         [--virsci-k N] [--virsci-team-size N] \
-                        [--virsci-n-authors N] [--virsci-n-papers N]
+                        [--virsci-n-authors N] [--virsci-n-papers N] \
+                        [--kca-audit/--no-kca-audit] [--task-tag TAG]...
 ```
 
 | Argument | Required | Description |
@@ -90,6 +127,8 @@ ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
 | `--virsci-team-size` | No | VirSci-live max team members per team. Sets `ARI_IDEA_VIRSCI_TEAM_SIZE`. Default 3. |
 | `--virsci-n-authors` | No | VirSci-live author pool size for `select_coauthors`. Sets `ARI_IDEA_VIRSCI_N_AUTHORS`. Default 16. |
 | `--virsci-n-papers` | No | VirSci-live SPECTER2 retrieval corpus size. Sets `ARI_IDEA_VIRSCI_N_PAPERS`. Default 800. |
+| `--kca-audit` / `--no-kca-audit` | No | Put Knowledge, capability-binding and assurance into `audit` mode and expose their query Skills. Also defaults `assurance.tolerance_policy` to `hpc-floating-point/v1` when unset. Default off. |
+| `--task-tag` | No | Deterministic Knowledge/Harness task tag; repeat for multiple tags. Tags are lower-cased, stripped and de-duplicated, then recorded under `resolved_launch.task_tags` in the checkpoint's `workflow.yaml`. |
 
 These flags set the `ARI_IDEA_VIRSCI_*` env contract that the idea skill reads
 (see [Idea Generation (VirSci-live)](#idea-generation-virsci-live) below). When
@@ -159,14 +198,14 @@ ari paper <checkpoint_dir> [--experiment <experiment.md>] [--config <config.yaml
                            [--num-reviews-ensemble N] \
                            [--num-reflections N]
 
-# 16 bundled rubrics: neurips (default, v2-compatible), iclr, icml, cvpr, acl,
-#   sc, chi, osdi, stoc, icra, siggraph, nature, usenix_security,
-#   journal_generic, workshop, generic_conference. Plus the built-in `legacy`
-#   fallback for v0.5 schema. Drop a new <id>.yaml into
-#   ari-core/config/reviewer_rubrics/ to add any venue.
+# 23 bundled rubrics: neurips, iclr, icml, cvpr, acl, sc, chi, osdi, stoc,
+#   icra, siggraph, nature, usenix_security, aer, econometrica, qje, apsr,
+#   ahr, philreview, pmla, journal_generic, workshop, generic_conference.
+#   Drop a new <id>.yaml into ari-core/config/reviewer_rubrics/ to add any
+#   venue.
 ```
 
-**Example — v2-compatible default (NeurIPS form, 1-shot, 5 reflections):**
+**Example — packaged default (`generic_conference` form):**
 
 ```bash
 ari paper ./workspace/checkpoints/20260328_matrix_opt/
@@ -179,13 +218,31 @@ ari paper ./workspace/checkpoints/20260328_matrix_opt/ \
           --rubric sc --num-reviews-ensemble 5
 ```
 
+> **`--rubric` does not reach the paper reviewer.** The flag (and `ARI_RUBRIC`)
+> selects the rubric that ARI's own evaluator derives its scoring axes from
+> (default `neurips`) and that lineage decisions inherit. The `write_paper` and
+> `review_paper` stages take `rubric_id` from the workflow's top-level
+> `paper_rubric:` key instead — `generic_conference` in the packaged
+> `ari-core/config/workflow.yaml`. The paper skill deliberately refuses to read
+> `ARI_RUBRIC` or guess a default (`resolve_rubric` raises `rubric_id is
+> required`), so changing the reviewing venue means editing `paper_rubric` in
+> the workflow YAML.
+
 The paper pipeline runs: data transformation, figure generation, paper writing,
-VLM figure review, **rubric-driven paper review** (rubric form + reflection +
-optional ensemble + Area Chair meta-review), and reproducibility check (ReAct
-agent driven by `ari/agent/react_driver.py`).
+claim-evidence gates, VLM figure review, **rubric-driven paper review** (rubric
+form + reflection + optional ensemble + Area Chair meta-review), refine/render
+and finalize, and the ORS reproducibility track (`ors_generate_rubric` →
+`ors_audit_rubric` → `ors_seed_sandbox` → `ors_build_reproduce` →
+`ors_run_reproduce` → `ors_grade`, served by `paper-re-skill` and
+`replicate-skill`).
 
 CLI flags can also be set via env vars: `ARI_RUBRIC`, `ARI_FEWSHOT_MODE`,
-`ARI_NUM_REVIEWS_ENSEMBLE`, `ARI_NUM_REFLECTIONS`.
+`ARI_NUM_REVIEWS_ENSEMBLE`, `ARI_NUM_REFLECTIONS`. Of these only
+`ARI_NUM_REVIEWS_ENSEMBLE` and `ARI_NUM_REFLECTIONS` are read by the reviewer
+(`review_compiled_paper` resolves both as arg > env > rubric default).
+`--fewshot-mode` is currently inert: it validates the value and exports
+`ARI_FEWSHOT_MODE`, but nothing reads that variable — `fewshot_mode` comes from
+the rubric YAML's `params` block alone.
 
 ---
 
@@ -203,15 +260,25 @@ ari status <checkpoint_dir>
 ari status ./workspace/checkpoints/20260328_matrix_opt/
 
 # Output:
-# ── Experiment Tree ──
-# root (success) score=153736
-# ├── improve_1 (success) score=180200
-# │   ├── ablation_1 (success) score=120000
-# │   └── validation_1 (success) score=178500
-# └── draft_2 (failed)
+# Run: 20260328_matrix_opt
+# └── root d=0 success
+#     ├── improve_1 d=1 success
+#     │   ├── ablation_1 d=2 success
+#     │   └── validation_1 d=2 success
+#     └── draft_2 d=1 failed
 #
-# Summary: 4 success, 1 failed, 0 running, 0 pending
+#         Summary
+# ┏━━━━━━━━━┳━━━━━━━┓
+# ┃ Status  ┃ Count ┃
+# ┡━━━━━━━━━╇━━━━━━━┩
+# │ failed  │     1 │
+# │ success │     4 │
+# └─────────┴───────┘
 ```
+
+Node lines carry the id, depth and status only — `ari status` prints **no
+score**; the per-node score field was deprecated and the command was not given a
+replacement.
 
 ---
 
@@ -250,17 +317,31 @@ List all past experiment runs.
 ari projects [--checkpoints <dir>]
 ```
 
+`--checkpoints` defaults to `./checkpoints`, **not** the `workspace/checkpoints/`
+tree that `ari run` actually writes to — a bare `ari projects` in the repo root
+reports `Directory not found: checkpoints` and exits 1. Point it at the real
+root explicitly.
+
 **Example:**
 
 ```bash
-ari projects
+ari projects --checkpoints ./workspace/checkpoints
 
 # Output:
-# ID                              Nodes  Status    Best Score  Modified
-# 20260328_matrix_opt             28     complete  153736      2h ago
-# 20260327_sorting_benchmark      12     complete  0.95        1d ago
-# 20260326_sample_experiment           5      failed    --          2d ago
+#                       ARI Projects
+# ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━┓
+# ┃ ID                         ┃ Nodes ┃ Status  ┃ Score ┃ Modified    ┃
+# ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━┩
+# │ 20260328_matrix_opt        │    28 │ done    │ 8.40  │ 03/28 14:02 │
+# │ 20260327_sorting_benchmark │    12 │ running │ —     │ 03/27 09:15 │
+# │ 20260326_sample_experiment │     0 │ empty   │ —     │ 03/26 22:41 │
+# └────────────────────────────┴───────┴─────────┴───────┴─────────────┘
 ```
+
+Status is derived from `tree.json` (or `nodes_tree.json`) and is one of
+`running` / `done` / `empty` / `corrupt` — it is not a success/failure verdict.
+Score is `scientific_score` (else `score`) from `review_report.json`, formatted
+to two decimals, and `—` when there is no review report.
 
 ---
 
@@ -273,6 +354,8 @@ ari show <checkpoint> [--checkpoints-dir <dir>]
 ```
 
 Displays the experiment tree, review report summary, and list of artifacts.
+`<checkpoint>` is used as a path first; only if that path does not exist is it
+resolved against `--checkpoints-dir` (default `./checkpoints`).
 
 ---
 
@@ -281,12 +364,18 @@ Displays the experiment tree, review report summary, and list of artifacts.
 Delete a checkpoint directory.
 
 ```bash
-ari delete <checkpoint> [--yes]
+ari delete <checkpoint> [--checkpoints-dir <dir>] [--yes]
 ```
 
 | Flag | Description |
 |------|-------------|
+| `--checkpoints-dir` | Base dir used only when `<checkpoint>` is not itself an existing path. Default `./checkpoints` |
 | `-y` / `--yes` | Skip confirmation prompt |
+
+Before the directory is removed, `ari delete` purges the checkpoint's Letta
+memory namespace. That step is best-effort: a failure is logged as a warning and
+the local `rmtree` proceeds anyway, leaving orphaned Letta entries for
+`ari memory prune-local` to sweep.
 
 ---
 
@@ -305,6 +394,13 @@ ari settings [--config <config.yaml>] [options]
 | `--partition <name>` | Set SLURM partition |
 | `--cpus <count>` | Set CPU count |
 | `--mem <GB>` | Set memory in GB |
+
+`--config` defaults to `./config.yaml` and the command exits 1 if that file does
+not exist — it never falls back to the packaged workflow. `--partition`,
+`--cpus` and `--mem` are written into the typed `resources:` block (as
+`partition` / `cpus` / `mem_gb`); the per-run `slurm_partition` /
+`slurm_max_cpus` hints parsed from the experiment.md header are separate and are
+not overridden by what you set here.
 
 **Examples:**
 
@@ -420,8 +516,8 @@ ari memory <subcommand> [options]
 | Subcommand | Description |
 |------------|-------------|
 | `health` | Ping the backend; show latency, namespace hash, server version. |
-| `migrate` | One-shot import of v0.5.x `memory_store.jsonl` (+ `memory.json` with `--react`) into the checkpoint's Letta collections. Source files are renamed to `*.migrated-<ts>`. |
-| `backup` | Snapshot Letta-stored memory to `{ckpt}/memory_backup.jsonl.gz` (gzipped JSONL). Written automatically at pipeline-stage boundaries and on shutdown. |
+| `migrate` | One-shot import of v0.5.x `memory_store.jsonl` (+ `memory.json` with `--react`) into the checkpoint's Letta collections. Source files are renamed to `*.migrated-<ts>`. `--dry-run` counts without importing. |
+| `backup` | Snapshot Letta-stored memory to `{ckpt}/memory_backup.v1.json.gz` — one gzipped, digest-bound JSON document, not JSONL. `ari run` registers it with `atexit`, so it lands once at process exit; `ARI_HANDOFF_MEMORY_OFF=1` suppresses that automatic write (the explicit command still works). |
 | `restore` | Inverse of `backup`. `--on-conflict=skip\|overwrite\|merge` (default `skip`). Auto-invoked on `ari resume` when Letta is empty. |
 | `start-local` | Bring up a local Letta server: `--path=auto\|docker\|singularity\|pip`. |
 | `stop-local` | Stop docker/singularity/pip Letta (best-effort). |
@@ -464,7 +560,7 @@ ari skills-list [--config <config.yaml>]
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ARI_BACKEND` | LLM backend (`ollama` / `openai` / `anthropic` / `claude`) | `ollama` |
+| `ARI_BACKEND` | LLM backend. Routed identifiers: `ollama`, `openai`, `anthropic` / `claude`, `claude_code` / `claude-code`, `cli-shim` / `cli_shim`; anything else is passed to LiteLLM unprefixed | `ollama` |
 | `ARI_MODEL` | Model name | `qwen3:8b` |
 | `OPENAI_API_KEY` | OpenAI API key | — |
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |
@@ -480,24 +576,27 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MAX_NODES` | Maximum total experiments | 50 |
 | `ARI_MAX_DEPTH` | Maximum tree depth | 5 |
 | `ARI_PARALLEL` | Concurrent experiments | 4 |
-| `ARI_MAX_REACT` | Max ReAct steps per node | 80 |
+| `ARI_MAX_REACT` | Max ReAct steps per node | 20 |
 | `ARI_TIMEOUT_NODE` | Timeout per node (seconds) | 7200 |
 
 ### HPC Configuration
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ARI_EXECUTOR` | Execution backend (`local` / `slurm` / `pbs` / `lsf`) | `local` |
+| `ARI_EXECUTOR` | Execution-backend hint. Only the orchestrator skill touches it: it seeds a sub-experiment's `executor` field and is re-exported into the child run's environment when non-empty. The contract is a free-form string (≤128 chars) with no enum check, and nothing in `ari-core` reads it | — (unset) |
 | `ARI_SLURM_PARTITION` | SLURM partition name | — |
-| `ARI_SLURM_CPUS` | Override CPU count for SLURM jobs | (auto-detected) |
+| `ARI_SLURM_CPUS` | Override CPU count for SLURM jobs | (unset in `auto_config`; the PaperBench reproduce path falls back to `8`) |
+| `ARI_SLURM_MEM_GB` | Memory (GB) recorded in `resources` | — |
+| `ARI_SLURM_GPUS` | GPU count recorded in `resources` | — |
+| `ARI_SLURM_WALLTIME` | Walltime recorded in `resources` | — |
 
 ### Retrieval & VLM
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ARI_RETRIEVAL_BACKEND` | Paper search: `semantic_scholar` / `alphaxiv` / `both` | `semantic_scholar` |
-| `VLM_MODEL` | VLM model for figure review | `openai/gpt-4o` |
-| `ARI_ORCHESTRATOR_PORT` | HTTP port for orchestrator skill | `9890` |
+| `ARI_RETRIEVAL_BACKEND` | Default paper-search provider: `semantic_scholar` (alias `semantic-scholar`) / `arxiv` / `alphaxiv`. `both` is **rejected** — issue two pinned `search_papers` calls and merge by aliases | `semantic_scholar` |
+| `ARI_VLM_MODEL` | VLM model for figure review. Falls back to `VLM_MODEL`; if neither is set the VLM review raises `ARI_VLM_MODEL must select a visual review model` | — (no default) |
+| `ARI_ORCHESTRATOR_HTTP_PORT` | HTTP port for the orchestrator skill (must parse as an integer in 1–65535). Host is `ARI_ORCHESTRATOR_HTTP_HOST`, default `127.0.0.1` | `9890` |
 
 ### Memory (Letta)
 
@@ -513,14 +612,18 @@ ari skills-list [--config <config.yaml>]
 | `ARI_MEMORY_ACCESS_LOG` | Write `{checkpoint}/memory_access.jsonl` | `on` |
 | `ARI_MEMORY_ACCESS_LOG_MAX_MB` | Rotate threshold | `100` |
 | `ARI_MEMORY_AUTO_RESTORE` | Auto-restore backup on `ari resume` | `true` |
-| `ARI_MEMORY_BACKUP_INTERVAL_S` | Opportunistic backup during run (0 = off) | `0` |
 
 ### Per-Phase Model Overrides
+
+Read as `ARI_MODEL_<PHASE>`; an unset or empty value leaves the phase on the
+global `cfg.llm.model`.
 
 | Variable | Phase |
 |----------|-------|
 | `ARI_MODEL_IDEA` | Idea generation |
+| `ARI_MODEL_CODING` | AgentLoop / ReAct (the in-process coding agent) |
 | `ARI_MODEL_BFTS` | BFTS experiments |
+| `ARI_MODEL_EVAL` | Evaluator / judge |
 | `ARI_MODEL_PAPER` | Paper writing |
 
 ### Idea Generation (VirSci-live)
@@ -549,12 +652,16 @@ identical `idea.json` contract.
 
 ARI loads `.env` files automatically (checked in order):
 
-1. `<checkpoint_dir>/.env` (highest priority)
-2. `<project_root>/.env`
+1. `$ARI_CHECKPOINT_DIR/.env` — only when that variable is set (highest priority)
+2. `<project_root>/.env` — `$ARI_ROOT` when set, else the repository root
 3. `<project_root>/ari-core/.env`
 4. `~/.env` (lowest priority)
 
 Format: `KEY=VALUE` (lines starting with `#` are ignored).
+
+Every file is loaded with `override=False`, so a variable already exported in
+your shell beats **all four** files, and among the files the first one to set a
+key wins.
 
 ---
 
@@ -616,14 +723,20 @@ experiments.
 
 ```
 --expect-sha256 <hex>   Required bundle digest. Hard fail on mismatch.
---no-extract            Just fetch the tarball; do not extract it.
+                        Ignored under --no-extract (see below).
+--no-extract            Just fetch the tarball; do not extract it. This also
+                        skips ALL digest verification — the digest can only be
+                        recomputed from the extracted files, so the reported
+                        bundle_sha256 is empty and --expect-sha256 is never
+                        compared.
 --registry <name>       Limit ari:// resolver to a named registry from
                         registries.yaml.  Set $ARI_REGISTRIES_FILE or
-                        place the file under
-                        $ARI_CHECKPOINT_DIR/.ari/registries.yaml; the
+                        place the file at ./.ari/registries.yaml; the
                         legacy $HOME/.ari/registries.yaml fallback was
                         removed in v0.5.0 and emits a
-                        DeprecationWarning until v1.0.
+                        DeprecationWarning until v1.0.  An unmatched
+                        name yields no registries and the command
+                        fails with "no ari-registry configured".
 --token <env-or-value>  Bearer token. Looked up in $ENV first, falls back
                         to the literal value (so you can pass either
                         --token MY_TOKEN_VAR or --token "raw-token-string").
@@ -632,14 +745,21 @@ experiments.
 ### Verification model
 
 1. The resolver writes the artifact (tarball or directory) into a temp dir.
-2. The orchestrator extracts into a *sibling* temp dir.
-3. Each file's sha256 is recomputed and compared against `manifest.lock`.
-4. The whole-bundle digest is re-derived from the canonical
-   files-only manifest and compared to `manifest.lock.bundle_sha256`.
+2. The orchestrator extracts into a *sibling* temp dir (`_stage`), rejecting
+   absolute paths, `..` escapes and links that point outside it.
+3. Each file's sha256 is recomputed and compared against `manifest.lock`;
+   a file the manifest names but the bundle lacks is a hard failure.
+4. The whole-bundle digest is re-derived from the canonical manifest
+   (`{version, files:[{path, sha256, size}]}`, plus each file's `role` for
+   `version: 2`) and compared to `manifest.lock.bundle_sha256` — but only when
+   the manifest actually declares one; an absent `bundle_sha256` is accepted.
 5. If `--expect-sha256` was given, that value must equal the recomputed
    digest. Hard fail on mismatch.
-6. The temp dir is renamed into `dest`. A failure at any earlier step
-   leaves no partial dest behind.
+6. The stage dir is renamed into `dest`. A failure at any earlier step
+   leaves no partial dest behind. `dest` must not exist or must be empty.
+
+Steps 2–5 only run when extraction is enabled; `--no-extract` copies the raw
+artifact and verifies nothing.
 
 ### Example
 
@@ -676,7 +796,8 @@ ari registry token list
 Setup:
 
 ```bash
-# 1. Install server deps (skipped by the default install to stay slim).
+# 1. Server deps are already in requirements.txt / the lockfile, so a normal
+#    ./setup.sh installs them. --with-registry is now informational only.
 ./setup.sh --with-registry        # or pip install fastapi uvicorn[standard] python-multipart
 
 # 2. Point the server at a data directory and start it (default port 8290).
@@ -693,8 +814,8 @@ ari registry token issue alice
 
 | Aspect | Detail |
 |---|---|
-| Endpoints | `POST /artifact`, `GET\|HEAD /artifact/<id>`, `GET /artifact/<id>/manifest.lock`, `POST /artifact/<id>/promote`, `DELETE /artifact/<id>`, `/healthz`, `/version` |
-| Auth | bearer-token (sqlite-hashed); upload + delete + promote require owner token |
+| Endpoints | `POST /artifact`, `GET\|HEAD /artifact/<id>`, `GET /artifact/<id>/manifest.lock`, `POST /artifact/<id>/promote?target=...`, `DELETE /artifact/<id>`, `/healthz`, `/version` |
+| Auth | bearer-token (sqlite-hashed); upload + delete + promote require owner token. `HEAD /artifact/<id>` and `GET /artifact/<id>/manifest.lock` take **no** token — a staged bundle's digest, length, visibility and full file manifest are readable by anyone who knows the id |
 | Visibility | `staged` (owner only) → `unlisted` (id-only) / `public` (open). Demotion rejected. |
 | Artifact id | `sha256(bundle.tar.gz)[:16]` (content-addressed) |
 | Storage | `${ARI_REGISTRY_DATA}/artifacts/<id>/{bundle.tar.gz, manifest.lock, meta.json}` |
@@ -705,11 +826,13 @@ Deploy modes (see [docs/reference/registry.md](registry.md) for full details):
 - `scripts/registry/docker-compose.yml` — nginx + uvicorn + sqlite-on-volume. Production.
 - `scripts/registry/start_singularity.sh` — Apptainer / Singularity SIF. HPC.
 
-Configure the client by writing `registries.yaml` to one of the
-v0.5.0+ locations (`$ARI_REGISTRIES_FILE` env override, the active
-`$ARI_CHECKPOINT_DIR/.ari/registries.yaml`, or
-`./.ari/registries.yaml`); the legacy `$HOME/.ari/registries.yaml`
-fallback emits a DeprecationWarning and is removed in v1.0:
+Configure the client by writing `registries.yaml` to `$ARI_REGISTRIES_FILE` or
+`./.ari/registries.yaml`; the legacy `$HOME/.ari/registries.yaml` fallback emits
+a DeprecationWarning and is removed in v1.0. A checkpoint-scoped
+`.ari/registries.yaml` is described in the resolver docstrings but is **not**
+reachable today — neither `ari clone` nor the `ari-registry` publish backend
+passes a checkpoint to the lookup, so point `$ARI_REGISTRIES_FILE` at it if you
+want it honoured:
 
 ```yaml
 registries:
@@ -719,4 +842,7 @@ registries:
 ```
 
 Then `export ARI_REGISTRY_TOKEN=ari_<paste-from-issue>` and use
-`ari clone ari://<id>` or `ari ear publish --backend ari-registry`.
+`ari clone ari://<id>` (or `ari clone ari://<registry-name>/<id>` to pin one
+entry) or `ari ear publish --backend ari-registry`. With no `registries.yaml`
+anywhere, both fall back to a single registry built from `$ARI_REGISTRY_URL` +
+`$ARI_REGISTRY_TOKEN`.

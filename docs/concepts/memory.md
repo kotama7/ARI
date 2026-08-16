@@ -4,7 +4,17 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-08-02
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/memory_contract.py
+    role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # Memory Architecture
@@ -19,8 +29,14 @@ root ──▶ memory["root"]
   └─ node_B  (reads: root only, NOT node_A branch)
 ```
 
-`search_memory` is invoked with `query = node.eval_summary` (a one-
-sentence direction text). On Letta 0.16.7 the skill calls
+`search_memory` is invoked with
+`query = (eval_summary or experiment_goal or "experiment result")[:200]`
+— the node's one-sentence direction text when it has one, truncated.
+The backend first *asks* for a server-side metadata pre-filter; the
+Letta adapter refuses unconditionally (`if filter is not None: raise
+NotImplementedError`, because ARI metadata round-trips as a JSON footer
+on the passage text, not as queryable fields), so on Letta 0.16.x the
+over-fetch path is what always runs. It calls
 `passages.search` (`GET /archival-memory/search`, `embed_query=True`)
 with `top_k = max(letta_overfetch, limit*40)`, then post-filters the
 ranked window by `ancestor_ids`, `ari_checkpoint`, and
@@ -65,7 +81,8 @@ The agent also seeds a core-memory block (`persona` + `human` +
 once the first node's `generate_ideas` completes (the point at which
 `primary_metric` is known). Skills can read it via
 `get_experiment_context()` without paying for a search; the call
-returns `{}` until that seed runs.
+returns `{}` until that seed runs, and caches whatever it read for 60
+seconds.
 
 **Copy-on-Write**: every memory call carries an explicit `RunContextV1` and
 `NodeContextV1`. The node context binds `run_id`, self node, parent, and the
@@ -78,8 +95,11 @@ authorize one another. Letta self-edit remains disabled so accepted entries are
 byte-stable.
 
 **Portability**: each checkpoint carries a digest-verified
-`memory_backup.v1.json.gz` snapshot. `ari resume` validates it before restoring
-an empty target Letta, so `cp -r checkpoints/foo /elsewhere/` remains safe.
+`memory_backup.v1.json.gz` snapshot. `ari resume` validates it (size caps,
+gzip/JSON parse, `MemoryBackupV1` schema) before restoring, and restores
+**only** when the target Letta holds no node and no ReAct entries — set
+`ARI_MEMORY_AUTO_RESTORE=false` to skip the step. So
+`cp -r checkpoints/foo /elsewhere/` remains safe.
 Records are content-addressed and the backup is independent of the Letta
 checkpoint namespace.
 

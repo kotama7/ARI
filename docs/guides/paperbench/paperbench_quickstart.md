@@ -2,11 +2,23 @@
 sources:
   - path: scripts/sc_paper_dogfood.py
     role: doc
+  - path: scripts/build_pb_images.sh
+    role: doc
   - path: ari-skill-paper-re
     role: implementation
   - path: ari-skill-replicate
     role: implementation
-last_verified: 2026-08-07
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench_worker.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/PaperBench
+    role: implementation
+  - path: ari-core/config/paperbench_rubrics
+    role: config
+  - path: report/Makefile
+    role: config
+last_verified: 2026-08-16
 ---
 
 # PaperBench quickstart
@@ -26,9 +38,12 @@ PaperBench audit score.
 ## 1. Import a paper
 
 Open the dashboard, click the **📚 PaperBench** sidebar entry, then
-**📥 Import paper**. Fill in the form (arXiv ID / DOI / upload), then
-**Save to registry**. The license badge turns green when the input is
-auto-classified as permissive (MIT, Apache-2.0, CC BY/SA, CC0).
+**📥 Import paper**. Fill in the form (arXiv ID / DOI / upload / local),
+then **Save to registry**. The badge under the license input is an
+optimistic client-side guess (green only for `MIT` / `Apache*` / `BSD*`
+/ `arXiv*` / a bare `CC BY`), so `CC0` and `CC BY-SA` show ⚠ there even
+though the server classifies them as usable. The registry row shows the
+server's real verdict.
 
 Equivalent CLI:
 
@@ -50,19 +65,25 @@ From the registry page, tick one or more papers and click
 **🚀 Run PaperBench**. The 5-step wizard walks through:
 
 1. **Papers** — verify your selection.
-2. **Rubric** — pick the generator model (default `gemini-2.5-pro`,
-   calibrated hierarchical strategy).
+2. **Rubric** — pick the generator model (default
+   `gemini/gemini-2.5-pro`, calibrated `hierarchical-v2` strategy —
+   the strategy is not selectable).
    See [Rubric schema](../../reference/execution_profile.md).
 3. **Reproduce** — choose the replicator model + time budget +
    sandbox kind (`auto` / `local` / `apptainer` / `docker` / `slurm`) +
    `container_image` (a local non-symlink SIF, full Docker
    `sha256:<image-id>`, or registry URI pinned with `@sha256:<digest>`).
    Expand *Execution profile override*
-   to override SLURM allocation flags (`--nodes`, `--gpus-per-task`,
-   `gpu_type`, `memory_gb_per_node`, `--exclusive`, `account`, `qos`,
-   `reservation`,
-   …). When the rubric already carries an `execution_profile`, these
-   fields pre-fill from it. Caller args always win over rubric hints.
+   to override SLURM allocation flags (`--nodes`, `--ntasks`,
+   `--ntasks-per-node`, `--gpus-per-task`, `gpu_type`,
+   `memory_gb_per_node`, `--exclusive`, `--constraint`, `--hint`,
+   `--nodelist`). `account` / `qos` / `reservation` have no field of
+   their own: the grid's free-text `extra_sbatch_args` box accepts only
+   `--account=`, `--qos=`, `--reservation=` and `--hint=` entries, which
+   the skill translates into the typed fields — any other flag is
+   rejected. The wizard fields always start at `0` / `""`; a rubric's
+   `execution_profile` is merged server-side in `run_reproduce`, and a
+   non-zero wizard field wins over the rubric hint.
 4. **Judge** — set the SimpleJudge model + `n_runs` (default 1 — see
    PaperBench paper §4.1). A digest-verified successful Stage 2 record is
    mandatory. `code_only` is an explicit scope choice, never an implicit
@@ -74,16 +95,32 @@ From the registry page, tick one or more papers and click
 > the host cannot satisfy fail rather than silently downgrading to host CPU.
 > The legacy local fallback has been removed.
 > GPU/resource requests have no silent-drop override: correct the cluster
-> configuration or select a compatible partition. Network denial defaults
-> ON; unisolated local/SLURM execution requires an administrator attestation
-> or an explicit `network_policy=inherit` choice.
+> configuration or select a compatible partition. What the caller sees is
+> not a raised exception — `run_reproduce` records the failed attempt and
+> returns `{"executed": false, "error": …, "failure_kind": …}` with
+> `failure_kind` `"sandbox-unavailable"` (missing container runtime) or
+> `"scheduler-failure"` (no `sbatch`, no resolvable partition).
+>
+> Network denial defaults ON; unisolated local/SLURM execution requires an
+> administrator attestation or an explicit `network_policy=inherit` choice.
+> The wizard sends neither, so a GUI-launched `local`/`slurm` reproduction
+> is rejected at plan time with *"sandbox_kind=… cannot prove network
+> denial"*. Reach those two arguments through the `run_reproduce` MCP tool
+> or the `_paperbench_bridge.reproduce_submission` entry point instead.
 
 ## 3. Wait
 
-The wizard returns one job ID per paper. The Monitor page polls
-`GET /api/paperbench/run/<job_id>` for status. Typical wall-time:
-~30 min for a CPU-only smoke, several hours for a faithful GPU
-reproduction.
+The wizard returns one job ID per paper. Open
+`#/paperbench/results?job=<job_id>`: the Results page reads
+`GET /api/paperbench/run/<job_id>` once for status, then follows the
+job over Server-Sent Events on
+`GET /api/paperbench/run/<job_id>/logs` until it reaches `completed`,
+`failed` or `interrupted`. Typical wall-time: ~30 min for a CPU-only
+smoke, several hours for a faithful GPU reproduction.
+
+> A job whose worker died with a viz-server restart is reported with the
+> status `interrupted` and is never respawned — relaunch it from the
+> wizard.
 
 ## 4. Read the score
 
@@ -94,14 +131,22 @@ underlying JSON is available at
 
 ## 5. Generate the audit report (optional)
 
-For a human-readable PDF/HTML write-up:
+For a human-readable write-up. `AUDIT_FORMATS` defaults to `pdf` alone,
+so ask for HTML explicitly if you want it; `AUDIT_LANGS` defaults to
+`en` and `AUDIT_OUTPUT` to `audit/$(PAPER_ID)`:
 
 ```bash
 make -C report audit-report \
   CHECKPOINT=/var/tmp/ari/.../<checkpoint-id> \
   PAPER_ID=<paper_id> \
-  AUDIT_LANGS="en ja zh"
+  AUDIT_LANGS="en ja zh" \
+  AUDIT_FORMATS="pdf html"
 ```
+
+The same renderer is reachable from the GUI as
+`POST /api/paperbench/run/<job_id>/report`, which defaults to
+`["pdf", "html", "md"]` and writes under
+`{registry_root}/reports/<job_id>/`.
 
 See [`report/scripts/paperbench_report.py`](../../../report/scripts/paperbench_report.py)
 for the Python API.
@@ -130,10 +175,14 @@ python scripts/sc_paper_dogfood.py \
     --target-leaves 30
 ```
 
-The output `rubric.json` will have exactly six direct children
+The output `rubric.json` should have exactly six direct children
 matching `sc.yaml`'s `top_level_axes`, with leaves phrased as
-`"X is identifiable in the paper or AD"` instead of `"the
-implementation does X"`. Adding a new venue is a YAML-only change —
+`"X is identifiable in the paper or AD Appendix"` instead of `"the
+implementation does X"`. Both are enforced by prompt instruction only
+(`build_skeleton_venue_hint` emits a normative "DO NOT ADD, REMOVE,
+RENAME, OR REORDER" block); no validator rejects a rubric whose direct
+children drifted, so check `[rubric.summary] direct_children=` in the
+script's output. Adding a new venue is a YAML-only change —
 see [`rubric_schema.md`](../../reference/rubric_schema.md#venue-conditioned-templates).
 
 ## 7. (Advanced) Full 3-stage protocol via CLI
@@ -176,9 +225,10 @@ absolute path. Never pass the mutable `pb-env` / `pb-reproducer` tag itself.
 The ARI bridge does NOT auto-load cluster modules — that is the user's
 responsibility, following standard HPC practice (NERSC / OLCF / LLNL
 all recommend putting `module load` at the TOP of your sbatch script).
-The bridge probes `module avail` at rollout start and surfaces the
-cluster catalog to the agent as DATA; the agent decides which module
-to load. If you want deterministic toolchain availability, pre-load
+The bridge probes `module spider` and `module avail` (read-only, never
+`module load`) at rollout start and surfaces the cluster catalog to the
+agent as DATA; the agent decides which module
+to load. If you want a complete catalog, pre-load
 the modules in your sbatch wrapper BEFORE invoking ARI — this is the
 canonical HPC pattern.
 
@@ -218,15 +268,33 @@ python scripts/sc_paper_dogfood.py \
 What this gives you:
 
 - The python process inherits the loaded env (PATH includes nvcc, etc).
-- Stage 1's agent subprocess inherits the same env via `Popen` env
-  inheritance → agent's bash tool sees nvcc on PATH from turn 1.
-- Stage 2's `bash submission/reproduce.sh` inherits the same env →
-  reproduce.sh works at grade time even if the agent forgot to
-  `module load` inside reproduce.sh itself.
+- The bridge's module probes (`_probe_module_avail`, `_detect_runtime_env`)
+  are plain `subprocess.run` calls that inherit that env, so the catalog
+  and the `nvcc_path` / `module_path` facts the agent is shown reflect
+  what you pre-loaded.
+
+What this does **not** give you — the environment does NOT reach the
+agent or the graded script:
+
+- Stage 1's agent shell is scrubbed, not inherited.
+  `_compute/computer.py:_agent_environment` builds a fixed dict
+  (`PATH=/usr/local/bin:/usr/bin:/bin`, `HOME=<work_dir>/.ari_home`) and
+  `LocalComputer.send_shell_command` runs `bash --noprofile --norc -c`.
+  The agent therefore does not see your pre-loaded nvcc on PATH, and
+  `module` is not even a defined command in its shell unless the agent
+  sources the module init itself.
+- Stage 2's `reproduce.sh` is scrubbed too.
+  `execute_local_attempt` runs it under
+  `ari.execution.build_minimal_environment()`: `PATH` reset to
+  `/usr/local/bin:/usr/bin:/bin`, `HOME=/nonexistent`, and only
+  `LANG`, `LC_ALL`, `SSL_CERT_DIR`, `SSL_CERT_FILE` carried over from
+  the parent. The SLURM path submits with `#SBATCH --export=NIL`, which
+  is the same story. A `reproduce.sh` without its own `module load`
+  chain fails at grade time regardless of what your wrapper loaded.
 
 What this does NOT replace:
 
-- The agent should STILL put `module load <NAME>` at the top of
+- The agent MUST put `module load <NAME>` at the top of
   `submission/reproduce.sh` so the script is portable to grading
   environments (vendor PaperBench eval runs in Docker with no module).
   The bridge's env-truth notes + paper-kind addendum explicitly
@@ -235,10 +303,14 @@ What this does NOT replace:
 If you DO NOT pre-load (Pattern A: minimal sbatch with no module load):
 
 - The bridge still works.
-- The agent self-discovers via the `module avail` catalog in the
-  env-truth notes and the paper-kind addendum's runbook STEP 1.
-- Less deterministic — the agent may forget to module load in its
-  iteration shell and produce a Python proxy of a CUDA paper.
+- The agent self-discovers via the `module spider` / `module avail`
+  catalog in the env-truth notes and the paper-kind addendum's runbook
+  STEP 1.
+- Less deterministic — the catalog is whatever the un-extended
+  `MODULEPATH` exposes, so on a two-step-entry site the tier-2 modules
+  are only visible through the bridge's read-only `module show`
+  expansion, and the agent may still fail to load them in its own shell
+  and produce a Python proxy of a CUDA paper.
 - Use Pattern A for ML / pure-Python papers where toolchain
   pre-loading is unnecessary.
 

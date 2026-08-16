@@ -6,7 +6,9 @@ sources:
     role: doc
   - path: ari-core/ari/cli
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/paths.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # Getting Started with ARI
@@ -49,9 +51,13 @@ Follow these in order — each step assumes the previous one.
 
 - **The dashboard runs on port `8765`.** Start every service with `./start.sh`
   at the repo root and open <http://localhost:8765>; stop with `./shutdown.sh`.
-- **Each run is self-contained.** All state for a run lives under
-  `workspace/checkpoints/<timestamp>_<slug>/` — nothing is written to your home
-  directory, and API keys come from `.env`, never from the saved settings.
+- **A run's results are self-contained; its scratch is not.** Paper, figures,
+  tree, EAR and reports all land in `workspace/checkpoints/<timestamp>_<slug>/`,
+  and API keys come from `.env`, never from the saved settings. Two things live
+  elsewhere: each node's work directory is at
+  `workspace/experiments/<run_id>/<node_id>/` (a sibling of `checkpoints/`), and
+  the services started by `./start.sh` keep their PID and log files under
+  `~/.ari/`.
 
 ---
 

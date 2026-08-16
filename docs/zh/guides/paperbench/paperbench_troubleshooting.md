@@ -4,14 +4,27 @@ sources:
     role: implementation
   - path: ari-skill-replicate
     role: implementation
-last_verified: 2026-05-25
+  - path: ari-skill-hpc/ari_skill_hpc/scheduler.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench.py
+    role: implementation
+  - path: ari-core/ari/viz/api_paperbench_worker.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components/PaperBench/PaperBenchWizard.tsx
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: report/scripts/paperbench_report.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # PaperBench 故障排查
 
 常见失败模式与对策。审计运行流水线为
-`rubric_path → build_reproduce_sh → run_reproduce → grade_with_simplejudge`;
-问题通常属于这 4 阶段之一。
+`generate_rubric → audit_rubric → build_reproduce_sh → run_reproduce →
+grade_with_simplejudge`;问题通常属于其中某个阶段。`audit_rubric` 非致命 ——
+审计失败只会被记录,运行继续。
 
 ## 评分单生成
 
@@ -46,18 +59,25 @@ rubric 的 `execution_profile.kind` 很可能为空。验证:
 jq '.reproduce_contract.execution_profile' rubric.json
 ```
 
-如果为空,重新生成 rubric (v0.7.2 的 `skeleton.md` prompt 现在指示
-LLM 从论文的实验设置章节填充 `execution_profile`)。
+重新生成未必能把它填上:`skeleton.md` 指示生成器,除非论文明确陈述了并行 /
+分布式执行属性 ("we evaluated at N MPI ranks"、"we trained on M GPUs with data
+parallelism" 等),否则**整个 `execution_profile` 字段都要省略**。对单机论文
+(包括单 GPU) 而言,没有该 profile 正是预期结果 —— profile 为空时
+`_format_hpc_appendix` 根本不发出任何 HPC 指引。如果论文确实写明了 GPU / 并行
+设置而生成器漏掉了,就重新生成;否则直接在 rubric 中显式设置 profile
+(`kind` 取 `cpu_single`、`gpu_single`、`gpu_multi`、`mpi`、`mpi_gpu` 之一)。
 
 ### Q. 代理为 MPI 论文没有使用 `srun`
 
 检查 `agent.log` 中的 user message,确认存在
 `COMPUTE-NODE EXECUTION CONVENTIONS` 区块。如果缺失,呼叫方没有传
-`execution_profile`。验证连接:
+`execution_profile`。用下面的方式验证连接 —— 该技能发布的是扁平的顶层模块
+(`_replicator_agent`、`server` 等) 而非 `ari_skill_paper_re` 包,所以导入需要把
+`ari-skill-paper-re/src` 放到 `PYTHONPATH` 上:
 
 ```bash
-python -c "
-from ari_skill_paper_re._replicator_agent import _format_hpc_appendix
+PYTHONPATH=ari-skill-paper-re/src python -c "
+from _replicator_agent import _format_hpc_appendix
 print(_format_hpc_appendix(
     expected_artifacts=['results.csv'],
     execution_profile={'kind': 'mpi_gpu', 'metric_columns': ['x']},
@@ -89,7 +109,8 @@ grep -E 'srun.*-N.*-n' repro_sandbox/reproduce.sh
 ### Q. 计算节点上 `mpirun: command not found`
 
 compute node 环境中没有加载 OpenMPI。要么:
-- 把 `"openmpi/4.1"` (或集群名) 加到 rubric 的 `module_loads`
+- 把 `"openmpi/4.1"` (或你所在集群的名字) 加到 rubric 的
+  `reproduce_contract.execution_profile.module_loads`
 - 把脚本切换到 `srun` (PMI 集成的;大多数 SLURM 站点不需要显式
   OpenMPI 模块也能工作)
 
@@ -106,18 +127,27 @@ rubric 为你的站点过度指定内存。在向导 Step 3 中覆盖
 
 ## 判分 (`grade_with_simplejudge`)
 
-### Q. `ors_score` 恰好为 `0.0`
+### Q. 判分响应里根本没有 `ors_score`
 
-grader 找不到 `reproduce.sh` 或任何预期产物。检查:
+只有当判分报告的 status 不是 `failed` 时,才会出现 `ors_score` / `raw_score` /
+`score_stddev`。够不到一份已验证复现的 grader 不会给出任何数字:它返回
+`grade_status: "failed"` 并带 `error` / `errors`,存下的报告中 `ors_score: null`。
+`grade_with_simplejudge` 必须解析到 `status` 为 `succeeded` 的 `ReproductionRunV1`
+才会继续;常见的 `errors` 取值有
+`no verified ReproductionRunV1 is available`、
+`reproduction status is <state>; only succeeded runs are gradable`、
+`judge returned invalid scores for leaves: ...`。
+
+复现记录位于复现 workspace 之下,而不是某个扁平的结果文件:
 
 ```bash
-ls repro_sandbox/                  # reproduce.sh 存在?
-jq '.executed, .exit_code' repro_result.json   # 干净运行?
-jq '.missing' repro_result.json    # 缺少 expected_artifacts?
+ls repro_sandbox/                                  # reproduce.sh 存在?
+jq . repro_sandbox/.ari-reproduction/latest.json   # 指针: status、run 路径、executed workspace
+jq '.attempts[-1].status, .attempts[-1].exit_code, .attempts[-1].expected_missing' \
+   repro_sandbox/.ari-reproduction/<plan_digest>/run.json
 ```
 
-一个常见原因: 代理把 `submission/reproduce.sh` 写到了那儿而非
-workspace root。v0.7+ 自动提升此路径;如果你在更旧的构建上,手动 cp。
+判分报告本身写在 `grade_report_path` 所指的 grade root 下的 `grade-report.json`。
 
 ### Q. 负向控制没有通过 (boilerplate > 5%)
 
@@ -129,25 +159,37 @@ rubric 的叶节点过于容易满足 — 它们与通用 boilerplate 模式匹�
 
 ### Q. 向导一直显示 "尚未注册任何论文"
 
-检查 `~/.ari/paper_registry/manifest.jsonl` 存在且非空。如果你设置了
-`ARI_PAPER_REGISTRY_DIR`,路径会相应改变。
+检查 `<workspace_root>/paper_registry/manifest.jsonl` 存在且非空。该注册表以
+workspace 为根 —— 经 `PathManager.paper_registry_root` 解析 —— 而不是 `~/.ari`
+下的按用户目录;自 v0.5 起 ARI 不再保有任何全局的按用户数据目录。设置了
+`ARI_PAPER_REGISTRY_DIR` 时以它为准。
 
 ### Q. 启动按钮一直禁用
 
-Step 1 (Papers) 需要至少选择一篇论文。按钮在 `selected_count >= 1`
-之前保持禁用。
+Step 1 (Papers) 需要至少选择一篇论文。Launch 按钮与论文步骤上的 Next 按钮
+都由 `selectedIds.size === 0` 把守。
 
 ### Q. 成本估算为 `$0`
 
-你在 Step 3 (Reproduce) 中没有设置 `time_limit_sec`。默认 12 h;
-0 让估算的再现 wall-time 项坍塌。
+没有选中任何论文。向导渲染的是 `llm_cost_usd × selectedIds.size`,所以空选择
+无论 Step 3 怎么配都显示 `$0.00`。
+
+`time_limit_sec` 不可能是原因:服务端估算读的是 `time_limit_sec or 12*3600`,
+`0` 会回落到 12 h 默认值;而且 LLM 成本项是与时限无关的每篇固定常数
+(rubric `$0.45` + reproduce `$2.00` + judge `$0.10 × n_runs`),只有
+`wall_time_sec` 才依赖时限。另一种拿不到数字的情况是估算请求被拒:未知的
+`rubric_config` 键会让 `POST /api/paperbench/cost-estimate` 返回
+`{"error": "unknown rubric_config fields: ..."}`,里面完全没有成本字段。
 
 ## 报告生成
 
-### Q. `latexmk: command not found`
+### Q. 审计报告只出了 `.tex`,没有 PDF
 
-审计报告 PDF 目标需要 XeLaTeX。安装 `texlive-xetex` (Debian/Ubuntu)
-或 `mactex` (macOS),或跳过 PDF 只发出 `.tex` 源码:
+你不会看到 `latexmk: command not found` —— PDF 步骤由
+`shutil.which("latexmk")` 把守,工具缺失时被静默跳过,命令以 `ok` 结束,只写出
+`.tex` 源码。(即便 `latexmk` 存在,它也以 `check=False` 运行,所以 LaTeX 失败
+只是留不下 `main.pdf`,同样不会抛异常。) PDF 目标需要 XeLaTeX:安装
+`texlive-xetex` (Debian/Ubuntu) 或 `mactex` (macOS)。若想有意只要 `.tex`:
 
 ```bash
 python -m report.scripts.paperbench_report paper \
@@ -163,33 +205,50 @@ ja/zh 镜像需要 XeLaTeX + Noto CJK 字体。运行
 
 ## v0.8.0 更新: sandbox / GPU 错误
 
-### Q. `RuntimeError: sandbox_kind=docker requested but docker daemon is not reachable`
+### Q. `"error": "sandbox runtime is unavailable: docker"`, `failure_kind: "sandbox-unavailable"`
 
-docker daemon 未启动或不可达。bridge / `run_reproduce` 拒绝静默降级。
-解决方法: 启动 docker 或切换到另一个经过审查的 `sandbox_kind`。
-不存在 legacy host-local 回退。同样适用于
-`sandbox_kind=apptainer` 二进制缺失、`sandbox_kind=slurm` sbatch
-缺失 / partition 无法解析。
+当调用方显式指定 sandbox kind 时,`run_reproduce` 拒绝静默降级为宿主本地执行。
+它不抛异常:这次拒绝会被记为一次不可变的失败 attempt,并以 dict 返回,带
+`executed: false`、`error` 与 `failure_kind`(`sandbox-unavailable`,SLURM 路径则是
+`scheduler-failure`)。不要在调用方去找 `RuntimeError`。
 
-### Q. `RuntimeError: GPU resources requested ... but cluster has no GRES configured`
+检查方式是启动时的 `shutil.which(<runtime>)` —— 对显式的 `sandbox_kind=docker`
+从不去探测 docker *daemon*(只有 `auto` 解析才探测),所以 "runtime unavailable"
+的含义是该二进制不在 `PATH` 上。同样的 fail-closed 规则适用于
+`apptainer` / `singularity`(二进制缺失) 与 `slurm`(sbatch 缺失或 partition 无法解析)。
 
-集群 SLURM 未配置 GRES, 但 caller 传入 `gpus_per_task` / `gpu_type`。
-bridge 拒绝以避免 "排队 36 h 后全 CPU 执行" 这种最差失败模式。 解决:
+### Q. `"error": "reproduction plan rejected: ..."`
 
-1. 修复集群 SLURM 的 GRES 配置
-2. 选择已配置 GRES 的 partition (`sinfo -o '%P %G'`)
+计划在任何 attempt 产生之前就被拒绝,因此什么都没跑。三个常见原因:
 
-系统有意不提供把 GPU 请求改成 CPU 实验的静默丢弃。
+1. `sandbox_kind=<container> requires an immutable container image` —— 既没有
+   `container_image`,也没有 `ARI_PHASE1_DOCKER_IMAGE` /
+   `ARI_PHASE1_APPTAINER_IMAGE`。
+2. 可变的 image 引用。Docker 必须是完整的 `sha256:<image-id>` 或
+   `name@sha256:<digest>`;远程 Apptainer 引用必须带 `@sha256:<digest>`;
+   本地 SIF 必须是非符号链接的普通文件。
+3. `sandbox_kind=... cannot prove network denial` —— `network_policy` 默认为
+   `deny`,而 `local` / `slurm` 不是容器命名空间。显式传
+   `network_policy="inherit"`、以 `network_isolation_attested=True` 提供管理员
+   证明,或改在容器中运行。
+
+### Q. 请求了 GPU 却拿回没有 GPU 的运行
+
+系统有意不做静默降级:ARI 原样提交 typed 请求。`gpus_per_task` 发出为
+`#SBATCH --gpus-per-task=[<type>:]<n>`,`gpus_per_node` 发出为
+`#SBATCH --gres=gpu:[<type>:]<n>` —— 两者是互斥分支,同时请求会在提交前以
+"mutually exclusive" 被拒。若是调度器拒绝了 GRES,请修复站点的 GRES 配置或
+改选一个声明了该资源的 partition (`sinfo -o '%P %G'`)。
 
 ### Q. agent 完成 Stage 1, 但 Stage 3 所有 leaf 评分为 0
 
 两种原因 (v0.8.0 都已处理):
 
-1. **`reproduce.log` 不存在** — Stage 2 被跳过, vendor SimpleJudge 的
-   保护 "`reproduce.sh` failed to modify or create any files. All
-   result analysis tasks will be graded as 0" 触发。v0.8.0 在
-   judge 调用上自动启用 `code_only=True`, 将 rubric 裁剪为仅
-   Code Development 叶。
+1. **submission 里没有 `reproduce.log`** — Stage 2 被跳过, 在上游会触发
+   vendor SimpleJudge 的保护 "`reproduce.sh` failed to modify or create
+   any files. All result analysis tasks will be graded as 0"。ARI 的做法
+   不同: 它拒绝这份缺失的复现记录, 不发布任何分数。请补跑 Stage 2, 或者
+   显式选择 code-only 研究并且照样创建一条已验证的 Stage 2 记录。
 2. **`paper_audit_mode` 误开** — paper-audit 评分论文本身, 与
    `code_only` 互斥, 两者同时 True 时 bridge 抛出 `ValueError`。
 
@@ -237,16 +296,29 @@ HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 放入 `~/.ari/agent.env` (`KEY=VALUE` 每行一条) — bridge 在
 `agent_env_path=None` 时自动发现。 通过 `ARI_AGENT_ENV_PATH` 覆盖路径。
 
-## v0.8.0: salvage retries + executed-submission tarball
+## 重试 + executed-submission tarball
 
-`bridge.reproduce_submission(salvage_retries=N, retry_threshold_sec=60)`
-在 early-failure (exit≠0 且 elapsed<threshold) 时, 使用 Python 3.11
-+ venv 前置脚本的 salvage wrapper 重试 N 次。 总 wall-clock 预算跨
-尝试 honor。
+### Q. `reproduce.sh` 因缺少 Python 3.11 / 缺少 venv 而立刻失败
 
-每次调用生成 `submission_executed_<UTC>.tar.gz`, 放在 `submission_dir`
-旁。 返回 dict 的 `executed_tarball` 键为绝对路径。 `capture_tarball=False`
-禁用, `tarball_dir=` 覆盖输出位置。
+不存在 salvage wrapper。`salvage_retries` 与 `retry_threshold_sec` **不是**
+`bridge.reproduce_submission` 的参数 —— vendor 的
+`reproduce_on_computer_with_salvaging` 路径 (它会改写 submission 的环境再重跑)
+在 ARI 中没有对应物,并且
+`test_reproduce_submission_signature_includes_tarball_not_unsafe_salvage`
+断言这两个参数保持缺席。请在 `reproduce.sh` 内部 (或容器 image 里) 修好环境,
+然后用同一份 plan 再次调用 `reproduce_submission`:`run_reproduce` 会追加一次
+不可变的、链接在一起的 attempt,而不会改动你的脚本。
+
+### Q. executed submission 的 tarball 在哪里?
+
+默认行为是在每次 reproduce 调用后写出 `submission_executed_<UTC>.tar.gz`,
+位置在**已执行的** submission 旁边 —— 也就是 `.ari-reproduction` 下的私有
+attempt 树内,而不是你传入的 `submission_dir` 旁边。返回 dict 的
+`executed_tarball` 键是绝对路径,同时给出 `executed_tarball_digest` 与
+`executed_tarball_size_bytes`。用 `tarball_dir=...` 改写目标位置,用
+`capture_tarball=False` 关闭。抓取失败绝不会让整次运行失败:它会被记录并追加到
+结果的 `warnings` 列表,所以要找的特征是 `executed_tarball` 键缺席而 `warnings`
+中多出一条。
 
 ## 相关
 

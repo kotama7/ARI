@@ -4,9 +4,17 @@ sources:
     role: doc
   - path: CONTRIBUTING.md
     role: doc
+  - path: DEPRECATION_REMOVAL.md
+    role: doc
   - path: ari-core/pyproject.toml
     role: config
-last_verified: 2026-06-04
+  - path: .github/workflows/refactor-guards.yml
+    role: config
+  - path: .github/workflows/docs-sync.yml
+    role: config
+  - path: scripts/docs
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # Release & Versioning Policy
@@ -66,8 +74,12 @@ be removed.  We follow this lifecycle:
 3. **Remove** — the next MAJOR drops the warning and removes the
    code.
 
-Examples currently in flight (full programme is folded into
-`CONTRIBUTING.md::Deprecation process`):
+The authoritative ledger is the root `DEPRECATION_REMOVAL.md` (tiers,
+phases DR1–DR5, and each of the **five** sanctioned Tier-B `~/.ari/`
+fallback sites — the two below plus `~/.ari/publish.yaml`,
+`~/.ari/letta-venv/`, and the second `registries.yaml` reader);
+`CONTRIBUTING.md::Deprecation process` is the short how-to for authors.
+Examples currently in flight:
 
 | Item | Announced | Warned since | Removal target |
 |---|---|---|---|
@@ -76,6 +88,10 @@ Examples currently in flight (full programme is folded into
 | Legacy v0.5 JSONL memory store | v0.5.0 | v0.5.0 | v1.0 |
 | `~/.ari/memory.json` default arg | v0.7.0 | v0.7.1 (removed) | v1.0 |
 | `ari/migrations/v05_to_v07/` shims | v0.7.0 | v0.7.0 | v1.0 |
+
+All five Tier-B fallbacks, the `ari.migrations.v05_to_v07` package, and
+the `legacy_reconstruct` shim are dropped together at DR5 / v1.0, at
+which point `ARI_LETTA_VENV` becomes mandatory.
 
 ## Release checklist
 
@@ -88,23 +104,38 @@ When cutting a release:
    `ari-skill-*/pyproject.toml`.
 3. Run the full test suite + the `refactor-guards`, `docs-sync`, and
    `docs-change-coupling` CI workflows.
-4. Run the docs gate:
-   - `grep -rn '~/\.ari/' docs/` excluding `refactor_audit.md`
-     returns zero.
+4. Run the docs gate. What CI (`docs-sync.yml`, `refactor-guards.yml`)
+   actually blocks on:
+   - `refactor-guards.yml` fails on a **newly added** `~/.ari/` line in
+     `ari-core/ari/**.py` outside its allow-list (the deprecation helper,
+     `migrations/`, and the shim sites that warn before falling through),
+     and on any `$HOME/.ari/` directory created by a pytest run. There is
+     no repo-wide `grep` over `docs/`: many `~/.ari/` mentions there are
+     legitimate (the vendored PaperBench `agent.env` lookup, `start.sh`
+     PID files, the Tier-B fallbacks themselves).
    - Every documented env var maps to a real source reference.
    - Every documented MCP tool exists in the skill's `mcp.json`.
-   - `python scripts/docs/check_doc_sources.py --require-all` exits 0
-     (every live doc's declared `sources:` paths exist).
-   - `python scripts/docs/check_doc_links.py` exits 0
-     (no broken intra-docs links or HTML hrefs).
-   - `python scripts/docs/check_translation_freshness.py --strict`
-     exits 0 (no `ja`/`zh` translation has a `last_verified` older than
-     its English source — see [Source traceability](../README.md#source-traceability)).
-     Run without `--strict` for a non-blocking warning-only report.
-   - `python scripts/docs/check_i18n_js.py` exits 0 (the three
-     `docs/i18n/*.js` declare one identical key set).
+   - `python scripts/docs/check_doc_sources.py` exits 0 (every declared
+     `sources:` path exists). The stricter `--require-all` — which also
+     demands that *every* live doc declare `sources:` — is a staged
+     rollout and does **not** pass today: the per-directory `README.md`
+     files carry no front matter.
+   - `python scripts/docs/check_doc_links.py --html-only` exits 0. The
+     full Markdown link pass (`check_doc_links.py` with no flag) runs
+     advisory-only in CI.
+   - `python scripts/docs/check_i18n_js.py` exits 0 (the landing surface's
+     `docs/i18n/landing.{en,ja,zh}.js` declare one identical key set; the
+     legacy `docs.{en,ja,zh}.js` viewer dictionaries were removed when the
+     docs moved to VitePress).
    - `python scripts/docs/check_readme_parity.py` exits 0 (the root
      `README.{md,ja,zh}` share one Markdown heading shape).
+   - `python scripts/docs/check_site_i18n.py` and the report tri-language
+     parity / report-PDF-sync steps exit 0.
+   - Advisory: `python scripts/docs/check_translation_freshness.py`
+     (no `ja`/`zh` translation has a `last_verified` older than its
+     English source — see [Source traceability](../README.md#source-traceability)).
+     `--strict` turns it blocking; expect it to fail immediately after an
+     English-only doc pass.
 5. Tag: `git tag v0.X.Y && git push origin v0.X.Y`.
 6. Open a release on GitHub with the changelog excerpt.
 7. Publish bundles: `ari ear publish` for any artefacts that need to
@@ -117,9 +148,13 @@ When cutting a release:
 - A **MAJOR** release may require a one-shot migration step.  The
   migration is documented in `docs/guides/migration.md` and run via
   `ari migrate ...`.
-- Skills are versioned independently.  A skill at `0.7.x` should
-  work with `ari-core` at any `0.7.y` (compatibility within a
-  minor).  Across minors, expect a coordinated release.
+- Skills are versioned independently, and their numbers do **not**
+  track `ari-core`'s: against `ari-core` 0.9.1 the shipped skills range
+  from `0.1.0` (`ari-skill-harness`, `ari-skill-knowledge`) to `2.0.0`
+  (`ari-skill-orchestrator`).  Nothing in the code enforces a
+  skill↔core version pair, so a skill's version is a statement about
+  that skill's own API, not about which core it needs.  Pair them by
+  the coordinated release, not by matching numbers.
 
 ## See also
 

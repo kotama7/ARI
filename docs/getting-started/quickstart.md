@@ -10,7 +10,11 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-08-13
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-08-16
 ---
 
 # ARI QuickStart Guide
@@ -200,14 +204,14 @@ The AI will ask clarifying questions and generate the experiment file automatica
 
 ### Step 2 of 4 — Scope
 
-Configure how large the experiment should be:
+Configure how large the experiment should be. The step is preset-driven — five presets (Quick / Standard / Thorough / Deep / Exhaustive) — and it opens on **Standard**: depth 5, 30 nodes, 80 ReAct steps, 4 workers, 120 min. Editing any field switches the step to manual. The first-run values below are the **Quick** preset.
 
 | Setting | What it controls | Recommended for first run |
 |---------|-----------------|--------------------------|
 | **Max Depth** | How deep the search tree goes | 3 |
 | **Max Nodes** | Total number of experiments to run | 5–10 |
-| **Max ReAct Steps** | Reasoning steps per experiment | 20 (default) |
-| **Timeout (min)** | Minutes per experiment | 120 (default) |
+| **Max ReAct Steps** | Reasoning steps per experiment | 20 |
+| **Timeout (min)** | Minutes per experiment | 30 |
 | **Parallel Workers** | Simultaneous experiments | 2–4 |
 
 > **Tip:** Start small (5–10 nodes, depth 3) for your first run. You can always increase later.
@@ -301,7 +305,8 @@ Output files are saved in `./workspace/checkpoints/<run_id>/`:
 | `science_data.json` | Cleaned data (no internal terms) |
 | `figures_manifest.json` | Generated figures |
 | `ear/` | Experiment Artifact Repository (code, data, logs, reproducibility metadata) |
-| `experiments/` | Per-node source code and output |
+
+Per-node work directories are **not** inside the checkpoint. Each node's scratch, generated source and outputs live at `./workspace/experiments/<run_id>/<node_id>/` — a sibling of `checkpoints/`, so copying only the checkpoint directory leaves them behind.
 
 ---
 
@@ -341,12 +346,13 @@ Change the dashboard language (English, Japanese, Chinese) from the language dro
 
 ### VLM Figure Review
 
-- Set the VLM model for figure quality review (default: `openai/gpt-4o`)
-- Configure review threshold and max iterations
+- Set the VLM model for figure quality review (default: `openai/gpt-4o`) — this card holds the model dropdown and nothing else
+
+The review threshold and the max iteration count are **not** on this page: they are wizard fields (Step 3 — Resources). The pipeline's own figure loop is fixed in `workflow.yaml` at a 0.7 threshold and at most 2 regeneration passes.
 
 ### Per-Phase Model Overrides
 
-Use different models for different pipeline phases (e.g., a cheaper model for idea generation, a better model for paper writing).
+Use different models for different pipeline phases (e.g., a cheaper model for idea generation, a better model for paper writing). These live in the **New Experiment** wizard (Step 3 — Resources), not on the Settings page.
 
 ---
 
@@ -362,7 +368,9 @@ The **Idea** slot opens the run-explicit ideas workspace (`#/ideas2?run=<run_id>
 
 ![Workflow editor: the Save, Reload, Add Node and Reset to default toolbar, the path of the workflow.yaml being edited, the React Flow canvas of phase-tagged stage nodes, and the per-stage list below with Source and Edit buttons](../assets/images/en/dashboard_workflow.png)
 
-A React Flow visual DAG editor for the pipeline of the active checkpoint — the path to the `workflow.yaml` being edited is printed under the toolbar. Drag nodes, draw edges, enable/disable stages, and assign skills; each stage is also listed below the canvas with **Source** and **Edit** buttons. Nodes are tagged by phase (`bfts` / `paper`), and **Save** writes back to that same `workflow.yaml`.
+A React Flow visual DAG editor for the pipeline of the active checkpoint — the path printed under the toolbar is the `workflow.yaml` that was *read*. Drag nodes, draw edges, enable/disable stages, and assign skills; each stage is also listed below the canvas with **Source** and **Edit** buttons. Nodes are tagged by phase (`bfts` / `paper`).
+
+**Save never writes the path shown.** Every workflow write is copy-on-write into the active checkpoint: if `{checkpoint}/workflow.yaml` does not exist yet, the bundled `ari-core/config/workflow.yaml` is copied there first and your edit lands on that copy. The bundled file is never written, and with no active checkpoint the write is refused outright.
 
 ---
 
@@ -381,8 +389,8 @@ All endpoints are accessible at `http://localhost:<port>/`.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/state` | GET | Full application state: current phase (idle/idea/bfts/paper/review), node counts, experiment config, cost data, LLM model info |
-| `/api/logs` | GET (SSE) | Server-Sent Events stream of real-time logs from `ari.log` and `cost_trace.jsonl` |
+| `/state` | GET | Full application state: current phase (`idle`/`starting`/`bfts`/`paper`/`review` — there is no `idea` value; the phase is derived from marker files, so `bfts` is reported as soon as `idea.json` exists), node counts, experiment config, cost data, LLM model info |
+| `/api/logs` | GET (SSE) | Server-Sent Events stream of real-time logs from the run's `ari_run_*.log` and `cost_trace.jsonl`. One handler tails for about 10 minutes and then ends the stream — the client reconnects |
 | `/memory/<node_id>` | GET | Memory store entries for a node (tool-call trace, metrics, parent chain) |
 | `/codefile?path=<path>` | GET | Read a file from the checkpoint directory (restricted to checkpoint bounds, max 20MB) |
 
@@ -408,12 +416,12 @@ All endpoints are accessible at `http://localhost:<port>/`.
 |----------|--------|-------------|
 | `/api/settings` | GET | Current settings: LLM provider/model, Ollama host, SLURM config, MCP skills |
 | `/api/settings` | POST | Save settings to `{checkpoint}/settings.json` and `.env` (requires an active project). Body: `{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
-| `/api/env-keys` | GET | All API keys from `.env` files with source info |
+| `/api/env-keys` | GET | Key *names* found in the `.env` chain plus the file each came from. Every non-empty value is replaced by `***configured***` and the payload carries `redacted: true` — secrets are never served over HTTP |
 | `/api/env-keys` | POST | Save a single API key: `{key, value}` |
 | `/api/profiles` | GET | Available environment profiles (laptop, hpc, cloud) |
 | `/api/models` | GET | Available LLM providers and models |
 | `/api/workflow` | GET | Full workflow.yaml with pipeline stages and skill metadata |
-| `/api/workflow` | POST | Save modified workflow.yaml: `{path, pipeline}` |
+| `/api/workflow` | POST | Save modified workflow: `{path, pipeline}`. `path` names the file to read as the base; the write always lands on `{checkpoint}/workflow.yaml` and is refused with 400 when no checkpoint is active |
 | `/api/skills` | GET | List available MCP skills with descriptions |
 | `/api/skill/<name>` | GET | Skill details: README, SKILL.md, server.py source |
 
@@ -424,7 +432,7 @@ All endpoints are accessible at `http://localhost:<port>/`.
 | `/api/chat-goal` | POST | Multi-turn LLM chat for experiment goal refinement: `{messages, context_md}` |
 | `/api/config/generate` | POST | Generate experiment.md from natural language goal: `{goal}` |
 | `/api/ssh/test` | POST | Test SSH connectivity: `{ssh_host, ssh_port, ssh_user, ssh_key, ssh_path}` |
-| `/api/scheduler/detect` | GET | Auto-detect compute environment (SLURM, PBS, LSF, Kubernetes) |
+| `/api/scheduler/detect` | GET | Auto-detect compute environment (SLURM, PBS, LSF, SGE, Kubernetes) |
 | `/api/slurm/partitions` | GET | Available SLURM partitions |
 | `/api/ollama-resources` | GET | GPU info (nvidia-smi), available Ollama models |
 | `/api/gpu-monitor` | GET/POST | Start/stop GPU monitor daemon |
@@ -472,11 +480,12 @@ ari paper ./workspace/checkpoints/20260328_matrix_opt/
 # Show node tree and status
 ari status ./workspace/checkpoints/20260328_matrix_opt/
 
-# List all projects
-ari projects
+# List all projects. Both of these default to ./checkpoints, not
+# ./workspace/checkpoints, so pass the base directory explicitly.
+ari projects --checkpoints ./workspace/checkpoints
 
 # Show detailed results (tree + review)
-ari show 20260328_matrix_opt
+ari show 20260328_matrix_opt --checkpoints-dir ./workspace/checkpoints
 
 # List available tools
 ari skills-list
@@ -484,22 +493,24 @@ ari skills-list
 
 ### Configuration
 
+`ari settings` reads and rewrites a config YAML — `./config.yaml` unless you pass `--config`. It exits 1 if that file does not exist; it never creates one.
+
 ```bash
 # View current settings
-ari settings
+ari settings --config ./config.yaml
 
 # Change model
-ari settings --model openai/gpt-4o
+ari settings --config ./config.yaml --model openai/gpt-4o
 
-# Set SLURM options
-ari settings --partition gpu --cpus 64 --mem 128
+# Set SLURM options (written under `resources:`)
+ari settings --config ./config.yaml --partition gpu --cpus 64 --mem 128
 ```
 
 ### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `ARI_BACKEND` | LLM backend: `ollama` / `openai` / `anthropic` | `ollama` |
+| `ARI_BACKEND` | LLM backend: `ollama` / `openai` / `anthropic` (alias `claude`) / `claude_code` / `cli-shim` | `ollama` |
 | `ARI_MODEL` | Model name (e.g., `qwen3:8b`, `openai/gpt-4o`) | `qwen3:8b` |
 | `OPENAI_API_KEY` | OpenAI API key | — |
 | `ANTHROPIC_API_KEY` | Anthropic API key | — |

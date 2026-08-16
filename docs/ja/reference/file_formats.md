@@ -10,7 +10,53 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-07-28
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/node.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/node_report
+    role: implementation
+  - path: ari-core/ari/orchestrator/lineage_decision.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-core/ari/pipeline/orchestrator.py
+    role: implementation
+  - path: ari-core/ari/pipeline/experiment_md.py
+    role: implementation
+  - path: ari-core/ari/claim_gate_contract.py
+    role: implementation
+  - path: ari-core/ari/science_data_contract.py
+    role: implementation
+  - path: ari-core/ari/agent/run_env.py
+    role: implementation
+  - path: ari-core/ari/prompts/_provenance.py
+    role: implementation
+  - path: ari-core/ari/rqgm
+    role: implementation
+  - path: ari-core/ari/manuscript
+    role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/memory/file_client.py
+    role: implementation
+  - path: ari-core/ari/publish/__init__.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-skill-coding/src/server.py
+    role: implementation
+  - path: ari-skill-transform/src
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-skill-paper/src/claim_links.py
+    role: implementation
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ファイルフォーマットリファレンス
@@ -26,7 +72,7 @@ JSON Schema として正式に仕様が定められているスキーマにつ�
 
 プレーンな Markdown で、1 つの重要な規約があります。決定論的ヘルパー
 `parse_metric_from_experiment_md`
-（`ari-core/ari/pipeline/experiment_md.py:31`）が
+（`ari-core/ari/pipeline/experiment_md.py:30`）が
 フォールバックの `primary_metric` として抽出する
 `Metrics: <token>, <token>, ...` 行です。完全なガイドは
 `docs/guides/experiment_file.md` を参照してください。
@@ -40,28 +86,57 @@ JSON Schema として正式に仕様が定められているスキーマにつ�
 <!-- END AUTO-APPENDED -->
 ```
 
-マーカーより**上**の本文のみを編集してください。
+マーカーより**上**の本文のみを編集してください。この追記は workflow.yaml の
+`plan_promote` で制御されます（同梱の既定値は `index_only`。`full` はプラン
+全体を書き、それ以外の値ではブロック自体が出力されません）。開始マーカーが
+すでに存在する場合は追記をスキップするため、パイプラインのリトライで重複する
+ことはありません。
 
 ## `idea.json`
 
-`ari-skill-idea.generate_ideas` の出力。`{checkpoint}/idea.json` に配置され、
-BFTS 実行のプランのシードとなります。
+`ari-skill-idea.generate_ideas` の**返り値そのもの**を、エージェントループ
+（`ari-core/ari/agent/loop.py` の `generate_ideas` 結果ハンドラ）が
+`{checkpoint}/idea.json` へそのまま書き出したもので、BFTS 実行のプランの
+シードとなります。
 
-トップレベルの形式:
+トップレベルの形式（抜粋 — ツールはこれ以上のキーを返します）:
 
 ```json
 {
+  "gap_analysis": "...",
   "ideas": [
     {
       "title": "...",
+      "description": "...",
       "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
+      "novelty": "...", "feasibility": "...",
+      "novelty_score": 8, "feasibility_score": 7, "overall_score": 7.75,
+      "contract_status": "admitted",
+      "candidate_id": "...", "hypothesis": "...",
+      "falsification_conditions": ["..."],
+      "falsifiable_claims": [{"claim": "...", "required_evidence": ["..."]}],
+      "citations": ["..."], "limitations": ["..."],
       "_pinned": false
     }
-  ]
+  ],
+  "primary_metric": "GFlops/s",
+  "higher_is_better": true,
+  "metric_rationale": "...",
+  "typed_schema_version": "ari.research-contract/v1",
+  "contract_status": "admitted",
+  "idea_set": {...}, "idea_set_digest": "...",
+  "research_contract": {...}, "research_contract_digest": "...",
+  "survey_snapshot": {...}, "survey_snapshot_digest": "...",
+  "rejected_candidates": [...]
 }
 ```
+
+メトリクスの位置に注意してください。`primary_metric` / `higher_is_better` /
+`metric_rationale` は**トップレベル**（型付き `research_contract` のレガシー
+射影）であり、アイデアごとのキーではありません。`alternatives_considered`
+というキーはコードのどこにも存在しません。型付き候補が却下されたアイデアは、
+admitted 用のフィールドの代わりに `"contract_status": "rejected"` と
+`rejection_reasons` を持ちます。
 
 子は継承したエントリの `"_pinned": true` を設定して親の選択アイデアを固定します。
 後続の `generate_ideas` 実行は上書きせずに新しいアイデアをその後に追加します。
@@ -74,69 +149,120 @@ BFTS 実行のプランのシードとなります。
 {
   "primary_metric": "GFlops/s",
   "higher_is_better": true,
-  "metric_rationale": "..."
+  "metric_rationale": "...",
+  "metric_unit": "...",
+  "research_contract_digest": "sha256:..."
 }
 ```
 
-ソース: `ari-core/ari/pipeline/orchestrator.py`（ローダーは 98 行目付近、
-フォールバックパスは 170 行目付近）。
+`ari-core/ari/pipeline/driver.py`（`WorkflowDriver.run` のプリフライト）が
+書き込みますが、**ファイルがまだ存在しない場合のみ**であり、実行途中で更新
+されることはありません。ソースは 4 つを順に試し、最初に当たったものが勝ち
+ます: `idea.json` 内の型付き `research_contract`（`metric_unit` /
+`research_contract_digest` もこれが埋めます）、ノードの `memory_snapshot` の
+`EVALUATION_CRITERIA:` 行、`idea.json` のレガシーなトップレベル
+`primary_metric` 系キー、そして experiment.md に対する
+`parse_metric_from_experiment_md`。型付き契約のパース失敗は例外になりますが、
+それ以外のソースの失敗は黙って空文字列に縮退します。読み出すのは
+`ari-core/ari/pipeline/orchestrator.py`（`nodes_to_science_data` のランキング、
+73 行目付近）です。
 
 ## `tree.json`
 
-ノード遷移ごとに書き換えられる BFTS のライブ状態。形式:
+BFTS のライブ状態で、チェックポイントのフラッシュごとに書き換えられます —
+書き込みは 1 秒あたり高々 1 回にスロットルされ
+（`ari.checkpoint.save_tree_incremental`）、呼び出し側が `force=True` を渡した
+場合のみ即時に書かれます（終端のノード遷移がそうします）。形式:
 
 ```json
 {
-  "schema_version": 1,
-  "root_node_id": "...",
-  "nodes": {
-    "<node_id>": {
+  "run_id": "...",
+  "experiment_file": "...",
+  "experiment_file_sha256": "<sha256[:16]>",
+  "experiment_file_len": 4211,
+  "created_at": "2026-07-10T10:34:32+00:00",
+  "nodes": [
+    {
       "id": "...",
       "parent_id": "...",
       "depth": 2,
-      "status": "running" | "completed" | "errored" | "pending",
-      "label": "draft" | "improve" | "debug" | "ablation" | "validation" | "other",
+      "status": "pending" | "running" | "success" | "failed" | "abandoned",
+      "retry_count": 0,
+      "children": ["<node_id>", ...],
+      "created_at": "...", "completed_at": "...",
+      "artifacts": [...],
       "metrics": {"GFlops/s": 312.4, ...},
-      "score": 0.74,
-      "children": ["<node_id>", ...]
+      "has_real_data": true,
+      "evaluation_cases": {...},
+      "evaluation_status": "valid",
+      "eval_summary": "...",
+      "label": "draft" | "improve" | "debug" | "ablation" | "validation" | "other",
+      "raw_label": "", "name": "",
+      "error_log": null,
+      "ancestor_ids": ["..."],
+      "trace_log": ["→ tool(args)", "← result", ...],
+      "original_direction": "...",
+      "producer_component_id": "", "producer_prompt_hash": "", "producer_epoch_id": "",
+      "node_report_path": "..."
     }
-  }
+  ]
 }
 ```
 
-`tree.json` は*サマリ*であり、ノードごとの詳細は `nodes_tree.json` に格納されます。
+ここで読み手が驚く点が 2 つあります。`nodes` はノード ID をキーとするマップ
+ではなく**リスト**です — `root_node_id` は存在せず、root は `parent_id` が
+`null` のエントリです。そして `schema_version` もノードごとの `score` も
+ありません: ランキングに使う量は `metrics` の中の `_scientific_score` です。
+`Node.to_dict` はさらに型付きの科学的保証グループ
+（`knowledge_skill_refs` … `repair_allowed_changes`）を、そのいずれかが非空の
+ときにのみ追記するため、通常のノードではこれらのキーは不在です。
 
 ## `nodes_tree.json`
 
-`ari-skill-transform`、`ari-skill-plot`、viz ダッシュボード、EAR パイプラインが
-使用するノードごとの完全な詳細。形式は `tree.json` と一致しますが、各ノードには
-さらに以下が含まれます:
+同じノードリストで、`ari-skill-transform`、`ari-skill-plot`、viz ダッシュボード、
+EAR パイプラインが使用します。`tree.json` より詳細なビューでは**ありません** —
+ノードの dict は同一の `Node.to_dict()` ペイロードです。差分は端の部分だけです:
 
 | キー | 意味 |
 |---|---|
-| `eval_summary` | LLM ジャッジの自然言語による評決 |
-| `metrics_with_metadata` | メトリクスごとの信頼度 + エクストラクタコード |
-| `has_real_data` | 評価器が実測定を確認した場合に `true` |
-| `trace_log` | `{role, content}` レコードのリスト（LLM + ツールメッセージ） |
-| `work_dir` | ノードごとの作業ディレクトリ（チェックポイントルートからの相対パス） |
-| `artifacts` | ノードが生成したファイル（sha256 付き） |
+| `experiment_goal` | トップレベル。BFTS ループは `experiment.md` の先頭 3000 文字を書き、パイプラインドライバは渡されたゴール文字列全体を書く |
+| `nodes[].memory` | パイプラインドライバの書き込み（`ari-core/ari/pipeline/driver.py`）でのみ付加される。そのノードのメモリエントリを新しい順に、`ARI_TRANSFORM_MEMORY_MAX_ENTRIES`（既定 20）件で打ち切り、各 `text` を `ARI_TRANSFORM_MEMORY_MAX_CHARS`（既定 2000）文字で切り詰めたもの。BFTS ループ自身のフラッシュは `memory` キーを書かない |
+
+読み取り側は 3 段の優先順位 `tree.json` → `nodes_tree.json` → 最も新しい
+非空の `node_*/tree.json`（レガシーレイアウト）でツリーを解決するため、両方を
+持つチェックポイントは `tree.json` から読まれます。
 
 ## `full_log.json`
 
 各ノードの完了時に、そのノードの `work_dir` へ書き込まれる**フルの ReAct 記録**。
 `node_report.json` と同様に `PathManager.META_FILES` に含まれるため、子の work_dir へ
-**継承されません**（各ノードが自分の分を書く）。形式: `{node_id, parent_id, depth, steps, tools[], messages[], trace_log[]}`。
+**継承されません**（各ノードが自分の分を書く）。形式: `{node_id, parent_id, depth,
+react_steps, max_react_steps, ended_by, trace_entries, tools[], messages[],
+auxiliary_llm_calls[], trace_log[]}`。
 
 - `tools` — モデルが実際に渡された OpenAI function-calling スキーマ（名前＋説明＋引数）＝**各ツールの使い方**。system プロンプトの `AVAILABLE TOOLS` 行は名前だけで、使い方スキーマは API の `tools=` 引数で別途渡されるため、このフィールドで確認できます。
 - `messages` — **会話の全体**：system プロンプト、注入された handoff（該当アームでは親の
   `summary` / `full_log`）、タスク、そして全ての user / assistant / tool ターン（tool 呼出の
   名前＋引数、tool 結果を含む）。**入力プロンプトも出力も全て**入っており、tool トレースだけでは
   ありません。
+- `auxiliary_llm_calls` — ReAct ループの後にこのノード*について*行われた、ツール無しの
+  LLM 呼び出し。主に max steps 時に強制される Reflection 自己レビューです。
 - `trace_log` — 素早く見るための簡潔な tool 呼出トレース（`→ tool(args)` / `← result`）。
-  `steps` はその長さ。
+  `trace_entries` はその長さ。
 
-`trace_log` はツールを呼ばないモデル（例: 0.5b 床）では空（`steps: 0`）ですが、`messages`
-には送信された完全なプロンプトが常に入ります。
+`steps` フィールドは存在せず、それを外したこと自体が要点です: かつての `steps` は
+`len(trace_log)` — つまり**トレースエントリ数、1 イテレーションあたり 2 件**（呼出と
+その結果）— であり、予算が記録されていませんでした。そのため 15 ステップの予算を
+使い切ったノードが `steps: 30` と記録され、当時の既定値 80（現在は 20 に変更済み）に
+対する 30 = 「まだ余裕がある」と読めてしまいました（実際には枯渇していた）。現在は両方の数を、それぞれの
+意味の名前で保持します: `react_steps`（使用したイテレーション数）と
+`max_react_steps`（予算）、そして `trace_entries` を別に持ちます。`ended_by` は
+ノードが*どう*停止したかを示します（`finish_json` = エージェントが結論した、
+`max_steps` = 予算切れ — このノードの `success` はエージェント自身の判断ではなく、
+フレームワークが work_dir を採点した結果です）。
+
+`trace_log` はツールを呼ばないモデル（例: 0.5b 床）では空（`trace_entries: 0`）ですが、
+`messages` には送信された完全なプロンプトが常に入ります。
 
 ## `node_report.json`
 
@@ -162,13 +288,26 @@ BFTS 実行のプランのシードとなります。
 | `what_was_done` | string | **エージェント自身の自然言語 自己報告**。結論できたノードのみ充填（tool を使えない弱モデルは空） |
 | `metrics` | object | 評価器定義のスカラー測定値。共通スキーマはキー名や意味を規定しない。 |
 | `measurement_valid` | bool | 評価器による客観的な有効判定。LLM が書く Reflection とは分離する。 |
+| `evaluation_status` | string | 型付きの評価器判定。評価器が明示しなかった場合は `measurement_valid` から `valid` / `candidate_invalid` を既定値とする。`infrastructure_error` は科学的なゼロ**ではなく**、そのランを除外する |
 | `evaluation_cases` | object | `{case名: {valid, measurements}}` 形式のケース別証拠。ケース名と JSON スカラーの測定名はハーネスが定義し、共通スキーマは問題固有の意味を持たない。 |
+| `measurement_audit` | object | 評価器のみが書く監査レコード — `{effective_candidate_compile_flags, rejected_candidate_compile_flags, cases}`。永続化されるが、親→子の handoff テキストには決してレンダリングされない |
 | `self_assessment` | object | `{headline, concerns}`。エージェント自身の LLM 自己レビュー（無ければ空）。 |
-| `next_steps_hints` | string[] | エージェント自身の自己レビューによる次の一手（LLM self-review）。決定論採点では唯一の供給源（グレード軸が無いため）、rubric/judge 採点時は評価器の中域(0.4-0.7)軸根拠にフォールバック。自己申告が無ければ空。 |
+| `self_report_stage` | string | 採点後の自己レビューが `self_assessment` / `next_steps_hints` を置き換えるまでは `pre_evaluation`。これが無いと、評価器の結果を踏まえた自己報告と、採点前の当て推量とが区別できない |
+| `migration_source` | string | ビルダが書いたレポートは `fresh`、それ以外はそのレポートを生んだマイグレーション名 |
+| `compute_env` | object | メトリクス gaming の adversary が読む、組み立て済みのマシンビュー: `executor` / `cpu_info` / `mem_total_kb` / `compilers` / `hostname` に加え、`env_signature`、`parent_env_signature`、`env_signature_mismatch` |
+| `next_steps_hints` | string[] | エージェント自身の自己レビューによる次の一手（LLM self-review）。エージェントが 1 つでも挙げていれば、評価器由来のリストを**置き換える**。フォールバックは評価器の中域(0.4-0.7)軸根拠であり、決定論採点（グレード軸なし）ではそのフォールバック自体が空になる。 |
 | `build_command` / `run_command` | string | 運用足場（ビルド/実行コマンド） |
-| `artifacts` | object[] | 生成物 `[{filename, role}]` |
+| `artifacts` | object[] | 生成物。`filename` + `role`（`data_output` / `log` / `binary` / `figure` / `unknown` の 5 値）は必須。ファイルを stat できた場合は `sha256` / `size` が付き、`inline: true` はディスク上にファイルを持たない捕捉済み stdout を表す（プロベナンス監査は幻の欠落成果物を報告せずスキップする）。エージェントが宣言した分に加え、ビルダが work_dir 直下のファイルのうち role が `data_output` / `log` / `figure` のものを自動捕捉する — 足場のソース、コンパイル済みバイナリ、ARI 内部 JSON は入らない。claim ゲートは測定ドキュメントの `artifact_digests` をこの `sha256` に突き合わせる |
 | `evaluator_reason` | string | 決定論評価器の判定理由 |
 | `trace_log_summary` | string | 軌跡の要約 |
+
+型付きの科学的保証グループ（`knowledge_skill_refs`、
+`instruction_identity_digest`、`capability_binding_lock_digest`、
+`bound_tool_refs`、`assurance_status` / `assurance_tier`、ハーネスロックと
+attestation のダイジェスト、`property_verdicts`、`frontier_class`、および
+manuscript-repair 系の系譜フィールド）は
+`ari-core/ari/orchestrator/node_report/scientific_assurance.py` が graft します。
+スキーマ上は任意であり、互換経路では空のままです。
 
 ### 探索ラベル（常に記録される）
 
@@ -188,16 +327,24 @@ BFTS 実行のプランのシードとなります。
 
 | フィールド | 意味 |
 |---|---|
-| `label` | BFTS 探索役割 `draft` / `improve` / `debug` / `ablation` / `validation` / `other`。採点・選択には不使用（inert）。`ARI_BFTS_DETERMINISTIC_LABEL=1` で direction から決定論導出 |
-| `raw_label` | `label==other` の時のみ LLM 原提案を保持（正規5種なら空） |
+| `label` | BFTS 探索役割 `draft` / `improve` / `debug` / `ablation` / `validation` / `other`。**不活性ではない** — `ARI_BFTS_NO_LABEL` で機能を止めない限り、上記 3 経路を駆動する。`ARI_BFTS_DETERMINISTIC_LABEL=1` では LLM 提案ではなく direction から決定論導出される |
+| `raw_label` | プランナが提案したラベル文字列を**そのまま**保持する。LLM がラベルを返した場合は、それが正規 5 種のいずれかに綺麗に対応する場合でも保持される（提案 `"Improve"` は `label: "improve"` かつ `raw_label: "Improve"`）。`raw_label` を排他的にフォールバック先とするのはノードの*表示名*だけであり、そこでのみ `other` 限定である。ラベルが提案ではなく direction テキストから推論された場合は空で、`ARI_BFTS_DETERMINISTIC_LABEL=1` では強制的に空になる |
 | `original_direction` | 親の expand がこの子に与えた方向テキスト |
 
-### 任意フィールド②: 実行環境プロベナンス（populate-as-needed）
+### 任意フィールド②: 実行環境プロベナンス
 
 `executor` / `hostname` / `slurm_job_id` / `slurm_partition` / `slurm_nodelist` /
-`cpu_info` / `mem_total_kb` / `compilers` は **run_env スキルが実際に捕捉した時だけ**
-該当キーを出力する（空なら省略）。ambient scheduler env からの自動捕捉はしないため、
-スキル未使用時は完全に不在（機械情報を deliverable に焼かない）。
+`cpu_info` / `mem_total_kb` / `compilers` は、このノードが実際にどこで走ったかを
+記録します。これらは**常に存在し**、run_env スキルが何も捕捉しなかった場合
+（レガシーラン、ドライラン、評価のみ）は空の値を持ちます。無条件に出力するのは
+意図的です: キーを省略すると「何も捕捉されなかった」と「このキーがフィールド追加
+より前のものである」が区別できなくなり、マシンが不明な測定と、マシンを一度も
+問わなかった測定とは区別できなければならないからです。
+
+ここでのマシン識別情報の捕捉は意図的なものです。`node_report.json` は
+`workspace/checkpoints/` 配下のラン成果物であって、リポジトリの内容ではありません
+— 追跡対象のソース・テスト・ドキュメントにクラスタ名 / パーティション名 /
+ホスト名を書かないという規則は変わりません。
 
 ```json
 {
@@ -232,80 +379,187 @@ BFTS 実行のプランのシードとなります。
 
 ## `results.json`
 
-実行完了時に出力される最終集計結果。
+`tree.json` / `nodes_tree.json` を書くのと同じフラッシュがチェックポイント
+直下に書きます。したがって実行完了時にだけ出る成果物ではありません:
 
 ```json
 {
   "run_id": "...",
-  "experiment_goal": "...",
-  "primary_metric": "GFlops/s",
-  "best_node": {"id": "...", "metrics": {...}, "score": 0.91},
   "nodes": {
-    "<node_id>": {"metrics": {...}, "has_real_data": true, ...}
+    "<node_id>": {
+      "artifacts": [...],
+      "metrics": {...},
+      "has_real_data": true,
+      "eval_summary": "...",
+      "status": "success",
+      "error_log": null
+    }
   }
 }
 ```
 
-`ari-skill-coding.emit_results` が書き込むノードごとの `results*.json`
-ファイルには、オプションの `_provenance` キーが付与されることがあります。
-これは報告された各値の出所を示す `{operand: source}` マップで、測定された
-天井には `microbench` / `benchmark`、検証残差には `correctness` /
-`reference`、それ以外には `declared` / `constant` のタグが付きます。空の場合
-このキーは省略されます。claim-evidence ハードゲートはこれを
-（`science_data.json` の `configurations[]._provenance` 経由で）読み取り、
+ここには `experiment_goal` も `primary_metric` も `best_node` もありません —
+「どのノードが勝ったか」はこのファイルには記録されず、必要になった時点で
+`select_best_node` が再計算します（`verified_context.json` を参照）。
+
+同じベース名がノードの work_dir の中では**別の意味**を持ちます: エージェントは
+`ari-skill-coding.emit_results` 経由で `{ノードの work_dir}/results.json` を書き、
+claim ゲートはそこから読み戻します。`results.json` が `PathManager.META_FILES` の
+うち唯一 `NODE_VISIBLE_NAMES` によって `scope="node"` で claim を外されている
+エントリなのは、このためです。
+
+このノードごとの `results*.json` は自由形式の dict ではなく、型付きの測定
+ドキュメントです:
+
+```json
+{
+  "schema_version": "1.0",
+  "typed_schema_version": "ari.measurement-set/v1",
+  "measurement_set": {
+    "schema_version": "ari.measurement-set/v1",
+    "parameters": {...},
+    "measurements": [
+      {"metric_id": "gflops", "value": 312.4, "unit": "GFlops/s",
+       "unit_status": "declared", "provenance": "benchmark",
+       "parameters": {...}, "artifact_digests": ["sha256:…"],
+       "execution_identity": "...", "execution_attempt_id": "...",
+       "execution_status": "completed", "exit_code": 0}
+    ],
+    "predictions": {...}, "scores": {...},
+    "artifact_digests": ["sha256:…"]
+  }
+}
+```
+
+プロベナンスはトップレベルの `_provenance` マップではなく、**測定ごとの
+`provenance` 文字列**です: 測定された天井には `microbench` / `benchmark`、
+検証残差には `correctness` / `reference`、それ以外には `declared` / `constant`。
+その文字列を、ハードゲートが読む `{operand: source}` マップに変換するのは
+`ari-skill-transform` です — ノードディレクトリ内のすべての `results*.json`
+バリアントにまたがって和集合を取り、`science_data.json` 射影の
+`configurations[]._provenance` として公開するので、既定以外のファイル名で
+`emit_results` した場合でもエビデンスは表に出ます。ゲートはこれを使って、
 測定された天井や正当性チェックが実際に実行されたことを確認します。
 
 ## `science_data.json`
 
 `ari-skill-transform.nodes_to_science_data` が実行済みノードのエビデンスから
-構築する、論文向けのサイエンスサーフェス。`configurations[]` /
-`experiment_context` / `summary_stats` に加えて、claim-evidence ハードゲートが
-検証する Research Contract の基盤を保持します:
+構築する、論文向けのサイエンスサーフェス。ディスク上ではフラットなオブジェクト
+**ではなく**、3 つのセクションとダイジェスト群からなる型付きの
+`ari.science-data/v1` ドキュメント
+（`ari-core/ari/schemas/science_data_v1.schema.json`）です:
+
+| キー | 意味 |
+|---|---|
+| `raw` | `configurations[]`（ノードごとの parameters / measurements / measurement_records / scores / environment / `provenance_labels`）、`measurement_status`、`node_report_status`、`tree_artifact`、`raw_digest` |
+| `derived` | `claims`、`numeric_assertions`、`metric_summaries`、`summary_stats`、`anomalies`、`formula_registry_digest`、`derived_digest` |
+| `interpretation` | 唯一の LLM 執筆セクション — `experiment_context`、`implementation_overview`、`evaluation_protocol`、およびそれ自身のモデル / プロンプトのプロベナンスと `interpretation_digest` |
+| `metric_contract` | トップレベル。`metric_contract.json`（後述）から graft された idea 由来のメトリクス正当性契約。これにより、ゲートはユニバーサル不変条件レジストリだけでなく*宣言された*契約も強制します |
+| `provenance` / `limitations` / `run_id` / `migration_status` | トップレベル。入力成果物、スキル / カタログのロック、そしてそのランが確立できなかったこと |
+| `deterministic_digest` / `science_data_digest` | トップレベルの自己ダイジェスト。前者は `raw`+`derived`+契約を、後者はドキュメント全体をカバーします |
+
+`derived` の内側:
 
 | キー | 意味 |
 |---|---|
 | `claims` | ノードのエビデンスから決定論的に派生した候補クレーム。各クレームは実在する `node_id` + `metric_path` にアンカーされます。本文は論文ライターが `% CLAIM:Cx:NCx` アンカーを保持したまま書き換えるテンプレートのシードです。 |
 | `numeric_assertions` | ハードゲートが再導出し、許容誤差内で論文に記載された数値と比較するオペランド/数式レコード。 |
-| `metric_contract` | `metric_contract.json`（後述）から graft された idea 由来のメトリクス正当性契約。これにより、ゲートはユニバーサル不変条件レジストリだけでなく*宣言された*契約も強制します。 |
 
-`_config_nodes`、`_anomalies`、`_anomalous_metrics` は内部用
-（アンダースコア接頭辞）の注釈であり、論文向けのサーフェスには含まれません。
+**フラットな**サーフェス — トップレベルの `configurations[]` / `per_key_summary` /
+`summary_stats` / `claims` / `numeric_assertions` と、内部用のアンダースコア
+接頭辞 `_config_nodes` / `_anomalies`、および configuration ごとの
+`_provenance` — は読み取り時の*射影*
+（`ari.science_data_contract.science_data_projection`）であり、ハードゲート・
+paper スキル・viz レイヤがそれぞれ自分で計算します。ファイルの中身そのもの
+ではないため、生の JSON を読む消費側は射影を経由するか、型付きセクションを
+直接指す必要があります。`_anomalous_metrics` はそのどちらにも残りません:
+transform スキルは物理的にありえない値から論文ライターを遠ざけるために中間の
+configuration ごとの dict にこれを刻みますが、`ScienceConfigurationV1` には
+そのようなフィールドが無いため、ファイルにも射影にも到達しません — この
+異常は `derived.anomalies` にのみ保存されます。
 
 ## `metric_contract.json`
 
 `make_metric_spec`（ari-skill-evaluator）が出力し、`idea.json` / `tree.json`
 の隣の `{checkpoint}/metric_contract.json` に書き込まれる idea 由来の
 メトリクス正当性契約。`nodes_to_science_data` がこれを `science_data.json`
-に graft します。すべての式は制限付き AST です
-（`ari-core/ari/pipeline/claim_gate/formula_eval.py` を参照）。
+に graft します。永続化されるドキュメントは正準の
+`ari.metric-gate-contract/v1` 射影
+（`ari-core/ari/schemas/metric_gate_contract_v1.schema.json`）であり、契約を
+フラットに並べるのではなく入れ子にします:
 
 ```json
 {
-  "key": "<metric the paper reports>",
-  "formula": "geomean(gflops_byK / ceiling_byK)",
-  "ceiling_select": "cache_bw if effective_bw > dram_peak_bw else dram_peak_bw",
-  "invariants": ["value <= 1", "model_sec <= sec"],
-  "correctness": {"expr": "max_abs_err < 1e-4", "requires": ["max_abs_err"]},
-  "required_measured": ["dram_peak_bw", "cache_bw", "ceiling_byK"],
-  "claims": [{"claim": "...", "required_evidence": ["thp_on_tput", "thp_off_tput"]}],
-  "correctness_required": true,
-  "ceiling_must_be_measured": true,
-  "tolerance": {"absolute": 0.0, "relative": 0.02}
+  "schema_version": "ari.metric-gate-contract/v1",
+  "source": "research-contract" | "human-admitted" | "legacy-migrated",
+  "source_idea_digest": "sha256:...",
+  "projection_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",   // source == research-contract のときのみ
+  "metric_contract": {
+    "schema_version": "ari.metric-contract/v1",
+    "contract_digest": "sha256:...",
+    "name": "<metric the paper reports>",
+    "unit": "...", "direction": "higher",
+    "comparison_scope": "same-environment",
+    "rationale": "...",
+    "required_evidence": ["thp_on_tput", "thp_off_tput"],
+    "required_measured": ["dram_peak_bw", "cache_bw", "ceiling_byK"],
+    "formula": "geomean(gflops_byK / ceiling_byK)",
+    "operands": {"gflops_byK": "...", "ceiling_byK": "..."},
+    "invariants": ["value <= 1", "model_sec <= sec"],
+    "correctness": {"expr": "max_abs_err < 1e-4", "requires": ["max_abs_err"]},
+    "correctness_required": true,
+    "normalization_ceiling": "measured",
+    "tolerance": {"absolute": 0.0, "relative": 0.02},
+    "formula_provenance": {...},
+    "confidence": 0.9,
+    "admission_status": "admitted"
+  },
+  "claims": [{"claim": "...", "required_evidence": ["thp_on_tput", "thp_off_tput"]}]
 }
 ```
 
-`correctness_required` / `ceiling_must_be_measured` はエージェントが破棄
-できない idea 所有のフラグであり、`results.json._provenance` 内のエビデンス
-タグ（測定ソースの天井、正当性ソースの残差）によって満たされます。
-エージェントが宣言した名前では満たされません。ソース:
-`ari-core/ari/pipeline/claim_gate/contract.py`。
+ゲートの数式処理は依然として**フラットな**契約を消費するため、ゲートは評価の
+前に変換します: `science_data["metric_contract"]` が
+`schema_version: "ari.metric-gate-contract/v1"` を持つ場合、これはパースされ、
+メモリ上で `MetricGateContractV1.gate_projection()` の結果に置き換えられます。
+射影は `key` / `unit` / `direction` / `comparison_scope` / `formula` /
+`formula_operands` / `tolerance` / `claims` / `correctness_required` /
+`ceiling_must_be_measured` / `required_measured` / `invariants` /
+`correctness` へと平坦化します。ここから 2 つのことが従います。
+`ceiling_must_be_measured` は宣言されるものではなく*導出*されます
+（`normalization_ceiling == "measured"`）。そして `ceiling_select` —
+`contract.check_contract` が今も対応している、宣言型のレジーム条件式 — は
+正準ドキュメントにフィールドを持たず射影にも現れないため、レガシーな
+フラット契約の場合にしかゲートに届きません。
 
-このファイルは **mint-once** です: claims を含む契約が最初に書き込まれた後は
-不変です。以降の `make_metric_spec` 呼び出しは再抽出せず、永続化された契約を
-そのまま返します（レスポンスに `contract_frozen: true` が付きます）— LLM の
-命名は参照的に安定しないため、実行途中で再生成すると新しいエビデンス語彙が
-生成され、旧名ですでに出力されたエビデンスが完全一致ゲートから見えなくなる
-ためです。scaffold のみ（`claims` なし）の契約は凍結されません。
+正準スキーマバージョンを認識することは、ゲートを**厳格エビデンス**モードに
+切り替えることでもあり、このモードでは通常なら advisory 止まりの findings が
+エラーになります。すべての式は制限付き AST であり
+（`ari-core/ari/pipeline/claim_gate/formula_eval.py` を参照）、この機構は
+roofline / GFLOP / キャッシュの意味論を一切知りません — 述語はすべて実験
+ごとに宣言されます。
+
+`correctness_required` / `ceiling_must_be_measured` はエージェントが破棄
+できない idea 所有のフラグであり、ノードの `results.json` の測定プロベナンス
+に付いた EVIDENCE タグ（測定ソースの天井、正当性ソースの残差）によって
+満たされます。エージェントが宣言した名前では満たされません。突合は意図的に
+寛容で、ゲートは部分文字列の語根を探します（measured 側は
+`bench` / `measur` / `empiric` / `stream` / `baseline`、correctness 側は
+`correct` / `verif` / `referenc` / `valid` / `gold` / `truth` / `oracle` /
+`ground_truth`）。正直なランがタグを言い換えても過剰にブロックしないため
+です。ソース: `ari-core/ari/pipeline/claim_gate/contract.py`。
+
+このファイルは **mint-once** です: `_persist_metric_projection` は
+`projection_digest` が異なる既存契約の上書きを拒否し、以降の
+`make_metric_spec` 呼び出しは再抽出せず、永続化された契約をそのまま返します
+（レスポンスに `contract_frozen: true` が付きます）— LLM の命名は参照的に
+安定しないため、実行途中で再生成すると新しいエビデンス語彙が生成され、
+旧名ですでに出力されたエビデンスが完全一致ゲートから見えなくなるためです。
+admitted な idea 契約も人手レビュー済みの提案も無い場合、
+`make_metric_spec` は何も mint せず、`contract_frozen: false` と
+`admission_status: "human-review-required"` を返して
+`propose_metric_contract` を指します。
 
 ## `verified_context.json`
 
@@ -318,9 +572,11 @@ BFTS 実行のプランのシードとなります。
 は以前とまったく同じ挙動になります。ベストノードの選択
 （`select_best_node`）は消去済みノード
 （`metrics._valid_for_frontier=False`）を除外します — すべての候補が消去
-されていれば勝者なしとなりファイルは書かれず、以前に書かれた
-`verified_context.json` の `best_node_id` が新しい勝者と一致しなくなった
-場合、そのファイルは削除されます（一致すれば保持）。
+されていれば勝者なしとなりファイルは書かれません。以前に書かれた
+`verified_context.json` は、`best_node_id` **または**（消去フィルタ後の）
+`lineage` が新しい結果と一致しなくなった場合に、すでに消去された系統の上に
+論文を接地させないよう削除されます。両方が一致し続ける場合は保持されるので、
+メモリバックエンドの一過性の失敗でまだ有効な成果物が捨てられることはありません。
 
 ```json
 {
@@ -344,10 +600,16 @@ BFTS 実行のプランのシードとなります。
 
 | キー | 意味 |
 |---|---|
-| `paper_claim_links` | アンカーをキーとするレコード（`claim_id` / `numeric_id` / `section` / `span_hash` / `line_range` / figures）。**アンカー**が refine/render を通じて生き残る安定キーであり、`span_hash` は文の変更を検出します。 |
-| `numeric_mentions` | 論文中のすべての数値トークンを分類したもの（`result_claim` / `experimental_setting` / `citation_year` / `figure_table_ref` / `ambiguous`）。セクション帰属と `requires_assertion` フラグを伴います。 |
+| `paper_claim_links` | アンカーをキーとするレコード（`anchor` / `claim_id` / `numeric_id` / `section` / `span_hash` / `line_range` / `figures` / `resolved`）。**アンカー**が refine/render を通じて生き残る安定キーであり、`span_hash` は文の変更を検出します。 |
+| `numeric_mentions` | 論文中のすべての数値トークンを分類したもの（`result_claim` / `experimental_setting` / `citation_year` / `figure_table_ref` / `figure_evidence` / `ambiguous`）。セクション帰属と `requires_assertion` フラグを伴います。このフラグを立てるのは `result_claim` だけであり、`figure_evidence` は figures マニフェストが説明できる行の数値を後段で再分類するもので、フラグを**外し**ます。 |
+| `writer_assertions` | ライターがアンカー行そのものにインライン記述した前方宣言（`metric=` / `formula=` / オペランド役割の `key=value` トークン）。`dropped_declarations` は宣言が採用され*なかった*アンカーをすべて記録し（最も多いのはインラインの `formula=` が無い場合、すなわち事前生成済みエビデンスへの前方参照）、`suspect_declarations` は採用されたが疑わしいものを記録します。どちらも、落とされた宣言が単に消えるのではなく見えるように保持されます。 |
 | `figure_refs` | 論文中で実際に参照された図の id（図のバインディングはここに記録され、`science_data.json` は変更されません）。 |
 | `unresolved_anchors` / `uncovered_numeric_candidates` | ハードゲートが参照する診断情報。 |
+| `counts` | 固定のロールアップ（`anchors`、`resolved_anchors`、`writer_assertions`、`dropped_declarations`、`suspect_declarations`、`numeric_mentions`、`result_claim_mentions`、`uncovered_numeric_candidates`、`figure_refs`）。finalize は再導出せずこれを読みます。 |
+
+このドキュメントは自己識別的かつ自己ダイジェスト付きです: `schema_version:
+"ari.paper-claim-links/v1"`、`stage: "link_paper_claims"`、読み取った LaTeX に
+対する `paper_digest`、そしてレコード全体に対する `claim_links_digest`。
 
 ## `evaluation/claim_evidence_hard_gate_{draft,final}.json`
 
@@ -358,37 +620,84 @@ claim/evidence ハードゲートのレポート（`phase` ごとに 1 つ: `dra
 転記/導出の一貫性をチェックするものであり、結果そのものの真実性を
 チェックするものでは**ありません**。
 
+このレポートは型付きの `ari.gate-report/v1` ドキュメント
+（`ari-core/ari/schemas/gate_report_v1.schema.json`）で、キーをソートして
+ダイジェスト付きで書かれます:
+
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
-  "phase": "final",
-  "policy": "strict" | "warn",
-  "status": "...",
+  "source_run_id": "...",
+  "phase": "draft" | "final",
+  "policy_mode": "off" | "warn" | "strict",
+  "comparison_scope": "any" | "same_environment",
+  "status": "passed" | "warn" | "failed",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
+  "formula_provenance": {"registry_digest": "sha256:...", "formulas_used": [],
+                         "metric_contract_digest": null, "unit_conversions": []},
+  "blocking_findings": [{"schema_version": "ari.gate-finding/v1",
+                         "severity": "blocking", "type": "numeric_mismatch",
+                         "message": "...", "claim_id": null, "numeric_id": null,
+                         "node_id": null, "artifact_path": null, "details": {}}],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
+改名に注意してください: ポリシーのフィールドは `policy` ではなく
+`policy_mode` であり、findings のリストは `errors` / `warnings` ではなく
+`blocking_findings` / `advisory_findings`（型付きの GateFindingV1）です。
+モデルは自身の結果を相互検証します — `passed` のレポートは findings を 1 つも
+持たなくてよく、`failed` のレポートは blocking finding を必ず持たねばならず、
+`should_block` は `phase == "final"` かつ `policy_mode != "off"` かつ blocking
+finding が 1 つ以上存在するのでない限り拒否されます。`metrics` は有限の数値
+でなければならないため、ゼロ除算になる比率は `NaN` ではなく `0.0` / `1.0` と
+して格納されます。
+
 MCP ラッパーは `should_block`（strict ポリシー下の `phase: final` 時、または
-客観的虚偽の検出時にのみ設定される）をパイプラインのハード失敗に変換し、
-finalize がスキップされます。ソース:
+ポリシーの `always_block_on` 集合に属する客観的虚偽の検出時にのみ設定される）
+をパイプラインのハード失敗に変換し、finalize がスキップされます。ソース:
 `ari-core/ari/pipeline/claim_gate/gate.py`。
 
 ## `evaluation/evidence_grounded_semantic_review.json`
 
-`ari-skill-evaluator.evidence_grounded_semantic_review` が書き込む、
+`ari-skill-evaluator.evidence_grounded_semantic_review` が型付きの
+`ari.semantic-review/v1` ドキュメント
+（`ari-core/ari/schemas/semantic_review_v1.schema.json`）として書き込む、
 非ブロッキングのエビデンス裏付けセマンティックレビュー。ハードゲートの
 エビデンスに基づいて過剰主張 / 解釈の問題を検出し、`paper_refine` 向けの
-`suggested_revisions` を出力します。パイプラインをブロックすることはなく、
-エラー時には空の（`status: "ok"`）レビューを返します。refine 後のパスは
-これと並んで `evidence_grounded_semantic_review_post_refine.json` のバリアント
-を書き込みます。
+`suggested_revisions` を出力します。
+
+`status` は 3 つの結果を区別し、レビューがクリーンに完走したことを意味するのは
+そのうち 1 つだけです: `ok`（実行して何も見つからなかった）、`revise`
+（findings ないし revisions あり）、そして **`unavailable`** — 論文ファイルの
+欠落、LLM エラー、応答に JSON オブジェクトが含まれなかった場合を含む
+*あらゆる*失敗経路で使われる値です。`unavailable` を「問題なし」と読むのは
+正反対であり、どの失敗だったかは併記される `note` が示します。パイプラインを
+ブロックすることは決してありません: レビューは読み取ったハードゲートレポート
+にダイジェストで束縛され（`hard_gate_report_digest`）、ツールは事後にその
+ファイルを読み直してバイト列が変わっていれば例外を送出します。したがって
+advisory なレビューがハードゲートの結果を変えることはできません。
+
+出力ファイル名は `phase` を反映します: `initial` / `draft` はベースの
+`evidence_grounded_semantic_review.json` を書き、それ以外の phase は独自の
+サフィックスを付けます（`phase: post_refine` なら
+`..._post_refine.json`）。サフィックス付きの実行は、`score_delta` /
+`resolved_overclaim_count` を計算するためにベースファイルを `previous` として
+読み戻します。
 
 ## `lineage_decisions.jsonl` (v0.7.0)
 
-停滞ルールの決定を記録する追記専用ログ。1 行に 1 つの JSON レコード:
+系統決定を記録する追記専用ログ。1 行に 1 つの JSON レコード。3 つの writer が
+このファイルを共有し、`trigger` がそれらを区別します: `append_decision_log`
+（`stagnation_rule` / `every_node` / `manual`）、`append_root_selection_log`
+（`root_idea_selection`。`decision.action` は `root_swap` / `root_keep`）、
+そして `ari_rqgm` の ProposalRouter（`proposal_router`。`decision` は
+`event` / `generator` / `record_ids` を運ぶ）。停滞ルールの形式:
 
 ```json
 {"ts": 1752143672.418, "ts_iso": "2026-07-10T10:34:32Z",
@@ -402,8 +711,12 @@ finalize がスキップされます。ソース:
 ソース: `ari-core/ari/orchestrator/lineage_decision.py`。`decision` の値は
 オブジェクトで、`LineageDecision.to_dict()` — すなわち `action` /
 `target_idea_index` / `disable_generate_ideas` / `rationale` — です。
-`state` は `_state_for_log` が組み立てる圧縮スナップショットで、長い
-コンテキストブロックは除去されています。
+`state` は `_state_for_log` が組み立てる圧縮スナップショット
+（`active_idea_title` / `active_idea_index` / `nodes_explored` /
+`budget_remaining` / `best_axis_scores` / `recent_composite_scores` /
+`alternatives` / `venue_constraints_present` / `ancestor_thread_present`）で、
+長いコンテキストブロックは除去されています。トリガごとの詳細は任意の
+`extra` オブジェクトが運びます。
 
 `disable_generate_ideas` は**記録されるだけで不活性**です。
 `switch_to_idea` / `fanout` のレコードにおいて、true 値に対して
@@ -1025,66 +1338,130 @@ input_context_hash ␟ output_schema_hash)[:16]`（`␟` = `\x1f`）; 2 つの
 
 ## `settings.json`
 
-viz ダッシュボードが使用するチェックポイントごとの設定。
+viz ダッシュボードが使用するチェックポイントごとの設定で、置き場所は
+`PathManager.project_settings_path(checkpoint)` です。ダッシュボードが
+`/api/settings` に POST する**フラットな**オブジェクトをそのまま書いたもので、
+入れ子はありません:
 
 ```json
 {
-  "model": "ollama/qwen3:32b",
-  "provider": "ollama",
-  "hpc": {"partition": "your_partition", "cpus": 64},
-  "registries": [
-    {"name": "default", "url": "http://127.0.0.1:8290", "token_env": "ARI_REGISTRY_TOKEN"}
-  ]
+  "llm_provider": "ollama",
+  "llm_model": "qwen3:32b",
+  "ollama_host": "http://127.0.0.1:11434",
+  "temperature": 0.7,
+  "retrieval_backend": "semantic-scholar",
+  "slurm_partition": "your_partition",
+  "slurm_cpus": 64,
+  "slurm_walltime": "01:00:00",
+  "container_mode": "off",
+  "model_idea": "...", "model_bfts": "...", "model_coding": "..."
 }
 ```
 
-API キーはここには**保存されません** — `.env` ファイルに格納されます
-（検索順: チェックポイント → ARI ルート → ari-core → ホーム）。
+`GET /api/settings` は `{**組み込みデフォルト, **保存値}` を返し、未知の保存
+キーもそのまま通過するため、このファイルは完全なドキュメントではなく部分的な
+上書きです。アクティブなチェックポイントが無い状態での保存は拒否されます
+（HTTP 400）— 設定はプロジェクトスコープのみで、グローバルな
+`~/.ari/settings.json` へのフォールバックはありません。レスポンス全体の
+スキーマは `ari-core/ari/schemas/viz_settings.schema.json` です。
+
+API キーはここには**決して保存されません** — `POST /api/settings` は書き込み前に
+`api_key` / `llm_api_key` をペイロードから取り除き、プロバイダ用の変数
+（`OPENAI_API_KEY`、`ANTHROPIC_API_KEY`、`GOOGLE_API_KEY`）を `.env` に
+upsert します（所有者のみ 0600、アトミック書き込み）。起動時は `.env` を
+チェックポイント → ARI ルート → ari-core → ホームの順に読み、最初に設定された
+ものが勝ち、シェルの export がそれら全てに優先します。
+
+publish / レジストリの設定は現時点ではここに置かれません: `ari ear publish` は
+`$ARI_PUBLISH_SETTINGS` を、無ければ非推奨の `~/.ari/publish.yaml`（参照時に
+警告します）を解決します。`{checkpoint}/settings.json` 内の `publish`
+セクションは v1.0 での置き換えとして予告されているものであり、まだコードが
+読む経路ではありません。
 
 ## `workflow.yaml`
 
 `ari-core/ari/pipeline/yaml_loader.py` が参照するパイプライン定義。
-各ステージは呼び出すスキル + ツールと入出力を指定します。
+ステージ一覧はトップレベルのキー **`pipeline:`** の下にあり（BFTS フェーズの
+表示専用行は別の `bfts_pipeline:` リストです）、各エントリのキーは `name:` では
+なく **`stage:`**、そして `inputs` / `outputs` はリストではなくマッピングです:
 
 ```yaml
-stages:
-  - name: idea_generation
-    skill: idea
-    tool: generate_ideas
-    inputs:
-      - experiment.md
-    outputs:
-      - idea.json
-  - name: bfts
-    skill: orchestrator
-    ...
+pipeline:
+- stage: search_related_work
+  segment: evidence
+  skill: web-skill
+  tool: search_papers
+  description: Recorded deterministic literature retrieval -> related_refs.json
+  depends_on: []
+  enabled: true
+  phase: paper
+  inputs:
+    query: '{{keywords}}'
+  params:
+    provider: semantic-scholar
+    max_results: 15
+  outputs:
+    file: '{{checkpoint_dir}}/related_refs.json'
+  skip_if_exists: '{{checkpoint_dir}}/related_refs.json'
 ```
 
-バンドル済みデフォルトは `ari-core/ari/configs/workflow.default.yaml` に
-あります。
+`load_pipeline` は `enabled != false` のステージだけを返し、
+`load_disabled_stage_names` がその補集合を返すため、意図的に無効化された
+ステージを指す `depends_on` がその消費側まで連鎖的にスキップさせることは
+ありません。一部の行は表示専用で `tool: ''` を持ちます（たとえば evaluation は
+ari-core のインプロセス BFTS 評価器が担っており、MCP ツールではありません）。
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+バンドル済みデフォルトは `ari-core/config/workflow.yaml` にあります
+（`package_config_root()` が返すパッケージ設定ルート — `ari/` の兄弟である
+`ari-core/config/`）。レガシーなファイル名 `pipeline.yaml` も引き続き
+受け付けますが、同じディレクトリに `workflow.yaml` が無い場合に限ります。
+
+## `memory_store.jsonl` / `memory_backup.v1.json.gz`
 
 `ARI_CHECKPOINT_DIR` 配下に書き込まれるメモリバックエンドの成果物:
 
 | ファイル | バックエンド | 備考 |
 |---|---|---|
-| `memory_store.jsonl` | `file` | レガシー v0.5 形式、行区切り JSON エントリ |
-| `memory_backup.jsonl.gz` | `letta` | ポータブルなスナップショット（ステージ境界 + 終了時に自動生成） |
+| `memory_store.jsonl` | `file` | レガシー v0.5 形式。`.jsonl` という名前に反して、行区切りではなく `add()` のたびに全体を書き直す**単一の JSON 配列**です — `FileMemoryClient` はファイル全体を `json.loads` します。エントリは `{content, metadata, ts}` |
+| `memory_backup.v1.json.gz` | `letta` | ポータブルなスナップショット。gzip 圧縮した正準 JSON（キーソート済み、空白なし）1 ドキュメントであり、JSONL では**ありません**。終了時の `atexit` フック、および明示的な `ari memory backup` / `ari memory migrate` コマンドが書きます。ステージ境界のトリガはありません |
 | `memory_access.jsonl` | any | 書き込み / 読み込みの追記専用テレメトリ |
 
-スナップショットレコードの形式:
+バックアップドキュメント
+（`ari-core/ari/schemas/memory_backup_v1.schema.json`）:
+`{schema_version, records[], react_entries[], core_context, record_digests[],
+record_order[], backup_digest}`。`records` は `record_digest` でソートされる
+ためファイルはバイト安定であり、`record_order` は読み取った順序を保存します。
+実行時エントリがバージョン付きの `memory_record` を持たないレコードは、
+黙って格下げされるのではなくバックアップを中止させます。
+
+スナップショットレコードの形式（`MemoryRecordV1`）:
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
+  "schema_version": "...",
+  "record_id": "...",
+  "record_digest": "sha256:...",
+  "kind": "observation" | "experiment_result" | "failure_case" | "procedure"
+        | "reflection" | "artifact_summary" | "paper_claim" | "reproducibility_event",
   "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "source_node_id": "...",
+  "source_run_id": "...",
+  "ancestor_node_ids": ["..."],
+  "attributes": {...},
+  "confidence": 0.8,
+  "artifact_refs": [{"relative_path": "...", "digest": "...", "role": "...",
+                     "size_bytes": 0, "integrity_status": "..."}],
+  "metric_ptr": {"name": "...", "value": 0.0, "unit": "..."},
+  "node_report_ref": {"run_id": "...", "node_id": "...", "digest": "..."},
+  "repro_status": "unverified" | "rerun_passed" | "rerun_failed" | "paper_only_reproduced",
+  "repro_target_id": null,
+  "created_by_tool_ref": "..."
 }
 ```
+
+ReAct トレースは `kind` ではなく**別のリスト**です: `react_entries[]` が
+`MemoryReactEntryV1` レコード（`{content, metadata, ts, entry_digest}`）を、
+ダイジェスト順に保持します。
 
 ## EAR バンドル (v0.7.0)
 
@@ -1092,13 +1469,31 @@ stages:
 公開するキュレート済みサブセットです。信頼のアンカーは以下の構造です:
 
 ```
-ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
-├── publish_record.json   # backend, ref, sha256, visibility
-└── ...                   # curated artefacts
+{checkpoint}/
+├── ear_published/
+│   ├── manifest.lock     # canonical JSON, per-file sha256 + bundle_sha256
+│   └── ...               # curated artefacts
+└── publish_record.json   # backend, ref, bundle_sha256, visibility, timestamp
 ```
 
-`manifest.lock` スキーマ: `ari-core/ari/schemas/publish.schema.json`。
+`publish_record.json` は `ear_published/` の中ではなく**チェックポイント直下**に
+あり、`ari ear publish` はキュレーション後にのみこれを書きます。フィールドは
+`backend` / `ref` / `bundle_sha256` / `visibility` / `timestamp` / `dry_run` /
+`extra` です。最初の publish は必ず `visibility: "staged"` であり、`public` へ
+移すのは `ari ear promote` です。
+
+キュレーションはインプレースではなく復旧可能です: 一時ディレクトリを作って
+そこに `manifest.lock` を書き、2 回の `os.replace` で `ear_published/` と
+入れ替え、最後のリネームに失敗した場合は以前のバンドルを復元します。
+
+`manifest.lock` は `ari.ear-manifest/v2` ドキュメントです —
+`{schema_version, version, checkpoint_id, created_at, publish{...}, files[],
+excluded_count, bundle_sha256, policy_digest, evidence_index_digest,
+evidence[], admission_status, lock_digest}`。`ari-core/ari/schemas/` に
+対応する JSON Schema は**ありません**。そこにある `publish.schema.json` が
+記述しているのは、キュレーション*ポリシー*である `publish.yaml`
+（`include` / `exclude` / `max_file_mb` / `visibility` / `required` /
+`auto_promote` / `license` / `backend`）であり、別のファイルです。
 `bundle_sha256` は公開された論文に焼き込まれた `\codedigest{...}` マクロと
 一致しなければなりません。
 
@@ -1106,7 +1501,10 @@ ear_published/
 
 - `docs/concepts/architecture.md`（チェックポイントディレクトリレイアウト）— 同じファイル
   のナラティブビュー。
-- `ari-core/ari/schemas/` — `node_report` と publish マニフェストの正式な
-  JSON スキーマ。
+- `ari-core/ari/schemas/` — `node_report`、型付きの measurement /
+  science-data / gate-report / metric-gate 契約、RQGM ガバナンスレコード、
+  および Manuscript Complete ドキュメントの正式な JSON スキーマ。
+  （そこにある `publish.schema.json` は `publish.yaml` のキュレーション
+  ポリシーであり、EAR の `manifest.lock` ではありません。）
 - `ari-core/ari/pipeline/yaml_loader.py` — workflow.yaml パーサ。
 - `docs/guides/experiment_file.md` — `experiment.md` の詳細ガイド。

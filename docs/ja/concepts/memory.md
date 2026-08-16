@@ -4,7 +4,17 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-08-02
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/memory_contract.py
+    role: implementation
+  - path: ari-core/ari/call_context.py
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # メモリアーキテクチャ
@@ -19,7 +29,7 @@ root ──▶ memory["root"]
   └─ node_B  (読み取り: root のみ、node_A ブランチは含まない)
 ```
 
-`search_memory` は `query = node.eval_summary` で呼ばれます。Letta 0.16.7 のサーバ上で本スキルは `passages.search` (`GET /archival-memory/search`、`embed_query=True`) を `top_k = max(letta_overfetch, limit*40)` で叩き、ランクされた結果を `ancestor_ids` / `ari_checkpoint` / `kind == "node_scope"` でローカル post-filter します。サーバが返す **embedding ランク順がそのまま保持** されるので、子は自身のクエリに対して意味的に最も関連するエントリを先頭から受け取ります。意図的に避けた `passages.list(search=q)` ルートは SQL substring filter (`LOWER(text) LIKE LOWER(%q%)`) であり、`RESULT SUMMARY metrics=[...]` のような構造化エントリに対する長い自然文クエリは無音で 0 件を返します — 詳細は `ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py` の live verification を参照。
+`search_memory` は `query = (eval_summary or experiment_goal or "experiment result")[:200]` で呼ばれます — ノードが持っていればその一文の方向性テキストを、切り詰めて使います。バックエンドはまずサーバ側のメタデータ事前フィルタを*要求*しますが、Letta アダプタは無条件に拒否します（`if filter is not None: raise NotImplementedError`。ARI のメタデータは passage テキストに付く JSON フッタとして往復するのであって、クエリ可能なフィールドではないためです）。したがって Letta 0.16.x では常に over-fetch 経路が走ります。本スキルは `passages.search` (`GET /archival-memory/search`、`embed_query=True`) を `top_k = max(letta_overfetch, limit*40)` で叩き、ランクされた結果を `ancestor_ids` / `ari_checkpoint` / `kind == "node_scope"` でローカル post-filter します。サーバが返す **embedding ランク順がそのまま保持** されるので、子は自身のクエリに対して意味的に最も関連するエントリを先頭から受け取ります。意図的に避けた `passages.list(search=q)` ルートは SQL substring filter (`LOWER(text) LIKE LOWER(%q%)`) であり、`RESULT SUMMARY metrics=[...]` のような構造化エントリに対する長い自然文クエリは無音で 0 件を返します — 詳細は `ari-skill-memory/src/ari_skill_memory/backends/letta_backend.py` の live verification を参照。
 
 ### v0.6.0: Letta バックエンド
 
@@ -45,7 +55,7 @@ flowchart LR
     search -->|"post-filter: ancestor_ids + ari_checkpoint + kind == node_scope"| result["ランク済み・祖先のみのエントリ"]
 ```
 
-エージェントはコアメモリブロック（`persona` + `human` + `ari_context`）に、最初のノードの `generate_ideas` が完了したタイミング（`primary_metric` が確定する時点）で実験目的・主要メトリック・ハードウェア仕様を seed します。スキルは `get_experiment_context()` で検索コストを払わずに読めますが、seed が走るまでは `{}` を返します。
+エージェントはコアメモリブロック（`persona` + `human` + `ari_context`）に、最初のノードの `generate_ideas` が完了したタイミング（`primary_metric` が確定する時点）で実験目的・主要メトリック・ハードウェア仕様を seed します。スキルは `get_experiment_context()` で検索コストを払わずに読めますが、seed が走るまでは `{}` を返します。また、この呼び出しは読み取った内容を 60 秒間キャッシュします。
 
 **Copy-on-Write**: すべてのメモリ呼び出しは、明示的な
 `RunContextV1` と `NodeContextV1` を持ちます。ノードコンテキストは
@@ -58,8 +68,11 @@ flowchart LR
 エントリをバイト安定に保つため、Letta の self-edit は引き続き無効です。
 
 **ポータビリティ**: 各チェックポイントは digest 検証付き
-`memory_backup.v1.json.gz` を携行します。`ari resume` は書込み前に検証してから
-空の Letta へ restore するため、`cp -r checkpoints/foo /elsewhere/` を安全に行えます。
+`memory_backup.v1.json.gz` を携行します。`ari resume` は restore の前にこれを検証し
+（サイズ上限、gzip/JSON のパース、`MemoryBackupV1` スキーマ）、restore を行うのは
+対象の Letta にノードエントリも ReAct エントリも 1 件も無い場合**のみ**です —
+このステップを飛ばすには `ARI_MEMORY_AUTO_RESTORE=false` を設定します。
+そのため `cp -r checkpoints/foo /elsewhere/` を安全に行えます。
 record は content-addressed で Letta の checkpoint namespace に依存しません。
 
 型付き entry は公開 `MemoryRecordV1` 契約を使い、semantic search は

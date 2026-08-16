@@ -10,7 +10,11 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/app/routeRegistry.ts
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+last_verified: 2026-08-16
 ---
 
 # ARI クイックスタートガイド
@@ -200,14 +204,17 @@ AI が確認の質問をして、実験ファイルを自動生成します。
 
 ### ステップ 2/4 — スコープ
 
-実験の規模を設定します：
+実験の規模を設定します。このステップはプリセット駆動で、5 つのプリセット（Quick / Standard /
+Thorough / Deep / Exhaustive）があり、開いた時点では **Standard**（深さ 5、ノード 30、
+ReAct 80 ステップ、ワーカー 4、120 分）が選ばれています。いずれかの項目を編集すると手動モードに
+切り替わります。下表の初回実行値は **Quick** プリセットの値です。
 
 | 設定 | 制御対象 | 初回実行の推奨値 |
 |------|---------|-----------------|
 | **Max Depth** | 探索ツリーの深さ | 3 |
 | **Max Nodes** | 実行する実験の総数 | 5〜10 |
-| **Max ReAct Steps** | 実験ごとの推論ステップ数 | 20（デフォルト） |
-| **Timeout (min)** | 実験ごとのタイムアウト（分） | 120（デフォルト） |
+| **Max ReAct Steps** | 実験ごとの推論ステップ数 | 20 |
+| **Timeout (min)** | 実験ごとのタイムアウト（分） | 30 |
 | **Parallel Workers** | 同時実行する実験数 | 2〜4 |
 
 > **ヒント:** 最初は小さく（ノード 5〜10、深さ 3）始めましょう。後からいつでも増やせます。
@@ -301,7 +308,11 @@ LLM プロバイダーとモデルを選択します：
 | `science_data.json` | クリーンなデータ（内部用語なし） |
 | `figures_manifest.json` | 生成された図表 |
 | `ear/` | Experiment Artifact Repository（コード、データ、ログ、再現性メタデータ） |
-| `experiments/` | ノードごとのソースコードと出力 |
+
+ノードごとの作業ディレクトリはチェックポイントの **中にはありません**。各ノードの作業領域、
+生成されたソース、出力は `./workspace/experiments/<run_id>/<node_id>/` — `checkpoints/` の
+兄弟ディレクトリ — に置かれるため、チェックポイントディレクトリだけをコピーすると置き去りに
+なります。
 
 ---
 
@@ -341,12 +352,16 @@ LLM プロバイダーとモデルを選択します：
 
 ### VLM 図レビュー
 
-- 図品質レビュー用の VLM モデル（デフォルト: `openai/gpt-4o`）を設定
-- レビューしきい値と最大反復回数を設定
+- 図品質レビュー用の VLM モデル（デフォルト: `openai/gpt-4o`）を設定 — このカードにあるのは
+  モデルのドロップダウンだけです
+
+レビューしきい値と最大反復回数はこのページには **ありません**。どちらもウィザードの項目
+（ステップ 3 — Resources）です。パイプライン自身の図ループは `workflow.yaml` でしきい値 0.7、
+再生成パス最大 2 回に固定されています。
 
 ### フェーズごとのモデルオーバーライド
 
-パイプラインのフェーズごとに異なるモデルを使用できます（例: アイデア生成にはより安価なモデル、論文執筆にはより高性能なモデル）。
+パイプラインのフェーズごとに異なるモデルを使用できます（例: アイデア生成にはより安価なモデル、論文執筆にはより高性能なモデル）。これらは Settings ページではなく、**新規実験** ウィザード（ステップ 3 — Resources）にあります。
 
 ---
 
@@ -362,7 +377,9 @@ LLM プロバイダーとモデルを選択します：
 
 ![Workflow エディタ: Save・Reload・Add Node・Reset to default のツールバー、編集中の workflow.yaml のパス、フェーズタグ付きステージノードの React Flow キャンバス、その下の Source / Edit ボタン付きステージ一覧](../../assets/images/ja/dashboard_workflow.png)
 
-アクティブなチェックポイントのパイプラインを編集する React Flow ビジュアル DAG エディタ。編集対象の `workflow.yaml` のパスがツールバー下に表示されます。ノードのドラッグ、エッジの描画、ステージの有効/無効化、スキル割当が可能で、各ステージはキャンバス下に **Source** / **Edit** ボタン付きで一覧されます。ノードにはフェーズ（`bfts` / `paper`）のタグが付き、**Save** で同じ `workflow.yaml` に書き戻されます。
+アクティブなチェックポイントのパイプラインを編集する React Flow ビジュアル DAG エディタ。ツールバー下に表示されるパスは *読み込まれた* `workflow.yaml` のものです。ノードのドラッグ、エッジの描画、ステージの有効/無効化、スキル割当が可能で、各ステージはキャンバス下に **Source** / **Edit** ボタン付きで一覧されます。ノードにはフェーズ（`bfts` / `paper`）のタグが付きます。
+
+**Save は表示されているパスには決して書き込みません。** ワークフローの書き込みは常にアクティブなチェックポイントへの copy-on-write です。`{checkpoint}/workflow.yaml` がまだ存在しなければ、同梱の `ari-core/config/workflow.yaml` がまずそこへコピーされ、編集はそのコピーに着地します。同梱ファイルが書き換えられることはなく、アクティブなチェックポイントがない場合は書き込み自体が拒否されます。
 
 ---
 
@@ -381,8 +398,8 @@ LLM プロバイダーとモデルを選択します：
 
 | エンドポイント | メソッド | 説明 |
 |---------------|---------|------|
-| `/state` | GET | アプリケーションの完全な状態: 現在のフェーズ（idle/idea/bfts/paper/review）、ノード数、実験設定、コストデータ、LLM モデル情報 |
-| `/api/logs` | GET (SSE) | `ari.log` と `cost_trace.jsonl` からのリアルタイムログの Server-Sent Events ストリーム |
+| `/state` | GET | アプリケーションの完全な状態: 現在のフェーズ（`idle`/`starting`/`bfts`/`paper`/`review` — `idea` という値はありません。フェーズはマーカーファイルから導出されるため、`idea.json` が存在した時点で `bfts` と報告されます）、ノード数、実験設定、コストデータ、LLM モデル情報 |
+| `/api/logs` | GET (SSE) | 該当ランの `ari_run_*.log` と `cost_trace.jsonl` からのリアルタイムログの Server-Sent Events ストリーム。1 つのハンドラは約 10 分間 tail してストリームを終了します — クライアントは再接続します |
 | `/memory/<node_id>` | GET | ノードのメモリストアエントリ（ツール呼び出しトレース、メトリクス、親チェーン） |
 | `/codefile?path=<path>` | GET | チェックポイントディレクトリ内のファイルを読み取り（チェックポイント範囲内に制限、最大 20MB） |
 
@@ -408,12 +425,12 @@ LLM プロバイダーとモデルを選択します：
 |---------------|---------|------|
 | `/api/settings` | GET | 現在の設定: LLM プロバイダー/モデル、Ollama ホスト、SLURM 設定、MCP スキル |
 | `/api/settings` | POST | 設定を `{checkpoint}/settings.json` と `.env` に保存（アクティブなプロジェクトが必要）。ボディ: `{llm_model, llm_provider, ollama_host, slurm_partition, ...}` |
-| `/api/env-keys` | GET | `.env` ファイルからのすべての API キーとソース情報 |
+| `/api/env-keys` | GET | `.env` チェーンで見つかったキー *名* と、それぞれの取得元ファイル。空でない値はすべて `***configured***` に置き換えられ、ペイロードは `redacted: true` を伴います — シークレットが HTTP 越しに配信されることはありません |
 | `/api/env-keys` | POST | 単一の API キーを保存: `{key, value}` |
 | `/api/profiles` | GET | 利用可能な環境プロファイル（laptop, hpc, cloud） |
 | `/api/models` | GET | 利用可能な LLM プロバイダーとモデル |
 | `/api/workflow` | GET | パイプラインステージとスキルメタデータを含む完全な workflow.yaml |
-| `/api/workflow` | POST | 変更された workflow.yaml を保存: `{path, pipeline}` |
+| `/api/workflow` | POST | 変更されたワークフローを保存: `{path, pipeline}`。`path` はベースとして読み込むファイルを指すだけで、書き込みは常に `{checkpoint}/workflow.yaml` に着地します。アクティブなチェックポイントがない場合は 400 で拒否されます |
 | `/api/skills` | GET | 利用可能な MCP スキルを説明付きで一覧表示 |
 | `/api/skill/<name>` | GET | スキルの詳細: README、SKILL.md、server.py ソース |
 
@@ -424,7 +441,7 @@ LLM プロバイダーとモデルを選択します：
 | `/api/chat-goal` | POST | 実験目標の精緻化のためのマルチターン LLM チャット: `{messages, context_md}` |
 | `/api/config/generate` | POST | 自然言語の目標から experiment.md を生成: `{goal}` |
 | `/api/ssh/test` | POST | SSH 接続テスト: `{ssh_host, ssh_port, ssh_user, ssh_key, ssh_path}` |
-| `/api/scheduler/detect` | GET | コンピューティング環境を自動検出（SLURM, PBS, LSF, Kubernetes） |
+| `/api/scheduler/detect` | GET | コンピューティング環境を自動検出（SLURM, PBS, LSF, SGE, Kubernetes） |
 | `/api/slurm/partitions` | GET | 利用可能な SLURM パーティション |
 | `/api/ollama-resources` | GET | GPU 情報（nvidia-smi）、利用可能な Ollama モデル |
 | `/api/gpu-monitor` | GET/POST | GPU モニターデーモンの開始/停止 |
@@ -472,11 +489,13 @@ ari paper ./workspace/checkpoints/20260328_matrix_opt/
 # ノードツリーとステータスを表示
 ari status ./workspace/checkpoints/20260328_matrix_opt/
 
-# すべてのプロジェクトを一覧表示
-ari projects
+# すべてのプロジェクトを一覧表示。以下の 2 つはどちらも既定が
+# ./workspace/checkpoints ではなく ./checkpoints なので、ベースディレクトリを
+# 明示的に渡してください。
+ari projects --checkpoints ./workspace/checkpoints
 
 # 詳細な結果を表示（ツリー + レビュー）
-ari show 20260328_matrix_opt
+ari show 20260328_matrix_opt --checkpoints-dir ./workspace/checkpoints
 
 # 利用可能なツールを一覧表示
 ari skills-list
@@ -484,22 +503,25 @@ ari skills-list
 
 ### 設定
 
+`ari settings` は設定 YAML を読み書きします。対象は `--config` を渡さない限り `./config.yaml` です。
+そのファイルが存在しない場合は終了コード 1 で終了し、ファイルを新規作成することはありません。
+
 ```bash
 # 現在の設定を表示
-ari settings
+ari settings --config ./config.yaml
 
 # モデルを変更
-ari settings --model openai/gpt-4o
+ari settings --config ./config.yaml --model openai/gpt-4o
 
-# SLURM オプションを設定
-ari settings --partition gpu --cpus 64 --mem 128
+# SLURM オプションを設定（`resources:` の下に書き込まれます）
+ari settings --config ./config.yaml --partition gpu --cpus 64 --mem 128
 ```
 
 ### 環境変数
 
 | 変数 | 説明 | デフォルト |
 |------|------|-----------|
-| `ARI_BACKEND` | LLM バックエンド: `ollama` / `openai` / `anthropic` | `ollama` |
+| `ARI_BACKEND` | LLM バックエンド: `ollama` / `openai` / `anthropic`（別名 `claude`） / `claude_code` / `cli-shim` | `ollama` |
 | `ARI_MODEL` | モデル名（例: `qwen3:8b`, `openai/gpt-4o`） | `qwen3:8b` |
 | `OPENAI_API_KEY` | OpenAI API キー | -- |
 | `ANTHROPIC_API_KEY` | Anthropic API キー | -- |

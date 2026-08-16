@@ -10,7 +10,53 @@ sources:
     role: implementation
   - path: ari-core/ari/pipeline/claim_gate
     role: implementation
-last_verified: 2026-08-06
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/node.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/node_report
+    role: implementation
+  - path: ari-core/ari/orchestrator/lineage_decision.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-core/ari/pipeline/orchestrator.py
+    role: implementation
+  - path: ari-core/ari/pipeline/experiment_md.py
+    role: implementation
+  - path: ari-core/ari/claim_gate_contract.py
+    role: implementation
+  - path: ari-core/ari/science_data_contract.py
+    role: implementation
+  - path: ari-core/ari/agent/run_env.py
+    role: implementation
+  - path: ari-core/ari/prompts/_provenance.py
+    role: implementation
+  - path: ari-core/ari/rqgm
+    role: implementation
+  - path: ari-core/ari/manuscript
+    role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/memory/file_client.py
+    role: implementation
+  - path: ari-core/ari/publish/__init__.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: ari-core/config/workflow.yaml
+    role: config
+  - path: ari-skill-coding/src/server.py
+    role: implementation
+  - path: ari-skill-transform/src
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-skill-paper/src/claim_links.py
+    role: implementation
+  - path: ari-skill-idea/src/server.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # File Formats Reference
@@ -28,7 +74,7 @@ For schemas formally specified as JSON Schema, see
 Plain Markdown with a single load-bearing convention: a
 `Metrics: <token>, <token>, ...` line that the deterministic helper
 `parse_metric_from_experiment_md`
-(`ari-core/ari/pipeline/experiment_md.py:31`) extracts as the fallback
+(`ari-core/ari/pipeline/experiment_md.py:30`) extracts as the fallback
 `primary_metric`.  See `docs/guides/experiment_file.md` for the full guide.
 
 After `generate_ideas` runs, the pipeline appends an idempotent block
@@ -40,32 +86,63 @@ delimited by:
 <!-- END AUTO-APPENDED -->
 ```
 
-Edit only the prose **above** the marker.
+Edit only the prose **above** the marker.  The append is gated on
+workflow.yaml's `plan_promote` (bundled default `index_only`; `full` writes the
+whole plan, any other value suppresses the block entirely), and it is skipped
+whenever the begin marker is already present, so pipeline retries never
+duplicate it.
 
 ## `idea.json`
 
-Output of `ari-skill-idea.generate_ideas`.  Lives at
-`{checkpoint}/idea.json` and seeds the BFTS run's plan.
+The **entire return value** of `ari-skill-idea.generate_ideas`, written
+verbatim to `{checkpoint}/idea.json` by the agent loop
+(`ari-core/ari/agent/loop.py`, the `generate_ideas` result handler) and
+seeding the BFTS run's plan.  In `ari_rqgm` mode the proposal store is the
+single writer instead and keeps `idea.json` as a projection of its records
+(see `proposals/` below).
 
-Top-level shape:
+Top-level shape (abridged — the tool returns more keys than this):
 
 ```json
 {
+  "gap_analysis": "...",
   "ideas": [
     {
       "title": "...",
+      "description": "...",
       "experiment_plan": "Markdown-formatted plan with §-tags",
-      "primary_metric": "GFlops/s",
-      "alternatives_considered": ["..."],
+      "novelty": "...", "feasibility": "...",
+      "novelty_score": 8, "feasibility_score": 7, "overall_score": 7.75,
+      "contract_status": "admitted",
+      "candidate_id": "...", "hypothesis": "...",
+      "falsification_conditions": ["..."],
+      "falsifiable_claims": [{"claim": "...", "required_evidence": ["..."]}],
+      "citations": ["..."], "limitations": ["..."],
       "_pinned": false
     }
-  ]
+  ],
+  "primary_metric": "GFlops/s",
+  "higher_is_better": true,
+  "metric_rationale": "...",
+  "typed_schema_version": "ari.research-contract/v1",
+  "contract_status": "admitted",
+  "idea_set": {...}, "idea_set_digest": "...",
+  "research_contract": {...}, "research_contract_digest": "...",
+  "survey_snapshot": {...}, "survey_snapshot_digest": "...",
+  "rejected_candidates": [...]
 }
 ```
 
+Note where the metric lives: `primary_metric` / `higher_is_better` /
+`metric_rationale` are **top-level** (the legacy projection of the typed
+`research_contract`), not per-idea.  An idea whose typed candidate was
+rejected carries `"contract_status": "rejected"` plus `rejection_reasons`
+instead of the admitted fields.
+
 Children pin a parent's chosen idea by setting `"_pinned": true` on
-the inherited entry; subsequent `generate_ideas` runs append new
-ideas after it without overwriting.
+the inherited entry; subsequent `generate_ideas` runs keep pinned entries
+at the front, drop newly generated ideas whose title matches a pinned one
+(case-insensitive, whitespace-normalised), and append the rest after them.
 
 ## `evaluation_criteria.json`
 
@@ -75,60 +152,96 @@ Pipeline-side cache derived from `idea.json` + experiment.md.
 {
   "primary_metric": "GFlops/s",
   "higher_is_better": true,
-  "metric_rationale": "..."
+  "metric_rationale": "...",
+  "metric_unit": "...",
+  "research_contract_digest": "sha256:..."
 }
 ```
 
-Source: `ari-core/ari/pipeline/orchestrator.py` (lines 98 ff. for the
-loader, 170 ff. for the fallback path).
+Written by `ari-core/ari/pipeline/driver.py` (`WorkflowDriver.run`'s
+pre-flight) and **only when the file does not already exist** — it is never
+refreshed mid-run.  Four sources are tried in order, first hit wins:
+the typed `research_contract` inside `idea.json` (which also fills
+`metric_unit` / `research_contract_digest`), a node's `memory_snapshot`
+`EVALUATION_CRITERIA:` line, `idea.json`'s legacy top-level
+`primary_metric` keys, then `parse_metric_from_experiment_md` over
+experiment.md.  A typed contract that fails to parse raises; every other
+source failure degrades silently to the empty string.
+Read back by `ari-core/ari/pipeline/orchestrator.py`
+(`nodes_to_science_data`'s ranking, ~line 73).
 
 ## `tree.json`
 
-Live BFTS state, rewritten on every node transition.  Shape:
+Live BFTS state, rewritten on each checkpoint flush — throttled to at most
+one write per second (`ari.checkpoint.save_tree_incremental`) unless the
+caller passes `force=True`, which terminal node transitions do.  Shape:
 
 ```json
 {
-  "schema_version": 1,
-  "root_node_id": "...",
-  "nodes": {
-    "<node_id>": {
+  "run_id": "...",
+  "experiment_file": "...",
+  "experiment_file_sha256": "<sha256[:16]>",
+  "experiment_file_len": 4211,
+  "created_at": "2026-07-10T10:34:32+00:00",
+  "nodes": [
+    {
       "id": "...",
       "parent_id": "...",
       "depth": 2,
-      "status": "running" | "completed" | "errored" | "pending",
-      "label": "draft" | "improve" | "debug" | "ablation" | "validation" | "other",
+      "status": "pending" | "running" | "success" | "failed" | "abandoned",
+      "retry_count": 0,
+      "children": ["<node_id>", ...],
+      "created_at": "...", "completed_at": "...",
+      "artifacts": [...],
       "metrics": {"GFlops/s": 312.4, ...},
-      "score": 0.74,
-      "children": ["<node_id>", ...]
+      "has_real_data": true,
+      "evaluation_cases": {...},
+      "evaluation_status": "valid",
+      "eval_summary": "...",
+      "label": "draft" | "improve" | "debug" | "ablation" | "validation" | "other",
+      "raw_label": "", "name": "",
+      "error_log": null,
+      "ancestor_ids": ["..."],
+      "trace_log": ["→ tool(args)", "← result", ...],
+      "original_direction": "...",
+      "producer_component_id": "", "producer_prompt_hash": "", "producer_epoch_id": "",
+      "node_report_path": "..."
     }
-  }
+  ]
 }
 ```
 
-`tree.json` is a *summary*; the per-node detail lives in
-`nodes_tree.json`.
+Two things surprise readers here.  `nodes` is a **list**, not a map keyed by
+node id — `root_node_id` does not exist, and the root is the entry whose
+`parent_id` is `null`.  And there is no `schema_version` and no per-node
+`score`: the ranking quantity lives inside `metrics` as `_scientific_score`.
+`Node.to_dict` additionally appends the typed scientific-provenance group
+(`knowledge_skill_refs` … `repair_allowed_changes`) only when at least one of
+those fields is non-empty, so those keys are absent on ordinary nodes.
 
 ## `nodes_tree.json`
 
-Full per-node detail consumed by `ari-skill-transform`,
-`ari-skill-plot`, the viz dashboard, and the EAR pipeline.  Shape
-matches `tree.json` but each node also carries:
+The same node list, consumed by `ari-skill-transform`, `ari-skill-plot`, the
+viz dashboard, and the EAR pipeline.  It is **not** a richer view than
+`tree.json` — the node dicts are the identical `Node.to_dict()` payload.
+The differences are at the edges:
 
 | Key | Meaning |
 |---|---|
-| `eval_summary` | LLM judge's natural-language verdict |
-| `metrics_with_metadata` | per-metric confidence + extractor code |
-| `has_real_data` | `true` when the evaluator confirmed real measurements |
-| `trace_log` | List of `{role, content}` records (LLM + tool messages) |
-| `work_dir` | Per-node working directory (relative to checkpoint root) |
-| `artifacts` | Files produced by the node, with sha256 |
+| `experiment_goal` | Top-level. The BFTS loop writes the first 3000 characters of `experiment.md`; the pipeline driver writes the full goal string it was given |
+| `nodes[].memory` | Added **only** by the pipeline driver's write (`ari-core/ari/pipeline/driver.py`): that node's memory entries, newest first, capped by `ARI_TRANSFORM_MEMORY_MAX_ENTRIES` (default 20) and each `text` truncated at `ARI_TRANSFORM_MEMORY_MAX_CHARS` (default 2000). The BFTS loop's own flush writes no `memory` key |
+
+Readers resolve the tree with the 3-tier precedence `tree.json` →
+`nodes_tree.json` → newest non-empty `node_*/tree.json` (the legacy layout),
+so a checkpoint that has both is read from `tree.json`.
 
 ## `full_log.json`
 
 Per-node full ReAct record, written into each node's `work_dir` at the node's
 completion. Like `node_report.json` it is in `PathManager.META_FILES`, so it is
 **never inherited** into child work dirs — each node writes its own. Shape:
-`{node_id, parent_id, depth, steps, tools[], messages[], trace_log[]}`.
+`{node_id, parent_id, depth, react_steps, max_react_steps, ended_by,
+trace_entries, tools[], messages[], auxiliary_llm_calls[], trace_log[]}`.
 
 - `tools` — the OpenAI function-calling schemas (name + description + parameters)
   the model was actually given, i.e. **how to use each tool**. The `AVAILABLE
@@ -137,13 +250,27 @@ completion. Like `node_report.json` it is in `PathManager.META_FILES`, so it is
 - `messages` — the **complete conversation**: the system prompt, the injected
   handoff (parent `summary` / `full_log` for the relevant arms), the task, and
   every user / assistant / tool turn (with tool-call names + arguments and
-  tool-call results). This is the full **input prompt AND output**, not just the
-  tool trace.
+  tool-call results), including the agent's final finish JSON (tagged `_finish`).
+  This is the full **input prompt AND output**, not just the tool trace.
+- `auxiliary_llm_calls` — the tool-less LLM calls made *about* this node after
+  the ReAct loop, principally the forced Reflection self-review at max steps.
 - `trace_log` — the concise tool-call trace (`→ tool(args)` / `← result`) for
-  quick scanning; `steps` is its length.
+  quick scanning; `trace_entries` is its length.
 
-`trace_log` is empty (`steps: 0`) for models that never call tools (e.g. the
-0.5b floor), but `messages` always shows the full prompt that was sent.
+There is no `steps` field, and the removal is the point: `steps` used to be
+`len(trace_log)` — **trace entries, i.e. two per iteration** (the call and its
+result) — with no budget recorded, so a node that burnt its entire 15-step
+budget logged `steps: 30` and read as 30-of-80 — 80 being the default at the
+time, since replaced by 20 — i.e. "plenty left", on a node that was in fact
+exhausted. Both counts are now kept and named
+for what they are: `react_steps` (iterations used) against `max_react_steps`
+(the budget), and `trace_entries` separately. `ended_by` says *how* the node
+stopped (`finish_json` = the agent concluded; `max_steps` = it ran out — a
+`success` on such a node is the framework scoring its work_dir, not the agent's
+own verdict).
+
+`trace_log` is empty (`trace_entries: 0`) for models that never call tools (e.g.
+the 0.5b floor), but `messages` always shows the full prompt that was sent.
 
 ## `node_report.json`
 
@@ -170,13 +297,26 @@ conditions below).
 | `what_was_done` | string | **The agent's own natural-language self-report**. Filled only when the node concluded (empty for weak models that cannot use tools) |
 | `metrics` | object | Evaluator-defined scalar measurements. The shared schema does not prescribe metric names or semantics. |
 | `measurement_valid` | bool | Objective evaluator verdict. Kept separate from the agent-authored reflection. |
+| `evaluation_status` | string | Typed evaluator outcome. Defaults to `valid` / `candidate_invalid` from `measurement_valid` when the evaluator named none. An `infrastructure_error` is **not** a scientific zero and excludes the run |
 | `evaluation_cases` | object | Evaluator cases as `{case_name: {valid, measurements}}`. Case names and JSON-scalar measurement keys are harness-defined; the shared schema assigns no task-specific meaning. |
+| `measurement_audit` | object | Evaluator-only audit record — `{effective_candidate_compile_flags, rejected_candidate_compile_flags, cases}`. Persisted but never rendered into parent→child handoff text |
 | `self_assessment` | object | `{headline, concerns}` from the agent's own LLM self-review (empty if none). |
-| `next_steps_hints` | string[] | The agent's own self-reviewed next steps (LLM self-review). Sole source under deterministic scoring (no graded axes); falls back to the evaluator's mid-range axis rationales under a rubric/judge scorer. Empty when the agent volunteered none. |
+| `self_report_stage` | string | `pre_evaluation` until the post-scoring self-review replaces `self_assessment` / `next_steps_hints`. Without it an evaluator-informed self-report is indistinguishable from a guess the agent made before it was scored |
+| `migration_source` | string | `fresh` for a report the builder wrote, otherwise the migration that produced it |
+| `compute_env` | object | The assembled machine view the metric-gaming adversary reads: `executor` / `cpu_info` / `mem_total_kb` / `compilers` / `hostname` plus `env_signature`, `parent_env_signature` and `env_signature_mismatch` |
+| `next_steps_hints` | string[] | The agent's own self-reviewed next steps (LLM self-review). They **replace** the evaluator-derived list whenever the agent volunteered any; the evaluator's mid-range axis rationales are the fallback, and under deterministic scoring (no graded axes) that fallback is itself empty. |
 | `build_command` / `run_command` | string | Operational scaffold (build / run commands) |
-| `artifacts` | object[] | Produced artifacts `[{filename, role}]` |
+| `artifacts` | object[] | Produced artifacts. `filename` + `role` (`data_output` / `log` / `binary` / `figure` / `unknown`) are required; `sha256` / `size` are added whenever the file could be stat'd, and `inline: true` marks a captured-stdout blob with no file on disk (the provenance audit skips those rather than reporting a phantom missing artifact). Beyond what the agent declared, the builder auto-captures top-level work_dir files whose role is `data_output` / `log` / `figure` — so scaffolding source, compiled binaries and ARI-internal JSON stay out. The claim gate binds a measurement document's `artifact_digests` against these `sha256` values |
 | `evaluator_reason` | string | The deterministic evaluator's verdict reason |
 | `trace_log_summary` | string | Summary of the execution trace |
+
+The typed scientific-assurance group (`knowledge_skill_refs`,
+`instruction_identity_digest`, `capability_binding_lock_digest`,
+`bound_tool_refs`, `assurance_status` / `assurance_tier`, the harness-lock and
+attestation digests, `property_verdicts`, `frontier_class`, and the
+manuscript-repair lineage fields) is grafted on by
+`ari-core/ari/orchestrator/node_report/scientific_assurance.py`. It is declared
+optional in the schema and stays empty on the compatibility path.
 
 ### Exploration labels (always recorded)
 
@@ -198,8 +338,8 @@ role/task; selection ignores labels). Labels are still recorded then — so a re
 
 | Field | Meaning |
 |---|---|
-| `label` | BFTS exploration role: `draft` / `improve` / `debug` / `ablation` / `validation` / `other`. Inert (not used by scoring or selection). With `ARI_BFTS_DETERMINISTIC_LABEL=1` it is derived deterministically from the direction |
-| `raw_label` | Kept only when `label==other` (the original LLM-proposed label); empty for the canonical five |
+| `label` | BFTS exploration role: `draft` / `improve` / `debug` / `ablation` / `validation` / `other`. **Not inert** — it drives the three sites above unless `ARI_BFTS_NO_LABEL` turns the feature off. With `ARI_BFTS_DETERMINISTIC_LABEL=1` it is derived deterministically from the direction instead of being LLM-proposed |
+| `raw_label` | The planner's **verbatim** proposed label string, kept whenever the LLM returned one — including when it mapped cleanly onto one of the canonical five (a proposed `"Improve"` yields `label: "improve"`, `raw_label: "Improve"`). It is only the node's *display name* that falls back to `raw_label` exclusively for `other`. Empty when the label was inferred from the direction text rather than proposed, and forced empty by `ARI_BFTS_DETERMINISTIC_LABEL=1` |
 | `original_direction` | The direction text the parent's expand assigned to this child |
 
 ### Optional group 2: run-environment provenance
@@ -286,84 +426,188 @@ unused — that field is populate-as-needed, not suppressed.)
 
 ## `results.json`
 
-Final aggregated results emitted at run completion.
+Written at the checkpoint root by the same flush that writes `tree.json` /
+`nodes_tree.json`, so it is not a run-completion-only artifact:
 
 ```json
 {
   "run_id": "...",
-  "experiment_goal": "...",
-  "primary_metric": "GFlops/s",
-  "best_node": {"id": "...", "metrics": {...}, "score": 0.91},
   "nodes": {
-    "<node_id>": {"metrics": {...}, "has_real_data": true, ...}
+    "<node_id>": {
+      "artifacts": [...],
+      "metrics": {...},
+      "has_real_data": true,
+      "eval_summary": "...",
+      "status": "success",
+      "error_log": null
+    }
   }
 }
 ```
 
-Per-node `results*.json` files written by `ari-skill-coding.emit_results`
-may also carry an optional `_provenance` key — an `{operand: source}`
-map tagging where each reported value came from (`microbench` /
-`benchmark` for a measured ceiling, `correctness` / `reference` for a
-verification residual, `declared` / `constant` otherwise). The key is
-omitted when empty. The claim-evidence hard gate reads it (via
-`science_data.json` → `configurations[]._provenance`) to confirm a
-measured ceiling or a correctness check was actually run.
+There is no `experiment_goal`, no `primary_metric` and no `best_node` here —
+"which node won" is not recorded in this file; it is recomputed on demand by
+`select_best_node` (see `verified_context.json`).
+
+The same basename means something **different** inside a node's work_dir: the
+agent writes `{node work_dir}/results.json` via `ari-skill-coding.emit_results`,
+and the claim gate reads it back from there. That is why `results.json` is the
+one entry in `PathManager.META_FILES` that `NODE_VISIBLE_NAMES` un-claims at
+`scope="node"`.
+
+Those per-node `results*.json` files are a typed measurement document, not a
+free-form dict:
+
+```json
+{
+  "schema_version": "1.0",
+  "typed_schema_version": "ari.measurement-set/v1",
+  "measurement_set": {
+    "schema_version": "ari.measurement-set/v1",
+    "parameters": {...},
+    "measurements": [
+      {"metric_id": "gflops", "value": 312.4, "unit": "GFlops/s",
+       "unit_status": "declared", "provenance": "benchmark",
+       "parameters": {...}, "artifact_digests": ["sha256:…"],
+       "execution_identity": "...", "execution_attempt_id": "...",
+       "execution_status": "completed", "exit_code": 0}
+    ],
+    "predictions": {...}, "scores": {...},
+    "artifact_digests": ["sha256:…"]
+  }
+}
+```
+
+Provenance is a **per-measurement `provenance` string**, not a top-level
+`_provenance` map: `microbench` / `benchmark` for a measured ceiling,
+`correctness` / `reference` for a verification residual, `declared` /
+`constant` otherwise. `ari-skill-transform` is what turns those strings into
+the `{operand: source}` map the hard gate reads — it unions them across every
+`results*.json` variant in the node dir and publishes them as
+`configurations[]._provenance` in the `science_data.json` projection, so a
+non-default `emit_results` filename still surfaces its evidence. The gate uses
+that to confirm a measured ceiling or a correctness check was actually run.
 
 ## `science_data.json`
 
 Paper-facing science surface built by
 `ari-skill-transform.nodes_to_science_data` from the executed-node
-evidence. Beyond `configurations[]` / `experiment_context` /
-`summary_stats`, it carries the Research Contract substrate the
-claim-evidence hard gate verifies:
+evidence. On disk it is a typed `ari.science-data/v1` document
+(`ari-core/ari/schemas/science_data_v1.schema.json`) with three sections
+plus digests, **not** a flat object:
+
+| Key | Meaning |
+|---|---|
+| `raw` | `configurations[]` (per-node parameters / measurements / measurement_records / scores / environment / `provenance_labels`), `measurement_status`, `node_report_status`, `tree_artifact`, `raw_digest` |
+| `derived` | `claims`, `numeric_assertions`, `metric_summaries`, `summary_stats`, `anomalies`, `formula_registry_digest`, `derived_digest` |
+| `interpretation` | The single LLM-authored section — `experiment_context`, `implementation_overview`, `evaluation_protocol`, plus its own model/prompt provenance and `interpretation_digest` |
+| `metric_contract` | Top-level. The idea-owned metric-correctness contract grafted from `metric_contract.json` (see below), so the gate enforces the *declared* contract, not just the universal invariant registry |
+| `provenance` / `limitations` / `run_id` / `migration_status` | Top-level. Input artifacts, skills/catalog locks, and what the run could not establish |
+| `deterministic_digest` / `science_data_digest` | Top-level self-digests: the first covers `raw`+`derived`+contract, the second the whole document |
+
+Inside `derived`:
 
 | Key | Meaning |
 |---|---|
 | `claims` | Candidate claims deterministically derived from node evidence; each anchors to real `node_id` + `metric_path`. Prose is a templated seed the paper writer rewrites while preserving `% CLAIM:Cx:NCx` anchors. |
 | `numeric_assertions` | Operand/formula records the hard gate re-derives and compares against the paper-reported number within tolerance. |
-| `metric_contract` | The idea-owned metric-correctness contract grafted from `metric_contract.json` (see below), so the gate enforces the *declared* contract, not just the universal invariant registry. |
 
-`_config_nodes`, `_anomalies`, and `_anomalous_metrics` are internal
-(underscore-prefixed) annotations and are not part of the paper-facing
-surface.
+The **flat** surface — top-level `configurations[]` / `per_key_summary` /
+`summary_stats` / `claims` / `numeric_assertions`, with the internal
+underscore-prefixed `_config_nodes` / `_anomalies` and per-configuration
+`_provenance` — is a read-time *projection*
+(`ari.science_data_contract.science_data_projection`) that the hard gate, the
+paper skill and the viz layer each compute for themselves. It is not what the
+file contains, so a consumer that reads the raw JSON must go through the
+projection or address the typed sections directly. `_anomalous_metrics`
+survives neither: the transform skill stamps it on its intermediate
+per-configuration dicts to steer the paper writer away from a
+physically-impossible value, and `ScienceConfigurationV1` has no such field, so
+it reaches neither the file nor the projection — the anomaly is preserved only
+in `derived.anomalies`.
 
 ## `metric_contract.json`
 
 The idea-owned metric-correctness contract emitted by
 `make_metric_spec` (ari-skill-evaluator) and written to
 `{checkpoint}/metric_contract.json` next to `idea.json` / `tree.json`,
-so `nodes_to_science_data` can graft it onto `science_data.json`. All
-expressions are restricted-AST (see
-`ari-core/ari/pipeline/claim_gate/formula_eval.py`).
+so `nodes_to_science_data` can graft it onto `science_data.json`. The
+persisted document is the canonical `ari.metric-gate-contract/v1`
+projection (`ari-core/ari/schemas/metric_gate_contract_v1.schema.json`),
+which nests the contract rather than spelling it flat:
 
 ```json
 {
-  "key": "<metric the paper reports>",
-  "formula": "geomean(gflops_byK / ceiling_byK)",
-  "ceiling_select": "cache_bw if effective_bw > dram_peak_bw else dram_peak_bw",
-  "invariants": ["value <= 1", "model_sec <= sec"],
-  "correctness": {"expr": "max_abs_err < 1e-4", "requires": ["max_abs_err"]},
-  "required_measured": ["dram_peak_bw", "cache_bw", "ceiling_byK"],
-  "claims": [{"claim": "...", "required_evidence": ["thp_on_tput", "thp_off_tput"]}],
-  "correctness_required": true,
-  "ceiling_must_be_measured": true,
-  "tolerance": {"absolute": 0.0, "relative": 0.02}
+  "schema_version": "ari.metric-gate-contract/v1",
+  "source": "research-contract" | "human-admitted" | "legacy-migrated",
+  "source_idea_digest": "sha256:...",
+  "projection_digest": "sha256:...",
+  "research_contract_digest": "sha256:...",   // only when source == research-contract
+  "metric_contract": {
+    "schema_version": "ari.metric-contract/v1",
+    "contract_digest": "sha256:...",
+    "name": "<metric the paper reports>",
+    "unit": "...", "direction": "higher",
+    "comparison_scope": "same-environment",
+    "rationale": "...",
+    "required_evidence": ["thp_on_tput", "thp_off_tput"],
+    "required_measured": ["dram_peak_bw", "cache_bw", "ceiling_byK"],
+    "formula": "geomean(gflops_byK / ceiling_byK)",
+    "operands": {"gflops_byK": "...", "ceiling_byK": "..."},
+    "invariants": ["value <= 1", "model_sec <= sec"],
+    "correctness": {"expr": "max_abs_err < 1e-4", "requires": ["max_abs_err"]},
+    "correctness_required": true,
+    "normalization_ceiling": "measured",
+    "tolerance": {"absolute": 0.0, "relative": 0.02},
+    "formula_provenance": {...},
+    "confidence": 0.9,
+    "admission_status": "admitted"
+  },
+  "claims": [{"claim": "...", "required_evidence": ["thp_on_tput", "thp_off_tput"]}]
 }
 ```
 
+The gate mathematics still consumes a **flat** contract, so the gate translates
+before it evaluates: when `science_data["metric_contract"]` carries
+`schema_version: "ari.metric-gate-contract/v1"` it is parsed and replaced
+in-memory by `MetricGateContractV1.gate_projection()`, which flattens it to
+`key` / `unit` / `direction` / `comparison_scope` / `formula` /
+`formula_operands` / `tolerance` / `claims` / `correctness_required` /
+`ceiling_must_be_measured` / `required_measured` / `invariants` /
+`correctness`. Two things follow. `ceiling_must_be_measured` is *derived*
+(`normalization_ceiling == "measured"`) rather than declared. And
+`ceiling_select` — the declared regime conditional `contract.check_contract`
+still supports — has no field in the canonical document and no entry in the
+projection, so it only ever reaches the gate on a legacy flat contract.
+
+Recognising the canonical schema version is also what switches the gate into
+**strict evidence** mode, in which findings that would otherwise be advisory
+become errors. All expressions are restricted-AST (see
+`ari-core/ari/pipeline/claim_gate/formula_eval.py`), and none of the machinery
+knows any roofline / GFLOP / cache semantics — every predicate is declared per
+experiment.
+
 `correctness_required` / `ceiling_must_be_measured` are idea-owned flags
-the agent cannot drop; they are satisfied by an EVIDENCE tag in
-`results.json._provenance` (a measured-source ceiling, a
-correctness-source residual), never by an agent-declared name. Source:
+the agent cannot drop; they are satisfied by an EVIDENCE tag in a node's
+`results.json` measurement provenance (a measured-source ceiling, a
+correctness-source residual), never by an agent-declared name. Matching is
+deliberately tolerant — the gate looks for a substring root
+(`bench` / `measur` / `empiric` / `stream` / `baseline` for measured;
+`correct` / `verif` / `referenc` / `valid` / `gold` / `truth` / `oracle` /
+`ground_truth` for correctness) so an honest run that paraphrases the tag is
+not over-blocked. Source:
 `ari-core/ari/pipeline/claim_gate/contract.py`.
 
-The file is **mint-once**: it is immutable after the first claims-bearing
-mint. A later `make_metric_spec` call returns the persisted contract
-verbatim (the response carries `contract_frozen: true`) instead of
-re-extracting — LLM naming is not referentially stable, so a mid-run
-regeneration would mint a new evidence vocabulary and hide evidence already
-emitted under the old names from the exact-match gate. Scaffold-only
-contracts (no `claims`) do not freeze.
+The file is **mint-once**: `_persist_metric_projection` refuses to overwrite an
+existing contract whose `projection_digest` differs, and a later
+`make_metric_spec` call returns the persisted contract verbatim (the response
+carries `contract_frozen: true`) instead of re-extracting — LLM naming is not
+referentially stable, so a mid-run regeneration would mint a new evidence
+vocabulary and hide evidence already emitted under the old names from the
+exact-match gate. With no admitted idea contract and no human-reviewed
+proposal, `make_metric_spec` mints nothing at all: it returns
+`contract_frozen: false` with `admission_status: "human-review-required"` and
+points at `propose_metric_contract`.
 
 ## `verified_context.json`
 
@@ -377,8 +621,10 @@ The best node is `select_best_node`'s winner: nodes logically erased by
 RQGM selective erasure (`metrics._valid_for_frontier: false`) are
 excluded, and if every candidate is erased there is no winner and no
 file. A previously written `verified_context.json` whose `best_node_id`
-no longer matches the fresh winner is deleted rather than left to ground
-the paper on a since-erased lineage.
+**or** whose (erasure-filtered) `lineage` no longer matches the fresh result
+is deleted rather than left to ground the paper on a since-erased lineage;
+when both still match it is kept, so a transient memory-backend failure does
+not discard a still-valid artifact.
 
 ```json
 {
@@ -402,10 +648,16 @@ again after `paper_refine` (final).
 
 | Key | Meaning |
 |---|---|
-| `paper_claim_links` | Anchor-keyed records (`claim_id` / `numeric_id` / `section` / `span_hash` / `line_range` / figures). The **anchor** is the stable key that survives refine/render; `span_hash` detects sentence changes. |
-| `numeric_mentions` | Every numeric token in the paper, classified (`result_claim` / `experimental_setting` / `citation_year` / `figure_table_ref` / `ambiguous`) with section attribution and a `requires_assertion` flag. |
+| `paper_claim_links` | Anchor-keyed records (`anchor` / `claim_id` / `numeric_id` / `section` / `span_hash` / `line_range` / `figures` / `resolved`). The **anchor** is the stable key that survives refine/render; `span_hash` detects sentence changes. |
+| `numeric_mentions` | Every numeric token in the paper, classified (`result_claim` / `experimental_setting` / `citation_year` / `figure_table_ref` / `figure_evidence` / `ambiguous`) with section attribution and a `requires_assertion` flag. Only `result_claim` sets that flag; `figure_evidence` is a post-pass reclassification of numbers on lines the figures manifest accounts for, and it clears it. |
+| `writer_assertions` | Forward declarations the writer inlined on the anchor line itself (`metric=` / `formula=` / operand-role `key=value` tokens). `dropped_declarations` records every anchor whose declaration was *not* admitted — most commonly "no inline `formula=`", i.e. a forward reference to pre-generated evidence — and `suspect_declarations` the admitted-but-doubtful ones. Both are kept so a dropped declaration is visible rather than merely missing. |
 | `figure_refs` | Figure ids actually referenced in the paper (figure binding is recorded here; `science_data.json` is never mutated). |
 | `unresolved_anchors` / `uncovered_numeric_candidates` | Diagnostics the hard gate consumes. |
+| `counts` | Fixed roll-up (`anchors`, `resolved_anchors`, `writer_assertions`, `dropped_declarations`, `suspect_declarations`, `numeric_mentions`, `result_claim_mentions`, `uncovered_numeric_candidates`, `figure_refs`) that finalize reads instead of re-deriving. |
+
+The document is self-identifying and self-digesting: `schema_version:
+"ari.paper-claim-links/v1"`, `stage: "link_paper_claims"`, `paper_digest` over
+the LaTeX it read, and `claim_links_digest` over the whole record.
 
 ## `evaluation/claim_evidence_hard_gate_{draft,final}.json`
 
@@ -416,38 +668,80 @@ numeric coverage, figure existence, and the declared `metric_contract` —
 it checks transcription/derivation consistency between the paper and the
 recorded results, **not** the truthfulness of the results themselves.
 
+The report is the typed `ari.gate-report/v1` document
+(`ari-core/ari/schemas/gate_report_v1.schema.json`), written sorted-key and
+digest-bound:
+
 ```json
 {
+  "schema_version": "ari.gate-report/v1",
+  "report_digest": "sha256:...",
   "gate": "claim_evidence_hard_gate",
-  "phase": "final",
-  "policy": "strict" | "warn",
-  "status": "...",
+  "source_run_id": "...",
+  "phase": "draft" | "final",
+  "policy_mode": "off" | "warn" | "strict",
+  "comparison_scope": "any" | "same_environment",
+  "status": "passed" | "warn" | "failed",
   "should_block": true,
-  "errors": [...],
-  "warnings": [...],
+  "policy_digest": "sha256:...",
+  "evidence_digest": "sha256:...",
+  "formula_provenance": {"registry_digest": "sha256:...", "formulas_used": [],
+                         "metric_contract_digest": null, "unit_conversions": []},
+  "blocking_findings": [{"schema_version": "ari.gate-finding/v1",
+                         "severity": "blocking", "type": "numeric_mismatch",
+                         "message": "...", "claim_id": null, "numeric_id": null,
+                         "node_id": null, "artifact_path": null, "details": {}}],
+  "advisory_findings": [...],
   "metrics": {"total_claims": 0, "grounded_claims": 0, ...}
 }
 ```
 
+Note the renames: the policy field is `policy_mode` (not `policy`), and the
+finding lists are `blocking_findings` / `advisory_findings` (not `errors` /
+`warnings`). The model cross-validates its own outcome — a `passed` report may
+carry no findings at all, a `failed` one must carry a blocking finding, and
+`should_block` is rejected outright unless `phase == "final"`, `policy_mode !=
+"off"` and at least one blocking finding exists. `metrics` must be finite
+numbers, so a division-by-zero rate is stored as `0.0` / `1.0`, never `NaN`.
+
 The MCP wrapper turns `should_block` (set only at `phase: final` under
-strict policy, or on objective-falsehood findings) into a hard pipeline
-failure so finalize is skipped. Source:
-`ari-core/ari/pipeline/claim_gate/gate.py`.
+strict policy, or on objective-falsehood findings from the policy's
+`always_block_on` set) into a hard pipeline failure so finalize is skipped.
+Source: `ari-core/ari/pipeline/claim_gate/gate.py`.
 
 ## `evaluation/evidence_grounded_semantic_review.json`
 
 Non-blocking, evidence-grounded semantic review written by
-`ari-skill-evaluator.evidence_grounded_semantic_review`. It detects
+`ari-skill-evaluator.evidence_grounded_semantic_review` as the typed
+`ari.semantic-review/v1` document
+(`ari-core/ari/schemas/semantic_review_v1.schema.json`). It detects
 over-claiming / interpretation issues grounded in the hard-gate evidence
-and emits `suggested_revisions` for `paper_refine`. Never blocks the
-pipeline; on any error it returns an empty (`status: "ok"`) review. The
-post-refine pass writes the
-`evidence_grounded_semantic_review_post_refine.json` variant alongside it.
+and emits `suggested_revisions` for `paper_refine`.
+
+`status` distinguishes three outcomes, and only one of them means the review
+ran clean: `ok` (ran, nothing found), `revise` (findings and/or revisions), and
+**`unavailable`** — the value used for *every* failure path, including a
+missing paper file, an LLM error, and a reply that carried no JSON object.
+Reading `unavailable` as "no problems" is exactly backwards; the accompanying
+`note` says which failure it was. Never blocks the pipeline: the review is
+digest-bound to the hard-gate report it read (`hard_gate_report_digest`), and
+the tool re-reads that file afterwards and raises if its bytes changed, so an
+advisory review cannot mutate the hard-gate result.
+
+The output filename carries the `phase`: `initial` / `draft` write the base
+`evidence_grounded_semantic_review.json`, and any other phase appends its own
+suffix (`..._post_refine.json` for `phase: post_refine`). A suffixed run reads
+the base file back as `previous` to compute `score_delta` /
+`resolved_overclaim_count`.
 
 ## `lineage_decisions.jsonl` (v0.7.0)
 
-Append-only log of stagnation-rule decisions.  One JSON record per
-line:
+Append-only log of lineage decisions.  One JSON record per line.  Three
+writers share the file and `trigger` disambiguates them: `append_decision_log`
+(`stagnation_rule` / `every_node` / `manual`), `append_root_selection_log`
+(`root_idea_selection`, whose `decision.action` is `root_swap` / `root_keep`),
+and the `ari_rqgm` ProposalRouter (`proposal_router`, whose `decision` carries
+`event` / `generator` / `record_ids`).  The stagnation form:
 
 ```json
 {"ts": 1752143672.418, "ts_iso": "2026-07-10T10:34:32Z",
@@ -461,8 +755,12 @@ Decisions: `continue` / `switch_to_idea` / `fanout` / `terminate`.
 Source: `ari-core/ari/orchestrator/lineage_decision.py`. The `decision`
 value is an object — `LineageDecision.to_dict()`, i.e. `action`,
 `target_idea_index`, `disable_generate_ideas`, `rationale` — and
-`state` is the compact snapshot `_state_for_log` builds, with the long
-context blocks stripped.
+`state` is the compact snapshot `_state_for_log` builds
+(`active_idea_title` / `active_idea_index` / `nodes_explored` /
+`budget_remaining` / `best_axis_scores` / `recent_composite_scores` /
+`alternatives` / `venue_constraints_present` / `ancestor_thread_present`),
+with the long context blocks stripped. An optional `extra` object carries
+per-trigger detail.
 
 `disable_generate_ideas` is **recorded but inert**. On a
 `switch_to_idea` / `fanout` record, `ari-core/ari/cli/lineage.py`
@@ -1078,65 +1376,129 @@ lineage and status rules are in the
 
 ## `settings.json`
 
-Per-checkpoint settings used by the viz dashboard.
+Per-checkpoint settings used by the viz dashboard, at
+`PathManager.project_settings_path(checkpoint)`.  It is the **flat** object the
+dashboard POSTs to `/api/settings`, written verbatim — there is no nesting:
 
 ```json
 {
-  "model": "ollama/qwen3:32b",
-  "provider": "ollama",
-  "hpc": {"partition": "your_partition", "cpus": 64},
-  "registries": [
-    {"name": "default", "url": "http://127.0.0.1:8290", "token_env": "ARI_REGISTRY_TOKEN"}
-  ]
+  "llm_provider": "ollama",
+  "llm_model": "qwen3:32b",
+  "ollama_host": "http://127.0.0.1:11434",
+  "temperature": 0.7,
+  "retrieval_backend": "semantic-scholar",
+  "slurm_partition": "your_partition",
+  "slurm_cpus": 64,
+  "slurm_walltime": "01:00:00",
+  "container_mode": "off",
+  "model_idea": "...", "model_bfts": "...", "model_coding": "..."
 }
 ```
 
-API keys are **never** stored here — they live in `.env` files
-(search order: checkpoint → ARI root → ari-core → home).
+`GET /api/settings` returns `{**built-in defaults, **saved}`, and unknown saved
+keys pass straight through, so the file is a partial override rather than a
+complete document.  A save with no active checkpoint is refused (HTTP 400):
+settings are project-scoped only, and there is no global `~/.ari/settings.json`
+fallback.  The full response schema is
+`ari-core/ari/schemas/viz_settings.schema.json`.
+
+API keys are **never** stored here — `POST /api/settings` pops `api_key` /
+`llm_api_key` out of the payload before writing and upserts the provider's
+variable into a `.env` instead (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
+`GOOGLE_API_KEY`), owner-only (0600) and written atomically.  Startup reads
+`.env` files in the order checkpoint → ARI root → ari-core → home, first-set
+wins, and shell exports outrank all of them.
+
+Publish/registry configuration does **not** live here today: `ari ear publish`
+resolves `$ARI_PUBLISH_SETTINGS`, else the deprecated `~/.ari/publish.yaml`
+(which warns when consulted).  A `publish` section inside
+`{checkpoint}/settings.json` is the announced v1.0 replacement, not a path the
+code reads yet.
 
 ## `workflow.yaml`
 
 Pipeline definition consumed by `ari-core/ari/pipeline/yaml_loader.py`.
-Each stage names the skill + tool to call and any inputs / outputs.
+The stage list lives under the top-level key **`pipeline:`** (the BFTS-phase
+display rows are a separate `bfts_pipeline:` list), each entry is keyed by
+**`stage:`** rather than `name:`, and `inputs` / `outputs` are mappings, not
+lists:
 
 ```yaml
-stages:
-  - name: idea_generation
-    skill: idea
-    tool: generate_ideas
-    inputs:
-      - experiment.md
-    outputs:
-      - idea.json
-  - name: bfts
-    skill: orchestrator
-    ...
+pipeline:
+- stage: search_related_work
+  segment: evidence
+  skill: web-skill
+  tool: search_papers
+  description: Recorded deterministic literature retrieval -> related_refs.json
+  depends_on: []
+  enabled: true
+  phase: paper
+  inputs:
+    query: '{{keywords}}'
+  params:
+    provider: semantic-scholar
+    max_results: 15
+  outputs:
+    file: '{{checkpoint_dir}}/related_refs.json'
+  skip_if_exists: '{{checkpoint_dir}}/related_refs.json'
 ```
 
-Bundled defaults live in `ari-core/config/workflow.yaml` (the package config root returned by `package_config_root()`).
+`load_pipeline` returns only stages with `enabled != false`;
+`load_disabled_stage_names` returns the complement so a `depends_on` pointing
+at a deliberately disabled stage does not cascade-skip its consumers.  Some
+rows are display-only and carry `tool: ''` (evaluation, for instance, is owned
+by ari-core's in-process BFTS evaluator and is not an MCP tool).
 
-## `memory_store.jsonl` / `memory_backup.jsonl.gz`
+Bundled defaults live in `ari-core/config/workflow.yaml` (the package config
+root returned by `package_config_root()` — `ari-core/config/`, a sibling of
+`ari/`).  The legacy filename `pipeline.yaml` is still accepted, but only when
+`workflow.yaml` is absent from the same directory.
+
+## `memory_store.jsonl` / `memory_backup.v1.json.gz`
 
 Memory backend artefacts written under `ARI_CHECKPOINT_DIR`:
 
 | File | Backend | Notes |
 |---|---|---|
-| `memory_store.jsonl` | `file` | Legacy v0.5 format, line-delimited JSON entries |
-| `memory_backup.jsonl.gz` | `letta` | Portable snapshot (auto on stage boundary + exit) |
+| `memory_store.jsonl` | `file` | Legacy v0.5 format. Despite the `.jsonl` name it is a **single JSON array** rewritten whole on every `add()`, not line-delimited — `FileMemoryClient` `json.loads` the entire file. Entries are `{content, metadata, ts}` |
+| `memory_backup.v1.json.gz` | `letta` | Portable snapshot: gzipped canonical JSON (sorted keys, no whitespace), one document — **not** JSONL. Written by the on-exit `atexit` hook and by the explicit `ari memory backup` / `ari memory migrate` commands; there is no stage-boundary trigger |
 | `memory_access.jsonl` | any | Append-only telemetry of writes / reads |
 
-Snapshot record shape:
+Backup document (`ari-core/ari/schemas/memory_backup_v1.schema.json`):
+`{schema_version, records[], react_entries[], core_context, record_digests[],
+record_order[], backup_digest}`.  `records` are sorted by `record_digest` so
+the file is byte-stable; `record_order` preserves the order they were read in.
+A record whose runtime entry carries no versioned `memory_record` aborts the
+backup rather than being silently downgraded.
+
+Snapshot record shape (`MemoryRecordV1`):
 
 ```json
 {
-  "node_id": "...",
-  "ancestor_ids": ["..."],
-  "kind": "node_scope" | "react_trace",
+  "schema_version": "...",
+  "record_id": "...",
+  "record_digest": "sha256:...",
+  "kind": "observation" | "experiment_result" | "failure_case" | "procedure"
+        | "reflection" | "artifact_summary" | "paper_claim" | "reproducibility_event",
   "text": "...",
-  "metadata": {...},
-  "ts": "..."
+  "source_node_id": "...",
+  "source_run_id": "...",
+  "ancestor_node_ids": ["..."],
+  "attributes": {...},
+  "confidence": 0.8,
+  "artifact_refs": [{"relative_path": "...", "digest": "...", "role": "...",
+                     "size_bytes": 0, "integrity_status": "..."}],
+  "metric_ptr": {"name": "...", "value": 0.0, "unit": "..."},
+  "node_report_ref": {"run_id": "...", "node_id": "...", "digest": "..."},
+  "repro_status": "unverified" | "rerun_passed" | "rerun_failed" | "paper_only_reproduced",
+  "repro_target_id": null,
+  "created_by_tool_ref": "..."
 }
 ```
+
+The ReAct trace is a **separate** list, not a `kind`: `react_entries[]` holds
+`MemoryReactEntryV1` records (`{content, metadata, ts, entry_digest}`), sorted
+by digest.
 
 ## EAR bundle (v0.7.0)
 
@@ -1144,21 +1506,40 @@ Snapshot record shape:
 is the curated subset published to a backend.  The trust anchor is:
 
 ```
-ear_published/
-├── manifest.lock         # canonical JSON, files-only sha256 + bundle_sha256
-├── publish_record.json   # backend, ref, sha256, visibility
-└── ...                   # curated artefacts
+{checkpoint}/
+├── ear_published/
+│   ├── manifest.lock     # canonical JSON, per-file sha256 + bundle_sha256
+│   └── ...               # curated artefacts
+└── publish_record.json   # backend, ref, bundle_sha256, visibility, timestamp
 ```
 
-`manifest.lock` schema: `ari-core/ari/schemas/publish.schema.json`.
-The `bundle_sha256` must equal the `\codedigest{...}` macro baked
+`publish_record.json` lives at the **checkpoint root**, not inside
+`ear_published/`, and `ari ear publish` writes it only after curation; its
+fields are `backend` / `ref` / `bundle_sha256` / `visibility` / `timestamp` /
+`dry_run` / `extra`.  A first publish is always `visibility: "staged"` —
+`ari ear promote` is what moves it to `public`.
+
+Curation is recoverable rather than in-place: it builds a temporary directory,
+writes `manifest.lock` into it, and swaps it over `ear_published/` via two
+`os.replace` calls, restoring the previous bundle if the final rename fails.
+
+`manifest.lock` is an `ari.ear-manifest/v2` document —
+`{schema_version, version, checkpoint_id, created_at, publish{...}, files[],
+excluded_count, bundle_sha256, policy_digest, evidence_index_digest,
+evidence[], admission_status, lock_digest}`.  It has **no** JSON Schema in
+`ari-core/ari/schemas/`; `publish.schema.json` there describes `publish.yaml`,
+the curation *policy* (`include` / `exclude` / `max_file_mb` / `visibility` /
+`required` / `auto_promote` / `license` / `backend`), which is a different
+file.  The `bundle_sha256` must equal the `\codedigest{...}` macro baked
 into the published paper.
 
 ## See also
 
 - `docs/concepts/architecture.md` (Checkpoint Directory Layout) — narrative
   view of the same files.
-- `ari-core/ari/schemas/` — formal JSON Schemas for `node_report` and
-  the publish and Manuscript Complete manifests.
+- `ari-core/ari/schemas/` — formal JSON Schemas for `node_report`, the typed
+  measurement / science-data / gate-report / metric-gate contracts, the RQGM
+  governance records, and the Manuscript Complete documents. (`publish.schema.json`
+  there is `publish.yaml`'s curation policy, not the EAR `manifest.lock`.)
 - `ari-core/ari/pipeline/yaml_loader.py` — workflow.yaml parser.
 - `docs/guides/experiment_file.md` — long-form `experiment.md` guide.

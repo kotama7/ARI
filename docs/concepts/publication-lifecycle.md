@@ -4,17 +4,37 @@ sources:
     role: implementation
   - path: ari-skill-paper
     role: implementation
+  - path: ari-skill-transform/src/curate.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-core/ari/latex_claims.py
+    role: implementation
+  - path: ari-core/ari/clone
+    role: implementation
+  - path: ari-core/ari/publish
+    role: implementation
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/run_env.py
+    role: implementation
+  - path: ari-core/ari/agent/shims/git.sh
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-16
 ---
 
 # Publication Lifecycle (v0.7.0)
 
 ARI v0.7.0 turns the EAR from "drop the whole checkpoint into ear/"
 into a curated, digest-anchored publication chain. The author writes a
-small `ear/publish.yaml` allowlist; ari-core enforces a built-in deny
-list and computes a deterministic bundle digest. The digest is baked
+small `ear/publish.yaml` allowlist; transform-skill's `curate.py`
+enforces a built-in deny list (`BUILTIN_DENY`: `.env*`, `secrets/**`,
+`*.pem`, `*.key`, `id_rsa`, `id_ed25519`) and computes a deterministic
+bundle digest. The digest is baked
 into the paper (`\codedigest{...}`), so any reader can verify the
 bundle at any future time, even if the registry hosting it disappears.
 
@@ -26,9 +46,10 @@ generate_ear ──▶ {checkpoint}/ear/                 (full author-curated re
         ▼
 {checkpoint}/ear_published/  +  manifest.lock      (sha256 of canonical v2 JSON: {path,sha256,size,role})
         │
-        ▼ ear_publish (transform-skill, optional)
+        ▼ ear_publish (transform-skill; enabled by default)
         ▼
-backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
+backend.publish ──▶ local-tarball (workflow default) / ari-registry / gh / zenodo
+                     always visibility=staged
         │
         ▼ writes publish_record.json
         │
@@ -148,7 +169,9 @@ Artifacts: `paper_claim_links.json` (draft) /
 Trust model: the **paper itself is the trust anchor**, not the
 registry. `ari clone` hard-fails on any bundle whose recomputed
 digest does not match `--expect-sha256` (or the `manifest.lock`
-declaration). If a registry vanishes, the same bundle pinned anywhere
+declaration) — but only on the extracting path: with `--no-extract`
+the bundle is copied without being opened, so `--expect-sha256` is
+accepted and never checked. If a registry vanishes, the same bundle pinned anywhere
 else (S3, Zenodo, gh release, local mirror) still verifies. This is
 **bundle integrity** (digest match); the FINAL hard gate adds **claim
 integrity** — it re-derives the numbers reported in the paper from the
@@ -160,7 +183,7 @@ recorded results and flags any that fall outside tolerance.
 |--------|----------|-------|
 | `file://<path>` | local file or directory | offline / mirror |
 | `https://<url>` / `http://<url>` | tarball download | any HTTPS host |
-| `ari://<id>` | ari-registry client | reads `registries.yaml` for endpoint/token. Resolution: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`. The legacy `$HOME/.ari/` location was removed in v0.5.0 and emits a `DeprecationWarning` (fallback dropped in v1.0). |
+| `ari://<id>` | ari-registry client | reads `registries.yaml` for endpoint/token. Resolution: `$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml` → `$HOME/.ari/registries.yaml` (deprecated since v0.5.0: still consulted last, emits a `DeprecationWarning`, dropped in v1.0). With no file anywhere, `$ARI_REGISTRY_URL` / `$ARI_REGISTRY_TOKEN` synthesise a single `default` registry. |
 | `gh:<user>/<repo>` | GitHub repo or release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → file list → bundle |
 
@@ -177,9 +200,16 @@ meta.json}`. Visibility is monotone: `staged` → `unlisted` / `public`
 
 - **`_run_env.json`** — `ari/agent/run_env.py` writes per-`work_dir`
   hardware metadata (hostname, SLURM job/partition/nodelist, CPU
-  model/threads/MHz/arch, mem_total, compiler versions) from inside
+  model/threads/MHz/arch, mem_total, compiler versions, plus the vendor
+  `toolchain_dirs` that `module avail` does not list and the
+  page/NUMA `memory_system` state) from inside
   the executing process so SLURM jobs (which run on a different node
-  than the agent) report accurate facts. The `node_report` builder
+  than the agent) report accurate facts. Each call OVERWRITES the file:
+  the LAST tool call's environment wins. Its `compilers` are the
+  PRE-module view — the record of what the measurement actually ran
+  under (loaded modules, resolved PATH) is `_exec_env.json`, written by
+  the executing shell and merged in under `execution` by
+  `read_run_env`. The `node_report` builder
   enriches reports with this data; downstream stages recover "ran on
   the compute partition, hostname X, CPU model …" instead of guessing.
 - **Git shim** (`ari/agent/shims/git.sh`) — wired into the

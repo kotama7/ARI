@@ -12,7 +12,19 @@ sources:
     role: implementation
   - path: ari-core/ari/skill_manifest.py
     role: implementation
-last_verified: 2026-08-02
+  - path: ari-core/ari/container.py
+    role: implementation
+  - path: ari-core/ari/cost_tracker.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # `ari.public` — スキル向け安定 API
@@ -22,7 +34,11 @@ last_verified: 2026-08-02
 このパッケージはコアが自由にリファクタリングできるよう、対応する
 `ari.<module>` プライベート実装への薄い再エクスポート層として機能し、
 スキル向けのコントラクトを維持します。v0.7.1（v0.7+ リファクタの Phase 4）で
-導入され、`ari-core/tests/test_public_api_boundary.py` によって強制されています。
+導入され、`ari-core/tests/test_public_api_boundary.py` によって強制されています —
+ただしこのテストが失敗するのは*新規*の `from ari.<internal>` インポートに対してで、
+既存のものはファイルと行番号で固定された waiver リストとして grandfather されています。
+つまり「`ari.public` のみ」は、テストが今後に向けて守るルールであって、現在のツリーが
+すでに満たしている性質ではありません。
 
 ## サブモジュール
 
@@ -76,7 +92,7 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 |---|---|
 | `ContainerConfig` | データクラス: `image`、`mode`（`auto`/`docker`/`singularity`/`apptainer`/`none`）、`pull`（`always`/`on_start`/`never`）、`extra_args` |
 | `detect_runtime()` | `"docker"` / `"apptainer"` / `"singularity"` / `"none"` を返す。候補は `PATH` にあるだけでなく probe（`docker info`、`<rt> --version`）にも応答する必要があり、`SLURM_JOB_ID` がある場合は Apptainer/Singularity が Docker より優先される |
-| `config_from_env()` | `ARI_CONTAINER_*` 環境変数から `ContainerConfig` を構築（未設定の場合は `None`） |
+| `config_from_env()` | `ARI_CONTAINER_IMAGE` と `ARI_CONTAINER_MODE`（既定 `auto`）から `ContainerConfig` を構築。image が未設定なら `None` を返す。`pull` と `extra_args` は環境変数からは読ま*ない* |
 | `pull_image(cfg)` | `cfg` が参照するイメージを取得（`docker pull` / `<rt> pull`）。成功時に `True` を返す |
 | `run_in_container(cfg, cmd, ...)` | コンテナ内（image 未指定 / `mode: none` の場合は直接）で `cmd` を起動し、`subprocess.Popen` ハンドルを返す |
 | `run_shell_in_container(cfg, script, ...)` | shell コマンド文字列を受け取るブロッキング版。`subprocess.CompletedProcess` を返し、timeout 時はプロセスグループごと kill する |
@@ -155,9 +171,13 @@ identity = manifest_digest(manifest)
 capability reference、phase、side effect、determinism、timeout class、permission、
 result schema を検証します。
 `TimeoutBudgetV1` は caller が制御する timeout 引数を明示し、上限を固定します。
-`timeout_class=async` の tool は `AsyncLifecycleV1` で status/result/cancel の
-semantic capability を宣言しなければならず、未解決または曖昧な参照は manifest
-validation で拒否されます。
+`AsyncLifecycleV1` は `timeout_class=async` の tool の semantic な lifecycle
+capability を宣言します — `status` は必須、`result` と `cancel` は任意です。
+manifest validation が検査するのは、このブロックが `timeout_class=async` のときに
+限って存在することだけで、宣言された各 capability が解決できるかどうかは後段の
+dispatch で決まります。lifecycle の `capability_ref` がその Skill の runtime tool
+ちょうど 1 個以外に一致した場合、async handle の代わりに `protocol` error envelope が
+返るため、曖昧な lifecycle は manifest 読み込みを通過して submit 時に失敗します。
 
 組み込み production Skill では
 `environment_policy=complete` が必須です。解決済みの各 tool は
@@ -303,8 +323,10 @@ resp = client.complete([{"role": "user", "content": "Summarise: ..."}])
 
 ## 関連ドキュメント
 
-- `ari-core/ari/public/__init__.py` — 標準的なサブモジュール一覧を含む
-  モジュールレベルの docstring。
+- `ari-core/ari/public/__init__.py` — サブモジュール一覧と各々の採用理由を含む
+  モジュールレベルの docstring。ただし現時点で `ari.public.latex_claims` と
+  `ari.public.paper` はこの docstring に載っていません（実体は
+  `ari-core/ari/public/` に存在します）。
 - `docs/guides/extension_guide.md` — `ari.public` のみに依存する新しいスキルの
   書き方。
 - `CONTRIBUTING.md::Software-engineering discipline §3` — パブリック API

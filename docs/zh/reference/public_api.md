@@ -12,12 +12,24 @@ sources:
     role: implementation
   - path: ari-core/ari/skill_manifest.py
     role: implementation
-last_verified: 2026-08-02
+  - path: ari-core/ari/container.py
+    role: implementation
+  - path: ari-core/ari/cost_tracker.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # `ari.public` — 面向技能的稳定 API
 
-`ari.public` 是 `ari-skill-*` 包**唯一**可以依赖的模块接口。其外部的所有内容均为内部实现，可能在不通知的情况下发生变更。该包是对应 `ari.<module>` 私有实现之上的薄重导出层，使核心可以自由重构，同时保持面向技能的合约不变。它在 v0.7.1（v0.7+ 重构的第 4 阶段）中引入，并由 `ari-core/tests/test_public_api_boundary.py` 强制执行。
+`ari.public` 是 `ari-skill-*` 包**唯一**可以依赖的模块接口。其外部的所有内容均为内部实现，可能在不通知的情况下发生变更。该包是对应 `ari.<module>` 私有实现之上的薄重导出层，使核心可以自由重构，同时保持面向技能的合约不变。它在 v0.7.1（v0.7+ 重构的第 4 阶段）中引入，并由 `ari-core/tests/test_public_api_boundary.py` 强制执行 —— 该测试对**新增**的 `from ari.<internal>` 导入判失败，但对既有导入保留了一份按文件加行号钉死的豁免清单，因此「只用 `ari.public`」是该测试面向未来所捍卫的规则，而不是当前代码树已有的性质。
 
 ## 子模块
 
@@ -69,7 +81,7 @@ cfg = ARIConfig.model_validate(yaml.safe_load(open("ari.yaml")))
 |---|---|
 | `ContainerConfig` | 数据类：`image`、`mode`（`auto`/`docker`/`singularity`/`apptainer`/`none`）、`pull`（`always`/`on_start`/`never`）、`extra_args` |
 | `detect_runtime()` | 返回 `"docker"` / `"apptainer"` / `"singularity"` / `"none"`；候选者不仅要在 `PATH` 上，还须响应探测（`docker info`、`<rt> --version`）；设置了 `SLURM_JOB_ID` 时 Apptainer/Singularity 优先于 Docker |
-| `config_from_env()` | 从 `ARI_CONTAINER_*` 环境变量构建 `ContainerConfig`（未设置时返回 `None`） |
+| `config_from_env()` | 从 `ARI_CONTAINER_IMAGE` 与 `ARI_CONTAINER_MODE`（默认 `auto`）构建 `ContainerConfig`；未设置 image 时返回 `None`。`pull` 与 `extra_args` **不**从环境读取 |
 | `pull_image(cfg)` | 拉取 `cfg` 引用的镜像（`docker pull` / `<rt> pull`）；成功时返回 `True` |
 | `run_in_container(cfg, cmd, ...)` | 在容器内（未配置镜像 / `mode: none` 时则直接）启动 `cmd`，返回 `subprocess.Popen` 句柄 |
 | `run_shell_in_container(cfg, script, ...)` | 接受 shell 命令字符串的阻塞版本；返回 `subprocess.CompletedProcess`，超时按进程组 kill |
@@ -140,9 +152,13 @@ identity = manifest_digest(manifest)
 `SkillManifestV1` 验证 package identity、package-relative Python stdio entrypoint、
 完整的普通环境声明、互不重叠的 credential scope、唯一 tool 名、
 capability reference、phase、side effect、determinism、timeout class、permission 与
-result schema。`TimeoutBudgetV1` 显式声明并限制调用方控制的 timeout 参数；
-`timeout_class=async` 的 tool 必须通过 `AsyncLifecycleV1` 声明 status/result/cancel
-semantic capability，未解析或有歧义的引用会使 manifest validation 失败。
+result schema。`TimeoutBudgetV1` 显式声明并限制调用方控制的 timeout 参数。
+`AsyncLifecycleV1` 声明 `timeout_class=async` 的 tool 的 lifecycle semantic
+capability —— `status` 必填，`result` 与 `cancel` 可选。manifest validation 只检查
+该 block 是否恰好在 `timeout_class=async` 时存在；其中每个 capability 能否解析，
+留到 dispatch 时才判定。lifecycle `capability_ref` 若未恰好命中该 Skill 的一个
+runtime tool，async handle 会被替换为 `protocol` error envelope —— 也就是说，有歧义
+的 lifecycle 能通过 manifest 加载，却会在 submission 时失败。
 内置 production 技能必须使用 `environment_policy=complete`。
 每个已解析 tool 还以 `none` / `run` / `node` 声明 `context_requirement`；
 调用方未提供对应结构化上下文时，dispatch 会 fail closed。公开 runtime loader
@@ -179,8 +195,9 @@ parent 以及 root 到 parent 的有序 chain 绑定到 `lineage_digest`。
 
 `ResultEnvelopeV1` 记录 status、structured content、类型化 error、不可变
 `tool_ref`、run/node/phase context、selection reason、timing 与 SHA-256 response digest。
-credential 只记录 scope ID，不记录值。超过 4,000 字符的 raw content 会被
-外置到内容寻址工件，`materialize_content(store)` 验证 digest 与 byte size 后恢复。
+credential 只记录 scope ID，不记录值。在有 checkpoint 支撑的 `ArtifactStore` 时，
+超过 4,000 字符的 raw content 会被外置到内容寻址工件、内联字段退化为有界预览；
+`materialize_content(store)` 验证 digest 与 byte size 后恢复完整响应。
 
 异步 submit 会附加 `AsyncToolHandleV1`，其中 lifecycle endpoint 是从已审查 manifest
 capability 解析出的不可变 `tool_ref`。序列化后的 handle 可直接传给
@@ -265,6 +282,7 @@ resp = client.complete([{"role": "user", "content": "Summarise: ..."}])
 
 ## 另请参阅
 
-- `ari-core/ari/public/__init__.py` — 包含规范子模块列表的模块级文档字符串。
+- `ari-core/ari/public/__init__.py` — 模块级文档字符串，列出各子模块及其存在理由；
+  它目前遗漏了 `ari.public.latex_claims` 与 `ari.public.paper`，因此不能把它当作完整清单。
 - `docs/guides/extension_guide.md` — 如何编写仅依赖 `ari.public` 的新技能。
 - `CONTRIBUTING.md::Software-engineering discipline §3` — 公共 API 规则（技能只能访问 `ari.public.*`）。

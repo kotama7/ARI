@@ -8,7 +8,11 @@ sources:
     role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-07-10
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI 検証可能リサーチメモリ
@@ -102,7 +106,10 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   畳み込み）、`consolidation.py`（node_report → specs）、`erasure.py`
   （公開された erasure rollup の読み取り: pull 経路ではラベル付け、接地経路では
   ハード除外）、`context_builder.py`
-  （verified context）。MCP ツール（`add_experiment_result`,
+  （verified context）、`access_log.py`（write/read イベントを
+  `{ckpt}/memory_access.jsonl` へ追記するダッシュボード向けテレメトリ —
+  ストアそのものではなく、Letta の部分的な停止にも耐える）。MCP ツール
+  （`add_experiment_result`,
   `search_research_memory`, `get_verified_context`, `consolidate_node_memory`,
   `audit_memory`, …）として公開され、すべてフックから呼ばれる。
 - `ari-core`: `pipeline/verified_context.py`（best-node lineage スコープ＋

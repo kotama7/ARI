@@ -4,9 +4,15 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/memory_cli.py
+    role: implementation
+  - path: ari-core/ari/viz/api_settings.py
+    role: implementation
+  - path: start.sh
+    role: doc
   - path: ari-core/config/default.yaml
     role: config
-last_verified: 2026-07-10
+last_verified: 2026-08-16
 ---
 
 # FAQ
@@ -33,12 +39,14 @@ last_verified: 2026-07-10
 ## 仪表盘
 
 **仪表盘在哪个端口上？**
-`8765`。在仓库根目录用 `./start.sh`（Letta + registry + GUI）启动一切并打开 <http://localhost:8765>。`./start.sh status` 进行健康检查；用
+`8765`。在仓库根目录用 `./start.sh` 启动一切 —— 共四个服务：Letta 在 `8283`、
+registry 在 `8290`、GUI 在 `8765`、CLI shim 在 `8900` —— 然后打开
+<http://localhost:8765>。`./start.sh status` 进行健康检查；用
 `./shutdown.sh` 停止。用于实时树更新的 WebSocket 在 `8766`
 （端口 + 1）上。
 
 **页面无法加载 / 某个服务没有起来。**
-重新运行 `./start.sh`（每次调用它都会重启全部三个服务）并检查
+重新运行 `./start.sh`（每次调用它都会重启全部四个服务）并检查
 `./start.sh status`。`shutdown.sh` 还会回收上一次 Letta 运行中由 apptainer 留下的
 postgres/redis 孤儿进程。
 
@@ -47,16 +55,22 @@ postgres/redis 孤儿进程。
 **输出去往哪里？**
 进入一个自包含的检查点目录，
 `workspace/checkpoints/<timestamp>_<slug>/`（时间戳形式为
-`YYYYMMDDHHMMSS_<slug>`）。论文、图表、树、EAR 和可复现性报告都存于那里。不会向你的主目录写入任何东西。
+`YYYYMMDDHHMMSS_<slug>`）。论文、图表、树、EAR 和可复现性报告都存于那里。有两样东西不在那里：
+每个节点的工作目录写在 `workspace/experiments/<run_id>/<node_id>/`，与 `checkpoints/` 平级；
+而 `./start.sh` 拉起的各项服务把它们的 PID 与日志文件放在 `~/.ari/` 中。
 
 **我的首次运行应该多大？**
 小一点：深度 3、5–10 个节点、2–4 个并行 worker。你随时可以扩大规模。更大的搜索会消耗更多 LLM 调用和算力。
 
 **我的子节点都报告与父节点相同的数字 —— 这是 bug 吗？**
-不是，这是一项防护措施在尽职。子节点的 `work_dir` 通过复制父节点的目录来初始化，但实验*输出*（`results.csv`、`slurm-*.out`、
-`metrics.json`、`*.log`……）在黑名单中，**不会**被继承。如果子节点在没有产生任何新增/变更文件的情况下结束，ARI 会将其标记为
-**sterile（不育）**（分数 `0.0`）并剪枝，而非把继承来的结果记到它名下。如果你经常看到这种情况，说明代理并没有真正重新运行实验 ——
-请查看该节点的 Trace 标签页。参见
+不是，这是一项防护措施在尽职。子节点的 `work_dir` 通过复制父节点的目录来初始化，但实验*输出*（`results.csv`、
+`results.json`、`slurm-*.out`、`metrics.json`、`run.log` / `run_*.log`、`*_output.txt`……）在黑名单中，
+**不会**被继承 —— 注意日志相关的模式就是这些确切的文件名，而不是笼统的 `*.log`。如果子节点什么都没改变，ARI 会将其标记为
+**sterile（不育）**。不育*不会*把分数清零：已测得的分数、`has_real_data` 与 `evaluation_status` 都原封不动，
+该节点失去的是被再次扩展的资格，以及让父节点退役的资格。
+当本次运行指名了一个 pin 定的 problem（`ARI_PROBLEM`）时，不育性由哈希该 problem 声明的 `score_inputs` 判定，
+而不是对整个 work_dir 做差分 —— 整目录那条规则实际上几乎从不触发。如果你经常看到这种情况，说明代理并没有真正重新运行实验 ——
+请查看该节点的 MCP Trace 标签页。参见
 [架构 → work_dir 继承](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)
 以及 [术语表 → sterile](../reference/glossary.md)。
 
@@ -66,9 +80,10 @@ postgres/redis 孤儿进程。
 ## GPU、SLURM 与容器
 
 **我如何在集群上运行？**
-在 Settings 中设置 SLURM 分区（或在 CLI 上用 `--partition`），并使用
+在 Settings 中设置 SLURM 分区（或在 CLI 上用 `ari settings --partition` —— `ari run`
+本身没有 `--partition`，它接受的是 `--profile hpc`），并使用
 `hpc` profile。在 Settings 中点击 **Detect** 自动检测分区，或用
-`/api/scheduler/detect` 自动检测调度器（SLURM/PBS/LSF/Kubernetes）。
+`/api/scheduler/detect` 自动检测调度器（SLURM/PBS/LSF/SGE/Kubernetes）。
 参见 [HPC 设置](../guides/hpc_setup.md)。
 
 **GPU 没有被使用。**
@@ -85,9 +100,10 @@ checkpoint → ARI 根目录 → `ari-core` → 主目录，或在启动时注�
 安装 LaTeX（`conda install -c conda-forge texlive-core`）和 PDF 文本工具（`pip install pymupdf pdfminer.six`）。
 
 **我能把一个已完成的运行迁移到另一台机器吗？**
-可以。每个检查点都携带一个 `memory_backup.jsonl.gz`，因此
+可以。每个检查点都携带一个 `memory_backup.v1.json.gz`，因此
 `cp -r workspace/checkpoints/<run> /elsewhere/` 后跟 `ari resume`
-会自动将内存恢复到一个空的 Letta 中。
+就会恢复记忆 —— 但仅当目标端的 Letta 为空、且 `ARI_MEMORY_AUTO_RESTORE`
+未被设为 `false` 时才会发生。
 
 ---
 

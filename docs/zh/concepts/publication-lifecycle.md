@@ -4,14 +4,32 @@ sources:
     role: implementation
   - path: ari-skill-paper
     role: implementation
+  - path: ari-skill-transform/src/curate.py
+    role: implementation
+  - path: ari-skill-evaluator/src/server.py
+    role: implementation
+  - path: ari-core/ari/latex_claims.py
+    role: implementation
+  - path: ari-core/ari/clone
+    role: implementation
+  - path: ari-core/ari/publish
+    role: implementation
+  - path: ari-core/ari/registry
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/run_env.py
+    role: implementation
+  - path: ari-core/ari/agent/shims/git.sh
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # 发布生命周期 (v0.7.0)
 
-ARI v0.7.0 把 EAR 从「整盘塞入 ear/」演进为 **digest 锚定的发布链**。作者只需写一个简短的 `ear/publish.yaml`，digest 计算与传输由 ari-core 处理。digest 烧录于论文 (`\codedigest{...}`)，即使发布托管的 registry 消失，任何地方依然可以验证。
+ARI v0.7.0 把 EAR 从「整盘塞入 ear/」演进为 **digest 锚定的发布链**。作者只需写一个简短的 `ear/publish.yaml` allowlist；由 transform-skill 的 `curate.py` 施加内置 deny 列表（`BUILTIN_DENY`：`.env*`、`secrets/**`、`*.pem`、`*.key`、`id_rsa`、`id_ed25519`）并计算确定性的 bundle digest。digest 烧录于论文 (`\codedigest{...}`)，即使发布托管的 registry 消失，任何地方依然可以验证。
 
 ```
 generate_ear ──▶ {checkpoint}/ear/                 (作者完整 repo)
@@ -21,9 +39,10 @@ generate_ear ──▶ {checkpoint}/ear/                 (作者完整 repo)
         ▼
 {checkpoint}/ear_published/  +  manifest.lock      (正规化 v2 JSON: {path,sha256,size,role} 的 sha256)
         │
-        ▼ ear_publish (transform-skill, 可选)
+        ▼ ear_publish (transform-skill; 默认启用)
         ▼
-backend.publish ──▶ ari-registry / gh / zenodo / local-tarball
+backend.publish ──▶ local-tarball (workflow 默认) / ari-registry / gh / zenodo
+                     始终 visibility=staged
         │
         ▼ 写入 publish_record.json
         │
@@ -122,7 +141,9 @@ integrity finding，其余仅报告；`strict`还会阻断数值不匹配、未�
 `evaluation/claim_evidence_hard_gate_{draft,final,locked}.json`。
 
 信任模型：**信任锚是论文本身，而非 registry**。`ari clone` 会对任何重算 digest
-与 `--expect-sha256`（或 `manifest.lock` 声明）不匹配的 bundle 直接 hard-fail。
+与 `--expect-sha256`（或 `manifest.lock` 声明）不匹配的 bundle 直接 hard-fail
+—— 但这只发生在解包路径上：使用 `--no-extract` 时 bundle 只被原样复制而不会被
+打开，因此 `--expect-sha256` 会被接受但从不校验。
 即使 registry 消失，pin 在其他位置（S3、Zenodo、gh release、本地镜像）的同一
 bundle 仍可校验。这属于 **bundle 完整性**（digest 匹配）；FINAL hard gate 再加上
 **claim 完整性** —— 它从已记录的结果重新推导论文中报告的数值，并标记任何超出
@@ -134,7 +155,7 @@ bundle 仍可校验。这属于 **bundle 完整性**（digest 匹配）；FINAL 
 |--------|------|------|
 | `file://<path>` | 本地文件/目录 | 离线 / 镜像 |
 | `https://<url>` / `http://<url>` | tarball 下载 | 任意 HTTPS host |
-| `ari://<id>` | ari-registry 客户端 | 从 `registries.yaml` 读取 endpoint/token。解析顺序：`$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml`。位于 `$HOME/.ari/` 下的遗留位置在 v0.5.0 已被废弃，发出 `DeprecationWarning`，v1.0 中删除回退。 |
+| `ari://<id>` | ari-registry 客户端 | 从 `registries.yaml` 读取 endpoint/token。解析顺序：`$ARI_REGISTRIES_FILE` → `{checkpoint}/.ari/registries.yaml` → `./.ari/registries.yaml` → `$HOME/.ari/registries.yaml`（自 v0.5.0 起废弃：仍会被最后查询，并发出 `DeprecationWarning`，v1.0 中移除）。若各处都没有该文件，`$ARI_REGISTRY_URL` / `$ARI_REGISTRY_TOKEN` 会合成一个名为 `default` 的 registry。 |
 | `gh:<user>/<repo>` | GitHub repo / release | API + tarball |
 | `doi:<doi>` | Zenodo deposition | DOI → 文件列表 → bundle |
 
@@ -144,7 +165,7 @@ bundle 仍可校验。这属于 **bundle 完整性**（digest 匹配）；FINAL 
 
 ### 可复现性沙箱补强
 
-- **`_run_env.json`** — `ari/agent/run_env.py` 在每个 work_dir 内（在执行进程内部）写入 hostname / SLURM job/partition/nodelist / CPU model/threads/MHz/arch / mem_total / 编译器版本，使 SLURM 作业（运行节点与代理不同）也能保留准确的硬件元数据。`node_report` builder 据此丰富报告，下游阶段（论文、可复现性）可以复原 "在 计算 partition、hostname X、CPU model …上运行" 的事实，不必从空的 artefact 中猜测。
+- **`_run_env.json`** — `ari/agent/run_env.py` 在每个 work_dir 内（在执行进程内部）写入 hostname / SLURM job/partition/nodelist / CPU model/threads/MHz/arch / mem_total / 编译器版本，外加 `module avail` 不会列出的厂商 `toolchain_dirs` 与页/NUMA 状态 `memory_system`，使 SLURM 作业（运行节点与代理不同）也能保留准确的硬件元数据。每次调用都会**覆盖**该文件：最后一次工具调用的环境胜出。其中的 `compilers` 是 **module 加载之前**的视图 —— 测量实际运行时的环境（已加载的 module、解析后的 PATH）记录在 `_exec_env.json` 中，由执行 shell 自己写入，并由 `read_run_env` 合并到 `execution` 之下。`node_report` builder 据此丰富报告，下游阶段（论文、可复现性）可以复原 "在 计算 partition、hostname X、CPU model …上运行" 的事实，不必从空的 artefact 中猜测。
 - **Git shim** (`ari/agent/shims/git.sh`) — 通过 `PATH=<sandbox>/.shims:<orig_path>` 接入可复现性沙箱。仅拦截与论文 `code_availability_ref` 匹配的 `git clone` URL；其余命令透传给真实 git。所有 clone 尝试记录到 `<sandbox>/repro_clone_log.jsonl`。可通过 `ARI_REPRO_CLONE_POLICY=passthrough|deny|warn` 切换行为。
 
 ---

@@ -4,9 +4,15 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/loop.py
     role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+  - path: ari-core/ari/pipeline/claim_gate/policy.py
+    role: implementation
+  - path: ari-core/ari/viz/frontend/src/components
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # 最初の実験を、はじめから終わりまで
@@ -61,7 +67,7 @@ ari run experiment.md
    導出します（自由な推測ではありません）。
 3. **`survey`** — 最終的な論文が実在の参考文献を引用できるよう、文献を検索します。
 
-提案された内容は **Ideas** ページを開いて読んでください。
+提案された内容は **アイデア** ページを開いて読んでください。
 
 ## 4. 探索（BFTS）
 
@@ -76,15 +82,23 @@ ari run experiment.md
 - ピアレビュアーの LLM（**`LLMEvaluator`**）が各ノードの `_scientific_score` を採点し、
   そのスコアが次にどのノードを展開するかを駆動します。
 
-これは **Monitor** ページと **Tree** ページでライブに観察できます。任意のノードをクリックすると、
-Overview、Trace（すべてのツール呼び出し）、Code、Output の各タブが表示されます。
+これは **実行モニター** ページと **探索ツリー** ページでライブに観察できます。ノードごとの詳細
+パネル — Overview、MCP Trace（すべてのツール呼び出し）、Code、Memory、Access、Report — を見るには
+レガシーのツリーページ `#/tree` を開いてください。Output タブはありません。ノードのファイルは
+ファイルエクスプローラから閲覧します。
 
 初心者を驚かせる挙動が 2 つあります — どちらも意図的なものです:
 
 - **失敗ノードは再実行されません。** ARI は代わりに `debug` 子を展開するので、修正は
   新しいノードとして記録されます。
-- **新しいファイルを生成しない子は _sterile_ とマークされ剪定されます。** 出力ファイルは
-  親から継承されないため、子はスコアを得るために実際に実験を再実行しなければなりません。
+- **何も変えない子は _sterile_ とマークされ、二度と展開されません。** 出力ファイルは
+  親から継承されないため、子は実際に実験を再実行しなければなりません。実行が固定問題
+  （`ARI_PROBLEM`）を指定している場合、その問題が `score_inputs` を宣言し、sterile 判定は
+  work_dir 全体の差分ではなく、まさにそれらのファイルのハッシュで決まります — work_dir 全体の
+  規則は実際にはほとんど発火しません。どのノードも `results.json` のような記帳用ファイルを
+  書き換えてしまうからです。
+  sterile なノードは測定されたスコアと評価ステータスをそのまま保持します。失うのは展開される
+  権利と、親を退役させる権利です。
   （[FAQ](faq.md)と [用語集 → sterile](../reference/glossary.md)を参照。）
 
 探索はあなたのノード数/深さの予算で停止します。完全なツリーは `tree.json` / `nodes_tree.json`
@@ -102,17 +116,19 @@ Overview、Trace（すべてのツール呼び出し）、Code、Output の各�
    報告します。ゲートではなくシグナルです。
 2. **transform_data** がツリー全体を読み、ハードウェア、方法論、発見を
    `science_data.json` に抽出します。
-3. **generate_figures** では、LLM は各図が「何を」示すか（メトリクス、チャート種別、
+3. **generate_ear** が再現性バンドル `ear/` を組み立てます（コード、入力データ、図表、
+   `reproduce.sh`、LICENSE — ただし実験の出力は含めません）。これは論文が書かれた *後* では
+   なく *前* に走ります: `write_paper` がこれに依存しているからで、バンドルこそが論文の指し示す
+   証拠だからです。
+4. **generate_figures** では、LLM は各図が「何を」示すか（メトリクス、チャート種別、
    x 軸）だけを選び、固定のレンダラが `science_data.json` から決定論的に描画します。
    続いて **VLM** が**すべての**図をレビューし、集約スコアは図の最小値なので、
    1 枚でも弱い図があればステージがループバックして再生成されます
    （しきい値 0.7、追加パスは最大 2 回）。
-4. **write_paper** が LaTeX を起草し、推敲し、調査結果から BibTeX を取り込みます →
+5. **write_paper** が LaTeX を起草し、推敲し、調査結果から BibTeX を取り込みます →
    `full_paper.tex` / `.pdf`。
-5. **review_paper** が選択されたベニュールーブリックに対して 1 名以上のレビュアーエージェントを
+6. **review_paper** が選択されたベニュールーブリックに対して 1 名以上のレビュアーエージェントを
    走らせます（2 名以上いる場合は Area Chair のメタ査読が集約します）。
-6. **generate_ear** が再現性バンドル `ear/` を組み立てます（コード、入力データ、図表、
-   `reproduce.sh`、LICENSE — ただし実験の出力は含めません）。
 
 デフォルトでは、パイプラインは現在 **claim-evidence 検証ループ** も実行します: 決定論的な
 ハードゲートが報告された数値を再導出し、ブロックしない evidence-grounded セマンティックレビューが
@@ -127,7 +143,10 @@ objective-integrity の階層（`always_block_on` — 不変条件違反、corre
 ブロックします。`mode: off` は決してブロックせず、draft フェーズのレポートも
 どちらのモードでもブロックしません。詳細は[公開ライフサイクル](../concepts/publication-lifecycle.md)を参照してください。
 
-すべては **Results** ページで読めます: Overleaf 風エディタ、査読スコア、EAR ブラウザです。
+すべてはサイドバーの **論文・成果** から読めます。このスロットはランを明示した
+**読み取り専用**の要約（`#/results2?run=<run_id>`）を開きます — 査読スコア、再現性チェーン、
+公開系譜です。Overleaf 風エディタと EAR ブラウザ（および EAR に対するすべての変更操作）は、
+そこからリンクされるレガシーページ `#/results` にあります。
 
 ## 6. 再現性を検証する（ORS）
 

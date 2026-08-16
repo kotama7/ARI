@@ -8,7 +8,11 @@ sources:
     role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-08-07
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI Verifiable Research Memory
@@ -104,7 +108,10 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   read + reproducibility fold), `consolidation.py` (node_report → specs),
   `erasure.py` (the reader for the published erasure rollup: label on the pull
   path, hard-exclude on the grounding path),
-  `context_builder.py` (verified context). Exposed as MCP tools
+  `context_builder.py` (verified context), `access_log.py` (append-only
+  telemetry of write/read events to `{ckpt}/memory_access.jsonl` for the
+  dashboard — not the store itself, and tolerant of partial Letta
+  outages). Exposed as MCP tools
   (`add_experiment_result`, `search_research_memory`, `get_verified_context`,
   `consolidate_node_memory`, `audit_memory`, …) — all called by hooks.
 - `ari-core`: `pipeline/verified_context.py` (best-node lineage scoping +

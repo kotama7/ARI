@@ -6,7 +6,19 @@ sources:
     role: implementation
   - path: ari-skill-memory
     role: implementation
-last_verified: 2026-06-10
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/prompts/agent/system.md
+    role: implementation
+  - path: ari-core/ari/prompts/orchestrator/bfts_expand.md
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI 设计哲学
@@ -24,26 +36,30 @@ ARI 建立在这样一个信念之上：**从"有一个想法"到"获得一个�
 
 ### 1. 计算：笔记本电脑 → 超级计算机
 
-ARI 在笔记本电脑（`mode: local`）和 SLURM 集群上的运行方式完全一致。相同的实验文件、相同的配置格式、相同的输出结构。切换只需修改 `workflow.yaml` 中的一行。
+ARI 在笔记本电脑和 SLURM 集群上的运行方式完全一致。相同的实验文件、相同的配置格式、相同的输出结构。切换只需修改 `workflow.yaml` 中的一行 —— 或使用 `--profile laptop` / `--profile hpc`。
 
 ```yaml
-hpc:
-  mode: local      # laptop
-  mode: slurm      # HPC cluster
+resources:
+  hpc_enabled: false      # 笔记本电脑（true → HPC 集群）
   partition: your_partition
 ```
 
+`core.py` 读取的是 `resources.hpc_enabled`；profile 中的 `hpc.enabled` 会被合并到它里面。注意 `--profile` 只合并四个键（`bfts.max_total_nodes`、`bfts.max_parallel_nodes`/`parallel`、`hpc.enabled`、`hpc.scheduler`）—— profile YAML 中的其他每个键（包括 `partition`）都会被静默忽略。
+
 ### 2. LLM：本地 → 商业
 
-ARI 通过 litellm 代理所有 LLM 调用。模型是配置项 — 不是代码。
+ARI 通过 litellm 代理 LLM 调用。模型是配置项 — 不是代码。
 
 ```yaml
 llm:
+  backend: openai           # ollama | openai | claude_code | litellm | cli-shim
   model: qwen3:8b           # Ollama, no API key, runs offline
   model: gpt-5.2            # OpenAI API
   model: claude-sonnet-4-5    # Anthropic API
   base_url: http://...      # Any OpenAI-compatible API
 ```
+
+有一个后端不经 litellm 路由：`backend: claude_code` 直接走 Claude Code CLI provider（`ari/llm/claude_code/`），且该后端不支持工具调用 —— 它会显式报错失败，而不是静默丢弃工具。
 
 ### 3. 专业水平：新手 → 专家
 
@@ -89,6 +105,7 @@ ARI 核心唯一规定的内容：
 - **格式**：工具调用使用 JSON，实验使用 Markdown
 - **协议**：技能通信使用 MCP
 - **信号**：`scientific_score`（LLM 分配 0.0-1.0）驱动 BFTS
+- **结果契约**：`emit_results` 要求在 INPUT 参数与 MEASUREMENTS 之间做带类型的划分，并绑定到一份执行凭据（execution receipt）—— 且智能体被告知在 `scientifically_admissible=true` 之前不得结束。这是对**形状**的要求，而非领域要求：什么该放进哪一边，仍由 LLM 决定。
 
 其他所有事项 — 测量什么、如何比较、哪些硬件细节重要、绘制什么图表、包含什么引用 — 都由 LLM 在运行时自主决定。
 
@@ -135,11 +152,11 @@ ARI 明确不以以下为设计目标：
 
 ## 推论：失败的实验也是信息
 
-当一个节点失败时，ARI 不会重试相同的方法。相反，失败的节点进入 frontier，`expand()` 生成继承了失败上下文的 `debug` 子节点。下一代从失败中学习 — 这与重试逻辑有本质区别，后者将失败视为噪声而非信号。
+当一个节点失败时，ARI 不会重试相同的方法。相反，失败的节点进入 frontier，`expand()` 把父节点的状态（`failed/no-real-data`）连同"`debug` 表示父节点 FAILED 或没有真实数据 —— 请诊断并修复它"的说明一起交给 planner。标签是 planner 的选择，而非硬编码分支：prompt 强烈建议使用五个规范标签，但自定义标签会以 `raw_label` 保留。下一代从失败中学习 — 这与重试逻辑有本质区别，后者将失败视为噪声而非信号。
 
 ## 推论：可复现性是第一性原则
 
-ARI 的智能体系统提示包含一条通用科学原则：*确保你的实验是可复现的*。这不是领域规则 — 它同样适用于化学、HPC 和机器学习。智能体自主决定需要捕获什么信息。论文审稿人随后独立评估论文是否可复现，从而形成闭环，不依赖任何硬编码的标准。
+ARI 的智能体系统提示包含若干条通用科学原则 —— *确保你的实验是可复现的*、*绝不编造数值*，以及上文那条带类型的 `emit_results` 划分。它们都不是领域规则 — 它们同样适用于化学、HPC 和机器学习。智能体自主决定需要捕获什么信息。论文审稿人随后独立评估论文是否可复现，从而形成闭环，不依赖任何硬编码的标准。
 
 ## 另请参阅
 

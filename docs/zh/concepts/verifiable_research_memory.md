@@ -8,7 +8,11 @@ sources:
     role: implementation
   - path: ari-core/ari/config
     role: config
-last_verified: 2026-07-10
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # ARI 可验证研究记忆
@@ -89,7 +93,9 @@ write_paper ─▶ reads the path directly, render_grounded_block → system pro
   sha256 引用）、`audit.py`（claim↔artifact 完整性）、`writer.py` / `retriever.py`
   （有类型写入＋按 kind/scope/artifact 过滤的读取＋可复现性折叠）、`consolidation.py`
   （node_report → specs）、`erasure.py`（已发布 erasure rollup 的读取方：pull 路径上
-  加标注，接地路径上硬性排除）、`context_builder.py`（verified context）。以 MCP 工具
+  加标注，接地路径上硬性排除）、`context_builder.py`（verified context）、
+  `access_log.py`（把写／读事件仅追加地记录到 `{ckpt}/memory_access.jsonl` 供仪表盘使用
+  —— 它是遥测而非记忆存储本身，并且容忍 Letta 的部分故障）。以 MCP 工具
   （`add_experiment_result`, `search_research_memory`, `get_verified_context`,
   `consolidate_node_memory`, `audit_memory`, …）暴露，全部由钩子调用。
 - `ari-core`：`pipeline/verified_context.py`（best-node lineage 作用域＋grounded-block

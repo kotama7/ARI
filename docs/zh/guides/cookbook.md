@@ -8,7 +8,15 @@ sources:
     role: implementation
   - path: ari-core/ari/orchestrator/bfts.py
     role: implementation
-last_verified: 2026-08-07
+  - path: ari-core/ari/config/__init__.py
+    role: implementation
+  - path: ari-core/ari/core.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-skill-paper-re/src/server.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # Cookbook
@@ -20,8 +28,17 @@ last_verified: 2026-08-07
 > **覆盖项写在哪里。** 环境 profile 位于
 > `ari-core/config/profiles/<name>.yaml`；run 级别的设置位于
 > `workflow.yaml`。当你传入 `--profile <name>`（CLI）或在向导中选择它时，
-> profile 会被合并到默认值之上。你可以在任一文件中加入 `evaluator:`
-> 和 `bfts:` 块。
+> profile 会被合并到默认值之上。`evaluator:` 和 `bfts:` 块写在
+> `workflow.yaml` 里。
+>
+> **`--profile` 只合并四个键，不多不少。** 尽管其 docstring 这么写，
+> `_apply_profile`（`ari-core/ari/cli/run.py`）并不是深度合并：它只读取
+> `bfts.max_total_nodes`、`bfts.max_parallel_nodes`（或其历史拼法
+> `parallel`）、`hpc.enabled` 和 `hpc.scheduler`。profile YAML 中的其他每一个键
+> —— `partition`、`cpus_per_task`、`memory_gb`、`walltime`、
+> `max_concurrent_jobs`，以及任何 `evaluator:` 块 —— 都会被从文件里读出来，
+> 然后被静默丢弃。请把它们改写到 `workflow.yaml`（`resources:`、
+> `evaluator:`、`bfts:`）或环境变量（`ARI_SLURM_PARTITION`）中。
 
 ## 环境 profile：laptop / HPC / cloud
 
@@ -40,7 +57,9 @@ bfts:
   parallel: 2
 ```
 
-**`hpc`** —— SLURM/PBS/LSF 集群，自动检测分区：
+**`hpc`** —— 启用调度器（`scheduler:` 下面的那些键只是记录在文件里，
+并不会被合并；分区实际来自 `ARI_SLURM_PARTITION`、实验文件中的
+`Partition:` 行，或 `sinfo` 报告的第一个 `up` 分区）：
 
 ```yaml
 profile: hpc
@@ -71,21 +90,22 @@ bfts:
 
 **食谱 —— 制作你自己的 profile。** 在
 `ari-core/config/profiles/` 中放一个新文件，例如 `bigjob.yaml`，并用
-`--profile bigjob` 选择它：
+`--profile bigjob` 选择它。只写那四个会被合并的键 —— 在这里写的其他内容都会被
+忽略；而一个解析不到对应文件的 profile 名只会记录一条警告并继续运行：
 
 ```yaml
 profile: bigjob
 hpc:
   enabled: true
   scheduler: auto
-  partition: gpu
-  cpus_per_task: 32
-  memory_gb: 128
-  walltime: "12:00:00"
 bfts:
   max_total_nodes: 40
   parallel: 8
 ```
+
+规模相关的旋钮属于 `workflow.yaml` 的 `resources:` 块，其自身的键名是
+`cpus` / `memory_gb` / `gpus` / `walltime` / `partition` —— 或者写在环境变量里
+（`ARI_SLURM_PARTITION`）。
 
 分区检测与 SLURM 细节参见 [HPC 设置](hpc_setup.md)。
 

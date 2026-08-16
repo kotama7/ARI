@@ -12,7 +12,19 @@ sources:
     role: implementation
   - path: ari-core/ari/skill_manifest.py
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/container.py
+    role: implementation
+  - path: ari-core/ari/cost_tracker.py
+    role: implementation
+  - path: ari-core/ari/paths.py
+    role: implementation
+  - path: ari-core/ari/llm/client.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/async_tools.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # `ari.public` — Stable API for skills
@@ -23,7 +35,10 @@ change without notice.  The package is a thin re-export layer over
 the corresponding `ari.<module>` private implementations so core can
 refactor freely while the skill-facing contract stays put.  It was
 introduced in v0.7.1 (Phase 4 of the v0.7+ refactor) and is enforced
-by `ari-core/tests/test_public_api_boundary.py`.
+by `ari-core/tests/test_public_api_boundary.py` — which fails on *new*
+`from ari.<internal>` imports but grandfathers a file-and-line-pinned
+waiver list of the existing ones, so "only `ari.public`" is the rule the
+test defends going forward, not a property of the current tree.
 
 ## Sub-modules
 
@@ -91,7 +106,7 @@ Re-exports the container runtime from `ari.container`:
 |---|---|
 | `ContainerConfig` | Dataclass: `image`, `mode` (`auto`/`docker`/`singularity`/`apptainer`/`none`), `pull` (`always`/`on_start`/`never`), `extra_args` |
 | `detect_runtime()` | Returns `"docker"` / `"apptainer"` / `"singularity"` / `"none"`; each candidate must be on `PATH` *and* answer a probe (`docker info`, `<rt> --version`). Apptainer/Singularity are preferred over Docker when `SLURM_JOB_ID` is set |
-| `config_from_env()` | Builds a `ContainerConfig` from `ARI_CONTAINER_*` env vars (returns `None` when unset) |
+| `config_from_env()` | Builds a `ContainerConfig` from `ARI_CONTAINER_IMAGE` and `ARI_CONTAINER_MODE` (default `auto`); returns `None` when no image is set. `pull` and `extra_args` are *not* read from the environment |
 | `pull_image(cfg)` | Pulls the image referenced by `cfg` (`docker pull` / `<rt> pull`); returns `True` on success |
 | `run_in_container(cfg, cmd, ...)` | Starts `cmd` inside the container (or directly when no image / `mode: none`) and returns the `subprocess.Popen` handle |
 | `run_shell_in_container(cfg, script, ...)` | Blocking variant taking a shell command string; returns a `subprocess.CompletedProcess`, with process-group kill on timeout |
@@ -154,9 +169,14 @@ entrypoint, exhaustive ordinary environment declarations, disjoint named
 `CredentialScopeV1` declarations, unique tool names, capability references,
 phases, side effects, determinism, timeout class, permissions, and result schema.
 `TimeoutBudgetV1` makes any caller-controlled timeout argument explicit and
-bounded. `AsyncLifecycleV1` names the semantic status/result/cancel capabilities
-required by a tool whose `timeout_class` is `async`; unresolved or ambiguous
-lifecycle capabilities make the manifest invalid.
+bounded. `AsyncLifecycleV1` names the semantic lifecycle capabilities of a tool
+whose `timeout_class` is `async` — `status` is required, `result` and `cancel`
+are optional. Manifest validation only checks that the block is present exactly
+when `timeout_class` is `async`; whether each named capability resolves is
+decided later, at dispatch. A lifecycle `capability_ref` that matches anything
+other than exactly one runtime tool of that Skill yields a `protocol` error
+envelope in place of the async handle, so an ambiguous lifecycle passes manifest
+load and fails the submission.
 `environment_policy=complete` is required for built-in production Skills.
 Each resolved tool also declares `context_requirement` as `none`, `run`, or
 `node`; dispatch fails closed when the caller does not supply that structured
@@ -377,8 +397,10 @@ internal-import boundaries through the public layer.
 
 ## See also
 
-- `ari-core/ari/public/__init__.py` — module-level docstring with
-  the canonical sub-module list.
+- `ari-core/ari/public/__init__.py` — module-level docstring with the
+  sub-module list and the rationale for each; it currently omits
+  `ari.public.latex_claims` and `ari.public.paper`, so the table above is
+  the complete inventory.
 - `docs/guides/extension_guide.md` — how to write a new skill that depends
   only on `ari.public`.
 - `CONTRIBUTING.md::Software-engineering discipline §3` — public-API

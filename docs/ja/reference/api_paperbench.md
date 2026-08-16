@@ -2,11 +2,21 @@
 sources:
   - path: ari-core/ari/viz/api_paperbench.py
     role: implementation
+  - path: ari-core/ari/viz/api_paperbench_worker.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
   - path: ari-skill-paper-re/src/_paperbench_bridge.py
     role: implementation
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-05-25
+  - path: ari-skill-paper-re/src/sandbox.py
+    role: implementation
+  - path: ari-skill-paper-re/src/_compute/computer.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # PaperBench API リファレンス
@@ -33,7 +43,7 @@ last_verified: 2026-05-25
       "source_type": "arxiv",
       "source": "2404.14193",
       "imported_at": "2026-05-13T...",
-      "registry_dir": "/home/.../paper_registry/papers/2404.14193"
+      "registry_dir": "<registry_root>/papers/2404.14193"
     }
   ]
 }
@@ -68,7 +78,7 @@ arXiv Atom API 経由でメタデータを取得 (v0.7.2):
 | `source_type` | yes | `arxiv` \| `doi` \| `upload` \| `local` |
 | `source` | yes | 識別子またはパス |
 | `title` | yes | フリーフォーム |
-| `license` | 推奨 | サーバ側分類; 欠如 ⇒ "unknown" |
+| `license` | 推奨 | サーバ側分類; 欠如 ⇒ `license: ""` に `usable: false` と note `"license unknown — manual review required"` |
 | `authors` | no | 文字列リスト |
 | `venue` / `year` / `artifact_url` | no | 任意メタデータ |
 | `paper_id` | no | 既定: sanitize された `source`; `[A-Za-z0-9._-]{1,64}` |
@@ -86,6 +96,9 @@ manifest 行とディスク上の論文ディレクトリを削除。 idempotent
 ```json
 {"deleted": true, "paper_id": "2404.14193"}
 ```
+
+未知の id もエラーにはならない。 HTTP 200 のまま
+`{"deleted": false, "reason": "not found", "paper_id": "<id>"}` を返す。
 
 ### `POST /api/paperbench/papers/<paper_id>/metadata`
 
@@ -129,14 +142,32 @@ PaperBench run を投入。
     "gpus_per_task": 1,
     "gpu_type": "v100",
     "memory_gb_per_node": 256,
-    "constraint": "skylake",
-    "cpu_bind": "cores",
-    "account": "projX"
+    "constraint": "skylake"
   },
   "judge_config":     {"model": "gpt-5-mini", "n_runs": 1},
   "dry_run": false
 }
 ```
+
+検証されるのは `rubric_config` だけ。 未知のキーがあるとリクエスト全体が
+`{"error": "unknown rubric_config fields: ..."}` で失敗する。 受け付ける
+キーは `model`、 `target_leaf_count`、 `temperature`、 `seed`、
+`paperbench_rubric_id`、 `max_model_calls`、 `subtree_concurrency`、
+`provider`、 `model_revision` の 9 個。
+
+`reproduce_config` と `judge_config` は検証されず、 viz worker が知って
+いるキーだけが skill へ転送される。 `account` / `qos` / `reservation` /
+`walltime` / `gpus_per_node` などは endpoint には通るが skill へ渡る途中で
+黙って落ちる (`run_reproduce` 自体は引数として持っている) ので、
+ルーブリックの `execution_profile` 経由で指定すること。
+
+`cpu_bind` / `mem_bind` は `reproduce_config` に入れないこと: worker は
+これらを転送し、 SLURM 経路が「cpu_bind and mem_bind are srun job-step
+settings; place them explicitly in reproduce.sh」で run を拒否する。
+
+レジストリに無い `paper_id` があると launch 全体が
+`{"error": "paper not in registry: <paper_id>"}` で中断する — 同一
+リクエスト内で先に作成済みの job はそのまま走り続ける。
 
 レスポンス (実 launch):
 
@@ -156,9 +187,18 @@ PaperBench run を投入。
 
 ### `GET /api/paperbench/run/<job_id>`
 
-ステータススナップショット。 フィールド: `status` (`queued` /
-`running` / `completed` / `failed`)、 `current_stage`、 `progress`、
-`created_at`、 加えて元の `configs`。
+ステータススナップショット。 フィールド: `status`、 `current_stage`、
+`progress`、 `created_at`、 `paper_id`、 `results`、 `error`、 `logs`、
+加えて元の `configs`。 未知の id には
+`{"error": "job not found", "job_id": "<id>"}` を返す。
+
+`status` は `queued` / `running` / `completed` / `failed`、 加えて
+`interrupted` の 5 種。 job の更新は毎回
+`{registry_root}/jobs/{job_id}.json` にミラーされるので viz サーバ再起動
+後も job は残るが、 再起動後もなお `queued`/`running` のままの永続レコード
+はその worker スレッドがプロセスと共に死んだことを意味し、 ディスク読み出し
+側が説明用の `error` を付けて `interrupted` として報告する。 worker が
+再起動されることはない。
 
 ### `GET /api/paperbench/run/<job_id>/results`
 
@@ -214,9 +254,24 @@ data: {"status":"completed"}
 
 ## CORS / 認証
 
-viz サーバはダッシュボード endpoint で全 origin (`*`) を許可、 認証
-なし — localhost バインド or SSH トンネル背後での利用を想定。 上流
-リバースプロキシ無しで public interface に晒さないこと。
+viz サーバは **same-origin のみ**: リクエストの `Origin` が
+サーバ自身の origin (`Host` ヘッダ、 またはサーバポート上の loopback 形式)
+に一致するときだけ `Access-Control-Allow-Origin` にエコーされる。
+cross-origin リクエストには ACAO ヘッダが一切付かないのでブラウザが
+レスポンスを拒否する。 ページ origin が API origin に一致し得ない
+トンネル / ポータル構成向けに、 `ARI_GUI_CORS_ANY=1` で従来の無条件 `*`
+に戻せる。
+
+認証は bind 次第。 loopback bind (既定) はトークンなしで従来どおり。
+`ARI_GUI_BIND` が非 loopback ホストを指す場合、 すべての `do_GET` /
+`do_POST` / `do_PUT` / `do_PATCH` / `do_DELETE` の手前に置かれた単一の
+ゲートが `Authorization: Bearer <ARI_GUI_TOKEN>` を要求し、 無ければ
+型付き JSON body 付きの 401 を返す。 `/health*` は免除、 SSE の job ログ
+ストリームは `EventSource` がヘッダを設定できないため同じトークンを
+`token=` クエリパラメータとして受け付ける。 リモート bind で
+`ARI_GUI_TOKEN` が未設定の場合は未認証で起動せずトークンを生成して表示する。
+`ARI_GUI_AUTH=0` でゲートを無効化できる。 上流リバースプロキシ無しで
+public interface に晒さないこと。
 
 ## 関連
 

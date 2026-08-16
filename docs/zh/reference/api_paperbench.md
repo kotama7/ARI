@@ -2,11 +2,21 @@
 sources:
   - path: ari-core/ari/viz/api_paperbench.py
     role: implementation
+  - path: ari-core/ari/viz/api_paperbench_worker.py
+    role: implementation
+  - path: ari-core/ari/viz/routes.py
+    role: implementation
+  - path: ari-core/ari/viz/auth.py
+    role: implementation
   - path: ari-skill-paper-re/src/_paperbench_bridge.py
     role: implementation
   - path: ari-skill-paper-re/src/server.py
     role: implementation
-last_verified: 2026-05-25
+  - path: ari-skill-paper-re/src/sandbox.py
+    role: implementation
+  - path: ari-skill-paper-re/src/_compute/computer.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # PaperBench API 参考
@@ -33,7 +43,7 @@ last_verified: 2026-05-25
       "source_type": "arxiv",
       "source": "2404.14193",
       "imported_at": "2026-05-13T...",
-      "registry_dir": "/home/.../paper_registry/papers/2404.14193"
+      "registry_dir": "<registry_root>/papers/2404.14193"
     }
   ]
 }
@@ -67,7 +77,7 @@ last_verified: 2026-05-25
 | `source_type` | yes | `arxiv` \| `doi` \| `upload` \| `local` |
 | `source` | yes | 标识或路径 |
 | `title` | yes | 自由形式 |
-| `license` | 推荐 | 服务端分类;缺失 ⇒ "unknown" |
+| `license` | 推荐 | 服务端分类;缺失 ⇒ `license: ""`、`usable: false`,note 为 "license unknown — manual review required" |
 | `authors` | no | 字符串列表 |
 | `venue` / `year` / `artifact_url` | no | 可选元数据 |
 | `paper_id` | no | 默认: sanitize 的 `source`;`[A-Za-z0-9._-]{1,64}` |
@@ -85,6 +95,9 @@ last_verified: 2026-05-25
 ```json
 {"deleted": true, "paper_id": "2404.14193"}
 ```
+
+未知 id 不算错误:调用仍以 HTTP 200 返回
+`{"deleted": false, "reason": "not found", "paper_id": "<id>"}`。
 
 ### `POST /api/paperbench/papers/<paper_id>/metadata`
 
@@ -128,14 +141,30 @@ body 含 `license` 时重新分类。
     "gpus_per_task": 1,
     "gpu_type": "v100",
     "memory_gb_per_node": 256,
-    "constraint": "skylake",
-    "cpu_bind": "cores",
-    "account": "projX"
+    "constraint": "skylake"
   },
   "judge_config":     {"model": "gpt-5-mini", "n_runs": 1},
   "dry_run": false
 }
 ```
+
+`rubric_config` 是唯一被校验的块:出现未知键会让整个请求失败并返回
+`{"error": "unknown rubric_config fields: ..."}`。允许的键为 `model`、
+`target_leaf_count`、`temperature`、`seed`、`paperbench_rubric_id`、
+`max_model_calls`、`subtree_concurrency`、`provider`、`model_revision`。
+
+`reproduce_config` 与 `judge_config` **不**校验,viz worker 只转发它认识的键。
+`account`、`qos`、`reservation`、`walltime`、`gpus_per_node` 等会被 endpoint 接受
+但在送往技能的路上被静默丢弃(尽管 `run_reproduce` 本身接受这些参数)——
+改为通过 rubric 的 `execution_profile` 提供。
+
+不要把 `cpu_bind` / `mem_bind` 放进 `reproduce_config`:worker 会转发它们,
+SLURM 路径随后会以 "cpu_bind and mem_bind are srun job-step settings; place them
+explicitly in reproduce.sh" 拒绝这次运行。
+
+不在注册表中的 `paper_id` 会让整次 launch 中止并返回
+`{"error": "paper not in registry: <paper_id>"}` —— 同一请求中更早的 id 已创建的
+job 会继续运行。
 
 响应 (真实 launch):
 
@@ -156,8 +185,15 @@ body 含 `license` 时重新分类。
 
 ### `GET /api/paperbench/run/<job_id>`
 
-状态快照。字段: `status` (`queued` / `running` / `completed` /
-`failed`)、`current_stage`、`progress`、`created_at`,加上原始 `configs`。
+状态快照。字段: `status`、`current_stage`、`progress`、`created_at`、
+`paper_id`、`results`、`error`、`logs`,加上原始 `configs`。未知 id 返回
+`{"error": "job not found", "job_id": "<id>"}`。
+
+`status` 取 `queued`、`running`、`completed`、`failed` —— 或 `interrupted`。
+每次 job 变更都会镜像写入 `{registry_root}/jobs/{job_id}.json`,因此 job 能挺过
+viz 服务器重启;重启后仍写着 `queued`/`running` 的持久化记录意味着它的 worker
+线程随进程一同死亡,磁盘读取器会把它报告为 `interrupted` 并附带说明性的 `error`。
+worker 不会被重新拉起。
 
 ### `GET /api/paperbench/run/<job_id>/results`
 
@@ -213,9 +249,20 @@ data: {"status":"completed"}
 
 ## CORS / 认证
 
-viz 服务器对仪表盘 endpoint 允许所有 origin (`*`),不执行认证 —
-期望绑定 localhost 或在 SSH 隧道之后。**不要**在没有上游反向代理
-的情况下暴露到公网接口。
+viz 服务器**仅同源**:只有当请求的 `Origin` 与服务器自身的 origin
+(`Host` 头,或服务端口上的 loopback 形式) 一致时,才会在
+`Access-Control-Allow-Origin` 中回显它。跨源请求根本拿不到 ACAO 头,
+浏览器因此拒收响应。`ARI_GUI_CORS_ANY=1` 可恢复历史上无条件的 `*`,
+用于页面 origin 无法与 API origin 一致的隧道 / 门户拓扑。
+
+认证取决于绑定方式。loopback 绑定 (默认) 解析不出 token,行为与以往一致。
+当 `ARI_GUI_BIND` 指向非 loopback 主机时,位于每个 `do_GET` / `do_POST` /
+`do_PUT` / `do_PATCH` / `do_DELETE` 之前的单一 gate 会要求
+`Authorization: Bearer <ARI_GUI_TOKEN>`,否则以 401 + 类型化 JSON body 拒绝;
+`/health*` 豁免,SSE 任务日志流因 `EventSource` 无法设置头部而接受同一 token
+作为 `token=` query 参数。远程绑定但未设置 `ARI_GUI_TOKEN` 时会生成并打印一个
+token,而不是无认证启动;`ARI_GUI_AUTH=0` 关闭该 gate。**不要**在没有上游反向
+代理的情况下暴露到公网接口。
 
 ## 相关
 
