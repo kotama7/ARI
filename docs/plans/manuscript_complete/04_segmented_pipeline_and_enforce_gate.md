@@ -1,6 +1,10 @@
 # Task 04: Segmented Pipeline and Enforce Gate
 
-> **Status**: in progress
+> **Status**: implemented — §12 re-checked at HEAD: segment freshness, brief
+> binding without silent omission, and exact off-mode identity are all green
+> (`test_segment_record_reuses_only_fresh_outputs`,
+> `test_required_brief_items_split_without_omission`,
+> `test_off_is_exact_no_artifact_identity`).
 > **Depends on**: 00, 01, 02, 03
 > **Gate**: G3 — pre-authoring readiness enforcement
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

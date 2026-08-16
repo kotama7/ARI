@@ -14,9 +14,9 @@ description: Correctness of a candidate against the gemm-dense-fp64 problem's ow
 driver:
   license: MIT
   revision: ari.assurance.problem-correctness/v1
-  sha256: sha256:80655f2dbfdb1df1ef96e1ae195028f227d30ce089806ebcce7937a9b63a91b6
+  sha256: sha256:8bca44aaf9db8368aaec1deb8175526eba973c5cab2058219ff10796e3ad8520
 expected_result_schema: ari.native-problem-correctness-report/v1
-expected_result_schema_digest: sha256:d9c95b7389ba36356b4cfdc8e2bad160851000bcb21e64ef4a1c00a76afbe22e
+expected_result_schema_digest: sha256:6378306ffb63e236faba237a5253470f4c3c8a7b307d63e577ffd65a6fe930fa
 filesystem_policy: isolated-readonly-target
 hidden_test_policy: verifier-only
 id: hpc/gemm-dense-fp64-problem-correctness
@@ -24,12 +24,12 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: artifact_verifier
 maintainer: ARI maintainers
-manifest_digest: sha256:240ab768603eccf9b066b2bf9504b9c69bf92a561ff78fc49ba21a8a5c93214d
+manifest_digest: sha256:bcd94ff282ec97328d3533cdb8ec70ab6fc54a4bd0c59d9e7b425ea040c38cf9
 model:
   license: not-applicable
   revision: not-applicable
   sha256: sha256:ffc6d4d35a35d54e58d3aba25893c53a7b030781681ce45d857116cd44dbeae7
-negative_control_report_digest: sha256:2aa02761b29a6b4112814c6d5fd3a3748eab489cc34bf4a41d2f3ba44e079764
+negative_control_report_digest: sha256:4ff4600b53947691990b7f97eb6de5ca58dec847dca91ce0ee1f9c05cae13530
 network_allowlist: []
 network_policy: deny
 nondeterminism_declaration: none
@@ -113,5 +113,5 @@ target_kinds:
 - benchmark-submission
 timeout_seconds: 900
 tolerance_policy_digest: sha256:675576e0045c10df5ffe47e2d3cb2a4a6e91c43ac35fe08c6041b67c7fb8c6b0
-upstream_parity_report_digest: sha256:591898b875190822125c7ab1009968572142d6e6951b4fe2e2119411d0de89a6
+upstream_parity_report_digest: sha256:c1e3d4d89b2f12b979a4df64c74385fabe8545c9eaeddae2687cf7c88efc97ad
 version: 1.0.0

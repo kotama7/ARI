@@ -32,6 +32,11 @@ class _StubManifest:
     network_policy = "deny"
     credential_policy = "none"
     source_full_commit_sha = "b" * 40
+    #: Declared by the MANIFEST, and independently by the driver. The gate
+    #: compares them; before it did, one shipped manifest named a report type
+    #: its driver never emits.
+    expected_result_schema = "ari.stub-report/v1"
+    expected_result_schema_digest = "sha256:" + "c" * 64
 
     class _Asset:
         sha256 = "sha256:" + "a" * 64
@@ -62,6 +67,14 @@ def _passing(manifest=None):
     return GateEvidence(manifest=manifest, parity=probe,
                         driver_digest="sha256:" + "a" * 64,
                         report_schema={"$id": "t", "properties": {"verdict": {}}},
+                        # The manifest declares the result schema INDEPENDENTLY of
+                        # the driver, and nothing compared the two: measured on the
+                        # shipped catalog, one manifest named a report type its
+                        # driver never emits and four pinned a schema file that had
+                        # changed since they were registered. The fixture supplies
+                        # what the driver emits so the gate has both halves.
+                        report_schema_version=_StubManifest.expected_result_schema,
+                        report_schema_digest=_StubManifest.expected_result_schema_digest,
                         stability={"runs": 3, "relative_spread": 0.02},
                         repo_commit="b" * 40)
 

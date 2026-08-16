@@ -1,6 +1,9 @@
 # Task 01: Baseline and Decision Freeze
 
-> **Status**: in progress
+> **Status**: implemented — §9 re-checked at HEAD: the seven fixture classes are
+> manifest-bound and materialisable (`test_baseline_fixture_catalog_is_complete`,
+> `test_baseline_fixture_classes_are_executable`) and MC-ADR-001–009 have permanent
+> homes under `docs/adr/manuscript_complete/`.
 > **Depends on**: 00
 > **Gate**: G0 — baseline and normative decision freeze
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

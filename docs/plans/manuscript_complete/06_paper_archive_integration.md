@@ -1,6 +1,8 @@
 # Task 06: Paper RQGM Archive Integration
 
-> **Status**: in progress
+> **Status**: implemented — §11 re-checked at HEAD: one-bundle input, hard
+> disqualification before utility, and rejection of unbound enforce fallbacks are
+> green, and the off-mode paper suite (`ari-skill-paper/tests`) is green with it.
 > **Depends on**: 00, 01, 02, 03, 04
 > **External references**: ARI-RQGM-paper Tasks 01–07
 > **Gate**: G5 — common manuscript input across paper backends

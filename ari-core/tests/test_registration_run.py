@@ -19,7 +19,7 @@ import pytest
 from ari.assurance.registration_gates import evaluate_gates
 from ari.assurance.registration_run import (
     RegistrationEvidenceError, gather_evidence, probe_repeatedly,
-    repository_commit, result_schema_for)
+    repository_commit, result_schema_digest, result_schema_for)
 
 
 class _Manifest:
@@ -32,6 +32,13 @@ class _Manifest:
     network_policy = "deny"
     credential_policy = "none"
     source_full_commit_sha = "b" * 40
+    #: Declared by the MANIFEST, and independently by the driver; the gate now
+    #: compares them. `_Driver` below emits the performance report, so this
+    #: stub declares it and pins the file ARI actually ships for it -- a stub
+    #: that named neither was a manifest checked by nothing.
+    expected_result_schema = "ari.native-perf-report/v1"
+    expected_result_schema_digest = result_schema_digest(
+        "ari.native-perf-report/v1")
 
     class _Asset:
         sha256 = "sha256:" + "a" * 64

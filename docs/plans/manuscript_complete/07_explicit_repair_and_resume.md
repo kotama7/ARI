@@ -1,6 +1,8 @@
 # Task 07: Explicit Repair and Resume
 
-> **Status**: in progress
+> **Status**: implemented — §12 re-checked at HEAD: fixed repair identity/budget,
+> digest-bound commit records, resume that does not repeat a committed request, and
+> no-progress/human-stop termination are all green.
 > **Depends on**: 00, 01, 02, 03, 04
 > **Optional integration dependencies**: 05 for KCA repair; existing research runtime for experiment repair
 > **Gate**: G6 — bounded, authorized, idempotent repair

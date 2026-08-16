@@ -35,6 +35,8 @@ import numpy as np
 
 from ari.assurance.native_perf_common import (
     MAX_OVERHEAD_RATIO,
+    finite_ratio,
+    sandbox_record,
     TIER_REPETITIONS,
     NativePerfReportV1,
     PerfBuildError,
@@ -249,7 +251,13 @@ def verify_performance(
                     # Recorded from the launch that happened, not from a probe
                     # taken separately: those are the two things that used to be
                     # able to disagree.
-                    sandbox_seen.update(watched["candidate"].get("sandbox") or {})
+                    # FILTERED, because the launch's record carries
+                    # ``writable_root`` -- the per-run temporary directory,
+                    # i.e. a HOST FILESYSTEM PATH -- and this report is
+                    # published and digested evidence. It also changes every
+                    # run, so it makes the report digest non-reproducible.
+                    sandbox_seen.update(sandbox_record(
+                        watched["candidate"].get("sandbox") or {}))
                     over_cand = watched["candidate"].get("overhead", 0.0)
                     over_ref = watched["reference"].get("overhead", 0.0)
                     if over_ref > 0 and over_cand > over_ref * MAX_OVERHEAD_RATIO:
@@ -299,7 +307,8 @@ def verify_performance(
                     repetitions.append(PerfRepetitionV1(
                         index=index, input_seed=input_seed,
                         credited_seconds=t_cand, reference_seconds=t_ref,
-                        speedup=t_ref / t_cand, correct=False, max_rel_error=worst))
+                        speedup=t_ref / t_cand, correct=False,
+                        max_rel_error=finite_ratio(worst)))
                     break
                 matched_seconds = seconds.get("reference_matched")
                 speedup_matched = None
@@ -313,7 +322,8 @@ def verify_performance(
                     index=index, input_seed=input_seed,
                     credited_seconds=t_cand, reference_seconds=t_ref, speedup=ratio,
                     matched_seconds=matched_seconds, speedup_matched=speedup_matched,
-                    toolchain_gain=gain, correct=True, max_rel_error=worst))
+                    toolchain_gain=gain, correct=True,
+                    max_rel_error=finite_ratio(worst)))
             if verdict == "pass":
                 if not ratios:
                     verdict, detail = "inconclusive", "no repetition completed"

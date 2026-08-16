@@ -582,6 +582,55 @@ def test_the_report_says_which_problems_it_measured():
     assert body["dataset_revision"] and body["dataset_sha256"].startswith("sha256:")
 
 
+def test_a_non_finite_residual_does_not_crash_the_report():
+    """A wrong candidate must not be able to turn its own fail into an outage.
+
+    The family oracle answers `inf` for an output containing an infinity and
+    `nan` for one that leaves the frozen driver's poisoned buffer in place.
+    Neither is JSON, and `max_rel_error` was a bare float, so building the
+    report raised "Out of range float values are not JSON compliant" INSIDE the
+    verifier -- a non-zero worker exit, which the driver reports as
+    `infrastructure_error` rather than as the failure it is.
+    """
+    from ari.assurance.native_perf_common import finite_ratio
+
+    assert finite_ratio(float("inf")) is None
+    assert finite_ratio(float("nan")) is None
+    assert finite_ratio(2.5) == 2.5
+
+    for bad in (float("inf"), float("nan")):
+        repetition = PerfRepetitionV1(
+            index=0, input_seed=0, credited_seconds=1.0, reference_seconds=1.0,
+            speedup=1.0, correct=False, max_rel_error=finite_ratio(bad))
+        assert repetition.max_rel_error is None
+        case = PerfCaseResultV1(
+            case_id="x", verdict="fail", detail=f"residual {bad}", speedup=0.0,
+            repetitions_requested=1, repetitions=(repetition,))
+        # The whole report must survive the round trip the driver performs.
+        report = _report(case_results=(case,), verdict="fail")
+        assert NativePerfReportV1.model_validate_json(
+            report.model_dump_json()).report_digest == report.report_digest
+
+
+def test_the_report_carries_no_host_path():
+    """The launch's sandbox record names the per-run temporary directory.
+
+    `writable_root` is a HOST FILESYSTEM PATH, and this report is published and
+    digested evidence, so carrying it writes machine identity into an
+    attestation -- and it changes every run, which makes the report digest
+    non-reproducible.
+    """
+    from ari.assurance.native_perf_common import (SANDBOX_RECORD_KEYS,
+                                                  sandbox_record)
+
+    observed = {"filesystem_isolation": True, "mechanism": "landlock",
+                "landlock_abi": 6, "does_not_restrict": ["fork"],
+                "writable_root": "/tmp/tmpEXAMPLE"}
+    kept = sandbox_record(observed)
+    assert "writable_root" not in kept
+    assert set(kept) == set(SANDBOX_RECORD_KEYS)
+
+
 
 # --- the profiler: a diagnostic that can never become a verdict -----------------
 

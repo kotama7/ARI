@@ -1,6 +1,9 @@
 # Task 00: Manuscript Complete Program Plan
 
-> **Status**: in progress
+> **Status**: in progress — §25.20/§25.23 require every applicable Harness suite to
+> be green, and `ari-core/tests/test_production_harness_evidence.py::test_production_native_harness_catalog_is_verified_and_closed`
+> fails at HEAD because the `hpc/gemm-performance` registration report does not bind
+> the manifest digest now in the tree.
 > **Internal dependencies**: none
 > **External integration dependencies**: ARI-RQGM Tasks 18/19 for KCA-bound
 > publication; ARI-RQGM-paper Task 07 for the existing final claim-gate handoff

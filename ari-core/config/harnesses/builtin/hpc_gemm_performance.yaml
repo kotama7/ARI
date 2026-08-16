@@ -1,17 +1,3 @@
-# THE PERFORMANCE HARNESS'S MANIFEST. Nothing declared kind: benchmark before
-# this, so the performance-regression slot six knowledge-skill import profiles
-# require was reserved and empty, and the driver that fills it was unreachable:
-# resolution is keyed on driver revision, and no manifest named one.
-#
-# WHY benchmark + benchmark-submission. models.py forbids a benchmark claiming
-# external target coverage, and the resolver confines a non-external benchmark
-# to {model, agent, benchmark-submission}. Both rules are coherent -- a
-# benchmark scores a SUBMISSION -- and a candidate kernel handed to one is
-# exactly that. No rule was relaxed to make this fit.
-#
-# The oracle slot pins the PROBLEM: its digest covers the contract header, the
-# frozen driver, the reference, the seed and the negative controls, so a change
-# to any of them is a re-registration. The dataset slot pins WHICH SIZES.
 accepts_external_target: false
 container:
   license: Composite OSS; inventory sha256:a6fd3ea19d7f721cf8a6122826efb9c1627167c11792588a88b97a108896b088
@@ -27,9 +13,9 @@ description: ARI-native dense fp64 GEMM performance benchmark
 driver:
   license: MIT
   revision: ari.assurance.native-perf/v1
-  sha256: sha256:b9c8b0538d8ac20ee24686170dedc44c8fd7b15cb0e5c62d45d00cec3e8bd126
-expected_result_schema: ari.native-hpc-verification-report/v1
-expected_result_schema_digest: sha256:6ff46e8f6f4455daa6fdbac5e1fccff61a082a0aeceada85b57b919337adb6ff
+  sha256: sha256:532b6cce1befe0e0e7ee9642934d05c6e2f779b5da12c92cbe2b967cf3cc5d7c
+expected_result_schema: ari.native-perf-report/v1
+expected_result_schema_digest: sha256:ab74b0271a6cda0105fef366052fea5fc320e49d849a7a34a4807b08376ff5c4
 filesystem_policy: isolated-readonly-target
 hidden_test_policy: verifier-only
 id: hpc/gemm-performance
@@ -37,7 +23,7 @@ implementation_license: MIT
 infrastructure_failure_policy: separate
 kind: benchmark
 maintainer: ARI maintainers
-manifest_digest: sha256:e3bb5e897342eb562801258f38350428bf9e42febe47afaf8d7dd0e45bf1bd0a
+manifest_digest: sha256:b5ae6ceb632b3f1dfbe702b49885bb195998f6381bbbbf288f37cc7765add290
 model:
   license: not-applicable
   revision: not-applicable

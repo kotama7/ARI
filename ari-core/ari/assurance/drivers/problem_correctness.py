@@ -193,6 +193,29 @@ class ProblemCorrectnessDriver:
             return self._degraded(
                 request, evidence, "malformed-problem-correctness-result")
 
+        # THE REPORT MUST BE ABOUT THE PINNED QUESTION. ``prepare`` checks the
+        # problem and case set ON DISK against the manifest, before anything
+        # runs; nothing checked what came BACK. The worker is launched with the
+        # manifest's own pins, so a mismatch here is not a candidate failing --
+        # it means the result being normalized describes a different question
+        # from the one this manifest was registered against, and normalizing it
+        # would file that answer under this Harness's attestation.
+        mismatched = {
+            key: (mine, theirs)
+            for key, mine, theirs in (
+                ("problem", manifest.oracle.revision, report.problem_revision),
+                ("problem_digest", manifest.oracle.sha256, report.problem_digest),
+                ("dataset", manifest.dataset.revision, report.dataset_revision),
+                ("dataset_digest", manifest.dataset.sha256, report.dataset_sha256),
+            )
+            if mine != theirs
+        }
+        if mismatched:
+            return self._degraded(
+                request, evidence,
+                f"result describes another question than the one pinned: "
+                f"{sorted(mismatched)}")
+
         cases = report.case_results
         failed = sum(case.verdict == "fail" for case in cases)
         worst = max((case.worst_residual_ratio for case in cases), default=0.0)
@@ -243,8 +266,20 @@ class ProblemCorrectnessDriver:
             )
             for atom in request.property_atoms
         )
+        # THE AGGREGATE IS OVER WHAT WAS ASKED. ``report.verdict`` unions both
+        # properties, and ``prepare`` accepts a request declaring either one on
+        # its own: a request asking only about interface conformance would have
+        # been handed a harness-level ``fail`` because the numbers missed the
+        # bound, which is a verdict about a question it did not ask.
+        declared = [item.verdict for item in properties]
+        overall = report.verdict
+        if declared:
+            overall = ("fail" if "fail" in declared
+                       else "inconclusive" if "inconclusive" in declared
+                       else "infrastructure_error" if "infrastructure_error" in declared
+                       else "pass")
         return NormalizedHarnessResultV1(
-            verdict=report.verdict,
+            verdict=overall,
             property_results=properties,
             evidence_artifact_refs=evidence,
             infrastructure_status="ready",
@@ -318,7 +353,22 @@ class ProblemCorrectnessDriver:
                 + _EXTRA_SYMBOL, encoding="utf-8")
             exports = _run(extra, negative_control=True)
 
-        wrong_detail = wrong.case_results[0].detail if wrong.case_results else ""
+        def _failing_detail(report) -> str:
+            """The detail of the case that FAILED, not of case one.
+
+            ``case_results[0]`` is the first case, which is the failing one only
+            when the probe set has a single shape. The gate below asserts the
+            wrong control was caught by the ORACLE by looking for "residual
+            bound" in this string, so reading a passing case's detail would
+            check for that phrase in the text "within the residual bound" --
+            the sentence that means the candidate was ACCEPTED.
+            """
+            for case in report.case_results:
+                if case.verdict == "fail":
+                    return case.detail
+            return report.case_results[0].detail if report.case_results else ""
+
+        wrong_detail = _failing_detail(wrong)
         results = {
             "clean_control": {"verdict": clean.verdict,
                               "report_digest": clean.report_digest},
@@ -340,6 +390,18 @@ class ProblemCorrectnessDriver:
                 # spread for it to resolve.
                 "resolved": True,
                 "relative_spread": 0.0,
+                # WHAT REPEATING THE PROBE ACTUALLY COMPARES.
+                # ``registration_run.probe_repeatedly`` takes the deterministic
+                # path for this driver -- no ``median_speedup`` to spread -- and
+                # digests THIS DICT on each run, requiring every run to produce
+                # the identical answer. With only constants and a coarse verdict
+                # in it, that digest was the same for an instrument that had
+                # silently started accepting anything, so the stability gate
+                # certified a comparison of one fixed string against itself. The
+                # report digest moves with the problem, the case set, the
+                # toolchain, the candidate and every per-case measurement, so
+                # repeating the probe now compares the thing the probe measured.
+                "report_digest": clean.report_digest,
                 "note": ("the problem's frozen reference passed its own family "
                          "oracle, and a correct-but-slow kernel passed with it"),
             },
@@ -361,7 +423,11 @@ class ProblemCorrectnessDriver:
             "passed": (
                 clean.verdict == "pass"
                 and wrong.verdict == "fail"
-                and "residual bound" in wrong_detail
+                # "FAILED the residual bound", not "residual bound" -- the
+                # passing detail is "within the residual bound", so the looser
+                # test is satisfied by the sentence that means the candidate was
+                # ACCEPTED.
+                and "failed the residual bound" in wrong_detail
                 # The specificity direction. Without it the three verdicts above
                 # are equally consistent with an instrument that fails anything
                 # slower than the reference.

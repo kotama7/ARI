@@ -1,6 +1,8 @@
 # Task 03: Audit-Only Simple BFTS + Linear Vertical Slice
 
-> **Status**: in progress
+> **Status**: implemented — §10 re-checked at HEAD: `ManuscriptConfig.mode` still
+> defaults to `off` in `ari-core/ari/config/__init__.py`, and the off-identity,
+> idempotent-audit and read-only CLI status tests are green.
 > **Depends on**: 00, 01, 02
 > **Gate**: G2 — observable completeness without behavior change
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

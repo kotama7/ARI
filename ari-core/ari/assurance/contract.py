@@ -97,6 +97,29 @@ def _correctness_properties(vocabulary) -> tuple[str, ...]:
                          ("artifact-correctness",)))
 
 
+def _artifact_kind_for(vocabulary, property_id: str, artifact_target_kind: str | None,
+                       fallback: str) -> str:
+    """The artifact kind, when the run knows it, for the properties ABOUT it.
+
+    THE DEFECT THIS FIXES. ``target_kinds`` in the vocabulary is one scalar per
+    property, and its own comment records why: the three registered correctness
+    harnesses all verify a ``shared-library``, so one value was the whole truth.
+    A correctness harness over a pinned problem's own C contract verifies a
+    submission, and the same property is now honestly verified on two different
+    kinds of artifact. Measured against the shipped catalog with the new
+    manifest present: an atom stamped ``shared-library`` selected it 0 times and
+    one stamped ``benchmark-submission`` selected it once, so it would have been
+    registered, promoted, and never chosen.
+
+    Only the CORRECTNESS properties take the override, because only those are
+    claims about the artifact under test. A run that does not name a pinned
+    problem passes nothing here and every atom is stamped exactly as before.
+    """
+    if artifact_target_kind and property_id in _correctness_properties(vocabulary):
+        return artifact_target_kind
+    return _target_kind_for(vocabulary, property_id, fallback)
+
+
 def _target_kind_for(vocabulary, property_id: str, fallback: str) -> str:
     """What this property is verified ON, or the caller's value.
 
@@ -124,6 +147,7 @@ def build_verification_contract(
     property_vocabulary_digest: str,
     target_kind: str = "workspace-artifact",
     tolerance_policy: tuple[str, str] | None = None,
+    artifact_target_kind: str | None = None,
 ) -> VerificationContractV1:
     """Union Research Contract correctness and Knowledge obligations.
 
@@ -140,6 +164,11 @@ def build_verification_contract(
     equality, so a governed run resolved zero Harness coverage no matter what
     numbers the Research Contract carried. The fallback is kept so callers that
     pass no policy behave exactly as before.
+
+    ``artifact_target_kind`` is what the run's candidates ARE, when the run names
+    a pinned problem and therefore knows. It overrides the vocabulary's
+    per-property target kind for the correctness properties only; without it
+    every requirement is stamped exactly as before. See ``_artifact_kind_for``.
     """
 
     metric_tolerance_digest = canonical_digest(
@@ -165,8 +194,8 @@ def build_verification_contract(
         requirements.append(
             VerificationRequirementV1.create(
                 property_id=property_id,
-                target_kind=_target_kind_for(property_vocabulary, property_id,
-                                             target_kind),
+                target_kind=_artifact_kind_for(property_vocabulary, property_id,
+                                               artifact_target_kind, target_kind),
                 required_methods=methods,
                 required_tier="screen",
                 failure_policy="exclude-from-scientific-frontier",
@@ -192,8 +221,12 @@ def build_verification_contract(
         requirements.append(
             VerificationRequirementV1.create(
                 property_id=obligation.property_id,
-                target_kind=_target_kind_for(property_vocabulary,
-                                             obligation.property_id, target_kind),
+                # A Knowledge obligation over a correctness property is a claim
+                # about the same artifact, so it takes the same override; every
+                # other property keeps the vocabulary's answer.
+                target_kind=_artifact_kind_for(property_vocabulary,
+                                               obligation.property_id,
+                                               artifact_target_kind, target_kind),
                 required_methods=methods,
                 required_tier=obligation.required_tier,
                 failure_policy=(

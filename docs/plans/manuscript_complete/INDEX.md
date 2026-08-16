@@ -27,18 +27,22 @@
 
 ## Active plans
 
-| ID | Plan | Status | Internal dependency | External integration dependency | Deletion status |
-|---|---|---|---|---|---|
-| 00 | [Manuscript Complete program plan](00_manuscript_complete_program_plan.md) | implemented | none | RQGM 18/19; paper 07 | not deletable |
-| 01 | [Baseline and decision freeze](01_baseline_and_decision_freeze.md) | implemented | 00 | none | not deletable |
-| 02 | [Contracts and deterministic compiler core](02_contracts_and_compiler_core.md) | implemented | 00, 01 | none | not deletable |
-| 03 | [Audit-only simple BFTS + linear vertical slice](03_audit_vertical_slice.md) | implemented | 00, 01, 02 | none | not deletable |
-| 04 | [Segmented pipeline and enforce gate](04_segmented_pipeline_and_enforce_gate.md) | implemented | 00–03 | none | not deletable |
-| 05 | [Research RQGM and KCA integration](05_rqgm_kca_integration.md) | implemented | 00–04 | RQGM 18/19 | not deletable |
-| 06 | [Paper RQGM archive integration](06_paper_archive_integration.md) | implemented | 00–04 | RQGM-paper 01–07 | not deletable |
-| 07 | [Explicit repair and resume](07_explicit_repair_and_resume.md) | implemented | 00–04 | Task 05 only for KCA repair | not deletable |
-| 08 | [Automatic repair and full topology](08_auto_repair_and_full_topology.md) | implemented | 00–07 | none beyond dependencies | not deletable |
-| 09 | [Publication lock, evaluation, migration, and documentation](09_publication_evaluation_migration_docs.md) | implemented | 00–08 | authentic RQGM 18/19 certification where applicable | not deletable |
+Status column re-checked against the tree on 2026-08-16 (229 commits after the
+2026-08-06 revision cited below), by re-running each plan's own completion criteria
+rather than by re-reading the 2026-08-06 record.
+
+| ID | Plan | Status | What settled it | Internal dependency | External integration dependency | Deletion status |
+|---|---|---|---|---|---|---|
+| 00 | [Manuscript Complete program plan](00_manuscript_complete_program_plan.md) | in progress | §25.20/§25.23 want every applicable Harness suite green, and `test_production_harness_evidence.py::test_production_native_harness_catalog_is_verified_and_closed` fails at HEAD | none | RQGM 18/19; paper 07 | not deletable |
+| 01 | [Baseline and decision freeze](01_baseline_and_decision_freeze.md) | implemented | all seven fixture classes materialise from checked-in manifests and MC-ADR-001–009 live in `docs/adr/manuscript_complete/` | 00 | none | not deletable |
+| 02 | [Contracts and deterministic compiler core](02_contracts_and_compiler_core.md) | implemented | determinism/tamper and omission-conservation tests green, and both the schema-sync and contract-snapshot checks report in sync | 00, 01 | none | not deletable |
+| 03 | [Audit-only simple BFTS + linear vertical slice](03_audit_vertical_slice.md) | implemented | `manuscript.mode` still defaults to `off` in code, and the off-identity, idempotence and read-only CLI tests are green | 00, 01, 02 | none | not deletable |
+| 04 | [Segmented pipeline and enforce gate](04_segmented_pipeline_and_enforce_gate.md) | implemented | segment freshness, brief binding without silent omission, and exact off-mode identity are green | 00–03 | none | not deletable |
+| 05 | [Research RQGM and KCA integration](05_rqgm_kca_integration.md) | in progress | §11.9 keeps this task open until authentic 18/19 evidence stands; the live catalog will not load and the persisted certify→publication chain is pinned to a superseded `hpc/gemm-performance` report digest | 00–04 | RQGM 18/19 | not deletable |
+| 06 | [Paper RQGM archive integration](06_paper_archive_integration.md) | implemented | one-bundle input, hard disqualification before utility, unbound-fallback rejection, and the off-mode paper suite are green | 00–04 | RQGM-paper 01–07 | not deletable |
+| 07 | [Explicit repair and resume](07_explicit_repair_and_resume.md) | implemented | fixed identity/budget, digest-bound commits, non-repeating resume, and no-progress/human-stop termination are green | 00–04 | Task 05 only for KCA repair | not deletable |
+| 08 | [Automatic repair and full topology](08_auto_repair_and_full_topology.md) | implemented | auto mode is refused outside `enforce` and the four-topology E2E is green; none of its criteria rests on the certification that holds 05 open | 00–07 | none beyond dependencies | not deletable |
+| 09 | [Publication lock, evaluation, migration, and documentation](09_publication_evaluation_migration_docs.md) | in progress | §13.7/§13.9 want authentic certification for every advertised enforce scope, and the `authentic-production-harness` release check is red at HEAD (8 of 9 pass) | 00–08 | authentic RQGM 18/19 certification where applicable | not deletable |
 
 Status legend:
 
@@ -119,8 +123,15 @@ Manuscript Complete は次の軸を結合するが、いずれも暗黙には有
 closed release manifest、4 topology E2E、13 failure-injection family、legacy
 migration/rollback dry run、authentic native Harness publication evidence は PR head
 `5f413c73d6f9c94cbf3135871325623cc7805631` に commit されている。GitHub Actions の
-retained release artifact も `release_eligible=true` であるため、全 task を
-`implemented` と評価する。現在の焦点は merge/release review と post-merge の
+retained release artifact も `release_eligible=true` であった。
+
+2026-08-16 に同じ criteria を HEAD で再実行した結果、この評価は全 task には
+もう当てはまらない。release manifest の 9 checks のうち 8 つは green だが、
+`authentic-production-harness` だけが red である。`hpc/gemm-performance` の
+registration report が、tree にある manifest の digest を bind していないため
+live catalog が load できない。この 1 点に status が依存する Tasks 00、05、09 は
+`in progress` へ戻し、依存しない Tasks 01–04、06–08 は `implemented` のままとする。
+現在の焦点はこの catalog の不一致の解消、続いて merge/release review と post-merge の
 deletion-readiness review である。authentic Harness は synthetic fixture で代用しない。
 
 ## Implementation evidence (2026-08-06)
@@ -156,6 +167,11 @@ expiry `2026-11-04T06:37:10Z`).
 
 All plans remain **not deletable**. The retained remote CI artifact requirement is satisfied; the
 shared blockers are merge/release review and post-merge deletion-readiness review.
-Authentic evidence exists for the advertised verified native HPC Harness scope; unavailable external
+On top of those, as of 2026-08-16 the advertised verified native HPC Harness scope no longer
+verifies at HEAD: `catalog.yaml` still lists `hpc/gemm-performance` as `verified`, but its
+registration report binds a manifest digest that the manifest in the tree no longer has, so
+`load_harness_catalog` refuses the catalog and the persisted certify→publication chain is pinned to
+a superseded report digest for that Harness. Until that is settled, authentic evidence covers the
+three correctness Harnesses but not the advertised performance one. Unavailable external
 PaperBench/other Harness scopes remain explicitly unsupported rather than mocked. Permanent documents
 now carry the architecture, contracts, release policy, migration, rollback, and operator semantics.

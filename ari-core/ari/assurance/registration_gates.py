@@ -51,11 +51,18 @@ class GateEvidence:
 
     def __init__(self, *, manifest: Any = None, parity: dict | None = None,
                  driver_digest: str | None = None, report_schema: dict | None = None,
-                 stability: dict | None = None, repo_commit: str | None = None):
+                 stability: dict | None = None, repo_commit: str | None = None,
+                 report_schema_version: str | None = None,
+                 report_schema_digest: str | None = None):
         self.manifest = manifest
         self.parity = parity or {}
         self.driver_digest = driver_digest
         self.report_schema = report_schema
+        #: What the DRIVER emits, and the digest of the schema file ARI ships for
+        #: it. Both are needed because the manifest declares the same two things
+        #: independently, and nothing compared them.
+        self.report_schema_version = report_schema_version
+        self.report_schema_digest = report_schema_digest
         self.stability = stability or {}
         self.repo_commit = repo_commit
 
@@ -296,15 +303,61 @@ def _multiple_run_stability(evidence: GateEvidence):
 
 @gate("result_schema_conformance")
 def _result_schema_conformance(evidence: GateEvidence):
-    """The typed result the harness emits has a schema, and it validates."""
+    """The harness emits a typed result, ARI ships its schema, and the MANIFEST
+    names that same schema by version AND by digest.
+
+    THE DEFECT THIS FIXES. This gate resolved the schema from the DRIVER's
+    declared report type and asked only that one exist with properties in it.
+    The manifest declares the same two facts independently -- ``expected_result_schema``
+    and ``expected_result_schema_digest`` -- and nothing anywhere compared them
+    with anything. ``resolver`` copies the digest into the lock and no reader
+    checks it. Measured on the shipped catalog, both halves were wrong and
+    invisible:
+
+    * ``hpc/gemm-performance`` named ``ari.native-hpc-verification-report/v1``
+      while its driver emits ``ari.native-perf-report/v1``, so a consumer reading
+      the lock was told to expect a report type that harness never produces.
+    * All four manifests pinned ``sha256:6ff46e8f…``, which IS the schema file's
+      byte digest -- at ``d303a4c``, the commit they were registered from. The
+      file changed afterwards (the ``kind`` enum ``[gemm, spmm, stencil]`` was
+      removed when families became data-driven), so every one of them pins a
+      STRICTER schema than the one ARI now ships, and nothing noticed.
+
+    A stale pin is not corrected here: it is refused, because the pin records
+    what was registered and only a re-registration may move it.
+    """
     if not evidence.report_schema:
         return False, "no result schema supplied for the harness's report type", None
     required = evidence.report_schema.get("properties")
     if not required:
         return False, "the supplied schema declares no properties", None
-    return True, f"schema declares {len(required)} properties", {
+    manifest = evidence.manifest
+    declared = getattr(manifest, "expected_result_schema", None) if manifest else None
+    pinned = getattr(manifest, "expected_result_schema_digest", None) if manifest else None
+    detail = {
         "schema_id": evidence.report_schema.get("$id")
-                     or evidence.report_schema.get("title")}
+                     or evidence.report_schema.get("title"),
+        "driver_emits": evidence.report_schema_version,
+        "manifest_declares": declared,
+        "shipped_digest": evidence.report_schema_digest,
+        "manifest_pins": pinned,
+    }
+    # FAIL-CLOSED on absent inputs, like every other gate here: "absent inputs
+    # make gates fail, not pass". Skipping the comparison when the evidence does
+    # not carry what the driver emits would restore exactly the hole being
+    # closed -- a manifest declaring anything at all, checked by nothing.
+    if not evidence.report_schema_version or not evidence.report_schema_digest:
+        return False, ("no driver report type supplied, so the manifest's "
+                       "declared result schema was compared with nothing"), detail
+    if declared != evidence.report_schema_version:
+        return False, (
+            f"the manifest expects {declared!r} but this harness emits "
+            f"{evidence.report_schema_version!r}"), detail
+    if pinned != evidence.report_schema_digest:
+        return False, (
+            "the manifest pins a result schema that is not the one ARI ships for "
+            "that type; the schema drifted under the pin"), detail
+    return True, f"schema declares {len(required)} properties, named and pinned by the manifest", detail
 
 
 @gate("full_sha256_integrity")

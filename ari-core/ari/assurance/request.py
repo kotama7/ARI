@@ -95,6 +95,63 @@ def harness_inapplicability(
     return ""
 
 
+#: What the declared target IS, for the evidence reference. Keyed on the kind the
+#: declaration carries rather than assumed, and defaulting to a generic type
+#: rather than to whichever one happened to be written first.
+_TARGET_MEDIA_TYPES = {
+    "shared-library": "application/x-sharedlib",
+    "benchmark-submission": "text/x-c",
+}
+
+
+#: WHICH WORKER RUNS, keyed on the driver the manifest pins.
+#:
+#: THE DEFECT THIS FIXES. This module built ONE argv -- ``native_worker`` with
+#: ``--kind`` and ``--library`` -- and derived the kind by string surgery on the
+#: harness id (``rsplit('/')[-1].removesuffix('-correctness')``). That was the
+#: whole truth while every artifact verifier was an ARI-native one. For the
+#: problem-correctness harness it produces ``--kind gemm-dense-fp64-problem``,
+#: which names no registered family, and hands ``--library candidate_gemm.c``,
+#: which is C source and not a library. Both are wrong in the same direction:
+#: the request would launch the wrong verifier, whose output the pinned driver
+#: cannot parse, so a correctly resolved and correctly locked Harness would
+#: return ``infrastructure_error`` on every node -- the mismatch surfacing as an
+#: outage instead of as an error, one layer further down.
+#:
+#: Keyed on ``driver.revision`` because that is what ``resolver`` locks and what
+#: ``prepare`` re-checks; deriving the worker from the harness ID means the ID
+#: is load-bearing text, which is how the string surgery above happened.
+def _worker_argv(manifest, declaration, *, tier: str, seed: int) -> list[str]:
+    revision = manifest.driver.revision
+    if revision == "ari.assurance.problem-correctness/v1":
+        # The problem IS the question, and the manifest pins it in ``oracle``;
+        # the candidate is the declared artifact. Neither is derived from the
+        # harness id. ``--flags=`` form is mandatory -- see the worker.
+        return [
+            sys.executable, "-m",
+            "ari.assurance.drivers.problem_correctness_worker",
+            "--problem", manifest.oracle.revision,
+            "--candidate", declaration.logical_name,
+            "--tier", tier,
+            "--seed", str(seed),
+            "--dataset-revision", manifest.dataset.revision,
+        ]
+    if revision == "ari.assurance.native-hpc/v1":
+        return [
+            sys.executable, "-m", "ari.assurance.drivers.native_worker",
+            "--kind", manifest.id.rsplit("/", 1)[-1].removesuffix("-correctness"),
+            "--library", declaration.logical_name,
+            "--tier", tier,
+            "--seed", str(seed),
+        ]
+    # Fail closed. A silent fallback to the ARI-native worker is exactly the
+    # behaviour being removed: it would run the wrong verifier and report the
+    # result as this manifest's.
+    raise HarnessRequestError(
+        f"no worker is registered for driver {revision!r}; this Harness cannot "
+        f"be launched, which is a different thing from failing to verify")
+
+
 def _validate_native_inputs(
     *,
     node_id: str,
@@ -192,7 +249,6 @@ def build_native_harness_run_request(
     token = canonical_digest(identity_input).removeprefix("sha256:")
     attempt_id = f"har-{token[:32]}-{retry_index}"
     seed = int(token[:8], 16)
-    kind = manifest.id.rsplit("/", 1)[-1].removesuffix("-correctness")
     _snapshot_target(
         source=workspace,
         destination=execution_workspace,
@@ -200,19 +256,7 @@ def build_native_harness_run_request(
     )
     execution = ExecutionRequestV1(
         workspace=execution_workspace,
-        argv=[
-            sys.executable,
-            "-m",
-            "ari.assurance.drivers.native_worker",
-            "--kind",
-            kind,
-            "--library",
-            declaration.logical_name,
-            "--tier",
-            tier,
-            "--seed",
-            str(seed),
-        ],
+        argv=_worker_argv(manifest, declaration, tier=tier, seed=seed),
         timeout_seconds=manifest.timeout_seconds,
         limits=ExecutionLimitsV1(
             cpu_seconds=min(manifest.timeout_seconds, 86_400),
@@ -236,7 +280,12 @@ def build_native_harness_run_request(
     artifact = ResearchArtifactRefV1(
         logical_name=declaration.logical_name,
         digest=declaration.target_digest,
-        media_type="application/x-sharedlib",
+        # FROM THE DECLARATION, not a constant. The one constant was true while
+        # every verification target was a shared library; a candidate submitted
+        # against a problem's own header is C source, and calling it
+        # x-sharedlib mislabels the evidence a reader uses to find it.
+        media_type=_TARGET_MEDIA_TYPES.get(declaration.target_kind,
+                                           "application/octet-stream"),
         role="verification-target",
         source_run_id=run_id,
     )

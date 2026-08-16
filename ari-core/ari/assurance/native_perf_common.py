@@ -151,6 +151,43 @@ MAX_OVERHEAD_RATIO = 4.0
 FLAG_MAX_TOKENS = 32
 
 
+#: Keys of a launch's sandbox record that a REPORT may carry. An allowlist, not
+#: a denylist, for two reasons that point the same way. ``writable_root`` is the
+#: per-run temporary directory: it is a HOST FILESYSTEM PATH, and a report is
+#: published and digested evidence, so carrying it writes machine identity into
+#: an attestation. It also changes every run, which makes the report digest
+#: non-reproducible -- and a registration's stability gate compares repeated
+#: runs of the probe for an identical answer. What is left is the answer to "was
+#: the untrusted candidate isolated, by what, and what does that not cover",
+#: which is the part a reader of the evidence needs.
+SANDBOX_RECORD_KEYS: tuple[str, ...] = (
+    "filesystem_isolation", "mechanism", "landlock_abi", "does_not_restrict",
+)
+
+
+def sandbox_record(observed: dict) -> dict:
+    """The publishable part of a launch's sandbox status."""
+    return {key: observed[key] for key in SANDBOX_RECORD_KEYS if key in observed}
+
+
+def finite_ratio(value) -> float | None:
+    """A ratio a digest-bound report can carry, or ``None``.
+
+    A family oracle answers ``inf`` for a candidate whose output contains an
+    infinity and ``nan`` for one that leaves the frozen driver's poisoned buffer
+    in place. Neither is representable in JSON, so neither can reach a
+    ``DigestBoundModel``: the canonical digest is computed by serializing the
+    payload, and both raise "Out of range float values are not JSON compliant"
+    from inside the verifier. ``None`` means "no finite ratio was observed", and
+    the accompanying detail says which condition produced it.
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
 class PerfRepetitionV1(StrictModel):
     """One process launch: one cold timed call on one freshly generated problem."""
 
@@ -163,7 +200,13 @@ class PerfRepetitionV1(StrictModel):
     speedup_matched: float | None = None
     toolchain_gain: float | None = None
     correct: bool
-    max_rel_error: float = Field(ge=0)
+    #: ``None`` when the oracle's answer was not finite. This was a bare
+    #: ``float``, and a candidate whose output contains an infinity made
+    #: ``NativePerfReportV1.create`` raise "Out of range float values are not
+    #: JSON compliant" -- INSIDE the verifier, so a wrong candidate came back as
+    #: a crashed worker that the driver reports as an infrastructure outage
+    #: rather than as the failure it is. See ``finite_ratio``.
+    max_rel_error: float | None = Field(default=None, ge=0)
 
 
 class PerfCaseResultV1(StrictModel):
@@ -516,6 +559,7 @@ def measurement_placement() -> dict[str, Any]:
     import json as _json
 
     allowed = _cpu_set(cpus or "")
+    _cores = physical_cores(sorted(allowed)) if allowed else physical_cores()
     regime = measurement_thread_regime()
     body = {
         "machine": os.uname().machine,
@@ -535,6 +579,15 @@ def measurement_placement() -> dict[str, Any]:
         "numa_nodes_spanned": len(
             [n for n, cl in nodes.items() if allowed and (_cpu_set(cl) & allowed)]
         ) or None,
+        # HOW MANY CORES ARE BEHIND THOSE CPUS. Without it the record could not
+        # answer the question it exists to answer: two allocations of 64 logical
+        # cpus, one of 64 cores and one of 32 cores with two threads each, wrote
+        # identical placements while behaving differently enough that the
+        # instrument resolved on one and not the other. `null` means the
+        # topology was unreadable, which is itself worth knowing.
+        "physical_cores": _cores,
+        "threads_per_core": (round(len(allowed) / _cores, 2)
+                             if _cores and allowed else None),
         # What the TIMED CHILD is given, not what happens to be ambient here.
         "thread_budget": regime["OMP_NUM_THREADS"],
         "omp_proc_bind": regime["OMP_PROC_BIND"],
@@ -815,21 +868,66 @@ def _fault(role: str):
     return PerfBuildError if role == "candidate" else PerfInfrastructureError
 
 
+def allowed_cpus() -> list[int]:
+    """The logical CPUs this allocation may run on."""
+    try:
+        return sorted(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return list(range(os.cpu_count() or 1))
+
+
+def physical_cores(cpus: list[int] | None = None) -> int | None:
+    """Distinct physical cores behind those logical CPUs, or None if unknowable.
+
+    None rather than a guess: a budget silently sized from an assumption is the
+    defect this exists to remove, so a caller that cannot learn the topology
+    should say the number came from somewhere else.
+    """
+    cpus = allowed_cpus() if cpus is None else cpus
+    if not cpus:
+        return None
+    cores: set[tuple[str, str]] = set()
+    root = Path("/sys/devices/system/cpu")
+    for cpu in cpus:
+        try:
+            package = (root / f"cpu{cpu}" / "topology" / "physical_package_id"
+                       ).read_text(encoding="utf-8").strip()
+            core = (root / f"cpu{cpu}" / "topology" / "core_id"
+                    ).read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        cores.add((package, core))
+    return len(cores) or None
+
+
 def measurement_thread_regime() -> dict[str, str]:
     """The thread budget and binding every timed process is given.
 
-    The budget defaults to the CPUs the allocation actually granted, not to
-    ``os.cpu_count()``: on a shared node the cpuset is narrower than the machine,
-    and a team sized to the machine oversubscribes it.
+    ONE THREAD PER PHYSICAL CORE, which is not what the CPU count says on a
+    machine with simultaneous multithreading. ``sched_getaffinity`` returns
+    LOGICAL cpus, so on a 2-way SMT machine the budget came out at twice the
+    cores, and ``OMP_PLACES=cores`` then had to put two threads on each -- the
+    threads share one core's execution units, and which sibling lands beside
+    which, and how much it contends, varies from run to run.
+
+    MEASURED, and it is why the instrument was registered on one machine and
+    refused on another. The clean control is the reference scored against
+    itself, so it should read 1.0 every time. On the SMT-free aarch64 node at 48
+    threads it read within 0.6%; on an x86 node at a 64-thread budget it read
+    0.983 / 1.071 / 1.006, and a spread of 7-16% cannot resolve the difference a
+    regression verdict is quoted to. The aarch64 budget was right by accident:
+    that machine has no SMT, so its logical count already was its core count.
+
+    The budget falls back to the logical count when the topology cannot be read,
+    and records which it used, because a number whose provenance is unknown is
+    the thing being fixed.
     """
     configured = os.environ.get("ARI_PERF_THREADS")
     if configured:
         threads = configured
     else:
-        try:
-            threads = str(len(os.sched_getaffinity(0)))
-        except (AttributeError, OSError):
-            threads = str(os.cpu_count() or 1)
+        cores = physical_cores()
+        threads = str(cores if cores else len(allowed_cpus()) or 1)
     return {
         "OMP_NUM_THREADS": threads,
         "OMP_PROC_BIND": os.environ.get("OMP_PROC_BIND", "spread"),
@@ -1070,6 +1168,7 @@ __all__ = [
     "compile_binary",
     "crosses_compiler_boundary",
     "default_compiler",
+    "finite_ratio",
     "isa_flags_for",
     "kernels_root",
     "load_case_set",
@@ -1079,6 +1178,8 @@ __all__ = [
     "median",
     "relative_spread",
     "resolve_compiler",
+    "sandbox_record",
+    "SANDBOX_RECORD_KEYS",
     "runtime_libs_for",
     "toolchain_identity",
     "run_timed",

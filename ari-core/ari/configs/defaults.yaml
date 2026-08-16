@@ -164,8 +164,12 @@ rqgm:
   utility_evolution:
     # false => the pre-Task-14 SCORE behavior exactly: no candidate is minted,
     # nothing supersedes, so ``utility_policy_hash`` is a CONSTANT across the
-    # run (the ablation rung plan 13 §5.10 needs). It does NOT undo the
-    # founding governed-object set: the ``utility_policy_v1`` / ``policy_mutator_v1``
+    # run.  That constant-score run IS an ablation rung, so this flag must stay
+    # settable to false: ``scripts/rqgm_eval/ablation_matrix.yaml`` rung B8 pins
+    # it false (the whole run scores under one policy) and rung B9 is B8 with it
+    # true, which makes the B9-vs-B8 contrast the only measurement of the claim
+    # that the score itself is rewritten at epoch boundaries.  It does NOT undo
+    # the founding governed-object set: the ``utility_policy_v1`` / ``policy_mutator_v1``
     # components and their prompts are still registered at founding, so
     # ``capture_utility_policy`` returns the founding policy (== the cfg
     # policy) every epoch. That founding-set membership is Task 14 §8.3's

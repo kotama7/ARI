@@ -109,9 +109,44 @@ def abi_identity(family: str) -> NativeABIIdentityV1 | None:
     return _load_identities().get(str(family))
 
 
+#: What a candidate submitted against a PROBLEM's own contract header is. Not an
+#: ABI record, because it is not one ABI: it is "whatever this problem's header
+#: says", and the problem pins those bytes itself.
+PROBLEM_SUBMISSION_TARGET_KIND = "benchmark-submission"
+
+
+def problem_target_kind(entry_point: str, family: str) -> str:
+    """The kind of artifact this problem's candidates ARE.
+
+    THE DEFECT THIS EXISTS FOR. ``property_vocabulary.yaml`` stamps every
+    correctness atom with one target kind per property -- ``shared-library`` for
+    ``numerical-equivalence`` and ``interface-conformance`` -- which was true
+    while the only correctness harnesses were the three ARI-native ones. A
+    correctness harness over a problem's own C contract verifies a submission
+    instead, so the resolver's ``_coverage`` rejected it on target kind alone:
+    measured, the atom kind ``shared-library`` selected it 0 times and
+    ``benchmark-submission`` selected it once. It would have been registered,
+    promoted and never chosen -- the same "nothing happens" failure this
+    subsystem keeps producing.
+
+    Derived from the two pinned facts ``declare_target`` also reads -- the
+    problem's declared entry point and its family's ABI record -- so the
+    resolution side and the declaration side cannot come to disagree about what
+    a run's artifacts are. A problem whose entry point IS one of the family's
+    ABI symbols is verified as that shared library; anything else keeps its own
+    header and is a submission.
+    """
+    identity = abi_identity(family)
+    if identity is not None and str(entry_point) in identity.exported_symbols:
+        return identity.target_kind
+    return PROBLEM_SUBMISSION_TARGET_KIND
+
+
 __all__ = [
     "NativeABIIdentityV1",
+    "PROBLEM_SUBMISSION_TARGET_KIND",
     "TargetABIRegistryError",
     "abi_identity",
+    "problem_target_kind",
     "target_abi_root",
 ]

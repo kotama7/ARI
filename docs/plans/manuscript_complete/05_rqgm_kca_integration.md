@@ -1,6 +1,10 @@
 # Task 05: Research RQGM and KCA Integration
 
-> **Status**: in progress
+> **Status**: in progress — §11.9 holds this task here until authentic Task 18/19
+> evidence stands, and at HEAD it does not: the live catalog refuses to load
+> (`hpc/gemm-performance`'s registration report binds a different manifest digest
+> than the manifest in the tree) while the persisted certify→publication chain is
+> pinned to a superseded report digest for that same Harness.
 > **Depends on**: 00, 01, 02, 03, 04
 > **External dependencies**: ARI-RQGM Tasks 18/19 for authentic certify/publication closure
 > **Gate**: G4 — assurance-aware evidence and publication subject binding

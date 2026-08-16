@@ -15,7 +15,7 @@ Shipped default config files (YAML) loaded by ari-core.
   - `role_authority.yaml` — allowed capability classes and side effects for each execution role.
 - `harnesses/` — built-in scientific verification harnesses, contracts, approvals, evidence, policies, and registration reports.
   - `catalog.yaml` — admitted harness catalog and immutable support-record references.
-  - `property_vocabulary.yaml` — canonical scientific properties and their verification semantics.
+  - `property_vocabulary.yaml` — canonical scientific properties and their verification semantics, including which concrete properties a correctness obligation is established BY and what each is verified ON. `target_kinds` is one scalar per property and is a DEFAULT, not the whole truth: the same property is honestly verified on a shared library by the three ARI-native harnesses and on a submission by a problem-pinned one, so a run that names a pinned problem overrides this table for the correctness properties (see `build_verification_contract`'s `artifact_target_kind`).
   - `approvals/` — reviewed human promotion approvals for built-in native harnesses.
     - `hpc_gemm_correctness.approval.json` — promotion approval for the native GEMM correctness harness.
     - `hpc_gemm_performance.approval.json` — promotion approval for the native GEMM performance harness. Its `authorization_basis` records what the maintainer ACTUALLY saw — the assistant's report of the evidence, not the raw artifacts — and pins the artifacts so a later reader can check them independently, because a basis claiming a review that did not happen is the defect the signature exists to prevent.

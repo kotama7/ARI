@@ -1,6 +1,9 @@
 # Task 08: Automatic Repair and Full Topology
 
-> **Status**: in progress
+> **Status**: implemented — §13 re-checked at HEAD: auto mode is rejected outside
+> `enforce`, and the four-topology release E2E plus the shared readiness/binding
+> test are green; none of these criteria rests on the external certification that
+> holds Task 05 open.
 > **Depends on**: 00, 01, 02, 03, 04, 05, 06, 07
 > **Gate**: G7 — bounded automatic composition across all execution topologies
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

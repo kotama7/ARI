@@ -26,6 +26,7 @@ something, and it is why nothing did this by accident.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from pathlib import Path
@@ -72,20 +73,50 @@ def repository_commit(*, allow_dirty: bool = False) -> str:
     return head.stdout.strip()
 
 
-def result_schema_for(schema_version: str) -> dict | None:
-    """The JSON schema for the typed result a harness emits, if ARI ships one.
-
-    Returns None rather than raising: a missing schema is a finding the gate
-    reports, not an error that hides it.
-    """
+def result_schema_path(schema_version: str) -> Path | None:
+    """The file ARI ships for a typed result, if there is one."""
     stem = (schema_version.replace("ari.", "").replace("/", "_")
             .replace("-", "_").replace(".", "_"))
     root = repository_root() / "ari-core" / "ari" / "schemas"
     for candidate in (root / f"{stem}.schema.json",
                       root / f"{stem}_schema.json"):
         if candidate.is_file():
-            return json.loads(candidate.read_text(encoding="utf-8"))
+            return candidate
     return None
+
+
+def result_schema_digest(schema_version: str) -> str | None:
+    """What a manifest's ``expected_result_schema_digest`` MUST be.
+
+    THE ONE PLACE THAT COMPUTES IT. The four shipped manifests all carry
+    ``sha256:6ff46e8f…``, which is not a typo and not arbitrary: it is exactly
+    this function's answer at ``d303a4c``, the commit they were registered from.
+    The schema file changed afterwards and no pin moved, so every one of them now
+    pins a schema ARI no longer ships -- and because nothing recomputed the value,
+    nothing could tell. A hand-copied digest is a digest that can only ever be
+    checked by the person who typed it.
+
+    Over the FILE'S BYTES, which is the same rule ``load_tolerance_policy``
+    already uses and for the same reason: a manifest pins the artifact, and
+    hashing a reparsed document instead yields a different digest for the
+    identical file, so the comparison would silently cover nothing.
+    """
+    path = result_schema_path(schema_version)
+    if path is None:
+        return None
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def result_schema_for(schema_version: str) -> dict | None:
+    """The JSON schema for the typed result a harness emits, if ARI ships one.
+
+    Returns None rather than raising: a missing schema is a finding the gate
+    reports, not an error that hides it.
+    """
+    path = result_schema_path(schema_version)
+    if path is None:
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def _clean_control(probe: dict) -> dict:
@@ -152,11 +183,18 @@ def gather_evidence(manifest: Any, driver: Any, *, runs: int = 3,
             "the driver reports no digest, so nothing can say which driver was "
             "probed")
     probe, stability = probe_repeatedly(driver, manifest, runs=runs)
+    emitted = getattr(driver, "report_schema_version", "")
     return GateEvidence(
         manifest=manifest,
         parity=probe,
         driver_digest=driver_digest,
-        report_schema=result_schema_for(getattr(driver, "report_schema_version", "")),
+        report_schema=result_schema_for(emitted),
+        # BOTH, so the gate can compare what the driver emits against what the
+        # manifest independently claims. The manifest was never in that
+        # comparison, which is how four of them came to pin a schema ARI stopped
+        # shipping.
+        report_schema_version=emitted,
+        report_schema_digest=result_schema_digest(emitted),
         stability=stability,
         repo_commit=repository_commit(allow_dirty=allow_dirty),
     )
@@ -185,5 +223,7 @@ __all__ = [
     "register_harness",
     "repository_commit",
     "repository_root",
+    "result_schema_digest",
     "result_schema_for",
+    "result_schema_path",
 ]

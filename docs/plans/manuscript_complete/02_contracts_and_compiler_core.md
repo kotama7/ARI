@@ -1,6 +1,9 @@
 # Task 02: Contracts and Deterministic Compiler Core
 
-> **Status**: in progress
+> **Status**: implemented — §11 re-checked at HEAD: the determinism/tamper and
+> omission-conservation tests are green and both `scripts/sync_manuscript_schemas.py --check`
+> and `scripts/snapshot_contracts.py --surface all --check` report the shipped
+> schemas and digests in sync.
 > **Depends on**: 00, 01
 > **Gate**: G1 — contract and compiler determinism
 > **Plan type**: temporary sub plan; see [INDEX.md](INDEX.md)

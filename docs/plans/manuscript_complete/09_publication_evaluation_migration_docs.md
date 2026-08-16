@@ -1,6 +1,10 @@
 # Task 09: Publication Lock, Evaluation, Migration, and Documentation
 
-> **Status**: in progress
+> **Status**: in progress — §13.7/§13.9 require every advertised enforce scope to
+> carry authentic certification, and the `authentic-production-harness` check of
+> `scripts/manuscript_complete_release_gates.json` is red at HEAD (8 of its 9
+> checks pass), so the 2026-08-06 `release_eligible=true` evidence no longer
+> reproduces.
 > **Depends on**: 00, 01, 02, 03, 04, 05, 06, 07, 08
 > **External dependencies**: authentic ARI-RQGM Tasks 18/19 certification evidence where applicable; existing paper final gate/reproduction contracts
 > **Gate**: G8 — release and permanent-spec closure

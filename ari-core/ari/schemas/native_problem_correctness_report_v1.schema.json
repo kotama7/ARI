@@ -2,6 +2,7 @@
   "$defs": {
     "ProblemCorrectnessCaseResultV1": {
       "additionalProperties": false,
+      "description": "One scored shape. Every measurement is OPTIONAL, and that is the point.\n\nTHE DEFECT THIS SHAPE FIXES. These fields were plain scalars initialised to\n0.0 / 0 / True before the launch loop, and emitted verbatim when no launch\ncompleted -- so a candidate that never ran published\n``worst_residual_ratio: 0.0``, which reads as \"exactly zero error\", and\n``output_elements_written: 0``, which reads as \"the kernel wrote nothing\"\neven when the truth was that nothing was ever read. An attestation carried\nthose numbers as measurements. ``None`` means \"not observed\", which is a\nthing the reader can act on; a default dressed as a measurement is not.",
       "properties": {
         "case_id": {
           "title": "Case Id",
@@ -17,13 +18,29 @@
           "type": "integer"
         },
         "output_elements_written": {
-          "minimum": 0,
-          "title": "Output Elements Written",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Elements Written"
         },
         "repeat_identical": {
-          "title": "Repeat Identical",
-          "type": "boolean"
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat Identical"
         },
         "repetitions_completed": {
           "minimum": 0,
@@ -45,21 +62,26 @@
           "type": "string"
         },
         "worst_residual_ratio": {
-          "minimum": 0,
-          "title": "Worst Residual Ratio",
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Worst Residual Ratio"
         }
       },
       "required": [
         "case_id",
         "verdict",
         "detail",
-        "worst_residual_ratio",
         "output_elements_expected",
-        "output_elements_written",
         "repetitions_requested",
-        "repetitions_completed",
-        "repeat_identical"
+        "repetitions_completed"
       ],
       "title": "ProblemCorrectnessCaseResultV1",
       "type": "object"
@@ -87,6 +109,10 @@
         }
       ],
       "title": "Build Error"
+    },
+    "candidate_digest": {
+      "title": "Candidate Digest",
+      "type": "string"
     },
     "candidate_toolchain": {
       "additionalProperties": {
@@ -196,6 +222,11 @@
       "title": "Report Digest",
       "type": "string"
     },
+    "sandbox": {
+      "additionalProperties": true,
+      "title": "Sandbox",
+      "type": "object"
+    },
     "schema_version": {
       "const": "ari.native-problem-correctness-report/v1",
       "default": "ari.native-problem-correctness-report/v1",
@@ -227,6 +258,7 @@
     "problem_digest",
     "family",
     "entry_point",
+    "candidate_digest",
     "tier",
     "verdict",
     "case_results",
@@ -244,6 +276,7 @@
     "dataset_sha256",
     "environment",
     "placement",
+    "sandbox",
     "negative_control",
     "report_digest"
   ],

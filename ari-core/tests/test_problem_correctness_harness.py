@@ -187,7 +187,88 @@ def test_a_kernel_that_faults_is_not_reported_as_an_interface_violation(
     assert report.verdict == "fail"
     assert report.property_verdicts["numerical-equivalence"] == "fail"
     assert report.property_verdicts["interface-conformance"] == "pass"
-    assert report.case_results[0].output_elements_written == 0
+    case = report.case_results[0]
+    # NOT 0. Nothing was read, so there is no element count and no residual to
+    # report; this used to publish the loop's initialisers (0 elements, 0.0
+    # residual, deterministic=True) as though they had been observed.
+    assert case.output_elements_written is None
+    assert case.worst_residual_ratio is None
+    assert case.repeat_identical is None
+    assert case.repetitions_completed == 0
+    assert "did not complete" in case.detail
+
+
+def test_a_candidate_writing_infinities_is_a_failure_not_an_outage(tmp_path, problem):
+    """A wrong candidate must not be able to crash the verifier.
+
+    The family oracle answers `inf` for an output containing an infinity and
+    `nan` for one left at the driver's poisoned buffer. Neither is JSON, and
+    `worst_residual_ratio` was a bare float, so building the report raised "Out
+    of range float values are not JSON compliant" INSIDE the verifier. In the
+    worker that is a non-zero exit, which the driver reports as
+    `infrastructure_error` -- so a candidate writing infinities escaped its fail
+    verdict and was recorded as the harness having broken. The registered
+    `hpc/gemm-performance` harness still has this defect in `PerfRepetitionV1`.
+    """
+    source = tmp_path / "inf_gemm.c"
+    source.write_text(
+        '#include "gemm_kernel.h"\n'
+        "void gemm(int n, int m, int p, const double *A, const double *B,\n"
+        "          double *C) { (void)A; (void)B; (void)p;\n"
+        "  for (int i = 0; i < n*m; ++i) C[i] = 1.0/0.0; }\n", encoding="utf-8")
+    report = _verify(problem, source)
+    assert report.verdict == "fail"
+    case = report.case_results[0]
+    assert case.worst_residual_ratio is None, "a non-finite ratio is not a number"
+    assert "failed the residual bound" in case.detail
+    assert "non-finite" in case.detail
+    # And the whole report must survive the round trip the driver performs.
+    from ari.assurance.native_problem_correctness import (
+        NativeProblemCorrectnessReportV1)
+    assert NativeProblemCorrectnessReportV1.model_validate_json(
+        report.model_dump_json()).report_digest == report.report_digest
+
+
+def test_the_report_identifies_which_candidate_was_verified(problem):
+    """Three different candidates must not produce one report.
+
+    Every other field is about the problem, the case set, the toolchain or the
+    machine, so before `candidate_digest` existed the frozen reference, the
+    correct-but-slow control and the naive seed produced BYTE-IDENTICAL reports
+    and therefore one `report_digest` -- which a manifest pins as
+    `negative_control_report_digest` and an attestation cites to say what was
+    verified.
+    """
+    scaffolding = problem.definition.scaffolding
+    digests = {}
+    for name in (scaffolding.reference, scaffolding.negative_control_slow,
+                 scaffolding.seed_candidate):
+        report = _verify(problem, problem.path(name))
+        assert report.verdict == "pass", f"{name} should pass"
+        digests[name] = report.report_digest
+    assert len(set(digests.values())) == 3, (
+        f"distinct candidates produced the same report: {digests}")
+
+
+def test_a_compile_error_quoting_the_audit_is_not_a_proven_interface_violation(
+        tmp_path, problem):
+    """The classification must not read text the candidate controls.
+
+    A compile failure's message embeds the compiler's stderr, so matching the
+    audit's wording anywhere in it let a candidate label its own build failure
+    as a proven contract violation -- a finding about the artifact that nothing
+    established.
+    """
+    source = tmp_path / "quoting.c"
+    source.write_text(
+        '#include "gemm_kernel.h"\n'
+        '#error candidate kernel exports symbols other than \'gemm\'\n',
+        encoding="utf-8")
+    report = _verify(problem, source)
+    assert report.verdict == "fail"
+    assert report.build_error is not None
+    assert report.interface_error is None, (
+        "a compile failure quoting the audit is still a compile failure")
 
 
 def test_the_report_carries_no_timing(problem):
@@ -240,6 +321,336 @@ def test_a_problem_candidate_declares_a_contract_it_keeps_and_reaches_this_harne
     assert applicable == ["hpc_gemm_problem_correctness.yaml"], (
         "a problem candidate must reach the Harness written for its contract, "
         "and only that one")
+
+
+# --- the resolver must actually SELECT it ---------------------------------------
+
+class _Tolerance:
+    @staticmethod
+    def model_dump(mode=None):
+        return {"absolute": 1e-9, "relative": 1e-9}
+
+
+class _Provenance:
+    source = "llm"
+    source_digest = None
+
+
+class _Metric:
+    correctness_required = True
+    contract_digest = "sha256:" + "a" * 64
+    tolerance = _Tolerance
+    formula_provenance = _Provenance
+    confidence = 0.9
+
+
+class _ResearchContract:
+    metric_contract = _Metric
+    contract_digest = "sha256:" + "b" * 64
+
+
+def _selection(artifact_target_kind):
+    """Which shipped manifests a correctness requirement resolves to."""
+    from ari.assurance.contract import (build_verification_contract,
+                                        load_property_vocabulary,
+                                        load_tolerance_policy)
+    from ari.assurance.models import HarnessManifestV1
+    from ari.assurance.resolver import _coverage, normalize_requirements
+    from ari.protocols.scientific_requirements import EnvironmentSnapshotV1
+
+    root = BUILTIN.parent
+    vocabulary, digest = load_property_vocabulary(root / "property_vocabulary.yaml")
+    policy = load_tolerance_policy(root / "policies" / "hpc-floating-point-v1.yaml")
+    environment = EnvironmentSnapshotV1.create(
+        features=("landlock", "network-namespace"),
+        resource_types=("process", "cpu"))
+    contract = build_verification_contract(
+        run_id="r", research_contract=_ResearchContract, knowledge_obligations=(),
+        property_vocabulary=vocabulary, property_vocabulary_digest=digest,
+        tolerance_policy=policy, artifact_target_kind=artifact_target_kind)
+    atoms = normalize_requirements(contract)
+    selected = {}
+    for path in sorted(BUILTIN.glob("*.yaml")):
+        manifest = HarnessManifestV1.model_validate(
+            yaml.safe_load(path.read_text(encoding="utf-8")))
+        # status is settled by registration, which is a separate act; this test
+        # is about target-kind resolution, so it asks what WOULD be selected.
+        promoted = manifest.model_copy(update={"status": "verified"})
+        covered = sorted({atom.property_id for atom in atoms
+                          if _coverage(promoted, atom, environment)})
+        if covered:
+            selected[path.name] = covered
+    return sorted({atom.target_kind for atom in atoms}), selected
+
+
+def test_the_pinned_problem_target_kind_is_derived_not_guessed():
+    from ari.assurance.target_abi import problem_target_kind
+
+    definition = load_problem(PROBLEM).definition
+    # `gemm` is not one of the gemm family's ABI symbols (ari_gemm_f32/f64), so
+    # a candidate keeping this problem's header is a submission.
+    assert problem_target_kind(definition.entry_point, definition.family) == (
+        "benchmark-submission")
+    # A problem whose entry point IS the family ABI keeps the shared-library
+    # answer, so this override cannot restamp the three registered harnesses.
+    assert problem_target_kind("ari_gemm_f64", "gemm") == "shared-library"
+    # An unknown family has no ABI record and cannot be a shared library.
+    assert problem_target_kind("whatever", "no-such-family") == "benchmark-submission"
+
+
+def test_without_a_pinned_problem_nothing_moves():
+    """The override is additive: no problem, no change to any existing run."""
+    kinds, selected = _selection(None)
+    assert kinds == ["shared-library"]
+    assert "hpc_gemm_correctness.yaml" in selected
+
+
+def test_a_pinned_problem_run_resolves_to_the_harness_written_for_it():
+    """THE DEFECT THIS FIXES, measured on the shipped catalog.
+
+    `property_vocabulary.yaml` stamps correctness atoms with one target kind per
+    property, and that was the whole truth while the only correctness harnesses
+    were the three ARI-native ones. With the atom stamped `shared-library`, a
+    pinned-problem run resolved its correctness obligation to the ARI-native
+    GEMM, SpMM AND Stencil verifiers -- none of which can load a candidate
+    written against the problem's own header, all of which would have reported
+    missing-symbol failures as verdicts about the candidate -- while the harness
+    written for that contract was never selected at all.
+    """
+    before_kinds, before = _selection(None)
+    after_kinds, after = _selection("benchmark-submission")
+
+    assert before_kinds == ["shared-library"]
+    assert MANIFEST.name not in before, (
+        "regression guard: the harness written for the problem was invisible")
+    assert {"hpc_gemm_correctness.yaml", "hpc_spmm_correctness.yaml"} <= set(before)
+
+    assert after_kinds == ["benchmark-submission"]
+    assert set(after) == {MANIFEST.name}, (
+        "a pinned-problem run must resolve to the Harness written for its "
+        "contract, and to nothing that cannot load its candidate")
+    assert after[MANIFEST.name] == ["interface-conformance", "numerical-equivalence"]
+
+
+def test_the_declaration_and_the_resolution_cannot_disagree(tmp_path, problem):
+    """THE PROBLEM decides the contract; the artifact only decides whether it keeps it.
+
+    `declare_target` used to ask the built library first: a candidate exporting
+    BOTH the problem's entry point and the family's ABI symbols was declared a
+    `shared-library`, while the resolver -- which runs before any candidate
+    exists and can read only the pinned problem -- had already stamped this
+    run's atoms `benchmark-submission`. The resolved Harness would then be
+    inapplicable to the declared target, so the node would get no verification
+    at all and nothing would report an error.
+    """
+    from ari.assurance.target_abi import problem_target_kind
+    from ari.evaluator.assurance_measure import TargetABIMismatch, declare_target
+
+    definition = problem.definition
+    header = definition.scaffolding.contract_header
+    kernel = ('void gemm(int n, int m, int p, const double *A, const double *B,\n'
+              '          double *C) { (void)n; (void)m; (void)p; (void)A;\n'
+              '  (void)B; (void)C; }\n')
+    native = "int ari_gemm_f32(void) { return 0; }\nint ari_gemm_f64(void) { return 0; }\n"
+    expected = problem_target_kind(definition.entry_point, definition.family)
+
+    for label, body in (("problem contract only", kernel),
+                        ("problem contract and native ABI", kernel + native)):
+        work = tmp_path / label.replace(" ", "_")
+        work.mkdir()
+        (work / header).write_bytes(problem.path(header).read_bytes())
+        (work / definition.score_inputs[0]).write_text(
+            f'#include "{header}"\n' + body, encoding="utf-8")
+        document = declare_target(work, problem)
+        assert document["target_kind"] == expected, label
+        assert document["interface_contract"] == f"problem:{definition.revision}", label
+
+    # And a candidate that does NOT keep the problem's contract is refused,
+    # even though it exports a contract some other harness would accept.
+    work = tmp_path / "native_only"
+    work.mkdir()
+    (work / header).write_bytes(problem.path(header).read_bytes())
+    (work / definition.score_inputs[0]).write_text(
+        f'#include "{header}"\n' + native, encoding="utf-8")
+    with pytest.raises(TargetABIMismatch):
+        declare_target(work, problem)
+
+
+def test_admission_derives_the_kind_from_the_pinned_problem(monkeypatch):
+    from ari.evaluator.assurance_measure import PROBLEM_ENV
+    from ari.rqgm.admission_builder import _pinned_problem_target_kind
+
+    monkeypatch.delenv(PROBLEM_ENV, raising=False)
+    assert _pinned_problem_target_kind() is None
+    monkeypatch.setenv(PROBLEM_ENV, PROBLEM)
+    assert _pinned_problem_target_kind() == "benchmark-submission"
+    # A problem that cannot be loaded must not fail admission with a message
+    # about target kinds; the evaluator raises it where it can be acted on.
+    monkeypatch.setenv(PROBLEM_ENV, "no-such-problem/v1@never")
+    assert _pinned_problem_target_kind() is None
+
+
+# --- the request must launch THIS harness's worker -------------------------------
+
+def _shipped(name):
+    from ari.assurance.models import HarnessManifestV1
+    return HarnessManifestV1.model_validate(
+        yaml.safe_load((BUILTIN / name).read_text(encoding="utf-8")))
+
+
+class _Declaration:
+    def __init__(self, logical_name, target_kind):
+        self.logical_name = logical_name
+        self.target_kind = target_kind
+
+
+def test_the_request_launches_the_worker_the_pinned_driver_can_parse():
+    """THE DEFECT THIS FIXES, one layer below resolution.
+
+    `build_native_harness_run_request` built one argv -- the ARI-native worker
+    -- and derived its `--kind` by string surgery on the harness id. For this
+    manifest that yields `--kind gemm-dense-fp64-problem`, which names no
+    registered family, and `--library candidate_gemm.c`, which is C source and
+    not a library. So a correctly resolved, correctly locked Harness would have
+    launched the wrong verifier, whose output its own driver cannot parse, and
+    returned `infrastructure_error` on every node.
+    """
+    from ari.assurance.request import _worker_argv
+
+    argv = _worker_argv(_shipped(MANIFEST.name),
+                        _Declaration("candidate_gemm.c", "benchmark-submission"),
+                        tier="screen", seed=7)
+    assert "ari.assurance.drivers.problem_correctness_worker" in argv
+    assert "ari.assurance.drivers.native_worker" not in argv
+    # The problem and the case set come from the MANIFEST PINS, not from the
+    # harness id: those pins are what `prepare` re-checks.
+    assert argv[argv.index("--problem") + 1] == PROBLEM
+    assert argv[argv.index("--candidate") + 1] == "candidate_gemm.c"
+    assert argv[argv.index("--dataset-revision") + 1] == (
+        _shipped(MANIFEST.name).dataset.revision)
+    assert "--library" not in argv and "--kind" not in argv
+
+
+def test_the_ari_native_request_is_unchanged():
+    """The three registered harnesses must launch exactly what they always did."""
+    from ari.assurance.request import _worker_argv
+
+    manifest = _shipped("hpc_gemm_correctness.yaml")
+    argv = _worker_argv(manifest,
+                        _Declaration("assurance_target.so", "shared-library"),
+                        tier="screen", seed=7)
+    assert argv[1:] == ["-m", "ari.assurance.drivers.native_worker",
+                        "--kind", "gemm", "--library", "assurance_target.so",
+                        "--tier", "screen", "--seed", "7"]
+
+
+#: Shipped manifests declaring a result schema their driver does not emit.
+#: EMPTY, and it must stay empty. `hpc/gemm-performance` used to say
+#: `ari.native-hpc-verification-report/v1` while `NativePerfDriver` emits
+#: `ari.native-perf-report/v1`, so a consumer reading
+#: `HarnessRunRequestV1.expected_result_schema` was told to expect a report type
+#: that harness never produces.
+_KNOWN_SCHEMA_MISMATCH: set[str] = set()
+
+#: Shipped manifests whose `expected_result_schema_digest` is STALE: it is the
+#: byte digest of the schema file as it stood at `d303a4c`, the commit these
+#: three were registered from, and the file changed afterwards -- the `kind`
+#: enum `[gemm, spmm, stencil]` was dropped when families became data-driven, so
+#: each of them pins a STRICTER schema than the one ARI now ships.
+#:
+#: NOT corrected here, and that is the point. All three are REGISTERED with a
+#: `human-maintainer` approval that signs over `harness_manifest_digest`; editing
+#: the manifest moves that digest and voids a signature no test may forge. The
+#: pin records what was registered, and only a re-registration may move it.
+#: `result_schema_conformance` now refuses them, so the next registration
+#: surfaces this where a human is present to decide.
+_STALE_SCHEMA_PIN = {
+    "hpc_gemm_correctness.yaml",
+    "hpc_spmm_correctness.yaml",
+    "hpc_stencil_correctness.yaml",
+}
+
+
+def test_every_manifest_declares_the_result_schema_its_driver_emits():
+    """The manifest names the type, and pins the file, its driver actually emits.
+
+    `result_schema_conformance` used to resolve the schema from the DRIVER's
+    declared type and ask only that one exist. The manifest declares the same
+    two facts independently -- `expected_result_schema` and
+    `expected_result_schema_digest` -- and nothing anywhere compared them:
+    `resolver` copies the digest into the lock and no reader checks it. Both
+    halves were wrong on the shipped catalog and neither was visible.
+    """
+    from ari.assurance.drivers import builtin_driver_map
+    from ari.assurance.registration_run import result_schema_digest
+
+    drivers = builtin_driver_map()
+    mismatched, stale = set(), set()
+    for path in sorted(BUILTIN.glob("*.yaml")):
+        manifest = yaml.safe_load(path.read_text(encoding="utf-8"))
+        driver = drivers.get(manifest["driver"]["revision"])
+        assert driver is not None, f"{path.name} pins a driver that does not exist"
+        emitted = driver.report_schema_version
+        if manifest["expected_result_schema"] != emitted:
+            mismatched.add(path.name)
+        elif manifest["expected_result_schema_digest"] != result_schema_digest(emitted):
+            stale.add(path.name)
+    assert mismatched == _KNOWN_SCHEMA_MISMATCH, (
+        f"a manifest declares a result schema its pinned driver does not emit: "
+        f"{sorted(mismatched ^ _KNOWN_SCHEMA_MISMATCH)}")
+    assert stale == _STALE_SCHEMA_PIN, (
+        f"the set of manifests pinning a drifted result schema changed: "
+        f"{sorted(stale ^ _STALE_SCHEMA_PIN)}. If one was re-registered, drop it "
+        f"from _STALE_SCHEMA_PIN; if a new one appeared, it was minted with a "
+        f"hand-typed digest instead of result_schema_digest().")
+
+
+def test_the_gate_refuses_a_drifted_result_schema_pin():
+    """The mechanism, not just the current values.
+
+    Before this, `expected_result_schema_digest` was carried into the lock and
+    read by nobody, so a pin could name any 32 bytes at all. This asserts the
+    gate that now compares it, on both a manifest that agrees and one that does
+    not -- otherwise the set above would be a list of known-bad values with
+    nothing enforcing it.
+    """
+    from ari.assurance.drivers import builtin_driver_map
+    from ari.assurance.models import HarnessManifestV1
+    from ari.assurance.registration_gates import GateEvidence, evaluate_gates
+    from ari.assurance.registration_run import result_schema_digest, result_schema_for
+
+    def _verdict(manifest):
+        driver = builtin_driver_map()[manifest.driver.revision]
+        emitted = driver.report_schema_version
+        evidence = GateEvidence(
+            manifest=manifest, report_schema=result_schema_for(emitted),
+            report_schema_version=emitted,
+            report_schema_digest=result_schema_digest(emitted))
+        return {g.gate_id: g for g in evaluate_gates(evidence)}[
+            "result_schema_conformance"]
+
+    good = HarnessManifestV1.model_validate(
+        yaml.safe_load(MANIFEST.read_text(encoding="utf-8")))
+    assert _verdict(good).passed
+
+    drifted = HarnessManifestV1.model_validate(
+        yaml.safe_load((BUILTIN / "hpc_gemm_correctness.yaml").read_text(
+            encoding="utf-8")))
+    verdict = _verdict(drifted)
+    assert not verdict.passed
+    assert "drifted under the pin" in verdict.detail
+
+
+def test_an_unknown_driver_cannot_be_launched_at_all():
+    """Fail closed. Falling back to the ARI-native worker is the removed bug."""
+    from ari.assurance.request import HarnessRequestError, _worker_argv
+
+    manifest = _shipped(MANIFEST.name).model_copy(
+        update={"driver": _shipped(MANIFEST.name).driver.model_copy(
+            update={"revision": "ari.assurance.not-a-driver/v1"})})
+    with pytest.raises(HarnessRequestError, match="no worker is registered"):
+        _worker_argv(manifest, _Declaration("x.c", "benchmark-submission"),
+                     tier="screen", seed=1)
 
 
 # --- what prepare() must refuse -------------------------------------------------

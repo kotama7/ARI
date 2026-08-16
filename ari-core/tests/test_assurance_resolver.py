@@ -297,6 +297,12 @@ def _passing_gate_evidence(manifest):
     return GateEvidence(
         manifest=manifest, parity=probe, driver_digest=manifest.driver.sha256,
         report_schema={"$id": "test", "properties": {"verdict": {}}},
+        # WHAT THE DRIVER EMITS, which the gate compares against what the
+        # manifest independently declares. Supplying only the schema left the
+        # manifest's own two fields checked by nothing -- the hole that let one
+        # shipped manifest name a report type its driver never produces.
+        report_schema_version=manifest.expected_result_schema,
+        report_schema_digest=manifest.expected_result_schema_digest,
         stability={"runs": 3, "relative_spread": 0.02},
         # The source pin is checked for ANCESTRY against a real repository now,
         # so a synthetic sha names nothing and the gate fails. Registering "at

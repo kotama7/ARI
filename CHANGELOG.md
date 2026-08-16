@@ -4,6 +4,151 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **`expected_result_schema_digest` was carried into the lock and read by nobody
+  (2026-08-16).** A manifest declares the result schema twice — by version and by
+  digest — and `resolver` copies both into the lock, but no reader ever compared
+  either against the driver or against the file. Both halves were wrong on the
+  shipped catalog and neither was visible. The digest is not arbitrary: all four
+  manifests carry `sha256:6ff46e8f…`, which is exactly the schema file's byte digest
+  at `d303a4c`, the commit they were registered from. The file changed afterwards —
+  the `kind` enum `[gemm, spmm, stencil]` was dropped when families became
+  data-driven — so each of them pins a STRICTER schema than ARI now ships, and
+  nothing could tell. (An earlier note in this file called the value unreproducible;
+  it is reproducible, and stale, which is a different defect with a different fix.)
+
+  `result_schema_digest()` is now the one place that computes it, over the file's
+  bytes — the same rule `load_tolerance_policy` already uses, and for the same
+  reason: a manifest pins the artifact, so hashing a reparsed document would yield a
+  different digest for the identical file and the comparison would silently cover
+  nothing. `result_schema_conformance` now checks that the manifest names the type
+  its driver emits AND pins the file ARI ships, and fails closed when the evidence
+  does not carry both, matching `GateEvidence`'s own rule that absent inputs make
+  gates fail rather than pass. Both manifests that could be corrected were, from that
+  function rather than by hand.
+
+  The three ARI-native correctness manifests are deliberately NOT corrected. Each is
+  registered under a `human-maintainer` approval that signs over
+  `harness_manifest_digest`; editing the manifest voids a signature no automated
+  change may forge. The gate now refuses them, so the drift surfaces at the next
+  registration, where a person is present to decide — and a test pins the set so it
+  cannot grow silently.
+
+- **Three defects repaired in the registered `hpc/gemm-performance` harness
+  (2026-08-16).** (1) The manifest declared `expected_result_schema:
+  ari.native-hpc-verification-report/v1` while `NativePerfDriver` emits
+  `ari.native-perf-report/v1`, so a consumer reading
+  `HarnessRunRequestV1.expected_result_schema` was told to expect a report type that
+  harness never produces; registration's `result_schema_conformance` resolves the
+  schema from the DRIVER's type and so could not see the disagreement. Now corrected,
+  with a digest that is reproducible from the shipped schema file — the four
+  pre-existing manifests all carry the same constant, which matches that file under
+  no computable rule. (2) A candidate whose output contains an infinity made
+  `PerfRepetitionV1.max_rel_error` unserializable and raised "Out of range float
+  values are not JSON compliant" inside the verifier, so a wrong candidate came back
+  as a crashed worker and was recorded as an infrastructure outage rather than as the
+  failure it is; `finite_ratio` now yields `None` for a non-finite oracle answer, and
+  the fix is shared with the problem-correctness verifier rather than duplicated.
+  Measured after the change: an infinity-writing candidate is scored, not fatal.
+  (3) The launch's sandbox record carried `writable_root` — the per-run temporary
+  directory, i.e. a host filesystem path — into a published, digested report, which
+  also made the report digest non-reproducible; it is now filtered to the isolation
+  status the reader actually needs. Both drivers' digests moved, so both manifests
+  were re-pinned; the three ARI-native correctness manifests are untouched, because
+  `native_perf_common.py` is not in their digest.
+
+  `registered_placement` was deliberately NOT changed. Re-targeting a registered
+  harness from its aarch64 evidence to whatever host is at hand is a decision about
+  what the harness asserts, not a repair. The remaining defect — the retained
+  registration report pinning `manifest_digest: sha256:5f964dc3…` when the manifest
+  is now `sha256:10719ecf…`, so the shipped catalog does not load — is only closed by
+  re-registering, and that must happen on the placement the manifest pins.
+
+  That constraint was measured rather than assumed: re-registration attempted on this
+  x86_64 host returns 12/15, `rejected`, failing `clean_control_pass`,
+  `official_runner_parity` and `multiple_run_stability` — the instrument does not
+  resolve here, so the gates refuse to certify noise, which is exactly what they are
+  for. The twelve that pass include `result_schema_conformance` resolving the perf
+  schema and `full_sha256_integrity` accepting the re-pinned driver, so the repairs
+  above are confirmed by the same run that declines to complete the ceremony.
+
+  No spread FIGURE is quoted from those runs, deliberately. This worktree has a
+  concurrent agent running its own test suite, and a timing measurement taken beside
+  it measures the contention, not the machine: a first attempt read a clean-control
+  spread of 0.966 at a load average near six, against the 0.983 / 1.071 / 1.006
+  (~8.7%) that `test_thread_budget_physical_cores` records for an x86 node measured
+  properly. Quoting the contaminated figure as evidence would repeat the mistake this
+  study has already made once, of reading variance as effect. The verdict — x86
+  rejected, aarch64 required — is the same either way, and rests on the clean
+  measurement rather than on ours.
+
+- **The run request could only launch one verifier, and it was the wrong one
+  (2026-08-16).** `build_native_harness_run_request` built a single argv — the
+  ARI-native worker — and derived its `--kind` by string surgery on the harness id,
+  `rsplit('/')[-1].removesuffix('-correctness')`. For
+  `hpc/gemm-dense-fp64-problem-correctness` that yields `--kind
+  gemm-dense-fp64-problem`, which names no registered family, and `--library
+  candidate_gemm.c`, which is C source and not a library. So even once resolution
+  and locking were correct, the request would have launched a verifier whose output
+  the pinned driver cannot parse, and every node would have returned
+  `infrastructure_error` — the same mismatch surfacing as an outage instead of an
+  error, one layer further down. The worker is now chosen from the manifest's pinned
+  driver revision (what the resolver locks and `prepare` re-checks), an unknown
+  revision fails closed rather than falling back, and the evidence reference's media
+  type comes from the declaration instead of a hardcoded `application/x-sharedlib`.
+  Adversarial review of the new instrument also found, and this fixes: a candidate
+  writing infinities crashed the verifier, because the family oracle's `inf`/`nan`
+  answers are not JSON and `worst_residual_ratio` was a bare float — so a wrong
+  candidate escaped its `fail` verdict and was recorded as an infrastructure outage
+  (**the registered `hpc/gemm-performance` harness still has this defect in
+  `PerfRepetitionV1.max_rel_error`; fixing it changes `perf_driver_digest` and needs
+  re-registration on its pinned aarch64 placement**); a NaN residual was published as
+  `worst_residual_ratio: 0.0`, i.e. "exactly zero error", because `max()` returns its
+  accumulator when handed a NaN; unmeasured per-case values were emitted as the
+  loop's initialisers rather than as "not observed"; the report named no candidate,
+  so the frozen reference, the correct-but-slow control and the naive seed produced
+  three byte-identical reports and one `report_digest`, which a manifest pins as
+  `negative_control_report_digest`; the build-failure classifier matched the object
+  audit's wording anywhere in a message that embeds candidate-controlled compiler
+  stderr; and the parity probe read case one's detail rather than the failing case's,
+  then tested it for `"residual bound"` — a substring of `"within the residual
+  bound"`, the sentence that means the candidate was ACCEPTED. The launch's sandbox
+  record is now carried as evidence, filtered to the isolation status: its
+  `writable_root` is a host filesystem path, and including it both wrote machine
+  identity into a published record and made the report digest non-reproducible, which
+  the registration stability gate caught by failing.
+
+- **A pinned-problem run resolved correctness to three verifiers that cannot load
+  its candidate (2026-08-16).** `property_vocabulary.yaml` stamps every correctness
+  atom with one target kind per property — `shared-library` for
+  `numerical-equivalence` and `interface-conformance` — and its own comment records
+  why that was once the whole truth: the three registered correctness harnesses all
+  verify a shared library. It stopped being true the moment a correctness harness
+  verified a candidate against a pinned problem's own C contract, which is a
+  submission. Measured on the shipped catalog: with the atom stamped
+  `shared-library`, a pinned-problem run's correctness obligation resolved to the
+  ARI-native GEMM, SpMM *and* Stencil verifiers — none of which can load a candidate
+  written against the problem's header, all of which would have reported
+  missing-symbol failures as verdicts about the candidate — while
+  `hpc/gemm-dense-fp64-problem-correctness`, written for exactly that contract,
+  was selected zero times. It would have been registered, promoted and never chosen.
+  `build_verification_contract` now takes an optional `artifact_target_kind` that
+  overrides the table for the correctness properties only, and
+  `problem_target_kind(entry_point, family)` derives it from the two pinned facts
+  `declare_target` already reads, so the resolution side and the declaration side
+  cannot come to disagree. A run that names no pinned problem passes nothing and
+  every atom is stamped exactly as before, so the three registered harnesses are
+  untouched. After: the same requirement resolves to one Harness, the one written
+  for the contract in hand.
+
+  `declare_target` now asks the same question in the same order: THE PROBLEM
+  decides which contract a run is verified under, and the artifact only decides
+  whether it keeps it. Asking the built library first looked equivalent and was not
+  — a candidate exporting both the problem's entry point and the family's ABI
+  symbols was declared a `shared-library` while the resolver, which runs before any
+  candidate exists, had already stamped the run's atoms `benchmark-submission`, so
+  the resolved Harness would have been inapplicable to the declared target and the
+  node would have got no verification at all with nothing reporting an error.
+
 - **A correctness Harness that fits a pinned problem (2026-08-14).** Every
   registered correctness Harness verified the ARI-native ABI out of a shared
   library, and every pinned problem submits C source against its own header, so

@@ -7,6 +7,7 @@ Harness resolution remain in their RQGM-independent product packages.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from ari.protocols.integrity import ZERO_SHA256, canonical_digest
@@ -86,6 +87,31 @@ def _run_capability_requirements(cfg, ontology_snapshot, knowledge_lock):
     return tuple(
         sorted(merged.values(), key=lambda item: (item.capability_ref, item.requirement_digest))
     )
+
+
+def _pinned_problem_target_kind() -> str | None:
+    """What this run's candidates ARE, when the run names a pinned problem.
+
+    Returns None -- meaning "keep the vocabulary's per-property answer" -- when
+    no problem is pinned, when the named problem cannot be loaded, or when its
+    family declares no ABI record. A run that is not about a problem must not
+    have its correctness atoms restamped on a guess, and a broken problem name
+    is the evaluator's error to raise where it can be acted on, not a reason to
+    fail admission with a message about target kinds.
+    """
+    from ari.evaluator.assurance_measure import PROBLEM_ENV
+
+    revision = (os.environ.get(PROBLEM_ENV) or "").strip()
+    if not revision:
+        return None
+    try:
+        from ari.assurance.problems import load_problem
+        from ari.assurance.target_abi import problem_target_kind
+
+        definition = load_problem(revision).definition
+        return problem_target_kind(definition.entry_point, definition.family)
+    except Exception:
+        return None
 
 
 def _router_prompt_hash(state) -> str | None:
@@ -326,6 +352,7 @@ def build_kca_admission(
             property_vocabulary=property_vocabulary,
             property_vocabulary_digest=property_vocabulary_digest,
             tolerance_policy=tolerance_policy,
+            artifact_target_kind=_pinned_problem_target_kind(),
         )
         harness_catalog = load_harness_catalog(root / "harnesses" / "catalog.yaml")
         if environment is None:

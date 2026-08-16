@@ -56,7 +56,7 @@ from ari.assurance.models import HarnessTargetDeclarationV1
 
 from ari.public.execution import WorkspaceRefV1
 
-from ari.assurance.target_abi import abi_identity
+from ari.assurance.target_abi import abi_identity, problem_target_kind
 
 PROBLEM_ENV = "ARI_PROBLEM"
 
@@ -438,8 +438,21 @@ def declare_target(work_dir: str | Path,
             f"{completed.stderr.strip()[:2000]}")
 
     workspace = WorkspaceRefV1(root=str(root))
-    missing = _missing_abi_symbols(library, abi.exported_symbols)
-    if not missing:
+    # THE PROBLEM DECIDES WHICH CONTRACT, and the artifact only decides whether
+    # it keeps it. Asking the built library first looks equivalent and is not: a
+    # candidate that exports BOTH the problem's entry point and the family's ABI
+    # symbols would be declared a shared library here, while the resolver -- which
+    # runs before any candidate exists and can only read the pinned problem --
+    # has already stamped this run's atoms ``benchmark-submission``. The
+    # declaration and the resolution would then disagree, the resolved Harness
+    # would be inapplicable to the declared target, and the node would get no
+    # verification at all with nothing reporting an error. Both sides now read
+    # ``problem_target_kind``, which is the sentence "these two cannot come to
+    # disagree" made true rather than asserted.
+    expected_kind = problem_target_kind(definition.entry_point, definition.family)
+    native_contract = expected_kind == abi.target_kind
+    missing = _missing_abi_symbols(library, abi.exported_symbols) if native_contract else []
+    if native_contract and not missing:
         # Declaring `interface_contract` asserts this artifact keeps that
         # contract. Unchecked, the assertion was simply false: a candidate
         # exporting only the problem's own entry point was declared conformant
@@ -467,10 +480,13 @@ def declare_target(work_dir: str | Path,
         # Neither contract. Refusing is the honest outcome: the node then has no
         # verifiable target, which is true, instead of a conformance claim it
         # does not meet.
+        wanted = (f"{abi.interface_contract} ({', '.join(abi.exported_symbols)})"
+                  if native_contract
+                  else f"problem:{definition.revision} ({definition.entry_point!r})")
         raise TargetABIMismatch(
-            f"candidate does not implement {abi.interface_contract}: "
-            f"{library.name} exports none of {', '.join(missing)}, and does not "
-            f"export {definition.entry_point!r} either"
+            f"candidate does not implement the contract this problem is verified "
+            f"under -- {wanted}: {library.name} exports neither those symbols nor "
+            f"{definition.entry_point!r}"
         )
 
     declaration = HarnessTargetDeclarationV1.create(
