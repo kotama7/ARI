@@ -8,6 +8,10 @@ sources:
     role: implementation
   - path: ari-core/ari/cli/bfts_loop.py
     role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/rqgm/store.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
 last_verified: 2026-08-16
@@ -172,6 +176,55 @@ default `simple_bfts` none of this code is imported):
 
 The layers, epoch algorithm, and invariants are documented in
 [Constitutional ARI-RQGM Architecture](rqgm_architecture.md).
+
+---
+
+## Resume rebuilds the tree, not the search state
+
+`ari resume` reads `tree.json` and rebuilds one `Node` per entry, but it
+reconstructs **only a subset** of each node's state, and it rebuilds none of
+the search algorithm's own state. Both halves matter when reasoning about a
+resumed run.
+
+**Node state.** The resume path in `ari-core/ari/cli/run.py` restores `id`,
+`parent_id`, `depth`, `retry_count`, `artifacts`, `eval_summary`, `error_log`,
+`children`, `created_at`, `completed_at`, `ancestor_ids`, the producer and
+RQGM provenance/assurance fields, and then `status`, `label`, `metrics`,
+`has_real_data` and `evaluation_cases`. Several keys that `Node.to_dict()`
+writes are *not* read back — `trace_log`, `evaluation_status`, `raw_label`,
+`name`, `original_direction` and `node_report_path` — and fields that never
+reach `tree.json` at all (`memory_snapshot`, `full_messages`, `full_tools`,
+the agent self-report fields, `measurement_audit`, `evaluator_reason`) start
+at their dataclass defaults. Nodes whose status was PENDING or FAILED are
+reset to PENDING and re-queued; everything else is treated as done.
+
+**Search state.** A resumed run constructs a fresh `BFTS` through
+`build_runtime` and re-enters `_run_loop` from the top, so three counters
+restart empty:
+
+| Counter | Home | What restarts |
+|---|---|---|
+| `BFTS._expansion_count` | `ari/orchestrator/bfts.py` | Retire Rule B's per-node expansion tally, so a node that had already reached `max_expansions_per_node` becomes expandable again |
+| `BFTS._recent_label_history` | `ari/orchestrator/bfts.py` | The diversity-bonus window (last 20 labels), so the `+0.05` underrepresented-label bonus is computed from an empty history |
+| `_lineage_actions_taken` | `ari/cli/bfts_loop.py` | The lineage hook's per-run budget against `rate_limit_per_run`, which refills |
+
+None of the three is persisted, and none can be: `tree.json` is a
+contract-frozen, additive-only format (see
+[Architecture](architecture.md), *The exploration-phase must-not-break
+register (BX-1 … BX-19)*, item BX-7), so new search state cannot ride along
+inside it.
+
+**Why epoch state has its own files.** This is exactly why the governed mode
+does not try to keep epoch state in the tree or in memory. It persists to its
+own checkpoint-root files, written by `ari/rqgm/store.py`:
+`rqgm_transitions.jsonl` is the append-only, hash-chained source of truth
+replayed on resume, `rqgm_audit.jsonl` is the immutable audit log, and
+`epoch_state.json` / `rqgm_registry.json` are derived snapshots that are
+validated against replay on load and rebuilt on mismatch. Mode provenance
+lives in a fifth file, `rqgm_state.json`. Resume reads `tree.json` first and
+reconciles the mode afterwards, but the order does not matter to the outcome:
+the persisted mode wins over both config and environment, so a run's mode
+never flips mid-run and a `simple_bfts` checkpoint never upgrades on resume.
 
 ---
 

@@ -8,6 +8,10 @@ sources:
     role: implementation
   - path: ari-core/ari/cli/bfts_loop.py
     role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/rqgm/store.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
 last_verified: 2026-08-16
@@ -148,6 +152,54 @@ def bfts(experiment, config):
 レイヤ、エポックアルゴリズム、不変条件は
 [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)に文書化
 されています。
+
+---
+
+## resume が復元するのは木であって探索状態ではない
+
+`ari resume` は `tree.json` を読んでエントリごとに `Node` を再構築しますが、
+各ノードの状態は**部分集合しか**復元せず、探索アルゴリズム自身の状態は
+まったく復元しません。resume 後の挙動を考えるときは両方が効いてきます。
+
+**ノードの状態**。`ari-core/ari/cli/run.py` の resume 経路が復元するのは
+`id`・`parent_id`・`depth`・`retry_count`・`artifacts`・`eval_summary`・
+`error_log`・`children`・`created_at`・`completed_at`・`ancestor_ids`、
+producer と RQGM の由来／保証フィールド、そして `status`・`label`・
+`metrics`・`has_real_data`・`evaluation_cases` です。`Node.to_dict()` が
+書き出しているのに読み戻されないキーがいくつかあります —
+`trace_log`・`evaluation_status`・`raw_label`・`name`・`original_direction`・
+`node_report_path` — また `tree.json` に一切載らないフィールド
+(`memory_snapshot`・`full_messages`・`full_tools`・エージェント自己申告系・
+`measurement_audit`・`evaluator_reason`) は dataclass の既定値から始まります。
+status が PENDING または FAILED だったノードは PENDING に戻されて再投入され、
+それ以外は完了扱いです。
+
+**探索の状態**。resume したランは `build_runtime` 経由で新しい `BFTS` を構築し、
+`_run_loop` に先頭から入り直すため、3 つのカウンタが空から再開します:
+
+| カウンタ | 定義場所 | 何が再開するか |
+|---|---|---|
+| `BFTS._expansion_count` | `ari/orchestrator/bfts.py` | Retire Rule B のノードごとの展開回数。すでに `max_expansions_per_node` に達していたノードが再び展開可能になる |
+| `BFTS._recent_label_history` | `ari/orchestrator/bfts.py` | 多様性ボーナスの窓（直近 20 ラベル）。過少ラベルへの `+0.05` が空の履歴から計算される |
+| `_lineage_actions_taken` | `ari/cli/bfts_loop.py` | lineage フックの `rate_limit_per_run` に対するラン単位の予算が満タンに戻る |
+
+3 つとも永続化されていませんし、できません。`tree.json` は契約凍結された
+追加のみのフォーマットであり（[アーキテクチャ](architecture.md) の
+*探索フェーズの must-not-break レジスタ（BX-1 … BX-19）* の BX-7 を参照）、
+新しい探索状態をその中に相乗りさせることはできないからです。
+
+**エポック状態が独自ファイルを持つ理由**。まさにこれが理由で、統治モードは
+エポック状態を木やメモリに置こうとしません。`ari/rqgm/store.py` が書く独自の
+チェックポイント直下ファイルへ永続化します: `rqgm_transitions.jsonl` が
+resume 時にリプレイされる追記専用・ハッシュ連鎖の真実の源、
+`rqgm_audit.jsonl` が不変の監査ログ、`epoch_state.json` /
+`rqgm_registry.json` が読み込み時にリプレイと突き合わせ検証され不一致なら
+再構築される派生スナップショットです。モードの由来は 5 つ目のファイル
+`rqgm_state.json` にあります。resume は `tree.json` を先に読み、モードの整合は
+その後に行いますが、順序は結果に影響しません。
+永続化されたモードが config と環境変数の双方に勝つので、ランのモードが
+途中で切り替わることはなく、`simple_bfts` のチェックポイントが resume で
+昇格することもありません。
 
 ---
 

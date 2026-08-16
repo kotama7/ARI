@@ -4,6 +4,12 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/loop.py
     role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/checkpoint.py
+    role: implementation
   - path: ari-core/ari/pipeline
     role: implementation
   - path: ari-core/ari/evaluator/llm_evaluator.py
@@ -1110,6 +1116,225 @@ ARI のプロダクションコードには**ドメイン知識がゼロ**です
 | ノードのランク付け方法 | LLM が付与する `_scientific_score` |
 | 引用キーワードの選定 | ノードサマリーから LLM が生成 |
 | 環境/セットアップ情報を収集するかどうか | ReAct エージェント LLM（システムプロンプトの再現性原則に従う） |
+
+---
+
+## 探索フェーズの must-not-break レジスタ（BX-1 … BX-19）
+
+以下の 19 項目が**探索フェーズの互換性契約**です。BFTS フェーズへの変更が
+互換と見なされるために壊してはならないものを列挙しています。ここに書かれた
+すべては既定の `simple_bfts` モードで文字どおり成立します。`ari_rqgm` は
+加算的かつ config ゲート付きで、VirSci のアイデア経路は config から除去可能
+です。[RQGM スキーマ](../reference/rqgm_schemas.md)の paper フェーズ用
+レジスタと同じく、このレジスタの価値は**1 つのリストである**ことにあります。
+19 項目のうち 4 項目だけ照合しても部分的な合格にはなりません。
+
+**なぜ `BX-` 接頭辞か**。この契約はもともと `B-1 … B-19` と番号付けされて
+いましたが、この repo ではその接頭辞がすでに二重に使われています。
+`CHANGELOG.md` は無関係な v0.7.2 の BFTS リファクタ項目に `B-1 … B-10` を
+使っており、コードのコメントは*そちら*を指しています —
+`ari-core/ari/cli/bfts_loop.py` の `# B-6 Rule A` / `# B-6 Rule B`、
+`ari-core/ari/orchestrator/bfts.py` の `# B-7:` と `# B-6:`、そして本ページの
+*work_dir 継承 — 出力アーティファクト ブラックリスト* 節にある「Rule B-6 A」。
+つまり素の `B-3` は、どの文書を手にしているかで 2 つの別物を指してしまいます。
+そこでこのレジスタは番号をそのままに **`BX-`**（B、e**x**ploration）で
+持ち込みます: **`BX-n` は元レジスタの項目 `B-n` そのもの**です。この接頭辞は
+リポジトリ内の衝突する `B-n` 番号とレジスタを区別するためのもので、既存の
+素の `B-n` 引用がそれだけでここに解決するようになるわけではありません。
+引用を辿る側は上記の対応を知っている必要があります。`BX-20` は存在しません。
+
+4 項目は最初に書かれた時点から表現を改めています。ツリーが動いたためで、
+BX-3・BX-6・BX-11・BX-17 が各々何が変わったかを述べます。
+
+### ループと探索のセマンティクス
+
+- **BX-1 expand ごとに子は 1 つ。** `BFTS.expand` は LLM 経路で子をちょうど
+  1 つ追加し、LLM が使える方向を返さなかった場合はフォールバックの子を 1 つ
+  追加するので、空リストを返すことはありません。ラン ループのスロット充填の
+  計算はこの下限に依存しています。
+- **BX-2 ノードのリトライはない。** FAILED ノードが再実行されることはありま
+  せん。フロンティアに入り `debug` の子へ展開されるので、回復は新しいノードと
+  して起きます。
+- **BX-3 リタイア規則・sterile ゲート・出力ブラックリスト。**
+  Rule A（`_child_retires_parent`）は子が上回った親をリタイアさせますが、
+  子が `_sterile` のときは除外します。Rule B はノードが
+  `max_expansions_per_node` 回展開された時点でリタイアさせます。
+  `_OUTPUT_BLACKLIST` は親の出力アーティファクトを work_dir コピーから
+  除外します。3 つのいずれを緩めても、上の *work_dir 継承* 節に記した
+  結果重複インシデントが再発します。
+  **レジスタ執筆時点からの変更**: 元の項目は sterile ゲートを、スコアを 0.0 に
+  クランプし LLM ジャッジを上回る単一の規則として書いていました。現在
+  sterility は 2 箇所で判定され、クランプするのは後者だけです。前段の検査
+  （`ari-core/ari/cli/bfts_loop.py` の `_flag_sterile_node`）は
+  `metrics["_sterile"] = True` を立てるだけで、スコア・`has_real_data`・
+  `evaluation_status` には意図的に触れません — docstring は sterility を
+  「探索制御上の性質」であって正しさや測定の失敗ではないと述べています —
+  また harness が `score_inputs` を宣言している場合は、work_dir 全体を差分
+  比較するのではなく、まさにそのファイル群をハッシュして判定します。後段の
+  ノードレポート時点の検査は、ファイル差分がゼロなら従来どおり
+  `_scientific_score` を 0.0 に、`has_real_data` を False にクランプし、
+  ハッシュできなかったファイルしか変化がない場合は明示的にクランプしません。
+- **BX-4 展開のゲートとワーカー上限。** `frontier_expand` を無効にすると
+  ループは pending を消化するだけで展開しません。並列度は config ではなく
+  コードで上限固定です:
+  `max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))`。
+- **BX-5 すべての LLM 判断に完全な決定的フォールバックがある。** 選択は
+  `BFTS._select_fallback` に、展開は BX-1 のフォールバック子に落ちます。
+  パースできない lineage 判断は `continue` に縮退します
+  （`ari-core/ari/orchestrator/lineage_decision.py` の `VALID_ACTIONS` に
+  対する `_parse_decision`）。root アイデア選択は、入力が空・JSON が無い・
+  パースエラー・オブジェクトでない・index が不正・範囲外・LLM エラーの
+  いずれでも index 0 に落ちます。新しい LLM 判断にも同じ義務があります。
+- **BX-6 フックは縮退するのであってランを殺さない。** `_run_loop` の任意
+  経路 — sterile 検査、`record_run`、ノードレポート、lineage 判断フック —
+  は try/except して warn します。
+  **レジスタ執筆時点からの変更**: 元の項目は*すべての*任意経路が fail-open
+  であるとし、fail-closed は意図的な将来の逸脱として注記していました。その
+  逸脱はいま実装されています。KCA の保証機能が有効なとき、`assure_node`
+  ブリッジを持たない RQGM ランタイムは素通りせず `RuntimeError` を送出し、
+  フロンティア準入・Rule A・Rule B はいずれも保証ゲートの実行後まで
+  遅延されます。
+
+### 契約とフォーマット
+
+- **BX-7 チェックポイントの 3 点セット。** `tree.json`・`nodes_tree.json`・
+  `results.json` — その名前、キー順、`json.dumps(..., indent=2,
+  ensure_ascii=False)` のレイアウト — はダッシュボードと paper パイプライン
+  への契約であり、`Node.to_dict()` のキーも同様です。変更は加算のみ。
+  ノードごとの強制インクリメンタル保存が SIGTERM-resume の保証で、1.0 秒の
+  スロットル（`_INCR_DEFAULT_MIN_INTERVAL_S`）とそのロックは
+  `ari-core/tests/test_checkpoint_store.py` に固定されています。`force` が
+  スロットルを迂回すること、別インスタンスが別のスロットル状態を持つことも
+  含みます。
+- **BX-8 予約された `metrics` 名前空間。** `Node.metrics` 内のアンダースコア
+  始まりのキーはユーザーメトリクスではなく予約チャネルです — claim gate の
+  不変条件スキャンがまさにそのために読み飛ばします。当初の集合は
+  `_scientific_score`（合成値が 0 より大きいときだけ書かれる）・
+  `_axis_scores`・`_sterile`・`_comparison_found`・`_params_dict`・
+  `_measurements_dict` でしたが、その後 `_valid_for_frontier`（RQGM の選択的
+  消去）、`_pre_penalty_score` / `_validated_attack_penalty`（敵対スコアリング）、
+  `_utility_policy_hash` が加わりました。キーの追加は加算的です。改名や
+  用途変更はそうではありません — `_scientific_score` だけでも orchestrator・
+  evaluator・ラン ループ・pipeline・RQGM 層にまたがって読まれます。
+- **BX-9 ノードレポート。** `node_report.schema.json` は `schema_version` を
+  `const: 1` に固定し、`schema_version`・`node_id`・`depth`・`status`・
+  `files_changed`・`metrics`・`artifacts` を必須にします。
+  `build_node_report` と `write_node_report` は呼び出し側に例外を投げません。
+- **BX-10 paper パイプライン。** `run_pipeline` のシグネチャと戻り値の形、
+  `ari.pipeline` の monkeypatch 面、トポロジカルソートなしのファイル順ステージ
+  実行、`depends_on` / `skip_if_exists` のセマンティクス、ステージが
+  error のみの dict を返したらステージ失敗であること、claim gate のブロッキング
+  行列（draft フェーズのレポートは決してブロックせず、客観性の
+  `always_block_on` 層はどのモードでも final でブロックし、インフラ起因の
+  エラーでは fail open）、`% CLAIM` アンカーが write → refine → final を
+  生き延びること、2 組のミラー レジストリが同期し続けること
+  （`ari/pipeline/claim_gate/numeric.py` ↔ `ari-skill-transform/src/claims.py`、
+  `ari/pipeline/claim_gate/latex.py` ↔ `ari-skill-paper/src/claim_links.py`）、
+  `science_data.json` が下流で決して書き換えられないこと、そしてテキスト
+  レビュアー（`review_compiled_paper`）が図レビュアーから独立であること。
+- **BX-11 MCP の呼び出し面。** `MCPClient.call_tool` は今も
+  `{"result": str}` か `{"error": str}` のちょうど一方だけを返します。
+  クライアントはランごとに 1 つ共有、リトライはツールを再実行するので
+  ツールは冪等でなければならず、宣言フェーズがちょうど `["none"]` の
+  スキルは決して起動されず、スキル サブプロセスの PYTHONPATH／インタプリタ
+  順序は固定です。
+  **レジスタ執筆時点からの変更**: レガシーな 2 キー dict は、いまや
+  `MCPClient.call_tool_envelope` が返す正準の型付きエンベロープの射影
+  （`ari-core/ari/result.py` の `ResultEnvelopeV1.to_legacy`）です。また
+  レジスタにあった `_set_current_node` ブリッジ ツールと `_cow_lock` は
+  存在しません。アクティブ ノードは代わりに HMAC 署名された
+  `ToolCallContextV1` として各呼び出しの内側を運ばれます — 上の
+  *署名付き call context — メモリスキルとの同期維持* 節を参照。
+- **BX-12 エージェント ループのメッセージ規律。** OpenAI のメッセージ対応
+  規則が成立します: `tool_calls` を持つ assistant メッセージの直後には
+  対応する tool ブロックが連続していなければならないので、会話の途中に
+  差し込むものは deferred user-message パターンを使います。
+  `_PINNED_USER_MARKERS` は常在コンテキストを切り詰めから守ります。モデルが
+  自己終了できるのは **success** のときだけで、`"failed"` は LLM からの
+  正当な終端状態ではありません。そして force-finish を抑止する hold には
+  必ず有限の期限が要ります — force-finish のバックストップが確実にノードを
+  終わらせるためで、contract hold は `max_react_steps` の 10 ステップ手前で
+  期限切れになります。
+
+### 決定性・来歴・スコープ
+
+- **BX-13 決定的なコア（P2）。** BFTS のプロンプト ビルダー、軸の導出、
+  claim gate、`link_paper_claims`、`merge_reviews`、プロンプト／config
+  ローダーは LLM を使わず決定的なままです。壁時計・git SHA・ホスト同一性は
+  どのハッシュにも入りません。`hash12`
+  （`sha256(text)[:12]`、`ari-core/ari/prompts/_provenance.py`）が唯一の
+  プロンプト ハッシュ方式で、生テンプレートのハッシュにもレンダリング後の
+  ハッシュにも使われます。認められた唯一の緩和は
+  [哲学](PHILOSOPHY.md)に記載されています。
+- **BX-14 時間変動入力には耐久マーカー（P5）。** 既定のランは
+  `bfts_web_provenance.json` を残しません — 不在こそが既定です。壁時計や
+  ネットワークに依存する値には、同様の耐久マーカーか決定的な導出が必要です。
+  RQGM の状態層も同じ規則に従います — `rqgm_state.json` の不在は純粋な
+  `simple_bfts` ランを意味します。
+- **BX-15 すべてはチェックポイント スコープ。** `ARI_CHECKPOINT_DIR` が
+  唯一のラン ピンです。新規に `~/.ari` パスへ書いたり参照したりしては
+  なりません: `refactor-guards.yml` ワークフローは、許可リスト外の新しい
+  `~/.ari` 参照でも、テスト スイートが `$HOME/.ari` を作ってしまった場合でも
+  PR を落とします。チェックポイント直下の新しいファイル名は
+  `PathManager.META_FILES` / `_TRACE_FILES`（`ari-core/ari/paths.py`）と
+  ノードレポートのブロックリストに登録する必要があります。
+- **BX-16 メモリのスコープと import の漏斗。** 祖先スコープは維持されます —
+  `search_memory` は `ancestor_ids` でフィルタするので兄弟の想起はありません —
+  またノードは自分自身のメモリしか書けません。ブランチ間の漏れは名前だけに
+  留まります。core→skill の import 漏斗は `ari/memory/**` に閉じ込められ、
+  スキルは `ari.public.*` からしか import しません
+  （`ari-core/tests/test_public_api_boundary.py` が強制）。レジスタにあった
+  copy-on-write キーワード `cow_node_id` は、`ari-core/ari/protocols/mcp.py`
+  と RQGM のクライアント ラッパーにレガシー互換引数として残るのみで、実際の
+  機構は BX-11 の署名付きコンテキストです —
+  `ari-core/tests/test_mcp_cow_concurrency.py` がそれを直接表明しています。
+- **BX-17 ラン内でのスコア比較可能性。** `simple_bfts` では採点軸はラン開始
+  時に凍結されます。root アイデア選択は軸に触れない一回限りの判断だと明示
+  されており、「ノードのスコアがラン内で比較可能なまま」であるためです
+  （`ari-core/ari/orchestrator/root_idea_selector.py`）。Rule A・停滞検出・
+  フォールバック順位付けはいずれも `_scientific_score` をノード間で比較する
+  ので、これは効いてきます。
+  **レジスタ執筆時点からの変更**: 元の項目はエポック単位の再重み付けを、
+  決して黙って起きてはならない設計判断として記録していました。それは
+  `ari_rqgm` 向けにいま実装されており、黙ってはいません。効用ポリシーの変更は
+  統治されたレジストリ遷移であり、frontier-repair エンジンは影響を受けた各
+  ノードを、保存済みでポリシー非依存な `_axis_scores` から新しい合成関数と
+  重みで再採点し、そのノードの既存の検証済み攻撃ペナルティを再適用し、新しい
+  `_utility_policy_hash` を打ち直します — したがって 2 つのポリシー由来の
+  スコアが 1 つのフロンティアに並ぶことはありません。
+
+### アイデアと lineage 層
+
+- **BX-18 アイデアの契約。** `ideas[0]` がランの directive であること、pin
+  されたアイデアが先頭に留まること、一回限りのマーカー `_pinned`・
+  `_root_choice`・`_inherited_from` が書き換えを越えて保存されること、書き
+  換えが内容として可視であること（evaluator の軸リフレッシュが内容ハッシュ
+  keyed なため）、`idea.json` の単一書き手規律、各層が block ではなく degrade
+  すること、ベンダリングされた `ari-skill-idea/vendor/virsci` を決して編集
+  しないこと、スキルが MCP stdio 衛生を守り stdout に何も出さないこと、
+  `lineage_decisions.jsonl` が共有監査ログであり新ファイルより新しい
+  `trigger` 値が望ましいこと、directive と catalog の 2 経路分離、そして
+  自律的エスカレーションが子起動ゲート（再帰深さ、`parent_terminated`）・
+  `rate_limit_per_run`・`ARI_MAX_RECURSION_DEPTH` で有界であること。
+
+### テスト・CI・ドキュメントの面
+
+- **BX-19 破壊を可視にする面。** 契約スナップショットは 4 つの面 —
+  `ari.public.*` のシンボル表、Typer の CLI ツリー、MCP ツール カタログ、
+  ダッシュボードの REST インベントリ — で「再生成するか赤にするか」です。
+  ゴールデンは `ari-core/tests/fixtures/contracts/` にあり、pytest と CLI
+  チェックが同一のジェネレータを共有するので両者が食い違うことはありません。
+  （レジスタ執筆時点では 3 面でした。viz の REST インベントリが 4 つ目です。）
+  それ以外に: `ari.cli` の参照を遅延束縛に保つテスト モック性の間接化、
+  プロンプト スナップショットの層 — `ari-core/tests/test_prompt_extraction.py`
+  の手作業ハッシュ ピンに加えて `ari-core/tests/test_prompt_snapshots.py` の
+  自動発見された生／レンダリング後ゴールデン（再祝福されていない新規・削除
+  テンプレートで失敗する） — と `prompt-change-review.yml` のレビュー ゲート、
+  readme-sync の `## Contents` 行、3 言語ドキュメントの co-change と
+  `sources:` フロントマターのゲート、`DEPRECATION_REMOVAL.md` と
+  `ari-core/ari/_deprecation.py` を経由する非推奨化、そして環境変数や
+  チェックポイント ファイル名を `docs/reference/` に書いた時点で SemVer 上
+  凍結されるという規則。
 
 ---
 

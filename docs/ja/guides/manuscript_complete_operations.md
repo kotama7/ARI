@@ -309,8 +309,15 @@ shadow decision です: `explain-publication` はそれを読みますが、
 クエスチョン、失敗した結果の要約、パス、provider の identity、model に bound
 された brief が含まれ得ます; チェックポイントのデータ分類に従って扱って
 ください。authority の snapshot が含むのは identity と digest であって、
-credential の値では決してありません。チェックポイントの秘匿化や削除は、その
-research artifact に用いるのと同じ保持プロセスを通じてのみ行ってください。
+credential の値では決してありません; `ari-core/ari/manuscript/authority.py` の
+`capture_repair_authority` が記録するのは相対パス、digest、サイズ、mode の名前で
+あり、その validator は credential material を含まないと宣言していない snapshot
+を拒否します。これが、今日コードで強制されている唯一の実例です。ルール自体は
+より広く、今後のコードが何を書いてよいかを縛ります: raw の secret、provider の
+credential、境界のないソースのバイト範囲、秘匿化されていない環境値を
+`.ari-manuscript/` の名前空間に入れてはなりません。この名前空間が運ぶのは
+identity、digest、境界のある brief だけです。チェックポイントの秘匿化や削除は、
+その research artifact に用いるのと同じ保持プロセスを通じてのみ行ってください。
 
 ## リリース評価
 

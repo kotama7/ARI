@@ -151,6 +151,19 @@ brief を受け取ります。RQGM archive の候補も同じ brief と authorin
 受け取ります; archive が失敗したときのフォールバック先は、束縛された linear writer
 に限られます。どちらのバックエンドも research executor を受け取りません。
 
+`audit` が生成しないものが 1 つあります: 比較です。レガシー writer の payload を
+manuscript の inventory と突き合わせる audit モードの成果物 — context には
+あるが writer の payload には無い項目、writer の payload にあるが型付き context
+の出所を持たない項目、cap または budget に起因して観測された omission、
+failed/null/系譜外の可視性の差分、authoring に出ていない assurance と provenance
+のフィールドを記録するもの — は予約された設計であり、実装されていません。
+`ari-core/ari/manuscript/coordinator.py` の `compile_manuscript` が永続化する
+attempt 成果物の種類は `audit` でも `enforce` でも同じ — snapshot、requirement
+profile、context、omission manifest、readiness、そして brief が組み立てられた
+場合は brief bundle と authoring binding — であり、その中に比較のレコードは
+ありません。したがって audit 実行が定量化しないまま残すのは、コンパイラが
+組み立てたものと、writer が実際に渡されたものとの差です。
+
 共有されるバックエンドインタフェースのオブジェクトは存在しません。両バックエンドは
 同じ authoring binding と section brief の bundle を消費しますが、別々の呼び出し
 経路を通ります: linear の authoring はワークフローの `authoring` セグメントを

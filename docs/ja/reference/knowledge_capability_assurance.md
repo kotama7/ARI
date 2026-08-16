@@ -72,6 +72,28 @@ ari.rqgm.assurance_bridge -> ari.assurance
 toolをbindせず、`ari.providers`はKnowledgeやHarnessを選択しない。共通契約は
 `ari.protocols`、read-onlyのsupported APIは`ari.public`に置く。
 
+## 全体invariant
+
+三つのregistryを支配するinvariantの大半は、それが効く節の中で述べている。次の四つは
+横断的であり、これを知らずに個別節だけを読むと誤った推論に至る。
+
+1. **trust anchorは全てfull digestである。** manifest、body、snapshot、contract、lock、
+   Attestationは`sha256:`と64桁の小文字hexで固定する。RQGMの短い`hash12`は、ここでは
+   互換/表示用のkeyである。`hash12`はprompt、policy、registry、schema-v1 eventに対する
+   RQGM自身のcontent identity方式として残るが、本書が述べるadmission、binding、
+   Attestationのいずれも短縮値では決まらない。
+2. **`active`はlock membershipであり、可変なcatalog statusではない。** Knowledge Skill、
+   Provider、Harnessがrunでactiveなのは、固定lockがそれを名指しているからである。catalog
+   の行はentryをreviewしpromoteする場所であって、有効化する場所ではない。したがって
+   admission済みのrunの内側を、catalog編集で有効化することはできない。
+3. **capability可視性はintersectionであり、unionではない。** 可視集合はProvider Lock、
+   active Capability Binding Lock、role authority、phase policy、call contextの積から
+   user-disabled toolを引いたものである。どれか一項に欠けるtoolは、他の何項が認めても
+   可視にならない。
+4. **compatibility defaultの`simple_bfts`はnull diffである。** `simple_bfts`を選び本書の
+   全機能をdefaultのままにした場合、新しいimport、file、metric、field、snapshot、lock、
+   prompt byte、visible toolは一つも生じない。
+
 ## run admissionと固定identity
 
 有効な`ari_rqgm` runでは、最初のresearch node前にtrusted coordinatorが次を完了する。
@@ -458,6 +480,73 @@ catalog lifecycle変更にはreview済みrepository changeまたはauthenticated
 必要である。revocationはtaint/status historyをappendし、過去lock、Attestation、provenanceを
 書き換えない。
 
+## 記録済み検証checkpoint
+
+以下は日付付きの観測記録であって、現在のstatusではない。environment、cost、promotionに
+関する後の主張は、実際に生成されたartifactに照らして検査できねばならず、digestはその
+artifactの唯一のidentityである。だから残す。ここに載るdigestは記載日時点の記録を指すの
+であって、現在のcatalogについての言明ではない。
+
+### 観測された外部cell(2026-08-04)
+
+固定environment snapshot
+`sha256:e0fdcf428bf8b2168dfc06e14faad4ceb2197b7269b90e843b699aa818d92cbb`
+は、利用可能なCPU SLURM、CUDA toolkit 12.4、匿名compute nodeで見えた四つのV100 deviceを
+記録する。schedulerがGPU GRESを広告していなかったため、これらのdeviceはobservation-only
+であり、`gpu` resource typeは付かず、accelerator campaignは明示的なoperatorのscheduling
+決定なしには`not_available`のままだった。これは「environment evidenceとProvider
+substitution」が述べる規則——deviceの可視性はschedulerの権限ではない——を、議論ではなく
+実測で示したものである。
+
+一件のbatch jobがnative verifierのreference/negative-control三families を走らせ、3件が
+passし6件の非選択testが完了した。GNU timeはwall 1.61秒、user CPU 0.89秒、system CPU
+0.13秒、最大RSS 55,537,664 bytesを観測した。このcost観測はdigest
+`sha256:3c451a31416880fd32a71c6e3fefa4d1aba9663f6052f27e84d2aec54fa0839d`
+にbindされている。
+
+この観測は意図的にauthoritativeなcost traceで**ない**。理由は測定の品質ではない。観測
+時点で、production Harness catalogにverified pinned containerは無く、runはAttestationを
+発行しなかった。production cost accountingが始まるのはvalid Attestationを構築し再検証し
+た後であり、「verification resource accounting」の記録はtiming runではなくAttestationから
+書かれる。dollar値はscheduler charge/cloud chargeが与えられるまで`unpriced`のままである。
+
+ToolUniverse/Webのlive operation substitutionは正規化済みresult contractの水準では成功
+したが、正確な凍結upstream environmentがpromote不能だったため、ToolUniverse bindingは
+`unsatisfied`のままだった。PaperBench compatibilityはpassし、official-runner parityは
+`not_available`のままだった。これらは実測された欠落cellであり、passでもなく、未解決の
+design選択でもない。
+
+### ToolUniverse promotionの解決(2026-08-05)
+
+2026-08-04の結果はupstream ToolUniverse `1.3.1`に対する不変の観測として残り、書き換えも
+label張り替えもされていない。ARIは代わりに、別identityのmetadata-only Provider artifact
+`tooluniverse-pubmed@1.3.1+ari.1`をmintした。そのcheck-in済みregistration evidence、
+Provider gate十五件全て、明示的なhuman-maintainer承認から、verified lock
+`sha256:c85e73726b1182c3fe88b682a8bcd0e0d7a57713f7ecb1818056886eaa5442bf`
+とpromotion approval
+`sha256:9317c4ff7e15f488f758fc253b9afd96345abd6d3730405f5669c93a6eabc608`
+が生じた。このlockが認めるのは匿名`PubMed_search_articles`を
+`ari.literature.search/v1`とすることだけで、credential scopeは無い。scope拡大、evidence
+改変、schema drift、revoked statusはfail closeする。
+
+promotionは以前のdiagnosticをpassに変えたわけではない。新しいcampaignは、verified
+artifactから導いたrun固有の`CATALOG.lock`、`SKILLS.lock`、environment identity、
+Capability Binding Lockを使わねばならない。run固有の一leaf `CATALOG.lock`が生成されて
+`callable`に達し、その匿名broker invocationは空のcredential scope listを持つ正規化済み
+`ari.retrieval-result/v1` recordを一件返した。正式なmaintainer promotionの後、閉じた
+environmentで再同期した結果、verifiedな一leaf catalog digest
+`sha256:73e1225dc30b4cfc735858bad4615e08da6723a0f0ced6dd560897d7db3551ff`
+が得られた。
+
+三つのdigestはいずれもこのcheckpointに属し、その後少なくとも一度supersedeされている。
+2026-08-07のportability再promotionが、promoteした側hostのinstall pathをleaf identityから
+取り除き、lock、approval、catalog digestが変わった——認められたscopeは不変である。現在
+有効なlockとapprovalは
+`ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.1/`
+配下のcheck-in済みbundleにあり、一leaf catalogはrepository defaultではなくenvironment固有
+のevidenceである。supersedeされたdigestも、それが記録した対象のidentityとしては有効な
+ままであり、resume中に既存のcatalogやlockが書き換えられることはない。
+
 ## 正直な限界
 
 Knowledge品質とcapability ontologyには人間のcurationが必要である。同じcapabilityのProvider
@@ -556,6 +645,42 @@ sharing partitionでの`--exclusive`は8のうち8 allocatedで`held`、同じpa
 device parserはmemoryがparseできないrowを丸ごと捨てていた。よってARIはGPUを持つnodeで
 **GPUを1つも見ていなかった**——そこでは全GPU capabilityが黙ってbind不能になる。memoryの値が
 parseできないdeviceも、deviceである。
+
+### 何がpromote済みで、promotionが何をしないか
+
+upstream entryは、それに対する真正なevidenceが揃うまで`candidate`のままである。この
+`candidate`は形式ではなくrepositoryについての事実である。remote Provider transportと、
+Inspect、Harbor、PaperBench、KernelBench、ComputeEval、scBenchのHarness entryは全て
+candidateのままで、いずれをpromoteするにも真正なupstream full commit、dataset/container/
+license pin、official-runner parity、negative control、許可されたGPU schedulingまたは
+model credentialが要る。この六つはいずれもcheck-in済みHarness catalogに現れず、当該
+catalogはnative HPC entryのみを持つ。check-in済みの外部driver facadeはfail closeし、可変
+source、捏造pin、省略されたparity結果、常時passのplaceholderがその代替として認められる
+ことはない。PaperBenchのupstream APIとaggregation parityはpassするが、公式の
+rollout、reproduction、judgeのparityは依然として利用できない。
+
+正確なupstream ToolUniverse `1.3.1` lockは失敗したcandidateのままである。promote済みなの
+は別identityのmetadata-only artifact `1.3.1+ari.1`だけであり、その範囲も匿名
+`PubMed_search_articles`を`ari.literature.search/v1`とすることに限られる。他のToolUniverse
+leafは全て未admitである。
+
+さらに二つのProvider scopeが、独立でevidenceにbindされたverified lockを持つ。認められた
+境界はupstream製品の機能一覧ではなく、そのlockである。
+
+- **Qiskit MCP 0.3.1とQiskit Aer 0.17.2**。匿名のlocal ideal simulationのみでadmitされ、
+  `ari.quantum.sample.local-ideal/v1`を空のcredential scopeで供給する。IBM Quantum
+  Runtime、remote simulator、hardwareは、credentialにbindされたbackend、configuration、
+  calibration、QPY、golden、replayのevidenceが存在しないためcandidateのままである。
+- **OpenROAD MCP 0.6.1とOpenROAD-flow-scripts `26Q3`**。GCD/Nangate45のlocal x86_64 CPU
+  flowのみでadmitされ、`ari.eda.openroad.place-route/v1`を供給する。同じdesignの匿名
+  exclusive-node SLURM CPU実行は別途promoteされたProvider identityであり、そのlockはGPUを
+  要求せず、salted site digestのみを保持する。OpenROADのGPU実行、他のdesignやPDK、
+  default flow全体のparityは、この二つのidentityの外側にあり、それぞれ別名のcandidate、
+  evidence bundle、人間の承認、verified lockを要する。
+
+promotionはactivationではない。どちらのProviderも、意図的に空であるcheck-in済み
+`CATALOG.lock`ではactiveでない。activationはadmission時に取られる、run単位で凍結される
+catalog/Provider/Binding lockの別決定のままである。
 
 ## extension gate
 

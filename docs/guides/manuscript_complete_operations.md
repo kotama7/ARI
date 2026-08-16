@@ -298,8 +298,16 @@ Set `manuscript.mode: off` to return future invocations to the legacy path. This
 does not erase prior attempts. `.ari-manuscript` can contain research questions,
 failed-result summaries, paths, provider identities, and model-bound briefs;
 treat it with the checkpoint's data classification. Authority snapshots contain
-identities and digests, never credential values. Redact or delete a checkpoint
-only through the same retention process used for its research artifacts.
+identities and digests, never credential values; `capture_repair_authority` in
+`ari-core/ari/manuscript/authority.py` records relative paths, digests, sizes
+and mode names, and its validator rejects any snapshot that does not declare
+itself free of credential material. That is the one instance of the rule
+enforced in code today. The rule itself is broader and constrains what future
+code may write: no raw secret, provider credential, unbounded source byte
+range, or unredacted environment value may go into the `.ari-manuscript/`
+namespace, which carries identities, digests and bounded briefs only. Redact or
+delete a checkpoint only through the same retention process used for its
+research artifacts.
 
 ## Release evaluation
 

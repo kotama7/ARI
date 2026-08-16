@@ -8,6 +8,10 @@ sources:
     role: implementation
   - path: ari-core/ari/cli/bfts_loop.py
     role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/rqgm/store.py
+    role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
 last_verified: 2026-08-16
@@ -163,6 +167,48 @@ def bfts(experiment, config):
 
 各层、纪元算法与不变量记录在
 [Constitutional ARI-RQGM 架构](rqgm_architecture.md)中。
+
+---
+
+## resume 重建的是树，不是搜索状态
+
+`ari resume` 读取 `tree.json` 并为每个条目重建一个 `Node`，但它只恢复每个节点
+状态的**一个子集**，并且完全不重建搜索算法自身的状态。推理一次 resume 后的
+运行时，这两半都重要。
+
+**节点状态**。`ari-core/ari/cli/run.py` 中的 resume 路径恢复 `id`、
+`parent_id`、`depth`、`retry_count`、`artifacts`、`eval_summary`、
+`error_log`、`children`、`created_at`、`completed_at`、`ancestor_ids`、
+producer 与 RQGM 的溯源／保证字段，然后是 `status`、`label`、`metrics`、
+`has_real_data` 和 `evaluation_cases`。有若干键 `Node.to_dict()` 会写出但
+不会被读回 —— `trace_log`、`evaluation_status`、`raw_label`、`name`、
+`original_direction` 和 `node_report_path` —— 而根本不进入 `tree.json` 的字段
+（`memory_snapshot`、`full_messages`、`full_tools`、智能体自述字段、
+`measurement_audit`、`evaluator_reason`）则从 dataclass 默认值开始。状态为
+PENDING 或 FAILED 的节点被重置为 PENDING 并重新排队，其余一律视为已完成。
+
+**搜索状态**。resume 的运行会通过 `build_runtime` 构造一个全新的 `BFTS`，
+并从头重新进入 `_run_loop`，因此三个计数器都从空开始：
+
+| 计数器 | 定义处 | 什么被重置 |
+|---|---|---|
+| `BFTS._expansion_count` | `ari/orchestrator/bfts.py` | Retire Rule B 的逐节点扩展计数；已达到 `max_expansions_per_node` 的节点重新变得可扩展 |
+| `BFTS._recent_label_history` | `ari/orchestrator/bfts.py` | 多样性奖励的窗口（最近 20 个标签）；对欠代表标签的 `+0.05` 从空历史开始计算 |
+| `_lineage_actions_taken` | `ari/cli/bfts_loop.py` | lineage 钩子针对 `rate_limit_per_run` 的每次运行预算被重新填满 |
+
+三者都没有被持久化，也不可能被持久化：`tree.json` 是契约冻结、仅可增补的格式
+（见[架构](architecture.md)的 *探索阶段的 must-not-break 登记册（BX-1 … BX-19）*
+中的 BX-7），新的搜索状态无法搭它的便车。
+
+**纪元状态为何要有自己的文件**。这正是受治模式不把纪元状态放进树或内存的原因。
+它持久化到由 `ari/rqgm/store.py` 写入的、位于检查点根目录的专属文件：
+`rqgm_transitions.jsonl` 是 resume 时重放的仅追加、哈希链式真相源，
+`rqgm_audit.jsonl` 是不可变审计日志，`epoch_state.json` /
+`rqgm_registry.json` 是派生快照——加载时与重放校验，不一致则重建。模式溯源
+放在第五个文件 `rqgm_state.json` 中。resume 先读 `tree.json`，之后才对账模式，
+但顺序不影响结果：
+持久化的模式同时压过 config 与环境变量，所以一次运行的模式绝不会中途翻转，
+`simple_bfts` 的检查点也绝不会在 resume 时被升级。
 
 ---
 

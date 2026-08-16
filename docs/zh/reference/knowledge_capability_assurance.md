@@ -71,6 +71,27 @@ ari.rqgm.assurance_bridge -> ari.assurance
 `ari.providers`不选择 Knowledge 或 Harness。共享契约位于`ari.protocols`，read-only
 supported API 位于`ari.public`。
 
+## 全局 invariant
+
+支配这三个 registry 的 invariant 大多写在各自适用的小节里。下面四条足够跨节，缺了它们
+去读任何单独一节都会得出错误推断。
+
+1. **每个 trust anchor 都是完整 digest。** manifest、body、snapshot、contract、lock 与
+   Attestation 一律以`sha256:`加 64 位小写十六进制固定。RQGM 较短的`hash12`在这里只是
+   兼容与显示用的 key：`hash12`仍是 RQGM 自己对 prompt、policy、registry 与 schema-v1
+   event 的 content identity 方案，但本文所述的任何 admission、binding 或 Attestation
+   都不由截短值决定。
+2. **`active`是 lock membership，而不是可变的 catalog status。** 一个 Knowledge Skill、
+   Provider 或 Harness 之所以在某次 run 中 active，是因为被冻结的 lock 指名了它。catalog
+   的行是 entry 被 review 与 promote 的地方，不是被开启的地方；因此编辑 catalog 无法激活
+   一次已经 admit 的 run 内部的任何东西。
+3. **capability 可见性是交集，绝非并集。** 可见集合是 Provider Lock、active Capability
+   Binding Lock、role authority、phase policy 与 call context 的交，再减去 user-disabled
+   tool。缺少其中任何一项的 tool 都不可见，无论其余各项接纳了多少次。
+4. **compatibility default 下的`simple_bfts`是 null diff。** 选择`simple_bfts`并让本文
+   所有特性保持 default 时，不会出现任何新的 import、file、metric、field、snapshot、
+   lock、prompt byte 或 visible tool。
+
 ## run admission 与固定 identity
 
 启用`ari_rqgm`时，trusted coordinator 必须在第一个 research node 前完成：
@@ -441,6 +462,67 @@ Governance workspace 将三类 catalog card 及其 lock/provenance 分开显示�
 catalog lifecycle 变化需要 reviewed repository change 或 authenticated human admin path。
 revocation append taint/status history，绝不改写旧 lock、Attestation 或 provenance。
 
+## 已记录的验证 checkpoint
+
+以下是带日期的观测记录，不是当前 status。之所以保留，是因为后续关于 environment、cost
+或 promotion 的任何主张都必须能对照真正产出的 artifact 来核对，而 digest 是该 artifact
+唯一的 identity。这里的 digest 指的是记录在所标日期时的状态，不是对当前 catalog 的断言。
+
+### 观测到的外部 cell（2026-08-04）
+
+冻结的 environment snapshot
+`sha256:e0fdcf428bf8b2168dfc06e14faad4ceb2197b7269b90e843b699aa818d92cbb`
+记录了可用的 CPU SLURM、CUDA toolkit 12.4，以及在匿名 compute node 上可见的四个 V100
+device。由于 scheduler 未广告 GPU GRES，这些 device 仅为 observation-only：不产生`gpu`
+resource type，且在没有明确的 operator 调度决定前，accelerator campaign 保持
+`not_available`。这正是「environment evidence 与 Provider substitution」所述的规则——
+device 可见性不等于 scheduler 权限——以实测而非论证给出。
+
+一个 batch job 运行了 native verifier 的三个 reference/negative-control family：3 项
+pass，6 项未选中的 test 完成。GNU time 观测到 wall 1.61 秒、user CPU 0.89 秒、system CPU
+0.13 秒、最大 RSS 55,537,664 字节。该 cost 观测绑定到 digest
+`sha256:3c451a31416880fd32a71c6e3fefa4d1aba9663f6052f27e84d2aec54fa0839d`。
+
+该观测被刻意认定**不是**权威 cost trace，理由与测量质量无关。观测当时，production
+Harness catalog 没有 verified 的 pin 定 container，该 run 也未签发 Attestation。production
+cost accounting 只在 valid Attestation 构造并重新验证之后才开始：「verification resource
+accounting」所述的记录来自 Attestation，而不是来自一次计时运行。在给出 scheduler 或
+cloud 费用之前，dollar 值保持`unpriced`。
+
+ToolUniverse/Web 的 live operation substitution 在归一化 result contract 层面成功，但由于
+精确冻结的 upstream environment 不可 promote，ToolUniverse binding 仍为`unsatisfied`。
+PaperBench compatibility 通过，而 official-runner parity 仍为`not_available`。这些是实测
+到的缺失 cell：既不是 pass，也不是未决的设计选择。
+
+### ToolUniverse promotion 的解决（2026-08-05）
+
+2026-08-04 的结果作为对 upstream ToolUniverse `1.3.1`的不可变观测保留，既未改写也未重新
+贴标签。ARI 转而 mint 了独立 identity 的 metadata-only Provider artifact
+`tooluniverse-pubmed@1.3.1+ari.1`。其已 check-in 的 registration evidence、全部十五项
+Provider gate 以及明确的 human-maintainer 批准，产出 verified lock
+`sha256:c85e73726b1182c3fe88b682a8bcd0e0d7a57713f7ecb1818056886eaa5442bf`
+与 promotion approval
+`sha256:9317c4ff7e15f488f758fc253b9afd96345abd6d3730405f5669c93a6eabc608`。
+该 lock 只允许把匿名`PubMed_search_articles`作为`ari.literature.search/v1`，且无
+credential scope；scope 扩张、evidence 改动、schema drift 与 revoked status 均 fail closed。
+
+promotion 并未把先前的 diagnostic 变成 pass。新的 campaign 必须使用由该 verified artifact
+导出的 run 专属`CATALOG.lock`、`SKILLS.lock`、environment identity 与 Capability Binding
+Lock。一个 run 专属的单 leaf `CATALOG.lock` 已生成并达到`callable`，其匿名 broker
+invocation 返回了一条 credential scope 列表为空的归一化`ari.retrieval-result/v1`记录。
+在正式 maintainer promotion 之后于封闭 environment 重新同步，得到 verified 的单 leaf
+catalog digest
+`sha256:73e1225dc30b4cfc735858bad4615e08da6723a0f0ced6dd560897d7db3551ff`。
+
+这三个 digest 都属于该 checkpoint，且此后至少被 supersede 过一次。2026-08-07 的
+portability 再 promotion 把 promote 方 host 的 install path 从 leaf identity 中移除，因此
+lock、approval 与 catalog digest 都改变，而被允许的 scope 不变；当前生效的 lock 与
+approval 位于已 check-in 的 bundle
+`ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.1/`
+之下，而单 leaf catalog 是 environment 专属的 evidence，不是 repository default。被
+supersede 的 digest 作为它所记录之物的 identity 依然有效，resume 期间也绝不改写既有的
+catalog 或 lock。
+
 ## 诚实的限制
 
 Knowledge 质量和 capability ontology 需要人工 curation。同一 capability 的多个 Provider
@@ -531,6 +613,40 @@ witness 用`SLURM_JOB_CPUS_PER_NODE`与该 node 的`CPUTot`比较，这个选择
 发现的缺陷：在 Grace-Blackwell 上内存是统一的，`memory.total`读到`[N/A]`，而 device parser
 会丢弃任何内存无法解析的行。于是 ARI 在一台确实有 GPU 的 node 上**一个 GPU 都没看到**，使
 那里的所有 GPU capability 静默地无法 bind。一个内存数值解析不出来的 device 仍然是 device。
+
+### 什么已被 promote，以及 promotion 不做什么
+
+在出现真实 evidence 之前，upstream entry 一律保持`candidate`；这个`candidate`是关于
+repository 的事实，而不是形式。remote Provider transport，以及 Inspect、Harbor、
+PaperBench、KernelBench、ComputeEval 与 scBench 的 Harness entry 全部仍为 candidate：
+promote 其中任何一个都需要真实的 upstream full commit、dataset/container/license pin、
+official-runner parity、negative control，以及获准的 GPU 调度或 model credential。这六者
+都不出现在已 check-in 的 Harness catalog 中，该 catalog 只有 native HPC entry。已 check-in
+的外部 driver facade fail closed，不会以可变 source、伪造 pin、被跳过的 parity 结果或恒
+pass 的 placeholder 作为替代。PaperBench 的 upstream API 与 aggregation parity 通过，但
+官方的 rollout、reproduction 与 judge parity 仍不可得。
+
+精确的 upstream ToolUniverse `1.3.1` lock 仍是失败的 candidate。已 promote 的只有独立
+identity 的 metadata-only artifact `1.3.1+ari.1`，且范围仅限把匿名
+`PubMed_search_articles`作为`ari.literature.search/v1`；其余 ToolUniverse leaf 均未 admit。
+
+另有两个 Provider scope 拥有独立且绑定 evidence 的 verified lock。被允许的边界是那把
+lock，而不是 upstream 产品的功能清单：
+
+- **Qiskit MCP 0.3.1 与 Qiskit Aer 0.17.2**，仅就匿名 local ideal simulation 被 admit，
+  以空 credential scope 供给`ari.quantum.sample.local-ideal/v1`。IBM Quantum Runtime、
+  remote simulator 与硬件仍为 candidate，因为不存在与 credential 绑定的 backend、
+  configuration、calibration、QPY、golden 或 replay evidence。
+- **OpenROAD MCP 0.6.1 与 OpenROAD-flow-scripts `26Q3`**，仅就 GCD/Nangate45 的 local
+  x86_64 CPU flow 被 admit，供给`ari.eda.openroad.place-route/v1`。同一设计的匿名
+  exclusive-node SLURM CPU 执行是另一个单独 promote 的 Provider identity，其 lock 不请求
+  GPU，且只保存加盐的 site digest。OpenROAD 的 GPU 执行、其他设计与 PDK，以及完整
+  default flow 的 parity，都在这两个 identity 之外，各自需要单独命名的 candidate、
+  evidence bundle、人工批准与 verified lock。
+
+promotion 不是 activation。两个 Provider 都不在已 check-in 的`CATALOG.lock`中处于 active
+——那个 lock 是有意为空的。activation 仍是 admission 时另行作出、按 run 冻结的
+catalog/Provider/Binding lock 决定。
 
 ## extension gate
 

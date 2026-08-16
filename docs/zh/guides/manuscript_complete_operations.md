@@ -276,8 +276,13 @@ compile 一个新的 attempt，或用原始的 immutable bundle 来 resume。
 把 `manuscript.mode: off` 设上，即可让后续调用回到 legacy 路径。这并不会抹除
 先前的 attempt。`.ari-manuscript` 可能包含研究问题、失败结果摘要、路径、
 provider 身份以及绑定到模型的 brief；请按该检查点的数据密级来对待它。
-authority 快照包含身份与 digest，绝不包含凭据值。对某个检查点做脱敏或删除，
-只能走与其 research artifact 相同的留存流程。
+authority 快照包含身份与 digest，绝不包含凭据值；`ari-core/ari/manuscript/authority.py`
+中的 `capture_repair_authority` 记录的是相对路径、digest、大小与 mode 名称，其
+校验器会拒绝任何没有声明自身不含凭据材料的快照。这是今天在代码中被强制执行的
+唯一一处实例。规则本身更宽，它约束今后的代码可以写入什么：不得把原始 secret、
+provider 凭据、没有边界的源字节区间，或未脱敏的环境值放进 `.ari-manuscript/`
+命名空间，该命名空间只承载身份、digest 与有边界的 brief。对某个检查点做脱敏或
+删除，只能走与其 research artifact 相同的留存流程。
 
 ## 发布评估
 

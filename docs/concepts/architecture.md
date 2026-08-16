@@ -4,6 +4,12 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/loop.py
     role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/checkpoint.py
+    role: implementation
   - path: ari-core/ari/pipeline
     role: implementation
   - path: ari-core/ari/evaluator/llm_evaluator.py
@@ -1334,6 +1340,231 @@ ARI's production code contains **zero domain knowledge**. All domain decisions a
 | How to rank nodes | LLM-assigned `_scientific_score` |
 | What citation keywords to use | LLM-generated from node summaries |
 | Whether to collect env/setup info | ReAct agent LLM (guided by reproducibility principle in system prompt) |
+
+---
+
+## The exploration-phase must-not-break register (BX-1 … BX-19)
+
+The nineteen items below are the **exploration-phase compatibility
+contract**: what a change to the BFTS phase has to leave intact to count as
+compatible. Everything here holds verbatim under the default `simple_bfts`
+mode; `ari_rqgm` is additive and config-gated, and the VirSci idea path is
+removable from config. As with the paper-phase register in
+[RQGM schemas](../reference/rqgm_schemas.md), the register's value is that it
+is **one list**: reviewing a change against four of the nineteen is not a
+partial pass.
+
+**Why the `BX-` prefix.** This contract was originally numbered `B-1 … B-19`,
+but that prefix is already spoken for twice in this repo. `CHANGELOG.md` uses
+`B-1 … B-10` for the unrelated v0.7.2 BFTS refactor items, and code comments
+point at *those* entries — `# B-6 Rule A` / `# B-6 Rule B` in
+`ari-core/ari/cli/bfts_loop.py`, `# B-7:` and `# B-6:` in
+`ari-core/ari/orchestrator/bfts.py`, and "Rule B-6 A" in this page's
+*work_dir inheritance — output-artifact blacklist* section. A bare `B-3`
+therefore resolves to two different things depending on which document you
+are holding. The register is carried here under **`BX-`** (B,
+e**x**ploration) with the numbering untouched: **`BX-n` is item `B-n` of the
+original register**. The prefix disambiguates the register from the colliding
+`B-n` numbers elsewhere in the repo; it does not make an existing bare `B-n`
+citation resolve here on its own, so a reader following one has to know the
+mapping above. There is no `BX-20`.
+
+Four items are re-worded relative to the register as first written, because
+the tree has moved: BX-3, BX-6, BX-11 and BX-17 each say what changed.
+
+### Loop and search semantics
+
+- **BX-1 One child per expand.** `BFTS.expand` appends exactly one child on
+  the LLM path, and one fallback child when the LLM returns no usable
+  direction, so it never returns an empty list. The run loop's slot-filling
+  arithmetic depends on that lower bound.
+- **BX-2 No node retry.** A FAILED node is never re-executed. It joins the
+  frontier and is expanded into a `debug` child, so recovery is a new node.
+- **BX-3 Retirement rules, the sterile gate, and the output blacklist.**
+  Rule A (`_child_retires_parent`) retires a parent its child outscored,
+  except when the child is `_sterile`; Rule B retires a node once it has been
+  expanded `max_expansions_per_node` times; `_OUTPUT_BLACKLIST` holds the
+  parent's output artifacts back from the work_dir copy. Weakening any of the
+  three resurrects the duplicate-results incident described in the *work_dir
+  inheritance* section above.
+  **Changed since the register was written**: the original item read the
+  sterile gate as a single rule that clamps the score to 0.0 and outranks the
+  LLM judge. Sterility is now decided at two points and only the later one
+  clamps. The earlier check (`_flag_sterile_node` in
+  `ari-core/ari/cli/bfts_loop.py`) sets `metrics["_sterile"] = True` and
+  deliberately leaves the score, `has_real_data` and `evaluation_status`
+  untouched — its docstring calls sterility "a search-control property", not a
+  correctness or measurement failure — and when the harness declares
+  `score_inputs`, sterility is decided by hashing exactly those files instead
+  of diffing the whole work_dir. The later, node-report-time check still
+  clamps `_scientific_score` to 0.0 and `has_real_data` to False on a zero
+  file delta, and explicitly declines to clamp when the only changes are files
+  it could not hash.
+- **BX-4 Expansion gating and the worker clamp.** With `frontier_expand`
+  disabled the loop drains pending work only and never expands. Concurrency is
+  hard-clamped in code, not config: `max_workers = max(1,
+  min(cfg.bfts.max_parallel_nodes, 4))`.
+- **BX-5 Every LLM decision has a total deterministic fallback.** Selection
+  falls back to `BFTS._select_fallback`; expansion to the fallback child of
+  BX-1; a lineage decision that cannot be parsed degrades to `continue`
+  (`_parse_decision` against `VALID_ACTIONS` in
+  `ari-core/ari/orchestrator/lineage_decision.py`); root idea selection falls
+  back to index 0 on empty input, missing JSON, a parse error, a non-object,
+  a bad index, an out-of-range index, or an LLM error. Any new LLM decision
+  owes the same.
+- **BX-6 Hooks degrade, they do not kill the run.** The optional paths in
+  `_run_loop` — the sterile check, `record_run`, the node report, the
+  lineage-decision hook — are try/except-and-warn.
+  **Changed since the register was written**: the original item said *every*
+  optional path fails open, with fail-closed noted as a deliberate future
+  deviation. That deviation is now built. When the KCA assurance feature is
+  active, an RQGM runtime without an `assure_node` bridge raises
+  `RuntimeError` instead of falling through, and frontier admission, Rule A
+  and Rule B are all deferred until the assurance gate has run.
+
+### Contracts and formats
+
+- **BX-7 The checkpoint triple.** `tree.json`, `nodes_tree.json` and
+  `results.json` — their names, their key order, and the
+  `json.dumps(..., indent=2, ensure_ascii=False)` layout — are a dashboard and
+  paper-pipeline contract, as are `Node.to_dict()`'s keys. Changes are
+  additive only. A forced incremental save after every node is the
+  SIGTERM-resume guarantee; the 1.0 s throttle
+  (`_INCR_DEFAULT_MIN_INTERVAL_S`) and its lock are pinned by
+  `ari-core/tests/test_checkpoint_store.py`, including that `force` bypasses
+  the throttle and that separate store instances own separate throttle state.
+- **BX-8 The reserved `metrics` namespace.** Underscore-prefixed keys inside
+  `Node.metrics` are a reserved channel, not user metrics — the claim gate's
+  invariant scan skips them for exactly that reason. The original set was
+  `_scientific_score` (written only when the composite is greater than zero),
+  `_axis_scores`, `_sterile`, `_comparison_found`, `_params_dict` and
+  `_measurements_dict`; it has since grown `_valid_for_frontier` (RQGM
+  selective erasure), `_pre_penalty_score` / `_validated_attack_penalty`
+  (adversarial scoring) and `_utility_policy_hash`. Adding a key is additive.
+  Renaming or repurposing one is not — `_scientific_score` alone is read
+  across the orchestrator, the evaluator, the run loop, the pipeline and the
+  RQGM layer.
+- **BX-9 The node report.** `node_report.schema.json` pins `schema_version` to
+  `const: 1` and requires `schema_version`, `node_id`, `depth`, `status`,
+  `files_changed`, `metrics` and `artifacts`. `build_node_report` and
+  `write_node_report` never raise into the caller.
+- **BX-10 The paper pipeline.** `run_pipeline`'s signature and return shape;
+  the `ari.pipeline` monkeypatch surfaces; file-order stage execution with no
+  topological sort; `depends_on` / `skip_if_exists` semantics; an error-only
+  dict from a stage meaning stage failure; the claim-gate blocking matrix (a
+  draft-phase report never blocks, the objective-integrity `always_block_on`
+  tier blocks at the final phase in every mode, and the gate fails open on
+  infrastructure errors); `% CLAIM` anchors surviving write → refine → final;
+  the two mirrored registries staying in sync
+  (`ari/pipeline/claim_gate/numeric.py` ↔ `ari-skill-transform/src/claims.py`,
+  `ari/pipeline/claim_gate/latex.py` ↔ `ari-skill-paper/src/claim_links.py`);
+  `science_data.json` never mutated downstream; and the text reviewer
+  (`review_compiled_paper`) staying independent of the figure reviewer.
+- **BX-11 The MCP call surface.** `MCPClient.call_tool` still returns exactly
+  one of `{"result": str}` or `{"error": str}`. One client is shared per run;
+  retries re-execute the tool, so tools must be idempotent; a skill whose
+  declared phases are exactly `["none"]` is never spawned; the
+  PYTHONPATH/interpreter ordering for skill subprocesses is fixed.
+  **Changed since the register was written**: the legacy two-key dict is now a
+  projection (`ResultEnvelopeV1.to_legacy` in `ari-core/ari/result.py`) of the
+  canonical typed envelope returned by `MCPClient.call_tool_envelope`, and the
+  register's `_set_current_node` bridge tool and `_cow_lock` no longer exist.
+  The active node travels inside each call as an HMAC-signed
+  `ToolCallContextV1` instead — see the *Signed call context — keeping the
+  memory skill in sync* section above.
+- **BX-12 Agent-loop message discipline.** OpenAI message pairing holds: an
+  assistant message carrying `tool_calls` must be followed by its contiguous
+  tool block, so anything injected mid-conversation uses the deferred
+  user-message pattern. `_PINNED_USER_MARKERS` keeps always-present context
+  alive through truncation. The model can only self-finish as **success** —
+  `"failed"` is not a valid terminal state from the LLM. And any hold that
+  suppresses force-finish must have a bounded expiry, so the force-finish
+  backstop still terminates the node: the contract hold expires ten steps
+  before `max_react_steps`.
+
+### Determinism, provenance, scoping
+
+- **BX-13 The deterministic core (P2).** The BFTS prompt builder, axis
+  derivation, the claim gate, `link_paper_claims`, `merge_reviews` and the
+  prompt/config loaders stay LLM-free and deterministic. No wall-clock value,
+  git SHA or host identity enters any hash. `hash12`
+  (`sha256(text)[:12]`, `ari-core/ari/prompts/_provenance.py`) is the single
+  prompt-hash scheme, used for both the raw template hash and the rendered
+  prompt hash. The one sanctioned relaxation is documented in
+  [Philosophy](PHILOSOPHY.md), *Memory (v0.6.0): P2 relaxed for one skill, P5
+  scoped*.
+- **BX-14 Durable markers for time-varying input (P5).** A default run leaves
+  no `bfts_web_provenance.json` behind; absence *is* the default. Anything
+  whose value depends on wall-clock or the network needs an analogous durable
+  marker or a deterministic derivation. The RQGM state layer follows the same
+  rule — the absence of `rqgm_state.json` means a pure `simple_bfts` run.
+- **BX-15 Everything is checkpoint-scoped.** `ARI_CHECKPOINT_DIR` is the
+  single run pin. Nothing new may write to or reference a `~/.ari` path: the
+  `refactor-guards.yml` workflow fails the PR both on a new `~/.ari` reference
+  outside its allow-list and on the test suite creating `$HOME/.ari` at all.
+  A new checkpoint-root filename has to be registered in
+  `PathManager.META_FILES` / `_TRACE_FILES` (`ari-core/ari/paths.py`) and in
+  the node-report blocklists.
+- **BX-16 Memory scoping and the import funnel.** Ancestor scoping holds —
+  `search_memory` filters by `ancestor_ids`, so there is no sibling recall —
+  and a node may only write its own memory. Cross-branch leakage stays
+  names-only. The core→skill import funnel is confined to `ari/memory/**`, and
+  skills import only from `ari.public.*`, enforced by
+  `ari-core/tests/test_public_api_boundary.py`. The register's copy-on-write
+  keyword `cow_node_id` survives only as a legacy compatibility argument in
+  `ari-core/ari/protocols/mcp.py` and the RQGM client wrappers; the live
+  mechanism is BX-11's signed context, which
+  `ari-core/tests/test_mcp_cow_concurrency.py` now asserts directly.
+- **BX-17 Score comparability within a run.** Under `simple_bfts` the scoring
+  axes are frozen at run start. Root idea selection is explicitly a one-shot
+  decision that does not touch the axes — its docstring gives that as the
+  reason: "This keeps node scores comparable within a run."
+  (`ari-core/ari/orchestrator/root_idea_selector.py`) — which
+  matters because Rule A, stagnation detection and the fallback ranking all
+  compare `_scientific_score` across nodes.
+  **Changed since the register was written**: the original item recorded
+  epoch re-weighting as a design decision that must never happen silently. It
+  is now built for `ari_rqgm`, and it is not silent. A utility-policy change is
+  a governed registry transition, and the frontier-repair engine re-scores
+  each affected node from its stored, policy-independent `_axis_scores` under
+  the new composite and weights, re-applies the node's existing validated
+  attack penalty, and re-stamps it with the new `_utility_policy_hash` — so
+  scores from two policies never sit side by side in one frontier.
+
+### Idea and lineage layer
+
+- **BX-18 The idea contract.** `ideas[0]` is the run's directive; pinned ideas
+  stay in front; the one-shot markers `_pinned`, `_root_choice` and
+  `_inherited_from` are preserved across rewrites; rewrites are
+  content-visible, because the evaluator's axis refresh is keyed on the
+  content hash; `idea.json` has a single-writer discipline; every tier
+  degrades rather than blocking; the vendored `ari-skill-idea/vendor/virsci`
+  tree is never edited; skills keep MCP stdio hygiene and print nothing to
+  stdout; `lineage_decisions.jsonl` is the shared audit log, and a new
+  `trigger` value is preferred over a new file; the directive-versus-catalog
+  two-path separation holds; and autonomous escalation stays bounded by the
+  child-launch gates (recursion depth, `parent_terminated`),
+  `rate_limit_per_run` and `ARI_MAX_RECURSION_DEPTH`.
+
+### Test, CI and docs surfaces
+
+- **BX-19 The surfaces that make a break visible.** Contract snapshots are
+  regenerate-or-red across four surfaces — the `ari.public.*` symbol table,
+  the Typer CLI tree, the MCP tool catalog and the dashboard REST inventory —
+  with goldens under `ari-core/tests/fixtures/contracts/` and a single
+  generator shared by pytest and the CLI check, so the two can never disagree.
+  (The register as first written named three surfaces; the viz REST inventory
+  is the fourth.) Beyond those: the test-mockability indirection that keeps
+  `ari.cli` lookups late-bound; the prompt-snapshot layers — the
+  hand-maintained hash pin in `ari-core/tests/test_prompt_extraction.py` plus
+  the auto-discovered raw and rendered goldens in
+  `ari-core/tests/test_prompt_snapshots.py`, which fail on a newly added or
+  deleted template that was not re-blessed — and the `prompt-change-review.yml`
+  review gate; the readme-sync `## Contents` rows; the tri-language doc
+  co-change and `sources:` front-matter gates; deprecations routed through
+  `DEPRECATION_REMOVAL.md` and `ari-core/ari/_deprecation.py`; and the rule
+  that documenting an environment variable or a checkpoint filename under
+  `docs/reference/` freezes it under SemVer.
 
 ---
 

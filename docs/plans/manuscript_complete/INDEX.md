@@ -7,7 +7,9 @@
 
 この計画群は次の既存計画群とは別の ownership boundary を持つ。
 
-- `docs/plans/ari_rqgm/` — 研究探索の governance / Knowledge–Capability–Assurance。
+- `ari_rqgm` 実行モードの governance / Knowledge–Capability–Assurance。恒久仕様は
+  [Constitutional ARI-RQGM Architecture](../../concepts/rqgm_architecture.md) と
+  [Knowledge, Capability, and Scientific Assurance](../../reference/knowledge_capability_assurance.md)。
 - `docs/plans/ari_rqgm_paper/` — paper draft archive と paper-role co-evolution。
 - `docs/plans/gui_refresh/` — GUI の全面刷新。
 
@@ -89,9 +91,15 @@ Manuscript Complete は次の軸を結合するが、いずれも暗黙には有
 
 ## External references
 
-- [ARI-RQGM index](../ari_rqgm/INDEX.md)
-- [Scientific Assurance and Harness Registry](../ari_rqgm/18_scientific_assurance_and_harness_registry.md)
-- [RQGM Governance Integration](../ari_rqgm/19_rqgm_governance_integration.md)
+- [Constitutional ARI-RQGM Architecture](../../concepts/rqgm_architecture.md) — RQGM の三層構造、
+  epoch cycle、fixed kernel、Registry Transition Engine、および
+  "Knowledge, Capability, and Assurance separation" 節が持つ Research Contract から
+  certification-bound publication までの連鎖。
+- [Knowledge, Capability, and Scientific Assurance](../../reference/knowledge_capability_assurance.md) —
+  "Run admission and frozen identities" 節の admission 順序と凍結される identity、
+  "Verification, Harnesses, and Attestations" 節の Verification Contract、Harness kind、
+  Resolver、Fixed Verifier、Attestation、native/external Harness の registration、
+  "Surfaces and administration" 節の CLI / dashboard / MCP surface。
 - [RQGM paper index](../ari_rqgm_paper/INDEX.md)
 - [Claim-gate handoff and evaluation](../ari_rqgm_paper/07_claim_gate_handoff_and_evaluation.md)
 

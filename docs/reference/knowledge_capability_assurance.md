@@ -76,6 +76,34 @@ ari.rqgm.assurance_bridge -> ari.assurance
 Knowledge or Harnesses. Shared contracts live under `ari.protocols` and the
 read-only supported API under `ari.public`.
 
+## Global invariants
+
+Most of the invariants that govern these three registries are stated where they
+apply, in the sections below. Four are cross-cutting enough that reading any one
+section without them invites a wrong inference.
+
+1. **Every trust anchor is a full digest.** Manifests, bodies, snapshots,
+   contracts, locks, and Attestations are anchored on `sha256:` followed by 64
+   lowercase hex characters. RQGM's shorter `hash12` identifiers are
+   compatibility and display keys here. `hash12` remains RQGM's own
+   content-identity scheme for prompts, policies, registries, and schema-v1
+   events, but no admission, binding, or Attestation described in this document
+   is decided on a shortened value.
+2. **`active` is lock membership, not a mutable catalog status.** A Knowledge
+   Skill, Provider, or Harness is active for a run because a frozen lock names
+   it. A catalog row is where an entry is reviewed and promoted, not where it is
+   switched on, so editing a catalog cannot activate anything inside a run that
+   has already been admitted.
+3. **Capability visibility is an intersection, never a union.** The visible set
+   is the Provider Lock, the active Capability Binding Lock, role authority,
+   phase policy, and call context intersected, minus the user-disabled tools. A
+   tool missing from any one of those terms is invisible however many of the
+   others admit it.
+4. **`simple_bfts` at compatibility defaults is a null diff.** With
+   `simple_bfts` selected and every feature in this document left at its
+   default, no new import, file, metric, field, snapshot, lock, prompt byte, or
+   visible tool occurs.
+
 ## Run admission and frozen identities
 
 For an enabled `ari_rqgm` run, the trusted coordinator completes this order
@@ -598,6 +626,78 @@ Catalog lifecycle changes require reviewed repository changes or an
 authenticated human admin path. Revocation appends taint/status history and
 never rewrites old locks, Attestations, or provenance.
 
+## Recorded verification checkpoints
+
+The records below are dated observations, not live status. They are retained
+because a later claim about environment, cost, or promotion has to be checkable
+against the artifact that was actually produced, and because the digest is that
+artifact's only identity. A digest here identifies the record as it stood on the
+date given; it is not a statement about the current catalog.
+
+### Observed external cells (2026-08-04)
+
+The frozen environment snapshot
+`sha256:e0fdcf428bf8b2168dfc06e14faad4ceb2197b7269b90e843b699aa818d92cbb`
+records usable CPU SLURM, CUDA toolkit 12.4, and four V100 devices visible on an
+anonymous compute node. The scheduler advertised no GPU GRES, so those devices
+were observation-only: the `gpu` resource type was absent, and an accelerator
+campaign stayed `not_available` without an explicit operator scheduling
+decision. That is the rule in "Environment evidence and Provider substitution" —
+device visibility is not scheduler authority — measured rather than argued.
+
+One batch job ran the three native verifier reference and negative-control
+families: 3 passed and 6 non-selected tests completed. GNU time observed 1.61
+seconds wall, 0.89 seconds user CPU, 0.13 seconds system CPU, and 55,537,664
+bytes maximum RSS. The cost observation is bound to digest
+`sha256:3c451a31416880fd32a71c6e3fefa4d1aba9663f6052f27e84d2aec54fa0839d`.
+
+That observation is deliberately **not** an authoritative cost trace, and the
+reason is not the measurement's quality. When it was taken, the production
+Harness catalog held no verified pinned container and the run issued no
+Attestation. Production cost accounting begins only after a valid Attestation
+has been constructed and revalidated: the record described in "Verification
+resource accounting" is written from an Attestation, not from a timing run. A
+dollar figure stays `unpriced` until a scheduler or cloud charge is supplied.
+
+ToolUniverse/Web live operation substitution succeeded at the normalized
+result-contract level while ToolUniverse binding stayed `unsatisfied`, because
+the exact frozen upstream environment was not promotable. PaperBench
+compatibility passed while official-runner parity stayed `not_available`. Those
+are measured missing cells: not passes, and not unresolved design choices.
+
+### ToolUniverse promotion resolution (2026-08-05)
+
+The 2026-08-04 result stands as an immutable observation of upstream
+ToolUniverse `1.3.1`; it was neither rewritten nor relabelled. ARI minted the
+distinct metadata-only Provider artifact `tooluniverse-pubmed@1.3.1+ari.1`
+instead. Its checked-in registration evidence, all fifteen Provider gates, and
+an explicit human-maintainer approval produced verified lock
+`sha256:c85e73726b1182c3fe88b682a8bcd0e0d7a57713f7ecb1818056886eaa5442bf`
+with promotion approval
+`sha256:9317c4ff7e15f488f758fc253b9afd96345abd6d3730405f5669c93a6eabc608`.
+That lock admitted only anonymous `PubMed_search_articles` as
+`ari.literature.search/v1`, with no credential scope; scope expansion, evidence
+mutation, schema drift, and revoked status fail closed.
+
+Promotion did not turn the earlier diagnostic into a pass. A new campaign must
+use a run-specific `CATALOG.lock`, `SKILLS.lock`, environment identity, and
+Capability Binding Lock derived from the verified artifact. A one-leaf
+run-specific `CATALOG.lock` was generated and reached `callable`, and its
+anonymous broker invocation returned one normalized `ari.retrieval-result/v1`
+record with an empty credential-scope list. A fresh closed-environment sync
+after formal maintainer promotion produced verified one-leaf catalog digest
+`sha256:73e1225dc30b4cfc735858bad4615e08da6723a0f0ced6dd560897d7db3551ff`.
+
+All three digests belong to that checkpoint and have since been superseded at
+least once. A 2026-08-07 portability re-promotion took the promoting host's
+install path out of the leaf identity, which changed the lock, the approval and
+the catalog digest while leaving the admitted scope unchanged; the lock and
+approval in force now live in the checked-in bundle under
+`ari-skill-tool-registry/providers/tooluniverse/1.3.1+ari.1/`, and the one-leaf
+catalog is environment-specific evidence rather than a repository default. A
+superseded digest stays valid as the identity of what it recorded, and no
+existing catalog or lock is rewritten during resume.
+
 ## Honest limits
 
 Knowledge quality and the capability ontology require human curation. Two
@@ -721,6 +821,47 @@ is unified, and the device parser discarded any row whose memory would not
 parse. ARI therefore saw **no GPU at all** on a node that has one, making every
 GPU capability silently unbindable there. A device whose memory figure will not
 parse is still a device.
+
+### What is promoted, and what promotion does not do
+
+An upstream entry stays `candidate` until authentic evidence exists for it, and
+`candidate` is a fact about the repository rather than a formality. Remote
+Provider transports and the Inspect, Harbor, PaperBench, KernelBench,
+ComputeEval, and scBench Harness entries all remain candidate: promoting any of
+them requires authentic upstream full commits, dataset/container/license pins,
+official-runner parity, negative controls, and permitted GPU scheduling or model
+credentials. None of the six appears in the checked-in Harness catalog, which
+carries native HPC entries only. The checked-in external driver facades fail
+closed, and no mutable source, fabricated pin, skipped parity result, or
+always-pass placeholder is admitted in their place. PaperBench upstream API and
+aggregation parity passes; official rollout, reproduction and judge parity
+remains unavailable.
+
+The exact ToolUniverse `1.3.1` upstream lock remains a failed candidate. Only
+the separately identified metadata-only `1.3.1+ari.1` artifact is promoted, and
+only for anonymous `PubMed_search_articles` as `ari.literature.search/v1`; every
+other ToolUniverse leaf is unadmitted.
+
+Two further Provider scopes carry independent, evidence-bound verified locks.
+Each lock, not the upstream product's feature list, is the admitted boundary:
+
+- **Qiskit MCP 0.3.1 with Qiskit Aer 0.17.2**, admitted for anonymous local
+  ideal simulation only, supplying `ari.quantum.sample.local-ideal/v1` with an
+  empty credential scope. IBM Quantum Runtime, remote simulators, and hardware
+  remain candidate, because no credential-bound backend, configuration,
+  calibration, QPY, golden, or replay evidence is present for them.
+- **OpenROAD MCP 0.6.1 with OpenROAD-flow-scripts `26Q3`**, admitted for the
+  GCD/Nangate45 local x86_64 CPU flow only, supplying
+  `ari.eda.openroad.place-route/v1`. Anonymous exclusive-node SLURM CPU
+  execution of the same design is a separately promoted Provider identity whose
+  lock requests no GPU and stores only a salted site digest. OpenROAD GPU
+  execution, other designs and PDKs, and full default-flow parity sit outside
+  both identities; each needs a separately named candidate, evidence bundle,
+  human approval, and verified lock of its own.
+
+Promotion is not activation. Neither Provider is active in the checked-in
+`CATALOG.lock`, which is empty on purpose. Activation remains a separate,
+run-frozen catalog/Provider/Binding lock decision taken at admission.
 
 ## Extension gate
 

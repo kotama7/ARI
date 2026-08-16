@@ -152,6 +152,20 @@ unbounded legacy context. RQGM archive candidates receive the same brief and
 authoring binding; archive failure may fall back only to the bound linear
 writer. Neither backend receives a research executor.
 
+What `audit` does not produce is a comparison. An audit-mode artifact diffing
+the legacy writer payload against the manuscript inventory — recording items
+available in context but absent from the writer payload, items in the writer
+payload with no typed context source, cap- or budget-induced observed
+omissions, failed, null and off-lineage visibility differences, and assurance
+and provenance fields not surfaced to authoring — is reserved design and is not
+implemented. `compile_manuscript` in `ari-core/ari/manuscript/coordinator.py`
+persists the same kinds of attempt artifact under `audit` as under `enforce` —
+snapshot, requirement profile, context, omission manifest, readiness, and, when
+briefs are built, the brief bundle and authoring binding — and no comparison
+record is among them. The loss an audit run leaves unquantified is therefore
+the difference between what the compiler assembled and what the writer was
+actually handed.
+
 There is no shared backend interface object. Both backends consume the same
 authoring binding and section brief bundle, but through separate call paths:
 linear authoring runs the workflow's `authoring` segment, while the archive

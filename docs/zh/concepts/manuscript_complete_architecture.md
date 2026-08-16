@@ -140,6 +140,17 @@ attempt 由 snapshot 与 profile 的 digest 派生，存放在
 同一份 brief 与 authoring binding；archive 失败时只能回退到那个被绑定的 linear
 writer。两个后端都不会收到 research executor。
 
+`audit` 不产出的东西是一份比较。一个把 legacy writer 的 payload 与 manuscript
+inventory 相互对照的 audit 模式工件 —— 记录 context 中有、但 writer payload 中
+没有的条目，writer payload 中有、却没有类型化 context 来源的条目，由 cap 或
+budget 引起的被观测到的 omission，failed/null/谱系之外的可见性差异，以及没有
+呈现给 authoring 的 assurance 与 provenance 字段 —— 属于保留设计，尚未实现。
+`ari-core/ari/manuscript/coordinator.py` 中的 `compile_manuscript` 在 `audit` 与
+`enforce` 下持久化的 attempt 工件种类相同 —— snapshot、requirement profile、
+context、omission manifest、readiness，以及在 brief 被构建时的 brief bundle 与
+authoring binding —— 其中并没有比较记录。因此一次 audit 运行留下未被量化的，
+正是编译器组装出来的东西与 writer 实际拿到的东西之间的差。
+
 不存在共享的后端接口对象。两个后端消费同一份 authoring binding 与 section brief
 bundle，但走的是彼此分开的调用路径：linear authoring 运行工作流的 `authoring`
 segment，而 archive 运行 `PaperArchiveRuntime.run_archive`，后者把 linear 流水线

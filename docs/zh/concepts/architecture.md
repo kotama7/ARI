@@ -4,6 +4,12 @@ sources:
     role: implementation
   - path: ari-core/ari/agent/loop.py
     role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/mcp/client.py
+    role: implementation
+  - path: ari-core/ari/checkpoint.py
+    role: implementation
   - path: ari-core/ari/pipeline
     role: implementation
   - path: ari-core/ari/evaluator/llm_evaluator.py
@@ -1078,6 +1084,181 @@ ARI 的生产代码包含**零领域知识**。所有领域决策都在运行时
 | 如何对节点排名 | LLM 分配的 `_scientific_score` |
 | 使用什么引用关键词 | LLM 从节点摘要中生成 |
 | 是否收集环境/设置信息 | ReAct 智能体 LLM（由系统提示中的可复现性原则引导） |
+
+---
+
+## 探索阶段的 must-not-break 登记册（BX-1 … BX-19）
+
+下面十九项构成**探索阶段的兼容性契约**：对 BFTS 阶段的改动要算作兼容，就必须
+保持它们完好。这里的一切在默认的 `simple_bfts` 模式下逐字成立；`ari_rqgm`
+是增量的、由 config 门控，VirSci 的想法路径可以从 config 中移除。与
+[RQGM 模式](../reference/rqgm_schemas.md)中 paper 阶段的登记册一样，本登记册
+的价值在于它是**一份清单**：只对照其中四项来评审一次改动，不算部分通过。
+
+**为什么用 `BX-` 前缀**。这份契约最初编号为 `B-1 … B-19`，但该前缀在本 repo
+中已经被占用了两次。`CHANGELOG.md` 用 `B-1 … B-10` 指代无关的 v0.7.2 BFTS
+重构项，而代码注释指向的是*那些*条目 ——
+`ari-core/ari/cli/bfts_loop.py` 中的 `# B-6 Rule A` / `# B-6 Rule B`、
+`ari-core/ari/orchestrator/bfts.py` 中的 `# B-7:` 与 `# B-6:`，以及本页
+*work_dir 继承 —— 输出产物黑名单* 一节里的 “Rule B-6 A”。因此裸写 `B-3`
+会随着你手里拿的是哪份文档而指向两个不同的东西。所以本登记册在此以
+**`BX-`**（B，e**x**ploration）承载，编号原封不动：**`BX-n` 就是原登记册的
+第 `B-n` 项**。该前缀用于把本登记册与仓库中冲突的 `B-n` 编号区分开，
+它并不会让已有的裸 `B-n` 引用自动解析到这里 —— 顺着引用查找的读者
+需要知道上面的对应关系。不存在 `BX-20`。
+
+其中四项相对最初写下时作了改写，因为代码树已经变了：BX-3、BX-6、BX-11 和
+BX-17 各自说明了变化。
+
+### 循环与搜索语义
+
+- **BX-1 每次 expand 一个子节点。** `BFTS.expand` 在 LLM 路径上恰好追加一个
+  子节点，当 LLM 未返回可用方向时追加一个回退子节点，因此它绝不返回空列表。
+  运行循环的槽位填充算术依赖这个下界。
+- **BX-2 没有节点重试。** FAILED 节点绝不会被重新执行。它进入前沿并被扩展为
+  一个 `debug` 子节点，所以恢复表现为一个新节点。
+- **BX-3 退休规则、sterile 门控与输出黑名单。**
+  Rule A（`_child_retires_parent`）让被子节点超越的父节点退休，但子节点为
+  `_sterile` 时除外；Rule B 在节点被扩展 `max_expansions_per_node` 次后让它
+  退休；`_OUTPUT_BLACKLIST` 把父节点的输出产物挡在 work_dir 复制之外。削弱三者
+  中的任何一个，都会复活上面 *work_dir 继承* 一节所述的结果重复事故。
+  **登记册写下之后的变化**：原始条目把 sterile 门控写成单一规则——把分数钳到
+  0.0 并压过 LLM 评审。如今 sterility 在两处判定，而只有后一处会钳制。前一处
+  检查（`ari-core/ari/cli/bfts_loop.py` 中的 `_flag_sterile_node`）只置
+  `metrics["_sterile"] = True`，并刻意不动分数、`has_real_data` 和
+  `evaluation_status` —— 其 docstring 称 sterility 是“一种搜索控制属性”，
+  而非正确性或测量失败 —— 且当 harness 声明了 `score_inputs` 时，sterility 由
+  精确哈希那些文件决定，而不是对整个 work_dir 做差分。后一处、发生在节点报告
+  时刻的检查，在文件差分为零时仍会把 `_scientific_score` 钳到 0.0、把
+  `has_real_data` 置为 False，并在唯一的变化是无法哈希的文件时明确拒绝钳制。
+- **BX-4 扩展门控与工作线程上限。** 禁用 `frontier_expand` 后，循环只消耗
+  pending 而绝不扩展。并发度在代码里硬性上限，而非 config：
+  `max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))`。
+- **BX-5 每个 LLM 决策都有完全确定性的回退。** 选择回退到
+  `BFTS._select_fallback`；扩展回退到 BX-1 的回退子节点；无法解析的 lineage
+  决策降级为 `continue`（`ari-core/ari/orchestrator/lineage_decision.py` 中
+  针对 `VALID_ACTIONS` 的 `_parse_decision`）；root 想法选择在输入为空、没有
+  JSON、解析错误、不是对象、index 不合法、index 越界或 LLM 报错时都回退到
+  index 0。任何新的 LLM 决策也承担同样的义务。
+- **BX-6 钩子只降级，不杀死运行。** `_run_loop` 中的可选路径 —— sterile 检查、
+  `record_run`、节点报告、lineage 决策钩子 —— 都是 try/except 加 warn。
+  **登记册写下之后的变化**：原始条目说*每一条*可选路径都 fail open，并把
+  fail-closed 记为一处刻意的未来偏离。该偏离现已实现。当 KCA 保证特性启用时，
+  没有 `assure_node` 桥的 RQGM 运行时会抛出 `RuntimeError` 而不是径直放过，
+  而前沿准入、Rule A 与 Rule B 全都推迟到保证门控运行之后。
+
+### 契约与格式
+
+- **BX-7 检查点三件套。** `tree.json`、`nodes_tree.json` 与 `results.json` ——
+  它们的名字、键顺序，以及 `json.dumps(..., indent=2, ensure_ascii=False)`
+  的排版 —— 是面向仪表盘与 paper 流水线的契约，`Node.to_dict()` 的键同样如此。
+  改动只能是增量的。每个节点之后的强制增量保存是 SIGTERM-resume 的保障；
+  1.0 秒节流（`_INCR_DEFAULT_MIN_INTERVAL_S`）及其锁由
+  `ari-core/tests/test_checkpoint_store.py` 钉住，包括 `force` 绕过节流、
+  以及不同 store 实例各自拥有独立节流状态。
+- **BX-8 保留的 `metrics` 命名空间。** `Node.metrics` 内以下划线开头的键是
+  保留通道，不是用户指标 —— claim gate 的不变量扫描正是为此跳过它们。最初的
+  集合是 `_scientific_score`（仅当合成值大于零时写入）、`_axis_scores`、
+  `_sterile`、`_comparison_found`、`_params_dict` 和 `_measurements_dict`；
+  此后又增加了 `_valid_for_frontier`（RQGM 选择性擦除）、
+  `_pre_penalty_score` / `_validated_attack_penalty`（对抗打分）以及
+  `_utility_policy_hash`。增加键是增量的；改名或改用途不是 —— 单是
+  `_scientific_score` 就被 orchestrator、evaluator、运行循环、pipeline 和
+  RQGM 层读取。
+- **BX-9 节点报告。** `node_report.schema.json` 把 `schema_version` 钉为
+  `const: 1`，并要求 `schema_version`、`node_id`、`depth`、`status`、
+  `files_changed`、`metrics` 与 `artifacts`。`build_node_report` 与
+  `write_node_report` 绝不向调用方抛异常。
+- **BX-10 paper 流水线。** `run_pipeline` 的签名与返回形状；`ari.pipeline`
+  的 monkeypatch 面；按文件顺序执行阶段、不做拓扑排序；`depends_on` /
+  `skip_if_exists` 的语义；阶段返回只含 error 的 dict 即表示阶段失败；
+  claim gate 的阻断矩阵（draft 阶段的报告绝不阻断，客观完整性的
+  `always_block_on` 层在任何模式下都于 final 阶段阻断，基础设施错误时
+  fail open）；`% CLAIM` 锚点熬过 write → refine → final；两组镜像登记表
+  保持同步（`ari/pipeline/claim_gate/numeric.py` ↔
+  `ari-skill-transform/src/claims.py`，`ari/pipeline/claim_gate/latex.py` ↔
+  `ari-skill-paper/src/claim_links.py`）；`science_data.json` 绝不被下游改写；
+  以及文本评审（`review_compiled_paper`）保持独立于图表评审。
+- **BX-11 MCP 调用面。** `MCPClient.call_tool` 仍然只返回
+  `{"result": str}` 或 `{"error": str}` 之一。每次运行共享一个客户端；重试会
+  重新执行工具，所以工具必须幂等；声明阶段恰为 `["none"]` 的技能绝不会被启动；
+  技能子进程的 PYTHONPATH／解释器顺序是固定的。
+  **登记册写下之后的变化**：那个旧的双键 dict 如今是
+  `MCPClient.call_tool_envelope` 所返回的规范类型化信封的投影
+  （`ari-core/ari/result.py` 中的 `ResultEnvelopeV1.to_legacy`），而登记册里的
+  `_set_current_node` 桥接工具与 `_cow_lock` 都已不存在。活动节点改为以
+  HMAC 签名的 `ToolCallContextV1` 随每次调用一起传递 —— 见上面的
+  *签名 call context —— 与记忆技能保持同步* 一节。
+- **BX-12 智能体循环的消息纪律。** OpenAI 的消息配对规则成立：带 `tool_calls`
+  的 assistant 消息之后必须紧跟其连续的 tool 块，所以任何中途注入都使用延迟
+  user-message 模式。`_PINNED_USER_MARKERS` 让常驻上下文熬过截断。模型只能以
+  **success** 自行结束 —— `"failed"` 不是 LLM 可用的终止状态。而任何抑制
+  force-finish 的 hold 都必须有有限的过期时间，好让 force-finish 兜底仍能结束
+  节点：contract hold 在距 `max_react_steps` 十步时过期。
+
+### 确定性、溯源与作用域
+
+- **BX-13 确定性内核（P2）。** BFTS 提示构建器、轴推导、claim gate、
+  `link_paper_claims`、`merge_reviews` 以及提示／config 加载器保持无 LLM 且
+  确定。任何哈希都不掺入墙钟时间、git SHA 或主机身份。`hash12`
+  （`sha256(text)[:12]`，`ari-core/ari/prompts/_provenance.py`）是唯一的提示
+  哈希方案，原始模板哈希与渲染后哈希都用它。唯一获准的放宽记载于
+  [哲学](PHILOSOPHY.md)。
+- **BX-14 时变输入需要持久标记（P5）。** 默认运行不会留下
+  `bfts_web_provenance.json` —— 缺席*就是*默认。任何取值依赖墙钟或网络的东西
+  都需要类似的持久标记或确定性推导。RQGM 状态层遵循同一规则 ——
+  `rqgm_state.json` 的缺席意味着一次纯粹的 `simple_bfts` 运行。
+- **BX-15 一切都以检查点为作用域。** `ARI_CHECKPOINT_DIR` 是唯一的运行锚点。
+  任何新代码都不得写入或引用 `~/.ari` 路径：`refactor-guards.yml` 工作流在
+  出现允许清单之外的新 `~/.ari` 引用时，以及在测试套件创建了 `$HOME/.ari` 时，
+  都会让 PR 失败。检查点根目录下的新文件名必须登记进
+  `PathManager.META_FILES` / `_TRACE_FILES`（`ari-core/ari/paths.py`）以及
+  节点报告的屏蔽清单。
+- **BX-16 记忆作用域与 import 漏斗。** 祖先作用域成立 —— `search_memory` 按
+  `ancestor_ids` 过滤，因此没有兄弟召回 —— 且节点只能写自己的记忆。跨分支
+  泄漏只限于名称。core→skill 的 import 漏斗被限制在 `ari/memory/**`，技能只从
+  `ari.public.*` 导入，由 `ari-core/tests/test_public_api_boundary.py` 强制。
+  登记册里的写时复制关键字 `cow_node_id` 仅作为遗留兼容参数存活于
+  `ari-core/ari/protocols/mcp.py` 与 RQGM 的客户端包装器中；真正的机制是
+  BX-11 的签名上下文，`ari-core/tests/test_mcp_cow_concurrency.py` 现在直接
+  断言了这一点。
+- **BX-17 运行内的分数可比性。** 在 `simple_bfts` 下，打分轴在运行开始时冻结。
+  root 想法选择被明确写成一次性决策、不触碰轴，“以保持节点分数在一次运行内
+  可比”（`ari-core/ari/orchestrator/root_idea_selector.py`）；这很重要，因为
+  Rule A、停滞检测与回退排序都要跨节点比较 `_scientific_score`。
+  **登记册写下之后的变化**：原始条目把按纪元重新加权记为一项绝不能悄悄发生的
+  设计决策。它现在已为 `ari_rqgm` 实现，而且并不悄悄。效用策略变更是一次受治
+  的登记表迁移，frontier-repair 引擎会用新的合成函数与权重，从每个受影响节点
+  已存储的、与策略无关的 `_axis_scores` 重新打分，重新施加该节点既有的已验证
+  攻击惩罚，并重新盖上新的 `_utility_policy_hash` —— 于是来自两套策略的分数
+  绝不会并存于同一个前沿。
+
+### 想法与 lineage 层
+
+- **BX-18 想法契约。** `ideas[0]` 是本次运行的 directive；被 pin 的想法留在
+  最前；一次性标记 `_pinned`、`_root_choice` 与 `_inherited_from` 在改写中被
+  保留；改写在内容层面可见，因为 evaluator 的轴刷新以内容哈希为键；
+  `idea.json` 遵守单写者纪律；每一层都降级而非阻断；被 vendor 的
+  `ari-skill-idea/vendor/virsci` 树绝不被编辑；技能保持 MCP stdio 卫生、不向
+  stdout 打印任何东西；`lineage_decisions.jsonl` 是共享审计日志，新增
+  `trigger` 值优于新增文件；directive 与 catalog 的双路径分离成立；自主升级
+  受子进程启动门控（递归深度、`parent_terminated`）、`rate_limit_per_run` 和
+  `ARI_MAX_RECURSION_DEPTH` 约束。
+
+### 测试、CI 与文档面
+
+- **BX-19 让破坏可见的那些面。** 契约快照在四个面上“要么重新生成、要么变红”
+  —— `ari.public.*` 符号表、Typer CLI 树、MCP 工具目录以及仪表盘 REST
+  清单 —— 黄金文件位于 `ari-core/tests/fixtures/contracts/`，pytest 与 CLI
+  检查共用同一个生成器，因此两者不可能各说各话。（登记册写下时是三个面；
+  viz 的 REST 清单是第四个。）此外还有：让 `ari.cli` 查找保持后期绑定的
+  可 mock 间接层；提示快照的各层 —— `ari-core/tests/test_prompt_extraction.py`
+  中手工维护的哈希钉，加上 `ari-core/tests/test_prompt_snapshots.py` 自动发现
+  的原始与渲染后黄金文件（新增或删除模板而未重新祝福即失败）—— 以及
+  `prompt-change-review.yml` 评审门；readme-sync 的 `## Contents` 行；三语文档
+  co-change 与 `sources:` front-matter 门；经由 `DEPRECATION_REMOVAL.md` 与
+  `ari-core/ari/_deprecation.py` 的弃用流程；以及“把环境变量或检查点文件名写进
+  `docs/reference/` 就等于按 SemVer 冻结它”这条规则。
 
 ---
 
