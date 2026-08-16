@@ -1,0 +1,62 @@
+{
+  "clean_control_pass": {
+    "detail": "passed at spread 0.0",
+    "passed": true
+  },
+  "determinism_declaration": {
+    "detail": "scorer 'deterministic', nondeterminism 'none'",
+    "passed": true
+  },
+  "full_sha256_integrity": {
+    "detail": "4 pinned digests are full sha256",
+    "passed": true
+  },
+  "hidden_test_isolation": {
+    "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+    "passed": true
+  },
+  "infrastructure_failure_separation": {
+    "detail": "an outage produces no ranking metric",
+    "passed": true
+  },
+  "license_completeness": {
+    "detail": "all four pinned assets licensed",
+    "passed": true
+  },
+  "malicious_harness_sandbox": {
+    "detail": "network 'deny', credentials 'none' (structural check only; the answer is the approval)",
+    "passed": true
+  },
+  "multiple_run_stability": {
+    "detail": "spread 0 over 3 runs",
+    "passed": true
+  },
+  "negative_control_fail": {
+    "detail": "2 negative control(s) failed, for different reasons",
+    "passed": true
+  },
+  "official_runner_parity": {
+    "detail": "probe passed against this driver",
+    "passed": true
+  },
+  "reference_oracle_pass": {
+    "detail": "clean control verdict 'pass'",
+    "passed": true
+  },
+  "result_schema_conformance": {
+    "detail": "schema declares 27 properties, named and pinned by the manifest",
+    "passed": true
+  },
+  "source_revision_digest_pin": {
+    "detail": "pinned at a8bb13a200ef, an ancestor of 45c12d3c9a48",
+    "passed": true
+  },
+  "target_oracle_test_isolation": {
+    "detail": "hidden_test_policy 'verifier-only' (structural check only; the answer is the approval)",
+    "passed": true
+  },
+  "timeout_resource_enforcement": {
+    "detail": "timeout pinned at 900s",
+    "passed": true
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "kind": "deterministic",
+  "note": "a correctness verdict has no run-to-run spread; repeating the probe establishes that it repeats, so the answers must be identical",
+  "runs": 3
+}

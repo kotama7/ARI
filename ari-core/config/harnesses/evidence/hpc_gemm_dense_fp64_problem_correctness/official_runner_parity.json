@@ -1,0 +1,50 @@
+{
+  "case_set": "native-perf-gemm-cases/v1@parity",
+  "controls": {
+    "clean": {
+      "note": "the problem's frozen reference passed its own family oracle, and a correct-but-slow kernel passed with it",
+      "relative_spread": 0.0,
+      "report_digest": "sha256:f8709465bc6a816633ef74610b7559ea80bc9e5ee8023f5cf189b5659d89cf6e",
+      "resolved": true,
+      "verdict": "pass"
+    },
+    "negatives": [
+      {
+        "detail": "candidate output failed the residual bound (2.79e+11x)",
+        "name": "fast-but-wrong",
+        "verdict": "fail"
+      },
+      {
+        "detail": "candidate kernel exports symbols other than 'gemm': ['ari_problem_correctness_probe_symbol']",
+        "name": "exports-extra-symbol",
+        "verdict": "fail"
+      }
+    ]
+  },
+  "driver_digest": "sha256:8bca44aaf9db8368aaec1deb8175526eba973c5cab2058219ff10796e3ad8520",
+  "passed": true,
+  "problem": "gemm-dense-fp64/v1@2026q3",
+  "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
+  "reason": null,
+  "results": {
+    "clean_control": {
+      "report_digest": "sha256:f8709465bc6a816633ef74610b7559ea80bc9e5ee8023f5cf189b5659d89cf6e",
+      "verdict": "pass"
+    },
+    "negative_control_extra_symbol": {
+      "detail": "candidate kernel exports symbols other than 'gemm': ['ari_problem_correctness_probe_symbol']",
+      "report_digest": "sha256:761ba9e10cb07c53837fd716938e4363131aaf4cc522305c434ecb33b872e620",
+      "verdict": "fail"
+    },
+    "negative_control_wrong": {
+      "detail": "candidate output failed the residual bound (2.79e+11x)",
+      "report_digest": "sha256:1443beac2f63d622a4e39e7c211cfe6e30a68d560796b2e51599ee5df9d8da51",
+      "verdict": "fail"
+    },
+    "specificity_control_slow": {
+      "report_digest": "sha256:32e7b436b9fa7f5890f03ff99c9544896a0feabe76aef1434db00e0c4a9576a9",
+      "verdict": "pass"
+    }
+  },
+  "schema_version": "ari.problem-correctness-parity-report/v1"
+}

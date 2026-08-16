@@ -18,6 +18,7 @@ Shipped default config files (YAML) loaded by ari-core.
   - `property_vocabulary.yaml` — canonical scientific properties and their verification semantics, including which concrete properties a correctness obligation is established BY and what each is verified ON. `target_kinds` is one scalar per property and is a DEFAULT, not the whole truth: the same property is honestly verified on a shared library by the three ARI-native harnesses and on a submission by a problem-pinned one, so a run that names a pinned problem overrides this table for the correctness properties (see `build_verification_contract`'s `artifact_target_kind`).
   - `approvals/` — reviewed human promotion approvals for built-in native harnesses.
     - `hpc_gemm_correctness.approval.json` — promotion approval for the native GEMM correctness harness.
+    - `hpc_gemm_dense_fp64_problem_correctness.approval.json` — promotion approval for the problem-pinned GEMM correctness harness. Its `authorization_basis` records what the maintainer ACTUALLY saw — the assistant's report of the evidence, 15/15 gates and the four parity controls including the correct-but-slow kernel that must PASS — and says outright that it is not an independent inspection of the artifacts, which are pinned here so a later reader can check them without relying on that report.
     - `hpc_gemm_performance.approval.json` — promotion approval for the native GEMM performance harness. Its `authorization_basis` records what the maintainer ACTUALLY saw — the assistant's report of the evidence, not the raw artifacts — and pins the artifacts so a later reader can check them independently, because a basis claiming a review that did not happen is the defect the signature exists to prevent.
     - `hpc_spmm_correctness.approval.json` — promotion approval for the native SpMM correctness harness.
     - `hpc_stencil_correctness.approval.json` — promotion approval for the native stencil correctness harness.
@@ -66,6 +67,13 @@ Shipped default config files (YAML) loaded by ari-core.
         - `clean-screen-stdout.log` — stdout from clean GEMM screening.
         - `negative-screen-stderr.log` — stderr from invalid GEMM screening.
         - `negative-screen-stdout.log` — stdout from invalid GEMM screening.
+    - `hpc_gemm_dense_fp64_problem_correctness/` — registration evidence for the problem-pinned GEMM correctness harness, produced by three parity-probe runs from a clean worktree at the commit the manifest pins. Its `measurement_environment.json` records that this harness pins no placement, because a residual bound does not depend on the allocation's shape — the one field a performance harness's evidence must carry and this one must not.
+      - `gate_findings.json` — one record per registration gate: id, verdict and the reason in words.
+      - `measurement_environment.json` — the registration commit, the captured environment, and the note that this harness pins NO placement — a residual bound does not depend on the allocation's shape, which is the one field a performance harness's evidence must carry and this one must not.
+      - `multiple_run_stability.json` — three runs of a DETERMINISTIC verifier: there is no spread to measure, so what repeating establishes is that the answers are identical.
+      - `official_runner_parity.json` — the parity probe's four controls — the frozen reference, the wrong kernel that must fail on the residual bound, the correct-but-slow kernel that must PASS, and the extra-symbol kernel the object audit must refuse.
+      - `registration_evidence.json` — the reviewed evidence bundle, pinning every artifact above by digest.
+      - `registration_report.json` — the minted report: fifteen gates, each with its evidence digest.
     - `hpc_gemm_performance/` — registration evidence for the native GEMM performance harness, produced by three parity-probe runs on an exclusive compute node from a clean worktree.
       - `gate_findings.json` — one record per registration gate: id, verdict, the reason in words, and a digest of the artifact the gate READ, so two registrations agree only if they read the same bytes.
       - `measurement_environment.json` — the node class and registration commit, recorded because a verdict is a statement about a machine: the same commit and the same clean worktree scored 15/15 on the aarch64 node and 13/15 on an exclusive x86 64-core node, where the clean control did not resolve.
@@ -164,6 +172,7 @@ Shipped default config files (YAML) loaded by ari-core.
       - `wrong_stencil.c` — parity-probe negative control: FAST but wrong. It applies zero sweeps and hands back the input, which writes every element and so clears the NaN poison and the size check; the nt-scaled residual bound is what refuses it. Every scored case has nt >= 1, so it is wrong by construction rather than by luck.
   - `reports/` — deterministic promotion gate reports for built-in harnesses.
     - `hpc_gemm_correctness.registration.json` — GEMM harness registration decisions and promoted identity.
+    - `hpc_gemm_dense_fp64_problem_correctness.registration.json` — the retained registration record for the problem-pinned GEMM correctness harness, binding its manifest, evidence bundle and approval into the catalog entry.
     - `hpc_gemm_performance.registration.json` — the retained registration record for the GEMM performance harness, binding its manifest, evidence bundle and approval into the catalog entry.
     - `hpc_spmm_correctness.registration.json` — SpMM harness registration decisions and promoted identity.
     - `hpc_stencil_correctness.registration.json` — stencil harness registration decisions and promoted identity.

@@ -4,6 +4,34 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **`hpc/gemm-dense-fp64-problem-correctness` promoted to verified (2026-08-16).**
+  Registered at 15/15 and signed by the maintainer (`kotama`), so the catalog now
+  carries five entries and a pinned-problem run resolves its correctness obligation
+  to the Harness written for that contract — end to end, from the vocabulary's
+  target kind through the declaration to the worker the driver can parse.
+
+  Two things about how it was done, because both were nearly done wrongly. The
+  registration was run in a **clean git worktree at HEAD** rather than by relaxing
+  `allow_dirty`: a concurrent agent works in this repository and the tree never
+  settles, and committing its in-progress files to manufacture a clean tree is not
+  the same thing as having one. The driver digest recomputed from the pinned
+  commit's blobs was checked against the manifest pin and the working tree
+  independently, so the source pin's provenance claim is true rather than merely
+  ancestral.
+
+  And the first bundle **leaked a host path**. `measurement_environment` captures
+  every variable under a prefix set and drops SECRETS by name fragment, but not host
+  PATHS by value — so `ARI_LETTA_SIF=/…/scripts/letta/letta.sif` carried a home
+  directory and a username into a committed, published record. The four shipped
+  bundles are clean only because that variable happened to be unset when they were
+  made, which is luck, not a property. Values are now scrubbed through
+  `scrub_host_identity` at the publication boundary, and the fix was proved by
+  re-running the ceremony with the variable deliberately set: it is still captured,
+  and its value is recorded as `~/ARI/scripts/letta/letta.sif`. Scrubbed there
+  rather than in `measurement_environment`, which sits inside two driver digests —
+  re-pinning them would force another re-registration of the performance harness on
+  the aarch64 node it pins.
+
 - **The problem-correctness manifest's source pin named a commit without the driver
   (2026-08-16).** `source_full_commit_sha` was copied from the four pre-existing
   manifests, and `source_revision_digest_pin` only checks ancestry, so it passed while

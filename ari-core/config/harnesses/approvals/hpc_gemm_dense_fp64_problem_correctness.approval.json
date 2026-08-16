@@ -1,0 +1,15 @@
+{
+  "actor_id": "kotama",
+  "actor_kind": "human-maintainer",
+  "approval_digest": "sha256:422a693e657163c0aea02e66bc05f8a0063a0d6e9fd394b85beea6a0f92d6d3d",
+  "approved_date": "2026-08-16",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the registration evidence -- 15/15 gates, four parity controls from the problem's own scaffolding including the correct-but-slow kernel that must PASS -- not on independent inspection of the artifacts, which are pinned here for that purpose.",
+  "evidence_bundle_digest": "sha256:2f52088a088abf3cd2bd72b4bf79d2a3eff28151df052e6d0f0e544d484e9ef9",
+  "from_status": "candidate",
+  "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
+  "harness_manifest_digest": "sha256:b09da791bf3ff20f0986f5bedf46d099d37c83db1582691b18ff65cbf7d26b58",
+  "harness_version": "1.0.0",
+  "registration_report_digest": "sha256:d6e1d40497a1bedcb368582f8f38839627a3dddf6dc78c82111b2328df815828",
+  "schema_version": "ari.harness-promotion-approval/v1",
+  "to_status": "verified"
+}
