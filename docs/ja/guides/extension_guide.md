@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # 拡張ガイド
@@ -63,7 +63,7 @@ ari run your_experiment.md
 | `## Provided Files`（`## 提供ファイル` / `## 提供文件` / `## Local Files` も可） | ローカル入力 | 絶対パスが各ノードの `work_dir` にコピーされる |
 | `Partition: <name>` / `Max CPUs: <n>` | HPC 配置 | HPC 有効時のみ読まれる。無ければ `ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` か検出された up パーティションが埋める |
 | 本文中の SLURM への言及（`slurm_submit`、`sbatch`、`srun` など） | 投入 / ポーリング / 読取ツールの三点セットを選ぶ | `slurm_submit` + `job_status` + `run_bash` に切り替わる。HPC プロファイルでは `ARI_SLURM_PARTITION` が設定されていればキーワード無しでも同じ |
-| `<!-- min_expected_metric: N -->` | 許容最小値 | `WorkflowHints.min_expected_metric` にパースされ、抽出値がすべてこれ未満のノードは failed になる。**数字のみ** — 負の閾値はパースされない |
+| `<!-- min_expected_metric: N -->` | 許容最小値 | `WorkflowHints.min_expected_metric` にパースされ、抽出値が**2 個以上**あってそのすべてがこれ未満のノードは failed になる（抽出値が 1 個だけの場合は閾値判定が走らない）。**数字のみ** — 負の閾値はパースされない |
 
 ---
 

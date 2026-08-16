@@ -36,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/fixtures/manuscript_complete/factory.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # Manuscript Complete 操作员运行手册

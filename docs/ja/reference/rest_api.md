@@ -44,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # REST API リファレンス
@@ -507,11 +507,13 @@ GUI リフレッシュのプログラムはいくつかのレガシー挙動を�
 `ari-core/ari/viz/frontend/src/types/index.ts` のフロントエンド TypeScript 型に
 鏡写しにされ、`ari-core/tests/test_api_schema_contract.py` がガードしています
 （常在キーを**部分集合**として表明するので、追加 / 任意フィールドは許容され、契約は
-追加的です）。
+追加的です）。`GET /state` だけは例外で、このスイートに `/state` のケースは無く、
+そのキー集合は `ari-core/tests/test_gui_state_facade_freeze.py` が
+部分集合ではなく厳密な凍結リテラルとしてピン留めしています。
 
 | エンドポイント | プロデューサ | フロントエンド型 | 常在キー |
 |---|---|---|---|
-| `GET /state` | `services/state_service.build_app_state` | `AppState` | `running_pid`、`is_running`、`exit_code`、`running`、`pid`、`status_label`（残りはチェックポイント依存 → 型では任意）。`cost` はパース済みの `cost_summary.json` **オブジェクト**（`CostSummary`）であって数値ではありません。 |
+| `GET /state` | `services/state_service.build_app_state` | `AppState` | `running_pid`、`is_running`、`exit_code`、`running`、`pid`、`status_label`、`llm_model` —— 凍結ファサードが常に出す 7 キー（残りはチェックポイント依存 → 型では任意）。`cost` はパース済みの `cost_summary.json` **オブジェクト**（`CostSummary`）であって数値ではありません。 |
 | `GET /api/settings` | `api_settings._api_get_settings` | `Settings` | デフォルト辞書の全体（`llm_model`、`llm_provider`、`ollama_host`、`temperature`、…、ネストした `ors`）; 任意の保存済みキーも透過します（`{**defaults, **saved}`）。 |
 | `GET /api/checkpoints` | `checkpoint_api._api_checkpoints` | `Checkpoint[]` | `id`、`path`、`status`、`node_count`、`review_score`、`best_metric`（常に `null`）、`mtime`; `best_scientific_score` は条件付きです。 |
 | `GET /api/checkpoint/<id>/summary` | `checkpoint_api._api_checkpoint_summary` | `CheckpointSummary` | `id`、`path`（または `{error:"not found"}`）; すべてのレポート本体は条件付きです。`reproducibility_report` はパース済みの**オブジェクト**（レガシーランでは文字列）であり、常に文字列とは限りません。 |
@@ -657,7 +659,6 @@ curl http://localhost:8765/api/checkpoints
 | GET | `/api/ollama/<...>` | ローカル Ollama デーモンへのプロキシ（許可リストのパスのみ — MN-5） |
 | GET | `/api/skills` | 登録済みスキルとそのツール数を列挙 |
 | GET | `/api/skill/<skill_name>` | スキルごとのメタデータ（ツール一覧、環境変数） |
-| GET | `/api/tools` | 全スキルを横断した統合ツールカタログ |
 | GET | `/api/scheduler/detect` | `local` / `slurm` / `apptainer` 自動検出 |
 | GET | `/api/slurm/partitions` | SLURM パーティション一覧 |
 | GET | `/api/container/info` | コンテナランタイムのプローブ |

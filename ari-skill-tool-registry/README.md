@@ -202,7 +202,7 @@ python scripts/verify_openroad.py \
 The checked-in promotion bundle
 `providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/` formally verifies exactly
 one credential-free local-MCP CPU profile. Lock
-`sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9`
+`sha256:fbc4be322a03aa50e666a0dcdb3b1afdfe60fa52bbc570e9cd8f1c800168825e`
 binds OpenROAD-MCP 0.6.1, the retained ORFS image and inner OpenROAD binary,
 GCD placed database, Nangate45 PDK/library/license, typed command sequence,
 golden/replay fixtures, live MCP schemas, DRC-zero result, output contracts,
@@ -217,7 +217,7 @@ The independent
 `providers/openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/` bundle formally
 verifies the same closed scientific profile on an anonymous exclusive-node
 SLURM CPU allocation. Its lock
-`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`
+`sha256:def08a69e7c0c13e8e76e026163337f39667ee8467792c16cad91d96ee9bd203`
 binds the salted site identity, controller-client snapshot, the digest-pinned
 clean Singularity container over the retained SIF, scheduler-derived terminal
 evidence, live route result, and human approval. Its runtime target follows that

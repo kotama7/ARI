@@ -309,14 +309,14 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
 | `source` | `pydantic` —— 遍历只覆盖已声明的模型字段。 |
 | `env_override` | 覆盖该叶子的 `ARI_*` 变量，或 `null`。 |
 
-**覆盖率不变式。** 注册表目前有 **204 个叶子且元数据覆盖率 100 %**：当任何
+**覆盖率不变式。** 注册表目前有 **205 个叶子且元数据覆盖率 100 %**：当任何
 被遍历到的叶子缺少 `FIELD_META` 前缀或精确条目时，`build_field_registry()`
 会抛出 `LookupError`，因此新增配置字段无法在没有 schema 元数据的情况下发布。
 当前分布：104 个 Governance / 32 个 Models / 24 个 Search (BFTS) /
-14 个 Proposal routing / 10 个 Manuscript completeness / 5 个 Infrastructure /
-5 个 Scientific assurance / 4 个 Evaluation / 4 个 Execution mode /
-2 个 Skills；150 个 expert、18 个 advanced、36 个 basic；203 个 `public` +
-1 个 `secret_reference`（`llm.api_key`）；146 个 `new_run_only` + 58 个
+14 个 Proposal routing / 10 个 Manuscript completeness / 6 个 Scientific assurance /
+5 个 Infrastructure / 4 个 Evaluation / 4 个 Execution mode /
+2 个 Skills；151 个 expert、18 个 advanced、36 个 basic；204 个 `public` +
+1 个 `secret_reference`（`llm.api_key`）；147 个 `new_run_only` + 58 个
 `draft`；20 个叶子带有 `env_override`。
 
 有意为之的保真度限制（已记录在案，而非静默存在）：
@@ -381,10 +381,13 @@ UI 能够*解释*配置；一次运行真正使用的值，仍然通过上文的
   *Changed vs defaults* 差异表（`ConfigStudio/LaunchPanel.tsx`），每处都是一行
   `Applies when: …`。没有任何代码解析它：`validate_patch` 从不读取它，没有任何
   控件因它而被禁用、标为必填或做冲突检查，`ari/config/resolver.py` 中甚至没有
-  提到它。今天真正带有 `path=value` / `path!=value` 谓词的叶子共 12 个 ——
-  `bfts.depth_penalty_lambda`、`bfts.ucb_c`、`evaluator.custom_axes`、
-  `manuscript.profile`、`manuscript.brief_character_budget` 以及 7 个
-  `manuscript.repair.*` 叶子 —— 而且在谓词为假时，每一个仍然可编辑、可 patch。
+  提到它。今天真正带有 `path=value` / `path!=value` 谓词的叶子共 135 个。
+  其中 104 个正是下文 ADR-09 的锁定集合，因此让它们只读的并不是谓词。
+  其余 31 个在谓词为假时仍然可编辑、可 patch：`bfts.depth_penalty_lambda`、
+  `bfts.ucb_c`、`evaluator.custom_axes`、`manuscript.profile`、
+  `manuscript.brief_character_budget`、7 个 `manuscript.repair.*` 叶子、
+  6 个 `knowledge` / `capability_binding` / `assurance` 叶子，以及 13 个
+  `proposal_router.*` 叶子。
   即使把 `bfts.frontier_score` 保持在默认值 `scientific_plus_diversity`，一个
   设置 `bfts.depth_penalty_lambda` 的 patch 依然校验通过，也依然会被解析器合并。
   GUI 计划所要求的统一依赖图 —— 用一套机制统管 enable/disable、required、
@@ -598,10 +601,11 @@ legacy 的 `GET/POST /api/settings` 接口面已冻结（其精确的键集合�
 断言 Save 会 POST 一个恰好带那 24 个键的扁平对象 —— 以及作为第二条、也弱得多的
 不变式，断言该页面渲染出十个 `<Card>` 区块。这个 DOM 计数是对当前 Settings 布局
 的结构性冻结，而不是线路契约：即便一次重新设计保住了 24 键的请求体，也仍然要去
-改这个数字。两个钉子的覆盖面也不同。Python 那一侧的钉子与其他测试跑在同一套
-pytest 里；前端那一侧的钉子不在任何 workflow 中运行（见
-[测试](../guides/testing.md) 的 *PR 时的测试内容*），因此只破坏契约客户端一半的
-改动，在有人手动跑前端测试套件之前不会让任何东西失败。
+改这个数字。现在两个钉子都会在 PR 时运行。Python 那一侧的钉子与其他测试跑在
+同一套 pytest 里；前端那一侧的钉子跑在 `dashboard-frontend` workflow
+（`.github/workflows/dashboard-frontend.yml`）里，它的 `npm test` 步骤会在每个
+指向 `main` 的 pull request 上完整运行 Vitest 套件，且没有任何
+`continue-on-error`，因此只破坏契约客户端一半的改动会让该门禁失败。
 
 **1. GET 与 POST 的键集合并不一致。** `GET /api/settings` 恰好返回 **27** 个
 顶层键（26 个标量/列表 + 嵌套的 `ors` 对象，后者含 10 个子键）；Save 按钮
@@ -676,7 +680,7 @@ pytest 里；前端那一侧的钉子不在任何 workflow 中运行（见
 | `letta_base_url` | `LETTA_BASE_URL` | `"http://localhost:8283"` |
 | `letta_embedding_config` | `LETTA_EMBEDDING_CONFIG` | `"letta-default"` |
 | `ors.replicator_model` | `ARI_MODEL_REPLICATE` | `"claude-opus-4-7"` |
-| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini-2.5-pro"` |
+| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini/gemini-2.5-pro"` |
 | `ors.rubric_audit_model` | `ARI_MODEL_RUBRIC_AUDIT` | `"claude-opus-4-7"` |
 | `ors.judge_model` | `ARI_MODEL_JUDGE` | `"gpt-4o-2024-11-20"` |
 | `ors.phase1_sandbox_kind` | `ARI_PHASE1_SANDBOX` | `"auto"` |
@@ -1636,7 +1640,7 @@ Shadow 输出是仅观察的：它绝不触达 BFTS 分数、前沿或记忆。
 | 键 | 默认值 | 含义 |
 |---|---|---|
 | `enabled` | `true` | 元进化步骤开/关（禁用时协调器以一条审计行 no-op）。 |
-| `evolving_roles` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor` | v1 的可进化元角色；可缩减为 `[]`，无需代码改动即可冻结该层。 |
+| `evolving_roles` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor`、`policy_mutator` | v1 的可进化元角色；可缩减为 `[]`，无需代码改动即可冻结该层。 |
 | `max_meta_candidates_per_epoch` | `1` | 每纪元元候选的上限（跨所有元角色合计）。 |
 | `sandbox.max_cases` | `6` | 每次沙箱评估重放的历史元任务 bundle 数。 |
 | `sandbox.use_cached_results` | `true` | 复用按内容为键的沙箱结果。 |

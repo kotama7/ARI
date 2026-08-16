@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # RQGM GUI 読み取りモデル
@@ -163,7 +163,7 @@ write-once のポリシー本体チェック）、スキーマ適合はその中
 | フラグ | `true` | `false` | `null` |
 |---|---|---|---|
 | `transitions_chain_ok` | `rqgm_transitions.jsonl` の全行が検証を通る: `event_hash` がその行の宣言したイベント封筒を覆い（ペイロードのみを覆うのは旧 schema-v1 行だけ）、`prev_event_hash` が連鎖する（先頭行は `""` から）。 | ハッシュ不一致またはチェーン断絶を検出。走査は継続するのでデータは提供されるが、フラグが立つ。 | ファイルが存在しない。 |
-| `registry_verified` | `rqgm_registry.json` の `as_of_event_hash` がコミット済み遷移の末尾と一致する。 | rollup が陳腐化している、またはログより先行している。 | rollup が存在しない / 読めない、または比較対象の遷移末尾が無い。 |
+| `registry_verified` | `rqgm_registry.json` の `as_of_event_hash` が `rqgm_transitions.jsonl` の最後にパースできた行 — すなわち物理的な末尾 — と一致する。rollup の書き手も同じ物理末尾を記録するので、prepare が未完了のままでも両者は一致する。 | rollup が陳腐化している、またはログより先行している。 | rollup が存在しない / 読めない、または比較対象の遷移末尾が無い。 |
 | `audit_chain_ok` | `rqgm_audit.jsonl` が独立したチェーンとして検証を通る。 | 断絶を検出。 | ファイルが存在しない。 |
 
 `null` は一級の回答です: **存在しないソースがクリーンとして描画されることは

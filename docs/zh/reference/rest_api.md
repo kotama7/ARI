@@ -44,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # REST API 参考
@@ -474,11 +474,13 @@ legacy 分支是 `POST /api/launch`、`/api/run-stage`、`/api/sub-experiments/l
 流量最高的几个 GET 端点，其响应形状在
 `ari-core/ari/viz/frontend/src/types/index.ts` 中有对应的前端 TypeScript
 类型镜像，并由 `ari-core/tests/test_api_schema_contract.py` 守护（以**子集**
-方式断言必然存在的键 —— 允许额外/可选字段，因此契约是增量式的）。
+方式断言必然存在的键 —— 允许额外/可选字段，因此契约是增量式的）。`GET /state`
+是例外：该测试套件没有 `/state` 用例，其键集合改由
+`ari-core/tests/test_gui_state_facade_freeze.py` 以精确的冻结字面量（而非子集）钉住。
 
 | 端点 | 生产者 | 前端类型 | 必然存在的键 |
 |---|---|---|---|
-| `GET /state` | `services/state_service.build_app_state` | `AppState` | `running_pid`、`is_running`、`exit_code`、`running`、`pid`、`status_label`（其余受检查点门控 → 在类型中为可选）。`cost` 是解析后的 `cost_summary.json` **对象**（`CostSummary`），不是数字。 |
+| `GET /state` | `services/state_service.build_app_state` | `AppState` | `running_pid`、`is_running`、`exit_code`、`running`、`pid`、`status_label`、`llm_model` —— 冻结门面始终输出的 7 个键（其余受检查点门控 → 在类型中为可选）。`cost` 是解析后的 `cost_summary.json` **对象**（`CostSummary`），不是数字。 |
 | `GET /api/settings` | `api_settings._api_get_settings` | `Settings` | 完整的默认值字典（`llm_model`、`llm_provider`、`ollama_host`、`temperature`、……，以及嵌套的 `ors`）；任意已保存的键也会透传（`{**defaults, **saved}`）。 |
 | `GET /api/checkpoints` | `checkpoint_api._api_checkpoints` | `Checkpoint[]` | `id`、`path`、`status`、`node_count`、`review_score`、`best_metric`（始终为 `null`）、`mtime`；`best_scientific_score` 是有条件的。 |
 | `GET /api/checkpoint/<id>/summary` | `checkpoint_api._api_checkpoint_summary` | `CheckpointSummary` | `id`、`path`（或 `{error:"not found"}`）；所有报告正文都是有条件的。`reproducibility_report` 是解析后的**对象**（legacy 运行：字符串），并非总是字符串。 |
@@ -610,7 +612,6 @@ Monitor 路由：旧页面无条件调用 `.toFixed()`，于是 `{"process_count
 | GET | `/api/ollama/<...>` | 代理到本地 Ollama 守护进程（仅允许列表内路径 —— MN-5） |
 | GET | `/api/skills` | 枚举已注册的技能 + 其工具数量 |
 | GET | `/api/skill/<skill_name>` | 每个技能的元数据（工具列表、环境变量） |
-| GET | `/api/tools` | 跨所有技能的合并工具目录 |
 | GET | `/api/scheduler/detect` | `local` / `slurm` / `apptainer` 自动检测 |
 | GET | `/api/slurm/partitions` | SLURM 分区列表 |
 | GET | `/api/container/info` | 容器运行时探测 |

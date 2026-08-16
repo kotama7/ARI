@@ -159,8 +159,8 @@ ARI 附带 17 个 MCP 服务器（每个 `ari-skill-*` 包各一个）。其中 
 `survey` 直接调用的普通辅助函数，绝不对 agent 可见；
 `ari-skill-idea/tests/test_server.py` 通过 `mcp.list_tools()` 钉住
 `survey` 与 `generate_ideas` 已注册、且该辅助函数未注册这两点。
-`mint_contract_for_proposal` 在运行时已注册，却既未写入 `skill.yaml` 也未写入
-`mcp.json`，因此 `scripts/check_skill_manifests.py` 目前会把该包报为
+`mint_contract_for_proposal` 与另外两个一样，`skill.yaml` 与 `mcp.json` 都已
+写入，因此 `scripts/check_skill_manifests.py` 不会把该包报为
 `tool-drift`。provider 之间没有回退：`virsci-snapshot` 的调研在语料库缺失时抛出
 `FileNotFoundError`，Semantic Scholar 的调研遇到 HTTP 错误时直接抛出——故障
 时得到的是一次拒绝，而不是悄悄变成另一份语料库。
@@ -389,9 +389,9 @@ agent 付出的也只是六个工具位而非数千个。leaf provider 的 schem
 `invoke` / `invoke_scheduled` / `get_status` / `get_result` 声明了 run 作用域的
 context 要求，因此它们的输入 schema 声明了 `ari_context`——与上文
 `measure_counters` 相同的注入规则，由 transport 填入，并非 agent 需要提供的
-参数。此外，本包的 `mcp.json` 是唯一未从 skill.yaml 重新生成的遗留清单：它仍
-只列出五个名字，`scripts/check_skill_manifests.py` 会把缺失的
-`invoke_scheduled` 报为 `compat-metadata-drift`。目录 identity、准入级别与
+参数。此外，本包的 `mcp.json` 已从 skill.yaml 重新生成，六个名字（含
+`invoke_scheduled`）全部列出，因此 `scripts/check_skill_manifests.py` 不会报
+`compat-metadata-drift`。目录 identity、准入级别与
 provider adapter 参见 [tool_registry.md](tool_registry.md)。
 
 ## 另请参阅

@@ -24,7 +24,7 @@ sources:
     role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # 如何测试 ARI 代码
@@ -35,10 +35,11 @@ last_verified: 2026-08-13
 ## 仓库布局
 
 ```
-ari-core/tests/                 — core regression tests
-ari-skill-<name>/tests/         — skill-local tests
-ari-skill-<name>/conftest.py    — skill-level fixtures
-pytest.ini                      — repo-wide config
+ari-core/tests/                    — core regression tests
+ari-skill-<name>/tests/            — skill-local tests
+ari-skill-<name>/tests/conftest.py — skill-level fixtures（17 个 skill 中的 13 个；
+                                     只有 benchmark 与 plot 放在包根目录）
+pytest.ini                         — repo-wide config
 ```
 
 仓库根目录下的 `pytest.ini` 规定了裸 `pytest` 所遍历的 `testpaths`：
@@ -54,18 +55,26 @@ pytest.ini                      — repo-wide config
 pytest -q                                        # 仅默认的 testpaths
 bash scripts/run_all_tests.sh                    # 完整套件，每条路径一个进程
 pytest ari-skill-memory/tests -q                 # 单个 skill
-pytest ari-core/tests/test_react_driver.py -q    # one file
-pytest ari-core/tests/test_react_driver.py::test_runs_for_two_nodes  # one case
-pytest -k 'memory and not letta' -q              # by keyword
+pytest ari-core/tests/test_react_driver.py -q    # 单个文件
+pytest ari-core/tests/test_react_driver.py::TestRunReact  # 单个类
+pytest ari-core/tests/test_gui_v1_api.py::test_projects_happy_path  # 单个用例
+pytest -k 'memory and not letta' -q              # 按关键字
 ```
 
 ## ari-core 规范
 
 ### 始终隔离写操作
 
-ARI 过去将文件写入 `$HOME/.ari/`。v0.5.0 已移除该路径；防护测试
-`ari-core/tests/test_no_user_home_writes.py` 断言此后不再有任何测试
-在该路径创建文件。编写涉及文件系统的新测试时：
+ARI 过去将文件写入 `$HOME/.ari/`，v0.5.0 已移除该路径，并由两道防护维持。
+`ari-core/tests/test_no_user_home_writes.py` 只有一个测试
+`test_module_imports_do_not_write_user_home`：它在伪造的 `HOME` 下导入一份固定的
+八个核心模块清单（`ari.config`、`ari.paths`、`ari.cost_tracker`、`ari.lineage`、
+`ari.memory.client`、`ari.memory.local_client`、
+`ari.publish.backends.ari_registry`、`ari.clone.resolvers.ari`），断言它们在导入
+时都不会创建 `$HOME/.ari/`。覆盖整个套件的那道防护是 `refactor-guards`
+workflow：它把 `HOME` 重定向后运行全部 `ari-core/tests`，若结束时 `$HOME/.ari/`
+存在就让该 job 失败——"没有任何测试会在那里创建文件"是靠它强制的，而不是靠假设。
+编写涉及文件系统的新测试时：
 
 - 使用 `monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))`。
 - 对所有辅助目录使用 `tmp_path`。
@@ -74,23 +83,27 @@ ARI 过去将文件写入 `$HOME/.ari/`。v0.5.0 已移除该路径；防护测�
 
 ### 智能体循环的冒烟测试
 
-`ari-core/tests/test_react_driver.py` 运行三个确定性的
-"智能体完成两个节点"测试：
+`ari-core/tests/test_react_driver.py` 以桩替换 `LLMClient` 与 `MCPClient` 来覆盖
+`ari.agent.react_driver`，因此不接触真实 LLM 或 MCP 服务器。它是一个单元测试
+文件，而非跨节点的集成运行：三个辅助类固定纯函数（`TestValidatePaths` —— 针对
+`_validate_paths_in_args` 的 11 个用例，覆盖沙箱逃逸与路径穿越规则；
+`TestBuildWindow` —— 对话窗口截断；`TestFinalToolDef`），`TestRunReact` 则以四种
+方式驱动 `run_react` —— 调用 final tool 后完成、沙箱违规阻断 dispatch、final tool
+始终未触发时的 max-steps 退出，以及日志文件持久化。
 
-1. **正常路径** —— 两个节点，使用真实 LLM 存根，在每次状态转换时
-   断言 BFTS 状态。
-2. **工具失败恢复** —— coding skill 返回错误；智能体以固定种子重试。
-3. **内存写入隔离** —— 兄弟节点看到不相交的内存存储。
-
-每次新增智能体级特性时，请镜像这个三元组。
+新增智能体级特性时请沿用同样的形态：把客户端桩化，断言循环可观测的状态转换，
+并让该文件不含网络与子进程调用。
 
 ### 确定性保证（P2）
 
-"相同种子，相同树"的不变量由
-`ari-core/tests/test_no_user_home_writes.py`（间接验证：断言运行
-之间无全局状态变化）以及各 skill 测试套件
-（`ari-skill-memory/tests/test_isolation.py`、
-`ari-skill-memory/tests/test_cow.py`）共同验证。
+本仓库中没有任何东西端到端地断言整轮运行的"相同种子，相同树"不变量。真正被固定
+的范围更窄，值得按名字记住：
+`ari-core/tests/test_gui_baseline_run_fixtures.py::test_same_seed_is_byte_identical`
+用同一组 `(nodes, seed)` 生成两份 checkpoint 并逐字节比较（其反面用例是
+`test_different_seed_changes_content`）；memory 套件则固定确定性树所依赖的隔离
+性质 —— `ari-skill-memory/tests/test_checkpoint_isolation.py`（两个 checkpoint
+互不可见）与 `ari-skill-memory/tests/test_ancestor_scope.py`（三条兄弟分支之间
+不互相污染）。
 
 当确定性回归悄然出现时：
 
@@ -105,10 +118,11 @@ GUI 与 `/api/v1` 的读取端测试并不附带 checkpoint —— 它们自己�
 `ari-core/tests/fixtures/gui_refresh/` 下有两个纯 Python 工厂：
 
 - `run_fixture_factory.py` —— `make_run_checkpoint(dest, nodes=N, seed=S)`
-  通过真实的 `ari.checkpoint.save_*_json` 辅助函数写出一份运行 checkpoint
-  （`tree.json`、`nodes_tree.json`、`results.json`、`experiment.md`、
-  `idea.json`、`meta.json`、`cost_trace.jsonl`），因此 JSON 的格式与生产写入端
-  逐字节一致。可选的 `paper` / `review` / `ors` / `ear` 结果层默认全部关闭。
+  写出一份运行 checkpoint：`tree.json`、`nodes_tree.json`、`results.json` 走真实的
+  `ari.checkpoint.save_tree_json` / `save_nodes_tree_json` / `save_results_json`，
+  因此它们的格式与生产写入端逐字节一致；`experiment.md`、`idea.json`、
+  `meta.json`、`cost_trace.jsonl` 则直接写出，因为没有对应的 `save_*_json`
+  辅助函数。可选的 `paper` / `review` / `ors` / `ear` 结果层默认全部关闭。
 - `rqgm_fixture_factory.py` —— `make_rqgm_checkpoint(dest, nodes=10,
   epochs=2, ...)` 先调用基础工厂，再在其上叠加一层确定性的 RQGM 治理面
   （哈希链式的 transition 与 audit 日志、registry 汇总、prompt 主体、节点
@@ -152,23 +166,40 @@ it（每个读取端都必须加载）"的那一档 —— 但没有任何机制
 
 ### MCP 服务器测试
 
-每个 skill 附带一个 `test_server.py`，它：
+17 个 `ari-skill-*` 包中有 10 个带 `tests/test_server.py`（benchmark、coding、
+evaluator、hpc、idea、paper、tool-registry、transform、vlm、web）；其余要么把
+这类文件叫作别的名字，要么没有 —— `ari-skill-orchestrator/tests/test_mcp_surface.py`
+就是换了名字的同类文件。这十个的共同做法是：在进程内导入服务器模块（没有一个会
+启动子进程），以 fixture 输入直接调用工具函数，并断言响应结构。多数通过
+`from src.server import …` 拿到它；已打包的 skill 改为导入已安装的模块
+（`ari_skill_hpc.server`），而 `ari-skill-coding` 还会用
+`importlib.util.spec_from_file_location` 按路径加载。
 
-1. 在进程内启动 MCP 服务器（无子进程）。
-2. 调用 `list_tools()` 并断言工具列表与 `mcp.json` 一致。
-3. 以 fixture 输入调用每个工具并断言响应结构。
+有两件事这一层**不做**，因为它们归 workflow 的关卡管。工具列表与 `skill.yaml`
+是否一致、生成的 `mcp.json` 是否漂移，属于下文"PR 时的测试内容"里 `contracts`
+工作流的 `scripts/check_skill_manifests.py`，不是各 skill 的断言。此外并不存在
+共用的 MCP 测试框架：没有 `mcp.testing` 这个模块（`mcp` 包提供的是 `cli`、
+`client`、`os`、`server`、`shared`、`types`），仓库里也没有任何代码导入它。每个
+套件都自建 fixture —— `ari-skill-memory/tests/conftest.py` 是这一模式易读的参考
+（限定在 `tmp_path` 的 `ARI_CHECKPOINT_DIR`、backend fixture、签名调用上下文的
+签发器，以及一个假的 Letta 客户端）。
 
-使用 `mcp.testing` 辅助工具（各 skill 的测试套件略有差异 ——
-参见 `ari-skill-memory/tests/conftest.py` 作为参考）。
+确实调用 `list_tools()` 的套件有三个，且都不用它跟清单比对：`ari-skill-coding`
+校验带 `outputSchema` 的那五个工具的 schema，`ari-skill-hpc` 与 `ari-skill-idea`
+则断言特定工具名已注册（hpc 还断言某些未注册）。
 
 ### LLM mock
 
 调用 LLM 的 skill（`evaluator`、`paper`、`paper-re`、`idea`、
-`replicate`、`transform`、`plot/_llm`、`vlm`）在单元测试中必须
-mock LLM。使用 LiteLLM `respx` 适配器或 `pytest-mock` 将
-`litellm.completion` 替换为固定响应。
+`replicate`、`transform`、`plot/_llm`、`vlm`）在单元测试中必须 mock LLM。
 
-`ari-skill-paper-re/tests/test_litellm_completer.py` 是参考示例。
+参考示例是 `ari-skill-paper-re/tests/test_litellm_completer.py`，其手法是模块注入
+而非 HTTP 拦截：`_install_fake_litellm` 构造一个带桩 `acompletion` 的
+`types.ModuleType("litellm")`，再用 `monkeypatch.setitem(sys.modules, "litellm", fake)`
+替换，因此完全不触网，并且可以断言 completer 转发的确切 kwargs。`respx` 用在真实
+HTTP 客户端本身就是被测对象的场合
+（`ari-skill-memory/tests/test_letta_http_regression.py`）；`pytest-mock` 也为同样
+的目的装在 CI 里。
 
 ### 依赖状态的 fixture
 
@@ -188,16 +219,33 @@ def ckpt(tmp_path, monkeypatch):
 
 多个 GitHub Actions 工作流为每个面向 `main` 的 PR 设关。
 
-**测试** — `refactor-guards` 工作流运行：
+**测试** — Python 套件分散在两个工作流中，彼此不会跑对方的路径。
 
-- `pytest ari-core/tests -q`
-- `pytest ari-skill-coding/tests -q`
-- `pytest ari-skill-memory/tests -q`
-- ... 各 skill 的测试套件
+- `refactor-guards` 只运行一次 `pytest ari-core/tests/ -q`，把 `HOME` 重定向到
+  临时目录，并用 `--ignore` 排除四个文件（`test_letta_restart_live.py`、
+  `test_letta_start_scripts.py`、`test_ollama_gpu.py`、`test_dashboard_html.py`
+  —— 最后一个是因为它需要一份没有任何 job 会产出的 Vite 构建）。
+  `test_no_user_home_writes.py` 与 `test_public_api_boundary.py`（Phase 4，确保
+  skill 仅从 `ari.public.*` 导入）是随这一次调用一起跑的，并不是独立步骤。之后
+  若 `$HOME/.ari/` 存在则该 job 失败；另一个 job 会在 PR 的 diff 中查找允许列表
+  之外新增的 `~/.ari` 引用。另有五个 job（import boundaries、directory policy、
+  complexity、ruff lint、dead code）全部是**建议性**的 —— `continue-on-error: true`
+  配合 `--warning-only`，因此发现问题也不会让 PR 变红。它是同时在 `refactoring`
+  分支上触发的两个工作流之一（文件内的注释至今仍写着"唯一"，而 `skill-tests`
+  是后来以相同触发条件加入的）。
+- `skill-tests` 以每条路径一个 pytest 进程的方式运行七个 skill 套件（`paper`、
+  `evaluator`、`web`、`plot`、`memory`、`transform`、`replicate`），并带
+  `-p no:randomly`。`ari-skill-coding` **不在其中**，`ari-skill-paper-re` 因为要
+  通过 `git+chz` vendor PaperBench 而被有意排除。按进程拆分的理由，和 `pytest.ini`
+  把这些 skill 排除在 `testpaths` 之外的理由相同。
 
-它还运行 `tests/test_no_user_home_writes.py` 和
-`tests/test_public_api_boundary.py`（Phase 4，确保 skill 仅从
-`ari.public.*` 导入）。
+**仪表盘前端** — `dashboard-frontend` 工作流是针对 `ari-core/ari/viz/frontend`
+的硬关卡（没有任何 `continue-on-error`）：`npm ci`、`npm run typecheck`
+（`tsc --noEmit`）、然后 `npm test`（`vitest run`）。它有意不运行 `npm run build`
+和 Playwright 截图。由于 `npm test` 跑的是整个套件，它也一并带上了
+`src/__tests__/v1TypesDrift.test.ts` —— 该测试在内存中从 `ari/viz/v1/openapi.json`
+重新生成 `src/services/api/v1types.gen.ts` 并断言逐字节相等 —— 所以改了 OpenAPI
+文档却没有重跑 `npm run gen:v1types`，会在这里失败。
 
 **文档与结构** — 三个工作流保持文档集同步：
 
@@ -220,37 +268,39 @@ def ckpt(tmp_path, monkeypatch):
 `python scripts/docs/check_i18n_js.py`。
 
 **仪表盘翻译** — 仪表盘 UI 自带三语词典
-`ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts`，而上述工作流均未覆盖它们：
-`check_i18n_js.py` 只读取 `docs/i18n/landing.{en,ja,zh}.js`，且其键模式仅匹配
-单引号键，因此无法解析以裸标识符作为键的词典。规则与 docs 侧相同 —— 三种
+`ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts`，而 docs 侧的关卡够不到它们：
+`check_i18n_js.py` 只读取 `docs/i18n/landing.{en,ja,zh}.js`（其 `SURFACES` 元组
+只有一项），且键模式 `^\s*'([^']+)'\s*:` 仅匹配单引号键，因此无法解析以裸标识符
+作为键的词典。规则与 docs 侧相同 —— 三种
 语言必须声明**完全相同的键集**，且同一文件内不得重复键 —— 所以新增的 UI
 字符串必须在同一次变更中加入全部三个词典。某个语言有而另一个语言缺失的键
 会回退为英文字符串；若 `en` 中也不存在，则直接显示键名本身
 （`src/i18n/index.ts` 中的 `t()`）。值被有意排除在比较之外：专有名词在三种
 语言中读法相同是合理的。
 
-有两项检查负责保障这一点，且**两者都未接入任何工作流** —— 修改仪表盘字符串
-时请自行运行：
+有两项检查负责保障这一点，其中只有一项在 CI 中运行：
 
 - `python scripts/check_dashboard_ux.py --fail-on-regression` —— 对三个 `.ts`
   文件做键集一致性与重复键检测，与该脚本的其他仪表盘 UX 检查打包在一起。
+  **没有任何工作流会调用它**，所以修改仪表盘字符串时请自行运行。
   只要存在未冻结在 `scripts/quality/check_dashboard_ux.allow.yaml` 中的
   finding，它就以 exit 1 退出；该允许列表中没有任何 i18n 条目，因此一致性
   一旦被破坏，首次运行即失败。不加该标志时，脚本只打印报告并以 exit 0 退出。
 - 在 `ari-core/ari/viz/frontend` 下运行
   `npx vitest run src/i18n/__tests__/parity.test.tsx` —— 针对实际导入的词典
-  断言同一不变量，其 `KNOWN_DRIFT` 允许列表目前为空。它的重复键断言弱于
-  Python 一侧，因为 TypeScript 对象字面量在测试读取之前就已折叠了重复键。
+  断言同一不变量，其 `KNOWN_DRIFT` 允许列表目前为空。这一项**是**被设关的：
+  `dashboard-frontend` 工作流的 `npm test` 步骤会跑整个 Vitest 套件，包含这个
+  文件。它的重复键断言弱于 Python 一侧，因为 TypeScript 对象字面量在测试读取
+  之前就已折叠了重复键。
 
 在当前代码树上两者均为绿：三个词典持有完全相同的键集，且没有重复键。
 
 **仪表盘无障碍** — 仪表盘**未声明任何 WCAG 合规级别**。本文档集与前端测试套件
 中都不存在合规目标，此处的任何内容都不应被读作合规声明。真正存在的是
 `ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx` 中的一组
-冻结基线。与上面的 i18n 检查一样，它**未接入任何工作流** —— 根本没有工作流会
-运行前端测试套件（CI 中仅有的 Node 步骤是构建 VitePress 文档站点），因此它是
-人工执行的 cutover 前检查清单中的一条硬关卡 (`npm test`，
-`docs/guides/gui_cutover_runbook.md` §2)。若只想
+冻结基线。它作为 `dashboard-frontend` 工作流 `npm test` 步骤的一部分在 CI 中
+运行，同时也是人工执行的 cutover 前检查清单中的一行
+(`docs/guides/gui_cutover_runbook.md` §2)。若只想
 运行这个文件，在 `ari-core/ari/viz/frontend` 下执行：
 
 ```bash
@@ -356,9 +406,10 @@ vitest 自身的可选 peer dependency 出现在 `package-lock.json` 里，因�
 serializer 模块（`src/` 下 `serializ` 仅有的两处匹配是注释，位于
 `services/api/client.ts` 与 `hooks/useRunEvents.ts`），而 config resolver 是
 Python 的 —— `ari-core/ari/config/resolver.py`，经由 HTTP 访问，而不是通过某个
-前端 adapter。其二，棘轮需要有地方运行，而没有任何工作流会运行前端测试套件
-—— 这也正是上面的外壳无障碍基线与打包预算成为人工执行的 cutover 前检查清单
-条目、而非 CI 关卡的原因。
+前端 adapter。其二，棘轮需要一份存好的基线，以及用来跟它比对的东西。
+`dashboard-frontend` 工作流现在给了前端测试套件一个运行的地方，但它跑的是
+`npm test` 而不是 `npm test -- --coverage`，而且两侧都没有提交任何基线文件
+—— 地方有了，测量仍然没有。
 
 ## 编写回归测试
 

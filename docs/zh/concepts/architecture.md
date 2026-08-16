@@ -686,7 +686,7 @@ ARI 实际产出的每条路径都是上文那种扁平布局。`ari/paths.py` �
 |------|------|------|------|
 | `ari-skill-hpc` | `job_submit`、`container_submit`、`job_status`、`job_result`、`job_logs`、`job_cancel`、`probe_platform_capabilities`、`counter_support`、`measure_counters`、`slurm_submit` | 基于 digest 固定 request 的类型化 SLURM 作业生命周期；容器经由 `container_submit` 抵达，而非逐条 Singularity 命令；`slurm_submit` 作为批处理脚本桥接保留 | ✗ |
 | `ari-skill-memory` | `add_memory`、`search_memory`、`search_research_memory`、`get_node_memory`、`get_experiment_context`、`get_verified_context`、`consolidate_node_memory`、`add_experiment_result`、`add_failure_case`、`add_procedure_memory`、`add_reflection`、`add_reproducibility_event`、`audit_memory` | 祖先作用域的节点记忆（Letta 后端）；`audit_memory` 驱动 `audit_node_provenance` 阶段 | △ |
-| `ari-skill-idea` | `survey`、`generate_ideas` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成 | ✓ |
+| `ari-skill-idea` | `survey`、`generate_ideas`、`mint_contract_for_proposal` | 文献搜索（Semantic Scholar）+ VirSci 多智能体假设生成；`mint_contract_for_proposal` 为并非由本 skill 生成的 proposal 铸造 typed Research Contract | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec`、`propose_metric_contract`、`claim_evidence_hard_gate`、`evidence_grounded_semantic_review` | 从实验文件提取指标规格，并作为 `ari/pipeline/claim_gate/` 的瘦 MCP 表面 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`、`generate_ear`、`curate_ear`、`promote_ear`、`publish_ear` | BFTS 树 → 科学数据 + EAR + curate/promote/publish 生命周期 (v0.7.0) | ✓ |
 | `ari-skill-web` | `web_search`、`fetch_url`、`search_papers`、`rerank_retrieval_records`、`walk_citations`、`list_uploaded_files`、`read_uploaded_file` | 网络搜索 + 每次调用一个被钉住的学术提供方（`semantic-scholar` / `arxiv` / `alphaxiv`；`both` 会被拒绝），支持 `record` / `live` / `replay` 快照模式、引用游走、上传文件访问 | △ |
@@ -703,7 +703,7 @@ ARI 实际产出的每条路径都是上文那种扁平布局。`ari/paths.py` �
 | 技能 | 工具 | 角色 | LLM? |
 |------|------|------|------|
 | `ari-skill-orchestrator` | `run_experiment`、`get_status`、`get_result`、`stop_experiment`、`list_runs`、`list_children`、`list_artifacts`、`read_artifact`、`get_paper`、`get_ear`、`list_skills`、`get_workflow` | 将 ARI 作为 MCP 服务器暴露，递归子实验，双 stdio+HTTP 传输 | ✗ |
-| `ari-skill-tool-registry` | `discover`、`describe`、`invoke`、`get_status`、`get_result` | 面向大型外部 MCP 集合的供应商中立发现、准入、不可变调用与重放 | ✗ |
+| `ari-skill-tool-registry` | `discover`、`describe`、`invoke`、`invoke_scheduled`、`get_status`、`get_result` | 面向大型外部 MCP 集合的供应商中立发现、准入、不可变调用与重放；`invoke_scheduled` 是同一 dispatch 为提交到调度器的 leaf 单独开出的表面 | ✗ |
 | `ari-skill-knowledge` | `search_knowledge_skills`、`describe_knowledge_skill`、`list_active_knowledge_skills`、`request_knowledge_skill` | 对内容寻址的过程性知识提供只读查询与非权威请求接口 | ✗ |
 | `ari-skill-harness` | `search_harnesses`、`describe_harness`、`request_auxiliary_verification`、`read_attestation`、`list_verification_requirements` | Harness 目录 / 需求 / Attestation 的只读查询与非权威的辅助请求 | ✗ |
 
@@ -829,8 +829,11 @@ run id、父子关系、depth、创建时间、checkpoint dir 和 `inherit_idea_
 `{added, modified, deleted, inherited_unchanged}`。当
 `added=0 ∧ modified=0 ∧ deleted=0` 时，循环将该子节点标记为
 **sterile（不育）**（`metrics["_sterile"]=True`、`_scientific_score=0.0`、
-`has_real_data=False`）；随后 BFTS 偏好任何非 sterile 的兄弟，而当每个子
-节点都 sterile 时，parent-terminate 级联会剪掉该链。子代理的第一条 user
+`has_real_data=False`）；随后 `BFTS.should_prune` 会把该 sterile 节点本身
+退出 frontier，不再展开它。父节点在子节点 sterile 时**不会**被退役：
+`_child_retires_parent`（Rule B-6 A，`ari/cli/bfts_loop.py`）对 sterile 子节点
+抑制了通常的“子胜过父即退役父”规则——逐字拷贝的分数“胜出”只是 evaluator 的
+时序噪声，据此退役父节点会在两个节点后清空 frontier。子代理的第一条 user
 message 还会收到一条强制产生新产物的指令（“在此 work_dir 中产生 **新的**
 result/log/metric 产物；不要依赖继承的文件”），因此行为良好的代理在文字与
 指标两方面都有动机去真正运行实验。
@@ -855,7 +858,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 声称的配置
 关键特性：
 
 - **Phase 白名单**：`workflow.yaml` 中 `skills[].phase` 可以是单个字符串或数组。只有 phase 列表包含 stage `react.agent_phase` 的技能才能被智能体看到。默认 `workflow.yaml` 将 `web-skill` / `vlm-skill` / `hpc-skill` / `coding-skill` 加入 `reproduce`；`memory-skill` / `transform-skill` / `evaluator-skill` 被刻意排除，智能体无法观测 BFTS 状态(`nodes_tree.json`、祖先记忆、science data)。
-- **沙箱**：`react.sandbox` 指向一个目录(默认 `{{checkpoint_dir}}/repro_sandbox/`)。工具参数会被扫描绝对路径和 `..` 穿越，沙箱外的路径(论文 `.tex` 的 allow-list 除外)会在抵达 MCP 之前被拒绝并返回 `sandbox violation`。MCP 服务器 fork 之前会将 `ARI_WORK_DIR` 设置为沙箱目录，所以 `coding-skill.run_bash` 的默认 cwd 也会在沙箱内。
+- **沙箱**：`react.sandbox` 是由各阶段自己的 `react:` 块声明的目录，没有内置默认值(`stage_runner` 读取 `react_cfg.get("sandbox", "")`，缺少该键时根本不建立沙箱)；随包发布的 `workflow.yaml` 中没有任何阶段声明它，ORS 阶段是通过各自的 stage input 指向 `{{checkpoint_dir}}/repro_sandbox/` 的。工具参数会被扫描绝对路径和 `..` 穿越，沙箱外的路径(论文 `.tex` 的 allow-list 除外)会在抵达 MCP 之前被拒绝并返回 `sandbox violation`。MCP 服务器 fork 之前会将 `ARI_WORK_DIR` 设置为沙箱目录，所以 `coding-skill.run_bash` 的默认 cwd 也会在沙箱内。
 - **终止条件**：智能体调用 `react.final_tool`(默认 `report_metric`)结束循环。该调用不会转发给 MCP，而是被驱动捕获，其参数成为传递给 stage `post_tool` 的 `actual_value` / `actual_unit` / `actual_notes`。
 
 这一分离使复现 stage 的"仅读论文文本"约束能从 YAML 审计，而不是埋在技能 Python 里。
@@ -1112,7 +1115,7 @@ pipeline:
 | 层 | 子包 | 职责 |
 |---|---|---|
 | 0 — 原语 | `paths`、`checkpoint`、`_deprecation`、`cost_tracker`、`pidfile`、`lineage`、`env_detect`、`schemas`、`configs`、`prompts`、`protocols` | 路径解析、弃用警告、成本跟踪、提示词/配置加载器、结构性协议。无 ARI 内部依赖。 |
-| 1 — 领域模型 | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/scheduler`、`orchestrator/node_selection` | 数据模型 + 对上游库（litellm、MCP、Letta）的薄封装。 |
+| 1 — 领域模型 | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/node_selection` | 数据模型 + 对上游库（litellm、MCP、Letta）的薄封装。 |
 | 2 — 编排器 | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS 探索、lineage-decision LLM 钩子、每节点报告。 |
 | 3 — 智能体 | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env, metric_contract, shims}` | ReAct 执行 + 实验特定的 WorkflowHints 注入。 |
 | 4 — 流水线 | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML 驱动的阶段运行器、论文流水线胶水。 |

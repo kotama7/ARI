@@ -172,7 +172,10 @@ OMP_NUM_THREADS=32 ./bench
 
 `job_status` / `job_result` / `job_logs` / `job_cancel` 共用同一份选择器 schema：
 `handle_id`（`JobHandleV1` 的句柄 ID，首选）与 `job_id`（原始 SLURM 作业 ID，
-遗留兼容）二选一。它是 `oneOf`，两个都给或都不给都会被拒绝；实现优先读 `handle_id`。
+遗留兼容）二选一。“恰好一个”写在 schema 的 description 里，由服务端的 `_selector`
+强制执行，**并非**顶层 `oneOf`：OpenAI 的 function-calling schema 子集会拒绝带
+`oneOf` 的工具，那会让这四个工具都无法被 advertise。两个都不给会被拒绝；实现优先读
+`handle_id`，所以两个都给时按句柄解析。
 既不是已知句柄、也不是纯数字 SLURM ID 的选择器是 validation 错误。
 
 状态取自 `sacct -j <id> --noheader --parsable2 --allocations
@@ -356,10 +359,12 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 设置 `S2_API_KEY` 可获得更高的 Semantic Scholar 速率限制。`max_papers`
 上限为 15。
 
-`survey` 和 `generate_ideas` 是该技能**仅有的**已注册 MCP 工具；
+该技能已注册的 MCP 工具是 `survey`、`generate_ideas` 与
+`mint_contract_for_proposal` 三个 —— `mcp.json` 也恰好只列这三个；
 `_load_virsci_snapshot_papers` 只是 `survey` 直接调用的普通辅助函数，绝不
-能对 agent 可见。`tests/test_server.py` 通过 `mcp.list_tools()` 同时钉住
-这两点（`@mcp.tool()` 装饰器丢失/错位的问题曾经上线过）。
+能对 agent 可见。`tests/test_server.py` 通过 `mcp.list_tools()` 钉住
+`survey` / `generate_ideas` 的注册以及该辅助函数不是工具这一点
+（`@mcp.tool()` 装饰器丢失/错位的问题曾经上线过）。
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=None, survey_snapshot_ref="", seed=None, generation_mode="auto")`
 
@@ -721,7 +726,7 @@ PaperBench 以 git submodule 形式同捆于 `ari-skill-paper-re/vendor/paperben
 
 #### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
-**v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。通过 LiteLLM 路由，任意供应商可用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`。
+**v0.7.0+ 新增的 LLM 驱动 replicator**。`fetch_code_bundle` 的兄弟工具。读取论文（与 rubric 的 `expected_artifacts`）并将自包含的 `reproduce.sh` + 源文件写入 `output_dir`。其实体是 PaperBench 的 `BasicAgent` / `IterativeAgent` ReAct rollout（`_replicator_agent.run_replicator_agent`），而不是一次性产出 JSON 的调用。当 `output_dir/reproduce.sh` 已存在时跳过。模型：`model` 参数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`；OpenAI Responses 形式的 id（不含 `/` 的 `gpt-` / `o1-` / `o3-` / `o4-` / `o5-`）走 PaperBench 自带的 Responses completer，其余一律经 LiteLLM 路由，任意供应商可用。
 
 `sandbox_kind` 为 `auto` / `local` / `apptainer` / `slurm`，决定 agent rollout 本身在哪里跑。`container_image` 只被 `apptainer` rollout 采用，取值是不可变的本地 SIF 或摘要钉住的远端 URI（参数为空时读 `ARI_PHASE1_APPTAINER_IMAGE`）；`local` / `slurm` 会忽略它。**不存在**旧版的 `apptainer_image` 参数：该名字已从签名中删除，且在整个技能里再无出现，所以这里指定镜像的唯一方式就是 `container_image`。
 

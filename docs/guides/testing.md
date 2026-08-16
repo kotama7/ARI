@@ -24,7 +24,7 @@ sources:
     role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # How to Test ARI Code
@@ -36,10 +36,12 @@ expected, and how to keep determinism guarantees intact.
 ## Repository layout
 
 ```
-ari-core/tests/                 — core regression tests
-ari-skill-<name>/tests/         — skill-local tests
-ari-skill-<name>/conftest.py    — skill-level fixtures
-pytest.ini                      — repo-wide config
+ari-core/tests/                    — core regression tests
+ari-skill-<name>/tests/            — skill-local tests
+ari-skill-<name>/tests/conftest.py — skill-level fixtures (13 of 17 skills;
+                                     benchmark and plot put theirs at the
+                                     package root instead)
+pytest.ini                         — repo-wide config
 ```
 
 `pytest.ini` at the repo root sets the `testpaths` a bare `pytest` walks:
@@ -57,7 +59,8 @@ pytest -q                                        # the default testpaths only
 bash scripts/run_all_tests.sh                    # full suite, process per path
 pytest ari-skill-memory/tests -q                 # one skill
 pytest ari-core/tests/test_react_driver.py -q    # one file
-pytest ari-core/tests/test_react_driver.py::test_runs_for_two_nodes  # one case
+pytest ari-core/tests/test_react_driver.py::TestRunReact  # one class
+pytest ari-core/tests/test_gui_v1_api.py::test_projects_happy_path  # one case
 pytest -k 'memory and not letta' -q              # by keyword
 ```
 
@@ -65,10 +68,18 @@ pytest -k 'memory and not letta' -q              # by keyword
 
 ### Always isolate writes
 
-ARI used to write into `$HOME/.ari/`.  v0.5.0 removed that path; the
-guardrail test `ari-core/tests/test_no_user_home_writes.py` asserts
-that no test ever creates files there again.  When you write a new
-test that touches the filesystem:
+ARI used to write into `$HOME/.ari/`.  v0.5.0 removed that path, and two
+guards keep it gone. `ari-core/tests/test_no_user_home_writes.py` holds a
+single test, `test_module_imports_do_not_write_user_home`, which imports a
+frozen list of eight core modules (`ari.config`, `ari.paths`,
+`ari.cost_tracker`, `ari.lineage`, `ari.memory.client`,
+`ari.memory.local_client`, `ari.publish.backends.ari_registry`,
+`ari.clone.resolvers.ari`) under a fake `HOME` and asserts none of them
+creates `$HOME/.ari/` at import time. The suite-wide guard is the
+`refactor-guards` workflow, which runs all of `ari-core/tests` with `HOME`
+redirected and fails the job if `$HOME/.ari/` exists afterwards — that is
+what makes "no test ever creates files there" enforced rather than assumed.
+When you write a new test that touches the filesystem:
 
 - Use `monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))`.
 - Use `tmp_path` for any auxiliary directories.
@@ -77,25 +88,33 @@ test that touches the filesystem:
 
 ### Smoke tests for the agent loop
 
-`ari-core/tests/test_react_driver.py` runs three deterministic
-"agent runs through two nodes" tests:
+`ari-core/tests/test_react_driver.py` covers `ari.agent.react_driver` with
+stubbed `LLMClient` and `MCPClient` dependencies, so the ReAct loop is
+exercised without a live LLM or MCP server. It is a unit file, not a
+node-to-node integration run: three helper classes pin the pure functions
+(`TestValidatePaths` — 11 cases over `_validate_paths_in_args`, the
+sandbox-escape and traversal rules; `TestBuildWindow` — conversation-window
+truncation; `TestFinalToolDef`), and `TestRunReact` drives `run_react`
+end-to-end four ways — completion when the final tool is called, a sandbox
+violation blocking dispatch, the max-steps exit when the final tool never
+fires, and log-file persistence.
 
-1. **Happy path** — two nodes, real LLM stub, asserts BFTS state at
-   each transition.
-2. **Tool failure recovery** — the coding skill returns an error;
-   the agent retries with a fixed seed.
-3. **Memory write isolation** — sibling nodes see disjoint memory
-   stores.
-
-Mirror this triplet whenever you add a new agent-level feature.
+Follow the same shape whenever you add an agent-level feature: stub the
+clients, assert the loop's observable transitions, and keep the file free of
+network and subprocess calls.
 
 ### Determinism guarantees (P2)
 
-The "same seed, same tree" invariant is verified by
-`ari-core/tests/test_no_user_home_writes.py` indirectly (it asserts
-no global state mutates between runs) and by the per-skill suites
-(`ari-skill-memory/tests/test_isolation.py`,
-`ari-skill-memory/tests/test_cow.py`).
+Nothing in this repository asserts a whole-run "same seed, same tree"
+invariant end to end. What is pinned is narrower and worth knowing by name:
+`ari-core/tests/test_gui_baseline_run_fixtures.py::test_same_seed_is_byte_identical`
+generates two checkpoints from the same `(nodes, seed)` and compares the
+files byte for byte (with `test_different_seed_changes_content` as its
+negative), and the memory suite pins the isolation properties a
+deterministic tree depends on —
+`ari-skill-memory/tests/test_checkpoint_isolation.py` (two checkpoints never
+see each other) and `ari-skill-memory/tests/test_ancestor_scope.py` (three
+sibling branches, no cross-sibling contamination).
 
 When a determinism regression sneaks in:
 
@@ -110,10 +129,12 @@ The GUI and `/api/v1` reader tests do not ship checkpoints — they generate
 them. `ari-core/tests/fixtures/gui_refresh/` holds two pure-Python factories:
 
 - `run_fixture_factory.py` — `make_run_checkpoint(dest, nodes=N, seed=S)`
-  writes a run checkpoint (`tree.json`, `nodes_tree.json`, `results.json`,
-  `experiment.md`, `idea.json`, `meta.json`, `cost_trace.jsonl`) through the
-  real `ari.checkpoint.save_*_json` helpers, so the JSON formatting matches the
-  production writers byte for byte. The optional `paper` / `review` / `ors` /
+  writes a run checkpoint: `tree.json`, `nodes_tree.json` and `results.json`
+  go through the real `ari.checkpoint.save_tree_json` /
+  `save_nodes_tree_json` / `save_results_json`, so their formatting matches
+  the production writers byte for byte; `experiment.md`, `idea.json`,
+  `meta.json` and `cost_trace.jsonl` are written directly, since no
+  `save_*_json` helper owns them. The optional `paper` / `review` / `ors` /
   `ear` result layers all default off.
 - `rqgm_fixture_factory.py` — `make_rqgm_checkpoint(dest, nodes=10, epochs=2,
   ...)` calls the base factory first, then layers a deterministic RQGM
@@ -163,26 +184,48 @@ small loader helper is repeated at the top of every consumer file.
 
 ### MCP server tests
 
-Each skill ships a `test_server.py` that:
+Ten of the seventeen `ari-skill-*` packages ship a `tests/test_server.py`
+(benchmark, coding, evaluator, hpc, idea, paper, tool-registry, transform,
+vlm, web); the rest name their surface file differently or do not have one —
+`ari-skill-orchestrator/tests/test_mcp_surface.py` is the same kind of file
+under another name. What every one of them does is import the server module
+in-process — none of the ten spawns a subprocess — and call the tool
+functions directly with fixture inputs, asserting the response shape. Most
+reach it as `from src.server import …`; a packaged skill imports its
+installed module instead (`ari_skill_hpc.server`), and `ari-skill-coding`
+also loads it by path with `importlib.util.spec_from_file_location`.
 
-1. Starts the MCP server in-process (no subprocess).
-2. Calls `list_tools()` and asserts the tool list matches canonical
-   `skill.yaml`; generated `mcp.json` must match the same projection.
-3. Calls each tool with a fixture input and asserts the response
-   shape.
+Two things this layer does **not** do, because a workflow gate owns them
+instead. Tool-list-versus-`skill.yaml` parity and generated-`mcp.json` drift
+are the `contracts` workflow's `scripts/check_skill_manifests.py`, described
+under "What gets tested at PR time" below — not a per-skill assertion. And
+there is no shared MCP test harness: no `mcp.testing` module exists (the
+`mcp` package ships `cli`, `client`, `os`, `server`, `shared` and `types`)
+and nothing in the repo imports one. Each suite builds its own fixtures —
+`ari-skill-memory/tests/conftest.py` is a readable reference for the pattern
+(a `tmp_path`-scoped `ARI_CHECKPOINT_DIR`, a backend fixture, a signed
+call-context issuer, and a fake Letta client).
 
-Use `mcp.testing` helpers (the harness varies by skill — see
-`ari-skill-memory/tests/conftest.py` for a reference).
+Three suites do call `list_tools()`, and none of them compares it against
+the manifest: `ari-skill-coding` validates the declared `outputSchema` of
+the five tools that carry one, while `ari-skill-hpc` and `ari-skill-idea`
+assert that specific tool names are (and, for hpc, are not) registered.
 
 ### LLM mocks
 
 Skills that call an LLM (`evaluator`, `paper`, `paper-re`, `idea`,
 `replicate`, `transform`, `plot/_llm`, `vlm`) must mock the LLM in
-unit tests.  Use the LiteLLM `respx` adapter or `pytest-mock` to
-replace `litellm.completion` with a canned response.
+unit tests.
 
-`ari-skill-paper-re/tests/test_litellm_completer.py` is the
-reference example.
+The reference example is
+`ari-skill-paper-re/tests/test_litellm_completer.py`, and its technique is
+module injection rather than HTTP interception: `_install_fake_litellm`
+builds a `types.ModuleType("litellm")` with a stub `acompletion` and
+`monkeypatch.setitem(sys.modules, "litellm", fake)`, so nothing reaches the
+network and the test can assert the exact kwargs the completer forwarded.
+`respx` is available and used where a real HTTP client is the thing under
+test (`ari-skill-memory/tests/test_letta_http_regression.py`); `pytest-mock`
+is installed in CI for the same purpose.
 
 ### Dependent-state fixtures
 
@@ -203,16 +246,40 @@ must scope to the test.
 
 Several GitHub Actions workflows gate every PR to `main`.
 
-**Tests** — the `refactor-guards` workflow runs:
+**Tests** — the Python suites are split across two workflows, and neither
+runs the other's paths.
 
-- `pytest ari-core/tests -q`
-- `pytest ari-skill-coding/tests -q`
-- `pytest ari-skill-memory/tests -q`
-- ... per-skill suites
+- `refactor-guards` runs `pytest ari-core/tests/ -q` once, with `HOME`
+  redirected to a scratch directory and four files excluded by `--ignore`
+  (`test_letta_restart_live.py`, `test_letta_start_scripts.py`,
+  `test_ollama_gpu.py`, `test_dashboard_html.py` — the last because it wants
+  a Vite build no job produces). `test_no_user_home_writes.py` and
+  `test_public_api_boundary.py` (Phase 4, ensures skills only import from
+  `ari.public.*`) ride along inside that one invocation; they are not
+  separate steps. The workflow then fails if `$HOME/.ari/` exists, and a
+  second job diffs the PR for new `~/.ari` references outside an explicit
+  allowlist. Five further jobs (import boundaries, directory policy,
+  complexity, ruff lint, dead code) are all **advisory** —
+  `continue-on-error: true` plus `--warning-only`, so a finding never turns
+  a PR red. It is one of the two workflows that also trigger on the
+  `refactoring` branch (an in-file comment still claims it is the only one;
+  `skill-tests` was added with the same trigger later).
+- `skill-tests` runs seven skill suites, one pytest process per path
+  (`paper`, `evaluator`, `web`, `plot`, `memory`, `transform`, `replicate`),
+  with `-p no:randomly`. `ari-skill-coding` is **not** among them, and
+  `ari-skill-paper-re` is deliberately excluded because it vendors PaperBench
+  through a `git+chz` pull. The per-process split exists for the same reason
+  `pytest.ini` keeps the skills out of `testpaths`.
 
-It also runs `tests/test_no_user_home_writes.py` and
-`tests/test_public_api_boundary.py` (Phase 4, ensures skills only
-import from `ari.public.*`).
+**Dashboard frontend** — the `dashboard-frontend` workflow is a hard gate
+(no `continue-on-error`) over `ari-core/ari/viz/frontend`: `npm ci`,
+`npm run typecheck` (`tsc --noEmit`), then `npm test` (`vitest run`). It
+deliberately does **not** run `npm run build` or the Playwright screenshot
+capture. Because `npm test` is a whole-suite run, it also carries
+`src/__tests__/v1TypesDrift.test.ts` — which regenerates
+`src/services/api/v1types.gen.ts` in memory from `ari/viz/v1/openapi.json`
+and asserts byte equality — so editing the OpenAPI document without
+rerunning `npm run gen:v1types` fails here.
 
 **Contracts** — the `contracts` workflow runs
 `python scripts/check_skill_manifests.py` as a hard admission gate. It
@@ -242,10 +309,11 @@ Run any doc gate locally from the repo root, e.g.
 `python scripts/docs/check_i18n_js.py`.
 
 **Dashboard translations** — the dashboard UI ships its own trilingual
-dictionaries at `ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts`, and none of
-the workflows above cover them: `check_i18n_js.py` reads only
-`docs/i18n/landing.{en,ja,zh}.js`, and its key pattern matches single-quoted keys
-only, so it cannot parse dictionaries whose keys are bare identifiers. The rule
+dictionaries at `ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts`, and the docs
+gates do not reach them: `check_i18n_js.py` reads only
+`docs/i18n/landing.{en,ja,zh}.js` (its `SURFACES` tuple has one entry), and its
+key pattern `^\s*'([^']+)'\s*:` matches single-quoted keys only, so it cannot
+parse dictionaries whose keys are bare identifiers. The rule
 is the same one the docs set follows — the three locales must declare an
 **identical key set**, with no key repeated inside a file — so a new UI string
 has to be added to all three in the same change. A key present in one locale but
@@ -254,21 +322,22 @@ name when `en` lacks it too (`t()` in `src/i18n/index.ts`). Values are
 deliberately not compared: a proper noun may legitimately read the same in all
 three.
 
-Two checks enforce this, and **neither is wired into a workflow** — run them
-yourself when you touch dashboard strings:
+Two checks enforce this, and only one of them runs in CI:
 
 - `python scripts/check_dashboard_ux.py --fail-on-regression` — key-set parity
   plus duplicate detection over the three `.ts` files, bundled with the same
-  script's other dashboard-UX checks. It exits 1 on any finding not frozen in
-  `scripts/quality/check_dashboard_ux.allow.yaml`, and that allowlist holds no
-  i18n entries, so a parity break fails on its first run. Without the flag the
-  script prints its report and exits 0.
+  script's other dashboard-UX checks. **No workflow invokes it**, so run it
+  yourself when you touch dashboard strings. It exits 1 on any finding not
+  frozen in `scripts/quality/check_dashboard_ux.allow.yaml`, and that allowlist
+  holds no i18n entries, so a parity break fails on its first run. Without the
+  flag the script prints its report and exits 0.
 - `npx vitest run src/i18n/__tests__/parity.test.tsx`, from
   `ari-core/ari/viz/frontend` — the same invariant asserted against the imported
-  dictionaries, with a `KNOWN_DRIFT` allowlist that is currently empty. Its
-  duplicate-key assertion is weaker than the Python one, because a TypeScript
-  object literal has already collapsed any repeated key by the time the test
-  reads it.
+  dictionaries, with a `KNOWN_DRIFT` allowlist that is currently empty. This one
+  **is** gated: the `dashboard-frontend` workflow's `npm test` step runs the
+  whole Vitest suite, this file included. Its duplicate-key assertion is weaker
+  than the Python one, because a TypeScript object literal has already collapsed
+  any repeated key by the time the test reads it.
 
 Both pass on the current tree: the three dictionaries carry one identical key
 set, with no duplicates.
@@ -277,11 +346,10 @@ set, with no duplicates.
 level**. No conformance target exists in this documentation set or in the
 frontend suite, and nothing here should be read as one. What exists is a set of
 frozen baselines in
-`ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx`. Like the
-i18n checks above it is **not wired into any workflow** — no workflow runs the
-frontend suite at all (the only Node steps in CI build the VitePress docs site),
-so it is a hard row of the by-hand pre-cutover checklist instead (`npm test`,
-`docs/guides/gui_cutover_runbook.md` §2). Run just this file from
+`ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx`. It runs in
+CI as part of the `dashboard-frontend` workflow's `npm test` step, and it is
+also a row of the by-hand pre-cutover checklist
+(`docs/guides/gui_cutover_runbook.md` §2). Run just this file from
 `ari-core/ari/viz/frontend`:
 
 ```bash
@@ -404,10 +472,12 @@ returns nothing), it has no serializer module (the only two matches for
 `serializ` under `src/` are comments, in `services/api/client.ts` and
 `hooks/useRunEvents.ts`), and the config resolver is Python —
 `ari-core/ari/config/resolver.py`, reached over HTTP
-rather than through a frontend adapter. Second, a ratchet needs somewhere to
-run, and no workflow runs the frontend suite — the same reason the shell
-accessibility baseline and the bundle budget above are hand-run rows of the
-pre-cutover checklist rather than CI gates.
+rather than through a frontend adapter. Second, a ratchet needs a stored
+baseline and something to compare against it. The `dashboard-frontend`
+workflow now gives the frontend suite somewhere to run, but it runs
+`npm test`, not `npm test -- --coverage`, and no baseline file is committed
+on either side of the codebase — so the place exists and the measurement
+still does not.
 
 ## Writing a regression test
 

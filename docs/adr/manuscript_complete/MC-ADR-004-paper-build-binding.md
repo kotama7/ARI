@@ -14,7 +14,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_manuscript_complete.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # MC-ADR-004: PaperBuild companion binding

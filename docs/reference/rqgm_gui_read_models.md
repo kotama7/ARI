@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # RQGM GUI Read Models
@@ -164,7 +164,7 @@ Three consequences worth internalising:
 | Flag | `true` | `false` | `null` |
 |---|---|---|---|
 | `transitions_chain_ok` | Every line of `rqgm_transitions.jsonl` verifies: `event_hash` covers the line's declared event envelope (the payload alone only for legacy schema-v1 lines) and `prev_event_hash` chains (the first line from `""`). | A hash mismatch or a chain break was found; scanning continued so the data is still served, flagged. | The file is missing. |
-| `registry_verified` | `rqgm_registry.json`'s `as_of_event_hash` equals the committed transitions tail. | The rollup is stale or ahead of the log. | The rollup is missing/unreadable, or there is no transitions tail to compare with. |
+| `registry_verified` | `rqgm_registry.json`'s `as_of_event_hash` equals the last parsed line of `rqgm_transitions.jsonl` — the physical tail, which is also what the rollup writer records, so the two agree even while a prepare is still open. | The rollup is stale or ahead of the log. | The rollup is missing/unreadable, or there is no transitions tail to compare with. |
 | `audit_chain_ok` | `rqgm_audit.jsonl` verifies as an independent chain. | Break found. | The file is missing. |
 
 `null` is a first-class answer: **a missing source is never rendered as

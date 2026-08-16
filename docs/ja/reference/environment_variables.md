@@ -16,12 +16,26 @@ sources:
     role: implementation
   - path: ari-core/ari/assurance/executors.py
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/harness_registry.py
+    role: implementation
+  - path: ari-core/ari/evaluator/deterministic_evaluator.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # 環境変数リファレンス
 
-ARI は 150 を超える環境変数を参照します。ここではそれらを一覧で確認できるよう
+ARI は 160 を超える環境変数を参照します。ここではそれらを一覧で確認できるよう
 まとめています。ほとんどは適切なデフォルト値を持っていますが、**Required?** 列は
 新規チェックアウト状態では動作しないものを示しています。
 
@@ -42,7 +56,7 @@ ARI は 150 を超える環境変数を参照します。ここではそれら�
 | `ARI_WORKSPACE` | 新規実行の親ディレクトリ（orchestrator スキルが使用） | (なし) | ✓ (`ari-skill-orchestrator` 用) |
 | `ARI_WORK_DIR` | ノードごとの作業ディレクトリルート（`ari-skill-coding`） | `/tmp/ari_work` | – |
 | `ARI_LOG_DIR` | アプリケーションログディレクトリ | `$ARI_CHECKPOINT_DIR` | – |
-| `ARI_ROOT` | ARI ソースツールルート（テストで使用） | (自動検出) | – |
+| `ARI_ROOT` | ARI ソースツリーのルート。テストだけでなく、本番でも `ari.mcp.connection`（skill 起動）と `ari.config` が読む | (パッケージ位置から自動検出) | – |
 | `ARI_SOURCE_FILE` | 入力 experiment.md パスの上書き | (なし) | – |
 
 `ARI_CHECKPOINT_DIR` には、表では表せない書き込み側の**慣習**があります。現在の
@@ -76,11 +90,11 @@ ARI は 150 を超える環境変数を参照します。ここではそれら�
 | `ARI_MODEL_PAPER` | 論文執筆・改稿モデル | `ARI_LLM_MODEL` にフォールスルー |
 | `ARI_MODEL_RUBRIC` | 独立rubric査読・固定論文パネルのモデル | `ARI_LLM_MODEL` にフォールスルー |
 | `ARI_PANEL_SEED` | 固定査読パネルの各評価呼出しに記録する要求シード | 未設定。標本化を制御できるかは提供元・実行基盤に依存 |
-| `ARI_MODEL_JUDGE` | BFTS ジャッジのモデル | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_JUDGE` | PaperBench SimpleJudge (`grade_with_simplejudge`) のモデル | `ARI_LLM_MODEL`、次いで `gpt-5-mini` にフォールスルー |
 | `ARI_MODEL_LINEAGE` | 停滞 / lineage 決定のモデル (v0.7.0) | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_ROOT_SELECT` | シードアイデアを選ぶモデル | `ARI_MODEL` にフォールスルー |
 | `ARI_MODEL_IDEA` | `generate_ideas` のモデル | `ARI_MODEL` にフォールスルー |
-| `ARI_MODEL_REPLICATE` | レプリケータ高レベル推論のモデル (v0.7.0) | `ARI_MODEL` にフォールスルー |
+| `ARI_MODEL_REPLICATE` | **実行時は不活性**。名称は `ARI_MODEL_REPLICATOR` に改称済みで、残る読み手はレガシー Settings カードのみ（表示上の `ors.replicator_model` 既定値を埋めるだけ）。レプリケータ本体が読むのは `ARI_MODEL_REPLICATOR` | (Settings 既定値として `claude-opus-4-7`) |
 | `ARI_MODEL_REPLICATOR` | `ari-skill-paper-re.build_reproduce_sh` が使用するモデル | フォールスルー |
 | `ARI_MODEL_RUBRIC_GEN` | `ari-skill-replicate.generate_rubric` のモデル | フォールスルー |
 | `ARI_MODEL_RUBRIC_AUDIT` | `ari-skill-replicate.audit_rubric` のモデル | フォールスルー |
@@ -128,13 +142,51 @@ ARI は 150 を超える環境変数を参照します。ここではそれら�
 | `ARI_MAX_DEPTH` | ツリー深さの上限 | (workflow 制御) |
 | `ARI_MAX_REACT` | ノードごとの ReAct 反復上限 | (workflow 制御) |
 | `ARI_PARALLEL` | 並行ノード実行数 | `4` |
-| `ARI_TIMEOUT_NODE` | ノードごとのウォールタイム上限（秒） | (なし) |
+| `ARI_TIMEOUT_NODE` | ノードごとのウォールタイム上限（秒） | `7200`（2 時間） |
 | `ARI_BFTS_ALLOW_WEB` | オプトイン：BFTS ノードエージェントに**探索中**の `web-skill`（web_search / fetch_url / arXiv / Semantic Scholar）を公開。デフォルト無効では探索ループの再現性（P5）を維持；有効にすると ARI は非再現トラジェクトリのマーカ（`bfts_web_provenance.json`）を記録します。`idea-skill` の `survey` は、これとは無関係に常に範囲限定の文献検索を行います。`1`/`true`/`yes`/`on` で有効化 | `false` |
 | `ARI_RECURSION_DEPTH` | ネストされた ARI 実行の現在深さ（自動設定） | (自動) |
 | `ARI_MAX_RECURSION_DEPTH` | orchestrator 再帰の上限 | `3` |
 | `ARI_PARENT_RUN_ID` | 再帰時の親 run ID（自動設定） | (自動) |
 | `ARI_DISABLED_TOOLS_FOR_CHILD` | **不活性 — 予約済みで読み手が無い。** `ari/cli/lineage.py` が lineage child に対して空文字を設定するだけで、ツリー内のどこもこれを読み返さないため、何も削減しない。`disabled_tools` は YAML からのみ設定される。依存しないこと。 | (なし) |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` の `top_k` 上限 | (スキルデフォルト) |
+| `ARI_NODE_EXEC_BUDGET_S` | ノードごとのウォールタイム予算で、すべての `run_bash` / `run_code` 呼び出しが共有する。1 回の呼び出しはそれ自身のタイムアウトで上限が掛かるが、合計には何の上限も無かったため、1 ノードがノードごとのタイムアウトをまるごとシェル呼び出しに使い切り、レポートを一切残さないまま kill されることがあった。予算を使い切ると呼び出しは拒否され、1 回の呼び出しが残り時間より長く走ることも許されない。`0` で無効 | `1800` |
+| `ARI_NODE_COMPUTE_BUDGET_NS` | ノードごとの**スケジューラ**作業の予算。単位は **ノード秒**（`nodes` × ウォールタイム）で、スケジューラが実際に割り当てる単位。`ARI_NODE_EXEC_BUDGET_S` が課金するのは 1 台のマシン上の時間である `run_bash`/`run_code` だけで、ジョブ投入には何も課金されなかった。そのためローカルシェルを 30 分使ったノードは拒否される一方、1000 ノード 2 時間のジョブはゼロ課金で通った。完了時の経過時間に対してではなく、**投入時**に予約（reservation）に対して課金する: 費用を事後にしか知らない予算は何も拒否できず、スケジューラは作業がいつ終わるかに関わらず予約全体を確保し続けるからである。予算超過の投入はスケジューラへ届く**前に**拒否される。いったんキューに入った予約は、その後どうしようと確保されたままだからである。`slurm_submit`、`job_submit`、`container_submit` のいずれも同じく対象。予算が設定されているかどうかに関わらず、予約は `resource_measurement_basis: declared-reservation` としてコストトレースに書き出されるため、「この探索はクラスタをどれだけ使ったか」はどちらの場合でも答えられる。未設定 / `0` = 無制限 | (未設定 ⇒ 無制限) |
+| `ARI_V2_SUPPRESS_TOOLS` | `describe_environment` / `run_code` / `emit_results` を**探索ループ**から隠す（他のフェーズや ARI の他の利用者には引き続き提供される）。呼び出しを 1 つ隠せば、その分 1 ステップをカーネルの編集に取り戻せる。20 ステップの予算ではこれが効いてくる。局所的な削減では済まないためオプトイン: `system.md` は*終了*を `emit_results` で条件づけているので、有効にするとその一文も書き換わり（さもなければエージェントは満たせない停止条件を抱えることになる）、さらに run が採点されるエビデンス経路もこれと共に変わる。論文再現の経路はまさにこれらのツールを必要とするので、要求されない限り何も隠さない | (未設定 ⇒ すべてのツールを提供) |
+
+### タスク + 問題の選択
+
+run が何に対して採点されるかを決めます。`ARI_PROBLEM` は**ピン留めされた問題**を
+指名するもので、こちらがサポートされる経路です。`ARI_TASK` は旧来のプロトタイプ
+harness レジストリに届き、採点の用途で参照されるのは問題がピン留めされていない
+ときだけです。
+
+| 変数 | 用途 | デフォルト |
+|---|---|---|
+| `ARI_PROBLEM` | この run を測る対象となる、ピン留めされた問題。設定されている場合、評価は `assurance_measure` を経由して行われ、各ノードの `work_dir` はその問題が宣言した `score_inputs` から seed される。つまり追跡されていないツリーが数字を決めることはない。seed は決して上書きしない: 子の `work_dir` は親のコピーであり、親の候補こそが handoff そのものだから | (未設定 ⇒ `ARI_TASK` の経路) |
+| `ARI_TASK` | プロトタイプ harness レジストリ向けのタスク名。**設定されていて未知**のタスクは `spmm` にフォールバックせずエラーになる: 別のベンチマークを測っておきながら要求されたものとして報告することこそ、このレジストリが防ぐために存在する事態だから。あわせて handoff の run ディレクトリ名の task 部分を供給する（`ARI_PROBLEM` とは独立に働く） | `spmm`（命名時は `task`） |
+| `ARI_HARNESS` | 1 つのタスクを複数の harness が担えるとき、どれを使うか。レジストリは**自分では選ばない**。ソート順で先に来たものを黙って束縛すれば、スコアがディレクトリ名に依存し、しかもその数字が harness ではなくタスクに帰属してしまうから。同名なら workspace に登録された harness が同梱のものに勝ち、選択は provenance に記録される | (なし) |
+| `ARI_SEED` | ローカルモデルの run を再現可能にするための固定サンプリング seed（`llm.seed`）。整数でない値は例外ではなく無視される。あわせて handoff の run ディレクトリ名の seed 部分となり、アームや seed をまたいで同一秒に生成される run id の衝突を解消する | (未設定 ⇒ バックエンド既定；命名時は `0`) |
+
+### 親→子 handoff (`ARI_HANDOFF_*`)
+
+これらはプロファイルのオーバーライドの**後**に `apply_handoff_env_overrides` が
+適用するため、明示的な選択が勝ちます。`ARI_HANDOFF_MODE` は `HandoffConfig` を
+再構築してモード→チャネルの解決を走らせ、以下の個別スイッチはその後にチャネル
+単位で上書きしてアブレーションを行います。設定ファイル側の等価物は `handoff:`
+ブロックにあります。
+
+| 変数 | 用途 | デフォルト |
+|---|---|---|
+| `ARI_HANDOFF_MODE` | アームを選択する。例: `disabled` / `code_only` / `summary_only` / `code_plus_summary` / `code_plus_full_log` / `evidence_only` / `evidence_plus_reflection`。あわせて run ディレクトリを `ARI_TASK` / `ARI_SEED` から `<task>_<mode>_seed<seed>` と命名し、全アームで同一になるゴールの slug ではなく「何を継承したか」をディレクトリ名が語るようにする。認識できない値が無視されるのは**アーム選択に限った話**で、命名の分岐は空でない値なら何であれ働く。つまり mode を打ち間違えると、設定ファイルが解決したアームを打ち間違いの名前が付いたディレクトリの下で走らせることになる | (設定ファイル) |
+| `ARI_HANDOFF_COPY_WORKDIR` | 子が親の work_dir（アーティファクト / コードのチャネル）を継承するか | (モードから) |
+| `ARI_HANDOFF_AGENT_BLOCK` | 親の運用サマリを子のエージェントプロンプトへ注入する | (モードから) |
+| `ARI_HANDOFF_PLANNER_BLOCK` | 親のサマリをプランナのプロンプトへ注入する。真偽の解釈が異なる 2 か所で読まれる: 設定側のオーバーライドが受け付けるのは `1`/`true`/`yes`/`on` だが、注入側は `0`/`false`/`no`/`off` 以外のあらゆる値を on として扱う。したがってこの 4 綴り以外の値は、設定側では OFF、ブロックが書き込まれる側では ON と読まれる。4 綴りのいずれかを使うこと | (モードから) |
+| `ARI_HANDOFF_MEMORY_OFF` | 事実上のメモリチャネルを抑止し、アームが明示的な handoff チャネル以外の運用状態を一切受け取らないようにする。終了時のバックアップがスキップされるのはリテラル `1` のときだけで、`true`/`yes`/`on` はチャネルを閉じはするものの checkpoint にはメモリのバックアップが残る | (モードから) |
+| `ARI_HANDOFF_LOG_MODE` | `none` / `full` / `truncated` / `masked` — 親の実行ログをどこまで渡すか | (モードから) |
+| `ARI_HANDOFF_LOG_LIMIT` | 注入する親ログの文字数上限 | `48000` |
+| `ARI_HANDOFF_SUMMARY_FORM` | `extractive` / `rolling` / `failure_only` / `evidence` / `evidence_reflection` | (モードから) |
+| `ARI_HANDOFF_SUMMARY_FIELDS` | サマリに含めるフィールドのカンマ区切り許可リスト（フィールド落としのアブレーション） | (すべて) |
+| `ARI_HANDOFF_PAIRED_MODES` | 1 回の起動の中で対にして走らせるアームのカンマ区切りリスト | (なし) |
 
 ### 実行モード (RQGM)
 
@@ -177,6 +229,19 @@ to `simple_bfts`」/「…or the paper phase falls back to `linear`」）。
 | 変数 | 目的 | デフォルト |
 |---|---|---|
 | `ARI_HARNESS_CONTAINER_ROOT` | **論理的な** Harness コンテナ参照（`apptainer:<name>.sif` または `singularity:<name>.sif`）を解決する絶対ルート。検証済みエントリが論理形式を持つのは、公開されるマニフェストにサイト固有のパスを含めないためであり、その結果として具体的なディレクトリは環境からしか与えられない。未設定 ⇒ 論理参照は `HarnessSubstrateError` で拒否される。素のパス参照は互換入力としてそのまま通り、この変数を参照しない。ルートは絶対パスかつ実在するディレクトリで、シンボリックリンクであってはならない。解決後のイメージはそのルート直下にある通常ファイル（シンボリックリンク不可）でなければならず、ルート外へ解決されるものは拒否される | (なし — 論理参照を使う場合のみ必要) |
+
+### Manuscript Complete
+
+| 変数 | 用途 | デフォルト |
+|---|---|---|
+| `ARI_MANUSCRIPT_MODE` | 新規 attempt の方針: `off` \| `audit` \| `enforce`。research モードや paper モードとは独立しており、resume が永続化済みの attempt binding を書き換えることはできない。 | `off` |
+| `ARI_MANUSCRIPT_REPAIR_POLICY` | repair の方針: `disabled` \| `explicit` \| `auto`。`auto` は実効の manuscript モードが `enforce` でない限り不正。 | `disabled` |
+
+これ以外の `ARI_MANUSCRIPT_*_PATH`、予算、トポロジ、実効ポリシーの各変数は、
+paper ディスパッチャが設定するプライベートでスコープの限られた受け渡しです。
+運用者はこれらを直接 export するのではなく `workflow.yaml` から設定してください。
+[Manuscript Complete オペレータランブック](../guides/manuscript_complete_operations.md)
+を参照。
 
 ### バックエンド + エグゼキュータ
 
@@ -300,6 +365,7 @@ source だけが実行できるためです。
 | 変数 | 用途 |
 |---|---|
 | `ARI_SLURM_PARTITION` | デフォルトパーティション |
+| `ARI_HPC_ALLOWED_NODES` | サイトポリシー: ARI が作業を配置してよい唯一のノード集合を、SLURM の hostlist 構文で指定する（`cn01,cn02`、`cn[01-04]`）。未設定 = 制限なしで、リクエストは何も手を加えられずに素通りする。設定するとスケジューラ境界で強制されるため、`job_submit`、`container_submit`、`slurm_submit` のいずれにも等しく効く: ノードを**指定していない**リクエストはこの集合へ閉じ込められ（nodelist が無ければスケジューラはパーティション内の任意のノードを選べてしまい、それこそがこのポリシーの防ごうとしていることである）、集合外を指定したリクエストは投入前に拒否される。閉じ込めはリクエストの digest を取る**前**に適用されるので、ジョブがどこで走ってよいかはその claim identity の一部になり、resume した run はより広いポリシーの下で作られた claim を引き継げない。厳密に展開できない nodelist は、受理せず拒否する。ノード名はサイトのアイデンティティであるため、追跡対象のファイルではなく環境に保持する |
 | `ARI_SLURM_CPUS` | デフォルト `--cpus-per-task` |
 | `ARI_SLURM_GPUS` | デフォルト `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | デフォルトメモリリクエスト |
@@ -351,15 +417,15 @@ source だけが実行できるためです。
 |---|---|
 | `SLURM_MODE` | `local`（デフォルト）/ `ssh` |
 | `SLURM_SSH_HOST` | リモート SLURM モード用 SSH ホスト |
-| `SLURM_SSH_USER` | SSH ユーザ（デフォルトは現在のユーザ） |
+| `SLURM_SSH_USER` | SSH ユーザ。remote モードでは**必須**で、現在のユーザへのフォールバックはなく、空値は拒否される |
 | `SLURM_SSH_PORT` | SSH ポート（デフォルト `22`） |
 | `SLURM_SSH_KEY` | 秘密鍵パス |
 | `SLURM_SSH_PASSWORD` | 任意のパスワード（鍵方式を推奨） |
 | `SLURM_DEFAULT_PARTITION` | ARI が起動するサブジョブのデフォルトパーティション |
-| `SLURM_PARTITION` | ジョブごとのパーティション上書き |
-| `SLURM_VALID_PARTITIONS` | カンマ区切りの許可リスト |
-| `SLURM_LOG_DIR` | `*.out` / `*.err` の書き込み先 |
-| `SLURM_CLUSTER_NAME` | ダッシュボードに表示される名前 |
+| `SLURM_PARTITION` | paper-re のサンドボックスランナー（`_resolve_partition`）が `ARI_SLURM_PARTITION` の次に参照するフォールバック。他に読み手はない |
+| `SLURM_VALID_PARTITIONS` | **不活性 — 読み手なし。** `scripts/setup/setup_env.sh` がコメントアウトで事前生成するだけで、ツリー内に読み戻す箇所はない。ノード単位のポリシーは `ARI_HPC_ALLOWED_NODES` |
+| `SLURM_LOG_DIR` | **不活性 — 読み手なし。** `setup_env.sh` が事前生成し skill サブプロセスへ引き渡されるが、sbatch スクリプトの `--output` / `--error` はジョブの artifact scope 配下を指しており、ここではない |
+| `SLURM_CLUSTER_NAME` | SLURM 自身が設定する。ARI は（`SLURM_JOB_ID` と併せて）「クラスタ上か否か」の存在確認にのみ読む |
 | `SLURM_JOB_ID` / `SLURM_JOB_NODELIST` / `SLURM_JOB_PARTITION` | ARI がジョブ内で実行される場合に SLURM が設定 |
 
 ## Letta (`LETTA_*`)
@@ -368,7 +434,7 @@ source だけが実行できるためです。
 |---|---|
 | `LETTA_BASE_URL` | Letta API ベース（デフォルト `http://localhost:8283`） |
 | `LETTA_API_KEY` | Letta が認証を要求する場合の API キー |
-| `LETTA_EMBEDDING_CONFIG` | 埋め込み設定 JSON へのパス（必須） |
+| `LETTA_EMBEDDING_CONFIG` | Letta に渡す埋め込みモデルの**ハンドル**（例: `letta-default`）。ファイルパスではなく、必須でもない（未設定なら `letta-default`） |
 
 ## Ollama / OpenAI (`OLLAMA_*` / `OPENAI_*`)
 

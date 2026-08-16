@@ -185,9 +185,9 @@ context 要件を持つツールに対してこの名前で認可済み call con
 エージェントからは決して見えません。`ari-skill-idea/tests/test_server.py` は
 `mcp.list_tools()` 経由で `survey` と `generate_ideas` が登録されていること、
 およびこのヘルパーが登録されていないことをピン留めしています。
-`mint_contract_for_proposal` はランタイムでは登録されていますが `skill.yaml`
-にも `mcp.json` にも宣言されていないため、`scripts/check_skill_manifests.py`
-は現在このパッケージについて `tool-drift` を報告します。provider 間の
+`mint_contract_for_proposal` は他の 2 つと同様 `skill.yaml` にも `mcp.json`
+にも宣言されているため、`scripts/check_skill_manifests.py` はこのパッケージに
+ついて `tool-drift` を報告しません。provider 間の
 フォールバックはありません: `virsci-snapshot` の survey はコーパスが無ければ
 `FileNotFoundError` を、Semantic Scholar の survey は HTTP エラーをそのまま
 raise します。障害時に得られるのは黙って別物になったコーパスではなく拒否です。
@@ -460,9 +460,9 @@ Resolver でも Fixed Verifier でもなく、エージェントのツール選�
 context requirement を宣言するため、input schema に `ari_context` を持ちます —
 上記 `measure_counters` と同じ注入規則で、transport が埋めるのでエージェントが
 渡す引数ではありません。なおこのパッケージの `mcp.json` は skill.yaml から
-再生成されていない唯一のレガシー manifest で、いまだ 5 つの名前しか載せておらず、
-`scripts/check_skill_manifests.py` は欠けている `invoke_scheduled` を
-`compat-metadata-drift` として報告します。カタログの identity、admission レベル、provider adapter に
+再生成済みで、`invoke_scheduled` を含む 6 つの名前をすべて載せているため、
+`scripts/check_skill_manifests.py` は
+`compat-metadata-drift` を報告しません。カタログの identity、admission レベル、provider adapter に
 ついては [Federated Scientific Tool Registry](tool_registry.md) を参照して
 ください。
 

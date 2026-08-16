@@ -16,12 +16,26 @@ sources:
     role: implementation
   - path: ari-core/ari/assurance/executors.py
     role: implementation
-last_verified: 2026-08-08
+  - path: ari-core/ari/harness_registry.py
+    role: implementation
+  - path: ari-core/ari/evaluator/deterministic_evaluator.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # 环境变量参考
 
-ARI 支持 150 多个环境变量，在此汇总以便查阅。大多数变量有合理的默认值；**Required?** 列标记了全新检出时不可缺少的变量。
+ARI 支持 160 多个环境变量，在此汇总以便查阅。大多数变量有合理的默认值；**Required?** 列标记了全新检出时不可缺少的变量。
 
 `docs/reference/configuration.md` 以教程形式介绍相同内容；本页为按字母顺序排列的查阅参考。
 
@@ -37,7 +51,7 @@ ARI 支持 150 多个环境变量，在此汇总以便查阅。大多数变量�
 | `ARI_WORKSPACE` | 新运行的父目录（供 orchestrator skill 使用） | （无） | ✓ 对于 `ari-skill-orchestrator` |
 | `ARI_WORK_DIR` | 每节点工作目录根（`ari-skill-coding`） | `/tmp/ari_work` | – |
 | `ARI_LOG_DIR` | 应用日志目录 | `$ARI_CHECKPOINT_DIR` | – |
-| `ARI_ROOT` | ARI 源代码树根目录（测试时使用） | （自动检测） | – |
+| `ARI_ROOT` | ARI 源代码树根目录 —— 不只用于测试，生产路径中 `ari.mcp.connection`（skill 启动）与 `ari.config` 也会读取 | （由包位置自动检测） | – |
 | `ARI_SOURCE_FILE` | 覆盖输入 experiment.md 路径 | （无） | – |
 
 `ARI_CHECKPOINT_DIR` 还带有一条表格无法表达的写入侧**约定**。把当前进程钉到某次
@@ -68,11 +82,11 @@ ARI 支持 150 多个环境变量，在此汇总以便查阅。大多数变量�
 | `ARI_MODEL_PAPER` | 论文写作与修订模型 | 回退至 `ARI_LLM_MODEL` |
 | `ARI_MODEL_RUBRIC` | 独立rubric评审与固定论文面板模型 | 回退至 `ARI_LLM_MODEL` |
 | `ARI_PANEL_SEED` | 为固定评审面板的每次 rubric 调用记录的请求 seed | 未设置；能否控制采样取决于提供方和后端 |
-| `ARI_MODEL_JUDGE` | BFTS judge 使用的模型 | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_JUDGE` | PaperBench SimpleJudge（`grade_with_simplejudge`）使用的模型 | 回退至 `ARI_LLM_MODEL`，再回退至 `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | 停滞/沿袭决策使用的模型（v0.7.0） | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | 选取种子 idea 使用的模型 | 回退至 `ARI_MODEL` |
 | `ARI_MODEL_IDEA` | `generate_ideas` 使用的模型 | 回退至 `ARI_MODEL` |
-| `ARI_MODEL_REPLICATE` | 复现器高层推理使用的模型（v0.7.0） | 回退至 `ARI_MODEL` |
+| `ARI_MODEL_REPLICATE` | **运行时无效**。该名称已改为 `ARI_MODEL_REPLICATOR`；仅存的读取方是旧版 Settings 卡片，用于填充所显示的 `ors.replicator_model` 默认值。复现器本身读取的是 `ARI_MODEL_REPLICATOR` | （Settings 默认值 `claude-opus-4-7`） |
 | `ARI_MODEL_REPLICATOR` | `ari-skill-paper-re.build_reproduce_sh` 使用的模型 | 回退 |
 | `ARI_MODEL_RUBRIC_GEN` | `ari-skill-replicate.generate_rubric` 使用的模型 | 回退 |
 | `ARI_MODEL_RUBRIC_AUDIT` | `ari-skill-replicate.audit_rubric` 使用的模型 | 回退 |
@@ -119,13 +133,48 @@ ARI 支持 150 多个环境变量，在此汇总以便查阅。大多数变量�
 | `ARI_MAX_DEPTH` | 树深度硬性上限 | （由 workflow 控制） |
 | `ARI_MAX_REACT` | 每节点 ReAct 迭代上限 | （由 workflow 控制） |
 | `ARI_PARALLEL` | 并发节点执行器数 | `4` |
-| `ARI_TIMEOUT_NODE` | 每节点挂墙时间上限（秒） | （无） |
+| `ARI_TIMEOUT_NODE` | 每节点挂墙时间上限（秒） | `7200`（2 小时） |
 | `ARI_BFTS_ALLOW_WEB` | 可选：在**探索期间**向 BFTS 节点智能体暴露 `web-skill`（web_search / fetch_url / arXiv / Semantic Scholar）。默认关闭以保持搜索循环可重现（P5）；开启后，ARI 会记录不可重现轨迹标记（`bfts_web_provenance.json`）。`idea-skill` 的 `survey` 无论如何都会进行有界的文献检索。`1`/`true`/`yes`/`on` 启用 | `false` |
 | `ARI_RECURSION_DEPTH` | 嵌套 ARI 运行中的当前深度（自动设置） | （自动） |
 | `ARI_MAX_RECURSION_DEPTH` | orchestrator 递归上限 | `3` |
 | `ARI_PARENT_RUN_ID` | 递归时父运行 id（自动设置） | （自动） |
 | `ARI_DISABLED_TOOLS_FOR_CHILD` | **惰性 —— 已预留，无读取方。** `ari/cli/lineage.py` 只为 lineage 子运行设置空字符串，树中没有任何代码回读它，因此不会裁剪任何工具。`disabled_tools` 仅从 YAML 填充。请勿依赖它。 | （无） |
 | `ARI_REACT_MEMORY_SEARCH_LIMIT` | `search_memory` `top_k` 上限 | （技能默认值） |
+| `ARI_NODE_EXEC_BUDGET_S` | 由该节点全部 `run_bash` / `run_code` 调用共享的每节点挂墙时间预算。单次调用受它自己的超时约束，但此前没有任何东西约束这些调用的**总和**，于是一个节点可能把整个每节点超时全耗在 shell 调用上，最后被杀掉且完全没有留下报告。预算用尽后调用会被拒绝，且任何单次调用都不得超出剩余额度。`0` 表示禁用 | `1800` |
+| `ARI_NODE_COMPUTE_BUDGET_NS` | 面向**调度器**工作的每节点预算，单位是**节点秒**（`nodes` × 挂墙时间）—— 也就是调度器分配资源所用的单位。`ARI_NODE_EXEC_BUDGET_S` 计的是 `run_bash`/`run_code`，那是单台机器上的时间；而提交作业此前完全不计费，于是一个节点可能在半小时本地 shell 之后被拒绝，而一个一千节点、两小时的作业却分文不计。计费发生在**提交**时、按**预留**计，而不是在完成时按实际耗时计：一个事后才知道成本的预算什么也拒绝不了，而且无论作业的活何时干完，调度器都一直占着整份预留。超预算的提交会在到达调度器**之前**被拒绝，因为已排队的预留无论后续发生什么都会被占住。`slurm_submit`、`job_submit` 与 `container_submit` 一视同仁。无论是否设置了预算，预留都会以 `resource_measurement_basis: declared-reservation` 写入成本轨迹，因此「这次搜索用掉了多少集群资源」两种情况下都答得出来。未设置 / `0` = 不设限 | （未设置 ⇒ 不设限） |
+| `ARI_V2_SUPPRESS_TOOLS` | 在**搜索循环**中隐藏 `describe_environment` / `run_code` / `emit_results`（它们对其他所有阶段、以及 ARI 的其他使用者仍然可用）。每隐藏一次调用，就把一步还给「真正去改 kernel」，在 20 步预算下这并非小事。设计为可选启用，因为它不是一次局部裁剪：`system.md` 把*完成*的条件挂在 `emit_results` 上，所以启用它同时也会改写那句话 —— 否则智能体将面对一个自己无法满足的停止条件 —— 并且一次运行被评分所经由的证据路径也会随之改变。论文复现路径恰恰需要这几个工具，因此不明确要求就什么都不隐藏 | （未设置 ⇒ 提供全部工具） |
+
+### 任务 + 问题的选择
+
+决定一次运行以什么为评分对象。`ARI_PROBLEM` 指名一个**被 pin 住的问题**，这是受
+支持的路径；`ARI_TASK` 走的是较早的原型 harness 注册表，只有在没有 pin 住问题时
+才会被用于评分。
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_PROBLEM` | 本次运行据以测量的、被 pin 住的问题。设置后，评估经由 `assurance_measure` 进行，每个节点的 `work_dir` 都从该问题声明的 `score_inputs` 播种 —— 于是没有任何未被追踪的目录树能决定这个数字。播种绝不覆盖：子节点的 `work_dir` 是父节点的副本，而父节点的候选本身*就是* handoff | （未设置 ⇒ 走 `ARI_TASK` 路径） |
+| `ARI_TASK` | 原型 harness 注册表使用的任务名。**设置了但无法识别**的任务会报错，而不是回落到 `spmm`：测的是另一个基准却按被请求的那个来报告，正是该注册表存在的目的所要杜绝的。同时提供 handoff 运行目录名中的 task 部分，与 `ARI_PROBLEM` 无关 | `spmm`（命名时为 `task`） |
+| `ARI_HARNESS` | 当一个任务有多个 harness 可用时选哪一个。注册表**拒绝替你选择**：把排序在前的那个悄悄绑定上去，会让分数取决于目录名，并且把这个数字归属给任务而不是产生它的 harness。同名时，注册在 workspace 下的 harness 胜过随包发布的那个，且该选择会记入 provenance | （无） |
+| `ARI_SEED` | 让本地模型的运行可复现的固定采样 seed（`llm.seed`）；非整数取值被忽略而不是抛错。同时作为 handoff 运行目录名中的 seed 部分 —— 正是它化解了跨 arm、跨 seed 在同一秒生成的 run id 冲突 | （未设置 ⇒ 后端默认；命名时为 `0`） |
+
+### 父→子 handoff（`ARI_HANDOFF_*`）
+
+由 `apply_handoff_env_overrides` 在 profile 覆盖**之后**应用，因此显式选择胜出。
+`ARI_HANDOFF_MODE` 会重建 `HandoffConfig`，使 mode→通道的解析重新跑一遍；下面
+各个单独开关随后可为消融实验覆盖单条通道。对应的配置项位于 `handoff:` 块下。
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_HANDOFF_MODE` | 选择 arm，例如 `disabled` / `code_only` / `summary_only` / `code_plus_summary` / `code_plus_full_log` / `evidence_only` / `evidence_plus_reflection`。同时按 `ARI_TASK` / `ARI_SEED` 把运行目录命名为 `<task>_<mode>_seed<seed>`，让目录名讲清楚「继承了什么」，而不是在所有 arm 上重复同一个目标 slug。无法识别的取值只是在 **arm 选择**上被忽略；命名分支只要取值非空就照常生效，于是拼错的 mode 会在以该拼写命名的目录下跑配置解析出的那个 arm | （配置） |
+| `ARI_HANDOFF_COPY_WORKDIR` | 子节点是否继承父节点的 work_dir（工件 / 代码通道） | （由 mode 决定） |
+| `ARI_HANDOFF_AGENT_BLOCK` | 把父节点的操作性摘要注入子节点的智能体提示 | （由 mode 决定） |
+| `ARI_HANDOFF_PLANNER_BLOCK` | 把父节点的摘要注入规划器提示。它在两处被读取，且真值判定不同：配置侧的覆盖只接受 `1`/`true`/`yes`/`on`，而注入侧把除 `0`/`false`/`no`/`off` 之外的任何取值都当作开。因此这四种拼写以外的取值，在配置侧读作关、在写入该块的地方读作开。请使用这四种之一 | （由 mode 决定） |
+| `ARI_HANDOFF_MEMORY_OFF` | 抑制事实上的记忆通道，使某个 arm 除了它显式的 handoff 通道之外拿不到任何操作状态。退出时的备份仅在字面值 `1` 时跳过；`true`/`yes`/`on` 虽然关掉了通道，checkpoint 里仍会留下一份记忆备份 | （由 mode 决定） |
+| `ARI_HANDOFF_LOG_MODE` | `none` / `full` / `truncated` / `masked` —— 父节点的执行日志传递多少 | （由 mode 决定） |
+| `ARI_HANDOFF_LOG_LIMIT` | 注入的父节点日志的字符数上限 | `48000` |
+| `ARI_HANDOFF_SUMMARY_FORM` | `extractive` / `rolling` / `failure_only` / `evidence` / `evidence_reflection` | （由 mode 决定） |
+| `ARI_HANDOFF_SUMMARY_FIELDS` | 摘要字段的逗号分隔白名单（字段丢弃消融） | （全部） |
+| `ARI_HANDOFF_PAIRED_MODES` | 在一次调用内成对运行的 arm，逗号分隔 | （无） |
 
 ### 执行模式（RQGM）
 
@@ -165,6 +214,18 @@ Harness 运行基座，而不属于模式选择：
 | 变量 | 用途 | 默认值 |
 |---|---|---|
 | `ARI_HARNESS_CONTAINER_ROOT` | 解析**逻辑** Harness 容器引用（`apptainer:<name>.sif` 或 `singularity:<name>.sif`）所用的绝对根目录。已验证条目之所以采用逻辑形式，正是为了让发布出去的 manifest 不含站点路径，于是具体目录只能来自环境。未设置 ⇒ 逻辑引用会以 `HarnessSubstrateError` 被拒绝；普通路径引用作为兼容输入原样通过，且完全不读取该变量。该根必须是绝对路径、真实目录且不是符号链接；解析后的镜像必须是直接位于该根下的常规文件（不能是符号链接），任何解析到根之外的情况都会被拒绝 | （无 —— 仅在使用逻辑引用时需要） |
+
+### Manuscript Complete
+
+| 变量 | 用途 | 默认值 |
+|---|---|---|
+| `ARI_MANUSCRIPT_MODE` | 新一次 attempt 的姿态：`off` \| `audit` \| `enforce`。它与研究模式、论文模式彼此独立；resume 无法改写已经持久化的 attempt binding。 | `off` |
+| `ARI_MANUSCRIPT_REPAIR_POLICY` | repair 姿态：`disabled` \| `explicit` \| `auto`。除非生效的 manuscript 模式是 `enforce`，否则 `auto` 无效。 | `disabled` |
+
+其余的 `ARI_MANUSCRIPT_*_PATH`、预算、拓扑与 effective-policy 变量，是由论文
+dispatcher 装入的私有、限定作用域的传递值。运维人员应当通过 `workflow.yaml`
+配置它们，而不要直接 export。参见
+[Manuscript Complete 操作员运行手册](../guides/manuscript_complete_operations.md)。
 
 ### 后端 + 执行器
 
@@ -286,6 +347,7 @@ Harness 运行基座，而不属于模式选择：
 | 变量 | 用途 |
 |---|---|
 | `ARI_SLURM_PARTITION` | 默认分区 |
+| `ARI_HPC_ALLOWED_NODES` | 站点策略：ARI 唯一可以把工作放上去的节点集合，采用 SLURM hostlist 语法（`cn01,cn02`、`cn[01-04]`）。未设置 = 不加限制，请求原样通过。设置后会在调度器边界上强制执行，因此对 `job_submit`、`container_submit` 与 `slurm_submit` 一视同仁：**没有**指名任何节点的请求会被约束到这个集合之内 —— 没有 nodelist 时调度器可以在分区里任选节点，而这正是该策略要防止的 —— 而指名了集合之外任何节点的请求会在提交前被拒绝。约束是在计算请求摘要（request digest）**之前**施加的，因此「作业可以在哪里运行」属于其 claim identity 的一部分，被恢复的运行也无法继承在更宽松策略下作出的 claim。无法被精确展开的 nodelist 会被拒绝，而不是被放行。它保存在环境变量而非被跟踪的文件里，因为节点名属于站点身份 |
 | `ARI_SLURM_CPUS` | 默认 `--cpus-per-task` |
 | `ARI_SLURM_GPUS` | 默认 `--gres=gpu:N` |
 | `ARI_SLURM_MEM_GB` | 默认内存请求 |
@@ -336,15 +398,15 @@ Harness 运行基座，而不属于模式选择：
 |---|---|
 | `SLURM_MODE` | `local`（默认）/ `ssh` |
 | `SLURM_SSH_HOST` | 远程 SLURM 模式的 SSH 主机 |
-| `SLURM_SSH_USER` | SSH 用户（默认为当前用户） |
+| `SLURM_SSH_USER` | SSH 用户 —— remote 模式下**必填**，不会回退到当前用户，空值会被拒绝 |
 | `SLURM_SSH_PORT` | SSH 端口（默认 `22`） |
 | `SLURM_SSH_KEY` | 私钥路径 |
 | `SLURM_SSH_PASSWORD` | 可选密码（推荐使用密钥） |
 | `SLURM_DEFAULT_PARTITION` | ARI 提交子作业的默认分区 |
-| `SLURM_PARTITION` | 单作业分区覆盖 |
-| `SLURM_VALID_PARTITIONS` | 逗号分隔的允许列表 |
-| `SLURM_LOG_DIR` | `*.out` / `*.err` 的写入位置 |
-| `SLURM_CLUSTER_NAME` | 仪表盘中显示的集群名称 |
+| `SLURM_PARTITION` | paper-re 沙箱运行器（`_resolve_partition`）在 `ARI_SLURM_PARTITION` 之后查询的回退分区；没有其他读取方 |
+| `SLURM_VALID_PARTITIONS` | **无效 —— 无读取方。** `scripts/setup/setup_env.sh` 仅以注释形式预置，树中没有任何位置读回它。节点级策略是 `ARI_HPC_ALLOWED_NODES` |
+| `SLURM_LOG_DIR` | **无效 —— 无读取方。** 由 `setup_env.sh` 预置并转发给 skill 子进程，但 sbatch 脚本的 `--output` / `--error` 写入作业的 artifact scope，而非此处 |
+| `SLURM_CLUSTER_NAME` | 由 SLURM 自身设置；ARI 仅将它（与 `SLURM_JOB_ID` 一起）用作「是否在集群上」的存在探测 |
 | `SLURM_JOB_ID` / `SLURM_JOB_NODELIST` / `SLURM_JOB_PARTITION` | ARI 在作业内运行时由 SLURM 本身设置 |
 
 ## Letta (`LETTA_*`)
@@ -353,7 +415,7 @@ Harness 运行基座，而不属于模式选择：
 |---|---|
 | `LETTA_BASE_URL` | Letta API base（默认 `http://localhost:8283`） |
 | `LETTA_API_KEY` | Letta 需要认证时的 API 密钥 |
-| `LETTA_EMBEDDING_CONFIG` | 嵌入配置 JSON 路径（必需） |
+| `LETTA_EMBEDDING_CONFIG` | 传给 Letta 的嵌入模型**句柄**（例如 `letta-default`）—— 是句柄名而非文件路径，也不是必需项（未设置时取 `letta-default`） |
 
 ## Ollama / OpenAI (`OLLAMA_*` / `OPENAI_*`)
 

@@ -229,8 +229,12 @@ ARI のハンドルまたは生の SLURM ジョブ ID について、provider �
 
 `job_status` / `job_result` / `job_logs` / `job_cancel` はいずれも同じセレクタ
 スキーマを取り、`handle_id`（`JobHandleV1` のハンドル ID、推奨）か `job_id`
-（生の SLURM ジョブ ID、レガシー互換）のどちらか一方だけを要求します（`oneOf`）。
-両方渡しても、どちらも渡さなくても拒否され、実装は `handle_id` を先に読みます。
+（生の SLURM ジョブ ID、レガシー互換）のどちらか一方だけを要求します。この
+「ちょうど一方」は schema の description に書かれ、サーバ側の `_selector` で
+強制されます — トップレベルの `oneOf` には**していません**。OpenAI の
+function-calling schema サブセットが `oneOf` を持つツールを拒否し、4 つとも
+advertise 不能になったためです。どちらも渡さない呼び出しは拒否され、実装は
+`handle_id` を先に読むので、両方渡した場合はハンドルが使われます。
 既知のハンドルでも数字だけの SLURM ジョブ ID でもないセレクタは validation
 エラーです。
 
@@ -436,11 +440,13 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 高レートリミットには `S2_API_KEY` 環境変数を設定します。`max_papers` は
 15 が上限です。
 
-このスキルの登録済み MCP ツールは `survey` と `generate_ideas` の **2 つだけ**
-です。`_load_virsci_snapshot_papers` は `survey` が直接呼ぶただのヘルパーで、
-エージェントから見えてはなりません。`tests/test_server.py` が
-`mcp.list_tools()` 経由でこの両方をピン留めしています（`@mcp.tool()`
-デコレータの欠落・付け間違いが過去に出荷されたためです）。
+このスキルの登録済み MCP ツールは `survey` / `generate_ideas` /
+`mint_contract_for_proposal` の 3 つで、`mcp.json` もその 3 つだけを列挙します。
+`_load_virsci_snapshot_papers` は `survey` が直接呼ぶただのヘルパーで、
+エージェントから見えてはなりません。`tests/test_server.py` は
+`mcp.list_tools()` 経由で `survey` / `generate_ideas` の登録と、このヘルパーが
+ツールでないことをピン留めしています（`@mcp.tool()` デコレータの欠落・
+付け間違いが過去に出荷されたためです）。
 
 #### `generate_ideas(topic, papers, experiment_context="", n_ideas=3, n_agents=4, max_discussion_rounds=2, max_recursion_depth=0, survey_snapshot=None, survey_snapshot_ref="", seed=None, generation_mode="auto")`
 
@@ -824,7 +830,7 @@ PaperBench は `ari-skill-paper-re/vendor/paperbench` に同梱。メイン採�
 
 #### `build_reproduce_sh(paper_path="", paper_text="", rubric_path="", output_dir="", model="", time_limit_sec=43200, iterative_agent=False, max_steps=0, sandbox_kind="auto", container_image="", overwrite=False)`
 
-**v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。LiteLLM 経由で任意プロバイダ対応。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`。
+**v0.7.0+ で追加された LLM 駆動の replicator**。`fetch_code_bundle` の兄弟ツール。論文（とルーブリックの `expected_artifacts`）を読み、自己完結の `reproduce.sh` + ソースファイル一式を `output_dir` に書き出します。実体は PaperBench の `BasicAgent` / `IterativeAgent` ReAct rollout (`_replicator_agent.run_replicator_agent`) で、単発の JSON 生成呼び出しではありません。`output_dir/reproduce.sh` 既存時はスキップ。モデル: `model` 引数 > `ARI_MODEL_REPLICATOR` > `ARI_LLM_MODEL` > `gpt-5-mini`。OpenAI Responses 形式の id（`/` を含まない `gpt-` / `o1-` / `o3-` / `o4-` / `o5-`）は PaperBench 純正の Responses completer を、それ以外は LiteLLM を通るので任意プロバイダ対応です。
 
 `sandbox_kind` は `auto` / `local` / `apptainer` / `slurm` で、エージェントの rollout 自体をどこで走らせるかを選びます。`container_image` を解釈するのは `apptainer` rollout だけで、値は不変のローカル SIF か digest pin されたリモート URI です（引数が空なら `ARI_PHASE1_APPTAINER_IMAGE` を参照）。`local` / `slurm` は無視します。レガシーの `apptainer_image` 引数は**ありません**。シグネチャから削除済みでスキル内のどこにも登場しないため、ここでイメージを指定する手段は `container_image` だけです。
 

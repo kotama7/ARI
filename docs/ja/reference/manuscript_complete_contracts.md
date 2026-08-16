@@ -640,8 +640,9 @@ promptから`GovernedPaperReviewer`を組み直し——governanceがどれも�
 founding promptのbyteへfallbackします——その`review`は、revision seamが注入されて
 いなくても実際のrevision instructionを返します。`review`がactionableなrevisionを
 まったく返さない決定論的でLLMなしのdefault reviewerに至るのは、内側のRQGM runtimeを
-構築できずarchiveが統治されない単一roundへ縮退する場合か、callerが自分のreviewer
-oracleを注入する場合だけです。
+構築できずarchiveが統治されない単一roundへ縮退する場合だけです。callerが自分の
+reviewer oracleを注入した場合も同じ単一roundを通りますが、走るのは注入された
+oracleです——constructorのdefaultは到達されるのではなく置き換えられます。
 
 ## Program evaluation
 

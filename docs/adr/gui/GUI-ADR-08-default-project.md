@@ -20,7 +20,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_v1_config_crud.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-08: the implicit default project maps to the checkpoint search bases

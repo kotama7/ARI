@@ -1,7 +1,7 @@
 # Candidate SLURM expansion template only. The formally promoted local-CPU
 # identity is the exact profile and lock under
 # providers/openroad/0.6.1+orfs-26q3-gcd-nangate45/; its verified lock digest is
-# sha256:22bebd225e7876414d724c8f560c0906acd7f2f45c94b86408e71d1bc34bffc9.
+# sha256:fbc4be322a03aa50e666a0dcdb3b1afdfe60fa52bbc570e9cd8f1c800168825e.
 # Do not attach that lock to this different SLURM scope. Replace every absolute
 # path and SHA-256 placeholder and create a separate promotion before sync.
 schema_version: ari.catalog-sources/v1

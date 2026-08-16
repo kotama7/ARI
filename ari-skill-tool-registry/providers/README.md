@@ -101,7 +101,7 @@ OpenROAD binary digest are what prove a re-materialized payload identical.
 
 `openroad/0.6.1+orfs-26q3-gcd-nangate45-slurm-cpu/verified-lock-v1.json` is a
 second, independent promoted scope with lock
-`sha256:a28d59fe22395717075be9def98469bb49335d28dc539ff5b597aa04a7c81893`.
+`sha256:def08a69e7c0c13e8e76e026163337f39667ee8467792c16cad91d96ee9bd203`.
 It fixes an anonymous exclusive-node SLURM CPU allocation, zero requested GPUs,
 the same GCD/Nangate45 scientific inputs, exact scheduler-client snapshot, the
 digest-pinned clean `singularity` 4.5.0-1.el9 container the job runs in,

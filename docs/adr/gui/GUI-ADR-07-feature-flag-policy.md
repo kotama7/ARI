@@ -34,7 +34,7 @@ sources:
     role: doc
   - path: docs/reference/environment_variables.md
     role: doc
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-07: feature flag, rollback, and legacy removal policy
@@ -80,9 +80,10 @@ explicit `caps.gui_v2 === false`, and swallows a failed fetch in an empty
 blocks carry the heading "(env kill-switch, ADR-07 register)" verbatim:
 `ARI_GUI_BIND` in `server.py`, `ARI_GUI_AUTH` in `auth.py`, `ARI_GUI_CORS_ANY`
 and `ARI_GUI_CSP` in `routes.py`, `ARI_GUI_HEALTH` in `health.py`,
-`ARI_GUI_CHALLENGES` in `v1/challenges.py`; the seventh switch,
-`ARI_GUI_TOKEN`, is documented inside the `ARI_GUI_AUTH` block rather than
-carrying one of its own. `api_ollama.py` records the same
+`ARI_GUI_CHALLENGES` in `v1/challenges.py`; the seventh kill-switch,
+`ARI_GUI_TOKEN`, carries no block of its own — its semantics are stated in
+the trust-model section of the same `auth.py` docstring, above the
+`ARI_GUI_AUTH` block. `api_ollama.py` records the same
 policy in the negative, stating that the Ollama relay deliberately has no
 kill-switch because configuring the target is itself the opt-in.
 

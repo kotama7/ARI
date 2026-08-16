@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
-last_verified: 2026-08-07
+last_verified: 2026-08-16
 ---
 
 # Rubric schema reference
@@ -47,6 +47,8 @@ HPC job compiler. Audit is a separate immutable document.
     "calls": [{                                     // exact bytes live under .ari-rubric/
       "label": "skeleton.attempt-1",
       "status": "completed",
+      "model":    "gemini/gemini-2.5-pro",          // required on every call record
+      "provider": "gemini",                         // required on every call record
       "prompt": {"relative_path": "...", "sha256": "...", "size_bytes": 1, "media_type": "text/plain"},
       "raw_response": {"relative_path": "...", "sha256": "...", "size_bytes": 1, "media_type": "text/plain"},
       "call_sha256": "<64 hex>"
@@ -269,4 +271,5 @@ ARI core stays domain-agnostic (P4); venue knowledge lives in YAML.
   `ari-skill-replicate/src/rubric_template.py`
 - Template directory: `ari-core/config/paperbench_rubrics/`
 - Sibling venue pattern: `ari-core/config/reviewer_rubrics/` (peer review)
-- PaperBench parity: `paperbench/nano/tasks.py` (vendor)
+- PaperBench parity: `vendor/paperbench/project/paperbench/paperbench/rubric/tasks.py`
+  (vendored under `ari-skill-paper-re/`)

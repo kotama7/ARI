@@ -62,7 +62,7 @@ sources:
     role: config
   - path: ari-skill-tool-registry/providers/qiskit/core-0.3.1+aer-0.17.2-local-ideal/verified-lock-v1.json
     role: config
-last_verified: 2026-08-07
+last_verified: 2026-08-16
 ---
 
 # 科学ツール連合レジストリ

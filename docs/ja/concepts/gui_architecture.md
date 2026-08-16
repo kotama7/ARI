@@ -74,7 +74,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/styles/components.css
     role: implementation
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # ダッシュボードアーキテクチャ
@@ -1058,7 +1058,9 @@ light / dark / high-contrast のバリアントを差し替える単一の場所
 「どう採点されているか」の一部ではないからです。
 
 **P3 は層としては作られませんでした。** ラベル付きの P3 段を持つ画面はなく、この
-レベル名はどのソースファイルにも現れません。P3 が名指す素材そのものは存在しますが、
+レベル名がソースに現れるのは `P3+ land later` という但し書き
+（`components/Overview/OverviewPage.tsx` と同ディレクトリの `README.md`）だけで、
+P3 とラベル付けされたものは何もありません。P3 が名指す素材そのものは存在しますが、
 そこへ届くのはその場で何かを開くことではなく、別のワークスペースへ行くことです:
 Governance のエポックタイムラインタブにあるコミット済みエポックの詳細（封印された
 ポリシー本体と、生ソースのオフセット付きの開始／終了境界トランザクション）、

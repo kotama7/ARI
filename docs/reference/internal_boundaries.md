@@ -46,7 +46,7 @@ sources:
     role: test
   - path: ari-core/tests/test_contract_snapshots.py
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # Internal boundaries
@@ -122,10 +122,15 @@ Sanctioned exec modules — changes to execution behaviour belong here:
 
 Known duplication to consolidate toward these owners (not incorrect behaviour,
 but drift risk): `viz/api_memory.py` re-derives container-runtime dispatch.
-`ari-skill-paper-re`'s **reproduce path** no longer re-implements either half —
-it submits through `ari_skill_hpc.SlurmScheduler` (`src/server.py`) and runs its
-local attempts through `ari.execution.execute_local` (`src/sandbox.py`). Its
-**PaperBench agent computer** (`src/_compute/computer.py`) is still a second
+`ari-skill-paper-re`'s **reproduce path** has consolidated two of its three
+substrates: it submits through `ari_skill_hpc.SlurmScheduler` (`src/server.py`)
+and runs its local attempts through `ari.execution.execute_local`
+(`src/sandbox.py`). Its container attempts are still its own —
+`sandbox.py:_external_command` hand-builds the `docker run` /
+`apptainer exec` argv and `execute_container_attempt` dispatches it with
+`asyncio.create_subprocess_exec(..., start_new_session=True)` rather than
+through `ari.container`. Its
+**PaperBench agent computer** (`src/_compute/computer.py`) is a further
 implementation of both: `ApptainerComputer.send_shell_command` hand-builds an
 `apptainer exec` argv and `LocalComputer.send_shell_command` a bare
 `bash --noprofile --norc -c` argv, and both dispatch through the module's own
@@ -185,7 +190,7 @@ fork that constructs its own `MCPClient` in the child.
    stage-runner subprocess paths, never a skill server.
 2. **Shared-process state under parallel workers.** One `AgentLoop` instance and
    one `MCPClient` are shared by every node thread; `_run_loop` caps concurrency
-   at `max_workers = min(cfg.bfts.max_parallel_nodes, 4)`, enforced by a
+   at `max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))`, enforced by a
    `threading.Semaphore` rather than by the pool size (the pool is
    `max_workers + 8`, so a node waiting on a scheduler job can park and hand its
    permit back). Node identity is never carried in process-global state: the safe

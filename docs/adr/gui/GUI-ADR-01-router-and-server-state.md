@@ -28,7 +28,7 @@ sources:
     role: test
   - path: docs/concepts/gui_architecture.md
     role: doc
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-01: router and server-state library

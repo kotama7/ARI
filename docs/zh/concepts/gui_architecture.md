@@ -74,7 +74,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/styles/components.css
     role: implementation
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # 仪表盘架构
@@ -894,8 +894,9 @@ P2 是三个计数器（已探索节点数、评审分数、最佳指标）以�
 已建成的部分里有一处偏离：纪元与策略哈希在表中位于 P2，实际却渲染在 P1 的行块内 ——
 因为对受治理的运行来说，它们属于「这次运行在哪里」，而不属于「它得分如何」。
 
-**P3 从来没有作为一层被建成。** 没有任何页面有带标签的 P3 层级，这个层级名也不出现
-在任何源文件里。P3 所指的素材确实存在，但抵达它意味着去往另一个工作区，而不是就地
+**P3 从来没有作为一层被建成。** 没有任何页面有带标签的 P3 层级；这个层级名在源码里
+只以 `P3+ land later` 这条注记出现（`components/Overview/OverviewPage.tsx` 及该目录的
+`README.md`），没有任何东西被标为 P3。P3 所指的素材确实存在，但抵达它意味着去往另一个工作区，而不是就地
 展开某个东西：Governance 纪元时间线标签页上已提交纪元的详情（封存的策略正文，以及
 带原始来源偏移的开启与关闭边界事务）、config 浏览器里逐叶的 provenance、Studio 启动
 面板中与默认值的有效配置差分、legacy Monitor 页面上的资源与进程细节。请把 P3 读作

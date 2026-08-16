@@ -26,7 +26,7 @@ sources:
     role: config
   - path: ari-skill-idea/src/server.py
     role: implementation
-last_verified: 2026-08-08
+last_verified: 2026-08-16
 ---
 
 # Capability Provider Packages (`ari-skill-*` compatibility names)
@@ -203,10 +203,13 @@ Return a provider-neutral `JobStatusV1` for an ARI handle or a raw SLURM ID.
 
 `job_status`, `job_result`, `job_logs` and `job_cancel` share one selector
 schema: exactly one of `handle_id` (the `JobHandleV1` handle ID, preferred) or
-`job_id` (raw SLURM job ID, legacy compatibility). It is a `oneOf`, so passing
-both or neither is refused, and the implementation reads `handle_id` first. A
-selector that is neither a known handle nor a bare numeric SLURM ID is a
-validation error.
+`job_id` (raw SLURM job ID, legacy compatibility). "Exactly one" is stated in
+the schema's description and enforced server-side in `_selector`, deliberately
+**not** as a top-level `oneOf`: OpenAI's function-calling schema subset rejects
+a tool whose parameters carry one, which made all four un-advertisable. Passing
+neither is refused; the implementation reads `handle_id` first, so a call
+carrying both addresses the handle. A selector that is neither a known handle
+nor a bare numeric SLURM ID is a validation error.
 
 State comes from `sacct -j <id> --noheader --parsable2 --allocations
 --format=JobID,State,ExitCode,Start,End,Reason`, falling back to
@@ -411,9 +414,11 @@ result = survey("OpenMP compiler optimization HPC benchmarks")
 Set `S2_API_KEY` for higher Semantic Scholar rate limits. `max_papers` is
 capped at 15.
 
-`survey` and `generate_ideas` are the skill's **only** registered MCP tools;
+`survey`, `generate_ideas` and `mint_contract_for_proposal` are the skill's
+registered MCP tools — `mcp.json` lists exactly those three;
 `_load_virsci_snapshot_papers` is a plain helper `survey` calls directly and
-must never be agent-visible. `tests/test_server.py` pins both facts through
+must never be agent-visible. `tests/test_server.py` pins the `survey` /
+`generate_ideas` registrations and the helper's absence through
 `mcp.list_tools()` (a lost/misplaced `@mcp.tool()` decorator has shipped
 before).
 
@@ -490,6 +495,20 @@ Env knobs (only the toggle is required; the rest are tunable — see
 
 CLI flags on `ari run`: `--virsci-live` / `--no-virsci-live`, `--virsci-k`,
 `--virsci-team-size`, `--virsci-n-authors`, `--virsci-n-papers`.
+
+#### `mint_contract_for_proposal(topic, proposal, survey_snapshot_ref="survey_snapshot_v1.json", experiment_context="")`
+
+Mint a typed Research Contract for a proposal this skill did **not** generate.
+Minting is split from generation because under `ari.mode: ari_rqgm` the proposal
+router owns root ideation and none of its generators mints a contract, while KCA
+admission requires one. The proposal supplies title / description / hypothesis /
+plan; this step supplies the falsification conditions, limitations, citations and
+metric contract from the run's verified literature snapshot — and refuses rather
+than inventing any of them, so a missing `ARI_CHECKPOINT_DIR`, an unavailable
+snapshot or a title-less proposal comes back as
+`{"contract_status": "rejected", "reason": ...}`. On success it returns
+`typed_schema_version`, `contract_status: "admitted"`, the `research_contract`,
+its `research_contract_digest`, the `idea_set_digest` and any `rejections`.
 
 ---
 
@@ -977,11 +996,15 @@ both target `repro_sandbox/`. Reads the paper (and the rubric's
 and writes a self-contained `reproduce.sh` + supporting source files
 into `output_dir`.
 
-Routes through LiteLLM, so any provider works. Model resolves
-`model` arg > `ARI_MODEL_REPLICATOR` env > `ARI_LLM_MODEL` env >
-`gpt-5-mini`. Output JSON is sanity-checked (every file path is
-filesystem-safe ASCII, no `..`, `reproduce.sh` is shebanged + has
-`set -euo pipefail`, total content < 200 KB).
+The rollout is a PaperBench `BasicAgent` / `IterativeAgent` ReAct loop
+(`_replicator_agent.run_replicator_agent`), not a single JSON-emitting call.
+Model resolves `model` arg > `ARI_MODEL_REPLICATOR` env > `ARI_LLM_MODEL` env >
+`gpt-5-mini`; an OpenAI Responses-style id (`gpt-` / `o1-` / `o3-` / `o4-` /
+`o5-` with no `/` in it) drives PaperBench's own Responses completer, and every
+other id routes through LiteLLM, so any provider works. What the agent wrote is
+then promoted file by file out of its submission tree into `output_dir`, and an
+absolute path, a `..` or `.git` component, a symlinked component, or anything
+resolving outside either tree is refused rather than copied.
 
 Skips with `populated=False, skipped_reason=...` when `output_dir/reproduce.sh`
 is already present, so it composes cleanly after `fetch_code_bundle` /
@@ -1003,8 +1026,9 @@ result = build_reproduce_sh(
     rubric_path="ors_rubric.json",
     output_dir="repro_sandbox",
 )
-# Returns: {populated, output_dir, files, expected_artifacts,
-#           max_runtime_sec, language, model, prompt_sha256, notes, warnings}
+# Returns: {populated, output_dir, files, expected_artifacts, max_runtime_sec,
+#           language, model, iterative_agent, agent_runtime_sec, notes, warnings,
+#           rubric_schema_version, rubric_migration_required}
 ```
 
 #### `run_reproduce(rubric_path, repo_dir, sandbox_kind="", container_image="", timeout_global_sec=0, network_policy="deny", network_isolation_attested=False, partition="", cpus=0, walltime="", …SLURM flags)`

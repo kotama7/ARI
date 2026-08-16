@@ -16,7 +16,21 @@ sources:
     role: implementation
   - path: ari-core/ari/assurance/executors.py
     role: implementation
-last_verified: 2026-08-07
+  - path: ari-core/ari/harness_registry.py
+    role: implementation
+  - path: ari-core/ari/evaluator/deterministic_evaluator.py
+    role: implementation
+  - path: ari-core/ari/cli/run.py
+    role: implementation
+  - path: ari-core/ari/cli/bfts_loop.py
+    role: implementation
+  - path: ari-core/ari/cli/commands.py
+    role: implementation
+  - path: ari-core/ari/agent/loop.py
+    role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+last_verified: 2026-08-16
 ---
 
 # Environment Variable Reference
@@ -42,7 +56,7 @@ page is the alphabetical lookup.
 | `ARI_WORKSPACE` | Parent directory for new runs (used by orchestrator skill) | (none) | ✓ for `ari-skill-orchestrator` |
 | `ARI_WORK_DIR` | Per-node working directory root (`ari-skill-coding`) | `/tmp/ari_work` | – |
 | `ARI_LOG_DIR` | Application log directory | `$ARI_CHECKPOINT_DIR` | – |
-| `ARI_ROOT` | ARI source tree root (used in tests) | (auto-detect) | – |
+| `ARI_ROOT` | ARI source tree root — read in production by `ari.mcp.connection` (skill launch) and `ari.config` as well as by tests | (auto-detect from the package location) | – |
 | `ARI_SOURCE_FILE` | Override input experiment.md path | (none) | – |
 
 `ARI_CHECKPOINT_DIR` additionally carries a writer-side **convention** the table
@@ -78,11 +92,11 @@ convention, not a guarantee:
 | `ARI_MODEL_PAPER` | Model for paper writing and refinement | falls through to `ARI_LLM_MODEL` |
 | `ARI_MODEL_RUBRIC` | Model for independent rubric review and the fixed paper panel | falls through to `ARI_LLM_MODEL` |
 | `ARI_PANEL_SEED` | Requested seed recorded for each fixed-panel rubric completion | unset; sampling control is provider/backend dependent |
-| `ARI_MODEL_JUDGE` | Model for the BFTS judge | falls through to `ARI_MODEL` |
+| `ARI_MODEL_JUDGE` | Model for the PaperBench SimpleJudge (`grade_with_simplejudge`) | falls through to `ARI_LLM_MODEL`, then `gpt-5-mini` |
 | `ARI_MODEL_LINEAGE` | Model for stagnation / lineage decisions (v0.7.0) | falls through to `ARI_MODEL` |
 | `ARI_MODEL_ROOT_SELECT` | Model that picks the seed idea | falls through to `ARI_MODEL` |
 | `ARI_MODEL_IDEA` | Model for `generate_ideas` | falls through to `ARI_MODEL` |
-| `ARI_MODEL_REPLICATE` | Model for replicator high-level reasoning (v0.7.0) | falls through to `ARI_MODEL` |
+| `ARI_MODEL_REPLICATE` | **Inert at runtime.** The name was renamed to `ARI_MODEL_REPLICATOR`; the only reader left is the legacy Settings card, where it seeds the displayed `ors.replicator_model` default. The replicator itself reads `ARI_MODEL_REPLICATOR` | (`claude-opus-4-7` as the Settings default) |
 | `ARI_MODEL_REPLICATOR` | Model used by `ari-skill-paper-re.build_reproduce_sh` | falls through |
 | `ARI_MODEL_RUBRIC_GEN` | Model for `ari-skill-replicate.generate_rubric` | falls through |
 | `ARI_MODEL_RUBRIC_AUDIT` | Model for `ari-skill-replicate.audit_rubric` | falls through |
@@ -131,7 +145,7 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_MAX_DEPTH` | Hard cap on tree depth | (workflow-controlled) |
 | `ARI_MAX_REACT` | ReAct iteration cap per node | (workflow-controlled) |
 | `ARI_PARALLEL` | Concurrent node executors | `4` |
-| `ARI_TIMEOUT_NODE` | Per-node wall-time cap (seconds) | (none) |
+| `ARI_TIMEOUT_NODE` | Per-node wall-time cap (seconds) | `7200` (2 h) |
 | `ARI_BFTS_ALLOW_WEB` | Opt-in: expose `web-skill` (web_search / fetch_url / arXiv / Semantic Scholar) to the BFTS node agent **during exploration**. Default-off keeps the search loop reproducible (P5); when on, ARI records a non-reproducible-trajectory marker (`bfts_web_provenance.json`). `idea-skill`'s `survey` already does a bounded literature lookup regardless. `1`/`true`/`yes`/`on` to enable | `false` |
 | `ARI_RECURSION_DEPTH` | Current depth in nested ARI runs (auto-set) | (auto) |
 | `ARI_MAX_RECURSION_DEPTH` | Cap for orchestrator recursion | `3` |
@@ -142,6 +156,19 @@ LLM follows `ARI_MODEL_IDEA`.
 | `ARI_NODE_COMPUTE_BUDGET_NS` | Per-node budget for SCHEDULER work, in **node-seconds** (`nodes` × walltime) — the unit a scheduler allocates in. `ARI_NODE_EXEC_BUDGET_S` charges `run_bash`/`run_code`, which is time on one machine; a submission was charged nothing, so a node could be refused after half an hour of local shell while a thousand-node two-hour job cost it zero. Charged at **submission** against the reservation, not on completion against elapsed time: a budget that only learns the cost afterwards cannot refuse anything, and the scheduler holds the whole reservation regardless of when the work finishes. An over-budget submission is refused **before** it reaches the scheduler, since a queued reservation is held whatever happens next. Covers `slurm_submit`, `job_submit` and `container_submit` alike. Reservations are written to the cost trace with `resource_measurement_basis: declared-reservation` whether or not a budget is set, so "how much cluster did this search use" is answerable either way. Unset/`0` = no limit | (unset ⇒ unlimited) |
 | `ARI_V2_SUPPRESS_TOOLS` | Hide `describe_environment` / `run_code` / `emit_results` from the **search loop** (they stay available to every other phase and to other users of ARI). Each hidden call is a step returned to editing the kernel, which matters at a 20-step budget. Opt-in, because it is not a local trim: `system.md` gates *finishing* on `emit_results`, so enabling it also rewrites that sentence — otherwise the agent is left with a stop condition it cannot satisfy — and the evidence path a run is scored through changes with it. Paper-reproduction routes need exactly these tools, so nothing is hidden unless asked | (unset ⇒ every tool offered) |
 
+### Task + problem selection
+
+What a run is scored against. `ARI_PROBLEM` names a **pinned problem** and is the
+supported path; `ARI_TASK` reaches the older prototype harness registry and is
+consulted for scoring only when no problem is pinned.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `ARI_PROBLEM` | The pinned problem this run is measured against. When set, the evaluator measures through `assurance_measure` and each node's `work_dir` is seeded from the problem's declared `score_inputs` — so no untracked tree decides the number. Seeding never overwrites: a child's `work_dir` is a copy of its parent's, and the parent's candidate *is* the handoff | (unset ⇒ the `ARI_TASK` path) |
+| `ARI_TASK` | Task name for the prototype harness registry. A task that is **set but unknown** raises rather than falling back to `spmm`: scoring a different benchmark and reporting it as the requested one is exactly what the registry exists to prevent. Also supplies the task component of the handoff run-directory name, independently of `ARI_PROBLEM` | `spmm` (naming: `task`) |
+| `ARI_HARNESS` | Which harness serves the task when several do. The registry **refuses to choose** on its own, because binding whichever sorted first would make the score depend on a directory name and attribute it to the task rather than the harness. A harness registered under the workspace wins over a packaged one of the same name, and the choice is recorded in provenance | (none) |
+| `ARI_SEED` | Fixed sampling seed for reproducible local-model runs (`llm.seed`); a non-integer value is ignored rather than raising. Also the seed component of the handoff run-directory name, which is what de-collides same-second run ids across arms and seeds | (unset ⇒ backend default; naming: `0`) |
+
 ### Parent→child handoff (`ARI_HANDOFF_*`)
 
 Applied by `apply_handoff_env_overrides` **after** profile overrides, so an
@@ -151,11 +178,11 @@ channels for ablation. Config equivalents live under the `handoff:` block.
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `ARI_HANDOFF_MODE` | Selects the arm, e.g. `disabled` / `code_only` / `summary_only` / `code_plus_summary` / `code_plus_full_log` / `evidence_only` / `evidence_plus_reflection`. An unrecognised value is ignored. Also names the run directory by task + arm + seed | (config) |
+| `ARI_HANDOFF_MODE` | Selects the arm, e.g. `disabled` / `code_only` / `summary_only` / `code_plus_summary` / `code_plus_full_log` / `evidence_only` / `evidence_plus_reflection`. Also names the run directory `<task>_<mode>_seed<seed>` from `ARI_TASK` / `ARI_SEED`, so the directory says what was inherited rather than repeating the goal slug across every arm. An unrecognised value is ignored **for arm selection only** — the naming branch fires on any non-empty value, so a typo'd mode runs the arm the config resolved under a directory named after the typo | (config) |
 | `ARI_HANDOFF_COPY_WORKDIR` | Whether the child inherits the parent's work_dir (the artifact/code channel) | (from mode) |
 | `ARI_HANDOFF_AGENT_BLOCK` | Inject the parent's operational summary into the child's agent prompt | (from mode) |
-| `ARI_HANDOFF_PLANNER_BLOCK` | Inject the parent's summary into the planner prompt | (from mode) |
-| `ARI_HANDOFF_MEMORY_OFF` | Suppress the de-facto memory channel, so an arm receives no operational state beyond its explicit handoff channels | (from mode) |
+| `ARI_HANDOFF_PLANNER_BLOCK` | Inject the parent's summary into the planner prompt. Read at two sites with different truthiness: the config override accepts `1`/`true`/`yes`/`on`, while the injection site treats any value other than `0`/`false`/`no`/`off` as on — so a value outside those spellings reads OFF in config and ON where the block is written. Use one of the four | (from mode) |
+| `ARI_HANDOFF_MEMORY_OFF` | Suppress the de-facto memory channel, so an arm receives no operational state beyond its explicit handoff channels. The shutdown backup skips on the literal `1` only; `true`/`yes`/`on` gate the channel but still leave a memory backup in the checkpoint | (from mode) |
 | `ARI_HANDOFF_LOG_MODE` | `none` / `full` / `truncated` / `masked` — how much of the parent's execution log is passed | (from mode) |
 | `ARI_HANDOFF_LOG_LIMIT` | Character cap on the injected parent log | `48000` |
 | `ARI_HANDOFF_SUMMARY_FORM` | `extractive` / `rolling` / `failure_only` / `evidence` / `evidence_reflection` | (from mode) |
@@ -393,15 +420,15 @@ for the challenge protocol.
 |---|---|
 | `SLURM_MODE` | `local` (default) / `ssh` |
 | `SLURM_SSH_HOST` | SSH host for remote SLURM mode |
-| `SLURM_SSH_USER` | SSH user (defaults to current user) |
+| `SLURM_SSH_USER` | SSH user — **required** in remote mode; there is no fallback to the current user, and an empty value is refused |
 | `SLURM_SSH_PORT` | SSH port (default `22`) |
 | `SLURM_SSH_KEY` | Private key path |
 | `SLURM_SSH_PASSWORD` | Optional password (prefer key) |
 | `SLURM_DEFAULT_PARTITION` | Default partition for sub-jobs ARI launches |
-| `SLURM_PARTITION` | Per-job partition override |
-| `SLURM_VALID_PARTITIONS` | Comma-separated allow-list |
-| `SLURM_LOG_DIR` | Where to write `*.out` / `*.err` |
-| `SLURM_CLUSTER_NAME` | Display name shown in the dashboard |
+| `SLURM_PARTITION` | Partition fallback consulted after `ARI_SLURM_PARTITION` by the paper-re sandbox runner (`_resolve_partition`); nothing else reads it |
+| `SLURM_VALID_PARTITIONS` | **Inert — no reader.** `scripts/setup/setup_env.sh` pre-seeds it commented out and nothing in the tree reads it back. Node-level policy is `ARI_HPC_ALLOWED_NODES` |
+| `SLURM_LOG_DIR` | **Inert — no reader.** Pre-seeded by `setup_env.sh` and forwarded to skill subprocesses, but the sbatch script writes `--output` / `--error` into the job's artifact scope, not here |
+| `SLURM_CLUSTER_NAME` | Set by SLURM itself; ARI reads it only as an "am I on a cluster" presence probe (alongside `SLURM_JOB_ID`) |
 | `SLURM_JOB_ID` / `SLURM_JOB_NODELIST` / `SLURM_JOB_PARTITION` | Set by SLURM itself when ARI runs inside a job |
 
 ## Letta (`LETTA_*`)
@@ -410,7 +437,7 @@ for the challenge protocol.
 |---|---|
 | `LETTA_BASE_URL` | Letta API base (default `http://localhost:8283`) |
 | `LETTA_API_KEY` | API key when Letta requires auth |
-| `LETTA_EMBEDDING_CONFIG` | Path to embedding config JSON (required) |
+| `LETTA_EMBEDDING_CONFIG` | Embedding-model **handle** passed to Letta (e.g. `letta-default`) — a handle name, not a file path, and not required: unset resolves to `letta-default` |
 
 ## Ollama / OpenAI (`OLLAMA_*` / `OPENAI_*`)
 

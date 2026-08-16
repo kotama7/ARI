@@ -36,7 +36,7 @@ sources:
     role: test
   - path: ari-core/tests/test_gui_secret_readiness.py
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # Configuration Studio Guide

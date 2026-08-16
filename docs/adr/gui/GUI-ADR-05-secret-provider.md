@@ -18,7 +18,7 @@ sources:
     role: test
   - path: docs/guides/configuration_studio.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-05: secret provider
@@ -60,7 +60,7 @@ successful PUT — this asymmetry is documented under "How secrets work" in
 full facade (closing the legacy any-UPPER_SNAKE contract onto the allowlisted
 PUT) was deferred to the slice where the Studio replaces legacy Settings, and
 has not happened — `#/settings` still mounts. The legacy settings-save path also
-keeps its frozen heuristic — `api_settings.py:272` writes the key only when
+keeps its frozen heuristic — `api_settings.py:274` writes the key only when
 `_raw_key and "test" not in _raw_key and len(_raw_key) >= 20`, which the canonical PUT does not reproduce. Adding a secret
 name is an additive allowlist change; adding any field that carries a value
 requires superseding GUI-ADR-11.

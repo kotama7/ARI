@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-08-08
+last_verified: 2026-08-16
 ---
 
 # Extension Guide
@@ -63,7 +63,7 @@ parses; everything else is prose the LLM reads as its goal:
 | `## Provided Files` (also `## 提供ファイル` / `## 提供文件` / `## Local Files`) | Local inputs | Absolute paths listed here are copied into each node's `work_dir` |
 | `Partition: <name>` / `Max CPUs: <n>` | HPC placement | Read only when HPC is enabled; otherwise `ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` or a detected up partition fills in |
 | A SLURM mention anywhere in the body (`slurm_submit`, `sbatch`, `srun`, …) | Picks the submit / poll / read trio | Switches to `slurm_submit` + `job_status` + `run_bash`; under the HPC profile, setting `ARI_SLURM_PARTITION` does the same without any keyword |
-| `<!-- min_expected_metric: N -->` | Minimum acceptable value | Parses into `WorkflowHints.min_expected_metric`; a node whose extracted values are all below it is marked failed. **Digits only** — a negative threshold does not parse |
+| `<!-- min_expected_metric: N -->` | Minimum acceptable value | Parses into `WorkflowHints.min_expected_metric`; a node with **two or more** extracted values that are all below it is marked failed (a single extracted value never trips the threshold). **Digits only** — a negative threshold does not parse |
 
 ---
 

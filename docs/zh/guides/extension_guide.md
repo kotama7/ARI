@@ -8,7 +8,7 @@ sources:
     role: config
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # 扩展指南
@@ -61,7 +61,7 @@ ari run your_experiment.md
 | `## Provided Files`（也可写 `## 提供ファイル` / `## 提供文件` / `## Local Files`） | 本地输入 | 其中的绝对路径会被复制进每个节点的 `work_dir` |
 | `Partition: <name>` / `Max CPUs: <n>` | HPC 放置 | 仅在启用 HPC 时读取；否则由 `ARI_SLURM_PARTITION` / `ARI_SLURM_CPUS` 或探测到的 up 分区补齐 |
 | 正文中出现的 SLURM 关键词（`slurm_submit`、`sbatch`、`srun` 等） | 选择提交 / 轮询 / 读取三件套 | 切换为 `slurm_submit` + `job_status` + `run_bash`；在 HPC profile 下，只要设置了 `ARI_SLURM_PARTITION`，没有关键词也一样 |
-| `<!-- min_expected_metric: N -->` | 最低可接受值 | 解析进 `WorkflowHints.min_expected_metric`；提取值全部低于它的节点会被标记为 failed。**只支持数字** —— 负阈值不会被解析 |
+| `<!-- min_expected_metric: N -->` | 最低可接受值 | 解析进 `WorkflowHints.min_expected_metric`；提取值有**两个及以上**且全部低于它的节点会被标记为 failed（只提取到一个值时不触发该阈值判定）。**只支持数字** —— 负阈值不会被解析 |
 
 ---
 

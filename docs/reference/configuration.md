@@ -50,7 +50,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Settings/__tests__/SettingsContract.test.tsx
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # Configuration Reference
@@ -326,14 +326,14 @@ effective value**. Each entry describes one `ARIConfig` leaf:
 | `source` | `pydantic` — the walk covers declared model fields only. |
 | `env_override` | The `ARI_*` variable that overrides this leaf, or `null`. |
 
-**Coverage invariant.** The registry currently has **204 leaves and 100 %
+**Coverage invariant.** The registry currently has **205 leaves and 100 %
 metadata coverage**: `build_field_registry()` raises `LookupError` when any
 walked leaf lacks a `FIELD_META` prefix or exact entry, so a new config field
 cannot ship without schema metadata. Today's distribution: 104 Governance /
 32 Models / 24 Search (BFTS) / 14 Proposal routing / 10 Manuscript
-completeness / 5 Infrastructure / 5 Scientific assurance / 4 Evaluation /
-4 Execution mode / 2 Skills; 150 expert, 18 advanced, 36 basic;
-203 `public` + 1 `secret_reference` (`llm.api_key`); 146 `new_run_only` +
+completeness / 6 Scientific assurance / 5 Infrastructure / 4 Evaluation /
+4 Execution mode / 2 Skills; 151 expert, 18 advanced, 36 basic;
+204 `public` + 1 `secret_reference` (`llm.api_key`); 147 `new_run_only` +
 58 `draft`; 20 leaves carry an `env_override`.
 
 Deliberate fidelity limits (documented, not silent):
@@ -405,12 +405,15 @@ either as behaviour is the easy mistake.
   the Studio launch panel (`ConfigStudio/LaunchPanel.tsx`) — each as an
   `Applies when: …` line. Nothing parses it: `validate_patch` never reads it,
   no control is disabled, marked required or conflict-checked because of it,
-  and `ari/config/resolver.py` does not mention it at all. Twelve leaves carry
-  a real `path=value` / `path!=value` predicate today —
-  `bfts.depth_penalty_lambda`, `bfts.ucb_c`, `evaluator.custom_axes`,
-  `manuscript.profile`, `manuscript.brief_character_budget` and the seven
-  `manuscript.repair.*` leaves — and each is editable and patchable while its
-  predicate is false. With `bfts.frontier_score` left at its default
+  and `ari/config/resolver.py` does not mention it at all. 135 leaves carry
+  a real `path=value` / `path!=value` predicate today. 104 of them are exactly
+  the ADR-09 locked launch set below, so the predicate is not what holds those
+  read-only. The other 31 are editable and patchable while their predicate is
+  false: `bfts.depth_penalty_lambda`, `bfts.ucb_c`, `evaluator.custom_axes`,
+  `manuscript.profile`, `manuscript.brief_character_budget`, the seven
+  `manuscript.repair.*` leaves, the six `knowledge` / `capability_binding` /
+  `assurance` leaves and the thirteen `proposal_router.*` leaves. With
+  `bfts.frontier_score` left at its default
   `scientific_plus_diversity`, a patch setting `bfts.depth_penalty_lambda`
   still validates clean and is still merged by the resolver. The unified
   dependency graph the GUI plan asked for — one mechanism covering
@@ -650,11 +653,12 @@ asserts that Save posts a flat object carrying exactly those 24 keys — and, as
 a second and much weaker invariant, that the page renders ten `<Card>`
 sections. That DOM count is a structural freeze on the current Settings
 layout, not a wire contract: a redesign that preserves the 24-key body still
-has to edit the number. The two pins also differ in coverage. The Python pin
-runs in the same pytest suite as everything else; the frontend pin runs in no
-workflow (see [Testing](../guides/testing.md), *What gets tested at PR time*),
-so a change that breaks only the client half of the contract fails nothing
-until someone runs the frontend suite by hand.
+has to edit the number. Both pins now run at PR time. The Python pin runs in
+the same pytest suite as everything else; the frontend pin runs in the
+`dashboard-frontend` workflow (`.github/workflows/dashboard-frontend.yml`),
+whose `npm test` step runs the whole Vitest suite on every pull request to
+`main` with no `continue-on-error`, so a change that breaks only the client
+half of the contract fails that gate.
 
 **1. The GET/POST key sets do not match.** `GET /api/settings` returns
 exactly **27** top-level keys (26 scalar/list + the nested `ors` object with
@@ -730,7 +734,7 @@ only their fallback is frozen, so do not quote them as constants:
 | `letta_base_url` | `LETTA_BASE_URL` | `"http://localhost:8283"` |
 | `letta_embedding_config` | `LETTA_EMBEDDING_CONFIG` | `"letta-default"` |
 | `ors.replicator_model` | `ARI_MODEL_REPLICATE` | `"claude-opus-4-7"` |
-| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini-2.5-pro"` |
+| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini/gemini-2.5-pro"` |
 | `ors.rubric_audit_model` | `ARI_MODEL_RUBRIC_AUDIT` | `"claude-opus-4-7"` |
 | `ors.judge_model` | `ARI_MODEL_JUDGE` | `"gpt-4o-2024-11-20"` |
 | `ors.phase1_sandbox_kind` | `ARI_PHASE1_SANDBOX` | `"auto"` |
@@ -1754,7 +1758,7 @@ never config.
 | Key | Default | Meaning |
 |---|---|---|
 | `enabled` | `true` | Meta-evolution step on/off (disabled: the coordinator no-ops with one audit line). |
-| `evolving_roles` | `prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor` | The v1 evolving meta roles; shrinkable to `[]` to freeze the layer without code changes. |
+| `evolving_roles` | `prompt_mutator`, `clean_room_generator`, `replay_selector`, `failure_summary_compressor`, `policy_mutator` | The v1 evolving meta roles; shrinkable to `[]` to freeze the layer without code changes. |
 | `max_meta_candidates_per_epoch` | `1` | Cap on meta candidates per epoch, total across meta roles. |
 | `sandbox.max_cases` | `6` | Historical meta-task bundles replayed per sandbox evaluation. |
 | `sandbox.use_cached_results` | `true` | Reuse content-keyed sandbox results. |

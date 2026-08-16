@@ -90,7 +90,7 @@ sources:
     role: implementation
   - path: scripts/manuscript_complete_release_gates.json
     role: config
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # Manuscript Complete V1 contracts
@@ -656,7 +656,9 @@ governance has adopted none — whose `review` returns a real revision instructi
 even with no revision seam injected. The deterministic, LLM-free default
 reviewer, whose `review` returns no actionable revisions at all, is reached only
 where the inner RQGM runtime cannot be built and the archive degrades to a
-single ungoverned round, or where a caller injects its own reviewer oracle.
+single ungoverned round. Injecting a reviewer oracle takes that same single
+ungoverned round, but runs it on the injected oracle: the constructor default is
+replaced, not reached.
 
 ## Program evaluation
 

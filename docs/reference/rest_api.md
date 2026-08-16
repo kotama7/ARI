@@ -44,7 +44,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/components/Monitor/__tests__/MonitorPage.test.tsx
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # REST API Reference
@@ -519,11 +519,13 @@ The highest-traffic GET endpoints have their response shape mirrored by a
 frontend TypeScript type in `ari-core/ari/viz/frontend/src/types/index.ts` and
 guarded by `ari-core/tests/test_api_schema_contract.py` (asserts the
 always-present keys as a **subset** — extra/optional fields are allowed, so the
-contract is additive).
+contract is additive). `GET /state` is the exception: that suite carries no
+`/state` case, and its key set is pinned instead — as an exact frozen literal,
+not a subset — by `ari-core/tests/test_gui_state_facade_freeze.py`.
 
 | Endpoint | Producer | Frontend type | Always-present keys |
 |---|---|---|---|
-| `GET /state` | `services/state_service.build_app_state` | `AppState` | `running_pid`, `is_running`, `exit_code`, `running`, `pid`, `status_label` (the rest are checkpoint-gated → optional in the type). `cost` is the parsed `cost_summary.json` **object** (`CostSummary`), not a number. |
+| `GET /state` | `services/state_service.build_app_state` | `AppState` | `running_pid`, `is_running`, `exit_code`, `running`, `pid`, `status_label`, `llm_model` — the seven the frozen facade always emits (the rest are checkpoint-gated → optional in the type). `cost` is the parsed `cost_summary.json` **object** (`CostSummary`), not a number. |
 | `GET /api/settings` | `api_settings._api_get_settings` | `Settings` | the full defaults dict (`llm_model`, `llm_provider`, `ollama_host`, `temperature`, … , nested `ors`); arbitrary saved keys also pass through (`{**defaults, **saved}`). |
 | `GET /api/checkpoints` | `checkpoint_api._api_checkpoints` | `Checkpoint[]` | `id`, `path`, `status`, `node_count`, `review_score`, `best_metric` (always `null`), `mtime`; `best_scientific_score` is conditional. |
 | `GET /api/checkpoint/<id>/summary` | `checkpoint_api._api_checkpoint_summary` | `CheckpointSummary` | `id`, `path` (or `{error:"not found"}`); all report bodies are conditional. `reproducibility_report` is a parsed **object** (legacy runs: string), not always a string. |
@@ -668,7 +670,6 @@ help here and must guard before formatting.
 | GET | `/api/ollama/<...>` | Proxy through to a local Ollama daemon (allowlisted paths only — MN-5) |
 | GET | `/api/skills` | Enumerate registered skills + their tool counts |
 | GET | `/api/skill/<skill_name>` | Per-skill metadata (tool list, env vars) |
-| GET | `/api/tools` | Combined tool catalogue across all skills |
 | GET | `/api/scheduler/detect` | `local` / `slurm` / `apptainer` autodetect |
 | GET | `/api/slurm/partitions` | SLURM partition list |
 | GET | `/api/container/info` | Container runtime probe |

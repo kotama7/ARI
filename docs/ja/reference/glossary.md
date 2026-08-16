@@ -32,7 +32,7 @@ sources:
     role: implementation
   - path: ari-core/config/profiles
     role: config
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # 用語集

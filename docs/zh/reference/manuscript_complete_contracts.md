@@ -551,8 +551,9 @@ reviewer oracle 时，`run_archive` 走 co-evolution 分支，每一轮都从该
 `paper_reviewer` prompt 重建一个 `GovernedPaperReviewer`——当 governance 尚未采纳任何
 prompt 时回退到 founding prompt 的字节——其 `review` 即使没有注入修订接缝也会返回真实的修
 订指令。那个确定性的、不含 LLM 的默认 reviewer——其 `review` 根本不返回任何可执行的修订
-——只会在内层 RQGM runtime 无法构建、archive 退化为单轮无治理的情形下，或在调用方注入自己
-的 reviewer oracle 时才被用到。
+——只会在内层 RQGM runtime 无法构建、archive 退化为单轮无治理的情形下才被用到。调用方注入
+自己的 reviewer oracle 时走的是同一个单轮无治理路径，但跑的是被注入的 oracle：构造函数的
+默认值是被替换掉，而不是被用到。
 
 ## Program evaluation
 

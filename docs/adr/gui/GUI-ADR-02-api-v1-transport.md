@@ -26,6 +26,8 @@ sources:
     role: config
   - path: .github/workflows/refactor-guards.yml
     role: config
+  - path: .github/workflows/dashboard-frontend.yml
+    role: config
   - path: ari-core/tests/test_gui_v1_api.py
     role: test
   - path: ari-core/tests/test_contract_snapshots.py
@@ -34,7 +36,7 @@ sources:
     role: test
   - path: docs/concepts/gui_architecture.md
     role: doc
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-02: `/api/v1` transport and OpenAPI generation
@@ -95,5 +97,8 @@ docstring is stale. And of the two backend drift gates, only the pytest
 snapshot blocks: `pytest ari-core/tests/` runs in `refactor-guards.yml`, while
 `scripts/check_viz_api_schema.py` runs in `contracts.yml` as `--warning-only`
 under `continue-on-error: true`, not as the ratcheted `--fail-on-regression`
-hard gate the plan called for. The frontend types drift test is a vitest test
-with no workflow invoking it.
+hard gate the plan called for. The frontend types drift test is a vitest test,
+and it is now invoked: `dashboard-frontend.yml` runs `npm test` (`vitest run`)
+on pull requests to `main` with no `continue-on-error` anywhere, and
+`src/__tests__/v1TypesDrift.test.ts` is picked up as an ordinary `.test.ts`
+file by that one pass.

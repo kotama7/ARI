@@ -24,7 +24,7 @@ sources:
     role: config
   - path: .github/workflows
     role: config
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # ARI コードのテスト方法
@@ -35,10 +35,12 @@ last_verified: 2026-08-13
 ## リポジトリレイアウト
 
 ```
-ari-core/tests/                 — コアの回帰テスト
-ari-skill-<name>/tests/         — スキルローカルのテスト
-ari-skill-<name>/conftest.py    — スキルレベルのフィクスチャ
-pytest.ini                      — リポジトリ全体の設定
+ari-core/tests/                    — コアの回帰テスト
+ari-skill-<name>/tests/            — スキルローカルのテスト
+ari-skill-<name>/tests/conftest.py — スキルレベルのフィクスチャ（17 スキル中
+                                     13。benchmark と plot だけはパッケージ
+                                     ルートに置いている）
+pytest.ini                         — リポジトリ全体の設定
 ```
 
 リポジトリルートの `pytest.ini` は、素の `pytest` が走査する `testpaths` を
@@ -55,19 +57,27 @@ pytest.ini                      — リポジトリ全体の設定
 pytest -q                                        # 既定の testpaths のみ
 bash scripts/run_all_tests.sh                    # フルスイート（パス毎に別プロセス）
 pytest ari-skill-memory/tests -q                 # スキル 1 つ
-pytest ari-core/tests/test_react_driver.py -q    # one file
-pytest ari-core/tests/test_react_driver.py::test_runs_for_two_nodes  # one case
-pytest -k 'memory and not letta' -q              # by keyword
+pytest ari-core/tests/test_react_driver.py -q    # ファイル 1 つ
+pytest ari-core/tests/test_react_driver.py::TestRunReact  # クラス 1 つ
+pytest ari-core/tests/test_gui_v1_api.py::test_projects_happy_path  # ケース 1 つ
+pytest -k 'memory and not letta' -q              # キーワード指定
 ```
 
 ## ari-core の規約
 
 ### 必ず書き込みを分離する
 
-ARI はかつて `$HOME/.ari/` に書き込んでいました。v0.5.0 でそのパスは削除されました。
-ガードレールテスト `ari-core/tests/test_no_user_home_writes.py` は、
-テストが再びそこにファイルを作成しないことを保証します。ファイルシステムに触れる
-新しいテストを書く場合:
+ARI はかつて `$HOME/.ari/` に書き込んでいました。v0.5.0 でそのパスは削除され、
+2 つのガードがそれを維持しています。`ari-core/tests/test_no_user_home_writes.py`
+が持つテストは `test_module_imports_do_not_write_user_home` 1 本だけで、
+固定リストの 8 モジュール（`ari.config`、`ari.paths`、`ari.cost_tracker`、
+`ari.lineage`、`ari.memory.client`、`ari.memory.local_client`、
+`ari.publish.backends.ari_registry`、`ari.clone.resolvers.ari`）を偽の `HOME`
+の下で import し、import 時点で `$HOME/.ari/` が作られないことだけを検証します。
+スイート全体のガードは `refactor-guards` workflow で、`HOME` を差し替えて
+`ari-core/tests` 全体を実行し、終了後に `$HOME/.ari/` が存在すれば job を落とします
+— 「どのテストもそこにファイルを作らない」を仮定でなく強制しているのはこちらです。
+ファイルシステムに触れる新しいテストを書く場合:
 
 - `monkeypatch.setenv("ARI_CHECKPOINT_DIR", str(tmp_path))` を使用する。
 - 補助ディレクトリには `tmp_path` を使用する。
@@ -76,23 +86,32 @@ ARI はかつて `$HOME/.ari/` に書き込んでいました。v0.5.0 でその
 
 ### エージェントループのスモークテスト
 
-`ari-core/tests/test_react_driver.py` は 3 つの決定論的な
-「エージェントが 2 ノードを通過する」テストを実行します:
+`ari-core/tests/test_react_driver.py` は `ari.agent.react_driver` を、
+`LLMClient` と `MCPClient` をスタブに差し替えた状態でカバーします。実 LLM も
+MCP サーバも使いません。ノード間を通す統合実行ではなく unit ファイルで、
+純関数を固定するヘルパクラスが 3 つ（`TestValidatePaths` —
+`_validate_paths_in_args` に対する 11 ケース、サンドボックス脱出と traversal の
+規則。`TestBuildWindow` — 会話ウィンドウの切り詰め。`TestFinalToolDef`）、
+そして `TestRunReact` が `run_react` を 4 通りで駆動します — final tool 呼び出しに
+よる完了、サンドボックス違反による dispatch 阻止、final tool が呼ばれないままの
+max-steps 終了、ログファイルの永続化。
 
-1. **ハッピーパス** — 2 ノード、実際の LLM スタブ、各トランジションで BFTS ステートを検証。
-2. **ツール失敗からの回復** — coding スキルがエラーを返す。エージェントは
-   固定シードで再試行する。
-3. **メモリ書き込みの分離** — 兄弟ノードは互いに独立したメモリストアを参照する。
-
-新しいエージェントレベルの機能を追加するときは、このトリプレットを踏襲してください。
+新しいエージェントレベルの機能を追加するときも同じ形に従ってください:
+クライアントをスタブ化し、ループの観測可能な遷移を検証し、ネットワークと
+サブプロセス呼び出しをファイルに持ち込まないこと。
 
 ### 決定性保証 (P2)
 
-「同じシード、同じツリー」という不変条件は
-`ari-core/tests/test_no_user_home_writes.py` で間接的に検証されています
-(実行間でグローバルステートが変化しないことを検証) が、
-スキルごとのスイート (`ari-skill-memory/tests/test_isolation.py`、
-`ari-skill-memory/tests/test_cow.py`) でも検証されています。
+「同じシード、同じツリー」を実行全体で端から端まで検証しているものは、この
+リポジトリには存在しません。固定されているのはもっと狭い範囲で、名前で把握して
+おく価値があります:
+`ari-core/tests/test_gui_baseline_run_fixtures.py::test_same_seed_is_byte_identical`
+が同じ `(nodes, seed)` から 2 つのチェックポイントを生成してバイト単位で比較し
+（否定側が `test_different_seed_changes_content`）、memory スイートが決定論的な
+ツリーの前提となる分離性を固定します —
+`ari-skill-memory/tests/test_checkpoint_isolation.py`（2 つのチェックポイントが
+互いを見ない）と `ari-skill-memory/tests/test_ancestor_scope.py`（3 本の兄弟
+ブランチ間で汚染が起きない）。
 
 決定性の回帰が混入した場合:
 
@@ -107,10 +126,12 @@ GUI と `/api/v1` のリーダーテストはチェックポイントを同梱�
 `ari-core/tests/fixtures/gui_refresh/` には純 Python のファクトリが 2 つあります:
 
 - `run_fixture_factory.py` — `make_run_checkpoint(dest, nodes=N, seed=S)` が
-  実行チェックポイント (`tree.json`、`nodes_tree.json`、`results.json`、
-  `experiment.md`、`idea.json`、`meta.json`、`cost_trace.jsonl`) を本物の
-  `ari.checkpoint.save_*_json` ヘルパー経由で書き出すため、JSON の整形が
-  本番ライターとバイト単位で一致します。オプションの `paper` / `review` /
+  実行チェックポイントを書き出します。`tree.json`、`nodes_tree.json`、
+  `results.json` は本物の `ari.checkpoint.save_tree_json` /
+  `save_nodes_tree_json` / `save_results_json` を経由するため、整形が本番
+  ライターとバイト単位で一致します。`experiment.md`、`idea.json`、
+  `meta.json`、`cost_trace.jsonl` は対応する `save_*_json` ヘルパーが存在
+  しないため直接書き出されます。オプションの `paper` / `review` /
   `ors` / `ear` の結果レイヤーはすべて既定で OFF です。
 - `rqgm_fixture_factory.py` — `make_rqgm_checkpoint(dest, nodes=10, epochs=2,
   ...)` はまずベースファクトリを呼び、その上に決定論的な RQGM ガバナンス
@@ -160,23 +181,48 @@ it (すべてのリーダーがロードしなければならない)」と述べ
 
 ### MCP サーバーテスト
 
-各スキルには `test_server.py` が付属しており:
+17 個の `ari-skill-*` パッケージのうち 10 個が `tests/test_server.py` を持ちます
+(benchmark、coding、evaluator、hpc、idea、paper、tool-registry、transform、
+vlm、web)。残りはサーフェスのファイル名が異なるか、そもそも持ちません —
+`ari-skill-orchestrator/tests/test_mcp_surface.py` は名前が違うだけの同種の
+ファイルです。10 個すべてに共通するのは、サーバーモジュールをインプロセスで
+import し (サブプロセスを起こすものは 1 つもありません)、ツール関数を
+フィクスチャ入力で直接呼び、レスポンスの形状を検証する、という点です。多くは
+`from src.server import …` で辿りますが、パッケージ化済みのスキルは
+インストール済みモジュール (`ari_skill_hpc.server`) を import し、
+`ari-skill-coding` は `importlib.util.spec_from_file_location` でパスからも
+読み込みます。
 
-1. MCP サーバーをインプロセスで起動する (サブプロセスなし)。
-2. `list_tools()` を呼び出し、ツールリストが `mcp.json` と一致することを検証する。
-3. 各ツールをフィクスチャ入力で呼び出し、レスポンスの形状を検証する。
+この層が**やらない**ことが 2 つあり、いずれも workflow のゲートが担当します。
+ツールリストと `skill.yaml` の一致、および生成された `mcp.json` のドリフト検査は、
+後述の「PR 時にテストされる内容」にある `contracts` workflow の
+`scripts/check_skill_manifests.py` の仕事で、スキル側のアサーションではありません。
+そして共通の MCP テストハーネスは存在しません: `mcp.testing` というモジュールは
+無く (`mcp` パッケージが持つのは `cli` / `client` / `os` / `server` / `shared` /
+`types`)、リポジトリ内にそれを import するコードもありません。各スイートが独自の
+フィクスチャを組みます — `ari-skill-memory/tests/conftest.py` がその型の読みやすい
+リファレンスです (`tmp_path` スコープの `ARI_CHECKPOINT_DIR`、backend フィクスチャ、
+署名付き call-context の発行、fake Letta クライアント)。
 
-`mcp.testing` ヘルパーを使用してください (ハーネスはスキルによって異なります —
-リファレンスとして `ari-skill-memory/tests/conftest.py` を参照)。
+`list_tools()` を実際に呼ぶスイートは 3 つあり、どれもマニフェストとの照合には
+使っていません: `ari-skill-coding` は `outputSchema` を持つ 5 ツールのスキーマを
+検証し、`ari-skill-hpc` と `ari-skill-idea` は特定のツール名が登録されている
+(hpc は登録されていない) ことを検証します。
 
 ### LLM モック
 
 LLM を呼び出すスキル (`evaluator`、`paper`、`paper-re`、`idea`、
 `replicate`、`transform`、`plot/_llm`、`vlm`) は、ユニットテストで
-LLM をモックしなければなりません。LiteLLM の `respx` アダプターまたは
-`pytest-mock` を使って `litellm.completion` を固定レスポンスに置き換えてください。
+LLM をモックしなければなりません。
 
-リファレンス例は `ari-skill-paper-re/tests/test_litellm_completer.py` です。
+リファレンス例は `ari-skill-paper-re/tests/test_litellm_completer.py` で、その
+手法は HTTP 傍受ではなくモジュール注入です: `_install_fake_litellm` が
+`types.ModuleType("litellm")` にスタブの `acompletion` を持たせ、
+`monkeypatch.setitem(sys.modules, "litellm", fake)` で差し替えるため、
+ネットワークには一切出ず、completer が転送した kwargs をそのまま検証できます。
+`respx` は実際の HTTP クライアント自体がテスト対象のときに使われており
+(`ari-skill-memory/tests/test_letta_http_regression.py`)、`pytest-mock` も同じ
+目的で CI にインストールされています。
 
 ### 依存状態フィクスチャ
 
@@ -197,16 +243,40 @@ def ckpt(tmp_path, monkeypatch):
 
 `main` への各 PR を複数の GitHub Actions ワークフローがゲートします。
 
-**テスト** — `refactor-guards` ワークフローが実行するもの:
+**テスト** — Python のスイートは 2 つのワークフローに分かれており、互いのパスを
+実行することはありません。
 
-- `pytest ari-core/tests -q`
-- `pytest ari-skill-coding/tests -q`
-- `pytest ari-skill-memory/tests -q`
-- ... スキルごとのスイート
+- `refactor-guards` は `pytest ari-core/tests/ -q` を 1 回だけ、`HOME` を作業用
+  ディレクトリに差し替え、`--ignore` で 4 ファイルを除外して実行します
+  (`test_letta_restart_live.py`、`test_letta_start_scripts.py`、
+  `test_ollama_gpu.py`、`test_dashboard_html.py` — 最後の 1 つはどの job も
+  生成しない Vite ビルドを要求するため)。`test_no_user_home_writes.py` と
+  `test_public_api_boundary.py` (フェーズ 4、スキルが `ari.public.*` からのみ
+  インポートしていることを保証) はこの 1 回の呼び出しに含まれて走るだけで、
+  独立したステップではありません。その後 `$HOME/.ari/` が存在すれば job を落とし、
+  もう 1 つの job が PR の diff から許可リスト外の新しい `~/.ari` 参照を探します。
+  さらに 5 つの job (import boundaries、directory policy、complexity、ruff lint、
+  dead code) はすべて**アドバイザリ**で、`continue-on-error: true` と
+  `--warning-only` が付くため、findings が PR を赤くすることはありません。
+  `refactoring` ブランチでも走る 2 つのワークフローのうちの 1 つです
+  (ファイル内のコメントは今も「唯一」と書いていますが、後から `skill-tests` が
+  同じトリガーで追加されました)。
+- `skill-tests` は 7 つのスキルスイートを、パスごとに 1 プロセスで実行します
+  (`paper`、`evaluator`、`web`、`plot`、`memory`、`transform`、`replicate`)。
+  `-p no:randomly` 付きです。`ari-skill-coding` は**含まれておらず**、
+  `ari-skill-paper-re` は `git+chz` で PaperBench を vendor するため意図的に
+  除外されています。プロセス分割の理由は `pytest.ini` がスキルを `testpaths` に
+  入れない理由と同じです。
 
-また `tests/test_no_user_home_writes.py` と
-`tests/test_public_api_boundary.py` (フェーズ 4、スキルが `ari.public.*` からのみ
-インポートしていることを保証) も実行します。
+**ダッシュボードフロントエンド** — `dashboard-frontend` ワークフローは
+`ari-core/ari/viz/frontend` を対象とするハードゲート (`continue-on-error` なし)
+で、`npm ci` → `npm run typecheck` (`tsc --noEmit`) → `npm test` (`vitest run`)
+を実行します。`npm run build` と Playwright のスクリーンショット取得は意図的に
+実行しません。`npm test` はスイート全体を走らせるため
+`src/__tests__/v1TypesDrift.test.ts` も含まれ、これは
+`ari/viz/v1/openapi.json` からメモリ上で `src/services/api/v1types.gen.ts` を
+再生成してバイト一致を検証します。つまり `npm run gen:v1types` を回さずに
+OpenAPI 文書を編集すると、ここで落ちます。
 
 **ドキュメント・構造** — 3 つのワークフローがドキュメント群の同期を保ちます:
 
@@ -229,10 +299,11 @@ def ckpt(tmp_path, monkeypatch):
 `python scripts/docs/check_i18n_js.py`。
 
 **ダッシュボードの翻訳** — ダッシュボード UI は独自の 3 言語辞書
-`ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts` を持ちますが、上記のどの
-ワークフローもこれを対象にしていません: `check_i18n_js.py` が読むのは
-`docs/i18n/landing.{en,ja,zh}.js` のみで、そのキーパターンはシングルクォート
-されたキーしか一致しないため、キーが裸の識別子である辞書は解析できません。
+`ari-core/ari/viz/frontend/src/i18n/{en,ja,zh}.ts` を持ちますが、docs 側の
+ゲートはここまで届きません: `check_i18n_js.py` が読むのは
+`docs/i18n/landing.{en,ja,zh}.js` のみ (`SURFACES` タプルの要素は 1 つ) で、
+キーパターン `^\s*'([^']+)'\s*:` はシングルクォートされたキーしか一致しない
+ため、キーが裸の識別子である辞書は解析できません。
 ルール自体は docs 側と同じです — 3 ロケールは**同一のキー集合**を宣言し、
 同一ファイル内でキーを重複させてはなりません。したがって新しい UI 文字列は
 同じ変更で 3 つすべてに追加する必要があります。あるロケールにあって別の
@@ -240,18 +311,21 @@ def ckpt(tmp_path, monkeypatch):
 キー名がそのまま表示されます (`src/i18n/index.ts` の `t()`)。値は意図的に
 比較しません: 固有名詞は 3 言語で同一の表記になり得るためです。
 
-これを担保するチェックは 2 つあり、**どちらもワークフローに組み込まれて
-いません** — ダッシュボードの文字列に触れたら自分で実行してください:
+これを担保するチェックは 2 つあり、CI で走るのはそのうち 1 つだけです:
 
 - `python scripts/check_dashboard_ux.py --fail-on-regression` — 3 つの `.ts`
   ファイルに対するキー集合の一致検査と重複検出で、同スクリプトの他の
-  ダッシュボード UX 検査と同梱されています。`scripts/quality/check_dashboard_ux.allow.yaml`
+  ダッシュボード UX 検査と同梱されています。**これを呼ぶワークフローは
+  存在しない**ため、ダッシュボードの文字列に触れたら自分で実行してください。
+  `scripts/quality/check_dashboard_ux.allow.yaml`
   に凍結されていない findings が 1 つでもあれば exit 1 になります。この
   許可リストに i18n エントリは 1 件も無いため、一致が壊れれば最初の実行で
   失敗します。フラグを付けない場合はレポートを出力して exit 0 です。
 - `ari-core/ari/viz/frontend` から
   `npx vitest run src/i18n/__tests__/parity.test.tsx` — import した実際の辞書に
   対して同じ不変条件を検証します。`KNOWN_DRIFT` 許可リストは現在空です。
+  こちらは**ゲートされています**: `dashboard-frontend` ワークフローの
+  `npm test` ステップが Vitest スイート全体を走らせ、このファイルも含まれます。
   重複キーの検査は Python 側より弱く、TypeScript のオブジェクトリテラルは
   テストが読む時点で重複キーを既に畳み込んでいるためです。
 
@@ -263,13 +337,10 @@ def ckpt(tmp_path, monkeypatch):
 存在せず、ここに書かれている内容を適合の主張として読んではいけません。存在
 するのは
 `ari-core/ari/viz/frontend/src/__tests__/shellA11yBaseline.test.tsx` にある
-凍結ベースラインの集合です。上記の i18n チェックと同様、これも**どのワーク
-フローにも組み込まれていません** — frontend のスイートを実行するワークフローは
-そもそも存在しません (CI にある Node のステップは VitePress の docs サイトを
-ビルドするものだけです)。代わりに、手動で実施する cutover 前チェックリストの
-ハード行になっています (`npm test`、
-`docs/guides/gui_cutover_runbook.md` §2)。このファイルだけを実行するには
-`ari-core/ari/viz/frontend` から:
+凍結ベースラインの集合です。これは `dashboard-frontend` ワークフローの
+`npm test` ステップの一部として CI で実行され、同時に手動で実施する cutover 前
+チェックリストの 1 行でもあります (`docs/guides/gui_cutover_runbook.md` §2)。
+このファイルだけを実行するには `ari-core/ari/viz/frontend` から:
 
 ```bash
 npx vitest run src/__tests__/shellA11yBaseline.test.tsx
@@ -391,10 +462,11 @@ API wrapper の層として実在します。しかし frontend に reducer は 
 モジュールもなく (`src/` 配下で `serializ` に一致するのは
 `services/api/client.ts` と `hooks/useRunEvents.ts` のコメント 2 箇所だけです)、
 config resolver は Python です — `ari-core/ari/config/resolver.py` で、frontend
-の adapter 経由ではなく HTTP 越しに到達します。第 2 に、ラチェットには走らせる
-場所が要りますが、frontend のスイートを実行するワークフローは存在しません —
-上のシェルのアクセシビリティベースラインと bundle budget が CI ゲートではなく
-手動の cutover 前チェックリストの行になっているのと同じ理由です。
+の adapter 経由ではなく HTTP 越しに到達します。第 2 に、ラチェットには保存された
+ベースラインと、それに突き合わせる何かが要ります。`dashboard-frontend`
+ワークフローによって frontend のスイートには走る場所ができましたが、実行するのは
+`npm test` であって `npm test -- --coverage` ではなく、ベースラインファイルは
+どちらの半分にもコミットされていません — 場所はできても、計測はまだありません。
 
 ## 回帰テストの書き方
 

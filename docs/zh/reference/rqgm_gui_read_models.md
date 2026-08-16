@@ -8,7 +8,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_gui_v1_rqgm.py
     role: test
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # RQGM GUI 读模型
@@ -140,7 +140,7 @@ rollup / 快照文件只被读取*用于校验*它 —— 绝不会成为当前�
 | 标志 | `true` | `false` | `null` |
 |---|---|---|---|
 | `transitions_chain_ok` | `rqgm_transitions.jsonl` 的每一行都校验通过：`event_hash` 覆盖该行声明的事件信封（只有旧的 schema-v1 行才只覆盖载荷），且 `prev_event_hash` 成链（首行从 `""` 开始）。 | 发现了哈希不匹配或链断裂；扫描仍继续，因此数据照常提供，但被打上标志。 | 文件不存在。 |
-| `registry_verified` | `rqgm_registry.json` 的 `as_of_event_hash` 等于已提交转换的尾部。 | rollup 过期，或超前于日志。 | rollup 缺失/不可读，或没有可供比较的转换尾部。 |
+| `registry_verified` | `rqgm_registry.json` 的 `as_of_event_hash` 等于 `rqgm_transitions.jsonl` 最后一条成功解析的行，即物理尾部；rollup 的写入方记录的也是同一个物理尾部，因此即便某个 prepare 仍未提交，两者依然相符。 | rollup 过期，或超前于日志。 | rollup 缺失/不可读，或没有可供比较的转换尾部。 |
 | `audit_chain_ok` | `rqgm_audit.jsonl` 作为一条独立的链校验通过。 | 发现断裂。 | 文件不存在。 |
 
 `null` 是一等答案：**缺失的来源绝不会被渲染成干净。** 与这些标志并列的

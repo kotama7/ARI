@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-16
 ---
 
 # ルーブリック Schema リファレンス
@@ -244,4 +244,5 @@ ARI コアは domain-agnostic (P4 原則) を保ち、 venue 知識は YAML に�
   `ari-skill-replicate/src/rubric_template.py`
 - テンプレートディレクトリ: `ari-core/config/paperbench_rubrics/`
 - 兄弟 venue パターン: `ari-core/config/reviewer_rubrics/` (peer review)
-- PaperBench 親和: `paperbench/nano/tasks.py` (vendor)
+- PaperBench 親和: `vendor/paperbench/project/paperbench/paperbench/rubric/tasks.py`
+  (`ari-skill-paper-re/` 配下に vendored)

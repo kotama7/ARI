@@ -12,7 +12,7 @@ sources:
     role: config
   - path: ari-skill-orchestrator/src/ari_skill_orchestrator/registry.py
     role: implementation
-last_verified: 2026-08-08
+last_verified: 2026-08-16
 ---
 
 # Compatibility support policy

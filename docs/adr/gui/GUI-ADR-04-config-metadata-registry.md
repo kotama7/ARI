@@ -20,7 +20,7 @@ sources:
     role: test
   - path: docs/reference/configuration.md
     role: doc
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-04: config schema metadata storage and versioning

@@ -110,7 +110,7 @@ last_verified: 2026-08-13
 | プロダクションビルド | `cd ari-core/ari/viz/frontend && npm run build` | exit 0、出力は `ari-core/ari/viz/static/dist/` |
 | バンドル予算 | `python scripts/check_bundle_budget.py --fail-on-regression` | exit 0、純増の違反なし（ビルド後に実行） |
 | バックエンド + viz テスト | `python -m pytest ari-core/tests -q` | exit 0 |
-| セキュリティ退行スイート | `python -m pytest ari-core/tests -q -k "gui_bind_cors or gui_path_proxy_hardening or gui_confirmation_challenges or gui_csp_headers or gui_remote_auth or gui_secret_readiness or gui_workflow_write_guard"` | exit 0 — MN-2/4/5/6/7/8 の拒否がこれです |
+| セキュリティ退行スイート | `python -m pytest ari-core/tests -q -k "gui_bind_cors or gui_path_proxy_hardening or gui_confirmation_challenges or gui_csp_headers or gui_remote_auth or gui_secret_readiness or gui_workflow_write_guard"` | exit 0 — MN-1/2/4/5/6/7/8 の拒否がこれです |
 | レガシーファサードの凍結 | `python -m pytest ari-core/tests/test_gui_state_facade_freeze.py -q` | exit 0 — `/state` が増えても減ってもいない |
 | 設定 / 起動のシャドウパリティ | `python -m pytest ari-core/tests/test_gui_config_shadow_legacy.py -q` | exit 0 — レガシー Settings の保存 + 起動と新リゾルバが葉ごとに一致し、明示的に許可リスト化された乖離のみ |
 | 契約スナップショット | `python scripts/snapshot_contracts.py --surface all --check` | exit 0 — `viz` 面が REST のインベントリとレスポンスキーをピン留め |
@@ -263,15 +263,18 @@ total の天井の根拠は、チェッカと一緒に *ARI コードのテス�
 スキャンとポリシーは**既知のギャップ**であり、走らせるものが無いので、上の表
 ではなく手作業でサインオフする項目の側に属します:
 
-- **依存の脆弱性スキャン。** 存在する lockfile は JavaScript 側です —
-  `ari-core/ari/viz/frontend/package-lock.json` はコミットされており、
-  バンドルの依存集合は再現可能です。Python 側にはリポジトリ全体の lockfile が
-  ありません: ルートの `requirements.txt` とパッケージごとの `pyproject.toml`
-  は下限（`>=`）だけを宣言するので、1 か月違いの 2 回のインストールは異なる
-  バージョンに解決されることがあります。既知の脆弱性については、`.github/workflows/`
-  のどのワークフローも上のゲート表のどの行も、どちらの側もスキャンして
-  いません。ピン留めされた依存は*既知の*依存であって、安全な依存では
-  ありません。
+- **依存の脆弱性スキャン。** lockfile は両側にあります: JavaScript 側の
+  `ari-core/ari/viz/frontend/package-lock.json` と、Python 側の
+  リポジトリルート `requirements.lock`（`uv pip compile requirements.txt` の
+  出力で、`scripts/setup/install_deps.sh` が frozen のまま入れます）です。
+  ただし Python の lock が覆うのはルートの `requirements.txt` だけで、
+  パッケージごとの `pyproject.toml` は下限（`>=`）を宣言したままですし、
+  `.github/dependabot.yml` にあるとおり pip の bump を merge した後の
+  `requirements.lock` は手で再生成する必要があるため drift し得ます。既知の
+  脆弱性については、`.github/workflows/` のどのワークフローも上のゲート表の
+  どの行も、どちらの側もスキャンしていません — Dependabot が上げるのは bump PR
+  であって、スキャンではありません。ピン留めされた依存は*既知の*依存であって、
+  安全な依存ではありません。
 - **ライセンスポリシー。** バンドルに載るもののライセンスを検査するものは
   ありません。
 
@@ -314,7 +317,7 @@ Wizard → Studio の起動が、まだステージ 1–3 を歩く必要のあ�
 
 | シグナル | 読む場所 |
 |---|---|
-| ルートの成功 / エラー、スキーマ不一致、アダプタ不一致 | ブラウザ devtools のネットワークパネル; 型付き `/api/v1` エラーエンベロープは `viz_access.jsonl` にも現れる `request_id` を持つ |
+| ルートの成功 / エラー、スキーマ不一致、アダプタ不一致 | ブラウザ devtools のネットワークパネル; 型付き `/api/v1` レスポンスは `request_id` を持つが、`viz_access.jsonl` の行は `ts` / `method` / `path` / `status` / `duration_ms` / `client` しか持たないので、サーバ側の行との突き合わせは その id ではなく path と時刻で行う |
 | 設定検証の失敗カテゴリ、保存衝突率 | ドラフトの `validate` レスポンス（`details.errors` のパス）とワークフローの 409 衝突バナー |
 | 起動の受理 / 開始 / 失敗、冪等性の衝突 | `{checkpoint}/launch_events.jsonl`（`draft → validating → accepted → spawned` / `failed`）と `{workspace_root}/gui_store/launches/` |
 | SSE の再接続 / フォールバック、射影の遅れ、陳腐化したビュー | `GET /api/v1/diagnostics`（`sse.subscribers`、`sse.buffer_len`、`watcher.last_scan_age_s`）と `GET /health/ready`（失敗したチェック名を挙げる `degraded`） |

@@ -18,7 +18,7 @@ sources:
     role: implementation
   - path: ari-core/config/workflow.yaml
     role: config
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # ARI Architecture
@@ -803,7 +803,7 @@ would be misleading to describe as ARI's layout.
 |-------|-------|------|------|
 | `ari-skill-hpc` | `job_submit`, `container_submit`, `job_status`, `job_result`, `job_logs`, `job_cancel`, `probe_platform_capabilities`, `counter_support`, `measure_counters`, `slurm_submit` | Typed SLURM job lifecycle over digest-pinned requests; containers are reached through `container_submit`, not through per-command Singularity tools; `slurm_submit` remains as the batch-script bridge | ✗ |
 | `ari-skill-memory` | `add_memory`, `search_memory`, `search_research_memory`, `get_node_memory`, `get_experiment_context`, `get_verified_context`, `consolidate_node_memory`, `add_experiment_result`, `add_failure_case`, `add_procedure_memory`, `add_reflection`, `add_reproducibility_event`, `audit_memory` | Ancestor-scoped node memory backed by Letta (Postgres / SQLite / Cloud); `audit_memory` drives the `audit_node_provenance` stage | △ |
-| `ari-skill-idea` | `survey`, `generate_ideas` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation | ✓ |
+| `ari-skill-idea` | `survey`, `generate_ideas`, `mint_contract_for_proposal` | Literature search (Semantic Scholar) + VirSci multi-agent hypothesis generation; `mint_contract_for_proposal` mints a typed Research Contract for a proposal this skill did not generate | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec`, `propose_metric_contract`, `claim_evidence_hard_gate`, `evidence_grounded_semantic_review` | Metric spec extraction from the experiment file + the thin MCP surface over `ari/pipeline/claim_gate/` | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `promote_ear`, `publish_ear` | BFTS tree → science-facing data + EAR + curate/promote/publish lifecycle (v0.7.0) | ✓ |
 | `ari-skill-web` | `web_search`, `fetch_url`, `search_papers`, `rerank_retrieval_records`, `walk_citations`, `list_uploaded_files`, `read_uploaded_file` | Web search + ONE pinned academic provider per call (`semantic-scholar` / `arxiv` / `alphaxiv`; `both` is refused) with `record` / `live` / `replay` snapshot modes, citation walking, uploaded file access | △ |
@@ -820,7 +820,7 @@ would be misleading to describe as ARI's layout.
 | Skill | Tools | Role | LLM? |
 |-------|-------|------|------|
 | `ari-skill-orchestrator` | `run_experiment`, `get_status`, `get_result`, `stop_experiment`, `list_runs`, `list_children`, `list_artifacts`, `read_artifact`, `get_paper`, `get_ear`, `list_skills`, `get_workflow` | Expose ARI as MCP server, recursive sub-experiments, dual stdio+HTTP transport | ✗ |
-| `ari-skill-tool-registry` | `discover`, `describe`, `invoke`, `get_status`, `get_result` | Provider-neutral discovery, admission, immutable invocation and replay for large external MCP collections | ✗ |
+| `ari-skill-tool-registry` | `discover`, `describe`, `invoke`, `invoke_scheduled`, `get_status`, `get_result` | Provider-neutral discovery, admission, immutable invocation and replay for large external MCP collections; `invoke_scheduled` is the same dispatch on a separate surface for leaves that submit work to a scheduler | ✗ |
 | `ari-skill-knowledge` | `search_knowledge_skills`, `describe_knowledge_skill`, `list_active_knowledge_skills`, `request_knowledge_skill` | Read-only query + non-authoritative request surface over content-addressed procedural knowledge | ✗ |
 | `ari-skill-harness` | `search_harnesses`, `describe_harness`, `request_auxiliary_verification`, `read_attestation`, `list_verification_requirements` | Read-only Harness catalog / requirement / Attestation queries plus non-authoritative auxiliary requests | ✗ |
 
@@ -963,9 +963,13 @@ After execution, `compute_files_changed(parent, child)` returns
 `{added, modified, deleted, inherited_unchanged}` based on a sha256
 diff. When `added=0 ∧ modified=0 ∧ deleted=0` the loop marks the
 child **sterile** (`metrics["_sterile"]=True`, `_scientific_score=0.0`,
-`has_real_data=False`); BFTS then prefers any non-sterile sibling and
-the parent-terminate cascade prunes the chain when every child is
-sterile. The child agent's first user message also receives a
+`has_real_data=False`); `BFTS.should_prune` then retires the sterile
+node itself, so it is never expanded again. The parent is deliberately
+**not** retired on a sterile child: `_child_retires_parent` (Rule B-6 A,
+`ari/cli/bfts_loop.py`) suppresses the usual child-beat-parent
+retirement when the child is sterile, because a verbatim copy's score
+"win" is evaluator timing noise and retiring the parent on it would
+empty the frontier after two nodes. The child agent's first user message also receives a
 mandatory-new-artifacts directive ("produce NEW result/log/metric
 artifacts in this work_dir; do not rely on inherited files") so a
 well-behaved agent has both prose and metric incentives to actually
@@ -1009,8 +1013,12 @@ Key properties:
   and `evaluator-skill` are deliberately excluded so the agent cannot
   observe BFTS state (`nodes_tree.json`, ancestor memories, science
   data).
-- **Sandbox**: `react.sandbox` is a directory (default
-  `{{checkpoint_dir}}/repro_sandbox/`). Tool-call arguments are
+- **Sandbox**: `react.sandbox` is a directory declared by the stage's own
+  `react:` block. There is no built-in default — `stage_runner` reads
+  `react_cfg.get("sandbox", "")` and skips the sandbox entirely when the
+  key is absent — and no stage in the shipped `workflow.yaml` declares
+  one (the ORS stages reach `{{checkpoint_dir}}/repro_sandbox/` through
+  their own stage inputs instead). Tool-call arguments are
   scanned for absolute paths and `..` traversal; anything outside the
   sandbox (plus an allow-list for the paper `.tex`) is rejected with
   a `sandbox violation` tool reply instead of being dispatched.
@@ -1366,7 +1374,7 @@ discipline that keeps the layering intact.
 | Layer | Subpackage | Owns |
 |---|---|---|
 | 0 — primitives | `paths`, `checkpoint`, `_deprecation`, `cost_tracker`, `pidfile`, `lineage`, `env_detect`, `schemas`, `configs`, `prompts`, `protocols` | Path resolution, deprecation warnings, cost tracking, prompt/config loaders, structural protocols. No internal ARI deps. |
-| 1 — domain models | `llm`, `mcp`, `memory`, `clone`, `publish`, `evaluator`, `orchestrator/node`, `orchestrator/scheduler`, `orchestrator/node_selection` | Data models + thin wrappers over upstream libs (litellm, MCP, Letta). |
+| 1 — domain models | `llm`, `mcp`, `memory`, `clone`, `publish`, `evaluator`, `orchestrator/node`, `orchestrator/node_selection` | Data models + thin wrappers over upstream libs (litellm, MCP, Letta). |
 | 2 — orchestrator | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS exploration, lineage-decision LLM hook, per-node reports. |
 | 3 — agent | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env, metric_contract, shims}` | ReAct execution + experiment-specific WorkflowHints injection. |
 | 4 — pipeline | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML-driven stage runner, paper-pipeline glue. |

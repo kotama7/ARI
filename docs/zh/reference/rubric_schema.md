@@ -10,7 +10,7 @@ sources:
     role: implementation
   - path: ari-skill-replicate/src/rubric_template.py
     role: implementation
-last_verified: 2026-08-02
+last_verified: 2026-08-16
 ---
 
 # 评分单 Schema 参考
@@ -240,4 +240,5 @@ ARI 核心保持 domain-agnostic (P4 原则), venue 知识封闭于 YAML 中。
   `ari-skill-replicate/src/rubric_template.py`
 - 模板目录: `ari-core/config/paperbench_rubrics/`
 - 兄弟 venue 模式: `ari-core/config/reviewer_rubrics/` (peer review)
-- PaperBench 兼容: `paperbench/nano/tasks.py` (vendor)
+- PaperBench 兼容: `vendor/paperbench/project/paperbench/paperbench/rubric/tasks.py`
+  (vendored 于 `ari-skill-paper-re/` 之下)

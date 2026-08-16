@@ -110,7 +110,7 @@ sources:
     role: implementation
   - path: ari-core/ari/viz/frontend/src/styles/components.css
     role: implementation
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # Dashboard Architecture
@@ -1101,7 +1101,9 @@ in the table and render inside the P1 row block, because for a governed run
 they are part of "where is this run", not part of "how is it scoring".
 
 **P3 was never built as a layer.** No screen has a labelled P3 rung, and the
-level name appears in no source file. The material P3 names does exist, but
+level name appears in the source only as the note that `P3+ land later`
+(`components/Overview/OverviewPage.tsx` and that directory's `README.md`) —
+nothing is labelled P3. The material P3 names does exist, but
 reaching it means going to another workspace rather than opening something in
 place: the committed epoch detail on the Governance epoch-timeline tab (the
 sealed policy body, plus the opening and closing boundary transactions with

@@ -107,7 +107,7 @@ last_verified: 2026-08-13
 | 生产构建 | `cd ari-core/ari/viz/frontend && npm run build` | 退出码 0，产物位于 `ari-core/ari/viz/static/dist/` |
 | 打包体积预算 | `python scripts/check_bundle_budget.py --fail-on-regression` | 退出码 0，无净新增违规（构建之后运行） |
 | 后端 + viz 测试 | `python -m pytest ari-core/tests -q` | 退出码 0 |
-| 安全回归套件 | `python -m pytest ari-core/tests -q -k "gui_bind_cors or gui_path_proxy_hardening or gui_confirmation_challenges or gui_csp_headers or gui_remote_auth or gui_secret_readiness or gui_workflow_write_guard"` | 退出码 0 —— 这些是 MN-2/4/5/6/7/8 的拒绝行为 |
+| 安全回归套件 | `python -m pytest ari-core/tests -q -k "gui_bind_cors or gui_path_proxy_hardening or gui_confirmation_challenges or gui_csp_headers or gui_remote_auth or gui_secret_readiness or gui_workflow_write_guard"` | 退出码 0 —— 这些是 MN-1/2/4/5/6/7/8 的拒绝行为 |
 | legacy 外观冻结 | `python -m pytest ari-core/tests/test_gui_state_facade_freeze.py -q` | 退出码 0 —— `/state` 既没增长也没缩减 |
 | 配置/启动影子一致性 | `python -m pytest ari-core/tests/test_gui_config_shadow_legacy.py -q` | 退出码 0 —— legacy Settings 保存+启动与新解析器逐叶子一致，只允许显式列入白名单的分歧 |
 | 契约快照 | `python scripts/snapshot_contracts.py --surface all --check` | 退出码 0 —— `viz` 接口面固定了 REST 清单与响应键 |
@@ -237,12 +237,15 @@ wall-clock 断言就在这个文件里 —— 对 10,000 个节点跑 `computeVi
 扫描与策略都是**已知缺口**，由于没有任何东西可跑，它们属于人工签字的那一类，
 而不属于上面的表：
 
-- **依赖漏洞扫描。** 确实存在的那个 lockfile 在 JavaScript 这一侧 ——
-  `ari-core/ari/viz/frontend/package-lock.json` 已提交，因此打包产物的依赖集合
-  是可复现的。Python 这一侧没有仓库级的 lockfile：根目录的 `requirements.txt`
-  与各包的 `pyproject.toml` 声明的是浮动下界（`>=`），因此相隔一个月的两次安装
-  可能解析到不同的版本。至于已知漏洞，两侧都没有被扫描 —— `.github/workflows/`
-  中的任何工作流没有扫，上面关卡表中的任何一行也没有扫。一个被钉住的依赖是
+- **依赖漏洞扫描。** 两侧都有 lockfile：JavaScript 这一侧是
+  `ari-core/ari/viz/frontend/package-lock.json`，Python 这一侧是仓库根目录的
+  `requirements.lock`（`uv pip compile requirements.txt` 的产物，由
+  `scripts/setup/install_deps.sh` 以 frozen 方式安装）。但 Python 的 lock 只覆盖
+  根目录的 `requirements.txt`：各包的 `pyproject.toml` 仍声明浮动下界（`>=`），
+  且据 `.github/dependabot.yml` 所记，合并一个 pip bump 之后 `requirements.lock`
+  需要手工重新生成，因此它可能漂移。至于已知漏洞，两侧都没有被扫描 ——
+  `.github/workflows/` 中的任何工作流没有扫，上面关卡表中的任何一行也没有扫；
+  Dependabot 提的是 bump PR，那不是扫描。一个被钉住的依赖是
   *已知的*依赖，而不是安全的依赖。
 - **许可证策略。** 没有任何东西检查随打包产物一起发布的东西的许可证。
 
@@ -283,7 +286,7 @@ Settings、Wizard、Monitor、Workflow、Home、Experiments 与 PaperBench 仍�
 
 | 信号 | 在哪里读 |
 |---|---|
-| 路由成功/错误、schema 不匹配、适配器不匹配 | 浏览器开发者工具网络面板；类型化的 `/api/v1` 错误信封携带一个 `request_id`，它也会出现在 `viz_access.jsonl` 中 |
+| 路由成功/错误、schema 不匹配、适配器不匹配 | 浏览器开发者工具网络面板；类型化的 `/api/v1` 响应携带一个 `request_id`，但 `viz_access.jsonl` 的行只有 `ts` / `method` / `path` / `status` / `duration_ms` / `client`，因此与服务端行的对应靠 path 与时间戳，而不是那个 id |
 | 配置校验失败类别、保存冲突率 | 草稿的 `validate` 响应（`details.errors` 路径）与 workflow 409 冲突横幅 |
 | 启动 accepted / started / failed、幂等键碰撞 | `{checkpoint}/launch_events.jsonl`（`draft → validating → accepted → spawned` / `failed`）与 `{workspace_root}/gui_store/launches/` |
 | SSE 重连 / 回退、投影器滞后、陈旧视图 | `GET /api/v1/diagnostics`（`sse.subscribers`、`sse.buffer_len`、`watcher.last_scan_age_s`）与 `GET /health/ready`（`degraded` 并点名失败的检查） |

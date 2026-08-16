@@ -725,7 +725,7 @@ v1 GUI ドキュメントストアと launch のパスである。
 |-------|-------|------|------|
 | `ari-skill-hpc` | `job_submit`, `container_submit`, `job_status`, `job_result`, `job_logs`, `job_cancel`, `probe_platform_capabilities`, `counter_support`, `measure_counters`, `slurm_submit` | digest 固定された request による型付き SLURM ジョブライフサイクル。コンテナはコマンドごとの Singularity tool ではなく `container_submit` から到達し、`slurm_submit` はバッチスクリプトのブリッジとして残る | ✗ |
 | `ari-skill-memory` | `add_memory`, `search_memory`, `search_research_memory`, `get_node_memory`, `get_experiment_context`, `get_verified_context`, `consolidate_node_memory`, `add_experiment_result`, `add_failure_case`, `add_procedure_memory`, `add_reflection`, `add_reproducibility_event`, `audit_memory` | 祖先スコープのノードメモリ（Letta バックエンド）。`audit_memory` は `audit_node_provenance` ステージを駆動 | △ |
-| `ari-skill-idea` | `survey`, `generate_ideas` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成 | ✓ |
+| `ari-skill-idea` | `survey`, `generate_ideas`, `mint_contract_for_proposal` | 文献検索（Semantic Scholar）+ VirSci マルチエージェント仮説生成。`mint_contract_for_proposal` は本 skill が生成していない proposal に対して typed Research Contract を発行する | ✓ |
 | `ari-skill-evaluator` | `make_metric_spec`, `propose_metric_contract`, `claim_evidence_hard_gate`, `evidence_grounded_semantic_review` | 実験ファイルからのメトリクス仕様抽出 + `ari/pipeline/claim_gate/` を包む薄い MCP 面 | △ |
 | `ari-skill-transform` | `nodes_to_science_data`, `generate_ear`, `curate_ear`, `promote_ear`, `publish_ear` | BFTS ツリー → 科学データ + EAR + curate/promote/publish ライフサイクル (v0.7.0) | ✓ |
 | `ari-skill-web` | `web_search`, `fetch_url`, `search_papers`, `rerank_retrieval_records`, `walk_citations`, `list_uploaded_files`, `read_uploaded_file` | Web 検索 + 1 回の呼び出しにつき 1 つのピン留めされた学術プロバイダ（`semantic-scholar` / `arxiv` / `alphaxiv`; `both` は拒否）を `record` / `live` / `replay` のスナップショットモードで利用、引用の追跡、アップロードファイルへのアクセス | △ |
@@ -742,7 +742,7 @@ v1 GUI ドキュメントストアと launch のパスである。
 | Skill | ツール | 役割 | LLM? |
 |-------|-------|------|------|
 | `ari-skill-orchestrator` | `run_experiment`, `get_status`, `get_result`, `stop_experiment`, `list_runs`, `list_children`, `list_artifacts`, `read_artifact`, `get_paper`, `get_ear`, `list_skills`, `get_workflow` | ARI を MCP サーバーとして公開、再帰的サブ実験、デュアル stdio+HTTP トランスポート | ✗ |
-| `ari-skill-tool-registry` | `discover`, `describe`, `invoke`, `get_status`, `get_result` | 大規模な外部 MCP コレクションに対する provider 中立な discovery / admission / 不変な invoke / replay | ✗ |
+| `ari-skill-tool-registry` | `discover`, `describe`, `invoke`, `invoke_scheduled`, `get_status`, `get_result` | 大規模な外部 MCP コレクションに対する provider 中立な discovery / admission / 不変な invoke / replay。`invoke_scheduled` は scheduler へ投入する leaf 用に分離された同一 dispatch の surface | ✗ |
 | `ari-skill-knowledge` | `search_knowledge_skills`, `describe_knowledge_skill`, `list_active_knowledge_skills`, `request_knowledge_skill` | content-addressed な手続き的知識への read-only クエリ + 非権威的リクエスト面 | ✗ |
 | `ari-skill-harness` | `search_harnesses`, `describe_harness`, `request_auxiliary_verification`, `read_attestation`, `list_verification_requirements` | Harness カタログ / 要件 / Attestation の read-only クエリと非権威的な補助リクエスト | ✗ |
 
@@ -868,7 +868,7 @@ BFTS が子ノードを expand する際、子の `work_dir` は親をコピー�
 |  | `results.json`, `*_results.json`, `selftest_output.txt`, `*_output.txt` — 親の**数値**。コードチャネルに乗せてはならない |
 |  | `heterogeneous_env.json`（tooling 出力かつ probe したマシン情報。子は自分で probe し直す） |
 
-実行後、`compute_files_changed(parent, child)` が sha256 diff から `{added, modified, deleted, inherited_unchanged}` を返します。`added=0 ∧ modified=0 ∧ deleted=0` の場合 loop はその子を **sterile** と判定し (`metrics["_sterile"]=True`、`_scientific_score=0.0`、`has_real_data=False`)、BFTS は非 sterile 兄弟を優先し、全ての子が sterile なら parent-terminate cascade が継承チェーンを刈り取ります。子 agent の最初の user message にも mandatory-new-artifacts 指示 (「この work_dir で **新しい** result/log/metric を生成すること; 継承ファイルに依存しない」) が入り、prompt 側からも実験実行を促します。
+実行後、`compute_files_changed(parent, child)` が sha256 diff から `{added, modified, deleted, inherited_unchanged}` を返します。`added=0 ∧ modified=0 ∧ deleted=0` の場合 loop はその子を **sterile** と判定し (`metrics["_sterile"]=True`、`_scientific_score=0.0`、`has_real_data=False`)、`BFTS.should_prune` がその sterile ノード自身を frontier から退役させ、二度と展開しません。親は sterile な子では **退役させません**: `_child_retires_parent`（Rule B-6 A、`ari/cli/bfts_loop.py`）が child-beat-parent の退役を sterile な子については抑止します — 逐語コピーのスコア「勝利」は evaluator のタイミングノイズであり、それで親を退役させると 2 ノードで frontier が空になるためです。子 agent の最初の user message にも mandatory-new-artifacts 指示 (「この work_dir で **新しい** result/log/metric を生成すること; 継承ファイルに依存しない」) が入り、prompt 側からも実験実行を促します。
 
 ---
 
@@ -890,7 +890,7 @@ pipeline.py ──▶ pre_tool (MCP)  → 主張値 config
 主な性質:
 
 - **Phase ホワイトリスト**: `workflow.yaml` の `skills[].phase` は単一文字列または配列。ステージの `react.agent_phase` 値が phase リストに含まれるスキルだけがエージェントに見える。デフォルト `workflow.yaml` では `web-skill` / `vlm-skill` / `hpc-skill` / `coding-skill` が `reproduce` にオプトイン。`memory-skill` / `transform-skill` / `evaluator-skill` は意図的に除外され、エージェントは BFTS の状態(`nodes_tree.json`、祖先メモリ、science data)を観測できない。
-- **サンドボックス**: `react.sandbox` はディレクトリ(既定 `{{checkpoint_dir}}/repro_sandbox/`)。ツール呼び出しの引数は絶対パスと `..` トラバーサルを走査され、sandbox 外 (論文 `.tex` の allow-list を除く) は MCP 到達前に `sandbox violation` として拒否される。MCP サーバー起動前に `ARI_WORK_DIR` を sandbox にセットするため、`coding-skill.run_bash` も自然に sandbox で cwd される。
+- **サンドボックス**: `react.sandbox` はステージ自身の `react:` ブロックで宣言するディレクトリで、組み込みの既定値はない(`stage_runner` は `react_cfg.get("sandbox", "")` を読み、キーがなければ sandbox 自体を作らない)。同梱の `workflow.yaml` にこれを宣言するステージはなく、ORS ステージは各自のステージ入力として `{{checkpoint_dir}}/repro_sandbox/` を指す。ツール呼び出しの引数は絶対パスと `..` トラバーサルを走査され、sandbox 外 (論文 `.tex` の allow-list を除く) は MCP 到達前に `sandbox violation` として拒否される。MCP サーバー起動前に `ARI_WORK_DIR` を sandbox にセットするため、`coding-skill.run_bash` も自然に sandbox で cwd される。
 - **終了条件**: エージェントは `react.final_tool`(既定 `report_metric`)を呼んでループを終える。その呼び出しは MCP には転送されずドライバが捕捉し、引数が post_tool に渡る `actual_value` / `actual_unit` / `actual_notes` となる。
 
 この分離により、再現ステージの「論文テキストのみを読む」制約が、スキル Python 内ではなく YAML から監査可能になります。
@@ -1148,7 +1148,7 @@ pipeline:
 | 層 | サブパッケージ | 担当 |
 |---|---|---|
 | 0 — プリミティブ | `paths`、`checkpoint`、`_deprecation`、`cost_tracker`、`pidfile`、`lineage`、`env_detect`、`schemas`、`configs`、`prompts`、`protocols` | パス解決、非推奨警告、コスト追跡、プロンプト／設定ローダ、構造的プロトコル。ARI 内部への依存なし。 |
-| 1 — ドメインモデル | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/scheduler`、`orchestrator/node_selection` | データモデル + 上流ライブラリ（litellm、MCP、Letta）への薄いラッパ。 |
+| 1 — ドメインモデル | `llm`、`mcp`、`memory`、`clone`、`publish`、`evaluator`、`orchestrator/node`、`orchestrator/node_selection` | データモデル + 上流ライブラリ（litellm、MCP、Letta）への薄いラッパ。 |
 | 2 — オーケストレータ | `orchestrator/{bfts, lineage_decision, node_report, root_idea_selector}` | BFTS 探索、lineage-decision の LLM フック、ノードごとのレポート。 |
 | 3 — エージェント | `agent/{loop, react_driver, workflow, message_utils, tool_manager, guidance, run_env, metric_contract, shims}` | ReAct 実行 + 実験固有の WorkflowHints 注入。 |
 | 4 — パイプライン | `pipeline/{__init__, experiment_md, yaml_loader, stage_control, context_builder, stage_runner, orchestrator}` | YAML 駆動のステージランナー、論文パイプラインの接着層。 |

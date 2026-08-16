@@ -344,14 +344,14 @@ GUI の設定面は、機械的に検査される 3 つの部品の上に構築�
 | `source` | `pydantic` — 走査対象は宣言済みモデルフィールドのみです。 |
 | `env_override` | この葉を上書きする `ARI_*` 変数、または `null`。 |
 
-**被覆率の不変条件。** レジストリは現在**204 葉・メタデータ被覆率 100 %** です:
+**被覆率の不変条件。** レジストリは現在**205 葉・メタデータ被覆率 100 %** です:
 `build_field_registry()` は、走査した葉に `FIELD_META` の接頭辞または厳密な
 エントリが無い場合 `LookupError` を送出するため、新しい設定フィールドがスキーマ
 メタデータ無しに出荷されることはできません。現在の分布: Governance 104 /
 Models 32 / Search (BFTS) 24 / Proposal routing 14 /
-Manuscript completeness 10 / Infrastructure 5 / Scientific assurance 5 /
-Evaluation 4 / Execution mode 4 / Skills 2; expert 150、advanced 18、basic 36;
-`public` 203 + `secret_reference` 1（`llm.api_key`）; `new_run_only` 146 +
+Manuscript completeness 10 / Scientific assurance 6 / Infrastructure 5 /
+Evaluation 4 / Execution mode 4 / Skills 2; expert 151、advanced 18、basic 36;
+`public` 204 + `secret_reference` 1（`llm.api_key`）; `new_run_only` 147 +
 `draft` 58; 20 葉が `env_override` を持ちます。
 
 意図的な忠実度の限界（黙ってではなく文書化されています）:
@@ -421,11 +421,14 @@ ADR-09 以降、GUI クライアントが書けるモード / ガバナンスの
   `Applies when: …` の 1 行としてです。これを解析するものはありません:
   `validate_patch` は一切読まず、これを理由に無効化・必須化・衝突検査される
   コントロールは無く、`ari/config/resolver.py` には言及すらありません。
-  現在、実際の `path=value` / `path!=value` 述語を持つ葉は 12 個です —
-  `bfts.depth_penalty_lambda`、`bfts.ucb_c`、`evaluator.custom_axes`、
-  `manuscript.profile`、`manuscript.brief_character_budget`、および
-  `manuscript.repair.*` の 7 葉 — そしてそのいずれも、述語が偽である状態のまま
-  編集も patch もできます。`bfts.frontier_score` を既定値
+  現在、実際の `path=value` / `path!=value` 述語を持つ葉は 135 個です。
+  そのうち 104 個は後述の ADR-09 ロック集合そのものなので、それらを読み取り
+  専用にしているのは述語ではありません。残る 31 個は、述語が偽である状態の
+  まま編集も patch もできます: `bfts.depth_penalty_lambda`、`bfts.ucb_c`、
+  `evaluator.custom_axes`、`manuscript.profile`、
+  `manuscript.brief_character_budget`、`manuscript.repair.*` の 7 葉、
+  `knowledge` / `capability_binding` / `assurance` の 6 葉、そして
+  `proposal_router.*` の 13 葉です。`bfts.frontier_score` を既定値
   `scientific_plus_diversity` のままにしていても、`bfts.depth_penalty_lambda`
   を設定する patch は検証を通り、リゾルバでマージされます。GUI 計画が求めた
   統一的な依存グラフ — enable/disable、required、conflict、derived preview を
@@ -662,11 +665,13 @@ GUI 専用の設定文書は、グローバルなホームディレクトリで�
 検証し、加えて第 2 の（そしてはるかに弱い）不変条件として、ページが 10 個の
 `<Card>` セクションを描画することを検証します。この DOM の個数はワイヤの契約
 ではなく、現在の Settings レイアウトに対する構造的な凍結です: 24 キーのボディを
-保つ再設計であっても、この数字は書き換えねばなりません。2 つのピンはカバー範囲
-も異なります。Python 側のピンは他と同じ pytest スイートで走りますが、フロント
-エンド側のピンはどのワークフローでも走りません（[テスト](../guides/testing.md)
-の *PR 時にテストされる内容* を参照）。そのため契約のクライアント側だけを壊す
-変更は、誰かが手でフロントエンドスイートを走らせるまで、何も失敗させません。
+保つ再設計であっても、この数字は書き換えねばなりません。現在はどちらのピンも
+PR 時に走ります。Python 側のピンは他と同じ pytest スイートで走り、フロント
+エンド側のピンは `dashboard-frontend` ワークフロー
+（`.github/workflows/dashboard-frontend.yml`）で走ります。その `npm test`
+ステップは `main` へのプルリクエストごとに Vitest スイート全体を
+`continue-on-error` なしで実行するので、契約のクライアント側だけを壊す変更は
+このゲートで失敗します。
 
 **1. GET と POST のキー集合が一致していません。** `GET /api/settings` はちょうど
 **27** のトップレベルキーを返します（26 のスカラ / リスト + 10 のサブキーを持つ
@@ -740,7 +745,7 @@ POST し、`POST` は*ファイル全体の置換*です（ボディに無いキ
 | `letta_base_url` | `LETTA_BASE_URL` | `"http://localhost:8283"` |
 | `letta_embedding_config` | `LETTA_EMBEDDING_CONFIG` | `"letta-default"` |
 | `ors.replicator_model` | `ARI_MODEL_REPLICATE` | `"claude-opus-4-7"` |
-| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini-2.5-pro"` |
+| `ors.rubric_gen_model` | `ARI_MODEL_RUBRIC_GEN` | `"gemini/gemini-2.5-pro"` |
 | `ors.rubric_audit_model` | `ARI_MODEL_RUBRIC_AUDIT` | `"claude-opus-4-7"` |
 | `ors.judge_model` | `ARI_MODEL_JUDGE` | `"gpt-4o-2024-11-20"` |
 | `ors.phase1_sandbox_kind` | `ARI_PHASE1_SANDBOX` | `"auto"` |
@@ -1735,7 +1740,7 @@ shadow の出力は観察のみです: BFTS のスコア、フロンティア、
 | キー | デフォルト | 意味 |
 |---|---|---|
 | `enabled` | `true` | メタ進化ステップの on/off（無効時はコーディネータが監査 1 行を残して no-op） |
-| `evolving_roles` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor` | v1 の進化するメタロール; コード変更なしで層を凍結するには `[]` へ縮小可能 |
+| `evolving_roles` | `prompt_mutator`、`clean_room_generator`、`replay_selector`、`failure_summary_compressor`、`policy_mutator` | v1 の進化するメタロール; コード変更なしで層を凍結するには `[]` へ縮小可能 |
 | `max_meta_candidates_per_epoch` | `1` | メタロール合計での、エポックごとのメタ候補キャップ |
 | `sandbox.max_cases` | `6` | サンドボックス評価ごとにリプレイされる過去のメタタスクバンドル数 |
 | `sandbox.use_cached_results` | `true` | コンテンツキーのサンドボックス結果を再利用する |

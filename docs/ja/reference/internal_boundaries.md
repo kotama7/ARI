@@ -125,11 +125,15 @@ success/failure コールバックに乗るので、`set_default_metadata` 単�
 
 これらのオーナーへ統合していくべき既知の重複（誤った挙動ではないが、ドリフトの
 リスク）: `viz/api_memory.py` はコンテナランタイムのディスパッチを再導出して
-います。`ari-skill-paper-re` の **reproduce 経路**はもうそのどちらも再実装して
-おらず、投入は `ari_skill_hpc.SlurmScheduler`（`src/server.py`）を、ローカル
-実行は `ari.execution.execute_local`（`src/sandbox.py`）を通ります。一方で
-**PaperBench エージェント computer**（`src/_compute/computer.py`）は、いまも
-その両方の 2 つ目の実装です: `ApptainerComputer.send_shell_command` は
+います。`ari-skill-paper-re` の **reproduce 経路**は 3 つの substrate のうち
+2 つを統合済みで、投入は `ari_skill_hpc.SlurmScheduler`（`src/server.py`）を、
+ローカル実行は `ari.execution.execute_local`（`src/sandbox.py`）を通ります。
+コンテナ実行だけはいまも自前で、`sandbox.py:_external_command` が
+`docker run` / `apptainer exec` の argv を組み立て、
+`execute_container_attempt` が `ari.container` ではなく
+`asyncio.create_subprocess_exec(..., start_new_session=True)` に流します。さらに
+**PaperBench エージェント computer**（`src/_compute/computer.py`）は、
+その両方のもう 1 つの実装です: `ApptainerComputer.send_shell_command` は
 `apptainer exec` の argv を、`LocalComputer.send_shell_command` は素の
 `bash --noprofile --norc -c` の argv をそれぞれ自前で組み立て、どちらも
 `ari.execution` ではなくモジュール自前の `_run_subprocess`
@@ -191,7 +195,7 @@ OS ハンドルをモジュールグローバル（`_st` としてインポー�
    stage-runner のサブプロセス経路にしか届かず、スキルサーバには届きません。
 2. **並列ワーカー下での共有プロセス状態。** 1 つの `AgentLoop` インスタンスと
    1 つの `MCPClient` をすべてのノードスレッドが共有します。`_run_loop` は
-   同時実行数を `max_workers = min(cfg.bfts.max_parallel_nodes, 4)` に制限し、
+   同時実行数を `max_workers = max(1, min(cfg.bfts.max_parallel_nodes, 4))` に制限し、
    その上限はプールサイズではなく `threading.Semaphore` が担います（プールは
    `max_workers + 8`。スケジューラジョブを待つノードが待機に入り、パーミットを
    返せるようにするためです）。ノード同一性はプロセスグローバルな状態には

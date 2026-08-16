@@ -16,7 +16,7 @@ sources:
     role: test
   - path: ari-core/ari/viz/frontend/src/__tests__/devModeAndDangerousOps.test.tsx
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-11: secret readiness replaces plaintext env-key reads

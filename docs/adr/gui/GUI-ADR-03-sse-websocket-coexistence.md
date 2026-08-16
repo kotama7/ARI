@@ -28,7 +28,7 @@ sources:
     role: doc
   - path: docs/guides/dashboard.md
     role: doc
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # GUI-ADR-03: SSE and legacy WebSocket coexistence

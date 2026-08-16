@@ -70,7 +70,7 @@ sources:
     role: config
   - path: ari-core/tests/fixtures/contracts/mcp_tools.json
     role: test
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # MCP Tools Reference
@@ -173,9 +173,9 @@ argument the agent supplies.
 `_load_virsci_snapshot_papers` is a plain helper `survey` calls directly, never
 agent-visible; `ari-skill-idea/tests/test_server.py` pins via `mcp.list_tools()`
 that `survey` and `generate_ideas` are registered and that the helper is not.
-`mint_contract_for_proposal` is registered at runtime but declared in neither
-`skill.yaml` nor `mcp.json`, so `scripts/check_skill_manifests.py` currently
-reports it as `tool-drift` for this package.
+`mint_contract_for_proposal` is declared in both `skill.yaml` and `mcp.json`
+alongside the other two, so `scripts/check_skill_manifests.py` reports no
+`tool-drift` for this package.
 There is no cross-provider fallback: a `virsci-snapshot` survey whose corpus is
 absent raises `FileNotFoundError`, and a Semantic Scholar survey raises on the
 HTTP error, so an outage produces a refusal rather than a silently different
@@ -451,9 +451,9 @@ thousands. Leaf provider schemas are never exposed through `tools/list`.
 `invoke`, `invoke_scheduled`, `get_status` and `get_result` declare a run-scope
 context requirement, so their input schemas declare `ari_context` for the
 transport to fill — the same injection rule as `measure_counters` above. This
-package's `mcp.json` is the one legacy manifest that has not been regenerated:
-it still lists five names, and `scripts/check_skill_manifests.py` reports the
-missing `invoke_scheduled` as `compat-metadata-drift`. For catalog
+package's `mcp.json` has been regenerated from `skill.yaml` and lists all six
+names, `invoke_scheduled` included, so `scripts/check_skill_manifests.py`
+reports no `compat-metadata-drift` for it. For catalog
 identity, admission levels, and the provider adapters, see
 [Federated Scientific Tool Registry](tool_registry.md).
 

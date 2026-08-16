@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_virsci_adapter.py
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-16
 ---
 
 # VirSci Integration
@@ -70,7 +70,8 @@ proposal_router:
   retry (the MCP 3-retry policy) appends nothing and consumes no budget.
 - **`trigger_on`** — the router trigger events that may route to the
   adapter. Removing an event from this list makes VirSci unavailable for
-  that event.
+  that event, unless a typed Research Contract is required — see
+  [Guarantees when `enabled: false`](#guarantees-when-enabled-false).
 
 `proposal_router.*` is consumed only when the effective mode is `ari_rqgm`
 (the single exception, `record_only`, is unrelated to VirSci — see
@@ -107,11 +108,15 @@ other trigger events; a mid-run event appends candidate records under the
 same budgets but never shifts the `ideas[0]` directive in v1 — promoting a
 re-ideation result is a governance decision.
 
-The adapter itself calls `survey` (topic → paper list; degrades to an empty
-list on failure) and then `generate_ideas` over MCP, and normalizes the
-`generate_ideas` payload into one `ProposalDraft` per idea — it reads only
-the nine legacy top-level keys (`virsci_adapter.GENERATE_IDEAS_KEYS`), which
-are now a subset of what the skill returns. A `generate_ideas`
+The adapter itself calls `survey` (topic → paper list, plus the typed
+`survey_snapshot` when the skill returns one; degrades to an empty list on
+failure) and then `generate_ideas` over MCP — forwarding the exact snapshot
+when it has one and the papers projection otherwise — and normalizes the
+`generate_ideas` payload into one `ProposalDraft` per idea.
+`virsci_adapter.GENERATE_IDEAS_KEYS` names the nine legacy top-level keys of
+that contract; normalization also copies through nine of the skill's
+typed-contract keys, every one the router bubbles below except
+`survey_snapshot`. A `generate_ideas`
 failure degrades to zero drafts; content-key dedup at the store makes the
 whole path idempotent under retries.
 
@@ -170,8 +175,9 @@ postures (`knowledge.mode: off`, `capability_binding.mode: legacy`,
 These guarantees cover the default postures only. Moving any of
 `knowledge.mode`, `capability_binding.mode`, or `assurance.mode` off its
 default makes `ProposalRouter._typed_contract_required()` true, and the
-router then constructs the adapter (whenever an MCP client exists) and
-reports `virsci` as enabled whatever `generators.virsci.enabled` says.
+router then constructs the adapter (whenever an MCP client exists), reports
+`virsci` as enabled whatever `generators.virsci.enabled` says, and keeps it
+in the routing table for every trigger event whatever `trigger_on` says.
 
 ## The four mode × VirSci combinations
 
