@@ -33,6 +33,7 @@ from ari.assurance.models import (
 from ari.assurance.native_perf_common import (MAX_TRUSTED_SPREAD, load_case_set,
                                               measurement_placement)
 from ari.assurance.native_perf import (
+    DEFAULT_REGRESSION_THRESHOLD,
     NativePerfReportV1,
     reference_flags,
     reference_source,
@@ -371,18 +372,25 @@ class NativePerfDriver:
                 return _refused(_MISSING_CONTROLS.format(
                     revision=definition.revision, which=which))
         flags = " ".join(reference_flags(problem))
+        # THE THRESHOLD IS NOT THE PROBE'S TO CHOOSE. It was three literal 0.95s
+        # here against a 1.0 default in the worker and the measurement, and the
+        # governed path passes no threshold at all -- so a registered run judged
+        # its candidate at a ratio the evidence beside it had never been earned
+        # at. Imported, so the controls certify the instrument at exactly the
+        # figure a scored run is decided by.
+        threshold = DEFAULT_REGRESSION_THRESHOLD
         clean = verify_native_perf(
             problem, reference_source(problem), tier="validate",
             dataset_revision=parity_set, candidate_flags=flags,
-            regression_threshold=0.95)
+            regression_threshold=threshold)
         slow = verify_native_perf(
             problem, problem.path(scaffolding.negative_control_slow),
             tier="screen", dataset_revision=parity_set,
-            candidate_flags=flags, regression_threshold=0.95)
+            candidate_flags=flags, regression_threshold=threshold)
         wrong = verify_native_perf(
             problem, problem.path(scaffolding.negative_control_wrong),
             tier="screen", dataset_revision=parity_set,
-            candidate_flags=flags, regression_threshold=0.95)
+            candidate_flags=flags, regression_threshold=threshold)
         slow_detail = slow.case_results[0].detail if slow.case_results else ""
         wrong_detail = wrong.case_results[0].detail if wrong.case_results else ""
         clean_spread = (clean.case_results[0].relative_spread

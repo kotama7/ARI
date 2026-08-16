@@ -11,7 +11,8 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ari.assurance.native_perf import verify_native_perf
+from ari.assurance.native_perf import (DEFAULT_REGRESSION_THRESHOLD,
+                                       verify_native_perf)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,7 +43,13 @@ def main(argv: list[str] | None = None) -> int:
                              "accepted -- a candidate declaring exactly one flag "
                              "would fail as a verifier crash rather than as a "
                              "candidate. Measured, not reasoned about.")
-    parser.add_argument("--regression-threshold", type=float, default=1.0)
+    # THE GOVERNED PATH NEVER PASSES THIS. ``_worker_argv`` builds the perf
+    # branch without it, so this default IS the threshold a registered manifest
+    # is judged at -- and it read 1.0 while the parity probe beside it earned
+    # its evidence at 0.95. One figure, imported, so a default here cannot drift
+    # from the one the registration evidence was established at.
+    parser.add_argument("--regression-threshold", type=float,
+                        default=DEFAULT_REGRESSION_THRESHOLD)
     parser.add_argument("--run-timeout", type=float, default=300.0)
     parser.add_argument("--negative-control", action="store_true")
     args = parser.parse_args(argv)

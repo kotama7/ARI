@@ -22,7 +22,9 @@ from ari.assurance.native_perf_common import (
     PerfTier,
 )
 from ari.assurance.native_perf_family import get_family, registered_families
-from ari.assurance.native_perf_measure import resolve_problem, verify_performance
+from ari.assurance.native_perf_measure import (DEFAULT_REGRESSION_THRESHOLD,
+                                               resolve_problem,
+                                               verify_performance)
 from ari.assurance.problems import (LoadedProblemV1, ProblemError, load_problem,
                                     materialize, registered_problems)
 
@@ -59,6 +61,7 @@ def reference_flags(problem: str | LoadedProblemV1) -> tuple[str, ...]:
 
 
 __all__ = [
+    "DEFAULT_REGRESSION_THRESHOLD",
     "LoadedProblemV1",
     "NativePerfReportV1",
     "PerfBuildError",

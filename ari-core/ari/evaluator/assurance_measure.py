@@ -36,7 +36,8 @@ from pathlib import Path
 from typing import Any
 
 from ari.assurance.native_perf_common import PerfBuildError, PerfInfrastructureError
-from ari.assurance.native_perf_measure import verify_performance
+from ari.assurance.native_perf_measure import (DEFAULT_REGRESSION_THRESHOLD,
+                                               verify_performance)
 from ari.assurance.problems import LoadedProblemV1, ProblemError, load_problem, materialize
 
 #: Where the agent states the toolchain it wants. Owned by the AGENT CONTRACT,
@@ -299,7 +300,7 @@ def report_to_measurement(report, *, compile_ok: bool = True) -> dict[str, Any]:
 
 
 def measure(work_dir: str, *, seed: int = 0, tier: str | None = None,
-            regression_threshold: float = 1.0,
+            regression_threshold: float = DEFAULT_REGRESSION_THRESHOLD,
             run_timeout: float = 900.0) -> dict[str, Any]:
     """Measure the candidate in ``work_dir`` against this run's pinned problem.
 
