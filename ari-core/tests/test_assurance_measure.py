@@ -115,6 +115,48 @@ def test_one_unresolved_case_among_correct_ones_is_not_silently_dropped():
     assert scored["metrics"]["_scientific_score"] == 0.0
 
 
+def test_a_repetition_with_no_finite_residual_does_not_publish_a_good_one():
+    """``max_rel_error`` is ``None`` when the ORACLE ANSWERED and its answer was
+    not a finite number -- ``inf`` for output containing an infinity, ``NaN`` for
+    output left at the frozen driver's poison. That is the WORST a repetition can
+    do, so a maximum taken over the repetitions that did produce a number would
+    hand the agent the residual of its good repetitions and call it the worst.
+
+    It crashed instead: the list was non-empty whenever it held only ``None``, so
+    ``max`` raised ``TypeError: '>' not supported between instances of 'NoneType'
+    and 'float'`` on exactly the case the field was made nullable for, and the
+    node came back unranked as an instrument failure.
+    """
+    finite = PerfRepetitionV1(index=0, input_seed=0, credited_seconds=1.0,
+                              reference_seconds=1.0, speedup=1.0, correct=True,
+                              max_rel_error=1e-7)
+    non_finite = PerfRepetitionV1(index=1, input_seed=1, credited_seconds=1.0,
+                                  reference_seconds=1.0, speedup=1.0,
+                                  correct=False, max_rel_error=None)
+    mixed = PerfCaseResultV1(
+        case_id="c1", verdict="fail", detail="non-finite residual", speedup=1.0,
+        relative_spread=None, repetitions=(finite, non_finite),
+        repetitions_requested=2)
+    entry = am.report_to_measurement(_report([mixed]))["families"]["c1"]
+    assert "max_relative_error" not in entry, (
+        "1e-07 was published as the worst residual of a case one of whose "
+        "repetitions produced no finite residual at all")
+    # Not silently dropped: kept where the audit reads it and no prompt does.
+    assert entry["diagnostics"][0]["repetitions_without_max_rel_error"] == 1
+
+    # And the scalar is still published when every repetition reported one --
+    # otherwise the fix would be "never show it", which removes the one
+    # diagnostic an agent can act on.
+    measured = PerfCaseResultV1(
+        case_id="c2", verdict="pass", detail="d", speedup=1.0,
+        relative_spread=None, repetitions=(
+            finite, non_finite.model_copy(update={"max_rel_error": 4e-7})),
+        repetitions_requested=2)
+    both = am.report_to_measurement(_report([measured]))["families"]["c2"]
+    assert both["max_relative_error"] == pytest.approx(4e-7)
+    assert both["diagnostics"][0]["repetitions_without_max_rel_error"] == 0
+
+
 # --- the two error classes, which item 2 made load-bearing ----------------------
 
 def test_a_candidate_that_did_not_build_is_scored_not_raised(monkeypatch, tmp_path):

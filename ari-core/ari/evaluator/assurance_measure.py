@@ -181,9 +181,26 @@ def report_to_measurement(report, *, compile_ok: bool = True) -> dict[str, Any]:
             "valid": correct,
             "speedup": float(case.speedup),
         }
+        # ABSENT IS NOT ZERO, AND IT IS NOT SMALL EITHER. ``max_rel_error`` is
+        # ``None`` when the oracle's answer was not a finite number -- ``inf``
+        # for a candidate whose output contains an infinity, ``NaN`` for one that
+        # leaves the frozen driver's poisoned buffer in place (see
+        # ``finite_ratio``). That is the WORST a repetition can do, not the best,
+        # so a maximum taken over the repetitions that did produce a number would
+        # hand the agent the residual of its good repetitions and call it the
+        # worst. The list was also non-empty whenever it held only ``None``, so
+        # ``max`` raised TypeError on exactly the case the nullability was for.
+        #
+        # So the scalar is published only when EVERY repetition reported one, and
+        # is otherwise absent -- the same thing it already did for a case with no
+        # repetitions at all, and the same reading: not established. It cannot
+        # instead be reported as a sentinel or beside a new companion field,
+        # because every scalar in a family is rendered verbatim into the child's
+        # prompt and is therefore treatment text (see above).
         errors = [r.max_rel_error for r in case.repetitions]
-        if errors:
-            entry["max_relative_error"] = float(max(errors))
+        observed = [error for error in errors if error is not None]
+        if errors and len(observed) == len(errors):
+            entry["max_relative_error"] = float(max(observed))
         # Not a scalar, so ``_evaluation_cases`` drops it and it never reaches a
         # prompt; ``_measurement_audit`` keeps it, so it stays checkable.
         credited = [r.credited_seconds for r in case.repetitions]
@@ -193,6 +210,11 @@ def report_to_measurement(report, *, compile_ok: bool = True) -> dict[str, Any]:
             "relative_spread": case.relative_spread,
             "toolchain_gain": case.toolchain_gain,
             "credited_seconds": min(credited) if credited else None,
+            # WHY the scalar above is missing, when it is. Without this a reader
+            # of a checkpoint cannot tell a case that reported no residual
+            # because nothing ran from one whose oracle answered a non-finite
+            # number, and both look like a case that simply carried no field.
+            "repetitions_without_max_rel_error": len(errors) - len(observed),
         }]
         # THE AUDIT RECORD IS A CLOSED CONTRACT. node_report.schema.json declares
         # each repetition as {index, status, valid, measurements} with

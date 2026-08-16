@@ -24,6 +24,14 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/adversarial/round.py
     role: implementation
+  - path: ari-core/ari/manuscript/briefs.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-skill-paper/src/server.py
+    role: implementation
   - path: ari-core/ari/science_data_contract.py
     role: schema
   - path: ari-core/ari/viz/v1/openapi.json
@@ -32,7 +40,7 @@ sources:
     role: doc
   - path: docs/concepts/gui_architecture.md
     role: doc
-last_verified: 2026-08-09
+last_verified: 2026-08-16
 ---
 
 # Manuscript Complete architecture
@@ -272,6 +280,81 @@ fail-open: a failure logs and never blocks the paper pipeline.
 The pre-flight sits on the exploration axis. `manuscript.mode: off` removes the
 manuscript compile and the readiness gate but not the pre-flight, and no value
 of `manuscript.mode` changes whether the round fires.
+
+## The legacy context assembly and the conditions for deleting it
+
+The legacy path builds writer input by concatenating projected ScienceData,
+per-configuration results, candidate claims, source excerpts, figure context
+and retrieved references into a single `experiment_summary` string, and keeps
+that string finite with four fixed caps rather than with a budget.
+
+| What is capped | Cap | Where |
+|---|---|---|
+| per-configuration result entries | 10 | `ari-skill-paper/src/server.py`, `write_paper_iterative` |
+| candidate claims | 20 | same function; mirrored by `render_grounded_block`'s `max_claims` in `ari-core/ari/pipeline/verified_context.py` |
+| available references offered for citation | 12 | same function, reference-context block |
+| characters of experiment context in the authoring prompt | 48,000 | same function, at the authoring call |
+
+These are truncations, not budgets. Nothing records what the slice dropped,
+nothing dropped stays addressable, and a required fact and an optional one are
+discarded by the same rule — position in a list.
+
+Manuscript mode does not loosen these caps; it bypasses them. The first three
+blocks are built only when the authoring inputs carry no manuscript binding, so
+a bound run never assembles them at all. Under `enforce`, the manuscript
+boundary in `ari-core/ari/pipeline/driver.py` replaces the `experiment_summary`
+and `paper_context` template variables with the rendered section-brief bundle
+before any authoring model call, and the RQGM archive binds the same bundle
+into its writer and reviewer prompts. `audit` deliberately leaves writer bytes
+and template inputs untouched, and under `off` the boundary is a no-op down to
+its imports. The 10 / 20 / 12 / 48k behaviour is therefore exactly what an
+`off` or `audit` run still gets.
+
+What replaces the caps under `enforce` is per-section budgeting with
+accounting. `manuscript.brief_character_budget` (default 24,000 characters, per
+section rather than per run) bounds each section brief; a required disclosure
+or required item that cannot fit raises rather than being silently dropped; and
+each brief carries `omitted_item_ids`, which the renderer prints, so anything
+the budget did drop stays addressable by ID.
+
+Two properties of the shipped implementation are worth stating exactly, because
+each is a place the replacement could be over-read:
+
+- The builder in `ari-core/ari/manuscript/briefs.py` currently *splits* rather
+  than omits. An over-budget section becomes `<section>`, `<section>.part-002`,
+  and so on, and `omitted_item_ids` is left empty on every brief it produces.
+  The omission channel exists in the contract and in the renderer; no shipped
+  code path fills it yet.
+- The 48,000-character truncation is not conditional on manuscript mode. It is
+  applied to whatever `experiment_summary` holds at the authoring call,
+  including a rendered brief bundle. Because the brief budget is per section, a
+  bundle of enough sections can exceed 48,000 characters and be cut by the
+  legacy slice.
+
+Deletion of the legacy assembly and its caps is not licensed by manuscript mode
+existing. It requires all four of the following to hold:
+
+1. every supported manuscript-enabled backend consumes section briefs;
+2. the `off` compatibility policy has an approved replacement, or a deprecation
+   release;
+3. equivalent legacy fixture coverage exists in the new path;
+4. migration and release docs identify the changed output behaviour.
+
+Until all four hold, the legacy and manuscript paths stay explicit rather than
+merged. They are not fully disjoint today, though. The figure-context block is
+the one legacy block that is *not* gated on the manuscript binding, and both
+backends still hand the writer a figures manifest, so under `enforce` the
+writer input is the rendered bundle with those figure lines concatenated onto
+it. What a binding actually replaces is the three capped blocks and the two
+template variables.
+
+These are conditions on a possible future deletion, not a schedule and not a
+commitment that the deletion happens. What is observable in the code today is
+only that the conditions still gate something live — the legacy assembly is
+present and reachable, and it is what every `off` and `audit` run uses — and
+that both shipped authoring backends already receive briefs under `enforce`.
+Whether that discharges the first condition is a release decision about which
+backends are supported, not something the code answers.
 
 ## The automatic repair round
 

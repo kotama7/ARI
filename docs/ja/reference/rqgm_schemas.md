@@ -8,6 +8,14 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
+  - path: ari-core/ari/configs/defaults.yaml
+    role: config
+  - path: ari-skill-paper/src/server.py
+    role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
 last_verified: 2026-08-16
@@ -1177,6 +1185,230 @@ ground truth が `reject` のアンカーケースを現職が受理したとい
 バインディングが発火し、validated-attack → 弾劾チェーンが本番で動きます;
 paper フェーズ以外では両ロールとも `""` に解決され、探索はバイト同一の
 ままです。
+
+## paper フェーズの must-not-break レジスタ（BP-1 … BP-12）
+
+paper-archive モードは**閉じた互換レジスタ**とともに出荷されます: `BP-1` から
+`BP-12` まで、ちょうど 12 個の番号付き不変条件です。個々のルールの多くは、それが
+強制される場所にも記述されています; このレジスタだけが担うのは、12 個が**1 本の
+リスト**であるという事実です。paper 経路の変更は、12 個すべてを損なわないときに
+互換であり、そうでなければ非互換です — 訴えるべき 13 個目のルールは存在せず、
+レジスタ全体を採番し直さずにルールを落とすこともできません。3 個だけを見て
+レビューするのは部分的な合格ではなく、合格ではありません。
+
+`BP-`（paper）という接頭辞は、これらを探索側の `B-1 … B-19` と区別します。後者は
+`rqgm_archive` のランがそのまま継承するものです — それは依然として
+`ari_rqgm` 基盤のランであり、両方を守らなければなりません。以下はすべて
+`paper.mode: linear` の下でバイト同一に成り立ちます; archive は追加的で
+config でゲートされます。
+
+- **BP-1 `linear` は identity。** `paper:` ブロックを持たない config、あるいは
+  `paper.mode: linear` の config は、archive 導入前のパイプラインとバイト同一の
+  paper フェーズを生みます: 同じ `WorkflowDriver` のステージ順、同じ固定出力
+  パス、同じ `full_paper.tex` / `full_paper.pdf`、そして
+  `paper_archive_state.json` も `paper_draft_archive.jsonl` も残しません。linear
+  経路では `ari.rqgm` の paper モジュールは 1 つも import されません —
+  `ari.config._effective_paper_mode_str` が起動セルを import なしでミラーし、
+  `ari-core/tests/test_paper_mode.py`
+  （`test_linear_path_imports_no_rqgm_and_writes_no_state`）が漏洩集合が空である
+  ことをアサートします。
+- **BP-2 クレームゲートは Layer-0 のまま、変更されない。**
+  `claim_evidence_hard_gate` のブロッキング行列は保たれます: draft フェーズの
+  レポートは決してブロックせず、objective-integrity の `always_block_on` 階層は
+  どのモードでも final フェーズでブロックし、インフラ的なエラーは fail-open です
+  （`ari/pipeline/claim_gate/policy.py`）。ゲートがカーネルで包まれることは決して
+  なく、最良の archive ドラフトは*既存の* compile + gate 末尾へそのまま渡されます。
+- **BP-3 linear のステージ列とファイル順の実行は変わらず、archive の継ぎ目は
+  その外側にある。** `loop_back_to` が唯一の巻き戻しであり続け、
+  `skip_if_exists` / `depends_on` の意味論は保たれ、error のみの結果 dict は今も
+  ステージ失敗です（`ari/pipeline/driver.py`）。**archive は paper エントリで
+  driver 実行の前または周囲に差し込まれ、ステージの内側には決して入りません**:
+  `run_paper_phase`（`ari/cli/paper_dispatch.py`）は `ari/cli/projects.py` と
+  `ari/cli/run.py` から呼ばれ、linear な `generate_paper_section` を自ら呼ぶか、
+  同じ linear 関数をフォールバック callable として渡したうえで
+  `PaperArchiveRuntime.run_archive` を呼ぶかのどちらかです。どのワークフロー
+  ステージも archive を構築しないので、ステージの fail-open な例外境界が archive
+  を飲み込むことも、archive によって広げられることもなく、archive の除去は
+  ステージ一覧の編集ではなく呼び出し地点の除去になります。
+- **BP-4 `% CLAIM:Cx:NCx` アンカーの生存。** `write_paper_iterative` がアンカーを
+  出力し、`paper_refine` がそれを保存します — アンカーを落とす編集はパスごとに
+  拒否され、正味のアンカー損失があれば元の論文が保持されます（`refined=False`）。
+  ミラーされたレジストリ `claim_gate/latex.py` ↔
+  `ari-skill-paper/src/claim_links.py`、`claim_gate/numeric.py` ↔
+  `ari-skill-transform/src/claims.py` は同期を保ちます。勝者が最終ゲートを通れる
+  よう、ドラフト候補はアンカーを持たなければなりません。
+- **BP-5 `ari-skill-paper` はプロセス跨ぎで統治されず、統治のために編集されない。**
+  `ari.rqgm` を 1 つも import しない stdio サブプロセスのままです
+  （`ari-skill-paper/tests/test_writer_prompt_override.py` が漏洩集合が空である
+  ことをアサートします）; 統治されたプロンプトは ari-core のロール側にあります。
+  スキルの 4 つのプロンプトファイルは `linear` のソースであり、移動されません。
+  スキルはドラフト実行器の手です（`write_paper_iterative` が種を作り、
+  `paper_refine` が磨く）; `review_compiled_paper` は archive のスコアラでは
+  **ありません**。
+- **BP-6 `select_best_node` の意味論は変わらない。**
+  `ari/pipeline/verified_context.py` は今も `has_real_data` を優先し、
+  `_scientific_score` で順位付けします。archive はその唯一の勝者から種を取り、
+  勝者の選び方自体は変えません。（この関数はさらに、RQGM の選択的消去が
+  `_valid_for_frontier: false` と印したノードを落としますが、既定経路ではこの
+  キーを書くものが無いので、その節は不活性です。）
+- **BP-7 既存の `run_paper_candidate_escalation` フックは保たれる。** ダック
+  タイピングによる `getattr(bfts, "rqgm", None)` 検出、fail-open 契約、単一ノード
+  への軽い介入という挙動はそのままです（`ari/rqgm/runtime.py`、
+  `ari/cli/paper_dispatch.py` から呼ばれます）; archive はこれと合成し — 勝った
+  ドラフトのノードに対して走らせ — 決して取り除きません。
+- **BP-8 reviewer の独立性と構造的マージ。** `review_compiled_paper` は論文
+  テキストだけを見ます: `vlm_findings_json`、`experiment_summary`、
+  `figures_manifest_json` はワークフロー互換のために受け取るだけで捨てます。
+  `merge_reviews` は純粋に構造的です — LLM 呼び出しは無く、入力は不変で、独立
+  レビューと証拠に基づくレビューは別カテゴリで報告されます。統治された
+  `paper_reviewer` の同一ロール隔離がこれを弱めてはなりません（`peer_review` を
+  ミラーします）。
+- **BP-9 オプトインの独立性。** 探索の `ari.mode` と paper の `paper.mode` は
+  直交します — 4 通りすべてが正当です。`resolve_paper_mode`
+  （`ari/rqgm/paper_mode.py`）が読むのは `paper.mode` と `rqgm.paper.enabled`
+  だけで、`ari.mode` / `rqgm.enabled` は決して読まず、探索側の解決器も同様に
+  paper 軸を読みません（`ari/rqgm/mode.py` の VirSci 独立性の規律をミラー
+  します）。
+- **BP-10 コストはトポロジではなく予算 cap で抑えられる。** 抑えは
+  `rqgm.paper.archive.max_expansions` が BFTS の `max_total_nodes` に届くこと
+  から来ます: `should_prune` は走行合計がその cap に達した時点で `True` を返し、
+  それは `node.depth >= max_depth` の節**より前**かつ独立です
+  （`ari/orchestrator/bfts.py`、および archive 自身の
+  `PaperArchiveStrategy.should_prune`）。したがってノード数は*どの*深さでも
+  cap され、どんな分岐数も `b^d` に膨らみません。他の抑えも予算の形をしています:
+  遅延 LaTeX コンパイル、1 つの最良ノードが 1 つのドラフト空間を養うこと、
+  `full_governance_only_on_top_k`、エポックごとの adversary / candidate cap、
+  サンプル上でのアンカー採点、エポックに償却された co-evolution。**この不変条件は
+  トポロジを平坦に固定しません** — `archive.depth > 1` が設計（既定 3）であり、
+  `depth` や `width` の変更は、expansion cap が保たれるかぎり BP-10 を損なわない
+  チューニング判断です。ここで凍結されるのは cap だけです。
+- **BP-11 エポック内凍結。** 有効な writer / reviewer のプロンプトハッシュと
+  reviewer の utility ポリシーはエポック単位で凍結されます;
+  `PaperArchiveRuntime._freeze_paper_utility_policy` はラウンドループの前に一度
+  走り、co-evolution は各ラウンド頭の `ensure_epoch` 呼び出しを通じて
+  `RegistryTransitionEngine` + `ConstitutionalKernel` の境界でのみ起きます —
+  archive の途中では決して起きません。
+- **BP-12 チェックポイント衛生。** 新しいファイルは
+  `PathManager.META_FILES` に、固定名 JSON であればノードレポートの
+  `_INTERNAL_JSON_NAMES` にも登録されます; 整形はバイト固定; 壁時計・git SHA・
+  ホスト値はどのハッシュにも入りません; `hash12 = sha256[:12]` が唯一のプロンプト
+  ハッシュ方式であり続けます; そして `CONSTITUTION_HASH` は改正時に再ピンされ、
+  `ari-core/tests/test_rqgm_kernel.py` でアサートされます。
+
+12 個、12 個だけ。黙って増えるレジスタは互換契約であることをやめてスタイル
+ガイドになるので、paper 経路の本当に新しい不変条件は、このリストを改正し —
+そして改正後のリストに対して変更をレビューし直し — て追加するものであって、
+どこか別の場所で主張して済ませるものではありません。
+
+## paper-archive のコストモデル
+
+archive のコストは、config cap 上の閉じた記号式であり、指数項を持ちません。
+式は記号定義が無ければ使えないので、両方をここに置きます。
+
+| 記号 | config ノブ | 既定値 |
+|---|---|---|
+| **K** | `rqgm.paper.archive.width` — depth 1 の種ドラフト（根の分岐数） | 4 |
+| **R** | `rqgm.paper.archive.refine_rounds` — ドラフトごとの refine 子 | 2 |
+| **M** | `rqgm.paper.archive.max_expansions` — **エポックごとの**ノード予算 → BFTS `max_total_nodes` | 12 |
+| **E** | `rqgm.paper.epoch.rounds` — paper フェーズあたりの archive ラウンド数; 1 ラウンド = 1 paper エポック | 2 |
+| **T** | `rqgm.governance.full_governance_only_on_top_k` | 3 |
+| **A** | `rqgm.adversarial.max_adversary_calls_per_epoch` | 24 |
+| **C** | `rqgm.prompt_evolution.max_total_candidates_per_epoch` | 4 |
+| **S** | `rqgm.paper.anchor.sample_size` — held-out の一致サンプル | 8 |
+
+式にはさらに 2 つのノブが現れますが、予算記号ではありません:
+`rqgm.adversarial.max_attacks_per_node`（既定 3）と
+`rqgm.paper.archive.depth`（既定 3、*どの*項にも現れません — それが BP-10 の
+要点です）。上記の既定値はすべて `ari-core/ari/configs/defaults.yaml` の値です。
+
+**エポックごとのドラフト母集団。**
+
+```text
+N_draft = min( K · (1 + R), M )          # 既定では min(4·3, 12) = 12
+```
+
+**エポックごとの呼び出し、アクター別。**
+
+```text
+writer（スキル）                        =  N_draft                     # seed + refine、ドラフト 1 本につき 1 呼び出し
+paper_reviewer（統治あり）              =  N_draft                     # ドラフト 1 本につき 1 スコア
+paper_self_preference（adversary）      =  min( A, |top-K ∪ paper_cand| · max_attacks_per_node )
+co-evolution の候補生成                 =  C            prompt_evolution.enabled のとき、そうでなければ 0
+アンカー utility 採点                   =  C · S        prompt_evolution.enabled かつ anchor.enabled のとき、そうでなければ 0
+LaTeX コンパイル（LLM 0）               ≤  T                           # 遅延、top-K のみ
+```
+
+**合計。**
+
+```text
+Calls(E) ≈ E · [ N_draft                            (reviewer)
+               + min(A, T · max_attacks_per_node)   (adversary)
+               + C + C·S                            (co-evolution + anchor) ]
+         + E · N_draft                              (writer のスキル呼び出し)
+
+Tokens(E) ≈ Calls(E) · O(cap 済み context)
+```
+
+`Tokens(E)` が線形に留まるのは、どのロールの context ビューも cap 済みの射影
+だからです — `paper_reviewer` が見るのは `{draft_manuscript, verified_context,
+science_data, reference_context/anchor_case}` で、それぞれが cap されています —
+ゆえに 1 呼び出しあたりのトークンは有界で、トークン合計は呼び出し合計に比例します。
+
+**K, R, M, E, T, A, C, S** のすべてが config cap なので、`Calls(E)` は各チューニング
+量について線形に増えます。`archive.depth` はどの項も動かしません: 合計ノード数の
+打ち切りが深さの打ち切りより先に効く（BP-10）ため、深い木は同じ `M` 個のノードを
+配り直すだけで、掛け算しません。
+
+### 式と出荷ループの対応
+
+4 つの項は書かれたとおりに強制され、3 つは出荷されているものより緩いです。差は
+すべて安全側です — 出荷ループは式が許すより少なく使います — が、このモデルから
+ランの規模を見積もる読者は、どちらがどちらかを知っておくべきです。
+
+書かれたとおり強制されるもの:
+
+- **`N_draft`** は `ari/rqgm/paper_archive.py` の `archive_node_budget` そのもので、
+  同じ `min(width · (1 + refine_rounds), max_expansions)` 式であり、
+  `PaperArchiveStrategy` が `should_prune` と `expand` の双方でノード予算として
+  使う値です。
+- **writer = `N_draft`** — ラウンドループはドラフト 1 本につきドラフト実行器を
+  1 度走らせ、それぞれ `write_paper_iterative` か `paper_refine` を 1 回呼びます。
+- **reviewer = `N_draft`** — 実行器はすべてのドラフトをちょうど 1 度採点します。
+- **`E`** は `rqgm.paper.epoch.rounds` であり、co-evolution ループのラウンド数で、
+  各ラウンドが 1 エポックを開きます。
+
+出荷より緩いもの:
+
+- **reviewer の項が数えるのはスコアであって、必ずしも LLM 呼び出しではない。**
+  `rqgm.paper.reviewer.agent_as_judge.enabled`（既定 `false`）を立てない限り、
+  ドラフト採点は LLM を使いません: score 関数が注入されていなければ、reviewer は
+  venue rubric の軸を決定論的に採点します。既定のままなら reviewer が寄与するのは
+  `N_draft` 個の*統治されたスコア*と、**0** 回のモデル呼び出しです。
+- **アンカーの項はエポックあたり `S` であって `C · S` ではない。** 予算マネージャの
+  `paper_anchor_scoring` アクション用 cap は `rqgm.paper.anchor.sample_size` を
+  エポック単位で数えたものであり（`ari/rqgm/budget.py`）、出荷ループはアンカー
+  スコアラをラウンドごとに 1 度、*有効な* reviewer に対して呼びます。`C · S` は
+  候補ごとのアンカー採点という表明された設計意図であり、候補をアンカーで採点する
+  出荷済み呼び出し地点はありません。`rqgm.paper.anchor.enabled` も既定 `false` で
+  cap は `0` になるため、既定のランではこの項はまるごと不在です。
+- **コンパイルはランあたり `≤ 1` であって `≤ T` ではない。** コンパイルされるのは
+  best-belief の勝者だけで、`archive.compile_threshold` にゲートされて 1 度きり
+  です; `≤ T` は遅延 top-K コンパイルの設計上の上限であって、出荷された挙動では
+  ありません。
+- **adversary の `A` の抑えは強制されるが、その内側の積は paper ループの形では
+  ない。** 各 adversarial ラウンドは共有の `adversary_call` 予算でゲートされるので、
+  エポックあたり `A` が効きます。`|top-K ∪ paper_cand| · max_attacks_per_node` の
+  因子は、継承した探索エンジンのノードごとのファンアウトです
+  （`ari/rqgm/adversarial/engine.py`）; paper ループはその代わりに、アンカー
+  コーパス上で見つかった*過剰受容*ドラフト 1 本につき 1 ラウンドを、同じ `A` の
+  下で発火させます。
+
+したがって既定のままのラン — `anchor.enabled: false`、
+`agent_as_judge.enabled: false` — がエポックごとに使うのは、おおよそ `N_draft` 回の
+writer スキル呼び出し、`N_draft` 個の LLM 抜き reviewer スコア、高々 `A` 回の
+adversary 呼び出し、高々 `C` 回の co-evolution 候補生成であり、コンパイルはラン全体で
+1 回です。reviewer とアンカーの項がモデル呼び出しの費用になるのは、アンカーと
+agent-as-judge を有効にしたときです。
 
 ## チェックポイントファイルインベントリ
 

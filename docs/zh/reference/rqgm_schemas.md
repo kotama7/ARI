@@ -8,6 +8,14 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
+  - path: ari-core/ari/configs/defaults.yaml
+    role: config
+  - path: ari-skill-paper/src/server.py
+    role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
 last_verified: 2026-08-16
@@ -1071,6 +1079,196 @@ inert；随发布的 `rqgm_attack_records.schema.json` 的 `adversary_type` /
 （`paper_reviewer_v1` / `paper_writer_v1`），因此 Task-15 的
 `target_component_id` 绑定发火，validated-attack → 弹劾链在生产中运行；
 在 paper 阶段之外，两个角色都解析为 `""`，探索保持字节一致。
+
+## paper 阶段的 must-not-break 登记册（BP-1 … BP-12）
+
+paper-archive 模式随一份**封闭的兼容登记册**发布：恰好十二条带编号的不变式，
+`BP-1` 到 `BP-12`。其中多数规则在它们被强制执行的地方也有陈述；只有这份登记册
+承载的，是这十二条构成**一份清单**这一事实。一次 paper 路径变更，当它让十二条
+全部保持完好时才是兼容的，否则就是不兼容的 —— 没有第十三条可供援引，也没有哪一条
+可以在不把整份登记册重新编号的情况下被删掉。只对着其中三条做评审不是部分通过，
+那不是通过。
+
+`BP-`（paper）前缀把它们与探索侧的 `B-1 … B-19` 区分开来；后者会被一次
+`rqgm_archive` 运行原样继承 —— 它仍然是一次以 `ari_rqgm` 为基底的运行，必须同时
+遵守两套。下面的一切在 `paper.mode: linear` 下按字节成立；archive 是附加的，并由
+config 门控。
+
+- **BP-1 `linear` 即 identity。** 没有 `paper:` 块的 config，或写着
+  `paper.mode: linear` 的 config，产生的 paper 阶段与引入 archive 之前的流水线
+  按字节一致：同样的 `WorkflowDriver` 阶段顺序、同样的固定输出路径、同样的
+  `full_paper.tex` / `full_paper.pdf`，并且不留下 `paper_archive_state.json` 或
+  `paper_draft_archive.jsonl`。linear 路径上不会 import 任何 `ari.rqgm` 的 paper
+  模块 —— `ari.config._effective_paper_mode_str` 以免 import 的方式镜像了启用格，
+  而 `ari-core/tests/test_paper_mode.py`
+  （`test_linear_path_imports_no_rqgm_and_writes_no_state`）断言泄漏集合为空。
+- **BP-2 声明门控保持 Layer-0，不变。** `claim_evidence_hard_gate` 的阻断矩阵被
+  保留：draft 阶段的报告从不阻断，objective-integrity 的 `always_block_on` 层在任何
+  模式下都在 final 阶段阻断，而基础设施类错误 fail-open
+  （`ari/pipeline/claim_gate/policy.py`）。门控从不被内核包裹，最佳 archive 草稿被
+  原样交给*既有的* compile + gate 尾巴。
+- **BP-3 linear 的阶段序列与按文件顺序的执行不变，而 archive 的接缝在它们之外。**
+  `loop_back_to` 仍是唯一的回退，`skip_if_exists` / `depends_on` 保持其语义，
+  只含 error 的结果 dict 仍然意味着阶段失败（`ari/pipeline/driver.py`）。
+  **archive 在 paper 入口处插在 driver 运行之前或周围，绝不进入某个阶段内部**：
+  `run_paper_phase`（`ari/cli/paper_dispatch.py`）由 `ari/cli/projects.py` 与
+  `ari/cli/run.py` 调用，要么自己调用 linear 的 `generate_paper_section`，要么调用
+  `PaperArchiveRuntime.run_archive` 并把同一个 linear 函数作为 fallback callable
+  传入。没有任何工作流阶段构造 archive，因此阶段的 fail-open 异常边界既吞不下
+  archive，也不会被它撑大；移除 archive 移除的是一个调用点，而不是编辑阶段清单。
+- **BP-4 `% CLAIM:Cx:NCx` 锚的存活。** `write_paper_iterative` 发出这些锚，
+  `paper_refine` 保存它们 —— 丢锚的编辑按 pass 被拒绝，净锚损失则保留原论文
+  （`refined=False`）。互为镜像的注册表 `claim_gate/latex.py` ↔
+  `ari-skill-paper/src/claim_links.py` 与 `claim_gate/numeric.py` ↔
+  `ari-skill-transform/src/claims.py` 保持同步。草稿候选必须带锚，胜者才能通过最终
+  门控。
+- **BP-5 `ari-skill-paper` 不被跨进程治理，也不为治理而被改写。** 它仍是一个不
+  import 任何 `ari.rqgm` 的 stdio 子进程
+  （`ari-skill-paper/tests/test_writer_prompt_override.py` 断言泄漏集合为空）；被
+  治理的提示位于 ari-core 的角色一侧。该 skill 的四个提示文件是 `linear` 的源，
+  不被搬走。skill 是草稿执行器的手（`write_paper_iterative` 播种，`paper_refine`
+  打磨）；`review_compiled_paper` **不是** archive 的打分器。
+- **BP-6 `select_best_node` 的语义不变。** `ari/pipeline/verified_context.py` 仍然
+  优先 `has_real_data`，并按 `_scientific_score` 排序。archive 从这唯一的胜者播种；
+  它不改变胜者是如何被选出的。（该函数还会丢掉被 RQGM 选择性擦除标为
+  `_valid_for_frontier: false` 的节点 —— 默认路径上没有东西写这个键，因此该子句
+  在那里是 inert 的。）
+- **BP-7 既有的 `run_paper_candidate_escalation` 钩子被保留。** 它基于鸭子类型的
+  `getattr(bfts, "rqgm", None)` 探测、它的 fail-open 契约，以及它对单节点的轻触
+  行为都保持不变（`ari/rqgm/runtime.py`，由 `ari/cli/paper_dispatch.py` 调用）；
+  archive 与它复合 —— 在胜出草稿所在的节点上运行它 —— 而绝不移除它。
+- **BP-8 评审独立性与结构性合并。** `review_compiled_paper` 只看论文文本：它接收
+  `vlm_findings_json`、`experiment_summary` 与 `figures_manifest_json` 只是为了工作流
+  兼容，并把它们丢弃。`merge_reviews` 纯粹是结构性的 —— 没有 LLM 调用，输入不可变，
+  独立评审与基于证据的评审分列在不同类别下。被治理的 `paper_reviewer` 的同角色隔离
+  不得削弱这一点（镜像 `peer_review`）。
+- **BP-9 opt-in 的独立性。** 探索的 `ari.mode` 与 paper 的 `paper.mode` 正交 ——
+  四种组合都合法。`resolve_paper_mode`（`ari/rqgm/paper_mode.py`）只读
+  `paper.mode` 与 `rqgm.paper.enabled`，绝不读 `ari.mode` / `rqgm.enabled`，而探索侧
+  的解析器同样绝不读 paper 轴（镜像 `ari/rqgm/mode.py` 的 VirSci 独立性纪律）。
+- **BP-10 成本由预算 cap 界定，而不是由拓扑界定。** 界来自
+  `rqgm.paper.archive.max_expansions` 传到 BFTS 的 `max_total_nodes`：一旦运行总数
+  达到该 cap，`should_prune` 就返回 `True`，这发生在 `node.depth >= max_depth`
+  子句**之前**且与之独立（`ari/orchestrator/bfts.py`，以及 archive 自己的
+  `PaperArchiveStrategy.should_prune`）。因此节点数在*任何*深度上都被 cap 住，任何
+  分支因子都无法累积成 `b^d`。其余的界同样是预算形状的：惰性 LaTeX 编译、一个最佳
+  节点喂养一个草稿空间、`full_governance_only_on_top_k`、每纪元的 adversary 与
+  candidate cap、在样本上做锚打分、按纪元摊销的 co-evolution。**这条不变式并不把
+  拓扑钉平** —— `archive.depth > 1` 就是设计（默认 3），改动 `depth` 或 `width` 是
+  调参决定，只要 expansion cap 仍然成立，就不损害 BP-10。这里被冻结的只有 cap。
+- **BP-11 纪元内冻结。** 生效的 writer / reviewer 提示哈希与 reviewer 的效用策略按
+  纪元冻结；`PaperArchiveRuntime._freeze_paper_utility_policy` 在轮次循环之前运行
+  一次，co-evolution 只在边界上发生，经由每个轮次头部的 `ensure_epoch` 调用走
+  `RegistryTransitionEngine` + `ConstitutionalKernel` —— 绝不在 archive 中途发生。
+- **BP-12 检查点卫生。** 新文件登记进 `PathManager.META_FILES`，若是定名 JSON 还要
+  登记进节点报告的 `_INTERNAL_JSON_NAMES`；格式按字节固定；任何哈希中都不进入墙钟
+  时间、git SHA 或主机值；`hash12 = sha256[:12]` 仍是唯一的提示哈希方案；而
+  `CONSTITUTION_HASH` 在修正时被重新钉住，并在
+  `ari-core/tests/test_rqgm_kernel.py` 中被断言。
+
+十二条，且只有十二条。一份会悄悄变长的登记册就不再是兼容契约，而变成风格指南；
+因此一条真正新的 paper 路径不变式，是通过修订这份清单 —— 并对照修订后的清单重新
+评审那次变更 —— 来加入的，而不是在别处主张一下了事。
+
+## paper-archive 成本模型
+
+archive 的成本是一个建立在 config cap 之上的封闭符号式，没有指数项。式子离开它的
+符号定义就无法使用，因此两者都放在这里。
+
+| 符号 | config 旋钮 | 默认值 |
+|---|---|---|
+| **K** | `rqgm.paper.archive.width` —— depth 1 的种子草稿（根分支因子） | 4 |
+| **R** | `rqgm.paper.archive.refine_rounds` —— 每份草稿的 refine 子节点 | 2 |
+| **M** | `rqgm.paper.archive.max_expansions` —— **每纪元**节点预算 → BFTS `max_total_nodes` | 12 |
+| **E** | `rqgm.paper.epoch.rounds` —— 每个 paper 阶段的 archive 轮次；一轮 = 一个 paper 纪元 | 2 |
+| **T** | `rqgm.governance.full_governance_only_on_top_k` | 3 |
+| **A** | `rqgm.adversarial.max_adversary_calls_per_epoch` | 24 |
+| **C** | `rqgm.prompt_evolution.max_total_candidates_per_epoch` | 4 |
+| **S** | `rqgm.paper.anchor.sample_size` —— held-out 一致性样本 | 8 |
+
+式中还出现两个旋钮，但它们不是预算符号：
+`rqgm.adversarial.max_attacks_per_node`（默认 3）与
+`rqgm.paper.archive.depth`（默认 3，它不出现在*任何*项里 —— 这正是 BP-10 的
+要点）。上面所有默认值都是 `ari-core/ari/configs/defaults.yaml` 中的值。
+
+**每纪元的草稿母体。**
+
+```text
+N_draft = min( K · (1 + R), M )          # 默认下 = min(4·3, 12) = 12
+```
+
+**每纪元调用数，按角色。**
+
+```text
+writer（skill）                         =  N_draft                     # seed + refine，每份草稿一次调用
+paper_reviewer（受治理）                =  N_draft                     # 每份草稿一个分数
+paper_self_preference（adversary）      =  min( A, |top-K ∪ paper_cand| · max_attacks_per_node )
+co-evolution 候选生成                   =  C            当 prompt_evolution.enabled，否则 0
+锚效用打分                              =  C · S        当 prompt_evolution.enabled 且 anchor.enabled，否则 0
+LaTeX 编译（0 次 LLM）                  ≤  T                           # 惰性，仅 top-K
+```
+
+**总量。**
+
+```text
+Calls(E) ≈ E · [ N_draft                            (reviewer)
+               + min(A, T · max_attacks_per_node)   (adversary)
+               + C + C·S                            (co-evolution + anchor) ]
+         + E · N_draft                              (writer 的 skill 调用)
+
+Tokens(E) ≈ Calls(E) · O(受 cap 的 context)
+```
+
+`Tokens(E)` 之所以保持线性，是因为每个角色的 context 视图都是受 cap 的投影 ——
+`paper_reviewer` 看到的是 `{draft_manuscript, verified_context, science_data,
+reference_context/anchor_case}`，各自都有 cap —— 因此每次调用的 token 有界，token
+总量随调用总量线性变化。
+
+**K、R、M、E、T、A、C、S** 每一个都是 config cap，因此 `Calls(E)` 对每个可调量都
+线性增长。`archive.depth` 不移动任何一项：总节点截断先于深度截断生效（BP-10），
+所以更深的树只是把同样的 `M` 个节点重新分配，而不是把它们相乘。
+
+### 这些式子与已出货循环的对应
+
+四项按写法被强制执行；三项比出货实现更宽松。差异全部落在安全的一侧 —— 出货循环花
+得比式子允许的更少 —— 但依据这个模型估算一次运行规模的读者，应当知道哪项是哪项。
+
+按写法被强制执行的：
+
+- **`N_draft`** 就是 `ari/rqgm/paper_archive.py` 中的 `archive_node_budget`，同一个
+  `min(width · (1 + refine_rounds), max_expansions)` 表达式，并且是
+  `PaperArchiveStrategy` 在 `should_prune` 与 `expand` 两处都用作节点预算的那个值。
+- **writer = `N_draft`** —— 轮次循环对每份草稿运行一次草稿执行器，各自一次
+  `write_paper_iterative` 或 `paper_refine` 调用。
+- **reviewer = `N_draft`** —— 执行器对每份草稿恰好打一次分。
+- **`E`** 就是 `rqgm.paper.epoch.rounds`，即 co-evolution 循环的轮数，每一轮开启一个
+  纪元。
+
+比出货实现更宽松的：
+
+- **reviewer 那一项数的是分数，不一定是 LLM 调用。** 除非
+  `rqgm.paper.reviewer.agent_as_judge.enabled`（默认 `false`）被打开，否则草稿打分
+  不用 LLM：没有注入 score 函数时，reviewer 以确定性方式给 venue rubric 的各轴打分。
+  在原样默认下，reviewer 贡献的是 `N_draft` 个*受治理的分数*和 **0** 次模型调用。
+- **锚那一项是每纪元 `S`，不是 `C · S`。** 预算管理器给 `paper_anchor_scoring`
+  动作的 cap 是按纪元计的 `rqgm.paper.anchor.sample_size`（`ari/rqgm/budget.py`），
+  而出货循环每轮调用锚打分器一次，作用于*生效中的* reviewer。`C · S` 是按候选做锚
+  打分这一表明的设计意图；没有任何已出货的调用点在锚上给候选打分。
+  `rqgm.paper.anchor.enabled` 也默认为 `false`，这会把 cap 变成 `0`，因此在原样默认
+  的运行里这一项整项缺席。
+- **编译是每次运行 `≤ 1`，不是 `≤ T`。** 只有 best-belief 胜者会被编译，一次，且由
+  `archive.compile_threshold` 门控；`≤ T` 是惰性 top-K 编译的设计上限，不是已出货的
+  行为。
+- **adversary 的 `A` 界被强制执行，但它内部的乘积不是 paper 循环的形状。** 每一轮
+  对抗都由共享的 `adversary_call` 预算门控，因此每纪元 `A` 生效。
+  `|top-K ∪ paper_cand| · max_attacks_per_node` 这个因子是继承自探索引擎的按节点
+  扇出（`ari/rqgm/adversarial/engine.py`）；paper 循环改为对锚语料上发现的每一份
+  *过度接受*草稿触发一轮，仍在同一个 `A` 之下。
+
+因此一次原样默认的运行 —— `anchor.enabled: false`、`agent_as_judge.enabled: false`
+—— 每纪元大致花掉 `N_draft` 次 writer skill 调用、`N_draft` 个不用 LLM 的 reviewer
+分数、至多 `A` 次 adversary 调用、至多 `C` 次 co-evolution 候选生成，而整次运行只有
+一次编译。让 reviewer 与锚这两项真正花掉模型调用的，是把锚和 agent-as-judge 打开。
 
 ## 检查点文件清单
 

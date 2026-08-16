@@ -24,6 +24,14 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/adversarial/round.py
     role: implementation
+  - path: ari-core/ari/manuscript/briefs.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-skill-paper/src/server.py
+    role: implementation
   - path: ari-core/ari/science_data_contract.py
     role: schema
   - path: ari-core/ari/viz/v1/openapi.json
@@ -271,6 +279,75 @@ fail-open です: 失敗はログに残るだけで、論文パイプライン�
 pre-flight は探索の軸の上に載っています。`manuscript.mode: off` は manuscript の
 コンパイルと readiness gate を取り除きますが、pre-flight は取り除きません。そして
 `manuscript.mode` のどの値も、このラウンドが発火するかどうかを変えません。
+
+## レガシー context 組み立てと、それを削除するための条件
+
+レガシー経路は、射影された ScienceData、構成ごとの結果、候補 claim、ソース抜粋、
+図の context、検索された参考文献を 1 本の `experiment_summary` 文字列へ連結して
+writer 入力を作り、その文字列を budget ではなく 4 つの固定 cap で有限に保ちます。
+
+| cap の対象 | cap | 場所 |
+|---|---|---|
+| 構成ごとの結果エントリ | 10 | `ari-skill-paper/src/server.py` の `write_paper_iterative` |
+| 候補 claim | 20 | 同じ関数; `ari-core/ari/pipeline/verified_context.py` の `render_grounded_block` の `max_claims` がこれをミラーします |
+| 引用候補として提示される参考文献 | 12 | 同じ関数の reference-context ブロック |
+| authoring プロンプト中の実験 context の文字数 | 48,000 | 同じ関数の authoring 呼び出し地点 |
+
+これらは budget ではなく truncation です。スライスが何を落としたかは記録されず、
+落ちたものは後から参照できず、必須の事実と任意の事実が同じ規則 — リスト中の位置
+— で捨てられます。
+
+manuscript モードはこれらの cap を緩めるのではなく、迂回します。最初の 3 つの
+ブロックは authoring 入力が manuscript binding を持たないときにだけ組み立てられる
+ので、束縛された run はそれらをそもそも組み立てません。`enforce` では
+`ari-core/ari/pipeline/driver.py` の manuscript 境界が、authoring のモデル呼び出しが
+始まる前に `experiment_summary` と `paper_context` のテンプレート変数を、
+レンダリング済みの section brief bundle で置き換えます; RQGM archive も同じ bundle を
+自分の writer / reviewer プロンプトへ束縛します。`audit` は意図的に writer の bytes と
+テンプレート入力を触らず、`off` では境界は import も含めて no-op です。したがって
+10 / 20 / 12 / 48k の挙動は、`off` または `audit` の run が今も受け取るものそのものです。
+
+`enforce` で cap を置き換えるのは、accounting を伴う section 単位の budgeting です。
+`manuscript.brief_character_budget`（既定 24,000 文字、run 単位ではなく section 単位）が
+各 section brief を bound し、収まらない必須の disclosure や必須項目は黙って落とされる
+のではなく raise し、各 brief は `omitted_item_ids` を持つ（renderer がこれを出力する）
+ので、budget が実際に落としたものは ID で参照可能なまま残ります。
+
+実装として出荷されている挙動のうち 2 点は、置き換えを読み過ぎうる箇所なので、
+正確に述べておきます:
+
+- `ari-core/ari/manuscript/briefs.py` の builder は現在、省略ではなく *分割* します。
+  budget を超えた section は `<section>`、`<section>.part-002` … となり、この builder が
+  作るどの brief でも `omitted_item_ids` は空のままです。省略のチャネルは contract と
+  renderer には存在しますが、それを埋める出荷コード経路はまだありません。
+- 48,000 文字の truncation は manuscript モードに条件づけられていません。authoring
+  呼び出し時点で `experiment_summary` が保持しているもの — レンダリング済みの brief
+  bundle を含む — に適用されます。brief の budget は section 単位なので、section 数が
+  十分に多い bundle は 48,000 文字を超え、レガシーのスライスに切られ得ます。
+
+レガシー組み立てとその cap の削除は、manuscript モードが存在することでは正当化され
+ません。削除には次の 4 つがすべて成り立つことが必要です:
+
+1. サポートされるすべての manuscript 有効バックエンドが section brief を消費する;
+2. `off` の互換ポリシーに承認済みの置き換えがあるか、deprecation リリースがある;
+3. 同等のレガシー fixture カバレッジが新経路に存在する;
+4. マイグレーション／リリース文書が、変化した出力挙動を明示している。
+
+4 つがすべて成り立つまで、レガシー経路と manuscript 経路は融合させず明示的なまま
+保たれます。ただし今日の時点で完全に素な関係ではありません。図の context ブロックは
+manuscript binding で gate されていない唯一のレガシーブロックであり、どちらの
+バックエンドも writer に figures manifest を渡し続けるため、`enforce` の下でも
+writer 入力はレンダリング済みの bundle にその図の行が連結されたものになります。
+binding が実際に置き換えるのは、上限の掛かった 3 ブロックと 2 つのテンプレート変数
+です。
+
+これらは将来ありうる削除に対する条件であり、スケジュールでも、削除を行うという約束でも
+ありません。今日コード上で観測できるのは、この条件がまだ実在するものを gate している
+こと — レガシー組み立ては存在し到達可能で、`off` と `audit` のすべての run が使うのは
+それであること — と、出荷されている 2 つの authoring バックエンドがどちらも `enforce`
+の下で既に brief を受け取っていることだけです。それが 1 番目の条件を満たすかどうかは、
+どのバックエンドをサポート対象とするかというリリース上の判断であって、コードが答える
+ことではありません。
 
 ## 自動修復ラウンド
 

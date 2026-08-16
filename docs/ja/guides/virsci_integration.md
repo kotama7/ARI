@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_virsci_adapter.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # VirSci 統合
@@ -59,7 +59,7 @@ proposal_router:
 ```
 
 - **`enabled`**（デフォルト `false`）— アダプタのマスタースイッチ。
-  [`enabled: false` のときの保証](#guarantees-when-enabled-false)を参照。
+  本ページの「`enabled: false` のときの保証」節を参照。
 - **`mode`** — 呼び出しモード; v1 で受理される唯一の値は
   `event_triggered` です（ポーリングモードやノード単位モードはありません）。
 - **`max_calls_per_epoch`** — エポックごとの呼び出し予算。予算の計上は
@@ -70,7 +70,9 @@ proposal_router:
   リトライ（MCP の 3 リトライポリシー）は何も追記せず予算も消費しません。
 - **`trigger_on`** — アダプタへルーティングされうるルータのトリガ
   イベント。イベントをこのリストから外すと、そのイベントに対して VirSci
-  は利用不能になります。
+  は利用不能になります。ただし typed Research Contract が要求される場合を
+  除きます —
+  本ページの「`enabled: false` のときの保証」節を参照。
 
 `proposal_router.*` は実効モードが `ari_rqgm` のときにのみ消費されます
 （唯一の例外 `record_only` は VirSci と無関係です —
@@ -108,12 +110,16 @@ v1 のランループ配線: ループはルートのアイデア生成時に
 レコードを追記しますが、v1 では `ideas[0]` のディレクティブを決して動かし
 ません — 再アイデア生成の結果を昇格させることはガバナンスの決定です。
 
-アダプタ自身は MCP 経由で `survey`（トピック → 論文リスト; 失敗時は空
-リストへ縮退）を呼び、続いて `generate_ideas` を呼び、
+アダプタ自身は MCP 経由で `survey`（トピック → 論文リストに加え、スキルが
+返した場合は typed な `survey_snapshot`; 失敗時は空リストへ縮退）を呼び、
+続いて `generate_ideas` を呼び — スナップショットがあればそれをそのまま、
+なければ論文リストの projection を渡します —
 `generate_ideas` ペイロードをアイデアごとに 1 つの `ProposalDraft` へ正規化
-します — 読むのはレガシーな 9 つのトップレベルキー
-（`virsci_adapter.GENERATE_IDEAS_KEYS`）のみで、これは現在スキルが返す
-キー集合の部分集合です。`generate_ideas` の失敗はドラフトゼロ件へ縮退します; ストアでの
+します。`virsci_adapter.GENERATE_IDEAS_KEYS` はこの契約のレガシーな 9 つの
+トップレベルキーを列挙したものです; 正規化はさらに、スキルの typed contract
+系キーのうち 9 つ — 後述のルータがバブルさせる 10 キーから
+`survey_snapshot` を除いたすべて — もそのまま通します。
+`generate_ideas` の失敗はドラフトゼロ件へ縮退します; ストアでの
 コンテンツキー dedup により、このパス全体がリトライの下で冪等です。
 
 ## アーカイブ vs サマリ
@@ -175,7 +181,8 @@ typed contract 系の 10 キー（`typed_schema_version`、`contract_status`、
 `capability_binding.mode`、`assurance.mode` のいずれかをデフォルトから
 外すと `ProposalRouter._typed_contract_required()` が true になり、ルータは
 （MCP クライアントが存在する限り）アダプタを構築し、
-`generators.virsci.enabled` が何であれ `virsci` を有効として扱います。
+`generators.virsci.enabled` が何であれ `virsci` を有効として扱い、
+`trigger_on` が何であれ全トリガイベントでルーティングテーブルに残します。
 
 ## モード × VirSci の 4 通りの組み合わせ
 

@@ -12,7 +12,7 @@ sources:
     role: implementation
   - path: ari-core/tests/test_rqgm_virsci_adapter.py
     role: test
-last_verified: 2026-07-30
+last_verified: 2026-08-16
 ---
 
 # VirSci 集成
@@ -56,7 +56,7 @@ proposal_router:
 ```
 
 - **`enabled`**（默认 `false`）—— 适配器的总开关。见
-  [`enabled: false` 时的保证](#guarantees-when-enabled-false)。
+  本页「`enabled: false` 时的保证」一节。
 - **`mode`** —— 调用模式；v1 唯一接受的值是 `event_triggered`
   （没有轮询模式或按节点模式）。
 - **`max_calls_per_epoch`** —— 每纪元调用预算。预算按**调度头**计数，
@@ -65,7 +65,9 @@ proposal_router:
   记录派生，因此跨 resume 是确定性的，且被完全去重的重试（MCP 3 次
   重试策略）不追加任何内容、不消耗任何预算。
 - **`trigger_on`** —— 可以路由到该适配器的路由器触发事件。从此列表中
-  移除某个事件即令 VirSci 对该事件不可用。
+  移除某个事件即令 VirSci 对该事件不可用，除非该运行需要 typed
+  Research Contract —— 见
+  本页「`enabled: false` 时的保证」一节。
 
 `proposal_router.*` 仅在生效模式为 `ari_rqgm` 时被消费（唯一例外
 `record_only` 与 VirSci 无关 —— 见 [RQGM 迁移](rqgm_migration.md)）。
@@ -98,11 +100,14 @@ v1 运行循环接线：循环在根构思阶段调度 `initial_exploration`
 触发事件的再构思表面；运行中途的事件在相同预算下追加候选记录，但在
 v1 中绝不移动 `ideas[0]` 指令 —— 晋升一个再构思结果属于治理决策。
 
-适配器本身通过 MCP 先调用 `survey`（主题 → 论文列表；失败时降级为
-空列表），再调用 `generate_ideas`，并把 `generate_ideas`
-载荷归一化为每个想法一个 `ProposalDraft` —— 它只读取九个遗留顶层键
-（`virsci_adapter.GENERATE_IDEAS_KEYS`），而这些如今只是技能返回内容的
-一个子集。`generate_ideas` 失败会降级为零
+适配器本身通过 MCP 先调用 `survey`（主题 → 论文列表，以及技能返回时
+附带的 typed `survey_snapshot`；失败时降级为空列表），再调用
+`generate_ideas` —— 有快照就原样转发快照，否则转发论文列表投影 ——
+并把 `generate_ideas`
+载荷归一化为每个想法一个 `ProposalDraft`。
+`virsci_adapter.GENERATE_IDEAS_KEYS` 列出的是该契约的九个遗留顶层键；
+归一化还会透传技能 typed contract 键中的九个 —— 即下文路由器上浮的
+十个键中除 `survey_snapshot` 以外的全部。`generate_ideas` 失败会降级为零
 草稿；存储层的内容键去重使整条路径在重试下幂等。
 
 ## 归档 vs. 摘要
@@ -159,8 +164,9 @@ VirSci 输出在写入时即被拆分（"存储全部，只展示摘要"）：
 以上保证只覆盖默认姿态。一旦 `knowledge.mode`、
 `capability_binding.mode`、`assurance.mode` 中任何一个偏离默认值，
 `ProposalRouter._typed_contract_required()` 即为 true，路由器便会
-（只要存在 MCP 客户端）构造适配器，并且无论
-`generators.virsci.enabled` 取何值都把 `virsci` 视为已启用。
+（只要存在 MCP 客户端）构造适配器，无论
+`generators.virsci.enabled` 取何值都把 `virsci` 视为已启用，并且无论
+`trigger_on` 怎么写都让它对每个触发事件留在路由表中。
 
 ## 模式 × VirSci 的四种组合
 

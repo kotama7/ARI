@@ -40,7 +40,7 @@ sources:
     role: prompt
   - path: ari-core/ari/prompts/governance
     role: prompt
-last_verified: 2026-08-13
+last_verified: 2026-08-16
 ---
 
 # Constitutional ARI-RQGM Architecture

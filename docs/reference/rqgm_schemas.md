@@ -8,6 +8,14 @@ sources:
     role: implementation
   - path: ari-core/ari/paths.py
     role: implementation
+  - path: ari-core/ari/orchestrator/bfts.py
+    role: implementation
+  - path: ari-core/ari/cli/paper_dispatch.py
+    role: implementation
+  - path: ari-core/ari/configs/defaults.yaml
+    role: config
+  - path: ari-skill-paper/src/server.py
+    role: implementation
   - path: ari-core/tests/test_rqgm_state_store.py
     role: test
 last_verified: 2026-08-16
@@ -1213,6 +1221,235 @@ HAVE a registered incumbent under the paper mode (`paper_reviewer_v1`
 binding fires and the validated-attack → impeachment chain runs in production;
 off the paper phase both roles resolve to `""` and exploration stays
 byte-identical.
+
+## The paper-phase must-not-break register (BP-1 … BP-12)
+
+The paper-archive mode ships with a **closed compatibility register**: exactly
+twelve numbered invariants, `BP-1` through `BP-12`.  Most of the individual
+rules are also stated where they are enforced; what only this register carries
+is that the twelve are **one list**.  A paper-path change is compatible when it
+leaves all twelve intact and incompatible otherwise — there is no thirteenth
+rule to appeal to, and no rule may be dropped without the register being
+re-numbered as a whole.  Reviewing a change against three of them is not a
+partial pass; it is not a pass.
+
+The `BP-` prefix (paper) distinguishes these from the exploration set's
+`B-1 … B-19`, which a `rqgm_archive` run inherits verbatim — it is still an
+`ari_rqgm`-substrate run and must honour them too.  Everything below holds
+byte-identically under `paper.mode: linear`; the archive is additive and
+config-gated.
+
+- **BP-1 `linear` is identity.**  A config without a `paper:` block, or with
+  `paper.mode: linear`, produces a paper phase byte-identical to the
+  pre-archive pipeline: the same `WorkflowDriver` stage order, the same fixed
+  output paths, the same `full_paper.tex` / `full_paper.pdf`, and no
+  `paper_archive_state.json` or `paper_draft_archive.jsonl` left behind.  No
+  `ari.rqgm` paper module is imported on the linear path —
+  `ari.config._effective_paper_mode_str` mirrors the activation cell
+  import-free, and `ari-core/tests/test_paper_mode.py`
+  (`test_linear_path_imports_no_rqgm_and_writes_no_state`) asserts the leak set
+  is empty.
+- **BP-2 The claim gate stays Layer-0, unchanged.**  The
+  `claim_evidence_hard_gate` blocking matrix is preserved: a draft-phase report
+  never blocks, the objective-integrity `always_block_on` tier blocks at the
+  final phase in every mode, and infra errors fail open
+  (`ari/pipeline/claim_gate/policy.py`).  The gate is never kernel-wrapped, and
+  the best archive draft is handed to the *existing* compile + gate tail
+  unchanged.
+- **BP-3 The linear stage sequence and file-order execution are unchanged, and
+  the archive's seam sits outside them.**  `loop_back_to` remains the only
+  rewind, `skip_if_exists` / `depends_on` keep their semantics, and an
+  error-only result dict is still a stage failure (`ari/pipeline/driver.py`).
+  **The archive plugs in before or around the driver run at the paper entry,
+  never inside a stage**: `run_paper_phase` (`ari/cli/paper_dispatch.py`),
+  called from `ari/cli/projects.py` and `ari/cli/run.py`, either invokes the
+  linear `generate_paper_section` itself or invokes
+  `PaperArchiveRuntime.run_archive` with that same linear function handed in as
+  the fallback callable.  No workflow stage constructs the archive, so a
+  stage's fail-open exception boundary can neither swallow the archive nor be
+  widened by it, and removing the archive removes a call site rather than
+  editing the stage list.
+- **BP-4 `% CLAIM:Cx:NCx` anchor survival.**  `write_paper_iterative` emits the
+  anchors and `paper_refine` preserves them — anchor-dropping edits are
+  rejected per pass, and net anchor loss keeps the original paper
+  (`refined=False`).  The mirrored registries `claim_gate/latex.py` ↔
+  `ari-skill-paper/src/claim_links.py` and `claim_gate/numeric.py` ↔
+  `ari-skill-transform/src/claims.py` stay in sync.  Draft candidates must
+  carry anchors so the winner passes the final gate.
+- **BP-5 `ari-skill-paper` is not governed cross-process and is not edited for
+  governance.**  It stays a stdio subprocess importing zero `ari.rqgm`
+  (`ari-skill-paper/tests/test_writer_prompt_override.py` asserts the empty
+  leak set); the governed prompts live in ari-core roles.  The skill's four
+  prompt files are the `linear` source and are not moved.  The skill is the
+  draft executor's hands (`write_paper_iterative` seeds, `paper_refine`
+  refines); `review_compiled_paper` is **not** the archive scorer.
+- **BP-6 `select_best_node` semantics are unchanged.**
+  `ari/pipeline/verified_context.py` still prefers `has_real_data` and ranks by
+  `_scientific_score`.  The archive seeds from that single winner; it does not
+  change how the winner is chosen.  (The function additionally drops nodes that
+  RQGM selective erasure marked `_valid_for_frontier: False` — a clause nothing
+  writes on the default path, so it is inert there.)
+- **BP-7 The existing `run_paper_candidate_escalation` hook is preserved.**  Its
+  duck-typed `getattr(bfts, "rqgm", None)` detection, its fail-open contract,
+  and its light-touch single-node behaviour stay (`ari/rqgm/runtime.py`, called
+  from `ari/cli/paper_dispatch.py`); the archive composes with it — running it
+  on the winning draft's node — and never removes it.
+- **BP-8 Reviewer independence and structural merge.**  `review_compiled_paper`
+  sees paper text only: it accepts `vlm_findings_json`, `experiment_summary`,
+  and `figures_manifest_json` for workflow compatibility and discards them.
+  `merge_reviews` is purely structural — no LLM call, inputs immutable,
+  independent and evidence-grounded reviews reported in separate categories.
+  The governed `paper_reviewer`'s same-role isolation must not weaken this
+  (mirror `peer_review`).
+- **BP-9 Opt-in independence.**  Exploration `ari.mode` and paper `paper.mode`
+  are orthogonal — all four combinations are legal.  `resolve_paper_mode`
+  (`ari/rqgm/paper_mode.py`) reads only `paper.mode` and `rqgm.paper.enabled`,
+  never `ari.mode` / `rqgm.enabled`, and the exploration resolver likewise never
+  reads the paper axis (mirror the `ari/rqgm/mode.py` VirSci-independence
+  discipline).
+- **BP-10 Cost is bounded by budget caps, not by topology.**  The bound comes
+  from `rqgm.paper.archive.max_expansions` reaching BFTS `max_total_nodes`:
+  `should_prune` returns `True` once the running total meets that cap, **before**
+  and independently of the `node.depth >= max_depth` clause, in
+  `ari/orchestrator/bfts.py` and again in the archive's own
+  `PaperArchiveStrategy.should_prune`.  The node count is therefore capped at
+  *any* depth and no branching factor can compound into `b^d`.  The other
+  bounds are budget-shaped too: lazy LaTeX compile, one best node feeding one
+  draft space, `full_governance_only_on_top_k`, per-epoch adversary and
+  candidate caps, anchor scoring on a sample, epoch-amortised co-evolution.
+  **This invariant does not pin the topology flat** — `archive.depth > 1` is the
+  design (default 3), and changing `depth` or `width` is a tuning decision that
+  leaves BP-10 intact so long as the expansion cap holds.  Only the caps are
+  frozen here.
+- **BP-11 Within-epoch freeze.**  The active writer/reviewer prompt hashes and
+  the reviewer utility policy are frozen per epoch;
+  `PaperArchiveRuntime._freeze_paper_utility_policy` runs once before the round
+  loop, and co-evolution happens only at boundaries, through the
+  `RegistryTransitionEngine` + `ConstitutionalKernel` `ensure_epoch` call at
+  each round head — never mid-archive.
+- **BP-12 Checkpoint hygiene.**  New files are registered in
+  `PathManager.META_FILES` and, where they are fixed-name JSON, in the node
+  report's `_INTERNAL_JSON_NAMES`; formatting is byte-fixed; no wall-clock,
+  git SHA, or host value enters any hash; `hash12 = sha256[:12]` remains the
+  single prompt-hash scheme; and `CONSTITUTION_HASH` is re-pinned on the
+  amendment and asserted in `ari-core/tests/test_rqgm_kernel.py`.
+
+Twelve, and only twelve.  A register that grows silently stops being a
+compatibility contract and becomes a style guide, so a genuinely new paper-path
+invariant is added by amending this list — and re-reviewing the change against
+the amended list — rather than by being asserted somewhere else.
+
+## Paper-archive cost model
+
+The archive's cost is a closed symbolic form over config caps, with no
+exponential term.  The form is useless without its symbols, so both are here.
+
+| Symbol | Config knob | Default |
+|---|---|---|
+| **K** | `rqgm.paper.archive.width` — seed drafts at depth 1 (root branch factor) | 4 |
+| **R** | `rqgm.paper.archive.refine_rounds` — refine children per draft | 2 |
+| **M** | `rqgm.paper.archive.max_expansions` — **per-epoch** node budget → BFTS `max_total_nodes` | 12 |
+| **E** | `rqgm.paper.epoch.rounds` — archive rounds per paper phase; one round = one paper epoch | 2 |
+| **T** | `rqgm.governance.full_governance_only_on_top_k` | 3 |
+| **A** | `rqgm.adversarial.max_adversary_calls_per_epoch` | 24 |
+| **C** | `rqgm.prompt_evolution.max_total_candidates_per_epoch` | 4 |
+| **S** | `rqgm.paper.anchor.sample_size` — held-out agreement sample | 8 |
+
+Two further knobs appear in the forms without being budget symbols:
+`rqgm.adversarial.max_attacks_per_node` (default 3) and
+`rqgm.paper.archive.depth` (default 3, which appears in *no* term — that is the
+point of BP-10).  All defaults above are the `ari-core/ari/configs/defaults.yaml`
+values.
+
+**Draft population per epoch.**
+
+```text
+N_draft = min( K · (1 + R), M )          # = min(4·3, 12) = 12 at defaults
+```
+
+**Per-epoch calls, by actor.**
+
+```text
+writer (skill)                        =  N_draft                     # seed + refine, one call per draft
+paper_reviewer (governed)             =  N_draft                     # one score per draft
+paper_self_preference (adversary)     =  min( A, |top-K ∪ paper_cand| · max_attacks_per_node )
+co-evolution candidate generation     =  C            if prompt_evolution.enabled else 0
+anchor utility scoring                =  C · S        if prompt_evolution.enabled and anchor.enabled else 0
+LaTeX compiles (0 LLM)                ≤  T                           # lazy, top-K only
+```
+
+**Totals.**
+
+```text
+Calls(E) ≈ E · [ N_draft                            (reviewer)
+               + min(A, T · max_attacks_per_node)   (adversary)
+               + C + C·S                            (co-evolution + anchor) ]
+         + E · N_draft                              (writer skill calls)
+
+Tokens(E) ≈ Calls(E) · O(capped context)
+```
+
+`Tokens(E)` stays linear because every role's context view is a capped
+projection — the `paper_reviewer` sees `{draft_manuscript, verified_context,
+science_data, reference_context/anchor_case}`, each capped — so per-call tokens
+are bounded and the token total scales with the call total.
+
+Every factor — **K, R, M, E, T, A, C, S** — is a config cap, so `Calls(E)` grows
+linearly in each tunable.  `archive.depth` moves no term: a deeper tree
+redistributes the same `M` nodes rather than multiplying them, because the
+total-node cutoff binds before the depth cutoff (BP-10).
+
+### How the forms line up with the shipped loop
+
+Four terms are enforced exactly as written; three are looser than what ships.
+The differences all run in the safe direction — the shipped loop spends less
+than the form allows — but a reader sizing a run from this model should know
+which is which.
+
+Enforced as written:
+
+- **`N_draft`** is `archive_node_budget` in `ari/rqgm/paper_archive.py`, the
+  same `min(width · (1 + refine_rounds), max_expansions)` expression, and it is
+  the value `PaperArchiveStrategy` uses as its node budget in both
+  `should_prune` and `expand`.
+- **Writer = `N_draft`** — the round loop runs the draft executor once per
+  draft, one `write_paper_iterative` or `paper_refine` call each.
+- **Reviewer = `N_draft`** — the executor scores every draft exactly once.
+- **`E`** is `rqgm.paper.epoch.rounds`, the round count of the co-evolution
+  loop, and each round opens one epoch.
+
+Looser than what ships:
+
+- **The reviewer term counts scores, not necessarily LLM calls.**  Draft scoring
+  is LLM-free unless `rqgm.paper.reviewer.agent_as_judge.enabled` is set
+  (default `false`): without an injected score function the reviewer scores the
+  venue rubric axes deterministically.  At stock defaults the reviewer
+  contributes `N_draft` *governed scores* and **zero** model calls.
+- **The anchor term is `S` per epoch, not `C · S`.**  The budget manager's cap
+  for the `paper_anchor_scoring` action is `rqgm.paper.anchor.sample_size`
+  counted per epoch (`ari/rqgm/budget.py`), and the shipped loop calls the
+  anchor scorer once per round, on the *active* reviewer.  `C · S` is the
+  stated design intent for per-candidate anchor scoring; no shipped call site
+  scores candidates on the anchor.  `rqgm.paper.anchor.enabled` also defaults
+  to `false`, which makes the cap `0`, so the term is absent from a stock run
+  entirely.
+- **Compiles are `≤ 1` per run, not `≤ T`.**  Only the best-belief winner is
+  ever compiled, once, gated by `archive.compile_threshold`; `≤ T` is the
+  design ceiling for a lazy top-K compile, not the shipped behaviour.
+- **The adversary's `A` bound is enforced; its inner product is not the paper
+  loop's shape.**  Each adversarial round is gated on the shared
+  `adversary_call` budget, so `A` per epoch binds.  The
+  `|top-K ∪ paper_cand| · max_attacks_per_node` factor is the inherited
+  exploration engine's per-node fan-out (`ari/rqgm/adversarial/engine.py`); the
+  paper loop instead fires one round per *over-accepted* draft found on the
+  anchor corpus, still under the same `A`.
+
+Consequently a stock-default run — `anchor.enabled: false`,
+`agent_as_judge.enabled: false` — spends per epoch roughly `N_draft` writer
+skill calls, `N_draft` LLM-free reviewer scores, at most `A` adversary calls,
+and at most `C` co-evolution candidate generations, with one compile for the
+whole run.  Turning the anchor and the agent-as-judge on is what makes the
+reviewer and anchor terms cost model calls.
 
 ## Checkpoint file inventory
 

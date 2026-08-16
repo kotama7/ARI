@@ -21,7 +21,7 @@ last_verified: 2026-08-08
 
 ## アブレーション条件 B0–B9
 
-`scripts/rqgm_eval/ablation_matrix.yaml` の名前付きプリセット 9 個で、設定
+`scripts/rqgm_eval/ablation_matrix.yaml` の名前付きプリセット 10 個で、設定
 だけで切り替えられます。`ari.rqgm.evaluation.conditions.expand_condition` が
 各プリセットの `inherits` 連鎖を畳み込み（積み上げ式のはしごを明示するための
 ハーネス側 deep-merge 糖衣で、展開結果からは取り除かれるため `inherits` キーが
@@ -51,6 +51,41 @@ workflow オーバーレイに届くことはありません）、`condition_ove
 各レイヤの限界価値はペア差分で得られます: adversarial = B4−B3、governance =
 B5−B4、retirement/erasure = B6−B5、evolution = B7−B6、meta = B8−B7、governed score rewriting = B9−B8;
 VirSci = B2−B3。
+
+**なぜはしごがペアで終わるのか。** B8 と B9 は段が 2 つ増えたのではなく、
+対照とその処置です。B9−B8 は、governed score rewriting がそのコストに見合う
+かどうかを測る唯一の定義済み測定です。RQGM の中核主張 — 各エポック境界で
+スコア自体（効用関数そのもの）が書き換わる（[RQGM アーキテクチャ → 統治された
+utility 進化](../concepts/rqgm_architecture.md) 参照）— は、このハーネスでは
+他に実証的な裏づけを持ちません。効用ポリシーだけが違い他は何も違わない条件の
+ペアが B8/B9 しかないからです。B8 はラン全体でスコアを固定し、B9 は統治下で
+書き換え、2 つの実効 `rqgm` ブロックは `utility_evolution.enabled` を除いて
+等しくなります（`test_rqgm_eval_conditions.py::test_b8_freezes_and_b9_evolves_the_utility_policy`
+がピン留め）。
+
+**なぜ B8 はフラグを pin して off にするのか。**
+`rqgm.utility_evolution.enabled` は型付き設定でデフォルト **true** なので、
+B8 がこれについて黙っていれば governed rewriting を引き継ぎ、実効設定は B9 と
+等しくなり、対比は何も測らない — しかも何も測っていないことを自分から告げま
+せん。`false` に pin されていれば、境界はポリシー候補を 1 つも作らず（代わりに
+`utility_evolution_skipped` の監査行を追記します）、supersede も起きず、
+`capture_utility_policy` は毎エポック founding ポリシーを返すため、
+`utility_policy_hash` はラン定数となり、ラン全体が単一のポリシーで採点され
+ます。これは Task 14 以前のシステムをそのまま再現したもの — 凍結スコア体制で
+あり、スコア書き換えの対照とはまさにこれでなければなりません
+（`test_rqgm_utility_boundary.py::test_utility_evolution_disabled_reproduces_todays_behavior`）。
+この pin はデフォルトの冗長な再掲ではなく荷重を担っています: プリセットを
+整理するつもりで消すと、キャンペーンは走りレポートも出るのに、その最上位の
+対比だけが黙って何も測らなくなります。
+
+一方で、この pin は B8 より下のスコアを凍結**しません**。段ごとに off に
+されるのはレイヤ別フラグ 5 つだけで、`ari_rqgm` の段 B2–B7 は
+`rqgm.utility_evolution.enabled` を既定の `true` のままにしており、境界の
+`_run_utility_evolution` はそのフラグだけで gate されます（`prompt_evolution`
+や `meta_evolution` では gate されません）。したがって B8 より下の `ari_rqgm`
+のどの段でも PolicyMutator は毎境界で走ります。B8−B7 の一歩は 2 つのことを同時に動かして
+おり（メタエージェント進化を on、governed score rewriting を off）、効用
+ポリシーを切り分けるペアは B9−B8 だけのままです。
 
 同じファイルには、全条件が引き継ぐキャンペーン既定値も入っています。
 `eval_defaults.seeds` は `[11, 12, 13]` を出荷しています — `--seeds` で
@@ -430,5 +465,8 @@ eval_inj_003_hallucinated_prior_art,eval_ctl_001_clean_baseline"
 - **Tier 2（CI-hard、オフライン smoke）** — `test_rqgm_eval_smoke.py`: 条件
   ごとの合成スタブコンポーネントランを、実際の Task 03/06/07 レコードパスに
   通し、数秒で完了します。
-- **Tier 3（手動）** — 実際の B0–B8 × シードのキャンペーン; 縮小された完了
-  集合は {B0, B3, B4, B6, B8} と B2-vs-B3 の VirSci 対比です。
+- **Tier 3（手動）** — 実際の B0–B9 × シードのキャンペーン; 縮小された完了
+  集合は {B0, B3, B4, B6, B8, B9} と B2-vs-B3 の VirSci 対比です。B9 は
+  アーム 1 本分まるごと余分にコストが掛かっても縮小集合に残ります: 落とすと
+  B8 は対比する相手のない段になり、governed score rewriting がコストに見合う
+  かという、はしごの他のどのペアも答えない唯一の問いが測れなくなるからです。

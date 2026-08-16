@@ -612,6 +612,49 @@ def test_a_non_finite_residual_does_not_crash_the_report():
             report.model_dump_json()).report_digest == report.report_digest
 
 
+def test_a_repetition_must_STATE_its_residual_even_when_there_was_none():
+    """Nullable, not omissible -- those are two different contracts.
+
+    A repetition record is appended only after the family oracle has answered for
+    it, so there is no repetition for which the question was never put: an
+    omission is a producer that forgot, and a field that fills itself in with
+    ``None`` would answer "the oracle's answer was not a finite number" on that
+    producer's behalf. That is the defect nullability was introduced to end --
+    a default dressed as a measurement -- reintroduced one line lower.
+    """
+    stated = dict(index=0, input_seed=0, credited_seconds=1.0,
+                  reference_seconds=1.0, speedup=1.0, correct=True,
+                  max_rel_error=1e-7)
+    assert PerfRepetitionV1(**stated).max_rel_error == pytest.approx(1e-7)
+    assert PerfRepetitionV1(**{**stated, "max_rel_error": None}).max_rel_error is None
+    with pytest.raises(Exception):
+        PerfRepetitionV1(**{k: v for k, v in stated.items() if k != "max_rel_error"})
+
+
+def test_the_shipped_schema_is_the_one_this_model_generates():
+    """A manifest pins this FILE's bytes as the contract the driver emits, so a
+    model that moves without it makes ``result_schema_conformance`` verify a
+    schema ARI no longer keeps. Measured: ``max_rel_error`` became nullable and
+    ``sandbox`` was added to the report, and the shipped schema declared neither.
+
+    The three envelope keys are the generating script's and not the model's --
+    ``$id`` names the report type, ``$schema`` the dialect, and the root
+    description says why the file exists -- so they are required to be present
+    and are not compared against the model's own docstring.
+    """
+    shipped = json.loads((CORE / "ari" / "schemas"
+                          / "native_perf_report_v1.schema.json").read_text())
+    generated = NativePerfReportV1.model_json_schema()
+    for key in ("$id", "$schema", "description"):
+        assert shipped.get(key), f"the shipped schema lost {key}"
+        generated[key] = shipped[key]
+    assert shipped == generated, (
+        "the shipped schema no longer describes NativePerfReportV1; regenerate "
+        "it from the model rather than editing the JSON")
+    # And the pinned contract still REQUIRES the field it made nullable.
+    assert "max_rel_error" in shipped["$defs"]["PerfRepetitionV1"]["required"]
+
+
 def test_the_report_carries_no_host_path():
     """The launch's sandbox record names the per-run temporary directory.
 

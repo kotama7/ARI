@@ -24,6 +24,14 @@ sources:
     role: implementation
   - path: ari-core/ari/rqgm/adversarial/round.py
     role: implementation
+  - path: ari-core/ari/manuscript/briefs.py
+    role: implementation
+  - path: ari-core/ari/pipeline/driver.py
+    role: implementation
+  - path: ari-core/ari/pipeline/verified_context.py
+    role: implementation
+  - path: ari-skill-paper/src/server.py
+    role: implementation
   - path: ari-core/ari/science_data_contract.py
     role: schema
   - path: ari-core/ari/viz/v1/openapi.json
@@ -232,6 +240,68 @@ pre-flight 处的一次降级可以移动 manuscript 的科学胜者，而这正
 pre-flight 坐落在探索这条轴上。`manuscript.mode: off` 移除 manuscript 编译与
 readiness gate，但不移除 pre-flight；而且 `manuscript.mode` 的任何取值都不改变该
 轮次是否触发。
+
+## legacy context 组装，以及删除它的条件
+
+legacy 路径把投影后的 ScienceData、逐配置结果、候选 claim、源码摘录、图表 context
+与检索到的参考文献连接成单个 `experiment_summary` 字符串来构造 writer 输入，并且用
+四个固定 cap 而不是用 budget 来让这个字符串保持有限。
+
+| 被 cap 的对象 | cap | 位置 |
+|---|---|---|
+| 逐配置结果条目 | 10 | `ari-skill-paper/src/server.py` 的 `write_paper_iterative` |
+| 候选 claim | 20 | 同一函数；`ari-core/ari/pipeline/verified_context.py` 中 `render_grounded_block` 的 `max_claims` 与之镜像 |
+| 供引用的可用参考文献 | 12 | 同一函数的 reference-context 块 |
+| authoring 提示中实验 context 的字符数 | 48,000 | 同一函数的 authoring 调用处 |
+
+它们是 truncation，不是 budget。切片丢掉了什么没有被记录，被丢掉的东西之后无法再被
+指名，而必需的事实与可选的事实是按同一条规则 —— 在列表中的位置 —— 被丢弃的。
+
+manuscript 模式不是放宽这些 cap，而是绕过它们。前三个块只在 authoring 输入不带
+manuscript binding 时才会被组装，因此一次被绑定的 run 根本不会构造它们。在
+`enforce` 下，`ari-core/ari/pipeline/driver.py` 中的 manuscript 边界会在任何 authoring
+模型调用开始之前，把 `experiment_summary` 与 `paper_context` 两个模板变量替换为渲染
+好的 section brief bundle；RQGM archive 也把同一份 bundle 绑定进它的 writer 与
+reviewer 提示。`audit` 有意不触碰 writer 的 bytes 与模板输入，而在 `off` 下这个边界
+连同它的 import 都是 no-op。因此 10 / 20 / 12 / 48k 的行为，正是 `off` 或 `audit`
+的 run 今天仍然得到的东西。
+
+在 `enforce` 下取代这些 cap 的，是带 accounting 的分 section 预算。
+`manuscript.brief_character_budget`（默认 24,000 字符，按 section 而不是按 run）
+约束每一份 section brief；放不下的必需披露或必需条目会 raise，而不是被悄悄丢弃；
+每一份 brief 都带有 `omitted_item_ids`（renderer 会打印它），因此预算确实丢弃的东西
+仍可按 ID 指名。
+
+已出货实现中有两点值得精确说明，因为二者都是可能把这次替换读过头的地方：
+
+- `ari-core/ari/manuscript/briefs.py` 中的 builder 目前是 *拆分* 而不是省略。超出预算
+  的 section 会变成 `<section>`、`<section>.part-002`……，而它产出的每一份 brief 的
+  `omitted_item_ids` 都是空的。省略这条通道在 contract 与 renderer 中都存在；但还没有
+  任何已出货的代码路径去填充它。
+- 48,000 字符的 truncation 并不以 manuscript 模式为条件。它作用于 authoring 调用时
+  `experiment_summary` 所持有的任何内容，包括渲染好的 brief bundle。由于 brief 的预算
+  是按 section 计的，section 数量足够多的 bundle 可以超过 48,000 字符，并被这条 legacy
+  切片截断。
+
+删除 legacy 组装及其 cap，并不因为 manuscript 模式存在而被许可。删除要求下面四条同时
+成立：
+
+1. 每一个受支持的、启用 manuscript 的后端都消费 section brief；
+2. `off` 的兼容策略有一个获批的替代方案，或者有一次 deprecation 发布；
+3. 新路径上存在等价的 legacy fixture 覆盖；
+4. 迁移／发布文档指明了发生变化的输出行为。
+
+在四条全部成立之前，legacy 路径与 manuscript 路径保持显式，不被合并为一条。但它们
+今天并非完全不相交：图的 context 块是唯一没有以 manuscript binding 为条件的 legacy
+块，而两个后端仍然都会把 figures manifest 交给 writer，因此在 `enforce` 下 writer
+输入是渲染好的 bundle 后面连接上这些图的行。binding 真正替换掉的，是那三个设了上限
+的块与两个模板变量。
+
+这些是对一次可能的未来删除所设的条件，既不是时间表，也不是删除会发生的承诺。今天在
+代码中可观测到的只有：这些条件仍在 gate 着一个活的东西 —— legacy 组装存在且可达，
+并且它正是每一次 `off` 与 `audit` 的 run 所使用的 —— 以及两个已出货的 authoring 后端
+在 `enforce` 下都已经收到 brief。这是否足以解除第一条条件，是一个关于哪些后端算受支持
+的发布决定，而不是代码能回答的问题。
 
 ## 自动修复轮次
 

@@ -218,7 +218,30 @@ class ProblemCorrectnessDriver:
 
         cases = report.case_results
         failed = sum(case.verdict == "fail" for case in cases)
-        worst = max((case.worst_residual_ratio for case in cases), default=0.0)
+        # ABSENT IS NOT ZERO, AND ZERO IS THE PERFECT ANSWER. A case reports no
+        # ``worst_residual_ratio`` when no FINITE ratio was observed: either
+        # nothing ran (the launch did not complete, or the output was short) or
+        # the oracle answered ``inf``/``NaN`` for a candidate whose output holds
+        # an infinity or the driver's untouched poison. Neither of those is a
+        # small residual; one is unmeasured and the other is worse than any
+        # number this report can carry.
+        #
+        # ``max(..., default=0.0)`` got both wrong. On the EMPTY sequence -- which
+        # is every build failure, where ``verify_problem_correctness`` returns
+        # ``results=()`` -- it published 0.0, i.e. "exactly zero error", as the
+        # measurement behind a candidate that never compiled. And with a ``None``
+        # INSIDE the sequence it raised TypeError, so the one shape the
+        # nullability was introduced for was the one shape that crashed here.
+        #
+        # The aggregate claims to be the WORST over the case set, so it exists
+        # only when every case reported one. A maximum over just the cases that
+        # produced a number is a bound the evidence does not support, and it is
+        # published beside ``residual_ratio_limit: 1.0``, where a reader would
+        # take it for "inside the bound". ``None`` says the worst is not known;
+        # ``worst_residual_ratio_by_case`` below says which cases withheld it.
+        observed = [case.worst_residual_ratio for case in cases
+                    if case.worst_residual_ratio is not None]
+        worst = max(observed) if cases and len(observed) == len(cases) else None
         properties = tuple(
             HarnessPropertyResultV1(
                 property_id=atom.property_id, method=atom.method, tier=atom.tier,

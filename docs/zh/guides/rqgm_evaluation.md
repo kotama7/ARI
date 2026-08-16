@@ -20,7 +20,7 @@ last_verified: 2026-08-08
 
 ## 消融条件 B0–B9
 
-`scripts/rqgm_eval/ablation_matrix.yaml` 中的九个具名预设，仅靠
+`scripts/rqgm_eval/ablation_matrix.yaml` 中的十个具名预设，仅靠
 配置即可切换。`ari.rqgm.evaluation.conditions.expand_condition` 折叠每个
 预设的 `inherits` 链（这是让叠加式阶梯显式化的工具链侧 deep-merge 语法糖，
 并会从展开结果中剔除，因此 `inherits` 键永远不会进入 workflow 覆盖层），
@@ -48,6 +48,35 @@ last_verified: 2026-08-08
 
 每一层的边际价值是配对差值：对抗 = B4−B3，治理 = B5−B4，
 退役/擦除 = B6−B5，进化 = B7−B6，元层 = B8−B7、受治分数重写 = B9−B8；VirSci = B2−B3。
+
+**阶梯为何以一对结尾。** B8 与 B9 不是又多了两档，而是一个对照及其处理；
+B9−B8 是衡量受治分数重写是否配得上其成本的唯一一项已定义的测量。RQGM 的
+核心主张 —— 在每个纪元边界，分数本身、也就是效用函数本身会被重写（见
+[RQGM 架构 → 被治理的效用进化](../concepts/rqgm_architecture.md)）—— 在这套
+工具链里没有别的实证辩护，因为只有 B8/B9 这一对条件仅在效用策略上不同、
+其余完全相同。B8 在整个运行期间把分数固定住，B9 在治理之下重写它，两者
+生效的 `rqgm` 块除 `utility_evolution.enabled` 外完全相等（由
+`test_rqgm_eval_conditions.py::test_b8_freezes_and_b9_evolves_the_utility_policy`
+钉住）。
+
+**B8 为何要把该标志固定为 off。** `rqgm.utility_evolution.enabled` 在类型化
+配置中默认为 **true**，因此若 B8 对它保持沉默，就会继承受治重写，其生效配置
+将等同于 B9，对照便什么也测不到 —— 而且不会声明自己什么也没测到。固定为
+`false` 后，边界不会铸出任何策略候选（改为追加一行 `utility_evolution_skipped`
+审计记录），没有任何取代发生，`capture_utility_policy` 在每个纪元都返回
+founding 策略，于是 `utility_policy_hash` 成为整轮运行的常量，整轮运行都在
+同一个策略下被打分。这正是对 Task 14 之前系统的精确复现 —— 冻结分数的体制，
+而分数重写的对照本来就必须是这个样子
+（`test_rqgm_utility_boundary.py::test_utility_evolution_disabled_reproduces_todays_behavior`）。
+这个固定项是承重的，而非对默认值的冗余重述：为了让预设看起来整洁而删掉它，
+活动照样会跑、报告照样会出，只是最顶端的那个对照悄悄地什么也没测。
+
+这个固定项**不会**冻结 B8 以下的分数。逐档关闭的只有那五个各层标志；
+`ari_rqgm` 的档位 B2–B7 把 `rqgm.utility_evolution.enabled` 留在默认的
+`true`，而边界处的 `_run_utility_evolution` 仅由该标志 gate（不由
+`prompt_evolution` 或 `meta_evolution` gate），因此 B8 以下每一档的每个边界
+上 PolicyMutator 都会运行。于是 B8−B7 这一步同时改动了两件事（元 agent
+进化开启、受治分数重写关闭），能够单独隔离效用策略的仍然只有 B9−B8 这一对。
 
 同一个文件还带着每个条件都会继承的活动默认值。`eval_defaults.seeds`
 出厂值为 `[11, 12, 13]` —— 除非用 `--seeds` 覆盖，这就是一次活动实际
@@ -391,5 +420,8 @@ smoke 层是例外：它以 `exist_ok=True` 写入合成检查点，复用目录
   injection,detection_fixture,doubles}.py`：纯 fixture，无 LLM。
 - **Tier 2（CI 硬性，离线 smoke）** —— `test_rqgm_eval_smoke.py`：每个
   条件用合成的桩组件跑过真实的 Task 03/06/07 记录路径，数秒内完成。
-- **Tier 3（手动）** —— 真实的 B0–B8 × 种子活动；缩减后的完成集合为
-  {B0, B3, B4, B6, B8} 加上 B2-vs-B3 的 VirSci 对照。
+- **Tier 3（手动）** —— 真实的 B0–B9 × 种子活动；缩减后的完成集合为
+  {B0, B3, B4, B6, B8, B9} 加上 B2-vs-B3 的 VirSci 对照。即便整整多出一条
+  臂的成本，B9 仍留在缩减集合里：去掉它，B8 就成了没有对照对象的一档，而
+  受治分数重写是否配得上其成本这个问题 —— 阶梯里没有任何别的配对能回答
+  它 —— 也就无从测量。

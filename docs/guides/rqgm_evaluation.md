@@ -12,7 +12,7 @@ sources:
     role: test
   - path: ari-core/tests/test_rqgm_eval_kca_injection.py
     role: test
-last_verified: 2026-08-08
+last_verified: 2026-08-16
 ---
 
 # RQGM Evaluation and Ablation
@@ -24,7 +24,7 @@ script — no CLI command, no MCP tool, zero contract-surface change.
 
 ## Ablation conditions B0–B9
 
-Nine named presets in `scripts/rqgm_eval/ablation_matrix.yaml`, switchable
+Ten named presets in `scripts/rqgm_eval/ablation_matrix.yaml`, switchable
 via config alone. `ari.rqgm.evaluation.conditions.expand_condition` folds each
 preset's `inherits` chain — harness-side deep-merge sugar that makes the
 additive ladder explicit, and stripped from the result so no `inherits` key
@@ -55,6 +55,43 @@ expansions are pinned id by id by
 The marginal value of each layer is the paired difference: adversarial =
 B4−B3, governance = B5−B4, retirement/erasure = B6−B5, evolution = B7−B6,
 meta = B8−B7; governed score rewriting = B9−B8; VirSci = B2−B3.
+
+**Why the ladder ends in a pair.** B8 and B9 are not two more rungs; they are
+a control and its treatment, and B9−B8 is the only defined measurement of
+whether governed score rewriting earns its cost. The defining RQGM claim —
+that at each epoch boundary the entire score, the utility function itself, is
+rewritten (see
+[Governed utility evolution](../concepts/rqgm_architecture.md)) — has no other
+empirical defense in this harness, because B8/B9 is the only pair of
+conditions that differs in the utility policy and in nothing else. B8 holds
+the score fixed for the whole run, B9 rewrites it under governance, and the
+two effective `rqgm` blocks are equal outside `utility_evolution.enabled`
+(pinned by
+`test_rqgm_eval_conditions.py::test_b8_freezes_and_b9_evolves_the_utility_policy`).
+
+**Why B8 pins the flag off.** `rqgm.utility_evolution.enabled` defaults
+**true** in the typed config, so a B8 that stayed silent about it would
+inherit governed rewriting, its effective config would equal B9's, and the
+contrast would measure nothing — without announcing that it measures nothing.
+Pinned `false`, the boundary mints no policy candidate (it appends a
+`utility_evolution_skipped` audit line instead), nothing supersedes, and
+`capture_utility_policy` returns the founding policy in every epoch, so
+`utility_policy_hash` is a run-constant and the whole run scores under one
+policy. That reproduces the pre-Task-14 system exactly — the frozen-score
+regime, which is precisely what a control for score rewriting has to be
+(`test_rqgm_utility_boundary.py::test_utility_evolution_disabled_reproduces_todays_behavior`).
+The pin is load-bearing, not a redundant restatement of a default: remove it
+to tidy the preset and the campaign still runs and still reports, with its top
+contrast silently measuring nothing.
+
+What the pin does *not* do is freeze the score below B8. Only the five
+per-layer flags are switched off rung by rung; the `ari_rqgm` rungs B2–B7
+leave `rqgm.utility_evolution.enabled` at its `true` default, and the
+boundary's `_run_utility_evolution` is gated on that flag alone — not on
+`prompt_evolution` or `meta_evolution` — so the PolicyMutator runs at every
+boundary of every `ari_rqgm` rung below B8. The B8−B7 step therefore moves
+two things at once (meta-agent evolution on, governed score rewriting off),
+and B9−B8 stays the only pair that isolates the utility policy.
 
 The same file carries the campaign defaults every condition inherits.
 `eval_defaults.seeds` ships `[11, 12, 13]` — the ≥ 3 paired seeds a campaign
@@ -513,5 +550,9 @@ produces.
 - **Tier 2 (CI-hard, offline smoke)** — `test_rqgm_eval_smoke.py`: synthetic
   stub-component runs per condition through the real Task 03/06/07 record
   paths, completing in seconds.
-- **Tier 3 (manual)** — the real B0–B8 × seeds campaign; the reduced
-  completion set is {B0, B3, B4, B6, B8} plus the B2-vs-B3 VirSci contrast.
+- **Tier 3 (manual)** — the real B0–B9 × seeds campaign; the reduced
+  completion set is {B0, B3, B4, B6, B8, B9} plus the B2-vs-B3 VirSci
+  contrast. B9 stays in the reduced set despite costing a whole extra arm:
+  drop it and B8 becomes a rung with nothing to contrast against, which is
+  the one question — does governed score rewriting earn its cost — that no
+  other pair in the ladder answers.
