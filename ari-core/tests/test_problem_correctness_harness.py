@@ -692,6 +692,58 @@ def test_every_manifest_declares_the_result_schema_its_driver_emits():
         f"hand-typed digest instead of result_schema_digest().")
 
 
+def test_the_drift_surface_covers_every_pin_prepare_refuses_on(tmp_path):
+    """`prepare` refuses on four pins; the surface enumerated two.
+
+    It reported the driver digest and the result schema, and not the problem or
+    the case set -- both computed from repository bytes exactly like the driver
+    digest, and both refused by `prepare` with "the registered question has
+    changed" / "the registered problem set has changed". Demonstrated before the
+    fix: appending a comment to the pinned problem's frozen reference left the
+    surface reporting that harness clean while `prepare` raised.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_repin", pathlib.Path(__file__).resolve().parents[2]
+        / "scripts" / "rqgm_assurance" / "repin_and_promote_harness.py")
+    repin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(repin)
+
+    manifest = _shipped(MANIFEST.name)
+    pins = set(repin.derived_pins(manifest))
+    assert {"driver.sha256", "oracle.sha256", "dataset.sha256"} <= pins
+
+    # A harness whose oracle slot is NOT a pinned problem must not be reported
+    # as drifted against a pin that is not of this kind. The three ARI-native
+    # manifests pin a generated oracle revision their driver never resolves;
+    # treating "cannot resolve" as drift reported all three stale, which a
+    # blocking gate would have turned into three harnesses nobody could commit
+    # against.
+    native = _shipped("hpc_gemm_correctness.yaml")
+    assert "oracle.sha256" not in repin.derived_pins(native)
+    assert not repin.stale_pins(native).keys() & {"oracle.sha256", "dataset.sha256"}
+
+
+def test_the_pre_commit_trigger_set_includes_the_question(tmp_path):
+    """A commit that edits a problem must be examined, not waved through."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "_repin2", pathlib.Path(__file__).resolve().parents[2]
+        / "scripts" / "rqgm_assurance" / "repin_and_promote_harness.py")
+    repin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(repin)
+
+    import contextlib, io
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        repin.paths(None)
+    listed = set(buffer.getvalue().split())
+    assert any(p.startswith("ari-core/config/harnesses/problems/") for p in listed)
+    assert any(p.startswith("ari-core/config/harnesses/case_sets/") for p in listed)
+
+
 def test_the_gate_refuses_a_drifted_result_schema_pin():
     """The mechanism, not just the current values.
 

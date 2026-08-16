@@ -135,13 +135,65 @@ def derived_pins(manifest: HarnessManifestV1) -> dict[str, tuple[str, str]]:
             f"{manifest.id}: pins driver {manifest.driver.revision!r}, which does "
             f"not exist; this harness cannot be launched at all")
     emitted = driver.report_schema_version
-    return {
+    pins = {
         "driver.sha256": (manifest.driver.sha256,
                           driver.identity()["driver_digest"]),
         "expected_result_schema": (manifest.expected_result_schema, emitted),
         "expected_result_schema_digest": (manifest.expected_result_schema_digest,
                                           result_schema_digest(emitted) or ""),
     }
+    # THE QUESTION AND THE SIZES, which ``prepare`` refuses on exactly as it
+    # refuses on the driver. Both are computed from repository bytes, so both
+    # drift the same way -- and this surface enumerated only the instrument.
+    # Demonstrated: appending a comment to the pinned problem's frozen reference
+    # left ``check`` reporting that harness clean while ``prepare`` raised
+    # "the registered question has changed". The gate that blocks a commit was
+    # therefore blind to the whole class of edit that lives under
+    # config/harnesses/problems and config/harnesses/case_sets.
+    #
+    # Absent for a harness that pins neither, and reported as their own fields
+    # because a reader chasing "the registered question has changed" should find
+    # the field that names the question.
+    pins.update(_question_pins(manifest))
+    return pins
+
+
+def _question_pins(manifest: HarnessManifestV1) -> dict[str, tuple[str, str]]:
+    """``oracle.sha256`` and ``dataset.sha256``, when this harness pins them.
+
+    Read through the same loaders ``prepare`` uses, so a pin this reports as
+    current is one ``prepare`` will accept. A revision that will not load is
+    reported as an empty computed value rather than raising: an unresolvable
+    problem is a finding for the operator, not a crash in a gate.
+    """
+    from ari.assurance.native_perf_common import load_case_set
+    from ari.assurance.problems import load_problem
+
+    found: dict[str, tuple[str, str]] = {}
+    # RESOLVES OR IT IS NOT THIS SURFACE'S PIN. The oracle slot does not always
+    # hold a pinned problem: the three ARI-native manifests pin a GENERATED
+    # oracle revision (``ari-native-gemm-oracle/v1@<sha>``) and a generated case
+    # set, neither of which ``load_problem``/``load_case_set`` can resolve, and
+    # neither of which their driver's ``prepare`` reads. Treating a failure to
+    # resolve as drift reported all three as stale against a pin that is not of
+    # this kind -- a false positive that a blocking gate would have turned into
+    # three harnesses nobody could commit against.
+    #
+    # So: report a pin only where it is derivable. What that costs is a genuinely
+    # unresolvable problem going unreported HERE; ``prepare`` still refuses it at
+    # run time, and it refuses loudly, naming the revision.
+    for slot, loader in (("oracle", lambda r: load_problem(r).digest),
+                         ("dataset", lambda r: load_case_set(r)[1])):
+        asset = getattr(manifest, slot, None)
+        revision = (getattr(asset, "revision", "") or "").strip()
+        if not revision:
+            continue
+        try:
+            computed = loader(revision)
+        except Exception:
+            continue
+        found[f"{slot}.sha256"] = (asset.sha256, computed)
+    return found
 
 
 def stale_pins(manifest: HarnessManifestV1) -> dict[str, tuple[str, str]]:
@@ -158,6 +210,17 @@ def repin(manifest: HarnessManifestV1) -> HarnessManifestV1:
     fields["expected_result_schema"] = computed["expected_result_schema"][1]
     fields["expected_result_schema_digest"] = (
         computed["expected_result_schema_digest"][1])
+    # THE QUESTION AND THE SIZES. Moving these is not the same act as moving the
+    # instrument pin, and the caller says so: re-pinning the driver accepts code
+    # that was reviewed as code, while re-pinning the oracle accepts a PROBLEM,
+    # which is pinned but not approved -- anyone may edit one, no signature. The
+    # manifest's pin is the only thing that stops an edited question riding
+    # under a signature given for the old one, so it is moved only through a
+    # re-registration that a human signs again. Refusing to move it here instead
+    # would leave the harness permanently unable to run with no way back.
+    for field, key in (("oracle", "oracle.sha256"), ("dataset", "dataset.sha256")):
+        if key in computed and computed[key][1]:
+            fields[field] = {**fields[field], "sha256": computed[key][1]}
     return HarnessManifestV1.create(**fields)
 
 
@@ -221,6 +284,16 @@ def paths(args) -> int:
         covered |= _files_read_by(digest)
     covered |= set(BUILTIN.glob("*.yaml"))
     covered |= set((ARI_CORE / "ari" / "schemas").glob("native_*report*.json"))
+    # THE QUESTION AND THE SIZES. ``prepare`` refuses on the oracle and dataset
+    # pins exactly as it refuses on the driver, and both are computed from these
+    # trees -- so a commit that edits a problem's frozen reference or a case
+    # set's shapes invalidates a manifest just as surely as an instrument edit.
+    # Demonstrated before this line existed: appending a comment to the pinned
+    # problem's reference left the gate silent and ``prepare`` raising.
+    for tree in ("problems", "case_sets"):
+        root = HARNESS_ROOT / tree
+        if root.is_dir():
+            covered |= {p for p in root.rglob("*") if p.is_file()}
     for path in sorted(covered):
         print(path.relative_to(REPO_ROOT))
     return 0
