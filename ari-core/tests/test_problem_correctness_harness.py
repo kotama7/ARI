@@ -564,11 +564,11 @@ _KNOWN_SCHEMA_MISMATCH: set[str] = set()
 #: pin records what was registered, and only a re-registration may move it.
 #: `result_schema_conformance` now refuses them, so the next registration
 #: surfaces this where a human is present to decide.
-_STALE_SCHEMA_PIN = {
-    "hpc_gemm_correctness.yaml",
-    "hpc_spmm_correctness.yaml",
-    "hpc_stencil_correctness.yaml",
-}
+#: EMPTY, and it must stay empty. All three were re-registered against the
+#: schema ARI ships once `result_schema_conformance` learned to compare the
+#: manifest; `scripts/rqgm_assurance/repin_and_promote_harness.py check` is the
+#: maintained way to ask, and the pre-commit hook runs it.
+_STALE_SCHEMA_PIN: set[str] = set()
 
 
 def test_every_manifest_declares_the_result_schema_its_driver_emits():
@@ -633,12 +633,24 @@ def test_the_gate_refuses_a_drifted_result_schema_pin():
         yaml.safe_load(MANIFEST.read_text(encoding="utf-8")))
     assert _verdict(good).passed
 
-    drifted = HarnessManifestV1.model_validate(
-        yaml.safe_load((BUILTIN / "hpc_gemm_correctness.yaml").read_text(
-            encoding="utf-8")))
-    verdict = _verdict(drifted)
+    # DRIFTED SYNTHETICALLY, not by naming a shipped manifest that happens to be
+    # broken. This test used to point at hpc_gemm_correctness, which WAS drifted
+    # -- and then it was re-registered, so the test failed for the best possible
+    # reason and had to be rewritten anyway. A gate test should not depend on
+    # the catalog being wrong.
+    fields = good.model_dump(mode="python", exclude={"manifest_digest"})
+    fields["expected_result_schema_digest"] = "sha256:" + "9" * 64
+    verdict = _verdict(HarnessManifestV1.create(**fields))
     assert not verdict.passed
     assert "drifted under the pin" in verdict.detail
+
+    # And a manifest naming a report type its driver does not emit.
+    fields = good.model_dump(mode="python", exclude={"manifest_digest"})
+    fields["expected_result_schema"] = "ari.some-other-report/v1"
+    verdict = _verdict(HarnessManifestV1.create(**fields))
+    assert not verdict.passed
+    assert "but this harness emits" in verdict.detail
+
 
 
 def test_an_unknown_driver_cannot_be_launched_at_all():
@@ -778,3 +790,112 @@ def test_prepare_refuses_a_case_set_from_another_family():
         ProblemCorrectnessDriver().prepare(
             _Manifest(dataset_revision="native-perf-stencil-cases/v1@smoke"),
             _Request())
+
+
+# --- what normalize_result may publish as a measurement -------------------------
+
+class _Stdout:
+    relative_path = "stdout.txt"
+    digest = "sha256:" + "0" * 64
+    media_type = "text/plain"
+    logical_role = "stdout"
+
+
+class _Limits:
+    max_output_bytes = 1 << 20
+
+
+class _Completed:
+    status = "completed"
+    artifacts = (_Stdout(),)
+    limits = _Limits()
+
+
+class _Workspace:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def read_bytes(self, relative_path, max_bytes=None):
+        return self._payload
+
+
+def _case(case_id, ratio, verdict="fail"):
+    from ari.assurance.native_problem_correctness import (
+        ProblemCorrectnessCaseResultV1)
+
+    ran = ratio is not None
+    return ProblemCorrectnessCaseResultV1(
+        case_id=case_id, verdict=verdict,
+        detail="within the residual bound" if ran else "candidate run did not "
+                                                       "complete: exit 139",
+        worst_residual_ratio=ratio, output_elements_expected=65536,
+        output_elements_written=65536 if ran else None,
+        repetitions_requested=1, repetitions_completed=1 if ran else 0)
+
+
+def _normalized(cases, verdict="fail"):
+    """Drive the driver over a report the verifier could really have printed."""
+    from ari.assurance.native_perf_common import (
+        load_case_set, measurement_environment, measurement_placement)
+    from ari.assurance.native_problem_correctness import (
+        NativeProblemCorrectnessReportV1)
+
+    loaded = load_problem(PROBLEM)
+    _set, dataset_digest = load_case_set(SMOKE)
+    report = NativeProblemCorrectnessReportV1.create(
+        problem_id=loaded.definition.id,
+        problem_revision=loaded.definition.revision, problem_digest=loaded.digest,
+        family=loaded.definition.family, entry_point=loaded.definition.entry_point,
+        candidate_digest="sha256:" + "9" * 64, tier="screen", verdict=verdict,
+        case_results=tuple(cases),
+        property_verdicts={"numerical-equivalence": verdict,
+                           "interface-conformance": "pass"},
+        deterministic=True, oracle="gemm-family-residual-bound",
+        error_model="per-element backward-error bound (family oracle)",
+        build_error=None, interface_error=None, accepted_flags=(),
+        rejected_flags=(),
+        candidate_toolchain={"resolved_path": "cc", "status": "default"},
+        crossed_compiler_boundary=False, dataset_revision=SMOKE,
+        dataset_sha256=dataset_digest, environment=measurement_environment(),
+        placement=measurement_placement(), sandbox={}, negative_control=False)
+    request = _Request()
+    request.execution_request.workspace = _Workspace(
+        (report.model_dump_json() + "\n").encode("utf-8"))
+    return ProblemCorrectnessDriver().normalize_result(
+        _Manifest(), request, _Completed()).property_results[0].measurements
+
+
+def test_a_case_that_measured_no_residual_is_not_published_as_a_perfect_one():
+    """A missing residual is not a small one, and 0.0 is the PERFECT answer.
+
+    A case reports none when no finite ratio was observed -- the launch did not
+    complete, or the oracle answered inf/NaN. The aggregate crashed on it:
+    ``max((case.worst_residual_ratio for case in cases), default=0.0)`` covers
+    only the EMPTY sequence, so a single ``None`` among real ratios raised
+    ``TypeError: '>' not supported between instances of 'NoneType' and 'float'``
+    -- from inside the driver, which turns a candidate that segfaulted on one
+    shape into an outage report about the harness.
+    """
+    measurements = _normalized([_case("64x64x64", 0.4, verdict="pass"),
+                                _case("128x128x128", None)])
+    assert measurements["worst_residual_ratio"] is None, (
+        "0.4 was published as the worst residual of a case set one of whose "
+        "cases produced no residual at all")
+    assert measurements["worst_residual_ratio_by_case"] == {
+        "64x64x64": 0.4, "128x128x128": None}
+
+
+def test_the_aggregate_is_still_the_worst_when_every_case_measured_one():
+    """Otherwise the fix would be 'never report it', which is the same silence."""
+    measurements = _normalized([_case("64x64x64", 0.4, verdict="pass"),
+                                _case("128x128x128", 2.5)])
+    assert measurements["worst_residual_ratio"] == pytest.approx(2.5)
+
+
+def test_a_candidate_that_never_built_publishes_no_residual_at_all():
+    """``verify_problem_correctness`` returns ``case_results=()`` for a build
+    failure, and ``default=0.0`` published "exactly zero error" as the
+    measurement behind a candidate that never compiled."""
+    measurements = _normalized([])
+    assert measurements["case_count"] == 0
+    assert measurements["worst_residual_ratio"] is None
