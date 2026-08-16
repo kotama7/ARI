@@ -217,12 +217,18 @@ def promote(args) -> int:
     if args.dry_run:
         print("dry run: gates pass; no evidence, approval or catalog row written")
         return 0
+    # ONCE, BEFORE THE FIRST WRITE. Every bundle in this batch records the same
+    # source commit, which is true -- they were all measured against it -- and
+    # is the only way to record it: the first write dirties the tree, so asking
+    # again would refuse. Same defect as the gates, one layer down.
+    commit = repository_commit(allow_dirty=False)
     for name, manifest, driver, report in earned:
-        _write_promotion(name, manifest, driver, report, args)
+        _write_promotion(name, manifest, driver, report, args, commit)
     return 0
 
 
-def _write_promotion(manifest_name, manifest, driver, report, args) -> None:
+def _write_promotion(manifest_name, manifest, driver, report, args,
+                     commit: str) -> None:
     from ari.assurance.native_perf_common import (measurement_environment,
                                                   measurement_placement)
     from ari.orchestrator.node_summary_view import scrub_host_identity
@@ -230,7 +236,6 @@ def _write_promotion(manifest_name, manifest, driver, report, args) -> None:
     slug = _slug(manifest.id)
     evidence_dir = HARNESS_ROOT / "evidence" / slug
     evidence_dir.mkdir(parents=True, exist_ok=True)
-    commit = repository_commit(allow_dirty=False)
 
     def _write(name: str, payload) -> None:
         (evidence_dir / name).write_text(
