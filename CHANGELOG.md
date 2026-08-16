@@ -4,6 +4,78 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **A problem-correctness Harness can now EARN its attestations
+  (`scripts/rqgm_assurance/attest_problem_correctness.py`).** Five catalog rows carry
+  `status: verified`. Three of them ship four `HarnessAttestationV1` artifacts each,
+  plus `logs/` and `resource_measurements.json`, from `promote_native_harnesses.py`'s
+  four-execution control sequence. The two registered through
+  `repin_and_promote_harness.py` ship none — that surface writes
+  `clean_control_verdict="pass"` and `negative_control_verdict="fail"` into
+  `registration_evidence.json` as literals and points `attestation_digests` at its own
+  registration report. Nothing ran, and the record says something did.
+
+  The gap was structural rather than an oversight: `KIND_CONFIG` names exactly the
+  three ARI-native families, and their control loop is welded to a manifest it also
+  CONSTRUCTS, to a shared library it compiles itself, and to a contract requiring a
+  `reproducibility` property this manifest does not declare. The new surface reads the
+  registered manifest instead of rebuilding it, stages C SOURCE that the verifier
+  compiles inside the container, and derives its contract from the two properties the
+  manifest actually declares — so `resolve_harness_suite` covers all four atoms
+  instead of leaving them unsatisfied.
+
+  **Five labelled executions, not four.** The first four keep the native labels and
+  expected verdicts (`clean-screen`, `clean-certify`, `clean-certify-repeat` →
+  `pass`; `negative-screen` → `fail`). In all four, `interface-conformance` comes back
+  `pass`, including in the negative run, because `wrong_gemm.c` keeps the contract
+  perfectly and only misses the numbers — so registering a conformance claim on them
+  would be the same defect one property smaller. The fifth,
+  `negative-interface-screen`, is the driver's own file-scope-global transform of the
+  problem's own seed candidate, and the object audit refuses it by name.
+
+  **Nothing is declared and nothing was weakened.** Every control is one of the
+  problem's shipped files, unmodified; every verdict written is read back off an
+  attestation minted from a container execution. The sequence refuses unless the
+  observed verdicts match in both directions, each property verdict matches, each
+  negative failed for its own reason — the wrong kernel caught by the residual bound
+  rather than by the build, by the audit or by an element-count check, and the export
+  control caught before any case ran — and no passing run reported nondeterminism.
+  Measured end to end against the registered manifest through the pinned image: five
+  completed executions in ~42 s, clean worst residual ratio 1.4e-3 to 1.6e-3 against a
+  bound of 1.0, the wrong kernel at 7.85e+11x with 3/3 cases failed and every element
+  written, and the export control refused with
+  `candidate kernel exports symbols other than 'gemm'`. The specificity direction — a
+  correct-but-slow kernel must PASS, or the instrument is a stopwatch wearing a
+  correctness label — stays where `register_harness` already gates on it, in
+  `ProblemCorrectnessDriver.parity_probe`.
+
+  `controls` writes the bundle outside the repository and needs no human identity;
+  `promote` earns the gates and signs behind `--actor-id` / `--authorization-basis`,
+  as the two scripts beside it do. The attestations cannot be dropped into the
+  existing evidence bundle: adding them moves `evidence_digest`, hence the catalog
+  row, hence the promotion approval signature, so the run has to be part of a
+  re-registration a maintainer signs.
+
+  `hpc/gemm-performance` is NOT covered, and was not forced. Two contradictions live
+  in the manifest itself, both already strict xfails in
+  `test_harness_applicability.py`: it pins `gemm-c-abi/v1` against
+  `target_kinds: [benchmark-submission]` while the worker takes C source, so the
+  declaration the evaluator mints is inapplicable to it; and it pins
+  `supported_architectures: [x86_64]` against an aarch64 `registered_placement`, which
+  `NativePerfDriver.prepare` enforces as an execution gate rather than a description —
+  so no host satisfies both halves, and an attestation taken off the registered
+  placement is refused rather than merely discouraged. Correcting either means editing
+  a registered manifest, which moves `manifest_digest` and is a re-registration. Two
+  further things would have to be settled first: the regression threshold is a
+  constant in two places that disagree (`parity_probe` reads 0.95, the worker defaults
+  to 1.0) and is derived from no `tolerance_policy_digest`, and nothing plumbs the
+  reference's build flags into a governed argv, though the clean control is only
+  honest when the reference is built the reference's way.
+
+  Both harnesses currently pin a driver digest that no longer resolves, so `prepare`
+  refuses and this path cannot be re-exercised until a maintainer re-registers. That
+  is a consequence of moving the instruments, disclosed where it was moved; the
+  sequence above was measured against the tree state the manifests pin.
+
 - **`hpc/gemm-dense-fp64-problem-correctness` promoted to verified (2026-08-16).**
   Registered at 15/15 and signed by the maintainer (`kotama`), so the catalog now
   carries five entries and a pinned-problem run resolves its correctness obligation
