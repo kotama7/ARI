@@ -4,6 +4,17 @@ All notable changes to ARI are documented here. Versions follow `MAJOR.MINOR.PAT
 
 ## Unreleased — Constitutional ARI-RQGM: opt-in `ari_rqgm` execution mode
 
+- **The problem-correctness manifest's source pin named a commit without the driver
+  (2026-08-16).** `source_full_commit_sha` was copied from the four pre-existing
+  manifests, and `source_revision_digest_pin` only checks ancestry, so it passed while
+  naming `361a85d7`, a commit that contains none of the three files the manifest's
+  `driver.sha256` covers — checking it out raises "instrument files missing from the
+  digest". The field's whole purpose, per that gate's own docstring, is PROVENANCE:
+  where to check out to obtain the digested bytes. It now names the commit that
+  actually holds them, resolved rather than copied, and the manifest author asserts
+  the three files exist there before writing the pin. Verified independently: the
+  driver digest recomputed from that commit's blobs equals the pinned value.
+
 - **`expected_result_schema_digest` was carried into the lock and read by nobody
   (2026-08-16).** A manifest declares the result schema twice — by version and by
   digest — and `resolver` copies both into the lock, but no reader ever compared
