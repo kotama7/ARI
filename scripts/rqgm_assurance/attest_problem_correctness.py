@@ -142,10 +142,12 @@ HARNESS_ROOT = ARI_CORE / "config" / "harnesses"
 BUILTIN = HARNESS_ROOT / "builtin"
 POLICIES = HARNESS_ROOT / "policies"
 
-#: The bound every ratio in this report is already normalised to. 1.0 is exactly
-#: at the family's residual bound; the driver publishes it beside the ratio as
-#: ``residual_ratio_limit`` for the same reason it is named once here.
-RESIDUAL_RATIO_LIMIT = 1.0
+#: Below this a term is an ordinary word. A passwd name like ``ari`` or a host
+#: name like ``node1`` occurs inside JSON keys, digests, C identifiers and
+#: English prose, so a guard that matched them would refuse every bundle and be
+#: switched off -- which is worse than a narrower guard that is believed.
+#: ``host_identity_terms`` refuses rather than dropping a candidate under it.
+MINIMUM_IDENTITY_TERM_LENGTH = 6
 
 
 class ControlSequenceError(RuntimeError):
@@ -278,9 +280,33 @@ def host_identity_terms() -> tuple[str, ...]:
         candidates.add(getpass.getuser())
     except (KeyError, OSError):  # pragma: no cover - no passwd entry
         pass
-    # Short tokens would match ordinary words in a JSON report and turn this
-    # guard into a source of false refusals.
-    return tuple(sorted({item for item in candidates if item and len(item) >= 6}))
+    ordered = tuple(sorted(item for item in candidates if item))
+
+    # THE LENGTH FLOOR IS CHECKED, NOT ASSUMED. It used to be a filter: anything
+    # under it was dropped, silently, so the guard was narrowest exactly on the
+    # machines whose identity is hardest to distinguish from ordinary text -- and
+    # the bundle was published either way, carrying an unchecked term. Measured
+    # on the machine this promotion runs from: every candidate above is a
+    # filesystem path, a DNS name or a passwd name, and each clears the floor, so
+    # the floor drops nothing here and the filter never had anything to hide.
+    # That is a fact about one machine, which is why it is now asked rather than
+    # written down. Where a candidate would be dropped, the honest answer is that
+    # this guard cannot certify that bundle, not a guard that quietly stopped
+    # covering a term.
+    #
+    # An UNSET candidate is not the same thing: there is no identity to leak, so
+    # it is excluded above and does not refuse.
+    short = [index for index, item in enumerate(ordered)
+             if len(item) < MINIMUM_IDENTITY_TERM_LENGTH]
+    if short:
+        raise ControlSequenceError(
+            f"local identity term(s) {short} are shorter than "
+            f"{MINIMUM_IDENTITY_TERM_LENGTH} characters. Matching them would "
+            f"refuse ordinary prose, and dropping them would publish a bundle "
+            f"this guard had not checked for them, so the promotion is refused "
+            f"instead. The terms are not named here, for the same reason the "
+            f"leak refusal names an index")
+    return ordered
 
 
 def refuse_host_identity(artifacts: dict[str, bytes]) -> None:
@@ -469,6 +495,45 @@ def _property_result(attestation: Any, property_id: str) -> Any:
         f"the attestation carries no result for {property_id!r}")
 
 
+def residual_ratio_limit(label: str, attestation: Any) -> float:
+    """The bound THIS execution normalised its ratio to, READ off the run.
+
+    This was a module constant, ``RESIDUAL_RATIO_LIMIT = 1.0``: compared against,
+    and then republished into every run's discrimination record as though it had
+    been observed. That is the declared-constant defect in the place it is least
+    visible. A residual ratio means nothing without the bound it is normalised
+    to, so a driver that moved its bound would leave this module checking every
+    control against a stale 1.0 AND writing that same stale 1.0 beside the ratio
+    -- both wrong in the same direction, so no artifact here could disagree with
+    any other, and the bundle would read as consistent evidence for a comparison
+    that never happened.
+
+    ``ProblemCorrectnessDriver`` already publishes the bound per property result
+    in ``tolerance_evidence``, which is why this is a read and not a new
+    measurement.
+
+    FAIL-CLOSED. Absent, non-numeric, boolean, non-finite or non-positive is a
+    refusal rather than a fallback to 1.0: a ratio compared against a bound
+    nobody stated is not a comparison, and a bound of zero or infinity accepts
+    nothing or everything.
+    """
+    numeric = _property_result(attestation, "numerical-equivalence")
+    found = dict(getattr(numeric, "tolerance_evidence", None) or {}).get(
+        "residual_ratio_limit")
+    if isinstance(found, bool) or not isinstance(found, (int, float)):
+        raise ControlSequenceError(
+            f"{label} states no numeric residual_ratio_limit in its tolerance "
+            f"evidence, so the ratio it reports is normalised to a bound this "
+            f"record does not carry and nothing here may compare against it")
+    limit = float(found)
+    if not limit > 0.0 or limit == float("inf"):
+        raise ControlSequenceError(
+            f"{label} reports residual_ratio_limit {limit!r}; a bound that is "
+            f"not a positive finite number accepts everything or nothing, and "
+            f"either way a verdict taken against it decides nothing")
+    return limit
+
+
 def discrimination_evidence(label: str, attestation: Any) -> dict[str, Any]:
     """WHY this run landed where it did, read back off the attestation.
 
@@ -487,7 +552,9 @@ def discrimination_evidence(label: str, attestation: Any) -> dict[str, Any]:
         "case_count": measurements.get("case_count"),
         "failed_case_count": measurements.get("failed_case_count"),
         "worst_residual_ratio": measurements.get("worst_residual_ratio"),
-        "residual_ratio_limit": RESIDUAL_RATIO_LIMIT,
+        # READ off this execution's own tolerance evidence, so the ratio above
+        # is published beside the bound it was actually judged against.
+        "residual_ratio_limit": residual_ratio_limit(label, attestation),
         # ``None``, not ``False``, when no case ran: absent is not "some case
         # wrote the wrong count", and the interface control scores nothing.
         "every_case_wrote_the_expected_element_count": (
@@ -548,6 +615,20 @@ def check_control_sequence(attestations: dict[str, Any]) -> dict[str, Any]:
     evidence = {control.label: discrimination_evidence(
         control.label, attestations[control.label]) for control in CONTROLS}
 
+    # ONE BOUND, READ FROM THE RUNS. Every ratio in this record is normalised to
+    # it, so controls judged against different bounds are not comparable and the
+    # pass/fail split below would be taken against whichever one happened to be
+    # picked. Refusing on disagreement is the other half of refusing on absence:
+    # both are ways for the comparison to be undefined.
+    bounds = {label: found["residual_ratio_limit"]
+              for label, found in evidence.items()}
+    distinct = sorted(set(bounds.values()))
+    if len(distinct) != 1:
+        _refuse(f"the controls were judged against different residual bounds "
+                f"{bounds}; a ratio is only readable beside the bound it was "
+                f"normalised to, so this sequence compares nothing")
+    limit = distinct[0]
+
     for control in CONTROLS:
         found = evidence[control.label]
         if control.verdict == "pass":
@@ -556,9 +637,9 @@ def check_control_sequence(attestations: dict[str, Any]) -> dict[str, Any]:
                 _refuse(f"{control.label} passed while reporting no residual "
                         f"ratio at all; a pass with no measurement behind it is "
                         f"the defect this bundle exists to remove")
-            if worst > RESIDUAL_RATIO_LIMIT:
+            if worst > limit:
                 _refuse(f"{control.label} passed with a residual ratio {worst} "
-                        f"above the bound {RESIDUAL_RATIO_LIMIT}")
+                        f"above the bound {limit}")
             if found["failed_case_count"] != 0 or not found["case_count"]:
                 _refuse(f"{control.label} passed with "
                         f"{found['failed_case_count']} failed case(s) out of "
@@ -577,9 +658,9 @@ def check_control_sequence(attestations: dict[str, Any]) -> dict[str, Any]:
         _refuse("negative-screen was caught by the element-count check rather "
                 "than by the residual bound")
     ratio = wrong["worst_residual_ratio"]
-    if not isinstance(ratio, (int, float)) or ratio <= RESIDUAL_RATIO_LIMIT:
+    if not isinstance(ratio, (int, float)) or ratio <= limit:
         _refuse(f"negative-screen reported worst residual ratio {ratio!r}, "
-                f"which does not exceed the bound {RESIDUAL_RATIO_LIMIT}")
+                f"which does not exceed the bound {limit}")
     if wrong["failed_case_count"] != wrong["case_count"]:
         _refuse(f"negative-screen failed {wrong['failed_case_count']} of "
                 f"{wrong['case_count']} cases; a wrong kernel that is right "
@@ -978,6 +1059,47 @@ def _write_bundle(destination: Path, artifacts: dict[str, bytes]) -> None:
         os.replace(temporary, path)
 
 
+def published_artifacts(
+    *,
+    slug: str,
+    artifacts: dict[str, bytes],
+    evidence: Any,
+    report: Any,
+    approval: Any,
+    catalog: Any,
+) -> dict[str, bytes]:
+    """EVERY byte ``promote`` writes into the Harness tree, keyed by its path.
+
+    THE GAP THIS CLOSES. ``refuse_host_identity`` ran over the evidence bundle
+    and then FOUR more files were written past it: the registration evidence,
+    the registration report, the promotion approval and the catalog. Every one
+    of them is committed and published, which is the guard's entire stated
+    reason for existing, and every one of them was outside it. The evidence
+    bundle is the likeliest leak, because it carries the worker's stdout
+    verbatim; it was never the only published thing.
+
+    The repair is structural rather than four more guard calls. ``promote``
+    builds this map, guards it ONCE and writes it ONCE, so the guard's coverage
+    is a property of the code's shape instead of the order of statements -- and
+    a future artifact escapes it only by adding a second write path, which is a
+    visible thing to add rather than a line appended after a call.
+
+    Keys are relative to the Harness root, so a refusal names the exact file.
+
+    The catalog is included because it is REWRITTEN whole, rows this promotion
+    did not author included: those bytes are written by this mode and are
+    therefore this mode's to answer for.
+    """
+    published = {f"evidence/{slug}/{name}": payload
+                 for name, payload in artifacts.items()}
+    published[f"evidence/{slug}/registration_evidence.json"] = _json_bytes(evidence)
+    published[f"reports/{slug}.registration.json"] = _json_bytes(report)
+    published[f"approvals/{slug}.approval.json"] = _json_bytes(approval)
+    published["catalog.yaml"] = yaml.safe_dump(
+        catalog, sort_keys=False, default_flow_style=False).encode("utf-8")
+    return published
+
+
 # --------------------------------------------------------------------------
 # modes
 # --------------------------------------------------------------------------
@@ -1021,6 +1143,13 @@ def promote(args: argparse.Namespace) -> int:
     Ordering matters and is not tidiness: the sequence runs first, the gates run
     second and refuse a dirty tree, and only then is anything written -- because
     the first write dirties the tree that the source pin is taken from.
+
+    That ordering now holds for EVERY published byte, not just the evidence
+    bundle. This function performs exactly one write, of the map
+    ``published_artifacts`` builds, immediately after ``refuse_host_identity``
+    has passed over all of it. It previously wrote the bundle, then built and
+    wrote the registration evidence, the report, the approval and the catalog
+    afterwards -- four published artifacts on the far side of the guard.
     """
     from ari.assurance.drivers import builtin_driver_map
     from ari.assurance.native_perf_common import measurement_environment
@@ -1070,12 +1199,9 @@ def promote(args: argparse.Namespace) -> int:
                            "not describe a machine"),
         "environment_note": "variable VALUES are scrubbed of host identity here",
     })
-    refuse_host_identity(artifacts)
-
     harness_root = args.harness_root.resolve()
     slug = _slug(manifest.id)
     evidence_dir = harness_root / "evidence" / slug
-    _write_bundle(evidence_dir, artifacts)
 
     sequence = result["sequence"]
     digests = {f"evidence/{slug}/{name}": bytes_digest(payload)
@@ -1106,8 +1232,6 @@ def promote(args: argparse.Namespace) -> int:
         oracle_visibility=sequence["isolation"]["oracle_visibility"],
         run_count=len(result["attestations"]),
     )
-    _write_bundle(evidence_dir, {"registration_evidence.json": _json_bytes(evidence)})
-
     approval = HarnessPromotionApprovalV1.create(
         harness_id=manifest.id,
         harness_version=manifest.version,
@@ -1119,11 +1243,6 @@ def promote(args: argparse.Namespace) -> int:
         registration_report_digest=report.report_digest,
         evidence_bundle_digest=evidence.evidence_digest,
     )
-    _write_bundle(harness_root / "reports",
-                  {f"{slug}.registration.json": _json_bytes(report)})
-    _write_bundle(harness_root / "approvals",
-                  {f"{slug}.approval.json": _json_bytes(approval)})
-
     catalog_path = harness_root / "catalog.yaml"
     catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
     entry = {
@@ -1139,9 +1258,19 @@ def promote(args: argparse.Namespace) -> int:
     catalog["entries"] = sorted(
         [item for item in catalog["entries"] if item["id"] != manifest.id] + [entry],
         key=lambda item: item["id"])
-    catalog_path.write_text(
-        yaml.safe_dump(catalog, sort_keys=False, default_flow_style=False),
-        encoding="utf-8")
+
+    # NOTHING HAS BEEN WRITTEN YET. Everything above is computation, so the guard
+    # below sees the complete set of bytes this mode puts into a published tree
+    # -- the evidence bundle AND the registration evidence, the report, the
+    # approval and the catalog, which used to be written past it. It refuses
+    # rather than scrubs: a scrub would leave a clean-looking bundle and no way
+    # to tell which artifact leaked, and the leak would recur on the next run.
+    published = published_artifacts(
+        slug=slug, artifacts=artifacts, evidence=evidence, report=report,
+        approval=approval, catalog=catalog)
+    refuse_host_identity(published)
+    _write_bundle(harness_root, published)
+
     print(f"attested  : {len(result['attestations'])} container executions")
     print(f"signed    : {approval.actor_id} ({approval.actor_kind})")
     print(f"written   : {evidence_dir}")

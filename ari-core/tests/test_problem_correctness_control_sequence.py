@@ -77,6 +77,13 @@ _CASES = {
 }
 
 
+#: What ``ProblemCorrectnessDriver.normalize_result`` publishes in every property
+#: result's ``tolerance_evidence``. The bound is READ from here rather than
+#: asserted by the promotion surface, so the fixture has to carry it: a ratio is
+#: not interpretable without the bound it was normalised to.
+_UNSET = object()
+
+
 def _attestation(
     *,
     verdict: str,
@@ -90,6 +97,7 @@ def _attestation(
     sizes: dict | None = None,
     nondeterminism: tuple[str, ...] = (),
     infrastructure_status: str = "ready",
+    residual_ratio_limit: object = 1.0,
 ) -> SimpleNamespace:
     measurements = {
         "case_count": case_count,
@@ -99,6 +107,9 @@ def _attestation(
     }
     oracle = {"build_error": build_error, "interface_error": interface_error,
               "report_digest": "sha256:" + "0" * 64}
+    tolerance = {"error_model": "relative-frobenius-residual"}
+    if residual_ratio_limit is not _UNSET:
+        tolerance["residual_ratio_limit"] = residual_ratio_limit
     return SimpleNamespace(
         verdict=verdict,
         infrastructure_status=infrastructure_status,
@@ -107,9 +118,11 @@ def _attestation(
         attestation_digest="sha256:" + "1" * 64,
         property_results=(
             SimpleNamespace(property_id="numerical-equivalence", verdict=numeric,
-                            measurements=measurements, oracle_comparison=oracle),
+                            measurements=measurements, oracle_comparison=oracle,
+                            tolerance_evidence=tolerance),
             SimpleNamespace(property_id="interface-conformance", verdict=interface,
-                            measurements=measurements, oracle_comparison=oracle),
+                            measurements=measurements, oracle_comparison=oracle,
+                            tolerance_evidence=tolerance),
         ),
     )
 
@@ -365,6 +378,33 @@ def test_the_weakest_derived_claim_says_what_it_rests_on() -> None:
             "about the substrate",
             id="a-verdict-about-the-substrate-is-not-a-verdict-about-a-candidate",
         ),
+        # THE BOUND IS READ, so its absence is a refusal and not a fallback to
+        # the 1.0 this module used to assert.
+        pytest.param(
+            {"clean-screen": _clean(residual_ratio_limit=_UNSET)},
+            "states no numeric residual_ratio_limit",
+            id="a-ratio-normalised-to-a-bound-the-run-never-stated",
+        ),
+        pytest.param(
+            {"clean-screen": _clean(residual_ratio_limit="1.0")},
+            "states no numeric residual_ratio_limit",
+            id="a-bound-that-is-not-a-number",
+        ),
+        pytest.param(
+            {"clean-screen": _clean(residual_ratio_limit=0.0)},
+            "not a positive finite number",
+            id="a-bound-of-zero-accepts-nothing",
+        ),
+        pytest.param(
+            {"clean-screen": _clean(residual_ratio_limit=float("inf"))},
+            "not a positive finite number",
+            id="an-infinite-bound-accepts-everything",
+        ),
+        pytest.param(
+            {"negative-screen": _wrong(residual_ratio_limit=2.0)},
+            "different residual bounds",
+            id="controls-judged-against-bounds-that-disagree",
+        ),
     ],
 )
 def test_the_sequence_refuses_a_run_that_did_not_discriminate(
@@ -489,3 +529,200 @@ def test_host_identity_is_refused_rather_than_scrubbed() -> None:
     assert str(REPO_ROOT) not in message
     sequence_module.refuse_host_identity(
         {"clean-screen.attestation.json": b'{"verdict": "pass"}'})
+
+
+#: The slug ``repin_and_promote_harness._slug`` derives for this harness id. Only
+#: used to spell the paths the guard must name; nothing below derives from it.
+_SLUG = "hpc-gemm-dense-fp64-problem-correctness"
+
+
+def _published(**overrides) -> dict[str, bytes]:
+    """The map ``promote`` guards and then writes, built from plain values.
+
+    ``_json_bytes`` falls back to ``json.dumps`` for anything without
+    ``model_dump``, so the artifacts can be dicts here: what is under test is
+    which PATHS the map covers, not the models' own serialisation.
+    """
+    kwargs: dict = {
+        "slug": _SLUG,
+        "artifacts": {"control_sequence.json": b'{"schema_version": "v1"}\n'},
+        "evidence": {"harness_id": "hpc/gemm-dense-fp64-problem-correctness"},
+        "report": {"decision": "eligible-for-verified"},
+        "approval": {"actor_kind": "human-maintainer"},
+        "catalog": {"entries": []},
+    }
+    kwargs.update(overrides)
+    return sequence_module.published_artifacts(**kwargs)
+
+
+def test_every_byte_written_into_the_harness_tree_is_inside_the_guard() -> None:
+    """The gap: four published artifacts were written PAST ``refuse_host_identity``.
+
+    The guard ran over the evidence bundle, and then the registration evidence,
+    the registration report, the promotion approval and the catalog were built
+    and written after it. All four are committed and published, which is the
+    guard's whole stated reason for existing.
+    """
+    published = _published()
+    assert set(published) == {
+        f"evidence/{_SLUG}/control_sequence.json",
+        f"evidence/{_SLUG}/registration_evidence.json",
+        f"reports/{_SLUG}.registration.json",
+        f"approvals/{_SLUG}.approval.json",
+        "catalog.yaml",
+    }
+    # Keys are relative to the Harness root, so the refusal names the exact file
+    # rather than a bare basename that appears in three directories.
+    sequence_module.refuse_host_identity(published)
+
+
+@pytest.mark.parametrize(
+    "field, path",
+    [
+        pytest.param("evidence", f"evidence/{_SLUG}/registration_evidence.json",
+                     id="registration-evidence"),
+        pytest.param("report", f"reports/{_SLUG}.registration.json",
+                     id="registration-report"),
+        pytest.param("approval", f"approvals/{_SLUG}.approval.json",
+                     id="promotion-approval"),
+        pytest.param("catalog", "catalog.yaml", id="catalog-row"),
+    ],
+)
+def test_a_leak_in_an_artifact_written_past_the_old_guard_is_refused(
+    field, path
+) -> None:
+    """Each of these used to be written after the guard had already passed."""
+    published = _published(**{field: {"note": str(REPO_ROOT)}})
+    with pytest.raises(sequence_module.ControlSequenceError) as caught:
+        sequence_module.refuse_host_identity(published)
+    message = str(caught.value)
+    assert path in message
+    assert str(REPO_ROOT) not in message, (
+        "the refusal names the artifact and the term's index, never the term")
+
+
+def test_the_promotion_guards_once_and_writes_once() -> None:
+    """The structural half of the repair, pinned.
+
+    Four guard calls would have closed today's gap and left the next artifact
+    outside it, because the failure mode is appending a write after a call.
+    ``promote`` performs exactly one write, of one map, immediately after one
+    guard, so a future unguarded artifact needs a whole new write path -- which
+    is a visible thing to add rather than a line at the end of a function.
+    """
+    tree = ast.parse(MODULE_PATH.read_text(encoding="utf-8"))
+    body = next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name == "promote")
+    called: list[str] = []
+    for node in ast.walk(body):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            called.append(node.func.id)
+        elif isinstance(node.func, ast.Attribute):
+            called.append(node.func.attr)
+    assert called.count("_write_bundle") == 1, (
+        "promote writes the Harness tree in one place, or the guard's coverage "
+        "goes back to depending on the order of statements")
+    assert called.count("refuse_host_identity") == 1
+    assert called.count("published_artifacts") == 1
+    for escape in ("write_text", "write_bytes", "open", "replace"):
+        assert escape not in called, (
+            f"promote reaches the filesystem through {escape}, which bypasses "
+            f"the single guarded write")
+
+
+# --------------------------------------------------------------------------
+# the length floor is asked, not assumed
+# --------------------------------------------------------------------------
+
+def test_no_real_identity_term_is_dropped_by_the_length_floor() -> None:
+    """The floor exists so ordinary words are not matched; it must not bite here.
+
+    Every candidate is a filesystem path, a DNS name or a passwd name. The
+    assertion is the measurement: if one of them were short, the guard would
+    silently stop covering it while the bundle was published anyway.
+    """
+    terms = sequence_module.host_identity_terms()
+    assert terms, "a guard with no terms checks nothing"
+    assert str(REPO_ROOT) in terms
+    assert all(len(term) >= sequence_module.MINIMUM_IDENTITY_TERM_LENGTH
+               for term in terms)
+
+
+def test_a_term_under_the_floor_refuses_rather_than_being_dropped(
+    monkeypatch,
+) -> None:
+    """Silently narrowing is the defect; the floor is fail-closed instead.
+
+    A short host name cannot be matched -- it would occur inside digests, JSON
+    keys and prose, and the guard would be switched off within a day. Dropping
+    it publishes a bundle that was never checked for it. Refusing says the
+    honest thing: this guard cannot certify this bundle.
+    """
+    monkeypatch.setattr(sequence_module.socket, "gethostname", lambda: "hn01")
+    monkeypatch.setattr(sequence_module.socket, "getfqdn", lambda *a: "hn01")
+    monkeypatch.setattr(sequence_module.platform, "node", lambda: "hn01")
+    with pytest.raises(sequence_module.ControlSequenceError) as caught:
+        sequence_module.host_identity_terms()
+    message = str(caught.value)
+    assert "shorter than" in message
+    assert "hn01" not in message, (
+        "naming the short term would put the identity into CI output, which is "
+        "the same leak the guard exists to prevent")
+
+
+def test_an_unset_candidate_is_not_a_term_and_does_not_refuse(monkeypatch) -> None:
+    """``platform.node()`` returns '' on some hosts. Absent is not unguarded."""
+    monkeypatch.setattr(sequence_module.platform, "node", lambda: "")
+    assert sequence_module.host_identity_terms()
+
+
+# --------------------------------------------------------------------------
+# the residual bound is read off the run, not asserted here
+# --------------------------------------------------------------------------
+
+def test_the_module_asserts_no_residual_bound_of_its_own() -> None:
+    """``RESIDUAL_RATIO_LIMIT = 1.0`` was the declared constant, one layer down.
+
+    It was compared against AND republished into every run's discrimination
+    record as though it had been observed, so a driver that moved its bound
+    would have left this module consistent with itself and wrong about the
+    instrument.
+    """
+    assert not hasattr(sequence_module, "RESIDUAL_RATIO_LIMIT")
+
+
+def test_the_published_bound_is_the_one_the_run_reported() -> None:
+    checked = sequence_module.check_control_sequence(_sequence())
+    for label, found in checked["discrimination"].items():
+        assert found["residual_ratio_limit"] == 1.0, label
+
+
+def test_a_moved_bound_moves_the_verdicts_with_it() -> None:
+    """The point of reading it: the checks follow the instrument.
+
+    A clean control at 1.5 is OUTSIDE the bound this module used to assert and
+    inside the one the run reports, and a wrong kernel at 1.6 is the reverse.
+    Against a local constant the first is refused and the second accepted --
+    both backwards.
+    """
+    runs = {
+        "clean-screen": _clean(worst_residual_ratio=1.5, residual_ratio_limit=2.0),
+        "clean-certify": _clean(worst_residual_ratio=1.5, residual_ratio_limit=2.0),
+        "clean-certify-repeat": _clean(worst_residual_ratio=1.5,
+                                       residual_ratio_limit=2.0),
+        "negative-screen": _wrong(worst_residual_ratio=7.85e11,
+                                  residual_ratio_limit=2.0),
+        "negative-interface-screen": _exports_extra_symbol(residual_ratio_limit=2.0),
+    }
+    checked = sequence_module.check_control_sequence(runs)
+    assert checked["clean_control_verdict"] == "pass"
+    assert checked["discrimination"]["clean-screen"]["residual_ratio_limit"] == 2.0
+
+    inside = dict(runs)
+    inside["negative-screen"] = _wrong(worst_residual_ratio=1.6,
+                                       residual_ratio_limit=2.0)
+    with pytest.raises(sequence_module.ControlSequenceError) as caught:
+        sequence_module.check_control_sequence(inside)
+    assert "does not exceed the bound 2.0" in str(caught.value)
