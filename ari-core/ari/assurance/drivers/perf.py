@@ -120,6 +120,15 @@ def perf_driver_digest() -> str:
         package / "native_perf_stencil.py",
         # The profiler is part of the instrument too.
         package / "native_perf_profile.py",
+        # THE ISOLATION ITSELF. ``sandbox.py`` implements the landlock
+        # restriction ``run_timed`` applies to every timed child, fail-closed,
+        # immediately before exec -- and it was in no driver's content address,
+        # so the code that decides whether an untrusted candidate can write
+        # outside its output file could change under a pinned manifest with
+        # nothing noticing. The report carries what it decided
+        # (``filesystem_isolation``, ``mechanism``, ``landlock_abi``), and a
+        # record of an isolation nobody pinned is a record of a claim.
+        package / "sandbox.py",
         # A problem is only as pinned as the code that resolves and digests it.
         package / "problems.py",
         root / "perf.py",
@@ -278,6 +287,35 @@ class NativePerfDriver:
                 measurements={
                     "case_count": len(cases),
                     "failed_case_count": sum(c.verdict == "fail" for c in cases),
+                    # WHETHER THE ANSWER WAS RIGHT, AND WHETHER THE MEASUREMENT
+                    # FINISHED -- separately, and separately from the verdict.
+                    #
+                    # `failed_case_count` cannot answer either. It counts
+                    # `verdict == "fail"`, and that verdict covers two unlike
+                    # things: a WRONG answer, which is not a measurement of
+                    # anything, and a CORRECT answer slower than the frozen
+                    # reference, which is a perfectly good measurement of a slow
+                    # kernel. A reader deriving "is this node valid" from it
+                    # would call every early candidate invalid -- the seed
+                    # measures 0.008-0.02x of a competent denominator -- which
+                    # is the collapse the direct path documents at
+                    # evaluator/assurance_measure.py and avoids by taking
+                    # validity from correctness instead.
+                    #
+                    # So the attestation now carries the two FACTS and leaves
+                    # the policy to whoever reads it. Completeness is separate
+                    # from correctness because counting only the repetitions
+                    # that survived let a case that timed out after one of three
+                    # rank as a finished measurement carrying that one
+                    # repetition's speedup.
+                    "correct_by_case": {
+                        c.case_id: all(r.correct for r in c.repetitions)
+                        for c in cases
+                    },
+                    "complete_by_case": {
+                        c.case_id: len(c.repetitions) >= c.repetitions_requested
+                        for c in cases
+                    },
                     # The ratio the verdict was decided on, per case and worst.
                     "min_speedup": min(ratios, default=0.0),
                     "median_speedup_by_case": {c.case_id: c.speedup for c in cases},

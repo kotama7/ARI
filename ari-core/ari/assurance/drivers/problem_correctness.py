@@ -69,6 +69,15 @@ def problem_correctness_driver_digest() -> str:
         package / "native_perf_gemm.py",
         package / "native_perf_spmm.py",
         package / "native_perf_stencil.py",
+        # THE ISOLATION ITSELF. ``sandbox.py`` implements the landlock
+        # restriction ``run_timed`` applies to every timed child, fail-closed,
+        # immediately before exec -- and it was in no driver's content address,
+        # so the code that decides whether an untrusted candidate can write
+        # outside its output file could change under a pinned manifest with
+        # nothing noticing. The report carries what it decided
+        # (``filesystem_isolation``, ``mechanism``, ``landlock_abi``), and a
+        # record of an isolation nobody pinned is a record of a claim.
+        package / "sandbox.py",
         # A problem is only as pinned as the code that resolves and digests it.
         package / "problems.py",
         root / "problem_correctness.py",

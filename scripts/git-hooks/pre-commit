@@ -66,8 +66,32 @@ fi
 # says what it compared so that is visible rather than assumed.
 if [ -z "${ARI_SKIP_PIN_CHECK:-}" ]; then
   repin="$root/scripts/rqgm_assurance/repin_and_promote_harness.py"
-  python="${ARI_PYTHON:-$root/.venv/bin/python}"
-  if [ -x "$python" ] && [ -f "$repin" ]; then
+  # THE INTERPRETER IS NOT ALWAYS UNDER $root. In a linked worktree $root is the
+  # worktree, which has the scripts but NOT the venv -- so `-x "$root/.venv/..."`
+  # was false and the gate skipped in silence. That is exactly where promotions
+  # are told to run, and where this session's own promotion commits were made:
+  # the gate was absent from every commit it most needed to see. So the common
+  # directory's venv is tried too, which for a linked worktree is the main
+  # checkout's.
+  python="${ARI_PYTHON:-}"
+  if [ -z "$python" ]; then
+    for candidate in \
+      "$root/.venv/bin/python" \
+      "$(git -C "$root" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)/../.venv/bin/python"
+    do
+      [ -x "$candidate" ] && { python="$candidate"; break; }
+    done
+  fi
+  # FAIL LOUD WHEN THE GATE CANNOT RUN. Silence here is indistinguishable from
+  # "checked and clean", which is the property that let the drift land three
+  # times. A commit may still be made -- with ARI_SKIP_PIN_CHECK=1, said out
+  # loud -- but not by accident.
+  if [ -z "$python" ] || [ ! -f "$repin" ]; then
+    echo "pin check: cannot run (no interpreter or missing $repin)." >&2
+    echo "  Set ARI_PYTHON, or ARI_SKIP_PIN_CHECK=1 to commit without it." >&2
+    exit 1
+  fi
+  if true; then
     staged_paths=$(git -C "$root" diff --cached --name-only)
     if [ -n "$staged_paths" ]; then
       watched=$("$python" "$repin" paths 2>/dev/null)
