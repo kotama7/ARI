@@ -36,6 +36,7 @@ from ari.assurance.drivers.native import (  # noqa: E402
     NativeHPCDriver,
     native_driver_digest,
 )
+from ari.assurance.container_identity import read_binding  # noqa: E402
 from ari.assurance.executors import PinnedContainerExecutor  # noqa: E402
 from ari.assurance.models import (  # noqa: E402
     ContainerPinV1,
@@ -728,7 +729,31 @@ def promote(args: argparse.Namespace) -> dict[str, Any]:
     container = container_root / container_name
     if container.is_symlink() or not container.is_file():
         raise RuntimeError("pinned native Harness SIF is unavailable")
-    container_digest = _stream_digest(container)
+    # THE CONTENT DIGEST, WHICH IS WHAT A MANIFEST PINS. This was
+    # _stream_digest(container) -- sha256 over the SIF's bytes -- and the
+    # executor compares a manifest's resolved_digest against the site binding's
+    # CONTENT digest, so a manifest built here pinned the wrong kind of thing
+    # and every run refused with "the bound image is not the content this
+    # Harness pins". Measured on the pinned OpenROAD image: file digest
+    # sha256:b8af5db8..., content digest sha256:91248e07..., and the three
+    # shipped manifests all pin the latter.
+    #
+    # Read from the binding rather than recomputed: reading the whole rootfs
+    # costs more than the verification does, which is why the binding exists.
+    # An unbound image is refused here rather than pinned on its file bytes,
+    # because an unbound image is one nobody has checked.
+    binding = read_binding(container_root, container_name)
+    if binding is None:
+        raise RuntimeError(
+            f"no site binding records what is inside {container_name}; run "
+            f"scripts/rqgm_assurance/bind_container_image.py against it first")
+    container_digest = str(binding.get("content_digest") or "")
+    if not container_digest:
+        raise RuntimeError(f"the site binding for {container_name} records no content")
+    if binding.get("file_digest") != _stream_digest(container):
+        raise RuntimeError(
+            f"{container_name} has changed since its content was established; "
+            f"the binding no longer describes this file")
     rootfs = args.container_rootfs.resolve(strict=True)
     if not rootfs.is_dir() or rootfs.is_symlink():
         raise RuntimeError("container license rootfs must be a real directory")
