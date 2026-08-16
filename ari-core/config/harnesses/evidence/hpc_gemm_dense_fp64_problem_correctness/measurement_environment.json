@@ -12,7 +12,8 @@
       "VECLIB_MAXIMUM_THREADS": "1"
     }
   },
-  "environment_note": "variable VALUES are scrubbed of host identity at this publication boundary; the digest below is over the raw capture, which is what the run actually measured under",
-  "note": "this harness pins no placement: a residual bound does not depend on the allocation's shape, so its evidence does not describe a machine",
-  "registration_commit": "45c12d3c9a4874bac7b89d38b3367f741e2d9105"
+  "environment_note": "variable VALUES are scrubbed of host identity here",
+  "placement": null,
+  "placement_note": "this harness pins no placement, so its evidence does not describe a machine",
+  "registration_commit": "d4d0613e1ca439e3c467ec05cbaab5cca1ca9e5f"
 }

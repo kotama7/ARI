@@ -1,20 +1,20 @@
 {
   "attestation_digests": [
-    "sha256:d6e1d40497a1bedcb368582f8f38839627a3dddf6dc78c82111b2328df815828"
+    "sha256:f851228ecbf36e41c90468695d7ed8b1e79718f59bf6c55f1517bf9a2752ac8b"
   ],
   "clean_control_verdict": "pass",
   "environment_digest": "sha256:5b211f5e44f185749bcdd244f09444ba5bfb657ec99e333716fd8e5d90846945",
   "evidence_artifact_digests": {
-    "evidence/hpc_gemm_dense_fp64_problem_correctness/gate_findings.json": "sha256:6b1bfd14a9468642e14ef3553d2c06122b7612b075f569635477f1d267b8e3db",
-    "evidence/hpc_gemm_dense_fp64_problem_correctness/measurement_environment.json": "sha256:569aad6ae5a5a656635d98d8637745f6cd5877718b10acaf856fbf884fb5e0c1",
-    "evidence/hpc_gemm_dense_fp64_problem_correctness/multiple_run_stability.json": "sha256:867874a768808f5a2ccd7277b84389c6cf0ef4cb4f25a6d1a3479d73a38d7e06",
-    "evidence/hpc_gemm_dense_fp64_problem_correctness/official_runner_parity.json": "sha256:f6284e0ba98456764f9349c0d66694aa5c10550664b113d935f9ee9bd8ab5081",
-    "evidence/hpc_gemm_dense_fp64_problem_correctness/registration_report.json": "sha256:fe4be5b90f0c2a7be12c6e369d2811f6531c38897cc756459e6177871e3c22e8"
+    "evidence/hpc_gemm_dense_fp64_problem_correctness/gate_findings.json": "sha256:bc40632a2c1f9f2ff462fa9f1e3f3a1f0b97e22fa38d1a9af72b87309faf4e29",
+    "evidence/hpc_gemm_dense_fp64_problem_correctness/measurement_environment.json": "sha256:5715d2d8285aa4bb67d3abc103e889f66d9525d3936a66918549901044d22cca",
+    "evidence/hpc_gemm_dense_fp64_problem_correctness/multiple_run_stability.json": "sha256:ac9db0fc5e2f169b7f631061ee505462f3f72ce72e5d95d148206fc21bbc6c2d",
+    "evidence/hpc_gemm_dense_fp64_problem_correctness/official_runner_parity.json": "sha256:75eecd71018baa2857341fb686ae5ebdbf494c35d28bc634071fd865b9c2ec98",
+    "evidence/hpc_gemm_dense_fp64_problem_correctness/registration_report.json": "sha256:246a24217030c5e5beb544aa0f651715d5704fd5fae631c8227daa7116274ad4"
   },
-  "evidence_digest": "sha256:2f52088a088abf3cd2bd72b4bf79d2a3eff28151df052e6d0f0e544d484e9ef9",
+  "evidence_digest": "sha256:09fa0e53a190c73c2b5e70e125a129b6ff0b0dbce1557043fa1565adb9ce2b5a",
   "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
   "harness_version": "1.0.0",
-  "manifest_digest": "sha256:b09da791bf3ff20f0986f5bedf46d099d37c83db1582691b18ff65cbf7d26b58",
+  "manifest_digest": "sha256:89f02e0bace6fb6b48420511cf777813952ab55cf97bd32db3084a305458b522",
   "negative_control_verdict": "fail",
   "network_isolation": "proved",
   "official_runner_parity": true,
@@ -22,6 +22,6 @@
   "result_schema_conformant": true,
   "run_count": 3,
   "schema_version": "ari.harness-registration-evidence/v1",
-  "source_full_commit_sha": "45c12d3c9a4874bac7b89d38b3367f741e2d9105",
+  "source_full_commit_sha": "d4d0613e1ca439e3c467ec05cbaab5cca1ca9e5f",
   "target_write_isolation": "proved"
 }

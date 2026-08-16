@@ -1,15 +1,15 @@
 {
   "actor_id": "kotama",
   "actor_kind": "human-maintainer",
-  "approval_digest": "sha256:422a693e657163c0aea02e66bc05f8a0063a0d6e9fd394b85beea6a0f92d6d3d",
+  "approval_digest": "sha256:dfbcf1d2a512abfcadbe539f3ba4759bffbbc765055ceb8cdbf2a66927f9365c",
   "approved_date": "2026-08-16",
-  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the registration evidence -- 15/15 gates, four parity controls from the problem's own scaffolding including the correct-but-slow kernel that must PASS -- not on independent inspection of the artifacts, which are pinned here for that purpose.",
-  "evidence_bundle_digest": "sha256:2f52088a088abf3cd2bd72b4bf79d2a3eff28151df052e6d0f0e544d484e9ef9",
+  "authorization_basis": "Authorized by the maintainer ('kotama') on the assistant's report of the registration evidence -- 15/15 gates, four parity controls from the problem's own scaffolding including the correct-but-slow kernel that must PASS -- not on independent inspection of the artifacts, which are pinned here for that purpose. Re-run after 61a64ae moved the driver digest.",
+  "evidence_bundle_digest": "sha256:09fa0e53a190c73c2b5e70e125a129b6ff0b0dbce1557043fa1565adb9ce2b5a",
   "from_status": "candidate",
   "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
-  "harness_manifest_digest": "sha256:b09da791bf3ff20f0986f5bedf46d099d37c83db1582691b18ff65cbf7d26b58",
+  "harness_manifest_digest": "sha256:89f02e0bace6fb6b48420511cf777813952ab55cf97bd32db3084a305458b522",
   "harness_version": "1.0.0",
-  "registration_report_digest": "sha256:d6e1d40497a1bedcb368582f8f38839627a3dddf6dc78c82111b2328df815828",
+  "registration_report_digest": "sha256:f851228ecbf36e41c90468695d7ed8b1e79718f59bf6c55f1517bf9a2752ac8b",
   "schema_version": "ari.harness-promotion-approval/v1",
   "to_status": "verified"
 }

@@ -3,7 +3,7 @@
   "gates": [
     {
       "detail": "clean control verdict 'pass'",
-      "evidence_digest": "sha256:63758bf10a1ac22385a16eadbee79890ed67e081953acb7bcca7aa6502fcb4c7",
+      "evidence_digest": "sha256:a0cadb0855bc9591e20a247121cc2f47842605c4f2b9798b02d6a37e2ebe08d5",
       "gate_id": "reference_oracle_pass",
       "passed": true
     },
@@ -15,13 +15,13 @@
     },
     {
       "detail": "passed at spread 0.0",
-      "evidence_digest": "sha256:ffcbd62ff0266609c1e27213b203b339d1d9afdd21c467bac48e887f7ba4c675",
+      "evidence_digest": "sha256:a28066913e541dc32a0903b0ddd73126d4286442d76001dcd9591184ab36a7fa",
       "gate_id": "clean_control_pass",
       "passed": true
     },
     {
       "detail": "probe passed against this driver",
-      "evidence_digest": "sha256:0c045a8e11161774cdf13ed61c8df7d2ebe4089ef3a84e711788d08e3b3b9561",
+      "evidence_digest": "sha256:82c848a04c153f5e1fa619d4e2e618d126de29673ec69f958c806d39dc693c08",
       "gate_id": "official_runner_parity",
       "passed": true
     },
@@ -56,7 +56,7 @@
       "passed": true
     },
     {
-      "detail": "pinned at a8bb13a200ef, an ancestor of 45c12d3c9a48",
+      "detail": "pinned at a8bb13a200ef, an ancestor of d4d0613e1ca4",
       "evidence_digest": "sha256:a9fbf0776e79e1234bee75704a7c940129e23f2545f153686ae2600adbd7b890",
       "gate_id": "source_revision_digest_pin",
       "passed": true
@@ -81,7 +81,7 @@
     },
     {
       "detail": "4 pinned digests are full sha256",
-      "evidence_digest": "sha256:72a0bb00ee358f3c58cc655f81281035db6b3bc381ad250f7f7cd017e4441c5c",
+      "evidence_digest": "sha256:c6ac4703eca944c209b89703d8b660880efc1b6d31e8d3a2b50a05464c0b9104",
       "gate_id": "full_sha256_integrity",
       "passed": true
     },
@@ -93,7 +93,7 @@
     }
   ],
   "harness_id": "hpc/gemm-dense-fp64-problem-correctness",
-  "manifest_digest": "sha256:b09da791bf3ff20f0986f5bedf46d099d37c83db1582691b18ff65cbf7d26b58",
-  "report_digest": "sha256:d6e1d40497a1bedcb368582f8f38839627a3dddf6dc78c82111b2328df815828",
+  "manifest_digest": "sha256:89f02e0bace6fb6b48420511cf777813952ab55cf97bd32db3084a305458b522",
+  "report_digest": "sha256:f851228ecbf36e41c90468695d7ed8b1e79718f59bf6c55f1517bf9a2752ac8b",
   "schema_version": "ari.harness-registration-report/v1"
 }

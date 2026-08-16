@@ -21,7 +21,7 @@
       }
     ]
   },
-  "driver_digest": "sha256:8bca44aaf9db8368aaec1deb8175526eba973c5cab2058219ff10796e3ad8520",
+  "driver_digest": "sha256:4de623399b7357aa6ce0778740724a08896997e1984b3599ec1f6faf90b8c891",
   "passed": true,
   "problem": "gemm-dense-fp64/v1@2026q3",
   "problem_digest": "sha256:cf4308f5948fff8cc05267cf5a007c71872787215611f02d960af81b2b488633",
