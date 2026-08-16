@@ -206,7 +206,17 @@ class PerfRepetitionV1(StrictModel):
     #: JSON compliant" -- INSIDE the verifier, so a wrong candidate came back as
     #: a crashed worker that the driver reports as an infrastructure outage
     #: rather than as the failure it is. See ``finite_ratio``.
-    max_rel_error: float | None = Field(default=None, ge=0)
+    #:
+    #: REQUIRED, and nullable. Nullable is the fix above; the default that came
+    #: with it also made the field OMISSIBLE, which is a different and weaker
+    #: contract. A repetition exists only after ``family.check`` has answered for
+    #: it, so there is no repetition for which this question was never put --
+    #: which means an omission is a producer that forgot, and a default would
+    #: publish "the oracle's answer was not a finite number" on its behalf. That
+    #: is the same defect nullability was introduced to end: a default dressed as
+    #: a measurement. The shipped schema this model is pinned against has always
+    #: listed the field as required; only its type widened.
+    max_rel_error: float | None = Field(ge=0)
 
 
 class PerfCaseResultV1(StrictModel):
@@ -223,6 +233,24 @@ class PerfCaseResultV1(StrictModel):
     #: The spread the reader needs before acting on the median. A single
     #: repetition has none, by construction.
     relative_spread: float | None = None
+    #: HOW LONG THE TIMED REGION WAS, which is what decides whether the spread
+    #: above can mean anything -- and which the record did not carry.
+    #:
+    #: MEASURED on one exclusive x86 node, varying only the thread budget, with
+    #: the reference scored against itself so the answer should be 1.0 every
+    #: time. Spread against the timed duration: 81 ms -> 0.0012, 21 ms -> 0.0057,
+    #: 6.3 ms -> 0.066, 4.8 ms -> 0.105, 3.3 ms -> 0.214, and back to 0.019 when
+    #: the duration returned to 8.8 ms. Multiplying the two back out gives an
+    #: absolute jitter of 0.1-0.7 ms that grows only slowly with the team size,
+    #: so the spread is dominated by the SHRINKING DENOMINATOR, not by the
+    #: hardware the threads sit on.
+    #:
+    #: This is why an instrument that resolves on one machine does not on
+    #: another: the faster machine finishes the same case sooner. Reporting the
+    #: spread without the duration meant "did not resolve" read as noise from
+    #: somewhere unspecified, when the cause is a measurement too short to hold
+    #: the instrument's own overhead.
+    median_seconds: float | None = Field(default=None, ge=0)
     repetitions: tuple[PerfRepetitionV1, ...]
     #: How many the TIER asked for. A case that stops early -- a timeout, a
     #: build fault, a wrong answer -- keeps the repetitions that completed, and
@@ -903,24 +931,26 @@ def physical_cores(cpus: list[int] | None = None) -> int | None:
 def measurement_thread_regime() -> dict[str, str]:
     """The thread budget and binding every timed process is given.
 
-    ONE THREAD PER PHYSICAL CORE, which is not what the CPU count says on a
-    machine with simultaneous multithreading. ``sched_getaffinity`` returns
-    LOGICAL cpus, so on a 2-way SMT machine the budget came out at twice the
-    cores, and ``OMP_PLACES=cores`` then had to put two threads on each -- the
-    threads share one core's execution units, and which sibling lands beside
-    which, and how much it contends, varies from run to run.
+    ONE THREAD PER PHYSICAL CORE. ``sched_getaffinity`` returns LOGICAL cpus, so
+    on a 2-way SMT machine the budget came out at twice the cores and
+    ``OMP_PLACES=cores`` then had to put two threads on each. One thread per
+    core is what the binding already implies, so this makes the number mean what
+    the placement says.
 
-    MEASURED, and it is why the instrument was registered on one machine and
-    refused on another. The clean control is the reference scored against
-    itself, so it should read 1.0 every time. On the SMT-free aarch64 node at 48
-    threads it read within 0.6%; on an x86 node at a 64-thread budget it read
-    0.983 / 1.071 / 1.006, and a spread of 7-16% cannot resolve the difference a
-    regression verdict is quoted to. The aarch64 budget was right by accident:
-    that machine has no SMT, so its logical count already was its core count.
+    IT DOES NOT BUY RESOLUTION, and an earlier version of this comment claimed
+    it did. The claim was that SMT sharing was what stopped a clean control
+    resolving on x86. Measured on an exclusive x86 node, varying only this
+    budget, that is false: at 96 threads -- ONE PER CORE, no sharing at all --
+    the spread was 0.214, the worst of the sweep, and at 192 threads with two
+    per core it was 0.019. Sharing cores made it better, not worse, because it
+    made the timed region longer. What governs the spread is the DURATION of the
+    measurement, not the hardware the threads sit on; see
+    ``PerfCaseResultV1.median_seconds`` for the numbers.
 
-    The budget falls back to the logical count when the topology cannot be read,
-    and records which it used, because a number whose provenance is unknown is
-    the thing being fixed.
+    So the budget falls back to the logical count when the topology cannot be
+    read, and records which it used, because a number whose provenance is
+    unknown is its own defect -- but resolution is a question about how long the
+    case runs, and it is answered there.
     """
     configured = os.environ.get("ARI_PERF_THREADS")
     if configured:

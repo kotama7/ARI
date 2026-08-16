@@ -58,6 +58,24 @@ PERF_DRIVER_REVISION = "ari.assurance.native-perf/v1"
 #: cannot be certified to a looser standard than it is read at.
 _MAX_CLEAN_SPREAD = 0.1
 
+#: How short a timed region may be before the spread above stops being a
+#: statement about the candidate.
+#:
+#: NOT A GUESS, and not an independent bound. Measured on an exclusive x86 node,
+#: varying only the thread budget so the same case was timed at durations from
+#: 81 ms down to 3.3 ms: the spread went 0.0012, 0.0057, 0.066, 0.105, 0.214,
+#: and then back to 0.019 when the duration returned to 8.8 ms. Multiplying back
+#: out, the instrument's own jitter is 0.1-0.7 ms and grows only slowly; the
+#: spread is dominated by the shrinking denominator.
+#:
+#: 0.005 s is where that sweep first breaches ``_MAX_CLEAN_SPREAD`` (4.8 ms gave
+#: 0.105). So this refuses nothing the spread bound was not already refusing --
+#: it names the CAUSE. "Did not resolve" read as noise from somewhere
+#: unspecified; below this the answer is that the measurement was too short to
+#: hold the instrument's own overhead, and a reader who knows that reaches for a
+#: bigger case rather than a quieter node.
+_MIN_RESOLVING_SECONDS = 0.005
+
 #: The controls used to be gemm source embedded here, which was fine while gemm
 #: was the only problem and wrong the moment the probe started probing the
 #: manifest's OWN problem: they must keep that problem's contract to compile at
@@ -378,6 +396,22 @@ class NativePerfDriver:
         # calls unresolved. Registration evidence produced there would have
         # certified noise.
         resolved = clean_spread is not None and clean_spread <= _MAX_CLEAN_SPREAD
+        clean_seconds = (clean.case_results[0].median_seconds
+                         if clean.case_results else None)
+        too_short = (clean_seconds is not None
+                     and clean_seconds < _MIN_RESOLVING_SECONDS)
+        if not resolved and too_short:
+            resolution_note = (
+                f"the timed region was {clean_seconds * 1000:.1f} ms; at that "
+                f"duration the instrument's own overhead is a large fraction of "
+                f"what it measures, so this is a case too small for this machine "
+                f"rather than a noisy machine")
+        elif not resolved:
+            resolution_note = (
+                f"spread {clean_spread!r} exceeds {_MAX_CLEAN_SPREAD} at a timed "
+                f"region of {clean_seconds!r} s")
+        else:
+            resolution_note = ""
         return {
             "schema_version": "ari.native-perf-parity-report/v1",
             "driver_digest": perf_driver_digest(),
@@ -391,6 +425,10 @@ class NativePerfDriver:
                 "clean": {"verdict": clean.verdict,
                           "resolved": resolved,
                           "relative_spread": clean_spread,
+                          # The duration the spread is a fraction OF, and, when
+                          # it did not resolve, which of the two it was.
+                          "median_seconds": clean_seconds,
+                          "resolution_note": resolution_note,
                           "median_speedup": (clean.case_results[0].speedup
                                              if clean.case_results else 0.0)},
                 "negatives": [

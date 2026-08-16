@@ -345,6 +345,8 @@ def verify_performance(
                 speedup_matched=median(matched_values) if matched_values else None,
                 toolchain_gain=median(gains) if gains else None,
                 relative_spread=relative_spread(ratios),
+                median_seconds=(median([r.credited_seconds for r in repetitions])
+                                if repetitions else None),
                 repetitions=tuple(repetitions)))
 
     overall = "pass"

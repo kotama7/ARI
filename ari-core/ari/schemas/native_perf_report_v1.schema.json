@@ -12,6 +12,19 @@
           "title": "Detail",
           "type": "string"
         },
+        "median_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Median Seconds"
+        },
         "relative_spread": {
           "anyOf": [
             {
@@ -121,9 +134,16 @@
           "title": "Matched Seconds"
         },
         "max_rel_error": {
-          "minimum": 0,
-          "title": "Max Rel Error",
-          "type": "number"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Rel Error"
         },
         "reference_seconds": {
           "exclusiveMinimum": 0,
@@ -293,6 +313,11 @@
       "default": "",
       "title": "Report Digest",
       "type": "string"
+    },
+    "sandbox": {
+      "additionalProperties": true,
+      "title": "Sandbox",
+      "type": "object"
     },
     "schema_version": {
       "const": "ari.native-perf-report/v1",
