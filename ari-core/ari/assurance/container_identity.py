@@ -120,8 +120,24 @@ def rootfs_content_digest(image: Path, *, work_dir: Path | None = None) -> tuple
                                      dir=str(work_dir) if work_dir else None) as scratch:
         target = Path(scratch) / "rootfs"
         extraction = subprocess.run(
-            ["unsquashfs", "-o", str(_squashfs_offset(image)), "-d", str(target),
-             "-no-progress", str(image)],
+            # ONE DECOMPRESSOR. unsquashfs defaults its thread count to the
+            # processor count, and 4.4-git.1 deadlocks there: measured on a
+            # 64-core host, three separate runs stalled at ~1.4 GB of 1.47 GB
+            # with the process at 0.0% CPU and no further output -- one of them
+            # for three hours and fifty-three minutes, having spent thirteen
+            # seconds of CPU. It is not the filesystem; it reproduced on Lustre
+            # and on local disk alike, and `-s` reads the superblock instantly
+            # either way. With `-p 1` the same image extracts completely,
+            # 127,946 of 127,946 entries, in under a minute.
+            #
+            # Serialising costs almost nothing here BY CONSTRUCTION: this
+            # function's own docstring is the argument -- it is slow on purpose
+            # and runs once per image, bound to the file, never per run. A hang
+            # that leaves an image unbindable costs the whole harness, because
+            # the executor then refuses every run with "the bound image is not
+            # the content this Harness pins".
+            ["unsquashfs", "-o", str(_squashfs_offset(image)), "-p", "1",
+             "-d", str(target), "-no-progress", str(image)],
             capture_output=True, text=True, timeout=7200)
         if extraction.returncode != 0 or not target.is_dir():
             raise ContainerIdentityError(
