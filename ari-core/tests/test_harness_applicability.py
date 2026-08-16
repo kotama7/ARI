@@ -274,3 +274,77 @@ def test_every_shipped_manifest_pins_the_driver_that_exists():
             f"{path.name} pins a driver digest that is not the driver in this "
             f"tree; prepare refuses it and no gate notices")
     assert checked >= 4, f"only {checked} manifests were checked"
+
+
+# --- a manifest must be satisfiable by something ------------------------------
+
+def _declarable_target_kinds() -> set[str]:
+    """What a declaration can actually say, read from the shipped ABIs.
+
+    ``declare_target`` writes ``target_kind`` from these, so a Harness naming a
+    kind that appears in none of them can never be handed the artifact this
+    system produces.
+    """
+    abis = Path(__file__).resolve().parents[1] / "config" / "harnesses" / "target_abis"
+    return {yaml.safe_load(p.read_text()).get("target_kind")
+            for p in sorted(abis.glob("*.yaml"))} - {None}
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN, UNFIXED, and a design decision rather than an oversight. "
+    "hpc/gemm-performance and hpc/gemm-dense-fp64-problem-correctness both "
+    "declare target_kinds ['benchmark-submission'] while every shipped ABI "
+    "declares 'shared-library', so neither can ever be handed a candidate. "
+    "Either declare_target must emit benchmark-submission for these problems, "
+    "or these Harnesses should not be in the catalog. strict=True: whichever is "
+    "chosen, this turns red until the marker is removed."))
+def test_every_manifest_accepts_a_target_this_system_can_declare():
+    """A Harness whose target kind nothing declares is skipped on every node.
+
+    Not hypothetical: the applicability check above is what skips it, and it
+    skips silently and correctly -- the Harness genuinely cannot judge a shared
+    library. What is wrong is upstream, in a manifest that asks for an artifact
+    kind this system never mints, so the registration certifies an instrument
+    that no candidate can ever reach.
+    """
+    declarable = _declarable_target_kinds()
+    assert declarable, "no shipped ABI declares a target kind"
+    unreachable = []
+    for path in sorted(BUILTIN.glob("*.yaml")):
+        manifest = yaml.safe_load(path.read_text())
+        if not set(manifest["target_kinds"]) & declarable:
+            unreachable.append(
+                f"{manifest['id']} wants {manifest['target_kinds']} and every "
+                f"declaration says {sorted(declarable)}")
+    assert not unreachable, (
+        "these Harnesses can never be handed a candidate: " + "; ".join(unreachable))
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN, UNFIXED. hpc/gemm-performance supports x86_64 and is registered on "
+    "aarch64, so it is refused on aarch64 for the architecture and on x86_64 "
+    "for the placement. The evidence says aarch64 -- that is where it was "
+    "measured and where its clean control resolves -- so supported_architectures "
+    "is the half that is wrong, but correcting it moves the manifest digest and "
+    "buys nothing while the target-kind mismatch above stands. strict=True."))
+def test_a_registered_placement_is_one_of_the_architectures_it_supports():
+    """Otherwise no host can satisfy both halves.
+
+    ``harness_inapplicability`` requires the declaration's architecture to be in
+    ``supported_architectures``, and the performance driver's ``prepare``
+    requires the host to BE the registered placement. A manifest supporting
+    x86_64 while registered on aarch64 is refused on aarch64 for the wrong
+    architecture and on x86_64 for the wrong placement -- and nothing compared
+    the two fields, so it was registered and signed in that state.
+    """
+    contradictory = []
+    for path in sorted(BUILTIN.glob("*.yaml")):
+        manifest = yaml.safe_load(path.read_text())
+        machine = (manifest.get("registered_placement") or {}).get("machine")
+        if machine and machine not in manifest["supported_architectures"]:
+            contradictory.append(
+                f"{manifest['id']} is registered on {machine!r} and supports "
+                f"{manifest['supported_architectures']}")
+    assert not contradictory, (
+        "no host can satisfy both halves of these manifests: "
+        + "; ".join(contradictory))
