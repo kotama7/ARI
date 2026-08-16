@@ -1,0 +1,326 @@
+#!/usr/bin/env python3
+"""Re-pin a registered Harness to the code it is measured by, and promote it.
+
+WHY THIS EXISTS. A manifest pins DERIVED values -- the driver's content digest,
+the digest of the result schema ARI ships for the type that driver emits, and
+its own manifest digest over both. Every one of them is computable from the
+repository, and none of them was computed by anything that writes a manifest.
+They were typed in. So an edit to instrument code silently invalidates the pin,
+``driver.prepare()`` then refuses the harness with "driver bytes drifted", and
+the harness is registered, signed, and unable to run.
+
+Measured: this has happened three times in distinct episodes. The most recent
+took two harnesses at once, because ``native_perf_common.py`` sits inside both
+the performance driver's digest and the problem-correctness driver's.
+
+WHY IT IS NOT ``promote_native_harnesses.py``. That script CONSTRUCTS the three
+ARI-native manifests, which buys one real thing -- a typed-in driver pin is
+impossible at the moment of writing -- and cannot do the job here for two
+reasons. Its ``_immutable_outputs`` refuses to overwrite any existing artifact
+whose bytes differ, so it cannot move a pin that is already on disk; and it
+hands ``registration_report`` a set of gates with ``passed=True`` written into
+them, which that function stopped accepting at ``ccdedc9`` on the grounds that
+there is deliberately no way to hand it a pre-decided gate. It raises TypeError
+today. This surface computes the pins and earns the gates instead.
+
+WHAT IT WILL NOT DO.
+
+* It re-pins DERIVED fields only. Everything a human decided -- the placement,
+  the scope, the tiers, the policies, the container, the problem and case set --
+  is read and never written. A tool that could move ``registered_placement``
+  could relocate a harness's evidence to whatever machine was at hand, which is
+  a change to what the harness asserts rather than a repair.
+* It refuses to produce evidence off the pinned placement. The performance
+  harness pins an aarch64 node at a 48-thread budget; run this on anything else
+  and it stops before measuring, rather than recording a number that describes
+  the wrong machine.
+* It refuses a dirty working tree, for the reason ``registration_run`` gives:
+  a source pin taken there names a commit whose bytes are not the bytes that
+  were measured. Use a clean worktree at HEAD -- this repository has concurrent
+  writers, and committing their work in progress to manufacture a clean tree is
+  not the same thing as having one.
+* ``--check`` writes nothing at all. That is the mode a pre-commit hook wants.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+ARI_CORE = REPO_ROOT / "ari-core"
+sys.path.insert(0, str(ARI_CORE))
+
+from ari.assurance.drivers import builtin_driver_map  # noqa: E402
+from ari.assurance.models import HarnessManifestV1  # noqa: E402
+from ari.assurance.registration_models import (  # noqa: E402
+    HarnessPromotionApprovalV1,
+    HarnessRegistrationEvidenceV1,
+)
+from ari.assurance.registration_run import (  # noqa: E402
+    register_harness,
+    repository_commit,
+    result_schema_digest,
+)
+from ari.protocols.integrity import bytes_digest  # noqa: E402
+
+HARNESS_ROOT = ARI_CORE / "config" / "harnesses"
+BUILTIN = HARNESS_ROOT / "builtin"
+
+
+def _slug(harness_id: str) -> str:
+    return harness_id.replace("/", "_").replace("-", "_")
+
+
+def _load(path: Path) -> HarnessManifestV1:
+    return HarnessManifestV1.model_validate(
+        yaml.safe_load(path.read_text(encoding="utf-8")))
+
+
+def derived_pins(manifest: HarnessManifestV1) -> dict[str, tuple[str, str]]:
+    """``field -> (pinned, computed)`` for every value the code decides.
+
+    The three are not independent: ``manifest_digest`` covers the other two, so
+    a stale driver pin is also a stale manifest digest. They are reported
+    separately because they fail different gates -- ``full_sha256_integrity``
+    and ``result_schema_conformance`` -- and a reader chasing one gate should
+    not have to know that.
+    """
+    driver = builtin_driver_map().get(manifest.driver.revision)
+    if driver is None:
+        raise SystemExit(
+            f"{manifest.id}: pins driver {manifest.driver.revision!r}, which does "
+            f"not exist; this harness cannot be launched at all")
+    emitted = driver.report_schema_version
+    return {
+        "driver.sha256": (manifest.driver.sha256,
+                          driver.identity()["driver_digest"]),
+        "expected_result_schema": (manifest.expected_result_schema, emitted),
+        "expected_result_schema_digest": (manifest.expected_result_schema_digest,
+                                          result_schema_digest(emitted) or ""),
+    }
+
+
+def stale_pins(manifest: HarnessManifestV1) -> dict[str, tuple[str, str]]:
+    return {name: pair for name, pair in derived_pins(manifest).items()
+            if pair[0] != pair[1]}
+
+
+def repin(manifest: HarnessManifestV1) -> HarnessManifestV1:
+    """A manifest with every DERIVED field recomputed and nothing else touched."""
+    computed = derived_pins(manifest)
+    fields = manifest.model_dump(mode="python", exclude={"manifest_digest"})
+    fields["driver"] = {**fields["driver"],
+                        "sha256": computed["driver.sha256"][1]}
+    fields["expected_result_schema"] = computed["expected_result_schema"][1]
+    fields["expected_result_schema_digest"] = (
+        computed["expected_result_schema_digest"][1])
+    return HarnessManifestV1.create(**fields)
+
+
+def _placement_mismatch(manifest: HarnessManifestV1) -> dict:
+    """What the manifest pins versus this machine, for the keys it pins.
+
+    Empty when the manifest pins no placement, which is the honest answer for a
+    deterministic verifier: a residual bound does not depend on the allocation's
+    shape, so there is nothing about this machine for its evidence to describe.
+    """
+    pinned = dict(manifest.registered_placement or {})
+    if not pinned:
+        return {}
+    from ari.assurance.native_perf_common import measurement_placement
+
+    here = measurement_placement()
+    return {key: (pinned[key], here.get(key))
+            for key in sorted(pinned) if here.get(key) != pinned[key]}
+
+
+def check(args) -> int:
+    """Report stale derived pins. Writes nothing; the pre-commit gate uses this."""
+    findings: dict[str, dict] = {}
+    for path in sorted(BUILTIN.glob("*.yaml")):
+        stale = stale_pins(_load(path))
+        if stale:
+            findings[path.name] = {name: {"pinned": a, "computed": b}
+                                   for name, (a, b) in stale.items()}
+    if args.json:
+        print(json.dumps(findings, indent=2, sort_keys=True))
+    else:
+        for name, fields in findings.items():
+            print(f"{name}: {', '.join(sorted(fields))}")
+        print(f"{len(findings)} manifest(s) pin a digest the code no longer has"
+              if findings else "every manifest pins the code it is measured by")
+    return 1 if findings else 0
+
+
+def promote(args) -> int:
+    path = BUILTIN / args.manifest
+    manifest = _load(path)
+    stale = stale_pins(manifest)
+    print(f"harness   : {manifest.id}")
+    for name, (pinned, computed) in sorted(stale.items()):
+        print(f"  re-pin  : {name}  {pinned[:26]}… -> {computed[:26]}…")
+    if not stale:
+        print("  pins    : already current")
+
+    differs = _placement_mismatch(manifest)
+    if differs:
+        print(f"REFUSED: this is not the placement {manifest.id} pins: {differs}")
+        print("Its evidence describes that machine. Run this there.")
+        return 2
+
+    manifest = repin(manifest)
+    if stale and not args.dry_run:
+        path.write_text(yaml.safe_dump(manifest.model_dump(mode="json"),
+                                       sort_keys=True, default_flow_style=False),
+                        encoding="utf-8")
+        print(f"  manifest: {manifest.manifest_digest}")
+        print("Commit the manifest, then re-run: registration refuses a dirty tree.")
+        return 3
+
+    driver = builtin_driver_map()[manifest.driver.revision]
+    report = register_harness(manifest, driver, runs=args.runs,
+                              allow_dirty=False)
+    passed = sum(1 for gate in report.gates if gate.passed)
+    print(f"gates     : {passed}/{len(report.gates)}  decision={report.decision!r}")
+    for gate in report.gates:
+        if not gate.passed:
+            print(f"  FAIL {gate.gate_id}: {gate.detail[:96]}")
+    if report.decision != "eligible-for-verified":
+        print("REFUSED: nothing is written; a rejected registration is a result")
+        return 4
+    if args.dry_run:
+        print("dry run: gates pass; no evidence, approval or catalog row written")
+        return 0
+
+    _write_promotion(manifest, driver, report, args)
+    return 0
+
+
+def _write_promotion(manifest, driver, report, args) -> None:
+    from ari.assurance.native_perf_common import (measurement_environment,
+                                                  measurement_placement)
+    from ari.orchestrator.node_summary_view import scrub_host_identity
+
+    slug = _slug(manifest.id)
+    evidence_dir = HARNESS_ROOT / "evidence" / slug
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    commit = repository_commit(allow_dirty=False)
+
+    def _write(name: str, payload) -> None:
+        (evidence_dir / name).write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    probe = driver.parity_probe(manifest)
+    clean = (probe.get("controls") or {}).get("clean") or {}
+    _write("registration_report.json", report.model_dump(mode="json"))
+    _write("gate_findings.json",
+           {g.gate_id: {"passed": g.passed, "detail": g.detail} for g in report.gates})
+    _write("official_runner_parity.json", probe)
+    _write("multiple_run_stability.json", {"runs": args.runs, "clean_control": clean})
+    # SCRUBBED AT THE PUBLICATION BOUNDARY. ``measurement_environment`` captures
+    # every variable under a prefix set and drops SECRETS by name fragment, but
+    # not host PATHS by value -- an ``ARI_*`` variable holding an absolute path
+    # is ordinary, and this record is committed and published. Measured: a
+    # bundle carried a home directory and a username this way, and the bundles
+    # that did not were clean because the variable happened to be unset.
+    environment = measurement_environment()
+    environment["variables"] = {k: scrub_host_identity(v)
+                                for k, v in environment["variables"].items()}
+    pinned = dict(manifest.registered_placement or {})
+    here = measurement_placement()
+    _write("measurement_environment.json",
+           {"environment": environment,
+            "registration_commit": commit,
+            "placement": ({k: here.get(k) for k in sorted(pinned)} if pinned
+                          else None),
+            "placement_note": (
+                "this harness pins no placement, so its evidence does not "
+                "describe a machine" if not pinned else
+                "a timed verdict is a statement about a machine; the manifest "
+                "pins this placement and prepare() refuses any other"),
+            "environment_note": "variable VALUES are scrubbed of host identity here"})
+
+    artifacts = {f"evidence/{slug}/{p.name}": bytes_digest(p.read_bytes())
+                 for p in sorted(evidence_dir.glob("*.json"))
+                 if p.name != "registration_evidence.json"}
+    evidence = HarnessRegistrationEvidenceV1.create(
+        harness_id=manifest.id, harness_version=manifest.version,
+        manifest_digest=manifest.manifest_digest, source_full_commit_sha=commit,
+        environment_digest=measurement_environment()["sha256"],
+        evidence_artifact_digests=dict(sorted(artifacts.items())),
+        attestation_digests=(report.report_digest,),
+        clean_control_verdict="pass", negative_control_verdict="fail",
+        official_runner_parity=True, result_schema_conformant=True,
+        network_isolation="proved", target_write_isolation="proved",
+        oracle_visibility="denied", run_count=args.runs)
+    _write("registration_evidence.json", evidence.model_dump(mode="json"))
+
+    (HARNESS_ROOT / "reports" / f"{slug}.registration.json").write_text(
+        json.dumps(report.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+    approval = HarnessPromotionApprovalV1.create(
+        harness_id=manifest.id, harness_version=manifest.version,
+        actor_kind="human-maintainer", actor_id=args.actor_id,
+        authorization_basis=args.authorization_basis,
+        approved_date=subprocess.run(["git", "log", "-1", "--format=%cs", commit],
+                                     capture_output=True, text=True).stdout.strip(),
+        harness_manifest_digest=manifest.manifest_digest,
+        registration_report_digest=report.report_digest,
+        evidence_bundle_digest=evidence.evidence_digest)
+    (HARNESS_ROOT / "approvals" / f"{slug}.approval.json").write_text(
+        json.dumps(approval.model_dump(mode="json"), indent=2, sort_keys=True) + "\n",
+        encoding="utf-8")
+
+    catalog_path = HARNESS_ROOT / "catalog.yaml"
+    catalog = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
+    entry = {"id": manifest.id,
+             "manifest": f"builtin/{args.manifest}",
+             "registration_report": f"reports/{slug}.registration.json",
+             "registration_report_digest": report.report_digest,
+             "registration_evidence": f"evidence/{slug}/registration_evidence.json",
+             "registration_evidence_digest": evidence.evidence_digest,
+             "promotion_approval": f"approvals/{slug}.approval.json",
+             "promotion_approval_digest": approval.approval_digest}
+    catalog["entries"] = sorted(
+        [e for e in catalog["entries"] if e["id"] != manifest.id] + [entry],
+        key=lambda e: e["id"])
+    catalog_path.write_text(
+        yaml.safe_dump(catalog, sort_keys=False, default_flow_style=False),
+        encoding="utf-8")
+    print(f"signed    : {approval.actor_id} ({approval.actor_kind})")
+    print("written   : evidence, report, approval, catalog")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="mode", required=True)
+
+    checker = sub.add_parser("check", help="report stale derived pins; writes nothing")
+    checker.add_argument("--json", action="store_true")
+    checker.set_defaults(func=check)
+
+    promoter = sub.add_parser("promote", help="re-pin, register and sign one harness")
+    promoter.add_argument("manifest", help="file name under config/harnesses/builtin/")
+    promoter.add_argument("--actor-id", required=True,
+                          help="the human maintainer authorizing the promotion")
+    promoter.add_argument("--authorization-basis", required=True,
+                          help="what the maintainer actually saw. A basis claiming a "
+                               "review that did not happen is the defect the "
+                               "signature exists to prevent.")
+    promoter.add_argument("--runs", type=int, default=3)
+    promoter.add_argument("--dry-run", action="store_true",
+                          help="run the gates, write nothing")
+    promoter.set_defaults(func=promote)
+
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
