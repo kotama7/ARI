@@ -1,25 +1,25 @@
 [
   {
     "detail": "clean control verdict 'pass'",
-    "evidence_digest": "sha256:ef6e868933d35e339e85d5997dd8a7e9bf98ac8d257fa906752747a5388f502c",
+    "evidence_digest": "sha256:a28578f88582a5f5c229414690d30ea183c59413ecd7297164726cbb28d0200e",
     "gate_id": "reference_oracle_pass",
     "passed": true
   },
   {
     "detail": "2 negative control(s) failed, for different reasons",
-    "evidence_digest": "sha256:4cd01abcffad6e6473cac1fb6659d52f217485210e5190152ad1d54e59693f7f",
+    "evidence_digest": "sha256:adcd39a9ba9bb0383a7b2819b4fd35d27755fb0b6ab4fb2816b4cc0747611fc8",
     "gate_id": "negative_control_fail",
     "passed": true
   },
   {
-    "detail": "passed at spread 0.03361982183804349",
-    "evidence_digest": "sha256:d7ebd9769ef7db12c062dcc576a38e67c93cae9a68d18d871ebccb7b91f618bb",
+    "detail": "passed at spread 0.02286521714219385",
+    "evidence_digest": "sha256:4c44de98e4bd1a198636cd6a11910abde3e1204534a9bd85b1bc02eb88def9c8",
     "gate_id": "clean_control_pass",
     "passed": true
   },
   {
     "detail": "probe passed against this driver",
-    "evidence_digest": "sha256:c45fec21bea33a8f3adf1f28c464089df4680e41f1061cc054828550ffdda0a9",
+    "evidence_digest": "sha256:d14a3dbe6feb7f8dea221b183e6bf2b6bf04981bf6d1474b4dee75b1ad0c5513",
     "gate_id": "official_runner_parity",
     "passed": true
   },
@@ -54,7 +54,7 @@
     "passed": true
   },
   {
-    "detail": "pinned at 361a85d7fde8, an ancestor of b48f760cf4b0",
+    "detail": "pinned at 361a85d7fde8, an ancestor of 5e30854fa9a3",
     "evidence_digest": "sha256:d6b170f066dd2d092720bebcd736e8e796efa7a092a59af76c6b6730e3feaf99",
     "gate_id": "source_revision_digest_pin",
     "passed": true
@@ -66,20 +66,20 @@
     "passed": true
   },
   {
-    "detail": "spread 0.0008966 over 3 runs",
-    "evidence_digest": "sha256:3091c1155d1a8e799e25f3bdac02682c5466278b601546006cac9803150a28e2",
+    "detail": "spread 0.02185 over 3 runs",
+    "evidence_digest": "sha256:78c14d178eb2ceff34905f085f579b874782fab4b4038d0b6a451c04926fca60",
     "gate_id": "multiple_run_stability",
     "passed": true
   },
   {
-    "detail": "schema declares 24 properties",
-    "evidence_digest": "sha256:6607d0d88053329f364666cef1a639724543dd2f6bc7e5ea7c0106ad53a66348",
+    "detail": "schema declares 24 properties, named and pinned by the manifest",
+    "evidence_digest": "sha256:107b71985b8a65457138111a0222fdae878bc488b7bac09bf41eb6d1f3146e1f",
     "gate_id": "result_schema_conformance",
     "passed": true
   },
   {
     "detail": "4 pinned digests are full sha256",
-    "evidence_digest": "sha256:115377d18b67395417bdcb93e55297168396e9d342ef288e04e15cbed0d56b33",
+    "evidence_digest": "sha256:9e2757717f6ba0d819d97de7218a604e4f96a1220671fc511006679259709c14",
     "gate_id": "full_sha256_integrity",
     "passed": true
   },
