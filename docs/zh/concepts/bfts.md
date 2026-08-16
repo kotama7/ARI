@@ -214,4 +214,4 @@ PENDING 或 FAILED 的节点被重置为 PENDING 并重新排队，其余一律�
 
 ## 另请参阅
 
-[架构](architecture.md) · [Constitutional ARI-RQGM 架构](rqgm_architecture.md) · [记忆架构](memory.md) · [配置 → BFTS 评估层](../reference/configuration.md#bfts-evaluation-layers-configurable) · [术语表](../reference/glossary.md)
+[架构](architecture.md) · [Constitutional ARI-RQGM 架构](rqgm_architecture.md) · [记忆架构](memory.md) · [配置 → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换) · [术语表](../reference/glossary.md)

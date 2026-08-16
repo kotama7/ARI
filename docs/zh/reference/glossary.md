@@ -73,7 +73,7 @@ BFTS 节点相对于其父节点所扮演的角色：`draft`、`improve`、`debu
 整个 `work_dir` 这条路径还会把 `_scientific_score` 钳制为 `0.0`、`has_real_data` 钳制为
 `False`，而 `score_inputs` 这条路径则保留已测得的分数、`has_real_data` 与
 `evaluation_status`。这正是阻止子节点在不实际运行任何东西的情况下"继承"父节点结果的机制。参见
-[架构 → work_dir 继承](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)。
+[架构 → work_dir 继承](../concepts/architecture.md#work-dir-继承-——-输出产物黑名单-v0-7-0-phase-7)。
 
 **should_prune**
 BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
@@ -86,19 +86,19 @@ BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
 **scientific_score / `_scientific_score`**
 `LLMEvaluator` 分配给每个节点的同行评审质量分数（0.0–1.0）。存储于
 `metrics["_scientific_score"]`，它驱动 BFTS 排名、谱系决策和最佳节点选择。参见
-[配置 → BFTS 评估层](configuration.md#bfts-evaluation-layers-configurable)。
+[配置 → BFTS 评估层](configuration.md#bfts-评估层-可通过配置切换)。
 
 **composite formula (复合公式)**
 如何将各维度的分数归约为单个标量：`harmonic_mean`（默认）、
 `arithmetic_mean`、`weighted_min` 或 `geometric_mean`。可通过
 `evaluator.composite` 配置。参见
-[配置 → BFTS 评估层](configuration.md#bfts-evaluation-layers-configurable)。
+[配置 → BFTS 评估层](configuration.md#bfts-评估层-可通过配置切换)。
 
 **plan (计划)**
 一次运行的*评估细节* —— 测量哪些指标、对比哪些基线、运行哪些消融。来源于
 `idea.json[0].experiment_plan`。默认情况下子实验不继承它
 （子节点编写自己的计划，因此它们可以自由调整方向）。参见
-[架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
+[架构 → Plan / Venue 契约](../concepts/architecture.md#plan-venue-契约-v0-7-0)。
 
 **venue (会场)**
 一次运行的*评判标准* —— 评分哪些维度以及如何评分。一个 venue 是一份
@@ -106,7 +106,7 @@ BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
 `ARI_RUBRIC`（默认 `neurips`）决定 BFTS 的评分维度，`workflow.yaml` 的顶层
 `paper_rubric` 键（默认 `generic_conference`）作为显式 `rubric_id` 传给评审
 阶段。若要让同一个 venue 同时驱动打分与评审，请将两者设为同一个 id。参见
-[架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
+[架构 → Plan / Venue 契约](../concepts/architecture.md#plan-venue-契约-v0-7-0)。
 
 **rubric (评分准则)**
 一份评分规范。ARI 在两种语境下使用这个词：**reviewer rubric**
@@ -119,7 +119,7 @@ BFTS 中的硬性截断谓词：当 `current_total ≥ max_total_nodes`、
 转向最强的*未使用*次优想法 —— 这样次优想法会被真正尝试，而不是未经使用便被搁置。
 LLM 评判器（它从 `continue` / `switch_to_idea` / `fanout` / `terminate` 中选择）
 仅作为回退被征询 —— 当预算耗尽、达到递归上限，或没有剩余的未使用备选时。参见
-[架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
+[架构 → Plan / Venue 契约](../concepts/architecture.md#plan-venue-契约-v0-7-0)。
 
 **claim-evidence gate (主张-证据门)**
 一个确定性的、不使用 LLM 的门（`claim_evidence_hard_gate`）。它在容差范围内从记录的结果
@@ -160,14 +160,14 @@ root→best 谱系），从而将论文主张接地到实际测量到的内容�
 
 **ReAct loop (ReAct 循环)**
 每节点的代理循环（`ari/agent/loop.py`），它将 LLM 推理与 MCP 工具调用交织在一起以运行一次实验。参见
-[架构 → 每节点提示组合](../concepts/architecture.md#per-node-prompt-composition)。
+[架构 → 每节点提示组合](../concepts/architecture.md#节点级提示构建)。
 
 **MCP skill (MCP 技能)**
 打包为 Model Context Protocol 服务器的一项能力（例如 `ari-skill-hpc`）。技能只能从 `ari.public.*` 导入。`ari-skill-*` 包共有 17 个，随附的 `workflow.yaml` 显式列出了其中 13 个。参见 [MCP 技能](skills.md)。
 
 **VirSci**
 将研究目标转化为假说和主要指标的多代理审议，在根节点通过 `generate_ideas` 运行一次。参见
-[架构](../concepts/architecture.md#full-data-flow)。
+[架构](../concepts/architecture.md#完整数据流)。
 
 ## RQGM（可选启用的宪法治理）
 
@@ -369,7 +369,7 @@ run Overview 把它渲染为独立的带标签行，绝不与治理阶段行（�
 一次运行的自包含目录，`{workspace}/checkpoints/{run_id}/`，其中 `run_id` 为
 `YYYYMMDDHHMMSS_<slug>`。所有状态都存于此处；`PathManager`
 （`ari/paths.py`）是唯一的事实来源。API 密钥从不存储于此 —— 它们来自 `.env` 或环境变量。完整布局参见
-[架构 → 文件结构](../concepts/architecture.md#file-structure)，
+[架构 → 文件结构](../concepts/architecture.md#文件结构)，
 逐文件 schema 参见[文件格式](file_formats.md)。一次 `ari_rqgm`
 运行会额外写入 RQGM 状态文件（`rqgm_state.json`、
 `rqgm_registry.json`、`rqgm_audit.jsonl`、`proposals/`、

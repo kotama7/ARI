@@ -306,7 +306,7 @@ vendor-wrap エンジン（`ARI_IDEA_VIRSCI_REAL=1`）は、ライブ Semantic S
 ランタイムのバイナリが無い場合、または `container_image` が空か可変な場合は
 `ReproductionContractError` を発生させます。v1.0 で host-local フォールバックは
 削除されたため、元に戻すスイッチはありません。
-[environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2) を参照。
+[environment_variables.md](environment_variables.md#paperbench-再現フェーズ-stage-2) を参照。
 GPU リクエストも 2 つの形を混ぜられません：per-node と per-task の GPU 数は
 排他です。ただし数量を伴わない `gpu_type` はこの面では拒否されません — SLURM
 実行経路が resource request を組み立てる前に per-node 1 GPU を補うため、
@@ -321,7 +321,7 @@ GPU リクエストも 2 つの形を混ぜられません：per-node と per-ta
 
 3 つのステージすべてを単一の呼び出し語彙でチェーンするインプロセス Python
 サーフェスについては、
-[`api_paperbench.md` § Bridge contract](api_paperbench.md#bridge-contract-in-process-python-surface)
+[`api_paperbench.md` § Bridge contract](api_paperbench.md#bridge-契約-in-process-python-インターフェース)
 を参照してください。
 
 ## ari-skill-plot — 図生成
@@ -364,7 +364,7 @@ GPU リクエストも 2 つの形を混ぜられません：per-node と per-ta
 宣言していないものの読み込みは拒否されます。単一パスの経路は存在しないため
 選択の余地はなく、生成は常に skeleton + subtree の 2 段階です。`system_hint` は
 skeleton パス、`leaf_style` は subtree パスに差し込まれます。YAML スキーマと
-オーサリングガイドは [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
+オーサリングガイドは [`rubric_schema.md`](rubric_schema.md#venue-別テンプレート-venue-conditioned-templates)
 を参照してください。
 
 ## ari-skill-transform — ツリー走査 + EAR パイプライン

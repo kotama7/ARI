@@ -37,7 +37,7 @@ License，"Copyright (c) 2026 ARI contributors"。
 BSD-3-Clause / GPL-3.0，包含 `-only` / `-or-later` 两种写法 / CC-BY-4.0），并由
 `generate_ear` 将匹配的 `LICENSE` 文件写入 bundle —— 但仅当 bundle 中还没有
 `LICENSE` 时才写；而该集合之外的 SPDX 标识符则根本不会产生 `LICENSE` 文件。参见
-[配置 → EAR 策展](../reference/configuration.md#ear-curation-earpublishyaml--v070)。
+[配置 → EAR 策展](../reference/configuration.md#ear-精选-ear-publish-yaml-—-v0-7-0)。
 
 ---
 

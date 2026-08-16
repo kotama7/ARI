@@ -39,7 +39,7 @@ ARI には 2 つの実行モードがあります:
   共進化。デフォルトで有効になることは決してありません。`--mode` CLI フラグは
   存在せず、有効化は設定上の決定です: `workflow.yaml` / 環境変数（後述 — こちらが
   正準の説明）で行うか、**新規ランに限り**ダッシュボードの Configuration Studio
-  から行います（[GUI からの選択](#gui-からモードを選択する)）。
+  から行います（[GUI からの選択](#gui-からモードを選択する)）。
 
 ## RQGM を有効にする
 
@@ -172,7 +172,7 @@ vendored パス、プロンプト、スナップショットコーパスには�
   インポートしません。`{checkpoint}/paper_archive_state.json` が存在しないことは、
   純粋な `linear` 論文ランであることを意味します。`ari.mode: ari_rqgm` の下では
   ディスパッチが追加で*探索*軸の paper-candidate プリフライト
-  （[RQGM ランタイムウォークスルー](../concepts/rqgm_runtime_walkthrough.md#8-run-end)
+  （[RQGM ランタイムウォークスルー](../concepts/rqgm_runtime_walkthrough.md#_8-ラン終了)
   に記載）を走らせるため、論文フェーズがバイト同一なのはデフォルトの探索モードに
   限られます。
 - **`rqgm_archive`**（オプトイン）— 憲法的な論文アーカイブ: ドラフト空間上の
@@ -297,7 +297,7 @@ BFTS の `max_total_nodes` になります — ツリーを深くしても同じ
   トゥルースのアンカーを与えないため、`prompt_evolution.enabled: true` でも
   デフォルトの `rqgm_archive` は、curated なコーパスが供給されるまで reviewed
   best-of-N として振る舞います
-  （[論文アーカイブの採用](rqgm_migration.md#papermode-の採用)を参照）。
+  （[論文アーカイブの採用](rqgm_migration.md#paper-mode-の採用)を参照）。
 
 論文フェーズがガバナンス予算の閉じた `ACTION_KINDS` 集合
 （`ari/rqgm/budget.py`）に追加するアクション種別はちょうど 1 つ、
@@ -549,7 +549,7 @@ diff になります。
 
 - プロファイル（`--profile`）は RQGM キーをマージしません。
 - `--mode` CLI フラグはありません。GUI が選択するのは 2 つのモード意図だけで、
-  対象は**新規**ランに限られます（[上記](#gui-からモードを選択する)）; 残りの
+  対象は**新規**ランに限られます（[上記](#gui-からモードを選択する)）; 残りの
   `rqgm.*` ガバナンス / チューニングパラメータは設定ファイル専用です。
 - ランのモードは開始後、どの面からも変更できません — resume は永続化された
   モードを取り、ラン中の遷移は一切ありません（エポック境界での

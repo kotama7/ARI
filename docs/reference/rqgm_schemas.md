@@ -663,7 +663,7 @@ per-node round).
 
 | Record (`record_type`) | Id / role | Specific fields |
 |---|---|---|
-| `raw_attack` | `atk_%06d` / `adversary` | `adversary_type` (the shipped-schema enum is the closed seven-type exploration set: `overclaim`, `metric_gaming`, `prior_art`, `reproducibility`, `evidence_gap`, `cost_explosion`, `prompt_injection`; the paper phase adds an eighth, `paper_self_preference` — see [Paper-archive schemas](#paper-archive-schemas-paper-rqgm_archive-mode)); `target_artifact.type` (closed set: `proposal`, `experiment_plan`, `node_report`, `metric_result`, `paper_claim`, `novelty_claim`, `citation_claim`, `reproducibility_claim` — never a component); `attack_claim`; `attack_evidence_refs` (≥ 1 required); `severity_claimed`.  Audit material only — raw attacks never touch a score (invariant 8) |
+| `raw_attack` | `atk_%06d` / `adversary` | `adversary_type` (the shipped-schema enum is the closed seven-type exploration set: `overclaim`, `metric_gaming`, `prior_art`, `reproducibility`, `evidence_gap`, `cost_explosion`, `prompt_injection`; the paper phase adds an eighth, `paper_self_preference` — see [Paper-archive schemas](#paper-archive-schemas-paper-rqgm-archive-mode)); `target_artifact.type` (closed set: `proposal`, `experiment_plan`, `node_report`, `metric_result`, `paper_claim`, `novelty_claim`, `citation_claim`, `reproducibility_claim` — never a component); `attack_claim`; `attack_evidence_refs` (≥ 1 required); `severity_claimed`.  Audit material only — raw attacks never touch a score (invariant 8) |
 | `defender_response` | `def_%06d` / `defender` | `raw_attack_id`; `stance` `rebut` \| `concede` \| `propose_fix` |
 | `judgment_record` | `jdg_%06d` / `judge` | `raw_attack_id`; `verdict` `valid` \| `partially_valid` \| `invalid`; judge-assigned `severity` (`low`–`critical`); `defense_status`.  Always written, even for `invalid` |
 | `validated_attack` | `vat_%06d` / `judge` | `case_type`, `raw_attack_id`, `judgment_id`, `validated`, `verdict`, `severity`, `expected_behavior` (the case-typed `role → expected behaviour` map).  Exists **only** for `valid` / `partially_valid` verdicts (adjudication required, invariant 9).  Carries the accountability binding — see below |
@@ -785,7 +785,7 @@ The two views split the same role information.  `replay_view.expected_behavior`
 is the `role → expected behaviour` map taken by value off the
 ValidatedAttackRecord; `abstract_view.affected_roles` is that map's sorted key
 set and nothing more (see
-[The accountability binding on `validated_attack`](#the-accountability-binding-on-validated_attack)).
+[The accountability binding on `validated_attack`](#the-accountability-binding-on-validated-attack)).
 Because the map is case-typed, the roles a replayed case names depend on its
 `case_type`: the seven exploration types share the generic `reviewer` /
 `generator` / `judge` template, while a paper-phase `paper_self_preference`
@@ -1455,7 +1455,7 @@ reviewer and anchor terms cost model calls.
 
 Full per-file behaviour (creation conditions, truth vs snapshot, resume
 semantics) is documented in
-[File Formats Reference](file_formats.md#rqgm-epoch-governance-files-opt-in-ari_rqgm-mode);
+[File Formats Reference](file_formats.md#rqgm-epoch-governance-files-opt-in-ari-rqgm-mode);
 this table only maps files to schemas and owners.  Every fixed-name file
 below is registered in `PathManager.META_FILES`, and every JSONL among them
 except the two paper-archive ones (`paper_draft_archive.jsonl`,

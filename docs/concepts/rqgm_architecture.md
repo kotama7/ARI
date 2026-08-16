@@ -1000,7 +1000,7 @@ construction.
 
 [RQGM Runtime Walkthrough](rqgm_runtime_walkthrough.md) ·
 [Execution Modes](../guides/execution_modes.md) ·
-[BFTS algorithm → RQGM wrapping](bfts.md#governed-bfts-under-ari_rqgm-opt-in) ·
+[BFTS algorithm → RQGM wrapping](bfts.md#governed-bfts-under-ari-rqgm-opt-in) ·
 [RQGM Evaluation and Ablation](../guides/rqgm_evaluation.md) ·
 [RQGM Schema Reference](../reference/rqgm_schemas.md) ·
 [VirSci Integration](../guides/virsci_integration.md) ·

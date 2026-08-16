@@ -28,7 +28,7 @@ last_verified: 2026-08-16
 （約 16 GB の RAM が必要）。より高品質を求めるなら、`openai/gpt-4o` や
 `anthropic/claude-sonnet-4-5` などのクラウドモデルを使います。常にプロバイダー接頭辞を
 含めてください — `gpt-4o` ではなく `openai/gpt-4o` です。
-[クイックスタート → AI モデルの選択](quickstart.md#step-2-choose-your-ai-model)を参照。
+[クイックスタート → AI モデルの選択](quickstart.md#ステップ-2-ai-モデルの選択)を参照。
 
 **インストール後に `ari: command not found` となる。**
 ユーザーの bin ディレクトリを PATH に追加してください: `export PATH="$HOME/.local/bin:$PATH"`。
@@ -76,7 +76,7 @@ apptainer の孤児となった postgres/redis も回収します。
 なく、その問題が宣言する `score_inputs` のハッシュで決まります — work_dir 全体の規則は
 実際にはほとんど発火しません。これが頻発する場合、エージェントが実際には実験を再実行して
 いません — ノードの MCP Trace タブを確認してください。
-[アーキテクチャ → work_dir 継承](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)
+[アーキテクチャ → work_dir 継承](../concepts/architecture.md#work-dir-継承-—-出力アーティファクト-ブラックリスト-v0-7-0-phase-7)
 と [用語集 → sterile](../reference/glossary.md)を参照。
 
 **実験が失敗した — ARI はリトライする?**

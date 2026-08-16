@@ -19,7 +19,7 @@ last_verified: 2026-08-16
 
 这些工件所包含的*记录形状*（schema、id 格式、哈希纪律）见
 [RQGM Schema 参考](rqgm_schemas.md)。传输层面的问题（错误信封、游标、认证）见
-[REST API → `/api/v1`](rest_api.md#apiv1规范接口)。治理机制本身见
+[REST API → `/api/v1`](rest_api.md#api-v1-规范接口)。治理机制本身见
 [RQGM 架构](../concepts/rqgm_architecture.md)。
 
 ## 基本规则

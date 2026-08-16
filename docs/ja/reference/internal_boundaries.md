@@ -334,9 +334,9 @@ duck-typed なのは意図的です —— `GovernedSearchStrategy` の docstrin
 
 **BFTS の行が要となる行**であり、それは 3 か所で同時に述べられています。
 `CK-CTX-001` のコードと重大度は
-[RQGM スキーマ → 憲法違反コード](rqgm_schemas.md#憲法違反コード)を、
+[RQGM スキーマ → 憲法違反コード](rqgm_schemas.md#憲法違反コード)を、
 ビュー自身のフィールド一覧は
-[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal_summary_viewschemajson)
+[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal-summary-view-schema-json)
 を参照してください。
 
 | レイヤ | 仕組み | 何かを止めるか？ |

@@ -176,7 +176,7 @@ The paper-writing phase (`ari paper`) has its OWN execution axis, fully
   Absence of `{checkpoint}/paper_archive_state.json` means a pure `linear`
   paper run. Under `ari.mode: ari_rqgm` the dispatch additionally runs the
   paper-candidate pre-flight on the *exploration* axis (described in the
-  [RQGM Runtime Walkthrough](../concepts/rqgm_runtime_walkthrough.md#8-run-end)),
+  [RQGM Runtime Walkthrough](../concepts/rqgm_runtime_walkthrough.md#_8-run-end)),
   so the paper phase is byte-identical only in the default exploration mode.
 - **`rqgm_archive`** (opt-in) — the constitutional paper archive: a shallow
   best-first tree over draft space (`PaperArchiveStrategy`,
@@ -298,7 +298,7 @@ default cheap and honest:
 - `rqgm.paper.anchor.enabled: false` (the **default**) leaves the reviewer with
   no ground-truth anchor, so even with `prompt_evolution.enabled: true` the
   default `rqgm_archive` behaves as reviewed best-of-N until a curated corpus is
-  supplied (see [Adopting the paper archive](rqgm_migration.md#adopting-papermode)).
+  supplied (see [Adopting the paper archive](rqgm_migration.md#adopting-paper-mode)).
 
 The paper phase adds exactly one action kind to the governance budget's closed
 `ACTION_KINDS` set (`ari/rqgm/budget.py`): `paper_anchor_scoring`, charged one

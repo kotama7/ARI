@@ -72,7 +72,7 @@ Governance のエントリを落とし、`#/governance` は未知のハッシュ
 する主体がいないからです。実際にこれに出会うのは、誰かが意図的にキルスイッチを
 入れたときだけです — フラグは既定でオンであり、`GET /api/capabilities` の取得に
 失敗した場合もフォールバックシェルへ落とすのではなく `gui_v2: true` として
-扱われます（[ダッシュボードガイド → capability フラグ](dashboard.md#capability-フラグ)を参照）。
+扱われます（[ダッシュボードガイド → capability フラグ](dashboard.md#capability-フラグ)を参照）。
 
 ランの Overview からタブを開くか、URL を直接入力します。ランに `rqgm_state.json` が
 無い場合、エラーには**なりません** — capability 画面が出ます:

@@ -212,7 +212,7 @@ stage takes its rubric as an explicit workflow input, `paper_rubric` in
 `workflow.yaml` (default `generic_conference`). Set both when you want the
 search and the review judged against the same venue — see the
 [Glossary → venue](../reference/glossary.md) and
-[Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
+[Architecture → Plan / Venue contract](../concepts/architecture.md#plan-venue-contract-v0-7-0).
 
 ---
 

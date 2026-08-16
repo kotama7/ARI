@@ -876,7 +876,7 @@ skeleton + subtree のプロンプトに注入します。これは `ari-skill-p
 同じ `venue → YAML → prompt` の流れがルーブリック生成器でも使えるようになりました。
 同梱テンプレート: `generic`（後方互換）、`sc`（HPC 論文監査、6 軸）、
 `neurips`（ML 再現性、6 軸）、`nature`（ウェットラボ、5 軸）。YAML スキーマは
-[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)
+[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-別テンプレート-venue-conditioned-templates)
 を参照。
 
 #### `audit_rubric(rubric_path, paper_path="", paper_text="", auditor_model="", output_path="", max_model_calls=400)`

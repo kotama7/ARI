@@ -269,7 +269,7 @@ dataset, container, and driver pins.
 The paper-writing axis has its own, parallel evaluation track — a separate
 B-ladder, its own P1–P5 metrics, and its own PI1–PI3 injections — for the
 `paper.mode: rqgm_archive` path (see
-[Execution Modes → paper.mode](execution_modes.md#the-paper-execution-axis-papermode)).
+[Execution Modes → paper.mode](execution_modes.md#the-paper-execution-axis-paper-mode)).
 It reuses the same harness, `eval_*` namespace, and node-budget fairness.
 
 ### Paper conditions (B0_paper_linear / B_archive_no_coevo / B_full)

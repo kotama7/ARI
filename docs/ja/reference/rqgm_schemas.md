@@ -63,9 +63,9 @@ manuscript の各ドキュメント（および評価ハーネス自身の `ARIC
 フィールド、id / ハッシュの規律）です。これらのレコードが入るチェックポイント
 **ファイル** — 生成条件、真実源と導出スナップショットの関係、resume の
 意味論 — は[ファイルフォーマットリファレンス](file_formats.md)を参照して
-ください; ページ末尾の[インベントリテーブル](#checkpoint-file-inventory)が
+ください; ページ末尾の[インベントリテーブル](#チェックポイントファイルインベントリ)が
 各ファイルをスキーマへ対応付けます。設定キーは
-[設定 → 実行モードと RQGM](configuration.md#execution-mode-and-rqgm-governance-opt-in)、
+[設定 → 実行モードと RQGM](configuration.md#実行モードと-rqgm-ガバナンス-オプトイン)、
 モードの意味論は[実行モード](../guides/execution_modes.md)を参照してください。
 
 ## Id とハッシュの規律
@@ -151,7 +151,7 @@ Id 形式（すべてゼロ埋め、チェックポイントごとのカウン�
 `severity: block` は、強制経路がその判定を参照する場所で状態変更を拒否
 できる**資格**を与えるものであり、すべての文脈がそれに従うという意味でも、
 強制モードがすべての文脈に届くという意味でもありません。
-[`rqgm.kernel.enforcement`](configuration.md#execution-mode-and-rqgm-governance-opt-in)
+[`rqgm.kernel.enforcement`](configuration.md#実行モードと-rqgm-ガバナンス-オプトイン)
 を尊重する地点はヘルパ `ari.rqgm.kernel.should_block` を経由します
 （`ari/rqgm/runtime.py`、`transition_engine.py`、`frontier_repair.py`、および
 `kernel.py` の capability ゲート付き MCP ラッパ）。`audit_only` ではこの
@@ -259,7 +259,7 @@ id / ハッシュ形式。**所有モジュール:** `ari/rqgm/events.py`（語�
 | `epoch_id` / `epoch_seq` / `previous_epoch_id` / `opened_by_transition_id` | エポックチェーン上の位置 |
 | `status` | `open` \| `closed` |
 | `run_id` / `node_count_at_open` | ランへのリンク + 境界の帳簿 |
-| `active_components` / `active_prompt_hashes` / `utility_policy` | エポックごとの凍結集合（freeze 時にコピー; グローバル不変条件 1–3）。`utility_policy` は **governed なスコア本体** — `composite`、`axis_weights`、`frontier_score`、`depth_penalty_lambda`、`ucb_c` に封印済みの `utility_policy_hash` を加えたもの — で、`ari/rqgm/state.py:capture_utility_policy` が採用済みポリシーから取得する（エポック 0 / `simple_bfts` では cfg にフォールバック）。[governed ユーティリティ進化スキーマ](#governed-utility-evolution-schema-task-14)を参照 |
+| `active_components` / `active_prompt_hashes` / `utility_policy` | エポックごとの凍結集合（freeze 時にコピー; グローバル不変条件 1–3）。`utility_policy` は **governed なスコア本体** — `composite`、`axis_weights`、`frontier_score`、`depth_penalty_lambda`、`ucb_c` に封印済みの `utility_policy_hash` を加えたもの — で、`ari/rqgm/state.py:capture_utility_policy` が採用済みポリシーから取得する（エポック 0 / `simple_bfts` では cfg にフォールバック）。[governed ユーティリティ進化スキーマ](#governed-ユーティリティ進化スキーマ-task-14)を参照 |
 | `registry_version` | freeze 時点のレジストリの `hash12` |
 | `policy_settings` / `policy_fingerprint` | 憲法、しきい値、予算、統治設定と、その12桁要約値 |
 | `execution_identity` / `execution_fingerprint` | 宣言済みモデル・接続先・温度、探索・評価設定、技能、無効道具、モデル・道具・環境・データの固定値。不明な固定値は `unresolved`、`complete: false` |
@@ -550,7 +550,7 @@ validated attack がちょうど 1 件、またはスコアが
 | `board_failure:{motion_id}` | ボード採点が送出し、動議が `inconclusive` になった |
 | `self_adjudication_recused:{judge_component_id}` | 動議が governance judge を対象としたため、外部裁定に委ねて未解決のまま残された |
 | `replay_pool_update_skipped` | 追加すべき upheld ケースがあったが、プールが `append_case` を公開していない |
-| `llm_budget_exhausted` | [`max_llm_calls_per_audit`](configuration.md#execution-mode-and-rqgm-governance-opt-in) の上限に達した、または Task 12 の予算マネージャが呼び出しを拒否した |
+| `llm_budget_exhausted` | [`max_llm_calls_per_audit`](configuration.md#実行モードと-rqgm-ガバナンス-オプトイン) の上限に達した、または Task 12 の予算マネージャが呼び出しを拒否した |
 | `self_audit_degraded` | 自己監査のカーネル再検証が利用不可、または送出した |
 
 `step_failed:produce_report` というトークンは存在しない: ステップ 9 は縮退
@@ -642,7 +642,7 @@ attack の ref である。`retired` 配列は空で初期化され、そこへ�
 
 | レコード (`record_type`) | Id / ロール | 固有フィールド |
 |---|---|---|
-| `raw_attack` | `atk_%06d` / `adversary` | `adversary_type`（同梱スキーマの enum は閉じた 7 タイプの**探索**集合: `overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`; paper フェーズは 8 番目の `paper_self_preference` を追加 — [paper-archive スキーマ](#paper-archive-schemas-paper-rqgm_archive-mode)を参照）; `target_artifact.type`（閉じた集合: `proposal`、`experiment_plan`、`node_report`、`metric_result`、`paper_claim`、`novelty_claim`、`citation_claim`、`reproducibility_claim` — 決してコンポーネントではない）; `attack_claim`; `attack_evidence_refs`（1 個以上必須）; `severity_claimed`。監査資料のみ — 生の攻撃はスコアに決して触れない（不変条件 8） |
+| `raw_attack` | `atk_%06d` / `adversary` | `adversary_type`（同梱スキーマの enum は閉じた 7 タイプの**探索**集合: `overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`; paper フェーズは 8 番目の `paper_self_preference` を追加 — [paper-archive スキーマ](#paper-archive-スキーマ-paper-rqgm-archive-モード)を参照）; `target_artifact.type`（閉じた集合: `proposal`、`experiment_plan`、`node_report`、`metric_result`、`paper_claim`、`novelty_claim`、`citation_claim`、`reproducibility_claim` — 決してコンポーネントではない）; `attack_claim`; `attack_evidence_refs`（1 個以上必須）; `severity_claimed`。監査資料のみ — 生の攻撃はスコアに決して触れない（不変条件 8） |
 | `defender_response` | `def_%06d` / `defender` | `raw_attack_id`; `stance` は `rebut` \| `concede` \| `propose_fix` |
 | `judgment_record` | `jdg_%06d` / `judge` | `raw_attack_id`; `verdict` は `valid` \| `partially_valid` \| `invalid`; ジャッジが割り当てる `severity`（`low`–`critical`）; `defense_status`。`invalid` でも常に書かれる |
 | `validated_attack` | `vat_%06d` / `judge` | `case_type`、`raw_attack_id`、`judgment_id`、`validated`、`verdict`、`severity`、`expected_behavior`（ケースタイプ依存の `ロール → 期待される振る舞い` マップ）。`valid` / `partially_valid` 判定に対して**のみ**存在（裁定必須、不変条件 9）。説明責任バインディングを保持 — 下記参照 |
@@ -1414,7 +1414,7 @@ agent-as-judge を有効にしたときです。
 
 ファイルごとの完全な挙動（生成条件、真実 vs スナップショット、resume の
 意味論）は
-[ファイルフォーマットリファレンス](file_formats.md#rqgm-epoch-governance-files-opt-in-ari_rqgm-mode)
+[ファイルフォーマットリファレンス](file_formats.md#rqgm-エポックガバナンスファイル-オプトイン-ari-rqgm-モード)
 に文書化されています; この表はファイルとスキーマ・所有者の対応のみを示し
 ます。以下の固定名ファイルはすべて `PathManager.META_FILES` に登録され、
 そのうち JSONL は paper-archive の 2 つ（`paper_draft_archive.jsonl`、
@@ -1453,7 +1453,7 @@ agent-as-judge を有効にしたときです。
 
 - [ファイルフォーマットリファレンス](file_formats.md) — これらのスキーマが
   検証するチェックポイントファイル。
-- [設定リファレンス](configuration.md#execution-mode-and-rqgm-governance-opt-in)
+- [設定リファレンス](configuration.md#実行モードと-rqgm-ガバナンス-オプトイン)
   — `ari.mode`、`rqgm.*`、`proposal_router.*` ブロック。
 - [実行モード](../guides/execution_modes.md) — モードの有効化と憲法
   カーネル。

@@ -258,7 +258,7 @@ embedding search 在版本之间不是 bit-reproducible，因此改为对存储�
 |---|---|
 | `run_reproduce` | `container_image`（docker / apptainer / singularity 沙箱必填，其余沙箱则拒收）。v1.0 只接受不可变引用：本地的非符号链接 SIF、完整的 `sha256:<image-id>`，或以 `name@sha256:<digest>` 固定的 URI —— 可变的 `pb-env` / `pb-reproducer` `:latest` 别名已被删除 |
 
-高声失败的前置条件：`sandbox_kind=slurm` 而 `sbatch` 不在 PATH 上，或无法从参数、`ARI_SLURM_PARTITION`、`launch_config.json` 中解析出分区时，抛出 `RuntimeError`，而不是静默回退到本地执行；容器沙箱缺少运行时二进制文件，或 `container_image` 为空或可变时，抛出 `ReproductionContractError`。v1.0 已删除 host-local 回退，因此没有恢复开关。详见 [environment_variables.md](environment_variables.md#paperbench-reproduction-phase-stage-2)。GPU 请求同样不能混用两种形式：per-node 与 per-task 的 GPU 数互斥。但缺少数量的 `gpu_type` 在本表面上不会被拒绝——SLURM 执行路径在构造资源请求之前会补上 per-node 1 个 GPU，因此底层「`gpu_type` 需要显式 GPU 数量」的规则经由 `run_reproduce` 永远不会触发。
+高声失败的前置条件：`sandbox_kind=slurm` 而 `sbatch` 不在 PATH 上，或无法从参数、`ARI_SLURM_PARTITION`、`launch_config.json` 中解析出分区时，抛出 `RuntimeError`，而不是静默回退到本地执行；容器沙箱缺少运行时二进制文件，或 `container_image` 为空或可变时，抛出 `ReproductionContractError`。v1.0 已删除 host-local 回退，因此没有恢复开关。详见 [environment_variables.md](environment_variables.md#paperbench-复现阶段-stage-2)。GPU 请求同样不能混用两种形式：per-node 与 per-task 的 GPU 数互斥。但缺少数量的 `gpu_type` 在本表面上不会被拒绝——SLURM 执行路径在构造资源请求之前会补上 per-node 1 个 GPU，因此底层「`gpu_type` 需要显式 GPU 数量」的规则经由 `run_reproduce` 永远不会触发。
 
 ### v0.8.0 新增字段（Stage 3）
 
@@ -266,7 +266,7 @@ embedding search 在版本之间不是 bit-reproducible，因此改为对存储�
 |---|---|
 | `grade_with_simplejudge` | `code_only`（将 rubric 裁剪为仅 Code Development 叶节点，镜像 vendor `paperbench/grade.py:109-112`）。默认为 `False`，且不会被自动打开 —— 过去在缺少 `reproduce.log` 时自行启用的隐式 `code_only` 评分已在 v1.0 删除 |
 
-关于以单一调用词汇将全部三个阶段串联起来的进程内 Python 接口，请参阅 [`api_paperbench.md` § Bridge 合约](api_paperbench.md#bridge-contract-in-process-python-surface)。
+关于以单一调用词汇将全部三个阶段串联起来的进程内 Python 接口，请参阅 [`api_paperbench.md` § Bridge 合约](api_paperbench.md#bridge-契约-in-process-python-接口)。
 
 ## ari-skill-plot — 图表生成
 
@@ -301,7 +301,7 @@ embedding search 在版本之间不是 bit-reproducible，因此改为对存储�
 | `neurips` | `paper_audit` | 按 NeurIPS 可重现性检查表的六个轴（声明 / 设置 / 代码+数据 / 统计 / 伦理 / 图表）。 |
 | `nature` | `paper_audit` | 湿实验室论文的五个轴（材料 / 方案 / 统计 / 数据 / 伦理）。 |
 
-`paper_audit` 模板必须声明非空的 `top_level_axes`，否则加载会被拒绝。这里没有单次路径可供选择——生成始终是 skeleton + subtree 的两阶段流程，其中 `system_hint` 注入 skeleton 阶段，`leaf_style` 注入 subtree 阶段。YAML schema 和撰写指南请参见 [`rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
+`paper_audit` 模板必须声明非空的 `top_level_axes`，否则加载会被拒绝。这里没有单次路径可供选择——生成始终是 skeleton + subtree 的两阶段流程，其中 `system_hint` 注入 skeleton 阶段，`leaf_style` 注入 subtree 阶段。YAML schema 和撰写指南请参见 [`rubric_schema.md`](rubric_schema.md#venue-条件化模板-venue-conditioned-templates)。
 
 ## ari-skill-transform — 树遍历 + EAR 流水线
 

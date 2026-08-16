@@ -40,7 +40,7 @@ an Experiment Artifact Repository (EAR), its `ear/publish.yaml` declares an SPDX
 matching `LICENSE` into the bundle — but only when the bundle does not already
 carry one, and an SPDX id outside that set produces no `LICENSE` file at all.
 See
-[Configuration → EAR Curation](../reference/configuration.md#ear-curation-earpublishyaml--v070).
+[Configuration → EAR Curation](../reference/configuration.md#ear-curation-ear-publish-yaml-—-v0-7-0).
 
 ---
 

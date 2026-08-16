@@ -82,7 +82,7 @@ Docker → Singularity/Apptainer → pip（用 `SKIP_LETTA_SETUP=1` 可跳过）
 Skill 独立于 `ari-core` 进行版本控制，且其编号并不跟随 core：`ari-core` 目前是
 `0.9.1`，而随附的各 skill 版本跨越 `0.1.0` 到 `2.0.0`。没有任何代码强制某个
 skill↔core 的版本配对，因此请按协调发布来搭配，而不是按数字对齐。
-参见[发布策略 → 兼容性窗口](release_policy.md#compatibility-windows)。
+参见[发布策略 → 兼容性窗口](release_policy.md#兼容性窗口)。
 
 ---
 

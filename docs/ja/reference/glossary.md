@@ -80,7 +80,7 @@ BFTS ノードが親に対して果たす役割: `draft`、`improve`、`debug`�
 `False` にクランプされますが、`score_inputs` の経路では測定済みスコア・
 `has_real_data`・`evaluation_status` はそのまま保持されます。これは、子が何も実行せずに
 親の結果を「継承」してしまうのを防ぐ仕組みです。
-[アーキテクチャ → work_dir 継承](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)を参照。
+[アーキテクチャ → work_dir 継承](../concepts/architecture.md#work-dir-継承-—-出力アーティファクト-ブラックリスト-v0-7-0-phase-7)を参照。
 
 **should_prune**
 BFTS の硬い打ち切り述語: `current_total ≥ max_total_nodes`、
@@ -109,19 +109,19 @@ computed-evidence claim を到達可能にする BFTS の仕組み: 展開選択
 `LLMEvaluator` が各ノードに付与する査読品質スコア（0.0〜1.0）。
 `metrics["_scientific_score"]` に格納され、BFTS のランキング、系統（lineage）の判断、
 ベストノードの選択を駆動します。
-[設定 → BFTS Evaluation Layers](configuration.md#bfts-evaluation-layers-configurable)を参照。
+[設定 → BFTS Evaluation Layers](configuration.md#bfts-の評価層-設定で切替可能)を参照。
 
 **composite formula（合成式）**
 各軸のスコアを 1 つのスカラーに集約する方法: `harmonic_mean`（既定）、
 `arithmetic_mean`、`weighted_min`、`geometric_mean`。
 `evaluator.composite` で設定できます。
-[設定 → BFTS Evaluation Layers](configuration.md#bfts-evaluation-layers-configurable)を参照。
+[設定 → BFTS Evaluation Layers](configuration.md#bfts-の評価層-設定で切替可能)を参照。
 
 **plan（プラン）**
 実行の *評価の具体内容* — どのメトリクスを測るか、どのベースラインと比較するか、
 どのアブレーションを走らせるか。`idea.json[0].experiment_plan` を出所とします。
 既定ではサブ実験に継承されません（子は自前で書くため、方向転換の自由を保てます）。
-[アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan--venue-contract-v070)を参照。
+[アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan-venue-契約-v0-7-0)を参照。
 
 **venue（ベニュー）**
 実行の *判定基準* — どの次元を、どのように採点するか。ベニューは
@@ -131,7 +131,7 @@ computed-evidence claim を到達可能にする BFTS の仕組み: 展開選択
 `generic_conference`）で、こちらは review ステージへ明示的な `rubric_id`
 として渡されます。1 つのベニューで採点と査読の両方を駆動したい場合は、
 両方に同じ id を設定してください。
-[アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan--venue-contract-v070)を参照。
+[アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan-venue-契約-v0-7-0)を参照。
 
 **rubric（ルーブリック）**
 採点の仕様。ARI ではこの語を 2 つの文脈で使います: 論文査読向けの **reviewer rubric**
@@ -144,7 +144,7 @@ computed-evidence claim を到達可能にする BFTS の仕組み: 展開選択
 実際に試させるためです。LLM ジャッジ（`continue` / `switch_to_idea` / `fanout` /
 `terminate` のいずれかを選びます）は、フォールバックとしてのみ参照されます — 予算が
 枯渇したとき、再帰上限に達したとき、または未使用の代替が残っていないときです。
-[アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan--venue-contract-v070)を参照。
+[アーキテクチャ → Plan / Venue 契約](../concepts/architecture.md#plan-venue-契約-v0-7-0)を参照。
 
 **claim-evidence gate（主張・根拠ゲート）**
 決定論的で LLM を使わないゲート（`claim_evidence_hard_gate`）。論文で報告された各数値を
@@ -170,7 +170,7 @@ LLM の命名は参照的に安定しないため、実行途中の再生成は�
 すでに出力済みのエビデンスが完全一致ゲートから見えなくなります。admit された契約が
 存在しない場合は何も凍結されず、応答は `contract_frozen: false` /
 `admission_status: human-review-required` となり、パーサ出力はエビデンス扱いに
-とどまります。[ファイル形式](file_formats.md#metric_contractjson)を参照。
+とどまります。[ファイル形式](file_formats.md#metric-contract-json)を参照。
 
 ## メモリ
 
@@ -205,7 +205,7 @@ Letta の上に構築される、型付きで sha256 来歴付きのレイヤー
 **ReAct loop（ReAct ループ）**
 LLM の推論と MCP ツール呼び出しを交互に行って 1 つの実験を実行する、ノードごとの
 エージェントループ（`ari/agent/loop.py`）。
-[アーキテクチャ → ノードごとのプロンプト構成](../concepts/architecture.md#per-node-prompt-composition)を参照。
+[アーキテクチャ → ノードごとのプロンプト構成](../concepts/architecture.md#ノードごとのプロンプト構築)を参照。
 
 **MCP skill（MCP スキル）**
 Model Context Protocol サーバーとしてパッケージ化された機能（例: `ari-skill-hpc`）。
@@ -216,7 +216,7 @@ Model Context Protocol サーバーとしてパッケージ化された機能（
 **VirSci**
 研究目標を仮説と主要メトリクスへと変換するマルチエージェント討議。ルートノードで
 `generate_ideas` を通じて一度だけ実行されます。
-[アーキテクチャ](../concepts/architecture.md#full-data-flow)を参照。
+[アーキテクチャ](../concepts/architecture.md#完全なデータフロー)を参照。
 
 ## RQGM（オプトインの憲法ガバナンス）
 
@@ -444,7 +444,7 @@ PaperBench ルーブリックのフィールド `execution_profile` とも別概
 `run_id` は `YYYYMMDDHHMMSS_<slug>` 形式です。すべての状態はここに置かれ、`PathManager`
 （`ari/paths.py`）が唯一の真実源です。API キーはここには決して保存されません —
 `.env` または環境から取得されます。
-完全なレイアウトは[アーキテクチャ → ファイル構造](../concepts/architecture.md#file-structure)を、
+完全なレイアウトは[アーキテクチャ → ファイル構造](../concepts/architecture.md#ファイル構造)を、
 ファイルごとのスキーマは[ファイルフォーマット](file_formats.md)を参照して
 ください。`ari_rqgm` ランは加えて RQGM 状態ファイル（`rqgm_state.json`、
 `rqgm_registry.json`、`rqgm_audit.jsonl`、`proposals/`、`rqgm_prompts/`、

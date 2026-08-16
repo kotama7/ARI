@@ -150,7 +150,7 @@ ari run <experiment.md> [--config <config.yaml>] [--profile <profile>] \
 | `--task-tag` | いいえ | 決定論的な Knowledge/Harness の task tag。複数指定は繰り返し。タグは小文字化・トリム・重複除去され、checkpoint の `workflow.yaml` の `resolved_launch.task_tags` に記録される。 |
 
 これらのフラグは、アイデアスキルが読み込む `ARI_IDEA_VIRSCI_*` 環境変数の契約を
-設定します（下記 [アイデア生成 (VirSci-live)](#アイデア生成-virsci-live) 参照）。
+設定します（下記 [アイデア生成 (VirSci-live)](#アイデア生成-virsci-live) 参照）。
 `--virsci-live` が ON のとき、仮説生成はライブの Semantic Scholar スナップショット
 上で VirSci 本物の `select_coauthors` + `generate_idea` メカニズムを実行します。
 依存が無い場合や実行時エラーが発生した場合は、`idea.json` の契約が同一のまま

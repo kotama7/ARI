@@ -22,7 +22,7 @@ evidence does not support.
 For the *record shapes* those artifacts contain (schemas, id formats, hash
 discipline) see [RQGM Schema Reference](rqgm_schemas.md). For transport
 concerns (error envelope, cursors, auth) see
-[REST API → `/api/v1`](rest_api.md#apiv1-canonical). For the governance
+[REST API → `/api/v1`](rest_api.md#api-v1-canonical). For the governance
 mechanism itself see [RQGM architecture](../concepts/rqgm_architecture.md).
 
 ## Ground rules

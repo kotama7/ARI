@@ -796,7 +796,7 @@ Judge に `{"margin": 0.0}` と読めるファイルを「その攻撃自身の�
     **正直な限界。** チェック時の半分は設計として**警告のみ**です:
     `_enforce_scope` は違反をログするだけで例外も飲み込みます。そして
     `CK-CTX-001` はカーネルの表で severity `warn` です（
-    [憲法違反コード](../reference/rqgm_schemas.md#憲法違反コード)
+    [憲法違反コード](../reference/rqgm_schemas.md#憲法違反コード)
     参照）。カーネルはホワイトリスト違反を*記録*しますが、ノードを止めません。
     ホワイトリストを持つロールは今日 3 つだけ — `generator`（BFTS が乗る）、
     `paper_writer`、`paper_reviewer` — で、`validate_context_scope` は
@@ -943,7 +943,7 @@ Layer-0 の固定チェックは構造上その対象外です。
 
 [RQGM ランタイムウォークスルー](rqgm_runtime_walkthrough.md) ·
 [実行モード](../guides/execution_modes.md) ·
-[BFTS アルゴリズム → RQGM ラッピング](bfts.md#governed-bfts-under-ari_rqgm-opt-in) ·
+[BFTS アルゴリズム → RQGM ラッピング](bfts.md#ari-rqgm-オプトイン-下の統治された-bfts) ·
 [RQGM 評価とアブレーション](../guides/rqgm_evaluation.md) ·
 [RQGM スキーマリファレンス](../reference/rqgm_schemas.md) ·
 [VirSci 統合](../guides/virsci_integration.md) ·

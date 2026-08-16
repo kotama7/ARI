@@ -63,7 +63,7 @@ last_verified: 2026-08-13
 以及在删除任何 legacy 代码之前必须成立的条件。
 
 关于行为变更本身（以前能用而现在会拒绝的东西，以及原因），见
-[迁移指南 → GUI 刷新](migration.md#gui-刷新v2-仪表盘)。
+[迁移指南 → GUI 刷新](migration.md#gui-刷新-v2-仪表盘)。
 
 **范围说明。** ARI 不发布任何遥测管道。下文的每个「信号」都是运维者从本地
 接口面读到的东西 —— `/api/v1/diagnostics`、`/health/ready`、检查点的
@@ -427,7 +427,7 @@ hash URL 与每一个 `/api/*` 端点原本就在工作，因此别的什么都�
 
 ## 另请参阅
 
-- [迁移指南 → GUI 刷新](migration.md#gui-刷新v2-仪表盘) —— 每一项用户可见
+- [迁移指南 → GUI 刷新](migration.md#gui-刷新-v2-仪表盘) —— 每一项用户可见
   变更的前后对比及其回滚手段。
 - [HPC 设置指南](hpc_setup.md) —— 隧道与远程操作。
 - [故障排查](troubleshooting.md) —— 运行时故障及其修复。

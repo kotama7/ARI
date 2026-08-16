@@ -84,7 +84,7 @@ rqgm:
 
 または、ラン単位かつ GUI 互換の `ARI_MODE=ari_rqgm ARI_RQGM_ENABLED=1`。
 両方のキーが一致している必要があります
-（[インターロックテーブル](execution_modes.md#turning-rqgm-on)）。
+（[インターロックテーブル](execution_modes.md#rqgm-を有効にする)）。
 
 実効モードは**ラン開始時に一度だけ**解決され、最初のノードが走る前に
 `{checkpoint}/rqgm_state.json` へ永続化されます。このファイルがランの
@@ -223,7 +223,7 @@ rqgm:
 
 またはラン単位で `ARI_PAPER_MODE=rqgm_archive ARI_RQGM_PAPER_ENABLED=1`
 （`ari paper` コマンドが `apply_paper_env_overrides` 経由で適用します）。
-[インターロックテーブル](execution_modes.md#turning-the-paper-archive-on)を
+[インターロックテーブル](execution_modes.md#論文アーカイブを有効にする)を
 参照してください。モードは `paper_archive_state.json` へ write-once で
 永続化され、`ari paper` の再起動はチェックポイント優先で突き合わせます
 （`reconcile_paper_resume_mode`）— 永続化された論文モードが設定と env に
@@ -311,12 +311,12 @@ rqgm:
 
 ## 制限事項 (v1)
 
-[実行モード → 制限事項](execution_modes.md#limitations-v1)と同じです:
+[実行モード → 制限事項](execution_modes.md#制限事項-v1)と同じです:
 プロファイル（`--profile`）は RQGM キーをマージせず、`--mode` CLI フラグは
 ありません。論文軸もこれを共有します: `--paper-mode` フラグはなく、
 プロファイルは `rqgm.paper.*` をマージしません。ダッシュボードは**新規**ラン
 についてのみ両方のモード組を選択できます（[実行モード → GUI からモードを
-選択する](execution_modes.md#gui-からモードを選択する)）; このページのそれ
+選択する](execution_modes.md#gui-からモードを選択する)）; このページのそれ
 以外の `rqgm.*` パラメータは設定ファイル専用であり、既に開始したランの
 モードを変更できるサーフェスは存在しません。
 

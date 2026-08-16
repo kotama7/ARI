@@ -145,7 +145,7 @@ python scripts/sc_paper_dogfood.py \
 validator 会拒绝轴集合漂移了的 rubric — 请检查脚本输出中的
 `[rubric.summary] direct_children=`。
 新增 venue 只需 YAML 一个文件 — 详见
-[`rubric_schema.md`](../../reference/rubric_schema.md#venue-conditioned-templates)。
+[`rubric_schema.md`](../../reference/rubric_schema.md#venue-条件化模板-venue-conditioned-templates)。
 
 ## 7. (进阶) 通过 CLI 执行完整 3-stage 协议 (v0.8.0)
 

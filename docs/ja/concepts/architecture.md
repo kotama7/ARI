@@ -113,10 +113,10 @@ flowchart TB
 
 | グループ | 役割 | 詳細 |
 |---------|------|------|
-| survey / generate_ideas | 文献調査 + VirSci による仮説・主指標の確定 | [完全なデータフロー](#完全なデータフロー) |
+| survey / generate_ideas | 文献調査 + VirSci による仮説・主指標の確定 | [完全なデータフロー](#完全なデータフロー) |
 | BFTS | 実験構成の最良優先木探索 | [BFTS アルゴリズム](bfts.md) |
-| ReAct ノード実行 | 実機で実験を回すノード単位エージェントループ | [ノードごとのプロンプト構築](#ノードごとのプロンプト構築) |
-| LLMEvaluator | ランキングを駆動する査読スコアリング | [設定 → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) |
+| ReAct ノード実行 | 実機で実験を回すノード単位エージェントループ | [ノードごとのプロンプト構築](#ノードごとのプロンプト構築) |
+| LLMEvaluator | ランキングを駆動する査読スコアリング | [設定 → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) |
 | メモリ | ノード間で受け渡される祖先スコープの知識 | [メモリアーキテクチャ](memory.md) |
 | post-BFTS パイプライン | データ → 作図 → 執筆 → 査読 → EAR | [出版ライフサイクル](publication-lifecycle.md) |
 | ORS 再現性検証 | 論文からゼロ再現し採点する | [PaperBench クイックスタート](../guides/paperbench/paperbench_quickstart.md) |
@@ -708,13 +708,13 @@ v1 GUI ドキュメントストアと launch のパスである。
 
 | モジュール | 説明 |
 |--------|-------------|
-| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — ノードの展開、選択、枝刈り; フォールバックランキング戦略は `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
+| `ari/orchestrator/bfts.py` | Branch-and-Frontier Tree Search — ノードの展開、選択、枝刈り; フォールバックランキング戦略は `BFTSConfig.frontier_score` (`scientific_plus_diversity` / `scientific_only` / `depth_penalized` / `ucb_like`) で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
 | `ari/orchestrator/node.py` | Node データクラス — id, parent_id, depth, label, metrics, artifacts, memory |
 | `ari/rqgm/` | Constitutional ARI-RQGM ランタイム（オプトイン `ari_rqgm` モード）: `RQGMRuntime` ファサード、憲法カーネル、ガバナンスオーケストレータ（`governance/` の弾劾パイプライン）、レジストリ遷移エンジン、フロンティア修復、提案/敵対/プロンプト進化の各レイヤ、論文アーカイブ共進化ランタイム（`PaperArchiveStrategy` — ドラフト空間上の第二の最良優先探索）、および Knowledge–Capability–Assurance 層（`admission.py` が原子的なラン受理ベースラインを公開し、`kernel_knowledge_integrity` / `kernel_capability_integrity` / `kernel_harness_integrity` がその純粋なカーネル検査）。`simple_bfts` の下では決してインポートされない — [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md)を参照 |
 | `ari/agent/loop.py` | ReAct エージェントループ — ノードごとの LLM + ツール呼び出し; SLURM ジョブの自動ポーリング; 祖先メモリの注入 |
 | `ari/agent/workflow.py` | WorkflowHints — 実験テキストから自動抽出（ツールシーケンス、メトリクスキーワード、パーティション） |
 | `ari/pipeline.py` | Post-BFTS パイプラインドライバー — テンプレート解決、ステージ実行、出力の接続 |
-| `ari/evaluator/llm_evaluator.py` | メトリクス抽出 + 査読スコアリング（`scientific_score`、`comparison_found`）。合成式 (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) と軸セット (`legacy` / `dynamic` / `custom`) は `EvaluatorConfig` で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
+| `ari/evaluator/llm_evaluator.py` | メトリクス抽出 + 査読スコアリング（`scientific_score`、`comparison_found`）。合成式 (`harmonic_mean` / `arithmetic_mean` / `weighted_min` / `geometric_mean`) と軸セット (`legacy` / `dynamic` / `custom`) は `EvaluatorConfig` で**設定可能** — [Configuration → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) を参照 |
 | `ari/memory/file_client.py` | ファイルベースのメモリクライアント（祖先チェーンスコープ） |
 | `ari/mcp/client.py` | 非同期 MCP クライアント — スレッドセーフ、並列実行用の新しいイベントループ |
 | `ari/llm/client.py` | litellm 経由の LLM ルーティング（Ollama、OpenAI、Anthropic、任意の OpenAI 互換） |

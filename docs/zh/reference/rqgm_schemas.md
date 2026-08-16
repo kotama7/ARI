@@ -57,9 +57,9 @@ proposal summary 的字段预算检查。违规对治理记录类型 `epoch_tran
 纪律）。关于这些记录所在的检查点**文件** —— 创建条件、真相源 vs
 派生快照的关系、resume 语义 —— 见
 [文件格式参考](file_formats.md)；本页末尾的
-[清单表](#checkpoint-file-inventory)把每个文件映射到它的 schema。
+[清单表](#检查点文件清单)把每个文件映射到它的 schema。
 配置旋钮见
-[配置 → 执行模式与 RQGM](configuration.md#execution-mode-and-rqgm-governance-opt-in)；
+[配置 → 执行模式与 RQGM](configuration.md#执行模式与-rqgm-治理-可选启用)；
 模式语义见[执行模式](../guides/execution_modes.md)。
 
 ## Id 与哈希纪律
@@ -142,7 +142,7 @@ Id 格式（全部零填充、按检查点计数）：
 
 `severity: block` 赋予判定在**执行路径查询它的地方**否决状态变更的资格；
 这既不意味着每个上下文都会照办，也不意味着执行模式能触及每个上下文。尊重
-[`rqgm.kernel.enforcement`](configuration.md#execution-mode-and-rqgm-governance-opt-in)
+[`rqgm.kernel.enforcement`](configuration.md#执行模式与-rqgm-治理-可选启用)
 的执行点都经由辅助函数 `ari.rqgm.kernel.should_block`
 （`ari/rqgm/runtime.py`、`transition_engine.py`、`frontier_repair.py`，以及
 `kernel.py` 中带能力门的 MCP 包装器）；在 `audit_only` 下该辅助函数对所有
@@ -243,7 +243,7 @@ id/哈希格式。**所属模块：**`ari/rqgm/events.py`（词汇表的 Python
 | `epoch_id` / `epoch_seq` / `previous_epoch_id` / `opened_by_transition_id` | 纪元链位置 |
 | `status` | `open` \| `closed` |
 | `run_id` / `node_count_at_open` | 运行关联 + 边界簿记 |
-| `active_components` / `active_prompt_hashes` / `utility_policy` | 每纪元冻结的集合（冻结时复制；全局不变量 1–3）。`utility_policy` 是**受治的分数正文** —— `composite`、`axis_weights`、`frontier_score`、`depth_penalty_lambda`、`ucb_c` 加上封印的 `utility_policy_hash` —— 由 `ari/rqgm/state.py:capture_utility_policy` 从已采纳策略中捕获（纪元 0 / `simple_bfts` 回退到 cfg）；见[受治效用进化 schema](#governed-utility-evolution-schema-task-14) |
+| `active_components` / `active_prompt_hashes` / `utility_policy` | 每纪元冻结的集合（冻结时复制；全局不变量 1–3）。`utility_policy` 是**受治的分数正文** —— `composite`、`axis_weights`、`frontier_score`、`depth_penalty_lambda`、`ucb_c` 加上封印的 `utility_policy_hash` —— 由 `ari/rqgm/state.py:capture_utility_policy` 从已采纳策略中捕获（纪元 0 / `simple_bfts` 回退到 cfg）；见[受治效用进化 schema](#受治效用进化-schema-task-14) |
 | `registry_version` | 冻结时点注册表的 `hash12` |
 | `policy_settings` / `policy_fingerprint` | 宪制、阈值、预算、治理设置及其12位摘要 |
 | `execution_identity` / `execution_fingerprint` | 声明的模型/后端/温度、搜索与评估设置、技能、禁用工具，以及模型/工具/环境/数据修订固定值。缺失固定值存为 `unresolved`，并设置 `complete: false` |
@@ -513,7 +513,7 @@ schema 把 `degradation_reasons` 声明为普通字符串数组 —— 约束词
 | `board_failure:{motion_id}` | 评分板打分抛出，动议成为 `inconclusive` |
 | `self_adjudication_recused:{judge_component_id}` | 动议以 governance judge 为目标，遂留作未决交由外部裁决 |
 | `replay_pool_update_skipped` | 有 upheld 案例待加入，但池未暴露 `append_case` |
-| `llm_budget_exhausted` | 触到 [`max_llm_calls_per_audit`](configuration.md#execution-mode-and-rqgm-governance-opt-in) 上限，或 Task 12 的预算管理器拒绝了调用 |
+| `llm_budget_exhausted` | 触到 [`max_llm_calls_per_audit`](configuration.md#执行模式与-rqgm-治理-可选启用) 上限，或 Task 12 的预算管理器拒绝了调用 |
 | `self_audit_degraded` | 自审的内核重新校验不可用或抛出 |
 
 不存在 `step_failed:produce_report` 记号：步骤 9 是唯一不降级的步骤。
@@ -592,7 +592,7 @@ paper-archive 阶段才抵达审计 —— 该阶段换入一个携带它的、�
 
 | 记录（`record_type`） | Id / 角色 | 特有字段 |
 |---|---|---|
-| `raw_attack` | `atk_%06d` / `adversary` | `adversary_type`（随发布 schema 的 enum 是封闭七类**探索**集合：`overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`；paper 阶段增加第八类 `paper_self_preference` —— 见 [Paper-archive schema](#paper-archive-schemas-paper-rqgm_archive-mode)）；`target_artifact.type`（封闭集合：`proposal`、`experiment_plan`、`node_report`、`metric_result`、`paper_claim`、`novelty_claim`、`citation_claim`、`reproducibility_claim` —— 绝不是组件）；`attack_claim`；`attack_evidence_refs`（要求 ≥ 1）；`severity_claimed`。仅为审计材料 —— 原始攻击从不触碰分数（不变量 8） |
+| `raw_attack` | `atk_%06d` / `adversary` | `adversary_type`（随发布 schema 的 enum 是封闭七类**探索**集合：`overclaim`、`metric_gaming`、`prior_art`、`reproducibility`、`evidence_gap`、`cost_explosion`、`prompt_injection`；paper 阶段增加第八类 `paper_self_preference` —— 见 [Paper-archive schema](#paper-archive-schema-paper-rqgm-archive-模式)）；`target_artifact.type`（封闭集合：`proposal`、`experiment_plan`、`node_report`、`metric_result`、`paper_claim`、`novelty_claim`、`citation_claim`、`reproducibility_claim` —— 绝不是组件）；`attack_claim`；`attack_evidence_refs`（要求 ≥ 1）；`severity_claimed`。仅为审计材料 —— 原始攻击从不触碰分数（不变量 8） |
 | `defender_response` | `def_%06d` / `defender` | `raw_attack_id`；`stance` `rebut` \| `concede` \| `propose_fix` |
 | `judgment_record` | `jdg_%06d` / `judge` | `raw_attack_id`；`verdict` `valid` \| `partially_valid` \| `invalid`；裁判指定的 `severity`（`low`–`critical`）；`defense_status`。总是写入，即使为 `invalid` |
 | `validated_attack` | `vat_%06d` / `judge` | `case_type`、`raw_attack_id`、`judgment_id`、`validated`、`verdict`、`severity`、`expected_behavior`（按 case 类型取值的 `角色 → 预期行为` 映射）。**仅**对 `valid` / `partially_valid` 裁定存在（必须经过裁决，不变量 9）。承载问责绑定 —— 见下文 |
@@ -1273,7 +1273,7 @@ reference_context/anchor_case}`，各自都有 cap —— 因此每次调用的 
 ## 检查点文件清单
 
 完整的按文件行为（创建条件、真相 vs 快照、resume 语义）记录在
-[文件格式参考](file_formats.md#rqgm-epoch-governance-files-opt-in-ari_rqgm-mode)；
+[文件格式参考](file_formats.md#rqgm-纪元治理文件-可选启用的-ari-rqgm-模式)；
 本表只把文件映射到 schema 和所有者。下表中每个固定名文件都在
 `PathManager.META_FILES` 中注册；其中的 JSONL 除 paper-archive 的两个
 （`paper_draft_archive.jsonl`、`paper_anchor_corpus.jsonl`）之外，还会进入
@@ -1310,7 +1310,7 @@ reference_context/anchor_case}`，各自都有 cap —— 因此每次调用的 
 
 - [文件格式参考](file_formats.md) —— 这些 schema 所校验的检查点
   文件。
-- [配置参考](configuration.md#execution-mode-and-rqgm-governance-opt-in)
+- [配置参考](configuration.md#执行模式与-rqgm-治理-可选启用)
   —— `ari.mode`、`rqgm.*` 与 `proposal_router.*` 块。
 - [执行模式](../guides/execution_modes.md) —— 模式激活与宪法内核。
 - [RQGM 评估](../guides/rqgm_evaluation.md) —— 消费

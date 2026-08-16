@@ -87,7 +87,7 @@ the whole-`work_dir` path additionally clamps `_scientific_score` to `0.0` and
 `has_real_data` to `False`, while the `score_inputs` path leaves the measured
 score, `has_real_data` and `evaluation_status` untouched. This is what stops a
 child from "inheriting" the parent's results without running anything. See
-[Architecture → work_dir inheritance](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7).
+[Architecture → work_dir inheritance](../concepts/architecture.md#work-dir-inheritance-—-output-artifact-blacklist-v0-7-0-phase-7).
 
 **should_prune**
 The hard-cutoff predicate in BFTS: prune when `current_total ≥ max_total_nodes`,
@@ -129,7 +129,7 @@ The *evaluation specifics* of a run — what metrics to measure, what baselines 
 compare against, what ablations to run. Sourced from
 `idea.json[0].experiment_plan`. Not inherited by sub-experiments by default
 (children write their own, so they stay free to pivot). See
-[Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
+[Architecture → Plan / Venue contract](../concepts/architecture.md#plan-venue-contract-v0-7-0).
 
 **venue**
 The *judgement criteria* of a run — which dimensions are scored and how. A venue
@@ -138,7 +138,7 @@ independently: `ARI_RUBRIC` (default `neurips`) for the BFTS scoring axes, and
 the top-level `paper_rubric` key in `workflow.yaml` (default
 `generic_conference`), passed to the review stage as an explicit `rubric_id`.
 Set both to the same id for one venue to drive scoring and review together. See
-[Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
+[Architecture → Plan / Venue contract](../concepts/architecture.md#plan-venue-contract-v0-7-0).
 
 **rubric**
 A scoring specification. ARI uses the word in two contexts: a **reviewer rubric**
@@ -153,7 +153,7 @@ actually tried instead of dying unused. The LLM judge (which also chooses among
 `continue` / `switch_to_idea` / `fanout` / `terminate`) is consulted only as a
 fallback — when the budget is exhausted, the recursion limit is reached, or no
 unused alternative remains. See
-[Architecture → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070).
+[Architecture → Plan / Venue contract](../concepts/architecture.md#plan-venue-contract-v0-7-0).
 
 **claim-evidence gate**
 A deterministic, no-LLM gate (`claim_evidence_hard_gate`) that re-derives each
@@ -181,7 +181,7 @@ would change the evidence vocabulary and hide already-emitted evidence from the
 exact-match gate. With no admitted contract nothing freezes: the response is
 `contract_frozen: false`, `admission_status: human-review-required`, and the
 parser output is evidence only. See
-[File formats](file_formats.md#metric_contractjson).
+[File formats](file_formats.md#metric-contract-json).
 
 ## Memory
 

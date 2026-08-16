@@ -78,7 +78,7 @@ rqgm:
 ```
 
 或者按运行、以 GUI 兼容的方式：`ARI_MODE=ari_rqgm ARI_RQGM_ENABLED=1`。
-两个键必须一致（[联锁表](execution_modes.md#turning-rqgm-on)）。
+两个键必须一致（[联锁表](execution_modes.md#启用-rqgm)）。
 
 生效模式在**运行开始时解析一次**，并在第一个节点运行前持久化到
 `{checkpoint}/rqgm_state.json`。该文件是这次运行的模式溯源；它的缺失
@@ -204,7 +204,7 @@ rqgm:
 
 或按运行：`ARI_PAPER_MODE=rqgm_archive ARI_RQGM_PAPER_ENABLED=1`（`ari
 paper` 命令通过 `apply_paper_env_overrides` 应用它们）。见
-[联锁表](execution_modes.md#turning-the-paper-archive-on)。模式以 write-once
+[联锁表](execution_modes.md#启用论文归档)。模式以 write-once
 方式持久化到 `paper_archive_state.json`，`ari paper` 重新调用时以检查点
 优先对账（`reconcile_paper_resume_mode`）—— 持久化的论文模式优先于配置和
 环境变量，与探索的 `rqgm_state.json` 完全一致。
@@ -283,7 +283,7 @@ best-of-N。
 
 ## 限制（v1）
 
-与[执行模式 → 限制](execution_modes.md#limitations-v1)相同：Profile
+与[执行模式 → 限制](execution_modes.md#限制-v1)相同：Profile
 （`--profile`）不合并 RQGM 键，且没有 `--mode` CLI 标志。论文轴也共享这些：
 没有 `--paper-mode` 标志，且 profile 不合并 `rqgm.paper.*`。仪表板可以为一次
 **新建**运行选择这两组模式（[执行模式 → 从 GUI 选择模式](execution_modes.md#从-gui-选择模式)）；

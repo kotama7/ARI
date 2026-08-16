@@ -80,7 +80,7 @@ HTTP 接口面：
   （`ARI_GUI_CSP=0` 会去掉它们）。API / JSON 响应有意保持不变。
 
 支配上述所有行为的 `ARI_GUI_*` 变量列在
-[环境变量 → GUI 服务器](environment_variables.md#gui-服务器ari_gui_)。
+[环境变量 → GUI 服务器](environment_variables.md#gui-服务器-ari-gui)。
 
 ---
 
@@ -400,7 +400,7 @@ ttl_seconds: 60}`。仅当请求体中的 `challenge_id` 未被使用、未过�
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
-| GET | `/api/v1/events/stream` | SSE 失效流（见[实时](#实时get-apiv1eventsstreamsse)）。 |
+| GET | `/api/v1/events/stream` | SSE 失效流（见[实时](#实时-get-api-v1-events-stream-sse)）。 |
 | GET | `/health/live` | 无依赖的存活常量 `{"status": "ok"}`。免认证。 |
 | GET | `/health/ready` | 就绪状态：`status` 为 `ok` 或 `degraded`，加上一个 `checks` 对象（`http`、`websocket`、`watcher`、`event_bus`、`active_checkpoint`）。每项检查独立求值，崩溃的检查读作 `false`；降级的就绪状态是一个诚实的 `200` —— 该探针永不返回 500。免认证。 |
 

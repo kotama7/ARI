@@ -73,7 +73,7 @@ ari run experiment.md
 
 ここから ARI が探索します。これは線形のスクリプトではなく — [最良優先木探索](../concepts/bfts.md)です:
 
-- 各 **ノード** は 1 つの具体的な試行で、[ReAct エージェント](../concepts/architecture.md#per-node-prompt-composition)が
+- 各 **ノード** は 1 つの具体的な試行で、[ReAct エージェント](../concepts/architecture.md#ノードごとのプロンプト構築)が
   実行します。エージェントはコードを書き、（ローカルまたは SLURM 経由で）投入し、出力を読み、
   メトリクスを抽出します。
 - 完了したノードは **frontier** に入ります。ARI は最も有望なものを繰り返し選び、

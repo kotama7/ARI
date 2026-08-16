@@ -799,7 +799,7 @@ L3 裁决）。耗尽时降级的是治理，绝不是节点执行；第 0 层�
 
 [RQGM 运行时演练](rqgm_runtime_walkthrough.md) ·
 [执行模式](../guides/execution_modes.md) ·
-[BFTS 算法 → RQGM 包裹](bfts.md#governed-bfts-under-ari_rqgm-opt-in) ·
+[BFTS 算法 → RQGM 包裹](bfts.md#ari-rqgm-下的受治-bfts-可选启用) ·
 [RQGM 评估与消融](../guides/rqgm_evaluation.md) ·
 [RQGM Schema 参考](../reference/rqgm_schemas.md) ·
 [VirSci 集成](../guides/virsci_integration.md) ·

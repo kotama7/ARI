@@ -38,7 +38,7 @@ Experiment Artifact Repository (EAR) を公開すると、その `ear/publish.ya
 / CC-BY-4.0) を宣言し、`generate_ear` が対応する `LICENSE` をバンドルに出力します — ただし
 出力されるのはバンドルがまだ `LICENSE` を持っていない場合に限られ、この一覧にない SPDX ID を
 指定すると `LICENSE` ファイルは一切生成されません。
-[Configuration → EAR Curation](../reference/configuration.md#ear-curation-earpublishyaml--v070) を参照してください。
+[Configuration → EAR Curation](../reference/configuration.md#ear-キュレーション-ear-publish-yaml-—-v0-7-0) を参照してください。
 
 ---
 

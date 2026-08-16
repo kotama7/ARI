@@ -21,7 +21,7 @@ last_verified: 2026-08-16
 これらの成果物が含む*レコードの形*（スキーマ、id 形式、ハッシュ規律）は
 [RQGM スキーマリファレンス](rqgm_schemas.md)を参照してください。転送層の関心事
 （エラーエンベロープ、カーソル、認証）は
-[REST API → `/api/v1`](rest_api.md#apiv1正準)、ガバナンス機構そのものは
+[REST API → `/api/v1`](rest_api.md#api-v1-正準)、ガバナンス機構そのものは
 [RQGM アーキテクチャ](../concepts/rqgm_architecture.md)を参照してください。
 
 ## 基本規則

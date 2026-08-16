@@ -113,7 +113,7 @@ bfts:
 
 ARI 暴露四个相互独立的评估层；每个默认值都是 no-op，复刻经典行为。
 完整语义见
-[配置 → BFTS 评估层](../reference/configuration.md#bfts-evaluation-layers-configurable)；
+[配置 → BFTS 评估层](../reference/configuration.md#bfts-评估层-可通过配置切换)；
 下面的食谱是常见的组合。
 
 **瓶颈评分 —— 仅当*每个*轴都好时才奖励节点：**
@@ -201,7 +201,7 @@ rubric YAML，BFTS 的评分轴由它派生。已发布的评审标准是**另�
 `review_paper` 阶段把 rubric 作为显式的工作流输入接收，即 `workflow.yaml` 中的
 `paper_rubric`（默认 `generic_conference`）。若希望搜索与评审依据同一个 venue
 来判定，请同时设置两者 —— 参见 [术语表 → venue](../reference/glossary.md) 与
-[架构 → Plan / Venue 契约](../concepts/architecture.md#plan--venue-contract-v070)。
+[架构 → Plan / Venue 契约](../concepts/architecture.md#plan-venue-契约-v0-7-0)。
 
 ---
 

@@ -78,7 +78,7 @@ hashing the `score_inputs` that problem declares rather than by diffing the
 whole work_dir — the whole-directory rule practically never fires. If you see this
 often, the agent isn't actually re-running the experiment — check the node's
 MCP Trace tab. See
-[Architecture → work_dir inheritance](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)
+[Architecture → work_dir inheritance](../concepts/architecture.md#work-dir-inheritance-—-output-artifact-blacklist-v0-7-0-phase-7)
 and the [Glossary → sterile](../reference/glossary.md).
 
 **An experiment failed — does ARI retry it?**

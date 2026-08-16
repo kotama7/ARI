@@ -82,7 +82,7 @@ handler.
   untouched.
 
 The `ARI_GUI_*` variables that govern all of the above are listed in
-[Environment Variables → GUI server](environment_variables.md#gui-server-ari_gui_).
+[Environment Variables → GUI server](environment_variables.md#gui-server-ari-gui).
 
 ---
 
@@ -431,7 +431,7 @@ each payload.
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/v1/events/stream` | SSE invalidation stream (see [Realtime](#realtime-get-apiv1eventsstream-sse)). |
+| GET | `/api/v1/events/stream` | SSE invalidation stream (see [Realtime](#realtime-get-api-v1-events-stream-sse)). |
 | GET | `/health/live` | Dependency-free liveness constant `{"status": "ok"}`. Auth-exempt. |
 | GET | `/health/ready` | Readiness: a `status` of `ok` or `degraded` plus a `checks` object (`http`, `websocket`, `watcher`, `event_bus`, `active_checkpoint`). Each check is evaluated independently and a crashing check reads as `false`; a degraded readiness is an honest `200` — this probe never answers 500. Auth-exempt. |
 
@@ -503,7 +503,7 @@ it.** Its dispatch is a bare `self._json(_api_save_settings(body))`, and
 `_json` defaults to `status=200`. A refused save therefore answers **HTTP 200
 with `_status: 400` still sitting in the JSON body** (both of that handler's
 refusals behave this way — see
-[Settings + workflow](#settings--workflow)). Of the handlers under `ari/viz/`
+[Settings + workflow](#settings-workflow)). Of the handlers under `ari/viz/`
 that set `_status`, it is the only one whose branch does not pop it. Nothing
 pins the wire status either: the contract test calls the handler directly, so
 it asserts the dict, not the response code.

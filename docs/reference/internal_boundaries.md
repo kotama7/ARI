@@ -323,7 +323,7 @@ so a view is a function of its inputs and of nothing else.
 once. For the `CK-CTX-001` code and its severity see
 [RQGM schemas → Constitutional violation codes](rqgm_schemas.md#constitutional-violation-codes);
 for the view's own field list see
-[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal_summary_viewschemajson).
+[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal-summary-view-schema-json).
 
 | Layer | Mechanism | Does it stop anything? |
 |---|---|---|

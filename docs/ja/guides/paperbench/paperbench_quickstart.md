@@ -152,7 +152,7 @@ python scripts/sc_paper_dogfood.py \
 直下ノードがドリフトしたルーブリックを弾く validator は無いので、
 スクリプト出力の `[rubric.summary] direct_children=` を確認すること。
 新 venue 追加は YAML 1 ファイルで完結する —
-詳細は [`rubric_schema.md`](../../reference/rubric_schema.md#venue-conditioned-templates)
+詳細は [`rubric_schema.md`](../../reference/rubric_schema.md#venue-別テンプレート-venue-conditioned-templates)
 を参照。
 
 ## 7. (上級) 完全な 3-stage プロトコルを CLI で実行 (v0.8.0)

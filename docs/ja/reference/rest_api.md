@@ -79,7 +79,7 @@ viz ダッシュボードサーバー（`ari viz` → `ari-core/ari/viz/server.p
   （`ARI_GUI_CSP=0` で外れます）。API / JSON のレスポンスは意図的に無変更です。
 
 上記すべてを制御する `ARI_GUI_*` 変数は
-[環境変数 → GUI サーバー](environment_variables.md#gui-サーバー-ari_gui_)に
+[環境変数 → GUI サーバー](environment_variables.md#gui-サーバー-ari-gui)に
 一覧があります。
 
 ---
@@ -155,7 +155,7 @@ python -m ari.viz.v1.openapi --update   # regenerate ari/viz/v1/openapi.json
 
 HTTP `401`（bearer トークンの不在 / 不正）と `428`（確認チャレンジの不在）は
 v1 のエンベロープビルダの*外側*で生成されます — [認証](#認証)と
-[確認チャレンジ](#確認チャレンジ)を参照してください。
+[確認チャレンジ](#確認チャレンジ)を参照してください。
 
 ### 楽観的並行制御（`If-Match` / リビジョン）
 
@@ -420,7 +420,7 @@ ttl_seconds: 60}` です。破壊的エンドポイントは、ボディの `cha
 
 | メソッド | パス | 用途 |
 |---|---|---|
-| GET | `/api/v1/events/stream` | SSE の無効化ストリーム（[リアルタイム](#リアルタイム-get-apiv1eventsstreamsse)を参照）。 |
+| GET | `/api/v1/events/stream` | SSE の無効化ストリーム（[リアルタイム](#リアルタイム-get-api-v1-events-stream-sse)を参照）。 |
 | GET | `/health/live` | 依存の無い liveness 定数 `{"status": "ok"}`。認証免除。 |
 | GET | `/health/ready` | readiness: `ok` または `degraded` の `status` と `checks` オブジェクト（`http`、`websocket`、`watcher`、`event_bus`、`active_checkpoint`）。各チェックは独立に評価され、例外を投げたチェックは `false` として読まれます; 縮退した readiness は正直な `200` であり、このプローブが 500 を返すことはありません。認証免除。 |
 

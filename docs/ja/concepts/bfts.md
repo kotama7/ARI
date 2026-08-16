@@ -205,4 +205,4 @@ resume 時にリプレイされる追記専用・ハッシュ連鎖の真実の�
 
 ## 関連
 
-[アーキテクチャ](architecture.md) · [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md) · [メモリアーキテクチャ](memory.md) · [設定 → BFTS の評価層](../reference/configuration.md#bfts-evaluation-layers-configurable) · [用語集](../reference/glossary.md)
+[アーキテクチャ](architecture.md) · [Constitutional ARI-RQGM アーキテクチャ](rqgm_architecture.md) · [メモリアーキテクチャ](memory.md) · [設定 → BFTS の評価層](../reference/configuration.md#bfts-の評価層-設定で切替可能) · [用語集](../reference/glossary.md)

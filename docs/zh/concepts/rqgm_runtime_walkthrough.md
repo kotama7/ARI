@@ -487,7 +487,7 @@ paper 阶段是一个**独立、正交的**模式：`paper.mode: rqgm_archive` +
 
 即使只是一次两节点的 `ari_rqgm` 运行，检查点也会包含（仅列 RQGM
 文件；含写入方的完整清单见
-[RQGM 架构](rqgm_architecture.md#records-on-the-checkpoint)，精确
+[RQGM 架构](rqgm_architecture.md#检查点上的记录)，精确
 格式见[文件格式参考](../reference/file_formats.md)）：
 
 ```text

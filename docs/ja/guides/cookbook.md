@@ -117,7 +117,7 @@ bfts:
 
 ARI は 4 つの独立した評価レイヤを公開しています。各デフォルトは従来の挙動を
 再現する no-op です。完全なセマンティクスは
-[設定 → BFTS 評価レイヤ](../reference/configuration.md#bfts-evaluation-layers-configurable)
+[設定 → BFTS 評価レイヤ](../reference/configuration.md#bfts-の評価層-設定で切替可能)
 にあります。以下のレシピはよく使う組み合わせです。
 
 **ボトルネックスコアリング — *すべて*の軸が良好なときだけノードを報酬する:**
@@ -211,7 +211,7 @@ export ARI_RUBRIC=sc                    # venue template: sc / neurips / nature
 入力、すなわち `workflow.yaml` の `paper_rubric`（既定は `generic_conference`）
 として受け取ります。探索とレビューを同じ venue で判定させたい場合は両方を設定して
 ください — [用語集 → venue](../reference/glossary.md) と
-[アーキテクチャ → Plan / Venue contract](../concepts/architecture.md#plan--venue-contract-v070)
+[アーキテクチャ → Plan / Venue contract](../concepts/architecture.md#plan-venue-契約-v0-7-0)
 を参照してください。
 
 ---

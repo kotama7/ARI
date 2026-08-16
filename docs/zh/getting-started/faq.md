@@ -27,7 +27,7 @@ last_verified: 2026-08-16
 若要进行无账户、无成本的首次运行，请使用 Ollama 配 `qwen3:8b`（需要
 约 16 GB 内存）。若要更高质量，请使用云端模型，如 `openai/gpt-4o` 或
 `anthropic/claude-sonnet-4-5`。务必包含提供商前缀 ——
-`openai/gpt-4o`，而非 `gpt-4o`。参见 [快速入门 → 选择你的 AI 模型](quickstart.md#step-2-choose-your-ai-model)。
+`openai/gpt-4o`，而非 `gpt-4o`。参见 [快速入门 → 选择你的 AI 模型](quickstart.md#第-2-步-选择-ai-模型)。
 
 **安装后出现 `ari: command not found`。**
 将用户 bin 目录添加到你的 PATH：`export PATH="$HOME/.local/bin:$PATH"`。
@@ -71,7 +71,7 @@ postgres/redis 孤儿进程。
 当本次运行指名了一个 pin 定的 problem（`ARI_PROBLEM`）时，不育性由哈希该 problem 声明的 `score_inputs` 判定，
 而不是对整个 work_dir 做差分 —— 整目录那条规则实际上几乎从不触发。如果你经常看到这种情况，说明代理并没有真正重新运行实验 ——
 请查看该节点的 MCP Trace 标签页。参见
-[架构 → work_dir 继承](../concepts/architecture.md#work_dir-inheritance--output-artifact-blacklist-v070--phase-7)
+[架构 → work_dir 继承](../concepts/architecture.md#work-dir-继承-——-输出产物黑名单-v0-7-0-phase-7)
 以及 [术语表 → sterile](../reference/glossary.md)。
 
 **实验失败了 —— ARI 会重试吗？**

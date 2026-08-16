@@ -771,7 +771,7 @@ YAML，并通过 `{VENUE_HINT}` 占位符把 `prompt_overrides.system_hint` /
 一致，因此同样的 `venue → YAML → prompt` 流程现在也适用于 rubric
 生成器。附带模板：`generic`（向后兼容）、`sc`（HPC 论文审计，6 轴）、
 `neurips`（ML 可复现性，6 轴）、`nature`（湿实验，5 轴）。YAML schema 见
-[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-conditioned-templates)。
+[`docs/reference/rubric_schema.md`](rubric_schema.md#venue-条件化模板-venue-conditioned-templates)。
 
 #### `audit_rubric(rubric_path, paper_path="", paper_text="", auditor_model="", output_path="", max_model_calls=400)`
 

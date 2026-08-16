@@ -65,7 +65,7 @@ ari run experiment.md
 现在 ARI 开始探索。它不是一个线性脚本 —— 它是一个
 [最佳优先树搜索](../concepts/bfts.md)：
 
-- 每个**节点**是一次具体的尝试，由一个 [ReAct 代理](../concepts/architecture.md#per-node-prompt-composition)
+- 每个**节点**是一次具体的尝试，由一个 [ReAct 代理](../concepts/architecture.md#节点级提示构建)
   运行，它编写代码、提交它（本地或通过 SLURM）、读取输出并提取指标。
 - 已完成的节点进入**前沿 (frontier)**。ARI 反复挑选最有希望的那个并**扩展**它，得到一个被标记为 `improve`、
   `ablation`、`validation`、`debug` 或 `draft` 的单一子节点。

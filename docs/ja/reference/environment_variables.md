@@ -409,7 +409,7 @@ source だけが実行できるためです。
 
 完全な信頼モデルは
 [REST API → 認証](rest_api.md#認証)を、チャレンジのプロトコルは
-[REST API → 確認チャレンジ](rest_api.md#確認チャレンジ)を参照してください。
+[REST API → 確認チャレンジ](rest_api.md#確認チャレンジ)を参照してください。
 
 ## SLURM (`SLURM_*`)
 

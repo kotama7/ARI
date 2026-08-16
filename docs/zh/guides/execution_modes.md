@@ -163,7 +163,7 @@ YAML + profile + 环境变量，按标准优先级）→ 默认值。任何 RQGM
   `{checkpoint}/paper_archive_state.json` 即意味着一次纯 `linear` 论文
   运行。在 `ari.mode: ari_rqgm` 下，调度还会额外运行*探索*轴的
   paper-candidate 预检（详见
-  [RQGM 运行时演练](../concepts/rqgm_runtime_walkthrough.md#8-run-end)），
+  [RQGM 运行时演练](../concepts/rqgm_runtime_walkthrough.md#_8-运行结束)），
   因此论文阶段仅在默认探索模式下才逐字节一致。
 - **`rqgm_archive`**（可选启用）—— 宪法式论文归档：在草稿空间上的一棵
   浅层 best-first 树（`PaperArchiveStrategy`、`ari/rqgm/paper_archive.py`），
@@ -280,7 +280,7 @@ BFTS 的 `max_total_nodes` —— 更深的树只是重新分配同一预算，�
 - `rqgm.paper.anchor.enabled: false`（**默认**）让审稿人没有真值锚点，
   因此即便 `prompt_evolution.enabled: true`，默认的 `rqgm_archive` 在提供
   一份精选语料库之前也表现为受审的 best-of-N
-  （见[采用论文归档](rqgm_migration.md#采用-papermode)）。
+  （见[采用论文归档](rqgm_migration.md#采用-paper-mode)）。
 
 论文阶段向治理预算那个封闭的 `ACTION_KINDS` 集合（`ari/rqgm/budget.py`）中
 恰好只新增一种动作类型：`paper_anchor_scoring`，按当前生效的审稿人每被评分

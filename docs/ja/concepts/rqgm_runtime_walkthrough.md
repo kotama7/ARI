@@ -550,7 +550,7 @@ self-preference ラウンドは現在、実際の過剰受理アーカイブド�
 
 たった 2 ノードの `ari_rqgm` ランの後でも、チェックポイントには以下が
 含まれます（RQGM ファイルのみ; 書き込み手つきの完全な一覧は
-[RQGM アーキテクチャ](rqgm_architecture.md#records-on-the-checkpoint)、
+[RQGM アーキテクチャ](rqgm_architecture.md#チェックポイント上のレコード)、
 正確なオンディスク形式は
 [ファイルフォーマットリファレンス](../reference/file_formats.md)に
 あります）:

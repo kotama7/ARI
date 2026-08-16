@@ -210,7 +210,7 @@ ARI 的 LLM 边界**并非**"一切都必须调用 `LLMClient`"。它是一个�
 严重度见
 [RQGM schema → 宪法违规码](rqgm_schemas.md#宪法违规码)；视图自身的字段
 清单见
-[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal_summary_viewschemajson)。
+[`proposal_summary_view.schema.json`](rqgm_schemas.md#proposal-summary-view-schema-json)。
 
 | 层 | 机制 | 它拦得住什么吗？ |
 |---|---|---|
